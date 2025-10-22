@@ -4,10 +4,17 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # Git repository for source builds
     filc-src = {
-      url = "tarball+https://github.com/pizlonator/fil-c/releases/download/v0.673/filc-0.673-linux-x86_64.tar.xz";
+      url = "git+file:///home/mbrock/fil-c";
       flake = false;
     };
+
+    # Optional: keep tarball as fallback
+    # filc-tarball = {
+    #   url = "tarball+https://github.com/pizlonator/fil-c/releases/download/v0.673/filc-0.673-linux-x86_64.tar.xz";
+    #   flake = false;
+    # };
   };
 
   outputs = { self, nixpkgs, filc-src, ... }:
@@ -15,21 +22,70 @@
     system = "x86_64-linux";
     base = import nixpkgs { inherit system; };
 
-    filc-unwrapped = base.stdenvNoCC.mkDerivation {
-      pname = "filc-unwrapped";
-      version = "0.673";
+    # Build fil-c from source with glibc
+    filc-unwrapped = base.stdenv.mkDerivation {
+      pname = "filc-from-source-glibc";
+      version = "git";
       src = filc-src;
 
-      nativeBuildInputs = [ base.gnutar base.xz base.file base.patchelf ];
-      dontUnpack = true;
+      nativeBuildInputs = with base; [
+        cmake
+        ninja
+        python3
+        git
+        file
+        patchelf
+        gnumake
+        pkg-config
+      ];
+
+      buildInputs = with base; [
+        glibc
+        glibc.static
+      ];
+
+      # Disable fortify and hardening that might interfere with fil-c
+      hardeningDisable = [ "all" ];
+
+      # Set environment variables for glibc build
+      ALTYOLO = "./build_yolo_glibc.sh";
+      ALTUSER = "./build_user_glibc.sh";
+      ALTLLVMLIBCOPT = " ";
+
+      configurePhase = ''
+        runHook preConfigure
+
+        export HOME=$TMPDIR
+        export HOSTNAME=nix-build
+
+        # Skip the git-based extract_source function since we already have the source
+        # The build scripts expect to be run from the repo root
+        patchShebangs .
+
+        runHook postConfigure
+      '';
+
+      buildPhase = ''
+        runHook preBuild
+
+        # Run the build script (skip tests with build_base.sh instead of build_and_test_base.sh)
+        echo "Building fil-c with glibc..."
+        ./build_base.sh
+
+        runHook postBuild
+      '';
+
       installPhase = ''
+        runHook preInstall
+
         mkdir -p $out
-        if [ -f "$src" ]; then
-          tar -xJf "$src" --strip-components=1 -C $out
-        else
-          cp -r "$src"/. "$out"/
-        fi
-        for d in "$out/build/bin/" "$out/pizfix/bin"; do
+
+        # Copy build artifacts
+        cp -r build $out/build
+        cp -r pizfix $out/pizfix
+
+        # Patch ELF binaries for Nix
+        for d in "$out/build/bin" "$out/pizfix/bin"; do
           if [ -d "$d" ]; then
             for exe in "$d"/*; do
               if [ -x "$exe" ] && file "$exe" | grep -q ELF; then
@@ -38,9 +94,22 @@
             done
           fi
         done
-        chmod u+w $out/pizfix
-        cp -r ${base.linuxHeaders}/include $out/pizfix/os-include
+
+        # Add Linux headers
+        chmod -R u+w $out/pizfix || true
+        mkdir -p $out/pizfix/os-include
+        cp -r ${base.linuxHeaders}/include/. $out/pizfix/os-include/
+
+        runHook postInstall
       '';
+
+      # This is a large build, allow more time
+      enableParallelBuilding = true;
+
+      meta = with base.lib; {
+        description = "Fil-C memory-safe C/C++ compiler (glibc edition, built from source)";
+        platforms = platforms.linux;
+      };
     };
 
     filc-clang = base.writeShellScriptBin "clang" ''
@@ -144,6 +213,8 @@
     packages.${system} = rec {
       inherit filpkgs;
 
+      inherit filc-unwrapped;
+
       # at least these definitely work
       gawk = withFilC base.gawk;
       gnused = withFilC base.gnused;
@@ -188,8 +259,6 @@
       };
 
       nethack = withFilC base.nethack;
-
-
       ncurses = withFilC base.ncurses;
 
       # tmux didn't manage to use these

@@ -3,14 +3,17 @@
     "filc-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1760748168,
-        "narHash": "sha256-Air/DsjLWvpFDaEsMamlfN2rnKGmNVQ8y2asJmqMkkw=",
-        "type": "tarball",
-        "url": "https://github.com/pizlonator/fil-c/releases/download/v0.673/filc-0.673-linux-x86_64.tar.xz"
+        "lastModified": 1761015206,
+        "narHash": "sha256-pzA4wfAWuwyQn2sqab+mdzGb2qq+dpypy4NvIlPFyqE=",
+        "ref": "refs/heads/deluge",
+        "rev": "2585db2e0c047331d3b4574be023d29e784cf001",
+        "revCount": 1,
+        "type": "git",
+        "url": "file:///home/mbrock/fil-c"
       },
       "original": {
-        "type": "tarball",
-        "url": "https://github.com/pizlonator/fil-c/releases/download/v0.673/filc-0.673-linux-x86_64.tar.xz"
+        "type": "git",
+        "url": "file:///home/mbrock/fil-c"
       }
     },
     "nixpkgs": {
