@@ -148,11 +148,23 @@
       gawk = withFilC base.gawk;
       gnused = withFilC base.gnused;
       gnutar = withFilC base.gnutar;
+      bzip2 = withFilC base.bzip2;
+
+      # builds! but crashes with a termios related syscall?
+      lua = (withFilC base.lua).override {
+        inherit readline;
+      };
+
+      # bash with fil-c alignment patch,
+      # same crash as lua
+      bash = (withFilC base.bash).overrideAttrs (old: {
+        patches = (old.patches or []) ++ [
+          ./patches/bash-5.2.32-filc.patch
+        ];
+      });
 
       quickjs = withFilC base.quickjs; # slow build
       sqlite = withFilC base.sqlite;   # slow build
-
-      bzip2 = withFilC base.bzip2;
 
       # fails, its own libcurl doesn't have fil-c mangling? i dunno
       curl = (withFilC base.curlMinimal).override {
@@ -177,9 +189,6 @@
 
       nethack = withFilC base.nethack;
 
-      lua = (withFilC base.lua).override {
-        inherit readline;
-      };
 
       ncurses = withFilC base.ncurses;
 
@@ -187,6 +196,7 @@
       libutempter = withFilC base.libutempter;
       utf8proc = withFilC base.utf8proc;
 
+      # forkpty errors that actually mean configure failed to link stuff
       tmux = ((withFilC base.tmux).override {
         inherit ncurses;
         withSystemd = false;
@@ -195,6 +205,17 @@
       }).overrideAttrs (_: {
 
       });
+    };
+
+    devShells.${system}.default = filenv.mkDerivation {
+      name = "filc";
+      buildInputs = [ ];
+      shellHook = ''
+        echo "Fil-C development environment"
+        echo "Compiler: $(type -p clang)"
+        clang --version | head -1
+        echo
+      '';
     };
   };
 }

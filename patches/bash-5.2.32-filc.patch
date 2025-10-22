@@ -1,0 +1,11 @@
+--- ./unwind_prot.c
++++ ./unwind_prot.c
+@@ -48,7 +48,7 @@
+ typedef struct {
+   char *variable;
+   int size;
+-  char desired_setting[1]; /* actual size is `size' */
++  void *desired_setting[1]; /* actual size is `size' */
+ } SAVED_VAR;
+
+ /* If HEAD.CLEANUP is null, then ARG.V contains a tag to throw back to.
