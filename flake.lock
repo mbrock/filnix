@@ -4,7 +4,7 @@
       "flake": false,
       "locked": {
         "lastModified": 1761015206,
-        "narHash": "sha256-pzA4wfAWuwyQn2sqab+mdzGb2qq+dpypy4NvIlPFyqE=",
+        "narHash": "sha256-Xq5gxAuWvnpaK9Xh+ndWFKyWQC9sPULCszY5CzY/m3w=",
         "ref": "refs/heads/deluge",
         "rev": "2585db2e0c047331d3b4574be023d29e784cf001",
         "revCount": 1,

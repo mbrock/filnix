@@ -4,17 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # Git repository for source builds
     filc-src = {
       url = "git+file:///home/mbrock/fil-c";
       flake = false;
     };
-
-    # Optional: keep tarball as fallback
-    # filc-tarball = {
-    #   url = "tarball+https://github.com/pizlonator/fil-c/releases/download/v0.673/filc-0.673-linux-x86_64.tar.xz";
-    #   flake = false;
-    # };
   };
 
   outputs = { self, nixpkgs, filc-src, ... }:
@@ -22,9 +15,10 @@
     system = "x86_64-linux";
     base = import nixpkgs { inherit system; };
 
-    # Build fil-c from source with glibc
-    filc-unwrapped = base.stdenv.mkDerivation {
-      pname = "filc-from-source-glibc";
+    # stripped down version of Fil-C's build script
+    # to only build the compiler
+    filc-clang-only = base.stdenv.mkDerivation {
+      pname = "filc-clang";
       version = "git";
       src = filc-src;
 
@@ -33,23 +27,11 @@
         ninja
         python3
         git
-        file
         patchelf
-        gnumake
-        pkg-config
       ];
 
-      buildInputs = with base; [
-        glibc
-        glibc.static
-      ];
+      hardeningDisable = [ "fortify" "stackprotector" "pie" ];
 
-      # Disable fortify and hardening that might interfere with fil-c
-      hardeningDisable = [ "all" ];
-
-      # Set environment variables for glibc build
-      ALTYOLO = "./build_yolo_glibc.sh";
-      ALTUSER = "./build_user_glibc.sh";
       ALTLLVMLIBCOPT = " ";
 
       configurePhase = ''
@@ -58,9 +40,10 @@
         export HOME=$TMPDIR
         export HOSTNAME=nix-build
 
-        # Skip the git-based extract_source function since we already have the source
-        # The build scripts expect to be run from the repo root
-        patchShebangs .
+        # Only unset the problematic CFLAGS that add gcc headers
+        unset NIX_CFLAGS_COMPILE NIX_CXXSTDLIB_COMPILE
+
+        patchShebangs configure_llvm.sh build_clang.sh libpas/common.sh
 
         runHook postConfigure
       '';
@@ -68,9 +51,11 @@
       buildPhase = ''
         runHook preBuild
 
-        # Run the build script (skip tests with build_base.sh instead of build_and_test_base.sh)
-        echo "Building fil-c with glibc..."
-        ./build_base.sh
+        echo "Configuring LLVM..."
+        ./configure_llvm.sh
+
+        echo "Building Clang (this takes ~20 minutes)..."
+        ./build_clang.sh
 
         runHook postBuild
       '';
@@ -79,46 +64,244 @@
         runHook preInstall
 
         mkdir -p $out
-
-        # Copy build artifacts
         cp -r build $out/build
-        cp -r pizfix $out/pizfix
 
-        # Patch ELF binaries for Nix
-        for d in "$out/build/bin" "$out/pizfix/bin"; do
-          if [ -d "$d" ]; then
-            for exe in "$d"/*; do
-              if [ -x "$exe" ] && file "$exe" | grep -q ELF; then
-                patchelf --set-rpath "$out/pizfix/lib" "$exe" || true
-              fi
-            done
+        # Patch ELF binaries
+        for exe in $out/build/bin/*; do
+          if [ -x "$exe" ] && file "$exe" | grep -q ELF; then
+            patchelf --set-rpath "$out/build/lib" "$exe" || true
           fi
         done
-
-        # Add Linux headers
-        chmod -R u+w $out/pizfix || true
-        mkdir -p $out/pizfix/os-include
-        cp -r ${base.linuxHeaders}/include/. $out/pizfix/os-include/
 
         runHook postInstall
       '';
 
-      # This is a large build, allow more time
       enableParallelBuilding = true;
 
-      meta = with base.lib; {
-        description = "Fil-C memory-safe C/C++ compiler (glibc edition, built from source)";
-        platforms = platforms.linux;
-      };
+      meta.description = "Fil-C Clang compiler (LLVM stage only)";
     };
 
+    # hmm, we can build this as a basically standard derivation
+    # with the gcc from stdenv; yolo!
+    yolo-glibc = base.stdenv.mkDerivation {
+      pname = "yolo-glibc";
+      version = "git";
+      src = "${filc-src}/projects/yolo-glibc-2.40";
+
+      nativeBuildInputs = with base; [
+        python3
+        git
+        file
+        patchelf
+        gnumake
+        pkg-config
+        autoconf
+        bison
+      ];
+
+      preConfigurePhases = ["autoconf"];
+      autoconf = ''
+        autoconf
+        configureScript=`pwd`/configure
+        mkdir ../build
+        cd ../build
+      '';
+
+      configureFlags = ["--disable-mathvec"];
+      hardeningDisable = [ "fortify" "stackprotector" "pie" ];
+      enableParallelBuilding = true;
+      doCheck = false;
+
+      meta.description = "Fil-C Yolo glibc";
+    };
+
+    # this packages up the previous things into something
+    # resembling a preliminary pizfix slice
+    # without the user glibc
+    filc-yolo-libc = base.runCommand "filc-yolo-libc" {
+      nativeBuildInputs = [base.patchelf base.file];
+    } ''
+      mkdir -p $out/lib
+      cp -R ${yolo-glibc}/include $out/yolo-include
+      cp -R ${base.linuxHeaders}/include $out/os-include
+      cp -R ${clang-include} $out/include
+
+      OLDLDNAME=ld-linux-x86-64.so.2
+      OLDLIBCIMPLNAME=libc.so.6
+      OLDLIBCNONSHAREDNAME=libc_nonshared.a
+      OLDLIBMIMPLNAME=libm.so.6
+      OLDSTATICLIBCNAME=libc.a
+      OLDSTATICLIBMNAME=libm.a
+
+      LDNAME=ld-yolo-x86_64.so
+      LIBNAMEBASE=libyolo
+      LIBCNAMEBASE=libyoloc
+      LIBCNAME=libyoloc.so
+      LIBCIMPLNAME=libyolocimpl.so
+      LIBCNONSHAREDNAME=libyoloc_nonshared.a
+      LIBMIMPLNAME=libyolomimpl.so
+      LIBMNAME=libyolom.so
+      STATICLIBCNAME=libyoloc.a
+      STATICLIBMNAME=libyolom.a
+
+      cd ${yolo-glibc}/lib
+      cp $OLDLDNAME $out/lib/$LDNAME
+      cp $OLDLIBCIMPLNAME $out/lib/$LIBCIMPLNAME
+      cp $OLDLIBCNONSHAREDNAME $out/lib/$LIBCNONSHAREDNAME
+      cp $OLDLIBMIMPLNAME $out/lib/$LIBMIMPLNAME
+      cp *.o $out/lib/
+      cp $OLDSTATICLIBCNAME $out/lib/$STATICLIBCNAME
+      cp $OLDSTATICLIBMNAME $out/lib/$STATICLIBMNAME
+
+      cd $out/lib
+      chmod -R u+w .
+      patchelf --replace-needed $OLDLDNAME $LDNAME $LIBCIMPLNAME
+      patchelf --set-soname $LIBCIMPLNAME $LIBCIMPLNAME
+      patchelf --set-soname $LDNAME $LDNAME
+      patchelf --replace-needed $OLDLDNAME $LDNAME $LIBMIMPLNAME
+      patchelf --replace-needed $OLDLIBCIMPLNAME $LIBCIMPLNAME $LIBMIMPLNAME
+      patchelf --set-soname $LIBMIMPLNAME $LIBMIMPLNAME
+      echo "OUTPUT_FORMAT(elf64-x86-64)" > $LIBCNAME
+      echo "GROUP ( $PWD/$LIBCIMPLNAME $PWD/$LIBCNONSHAREDNAME  AS_NEEDED ( $PWD/$LDNAME ) )" >> $LIBCNAME
+      echo "OUTPUT_FORMAT(elf64-x86-64)" > $LIBMNAME
+      echo "GROUP ( $PWD/$LIBMIMPLNAME )" >> $LIBMNAME
+    '';
+
+    clang-rsrc = base.lib.getLib base.llvmPackages_20.clang.cc;
+    clang-include = "${clang-rsrc}/lib/clang/20/include";
+    glibc-include = "${base.lib.getInclude base.glibc}/include";
+    gcc-lib = "${base.gcc.cc}/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/";
+
+    base-clang = base.writeShellScriptBin "clang" ''
+      exec ${base.llvmPackages_20.clang.cc}/bin/clang -isystem ${clang-include} "$@"
+    '';
+
+    # hmm, this builds the libpas/runtime (libpizlo etc)
+    # into a fuller pizfix slice to be used in the next step
+    # which actually builds glibc with Fil-C clang
+    filc-runtime = base.runCommand "filc-libpas" {
+      nativeBuildInputs = with base; [
+        gnumake
+        base-clang
+        ruby
+        glibc.dev
+        binutils
+      ];
+    } ''
+      export HOME=$TMPDIR
+      export HOSTNAME=nix-build
+
+      mkdir -p $out/build
+      cd $out
+
+      cp -r ${filc-src}/libpas .
+      cp -r ${filc-src}/filc .
+      cp -r ${filc-yolo-libc} pizfix
+      cp -r ${filc-clang-only}/build/bin $out/build/
+
+      chmod -R u+w .
+
+      cd libpas
+      patchShebangs *.rb
+      ./clean.sh
+      ./build.sh
+    '';
+
+    # this uses the Fil-C clang we've built,
+    # and the partial pizfix slice with Fil-C runtime,
+    # to build the memory-safe glibc...
+    #
+    # but something is going wrong related to RPATH/RUNPATH
+    # that is not solved by my futile patchelf shrinking
+    filc-glibc = base.runCommand "filc-glibc" {
+      nativeBuildInputs = with base; [
+        gnumake
+        autoconf
+        bison
+        python3
+        binutils
+        glibc.dev
+      ];
+    } ''
+      mkdir -p $out
+      cp -r ${filc-src}/projects/user-glibc-2.40 $out/src
+      cd $out/src
+      chmod -R u+w .
+      autoconf
+      cd ..
+      mkdir build
+      cd build
+
+      # these are from Fil-C's build script
+      FILCXXFLAGS="-nostdlibinc -Wno-ignored-attributes -Wno-pointer-sign"
+      FILCFLAGS="$FILCXXFLAGS -Wno-unused-command-line-argument -Wno-macro-redefined"
+
+      # these I painstakingly figured out are also necessary in this setup,
+      # I'm not sure if it's something missing from my Fil-C Clang configuration
+      # or something else, but hey, it seems to work
+      EXTRASTUFF="-isystem ${clang-include} -B ${gcc-lib} -L ${gcc-lib}"
+
+      export CC="${filc-runtime}/build/bin/clang $FILCFLAGS $EXTRASTUFF"
+      export CXX="${filc-runtime}/build/bin/clang++ $FILCXXFLAGS $EXTRASTUFF"
+
+      ../src/configure --prefix=$out --disable-mathvec
+
+      make install -j$NIX_BUILD_CORES
+
+      # clean up after installing the artifacts
+      rm -rf src build
+
+      for exe in $out/bin/* $out/lib/*; do
+        if [ -x "$exe" ] && file "$exe" | grep -q ELF; then
+          echo shrinking rpath of $exe
+          patchelf --shrink-rpath "$exe" || true
+        fi
+      done 
+    '';
+
+    # this fails, for the same reason the user glibc build is 
+    # producing binaries that can't execute;
+    # the dynamic linker triggers an assertion RUNPATH != null
+    # in some kind of "bootstrap" related check?
+    filc-xcrypt = base.runCommand "filc-xcrypt" {
+      nativeBuildInputs = with base; [
+        gnumake
+        binutils
+      ];
+    } ''
+      mkdir -p $out
+      cd $TMPDIR
+      cp -r ${filc-src}/projects/libxcrypt-4.4.36 src
+      cd src
+      chmod -R u+w .
+
+      EXTRASTUFF="-isystem ${clang-include} -B ${gcc-lib} -L ${gcc-lib} -L ${filc-glibc}/lib -I${filc-glibc}/include"
+      export CC="${filc-runtime}/build/bin/clang $EXTRASTUFF"
+
+      ./configure --prefix=$out
+      make install -j$NIX_BUILD_CORES
+
+      for exe in $out/bin/* $out/lib/*; do
+        if [ -x "$exe" ] && file "$exe" | grep -q ELF; then
+          echo shrinking rpath of $exe
+          patchelf --shrink-rpath "$exe" || true
+        fi
+      done 
+    '';
+
+    ##### everything below here is from the old flake variant
+    ##### that used the binary pizfix distribution
+    ##### and is now deprecated and doesn't work sadly!
+
     filc-clang = base.writeShellScriptBin "clang" ''
-      exec ${filc-unwrapped}/build/bin/clang "$@"
+      exec ${filc-clang-only}/build/bin/clang "$@"
     '';
 
     filc-clangpp = base.writeShellScriptBin "clang++" ''
-      exec ${filc-unwrapped}/build/bin/clang++ "$@"
+      exec ${filc-clang-only}/build/bin/clang++ "$@"
     '';
+
+    filc-unwrapped = filc-clang-only;
 
     filc-cc = base.runCommand "filc-cc" {
       nativeBuildInputs = [base.patchelf base.file];
@@ -214,6 +397,11 @@
       inherit filpkgs;
 
       inherit filc-unwrapped;
+      inherit filc-clang-only;
+      inherit yolo-glibc;
+      inherit filc-runtime;
+      inherit filc-glibc;
+      inherit filc-xcrypt;
 
       # at least these definitely work
       gawk = withFilC base.gawk;
