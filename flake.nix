@@ -14,13 +14,82 @@
   let
     system = "x86_64-linux";
     base = import nixpkgs { inherit system; };
+    lib = base.lib;
+    join = lib.concatStringsSep;
+
+    filc-libcxx = base.ccacheStdenv.mkDerivation {
+      pname = "filc-libcxx";
+      version = "git";
+      src = filc-src;
+
+      nativeBuildInputs = with base; [
+        cmake ninja python3 git patchelf ccache mold
+      ];
+
+      preBuild = ''
+        export CCACHE_COMPRESS=1
+        export CCACHE_SLOPPINESS=random_seed
+        export CCACHE_DIR="/nix/var/cache/ccache"
+        export CCACHE_UMASK=007      
+      '';
+
+      configurePhase = ''
+        runHook preConfigure
+        export HOME=$TMPDIR
+        export HOSTNAME=nix-build
+        runHook postConfigure
+      '';
+
+      buildPhase = let 
+        commonOptions = [
+          "-DCMAKE_BUILD_TYPE=RelWithDebInfo" 
+          "-DLLVM_ENABLE_ASSERTIONS=ON"
+          "-DLLVM_ENABLE_WARNINGS=OFF"
+          "-DLLVM_ENABLE_ZSTD=OFF"
+          "-DLLVM_TARGETS_TO_BUILD=X86"
+          "-DLLVM_ENABLE_LIBXML2=OFF"
+          "-DLLVM_ENABLE_LIBEDIT=OFF"
+          "-DLLVM_ENABLE_LIBPFM=OFF"
+          "-DLLVM_ENABLE_ZLIB=OFF"
+          "-DLLVM_ENABLE_ZSTD=OFF"
+          "-DLLVM_ENABLE_CURL=OFF"
+          "-DLLVM_ENABLE_HTTPLIB=OFF"
+          "-DLLVM_STATIC_LINK_CXX_STDLIB=ON"
+          "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc"
+          "-DCMAKE_INSTALL_PREFIX=$out"
+          "-DLLVM_USE_LINKER=mold"
+        ];
+        libcxxOptions = commonOptions ++ [
+          "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi"
+          "-DLIBCXXABI_HAS_PTHREAD_API=ON" 
+          "-DLIBCXX_ENABLE_EXCEPTIONS=ON"
+          "-DLIBCXXABI_ENABLE_EXCEPTIONS=ON" 
+          "-DLIBCXX_HAS_PTHREAD_API=ON"
+          "-DLIBCXXABI_USE_LLVM_UNWINDER=OFF"
+          "-DLIBCXX_FORCE_LIBCXXABI=ON"
+        ];
+      in '' 
+        runHook preBuild
+        mkdir build
+        cmake -B build -S llvm -G Ninja $cmakeFlags ${join " " clangOptions}
+        NINJA_STATUS="[%f/%t %es] " ninja -v -C build runtimes
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+        ninja -C build install
+        runHook postInstall
+      '';
+
+      enableParallelBuilding = true;
+
+      meta.description = "Fil-C LLVM C++ runtimes";      
+    };
 
     # stripped down version of Fil-C's build script
     # to only build the compiler
-    #
-    # some of this is weird or unnecessary,
-    # I just haven't changed it because it takes too long
-    filc-clang-only = base.stdenv.mkDerivation {
+    filc-clang-only = base.ccacheStdenv.mkDerivation {
       pname = "filc-clang";
       version = "git";
       src = filc-src;
@@ -31,11 +100,21 @@
         python3
         git
         patchelf
+        ccache
+        makeWrapper
+        mold
       ];
 
       hardeningDisable = [ "fortify" "stackprotector" "pie" ];
 
       ALTLLVMLIBCOPT = " ";
+
+      preBuild = ''
+        export CCACHE_COMPRESS=1
+        export CCACHE_SLOPPINESS=random_seed
+        export CCACHE_DIR="/nix/var/cache/ccache"
+        export CCACHE_UMASK=007
+      '';
 
       configurePhase = ''
         runHook preConfigure
@@ -43,30 +122,60 @@
         export HOME=$TMPDIR
         export HOSTNAME=nix-build
 
-        # Only unset the problematic CFLAGS that add gcc headers
-        unset NIX_CFLAGS_COMPILE NIX_CXXSTDLIB_COMPILE
+        # pretend to be a pizfix to avoid having to change toolchain search logic
+        mkdir -p pizfix/lib
+        for x in ${gcc-lib}/*.o; do
+          echo copying $x
+          cp $x pizfix/lib/
+        done
 
-        patchShebangs configure_llvm.sh build_clang.sh build_cxx.sh libpas/common.sh
+        patchShebangs configure_llvm.sh build_clang.sh libpas/common.sh
 
         runHook postConfigure
       '';
 
-      buildPhase = ''
+      buildPhase = let 
+        commonOptions = [
+          "-DCMAKE_BUILD_TYPE=RelWithDebInfo" 
+          "-DLLVM_ENABLE_ASSERTIONS=ON"
+          "-DLLVM_ENABLE_WARNINGS=OFF"
+          "-DLLVM_ENABLE_ZSTD=OFF"
+          "-DLLVM_TARGETS_TO_BUILD=X86"
+          "-DLLVM_ENABLE_LIBXML2=OFF"
+          "-DLLVM_ENABLE_LIBEDIT=OFF"
+          "-DLLVM_ENABLE_LIBPFM=OFF"
+          "-DLLVM_ENABLE_ZLIB=OFF"
+          "-DLLVM_ENABLE_ZSTD=OFF"
+          "-DLLVM_ENABLE_CURL=OFF"
+          "-DLLVM_ENABLE_HTTPLIB=OFF"
+          "-DLLVM_STATIC_LINK_CXX_STDLIB=ON"
+          "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc"
+          "-DCMAKE_INSTALL_PREFIX=$out"
+          "-DLLVM_USE_LINKER=mold"
+        ];
+        clangOptions = commonOptions ++ [
+          "-DLLVM_ENABLE_PROJECTS=clang"
+        ];
+        libcxxOptions = commonOptions ++ [
+          "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi"
+          "-DLIBCXXABI_HAS_PTHREAD_API=ON" 
+          "-DLIBCXX_ENABLE_EXCEPTIONS=ON"
+          "-DLIBCXXABI_ENABLE_EXCEPTIONS=ON" 
+          "-DLIBCXX_HAS_PTHREAD_API=ON"
+          "-DLIBCXXABI_USE_LLVM_UNWINDER=OFF"
+          "-DLIBCXX_FORCE_LIBCXXABI=ON"
+        ];
+      in '' 
         runHook preBuild
-
-        ./configure_llvm.sh
-        ./build_clang.sh
-        ./build_cxx.sh
-
+        mkdir build
+        cmake -B build -S llvm -G Ninja $cmakeFlags ${join " " clangOptions}
+        NINJA_STATUS="[%f/%t %es] " ninja -v -C build clang
         runHook postBuild
       '';
 
       installPhase = ''
         runHook preInstall
-
-        mkdir -p $out
-        cp -r build $out/build
-
+        ninja -C build install
         runHook postInstall
       '';
 
@@ -74,7 +183,7 @@
 
       meta.description = "Fil-C Clang compiler (LLVM stage only)";
     };
-
+            
     yolo-glibc = base.runCommand "yolo-glibc" {
       nativeBuildInputs = with base; [
         python3
@@ -166,7 +275,7 @@
     clang-rsrc = base.lib.getLib base.llvmPackages_20.clang.cc;
     clang-include = "${clang-rsrc}/lib/clang/20/include";
     glibc-include = "${base.lib.getInclude base.glibc}/include";
-    gcc-lib = "${base.gcc.cc}/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/";
+    gcc-lib = "${base.gcc.cc}/lib/gcc/x86_64-unknown-linux-gnu/14.3.0";
 #    gcc-lib = "${base.pkgs.llvmPackages_20.compiler-rt}/lib/linux";
 
     base-clang = base.writeShellScriptBin "clang" ''
@@ -289,9 +398,17 @@
       mkdir -p $out/bin
       ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang
       ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/gcc
-      ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang++
-      ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/g++
+#      ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang++
+#      ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/g++
     '';
+
+    # filc-cxx = base.runCommand "filc-cxx" {} ''
+    #   mkdir -p $out/bin
+    #   ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang
+    #   ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/gcc
+    #   ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang++
+    #   ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/g++
+    # '';
 
     # hm, stdatomic.h doesn't seem to work, so i delete it
     filc-libc = base.runCommand "filc-libc" {} ''
@@ -304,12 +421,6 @@
       cp -r ${filc-glibc}/lib/* $out/lib/
       cp -r ${filc-glibc}/bin/* $out/bin/
       rm $out/include/stdatomic.h
-
-      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++.so $out/lib/
-      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++.so.1.0 $out/lib/
-      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++abi.so.1.0 $out/lib/
-      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++.a $out/lib/
-      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++abi.a $out/lib/
 
       echo "$out/lib/ld-yolo-x86_64.so" > $out/nix-support/dynamic-linker
 
@@ -342,7 +453,7 @@
         echo "-isystem ${filc-runtime}/pizfix/include" >> $out/nix-support/cc-cflags
         echo "-isystem ${filc-glibc}/include" >> $out/nix-support/cc-cflags
         echo "--gcc-install-dir=${gcc-lib}" >> $out/nix-support/cc-cflags
-
+        echo "-isystem ${filc-runtime}/pizfix/stdfil-include" >> $out/nix-support/cc-cflags
       '';    
     };
 
@@ -375,6 +486,7 @@
       inherit filc-runtime;
       inherit filc-glibc;
       inherit filc-xcrypt;
+      inherit filcc;
 
       gawk = parallelize (withFilC base.gawk);
       gnused = parallelize (withFilC base.gnused);
@@ -390,9 +502,11 @@
         inherit ncurses;
       };
 
-      lua = (withFilC base.lua).override {
+      lua5 = (withFilC base.lua).override {
         inherit readline;
       };
+
+      coreutils = withFilC base.coreutils;
 
       bash = ((withFilC base.bash).overrideAttrs (old: {
         patches = (old.patches or []) ++ [
@@ -405,31 +519,59 @@
       quickjs = withFilC base.quickjs; # slow build
       sqlite = withFilC base.sqlite;   # slow build
 
-      curl = withFilC (
-        base.callPackage ({ stdenv, perl, autoreconfHook }:
-          base.stdenv.mkDerivation (final: {
-            src = "${filc-src}/projects/curl-${final.version}";
-            pname = "curl";
-            version = "8.9.1";
-            enableParallelBuilding = true;
-            configureFlags = ["--without-ssl"];
-            doCheck = false;
-            nativeBuildInputs = with base; [
-              perl autoreconfHook
-            ];
-            patchPhase = ''
-              patchShebangs scripts
-            '';
-          })
-        ) {}
-      );
+      curl = 
+        filenv.mkDerivation (final: {
+          src = "${filc-src}/projects/curl-${final.version}";
+          pname = "curl";
+          version = "8.9.1";
+          enableParallelBuilding = true;
+          configureFlags = [
+            "--with-openssl"
+            "--with-zlib"
+            "--with-ca-bundle=${base.cacert}/etc/ssl/certs/ca-bundle.crt"
+          ];
+          doCheck = false;
+          nativeBuildInputs = with base; [
+            perl pkg-config
+          ];
+          buildInputs = [openssl libtool zlib];
+          patchPhase = ''
+            patchShebangs scripts
+          '';
+        });
 
-      openssl = withFilC base.openssl;
+
+      openssl-nix = withFilC base.openssl;
+
+      openssl = 
+        filenv.mkDerivation (final: {
+          src = "${filc-src}/projects/openssl-${final.version}";
+          pname = "openssl";
+          version = "3.3.1";
+          enableParallelBuilding = true;
+          nativeBuildInputs = with base; [perl];
+          buildInputs = [zlib];
+          configurePhase = ''
+            ./Configure zlib --prefix=$out --libdir=$out/lib
+          '';
+          patchPhase = ''
+            patchShebangs .
+          '';
+          buildPhase = "make -j$NIX_BUILD_CORES";
+          installPhase = ''
+            make -j$NIX_BUILD_CORES install_sw
+            make -j$NIX_BUILD_CORES install_ssldirs
+          '';
+        });
+
+
       pcre2 = withFilC base.pcre2;
 
-      nginx = (withFilC base.nginx).override {
-        inherit openssl pcre2;
-      };
+      nginx = ((withFilC base.nginx).override {
+        inherit openssl pcre2 zlib-ng;
+      });
+
+      libxcrypt = filc-xcrypt;
 
       ncurses = withFilC base.ncurses;
       libutempter = withFilC base.libutempter;
@@ -441,6 +583,41 @@
       tmux = ((withFilC base.tmux).override {
         inherit ncurses libevent libutempter utf8proc;
         withSystemd = false;
+      });
+
+      zlib = withFilC base.zlib;
+      zlib-ng = withFilC base.zlib-ng; # needs c++
+
+      libtool = withFilC base.libtool;
+
+      # needs c++ compiler
+      graphviz = ((withFilC base.graphviz).overrideAttrs (_: {
+        buildInputs = [bash];
+        nativeBuildInputs = with base; [
+          autoreconfHook  autoconf python3 bison flex pkg-config libtool
+        ];
+        configureFlags = ["--without-x"];
+      }));
+
+      libpng = 
+        filenv.mkDerivation (final: {
+          src = "${filc-src}/projects/libpng-${final.version}";
+          pname = "libpng";
+          version = "1.6.43";
+          enableParallelBuilding = true;
+          configureFlags = [
+          ];
+          nativeBuildInputs = with base; [
+            pkg-config
+          ];
+          buildInputs = [
+            zlib
+          ];
+        });
+
+      # doesn't build
+      libjpeg = (withFilC base.libjpeg).overrideAttrs (_: {
+        doCheck = false;
       });
     };
 
