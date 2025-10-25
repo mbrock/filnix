@@ -17,6 +17,9 @@
 
     # stripped down version of Fil-C's build script
     # to only build the compiler
+    #
+    # some of this is weird or unnecessary,
+    # I just haven't changed it because it takes too long
     filc-clang-only = base.stdenv.mkDerivation {
       pname = "filc-clang";
       version = "git";
@@ -79,38 +82,6 @@
       enableParallelBuilding = true;
 
       meta.description = "Fil-C Clang compiler (LLVM stage only)";
-    };
-
-    yolo-glibc-bad = base.stdenv.mkDerivation {
-      pname = "yolo-glibc";
-      version = "git";
-      src = "${filc-src}/projects/yolo-glibc-2.40";
-
-      nativeBuildInputs = with base; [
-        python3
-        git
-        file
-        patchelf
-        gnumake
-        pkg-config
-        autoconf
-        bison
-      ];
-
-      preConfigurePhases = ["autoconf"];
-      autoconf = ''
-        autoconf
-        configureScript=`pwd`/configure
-        mkdir ../build
-        cd ../build
-      '';
-
-      configureFlags = ["--disable-mathvec"];
-      hardeningDisable = [ "fortify" "stackprotector" "pie" ];
-      enableParallelBuilding = true;
-      doCheck = false;
-
-      meta.description = "Fil-C Yolo glibc";
     };
 
     yolo-glibc = base.runCommand "yolo-glibc" {
@@ -408,7 +379,7 @@
       readline = (withFilC base.readline).override {
         inherit ncurses;
       };
-      
+
       lua = (withFilC base.lua).override {
         inherit readline;
       };
