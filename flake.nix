@@ -46,7 +46,7 @@
         # Only unset the problematic CFLAGS that add gcc headers
         unset NIX_CFLAGS_COMPILE NIX_CXXSTDLIB_COMPILE
 
-        patchShebangs configure_llvm.sh build_clang.sh libpas/common.sh
+        patchShebangs configure_llvm.sh build_clang.sh build_cxx.sh libpas/common.sh
 
         runHook postConfigure
       '';
@@ -54,11 +54,9 @@
       buildPhase = ''
         runHook preBuild
 
-        echo "Configuring LLVM..."
         ./configure_llvm.sh
-
-        echo "Building Clang (this takes ~20 minutes)..."
         ./build_clang.sh
+        ./build_cxx.sh
 
         runHook postBuild
       '';
@@ -68,13 +66,6 @@
 
         mkdir -p $out
         cp -r build $out/build
-
-        # Patch ELF binaries
-        for exe in $out/build/bin/*; do
-          if [ -x "$exe" ] && file "$exe" | grep -q ELF; then
-            patchelf --set-rpath "$out/build/lib" "$exe" || true
-          fi
-        done
 
         runHook postInstall
       '';
@@ -298,8 +289,11 @@
       mkdir -p $out/bin
       ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang
       ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/gcc
+      ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/clang++
+      ln -s ${filc-runtime}/build/bin/clang-20 $out/bin/g++
     '';
 
+    # hm, stdatomic.h doesn't seem to work, so i delete it
     filc-libc = base.runCommand "filc-libc" {} ''
       set -euo pipefail
       mkdir -p $out/{include,lib,bin} $out/nix-support
@@ -309,6 +303,13 @@
       cp -r ${filc-runtime}/pizfix/stdfil-include/. $out/include/
       cp -r ${filc-glibc}/lib/* $out/lib/
       cp -r ${filc-glibc}/bin/* $out/bin/
+      rm $out/include/stdatomic.h
+
+      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++.so $out/lib/
+      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++.so.1.0 $out/lib/
+      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++abi.so.1.0 $out/lib/
+      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++.a $out/lib/
+      cp ${filc-clang-only}/build/lib/x86_64-unknown-linux-gnu/libc++abi.a $out/lib/
 
       echo "$out/lib/ld-yolo-x86_64.so" > $out/nix-support/dynamic-linker
 
@@ -355,6 +356,10 @@
       enableParallelBuilding = true;
     });
 
+    debug = pkg: pkg.overrideAttrs (old: {
+      nativeBuildInputs = old.nativeBuildInputs or [] ++ [base.pkgs.breakpointHook];
+    });
+
     # experimental full Fil-C nixpkgs
     filpkgs = import nixpkgs {
       inherit system;
@@ -380,28 +385,44 @@
         inherit ncurses;
       };
 
+      # nethack works!
+      nethack = (withFilC base.nethack).override {
+        inherit ncurses;
+      };
+
       lua = (withFilC base.lua).override {
         inherit readline;
       };
 
-      bash = withFilC (base.bash.overrideAttrs (old: {
+      bash = ((withFilC base.bash).overrideAttrs (old: {
         patches = (old.patches or []) ++ [
           ./patches/bash-5.2.32-filc.patch
         ];
-      }));
+      })).override {
+        inherit readline;
+      };
 
       quickjs = withFilC base.quickjs; # slow build
       sqlite = withFilC base.sqlite;   # slow build
 
-      # fails, its own libcurl doesn't have fil-c mangling? i dunno
-      curl = (withFilC base.curlMinimal).override {
-        gssSupport = false;
-        opensslSupport = false;
-        gnutlsSupport = false;
-        pslSupport = false;
-        http2Support = false;
-        zlibSupport = false;
-      };
+      curl = withFilC (
+        base.callPackage ({ stdenv, perl, autoreconfHook }:
+          base.stdenv.mkDerivation (final: {
+            src = "${filc-src}/projects/curl-${final.version}";
+            pname = "curl";
+            version = "8.9.1";
+            enableParallelBuilding = true;
+            configureFlags = ["--without-ssl"];
+            doCheck = false;
+            nativeBuildInputs = with base; [
+              perl autoreconfHook
+            ];
+            patchPhase = ''
+              patchShebangs scripts
+            '';
+          })
+        ) {}
+      );
 
       openssl = withFilC base.openssl;
       pcre2 = withFilC base.pcre2;
@@ -409,8 +430,6 @@
       nginx = (withFilC base.nginx).override {
         inherit openssl pcre2;
       };
-
-      nethack = withFilC base.nethack;
 
       ncurses = withFilC base.ncurses;
       libutempter = withFilC base.libutempter;
