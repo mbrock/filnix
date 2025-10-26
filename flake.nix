@@ -6,7 +6,7 @@
     # nixpkgs.url = "github:mbrock/nixpkgs-filc/filc-integration";
     nixpkgs.url = "path:/home/mbrock/nixpkgs";
     filc-src = {
-      url = "github:pizlonator/fil-c";
+      url = "path:/home/mbrock/fil-c";
       flake = false;
     };
   };
@@ -30,10 +30,23 @@
     targetPlatform = base.stdenv.targetPlatform.config;
     gcc-lib = "${gcc.cc}/lib/gcc/${targetPlatform}/${gcc.version}";
 
-    # Filtered source paths to reduce disk usage
-    filc-llvm-src = "${filc-src}/llvm";
-    filc-libpas-src = "${filc-src}/libpas";
-    filc-runtime-src = "${filc-src}/filc";
+    # Filtered source paths to reduce disk usage and improve caching
+    # Helper to filter monorepo to only include specific top-level directories
+    filterFilcSource = name: dirs: builtins.path {
+      path = filc-src;
+      name = "${name}-source";
+      filter = path: type:
+        let
+          relPath = lib.removePrefix (toString filc-src + "/") (toString path);
+          topDir = builtins.head (lib.splitString "/" relPath);
+        in
+        builtins.elem topDir dirs;
+    };
+    
+    # Filtered sources for different parts of the monorepo
+    filc0-src = filterFilcSource "filc0" ["llvm" "clang" "cmake" "third-party"];
+    libpas-src = filterFilcSource "libpas" ["libpas" "filc"];
+    filc-projects-src = filterFilcSource "filc-projects" ["projects"];
 
     commonLLVMOptions = {
       CMAKE_BUILD_TYPE = "RelWithDebInfo";
@@ -104,36 +117,45 @@
 
     # This is the basic Fil-C Clang LLVM build.
     # It produces a bare compiler without Fil-C runtime.
-    filc0 = mkFilcLLVMBuild {
+    # Uses filtered source to only include llvm/clang directories.
+    filc0 = (mkFilcLLVMBuild {
       pname = "filc0";
       cmakeSource = "llvm";
       ninjaTargets = ["clang"];
       installTargets = ["install-clang" "install-clang-resource-headers"];
-      preConfigure = ''
-        mkdir -p pizfix/lib
-        for x in ${gcc-lib}/*.o; do
-          cp $x pizfix/lib/
-        done
-      '';
       cmakeOptions = {
         LLVM_ENABLE_PROJECTS = "clang";
       };
       meta.description = "Fil-C Clang compiler (LLVM stage only)";
+    }).overrideAttrs (old: {
+      src = filc0-src;
+    });
+
+    # Fil-C headers as separate derivations
+    filc-stdfil-headers = base.runCommand "filc-stdfil-headers" {} ''
+      mkdir -p $out
+      cp ${libpas-src}/filc/include/*.h $out/
+    '';
+
+    # From the bare compiler, we can create the first compiler stage,
+    # which adds the basic yolo runtime and headers.
+    filc1 = mkFilcClang {
+      crtLib = mkFilcCrtLib {};
+      yoloInclude = "${libyolo-glibc}/include";
+      osInclude = "${base.linuxHeaders}/include";
+      stdfilInclude = filc-stdfil-headers;
     };
 
-    # From the bare compiler, we can create the first Pizfix slice,
-    # which adds the basic yolo runtime, headers, etc.
-    #
-    # This depends on yolo-glibc, so it will automatically build that.
-    filc1 = mkFilcClang (mkPizfix {});
+    # Second compiler stage adds the Fil-C runtime, compiled using filc1.
+    filc2 = mkFilcClang {
+      crtLib = mkFilcCrtLib { filcRuntimeLibs = libpizlo; };
+      yoloInclude = "${libyolo-glibc}/include";
+      osInclude = "${base.linuxHeaders}/include";
+      stdfilInclude = filc-stdfil-headers;
+    };
 
-    # Using that compiler, we can create the second Pizfix slice,
-    # which adds the Fil-C runtime, compiled using filc1.
-    filc2 = mkFilcClang (mkPizfix { filcRuntimeLibs = libpizlo; });
-
-    # This next compiler fills out the Pizfix structure now also
-    # with the Fil-C safe glibc, which I for some reason started
-    # calling "libmojo".
+    # Third compiler stage uses memory-safe glibc (libmojo)
+    # We keep this as a simple wrapper since it just adds libmojo on top of filc2
     filc3 = base.runCommand "filc3" {
       nativeBuildInputs = [base.makeWrapper];
     } ''
@@ -145,7 +167,7 @@
     '';
 
     # Then we use filc3 to build libcxx!
-    filc-libcxx = mkFilcLLVMBuild {
+    filc-libcxx = (mkFilcLLVMBuild {
       pname = "filc-libcxx";
       preConfigure = "";
       cmakeSource = "runtimes";
@@ -186,59 +208,49 @@
         CMAKE_CXX_FLAGS = "-isystem ${libmojo}/include";
       };
       meta.description = "Fil-C LLVM C++ runtimes";      
-    };
+    }).overrideAttrs (old: {
+      src = filc0-src;  # Uses same LLVM/clang source as filc0
+    });
 
-    # Build pizfix directory structure (Fil-C's custom layout)
-    # It's what the Fil-C driver discovers at binary/../../../pizfix.
-    mkPizfix = { filcRuntimeLibs ? null }: base.runCommand "pizfix" {
+    # Build CRT library directory (libyolo + gcc crt files + optional filc runtime)
+    mkFilcCrtLib = { filcRuntimeLibs ? null }: base.runCommand "filc-crt-lib" {
       nativeBuildInputs = [base.rsync];
     } ''
-      mkdir -p $out/{lib,yolo-include,os-include,stdfil-include}
+      mkdir -p $out
       
       # Libraries: yolo + gcc crt files + optional filc runtime
-      rsync -a ${libyolo}/lib/ $out/lib/
-      chmod -R u+w $out/lib
-      cp ${gcc-lib}/crt*.o $out/lib/
-      cp ${gcc-lib}/libgcc* $out/lib/ || true
-      mkdir -p $out/lib/gcc/${targetPlatform}/${gcc.version}
-      cp -r ${gcc-lib}/* $out/lib/gcc/${targetPlatform}/${gcc.version}/
+      rsync -a ${libyolo}/lib/ $out/
+      chmod -R u+w $out
+      cp ${gcc-lib}/crt*.o $out/
+      cp ${gcc-lib}/libgcc* $out/ || true
+      mkdir -p $out/gcc/${targetPlatform}/${gcc.version}
+      cp -r ${gcc-lib}/* $out/gcc/${targetPlatform}/${gcc.version}/
       
       ${lib.optionalString (filcRuntimeLibs != null) ''
-        cp ${filcRuntimeLibs}/lib/filc_crt.o $out/lib/ || true
-        cp ${filcRuntimeLibs}/lib/filc_mincrt.o $out/lib/ || true
-        cp ${filcRuntimeLibs}/lib/libpizlo.so $out/lib/ || true
-        cp ${filcRuntimeLibs}/lib/libpizlo.a $out/lib/ || true
+        cp ${filcRuntimeLibs}/lib/filc_crt.o $out/ || true
+        cp ${filcRuntimeLibs}/lib/filc_mincrt.o $out/ || true
+        cp ${filcRuntimeLibs}/lib/libpizlo.so $out/ || true
+        cp ${filcRuntimeLibs}/lib/libpizlo.a $out/ || true
       ''}
-      
-      # Headers
-      rsync -a ${libyolo-glibc}/include/ $out/yolo-include/
-      rsync -a ${base.linuxHeaders}/include/ $out/os-include/
-      cp ${filc-src}/filc/include/*.h $out/stdfil-include/
     '';
 
-    # Assemble Fil-C compiler: clang binary + pizfix directory.
-    # This also guarantees a consistent GCC toolchain baked into
-    # the Clang driver, along with the core compiler header path.
-    mkFilcClang = pizfix: base.runCommand "pizfix-filc" {
+    # Assemble Fil-C compiler with explicit flags instead of pizfix directory layout
+    mkFilcClang = { crtLib, yoloInclude, osInclude, stdfilInclude }: base.runCommand "filc" {
       nativeBuildInputs = [base.makeWrapper];
     } ''
-      mkdir -p $out/clang/bin
-      cp -r ${pizfix} $out/pizfix
-      chmod -R u+w $out/pizfix
-      
-      # Copy clang binary
-      cp ${filc0}/bin/clang-${llvmMajor} $out/clang/bin/clang-${llvmMajor}
-      chmod +x $out/clang/bin/clang-${llvmMajor}
-      
-      # Hardcode paths for deterministic builds
-      wrapProgram $out/clang/bin/clang-${llvmMajor} \
-        --add-flags "--gcc-toolchain=${gcc.cc}" \
-        --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}"
-      
-      # Convenience symlinks
       mkdir -p $out/bin
-      ln -s ../clang/bin/clang-${llvmMajor} $out/bin/clang
-      ln -s ../clang/bin/clang-${llvmMajor} $out/bin/clang++
+      
+      # Wrap clang with Fil-C paths using explicit flags
+      makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang \
+        --add-flags "--gcc-toolchain=${gcc.cc}" \
+        --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
+        --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
+        --add-flags "--filc-crt-path=${crtLib}" \
+        --add-flags "--filc-stdfil-include=${stdfilInclude}" \
+        --add-flags "--filc-os-include=${osInclude}" \
+        --add-flags "--filc-include=${yoloInclude}"
+      
+      ln -s clang $out/bin/clang++
     '';
    
     # This just builds the Fil-C glibc yolo fork with the normal
@@ -288,128 +300,48 @@
       ];
     };
 
-    # We then take the Fil-C glibc yolo fork and rename its
-    # components so they don't conflict with the normal glibc.
-    libyolo = let
-      # Here's a little declaration of the new renamed artifacts,
-      # along with link-time dependencies and linker scripts.
-      libs = {
-        # The dynamic linker module itself.
-        "ld-yolo-x86_64.so" = {
-          source = "ld-linux-x86-64.so.2";
-          # No RPATH on the linker!
-          stripRpath = true;
-        };
-
-        # The base glibc implementation.
-        "libyolocimpl.so" = {
-          source = "libc.so.6";
-          # Rename the linker dependency.
-          deps = { "ld-linux-x86-64.so.2" = "ld-yolo-x86_64.so"; };
-          # Set a relative RPATH; the file itself has a constant Nix store path.
-          setRpath = "$ORIGIN";
-        };
-
-        # Math library.
-        "libyolomimpl.so" = {
-          source = "libm.so.6";
-          deps = {
-            "ld-linux-x86-64.so.2" = "ld-yolo-x86_64.so";
-            "libc.so.6" = "libyolocimpl.so";
-          };
-          setRpath = "$ORIGIN";  # Find ld-yolo in same directory
-        };
-
-        # I wonder what this indirection is for!
-        "libyolom.so" = {
-          linkerScript = {
-            libs = ["libyolomimpl.so"];
-          };
-        };
-
-        # A shared bundle defined by a linker script.        
-        "libyoloc.so" = {
-          linkerScript = {
-            libs = ["libyolocimpl.so" "libyoloc_nonshared.a"];
-            asNeeded = ["ld-yolo-x86_64.so"];
-          };
-        };
-
-        # Static variants.
-        "libyoloc.a" = { source = "libc.a"; };
-        "libyoloc_nonshared.a" = { source = "libc_nonshared.a"; };
-        "libyolom.a" = {  source = "libm.a"; };
-      };
-
-      # Now we just have to transform the beautiful declarative structure
-      # into a bash script...
-
-      # Separate libs with sources vs linker scripts
-      sourceLibs = lib.filterAttrs (name: def: def ? source) libs;
-      scriptLibs = lib.filterAttrs (name: def: def ? linkerScript) libs;
-
-      # Generate copy commands for source-based libs
-      copyCmds = lib.mapAttrsToList 
-        (name: def: "cp ${libyolo-glibc}/lib/${def.source} $out/lib/${name}") 
-        sourceLibs;
+    # Rename yolo-glibc components so they don't conflict with normal glibc
+    libyolo = base.runCommand "libyolo" {
+      nativeBuildInputs = [base.patchelf];
+    } ''
+      mkdir -p $out/lib
+      cd $out/lib
       
-      # Generate patchelf commands for updating dependencies
-      depPatchCmds = lib.mapAttrsToList (name: def:
-        if def ? deps then
-          lib.mapAttrsToList 
-            (old: new: "patchelf --replace-needed ${old} ${new} $out/lib/${name}") 
-            def.deps
-        else []
-      ) libs;
-
-      # Generate soname update commands
-      sonameCmds = lib.mapAttrsToList (name: def:
-        if def ? deps then "patchelf --set-soname ${name} $out/lib/${name}" else ""
-      ) libs;
-
-      # Generate rpath commands (strip or set)
-      rpathCmds = lib.mapAttrsToList (name: def:
-        if def ? stripRpath && def.stripRpath then
-          "patchelf --remove-rpath $out/lib/${name}"
-        else if def ? setRpath then
-          "patchelf --set-rpath '${def.setRpath}' $out/lib/${name}"
-        else ""
-      ) libs;
-
-      # Combine all commands
-      allCmds = 
-        copyCmds ++ 
-        ["chmod -R u+w $out/lib"] ++
-        (lib.flatten depPatchCmds) ++ 
-        (lib.filter (s: s != "") sonameCmds) ++
-        (lib.filter (s: s != "") rpathCmds);
-
-      # Render a linker script from a spec
-      mkLinkerScript = name: spec:
-        let
-          libsList = join " " spec.libs;
-          asNeeded = if spec ? asNeeded then " AS_NEEDED(${join " " spec.asNeeded})" else "";
-        in base.writeText name ''
-          OUTPUT_FORMAT(elf64-x86-64)
-          GROUP(${libsList}${asNeeded})
-        '';
-
-      # Generate linker scripts from libs definitions
-      linkerScripts = lib.mapAttrs (name: def: mkLinkerScript name def.linkerScript) scriptLibs;
-    in
-      base.runCommand "libyolo" {
-        nativeBuildInputs = [base.patchelf];
-      } ''
-        mkdir -p $out/lib
-        cp ${libyolo-glibc}/lib/*.o $out/lib/
-
-        # Copy, patch, and configure libraries
-        ${lib.concatStringsSep "\n        " allCmds}
-
-        # Install linker scripts for libc and libm
-        ${lib.concatStringsSep "\n        " 
-          (lib.mapAttrsToList (name: file: "cp ${file} $out/lib/${name}") linkerScripts)}
-      '';
+      # Copy all .o files and static libs
+      cp ${libyolo-glibc}/lib/*.o .
+      cp ${libyolo-glibc}/lib/*.a .
+      chmod -R u+w .
+      
+      # Copy and rename dynamic linker
+      cp ${libyolo-glibc}/lib/ld-linux-x86-64.so.2 ld-yolo-x86_64.so
+      patchelf --remove-rpath ld-yolo-x86_64.so
+      
+      # Copy and patch libc implementation
+      cp ${libyolo-glibc}/lib/libc.so.6 libyolocimpl.so
+      patchelf --set-soname libyolocimpl.so \
+               --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \
+               --set-rpath '$ORIGIN' \
+               libyolocimpl.so
+      
+      # Copy and patch libm implementation  
+      cp ${libyolo-glibc}/lib/libm.so.6 libyolomimpl.so
+      patchelf --set-soname libyolomimpl.so \
+               --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \
+               --replace-needed libc.so.6 libyolocimpl.so \
+               --set-rpath '$ORIGIN' \
+               libyolomimpl.so
+      
+      # Create linker scripts
+      cat > libyolom.so <<'EOF'
+      OUTPUT_FORMAT(elf64-x86-64)
+      GROUP(libyolomimpl.so)
+      EOF
+      
+      cat > libyoloc.so <<'EOF'
+      OUTPUT_FORMAT(elf64-x86-64)
+      GROUP(libyolocimpl.so libyoloc_nonshared.a AS_NEEDED(ld-yolo-x86_64.so))
+      EOF
+    '';
 
     # Define a version of the host Clang that doesn't have any
     # automatic stuff, to build libpizlo in a clean and consistent
@@ -421,73 +353,69 @@
     '';
 
     # Build libpizlo (Fil-C runtime library - GC + memory safety)
-    libpizlo = base.stdenv.mkDerivation {
+    libpizlo = let
+      makefile = base.writeText "Makefile" ''
+        CLANG_INCLUDE := $(shell ${base-clang}/bin/clang -print-resource-dir)/include
+        PASCC = ${base.ccache}/bin/ccache ${base-clang}/bin/clang -march=x86-64-v2 -fPIC -pthread -nostdinc \
+          -isystem ${libyolo-glibc}/include -isystem ${base.linuxHeaders}/include \
+          -isystem $(CLANG_INCLUDE) -I../filc/include \
+          -g -O3 -W -Werror -fno-strict-aliasing
+        
+        FILCC = ${filc1}/bin/clang -fPIC -O3 -g -W -Werror -I../filc/include
+        
+        PAS_SRCS := $(wildcard src/libpas/*.c src/mbmalloc/*.c)
+        FIL_SRCS := $(wildcard ../filc/src/*.c)
+        
+        PAS_OBJS := $(patsubst %.c,build/%.o,$(notdir $(PAS_SRCS)))
+        FIL_OBJS := $(patsubst %.c,build/filc_%.o,$(notdir $(FIL_SRCS)))
+        
+        all: build/libpizlo.so build/libpizlo.a build/filc_crt.o build/filc_mincrt.o
+        
+        build/%.o: src/libpas/%.c | build
+        	$(PASCC) -c -o $@ $<
+        
+        build/%.o: src/mbmalloc/%.c | build
+        	$(PASCC) -c -o $@ $<
+        
+        build/filc_%.o: ../filc/src/%.c | build
+        	$(FILCC) -c -o $@ $<
+        
+        build/libpizlo.so: $(PAS_OBJS) $(FIL_OBJS)
+        	${base-clang}/bin/clang -shared -o $@ $^ -L${libyolo}/lib -lyoloc -lyolom \
+        	  $(shell ${base.gcc.cc}/bin/gcc -print-file-name=libgcc.a)
+        
+        build/libpizlo.a: $(PAS_OBJS) $(FIL_OBJS)
+        	${base.binutils}/bin/ar cr $@ $^
+        
+        build/filc_crt.o: ../filc/main/main.c | build
+        	$(FILCC) -c -o $@ $< -DUSE_LIBC=1
+        
+        build/filc_mincrt.o: ../filc/main/main.c | build
+        	$(FILCC) -c -o $@ $< -DUSE_LIBC=0
+        
+        build:
+        	mkdir -p build
+      '';
+    in base.stdenv.mkDerivation {
       pname = "libpizlo";
       version = "git";
-      src = filc-src;
+      src = libpas-src;
       
-      sourceRoot = "source/libpas";
+      nativeBuildInputs = [base.gnumake];  # Everything else uses explicit paths
       
-      nativeBuildInputs = with base; [
-        gnumake ruby base-clang binutils rsync ccache
-      ];
-
-      postUnpack = ''
-        # Make source writable (it's read-only from Nix store)
-        chmod -R u+w source
-        
-        # libpas Makefile expects ../pizfix with yolo-include/os-include subdirs
-        mkdir -p source/pizfix
-        rsync -a ${libyolo}/lib/ source/pizfix/lib/
-        rsync -a ${libyolo-glibc}/include/ source/pizfix/yolo-include/
-        rsync -a ${base.linuxHeaders}/include/ source/pizfix/os-include/
-        mkdir -p source/pizfix/stdfil-include
-        
-        # Makefile builds multiple library variants
-        mkdir -p source/pizfix/lib_test
-        mkdir -p source/pizfix/lib_gcverify
-        mkdir -p source/pizfix/lib_test_gcverify
-        
-        chmod -R u+w source/pizfix
-        
-        # Also expects ../filc/src and ../filc/include
-        mkdir -p source/filc/include
-        mkdir -p source/filc/src
-        mkdir -p source/filc/main
-        cp ${filc-src}/filc/include/*.h source/filc/include/
-        cp ${filc-src}/filc/src/*.c source/filc/src/
-        cp ${filc-src}/filc/main/*.c source/filc/main/
-        
-        # Pattern rule depends on ../build/bin/clang existing
-        mkdir -p source/build/bin
-        ln -s ${filc1}/bin/clang source/build/bin/clang
-      '';
-
-      preConfigure = ''
-        export HOME=$TMPDIR
-        export HOSTNAME=nix-build
-        
-        # Set up ccache
-        ${setupCcache}
-        export CC="ccache clang"
-        export CXX="ccache clang++"
-        
-        patchShebangs *.rb *.sh
-      '';
-
       buildPhase = ''
-        mkdir -p build
-        make -f Makefile-setup
-        make -j$NIX_BUILD_CORES FILCFLAGS="-O3 -g -W -Werror -MD -I../filc/include"
+        ${setupCcache}
+        cp ${makefile} libpas/Makefile
+        make -C libpas -j$NIX_BUILD_CORES
       '';
-
+      
       installPhase = ''
         mkdir -p $out/lib $out/include
-        cp ../pizfix/lib/libpizlo.so $out/lib/
-        cp ../pizfix/lib/libpizlo.a $out/lib/
-        cp ../pizfix/lib/filc_crt.o $out/lib/
-        cp ../pizfix/lib/filc_mincrt.o $out/lib/ || true
-        cp ../pizfix/stdfil-include/*.h $out/include/
+        cp libpas/build/libpizlo.so $out/lib/
+        cp libpas/build/libpizlo.a $out/lib/
+        cp libpas/build/filc_crt.o $out/lib/
+        cp libpas/build/filc_mincrt.o $out/lib/
+        cp filc/include/*.h $out/include/
       '';
 
       enableParallelBuilding = true;
@@ -752,15 +680,115 @@
       inherit fil-c-env;
     };
 
-    devShells.${system}.default = filenv.mkDerivation {
-      name = "filc";
-      buildInputs = [ ];
-      shellHook = ''
-        echo "Fil-C development environment"
-        echo "Compiler: $(type -p clang)"
-        clang --version | head -1
-        echo
-      '';
+    devShells.${system} = {
+      # Developer shell with Fil-C compiler and tools
+      default = base.mkShell {
+        name = "filc-dev";
+        
+        buildInputs = with base; [
+          filc3  # The only compiler users need
+          
+          # Build tools
+          cmake ninja ccache git
+          
+          # Debug/analysis tools
+          gdb valgrind strace ltrace hexdump
+          
+          # Useful utilities
+          ripgrep fd jq bat
+        ];
+        
+        shellHook = ''
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║          Fil-C Development Environment                     ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo
+          echo "Compiler: ${filc3}/bin/clang"
+          ${filc3}/bin/clang --version | head -1
+          echo
+          echo "Components:"
+          echo "  Runtime:   ${libpizlo.name}"
+          echo "  Libc:      ${libmojo.name} (memory-safe)"
+          echo "  C++ STL:   ${filc-libcxx.name}"
+          echo
+          echo "Quick commands:"
+          echo "  clang hello.c -o hello    - Compile with Fil-C"
+          echo "  clang++ test.cpp -o test  - Compile C++ with Fil-C"
+          echo "  nix build .#sample-hello  - Build sample programs"
+          echo
+        '';
+      };
+      
+      # Pure Fil-C environment - all tools compiled with Fil-C
+      pure = base.mkShell {
+        name = "filc-pure";
+        
+        buildInputs = with ports; [
+          bash coreutils grep sed diffutils
+          vim git tmux
+          zlib openssl curl
+          sqlite lua
+        ];
+        
+        shellHook = ''
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║       Pure Fil-C Environment (All Tools Memory-Safe)      ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo
+          echo "All binaries in this shell were compiled with Fil-C!"
+          echo
+          echo "Available tools:"
+          echo "  bash, coreutils (ls, cat, etc.), grep, sed, diff"
+          echo "  vim, git, tmux, curl, sqlite, lua"
+          echo
+          echo "Try it out:"
+          echo "  bash --version"
+          echo "  ls -la"
+          echo "  git --version"
+          echo
+        '';
+      };
+      
+      # Workspace with all fil-c project sources
+      workspace = let
+        # Each project gets its own directory in the store
+        mkProjectDir = name: src: base.runCommand "${name}-project" {} ''
+          mkdir -p $out/src
+          ln -s ${src} $out/src
+        '';
+        
+        # Combine into one workspace
+        workspace = base.linkFarm "filc-workspace" 
+          (lib.mapAttrsToList (name: pkg: {
+            name = name;
+            path = mkProjectDir name (pkg.src or "${filc-src}/projects/${name}");
+          }) ports);
+      in base.mkShell {
+        name = "filc-workspace";
+        
+        buildInputs = [ filc3 base.tree ];
+        
+        shellHook = ''
+          cd ${workspace}
+          
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║          Fil-C Projects Workspace                          ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo
+          echo "Workspace: ${workspace}"
+          echo
+          echo "Projects available (${toString (builtins.length (builtins.attrNames ports))} total):"
+          ls -1 | column -c 80
+          echo
+          echo "Each project has a 'src/' directory with source code."
+          echo
+          echo "Examples:"
+          echo "  cd bash/src && ls"
+          echo "  cd vim/src && vim --version"
+          echo "  tree -L 2 | head -20"
+          echo
+        '';
+      };
     };
   };
 }

@@ -1,9 +1,25 @@
 { base, filenv }:
 
 let
+  lib = base.lib;
   commonTools = with base; [ perl pkg-config autoconf automake libtool python3 ccache ];
 
-  mkSrc = filc-sources: path: "${filc-sources}/${path}";
+  # Filter filc-sources to only include a specific project directory
+  # This ensures each project only depends on its own source, not the entire monorepo
+  filterProject = filc-sources: projectPath: 
+    builtins.path {
+      path = filc-sources;
+      name = "filc-project-${baseNameOf projectPath}";
+      filter = path: type:
+        let
+          relPath = lib.removePrefix (toString filc-sources + "/") (toString path);
+          # Keep only files in the specific project directory
+          inProject = lib.hasPrefix projectPath relPath || relPath == projectPath;
+        in
+        path == filc-sources || inProject;  # Always include root
+    };
+
+  mkSrc = filc-sources: path: "${filterProject filc-sources path}/${path}";
 
 in rec {
   # Minimal builder - just sets CC/CXX/out and runs commands

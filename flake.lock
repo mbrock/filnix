@@ -3,17 +3,14 @@
     "filc-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1761423342,
-        "narHash": "sha256-9Nnx+zu7z/Cms4dZKuVUAmXpphxI+77SrXWN92gUdzs=",
-        "owner": "pizlonator",
-        "repo": "fil-c",
-        "rev": "e9c68f14821a611ac93673e0e1678d61acd6bac5",
-        "type": "github"
+        "lastModified": 1761469688,
+        "narHash": "sha256-aPI587uCMkrYxEMUBlWYXl7xQLQQHhJLXWvhluofAT0=",
+        "path": "/home/mbrock/fil-c",
+        "type": "path"
       },
       "original": {
-        "owner": "pizlonator",
-        "repo": "fil-c",
-        "type": "github"
+        "path": "/home/mbrock/fil-c",
+        "type": "path"
       }
     },
     "nixpkgs": {
