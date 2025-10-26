@@ -2,7 +2,9 @@
   description = "Fil-C wrapped as a Nix stdenv";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Use local nixpkgs fork with Fil-C integration
+    # nixpkgs.url = "github:mbrock/nixpkgs-filc/filc-integration";
+    nixpkgs.url = "path:/home/mbrock/nixpkgs";
     filc-src = {
       url = "github:pizlonator/fil-c";
       flake = false;
@@ -99,7 +101,6 @@
           NINJA_STATUS="[I %f/%t %es] " ninja -v -C ${buildDir} ${join " " installTargets}
         '';
       };
-
 
     # This is the basic Fil-C Clang LLVM build.
     # It produces a bare compiler without Fil-C runtime.
@@ -673,17 +674,55 @@
       nativeBuildInputs = old.nativeBuildInputs or [] ++ [base.pkgs.breakpointHook];
     });
 
-    # experimental full Fil-C nixpkgs
+    # experimental full Fil-C nixpkgs (original approach)
     filpkgs = import nixpkgs {
       inherit system;
       config.replaceStdenv = { pkgs, ... }:
         pkgs.overrideCC pkgs.stdenv filcc;
     };
 
+    # Setup hook to patch config.sub for filc
+    updateAutotoolsFilcHook = base.makeSetupHook {
+      name = "update-autotools-filc-hook";
+    } ./update-autotools-filc.sh;
+
+    # Fil-C overlay: provides filcc and setup hooks to nixpkgs
+    filc-overlay = final: prev: {
+      inherit filcc updateAutotoolsFilcHook;
+    };
+
+    # Base nixpkgs with Fil-C overlay
+    nixpkgs-with-filc = import nixpkgs {
+      inherit system;
+      overlays = [ filc-overlay ];
+    };
+
+    # Cross-compilation approach using pkgsCross.filc-x86_64
+    filpkgs-cross = nixpkgs-with-filc.pkgsCross.filc-x86_64;
+
+    # Native-style variant using pkgsFilC (like pkgsMusl)
+    filpkgs-native = nixpkgs-with-filc.pkgsFilC;
+
+    # Sample packages built with Fil-C
+    sample-packages = import ./packages.nix {
+      inherit base filenv filc-src withFilC parallelize dontTest debug;
+    };
+
+    # Ports: packages built directly from fil-c/projects vendored sources
+    ports = import ./fil-c-projects.nix {
+      inherit base filenv filc-src filcc;
+    };
+
+    # Combined: all ports merged into single output
+    fil-c-env = import ./fil-c-combined.nix {
+      inherit base filenv;
+      packages = ports;
+    };
+
   in {
     # Finally, we define the package collection!
     packages.${system} = rec {
-      inherit filpkgs;
+      inherit filpkgs filpkgs-cross filpkgs-native;
 
       # Fil-C compiler components
       inherit filc0;
@@ -699,154 +738,18 @@
       inherit filc-xcrypt;
       inherit filc-sysroot;
       inherit filcc;
-
-      # Some easy ones to get started!
-      gawk = parallelize (withFilC base.gawk);
-      gnused = parallelize (withFilC base.gnused);
-      gnutar = parallelize (withFilC base.gnutar);
-      bzip2 = parallelize (withFilC base.bzip2);
-
-      readline = (withFilC base.readline).override {
-        inherit ncurses;
-      };
-
-      # Nethack works!
-      nethack = (withFilC base.nethack).override {
-        inherit ncurses;
-      };
-
-      lua5 = (withFilC base.lua).override {
-        inherit readline;
-      };
-
-      coreutils = withFilC base.coreutils;
-
-      bash = ((withFilC base.bash).overrideAttrs (old: {
-        patches = (old.patches or []) ++ [
-          ./patches/bash-5.2.32-filc.patch
-        ];
-      })).override {
-        inherit readline;
-      };
-
-      libsodium = withFilC (base.libsodium.overrideAttrs (_: {
-        hardeningDisable = ["stackprotector"];
-        configureFlags = [ "--disable-ssp" ];
-        separateDebugInfo = false;
-        doCheck = false;
-      }));
-
-      gflags = withFilC base.gflags;
-
-      quickjs = withFilC base.quickjs; # slow build
-      sqlite = withFilC base.sqlite;   # slow build
-
-      curl = 
-        filenv.mkDerivation (final: {
-          src = "${filc-src}/projects/curl-${final.version}";
-          pname = "curl";
-          version = "8.9.1";
-          enableParallelBuilding = true;
-          configureFlags = [
-            "--with-openssl"
-            "--with-zlib"
-            "--with-ca-bundle=${base.cacert}/etc/ssl/certs/ca-bundle.crt"
-          ];
-          doCheck = false;
-          nativeBuildInputs = with base; [
-            perl pkg-config
-          ];
-          buildInputs = [openssl libtool zlib];
-          patchPhase = ''
-            patchShebangs scripts
-          '';
-        });
-
-      openssl = 
-        filenv.mkDerivation (final: {
-          src = "${filc-src}/projects/openssl-${final.version}";
-          pname = "openssl";
-          version = "3.3.1";
-          enableParallelBuilding = true;
-          nativeBuildInputs = with base; [perl];
-          buildInputs = [zlib];
-          configurePhase = ''
-            ./Configure zlib --prefix=$out --libdir=$out/lib
-          '';
-          patchPhase = ''
-            patchShebangs .
-          '';
-          buildPhase = "make -j$NIX_BUILD_CORES && make -j$NIX_BUILD_CORES libcrypto.so";
-          installPhase = ''
-            make -j$NIX_BUILD_CORES install_sw
-            make -j$NIX_BUILD_CORES install_ssldirs
-          '';
-        });
-
-
-      pcre2 = (parallelize (withFilC base.pcre2));
-      which = withFilC base.which;
-      file = withFilC base.file;
-      libxml2 = dontTest (parallelize (withFilC base.libxml2));
-
+    }
+    # Import sample packages
+    // sample-packages
+    // {
+      # Also expose libxcrypt from core toolchain
       libxcrypt = filc-xcrypt;
-
-      ncurses = withFilC base.ncurses;
-      libutempter = withFilC base.libutempter;
-      utf8proc = withFilC base.utf8proc;
-      libevent = (withFilC base.libevent).override {
-        sslSupport = false;
-      };
-
-      tmux = ((withFilC base.tmux).override {
-        inherit ncurses libevent libutempter utf8proc;
-        withSystemd = false;
-      });
-
-      gtest = withFilC base.gtest;
-
-      zlib = withFilC base.zlib;
-      zlib-ng =( debug ((withFilC base.zlib-ng).override {
-        inherit gtest;
-      })).overrideAttrs (old: {
-        cmakeFlags = old.cmakeFlags ++ [ "-DZLIB_ENABLE_TESTS=OFF" ];
-        outputs = ["out" "dev"];
-      });
-
-      libtool = withFilC base.libtool;
-
-      graphviz = ((withFilC base.graphviz).overrideAttrs (_: {
-        buildInputs = [bash libtool];
-        nativeBuildInputs = with base; [
-          autoreconfHook  autoconf python3 bison flex pkg-config
-        ];
-        configureFlags = [
-          "--without-x"
-          "--disable-ltdl"
-        ];
-        doCheck = false;
-      }));
-
-      libpng = 
-        filenv.mkDerivation (final: {
-          src = "${filc-src}/projects/libpng-${final.version}";
-          pname = "libpng";
-          version = "1.6.43";
-          enableParallelBuilding = true;
-          configureFlags = [
-          ];
-          nativeBuildInputs = with base; [
-            pkg-config
-          ];
-          buildInputs = [
-            zlib
-          ];
-        });
-
-      # doesn't build
-      libjpeg = (withFilC base.libjpeg).overrideAttrs (_: {
-        doCheck = false;
-      });
+      
+      # Expose ports as a namespace
+      inherit ports;
+      
+      # Expose combined environment
+      inherit fil-c-env;
     };
 
     devShells.${system}.default = filenv.mkDerivation {
