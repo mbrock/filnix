@@ -176,7 +176,7 @@
         LIBCXX_HAS_PTHREAD_API = true;
         LIBCXXABI_USE_LLVM_UNWINDER = false;
         LIBCXX_FORCE_LIBCXXABI = true;
-        LIBCXX_ENABLE_WIDE_CHARACTERS = false;
+        LIBCXX_ENABLE_WIDE_CHARACTERS = true;
         LIBCXX_INCLUDE_TESTS = false;
         LIBCXX_INCLUDE_BENCHMARKS = false;
         CMAKE_C_COMPILER = "${filc3}/bin/clang";
@@ -560,8 +560,15 @@
 
     filc-cc = base.runCommand "filc-cc" {} ''
       mkdir -p $out/bin
-      ln -s ${filc2}/bin/clang $out/bin/clang
-      ln -s ${filc2}/bin/clang $out/bin/gcc
+      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
+      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/gcc
+      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/clang++
+      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/g++
+    '';
+
+    filcache = flavor: base.writeShellScriptBin ("ccache-${flavor}") ''
+      ${setupCcache}
+      ${base.ccache}/bin/ccache ${filc2}/bin/${flavor} "$@"
     '';
 
     # Complete Fil-C sysroot - the full memory-safe sandwich + C++
@@ -588,15 +595,19 @@
       '';
     };
 
-    # Now we can define a Nix conventional C++ toolchain!
+    # Fil-C toolchain with full C and C++ support
     filcc = base.wrapCCWith {
       cc       = filc-cc;
       libc     = filc-sysroot;
+      libcxx   = filc-libcxx;  # Prevent wrapper from adding GCC C++ headers
       bintools = filc-bintools;
       isClang  = true;
 
       extraBuildCommands = ''
         echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
+        echo "-nostdinc++" >> $out/nix-support/libcxx-cxxflags
+        echo "-isystem ${filc-libcxx}/include/c++" >> $out/nix-support/libcxx-cxxflags
+        echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
       '';    
     };
 
@@ -652,6 +663,10 @@
 
     parallelize = pkg: pkg.overrideAttrs (_: {
       enableParallelBuilding = true;
+    });
+
+    dontTest = pkg: pkg.overrideAttrs (old: {
+      doCheck = false;
     });
 
     debug = pkg: pkg.overrideAttrs (old: {
@@ -714,6 +729,15 @@
         inherit readline;
       };
 
+      libsodium = withFilC (base.libsodium.overrideAttrs (_: {
+        hardeningDisable = ["stackprotector"];
+        configureFlags = [ "--disable-ssp" ];
+        separateDebugInfo = false;
+        doCheck = false;
+      }));
+
+      gflags = withFilC base.gflags;
+
       quickjs = withFilC base.quickjs; # slow build
       sqlite = withFilC base.sqlite;   # slow build
 
@@ -738,9 +762,6 @@
           '';
         });
 
-
-      openssl-nix = withFilC base.openssl;
-
       openssl = 
         filenv.mkDerivation (final: {
           src = "${filc-src}/projects/openssl-${final.version}";
@@ -755,7 +776,7 @@
           patchPhase = ''
             patchShebangs .
           '';
-          buildPhase = "make -j$NIX_BUILD_CORES";
+          buildPhase = "make -j$NIX_BUILD_CORES && make -j$NIX_BUILD_CORES libcrypto.so";
           installPhase = ''
             make -j$NIX_BUILD_CORES install_sw
             make -j$NIX_BUILD_CORES install_ssldirs
@@ -763,11 +784,10 @@
         });
 
 
-      pcre2 = withFilC base.pcre2;
-
-      nginx = ((withFilC base.nginx).override {
-        inherit openssl pcre2 zlib-ng;
-      });
+      pcre2 = (parallelize (withFilC base.pcre2));
+      which = withFilC base.which;
+      file = withFilC base.file;
+      libxml2 = dontTest (parallelize (withFilC base.libxml2));
 
       libxcrypt = filc-xcrypt;
 
@@ -783,17 +803,28 @@
         withSystemd = false;
       });
 
+      gtest = withFilC base.gtest;
+
       zlib = withFilC base.zlib;
-      zlib-ng = withFilC base.zlib-ng; # needs c++
+      zlib-ng =( debug ((withFilC base.zlib-ng).override {
+        inherit gtest;
+      })).overrideAttrs (old: {
+        cmakeFlags = old.cmakeFlags ++ [ "-DZLIB_ENABLE_TESTS=OFF" ];
+        outputs = ["out" "dev"];
+      });
 
       libtool = withFilC base.libtool;
 
       graphviz = ((withFilC base.graphviz).overrideAttrs (_: {
-        buildInputs = [bash];
+        buildInputs = [bash libtool];
         nativeBuildInputs = with base; [
-          autoreconfHook  autoconf python3 bison flex pkg-config libtool
+          autoreconfHook  autoconf python3 bison flex pkg-config
         ];
-        configureFlags = ["--without-x"];
+        configureFlags = [
+          "--without-x"
+          "--disable-ltdl"
+        ];
+        doCheck = false;
       }));
 
       libpng = 
