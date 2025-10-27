@@ -2,23 +2,15 @@
   description = "Fil-C wrapped as a Nix stdenv";
 
   inputs = {
-    # Use local nixpkgs fork with Fil-C integration
-    # nixpkgs.url = "github:mbrock/nixpkgs-filc/filc-integration";
-    nixpkgs.url = "path:/home/mbrock/nixpkgs";
-
-    # filc-src = {
-    #   url = "git+file:///home/mbrock/fil-c?shallow=1";
-    #   flake = false;
-    # };
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
 
     # Pinned source for filc0 - locked to keep ccache valid
     filc0-src = {
-      url = "git+file:///home/mbrock/fil-c?rev=83a0ae7ee07dd09050cc9c331d6ae88d513d0248&shallow=1";
+      url = "github:mbrock/fil-c/83a0ae7ee07dd09050cc9c331d6ae88d513d0248";
       flake = false;
     };
 
-    # TTY DOOM with patch that fixes Carmack's 1993 allocator
-    # to do 64 bit alignment
+    # TTY DOOM port
     kitty-doom-src = {
       url = "github:mbrock/kitty-doom";
       flake = false;
