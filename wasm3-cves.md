@@ -1,14 +1,13 @@
 # Testing Fil-C with Real CVEs in wasm3
 
-WebAssembly is supposed to be a safe way to run compiled code, by using a memory safe runtime. If you don't trust the memory safety of the runtime, you can't trust it to run WebAssembly code safely. I started looking around for a WebAssembly interpreter to build with Fil-C, and I found [wasm3](https://github.com/wasm3/wasm3). Perfect candidate—it's simple, portable C, easy to build, the kind of thing that should just work.
+I was looking for a WebAssembly interpreter to build with Fil-C, and I found [wasm3](https://github.com/wasm3/wasm3). It's simple, portable C, easy to build, should work fine.
 
-But then I noticed: wasm3 has been unmaintained for a year or two now, the author busy defending Ukraine from its foreign aggressor, and the wasm3 package in nixpkgs is actually marked as insecure because it has several unfixed CVEs; you can't even try to run it without changing your Nix configuration.
+But wasm3 has been unmaintained for quite some time. The wasm3 package in nixpkgs is marked as insecure because it has several unfixed CVEs. You can't even try to run it without changing your Nix configuration.
 
-Well, okay. But wait—that's actually very interesting!
+Well, okay. That's a good chance to really try Fil-C, though!
+It is, after all, the whole point of Fil-C: to crash loudly when invalid things happen, rather than silently corrupting memory or letting attackers do whatever they want.
 
-I'm always just trying to "get things to work" when building stuff with Fil-C, but it's at least as interesting to see when things _don't_ work. That is, after all, the whole point of Fil-C: to crash loudly when invalid things happen, rather than silently corrupting memory or letting attackers do whatever they want.
-
-And these CVEs? They come with proof-of-concept exploit files. Perfect test cases.
+So let's try to build Wasm3 with Fil-C, run it with CVE crash payloads, and see what happens!
 
 ## Building wasm3 with Fil-C
 
@@ -28,7 +27,9 @@ wasm3 =
   };
 ```
 
-Then: `nix build .#wasm3` and it worked. No source changes needed. Just compile with the Fil-C toolchain.
+There `filenv` is a variant of the standard Nix `stdenv` whose C/C++ toolchain has been swapped with a Fil-C toolchain.
+
+The build command `nix build .#wasm3` worked without any changes or tweaks except changing the `BUILD_WASI` parameter from the default, which wants to fetch some external runtime, to either `none` or `simple`. The CVEs expect a WASI environment so pick `simple`.
 
 ## Testing CVE-2022-39974: Out-of-Bounds Read
 
@@ -69,9 +70,7 @@ check scheduled at:
 Trace/breakpoint trap (core dumped)
 ```
 
-Well well well, if it isn't a read pointer safety overflow violation! The pointer `0x7e5039350f90` tried to read beyond its upper bound. Fil-C caught it at the exact operation that causes the CVE (`op_Select_i32_srs`), printed a full stack trace, and stopped execution.
-
-CVE thwarted.
+Oh my! A pointer read safety violation! The pointer `0x7e5039350f90` tried to read beyond its upper bound. Fil-C caught it at the exact operation that causes the CVE (`op_Select_i32_srs`), printed a full stack trace, and stopped execution.
 
 ## Testing CVE-2022-34529: Slot Index Integer Overflow
 
@@ -113,15 +112,13 @@ Thwarted again!
 
 ## What This Means
 
-Fil-C can **provably thwart these real CVEs in a real program**. We're not talking about synthetic benchmarks or artificial test cases. These are actual exploits from actual security vulnerabilities that crash or exploit normal wasm3 builds.
+Fil-C can **provably thwart these real CVEs in a real program**. These are actual exploits from actual security vulnerabilities that crash or exploit normal wasm3 builds.
 
 You get the exact location where the violation happened (`op_Select_i32_srs`, `op_MemFill`), the full call stack, and the precise nature of the violation (pointer out of upper bound, pointer below lower bound).
 
-Now this flake exposes Wasm3 as an ordinary package without marking it as insecure. Not because I'm reckless, and not because we fixed the bugs in the source code, and certainly not because we rewrote it in Rust. Just because I define it to be compiled with Fil-C!
+Now this flake exposes Wasm3 as an ordinary package without marking it as insecure. Not because I'm reckless, and not because we fixed the bugs in the source code, and certainly not because we rewrote it in Rust... but because Fil-C protects it!
 
 ## Try It Yourself
-
-All the code is in this repo. The wasm3 package definition is in `packages.nix`, and the CVE payloads are defined in `wasm3-cves.nix` (fetched from GitHub with verified hashes).
 
 If you have Nix with flakes enabled, just run:
 
