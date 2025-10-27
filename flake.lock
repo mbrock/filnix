@@ -17,16 +17,17 @@
       "locked": {
         "lastModified": 1761473831,
         "narHash": "sha256-Q36h/Un8HbSHhAfzXBg2pUp2brKuJOFh0QY+p8e7qvQ=",
-        "owner": "mbrock",
-        "repo": "fil-c",
+        "ref": "nix",
         "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
-        "type": "github"
+        "revCount": 470939,
+        "type": "git",
+        "url": "https://github.com/mbrock/fil-c"
       },
       "original": {
-        "owner": "mbrock",
-        "repo": "fil-c",
+        "ref": "nix",
         "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
-        "type": "github"
+        "type": "git",
+        "url": "https://github.com/mbrock/fil-c"
       }
     },
     "kitty-doom-src": {

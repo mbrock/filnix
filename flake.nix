@@ -5,9 +5,8 @@
     nixpkgs.url =
       "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
 
-    # Pinned source for filc0 - locked to keep ccache valid
     filc0-src = {
-      url = "github:mbrock/fil-c/83a0ae7ee07dd09050cc9c331d6ae88d513d0248";
+      url = "git+https://github.com/mbrock/fil-c?ref=nix&rev=83a0ae7ee07dd09050cc9c331d6ae88d513d0248";
       flake = false;
     };
 
