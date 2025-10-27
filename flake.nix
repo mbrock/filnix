@@ -766,7 +766,7 @@
           export PS1='\n\[\033[1;34m\]wasm3-cve-test\[\033[0m\] \w\n\$ '
           
           echo "Fil-C wasm3:"
-          echo"   $(which wasm3)"
+          echo "  $(which wasm3)"
           echo "Test directory:"
           echo "  $PWD"
           echo
