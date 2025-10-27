@@ -1,22 +1,43 @@
 {
   "nodes": {
-    "filc-src": {
+    "filc0-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1761469688,
-        "narHash": "sha256-aPI587uCMkrYxEMUBlWYXl7xQLQQHhJLXWvhluofAT0=",
-        "path": "/home/mbrock/fil-c",
-        "type": "path"
+        "lastModified": 1761473831,
+        "narHash": "sha256-Q36h/Un8HbSHhAfzXBg2pUp2brKuJOFh0QY+p8e7qvQ=",
+        "ref": "refs/heads/deluge",
+        "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
+        "shallow": true,
+        "type": "git",
+        "url": "file:///home/mbrock/fil-c"
       },
       "original": {
-        "path": "/home/mbrock/fil-c",
-        "type": "path"
+        "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
+        "shallow": true,
+        "type": "git",
+        "url": "file:///home/mbrock/fil-c"
+      }
+    },
+    "kitty-doom-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1761520799,
+        "narHash": "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=",
+        "owner": "mbrock",
+        "repo": "kitty-doom",
+        "rev": "ca6c5e40156617489712746bbb594e66293a0aa1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mbrock",
+        "repo": "kitty-doom",
+        "type": "github"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1761443461,
-        "narHash": "sha256-H59VXMj9zlPFxza/X4rQS42wLrma66vmTCS80Oy1YNg=",
+        "lastModified": 1761457994,
+        "narHash": "sha256-mDh+OZYHeOdhW52ItQC1ZJAG95nmxUg1zEeXYfpfh3Q=",
         "path": "/home/mbrock/nixpkgs",
         "type": "path"
       },
@@ -27,7 +48,8 @@
     },
     "root": {
       "inputs": {
-        "filc-src": "filc-src",
+        "filc0-src": "filc0-src",
+        "kitty-doom-src": "kitty-doom-src",
         "nixpkgs": "nixpkgs"
       }
     }

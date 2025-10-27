@@ -1,6 +1,7 @@
 # Sample packages built with Fil-C
 # This is a catalog of packages we're testing with Fil-C
-{ base, filenv, filc-src, withFilC, parallelize, dontTest, debug }:
+{ base, filenv, filc-src, withFilC, parallelize, dontTest, debug,
+  kitty-doom-src }:
 
 rec {
   # Some easy ones to get started!
@@ -16,6 +17,23 @@ rec {
   # Nethack works!
   nethack = (withFilC base.nethack).override {
     inherit ncurses;
+  };
+
+  # Memory-safe DOOM for your Kitty/Ghostty terminal
+  kitty-doom = filenv.mkDerivation {
+    pname = "kitty-doom";
+    version = "git";
+    src = kitty-doom-src;
+
+    installPhase = ''
+      mkdir -p $out/bin
+      cp build/kitty-doom $out/bin/
+    '';
+
+    meta = {
+      homepage = "https://github.com/jserv/kitty-doom";
+      description = "Play DOOM in modern terminals with Kitty Graphics Protocol";
+    };
   };
 
   lua5 = (withFilC base.lua).override {
