@@ -2,7 +2,7 @@
   description = "Fil-C wrapped as a Nix stdenv";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
 
     # Pinned source for filc0 - locked to keep ccache valid
     filc0-src = {

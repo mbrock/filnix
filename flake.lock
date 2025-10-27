@@ -17,17 +17,16 @@
       "locked": {
         "lastModified": 1761473831,
         "narHash": "sha256-Q36h/Un8HbSHhAfzXBg2pUp2brKuJOFh0QY+p8e7qvQ=",
-        "ref": "refs/heads/deluge",
+        "owner": "mbrock",
+        "repo": "fil-c",
         "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
-        "shallow": true,
-        "type": "git",
-        "url": "file:///home/mbrock/fil-c"
+        "type": "github"
       },
       "original": {
+        "owner": "mbrock",
+        "repo": "fil-c",
         "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
-        "shallow": true,
-        "type": "git",
-        "url": "file:///home/mbrock/fil-c"
+        "type": "github"
       }
     },
     "kitty-doom-src": {
@@ -48,14 +47,18 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1761457994,
-        "narHash": "sha256-mDh+OZYHeOdhW52ItQC1ZJAG95nmxUg1zEeXYfpfh3Q=",
-        "path": "/home/mbrock/nixpkgs",
-        "type": "path"
+        "lastModified": 1761173472,
+        "narHash": "sha256-m9W0dYXflzeGgKNravKJvTMR4Qqa2MVD11AwlGMufeE=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "c8aa8cc00a5cb57fada0851a038d35c08a36a2bb",
+        "type": "github"
       },
       "original": {
-        "path": "/home/mbrock/nixpkgs",
-        "type": "path"
+        "owner": "NixOS",
+        "ref": "nixos-25.05",
+        "repo": "nixpkgs",
+        "type": "github"
       }
     },
     "puredoom-h": {
