@@ -123,7 +123,8 @@ in rec {
 
   sqlite = package "sqlite" "" {
     src = "sqlite";
-    tools = [ base.tcl ];
+    tools = with base; [tcl];
+    needs = [zlib];
     build = ''
       make -f Makefile.filc TOP=$PWD CC="$CC -g -O2" \
         -j$NIX_BUILD_CORES all testfixture

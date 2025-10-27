@@ -1,7 +1,9 @@
 # Sample packages built with Fil-C
 # This is a catalog of packages we're testing with Fil-C
 { base, filenv, filc-src, withFilC, parallelize, dontTest, debug,
-  kitty-doom-src, doom1-wad, puredoom-h }:
+  kitty-doom-src, doom1-wad, puredoom-h,
+  wasm3-src 
+}:
 
 rec {
   # Some easy ones to get started!
@@ -78,6 +80,18 @@ rec {
 
   quickjs = withFilC base.quickjs; # slow build
   sqlite = withFilC base.sqlite;   # slow build
+
+  wasm3 =
+    filenv.mkDerivation {
+      src = wasm3-src;
+      pname = "wasm3";
+      version = "0.5.1";
+      enableParallelBuilding = true;
+      nativeBuildInputs = with base; [
+        cmake ninja
+      ];
+      cmakeFlags = ["-DBUILD_WASI=simple"];
+    };
 
   curl = 
     filenv.mkDerivation (final: {

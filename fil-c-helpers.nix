@@ -67,6 +67,7 @@ in rec {
       preConfigure = ''
         export CCACHE_DIR=/nix/var/cache/ccache
         export CCACHE_COMPRESS=1
+        mkdir -p $out
         ${if pre != null then pre else ""}
       '';
     } // (if configure != null then { configurePhase = configure; } else {})

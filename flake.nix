@@ -27,10 +27,16 @@
       url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
       flake = false;
     };
+
+    wasm3-src = {
+      url = "github:wasm3/wasm3";
+      flake = false;
+    };
   };
 
   outputs = {
-    self, nixpkgs,  filc0-src, kitty-doom-src, doom1-wad, puredoom-h, ...
+    self, nixpkgs,  filc0-src, kitty-doom-src, doom1-wad, puredoom-h, 
+    wasm3-src, ...
   }:  let
 
     system = "x86_64-linux";
@@ -673,6 +679,7 @@
     sample-packages = import ./packages.nix {
       inherit base filenv filc-src withFilC parallelize dontTest debug;
       inherit kitty-doom-src doom1-wad puredoom-h;
+      inherit wasm3-src;
     };
 
     # Ports: packages built directly from fil-c/projects vendored sources
@@ -685,6 +692,9 @@
       inherit base filenv;
       packages = ports;
     };
+    
+    # CVE test payloads for wasm3
+    wasm3-cve-payloads = (import ./wasm3-cves.nix { pkgs = base; }).cve-tests;
 
   in {
     # Finally, we define the package collection!
@@ -741,6 +751,35 @@
           zlib openssl curl
           sqlite lua
         ];
+      };
+      
+      # wasm3 CVE testing environment
+      wasm3-cve-test = base.mkShell {
+        name = "wasm3-cve-test";
+        
+        buildInputs = [ sample-packages.wasm3 ];
+        
+        shellHook = ''
+          cd ${wasm3-cve-payloads}
+          
+          # Multi-line prompt to handle long store paths
+          export PS1='\n\[\033[1;34m\]wasm3-cve-test\[\033[0m\] \w\n\$ '
+          
+          echo "Fil-C wasm3:"
+          echo"   $(which wasm3)"
+          echo "Test directory:"
+          echo "  $PWD"
+          echo
+          echo "Test files:"
+          ls -1 *.wasm | sed 's/^/  /'
+          echo
+          echo "Try running:"
+          echo "  wasm3 cve-2022-39974.wasm"
+          echo "  wasm3 cve-2022-34529.wasm"
+          echo
+          echo "See README.txt for details"
+          echo
+        '';
       };
     };
   };
