@@ -4,6 +4,8 @@ I was looking for a WebAssembly interpreter to build with Fil-C, and I found [wa
 
 But wasm3 has been unmaintained for quite some time. The wasm3 package in nixpkgs is marked as insecure because it has several unfixed CVEs. You can't even try to run it without changing your Nix configuration.
 
+(Much of this turns out to be due to Wasm3 not comprehensively validating input before interpreting it. So it may be less of a problem if you can somehow validate it with another tool.)
+
 Well, okay. That's a good chance to really try Fil-C, though!
 It is, after all, the whole point of Fil-C: to crash loudly when invalid things happen, rather than silently corrupting memory or letting attackers do whatever they want.
 
