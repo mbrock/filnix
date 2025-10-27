@@ -535,7 +535,6 @@
       meta.description = "Memory-safe glibc compiled with Fil-C";
     };
 
-    # libxcrypt compiled with Fil-C
     filc-xcrypt = base.stdenv.mkDerivation {
       pname = "filc-xcrypt";
       version = "4.4.36";
@@ -598,7 +597,7 @@
     filcc = base.wrapCCWith {
       cc       = filc-cc;
       libc     = filc-sysroot;
-      libcxx   = filc-libcxx;  # Prevent wrapper from adding GCC C++ headers
+      libcxx   = filc-libcxx;
       bintools = filc-bintools;
       isClang  = true;
 
@@ -609,8 +608,6 @@
         echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
       '';    
     };
-
-    # Some boring code follows...
 
     cmakeFlags = opts: lib.mapAttrsToList (k: v:
       let val = if lib.isBool v then (if v then "ON" else "OFF") else toString v;
@@ -650,14 +647,7 @@
         '') crts}
       '';
 
-    # Fil-C stdenv; evaluating packages from this collection
-    # attempts to use Fil-C for all build tools, transitively!
-    # Sometimes it even works.
     filenv = base.overrideCC base.stdenv filcc;
-
-    # More iteratively, this wrapper just applies Fil-C to a single package,
-    # and if the package has any runtime dependencies, you have to apply Fil-C to
-    # those as well, using overrides.
     withFilC = pkg: pkg.override { stdenv = filenv; };
 
     parallelize = pkg: pkg.overrideAttrs (_: {
@@ -679,28 +669,6 @@
         pkgs.overrideCC pkgs.stdenv filcc;
     };
 
-    # Setup hook to patch config.sub for filc
-    updateAutotoolsFilcHook = base.makeSetupHook {
-      name = "update-autotools-filc-hook";
-    } ./update-autotools-filc.sh;
-
-    # Fil-C overlay: provides filcc and setup hooks to nixpkgs
-    filc-overlay = final: prev: {
-      inherit filcc updateAutotoolsFilcHook;
-    };
-
-    # Base nixpkgs with Fil-C overlay
-    nixpkgs-with-filc = import nixpkgs {
-      inherit system;
-      overlays = [ filc-overlay ];
-    };
-
-    # Cross-compilation approach using pkgsCross.filc-x86_64
-    filpkgs-cross = nixpkgs-with-filc.pkgsCross.filc-x86_64;
-
-    # Native-style variant using pkgsFilC (like pkgsMusl)
-    filpkgs-native = nixpkgs-with-filc.pkgsFilC;
-
     # Sample packages built with Fil-C
     sample-packages = import ./packages.nix {
       inherit base filenv filc-src withFilC parallelize dontTest debug;
@@ -717,24 +685,15 @@
       inherit base filenv;
       packages = ports;
     };
-    
-    # LFS-style rootfs construction
-    lfs = import ./filc-lfs.nix {
-      inherit base ports;
-    };
 
   in {
     # Finally, we define the package collection!
     packages.${system} = rec {
-      inherit filpkgs filpkgs-cross filpkgs-native;
-
-      # Fil-C compiler components
+      inherit filpkgs;
       inherit filc0;
       inherit filc1;
       inherit filc2;
       inherit filc-libcxx;
-
-      # Fil-C layers
       inherit libyolo-glibc;
       inherit libyolo;
       inherit libpizlo;
@@ -742,67 +701,37 @@
       inherit filc-xcrypt;
       inherit filc-sysroot;
       inherit filcc;
-    }
-    # Import sample packages
-    // sample-packages
-    // {
-      # Also expose libxcrypt from core toolchain
-      libxcrypt = filc-xcrypt;
-      
-      # Expose ports as a namespace
-      inherit ports;
-      
-      # Expose combined environment
       inherit fil-c-env;
-      
-      # LFS-style systems
-      filc-os-minimal = lfs.minimal;
-      filc-os-dev = lfs.development;
-      filc-os-full = lfs.full;
-      filc-os-tarball = lfs.containerTarball {};
-      filc-os-docker = lfs.dockerImage {};
-    };
+      inherit ports;
+    }
+
+    // sample-packages
+    ;
 
     devShells.${system} = {
-      # Developer shell with Fil-C compiler and tools
       default = base.mkShell {
         name = "filc-dev";
         
         buildInputs = with base; [
-          filc3  # The only compiler users need
-          
-          # Build tools
+          filcc
           cmake ninja ccache git
-          
-          # Debug/analysis tools
           gdb valgrind strace ltrace hexdump
-          
-          # Useful utilities
           ripgrep fd jq bat
         ];
         
         shellHook = ''
-          echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║          Fil-C Development Environment                     ║"
-          echo "╚════════════════════════════════════════════════════════════╝"
+          clang --version | head -1
           echo
-          echo "Compiler: ${filc3}/bin/clang"
-          ${filc3}/bin/clang --version | head -1
-          echo
-          echo "Components:"
-          echo "  Runtime:   ${libpizlo.name}"
-          echo "  Libc:      ${libmojo.name} (memory-safe)"
-          echo "  C++ STL:   ${filc-libcxx.name}"
-          echo
-          echo "Quick commands:"
-          echo "  clang hello.c -o hello    - Compile with Fil-C"
-          echo "  clang++ test.cpp -o test  - Compile C++ with Fil-C"
-          echo "  nix build .#sample-hello  - Build sample programs"
+          echo "  clang    $(which clang)"
+          echo "  pizlo    ${libpizlo}"
+          echo "  glibc    ${libmojo}"
+          echo "  libc++   ${filc-libcxx}"
           echo
         '';
       };
       
-      # Pure Fil-C environment - all tools compiled with Fil-C
+      # Pure Fil-C environment - all tools compiled with Fil-C.
+      # Not currently building! Would be nice though!
       pure = base.mkShell {
         name = "filc-pure";
         
@@ -812,65 +741,6 @@
           zlib openssl curl
           sqlite lua
         ];
-        
-        shellHook = ''
-          echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       Pure Fil-C Environment (All Tools Memory-Safe)      ║"
-          echo "╚════════════════════════════════════════════════════════════╝"
-          echo
-          echo "All binaries in this shell were compiled with Fil-C!"
-          echo
-          echo "Available tools:"
-          echo "  bash, coreutils (ls, cat, etc.), grep, sed, diff"
-          echo "  vim, git, tmux, curl, sqlite, lua"
-          echo
-          echo "Try it out:"
-          echo "  bash --version"
-          echo "  ls -la"
-          echo "  git --version"
-          echo
-        '';
-      };
-      
-      # Workspace with all fil-c project sources
-      workspace = let
-        # Each project gets its own directory in the store
-        mkProjectDir = name: src: base.runCommand "${name}-project" {} ''
-          mkdir -p $out/src
-          ln -s ${src} $out/src
-        '';
-        
-        # Combine into one workspace
-        workspace = base.linkFarm "filc-workspace" 
-          (lib.mapAttrsToList (name: pkg: {
-            name = name;
-            path = mkProjectDir name (pkg.src or "${filc-src}/projects/${name}");
-          }) ports);
-      in base.mkShell {
-        name = "filc-workspace";
-        
-        buildInputs = [ filc3 base.tree ];
-        
-        shellHook = ''
-          cd ${workspace}
-          
-          echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║          Fil-C Projects Workspace                          ║"
-          echo "╚════════════════════════════════════════════════════════════╝"
-          echo
-          echo "Workspace: ${workspace}"
-          echo
-          echo "Projects available (${toString (builtins.length (builtins.attrNames ports))} total):"
-          ls -1 | column -c 80
-          echo
-          echo "Each project has a 'src/' directory with source code."
-          echo
-          echo "Examples:"
-          echo "  cd bash/src && ls"
-          echo "  cd vim/src && vim --version"
-          echo "  tree -L 2 | head -20"
-          echo
-        '';
       };
     };
   };
