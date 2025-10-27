@@ -13,12 +13,129 @@
   outputs = { self, nixpkgs, ... }:  let
     system = "x86_64-linux";
     base = import nixpkgs { inherit system; };
+    inherit (base) fetchgit;
 
+    filc-rev = "594c0b05910038865f8c53fdd25cab8d69de1524";
+
+    # Minimal clang compiler only (filc0)
     filc-src = filc0-src;
-    filc0-src = base.fetchgit {
+    filc0-src = fetchgit {
       url = "https://github.com/mbrock/fil-c";
-      rev = "83a0ae7ee07dd09050cc9c331d6ae88d513d0248";
-      hash = "sha256-/yhpZSGYhWdQ7+bux3cPcBwmv5i01SFuH+ST30vwhaI=";
+      rev = filc-rev;
+      sparseCheckout = [
+        "llvm"
+        "clang"
+        "cmake"
+        "third-party"
+        "libc" # for "shared/fp_bits.h" among other things
+        "libcxx"
+        "libcxxabi"
+        "runtimes"
+      ];
+      hash = "sha256-uHsxpXONHyy2KSOABpO/Yus1xOkygzNVvW3UUPA7aSE=";
+    };
+
+    # LLVM + libcxx + libcxxabi (for filc-libcxx build)
+    libcxx-src = filc-src;
+
+    # Just libpas + filc headers
+    libpas-src = fetchgit {
+      url = "https://github.com/mbrock/fil-c";
+      rev = filc-rev;
+      sparseCheckout = [
+        "libpas"
+        "filc"
+      ];
+      hash = "sha256-UGhUqk/whTL9qfUxjdTom51UpebO3B2NL0xX3YmX8T8=";
+    };
+
+    # Yolo glibc (stage 1 runtime)
+    yolo-glibc-src = fetchgit {
+      url = "https://github.com/mbrock/fil-c";
+      rev = filc-rev;
+      sparseCheckout = [
+        "projects/yolo-glibc-2.40"
+      ];
+      hash = "sha256-gYU8uVfaKjIY4lp3e0JXDX3XSovaxMDqd0JqCTrhyXg=";
+    };
+
+    # User glibc (memory-safe glibc)
+    user-glibc-src = fetchgit {
+      url = "https://github.com/mbrock/fil-c";
+      rev = filc-rev;
+      sparseCheckout = [
+        "projects/user-glibc-2.40"
+      ];
+      hash = "sha256-lNYzviWiV9xffBSg3/psr0CulILRR4kcvFlyak0cHWo=";
+    };
+
+    # libxcrypt
+    libxcrypt-src = fetchgit {
+      url = "https://github.com/mbrock/fil-c";
+      rev = filc-rev;
+      sparseCheckout = [
+        "projects/libxcrypt-4.4.36"
+      ];
+      hash = "sha256-RtyFq/G+jywY/1o1K3cbuTaFOxFx2Kvl5Y/8pxmX0FA=";
+    };
+
+    # Additional projects (for fil-c-projects.nix builds)
+    filc-projects-src = fetchgit {
+      url = "https://github.com/mbrock/fil-c";
+      rev = filc-rev;
+      sparseCheckout = [
+        "projects/zlib-1.3"
+        "projects/zstd-1.5.6"
+        "projects/xz-5.6.2"
+        "projects/bzip2"
+        "projects/lz4-1.10.0"
+        "projects/grep-3.11"
+        "projects/sed-4.9"
+        "projects/diffutils-3.10"
+        "projects/m4-1.4.19"
+        "projects/make-4.4.1"
+        "projects/bison-3.8.2"
+        "projects/libffi-3.4.6"
+        "projects/expat-2.7.1"
+        "projects/pcre2-10.44"
+        "projects/libevent-2.1.12"
+        "projects/openssl-3.3.1"
+        "projects/curl-8.9.1"
+        "projects/nghttp2-1.62.1"
+        "projects/lua-5.4.7"
+        "projects/quickjs"
+        "projects/sqlite"
+        "projects/libpng-1.6.43"
+        "projects/gmp-6.3.0"
+        "projects/ncurses-6.5-20240720"
+        "projects/bash-5.2.32"
+        "projects/coreutils-9.5"
+        "projects/brotli-1.1.0"
+        "projects/tcl-8.6.15"
+        "projects/git-2.46.0"
+        "projects/vim-9.1.0660"
+        "projects/tmux-3.5a"
+        "projects/openssh-9.8p1"
+        "projects/libxml2-2.14.4"
+        "projects/gettext-0.22.5"
+        "projects/libarchive-3.7.4"
+        "projects/libuv-v1.48.0"
+        "projects/binutils-2.43.1"
+        "projects/cmake-3.30.2"
+        "projects/perl-5.40.0"
+        "projects/dash-0.5.12"
+        "projects/pkgconf-2.3.0"
+        "projects/check-0.15.2"
+        "projects/attr-2.5.2"
+        "projects/libedit-20240808-3.1"
+        "projects/libcap-2.70"
+        "projects/libpipeline-1.5.7"
+        "projects/busybox-1.37.0"
+        "projects/toybox-8.12"
+        "projects/texinfo-7.1"
+        "projects/icu-76.1"
+      ];
+      hash = "sha256-BoBDhHmU+g7MFiIbrxD7aGGISU38iZz55/XFHjrkkS8=";
     };
 
     kitty-doom-src = base.fetchgit {
@@ -65,7 +182,7 @@
         in
         builtins.elem topDir dirs;
     };
-    
+
     # Maximally filtered source for filc0 - only what's needed for clang build
     filc0-src-filtered = builtins.path {
       path = filc0-src;
@@ -79,9 +196,9 @@
     };
 
     # Filtered sources for different parts of the monorepo
-    libcxx-src = filterFilcSource "libcxx" ["llvm" "clang" "cmake" "third-party" "libcxx" "libc" "libcxxabi" "runtimes"];
-    libpas-src = filterFilcSource "libpas" ["libpas" "filc"];
-    filc-projects-src = filterFilcSource "filc-projects" ["projects"];
+    # libcxx-src = filterFilcSource "libcxx" ["llvm" "clang" "cmake" "third-party" "libcxx" "libc" "libcxxabi" "runtimes"];
+    # libpas-src = filterFilcSource "libpas" ["libpas" "filc"];
+    # filc-projects-src = filterFilcSource "filc-projects" ["projects"];
 
     commonLLVMOptions = {
       CMAKE_BUILD_TYPE = "RelWithDebInfo";
@@ -103,9 +220,9 @@
 
     # This is just a function that abstracts some common stuff
     # for doing CMake/ninja/ccache builds.
-    mkFilcLLVMBuild = { 
-      pname, 
-      cmakeOptions ? {}, 
+    mkFilcLLVMBuild = {
+      pname,
+      cmakeOptions ? {},
       cmakeSource,
       buildDir ? "build",
       ninjaTargets ? [],
@@ -122,7 +239,7 @@
 
         # Let Nix decide how many cores to use.
         enableParallelBuilding = true;
-        
+
         nativeBuildInputs = with base; [
           cmake ninja python3 git patchelf ccache lld
         ];
@@ -229,6 +346,21 @@
       ln -s clang $out/bin/clang++
     '';
 
+    # Wrapper that bakes in yolo headers/libs so early builds (like libpizlo)
+    # don't need to fabricate a pizfix tree.
+    filc1-runtime = base.runCommand "filc1-runtime" {
+      nativeBuildInputs = [base.makeWrapper];
+    } ''
+      mkdir -p $out/bin
+      makeWrapper ${filc1}/bin/clang $out/bin/clang \
+        --add-flags "--filc-dynamic-linker=${libyolo}/lib/ld-yolo-x86_64.so" \
+        --add-flags "--filc-crt-path=${libyolo}/lib" \
+        --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
+        --add-flags "--filc-os-include=${base.linuxHeaders}/include" \
+        --add-flags "--filc-include=${libyolo-glibc}/include"
+      ln -s clang $out/bin/clang++
+    '';
+
     # Second compiler stage adds the Fil-C runtime, compiled using filc1.
     filc2 = mkFilcClang {
       crtLib = mkFilcCrtLib { filcRuntimeLibs = libpizlo; };
@@ -301,7 +433,7 @@
       nativeBuildInputs = [base.rsync];
     } ''
       mkdir -p $out
-      
+
       # Libraries: yolo + gcc crt files + optional filc runtime
       rsync -a ${libyolo}/lib/ $out/
       chmod -R u+w $out
@@ -309,7 +441,7 @@
       cp ${gcc-lib}/libgcc* $out/ || true
       mkdir -p $out/gcc/${targetPlatform}/${gcc.version}
       cp -r ${gcc-lib}/* $out/gcc/${targetPlatform}/${gcc.version}/
-      
+
       ${lib.optionalString (filcRuntimeLibs != null) ''
         cp ${filcRuntimeLibs}/lib/filc_crt.o $out/ || true
         cp ${filcRuntimeLibs}/lib/filc_mincrt.o $out/ || true
@@ -323,10 +455,9 @@
       nativeBuildInputs = [base.makeWrapper];
     } ''
       mkdir -p $out/bin
-      
+
       # Wrap clang with Fil-C paths using explicit flags
       makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang \
-        --add-flags -v \
         --add-flags "--gcc-toolchain=${gcc.cc}" \
         --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
         --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
@@ -334,20 +465,20 @@
         --add-flags "--filc-stdfil-include=${stdfilInclude}" \
         --add-flags "--filc-os-include=${osInclude}" \
         --add-flags "--filc-include=${yoloInclude}"
-      
+
       ln -s clang $out/bin/clang++
     '';
-   
+
     # This just builds the Fil-C glibc yolo fork with the normal
     # host GCC toolchain.
     libyolo-glibc = base.stdenv.mkDerivation rec {
       pname = "libyolo-glibc";
       version = "2.40";
-      src = "${filc-src}/projects/yolo-glibc-${version}";
-      
+      src = "${yolo-glibc-src}/projects/yolo-glibc-${version}";
+
       # Use single output (glibc tries to split into multiple outputs by default)
       outputs = ["out"];
-      
+
       enableParallelBuilding = true;
 
       nativeBuildInputs = with base; [
@@ -358,19 +489,19 @@
       preConfigure = ''
         export NIX_CFLAGS_COMPILE=""
         export NIX_LDFLAGS=""
-        
+
         # Set up ccache manually
         ${setupCcache}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        
+
         # glibc requires out-of-tree build
         autoconf
         cd ..
         mkdir -p build
         cd build
         configureScript=$PWD/../$sourceRoot/configure
-        
+
         # Set these in shell so $out actually expands
         configureFlagsArray+=(
           "libc_cv_slibdir=$out/lib"
@@ -391,22 +522,22 @@
     } ''
       mkdir -p $out/lib
       cd $out/lib
-      
+
       # Copy all .o files
       cp ${libyolo-glibc}/lib/*.o .
-      
+
       # Copy and rename static libs
       cp ${libyolo-glibc}/lib/libc.a libyoloc.a
       cp ${libyolo-glibc}/lib/libc_nonshared.a libyoloc_nonshared.a
       cp ${libyolo-glibc}/lib/libm.a libyolom.a
       cp ${libyolo-glibc}/lib/*.a .  # Copy other .a files as-is
       chmod -R u+w .
-      
+
       # Copy and rename dynamic linker
       cp ${libyolo-glibc}/lib/ld-linux-x86-64.so.2 ld-yolo-x86_64.so
       chmod u+w ld-yolo-x86_64.so
       patchelf --remove-rpath ld-yolo-x86_64.so
-      
+
       # Copy and patch libc implementation
       cp ${libyolo-glibc}/lib/libc.so.6 libyolocimpl.so
       chmod u+w libyolocimpl.so
@@ -414,8 +545,8 @@
                --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \
                --set-rpath '$ORIGIN' \
                libyolocimpl.so
-      
-      # Copy and patch libm implementation  
+
+      # Copy and patch libm implementation
       cp ${libyolo-glibc}/lib/libm.so.6 libyolomimpl.so
       chmod u+w libyolomimpl.so
       patchelf --set-soname libyolomimpl.so \
@@ -423,13 +554,13 @@
                --replace-needed libc.so.6 libyolocimpl.so \
                --set-rpath '$ORIGIN' \
                libyolomimpl.so
-      
+
       # Create linker scripts
       cat > libyolom.so <<'EOF'
       OUTPUT_FORMAT(elf64-x86-64)
       GROUP(libyolomimpl.so)
       EOF
-      
+
       cat > libyoloc.so <<'EOF'
       OUTPUT_FORMAT(elf64-x86-64)
       GROUP(libyolocimpl.so libyoloc_nonshared.a AS_NEEDED(ld-yolo-x86_64.so))
@@ -451,43 +582,41 @@
       pname = "libpizlo";
       version = "git";
       src = libpas-src;
-      
+
       nativeBuildInputs = [base.gnumake base.ruby base-clang filc1 base.ccache];
-      
-      sourceRoot = "libpas-source/libpas";
-      
-      postUnpack = ''
-        chmod -R u+w libpas-source
-        
-        # Makefile expects ../pizfix structure with multiple lib variants and renamed libyolo libs
-        mkdir -p libpas-source/pizfix/{lib,lib_test,lib_gcverify,lib_test_gcverify,yolo-include,os-include,stdfil-include}
-        cp ${libyolo}/lib/*.{so,a,o} libpas-source/pizfix/lib/ 2>/dev/null || true
-        cp ${libyolo-glibc}/include/* libpas-source/pizfix/yolo-include/ -r
-        cp ${base.linuxHeaders}/include/* libpas-source/pizfix/os-include/ -r
-        
-        # Makefile expects ../build/bin/clang
-        mkdir -p libpas-source/build/bin
-        ln -s ${filc1}/bin/clang libpas-source/build/bin/clang
-      '';
-      
+
       preConfigure = ''
+        cd libpas
         ${setupCcache}
         export CC="ccache clang"
+        export FILC_CLANG="${filc1-runtime}/bin/clang"
+        export FILC_YOLO_INCLUDE="${libyolo-glibc}/include"
+        export FILC_OS_INCLUDE="${base.linuxHeaders}/include"
+        export FILC_STDFIL_INCLUDE="${filc-stdfil-headers}"
+        export FILC_INCLUDE_DIR="${libyolo-glibc}/include"
+        export FILC_YOLO_LIB_DIR="${libyolo}/lib"
+        export FILC_DYNAMIC_LINKER="${libyolo}/lib/ld-yolo-x86_64.so"
+        PIZFIX_OUT="$PWD/pizfix"
+        export FILC_LIB_DIR="$PIZFIX_OUT/lib"
+        export FILC_LIB_TEST_DIR="$PIZFIX_OUT/lib_test"
+        export FILC_LIB_GCVERIFY_DIR="$PIZFIX_OUT/lib_gcverify"
+        export FILC_LIB_TEST_GCVERIFY_DIR="$PIZFIX_OUT/lib_test_gcverify"
+        mkdir -p "$FILC_LIB_DIR" "$FILC_LIB_TEST_DIR" "$FILC_LIB_GCVERIFY_DIR" "$FILC_LIB_TEST_GCVERIFY_DIR"
         patchShebangs .
       '';
-      
+
       buildPhase = ''
         mkdir -p build
         ${base.ruby}/bin/ruby src/libpas/generate_pizlonated_forwarders.rb src/libpas/filc_native.h
-        make -j$NIX_BUILD_CORES FILCFLAGS="-O3 -g -W -Werror -MD -I../filc/include"
+        make -j$NIX_BUILD_CORES FILCFLAGS="-O3 -g -W -Werror -Wno-unused-command-line-argument -MD -I../filc/include"
       '';
-      
+
       installPhase = ''
         mkdir -p $out/lib $out/include
-        cp ../pizfix/lib/libpizlo.so $out/lib/
-        cp ../pizfix/lib/libpizlo.a $out/lib/
-        cp ../pizfix/lib/filc_crt.o $out/lib/
-        cp ../pizfix/lib/filc_mincrt.o $out/lib/
+        cp "$FILC_LIB_DIR"/libpizlo.so $out/lib/
+        cp "$FILC_LIB_DIR"/libpizlo.a $out/lib/
+        cp "$FILC_LIB_DIR"/filc_crt.o $out/lib/
+        cp "$FILC_LIB_DIR"/filc_mincrt.o $out/lib/
         cp ../filc/include/*.h $out/include/
       '';
 
@@ -499,9 +628,9 @@
     libmojo = base.stdenv.mkDerivation {
       pname = "libmojo";
       version = "2.40";
-      src = "${filc-src}/projects/user-glibc-2.40";
+      src = "${user-glibc-src}/projects/user-glibc-2.40";
       outputs = ["out"];
-      
+
       enableParallelBuilding = true;
 
       nativeBuildInputs = with base; [
@@ -512,17 +641,17 @@
         # Fil-C compiler flags from build script
         FILCXXFLAGS="-nostdlibinc -Wno-ignored-attributes -Wno-pointer-sign"
         FILCFLAGS="$FILCXXFLAGS -Wno-unused-command-line-argument -Wno-macro-redefined"
-        
+
         export CC="${filc2}/bin/clang $FILCFLAGS -isystem ${libpizlo}/include"
         export CXX="${filc2}/bin/clang++ $FILCXXFLAGS -isystem ${libpizlo}/include"
-        
+
         # glibc requires out-of-tree build
         autoconf
         cd ..
         mkdir -p build
         cd build
         configureScript=$PWD/../$sourceRoot/configure
-        
+
         # Set these in shell so $out actually expands
         configureFlagsArray+=(
           "libc_cv_slibdir=$out/lib"
@@ -542,7 +671,7 @@
     filc-xcrypt = base.stdenv.mkDerivation {
       pname = "filc-xcrypt";
       version = "4.4.36";
-      src = "${filc-src}/projects/libxcrypt-4.4.36";
+      src = "${libxcrypt-src}/projects/libxcrypt-4.4.36";
       enableParallelBuilding = true;
 
       nativeBuildInputs = with base; [
@@ -551,7 +680,7 @@
 
       preConfigure = ''
         export CC="${filc2}/bin/clang -isystem ${libpizlo}/include -L${libmojo}/lib -I${libmojo}/include"
-        
+
         rm -f aclocal.m4
         libtoolize --copy --force
         autoreconf -vfi -I build-aux/m4
@@ -611,7 +740,7 @@
         echo "-nostdinc++" >> $out/nix-support/libcxx-cxxflags
         echo "-isystem ${filc-libcxx}/include/c++" >> $out/nix-support/libcxx-cxxflags
         echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
-      '';    
+      '';
     };
 
     cmakeFlags = opts: lib.mapAttrsToList (k: v:
@@ -691,7 +820,7 @@
       inherit base filenv;
       packages = ports;
     };
-    
+
     # CVE test payloads for wasm3
     wasm3-cve-payloads = (import ./wasm3-cves.nix { pkgs = base; }).cve-tests;
 
@@ -699,13 +828,13 @@
     # nixosConfig = {
     #   boot.loader.grub.device = "/dev/vda";
     #   boot.kernelParams = [ "console=ttyS0" ];
-      
+
     #   users.users.root.initialPassword = "root";
     #   environment.systemPackages = [ filcc sample-packages.wasm3 ];
     #   services.getty.autologinUser = "root";
     #   documentation.enable = false;
     #   system.stateVersion = "25.05";
-      
+
     #   system.activationScripts.setupWasm3Cves = ''
     #     mkdir -p /root/wasm3-cves
     #     cp -f ${wasm3-cve-payloads}/* /root/wasm3-cves/
@@ -730,7 +859,10 @@
       inherit filcc;
       inherit fil-c-env;
       inherit ports;
-      
+
+      # Export sources for hash fixing
+      inherit filc0-src libcxx-src libpas-src yolo-glibc-src user-glibc-src libxcrypt-src filc-projects-src;
+
       # qemu-image = nixos-generators.nixosGenerate {
       #   inherit system;
       #   format = "qcow";
@@ -744,14 +876,14 @@
     devShells.${system} = {
       default = base.mkShell {
         name = "filc-dev";
-        
+
         buildInputs = with base; [
           filcc
           cmake ninja ccache git
           gdb valgrind strace ltrace hexdump
           ripgrep fd jq bat
         ];
-        
+
         shellHook = ''
           clang --version | head -1
           echo
@@ -762,12 +894,12 @@
           echo
         '';
       };
-      
+
       # Pure Fil-C environment - all tools compiled with Fil-C.
       # Not currently building! Would be nice though!
       pure = base.mkShell {
         name = "filc-pure";
-        
+
         buildInputs = with ports; [
           bash coreutils grep sed diffutils
           vim git tmux
@@ -775,19 +907,19 @@
           sqlite lua
         ];
       };
-      
+
       # wasm3 CVE testing environment
       wasm3-cve-test = base.mkShell {
         name = "wasm3-cve-test";
-        
+
         buildInputs = [ sample-packages.wasm3 ];
-        
+
         shellHook = ''
           cd ${wasm3-cve-payloads}
-          
+
           # Multi-line prompt to handle long store paths
           export PS1='\n\[\033[1;34m\]wasm3-cve-test\[\033[0m\] \w\n\$ '
-          
+
           echo "Fil-C wasm3:"
           echo "  $(which wasm3)"
           echo "Test directory:"
