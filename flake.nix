@@ -4,47 +4,40 @@
   inputs = {
     nixpkgs.url =
       "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
-
-    filc0-src = {
-      url = "git+https://github.com/mbrock/fil-c?ref=nix&rev=83a0ae7ee07dd09050cc9c331d6ae88d513d0248";
-      flake = false;
-    };
-
-    # TTY DOOM port
-    kitty-doom-src = {
-      url = "github:mbrock/kitty-doom";
-      flake = false;
-    };
-
-    # DOOM shareware WAD file
-    doom1-wad = {
-      url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
-      flake = false;
-    };
-
-    # PureDOOM single-header library
-    puredoom-h = {
-      url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
-      flake = false;
-    };
-
-    wasm3-src = {
-      url = "github:wasm3/wasm3";
-      flake = false;
-    };
   };
 
-  outputs = {
-    self, nixpkgs,  filc0-src, kitty-doom-src, doom1-wad, puredoom-h, 
-    wasm3-src, ...
-  }:  let
-
+  outputs = { self, nixpkgs, ... }:  let
     system = "x86_64-linux";
+    base = import nixpkgs { inherit system; };
 
     filc-src = filc0-src;
+    filc0-src = base.fetchgit {
+      url = "https://github.com/mbrock/fil-c";
+      rev = "83a0ae7ee07dd09050cc9c331d6ae88d513d0248";
+      hash = "sha256-/yhpZSGYhWdQ7+bux3cPcBwmv5i01SFuH+ST30vwhaI=";
+    };
 
-    # This is the base instance of nixpkgs we build everything from.
-    base = import nixpkgs { inherit system; };
+    kitty-doom-src = base.fetchgit {
+      url = "https://github.com/mbrock/kitty-doom";
+      rev = "ca6c5e40156617489712746bbb594e66293a0aa1";
+      hash = "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=";
+    };
+
+    doom1-wad = base.fetchurl {
+      url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
+      hash = "sha256-0wf7r8kaalpn2qc74ng8flqg6fwwwbrviq0mwhkxjrqya2z46z8x";
+    };
+
+    puredoom-h = base.fetchurl {
+      url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
+      hash = "sha256-0rypvk8m90qvir13jiwxw7jklszawsvz3g7h2g5if4361mqghbbg";
+    };
+
+    wasm3-src = base.fetchgit {
+      url = "https://github.com/wasm3/wasm3";
+      rev = "79d412ea5fcf92f0efe658d52827a0e0a96ff442";
+      hash = "sha256-CmNngYLD/PtiEW8pGORjW4d7TAmW5ZZMBAeKzJYMMdw=";
+    };
 
     lib = base.lib;
     join = lib.concatStringsSep;
