@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url =
       "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
+    # nixos-generators = {
+    #   url = "github:nix-community/nixos-generators";
+    #   inputs.nixpkgs.follows = "nixpkgs";
+    # };
   };
 
   outputs = { self, nixpkgs, ... }:  let
@@ -689,23 +693,23 @@
     # CVE test payloads for wasm3
     wasm3-cve-payloads = (import ./wasm3-cves.nix { pkgs = base; }).cve-tests;
 
-    # Minimal NixOS configuration for QEMU
-    nixosConfig = nixpkgs.lib.nixosSystem {
-      inherit system;
-      modules = [{
-        boot.loader.grub.device = "/dev/vda";
-        boot.kernelParams = [ "console=ttyS0" ];
-        fileSystems."/" = { device = "/dev/vda1"; fsType = "ext4"; };
-        
-        users.users.root.initialPassword = "root";
-        environment.systemPackages = [ filcc ];
-        services.getty.autologinUser = "root";
-        
-        # Minimal system
-        documentation.enable = false;
-        system.stateVersion = "25.05";
-      }];
-    };
+    # # Minimal NixOS configuration for QEMU
+    # nixosConfig = {
+    #   boot.loader.grub.device = "/dev/vda";
+    #   boot.kernelParams = [ "console=ttyS0" ];
+      
+    #   users.users.root.initialPassword = "root";
+    #   environment.systemPackages = [ filcc sample-packages.wasm3 ];
+    #   services.getty.autologinUser = "root";
+    #   documentation.enable = false;
+    #   system.stateVersion = "25.05";
+      
+    #   system.activationScripts.setupWasm3Cves = ''
+    #     mkdir -p /root/wasm3-cves
+    #     cp -f ${wasm3-cve-payloads}/* /root/wasm3-cves/
+    #     chmod -R u+w /root/wasm3-cves
+    #   '';
+    # };
 
   in {
     # Finally, we define the package collection!
@@ -725,13 +729,11 @@
       inherit fil-c-env;
       inherit ports;
       
-      # Portable QEMU qcow2 image
-      qemu-image = base.callPackage "${nixpkgs}/nixos/lib/make-disk-image.nix" {
-        config = nixosConfig.config;
-        format = "qcow2";
-        diskSize = 4096;  # MB
-        partitionTableType = "legacy";
-      };
+      # qemu-image = nixos-generators.nixosGenerate {
+      #   inherit system;
+      #   format = "qcow";
+      #   modules = [ nixosConfig ];
+      # };
     }
 
     // sample-packages
