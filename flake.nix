@@ -4,10 +4,6 @@
   inputs = {
     nixpkgs.url =
       "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
-    # nixos-generators = {
-    #   url = "github:nix-community/nixos-generators";
-    #   inputs.nixpkgs.follows = "nixpkgs";
-    # };
   };
 
   outputs = { self, nixpkgs, ... }:  let
@@ -170,36 +166,6 @@
     targetPlatform = base.stdenv.targetPlatform.config;
     gcc-lib = "${gcc.cc}/lib/gcc/${targetPlatform}/${gcc.version}";
 
-    # Filtered source paths to reduce disk usage and improve caching
-    # Helper to filter monorepo to only include specific top-level directories
-    filterFilcSource = name: dirs: builtins.path {
-      path = filc-src;
-      name = "${name}-source";
-      filter = path: type:
-        let
-          relPath = lib.removePrefix (toString filc-src + "/") (toString path);
-          topDir = builtins.head (lib.splitString "/" relPath);
-        in
-        builtins.elem topDir dirs;
-    };
-
-    # Maximally filtered source for filc0 - only what's needed for clang build
-    filc0-src-filtered = builtins.path {
-      path = filc0-src;
-      name = "filc0-source";
-      filter = path: type:
-        let
-          relPath = lib.removePrefix (toString filc0-src + "/") (toString path);
-          topDir = builtins.head (lib.splitString "/" relPath);
-        in
-        builtins.elem topDir ["llvm" "clang" "cmake" "third-party"];
-    };
-
-    # Filtered sources for different parts of the monorepo
-    # libcxx-src = filterFilcSource "libcxx" ["llvm" "clang" "cmake" "third-party" "libcxx" "libc" "libcxxabi" "runtimes"];
-    # libpas-src = filterFilcSource "libpas" ["libpas" "filc"];
-    # filc-projects-src = filterFilcSource "filc-projects" ["projects"];
-
     commonLLVMOptions = {
       CMAKE_BUILD_TYPE = "RelWithDebInfo";
       LLVM_ENABLE_ASSERTIONS = true;
@@ -273,7 +239,7 @@
     filc0 = base.ccacheStdenv.mkDerivation {
       pname = "filc0";
       version = "git";
-      src = filc0-src-filtered;
+      src = filc0-src;
 
       enableParallelBuilding = true;
 
@@ -379,6 +345,21 @@
         --add-flags "-isystem ${libmojo}/include" \
         --add-flags "-L${libmojo}/lib"
       ln -s clang $out/bin/clang++
+    '';
+
+    filc3xx = base.runCommand "filc3xx" {
+      nativeBuildInputs = [base.makeWrapper];
+    } ''
+      mkdir -p $out/bin
+      makeWrapper ${filc2}/bin/clang $out/bin/clang \
+        --add-flags "-isystem ${libmojo}/include" \
+        --add-flags "-L${libmojo}/lib"    
+      makeWrapper ${filc2}/bin/clang++ $out/bin/clang++ \
+        --add-flags "-nostdinc++" \
+        --add-flags "-isystem ${filc-libcxx}/include/c++" \
+        --add-flags "-isystem ${libmojo}/include" \
+        --add-flags "-L${filc-libcxx}/lib" \
+        --add-flags "-L${libmojo}/lib"        
     '';
 
     # Then we use filc3 to build libcxx!
@@ -692,14 +673,14 @@
     filc-cc = base.runCommand "filc-cc" {} ''
       mkdir -p $out/bin
       ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
-      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/gcc
+#      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/gcc
       ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/clang++
-      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/g++
+#      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/g++
     '';
 
     filcache = flavor: base.writeShellScriptBin ("ccache-${flavor}") ''
       ${setupCcache}
-      ${base.ccache}/bin/ccache ${filc3}/bin/${flavor} "$@"
+      ${base.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "$@"
     '';
 
     # Complete Fil-C sysroot - the full memory-safe sandwich + C++
@@ -719,6 +700,7 @@
     filc-bintools = base.wrapBintoolsWith {
       bintools = base.binutils-unwrapped;
       libc     = filc-sysroot;
+      defaultHardeningFlags = [];
 
       extraBuildCommands = ''
         echo "-L${libmojo}/lib" >> $out/nix-support/libc-ldflags
@@ -733,13 +715,13 @@
       libc     = filc-sysroot;
       libcxx   = filc-libcxx;
       bintools = filc-bintools;
-      isClang  = true;
 
       extraBuildCommands = ''
         echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
-        echo "-nostdinc++" >> $out/nix-support/libcxx-cxxflags
-        echo "-isystem ${filc-libcxx}/include/c++" >> $out/nix-support/libcxx-cxxflags
+#        echo "-nostdinc++" >> $out/nix-support/libcxx-cxxflags
+#        echo "-isystem ${filc-libcxx}/include/c++" >> $out/nix-support/libcxx-cxxflags
         echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
+        echo "-gz=none" >> $out/nix-support/cc-cflags
       '';
     };
 
@@ -783,6 +765,11 @@
 
     filenv = base.overrideCC base.stdenv filcc;
     withFilC = pkg: pkg.override { stdenv = filenv; };
+    
+    # Combine withFilC, override, and overrideAttrs in one call
+    # Usage: fix base.pkg { override attrs } (old: { overrideAttrs })
+    fix = pkg: overrideArgs: overrideAttrsFunc:
+      (withFilC (pkg.override overrideArgs)).overrideAttrs overrideAttrsFunc;
 
     parallelize = pkg: pkg.overrideAttrs (_: {
       enableParallelBuilding = true;
@@ -805,14 +792,15 @@
 
     # Sample packages built with Fil-C
     sample-packages = import ./packages.nix {
-      inherit base filenv filc-src withFilC parallelize dontTest debug;
+      inherit base filenv filc-src withFilC fix parallelize dontTest debug;
       inherit kitty-doom-src doom1-wad puredoom-h;
       inherit wasm3-src;
     };
 
     # Ports: packages built directly from fil-c/projects vendored sources
     ports = import ./fil-c-projects.nix {
-      inherit base filenv filc-src filcc;
+      inherit base filenv filcc;
+      filc-src = filc-projects-src;
     };
 
     # Combined: all ports merged into single output
@@ -900,11 +888,13 @@
       pure = base.mkShell {
         name = "filc-pure";
 
-        buildInputs = with ports; [
-          bash coreutils grep sed diffutils
-          vim git tmux
-          zlib openssl curl
+        buildInputs = with sample-packages; [
+          bash coreutils
+          gawk gnused gnugrep
+          gnutar bzip2 
+          tmux
           sqlite lua
+          nano nethack 
         ];
       };
 

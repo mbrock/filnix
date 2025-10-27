@@ -1,11 +1,6 @@
-{ base, filenv, filc-src, filcc }:
+{ base, filenv, filc-sources, filcc }:
 
 let
-  filc-sources = base.runCommand "filc-all-sources" {} ''
-    mkdir -p $out
-    cp -r ${filc-src}/projects/* $out/
-  '';
-  
   helpers = import ./fil-c-helpers.nix { inherit base filenv; };
   
   minimal = helpers.minimal filc-sources;

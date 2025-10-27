@@ -1,8 +1,8 @@
 # Sample packages built with Fil-C
 # This is a catalog of packages we're testing with Fil-C
-{ base, filenv, filc-src, withFilC, parallelize, dontTest, debug,
+{ base, filenv, filc-src, withFilC, fix, parallelize, dontTest, debug,
   kitty-doom-src, doom1-wad, puredoom-h,
-  wasm3-src 
+  wasm3-src
 }:
 
 rec {
@@ -11,6 +11,11 @@ rec {
   gnused = parallelize (withFilC base.gnused);
   gnutar = parallelize (withFilC base.gnutar);
   bzip2 = parallelize (withFilC base.bzip2);
+  gnugrep = parallelize (fix base.gnugrep {
+    inherit pcre2;
+  } {
+    doCheck = false;
+  });
 
   readline = (withFilC base.readline).override {
     inherit ncurses;
@@ -55,11 +60,19 @@ rec {
     };
   };
 
-  lua5 = (withFilC base.lua).override {
+  lua = (withFilC base.lua).override {
     inherit readline;
   };
 
-  coreutils = withFilC base.coreutils;
+  coreutils = fix base.coreutils {
+    inherit gmp;
+  } (old: {
+    doCheck = false;
+  });
+
+  gmp = fix base.gmp {} (old: {
+    doCheck = false;
+  });
 
   bash = ((withFilC base.bash).overrideAttrs (old: {
     patches = (old.patches or []) ++ [
@@ -114,26 +127,30 @@ rec {
       '';
     });
 
-  openssl = 
-    filenv.mkDerivation (final: {
-      src = "${filc-src}/projects/openssl-${final.version}";
-      pname = "openssl";
-      version = "3.3.1";
-      enableParallelBuilding = true;
-      nativeBuildInputs = with base; [perl];
-      buildInputs = [zlib];
-      configurePhase = ''
-        ./Configure zlib --prefix=$out --libdir=$out/lib
-      '';
-      patchPhase = ''
-        patchShebangs .
-      '';
-      buildPhase = "make -j$NIX_BUILD_CORES && make -j$NIX_BUILD_CORES libcrypto.so";
-      installPhase = ''
-        make -j$NIX_BUILD_CORES install_sw
-        make -j$NIX_BUILD_CORES install_ssldirs
-      '';
-    });
+  openssl = fix base.openssl {
+    inherit zlib;
+  } {};
+
+  # openssl = 
+  #   filenv.mkDerivation (final: {
+  #     src = "${filc-src}/projects/openssl-${final.version}";
+  #     pname = "openssl";
+  #     version = "3.3.1";
+  #     enableParallelBuilding = true;
+  #     nativeBuildInputs = with base; [perl];
+  #     buildInputs = [zlib];
+  #     configurePhase = ''
+  #       ./Configure zlib --prefix=$out --libdir=$out/lib
+  #     '';
+  #     patchPhase = ''
+  #       patchShebangs .
+  #     '';
+  #     buildPhase = "make -j$NIX_BUILD_CORES && make -j$NIX_BUILD_CORES libcrypto.so";
+  #     installPhase = ''
+  #       make -j$NIX_BUILD_CORES install_sw
+  #       make -j$NIX_BUILD_CORES install_ssldirs
+  #     '';
+  #   });
 
   pcre2 = (parallelize (withFilC base.pcre2));
   which = withFilC base.which;
@@ -147,6 +164,10 @@ rec {
     sslSupport = false;
   };
 
+  nano = (withFilC base.nano).override {
+    inherit ncurses;
+  };
+
   tmux = ((withFilC base.tmux).override {
     inherit ncurses libevent libutempter utf8proc;
     withSystemd = false;
@@ -155,19 +176,19 @@ rec {
   gtest = withFilC base.gtest;
 
   zlib = withFilC base.zlib;
-  zlib-ng =( debug ((withFilC base.zlib-ng).override {
-    inherit gtest;
-  })).overrideAttrs (old: {
-    cmakeFlags = old.cmakeFlags ++ [ "-DZLIB_ENABLE_TESTS=OFF" ];
-    outputs = ["out" "dev"];
-  });
+  zlib-ng = debug (fix base.zlib-ng 
+    { inherit gtest; }
+    (old: {
+      cmakeFlags = old.cmakeFlags ++ [ "-DZLIB_ENABLE_TESTS=OFF" ];
+      outputs = ["out" "dev"];
+    }));
 
   libtool = withFilC base.libtool;
 
   graphviz = ((withFilC base.graphviz).overrideAttrs (_: {
-    buildInputs = [bash libtool];
+    buildInputs = [];
     nativeBuildInputs = with base; [
-      autoreconfHook  autoconf python3 bison flex pkg-config
+     libtool autoreconfHook  autoconf python3 bison flex pkg-config
     ];
     configureFlags = [
       "--without-x"
