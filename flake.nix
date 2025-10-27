@@ -696,6 +696,24 @@
     # CVE test payloads for wasm3
     wasm3-cve-payloads = (import ./wasm3-cves.nix { pkgs = base; }).cve-tests;
 
+    # Minimal NixOS configuration for QEMU
+    nixosConfig = nixpkgs.lib.nixosSystem {
+      inherit system;
+      modules = [{
+        boot.loader.grub.device = "/dev/vda";
+        boot.kernelParams = [ "console=ttyS0" ];
+        fileSystems."/" = { device = "/dev/vda1"; fsType = "ext4"; };
+        
+        users.users.root.initialPassword = "root";
+        environment.systemPackages = [ filcc ];
+        services.getty.autologinUser = "root";
+        
+        # Minimal system
+        documentation.enable = false;
+        system.stateVersion = "25.05";
+      }];
+    };
+
   in {
     # Finally, we define the package collection!
     packages.${system} = rec {
@@ -713,6 +731,14 @@
       inherit filcc;
       inherit fil-c-env;
       inherit ports;
+      
+      # Portable QEMU qcow2 image
+      qemu-image = base.callPackage "${nixpkgs}/nixos/lib/make-disk-image.nix" {
+        config = nixosConfig.config;
+        format = "qcow2";
+        diskSize = 4096;  # MB
+        partitionTableType = "legacy";
+      };
     }
 
     // sample-packages
