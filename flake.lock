@@ -1,51 +1,5 @@
 {
   "nodes": {
-    "doom1-wad": {
-      "flake": false,
-      "locked": {
-        "narHash": "sha256-nabmIuMv406W8r4Gl8L/kBzmcZBV1yB53zzEVwO0p3k=",
-        "type": "file",
-        "url": "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad"
-      },
-      "original": {
-        "type": "file",
-        "url": "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad"
-      }
-    },
-    "filc0-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1761473831,
-        "narHash": "sha256-Q36h/Un8HbSHhAfzXBg2pUp2brKuJOFh0QY+p8e7qvQ=",
-        "ref": "nix",
-        "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
-        "revCount": 470939,
-        "type": "git",
-        "url": "https://github.com/mbrock/fil-c"
-      },
-      "original": {
-        "ref": "nix",
-        "rev": "83a0ae7ee07dd09050cc9c331d6ae88d513d0248",
-        "type": "git",
-        "url": "https://github.com/mbrock/fil-c"
-      }
-    },
-    "kitty-doom-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1761520799,
-        "narHash": "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=",
-        "owner": "mbrock",
-        "repo": "kitty-doom",
-        "rev": "ca6c5e40156617489712746bbb594e66293a0aa1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "mbrock",
-        "repo": "kitty-doom",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1761173472,
@@ -62,42 +16,9 @@
         "type": "github"
       }
     },
-    "puredoom-h": {
-      "flake": false,
-      "locked": {
-        "narHash": "sha256-74j2E9FvaiknBaY0OB9EPJKHVayP2q4Zyo8lc0mkZko=",
-        "type": "file",
-        "url": "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h"
-      },
-      "original": {
-        "type": "file",
-        "url": "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h"
-      }
-    },
     "root": {
       "inputs": {
-        "doom1-wad": "doom1-wad",
-        "filc0-src": "filc0-src",
-        "kitty-doom-src": "kitty-doom-src",
-        "nixpkgs": "nixpkgs",
-        "puredoom-h": "puredoom-h",
-        "wasm3-src": "wasm3-src"
-      }
-    },
-    "wasm3-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1725985026,
-        "narHash": "sha256-CmNngYLD/PtiEW8pGORjW4d7TAmW5ZZMBAeKzJYMMdw=",
-        "owner": "wasm3",
-        "repo": "wasm3",
-        "rev": "79d412ea5fcf92f0efe658d52827a0e0a96ff442",
-        "type": "github"
-      },
-      "original": {
-        "owner": "wasm3",
-        "repo": "wasm3",
-        "type": "github"
+        "nixpkgs": "nixpkgs"
       }
     }
   },
