@@ -122,13 +122,13 @@ Now this flake exposes Wasm3 as an ordinary package without marking it as insecu
 
 ## Try It Yourself
 
-If you have Nix with flakes enabled, just run:
+If you have Nix with flakes enabled, you can run
 
 ```bash
 nix develop github:mbrock/filnix#wasm3-cve-test
 ```
 
-This drops you into a shell with:
+and it will drop you into a shell with:
 
 - Fil-C-compiled wasm3 in your PATH
 - The CVE exploit files ready to run
@@ -140,5 +140,8 @@ Then just try:
 wasm3 cve-2022-39974.wasm
 wasm3 cve-2022-34529.wasm
 ```
+
+**However!** Unless you explicitly **add my binary cache**
+by installing Cachix and running `cachix use filc`, instead of dropping you into a shell, it will _first compile all of Fil-C_ which will probably take at least an hour.
 
 [Fil-C](https://fil-c.org/) is very cool. Give it a try!
