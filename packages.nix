@@ -1,7 +1,7 @@
 # Sample packages built with Fil-C
 # This is a catalog of packages we're testing with Fil-C
 { base, filenv, filc-src, withFilC, parallelize, dontTest, debug,
-  kitty-doom-src }:
+  kitty-doom-src, doom1-wad, puredoom-h }:
 
 rec {
   # Some easy ones to get started!
@@ -25,9 +25,26 @@ rec {
     version = "git";
     src = kitty-doom-src;
 
+    nativeBuildInputs = [ base.curl base.makeWrapper ];
+
+    preBuild = ''
+      cp ${doom1-wad} DOOM1.WAD
+      cp ${puredoom-h} src/PureDOOM.h
+      chmod +w src/PureDOOM.h
+      
+      # Fix Carmack's 1993 allocator to use 8-byte alignment instead of 4-byte
+      substituteInPlace src/PureDOOM.h \
+        --replace-fail '(size + 3) & ~3' '(size + 7) & ~7'
+    '';
+
     installPhase = ''
-      mkdir -p $out/bin
-      cp build/kitty-doom $out/bin/
+      mkdir -p $out/bin $out/share/kitty-doom
+      cp build/kitty-doom $out/share/kitty-doom/
+      cp DOOM1.WAD $out/share/kitty-doom/
+      ln -s DOOM1.WAD $out/share/kitty-doom/doom1.wad
+      
+      makeWrapper $out/share/kitty-doom/kitty-doom $out/bin/kitty-doom \
+        --set DOOMWADDIR $out/share/kitty-doom
     '';
 
     meta = {

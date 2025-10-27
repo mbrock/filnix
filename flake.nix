@@ -23,10 +23,22 @@
       url = "github:mbrock/kitty-doom";
       flake = false;
     };
+
+    # DOOM shareware WAD file
+    doom1-wad = {
+      url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
+      flake = false;
+    };
+
+    # PureDOOM single-header library
+    puredoom-h = {
+      url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
+      flake = false;
+    };
   };
 
   outputs = {
-    self, nixpkgs,  filc0-src, kitty-doom-src, ...
+    self, nixpkgs,  filc0-src, kitty-doom-src, doom1-wad, puredoom-h, ...
   }:  let
 
     system = "x86_64-linux";
@@ -72,7 +84,7 @@
     };
 
     # Filtered sources for different parts of the monorepo
-    libcxx-src = filterFilcSource "libcxx" ["llvm" "clang" "cmake" "third-party" "libcxx" "libcxxabi" "runtimes"];
+    libcxx-src = filterFilcSource "libcxx" ["llvm" "clang" "cmake" "third-party" "libcxx" "libc" "libcxxabi" "runtimes"];
     libpas-src = filterFilcSource "libpas" ["libpas" "filc"];
     filc-projects-src = filterFilcSource "filc-projects" ["projects"];
 
@@ -563,7 +575,7 @@
 
     filcache = flavor: base.writeShellScriptBin ("ccache-${flavor}") ''
       ${setupCcache}
-      ${base.ccache}/bin/ccache ${filc2}/bin/${flavor} "$@"
+      ${base.ccache}/bin/ccache ${filc3}/bin/${flavor} "$@"
     '';
 
     # Complete Fil-C sysroot - the full memory-safe sandwich + C++
@@ -700,7 +712,7 @@
     # Sample packages built with Fil-C
     sample-packages = import ./packages.nix {
       inherit base filenv filc-src withFilC parallelize dontTest debug;
-      inherit kitty-doom-src;
+      inherit kitty-doom-src doom1-wad puredoom-h;
     };
 
     # Ports: packages built directly from fil-c/projects vendored sources

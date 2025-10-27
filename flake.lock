@@ -1,5 +1,17 @@
 {
   "nodes": {
+    "doom1-wad": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-nabmIuMv406W8r4Gl8L/kBzmcZBV1yB53zzEVwO0p3k=",
+        "type": "file",
+        "url": "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad"
+      },
+      "original": {
+        "type": "file",
+        "url": "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad"
+      }
+    },
     "filc0-src": {
       "flake": false,
       "locked": {
@@ -46,11 +58,25 @@
         "type": "path"
       }
     },
+    "puredoom-h": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-74j2E9FvaiknBaY0OB9EPJKHVayP2q4Zyo8lc0mkZko=",
+        "type": "file",
+        "url": "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h"
+      },
+      "original": {
+        "type": "file",
+        "url": "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h"
+      }
+    },
     "root": {
       "inputs": {
+        "doom1-wad": "doom1-wad",
         "filc0-src": "filc0-src",
         "kitty-doom-src": "kitty-doom-src",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "puredoom-h": "puredoom-h"
       }
     }
   },
