@@ -326,6 +326,7 @@
       
       # Wrap clang with Fil-C paths using explicit flags
       makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang \
+        --add-flags -v \
         --add-flags "--gcc-toolchain=${gcc.cc}" \
         --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
         --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
@@ -592,6 +593,7 @@
 
       extraBuildCommands = ''
         echo "-L${libmojo}/lib" >> $out/nix-support/libc-ldflags
+        echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
         echo "${filc-sysroot}/lib/ld-yolo-x86_64.so" > $out/nix-support/dynamic-linker
       '';
     };
