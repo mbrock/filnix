@@ -28,7 +28,7 @@ For Fil-C specifically, using Nix provides several important benefits:
 - It enables reproducible compiler toolchain builds that can be shared and verified.
 - Package porting becomes straightforward using nixpkgs overrides.
 - All dependencies are managed automatically with proper isolation.
-- On NixOS, you don't need any directory layout hacks to run mixed safe and unsafe binaries side-by-side.
+- You don't need any directory layout hacks to run mixed safe and unsafe binaries side-by-side. This repository's packaging ensures Fil-C always uses the intended paths and won't be confused by your system's gcc or glibc, even if you're running Nix on Ubuntu or another distro. (Note: Nix can be used on any Linux distribution and is officially packaged for Debian and Ubuntu.)
 
 Binary caches (such as =filc.cachix.org=) are like any other binary distribution source - you're downloading pre-built binaries from someone and trusting them. Nix verifies signatures to ensure the binaries came from the cache operator, but this is just authentication of the source, not verification of correctness. The store path hash is derived from inputs, not outputs, so it provides no cryptographic proof that the binaries match what those inputs should produce. Until an organization with a proper security team and infrastructure (ideally NixOS itself) takes responsibility for a binary cache, Nix's derivation hashing is not a substitute for auditing your supply chain. If you need assurance about what you're running, build locally from source.
 
