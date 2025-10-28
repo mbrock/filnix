@@ -203,13 +203,18 @@ Some types need explicit alignment for Fil-C's capability system.
  } io_buf;
 ```
 
-### Pattern 6: Header additions
+### Pattern 6: Header inclusion
 
-Most projects just need the Fil-C runtime header.
+When a project uses Fil-C runtime functions (like `zptrtable`), it needs to include the header.
 
 **Python's `Python.h`**, **Perl's `perl.h`**, etc:
 ```c
 +#include <stdfil.h>
 ```
 
-This provides access to `zptrtable`, `zexact_ptrtable`, and other Fil-C runtime functions.
+This provides declarations for:
+- `zptrtable_new()`, `zptrtable_encode()`, `zptrtable_decode()`
+- `zexact_ptrtable_new()`, `zexact_ptrtable_encode()`, `zexact_ptrtable_decode()`
+- Other Fil-C runtime functions
+
+**Note**: Projects that don't use pointer tables or other Fil-C features may need no changes at all (like coreutils, busybox, ncurses).
