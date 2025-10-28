@@ -273,10 +273,7 @@
       in ''
         export HOME=$TMPDIR
         export HOSTNAME=nix-build
-        export CCACHE_COMPRESS=1
-        export CCACHE_SLOPPINESS=random_seed
-        export CCACHE_DIR="/nix/var/cache/ccache"
-        export CCACHE_UMASK=007
+        ${setupCcache}
 
         mkdir -p build
         cmake -B build -S llvm -G Ninja ${lib.concatStringsSep " " (cmakeFlags allOptions)}
@@ -732,10 +729,14 @@
 
     # Standard ccache setup for all builds
     setupCcache = ''
-      export CCACHE_COMPRESS=1
-      export CCACHE_SLOPPINESS=random_seed
-      export CCACHE_DIR="/nix/var/cache/ccache"
-      export CCACHE_UMASK=007
+      if [ -w "/nix/var/cache/ccache" ]; then
+        export CCACHE_DIR=/nix/var/cache/ccache
+        export CCACHE_COMPRESS=1
+        export CCACHE_SLOPPINESS=random_seed
+        export CCACHE_UMASK=007
+      else
+        export CCACHE_DISABLE=1
+      fi
     '';
 
     # Merge multiple derivations into one(layers applied in order)

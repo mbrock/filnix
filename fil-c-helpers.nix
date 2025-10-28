@@ -3,6 +3,17 @@
 let
   lib = base.lib;
   commonTools = with base; [ perl pkg-config autoconf automake libtool python3 ccache ];
+  
+  setupCcache = ''
+    if [ -w "/nix/var/cache/ccache" ]; then
+      export CCACHE_DIR=/nix/var/cache/ccache
+      export CCACHE_COMPRESS=1
+      export CCACHE_SLOPPINESS=random_seed
+      export CCACHE_UMASK=007
+    else
+      export CCACHE_DISABLE=1
+    fi
+  '';
 
   # Filter filc-sources to only include a specific project directory
   # This ensures each project only depends on its own source, not the entire monorepo
@@ -65,8 +76,7 @@ in rec {
       enableParallelBuilding = true;
       prePatch = "patchShebangs .";
       preConfigure = ''
-        export CCACHE_DIR=/nix/var/cache/ccache
-        export CCACHE_COMPRESS=1
+        ${setupCcache}
         mkdir -p $out
         ${if pre != null then pre else ""}
       '';
@@ -92,8 +102,7 @@ in rec {
       enableParallelBuilding = true;
       prePatch = "patchShebangs .";
       preConfigure = ''
-        export CCACHE_DIR=/nix/var/cache/ccache
-        export CCACHE_COMPRESS=1
+        ${setupCcache}
         ${if pre != null then pre else ""}
       '';
     } // {});
@@ -114,8 +123,7 @@ in rec {
       enableParallelBuilding = true;
       prePatch = "patchShebangs .";
       preConfigure = ''
-        export CCACHE_DIR=/nix/var/cache/ccache
-        export CCACHE_COMPRESS=1
+        ${setupCcache}
       '';
     };
 
@@ -136,8 +144,7 @@ in rec {
       enableParallelBuilding = true;
       prePatch = "patchShebangs .";
       preConfigure = ''
-        export CCACHE_DIR=/nix/var/cache/ccache
-        export CCACHE_COMPRESS=1
+        ${setupCcache}
       '';
     } // (if install != null then { installPhase = install; } else {}));
 }
