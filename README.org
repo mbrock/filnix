@@ -30,6 +30,34 @@ For Fil-C, this enables:
 
 Binary caches (like =filc.cachix.org=) are trusted vendors that sign pre-built artifacts. Nix verifies signatures but doesn't cryptographically verify binary contents. Trust cache operators or build locally.
 
+** NixOS: Selective Memory Safety
+
+NixOS stores all packages in =/nix/store/hash-package= instead of =/usr=, making it trivial to run memory-safe and regular binaries side-by-side without conflicts or special filesystem layouts.
+
+This flake enables selective hardening - replace security-critical components with Fil-C versions while keeping others unchanged:
+
+#+BEGIN_SRC nix
+# configuration.nix
+{ pkgs, ... }:
+let
+  filc = (builtins.getFlake "github:mbrock/filnix").packages.${pkgs.system};
+in {
+  environment.systemPackages = [
+    filc.bash          # Memory-safe shell
+    filc.coreutils     # Memory-safe core utilities
+    filc.openssh       # Memory-safe SSH
+    pkgs.vim           # Regular editor
+    pkgs.firefox       # Regular browser
+  ];
+
+  programs.bash.package = filc.bash;  # System shell
+}
+#+END_SRC
+
+Each package has explicit store path dependencies, so =filc.bash= uses Fil-C's libc while =pkgs.vim= uses the regular glibc. No chroot, no container, no directory tricks - they coexist naturally.
+
+Practical: harden network-facing and privileged components (openssh, curl, bash, coreutils) while deferring non-critical software. Incremental migration path to memory-safe userland.
+
 ** Repository Structure
 
 Upstream fil-c is a development repository with shell-script builds. This repository packages the compiler and runtime as Nix derivations with:
