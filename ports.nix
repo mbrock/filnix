@@ -602,37 +602,7 @@ in rec {
 
   # kitty-doom: Memory-safe DOOM for terminal
   # Built from upstream source (not a nixpkgs port)
-  kitty-doom = filenv.mkDerivation rec {
-    src = base.fetchgit {
-      url = "https://github.com/mbrock/kitty-doom";
-      rev = "ca6c5e40156617489712746bbb594e66293a0aa1";
-      hash = "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=";
-    };
-    pname = "kitty-doom";
-    version = "0.1.0";
-    enableParallelBuilding = true;
-
-    nativeBuildInputs = with base; [ pkg-config ];
-
-    doom1-wad = base.fetchurl {
-      url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
-      hash = "sha256-0wf7r8kaalpn2qc74ng8flqg6fwwwbrviq0mwhkxjrqya2z46z8x";
-    };
-
-    puredoom-h = base.fetchurl {
-      url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
-      hash = "sha256-0rypvk8m90qvir13jiwxw7jklszawsvz3g7h2g5if4361mqghbbg";
-    };
-
-    preBuild = ''
-      cp ${puredoom-h} PureDOOM.h
-      cp ${doom1-wad} doom1.wad
-    '';
-
-    installPhase = ''
-      mkdir -p $out/bin $out/share/doom
-      cp kitty-doom $out/bin/
-      cp doom1.wad $out/share/doom/
-    '';
+  kitty-doom = base.callPackage ./kitty-doom.nix {
+    stdenv = filenv;
   };
 }
