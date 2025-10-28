@@ -46,8 +46,8 @@ void* decoded = zptrtable_decode(table, encoded);
 
 Perl's XS (eXtension System) extensively converts pointers to integers using `PTR2IV` / `INT2PTR` macros. The Fil-C port creates pointer tables at multiple levels:
 
-1. **Global table** (`Perl_xsub_ptrtable`) for shared XS usage
-2. **Per-module tables** for specific subsystems:
+- **Global table** (`Perl_xsub_ptrtable`) for shared XS usage
+- **Per-module tables** for specific subsystems:
    - `builtin_ptrtable` in builtin.c for `BuiltinFuncDescriptor*`
    - `encode_ptrtable` in Encode.xs for character encoding contexts
    - `threads_ptrtable` in threads.xs for thread management
@@ -317,10 +317,10 @@ Obstack is a stack-like allocator from gnulib. The `__BPTR_ALIGN` macro aligns p
 
 **How it works:**
 
-1. Compute alignment offset as pure integer arithmetic: `(B) + ((__P - (B) + (A)) & ~(A))`
-2. Use `zmkptr(__P, computed_address)` to create new pointer
-3. Capability bounds derived from base pointer `__P`
-4. Result: aligned pointer with correct provenance
+- Compute alignment offset as pure integer arithmetic: `(B) + ((__P - (B) + (A)) & ~(A))`
+- Use `zmkptr(__P, computed_address)` to create new pointer
+- Capability bounds derived from base pointer `__P`
+- Result: aligned pointer with correct provenance
 
 **Seen in:** bison, grep, sed, tar, texinfo, m4 (all use gnulib's obstack)
 
@@ -791,7 +791,7 @@ typedef struct _PyInterpreterFrame {
 
 **Architecture:**
 
-1. **Global table** for shared usage:
+- **Global table** for shared usage:
 
 ```c
 // perl.h
@@ -804,7 +804,7 @@ typedef struct _PyInterpreterFrame {
 +}
 ```
 
-2. **Module-specific tables** for subsystem isolation:
+- **Module-specific tables** for subsystem isolation:
 
 ```c
 // builtin.c
@@ -817,7 +817,7 @@ typedef struct _PyInterpreterFrame {
 +static zptrtable* threads_ptrtable;
 ```
 
-3. **Typemap defaults** updated in `lib/ExtUtils/typemap`:
+- **Typemap defaults** updated in `lib/ExtUtils/typemap`:
 
 ```c
  T_PTR
@@ -1664,11 +1664,11 @@ TEST(pthread_priority) { ... }
 
 **Overhead sources:**
 
-1. **Capability checks:** Bounds validation on every pointer deference
-2. **Pointer table lookups:** Hash table overhead for encoding/decoding
-3. **GC allocation:** Frame allocation (Python) creates GC pressure
-4. **No SIMD:** Many optimizations disabled (SSE, AVX)
-5. **No assembly:** Bytecode dispatch (QuickJS), trampolines (libffi) use portable C
+- **Capability checks:** Bounds validation on every pointer deference
+- **Pointer table lookups:** Hash table overhead for encoding/decoding
+- **GC allocation:** Frame allocation (Python) creates GC pressure
+- **No SIMD:** Many optimizations disabled (SSE, AVX)
+- **No assembly:** Bytecode dispatch (QuickJS), trampolines (libffi) use portable C
 
 **Measured overhead (from upstream):** 1.5x - 4x vs unsafe C
 
@@ -1711,12 +1711,12 @@ FILC_ROOT ?= /usr/local
 
 Porting C/C++ to Fil-C requires understanding the **capability model** and applying systematic patterns:
 
-1. **Pointer tables** (zptrtable) for pointer-as-integer conversions
-2. **Tagged pointer ops** (z\*ptr) for metadata in pointer bits
-3. **Pointer creation** (zmkptr) for alignment and arithmetic
-4. **Atomic operations** (void\*\_Atomic) for concurrent pointers
-5. **Constructor registration** replacing ELF section magic
-6. **Syscall wrappers** (zsys\_\*) for kernel interaction
+- **Pointer tables** (zptrtable) for pointer-as-integer conversions
+- **Tagged pointer ops** (z\*ptr) for metadata in pointer bits
+- **Pointer creation** (zmkptr) for alignment and arithmetic
+- **Atomic operations** (void\*\_Atomic) for concurrent pointers
+- **Constructor registration** replacing ELF section magic
+- **Syscall wrappers** (zsys\_\*) for kernel interaction
 
 The 71 projects analyzed demonstrate these patterns are **sufficient** to port substantial codebases — from text editors (vim, emacs) to language runtimes (python, perl) to system services (systemd, openssh).
 
