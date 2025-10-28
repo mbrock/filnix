@@ -28,6 +28,45 @@ make -j20
 
 This will regenerate all patches from the git history.
 
+## Applying patches in Nix
+
+### How nixpkgs applies patches
+
+The `stdenv.mkDerivation` patch phase uses GNU patch with these defaults:
+
+- **Strip level**: `-p1` (removes leading directory from patch paths)
+- **Fuzz tolerance**: `--fuzz=2` (GNU patch's built-in default)
+
+This means patches can tolerate ~2 lines of shifted context, making them work across minor version changes where line numbers have moved slightly.
+
+### Customizing patch behavior
+
+You can override the default patch flags:
+
+```nix
+stdenv.mkDerivation {
+  patches = [ ./my-patch.patch ];
+
+  # Disable fuzz for strict matching
+  patchFlags = [ "-p1" "--fuzz=0" ];
+
+  # Prevent .orig backup files when fuzzy matching succeeds
+  patchFlags = [ "-p1" "--no-backup-if-mismatch" ];
+}
+```
+
+### Using the patches.nix attrset
+
+The `patches.nix` file provides an attribute set of all ported projects:
+
+```nix
+{
+  simdutf = { version = "5.5.0"; patches = [./patch/simdutf-5.5.0.patch]; };
+  openssl = { version = "3.3.1"; patches = [./patch/openssl-3.3.1.patch]; };
+  # ... 76 total projects
+}
+```
+
 ## Common patch patterns
 
 The patches use several patterns to make code Fil-C compatible.

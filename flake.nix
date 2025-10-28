@@ -792,7 +792,7 @@
 
     # Sample packages built with Fil-C
     sample-packages = import ./packages.nix {
-      inherit base filenv filc-src withFilC fix parallelize dontTest debug;
+      inherit base filenv filc-src withFilC fix;
       inherit kitty-doom-src doom1-wad puredoom-h;
       inherit wasm3-src;
     };

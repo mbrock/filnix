@@ -1,30 +1,39 @@
 # Sample packages built with Fil-C
 # This is a catalog of packages we're testing with Fil-C
-{ base, filenv, filc-src, withFilC, fix, parallelize, dontTest, debug,
+{ base, filenv, filc-src, withFilC, fix,
   kitty-doom-src, doom1-wad, puredoom-h,
   wasm3-src
 }:
 
 rec {
   # Some easy ones to get started!
-  gawk = parallelize (withFilC base.gawk);
-  gnused = parallelize (withFilC base.gnused);
-  gnutar = parallelize (withFilC base.gnutar);
-  bzip2 = parallelize (withFilC base.bzip2);
-  gnugrep = parallelize (fix base.gnugrep {
+  gawk = fix base.gawk {} (old: {
+    enableParallelBuilding = true;
+  });
+  gnused = fix base.gnused {} (old: {
+    enableParallelBuilding = true;
+  });
+  gnutar = fix base.gnutar {} (old: {
+    enableParallelBuilding = true;
+  });
+  bzip2 = fix base.bzip2 {} (old: {
+    enableParallelBuilding = true;
+  });
+  gnugrep = fix base.gnugrep {
     inherit pcre2;
-  } {
+  } (old: {
     doCheck = false;
+    enableParallelBuilding = true;
   });
 
-  readline = (withFilC base.readline).override {
+  readline = fix base.readline {
     inherit ncurses;
-  };
+  } (old: {});
 
   # Nethack works!
-  nethack = (withFilC base.nethack).override {
+  nethack = fix base.nethack {
     inherit ncurses;
-  };
+  } (old: {});
 
   # Memory-safe DOOM for your Kitty/Ghostty terminal
   kitty-doom = filenv.mkDerivation {
@@ -60,9 +69,9 @@ rec {
     };
   };
 
-  lua = (withFilC base.lua).override {
+  lua = fix base.lua {
     inherit readline;
-  };
+  } (old: {});
 
   coreutils = fix base.coreutils {
     inherit gmp;
@@ -74,25 +83,25 @@ rec {
     doCheck = false;
   });
 
-  bash = ((withFilC base.bash).overrideAttrs (old: {
+  bash = fix base.bash {
+    inherit readline;
+  } (old: {
     patches = (old.patches or []) ++ [
       ./patches/bash-5.2.32-filc.patch
     ];
-  })).override {
-    inherit readline;
-  };
+  });
 
-  libsodium = withFilC (base.libsodium.overrideAttrs (_: {
+  libsodium = fix base.libsodium {} (old: {
     hardeningDisable = ["stackprotector"];
     configureFlags = [ "--disable-ssp" ];
     separateDebugInfo = false;
     doCheck = false;
-  }));
+  });
 
-  gflags = withFilC base.gflags;
+  gflags = fix base.gflags {} (old: {});
 
-  quickjs = withFilC base.quickjs; # slow build
-  sqlite = withFilC base.sqlite;   # slow build
+  quickjs = fix base.quickjs {} (old: {}); # slow build
+  sqlite = fix base.sqlite {} (old: {});   # slow build
 
   wasm3 =
     filenv.mkDerivation {
@@ -152,40 +161,46 @@ rec {
   #     '';
   #   });
 
-  pcre2 = (parallelize (withFilC base.pcre2));
-  which = withFilC base.which;
-  file = withFilC base.file;
-  libxml2 = dontTest (parallelize (withFilC base.libxml2));
-
-  ncurses = withFilC base.ncurses;
-  libutempter = withFilC base.libutempter;
-  utf8proc = withFilC base.utf8proc;
-  libevent = (withFilC base.libevent).override {
-    sslSupport = false;
-  };
-
-  nano = (withFilC base.nano).override {
-    inherit ncurses;
-  };
-
-  tmux = ((withFilC base.tmux).override {
-    inherit ncurses libevent libutempter utf8proc;
-    withSystemd = false;
+  pcre2 = fix base.pcre2 {} (old: {
+    enableParallelBuilding = true;
+  });
+  which = fix base.which {} (old: {});
+  file = fix base.file {} (old: {});
+  libxml2 = fix base.libxml2 {} (old: {
+    enableParallelBuilding = true;
+    doCheck = false;
   });
 
-  gtest = withFilC base.gtest;
+  ncurses = fix base.ncurses {} (old: {});
+  libutempter = fix base.libutempter {} (old: {});
+  utf8proc = fix base.utf8proc {} (old: {});
+  libevent = fix base.libevent {
+    sslSupport = false;
+  } (old: {});
 
-  zlib = withFilC base.zlib;
-  zlib-ng = debug (fix base.zlib-ng 
+  nano = fix base.nano {
+    inherit ncurses;
+  } (old: {});
+
+  tmux = fix base.tmux {
+    inherit ncurses libevent libutempter utf8proc;
+    withSystemd = false;
+  } (old: {});
+
+  gtest = fix base.gtest {} (old: {});
+
+  zlib = fix base.zlib {} (old: {});
+  zlib-ng = fix base.zlib-ng 
     { inherit gtest; }
     (old: {
       cmakeFlags = old.cmakeFlags ++ [ "-DZLIB_ENABLE_TESTS=OFF" ];
       outputs = ["out" "dev"];
-    }));
+      nativeBuildInputs = old.nativeBuildInputs or [] ++ [base.breakpointHook];
+    });
 
-  libtool = withFilC base.libtool;
+  libtool = fix base.libtool {} (old: {});
 
-  graphviz = ((withFilC base.graphviz).overrideAttrs (_: {
+  graphviz = fix base.graphviz {} (old: {
     buildInputs = [];
     nativeBuildInputs = with base; [
      libtool autoreconfHook  autoconf python3 bison flex pkg-config
@@ -195,7 +210,7 @@ rec {
       "--disable-ltdl"
     ];
     doCheck = false;
-  }));
+  });
 
   libpng = 
     filenv.mkDerivation (final: {
@@ -214,7 +229,7 @@ rec {
     });
 
   # doesn't build
-  libjpeg = (withFilC base.libjpeg).overrideAttrs (_: {
+  libjpeg = fix base.libjpeg {} (old: {
     doCheck = false;
   });
 }
