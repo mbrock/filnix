@@ -45,18 +45,23 @@ in {
   environment.systemPackages = [
     filc.bash          # Memory-safe shell
     filc.coreutils     # Memory-safe core utilities
-    filc.openssh       # Memory-safe SSH
     pkgs.vim           # Regular editor
     pkgs.firefox       # Regular browser
   ];
 
   programs.bash.package = filc.bash;  # System shell
+
+  # Run SSH server with memory safety
+  services.openssh = {
+    enable = true;
+    package = filc.openssh;
+  };
 }
 #+END_SRC
 
 Each package has explicit store path dependencies, so =filc.bash= uses Fil-C's libc while =pkgs.vim= uses the regular glibc. No chroot, no container, no directory tricks - they coexist naturally.
 
-Practical: harden network-facing and privileged components (openssh, curl, bash, coreutils) while deferring non-critical software. Incremental migration path to memory-safe userland.
+Practical: harden network-facing and privileged components (sshd, bash, coreutils) while keeping non-critical software unchanged. The SSH server example is particularly relevant - sshd runs as root, handles network input, and has had numerous memory safety vulnerabilities. Incremental migration path to memory-safe userland.
 
 ** Repository Structure
 
