@@ -22,7 +22,7 @@ Fil-C has been successfully used to run over 100 real-world programs, including 
 
 ** Why Nix
 
-Nix treats builds as pure functions. Every build must explicitly declare all its inputs, build in complete isolation, and produce the same outputs when given the same inputs. The hash in a Nix store path like =/nix/store/abc123-package= is derived from the build inputs, not the outputs. This means different versions of the same package can coexist as separate store paths without conflicts.
+Nix treats builds as pure functions. Every build must explicitly declare all its inputs, build in complete isolation, and ideally produce the same outputs when given the same inputs. The hash in a Nix store path like =/nix/store/abc123-package= is computed from the build inputs (dependencies, source code, build scripts), not from the actual build outputs. This means that if two builds use the same inputs, they get the same store path, even if the build process has some non-determinism that produces slightly different binaries. In other words, the store path hash doesn't guarantee bit-for-bit reproducibility of the build products - it only guarantees that the same inputs were used. This is why different versions of the same package can coexist as separate store paths without conflicts.
 
 For Fil-C specifically, using Nix provides several important benefits:
 - It enables reproducible compiler toolchain builds that can be shared and verified.
@@ -30,7 +30,7 @@ For Fil-C specifically, using Nix provides several important benefits:
 - All dependencies are managed automatically with proper isolation.
 - On NixOS, you don't need any directory layout hacks to run mixed safe and unsafe binaries side-by-side.
 
-Binary caches (such as =filc.cachix.org=) are trusted vendors that sign pre-built artifacts. Nix verifies the signatures on these artifacts, but it doesn't cryptographically verify the binary contents match the declared inputs. This means you need to trust the cache operators, or you can build everything locally yourself.
+Binary caches (such as =filc.cachix.org=) are like any other binary distribution source - you're downloading pre-built binaries from someone and trusting them. Nix verifies signatures to ensure the binaries came from the cache operator, but this is just authentication of the source, not verification of correctness. The store path hash is derived from inputs, not outputs, so it provides no cryptographic proof that the binaries match what those inputs should produce. Until an organization with a proper security team and infrastructure (ideally NixOS itself) takes responsibility for a binary cache, Nix's derivation hashing is not a substitute for auditing your supply chain. If you need assurance about what you're running, build locally from source.
 
 ** NixOS: Selective Memory Safety
 
