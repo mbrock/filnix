@@ -818,7 +818,6 @@
     # Ports: nixpkgs packages with upstream fil-c patches
     ports = import ./ports.nix {
       inherit base filenv filc-src withFilC fix;
-      inherit wasm3-src kitty-doom-src doom1-wad puredoom-h;
     };
 
     # Combined: all projects merged into single output

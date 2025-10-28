@@ -1,7 +1,7 @@
 # Ported packages from upstream fil-c with patches
 # Based on ports/patches.nix
 # See nixpkgs-package-info.nix for package metadata (args, versions)
-{ base, filenv, filc-src, withFilC, fix, wasm3-src ? null, kitty-doom-src ? null, doom1-wad ? null, puredoom-h ? null }:
+{ base, filenv, filc-src, withFilC, fix }:
 
 let
   # Helper to create a ported package with source + patches override
@@ -587,8 +587,12 @@ in rec {
 
   # wasm3: Fast WebAssembly interpreter
   # Built from upstream source (not a nixpkgs port)
-  wasm3 = assert wasm3-src != null; filenv.mkDerivation {
-    src = wasm3-src;
+  wasm3 = filenv.mkDerivation {
+    src = base.fetchgit {
+      url = "https://github.com/wasm3/wasm3";
+      rev = "79d412ea5fcf92f0efe658d52827a0e0a96ff442";
+      hash = "sha256-CmNngYLD/PtiEW8pGORjW4d7TAmW5ZZMBAeKzjYMMdw=";
+    };
     pname = "wasm3";
     version = "0.5.1";
     enableParallelBuilding = true;
@@ -598,24 +602,37 @@ in rec {
 
   # kitty-doom: Memory-safe DOOM for terminal
   # Built from upstream source (not a nixpkgs port)
-  kitty-doom = assert kitty-doom-src != null && doom1-wad != null && puredoom-h != null;
-    filenv.mkDerivation {
-      src = kitty-doom-src;
-      pname = "kitty-doom";
-      version = "0.1.0";
-      enableParallelBuilding = true;
-
-      nativeBuildInputs = with base; [ pkg-config ];
-
-      preBuild = ''
-        cp ${puredoom-h} PureDOOM.h
-        cp ${doom1-wad} doom1.wad
-      '';
-
-      installPhase = ''
-        mkdir -p $out/bin $out/share/doom
-        cp kitty-doom $out/bin/
-        cp doom1.wad $out/share/doom/
-      '';
+  kitty-doom = filenv.mkDerivation rec {
+    src = base.fetchgit {
+      url = "https://github.com/mbrock/kitty-doom";
+      rev = "ca6c5e40156617489712746bbb594e66293a0aa1";
+      hash = "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=";
     };
+    pname = "kitty-doom";
+    version = "0.1.0";
+    enableParallelBuilding = true;
+
+    nativeBuildInputs = with base; [ pkg-config ];
+
+    doom1-wad = base.fetchurl {
+      url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
+      hash = "sha256-0wf7r8kaalpn2qc74ng8flqg6fwwwbrviq0mwhkxjrqya2z46z8x";
+    };
+
+    puredoom-h = base.fetchurl {
+      url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
+      hash = "sha256-0rypvk8m90qvir13jiwxw7jklszawsvz3g7h2g5if4361mqghbbg";
+    };
+
+    preBuild = ''
+      cp ${puredoom-h} PureDOOM.h
+      cp ${doom1-wad} doom1.wad
+    '';
+
+    installPhase = ''
+      mkdir -p $out/bin $out/share/doom
+      cp kitty-doom $out/bin/
+      cp doom1.wad $out/share/doom/
+    '';
+  };
 }
