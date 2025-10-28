@@ -1,0 +1,2666 @@
+{
+  "attr": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchurl",
+        "gettext",
+        "lib",
+        "stdenv"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "gettext",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "bin",
+      "dev",
+      "out",
+      "man",
+      "doc"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/attr/musl.patch"
+    ],
+    "path": "pkgs/development/libraries/attr/default.nix",
+    "pname": "attr",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "2.5.2"
+  },
+  "bash": {
+    "args": {
+      "optional": [
+        "forFHSEnv",
+        "interactive",
+        "withDocs"
+      ],
+      "required": [
+        "bison",
+        "buildPackages",
+        "coreutils",
+        "fetchurl",
+        "glibcLocales",
+        "gnused",
+        "lib",
+        "libredirect",
+        "pkgsStatic",
+        "readline",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook",
+        "util-linux"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "readline",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--without-bash-malloc",
+      "--with-installed-readline"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "bison",
+        "type": "derivation"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/build-support/setup-hooks/separate-debug-info.sh",
+        "path": "separate-debug-info.sh",
+        "type": "setup-hook"
+      }
+    ],
+    "nixVars": {
+      "NIX_CFLAGS_COMPILE": "-DSYS_BASHRC=\"/etc/bashrc\"\n-DSYS_BASH_LOGOUT=\"/etc/bash_logout\"\n-DDEFAULT_PATH_VALUE=\"/no-such-path\"\n-DSTANDARD_UTILS_PATH=\"/no-such-path\"\n-DDEFAULT_LOADABLE_BUILTINS_PATH=\"/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9/lib/bash:.\"\n-DNON_INTERACTIVE_LOGIN_SHELLS\n-DSSH_SOURCE_BASHRC\n",
+      "NIX_HARDENING_ENABLE": "bindnow fortify fortify3 pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs",
+      "NIX_MAIN_PROGRAM": "bash"
+    },
+    "outputs": [
+      "out",
+      "dev",
+      "man",
+      "doc",
+      "info",
+      "debug"
+    ],
+    "patches": [
+      "/nix/store/0j41vs0ajmjn81i1mwhgvi24rr5hi4aa-bash53-001",
+      "/nix/store/6iygjlcf64ryrg6jryk6qrjfxxz2i6q8-bash53-002",
+      "/nix/store/bm2dknmrjbsd49idcliys6gyalnbd90i-bash53-003",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/shells/bash/pgrp-pipe-5.patch"
+    ],
+    "path": "pkgs/shells/bash/5.nix",
+    "pname": "bash-interactive",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": true,
+    "strictDeps": true,
+    "version": "5.3p3"
+  },
+  "binutils": {
+    "args": {
+      "optional": [
+        "apple-sdk",
+        "bintools",
+        "coreutils",
+        "defaultHardeningFlags",
+        "extraBuildCommands",
+        "extraPackages",
+        "gnugrep",
+        "isCCTools",
+        "isGNU",
+        "isLLVM",
+        "libc",
+        "name",
+        "nativePrefix",
+        "netbsd",
+        "noLibc",
+        "propagateDoc",
+        "sharedLibraryLoader",
+        "targetPackages",
+        "wrapGas"
+      ],
+      "required": [
+        "expand-response-params",
+        "lib",
+        "nativeLibc",
+        "nativeTools",
+        "runtimeShell",
+        "stdenvNoCC"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "man",
+      "info"
+    ],
+    "patches": [],
+    "path": "pkgs/build-support/bintools-wrapper/default.nix",
+    "pname": "binutils-wrapper",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "2.44"
+  },
+  "bison": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchurl",
+        "help2man",
+        "lib",
+        "m4",
+        "perl",
+        "stdenv"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--build=x86_64-unknown-linux-gnu",
+      "--host=x86_64-unknown-linux-gnu"
+    ],
+    "doCheck": false,
+    "doInstallCheck": true,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "gnum4",
+        "type": "derivation"
+      },
+      {
+        "name": "perl",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "out"
+    ],
+    "patches": [],
+    "path": "pkgs/by-name/bi/bison/package.nix",
+    "pname": "bison",
+    "propagatedBuildInputs": [
+      {
+        "name": "gnum4",
+        "type": "derivation"
+      }
+    ],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "3.8.2"
+  },
+  "cmake": {
+    "args": {
+      "optional": [
+        "buildDocs",
+        "isBootstrap",
+        "isMinimalBuild",
+        "uiToolkits",
+        "useOpenSSL",
+        "useSharedLibraries"
+      ],
+      "required": [
+        "buildPackages",
+        "bzip2",
+        "curlMinimal",
+        "darwin",
+        "expat",
+        "fetchurl",
+        "gitUpdater",
+        "lib",
+        "libarchive",
+        "libsForQt5",
+        "libuv",
+        "ncurses",
+        "openssl",
+        "pkg-config",
+        "ps",
+        "replaceVars",
+        "rhash",
+        "sphinx",
+        "stdenv",
+        "sysctl",
+        "texinfo",
+        "xz",
+        "zlib"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "bzip2",
+        "type": "derivation"
+      },
+      {
+        "name": "curl",
+        "type": "derivation"
+      },
+      {
+        "name": "expat",
+        "type": "derivation"
+      },
+      {
+        "name": "libarchive",
+        "type": "derivation"
+      },
+      {
+        "name": "xz",
+        "type": "derivation"
+      },
+      {
+        "name": "zlib",
+        "type": "derivation"
+      },
+      {
+        "name": "libuv",
+        "type": "derivation"
+      },
+      {
+        "name": "rhash",
+        "type": "derivation"
+      },
+      {
+        "name": "openssl",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--docdir=share/doc/cmake-4.1.2",
+      "--no-system-cppdap",
+      "--no-system-jsoncpp",
+      "--system-libs",
+      "--",
+      "-DCMAKE_CXX_COMPILER:STRING=c++",
+      "-DCMAKE_C_COMPILER:STRING=cc",
+      "-DCMAKE_AR:STRING=/nix/store/416ykpc2bksb90sd1ia8cybxb3p83mrd-binutils-2.44/bin/ar",
+      "-DCMAKE_RANLIB:STRING=/nix/store/416ykpc2bksb90sd1ia8cybxb3p83mrd-binutils-2.44/bin/ranlib",
+      "-DCMAKE_STRIP:STRING=/nix/store/416ykpc2bksb90sd1ia8cybxb3p83mrd-binutils-2.44/bin/strip",
+      "-DCMAKE_USE_OPENSSL:BOOL=TRUE",
+      "-DBUILD_CursesDialog:BOOL=FALSE"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/by-name/cm/cmake/setup-hook.sh",
+        "path": "setup-hook.sh",
+        "type": "setup-hook"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/by-name/cm/cmake/check-pc-files-hook.sh",
+        "path": "check-pc-files-hook.sh",
+        "type": "setup-hook"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/build-support/setup-hooks/separate-debug-info.sh",
+        "path": "separate-debug-info.sh",
+        "type": "setup-hook"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "cmake"
+    },
+    "outputs": [
+      "out",
+      "debug"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/by-name/cm/cmake/nixpkgs-cmake-prefix-path.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/by-name/cm/cmake/add-nixpkgs-libc-paths.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/by-name/cm/cmake/remove-impure-search-paths.patch"
+    ],
+    "path": "pkgs/by-name/cm/cmake/package.nix",
+    "pname": "cmake",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": true,
+    "strictDeps": false,
+    "version": "4.1.2"
+  },
+  "diffutils": {
+    "args": {
+      "optional": [
+        "coreutils"
+      ],
+      "required": [
+        "fetchurl",
+        "lib",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook",
+        "xz"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "coreutils",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "PR_PROGRAM=/nix/store/xs8scz9w9jp4hpqycx3n3bah5y07ymgj-coreutils-9.8/bin/pr"
+    ],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "xz",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "info"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/text/diffutils/gnulib-float-h-tests-port-to-C23-PowerPC-GCC.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/text/diffutils/musl-llvm.patch"
+    ],
+    "path": "pkgs/tools/text/diffutils/default.nix",
+    "pname": "diffutils",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "3.12"
+  },
+  "emacs": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchFromGitHub",
+        "fetchzip",
+        "lib"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "gettext",
+        "type": "derivation"
+      },
+      {
+        "name": "gnutls",
+        "type": "derivation"
+      },
+      {
+        "name": "harfbuzz",
+        "type": "derivation"
+      },
+      {
+        "name": "libxml2",
+        "type": "derivation"
+      },
+      {
+        "name": "ncurses",
+        "type": "derivation"
+      },
+      {
+        "name": "gpm",
+        "type": "derivation"
+      },
+      {
+        "name": "dbus",
+        "type": "derivation"
+      },
+      {
+        "name": "libselinux",
+        "type": "derivation"
+      },
+      {
+        "name": "libotf",
+        "type": "derivation"
+      },
+      {
+        "name": "m17n-lib",
+        "type": "derivation"
+      },
+      {
+        "name": "libgccjit",
+        "type": "derivation"
+      },
+      {
+        "name": "zlib",
+        "type": "derivation"
+      },
+      {
+        "name": "sqlite",
+        "type": "derivation"
+      },
+      {
+        "name": "systemd-minimal-libs",
+        "type": "derivation"
+      },
+      {
+        "name": "tree-sitter",
+        "type": "derivation"
+      },
+      {
+        "name": "libwebp",
+        "type": "derivation"
+      },
+      {
+        "name": "Xaw3d",
+        "type": "derivation"
+      },
+      {
+        "name": "giflib",
+        "type": "derivation"
+      },
+      {
+        "name": "libxaw",
+        "type": "derivation"
+      },
+      {
+        "name": "libxpm",
+        "type": "derivation"
+      },
+      {
+        "name": "libxrandr",
+        "type": "derivation"
+      },
+      {
+        "name": "libjpeg-turbo",
+        "type": "derivation"
+      },
+      {
+        "name": "libpng-apng",
+        "type": "derivation"
+      },
+      {
+        "name": "librsvg",
+        "type": "derivation"
+      },
+      {
+        "name": "libtiff",
+        "type": "derivation"
+      },
+      {
+        "name": "cairo",
+        "type": "derivation"
+      },
+      {
+        "name": "libxi",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--disable-build-details",
+      "--with-modules",
+      "--with-x-toolkit=lucid",
+      "--with-cairo",
+      "--without-xft",
+      "--disable-gc-mark-trace",
+      "--with-compress-install",
+      "--with-toolkit-scroll-bars",
+      "--with-native-compilation",
+      "--without-imagemagick",
+      "--with-mailutils",
+      "--without-small-ja-dic",
+      "--with-tree-sitter",
+      "--with-xinput2",
+      "--without-xwidgets",
+      "--with-dbus",
+      "--with-selinux"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "make-shell-wrapper-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_HARDENING_ENABLE": "bindnow fortify fortify3 pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs",
+      "NIX_MAIN_PROGRAM": "emacs"
+    },
+    "outputs": [
+      "out"
+    ],
+    "patches": [
+      "/nix/store/jm6hjlhhy87gwyx6dk659qq7krpc3liw-inhibit-lexical-cookie-warning-67916.patch",
+      "/nix/store/jhcxc8iaryv9mgsxbi2xkghd4srb5imi-native-comp-driver-options-30.patch"
+    ],
+    "path": "pkgs/applications/editors/emacs/sources.nix",
+    "pname": "emacs",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "30.2"
+  },
+  "expat": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchurl",
+        "haskellPackages",
+        "lib",
+        "luaPackages",
+        "ocamlPackages",
+        "perlPackages",
+        "python3",
+        "stdenv",
+        "testers",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "xmlwf"
+    },
+    "outputs": [
+      "out",
+      "dev"
+    ],
+    "patches": [],
+    "path": "pkgs/by-name/ex/expat/package.nix",
+    "pname": "expat",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "2.7.3"
+  },
+  "gettext": {
+    "args": {
+      "optional": [],
+      "required": [
+        "bashNonInteractive",
+        "fetchurl",
+        "lib",
+        "libiconv",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "bash",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--disable-csharp"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": false,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "man",
+      "doc",
+      "info"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/gettext/absolute-paths.diff",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/gettext/0001-msginit-Do-not-use-POT-Creation-Date.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/gettext/memory-safety.patch"
+    ],
+    "path": "pkgs/development/libraries/gettext/default.nix",
+    "pname": "gettext",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "0.25.1"
+  },
+  "git": {
+    "args": {
+      "optional": [
+        "doInstallCheck",
+        "guiSupport",
+        "nlsSupport",
+        "osxkeychainSupport",
+        "perlSupport",
+        "pythonSupport",
+        "sendEmailSupport",
+        "svnSupport",
+        "withLibsecret",
+        "withManual",
+        "withSsh",
+        "withpcre2"
+      ],
+      "required": [
+        "asciidoc",
+        "bash",
+        "buildPackages",
+        "coreutils",
+        "curl",
+        "deterministic-host-uname",
+        "docbook2x",
+        "docbook_xml_dtd_45",
+        "docbook_xsl",
+        "expat",
+        "fetchurl",
+        "gawk",
+        "gettext",
+        "glib",
+        "gnugrep",
+        "gnused",
+        "gzip",
+        "lib",
+        "libiconv",
+        "libiconvReal",
+        "libsecret",
+        "libxslt",
+        "makeWrapper",
+        "nixosTests",
+        "openssh",
+        "openssl",
+        "pcre2",
+        "perlLibs",
+        "perlPackages",
+        "pkg-config",
+        "python3",
+        "smtpPerlLibs",
+        "stdenv",
+        "subversionClient",
+        "sysctl",
+        "tcl",
+        "tests",
+        "texinfo",
+        "tk",
+        "xmlto",
+        "zlib-ng"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "curl",
+        "type": "derivation"
+      },
+      {
+        "name": "openssl",
+        "type": "derivation"
+      },
+      {
+        "name": "zlib-ng",
+        "type": "derivation"
+      },
+      {
+        "name": "expat",
+        "type": "derivation"
+      },
+      {
+        "name": "glibc-iconv-2.40",
+        "type": "derivation"
+      },
+      {
+        "name": "bash-interactive",
+        "type": "derivation"
+      },
+      {
+        "name": "perl",
+        "type": "derivation"
+      },
+      {
+        "name": "pcre2",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "ac_cv_prog_CURL_CONFIG=/nix/store/b65dj8iryqd1bss2qlg5ipxqndngcl9n-curl-8.16.0-dev/bin/curl-config"
+    ],
+    "doCheck": false,
+    "doInstallCheck": true,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [
+      "prefix=${out}",
+      "ZLIB_NG=1",
+      "SHELL_PATH=/nix/store/ciarnmsx8lvsrmdbjddpmx0pqjrm8imb-bash-5.3p3/bin/bash",
+      "PERL_PATH=/nix/store/kifsc9q6vlw01ic5nyk1gipnvmy1iij2-perl-5.40.0/bin/perl",
+      "PYTHON_PATH=/nix/store/cfapjd2rvqrpry4grb0kljnp8bvnvfxz-python3-3.13.8/bin/python",
+      "sysconfdir=/etc",
+      "USE_LIBPCRE2=1"
+    ],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "uname",
+        "type": "derivation"
+      },
+      {
+        "name": "gettext",
+        "type": "derivation"
+      },
+      {
+        "name": "perl",
+        "type": "derivation"
+      },
+      {
+        "name": "make-shell-wrapper-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      },
+      {
+        "name": "asciidoc",
+        "type": "derivation"
+      },
+      {
+        "name": "texinfo",
+        "type": "derivation"
+      },
+      {
+        "name": "xmlto",
+        "type": "derivation"
+      },
+      {
+        "name": "docbook2X",
+        "type": "derivation"
+      },
+      {
+        "name": "docbook-xsl-nons",
+        "type": "derivation"
+      },
+      {
+        "name": "docbook-xml",
+        "type": "derivation"
+      },
+      {
+        "name": "libxslt",
+        "type": "derivation"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/build-support/setup-hooks/separate-debug-info.sh",
+        "path": "separate-debug-info.sh",
+        "type": "setup-hook"
+      }
+    ],
+    "nixVars": {
+      "NIX_LDFLAGS": "-lgcc_s",
+      "NIX_MAIN_PROGRAM": "git"
+    },
+    "outputs": [
+      "out",
+      "doc",
+      "debug"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/applications/version-management/git/docbook2texi.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/applications/version-management/git/git-sh-i18n.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/applications/version-management/git/git-send-email-honor-PATH.patch"
+    ],
+    "path": "pkgs/applications/version-management/git/default.nix",
+    "pname": "git",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": true,
+    "strictDeps": false,
+    "version": "2.51.0"
+  },
+  "grep": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchurl",
+        "glibcLocales",
+        "lib",
+        "libiconv",
+        "pcre2",
+        "perl",
+        "runtimeShellPackage",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "pcre2",
+        "type": "derivation"
+      },
+      {
+        "name": "glibc-iconv-2.40",
+        "type": "derivation"
+      },
+      {
+        "name": "bash",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "perl",
+        "type": "derivation"
+      },
+      {
+        "name": "glibc-locales",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "grep"
+    },
+    "outputs": [
+      "out",
+      "info"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/text/gnugrep/gnulib-float-h-tests-port-to-C23-PowerPC-GCC.patch"
+    ],
+    "path": "pkgs/tools/text/gnugrep/default.nix",
+    "pname": "gnugrep",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "3.12"
+  },
+  "libarchive": {
+    "args": {
+      "optional": [
+        "xarSupport"
+      ],
+      "required": [
+        "acl",
+        "attr",
+        "autoreconfHook",
+        "binlore",
+        "bzip2",
+        "cmake",
+        "fetchFromGitHub",
+        "fetchpatch",
+        "glibcLocalesUtf8",
+        "lib",
+        "libxml2",
+        "lzo",
+        "nix",
+        "openssl",
+        "pkg-config",
+        "samba",
+        "stdenv",
+        "xz",
+        "zlib",
+        "zstd"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "bzip2",
+        "type": "derivation"
+      },
+      {
+        "name": "lzo",
+        "type": "derivation"
+      },
+      {
+        "name": "openssl",
+        "type": "derivation"
+      },
+      {
+        "name": "xz",
+        "type": "derivation"
+      },
+      {
+        "name": "zlib",
+        "type": "derivation"
+      },
+      {
+        "name": "zstd",
+        "type": "derivation"
+      },
+      {
+        "name": "acl",
+        "type": "derivation"
+      },
+      {
+        "name": "attr",
+        "type": "derivation"
+      },
+      {
+        "name": "libxml2",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "autoreconf-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "glibc-locales",
+        "type": "derivation"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_HARDENING_ENABLE": "bindnow format fortify fortify3 pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs"
+    },
+    "outputs": [
+      "out",
+      "lib",
+      "dev"
+    ],
+    "patches": [
+      "/nix/store/db3awkwz1flnsbnnkkgd9c3was60rhga-489d0b8e2f1fafd3b7ebf98f389ca67462c34651.patch?full_index=1",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/by-name/li/libarchive/fix-darwin-tmpdir-handling.patch"
+    ],
+    "path": "pkgs/by-name/li/libarchive/package.nix",
+    "pname": "libarchive",
+    "propagatedBuildInputs": [
+      {
+        "name": "attr",
+        "type": "derivation"
+      },
+      {
+        "name": "acl",
+        "type": "derivation"
+      }
+    ],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "3.8.1"
+  },
+  "libevent": {
+    "args": {
+      "optional": [
+        "sslSupport",
+        "static"
+      ],
+      "required": [
+        "fetchpatch",
+        "fetchurl",
+        "findutils",
+        "fixDarwinDylibNames",
+        "lib",
+        "openssl",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "openssl",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "event_rpcgen.py"
+    },
+    "outputs": [
+      "out",
+      "dev",
+      "openssl"
+    ],
+    "patches": [
+      "/nix/store/q0mydkf1y32bbsmw10lybc0add0p2qgj-883630f76cbf512003b81de25cd96cb75c6cf0f9.patch"
+    ],
+    "path": "pkgs/by-name/li/libevent/package.nix",
+    "pname": "libevent",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "2.1.12"
+  },
+  "libffi": {
+    "args": {
+      "optional": [
+        "doCheck"
+      ],
+      "required": [
+        "dejagnu",
+        "fetchurl",
+        "lib",
+        "nix-update-script",
+        "stdenv",
+        "testers"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--with-gcc-arch=generic",
+      "--enable-pax_emutramp",
+      "--build=x86_64-unknown-linux-gnu",
+      "--host=x86_64-unknown-linux-gnu"
+    ],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "dejagnu",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "dev",
+      "man",
+      "info"
+    ],
+    "patches": [],
+    "path": "pkgs/development/libraries/libffi/default.nix",
+    "pname": "libffi",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "3.5.2"
+  },
+  "libpng": {
+    "args": {
+      "optional": [
+        "apngSupport"
+      ],
+      "required": [
+        "fetchurl",
+        "lib",
+        "stdenv",
+        "testers",
+        "zlib"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "dev",
+      "man"
+    ],
+    "patches": [],
+    "path": "pkgs/development/libraries/libpng/default.nix",
+    "pname": "libpng-apng",
+    "propagatedBuildInputs": [
+      {
+        "name": "zlib",
+        "type": "derivation"
+      }
+    ],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "1.6.50"
+  },
+  "libxml2": {
+    "args": {
+      "optional": [
+        "enableHttp",
+        "enableShared",
+        "enableStatic",
+        "extraMeta",
+        "extraPatches",
+        "freezeUpdateScript",
+        "icuSupport",
+        "pythonSupport",
+        "zlibSupport"
+      ],
+      "required": [
+        "autoreconfHook",
+        "darwin",
+        "doxygen",
+        "findXMLCatalogs",
+        "gnome",
+        "icu",
+        "lib",
+        "libiconv",
+        "ncurses",
+        "pkg-config",
+        "python3",
+        "src",
+        "stdenv",
+        "testers",
+        "version",
+        "zlib"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--exec-prefix=/02qcpld1y6xhs5gz9bchpxaw0xdhmsp5dv88lh25r2ss44kh8dxz",
+      "--disable-static",
+      "--enable-shared",
+      "--without-icu",
+      "--without-python",
+      "",
+      "--without-http",
+      "--without-zlib",
+      "--without-docs"
+    ],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      },
+      {
+        "name": "autoreconf-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "bin",
+      "dev",
+      "out"
+    ],
+    "patches": [
+      "/nix/store/g4nybyl2hvcj139kvhl10xbfggy2vnx5-da45a190f718e8e2f0e3d2a6325ffa23abc8b90c.patch"
+    ],
+    "path": "pkgs/development/libraries/libxml2/common.nix",
+    "pname": "libxml2",
+    "propagatedBuildInputs": [
+      {
+        "name": "find-xml-catalogs-hook",
+        "type": "derivation"
+      }
+    ],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "2.15.0"
+  },
+  "lua": {
+    "args": {
+      "optional": [
+        "compat",
+        "luaAttr",
+        "packageOverrides",
+        "patches",
+        "postBuild",
+        "postConfigure",
+        "staticOnly"
+      ],
+      "required": [
+        "fetchurl",
+        "hash",
+        "lib",
+        "makeWrapper",
+        "passthruFun",
+        "pkgsBuildBuild",
+        "pkgsBuildHost",
+        "pkgsBuildTarget",
+        "pkgsHostHost",
+        "pkgsTargetTarget",
+        "readline",
+        "replaceVars",
+        "self",
+        "stdenv",
+        "version"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "readline",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [
+      "INSTALL_TOP=/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
+      "INSTALL_MAN=/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9/share/man/man1",
+      "R=5.2.4",
+      "LDFLAGS=-fPIC",
+      "V=5.2",
+      "PLAT=linux",
+      "CC=cc",
+      "RANLIB=ranlib",
+      "MYLIBS=-lncurses"
+    ],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "make-binary-wrapper-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "lua"
+    },
+    "outputs": [
+      "out",
+      "doc"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/lua-5/CVE-2022-28805.patch"
+    ],
+    "path": "pkgs/development/interpreters/lua-5/interpreter.nix",
+    "pname": "lua",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "5.2.4"
+  },
+  "m4": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchurl",
+        "lib",
+        "stdenv"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--with-syscmd-shell=/nix/store/ciarnmsx8lvsrmdbjddpmx0pqjrm8imb-bash-5.3p3/bin/bash"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [],
+    "nixVars": {
+      "NIX_HARDENING_ENABLE": "bindnow fortify fortify3 pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs",
+      "NIX_MAIN_PROGRAM": "m4"
+    },
+    "outputs": [
+      "out"
+    ],
+    "patches": [],
+    "path": "pkgs/by-name/gn/gnum4/package.nix",
+    "pname": "gnum4",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "1.4.20"
+  },
+  "ncurses": {
+    "args": {
+      "optional": [
+        "abiVersion",
+        "enableStatic",
+        "mouseSupport",
+        "unicodeSupport",
+        "withCxx",
+        "withTermlib"
+      ],
+      "required": [
+        "binlore",
+        "buildPackages",
+        "fetchurl",
+        "gpm",
+        "lib",
+        "ncurses",
+        "pkg-config",
+        "stdenv",
+        "testers",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--with-shared",
+      "--enable-pc-files",
+      "--enable-symlinks",
+      "--with-manpage-format=normal",
+      "--disable-stripping",
+      "--with-versioned-syms",
+      "--without-debug",
+      "--enable-widec",
+      "cf_cv_type_of_bool=bool",
+      "--build=x86_64-unknown-linux-gnu",
+      "--host=x86_64-unknown-linux-gnu"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "dev",
+      "man"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/ncurses/1001-ncurses-Support-gnuabielfv1-2.patch"
+    ],
+    "path": "pkgs/development/libraries/ncurses/default.nix",
+    "pname": "ncurses",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": false,
+    "strictDeps": true,
+    "version": "6.5"
+  },
+  "openssh": {
+    "args": {
+      "optional": [
+        "extraConfigureFlags",
+        "extraDesc",
+        "extraMeta",
+        "extraNativeBuildInputs",
+        "extraPatches"
+      ],
+      "required": [
+        "pname",
+        "src",
+        "version"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "zlib",
+        "type": "derivation"
+      },
+      {
+        "name": "libedit",
+        "type": "derivation"
+      },
+      {
+        "name": "openssl",
+        "type": "derivation"
+      },
+      {
+        "name": "libfido2",
+        "type": "derivation"
+      },
+      {
+        "name": "ldns",
+        "type": "derivation"
+      },
+      {
+        "name": "linux-pam",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--sbindir=${out}/bin",
+      "--localstatedir=/var",
+      "--with-pid-dir=/run",
+      "--with-mantype=doc",
+      "--with-libedit=yes",
+      "--disable-strip",
+      "--with-pam",
+      "--sysconfdir=/etc/ssh",
+      "--with-security-key-builtin=yes",
+      "--with-ldns"
+    ],
+    "doCheck": false,
+    "doInstallCheck": true,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": false,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "autoreconf-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_HARDENING_ENABLE": "bindnow format fortify fortify3 pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs pie",
+      "NIX_MAIN_PROGRAM": "ssh"
+    },
+    "outputs": [
+      "out"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/networking/openssh/locale_archive.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/networking/openssh/dont_create_privsep_path.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/networking/openssh/ssh-keysign-8.5.patch"
+    ],
+    "path": "pkgs/tools/networking/openssh/common.nix",
+    "pname": "openssh",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "10.1p1"
+  },
+  "openssl": {
+    "args": {
+      "optional": [
+        "conf",
+        "enableKTLS",
+        "enableMD2",
+        "enableSSL2",
+        "enableSSL3",
+        "securityLevel",
+        "static",
+        "withCryptodev",
+        "withZlib"
+      ],
+      "required": [
+        "buildPackages",
+        "coreutils",
+        "cryptodev",
+        "fetchurl",
+        "lib",
+        "makeBinaryWrapper",
+        "perl",
+        "removeReferencesTo",
+        "stdenv",
+        "testers",
+        "writeShellScript",
+        "zlib"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "shared",
+      "--libdir=lib",
+      "--openssldir=etc/ssl",
+      "enable-ec_nistp_64_gcc_128",
+      "enable-ktls"
+    ],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [
+      "MANDIR=$(man)/share/man",
+      "MANSUFFIX=ssl"
+    ],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "make-binary-wrapper-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "perl",
+        "type": "derivation"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/build-support/setup-hooks/separate-debug-info.sh",
+        "path": "separate-debug-info.sh",
+        "type": "setup-hook"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "openssl"
+    },
+    "outputs": [
+      "bin",
+      "dev",
+      "out",
+      "man",
+      "doc",
+      "debug"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/openssl/3.0/nix-ssl-cert-file.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/openssl/3.0/openssl-disable-kernel-detection.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/openssl/3.5/use-etc-ssl-certs.patch"
+    ],
+    "path": "pkgs/development/libraries/openssl/default.nix",
+    "pname": "openssl",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": true,
+    "strictDeps": false,
+    "version": "3.6.0"
+  },
+  "pcre2": {
+    "args": {
+      "optional": [
+        "withJitSealloc"
+      ],
+      "required": [
+        "fetchurl",
+        "lib",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--enable-pcre2-16",
+      "--enable-pcre2-32",
+      "--enable-jit=auto",
+      "--enable-jit-sealloc"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "bin",
+      "dev",
+      "out",
+      "doc",
+      "man",
+      "devdoc"
+    ],
+    "patches": [],
+    "path": "pkgs/development/libraries/pcre2/default.nix",
+    "pname": "pcre2",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "10.46"
+  },
+  "perl": {
+    "args": {
+      "optional": [
+        "enableCrypt",
+        "enableThreading",
+        "libxcrypt",
+        "overrides",
+        "perlAttr"
+      ],
+      "required": [
+        "buildPackages",
+        "config",
+        "coreutils",
+        "fetchFromGitHub",
+        "fetchurl",
+        "lib",
+        "makeWrapper",
+        "passthruFun",
+        "pkgsBuildBuild",
+        "pkgsBuildHost",
+        "pkgsBuildTarget",
+        "pkgsHostHost",
+        "pkgsTargetTarget",
+        "self",
+        "sha256",
+        "stdenv",
+        "version",
+        "zlib"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "-de",
+      "-Dprefix=/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
+      "-Dman1dir=/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9/share/man/man1",
+      "-Dman3dir=/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9/share/man/man3",
+      "-Dcc=cc",
+      "-Duseshrplib",
+      "-Uinstallusrbinperl",
+      "-Dinstallstyle=lib/perl5",
+      "-Dlocincpth=/nix/store/0vqrw0y515015i3065r9s00jcp1cd4hy-glibc-2.40-66-dev/include",
+      "-Dloclibpth=/nix/store/daamdpmaz2vjvna55ccrc30qw3qb8h6d-glibc-2.40-66/lib",
+      "-Dusethreads"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": false,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "perl"
+    },
+    "outputs": [
+      "out",
+      "man",
+      "devdoc"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/perl/CVE-2024-56406.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/perl/CVE-2025-40909.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/perl/no-sys-dirs-5.40.0.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/perl/fix-build-with-only-C-locale-5.40.0.patch"
+    ],
+    "path": "pkgs/development/interpreters/perl/interpreter.nix",
+    "pname": "perl",
+    "propagatedBuildInputs": [
+      {
+        "name": "libxcrypt",
+        "type": "derivation"
+      }
+    ],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "5.40.0"
+  },
+  "python": {
+    "args": {
+      "optional": [
+        "__splices",
+        "allowedReferenceNames",
+        "bluezSupport",
+        "enableDebug",
+        "enableFramework",
+        "enableGIL",
+        "enableLTO",
+        "enableNoSemanticInterposition",
+        "enableOptimizations",
+        "includeSiteCustomize",
+        "mimetypesSupport",
+        "noldconfigPatch",
+        "packageOverrides",
+        "pythonAttr",
+        "rebuildBytecode",
+        "reproducibleBuild",
+        "static",
+        "stripBytecode",
+        "stripConfig",
+        "stripIdlelib",
+        "stripTests",
+        "stripTkinter",
+        "withExpat",
+        "withGdbm",
+        "withMinimalDeps",
+        "withMpdecimal",
+        "withOpenssl",
+        "withReadline",
+        "withSqlite"
+      ],
+      "required": [
+        "autoconf-archive",
+        "autoreconfHook",
+        "bashNonInteractive",
+        "bluez-headers",
+        "bzip2",
+        "expat",
+        "fetchgit",
+        "fetchpatch",
+        "fetchurl",
+        "gdbm",
+        "hash",
+        "lib",
+        "libffi",
+        "libuuid",
+        "libxcrypt",
+        "mailcap",
+        "mpdecimal",
+        "ncurses",
+        "nukeReferences",
+        "openssl",
+        "passthruFun",
+        "pkg-config",
+        "pkgsBuildBuild",
+        "pkgsBuildHost",
+        "pkgsBuildTarget",
+        "pkgsHostHost",
+        "pkgsTargetTarget",
+        "python-setup-hook",
+        "readline",
+        "self",
+        "sourceVersion",
+        "sqlite",
+        "stdenv",
+        "testers",
+        "tzdata",
+        "windows",
+        "xz",
+        "zlib",
+        "zstd"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "bash",
+        "type": "derivation"
+      },
+      {
+        "name": "bzip2",
+        "type": "derivation"
+      },
+      {
+        "name": "libffi",
+        "type": "derivation"
+      },
+      {
+        "name": "util-linux-minimal",
+        "type": "derivation"
+      },
+      {
+        "name": "ncurses",
+        "type": "derivation"
+      },
+      {
+        "name": "xz",
+        "type": "derivation"
+      },
+      {
+        "name": "zlib",
+        "type": "derivation"
+      },
+      {
+        "name": "openssl",
+        "type": "derivation"
+      },
+      {
+        "name": "sqlite",
+        "type": "derivation"
+      },
+      {
+        "name": "mpdecimal",
+        "type": "derivation"
+      },
+      {
+        "name": "expat",
+        "type": "derivation"
+      },
+      {
+        "name": "bluez-headers",
+        "type": "derivation"
+      },
+      {
+        "name": "tzdata",
+        "type": "derivation"
+      },
+      {
+        "name": "gdbm",
+        "type": "derivation"
+      },
+      {
+        "name": "readline",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--without-ensurepip",
+      "--with-system-expat",
+      "--with-system-libmpdec",
+      "--with-openssl=/nix/store/4vm27ldxmphlgyj3vf1h7dlgvj5hvj0w-openssl-3.6.0-dev",
+      "--with-tzpath=/nix/store/c6lkjqkkc4cl4pffj4i3l22rv4ihhpb9-tzdata-2025b/share/zoneinfo",
+      "--with-lto",
+      "--enable-shared",
+      "--enable-gil",
+      "--enable-loadable-sqlite-extensions",
+      "ac_cv_func_lchmod=no"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "nuke-references",
+        "type": "derivation"
+      },
+      {
+        "name": "autoconf-archive",
+        "type": "derivation"
+      },
+      {
+        "name": "autoreconf-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/build-support/setup-hooks/separate-debug-info.sh",
+        "path": "separate-debug-info.sh",
+        "type": "setup-hook"
+      }
+    ],
+    "nixVars": {
+      "NIX_HARDENING_ENABLE": "bindnow format fortify fortify3 pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs pie",
+      "NIX_LDFLAGS": "-lgcc_s",
+      "NIX_MAIN_PROGRAM": "python3.13"
+    },
+    "outputs": [
+      "out",
+      "debug"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/python/cpython/3.13/no-ldconfig.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/python/cpython/3.13/virtualenv-permissions.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/interpreters/python/cpython/mimetypes.patch"
+    ],
+    "path": "pkgs/development/interpreters/python/cpython/default.nix",
+    "pname": "python3",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": true,
+    "strictDeps": false,
+    "version": "3.13.8"
+  },
+  "readline": {
+    "args": {
+      "optional": [
+        "curses-library"
+      ],
+      "required": [
+        "fetchpatch",
+        "fetchurl",
+        "lib",
+        "ncurses",
+        "stdenv",
+        "termcap",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {},
+    "outputs": [
+      "out",
+      "dev",
+      "man",
+      "doc",
+      "info"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/readline/link-against-ncurses.patch",
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/development/libraries/readline/no-arch_only-8.2.patch",
+      "/nix/store/x8zb2br5nij14z3a8yki2yah25yd3pya-readline83-001"
+    ],
+    "path": "pkgs/development/libraries/readline/8.3.nix",
+    "pname": "readline",
+    "propagatedBuildInputs": [
+      {
+        "name": "ncurses",
+        "type": "derivation"
+      }
+    ],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "8.3p1"
+  },
+  "sed": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchurl",
+        "lib",
+        "perl",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "perl",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "sed"
+    },
+    "outputs": [
+      "out",
+      "info"
+    ],
+    "patches": [],
+    "path": "pkgs/tools/text/gnused/default.nix",
+    "pname": "gnused",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "4.9"
+  },
+  "sqlite": {
+    "args": {
+      "optional": [
+        "interactive"
+      ],
+      "required": [
+        "buildPackages",
+        "fetchurl",
+        "gitUpdater",
+        "lib",
+        "ncurses",
+        "python3Packages",
+        "readline",
+        "sqldiff",
+        "sqlite-analyzer",
+        "sqlite-rsync",
+        "stdenv",
+        "tinysparql",
+        "unzip",
+        "zlib"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "zlib",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--bindir=/04f3da1kmbr67m3gzxikmsl4vjz5zf777sv6m14ahv22r65aac9m/bin",
+      "--includedir=/02qcpld1y6xhs5gz9bchpxaw0xdhmsp5dv88lh25r2ss44kh8dxz/include",
+      "--libdir=/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9/lib",
+      "--disable-readline"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "unzip",
+        "type": "derivation"
+      },
+      {
+        "fullPath": "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/build-support/setup-hooks/separate-debug-info.sh",
+        "path": "separate-debug-info.sh",
+        "type": "setup-hook"
+      }
+    ],
+    "nixVars": {
+      "NIX_CFLAGS_COMPILE": "-DSQLITE_ENABLE_COLUMN_METADATA -DSQLITE_ENABLE_DBSTAT_VTAB -DSQLITE_ENABLE_JSON1 -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS3_TOKENIZER -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_GEOPOLY -DSQLITE_ENABLE_MATH_FUNCTIONS -DSQLITE_ENABLE_PREUPDATE_HOOK -DSQLITE_ENABLE_RBU -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_SESSION -DSQLITE_ENABLE_STMT_SCANSTATUS -DSQLITE_ENABLE_UNLOCK_NOTIFY -DSQLITE_SOUNDEX -DSQLITE_SECURE_DELETE -DSQLITE_MAX_VARIABLE_NUMBER=250000 -DSQLITE_MAX_EXPR_DEPTH=10000",
+      "NIX_MAIN_PROGRAM": "sqlite3"
+    },
+    "outputs": [
+      "bin",
+      "dev",
+      "man",
+      "doc",
+      "out",
+      "debug"
+    ],
+    "patches": [],
+    "path": "pkgs/development/libraries/sqlite/default.nix",
+    "pname": "sqlite",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": true,
+    "strictDeps": false,
+    "version": "3.50.4"
+  },
+  "tar": {
+    "args": {
+      "optional": [
+        "aclSupport"
+      ],
+      "required": [
+        "acl",
+        "autoreconfHook",
+        "fetchurl",
+        "lib",
+        "libintl",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "acl",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "autoreconf-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "tar"
+    },
+    "outputs": [
+      "out",
+      "info"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/archivers/gnutar/link-libiconv.patch"
+    ],
+    "path": "pkgs/tools/archivers/gnutar/default.nix",
+    "pname": "gnutar",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "1.35"
+  },
+  "texinfo": {
+    "args": {
+      "optional": [
+        "interactive"
+      ],
+      "required": [
+        "bashNonInteractive",
+        "buildPackages",
+        "callPackage",
+        "fetchurl",
+        "freebsd",
+        "gawk",
+        "lib",
+        "libiconv",
+        "libintl",
+        "ncurses",
+        "perl",
+        "procps",
+        "stdenv",
+        "updateAutotoolsGnuConfigScriptsHook"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "bash",
+        "type": "derivation"
+      },
+      {
+        "type": "unknown",
+        "typeOf": "null"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "PERL=/nix/store/kifsc9q6vlw01ic5nyk1gipnvmy1iij2-perl-5.40.0/bin/perl"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "update-autotools-gnu-config-scripts-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "texi2any"
+    },
+    "outputs": [
+      "out"
+    ],
+    "patches": [],
+    "path": "pkgs/development/tools/misc/texinfo/packages.nix",
+    "pname": "texinfo",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "7.2"
+  },
+  "tmux": {
+    "args": {
+      "optional": [
+        "withSixel",
+        "withSystemd",
+        "withUtempter",
+        "withUtf8proc"
+      ],
+      "required": [
+        "autoreconfHook",
+        "bison",
+        "fetchFromGitHub",
+        "lib",
+        "libevent",
+        "libutempter",
+        "ncurses",
+        "pkg-config",
+        "runCommand",
+        "stdenv",
+        "systemd",
+        "utf8proc"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "ncurses",
+        "type": "derivation"
+      },
+      {
+        "name": "libevent",
+        "type": "derivation"
+      },
+      {
+        "name": "systemd",
+        "type": "derivation"
+      },
+      {
+        "name": "utf8proc",
+        "type": "derivation"
+      },
+      {
+        "name": "libutempter",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--sysconfdir=/etc",
+      "--localstatedir=/var",
+      "--enable-systemd",
+      "--enable-sixel",
+      "--enable-utempter",
+      "--enable-utf8proc"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      },
+      {
+        "name": "autoreconf-hook",
+        "type": "derivation"
+      },
+      {
+        "name": "bison",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "tmux"
+    },
+    "outputs": [
+      "out",
+      "man"
+    ],
+    "patches": [],
+    "path": "pkgs/by-name/tm/tmux/package.nix",
+    "pname": "tmux",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "3.5a"
+  },
+  "vim": {
+    "args": {
+      "optional": [],
+      "required": [
+        "fetchFromGitHub",
+        "lib"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "ncurses",
+        "type": "derivation"
+      },
+      {
+        "name": "glib",
+        "type": "derivation"
+      },
+      {
+        "name": "libsm",
+        "type": "derivation"
+      },
+      {
+        "name": "libice",
+        "type": "derivation"
+      },
+      {
+        "name": "libx11",
+        "type": "derivation"
+      },
+      {
+        "name": "libxext",
+        "type": "derivation"
+      },
+      {
+        "name": "libxpm",
+        "type": "derivation"
+      },
+      {
+        "name": "libxt",
+        "type": "derivation"
+      },
+      {
+        "name": "libxaw",
+        "type": "derivation"
+      },
+      {
+        "name": "libxau",
+        "type": "derivation"
+      },
+      {
+        "name": "libxmu",
+        "type": "derivation"
+      },
+      {
+        "name": "gtk+3",
+        "type": "derivation"
+      },
+      {
+        "name": "wayland-scanner",
+        "type": "derivation"
+      },
+      {
+        "name": "lua",
+        "type": "derivation"
+      },
+      {
+        "name": "python3",
+        "type": "derivation"
+      },
+      {
+        "name": "ruby",
+        "type": "derivation"
+      },
+      {
+        "name": "libsodium",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--with-features=huge",
+      "--disable-xsmp",
+      "--disable-xsmp_interact",
+      "--disable-workshop",
+      "--disable-sniff",
+      "--disable-hangulinput",
+      "--disable-fontset",
+      "--disable-acl",
+      "--disable-gpm",
+      "--disable-mzschemeinterp",
+      "--disable-gtk_check",
+      "--disable-gtk2_check",
+      "--disable-gnome_check",
+      "--disable-motif_check",
+      "--disable-athena_check",
+      "--disable-nextaf_check",
+      "--disable-carbon_check",
+      "--disable-gtktest",
+      "--enable-wayland",
+      "--enable-gui=gtk3",
+      "--with-lua-prefix=/nix/store/8padb1xdkf73zq8rfl6w7jppidcir8ma-lua-5.2.4",
+      "--enable-luainterp",
+      "--enable-python3interp=yes",
+      "--with-python3-config-dir=/nix/store/cfapjd2rvqrpry4grb0kljnp8bvnvfxz-python3-3.13.8/lib",
+      "--disable-pythoninterp",
+      "--enable-rubyinterp",
+      "--enable-cscope",
+      "--enable-netbeans",
+      "--enable-xim",
+      "--enable-sodium"
+    ],
+    "doCheck": false,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "pkg-config-wrapper",
+        "type": "derivation"
+      },
+      {
+        "name": "wrap-gapps-hook",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_CFLAGS_COMPILE": "",
+      "NIX_HARDENING_ENABLE": "bindnow format pic relro stackclashprotection stackprotector strictoverflow zerocallusedregs",
+      "NIX_MAIN_PROGRAM": "vim"
+    },
+    "outputs": [
+      "out",
+      "xxd"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/applications/editors/vim/cflags-prune.diff"
+    ],
+    "path": "pkgs/applications/editors/vim/common.nix",
+    "pname": "vim-full",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "9.1.1833"
+  },
+  "xz": {
+    "args": {
+      "optional": [
+        "enableStatic"
+      ],
+      "required": [
+        "autoreconfHook",
+        "fetchurl",
+        "lib",
+        "stdenv",
+        "testers",
+        "writeScript"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [],
+    "nixVars": {},
+    "outputs": [
+      "bin",
+      "dev",
+      "out",
+      "man",
+      "doc"
+    ],
+    "patches": [],
+    "path": "pkgs/tools/compression/xz/default.nix",
+    "pname": "xz",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "5.8.1"
+  },
+  "zlib": {
+    "args": {
+      "optional": [
+        "shared",
+        "splitStaticOutput",
+        "static"
+      ],
+      "required": [
+        "fetchurl",
+        "lib",
+        "minizip",
+        "stdenv",
+        "testers"
+      ]
+    },
+    "buildInputs": [],
+    "cmakeFlags": [],
+    "configureFlags": [
+      "--static",
+      "--shared"
+    ],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": true,
+    "enableParallelChecking": true,
+    "makeFlags": [
+      "PREFIX=",
+      "SHARED_MODE=1"
+    ],
+    "mesonFlags": [],
+    "nativeBuildInputs": [],
+    "nixVars": {
+      "NIX_CFLAGS_COMPILE": "-static-libgcc"
+    },
+    "outputs": [
+      "out",
+      "dev",
+      "static"
+    ],
+    "patches": [],
+    "path": "pkgs/development/libraries/zlib/default.nix",
+    "pname": "zlib",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": true,
+    "version": "1.3.1"
+  },
+  "zstd": {
+    "args": {
+      "optional": [
+        "buildContrib",
+        "doCheck",
+        "enableStatic",
+        "legacySupport",
+        "static"
+      ],
+      "required": [
+        "arrow-cpp",
+        "bashNonInteractive",
+        "cmake",
+        "curl",
+        "fetchFromGitHub",
+        "fetchpatch",
+        "file",
+        "fixDarwinDylibNames",
+        "gnugrep",
+        "haskellPackages",
+        "lib",
+        "libarchive",
+        "libzip",
+        "nix-update-script",
+        "python3Packages",
+        "rocksdb",
+        "stdenv",
+        "testers"
+      ]
+    },
+    "buildInputs": [
+      {
+        "name": "bash",
+        "type": "derivation"
+      }
+    ],
+    "cmakeFlags": [
+      "-DZSTD_BUILD_CONTRIB:BOOL=ON",
+      "-DZSTD_BUILD_SHARED:BOOL=ON",
+      "-DZSTD_BUILD_STATIC:BOOL=OFF",
+      "-DZSTD_BUILD_TESTS:BOOL=ON",
+      "-DZSTD_LEGACY_SUPPORT:BOOL=OFF",
+      "-DZSTD_PROGRAMS_LINK_SHARED:BOOL=ON"
+    ],
+    "configureFlags": [],
+    "doCheck": true,
+    "doInstallCheck": false,
+    "enableParallelBuilding": null,
+    "enableParallelChecking": null,
+    "makeFlags": [],
+    "mesonFlags": [],
+    "nativeBuildInputs": [
+      {
+        "name": "cmake-minimal",
+        "type": "derivation"
+      },
+      {
+        "name": "file",
+        "type": "derivation"
+      }
+    ],
+    "nixVars": {
+      "NIX_MAIN_PROGRAM": "zstd"
+    },
+    "outputs": [
+      "bin",
+      "dev",
+      "man",
+      "out"
+    ],
+    "patches": [
+      "/nix/store/662jhmbp6c94zmk1nrsrc5mid4qbgnzm-source/pkgs/tools/compression/zstd/playtests-darwin.patch",
+      "/nix/store/d3gh8y8k0y5kq8pxd8hmjsall6rzympc-man-fix.patch"
+    ],
+    "path": "pkgs/tools/compression/zstd/default.nix",
+    "pname": "zstd",
+    "propagatedBuildInputs": [],
+    "separateDebugInfo": null,
+    "strictDeps": false,
+    "version": "1.5.7"
+  }
+}

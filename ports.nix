@@ -1,7 +1,7 @@
 # Ported packages from upstream fil-c with patches
 # Based on ports/patches.nix
 # See nixpkgs-package-info.nix for package metadata (args, versions)
-{ base, filenv, filc-src, withFilC, fix }:
+{ base, filenv, filc-src, withFilC, fix, wasm3-src ? null, kitty-doom-src ? null, doom1-wad ? null, puredoom-h ? null }:
 
 let
   # Helper to create a ported package with source + patches override
@@ -500,4 +500,122 @@ in rec {
     };
     patches = [./ports/patch/tcl-8.6.15.patch];
   };
+
+  # System utilities
+  # coreutils: GNU core utilities (ls, cp, mv, etc)
+  # Deps: gmp (for extended precision in numfmt)
+  # Options: withOpenssl, withPrefix, singleBinary
+  coreutils = port base.coreutils {
+    source = {
+      version = "9.5";
+      hash = "sha256-yydpOzN6oENEgTHPjGISYJZfZQ+nZvnzU0dGh4mz7yg=";
+      url = "mirror://gnu/coreutils/coreutils-9.5.tar.xz";
+    };
+    deps = { inherit gmp; };
+    attrs = old: { doCheck = false; };
+  };
+
+  # gmp: GNU Multiple Precision Arithmetic Library
+  gmp = port base.gmp {
+    source = {
+      version = "6.3.0";
+      hash = "sha256-+yizkHZcF27d1/MrHKq4KEUCWbvhhPrCNECp+nZn7c8=";
+      url = "mirror://gnu/gmp/gmp-6.3.0.tar.xz";
+    };
+    attrs = old: { doCheck = false; };
+  };
+
+  # gawk: GNU AWK text processing language
+  gawk = port base.gawk {
+    source = {
+      version = "5.3.0";
+      hash = "sha256-+djHlVe05Z9KkMn7tD5sFwJSqwNzrYmDJSGkfDJJZhY=";
+      url = "mirror://gnu/gawk/gawk-5.3.0.tar.xz";
+    };
+    attrs = old: { doCheck = false; };
+  };
+
+  # bzip2: Compression utility
+  bzip2 = port base.bzip2 {
+    source = {
+      version = "1.0.8";
+      hash = "sha256-q1jst6TzEN9cwP14qCCJPj5urwZ6l2Lrvgky/t+16hw=";
+      url = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz";
+    };
+  };
+
+  # which: Shows full path of commands
+  which = port base.which {
+    source = {
+      version = "2.21";
+      hash = "sha256-0yqBfi5n1YCQQ7nOILLevS7kx7Y5bLc5F3S1ggJSQd8=";
+      url = "mirror://gnu/which/which-2.21.tar.gz";
+    };
+  };
+
+  # file: File type identification utility
+  file = port base.file {
+    source = {
+      version = "5.45";
+      hash = "sha256-Z7V+cG11V+PyHkh23S+fGVk9AB1OdvTZwDWgM7xYvZU=";
+      url = "https://astron.com/pub/file/file-5.45.tar.gz";
+    };
+    attrs = old: { doCheck = false; };
+  };
+
+  # nano: Pico clone text editor
+  # Deps: ncurses
+  nano = port base.nano {
+    source = {
+      version = "8.2";
+      hash = "sha256-HFB+d/AAPMF2R32tG4vTRn6v/YbtbJmJQj0GCiouaI8=";
+      url = "mirror://gnu/nano/nano-8.2.tar.xz";
+    };
+    deps = { inherit ncurses; };
+  };
+
+  # nethack: Classic roguelike dungeon exploration game
+  # Deps: ncurses
+  nethack = port base.nethack {
+    source = {
+      version = "3.6.7";
+      hash = "sha256-QER9NNOKzj7R1gq5X7NCGd+Nj13eZEo0COlBBYpK8bI=";
+      url = "https://nethack.org/download/3.6.7/nethack-367-src.tgz";
+    };
+    deps = { inherit ncurses; };
+  };
+
+  # wasm3: Fast WebAssembly interpreter
+  # Built from upstream source (not a nixpkgs port)
+  wasm3 = assert wasm3-src != null; filenv.mkDerivation {
+    src = wasm3-src;
+    pname = "wasm3";
+    version = "0.5.1";
+    enableParallelBuilding = true;
+    nativeBuildInputs = with base; [ cmake ninja ];
+    cmakeFlags = ["-DBUILD_WASI=simple"];
+  };
+
+  # kitty-doom: Memory-safe DOOM for terminal
+  # Built from upstream source (not a nixpkgs port)
+  kitty-doom = assert kitty-doom-src != null && doom1-wad != null && puredoom-h != null;
+    filenv.mkDerivation {
+      src = kitty-doom-src;
+      pname = "kitty-doom";
+      version = "0.1.0";
+      enableParallelBuilding = true;
+
+      nativeBuildInputs = with base; [ pkg-config ];
+
+      preBuild = ''
+        cp ${puredoom-h} PureDOOM.h
+        cp ${doom1-wad} doom1.wad
+      '';
+
+      installPhase = ''
+        mkdir -p $out/bin $out/share/doom
+        cp kitty-doom $out/bin/
+        cp doom1.wad $out/share/doom/
+      '';
+    };
 }

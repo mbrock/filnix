@@ -818,6 +818,7 @@
     # Ports: nixpkgs packages with upstream fil-c patches
     ports = import ./ports.nix {
       inherit base filenv filc-src withFilC fix;
+      inherit wasm3-src kitty-doom-src doom1-wad puredoom-h;
     };
 
     # Combined: all projects merged into single output
@@ -880,7 +881,7 @@
       # };
     }
 
-    // sample-packages
+    // ports
     ;
 
     devShells.${system} = {
@@ -906,17 +907,16 @@
       };
 
       # Pure Fil-C environment - all tools compiled with Fil-C.
-      # Not currently building! Would be nice though!
       pure = base.mkShell {
         name = "filc-pure";
 
-        buildInputs = with sample-packages; [
+        buildInputs = with ports; [
           bash coreutils
           gawk gnused gnugrep
-          gnutar bzip2 
+          gnutar bzip2
           tmux
           sqlite lua
-          nano nethack 
+          nano nethack
         ];
       };
 
@@ -924,7 +924,7 @@
       wasm3-cve-test = base.mkShell {
         name = "wasm3-cve-test";
 
-        buildInputs = [ sample-packages.wasm3 ];
+        buildInputs = [ ports.wasm3 ];
 
         shellHook = ''
           cd ${wasm3-cve-payloads}
