@@ -3,7 +3,7 @@
   bash = { version = "5.2.32"; patches = [./patch/bash-5.2.32.patch]; };
   binutils = { version = "2.43.1"; patches = [./patch/binutils-2.43.1.patch]; };
   bison = { version = "3.8.2"; patches = [./patch/bison-3.8.2.patch]; };
-  bzip3 = { patches = [./patch/bzip3.patch]; };
+  bzip3 = { version = "1.5.1"; patches = [./patch/bzip3.patch]; };
   cairo = { version = "1.18.0"; patches = [./patch/cairo-1.18.0.patch]; };
   cmake = { version = "3.30.2"; patches = [./patch/cmake-3.30.2.patch]; };
   dash = { version = "0.5.12"; patches = [./patch/dash-0.5.12.patch]; };
@@ -32,9 +32,9 @@
   libinput = { version = "1.29.1"; patches = [./patch/libinput-1.29.1.patch]; };
   libpng = { version = "1.6.43"; patches = [./patch/libpng-1.6.43.patch]; };
   libuev = { version = "2.4.1"; patches = [./patch/libuev-2.4.1.patch]; };
-  libuv = { version = "v1.48.0"; patches = [./patch/libuv-v1.48.0.patch]; };
+  libuv = { version = "1.48.0"; patches = [./patch/libuv-v1.48.0.patch]; };
   libxcrypt = { version = "4.4.36"; patches = [./patch/libxcrypt-4.4.36.patch]; };
-  libxkbcommon = { version = "xkbcommon-1.11.0"; patches = [./patch/libxkbcommon-xkbcommon-1.11.0.patch]; };
+  libxkbcommon = { version = "1.11.0"; patches = [./patch/libxkbcommon-xkbcommon-1.11.0.patch]; };
   libxml2 = { version = "2.14.4"; patches = [./patch/libxml2-2.14.4.patch]; };
   linux = { version = "6.10.5"; patches = [./patch/linux-6.10.5.patch]; };
   linux-pam-1-6 = { version = "1.6.1"; patches = [./patch/Linux-PAM-1.6.1.patch]; };
@@ -43,7 +43,6 @@
   m4 = { version = "1.4.19"; patches = [./patch/m4-1.4.19.patch]; };
   make = { version = "4.4.1"; patches = [./patch/make-4.4.1.patch]; };
   man-db = { version = "2.12.1"; patches = [./patch/man-db-2.12.1.patch]; };
-  nghttp2 = { version = "1.62.1"; patches = [./patch/nghttp2-1.62.1.patch]; };
   openssh = { version = "9.8p1"; patches = [./patch/openssh-9.8p1.patch]; };
   openssl = { version = "3.3.1"; patches = [./patch/openssl-3.3.1.patch]; };
   p11-kit = { version = "0.25.5"; patches = [./patch/p11-kit-0.25.5.patch]; };
@@ -51,11 +50,11 @@
   perl = { version = "5.40.0"; patches = [./patch/perl-5.40.0.patch]; };
   procps-ng = { version = "4.0.4"; patches = [./patch/procps-ng-4.0.4.patch]; };
   python = { version = "3.12.5"; patches = [./patch/Python-3.12.5.patch]; };
-  quickjs = { patches = [./patch/quickjs.patch]; };
+  quickjs = { version = "2024-02-14"; patches = [./patch/quickjs.patch]; };
   seatd = { version = "0.9.1"; patches = [./patch/seatd-0.9.1.patch]; };
   sed = { version = "4.9"; patches = [./patch/sed-4.9.patch]; };
   simdutf = { version = "5.5.0"; patches = [./patch/simdutf-5.5.0.patch]; };
-  sqlite = { patches = [./patch/sqlite.patch]; };
+  sqlite = { version = "3.46.0"; patches = [./patch/sqlite.patch]; };
   systemd = { version = "256.4"; patches = [./patch/systemd-256.4.patch]; };
   tar = { version = "1.35"; patches = [./patch/tar-1.35.patch]; };
   tcl = { version = "8.6.15"; patches = [./patch/tcl-8.6.15.patch]; };
