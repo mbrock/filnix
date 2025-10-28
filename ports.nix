@@ -152,16 +152,21 @@ in rec {
     patches = [./ports/patch/zlib-1.3.patch];
   };
 
+  gtest = port base.gtest {
+  };
+
   # zlib-ng: High-performance zlib replacement with optimizations
   # Deps: gtest (for tests)
   # Options: withZlibCompat (enable zlib compatibility mode)
   zlib-ng = port base.zlib-ng {
     source = {
       version = "2.2.4";
-      hash = "sha256-Khmrhp5qy4vvoQe4WgoogpjWrgcUB/q8zZeqIydthYg=";
+      hash = "sha256-pzNDwwk+XNxQ2Td5l8OBW4eP0RC/ZRHCx3WfKvuQ9aM=";
       url = "https://github.com/zlib-ng/zlib-ng/archive/2.2.4.tar.gz";
     };
-    deps = { };
+    deps = { 
+      inherit gtest;
+    };
   };
 
   # pcre2: Perl Compatible Regular Expressions library v2
@@ -315,7 +320,7 @@ in rec {
   perl = port base.perl {
     source = {
       version = "5.40.0";
-      hash = "sha256-dvXxSz5SqnOaZsb5fPQ6Ic0XB+gDDLN/oCu4qVyU/sA=";
+      hash = "sha256-x0A0jzVzljJ6l5XT6DI7r9D+ilx4NfwcuroMyN/nFh8=";
       url = "https://www.cpan.org/src/5.0/perl-5.40.0.tar.gz";
     };
     patches = [./ports/patch/perl-5.40.0.patch];
@@ -347,7 +352,14 @@ in rec {
       hash = "sha256-fxI0YqKLfKPr4mB0hfcWhVTCsQ38FVx+xGMAZmrCf5U=";
       url = "https://www.kernel.org/pub/software/scm/git/git-2.46.0.tar.xz";
     };
-    deps = { inherit openssl pcre2 zlib-ng; withManual = false; perlSupport = false; pythonSupport = false; sendEmailSupport = false; };
+    deps = { 
+      inherit openssl pcre2 curl;
+      withManual = false; 
+      perlSupport = false; 
+      pythonSupport = false; 
+      sendEmailSupport = false; 
+      zlib-ng = zlib;
+    };
     attrs = old: {
       doCheck = false;
       # Filter out the git-send-email-honor-PATH.patch (fails on 2.46.0) but keep other nixpkgs patches
@@ -355,6 +367,7 @@ in rec {
         (p: !(base.lib.hasSuffix "git-send-email-honor-PATH.patch" (builtins.toString p)))
         (old.patches or [])
       ) ++ [./ports/patch/git-2.46.0.patch];
+      makeFlags = base.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
     };
   };
 
@@ -413,6 +426,16 @@ in rec {
       url = "mirror://openbsd/OpenSSH/portable/openssh-9.8p1.tar.gz";
     };
     patches = [./ports/patch/openssh-9.8p1.patch];
+    attrs = old: { doCheck = false; };
+  };
+
+  # curl: Command-line tool for transferring data with URLs
+  # Deps: openssl, zlib, krb5, brotli, nghttp2, libidn2, libssh2, libpsl, zstd
+  # Options: Multiple protocol/feature support flags (see query-package.sh curl)
+  curl = port base.curl {
+    deps = { 
+      inherit openssl zlib krb5 brotli nghttp2 libidn2 libssh2 libpsl zstd;
+    };
     attrs = old: { doCheck = false; };
   };
 
@@ -479,6 +502,84 @@ in rec {
     patches = [./ports/patch/libuv-v1.48.0.patch];
   };
 
+  # Network protocol libraries (for curl and others)
+  # krb5: Kerberos network authentication protocol
+  # Deps: openssl, keyutils, libedit
+  # Options: withLdap, withLibedit, withVerto
+  krb5 = port base.libkrb5 {
+    source = {
+      version = "1.21.3";
+      hash = "sha256-jxKpqLuAF360kOjFkh935LjNkTgDNnlVqEPP91fSPqM=";
+      url = "https://kerberos.org/dist/krb5/1.21/krb5-1.21.3.tar.gz";
+    };
+    patches = [./ports/patch/krb5-1.21.3.patch];
+    deps = { inherit openssl keyutils libedit; };
+  };
+
+  # brotli: Generic lossless compression algorithm
+  brotli = port base.brotli {
+  };
+
+  # nghttp2: HTTP/2 C library
+  # Deps: c-ares, libev, zlib, openssl
+  # Options: enableApp, enableHttp3, enableJemalloc, enablePython
+  nghttp2 = port base.nghttp2 {
+    deps = { inherit c-ares libev zlib openssl; };
+  };
+
+  # libidn2: Internationalized domain names (IDNA2008/TR46) library
+  # Deps: libunistring
+  libidn2 = port base.libidn2 {
+    deps = { inherit libunistring; };
+  };
+
+  # libssh2: SSH2 client-side library
+  # Deps: zlib, openssl
+  libssh2 = port base.libssh2 {
+    deps = { inherit zlib openssl; };
+  };
+
+  # libpsl: Public Suffix List library
+  # Deps: libidn2, libunistring
+  libpsl = port base.libpsl {
+    deps = { inherit libidn2 libunistring; };
+  };
+
+  # Supporting libraries
+  # libunistring: Unicode string library
+  libunistring = port base.libunistring {
+  };
+
+  # c-ares: Asynchronous DNS resolver library
+  c-ares = port base.c-aresMinimal {
+  };
+
+  # libev: Event loop library
+  libev = port base.libev {
+  };
+
+  # keyutils: Linux key management utilities
+  keyutils = port base.keyutils {
+    source = {
+      version = "1.6.3";
+      hash = "sha256-ph1XBhNq5MBb1I+GGGvP29iN2L1RB+Phlckkz8Gzm7Q=";
+      url = "https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git/snapshot/keyutils-1.6.3.tar.gz";
+    };
+    patches = [./ports/patch/keyutils-1.6.3.patch];
+  };
+
+  # libedit: BSD line editing library
+  # Deps: ncurses
+  libedit = port base.libedit {
+    source = {
+      version = "20240808-3.1";
+      hash = "sha256-XwVzNJ13xKSJZxkc3WY03Xql9jmMalf+A3zAJpbWCZ8=";
+      url = "https://thrysoee.dk/editline/libedit-20240808-3.1.tar.gz";
+    };
+    patches = [./ports/patch/libedit-20240808-3.1.patch];
+    deps = { inherit ncurses; };
+  };
+
   # Advanced packages
   # quickjs: Small embeddable JavaScript engine
   quickjs = port base.quickjs {
@@ -492,13 +593,14 @@ in rec {
   };
 
   # tcl: Tool Command Language scripting language
+  # Note: tcl 8 reportedly works without patches (patch may be unnecessary bloat)
   tcl = port base.tcl {
     source = {
       version = "8.6.15";
-      hash = "sha256-0cE7jdrlCEbhGE4hqc93QKz/xoFXeKY1Yf7kD6hfN/s=";
+      hash = "sha256-hh4Vl1Py4vvW7BSEEDcVsL5WvjNXUiuFjTy7X4k//vE=";
       url = "mirror://sourceforge/tcl/tcl8.6.15-src.tar.gz";
     };
-    patches = [./ports/patch/tcl-8.6.15.patch];
+    # patches = [./ports/patch/tcl-8.6.15.patch];  # Disabled - may not be needed
   };
 
   # System utilities
