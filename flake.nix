@@ -819,6 +819,7 @@
     # Ports: nixpkgs packages with upstream fil-c patches
     ports = import ./ports.nix {
       inherit base filenv filc-src withFilC fix;
+      inherit filcc;
     };
 
     # Combined: all projects merged into single output

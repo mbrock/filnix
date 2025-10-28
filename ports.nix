@@ -1,7 +1,7 @@
 # Ported packages from upstream fil-c with patches
 # Based on ports/patches.nix
 # See nixpkgs-package-info.nix for package metadata (args, versions)
-{ base, filenv, filc-src, withFilC, fix }:
+{ base, filenv, filc-src, withFilC, fix, filcc }:
 
 let
   # Helper to create a ported package with source + patches override
@@ -270,11 +270,6 @@ in rec {
   # readline: Command-line editing library
   # Deps: ncurses
   readline = port base.readline {
-    source = {
-      version = "8.3p1";
-      hash = "sha256-hIMUtmrB9NGRLL3rJXVZFpxzPxYoJbIHcMGKHFPkDU0=";
-      url = "mirror://gnu/readline/readline-8.3.tar.gz";
-    };
     deps = { inherit ncurses; };
   };
 
@@ -296,6 +291,7 @@ in rec {
       glib = null;
     };
   };
+
   utf8proc = port base.utf8proc {};
 
   # Terminal/system tools
@@ -309,18 +305,45 @@ in rec {
     };
   };
 
+
   # Languages
   # lua: Lightweight embeddable scripting language
   # Deps: readline (command-line editing)
-  lua = port base.lua {
-    source = {
+  lua = 
+    filenv.mkDerivation rec {
+      pname = "lua";
       version = "5.4.7";
-      hash = "sha256-AMvaREzhX+KlAkkqmTI6pPaXdpL/3qnPQFXpvAHFLhw=";
-      url = "https://www.lua.org/ftp/lua-5.4.7.tar.gz";
+      src = base.fetchurl {
+        url = "https://www.lua.org/ftp/lua-5.4.7.tar.gz";
+        sha256 = "sha256-n79eKO+GxphY9tPTTszDLpEcGii0Eg/z6EqqcM+/HjA=";
+      };
+
+      nativeBuildInputs = [filcc];
+
+      makeFlags = [
+        "CC=${filcc}/bin/clang"
+        "INSTALL_TOP=${placeholder "out"}"
+        "INSTALL_MAN=${placeholder "out"}/share/man/man1"
+        "R=${version}"
+      ];
+
+      buildInputs = [ncurses readline];
+
+      postPatch = ''
+        sed -i "s@#define LUA_ROOT[[:space:]]*\"/usr/local/\"@#define LUA_ROOT  \"$out/\"@g" \
+          src/luaconf.h
+        grep $out src/luaconf.h
+      '';
+
+      passthru = {
+        pkgs = {
+          isLuaJIT = false;
+          # fine, I give up
+        };
+        withPackages = f: lua;
+        luaOnBuild = lua;
+      };
     };
-    patches = [./ports/patch/lua-5.4.7.patch];
-    deps = { inherit readline; };
-  };
 
   # perl: Practical Extraction and Report Language
   # Deps: zlib
@@ -401,16 +424,38 @@ in rec {
     attrs = old: { doCheck = false; };
   };
 
-  # Editors
-  # vim: Vi IMproved text editor
-  vim = port base.vim {
-    source = {
-      version = "9.1.0660";
-      hash = "sha256-z31cH73oQ1ejVcGtIBGMiUfV4WhOcaZzVJ8eljX5v+c=";
-      url = "https://github.com/vim/vim/archive/v9.1.0660.tar.gz";
+  # absolutely doesn't work
+  luajit = port base.luajit {
+    deps = {
+      enableJIT = false;
+      enableFFI = false;
+
+      # weird quasi-crosscompiling single step fuckery
+      buildPackages = filenv // { stdenv = filenv; };
     };
-    patches = [./ports/patch/vim-9.1.0660.patch];
-    attrs = old: { doCheck = false; };
+  };
+
+  unibilium = port base.unibilium {
+    deps = {
+      inherit ncurses;
+    };
+  };
+
+  tree-sitter = port base.tree-sitter {
+    deps = {
+      inherit (base) installShellFiles;
+    };
+  };
+
+  # The Lua package stuff seems really difficult to do
+  # without turning Fil-C into an actual cross platform?
+  #
+  # So this doesn't work.
+  neovim = port base.neovim-unwrapped {
+    deps = {
+      inherit libuv utf8proc tree-sitter;
+      lua = lua;
+    };
   };
 
   # emacs: Extensible, customizable text editor
@@ -503,7 +548,7 @@ in rec {
   libuv = port base.libuv {
     source = {
       version = "1.48.0";
-      hash = "sha256-7RBwuLfLGvDJCsb6xNVpe9pL7OL7AKWa0u5M1DLcpAs=";
+      hash = "sha256-fx24rDaNidG68WO6wepf5RIGl6c5EMiuay//s1UdWfs=";
       url = "https://dist.libuv.org/dist/v1.48.0/libuv-v1.48.0.tar.gz";
     };
     patches = [./ports/patch/libuv-v1.48.0.patch];
