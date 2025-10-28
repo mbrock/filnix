@@ -767,9 +767,22 @@
     withFilC = pkg: pkg.override { stdenv = filenv; };
     
     # Combine withFilC, override, and overrideAttrs in one call
-    # Usage: fix base.pkg { override attrs } (old: { overrideAttrs })
-    fix = pkg: overrideArgs: overrideAttrsFunc:
-      (withFilC (pkg.override overrideArgs)).overrideAttrs overrideAttrsFunc;
+    # Usage: fix base.pkg { deps = {}; attrs = old: {}; }
+    fix = pkg: { deps ? {}, attrs ? _: {} }:
+      let
+        pkgName = pkg.pname or (builtins.parseDrvName pkg.name).name;
+        hasBuildInputs = (pkg.buildInputs or []) != [] || 
+                         (pkg.propagatedBuildInputs or []) != [];
+        noDepsProvided = deps == {};
+      in
+        if hasBuildInputs && noDepsProvided then
+          throw ''
+            Package '${pkgName}' has buildInputs but no deps override provided.
+            Run: ./query-package.sh ${pkgName}
+            Then add 'deps = { ... }' to your port configuration.
+          ''
+        else
+          (withFilC (pkg.override deps)).overrideAttrs attrs;
 
     parallelize = pkg: pkg.overrideAttrs (_: {
       enableParallelBuilding = true;
@@ -793,20 +806,24 @@
     # Sample packages built with Fil-C
     sample-packages = import ./packages.nix {
       inherit base filenv filc-src withFilC fix;
-      inherit kitty-doom-src doom1-wad puredoom-h;
       inherit wasm3-src;
     };
 
-    # Ports: packages built directly from fil-c/projects vendored sources
-    ports = import ./fil-c-projects.nix {
+    # Projects: packages built directly from fil-c/projects vendored sources
+    projects = import ./fil-c-projects.nix {
       inherit base filenv filcc;
       filc-src = filc-projects-src;
     };
 
-    # Combined: all ports merged into single output
+    # Ports: nixpkgs packages with upstream fil-c patches
+    ports = import ./ports.nix {
+      inherit base filenv filc-src withFilC fix;
+    };
+
+    # Combined: all projects merged into single output
     fil-c-env = import ./fil-c-combined.nix {
       inherit base filenv;
-      packages = ports;
+      packages = projects;
     };
 
     # CVE test payloads for wasm3
@@ -831,6 +848,10 @@
     # };
 
   in {
+    # Query package information from nixpkgs (using flake's pinned nixpkgs)
+    # Usage: nix eval --json .#lib.x86_64-linux.queryPackage --apply 'f: f "bash"'
+    lib.${system}.queryPackage = import ./query-package.nix base;
+    
     # Finally, we define the package collection!
     packages.${system} = rec {
       inherit filpkgs;
@@ -846,6 +867,7 @@
       inherit filc-sysroot;
       inherit filcc;
       inherit fil-c-env;
+      inherit projects;
       inherit ports;
 
       # Export sources for hash fixing
