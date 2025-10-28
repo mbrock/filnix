@@ -265,11 +265,6 @@ in rec {
   # ncurses: Terminal handling library
   # Options: abiVersion, enableStatic, mouseSupport, unicodeSupport, withCxx, withTermlib
   ncurses = port base.ncurses {
-    source = {
-      version = "6.5";
-      hash = "sha256-KCz/iK7V/3IZeg21cSvqT7p1KNV5yvjOrgVpkbVYG9k=";
-      url = "mirror://gnu/ncurses/ncurses-6.5.tar.gz";
-    };
   };
 
   # readline: Command-line editing library
@@ -679,11 +674,6 @@ in rec {
   # nethack: Classic roguelike dungeon exploration game
   # Deps: ncurses
   nethack = port base.nethack {
-    source = {
-      version = "3.6.7";
-      hash = "sha256-QER9NNOKzj7R1gq5X7NCGd+Nj13eZEo0COlBBYpK8bI=";
-      url = "https://nethack.org/download/3.6.7/nethack-367-src.tgz";
-    };
     deps = { inherit ncurses; };
   };
 
