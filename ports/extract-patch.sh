@@ -15,10 +15,14 @@ if [[ -z "$PROJECT" ]]; then
     exit 1
 fi
 
-# Skip glibc projects - these are built directly from fil-c source tree
+# Skip glibc projects and projects with no actual code changes
 case "$PROJECT" in
     yolo-glibc-*|user-glibc-*|yolomusl|usermusl)
         echo "$PROJECT: Skipping (glibc project, built from fil-c source)"
+        exit 0
+        ;;
+    tcl-*)
+        echo "$PROJECT: Skipping (no Fil-C code changes, only build artifacts)"
         exit 0
         ;;
 esac
@@ -156,6 +160,11 @@ exclude_patterns=(
     ":(exclude)*/Doc/help/.distfiles"
     # Fil-C test files (added by Filip, not needed for building)
     ":(exclude)*/fil-tests/*"
+    # Toybox kconfig system (GPL'd build infrastructure, doesn't go in binary)
+    ":(exclude)*/kconfig/*"
+    ":(exclude)*/good-config"
+    # TCL test library and Windows/tool artifacts
+    ":(exclude)*/library/tcltest/*"
 )
 
 # Generate the patch, removing the projects/$PROJECT/ path prefix and excluding generated files
