@@ -37,24 +37,35 @@ NixOS stores all packages in =/nix/store/hash-package= instead of =/usr=, making
 This flake enables selective hardening - replace security-critical components with Fil-C versions while keeping others unchanged:
 
 #+BEGIN_SRC nix
-# configuration.nix
-{ pkgs, ... }:
-let
-  filc = (builtins.getFlake "github:mbrock/filnix").packages.${pkgs.system};
-in {
-  environment.systemPackages = [
-    filc.bash          # Memory-safe shell
-    filc.coreutils     # Memory-safe core utilities
-    pkgs.vim           # Regular editor
-    pkgs.firefox       # Regular browser
-  ];
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    filnix.url = "github:mbrock/filnix";
+  };
 
-  programs.bash.package = filc.bash;  # System shell
+  outputs = { nixpkgs, filnix, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            filnix.packages.${pkgs.system}.bash          # Memory-safe shell
+            filnix.packages.${pkgs.system}.coreutils     # Memory-safe core utilities
+            pkgs.vim                                     # Regular editor
+            pkgs.firefox                                 # Regular browser
+          ];
 
-  # Run SSH server with memory safety
-  services.openssh = {
-    enable = true;
-    package = filc.openssh;
+          programs.bash.package = filnix.packages.${pkgs.system}.bash;
+
+          # Run SSH server with memory safety
+          services.openssh = {
+            enable = true;
+            package = filnix.packages.${pkgs.system}.openssh;
+          };
+        })
+      ];
+    };
   };
 }
 #+END_SRC
