@@ -290,12 +290,23 @@ in rec {
     patches = [./ports/patch/libevent-2.1.12.patch];
   };
 
+  libutempter = port base.libutempter {
+    deps = { 
+      # doesn't seem to actually need it; will fix glib later
+      glib = null;
+    };
+  };
+  utf8proc = port base.utf8proc {};
+
   # Terminal/system tools
   # tmux: Terminal multiplexer
   # Deps: ncurses, libevent
   # Options: withSystemd, withUtf8proc
   tmux = port base.tmux {
-    deps = { inherit ncurses libevent; withSystemd = false; };
+    deps = { 
+      inherit ncurses libevent libutempter utf8proc;
+      withSystemd = false; 
+    };
   };
 
   # Languages
