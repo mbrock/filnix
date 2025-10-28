@@ -15,7 +15,7 @@ This is a snapshot of porting work in progress. Filip continues to refine these 
 
 ## Introduction
 
-This document synthesizes the porting experience of 71 substantial C/C++ projects to Fil-C, Filip Pizlo's memory-safe C implementation. The analysis covers everything from small utilities (dash, vim) to massive systems (emacs, python, systemd). The goal: create a reference guide for understanding the core challenges and patterns when porting C/C++ software to a capability-based memory safety model.
+This document provides an overview of what's involved in porting C/C++ software to Fil-C by analyzing 71 projects across the spectrum—from small utilities (dash, vim) to massive systems (emacs, python, systemd). Rather than diving into the fil-c repository and examining each `projects/` subdirectory individually, this analysis synthesizes the common patterns, challenges, and techniques that emerge when adapting software to a capability-based memory safety model.
 
 ### The Fil-C Memory Model
 
