@@ -2,215 +2,61 @@
 #+AUTHOR: mbrock
 #+OPTIONS: toc:2
 
-#+BEGIN_QUOTE
-*Note:* This README was written by Claude Code based on exploration of this repository and the upstream fil-c project. While the information is accurate, you may want to verify details against the source code and upstream documentation.
-#+END_QUOTE
-
 * Overview
 
-*filnix* is a Nix flake that packages the [[https://github.com/pizlonator/fil-c][Fil-C]] memory-safe C/C++ compiler toolchain for reproducible, hermetic builds.
+filnix packages the [[https://github.com/pizlonator/fil-c][Fil-C]] memory-safe C/C++ compiler for Nix.
 
-** What is Fil-C?
+Fil-C by [[https://twitter.com/filpizlo][Filip Pizlo]] implements memory-safe C/C++ using runtime capabilities and garbage collection. All pointers carry bounds metadata tracked via LLVM instrumentation, shadow memory, and a concurrent GC. Compatible with existing C/C++ code without unsafe escape hatches.
 
-Fil-C is a fanatically compatible memory-safe implementation of C and C++ created by [[https://twitter.com/filpizlo][Filip Pizlo]]. It achieves *complete memory safety* while remaining compatible with existing C/C++ code—no =unsafe= keyword, no escape hatches.
+** Technology
 
-Key principle: *GIMSO (Garbage In, Memory Safety Out)*—even adversarial or buggy C code cannot escape Fil-C's safety guarantees.
+- *FilPizlonator LLVM Pass*: Instruments IR to track capability metadata with pointers
+- *InvisiCap Runtime*: Stores capabilities in registers or shadow memory; bounds-checks all accesses
+- *FUGC Collector*: Concurrent GC built on libpas; prevents use-after-free by keeping freed objects alive until unreferenced
 
-*** Core Technology
+Prevents: use-after-free, out-of-bounds access, type confusion. Performance: 1.5x-4x overhead on Linux/X86_64.
 
-Fil-C combines three innovative components to achieve memory safety:
+Successfully runs 100+ programs: OpenSSH, CPython, curl, SQLite, Emacs. See [[https://fil-c.org/pizlix][Pizlix]] for complete memory-safe userland.
 
-1. *FilPizlonator LLVM Pass* - Instruments all LLVM IR to track capabilities alongside pointers
-   - Every pointer becomes (value, capability) pair
-   - Bounds checks inserted before every memory access
-   - All pointers tracked for garbage collection
+** Why Nix
 
-2. *InvisiCap Runtime* - Novel pointer representation using "invisible capabilities"
-   - Pointers in registers: stored as two values (address + capability)
-   - Pointers in memory: address in primary space, capability in shadow space
-   - Capability contains bounds (lower/upper) and type information
-   - Use-after-free prevented: freed objects have =upper = lower=, causing all accesses to trap
+Nix builds are pure functions: explicitly declare all inputs, build in isolation, same inputs produce same outputs. The hash in =/nix/store/abc123-package= is derived from build inputs, not outputs. Different versions coexist as separate store paths.
 
-3. *FUGC Garbage Collector* - Fil's Unbelievable Garbage Collector
-   - Built on =libpas= allocator infrastructure from WebKit
-   - Concurrent, parallel marking with no stop-the-world pauses
-   - Keeps freed objects alive until all references die
-   - Guarantees use-after-free detection
-   - Optional =free()=—can rely purely on GC
+For Fil-C, this enables:
+- Reproducible compiler toolchain builds
+- Trivial package porting via nixpkgs overrides
+- Automatic dependency management
+- No directory layout hacks for mixed safe/unsafe binaries on NixOS
 
-*** Memory Safety Guarantees
+Binary caches (like =filc.cachix.org=) are trusted vendors that sign pre-built artifacts. Nix verifies signatures but doesn't cryptographically verify binary contents. Trust cache operators or build locally.
 
-Fil-C prevents:
-- *Use-after-free*: Freed objects trapped until GC collects
-- *Out-of-bounds access*: All accesses checked against capability bounds
-- *Type confusion*: Type information tracked in capabilities
-- *Pointer races*: Atomic operations on capabilities
-- *Syscall violations*: Runtime wrappers validate all syscalls
+** Repository Structure
 
-*** Real-World Validation
-
-Fil-C successfully runs 100+ programs with zero or minimal changes:
-- OpenSSL, CPython, OpenSSH, curl, SQLite, Emacs
-- Complete [[https://fil-c.org/pizlix][memory-safe Linux userland (Pizlix)]]
-- See =wasm3-cves.md= for examples of Fil-C catching real CVEs
-
-*** Performance
-
-- Current overhead: 1.5x - 4x vs unsafe C
-- Platform: Linux/X86_64 only
-- Compiler: Based on LLVM/Clang 20.1.8 (supports C17, C++20)
-
-** What is Nix and Why Does It Matter for Fil-C?
-
-If you're coming from the Fil-C world and haven't encountered Nix before, here's the technical perspective:
-
-*** Nix as a Build System
-
-Nix is a package manager and build system where builds are pure functions. You write expressions that specify all build inputs explicitly: source tarballs, dependencies, compiler flags, build scripts. The build runs in an isolated environment that can't access the network, =/usr=, =/home=, or anything not declared as an input. Same inputs always produce the same output—builds are *hermetic*.
-
-*Concrete example:* Building =zlib= with Fil-C produces:
-
-#+BEGIN_EXAMPLE
-/nix/store/7abiynyfsafl3plncyshp4jq0pw9rg7h-zlib-1.3
-#+END_EXAMPLE
-
-The hash =7abiynyf...= is derived from the *build inputs*: the zlib-1.3 tarball, the Fil-C compiler, patches, configure flags, and all transitive dependencies. The directory is mounted read-only (=dr-xr-xr-x=)—nothing can modify it after the build completes.
-
-The full dependency tree looks like:
-
-#+BEGIN_EXAMPLE
-/nix/store/7abiynyfsafl3plncyshp4jq0pw9rg7h-zlib-1.3
-├───/nix/store/05x477ms...-filc-crt-lib
-│   ├───/nix/store/db8mhdkb...-libyolo-glibc-2.40
-│   │   └───/nix/store/cfqbabpc...-bash-5.2p37
-│   └───/nix/store/bi723szk...-libyolo
-└───(and so on)
-#+END_EXAMPLE
-
-Every dependency is an explicit store path. Change any input? You get a different hash, a different store path, and a rebuild. This is why you can have multiple versions of anything coexisting—they're literally different directories.
-
-*** NixOS
-
-NixOS is a Linux distribution where the entire system configuration is declarative. Your =/etc/nixos/configuration.nix= specifies what packages are installed, services running, kernel modules loaded—everything. Want to add Fil-C system-wide? One line in your config. Rollback a broken change? Reboot into the previous configuration from the boot menu.
-
-*Why this matters for Fil-C:* NixOS makes partial Fil-C userland trivial without filesystem layout hacks. Traditional distros expect =/usr/bin/bash=, =/usr/lib/libc.so.6=, etc. Running a mix of memory-safe and unsafe binaries means either chroot tricks or special FHS layouts.
-
-NixOS doesn't use =/usr= at all—everything lives in =/nix/store/hash-package=. You can trivially run:
-- Fil-C bash as your login shell (=programs.bash.package = pkgs.filc.bash;=)
-- Regular coreutils for tools not yet ported
-- Fil-C curl, openssl, openssh for network-facing components
-- Mix and match per service: nginx with Fil-C, PostgreSQL without
-
-No conflicts, no special setup. Each package knows its exact dependencies via store paths. Want memory safety for security-critical components but not ready to port everything? Just specify which packages use =pkgsCross.filc=:
-
-#+BEGIN_SRC nix
-environment.systemPackages = with pkgs; [
-  filc.bash      # Memory-safe shell
-  filc.openssh   # Memory-safe SSH
-  filc.curl      # Memory-safe HTTP client
-  coreutils      # Regular (for now)
-  vim            # Regular (for now)
-];
-#+END_SRC
-
-A NixOS module could make this declarative: =security.filc.enable = true;= plus =security.filc.packages = [ "openssh" "curl" "bash" ];= and you're done.
-
-*Hermetic builds* mean:
-- Builds cannot access anything not explicitly declared as an input
-- Same inputs always produce same outputs (reproducibility)
-- Different versions of dependencies can coexist without conflict
-- Build derivations are identified by a cryptographic hash of their *inputs*
-
-*Important: Understanding Nix Hashes and Trust*
-
-A common misconception: Nix hashes are typically of build *inputs* (dependencies, source code, build scripts), not the *outputs* (binaries). This means:
-
-- The hash =/nix/store/abc123-filcc= identifies "what went into building this", not "what came out"
-- Two people building from identical inputs *should* get identical outputs (reproducible builds)
-- But the Nix hash alone doesn't cryptographically verify the binary contents
-- *Binary caches are trusted vendors* - you're trusting they actually built what they claim from those inputs
-
-To establish trust, Nix uses:
-- *Explicit cache configuration* - You must explicitly add binary caches to your config
-- *Signature verification* - Caches sign their artifacts; Nix verifies signatures before use
-- *Public keys* - Each cache has a public key you trust (like =cache.nixos.org-1:...)=
-
-For Fil-C specifically, this means:
-
-1. *Reproducible Compiler Toolchains* - Anyone can build from the same inputs and verify they get bit-identical outputs. This verifiability (not the hash alone) is crucial for security-critical toolchains.
-
-2. *Binary Caching* - Once someone builds Fil-C, they can share the binary cache. Others can download pre-built binaries instead of compiling LLVM (saves hours). Signatures prove the cache operator built these artifacts from the declared inputs.
-
-3. *Cachix Cache "filc"* - This repository has a Cachix cache at =filc.cachix.org= where pre-built binaries are pushed. Convenient if you don't want to build LLVM yourself, but use at your own risk—you're trusting the cache operator.
-
-4. *Trivial Package Porting* - Want bash with memory safety? =bash = fix base.bash { };= in your flake. Nix handles downloading sources, applying patches, dependency resolution, and rebuilding only what changed. Compare to LFS-style manual builds: tracking down tarballs, =./configure= with the right flags, managing installation paths, hoping you got all dependencies.
-
-5. *Automatic Dependency Management* - Reference nixpkgs packages, override just the compiler. Nix figures out the dependency graph and build order. Update a dependency version? Change one line, rebuild—only affected packages recompile.
-
-6. *Path to nixpkgs Integration* - If Fil-C gets merged into nixpkgs, it becomes available via =pkgsCross= (e.g., =pkgsCross.filc.bash=), meaning every nixpkgs package becomes trivially buildable with memory safety. Users get official Hydra CI, =cache.nixos.org= binaries, and community maintenance.
-
-*** What Nix Makes Ridiculously Easy
-
-*Porting packages:* The current flake makes it trivial. Want to build =wasm3= with memory safety? Pull the nixpkgs recipe, apply patches, done. Nix downloads sources, handles dependencies, builds everything. Compare to manual: find the right tarball version, figure out what libraries it needs, build those first, track installation paths, write build scripts.
-
-*Rebuilds:* Change one dependency? Nix rebuilds only what's affected. Update a patch? Only that package rebuilds. With 80,000+ packages in nixpkgs, you have build recipes ready to adapt—just override the compiler.
-
-*Environment setup:* =nix develop= drops you in a shell with the entire toolchain. No PATH hacks, no "which version of zlib am I linking against?"
-
-*Distribution:* Built something? Share it: =nix build github:mbrock/filnix#yourpackage=. Reproducible—others get the same binary or can verify by rebuilding.
-
-*** Nix vs Manual Builds
-
-| Approach | Dependency handling | Rebuilds | Reproducibility |
-|----------|-------------------|----------|----------------|
-| LFS-style manual | Track versions, download tarballs, build in order | Rebuild everything or guess what changed | Hope you documented the steps |
-| Shell scripts (=build_all.sh=) | Hardcoded paths, vendored sources | Full rebuilds | Breaks with env differences |
-| Nix | Declarative, automatic resolution | Only what changed | Bit-identical from same inputs |
-
-*** The Bottom Line
-
-- Users: "spend 2 hours building LLVM" → =nix develop github:mbrock/filnix= → coding in 30 seconds
-- Developers: "guess which dependencies broke" → =nix build= → only rebuilds what changed
-- Distribution: "hope you have the right environment" → deterministic builds from explicit inputs
-
-** Why Nix Packaging? (This Repository Specifically)
-
-*Upstream fil-c* (=pizlonator/fil-c=):
-- Development repository with shell-script-based build system
-- Monolithic: includes compiler + 100+ ported programs
-- Self-contained but not reproducible
-- Rapid personal-project iteration
-
-*This repository* (=mbrock/filnix=):
-- Nix packaging of fil-c compiler and runtime
-- Transforms shell scripts into Nix derivations
-- Modular: separates compiler from applications
+Upstream fil-c is a development repository with shell-script builds. This repository packages the compiler and runtime as Nix derivations with:
+- Modular separation of compiler from applications
 - Reproducible, cacheable builds
-- Integration with Nix ecosystem
+- Integration with nixpkgs ecosystem
 
 * Quick Start
 
-** Using the Flake
-
 #+BEGIN_SRC bash
-# Enter development shell with Fil-C compiler
+# Development shell with Fil-C compiler
 nix develop github:mbrock/filnix
 
-# Build a specific package
+# Build specific package
 nix build github:mbrock/filnix#wasm3
 
-# Try the wasm3 CVE testing environment
+# Try CVE testing environment
 nix develop github:mbrock/filnix#wasm3-cve-test
+
+# Enable binary cache (optional, saves ~1-2 hours building LLVM)
+cachix use filc
 #+END_SRC
 
-** Using the Binary Cache (Optional)
-
-Run =cachix use filc= if you want to enable the unofficial filc binary cache (saves ~1-2 hours of building LLVM).
-
-** Hello World Example
+** Hello World
 
 #+BEGIN_SRC bash
-# In the dev shell
+# In dev shell
 echo '#include <stdio.h>
 int main() { printf("Hello from Fil-C!\n"); return 0; }' > hello.c
 
@@ -221,12 +67,11 @@ clang -o hello hello.c -g -O
 ** Memory Safety Demo
 
 #+BEGIN_SRC bash
-# Create a program with an out-of-bounds access
 echo '#include <stdlib.h>
 #include <stdio.h>
 int main() {
     int* ptr = malloc(sizeof(int));
-    printf("oob memory = %d\n", ptr[10]);  // Out of bounds!
+    printf("oob memory = %d\n", ptr[10]);  // Out of bounds
     return 0;
 }' > bad.c
 
@@ -234,111 +79,69 @@ clang -o bad bad.c -g -O
 ./bad
 #+END_SRC
 
-Expected output:
-#+BEGIN_EXAMPLE
-filc safety error: cannot read pointer with ptr >= upper.
-    pointer: 0x72816c104278,0x72816c104250,0x72816c104260
-    expected 4 bytes with ptr aligned to 4 bytes.
-semantic origin:
-    bad.c:5:33: main
-check scheduled at:
-    bad.c:5:33: main
-    src/env/__libc_start_main.c:79:7: __libc_start_main
-    <runtime>: start_program
-[3570029] filc panic: thwarted a futile attempt to violate memory safety.
-Trace/breakpoint trap (core dumped)
-#+END_EXAMPLE
+Expected output shows trapped bounds violation with source location.
 
 * Architecture
 
 ** Build Pipeline
 
-The Fil-C build process has these stages (replicated as Nix derivations):
+1. *filc0* - Bootstrap LLVM/Clang with FilPizlonator pass
+2. *filc1* - Add OS headers
+3. *filc2* - Add yolo runtime (minimally-modified glibc)
+4. *libpizlo* - Fil-C runtime and FUGC
+5. *libmojo* - Memory-safe user glibc (heavily modified)
+6. *filc-libcxx* - C++ standard library
+7. *filcc* - Complete toolchain
 
-1. *filc0* - Bootstrap LLVM/Clang with FilPizlonator instrumentation pass
-2. *filc1* - OS headers (Linux kernel headers)
-3. *filc2* - Yolo runtime (minimally-modified glibc for runtime use)
-4. *libpizlo* - Fil-C runtime and FUGC garbage collector
-5. *libmojo* - Memory-safe user glibc (heavily modified for applications)
-6. *filc-libcxx* - C++ standard library (libc++/libc++abi)
-7. *filcc* - Complete Fil-C toolchain (wrapped for Nix)
-
-** Two-Libc "Sandwich" Architecture
+** Two-Libc Architecture
 
 #+BEGIN_EXAMPLE
-┌─────────────────────────────┐
-│    Application Code         │
-├─────────────────────────────┤
-│    libmojo (user glibc)     │ ← Memory-safe glibc for applications
-├─────────────────────────────┤
-│    libpizlo (Fil-C runtime) │ ← Memory safety runtime + FUGC
-├─────────────────────────────┤
-│    libyolo (yolo glibc)     │ ← Minimally-modified glibc for runtime
-├─────────────────────────────┤
-│    Linux kernel             │
-└─────────────────────────────┘
+Application Code
+├─ libmojo (user glibc)     ← Applications link here
+├─ libpizlo (Fil-C runtime) ← Memory safety + FUGC
+├─ libyolo (yolo glibc)     ← Runtime uses this
+└─ Linux kernel
 #+END_EXAMPLE
 
-Both yolo and user libc are essential—you cannot have a working Fil-C system without both.
+Both libcs are required for a working system.
 
-** Nix Integration: Driver Flags
+** Driver Flags
 
-This repository includes patches to the Fil-C Clang driver that add explicit command-line flags for resource discovery, eliminating strict directory layout requirements:
+Patches add explicit flags for Nix integration:
 
-- =--filc-resource-dir=PATH= - Override pizfix root directory
-- =--filc-dynamic-linker=PATH= - Override path to =ld-yolo-x86_64.so=
-- =--filc-crt-path=PATH= - Override directory containing CRT objects
-- =--filc-stdfil-include=PATH= - Override Fil-C runtime headers
-- =--filc-os-include=PATH= - Override kernel headers
-- =--filc-include=PATH= - Override libc headers
+- =--filc-resource-dir=PATH=
+- =--filc-dynamic-linker=PATH=
+- =--filc-crt-path=PATH=
+- =--filc-stdfil-include=PATH=
+- =--filc-os-include=PATH=
+- =--filc-include=PATH=
 
-These flags enable:
-- No directory copying (reference existing store paths)
-- Symlinks work (wrappers don't need special directory layout)
-- Explicit dependencies (clear which paths are used where)
-- Easy composition (mix different library/header versions)
-
-See =DRIVER-FLAGS.md= for implementation details.
+Eliminates directory layout requirements. See =DRIVER-FLAGS.md=.
 
 * Packages
 
-** Core Toolchain
+** Core
 
-- =filc0= - Bootstrap Clang compiler with FilPizlonator pass
-- =filc1= - Stage 1 compiler with OS headers
-- =filc2= - Stage 2 compiler with yolo runtime
-- =filcc= - Complete wrapped toolchain (use this!)
-- =libpizlo= - Fil-C runtime library
+- =filcc= - Wrapped toolchain (use this)
+- =filc0-7= - Individual build stages
+- =libpizlo= - Runtime library
 - =libmojo= - Memory-safe glibc
-- =filc-libcxx= - C++ standard library
-- =filc-sysroot= - Complete sysroot with all libraries
+- =filc-libcxx= - C++ stdlib
 
-** Sample Applications
+** Applications
 
-Built using =packages.nix=:
+Built via =packages.nix=: bash, lua, tmux, sqlite, wasm3, nethack, nano.
 
-- =bash=, =lua=, =tmux=, =sqlite= - Basic utilities
-- =wasm3= - WebAssembly interpreter (with CVE test suite!)
-- =nethack= - Classic roguelike game
-- =nano= - Text editor
-
-Usage:
 #+BEGIN_SRC bash
 nix build .#wasm3
 ./result/bin/wasm3 --version
 #+END_SRC
 
-** Ported Software
+** Ports
 
-The =ports/= directory contains patches from upstream fil-c for building software with memory safety:
+=ports/= contains patches from upstream fil-c. =ports/patches.nix= maps packages to versions and patches. =ports.nix= applies patches to nixpkgs packages.
 
-- =ports/patches.nix= - Maps package names to versions and patches
-- =ports/patch/*.patch= - Individual patches for each ported package
-- =ports.nix= - Nix expressions that apply these patches to nixpkgs packages
-
-The porting workflow extracts patches from upstream fil-c's vendored sources and applies them to standard nixpkgs packages, enabling memory-safe builds without vendoring source code.
-
-* Development Shells
+* Development
 
 ** Default Shell
 
@@ -346,262 +149,111 @@ The porting workflow extracts patches from upstream fil-c's vendored sources and
 nix develop
 #+END_SRC
 
-Provides:
-- =filcc= toolchain (=clang=, =clang++=)
-- Development tools (=cmake=, =ninja=, =ccache=, =git=)
-- Debugging tools (=gdb=, =valgrind=, =strace=, =ltrace=)
-- Modern CLI tools (=ripgrep=, =fd=, =jq=, =bat=)
+Provides: filcc toolchain, cmake, ninja, gdb, valgrind, ripgrep, fd, jq.
 
-** wasm3 CVE Test Shell
+** Package Introspection
 
 #+BEGIN_SRC bash
-nix develop .#wasm3-cve-test
-#+END_SRC
-
-Drops you into an environment with:
-- Fil-C-compiled wasm3 in PATH
-- CVE exploit payloads ready to run
-- Helpful banner showing what to do
-
-Try:
-#+BEGIN_SRC bash
-wasm3 cve-2022-39974.wasm  # Out-of-bounds read
-wasm3 cve-2022-34529.wasm  # Integer overflow
-#+END_SRC
-
-Both exploits crash or allow RCE in normal wasm3, but Fil-C catches them and prints detailed error messages!
-
-See =wasm3-cves.md= for detailed analysis.
-
-* Key Files
-
-** Build Configuration
-
-- =flake.nix= - Main Nix flake exposing fil-c packages
-- =fil-c-combined.nix= - Combined LLVM/Clang build
-- =fil-c-helpers.nix= - Helper functions for derivations
-- =fil-c-projects.nix= - Packaging for ported software
-- =packages.nix= - Sample packages built with Fil-C
-- =ports.nix= - Ported packages using patches from upstream
-
-** Documentation
-
-- =AGENTS.md= - Detailed project information and relationship to upstream
-- =DRIVER-FLAGS.md= - Nix integration via Clang driver flags
-- =wasm3-cves.md= - Real-world CVE testing with Fil-C
-
-** Utilities
-
-- =query-package.nix= - Introspection tool for nixpkgs packages
-- =query-package.sh= - Shell wrapper for package queries
-- =update-port-version.sh= - Update ported package versions
-
-* Package Introspection
-
-Query comprehensive package metadata from nixpkgs:
-
-#+BEGIN_SRC bash
-# Via shell script (uses flake's pinned nixpkgs)
 ./query-package.sh bash | jq .
-
-# Via flake directly
-nix eval --json .#lib.x86_64-linux.queryPackage --apply 'f: f "bash"'
 #+END_SRC
 
-Returns:
-- =functionArgs= - Required/optional parameters from package definition
-- =buildInputs= - Native, build, and propagated inputs
-- =buildConfig= - configureFlags, makeFlags, cmakeFlags, patches
-- =buildFlags= - outputs, doCheck, parallelization settings
-- =derivation= - Actual build structure (builder, args, phases)
-- =meta= - description, homepage, license, platforms
-
-Useful for understanding how nixpkgs builds packages and what needs to be adapted for Fil-C.
-
-* Using Fil-C with Your Code
-
-** Basic Compilation
-
-#+BEGIN_SRC bash
-# C compilation
-clang -o program program.c -g -O
-
-# C++ compilation
-clang++ -o program program.cpp -g -O -std=c++20
-#+END_SRC
-
-*Important*:
-- Always use =-g= for meaningful error messages
-- Must use =-O= with =-g= (compiler limitation)
+Returns function args, build inputs, configure flags, derivation structure, metadata.
 
 ** Porting Packages
 
-To port a nixpkgs package to Fil-C:
+#+BEGIN_SRC nix
+mypackage = fix base.mypackage {
+  deps = { inherit zlib openssl; };
+  attrs = old: { doCheck = false; };
+};
+#+END_SRC
 
-1. Query the package to understand its dependencies:
-   #+BEGIN_SRC bash
-   ./query-package.sh PACKAGE_NAME
-   #+END_SRC
+The =fix= function switches to Fil-C stdenv and applies overrides.
 
-2. Use the =fix= helper function:
-   #+BEGIN_SRC nix
-   mypackage = fix base.mypackage {
-     deps = {
-       # Override dependencies with Fil-C versions
-       inherit zlib openssl;
-     };
-     attrs = old: {
-       # Additional overrides
-       doCheck = false;
-       enableParallelBuilding = true;
-     };
-   };
-   #+END_SRC
+** Debugging
 
-3. The =fix= function automatically:
-   - Switches to =filenv= (Fil-C stdenv)
-   - Applies dependency overrides
-   - Applies attribute overrides
+Environment variables:
+- =FUGC_STW=1= - Force stop-the-world GC
+- =FUGC_SCRIBBLE=1 FUGC_VERIFY=1= - Memory debugging
+- =FUGC_MIN_THRESHOLD=0= - GC stress testing
+- =FILC_DUMP_SETUP=1= - Verify environment
 
 ** Common Issues
 
-*** ABI Incompatibility
+ABI incompatibility: Fil-C code cannot link with regular C. Port entire dependency chains.
 
-Fil-C code cannot link with regular C code due to different pointer representations. You must port entire dependency chains to Fil-C.
-
-*** Debugging
-
-- =FUGC_STW=1= - Force stop-the-world GC (for debugging GC issues)
-- =FUGC_SCRIBBLE=1 FUGC_VERIFY=1= - Memory corruption debugging
-- =FUGC_MIN_THRESHOLD=0= - Increase GC churn for stress testing
-- =FILC_DUMP_SETUP=1= - Verify environment variable settings
+Compilation: Always use =-g= for error messages, must use =-O= with =-g=.
 
 * Examples
 
-** Real CVE Mitigation: wasm3
+** CVE Mitigation: wasm3
 
-The wasm3 WebAssembly interpreter has several unfixed CVEs. Building it with Fil-C makes these exploits harmless:
+The wasm3 shell demonstrates real CVE prevention:
 
-*** CVE-2022-39974 (Out-of-Bounds Read)
+#+BEGIN_SRC bash
+nix develop .#wasm3-cve-test
+wasm3 cve-2022-39974.wasm  # Out-of-bounds read - caught
+wasm3 cve-2022-34529.wasm  # Integer overflow - caught
+#+END_SRC
 
-Normal wasm3: Segfault or exploitation
-Fil-C wasm3:
-#+BEGIN_EXAMPLE
-filc safety error: cannot read pointer with ptr >= upper.
-    pointer: 0x7e5039350f90,0x7e5015781210,0x7e5015791220
-semantic origin:
-    <somewhere>: op_Select_i32_srs
-[3310720] filc panic: thwarted a futile attempt to violate memory safety.
-#+END_EXAMPLE
+Both exploits work in normal wasm3 but are trapped by Fil-C. See =wasm3-cves.md=.
 
-*** CVE-2022-34529 (Integer Overflow)
-
-Normal wasm3: Memory corruption, potential RCE
-Fil-C wasm3:
-#+BEGIN_EXAMPLE
-filc safety error: cannot read pointer with ptr < lower.
-    pointer: 0x754f1ef76590,0x754fd8581210,0x754fd8591220
-semantic origin:
-    <somewhere>: op_MemFill
-[3310747] filc panic: thwarted a futile attempt to violate memory safety.
-#+END_EXAMPLE
-
-See =wasm3-cves.md= for full details.
-
-* Building from Source
+* Building
 
 ** Prerequisites
 
-- Nix with flakes enabled
-- Linux/X86_64 system
-- Sufficient disk space (~20GB for full build)
+- Nix with flakes
+- Linux/X86_64
+- ~20GB disk space
 
-** Build Everything
+** Build
 
 #+BEGIN_SRC bash
-# Clone the repository
 git clone https://github.com/mbrock/filnix
 cd filnix
 
-# Build the complete toolchain
-nix build .#filcc
-
-# Build sample packages
-nix build .#bash
-nix build .#wasm3
-
-# Build all ported packages
-nix build .#ports
-#+END_SRC
-
-** Local Development
-
-#+BEGIN_SRC bash
-# Enter dev shell
-nix develop
-
-# Compiler is now in PATH
-clang --version
+nix build .#filcc      # Toolchain
+nix build .#bash       # Sample packages
+nix build .#ports      # All ported packages
 #+END_SRC
 
 * Resources
 
-** Upstream Fil-C
+** Upstream
 
 - Repository: https://github.com/pizlonator/fil-c
 - Website: https://fil-c.org/
-- Author: [[https://twitter.com/filpizlo][Filip Pizlo]] (pizlo@mac.com)
-- Issues: https://github.com/pizlonator/fil-c/issues
+- Author: Filip Pizlo (pizlo@mac.com)
 
-** Technical Documentation
+** Documentation
 
-- [[https://github.com/pizlonator/fil-c/blob/deluge/Manifesto.md][Fil-C Manifesto]] - Technical deep-dive into design
-- [[https://github.com/pizlonator/fil-c/blob/deluge/invisicaps_by_example.md][InvisiCaps by Example]] - How Fil-C pointers work
-- [[https://github.com/pizlonator/fil-c/blob/deluge/gimso_semantics.md][GIMSO Semantics]] - Formal semantics documentation
-- [[https://github.com/WebKit/WebKit/blob/main/Source/bmalloc/libpas/Documentation.md][libpas Documentation]] - Allocator infrastructure
+- [[https://github.com/pizlonator/fil-c/blob/deluge/Manifesto.md][Manifesto]] - Technical design
+- [[https://github.com/pizlonator/fil-c/blob/deluge/invisicaps_by_example.md][InvisiCaps by Example]] - Pointer implementation
+- [[https://github.com/pizlonator/fil-c/blob/deluge/gimso_semantics.md][GIMSO Semantics]] - Formal semantics
+- [[https://github.com/WebKit/WebKit/blob/main/Source/bmalloc/libpas/Documentation.md][libpas]] - Allocator infrastructure
 
-** Related Projects
+** Related
 
-- [[https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/][CHERI]] - Hardware capabilities (requires special CPU)
-- [[https://github.com/google/sanitizers/wiki/addresssanitizer][AddressSanitizer]] - Dynamic analysis tool (can be bypassed)
-- [[https://developer.arm.com/documentation/108035/0100/Introduction-to-the-Memory-Tagging-Extension][MTE]] - ARM Memory Tagging (tag-based, not capability-based)
+- [[https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/][CHERI]] - Hardware capabilities
+- [[https://github.com/google/sanitizers/wiki/addresssanitizer][AddressSanitizer]] - Dynamic analysis
+- [[https://developer.arm.com/documentation/108035/0100/Introduction-to-the-Memory-Tagging-Extension][MTE]] - ARM Memory Tagging
 
 * License
 
-This Nix packaging is distributed under the same licenses as upstream Fil-C:
-
-- Compiler (LLVM/Clang): Apache 2.0 (see =LLVM-LICENSE.txt= in upstream)
-- Runtime (libpas): BSD (see =libpas/LICENSE.txt= in upstream)
+Same as upstream Fil-C:
+- Compiler: Apache 2.0
+- Runtime (libpas): BSD
 - C++ libraries: Apache 2.0
-- Glibc: LGPL (when using glibc variant)
+- Glibc: LGPL
 
-Upstream source: https://github.com/pizlonator/fil-c
+Source: https://github.com/pizlonator/fil-c
 
 * Contributing
 
-This is a personal packaging effort. For issues with:
-- *Fil-C itself*: File at https://github.com/pizlonator/fil-c/issues
-- *Nix packaging*: File at https://github.com/mbrock/filnix/issues
-
-* Acknowledgments
-
-- *Filip Pizlo* - Creator of Fil-C
-- *Epic Games* - Filip's employer, supporting this work
-- *Upstream fil-c community* - For the amazing technology
+File issues:
+- Fil-C itself: https://github.com/pizlonator/fil-c/issues
+- Nix packaging: https://github.com/mbrock/filnix/issues
 
 * Status
 
-*Current Status*: Experimental packaging
-
-Working:
-- ✓ Complete toolchain builds successfully
-- ✓ Many packages compile and run (bash, lua, wasm3, nethack, etc.)
-- ✓ CVE mitigation demonstrated with wasm3
-- ✓ Development shell with full environment
-
-TODO:
-- More ported packages from upstream
-- Binary cache setup (Cachix)
-- NixOS module for system-wide Fil-C
-- Performance benchmarking
-- CI/CD for package updates
+Experimental. Working: toolchain builds, many packages run, CVE mitigation demonstrated. TODO: more ports, NixOS module, benchmarking, CI.
