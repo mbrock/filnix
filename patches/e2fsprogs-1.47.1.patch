@@ -1,0 +1,106 @@
+diff --git a/e2fsck/iscan.c b/e2fsck/iscan.c
+index 1253f52ffcfb..ff4f45b3184f 100644
+--- a/e2fsck/iscan.c
++++ b/e2fsck/iscan.c
+@@ -65,7 +65,7 @@ void init_resource_track(struct resource_track *track, io_channel channel)
+ #endif
+ 	io_stats io_start = 0;
+ 
+-	track->brk_start = sbrk(0);
++	track->brk_start = NULL;
+ 	gettimeofday(&track->time_start, 0);
+ #ifdef HAVE_GETRUSAGE
+ #ifdef sun
+@@ -120,7 +120,7 @@ void print_resource_track(const char *desc,
+ 	} else
+ #elif defined HAVE_MALLINFO
+ 	/* don't use mallinfo() if over 2GB used, since it returns "int" */
+-	if ((unsigned long)((char *)sbrk(0) - (char *)track->brk_start) <
++	if ((unsigned long)((char *)NULL - (char *)track->brk_start) <
+ 	    2UL << 30) {
+ 		struct mallinfo	malloc_info = mallinfo();
+ 
+@@ -131,7 +131,7 @@ void print_resource_track(const char *desc,
+ 	} else
+ #endif
+ 		printf("Memory used: %lluk, ",
+-		       kbytes(((char *)sbrk(0)) - ((char *)track->brk_start)));
++		       kbytes(((char *)NULL) - ((char *)track->brk_start)));
+ 
+ #ifdef HAVE_GETRUSAGE
+ 	getrusage(RUSAGE_SELF, &r);
+diff --git a/e2fsck/scantest.c b/e2fsck/scantest.c
+index ed3595f86ebb..f5b855f61714 100644
+--- a/e2fsck/scantest.c
++++ b/e2fsck/scantest.c
+@@ -54,7 +54,7 @@ void init_resource_track(struct resource_track *track)
+ {
+ 	struct rusage r;
+ 
+-	track->brk_start = sbrk(0);
++	track->brk_start = NULL;
+ 	gettimeofday(&track->time_start, 0);
+ 	getrusage(RUSAGE_SELF, &r);
+ 	track->user_start = r.ru_utime;
+@@ -77,7 +77,7 @@ static void print_resource_track(struct resource_track *track)
+ 	getrusage(RUSAGE_SELF, &r);
+ 
+ 	printf(_("Memory used: %lu, elapsed time: %6.3f/%6.3f/%6.3f\n"),
+-	       (unsigned long)((char *)sbrk(0) - (char *)track->brk_start),
++	       (unsigned long)((char *)NULL - (char *)track->brk_start),
+ 	       timeval_subtract(&time_end, &track->time_start),
+ 	       timeval_subtract(&r.ru_utime, &track->user_start),
+ 	       timeval_subtract(&r.ru_stime, &track->system_start));
+diff --git a/e2fsck/util.c b/e2fsck/util.c
+index 27b3a0d61b95..44eda60d92c9 100644
+--- a/e2fsck/util.c
++++ b/e2fsck/util.c
+@@ -375,7 +375,7 @@ void init_resource_track(struct resource_track *track, io_channel channel)
+ #endif
+ 	io_stats io_start = 0;
+ 
+-	track->brk_start = sbrk(0);
++	track->brk_start = NULL;
+ 	gettimeofday(&track->time_start, 0);
+ #ifdef HAVE_GETRUSAGE
+ #ifdef sun
+@@ -441,7 +441,7 @@ void print_resource_track(e2fsck_t ctx, const char *desc,
+ 	} else
+ #elif defined HAVE_MALLINFO
+ 	/* don't use mallinfo() if over 2GB used, since it returns "int" */
+-	if ((unsigned long)((char *)sbrk(0) - (char *)track->brk_start) <
++	if ((unsigned long)((char *)NULL - (char *)track->brk_start) <
+ 	    2UL << 30) {
+ 		struct mallinfo	malloc_info = mallinfo();
+ 
+@@ -452,7 +452,7 @@ void print_resource_track(e2fsck_t ctx, const char *desc,
+ 	} else
+ #endif
+ 	log_out(ctx, _("Memory used: %lluk, "),
+-		kbytes(((char *)sbrk(0)) - ((char *)track->brk_start)));
++		kbytes(((char *)NULL) - ((char *)track->brk_start)));
+ 
+ #ifdef HAVE_GETRUSAGE
+ 	getrusage(RUSAGE_SELF, &r);
+diff --git a/resize/resource_track.c b/resize/resource_track.c
+index f46670606aea..b5a74bda150d 100644
+--- a/resize/resource_track.c
++++ b/resize/resource_track.c
+@@ -27,7 +27,7 @@ void init_resource_track(struct resource_track *track, const char *desc,
+ 	io_stats io_start = 0;
+ 
+ 	track->desc = desc;
+-	track->brk_start = sbrk(0);
++	track->brk_start = NULL;
+ 	gettimeofday(&track->time_start, 0);
+ #ifdef HAVE_GETRUSAGE
+ #ifdef sun
+@@ -92,7 +92,7 @@ void print_resource_track(ext2_resize_t rfs, struct resource_track *track,
+ 		kbytes(malloc_info.uordblks), kbytes(malloc_info.fordblks));
+ #else
+ 	printf("Memory used: %lu, ",
+-		(unsigned long) (((char *) sbrk(0)) -
++		(unsigned long) (((char *) NULL) -
+ 				 ((char *) track->brk_start)));
+ #endif
+ #ifdef HAVE_GETRUSAGE

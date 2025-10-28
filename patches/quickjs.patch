@@ -1,0 +1,107 @@
+diff --git a/Makefile b/Makefile
+index cf88a723a27a..322f8281ecf6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,3 +1,4 @@
++
+ #
+ # QuickJS Javascript Engine
+ #
+@@ -77,6 +78,7 @@ CONFIG_CLANG=y
+ CONFIG_DEFAULT_AR=y
+ CONFIG_LTO=
+ endif
++CONFIG_CLANG=y
+ 
+ ifdef CONFIG_WIN32
+   ifdef CONFIG_M32
+@@ -91,8 +93,8 @@ else
+ endif
+ 
+ ifdef CONFIG_CLANG
+-  HOST_CC=clang
+-  CC=$(CROSS_PREFIX)clang
++  HOST_CC=$(PWD)/../../../build/bin/clang
++  CC=$(CROSS_PREFIX)$(PWD)/../../../build/bin/clang
+   CFLAGS+=-g -Wall -MMD -MF $(OBJDIR)/$(@F).d
+   CFLAGS += -Wextra
+   CFLAGS += -Wno-sign-compare
+diff --git a/cutils.c b/cutils.c
+index c0aacef69ed3..b78d8fd7f794 100644
+--- a/cutils.c
++++ b/cutils.c
+@@ -303,7 +303,16 @@ int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp)
+     return c;
+ }
+ 
+-#if 0
++#ifdef __PIZLONATOR_WAS_HERE__
++
++void rqsort(void *base, size_t nmemb, size_t size,
++            int (*cmp)(const void *, const void *, void *),
++            void *arg)
++{
++    qsort_r(base, nmemb, size, cmp, arg);
++}
++
++#elif 0
+ 
+ #if defined(EMSCRIPTEN) || defined(__ANDROID__)
+ 
+diff --git a/quickjs.c b/quickjs.c
+index 642ae3429799..23e85d5224de 100644
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -47,9 +47,11 @@
+ #include "libunicode.h"
+ #include "libbf.h"
+ 
++#include <stdfil.h>
++
+ #define OPTIMIZE         1
+ #define SHORT_OPCODES    1
+-#if defined(EMSCRIPTEN)
++#if defined(EMSCRIPTEN) || defined(__PIZLONATOR_WAS_HERE__)
+ #define DIRECT_DISPATCH  0
+ #else
+ #define DIRECT_DISPATCH  1
+@@ -845,8 +847,8 @@ typedef struct JSProperty {
+         struct {            /* JS_PROP_AUTOINIT */
+             /* in order to use only 2 pointers, we compress the realm
+                and the init function pointer */
+-            uintptr_t realm_and_id; /* realm and init_id (JS_AUTOINIT_ID_x)
+-                                       in the 2 low bits */
++            void* realm_and_id; /* realm and init_id (JS_AUTOINIT_ID_x)
++                                   in the 2 low bits */
+             void *opaque;
+         } init;
+     } u;
+@@ -5176,12 +5178,12 @@ JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
+ 
+ static JSContext *js_autoinit_get_realm(JSProperty *pr)
+ {
+-    return (JSContext *)(pr->u.init.realm_and_id & ~3);
++    return (JSContext *)((uintptr_t)pr->u.init.realm_and_id & ~3);
+ }
+ 
+ static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr)
+ {
+-    return pr->u.init.realm_and_id & 3;
++    return (uintptr_t)pr->u.init.realm_and_id & 3;
+ }
+ 
+ static void js_autoinit_free(JSRuntime *rt, JSProperty *pr)
+@@ -9353,10 +9355,10 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
+     pr = add_property(ctx, p, prop, (flags & JS_PROP_C_W_E) | JS_PROP_AUTOINIT);
+     if (unlikely(!pr))
+         return -1;
+-    pr->u.init.realm_and_id = (uintptr_t)JS_DupContext(ctx);
+-    assert((pr->u.init.realm_and_id & 3) == 0);
++    pr->u.init.realm_and_id = JS_DupContext(ctx);
++    assert(((uintptr_t)pr->u.init.realm_and_id & 3) == 0);
+     assert(id <= 3);
+-    pr->u.init.realm_and_id |= id;
++    pr->u.init.realm_and_id = (void*)((uintptr_t)pr->u.init.realm_and_id | id);
+     pr->u.init.opaque = opaque;
+     return TRUE;
+ }

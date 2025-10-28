@@ -1,0 +1,47 @@
+diff --git a/meson.build b/meson.build
+index 9b642bf0faec..e9370083e9b8 100644
+--- a/meson.build
++++ b/meson.build
+@@ -165,12 +165,12 @@ configh_data.set('WIN32_LEAN_AND_MEAN', 1)
+ 
+ xkbcommon_map = meson.current_source_dir() / 'xkbcommon.map'
+ 
+-# Supports -Wl,--version-script?
++# Supports --version-script?
+ meson_test_map = meson.current_source_dir() / 'test/meson_test.map'
+ have_version_script = cc.links(
+     'int main() { return 0; }',
+-    args: f'-Wl,--version-script=@meson_test_map@',
+-    name: '-Wl,--version-script',
++    args: f'--version-script=@meson_test_map@',
++    name: '--version-script',
+ )
+ 
+ map_to_def = find_program('scripts/map-to-def')
+@@ -254,7 +254,7 @@ libxkbcommon_sources = [
+ libxkbcommon_link_args = []
+ libxkbcommon_link_deps = []
+ if have_version_script
+-    libxkbcommon_link_args += f'-Wl,--version-script=@xkbcommon_map@'
++    libxkbcommon_link_args += f'--version-script=@xkbcommon_map@'
+     libxkbcommon_link_deps += 'xkbcommon.map'
+ elif cc.get_argument_syntax() == 'msvc'
+     libxkbcommon_def = custom_target('xkbcommon.def',
+@@ -323,7 +323,7 @@ You can disable X11 support with -Denable-x11=false.''')
+     libxkbcommon_x11_link_args = []
+     libxkbcommon_x11_link_deps = []
+     if have_version_script
+-        libxkbcommon_x11_link_args += '-Wl,--version-script=' + meson.current_source_dir()/'xkbcommon-x11.map'
++        libxkbcommon_x11_link_args += '--version-script=' + meson.current_source_dir()/'xkbcommon-x11.map'
+         libxkbcommon_x11_link_deps += 'xkbcommon-x11.map'
+     elif cc.get_argument_syntax() == 'msvc'
+         libxkbcommon_x11_def = custom_target('xkbcommon-x11.def',
+@@ -402,7 +402,7 @@ if get_option('enable-xkbregistry')
+     libxkbregistry_link_args = []
+     libxkbregistry_link_deps = []
+     if have_version_script
+-        libxkbregistry_link_args += '-Wl,--version-script=' + meson.current_source_dir()/'xkbregistry.map'
++        libxkbregistry_link_args += '--version-script=' + meson.current_source_dir()/'xkbregistry.map'
+         libxkbregistry_link_deps += 'xkbregistry.map'
+     elif cc.get_argument_syntax() == 'msvc'
+         libxkbregistry_def = custom_target('xkbregistry.def',

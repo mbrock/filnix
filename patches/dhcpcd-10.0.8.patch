@@ -1,0 +1,69 @@
+diff --git a/compat/rbtree.h b/compat/rbtree.h
+index 656da22a108e..18385c5a2113 100644
+--- a/compat/rbtree.h
++++ b/compat/rbtree.h
+@@ -51,6 +51,7 @@
+ #else
+ #include "endian.h"
+ #endif
++#include <stdfil.h>
+ 
+ __BEGIN_DECLS
+ 
+@@ -67,14 +68,14 @@ typedef struct rb_node {
+ 	 * We put the two flags in the low two bits since we know that
+ 	 * rb_node will have an alignment of 4 or 8 bytes.
+ 	 */
+-	uintptr_t rb_info;
++	struct rb_node *rb_info;
+ #define	RB_FLAG_POSITION	(uintptr_t)0x2
+ #define	RB_FLAG_RED		(uintptr_t)0x1
+ #define	RB_FLAG_MASK		(RB_FLAG_POSITION|RB_FLAG_RED)
+ #define	RB_FATHER(rb) \
+-    ((struct rb_node *)((rb)->rb_info & ~RB_FLAG_MASK))
++    ((struct rb_node *)((uintptr_t)(rb)->rb_info & ~RB_FLAG_MASK))
+ #define	RB_SET_FATHER(rb, father) \
+-    ((void)((rb)->rb_info = (uintptr_t)(father)|((rb)->rb_info & RB_FLAG_MASK)))
++    ((void)((rb)->rb_info = zretagptr((father), (rb)->rb_info, ~RB_FLAG_MASK)))
+ 
+ #define	RB_SENTINEL_P(rb)	((rb) == NULL)
+ #define	RB_LEFT_SENTINEL_P(rb)	RB_SENTINEL_P((rb)->rb_left)
+@@ -86,25 +87,25 @@ typedef struct rb_node {
+     (!RB_SENTINEL_P(rb) && !RB_LEFT_SENTINEL_P(rb) && !RB_RIGHT_SENTINEL_P(rb))
+ 
+ #define	RB_POSITION(rb)	\
+-    (((rb)->rb_info & RB_FLAG_POSITION) ? RB_DIR_RIGHT : RB_DIR_LEFT)
++    (((uintptr_t)(rb)->rb_info & RB_FLAG_POSITION) ? RB_DIR_RIGHT : RB_DIR_LEFT)
+ #define	RB_RIGHT_P(rb)		(RB_POSITION(rb) == RB_DIR_RIGHT)
+ #define	RB_LEFT_P(rb)		(RB_POSITION(rb) == RB_DIR_LEFT)
+-#define	RB_RED_P(rb) 		(!RB_SENTINEL_P(rb) && ((rb)->rb_info & RB_FLAG_RED) != 0)
+-#define	RB_BLACK_P(rb) 		(RB_SENTINEL_P(rb) || ((rb)->rb_info & RB_FLAG_RED) == 0)
+-#define	RB_MARK_RED(rb) 	((void)((rb)->rb_info |= RB_FLAG_RED))
+-#define	RB_MARK_BLACK(rb) 	((void)((rb)->rb_info &= ~RB_FLAG_RED))
+-#define	RB_INVERT_COLOR(rb) 	((void)((rb)->rb_info ^= RB_FLAG_RED))
++#define	RB_RED_P(rb) 		(!RB_SENTINEL_P(rb) && ((uintptr_t)(rb)->rb_info & RB_FLAG_RED) != 0)
++#define	RB_BLACK_P(rb) 		(RB_SENTINEL_P(rb) || ((uintptr_t)(rb)->rb_info & RB_FLAG_RED) == 0)
++#define	RB_MARK_RED(rb) 	((void)((rb)->rb_info = zorptr((rb)->rb_info, RB_FLAG_RED)))
++#define	RB_MARK_BLACK(rb) 	((void)((rb)->rb_info = zandptr((rb)->rb_info, ~RB_FLAG_RED)))
++#define	RB_INVERT_COLOR(rb) 	((void)((rb)->rb_info = zxorptr((rb)->rb_info, RB_FLAG_RED)))
+ #define	RB_ROOT_P(rbt, rb)	((rbt)->rbt_root == (rb))
+ #define	RB_SET_POSITION(rb, position) \
+-    ((void)((position) ? ((rb)->rb_info |= RB_FLAG_POSITION) : \
+-    ((rb)->rb_info &= ~RB_FLAG_POSITION)))
+-#define	RB_ZERO_PROPERTIES(rb)	((void)((rb)->rb_info &= ~RB_FLAG_MASK))
++    ((void)((position) ? ((rb)->rb_info = zorptr((rb)->rb_info, RB_FLAG_POSITION)) : \
++    ((rb)->rb_info = zandptr((rb)->rb_info, ~RB_FLAG_POSITION))))
++#define	RB_ZERO_PROPERTIES(rb)	((void)((rb)->rb_info = zandptr((rb)->rb_info, ~RB_FLAG_MASK)))
+ #define	RB_COPY_PROPERTIES(dst, src) \
+-    ((void)((dst)->rb_info ^= ((dst)->rb_info ^ (src)->rb_info) & RB_FLAG_MASK))
++    ((void)((dst)->rb_info = zxorptr((dst)->rb_info, ((uintptr_t)(dst)->rb_info ^ (uintptr_t)(src)->rb_info) & RB_FLAG_MASK)))
+ #define RB_SWAP_PROPERTIES(a, b) do { \
+-    uintptr_t xorinfo = ((a)->rb_info ^ (b)->rb_info) & RB_FLAG_MASK; \
+-    (a)->rb_info ^= xorinfo; \
+-    (b)->rb_info ^= xorinfo; \
++    uintptr_t xorinfo = ((uintptr_t)(a)->rb_info ^ (uintptr_t)(b)->rb_info) & RB_FLAG_MASK; \
++    (a)->rb_info = zxorptr((a)->rb_info, xorinfo); \
++    (b)->rb_info = zxorptr((b)->rb_info, xorinfo); \
+   } while (/*CONSTCOND*/ 0)
+ #ifdef RBDEBUG
+ 	TAILQ_ENTRY(rb_node) rb_link;

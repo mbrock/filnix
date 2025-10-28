@@ -1,0 +1,13 @@
+diff --git a/meson.build b/meson.build
+index 549ed7e4c6f6..c160fb73cd0e 100644
+--- a/meson.build
++++ b/meson.build
+@@ -176,7 +176,7 @@ private_lib = static_library(
+ )
+ 
+ symbols_file = 'libseat/libseat.syms'
+-symbols_flag = '-Wl,--version-script,@0@/@1@'.format(meson.current_source_dir(), symbols_file)
++symbols_flag = '--version-script=@0@/@1@'.format(meson.current_source_dir(), symbols_file)
+ lib = library(
+ 	'seat', # This results in the library being called 'libseat'
+ 	[ 'libseat/libseat.c', 'libseat/backend/noop.c' ],

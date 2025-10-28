@@ -1,0 +1,122 @@
+diff --git a/meson.build b/meson.build
+index a2b0abc656b0..3e35ad1c64a4 100644
+--- a/meson.build
++++ b/meson.build
+@@ -441,7 +441,7 @@ libinput_version_h = configure_file(
+ )
+ 
+ mapfile = dir_src / 'libinput.sym'
+-version_flag = '-Wl,--version-script,@0@'.format(mapfile)
++version_flag = '--version-script=@0@'.format(mapfile)
+ lib_libinput = shared_library('input',
+ 		src_libinput,
+ 		include_directories : [include_directories('.'), includes_include],
+diff --git a/test/litest-main.c b/test/litest-main.c
+index 6fc31dac22f9..57eb38329618 100644
+--- a/test/litest-main.c
++++ b/test/litest-main.c
+@@ -135,26 +135,25 @@ litest_list_tests(struct list *tests)
+ 	}
+ }
+ 
+-extern const struct test_device __start_test_device_section, __stop_test_device_section;
++struct test_device *first_test_device;
+ 
+ static void
+ litest_init_test_devices(void)
+ {
+ 	const struct test_device *t;
+-	for (t = &__start_test_device_section; t < &__stop_test_device_section; t++)
++	for (t = first_test_device; t; t = t->next_test_device)
+ 		litest_add_test_device(&t->device->node);
+ }
+ 
+-extern const struct test_collection __start_test_collection_section,
+-	__stop_test_collection_section;
++struct test_collection *first_test_collection;
+ 
+ static void
+ setup_tests(void)
+ {
+ 	const struct test_collection *c;
+ 
+-	for (c = &__start_test_collection_section; c < &__stop_test_collection_section;
+-	     c++) {
++	for (c = first_test_collection; c;
++	     c = c->next_test_collection) {
+ 		struct suite *s;
+ 		s = zalloc(sizeof(*s));
+ 		s->name = safe_strdup(c->name);
+diff --git a/test/litest.h b/test/litest.h
+index 4b310146f19e..d867cc4dc841 100644
+--- a/test/litest.h
++++ b/test/litest.h
+@@ -34,6 +34,7 @@
+ #include <math.h>
+ #include <stdarg.h>
+ #include <stdbool.h>
++#include <stdlib.h>
+ 
+ #include "libinput-private-config.h"
+ #include "libinput-util.h"
+@@ -51,8 +52,11 @@
+ struct test_device {
+ 	const char *name;
+ 	struct litest_test_device *device;
++	struct test_device *next_test_device;
+ } __attribute__((aligned(16)));
+ 
++extern struct test_device *first_test_device;
++
+ #define TEST_DEVICE(which, ...) \
+ 	static struct litest_test_device _device; \
+ 	\
+@@ -61,11 +65,15 @@ struct test_device {
+ 		litest_set_current_device(d); \
+ 	} \
+ 	\
+-	static const struct test_device _test_device \
+-		__attribute__ ((used)) \
+-		__attribute__ ((section ("test_device_section"))) = { \
+-		#which, &_device \
+-	}; \
++	static void register_##which(void) __attribute__((constructor)); \
++	static void register_##which(void) \
++	{ \
++	        struct test_device *test_device = malloc(sizeof(struct test_device)); \
++		test_device->name = #which; \
++		test_device->device = &_device; \
++		test_device->next_test_device = first_test_device; \
++		first_test_device = test_device; \
++	} \
+ 	static struct litest_test_device _device = { \
+ 		.setup = _setup, \
+ 		.shortname = #which, \
+@@ -76,15 +84,22 @@ struct test_device {
+ struct test_collection {
+ 	const char *name;
+ 	void (*setup)(void);
++	struct test_collection *next_test_collection;
+ } __attribute__((aligned(16)));
+ 
++extern struct test_collection *first_test_collection;
++
+ #define TEST_COLLECTION(name_) \
+ 	static void (CONCAT(name_ , __LINE__))(void); \
+-	static const struct test_collection CONCAT(_test_collection_, __LINE__) \
+-	__attribute__ ((used)) \
+-	__attribute__ ((section ("test_collection_section"))) = { \
+-		#name_, CONCAT(name_, __LINE__) \
+-	}; \
++	static void CONCAT(register_test_collection_, __LINE__)(void) __attribute__((constructor)); \
++	static void CONCAT(register_test_collection_, __LINE__)(void) \
++	{ \
++	        struct test_collection *test_collection = malloc(sizeof(struct test_collection)); \
++		test_collection->name = #name_; \
++		test_collection->setup = CONCAT(name_, __LINE__); \
++		test_collection->next_test_collection = first_test_collection; \
++		first_test_collection = test_collection; \
++	} \
+ 	static void (CONCAT(name_, __LINE__))(void)
+ 
+ #define litest_mark_test_start() \

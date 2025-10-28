@@ -1,0 +1,35 @@
+diff --git a/lib/alg-yescrypt-opt.c b/lib/alg-yescrypt-opt.c
+index a33c6e402757..f5146f678dd3 100644
+--- a/lib/alg-yescrypt-opt.c
++++ b/lib/alg-yescrypt-opt.c
+@@ -30,6 +30,9 @@
+ 
+ #include "crypt-port.h"
+ 
++#undef __SSE2__
++#undef __SSE__
++
+ #if INCLUDE_yescrypt || INCLUDE_scrypt || INCLUDE_gost_yescrypt
+ 
+ #pragma GCC diagnostic ignored "-Wcast-align"
+diff --git a/lib/crypt-port.h b/lib/crypt-port.h
+index a7079396a9f3..19f23d6503dc 100644
+--- a/lib/crypt-port.h
++++ b/lib/crypt-port.h
+@@ -223,14 +223,14 @@ extern size_t strcpy_or_abort (void *dst, size_t d_size, const void *src);
+ 
+ /* Referencing specific _compatibility_ symbols still needs inline asm.  */
+ # define _symver_ref(extstr, intname, version) \
+-  __asm__ (".symver " #intname "," extstr "@" #version)
++  __asm__ (".filc_symver " #intname "," extstr "@" #version)
+ 
+ # else
+ 
+ /* Set the symbol version for EXTNAME, which uses INTNAME as its
+    implementation.  */
+ # define symver_set(extstr, intname, version, mode) \
+-  __asm__ (".symver " #intname "," extstr mode #version)
++  __asm__ (".filc_symver " #intname "," extstr mode #version)
+ 
+ # endif
+ 

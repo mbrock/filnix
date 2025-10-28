@@ -1,0 +1,38 @@
+diff --git a/.tarball-version b/.tarball-version
+new file mode 100644
+index 000000000000..e165e9be2828
+--- /dev/null
++++ b/.tarball-version
+@@ -0,0 +1 @@
++pizlonated
+diff --git a/Makefile.am b/Makefile.am
+index e4099140a2b1..d25dfef56537 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -4,8 +4,6 @@ AM_CFLAGS = -I$(top_srcdir)/include
+ 
+ EXTRA_DIST = LICENSE 3rdparty/libsais-LICENSE PORTING.md README.md build-aux/git-version-gen CMakeLists.txt
+ 
+-pkgconfig_DATA = bzip3.pc
+-
+ include_HEADERS = include/libbz3.h
+ noinst_HEADERS = include/common.h \
+ 						 include/libsais.h \
+diff --git a/configure.ac b/configure.ac
+index b84609556e5a..869d92eb743c 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -13,9 +13,6 @@ AC_PROG_CC([clang gcc icc])
+ AC_PROG_AWK
+ LT_INIT
+ 
+-PKG_PROG_PKG_CONFIG
+-PKG_INSTALLDIR
+-
+ AC_C_RESTRICT
+ 
+ AC_ARG_WITH([pthread],
+diff --git a/examples/shakespeare.txt.bz3 b/examples/shakespeare.txt.bz3
+new file mode 100644
+index 000000000000..bae6e2edc780
+Binary files /dev/null and b/examples/shakespeare.txt.bz3 differ

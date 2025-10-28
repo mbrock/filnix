@@ -1,0 +1,77 @@
+diff --git a/lib/regex.h b/lib/regex.h
+index 9ef0252ffff2..77fb8a20b4bf 100644
+--- a/lib/regex.h
++++ b/lib/regex.h
+@@ -535,6 +535,7 @@ typedef struct
+ # pragma GCC diagnostic push
+ # pragma GCC diagnostic ignored "-Wvla"
+ #endif
++#pragma clang diagnostic ignored "-Wvla"
+ 
+ #ifndef _Attr_access_
+ # ifdef __attr_access
+diff --git a/lib/sigsegv.c b/lib/sigsegv.c
+index 8263d9b7bdfe..b471fd1e1aec 100644
+--- a/lib/sigsegv.c
++++ b/lib/sigsegv.c
+@@ -1401,7 +1401,7 @@ int
+ stackoverflow_install_handler (stackoverflow_handler_t handler,
+                                void *extra_stack, size_t extra_stack_size)
+ {
+-#if HAVE_STACK_OVERFLOW_RECOVERY
++#if HAVE_STACK_OVERFLOW_RECOVERY && !defined(__FILC__)
+ # if HAVE_STACKVMA
+   if (!stack_top)
+     {
+diff --git a/lib/stdio.in.h b/lib/stdio.in.h
+index 6be12c0525d9..29aa55959430 100644
+--- a/lib/stdio.in.h
++++ b/lib/stdio.in.h
+@@ -20,6 +20,8 @@
+ #endif
+ @PRAGMA_COLUMNS@
+ 
++#pragma clang diagnostic ignored "-Winclude-next-absolute-path"
++
+ #if defined __need_FILE || defined __need___FILE || defined _GL_ALREADY_INCLUDING_STDIO_H
+ /* Special invocation convention:
+    - Inside glibc header files.
+diff --git a/lib/unistd.in.h b/lib/unistd.in.h
+index 2ae040a76b3e..62d5e6640d05 100644
+--- a/lib/unistd.in.h
++++ b/lib/unistd.in.h
+@@ -16,6 +16,8 @@
+ 
+ #ifndef _@GUARD_PREFIX@_UNISTD_H
+ 
++#pragma clang diagnostic ignored "-Winclude-next-absolute-path"
++
+ #if __GNUC__ >= 3
+ @PRAGMA_SYSTEM_HEADER@
+ #endif
+diff --git a/lib/wctype.in.h b/lib/wctype.in.h
+index 227fdac24bfc..3de7ed0195fb 100644
+--- a/lib/wctype.in.h
++++ b/lib/wctype.in.h
+@@ -30,6 +30,8 @@
+ #endif
+ @PRAGMA_COLUMNS@
+ 
++#pragma clang diagnostic ignored "-Winclude-next-absolute-path"
++
+ #if (defined __MINGW32__ && defined __CTYPE_H_SOURCED__)
+ 
+ /* Special invocation convention:
+diff --git a/src/diff.c b/src/diff.c
+index c5cc75841e3d..d9604966cc8d 100644
+--- a/src/diff.c
++++ b/src/diff.c
+@@ -43,6 +43,8 @@
+ #include <xstdopen.h>
+ #include <binary-io.h>
+ 
++#pragma clang diagnostic ignored "-Wbool-operation"
++
+ /* The official name of this program (e.g., no 'g' prefix).  */
+ static char const PROGRAM_NAME[] = "diff";
+ 

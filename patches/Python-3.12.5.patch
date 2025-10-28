@@ -1,0 +1,1551 @@
+diff --git a/Include/Python.h b/Include/Python.h
+index 5eddda633616..1c56f8039325 100644
+--- a/Include/Python.h
++++ b/Include/Python.h
+@@ -7,6 +7,8 @@
+ 
+ // Since this is a "meta-include" file, no #ifdef __cplusplus / extern "C" {
+ 
++#include <stdfil.h>
++
+ // Include Python header files
+ #include "patchlevel.h"
+ #include "pyconfig.h"
+diff --git a/Include/cpython/genobject.h b/Include/cpython/genobject.h
+index 7856481b5db3..5025dad09c76 100644
+--- a/Include/cpython/genobject.h
++++ b/Include/cpython/genobject.h
+@@ -12,7 +12,7 @@ extern "C" {
+ /* _PyGenObject_HEAD defines the initial segment of generator
+    and coroutine objects. */
+ #define _PyGenObject_HEAD(prefix)                                           \
+-    PyObject_HEAD                                                           \
++    PyObject_VAR_HEAD                                                       \
+     /* List of weak reference. */                                           \
+     PyObject *prefix##_weakreflist;                                         \
+     /* Name of the generator. */                                            \
+diff --git a/Include/cpython/longintrepr.h b/Include/cpython/longintrepr.h
+index 78ac79a7cb88..2e61c29a65af 100644
+--- a/Include/cpython/longintrepr.h
++++ b/Include/cpython/longintrepr.h
+@@ -81,6 +81,7 @@ typedef long stwodigits; /* signed variant of twodigits */
+ 
+ typedef struct _PyLongValue {
+     uintptr_t lv_tag; /* Number of digits, sign and flags */
++    /* FIXME: We could stash a void* here, if there's a capability to be had. */
+     digit ob_digit[1];
+ } _PyLongValue;
+ 
+diff --git a/Include/cpython/pystate.h b/Include/cpython/pystate.h
+index 95fad893786d..958c3ae33b0d 100644
+--- a/Include/cpython/pystate.h
++++ b/Include/cpython/pystate.h
+@@ -225,9 +225,7 @@ struct _ts {
+     /* Unique thread state id. */
+     uint64_t id;
+ 
+-    _PyStackChunk *datastack_chunk;
+-    PyObject **datastack_top;
+-    PyObject **datastack_limit;
++    struct _PyInterpreterFrame *datastack_top_frame;
+     /* XXX signal handlers should also be here */
+ 
+     /* The following fields are here to avoid allocation during init.
+diff --git a/Include/internal/pycore_atomic.h b/Include/internal/pycore_atomic.h
+index 425d69f868b5..c5763db3c3cb 100644
+--- a/Include/internal/pycore_atomic.h
++++ b/Include/internal/pycore_atomic.h
+@@ -43,7 +43,7 @@ typedef enum _Py_memory_order {
+ } _Py_memory_order;
+ 
+ typedef struct _Py_atomic_address {
+-    atomic_uintptr_t _value;
++    void*_Atomic _value;
+ } _Py_atomic_address;
+ 
+ typedef struct _Py_atomic_int {
+@@ -64,6 +64,7 @@ typedef struct _Py_atomic_int {
+ 
+ // Use builtin atomic operations in GCC >= 4.7 and clang
+ #elif defined(HAVE_BUILTIN_ATOMIC)
++#error "have builtin atomic"
+ 
+ typedef enum _Py_memory_order {
+     _Py_memory_order_relaxed = __ATOMIC_RELAXED,
+@@ -103,6 +104,7 @@ typedef struct _Py_atomic_int {
+ /* Only support GCC (for expression statements) and x86 (for simple
+  * atomic semantics) and MSVC x86/x64/ARM */
+ #elif defined(__GNUC__) && (defined(__i386__) || defined(__amd64))
++#error "have some GNU C stuff"
+ typedef enum _Py_memory_order {
+     _Py_memory_order_relaxed,
+     _Py_memory_order_acquire,
+@@ -231,6 +233,7 @@ _Py_ANNOTATE_MEMORY_ORDER(const volatile void *address, _Py_memory_order order)
+     })
+ 
+ #elif defined(_MSC_VER)
++#error "have some MSVC stuff"
+ /*  _Interlocked* functions provide a full memory barrier and are therefore
+     enough for acq_rel and seq_cst. If the HLE variants aren't available
+     in hardware they will fall back to a full memory barrier as well.
+@@ -363,6 +366,7 @@ inline int _Py_atomic_load_32bit_impl(volatile int* value, int order) {
+ #define _Py_atomic_load_32bit(ATOMIC_VAL, ORDER) \
+     _Py_atomic_load_32bit_impl((volatile int*)&((ATOMIC_VAL)->_value), (ORDER))
+ 
++#error "oh no"
+ #define _Py_atomic_store_explicit(ATOMIC_VAL, NEW_VAL, ORDER) \
+   if (sizeof((ATOMIC_VAL)->_value) == 8) { \
+     _Py_atomic_store_64bit((ATOMIC_VAL), NEW_VAL, ORDER) } else { \
+@@ -504,7 +508,8 @@ inline int _Py_atomic_load_32bit_impl(volatile int* value, int order) {
+     _Py_atomic_store_64bit((ATOMIC_VAL), (NEW_VAL), (ORDER)) } else { \
+     _Py_atomic_store_32bit((ATOMIC_VAL), (NEW_VAL), (ORDER)) }
+ 
+-#define _Py_atomic_load_explicit(ATOMIC_VAL, ORDER) \
++#error "oh noooo"
++#define _Py_atomic_load_explicit(ATOMIC_VAL, ORDER)     \
+   ( \
+     sizeof((ATOMIC_VAL)->_value) == 8 ? \
+     _Py_atomic_load_64bit((ATOMIC_VAL), (ORDER)) : \
+@@ -512,6 +517,7 @@ inline int _Py_atomic_load_32bit_impl(volatile int* value, int order) {
+   )
+ #endif
+ #else  /* !gcc x86  !_msc_ver */
++#error "oh nooooooooooo
+ typedef enum _Py_memory_order {
+     _Py_memory_order_relaxed,
+     _Py_memory_order_acquire,
+diff --git a/Include/internal/pycore_code.h b/Include/internal/pycore_code.h
+index 92e0a8bbd394..cb819b1fdfce 100644
+--- a/Include/internal/pycore_code.h
++++ b/Include/internal/pycore_code.h
+@@ -252,6 +252,8 @@ extern void _PyStaticCode_Fini(PyCodeObject *co);
+ /* Function to intern strings of codeobjects and quicken the bytecode */
+ extern int _PyStaticCode_Init(PyCodeObject *co);
+ 
++extern zptrtable* _PyCode_PtrTable;
++
+ #ifdef Py_STATS
+ 
+ 
+@@ -304,7 +306,8 @@ write_u64(uint16_t *p, uint64_t val)
+ static inline void
+ write_obj(uint16_t *p, PyObject *val)
+ {
+-    memcpy(p, &val, sizeof(val));
++    uintptr_t valint = zptrtable_encode(_PyCode_PtrTable, val);
++    memcpy(p, &valint, sizeof(valint));
+ }
+ 
+ static inline uint16_t
+@@ -332,9 +335,9 @@ read_u64(uint16_t *p)
+ static inline PyObject *
+ read_obj(uint16_t *p)
+ {
+-    PyObject *val;
++    uintptr_t val;
+     memcpy(&val, p, sizeof(val));
+-    return val;
++    return zptrtable_decode(_PyCode_PtrTable, val);
+ }
+ 
+ /* See Objects/exception_handling_notes.txt for details.
+diff --git a/Include/internal/pycore_frame.h b/Include/internal/pycore_frame.h
+index 4d355b2bc8d6..d7d57fb7a70a 100644
+--- a/Include/internal/pycore_frame.h
++++ b/Include/internal/pycore_frame.h
+@@ -14,7 +14,7 @@ extern "C" {
+ 
+ 
+ struct _frame {
+-    PyObject_HEAD
++    PyObject_VAR_HEAD
+     PyFrameObject *f_back;      /* previous frame, or NULL */
+     struct _PyInterpreterFrame *f_frame; /* points to the frame data */
+     PyObject *f_trace;          /* Trace function */
+@@ -50,6 +50,7 @@ enum _frameowner {
+ 
+ typedef struct _PyInterpreterFrame {
+     PyCodeObject *f_code; /* Strong reference */
++    struct _PyInterpreterFrame *_f_caller_frame;
+     struct _PyInterpreterFrame *previous;
+     PyObject *f_funcobj; /* Strong reference. Only valid if not on C stack */
+     PyObject *f_globals; /* Borrowed reference. Only valid if not on C stack */
+@@ -240,13 +241,7 @@ _PyFrame_LocalsToFast(_PyInterpreterFrame *frame, int clear);
+ static inline bool
+ _PyThreadState_HasStackSpace(PyThreadState *tstate, int size)
+ {
+-    assert(
+-        (tstate->datastack_top == NULL && tstate->datastack_limit == NULL)
+-        ||
+-        (tstate->datastack_top != NULL && tstate->datastack_limit != NULL)
+-    );
+-    return tstate->datastack_top != NULL &&
+-        size < tstate->datastack_limit - tstate->datastack_top;
++    return true;
+ }
+ 
+ extern _PyInterpreterFrame *
+@@ -262,9 +257,7 @@ _PyFrame_PushUnchecked(PyThreadState *tstate, PyFunctionObject *func, int null_l
+ {
+     CALL_STAT_INC(frames_pushed);
+     PyCodeObject *code = (PyCodeObject *)func->func_code;
+-    _PyInterpreterFrame *new_frame = (_PyInterpreterFrame *)tstate->datastack_top;
+-    tstate->datastack_top += code->co_framesize;
+-    assert(tstate->datastack_top < tstate->datastack_limit);
++    _PyInterpreterFrame *new_frame = _PyThreadState_PushFrame(tstate, code->co_framesize);
+     _PyFrame_Initialize(new_frame, func, NULL, code, null_locals_from);
+     return new_frame;
+ }
+diff --git a/Include/internal/pycore_gc.h b/Include/internal/pycore_gc.h
+index b3abe2030a03..37d7470a33ee 100644
+--- a/Include/internal/pycore_gc.h
++++ b/Include/internal/pycore_gc.h
+@@ -1,5 +1,8 @@
+ #ifndef Py_INTERNAL_GC_H
+ #define Py_INTERNAL_GC_H
++
++#include <stdfil.h>
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -9,15 +12,16 @@ extern "C" {
+ #endif
+ 
+ /* GC information is stored BEFORE the object structure. */
+-typedef struct {
++typedef struct PyGC_Head PyGC_Head;
++struct PyGC_Head {
+     // Pointer to next object in the list.
+     // 0 means the object is not tracked
+-    uintptr_t _gc_next;
++    PyGC_Head* _gc_next;
+ 
+     // Pointer to previous object in the list.
+     // Lowest two bits are used for flags documented later.
+-    uintptr_t _gc_prev;
+-} PyGC_Head;
++    PyGC_Head* _gc_prev;
++};
+ 
+ static inline PyGC_Head* _Py_AS_GC(PyObject *op) {
+     return (_Py_CAST(PyGC_Head*, op) - 1);
+@@ -56,29 +60,25 @@ static inline int _PyObject_GC_MAY_BE_TRACKED(PyObject *obj) {
+ // Lowest bit of _gc_next is used for flags only in GC.
+ // But it is always 0 for normal code.
+ static inline PyGC_Head* _PyGCHead_NEXT(PyGC_Head *gc) {
+-    uintptr_t next = gc->_gc_next;
+-    return _Py_CAST(PyGC_Head*, next);
++    return gc->_gc_next;
+ }
+ static inline void _PyGCHead_SET_NEXT(PyGC_Head *gc, PyGC_Head *next) {
+-    gc->_gc_next = _Py_CAST(uintptr_t, next);
++    gc->_gc_next = next;
+ }
+ 
+ // Lowest two bits of _gc_prev is used for _PyGC_PREV_MASK_* flags.
+ static inline PyGC_Head* _PyGCHead_PREV(PyGC_Head *gc) {
+-    uintptr_t prev = (gc->_gc_prev & _PyGC_PREV_MASK);
+-    return _Py_CAST(PyGC_Head*, prev);
++    return zandptr(gc->_gc_prev, _PyGC_PREV_MASK);
+ }
+ static inline void _PyGCHead_SET_PREV(PyGC_Head *gc, PyGC_Head *prev) {
+-    uintptr_t uprev = _Py_CAST(uintptr_t, prev);
+-    assert((uprev & ~_PyGC_PREV_MASK) == 0);
+-    gc->_gc_prev = ((gc->_gc_prev & ~_PyGC_PREV_MASK) | uprev);
++    gc->_gc_prev = zretagptr(prev, gc->_gc_prev, _PyGC_PREV_MASK);
+ }
+ 
+ static inline int _PyGCHead_FINALIZED(PyGC_Head *gc) {
+-    return ((gc->_gc_prev & _PyGC_PREV_MASK_FINALIZED) != 0);
++    return (((uintptr_t)gc->_gc_prev & _PyGC_PREV_MASK_FINALIZED) != 0);
+ }
+ static inline void _PyGCHead_SET_FINALIZED(PyGC_Head *gc) {
+-    gc->_gc_prev |= _PyGC_PREV_MASK_FINALIZED;
++    gc->_gc_prev = zorptr(gc->_gc_prev, _PyGC_PREV_MASK_FINALIZED);
+ }
+ 
+ static inline int _PyGC_FINALIZED(PyObject *op) {
+diff --git a/Include/internal/pycore_interp.h b/Include/internal/pycore_interp.h
+index 37cc88ed081b..eda6377762c0 100644
+--- a/Include/internal/pycore_interp.h
++++ b/Include/internal/pycore_interp.h
+@@ -250,7 +250,7 @@ _PyInterpreterState_GetFinalizingID(PyInterpreterState *interp) {
+ 
+ static inline void
+ _PyInterpreterState_SetFinalizing(PyInterpreterState *interp, PyThreadState *tstate) {
+-    _Py_atomic_store_relaxed(&interp->_finalizing, (uintptr_t)tstate);
++    _Py_atomic_store_relaxed(&interp->_finalizing, tstate);
+     if (tstate == NULL) {
+         _Py_atomic_store_relaxed(&interp->_finalizing_id, 0);
+     }
+@@ -258,7 +258,7 @@ _PyInterpreterState_SetFinalizing(PyInterpreterState *interp, PyThreadState *tst
+         // XXX Re-enable this assert once gh-109860 is fixed.
+         //assert(tstate->thread_id == PyThread_get_thread_ident());
+         _Py_atomic_store_relaxed(&interp->_finalizing_id,
+-                                 (uintptr_t)tstate->thread_id);
++                                 (void*)tstate->thread_id);
+     }
+ }
+ 
+diff --git a/Include/internal/pycore_object.h b/Include/internal/pycore_object.h
+index 63e74a65f43c..d6cc4c38f5f7 100644
+--- a/Include/internal/pycore_object.h
++++ b/Include/internal/pycore_object.h
+@@ -206,17 +206,17 @@ static inline void _PyObject_GC_TRACK(
+ 
+     PyGC_Head *gc = _Py_AS_GC(op);
+     _PyObject_ASSERT_FROM(op,
+-                          (gc->_gc_prev & _PyGC_PREV_MASK_COLLECTING) == 0,
++                          ((uintptr_t)gc->_gc_prev & _PyGC_PREV_MASK_COLLECTING) == 0,
+                           "object is in generation which is garbage collected",
+                           filename, lineno, __func__);
+ 
+     PyInterpreterState *interp = _PyInterpreterState_GET();
+     PyGC_Head *generation0 = interp->gc.generation0;
+-    PyGC_Head *last = (PyGC_Head*)(generation0->_gc_prev);
++    PyGC_Head *last = generation0->_gc_prev;
+     _PyGCHead_SET_NEXT(last, gc);
+     _PyGCHead_SET_PREV(gc, last);
+     _PyGCHead_SET_NEXT(gc, generation0);
+-    generation0->_gc_prev = (uintptr_t)gc;
++    generation0->_gc_prev = gc;
+ }
+ 
+ /* Tell the GC to stop tracking this object.
+@@ -246,7 +246,7 @@ static inline void _PyObject_GC_UNTRACK(
+     _PyGCHead_SET_NEXT(prev, next);
+     _PyGCHead_SET_PREV(next, prev);
+     gc->_gc_next = 0;
+-    gc->_gc_prev &= _PyGC_PREV_MASK_FINALIZED;
++    gc->_gc_prev = zandptr(gc->_gc_prev, _PyGC_PREV_MASK_FINALIZED);
+ }
+ 
+ // Macros to accept any type for the parameter, and to automatically pass
+diff --git a/Include/internal/pycore_obmalloc.h b/Include/internal/pycore_obmalloc.h
+index b1c00654ac1c..cb5a22c2e24d 100644
+--- a/Include/internal/pycore_obmalloc.h
++++ b/Include/internal/pycore_obmalloc.h
+@@ -178,7 +178,7 @@ typedef unsigned int pymem_uint;  /* assuming >= 16 bits */
+ #endif
+ #endif
+ 
+-#if !defined(WITH_PYMALLOC_RADIX_TREE)
++#if !defined(WITH_PYMALLOC_RADIX_TREE) && !defined(__PIZLONATOR_WAS_HERE__)
+ /* Use radix-tree to track arena memory regions, for address_in_range().
+  * Enable by default since it allows larger pool sizes.  Can be disabled
+  * using -DWITH_PYMALLOC_RADIX_TREE=0 */
+diff --git a/Include/internal/pycore_pymem.h b/Include/internal/pycore_pymem.h
+index 81a707a0a5dd..274e79dc19f3 100644
+--- a/Include/internal/pycore_pymem.h
++++ b/Include/internal/pycore_pymem.h
+@@ -67,7 +67,9 @@ PyAPI_FUNC(int) _PyMem_SetDefaultAllocator(
+ static inline int _PyMem_IsPtrFreed(const void *ptr)
+ {
+     uintptr_t value = (uintptr_t)ptr;
+-#if SIZEOF_VOID_P == 8
++#ifdef __PIZLONATOR_WAS_HERE__
++    return 0;
++#elif SIZEOF_VOID_P == 8
+     return (value == 0
+             || value == (uintptr_t)0xCDCDCDCDCDCDCDCD
+             || value == (uintptr_t)0xDDDDDDDDDDDDDDDD
+diff --git a/Include/internal/pycore_runtime.h b/Include/internal/pycore_runtime.h
+index 99c4b0760bfb..036bc73772d9 100644
+--- a/Include/internal/pycore_runtime.h
++++ b/Include/internal/pycore_runtime.h
+@@ -217,7 +217,7 @@ _PyRuntimeState_GetFinalizingID(_PyRuntimeState *runtime) {
+ 
+ static inline void
+ _PyRuntimeState_SetFinalizing(_PyRuntimeState *runtime, PyThreadState *tstate) {
+-    _Py_atomic_store_relaxed(&runtime->_finalizing, (uintptr_t)tstate);
++    _Py_atomic_store_relaxed(&runtime->_finalizing, tstate);
+     if (tstate == NULL) {
+         _Py_atomic_store_relaxed(&runtime->_finalizing_id, 0);
+     }
+@@ -225,7 +225,7 @@ _PyRuntimeState_SetFinalizing(_PyRuntimeState *runtime, PyThreadState *tstate) {
+         // XXX Re-enable this assert once gh-109860 is fixed.
+         //assert(tstate->thread_id == PyThread_get_thread_ident());
+         _Py_atomic_store_relaxed(&runtime->_finalizing_id,
+-                                 (uintptr_t)tstate->thread_id);
++                                 (void*)tstate->thread_id);
+     }
+ }
+ 
+diff --git a/Include/internal/pycore_tracemalloc.h b/Include/internal/pycore_tracemalloc.h
+index d086adc61c31..5294d7d60cb6 100644
+--- a/Include/internal/pycore_tracemalloc.h
++++ b/Include/internal/pycore_tracemalloc.h
+@@ -41,7 +41,7 @@ struct _PyTraceMalloc_Config {
+ #endif
+ 
+ struct
+-#ifdef __GNUC__
++#if defined(__GNUC__) && !defined(__PIZLONATOR_WAS_HERE__)
+ __attribute__((packed))
+ #endif
+ tracemalloc_frame {
+diff --git a/Include/longobject.h b/Include/longobject.h
+index c8b749735386..8e618aa7ed56 100644
+--- a/Include/longobject.h
++++ b/Include/longobject.h
+@@ -73,6 +73,9 @@ PyLong_AsPid(PyObject *obj)
+ #elif defined(SIZEOF_LONG_LONG) && SIZEOF_VOID_P == SIZEOF_LONG_LONG
+ #  define _Py_PARSE_INTPTR "L"
+ #  define _Py_PARSE_UINTPTR "K"
++#elif defined(__PIZLONATOR_WAS_HERE__)
++#  define _Py_PARSE_INTPTR "l"
++#  define _Py_PARSE_UINTPTR "k"
+ #else
+ #  error "void* different in size from int, long and long long"
+ #endif /* SIZEOF_VOID_P */
+diff --git a/Include/object.h b/Include/object.h
+index 0d94cf825534..c08ff73eda5f 100644
+--- a/Include/object.h
++++ b/Include/object.h
+@@ -1,5 +1,7 @@
+ #ifndef Py_OBJECT_H
+ #define Py_OBJECT_H
++#include <stdfil.h>
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -270,6 +272,8 @@ static inline void Py_SET_REFCNT(PyObject *ob, Py_ssize_t refcnt) {
+ 
+ 
+ static inline void Py_SET_TYPE(PyObject *ob, PyTypeObject *type) {
++    ZASSERT(zhasvalidcap(type));
++    ZASSERT(zinbounds(type));
+     ob->ob_type = type;
+ }
+ #if !defined(Py_LIMITED_API) || Py_LIMITED_API+0 < 0x030b0000
+diff --git a/Lib/urllib/request.py b/Lib/urllib/request.py
+index 7228a35534b6..bda73d6410b9 100644
+--- a/Lib/urllib/request.py
++++ b/Lib/urllib/request.py
+@@ -2664,7 +2664,8 @@ def _proxy_bypass_winreg_override(host, override):
+     return False
+ 
+ 
+-if sys.platform == 'darwin':
++# HACK: We disable _scproxy on Mac because we cannot call Mac native functions anyway.
++if sys.platform == 'darwin_':
+     from _scproxy import _get_proxy_settings, _get_proxies
+ 
+     def proxy_bypass_macosx_sysconf(host):
+diff --git a/Makefile.pre.in b/Makefile.pre.in
+index c027eaafb1d2..19decb01d234 100644
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -2330,18 +2330,18 @@ libinstall:	all $(srcdir)/Modules/xxmodule.c
+ 		$(DESTDIR)$(LIBDEST); \
+ 	$(INSTALL_DATA) $(srcdir)/LICENSE $(DESTDIR)$(LIBDEST)/LICENSE.txt
+ 	@ # Build PYC files for the 3 optimization levels (0, 1, 2)
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
++	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+ 		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+ 		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST) -f \
+ 		-x 'bad_coding|badsyntax|site-packages|test/test_lib2to3/data' \
+ 		$(DESTDIR)$(LIBDEST)
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
++	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+ 		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+ 		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
+ 		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
++	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+ 		$(PYTHON_FOR_BUILD) -m lib2to3.pgen2.driver $(DESTDIR)$(LIBDEST)/lib2to3/Grammar.txt
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
++	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+ 		$(PYTHON_FOR_BUILD) -m lib2to3.pgen2.driver $(DESTDIR)$(LIBDEST)/lib2to3/PatternGrammar.txt
+ 
+ # bpo-21536: Misc/python-config.sh is generated in the build directory
+diff --git a/Modules/_blake2/blake2b_impl.c b/Modules/_blake2/blake2b_impl.c
+index c2cac98c7529..17d2621bb95c 100644
+--- a/Modules/_blake2/blake2b_impl.c
++++ b/Modules/_blake2/blake2b_impl.c
+@@ -26,7 +26,7 @@
+ #ifndef HAVE_LIBB2
+ /* pure SSE2 implementation is very slow, so only use the more optimized SSSE3+
+  * https://bugs.python.org/issue31834 */
+-#if defined(__SSSE3__) || defined(__SSE4_1__) || defined(__AVX__) || defined(__XOP__)
++#if (defined(__SSSE3__) || defined(__SSE4_1__) || defined(__AVX__) || defined(__XOP__)) && !defined(__PIZLONATOR_WAS_HERE__)
+ #include "impl/blake2b.c"
+ #else
+ #include "impl/blake2b-ref.c"
+diff --git a/Modules/_blake2/blake2s_impl.c b/Modules/_blake2/blake2s_impl.c
+index 1c47328ece13..947a98e8f78f 100644
+--- a/Modules/_blake2/blake2s_impl.c
++++ b/Modules/_blake2/blake2s_impl.c
+@@ -26,7 +26,7 @@
+ #ifndef HAVE_LIBB2
+ /* pure SSE2 implementation is very slow, so only use the more optimized SSSE3+
+  * https://bugs.python.org/issue31834 */
+-#if defined(__SSSE3__) || defined(__SSE4_1__) || defined(__AVX__) || defined(__XOP__)
++#if (defined(__SSSE3__) || defined(__SSE4_1__) || defined(__AVX__) || defined(__XOP__)) && !defined(__PIZLONATOR_WAS_HERE__)
+ #include "impl/blake2s.c"
+ #else
+ #include "impl/blake2s-ref.c"
+diff --git a/Modules/_multiprocessing/multiprocessing.h b/Modules/_multiprocessing/multiprocessing.h
+index dfc2a8e0799a..0e511cb24baf 100644
+--- a/Modules/_multiprocessing/multiprocessing.h
++++ b/Modules/_multiprocessing/multiprocessing.h
+@@ -29,7 +29,7 @@
+ #  if defined(HAVE_SEM_OPEN) && !defined(POSIX_SEMAPHORES_NOT_ENABLED)
+ #    define HAVE_MP_SEMAPHORE
+ #    include <semaphore.h>
+-     typedef sem_t *SEM_HANDLE;
++     typedef unsigned long SEM_HANDLE;
+ #  endif
+ #endif
+ 
+@@ -53,15 +53,8 @@
+  * Format codes
+  */
+ 
+-#if SIZEOF_VOID_P == SIZEOF_LONG
+ #  define F_POINTER "k"
+ #  define T_POINTER T_ULONG
+-#elif SIZEOF_VOID_P == SIZEOF_LONG_LONG
+-#  define F_POINTER "K"
+-#  define T_POINTER T_ULONGLONG
+-#else
+-#  error "can't find format code for unsigned integer of same size as void*"
+-#endif
+ 
+ #ifdef MS_WINDOWS
+ #  define F_HANDLE F_POINTER
+diff --git a/Modules/_multiprocessing/semaphore.c b/Modules/_multiprocessing/semaphore.c
+index c7df82dfe2d0..c328e9b7bb8e 100644
+--- a/Modules/_multiprocessing/semaphore.c
++++ b/Modules/_multiprocessing/semaphore.c
+@@ -9,6 +9,8 @@
+ 
+ #include "multiprocessing.h"
+ 
++#include <stdfil.h>
++
+ #ifdef HAVE_MP_SEMAPHORE
+ 
+ enum { RECURSIVE_MUTEX, SEMAPHORE };
+@@ -207,24 +209,48 @@ _multiprocessing_SemLock_release_impl(SemLockObject *self)
+ 
+ #else /* !MS_WINDOWS */
+ 
++/* OS X 10.4 defines SEM_FAILED as -1 instead of (sem_t *)-1;  this gives
++   compiler warnings, and (potentially) undefined behaviour. */
++#ifdef __APPLE__
++#  undef SEM_FAILED
++#  define SEM_FAILED ((sem_t *)-1)
++#endif
++
++#define ENCODED_SEM_FAILED ((unsigned long)(long)-1)
++
++static zptrtable* sem_ptr_table;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    sem_ptr_table = zptrtable_new();
++}
++
++static sem_t* decode_sem(SEM_HANDLE handle)
++{
++    if (handle == ENCODED_SEM_FAILED)
++        return SEM_FAILED;
++    return zptrtable_decode(sem_ptr_table, handle);
++}
++
++static SEM_HANDLE encode_sem(sem_t *sem)
++{
++    if (sem == SEM_FAILED)
++        return ENCODED_SEM_FAILED;
++    return zptrtable_encode(sem_ptr_table, sem);
++}
++
+ /*
+  * Unix definitions
+  */
+ 
+ #define SEM_CLEAR_ERROR()
+ #define SEM_GET_LAST_ERROR() 0
+-#define SEM_CREATE(name, val, max) sem_open(name, O_CREAT | O_EXCL, 0600, val)
+-#define SEM_CLOSE(sem) sem_close(sem)
+-#define SEM_GETVALUE(sem, pval) sem_getvalue(sem, pval)
++#define SEM_CREATE(name, val, max) encode_sem(sem_open(name, O_CREAT | O_EXCL, 0600, val))
++#define SEM_CLOSE(sem) sem_close(decode_sem(sem))
++#define SEM_GETVALUE(sem, pval) sem_getvalue(decode_sem(sem), pval)
+ #define SEM_UNLINK(name) sem_unlink(name)
+ 
+-/* OS X 10.4 defines SEM_FAILED as -1 instead of (sem_t *)-1;  this gives
+-   compiler warnings, and (potentially) undefined behaviour. */
+-#ifdef __APPLE__
+-#  undef SEM_FAILED
+-#  define SEM_FAILED ((sem_t *)-1)
+-#endif
+-
+ #ifndef HAVE_SEM_UNLINK
+ #  define sem_unlink(name) 0
+ #endif
+@@ -339,7 +365,7 @@ _multiprocessing_SemLock_acquire_impl(SemLockObject *self, int blocking,
+ 
+     /* Check whether we can acquire without releasing the GIL and blocking */
+     do {
+-        res = sem_trywait(self->handle);
++        res = sem_trywait(decode_sem(self->handle));
+         err = errno;
+     } while (res < 0 && errno == EINTR && !PyErr_CheckSignals());
+     errno = err;
+@@ -349,10 +375,10 @@ _multiprocessing_SemLock_acquire_impl(SemLockObject *self, int blocking,
+         do {
+             Py_BEGIN_ALLOW_THREADS
+             if (!use_deadline) {
+-                res = sem_wait(self->handle);
++                res = sem_wait(decode_sem(self->handle));
+             }
+             else {
+-                res = sem_timedwait(self->handle, &deadline);
++                res = sem_timedwait(decode_sem(self->handle), &deadline);
+             }
+             Py_END_ALLOW_THREADS
+             err = errno;
+@@ -404,7 +430,7 @@ _multiprocessing_SemLock_release_impl(SemLockObject *self)
+         /* We will only check properly the maxvalue == 1 case */
+         if (self->maxvalue == 1) {
+             /* make sure that already locked */
+-            if (sem_trywait(self->handle) < 0) {
++            if (sem_trywait(decode_sem(self->handle)) < 0) {
+                 if (errno != EAGAIN) {
+                     PyErr_SetFromErrno(PyExc_OSError);
+                     return NULL;
+@@ -412,7 +438,7 @@ _multiprocessing_SemLock_release_impl(SemLockObject *self)
+                 /* it is already locked as expected */
+             } else {
+                 /* it was not locked so undo wait and raise  */
+-                if (sem_post(self->handle) < 0) {
++                if (sem_post(decode_sem(self->handle)) < 0) {
+                     PyErr_SetFromErrno(PyExc_OSError);
+                     return NULL;
+                 }
+@@ -427,7 +453,7 @@ _multiprocessing_SemLock_release_impl(SemLockObject *self)
+ 
+         /* This check is not an absolute guarantee that the semaphore
+            does not rise above maxvalue. */
+-        if (sem_getvalue(self->handle, &sval) < 0) {
++        if (sem_getvalue(decode_sem(self->handle), &sval) < 0) {
+             return PyErr_SetFromErrno(PyExc_OSError);
+         } else if (sval >= self->maxvalue) {
+             PyErr_SetString(PyExc_ValueError, "semaphore or lock "
+@@ -437,7 +463,7 @@ _multiprocessing_SemLock_release_impl(SemLockObject *self)
+ #endif
+     }
+ 
+-    if (sem_post(self->handle) < 0)
++    if (sem_post(decode_sem(self->handle)) < 0)
+         return PyErr_SetFromErrno(PyExc_OSError);
+ 
+     --self->count;
+@@ -483,7 +509,7 @@ _multiprocessing_SemLock_impl(PyTypeObject *type, int kind, int value,
+                               int maxvalue, const char *name, int unlink)
+ /*[clinic end generated code: output=30727e38f5f7577a input=fdaeb69814471c5b]*/
+ {
+-    SEM_HANDLE handle = SEM_FAILED;
++    SEM_HANDLE handle = ENCODED_SEM_FAILED;
+     PyObject *result;
+     char *name_copy = NULL;
+ 
+@@ -503,7 +529,7 @@ _multiprocessing_SemLock_impl(PyTypeObject *type, int kind, int value,
+     SEM_CLEAR_ERROR();
+     handle = SEM_CREATE(name, value, maxvalue);
+     /* On Windows we should fail if GetLastError()==ERROR_ALREADY_EXISTS */
+-    if (handle == SEM_FAILED || SEM_GET_LAST_ERROR() != 0)
++    if (handle == ENCODED_SEM_FAILED || SEM_GET_LAST_ERROR() != 0)
+         goto failure;
+ 
+     if (unlink && SEM_UNLINK(name) < 0)
+@@ -519,7 +545,7 @@ _multiprocessing_SemLock_impl(PyTypeObject *type, int kind, int value,
+     if (!PyErr_Occurred()) {
+         _PyMp_SetError(NULL, MP_STANDARD_ERROR);
+     }
+-    if (handle != SEM_FAILED)
++    if (handle != ENCODED_SEM_FAILED)
+         SEM_CLOSE(handle);
+     PyMem_Free(name_copy);
+     return NULL;
+@@ -554,8 +580,8 @@ _multiprocessing_SemLock__rebuild_impl(PyTypeObject *type, SEM_HANDLE handle,
+ 
+ #ifndef MS_WINDOWS
+     if (name != NULL) {
+-        handle = sem_open(name, 0);
+-        if (handle == SEM_FAILED) {
++        handle = encode_sem(sem_open(name, 0));
++        if (handle == ENCODED_SEM_FAILED) {
+             PyErr_SetFromErrno(PyExc_OSError);
+             PyMem_Free(name_copy);
+             return NULL;
+@@ -571,7 +597,7 @@ semlock_dealloc(SemLockObject* self)
+ {
+     PyTypeObject *tp = Py_TYPE(self);
+     PyObject_GC_UnTrack(self);
+-    if (self->handle != SEM_FAILED)
++    if (self->handle != ENCODED_SEM_FAILED)
+         SEM_CLOSE(self->handle);
+     PyMem_Free(self->name);
+     tp->tp_free(self);
+@@ -641,12 +667,12 @@ _multiprocessing_SemLock__is_zero_impl(SemLockObject *self)
+ /*[clinic end generated code: output=815d4c878c806ed7 input=294a446418d31347]*/
+ {
+ #ifdef HAVE_BROKEN_SEM_GETVALUE
+-    if (sem_trywait(self->handle) < 0) {
++    if (sem_trywait(decode_sem(self->handle)) < 0) {
+         if (errno == EAGAIN)
+             Py_RETURN_TRUE;
+         return _PyMp_SetError(NULL, MP_STANDARD_ERROR);
+     } else {
+-        if (sem_post(self->handle) < 0)
++        if (sem_post(decode_sem(self->handle)) < 0)
+             return _PyMp_SetError(NULL, MP_STANDARD_ERROR);
+         Py_RETURN_FALSE;
+     }
+diff --git a/Modules/_sre/sre.c b/Modules/_sre/sre.c
+index 6d9843bb76d7..be63b94560db 100644
+--- a/Modules/_sre/sre.c
++++ b/Modules/_sre/sre.c
+@@ -190,29 +190,29 @@ char_loc_ignore(SRE_CODE pattern, SRE_CODE ch)
+ static void
+ data_stack_dealloc(SRE_STATE* state)
+ {
+-    if (state->data_stack) {
+-        PyMem_Free(state->data_stack);
+-        state->data_stack = NULL;
++    if (state->data_stack_ptrs) {
++        PyMem_Free(state->data_stack_ptrs);
++        state->data_stack_ptrs = NULL;
+     }
+     state->data_stack_size = state->data_stack_base = 0;
+ }
+ 
+ static int
+-data_stack_grow(SRE_STATE* state, Py_ssize_t size)
++data_stack_grow(SRE_STATE* state)
+ {
+     Py_ssize_t minsize, cursize;
+-    minsize = state->data_stack_base+size;
++    minsize = state->data_stack_base+1;
+     cursize = state->data_stack_size;
+     if (cursize < minsize) {
+-        void* stack;
+-        cursize = minsize+minsize/4+1024;
++        void** stack;
++        cursize = minsize+minsize/4+64;
+         TRACE(("allocate/grow stack %zd\n", cursize));
+-        stack = PyMem_Realloc(state->data_stack, cursize);
++        stack = PyMem_Realloc(state->data_stack_ptrs, cursize * sizeof(void*));
+         if (!stack) {
+             data_stack_dealloc(state);
+             return SRE_ERROR_MEMORY;
+         }
+-        state->data_stack = (char *)stack;
++        state->data_stack_ptrs = (char *)stack;
+         state->data_stack_size = cursize;
+     }
+     return 0;
+diff --git a/Modules/_sre/sre.h b/Modules/_sre/sre.h
+index a0f235606e29..8d82c66a2cbf 100644
+--- a/Modules/_sre/sre.h
++++ b/Modules/_sre/sre.h
+@@ -89,7 +89,7 @@ typedef struct {
+     int lastindex;
+     const void** mark;
+     /* dynamically allocated stuff */
+-    char* data_stack;
++    void** data_stack_ptrs;
+     size_t data_stack_size;
+     size_t data_stack_base;
+     /* current repeat context */
+diff --git a/Modules/_sre/sre_lib.h b/Modules/_sre/sre_lib.h
+index 95c1ada908d2..bbd13e39213c 100644
+--- a/Modules/_sre/sre_lib.h
++++ b/Modules/_sre/sre_lib.h
+@@ -388,34 +388,36 @@ do { \
+     alloc_pos = state->data_stack_base; \
+     TRACE(("allocating %s in %zd (%zd)\n", \
+            Py_STRINGIFY(type), alloc_pos, sizeof(type))); \
+-    if (sizeof(type) > state->data_stack_size - alloc_pos) { \
+-        int j = data_stack_grow(state, sizeof(type)); \
++    if (alloc_pos >= state->data_stack_size) { \
++        int j = data_stack_grow(state); \
+         if (j < 0) return j; \
+         if (ctx_pos != -1) \
+             DATA_STACK_LOOKUP_AT(state, SRE(match_context), ctx, ctx_pos); \
+     } \
+-    ptr = (type*)(state->data_stack+alloc_pos); \
+-    state->data_stack_base += sizeof(type); \
++    state->data_stack_ptrs[alloc_pos] = zgc_alloc(sizeof(type)); \
++    ptr = (type*)(state->data_stack_ptrs[alloc_pos]); \
++    state->data_stack_base++; \
+ } while (0)
+ 
+ #define DATA_STACK_LOOKUP_AT(state, type, ptr, pos) \
+ do { \
+     TRACE(("looking up %s at %zd\n", Py_STRINGIFY(type), pos)); \
+-    ptr = (type*)(state->data_stack+pos); \
++    ptr = (type*)(state->data_stack_ptrs[pos]); \
+ } while (0)
+ 
+ #define DATA_STACK_PUSH(state, data, size) \
+ do { \
+     TRACE(("copy data in %p to %zd (%zd)\n", \
+            data, state->data_stack_base, size)); \
+-    if (size > state->data_stack_size - state->data_stack_base) { \
+-        int j = data_stack_grow(state, size); \
++    if (state->data_stack_base >= state->data_stack_size) { \
++        int j = data_stack_grow(state); \
+         if (j < 0) return j; \
+         if (ctx_pos != -1) \
+             DATA_STACK_LOOKUP_AT(state, SRE(match_context), ctx, ctx_pos); \
+     } \
+-    memcpy(state->data_stack+state->data_stack_base, data, size); \
+-    state->data_stack_base += size; \
++    state->data_stack_ptrs[state->data_stack_base] = zgc_alloc(size); \
++    memcpy(state->data_stack_ptrs[state->data_stack_base], data, size); \
++    state->data_stack_base++; \
+ } while (0)
+ 
+ /* We add an explicit cast to memcpy here because MSVC has a bug when
+@@ -425,16 +427,16 @@ do { \
+ do { \
+     TRACE(("copy data to %p from %zd (%zd)\n", \
+            data, state->data_stack_base-size, size)); \
+-    memcpy((void*) data, state->data_stack+state->data_stack_base-size, size); \
++    memcpy((void*) data, state->data_stack_ptrs[state->data_stack_base-1], size); \
+     if (discard) \
+-        state->data_stack_base -= size; \
++        state->data_stack_base--; \
+ } while (0)
+ 
+ #define DATA_STACK_POP_DISCARD(state, size) \
+ do { \
+     TRACE(("discard data from %zd (%zd)\n", \
+            state->data_stack_base-size, size)); \
+-    state->data_stack_base -= size; \
++    state->data_stack_base--; \
+ } while(0)
+ 
+ #define DATA_PUSH(x) \
+diff --git a/Modules/gcmodule.c b/Modules/gcmodule.c
+index f8c774cbb75e..34121a9696f7 100644
+--- a/Modules/gcmodule.c
++++ b/Modules/gcmodule.c
+@@ -77,34 +77,36 @@ module gc
+ static inline int
+ gc_is_collecting(PyGC_Head *g)
+ {
+-    return (g->_gc_prev & PREV_MASK_COLLECTING) != 0;
++    return ((uintptr_t)g->_gc_prev & PREV_MASK_COLLECTING) != 0;
+ }
+ 
+ static inline void
+ gc_clear_collecting(PyGC_Head *g)
+ {
+-    g->_gc_prev &= ~PREV_MASK_COLLECTING;
++    g->_gc_prev = zandptr(g->_gc_prev, ~PREV_MASK_COLLECTING);
+ }
+ 
+ static inline Py_ssize_t
+ gc_get_refs(PyGC_Head *g)
+ {
+-    return (Py_ssize_t)(g->_gc_prev >> _PyGC_PREV_SHIFT);
++    return (Py_ssize_t)((uintptr_t)g->_gc_prev >> _PyGC_PREV_SHIFT);
+ }
+ 
+ static inline void
+ gc_set_refs(PyGC_Head *g, Py_ssize_t refs)
+ {
+-    g->_gc_prev = (g->_gc_prev & ~_PyGC_PREV_MASK)
+-        | ((uintptr_t)(refs) << _PyGC_PREV_SHIFT);
++    g->_gc_prev = (PyGC_Head*)
++        (((uintptr_t)g->_gc_prev & ~_PyGC_PREV_MASK)
++         | ((uintptr_t)(refs) << _PyGC_PREV_SHIFT));
+ }
+ 
+ static inline void
+ gc_reset_refs(PyGC_Head *g, Py_ssize_t refs)
+ {
+-    g->_gc_prev = (g->_gc_prev & _PyGC_PREV_MASK_FINALIZED)
+-        | PREV_MASK_COLLECTING
+-        | ((uintptr_t)(refs) << _PyGC_PREV_SHIFT);
++    g->_gc_prev = (PyGC_Head*)
++        (((uintptr_t)g->_gc_prev & _PyGC_PREV_MASK_FINALIZED)
++         | PREV_MASK_COLLECTING
++         | ((uintptr_t)(refs) << _PyGC_PREV_SHIFT));
+ }
+ 
+ static inline void
+@@ -113,7 +115,7 @@ gc_decref(PyGC_Head *g)
+     _PyObject_ASSERT_WITH_MSG(FROM_GC(g),
+                               gc_get_refs(g) > 0,
+                               "refcount is too small");
+-    g->_gc_prev -= 1 << _PyGC_PREV_SHIFT;
++    g->_gc_prev = (PyGC_Head*)((uintptr_t)g->_gc_prev - (1 << _PyGC_PREV_SHIFT));
+ }
+ 
+ /* set for debugging information */
+@@ -141,8 +143,8 @@ _PyGC_InitState(GCState *gcstate)
+ {
+ #define INIT_HEAD(GEN) \
+     do { \
+-        GEN.head._gc_next = (uintptr_t)&GEN.head; \
+-        GEN.head._gc_prev = (uintptr_t)&GEN.head; \
++        GEN.head._gc_next = &GEN.head; \
++        GEN.head._gc_prev = &GEN.head; \
+     } while (0)
+ 
+     for (int i = 0; i < NUM_GENERATIONS; i++) {
+@@ -233,14 +235,14 @@ gc_list_init(PyGC_Head *list)
+ {
+     // List header must not have flags.
+     // We can assign pointer by simple cast.
+-    list->_gc_prev = (uintptr_t)list;
+-    list->_gc_next = (uintptr_t)list;
++    list->_gc_prev = list;
++    list->_gc_next = list;
+ }
+ 
+ static inline int
+ gc_list_is_empty(PyGC_Head *list)
+ {
+-    return (list->_gc_next == (uintptr_t)list);
++    return (list->_gc_next == list);
+ }
+ 
+ /* Append `node` to `list`. */
+@@ -255,7 +257,7 @@ gc_list_append(PyGC_Head *node, PyGC_Head *list)
+ 
+     // node <-> list
+     _PyGCHead_SET_NEXT(node, list);
+-    list->_gc_prev = (uintptr_t)node;
++    list->_gc_prev = node;
+ }
+ 
+ /* Remove `node` from the gc list it's currently in. */
+@@ -286,10 +288,10 @@ gc_list_move(PyGC_Head *node, PyGC_Head *list)
+ 
+     /* Relink at end of new list. */
+     // list must not have flags.  So we can skip macros.
+-    PyGC_Head *to_prev = (PyGC_Head*)list->_gc_prev;
++    PyGC_Head *to_prev = list->_gc_prev;
+     _PyGCHead_SET_PREV(node, to_prev);
+     _PyGCHead_SET_NEXT(to_prev, node);
+-    list->_gc_prev = (uintptr_t)node;
++    list->_gc_prev = node;
+     _PyGCHead_SET_NEXT(node, list);
+ }
+ 
+@@ -372,8 +374,8 @@ enum flagstates {collecting_clear_unreachable_clear,
+ static void
+ validate_list(PyGC_Head *head, enum flagstates flags)
+ {
+-    assert((head->_gc_prev & PREV_MASK_COLLECTING) == 0);
+-    assert((head->_gc_next & NEXT_MASK_UNREACHABLE) == 0);
++    assert(((uintptr_t)head->_gc_prev & PREV_MASK_COLLECTING) == 0);
++    assert(((uintptr_t)head->_gc_next & NEXT_MASK_UNREACHABLE) == 0);
+     uintptr_t prev_value = 0, next_value = 0;
+     switch (flags) {
+         case collecting_clear_unreachable_clear:
+@@ -395,11 +397,11 @@ validate_list(PyGC_Head *head, enum flagstates flags)
+     PyGC_Head *gc = GC_NEXT(head);
+     while (gc != head) {
+         PyGC_Head *trueprev = GC_PREV(gc);
+-        PyGC_Head *truenext = (PyGC_Head *)(gc->_gc_next  & ~NEXT_MASK_UNREACHABLE);
++        PyGC_Head *truenext = zandptr(gc->_gc_next, ~NEXT_MASK_UNREACHABLE);
+         assert(truenext != NULL);
+         assert(trueprev == prev);
+-        assert((gc->_gc_prev & PREV_MASK_COLLECTING) == prev_value);
+-        assert((gc->_gc_next & NEXT_MASK_UNREACHABLE) == next_value);
++        assert(zandptr(gc->_gc_prev, PREV_MASK_COLLECTING) == prev_value);
++        assert(zandptr(gc->_gc_next, NEXT_MASK_UNREACHABLE) == next_value);
+         prev = gc;
+         gc = truenext;
+     }
+@@ -516,7 +518,7 @@ visit_reachable(PyObject *op, PyGC_Head *reachable)
+     // an untracked object.
+     assert(gc->_gc_next != 0);
+ 
+-    if (gc->_gc_next & NEXT_MASK_UNREACHABLE) {
++    if ((uintptr_t)gc->_gc_next & NEXT_MASK_UNREACHABLE) {
+         /* This had gc_refs = 0 when move_unreachable got
+          * to it, but turns out it's reachable after all.
+          * Move it back to move_unreachable's 'young' list,
+@@ -526,11 +528,11 @@ visit_reachable(PyObject *op, PyGC_Head *reachable)
+         // Manually unlink gc from unreachable list because the list functions
+         // don't work right in the presence of NEXT_MASK_UNREACHABLE flags.
+         PyGC_Head *prev = GC_PREV(gc);
+-        PyGC_Head *next = (PyGC_Head*)(gc->_gc_next & ~NEXT_MASK_UNREACHABLE);
++        PyGC_Head *next = zandptr(gc->_gc_next, ~NEXT_MASK_UNREACHABLE);
+         _PyObject_ASSERT(FROM_GC(prev),
+-                         prev->_gc_next & NEXT_MASK_UNREACHABLE);
++                         (uintptr_t)prev->_gc_next & NEXT_MASK_UNREACHABLE);
+         _PyObject_ASSERT(FROM_GC(next),
+-                         next->_gc_next & NEXT_MASK_UNREACHABLE);
++                         (uintptr_t)next->_gc_next & NEXT_MASK_UNREACHABLE);
+         prev->_gc_next = gc->_gc_next;  // copy NEXT_MASK_UNREACHABLE
+         _PyGCHead_SET_PREV(next, prev);
+ 
+@@ -628,17 +630,17 @@ move_unreachable(PyGC_Head *young, PyGC_Head *unreachable)
+             // But this may pollute the unreachable list head's 'next' pointer
+             // too. That's semantically senseless but expedient here - the
+             // damage is repaired when this function ends.
+-            last->_gc_next = (NEXT_MASK_UNREACHABLE | (uintptr_t)gc);
++            last->_gc_next = zorptr(gc, NEXT_MASK_UNREACHABLE);
+             _PyGCHead_SET_PREV(gc, last);
+-            gc->_gc_next = (NEXT_MASK_UNREACHABLE | (uintptr_t)unreachable);
+-            unreachable->_gc_prev = (uintptr_t)gc;
++            gc->_gc_next = zorptr(unreachable, NEXT_MASK_UNREACHABLE);
++            unreachable->_gc_prev = gc;
+         }
+         gc = (PyGC_Head*)prev->_gc_next;
+     }
+     // young->_gc_prev must be last element remained in the list.
+-    young->_gc_prev = (uintptr_t)prev;
++    young->_gc_prev = prev;
+     // don't let the pollution of the list head's next pointer leak
+-    unreachable->_gc_next &= ~NEXT_MASK_UNREACHABLE;
++    unreachable->_gc_next = zandptr(unreachable->_gc_next, ~NEXT_MASK_UNREACHABLE);
+ }
+ 
+ static void
+@@ -686,7 +688,7 @@ static void
+ move_legacy_finalizers(PyGC_Head *unreachable, PyGC_Head *finalizers)
+ {
+     PyGC_Head *gc, *next;
+-    assert((unreachable->_gc_next & NEXT_MASK_UNREACHABLE) == 0);
++    assert(((uintptr_t)unreachable->_gc_next & NEXT_MASK_UNREACHABLE) == 0);
+ 
+     /* March over unreachable.  Move objects with finalizers into
+      * `finalizers`.
+@@ -694,9 +696,9 @@ move_legacy_finalizers(PyGC_Head *unreachable, PyGC_Head *finalizers)
+     for (gc = GC_NEXT(unreachable); gc != unreachable; gc = next) {
+         PyObject *op = FROM_GC(gc);
+ 
+-        _PyObject_ASSERT(op, gc->_gc_next & NEXT_MASK_UNREACHABLE);
+-        gc->_gc_next &= ~NEXT_MASK_UNREACHABLE;
+-        next = (PyGC_Head*)gc->_gc_next;
++        _PyObject_ASSERT(op, (uintptr_t)gc->_gc_next & NEXT_MASK_UNREACHABLE);
++        gc->_gc_next = zandptr(gc->_gc_next, ~NEXT_MASK_UNREACHABLE);
++        next = gc->_gc_next;
+ 
+         if (has_legacy_finalizer(op)) {
+             gc_clear_collecting(gc);
+@@ -712,11 +714,11 @@ clear_unreachable_mask(PyGC_Head *unreachable)
+     assert(((uintptr_t)unreachable & NEXT_MASK_UNREACHABLE) == 0);
+ 
+     PyGC_Head *gc, *next;
+-    assert((unreachable->_gc_next & NEXT_MASK_UNREACHABLE) == 0);
++    assert(((uintptr_t)unreachable->_gc_next & NEXT_MASK_UNREACHABLE) == 0);
+     for (gc = GC_NEXT(unreachable); gc != unreachable; gc = next) {
+-        _PyObject_ASSERT((PyObject*)FROM_GC(gc), gc->_gc_next & NEXT_MASK_UNREACHABLE);
+-        gc->_gc_next &= ~NEXT_MASK_UNREACHABLE;
+-        next = (PyGC_Head*)gc->_gc_next;
++        _PyObject_ASSERT((PyObject*)FROM_GC(gc), (uintptr_t)gc->_gc_next & NEXT_MASK_UNREACHABLE);
++        gc->_gc_next = zandptr(gc->_gc_next, ~NEXT_MASK_UNREACHABLE);
++        next = gc->_gc_next;
+     }
+     validate_list(unreachable, collecting_set_unreachable_clear);
+ }
+@@ -888,7 +890,7 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+         PyObject *temp;
+         PyObject *callback;
+ 
+-        gc = (PyGC_Head*)wrcb_to_call._gc_next;
++        gc = wrcb_to_call._gc_next;
+         op = FROM_GC(gc);
+         _PyObject_ASSERT(op, PyWeakref_Check(op));
+         wr = (PyWeakReference *)op;
+@@ -914,7 +916,7 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+          * ours).
+          */
+         Py_DECREF(op);
+-        if (wrcb_to_call._gc_next == (uintptr_t)gc) {
++        if (wrcb_to_call._gc_next == gc) {
+             /* object is still alive -- move it */
+             gc_list_move(gc, old);
+         }
+diff --git a/Modules/signalmodule.c b/Modules/signalmodule.c
+index 4f4e6a39683c..26d8e658be61 100644
+--- a/Modules/signalmodule.c
++++ b/Modules/signalmodule.c
+@@ -124,13 +124,13 @@ typedef struct {
+ Py_LOCAL_INLINE(PyObject *)
+ get_handler(int i)
+ {
+-    return (PyObject *)_Py_atomic_load(&Handlers[i].func);
++    return _Py_atomic_load(&Handlers[i].func);
+ }
+ 
+ Py_LOCAL_INLINE(void)
+ set_handler(int i, PyObject* func)
+ {
+-    _Py_atomic_store(&Handlers[i].func, (uintptr_t)func);
++    _Py_atomic_store(&Handlers[i].func, func);
+ }
+ 
+ 
+diff --git a/Objects/codeobject.c b/Objects/codeobject.c
+index 1be662156388..8977ce72b768 100644
+--- a/Objects/codeobject.c
++++ b/Objects/codeobject.c
+@@ -11,6 +11,14 @@
+ #include "pycore_tuple.h"         // _PyTuple_ITEMS()
+ #include "clinic/codeobject.c.h"
+ 
++zptrtable* _PyCode_PtrTable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    _PyCode_PtrTable = zptrtable_new();
++}
++
+ static PyObject* code_repr(PyCodeObject *co);
+ 
+ static const char *
+diff --git a/Objects/listobject.c b/Objects/listobject.c
+index d017f34b94f0..8e37ed529f89 100644
+--- a/Objects/listobject.c
++++ b/Objects/listobject.c
+@@ -1271,11 +1271,10 @@ binarysort(MergeState *ms, sortslice lo, PyObject **hi, PyObject **start)
+             *p = *(p-1);
+         *l = pivot;
+         if (lo.values != NULL) {
+-            Py_ssize_t offset = lo.values - lo.keys;
+-            p = start + offset;
++            p = lo.values + (start - lo.keys);
+             pivot = *p;
+-            l += offset;
+-            for (p = start + offset; p > l; --p)
++            l = lo.values + (l - lo.keys);
++            for (; p > l; --p)
+                 *p = *(p-1);
+             *l = pivot;
+         }
+diff --git a/Objects/longobject.c b/Objects/longobject.c
+index c366034fe4bf..da291a0f48dc 100644
+--- a/Objects/longobject.c
++++ b/Objects/longobject.c
+@@ -14,6 +14,7 @@
+ #include <float.h>
+ #include <stddef.h>
+ #include <stdlib.h>               // abs()
++#include <stdfil.h>
+ 
+ #include "clinic/longobject.c.h"
+ /*[clinic input]
+@@ -1070,13 +1071,20 @@ _PyLong_AsByteArray(PyLongObject* v,
+ 
+ }
+ 
++static zexact_ptrtable* ptrtable;
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    ptrtable = zexact_ptrtable_new();
++}
++ 
+ /* Create a new int object from a C pointer */
+ 
+ PyObject *
+ PyLong_FromVoidPtr(void *p)
+ {
+-#if SIZEOF_VOID_P <= SIZEOF_LONG
+-    return PyLong_FromUnsignedLong((unsigned long)(uintptr_t)p);
++#if SIZEOF_VOID_P <= SIZEOF_LONG || defined(__PIZLONATOR_WAS_HERE__)
++    return PyLong_FromUnsignedLong((unsigned long)(uintptr_t)zexact_ptrtable_encode(ptrtable, p));
+ #else
+ 
+ #if SIZEOF_LONG_LONG < SIZEOF_VOID_P
+@@ -1092,7 +1100,7 @@ PyLong_FromVoidPtr(void *p)
+ void *
+ PyLong_AsVoidPtr(PyObject *vv)
+ {
+-#if SIZEOF_VOID_P <= SIZEOF_LONG
++#if SIZEOF_VOID_P <= SIZEOF_LONG || defined(__PIZLONATOR_WAS_HERE__)
+     long x;
+ 
+     if (PyLong_Check(vv) && _PyLong_IsNegative((PyLongObject *)vv)) {
+@@ -1119,7 +1127,7 @@ PyLong_AsVoidPtr(PyObject *vv)
+ 
+     if (x == -1 && PyErr_Occurred())
+         return NULL;
+-    return (void *)x;
++    return (void *)zexact_ptrtable_decode(ptrtable, x);
+ }
+ 
+ /* Initial long long support by Chris Herborth (chrish@qnx.com), later
+diff --git a/Objects/obmalloc.c b/Objects/obmalloc.c
+index 9620a8fbb44c..143bf27ed898 100644
+--- a/Objects/obmalloc.c
++++ b/Objects/obmalloc.c
+@@ -2066,61 +2066,7 @@ for 3 * S extra bytes, and omits the last serialno field.
+ static void *
+ _PyMem_DebugRawAlloc(int use_calloc, void *ctx, size_t nbytes)
+ {
+-    debug_alloc_api_t *api = (debug_alloc_api_t *)ctx;
+-    uint8_t *p;           /* base address of malloc'ed pad block */
+-    uint8_t *data;        /* p + 2*SST == pointer to data bytes */
+-    uint8_t *tail;        /* data + nbytes == pointer to tail pad bytes */
+-    size_t total;         /* nbytes + PYMEM_DEBUG_EXTRA_BYTES */
+-
+-    if (nbytes > (size_t)PY_SSIZE_T_MAX - PYMEM_DEBUG_EXTRA_BYTES) {
+-        /* integer overflow: can't represent total as a Py_ssize_t */
+-        return NULL;
+-    }
+-    total = nbytes + PYMEM_DEBUG_EXTRA_BYTES;
+-
+-    /* Layout: [SSSS IFFF CCCC...CCCC FFFF NNNN]
+-                ^--- p    ^--- data   ^--- tail
+-       S: nbytes stored as size_t
+-       I: API identifier (1 byte)
+-       F: Forbidden bytes (size_t - 1 bytes before, size_t bytes after)
+-       C: Clean bytes used later to store actual data
+-       N: Serial number stored as size_t
+-
+-       If PYMEM_DEBUG_SERIALNO is not defined (default), the last NNNN field
+-       is omitted. */
+-
+-    if (use_calloc) {
+-        p = (uint8_t *)api->alloc.calloc(api->alloc.ctx, 1, total);
+-    }
+-    else {
+-        p = (uint8_t *)api->alloc.malloc(api->alloc.ctx, total);
+-    }
+-    if (p == NULL) {
+-        return NULL;
+-    }
+-    data = p + 2*SST;
+-
+-#ifdef PYMEM_DEBUG_SERIALNO
+-    bumpserialno();
+-#endif
+-
+-    /* at p, write size (SST bytes), id (1 byte), pad (SST-1 bytes) */
+-    write_size_t(p, nbytes);
+-    p[SST] = (uint8_t)api->api_id;
+-    memset(p + SST + 1, PYMEM_FORBIDDENBYTE, SST-1);
+-
+-    if (nbytes > 0 && !use_calloc) {
+-        memset(data, PYMEM_CLEANBYTE, nbytes);
+-    }
+-
+-    /* at tail, write pad (SST bytes) and serialno (SST bytes) */
+-    tail = data + nbytes;
+-    memset(tail, PYMEM_FORBIDDENBYTE, SST);
+-#ifdef PYMEM_DEBUG_SERIALNO
+-    write_size_t(tail + SST, serialno);
+-#endif
+-
+-    return data;
++    return malloc(nbytes);
+ }
+ 
+ void *
+@@ -2147,121 +2093,14 @@ _PyMem_DebugRawCalloc(void *ctx, size_t nelem, size_t elsize)
+ void
+ _PyMem_DebugRawFree(void *ctx, void *p)
+ {
+-    /* PyMem_Free(NULL) has no effect */
+-    if (p == NULL) {
+-        return;
+-    }
+-
+-    debug_alloc_api_t *api = (debug_alloc_api_t *)ctx;
+-    uint8_t *q = (uint8_t *)p - 2*SST;  /* address returned from malloc */
+-    size_t nbytes;
+-
+-    _PyMem_DebugCheckAddress(__func__, api->api_id, p);
+-    nbytes = read_size_t(q);
+-    nbytes += PYMEM_DEBUG_EXTRA_BYTES;
+-    memset(q, PYMEM_DEADBYTE, nbytes);
+-    api->alloc.free(api->alloc.ctx, q);
++    free(p);
+ }
+ 
+ 
+ void *
+ _PyMem_DebugRawRealloc(void *ctx, void *p, size_t nbytes)
+ {
+-    if (p == NULL) {
+-        return _PyMem_DebugRawAlloc(0, ctx, nbytes);
+-    }
+-
+-    debug_alloc_api_t *api = (debug_alloc_api_t *)ctx;
+-    uint8_t *head;        /* base address of malloc'ed pad block */
+-    uint8_t *data;        /* pointer to data bytes */
+-    uint8_t *r;
+-    uint8_t *tail;        /* data + nbytes == pointer to tail pad bytes */
+-    size_t total;         /* 2 * SST + nbytes + 2 * SST */
+-    size_t original_nbytes;
+-#define ERASED_SIZE 64
+-    uint8_t save[2*ERASED_SIZE];  /* A copy of erased bytes. */
+-
+-    _PyMem_DebugCheckAddress(__func__, api->api_id, p);
+-
+-    data = (uint8_t *)p;
+-    head = data - 2*SST;
+-    original_nbytes = read_size_t(head);
+-    if (nbytes > (size_t)PY_SSIZE_T_MAX - PYMEM_DEBUG_EXTRA_BYTES) {
+-        /* integer overflow: can't represent total as a Py_ssize_t */
+-        return NULL;
+-    }
+-    total = nbytes + PYMEM_DEBUG_EXTRA_BYTES;
+-
+-    tail = data + original_nbytes;
+-#ifdef PYMEM_DEBUG_SERIALNO
+-    size_t block_serialno = read_size_t(tail + SST);
+-#endif
+-    /* Mark the header, the trailer, ERASED_SIZE bytes at the begin and
+-       ERASED_SIZE bytes at the end as dead and save the copy of erased bytes.
+-     */
+-    if (original_nbytes <= sizeof(save)) {
+-        memcpy(save, data, original_nbytes);
+-        memset(data - 2 * SST, PYMEM_DEADBYTE,
+-               original_nbytes + PYMEM_DEBUG_EXTRA_BYTES);
+-    }
+-    else {
+-        memcpy(save, data, ERASED_SIZE);
+-        memset(head, PYMEM_DEADBYTE, ERASED_SIZE + 2 * SST);
+-        memcpy(&save[ERASED_SIZE], tail - ERASED_SIZE, ERASED_SIZE);
+-        memset(tail - ERASED_SIZE, PYMEM_DEADBYTE,
+-               ERASED_SIZE + PYMEM_DEBUG_EXTRA_BYTES - 2 * SST);
+-    }
+-
+-    /* Resize and add decorations. */
+-    r = (uint8_t *)api->alloc.realloc(api->alloc.ctx, head, total);
+-    if (r == NULL) {
+-        /* if realloc() failed: rewrite header and footer which have
+-           just been erased */
+-        nbytes = original_nbytes;
+-    }
+-    else {
+-        head = r;
+-#ifdef PYMEM_DEBUG_SERIALNO
+-        bumpserialno();
+-        block_serialno = serialno;
+-#endif
+-    }
+-    data = head + 2*SST;
+-
+-    write_size_t(head, nbytes);
+-    head[SST] = (uint8_t)api->api_id;
+-    memset(head + SST + 1, PYMEM_FORBIDDENBYTE, SST-1);
+-
+-    tail = data + nbytes;
+-    memset(tail, PYMEM_FORBIDDENBYTE, SST);
+-#ifdef PYMEM_DEBUG_SERIALNO
+-    write_size_t(tail + SST, block_serialno);
+-#endif
+-
+-    /* Restore saved bytes. */
+-    if (original_nbytes <= sizeof(save)) {
+-        memcpy(data, save, Py_MIN(nbytes, original_nbytes));
+-    }
+-    else {
+-        size_t i = original_nbytes - ERASED_SIZE;
+-        memcpy(data, save, Py_MIN(nbytes, ERASED_SIZE));
+-        if (nbytes > i) {
+-            memcpy(data + i, &save[ERASED_SIZE],
+-                   Py_MIN(nbytes - i, ERASED_SIZE));
+-        }
+-    }
+-
+-    if (r == NULL) {
+-        return NULL;
+-    }
+-
+-    if (nbytes > original_nbytes) {
+-        /* growing: mark new extra memory clean */
+-        memset(data + original_nbytes, PYMEM_CLEANBYTE,
+-               nbytes - original_nbytes);
+-    }
+-
+-    return data;
++    return realloc(p, nbytes);
+ }
+ 
+ static inline void
+diff --git a/Python/ceval.c b/Python/ceval.c
+index 6110883ca0e7..76549913daeb 100644
+--- a/Python/ceval.c
++++ b/Python/ceval.c
+@@ -1541,8 +1541,7 @@ clear_thread_frame(PyThreadState *tstate, _PyInterpreterFrame * frame)
+     assert(frame->owner == FRAME_OWNED_BY_THREAD);
+     // Make sure that this is, indeed, the top frame. We can't check this in
+     // _PyThreadState_PopFrame, since f_code is already cleared at that point:
+-    assert((PyObject **)frame + frame->f_code->co_framesize ==
+-        tstate->datastack_top);
++    assert(tstate->datastack_top_frame == frame);
+     tstate->c_recursion_remaining--;
+     assert(frame->frame_obj == NULL || frame->frame_obj->f_frame == frame);
+     _PyFrame_ClearExceptCode(frame);
+diff --git a/Python/ceval_gil.c b/Python/ceval_gil.c
+index c1ab5883568e..477ebbf0b9b1 100644
+--- a/Python/ceval_gil.c
++++ b/Python/ceval_gil.c
+@@ -291,7 +291,7 @@ drop_gil(struct _ceval_state *ceval, PyThreadState *tstate)
+         /* Sub-interpreter support: threads might have been switched
+            under our feet using PyThreadState_Swap(). Fix the GIL last
+            holder variable so that our heuristics work. */
+-        _Py_atomic_store_relaxed(&gil->last_holder, (uintptr_t)tstate);
++        _Py_atomic_store_relaxed(&gil->last_holder, tstate);
+     }
+ 
+     MUTEX_LOCK(gil->mutex);
+@@ -412,7 +412,7 @@ _ready:
+     _Py_ANNOTATE_RWLOCK_ACQUIRED(&gil->locked, /*is_write=*/1);
+ 
+     if (tstate != (PyThreadState*)_Py_atomic_load_relaxed(&gil->last_holder)) {
+-        _Py_atomic_store_relaxed(&gil->last_holder, (uintptr_t)tstate);
++        _Py_atomic_store_relaxed(&gil->last_holder, tstate);
+         ++gil->switch_number;
+     }
+ 
+diff --git a/Python/dtoa.c b/Python/dtoa.c
+index 564497f87bdb..2f502fd3fc23 100644
+--- a/Python/dtoa.c
++++ b/Python/dtoa.c
+@@ -313,7 +313,7 @@ BCinfo {
+ // struct Bigint is defined in pycore_dtoa.h.
+ typedef struct Bigint Bigint;
+ 
+-#ifndef Py_USING_MEMORY_DEBUGGER
++#if !defined(Py_USING_MEMORY_DEBUGGER) && !defined(__FILC__)
+ 
+ /* Memory management: memory is allocated from, and returned to, Kmax+1 pools
+    of memory, where pool k (0 <= k <= Kmax) is for Bigints b with b->maxwds ==
+@@ -432,7 +432,7 @@ Bfree(Bigint *v)
+     }
+ }
+ 
+-#endif /* Py_USING_MEMORY_DEBUGGER */
++#endif /* !defined(Py_USING_MEMORY_DEBUGGER) && !defined(__FILC__) */
+ 
+ #define Bcopy(x,y) memcpy((char *)&x->sign, (char *)&y->sign,   \
+                           y->wds*sizeof(Long) + 2*sizeof(int))
+diff --git a/Python/pystate.c b/Python/pystate.c
+index d0651fbd592f..a05ee012fdab 100644
+--- a/Python/pystate.c
++++ b/Python/pystate.c
+@@ -1357,9 +1357,7 @@ init_threadstate(PyThreadState *tstate,
+     tstate->gilstate_counter = 1;
+ 
+     tstate->cframe = &tstate->root_cframe;
+-    tstate->datastack_chunk = NULL;
+-    tstate->datastack_top = NULL;
+-    tstate->datastack_limit = NULL;
++    tstate->datastack_top_frame = NULL;
+     tstate->what_event = -1;
+ 
+     tstate->_status.initialized = 1;
+@@ -1473,13 +1471,7 @@ _PyThreadState_Init(PyThreadState *tstate)
+ static void
+ clear_datastack(PyThreadState *tstate)
+ {
+-    _PyStackChunk *chunk = tstate->datastack_chunk;
+-    tstate->datastack_chunk = NULL;
+-    while (chunk != NULL) {
+-        _PyStackChunk *prev = chunk->previous;
+-        _PyObject_VirtualFree(chunk, chunk->size);
+-        chunk = prev;
+-    }
++    tstate->datastack_top_frame = NULL;
+ }
+ 
+ void
+@@ -2946,63 +2938,21 @@ _PyInterpreterState_HasFeature(PyInterpreterState *interp, unsigned long feature
+ 
+ #define MINIMUM_OVERHEAD 1000
+ 
+-static PyObject **
+-push_chunk(PyThreadState *tstate, int size)
+-{
+-    int allocate_size = DATA_STACK_CHUNK_SIZE;
+-    while (allocate_size < (int)sizeof(PyObject*)*(size + MINIMUM_OVERHEAD)) {
+-        allocate_size *= 2;
+-    }
+-    _PyStackChunk *new = allocate_chunk(allocate_size, tstate->datastack_chunk);
+-    if (new == NULL) {
+-        return NULL;
+-    }
+-    if (tstate->datastack_chunk) {
+-        tstate->datastack_chunk->top = tstate->datastack_top -
+-                                       &tstate->datastack_chunk->data[0];
+-    }
+-    tstate->datastack_chunk = new;
+-    tstate->datastack_limit = (PyObject **)(((char *)new) + allocate_size);
+-    // When new is the "root" chunk (i.e. new->previous == NULL), we can keep
+-    // _PyThreadState_PopFrame from freeing it later by "skipping" over the
+-    // first element:
+-    PyObject **res = &new->data[new->previous == NULL];
+-    tstate->datastack_top = res + size;
+-    return res;
+-}
+-
+ _PyInterpreterFrame *
+ _PyThreadState_PushFrame(PyThreadState *tstate, size_t size)
+ {
+     assert(size < INT_MAX/sizeof(PyObject *));
+-    if (_PyThreadState_HasStackSpace(tstate, (int)size)) {
+-        _PyInterpreterFrame *res = (_PyInterpreterFrame *)tstate->datastack_top;
+-        tstate->datastack_top += size;
+-        return res;
+-    }
+-    return (_PyInterpreterFrame *)push_chunk(tstate, (int)size);
++    _PyInterpreterFrame *result = (_PyInterpreterFrame *)zgc_alloc(size * sizeof(PyObject *));
++    result->_f_caller_frame = tstate->datastack_top_frame;
++    tstate->datastack_top_frame = result;
++    return result;
+ }
+ 
+ void
+ _PyThreadState_PopFrame(PyThreadState *tstate, _PyInterpreterFrame * frame)
+ {
+-    assert(tstate->datastack_chunk);
+-    PyObject **base = (PyObject **)frame;
+-    if (base == &tstate->datastack_chunk->data[0]) {
+-        _PyStackChunk *chunk = tstate->datastack_chunk;
+-        _PyStackChunk *previous = chunk->previous;
+-        // push_chunk ensures that the root chunk is never popped:
+-        assert(previous);
+-        tstate->datastack_top = &previous->data[previous->top];
+-        tstate->datastack_chunk = previous;
+-        _PyObject_VirtualFree(chunk, chunk->size);
+-        tstate->datastack_limit = (PyObject **)(((char *)previous) + previous->size);
+-    }
+-    else {
+-        assert(tstate->datastack_top);
+-        assert(tstate->datastack_top >= base);
+-        tstate->datastack_top = base;
+-    }
++    ZASSERT(frame == tstate->datastack_top_frame);
++    tstate->datastack_top_frame = frame->_f_caller_frame;
+ }
+ 
+ 
+diff --git a/configure.ac b/configure.ac
+index 0d6df8e24e42..beb61c530b78 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -3574,11 +3574,7 @@ AC_MSG_RESULT([$SHLIBS])
+ dnl perf trampoline is Linux specific and requires an arch-specific
+ dnl trampoline in asssembly.
+ AC_MSG_CHECKING([perf trampoline])
+-AS_CASE([$PLATFORM_TRIPLET],
+-  [x86_64-linux-gnu], [perf_trampoline=yes],
+-  [aarch64-linux-gnu], [perf_trampoline=yes],
+-  [perf_trampoline=no]
+-)
++perf_trampoline=no
+ AC_MSG_RESULT([$perf_trampoline])
+ 
+ AS_VAR_IF([perf_trampoline], [yes], [

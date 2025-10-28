@@ -1,0 +1,2306 @@
+diff --git a/INSTALL b/INSTALL
+new file mode 100644
+index 000000000000..8865734f81b1
+--- /dev/null
++++ b/INSTALL
+@@ -0,0 +1,368 @@
++Installation Instructions
++*************************
++
++   Copyright (C) 1994-1996, 1999-2002, 2004-2016 Free Software
++Foundation, Inc.
++
++   Copying and distribution of this file, with or without modification,
++are permitted in any medium without royalty provided the copyright
++notice and this notice are preserved.  This file is offered as-is,
++without warranty of any kind.
++
++Basic Installation
++==================
++
++   Briefly, the shell command './configure && make && make install'
++should configure, build, and install this package.  The following
++more-detailed instructions are generic; see the 'README' file for
++instructions specific to this package.  Some packages provide this
++'INSTALL' file but do not implement all of the features documented
++below.  The lack of an optional feature in a given package is not
++necessarily a bug.  More recommendations for GNU packages can be found
++in *note Makefile Conventions: (standards)Makefile Conventions.
++
++   The 'configure' shell script attempts to guess correct values for
++various system-dependent variables used during compilation.  It uses
++those values to create a 'Makefile' in each directory of the package.
++It may also create one or more '.h' files containing system-dependent
++definitions.  Finally, it creates a shell script 'config.status' that
++you can run in the future to recreate the current configuration, and a
++file 'config.log' containing compiler output (useful mainly for
++debugging 'configure').
++
++   It can also use an optional file (typically called 'config.cache' and
++enabled with '--cache-file=config.cache' or simply '-C') that saves the
++results of its tests to speed up reconfiguring.  Caching is disabled by
++default to prevent problems with accidental use of stale cache files.
++
++   If you need to do unusual things to compile the package, please try
++to figure out how 'configure' could check whether to do them, and mail
++diffs or instructions to the address given in the 'README' so they can
++be considered for the next release.  If you are using the cache, and at
++some point 'config.cache' contains results you don't want to keep, you
++may remove or edit it.
++
++   The file 'configure.ac' (or 'configure.in') is used to create
++'configure' by a program called 'autoconf'.  You need 'configure.ac' if
++you want to change it or regenerate 'configure' using a newer version of
++'autoconf'.
++
++   The simplest way to compile this package is:
++
++  1. 'cd' to the directory containing the package's source code and type
++     './configure' to configure the package for your system.
++
++     Running 'configure' might take a while.  While running, it prints
++     some messages telling which features it is checking for.
++
++  2. Type 'make' to compile the package.
++
++  3. Optionally, type 'make check' to run any self-tests that come with
++     the package, generally using the just-built uninstalled binaries.
++
++  4. Type 'make install' to install the programs and any data files and
++     documentation.  When installing into a prefix owned by root, it is
++     recommended that the package be configured and built as a regular
++     user, and only the 'make install' phase executed with root
++     privileges.
++
++  5. Optionally, type 'make installcheck' to repeat any self-tests, but
++     this time using the binaries in their final installed location.
++     This target does not install anything.  Running this target as a
++     regular user, particularly if the prior 'make install' required
++     root privileges, verifies that the installation completed
++     correctly.
++
++  6. You can remove the program binaries and object files from the
++     source code directory by typing 'make clean'.  To also remove the
++     files that 'configure' created (so you can compile the package for
++     a different kind of computer), type 'make distclean'.  There is
++     also a 'make maintainer-clean' target, but that is intended mainly
++     for the package's developers.  If you use it, you may have to get
++     all sorts of other programs in order to regenerate files that came
++     with the distribution.
++
++  7. Often, you can also type 'make uninstall' to remove the installed
++     files again.  In practice, not all packages have tested that
++     uninstallation works correctly, even though it is required by the
++     GNU Coding Standards.
++
++  8. Some packages, particularly those that use Automake, provide 'make
++     distcheck', which can by used by developers to test that all other
++     targets like 'make install' and 'make uninstall' work correctly.
++     This target is generally not run by end users.
++
++Compilers and Options
++=====================
++
++   Some systems require unusual options for compilation or linking that
++the 'configure' script does not know about.  Run './configure --help'
++for details on some of the pertinent environment variables.
++
++   You can give 'configure' initial values for configuration parameters
++by setting variables in the command line or in the environment.  Here is
++an example:
++
++     ./configure CC=c99 CFLAGS=-g LIBS=-lposix
++
++   *Note Defining Variables::, for more details.
++
++Compiling For Multiple Architectures
++====================================
++
++   You can compile the package for more than one kind of computer at the
++same time, by placing the object files for each architecture in their
++own directory.  To do this, you can use GNU 'make'.  'cd' to the
++directory where you want the object files and executables to go and run
++the 'configure' script.  'configure' automatically checks for the source
++code in the directory that 'configure' is in and in '..'.  This is known
++as a "VPATH" build.
++
++   With a non-GNU 'make', it is safer to compile the package for one
++architecture at a time in the source code directory.  After you have
++installed the package for one architecture, use 'make distclean' before
++reconfiguring for another architecture.
++
++   On MacOS X 10.5 and later systems, you can create libraries and
++executables that work on multiple system types--known as "fat" or
++"universal" binaries--by specifying multiple '-arch' options to the
++compiler but only a single '-arch' option to the preprocessor.  Like
++this:
++
++     ./configure CC="gcc -arch i386 -arch x86_64 -arch ppc -arch ppc64" \
++                 CXX="g++ -arch i386 -arch x86_64 -arch ppc -arch ppc64" \
++                 CPP="gcc -E" CXXCPP="g++ -E"
++
++   This is not guaranteed to produce working output in all cases, you
++may have to build one architecture at a time and combine the results
++using the 'lipo' tool if you have problems.
++
++Installation Names
++==================
++
++   By default, 'make install' installs the package's commands under
++'/usr/local/bin', include files under '/usr/local/include', etc.  You
++can specify an installation prefix other than '/usr/local' by giving
++'configure' the option '--prefix=PREFIX', where PREFIX must be an
++absolute file name.
++
++   You can specify separate installation prefixes for
++architecture-specific files and architecture-independent files.  If you
++pass the option '--exec-prefix=PREFIX' to 'configure', the package uses
++PREFIX as the prefix for installing programs and libraries.
++Documentation and other data files still use the regular prefix.
++
++   In addition, if you use an unusual directory layout you can give
++options like '--bindir=DIR' to specify different values for particular
++kinds of files.  Run 'configure --help' for a list of the directories
++you can set and what kinds of files go in them.  In general, the default
++for these options is expressed in terms of '${prefix}', so that
++specifying just '--prefix' will affect all of the other directory
++specifications that were not explicitly provided.
++
++   The most portable way to affect installation locations is to pass the
++correct locations to 'configure'; however, many packages provide one or
++both of the following shortcuts of passing variable assignments to the
++'make install' command line to change installation locations without
++having to reconfigure or recompile.
++
++   The first method involves providing an override variable for each
++affected directory.  For example, 'make install
++prefix=/alternate/directory' will choose an alternate location for all
++directory configuration variables that were expressed in terms of
++'${prefix}'.  Any directories that were specified during 'configure',
++but not in terms of '${prefix}', must each be overridden at install time
++for the entire installation to be relocated.  The approach of makefile
++variable overrides for each directory variable is required by the GNU
++Coding Standards, and ideally causes no recompilation.  However, some
++platforms have known limitations with the semantics of shared libraries
++that end up requiring recompilation when using this method, particularly
++noticeable in packages that use GNU Libtool.
++
++   The second method involves providing the 'DESTDIR' variable.  For
++example, 'make install DESTDIR=/alternate/directory' will prepend
++'/alternate/directory' before all installation names.  The approach of
++'DESTDIR' overrides is not required by the GNU Coding Standards, and
++does not work on platforms that have drive letters.  On the other hand,
++it does better at avoiding recompilation issues, and works well even
++when some directory options were not specified in terms of '${prefix}'
++at 'configure' time.
++
++Optional Features
++=================
++
++   If the package supports it, you can cause programs to be installed
++with an extra prefix or suffix on their names by giving 'configure' the
++option '--program-prefix=PREFIX' or '--program-suffix=SUFFIX'.
++
++   Some packages pay attention to '--enable-FEATURE' options to
++'configure', where FEATURE indicates an optional part of the package.
++They may also pay attention to '--with-PACKAGE' options, where PACKAGE
++is something like 'gnu-as' or 'x' (for the X Window System).  The
++'README' should mention any '--enable-' and '--with-' options that the
++package recognizes.
++
++   For packages that use the X Window System, 'configure' can usually
++find the X include and library files automatically, but if it doesn't,
++you can use the 'configure' options '--x-includes=DIR' and
++'--x-libraries=DIR' to specify their locations.
++
++   Some packages offer the ability to configure how verbose the
++execution of 'make' will be.  For these packages, running './configure
++--enable-silent-rules' sets the default to minimal output, which can be
++overridden with 'make V=1'; while running './configure
++--disable-silent-rules' sets the default to verbose, which can be
++overridden with 'make V=0'.
++
++Particular systems
++==================
++
++   On HP-UX, the default C compiler is not ANSI C compatible.  If GNU CC
++is not installed, it is recommended to use the following options in
++order to use an ANSI C compiler:
++
++     ./configure CC="cc -Ae -D_XOPEN_SOURCE=500"
++
++and if that doesn't work, install pre-built binaries of GCC for HP-UX.
++
++   HP-UX 'make' updates targets which have the same time stamps as their
++prerequisites, which makes it generally unusable when shipped generated
++files such as 'configure' are involved.  Use GNU 'make' instead.
++
++   On OSF/1 a.k.a. Tru64, some versions of the default C compiler cannot
++parse its '<wchar.h>' header file.  The option '-nodtk' can be used as a
++workaround.  If GNU CC is not installed, it is therefore recommended to
++try
++
++     ./configure CC="cc"
++
++and if that doesn't work, try
++
++     ./configure CC="cc -nodtk"
++
++   On Solaris, don't put '/usr/ucb' early in your 'PATH'.  This
++directory contains several dysfunctional programs; working variants of
++these programs are available in '/usr/bin'.  So, if you need '/usr/ucb'
++in your 'PATH', put it _after_ '/usr/bin'.
++
++   On Haiku, software installed for all users goes in '/boot/common',
++not '/usr/local'.  It is recommended to use the following options:
++
++     ./configure --prefix=/boot/common
++
++Specifying the System Type
++==========================
++
++   There may be some features 'configure' cannot figure out
++automatically, but needs to determine by the type of machine the package
++will run on.  Usually, assuming the package is built to be run on the
++_same_ architectures, 'configure' can figure that out, but if it prints
++a message saying it cannot guess the machine type, give it the
++'--build=TYPE' option.  TYPE can either be a short name for the system
++type, such as 'sun4', or a canonical name which has the form:
++
++     CPU-COMPANY-SYSTEM
++
++where SYSTEM can have one of these forms:
++
++     OS
++     KERNEL-OS
++
++   See the file 'config.sub' for the possible values of each field.  If
++'config.sub' isn't included in this package, then this package doesn't
++need to know the machine type.
++
++   If you are _building_ compiler tools for cross-compiling, you should
++use the option '--target=TYPE' to select the type of system they will
++produce code for.
++
++   If you want to _use_ a cross compiler, that generates code for a
++platform different from the build platform, you should specify the
++"host" platform (i.e., that on which the generated programs will
++eventually be run) with '--host=TYPE'.
++
++Sharing Defaults
++================
++
++   If you want to set default values for 'configure' scripts to share,
++you can create a site shell script called 'config.site' that gives
++default values for variables like 'CC', 'cache_file', and 'prefix'.
++'configure' looks for 'PREFIX/share/config.site' if it exists, then
++'PREFIX/etc/config.site' if it exists.  Or, you can set the
++'CONFIG_SITE' environment variable to the location of the site script.
++A warning: not all 'configure' scripts look for a site script.
++
++Defining Variables
++==================
++
++   Variables not defined in a site shell script can be set in the
++environment passed to 'configure'.  However, some packages may run
++configure again during the build, and the customized values of these
++variables may be lost.  In order to avoid this problem, you should set
++them in the 'configure' command line, using 'VAR=value'.  For example:
++
++     ./configure CC=/usr/local2/bin/gcc
++
++causes the specified 'gcc' to be used as the C compiler (unless it is
++overridden in the site shell script).
++
++Unfortunately, this technique does not work for 'CONFIG_SHELL' due to an
++Autoconf limitation.  Until the limitation is lifted, you can use this
++workaround:
++
++     CONFIG_SHELL=/bin/bash ./configure CONFIG_SHELL=/bin/bash
++
++'configure' Invocation
++======================
++
++   'configure' recognizes the following options to control how it
++operates.
++
++'--help'
++'-h'
++     Print a summary of all of the options to 'configure', and exit.
++
++'--help=short'
++'--help=recursive'
++     Print a summary of the options unique to this package's
++     'configure', and exit.  The 'short' variant lists options used only
++     in the top level, while the 'recursive' variant lists options also
++     present in any nested packages.
++
++'--version'
++'-V'
++     Print the version of Autoconf used to generate the 'configure'
++     script, and exit.
++
++'--cache-file=FILE'
++     Enable the cache: use and save the results of the tests in FILE,
++     traditionally 'config.cache'.  FILE defaults to '/dev/null' to
++     disable caching.
++
++'--config-cache'
++'-C'
++     Alias for '--cache-file=config.cache'.
++
++'--quiet'
++'--silent'
++'-q'
++     Do not print messages saying which checks are being made.  To
++     suppress all normal output, redirect it to '/dev/null' (any error
++     messages will still be shown).
++
++'--srcdir=DIR'
++     Look for the package's source code in directory DIR.  Usually
++     'configure' can determine that directory automatically.
++
++'--prefix=DIR'
++     Use DIR as the installation prefix.  *note Installation Names:: for
++     more details, including other options available for fine-tuning the
++     installation locations.
++
++'--no-create'
++'-n'
++     Run the configure checks, but stop before creating any output
++     files.
++
++'configure' also accepts some other, not widely useful, options.  Run
++'configure --help' for more details.
+diff --git a/compile b/compile
+new file mode 100755
+index 000000000000..23fcba011321
+--- /dev/null
++++ b/compile
+@@ -0,0 +1,348 @@
++#! /bin/sh
++# Wrapper for compilers which do not understand '-c -o'.
++
++scriptversion=2018-03-07.03; # UTC
++
++# Copyright (C) 1999-2020 Free Software Foundation, Inc.
++# Written by Tom Tromey <tromey@cygnus.com>.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2, or (at your option)
++# any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++# As a special exception to the GNU General Public License, if you
++# distribute this file as part of a program that contains a
++# configuration script generated by Autoconf, you may include it under
++# the same distribution terms that you use for the rest of that program.
++
++# This file is maintained in Automake, please report
++# bugs to <bug-automake@gnu.org> or send patches to
++# <automake-patches@gnu.org>.
++
++nl='
++'
++
++# We need space, tab and new line, in precisely that order.  Quoting is
++# there to prevent tools from complaining about whitespace usage.
++IFS=" ""	$nl"
++
++file_conv=
++
++# func_file_conv build_file lazy
++# Convert a $build file to $host form and store it in $file
++# Currently only supports Windows hosts. If the determined conversion
++# type is listed in (the comma separated) LAZY, no conversion will
++# take place.
++func_file_conv ()
++{
++  file=$1
++  case $file in
++    / | /[!/]*) # absolute file, and not a UNC file
++      if test -z "$file_conv"; then
++	# lazily determine how to convert abs files
++	case `uname -s` in
++	  MINGW*)
++	    file_conv=mingw
++	    ;;
++	  CYGWIN* | MSYS*)
++	    file_conv=cygwin
++	    ;;
++	  *)
++	    file_conv=wine
++	    ;;
++	esac
++      fi
++      case $file_conv/,$2, in
++	*,$file_conv,*)
++	  ;;
++	mingw/*)
++	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
++	  ;;
++	cygwin/* | msys/*)
++	  file=`cygpath -m "$file" || echo "$file"`
++	  ;;
++	wine/*)
++	  file=`winepath -w "$file" || echo "$file"`
++	  ;;
++      esac
++      ;;
++  esac
++}
++
++# func_cl_dashL linkdir
++# Make cl look for libraries in LINKDIR
++func_cl_dashL ()
++{
++  func_file_conv "$1"
++  if test -z "$lib_path"; then
++    lib_path=$file
++  else
++    lib_path="$lib_path;$file"
++  fi
++  linker_opts="$linker_opts -LIBPATH:$file"
++}
++
++# func_cl_dashl library
++# Do a library search-path lookup for cl
++func_cl_dashl ()
++{
++  lib=$1
++  found=no
++  save_IFS=$IFS
++  IFS=';'
++  for dir in $lib_path $LIB
++  do
++    IFS=$save_IFS
++    if $shared && test -f "$dir/$lib.dll.lib"; then
++      found=yes
++      lib=$dir/$lib.dll.lib
++      break
++    fi
++    if test -f "$dir/$lib.lib"; then
++      found=yes
++      lib=$dir/$lib.lib
++      break
++    fi
++    if test -f "$dir/lib$lib.a"; then
++      found=yes
++      lib=$dir/lib$lib.a
++      break
++    fi
++  done
++  IFS=$save_IFS
++
++  if test "$found" != yes; then
++    lib=$lib.lib
++  fi
++}
++
++# func_cl_wrapper cl arg...
++# Adjust compile command to suit cl
++func_cl_wrapper ()
++{
++  # Assume a capable shell
++  lib_path=
++  shared=:
++  linker_opts=
++  for arg
++  do
++    if test -n "$eat"; then
++      eat=
++    else
++      case $1 in
++	-o)
++	  # configure might choose to run compile as 'compile cc -o foo foo.c'.
++	  eat=1
++	  case $2 in
++	    *.o | *.[oO][bB][jJ])
++	      func_file_conv "$2"
++	      set x "$@" -Fo"$file"
++	      shift
++	      ;;
++	    *)
++	      func_file_conv "$2"
++	      set x "$@" -Fe"$file"
++	      shift
++	      ;;
++	  esac
++	  ;;
++	-I)
++	  eat=1
++	  func_file_conv "$2" mingw
++	  set x "$@" -I"$file"
++	  shift
++	  ;;
++	-I*)
++	  func_file_conv "${1#-I}" mingw
++	  set x "$@" -I"$file"
++	  shift
++	  ;;
++	-l)
++	  eat=1
++	  func_cl_dashl "$2"
++	  set x "$@" "$lib"
++	  shift
++	  ;;
++	-l*)
++	  func_cl_dashl "${1#-l}"
++	  set x "$@" "$lib"
++	  shift
++	  ;;
++	-L)
++	  eat=1
++	  func_cl_dashL "$2"
++	  ;;
++	-L*)
++	  func_cl_dashL "${1#-L}"
++	  ;;
++	-static)
++	  shared=false
++	  ;;
++	-Wl,*)
++	  arg=${1#-Wl,}
++	  save_ifs="$IFS"; IFS=','
++	  for flag in $arg; do
++	    IFS="$save_ifs"
++	    linker_opts="$linker_opts $flag"
++	  done
++	  IFS="$save_ifs"
++	  ;;
++	-Xlinker)
++	  eat=1
++	  linker_opts="$linker_opts $2"
++	  ;;
++	-*)
++	  set x "$@" "$1"
++	  shift
++	  ;;
++	*.cc | *.CC | *.cxx | *.CXX | *.[cC]++)
++	  func_file_conv "$1"
++	  set x "$@" -Tp"$file"
++	  shift
++	  ;;
++	*.c | *.cpp | *.CPP | *.lib | *.LIB | *.Lib | *.OBJ | *.obj | *.[oO])
++	  func_file_conv "$1" mingw
++	  set x "$@" "$file"
++	  shift
++	  ;;
++	*)
++	  set x "$@" "$1"
++	  shift
++	  ;;
++      esac
++    fi
++    shift
++  done
++  if test -n "$linker_opts"; then
++    linker_opts="-link$linker_opts"
++  fi
++  exec "$@" $linker_opts
++  exit 1
++}
++
++eat=
++
++case $1 in
++  '')
++     echo "$0: No command.  Try '$0 --help' for more information." 1>&2
++     exit 1;
++     ;;
++  -h | --h*)
++    cat <<\EOF
++Usage: compile [--help] [--version] PROGRAM [ARGS]
++
++Wrapper for compilers which do not understand '-c -o'.
++Remove '-o dest.o' from ARGS, run PROGRAM with the remaining
++arguments, and rename the output as expected.
++
++If you are trying to build a whole package this is not the
++right script to run: please start by reading the file 'INSTALL'.
++
++Report bugs to <bug-automake@gnu.org>.
++EOF
++    exit $?
++    ;;
++  -v | --v*)
++    echo "compile $scriptversion"
++    exit $?
++    ;;
++  cl | *[/\\]cl | cl.exe | *[/\\]cl.exe | \
++  icl | *[/\\]icl | icl.exe | *[/\\]icl.exe )
++    func_cl_wrapper "$@"      # Doesn't return...
++    ;;
++esac
++
++ofile=
++cfile=
++
++for arg
++do
++  if test -n "$eat"; then
++    eat=
++  else
++    case $1 in
++      -o)
++	# configure might choose to run compile as 'compile cc -o foo foo.c'.
++	# So we strip '-o arg' only if arg is an object.
++	eat=1
++	case $2 in
++	  *.o | *.obj)
++	    ofile=$2
++	    ;;
++	  *)
++	    set x "$@" -o "$2"
++	    shift
++	    ;;
++	esac
++	;;
++      *.c)
++	cfile=$1
++	set x "$@" "$1"
++	shift
++	;;
++      *)
++	set x "$@" "$1"
++	shift
++	;;
++    esac
++  fi
++  shift
++done
++
++if test -z "$ofile" || test -z "$cfile"; then
++  # If no '-o' option was seen then we might have been invoked from a
++  # pattern rule where we don't need one.  That is ok -- this is a
++  # normal compilation that the losing compiler can handle.  If no
++  # '.c' file was seen then we are probably linking.  That is also
++  # ok.
++  exec "$@"
++fi
++
++# Name of file we expect compiler to create.
++cofile=`echo "$cfile" | sed 's|^.*[\\/]||; s|^[a-zA-Z]:||; s/\.c$/.o/'`
++
++# Create the lock directory.
++# Note: use '[/\\:.-]' here to ensure that we don't use the same name
++# that we are using for the .o file.  Also, base the name on the expected
++# object file name, since that is what matters with a parallel build.
++lockdir=`echo "$cofile" | sed -e 's|[/\\:.-]|_|g'`.d
++while true; do
++  if mkdir "$lockdir" >/dev/null 2>&1; then
++    break
++  fi
++  sleep 1
++done
++# FIXME: race condition here if user kills between mkdir and trap.
++trap "rmdir '$lockdir'; exit 1" 1 2 15
++
++# Run the compile.
++"$@"
++ret=$?
++
++if test -f "$cofile"; then
++  test "$cofile" = "$ofile" || mv "$cofile" "$ofile"
++elif test -f "${cofile}bj"; then
++  test "${cofile}bj" = "$ofile" || mv "${cofile}bj" "$ofile"
++fi
++
++rmdir "$lockdir"
++exit $ret
++
++# Local Variables:
++# mode: shell-script
++# sh-indentation: 2
++# eval: (add-hook 'before-save-hook 'time-stamp)
++# time-stamp-start: "scriptversion="
++# time-stamp-format: "%:y-%02m-%02d.%02H"
++# time-stamp-time-zone: "UTC0"
++# time-stamp-end: "; # UTC"
++# End:
+diff --git a/depcomp b/depcomp
+new file mode 100755
+index 000000000000..6b391623c4bf
+--- /dev/null
++++ b/depcomp
+@@ -0,0 +1,791 @@
++#! /bin/sh
++# depcomp - compile a program generating dependencies as side-effects
++
++scriptversion=2018-03-07.03; # UTC
++
++# Copyright (C) 1999-2020 Free Software Foundation, Inc.
++
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2, or (at your option)
++# any later version.
++
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++# As a special exception to the GNU General Public License, if you
++# distribute this file as part of a program that contains a
++# configuration script generated by Autoconf, you may include it under
++# the same distribution terms that you use for the rest of that program.
++
++# Originally written by Alexandre Oliva <oliva@dcc.unicamp.br>.
++
++case $1 in
++  '')
++    echo "$0: No command.  Try '$0 --help' for more information." 1>&2
++    exit 1;
++    ;;
++  -h | --h*)
++    cat <<\EOF
++Usage: depcomp [--help] [--version] PROGRAM [ARGS]
++
++Run PROGRAMS ARGS to compile a file, generating dependencies
++as side-effects.
++
++Environment variables:
++  depmode     Dependency tracking mode.
++  source      Source file read by 'PROGRAMS ARGS'.
++  object      Object file output by 'PROGRAMS ARGS'.
++  DEPDIR      directory where to store dependencies.
++  depfile     Dependency file to output.
++  tmpdepfile  Temporary file to use when outputting dependencies.
++  libtool     Whether libtool is used (yes/no).
++
++Report bugs to <bug-automake@gnu.org>.
++EOF
++    exit $?
++    ;;
++  -v | --v*)
++    echo "depcomp $scriptversion"
++    exit $?
++    ;;
++esac
++
++# Get the directory component of the given path, and save it in the
++# global variables '$dir'.  Note that this directory component will
++# be either empty or ending with a '/' character.  This is deliberate.
++set_dir_from ()
++{
++  case $1 in
++    */*) dir=`echo "$1" | sed -e 's|/[^/]*$|/|'`;;
++      *) dir=;;
++  esac
++}
++
++# Get the suffix-stripped basename of the given path, and save it the
++# global variable '$base'.
++set_base_from ()
++{
++  base=`echo "$1" | sed -e 's|^.*/||' -e 's/\.[^.]*$//'`
++}
++
++# If no dependency file was actually created by the compiler invocation,
++# we still have to create a dummy depfile, to avoid errors with the
++# Makefile "include basename.Plo" scheme.
++make_dummy_depfile ()
++{
++  echo "#dummy" > "$depfile"
++}
++
++# Factor out some common post-processing of the generated depfile.
++# Requires the auxiliary global variable '$tmpdepfile' to be set.
++aix_post_process_depfile ()
++{
++  # If the compiler actually managed to produce a dependency file,
++  # post-process it.
++  if test -f "$tmpdepfile"; then
++    # Each line is of the form 'foo.o: dependency.h'.
++    # Do two passes, one to just change these to
++    #   $object: dependency.h
++    # and one to simply output
++    #   dependency.h:
++    # which is needed to avoid the deleted-header problem.
++    { sed -e "s,^.*\.[$lower]*:,$object:," < "$tmpdepfile"
++      sed -e "s,^.*\.[$lower]*:[$tab ]*,," -e 's,$,:,' < "$tmpdepfile"
++    } > "$depfile"
++    rm -f "$tmpdepfile"
++  else
++    make_dummy_depfile
++  fi
++}
++
++# A tabulation character.
++tab='	'
++# A newline character.
++nl='
++'
++# Character ranges might be problematic outside the C locale.
++# These definitions help.
++upper=ABCDEFGHIJKLMNOPQRSTUVWXYZ
++lower=abcdefghijklmnopqrstuvwxyz
++digits=0123456789
++alpha=${upper}${lower}
++
++if test -z "$depmode" || test -z "$source" || test -z "$object"; then
++  echo "depcomp: Variables source, object and depmode must be set" 1>&2
++  exit 1
++fi
++
++# Dependencies for sub/bar.o or sub/bar.obj go into sub/.deps/bar.Po.
++depfile=${depfile-`echo "$object" |
++  sed 's|[^\\/]*$|'${DEPDIR-.deps}'/&|;s|\.\([^.]*\)$|.P\1|;s|Pobj$|Po|'`}
++tmpdepfile=${tmpdepfile-`echo "$depfile" | sed 's/\.\([^.]*\)$/.T\1/'`}
++
++rm -f "$tmpdepfile"
++
++# Avoid interferences from the environment.
++gccflag= dashmflag=
++
++# Some modes work just like other modes, but use different flags.  We
++# parameterize here, but still list the modes in the big case below,
++# to make depend.m4 easier to write.  Note that we *cannot* use a case
++# here, because this file can only contain one case statement.
++if test "$depmode" = hp; then
++  # HP compiler uses -M and no extra arg.
++  gccflag=-M
++  depmode=gcc
++fi
++
++if test "$depmode" = dashXmstdout; then
++  # This is just like dashmstdout with a different argument.
++  dashmflag=-xM
++  depmode=dashmstdout
++fi
++
++cygpath_u="cygpath -u -f -"
++if test "$depmode" = msvcmsys; then
++  # This is just like msvisualcpp but w/o cygpath translation.
++  # Just convert the backslash-escaped backslashes to single forward
++  # slashes to satisfy depend.m4
++  cygpath_u='sed s,\\\\,/,g'
++  depmode=msvisualcpp
++fi
++
++if test "$depmode" = msvc7msys; then
++  # This is just like msvc7 but w/o cygpath translation.
++  # Just convert the backslash-escaped backslashes to single forward
++  # slashes to satisfy depend.m4
++  cygpath_u='sed s,\\\\,/,g'
++  depmode=msvc7
++fi
++
++if test "$depmode" = xlc; then
++  # IBM C/C++ Compilers xlc/xlC can output gcc-like dependency information.
++  gccflag=-qmakedep=gcc,-MF
++  depmode=gcc
++fi
++
++case "$depmode" in
++gcc3)
++## gcc 3 implements dependency tracking that does exactly what
++## we want.  Yay!  Note: for some reason libtool 1.4 doesn't like
++## it if -MD -MP comes after the -MF stuff.  Hmm.
++## Unfortunately, FreeBSD c89 acceptance of flags depends upon
++## the command line argument order; so add the flags where they
++## appear in depend2.am.  Note that the slowdown incurred here
++## affects only configure: in makefiles, %FASTDEP% shortcuts this.
++  for arg
++  do
++    case $arg in
++    -c) set fnord "$@" -MT "$object" -MD -MP -MF "$tmpdepfile" "$arg" ;;
++    *)  set fnord "$@" "$arg" ;;
++    esac
++    shift # fnord
++    shift # $arg
++  done
++  "$@"
++  stat=$?
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile"
++    exit $stat
++  fi
++  mv "$tmpdepfile" "$depfile"
++  ;;
++
++gcc)
++## Note that this doesn't just cater to obsosete pre-3.x GCC compilers.
++## but also to in-use compilers like IMB xlc/xlC and the HP C compiler.
++## (see the conditional assignment to $gccflag above).
++## There are various ways to get dependency output from gcc.  Here's
++## why we pick this rather obscure method:
++## - Don't want to use -MD because we'd like the dependencies to end
++##   up in a subdir.  Having to rename by hand is ugly.
++##   (We might end up doing this anyway to support other compilers.)
++## - The DEPENDENCIES_OUTPUT environment variable makes gcc act like
++##   -MM, not -M (despite what the docs say).  Also, it might not be
++##   supported by the other compilers which use the 'gcc' depmode.
++## - Using -M directly means running the compiler twice (even worse
++##   than renaming).
++  if test -z "$gccflag"; then
++    gccflag=-MD,
++  fi
++  "$@" -Wp,"$gccflag$tmpdepfile"
++  stat=$?
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile"
++    exit $stat
++  fi
++  rm -f "$depfile"
++  echo "$object : \\" > "$depfile"
++  # The second -e expression handles DOS-style file names with drive
++  # letters.
++  sed -e 's/^[^:]*: / /' \
++      -e 's/^['$alpha']:\/[^:]*: / /' < "$tmpdepfile" >> "$depfile"
++## This next piece of magic avoids the "deleted header file" problem.
++## The problem is that when a header file which appears in a .P file
++## is deleted, the dependency causes make to die (because there is
++## typically no way to rebuild the header).  We avoid this by adding
++## dummy dependencies for each header file.  Too bad gcc doesn't do
++## this for us directly.
++## Some versions of gcc put a space before the ':'.  On the theory
++## that the space means something, we add a space to the output as
++## well.  hp depmode also adds that space, but also prefixes the VPATH
++## to the object.  Take care to not repeat it in the output.
++## Some versions of the HPUX 10.20 sed can't process this invocation
++## correctly.  Breaking it into two sed invocations is a workaround.
++  tr ' ' "$nl" < "$tmpdepfile" \
++    | sed -e 's/^\\$//' -e '/^$/d' -e "s|.*$object$||" -e '/:$/d' \
++    | sed -e 's/$/ :/' >> "$depfile"
++  rm -f "$tmpdepfile"
++  ;;
++
++hp)
++  # This case exists only to let depend.m4 do its work.  It works by
++  # looking at the text of this script.  This case will never be run,
++  # since it is checked for above.
++  exit 1
++  ;;
++
++sgi)
++  if test "$libtool" = yes; then
++    "$@" "-Wp,-MDupdate,$tmpdepfile"
++  else
++    "$@" -MDupdate "$tmpdepfile"
++  fi
++  stat=$?
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile"
++    exit $stat
++  fi
++  rm -f "$depfile"
++
++  if test -f "$tmpdepfile"; then  # yes, the sourcefile depend on other files
++    echo "$object : \\" > "$depfile"
++    # Clip off the initial element (the dependent).  Don't try to be
++    # clever and replace this with sed code, as IRIX sed won't handle
++    # lines with more than a fixed number of characters (4096 in
++    # IRIX 6.2 sed, 8192 in IRIX 6.5).  We also remove comment lines;
++    # the IRIX cc adds comments like '#:fec' to the end of the
++    # dependency line.
++    tr ' ' "$nl" < "$tmpdepfile" \
++      | sed -e 's/^.*\.o://' -e 's/#.*$//' -e '/^$/ d' \
++      | tr "$nl" ' ' >> "$depfile"
++    echo >> "$depfile"
++    # The second pass generates a dummy entry for each header file.
++    tr ' ' "$nl" < "$tmpdepfile" \
++      | sed -e 's/^.*\.o://' -e 's/#.*$//' -e '/^$/ d' -e 's/$/:/' \
++      >> "$depfile"
++  else
++    make_dummy_depfile
++  fi
++  rm -f "$tmpdepfile"
++  ;;
++
++xlc)
++  # This case exists only to let depend.m4 do its work.  It works by
++  # looking at the text of this script.  This case will never be run,
++  # since it is checked for above.
++  exit 1
++  ;;
++
++aix)
++  # The C for AIX Compiler uses -M and outputs the dependencies
++  # in a .u file.  In older versions, this file always lives in the
++  # current directory.  Also, the AIX compiler puts '$object:' at the
++  # start of each line; $object doesn't have directory information.
++  # Version 6 uses the directory in both cases.
++  set_dir_from "$object"
++  set_base_from "$object"
++  if test "$libtool" = yes; then
++    tmpdepfile1=$dir$base.u
++    tmpdepfile2=$base.u
++    tmpdepfile3=$dir.libs/$base.u
++    "$@" -Wc,-M
++  else
++    tmpdepfile1=$dir$base.u
++    tmpdepfile2=$dir$base.u
++    tmpdepfile3=$dir$base.u
++    "$@" -M
++  fi
++  stat=$?
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile1" "$tmpdepfile2" "$tmpdepfile3"
++    exit $stat
++  fi
++
++  for tmpdepfile in "$tmpdepfile1" "$tmpdepfile2" "$tmpdepfile3"
++  do
++    test -f "$tmpdepfile" && break
++  done
++  aix_post_process_depfile
++  ;;
++
++tcc)
++  # tcc (Tiny C Compiler) understand '-MD -MF file' since version 0.9.26
++  # FIXME: That version still under development at the moment of writing.
++  #        Make that this statement remains true also for stable, released
++  #        versions.
++  # It will wrap lines (doesn't matter whether long or short) with a
++  # trailing '\', as in:
++  #
++  #   foo.o : \
++  #    foo.c \
++  #    foo.h \
++  #
++  # It will put a trailing '\' even on the last line, and will use leading
++  # spaces rather than leading tabs (at least since its commit 0394caf7
++  # "Emit spaces for -MD").
++  "$@" -MD -MF "$tmpdepfile"
++  stat=$?
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile"
++    exit $stat
++  fi
++  rm -f "$depfile"
++  # Each non-empty line is of the form 'foo.o : \' or ' dep.h \'.
++  # We have to change lines of the first kind to '$object: \'.
++  sed -e "s|.*:|$object :|" < "$tmpdepfile" > "$depfile"
++  # And for each line of the second kind, we have to emit a 'dep.h:'
++  # dummy dependency, to avoid the deleted-header problem.
++  sed -n -e 's|^  *\(.*\) *\\$|\1:|p' < "$tmpdepfile" >> "$depfile"
++  rm -f "$tmpdepfile"
++  ;;
++
++## The order of this option in the case statement is important, since the
++## shell code in configure will try each of these formats in the order
++## listed in this file.  A plain '-MD' option would be understood by many
++## compilers, so we must ensure this comes after the gcc and icc options.
++pgcc)
++  # Portland's C compiler understands '-MD'.
++  # Will always output deps to 'file.d' where file is the root name of the
++  # source file under compilation, even if file resides in a subdirectory.
++  # The object file name does not affect the name of the '.d' file.
++  # pgcc 10.2 will output
++  #    foo.o: sub/foo.c sub/foo.h
++  # and will wrap long lines using '\' :
++  #    foo.o: sub/foo.c ... \
++  #     sub/foo.h ... \
++  #     ...
++  set_dir_from "$object"
++  # Use the source, not the object, to determine the base name, since
++  # that's sadly what pgcc will do too.
++  set_base_from "$source"
++  tmpdepfile=$base.d
++
++  # For projects that build the same source file twice into different object
++  # files, the pgcc approach of using the *source* file root name can cause
++  # problems in parallel builds.  Use a locking strategy to avoid stomping on
++  # the same $tmpdepfile.
++  lockdir=$base.d-lock
++  trap "
++    echo '$0: caught signal, cleaning up...' >&2
++    rmdir '$lockdir'
++    exit 1
++  " 1 2 13 15
++  numtries=100
++  i=$numtries
++  while test $i -gt 0; do
++    # mkdir is a portable test-and-set.
++    if mkdir "$lockdir" 2>/dev/null; then
++      # This process acquired the lock.
++      "$@" -MD
++      stat=$?
++      # Release the lock.
++      rmdir "$lockdir"
++      break
++    else
++      # If the lock is being held by a different process, wait
++      # until the winning process is done or we timeout.
++      while test -d "$lockdir" && test $i -gt 0; do
++        sleep 1
++        i=`expr $i - 1`
++      done
++    fi
++    i=`expr $i - 1`
++  done
++  trap - 1 2 13 15
++  if test $i -le 0; then
++    echo "$0: failed to acquire lock after $numtries attempts" >&2
++    echo "$0: check lockdir '$lockdir'" >&2
++    exit 1
++  fi
++
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile"
++    exit $stat
++  fi
++  rm -f "$depfile"
++  # Each line is of the form `foo.o: dependent.h',
++  # or `foo.o: dep1.h dep2.h \', or ` dep3.h dep4.h \'.
++  # Do two passes, one to just change these to
++  # `$object: dependent.h' and one to simply `dependent.h:'.
++  sed "s,^[^:]*:,$object :," < "$tmpdepfile" > "$depfile"
++  # Some versions of the HPUX 10.20 sed can't process this invocation
++  # correctly.  Breaking it into two sed invocations is a workaround.
++  sed 's,^[^:]*: \(.*\)$,\1,;s/^\\$//;/^$/d;/:$/d' < "$tmpdepfile" \
++    | sed -e 's/$/ :/' >> "$depfile"
++  rm -f "$tmpdepfile"
++  ;;
++
++hp2)
++  # The "hp" stanza above does not work with aCC (C++) and HP's ia64
++  # compilers, which have integrated preprocessors.  The correct option
++  # to use with these is +Maked; it writes dependencies to a file named
++  # 'foo.d', which lands next to the object file, wherever that
++  # happens to be.
++  # Much of this is similar to the tru64 case; see comments there.
++  set_dir_from  "$object"
++  set_base_from "$object"
++  if test "$libtool" = yes; then
++    tmpdepfile1=$dir$base.d
++    tmpdepfile2=$dir.libs/$base.d
++    "$@" -Wc,+Maked
++  else
++    tmpdepfile1=$dir$base.d
++    tmpdepfile2=$dir$base.d
++    "$@" +Maked
++  fi
++  stat=$?
++  if test $stat -ne 0; then
++     rm -f "$tmpdepfile1" "$tmpdepfile2"
++     exit $stat
++  fi
++
++  for tmpdepfile in "$tmpdepfile1" "$tmpdepfile2"
++  do
++    test -f "$tmpdepfile" && break
++  done
++  if test -f "$tmpdepfile"; then
++    sed -e "s,^.*\.[$lower]*:,$object:," "$tmpdepfile" > "$depfile"
++    # Add 'dependent.h:' lines.
++    sed -ne '2,${
++               s/^ *//
++               s/ \\*$//
++               s/$/:/
++               p
++             }' "$tmpdepfile" >> "$depfile"
++  else
++    make_dummy_depfile
++  fi
++  rm -f "$tmpdepfile" "$tmpdepfile2"
++  ;;
++
++tru64)
++  # The Tru64 compiler uses -MD to generate dependencies as a side
++  # effect.  'cc -MD -o foo.o ...' puts the dependencies into 'foo.o.d'.
++  # At least on Alpha/Redhat 6.1, Compaq CCC V6.2-504 seems to put
++  # dependencies in 'foo.d' instead, so we check for that too.
++  # Subdirectories are respected.
++  set_dir_from  "$object"
++  set_base_from "$object"
++
++  if test "$libtool" = yes; then
++    # Libtool generates 2 separate objects for the 2 libraries.  These
++    # two compilations output dependencies in $dir.libs/$base.o.d and
++    # in $dir$base.o.d.  We have to check for both files, because
++    # one of the two compilations can be disabled.  We should prefer
++    # $dir$base.o.d over $dir.libs/$base.o.d because the latter is
++    # automatically cleaned when .libs/ is deleted, while ignoring
++    # the former would cause a distcleancheck panic.
++    tmpdepfile1=$dir$base.o.d          # libtool 1.5
++    tmpdepfile2=$dir.libs/$base.o.d    # Likewise.
++    tmpdepfile3=$dir.libs/$base.d      # Compaq CCC V6.2-504
++    "$@" -Wc,-MD
++  else
++    tmpdepfile1=$dir$base.d
++    tmpdepfile2=$dir$base.d
++    tmpdepfile3=$dir$base.d
++    "$@" -MD
++  fi
++
++  stat=$?
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile1" "$tmpdepfile2" "$tmpdepfile3"
++    exit $stat
++  fi
++
++  for tmpdepfile in "$tmpdepfile1" "$tmpdepfile2" "$tmpdepfile3"
++  do
++    test -f "$tmpdepfile" && break
++  done
++  # Same post-processing that is required for AIX mode.
++  aix_post_process_depfile
++  ;;
++
++msvc7)
++  if test "$libtool" = yes; then
++    showIncludes=-Wc,-showIncludes
++  else
++    showIncludes=-showIncludes
++  fi
++  "$@" $showIncludes > "$tmpdepfile"
++  stat=$?
++  grep -v '^Note: including file: ' "$tmpdepfile"
++  if test $stat -ne 0; then
++    rm -f "$tmpdepfile"
++    exit $stat
++  fi
++  rm -f "$depfile"
++  echo "$object : \\" > "$depfile"
++  # The first sed program below extracts the file names and escapes
++  # backslashes for cygpath.  The second sed program outputs the file
++  # name when reading, but also accumulates all include files in the
++  # hold buffer in order to output them again at the end.  This only
++  # works with sed implementations that can handle large buffers.
++  sed < "$tmpdepfile" -n '
++/^Note: including file:  *\(.*\)/ {
++  s//\1/
++  s/\\/\\\\/g
++  p
++}' | $cygpath_u | sort -u | sed -n '
++s/ /\\ /g
++s/\(.*\)/'"$tab"'\1 \\/p
++s/.\(.*\) \\/\1:/
++H
++$ {
++  s/.*/'"$tab"'/
++  G
++  p
++}' >> "$depfile"
++  echo >> "$depfile" # make sure the fragment doesn't end with a backslash
++  rm -f "$tmpdepfile"
++  ;;
++
++msvc7msys)
++  # This case exists only to let depend.m4 do its work.  It works by
++  # looking at the text of this script.  This case will never be run,
++  # since it is checked for above.
++  exit 1
++  ;;
++
++#nosideeffect)
++  # This comment above is used by automake to tell side-effect
++  # dependency tracking mechanisms from slower ones.
++
++dashmstdout)
++  # Important note: in order to support this mode, a compiler *must*
++  # always write the preprocessed file to stdout, regardless of -o.
++  "$@" || exit $?
++
++  # Remove the call to Libtool.
++  if test "$libtool" = yes; then
++    while test "X$1" != 'X--mode=compile'; do
++      shift
++    done
++    shift
++  fi
++
++  # Remove '-o $object'.
++  IFS=" "
++  for arg
++  do
++    case $arg in
++    -o)
++      shift
++      ;;
++    $object)
++      shift
++      ;;
++    *)
++      set fnord "$@" "$arg"
++      shift # fnord
++      shift # $arg
++      ;;
++    esac
++  done
++
++  test -z "$dashmflag" && dashmflag=-M
++  # Require at least two characters before searching for ':'
++  # in the target name.  This is to cope with DOS-style filenames:
++  # a dependency such as 'c:/foo/bar' could be seen as target 'c' otherwise.
++  "$@" $dashmflag |
++    sed "s|^[$tab ]*[^:$tab ][^:][^:]*:[$tab ]*|$object: |" > "$tmpdepfile"
++  rm -f "$depfile"
++  cat < "$tmpdepfile" > "$depfile"
++  # Some versions of the HPUX 10.20 sed can't process this sed invocation
++  # correctly.  Breaking it into two sed invocations is a workaround.
++  tr ' ' "$nl" < "$tmpdepfile" \
++    | sed -e 's/^\\$//' -e '/^$/d' -e '/:$/d' \
++    | sed -e 's/$/ :/' >> "$depfile"
++  rm -f "$tmpdepfile"
++  ;;
++
++dashXmstdout)
++  # This case only exists to satisfy depend.m4.  It is never actually
++  # run, as this mode is specially recognized in the preamble.
++  exit 1
++  ;;
++
++makedepend)
++  "$@" || exit $?
++  # Remove any Libtool call
++  if test "$libtool" = yes; then
++    while test "X$1" != 'X--mode=compile'; do
++      shift
++    done
++    shift
++  fi
++  # X makedepend
++  shift
++  cleared=no eat=no
++  for arg
++  do
++    case $cleared in
++    no)
++      set ""; shift
++      cleared=yes ;;
++    esac
++    if test $eat = yes; then
++      eat=no
++      continue
++    fi
++    case "$arg" in
++    -D*|-I*)
++      set fnord "$@" "$arg"; shift ;;
++    # Strip any option that makedepend may not understand.  Remove
++    # the object too, otherwise makedepend will parse it as a source file.
++    -arch)
++      eat=yes ;;
++    -*|$object)
++      ;;
++    *)
++      set fnord "$@" "$arg"; shift ;;
++    esac
++  done
++  obj_suffix=`echo "$object" | sed 's/^.*\././'`
++  touch "$tmpdepfile"
++  ${MAKEDEPEND-makedepend} -o"$obj_suffix" -f"$tmpdepfile" "$@"
++  rm -f "$depfile"
++  # makedepend may prepend the VPATH from the source file name to the object.
++  # No need to regex-escape $object, excess matching of '.' is harmless.
++  sed "s|^.*\($object *:\)|\1|" "$tmpdepfile" > "$depfile"
++  # Some versions of the HPUX 10.20 sed can't process the last invocation
++  # correctly.  Breaking it into two sed invocations is a workaround.
++  sed '1,2d' "$tmpdepfile" \
++    | tr ' ' "$nl" \
++    | sed -e 's/^\\$//' -e '/^$/d' -e '/:$/d' \
++    | sed -e 's/$/ :/' >> "$depfile"
++  rm -f "$tmpdepfile" "$tmpdepfile".bak
++  ;;
++
++cpp)
++  # Important note: in order to support this mode, a compiler *must*
++  # always write the preprocessed file to stdout.
++  "$@" || exit $?
++
++  # Remove the call to Libtool.
++  if test "$libtool" = yes; then
++    while test "X$1" != 'X--mode=compile'; do
++      shift
++    done
++    shift
++  fi
++
++  # Remove '-o $object'.
++  IFS=" "
++  for arg
++  do
++    case $arg in
++    -o)
++      shift
++      ;;
++    $object)
++      shift
++      ;;
++    *)
++      set fnord "$@" "$arg"
++      shift # fnord
++      shift # $arg
++      ;;
++    esac
++  done
++
++  "$@" -E \
++    | sed -n -e '/^# [0-9][0-9]* "\([^"]*\)".*/ s:: \1 \\:p' \
++             -e '/^#line [0-9][0-9]* "\([^"]*\)".*/ s:: \1 \\:p' \
++    | sed '$ s: \\$::' > "$tmpdepfile"
++  rm -f "$depfile"
++  echo "$object : \\" > "$depfile"
++  cat < "$tmpdepfile" >> "$depfile"
++  sed < "$tmpdepfile" '/^$/d;s/^ //;s/ \\$//;s/$/ :/' >> "$depfile"
++  rm -f "$tmpdepfile"
++  ;;
++
++msvisualcpp)
++  # Important note: in order to support this mode, a compiler *must*
++  # always write the preprocessed file to stdout.
++  "$@" || exit $?
++
++  # Remove the call to Libtool.
++  if test "$libtool" = yes; then
++    while test "X$1" != 'X--mode=compile'; do
++      shift
++    done
++    shift
++  fi
++
++  IFS=" "
++  for arg
++  do
++    case "$arg" in
++    -o)
++      shift
++      ;;
++    $object)
++      shift
++      ;;
++    "-Gm"|"/Gm"|"-Gi"|"/Gi"|"-ZI"|"/ZI")
++        set fnord "$@"
++        shift
++        shift
++        ;;
++    *)
++        set fnord "$@" "$arg"
++        shift
++        shift
++        ;;
++    esac
++  done
++  "$@" -E 2>/dev/null |
++  sed -n '/^#line [0-9][0-9]* "\([^"]*\)"/ s::\1:p' | $cygpath_u | sort -u > "$tmpdepfile"
++  rm -f "$depfile"
++  echo "$object : \\" > "$depfile"
++  sed < "$tmpdepfile" -n -e 's% %\\ %g' -e '/^\(.*\)$/ s::'"$tab"'\1 \\:p' >> "$depfile"
++  echo "$tab" >> "$depfile"
++  sed < "$tmpdepfile" -n -e 's% %\\ %g' -e '/^\(.*\)$/ s::\1\::p' >> "$depfile"
++  rm -f "$tmpdepfile"
++  ;;
++
++msvcmsys)
++  # This case exists only to let depend.m4 do its work.  It works by
++  # looking at the text of this script.  This case will never be run,
++  # since it is checked for above.
++  exit 1
++  ;;
++
++none)
++  exec "$@"
++  ;;
++
++*)
++  echo "Unknown depmode $depmode" 1>&2
++  exit 1
++  ;;
++esac
++
++exit 0
++
++# Local Variables:
++# mode: shell-script
++# sh-indentation: 2
++# eval: (add-hook 'before-save-hook 'time-stamp)
++# time-stamp-start: "scriptversion="
++# time-stamp-format: "%:y-%02m-%02d.%02H"
++# time-stamp-time-zone: "UTC0"
++# time-stamp-end: "; # UTC"
++# End:
+diff --git a/install-sh b/install-sh
+new file mode 100755
+index 000000000000..ec298b537402
+--- /dev/null
++++ b/install-sh
+@@ -0,0 +1,541 @@
++#!/bin/sh
++# install - install a program, script, or datafile
++
++scriptversion=2020-11-14.01; # UTC
++
++# This originates from X11R5 (mit/util/scripts/install.sh), which was
++# later released in X11R6 (xc/config/util/install.sh) with the
++# following copyright and license.
++#
++# Copyright (C) 1994 X Consortium
++#
++# Permission is hereby granted, free of charge, to any person obtaining a copy
++# of this software and associated documentation files (the "Software"), to
++# deal in the Software without restriction, including without limitation the
++# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++# sell copies of the Software, and to permit persons to whom the Software is
++# furnished to do so, subject to the following conditions:
++#
++# The above copyright notice and this permission notice shall be included in
++# all copies or substantial portions of the Software.
++#
++# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
++# X CONSORTIUM BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
++# AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNEC-
++# TION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
++#
++# Except as contained in this notice, the name of the X Consortium shall not
++# be used in advertising or otherwise to promote the sale, use or other deal-
++# ings in this Software without prior written authorization from the X Consor-
++# tium.
++#
++#
++# FSF changes to this file are in the public domain.
++#
++# Calling this script install-sh is preferred over install.sh, to prevent
++# 'make' implicit rules from creating a file called install from it
++# when there is no Makefile.
++#
++# This script is compatible with the BSD install script, but was written
++# from scratch.
++
++tab='	'
++nl='
++'
++IFS=" $tab$nl"
++
++# Set DOITPROG to "echo" to test this script.
++
++doit=${DOITPROG-}
++doit_exec=${doit:-exec}
++
++# Put in absolute file names if you don't have them in your path;
++# or use environment vars.
++
++chgrpprog=${CHGRPPROG-chgrp}
++chmodprog=${CHMODPROG-chmod}
++chownprog=${CHOWNPROG-chown}
++cmpprog=${CMPPROG-cmp}
++cpprog=${CPPROG-cp}
++mkdirprog=${MKDIRPROG-mkdir}
++mvprog=${MVPROG-mv}
++rmprog=${RMPROG-rm}
++stripprog=${STRIPPROG-strip}
++
++posix_mkdir=
++
++# Desired mode of installed file.
++mode=0755
++
++# Create dirs (including intermediate dirs) using mode 755.
++# This is like GNU 'install' as of coreutils 8.32 (2020).
++mkdir_umask=22
++
++backupsuffix=
++chgrpcmd=
++chmodcmd=$chmodprog
++chowncmd=
++mvcmd=$mvprog
++rmcmd="$rmprog -f"
++stripcmd=
++
++src=
++dst=
++dir_arg=
++dst_arg=
++
++copy_on_change=false
++is_target_a_directory=possibly
++
++usage="\
++Usage: $0 [OPTION]... [-T] SRCFILE DSTFILE
++   or: $0 [OPTION]... SRCFILES... DIRECTORY
++   or: $0 [OPTION]... -t DIRECTORY SRCFILES...
++   or: $0 [OPTION]... -d DIRECTORIES...
++
++In the 1st form, copy SRCFILE to DSTFILE.
++In the 2nd and 3rd, copy all SRCFILES to DIRECTORY.
++In the 4th, create DIRECTORIES.
++
++Options:
++     --help     display this help and exit.
++     --version  display version info and exit.
++
++  -c            (ignored)
++  -C            install only if different (preserve data modification time)
++  -d            create directories instead of installing files.
++  -g GROUP      $chgrpprog installed files to GROUP.
++  -m MODE       $chmodprog installed files to MODE.
++  -o USER       $chownprog installed files to USER.
++  -p            pass -p to $cpprog.
++  -s            $stripprog installed files.
++  -S SUFFIX     attempt to back up existing files, with suffix SUFFIX.
++  -t DIRECTORY  install into DIRECTORY.
++  -T            report an error if DSTFILE is a directory.
++
++Environment variables override the default commands:
++  CHGRPPROG CHMODPROG CHOWNPROG CMPPROG CPPROG MKDIRPROG MVPROG
++  RMPROG STRIPPROG
++
++By default, rm is invoked with -f; when overridden with RMPROG,
++it's up to you to specify -f if you want it.
++
++If -S is not specified, no backups are attempted.
++
++Email bug reports to bug-automake@gnu.org.
++Automake home page: https://www.gnu.org/software/automake/
++"
++
++while test $# -ne 0; do
++  case $1 in
++    -c) ;;
++
++    -C) copy_on_change=true;;
++
++    -d) dir_arg=true;;
++
++    -g) chgrpcmd="$chgrpprog $2"
++        shift;;
++
++    --help) echo "$usage"; exit $?;;
++
++    -m) mode=$2
++        case $mode in
++          *' '* | *"$tab"* | *"$nl"* | *'*'* | *'?'* | *'['*)
++            echo "$0: invalid mode: $mode" >&2
++            exit 1;;
++        esac
++        shift;;
++
++    -o) chowncmd="$chownprog $2"
++        shift;;
++
++    -p) cpprog="$cpprog -p";;
++
++    -s) stripcmd=$stripprog;;
++
++    -S) backupsuffix="$2"
++        shift;;
++
++    -t)
++        is_target_a_directory=always
++        dst_arg=$2
++        # Protect names problematic for 'test' and other utilities.
++        case $dst_arg in
++          -* | [=\(\)!]) dst_arg=./$dst_arg;;
++        esac
++        shift;;
++
++    -T) is_target_a_directory=never;;
++
++    --version) echo "$0 $scriptversion"; exit $?;;
++
++    --) shift
++        break;;
++
++    -*) echo "$0: invalid option: $1" >&2
++        exit 1;;
++
++    *)  break;;
++  esac
++  shift
++done
++
++# We allow the use of options -d and -T together, by making -d
++# take the precedence; this is for compatibility with GNU install.
++
++if test -n "$dir_arg"; then
++  if test -n "$dst_arg"; then
++    echo "$0: target directory not allowed when installing a directory." >&2
++    exit 1
++  fi
++fi
++
++if test $# -ne 0 && test -z "$dir_arg$dst_arg"; then
++  # When -d is used, all remaining arguments are directories to create.
++  # When -t is used, the destination is already specified.
++  # Otherwise, the last argument is the destination.  Remove it from $@.
++  for arg
++  do
++    if test -n "$dst_arg"; then
++      # $@ is not empty: it contains at least $arg.
++      set fnord "$@" "$dst_arg"
++      shift # fnord
++    fi
++    shift # arg
++    dst_arg=$arg
++    # Protect names problematic for 'test' and other utilities.
++    case $dst_arg in
++      -* | [=\(\)!]) dst_arg=./$dst_arg;;
++    esac
++  done
++fi
++
++if test $# -eq 0; then
++  if test -z "$dir_arg"; then
++    echo "$0: no input file specified." >&2
++    exit 1
++  fi
++  # It's OK to call 'install-sh -d' without argument.
++  # This can happen when creating conditional directories.
++  exit 0
++fi
++
++if test -z "$dir_arg"; then
++  if test $# -gt 1 || test "$is_target_a_directory" = always; then
++    if test ! -d "$dst_arg"; then
++      echo "$0: $dst_arg: Is not a directory." >&2
++      exit 1
++    fi
++  fi
++fi
++
++if test -z "$dir_arg"; then
++  do_exit='(exit $ret); exit $ret'
++  trap "ret=129; $do_exit" 1
++  trap "ret=130; $do_exit" 2
++  trap "ret=141; $do_exit" 13
++  trap "ret=143; $do_exit" 15
++
++  # Set umask so as not to create temps with too-generous modes.
++  # However, 'strip' requires both read and write access to temps.
++  case $mode in
++    # Optimize common cases.
++    *644) cp_umask=133;;
++    *755) cp_umask=22;;
++
++    *[0-7])
++      if test -z "$stripcmd"; then
++        u_plus_rw=
++      else
++        u_plus_rw='% 200'
++      fi
++      cp_umask=`expr '(' 777 - $mode % 1000 ')' $u_plus_rw`;;
++    *)
++      if test -z "$stripcmd"; then
++        u_plus_rw=
++      else
++        u_plus_rw=,u+rw
++      fi
++      cp_umask=$mode$u_plus_rw;;
++  esac
++fi
++
++for src
++do
++  # Protect names problematic for 'test' and other utilities.
++  case $src in
++    -* | [=\(\)!]) src=./$src;;
++  esac
++
++  if test -n "$dir_arg"; then
++    dst=$src
++    dstdir=$dst
++    test -d "$dstdir"
++    dstdir_status=$?
++    # Don't chown directories that already exist.
++    if test $dstdir_status = 0; then
++      chowncmd=""
++    fi
++  else
++
++    # Waiting for this to be detected by the "$cpprog $src $dsttmp" command
++    # might cause directories to be created, which would be especially bad
++    # if $src (and thus $dsttmp) contains '*'.
++    if test ! -f "$src" && test ! -d "$src"; then
++      echo "$0: $src does not exist." >&2
++      exit 1
++    fi
++
++    if test -z "$dst_arg"; then
++      echo "$0: no destination specified." >&2
++      exit 1
++    fi
++    dst=$dst_arg
++
++    # If destination is a directory, append the input filename.
++    if test -d "$dst"; then
++      if test "$is_target_a_directory" = never; then
++        echo "$0: $dst_arg: Is a directory" >&2
++        exit 1
++      fi
++      dstdir=$dst
++      dstbase=`basename "$src"`
++      case $dst in
++	*/) dst=$dst$dstbase;;
++	*)  dst=$dst/$dstbase;;
++      esac
++      dstdir_status=0
++    else
++      dstdir=`dirname "$dst"`
++      test -d "$dstdir"
++      dstdir_status=$?
++    fi
++  fi
++
++  case $dstdir in
++    */) dstdirslash=$dstdir;;
++    *)  dstdirslash=$dstdir/;;
++  esac
++
++  obsolete_mkdir_used=false
++
++  if test $dstdir_status != 0; then
++    case $posix_mkdir in
++      '')
++        # With -d, create the new directory with the user-specified mode.
++        # Otherwise, rely on $mkdir_umask.
++        if test -n "$dir_arg"; then
++          mkdir_mode=-m$mode
++        else
++          mkdir_mode=
++        fi
++
++        posix_mkdir=false
++	# The $RANDOM variable is not portable (e.g., dash).  Use it
++	# here however when possible just to lower collision chance.
++	tmpdir=${TMPDIR-/tmp}/ins$RANDOM-$$
++
++	trap '
++	  ret=$?
++	  rmdir "$tmpdir/a/b" "$tmpdir/a" "$tmpdir" 2>/dev/null
++	  exit $ret
++	' 0
++
++	# Because "mkdir -p" follows existing symlinks and we likely work
++	# directly in world-writeable /tmp, make sure that the '$tmpdir'
++	# directory is successfully created first before we actually test
++	# 'mkdir -p'.
++	if (umask $mkdir_umask &&
++	    $mkdirprog $mkdir_mode "$tmpdir" &&
++	    exec $mkdirprog $mkdir_mode -p -- "$tmpdir/a/b") >/dev/null 2>&1
++	then
++	  if test -z "$dir_arg" || {
++	       # Check for POSIX incompatibilities with -m.
++	       # HP-UX 11.23 and IRIX 6.5 mkdir -m -p sets group- or
++	       # other-writable bit of parent directory when it shouldn't.
++	       # FreeBSD 6.1 mkdir -m -p sets mode of existing directory.
++	       test_tmpdir="$tmpdir/a"
++	       ls_ld_tmpdir=`ls -ld "$test_tmpdir"`
++	       case $ls_ld_tmpdir in
++		 d????-?r-*) different_mode=700;;
++		 d????-?--*) different_mode=755;;
++		 *) false;;
++	       esac &&
++	       $mkdirprog -m$different_mode -p -- "$test_tmpdir" && {
++		 ls_ld_tmpdir_1=`ls -ld "$test_tmpdir"`
++		 test "$ls_ld_tmpdir" = "$ls_ld_tmpdir_1"
++	       }
++	     }
++	  then posix_mkdir=:
++	  fi
++	  rmdir "$tmpdir/a/b" "$tmpdir/a" "$tmpdir"
++	else
++	  # Remove any dirs left behind by ancient mkdir implementations.
++	  rmdir ./$mkdir_mode ./-p ./-- "$tmpdir" 2>/dev/null
++	fi
++	trap '' 0;;
++    esac
++
++    if
++      $posix_mkdir && (
++        umask $mkdir_umask &&
++        $doit_exec $mkdirprog $mkdir_mode -p -- "$dstdir"
++      )
++    then :
++    else
++
++      # mkdir does not conform to POSIX,
++      # or it failed possibly due to a race condition.  Create the
++      # directory the slow way, step by step, checking for races as we go.
++
++      case $dstdir in
++        /*) prefix='/';;
++        [-=\(\)!]*) prefix='./';;
++        *)  prefix='';;
++      esac
++
++      oIFS=$IFS
++      IFS=/
++      set -f
++      set fnord $dstdir
++      shift
++      set +f
++      IFS=$oIFS
++
++      prefixes=
++
++      for d
++      do
++        test X"$d" = X && continue
++
++        prefix=$prefix$d
++        if test -d "$prefix"; then
++          prefixes=
++        else
++          if $posix_mkdir; then
++            (umask $mkdir_umask &&
++             $doit_exec $mkdirprog $mkdir_mode -p -- "$dstdir") && break
++            # Don't fail if two instances are running concurrently.
++            test -d "$prefix" || exit 1
++          else
++            case $prefix in
++              *\'*) qprefix=`echo "$prefix" | sed "s/'/'\\\\\\\\''/g"`;;
++              *) qprefix=$prefix;;
++            esac
++            prefixes="$prefixes '$qprefix'"
++          fi
++        fi
++        prefix=$prefix/
++      done
++
++      if test -n "$prefixes"; then
++        # Don't fail if two instances are running concurrently.
++        (umask $mkdir_umask &&
++         eval "\$doit_exec \$mkdirprog $prefixes") ||
++          test -d "$dstdir" || exit 1
++        obsolete_mkdir_used=true
++      fi
++    fi
++  fi
++
++  if test -n "$dir_arg"; then
++    { test -z "$chowncmd" || $doit $chowncmd "$dst"; } &&
++    { test -z "$chgrpcmd" || $doit $chgrpcmd "$dst"; } &&
++    { test "$obsolete_mkdir_used$chowncmd$chgrpcmd" = false ||
++      test -z "$chmodcmd" || $doit $chmodcmd $mode "$dst"; } || exit 1
++  else
++
++    # Make a couple of temp file names in the proper directory.
++    dsttmp=${dstdirslash}_inst.$$_
++    rmtmp=${dstdirslash}_rm.$$_
++
++    # Trap to clean up those temp files at exit.
++    trap 'ret=$?; rm -f "$dsttmp" "$rmtmp" && exit $ret' 0
++
++    # Copy the file name to the temp name.
++    (umask $cp_umask &&
++     { test -z "$stripcmd" || {
++	 # Create $dsttmp read-write so that cp doesn't create it read-only,
++	 # which would cause strip to fail.
++	 if test -z "$doit"; then
++	   : >"$dsttmp" # No need to fork-exec 'touch'.
++	 else
++	   $doit touch "$dsttmp"
++	 fi
++       }
++     } &&
++     $doit_exec $cpprog "$src" "$dsttmp") &&
++
++    # and set any options; do chmod last to preserve setuid bits.
++    #
++    # If any of these fail, we abort the whole thing.  If we want to
++    # ignore errors from any of these, just make sure not to ignore
++    # errors from the above "$doit $cpprog $src $dsttmp" command.
++    #
++    { test -z "$chowncmd" || $doit $chowncmd "$dsttmp"; } &&
++    { test -z "$chgrpcmd" || $doit $chgrpcmd "$dsttmp"; } &&
++    { test -z "$stripcmd" || $doit $stripcmd "$dsttmp"; } &&
++    { test -z "$chmodcmd" || $doit $chmodcmd $mode "$dsttmp"; } &&
++
++    # If -C, don't bother to copy if it wouldn't change the file.
++    if $copy_on_change &&
++       old=`LC_ALL=C ls -dlL "$dst"     2>/dev/null` &&
++       new=`LC_ALL=C ls -dlL "$dsttmp"  2>/dev/null` &&
++       set -f &&
++       set X $old && old=:$2:$4:$5:$6 &&
++       set X $new && new=:$2:$4:$5:$6 &&
++       set +f &&
++       test "$old" = "$new" &&
++       $cmpprog "$dst" "$dsttmp" >/dev/null 2>&1
++    then
++      rm -f "$dsttmp"
++    else
++      # If $backupsuffix is set, and the file being installed
++      # already exists, attempt a backup.  Don't worry if it fails,
++      # e.g., if mv doesn't support -f.
++      if test -n "$backupsuffix" && test -f "$dst"; then
++        $doit $mvcmd -f "$dst" "$dst$backupsuffix" 2>/dev/null
++      fi
++
++      # Rename the file to the real destination.
++      $doit $mvcmd -f "$dsttmp" "$dst" 2>/dev/null ||
++
++      # The rename failed, perhaps because mv can't rename something else
++      # to itself, or perhaps because mv is so ancient that it does not
++      # support -f.
++      {
++        # Now remove or move aside any old file at destination location.
++        # We try this two ways since rm can't unlink itself on some
++        # systems and the destination file might be busy for other
++        # reasons.  In this case, the final cleanup might fail but the new
++        # file should still install successfully.
++        {
++          test ! -f "$dst" ||
++          $doit $rmcmd "$dst" 2>/dev/null ||
++          { $doit $mvcmd -f "$dst" "$rmtmp" 2>/dev/null &&
++            { $doit $rmcmd "$rmtmp" 2>/dev/null; :; }
++          } ||
++          { echo "$0: cannot unlink or rename $dst" >&2
++            (exit 1); exit 1
++          }
++        } &&
++
++        # Now rename the file to the real destination.
++        $doit $mvcmd "$dsttmp" "$dst"
++      }
++    fi || exit 1
++
++    trap '' 0
++  fi
++done
++
++# Local variables:
++# eval: (add-hook 'before-save-hook 'time-stamp)
++# time-stamp-start: "scriptversion="
++# time-stamp-format: "%:y-%02m-%02d.%02H"
++# time-stamp-time-zone: "UTC0"
++# time-stamp-end: "; # UTC"
++# End:
+diff --git a/missing b/missing
+new file mode 100755
+index 000000000000..8d0eaad250fc
+--- /dev/null
++++ b/missing
+@@ -0,0 +1,215 @@
++#! /bin/sh
++# Common wrapper for a few potentially missing GNU programs.
++
++scriptversion=2018-03-07.03; # UTC
++
++# Copyright (C) 1996-2020 Free Software Foundation, Inc.
++# Originally written by Fran,cois Pinard <pinard@iro.umontreal.ca>, 1996.
++
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2, or (at your option)
++# any later version.
++
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++# As a special exception to the GNU General Public License, if you
++# distribute this file as part of a program that contains a
++# configuration script generated by Autoconf, you may include it under
++# the same distribution terms that you use for the rest of that program.
++
++if test $# -eq 0; then
++  echo 1>&2 "Try '$0 --help' for more information"
++  exit 1
++fi
++
++case $1 in
++
++  --is-lightweight)
++    # Used by our autoconf macros to check whether the available missing
++    # script is modern enough.
++    exit 0
++    ;;
++
++  --run)
++    # Back-compat with the calling convention used by older automake.
++    shift
++    ;;
++
++  -h|--h|--he|--hel|--help)
++    echo "\
++$0 [OPTION]... PROGRAM [ARGUMENT]...
++
++Run 'PROGRAM [ARGUMENT]...', returning a proper advice when this fails due
++to PROGRAM being missing or too old.
++
++Options:
++  -h, --help      display this help and exit
++  -v, --version   output version information and exit
++
++Supported PROGRAM values:
++  aclocal   autoconf  autoheader   autom4te  automake  makeinfo
++  bison     yacc      flex         lex       help2man
++
++Version suffixes to PROGRAM as well as the prefixes 'gnu-', 'gnu', and
++'g' are ignored when checking the name.
++
++Send bug reports to <bug-automake@gnu.org>."
++    exit $?
++    ;;
++
++  -v|--v|--ve|--ver|--vers|--versi|--versio|--version)
++    echo "missing $scriptversion (GNU Automake)"
++    exit $?
++    ;;
++
++  -*)
++    echo 1>&2 "$0: unknown '$1' option"
++    echo 1>&2 "Try '$0 --help' for more information"
++    exit 1
++    ;;
++
++esac
++
++# Run the given program, remember its exit status.
++"$@"; st=$?
++
++# If it succeeded, we are done.
++test $st -eq 0 && exit 0
++
++# Also exit now if we it failed (or wasn't found), and '--version' was
++# passed; such an option is passed most likely to detect whether the
++# program is present and works.
++case $2 in --version|--help) exit $st;; esac
++
++# Exit code 63 means version mismatch.  This often happens when the user
++# tries to use an ancient version of a tool on a file that requires a
++# minimum version.
++if test $st -eq 63; then
++  msg="probably too old"
++elif test $st -eq 127; then
++  # Program was missing.
++  msg="missing on your system"
++else
++  # Program was found and executed, but failed.  Give up.
++  exit $st
++fi
++
++perl_URL=https://www.perl.org/
++flex_URL=https://github.com/westes/flex
++gnu_software_URL=https://www.gnu.org/software
++
++program_details ()
++{
++  case $1 in
++    aclocal|automake)
++      echo "The '$1' program is part of the GNU Automake package:"
++      echo "<$gnu_software_URL/automake>"
++      echo "It also requires GNU Autoconf, GNU m4 and Perl in order to run:"
++      echo "<$gnu_software_URL/autoconf>"
++      echo "<$gnu_software_URL/m4/>"
++      echo "<$perl_URL>"
++      ;;
++    autoconf|autom4te|autoheader)
++      echo "The '$1' program is part of the GNU Autoconf package:"
++      echo "<$gnu_software_URL/autoconf/>"
++      echo "It also requires GNU m4 and Perl in order to run:"
++      echo "<$gnu_software_URL/m4/>"
++      echo "<$perl_URL>"
++      ;;
++  esac
++}
++
++give_advice ()
++{
++  # Normalize program name to check for.
++  normalized_program=`echo "$1" | sed '
++    s/^gnu-//; t
++    s/^gnu//; t
++    s/^g//; t'`
++
++  printf '%s\n' "'$1' is $msg."
++
++  configure_deps="'configure.ac' or m4 files included by 'configure.ac'"
++  case $normalized_program in
++    autoconf*)
++      echo "You should only need it if you modified 'configure.ac',"
++      echo "or m4 files included by it."
++      program_details 'autoconf'
++      ;;
++    autoheader*)
++      echo "You should only need it if you modified 'acconfig.h' or"
++      echo "$configure_deps."
++      program_details 'autoheader'
++      ;;
++    automake*)
++      echo "You should only need it if you modified 'Makefile.am' or"
++      echo "$configure_deps."
++      program_details 'automake'
++      ;;
++    aclocal*)
++      echo "You should only need it if you modified 'acinclude.m4' or"
++      echo "$configure_deps."
++      program_details 'aclocal'
++      ;;
++   autom4te*)
++      echo "You might have modified some maintainer files that require"
++      echo "the 'autom4te' program to be rebuilt."
++      program_details 'autom4te'
++      ;;
++    bison*|yacc*)
++      echo "You should only need it if you modified a '.y' file."
++      echo "You may want to install the GNU Bison package:"
++      echo "<$gnu_software_URL/bison/>"
++      ;;
++    lex*|flex*)
++      echo "You should only need it if you modified a '.l' file."
++      echo "You may want to install the Fast Lexical Analyzer package:"
++      echo "<$flex_URL>"
++      ;;
++    help2man*)
++      echo "You should only need it if you modified a dependency" \
++           "of a man page."
++      echo "You may want to install the GNU Help2man package:"
++      echo "<$gnu_software_URL/help2man/>"
++    ;;
++    makeinfo*)
++      echo "You should only need it if you modified a '.texi' file, or"
++      echo "any other file indirectly affecting the aspect of the manual."
++      echo "You might want to install the Texinfo package:"
++      echo "<$gnu_software_URL/texinfo/>"
++      echo "The spurious makeinfo call might also be the consequence of"
++      echo "using a buggy 'make' (AIX, DU, IRIX), in which case you might"
++      echo "want to install GNU make:"
++      echo "<$gnu_software_URL/make/>"
++      ;;
++    *)
++      echo "You might have modified some files without having the proper"
++      echo "tools for further handling them.  Check the 'README' file, it"
++      echo "often tells you about the needed prerequisites for installing"
++      echo "this package.  You may also peek at any GNU archive site, in"
++      echo "case some other package contains this missing '$1' program."
++      ;;
++  esac
++}
++
++give_advice "$1" | sed -e '1s/^/WARNING: /' \
++                       -e '2,$s/^/         /' >&2
++
++# Propagate the correct exit status (expected to be 127 for a program
++# not found, 63 for a program that failed due to version mismatch).
++exit $st
++
++# Local variables:
++# eval: (add-hook 'before-save-hook 'time-stamp)
++# time-stamp-start: "scriptversion="
++# time-stamp-format: "%:y-%02m-%02d.%02H"
++# time-stamp-time-zone: "UTC0"
++# time-stamp-end: "; # UTC"
++# End:
+diff --git a/src/jobs.c b/src/jobs.c
+index f3b9ffc28535..0d9f7d72586c 100644
+--- a/src/jobs.c
++++ b/src/jobs.c
+@@ -968,7 +968,7 @@ struct job *vforkexec(union node *n, char **argv, const char *path, int idx)
+ 	sigblockall(NULL);
+ 	vforked++;
+ 
+-	pid = vfork();
++	pid = fork();
+ 
+ 	if (!pid) {
+ 		forkchild(jp, n, FORK_FG);

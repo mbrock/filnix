@@ -1,0 +1,22 @@
+diff --git a/src/expand.c b/src/expand.c
+index c7233e8ce82f..3a464c134022 100644
+--- a/src/expand.c
++++ b/src/expand.c
+@@ -25,6 +25,8 @@ this program.  If not, see <https://www.gnu.org/licenses/>.  */
+ #include "variable.h"
+ #include "rule.h"
+ 
++#include <stdfil.h>
++
+ /* Initially, any errors reported when expanding strings will be reported
+    against the file where the error appears.  */
+ const floc **expanding_var = &reading_file;
+@@ -116,7 +118,7 @@ recursively_expand_for_file (struct variable *v, struct file *file)
+       /* We could create a hash for the original environment for speed, but a
+          reasonably written makefile shouldn't hit this situation...  */
+       for (ep = environ; *ep != 0; ++ep)
+-        if ((*ep)[nl] == '=' && strncmp (*ep, v->name, nl) == 0)
++        if (zinbounds(&(*ep)[nl]) && (*ep)[nl] == '=' && strncmp (*ep, v->name, nl) == 0)
+           return xstrdup ((*ep) + nl + 1);
+ 
+       /* If there's nothing in the parent environment, use the empty string.

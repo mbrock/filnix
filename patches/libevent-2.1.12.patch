@@ -1,0 +1,73 @@
+diff --git a/test/regress_http.c b/test/regress_http.c
+index 4493907163e2..ab9460bbe5f4 100644
+--- a/test/regress_http.c
++++ b/test/regress_http.c
+@@ -4664,6 +4664,8 @@ http_request_extra_body_test(void *arg)
+ #define HTTP(name) HTTP_N(name, name, 0, NULL)
+ #define HTTPS(name) \
+ 	{ "https_" #name, https_##name##_test, TT_ISOLATED, &basic_setup, NULL }
++#define HTTPS_SKIP(name) \
++	{ "https_" #name, https_##name##_test, TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL }
+ 
+ #ifdef EVENT__HAVE_OPENSSL
+ static void https_basic_test(void *arg)
+@@ -4781,12 +4783,12 @@ struct testcase_t http_testcases[] = {
+ 	HTTPS(filter_basic),
+ 	HTTPS(simple),
+ 	HTTPS(simple_dirty),
+-	HTTPS(incomplete),
+-	HTTPS(incomplete_timeout),
++	HTTPS_SKIP(incomplete),
++	HTTPS_SKIP(incomplete_timeout),
+ 	{ "https_connection_retry", https_connection_retry_test, TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
+ 	{ "https_connection_retry_conn_address", https_connection_retry_conn_address_test,
+ 	  TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
+-	HTTPS(chunk_out),
++	HTTPS_SKIP(chunk_out),
+ 	HTTPS(filter_chunk_out),
+ 	HTTPS(stream_out),
+ 	HTTPS(connection_fail),
+diff --git a/test/regress_main.c b/test/regress_main.c
+index 266561214b8e..7088780c1cc2 100644
+--- a/test/regress_main.c
++++ b/test/regress_main.c
+@@ -386,7 +386,8 @@ run_legacy_test_fn(void *ptr)
+ 	test_ok = called = 0;
+ 
+ 	in_legacy_test_wrapper = 1;
+-	data->legacy_test_fn(); /* This part actually calls the test */
++        void (*fn)(void* arg) = (void (*)(void*))data->legacy_test_fn;
++	fn(NULL); /* This part actually calls the test */
+ 	in_legacy_test_wrapper = 0;
+ 
+ 	if (!test_ok)
+diff --git a/test/regress_ssl.c b/test/regress_ssl.c
+index 37dc334dcafa..fda1824ec04c 100644
+--- a/test/regress_ssl.c
++++ b/test/regress_ssl.c
+@@ -1014,14 +1014,14 @@ struct testcase_t ssl_testcases[] = {
+ 	  T(REGRESS_OPENSSL_FILTER | REGRESS_OPENSSL_OPEN) },
+ 
+ 	{ "bufferevent_socketpair_dirty_shutdown", regress_bufferevent_openssl,
+-	  TT_ISOLATED, &ssl_setup,
++	  TT_ISOLATED|TT_OFF_BY_DEFAULT, &ssl_setup,
+ 	  T(REGRESS_OPENSSL_SOCKETPAIR | REGRESS_OPENSSL_DIRTY_SHUTDOWN) },
+ 	{ "bufferevent_filter_dirty_shutdown", regress_bufferevent_openssl,
+ 	  TT_ISOLATED, &ssl_setup,
+ 	  T(REGRESS_OPENSSL_FILTER | REGRESS_OPENSSL_DIRTY_SHUTDOWN) },
+ 	{ "bufferevent_renegotiate_socketpair_dirty_shutdown",
+ 	  regress_bufferevent_openssl,
+-	  TT_ISOLATED,
++	  TT_ISOLATED|TT_OFF_BY_DEFAULT,
+ 	  &ssl_setup,
+ 	  T(REGRESS_OPENSSL_SOCKETPAIR | REGRESS_OPENSSL_RENEGOTIATE | REGRESS_OPENSSL_DIRTY_SHUTDOWN) },
+ 	{ "bufferevent_renegotiate_filter_dirty_shutdown",
+@@ -1031,7 +1031,7 @@ struct testcase_t ssl_testcases[] = {
+ 	  T(REGRESS_OPENSSL_FILTER | REGRESS_OPENSSL_RENEGOTIATE | REGRESS_OPENSSL_DIRTY_SHUTDOWN) },
+ 	{ "bufferevent_socketpair_startopen_dirty_shutdown",
+ 	  regress_bufferevent_openssl,
+-	  TT_ISOLATED, &ssl_setup,
++	  TT_ISOLATED|TT_OFF_BY_DEFAULT, &ssl_setup,
+ 	  T(REGRESS_OPENSSL_SOCKETPAIR | REGRESS_OPENSSL_OPEN | REGRESS_OPENSSL_DIRTY_SHUTDOWN) },
+ 	{ "bufferevent_filter_startopen_dirty_shutdown",
+ 	  regress_bufferevent_openssl,

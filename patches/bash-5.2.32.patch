@@ -1,11 +1,13 @@
---- ./unwind_prot.c
-+++ ./unwind_prot.c
-@@ -48,7 +48,7 @@
+diff --git a/unwind_prot.c b/unwind_prot.c
+index ec82393d5a87..9f69dd29ecf8 100644
+--- a/unwind_prot.c
++++ b/unwind_prot.c
+@@ -56,7 +56,7 @@
  typedef struct {
    char *variable;
    int size;
 -  char desired_setting[1]; /* actual size is `size' */
 +  void *desired_setting[1]; /* actual size is `size' */
  } SAVED_VAR;
-
+ 
  /* If HEAD.CLEANUP is null, then ARG.V contains a tag to throw back to.

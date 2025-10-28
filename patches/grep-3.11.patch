@@ -1,0 +1,38 @@
+diff --git a/lib/obstack.h b/lib/obstack.h
+index cb080c33b571..6ef9155e9a5c 100644
+--- a/lib/obstack.h
++++ b/lib/obstack.h
+@@ -114,6 +114,8 @@
+ 
+ #include <stddef.h>             /* For size_t and ptrdiff_t.  */
+ #include <string.h>             /* For __GNU_LIBRARY__, and memcpy.  */
++#include <stdfil.h>
++#include <inttypes.h>
+ 
+ #if __STDC_VERSION__ < 199901L || defined __HP_cc
+ # define __FLEXIBLE_ARRAY_MEMBER 1
+@@ -138,7 +140,10 @@
+    aligning P to the next multiple of A + 1.  B and P must be of type
+    char *.  A + 1 must be a power of 2.  */
+ 
+-#define __BPTR_ALIGN(B, P, A) ((B) + (((P) - (B) + (A)) & ~(A)))
++#define __BPTR_ALIGN(B, P, A)                                            \
++  __extension__                                                          \
++    ({ char *__P = (char *) (P);                                         \
++       zmkptr(__P, (uintptr_t)((B) + ((__P - (B) + (A)) & ~(A)))); })
+ 
+ /* Similar to __BPTR_ALIGN (B, P, A), except optimize the common case
+    where pointers can be converted to integers, aligned as integers,
+diff --git a/lib/sigsegv.c b/lib/sigsegv.c
+index 5e943e4d5d89..d6483b8897a7 100644
+--- a/lib/sigsegv.c
++++ b/lib/sigsegv.c
+@@ -1353,7 +1353,7 @@ int
+ stackoverflow_install_handler (stackoverflow_handler_t handler,
+                                void *extra_stack, size_t extra_stack_size)
+ {
+-#if HAVE_STACK_OVERFLOW_RECOVERY
++#if HAVE_STACK_OVERFLOW_RECOVERY && !defined(__FILC__)
+ # if HAVE_STACKVMA
+   if (!stack_top)
+     {

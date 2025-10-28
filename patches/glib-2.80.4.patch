@@ -1,0 +1,3775 @@
+diff --git a/.gitlab-ci/README.md b/.gitlab-ci/README.md
+new file mode 100644
+index 000000000000..3a1ffe409277
+--- /dev/null
++++ b/.gitlab-ci/README.md
+@@ -0,0 +1,27 @@
++# CI support stuff
++
++## Docker image
++
++GitLab CI jobs run in a Docker image, defined here. To update that image
++(perhaps to install some more packages):
++
++1. Edit `.gitlab-ci/*.Dockerfile` with the changes you want
++1. Run `.gitlab-ci/run-docker.sh build --base=debian-stable --base-version=1` to
++   build the new image (bump the version from the latest listed for that `base`
++   on https://gitlab.gnome.org/GNOME/glib/container_registry). If rebuilding the
++   `coverity.Dockerfile` image, you’ll need to have access to [Coverity Scan][cs]
++   and will need to specify your project name and access token as the environment
++   variables `COVERITY_SCAN_PROJECT_NAME` and `COVERITY_SCAN_TOKEN`.
++1. Run `.gitlab-ci/run-docker.sh push  --base=debian-stable --base-version=1` to
++   upload the new image to the GNOME GitLab Docker registry
++    * If this is the first time you're doing this, you'll need to log into the
++      registry
++    * If you use 2-factor authentication on your GNOME GitLab account, you'll
++      need to [create a personal access token][pat] and use that rather than
++      your normal password — the token should have `read_registry` and
++      `write_registry` permissions
++1. Edit `.gitlab-ci.yml` (in the root of this repository) to use your new
++   image
++
++[pat]: https://gitlab.gnome.org/-/profile/personal_access_tokens
++[cs]: https://scan.coverity.com/
+diff --git a/.gitlab-ci/alpine.Dockerfile b/.gitlab-ci/alpine.Dockerfile
+new file mode 100644
+index 000000000000..8043a1075e15
+--- /dev/null
++++ b/.gitlab-ci/alpine.Dockerfile
+@@ -0,0 +1,38 @@
++FROM alpine:3.19
++
++RUN apk add --no-cache \
++    bash \
++    build-base \
++    bzip2-dev \
++    dbus \
++    desktop-file-utils \
++    docbook-xml \
++    docbook-xsl \
++    gettext-dev \
++    git \
++    libffi-dev \
++    libxml2-utils \
++    libxslt \
++    meson \
++    musl-locales \
++    py3-pip \
++    python3 \
++    pcre2-dev \
++    shared-mime-info \
++    tzdata \
++    util-linux-dev \
++    zlib-dev
++
++ENV LANG=C.UTF-8 LANGUAGE=C.UTF-8 LC_ALL=C.UTF-8 MUSL_LOCPATH=/usr/share/i18n/locales/musl
++
++RUN pip3 install --break-system-packages meson==1.2.3
++
++ARG HOST_USER_ID=5555
++ENV HOST_USER_ID ${HOST_USER_ID}
++RUN adduser -D -u $HOST_USER_ID -s /bin/bash user
++
++USER user
++WORKDIR /home/user
++
++COPY cache-subprojects.sh .
++RUN ./cache-subprojects.sh
+diff --git a/.gitlab-ci/android-ndk.sh b/.gitlab-ci/android-ndk.sh
+new file mode 100755
+index 000000000000..8357fd9595f7
+--- /dev/null
++++ b/.gitlab-ci/android-ndk.sh
+@@ -0,0 +1,32 @@
++#!/bin/bash
++
++#
++# Copyright 2022 Collabora ltd.
++#
++# This library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++#
++# This library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++#
++# You should have received a copy of the GNU Lesser General Public
++# License along with this library; if not, see <http://www.gnu.org/licenses/>.
++#
++# Author: Xavier Claessens <xavier.claessens@collabora.com>
++#
++
++set -e
++
++# Download Android NDK
++ANDROID_NDK_PATH=/opt/android-ndk
++ANDROID_NDK_VERSION="r23b"
++ANDROID_NDK_SHA512="5f2b58e605fc99d4fd3e9d2210e7f5e76e89245fa9428ce0d890e2e03b598c62c48ebd528fcb76556f04b46b87afea52e1e8d280f32cd1232f290e074bfa56fa"
++wget --quiet "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip"
++echo "${ANDROID_NDK_SHA512}  android-ndk-${ANDROID_NDK_VERSION}-linux.zip" | sha512sum -c
++unzip "android-ndk-${ANDROID_NDK_VERSION}-linux.zip"
++rm "android-ndk-${ANDROID_NDK_VERSION}-linux.zip"
++mv "android-ndk-${ANDROID_NDK_VERSION}" "${ANDROID_NDK_PATH}"
+diff --git a/.gitlab-ci/cache-subprojects.sh b/.gitlab-ci/cache-subprojects.sh
+new file mode 100755
+index 000000000000..0e6926605965
+--- /dev/null
++++ b/.gitlab-ci/cache-subprojects.sh
+@@ -0,0 +1,10 @@
++#!/bin/bash
++
++set -e
++
++git clone --depth 1 --no-tags https://gitlab.gnome.org/GNOME/glib.git
++git -C glib submodule update --init
++meson subprojects download --sourcedir glib
++rm glib/subprojects/*.wrap
++mv glib/subprojects/ .
++rm -rf glib
+diff --git a/.gitlab-ci/check-todos.py b/.gitlab-ci/check-todos.py
+new file mode 100755
+index 000000000000..7eb30b6710f6
+--- /dev/null
++++ b/.gitlab-ci/check-todos.py
+@@ -0,0 +1,93 @@
++#!/usr/bin/env python3
++#
++# Copyright © 2019 Endless Mobile, Inc.
++#
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# Original author: Philip Withnall
++
++"""
++Checks that a merge request doesn’t add any instances of the string ‘todo’
++(in uppercase), or similar keywords. It may remove instances of that keyword,
++or move them around, according to the logic of `git log -S`.
++"""
++
++import argparse
++import re
++import subprocess
++import sys
++
++
++# We have to specify these keywords obscurely to avoid the script matching
++# itself. The keyword ‘fixme’ (in upper case) is explicitly allowed because
++# that’s conventionally used as a way of marking a workaround which needs to
++# be merged for now, but is to be grepped for and reverted or reworked later.
++BANNED_KEYWORDS = ["TO" + "DO", "X" + "XX", "W" + "IP"]
++
++
++def main():
++    parser = argparse.ArgumentParser(
++        description="Check a range of commits to ensure they don’t contain "
++        "banned keywords."
++    )
++    parser.add_argument("commits", help="SHA to diff from, or range of commits to diff")
++    args = parser.parse_args()
++
++    banned_words_seen = set()
++    seen_in_log = False
++    seen_in_diff = False
++
++    # Check the log messages for banned words.
++    log_process = subprocess.run(
++        ["git", "log", "--no-color", args.commits + "..HEAD"],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++        encoding="utf-8",
++        check=True,
++    )
++    log_lines = log_process.stdout.strip().split("\n")
++
++    for line in log_lines:
++        for keyword in BANNED_KEYWORDS:
++            if re.search(r"(^|\W+){}(\W+|$)".format(keyword), line):
++                banned_words_seen.add(keyword)
++                seen_in_log = True
++
++    # Check the diff for banned words.
++    diff_process = subprocess.run(
++        ["git", "diff", "-U0", "--no-color", args.commits],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++        encoding="utf-8",
++        check=True,
++    )
++    diff_lines = diff_process.stdout.strip().split("\n")
++
++    for line in diff_lines:
++        if not line.startswith("+ "):
++            continue
++
++        for keyword in BANNED_KEYWORDS:
++            if re.search(r"(^|\W+){}(\W+|$)".format(keyword), line):
++                banned_words_seen.add(keyword)
++                seen_in_diff = True
++
++    if banned_words_seen:
++        if seen_in_log and seen_in_diff:
++            where = "commit message and diff"
++        elif seen_in_log:
++            where = "commit message"
++        elif seen_in_diff:
++            where = "commit diff"
++
++        print(
++            "Saw banned keywords in a {}: {}. "
++            "This indicates the branch is a work in progress and should not "
++            "be merged in its current "
++            "form.".format(where, ", ".join(banned_words_seen))
++        )
++        sys.exit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/.gitlab-ci/clang-format-diff.py b/.gitlab-ci/clang-format-diff.py
+new file mode 100755
+index 000000000000..4eb191062607
+--- /dev/null
++++ b/.gitlab-ci/clang-format-diff.py
+@@ -0,0 +1,166 @@
++#!/usr/bin/env python3
++#
++# === clang-format-diff.py - ClangFormat Diff Reformatter ---*- python -*-=== #
++#
++# Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++# See https://llvm.org/LICENSE.txt for license information.
++# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++#
++# ===---------------------------------------------------------------------=== #
++
++"""
++This script reads input from a unified diff and reformats all the changed
++lines. This is useful to reformat all the lines touched by a specific patch.
++Example usage for git/svn users:
++
++  git diff -U0 --no-color HEAD^ | clang-format-diff.py -p1 -i
++  svn diff --diff-cmd=diff -x-U0 | clang-format-diff.py -i
++
++"""
++from __future__ import absolute_import, division, print_function
++
++import argparse
++import difflib
++import re
++import subprocess
++import sys
++
++if sys.version_info.major >= 3:
++    from io import StringIO
++else:
++    from io import BytesIO as StringIO
++
++
++def main():
++    parser = argparse.ArgumentParser(
++        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
++    )
++    parser.add_argument(
++        "-i",
++        action="store_true",
++        default=False,
++        help="apply edits to files instead of displaying a " "diff",
++    )
++    parser.add_argument(
++        "-p",
++        metavar="NUM",
++        default=0,
++        help="strip the smallest prefix containing P slashes",
++    )
++    parser.add_argument(
++        "-regex",
++        metavar="PATTERN",
++        default=None,
++        help="custom pattern selecting file paths to reformat "
++        "(case sensitive, overrides -iregex)",
++    )
++    parser.add_argument(
++        "-iregex",
++        metavar="PATTERN",
++        default=r".*\.(cpp|cc|c\+\+|cxx|c|cl|h|hh|hpp|m|mm|inc"
++        r"|js|ts|proto|protodevel|java|cs)",
++        help="custom pattern selecting file paths to reformat "
++        "(case insensitive, overridden by -regex)",
++    )
++    parser.add_argument(
++        "-sort-includes",
++        action="store_true",
++        default=False,
++        help="let clang-format sort include blocks",
++    )
++    parser.add_argument(
++        "-v",
++        "--verbose",
++        action="store_true",
++        help="be more verbose, ineffective without -i",
++    )
++    parser.add_argument(
++        "-style",
++        help="formatting style to apply (LLVM, Google, " "Chromium, Mozilla, WebKit)",
++    )
++    parser.add_argument(
++        "-binary",
++        default="clang-format",
++        help="location of binary to use for clang-format",
++    )
++    args = parser.parse_args()
++
++    # Extract changed lines for each file.
++    filename = None
++    lines_by_file = {}
++    for line in sys.stdin:
++        match = re.search(r"^\+\+\+\ (.*?/){%s}(\S*)" % args.p, line)
++        if match:
++            filename = match.group(2)
++        if filename is None:
++            continue
++
++        if args.regex is not None:
++            if not re.match("^%s$" % args.regex, filename):
++                continue
++        else:
++            if not re.match("^%s$" % args.iregex, filename, re.IGNORECASE):
++                continue
++
++        match = re.search(r"^@@.*\+(\d+)(,(\d+))?", line)
++        if match:
++            start_line = int(match.group(1))
++            line_count = 1
++            if match.group(3):
++                line_count = int(match.group(3))
++            if line_count == 0:
++                continue
++            end_line = start_line + line_count - 1
++            lines_by_file.setdefault(filename, []).extend(
++                ["-lines", str(start_line) + ":" + str(end_line)]
++            )
++
++    # Reformat files containing changes in place.
++    # We need to count amount of bytes generated in the output of
++    # clang-format-diff. If clang-format-diff doesn't generate any bytes it
++    # means there is nothing to format.
++    format_line_counter = 0
++    for filename, lines in lines_by_file.items():
++        if args.i and args.verbose:
++            print("Formatting {}".format(filename))
++        command = [args.binary, filename]
++        if args.i:
++            command.append("-i")
++        if args.sort_includes:
++            command.append("-sort-includes")
++        command.extend(lines)
++        if args.style:
++            command.extend(["-style", args.style])
++        p = subprocess.Popen(
++            command,
++            stdout=subprocess.PIPE,
++            stderr=None,
++            stdin=subprocess.PIPE,
++            universal_newlines=True,
++        )
++        stdout, _ = p.communicate()
++        if p.returncode != 0:
++            sys.exit(p.returncode)
++
++        if not args.i:
++            with open(filename) as f:
++                code = f.readlines()
++            formatted_code = StringIO(stdout).readlines()
++            diff = difflib.unified_diff(
++                code,
++                formatted_code,
++                filename,
++                filename,
++                "(before formatting)",
++                "(after formatting)",
++            )
++            diff_string = "".join(diff)
++            if diff_string:
++                format_line_counter += sys.stdout.write(diff_string)
++
++    if format_line_counter > 0:
++        sys.exit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/.gitlab-ci/coverage-docker.sh b/.gitlab-ci/coverage-docker.sh
+new file mode 100755
+index 000000000000..6367f5e14683
+--- /dev/null
++++ b/.gitlab-ci/coverage-docker.sh
+@@ -0,0 +1,49 @@
++#!/bin/bash
++
++set -ex
++
++# Fixup Windows paths
++python3 ./.gitlab-ci/fixup-cov-paths.py _coverage/*.lcov
++
++for path in _coverage/*.lcov; do
++    # Remove coverage from generated code in the build directory
++    lcov --config-file .lcovrc -r "${path}" '*/_build/*' -o "$(pwd)/${path}"
++    # Remove any coverage from system files
++    lcov --config-file .lcovrc -e "${path}" "$(pwd)/*" -o "$(pwd)/${path}"
++    # Remove coverage from the fuzz tests, since they are run on a separate CI system
++    lcov --config-file .lcovrc -r "${path}" "*/fuzzing/*" -o "$(pwd)/${path}"
++    # Remove coverage from copylibs and subprojects
++    for lib in xdgmime libcharset gnulib; do
++        lcov --config-file .lcovrc -r "${path}" "*/${lib}/*" -o "$(pwd)/${path}"
++    done
++
++    # Convert to cobertura format for gitlab integration
++    cobertura_base="${path/.lcov}-cobertura"
++    cobertura_xml="${cobertura_base}.xml"
++    lcov_cobertura "${path}" --output "${cobertura_xml}"
++    mkdir -p "${cobertura_base}"
++    cobertura-split-by-package.py "${cobertura_xml}" "${cobertura_base}"
++    rm -f "${cobertura_xml}"
++done
++
++genhtml \
++    --ignore-errors=source \
++    --config-file .lcovrc \
++    _coverage/*.lcov \
++    -o _coverage/coverage
++
++cd _coverage
++rm -f ./*.lcov
++
++cat >index.html <<EOL
++<html>
++<body>
++<ul>
++<li><a href="coverage/index.html">Coverage</a></li>
++</ul>
++</body>
++</html>
++EOL
++
++# Print a handy link to the coverage report
++echo "Coverage report at: https://${CI_PROJECT_NAMESPACE}.pages.gitlab.gnome.org/-/${CI_PROJECT_NAME}/-/jobs/${CI_BUILD_ID}/artifacts/_coverage/coverage/index.html"
+diff --git a/.gitlab-ci/coverity-model.c b/.gitlab-ci/coverity-model.c
+new file mode 100644
+index 000000000000..fe3283e986a9
+--- /dev/null
++++ b/.gitlab-ci/coverity-model.c
+@@ -0,0 +1,246 @@
++/*
++ * Copyright © 2020 Endless OS Foundation, LLC
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, see <http://www.gnu.org/licenses/>.
++ *
++ * Author: Philip Withnall <withnall@endlessm.com>
++ */
++
++/* This modelling file needs to be uploaded to GLib’s Coverity configuration at
++ * https://scan.coverity.com/projects/glib?tab=analysis_settings
++ * by someone with the appropriate permissions on Coverity. It should be kept in
++ * sync with what’s there.
++ *
++ * Reference: https://scan.coverity.com/tune
++ */
++
++/* Disable some esoteric options which Coverity doesn't understand because they
++ * delve into assembly. */
++#define NVALGRIND 1
++#undef HAVE_DTRACE
++
++#define TRACE(probe)  /* no-op */
++
++/* libc definitions */
++#define NULL ((void*)0)
++
++void *malloc (size_t);
++void *calloc (size_t, size_t);
++void *realloc (void *, size_t);
++void free (void *);
++
++/* Define some standard GLib types. */
++typedef size_t gsize;
++typedef char gchar;
++typedef unsigned char guchar;
++typedef int gint;
++typedef unsigned long gulong;
++typedef unsigned int guint32;
++typedef void* gpointer;
++typedef unsigned int gboolean;
++
++typedef enum
++{
++  /* log flags */
++  G_LOG_FLAG_RECURSION          = 1 << 0,
++  G_LOG_FLAG_FATAL              = 1 << 1,
++
++  /* GLib log levels */
++  G_LOG_LEVEL_ERROR             = 1 << 2,       /* always fatal */
++  G_LOG_LEVEL_CRITICAL          = 1 << 3,
++  G_LOG_LEVEL_WARNING           = 1 << 4,
++  G_LOG_LEVEL_MESSAGE           = 1 << 5,
++  G_LOG_LEVEL_INFO              = 1 << 6,
++  G_LOG_LEVEL_DEBUG             = 1 << 7,
++
++  G_LOG_LEVEL_MASK              = ~(G_LOG_FLAG_RECURSION | G_LOG_FLAG_FATAL)
++} GLogLevelFlags;
++
++typedef struct _GList GList;
++
++struct _GList
++{
++  gpointer data;
++  GList *next;
++  GList *prev;
++};
++
++typedef struct _GError GError;
++
++struct _GError
++{
++  /* blah */
++};
++
++/* Dummied from sys/stat.h. */
++struct stat {};
++extern int stat (const char *path, struct stat *buf);
++
++/* g_stat() can be used to check whether a given path is safe (i.e. exists).
++ * This is not a full solution for sanitising user-provided paths, but goes a
++ * long way, and is the best we can do without more context about how the path
++ * is used. */
++typedef struct stat GStatBuf;
++#undef g_stat
++
++int
++g_stat (const char *filename, GStatBuf *buf)
++{
++  __coverity_tainted_string_sanitize_content__ (filename);
++  return stat (filename, buf);
++}
++
++/* g_path_skip_root() can be used to validate that a @file_name is absolute. It
++ * returns %NULL otherwise. */
++const char *
++g_path_skip_root (const char *file_name)
++{
++  int is_ok;
++  if (is_ok)
++    {
++      __coverity_tainted_string_sanitize_content__ (file_name);
++      return file_name;
++    }
++  else
++    {
++      return 0;  /* NULL */
++    }
++}
++
++/* Tainted string sanitiser. */
++int
++g_action_name_is_valid (const char *action_name)
++{
++  int is_ok;
++  if (is_ok)
++    {
++      __coverity_tainted_string_sanitize_content__ (action_name);
++      return 1;  /* TRUE */
++    }
++  else
++    {
++      return 0;  /* FALSE */
++    }
++}
++
++/* Treat this like an assert(0). */
++void
++g_return_if_fail_warning (const char *log_domain,
++                          const char *pretty_function,
++                          const char *expression)
++{
++  __coverity_panic__();
++}
++
++/* Treat this like an assert(0). */
++void
++g_log (const gchar   *log_domain,
++       GLogLevelFlags log_level,
++       const gchar   *format,
++       ...)
++{
++  if (log_level & G_LOG_LEVEL_CRITICAL)
++    __coverity_panic__ ();
++}
++
++#define g_critical(...) __coverity_panic__ ();
++
++/* Treat it as a memory sink to hide one-time allocation leaks. */
++void
++(g_once_init_leave) (volatile void *location,
++                     gsize          result)
++{
++  __coverity_escape__ (result);
++}
++
++/* Coverity cannot model allocation management for linked lists, so just pretend
++ * that it's a pass-through. */
++GList *
++g_list_reverse (GList *list)
++{
++  return list;
++}
++
++/* g_ascii_isspace() routinely throws data_index taint errors, saying that
++ * tainted data is being used to index g_ascii_table. This is true, but the
++ * table has defined values for all possible 8-bit indexes. */
++gboolean
++g_ascii_isspace (gchar c)
++{
++  int is_space;
++  __coverity_tainted_string_sink_content__ (c);
++  if (is_space)
++    return 1;
++  else
++    return 0;
++}
++
++/* Coverity treats byte-swapping operations as suspicious, and taints all data
++ * which is byte-swapped (because it thinks it therefore probably comes from an
++ * external source, which is reasonable). That is not the case for checksum
++ * calculation, however.
++ *
++ * Since the definitions of these two functions depends on the host byte order,
++ * just model them as no-ops. */
++void
++md5_byte_reverse (guchar *buffer,
++                  gulong  length)
++{
++  /* No-op. */
++}
++
++void
++sha_byte_reverse (guint32 *buffer,
++                  gint     length)
++{
++  /* No-op. */
++}
++
++/* Parse error printing does not care about sanitising the input. */
++gchar *
++g_variant_parse_error_print_context (GError      *error,
++                                     const gchar *source_str)
++{
++  __coverity_tainted_data_sink__ (source_str);
++  return __coverity_alloc_nosize__ ();
++}
++
++/* Coverity somehow analyses G_LIKELY(x) as sometimes meaning !x, for example
++ * when analysing g_try_realloc(). Ignore that. */
++#define G_LIKELY(x) x
++#define G_UNLIKELY(x) x
++
++typedef struct {} DIR;
++typedef struct _GDir GDir;
++
++struct _GDir
++{
++  DIR *dirp;
++};
++
++/* This is a private function to libglib, and Coverity can’t peek inside it when
++ * analysing code in (say) GIO. */
++GDir *
++g_dir_new_from_dirp (gpointer dirp)
++{
++  GDir *dir;
++
++  if (dirp == 0)
++    __coverity_panic__();
++
++  dir = malloc (sizeof (GDir));
++  dir->dirp = dirp;
++
++  return dir;
++}
+diff --git a/.gitlab-ci/coverity.Dockerfile b/.gitlab-ci/coverity.Dockerfile
+new file mode 100644
+index 000000000000..241861ec95c7
+--- /dev/null
++++ b/.gitlab-ci/coverity.Dockerfile
+@@ -0,0 +1,11 @@
++FROM registry.gitlab.gnome.org/gnome/glib/fedora:v18
++
++ARG COVERITY_SCAN_PROJECT_NAME
++ARG COVERITY_SCAN_TOKEN
++
++RUN curl https://scan.coverity.com/download/cxx/linux64 \
++    -o /tmp/cov-analysis-linux64.tgz \
++    --form project="${COVERITY_SCAN_PROJECT_NAME}" \
++    --form token="${COVERITY_SCAN_TOKEN}" \
++ && tar xfz /tmp/cov-analysis-linux64.tgz \
++ && rm /tmp/cov-analysis-linux64.tgz
+diff --git a/.gitlab-ci/cross_file_android_arm64_31.txt b/.gitlab-ci/cross_file_android_arm64_31.txt
+new file mode 100644
+index 000000000000..f65af2905334
+--- /dev/null
++++ b/.gitlab-ci/cross_file_android_arm64_31.txt
+@@ -0,0 +1,20 @@
++[constants]
++ndk_path = '/opt/android-ndk'
++toolchain = ndk_path / 'toolchains/llvm/prebuilt/linux-x86_64'
++
++[host_machine]
++system = 'android'
++cpu_family = 'aarch64'
++cpu = 'aarch64'
++endian = 'little'
++
++[properties]
++sys_root = toolchain / 'sysroot'
++c_ld = 'gold'
++cpp_ld = 'gold'
++
++[binaries]
++c =     toolchain / 'bin/aarch64-linux-android31-clang'
++cpp =   toolchain / 'bin/aarch64-linux-android31-clang++'
++ar =    toolchain / 'bin/llvm-ar'
++strip = toolchain / 'bin/llvm-strip'
+diff --git a/.gitlab-ci/cross_file_ios_example.txt b/.gitlab-ci/cross_file_ios_example.txt
+new file mode 100644
+index 000000000000..0afeef0bbbb5
+--- /dev/null
++++ b/.gitlab-ci/cross_file_ios_example.txt
+@@ -0,0 +1,25 @@
++[host_machine]
++system = 'darwin'
++cpu_family = 'aarch64'
++cpu = 'arm64'
++endian = 'little'
++
++[properties]
++c_args = ['-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-miphoneos-version-min=11.0']
++cpp_args = ['-stdlib=libc++', '-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-miphoneos-version-min=11.0']
++objc_args = ['-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-miphoneos-version-min=11.0']
++objcpp_args = ['-stdlib=libc++', '-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-miphoneos-version-min=11.0']
++c_link_args = ['-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-Wl,-iphoneos_version_min,11.0']
++cpp_link_args = ['-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-Wl,-iphoneos_version_min,11.0']
++objc_link_args = ['-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-Wl,-iphoneos_version_min,11.0']
++objcpp_link_args = ['-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS13.2.sdk', '-Wl,-iphoneos_version_min,11.0']
++growing_stack = true
++
++
++[binaries]
++c = ['clang']
++cpp = ['clang++']
++objc = ['clang']
++objcpp = ['clang++']
++ar = ['ar']
++strip = ['strip']
+diff --git a/.gitlab-ci/cross_file_mingw64.txt b/.gitlab-ci/cross_file_mingw64.txt
+new file mode 100644
+index 000000000000..38d2c6703495
+--- /dev/null
++++ b/.gitlab-ci/cross_file_mingw64.txt
+@@ -0,0 +1,22 @@
++[host_machine]
++system = 'windows'
++cpu_family = 'x86_64'
++cpu = 'x86_64'
++endian = 'little'
++
++# Fedora builds GCC with --enable-default-ssp by default, but mingw64 puts its
++# stack-protected functions in a separate library which needs to be linked
++# explicitly, hence this flag.
++[properties]
++c_args = []
++c_link_args = ['-fstack-protector']
++
++[binaries]
++c = 'x86_64-w64-mingw32-gcc'
++cpp = 'x86_64-w64-mingw32-g++'
++ar = 'x86_64-w64-mingw32-ar'
++ld = 'x86_64-w64-mingw32-ld'
++objcopy = 'x86_64-w64-mingw32-objcopy'
++strip = 'x86_64-w64-mingw32-strip'
++pkgconfig = 'x86_64-w64-mingw32-pkg-config'
++windres = 'x86_64-w64-mingw32-windres'
+diff --git a/.gitlab-ci/debian-stable.Dockerfile b/.gitlab-ci/debian-stable.Dockerfile
+new file mode 100644
+index 000000000000..4bcee4e2c846
+--- /dev/null
++++ b/.gitlab-ci/debian-stable.Dockerfile
+@@ -0,0 +1,87 @@
++FROM debian:bookworm
++
++RUN apt-get update -qq && apt-get install --no-install-recommends -qq -y \
++    bindfs \
++    black \
++    clang \
++    clang-tools \
++    clang-format \
++    dbus \
++    desktop-file-utils \
++    elfutils \
++    findutils \
++    flake8 \
++    fuse \
++    gcc \
++    gdb \
++    g++ \
++    gettext \
++    gi-docgen \
++    git \
++    libc6-dev \
++    gobject-introspection \
++    gtk-doc-tools \
++    itstool \
++    lcov \
++    libattr1-dev \
++    libdbus-1-dev \
++    libelf-dev \
++    libffi-dev \
++    libgirepository1.0-dev \
++    libmount-dev \
++    libpcre2-dev \
++    libselinux1-dev \
++    libxml2-utils \
++    libxslt1-dev \
++    libz3-dev \
++    locales \
++    ninja-build \
++    python3 \
++    python3-packaging \
++    python3-pip \
++    python3-setuptools \
++    python3-wheel \
++    reuse \
++    shared-mime-info \
++    shellcheck \
++    systemtap-sdt-dev \
++    unzip \
++    wget \
++    xsltproc \
++    xz-utils \
++    zlib1g-dev \
++ && rm -rf /usr/share/doc/* /usr/share/man/*
++
++# Locale for our build
++RUN locale-gen C.UTF-8 && /usr/sbin/update-locale LANG=C.UTF-8
++
++# Locales for our tests
++RUN locale-gen de_DE.UTF-8 \
++ && locale-gen el_GR.UTF-8 \
++ && locale-gen en_US.UTF-8 \
++ && locale-gen es_ES.UTF-8 \
++ && locale-gen fa_IR.UTF-8 \
++ && locale-gen fr_FR.UTF-8 \
++ && locale-gen hr_HR.UTF-8 \
++ && locale-gen ja_JP.UTF-8 \
++ && locale-gen lt_LT.UTF-8 \
++ && locale-gen pl_PL.UTF-8 \
++ && locale-gen ru_RU.UTF-8 \
++ && locale-gen th_TH.UTF-8 \
++ && locale-gen tr_TR.UTF-8
++
++ENV LANG=C.UTF-8 LANGUAGE=C.UTF-8 LC_ALL=C.UTF-8
++
++RUN pip3 install --break-system-packages meson==1.2.3
++
++ARG HOST_USER_ID=5555
++ENV HOST_USER_ID ${HOST_USER_ID}
++RUN useradd -u $HOST_USER_ID -ms /bin/bash user
++
++USER user
++WORKDIR /home/user
++
++COPY cache-subprojects.sh .
++RUN ./cache-subprojects.sh
++
++ENV LANG=C.UTF-8 LANGUAGE=C.UTF-8 LC_ALL=C.UTF-8
+diff --git a/.gitlab-ci/fedora.Dockerfile b/.gitlab-ci/fedora.Dockerfile
+new file mode 100644
+index 000000000000..3713cc357db1
+--- /dev/null
++++ b/.gitlab-ci/fedora.Dockerfile
+@@ -0,0 +1,107 @@
++FROM fedora:37
++
++RUN dnf -y update \
++ && dnf -y install \
++    bindfs \
++    clang \
++    clang-analyzer \
++    dbus-daemon \
++    dbus-devel \
++    desktop-file-utils \
++    elfutils-libelf-devel \
++    findutils \
++    fuse \
++    gcc \
++    gcc-c++ \
++    gdb \
++    gettext \
++    gi-docgen \
++    git \
++    glibc-devel \
++    glibc-gconv-extra \
++    glibc-headers \
++    glibc-langpack-de \
++    glibc-langpack-el \
++    glibc-langpack-en \
++    glibc-langpack-es \
++    glibc-langpack-fa \
++    glibc-langpack-fr \
++    glibc-langpack-gu \
++    glibc-langpack-hr \
++    glibc-langpack-ja \
++    glibc-langpack-lt \
++    glibc-langpack-pl \
++    glibc-langpack-ru \
++    glibc-langpack-th \
++    glibc-langpack-tr \
++    "gnome-desktop-testing >= 2018.1" \
++    gobject-introspection \
++    gobject-introspection-devel \
++    gtk-doc \
++    itstool \
++    lcov \
++    libattr-devel \
++    libffi-devel \
++    libmount-devel \
++    libselinux-devel \
++    libxslt \
++    ncurses-compat-libs \
++    ninja-build \
++    pcre2-devel \
++    "python3-dbusmock >= 0.18.3-2" \
++    python3-docutils \
++    python3-packaging \
++    python3-pip \
++    python3-pygments \
++    python3-wheel \
++    shared-mime-info \
++    systemtap-sdt-devel \
++    unzip \
++    valgrind \
++    wget \
++    xdg-desktop-portal \
++    xz \
++    zlib-devel \
++ && dnf -y install \
++    meson \
++    flex \
++    bison \
++    python3-devel \
++    autoconf \
++    automake \
++    gettext-devel \
++    libtool \
++    diffutils \
++    fontconfig-devel \
++    json-glib-devel \
++    geoclue2-devel \
++    pipewire-devel \
++    fuse-devel \
++    make \
++ && dnf clean all
++
++RUN pip3 install meson==1.2.3
++
++COPY install-gitlab-cobertura-tools.sh .
++RUN ./install-gitlab-cobertura-tools.sh
++
++# Set /etc/machine-id as it’s needed for some D-Bus tests
++RUN systemd-machine-id-setup
++
++# Enable sudo for wheel users
++RUN sed -i -e 's/# %wheel/%wheel/' -e '0,/%wheel/{s/%wheel/# %wheel/}' /etc/sudoers
++
++ARG HOST_USER_ID=5555
++ENV HOST_USER_ID ${HOST_USER_ID}
++RUN useradd -u $HOST_USER_ID -G wheel -ms /bin/bash user
++
++COPY android-ndk.sh .
++RUN ./android-ndk.sh
++
++USER user
++WORKDIR /home/user
++
++COPY cache-subprojects.sh .
++RUN ./cache-subprojects.sh
++
++ENV LANG C.UTF-8
+diff --git a/.gitlab-ci/fixup-cov-paths.py b/.gitlab-ci/fixup-cov-paths.py
+new file mode 100644
+index 000000000000..5fb77c64a0bd
+--- /dev/null
++++ b/.gitlab-ci/fixup-cov-paths.py
+@@ -0,0 +1,26 @@
++import sys
++import os
++import io
++import re
++
++
++def main(argv):
++    # Fix paths in lcov files generated on a Windows host so they match our
++    # current source layout.
++    paths = argv[1:]
++
++    for path in paths:
++        print("cov-fixup:", path)
++        text = io.open(path, "r", encoding="utf-8").read()
++        text = text.replace("\\\\", "/")
++        old_root = re.search(":(.*?)/glib/.*?$", text, re.MULTILINE).group(1)
++        new_root = os.path.dirname(os.getcwd())
++        if old_root != new_root:
++            print("replacing %r with %r" % (old_root, new_root))
++        text = text.replace(old_root, new_root)
++        with io.open(path, "w", encoding="utf-8") as h:
++            h.write(text)
++
++
++if __name__ == "__main__":
++    sys.exit(main(sys.argv))
+diff --git a/.gitlab-ci/install-gitlab-cobertura-tools.sh b/.gitlab-ci/install-gitlab-cobertura-tools.sh
+new file mode 100755
+index 000000000000..59ec251e9a64
+--- /dev/null
++++ b/.gitlab-ci/install-gitlab-cobertura-tools.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++
++set -e
++
++# We need cobertura reports for gitlab-ci coverage_report,
++# so this scripts helps us doing that until we switch to gcovr
++pip3 install lcov-cobertura==2.0.2
++
++# We need to split the coverage files, see:
++#  https://gitlab.com/gitlab-org/gitlab/-/issues/328772#note_840831654
++SPLIT_COBERTURA_SHA512="8388ca3928a27f2ef945a7d45f1dec7253c53742a0dd1f6a3b4a07c0926b24d77f8b5c51fc7920cb07320879b7b89b0e0e13d2101117403b8c052c72e28dbcb7"
++wget -O /usr/local/bin/cobertura-split-by-package.py \
++   https://gitlab.com/gitlab-org/gitlab/uploads/9d31762a33a10158f5d79d46f4102dfb/split-by-package.py
++echo "${SPLIT_COBERTURA_SHA512}  /usr/local/bin/cobertura-split-by-package.py" | sha512sum -c
++chmod +x /usr/local/bin/cobertura-split-by-package.py
++sed -i "s,\(/usr/bin/env python\).*,\13," \
++    /usr/local/bin/cobertura-split-by-package.py
+diff --git a/.gitlab-ci/mingw.Dockerfile b/.gitlab-ci/mingw.Dockerfile
+new file mode 100644
+index 000000000000..d688a35a15ae
+--- /dev/null
++++ b/.gitlab-ci/mingw.Dockerfile
+@@ -0,0 +1,17 @@
++FROM registry.gitlab.gnome.org/gnome/glib/fedora:v25
++
++USER root
++
++RUN dnf -y install \
++    mingw64-gcc \
++    mingw64-gcc-c++ \
++    mingw64-gettext \
++    mingw64-libffi \
++    mingw64-zlib \
++ && dnf clean all
++
++WORKDIR /opt
++COPY cross_file_mingw64.txt /opt
++
++USER user
++WORKDIR /home/user
+\ No newline at end of file
+diff --git a/.gitlab-ci/run-check-todos.sh b/.gitlab-ci/run-check-todos.sh
+new file mode 100755
+index 000000000000..e2df10ef5a4c
+--- /dev/null
++++ b/.gitlab-ci/run-check-todos.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++
++set -e
++
++source .gitlab-ci/search-common-ancestor.sh
++
++./.gitlab-ci/check-todos.py "${newest_common_ancestor_sha}"
+diff --git a/.gitlab-ci/run-docker.sh b/.gitlab-ci/run-docker.sh
+new file mode 100755
+index 000000000000..625f13ee7743
+--- /dev/null
++++ b/.gitlab-ci/run-docker.sh
+@@ -0,0 +1,137 @@
++#!/bin/bash
++
++read_arg() {
++    # $1 = arg name
++    # $2 = arg value
++    # $3 = arg parameter
++    local rematch='^[^=]*=(.*)$'
++    if [[ $2 =~ $rematch ]]; then
++        read -r "$1" <<< "${BASH_REMATCH[1]}"
++    else
++        read -r "$1" <<< "$3"
++        # There is no way to shift our callers args, so
++        # return 1 to indicate they should do it instead.
++        return 1
++    fi
++}
++
++if type -p podman; then
++        # Using podman
++        DOCKER_CMD="podman"
++        # Docker is actually implemented by podman, and its OCI output
++        # is incompatible with some of the dockerd instances on GitLab
++        # CI runners.
++        export BUILDAH_FORMAT=docker
++elif getent group docker | grep -q "\b${USER}\b"; then
++        DOCKER_CMD="docker"
++else
++        DOCKER_CMD="sudo docker"
++fi
++
++set -e
++
++base=""
++base_version=""
++build=0
++run=0
++push=0
++list=0
++print_help=0
++no_login=0
++
++while (($# > 0)); do
++        case "${1%%=*}" in
++                build) build=1;;
++                run) run=1;;
++                push) push=1;;
++                list) list=1;;
++                help) print_help=1;;
++                --base|-b) read_arg base "$@" || shift;;
++                --base-version) read_arg base_version "$@" || shift;;
++                --no-login) no_login=1;;
++                *) echo -e "\\e[1;31mERROR\\e[0m: Unknown option '$1'"; exit 1;;
++        esac
++        shift
++done
++
++if [ $print_help == 1 ]; then
++        echo "$0 - Build and run Docker images"
++        echo ""
++        echo "Usage: $0 <command> [options] [basename]"
++        echo ""
++        echo "Available commands"
++        echo ""
++        echo "  build --base=<BASENAME> - Build Docker image <BASENAME>.Dockerfile"
++        echo "  run --base=<BASENAME>   - Run Docker image <BASENAME>"
++        echo "  push --base=<BASENAME>  - Push Docker image <BASENAME> to the registry"
++        echo "  list                    - List available images"
++        echo "  help                    - This help message"
++        echo ""
++        exit 0
++fi
++
++cd "$(dirname "$0")"
++
++if [ $list == 1 ]; then
++        echo "Available Docker images:"
++        for f in *.Dockerfile; do
++                filename=$( basename -- "$f" )
++                basename="${filename%.*}"
++
++                echo -e "  \\e[1;39m$basename\\e[0m"
++        done
++        exit 0
++fi
++
++# All commands after this require --base to be set
++if [ -z "${base}" ]; then
++        echo "Usage: $0 <command>"
++        exit 1
++fi
++
++if [ ! -f "$base.Dockerfile" ]; then
++        echo -e "\\e[1;31mERROR\\e[0m: Dockerfile for '$base' not found"
++        exit 1
++fi
++
++if [ -z "${base_version}" ]; then
++        base_version="latest"
++else
++        base_version="v$base_version"
++fi
++
++TAG="registry.gitlab.gnome.org/gnome/glib/${base}:${base_version}"
++
++if [ $build == 1 ]; then
++        echo -e "\\e[1;32mBUILDING\\e[0m: ${base} as ${TAG}"
++        $DOCKER_CMD build \
++                --build-arg HOST_USER_ID="$UID" \
++                --build-arg COVERITY_SCAN_PROJECT_NAME="${COVERITY_SCAN_PROJECT_NAME}" \
++                --build-arg COVERITY_SCAN_TOKEN="${COVERITY_SCAN_TOKEN}" \
++                --tag "${TAG}" \
++                --file "${base}.Dockerfile" .
++        exit $?
++fi
++
++if [ $push == 1 ]; then
++        echo -e "\\e[1;32mPUSHING\\e[0m: ${base} as ${TAG}"
++
++        if [ $no_login == 0 ]; then
++                $DOCKER_CMD login registry.gitlab.gnome.org
++        fi
++
++        $DOCKER_CMD push $TAG
++        exit $?
++fi
++
++if [ $run == 1 ]; then
++        echo -e "\\e[1;32mRUNNING\\e[0m: ${base} as ${TAG}"
++        $DOCKER_CMD run \
++                --rm \
++                --volume "$(pwd)/..:/home/user/app" \
++                --workdir "/home/user/app" \
++                --tty \
++                --interactive "${TAG}" \
++                bash
++        exit $?
++fi
+diff --git a/.gitlab-ci/run-style-check-diff.sh b/.gitlab-ci/run-style-check-diff.sh
+new file mode 100755
+index 000000000000..2dcf09674c67
+--- /dev/null
++++ b/.gitlab-ci/run-style-check-diff.sh
+@@ -0,0 +1,30 @@
++#!/bin/bash
++
++set -e
++
++# Wrap everything in a subshell so we can propagate the exit status.
++exit_status=0
++(
++
++source .gitlab-ci/search-common-ancestor.sh
++
++git diff -U0 --no-color "${newest_common_ancestor_sha}" | .gitlab-ci/clang-format-diff.py -binary "clang-format-14" -p1
++
++) || exit_status=$?
++
++# The style check is not infallible. The clang-format configuration cannot
++# perfectly describe GLib’s coding style: in particular, it cannot align
++# function arguments. The documented coding style for GLib takes priority over
++# clang-format suggestions. Hopefully we can eventually improve clang-format to
++# be configurable enough for our coding style. That’s why this CI check is OK
++# to fail: the idea is that people can look through the output and ignore it if
++# it’s wrong. (That situation can also happen if someone touches pre-existing
++# badly formatted code and it doesn’t make sense to tidy up the wider coding
++# style with the changes they’re making.)
++echo ""
++echo "Note that clang-format output is advisory and cannot always match the GLib coding style, documented at"
++echo "   https://gitlab.gnome.org/GNOME/gtk/blob/HEAD/docs/CODING-STYLE.md"
++echo "Warnings from this tool can be ignored in favour of the documented coding style,"
++echo "or in favour of matching the style of existing surrounding code."
++
++exit ${exit_status}
+diff --git a/.gitlab-ci/run-tests.sh b/.gitlab-ci/run-tests.sh
+new file mode 100755
+index 000000000000..629385066d07
+--- /dev/null
++++ b/.gitlab-ci/run-tests.sh
+@@ -0,0 +1,14 @@
++#!/bin/bash
++
++set -ex
++
++meson test -v \
++        -C _build \
++        --timeout-multiplier "${MESON_TEST_TIMEOUT_MULTIPLIER}" \
++        "$@"
++
++# Run only the flaky tests, so we can log the failures but without hard failing
++meson test -v \
++        -C _build \
++        --timeout-multiplier "${MESON_TEST_TIMEOUT_MULTIPLIER}" \
++        "$@" --setup=unstable_tests --suite=failing --suite=flaky || true
+diff --git a/.gitlab-ci/search-common-ancestor.sh b/.gitlab-ci/search-common-ancestor.sh
+new file mode 100755
+index 000000000000..914e2e99704d
+--- /dev/null
++++ b/.gitlab-ci/search-common-ancestor.sh
+@@ -0,0 +1,42 @@
++#!/bin/bash
++
++set -e
++
++ancestor_horizon=28  # days (4 weeks)
++
++# Recently, git is picky about directory ownership. Tell it not to worry.
++git config --global --add safe.directory "$PWD"
++
++# We need to add a new remote for the upstream target branch, since this script
++# could be running in a personal fork of the repository which has out of date
++# branches.
++#
++# Limit the fetch to a certain date horizon to limit the amount of data we get.
++# If the branch was forked from origin/main before this horizon, it should
++# probably be rebased.
++if ! git ls-remote --exit-code upstream >/dev/null 2>&1 ; then
++    git remote add upstream https://gitlab.gnome.org/GNOME/glib.git
++fi
++
++# Work out the newest common ancestor between the detached HEAD that this CI job
++# has checked out, and the upstream target branch (which will typically be
++# `upstream/main` or `upstream/glib-2-62`).
++# `${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}` or `${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}`
++# are only defined if we’re running in a merge request pipeline,
++# fall back to `${CI_DEFAULT_BRANCH}` or `${CI_COMMIT_BRANCH}` respectively
++# otherwise.
++
++source_branch="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-${CI_COMMIT_BRANCH}}"
++target_branch="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-${CI_DEFAULT_BRANCH}}"
++
++git fetch --shallow-since="$(date --date="${ancestor_horizon} days ago" +%Y-%m-%d)" origin "${source_branch}"
++git fetch --shallow-since="$(date --date="${ancestor_horizon} days ago" +%Y-%m-%d)" upstream "${target_branch}"
++
++newest_common_ancestor_sha=$(git merge-base "upstream/${target_branch}" "origin/${source_branch}")
++
++if [ -z "${newest_common_ancestor_sha}" ]; then
++    echo "Couldn’t find common ancestor with upstream main branch. This typically"
++    echo "happens if you branched from main a long time ago. Please update"
++    echo "your clone, rebase, and re-push your branch."
++    exit 1
++fi
+diff --git a/.gitlab-ci/show-execution-environment.sh b/.gitlab-ci/show-execution-environment.sh
+new file mode 100755
+index 000000000000..5075f97300aa
+--- /dev/null
++++ b/.gitlab-ci/show-execution-environment.sh
+@@ -0,0 +1,13 @@
++#!/bin/bash
++
++set -eux -o pipefail
++
++id || :
++capsh --print || :
++env -0 | sort -z | perl -pe 's/\0/\n/g' || :
++setpriv --dump || :
++ulimit -a || :
++cat /proc/self/status || :
++cat /proc/self/mountinfo || :
++stat /etc/machine-id || :
++stat /var/lib/dbus/machine-id || :
+diff --git a/.gitlab-ci/test-msvc.bat b/.gitlab-ci/test-msvc.bat
+new file mode 100644
+index 000000000000..02f8b0753071
+--- /dev/null
++++ b/.gitlab-ci/test-msvc.bat
+@@ -0,0 +1,26 @@
++@echo on
++:: vcvarsall.bat sets various env vars like PATH, INCLUDE, LIB, LIBPATH for the
++:: specified build architecture
++call "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
++
++:: Remove quotes from script args
++setlocal enabledelayedexpansion
++set args=
++for %%x in (%*) do (
++  set args=!args! %%~x
++)
++set args=%args:~1%
++
++:: FIXME: make warnings fatal
++pip3 install --upgrade --user meson==1.2.3 packaging==23.2  || goto :error
++meson setup %args% _build || goto :error
++meson compile -C _build || goto :error
++
++meson test -v -C _build --timeout-multiplier %MESON_TEST_TIMEOUT_MULTIPLIER% || goto :error
++meson test -v -C _build --timeout-multiplier %MESON_TEST_TIMEOUT_MULTIPLIER% --setup=unstable_tests --suite=failing --suite=flaky
++
++:: FIXME: can we get code coverage support?
++
++goto :EOF
++:error
++exit /b 1
+diff --git a/.gitlab-ci/test-msys2.sh b/.gitlab-ci/test-msys2.sh
+new file mode 100755
+index 000000000000..e03cccf15afc
+--- /dev/null
++++ b/.gitlab-ci/test-msys2.sh
+@@ -0,0 +1,80 @@
++#!/bin/bash
++
++set -ex
++
++export PATH="/c/msys64/$MSYSTEM/bin:$PATH"
++
++pacman --noconfirm -Suy
++
++pacman --noconfirm -S --needed \
++    base-devel \
++    lcov \
++    "${MINGW_PACKAGE_PREFIX}"-ccache \
++    "${MINGW_PACKAGE_PREFIX}"-gettext \
++    "${MINGW_PACKAGE_PREFIX}"-gi-docgen \
++    "${MINGW_PACKAGE_PREFIX}"-gobject-introspection \
++    "${MINGW_PACKAGE_PREFIX}"-libffi \
++    "${MINGW_PACKAGE_PREFIX}"-meson \
++    "${MINGW_PACKAGE_PREFIX}"-pcre2 \
++    "${MINGW_PACKAGE_PREFIX}"-python3 \
++    "${MINGW_PACKAGE_PREFIX}"-python-docutils \
++    "${MINGW_PACKAGE_PREFIX}"-python-pip \
++    "${MINGW_PACKAGE_PREFIX}"-toolchain \
++    "${MINGW_PACKAGE_PREFIX}"-zlib \
++    "${MINGW_PACKAGE_PREFIX}"-libelf
++
++mkdir -p _coverage
++mkdir -p _ccache
++CCACHE_BASEDIR="$(pwd)"
++CCACHE_DIR="${CCACHE_BASEDIR}/_ccache"
++export CCACHE_BASEDIR CCACHE_DIR
++
++pip3 install --upgrade --user packaging==23.2
++
++PATH="$(cygpath "$USERPROFILE")/.local/bin:$HOME/.local/bin:$PATH"
++DIR="$(pwd)"
++export PATH CFLAGS
++
++# FIXME: We can’t use ${MESON_COMMON_OPTIONS} here because this script installs
++# Meson 1.3. See the comment in .gitlab-ci.yml about the same problem on
++# FreeBSD.
++# shellcheck disable=SC2086
++meson setup \
++    --buildtype=debug \
++    --wrap-mode=nodownload \
++    --werror \
++    -Ddocumentation=true \
++    -Dintrospection=enabled \
++    -Dman-pages=enabled \
++    _build
++
++meson compile -C _build
++
++if [[ "$CFLAGS" == *"-coverage"* ]]; then
++    lcov \
++        --quiet \
++        --config-file "${DIR}"/.lcovrc \
++        --directory "${DIR}/_build" \
++        --capture \
++        --initial \
++        --output-file "${DIR}/_coverage/${CI_JOB_NAME}-baseline.lcov"
++fi
++
++meson test -C _build -v --timeout-multiplier "${MESON_TEST_TIMEOUT_MULTIPLIER}"
++meson test -C _build -v --timeout-multiplier "${MESON_TEST_TIMEOUT_MULTIPLIER}" \
++    --setup=unstable_tests --suite=failing --suite=flaky || true
++
++if [[ "$CFLAGS" == *"-coverage"* ]]; then
++    lcov \
++        --quiet \
++        --config-file "${DIR}"/.lcovrc \
++        --directory "${DIR}/_build" \
++        --capture \
++        --output-file "${DIR}/_coverage/${CI_JOB_NAME}.lcov"
++fi
++
++# Copy the built documentation to an artifact directory. The build for docs.gtk.org
++# can then pull it from there — see https://gitlab.gnome.org/GNOME/gtk/-/blob/docs-gtk-org/README.md
++mkdir -p _reference/
++mv _build/docs/reference/glib/glib-win32-2.0/ _reference/glib-win32/
++mv _build/docs/reference/gio/gio-win32-2.0/ _reference/gio-win32/
+\ No newline at end of file
+diff --git a/.gitlab-ci/thorough-test-wrapper.sh b/.gitlab-ci/thorough-test-wrapper.sh
+new file mode 100644
+index 000000000000..2bb149ed8489
+--- /dev/null
++++ b/.gitlab-ci/thorough-test-wrapper.sh
+@@ -0,0 +1,22 @@
++#!/bin/bash
++#
++# Copyright 2024 GNOME Foundation, Inc.
++#
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# Original author: Philip Withnall
++
++set -e
++
++# If the test is run under Python (e.g. the first argument to this script is
++# /usr/bin/python3) or if it’s the special xmllint test in GLib, then don’t
++# pass the GTest `-m thorough` argument to it.
++if [[ "$1" == *"python"* ||
++      "$1" == *"xmllint" ]]; then
++  args=()
++else
++  # See the documentation for g_test_init()
++  args=("-m" "thorough")
++fi
++
++exec "$@" "${args[@]}"
+\ No newline at end of file
+diff --git a/gio/gdbus-2.0/codegen/codegen.py b/gio/gdbus-2.0/codegen/codegen.py
+index 2e8ef8e2ac1e..3c60e3889030 100644
+--- a/gio/gdbus-2.0/codegen/codegen.py
++++ b/gio/gdbus-2.0/codegen/codegen.py
+@@ -114,6 +114,7 @@ class HeaderCodeGenerator:
+ 
+         self.outfile.write("\n")
+         self.outfile.write("#include <gio/gio.h>\n")
++        self.outfile.write("#include <inttypes.h>\n")
+         self.outfile.write("\n")
+         self.outfile.write("G_BEGIN_DECLS\n")
+         self.outfile.write("\n")
+@@ -1654,27 +1655,27 @@ class CodeGenerator:
+             "{\n"
+             "  gboolean ret = FALSE;\n"
+             "  g_assert (G_VALUE_TYPE (a) == G_VALUE_TYPE (b));\n"
+-            "  switch (G_VALUE_TYPE (a))\n"
++            "  switch ((uintptr_t) G_VALUE_TYPE (a))\n"
+             "    {\n"
+-            "      case G_TYPE_BOOLEAN:\n"
++            "      case (uintptr_t) G_TYPE_BOOLEAN:\n"
+             "        ret = (g_value_get_boolean (a) == g_value_get_boolean (b));\n"
+             "        break;\n"
+-            "      case G_TYPE_UCHAR:\n"
++            "      case (uintptr_t) G_TYPE_UCHAR:\n"
+             "        ret = (g_value_get_uchar (a) == g_value_get_uchar (b));\n"
+             "        break;\n"
+-            "      case G_TYPE_INT:\n"
++            "      case (uintptr_t) G_TYPE_INT:\n"
+             "        ret = (g_value_get_int (a) == g_value_get_int (b));\n"
+             "        break;\n"
+-            "      case G_TYPE_UINT:\n"
++            "      case (uintptr_t) G_TYPE_UINT:\n"
+             "        ret = (g_value_get_uint (a) == g_value_get_uint (b));\n"
+             "        break;\n"
+-            "      case G_TYPE_INT64:\n"
++            "      case (uintptr_t) G_TYPE_INT64:\n"
+             "        ret = (g_value_get_int64 (a) == g_value_get_int64 (b));\n"
+             "        break;\n"
+-            "      case G_TYPE_UINT64:\n"
++            "      case (uintptr_t) G_TYPE_UINT64:\n"
+             "        ret = (g_value_get_uint64 (a) == g_value_get_uint64 (b));\n"
+             "        break;\n"
+-            "      case G_TYPE_DOUBLE:\n"
++            "      case (uintptr_t) G_TYPE_DOUBLE:\n"
+             "        {\n"
+             "          /* Avoid -Wfloat-equal warnings by doing a direct bit compare */\n"
+             "          gdouble da = g_value_get_double (a);\n"
+@@ -1682,10 +1683,10 @@ class CodeGenerator:
+             "          ret = memcmp (&da, &db, sizeof (gdouble)) == 0;\n"
+             "        }\n"
+             "        break;\n"
+-            "      case G_TYPE_STRING:\n"
++            "      case (uintptr_t) G_TYPE_STRING:\n"
+             "        ret = (g_strcmp0 (g_value_get_string (a), g_value_get_string (b)) == 0);\n"
+             "        break;\n"
+-            "      case G_TYPE_VARIANT:\n"
++            "      case (uintptr_t) G_TYPE_VARIANT:\n"
+             "        ret = _g_variant_equal0 (g_value_get_variant (a), g_value_get_variant (b));\n"
+             "        break;\n"
+             "      default:\n"
+diff --git a/gio/gdbusproxy.c b/gio/gdbusproxy.c
+index 5d9a637c3556..193171fd6b4a 100644
+--- a/gio/gdbusproxy.c
++++ b/gio/gdbusproxy.c
+@@ -45,6 +45,7 @@
+ 
+ #include "glibintl.h"
+ #include "gmarshal-internal.h"
++#include <inttypes.h>
+ 
+ /**
+  * GDBusProxy:
+@@ -565,7 +566,7 @@ g_dbus_proxy_class_init (GDBusProxyClass *klass)
+                                                      G_TYPE_NONE,
+                                                      2,
+                                                      G_TYPE_VARIANT,
+-                                                     G_TYPE_STRV | G_SIGNAL_TYPE_STATIC_SCOPE);
++                                                     (GType) ((uintptr_t) G_TYPE_STRV | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (signals[PROPERTIES_CHANGED_SIGNAL],
+                               G_TYPE_FROM_CLASS (klass),
+                               _g_cclosure_marshal_VOID__VARIANT_BOXEDv);
+diff --git a/gio/gmarshal-internal.c b/gio/gmarshal-internal.c
+index 9ef05cd6ab32..6682c78bcf7c 100644
+--- a/gio/gmarshal-internal.c
++++ b/gio/gmarshal-internal.c
+@@ -20,6 +20,7 @@
+ 
+ #include <glib-object.h>
+ #include "gmarshal-internal.h"
++#include <inttypes.h>
+ 
+ #ifdef G_ENABLE_DEBUG
+ #define g_marshal_value_peek_boolean(v)  g_value_get_boolean (v)
+@@ -496,7 +497,7 @@ _g_cclosure_marshal_BOOLEAN__STRINGv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   va_end (args_copy);
+ 
+@@ -515,7 +516,7 @@ _g_cclosure_marshal_BOOLEAN__STRINGv (GClosure *closure,
+   v_return = callback (data1,
+                        arg0,
+                        data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+ 
+   g_value_set_boolean (return_value, v_return);
+@@ -739,8 +740,8 @@ _g_cclosure_marshal_INT__BOXEDv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+-    arg0 = g_boxed_copy (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg0);
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++    arg0 = g_boxed_copy ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg0);
+   va_end (args_copy);
+ 
+   g_return_if_fail (return_value != NULL);
+@@ -760,8 +761,8 @@ _g_cclosure_marshal_INT__BOXEDv (GClosure *closure,
+   v_return = callback (data1,
+                        arg0,
+                        data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+-    g_boxed_free (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg0);
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg0);
+ 
+   g_value_set_int (return_value, v_return);
+ }
+@@ -913,8 +914,8 @@ _g_cclosure_marshal_VOID__BOOLEAN_BOXEDv (GClosure *closure,
+   va_copy (args_copy, args);
+   arg0 = (gboolean) va_arg (args_copy, gboolean);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    arg1 = g_boxed_copy (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    arg1 = g_boxed_copy ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+   va_end (args_copy);
+ 
+ 
+@@ -934,8 +935,8 @@ _g_cclosure_marshal_VOID__BOOLEAN_BOXEDv (GClosure *closure,
+             arg0,
+             arg1,
+             data2);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    g_boxed_free (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+ }
+ 
+ /* VOID:ENUM,OBJECT */
+@@ -1467,13 +1468,13 @@ _g_cclosure_marshal_VOID__OBJECT_OBJECT_STRING_STRING_VARIANTv (GClosure *closur
+   if (arg1 != NULL)
+     arg1 = g_object_ref (arg1);
+   arg2 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     arg2 = g_strdup (arg2);
+   arg3 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[3] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
++  if (((uintptr_t) param_types[3] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
+     arg3 = g_strdup (arg3);
+   arg4 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[4] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg4 != NULL)
++  if (((uintptr_t) param_types[4] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg4 != NULL)
+     arg4 = g_variant_ref_sink (arg4);
+   va_end (args_copy);
+ 
+@@ -1501,11 +1502,11 @@ _g_cclosure_marshal_VOID__OBJECT_OBJECT_STRING_STRING_VARIANTv (GClosure *closur
+     g_object_unref (arg0);
+   if (arg1 != NULL)
+     g_object_unref (arg1);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     g_free (arg2);
+-  if ((param_types[3] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
++  if (((uintptr_t) param_types[3] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
+     g_free (arg3);
+-  if ((param_types[4] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg4 != NULL)
++  if (((uintptr_t) param_types[4] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg4 != NULL)
+     g_variant_unref (arg4);
+ }
+ 
+@@ -1582,11 +1583,11 @@ _g_cclosure_marshal_VOID__OBJECT_OBJECT_VARIANT_BOXEDv (GClosure *closure,
+   if (arg1 != NULL)
+     arg1 = g_object_ref (arg1);
+   arg2 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     arg2 = g_variant_ref_sink (arg2);
+   arg3 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[3] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
+-    arg3 = g_boxed_copy (param_types[3] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg3);
++  if (((uintptr_t) param_types[3] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
++    arg3 = g_boxed_copy ((GType) ((uintptr_t) param_types[3] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg3);
+   va_end (args_copy);
+ 
+ 
+@@ -1612,10 +1613,10 @@ _g_cclosure_marshal_VOID__OBJECT_OBJECT_VARIANT_BOXEDv (GClosure *closure,
+     g_object_unref (arg0);
+   if (arg1 != NULL)
+     g_object_unref (arg1);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     g_variant_unref (arg2);
+-  if ((param_types[3] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
+-    g_boxed_free (param_types[3] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg3);
++  if (((uintptr_t) param_types[3] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg3 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[3] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg3);
+ }
+ 
+ /* VOID:OBJECT,VARIANT */
+@@ -1680,7 +1681,7 @@ _g_cclosure_marshal_VOID__OBJECT_VARIANTv (GClosure *closure,
+   if (arg0 != NULL)
+     arg0 = g_object_ref (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     arg1 = g_variant_ref_sink (arg1);
+   va_end (args_copy);
+ 
+@@ -1703,7 +1704,7 @@ _g_cclosure_marshal_VOID__OBJECT_VARIANTv (GClosure *closure,
+             data2);
+   if (arg0 != NULL)
+     g_object_unref (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     g_variant_unref (arg1);
+ }
+ 
+@@ -1772,7 +1773,7 @@ _g_cclosure_marshal_VOID__POINTER_INT_STRINGv (GClosure *closure,
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+   arg1 = (gint) va_arg (args_copy, gint);
+   arg2 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     arg2 = g_strdup (arg2);
+   va_end (args_copy);
+ 
+@@ -1794,7 +1795,7 @@ _g_cclosure_marshal_VOID__POINTER_INT_STRINGv (GClosure *closure,
+             arg1,
+             arg2,
+             data2);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     g_free (arg2);
+ }
+ 
+@@ -1857,7 +1858,7 @@ _g_cclosure_marshal_VOID__STRING_BOOLEANv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gboolean) va_arg (args_copy, gboolean);
+   va_end (args_copy);
+@@ -1879,7 +1880,7 @@ _g_cclosure_marshal_VOID__STRING_BOOLEANv (GClosure *closure,
+             arg0,
+             arg1,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+ }
+ 
+@@ -1942,11 +1943,11 @@ _g_cclosure_marshal_VOID__STRING_BOXEDv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    arg1 = g_boxed_copy (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    arg1 = g_boxed_copy ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+   va_end (args_copy);
+ 
+ 
+@@ -1966,10 +1967,10 @@ _g_cclosure_marshal_VOID__STRING_BOXEDv (GClosure *closure,
+             arg0,
+             arg1,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    g_boxed_free (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+ }
+ 
+ /* VOID:STRING,BOXED,BOXED */
+@@ -2035,14 +2036,14 @@ _g_cclosure_marshal_VOID__STRING_BOXED_BOXEDv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    arg1 = g_boxed_copy (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    arg1 = g_boxed_copy ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+   arg2 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+-    arg2 = g_boxed_copy (param_types[2] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg2);
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++    arg2 = g_boxed_copy ((GType) ((uintptr_t) param_types[2] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg2);
+   va_end (args_copy);
+ 
+ 
+@@ -2063,12 +2064,12 @@ _g_cclosure_marshal_VOID__STRING_BOXED_BOXEDv (GClosure *closure,
+             arg1,
+             arg2,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    g_boxed_free (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+-    g_boxed_free (param_types[2] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg2);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[2] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg2);
+ }
+ 
+ /* VOID:STRING,INT64,INT64 */
+@@ -2134,7 +2135,7 @@ _g_cclosure_marshal_VOID__STRING_INT64_INT64v (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gint64) va_arg (args_copy, gint64);
+   arg2 = (gint64) va_arg (args_copy, gint64);
+@@ -2158,7 +2159,7 @@ _g_cclosure_marshal_VOID__STRING_INT64_INT64v (GClosure *closure,
+             arg1,
+             arg2,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+ }
+ 
+@@ -2229,13 +2230,13 @@ _g_cclosure_marshal_VOID__STRING_STRING_STRING_FLAGSv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     arg1 = g_strdup (arg1);
+   arg2 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     arg2 = g_strdup (arg2);
+   arg3 = (guint) va_arg (args_copy, guint);
+   va_end (args_copy);
+@@ -2259,11 +2260,11 @@ _g_cclosure_marshal_VOID__STRING_STRING_STRING_FLAGSv (GClosure *closure,
+             arg2,
+             arg3,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     g_free (arg1);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     g_free (arg2);
+ }
+ 
+@@ -2330,13 +2331,13 @@ _g_cclosure_marshal_VOID__STRING_STRING_VARIANTv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     arg1 = g_strdup (arg1);
+   arg2 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     arg2 = g_variant_ref_sink (arg2);
+   va_end (args_copy);
+ 
+@@ -2358,11 +2359,11 @@ _g_cclosure_marshal_VOID__STRING_STRING_VARIANTv (GClosure *closure,
+             arg1,
+             arg2,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     g_free (arg1);
+-  if ((param_types[2] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
++  if (((uintptr_t) param_types[2] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg2 != NULL)
+     g_variant_unref (arg2);
+ }
+ 
+@@ -2425,10 +2426,10 @@ _g_cclosure_marshal_VOID__STRING_VARIANTv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     arg1 = g_variant_ref_sink (arg1);
+   va_end (args_copy);
+ 
+@@ -2449,9 +2450,9 @@ _g_cclosure_marshal_VOID__STRING_VARIANTv (GClosure *closure,
+             arg0,
+             arg1,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+     g_variant_unref (arg1);
+ }
+ 
+@@ -2602,11 +2603,11 @@ _g_cclosure_marshal_VOID__VARIANT_BOXEDv (GClosure *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_variant_ref_sink (arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    arg1 = g_boxed_copy (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    arg1 = g_boxed_copy ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+   va_end (args_copy);
+ 
+ 
+@@ -2626,8 +2627,8 @@ _g_cclosure_marshal_VOID__VARIANT_BOXEDv (GClosure *closure,
+             arg0,
+             arg1,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_variant_unref (arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    g_boxed_free (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+ }
+diff --git a/gio/gpropertyaction.c b/gio/gpropertyaction.c
+index 6b671f54bf53..dd2f4c383fa6 100644
+--- a/gio/gpropertyaction.c
++++ b/gio/gpropertyaction.c
+@@ -26,6 +26,7 @@
+ #include "gsettings-mapping.h"
+ #include "gaction.h"
+ #include "glibintl.h"
++#include <inttypes.h>
+ 
+ /**
+  * GPropertyAction:
+@@ -258,22 +259,22 @@ g_property_action_determine_type (GParamSpec *pspec)
+   if (G_TYPE_IS_ENUM (pspec->value_type))
+     return G_VARIANT_TYPE_STRING;
+ 
+-  switch (pspec->value_type)
++  switch ((uintptr_t) pspec->value_type)
+     {
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       return G_VARIANT_TYPE_BOOLEAN;
+ 
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       return G_VARIANT_TYPE_INT32;
+ 
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       return G_VARIANT_TYPE_UINT32;
+ 
+-    case G_TYPE_DOUBLE:
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_FLOAT:
+       return G_VARIANT_TYPE_DOUBLE;
+ 
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       return G_VARIANT_TYPE_STRING;
+ 
+     default:
+diff --git a/gio/gsettings.c b/gio/gsettings.c
+index a14ba809481f..737377d14fce 100644
+--- a/gio/gsettings.c
++++ b/gio/gsettings.c
+@@ -35,6 +35,7 @@
+ #include "gmarshal-internal.h"
+ 
+ #include "strinfo.c"
++#include <inttypes.h>
+ 
+ /**
+  * GSettings:
+@@ -738,7 +739,7 @@ g_settings_class_init (GSettingsClass *class)
+                   G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+                   G_STRUCT_OFFSET (GSettingsClass, changed),
+                   NULL, NULL, NULL, G_TYPE_NONE,
+-                  1, G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  1, (GType) ((uintptr_t)G_TYPE_STRING | (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GSettings::change-event:
+@@ -795,7 +796,7 @@ g_settings_class_init (GSettingsClass *class)
+                   G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+                   G_STRUCT_OFFSET (GSettingsClass, writable_changed),
+                   NULL, NULL, NULL, G_TYPE_NONE,
+-                  1, G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  1, (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GSettings::writable-change-event:
+diff --git a/gio/tests/glistmodel.c b/gio/tests/glistmodel.c
+index cd6ae91e2eb6..325fc0822be1 100644
+--- a/gio/tests/glistmodel.c
++++ b/gio/tests/glistmodel.c
+@@ -54,7 +54,7 @@ test_store_properties (void)
+ 
+   store = g_list_store_new (G_TYPE_MENU_ITEM);
+   g_object_get (store, "item-type", &item_type, NULL);
+-  g_assert_cmpint (item_type, ==, G_TYPE_MENU_ITEM);
++  g_assert_cmpint ((uintptr_t) item_type, ==, (uintptr_t) G_TYPE_MENU_ITEM);
+ 
+   g_clear_object (&store);
+ }
+diff --git a/gio/tests/meson.build b/gio/tests/meson.build
+index 3bfb33307b20..69dfa7e96c18 100644
+--- a/gio/tests/meson.build
++++ b/gio/tests/meson.build
+@@ -940,7 +940,9 @@ if not meson.is_cross_build()
+ 
+   ld = find_program('ld', required : false)
+ 
+-  if build_machine.system() != 'linux'
++  if true
++    why_no_external_data = 'Fil-C'
++  elif build_machine.system() != 'linux'
+     why_no_external_data = 'only works on Linux'
+   elif not objcopy.found()
+     why_no_external_data = 'objcopy not found'
+diff --git a/girepository/gdump.c b/girepository/gdump.c
+index 2388626d8434..13b8df2d9787 100644
+--- a/girepository/gdump.c
++++ b/girepository/gdump.c
+@@ -39,6 +39,7 @@
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <string.h>
++#include <inttypes.h>
+ 
+ /* Analogue of g_output_stream_write_all(). */
+ static gboolean
+@@ -172,7 +173,7 @@ invoke_error_quark (GModule *self, const char *symbol, GError **error)
+                    G_FILE_ERROR,
+                    G_FILE_ERROR_FAILED,
+                    "Failed to find symbol '%s'", symbol);
+-      return G_TYPE_INVALID;
++      return 0;
+     }
+ 
+   return sym ();
+@@ -221,23 +222,23 @@ value_to_string (const GValue *value)
+     {
+       GType value_type = G_VALUE_TYPE (value);
+ 
+-      switch (G_TYPE_FUNDAMENTAL (value_type))
++      switch ((uintptr_t) G_TYPE_FUNDAMENTAL (value_type))
+         {
+-        case G_TYPE_BOXED:
++        case (uintptr_t) G_TYPE_BOXED:
+           if (g_value_get_boxed (value) == NULL)
+             return NULL;
+           else
+             return value_transform_to_string (value);
+           break;
+ 
+-        case G_TYPE_OBJECT:
++        case (uintptr_t) G_TYPE_OBJECT:
+           if (g_value_get_object (value) == NULL)
+             return NULL;
+           else
+             return value_transform_to_string (value);
+           break;
+ 
+-        case G_TYPE_POINTER:
++        case (uintptr_t) G_TYPE_POINTER:
+           return NULL;
+ 
+         default:
+@@ -544,24 +545,24 @@ dump_fundamental_type (GType type, const char *symbol, FILE *out)
+ static void
+ dump_type (GType type, const char *symbol, FILE *out)
+ {
+-  switch (g_type_fundamental (type))
++  switch ((uintptr_t) g_type_fundamental (type))
+     {
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       dump_object_type (type, symbol, out);
+       break;
+-    case G_TYPE_INTERFACE:
++    case (uintptr_t) G_TYPE_INTERFACE:
+       dump_interface_type (type, symbol, out);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       dump_boxed_type (type, symbol, out);
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       dump_flags_type (type, symbol, out);
+       break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       dump_enum_type (type, symbol, out);
+       break;
+-    case G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_POINTER:
+       /* GValue, etc.  Just skip them. */
+       break;
+     default:
+diff --git a/girepository/ginvoke.c b/girepository/ginvoke.c
+index 20d882cdcf8d..c0cc3cc26870 100644
+--- a/girepository/ginvoke.c
++++ b/girepository/ginvoke.c
+@@ -30,6 +30,7 @@
+ 
+ #include <girepository/girepository.h>
+ #include "girffi.h"
++#include <inttypes.h>
+ 
+ /**
+  * value_to_ffi_type:
+@@ -50,48 +51,48 @@ value_to_ffi_type (const GValue *gvalue, void **value)
+   GType type = g_type_fundamental (G_VALUE_TYPE (gvalue));
+   g_assert (type != G_TYPE_INVALID);
+ 
+-  switch (type)
++  switch ((uintptr_t) type)
+     {
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_CHAR:
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_INT:
+       rettype = &ffi_type_sint;
+       *value = (void *) &(gvalue->data[0].v_int);
+       break;
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UINT:
+       rettype = &ffi_type_uint;
+       *value = (void *) &(gvalue->data[0].v_uint);
+       break;
+-    case G_TYPE_STRING:
+-    case G_TYPE_OBJECT:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_POINTER:
+-    case G_TYPE_PARAM:
++    case (uintptr_t) G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_PARAM:
+       rettype = &ffi_type_pointer;
+       *value = (void *) &(gvalue->data[0].v_pointer);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       rettype = &ffi_type_float;
+       *value = (void *) &(gvalue->data[0].v_float);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       rettype = &ffi_type_double;
+       *value = (void *) &(gvalue->data[0].v_double);
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       rettype = &ffi_type_slong;
+       *value = (void *) &(gvalue->data[0].v_long);
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       rettype = &ffi_type_ulong;
+       *value = (void *) &(gvalue->data[0].v_ulong);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       rettype = &ffi_type_sint64;
+       *value = (void *) &(gvalue->data[0].v_int64);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       rettype = &ffi_type_uint64;
+       *value = (void *) &(gvalue->data[0].v_uint64);
+       break;
+@@ -130,46 +131,46 @@ g_value_to_ffi_return_type (const GValue *gvalue,
+ 
+   *value = (void *) &(ffi_value->v_long);
+ 
+-  switch (type) {
+-  case G_TYPE_CHAR:
++  switch ((uintptr_t) type) {
++  case (uintptr_t) G_TYPE_CHAR:
+     rettype = &ffi_type_sint8;
+     break;
+-  case G_TYPE_UCHAR:
++  case (uintptr_t) G_TYPE_UCHAR:
+     rettype = &ffi_type_uint8;
+     break;
+-  case G_TYPE_BOOLEAN:
+-  case G_TYPE_INT:
++  case (uintptr_t) G_TYPE_BOOLEAN:
++  case (uintptr_t) G_TYPE_INT:
+     rettype = &ffi_type_sint;
+     break;
+-  case G_TYPE_UINT:
++  case (uintptr_t) G_TYPE_UINT:
+     rettype = &ffi_type_uint;
+     break;
+-  case G_TYPE_STRING:
+-  case G_TYPE_OBJECT:
+-  case G_TYPE_BOXED:
+-  case G_TYPE_POINTER:
+-  case G_TYPE_PARAM:
++  case (uintptr_t) G_TYPE_STRING:
++  case (uintptr_t) G_TYPE_OBJECT:
++  case (uintptr_t) G_TYPE_BOXED:
++  case (uintptr_t) G_TYPE_POINTER:
++  case (uintptr_t) G_TYPE_PARAM:
+     rettype = &ffi_type_pointer;
+     break;
+-  case G_TYPE_FLOAT:
++  case (uintptr_t) G_TYPE_FLOAT:
+     rettype = &ffi_type_float;
+     *value = (void *) &(ffi_value->v_float);
+     break;
+-  case G_TYPE_DOUBLE:
++  case (uintptr_t) G_TYPE_DOUBLE:
+     rettype = &ffi_type_double;
+     *value = (void *) &(ffi_value->v_double);
+     break;
+-  case G_TYPE_LONG:
++  case (uintptr_t) G_TYPE_LONG:
+     rettype = &ffi_type_slong;
+     break;
+-  case G_TYPE_ULONG:
++  case (uintptr_t) G_TYPE_ULONG:
+     rettype = &ffi_type_ulong;
+     break;
+-  case G_TYPE_INT64:
++  case (uintptr_t) G_TYPE_INT64:
+     rettype = &ffi_type_sint64;
+     *value = (void *) &(ffi_value->v_int64);
+     break;
+-  case G_TYPE_UINT64:
++  case (uintptr_t) G_TYPE_UINT64:
+     rettype = &ffi_type_uint64;
+     *value = (void *) &(ffi_value->v_uint64);
+     break;
+@@ -198,50 +199,50 @@ static void
+ g_value_from_ffi_value (GValue           *gvalue,
+                         const GIArgument *value)
+ {
+-  switch (g_type_fundamental (G_VALUE_TYPE (gvalue))) {
+-  case G_TYPE_INT:
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (gvalue))) {
++  case (uintptr_t) G_TYPE_INT:
+       g_value_set_int (gvalue, (gint)value->v_long);
+       break;
+-  case G_TYPE_FLOAT:
++  case (uintptr_t) G_TYPE_FLOAT:
+       g_value_set_float (gvalue, (gfloat)value->v_float);
+       break;
+-  case G_TYPE_DOUBLE:
++  case (uintptr_t) G_TYPE_DOUBLE:
+       g_value_set_double (gvalue, (gdouble)value->v_double);
+       break;
+-  case G_TYPE_BOOLEAN:
++  case (uintptr_t) G_TYPE_BOOLEAN:
+       g_value_set_boolean (gvalue, (gboolean)value->v_long);
+       break;
+-  case G_TYPE_STRING:
++  case (uintptr_t) G_TYPE_STRING:
+       g_value_set_string (gvalue, (char*)value->v_pointer);
+       break;
+-  case G_TYPE_CHAR:
++  case (uintptr_t) G_TYPE_CHAR:
+       g_value_set_schar (gvalue, (char)value->v_long);
+       break;
+-  case G_TYPE_UCHAR:
++  case (uintptr_t) G_TYPE_UCHAR:
+       g_value_set_uchar (gvalue, (guchar)value->v_ulong);
+       break;
+-  case G_TYPE_UINT:
++  case (uintptr_t) G_TYPE_UINT:
+       g_value_set_uint (gvalue, (guint)value->v_ulong);
+       break;
+-  case G_TYPE_POINTER:
++  case (uintptr_t) G_TYPE_POINTER:
+       g_value_set_pointer (gvalue, (gpointer)value->v_pointer);
+       break;
+-  case G_TYPE_LONG:
++  case (uintptr_t) G_TYPE_LONG:
+       g_value_set_long (gvalue, (glong)value->v_long);
+       break;
+-  case G_TYPE_ULONG:
++  case (uintptr_t) G_TYPE_ULONG:
+       g_value_set_ulong (gvalue, (gulong)value->v_ulong);
+       break;
+-  case G_TYPE_INT64:
++  case (uintptr_t) G_TYPE_INT64:
+       g_value_set_int64 (gvalue, (gint64)value->v_int64);
+       break;
+-  case G_TYPE_UINT64:
++  case (uintptr_t) G_TYPE_UINT64:
+       g_value_set_uint64 (gvalue, (guint64)value->v_uint64);
+       break;
+-  case G_TYPE_BOXED:
++  case (uintptr_t) G_TYPE_BOXED:
+       g_value_set_boxed (gvalue, (gpointer)value->v_pointer);
+       break;
+-  case G_TYPE_PARAM:
++  case (uintptr_t) G_TYPE_PARAM:
+       g_value_set_param (gvalue, (gpointer)value->v_pointer);
+       break;
+   default:
+diff --git a/girepository/giregisteredtypeinfo.c b/girepository/giregisteredtypeinfo.c
+index 4312cbac29e3..e257e7f16fe5 100644
+--- a/girepository/giregisteredtypeinfo.c
++++ b/girepository/giregisteredtypeinfo.c
+@@ -192,7 +192,7 @@ gi_registered_type_info_is_boxed (GIRegisteredTypeInfo *info)
+   GIBaseInfo *base_info = GI_BASE_INFO (info);
+   const RegisteredTypeBlob *blob;
+ 
+-  g_return_val_if_fail (GI_IS_REGISTERED_TYPE_INFO (info), G_TYPE_INVALID);
++  g_return_val_if_fail (GI_IS_REGISTERED_TYPE_INFO (info), FALSE);
+ 
+   blob = (const RegisteredTypeBlob *) &base_info->typelib->data[base_info->offset];
+ 
+diff --git a/glib/gatomic.c b/glib/gatomic.c
+index 2d3755e684bf..df6388f1f7d9 100644
+--- a/glib/gatomic.c
++++ b/glib/gatomic.c
+@@ -503,7 +503,7 @@ gpointer
+  *
+  * Since: 2.30
+  **/
+-gintptr
++gpointer
+ (g_atomic_pointer_add) (volatile void *atomic,
+                         gssize         val)
+ {
+@@ -534,7 +534,7 @@ gintptr
+  *
+  * Since: 2.30
+  **/
+-guintptr
++gpointer
+ (g_atomic_pointer_and) (volatile void *atomic,
+                         gsize          val)
+ {
+@@ -565,7 +565,7 @@ guintptr
+  *
+  * Since: 2.30
+  **/
+-guintptr
++gpointer
+ (g_atomic_pointer_or) (volatile void *atomic,
+                        gsize          val)
+ {
+@@ -596,7 +596,7 @@ guintptr
+  *
+  * Since: 2.30
+  **/
+-guintptr
++gpointer
+ (g_atomic_pointer_xor) (volatile void *atomic,
+                         gsize          val)
+ {
+diff --git a/glib/gatomic.h b/glib/gatomic.h
+index 93998880cbec..ddc648dac343 100644
+--- a/glib/gatomic.h
++++ b/glib/gatomic.h
+@@ -83,16 +83,16 @@ GLIB_AVAILABLE_IN_2_74
+ gpointer                g_atomic_pointer_exchange             (void           *atomic,
+                                                                gpointer        newval);
+ GLIB_AVAILABLE_IN_ALL
+-gintptr                 g_atomic_pointer_add                  (volatile void  *atomic,
++gpointer                g_atomic_pointer_add                  (volatile void  *atomic,
+                                                                gssize          val);
+ GLIB_AVAILABLE_IN_2_30
+-guintptr                g_atomic_pointer_and                  (volatile void  *atomic,
++gpointer                g_atomic_pointer_and                  (volatile void  *atomic,
+                                                                gsize           val);
+ GLIB_AVAILABLE_IN_2_30
+-guintptr                g_atomic_pointer_or                   (volatile void  *atomic,
++gpointer                g_atomic_pointer_or                   (volatile void  *atomic,
+                                                                gsize           val);
+ GLIB_AVAILABLE_IN_ALL
+-guintptr                g_atomic_pointer_xor                  (volatile void  *atomic,
++gpointer                g_atomic_pointer_xor                  (volatile void  *atomic,
+                                                                gsize           val);
+ 
+ GLIB_DEPRECATED_IN_2_30_FOR(g_atomic_int_add)
+@@ -280,34 +280,75 @@ G_END_DECLS
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (gpointer));                 \
+     (void) (0 ? (gpointer) *(atomic) : NULL);                                \
+     (void) (0 ? (val) ^ (val) : 1);                                          \
+-    (gintptr) __atomic_fetch_add ((atomic), (val), __ATOMIC_SEQ_CST);        \
++    gpointer *_gat_ptr = (gpointer*)(atomic);                                \
++    gpointer _gat_result = 0;                                                \
++    gssize _gat_val = (val);                                                 \
++    for (;;)                                                                 \
++      {                                                                      \
++        gpointer _gat_new_value;                                             \
++        _gat_result = *_gat_ptr;                                             \
++        _gat_new_value = (char *) _gat_result + _gat_val;                    \
++        if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
++          break;                                                             \
++      }                                                                      \
++    _gat_result;                                                             \
+   }))
+ #define g_atomic_pointer_and(atomic, val) \
+   (G_GNUC_EXTENSION ({                                                       \
+-    guintptr *gapa_atomic = (guintptr *) (atomic);                           \
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (gpointer));                 \
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (guintptr));                 \
+     (void) (0 ? (gpointer) *(atomic) : NULL);                                \
+     (void) (0 ? (val) ^ (val) : 1);                                          \
+-    (guintptr) __atomic_fetch_and (gapa_atomic, (val), __ATOMIC_SEQ_CST);    \
++    gpointer *_gat_ptr = (gpointer*)(atomic);                                \
++    gpointer _gat_result = 0;                                                \
++    gsize _gat_val = (val);                                                  \
++    for (;;)                                                                 \
++      {                                                                      \
++        gpointer _gat_new_value;                                             \
++        _gat_result = *_gat_ptr;                                             \
++        _gat_new_value = (gpointer) ((gsize) _gat_result & _gat_val);        \
++        if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
++          break;                                                             \
++      }                                                                      \
++    _gat_result;                                                             \
+   }))
+ #define g_atomic_pointer_or(atomic, val) \
+   (G_GNUC_EXTENSION ({                                                       \
+-    guintptr *gapo_atomic = (guintptr *) (atomic);                           \
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (gpointer));                 \
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (guintptr));                 \
+     (void) (0 ? (gpointer) *(atomic) : NULL);                                \
+     (void) (0 ? (val) ^ (val) : 1);                                          \
+-    (guintptr) __atomic_fetch_or (gapo_atomic, (val), __ATOMIC_SEQ_CST);     \
++    gpointer *_gat_ptr = (gpointer*)(atomic);                                \
++    gpointer _gat_result = 0;                                                \
++    gsize _gat_val = (val);                                                  \
++    for (;;)                                                                 \
++      {                                                                      \
++        gpointer _gat_new_value;                                             \
++        _gat_result = *_gat_ptr;                                             \
++        _gat_new_value = (gpointer) ((gsize) _gat_result | _gat_val);        \
++        if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
++          break;                                                             \
++      }                                                                      \
++    _gat_result;                                                             \
+   }))
+ #define g_atomic_pointer_xor(atomic, val) \
+   (G_GNUC_EXTENSION ({                                                       \
+-    guintptr *gapx_atomic = (guintptr *) (atomic);                           \
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (gpointer));                 \
+     G_STATIC_ASSERT (sizeof *(atomic) == sizeof (guintptr));                 \
+     (void) (0 ? (gpointer) *(atomic) : NULL);                                \
+     (void) (0 ? (val) ^ (val) : 1);                                          \
+-    (guintptr) __atomic_fetch_xor (gapx_atomic, (val), __ATOMIC_SEQ_CST);    \
++    gpointer *_gat_ptr = (gpointer*)(atomic);                                \
++    gpointer _gat_result = 0;                                                \
++    gsize _gat_val = (val);                                                  \
++    for (;;)                                                                 \
++      {                                                                      \
++        gpointer _gat_new_value;                                             \
++        _gat_result = *_gat_ptr;                                             \
++        _gat_new_value = (gpointer) ((gsize) _gat_result ^ _gat_val);        \
++        if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
++          break;                                                             \
++      }                                                                      \
++    _gat_result;                                                             \
+   }))
+ 
+ #else /* defined(__ATOMIC_SEQ_CST) */
+diff --git a/glib/gbitlock.c b/glib/gbitlock.c
+index 900897517e04..f0e453e433e2 100644
+--- a/glib/gbitlock.c
++++ b/glib/gbitlock.c
+@@ -33,6 +33,8 @@
+ 
+ #include "gthreadprivate.h"
+ 
++#include <stdfil.h>
++
+ #ifdef G_BIT_LOCK_FORCE_FUTEX_EMULATION
+ #undef HAVE_FUTEX
+ #undef HAVE_FUTEX_TIME64
+@@ -413,13 +415,13 @@ pointer_bit_lock_mask_ptr (gpointer ptr, guint lock_bit, gboolean set, guintptr
+     }
+ 
+   if (lock_bit == G_MAXUINT)
+-    return (gpointer) x_ptr;
++      return (gpointer) zmkptr (ptr, x_ptr);
+ 
+   lock_mask = (guintptr) (1u << lock_bit);
+   if (set)
+-    return (gpointer) (x_ptr | lock_mask);
++    return (gpointer) zmkptr (ptr, (x_ptr | lock_mask));
+   else
+-    return (gpointer) (x_ptr & ~lock_mask);
++    return (gpointer) zmkptr (ptr, (x_ptr & ~lock_mask));
+ }
+ 
+ /**
+@@ -442,44 +444,19 @@ pointer_bit_lock_mask_ptr (gpointer ptr, guint lock_bit, gboolean set, guintptr
+ void
+ (g_pointer_bit_lock_and_get) (gpointer address,
+                               guint lock_bit,
+-                              guintptr *out_ptr)
++                              gpointer *out_ptr)
+ {
+   guint class = bit_lock_contended_class (address);
+   guintptr mask;
+-  guintptr v;
++  gpointer v;
+ 
+   g_return_if_fail (lock_bit < 32);
+ 
+   mask = 1u << lock_bit;
+ 
+-#ifdef USE_ASM_GOTO
+-  if (G_LIKELY (!out_ptr))
+-    {
+-      while (TRUE)
+-        {
+-          __asm__ volatile goto ("lock bts %1, (%0)\n"
+-                                 "jc %l[contended]"
+-                                 : /* no output */
+-                                 : "r"(address), "r"((gsize) lock_bit)
+-                                 : "cc", "memory"
+-                                 : contended);
+-          return;
+-
+-        contended:
+-          v = (guintptr) g_atomic_pointer_get ((gpointer *) address);
+-          if (v & mask)
+-            {
+-              g_atomic_int_add (&g_bit_lock_contended[class], +1);
+-              g_futex_wait (g_futex_int_address (address), v);
+-              g_atomic_int_add (&g_bit_lock_contended[class], -1);
+-            }
+-        }
+-    }
+-#endif
+-
+ retry:
+   v = g_atomic_pointer_or ((gpointer *) address, mask);
+-  if (v & mask)
++  if ((guintptr) v & mask)
+     /* already locked */
+     {
+       g_atomic_int_add (&g_bit_lock_contended[class], +1);
+@@ -489,7 +466,7 @@ retry:
+     }
+ 
+   if (out_ptr)
+-    *out_ptr = (v | mask);
++      *out_ptr = (gpointer) ((guintptr) v | mask);
+ }
+ 
+ /**
+@@ -540,29 +517,16 @@ gboolean
+   g_return_val_if_fail (lock_bit < 32, FALSE);
+ 
+   {
+-#ifdef USE_ASM_GOTO
+-    gboolean result;
+-
+-    __asm__ volatile ("lock bts %2, (%1)\n"
+-                      "setnc %%al\n"
+-                      "movzx %%al, %0"
+-                      : "=r" (result)
+-                      : "r" (address), "r" ((gsize) lock_bit)
+-                      : "cc", "memory");
+-
+-    return result;
+-#else
+     void *address_nonvolatile = (void *) address;
+     gpointer *pointer_address = address_nonvolatile;
+     gsize mask = 1u << lock_bit;
+-    guintptr v;
++    gpointer v;
+ 
+     g_return_val_if_fail (lock_bit < 32, FALSE);
+ 
+     v = g_atomic_pointer_or (pointer_address, mask);
+ 
+     return (~(gsize) v & mask) != 0;
+-#endif
+   }
+ }
+ 
+diff --git a/glib/gbitlock.h b/glib/gbitlock.h
+index f44a52c3771f..6257e6358b43 100644
+--- a/glib/gbitlock.h
++++ b/glib/gbitlock.h
+@@ -48,7 +48,7 @@ void      g_pointer_bit_lock              (volatile void *address,
+ GLIB_AVAILABLE_IN_2_80
+ void      g_pointer_bit_lock_and_get      (gpointer address,
+                                            guint lock_bit,
+-                                           guintptr *out_ptr);
++                                           gpointer *out_ptr);
+ 
+ GLIB_AVAILABLE_IN_ALL
+ gboolean  g_pointer_bit_trylock           (volatile void *address,
+diff --git a/glib/gdataset.c b/glib/gdataset.c
+index 992e17368217..07fb48d66b28 100644
+--- a/glib/gdataset.c
++++ b/glib/gdataset.c
+@@ -140,7 +140,7 @@ static GDataset     *g_dataset_cached = NULL; /* should this be
+ G_ALWAYS_INLINE static inline GData *
+ g_datalist_lock_and_get (GData **datalist)
+ {
+-  guintptr ptr;
++  gpointer ptr;
+ 
+   g_pointer_bit_lock_and_get ((void **) datalist, DATALIST_LOCK_BIT, &ptr);
+   return G_DATALIST_CLEAN_POINTER (ptr);
+diff --git a/glib/gtypes.h b/glib/gtypes.h
+index 9d912d52363d..969eb1a4b197 100644
+--- a/glib/gtypes.h
++++ b/glib/gtypes.h
+@@ -245,7 +245,7 @@ typedef const gchar *   (*GTranslateFunc)       (const gchar   *str,
+ 
+ /* Arch specific stuff for speed
+  */
+-#if defined (__GNUC__) && (__GNUC__ >= 2) && defined (__OPTIMIZE__)
++#if defined (__GNUC__) && (__GNUC__ >= 2) && defined (__OPTIMIZE__) && !defined(__FILC__)
+ 
+ #  if __GNUC__ >= 4 && defined (__GNUC_MINOR__) && __GNUC_MINOR__ >= 3
+ #    define GUINT32_SWAP_LE_BE(val) ((guint32) __builtin_bswap32 ((guint32) (val)))
+diff --git a/glib/tests/atomic.c b/glib/tests/atomic.c
+index dff493d27e0f..8104452da665 100644
+--- a/glib/tests/atomic.c
++++ b/glib/tests/atomic.c
+@@ -182,13 +182,13 @@ test_types (void)
+   gu2 = (guintptr) g_atomic_pointer_add (&gu, 5);
+   g_assert_cmpuint (gu2, ==, 0);
+   g_assert_cmpuint (gu, ==, 5);
+-  gu2 = g_atomic_pointer_and (&gu, 6);
++  gu2 = (guintptr) g_atomic_pointer_and (&gu, 6);
+   g_assert_cmpuint (gu2, ==, 5);
+   g_assert_cmpuint (gu, ==, 4);
+-  gu2 = g_atomic_pointer_or (&gu, 8);
++  gu2 = (guintptr) g_atomic_pointer_or (&gu, 8);
+   g_assert_cmpuint (gu2, ==, 4);
+   g_assert_cmpuint (gu, ==, 12);
+-  gu2 = g_atomic_pointer_xor (&gu, 4);
++  gu2 = (guintptr) g_atomic_pointer_xor (&gu, 4);
+   g_assert_cmpuint (gu2, ==, 12);
+   g_assert_cmpuint (gu, ==, 8);
+   vp_str2 = g_atomic_pointer_exchange (&vp_str, str);
+@@ -362,16 +362,17 @@ G_GNUC_END_IGNORE_DEPRECATIONS
+   g_assert_true (res);
+   g_assert_cmpuint (gu, ==, 0);
+   g_assert_cmpuint ((guintptr) cp, ==, 0);
++#pragma clang diagnostic ignored "-Wbad-function-cast"
+   gu2 = (guintptr) g_atomic_pointer_add (&gu, 5);
+   g_assert_cmpuint (gu2, ==, 0);
+   g_assert_cmpuint (gu, ==, 5);
+-  gu2 = g_atomic_pointer_and (&gu, 6);
++  gu2 = (guintptr) g_atomic_pointer_and (&gu, 6);
+   g_assert_cmpuint (gu2, ==, 5);
+   g_assert_cmpuint (gu, ==, 4);
+-  gu2 = g_atomic_pointer_or (&gu, 8);
++  gu2 = (guintptr) g_atomic_pointer_or (&gu, 8);
+   g_assert_cmpuint (gu2, ==, 4);
+   g_assert_cmpuint (gu, ==, 12);
+-  gu2 = g_atomic_pointer_xor (&gu, 4);
++  gu2 = (guintptr) g_atomic_pointer_xor (&gu, 4);
+   g_assert_cmpuint (gu2, ==, 12);
+   g_assert_cmpuint (gu, ==, 8);
+   vp2 = g_atomic_pointer_exchange (&gu, NULL);
+diff --git a/glib/valgrind.h b/glib/valgrind.h
+index 6f1c452975f9..54765374b409 100644
+--- a/glib/valgrind.h
++++ b/glib/valgrind.h
+@@ -173,6 +173,9 @@
+ #  endif
+ #endif
+ 
++#if !defined(NVALGRIND)
++#  define NVALGRIND 1
++#endif
+ 
+ /* ------------------------------------------------------------------ */
+ /* ARCHITECTURE SPECIFICS for SPECIAL INSTRUCTIONS.  There is nothing */
+diff --git a/gobject/gclosure.c b/gobject/gclosure.c
+index af219c268afc..8ea5fdff97df 100644
+--- a/gobject/gclosure.c
++++ b/gobject/gclosure.c
+@@ -1206,15 +1206,15 @@ value_to_ffi_type (const GValue *gvalue,
+       *tmpval_used = FALSE;
+     }
+ 
+-  switch (type)
++  switch ((uintptr_t) type)
+     {
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_CHAR:
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_INT:
+       rettype = &ffi_type_sint;
+       *value = (gpointer)&(gvalue->data[0].v_int);
+       break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       /* enums are stored in v_long even though they are integers, which makes
+        * marshalling through libffi somewhat complicated.  They need to be
+        * marshalled as signed ints, but we need to use a temporary int sized
+@@ -1227,49 +1227,49 @@ value_to_ffi_type (const GValue *gvalue,
+       *value = enum_tmpval;
+       *tmpval_used = TRUE;
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       g_assert (enum_tmpval != NULL);
+       rettype = &ffi_type_uint;
+       *enum_tmpval = g_value_get_flags (gvalue);
+       *value = enum_tmpval;
+       *tmpval_used = TRUE;
+       break;
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UINT:
+       rettype = &ffi_type_uint;
+       *value = (gpointer)&(gvalue->data[0].v_uint);
+       break;
+-    case G_TYPE_STRING:
+-    case G_TYPE_OBJECT:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_PARAM:
+-    case G_TYPE_POINTER:
+-    case G_TYPE_INTERFACE:
+-    case G_TYPE_VARIANT:
++    case (uintptr_t) G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_PARAM:
++    case (uintptr_t) G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_INTERFACE:
++    case (uintptr_t) G_TYPE_VARIANT:
+       rettype = &ffi_type_pointer;
+       *value = (gpointer)&(gvalue->data[0].v_pointer);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       rettype = &ffi_type_float;
+       *value = (gpointer)&(gvalue->data[0].v_float);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       rettype = &ffi_type_double;
+       *value = (gpointer)&(gvalue->data[0].v_double);
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       rettype = &ffi_type_slong;
+       *value = (gpointer)&(gvalue->data[0].v_long);
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       rettype = &ffi_type_ulong;
+       *value = (gpointer)&(gvalue->data[0].v_ulong);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       rettype = &ffi_type_sint64;
+       *value = (gpointer)&(gvalue->data[0].v_int64);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       rettype = &ffi_type_uint64;
+       *value = (gpointer)&(gvalue->data[0].v_uint64);
+       break;
+@@ -1291,66 +1291,66 @@ value_from_ffi_type (GValue *gvalue, gpointer *value)
+   type = G_VALUE_TYPE (gvalue);
+ 
+ restart:
+-  switch (g_type_fundamental (type))
++  switch ((uintptr_t) g_type_fundamental (type))
+     {
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       g_value_set_int (gvalue, (gint) *int_val);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       g_value_set_float (gvalue, *(gfloat*)value);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       g_value_set_double (gvalue, *(gdouble*)value);
+       break;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       g_value_set_boolean (gvalue, (gboolean) *int_val);
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       g_value_take_string (gvalue, *(gchar**)value);
+       break;
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       g_value_set_schar (gvalue, (gint8) *int_val);
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       g_value_set_uchar (gvalue, (guchar) *int_val);
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       g_value_set_uint (gvalue, (guint) *int_val);
+       break;
+-    case G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_POINTER:
+       g_value_set_pointer (gvalue, *(gpointer*)value);
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       g_value_set_long (gvalue, (glong) *int_val);
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       g_value_set_ulong (gvalue, (gulong) *int_val);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       g_value_set_int64 (gvalue, (gint64) *int_val);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       g_value_set_uint64 (gvalue, (guint64) *int_val);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       g_value_take_boxed (gvalue, *(gpointer*)value);
+       break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       g_value_set_enum (gvalue, (gint) *int_val);
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       g_value_set_flags (gvalue, (guint) *int_val);
+       break;
+-    case G_TYPE_PARAM:
++    case (uintptr_t) G_TYPE_PARAM:
+       g_value_take_param (gvalue, *(gpointer*)value);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       g_value_take_object (gvalue, *(gpointer*)value);
+       break;
+-    case G_TYPE_VARIANT:
++    case (uintptr_t) G_TYPE_VARIANT:
+       g_value_take_variant (gvalue, *(gpointer*)value);
+       break;
+-    case G_TYPE_INTERFACE:
++    case (uintptr_t) G_TYPE_INTERFACE:
+       type = g_type_interface_instantiatable_prerequisite (type);
+       if (type)
+         goto restart;
+@@ -1383,53 +1383,53 @@ va_to_ffi_type (GType gtype,
+   GType type = g_type_fundamental (gtype);
+   g_assert (type != G_TYPE_INVALID);
+ 
+-  switch (type)
++  switch ((uintptr_t) type)
+     {
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_CHAR:
+-    case G_TYPE_INT:
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_ENUM:
+       rettype = &ffi_type_sint;
+       storage->_gint = va_arg (*va, gint);
+       break;
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_UINT:
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_FLAGS:
+       rettype = &ffi_type_uint;
+       storage->_guint = va_arg (*va, guint);
+       break;
+-    case G_TYPE_STRING:
+-    case G_TYPE_OBJECT:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_PARAM:
+-    case G_TYPE_POINTER:
+-    case G_TYPE_INTERFACE:
+-    case G_TYPE_VARIANT:
++    case (uintptr_t) G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_PARAM:
++    case (uintptr_t) G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_INTERFACE:
++    case (uintptr_t) G_TYPE_VARIANT:
+       rettype = &ffi_type_pointer;
+       storage->_gpointer = va_arg (*va, gpointer);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       /* Float args are passed as doubles in varargs */
+       rettype = &ffi_type_float;
+       storage->_float = (float)va_arg (*va, double);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       rettype = &ffi_type_double;
+       storage->_double = va_arg (*va, double);
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       rettype = &ffi_type_slong;
+       storage->_glong = va_arg (*va, glong);
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       rettype = &ffi_type_ulong;
+       storage->_gulong = va_arg (*va, gulong);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       rettype = &ffi_type_sint64;
+       storage->_gint64 = va_arg (*va, gint64);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       rettype = &ffi_type_uint64;
+       storage->_guint64 = va_arg (*va, guint64);
+       break;
+@@ -1621,7 +1621,7 @@ g_cclosure_marshal_generic_va (GClosure *closure,
+   /* Box non-primitive arguments */
+   for (i = 0; i < n_params; i++)
+     {
+-      GType type = param_types[i]  & ~G_SIGNAL_TYPE_STATIC_SCOPE;
++      GType type = (GType) ((uintptr_t) param_types[i]  & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
+       GType fundamental = G_TYPE_FUNDAMENTAL (type);
+ 
+       atypes[i+1] = va_to_ffi_type (type,
+@@ -1629,7 +1629,7 @@ g_cclosure_marshal_generic_va (GClosure *closure,
+ 				    &storage[i]);
+       args[i+1] = &storage[i];
+ 
+-      if ((param_types[i]  & G_SIGNAL_TYPE_STATIC_SCOPE) == 0)
++      if (((uintptr_t) param_types[i]  & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0)
+ 	{
+ 	  if (fundamental == G_TYPE_STRING && storage[i]._gpointer != NULL)
+ 	    storage[i]._gpointer = g_strdup (storage[i]._gpointer);
+@@ -1654,10 +1654,10 @@ g_cclosure_marshal_generic_va (GClosure *closure,
+   /* Unbox non-primitive arguments */
+   for (i = 0; i < n_params; i++)
+     {
+-      GType type = param_types[i]  & ~G_SIGNAL_TYPE_STATIC_SCOPE;
++      GType type = (GType) ((uintptr_t) param_types[i]  & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
+       GType fundamental = G_TYPE_FUNDAMENTAL (type);
+ 
+-      if ((param_types[i]  & G_SIGNAL_TYPE_STATIC_SCOPE) == 0)
++      if (((uintptr_t) param_types[i]  & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0)
+ 	{
+ 	  if (fundamental == G_TYPE_STRING && storage[i]._gpointer != NULL)
+ 	    g_free (storage[i]._gpointer);
+diff --git a/gobject/glib-genmarshal.in b/gobject/glib-genmarshal.in
+index aa5af43bd3ff..445432ab3e9b 100755
+--- a/gobject/glib-genmarshal.in
++++ b/gobject/glib-genmarshal.in
+@@ -80,13 +80,13 @@ DEPRECATED_MSG_STR = 'The token "{}" is deprecated; use "{}" instead'
+ VA_ARG_STR = \
+     '  arg{:d} = ({:s}) va_arg (args_copy, {:s});'
+ STATIC_CHECK_STR = \
+-    '(param_types[{:d}] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && '
++    '((uintptr_t) param_types[{:d}] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && '
+ BOX_TYPED_STR = \
+-    '    arg{idx:d} = {box_func} (param_types[{idx:d}] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg{idx:d});'
++    '    arg{idx:d} = {box_func} ((GType) ((uintptr_t) param_types[{idx:d}] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg{idx:d});'
+ BOX_UNTYPED_STR = \
+     '    arg{idx:d} = {box_func} (arg{idx:d});'
+ UNBOX_TYPED_STR = \
+-    '    {unbox_func} (param_types[{idx:d}] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg{idx:d});'
++    '    {unbox_func} ((GType) ((uintptr_t) param_types[{idx:d}] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg{idx:d});'
+ UNBOX_UNTYPED_STR = \
+     '    {unbox_func} (arg{idx:d});'
+ 
+diff --git a/gobject/gmarshal.c b/gobject/gmarshal.c
+index 2ccbe12cd5c3..2b04af87cb8b 100644
+--- a/gobject/gmarshal.c
++++ b/gobject/gmarshal.c
+@@ -20,6 +20,7 @@
+ #include "genums.h"
+ #include "gboxed.h"
+ #include "gvaluetypes.h"
++#include <inttypes.h>
+ 
+ 
+ #ifdef G_ENABLE_DEBUG
+@@ -1443,7 +1444,7 @@ g_cclosure_marshal_VOID__STRINGv (GClosure     *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_strdup (arg0);
+   va_end (args_copy);
+ 
+@@ -1462,7 +1463,7 @@ g_cclosure_marshal_VOID__STRINGv (GClosure     *closure,
+   callback (data1,
+             arg0,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_free (arg0);
+ }
+ 
+@@ -1555,7 +1556,7 @@ g_cclosure_marshal_VOID__PARAMv (GClosure     *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_param_spec_ref (arg0);
+   va_end (args_copy);
+ 
+@@ -1574,7 +1575,7 @@ g_cclosure_marshal_VOID__PARAMv (GClosure     *closure,
+   callback (data1,
+             arg0,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_param_spec_unref (arg0);
+ }
+ 
+@@ -1667,8 +1668,8 @@ g_cclosure_marshal_VOID__BOXEDv (GClosure     *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+-    arg0 = g_boxed_copy (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg0);
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++    arg0 = g_boxed_copy ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg0);
+   va_end (args_copy);
+ 
+   if (G_CCLOSURE_SWAP_DATA (closure))
+@@ -1686,8 +1687,8 @@ g_cclosure_marshal_VOID__BOXEDv (GClosure     *closure,
+   callback (data1,
+             arg0,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+-    g_boxed_free (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg0);
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg0);
+ }
+ 
+ /**
+@@ -2003,7 +2004,7 @@ g_cclosure_marshal_VOID__VARIANTv (GClosure     *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     arg0 = g_variant_ref_sink (arg0);
+   va_end (args_copy);
+ 
+@@ -2022,7 +2023,7 @@ g_cclosure_marshal_VOID__VARIANTv (GClosure     *closure,
+   callback (data1,
+             arg0,
+             data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+     g_variant_unref (arg0);
+ }
+ 
+@@ -2489,11 +2490,11 @@ g_cclosure_marshal_BOOLEAN__BOXED_BOXEDv (GClosure     *closure,
+ 
+   va_copy (args_copy, args);
+   arg0 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+-    arg0 = g_boxed_copy (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg0);
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++    arg0 = g_boxed_copy ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg0);
+   arg1 = (gpointer) va_arg (args_copy, gpointer);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    arg1 = g_boxed_copy (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    arg1 = g_boxed_copy ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+   va_end (args_copy);
+ 
+   if (G_CCLOSURE_SWAP_DATA (closure))
+@@ -2512,10 +2513,10 @@ g_cclosure_marshal_BOOLEAN__BOXED_BOXEDv (GClosure     *closure,
+                        arg0,
+                        arg1,
+                        data2);
+-  if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+-    g_boxed_free (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg0);
+-  if ((param_types[1] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
+-    g_boxed_free (param_types[1] & ~G_SIGNAL_TYPE_STATIC_SCOPE, arg1);
++  if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg0);
++  if (((uintptr_t) param_types[1] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg1 != NULL)
++    g_boxed_free ((GType) ((uintptr_t) param_types[1] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), arg1);
+ 
+   g_value_set_boolean (return_value, v_return);
+ }
+diff --git a/gobject/gobject-query.c b/gobject/gobject-query.c
+index 76670320f3a0..a4460a8d5eb7 100644
+--- a/gobject/gobject-query.c
++++ b/gobject/gobject-query.c
+@@ -200,17 +200,17 @@ main (gint   argc,
+     show_nodes (root, 0, iindent);
+   if (gen_froots)
+     {
+-      root = ~0;
+-      for (i = 0; i <= G_TYPE_FUNDAMENTAL_MAX; i += G_TYPE_MAKE_FUNDAMENTAL (1))
++        root = (GType) ~0;
++        for (i = 0; i <= G_TYPE_FUNDAMENTAL_MAX; i += (gint) G_TYPE_MAKE_FUNDAMENTAL (1))
+ 	{
+-	  const gchar *name = g_type_name (i);
+-          GType sibling = i + G_TYPE_MAKE_FUNDAMENTAL (1);
++          const gchar *name = g_type_name ((GType) i);
++          GType sibling = (GType) (i + (gint) G_TYPE_MAKE_FUNDAMENTAL (1));
+ 
+-          if (sibling > G_TYPE_FUNDAMENTAL_MAX || g_type_name (sibling) == NULL)
++          if (sibling > (GType) G_TYPE_FUNDAMENTAL_MAX || g_type_name (sibling) == NULL)
+             sibling = 0;
+ 	  
+ 	  if (name)
+-	    show_nodes (i, sibling, iindent);
++	    show_nodes ((GType) i, sibling, iindent);
+ 	}
+     }
+   
+diff --git a/gobject/gobject.c b/gobject/gobject.c
+index 9ebe362ce884..0fe6fe54e9f0 100644
+--- a/gobject/gobject.c
++++ b/gobject/gobject.c
+@@ -5447,10 +5447,10 @@ _weak_ref_lock (GWeakRef *weak_ref, GObject **out_object)
+ 
+   if (out_object)
+     {
+-      guintptr ptr;
++      gpointer ptr;
+ 
+       g_pointer_bit_lock_and_get (&weak_ref->priv.p, WEAK_REF_LOCK_BIT, &ptr);
+-      *out_object = _weak_ref_clean_pointer ((gpointer) ptr);
++      *out_object = _weak_ref_clean_pointer (ptr);
+     }
+   else
+     g_pointer_bit_lock (&weak_ref->priv.p, WEAK_REF_LOCK_BIT);
+diff --git a/gobject/gparam.c b/gobject/gparam.c
+index 1571b34e50b0..a398a1635d97 100644
+--- a/gobject/gparam.c
++++ b/gobject/gparam.c
+@@ -255,11 +255,11 @@ g_param_spec_unref (GParamSpec *pspec)
+ void
+ g_param_spec_sink (GParamSpec *pspec)
+ {
+-  guintptr oldvalue;
++  gpointer oldvalue;
+   g_return_if_fail (G_IS_PARAM_SPEC (pspec));
+ 
+   oldvalue = g_atomic_pointer_and (&pspec->qdata, ~(gsize)PARAM_FLOATING_FLAG);
+-  if (oldvalue & PARAM_FLOATING_FLAG)
++  if ((gsize) oldvalue & PARAM_FLOATING_FLAG)
+     g_param_spec_unref (pspec);
+ }
+ 
+@@ -275,11 +275,11 @@ g_param_spec_sink (GParamSpec *pspec)
+ GParamSpec*
+ g_param_spec_ref_sink (GParamSpec *pspec)
+ {
+-  guintptr oldvalue;
++  gpointer oldvalue;
+   g_return_val_if_fail (G_IS_PARAM_SPEC (pspec), NULL);
+ 
+   oldvalue = g_atomic_pointer_and (&pspec->qdata, ~(gsize)PARAM_FLOATING_FLAG);
+-  if (!(oldvalue & PARAM_FLOATING_FLAG))
++  if (!((gsize) oldvalue & PARAM_FLOATING_FLAG))
+     g_param_spec_ref (pspec);
+ 
+   return pspec;
+diff --git a/gobject/gparamspecs.c b/gobject/gparamspecs.c
+index 12a81245ac28..7aea4f430bb5 100644
+--- a/gobject/gparamspecs.c
++++ b/gobject/gparamspecs.c
+@@ -1735,7 +1735,7 @@ _g_param_spec_types_init (void)
+       sizeof (GParamSpecValueArray),	/* instance_size */
+       0,				/* n_preallocs */
+       param_value_array_init,		/* instance_init */
+-      0xdeadbeef,			/* value_type, assigned further down */
++      (GType) 0xdeadbeef,		/* value_type, assigned further down */
+       param_value_array_finalize,	/* finalize */
+       param_value_array_set_default,	/* value_set_default */
+       param_value_array_validate,	/* value_validate */
+@@ -1792,7 +1792,7 @@ _g_param_spec_types_init (void)
+       sizeof (GParamSpecGType),	/* instance_size */
+       0,			/* n_preallocs */
+       param_gtype_init,		/* instance_init */
+-      0xdeadbeef,		/* value_type, assigned further down */
++      (GType) 0xdeadbeef,	/* value_type, assigned further down */
+       NULL,			/* finalize */
+       param_gtype_set_default,	/* value_set_default */
+       param_gtype_validate,	/* value_validate */
+diff --git a/gobject/gsignal.c b/gobject/gsignal.c
+index a5b471cb3c5f..9a0c6556a9d2 100644
+--- a/gobject/gsignal.c
++++ b/gobject/gsignal.c
+@@ -37,6 +37,7 @@
+ #include "gobject.h"
+ #include "genums.h"
+ #include "gobject_trace.h"
++#include <inttypes.h>
+ 
+ 
+ #define REPORT_BUG      "please report occurrence circumstances to https://gitlab.gnome.org/GNOME/glib/issues/new"
+@@ -1618,8 +1619,8 @@ g_signal_newv (const gchar       *signal_name,
+   g_return_val_if_fail (G_TYPE_IS_INSTANTIATABLE (itype) || G_TYPE_IS_INTERFACE (itype), 0);
+   if (n_params)
+     g_return_val_if_fail (param_types != NULL, 0);
+-  g_return_val_if_fail ((return_type & G_SIGNAL_TYPE_STATIC_SCOPE) == 0, 0);
+-  if (return_type == (G_TYPE_NONE & ~G_SIGNAL_TYPE_STATIC_SCOPE))
++  g_return_val_if_fail (((uintptr_t) return_type & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0, 0);
++  if (return_type == (GType) ((uintptr_t) G_TYPE_NONE & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE))
+     g_return_val_if_fail (accumulator == NULL, 0);
+   if (!accumulator)
+     g_return_val_if_fail (accu_data == NULL, 0);
+@@ -1661,7 +1662,7 @@ g_signal_newv (const gchar       *signal_name,
+       return 0;
+     }
+   for (i = 0; i < n_params; i++)
+-    if (!G_TYPE_IS_VALUE (param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE))
++    if (!G_TYPE_IS_VALUE ((GType) ((uintptr_t) param_types[i] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE)))
+       {
+ 	g_critical (G_STRLOC ": parameter %d of type '%s' for signal \"%s::%s\" is not a value type",
+ 		    i + 1, type_debug_name (param_types[i]), type_debug_name (itype), name);
+@@ -1669,7 +1670,7 @@ g_signal_newv (const gchar       *signal_name,
+ 	SIGNAL_UNLOCK ();
+ 	return 0;
+       }
+-  if (return_type != G_TYPE_NONE && !G_TYPE_IS_VALUE (return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE))
++  if (return_type != G_TYPE_NONE && !G_TYPE_IS_VALUE ((GType) ((uintptr_t) return_type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE)))
+     {
+       g_critical (G_STRLOC ": return value of type '%s' for signal \"%s::%s\" is not a value type",
+ 		  type_debug_name (return_type), type_debug_name (itype), name);
+@@ -1728,7 +1729,7 @@ g_signal_newv (const gchar       *signal_name,
+   else if (n_params == 1 && return_type == G_TYPE_NONE)
+     {
+ #define ADD_CHECK(__type__) \
+-      else if (g_type_is_a (param_types[0] & ~G_SIGNAL_TYPE_STATIC_SCOPE, G_TYPE_ ##__type__))         \
++      else if (g_type_is_a ((GType) ((uintptr_t) param_types[0] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), G_TYPE_ ##__type__)) \
+ 	{                                                                \
+ 	  builtin_c_marshaller = g_cclosure_marshal_VOID__ ## __type__;  \
+ 	  builtin_va_marshaller = g_cclosure_marshal_VOID__ ## __type__ ##v;     \
+@@ -2178,8 +2179,8 @@ g_signal_chain_from_overridden_handler (gpointer instance,
+       for (i = 0; i < node->n_params; i++)
+         {
+           gchar *error;
+-          GType ptype = node->param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
+-          gboolean static_scope = node->param_types[i] & G_SIGNAL_TYPE_STATIC_SCOPE;
++          GType ptype = (GType) ((uintptr_t) node->param_types[i] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
++          gboolean static_scope = (uintptr_t) node->param_types[i] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE;
+ 
+           SIGNAL_UNLOCK ();
+           G_VALUE_COLLECT_INIT (param_values + i, ptype,
+@@ -2222,8 +2223,8 @@ g_signal_chain_from_overridden_handler (gpointer instance,
+         {
+           GValue return_value = G_VALUE_INIT;
+           gchar *error = NULL;
+-          GType rtype = signal_return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE;
+-          gboolean static_scope = signal_return_type & G_SIGNAL_TYPE_STATIC_SCOPE;
++          GType rtype = (GType) ((uintptr_t) signal_return_type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
++          gboolean static_scope = (uintptr_t) signal_return_type & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE;
+ 
+           g_value_init (&return_value, rtype);
+ 
+@@ -3378,8 +3379,8 @@ signal_emit_valist_unlocked (gpointer instance,
+ 	  GValue *return_accu, accu = G_VALUE_INIT;
+ 	  GType instance_type = G_TYPE_FROM_INSTANCE (instance);
+ 	  GValue emission_return = G_VALUE_INIT;
+-          GType rtype = node_copy.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE;
+-	  gboolean static_scope = node_copy.return_type & G_SIGNAL_TYPE_STATIC_SCOPE;
++          GType rtype = (GType) ((uintptr_t) node_copy.return_type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
++	  gboolean static_scope = (uintptr_t) node_copy.return_type & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE;
+ 
+ 	  if (rtype == G_TYPE_NONE)
+ 	    return_accu = NULL;
+@@ -3448,7 +3449,7 @@ signal_emit_valist_unlocked (gpointer instance,
+ 	      gchar *error = NULL;
+               for (i = 0; i < node_copy.n_params; i++)
+ 		{
+-                  GType ptype = node_copy.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
++                  GType ptype = (GType) ((uintptr_t) node_copy.param_types[i] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
+ 		  G_VALUE_COLLECT_SKIP (ptype, var_args);
+ 		}
+ 
+@@ -3491,8 +3492,8 @@ signal_emit_valist_unlocked (gpointer instance,
+   for (i = 0; i < node_copy.n_params; i++)
+     {
+       gchar *error;
+-      GType ptype = node_copy.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
+-      gboolean static_scope = node_copy.param_types[i] & G_SIGNAL_TYPE_STATIC_SCOPE;
++      GType ptype = (GType) ((uintptr_t) node_copy.param_types[i] & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
++      gboolean static_scope = (uintptr_t) node_copy.param_types[i] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE;
+ 
+       G_VALUE_COLLECT_INIT (param_values + i, ptype,
+ 			    var_args,
+@@ -3524,8 +3525,8 @@ signal_emit_valist_unlocked (gpointer instance,
+     {
+       GValue return_value = G_VALUE_INIT;
+       gchar *error = NULL;
+-      GType rtype = node_copy.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE;
+-      gboolean static_scope = node_copy.return_type & G_SIGNAL_TYPE_STATIC_SCOPE;
++      GType rtype = (GType) ((uintptr_t) node_copy.return_type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE);
++      gboolean static_scope = (uintptr_t) node_copy.return_type & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE;
+       
+       g_value_init (&return_value, rtype);
+ 
+@@ -3645,7 +3646,7 @@ maybe_init_accumulator_unlocked (SignalNode *node,
+         return accumulator_value;
+ 
+       g_value_init (accumulator_value,
+-                    node->return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++                    (GType) ((uintptr_t) node->return_type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+       return accumulator_value;
+     }
+ 
+@@ -4002,7 +4003,7 @@ signal_emit_unlocked_R (SignalNode   *node,
+       SIGNAL_UNLOCK ();
+       if (node->return_type != G_TYPE_NONE && !accumulator)
+ 	{
+-	  g_value_init (&accu, node->return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++	  g_value_init (&accu, (GType) ((uintptr_t) node->return_type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 	  need_unset = TRUE;
+ 	}
+       g_closure_invoke (class_closure,
+@@ -4082,7 +4083,7 @@ type_debug_name (GType type)
+ {
+   if (type)
+     {
+-      const char *name = g_type_name (type & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++      const char *name = g_type_name ((GType) ((uintptr_t) type & ~(uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+       return name ? name : "<unknown>";
+     }
+   else
+diff --git a/gobject/gtype.c b/gobject/gtype.c
+index 8222fc493663..2f578a6ecedd 100644
+--- a/gobject/gtype.c
++++ b/gobject/gtype.c
+@@ -362,15 +362,15 @@ G_GNUC_END_IGNORE_DEPRECATIONS
+ /* --- type nodes --- */
+ static GHashTable       *static_type_nodes_ht = NULL;
+ static TypeNode		*static_fundamental_type_nodes[(G_TYPE_FUNDAMENTAL_MAX >> G_TYPE_FUNDAMENTAL_SHIFT) + 1] = { NULL, };
+-static GType		 static_fundamental_next = G_TYPE_RESERVED_USER_FIRST;
++static GType		 static_fundamental_next = (GType) G_TYPE_RESERVED_USER_FIRST;
+ 
+ static inline TypeNode*
+ lookup_type_node_I (GType utype)
+ {
+-  if (utype > G_TYPE_FUNDAMENTAL_MAX)
+-    return (TypeNode*) (utype & ~TYPE_ID_MASK);
++  if (utype > (GType) G_TYPE_FUNDAMENTAL_MAX)
++    return (TypeNode*) ((uintptr_t) utype & ~(uintptr_t) TYPE_ID_MASK);
+   else
+-    return static_fundamental_type_nodes[utype >> G_TYPE_FUNDAMENTAL_SHIFT];
++    return static_fundamental_type_nodes[(uintptr_t) utype >> G_TYPE_FUNDAMENTAL_SHIFT];
+ }
+ 
+ /**
+@@ -414,7 +414,7 @@ type_node_any_new_W (TypeNode             *pnode,
+   if (!pnode)					      /* offset fundamental types */
+     {
+       node = G_STRUCT_MEMBER_P (node, SIZEOF_FUNDAMENTAL_INFO);
+-      static_fundamental_type_nodes[ftype >> G_TYPE_FUNDAMENTAL_SHIFT] = node;
++      static_fundamental_type_nodes[(uintptr_t) ftype >> G_TYPE_FUNDAMENTAL_SHIFT] = node;
+       type = ftype;
+ 
+ #if ENABLE_VALGRIND
+@@ -424,7 +424,7 @@ type_node_any_new_W (TypeNode             *pnode,
+   else
+     type = GPOINTER_TO_TYPE (node);
+   
+-  g_assert ((type & TYPE_ID_MASK) == 0);
++  g_assert (((uintptr_t) type & (uintptr_t) TYPE_ID_MASK) == 0);
+   
+   node->n_supers = n_supers;
+   if (!pnode)
+@@ -523,11 +523,11 @@ type_node_fundamental_new_W (GType                 ftype,
+   GTypeFundamentalInfo *finfo;
+   TypeNode *node;
+ 
+-  g_assert ((ftype & TYPE_ID_MASK) == 0);
+-  g_assert (ftype <= G_TYPE_FUNDAMENTAL_MAX);
++  g_assert (((uintptr_t) ftype & (uintptr_t) TYPE_ID_MASK) == 0);
++  g_assert (ftype <= (GType) G_TYPE_FUNDAMENTAL_MAX);
+ 
+-  if (ftype >> G_TYPE_FUNDAMENTAL_SHIFT == static_fundamental_next)
+-    static_fundamental_next++;
++  if ((uintptr_t) ftype >> G_TYPE_FUNDAMENTAL_SHIFT == (uintptr_t) static_fundamental_next)
++    static_fundamental_next = (GType) ((uintptr_t) static_fundamental_next + 1);
+ 
+   node = type_node_any_new_W (NULL, ftype, name, NULL, type_flags);
+ 
+@@ -878,7 +878,7 @@ check_type_info_I (TypeNode        *pnode,
+   GTypeFundamentalInfo *finfo = type_node_fundamental_info_I (lookup_type_node_I (ftype));
+   gboolean is_interface = ftype == G_TYPE_INTERFACE;
+   
+-  g_assert (ftype <= G_TYPE_FUNDAMENTAL_MAX && !(ftype & TYPE_ID_MASK));
++  g_assert (ftype <= (GType) G_TYPE_FUNDAMENTAL_MAX && !((uintptr_t) ftype & (uintptr_t) TYPE_ID_MASK));
+   
+   /* check instance members */
+   if (!(finfo->type_flags & G_TYPE_FLAG_INSTANTIATABLE) &&
+@@ -1518,17 +1518,17 @@ type_iface_add_prerequisite_W (TypeNode *iface,
+   if (NODE_IS_IFACE (prerequisite_node))
+     {
+       dependants = iface_node_get_dependants_array_L (prerequisite_node);
+-      n_dependants = dependants ? dependants[0] : 0;
++      n_dependants = dependants ? (guint) dependants[0] : 0;
+       n_dependants += 1;
+       dependants = g_renew (GType, dependants, n_dependants + 1);
+       dependants[n_dependants] = NODE_TYPE (iface);
+-      dependants[0] = n_dependants;
++      dependants[0] = (GType) n_dependants;
+       iface_node_set_dependants_array_W (prerequisite_node, dependants);
+     }
+   
+   /* we need to notify all dependants */
+   dependants = iface_node_get_dependants_array_L (iface);
+-  n_dependants = dependants ? dependants[0] : 0;
++  n_dependants = dependants ? (guint) dependants[0] : 0;
+   for (i = 1; i <= n_dependants; i++)
+     type_iface_add_prerequisite_W (lookup_type_node_I (dependants[i]), prerequisite_node);
+ }
+@@ -2718,8 +2718,8 @@ g_type_register_fundamental (GType                       type_id,
+   
+   if (!check_type_name_I (type_name))
+     return 0;
+-  if ((type_id & TYPE_ID_MASK) ||
+-      type_id > G_TYPE_FUNDAMENTAL_MAX)
++  if (((uintptr_t) type_id & (uintptr_t) TYPE_ID_MASK) ||
++      type_id > (GType) G_TYPE_FUNDAMENTAL_MAX)
+     {
+       g_critical ("attempt to register fundamental type '%s' with invalid type id (%" G_GUINTPTR_FORMAT ")",
+ 		  type_name,
+@@ -4102,8 +4102,8 @@ g_type_fundamental_next (void)
+   G_READ_LOCK (&type_rw_lock);
+   type = static_fundamental_next;
+   G_READ_UNLOCK (&type_rw_lock);
+-  type = G_TYPE_MAKE_FUNDAMENTAL (type);
+-  return type <= G_TYPE_FUNDAMENTAL_MAX ? type : 0;
++  type = G_TYPE_MAKE_FUNDAMENTAL ((uintptr_t) type);
++  return type <= (GType) G_TYPE_FUNDAMENTAL_MAX ? type : 0;
+ }
+ 
+ /**
+diff --git a/gobject/gtype.h b/gobject/gtype.h
+index a16da4593255..40f180f61cc3 100644
+--- a/gobject/gtype.h
++++ b/gobject/gtype.h
+@@ -25,6 +25,7 @@
+ 
+ #include  <glib.h>
+ #include <gobject/gobject-visibility.h>
++#include <inttypes.h>
+ 
+ G_BEGIN_DECLS
+ 
+@@ -270,7 +271,7 @@ G_BEGIN_DECLS
+  *
+  * Returns: %TRUE is @type is fundamental
+  */
+-#define G_TYPE_IS_FUNDAMENTAL(type)             ((type) <= G_TYPE_FUNDAMENTAL_MAX)
++#define G_TYPE_IS_FUNDAMENTAL(type)             ((type) <= (GType) G_TYPE_FUNDAMENTAL_MAX)
+ /**
+  * G_TYPE_IS_DERIVED:
+  * @type: A #GType value
+@@ -281,7 +282,7 @@ G_BEGIN_DECLS
+  *
+  * Returns: %TRUE if @type is derived
+  */
+-#define G_TYPE_IS_DERIVED(type)                 ((type) > G_TYPE_FUNDAMENTAL_MAX)
++#define G_TYPE_IS_DERIVED(type)                 ((type) > (GType) G_TYPE_FUNDAMENTAL_MAX)
+ /**
+  * G_TYPE_IS_INTERFACE:
+  * @type: A #GType value
+@@ -421,13 +422,7 @@ G_BEGIN_DECLS
+  * A numerical value which represents the unique identifier of a registered
+  * type.
+  */
+-#if     GLIB_SIZEOF_VOID_P > GLIB_SIZEOF_SIZE_T
+-typedef guintptr                        GType;
+-#elif     GLIB_SIZEOF_SIZE_T != GLIB_SIZEOF_LONG || !defined (G_CXX_STD_VERSION)
+-typedef gsize                           GType;
+-#else   /* for historic reasons, C++ on non-Morello/CHERI systems links against gulong GTypes */
+-typedef gulong                          GType;
+-#endif
++typedef struct _GTypeOpaque             *GType;
+ typedef struct _GValue                  GValue;
+ typedef union  _GTypeCValue             GTypeCValue;
+ typedef struct _GTypePlugin             GTypePlugin;
+diff --git a/gobject/tests/basics-gobject.c b/gobject/tests/basics-gobject.c
+index 60ab0031984e..ff0904177254 100644
+--- a/gobject/tests/basics-gobject.c
++++ b/gobject/tests/basics-gobject.c
+@@ -100,7 +100,7 @@ test_object_test_iface_init (gpointer giface,
+   TestIfaceClass *iface = giface;
+ 
+   g_assert (iface_data == GUINT_TO_POINTER (42));
+-  g_assert_cmpint (G_TYPE_FROM_INTERFACE (iface), ==, TEST_TYPE_IFACE);
++  g_assert_cmpint ((uintptr_t) G_TYPE_FROM_INTERFACE (iface), ==, (uintptr_t) TEST_TYPE_IFACE);
+ 
+   /* assert iface_base_init() was already called */
+   g_assert_cmpuint (iface_base_init_count, >, 0);
+diff --git a/gobject/tests/dynamictype.c b/gobject/tests/dynamictype.c
+index 21421181649d..7c1eb92a5953 100644
+--- a/gobject/tests/dynamictype.c
++++ b/gobject/tests/dynamictype.c
+@@ -176,7 +176,7 @@ test_dynamic_type_query (void)
+ 
+   g_type_query (DYNAMIC_OBJECT_TYPE, &query_result);
+ 
+-  g_assert_cmpuint (query_result.type, !=, 0);
++  g_assert_cmpuint ((uintptr_t) query_result.type, !=, 0);
+   g_assert_cmpstr (query_result.type_name, ==, "DynamicObject");
+   g_assert_cmpuint (query_result.class_size, >=, sizeof (DynamicObjectClass));
+   g_assert_cmpuint (query_result.instance_size, >=, sizeof (DynamicObject));
+diff --git a/gobject/tests/genmarshal.py b/gobject/tests/genmarshal.py
+index e2ecf7424b2c..3b2a5cb18625 100644
+--- a/gobject/tests/genmarshal.py
++++ b/gobject/tests/genmarshal.py
+@@ -500,7 +500,7 @@ class TestGenmarshal(unittest.TestCase):
+ 
+               va_copy (args_copy, args);
+               arg0 = (gpointer) va_arg (args_copy, gpointer);
+-              if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++              if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+                 arg0 = g_variant_ref_sink (arg0);
+               va_end (args_copy);
+ 
+@@ -520,7 +520,7 @@ class TestGenmarshal(unittest.TestCase):
+               callback (data1,
+                         arg0,
+                         data2);
+-              if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++              if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+                 g_variant_unref (arg0);
+             }}
+             """
+@@ -642,7 +642,7 @@ class TestGenmarshal(unittest.TestCase):
+ 
+               va_copy (args_copy, args);
+               arg0 = (gpointer) va_arg (args_copy, gpointer);
+-              if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++              if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+                 arg0 = g_strdup (arg0);
+               va_end (args_copy);
+ 
+@@ -662,7 +662,7 @@ class TestGenmarshal(unittest.TestCase):
+               callback (data1,
+                         arg0,
+                         data2);
+-              if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++              if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+                 g_free (arg0);
+             }}
+             """
+@@ -785,7 +785,7 @@ class TestGenmarshal(unittest.TestCase):
+ 
+               va_copy (args_copy, args);
+               arg0 = (gpointer) va_arg (args_copy, gpointer);
+-              if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++              if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+                 arg0 = g_param_spec_ref (arg0);
+               va_end (args_copy);
+ 
+@@ -805,7 +805,7 @@ class TestGenmarshal(unittest.TestCase):
+               callback (data1,
+                         arg0,
+                         data2);
+-              if ((param_types[0] & G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
++              if (((uintptr_t) param_types[0] & (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE) == 0 && arg0 != NULL)
+                 g_param_spec_unref (arg0);
+             }}
+             """
+diff --git a/gobject/tests/param.c b/gobject/tests/param.c
+index 9d22135ccc2a..5f4b473911a9 100644
+--- a/gobject/tests/param.c
++++ b/gobject/tests/param.c
+@@ -508,12 +508,12 @@ test_param_spec_gtype (void)
+   g_value_set_gtype (&value, G_TYPE_INT);
+   g_assert_false (g_param_value_is_valid (pspec, &value));
+   g_assert_true (g_param_value_validate (pspec, &value));
+-  g_assert_cmpint (g_value_get_gtype (&value), ==, G_TYPE_PARAM);
++  g_assert_cmpint ((uintptr_t) g_value_get_gtype (&value), ==, (uintptr_t) G_TYPE_PARAM);
+ 
+   g_value_set_gtype (&value, G_TYPE_PARAM_INT);
+   g_assert_true (g_param_value_is_valid (pspec, &value));
+   g_assert_false (g_param_value_validate (pspec, &value));
+-  g_assert_cmpint (g_value_get_gtype (&value), ==, G_TYPE_PARAM_INT);
++  g_assert_cmpint ((uintptr_t) g_value_get_gtype (&value), ==, (uintptr_t) G_TYPE_PARAM_INT);
+ 
+   g_param_spec_unref (pspec);
+ }
+diff --git a/gobject/tests/reference.c b/gobject/tests/reference.c
+index 0fe655ea03a7..d035f979ca41 100644
+--- a/gobject/tests/reference.c
++++ b/gobject/tests/reference.c
+@@ -46,7 +46,7 @@ test_type_query (void)
+   GTypeQuery query;
+ 
+   g_type_query (G_TYPE_ENUM, &query);
+-  g_assert_cmpint (query.type, ==, G_TYPE_ENUM);
++  g_assert_cmpint ((uintptr_t) query.type, ==, (uintptr_t) G_TYPE_ENUM);
+   g_assert_cmpstr (query.type_name, ==, "GEnum");
+   g_assert_cmpint (query.class_size, ==, sizeof (GEnumClass));
+   g_assert_cmpint (query.instance_size, ==, 0);
+diff --git a/gobject/tests/signalgroup.c b/gobject/tests/signalgroup.c
+index 198c16ca4e03..df56c9f8a5c3 100644
+--- a/gobject/tests/signalgroup.c
++++ b/gobject/tests/signalgroup.c
+@@ -590,7 +590,7 @@ test_signal_group_properties (void)
+                 "target", &target,
+                 "target-type", &gtype,
+                 NULL);
+-  g_assert_cmpint (gtype, ==, signal_target_get_type ());
++  g_assert_cmpint ((uintptr_t) gtype, ==, (uintptr_t) signal_target_get_type ());
+   g_assert_null (target);
+ 
+   target = g_object_new (signal_target_get_type (), NULL);
+diff --git a/gobject/tests/signals.c b/gobject/tests/signals.c
+index 834fdd68e41a..31f4c4ddce0c 100644
+--- a/gobject/tests/signals.c
++++ b/gobject/tests/signals.c
+@@ -1509,7 +1509,7 @@ test_introspection (void)
+   g_assert_cmpstr (query.signal_name, ==, "simple");
+   g_assert_true (query.itype == test_get_type ());
+   g_assert_cmpint (query.signal_flags, ==, G_SIGNAL_RUN_LAST);
+-  g_assert_cmpint (query.return_type, ==, G_TYPE_NONE);
++  g_assert_cmpint ((uintptr_t) query.return_type, ==, (uintptr_t) G_TYPE_NONE);
+   g_assert_cmpuint (query.n_params, ==, 0);
+ 
+   g_free (ids);
+diff --git a/gobject/tests/threadtests.c b/gobject/tests/threadtests.c
+index 9b923f3fd095..e3c0047e50c3 100644
+--- a/gobject/tests/threadtests.c
++++ b/gobject/tests/threadtests.c
+@@ -516,7 +516,7 @@ test_threaded_g_pointer_bit_unlock_and_set (void)
+   GObject *obj;
+   gpointer plock;
+   gpointer ptr;
+-  guintptr ptr2;
++  gpointer ptr2;
+   gpointer mangled_obj;
+ 
+ #if defined(__GNUC__)
+@@ -551,7 +551,7 @@ test_threaded_g_pointer_bit_unlock_and_set (void)
+ 
+   plock = obj;
+   g_pointer_bit_lock_and_get (&plock, 0, &ptr2);
+-  g_assert_true ((gpointer) ptr2 == plock);
++  g_assert_true (ptr2 == plock);
+   g_assert_true (plock != obj);
+   g_atomic_pointer_set (&plock, mangled_obj);
+   g_pointer_bit_unlock_and_set (&plock, 0, obj, 0);
+diff --git a/gobject/tests/type.c b/gobject/tests/type.c
+index ea0dd46f33f3..3680244bb9a3 100644
+--- a/gobject/tests/type.c
++++ b/gobject/tests/type.c
+@@ -118,10 +118,10 @@ test_interface_prerequisite (void)
+ 
+   g_free (prereqs);
+ 
+-  g_assert_cmpint (g_type_interface_instantiatable_prerequisite (baa_get_type ()), ==, G_TYPE_INVALID);
+-  g_assert_cmpint (g_type_interface_instantiatable_prerequisite (boo_get_type ()), ==, G_TYPE_INVALID);
++  g_assert_cmpint ((uintptr_t) g_type_interface_instantiatable_prerequisite (baa_get_type ()), ==, (uintptr_t) G_TYPE_INVALID);
++  g_assert_cmpint ((uintptr_t) g_type_interface_instantiatable_prerequisite (boo_get_type ()), ==, (uintptr_t) G_TYPE_INVALID);
+ 
+-  g_assert_cmpint (g_type_interface_instantiatable_prerequisite (bozo_get_type ()), ==, G_TYPE_INITIALLY_UNOWNED);
++  g_assert_cmpint ((uintptr_t) g_type_interface_instantiatable_prerequisite (bozo_get_type ()), ==, (uintptr_t) G_TYPE_INITIALLY_UNOWNED);
+ }
+ 
+ typedef struct {
+@@ -222,11 +222,11 @@ test_query (void)
+ 
+   g_test_message ("Invalid types can’t be queried.");
+   g_type_query (G_TYPE_INVALID, &results);
+-  g_assert_cmpuint (results.type, ==, 0);
++  g_assert_cmpuint ((uintptr_t) results.type, ==, 0);
+ 
+   g_test_message ("Unclassed types can’t be queried.");
+   g_type_query (G_TYPE_INT64, &results);
+-  g_assert_cmpuint (results.type, ==, 0);
++  g_assert_cmpuint ((uintptr_t) results.type, ==, 0);
+ }
+ 
+ int

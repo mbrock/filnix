@@ -1,0 +1,231 @@
+diff --git a/tests/ivi-layout-test-plugin.c b/tests/ivi-layout-test-plugin.c
+index 9f0ecafb98ac..231c3a0d5483 100644
+--- a/tests/ivi-layout-test-plugin.c
++++ b/tests/ivi-layout-test-plugin.c
+@@ -47,29 +47,34 @@ struct test_context;
+ struct runner_test {
+ 	const char *name;
+ 	void (*run)(struct test_context *);
++	struct runner_test *next;
+ } __attribute__ ((aligned (64)));
+ 
++static struct runner_test *first_test;
++
+ #define RUNNER_TEST(name)					\
+ 	static void runner_func_##name(struct test_context *);	\
+ 								\
+-	const struct runner_test runner_test_##name		\
+-		__attribute__ ((used, section ("plugin_test_section"))) = \
++	static void register_test_##name(void) __attribute__((constructor)); \
++	static void register_test_##name(void)                  \
+ 	{							\
+-		#name, runner_func_##name			\
+-	};							\
++		struct runner_test* test =			\
++			malloc(sizeof(struct runner_test));	\
++		*test = (struct runner_test){			\
++			#name, runner_func_##name, first_test	\
++		};						\
++		first_test = test;				\
++	}							\
+ 								\
+ 	static void runner_func_##name(struct test_context *ctx)
+ 
+-extern const struct runner_test __start_plugin_test_section;
+-extern const struct runner_test __stop_plugin_test_section;
+-
+ static const struct runner_test *
+ find_runner_test(const char *name)
+ {
+ 	const struct runner_test *t;
+ 
+-	for (t = &__start_plugin_test_section;
+-	     t < &__stop_plugin_test_section; t++) {
++	for (t = first_test;
++	     t; t++) {
+ 		if (strcmp(t->name, name) == 0)
+ 			return t;
+ 	}
+diff --git a/tests/weston-test-runner.c b/tests/weston-test-runner.c
+index 1651fe1b3e16..ecd0e717780c 100644
+--- a/tests/weston-test-runner.c
++++ b/tests/weston-test-runner.c
+@@ -51,7 +51,8 @@
+  * \defgroup testharness_private Test harness private
+  */
+ 
+-extern const struct weston_test_entry __start_test_section, __stop_test_section;
++struct weston_test_entry *first_test;
++size_t num_tests;
+ 
+ struct weston_test_run_info {
+ 	char name[512];
+@@ -142,7 +143,7 @@ find_test(const char *name)
+ {
+ 	const struct weston_test_entry *t;
+ 
+-	for (t = &__start_test_section; t < &__stop_test_section; t++)
++	for (t = first_test; t; t = t->next)
+ 		if (strcmp(t->name, name) == 0)
+ 			return t;
+ 
+@@ -196,7 +197,7 @@ list_tests(void)
+ 	}
+ 
+ 	printf("Test names:\n");
+-	for (t = &__start_test_section; t < &__stop_test_section; t++) {
++	for (t = first_test; t; t = t->next) {
+ 		printf("  %s\n", t->name);
+ 		if (t->n_elements > 1)
+ 			printf("    with array of %d cases\n", t->n_elements);
+@@ -477,9 +478,13 @@ weston_test_harness_create(int argc, char **argv)
+ 		harness->data.tests_count = 1;
+ 		harness->data.case_index = harness->case_ind;
+ 	} else {
+-		harness->data.tests = &__start_test_section;
+-		harness->data.tests_count =
+-			&__stop_test_section - &__start_test_section;
++		struct weston_test_entry *array = malloc(sizeof(struct weston_test_entry) * num_tests);
++		struct weston_test_entry *t;
++		size_t index;
++		for (index = 0, t = first_test; t; index++, t = t->next)
++			array[index] = *t;
++		harness->data.tests = array;
++		harness->data.tests_count = num_tests;
+ 		harness->data.case_index = -1;
+ 	}
+ 
+diff --git a/tests/weston-test-runner.h b/tests/weston-test-runner.h
+index 58d2b7ee810d..02e5fd86c2d7 100644
+--- a/tests/weston-test-runner.h
++++ b/tests/weston-test-runner.h
+@@ -55,19 +55,29 @@ struct weston_test_entry {
+ 	const void *table_data;
+ 	size_t element_size;
+ 	int n_elements;
++	struct weston_test_entry *next;
+ } __attribute__ ((aligned (64)));
+ 
+ #define TEST_BEGIN(name, arg)						\
+ 	static void name(arg)
+ 
++extern struct weston_test_entry *first_test;
++extern size_t num_tests;
++
+ #define TEST_COMMON(func, name, data, size, n_elem)			\
+ 	static void func(void *);					\
+ 									\
+-	const struct weston_test_entry test##name			\
+-		__attribute__ ((used, section ("test_section"))) =	\
+-	{								\
+-		#name, func, data, size, n_elem				\
+-	};
++	static void register_test##name(void) __attribute__((constructor)); \
++	static void register_test##name(void)                       	\
++	{                                                               \
++	        struct weston_test_entry *test =			\
++		        malloc(sizeof(struct weston_test_entry));	\
++		*test = (struct weston_test_entry){		     	\
++		        #name, func, data, size, n_elem, first_test	\
++		};    							\
++		first_test = test;					\
++		num_tests++; 						\
++        }
+ 
+ #define NO_ARG_TEST(name)						\
+ 	TEST_COMMON(wrap##name, name, NULL, 0, 1)			\
+diff --git a/tools/zunitc/inc/zunitc/zunitc.h b/tools/zunitc/inc/zunitc/zunitc.h
+index d285c59daeb8..7586807e8921 100644
+--- a/tools/zunitc/inc/zunitc/zunitc.h
++++ b/tools/zunitc/inc/zunitc/zunitc.h
+@@ -248,6 +248,9 @@ zuc_set_random(int random);
+ void
+ zuc_set_output_junit(bool enable);
+ 
++extern struct zuc_registration *first_zuc_reg;
++extern size_t zuc_reg_count;
++
+ /**
+  * Defines a test case that can be registered to run.
+  *
+@@ -257,13 +260,20 @@ zuc_set_output_junit(bool enable);
+ #define ZUC_TEST(tcase, test) \
+ 	static void zuctest_##tcase##_##test(void); \
+ 	\
+-	const struct zuc_registration zzz_##tcase##_##test \
+-	__attribute__ ((used, section ("zuc_tsect"))) = \
++	static void register_zuctest_##tcase##_##test(void) __attribute__((constructor)); \
++	static void register_zuctest_##tcase##_##test(void) \
+ 	{ \
+-		#tcase, #test, 0,		\
+-		zuctest_##tcase##_##test,	\
+-		0				\
+-	}; \
++		struct zuc_registration *zuc_reg = malloc(sizeof(struct zuc_registration)); \
++		*zuc_reg = (struct zuc_registration){ \
++			#tcase, #test, 0,		\
++			zuctest_##tcase##_##test,	\
++			0,				\
++			first_zuc_reg,			\
++			zuc_reg_count			\
++		}; \
++		first_zuc_reg = zuc_reg; \
++		zuc_reg_count++; \
++	} \
+ 	\
+ 	static void zuctest_##tcase##_##test(void)
+ 
+diff --git a/tools/zunitc/inc/zunitc/zunitc_impl.h b/tools/zunitc/inc/zunitc/zunitc_impl.h
+index 0bb5acb4556c..f171a5ace5fb 100644
+--- a/tools/zunitc/inc/zunitc/zunitc_impl.h
++++ b/tools/zunitc/inc/zunitc/zunitc_impl.h
+@@ -77,6 +77,8 @@ struct zuc_registration {
+ 	zucimpl_test_fn fn;		/**< function implementing base test. */
+ 	zucimpl_test_fn_f fn_f;	/**< function implementing test with
+ 					   fixture. */
++	struct zuc_registration *next_reg;
++	size_t index;
+ } __attribute__ ((aligned (64)));
+ 
+ 
+diff --git a/tools/zunitc/src/zunitc_impl.c b/tools/zunitc/src/zunitc_impl.c
+index 18f030158e99..59bfd214e280 100644
+--- a/tools/zunitc/src/zunitc_impl.c
++++ b/tools/zunitc/src/zunitc_impl.c
+@@ -197,21 +197,22 @@ compare_regs(const void *lhs, const void *rhs)
+ }
+ 
+ /* gcc-specific markers for auto test case registration: */
+-extern const struct zuc_registration __start_zuc_tsect;
+-extern const struct zuc_registration __stop_zuc_tsect;
++struct zuc_registration *first_zuc_reg;
++size_t zuc_reg_count;
+ 
+ static void
+ register_tests(void)
+ {
+ 	size_t case_count = 0;
+-	size_t count = &__stop_zuc_tsect - &__start_zuc_tsect;
++	size_t count = zuc_reg_count;
+ 	size_t i;
+ 	int idx = 0;
+ 	const char *last_name = NULL;
+ 	void **array = zalloc(sizeof(void *) * count);
++        struct zuc_registration *zuc;
+ 	ZUC_ASSERT_NOT_NULL(array);
+-	for (i = 0; i < count; ++i)
+-		array[i] = (void *)(&__start_zuc_tsect + i);
++	for (i = 0, zuc = first_zuc_reg; i < count; ++i, zuc = zuc->next_reg)
++		array[i] = (void *)zuc;
+ 
+ 	qsort(array, count, sizeof(array[0]), compare_regs);
+ 
+@@ -266,7 +267,7 @@ register_tests(void)
+ 	for (i = 0; i < count; ++i) {
+ 		const struct zuc_registration *reg =
+ 			(const struct zuc_registration *)array[i];
+-		int order = count - (1 + (reg - &__start_zuc_tsect));
++		int order = count - (1 + reg->index);
+ 
+ 		if (!last_name || (strcmp(last_name, reg->tcase))) {
+ 			last_name = reg->tcase;

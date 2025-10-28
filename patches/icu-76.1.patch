@@ -1,0 +1,77 @@
+diff --git a/icu4c/source/common/putil.cpp b/icu4c/source/common/putil.cpp
+index 4cf07797ba35..47e56d62fce3 100644
+--- a/icu4c/source/common/putil.cpp
++++ b/icu4c/source/common/putil.cpp
+@@ -641,6 +641,8 @@ uprv_tzset()
+ U_CAPI int32_t U_EXPORT2
+ uprv_timezone()
+ {
++    if ((1))
++        return timezone;
+ #ifdef U_TIMEZONE
+     return U_TIMEZONE;
+ #else
+diff --git a/icu4c/source/common/ucnv.cpp b/icu4c/source/common/ucnv.cpp
+index c66200b79323..498126f478ee 100644
+--- a/icu4c/source/common/ucnv.cpp
++++ b/icu4c/source/common/ucnv.cpp
+@@ -233,7 +233,7 @@ ucnv_safeClone(const UConverter* cnv, void *stackBuffer, int32_t *pBufferSize, U
+         uintptr_t aligned_p = (p + alignof(UConverter) - 1) & ~(alignof(UConverter) - 1);
+         ptrdiff_t pointerAdjustment = aligned_p - p;
+         if (bufferSizeNeeded + pointerAdjustment <= stackBufferSize) {
+-            stackBuffer = reinterpret_cast<void *>(aligned_p);
++            stackBuffer = zmkptr(stackBuffer, aligned_p);
+             stackBufferSize -= static_cast<int32_t>(pointerAdjustment);
+         } else {
+             /* prevent using the stack buffer but keep the size > 0 so that we do not just preflight */
+diff --git a/icu4c/source/common/unicode/char16ptr.h b/icu4c/source/common/unicode/char16ptr.h
+index daf35cd43ba2..040dc84f4aee 100644
+--- a/icu4c/source/common/unicode/char16ptr.h
++++ b/icu4c/source/common/unicode/char16ptr.h
+@@ -14,6 +14,10 @@
+ #include <cstddef>
+ #include <string_view>
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++#include <stdfil.h>
++#endif
++
+ /**
+  * \file
+  * \brief C++ API: char16_t pointer wrappers with
+@@ -30,6 +34,8 @@ U_NAMESPACE_BEGIN
+  */
+ #ifdef U_ALIASING_BARRIER
+     // Use the predefined value.
++#elif defined(__PIZLONATOR_WAS_HERE__)
++#   define U_ALIASING_BARRIER(ptr) zcompiler_fence()
+ #elif (defined(__clang__) || defined(__GNUC__)) && U_PLATFORM != U_PF_BROWSER_NATIVE_CLIENT
+ #   define U_ALIASING_BARRIER(ptr) asm volatile("" : : "rm"(ptr) : "memory")
+ #elif defined(U_IN_DOXYGEN)
+diff --git a/icu4c/source/configure.ac b/icu4c/source/configure.ac
+index be1cca633065..59ddf9094d70 100644
+--- a/icu4c/source/configure.ac
++++ b/icu4c/source/configure.ac
+@@ -642,6 +642,7 @@ ia64-*-hpux*)
+ #    GENCCODE_ASSEMBLY="-a aCC-ia64"
+     ;;
+ esac
++GENCCODE_ASSEMBLY=
+ AC_SUBST(GENCCODE_ASSEMBLY)
+ 
+ AC_MSG_RESULT($GENCCODE_ASSEMBLY)
+diff --git a/icu4c/source/tools/toolutil/pkg_genc.h b/icu4c/source/tools/toolutil/pkg_genc.h
+index ef966aba1306..b449f99bdaf0 100644
+--- a/icu4c/source/tools/toolutil/pkg_genc.h
++++ b/icu4c/source/tools/toolutil/pkg_genc.h
+@@ -29,6 +29,10 @@
+ #define BUILD_DATA_WITHOUT_ASSEMBLY
+ #endif
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++#define U_DISABLE_OBJ_CODE
++#endif
++
+ #ifndef U_DISABLE_OBJ_CODE /* testing */
+ #if defined(WINDOWS_WITH_MSVC) || U_PLATFORM_IS_LINUX_BASED
+ #define CAN_WRITE_OBJ_CODE

@@ -1,0 +1,926 @@
+diff --git a/libpam/meson.build b/libpam/meson.build
+index 3e8a531cb797..4f6ecc8cc17d 100644
+--- a/libpam/meson.build
++++ b/libpam/meson.build
+@@ -41,7 +41,7 @@ libpam_map = 'libpam.map'
+ libpam_map_path = meson.current_source_dir() / libpam_map
+ 
+ libpam_link_deps = [libpam_map]
+-libpam_link_args = ['-Wl,--version-script=' + libpam_map_path]
++libpam_link_args = ['--version-script=' + libpam_map_path]
+ 
+ libpam = shared_library(
+   'pam',
+diff --git a/libpam/pam_dispatch.c b/libpam/pam_dispatch.c
+index 3a1d59e89709..b3417748d4ec 100644
+--- a/libpam/pam_dispatch.c
++++ b/libpam/pam_dispatch.c
+@@ -260,22 +260,7 @@ static int _pam_dispatch_aux(pam_handle_t *pamh, int flags, struct handler *h,
+ 	    if ( _PAM_ACTION_IS_JUMP(action) ) {
+ 
+ 		/* If we are evaluating a cached chain, we treat this
+-		   module as required (aka _PAM_ACTION_OK) as well as
+-		   executing the jump. */
+-
+-		if (use_cached_chain) {
+-		    if (impression == _PAM_UNDEF
+-			|| (impression == _PAM_POSITIVE
+-			    && status == PAM_SUCCESS) ) {
+-			if ( retval != PAM_IGNORE || cached_retval == retval ) {
+-			    if ( impression == _PAM_UNDEF && retval == PAM_SUCCESS ) {
+-				h->grantor = 1;
+-			    }
+-			    impression = _PAM_POSITIVE;
+-			    status = retval;
+-			}
+-		    }
+-		}
++		   module as ignored as well as executing the jump. */
+ 
+ 		/* this means that we need to skip #action stacked modules */
+ 		while (h->next != NULL && h->next->stack_level >= stack_level && action > 0) {
+diff --git a/libpam/pam_handlers.c b/libpam/pam_handlers.c
+index ce790d0a59c6..9813f9934059 100644
+--- a/libpam/pam_handlers.c
++++ b/libpam/pam_handlers.c
+@@ -127,6 +127,10 @@ static int _pam_parse_conf_file(pam_handle_t *pamh, FILE *f
+ 		    module_type = PAM_T_ACCT;
+ 		} else if (!strcasecmp("password", tok)) {
+ 		    module_type = PAM_T_PASS;
++		} else if (!strcasecmp("@include", tok)) {
++		    pam_include = 1;
++		    module_type = requested_module_type;
++		    goto parsing_done;
+ 		} else {
+ 		    /* Illegal module type */
+ 		    D(("bad module type: %s", tok));
+@@ -197,6 +201,7 @@ static int _pam_parse_conf_file(pam_handle_t *pamh, FILE *f
+ 		_pam_set_default_control(actions, _PAM_ACTION_BAD);
+ 	    }
+ 
++parsing_done:
+ 	    tok = _pam_tokenize(NULL, &nexttok);
+ 	    if (pam_include) {
+ 		if (substack) {
+diff --git a/libpam/pam_private.h b/libpam/pam_private.h
+index 77dc5a69878c..143f4aeb858a 100644
+--- a/libpam/pam_private.h
++++ b/libpam/pam_private.h
+@@ -25,11 +25,11 @@
+ 
+ /* the Linux-PAM configuration file */
+ 
+-#define PAM_CONFIG         "/etc/pam.conf"
+-#define PAM_CONFIG_D       "/etc/pam.d"
+-#define PAM_CONFIG_DF      "/etc/pam.d/%s"
+-#define PAM_CONFIG_DIST_D  "/usr/lib/pam.d"
+-#define PAM_CONFIG_DIST_DF "/usr/lib/pam.d/%s"
++#define PAM_CONFIG         SYSCONFDIR"/pam.conf"
++#define PAM_CONFIG_D       SYSCONFDIR"/pam.d"
++#define PAM_CONFIG_DF      SYSCONFDIR"/pam.d/%s"
++#define PAM_CONFIG_DIST_D  LIBDIR"/pam.d"
++#define PAM_CONFIG_DIST_DF LIBDIR"/pam.d/%s"
+ #ifdef VENDORDIR
+ #define PAM_CONFIG_DIST2_D  VENDORDIR"/pam.d"
+ #define PAM_CONFIG_DIST2_DF VENDORDIR"/pam.d/%s"
+diff --git a/libpam_misc/meson.build b/libpam_misc/meson.build
+index e0bb30f52717..bd3189eccc7c 100644
+--- a/libpam_misc/meson.build
++++ b/libpam_misc/meson.build
+@@ -12,7 +12,7 @@ libpam_misc_map = 'libpam_misc.map'
+ libpam_misc_map_path = meson.current_source_dir() / libpam_misc_map
+ 
+ libpam_misc_link_deps = [libpam_misc_map]
+-libpam_misc_link_args = ['-Wl,--version-script=' + libpam_misc_map_path]
++libpam_misc_link_args = ['--version-script=' + libpam_misc_map_path]
+ 
+ libpam_misc = shared_library(
+   'pam_misc',
+diff --git a/libpamc/meson.build b/libpamc/meson.build
+index f5da06793866..5b87ec0b57d3 100644
+--- a/libpamc/meson.build
++++ b/libpamc/meson.build
+@@ -13,7 +13,7 @@ libpamc_map = 'libpamc.map'
+ libpamc_map_path = meson.current_source_dir() / libpamc_map
+ 
+ libpamc_link_deps = [libpamc_map]
+-libpamc_link_args = ['-Wl,--version-script=' + libpamc_map_path]
++libpamc_link_args = ['--version-script=' + libpamc_map_path]
+ 
+ libpamc = shared_library(
+   'pamc',
+diff --git a/meson.build b/meson.build
+index 0827a53ecfa7..791d4c4d3963 100644
+--- a/meson.build
++++ b/meson.build
+@@ -42,6 +42,7 @@ cdata.set_quoted('PAM_VERSION', meson.project_version())
+ cdata.set('UNUSED', '__attribute__((__unused__))')
+ cdata.set('PAM_NO_HEADER_FUNCTIONS', 1, description: 'Disable function bodies in headers')
+ cdata.set_quoted('SYSCONFDIR', sysconfdir)
++cdata.set_quoted('LIBDIR', libdir)
+ cdata.set_quoted('LTDIR', '')
+ # used in configure_file() only, so not quoted
+ cdata.set('sbindir', sbindir)
+diff --git a/modules/meson.build b/modules/meson.build
+index 20cebdbb76e0..545fa766b86e 100644
+--- a/modules/meson.build
++++ b/modules/meson.build
+@@ -2,7 +2,7 @@ pam_module_map = 'modules.map'
+ pam_module_map_path = meson.current_source_dir() / pam_module_map
+ 
+ pam_module_link_deps = ['..' / pam_module_map]
+-pam_module_link_args = ['-Wl,--version-script=' + pam_module_map_path]
++pam_module_link_args = ['--version-script=' + pam_module_map_path]
+ 
+ subdir('pam_access')
+ subdir('pam_canonicalize_user')
+diff --git a/modules/module-meson.build b/modules/module-meson.build
+index dce38b90a70b..b5538411cae8 100644
+--- a/modules/module-meson.build
++++ b/modules/module-meson.build
+@@ -106,6 +106,7 @@ if module == 'pam_unix'
+                     'pam_unix_auth.c',
+                     'pam_unix_passwd.c',
+                     'pam_unix_sess.c',
++                    'obscure.c',
+                     'support.c',
+                     'passverify.c',
+                     'md5_good.c',
+diff --git a/modules/pam_env/pam_env.c b/modules/pam_env/pam_env.c
+index 496c89433aa0..e64c3858c724 100644
+--- a/modules/pam_env/pam_env.c
++++ b/modules/pam_env/pam_env.c
+@@ -141,9 +141,6 @@ _pam_parse (const pam_handle_t *pamh, int argc, const char **argv,
+ 	  pam_syslog(pamh, LOG_ERR, "unknown option: %s", *argv);
+     }
+ 
+-    if (*user_readenv)
+-	pam_syslog(pamh, LOG_DEBUG, "deprecated reading of user environment enabled");
+-
+     return ctrl;
+ }
+ 
+diff --git a/modules/pam_limits/limits.conf b/modules/pam_limits/limits.conf
+index a756b9094db9..f24938fb83d7 100644
+--- a/modules/pam_limits/limits.conf
++++ b/modules/pam_limits/limits.conf
+@@ -47,6 +47,7 @@
+ #        - nice - max nice priority allowed to raise to values: [-20, 19]
+ #        - rtprio - max realtime priority
+ #        - rttime - timeout for realtime tasks
++#        - chroot - change root to directory (Debian-specific)
+ #
+ #<domain>      <type>  <item>         <value>
+ #
+@@ -57,6 +58,7 @@
+ #@faculty        soft    nproc           20
+ #@faculty        hard    nproc           50
+ #ftp             hard    nproc           0
++#ftp             -       chroot          /ftp
+ #@student        -       maxlogins       4
+ 
+ # End of file
+diff --git a/modules/pam_limits/limits.conf.5.xml b/modules/pam_limits/limits.conf.5.xml
+index 52f6e1493e51..8f81d8bab55e 100644
+--- a/modules/pam_limits/limits.conf.5.xml
++++ b/modules/pam_limits/limits.conf.5.xml
+@@ -272,6 +272,12 @@
+                 <para>Timeout for real-time tasks in microseconds (Linux 2.6.25 and higher)</para>
+               </listitem>
+             </varlistentry>
++            <varlistentry>
++              <term><option>chroot</option></term>
++              <listitem>
++                <para>the directory to chroot the user to</para>
++              </listitem>
++            </varlistentry>
+           </variablelist>
+         </listitem>
+       </varlistentry>
+diff --git a/modules/pam_limits/pam_limits.c b/modules/pam_limits/pam_limits.c
+index ff0f424e6770..a7423deaae50 100644
+--- a/modules/pam_limits/pam_limits.c
++++ b/modules/pam_limits/pam_limits.c
+@@ -101,6 +101,7 @@ struct pam_limit_s {
+ 			      specific user or to count all logins */
+     int priority;	 /* the priority to run user process with */
+     int nonewprivs;	/* whether to prctl(PR_SET_NO_NEW_PRIVS) */
++    char chroot_dir[8092]; /* directory to chroot into */
+     struct user_limits_struct limits[RLIM_NLIMITS];
+     const char *conf_file;
+     int utmp_after_pam_call;
+@@ -109,9 +110,9 @@ struct pam_limit_s {
+ 
+ #define LIMIT_LOGIN (RLIM_NLIMITS+1)
+ #define LIMIT_NUMSYSLOGINS (RLIM_NLIMITS+2)
+-
+ #define LIMIT_PRI (RLIM_NLIMITS+3)
+ #define LIMIT_NONEWPRIVS (RLIM_NLIMITS+4)
++#define LIMIT_CHROOT (RLIM_NLIMITS+5)
+ 
+ #define LIMIT_SOFT  1
+ #define LIMIT_HARD  2
+@@ -582,6 +583,8 @@ static int init_limits(pam_handle_t *pamh, struct pam_limit_s *pl, int ctrl)
+     pl->login_limit_def = LIMITS_DEF_NONE;
+     pl->login_group = NULL;
+ 
++    pl->chroot_dir[0] = '\0';
++    
+     return retval;
+ }
+ 
+@@ -696,6 +699,8 @@ process_limit (const pam_handle_t *pamh, int source, const char *lim_type,
+ 	limit_item = LIMIT_PRI;
+     } else if (strcmp(lim_item, "nonewprivs") == 0) {
+ 	limit_item = LIMIT_NONEWPRIVS;
++    } else if (strcmp(lim_item, "chroot") == 0) {
++        limit_item = LIMIT_CHROOT;
+     } else {
+         pam_syslog(pamh, LOG_DEBUG, "unknown limit item '%s'", lim_item);
+         return;
+@@ -745,9 +750,9 @@ process_limit (const pam_handle_t *pamh, int source, const char *lim_type,
+ 			pam_syslog(pamh, LOG_DEBUG,
+ 				   "wrong limit value '%s' for limit type '%s'",
+ 				   lim_value, lim_type);
+-            return;
++			return;
+ 		}
+-	} else {
++	} else if (limit_item != LIMIT_CHROOT) {
+ #ifdef __USE_FILE_OFFSET64
+ 		rlimit_value = strtoull (lim_value, &endptr, 10);
+ #else
+@@ -822,7 +827,11 @@ process_limit (const pam_handle_t *pamh, int source, const char *lim_type,
+ 	break;
+     }
+ 
+-    if ( (limit_item != LIMIT_LOGIN)
++    if (limit_item == LIMIT_CHROOT) {
++	strncpy(pl->chroot_dir, value_orig, sizeof(pl->chroot_dir)-1);
++        pl->chroot_dir[sizeof(pl->chroot_dir)-1]='\0';
++    }
++    else if ( (limit_item != LIMIT_LOGIN)
+ 	 && (limit_item != LIMIT_NUMSYSLOGINS)
+ 	 && (limit_item != LIMIT_PRI)
+ 	 && (limit_item != LIMIT_NONEWPRIVS) ) {
+@@ -1194,9 +1203,21 @@ static int setup_limits(pam_handle_t *pamh,
+         if (pl->limits[i].limit.rlim_cur > pl->limits[i].limit.rlim_max)
+             pl->limits[i].limit.rlim_cur = pl->limits[i].limit.rlim_max;
+ 	res = setrlimit(i, &pl->limits[i].limit);
+-	if (res != 0)
+-	  pam_syslog(pamh, LOG_ERR, "Could not set limit for '%s': %m",
+-		     rlimit2str(i));
++	if (res != 0 && (i != RLIMIT_NOFILE
++	                    || pl->limits[i].limit.rlim_cur != RLIM_INFINITY))
++	{
++		int save_errno = errno;
++		pam_syslog(pamh, LOG_DEBUG,
++		           "Could not set limit for '%s' to soft=%d, hard=%d:"
++		           " %m; uid=%lu,euid=%lu", rlimit2str(i),
++		           pl->limits[i].limit.rlim_cur,
++		           pl->limits[i].limit.rlim_max,
++		           (unsigned long) getuid(),
++		           (unsigned long) geteuid());
++		errno = save_errno;
++	}
++	if (res == -1 && errno == EPERM)
++	    continue;
+ 	status |= res;
+     }
+ 
+@@ -1238,6 +1259,15 @@ static int setup_limits(pam_handle_t *pamh,
+ #endif
+     }
+ 
++    if (!retval && pl->chroot_dir[0]) {
++	i = chdir(pl->chroot_dir);
++	if (i == 0)
++	    i = chroot(pl->chroot_dir);
++	if (i == 0)
++	    i = chdir("/");
++	if (i != 0)
++	    retval = LIMIT_ERR;
++    }
+     return retval;
+ }
+ 
+diff --git a/modules/pam_motd/pam_motd.8.xml b/modules/pam_motd/pam_motd.8.xml
+index 74420371fc4e..e504d12867f6 100644
+--- a/modules/pam_motd/pam_motd.8.xml
++++ b/modules/pam_motd/pam_motd.8.xml
+@@ -112,6 +112,17 @@
+           </para>
+         </listitem>
+       </varlistentry>
++      <varlistentry>
++        <term>
++          <option>noupdate</option>
++        </term>
++        <listitem>
++          <para>
++            Don't run the scripts in <filename>/etc/update-motd.d</filename>
++            to refresh the motd file.
++          </para>
++        </listitem>
++      </varlistentry>
+     </variablelist>
+     <para>
+       When no options are given, the default behavior applies for both
+diff --git a/modules/pam_motd/pam_motd.c b/modules/pam_motd/pam_motd.c
+index b13e4dff3528..3e764b172060 100644
+--- a/modules/pam_motd/pam_motd.c
++++ b/modules/pam_motd/pam_motd.c
+@@ -370,6 +370,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags,
+ 			int argc, const char **argv)
+ {
+     int retval = PAM_IGNORE;
++    int do_update = 1;
+     const char *motd_path = NULL;
+     char *motd_path_copy = NULL;
+     size_t num_motd_paths = 0;
+@@ -379,6 +380,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags,
+     size_t num_motd_dir_paths = 0;
+     char **motd_dir_path_split = NULL;
+     int report_missing;
++    struct stat st;
+ 
+     if (flags & PAM_SILENT) {
+ 	return retval;
+@@ -408,6 +410,9 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags,
+ 			   "motd_dir= specification missing argument - ignored");
+ 	    }
+ 	}
++	else if (!strcmp(*argv,"noupdate")) {
++		do_update = 0;
++	}
+ 	else
+ 	    pam_syslog(pamh, LOG_ERR, "unknown option: %s", *argv);
+     }
+@@ -420,6 +425,19 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags,
+ 	report_missing = 1;
+     }
+ 
++    /* Run the update-motd dynamic motd scripts, outputting to /run/motd.dynamic.
++       This will be displayed only when calling pam_motd with
++       motd=/run/motd.dynamic; current /etc/pam.d/login and /etc/pam.d/sshd
++       display both this file and /etc/motd. */
++    if (do_update && (stat("/etc/update-motd.d", &st) == 0)
++        && S_ISDIR(st.st_mode))
++    {
++       mode_t old_mask = umask(0022);
++       if (!system("/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic.new"))
++           rename("/run/motd.dynamic.new", "/run/motd.dynamic");
++       umask(old_mask);
++    }
++
+     if (motd_path != NULL) {
+ 	motd_path_copy = strdup(motd_path);
+     }
+diff --git a/modules/pam_unix/obscure.c b/modules/pam_unix/obscure.c
+new file mode 100644
+index 000000000000..9dbbe6e4170f
+--- /dev/null
++++ b/modules/pam_unix/obscure.c
+@@ -0,0 +1,199 @@
++/*
++ * Copyright 1989 - 1994, Julianne Frances Haugh
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. Neither the name of Julianne F. Haugh nor the names of its contributors
++ *    may be used to endorse or promote products derived from this software
++ *    without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY JULIE HAUGH AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL JULIE HAUGH OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include "config.h"
++
++#include <ctype.h>
++#include <stdio.h>
++#include <unistd.h>
++#include <string.h>
++#include <stdlib.h>
++#include <pwd.h>
++#include <security/pam_modules.h>
++#include <security/_pam_macros.h>
++
++
++#include "pam_i18n.h"
++#include "support.h"
++
++/* can't be a palindrome - like `R A D A R' or `M A D A M' */
++static int palindrome(const char *old, const char *new) {
++	int	i, j;
++
++	i = strlen (new);
++
++	for (j = 0;j < i;j++)
++		if (new[i - j - 1] != new[j])
++			return 0;
++
++	return 1;
++}
++
++/* more than half of the characters are different ones. */
++static int similar(const char *old, const char *new) {
++	int i, j;
++
++	/*
++	 * XXX - sometimes this fails when changing from a simple password
++	 * to a really long one (MD5).  For now, I just return success if
++	 * the new password is long enough.  Please feel free to suggest
++	 * something better...  --marekm
++	 */
++	if (strlen(new) >= 8)
++		return 0;
++
++	for (i = j = 0; new[i] && old[i]; i++)
++		if (strchr(new, old[i]))
++			j++;
++
++	if (i >= j * 2)
++		return 0;
++
++	return 1;
++}
++
++/* a nice mix of characters. */
++static int simple(const char *old, const char *new) {
++	int	digits = 0;
++	int	uppers = 0;
++	int	lowers = 0;
++	int	others = 0;
++	int	size;
++	int	i;
++
++	for (i = 0;new[i];i++) {
++		if (isdigit (new[i]))
++			digits++;
++		else if (isupper (new[i]))
++			uppers++;
++		else if (islower (new[i]))
++			lowers++;
++		else
++			others++;
++	}
++
++	/*
++	 * The scam is this - a password of only one character type
++	 * must be 8 letters long.  Two types, 7, and so on.
++	 */
++
++	size = 9;
++	if (digits) size--;
++	if (uppers) size--;
++	if (lowers) size--;
++	if (others) size--;
++
++	if (size <= i)
++		return 0;
++
++	return 1;
++}
++
++static char *str_lower(char *string) {
++	char *cp;
++
++	for (cp = string; *cp; cp++)
++		*cp = tolower(*cp);
++	return string;
++}
++
++static const char * password_check(const char *old, const char *new,
++				   const struct passwd *pwdp) {
++	const char *msg = NULL;
++	char *oldmono, *newmono, *wrapped;
++
++	if (strcmp(new, old) == 0)
++		return _("Bad: new password must be different than the old one");
++
++	newmono = str_lower(strdup(new));
++	oldmono = str_lower(strdup(old));
++	wrapped = (char *)malloc(strlen(oldmono) * 2 + 1);
++	strcpy (wrapped, oldmono);
++	strcat (wrapped, oldmono);
++
++	if (palindrome(oldmono, newmono)) {
++		msg = _("Bad: new password cannot be a palindrome");
++	} else if (strcmp(oldmono, newmono) == 0) {
++		msg = _("Bad: new and old password must differ by more than just case");
++	} else if (similar(oldmono, newmono)) {
++		msg = _("Bad: new and old password are too similar");
++	} else if (simple(old, new)) {
++		msg = _("Bad: new password is too simple");
++	} else if (strstr(wrapped, newmono)) {
++		msg = _("Bad: new password is just a wrapped version of the old one");
++	}
++
++	_pam_delete(newmono);
++	_pam_delete(oldmono);
++	_pam_delete(wrapped);
++
++	return msg;
++}
++
++const char *obscure_msg(const char *old, const char *new,
++			       const struct passwd *pwdp, unsigned int ctrl) {
++	int oldlen, newlen;
++	char *new1, *old1;
++	const char *msg;
++
++	if (old == NULL)
++		return NULL; /* no check if old is NULL */
++
++	oldlen = strlen(old);
++	newlen = strlen(new);
++
++	/* Remaining checks are optional. */
++	if (off(UNIX_OBSCURE_CHECKS,ctrl))
++		return NULL;
++
++	if ((msg = password_check(old, new, pwdp)) != NULL)
++		return msg;
++
++	/* The traditional crypt() truncates passwords to 8 chars.  It is
++	   possible to circumvent the above checks by choosing an easy
++	   8-char password and adding some random characters to it...
++	   Example: "password$%^&*123".  So check it again, this time
++	   truncated to the maximum length.  Idea from npasswd.  --marekm */
++
++	if (!UNIX_DES_CRYPT(ctrl))
++		return NULL;  /* unlimited password length */
++
++	if (oldlen <= 8 && newlen <= 8)
++		return NULL;
++
++	new1 = strndup(new,8);
++	old1 = strndup(old,8);
++
++	msg = password_check(old1, new1, pwdp);
++
++	_pam_delete(new1);
++	_pam_delete(old1);
++
++	return msg;
++}
+diff --git a/modules/pam_unix/pam_unix.8.xml b/modules/pam_unix/pam_unix.8.xml
+index d2cd198fbef5..d02320b3e3dd 100644
+--- a/modules/pam_unix/pam_unix.8.xml
++++ b/modules/pam_unix/pam_unix.8.xml
+@@ -402,6 +402,79 @@
+           </para>
+         </listitem>
+       </varlistentry>
++      <varlistentry>
++        <term>
++          <option>obscure</option>
++        </term>
++        <listitem>
++          <para>
++            Enable some extra checks on password strength.  These checks
++            are based on the "obscure" checks in the original shadow
++            package.  The behavior is similar to the pam_cracklib
++            module, but for non-dictionary-based checks.  The following
++            checks are implemented:
++            <variablelist>
++              <varlistentry>
++                <term>
++                  <option>Palindrome</option>
++                </term>
++                <listitem>
++                  <para>
++                    Verifies that the new password is not a palindrome
++                    of (i.e., the reverse of) the previous one.
++                  </para>
++                </listitem>
++              </varlistentry>
++              <varlistentry>
++                <term>
++                  <option>Case Change Only</option>
++                </term>
++                <listitem>
++                  <para>
++                    Verifies that the new password isn't the same as the
++                    old one with a change of case.
++                  </para>
++                </listitem>
++              </varlistentry>
++              <varlistentry>
++                <term>
++                  <option>Similar</option>
++                </term>
++                <listitem>
++                  <para>
++                    Verifies that the new password isn't too much like
++                    the previous one.
++                  </para>
++                </listitem>
++              </varlistentry>
++              <varlistentry>
++                <term>
++                  <option>Simple</option>
++                </term>
++                <listitem>
++                  <para>
++                    Is the new password too simple?  This is based on
++                    the length of the password and the number of
++                    different types of characters (alpha, numeric, etc.)
++                    used.
++                  </para>
++                </listitem>
++              </varlistentry>
++              <varlistentry>
++                <term>
++                  <option>Rotated</option>
++                </term>
++                <listitem>
++                  <para>
++                    Is the new password a rotated version of the old
++                    password?  (E.g., "billy" and "illyb")
++                  </para>
++                </listitem>
++              </varlistentry>
++            </variablelist>
++          </para>
++        </listitem>
++      </varlistentry>
+       <varlistentry>
+         <term>
+           no_pass_expiry
+@@ -495,4 +568,4 @@ session    required   pam_unix.so
+       </para>
+   </refsect1>
+ 
+-</refentry>
+\ No newline at end of file
++</refentry>
+diff --git a/modules/pam_unix/pam_unix_passwd.c b/modules/pam_unix/pam_unix_passwd.c
+index cdd253e34b23..9a1e7ae1a800 100644
+--- a/modules/pam_unix/pam_unix_passwd.c
++++ b/modules/pam_unix/pam_unix_passwd.c
+@@ -87,6 +87,9 @@ extern int getrpcport(const char *host, unsigned long prognum,
+ # endif				/* GNU libc 2.1 */
+ #endif
+ 
++extern const char *obscure_msg(const char *, const char *, const struct passwd *,
++			       unsigned int);
++
+ /*
+    How it works:
+    Gets in username (has to be done) from the calling program
+@@ -588,6 +591,11 @@ static int _pam_unix_approve_pass(pam_handle_t * pamh
+ 				return retval;
+ 			}
+ 		}
++		if (!remark && pass_old != NULL) { /* only check if we don't already have a failure */
++			struct passwd *pwd;
++			pwd = pam_modutil_getpwnam(pamh, user);
++			remark = (char *)obscure_msg(pass_old,pass_new,pwd,ctrl); /* do obscure checks */
++		}
+ 	}
+ 	if (remark) {
+ 		_make_remark(pamh, ctrl, PAM_ERROR_MSG, remark);
+@@ -603,7 +611,7 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
+ 	int retval;
+ 	int remember = -1;
+ 	int rounds = 0;
+-	int pass_min_len = 0;
++	int pass_min_len = 6;
+ 	struct passwd *pwd;
+ 
+ 	/* <DO NOT free() THESE> */
+diff --git a/modules/pam_unix/support.h b/modules/pam_unix/support.h
+index e8f629d703cf..4d528255518d 100644
+--- a/modules/pam_unix/support.h
++++ b/modules/pam_unix/support.h
+@@ -6,6 +6,7 @@
+ #define _PAM_UNIX_SUPPORT_H
+ 
+ #include <pwd.h>
++#include "pam_inline.h"
+ 
+ /*
+  * File to read value of ENCRYPT_METHOD from.
+@@ -101,50 +102,54 @@ typedef struct {
+ #define UNIX_GOST_YESCRYPT_PASS  31     /* new password hashes will use gost-yescrypt */
+ #define UNIX_YESCRYPT_PASS       32     /* new password hashes will use yescrypt */
+ #define UNIX_NULLRESETOK         33     /* allow empty password if password reset is enforced */
++#define UNIX_OBSCURE_CHECKS      34	/* enable obscure checks on passwords */
++#define UNIX_NULLOK_SECURE       35	/* deprecated alias for nullok */
+ /* -------------- */
+-#define UNIX_CTRLS_              34	/* number of ctrl arguments defined */
++#define UNIX_CTRLS_              36	/* number of ctrl arguments defined */
+ 
+ #define UNIX_DES_CRYPT(ctrl)	(off(UNIX_MD5_PASS,ctrl)&&off(UNIX_BIGCRYPT,ctrl)&&off(UNIX_SHA256_PASS,ctrl)&&off(UNIX_SHA512_PASS,ctrl)&&off(UNIX_BLOWFISH_PASS,ctrl)&&off(UNIX_GOST_YESCRYPT_PASS,ctrl)&&off(UNIX_YESCRYPT_PASS,ctrl))
+ 
+ static const UNIX_Ctrls unix_args[UNIX_CTRLS_] =
+ {
+-/* symbol                      token name          ctrl mask                  ctrl             *
+- * --------------------------- -------------------- ------------------------- ---------------- */
+-
+-/* UNIX__OLD_PASSWD */         {NULL,               _ALL_ON_,                              01, 0},
+-/* UNIX__VERIFY_PASSWD */      {NULL,               _ALL_ON_,                              02, 0},
+-/* UNIX__IAMROOT */            {NULL,               _ALL_ON_,                              04, 0},
+-/* UNIX_AUDIT */               {"audit",            _ALL_ON_,                             010, 0},
+-/* UNIX_USE_FIRST_PASS */      {"use_first_pass",   _ALL_ON_^(060ULL),                    020, 0},
+-/* UNIX_TRY_FIRST_PASS */      {"try_first_pass",   _ALL_ON_^(060ULL),                    040, 0},
+-/* UNIX_AUTHTOK_TYPE */        {"authtok_type=",    _ALL_ON_,                            0100, 0},
+-/* UNIX__PRELIM */             {NULL,               _ALL_ON_^(0600ULL),                  0200, 0},
+-/* UNIX__UPDATE */             {NULL,               _ALL_ON_^(0600ULL),                  0400, 0},
+-/* UNIX__NONULL */             {NULL,               _ALL_ON_,                           01000, 0},
+-/* UNIX__QUIET */              {NULL,               _ALL_ON_,                           02000, 0},
+-/* UNIX_USE_AUTHTOK */         {"use_authtok",      _ALL_ON_,                           04000, 0},
+-/* UNIX_SHADOW */              {"shadow",           _ALL_ON_,                          010000, 0},
+-/* UNIX_MD5_PASS */            {"md5",              _ALL_ON_^(015660420000ULL),        020000, 1},
+-/* UNIX__NULLOK */             {"nullok",           _ALL_ON_^(01000ULL),                    0, 0},
+-/* UNIX_DEBUG */               {"debug",            _ALL_ON_,                          040000, 0},
+-/* UNIX_NODELAY */             {"nodelay",          _ALL_ON_,                         0100000, 0},
+-/* UNIX_NIS */                 {"nis",              _ALL_ON_,                         0200000, 0},
+-/* UNIX_BIGCRYPT */            {"bigcrypt",         _ALL_ON_^(015660420000ULL),       0400000, 1},
+-/* UNIX_LIKE_AUTH */           {"likeauth",         _ALL_ON_,                        01000000, 0},
+-/* UNIX_REMEMBER_PASSWD */     {"remember=",        _ALL_ON_,                        02000000, 0},
+-/* UNIX_NOREAP */              {"noreap",           _ALL_ON_,                        04000000, 0},
+-/* UNIX_BROKEN_SHADOW */       {"broken_shadow",    _ALL_ON_,                       010000000, 0},
+-/* UNIX_SHA256_PASS */         {"sha256",           _ALL_ON_^(015660420000ULL),     020000000, 1},
+-/* UNIX_SHA512_PASS */         {"sha512",           _ALL_ON_^(015660420000ULL),     040000000, 1},
+-/* UNIX_ALGO_ROUNDS */         {"rounds=",          _ALL_ON_,                      0100000000, 0},
+-/* UNIX_BLOWFISH_PASS */       {"blowfish",         _ALL_ON_^(015660420000ULL),    0200000000, 1},
+-/* UNIX_MIN_PASS_LEN */        {"minlen=",          _ALL_ON_,                      0400000000, 0},
+-/* UNIX_QUIET */               {"quiet",            _ALL_ON_,                     01000000000, 0},
+-/* UNIX_NO_PASS_EXPIRY */      {"no_pass_expiry",   _ALL_ON_,                     02000000000, 0},
+-/* UNIX_DES */                 {"des",              _ALL_ON_^(015660420000ULL),             0, 1},
+-/* UNIX_GOST_YESCRYPT_PASS */  {"gost_yescrypt",    _ALL_ON_^(015660420000ULL),   04000000000, 1},
+-/* UNIX_YESCRYPT_PASS */       {"yescrypt",         _ALL_ON_^(015660420000ULL),  010000000000, 1},
+-/* UNIX_NULLRESETOK */         {"nullresetok",      _ALL_ON_,                    020000000000, 0},
++/* symbol                      token name          ctrl mask                  ctrl         *
++ * --------------------------- -------------------- ------------------------- ------------ */
++
++/* UNIX__OLD_PASSWD */         {NULL,               _ALL_ON_,                         0x1, 0},
++/* UNIX__VERIFY_PASSWD */      {NULL,               _ALL_ON_,                         0x2, 0},
++/* UNIX__IAMROOT */            {NULL,               _ALL_ON_,                         0x4, 0},
++/* UNIX_AUDIT */               {"audit",            _ALL_ON_,                         0x8, 0},
++/* UNIX_USE_FIRST_PASS */      {"use_first_pass",   _ALL_ON_^(0x30ULL),              0x10, 0},
++/* UNIX_TRY_FIRST_PASS */      {"try_first_pass",   _ALL_ON_^(0x30ULL),              0x20, 0},
++/* UNIX_AUTHTOK_TYPE */        {"authtok_type=",    _ALL_ON_,                        0x40, 0},
++/* UNIX__PRELIM */             {NULL,               _ALL_ON_^(0x180ULL),             0x80, 0},
++/* UNIX__UPDATE */             {NULL,               _ALL_ON_^(0x180ULL),            0x100, 0},
++/* UNIX__NONULL */             {NULL,               _ALL_ON_,                       0x200, 0},
++/* UNIX__QUIET */              {NULL,               _ALL_ON_,                       0x400, 0},
++/* UNIX_USE_AUTHTOK */         {"use_authtok",      _ALL_ON_,                       0x800, 0},
++/* UNIX_SHADOW */              {"shadow",           _ALL_ON_,                      0x1000, 0},
++/* UNIX_MD5_PASS */            {"md5",              _ALL_ON_^(0x6EC22000ULL),      0x2000, 1},
++/* UNIX__NULLOK */             {"nullok",           _ALL_ON_^(0x200ULL),                0, 0},
++/* UNIX_DEBUG */               {"debug",            _ALL_ON_,                      0x4000, 0},
++/* UNIX_NODELAY */             {"nodelay",          _ALL_ON_,                      0x8000, 0},
++/* UNIX_NIS */                 {"nis",              _ALL_ON_,                     0x10000, 0},
++/* UNIX_BIGCRYPT */            {"bigcrypt",         _ALL_ON_^(0x6EC22000ULL),     0x20000, 1},
++/* UNIX_LIKE_AUTH */           {"likeauth",         _ALL_ON_,                     0x40000, 0},
++/* UNIX_REMEMBER_PASSWD */     {"remember=",        _ALL_ON_,                     0x80000, 0},
++/* UNIX_NOREAP */              {"noreap",           _ALL_ON_,                    0x100000, 0},
++/* UNIX_BROKEN_SHADOW */       {"broken_shadow",    _ALL_ON_,                    0x200000, 0},
++/* UNIX_SHA256_PASS */         {"sha256",           _ALL_ON_^(0x6EC22000ULL),    0x400000, 1},
++/* UNIX_SHA512_PASS */         {"sha512",           _ALL_ON_^(0x6EC22000ULL),    0x800000, 1},
++/* UNIX_ALGO_ROUNDS */         {"rounds=",          _ALL_ON_,                   0x1000000, 0},
++/* UNIX_BLOWFISH_PASS */       {"blowfish",         _ALL_ON_^(0x6EC22000ULL),   0x2000000, 1},
++/* UNIX_MIN_PASS_LEN */        {"minlen=",          _ALL_ON_,                   0x4000000, 0},
++/* UNIX_QUIET */               {"quiet",            _ALL_ON_,                   0x8000000, 0},
++/* UNIX_NO_PASS_EXPIRY */      {"no_pass_expiry",   _ALL_ON_,                  0x10000000, 0},
++/* UNIX_DES */                 {"des",              _ALL_ON_^(0x6EC22000ULL),           0, 1},
++/* UNIX_GOST_YESCRYPT_PASS */  {"gost_yescrypt",    _ALL_ON_^(0x6EC22000ULL),  0x20000000, 1},
++/* UNIX_YESCRYPT_PASS */       {"yescrypt",         _ALL_ON_^(0x6EC22000ULL),  0x40000000, 1},
++/* UNIX_NULLRESETOK */         {"nullresetok",      _ALL_ON_,                  0x80000000, 0},
++/* UNIX_OBSCURE_CHECKS */      {"obscure",          _ALL_ON_,                 0x100000000, 0},
++/* UNIX_NULLOK_SECURE */       {"nullok_secure",    _ALL_ON_^(0x200ULL),                0, 0},
+ };
+ 
+ #define UNIX_DEFAULTS  (unix_args[UNIX__NONULL].flag)
+diff --git a/modules/pam_wheel/pam_wheel.8.xml b/modules/pam_wheel/pam_wheel.8.xml
+index af0fd6199b2f..b42e27dd3d51 100644
+--- a/modules/pam_wheel/pam_wheel.8.xml
++++ b/modules/pam_wheel/pam_wheel.8.xml
+@@ -30,9 +30,6 @@
+       <arg choice="opt" rep="norepeat">
+ 	trust
+       </arg>
+-      <arg choice="opt" rep="norepeat">
+-	use_uid
+-      </arg>
+     </cmdsynopsis>
+   </refsynopsisdiv>
+ 
+@@ -113,18 +110,6 @@
+           </para>
+         </listitem>
+       </varlistentry>
+-      <varlistentry>
+-        <term>
+-          use_uid
+-        </term>
+-        <listitem>
+-          <para>
+-            The check will be done against the real uid of the calling process,
+-            instead of trying to obtain the user from the login session
+-            associated with the terminal in use.
+-          </para>
+-        </listitem>
+-      </varlistentry>
+     </variablelist>
+   </refsect1>
+ 
+@@ -237,4 +222,4 @@ su      auth     required       pam_unix.so
+       </para>
+   </refsect1>
+ 
+-</refentry>
+\ No newline at end of file
++</refentry>
+diff --git a/modules/pam_wheel/pam_wheel.c b/modules/pam_wheel/pam_wheel.c
+index dd047afbd7b9..93000ce315be 100644
+--- a/modules/pam_wheel/pam_wheel.c
++++ b/modules/pam_wheel/pam_wheel.c
+@@ -47,9 +47,8 @@
+ /* argument parsing */
+ 
+ #define PAM_DEBUG_ARG       0x0001
+-#define PAM_USE_UID_ARG     0x0002
+-#define PAM_TRUST_ARG       0x0004
+-#define PAM_DENY_ARG        0x0010
++#define PAM_TRUST_ARG       0x0002
++#define PAM_DENY_ARG        0x0004
+ #define PAM_ROOT_ONLY_ARG   0x0020
+ 
+ static int
+@@ -68,8 +67,7 @@ _pam_parse (const pam_handle_t *pamh, int argc, const char **argv,
+ 
+           if (!strcmp(*argv,"debug"))
+                ctrl |= PAM_DEBUG_ARG;
+-          else if (!strcmp(*argv,"use_uid"))
+-               ctrl |= PAM_USE_UID_ARG;
++          else if (!strcmp(*argv,"use_uid")); /* ignored for compat. */
+           else if (!strcmp(*argv,"trust"))
+                ctrl |= PAM_TRUST_ARG;
+           else if (!strcmp(*argv,"deny"))
+@@ -118,39 +116,14 @@ perform_check (pam_handle_t *pamh, int ctrl, const char *use_group)
+         }
+     }
+ 
+-    if (ctrl & PAM_USE_UID_ARG) {
+-        tpwd = pam_modutil_getpwuid (pamh, getuid());
+-        if (tpwd == NULL) {
+-            if (ctrl & PAM_DEBUG_ARG) {
+-                pam_syslog(pamh, LOG_NOTICE, "who is running me ?!");
+-            }
+-            return PAM_SERVICE_ERR;
+-        }
+-        fromsu = tpwd->pw_name;
+-    } else {
+-        fromsu = pam_modutil_getlogin(pamh);
+-
+-        /* if getlogin fails try a fallback to PAM_RUSER */
+-        if (fromsu == NULL) {
+-            const char *rhostname;
+-
+-            retval = pam_get_item(pamh, PAM_RHOST, (const void **)&rhostname);
+-            if (retval != PAM_SUCCESS || rhostname == NULL) {
+-                retval = pam_get_item(pamh, PAM_RUSER, (const void **)&fromsu);
+-            }
+-        }
+-
+-        if (fromsu != NULL) {
+-            tpwd = pam_modutil_getpwnam (pamh, fromsu);
+-        }
+-
+-        if (fromsu == NULL || tpwd == NULL) {
+-            if (ctrl & PAM_DEBUG_ARG) {
+-                pam_syslog(pamh, LOG_NOTICE, "who is running me ?!");
+-            }
+-            return PAM_SERVICE_ERR;
++    tpwd = pam_modutil_getpwuid (pamh, getuid());
++    if (tpwd == NULL) {
++        if (ctrl & PAM_DEBUG_ARG) {
++            pam_syslog(pamh, LOG_NOTICE, "who is running me ?!");
+         }
++        return PAM_SERVICE_ERR;
+     }
++    fromsu = tpwd->pw_name;
+ 
+     /*
+      * At this point fromsu = username-of-invoker; tpwd = pwd ptr for fromsu

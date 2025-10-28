@@ -1,0 +1,143 @@
+diff --git a/tp/Texinfo/XS/gnulib/lib/obstack.h b/tp/Texinfo/XS/gnulib/lib/obstack.h
+index cb080c33b571..6ef9155e9a5c 100644
+--- a/tp/Texinfo/XS/gnulib/lib/obstack.h
++++ b/tp/Texinfo/XS/gnulib/lib/obstack.h
+@@ -114,6 +114,8 @@
+ 
+ #include <stddef.h>             /* For size_t and ptrdiff_t.  */
+ #include <string.h>             /* For __GNU_LIBRARY__, and memcpy.  */
++#include <stdfil.h>
++#include <inttypes.h>
+ 
+ #if __STDC_VERSION__ < 199901L || defined __HP_cc
+ # define __FLEXIBLE_ARRAY_MEMBER 1
+@@ -138,7 +140,10 @@
+    aligning P to the next multiple of A + 1.  B and P must be of type
+    char *.  A + 1 must be a power of 2.  */
+ 
+-#define __BPTR_ALIGN(B, P, A) ((B) + (((P) - (B) + (A)) & ~(A)))
++#define __BPTR_ALIGN(B, P, A)                                            \
++  __extension__                                                          \
++    ({ char *__P = (char *) (P);                                         \
++       zmkptr(__P, (uintptr_t)((B) + ((__P - (B) + (A)) & ~(A)))); })
+ 
+ /* Similar to __BPTR_ALIGN (B, P, A), except optimize the common case
+    where pointers can be converted to integers, aligned as integers,
+diff --git a/tp/Texinfo/XS/parsetexi/extra.c b/tp/Texinfo/XS/parsetexi/extra.c
+index 9e37e5346c2b..ed141ee43156 100644
+--- a/tp/Texinfo/XS/parsetexi/extra.c
++++ b/tp/Texinfo/XS/parsetexi/extra.c
+@@ -19,7 +19,7 @@
+ #include "parser.h"
+ 
+ static void
+-add_associated_info_key (ASSOCIATED_INFO *a, char *key, intptr_t value,
++add_associated_info_key (ASSOCIATED_INFO *a, char *key, void *value,
+                          enum extra_type type)
+ {
+   int i;
+@@ -51,7 +51,7 @@ void
+ add_extra_element (ELEMENT *e, char *key, ELEMENT *value)
+ {
+   add_associated_info_key (&e->extra_info, key,
+-                           (intptr_t) value, extra_element);
++                           value, extra_element);
+ }
+ 
+ /* Add an extra key that is a reference to another element that is
+@@ -62,14 +62,14 @@ void
+ add_extra_element_oot (ELEMENT *e, char *key, ELEMENT *value)
+ {
+   add_associated_info_key (&e->extra_info,
+-                           key, (intptr_t) value, extra_element_oot);
++                           key, value, extra_element_oot);
+ }
+ 
+ void
+ add_info_element_oot (ELEMENT *e, char *key, ELEMENT *value)
+ {
+   add_associated_info_key (&e->info_info,
+-                           key, (intptr_t) value, extra_element_oot);
++                           key, value, extra_element_oot);
+ }
+ 
+ /* Add an extra key that is a reference to the contents array of another
+@@ -78,7 +78,7 @@ void
+ add_extra_contents (ELEMENT *e, char *key, ELEMENT *value)
+ {
+   add_associated_info_key (&e->extra_info,
+-                           key, (intptr_t) value, extra_contents);
++                           key, value, extra_contents);
+ }
+ 
+ /* Add an extra key that is a reference to the text field of another
+@@ -86,7 +86,7 @@ add_extra_contents (ELEMENT *e, char *key, ELEMENT *value)
+ void
+ add_extra_text (ELEMENT *e, char *key, ELEMENT *value)
+ {
+-  add_associated_info_key (&e->extra_info, key, (intptr_t) value, extra_text);
++  add_associated_info_key (&e->extra_info, key, value, extra_text);
+ }
+ 
+ void
+@@ -94,41 +94,41 @@ add_extra_misc_args (ELEMENT *e, char *key, ELEMENT *value)
+ {
+   if (!value) return;
+   add_associated_info_key (&e->extra_info,
+-                           key, (intptr_t) value, extra_misc_args);
++                           key, value, extra_misc_args);
+ }
+ 
+ void
+ add_extra_string (ELEMENT *e, char *key, char *value)
+ {
+   add_associated_info_key (&e->extra_info, key,
+-                           (intptr_t) value, extra_string);
++                           value, extra_string);
+ }
+ 
+ void
+ add_info_string (ELEMENT *e, char *key, char *value)
+ {
+-  add_associated_info_key (&e->info_info, key, (intptr_t) value, extra_string);
++  add_associated_info_key (&e->info_info, key, value, extra_string);
+ }
+ 
+ void
+ add_extra_string_dup (ELEMENT *e, char *key, char *value)
+ {
+   add_associated_info_key (&e->extra_info,
+-                           key, (intptr_t) strdup (value), extra_string);
++                           key, strdup (value), extra_string);
+ }
+ 
+ void
+ add_info_string_dup (ELEMENT *e, char *key, char *value)
+ {
+   add_associated_info_key (&e->info_info,
+-                           key, (intptr_t) strdup (value), extra_string);
++                           key, strdup (value), extra_string);
+ }
+ 
+ void
+ add_extra_integer (ELEMENT *e, char *key, long value)
+ {
+   add_associated_info_key (&e->extra_info,
+-                           key, (intptr_t) value, extra_integer);
++                           key, (void *) value, extra_integer);
+ }
+ 
+ KEY_PAIR *
+diff --git a/tp/Texinfo/XS/parsetexi/tree_types.h b/tp/Texinfo/XS/parsetexi/tree_types.h
+index b6536e8b4541..354ec1e00268 100644
+--- a/tp/Texinfo/XS/parsetexi/tree_types.h
++++ b/tp/Texinfo/XS/parsetexi/tree_types.h
+@@ -64,7 +64,7 @@ enum source_mark_status {
+ typedef struct KEY_PAIR {
+     char *key;
+     enum extra_type type;
+-    intptr_t value;
++    void *value;
+ } KEY_PAIR;
+ 
+ typedef struct ELEMENT_LIST {

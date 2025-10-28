@@ -1,0 +1,102 @@
+diff --git a/lib/common/cpu.h b/lib/common/cpu.h
+index 0e684d9ad8ed..4d7802bc47f0 100644
+--- a/lib/common/cpu.h
++++ b/lib/common/cpu.h
+@@ -22,6 +22,10 @@
+ #include <intrin.h>
+ #endif
+ 
++#ifdef __FILC__
++#include <cpuid.h>
++#endif
++
+ typedef struct {
+     U32 f1c;
+     U32 f1d;
+@@ -34,6 +38,25 @@ MEM_STATIC ZSTD_cpuid_t ZSTD_cpuid(void) {
+     U32 f1d = 0;
+     U32 f7b = 0;
+     U32 f7c = 0;
++#ifdef __FILC__
++    unsigned eax;
++    unsigned ebx;
++    unsigned ecx;
++    unsigned edx;
++    unsigned n;
++    __get_cpuid(0, &eax, &ebx, &ecx, &edx);
++    n = eax;
++    if (n >= 1) {
++        __get_cpuid(1, &eax, &ebx, &ecx, &edx);
++        f1c = ecx;
++        f1d = edx;
++    }
++    if (n >= 7) {
++        __get_cpuid(7, &eax, &ebx, &ecx, &edx);
++        f7b = ebx;
++        f7c = ecx;
++    }
++#else /* __FILC__ -> so !__FILC__ */
+ #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+ #if !defined(__clang__)
+     int reg[4];
+@@ -133,6 +156,7 @@ MEM_STATIC ZSTD_cpuid_t ZSTD_cpuid(void) {
+               : "edx");
+     }
+ #endif
++#endif /* !__FILC__ */
+     {
+         ZSTD_cpuid_t cpuid;
+         cpuid.f1c = f1c;
+diff --git a/lib/compress/zstd_lazy.c b/lib/compress/zstd_lazy.c
+index 67dd55fdb806..b3e2d8d7fbea 100644
+--- a/lib/compress/zstd_lazy.c
++++ b/lib/compress/zstd_lazy.c
+@@ -1571,7 +1571,7 @@ size_t ZSTD_compressBlock_lazy_generic(
+     }
+ 
+     /* Match Loop */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+      */
+@@ -1969,7 +1969,7 @@ size_t ZSTD_compressBlock_lazy_extDict_generic(
+     }
+ 
+     /* Match Loop */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+      */
+diff --git a/lib/decompress/zstd_decompress_block.c b/lib/decompress/zstd_decompress_block.c
+index 76d7332e888f..fba9553df030 100644
+--- a/lib/decompress/zstd_decompress_block.c
++++ b/lib/decompress/zstd_decompress_block.c
+@@ -1481,7 +1481,7 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
+                 *
+                 *   https://gist.github.com/terrelln/9889fc06a423fd5ca6e99351564473f4
+                 */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+             __asm__(".p2align 6");
+ #  if __GNUC__ >= 7
+ 	    /* good for gcc-7, gcc-9, and gcc-11 */
+@@ -1543,7 +1543,7 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
+         if (nbSeq > 0) {
+             /* there is remaining lit from extra buffer */
+ 
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+             __asm__(".p2align 6");
+             __asm__("nop");
+ #  if __GNUC__ != 7
+@@ -1642,7 +1642,7 @@ ZSTD_decompressSequences_body(ZSTD_DCtx* dctx,
+         ZSTD_initFseState(&seqState.stateML, &seqState.DStream, dctx->MLTptr);
+         assert(dst != NULL);
+ 
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+             __asm__(".p2align 6");
+             __asm__("nop");
+ #  if __GNUC__ >= 7

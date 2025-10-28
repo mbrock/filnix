@@ -1,0 +1,25 @@
+diff --git a/IMG_6752-crop-hi.jpg b/IMG_6752-crop-hi.jpg
+deleted file mode 100644
+index f4867df2ec4d..000000000000
+Binary files a/IMG_6752-crop-hi.jpg and /dev/null differ
+diff --git a/IMG_6752-crop-hi.ppm b/IMG_6752-crop-hi.ppm
+deleted file mode 100644
+index ee7e32306217..000000000000
+Binary files a/IMG_6752-crop-hi.ppm and /dev/null differ
+diff --git a/jmemmgr.c b/jmemmgr.c
+index fb7c1449259a..d801b322da05 100644
+--- a/jmemmgr.c
++++ b/jmemmgr.c
+@@ -70,7 +70,7 @@ extern char * getenv JPP((const char * name));
+  */
+ 
+ #ifndef ALIGN_TYPE		/* so can override from jconfig.h */
+-#define ALIGN_TYPE  void*
++#define ALIGN_TYPE  double
+ #endif
+ 
+ 
+diff --git a/rose2.jpg b/rose2.jpg
+deleted file mode 100644
+index 43b02dc073f1..000000000000
+Binary files a/rose2.jpg and /dev/null differ

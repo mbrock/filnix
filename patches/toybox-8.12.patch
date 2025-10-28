@@ -1,0 +1,5447 @@
+diff --git a/good-config b/good-config
+new file mode 100644
+index 000000000000..b2255a2b25d5
+--- /dev/null
++++ b/good-config
+@@ -0,0 +1,393 @@
++#
++# Automatically generated make config: don't edit
++# ToyBox version: KCONFIG_VERSION
++# Fri Jul  4 15:43:42 2025
++#
++# CONFIG_TOYBOX_ON_ANDROID is not set
++CONFIG_TOYBOX_FORK=y
++
++#
++# Posix commands
++#
++CONFIG_BASENAME=y
++CONFIG_CAL=y
++CONFIG_CAT=y
++CONFIG_CHGRP=y
++CONFIG_CHOWN=y
++CONFIG_CHMOD=y
++CONFIG_CKSUM=y
++CONFIG_CRC32=y
++CONFIG_CMP=y
++CONFIG_COMM=y
++CONFIG_CP=y
++CONFIG_MV=y
++CONFIG_INSTALL=y
++CONFIG_CPIO=y
++CONFIG_CUT=y
++CONFIG_DATE=y
++CONFIG_DD=y
++CONFIG_DF=y
++CONFIG_DIRNAME=y
++CONFIG_DU=y
++CONFIG_ECHO=y
++CONFIG_ENV=y
++CONFIG_EXPAND=y
++CONFIG_FALSE=y
++CONFIG_FILE=y
++CONFIG_FIND=y
++CONFIG_FOLD=y
++CONFIG_GETCONF=y
++CONFIG_GREP=y
++CONFIG_EGREP=y
++CONFIG_FGREP=y
++CONFIG_HEAD=y
++CONFIG_ICONV=y
++CONFIG_ID=y
++# CONFIG_ID_Z is not set
++CONFIG_GROUPS=y
++CONFIG_LOGNAME=y
++CONFIG_WHOAMI=y
++CONFIG_KILL=y
++CONFIG_KILLALL5=y
++CONFIG_LINK=y
++CONFIG_LN=y
++CONFIG_LOGGER=y
++CONFIG_LS=y
++CONFIG_MKDIR=y
++# CONFIG_MKDIR_Z is not set
++CONFIG_MKFIFO=y
++# CONFIG_MKFIFO_Z is not set
++CONFIG_NICE=y
++CONFIG_NL=y
++CONFIG_NOHUP=y
++CONFIG_OD=y
++CONFIG_PASTE=y
++CONFIG_PATCH=y
++CONFIG_PRINTF=y
++CONFIG_PS=y
++CONFIG_TOP=y
++CONFIG_IOTOP=y
++CONFIG_PGREP=y
++CONFIG_PKILL=y
++CONFIG_PWD=y
++CONFIG_RENICE=y
++CONFIG_RM=y
++CONFIG_RMDIR=y
++CONFIG_SED=y
++CONFIG_SLEEP=y
++CONFIG_SORT=y
++CONFIG_SORT_FLOAT=y
++CONFIG_SPLIT=y
++CONFIG_STRINGS=y
++CONFIG_TAIL=y
++CONFIG_TAR=y
++CONFIG_TEE=y
++CONFIG_TEST=y
++CONFIG_TEST_GLUE=y
++CONFIG_TIME=y
++CONFIG_TOUCH=y
++CONFIG_TRUE=y
++CONFIG_TSORT=y
++CONFIG_TTY=y
++CONFIG_ULIMIT=y
++CONFIG_ARCH=y
++CONFIG_UNAME=y
++CONFIG_UNIQ=y
++CONFIG_UNLINK=y
++CONFIG_UUDECODE=y
++CONFIG_UUENCODE=y
++CONFIG_WC=y
++CONFIG_WHO=y
++CONFIG_XARGS=y
++
++#
++# Pending (unfinished) commands
++#
++# CONFIG_ARP is not set
++# CONFIG_ARPING is not set
++# CONFIG_AWK is not set
++# CONFIG_BC is not set
++# CONFIG_BOOTCHARTD is not set
++# CONFIG_BRCTL is not set
++# CONFIG_CHSH is not set
++# CONFIG_CROND is not set
++# CONFIG_CRONTAB is not set
++# CONFIG_CSPLIT is not set
++# CONFIG_DHCP is not set
++# CONFIG_DHCP6 is not set
++# CONFIG_DHCPD is not set
++# CONFIG_DEBUG_DHCP is not set
++# CONFIG_DIFF is not set
++# CONFIG_DUMPLEASES is not set
++# CONFIG_EXPR is not set
++# CONFIG_FDISK is not set
++# CONFIG_FSCK is not set
++# CONFIG_GETFATTR is not set
++# CONFIG_GETTY is not set
++# CONFIG_GITCOMPAT is not set
++# CONFIG_GITCLONE is not set
++# CONFIG_GITINIT is not set
++# CONFIG_GITREMOTE is not set
++# CONFIG_GITFETCH is not set
++# CONFIG_GITCHECKOUT is not set
++# CONFIG_GROUPADD is not set
++# CONFIG_GROUPDEL is not set
++# CONFIG_HEXDUMP is not set
++# CONFIG_HD is not set
++# CONFIG_INIT is not set
++# CONFIG_IP is not set
++# CONFIG_IPCRM is not set
++# CONFIG_IPCS is not set
++# CONFIG_KLOGD is not set
++# CONFIG_LAST is not set
++# CONFIG_LSOF is not set
++# CONFIG_MAN is not set
++# CONFIG_MDEV is not set
++# CONFIG_MDEV_CONF is not set
++# CONFIG_MODPROBE is not set
++# CONFIG_MORE is not set
++# CONFIG_ROUTE is not set
++# CONFIG_SH is not set
++# CONFIG_BREAK is not set
++# CONFIG_CD is not set
++# CONFIG_CONTINUE is not set
++# CONFIG_DECLARE is not set
++# CONFIG_EXIT is not set
++# CONFIG_SET is not set
++# CONFIG_UNSET is not set
++# CONFIG_EVAL is not set
++# CONFIG_EXEC is not set
++# CONFIG_EXPORT is not set
++# CONFIG_JOBS is not set
++# CONFIG_LOCAL is not set
++# CONFIG_RETURN is not set
++# CONFIG_SHIFT is not set
++# CONFIG_SOURCE is not set
++# CONFIG_WAIT is not set
++# CONFIG_STRACE is not set
++# CONFIG_STTY is not set
++# CONFIG_SULOGIN is not set
++# CONFIG_SYSLOGD is not set
++# CONFIG_TCPSVD is not set
++# CONFIG_TELNET is not set
++# CONFIG_TELNETD is not set
++# CONFIG_TFTP is not set
++# CONFIG_TFTPD is not set
++# CONFIG_TR is not set
++# CONFIG_TRACEROUTE is not set
++# CONFIG_USERADD is not set
++# CONFIG_USERDEL is not set
++# CONFIG_VI is not set
++# CONFIG_XZCAT is not set
++
++#
++# Other commands
++#
++CONFIG_ACPI=y
++CONFIG_ASCII=y
++CONFIG_UNICODE=y
++CONFIG_BASE64=y
++CONFIG_BASE32=y
++CONFIG_BLKDISCARD=y
++CONFIG_BLKID=y
++CONFIG_FSTYPE=y
++CONFIG_BLOCKDEV=y
++CONFIG_BUNZIP2=y
++CONFIG_BZCAT=y
++# CONFIG_CHCON is not set
++CONFIG_CHROOT=y
++CONFIG_CHRT=y
++CONFIG_CLEAR=y
++CONFIG_COUNT=y
++CONFIG_DEVMEM=y
++CONFIG_DOS2UNIX=y
++CONFIG_UNIX2DOS=y
++CONFIG_EJECT=y
++CONFIG_FACTOR=y
++CONFIG_FALLOCATE=y
++CONFIG_FLOCK=y
++CONFIG_FMT=y
++CONFIG_FREE=y
++CONFIG_FREERAMDISK=y
++CONFIG_FSFREEZE=y
++CONFIG_FSYNC=y
++CONFIG_GETOPT=y
++CONFIG_GPIODETECT=y
++CONFIG_GPIOFIND=y
++CONFIG_GPIOINFO=y
++CONFIG_GPIOGET=y
++CONFIG_GPIOSET=y
++CONFIG_HELP=y
++CONFIG_HEXEDIT=y
++CONFIG_HWCLOCK=y
++CONFIG_I2CDETECT=y
++CONFIG_I2CDUMP=y
++CONFIG_I2CGET=y
++CONFIG_I2CSET=y
++CONFIG_I2CTRANSFER=y
++CONFIG_INOTIFYD=y
++CONFIG_INSMOD=y
++CONFIG_IONICE=y
++CONFIG_IORENICE=y
++CONFIG_LINUX32=y
++CONFIG_LOGIN=y
++CONFIG_LOSETUP=y
++CONFIG_LSATTR=y
++CONFIG_CHATTR=y
++CONFIG_LSMOD=y
++CONFIG_LSPCI=y
++CONFIG_LSUSB=y
++CONFIG_MAKEDEVS=y
++CONFIG_MCOOKIE=y
++CONFIG_MEMEATER=y
++CONFIG_MIX=y
++CONFIG_MKPASSWD=y
++CONFIG_MKSWAP=y
++CONFIG_MODINFO=y
++CONFIG_MOUNTPOINT=y
++CONFIG_NBD_CLIENT=y
++CONFIG_NBD_SERVER=y
++CONFIG_UNSHARE=y
++CONFIG_NSENTER=y
++CONFIG_ONEIT=y
++CONFIG_OPENVT=y
++CONFIG_CHVT=y
++CONFIG_DEALLOCVT=y
++CONFIG_PARTPROBE=y
++CONFIG_PIVOT_ROOT=y
++CONFIG_PMAP=y
++CONFIG_PRINTENV=y
++CONFIG_PWDX=y
++CONFIG_PWGEN=y
++CONFIG_READAHEAD=y
++CONFIG_READELF=y
++CONFIG_READLINK=y
++CONFIG_REALPATH=y
++CONFIG_REBOOT=y
++CONFIG_RESET=y
++CONFIG_REV=y
++CONFIG_RMMOD=y
++CONFIG_RTCWAKE=y
++CONFIG_SETFATTR=y
++CONFIG_SETSID=y
++CONFIG_SHA3SUM=y
++CONFIG_SHRED=y
++CONFIG_SHUF=y
++CONFIG_STAT=y
++CONFIG_SWAPOFF=y
++CONFIG_SWAPON=y
++CONFIG_SWITCH_ROOT=y
++CONFIG_SYSCTL=y
++CONFIG_TAC=y
++CONFIG_NPROC=y
++CONFIG_TASKSET=y
++CONFIG_TIMEOUT=y
++CONFIG_TRUNCATE=y
++CONFIG_TS=y
++CONFIG_UCLAMPSET=y
++CONFIG_UPTIME=y
++CONFIG_USLEEP=y
++CONFIG_UUIDGEN=y
++CONFIG_VCONFIG=y
++CONFIG_VMSTAT=y
++CONFIG_W=y
++CONFIG_WATCH=y
++CONFIG_WATCHDOG=y
++CONFIG_WHICH=y
++CONFIG_XXD=y
++CONFIG_YES=y
++
++#
++# Networking commands
++#
++CONFIG_FTPGET=y
++CONFIG_FTPPUT=y
++CONFIG_HOST=y
++CONFIG_HTTPD=y
++CONFIG_IFCONFIG=y
++CONFIG_MICROCOM=y
++CONFIG_NETCAT=y
++CONFIG_NETSTAT=y
++CONFIG_PING=y
++CONFIG_RFKILL=y
++CONFIG_SNTP=y
++CONFIG_TUNCTL=y
++CONFIG_WGET=y
++CONFIG_WGET_LIBTLS=y
++
++#
++# Linux Standard Base commands
++#
++CONFIG_DMESG=y
++CONFIG_GZIP=y
++CONFIG_GUNZIP=y
++CONFIG_ZCAT=y
++CONFIG_HOSTNAME=y
++CONFIG_DNSDOMAINNAME=y
++CONFIG_KILLALL=y
++CONFIG_MD5SUM=y
++CONFIG_SHA1SUM=y
++CONFIG_SHA224SUM=y
++CONFIG_SHA256SUM=y
++CONFIG_SHA384SUM=y
++CONFIG_SHA512SUM=y
++CONFIG_MKNOD=y
++# CONFIG_MKNOD_Z is not set
++CONFIG_MKTEMP=y
++CONFIG_MOUNT=y
++CONFIG_PASSWD=y
++# CONFIG_PASSWD_SAD is not set
++CONFIG_PIDOF=y
++CONFIG_SEQ=y
++CONFIG_SU=y
++CONFIG_SYNC=y
++CONFIG_UMOUNT=y
++
++#
++# Example commands
++#
++# CONFIG_DEMO_MANY_OPTIONS is not set
++# CONFIG_DEMO_NUMBER is not set
++# CONFIG_DEMO_SCANKEY is not set
++# CONFIG_DEMO_UTF8TOWC is not set
++# CONFIG_HELLO is not set
++# CONFIG_HOSTID is not set
++# CONFIG_LOGPATH is not set
++# CONFIG_SKELETON is not set
++# CONFIG_SKELETON_ALIAS is not set
++
++#
++# Android commands
++#
++# CONFIG_GETENFORCE is not set
++# CONFIG_LOAD_POLICY is not set
++# CONFIG_LOG is not set
++# CONFIG_RESTORECON is not set
++# CONFIG_RUNCON is not set
++# CONFIG_SENDEVENT is not set
++# CONFIG_SETENFORCE is not set
++
++#
++# 
++#
++
++#
++# Toybox global settings
++#
++CONFIG_TOYBOX=y
++CONFIG_TOYBOX_SUID=y
++CONFIG_TOYBOX_LSM_NONE=y
++# CONFIG_TOYBOX_SELINUX is not set
++# CONFIG_TOYBOX_SMACK is not set
++CONFIG_TOYBOX_LIBCRYPTO=y
++CONFIG_TOYBOX_LIBZ=y
++CONFIG_TOYBOX_FLOAT=y
++CONFIG_TOYBOX_HELP=y
++CONFIG_TOYBOX_HELP_DASHDASH=y
++CONFIG_TOYBOX_ZHELP=y
++# CONFIG_TOYBOX_FREE is not set
++# CONFIG_TOYBOX_NORECURSE is not set
++# CONFIG_TOYBOX_DEBUG is not set
++CONFIG_TOYBOX_UID_SYS=100
++CONFIG_TOYBOX_UID_USR=500
++# CONFIG_TOYBOX_FORCE_NOMMU is not set
+diff --git a/kconfig/conf.c b/kconfig/conf.c
+new file mode 100644
+index 000000000000..f4e4b37f4d36
+--- /dev/null
++++ b/kconfig/conf.c
+@@ -0,0 +1,624 @@
++/*
++ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
++ * Released under the terms of the GNU GPL v2.0.
++ */
++
++#include <ctype.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <unistd.h>
++#include <time.h>
++#include <sys/stat.h>
++
++#define LKC_DIRECT_LINK
++#include "lkc.h"
++
++static void conf(struct menu *menu);
++static void check_conf(struct menu *menu);
++
++enum {
++	ask_all,
++	ask_new,
++	ask_silent,
++	set_default,
++	set_yes,
++	set_mod,
++	set_no,
++	set_random
++} input_mode = ask_all;
++char *defconfig_file;
++
++static int indent = 1;
++static int valid_stdin = 1;
++static int conf_cnt;
++static char line[128];
++static struct menu *rootEntry;
++
++static char nohelp_text[] = N_("Sorry, no help available for this option yet.\n");
++
++static void strip(char *str)
++{
++	char *p = str;
++	int l;
++
++	while ((isspace(*p)))
++		p++;
++	l = strlen(p);
++	if (p != str)
++		memmove(str, p, l + 1);
++	if (!l)
++		return;
++	p = str + l - 1;
++	while ((isspace(*p)))
++		*p-- = 0;
++}
++
++static void check_stdin(void)
++{
++	if (!valid_stdin && input_mode == ask_silent) {
++		printf(_("aborted!\n\n"));
++		printf(_("Console input/output is redirected. "));
++		printf(_("Run 'make oldconfig' to update configuration.\n\n"));
++		exit(1);
++	}
++}
++
++static void conf_askvalue(struct symbol *sym, const char *def)
++{
++	enum symbol_type type = sym_get_type(sym);
++	tristate val;
++
++	if (!sym_has_value(sym))
++		printf("(NEW) ");
++
++	line[0] = '\n';
++	line[1] = 0;
++
++	if (!sym_is_changable(sym)) {
++		printf("%s\n", def);
++		line[0] = '\n';
++		line[1] = 0;
++		return;
++	}
++
++	switch (input_mode) {
++	case set_no:
++	case set_mod:
++	case set_yes:
++	case set_random:
++		if (sym_has_value(sym)) {
++			printf("%s\n", def);
++			return;
++		}
++		break;
++	case ask_new:
++	case ask_silent:
++		if (sym_has_value(sym)) {
++			printf("%s\n", def);
++			return;
++		}
++		check_stdin();
++	case ask_all:
++		fflush(stdout);
++		fgets(line, 128, stdin);
++		return;
++	case set_default:
++		printf("%s\n", def);
++		return;
++	default:
++		break;
++	}
++
++	switch (type) {
++	case S_INT:
++	case S_HEX:
++	case S_STRING:
++		printf("%s\n", def);
++		return;
++	default:
++		;
++	}
++	switch (input_mode) {
++	case set_yes:
++		if (sym_tristate_within_range(sym, yes)) {
++			line[0] = 'y';
++			line[1] = '\n';
++			line[2] = 0;
++			break;
++		}
++	case set_mod:
++		if (type == S_TRISTATE) {
++			if (sym_tristate_within_range(sym, mod)) {
++				line[0] = 'm';
++				line[1] = '\n';
++				line[2] = 0;
++				break;
++			}
++		} else {
++			if (sym_tristate_within_range(sym, yes)) {
++				line[0] = 'y';
++				line[1] = '\n';
++				line[2] = 0;
++				break;
++			}
++		}
++	case set_no:
++		if (sym_tristate_within_range(sym, no)) {
++			line[0] = 'n';
++			line[1] = '\n';
++			line[2] = 0;
++			break;
++		}
++	case set_random:
++		do {
++			val = (tristate)(random() % 3);
++		} while (!sym_tristate_within_range(sym, val));
++		switch (val) {
++		case no: line[0] = 'n'; break;
++		case mod: line[0] = 'm'; break;
++		case yes: line[0] = 'y'; break;
++		}
++		line[1] = '\n';
++		line[2] = 0;
++		break;
++	default:
++		break;
++	}
++	printf("%s", line);
++}
++
++int conf_string(struct menu *menu)
++{
++	struct symbol *sym = menu->sym;
++	const char *def, *help;
++
++	while (1) {
++		printf("%*s%s ", indent - 1, "", menu->prompt->text);
++		printf("(%s) ", sym->name);
++		def = sym_get_string_value(sym);
++		if (sym_get_string_value(sym))
++			printf("[%s] ", def);
++		conf_askvalue(sym, def);
++		switch (line[0]) {
++		case '\n':
++			break;
++		case '?':
++			/* print help */
++			if (line[1] == '\n') {
++				help = nohelp_text;
++				if (menu->sym->help)
++					help = menu->sym->help;
++				printf("\n%s\n", menu->sym->help);
++				def = NULL;
++				break;
++			}
++		default:
++			line[strlen(line)-1] = 0;
++			def = line;
++		}
++		if (def && sym_set_string_value(sym, def))
++			return 0;
++	}
++}
++
++static int conf_sym(struct menu *menu)
++{
++	struct symbol *sym = menu->sym;
++	int type;
++	tristate oldval, newval;
++	const char *help;
++
++	while (1) {
++		printf("%*s%s ", indent - 1, "", menu->prompt->text);
++		if (sym->name)
++			printf("(%s) ", sym->name);
++		type = sym_get_type(sym);
++		putchar('[');
++		oldval = sym_get_tristate_value(sym);
++		switch (oldval) {
++		case no:
++			putchar('N');
++			break;
++		case mod:
++			putchar('M');
++			break;
++		case yes:
++			putchar('Y');
++			break;
++		}
++		if (oldval != no && sym_tristate_within_range(sym, no))
++			printf("/n");
++		if (oldval != mod && sym_tristate_within_range(sym, mod))
++			printf("/m");
++		if (oldval != yes && sym_tristate_within_range(sym, yes))
++			printf("/y");
++		if (sym->help)
++			printf("/?");
++		printf("] ");
++		conf_askvalue(sym, sym_get_string_value(sym));
++		strip(line);
++
++		switch (line[0]) {
++		case 'n':
++		case 'N':
++			newval = no;
++			if (!line[1] || !strcmp(&line[1], "o"))
++				break;
++			continue;
++		case 'm':
++		case 'M':
++			newval = mod;
++			if (!line[1])
++				break;
++			continue;
++		case 'y':
++		case 'Y':
++			newval = yes;
++			if (!line[1] || !strcmp(&line[1], "es"))
++				break;
++			continue;
++		case 0:
++			newval = oldval;
++			break;
++		case '?':
++			goto help;
++		default:
++			continue;
++		}
++		if (sym_set_tristate_value(sym, newval))
++			return 0;
++help:
++		help = nohelp_text;
++		if (sym->help)
++			help = sym->help;
++		printf("\n%s\n", help);
++	}
++}
++
++static int conf_choice(struct menu *menu)
++{
++	struct symbol *sym, *def_sym;
++	struct menu *child;
++	int type;
++	bool is_new;
++
++	sym = menu->sym;
++	type = sym_get_type(sym);
++	is_new = !sym_has_value(sym);
++	if (sym_is_changable(sym)) {
++		conf_sym(menu);
++		sym_calc_value(sym);
++		switch (sym_get_tristate_value(sym)) {
++		case no:
++			return 1;
++		case mod:
++			return 0;
++		case yes:
++			break;
++		}
++	} else {
++		switch (sym_get_tristate_value(sym)) {
++		case no:
++			return 1;
++		case mod:
++			printf("%*s%s\n", indent - 1, "", menu_get_prompt(menu));
++			return 0;
++		case yes:
++			break;
++		}
++	}
++
++	while (1) {
++		int cnt, def;
++
++		printf("%*s%s\n", indent - 1, "", menu_get_prompt(menu));
++		def_sym = sym_get_choice_value(sym);
++		cnt = def = 0;
++		line[0] = 0;
++		for (child = menu->list; child; child = child->next) {
++			if (!menu_is_visible(child))
++				continue;
++			if (!child->sym) {
++				printf("%*c %s\n", indent, '*', menu_get_prompt(child));
++				continue;
++			}
++			cnt++;
++			if (child->sym == def_sym) {
++				def = cnt;
++				printf("%*c", indent, '>');
++			} else
++				printf("%*c", indent, ' ');
++			printf(" %d. %s", cnt, menu_get_prompt(child));
++			if (child->sym->name)
++				printf(" (%s)", child->sym->name);
++			if (!sym_has_value(child->sym))
++				printf(" (NEW)");
++			printf("\n");
++		}
++		printf("%*schoice", indent - 1, "");
++		if (cnt == 1) {
++			printf("[1]: 1\n");
++			goto conf_childs;
++		}
++		printf("[1-%d", cnt);
++		if (sym->help)
++			printf("?");
++		printf("]: ");
++		switch (input_mode) {
++		case ask_new:
++		case ask_silent:
++			if (!is_new) {
++				cnt = def;
++				printf("%d\n", cnt);
++				break;
++			}
++			check_stdin();
++		case ask_all:
++			fflush(stdout);
++			fgets(line, 128, stdin);
++			strip(line);
++			if (line[0] == '?') {
++				printf("\n%s\n", menu->sym->help ?
++					menu->sym->help : nohelp_text);
++				continue;
++			}
++			if (!line[0])
++				cnt = def;
++			else if (isdigit(line[0]))
++				cnt = atoi(line);
++			else
++				continue;
++			break;
++		case set_random:
++			def = (random() % cnt) + 1;
++		case set_default:
++		case set_yes:
++		case set_mod:
++		case set_no:
++			cnt = def;
++			printf("%d\n", cnt);
++			break;
++		}
++
++	conf_childs:
++		for (child = menu->list; child; child = child->next) {
++			if (!child->sym || !menu_is_visible(child))
++				continue;
++			if (!--cnt)
++				break;
++		}
++		if (!child)
++			continue;
++		if (strlen(line) && line[strlen(line) - 1] == '?') {
++			printf("\n%s\n", child->sym->help ?
++				child->sym->help : nohelp_text);
++			continue;
++		}
++		sym_set_choice_value(sym, child->sym);
++		if (child->list) {
++			indent += 2;
++			conf(child->list);
++			indent -= 2;
++		}
++		return 1;
++	}
++}
++
++static void conf(struct menu *menu)
++{
++	struct symbol *sym;
++	struct property *prop;
++	struct menu *child;
++
++	if (!menu_is_visible(menu))
++		return;
++
++	sym = menu->sym;
++	prop = menu->prompt;
++	if (prop) {
++		const char *prompt;
++
++		switch (prop->type) {
++		case P_MENU:
++			if (input_mode == ask_silent && rootEntry != menu) {
++				check_conf(menu);
++				return;
++			}
++		case P_COMMENT:
++			prompt = menu_get_prompt(menu);
++			if (prompt)
++				printf("%*c\n%*c %s\n%*c\n",
++					indent, '*',
++					indent, '*', prompt,
++					indent, '*');
++		default:
++			;
++		}
++	}
++
++	if (!sym)
++		goto conf_childs;
++
++	if (sym_is_choice(sym)) {
++		conf_choice(menu);
++		if (sym->curr.tri != mod)
++			return;
++		goto conf_childs;
++	}
++
++	switch (sym->type) {
++	case S_INT:
++	case S_HEX:
++	case S_STRING:
++		conf_string(menu);
++		break;
++	default:
++		conf_sym(menu);
++		break;
++	}
++
++conf_childs:
++	if (sym)
++		indent += 2;
++	for (child = menu->list; child; child = child->next)
++		conf(child);
++	if (sym)
++		indent -= 2;
++}
++
++static void check_conf(struct menu *menu)
++{
++	struct symbol *sym;
++	struct menu *child;
++
++	if (!menu_is_visible(menu))
++		return;
++
++	sym = menu->sym;
++	if (sym && !sym_has_value(sym)) {
++		if (sym_is_changable(sym) ||
++		    (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes)) {
++			if (!conf_cnt++)
++				printf(_("*\n* Restart config...\n*\n"));
++			rootEntry = menu_get_parent_menu(menu);
++			conf(rootEntry);
++		}
++	}
++
++	for (child = menu->list; child; child = child->next)
++		check_conf(child);
++}
++
++int main(int ac, char **av)
++{
++	int i = 1;
++	const char *name;
++	struct stat tmpstat;
++
++	if (ac > i && av[i][0] == '-') {
++		switch (av[i++][1]) {
++		case 'o':
++			input_mode = ask_new;
++			break;
++		case 's':
++			input_mode = ask_silent;
++			valid_stdin = isatty(0) && isatty(1) && isatty(2);
++			break;
++		case 'd':
++			input_mode = set_default;
++			break;
++		case 'D':
++			input_mode = set_default;
++			defconfig_file = av[i++];
++			if (!defconfig_file) {
++				printf(_("%s: No default config file specified\n"),
++					av[0]);
++				exit(1);
++			}
++			break;
++		case 'n':
++			input_mode = set_no;
++			break;
++		case 'm':
++			input_mode = set_mod;
++			break;
++		case 'y':
++			input_mode = set_yes;
++			break;
++		case 'r':
++			input_mode = set_random;
++			srandom(time(NULL));
++			break;
++		case 'h':
++		case '?':
++			fprintf(stderr, "See README for usage info\n");
++			exit(0);
++		}
++	}
++  	name = av[i];
++	if (!name) {
++		printf(_("%s: Kconfig file missing\n"), av[0]);
++		exit(1);
++	}
++	conf_parse(name);
++	//zconfdump(stdout);
++	switch (input_mode) {
++	case set_default:
++		if (!defconfig_file)
++			defconfig_file = conf_get_default_confname();
++		if (conf_read(defconfig_file)) {
++			printf("***\n"
++				"*** Can't find default configuration \"%s\"!\n"
++				"***\n", defconfig_file);
++			exit(1);
++		}
++		break;
++	case ask_silent:
++		if (stat(".config", &tmpstat)) {
++			printf(_("***\n"
++				"*** You have not yet configured your "PROJECT_NAME"!\n"
++				"***\n"
++				"*** Please run some configurator (e.g. \"make oldconfig\" or\n"
++				"*** \"make menuconfig\" or \"make xconfig\").\n"
++				"***\n"));
++			exit(1);
++		}
++	case ask_all:
++	case ask_new:
++		conf_read(NULL);
++		break;
++	case set_no:
++	case set_mod:
++	case set_yes:
++	case set_random:
++		name = getenv("KCONFIG_ALLCONFIG");
++		if (name && !stat(name, &tmpstat)) {
++			conf_read_simple(name, S_DEF_USER);
++			break;
++		}
++		switch (input_mode) {
++		case set_no:	 name = "allno.config"; break;
++		case set_mod:	 name = "allmod.config"; break;
++		case set_yes:	 name = "allyes.config"; break;
++		case set_random: name = "allrandom.config"; break;
++		default: break;
++		}
++		if (!stat(name, &tmpstat))
++			conf_read_simple(name, S_DEF_USER);
++		else if (!stat("all.config", &tmpstat))
++			conf_read_simple("all.config", S_DEF_USER);
++		break;
++	default:
++		break;
++	}
++
++	if (input_mode != ask_silent) {
++		rootEntry = &rootmenu;
++		conf(&rootmenu);
++		if (input_mode == ask_all) {
++			input_mode = ask_silent;
++			valid_stdin = 1;
++		}
++	} else if (sym_change_count) {
++		name = getenv("KCONFIG_NOSILENTUPDATE");
++		if (name && *name) {
++			fprintf(stderr, _("\n*** "PROJECT_NAME" configuration requires explicit update.\n\n"));
++			return 1;
++		}
++	} else
++		goto skip_check;
++
++	do {
++		conf_cnt = 0;
++		check_conf(&rootmenu);
++	} while (conf_cnt);
++
++	if (!conf_write(NULL)) {
++skip_check:
++		if (!(input_mode == ask_silent && conf_write_autoconf()))
++			return 0;
++	}
++	fprintf(stderr, _("\n*** Error writing "PROJECT_NAME" configuration.\n\n"));
++	return 1;
++}
+diff --git a/kconfig/confdata.c b/kconfig/confdata.c
+new file mode 100644
+index 000000000000..91c1ed5fe7f8
+--- /dev/null
++++ b/kconfig/confdata.c
+@@ -0,0 +1,806 @@
++/*
++ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
++ * Released under the terms of the GNU GPL v2.0.
++ */
++
++#include <sys/stat.h>
++#include <ctype.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++#include <unistd.h>
++
++#define LKC_DIRECT_LINK
++#include "lkc.h"
++
++static void conf_warning(const char *fmt, ...)
++	__attribute__ ((format (printf, 1, 2)));
++
++static const char *conf_filename;
++static int conf_lineno, conf_warnings, conf_unsaved;
++
++#ifndef conf_defname
++const char conf_defname[] = "arch/$ARCH/defconfig";
++#endif
++
++#ifndef CONFIG_PREFIX
++#define CONFIG_PREFIX "CONFIG_"
++#endif
++
++static void conf_warning(const char *fmt, ...)
++{
++	va_list ap;
++	va_start(ap, fmt);
++	fprintf(stderr, "%s:%d:warning: ", conf_filename, conf_lineno);
++	vfprintf(stderr, fmt, ap);
++	fprintf(stderr, "\n");
++	va_end(ap);
++	conf_warnings++;
++}
++
++const char *conf_get_configname(void)
++{
++	char *name = getenv("KCONFIG_CONFIG");
++
++	return name ? name : ".config";
++}
++
++static char *conf_expand_value(const char *in)
++{
++	struct symbol *sym;
++	const char *src;
++	static char res_value[SYMBOL_MAXLENGTH];
++	char *dst, name[SYMBOL_MAXLENGTH];
++
++	res_value[0] = 0;
++	dst = name;
++	while ((src = strchr(in, '$'))) {
++		strncat(res_value, in, src - in);
++		src++;
++		dst = name;
++		while (isalnum(*src) || *src == '_')
++			*dst++ = *src++;
++		*dst = 0;
++		sym = sym_lookup(name, 0);
++		sym_calc_value(sym);
++		strcat(res_value, sym_get_string_value(sym));
++		in = src;
++	}
++	strcat(res_value, in);
++
++	return res_value;
++}
++
++char *conf_get_default_confname(void)
++{
++	struct stat buf;
++	static char fullname[PATH_MAX+1];
++	char *env, *name;
++
++	name = conf_expand_value(conf_defname);
++	env = getenv(SRCTREE);
++	if (env) {
++		sprintf(fullname, "%s/%s", env, name);
++		if (!stat(fullname, &buf))
++			return fullname;
++	}
++	return name;
++}
++
++int conf_read_simple(const char *name, int def)
++{
++	FILE *in = NULL;
++	char line[1024];
++	char *p, *p2;
++	struct symbol *sym;
++	int i, def_flags;
++
++	if (name) {
++		in = zconf_fopen(name);
++	} else {
++		struct property *prop;
++
++		name = conf_get_configname();
++		in = zconf_fopen(name);
++		if (in)
++			goto load;
++		sym_change_count++;
++		if (!sym_defconfig_list)
++			return 1;
++
++		for_all_defaults(sym_defconfig_list, prop) {
++			if (expr_calc_value(prop->visible.expr) == no ||
++			    prop->expr->type != E_SYMBOL)
++				continue;
++			name = conf_expand_value(prop->expr->left.sym->name);
++			in = zconf_fopen(name);
++			if (in) {
++				printf(_("#\n"
++					 "# using defaults found in %s\n"
++					 "#\n"), name);
++				goto load;
++			}
++		}
++	}
++	if (!in)
++		return 1;
++
++load:
++	conf_filename = name;
++	conf_lineno = 0;
++	conf_warnings = 0;
++	conf_unsaved = 0;
++
++	def_flags = SYMBOL_DEF << def;
++	for_all_symbols(i, sym) {
++		sym->flags |= SYMBOL_CHANGED;
++		sym->flags &= ~(def_flags|SYMBOL_VALID);
++		if (sym_is_choice(sym))
++			sym->flags |= def_flags;
++		switch (sym->type) {
++		case S_INT:
++		case S_HEX:
++		case S_STRING:
++			if (sym->def[def].val)
++				free(sym->def[def].val);
++		default:
++			sym->def[def].val = NULL;
++			sym->def[def].tri = no;
++		}
++	}
++
++	while (fgets(line, sizeof(line), in)) {
++		conf_lineno++;
++		sym = NULL;
++		switch (line[0]) {
++		case '#':
++			if (line[1]!=' ' || memcmp(line + 2, CONFIG_PREFIX,
++					       	strlen(CONFIG_PREFIX))) {
++				continue;
++			}
++			p = strchr(line + 2 + strlen(CONFIG_PREFIX), ' ');
++			if (!p)
++				continue;
++			*p++ = 0;
++			if (strncmp(p, "is not set", 10))
++				continue;
++			if (def == S_DEF_USER) {
++				sym = sym_find(line + 2 + strlen(CONFIG_PREFIX));
++				if (!sym) {
++					conf_warning("trying to assign nonexistent symbol %s", line + 2 + strlen(CONFIG_PREFIX));
++					break;
++				}
++			} else {
++				sym = sym_lookup(line + 9, 0);
++				if (sym->type == S_UNKNOWN)
++					sym->type = S_BOOLEAN;
++			}
++			if (sym->flags & def_flags) {
++				conf_warning("trying to reassign symbol %s", sym->name);
++				break;
++			}
++			switch (sym->type) {
++			case S_BOOLEAN:
++			case S_TRISTATE:
++				sym->def[def].tri = no;
++				sym->flags |= def_flags;
++				break;
++			default:
++				;
++			}
++			break;
++		case 'A' ... 'Z':
++			if (memcmp(line, CONFIG_PREFIX, strlen(CONFIG_PREFIX))) {
++				conf_warning("unexpected data");
++				continue;
++			}
++			p = strchr(line + strlen(CONFIG_PREFIX), '=');
++			if (!p)
++				continue;
++			*p++ = 0;
++			p2 = strchr(p, '\n');
++			if (p2) {
++				*p2-- = 0;
++				if (*p2 == '\r')
++					*p2 = 0;
++			}
++			if (def == S_DEF_USER) {
++				sym = sym_find(line + strlen(CONFIG_PREFIX));
++				if (!sym) {
++					conf_warning("trying to assign nonexistent symbol %s", line + 7);
++					break;
++				}
++			} else {
++				sym = sym_lookup(line + strlen(CONFIG_PREFIX), 0);
++				if (sym->type == S_UNKNOWN)
++					sym->type = S_OTHER;
++			}
++			if (sym->flags & def_flags) {
++				conf_warning("trying to reassign symbol %s", sym->name);
++				break;
++			}
++			switch (sym->type) {
++			case S_TRISTATE:
++				if (p[0] == 'm') {
++					sym->def[def].tri = mod;
++					sym->flags |= def_flags;
++					break;
++				}
++			case S_BOOLEAN:
++				if (p[0] == 'y') {
++					sym->def[def].tri = yes;
++					sym->flags |= def_flags;
++					break;
++				}
++				if (p[0] == 'n') {
++					sym->def[def].tri = no;
++					sym->flags |= def_flags;
++					break;
++				}
++				conf_warning("symbol value '%s' invalid for %s", p, sym->name);
++				break;
++			case S_OTHER:
++				if (*p != '"') {
++					for (p2 = p; *p2 && !isspace(*p2); p2++)
++						;
++					sym->type = S_STRING;
++					goto done;
++				}
++			case S_STRING:
++				if (*p++ != '"')
++					break;
++				for (p2 = p; (p2 = strpbrk(p2, "\"\\")); p2++) {
++					if (*p2 == '"') {
++						*p2 = 0;
++						break;
++					}
++					memmove(p2, p2 + 1, strlen(p2));
++				}
++				if (!p2) {
++					conf_warning("invalid string found");
++					continue;
++				}
++			case S_INT:
++			case S_HEX:
++			done:
++				if (sym_string_valid(sym, p)) {
++					sym->def[def].val = strdup(p);
++					sym->flags |= def_flags;
++				} else {
++					conf_warning("symbol value '%s' invalid for %s", p, sym->name);
++					continue;
++				}
++				break;
++			default:
++				;
++			}
++			break;
++		case '\r':
++		case '\n':
++			break;
++		default:
++			conf_warning("unexpected data");
++			continue;
++		}
++		if (sym && sym_is_choice_value(sym)) {
++			struct symbol *cs = prop_get_symbol(sym_get_choice_prop(sym));
++			switch (sym->def[def].tri) {
++			case no:
++				break;
++			case mod:
++				if (cs->def[def].tri == yes) {
++					conf_warning("%s creates inconsistent choice state", sym->name);
++					cs->flags &= ~def_flags;
++				}
++				break;
++			case yes:
++				if (cs->def[def].tri != no) {
++					conf_warning("%s creates inconsistent choice state", sym->name);
++					cs->flags &= ~def_flags;
++				} else
++					cs->def[def].val = sym;
++				break;
++			}
++			cs->def[def].tri = E_OR(cs->def[def].tri, sym->def[def].tri);
++		}
++	}
++	fclose(in);
++
++	if (modules_sym)
++		sym_calc_value(modules_sym);
++	return 0;
++}
++
++int conf_read(const char *name)
++{
++	struct symbol *sym;
++	struct property *prop;
++	struct expr *e;
++	int i, flags;
++
++	sym_change_count = 0;
++
++	if (conf_read_simple(name, S_DEF_USER))
++		return 1;
++
++	for_all_symbols(i, sym) {
++		sym_calc_value(sym);
++		if (sym_is_choice(sym) || (sym->flags & SYMBOL_AUTO))
++			goto sym_ok;
++		if (sym_has_value(sym) && (sym->flags & SYMBOL_WRITE)) {
++			/* check that calculated value agrees with saved value */
++			switch (sym->type) {
++			case S_BOOLEAN:
++			case S_TRISTATE:
++				if (sym->def[S_DEF_USER].tri != sym_get_tristate_value(sym))
++					break;
++				if (!sym_is_choice(sym))
++					goto sym_ok;
++			default:
++				if (!strcmp(sym->curr.val, sym->def[S_DEF_USER].val))
++					goto sym_ok;
++				break;
++			}
++		} else if (!sym_has_value(sym) && !(sym->flags & SYMBOL_WRITE))
++			/* no previous value and not saved */
++			goto sym_ok;
++		conf_unsaved++;
++		/* maybe print value in verbose mode... */
++	sym_ok:
++		if (sym_has_value(sym) && !sym_is_choice_value(sym)) {
++			if (sym->visible == no)
++				sym->flags &= ~SYMBOL_DEF_USER;
++			switch (sym->type) {
++			case S_STRING:
++			case S_INT:
++			case S_HEX:
++				if (!sym_string_within_range(sym, sym->def[S_DEF_USER].val))
++					sym->flags &= ~(SYMBOL_VALID|SYMBOL_DEF_USER);
++			default:
++				break;
++			}
++		}
++		if (!sym_is_choice(sym))
++			continue;
++		prop = sym_get_choice_prop(sym);
++		flags = sym->flags;
++		for (e = prop->expr; e; e = e->left.expr)
++			if (e->right.sym->visible != no)
++				flags &= e->right.sym->flags;
++		sym->flags &= flags | ~SYMBOL_DEF_USER;
++	}
++
++	sym_change_count += conf_warnings || conf_unsaved;
++
++	return 0;
++}
++
++struct menu *next_menu(struct menu *menu)
++{
++	if (menu->list) return menu->list;
++	do {
++		if (menu->next) {
++			menu = menu->next;
++			break;
++		}
++	} while ((menu = menu->parent));
++
++	return menu;
++}
++
++#define SYMBOL_FORCEWRITE (1<<31)
++
++int conf_write(const char *name)
++{
++	FILE *out;
++	struct symbol *sym;
++	struct menu *menu;
++	const char *basename;
++	char dirname[128], tmpname[128], newname[128];
++	int type, l, writetype;
++	const char *str;
++	time_t now;
++	int use_timestamp = 1;
++	char *env;
++
++	dirname[0] = 0;
++	if (name && name[0]) {
++		struct stat st;
++		char *slash;
++
++		if (!stat(name, &st) && S_ISDIR(st.st_mode)) {
++			strcpy(dirname, name);
++			strcat(dirname, "/");
++			basename = conf_get_configname();
++		} else if ((slash = strrchr(name, '/'))) {
++			int size = slash - name + 1;
++			memcpy(dirname, name, size);
++			dirname[size] = 0;
++			if (slash[1])
++				basename = slash + 1;
++			else
++				basename = conf_get_configname();
++		} else
++			basename = name;
++	} else
++		basename = conf_get_configname();
++
++	sprintf(newname, "%s%s", dirname, basename);
++	env = getenv("KCONFIG_OVERWRITECONFIG");
++	if (!env || !*env) {
++		sprintf(tmpname, "%s.tmpconfig.%d", dirname, (int)getpid());
++		out = fopen(tmpname, "w");
++	} else {
++		*tmpname = 0;
++		out = fopen(newname, "w");
++	}
++	if (!out)
++		return 1;
++
++	sym = sym_lookup("KCONFIG_VERSION", 0);
++	sym_calc_value(sym);
++	time(&now);
++	env = getenv("KCONFIG_NOTIMESTAMP");
++	if (env && *env)
++		use_timestamp = 0;
++
++	fprintf(out, _("#\n"
++		       "# Automatically generated make config: don't edit\n"
++		       "# "PROJECT_NAME" version: %s\n"
++		       "%s%s"
++		       "#\n"),
++		     sym_get_string_value(sym),
++		     use_timestamp ? "# " : "",
++		     use_timestamp ? ctime(&now) : "");
++
++	if (!sym_change_count)
++		sym_clear_all_valid();
++
++	// Write out all symbols (even in closed sub-menus).
++	if (1) {
++		for (menu = rootmenu.list; menu; menu = next_menu(menu))
++			if (menu->sym) menu->sym->flags |= SYMBOL_FORCEWRITE;
++		writetype = SYMBOL_FORCEWRITE;
++
++	// Don't write  out symbols in closed menus.
++
++	} else writetype = SYMBOL_WRITE;
++
++
++	menu = rootmenu.list;
++	while (menu) {
++		sym = menu->sym;
++		if (!sym) {
++			if (!menu_is_visible(menu))
++				goto next;
++			str = menu_get_prompt(menu);
++			fprintf(out, "\n"
++				     "#\n"
++				     "# %s\n"
++				     "#\n", str);
++		} else if (!(sym->flags & SYMBOL_CHOICE)) {
++			sym_calc_value(sym);
++			if (!(sym->flags & writetype))
++				goto next;
++			sym->flags &= ~writetype;
++			type = sym->type;
++			if (type == S_TRISTATE) {
++				sym_calc_value(modules_sym);
++				if (modules_sym->curr.tri == no)
++					type = S_BOOLEAN;
++			}
++			switch (type) {
++			case S_BOOLEAN:
++			case S_TRISTATE:
++				switch (sym_get_tristate_value(sym)) {
++				case no:
++					fprintf(out, "# "CONFIG_PREFIX"%s is not set\n", sym->name);
++					break;
++				case mod:
++					fprintf(out, CONFIG_PREFIX"%s=m\n", sym->name);
++					break;
++				case yes:
++					fprintf(out, CONFIG_PREFIX"%s=y\n", sym->name);
++					break;
++				}
++				break;
++			case S_STRING:
++				str = sym_get_string_value(sym);
++				fprintf(out, CONFIG_PREFIX"%s=\"", sym->name);
++				while (1) {
++					l = strcspn(str, "\"\\");
++					if (l) {
++						fwrite(str, l, 1, out);
++						str += l;
++					}
++					if (!*str)
++						break;
++					fprintf(out, "\\%c", *str++);
++				}
++				fputs("\"\n", out);
++				break;
++			case S_HEX:
++				str = sym_get_string_value(sym);
++				if (str[0] != '0' || (str[1] != 'x' && str[1] != 'X')) {
++					fprintf(out, CONFIG_PREFIX"%s=%s\n", sym->name, *str ? str : "0");
++					break;
++				}
++			case S_INT:
++				str = sym_get_string_value(sym);
++				fprintf(out, CONFIG_PREFIX"%s=%s\n", sym->name, *str ? str : "0");
++				break;
++			}
++		}
++
++	next:
++		if (writetype == SYMBOL_WRITE) {
++			if (menu->list) {
++				menu = menu->list;
++				continue;
++			}
++			if (menu->next)
++				menu = menu->next;
++			else while ((menu = menu->parent)) {
++				if (menu->next) {
++					menu = menu->next;
++					break;
++				}
++			}
++		} else
++			menu = next_menu(menu);
++	}
++	fclose(out);
++
++	if (*tmpname) {
++		strcat(dirname, basename);
++		strcat(dirname, ".old");
++		rename(newname, dirname);
++		if (rename(tmpname, newname))
++			return 1;
++	}
++
++	printf(_("#\n"
++		 "# configuration written to %s\n"
++		 "#\n"), newname);
++
++	sym_change_count = 0;
++
++	return 0;
++}
++
++int conf_split_config(void)
++{
++	char *name, path[128];
++	char *s, *d, c;
++	struct symbol *sym;
++	struct stat sb;
++	int res, i, fd;
++
++	name = getenv("KCONFIG_AUTOCONFIG");
++	if (!name)
++		name = "include/config/auto.conf";
++	conf_read_simple(name, S_DEF_AUTO);
++
++	if (chdir("include/config"))
++		return 1;
++
++	res = 0;
++	for_all_symbols(i, sym) {
++		sym_calc_value(sym);
++		if ((sym->flags & SYMBOL_AUTO) || !sym->name)
++			continue;
++		if (sym->flags & SYMBOL_WRITE) {
++			if (sym->flags & SYMBOL_DEF_AUTO) {
++				/*
++				 * symbol has old and new value,
++				 * so compare them...
++				 */
++				switch (sym->type) {
++				case S_BOOLEAN:
++				case S_TRISTATE:
++					if (sym_get_tristate_value(sym) ==
++					    sym->def[S_DEF_AUTO].tri)
++						continue;
++					break;
++				case S_STRING:
++				case S_HEX:
++				case S_INT:
++					if (!strcmp(sym_get_string_value(sym),
++						    sym->def[S_DEF_AUTO].val))
++						continue;
++					break;
++				default:
++					break;
++				}
++			} else {
++				/*
++				 * If there is no old value, only 'no' (unset)
++				 * is allowed as new value.
++				 */
++				switch (sym->type) {
++				case S_BOOLEAN:
++				case S_TRISTATE:
++					if (sym_get_tristate_value(sym) == no)
++						continue;
++					break;
++				default:
++					break;
++				}
++			}
++		} else if (!(sym->flags & SYMBOL_DEF_AUTO))
++			/* There is neither an old nor a new value. */
++			continue;
++		/* else
++		 *	There is an old value, but no new value ('no' (unset)
++		 *	isn't saved in auto.conf, so the old value is always
++		 *	different from 'no').
++		 */
++
++		/* Replace all '_' and append ".h" */
++		s = sym->name;
++		d = path;
++		while ((c = *s++)) {
++			c = tolower(c);
++			*d++ = (c == '_') ? '/' : c;
++		}
++		strcpy(d, ".h");
++
++		/* Assume directory path already exists. */
++		fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
++		if (fd == -1) {
++			if (errno != ENOENT) {
++				res = 1;
++				break;
++			}
++			/*
++			 * Create directory components,
++			 * unless they exist already.
++			 */
++			d = path;
++			while ((d = strchr(d, '/'))) {
++				*d = 0;
++				if (stat(path, &sb) && mkdir(path, 0755)) {
++					res = 1;
++					goto out;
++				}
++				*d++ = '/';
++			}
++			/* Try it again. */
++			fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
++			if (fd == -1) {
++				res = 1;
++				break;
++			}
++		}
++		close(fd);
++	}
++out:
++	if (chdir("../.."))
++		return 1;
++
++	return res;
++}
++
++int conf_write_autoconf(void)
++{
++	struct symbol *sym;
++	const char *str;
++	char *name;
++	FILE *out, *out_h;
++	time_t now;
++	int i, l;
++
++	sym_clear_all_valid();
++
++	file_write_dep("include/config/auto.conf.cmd");
++
++	if (conf_split_config())
++		return 1;
++
++	out = fopen(".tmpconfig", "w");
++	if (!out)
++		return 1;
++
++	out_h = fopen(".tmpconfig.h", "w");
++	if (!out_h) {
++		fclose(out);
++		return 1;
++	}
++
++	sym = sym_lookup("KCONFIG_VERSION", 0);
++	sym_calc_value(sym);
++	time(&now);
++	fprintf(out, "#\n"
++		     "# Automatically generated make config: don't edit\n"
++		     "# "PROJECT_NAME" version: %s\n"
++		     "# %s"
++		     "#\n",
++		     sym_get_string_value(sym), ctime(&now));
++	fprintf(out_h, "/*\n"
++		       " * Automatically generated C config: don't edit\n"
++		       " * "PROJECT_NAME" version: %s\n"
++		       " * %s"
++		       " */\n"
++		       // "#define AUTOCONF_INCLUDED\n"
++		       , sym_get_string_value(sym), ctime(&now));
++
++	for_all_symbols(i, sym) {
++		sym_calc_value(sym);
++		if (!(sym->flags & SYMBOL_WRITE) || !sym->name)
++			continue;
++		switch (sym->type) {
++		case S_BOOLEAN:
++		case S_TRISTATE:
++			switch (sym_get_tristate_value(sym)) {
++			case no:
++				break;
++			case mod:
++				fprintf(out, CONFIG_PREFIX"%s=m\n", sym->name);
++				fprintf(out_h, "#define CONFIG_%s_MODULE 1\n", sym->name);
++				break;
++			case yes:
++				fprintf(out, CONFIG_PREFIX"%s=y\n", sym->name);
++				fprintf(out_h, "#define "CONFIG_PREFIX"%s 1\n", sym->name);
++				break;
++			}
++			break;
++		case S_STRING:
++			str = sym_get_string_value(sym);
++			fprintf(out, CONFIG_PREFIX"%s=\"", sym->name);
++			fprintf(out_h, "#define "CONFIG_PREFIX"%s \"", sym->name);
++			while (1) {
++				l = strcspn(str, "\"\\");
++				if (l) {
++					fwrite(str, l, 1, out);
++					fwrite(str, l, 1, out_h);
++					str += l;
++				}
++				if (!*str)
++					break;
++				fprintf(out, "\\%c", *str);
++				fprintf(out_h, "\\%c", *str);
++				str++;
++			}
++			fputs("\"\n", out);
++			fputs("\"\n", out_h);
++			break;
++		case S_HEX:
++			str = sym_get_string_value(sym);
++			if (str[0] != '0' || (str[1] != 'x' && str[1] != 'X')) {
++				fprintf(out, CONFIG_PREFIX"%s=%s\n", sym->name, str);
++				fprintf(out_h, "#define "CONFIG_PREFIX"%s 0x%s\n", sym->name, str);
++				break;
++			}
++		case S_INT:
++			str = sym_get_string_value(sym);
++			fprintf(out, CONFIG_PREFIX"%s=%s\n", sym->name, str);
++			fprintf(out_h, "#define "CONFIG_PREFIX"%s %s\n", sym->name, str);
++			break;
++		default:
++			break;
++		}
++	}
++	fclose(out);
++	fclose(out_h);
++
++	name = getenv("KCONFIG_AUTOHEADER");
++	if (!name)
++		name = "include/linux/autoconf.h";
++	if (rename(".tmpconfig.h", name))
++		return 1;
++	name = getenv("KCONFIG_AUTOCONFIG");
++	if (!name)
++		name = "include/config/auto.conf";
++	/*
++	 * This must be the last step, kbuild has a dependency on auto.conf
++	 * and this marks the successful completion of the previous steps.
++	 */
++	if (rename(".tmpconfig", name))
++		return 1;
++
++	return 0;
++}
+diff --git a/kconfig/expr.c b/kconfig/expr.c
+new file mode 100644
+index 000000000000..6f98dbfe70cf
+--- /dev/null
++++ b/kconfig/expr.c
+@@ -0,0 +1,1100 @@
++/*
++ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
++ * Released under the terms of the GNU GPL v2.0.
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#define LKC_DIRECT_LINK
++#include "lkc.h"
++
++#define DEBUG_EXPR	0
++
++struct expr *expr_alloc_symbol(struct symbol *sym)
++{
++	struct expr *e = malloc(sizeof(*e));
++	memset(e, 0, sizeof(*e));
++	e->type = E_SYMBOL;
++	e->left.sym = sym;
++	return e;
++}
++
++struct expr *expr_alloc_one(enum expr_type type, struct expr *ce)
++{
++	struct expr *e = malloc(sizeof(*e));
++	memset(e, 0, sizeof(*e));
++	e->type = type;
++	e->left.expr = ce;
++	return e;
++}
++
++struct expr *expr_alloc_two(enum expr_type type, struct expr *e1, struct expr *e2)
++{
++	struct expr *e = malloc(sizeof(*e));
++	memset(e, 0, sizeof(*e));
++	e->type = type;
++	e->left.expr = e1;
++	e->right.expr = e2;
++	return e;
++}
++
++struct expr *expr_alloc_comp(enum expr_type type, struct symbol *s1, struct symbol *s2)
++{
++	struct expr *e = malloc(sizeof(*e));
++	memset(e, 0, sizeof(*e));
++	e->type = type;
++	e->left.sym = s1;
++	e->right.sym = s2;
++	return e;
++}
++
++struct expr *expr_alloc_and(struct expr *e1, struct expr *e2)
++{
++	if (!e1)
++		return e2;
++	return e2 ? expr_alloc_two(E_AND, e1, e2) : e1;
++}
++
++struct expr *expr_alloc_or(struct expr *e1, struct expr *e2)
++{
++	if (!e1)
++		return e2;
++	return e2 ? expr_alloc_two(E_OR, e1, e2) : e1;
++}
++
++struct expr *expr_copy(struct expr *org)
++{
++	struct expr *e;
++
++	if (!org)
++		return NULL;
++
++	e = malloc(sizeof(*org));
++	memcpy(e, org, sizeof(*org));
++	switch (org->type) {
++	case E_SYMBOL:
++		e->left = org->left;
++		break;
++	case E_NOT:
++		e->left.expr = expr_copy(org->left.expr);
++		break;
++	case E_EQUAL:
++	case E_UNEQUAL:
++		e->left.sym = org->left.sym;
++		e->right.sym = org->right.sym;
++		break;
++	case E_AND:
++	case E_OR:
++	case E_CHOICE:
++		e->left.expr = expr_copy(org->left.expr);
++		e->right.expr = expr_copy(org->right.expr);
++		break;
++	default:
++		printf("can't copy type %d\n", e->type);
++		free(e);
++		e = NULL;
++		break;
++	}
++
++	return e;
++}
++
++void expr_free(struct expr *e)
++{
++	if (!e)
++		return;
++
++	switch (e->type) {
++	case E_SYMBOL:
++		break;
++	case E_NOT:
++		expr_free(e->left.expr);
++		return;
++	case E_EQUAL:
++	case E_UNEQUAL:
++		break;
++	case E_OR:
++	case E_AND:
++		expr_free(e->left.expr);
++		expr_free(e->right.expr);
++		break;
++	default:
++		printf("how to free type %d?\n", e->type);
++		break;
++	}
++	free(e);
++}
++
++static int trans_count;
++
++#define e1 (*ep1)
++#define e2 (*ep2)
++
++static void __expr_eliminate_eq(enum expr_type type, struct expr **ep1, struct expr **ep2)
++{
++	if (e1->type == type) {
++		__expr_eliminate_eq(type, &e1->left.expr, &e2);
++		__expr_eliminate_eq(type, &e1->right.expr, &e2);
++		return;
++	}
++	if (e2->type == type) {
++		__expr_eliminate_eq(type, &e1, &e2->left.expr);
++		__expr_eliminate_eq(type, &e1, &e2->right.expr);
++		return;
++	}
++	if (e1->type == E_SYMBOL && e2->type == E_SYMBOL &&
++	    e1->left.sym == e2->left.sym &&
++	    (e1->left.sym == &symbol_yes || e1->left.sym == &symbol_no))
++		return;
++	if (!expr_eq(e1, e2))
++		return;
++	trans_count++;
++	expr_free(e1); expr_free(e2);
++	switch (type) {
++	case E_OR:
++		e1 = expr_alloc_symbol(&symbol_no);
++		e2 = expr_alloc_symbol(&symbol_no);
++		break;
++	case E_AND:
++		e1 = expr_alloc_symbol(&symbol_yes);
++		e2 = expr_alloc_symbol(&symbol_yes);
++		break;
++	default:
++		;
++	}
++}
++
++void expr_eliminate_eq(struct expr **ep1, struct expr **ep2)
++{
++	if (!e1 || !e2)
++		return;
++	switch (e1->type) {
++	case E_OR:
++	case E_AND:
++		__expr_eliminate_eq(e1->type, ep1, ep2);
++	default:
++		;
++	}
++	if (e1->type != e2->type) switch (e2->type) {
++	case E_OR:
++	case E_AND:
++		__expr_eliminate_eq(e2->type, ep1, ep2);
++	default:
++		;
++	}
++	e1 = expr_eliminate_yn(e1);
++	e2 = expr_eliminate_yn(e2);
++}
++
++#undef e1
++#undef e2
++
++int expr_eq(struct expr *e1, struct expr *e2)
++{
++	int res, old_count;
++
++	if (e1->type != e2->type)
++		return 0;
++	switch (e1->type) {
++	case E_EQUAL:
++	case E_UNEQUAL:
++		return e1->left.sym == e2->left.sym && e1->right.sym == e2->right.sym;
++	case E_SYMBOL:
++		return e1->left.sym == e2->left.sym;
++	case E_NOT:
++		return expr_eq(e1->left.expr, e2->left.expr);
++	case E_AND:
++	case E_OR:
++		e1 = expr_copy(e1);
++		e2 = expr_copy(e2);
++		old_count = trans_count;
++		expr_eliminate_eq(&e1, &e2);
++		res = (e1->type == E_SYMBOL && e2->type == E_SYMBOL &&
++		       e1->left.sym == e2->left.sym);
++		expr_free(e1);
++		expr_free(e2);
++		trans_count = old_count;
++		return res;
++	case E_CHOICE:
++	case E_RANGE:
++	case E_NONE:
++		/* panic */;
++	}
++
++	if (DEBUG_EXPR) {
++		expr_fprint(e1, stdout);
++		printf(" = ");
++		expr_fprint(e2, stdout);
++		printf(" ?\n");
++	}
++
++	return 0;
++}
++
++struct expr *expr_eliminate_yn(struct expr *e)
++{
++	struct expr *tmp;
++
++	if (e) switch (e->type) {
++	case E_AND:
++		e->left.expr = expr_eliminate_yn(e->left.expr);
++		e->right.expr = expr_eliminate_yn(e->right.expr);
++		if (e->left.expr->type == E_SYMBOL) {
++			if (e->left.expr->left.sym == &symbol_no) {
++				expr_free(e->left.expr);
++				expr_free(e->right.expr);
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_no;
++				e->right.expr = NULL;
++				return e;
++			} else if (e->left.expr->left.sym == &symbol_yes) {
++				free(e->left.expr);
++				tmp = e->right.expr;
++				*e = *(e->right.expr);
++				free(tmp);
++				return e;
++			}
++		}
++		if (e->right.expr->type == E_SYMBOL) {
++			if (e->right.expr->left.sym == &symbol_no) {
++				expr_free(e->left.expr);
++				expr_free(e->right.expr);
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_no;
++				e->right.expr = NULL;
++				return e;
++			} else if (e->right.expr->left.sym == &symbol_yes) {
++				free(e->right.expr);
++				tmp = e->left.expr;
++				*e = *(e->left.expr);
++				free(tmp);
++				return e;
++			}
++		}
++		break;
++	case E_OR:
++		e->left.expr = expr_eliminate_yn(e->left.expr);
++		e->right.expr = expr_eliminate_yn(e->right.expr);
++		if (e->left.expr->type == E_SYMBOL) {
++			if (e->left.expr->left.sym == &symbol_no) {
++				free(e->left.expr);
++				tmp = e->right.expr;
++				*e = *(e->right.expr);
++				free(tmp);
++				return e;
++			} else if (e->left.expr->left.sym == &symbol_yes) {
++				expr_free(e->left.expr);
++				expr_free(e->right.expr);
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_yes;
++				e->right.expr = NULL;
++				return e;
++			}
++		}
++		if (e->right.expr->type == E_SYMBOL) {
++			if (e->right.expr->left.sym == &symbol_no) {
++				free(e->right.expr);
++				tmp = e->left.expr;
++				*e = *(e->left.expr);
++				free(tmp);
++				return e;
++			} else if (e->right.expr->left.sym == &symbol_yes) {
++				expr_free(e->left.expr);
++				expr_free(e->right.expr);
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_yes;
++				e->right.expr = NULL;
++				return e;
++			}
++		}
++		break;
++	default:
++		;
++	}
++	return e;
++}
++
++/*
++ * bool FOO!=n => FOO
++ */
++struct expr *expr_trans_bool(struct expr *e)
++{
++	if (!e)
++		return NULL;
++	switch (e->type) {
++	case E_AND:
++	case E_OR:
++	case E_NOT:
++		e->left.expr = expr_trans_bool(e->left.expr);
++		e->right.expr = expr_trans_bool(e->right.expr);
++		break;
++	case E_UNEQUAL:
++		// FOO!=n -> FOO
++		if (e->left.sym->type == S_TRISTATE) {
++			if (e->right.sym == &symbol_no) {
++				e->type = E_SYMBOL;
++				e->right.sym = NULL;
++			}
++		}
++		break;
++	default:
++		;
++	}
++	return e;
++}
++
++/*
++ * e1 || e2 -> ?
++ */
++struct expr *expr_join_or(struct expr *e1, struct expr *e2)
++{
++	struct expr *tmp;
++	struct symbol *sym1, *sym2;
++
++	if (expr_eq(e1, e2))
++		return expr_copy(e1);
++	if (e1->type != E_EQUAL && e1->type != E_UNEQUAL && e1->type != E_SYMBOL && e1->type != E_NOT)
++		return NULL;
++	if (e2->type != E_EQUAL && e2->type != E_UNEQUAL && e2->type != E_SYMBOL && e2->type != E_NOT)
++		return NULL;
++	if (e1->type == E_NOT) {
++		tmp = e1->left.expr;
++		if (tmp->type != E_EQUAL && tmp->type != E_UNEQUAL && tmp->type != E_SYMBOL)
++			return NULL;
++		sym1 = tmp->left.sym;
++	} else
++		sym1 = e1->left.sym;
++	if (e2->type == E_NOT) {
++		if (e2->left.expr->type != E_SYMBOL)
++			return NULL;
++		sym2 = e2->left.expr->left.sym;
++	} else
++		sym2 = e2->left.sym;
++	if (sym1 != sym2)
++		return NULL;
++	if (sym1->type != S_BOOLEAN && sym1->type != S_TRISTATE)
++		return NULL;
++	if (sym1->type == S_TRISTATE) {
++		if (e1->type == E_EQUAL && e2->type == E_EQUAL &&
++		    ((e1->right.sym == &symbol_yes && e2->right.sym == &symbol_mod) ||
++		     (e1->right.sym == &symbol_mod && e2->right.sym == &symbol_yes))) {
++			// (a='y') || (a='m') -> (a!='n')
++			return expr_alloc_comp(E_UNEQUAL, sym1, &symbol_no);
++		}
++		if (e1->type == E_EQUAL && e2->type == E_EQUAL &&
++		    ((e1->right.sym == &symbol_yes && e2->right.sym == &symbol_no) ||
++		     (e1->right.sym == &symbol_no && e2->right.sym == &symbol_yes))) {
++			// (a='y') || (a='n') -> (a!='m')
++			return expr_alloc_comp(E_UNEQUAL, sym1, &symbol_mod);
++		}
++		if (e1->type == E_EQUAL && e2->type == E_EQUAL &&
++		    ((e1->right.sym == &symbol_mod && e2->right.sym == &symbol_no) ||
++		     (e1->right.sym == &symbol_no && e2->right.sym == &symbol_mod))) {
++			// (a='m') || (a='n') -> (a!='y')
++			return expr_alloc_comp(E_UNEQUAL, sym1, &symbol_yes);
++		}
++	}
++	if (sym1->type == S_BOOLEAN && sym1 == sym2) {
++		if ((e1->type == E_NOT && e1->left.expr->type == E_SYMBOL && e2->type == E_SYMBOL) ||
++		    (e2->type == E_NOT && e2->left.expr->type == E_SYMBOL && e1->type == E_SYMBOL))
++			return expr_alloc_symbol(&symbol_yes);
++	}
++
++	if (DEBUG_EXPR) {
++		printf("optimize (");
++		expr_fprint(e1, stdout);
++		printf(") || (");
++		expr_fprint(e2, stdout);
++		printf(")?\n");
++	}
++	return NULL;
++}
++
++struct expr *expr_join_and(struct expr *e1, struct expr *e2)
++{
++	struct expr *tmp;
++	struct symbol *sym1, *sym2;
++
++	if (expr_eq(e1, e2))
++		return expr_copy(e1);
++	if (e1->type != E_EQUAL && e1->type != E_UNEQUAL && e1->type != E_SYMBOL && e1->type != E_NOT)
++		return NULL;
++	if (e2->type != E_EQUAL && e2->type != E_UNEQUAL && e2->type != E_SYMBOL && e2->type != E_NOT)
++		return NULL;
++	if (e1->type == E_NOT) {
++		tmp = e1->left.expr;
++		if (tmp->type != E_EQUAL && tmp->type != E_UNEQUAL && tmp->type != E_SYMBOL)
++			return NULL;
++		sym1 = tmp->left.sym;
++	} else
++		sym1 = e1->left.sym;
++	if (e2->type == E_NOT) {
++		if (e2->left.expr->type != E_SYMBOL)
++			return NULL;
++		sym2 = e2->left.expr->left.sym;
++	} else
++		sym2 = e2->left.sym;
++	if (sym1 != sym2)
++		return NULL;
++	if (sym1->type != S_BOOLEAN && sym1->type != S_TRISTATE)
++		return NULL;
++
++	if ((e1->type == E_SYMBOL && e2->type == E_EQUAL && e2->right.sym == &symbol_yes) ||
++	    (e2->type == E_SYMBOL && e1->type == E_EQUAL && e1->right.sym == &symbol_yes))
++		// (a) && (a='y') -> (a='y')
++		return expr_alloc_comp(E_EQUAL, sym1, &symbol_yes);
++
++	if ((e1->type == E_SYMBOL && e2->type == E_UNEQUAL && e2->right.sym == &symbol_no) ||
++	    (e2->type == E_SYMBOL && e1->type == E_UNEQUAL && e1->right.sym == &symbol_no))
++		// (a) && (a!='n') -> (a)
++		return expr_alloc_symbol(sym1);
++
++	if ((e1->type == E_SYMBOL && e2->type == E_UNEQUAL && e2->right.sym == &symbol_mod) ||
++	    (e2->type == E_SYMBOL && e1->type == E_UNEQUAL && e1->right.sym == &symbol_mod))
++		// (a) && (a!='m') -> (a='y')
++		return expr_alloc_comp(E_EQUAL, sym1, &symbol_yes);
++
++	if (sym1->type == S_TRISTATE) {
++		if (e1->type == E_EQUAL && e2->type == E_UNEQUAL) {
++			// (a='b') && (a!='c') -> 'b'='c' ? 'n' : a='b'
++			sym2 = e1->right.sym;
++			if ((e2->right.sym->flags & SYMBOL_CONST) && (sym2->flags & SYMBOL_CONST))
++				return sym2 != e2->right.sym ? expr_alloc_comp(E_EQUAL, sym1, sym2)
++							     : expr_alloc_symbol(&symbol_no);
++		}
++		if (e1->type == E_UNEQUAL && e2->type == E_EQUAL) {
++			// (a='b') && (a!='c') -> 'b'='c' ? 'n' : a='b'
++			sym2 = e2->right.sym;
++			if ((e1->right.sym->flags & SYMBOL_CONST) && (sym2->flags & SYMBOL_CONST))
++				return sym2 != e1->right.sym ? expr_alloc_comp(E_EQUAL, sym1, sym2)
++							     : expr_alloc_symbol(&symbol_no);
++		}
++		if (e1->type == E_UNEQUAL && e2->type == E_UNEQUAL &&
++			   ((e1->right.sym == &symbol_yes && e2->right.sym == &symbol_no) ||
++			    (e1->right.sym == &symbol_no && e2->right.sym == &symbol_yes)))
++			// (a!='y') && (a!='n') -> (a='m')
++			return expr_alloc_comp(E_EQUAL, sym1, &symbol_mod);
++
++		if (e1->type == E_UNEQUAL && e2->type == E_UNEQUAL &&
++			   ((e1->right.sym == &symbol_yes && e2->right.sym == &symbol_mod) ||
++			    (e1->right.sym == &symbol_mod && e2->right.sym == &symbol_yes)))
++			// (a!='y') && (a!='m') -> (a='n')
++			return expr_alloc_comp(E_EQUAL, sym1, &symbol_no);
++
++		if (e1->type == E_UNEQUAL && e2->type == E_UNEQUAL &&
++			   ((e1->right.sym == &symbol_mod && e2->right.sym == &symbol_no) ||
++			    (e1->right.sym == &symbol_no && e2->right.sym == &symbol_mod)))
++			// (a!='m') && (a!='n') -> (a='m')
++			return expr_alloc_comp(E_EQUAL, sym1, &symbol_yes);
++
++		if ((e1->type == E_SYMBOL && e2->type == E_EQUAL && e2->right.sym == &symbol_mod) ||
++		    (e2->type == E_SYMBOL && e1->type == E_EQUAL && e1->right.sym == &symbol_mod) ||
++		    (e1->type == E_SYMBOL && e2->type == E_UNEQUAL && e2->right.sym == &symbol_yes) ||
++		    (e2->type == E_SYMBOL && e1->type == E_UNEQUAL && e1->right.sym == &symbol_yes))
++			return NULL;
++	}
++
++	if (DEBUG_EXPR) {
++		printf("optimize (");
++		expr_fprint(e1, stdout);
++		printf(") && (");
++		expr_fprint(e2, stdout);
++		printf(")?\n");
++	}
++	return NULL;
++}
++
++static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct expr **ep2)
++{
++#define e1 (*ep1)
++#define e2 (*ep2)
++	struct expr *tmp;
++
++	if (e1->type == type) {
++		expr_eliminate_dups1(type, &e1->left.expr, &e2);
++		expr_eliminate_dups1(type, &e1->right.expr, &e2);
++		return;
++	}
++	if (e2->type == type) {
++		expr_eliminate_dups1(type, &e1, &e2->left.expr);
++		expr_eliminate_dups1(type, &e1, &e2->right.expr);
++		return;
++	}
++	if (e1 == e2)
++		return;
++
++	switch (e1->type) {
++	case E_OR: case E_AND:
++		expr_eliminate_dups1(e1->type, &e1, &e1);
++	default:
++		;
++	}
++
++	switch (type) {
++	case E_OR:
++		tmp = expr_join_or(e1, e2);
++		if (tmp) {
++			expr_free(e1); expr_free(e2);
++			e1 = expr_alloc_symbol(&symbol_no);
++			e2 = tmp;
++			trans_count++;
++		}
++		break;
++	case E_AND:
++		tmp = expr_join_and(e1, e2);
++		if (tmp) {
++			expr_free(e1); expr_free(e2);
++			e1 = expr_alloc_symbol(&symbol_yes);
++			e2 = tmp;
++			trans_count++;
++		}
++		break;
++	default:
++		;
++	}
++#undef e1
++#undef e2
++}
++
++static void expr_eliminate_dups2(enum expr_type type, struct expr **ep1, struct expr **ep2)
++{
++#define e1 (*ep1)
++#define e2 (*ep2)
++	struct expr *tmp, *tmp1, *tmp2;
++
++	if (e1->type == type) {
++		expr_eliminate_dups2(type, &e1->left.expr, &e2);
++		expr_eliminate_dups2(type, &e1->right.expr, &e2);
++		return;
++	}
++	if (e2->type == type) {
++		expr_eliminate_dups2(type, &e1, &e2->left.expr);
++		expr_eliminate_dups2(type, &e1, &e2->right.expr);
++	}
++	if (e1 == e2)
++		return;
++
++	switch (e1->type) {
++	case E_OR:
++		expr_eliminate_dups2(e1->type, &e1, &e1);
++		// (FOO || BAR) && (!FOO && !BAR) -> n
++		tmp1 = expr_transform(expr_alloc_one(E_NOT, expr_copy(e1)));
++		tmp2 = expr_copy(e2);
++		tmp = expr_extract_eq_and(&tmp1, &tmp2);
++		if (expr_is_yes(tmp1)) {
++			expr_free(e1);
++			e1 = expr_alloc_symbol(&symbol_no);
++			trans_count++;
++		}
++		expr_free(tmp2);
++		expr_free(tmp1);
++		expr_free(tmp);
++		break;
++	case E_AND:
++		expr_eliminate_dups2(e1->type, &e1, &e1);
++		// (FOO && BAR) || (!FOO || !BAR) -> y
++		tmp1 = expr_transform(expr_alloc_one(E_NOT, expr_copy(e1)));
++		tmp2 = expr_copy(e2);
++		tmp = expr_extract_eq_or(&tmp1, &tmp2);
++		if (expr_is_no(tmp1)) {
++			expr_free(e1);
++			e1 = expr_alloc_symbol(&symbol_yes);
++			trans_count++;
++		}
++		expr_free(tmp2);
++		expr_free(tmp1);
++		expr_free(tmp);
++		break;
++	default:
++		;
++	}
++#undef e1
++#undef e2
++}
++
++struct expr *expr_eliminate_dups(struct expr *e)
++{
++	int oldcount;
++	if (!e)
++		return e;
++
++	oldcount = trans_count;
++	while (1) {
++		trans_count = 0;
++		switch (e->type) {
++		case E_OR: case E_AND:
++			expr_eliminate_dups1(e->type, &e, &e);
++			expr_eliminate_dups2(e->type, &e, &e);
++		default:
++			;
++		}
++		if (!trans_count)
++			break;
++		e = expr_eliminate_yn(e);
++	}
++	trans_count = oldcount;
++	return e;
++}
++
++struct expr *expr_transform(struct expr *e)
++{
++	struct expr *tmp;
++
++	if (!e)
++		return NULL;
++	switch (e->type) {
++	case E_EQUAL:
++	case E_UNEQUAL:
++	case E_SYMBOL:
++	case E_CHOICE:
++		break;
++	default:
++		e->left.expr = expr_transform(e->left.expr);
++		e->right.expr = expr_transform(e->right.expr);
++	}
++
++	switch (e->type) {
++	case E_EQUAL:
++		if (e->left.sym->type != S_BOOLEAN)
++			break;
++		if (e->right.sym == &symbol_no) {
++			e->type = E_NOT;
++			e->left.expr = expr_alloc_symbol(e->left.sym);
++			e->right.sym = NULL;
++			break;
++		}
++		if (e->right.sym == &symbol_mod) {
++			printf("boolean symbol %s tested for 'm'? test forced to 'n'\n", e->left.sym->name);
++			e->type = E_SYMBOL;
++			e->left.sym = &symbol_no;
++			e->right.sym = NULL;
++			break;
++		}
++		if (e->right.sym == &symbol_yes) {
++			e->type = E_SYMBOL;
++			e->right.sym = NULL;
++			break;
++		}
++		break;
++	case E_UNEQUAL:
++		if (e->left.sym->type != S_BOOLEAN)
++			break;
++		if (e->right.sym == &symbol_no) {
++			e->type = E_SYMBOL;
++			e->right.sym = NULL;
++			break;
++		}
++		if (e->right.sym == &symbol_mod) {
++			printf("boolean symbol %s tested for 'm'? test forced to 'y'\n", e->left.sym->name);
++			e->type = E_SYMBOL;
++			e->left.sym = &symbol_yes;
++			e->right.sym = NULL;
++			break;
++		}
++		if (e->right.sym == &symbol_yes) {
++			e->type = E_NOT;
++			e->left.expr = expr_alloc_symbol(e->left.sym);
++			e->right.sym = NULL;
++			break;
++		}
++		break;
++	case E_NOT:
++		switch (e->left.expr->type) {
++		case E_NOT:
++			// !!a -> a
++			tmp = e->left.expr->left.expr;
++			free(e->left.expr);
++			free(e);
++			e = tmp;
++			e = expr_transform(e);
++			break;
++		case E_EQUAL:
++		case E_UNEQUAL:
++			// !a='x' -> a!='x'
++			tmp = e->left.expr;
++			free(e);
++			e = tmp;
++			e->type = e->type == E_EQUAL ? E_UNEQUAL : E_EQUAL;
++			break;
++		case E_OR:
++			// !(a || b) -> !a && !b
++			tmp = e->left.expr;
++			e->type = E_AND;
++			e->right.expr = expr_alloc_one(E_NOT, tmp->right.expr);
++			tmp->type = E_NOT;
++			tmp->right.expr = NULL;
++			e = expr_transform(e);
++			break;
++		case E_AND:
++			// !(a && b) -> !a || !b
++			tmp = e->left.expr;
++			e->type = E_OR;
++			e->right.expr = expr_alloc_one(E_NOT, tmp->right.expr);
++			tmp->type = E_NOT;
++			tmp->right.expr = NULL;
++			e = expr_transform(e);
++			break;
++		case E_SYMBOL:
++			if (e->left.expr->left.sym == &symbol_yes) {
++				// !'y' -> 'n'
++				tmp = e->left.expr;
++				free(e);
++				e = tmp;
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_no;
++				break;
++			}
++			if (e->left.expr->left.sym == &symbol_mod) {
++				// !'m' -> 'm'
++				tmp = e->left.expr;
++				free(e);
++				e = tmp;
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_mod;
++				break;
++			}
++			if (e->left.expr->left.sym == &symbol_no) {
++				// !'n' -> 'y'
++				tmp = e->left.expr;
++				free(e);
++				e = tmp;
++				e->type = E_SYMBOL;
++				e->left.sym = &symbol_yes;
++				break;
++			}
++			break;
++		default:
++			;
++		}
++		break;
++	default:
++		;
++	}
++	return e;
++}
++
++int expr_contains_symbol(struct expr *dep, struct symbol *sym)
++{
++	if (!dep)
++		return 0;
++
++	switch (dep->type) {
++	case E_AND:
++	case E_OR:
++		return expr_contains_symbol(dep->left.expr, sym) ||
++		       expr_contains_symbol(dep->right.expr, sym);
++	case E_SYMBOL:
++		return dep->left.sym == sym;
++	case E_EQUAL:
++	case E_UNEQUAL:
++		return dep->left.sym == sym ||
++		       dep->right.sym == sym;
++	case E_NOT:
++		return expr_contains_symbol(dep->left.expr, sym);
++	default:
++		;
++	}
++	return 0;
++}
++
++bool expr_depends_symbol(struct expr *dep, struct symbol *sym)
++{
++	if (!dep)
++		return false;
++
++	switch (dep->type) {
++	case E_AND:
++		return expr_depends_symbol(dep->left.expr, sym) ||
++		       expr_depends_symbol(dep->right.expr, sym);
++	case E_SYMBOL:
++		return dep->left.sym == sym;
++	case E_EQUAL:
++		if (dep->left.sym == sym) {
++			if (dep->right.sym == &symbol_yes || dep->right.sym == &symbol_mod)
++				return true;
++		}
++		break;
++	case E_UNEQUAL:
++		if (dep->left.sym == sym) {
++			if (dep->right.sym == &symbol_no)
++				return true;
++		}
++		break;
++	default:
++		;
++	}
++ 	return false;
++}
++
++struct expr *expr_extract_eq_and(struct expr **ep1, struct expr **ep2)
++{
++	struct expr *tmp = NULL;
++	expr_extract_eq(E_AND, &tmp, ep1, ep2);
++	if (tmp) {
++		*ep1 = expr_eliminate_yn(*ep1);
++		*ep2 = expr_eliminate_yn(*ep2);
++	}
++	return tmp;
++}
++
++struct expr *expr_extract_eq_or(struct expr **ep1, struct expr **ep2)
++{
++	struct expr *tmp = NULL;
++	expr_extract_eq(E_OR, &tmp, ep1, ep2);
++	if (tmp) {
++		*ep1 = expr_eliminate_yn(*ep1);
++		*ep2 = expr_eliminate_yn(*ep2);
++	}
++	return tmp;
++}
++
++void expr_extract_eq(enum expr_type type, struct expr **ep, struct expr **ep1, struct expr **ep2)
++{
++#define e1 (*ep1)
++#define e2 (*ep2)
++	if (e1->type == type) {
++		expr_extract_eq(type, ep, &e1->left.expr, &e2);
++		expr_extract_eq(type, ep, &e1->right.expr, &e2);
++		return;
++	}
++	if (e2->type == type) {
++		expr_extract_eq(type, ep, ep1, &e2->left.expr);
++		expr_extract_eq(type, ep, ep1, &e2->right.expr);
++		return;
++	}
++	if (expr_eq(e1, e2)) {
++		*ep = *ep ? expr_alloc_two(type, *ep, e1) : e1;
++		expr_free(e2);
++		if (type == E_AND) {
++			e1 = expr_alloc_symbol(&symbol_yes);
++			e2 = expr_alloc_symbol(&symbol_yes);
++		} else if (type == E_OR) {
++			e1 = expr_alloc_symbol(&symbol_no);
++			e2 = expr_alloc_symbol(&symbol_no);
++		}
++	}
++#undef e1
++#undef e2
++}
++
++struct expr *expr_trans_compare(struct expr *e, enum expr_type type, struct symbol *sym)
++{
++	struct expr *e1, *e2;
++
++	if (!e) {
++		e = expr_alloc_symbol(sym);
++		if (type == E_UNEQUAL)
++			e = expr_alloc_one(E_NOT, e);
++		return e;
++	}
++	switch (e->type) {
++	case E_AND:
++		e1 = expr_trans_compare(e->left.expr, E_EQUAL, sym);
++		e2 = expr_trans_compare(e->right.expr, E_EQUAL, sym);
++		if (sym == &symbol_yes)
++			e = expr_alloc_two(E_AND, e1, e2);
++		if (sym == &symbol_no)
++			e = expr_alloc_two(E_OR, e1, e2);
++		if (type == E_UNEQUAL)
++			e = expr_alloc_one(E_NOT, e);
++		return e;
++	case E_OR:
++		e1 = expr_trans_compare(e->left.expr, E_EQUAL, sym);
++		e2 = expr_trans_compare(e->right.expr, E_EQUAL, sym);
++		if (sym == &symbol_yes)
++			e = expr_alloc_two(E_OR, e1, e2);
++		if (sym == &symbol_no)
++			e = expr_alloc_two(E_AND, e1, e2);
++		if (type == E_UNEQUAL)
++			e = expr_alloc_one(E_NOT, e);
++		return e;
++	case E_NOT:
++		return expr_trans_compare(e->left.expr, type == E_EQUAL ? E_UNEQUAL : E_EQUAL, sym);
++	case E_UNEQUAL:
++	case E_EQUAL:
++		if (type == E_EQUAL) {
++			if (sym == &symbol_yes)
++				return expr_copy(e);
++			if (sym == &symbol_mod)
++				return expr_alloc_symbol(&symbol_no);
++			if (sym == &symbol_no)
++				return expr_alloc_one(E_NOT, expr_copy(e));
++		} else {
++			if (sym == &symbol_yes)
++				return expr_alloc_one(E_NOT, expr_copy(e));
++			if (sym == &symbol_mod)
++				return expr_alloc_symbol(&symbol_yes);
++			if (sym == &symbol_no)
++				return expr_copy(e);
++		}
++		break;
++	case E_SYMBOL:
++		return expr_alloc_comp(type, e->left.sym, sym);
++	case E_CHOICE:
++	case E_RANGE:
++	case E_NONE:
++		/* panic */;
++	}
++	return NULL;
++}
++
++tristate expr_calc_value(struct expr *e)
++{
++	tristate val1, val2;
++	const char *str1, *str2;
++
++	if (!e)
++		return yes;
++
++	switch (e->type) {
++	case E_SYMBOL:
++		sym_calc_value(e->left.sym);
++		return e->left.sym->curr.tri;
++	case E_AND:
++		val1 = expr_calc_value(e->left.expr);
++		val2 = expr_calc_value(e->right.expr);
++		return E_AND(val1, val2);
++	case E_OR:
++		val1 = expr_calc_value(e->left.expr);
++		val2 = expr_calc_value(e->right.expr);
++		return E_OR(val1, val2);
++	case E_NOT:
++		val1 = expr_calc_value(e->left.expr);
++		return E_NOT(val1);
++	case E_EQUAL:
++		sym_calc_value(e->left.sym);
++		sym_calc_value(e->right.sym);
++		str1 = sym_get_string_value(e->left.sym);
++		str2 = sym_get_string_value(e->right.sym);
++		return !strcmp(str1, str2) ? yes : no;
++	case E_UNEQUAL:
++		sym_calc_value(e->left.sym);
++		sym_calc_value(e->right.sym);
++		str1 = sym_get_string_value(e->left.sym);
++		str2 = sym_get_string_value(e->right.sym);
++		return !strcmp(str1, str2) ? no : yes;
++	default:
++		printf("expr_calc_value: %d?\n", e->type);
++		return no;
++	}
++}
++
++int expr_compare_type(enum expr_type t1, enum expr_type t2)
++{
++#if 0
++	return 1;
++#else
++	if (t1 == t2)
++		return 0;
++	switch (t1) {
++	case E_EQUAL:
++	case E_UNEQUAL:
++		if (t2 == E_NOT)
++			return 1;
++	case E_NOT:
++		if (t2 == E_AND)
++			return 1;
++	case E_AND:
++		if (t2 == E_OR)
++			return 1;
++	case E_OR:
++		if (t2 == E_CHOICE)
++			return 1;
++	case E_CHOICE:
++		if (t2 == 0)
++			return 1;
++	default:
++		return -1;
++	}
++	printf("[%dgt%d?]", t1, t2);
++	return 0;
++#endif
++}
++
++void expr_print(struct expr *e, void (*fn)(void *, struct symbol *, const char *), void *data, int prevtoken)
++{
++	if (!e) {
++		fn(data, NULL, "y");
++		return;
++	}
++
++	if (expr_compare_type(prevtoken, e->type) > 0)
++		fn(data, NULL, "(");
++	switch (e->type) {
++	case E_SYMBOL:
++		if (e->left.sym->name)
++			fn(data, e->left.sym, e->left.sym->name);
++		else
++			fn(data, NULL, "<choice>");
++		break;
++	case E_NOT:
++		fn(data, NULL, "!");
++		expr_print(e->left.expr, fn, data, E_NOT);
++		break;
++	case E_EQUAL:
++		fn(data, e->left.sym, e->left.sym->name);
++		fn(data, NULL, "=");
++		fn(data, e->right.sym, e->right.sym->name);
++		break;
++	case E_UNEQUAL:
++		fn(data, e->left.sym, e->left.sym->name);
++		fn(data, NULL, "!=");
++		fn(data, e->right.sym, e->right.sym->name);
++		break;
++	case E_OR:
++		expr_print(e->left.expr, fn, data, E_OR);
++		fn(data, NULL, " || ");
++		expr_print(e->right.expr, fn, data, E_OR);
++		break;
++	case E_AND:
++		expr_print(e->left.expr, fn, data, E_AND);
++		fn(data, NULL, " && ");
++		expr_print(e->right.expr, fn, data, E_AND);
++		break;
++	case E_CHOICE:
++		fn(data, e->right.sym, e->right.sym->name);
++		if (e->left.expr) {
++			fn(data, NULL, " ^ ");
++			expr_print(e->left.expr, fn, data, E_CHOICE);
++		}
++		break;
++	case E_RANGE:
++		fn(data, NULL, "[");
++		fn(data, e->left.sym, e->left.sym->name);
++		fn(data, NULL, " ");
++		fn(data, e->right.sym, e->right.sym->name);
++		fn(data, NULL, "]");
++		break;
++	default:
++	  {
++		char buf[32];
++		sprintf(buf, "<unknown type %d>", e->type);
++		fn(data, NULL, buf);
++		break;
++	  }
++	}
++	if (expr_compare_type(prevtoken, e->type) > 0)
++		fn(data, NULL, ")");
++}
++
++static void expr_print_file_helper(void *data, struct symbol *sym, const char *str)
++{
++	fwrite(str, strlen(str), 1, data);
++}
++
++void expr_fprint(struct expr *e, FILE *out)
++{
++	expr_print(e, expr_print_file_helper, out, E_NONE);
++}
++
++static void expr_print_gstr_helper(void *data, struct symbol *sym, const char *str)
++{
++	str_append((struct gstr*)data, str);
++}
++
++void expr_gstr_print(struct expr *e, struct gstr *gs)
++{
++	expr_print(e, expr_print_gstr_helper, gs, E_NONE);
++}
+diff --git a/kconfig/mconf.c b/kconfig/mconf.c
+new file mode 100644
+index 000000000000..c2acdc0a4642
+--- /dev/null
++++ b/kconfig/mconf.c
+@@ -0,0 +1,919 @@
++/*
++ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
++ * Released under the terms of the GNU GPL v2.0.
++ *
++ * Introduced single menu mode (show all sub-menus in one large tree).
++ * 2002-11-06 Petr Baudis <pasky@ucw.cz>
++ *
++ * i18n, 2005, Arnaldo Carvalho de Melo <acme@conectiva.com.br>
++ */
++
++#include <sys/ioctl.h>
++#include <sys/wait.h>
++#include <ctype.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <signal.h>
++#include <stdarg.h>
++#include <stdlib.h>
++#include <string.h>
++#include <termios.h>
++#include <unistd.h>
++#include <locale.h>
++
++#define LKC_DIRECT_LINK
++#include "lkc.h"
++#include "lxdialog/dialog.h"
++
++static char menu_backtitle[128];
++static const char mconf_readme[] = N_(
++"Overview\n"
++"--------\n"
++"Some features may be built directly into the project.\n"
++"Some may be made into loadable runtime modules.  Some features\n"
++"may be completely removed altogether.  There are also certain\n"
++"parameters which are not really features, but must be\n"
++"entered in as decimal or hexadecimal numbers or possibly text.\n"
++"\n"
++"Menu items beginning with [*], <M> or [ ] represent features\n"
++"configured to be built in, modularized or removed respectively.\n"
++"Pointed brackets <> represent module capable features.\n"
++"\n"
++"To change any of these features, highlight it with the cursor\n"
++"keys and press <Y> to build it in, <M> to make it a module or\n"
++"<N> to removed it.  You may also press the <Space Bar> to cycle\n"
++"through the available options (ie. Y->N->M->Y).\n"
++"\n"
++"Some additional keyboard hints:\n"
++"\n"
++"Menus\n"
++"----------\n"
++"o  Use the Up/Down arrow keys (cursor keys) to highlight the item\n"
++"   you wish to change or submenu wish to select and press <Enter>.\n"
++"   Submenus are designated by \"--->\".\n"
++"\n"
++"   Shortcut: Press the option's highlighted letter (hotkey).\n"
++"             Pressing a hotkey more than once will sequence\n"
++"             through all visible items which use that hotkey.\n"
++"\n"
++"   You may also use the <PAGE UP> and <PAGE DOWN> keys to scroll\n"
++"   unseen options into view.\n"
++"\n"
++"o  To exit a menu use the cursor keys to highlight the <Exit> button\n"
++"   and press <ENTER>.\n"
++"\n"
++"   Shortcut: Press <ESC><ESC> or <E> or <X> if there is no hotkey\n"
++"             using those letters.  You may press a single <ESC>, but\n"
++"             there is a delayed response which you may find annoying.\n"
++"\n"
++"   Also, the <TAB> and cursor keys will cycle between <Select>,\n"
++"   <Exit> and <Help>\n"
++"\n"
++"o  To get help with an item, use the cursor keys to highlight <Help>\n"
++"   and Press <ENTER>.\n"
++"\n"
++"   Shortcut: Press <H> or <?>.\n"
++"\n"
++"\n"
++"Radiolists  (Choice lists)\n"
++"-----------\n"
++"o  Use the cursor keys to select the option you wish to set and press\n"
++"   <S> or the <SPACE BAR>.\n"
++"\n"
++"   Shortcut: Press the first letter of the option you wish to set then\n"
++"             press <S> or <SPACE BAR>.\n"
++"\n"
++"o  To see available help for the item, use the cursor keys to highlight\n"
++"   <Help> and Press <ENTER>.\n"
++"\n"
++"   Shortcut: Press <H> or <?>.\n"
++"\n"
++"   Also, the <TAB> and cursor keys will cycle between <Select> and\n"
++"   <Help>\n"
++"\n"
++"\n"
++"Data Entry\n"
++"-----------\n"
++"o  Enter the requested information and press <ENTER>\n"
++"   If you are entering hexadecimal values, it is not necessary to\n"
++"   add the '0x' prefix to the entry.\n"
++"\n"
++"o  For help, use the <TAB> or cursor keys to highlight the help option\n"
++"   and press <ENTER>.  You can try <TAB><H> as well.\n"
++"\n"
++"\n"
++"Text Box    (Help Window)\n"
++"--------\n"
++"o  Use the cursor keys to scroll up/down/left/right.  The VI editor\n"
++"   keys h,j,k,l function here as do <SPACE BAR> and <B> for those\n"
++"   who are familiar with less and lynx.\n"
++"\n"
++"o  Press <E>, <X>, <Enter> or <Esc><Esc> to exit.\n"
++"\n"
++"\n"
++"Alternate Configuration Files\n"
++"-----------------------------\n"
++"Menuconfig supports the use of alternate configuration files for\n"
++"those who, for various reasons, find it necessary to switch\n"
++"between different configurations.\n"
++"\n"
++"At the end of the main menu you will find two options.  One is\n"
++"for saving the current configuration to a file of your choosing.\n"
++"The other option is for loading a previously saved alternate\n"
++"configuration.\n"
++"\n"
++"Even if you don't use alternate configuration files, but you\n"
++"find during a Menuconfig session that you have completely messed\n"
++"up your settings, you may use the \"Load Alternate...\" option to\n"
++"restore your previously saved settings from \".config\" without\n"
++"restarting Menuconfig.\n"
++"\n"
++"Other information\n"
++"-----------------\n"
++"If you use Menuconfig in an XTERM window make sure you have your\n"
++"$TERM variable set to point to a xterm definition which supports color.\n"
++"Otherwise, Menuconfig will look rather bad.  Menuconfig will not\n"
++"display correctly in a RXVT window because rxvt displays only one\n"
++"intensity of color, bright.\n"
++"\n"
++"Menuconfig will display larger menus on screens or xterms which are\n"
++"set to display more than the standard 25 row by 80 column geometry.\n"
++"In order for this to work, the \"stty size\" command must be able to\n"
++"display the screen's current row and column geometry.  I STRONGLY\n"
++"RECOMMEND that you make sure you do NOT have the shell variables\n"
++"LINES and COLUMNS exported into your environment.  Some distributions\n"
++"export those variables via /etc/profile.  Some ncurses programs can\n"
++"become confused when those variables (LINES & COLUMNS) don't reflect\n"
++"the true screen size.\n"
++"\n"
++"Optional personality available\n"
++"------------------------------\n"
++"If you prefer to have all of the options listed in a single\n"
++"menu, rather than the default multimenu hierarchy, run the menuconfig\n"
++"with MENUCONFIG_MODE environment variable set to single_menu. Example:\n"
++"\n"
++"make MENUCONFIG_MODE=single_menu menuconfig\n"
++"\n"
++"<Enter> will then unroll the appropriate category, or enfold it if it\n"
++"is already unrolled.\n"
++"\n"
++"Note that this mode can eventually be a little more CPU expensive\n"
++"(especially with a larger number of unrolled categories) than the\n"
++"default mode.\n"
++"\n"
++"Different color themes available\n"
++"--------------------------------\n"
++"It is possible to select different color themes using the variable\n"
++"MENUCONFIG_COLOR. To select a theme use:\n"
++"\n"
++"make MENUCONFIG_COLOR=<theme> menuconfig\n"
++"\n"
++"Available themes are\n"
++" mono       => selects colors suitable for monochrome displays\n"
++" blackbg    => selects a color scheme with black background\n"
++" classic    => theme with blue background. The classic look\n"
++" bluetitle  => a LCD friendly version of classic. (default)\n"
++"\n"),
++menu_instructions[] = N_(
++	"Arrow keys navigate the menu.  "
++	"<Enter> selects submenus --->.  "
++	"Highlighted letters are hotkeys.  "
++	"Pressing <Y> includes, <N> excludes, <M> modularizes features.  "
++	"Press <Esc><Esc> to exit, <?> for Help, </> for Search.  "
++	"Legend: [*] built-in  [ ] excluded  <M> module  < > module capable"),
++radiolist_instructions[] = N_(
++	"Use the arrow keys to navigate this window or "
++	"press the hotkey of the item you wish to select "
++	"followed by the <SPACE BAR>. "
++	"Press <?> for additional information about this option."),
++inputbox_instructions_int[] = N_(
++	"Please enter a decimal value. "
++	"Fractions will not be accepted.  "
++	"Use the <TAB> key to move from the input field to the buttons below it."),
++inputbox_instructions_hex[] = N_(
++	"Please enter a hexadecimal value. "
++	"Use the <TAB> key to move from the input field to the buttons below it."),
++inputbox_instructions_string[] = N_(
++	"Please enter a string value. "
++	"Use the <TAB> key to move from the input field to the buttons below it."),
++setmod_text[] = N_(
++	"This feature depends on another which has been configured as a module.\n"
++	"As a result, this feature will be built as a module."),
++nohelp_text[] = N_(
++	"There is no help available for this option.\n"),
++load_config_text[] = N_(
++	"Enter the name of the configuration file you wish to load.  "
++	"Accept the name shown to restore the configuration you "
++	"last retrieved.  Leave blank to abort."),
++load_config_help[] = N_(
++	"\n"
++	"For various reasons, one may wish to keep several different\n"
++	"configurations available on a single machine.\n"
++	"\n"
++	"If you have saved a previous configuration in a file other than the\n"
++	"default, entering the name of the file here will allow you\n"
++	"to modify that configuration.\n"
++	"\n"
++	"If you are uncertain, then you have probably never used alternate\n"
++	"configuration files.  You should therefor leave this blank to abort.\n"),
++save_config_text[] = N_(
++	"Enter a filename to which this configuration should be saved "
++	"as an alternate.  Leave blank to abort."),
++save_config_help[] = N_(
++	"\n"
++	"For various reasons, one may wish to keep different\n"
++	"configurations available on a single machine.\n"
++	"\n"
++	"Entering a file name here will allow you to later retrieve, modify\n"
++	"and use the current configuration as an alternate to whatever\n"
++	"configuration options you have selected at that time.\n"
++	"\n"
++	"If you are uncertain what all this means then you should probably\n"
++	"leave this blank.\n"),
++search_help[] = N_(
++	"\n"
++	"Search for CONFIG_ symbols and display their relations.\n"
++	"Regular expressions are allowed.\n"
++	"Example: search for \"^FOO\"\n"
++	"Result:\n"
++	"-----------------------------------------------------------------\n"
++	"Symbol: FOO [=m]\n"
++	"Prompt: Foo bus is used to drive the bar HW\n"
++	"Defined at drivers/pci/Kconfig:47\n"
++	"Depends on: X86_LOCAL_APIC && X86_IO_APIC || IA64\n"
++	"Location:\n"
++	"  -> Bus options (PCI, PCMCIA, EISA, MCA, ISA)\n"
++	"    -> PCI support (PCI [=y])\n"
++	"      -> PCI access mode (<choice> [=y])\n"
++	"Selects: LIBCRC32\n"
++	"Selected by: BAR\n"
++	"-----------------------------------------------------------------\n"
++	"o The line 'Prompt:' shows the text used in the menu structure for\n"
++	"  this CONFIG_ symbol\n"
++	"o The 'Defined at' line tell at what file / line number the symbol\n"
++	"  is defined\n"
++	"o The 'Depends on:' line tell what symbols needs to be defined for\n"
++	"  this symbol to be visible in the menu (selectable)\n"
++	"o The 'Location:' lines tell where in the menu structure this symbol\n"
++	"  is located\n"
++	"    A location followed by a [=y] indicate that this is a selectable\n"
++	"    menu item - and current value is displayed inside brackets.\n"
++	"o The 'Selects:' line tell what symbol will be automatically\n"
++	"  selected if this symbol is selected (y or m)\n"
++	"o The 'Selected by' line tell what symbol has selected this symbol\n"
++	"\n"
++	"Only relevant lines are shown.\n"
++	"\n\n"
++	"Search examples:\n"
++	"Examples: USB	=> find all CONFIG_ symbols containing USB\n"
++	"          ^USB => find all CONFIG_ symbols starting with USB\n"
++	"          USB$ => find all CONFIG_ symbols ending with USB\n"
++	"\n");
++
++static char filename[PATH_MAX+1] = ".config";
++static int indent;
++static struct termios ios_org;
++static int rows = 0, cols = 0;
++static struct menu *current_menu;
++static int child_count;
++static int single_menu_mode;
++
++static void conf(struct menu *menu);
++static void conf_choice(struct menu *menu);
++static void conf_string(struct menu *menu);
++static void conf_load(void);
++static void conf_save(void);
++static void show_textbox(const char *title, const char *text, int r, int c);
++static void show_helptext(const char *title, const char *text);
++static void show_help(struct menu *menu);
++
++static void init_wsize(void)
++{
++	struct winsize ws;
++	char *env;
++
++	if (!ioctl(STDIN_FILENO, TIOCGWINSZ, &ws)) {
++		rows = ws.ws_row;
++		cols = ws.ws_col;
++	}
++
++	if (!rows) {
++		env = getenv("LINES");
++		if (env)
++			rows = atoi(env);
++		if (!rows)
++			rows = 24;
++	}
++	if (!cols) {
++		env = getenv("COLUMNS");
++		if (env)
++			cols = atoi(env);
++		if (!cols)
++			cols = 80;
++	}
++
++	if (rows < 19 || cols < 80) {
++		fprintf(stderr, N_("Your display is too small to run Menuconfig!\n"));
++		fprintf(stderr, N_("It must be at least 19 lines by 80 columns.\n"));
++		exit(1);
++	}
++
++	rows -= 4;
++	cols -= 5;
++}
++
++static void get_prompt_str(struct gstr *r, struct property *prop)
++{
++	int i, j;
++	struct menu *submenu[8], *menu;
++
++	str_printf(r, "Prompt: %s\n", prop->text);
++	str_printf(r, "  Defined at %s:%d\n", prop->menu->file->name,
++		prop->menu->lineno);
++	if (!expr_is_yes(prop->visible.expr)) {
++		str_append(r, "  Depends on: ");
++		expr_gstr_print(prop->visible.expr, r);
++		str_append(r, "\n");
++	}
++	menu = prop->menu->parent;
++	for (i = 0; menu != &rootmenu && i < 8; menu = menu->parent)
++		submenu[i++] = menu;
++	if (i > 0) {
++		str_printf(r, "  Location:\n");
++		for (j = 4; --i >= 0; j += 2) {
++			menu = submenu[i];
++			str_printf(r, "%*c-> %s", j, ' ', menu_get_prompt(menu));
++			if (menu->sym) {
++				str_printf(r, " (%s [=%s])", menu->sym->name ?
++					menu->sym->name : "<choice>",
++					sym_get_string_value(menu->sym));
++			}
++			str_append(r, "\n");
++		}
++	}
++}
++
++static void get_symbol_str(struct gstr *r, struct symbol *sym)
++{
++	bool hit;
++	struct property *prop;
++
++	str_printf(r, "Symbol: %s [=%s]\n", sym->name,
++	                               sym_get_string_value(sym));
++	for_all_prompts(sym, prop)
++		get_prompt_str(r, prop);
++	hit = false;
++	for_all_properties(sym, prop, P_SELECT) {
++		if (!hit) {
++			str_append(r, "  Selects: ");
++			hit = true;
++		} else
++			str_printf(r, " && ");
++		expr_gstr_print(prop->expr, r);
++	}
++	if (hit)
++		str_append(r, "\n");
++	if (sym->rev_dep.expr) {
++		str_append(r, "  Selected by: ");
++		expr_gstr_print(sym->rev_dep.expr, r);
++		str_append(r, "\n");
++	}
++	str_append(r, "\n\n");
++}
++
++static struct gstr get_relations_str(struct symbol **sym_arr)
++{
++	struct symbol *sym;
++	struct gstr res = str_new();
++	int i;
++
++	for (i = 0; sym_arr && (sym = sym_arr[i]); i++)
++		get_symbol_str(&res, sym);
++	if (!i)
++		str_append(&res, "No matches found.\n");
++	return res;
++}
++
++static void search_conf(void)
++{
++	struct symbol **sym_arr;
++	struct gstr res;
++	int dres;
++again:
++	dialog_clear();
++	dres = dialog_inputbox(_("Search Configuration Parameter"),
++			      _("Enter CONFIG_ (sub)string to search for (omit CONFIG_)"),
++			      10, 75, "");
++	switch (dres) {
++	case 0:
++		break;
++	case 1:
++		show_helptext(_("Search Configuration"), search_help);
++		goto again;
++	default:
++		return;
++	}
++
++	sym_arr = sym_re_search(dialog_input_result);
++	res = get_relations_str(sym_arr);
++	free(sym_arr);
++	show_textbox(_("Search Results"), str_get(&res), 0, 0);
++	str_free(&res);
++}
++
++static void build_conf(struct menu *menu)
++{
++	struct symbol *sym;
++	struct property *prop;
++	struct menu *child;
++	int type, tmp, doint = 2;
++	tristate val;
++	char ch;
++
++	if (!menu_is_visible(menu))
++		return;
++
++	sym = menu->sym;
++	prop = menu->prompt;
++	if (!sym) {
++		if (prop && menu != current_menu) {
++			const char *prompt = menu_get_prompt(menu);
++			switch (prop->type) {
++			case P_MENU:
++				child_count++;
++				if (single_menu_mode) {
++					item_make("%s%*c%s",
++						  menu->data ? "-->" : "++>",
++						  indent + 1, ' ', prompt);
++				} else
++					item_make("   %*c%s  --->", indent + 1, ' ', prompt);
++
++				item_set_tag('m');
++				item_set_data(menu);
++				if (single_menu_mode && menu->data)
++					goto conf_childs;
++				return;
++			default:
++				if (prompt) {
++					child_count++;
++					item_make("---%*c%s", indent + 1, ' ', prompt);
++					item_set_tag(':');
++					item_set_data(menu);
++				}
++			}
++		} else
++			doint = 0;
++		goto conf_childs;
++	}
++
++	type = sym_get_type(sym);
++	if (sym_is_choice(sym)) {
++		struct symbol *def_sym = sym_get_choice_value(sym);
++		struct menu *def_menu = NULL;
++
++		child_count++;
++		for (child = menu->list; child; child = child->next) {
++			if (menu_is_visible(child) && child->sym == def_sym)
++				def_menu = child;
++		}
++
++		val = sym_get_tristate_value(sym);
++		if (sym_is_changable(sym)) {
++			switch (type) {
++			case S_BOOLEAN:
++				item_make("[%c]", val == no ? ' ' : '*');
++				break;
++			case S_TRISTATE:
++				switch (val) {
++				case yes: ch = '*'; break;
++				case mod: ch = 'M'; break;
++				default:  ch = ' '; break;
++				}
++				item_make("<%c>", ch);
++				break;
++			}
++			item_set_tag('t');
++			item_set_data(menu);
++		} else {
++			item_make("   ");
++			item_set_tag(def_menu ? 't' : ':');
++			item_set_data(menu);
++		}
++
++		item_add_str("%*c%s", indent + 1, ' ', menu_get_prompt(menu));
++		if (val == yes) {
++			if (def_menu) {
++				item_add_str(" (%s)", menu_get_prompt(def_menu));
++				item_add_str("  --->");
++				if (def_menu->list) {
++					indent += 2;
++					build_conf(def_menu);
++					indent -= 2;
++				}
++			}
++			return;
++		}
++	} else {
++		if (menu == current_menu) {
++			item_make("---%*c%s", indent + 1, ' ', menu_get_prompt(menu));
++			item_set_tag(':');
++			item_set_data(menu);
++			goto conf_childs;
++		}
++		child_count++;
++		val = sym_get_tristate_value(sym);
++		if (sym_is_choice_value(sym) && val == yes) {
++			item_make("   ");
++			item_set_tag(':');
++			item_set_data(menu);
++		} else {
++			switch (type) {
++			case S_BOOLEAN:
++				if (sym_is_changable(sym))
++					item_make("[%c]", val == no ? ' ' : '*');
++				else
++					item_make("---");
++				item_set_tag('t');
++				item_set_data(menu);
++				break;
++			case S_TRISTATE:
++				switch (val) {
++				case yes: ch = '*'; break;
++				case mod: ch = 'M'; break;
++				default:  ch = ' '; break;
++				}
++				if (sym_is_changable(sym))
++					item_make("<%c>", ch);
++				else
++					item_make("---");
++				item_set_tag('t');
++				item_set_data(menu);
++				break;
++			default:
++				tmp = 2 + strlen(sym_get_string_value(sym)); /* () = 2 */
++				item_make("(%s)", sym_get_string_value(sym));
++				tmp = indent - tmp + 4;
++				if (tmp < 0)
++					tmp = 0;
++				item_add_str("%*c%s%s", tmp, ' ', menu_get_prompt(menu),
++					     (sym_has_value(sym) || !sym_is_changable(sym)) ?
++					     "" : " (NEW)");
++				item_set_tag('s');
++				item_set_data(menu);
++				goto conf_childs;
++			}
++		}
++		item_add_str("%*c%s%s", indent + 1, ' ', menu_get_prompt(menu),
++			  (sym_has_value(sym) || !sym_is_changable(sym)) ?
++			  "" : " (NEW)");
++		if (menu->prompt->type == P_MENU) {
++			item_add_str("  --->");
++			return;
++		}
++	}
++
++conf_childs:
++	indent += doint;
++	for (child = menu->list; child; child = child->next)
++		build_conf(child);
++	indent -= doint;
++}
++
++static void conf(struct menu *menu)
++{
++	struct menu *submenu;
++	const char *prompt = menu_get_prompt(menu);
++	struct symbol *sym;
++	struct menu *active_menu = NULL;
++	int res;
++	int s_scroll = 0;
++
++	while (1) {
++		item_reset();
++		current_menu = menu;
++		build_conf(menu);
++		if (!child_count)
++			break;
++		if (menu == &rootmenu) {
++			item_make("--- ");
++			item_set_tag(':');
++			item_make(_("    Load an Alternate Configuration File"));
++			item_set_tag('L');
++			item_make(_("    Save an Alternate Configuration File"));
++			item_set_tag('S');
++		}
++		dialog_clear();
++		res = dialog_menu(prompt ? prompt : _("Main Menu"),
++				  _(menu_instructions),
++				  active_menu, &s_scroll);
++		if (res == 1 || res == KEY_ESC || res == -ERRDISPLAYTOOSMALL)
++			break;
++		if (!item_activate_selected())
++			continue;
++		if (!item_tag())
++			continue;
++
++		submenu = item_data();
++		active_menu = item_data();
++		if (submenu)
++			sym = submenu->sym;
++		else
++			sym = NULL;
++
++		switch (res) {
++		case 0:
++			switch (item_tag()) {
++			case 'm':
++				if (single_menu_mode)
++					submenu->data = (void *) (long) !submenu->data;
++				else
++					conf(submenu);
++				break;
++			case 't':
++				if (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes)
++					conf_choice(submenu);
++				else if (submenu->prompt->type == P_MENU)
++					conf(submenu);
++				break;
++			case 's':
++				conf_string(submenu);
++				break;
++			case 'L':
++				conf_load();
++				break;
++			case 'S':
++				conf_save();
++				break;
++			}
++			break;
++		case 2:
++			if (sym)
++				show_help(submenu);
++			else
++				show_helptext("README", _(mconf_readme));
++			break;
++		case 3:
++			if (item_is_tag('t')) {
++				if (sym_set_tristate_value(sym, yes))
++					break;
++				if (sym_set_tristate_value(sym, mod))
++					show_textbox(NULL, setmod_text, 6, 74);
++			}
++			break;
++		case 4:
++			if (item_is_tag('t'))
++				sym_set_tristate_value(sym, no);
++			break;
++		case 5:
++			if (item_is_tag('t'))
++				sym_set_tristate_value(sym, mod);
++			break;
++		case 6:
++			if (item_is_tag('t'))
++				sym_toggle_tristate_value(sym);
++			else if (item_is_tag('m'))
++				conf(submenu);
++			break;
++		case 7:
++			search_conf();
++			break;
++		}
++	}
++}
++
++static void show_textbox(const char *title, const char *text, int r, int c)
++{
++	dialog_clear();
++	dialog_textbox(title, text, r, c);
++}
++
++static void show_helptext(const char *title, const char *text)
++{
++	show_textbox(title, text, 0, 0);
++}
++
++static void show_help(struct menu *menu)
++{
++	struct gstr help = str_new();
++	struct symbol *sym = menu->sym;
++
++	if (sym->help)
++	{
++		if (sym->name) {
++			str_printf(&help, "CONFIG_%s:\n\n", sym->name);
++			str_append(&help, _(sym->help));
++			str_append(&help, "\n");
++		}
++	} else {
++		str_append(&help, nohelp_text);
++	}
++	get_symbol_str(&help, sym);
++	show_helptext(menu_get_prompt(menu), str_get(&help));
++	str_free(&help);
++}
++
++static void conf_choice(struct menu *menu)
++{
++	const char *prompt = menu_get_prompt(menu);
++	struct menu *child;
++	struct symbol *active;
++
++	active = sym_get_choice_value(menu->sym);
++	while (1) {
++		int res;
++		int selected;
++		item_reset();
++
++		current_menu = menu;
++		for (child = menu->list; child; child = child->next) {
++			if (!menu_is_visible(child))
++				continue;
++			item_make("%s", menu_get_prompt(child));
++			item_set_data(child);
++			if (child->sym == active)
++				item_set_selected(1);
++			if (child->sym == sym_get_choice_value(menu->sym))
++				item_set_tag('X');
++		}
++		dialog_clear();
++		res = dialog_checklist(prompt ? prompt : _("Main Menu"),
++					_(radiolist_instructions),
++					 15, 70, 6);
++		selected = item_activate_selected();
++		switch (res) {
++		case 0:
++			if (selected) {
++				child = item_data();
++				sym_set_tristate_value(child->sym, yes);
++			}
++			return;
++		case 1:
++			if (selected) {
++				child = item_data();
++				show_help(child);
++				active = child->sym;
++			} else
++				show_help(menu);
++			break;
++		case KEY_ESC:
++			return;
++		case -ERRDISPLAYTOOSMALL:
++			return;
++		}
++	}
++}
++
++static void conf_string(struct menu *menu)
++{
++	const char *prompt = menu_get_prompt(menu);
++
++	while (1) {
++		int res;
++		char *heading;
++
++		switch (sym_get_type(menu->sym)) {
++		case S_INT:
++			heading = (char *)_(inputbox_instructions_int);
++			break;
++		case S_HEX:
++			heading = (char *)_(inputbox_instructions_hex);
++			break;
++		case S_STRING:
++			heading = (char *)_(inputbox_instructions_string);
++			break;
++		default:
++			heading = "Internal mconf error!";
++		}
++		dialog_clear();
++		res = dialog_inputbox(prompt ? prompt : _("Main Menu"),
++				      heading, 10, 75,
++				      sym_get_string_value(menu->sym));
++		switch (res) {
++		case 0:
++			if (sym_set_string_value(menu->sym, dialog_input_result))
++				return;
++			show_textbox(NULL, _("You have made an invalid entry."), 5, 43);
++			break;
++		case 1:
++			show_help(menu);
++			break;
++		case KEY_ESC:
++			return;
++		}
++	}
++}
++
++static void conf_load(void)
++{
++
++	while (1) {
++		int res;
++		dialog_clear();
++		res = dialog_inputbox(NULL, load_config_text,
++				      11, 55, filename);
++		switch(res) {
++		case 0:
++			if (!dialog_input_result[0])
++				return;
++			if (!conf_read(dialog_input_result))
++				return;
++			show_textbox(NULL, _("File does not exist!"), 5, 38);
++			break;
++		case 1:
++			show_helptext(_("Load Alternate Configuration"), load_config_help);
++			break;
++		case KEY_ESC:
++			return;
++		}
++	}
++}
++
++static void conf_save(void)
++{
++	while (1) {
++		int res;
++		dialog_clear();
++		res = dialog_inputbox(NULL, save_config_text,
++				      11, 55, filename);
++		switch(res) {
++		case 0:
++			if (!dialog_input_result[0])
++				return;
++			if (!conf_write(dialog_input_result))
++				return;
++			show_textbox(NULL, _("Can't create file!  Probably a nonexistent directory."), 5, 60);
++			break;
++		case 1:
++			show_helptext(_("Save Alternate Configuration"), save_config_help);
++			break;
++		case KEY_ESC:
++			return;
++		}
++	}
++}
++
++static void conf_cleanup(void)
++{
++	tcsetattr(1, TCSAFLUSH, &ios_org);
++}
++
++int main(int ac, char **av)
++{
++	struct symbol *sym;
++	char *mode;
++	int res;
++
++	setlocale(LC_ALL, "");
++	bindtextdomain(PACKAGE, LOCALEDIR);
++	textdomain(PACKAGE);
++
++	conf_parse(av[1] ? av[1] : "");
++	conf_read(NULL);
++
++	sym = sym_lookup("KERNELVERSION", 0);
++	sym_calc_value(sym);
++	sprintf(menu_backtitle, _(PROJECT_NAME" v%s Configuration"),
++		sym_get_string_value(sym));
++
++	mode = getenv("MENUCONFIG_MODE");
++	if (mode) {
++		if (!strcasecmp(mode, "single_menu"))
++			single_menu_mode = 1;
++	}
++
++	tcgetattr(1, &ios_org);
++	atexit(conf_cleanup);
++	init_wsize();
++	reset_dialog();
++	init_dialog(menu_backtitle);
++	do {
++		conf(&rootmenu);
++		dialog_clear();
++		res = dialog_yesno(NULL,
++				   _("Do you wish to save your "
++				     "new "PROJECT_NAME" configuration?\n"
++				     "<ESC><ESC> to continue."),
++				   6, 60);
++	} while (res == KEY_ESC);
++	end_dialog();
++	if (res == 0) {
++		if (conf_write(NULL)) {
++			fprintf(stderr, _("\n\n"
++				"Error writing "PROJECT_NAME" configuration.\n"
++				"Your configuration changes were NOT saved."
++				"\n\n"));
++			return 1;
++		}
++		printf(_("\n\n"
++			"*** End of "PROJECT_NAME" configuration.\n"
++			"*** Execute 'make' to build, or try 'make help'."
++			"\n\n"));
++	} else {
++		fprintf(stderr, _("\n\n"
++			"Your configuration changes were NOT saved."
++			"\n\n"));
++	}
++
++	return 0;
++}
+diff --git a/kconfig/menu.c b/kconfig/menu.c
+new file mode 100644
+index 000000000000..c86c27f2c761
+--- /dev/null
++++ b/kconfig/menu.c
+@@ -0,0 +1,419 @@
++/*
++ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
++ * Released under the terms of the GNU GPL v2.0.
++ */
++
++#include <stdlib.h>
++#include <string.h>
++
++#define LKC_DIRECT_LINK
++#include "lkc.h"
++
++struct menu rootmenu;
++static struct menu **last_entry_ptr;
++
++struct file *file_list;
++struct file *current_file;
++
++static void menu_warn(struct menu *menu, const char *fmt, ...)
++{
++	va_list ap;
++	va_start(ap, fmt);
++	fprintf(stderr, "%s:%d:warning: ", menu->file->name, menu->lineno);
++	vfprintf(stderr, fmt, ap);
++	fprintf(stderr, "\n");
++	va_end(ap);
++}
++
++static void prop_warn(struct property *prop, const char *fmt, ...)
++{
++	va_list ap;
++	va_start(ap, fmt);
++	fprintf(stderr, "%s:%d:warning: ", prop->file->name, prop->lineno);
++	vfprintf(stderr, fmt, ap);
++	fprintf(stderr, "\n");
++	va_end(ap);
++}
++
++void menu_init(void)
++{
++	current_entry = current_menu = &rootmenu;
++	last_entry_ptr = &rootmenu.list;
++}
++
++void menu_add_entry(struct symbol *sym)
++{
++	struct menu *menu;
++
++	menu = malloc(sizeof(*menu));
++	memset(menu, 0, sizeof(*menu));
++	menu->sym = sym;
++	menu->parent = current_menu;
++	menu->file = current_file;
++	menu->lineno = zconf_lineno();
++
++	*last_entry_ptr = menu;
++	last_entry_ptr = &menu->next;
++	current_entry = menu;
++}
++
++void menu_end_entry(void)
++{
++}
++
++struct menu *menu_add_menu(void)
++{
++	menu_end_entry();
++	last_entry_ptr = &current_entry->list;
++	return current_menu = current_entry;
++}
++
++void menu_end_menu(void)
++{
++	last_entry_ptr = &current_menu->next;
++	current_menu = current_menu->parent;
++}
++
++struct expr *menu_check_dep(struct expr *e)
++{
++	if (!e)
++		return e;
++
++	switch (e->type) {
++	case E_NOT:
++		e->left.expr = menu_check_dep(e->left.expr);
++		break;
++	case E_OR:
++	case E_AND:
++		e->left.expr = menu_check_dep(e->left.expr);
++		e->right.expr = menu_check_dep(e->right.expr);
++		break;
++	case E_SYMBOL:
++		/* change 'm' into 'm' && MODULES */
++		if (e->left.sym == &symbol_mod)
++			return expr_alloc_and(e, expr_alloc_symbol(modules_sym));
++		break;
++	default:
++		break;
++	}
++	return e;
++}
++
++void menu_add_dep(struct expr *dep)
++{
++	current_entry->dep = expr_alloc_and(current_entry->dep, menu_check_dep(dep));
++}
++
++void menu_set_type(int type)
++{
++	struct symbol *sym = current_entry->sym;
++
++	if (sym->type == type)
++		return;
++	if (sym->type == S_UNKNOWN) {
++		sym->type = type;
++		return;
++	}
++	menu_warn(current_entry, "type of '%s' redefined from '%s' to '%s'",
++	    sym->name ? sym->name : "<choice>",
++	    sym_type_name(sym->type), sym_type_name(type));
++}
++
++struct property *menu_add_prop(enum prop_type type, char *prompt, struct expr *expr, struct expr *dep)
++{
++	struct property *prop = prop_alloc(type, current_entry->sym);
++
++	prop->menu = current_entry;
++	prop->expr = expr;
++	prop->visible.expr = menu_check_dep(dep);
++
++	if (prompt) {
++		if (isspace(*prompt)) {
++			prop_warn(prop, "leading whitespace ignored");
++			while (isspace(*prompt))
++				prompt++;
++		}
++		if (current_entry->prompt)
++			prop_warn(prop, "prompt redefined");
++		current_entry->prompt = prop;
++	}
++	prop->text = prompt;
++
++	return prop;
++}
++
++struct property *menu_add_prompt(enum prop_type type, char *prompt, struct expr *dep)
++{
++	return menu_add_prop(type, prompt, NULL, dep);
++}
++
++void menu_add_expr(enum prop_type type, struct expr *expr, struct expr *dep)
++{
++	menu_add_prop(type, NULL, expr, dep);
++}
++
++void menu_add_symbol(enum prop_type type, struct symbol *sym, struct expr *dep)
++{
++	menu_add_prop(type, NULL, expr_alloc_symbol(sym), dep);
++}
++
++void menu_add_option(int token, char *arg)
++{
++	struct property *prop;
++
++	switch (token) {
++	case T_OPT_MODULES:
++		prop = prop_alloc(P_DEFAULT, modules_sym);
++		prop->expr = expr_alloc_symbol(current_entry->sym);
++		break;
++	case T_OPT_DEFCONFIG_LIST:
++		if (!sym_defconfig_list)
++			sym_defconfig_list = current_entry->sym;
++		else if (sym_defconfig_list != current_entry->sym)
++			zconf_error("trying to redefine defconfig symbol");
++		break;
++	}
++}
++
++static int menu_range_valid_sym(struct symbol *sym, struct symbol *sym2)
++{
++	return sym2->type == S_INT || sym2->type == S_HEX ||
++	       (sym2->type == S_UNKNOWN && sym_string_valid(sym, sym2->name));
++}
++
++void sym_check_prop(struct symbol *sym)
++{
++	struct property *prop;
++	struct symbol *sym2;
++	for (prop = sym->prop; prop; prop = prop->next) {
++		switch (prop->type) {
++		case P_DEFAULT:
++			if ((sym->type == S_STRING || sym->type == S_INT || sym->type == S_HEX) &&
++			    prop->expr->type != E_SYMBOL)
++				prop_warn(prop,
++				    "default for config symbol '%'"
++				    " must be a single symbol", sym->name);
++			break;
++		case P_SELECT:
++			sym2 = prop_get_symbol(prop);
++			if (sym->type != S_BOOLEAN && sym->type != S_TRISTATE)
++				prop_warn(prop,
++				    "config symbol '%s' uses select, but is "
++				    "not boolean or tristate", sym->name);
++			else if (sym2->type == S_UNKNOWN)
++				prop_warn(prop,
++				    "'select' used by config symbol '%s' "
++				    "refer to undefined symbol '%s'",
++				    sym->name, sym2->name);
++			else if (sym2->type != S_BOOLEAN && sym2->type != S_TRISTATE)
++				prop_warn(prop,
++				    "'%s' has wrong type. 'select' only "
++				    "accept arguments of boolean and "
++				    "tristate type", sym2->name);
++			break;
++		case P_RANGE:
++			if (sym->type != S_INT && sym->type != S_HEX)
++				prop_warn(prop, "range is only allowed "
++				                "for int or hex symbols");
++			if (!menu_range_valid_sym(sym, prop->expr->left.sym) ||
++			    !menu_range_valid_sym(sym, prop->expr->right.sym))
++				prop_warn(prop, "range is invalid");
++			break;
++		default:
++			;
++		}
++	}
++}
++
++void menu_finalize(struct menu *parent)
++{
++	struct menu *menu, *last_menu;
++	struct symbol *sym;
++	struct property *prop;
++	struct expr *parentdep, *basedep, *dep, *dep2, **ep;
++
++	sym = parent->sym;
++	if (parent->list) {
++		if (sym && sym_is_choice(sym)) {
++			/* find the first choice value and find out choice type */
++			for (menu = parent->list; menu; menu = menu->next) {
++				if (menu->sym) {
++					current_entry = parent;
++					menu_set_type(menu->sym->type);
++					current_entry = menu;
++					menu_set_type(sym->type);
++					break;
++				}
++			}
++			parentdep = expr_alloc_symbol(sym);
++		} else if (parent->prompt)
++			parentdep = parent->prompt->visible.expr;
++		else
++			parentdep = parent->dep;
++
++		for (menu = parent->list; menu; menu = menu->next) {
++			basedep = expr_transform(menu->dep);
++			basedep = expr_alloc_and(expr_copy(parentdep), basedep);
++			basedep = expr_eliminate_dups(basedep);
++			menu->dep = basedep;
++			if (menu->sym)
++				prop = menu->sym->prop;
++			else
++				prop = menu->prompt;
++			for (; prop; prop = prop->next) {
++				if (prop->menu != menu)
++					continue;
++				dep = expr_transform(prop->visible.expr);
++				dep = expr_alloc_and(expr_copy(basedep), dep);
++				dep = expr_eliminate_dups(dep);
++				if (menu->sym && menu->sym->type != S_TRISTATE)
++					dep = expr_trans_bool(dep);
++				prop->visible.expr = dep;
++				if (prop->type == P_SELECT) {
++					struct symbol *es = prop_get_symbol(prop);
++					es->rev_dep.expr = expr_alloc_or(es->rev_dep.expr,
++							expr_alloc_and(expr_alloc_symbol(menu->sym), expr_copy(dep)));
++				}
++			}
++		}
++		for (menu = parent->list; menu; menu = menu->next)
++			menu_finalize(menu);
++	} else if (sym) {
++		basedep = parent->prompt ? parent->prompt->visible.expr : NULL;
++		basedep = expr_trans_compare(basedep, E_UNEQUAL, &symbol_no);
++		basedep = expr_eliminate_dups(expr_transform(basedep));
++		last_menu = NULL;
++		for (menu = parent->next; menu; menu = menu->next) {
++			dep = menu->prompt ? menu->prompt->visible.expr : menu->dep;
++			if (!expr_contains_symbol(dep, sym))
++				break;
++			if (expr_depends_symbol(dep, sym))
++				goto next;
++			dep = expr_trans_compare(dep, E_UNEQUAL, &symbol_no);
++			dep = expr_eliminate_dups(expr_transform(dep));
++			dep2 = expr_copy(basedep);
++			expr_eliminate_eq(&dep, &dep2);
++			expr_free(dep);
++			if (!expr_is_yes(dep2)) {
++				expr_free(dep2);
++				break;
++			}
++			expr_free(dep2);
++		next:
++			menu_finalize(menu);
++			menu->parent = parent;
++			last_menu = menu;
++		}
++		if (last_menu) {
++			parent->list = parent->next;
++			parent->next = last_menu->next;
++			last_menu->next = NULL;
++		}
++	}
++	for (menu = parent->list; menu; menu = menu->next) {
++		if (sym && sym_is_choice(sym) && menu->sym) {
++			menu->sym->flags |= SYMBOL_CHOICEVAL;
++			if (!menu->prompt)
++				menu_warn(menu, "choice value must have a prompt");
++			for (prop = menu->sym->prop; prop; prop = prop->next) {
++				if (prop->type == P_PROMPT && prop->menu != menu) {
++					prop_warn(prop, "choice values "
++					    "currently only support a "
++					    "single prompt");
++				}
++				if (prop->type == P_DEFAULT)
++					prop_warn(prop, "defaults for choice "
++					    "values not supported");
++			}
++			current_entry = menu;
++			menu_set_type(sym->type);
++			menu_add_symbol(P_CHOICE, sym, NULL);
++			prop = sym_get_choice_prop(sym);
++			for (ep = &prop->expr; *ep; ep = &(*ep)->left.expr)
++				;
++			*ep = expr_alloc_one(E_CHOICE, NULL);
++			(*ep)->right.sym = menu->sym;
++		}
++		if (menu->list && (!menu->prompt || !menu->prompt->text)) {
++			for (last_menu = menu->list; ; last_menu = last_menu->next) {
++				last_menu->parent = parent;
++				if (!last_menu->next)
++					break;
++			}
++			last_menu->next = menu->next;
++			menu->next = menu->list;
++			menu->list = NULL;
++		}
++	}
++
++	if (sym && !(sym->flags & SYMBOL_WARNED)) {
++		if (sym->type == S_UNKNOWN)
++			menu_warn(parent, "config symbol defined without type");
++
++		if (sym_is_choice(sym) && !parent->prompt)
++			menu_warn(parent, "choice must have a prompt");
++
++		/* Check properties connected to this symbol */
++		sym_check_prop(sym);
++		sym->flags |= SYMBOL_WARNED;
++	}
++
++	if (sym && !sym_is_optional(sym) && parent->prompt) {
++		sym->rev_dep.expr = expr_alloc_or(sym->rev_dep.expr,
++				expr_alloc_and(parent->prompt->visible.expr,
++					expr_alloc_symbol(&symbol_mod)));
++	}
++}
++
++bool menu_is_visible(struct menu *menu)
++{
++	struct menu *child;
++	struct symbol *sym;
++	tristate visible;
++
++	if (!menu->prompt)
++		return false;
++	sym = menu->sym;
++	if (sym) {
++		sym_calc_value(sym);
++		visible = menu->prompt->visible.tri;
++	} else
++		visible = menu->prompt->visible.tri = expr_calc_value(menu->prompt->visible.expr);
++
++	if (visible != no)
++		return true;
++	if (!sym || sym_get_tristate_value(menu->sym) == no)
++		return false;
++
++	for (child = menu->list; child; child = child->next)
++		if (menu_is_visible(child))
++			return true;
++	return false;
++}
++
++const char *menu_get_prompt(struct menu *menu)
++{
++	if (menu->prompt)
++		return _(menu->prompt->text);
++	else if (menu->sym)
++		return _(menu->sym->name);
++	return NULL;
++}
++
++struct menu *menu_get_root_menu(struct menu *menu)
++{
++	return &rootmenu;
++}
++
++struct menu *menu_get_parent_menu(struct menu *menu)
++{
++	enum prop_type type;
++
++	for (; menu != &rootmenu; menu = menu->parent) {
++		type = menu->prompt ? menu->prompt->type : 0;
++		if (type == P_MENU)
++			break;
++	}
++	return menu;
++}
++
+diff --git a/kconfig/symbol.c b/kconfig/symbol.c
+new file mode 100644
+index 000000000000..6dbed0e54b1c
+--- /dev/null
++++ b/kconfig/symbol.c
+@@ -0,0 +1,884 @@
++/*
++ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
++ * Released under the terms of the GNU GPL v2.0.
++ */
++
++#include <ctype.h>
++#include <stdlib.h>
++#include <string.h>
++#include <regex.h>
++#include <sys/utsname.h>
++
++#define LKC_DIRECT_LINK
++#include "lkc.h"
++
++struct symbol symbol_yes = {
++	.name = "y",
++	.curr = { "y", yes },
++	.flags = SYMBOL_CONST|SYMBOL_VALID,
++}, symbol_mod = {
++	.name = "m",
++	.curr = { "m", mod },
++	.flags = SYMBOL_CONST|SYMBOL_VALID,
++}, symbol_no = {
++	.name = "n",
++	.curr = { "n", no },
++	.flags = SYMBOL_CONST|SYMBOL_VALID,
++}, symbol_empty = {
++	.name = "",
++	.curr = { "", no },
++	.flags = SYMBOL_VALID,
++};
++
++int sym_change_count;
++struct symbol *sym_defconfig_list;
++struct symbol *modules_sym;
++tristate modules_val;
++
++void sym_add_default(struct symbol *sym, const char *def)
++{
++	struct property *prop = prop_alloc(P_DEFAULT, sym);
++
++	prop->expr = expr_alloc_symbol(sym_lookup(def, 1));
++}
++
++void sym_init(void)
++{
++	struct symbol *sym;
++	struct utsname uts;
++	char *p;
++	static bool inited = false;
++
++	if (inited)
++		return;
++	inited = true;
++
++	uname(&uts);
++
++/*
++	sym = sym_lookup("ARCH", 0);
++	sym->type = S_STRING;
++	sym->flags |= SYMBOL_AUTO;
++	p = getenv("ARCH");
++	if (p)
++		sym_add_default(sym, p);
++*/
++
++	sym = sym_lookup("KERNELVERSION", 0);
++	sym->type = S_STRING;
++	sym->flags |= SYMBOL_AUTO;
++	p = getenv("KERNELVERSION");
++	if (p)
++		sym_add_default(sym, p);
++
++	sym = sym_lookup("UNAME_RELEASE", 0);
++	sym->type = S_STRING;
++	sym->flags |= SYMBOL_AUTO;
++	sym_add_default(sym, uts.release);
++}
++
++enum symbol_type sym_get_type(struct symbol *sym)
++{
++	enum symbol_type type = sym->type;
++
++	if (type == S_TRISTATE) {
++		if (sym_is_choice_value(sym) && sym->visible == yes)
++			type = S_BOOLEAN;
++		else if (modules_val == no)
++			type = S_BOOLEAN;
++	}
++	return type;
++}
++
++const char *sym_type_name(enum symbol_type type)
++{
++	switch (type) {
++	case S_BOOLEAN:
++		return "boolean";
++	case S_TRISTATE:
++		return "tristate";
++	case S_INT:
++		return "integer";
++	case S_HEX:
++		return "hex";
++	case S_STRING:
++		return "string";
++	case S_UNKNOWN:
++		return "unknown";
++	case S_OTHER:
++		break;
++	}
++	return "???";
++}
++
++struct property *sym_get_choice_prop(struct symbol *sym)
++{
++	struct property *prop;
++
++	for_all_choices(sym, prop)
++		return prop;
++	return NULL;
++}
++
++struct property *sym_get_default_prop(struct symbol *sym)
++{
++	struct property *prop;
++
++	for_all_defaults(sym, prop) {
++		prop->visible.tri = expr_calc_value(prop->visible.expr);
++		if (prop->visible.tri != no)
++			return prop;
++	}
++	return NULL;
++}
++
++struct property *sym_get_range_prop(struct symbol *sym)
++{
++	struct property *prop;
++
++	for_all_properties(sym, prop, P_RANGE) {
++		prop->visible.tri = expr_calc_value(prop->visible.expr);
++		if (prop->visible.tri != no)
++			return prop;
++	}
++	return NULL;
++}
++
++static int sym_get_range_val(struct symbol *sym, int base)
++{
++	sym_calc_value(sym);
++	switch (sym->type) {
++	case S_INT:
++		base = 10;
++		break;
++	case S_HEX:
++		base = 16;
++		break;
++	default:
++		break;
++	}
++	return strtol(sym->curr.val, NULL, base);
++}
++
++static void sym_validate_range(struct symbol *sym)
++{
++	struct property *prop;
++	int base, val, val2;
++	char str[64];
++
++	switch (sym->type) {
++	case S_INT:
++		base = 10;
++		break;
++	case S_HEX:
++		base = 16;
++		break;
++	default:
++		return;
++	}
++	prop = sym_get_range_prop(sym);
++	if (!prop)
++		return;
++	val = strtol(sym->curr.val, NULL, base);
++	val2 = sym_get_range_val(prop->expr->left.sym, base);
++	if (val >= val2) {
++		val2 = sym_get_range_val(prop->expr->right.sym, base);
++		if (val <= val2)
++			return;
++	}
++	if (sym->type == S_INT)
++		sprintf(str, "%d", val2);
++	else
++		sprintf(str, "0x%x", val2);
++	sym->curr.val = strdup(str);
++}
++
++static void sym_calc_visibility(struct symbol *sym)
++{
++	struct property *prop;
++	tristate tri;
++
++	/* any prompt visible? */
++	tri = no;
++	for_all_prompts(sym, prop) {
++		prop->visible.tri = expr_calc_value(prop->visible.expr);
++		tri = E_OR(tri, prop->visible.tri);
++	}
++	if (tri == mod && (sym->type != S_TRISTATE || modules_val == no))
++		tri = yes;
++	if (sym->visible != tri) {
++		sym->visible = tri;
++		sym_set_changed(sym);
++	}
++	if (sym_is_choice_value(sym))
++		return;
++	tri = no;
++	if (sym->rev_dep.expr)
++		tri = expr_calc_value(sym->rev_dep.expr);
++	if (tri == mod && sym_get_type(sym) == S_BOOLEAN)
++		tri = yes;
++	if (sym->rev_dep.tri != tri) {
++		sym->rev_dep.tri = tri;
++		sym_set_changed(sym);
++	}
++}
++
++static struct symbol *sym_calc_choice(struct symbol *sym)
++{
++	struct symbol *def_sym;
++	struct property *prop;
++	struct expr *e;
++
++	/* is the user choice visible? */
++	def_sym = sym->def[S_DEF_USER].val;
++	if (def_sym) {
++		sym_calc_visibility(def_sym);
++		if (def_sym->visible != no)
++			return def_sym;
++	}
++
++	/* any of the defaults visible? */
++	for_all_defaults(sym, prop) {
++		prop->visible.tri = expr_calc_value(prop->visible.expr);
++		if (prop->visible.tri == no)
++			continue;
++		def_sym = prop_get_symbol(prop);
++		sym_calc_visibility(def_sym);
++		if (def_sym->visible != no)
++			return def_sym;
++	}
++
++	/* just get the first visible value */
++	prop = sym_get_choice_prop(sym);
++	for (e = prop->expr; e; e = e->left.expr) {
++		def_sym = e->right.sym;
++		sym_calc_visibility(def_sym);
++		if (def_sym->visible != no)
++			return def_sym;
++	}
++
++	/* no choice? reset tristate value */
++	sym->curr.tri = no;
++	return NULL;
++}
++
++void sym_calc_value(struct symbol *sym)
++{
++	struct symbol_value newval, oldval;
++	struct property *prop;
++	struct expr *e;
++
++	if (!sym)
++		return;
++
++	if (sym->flags & SYMBOL_VALID)
++		return;
++	sym->flags |= SYMBOL_VALID;
++
++	oldval = sym->curr;
++
++	switch (sym->type) {
++	case S_INT:
++	case S_HEX:
++	case S_STRING:
++		newval = symbol_empty.curr;
++		break;
++	case S_BOOLEAN:
++	case S_TRISTATE:
++		newval = symbol_no.curr;
++		break;
++	default:
++		sym->curr.val = sym->name;
++		sym->curr.tri = no;
++		return;
++	}
++	if (!sym_is_choice_value(sym))
++		sym->flags &= ~SYMBOL_WRITE;
++
++	sym_calc_visibility(sym);
++
++	/* set default if recursively called */
++	sym->curr = newval;
++
++	switch (sym_get_type(sym)) {
++	case S_BOOLEAN:
++	case S_TRISTATE:
++		if (sym_is_choice_value(sym) && sym->visible == yes) {
++			prop = sym_get_choice_prop(sym);
++			newval.tri = (prop_get_symbol(prop)->curr.val == sym) ? yes : no;
++		} else if (E_OR(sym->visible, sym->rev_dep.tri) != no) {
++			sym->flags |= SYMBOL_WRITE;
++			if (sym_has_value(sym))
++				newval.tri = sym->def[S_DEF_USER].tri;
++			else if (!sym_is_choice(sym)) {
++				prop = sym_get_default_prop(sym);
++				if (prop)
++					newval.tri = expr_calc_value(prop->expr);
++			}
++			newval.tri = E_OR(E_AND(newval.tri, sym->visible), sym->rev_dep.tri);
++		} else if (!sym_is_choice(sym)) {
++			prop = sym_get_default_prop(sym);
++			if (prop) {
++				sym->flags |= SYMBOL_WRITE;
++				newval.tri = expr_calc_value(prop->expr);
++			}
++		}
++		if (newval.tri == mod && sym_get_type(sym) == S_BOOLEAN)
++			newval.tri = yes;
++		break;
++	case S_STRING:
++	case S_HEX:
++	case S_INT:
++		if (sym->visible != no) {
++			sym->flags |= SYMBOL_WRITE;
++			if (sym_has_value(sym)) {
++				newval.val = sym->def[S_DEF_USER].val;
++				break;
++			}
++		}
++		prop = sym_get_default_prop(sym);
++		if (prop) {
++			struct symbol *ds = prop_get_symbol(prop);
++			if (ds) {
++				sym->flags |= SYMBOL_WRITE;
++				sym_calc_value(ds);
++				newval.val = ds->curr.val;
++			}
++		}
++		break;
++	default:
++		;
++	}
++
++	sym->curr = newval;
++	if (sym_is_choice(sym) && newval.tri == yes)
++		sym->curr.val = sym_calc_choice(sym);
++	sym_validate_range(sym);
++
++	if (memcmp(&oldval, &sym->curr, sizeof(oldval))) {
++		sym_set_changed(sym);
++		if (modules_sym == sym) {
++			sym_set_all_changed();
++			modules_val = modules_sym->curr.tri;
++		}
++	}
++
++	if (sym_is_choice(sym)) {
++		int flags = sym->flags & (SYMBOL_CHANGED | SYMBOL_WRITE);
++		prop = sym_get_choice_prop(sym);
++		for (e = prop->expr; e; e = e->left.expr) {
++			e->right.sym->flags |= flags;
++			if (flags & SYMBOL_CHANGED)
++				sym_set_changed(e->right.sym);
++		}
++	}
++}
++
++void sym_clear_all_valid(void)
++{
++	struct symbol *sym;
++	int i;
++
++	for_all_symbols(i, sym)
++		sym->flags &= ~SYMBOL_VALID;
++	sym_change_count++;
++	if (modules_sym)
++		sym_calc_value(modules_sym);
++}
++
++void sym_set_changed(struct symbol *sym)
++{
++	struct property *prop;
++
++	sym->flags |= SYMBOL_CHANGED;
++	for (prop = sym->prop; prop; prop = prop->next) {
++		if (prop->menu)
++			prop->menu->flags |= MENU_CHANGED;
++	}
++}
++
++void sym_set_all_changed(void)
++{
++	struct symbol *sym;
++	int i;
++
++	for_all_symbols(i, sym)
++		sym_set_changed(sym);
++}
++
++bool sym_tristate_within_range(struct symbol *sym, tristate val)
++{
++	int type = sym_get_type(sym);
++
++	if (sym->visible == no)
++		return false;
++
++	if (type != S_BOOLEAN && type != S_TRISTATE)
++		return false;
++
++	if (type == S_BOOLEAN && val == mod)
++		return false;
++	if (sym->visible <= sym->rev_dep.tri)
++		return false;
++	if (sym_is_choice_value(sym) && sym->visible == yes)
++		return val == yes;
++	return val >= sym->rev_dep.tri && val <= sym->visible;
++}
++
++bool sym_set_tristate_value(struct symbol *sym, tristate val)
++{
++	tristate oldval = sym_get_tristate_value(sym);
++
++	if (oldval != val && !sym_tristate_within_range(sym, val))
++		return false;
++
++	if (!(sym->flags & SYMBOL_DEF_USER)) {
++		sym->flags |= SYMBOL_DEF_USER;
++		sym_set_changed(sym);
++	}
++	/*
++	 * setting a choice value also resets the new flag of the choice
++	 * symbol and all other choice values.
++	 */
++	if (sym_is_choice_value(sym) && val == yes) {
++		struct symbol *cs = prop_get_symbol(sym_get_choice_prop(sym));
++		struct property *prop;
++		struct expr *e;
++
++		cs->def[S_DEF_USER].val = sym;
++		cs->flags |= SYMBOL_DEF_USER;
++		prop = sym_get_choice_prop(cs);
++		for (e = prop->expr; e; e = e->left.expr) {
++			if (e->right.sym->visible != no)
++				e->right.sym->flags |= SYMBOL_DEF_USER;
++		}
++	}
++
++	sym->def[S_DEF_USER].tri = val;
++	if (oldval != val)
++		sym_clear_all_valid();
++
++	return true;
++}
++
++tristate sym_toggle_tristate_value(struct symbol *sym)
++{
++	tristate oldval, newval;
++
++	oldval = newval = sym_get_tristate_value(sym);
++	do {
++		switch (newval) {
++		case no:
++			newval = mod;
++			break;
++		case mod:
++			newval = yes;
++			break;
++		case yes:
++			newval = no;
++			break;
++		}
++		if (sym_set_tristate_value(sym, newval))
++			break;
++	} while (oldval != newval);
++	return newval;
++}
++
++bool sym_string_valid(struct symbol *sym, const char *str)
++{
++	signed char ch;
++
++	switch (sym->type) {
++	case S_STRING:
++		return true;
++	case S_INT:
++		ch = *str++;
++		if (ch == '-')
++			ch = *str++;
++		if (!isdigit(ch))
++			return false;
++		if (ch == '0' && *str != 0)
++			return false;
++		while ((ch = *str++)) {
++			if (!isdigit(ch))
++				return false;
++		}
++		return true;
++	case S_HEX:
++		if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))
++			str += 2;
++		ch = *str++;
++		do {
++			if (!isxdigit(ch))
++				return false;
++		} while ((ch = *str++));
++		return true;
++	case S_BOOLEAN:
++	case S_TRISTATE:
++		switch (str[0]) {
++		case 'y': case 'Y':
++		case 'm': case 'M':
++		case 'n': case 'N':
++			return true;
++		}
++		return false;
++	default:
++		return false;
++	}
++}
++
++bool sym_string_within_range(struct symbol *sym, const char *str)
++{
++	struct property *prop;
++	int val;
++
++	switch (sym->type) {
++	case S_STRING:
++		return sym_string_valid(sym, str);
++	case S_INT:
++		if (!sym_string_valid(sym, str))
++			return false;
++		prop = sym_get_range_prop(sym);
++		if (!prop)
++			return true;
++		val = strtol(str, NULL, 10);
++		return val >= sym_get_range_val(prop->expr->left.sym, 10) &&
++		       val <= sym_get_range_val(prop->expr->right.sym, 10);
++	case S_HEX:
++		if (!sym_string_valid(sym, str))
++			return false;
++		prop = sym_get_range_prop(sym);
++		if (!prop)
++			return true;
++		val = strtol(str, NULL, 16);
++		return val >= sym_get_range_val(prop->expr->left.sym, 16) &&
++		       val <= sym_get_range_val(prop->expr->right.sym, 16);
++	case S_BOOLEAN:
++	case S_TRISTATE:
++		switch (str[0]) {
++		case 'y': case 'Y':
++			return sym_tristate_within_range(sym, yes);
++		case 'm': case 'M':
++			return sym_tristate_within_range(sym, mod);
++		case 'n': case 'N':
++			return sym_tristate_within_range(sym, no);
++		}
++		return false;
++	default:
++		return false;
++	}
++}
++
++bool sym_set_string_value(struct symbol *sym, const char *newval)
++{
++	const char *oldval;
++	char *val;
++	int size;
++
++	switch (sym->type) {
++	case S_BOOLEAN:
++	case S_TRISTATE:
++		switch (newval[0]) {
++		case 'y': case 'Y':
++			return sym_set_tristate_value(sym, yes);
++		case 'm': case 'M':
++			return sym_set_tristate_value(sym, mod);
++		case 'n': case 'N':
++			return sym_set_tristate_value(sym, no);
++		}
++		return false;
++	default:
++		;
++	}
++
++	if (!sym_string_within_range(sym, newval))
++		return false;
++
++	if (!(sym->flags & SYMBOL_DEF_USER)) {
++		sym->flags |= SYMBOL_DEF_USER;
++		sym_set_changed(sym);
++	}
++
++	oldval = sym->def[S_DEF_USER].val;
++	size = strlen(newval) + 1;
++	if (sym->type == S_HEX && (newval[0] != '0' || (newval[1] != 'x' && newval[1] != 'X'))) {
++		size += 2;
++		sym->def[S_DEF_USER].val = val = malloc(size);
++		*val++ = '0';
++		*val++ = 'x';
++	} else if (!oldval || strcmp(oldval, newval))
++		sym->def[S_DEF_USER].val = val = malloc(size);
++	else
++		return true;
++
++	strcpy(val, newval);
++	free((void *)oldval);
++	sym_clear_all_valid();
++
++	return true;
++}
++
++const char *sym_get_string_value(struct symbol *sym)
++{
++	tristate val;
++
++	switch (sym->type) {
++	case S_BOOLEAN:
++	case S_TRISTATE:
++		val = sym_get_tristate_value(sym);
++		switch (val) {
++		case no:
++			return "n";
++		case mod:
++			return "m";
++		case yes:
++			return "y";
++		}
++		break;
++	default:
++		;
++	}
++	return (const char *)sym->curr.val;
++}
++
++bool sym_is_changable(struct symbol *sym)
++{
++	return sym->visible > sym->rev_dep.tri;
++}
++
++struct symbol *sym_lookup(const char *name, int isconst)
++{
++	struct symbol *symbol;
++	const char *ptr;
++	char *new_name;
++	int hash = 0;
++
++	if (name) {
++		if (name[0] && !name[1]) {
++			switch (name[0]) {
++			case 'y': return &symbol_yes;
++			case 'm': return &symbol_mod;
++			case 'n': return &symbol_no;
++			}
++		}
++		for (ptr = name; *ptr; ptr++)
++			hash += *ptr;
++		hash &= 0xff;
++
++		for (symbol = symbol_hash[hash]; symbol; symbol = symbol->next) {
++			if (!strcmp(symbol->name, name)) {
++				if ((isconst && symbol->flags & SYMBOL_CONST) ||
++				    (!isconst && !(symbol->flags & SYMBOL_CONST)))
++					return symbol;
++			}
++		}
++		new_name = strdup(name);
++	} else {
++		new_name = NULL;
++		hash = 256;
++	}
++
++	symbol = malloc(sizeof(*symbol));
++	memset(symbol, 0, sizeof(*symbol));
++	symbol->name = new_name;
++	symbol->type = S_UNKNOWN;
++	if (isconst)
++		symbol->flags |= SYMBOL_CONST;
++
++	symbol->next = symbol_hash[hash];
++	symbol_hash[hash] = symbol;
++
++	return symbol;
++}
++
++struct symbol *sym_find(const char *name)
++{
++	struct symbol *symbol = NULL;
++	const char *ptr;
++	int hash = 0;
++
++	if (!name)
++		return NULL;
++
++	if (name[0] && !name[1]) {
++		switch (name[0]) {
++		case 'y': return &symbol_yes;
++		case 'm': return &symbol_mod;
++		case 'n': return &symbol_no;
++		}
++	}
++	for (ptr = name; *ptr; ptr++)
++		hash += *ptr;
++	hash &= 0xff;
++
++	for (symbol = symbol_hash[hash]; symbol; symbol = symbol->next) {
++		if (!strcmp(symbol->name, name) &&
++		    !(symbol->flags & SYMBOL_CONST))
++				break;
++	}
++
++	return symbol;
++}
++
++struct symbol **sym_re_search(const char *pattern)
++{
++	struct symbol *sym, **sym_arr = NULL;
++	int i, cnt, size;
++	regex_t re;
++
++	cnt = size = 0;
++	/* Skip if empty */
++	if (strlen(pattern) == 0)
++		return NULL;
++	if (regcomp(&re, pattern, REG_EXTENDED|REG_NOSUB|REG_ICASE))
++		return NULL;
++
++	for_all_symbols(i, sym) {
++		if (sym->flags & SYMBOL_CONST || !sym->name)
++			continue;
++		if (regexec(&re, sym->name, 0, NULL, 0))
++			continue;
++		if (cnt + 1 >= size) {
++			void *tmp = sym_arr;
++			size += 16;
++			sym_arr = realloc(sym_arr, size * sizeof(struct symbol *));
++			if (!sym_arr) {
++				free(tmp);
++				return NULL;
++			}
++		}
++		sym_arr[cnt++] = sym;
++	}
++	if (sym_arr)
++		sym_arr[cnt] = NULL;
++	regfree(&re);
++
++	return sym_arr;
++}
++
++
++struct symbol *sym_check_deps(struct symbol *sym);
++
++static struct symbol *sym_check_expr_deps(struct expr *e)
++{
++	struct symbol *sym;
++
++	if (!e)
++		return NULL;
++	switch (e->type) {
++	case E_OR:
++	case E_AND:
++		sym = sym_check_expr_deps(e->left.expr);
++		if (sym)
++			return sym;
++		return sym_check_expr_deps(e->right.expr);
++	case E_NOT:
++		return sym_check_expr_deps(e->left.expr);
++	case E_EQUAL:
++	case E_UNEQUAL:
++		sym = sym_check_deps(e->left.sym);
++		if (sym)
++			return sym;
++		return sym_check_deps(e->right.sym);
++	case E_SYMBOL:
++		return sym_check_deps(e->left.sym);
++	default:
++		break;
++	}
++	printf("Oops! How to check %d?\n", e->type);
++	return NULL;
++}
++
++struct symbol *sym_check_deps(struct symbol *sym)
++{
++	struct symbol *sym2;
++	struct property *prop;
++
++	if (sym->flags & SYMBOL_CHECK) {
++		printf("Warning! Found recursive dependency: %s", sym->name);
++		return sym;
++	}
++	if (sym->flags & SYMBOL_CHECKED)
++		return NULL;
++
++	sym->flags |= (SYMBOL_CHECK | SYMBOL_CHECKED);
++	sym2 = sym_check_expr_deps(sym->rev_dep.expr);
++	if (sym2)
++		goto out;
++
++	for (prop = sym->prop; prop; prop = prop->next) {
++		if (prop->type == P_CHOICE || prop->type == P_SELECT)
++			continue;
++		sym2 = sym_check_expr_deps(prop->visible.expr);
++		if (sym2)
++			goto out;
++		if (prop->type != P_DEFAULT || sym_is_choice(sym))
++			continue;
++		sym2 = sym_check_expr_deps(prop->expr);
++		if (sym2)
++			goto out;
++	}
++out:
++	if (sym2) {
++		printf(" %s", sym->name);
++		if (sym2 == sym) {
++			printf("\n");
++			sym2 = NULL;
++		}
++	}
++	sym->flags &= ~SYMBOL_CHECK;
++	return sym2;
++}
++
++struct property *prop_alloc(enum prop_type type, struct symbol *sym)
++{
++	struct property *prop;
++	struct property **propp;
++
++	prop = malloc(sizeof(*prop));
++	memset(prop, 0, sizeof(*prop));
++	prop->type = type;
++	prop->sym = sym;
++	prop->file = current_file;
++	prop->lineno = zconf_lineno();
++
++	/* append property to the prop list of symbol */
++	if (sym) {
++		for (propp = &sym->prop; *propp; propp = &(*propp)->next)
++			;
++		*propp = prop;
++	}
++
++	return prop;
++}
++
++struct symbol *prop_get_symbol(struct property *prop)
++{
++	if (prop->expr && (prop->expr->type == E_SYMBOL ||
++			   prop->expr->type == E_CHOICE))
++		return prop->expr->left.sym;
++	return NULL;
++}
++
++const char *prop_get_type_name(enum prop_type type)
++{
++	switch (type) {
++	case P_PROMPT:
++		return "prompt";
++	case P_COMMENT:
++		return "comment";
++	case P_MENU:
++		return "menu";
++	case P_DEFAULT:
++		return "default";
++	case P_CHOICE:
++		return "choice";
++	case P_SELECT:
++		return "select";
++	case P_RANGE:
++		return "range";
++	case P_UNKNOWN:
++		break;
++	}
++	return "unknown";
++}
+diff --git a/kconfig/util.c b/kconfig/util.c
+new file mode 100644
+index 000000000000..e3f28b9d59f4
+--- /dev/null
++++ b/kconfig/util.c
+@@ -0,0 +1,111 @@
++/*
++ * Copyright (C) 2002-2005 Roman Zippel <zippel@linux-m68k.org>
++ * Copyright (C) 2002-2005 Sam Ravnborg <sam@ravnborg.org>
++ *
++ * Released under the terms of the GNU GPL v2.0.
++ */
++
++#include <string.h>
++#include "lkc.h"
++
++/* file already present in list? If not add it */
++struct file *file_lookup(const char *name)
++{
++	struct file *file;
++
++	for (file = file_list; file; file = file->next) {
++		if (!strcmp(name, file->name))
++			return file;
++	}
++
++	file = malloc(sizeof(*file));
++	memset(file, 0, sizeof(*file));
++	file->name = strdup(name);
++	file->next = file_list;
++	file_list = file;
++	return file;
++}
++
++/* write a dependency file as used by kbuild to track dependencies */
++int file_write_dep(const char *name)
++{
++	struct file *file;
++	FILE *out;
++
++	if (!name)
++		name = ".kconfig.d";
++	out = fopen("..config.tmp", "w");
++	if (!out)
++		return 1;
++	fprintf(out, "deps_config := \\\n");
++	for (file = file_list; file; file = file->next) {
++		if (file->next)
++			fprintf(out, "\t%s \\\n", file->name);
++		else
++			fprintf(out, "\t%s\n", file->name);
++	}
++	fprintf(out, "\ninclude/config/auto.conf: \\\n"
++		     "\t$(deps_config)\n\n"
++		     "$(deps_config): ;\n");
++	fclose(out);
++	rename("..config.tmp", name);
++	return 0;
++}
++
++
++/* Allocate initial growable sting */
++struct gstr str_new(void)
++{
++	struct gstr gs;
++	gs.s = malloc(sizeof(char) * 64);
++	gs.len = 16;
++	strcpy(gs.s, "\0");
++	return gs;
++}
++
++/* Allocate and assign growable string */
++struct gstr str_assign(const char *s)
++{
++	struct gstr gs;
++	gs.s = strdup(s);
++	gs.len = strlen(s) + 1;
++	return gs;
++}
++
++/* Free storage for growable string */
++void str_free(struct gstr *gs)
++{
++	if (gs->s)
++		free(gs->s);
++	gs->s = NULL;
++	gs->len = 0;
++}
++
++/* Append to growable string */
++void str_append(struct gstr *gs, const char *s)
++{
++	size_t l = strlen(gs->s) + strlen(s) + 1;
++	if (l > gs->len) {
++		gs->s   = realloc(gs->s, l);
++		gs->len = l;
++	}
++	strcat(gs->s, s);
++}
++
++/* Append printf formatted string to growable string */
++void str_printf(struct gstr *gs, const char *fmt, ...)
++{
++	va_list ap;
++	char s[10000]; /* big enough... */
++	va_start(ap, fmt);
++	vsnprintf(s, sizeof(s), fmt, ap);
++	str_append(gs, s);
++	va_end(ap);
++}
++
++/* Retrieve value of growable string */
++const char *str_get(struct gstr *gs)
++{
++	return gs->s;
++}
++
+diff --git a/lib/lib.h b/lib/lib.h
+index e353921bc0c8..7c83bacdb7d7 100644
+--- a/lib/lib.h
++++ b/lib/lib.h
+@@ -422,7 +422,7 @@ void names_to_pid(char **names, int (*callback)(pid_t pid, char *name),
+     int scripts);
+ 
+ pid_t __attribute__((returns_twice)) xvforkwrap(pid_t pid);
+-#define XVFORK() xvforkwrap(vfork())
++#define XVFORK() xvforkwrap(({ errno = ENOSYS; -1; }))
+ 
+ // Wrapper to make xfuncs() return (via siglongjmp) instead of exiting.
+ // Assigns true/false "did it exit" value to first argument.
+diff --git a/lib/portability.c b/lib/portability.c
+index b541c5d9ffc8..bc23517ebf9c 100644
+--- a/lib/portability.c
++++ b/lib/portability.c
+@@ -6,6 +6,8 @@
+ 
+ #include "toys.h"
+ 
++#include <stdfil.h>
++
+ // We can't fork() on nommu systems, and vfork() requires an exec() or exit()
+ // before resuming the parent (because they share a heap until then). And no,
+ // we can't implement our own clone() call that does the equivalent of fork()
+@@ -447,7 +449,8 @@ void xsignal_all_killers(void *handler)
+   int i;
+ 
+   for (i = 1; signames[i].num != SIGCHLD; i++)
+-    if (signames[i].num != SIGKILL) xsignal(signames[i].num, handler);
++    if (signames[i].num != SIGKILL && !zis_unsafe_signal_for_handlers(signames[i].num))
++      xsignal(signames[i].num, handler);
+ }
+ 
+ // Convert a string like "9", "KILL", "SIGHUP", or "SIGRTMIN+2" to a number.
+diff --git a/toys/other/oneit.c b/toys/other/oneit.c
+index 45eb1fb5a2fe..77955ed16707 100644
+--- a/toys/other/oneit.c
++++ b/toys/other/oneit.c
+@@ -59,7 +59,7 @@ static void oneit_signaled(int signal)
+   // which causes the kernel to panic before the actual reboot happens.
+   sync();
+   if (getpid()!=1) _exit(127+signal);
+-  if (!vfork()) reboot(action);
++  if (!fork()) reboot(action);
+ }
+ 
+ void oneit_main(void)
+@@ -105,7 +105,7 @@ void oneit_main(void)
+   while (!toys.signal) {
+ 
+     // Create a new child process.
+-    pid = XVFORK();
++    pid = fork();
+     if (pid) {
+ 
+       // pid 1 reaps zombies until it gets its child, then halts system.
+diff --git a/toys/posix/ls.c b/toys/posix/ls.c
+index 7a8dfd27f84b..a3b674db9cc3 100644
+--- a/toys/posix/ls.c
++++ b/toys/posix/ls.c
+@@ -329,13 +329,13 @@ static int color_from_mode(mode_t mode)
+   return color;
+ }
+ 
+-static void zprint(int zap, char *pat, int len, unsigned long arg)
++static void zprint(int zap, char *pat, int len, void *arg)
+ {
+   char tmp[32];
+ 
+   sprintf(tmp, "%%*%s", zap ? "s" : pat);
+   if (zap && pat[strlen(pat)-1]==' ') strcat(tmp, " ");
+-  printf(tmp, len, zap ? (unsigned long)"?" : arg);
++  printf(tmp, len, zap ? "?" : arg);
+ }
+ 
+ // Display a list of dirtree entries, according to current format
+@@ -480,24 +480,24 @@ static void listfiles(int dirfd, struct dirtree *indir)
+     }
+     width += *len;
+ 
+-    if (FLAG(i)) zprint(zap, "lu ", totals[1], st->st_ino);
++    if (FLAG(i)) zprint(zap, "lu ", totals[1], (void*)st->st_ino);
+ 
+     if (FLAG(s)) {
+       print_with_h(tmp, st->st_blocks, 1);
+-      zprint(zap, "s ", totals[6], (unsigned long)tmp);
++      zprint(zap, "s ", totals[6], tmp);
+     }
+ 
+     if (FLAG(l)||FLAG(o)||FLAG(n)||FLAG(g)) {
+       mode_to_string(mode, tmp);
+       if (zap) memset(tmp+1, '?', 9);
+       printf("%s", tmp);
+-      zprint(zap, "ld", totals[2]+1, st->st_nlink);
++      zprint(zap, "ld", totals[2]+1, (void*)st->st_nlink);
+ 
+       // print user
+       if (!FLAG(g)) {
+         putchar(' ');
+         ii = -totals[3];
+-        if (zap || FLAG(n)) zprint(zap, "lu", ii, st->st_uid);
++        if (zap || FLAG(n)) zprint(zap, "lu", ii, (void*)st->st_uid);
+         else draw_trim_esc(getusername(st->st_uid), ii, abs(ii), TT.escmore,
+                            crunch_qb);
+       }
+@@ -506,7 +506,7 @@ static void listfiles(int dirfd, struct dirtree *indir)
+       if (!FLAG(o)) {
+         putchar(' ');
+         ii = -totals[4];
+-        if (zap || FLAG(n)) zprint(zap, "lu", ii, st->st_gid);
++        if (zap || FLAG(n)) zprint(zap, "lu", ii, (void*)st->st_gid);
+         else draw_trim_esc(getgroupname(st->st_gid), ii, abs(ii), TT.escmore,
+                            crunch_qb);
+       }
+@@ -522,7 +522,7 @@ static void listfiles(int dirfd, struct dirtree *indir)
+           dev_minor(st->st_rdev));
+       else {
+         print_with_h(tmp, st->st_size, 0);
+-        zprint(zap, "s", totals[5]+1, (unsigned long)tmp);
++        zprint(zap, "s", totals[5]+1, tmp);
+       }
+ 
+       // print time, always in --time-style=long-iso
+@@ -534,7 +534,7 @@ static void listfiles(int dirfd, struct dirtree *indir)
+         s += sprintf(s, ":%02d.%09d ", tm->tm_sec, (int)st->st_mtim.tv_nsec);
+         strftime(s, sizeof(tmp)-(s-tmp), "%z", tm);
+       }
+-      zprint(zap, "s ", 17+(TT.l>1)*13, (unsigned long)tmp);
++      zprint(zap, "s ", 17+(TT.l>1)*13, tmp);
+     }
+ 
+     if (FLAG(color)) {
+@@ -557,7 +557,7 @@ static void listfiles(int dirfd, struct dirtree *indir)
+         if (color) printf("\e[%d;%dm", color>>8, color&255);
+       }
+ 
+-      zprint(zap, "s", 0, (unsigned long)dt->symlink);
++      zprint(zap, "s", 0, dt->symlink);
+       if (!zap && color) printf("\e[0m");
+     }
+ 

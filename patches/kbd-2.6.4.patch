@@ -1,0 +1,407 @@
+diff --git a/contrib/dropkeymaps.c b/contrib/dropkeymaps.c
+index ca27dd843220..e1db540e9716 100644
+--- a/contrib/dropkeymaps.c
++++ b/contrib/dropkeymaps.c
+@@ -23,7 +23,7 @@ int main(void)
+ 			ke.kb_table = i;
+ 			ke.kb_value = K_HOLE;
+ 
+-			if (ioctl(fd, KDSKBENT, (unsigned long)&ke)) {
++			if (ioctl(fd, KDSKBENT, &ke)) {
+ 				perror("KDSKBENT");
+ 				fprintf(stderr, "Error: cannot deallocate or clear keymap %d key %d\n", i, j);
+ 				return EXIT_FAILURE;
+@@ -35,7 +35,7 @@ int main(void)
+ 		ke.kb_table = i;
+ 		ke.kb_value = K_NOSUCHMAP;
+ 
+-		if (ioctl(fd, KDSKBENT, (unsigned long)&ke)) {
++		if (ioctl(fd, KDSKBENT, &ke)) {
+ 			perror("KDSKBENT");
+ 			fprintf(stderr, "Error: could not deallocate keymap %d\n", i);
+ 			return EXIT_FAILURE;
+diff --git a/data/keymaps/i386/dvorak/dvorak-l.map b/data/keymaps/i386/dvorak/dvorak-l.map
+index 64b5f480edff..755550aac771 100644
+--- a/data/keymaps/i386/dvorak/dvorak-l.map
++++ b/data/keymaps/i386/dvorak/dvorak-l.map
+@@ -43,7 +43,7 @@
+ 		keycode  11 = three		numbersign
+ 		keycode  12 = two		at
+ 		keycode  13 = one		exclam
+-		keycode  14 = BackSpace		Delete
++		keycode  14 = Delete		Delete
+ ! --------------------------------------------------------------------------
+ ! Row 3
+ ! --------------------------------------------------------------------------
+diff --git a/data/keymaps/i386/dvorak/dvorak-r.map b/data/keymaps/i386/dvorak/dvorak-r.map
+index 4e5c4fabc75f..b22dbdc7abf6 100644
+--- a/data/keymaps/i386/dvorak/dvorak-r.map
++++ b/data/keymaps/i386/dvorak/dvorak-r.map
+@@ -43,7 +43,7 @@
+ 		keycode  11 = slash		question
+ 		keycode  12 = bracketleft	braceleft
+ 		keycode  13 = bracketright	braceright
+-		keycode  14 = BackSpace		Delete
++		keycode  14 = Delete		Delete
+ ! --------------------------------------------------------------------------
+ ! Row 3
+ ! --------------------------------------------------------------------------
+diff --git a/data/keymaps/i386/fgGIod/tr_f-latin5.map b/data/keymaps/i386/fgGIod/tr_f-latin5.map
+index 6be41055247b..d8de1aedd0fc 100644
+--- a/data/keymaps/i386/fgGIod/tr_f-latin5.map
++++ b/data/keymaps/i386/fgGIod/tr_f-latin5.map
+@@ -51,7 +51,7 @@ keycode  12 = asterisk         question         backslash
+ 	alt     keycode  12 = Meta_minus      
+ keycode  13 = minus            underscore      
+ 	alt     keycode  13 = Meta_equal      
+-keycode  14 = BackSpace           Delete          
++keycode  14 = Delete           Delete          
+ 	alt     keycode  14 = Meta_Delete     
+ keycode  15 = Tab              Meta_Tab             
+ 	alt     keycode  15 = Meta_Tab        
+diff --git a/data/keymaps/i386/qwerty/lt.l4.map b/data/keymaps/i386/qwerty/lt.l4.map
+index b497a8b05f49..85c397963359 100644
+--- a/data/keymaps/i386/qwerty/lt.l4.map
++++ b/data/keymaps/i386/qwerty/lt.l4.map
+@@ -205,7 +205,7 @@ keycode  13 = equal	       plus		+zcaron		 +Zcaron	    \
+ #	edit this if you want the key above <Enter> to delete symbols above
+ # cursor, not before.
+ keycode  14 = \
+-	      BackSpace	       BackSpace	BackSpace	 BackSpace  \
++	      Delete	       Delete		Delete		 Delete	     \
+ 	      Delete	       Delete		Delete		 Delete	     \
+ 	      Meta_BackSpace   Meta_BackSpace	Meta_BackSpace Meta_BackSpace \
+ 	      Meta_Delete      Meta_Delete	Meta_Delete	 Meta_Delete  
+@@ -506,7 +506,7 @@ keycode 110 = Insert
+ 
+ # Edit this if you want strict VT100 emulation.
+ string F111 = "\033[3$"
+-keycode 111 = Delete	       F111		Delete		 F111	   \
++keycode 111 = Remove	       F111		Remove		 F111	   \
+ 	      Remove	       Remove		Remove		 Remove	    \
+ 	      Meta_Delete      Meta_Delete	Meta_Delete	 Meta_Delete \
+ 	      Boot	       Boot		Boot		 Boot
+diff --git a/data/keymaps/i386/qwerty/lt.map b/data/keymaps/i386/qwerty/lt.map
+index d3d7575f7b39..59c6336cc31d 100644
+--- a/data/keymaps/i386/qwerty/lt.map
++++ b/data/keymaps/i386/qwerty/lt.map
+@@ -204,7 +204,7 @@ keycode  13 = equal	       plus		U+017e		 U+017d	    \
+ #	edit this if you want the key above <Enter> to delete symbols above
+ # cursor, not before.
+ keycode  14 = \
+-	      BackSpace	       BackSpace	BackSpace	 BackSpace  \
++	      Delete	       Delete		Delete		 Delete	     \
+ 	      Delete	       Delete		Delete		 Delete	     \
+ 	      Meta_BackSpace   Meta_BackSpace	Meta_BackSpace Meta_BackSpace \
+ 	      Meta_Delete      Meta_Delete	Meta_Delete	 Meta_Delete  
+@@ -505,7 +505,7 @@ keycode 110 = Insert
+ 
+ # Edit this if you want strict VT100 emulation.
+ string F111 = "\033[3$"
+-keycode 111 = Delete	       F111		Delete		 F111	   \
++keycode 111 = Remove	       F111		Remove		 F111	   \
+ 	      Remove	       Remove		Remove		 Remove	    \
+ 	      Meta_Delete      Meta_Delete	Meta_Delete	 Meta_Delete \
+ 	      Boot	       Boot		Boot		 Boot
+diff --git a/data/keymaps/i386/qwerty/no-latin1.map b/data/keymaps/i386/qwerty/no-latin1.map
+index 54b23a21aa9e..dead999d3fc6 100644
+--- a/data/keymaps/i386/qwerty/no-latin1.map
++++ b/data/keymaps/i386/qwerty/no-latin1.map
+@@ -3,7 +3,7 @@
+ # Send comments to Kjetil T. Homme <kjetilho@ifi.uio.no>
+ include "linux-with-alt-and-altgr"
+ 	plain keycode  83 = KP_Comma
+-	plain keycode 111 = Delete		# "Remove" originally, weird...
++	plain keycode 111 = Remove
+ strings as usual
+ 
+ 	keycode   1 = Escape
+diff --git a/data/keymaps/i386/qwerty/ru-cp1251.map b/data/keymaps/i386/qwerty/ru-cp1251.map
+index d98d5916f44f..d78b7515cb22 100644
+--- a/data/keymaps/i386/qwerty/ru-cp1251.map
++++ b/data/keymaps/i386/qwerty/ru-cp1251.map
+@@ -39,7 +39,7 @@ strings as usual
+ 	alt	keycode  12 =	Meta_minus
+ 		keycode  13 =	equal	plus		equal	plus
+ 	alt	keycode  13 =	Meta_equal
+-		keycode  14 =	BackSpace
++		keycode  14 =	Delete
+ 	alt	keycode  14 =	Meta_Delete
+ 		keycode  15 =	Tab
+ 	alt	keycode  15 =	Meta_Tab	
+diff --git a/data/keymaps/i386/qwerty/ru-ms.map b/data/keymaps/i386/qwerty/ru-ms.map
+index 398bce8f22a2..7d121eeb7115 100644
+--- a/data/keymaps/i386/qwerty/ru-ms.map
++++ b/data/keymaps/i386/qwerty/ru-ms.map
+@@ -89,8 +89,8 @@ altgr	shift alt keycode  12 = 	Meta_underscore
+ altgr	alt     keycode  13 =    Meta_equal
+ 	shift alt keycode  13 = 	Meta_plus
+ altgr	shift alt keycode  13 = 	Meta_plus
+-		keycode  14 = 	BackSpace  BackSpace  BackSpace  BackSpace
+-#		keycode  14 = 	Delete  Delete  Delete  Delete
++#		keycode  14 = 	BackSpace  BackSpace  BackSpace  BackSpace
++		keycode  14 = 	Delete  Delete  Delete  Delete
+ 	alt	keycode  14 =	Meta_Delete
+ altgr	alt     keycode  14 = 	Meta_Delete
+ 		keycode  15 =	Tab	Tab		Tab	Tab	
+diff --git a/data/keymaps/i386/qwerty/ru1.map b/data/keymaps/i386/qwerty/ru1.map
+index 9cc074a6071e..c9c4cc8d623a 100644
+--- a/data/keymaps/i386/qwerty/ru1.map
++++ b/data/keymaps/i386/qwerty/ru1.map
+@@ -143,8 +143,8 @@ altgr	alt     keycode  26 = 	Meta_bracketleft
+ 
+ # The keycode "0xFF" is too dangerous for many programs (including emacs).
+ # So let it be bracket instead of Hard Sign.
+-# altgr		keycode  27 = 	+0xDF
+-# altgr	shift 	keycode  27 = 	+0xFF
++altgr		keycode  27 = 	+0xDF
++altgr	shift 	keycode  27 = 	+0xFF
+ 	control	keycode  27 =	Control_bracketright
+ altgr	control	keycode  27 =	Control_bracketright
+ 	alt	keycode  27 =	Meta_bracketright
+diff --git a/data/keymaps/i386/qwerty/ru2.map b/data/keymaps/i386/qwerty/ru2.map
+index 4c1c8d484aa3..b060c3f02a04 100644
+--- a/data/keymaps/i386/qwerty/ru2.map
++++ b/data/keymaps/i386/qwerty/ru2.map
+@@ -46,7 +46,7 @@ strings as usual
+ 	alt	keycode  12 =	Meta_minus
+ 		keycode  13 =	equal	plus		equal	plus
+ 	alt	keycode  13 =	Meta_equal
+-		keycode  14 =	BackSpace BackSpace	BackSpace BackSpace
++		keycode  14 =	Delete Delete	Delete Delete
+ 	alt	keycode  14 =	Meta_Delete
+ 		keycode  15 =	Tab	Tab		Tab	Tab	
+ 	alt	keycode  15 =	Meta_Tab	
+diff --git a/data/keymaps/i386/qwerty/ru_win.map b/data/keymaps/i386/qwerty/ru_win.map
+index db545b9ed6eb..9360c9523c32 100644
+--- a/data/keymaps/i386/qwerty/ru_win.map
++++ b/data/keymaps/i386/qwerty/ru_win.map
+@@ -42,7 +42,7 @@
+ 	alt	keycode  12 =	Meta_minus
+ 		keycode  13 =	equal	plus		equal	plus
+ 	alt	keycode  13 =	Meta_equal
+-		keycode  14 =	BackSpace BackSpace	BackSpace BackSpace
++		keycode  14 =	Delete Delete	Delete Delete
+ 	alt	keycode  14 =	Meta_Delete
+ 		keycode  15 =	Tab	Tab		Tab	Tab	
+ 	alt	keycode  15 =	Meta_Tab	
+diff --git a/data/keymaps/i386/qwerty/se-ir209.map b/data/keymaps/i386/qwerty/se-ir209.map
+index e66f4836b4d3..4f00515781a2 100644
+--- a/data/keymaps/i386/qwerty/se-ir209.map
++++ b/data/keymaps/i386/qwerty/se-ir209.map
+@@ -345,7 +345,7 @@ control keycode 108 = Scroll_Forward
+ 	keycode 109 = Next	Scroll_Forward
+ 	keycode 110 = Insert
+ 
+-	keycode 111 = Delete		# "Remove" originally, weird...
++	keycode 111 = Remove
+ control alt	keycode 111 = Boot
+ control altgr	keycode 111 = Boot
+ 
+diff --git a/data/keymaps/i386/qwerty/se-lat6.map b/data/keymaps/i386/qwerty/se-lat6.map
+index 9142a6f1f166..ed42aa87a679 100644
+--- a/data/keymaps/i386/qwerty/se-lat6.map
++++ b/data/keymaps/i386/qwerty/se-lat6.map
+@@ -374,6 +374,6 @@ control keycode 108 = Scroll_Forward
+ 	keycode 109 = Next	Scroll_Forward
+ 	keycode 110 = Insert
+ 
+-	keycode 111 = Delete		# "Remove" originally, weird...
++	keycode 111 = Remove
+ control alt	keycode 111 = Boot
+ control altgr	keycode 111 = Boot
+diff --git a/data/keymaps/i386/qwerty/tr_q-latin5.map b/data/keymaps/i386/qwerty/tr_q-latin5.map
+index 0ef8ecbfd1c2..c1e4273da93a 100644
+--- a/data/keymaps/i386/qwerty/tr_q-latin5.map
++++ b/data/keymaps/i386/qwerty/tr_q-latin5.map
+@@ -49,7 +49,7 @@ keycode  12 = asterisk         question         backslash
+ 	alt     keycode  12 = Meta_minus
+ keycode  13 = minus            underscore
+ 	alt     keycode  13 = Meta_equal
+-keycode  14 = BackSpace           Delete
++keycode  14 = Delete           Delete
+ 	alt     keycode  14 = Meta_Delete
+ keycode  15 = Tab              Meta_Tab
+ 	alt     keycode  15 = Meta_Tab
+diff --git a/data/keymaps/i386/qwerty/ua-utf-ws.map b/data/keymaps/i386/qwerty/ua-utf-ws.map
+index 1783a3d5a6b7..e76733bc642d 100644
+--- a/data/keymaps/i386/qwerty/ua-utf-ws.map
++++ b/data/keymaps/i386/qwerty/ua-utf-ws.map
+@@ -260,7 +260,7 @@ keycode  13 = equal            plus
+ 	shift ctrll ctrlr keycode  13 = plus
+ 	alt ctrll ctrlr keycode  13 = Meta_equal
+ 	shift alt ctrll ctrlr keycode  13 = Meta_plus
+-keycode  14 = BackSpace           Delete          
++keycode  14 = Delete           Delete          
+ 	control	keycode  14 = BackSpace       
+ 	alt	keycode  14 = Meta_Delete     
+ 	ctrlr	keycode  14 = BackSpace
+diff --git a/data/keymaps/i386/qwerty/ua-utf.map b/data/keymaps/i386/qwerty/ua-utf.map
+index 3d9ce435fcc9..9fa4dd01011c 100644
+--- a/data/keymaps/i386/qwerty/ua-utf.map
++++ b/data/keymaps/i386/qwerty/ua-utf.map
+@@ -250,7 +250,7 @@ keycode  13 = equal            plus
+ 	shift ctrll ctrlr keycode  13 = plus
+ 	alt ctrll ctrlr keycode  13 = Meta_equal
+ 	shift alt ctrll ctrlr keycode  13 = Meta_plus
+-keycode  14 = BackSpace           Delete          
++keycode  14 = Delete           Delete          
+ 	control	keycode  14 = BackSpace       
+ 	alt	keycode  14 = Meta_Delete     
+ 	ctrlr	keycode  14 = BackSpace
+diff --git a/data/keymaps/i386/qwerty/ua-ws.map b/data/keymaps/i386/qwerty/ua-ws.map
+index 86df9698e6c9..37c0244f095c 100644
+--- a/data/keymaps/i386/qwerty/ua-ws.map
++++ b/data/keymaps/i386/qwerty/ua-ws.map
+@@ -260,7 +260,7 @@ keycode  13 = equal            plus
+ 	shift ctrll ctrlr keycode  13 = plus
+ 	alt ctrll ctrlr keycode  13 = Meta_equal
+ 	shift alt ctrll ctrlr keycode  13 = Meta_plus
+-keycode  14 = BackSpace           Delete          
++keycode  14 = Delete           Delete          
+ 	control	keycode  14 = BackSpace       
+ 	alt	keycode  14 = Meta_Delete     
+ 	ctrlr	keycode  14 = BackSpace
+diff --git a/data/keymaps/i386/qwerty/ua.map b/data/keymaps/i386/qwerty/ua.map
+index bb57d2a44740..7629b96cec7c 100644
+--- a/data/keymaps/i386/qwerty/ua.map
++++ b/data/keymaps/i386/qwerty/ua.map
+@@ -249,7 +249,7 @@ keycode  13 = equal            plus
+ 	shift ctrll ctrlr keycode  13 = plus
+ 	alt ctrll ctrlr keycode  13 = Meta_equal
+ 	shift alt ctrll ctrlr keycode  13 = Meta_plus
+-keycode  14 = BackSpace           Delete          
++keycode  14 = Delete           Delete          
+ 	control	keycode  14 = BackSpace       
+ 	alt	keycode  14 = Meta_Delete     
+ 	ctrlr	keycode  14 = BackSpace
+diff --git a/src/libkeymap/kernel.c b/src/libkeymap/kernel.c
+index 398141e7ddad..12cc90483080 100644
+--- a/src/libkeymap/kernel.c
++++ b/src/libkeymap/kernel.c
+@@ -36,7 +36,7 @@ int lk_kernel_keys(struct lk_ctx *ctx, int fd)
+ 			ke.kb_index = (unsigned char) i;
+ 			ke.kb_value = 0;
+ 
+-			if (ioctl(fd, KDGKBENT, (unsigned long)&ke)) {
++			if (ioctl(fd, KDGKBENT, &ke)) {
+ 				ERR(ctx, _("KDGKBENT: %s: error at index %d in table %d"),
+ 				    strerror(errno), i, t);
+ 				return -1;
+@@ -68,7 +68,7 @@ int lk_kernel_funcs(struct lk_ctx *ctx, int fd)
+ 		}
+ 		kbs.kb_func = (unsigned char) i;
+ 
+-		if (ioctl(fd, KDGKBSENT, (unsigned long)&kbs)) {
++		if (ioctl(fd, KDGKBSENT, &kbs)) {
+ 			ERR(ctx, _("KDGKBSENT: %s: Unable to get function key string"),
+ 			    strerror(errno));
+ 			return -1;
+@@ -98,7 +98,7 @@ int lk_kernel_diacrs(struct lk_ctx *ctx, int fd)
+ 	int i;
+ 	struct lk_kbdiacr dcr;
+ 
+-	if (ioctl(fd, request, (unsigned long)&kd)) {
++	if (ioctl(fd, request, &kd)) {
+ 		ERR(ctx, _("KDGKBDIACR(UC): %s: Unable to get accent table"),
+ 		    strerror(errno));
+ 		return -1;
+diff --git a/src/libkeymap/loadkeys.c b/src/libkeymap/loadkeys.c
+index bd23d006d529..39f4e4cc8900 100644
+--- a/src/libkeymap/loadkeys.c
++++ b/src/libkeymap/loadkeys.c
+@@ -49,7 +49,7 @@ defkeys(struct lk_ctx *ctx, int fd, int kbd_mode)
+ 				ke.kb_table = (unsigned char) i;
+ 				ke.kb_value = (unsigned short) value;
+ 
+-				fail = ioctl(fd, KDSKBENT, (unsigned long)&ke);
++				fail = ioctl(fd, KDSKBENT, &ke);
+ 
+ 				if (fail) {
+ 					if (errno == EPERM) {
+@@ -86,7 +86,7 @@ defkeys(struct lk_ctx *ctx, int fd, int kbd_mode)
+ 
+ 			DBG(ctx, _("deallocate keymap %d"), i);
+ 
+-			if (ioctl(fd, KDSKBENT, (unsigned long)&ke)) {
++			if (ioctl(fd, KDSKBENT, &ke)) {
+ 				if (errno != EINVAL) {
+ 					ERR(ctx, _("KDSKBENT: %s: could not deallocate keymap %d"),
+ 					    strerror(errno), i);
+@@ -99,7 +99,7 @@ defkeys(struct lk_ctx *ctx, int fd, int kbd_mode)
+ 					ke.kb_table = (unsigned char) i;
+ 					ke.kb_value = K_HOLE;
+ 
+-					if (ioctl(fd, KDSKBENT, (unsigned long)&ke)) {
++					if (ioctl(fd, KDSKBENT, &ke)) {
+ 						if (errno == EINVAL && i >= 16)
+ 							break; /* old kernel */
+ 
+@@ -172,7 +172,7 @@ deffuncs(struct lk_ctx *ctx, int fd)
+ 
+ 		if (ptr) {
+ 			strcpy((char *)kbs.kb_string, ptr);
+-			if (ioctl(fd, KDSKBSENT, (unsigned long)&kbs)) {
++			if (ioctl(fd, KDSKBSENT, &kbs)) {
+ 				s = ostr(ctx, (char *)kbs.kb_string);
+ 				if (s == NULL)
+ 					return -1;
+@@ -185,7 +185,7 @@ deffuncs(struct lk_ctx *ctx, int fd)
+ 		} else if (ctx->flags & LK_FLAG_CLEAR_STRINGS) {
+ 			kbs.kb_string[0] = 0;
+ 
+-			if (ioctl(fd, KDSKBSENT, (unsigned long)&kbs)) {
++			if (ioctl(fd, KDSKBSENT, &kbs)) {
+ 				ERR(ctx, _("failed to clear string %s"),
+ 				    get_sym(ctx, KT_FN, kbs.kb_func));
+ 			} else {
+@@ -225,7 +225,7 @@ defdiacs(struct lk_ctx *ctx, int fd)
+ 			j++;
+ 		}
+ 
+-		if (ioctl(fd, KDSKBDIACRUC, (unsigned long)&kdu)) {
++		if (ioctl(fd, KDSKBDIACRUC, &kdu)) {
+ 			ERR(ctx, "KDSKBDIACRUC: %s", strerror(errno));
+ 			return -1;
+ 		}
+@@ -254,7 +254,7 @@ defdiacs(struct lk_ctx *ctx, int fd)
+ 			j++;
+ 		}
+ 
+-		if (ioctl(fd, KDSKBDIACR, (unsigned long)&kd)) {
++		if (ioctl(fd, KDSKBDIACR, &kd)) {
+ 			ERR(ctx, "KDSKBDIACR: %s", strerror(errno));
+ 			return -1;
+ 		}
+diff --git a/src/libkeymap/summary.c b/src/libkeymap/summary.c
+index cd6a2a93d71d..63b8eda617c9 100644
+--- a/src/libkeymap/summary.c
++++ b/src/libkeymap/summary.c
+@@ -27,7 +27,7 @@ valid_type(int fd, int t)
+ 	ke.kb_table = 0;
+ 	ke.kb_value = (unsigned short) K(t, 0);
+ 
+-	return (ioctl(fd, KDSKBENT, (unsigned long)&ke) == 0);
++	return (ioctl(fd, KDSKBENT, &ke) == 0);
+ }
+ 
+ static unsigned char
+@@ -41,15 +41,15 @@ maximum_val(int fd, int t)
+ 	ke.kb_value = K_HOLE;
+ 	ke0         = ke;
+ 
+-	ioctl(fd, KDGKBENT, (unsigned long)&ke0);
++	ioctl(fd, KDGKBENT, &ke0);
+ 
+ 	for (i = 0; i < 256; i++) {
+ 		ke.kb_value = (unsigned short) K(t, i);
+-		if (ioctl(fd, KDSKBENT, (unsigned long)&ke))
++		if (ioctl(fd, KDSKBENT, &ke))
+ 			break;
+ 	}
+ 	ke.kb_value = K_HOLE;
+-	ioctl(fd, KDSKBENT, (unsigned long)&ke0);
++	ioctl(fd, KDSKBENT, &ke0);
+ 
+ 	return (unsigned char) (i - 1);
+ }

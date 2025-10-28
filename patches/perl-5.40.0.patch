@@ -1,0 +1,892 @@
+diff --git a/builtin.c b/builtin.c
+index 7ed8a61f217f..8178161ed0c5 100644
+--- a/builtin.c
++++ b/builtin.c
+@@ -17,6 +17,8 @@
+ 
+ #include "XSUB.h"
+ 
++#include <stdfil.h>
++
+ /* copied from op.c */
+ #define SHORTVER(maj,min) (((maj) << 8) | (min))
+ 
+@@ -117,9 +119,17 @@ enum {
+     BUILTIN_CONST_NAN,
+ };
+ 
++static zptrtable* builtin_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    builtin_ptrtable = zptrtable_new();
++}
++
+ static OP *ck_builtin_const(pTHX_ OP *entersubop, GV *namegv, SV *ckobj)
+ {
+-    const struct BuiltinFuncDescriptor *builtin = NUM2PTR(const struct BuiltinFuncDescriptor *, SvUV(ckobj));
++    const struct BuiltinFuncDescriptor *builtin = zptrtable_decode(builtin_ptrtable, SvUV(ckobj));
+ 
+     if(builtin->is_experimental)
+         warn_experimental_builtin(builtin->name);
+@@ -426,7 +436,7 @@ XS(XS_builtin_created_as_number)
+ 
+ static OP *ck_builtin_func1(pTHX_ OP *entersubop, GV *namegv, SV *ckobj)
+ {
+-    const struct BuiltinFuncDescriptor *builtin = NUM2PTR(const struct BuiltinFuncDescriptor *, SvUV(ckobj));
++    const struct BuiltinFuncDescriptor *builtin = zptrtable_decode(builtin_ptrtable, SvUV(ckobj));
+ 
+     if(builtin->is_experimental)
+         warn_experimental_builtin(builtin->name);
+@@ -524,7 +534,7 @@ XS(XS_builtin_load_module)
+ 
+ static OP *ck_builtin_funcN(pTHX_ OP *entersubop, GV *namegv, SV *ckobj)
+ {
+-    const struct BuiltinFuncDescriptor *builtin = NUM2PTR(const struct BuiltinFuncDescriptor *, SvUV(ckobj));
++    const struct BuiltinFuncDescriptor *builtin = zptrtable_decode(builtin_ptrtable, SvUV(ckobj));
+ 
+     if(builtin->is_experimental)
+         warn_experimental_builtin(builtin->name);
+@@ -733,7 +743,7 @@ Perl_boot_core_builtin(pTHX)
+         }
+ 
+         if(builtin->checker) {
+-            cv_set_call_checker_flags(cv, builtin->checker, newSVuv(PTR2UV(builtin)), 0);
++            cv_set_call_checker_flags(cv, builtin->checker, newSVuv(zptrtable_encode(builtin_ptrtable, (void*)builtin)), 0);
+         }
+     }
+ 
+diff --git a/cpan/Compress-Raw-Zlib/typemap b/cpan/Compress-Raw-Zlib/typemap
+index cf73c737c15c..d3c0af72487e 100644
+--- a/cpan/Compress-Raw-Zlib/typemap
++++ b/cpan/Compress-Raw-Zlib/typemap
+@@ -40,7 +40,7 @@ T_PTROBJ_AV
+             $var = NULL ;
+         else if (sv_derived_from($arg, \"${ntype}\")) {
+             IV tmp = SvIV(getInnerObject($arg)) ;
+-            $var = INT2PTR($type, tmp);
++            $var = zptrtable_decode(Perl_xsub_ptrtable, tmp);
+         }
+         else
+             croak(\"$var is not of type ${ntype}\")
+diff --git a/cpan/Encode/Encode.xs b/cpan/Encode/Encode.xs
+index 4882cc73144a..23746bacd9aa 100644
+--- a/cpan/Encode/Encode.xs
++++ b/cpan/Encode/Encode.xs
+@@ -33,12 +33,20 @@
+ #define SVfARG(p) ((void*)(p))
+ #endif
+ 
++static zptrtable* encode_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    encode_ptrtable = zptrtable_new();
++}
++
+ static void
+ Encode_XSEncoding(pTHX_ encode_t * enc)
+ {
+     dSP;
+     HV *stash = gv_stashpv("Encode::XS", TRUE);
+-    SV *iv    = newSViv(PTR2IV(enc));
++    SV *iv    = newSViv(zptrtable_encode(encode_ptrtable, enc));
+     SV *sv    = sv_bless(newRV_noinc(iv),stash);
+     int i = 0;
+     /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+@@ -769,7 +777,7 @@ SV *	obj
+ PREINIT:
+     encode_t *enc;
+ INIT:
+-    enc = INT2PTR(encode_t *, SvIV(SvRV(obj)));
++    enc = zptrtable_decode(encode_ptrtable, SvIV(SvRV(obj)));
+ CODE:
+     RETVAL = newSVpvn(enc->name[0], strlen(enc->name[0]));
+ OUTPUT:
+@@ -799,7 +807,7 @@ INIT:
+     check = SvROK(check_sv) ? ENCODE_PERLQQ|ENCODE_LEAVE_SRC : SvOK(check_sv) ? SvIV_nomg(check_sv) : 0;
+     fallback_cb = SvROK(check_sv) ? check_sv : &PL_sv_undef;
+     modify = (check && !(check & ENCODE_LEAVE_SRC));
+-    enc = INT2PTR(encode_t *, SvIV(SvRV(obj)));
++    enc = zptrtable_decode(encode_ptrtable, SvIV(SvRV(obj)));
+     offset = (STRLEN)SvIV(off);
+ CODE:
+     if (!SvOK(src))
+@@ -834,7 +842,7 @@ INIT:
+     check = SvROK(check_sv) ? ENCODE_PERLQQ|ENCODE_LEAVE_SRC : SvOK(check_sv) ? SvIV_nomg(check_sv) : 0;
+     fallback_cb = SvROK(check_sv) ? check_sv : &PL_sv_undef;
+     modify = (check && !(check & ENCODE_LEAVE_SRC));
+-    enc = INT2PTR(encode_t *, SvIV(SvRV(obj)));
++    enc = zptrtable_decode(encode_ptrtable, SvIV(SvRV(obj)));
+ CODE:
+     if (!SvOK(src))
+         XSRETURN_UNDEF;
+@@ -866,7 +874,7 @@ INIT:
+     check = SvROK(check_sv) ? ENCODE_PERLQQ|ENCODE_LEAVE_SRC : SvOK(check_sv) ? SvIV_nomg(check_sv) : 0;
+     fallback_cb = SvROK(check_sv) ? check_sv : &PL_sv_undef;
+     modify = (check && !(check & ENCODE_LEAVE_SRC));
+-    enc = INT2PTR(encode_t *, SvIV(SvRV(obj)));
++    enc = zptrtable_decode(encode_ptrtable, SvIV(SvRV(obj)));
+ CODE:
+     if (!SvOK(src))
+         XSRETURN_UNDEF;
+@@ -905,7 +913,7 @@ SV *	obj
+ PREINIT:
+     encode_t *enc;
+ INIT:
+-    enc = INT2PTR(encode_t *, SvIV(SvRV(obj)));
++    enc = zptrtable_decode(encode_ptrtable, SvIV(SvRV(obj)));
+ CODE:
+     ENTER;
+     SAVETMPS;
+diff --git a/dist/Storable/Storable.xs b/dist/Storable/Storable.xs
+index a558dd789309..b70ddcdf611d 100644
+--- a/dist/Storable/Storable.xs
++++ b/dist/Storable/Storable.xs
+@@ -339,6 +339,14 @@ typedef union {
+ #define HAS_U64
+ #endif
+ 
++static zptrtable* perinterp_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    perinterp_ptrtable = zptrtable_new();
++}
++
+ /*
+  * Fields s_tainted and s_dirty are prefixed with s_ because Perl's include
+  * files remap tainted and dirty when threading is enabled.  That's bad for
+@@ -495,7 +503,7 @@ static MAGIC *THX_sv_magicext(pTHX_
+ #define dSTCXT_PTR(T,name)					\
+     T name = ((perinterp_sv                                     \
+                && SvIOK(perinterp_sv) && SvIVX(perinterp_sv)    \
+-               ? (T)SvPVX(SvRV(INT2PTR(SV*,SvIVX(perinterp_sv)))) : (T) 0))
++               ? (T)SvPVX(SvRV((SV*)zptrtable_decode(perinterp_ptrtable, SvIVX(perinterp_sv)))) : (T) 0))
+ #define dSTCXT					\
+     dSTCXT_SV;                                  \
+     dSTCXT_PTR(stcxt_t *, cxt)
+@@ -504,12 +512,12 @@ static MAGIC *THX_sv_magicext(pTHX_
+     dSTCXT;                                             \
+     NEW_STORABLE_CXT_OBJ(cxt);                          \
+     assert(perinterp_sv);				\
+-    sv_setiv(perinterp_sv, PTR2IV(cxt->my_sv))
++    sv_setiv(perinterp_sv, zptrtable_encode(perinterp_ptrtable, cxt->my_sv))
+ 
+ #define SET_STCXT(x)					\
+     STMT_START {					\
+         dSTCXT_SV;                                      \
+-        sv_setiv(perinterp_sv, PTR2IV(x->my_sv));       \
++        sv_setiv(perinterp_sv, zptrtable_encode(perinterp_ptrtable, x->my_sv)); \
+     } STMT_END
+ 
+ #else /* !MULTIPLICITY && !PERL_OBJECT && !PERL_CAPI */
+diff --git a/dist/threads-shared/shared.xs b/dist/threads-shared/shared.xs
+index 938f963f5e07..7606cfd7755d 100644
+--- a/dist/threads-shared/shared.xs
++++ b/dist/threads-shared/shared.xs
+@@ -387,9 +387,17 @@ extern const MGVTBL sharedsv_elem_vtbl;      /* Elements of hashes and arrays ha
+  */
+ 
+ 
++static zptrtable* sharedsv_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    sharedsv_ptrtable = zptrtable_new();
++}
++
+ /* Get shared aggregate SV pointed to by threads::shared::tie magic object */
+ 
+-#define SHAREDSV_FROM_OBJ(sv) ((SvROK(sv)) ? INT2PTR(SV *, SvIV(SvRV(sv))) : NULL)
++#define SHAREDSV_FROM_OBJ(sv) ((SvROK(sv)) ? zptrtable_decode(sharedsv_ptrtable, SvIV(SvRV(sv))) : NULL)
+ 
+ 
+ /* Return the user_lock structure (if any) associated with a shared SV.
+@@ -493,7 +501,7 @@ Perl_sharedsv_associate(pTHX_ SV *sv, SV *ssv)
+             || (SV*) mg->mg_ptr != ssv)
+         {
+             SV *obj = newSV(0);
+-            sv_setref_iv(obj, "threads::shared::tie", PTR2IV(ssv));
++            sv_setref_iv(obj, "threads::shared::tie", zptrtable_encode(sharedsv_ptrtable, ssv));
+             if (mg) {
+                 sv_unmagic(sv, PERL_MAGIC_tied);
+             }
+diff --git a/dist/threads/threads.xs b/dist/threads/threads.xs
+index b128f53a2d4a..a9e4cd056398 100644
+--- a/dist/threads/threads.xs
++++ b/dist/threads/threads.xs
+@@ -67,6 +67,14 @@ typedef perl_os_thread pthread_t;
+ #  include <sys/param.h>
+ #endif
+ 
++static zptrtable* threads_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    threads_ptrtable = zptrtable_new();
++}
++
+ /* Values for 'state' member */
+ #define PERL_ITHR_DETACHED           1 /* Thread has been detached */
+ #define PERL_ITHR_JOINED             2 /* Thread is being / has been joined */
+@@ -136,7 +144,7 @@ typedef struct {
+ #define dMY_POOL \
+     SV *my_pool_sv = *hv_fetch(PL_modglobal, MY_POOL_KEY,               \
+                                sizeof(MY_POOL_KEY)-1, TRUE);            \
+-    my_pool_t *my_poolp = INT2PTR(my_pool_t*, SvUV(my_pool_sv))
++    my_pool_t *my_poolp = zptrtable_decode(threads_ptrtable, SvUV(my_pool_sv))
+ 
+ #define MY_POOL (*my_poolp)
+ 
+@@ -397,7 +405,7 @@ STATIC int
+ ithread_mg_get(pTHX_ SV *sv, MAGIC *mg)
+ {
+     ithread *thread = (ithread *)mg->mg_ptr;
+-    SvIV_set(sv, PTR2IV(thread));
++    SvIV_set(sv, zptrtable_encode(threads_ptrtable, thread));
+     SvIOK_on(sv);
+     return (0);
+ }
+@@ -730,7 +738,7 @@ S_ithread_to_SV(pTHX_ SV *obj, ithread *thread, char *classname, bool inc)
+     }
+ 
+     sv = newSVrv(obj, classname);
+-    sv_setiv(sv, PTR2IV(thread));
++    sv_setiv(sv, zptrtable_encode(threads_ptrtable, thread));
+     mg = sv_magicext(sv, Nullsv, PERL_MAGIC_shared_scalar, &ithread_vtbl, (char *)thread, 0);
+     mg->mg_flags |= MGf_DUP;
+     SvREADONLY_on(sv);
+@@ -743,7 +751,7 @@ S_SV_to_ithread(pTHX_ SV *sv)
+ {
+     /* Argument is a thread */
+     if (SvROK(sv)) {
+-      return (INT2PTR(ithread *, SvIV(SvRV(sv))));
++      return (zptrtable_decode(threads_ptrtable, SvIV(SvRV(sv))));
+     }
+     /* Argument is classname, therefore return current thread */
+     return (S_ithread_get(aTHX));
+@@ -1103,7 +1111,7 @@ ithread_create(...)
+         if (sv_isobject(ST(0))) {
+             /* $thr->create() */
+             classname = HvNAME(SvSTASH(SvRV(ST(0))));
+-            thread = INT2PTR(ithread *, SvIV(SvRV(ST(0))));
++            thread = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(0))));
+             MUTEX_LOCK(&thread->mutex);
+             stack_size = thread->stack_size;
+             exit_opt = thread->state & PERL_ITHR_THREAD_EXIT_ONLY;
+@@ -1560,8 +1568,8 @@ ithread_equal(...)
+ 
+         /* Compares TIDs to determine thread equality */
+         if (sv_isobject(ST(0)) && sv_isobject(ST(1))) {
+-            ithread *thr1 = INT2PTR(ithread *, SvIV(SvRV(ST(0))));
+-            ithread *thr2 = INT2PTR(ithread *, SvIV(SvRV(ST(1))));
++            ithread *thr1 = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(0))));
++            ithread *thr2 = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(1))));
+             are_equal = (thr1->tid == thr2->tid);
+         }
+         if (are_equal) {
+@@ -1666,7 +1674,7 @@ ithread_get_stack_size(...)
+         PERL_UNUSED_VAR(items);
+         if (sv_isobject(ST(0))) {
+             /* $thr->get_stack_size() */
+-            ithread *thread = INT2PTR(ithread *, SvIV(SvRV(ST(0))));
++            ithread *thread = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(0))));
+             stack_size = thread->stack_size;
+         } else {
+             /* threads->get_stack_size() */
+@@ -1708,7 +1716,7 @@ ithread_is_running(...)
+             Perl_croak(aTHX_ "Usage: $thr->is_running()");
+         }
+ 
+-        thread = INT2PTR(ithread *, SvIV(SvRV(ST(0))));
++        thread = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(0))));
+         MUTEX_LOCK(&thread->mutex);
+         ST(0) = (thread->state & PERL_ITHR_FINISHED) ? &PL_sv_no : &PL_sv_yes;
+         MUTEX_UNLOCK(&thread->mutex);
+@@ -1738,7 +1746,7 @@ ithread_is_joinable(...)
+             Perl_croak(aTHX_ "Usage: $thr->is_joinable()");
+         }
+ 
+-        thread = INT2PTR(ithread *, SvIV(SvRV(ST(0))));
++        thread = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(0))));
+         MUTEX_LOCK(&thread->mutex);
+         ST(0) = ((thread->state & PERL_ITHR_FINISHED) &&
+                  ! (thread->state & PERL_ITHR_UNCALLABLE))
+@@ -1789,7 +1797,7 @@ ithread_error(...)
+             Perl_croak(aTHX_ "Usage: $thr->err()");
+         }
+ 
+-        thread = INT2PTR(ithread *, SvIV(SvRV(ST(0))));
++        thread = zptrtable_decode(threads_ptrtable, SvIV(SvRV(ST(0))));
+         MUTEX_LOCK(&thread->mutex);
+ 
+         /* If thread died, then clone the error into the calling thread */
+@@ -1871,7 +1879,7 @@ BOOT:
+     MY_CXT_INIT;
+ 
+     Zero(my_poolp, 1, my_pool_t);
+-    sv_setuv(my_pool_sv, PTR2UV(my_poolp));
++    sv_setuv(my_pool_sv, zptrtable_encode(threads_ptrtable, my_poolp));
+ 
+     PL_perl_destruct_level = 2;
+     MUTEX_INIT(&MY_POOL.create_destruct_mutex);
+diff --git a/doio.c b/doio.c
+index c8fe756ae161..11375f70ca0f 100644
+--- a/doio.c
++++ b/doio.c
+@@ -1258,6 +1258,14 @@ S_openindirtemp(pTHX_ GV *gv, SV *orig_name, SV *temp_out_name) {
+ #define NotSupported(e) ((e) == ENOSYS)
+ #endif
+ 
++static zptrtable* dir_ptrtable;
++
++static void create_ptrtable(void) __attribute__((constructor));
++static void create_ptrtable(void)
++{
++    dir_ptrtable = zptrtable_new();
++}
++
+ static int
+ S_argvout_free(pTHX_ SV *io, MAGIC *mg) {
+     PERL_UNUSED_ARG(io);
+@@ -1275,7 +1283,7 @@ S_argvout_free(pTHX_ SV *io, MAGIC *mg) {
+ 
+         dir_psv = av_fetch((AV*)mg->mg_obj, ARGVMG_ORIG_DIRP, FALSE);
+         assert(dir_psv && *dir_psv && SvIOK(*dir_psv));
+-        dir = INT2PTR(DIR *, SvIV(*dir_psv));
++        dir = zptrtable_decode(dir_ptrtable, SvIV(*dir_psv));
+ #endif
+         if (IoIFP(io)) {
+             if (PL_phase == PERL_PHASE_DESTRUCT && PL_statusvalue == 0) {
+@@ -1544,7 +1552,7 @@ Perl_nextargv(pTHX_ GV *gv, bool nomagicopen)
+                 av_store(magic_av, ARGVMG_ORIG_PID, newSViv((IV)PerlProc_getpid()));
+ #if defined(ARGV_USE_ATFUNCTIONS)
+                 curdir = opendir(".");
+-                av_store(magic_av, ARGVMG_ORIG_DIRP, newSViv(PTR2IV(curdir)));
++                av_store(magic_av, ARGVMG_ORIG_DIRP, newSViv(zptrtable_encode(dir_ptrtable, curdir)));
+ #elif defined(ARGV_USE_STAT_INO)
+                 if (PerlLIO_stat(".", &statbuf) >= 0) {
+                     av_store(magic_av, ARGVMG_ORIG_CWD_STAT,
+@@ -1705,7 +1713,7 @@ S_argvout_final(pTHX_ MAGIC *mg, IO *io, bool is_explict) {
+         assert(pid_psv && *pid_psv);
+ #ifdef ARGV_USE_ATFUNCTIONS
+         assert(dir_psv && *dir_psv);
+-        dir = INT2PTR(DIR *, SvIVX(*dir_psv));
++        dir = zptrtable_decode(dir_ptrtable, SvIVX(*dir_psv));
+         dfd = my_dirfd(dir);
+ #endif
+ 
+diff --git a/ext/B/B.xs b/ext/B/B.xs
+index 0b8ef47cf21d..96d4a25378ac 100644
+--- a/ext/B/B.xs
++++ b/ext/B/B.xs
+@@ -107,7 +107,7 @@ static SV *
+ make_op_object(pTHX_ const OP *o)
+ {
+     SV *opsv = sv_newmortal();
+-    sv_setiv(newSVrv(opsv, opclassnames[op_class(o)]), PTR2IV(o));
++    sv_setiv(newSVrv(opsv, opclassnames[op_class(o)]), zptrtable_encode(Perl_xsub_ptrtable,(void*)o));
+     return opsv;
+ }
+ 
+@@ -159,7 +159,7 @@ make_sv_object(pTHX_ SV *sv)
+     }
+     if (!type) {
+ 	type = svclassnames[SvTYPE(sv)];
+-	iv = PTR2IV(sv);
++	iv = zptrtable_encode(Perl_xsub_ptrtable, sv);
+     }
+     sv_setiv(newSVrv(arg, type), iv);
+     return arg;
+@@ -171,7 +171,7 @@ make_temp_object(pTHX_ SV *temp)
+     SV *target;
+     SV *arg = sv_newmortal();
+     const char *const type = svclassnames[SvTYPE(temp)];
+-    const IV iv = PTR2IV(temp);
++    const IV iv = zptrtable_encode(Perl_xsub_ptrtable, temp);
+ 
+     target = newSVrv(arg, type);
+     sv_setiv(target, iv);
+@@ -234,7 +234,7 @@ static SV *
+ make_mg_object(pTHX_ MAGIC *mg)
+ {
+     SV *arg = sv_newmortal();
+-    sv_setiv(newSVrv(arg, "B::MAGIC"), PTR2IV(mg));
++    sv_setiv(newSVrv(arg, "B::MAGIC"), zptrtable_encode(Perl_xsub_ptrtable, mg));
+     return arg;
+ }
+ 
+@@ -380,7 +380,7 @@ walkoptree(pTHX_ OP *o, const char *method, SV *ref)
+ 	ref = sv_newmortal();
+ 	object = newSVrv(ref, classname);
+     }
+-    sv_setiv(object, PTR2IV(o));
++    sv_setiv(object, zptrtable_encode(Perl_xsub_ptrtable, o));
+ 
+     if (walkoptree_debug) {
+ 	PUSHMARK(sp);
+@@ -662,7 +662,7 @@ comppadlist()
+ 	{
+ 	    SV * const rv = sv_newmortal();
+ 	    sv_setiv(newSVrv(rv, padlist ? "B::PADLIST" : "B::NULL"),
+-		     PTR2IV(padlist));
++		     zptrtable_encode(Perl_xsub_ptrtable, padlist));
+ 	    PUSHs(rv);
+ 	}
+ 
+@@ -709,7 +709,7 @@ walkoptree_debug(...)
+     OUTPUT:
+ 	RETVAL
+ 
+-#define address(sv) PTR2IV(sv)
++#define address(sv) zptrtable_encode(Perl_xsub_ptrtable, sv)
+ 
+ IV
+ address(sv)
+@@ -974,7 +974,7 @@ next(o)
+                         GV *const target = cPMOPo->op_pmreplrootu.op_pmtargetgv;
+                         sv_setiv(newSVrv(ret, target ?
+                                          svclassnames[SvTYPE((SV*)target)] : "B::SV"),
+-                                 PTR2IV(target));
++                                 zptrtable_encode(Perl_xsub_ptrtable, target));
+                     }
+ #endif
+ 		}
+@@ -1051,7 +1051,7 @@ next(o)
+ 	    case 46: /* B::COP::hints_hash */
+ 		ret = sv_newmortal();
+ 		sv_setiv(newSVrv(ret, "B::RHE"),
+-			PTR2IV(CopHINTHASH_get(cCOPo)));
++                         zptrtable_encode(Perl_xsub_ptrtable, CopHINTHASH_get(cCOPo)));
+ 		break;
+ 	    case 52: /* B::OP::parent */
+ #ifdef PERL_OP_PARENT
+@@ -1175,7 +1175,7 @@ string(o, cv)
+ 
+         case OP_ARGELEM:
+             ret = sv_2mortal(Perl_newSVpvf(aTHX_ "%" IVdf,
+-                            PTR2IV(aux)));
++                                           zptrtable_encode(Perl_xsub_ptrtable, aux)));
+             break;
+ 
+         case OP_ARGCHECK:
+@@ -1216,7 +1216,7 @@ aux_list(o, cv)
+             XSRETURN(0); /* by default, an empty list */
+ 
+         case OP_ARGELEM:
+-            XPUSHs(sv_2mortal(newSViv(PTR2IV(aux))));
++            XPUSHs(sv_2mortal(newSViv(zptrtable_encode(Perl_xsub_ptrtable, aux))));
+             XSRETURN(1);
+             break;
+ 
+@@ -1643,7 +1643,7 @@ REGEX(sv)
+ 		PUSHu(RX_COMPFLAGS(sv));
+ 	    else
+ 	    /* FIXME - can we code this method more efficiently?  */
+-		PUSHi(PTR2IV(sv));
++		PUSHi(zptrtable_encode(Perl_xsub_ptrtable, sv));
+ 	}
+ 
+ MODULE = B  PACKAGE = B::INVLIST    PREFIX = Invlist
+@@ -1837,7 +1837,7 @@ MOREMAGIC(mg)
+ 	    break;
+ 	case 7:
+ 	    if(mg->mg_type == PERL_MAGIC_qr) {
+-                mPUSHi(PTR2IV(mg->mg_obj));
++                mPUSHi(zptrtable_encode(Perl_xsub_ptrtable, mg->mg_obj));
+ 	    } else {
+ 		croak("REGEX is only meaningful on r-magic");
+ 	    }
+@@ -2187,7 +2187,7 @@ PadlistARRAY(padlist)
+ 	    sv_setiv(newSVrv(TARG, PadlistNAMES(padlist)
+ 				    ? "B::PADNAMELIST"
+ 				    : "B::NULL"),
+-		     PTR2IV(PadlistNAMES(padlist)));
++		     zptrtable_encode(Perl_xsub_ptrtable, PadlistNAMES(padlist)));
+ 	    XPUSHTARG;
+ 	    for (i = 1; i <= PadlistMAX(padlist); i++)
+ 		XPUSHs(make_sv_object(aTHX_ (SV *)padp[i]));
+@@ -2232,7 +2232,7 @@ PadnamelistARRAY(pnl)
+ 	    {
+ 		SV *rv = sv_newmortal();
+ 		sv_setiv(newSVrv(rv,padp[i] ? "B::PADNAME" : "B::SPECIAL"),
+-			 PTR2IV(padp[i]));
++			 zptrtable_encode(Perl_xsub_ptrtable, padp[i]));
+ 		XPUSHs(rv);
+ 	    }
+ 	}
+diff --git a/ext/B/typemap b/ext/B/typemap
+index d891f9d7d50b..82ff601f59fb 100644
+--- a/ext/B/typemap
++++ b/ext/B/typemap
+@@ -45,7 +45,7 @@ INPUT
+ T_OP_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -53,7 +53,7 @@ T_OP_OBJ
+ T_SV_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -61,7 +61,7 @@ T_SV_OBJ
+ T_MG_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -69,7 +69,7 @@ T_MG_OBJ
+ T_HE_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -77,7 +77,7 @@ T_HE_OBJ
+ T_RHE_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -85,7 +85,7 @@ T_RHE_OBJ
+ T_PL_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -93,7 +93,7 @@ T_PL_OBJ
+ T_PNL_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+@@ -101,29 +101,29 @@ T_PNL_OBJ
+ T_PN_OBJ
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable,tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not a reference\")
+ 
+ OUTPUT
+ T_MG_OBJ
+-	sv_setiv(newSVrv($arg, "B::MAGIC"), PTR2IV($var));
++	sv_setiv(newSVrv($arg, "B::MAGIC"), zptrtable_encode(Perl_xsub_ptrtable,$var));
+ 
+ T_HE_OBJ
+-	sv_setiv(newSVrv($arg, "B::HE"), PTR2IV($var));
++	sv_setiv(newSVrv($arg, "B::HE"), zptrtable_encode(Perl_xsub_ptrtable,$var));
+ 
+ T_RHE_OBJ
+-	sv_setiv(newSVrv($arg, "B::RHE"), PTR2IV($var));
++	sv_setiv(newSVrv($arg, "B::RHE"), zptrtable_encode(Perl_xsub_ptrtable,$var));
+ 
+ T_PL_OBJ
+ 	sv_setiv(newSVrv($arg, $var ? "B::PADLIST" : "B::NULL"),
+-		 PTR2IV($var));
++		 zptrtable_encode(Perl_xsub_ptrtable,$var));
+ 
+ T_PNL_OBJ
+ 	sv_setiv(newSVrv($arg, $var ? "B::PADNAMELIST" : "B::NULL"),
+-		 PTR2IV($var));
++		 zptrtable_encode(Perl_xsub_ptrtable,$var));
+ 
+ T_PN_OBJ
+ 	sv_setiv(newSVrv($arg, $var ? "B::PADNAME" : "B::SPECIAL"),
+-		 PTR2IV($var));
++		 zptrtable_encode(Perl_xsub_ptrtable,$var));
+diff --git a/ext/DynaLoader/dl_dlopen.xs b/ext/DynaLoader/dl_dlopen.xs
+index c3c874e02736..7bf6348cad93 100644
+--- a/ext/DynaLoader/dl_dlopen.xs
++++ b/ext/DynaLoader/dl_dlopen.xs
+@@ -211,7 +211,7 @@ dl_load_file(filename, flags=0)
+     if (handle == NULL)
+ 	SaveError(aTHX_ "%s",dlerror()) ;
+     else
+-	sv_setiv( ST(0), PTR2IV(handle));
++	sv_setiv( ST(0), zptrtable_encode(Perl_xsub_ptrtable, handle));
+ }
+ 
+ 
+@@ -250,7 +250,7 @@ dl_find_symbol(libhandle, symbolname, ign_err=0)
+         if (!ign_err)
+ 	    SaveError(aTHX_ "%s", dlerror());
+     } else
+-	sv_setiv( ST(0), PTR2IV(sym));
++	sv_setiv( ST(0), zptrtable_encode(Perl_xsub_ptrtable, sym));
+ 
+ 
+ void
+diff --git a/ext/re/re.xs b/ext/re/re.xs
+index 90f079008b6f..7c6d26a19e56 100644
+--- a/ext/re/re.xs
++++ b/ext/re/re.xs
+@@ -113,7 +113,7 @@ install()
+     PPCODE:
+         PL_colorset = 0;	/* Allow reinspection of ENV. */
+         /* PL_debug |= DEBUG_r_FLAG; */
+-	XPUSHs(sv_2mortal(newSViv(PTR2IV(&my_reg_engine))));
++	XPUSHs(sv_2mortal(newSViv(zptrtable_encode(Perl_xsub_ptrtable, &my_reg_engine))));
+ 
+ void
+ regmust(sv)
+diff --git a/gv.c b/gv.c
+index 609a02aabeb9..d0a91ec0c381 100644
+--- a/gv.c
++++ b/gv.c
+@@ -42,6 +42,7 @@ within a package.  See L<perlguts/Stashes and Globs>
+ #include "overload.inc"
+ #include "keywords.h"
+ #include "feature.h"
++#include <stdfil.h>
+ 
+ static const char S_autoload[] = "AUTOLOAD";
+ #define S_autolen (sizeof("AUTOLOAD")-1)
+@@ -1662,6 +1663,14 @@ reasons.
+ #define PERL_ARGS_ASSERT_GV_STASHSVPVN_CACHED \
+     assert(namesv || name)
+ 
++static zptrtable* gvstash_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    gvstash_ptrtable = zptrtable_new();
++}
++
+ HV*
+ Perl_gv_stashsvpvn_cached(pTHX_ SV *namesv, const char *name, U32 namelen, I32 flags)
+ {
+@@ -1679,7 +1688,7 @@ Perl_gv_stashsvpvn_cached(pTHX_ SV *namesv, const char *name, U32 namelen, I32 f
+         SV *sv = HeVAL(he);
+         HV *hv;
+         assert(SvIOK(sv));
+-        hv = INT2PTR(HV*, SvIVX(sv));
++        hv = zptrtable_decode(gvstash_ptrtable, SvIVX(sv));
+         assert(SvTYPE(hv) == SVt_PVHV);
+         return hv;
+     }
+@@ -1698,7 +1707,7 @@ Perl_gv_stashsvpvn_cached(pTHX_ SV *namesv, const char *name, U32 namelen, I32 f
+     stash = gv_stashpvn_internal(name, namelen, flags);
+ 
+     if (stash && namelen) {
+-        SV* const ref = newSViv(PTR2IV(stash));
++        SV* const ref = newSViv(zptrtable_encode(gvstash_ptrtable, stash));
+         (void)hv_store(PL_stashcache, name,
+             (flags & SVf_UTF8) ? -(I32)namelen : (I32)namelen, ref, 0);
+     }
+diff --git a/lib/ExtUtils/typemap b/lib/ExtUtils/typemap
+index a07e83f9012a..84749564c877 100644
+--- a/lib/ExtUtils/typemap
++++ b/lib/ExtUtils/typemap
+@@ -202,11 +202,11 @@ T_DOUBLE
+ T_PV
+ 	$var = ($type)SvPV_nolen($arg)
+ T_PTR
+-	$var = INT2PTR($type,SvIV($arg))
++	$var = zptrtable_decode(Perl_xsub_ptrtable, SvIV($arg))
+ T_PTRREF
+ 	if (SvROK($arg)) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable, tmp);
+ 	}
+ 	else
+ 	    Perl_croak_nocontext(\"%s: %s is not a reference\",
+@@ -241,7 +241,7 @@ T_REF_IV_PTR
+ T_PTROBJ
+ 	if (SvROK($arg) && sv_derived_from($arg, \"${ntype}\")) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = INT2PTR($type,tmp);
++	    $var = zptrtable_decode(Perl_xsub_ptrtable, tmp);
+ 	}
+ 	else {
+ 		const char* refstr = SvROK($arg) ? \"\" : SvOK($arg) ? \"scalar \" : \"undef\";
+@@ -372,7 +372,7 @@ T_DOUBLE
+ T_PV
+ 	sv_setpv((SV*)$arg, $var);
+ T_PTR
+-	sv_setiv($arg, PTR2IV($var));
++	sv_setiv($arg, zptrtable_encode(Perl_xsub_ptrtable, $var));
+ T_PTRREF
+ 	sv_setref_pv($arg, Nullch, (void*)$var);
+ T_REF_IV_REF
+diff --git a/perl.c b/perl.c
+index 0f1872dd177b..a5694de1afa7 100644
+--- a/perl.c
++++ b/perl.c
+@@ -5529,6 +5529,14 @@ Perl_xs_boot_epilog(pTHX_ const SSize_t ax)
+     XSRETURN_YES;
+ }
+ 
++zptrtable* Perl_xsub_ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    Perl_xsub_ptrtable = zptrtable_new();
++}
++
+ /*
+  * ex: set ts=8 sts=4 sw=4 et:
+  */
+diff --git a/perl.h b/perl.h
+index 9788654975ff..d5d1cfb6a63f 100644
+--- a/perl.h
++++ b/perl.h
+@@ -1142,6 +1142,8 @@ violations are fatal.
+ #   include <xlocale.h>
+ #endif
+ 
++#include <stdfil.h>
++
+ /* Even if not using locales, this header should be #included so as to #define
+  * some symbols which avoid #ifdefs to get things to compile.  But make sure
+  * the macro it calls does nothing */
+@@ -9207,6 +9209,8 @@ END_EXTERN_C
+ #  define PERL_STACK_REALIGN
+ #endif
+ 
++extern zptrtable* Perl_xsub_ptrtable;
++
+ /*
+ 
+    (KEEP THIS LAST IN perl.h!)
+diff --git a/pp_ctl.c b/pp_ctl.c
+index bee6cdbc14c2..3a2e7e1fb4d8 100644
+--- a/pp_ctl.c
++++ b/pp_ctl.c
+@@ -438,16 +438,16 @@ Perl_rxres_save(pTHX_ void **rsp, REGEXP *rx)
+     }
+ 
+     /* what (if anything) to free on croak */
+-    *p++ = PTR2UV(RX_MATCH_COPIED(rx) ? RX_SUBBEG(rx) : NULL);
++    *(void**)(p++) = RX_MATCH_COPIED(rx) ? RX_SUBBEG(rx) : NULL;
+     RX_MATCH_COPIED_off(rx);
+     *p++ = RX_NPARENS(rx);
+ 
+ #ifdef PERL_ANY_COW
+-    *p++ = PTR2UV(RX_SAVED_COPY(rx));
++    *(void**)(p++) = RX_SAVED_COPY(rx);
+     RX_SAVED_COPY(rx) = NULL;
+ #endif
+ 
+-    *p++ = PTR2UV(RX_SUBBEG(rx));
++    *(void**)(p++) = RX_SUBBEG(rx);
+     *p++ = (UV)RX_SUBLEN(rx);
+     *p++ = (UV)RX_SUBOFFSET(rx);
+     *p++ = (UV)RX_SUBCOFFSET(rx);
+@@ -474,11 +474,11 @@ S_rxres_restore(pTHX_ void **rsp, REGEXP *rx)
+ #ifdef PERL_ANY_COW
+     if (RX_SAVED_COPY(rx))
+         SvREFCNT_dec (RX_SAVED_COPY(rx));
+-    RX_SAVED_COPY(rx) = INT2PTR(SV*,*p);
++    RX_SAVED_COPY(rx) = *(void**)p;
+     *p++ = 0;
+ #endif
+ 
+-    RX_SUBBEG(rx) = INT2PTR(char*,*p++);
++    RX_SUBBEG(rx) = *(char**)(p++);
+     RX_SUBLEN(rx) = (SSize_t)(*p++);
+     RX_SUBOFFSET(rx) = (Size_t)*p++;
+     RX_SUBCOFFSET(rx) = (SSize_t)*p++;
+@@ -497,7 +497,7 @@ S_rxres_free(pTHX_ void **rsp)
+     PERL_UNUSED_CONTEXT;
+ 
+     if (p) {
+-        void *tmp = INT2PTR(char*,*p);
++        void *tmp = *(char**)p;
+ #ifdef PERL_POISON
+ #ifdef PERL_ANY_COW
+         U32 i = 9 + p[1] * 2;
+@@ -507,7 +507,7 @@ S_rxres_free(pTHX_ void **rsp)
+ #endif
+ 
+ #ifdef PERL_ANY_COW
+-        SvREFCNT_dec (INT2PTR(SV*,p[2]));
++        SvREFCNT_dec (((SV**)p)[2]);
+ #endif
+ #ifdef PERL_POISON
+         PoisonFree(p, i, sizeof(UV));
+diff --git a/regcomp.c b/regcomp.c
+index 41cb4e901437..a52bcf3f04b3 100644
+--- a/regcomp.c
++++ b/regcomp.c
+@@ -404,7 +404,7 @@ Perl_current_re_engine(pTHX)
+         ptr = hv_fetchs(table, "regcomp", FALSE);
+         if ( !(ptr && SvIOK(*ptr) && SvIV(*ptr)))
+             return &PL_core_reg_engine;
+-        return INT2PTR(regexp_engine*, SvIV(*ptr));
++        return zptrtable_decode(Perl_xsub_ptrtable, SvIV(*ptr));
+     }
+     else {
+         SV *ptr;
+@@ -413,7 +413,7 @@ Perl_current_re_engine(pTHX)
+         ptr = cop_hints_fetch_pvs(PL_curcop, "regcomp", 0);
+         if ( !(ptr && SvIOK(ptr) && SvIV(ptr)))
+             return &PL_core_reg_engine;
+-        return INT2PTR(regexp_engine*, SvIV(ptr));
++        return zptrtable_decode(Perl_xsub_ptrtable, SvIV(ptr));
+     }
+ }
+ 
+diff --git a/sv.c b/sv.c
+index 0b3d142e85e4..c0eff5ca98e8 100644
+--- a/sv.c
++++ b/sv.c
+@@ -10743,7 +10743,7 @@ Perl_sv_setref_pv(pTHX_ SV *const rv, const char *const classname, void *const p
+         SvSETMAGIC(rv);
+     }
+     else
+-        sv_setiv(newSVrv(rv,classname), PTR2IV(pv));
++        sv_setiv(newSVrv(rv,classname), zptrtable_encode(Perl_xsub_ptrtable, pv));
+     return rv;
+ }
+ 
+diff --git a/util.c b/util.c
+index 4053ca48f2fc..de1016fc7801 100644
+--- a/util.c
++++ b/util.c
+@@ -3343,10 +3343,8 @@ Perl_repeatcpy(char *to, const char *from, SSize_t len, IV count)
+ 
+         linear = count < PERL_REPEATCPY_LINEAR ? count : PERL_REPEATCPY_LINEAR;
+         for (items = 0; items < linear; ++items) {
+-            const char *q = from;
+-            IV todo;
+-            for (todo = len; todo > 0; todo--)
+-                *p++ = *q++;
++            memcpy(p, from, len);
++            p += len;
+         }
+ 
+         half = count / 2;

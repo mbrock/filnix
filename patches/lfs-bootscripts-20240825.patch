@@ -1,0 +1,25 @@
+diff --git a/lfs/init.d/mountvirtfs b/lfs/init.d/mountvirtfs
+index de6b2de62b8b..64913fa454ec 100644
+--- a/lfs/init.d/mountvirtfs
++++ b/lfs/init.d/mountvirtfs
+@@ -90,6 +90,8 @@ case "${1}" in
+          ln -sf /proc/kcore  /dev/core   || failed=1
+       fi
+ 
++      mkdir -m 1777 /run/user || failed=1
++
+       (exit ${failed})
+       evaluate_retval
+       exit $failed
+diff --git a/lfs/lib/services/init-functions b/lfs/lib/services/init-functions
+index e13bb8a5d885..5a8ad79d4b7b 100644
+--- a/lfs/lib/services/init-functions
++++ b/lfs/lib/services/init-functions
+@@ -21,6 +21,7 @@
+ ## Environmental setup
+ # Setup default values for environment
+ umask 022
++ulimit -c unlimited
+ export PATH="/bin:/usr/bin:/sbin:/usr/sbin"
+ 
+ ## Set color commands, used via echo

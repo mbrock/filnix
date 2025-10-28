@@ -1,0 +1,473 @@
+diff --git a/Makefile.filc b/Makefile.filc
+new file mode 100644
+index 000000000000..73d5003307fb
+--- /dev/null
++++ b/Makefile.filc
+@@ -0,0 +1,115 @@
++#!/usr/make
++#
++# Makefile for SQLITE
++#
++# This is a template makefile for SQLite.  Most people prefer to
++# use the autoconf generated "configure" script to generate the
++# makefile automatically.  But that does not work for everybody
++# and in every situation.  If you are having problems with the
++# "configure" script, you might want to try this makefile as an
++# alternative.  Create a copy of this file, edit the parameters
++# below and type "make".
++#
++
++#### The toplevel directory of the source tree.  This is the directory
++#    that contains this "Makefile.in" and the "configure.in" script.
++#
++#TOP = /Users/pizlo/Programs/llvm-project-deluge/pizlonated-sqlite
++
++#### C Compiler and options for use in building executables that
++#    will run on the platform that is doing the build.
++#
++BCC = $(CC)
++#BCC = /opt/ancic/bin/c89 -0
++
++#### If you want the SQLite library to be safe for use within a 
++#    multi-threaded program, then define the following macro
++#    appropriately:
++#
++THREADSAFE = -DTHREADSAFE=1
++#THREADSAFE = -DTHREADSAFE=0
++
++#### Specify any extra linker options needed to make the library
++#    thread safe
++#
++THREADLIB = 
++#THREADLIB = 
++
++#### Specify any extra libraries needed to access required functions.
++#
++#TLIBS = -lrt    # fdatasync on Solaris 8
++TLIBS = -lz -lm
++
++#### Leave SQLITE_DEBUG undefined for maximum speed.  Use SQLITE_DEBUG=1
++#    to check for memory leaks.  Use SQLITE_DEBUG=2 to print a log of all
++#    malloc()s and free()s in order to track down memory leaks.
++#    
++#    SQLite uses some expensive assert() statements in the inner loop.
++#    You can make the library go almost twice as fast if you compile
++#    with -DNDEBUG=1
++#
++OPTS += -DSQLITE_DEBUG=1
++OPTS += -DSQLITE_ENABLE_WHERETRACE
++OPTS += -DSQLITE_ENABLE_SELECTTRACE
++OPTS += -DHAVE_MALLOC_H=1
++OPTS += -DHAVE_MALLOC_USABLE_SIZE=1
++OPTS += -DSQLITE_OMIT_LOOKASIDE=1
++OPTS += -DSQLITE_ENABLE_MATH_FUNCTIONS=1
++
++#### The suffix to add to executable files.  ".exe" for windows.
++#    Nothing for unix.
++#
++#EXE = .exe
++EXE =
++
++#### C Compile and options for use in building executables that 
++#    will run on the target platform.  This is usually the same
++#    as BCC, unless you are cross-compiling.
++#
++TCC = $(CC)
++#TCC = gcc -g -O0 -Wall
++#TCC = gcc -g -O0 -Wall -fprofile-arcs -ftest-coverage
++#TCC = /opt/mingw/bin/i386-mingw32-gcc -O6
++#TCC = /opt/ansic/bin/c89 -O +z -Wl,-a,archive
++TCC += -DSQLITE_HAVE_ZLIB=1
++TCC += $(OPTS)
++
++#### Tools used to build a static library.
++#
++AR = ar cr
++#AR = /opt/mingw/bin/i386-mingw32-ar cr
++RANLIB = ranlib
++#RANLIB = /opt/mingw/bin/i386-mingw32-ranlib
++
++MKSHLIB = gcc -dynamiclib
++SO = dylib
++SHPREFIX = lib
++# SO = dll
++# SHPREFIX =
++
++#### Extra compiler options needed for programs that use the TCL library.
++#
++#TCL_FLAGS = -I/home/drh/tcl/include/tcl8.6
++
++#### Linker options needed to link against the TCL library.
++#
++#LIBTCL = -ltcl -lm -ldl
++LIBTCL = -ltcl -lz -lm
++
++#### Additional objects for SQLite library when TCL support is enabled.
++#TCLOBJ =
++TCLOBJ = tclsqlite.o
++
++#### Compiler options needed for programs that use the readline() library.
++#
++#READLINE_FLAGS =
++READLINE_FLAGS = -DHAVE_READLINE=0
++
++#### Linker options needed by programs using readline() must link against.
++#
++LIBREADLINE =
++#LIBREADLINE = -static -lreadline -ltermcap
++
++# You should not have to change anything below this line
++###############################################################################
++include $(TOP)/main.mk
+diff --git a/ext/misc/carray.c b/ext/misc/carray.c
+index b1caa98c3fa8..a9d0bec308e9 100644
+--- a/ext/misc/carray.c
++++ b/ext/misc/carray.c
+@@ -521,6 +521,7 @@ SQLITE_API int sqlite3_carray_bind(
+ ** This is for testing on TCL only.
+ */
+ #ifdef SQLITE_TEST
++extern void *sqlite3DecodeExternalTestPtr(void*);
+ static void inttoptrFunc(
+   sqlite3_context *context,
+   int argc,
+@@ -535,6 +536,7 @@ static void inttoptrFunc(
+     int i32 = i64 & 0xffffffff;
+     memcpy(&p, &i32, sizeof(p));
+   }
++  p = sqlite3DecodeExternalTestPtr(p);
+   sqlite3_result_pointer(context, p, "carray", 0);
+ }
+ #endif /* SQLITE_TEST */
+diff --git a/main.mk b/main.mk
+index 139e182eb1aa..c38a6fe6a15c 100644
+--- a/main.mk
++++ b/main.mk
+@@ -1106,9 +1106,9 @@ snapshot-tarball: sqlite3.c sqlite3rc.h
+ # Standard install and cleanup targets
+ #
+ install:	sqlite3 libsqlite3.a sqlite3.h
+-	mv sqlite3 /usr/bin
+-	mv libsqlite3.a /usr/lib
+-	mv sqlite3.h /usr/include
++	mv sqlite3 $(PREFIX)/bin
++	mv libsqlite3.a $(PREFIX)/lib
++	mv sqlite3.h $(PREFIX)/include
+ 
+ clean:
+ 	rm -f *.o sqlite3 sqlite3.exe libsqlite3.a sqlite3.h opcodes.*
+@@ -1149,3 +1149,5 @@ clean:
+ 	rm -f lsm.h lsm1.c
+ 	rm -f threadtest5
+ 	rm -f src-verify
++	rm -f mksourceid
++
+diff --git a/src/sqliteInt.h b/src/sqliteInt.h
+index 0d33f9ee2aa9..a0e4551e19de 100644
+--- a/src/sqliteInt.h
++++ b/src/sqliteInt.h
+@@ -230,7 +230,7 @@
+ #ifndef __has_extension
+ # define __has_extension(x) 0     /* compatibility with non-clang compilers */
+ #endif
+-#if GCC_VERSION>=4007000 || __has_extension(c_atomic)
++#if (GCC_VERSION>=4007000 || __has_extension(c_atomic)) && !defined(__PIZLONATOR_WAS_HERE__)
+ # define SQLITE_ATOMIC_INTRINSICS 1
+ # define AtomicLoad(PTR)       __atomic_load_n((PTR),__ATOMIC_RELAXED)
+ # define AtomicStore(PTR,VAL)  __atomic_store_n((PTR),(VAL),__ATOMIC_RELAXED)
+@@ -4766,6 +4766,8 @@ char *sqlite3VMPrintf(sqlite3*,const char*, va_list);
+   void sqlite3DebugPrintf(const char*, ...);
+ #endif
+ #if defined(SQLITE_TEST)
++  void *sqlite3EncodeExternalTestPtr(void*);
++  void *sqlite3DecodeExternalTestPtr(void*);
+   void *sqlite3TestTextToPtr(const char*);
+ #endif
+ 
+diff --git a/src/test1.c b/src/test1.c
+index 8faf5a397ba5..00e2fb02b658 100644
+--- a/src/test1.c
++++ b/src/test1.c
+@@ -34,6 +34,10 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++#include <stdfil.h>
++#endif
++
+ /*
+ ** This is a copy of the first part of the SqliteDb structure in 
+ ** tclsqlite.c.  We need it here so that the get_sqlite_pointer routine
+@@ -44,6 +48,29 @@ struct SqliteDb {
+   sqlite3 *db;
+ };
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++static zptrtable* externalPtrTable;
++static void ensureExternalPtrTable(void){
++  if (!externalPtrTable)
++    externalPtrTable = zptrtable_new();
++}
++void* sqlite3EncodeExternalTestPtr(void *p){
++  ensureExternalPtrTable();
++  return (void*)zptrtable_encode(externalPtrTable, p);
++}
++void* sqlite3DecodeExternalTestPtr(void *p){
++  ensureExternalPtrTable();
++  return zptrtable_decode(externalPtrTable, (size_t)p);
++}
++#else
++void* sqlite3EncodeExternalTestPtr(void *p){
++  return p;
++}
++void* sqlite3DecodeExternalTestPtr(void *p){
++  return p;
++}
++#endif
++
+ /*
+ ** Convert text generated by the "%p" conversion format back into
+ ** a pointer.
+@@ -77,7 +104,7 @@ void *sqlite3TestTextToPtr(const char *z){
+     v2 = (u32)v;
+     memcpy(&p, &v2, sizeof(p));
+   }
+-  return p;
++  return sqlite3DecodeExternalTestPtr(p);
+ }
+ 
+ 
+@@ -105,7 +132,7 @@ static int SQLITE_TCLAPI get_sqlite_pointer(
+     return TCL_ERROR;
+   }
+   p = (struct SqliteDb*)cmdInfo.objClientData;
+-  sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", p->db);
++  sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", sqlite3EncodeExternalTestPtr(p->db));
+   Tcl_AppendResult(interp, zBuf, 0);
+   return TCL_OK;
+ }
+@@ -189,7 +216,7 @@ static int getStmtPointer(
+ ** that helps.  If nothing works, a fatal error is generated.
+ */
+ int sqlite3TestMakePointerStr(Tcl_Interp *interp, char *zPtr, void *p){
+-  sqlite3_snprintf(100, zPtr, "%p", p);
++  sqlite3_snprintf(100, zPtr, "%p", sqlite3EncodeExternalTestPtr(p));
+   return TCL_OK;
+ }
+ 
+@@ -287,6 +314,10 @@ static int SQLITE_TCLAPI clang_sanitize_address(
+ #endif
+ #ifdef __SANITIZE_ADDRESS__
+   res = 1;
++#endif
++  /* Fil-C's semantics are kinda like sanitizers, for the purpose of testing. */
++#ifdef __PIZLONATOR_WAS_HERE__
++  res = 1;
+ #endif
+   if( res==0 && getenv("OMIT_MISUSE")!=0 ) res = 1;
+   Tcl_SetObjResult(interp, Tcl_NewIntObj(res));
+@@ -3829,7 +3860,7 @@ static int SQLITE_TCLAPI test_intarray_addr(
+       }
+     }
+   }  
+-  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)p));
++  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)sqlite3EncodeExternalTestPtr(p)));
+   return TCL_OK;
+ }
+ /*
+@@ -3865,7 +3896,7 @@ static int SQLITE_TCLAPI test_int64array_addr(
+       p[i] = v;
+     }
+   }  
+-  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)p));
++  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)sqlite3EncodeExternalTestPtr(p)));
+   return TCL_OK;
+ }
+ /*
+@@ -3899,7 +3930,7 @@ static int SQLITE_TCLAPI test_doublearray_addr(
+       }
+     }
+   }  
+-  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)p));
++  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)sqlite3EncodeExternalTestPtr(p)));
+   return TCL_OK;
+ }
+ /*
+@@ -3932,7 +3963,7 @@ static int SQLITE_TCLAPI test_textarray_addr(
+     }
+   }
+   n = objc-1;
+-  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)p));
++  Tcl_SetObjResult(interp, Tcl_NewWideIntObj((uptr)sqlite3EncodeExternalTestPtr(p)));
+   return TCL_OK;
+ }
+ 
+diff --git a/src/test2.c b/src/test2.c
+index c75fa2ebab07..805507346245 100644
+--- a/src/test2.c
++++ b/src/test2.c
+@@ -69,7 +69,7 @@ static int SQLITE_TCLAPI pager_open(
+   sqlite3PagerSetCachesize(pPager, nPage);
+   pageSize = test_pagesize;
+   sqlite3PagerSetPagesize(pPager, &pageSize, -1);
+-  sqlite3_snprintf(sizeof(zBuf),zBuf,"%p",pPager);
++  sqlite3_snprintf(sizeof(zBuf),zBuf,"%p",sqlite3EncodeExternalTestPtr(pPager));
+   Tcl_AppendResult(interp, zBuf, 0);
+   return TCL_OK;
+ }
+@@ -332,7 +332,7 @@ static int SQLITE_TCLAPI page_get(
+     Tcl_AppendResult(interp, sqlite3ErrName(rc), 0);
+     return TCL_ERROR;
+   }
+-  sqlite3_snprintf(sizeof(zBuf),zBuf,"%p",pPage);
++  sqlite3_snprintf(sizeof(zBuf),zBuf,"%p",sqlite3EncodeExternalTestPtr(pPage));
+   Tcl_AppendResult(interp, zBuf, 0);
+   return TCL_OK;
+ }
+@@ -362,7 +362,7 @@ static int SQLITE_TCLAPI page_lookup(
+   if( Tcl_GetInt(interp, argv[2], &pgno) ) return TCL_ERROR;
+   pPage = sqlite3PagerLookup(pPager, pgno);
+   if( pPage ){
+-    sqlite3_snprintf(sizeof(zBuf),zBuf,"%p",pPage);
++    sqlite3_snprintf(sizeof(zBuf),zBuf,"%p",sqlite3EncodeExternalTestPtr(pPage));
+     Tcl_AppendResult(interp, zBuf, 0);
+   }
+   return TCL_OK;
+diff --git a/src/test3.c b/src/test3.c
+index 7fd766247963..8c571c3a70c6 100644
+--- a/src/test3.c
++++ b/src/test3.c
+@@ -73,7 +73,7 @@ static int SQLITE_TCLAPI btree_open(
+     return TCL_ERROR;
+   }
+   sqlite3BtreeSetCacheSize(pBt, nCache);
+-  sqlite3_snprintf(sizeof(zBuf), zBuf,"%p", pBt);
++  sqlite3_snprintf(sizeof(zBuf), zBuf,"%p", sqlite3EncodeExternalTestPtr(pBt));
+   Tcl_AppendResult(interp, zBuf, 0);
+   return TCL_OK;
+ }
+@@ -236,7 +236,7 @@ static int SQLITE_TCLAPI btree_cursor(
+     Tcl_AppendResult(interp, sqlite3ErrName(rc), 0);
+     return TCL_ERROR;
+   }
+-  sqlite3_snprintf(sizeof(zBuf), zBuf,"%p", pCur);
++  sqlite3_snprintf(sizeof(zBuf), zBuf,"%p", sqlite3EncodeExternalTestPtr(pCur));
+   Tcl_AppendResult(interp, zBuf, 0);
+   return SQLITE_OK;
+ }
+@@ -543,7 +543,7 @@ static int SQLITE_TCLAPI btree_from_db(
+   assert( db );
+ 
+   pBt = db->aDb[iDb].pBt;
+-  sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", pBt);
++  sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", sqlite3EncodeExternalTestPtr(pBt));
+   Tcl_SetResult(interp, zBuf, TCL_VOLATILE);
+   return TCL_OK;
+ }
+diff --git a/src/test_blob.c b/src/test_blob.c
+index cbdf9f069f70..21932560ff02 100644
+--- a/src/test_blob.c
++++ b/src/test_blob.c
+@@ -36,7 +36,7 @@ extern void *sqlite3TestTextToPtr(const char *z);
+ */
+ static char *ptrToText(void *p){
+   static char buf[100];
+-  sqlite3_snprintf(sizeof(buf)-1, buf, "%p", p);
++  sqlite3_snprintf(sizeof(buf)-1, buf, "%p", sqlite3EncodeExternalTestPtr(p));
+   return buf;
+ }
+ 
+diff --git a/src/test_malloc.c b/src/test_malloc.c
+index 8146501c9c80..86c5bd9341e2 100644
+--- a/src/test_malloc.c
++++ b/src/test_malloc.c
+@@ -241,6 +241,7 @@ static void pointerToText(void *p, char *z){
+   int i, k;
+   unsigned int u;
+   sqlite3_uint64 n;
++  p = sqlite3EncodeExternalTestPtr(p);
+   if( p==0 ){
+     strcpy(z, "0");
+     return;
+@@ -287,6 +288,7 @@ static int textToPointer(const char *z, void **pp){
+   }else{
+     assert( 0 );
+   }
++  *pp = sqlite3DecodeExternalTestPtr(*pp);
+   return TCL_OK;
+ }
+ 
+diff --git a/src/test_mutex.c b/src/test_mutex.c
+index a203208abe71..e17a7841acd1 100644
+--- a/src/test_mutex.c
++++ b/src/test_mutex.c
+@@ -322,7 +322,7 @@ static int SQLITE_TCLAPI test_alloc_mutex(
+   sqlite3_mutex *p = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
+   char zBuf[100];
+   sqlite3_mutex_free(p);
+-  sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", p);
++  sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", sqlite3EncodeExternalTestPtr(p));
+   Tcl_AppendResult(interp, zBuf, (char*)0);
+ #endif
+   return TCL_OK;
+diff --git a/src/test_quota.c b/src/test_quota.c
+index b436de46677b..068b6a412fbb 100644
+--- a/src/test_quota.c
++++ b/src/test_quota.c
+@@ -1534,6 +1534,9 @@ static int SQLITE_TCLAPI test_quota_dump(
+   return TCL_OK;
+ }
+ 
++/* Defined in test1.c */
++extern void* sqlite3EncodeExternalTestPtr(void *);
++
+ /*
+ ** tclcmd: sqlite3_quota_fopen FILENAME MODE
+ */
+@@ -1556,7 +1559,7 @@ static int SQLITE_TCLAPI test_quota_fopen(
+   zFilename = Tcl_GetString(objv[1]);
+   zMode = Tcl_GetString(objv[2]);
+   p = sqlite3_quota_fopen(zFilename, zMode);
+-  sqlite3_snprintf(sizeof(zReturn), zReturn, "%p", p);
++  sqlite3_snprintf(sizeof(zReturn), zReturn, "%p", sqlite3EncodeExternalTestPtr(p));
+   Tcl_SetResult(interp, zReturn, TCL_VOLATILE);
+   return TCL_OK;
+ }
+diff --git a/src/test_syscall.c b/src/test_syscall.c
+index 3cd1034d3f69..67d9562ce790 100644
+--- a/src/test_syscall.c
++++ b/src/test_syscall.c
+@@ -84,6 +84,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <assert.h>
++#include <stdfil.h>
+ 
+ #if SQLITE_OS_UNIX
+ 
+@@ -418,7 +419,10 @@ static void *ts_mremap(void *a, size_t b, size_t c, int d, ...){
+     return MAP_FAILED;
+   }
+   va_start(ap, d);
+-  pArg = va_arg(ap, void *);
++  if (zcan_va_arg(ap))
++    pArg = va_arg(ap, void *);
++  else
++    pArg = 0;
+   return orig_mremap(a, b, c, d, pArg);
+ }
+ 
+diff --git a/tool/lemon.c b/tool/lemon.c
+index 06b9109a1dbf..457ec0c2fb23 100644
+--- a/tool/lemon.c
++++ b/tool/lemon.c
+@@ -1718,7 +1718,7 @@ int main(int argc, char **argv){
+   static int quiet = 0;
+   static int statistics = 0;
+   static int mhflag = 0;
+-  static int nolinenosflag = 0;
++  static int nolinenosflag = 1;
+   static int noResort = 0;
+   static int sqlFlag = 0;
+   static int printPP = 0;

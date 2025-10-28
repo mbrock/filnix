@@ -1,0 +1,26 @@
+diff --git a/debuginfod/debuginfod-client.c b/debuginfod/debuginfod-client.c
+index 0ee7db3d6638..81fe81de5c46 100644
+--- a/debuginfod/debuginfod-client.c
++++ b/debuginfod/debuginfod-client.c
+@@ -47,6 +47,8 @@
+ #include <stdlib.h>
+ #include <gelf.h>
+ 
++#pragma clang diagnostic ignored "-Wunused-parameter"
++
+ /* We might be building a bootstrap dummy library, which is really simple. */
+ #ifdef DUMMY_LIBDEBUGINFOD
+ 
+diff --git a/src/srcfiles.cxx b/src/srcfiles.cxx
+index 892737ccccfb..6116fa63fd7f 100644
+--- a/src/srcfiles.cxx
++++ b/src/srcfiles.cxx
+@@ -70,6 +70,8 @@
+   #include <fts.h>
+ #endif
+ 
++#pragma clang diagnostic ignored "-Wunused-const-variable"
++
+ using namespace std;
+ 
+ /* Name and version of program.  */

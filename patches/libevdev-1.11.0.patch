@@ -1,0 +1,89 @@
+diff --git a/meson.build b/meson.build
+index 531e8abef5f1..09b88b7b7ed0 100644
+--- a/meson.build
++++ b/meson.build
+@@ -72,7 +72,7 @@ src_libevdev = [
+ ]
+ 
+ mapfile = join_paths(dir_src, 'libevdev.sym')
+-version_flag = '-Wl,--version-script,@0@'.format(mapfile)
++version_flag = '--version-script=@0@'.format(mapfile)
+ lib_libevdev = library('evdev',
+ 	src_libevdev,
+ 	include_directories: [includes_include],
+diff --git a/test/test-common.h b/test/test-common.h
+index fd5a54984c19..53e95f2ce176 100644
+--- a/test/test-common.h
++++ b/test/test-common.h
+@@ -7,6 +7,7 @@
+ #include <libevdev/libevdev.h>
+ #include <stdbool.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ 
+ #include <check.h>
+ 
+@@ -17,16 +18,24 @@ struct libevdev_test {
+ 	const char *name;
+ 	Suite* (*setup)(void);
+ 	bool needs_root_privileges;
++	const struct libevdev_test *next_test;
+ } __attribute__((aligned(16)));
+ 
+-#define _TEST_SUITE(name, root_privs) \
+-	static Suite* (name##_setup)(void); \
+-	static const struct libevdev_test _test \
+-	__attribute__((used)) \
+-	__attribute__((section ("test_section"))) = { \
+-		#name, name##_setup, root_privs \
+-	}; \
+-	static Suite* (name##_setup)(void)
++extern const struct libevdev_test *first_test;
++
++#define _TEST_SUITE(passed_name, root_privs) \
++	static Suite* (passed_name##_setup)(void); \
++        static void register_##passed_name(void) __attribute__((constructor)); \
++        static void register_##passed_name(void) \
++        { \
++                struct libevdev_test* test = malloc(sizeof(struct libevdev_test)); \
++                test->name = #passed_name; \
++                test->setup = passed_name##_setup; \
++                test->needs_root_privileges = root_privs; \
++                test->next_test = first_test; \
++                first_test = test; \
++        } \
++	static Suite* (passed_name##_setup)(void)
+ 
+ #define TEST_SUITE(name) \
+ 	_TEST_SUITE(name, false)
+diff --git a/test/test-main.c b/test/test-main.c
+index 95357409a060..69386e920e4b 100644
+--- a/test/test-main.c
++++ b/test/test-main.c
+@@ -69,7 +69,7 @@ device_nodes_exist(void)
+ 	return true;
+ }
+ 
+-extern const struct libevdev_test __start_test_section, __stop_test_section;
++const struct libevdev_test *first_test;
+ 
+ int main(void)
+ {
+@@ -77,7 +77,7 @@ int main(void)
+ 	const struct rlimit corelimit = {0, 0};
+ 	int failed;
+ 
+-	for (t = &__start_test_section; t < &__stop_test_section; t++) {
++	for (t = first_test; t; t = t->next_test) {
+ 		if (t->needs_root_privileges) {
+ 			if (getenv("LIBEVDEV_SKIP_ROOT_TESTS"))
+ 				return 77;
+@@ -104,7 +104,7 @@ int main(void)
+ 	libevdev_set_log_function(test_logfunc_abort_on_error, NULL);
+ 
+ 	SRunner *sr = srunner_create(NULL);
+-	for (t = &__start_test_section; t < &__stop_test_section; t++) {
++	for (t = first_test; t; t = t->next_test) {
+ 		srunner_add_suite(sr, t->setup());
+ 	}
+ 

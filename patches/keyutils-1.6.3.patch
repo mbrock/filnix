@@ -1,0 +1,203 @@
+diff --git a/Makefile b/Makefile
+index 599b1452a05a..b6cf572b7576 100644
+--- a/Makefile
++++ b/Makefile
+@@ -192,7 +192,7 @@ pkgconfig:
+ 	-e 's,@includedir\@,$(INCLUDEDIR),g' \
+ 	< $(PKGCONFIG).in > $(PKGCONFIG) || rm $(PKGCONFIG)
+ 
+-install: all
++install-optfil: all
+ ifeq ($(NO_ARLIB),0)
+ 	$(INSTALL) -D -m 0644 $(ARLIB) $(DESTDIR)$(USRLIBDIR)/$(ARLIB)
+ endif
+@@ -215,6 +215,9 @@ endif
+ 	$(INSTALL) -D request-key $(DESTDIR)$(SBINDIR)/request-key
+ 	$(INSTALL) -D request-key-debug.sh $(DESTDIR)$(SHAREDIR)/request-key-debug.sh
+ 	$(INSTALL) -D key.dns_resolver $(DESTDIR)$(SBINDIR)/key.dns_resolver
++	$(INSTALL) -D -m 0644 keyutils.h $(DESTDIR)$(INCLUDEDIR)/keyutils.h
++
++install: install-optfil
+ 	$(INSTALL) -D -m 0644 request-key.conf $(DESTDIR)$(ETCDIR)/request-key.conf
+ 	mkdir -p $(DESTDIR)$(ETCDIR)/request-key.d
+ 	mkdir -p $(DESTDIR)$(ETCDIR)/keyutils
+@@ -239,7 +242,6 @@ endif
+ 	$(LNS) recursive_key_scan.3 $(DESTDIR)$(MAN3)/recursive_session_key_scan.3
+ 	$(LNS) keyctl_dh_compute.3 $(DESTDIR)$(MAN3)/keyctl_dh_compute_alloc.3
+ 	$(LNS) keyctl_dh_compute.3 $(DESTDIR)$(MAN3)/keyctl_dh_compute_kdf.3
+-	$(INSTALL) -D -m 0644 keyutils.h $(DESTDIR)$(INCLUDEDIR)/keyutils.h
+ 
+ ###############################################################################
+ #
+diff --git a/keyctl_watch.c b/keyctl_watch.c
+index a70a19a05159..c4ca7f72736f 100644
+--- a/keyctl_watch.c
++++ b/keyctl_watch.c
+@@ -47,11 +47,6 @@ static struct watch_notification_filter filter = {
+ 	},
+ };
+ 
+-static inline bool after_eq(unsigned int a, unsigned int b)
+-{
+-        return (signed int)(a - b) >= 0;
+-}
+-
+ static void consumer_term(int sig)
+ {
+ 	consumer_stop = 1;
+diff --git a/keyutils.c b/keyutils.c
+index 48b779eac123..2fb52f54b780 100644
+--- a/keyutils.c
++++ b/keyutils.c
+@@ -20,6 +20,7 @@
+ #include <errno.h>
+ #include <asm/unistd.h>
+ #include "keyutils.h"
++#include <pizlonated_syscalls.h>
+ 
+ const char keyutils_version_string[] = PKGVERSION;
+ const char keyutils_build_string[] = PKGBUILD;
+@@ -40,8 +41,7 @@ key_serial_t __weak add_key(const char *type,
+ 			    size_t plen,
+ 			    key_serial_t ringid)
+ {
+-	return syscall(__NR_add_key,
+-		       type, description, payload, plen, ringid);
++	return zsys_add_key(type, description, payload, plen, ringid);
+ }
+ 
+ key_serial_t __weak request_key(const char *type,
+@@ -49,33 +49,12 @@ key_serial_t __weak request_key(const char *type,
+ 				const char * callout_info,
+ 				key_serial_t destringid)
+ {
+-	return syscall(__NR_request_key,
+-		       type, description, callout_info, destringid);
+-}
+-
+-static inline long __keyctl(int cmd,
+-			    unsigned long arg2,
+-			    unsigned long arg3,
+-			    unsigned long arg4,
+-			    unsigned long arg5)
+-{
+-	return syscall(__NR_keyctl,
+-		       cmd, arg2, arg3, arg4, arg5);
++	return zsys_request_key(type, description, callout_info, destringid);
+ }
+ 
+ long __weak keyctl(int cmd, ...)
+ {
+-	va_list va;
+-	unsigned long arg2, arg3, arg4, arg5;
+-
+-	va_start(va, cmd);
+-	arg2 = va_arg(va, unsigned long);
+-	arg3 = va_arg(va, unsigned long);
+-	arg4 = va_arg(va, unsigned long);
+-	arg5 = va_arg(va, unsigned long);
+-	va_end(va);
+-
+-	return __keyctl(cmd, arg2, arg3, arg4, arg5);
++        return *(long*)zcall(zsys_keyctl, zargs());
+ }
+ 
+ key_serial_t keyctl_get_keyring_ID(key_serial_t id, int create)
+@@ -237,25 +216,15 @@ long keyctl_get_persistent(uid_t uid, key_serial_t id)
+ long keyctl_dh_compute(key_serial_t priv, key_serial_t prime,
+ 		       key_serial_t base, char *buffer, size_t buflen)
+ {
+-	struct keyctl_dh_params params = { .priv = priv,
+-					   .prime = prime,
+-					   .base = base };
+-
+-	return keyctl(KEYCTL_DH_COMPUTE, &params, buffer, buflen, 0);
++	return zsys_keyctl_dh_compute(priv, prime, base, buffer, buflen);
+ }
+ 
+ long keyctl_dh_compute_kdf(key_serial_t priv, key_serial_t prime,
+ 			   key_serial_t base, char *hashname, char *otherinfo,
+ 			   size_t otherinfolen, char *buffer, size_t buflen)
+ {
+-	struct keyctl_dh_params params = { .priv = priv,
+-					   .prime = prime,
+-					   .base = base };
+-	struct keyctl_kdf_params kdfparams = { .hashname = hashname,
+-					       .otherinfo = otherinfo,
+-					       .otherinfolen = otherinfolen };
+-
+-	return keyctl(KEYCTL_DH_COMPUTE, &params, buffer, buflen, &kdfparams);
++	return zsys_keyctl_dh_compute_kdf(priv, prime, base, hashname, otherinfo, otherinfolen,
++					  buffer, buflen);
+ }
+ 
+ long keyctl_restrict_keyring(key_serial_t keyring, const char *type,
+@@ -268,7 +237,7 @@ long keyctl_pkey_query(key_serial_t key_id,
+ 		       const char *info,
+ 		       struct keyctl_pkey_query *result)
+ {
+-	return keyctl(KEYCTL_PKEY_QUERY, key_id, NULL, info, result);
++	return zsys_keyctl_pkey_query(key_id, info, result);
+ }
+ 
+ long keyctl_pkey_encrypt(key_serial_t key_id,
+@@ -276,13 +245,7 @@ long keyctl_pkey_encrypt(key_serial_t key_id,
+ 			 const void *data, size_t data_len,
+ 			 void *enc, size_t enc_len)
+ {
+-	struct keyctl_pkey_params params = {
+-		.key_id		= key_id,
+-		.in_len		= data_len,
+-		.out_len	= enc_len,
+-	};
+-
+-	return keyctl(KEYCTL_PKEY_ENCRYPT, &params, info, data, enc);
++	return zsys_keyctl_pkey_encrypt(key_id, info, data, data_len, enc, enc_len);
+ }
+ 
+ long keyctl_pkey_decrypt(key_serial_t key_id,
+@@ -290,13 +253,7 @@ long keyctl_pkey_decrypt(key_serial_t key_id,
+ 			 const void *enc, size_t enc_len,
+ 			 void *data, size_t data_len)
+ {
+-	struct keyctl_pkey_params params = {
+-		.key_id		= key_id,
+-		.in_len		= enc_len,
+-		.out_len	= data_len,
+-	};
+-
+-	return keyctl(KEYCTL_PKEY_DECRYPT, &params, info, enc, data);
++	return zsys_keyctl_pkey_decrypt(key_id, info, enc, enc_len, data, data_len);
+ }
+ 
+ long keyctl_pkey_sign(key_serial_t key_id,
+@@ -304,13 +261,7 @@ long keyctl_pkey_sign(key_serial_t key_id,
+ 		      const void *data, size_t data_len,
+ 		      void *sig, size_t sig_len)
+ {
+-	struct keyctl_pkey_params params = {
+-		.key_id		= key_id,
+-		.in_len		= data_len,
+-		.out_len	= sig_len,
+-	};
+-
+-	return keyctl(KEYCTL_PKEY_SIGN, &params, info, data, sig);
++	return zsys_keyctl_pkey_sign(key_id, info, data, data_len, sig, sig_len);
+ }
+ 
+ long keyctl_pkey_verify(key_serial_t key_id,
+@@ -318,13 +269,7 @@ long keyctl_pkey_verify(key_serial_t key_id,
+ 			const void *data, size_t data_len,
+ 			const void *sig, size_t sig_len)
+ {
+-	struct keyctl_pkey_params params = {
+-		.key_id		= key_id,
+-		.in_len		= data_len,
+-		.in2_len	= sig_len,
+-	};
+-
+-	return keyctl(KEYCTL_PKEY_VERIFY, &params, info, data, sig);
++	return zsys_keyctl_pkey_verify(key_id, info, data, data_len, sig, sig_len);
+ }
+ 
+ long keyctl_move(key_serial_t id,

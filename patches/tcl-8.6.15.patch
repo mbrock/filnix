@@ -1,0 +1,5377 @@
+diff --git a/compat/zlib/Makefile b/compat/zlib/Makefile
+new file mode 100644
+index 000000000000..6bba86c73fca
+--- /dev/null
++++ b/compat/zlib/Makefile
+@@ -0,0 +1,5 @@
++all:
++	-@echo "Please use ./configure first.  Thank you."
++
++distclean:
++	make -f Makefile.in distclean
+diff --git a/compat/zlib/contrib/blast/Makefile b/compat/zlib/contrib/blast/Makefile
+new file mode 100644
+index 000000000000..9be80bafe050
+--- /dev/null
++++ b/compat/zlib/contrib/blast/Makefile
+@@ -0,0 +1,8 @@
++blast: blast.c blast.h
++	cc -DTEST -o blast blast.c
++
++test: blast
++	blast < test.pk | cmp - test.txt
++
++clean:
++	rm -f blast blast.o
+diff --git a/compat/zlib/contrib/minizip/Makefile b/compat/zlib/contrib/minizip/Makefile
+new file mode 100644
+index 000000000000..3d927ec149e0
+--- /dev/null
++++ b/compat/zlib/contrib/minizip/Makefile
+@@ -0,0 +1,29 @@
++CC?=cc
++CFLAGS := $(CFLAGS) -O -I../..
++
++UNZ_OBJS = miniunz.o unzip.o ioapi.o ../../libz.a
++ZIP_OBJS = minizip.o zip.o   ioapi.o ../../libz.a
++
++.c.o:
++	$(CC) -c $(CFLAGS) $*.c
++
++all: miniunz minizip
++
++miniunz:  $(UNZ_OBJS)
++	$(CC) $(CFLAGS) -o $@ $(UNZ_OBJS)
++
++minizip:  $(ZIP_OBJS)
++	$(CC) $(CFLAGS) -o $@ $(ZIP_OBJS)
++
++test:	miniunz minizip
++	@rm -f test.*
++	@echo hello hello hello > test.txt
++	./minizip test test.txt
++	./miniunz -l test.zip
++	@mv test.txt test.old
++	./miniunz test.zip
++	@cmp test.txt test.old
++	@rm -f test.*
++
++clean:
++	/bin/rm -f *.o *~ minizip miniunz test.*
+diff --git a/compat/zlib/contrib/puff/Makefile b/compat/zlib/contrib/puff/Makefile
+new file mode 100644
+index 000000000000..0e2594c80885
+--- /dev/null
++++ b/compat/zlib/contrib/puff/Makefile
+@@ -0,0 +1,42 @@
++CFLAGS=-O
++
++puff: puff.o pufftest.o
++
++puff.o: puff.h
++
++pufftest.o: puff.h
++
++test: puff
++	puff zeros.raw
++
++puft: puff.c puff.h pufftest.o
++	cc -fprofile-arcs -ftest-coverage -o puft puff.c pufftest.o
++
++# puff full coverage test (should say 100%)
++cov: puft
++	@rm -f *.gcov *.gcda
++	@puft -w zeros.raw 2>&1 | cat > /dev/null
++	@echo '04' | xxd -r -p | puft 2> /dev/null || test $$? -eq 2
++	@echo '00' | xxd -r -p | puft 2> /dev/null || test $$? -eq 2
++	@echo '00 00 00 00 00' | xxd -r -p | puft 2> /dev/null || test $$? -eq 254
++	@echo '00 01 00 fe ff' | xxd -r -p | puft 2> /dev/null || test $$? -eq 2
++	@echo '01 01 00 fe ff 0a' | xxd -r -p | puft -f 2>&1 | cat > /dev/null
++	@echo '02 7e ff ff' | xxd -r -p | puft 2> /dev/null || test $$? -eq 246
++	@echo '02' | xxd -r -p | puft 2> /dev/null || test $$? -eq 2
++	@echo '04 80 49 92 24 49 92 24 0f b4 ff ff c3 04' | xxd -r -p | puft 2> /dev/null || test $$? -eq 2
++	@echo '04 80 49 92 24 49 92 24 71 ff ff 93 11 00' | xxd -r -p | puft 2> /dev/null || test $$? -eq 249
++	@echo '04 c0 81 08 00 00 00 00 20 7f eb 0b 00 00' | xxd -r -p | puft 2> /dev/null || test $$? -eq 246
++	@echo '0b 00 00' | xxd -r -p | puft -f 2>&1 | cat > /dev/null
++	@echo '1a 07' | xxd -r -p | puft 2> /dev/null || test $$? -eq 246
++	@echo '0c c0 81 00 00 00 00 00 90 ff 6b 04' | xxd -r -p | puft 2> /dev/null || test $$? -eq 245
++	@puft -f zeros.raw 2>&1 | cat > /dev/null
++	@echo 'fc 00 00' | xxd -r -p | puft 2> /dev/null || test $$? -eq 253
++	@echo '04 00 fe ff' | xxd -r -p | puft 2> /dev/null || test $$? -eq 252
++	@echo '04 00 24 49' | xxd -r -p | puft 2> /dev/null || test $$? -eq 251
++	@echo '04 80 49 92 24 49 92 24 0f b4 ff ff c3 84' | xxd -r -p | puft 2> /dev/null || test $$? -eq 248
++	@echo '04 00 24 e9 ff ff' | xxd -r -p | puft 2> /dev/null || test $$? -eq 250
++	@echo '04 00 24 e9 ff 6d' | xxd -r -p | puft 2> /dev/null || test $$? -eq 247
++	@gcov -n puff.c
++
++clean:
++	rm -f puff puft *.o *.gc*
+diff --git a/compat/zlib/contrib/untgz/Makefile b/compat/zlib/contrib/untgz/Makefile
+new file mode 100644
+index 000000000000..b54266fba20a
+--- /dev/null
++++ b/compat/zlib/contrib/untgz/Makefile
+@@ -0,0 +1,14 @@
++CC=cc
++CFLAGS=-g
++
++untgz: untgz.o ../../libz.a
++	$(CC) $(CFLAGS) -o untgz untgz.o -L../.. -lz
++
++untgz.o: untgz.c ../../zlib.h
++	$(CC) $(CFLAGS) -c -I../.. untgz.c
++
++../../libz.a:
++	cd ../..; ./configure; make
++
++clean:
++	rm -f untgz untgz.o *~
+diff --git a/compat/zlib/nintendods/Makefile b/compat/zlib/nintendods/Makefile
+new file mode 100644
+index 000000000000..21337d01ab2f
+--- /dev/null
++++ b/compat/zlib/nintendods/Makefile
+@@ -0,0 +1,126 @@
++#---------------------------------------------------------------------------------
++.SUFFIXES:
++#---------------------------------------------------------------------------------
++
++ifeq ($(strip $(DEVKITARM)),)
++$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
++endif
++
++include $(DEVKITARM)/ds_rules
++
++#---------------------------------------------------------------------------------
++# TARGET is the name of the output
++# BUILD is the directory where object files & intermediate files will be placed
++# SOURCES is a list of directories containing source code
++# DATA is a list of directories containing data files
++# INCLUDES is a list of directories containing header files
++#---------------------------------------------------------------------------------
++TARGET		:=	$(shell basename $(CURDIR))
++BUILD		:=	build
++SOURCES		:=	../../
++DATA		:=	data
++INCLUDES	:=	include
++
++#---------------------------------------------------------------------------------
++# options for code generation
++#---------------------------------------------------------------------------------
++ARCH	:=	-mthumb -mthumb-interwork
++
++CFLAGS	:=	-Wall -O2\
++		-march=armv5te -mtune=arm946e-s \
++		-fomit-frame-pointer -ffast-math \
++		$(ARCH)
++
++CFLAGS	+=	$(INCLUDE) -DARM9
++CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
++
++ASFLAGS	:=	$(ARCH) -march=armv5te -mtune=arm946e-s
++LDFLAGS	=	-specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
++
++#---------------------------------------------------------------------------------
++# list of directories containing libraries, this must be the top level containing
++# include and lib
++#---------------------------------------------------------------------------------
++LIBDIRS	:=	$(LIBNDS)
++
++#---------------------------------------------------------------------------------
++# no real need to edit anything past this point unless you need to add additional
++# rules for different file extensions
++#---------------------------------------------------------------------------------
++ifneq ($(BUILD),$(notdir $(CURDIR)))
++#---------------------------------------------------------------------------------
++
++export OUTPUT	:=	$(CURDIR)/lib/libz.a
++
++export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
++			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
++
++export DEPSDIR	:=	$(CURDIR)/$(BUILD)
++
++CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
++CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
++SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
++BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
++
++#---------------------------------------------------------------------------------
++# use CXX for linking C++ projects, CC for standard C
++#---------------------------------------------------------------------------------
++ifeq ($(strip $(CPPFILES)),)
++#---------------------------------------------------------------------------------
++	export LD	:=	$(CC)
++#---------------------------------------------------------------------------------
++else
++#---------------------------------------------------------------------------------
++	export LD	:=	$(CXX)
++#---------------------------------------------------------------------------------
++endif
++#---------------------------------------------------------------------------------
++
++export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
++			$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
++
++export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
++			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
++			-I$(CURDIR)/$(BUILD)
++
++.PHONY: $(BUILD) clean all
++
++#---------------------------------------------------------------------------------
++all: $(BUILD)
++	@[ -d $@ ] || mkdir -p include
++	@cp ../../*.h include
++
++lib:
++	@[ -d $@ ] || mkdir -p $@
++	
++$(BUILD): lib
++	@[ -d $@ ] || mkdir -p $@
++	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
++
++#---------------------------------------------------------------------------------
++clean:
++	@echo clean ...
++	@rm -fr $(BUILD) lib
++
++#---------------------------------------------------------------------------------
++else
++
++DEPENDS	:=	$(OFILES:.o=.d)
++
++#---------------------------------------------------------------------------------
++# main targets
++#---------------------------------------------------------------------------------
++$(OUTPUT)	:	$(OFILES)
++
++#---------------------------------------------------------------------------------
++%.bin.o	:	%.bin
++#---------------------------------------------------------------------------------
++	@echo $(notdir $<)
++	@$(bin2o)
++
++
++-include $(DEPENDS)
++
++#---------------------------------------------------------------------------------------
++endif
++#---------------------------------------------------------------------------------------
+diff --git a/compat/zlib/win32/zdll.lib b/compat/zlib/win32/zdll.lib
+new file mode 100644
+index 000000000000..d7966ab9006a
+Binary files /dev/null and b/compat/zlib/win32/zdll.lib differ
+diff --git a/compat/zlib/win32/zlib1.dll b/compat/zlib/win32/zlib1.dll
+new file mode 100755
+index 000000000000..818ea24791da
+Binary files /dev/null and b/compat/zlib/win32/zlib1.dll differ
+diff --git a/compat/zlib/win64-arm/libz.dll.a b/compat/zlib/win64-arm/libz.dll.a
+new file mode 100644
+index 000000000000..476c00f4004c
+Binary files /dev/null and b/compat/zlib/win64-arm/libz.dll.a differ
+diff --git a/compat/zlib/win64-arm/zdll.lib b/compat/zlib/win64-arm/zdll.lib
+new file mode 100644
+index 000000000000..f0fc668426cb
+Binary files /dev/null and b/compat/zlib/win64-arm/zdll.lib differ
+diff --git a/compat/zlib/win64-arm/zlib1.dll b/compat/zlib/win64-arm/zlib1.dll
+new file mode 100755
+index 000000000000..416ca3c383ce
+Binary files /dev/null and b/compat/zlib/win64-arm/zlib1.dll differ
+diff --git a/compat/zlib/win64/libz.dll.a b/compat/zlib/win64/libz.dll.a
+new file mode 100644
+index 000000000000..8a2b37318095
+Binary files /dev/null and b/compat/zlib/win64/libz.dll.a differ
+diff --git a/compat/zlib/win64/zdll.lib b/compat/zlib/win64/zdll.lib
+new file mode 100644
+index 000000000000..1ac4ba994b2f
+Binary files /dev/null and b/compat/zlib/win64/zdll.lib differ
+diff --git a/compat/zlib/win64/zlib1.dll b/compat/zlib/win64/zlib1.dll
+new file mode 100755
+index 000000000000..06eead446dcf
+Binary files /dev/null and b/compat/zlib/win64/zlib1.dll differ
+diff --git a/doc/tclsh.1 b/doc/tclsh.1
+new file mode 100644
+index 000000000000..fa0ecc226854
+--- /dev/null
++++ b/doc/tclsh.1
+@@ -0,0 +1,149 @@
++'\"
++'\" Copyright (c) 1993 The Regents of the University of California.
++'\" Copyright (c) 1994-1996 Sun Microsystems, Inc.
++'\"
++'\" See the file "license.terms" for information on usage and redistribution
++'\" of this file, and for a DISCLAIMER OF ALL WARRANTIES.
++'\"
++.TH tclsh 1 "" Tcl "Tcl Applications"
++.so man.macros
++.BS
++'\" Note:  do not modify the .SH NAME line immediately below!
++.SH NAME
++tclsh \- Simple shell containing Tcl interpreter
++.SH SYNOPSIS
++\fBtclsh\fR ?\fB\-encoding \fIname\fR? ?\fIfileName arg arg ...\fR?
++.BE
++.SH DESCRIPTION
++.PP
++\fBTclsh\fR is a shell-like application that reads Tcl commands
++from its standard input or from a file and evaluates them.
++If invoked with no arguments then it runs interactively, reading
++Tcl commands from standard input and printing command results and
++error messages to standard output.
++It runs until the \fBexit\fR command is invoked or until it
++reaches end-of-file on its standard input.
++If there exists a file \fB.tclshrc\fR (or \fBtclshrc.tcl\fR on
++the Windows platforms) in the home directory of
++the user, interactive \fBtclsh\fR evaluates the file as a Tcl script
++just before reading the first command from standard input.
++.SH "SCRIPT FILES"
++.PP
++If \fBtclsh\fR is invoked with arguments then the first few arguments
++specify the name of a script file, and, optionally, the encoding of
++the text data stored in that script file. Any additional arguments
++are made available to the script as variables (see below).
++Instead of reading commands from standard input \fBtclsh\fR will
++read Tcl commands from the named file;  \fBtclsh\fR will exit
++when it reaches the end of the file.
++The end of the file may be marked either by the physical end of
++the medium, or by the character,
++.QW \e032
++.PQ \eu001a ", control-Z" .
++If this character is present in the file, the \fBtclsh\fR application
++will read text up to but not including the character.  An application
++that requires this character in the file may safely encode it as
++.QW \e032 ,
++.QW \ex1A ,
++or
++.QW \eu001a ;
++or may generate it by use of commands such as \fBformat\fR or \fBbinary\fR.
++There is no automatic evaluation of \fB.tclshrc\fR when the name
++of a script file is presented on the \fBtclsh\fR command
++line, but the script file can always \fBsource\fR it if desired.
++.PP
++If you create a Tcl script in a file whose first line is
++.PP
++.CS
++\fB#!/usr/local/bin/tclsh\fR
++.CE
++.PP
++then you can invoke the script file directly from your shell if
++you mark the file as executable.
++This assumes that \fBtclsh\fR has been installed in the default
++location in /usr/local/bin;  if it is installed somewhere else
++then you will have to modify the above line to match.
++Many UNIX systems do not allow the \fB#!\fR line to exceed about
++30 characters in length, so be sure that the \fBtclsh\fR
++executable can be accessed with a short file name.
++.PP
++An even better approach is to start your script files with the
++following three lines:
++.PP
++.CS
++\fB#!/bin/sh
++# the next line restarts using tclsh \e
++exec tclsh "$0" ${1+"$@"}\fR
++.CE
++.PP
++This approach has three advantages over the approach in the previous
++paragraph.  First, the location of the \fBtclsh\fR binary does not have
++to be hard-wired into the script:  it can be anywhere in your shell
++search path.  Second, it gets around the 30-character file name limit
++in the previous approach.
++Third, this approach will work even if \fBtclsh\fR is
++itself a shell script (this is done on some systems in order to
++handle multiple architectures or operating systems:  the \fBtclsh\fR
++script selects one of several binaries to run).  The three lines
++cause both \fBsh\fR and \fBtclsh\fR to process the script, but the
++\fBexec\fR is only executed by \fBsh\fR.
++\fBsh\fR processes the script first;  it treats the second
++line as a comment and executes the third line.
++The \fBexec\fR statement cause the shell to stop processing and
++instead to start up \fBtclsh\fR to reprocess the entire script.
++When \fBtclsh\fR starts up, it treats all three lines as comments,
++since the backslash at the end of the second line causes the third
++line to be treated as part of the comment on the second line.
++.PP
++You should note that it is also common practice to install tclsh with
++its version number as part of the name.  This has the advantage of
++allowing multiple versions of Tcl to exist on the same system at once,
++but also the disadvantage of making it harder to write scripts that
++start up uniformly across different versions of Tcl.
++.SH "VARIABLES"
++.PP
++\fBTclsh\fR sets the following global Tcl variables in addition to those
++created by the Tcl library itself (such as \fBenv\fR, which maps
++environment variables such as \fBPATH\fR into Tcl):
++.TP 15
++\fBargc\fR
++.
++Contains a count of the number of \fIarg\fR arguments (0 if none),
++not including the name of the script file.
++.TP 15
++\fBargv\fR
++.
++Contains a Tcl list whose elements are the \fIarg\fR arguments,
++in order, or an empty string if there are no \fIarg\fR arguments.
++.TP 15
++\fBargv0\fR
++.
++Contains \fIfileName\fR if it was specified.
++Otherwise, contains the name by which \fBtclsh\fR was invoked.
++.TP 15
++\fBtcl_interactive\fR
++.
++Contains 1 if \fBtclsh\fR is running interactively (no
++\fIfileName\fR was specified and standard input is a terminal-like
++device), 0 otherwise.
++.SH PROMPTS
++.PP
++When \fBtclsh\fR is invoked interactively it normally prompts for each
++command with
++.QW "\fB% \fR" .
++You can change the prompt by setting the global
++variables \fBtcl_prompt1\fR and \fBtcl_prompt2\fR.  If variable
++\fBtcl_prompt1\fR exists then it must consist of a Tcl script
++to output a prompt;  instead of outputting a prompt \fBtclsh\fR
++will evaluate the script in \fBtcl_prompt1\fR.
++The variable \fBtcl_prompt2\fR is used in a similar way when
++a newline is typed but the current command is not yet complete;
++if \fBtcl_prompt2\fR is not set then no prompt is output for
++incomplete commands.
++.SH "STANDARD CHANNELS"
++.PP
++See \fBTcl_StandardChannels\fR for more explanations.
++.SH "SEE ALSO"
++auto_path(n), encoding(n), env(n), fconfigure(n)
++.SH KEYWORDS
++application, argument, interpreter, prompt, script file, shell
+diff --git a/library/tcltest/pkgIndex.tcl b/library/tcltest/pkgIndex.tcl
+new file mode 100644
+index 000000000000..9f51e64a9f18
+--- /dev/null
++++ b/library/tcltest/pkgIndex.tcl
+@@ -0,0 +1,12 @@
++# Tcl package index file, version 1.1
++# This file is generated by the "pkg_mkIndex -direct" command
++# and sourced either when an application starts up or
++# by a "package unknown" script.  It invokes the
++# "package ifneeded" command to set up package-related
++# information so that packages will be loaded automatically
++# in response to "package require" commands.  When this
++# script is sourced, the variable $dir must contain the
++# full path name of this file's directory.
++
++if {![package vsatisfies [package provide Tcl] 8.5-]} {return}
++package ifneeded tcltest 2.5.8 [list source -encoding utf-8 [file join $dir tcltest.tcl]]
+diff --git a/library/tcltest/tcltest.tcl b/library/tcltest/tcltest.tcl
+new file mode 100644
+index 000000000000..168f5219a148
+--- /dev/null
++++ b/library/tcltest/tcltest.tcl
+@@ -0,0 +1,3588 @@
++# tcltest.tcl --
++#
++#	This file contains support code for the Tcl test suite.  It
++#       defines the tcltest namespace and finds and defines the output
++#       directory, constraints available, output and error channels,
++#	etc. used by Tcl tests.  See the tcltest man page for more
++#	details.
++#
++#       This design was based on the Tcl testing approach designed and
++#       initially implemented by Mary Ann May-Pumphrey of Sun
++#	Microsystems.
++#
++# Copyright © 1994-1997 Sun Microsystems, Inc.
++# Copyright © 1998-1999 Scriptics Corporation.
++# Copyright © 2000 Ajuba Solutions
++# Contributions from Don Porter, NIST, 2002.  (not subject to US copyright)
++# All rights reserved.
++
++namespace eval tcltest {
++
++    # When the version number changes, be sure to update the pkgIndex.tcl file,
++    # and the install directory in the Makefiles.  When the minor version
++    # changes (new feature) be sure to update the man page as well.
++    variable Version 2.5.8
++
++    # Compatibility support for dumb variables defined in tcltest 1
++    # Do not use these.  Call [package require] and [info patchlevel]
++    # yourself.  You don't need tcltest to wrap it for you.
++    variable version [package require Tcl 8.5-]
++    variable patchLevel [info patchlevel]
++
++    # Detect if we can use code points >= \U10000
++    variable fullutf [package vsatisfies $version 8.7-]
++
++##### Export the public tcltest procs; several categories
++    #
++    # Export the main functional commands that do useful things
++    namespace export cleanupTests loadTestedCommands makeDirectory \
++	makeFile removeDirectory removeFile runAllTests test
++
++    # Export configuration commands that control the functional commands
++    namespace export configure customMatch errorChannel interpreter \
++	    outputChannel testConstraint
++
++    # Export commands that are duplication (candidates for deprecation)
++    if {!$fullutf} {
++	namespace export bytestring	;# dups [encoding convertfrom identity]
++    }
++    namespace export debug		;#	[configure -debug]
++    namespace export errorFile		;#	[configure -errfile]
++    namespace export limitConstraints	;#	[configure -limitconstraints]
++    namespace export loadFile		;#	[configure -loadfile]
++    namespace export loadScript		;#	[configure -load]
++    namespace export match		;#	[configure -match]
++    namespace export matchFiles		;#	[configure -file]
++    namespace export matchDirectories	;#	[configure -relateddir]
++    namespace export normalizeMsg	;#	application of [customMatch]
++    namespace export normalizePath	;#	[file normalize] (8.4)
++    namespace export outputFile		;#	[configure -outfile]
++    namespace export preserveCore	;#	[configure -preservecore]
++    namespace export singleProcess	;#	[configure -singleproc]
++    namespace export skip		;#	[configure -skip]
++    namespace export skipFiles		;#	[configure -notfile]
++    namespace export skipDirectories	;#	[configure -asidefromdir]
++    namespace export temporaryDirectory	;#	[configure -tmpdir]
++    namespace export testsDirectory	;#	[configure -testdir]
++    namespace export verbose		;#	[configure -verbose]
++    namespace export viewFile		;#	binary encoding [read]
++    namespace export workingDirectory	;#	[cd] [pwd]
++
++    # Export deprecated commands for tcltest 1 compatibility
++    namespace export getMatchingFiles mainThread restoreState saveState \
++	    threadReap
++
++    # tcltest::normalizePath --
++    #
++    #     This procedure resolves any symlinks in the path thus creating
++    #     a path without internal redirection. It assumes that the
++    #     incoming path is absolute.
++    #
++    # Arguments
++    #     pathVar - name of variable containing path to modify.
++    #
++    # Results
++    #     The path is modified in place.
++    #
++    # Side Effects:
++    #     None.
++    #
++    proc normalizePath {pathVar} {
++	upvar 1 $pathVar path
++	set oldpwd [pwd]
++	catch {cd $path}
++	set path [pwd]
++	cd $oldpwd
++	return $path
++    }
++
++##### Verification commands used to test values of variables and options
++    #
++    # Verification command that accepts everything
++    proc AcceptAll {value} {
++	return $value
++    }
++
++    # Verification command that accepts valid Tcl lists
++    proc AcceptList { list } {
++	return [lrange $list 0 end]
++    }
++
++    # Verification command that accepts a glob pattern
++    proc AcceptPattern { pattern } {
++	return [AcceptAll $pattern]
++    }
++
++    # Verification command that accepts integers
++    proc AcceptInteger { level } {
++	return [incr level 0]
++    }
++
++    # Verification command that accepts boolean values
++    proc AcceptBoolean { boolean } {
++	return [expr {$boolean && $boolean}]
++    }
++
++    # Verification command that accepts (syntactically) valid Tcl scripts
++    proc AcceptScript { script } {
++	if {![info complete $script]} {
++	    return -code error "invalid Tcl script: $script"
++	}
++	return $script
++    }
++
++    # Verification command that accepts (converts to) absolute pathnames
++    proc AcceptAbsolutePath { path } {
++	return [file join [pwd] $path]
++    }
++
++    # Verification command that accepts existing readable directories
++    proc AcceptReadable { path } {
++	if {![file readable $path]} {
++	    return -code error "\"$path\" is not readable"
++	}
++	return $path
++    }
++    proc AcceptDirectory { directory } {
++	set directory [AcceptAbsolutePath $directory]
++	if {![file exists $directory]} {
++	    return -code error "\"$directory\" does not exist"
++	}
++	if {![file isdir $directory]} {
++	    return -code error "\"$directory\" is not a directory"
++	}
++	return [AcceptReadable $directory]
++    }
++
++##### Initialize internal arrays of tcltest, but only if the caller
++    # has not already preinitialized them.  This is done to support
++    # compatibility with older tests that directly access internals
++    # rather than go through command interfaces.
++    #
++    proc ArrayDefault {varName value} {
++	variable $varName
++	if {[array exists $varName]} {
++	    return
++	}
++	if {[info exists $varName]} {
++	    # Preinitialized value is a scalar:  Destroy it!
++	    unset $varName
++	}
++	array set $varName $value
++    }
++
++    # save the original environment so that it can be restored later
++    ArrayDefault originalEnv [array get ::env]
++
++    # initialize numTests array to keep track of the number of tests
++    # that pass, fail, and are skipped.
++    ArrayDefault numTests [list Total 0 Passed 0 Skipped 0 Failed 0]
++
++    # createdNewFiles will store test files as indices and the list of
++    # files (that should not have been) left behind by the test files
++    # as values.
++    ArrayDefault createdNewFiles {}
++
++    # initialize skippedBecause array to keep track of constraints that
++    # kept tests from running; a constraint name of "userSpecifiedSkip"
++    # means that the test appeared on the list of tests that matched the
++    # -skip value given to the flag; "userSpecifiedNonMatch" means that
++    # the test didn't match the argument given to the -match flag; both
++    # of these constraints are counted only if tcltest::debug is set to
++    # true.
++    ArrayDefault skippedBecause {}
++
++    # initialize the testConstraints array to keep track of valid
++    # predefined constraints (see the explanation for the
++    # InitConstraints proc for more details).
++    ArrayDefault testConstraints {}
++
++##### Initialize internal variables of tcltest, but only if the caller
++    # has not already preinitialized them.  This is done to support
++    # compatibility with older tests that directly access internals
++    # rather than go through command interfaces.
++    #
++    proc Default {varName value {verify AcceptAll}} {
++	variable $varName
++	if {![info exists $varName]} {
++	    variable $varName [$verify $value]
++	} else {
++	    variable $varName [$verify [set $varName]]
++	}
++    }
++
++    # Save any arguments that we might want to pass through to other
++    # programs.  This is used by the -args flag.
++    # FINDUSER
++    Default parameters {}
++
++    # Count the number of files tested (0 if runAllTests wasn't called).
++    # runAllTests will set testSingleFile to false, so stats will
++    # not be printed until runAllTests calls the cleanupTests proc.
++    # The currentFailure var stores the boolean value of whether the
++    # current test file has had any failures.  The failFiles list
++    # stores the names of test files that had failures.
++    Default numTestFiles 0 AcceptInteger
++    Default testSingleFile true AcceptBoolean
++    Default currentFailure false AcceptBoolean
++    Default failFiles {} AcceptList
++
++    # Tests should remove all files they create.  The test suite will
++    # check the current working dir for files created by the tests.
++    # filesMade keeps track of such files created using the makeFile and
++    # makeDirectory procedures.  filesExisted stores the names of
++    # preexisting files.
++    #
++    # Note that $filesExisted lists only those files that exist in
++    # the original [temporaryDirectory].
++    Default filesMade {} AcceptList
++    Default filesExisted {} AcceptList
++    proc FillFilesExisted {} {
++	variable filesExisted
++
++	# Save the names of files that already exist in the scratch directory.
++	foreach file [glob -nocomplain -directory [temporaryDirectory] *] {
++	    lappend filesExisted [file tail $file]
++	}
++
++	# After successful filling, turn this into a no-op.
++	proc FillFilesExisted args {}
++    }
++
++    # Kept only for compatibility
++    Default constraintsSpecified {} AcceptList
++    trace add variable constraintsSpecified read [namespace code {
++	    set constraintsSpecified [array names testConstraints] ;#}]
++
++    # tests that use threads need to know which is the main thread
++    Default mainThread 1
++    variable mainThread
++    if {[info commands thread::id] ne {}} {
++	set mainThread [thread::id]
++    } elseif {[info commands testthread] ne {}} {
++	set mainThread [testthread id]
++    }
++
++    # Set workingDirectory to [pwd]. The default output directory for
++    # Tcl tests is the working directory.  Whenever this value changes
++    # change to that directory.
++    variable workingDirectory
++    trace add variable workingDirectory write \
++	    [namespace code {cd $workingDirectory ;#}]
++
++    Default workingDirectory [pwd] AcceptAbsolutePath
++    proc workingDirectory { {dir ""} } {
++	variable workingDirectory
++	if {[llength [info level 0]] == 1} {
++	    return $workingDirectory
++	}
++	set workingDirectory [AcceptAbsolutePath $dir]
++    }
++
++    # Set the location of the execuatble
++    Default tcltest [info nameofexecutable]
++    trace add variable tcltest write [namespace code {testConstraint stdio \
++	    [eval [ConstraintInitializer stdio]] ;#}]
++
++    # save the platform information so it can be restored later
++    Default originalTclPlatform [array get ::tcl_platform]
++
++    # If a core file exists, save its modification time.
++    if {[file exists [file join [workingDirectory] core]]} {
++	Default coreModTime \
++		[file mtime [file join [workingDirectory] core]]
++    }
++
++    # stdout and stderr buffers for use when we want to store them
++    Default outData {}
++    Default errData {}
++
++    # keep track of test level for nested test commands
++    variable testLevel 0
++
++    # the variables and procedures that existed when saveState was called are
++    # stored in a variable of the same name
++    Default saveState {}
++
++    # Internationalization support -- used in [SetIso8859_1_Locale] and
++    # [RestoreLocale]. Those commands are used in cmdIL.test.
++
++    if {![info exists [namespace current]::isoLocale]} {
++	variable isoLocale fr
++	switch -- $::tcl_platform(platform) {
++	    "unix" {
++
++		# Try some 'known' values for some platforms:
++
++		switch -exact -- $::tcl_platform(os) {
++		    "FreeBSD" {
++			set isoLocale fr_FR.ISO_8859-1
++		    }
++		    HP-UX {
++			set isoLocale fr_FR.iso88591
++		    }
++		    Linux -
++		    IRIX {
++			set isoLocale fr
++		    }
++		    default {
++
++			# Works on SunOS 4 and Solaris, and maybe
++			# others...  Define it to something else on your
++			# system if you want to test those.
++
++			set isoLocale iso_8859_1
++		    }
++		}
++	    }
++	    "windows" {
++		set isoLocale French
++	    }
++	}
++    }
++
++    variable ChannelsWeOpened; array set ChannelsWeOpened {}
++    # output goes to stdout by default
++    Default outputChannel stdout
++    proc outputChannel { {filename ""} } {
++	variable outputChannel
++	variable ChannelsWeOpened
++	variable fullutf
++
++	# This is very subtle and tricky, so let me try to explain.
++	# (Hopefully this longer comment will be clear when I come
++	# back in a few months, unlike its predecessor :) )
++	#
++	# The [outputChannel] command (and underlying variable) have to
++	# be kept in sync with the [configure -outfile] configuration
++	# option ( and underlying variable Option(-outfile) ).  This is
++	# accomplished with a write trace on Option(-outfile) that will
++	# update [outputChannel] whenever a new value is written.  That
++	# much is easy.
++	#
++	# The trick is that in order to maintain compatibility with
++	# version 1 of tcltest, we must allow every configuration option
++	# to get its initial value from command line arguments.  This is
++	# accomplished by setting initial read traces on all the
++	# configuration options to parse the command line option the first
++	# time they are read.  These traces are cancelled whenever the
++	# program itself calls [configure].
++	#
++	# OK, then so to support tcltest 1 compatibility, it seems we want
++	# to get the return from [outputFile] to trigger the read traces,
++	# just in case.
++	#
++	# BUT!  A little known feature of Tcl variable traces is that
++	# traces are disabled during the handling of other traces.  So,
++	# if we trigger read traces on Option(-outfile) and that triggers
++	# command line parsing which turns around and sets an initial
++	# value for Option(-outfile) -- <whew!> -- the write trace that
++	# would keep [outputChannel] in sync with that new initial value
++	# would not fire!
++	#
++	# SO, finally, as a workaround, instead of triggering read traces
++	# by invoking [outputFile], we instead trigger the same set of
++	# read traces by invoking [debug].  Any command that reads a
++	# configuration option would do.  [debug] is just a handy one.
++	# The end result is that we support tcltest 1 compatibility and
++	# keep outputChannel and -outfile in sync in all cases.
++	debug
++
++	if {[llength [info level 0]] == 1} {
++	    return $outputChannel
++	}
++	if {[info exists ChannelsWeOpened($outputChannel)]} {
++	    close $outputChannel
++	    unset ChannelsWeOpened($outputChannel)
++	}
++	switch -exact -- $filename {
++	    stderr -
++	    stdout {
++		set outputChannel $filename
++	    }
++	    default {
++		set outputChannel [open $filename a]
++		if {$fullutf} {
++		    fconfigure $outputChannel -profile tcl8 -encoding utf-8
++		}
++		set ChannelsWeOpened($outputChannel) 1
++
++		# If we created the file in [temporaryDirectory], then
++		# [cleanupTests] will delete it, unless we claim it was
++		# already there.
++		set outdir [normalizePath [file dirname \
++			[file join [pwd] $filename]]]
++		if {$outdir eq [temporaryDirectory]} {
++		    variable filesExisted
++		    FillFilesExisted
++		    set filename [file tail $filename]
++		    if {$filename ni $filesExisted} {
++			lappend filesExisted $filename
++		    }
++		}
++	    }
++	}
++	return $outputChannel
++    }
++
++    # errors go to stderr by default
++    Default errorChannel stderr
++    proc errorChannel { {filename ""} } {
++	variable errorChannel
++	variable ChannelsWeOpened
++	variable fullutf
++
++	# This is subtle and tricky.  See the comment above in
++	# [outputChannel] for a detailed explanation.
++	debug
++
++	if {[llength [info level 0]] == 1} {
++	    return $errorChannel
++	}
++	if {[info exists ChannelsWeOpened($errorChannel)]} {
++	    close $errorChannel
++	    unset ChannelsWeOpened($errorChannel)
++	}
++	switch -exact -- $filename {
++	    stderr -
++	    stdout {
++		set errorChannel $filename
++	    }
++	    default {
++		set errorChannel [open $filename a]
++		if {$fullutf} {
++		    fconfigure $errorChannel -profile tcl8 -encoding utf-8
++		}
++		set ChannelsWeOpened($errorChannel) 1
++
++		# If we created the file in [temporaryDirectory], then
++		# [cleanupTests] will delete it, unless we claim it was
++		# already there.
++		set outdir [normalizePath [file dirname \
++			[file join [pwd] $filename]]]
++		if {$outdir eq [temporaryDirectory]} {
++		    variable filesExisted
++		    FillFilesExisted
++		    set filename [file tail $filename]
++		    if {$filename ni $filesExisted} {
++			lappend filesExisted $filename
++		    }
++		}
++	    }
++	}
++	return $errorChannel
++    }
++
++##### Set up the configurable options
++    #
++    # The configurable options of the package
++    variable Option; array set Option {}
++
++    # Usage strings for those options
++    variable Usage; array set Usage {}
++
++    # Verification commands for those options
++    variable Verify; array set Verify {}
++
++    # Initialize the default values of the configurable options that are
++    # historically associated with an exported variable.  If that variable
++    # is already set, support compatibility by accepting its preset value.
++    # Use [trace] to establish ongoing connection between the deprecated
++    # exported variable and the modern option kept as a true internal var.
++    # Also set up usage string and value testing for the option.
++    proc Option {option value usage {verify AcceptAll} {varName {}}} {
++	variable Option
++	variable Verify
++	variable Usage
++	variable OptionControlledVariables
++	variable DefaultValue
++	set Usage($option) $usage
++	set Verify($option) $verify
++	set DefaultValue($option) $value
++	if {[catch {$verify $value} msg]} {
++	    return -code error $msg
++	} else {
++	    set Option($option) $msg
++	}
++	if {[string length $varName]} {
++	    variable $varName
++	    if {[info exists $varName]} {
++		if {[catch {$verify [set $varName]} msg]} {
++		    return -code error $msg
++		} else {
++		    set Option($option) $msg
++		}
++		unset $varName
++	    }
++	    namespace eval [namespace current] \
++	    	    [list upvar 0 Option($option) $varName]
++	    # Workaround for Bug (now Feature Request) 572889.  Grrrr....
++	    # Track all the variables tied to options
++	    lappend OptionControlledVariables $varName
++	    # Later, set auto-configure read traces on all
++	    # of them, since a single trace on Option does not work.
++	    proc $varName {{value {}}} [subst -nocommands {
++		if {[llength [info level 0]] == 2} {
++		    Configure $option [set value]
++		}
++		return [Configure $option]
++	    }]
++	}
++    }
++
++    proc MatchingOption {option} {
++	variable Option
++	set match [array names Option $option*]
++	switch -- [llength $match] {
++	    0 {
++		set sorted [lsort [array names Option]]
++		set values [join [lrange $sorted 0 end-1] ", "]
++		append values ", or [lindex $sorted end]"
++		return -code error "unknown option $option: should be\
++			one of $values"
++	    }
++	    1 {
++		return [lindex $match 0]
++	    }
++	    default {
++		# Exact match trumps ambiguity
++		if {$option in $match} {
++		    return $option
++		}
++		set values [join [lrange $match 0 end-1] ", "]
++		append values ", or [lindex $match end]"
++		return -code error "ambiguous option $option:\
++			could match $values"
++	    }
++	}
++    }
++
++    proc EstablishAutoConfigureTraces {} {
++	variable OptionControlledVariables
++	foreach varName [concat $OptionControlledVariables Option] {
++	    variable $varName
++	    trace add variable $varName read [namespace code {
++		    ProcessCmdLineArgs ;#}]
++	}
++    }
++
++    proc RemoveAutoConfigureTraces {} {
++	variable OptionControlledVariables
++	foreach varName [concat $OptionControlledVariables Option] {
++	    variable $varName
++	    foreach pair [trace info variable $varName] {
++		lassign $pair op cmd
++		if {($op eq "read") &&
++			[string match *ProcessCmdLineArgs* $cmd]} {
++		    trace remove variable $varName $op $cmd
++		}
++	    }
++	}
++	# Once the traces are removed, this can become a no-op
++	proc RemoveAutoConfigureTraces {} {}
++    }
++
++    proc Configure args {
++	variable Option
++	variable Verify
++	set n [llength $args]
++	if {$n == 0} {
++	    return [lsort [array names Option]]
++	}
++	if {$n == 1} {
++	    if {[catch {MatchingOption [lindex $args 0]} option]} {
++		return -code error $option
++	    }
++	    return $Option($option)
++	}
++	while {[llength $args] > 1} {
++	    if {[catch {MatchingOption [lindex $args 0]} option]} {
++		return -code error $option
++	    }
++	    if {[catch {$Verify($option) [lindex $args 1]} value]} {
++		return -code error "invalid $option\
++			value \"[lindex $args 1]\": $value"
++	    }
++	    set Option($option) $value
++	    set args [lrange $args 2 end]
++	}
++	if {[llength $args]} {
++	    if {[catch {MatchingOption [lindex $args 0]} option]} {
++		return -code error $option
++	    }
++	    return -code error "missing value for option $option"
++	}
++    }
++    proc configure args {
++	if {[llength $args] > 1} {
++	    RemoveAutoConfigureTraces
++	}
++	set code [catch {Configure {*}$args} msg]
++	return -code $code $msg
++    }
++
++    proc AcceptVerbose { level } {
++	set level [AcceptList $level]
++	set levelMap {
++	    l list
++	    p pass
++	    b body
++	    s skip
++	    t start
++	    e error
++	    l line
++	    m msec
++	    u usec
++	}
++	set levelRegexp "^([join [dict values $levelMap] |])\$"
++	if {[llength $level] == 1} {
++	    if {![regexp $levelRegexp $level]} {
++		# translate single characters abbreviations to expanded list
++		set level [string map $levelMap [split $level {}]]
++	    }
++	}
++	set valid [list]
++	foreach v $level {
++	    if {[regexp $levelRegexp $v]} {
++		lappend valid $v
++	    }
++	}
++	return $valid
++    }
++
++    proc IsVerbose {level} {
++	variable Option
++	return [expr {$level in $Option(-verbose)}]
++    }
++
++    # Default verbosity is to show bodies of failed tests
++    Option -verbose {body error} {
++	Takes any combination of the values 'p', 's', 'b', 't', 'e' and 'l'.
++	Test suite will display all passed tests if 'p' is specified, all
++	skipped tests if 's' is specified, the bodies of failed tests if
++	'b' is specified, and when tests start if 't' is specified.
++	ErrorInfo is displayed if 'e' is specified. Source file line
++	information of failed tests is displayed if 'l' is specified.
++    } AcceptVerbose verbose
++
++    # Match and skip patterns default to the empty list, except for
++    # matchFiles, which defaults to all .test files in the
++    # testsDirectory and matchDirectories, which defaults to all
++    # directories.
++    Option -match * {
++	Run all tests within the specified files that match one of the
++	list of glob patterns given.
++    } AcceptList match
++
++    Option -skip {} {
++	Skip all tests within the specified tests (via -match) and files
++	that match one of the list of glob patterns given.
++    } AcceptList skip
++
++    Option -file *.test {
++	Run tests in all test files that match the glob pattern given.
++    } AcceptPattern matchFiles
++
++    # By default, skip files that appear to be SCCS lock files.
++    Option -notfile l.*.test {
++	Skip all test files that match the glob pattern given.
++    } AcceptPattern skipFiles
++
++    Option -relateddir * {
++	Run tests in directories that match the glob pattern given.
++    } AcceptPattern matchDirectories
++
++    Option -asidefromdir {} {
++	Skip tests in directories that match the glob pattern given.
++    } AcceptPattern skipDirectories
++
++    # By default, don't save core files
++    Option -preservecore 0 {
++	If 2, save any core files produced during testing in the directory
++	specified by -tmpdir. If 1, notify the user if core files are
++	created.
++    } AcceptInteger preserveCore
++
++    # debug output doesn't get printed by default; debug level 1 spits
++    # up only the tests that were skipped because they didn't match or
++    # were specifically skipped.  A debug level of 2 would spit up the
++    # tcltest variables and flags provided; a debug level of 3 causes
++    # some additional output regarding operations of the test harness.
++    # The tcltest package currently implements only up to debug level 3.
++    Option -debug 0 {
++	Internal debug level
++    } AcceptInteger debug
++
++    proc SetSelectedConstraints args {
++	variable Option
++	foreach c $Option(-constraints) {
++	    testConstraint $c 1
++	}
++    }
++    Option -constraints {} {
++	Do not skip the listed constraints listed in -constraints.
++    } AcceptList
++    trace add variable Option(-constraints) write \
++	    [namespace code {SetSelectedConstraints ;#}]
++
++    # Don't run only the "-constraint" specified tests by default
++    proc ClearUnselectedConstraints args {
++	variable Option
++	variable testConstraints
++	if {!$Option(-limitconstraints)} {return}
++	foreach c [array names testConstraints] {
++	    if {$c ni $Option(-constraints)} {
++		testConstraint $c 0
++	    }
++	}
++    }
++    Option -limitconstraints 0 {
++	whether to run only tests with the constraints
++    } AcceptBoolean limitConstraints
++    trace add variable Option(-limitconstraints) write \
++	    [namespace code {ClearUnselectedConstraints ;#}]
++
++    # A test application has to know how to load the tested commands
++    # into the interpreter.
++    Option -load {} {
++	Specifies the script to load the tested commands.
++    } AcceptScript loadScript
++
++    # Default is to run each test file in a separate process
++    Option -singleproc 0 {
++	whether to run all tests in one process
++    } AcceptBoolean singleProcess
++
++    proc AcceptTemporaryDirectory { directory } {
++	set directory [AcceptAbsolutePath $directory]
++	if {![file exists $directory]} {
++	    file mkdir $directory
++	}
++	set directory [AcceptDirectory $directory]
++	if {![file writable $directory]} {
++	    if {[workingDirectory] eq $directory} {
++		# Special exception: accept the default value
++		# even if the directory is not writable
++		return $directory
++	    }
++	    return -code error "\"$directory\" is not writable"
++	}
++	return $directory
++    }
++
++    # Directory where files should be created
++    Option -tmpdir [workingDirectory] {
++	Save temporary files in the specified directory.
++    } AcceptTemporaryDirectory temporaryDirectory
++    trace add variable Option(-tmpdir) write \
++	    [namespace code {normalizePath Option(-tmpdir) ;#}]
++
++    # Tests should not rely on the current working directory.
++    # Files that are part of the test suite should be accessed relative
++    # to [testsDirectory]
++    Option -testdir [workingDirectory] {
++	Search tests in the specified directory.
++    } AcceptDirectory testsDirectory
++    trace add variable Option(-testdir) write \
++	    [namespace code {normalizePath Option(-testdir) ;#}]
++
++    proc AcceptLoadFile { file } {
++	if {$file eq {}} {return $file}
++	set file [file join [temporaryDirectory] $file]
++	return [AcceptReadable $file]
++    }
++    proc ReadLoadScript {args} {
++	variable Option
++	variable fullutf
++
++	if {$Option(-loadfile) eq {}} {return}
++	set tmp [open $Option(-loadfile) r]
++	if {$fullutf} {
++	    fconfigure $tmp -profile tcl8 -encoding utf-8
++	}
++	loadScript [read $tmp]
++	close $tmp
++    }
++    Option -loadfile {} {
++	Read the script to load the tested commands from the specified file.
++    } AcceptLoadFile loadFile
++    trace add variable Option(-loadfile) write [namespace code ReadLoadScript]
++
++    proc AcceptOutFile { file } {
++	if {[string equal stderr $file]} {return $file}
++	if {[string equal stdout $file]} {return $file}
++	return [file join [temporaryDirectory] $file]
++    }
++
++    # output goes to stdout by default
++    Option -outfile stdout {
++	Send output from test runs to the specified file.
++    } AcceptOutFile outputFile
++    trace add variable Option(-outfile) write \
++	    [namespace code {outputChannel $Option(-outfile) ;#}]
++
++    # errors go to stderr by default
++    Option -errfile stderr {
++	Send errors from test runs to the specified file.
++    } AcceptOutFile errorFile
++    trace add variable Option(-errfile) write \
++	    [namespace code {errorChannel $Option(-errfile) ;#}]
++
++    proc loadIntoChildInterpreter {child args} {
++	variable Version
++	interp eval $child [package ifneeded tcltest $Version]
++	interp eval $child "tcltest::configure {*}{$args}"
++	interp alias $child ::tcltest::ReportToParent \
++	    {} ::tcltest::ReportedFromChild
++    }
++    proc ReportedFromChild {total passed skipped failed because newfiles} {
++	variable numTests
++	variable skippedBecause
++	variable createdNewFiles
++	incr numTests(Total)   $total
++	incr numTests(Passed)  $passed
++	incr numTests(Skipped) $skipped
++	incr numTests(Failed)  $failed
++	foreach {constraint count} $because {
++	    incr skippedBecause($constraint) $count
++	}
++	foreach {testfile created} $newfiles {
++	    lappend createdNewFiles($testfile) {*}$created
++	}
++	return
++    }
++}
++
++#####################################################################
++
++# tcltest::Debug* --
++#
++#     Internal helper procedures to write out debug information
++#     dependent on the chosen level. A test shell may override
++#     them, f.e. to redirect the output into a different
++#     channel, or even into a GUI.
++
++# tcltest::DebugPuts --
++#
++#     Prints the specified string if the current debug level is
++#     higher than the provided level argument.
++#
++# Arguments:
++#     level   The lowest debug level triggering the output
++#     string  The string to print out.
++#
++# Results:
++#     Prints the string. Nothing else is allowed.
++#
++# Side Effects:
++#     None.
++#
++
++proc tcltest::DebugPuts {level string} {
++    variable debug
++    if {$debug >= $level} {
++	puts $string
++    }
++    return
++}
++
++# tcltest::DebugPArray --
++#
++#     Prints the contents of the specified array if the current
++#       debug level is higher than the provided level argument
++#
++# Arguments:
++#     level           The lowest debug level triggering the output
++#     arrayvar        The name of the array to print out.
++#
++# Results:
++#     Prints the contents of the array. Nothing else is allowed.
++#
++# Side Effects:
++#     None.
++#
++
++proc tcltest::DebugPArray {level arrayvar} {
++    variable debug
++
++    if {$debug >= $level} {
++	catch {upvar 1 $arrayvar $arrayvar}
++	parray $arrayvar
++    }
++    return
++}
++
++# Define our own [parray] in ::tcltest that will inherit use of the [puts]
++# defined in ::tcltest.  NOTE: Ought to construct with [info args] and
++# [info default], but can't be bothered now.  If [parray] changes, then
++# this will need changing too.
++auto_load ::parray
++proc tcltest::parray {a {pattern *}} [info body ::parray]
++
++# tcltest::DebugDo --
++#
++#     Executes the script if the current debug level is greater than
++#       the provided level argument
++#
++# Arguments:
++#     level   The lowest debug level triggering the execution.
++#     script  The tcl script executed upon a debug level high enough.
++#
++# Results:
++#     Arbitrary side effects, dependent on the executed script.
++#
++# Side Effects:
++#     None.
++#
++
++proc tcltest::DebugDo {level script} {
++    variable debug
++
++    if {$debug >= $level} {
++	uplevel 1 $script
++    }
++    return
++}
++
++#####################################################################
++
++proc tcltest::Warn {msg} {
++    puts [outputChannel] "WARNING: $msg"
++}
++
++# tcltest::mainThread
++#
++#     Accessor command for tcltest variable mainThread.
++#
++proc tcltest::mainThread { {new ""} } {
++    variable mainThread
++    if {[llength [info level 0]] == 1} {
++	return $mainThread
++    }
++    set mainThread $new
++}
++
++# tcltest::testConstraint --
++#
++#	sets a test constraint to a value; to do multiple constraints,
++#       call this proc multiple times.  also returns the value of the
++#       named constraint if no value was supplied.
++#
++# Arguments:
++#	constraint - name of the constraint
++#       value - new value for constraint (should be boolean) - if not
++#               supplied, this is a query
++#
++# Results:
++#	content of tcltest::testConstraints($constraint)
++#
++# Side effects:
++#	none
++
++proc tcltest::testConstraint {constraint {value ""}} {
++    variable testConstraints
++    variable Option
++    DebugPuts 3 "entering testConstraint $constraint $value"
++    if {[llength [info level 0]] == 2} {
++	return $testConstraints($constraint)
++    }
++    # Check for boolean values
++    if {[catch {expr {$value && 1}} msg]} {
++	return -code error $msg
++    }
++    if {[limitConstraints] && ($constraint ni $Option(-constraints))} {
++	set value 0
++    }
++    set testConstraints($constraint) $value
++}
++
++# tcltest::interpreter --
++#
++#	the interpreter name stored in tcltest::tcltest
++#
++# Arguments:
++#	executable name
++#
++# Results:
++#	content of tcltest::tcltest
++#
++# Side effects:
++#	None.
++
++proc tcltest::interpreter { {interp ""} } {
++    variable tcltest
++    if {[llength [info level 0]] == 1} {
++	return $tcltest
++    }
++    set tcltest $interp
++}
++
++#####################################################################
++
++# tcltest::AddToSkippedBecause --
++#
++#	Increments the variable used to track how many tests were
++#       skipped because of a particular constraint.
++#
++# Arguments:
++#	constraint     The name of the constraint to be modified
++#
++# Results:
++#	Modifies tcltest::skippedBecause; sets the variable to 1 if
++#       didn't previously exist - otherwise, it just increments it.
++#
++# Side effects:
++#	None.
++
++proc tcltest::AddToSkippedBecause { constraint {value 1}} {
++    # add the constraint to the list of constraints that kept tests
++    # from running
++    variable skippedBecause
++
++    if {[info exists skippedBecause($constraint)]} {
++	incr skippedBecause($constraint) $value
++    } else {
++	set skippedBecause($constraint) $value
++    }
++    return
++}
++
++# tcltest::PrintError --
++#
++#	Prints errors to tcltest::errorChannel and then flushes that
++#       channel, making sure that all messages are < 80 characters per
++#       line.
++#
++# Arguments:
++#	errorMsg     String containing the error to be printed
++#
++# Results:
++#	None.
++#
++# Side effects:
++#	None.
++
++proc tcltest::PrintError {errorMsg} {
++    set InitialMessage "Error:  "
++    set InitialMsgLen  [string length $InitialMessage]
++    puts -nonewline [errorChannel] $InitialMessage
++
++    # Keep track of where the end of the string is.
++    set endingIndex [string length $errorMsg]
++
++    if {$endingIndex < (80 - $InitialMsgLen)} {
++	puts [errorChannel] $errorMsg
++    } else {
++	# Print up to 80 characters on the first line, including the
++	# InitialMessage.
++	set beginningIndex [string last " " [string range $errorMsg 0 \
++		[expr {80 - $InitialMsgLen}]]]
++	puts [errorChannel] [string range $errorMsg 0 $beginningIndex]
++
++	while {$beginningIndex ne "end"} {
++	    puts -nonewline [errorChannel] \
++		    [string repeat " " $InitialMsgLen]
++	    if {($endingIndex - $beginningIndex)
++		    < (80 - $InitialMsgLen)} {
++		puts [errorChannel] [string trim \
++			[string range $errorMsg $beginningIndex end]]
++		break
++	    } else {
++		set newEndingIndex [expr {[string last " " \
++			[string range $errorMsg $beginningIndex \
++				[expr {$beginningIndex
++					+ (80 - $InitialMsgLen)}]
++		]] + $beginningIndex}]
++		if {($newEndingIndex <= 0)
++			|| ($newEndingIndex <= $beginningIndex)} {
++		    set newEndingIndex end
++		}
++		puts [errorChannel] [string trim \
++			[string range $errorMsg \
++			    $beginningIndex $newEndingIndex]]
++		set beginningIndex $newEndingIndex
++	    }
++	}
++    }
++    flush [errorChannel]
++    return
++}
++
++# tcltest::SafeFetch --
++#
++#	 The following trace procedure makes it so that we can safely
++#        refer to non-existent members of the testConstraints array
++#        without causing an error.  Instead, reading a non-existent
++#        member will return 0. This is necessary because tests are
++#        allowed to use constraint "X" without ensuring that
++#        testConstraints("X") is defined.
++#
++# Arguments:
++#	n1 - name of the array (testConstraints)
++#       n2 - array key value (constraint name)
++#       op - operation performed on testConstraints (generally r)
++#
++# Results:
++#	none
++#
++# Side effects:
++#	sets testConstraints($n2) to 0 if it's referenced but never
++#       before used
++
++proc tcltest::SafeFetch {n1 n2 op} {
++    variable testConstraints
++    DebugPuts 3 "entering SafeFetch $n1 $n2 $op"
++    if {$n2 eq {}} {return}
++    if {![info exists testConstraints($n2)]} {
++	if {[catch {testConstraint $n2 [eval [ConstraintInitializer $n2]]}]} {
++	    testConstraint $n2 0
++	}
++    }
++}
++
++# tcltest::Asciify --
++#
++#       Transforms the passed string to contain only printable ascii characters.
++#       Useful for printing to terminals. Non-printables are mapped to
++#       \x, \u or \U sequences, except \n.
++#
++# Arguments:
++#       s - string to transform
++#
++# Results:
++#       The transformed strings
++#
++# Side effects:
++#       None.
++
++proc tcltest::Asciify {s} {
++    set print ""
++    foreach c [split $s ""] {
++	if {(($c < "\x7F") && [string is print $c]) || ($c eq "\n")} {
++	    append print $c
++	} elseif {$c < "\u0100"} {
++	    append print \\x[format %02X [scan $c %c]]
++	} elseif {$c > "\uFFFF"} {
++	    append print \\U[format %08X [scan $c %c]]
++	} else {
++	    append print \\u[format %04X [scan $c %c]]
++	}
++    }
++    return $print
++}
++
++# tcltest::ConstraintInitializer --
++#
++#	Get or set a script that when evaluated in the tcltest namespace
++#	will return a boolean value with which to initialize the
++#	associated constraint.
++#
++# Arguments:
++#	constraint - name of the constraint initialized by the script
++#	script - the initializer script
++#
++# Results
++#	boolean value of the constraint - enabled or disabled
++#
++# Side effects:
++#	Constraint is initialized for future reference by [test]
++proc tcltest::ConstraintInitializer {constraint {script ""}} {
++    variable ConstraintInitializer
++    DebugPuts 3 "entering ConstraintInitializer $constraint $script"
++    if {[llength [info level 0]] == 2} {
++	return $ConstraintInitializer($constraint)
++    }
++    # Check for boolean values
++    if {![info complete $script]} {
++	return -code error "ConstraintInitializer must be complete script"
++    }
++    set ConstraintInitializer($constraint) $script
++}
++
++# tcltest::InitConstraints --
++#
++# Call all registered constraint initializers to force initialization
++# of all known constraints.
++# See the tcltest man page for the list of built-in constraints defined
++# in this procedure.
++#
++# Arguments:
++#	none
++#
++# Results:
++#	The testConstraints array is reset to have an index for each
++#	built-in test constraint.
++#
++# Side Effects:
++#       None.
++#
++
++proc tcltest::InitConstraints {} {
++    variable ConstraintInitializer
++    initConstraintsHook
++    foreach constraint [array names ConstraintInitializer] {
++	testConstraint $constraint
++    }
++}
++
++proc tcltest::DefineConstraintInitializers {} {
++    ConstraintInitializer singleTestInterp {singleProcess}
++
++    # All the 'pc' constraints are here for backward compatibility and
++    # are not documented.  They have been replaced with equivalent 'win'
++    # constraints.
++
++    ConstraintInitializer unixOnly \
++	    {string equal $::tcl_platform(platform) unix}
++    ConstraintInitializer macOnly \
++	    {string equal $::tcl_platform(platform) macintosh}
++    ConstraintInitializer pcOnly \
++	    {string equal $::tcl_platform(platform) windows}
++    ConstraintInitializer winOnly \
++	    {string equal $::tcl_platform(platform) windows}
++
++    ConstraintInitializer unix {testConstraint unixOnly}
++    ConstraintInitializer mac {testConstraint macOnly}
++    ConstraintInitializer pc {testConstraint pcOnly}
++    ConstraintInitializer win {testConstraint winOnly}
++
++    ConstraintInitializer unixOrPc \
++	    {expr {[testConstraint unix] || [testConstraint pc]}}
++    ConstraintInitializer macOrPc \
++	    {expr {[testConstraint mac] || [testConstraint pc]}}
++    ConstraintInitializer unixOrWin \
++	    {expr {[testConstraint unix] || [testConstraint win]}}
++    ConstraintInitializer macOrWin \
++	    {expr {[testConstraint mac] || [testConstraint win]}}
++    ConstraintInitializer macOrUnix \
++	    {expr {[testConstraint mac] || [testConstraint unix]}}
++
++    ConstraintInitializer nt {string equal $::tcl_platform(os) "Windows NT"}
++    ConstraintInitializer 95 {string equal $::tcl_platform(os) "Windows 95"}
++    ConstraintInitializer 98 {string equal $::tcl_platform(os) "Windows 98"}
++
++    # The following Constraints switches are used to mark tests that
++    # should work, but have been temporarily disabled on certain
++    # platforms because they don't and we haven't gotten around to
++    # fixing the underlying problem.
++
++    ConstraintInitializer tempNotPc {expr {![testConstraint pc]}}
++    ConstraintInitializer tempNotWin {expr {![testConstraint win]}}
++    ConstraintInitializer tempNotMac {expr {![testConstraint mac]}}
++    ConstraintInitializer tempNotUnix {expr {![testConstraint unix]}}
++
++    # The following Constraints switches are used to mark tests that
++    # crash on certain platforms, so that they can be reactivated again
++    # when the underlying problem is fixed.
++
++    ConstraintInitializer pcCrash {expr {![testConstraint pc]}}
++    ConstraintInitializer winCrash {expr {![testConstraint win]}}
++    ConstraintInitializer macCrash {expr {![testConstraint mac]}}
++    ConstraintInitializer unixCrash {expr {![testConstraint unix]}}
++
++    # Skip empty tests
++
++    ConstraintInitializer emptyTest {expr 0}
++
++    # By default, tests that expose known bugs are skipped.
++
++    ConstraintInitializer knownBug {expr 0}
++
++    # By default, non-portable tests are skipped.
++
++    ConstraintInitializer nonPortable {expr 0}
++
++    # By default, extremely slow, extensive or IO-aggressive tests are skipped.
++
++    ConstraintInitializer extensive {expr 0}
++
++    # Some tests require user interaction.
++
++    ConstraintInitializer userInteraction {expr 0}
++
++    # Some tests must be skipped if the interpreter is not in
++    # interactive mode
++
++    ConstraintInitializer interactive \
++	    {expr {[info exists ::tcl_interactive] && $::tcl_interactive}}
++
++    # Some tests can only be run if the installation came from a CD
++    # image instead of a web image.  Some tests must be skipped if you
++    # are running as root on Unix.  Other tests can only be run if you
++    # are running as root on Unix.
++
++    ConstraintInitializer root {expr \
++	    {($::tcl_platform(platform) eq "unix") &&
++		    ($::tcl_platform(user) in {root {}})}}
++    ConstraintInitializer notRoot {expr {![testConstraint root]}}
++
++    # Set nonBlockFiles constraint: 1 means this platform supports
++    # setting files into nonblocking mode.
++
++    ConstraintInitializer nonBlockFiles {
++	    set code [expr {[catch {set f [open defs r]}]
++		    || [catch {fconfigure $f -blocking off}]}]
++	    catch {close $f}
++	    set code
++    }
++
++    # Set asyncPipeClose constraint: 1 means this platform supports
++    # async flush and async close on a pipe.
++    #
++    # Test for SCO Unix - cannot run async flushing tests because a
++    # potential problem with select is apparently interfering.
++    # (Mark Diekhans).
++
++    ConstraintInitializer asyncPipeClose {expr {
++	    !([string equal unix $::tcl_platform(platform)]
++	    && ([catch {exec uname -X | fgrep {Release = 3.2v}}] == 0))}}
++
++    # Test to see if we have a broken version of sprintf with respect
++    # to the "e" format of floating-point numbers.
++
++    ConstraintInitializer eformat {string equal [format %g 5e-5] 5e-05}
++
++    # Test to see if execed commands such as cat, echo, rm and so forth
++    # are present on this machine.
++
++    ConstraintInitializer unixExecs {
++	set code 1
++        if {$::tcl_platform(platform) eq "macintosh"} {
++	    set code 0
++        }
++        if {$::tcl_platform(platform) eq "windows"} {
++	    if {[catch {
++	        set file _tcl_test_remove_me.txt
++	        makeFile {hello} $file
++	    }]} {
++	        set code 0
++	    } elseif {
++	        [catch {exec cat $file}] ||
++	        [catch {exec echo hello}] ||
++	        [catch {exec sh -c echo hello}] ||
++	        [catch {exec wc $file}] ||
++	        [catch {exec sleep 1}] ||
++	        [catch {exec echo abc > $file}] ||
++	        [catch {exec chmod 644 $file}] ||
++	        [catch {exec rm $file}] ||
++	        [llength [auto_execok mkdir]] == 0 ||
++	        [llength [auto_execok fgrep]] == 0 ||
++	        [llength [auto_execok grep]] == 0 ||
++	        [llength [auto_execok ps]] == 0
++	    } {
++	        set code 0
++	    }
++	    removeFile $file
++        }
++	set code
++    }
++
++    ConstraintInitializer stdio {
++	variable fullutf
++
++	set code 0
++	if {![catch {set f [open "|[list [interpreter]]" w]}]} {
++	    if {$fullutf} {
++		fconfigure $f -profile tcl8 -encoding utf-8
++	    }
++	    if {![catch {puts $f exit}]} {
++		if {![catch {close $f}]} {
++		    set code 1
++		}
++	    }
++	}
++	set code
++    }
++
++    # Deliberately call socket with the wrong number of arguments.  The
++    # error message you get will indicate whether sockets are available
++    # on this system.
++
++    ConstraintInitializer socket {
++	catch {socket} msg
++	string compare $msg "sockets are not available on this system"
++    }
++
++    # Check for internationalization
++    ConstraintInitializer hasIsoLocale {
++	if {[llength [info commands testlocale]] == 0} {
++	    set code 0
++	} else {
++	    set code [string length [SetIso8859_1_Locale]]
++	    RestoreLocale
++	}
++	set code
++    }
++
++}
++#####################################################################
++
++# Usage and command line arguments processing.
++
++# tcltest::PrintUsageInfo
++#
++#	Prints out the usage information for package tcltest.  This can
++#	be customized with the redefinition of [PrintUsageInfoHook].
++#
++# Arguments:
++#	none
++#
++# Results:
++#       none
++#
++# Side Effects:
++#       none
++proc tcltest::PrintUsageInfo {} {
++    puts [Usage]
++    PrintUsageInfoHook
++}
++
++proc tcltest::Usage { {option ""} } {
++    variable Usage
++    variable Verify
++    if {[llength [info level 0]] == 1} {
++	set msg "Usage: [file tail [info nameofexecutable]] script "
++	append msg "?-help? ?flag value? ... \n"
++	append msg "Available flags (and valid input values) are:"
++
++	set max 0
++	set allOpts [concat -help [Configure]]
++	foreach opt $allOpts {
++	    set foo [Usage $opt]
++	    lassign $foo x type($opt) usage($opt)
++	    set line($opt) "  $opt $type($opt)  "
++	    set length($opt) [string length $line($opt)]
++	    if {$length($opt) > $max} {set max $length($opt)}
++	}
++	set rest [expr {72 - $max}]
++	foreach opt $allOpts {
++	    append msg \n$line($opt)
++	    append msg [string repeat " " [expr {$max - $length($opt)}]]
++	    set u [string trim $usage($opt)]
++	    catch {append u "  (default: \[[Configure $opt]])"}
++	    regsub -all {\s*\n\s*} $u " " u
++	    while {[string length $u] > $rest} {
++		set break [string wordstart $u $rest]
++		if {$break == 0} {
++		    set break [string wordend $u 0]
++		}
++		append msg [string range $u 0 [expr {$break - 1}]]
++		set u [string trim [string range $u $break end]]
++		append msg \n[string repeat " " $max]
++	    }
++	    append msg $u
++	}
++	return $msg\n
++    } elseif {$option eq "-help"} {
++	return [list -help "" "Display this usage information."]
++    } else {
++	set type [lindex [info args $Verify($option)] 0]
++	return [list $option $type $Usage($option)]
++    }
++}
++
++# tcltest::ProcessFlags --
++#
++#	process command line arguments supplied in the flagArray - this
++#	is called by processCmdLineArgs.  Modifies tcltest variables
++#	according to the content of the flagArray.
++#
++# Arguments:
++#	flagArray - array containing name/value pairs of flags
++#
++# Results:
++#	sets tcltest variables according to their values as defined by
++#       flagArray
++#
++# Side effects:
++#	None.
++
++proc tcltest::ProcessFlags {flagArray} {
++    # Process -help first
++    if {"-help" in $flagArray} {
++	PrintUsageInfo
++	exit 1
++    }
++
++    if {[llength $flagArray] == 0} {
++	RemoveAutoConfigureTraces
++    } else {
++	set args $flagArray
++	while {[llength $args] > 1 && [catch {configure {*}$args} msg]} {
++
++	    # Something went wrong parsing $args for tcltest options
++	    # Check whether the problem is "unknown option"
++	    if {[regexp {^unknown option (\S+):} $msg -> option]} {
++		# Could be this is an option the Hook knows about
++		set moreOptions [processCmdLineArgsAddFlagsHook]
++		if {$option ni $moreOptions} {
++		    # Nope.  Report the error, including additional options,
++		    # but keep going
++		    if {[llength $moreOptions]} {
++			append msg ", "
++			append msg [join [lrange $moreOptions 0 end-1] ", "]
++			append msg "or [lindex $moreOptions end]"
++		    }
++		    Warn $msg
++		}
++	    } else {
++		# error is something other than "unknown option"
++		# notify user of the error; and exit
++		puts [errorChannel] $msg
++		exit 1
++	    }
++
++	    # To recover, find that unknown option and remove up to it.
++	    # then retry
++	    while {[lindex $args 0] ne $option} {
++		set args [lrange $args 2 end]
++	    }
++	    set args [lrange $args 2 end]
++	}
++	if {[llength $args] == 1} {
++	    puts [errorChannel] \
++		    "missing value for option [lindex $args 0]"
++	    exit 1
++	}
++    }
++
++    # Call the hook
++    catch {
++        array set flag $flagArray
++        processCmdLineArgsHook [array get flag]
++    }
++    return
++}
++
++# tcltest::ProcessCmdLineArgs --
++#
++#       This procedure must be run after constraint initialization is
++#	set up (by [DefineConstraintInitializers]) because some constraints
++#	can be overridden.
++#
++#       Perform configuration according to the command-line options.
++#
++# Arguments:
++#	none
++#
++# Results:
++#	Sets the above-named variables in the tcltest namespace.
++#
++# Side Effects:
++#       None.
++#
++
++proc tcltest::ProcessCmdLineArgs {} {
++    variable originalEnv
++    variable testConstraints
++
++    # The "argv" var doesn't exist in some cases, so use {}.
++    if {![info exists ::argv]} {
++	ProcessFlags {}
++    } else {
++	ProcessFlags $::argv
++    }
++
++    # Spit out everything you know if we're at a debug level 2 or
++    # greater
++    DebugPuts 2 "Flags passed into tcltest:"
++    if {[info exists ::env(TCLTEST_OPTIONS)]} {
++	DebugPuts 2 \
++		"    ::env(TCLTEST_OPTIONS): $::env(TCLTEST_OPTIONS)"
++    }
++    if {[info exists ::argv]} {
++	DebugPuts 2 "    argv: $::argv"
++    }
++    DebugPuts    2 "tcltest::debug              = [debug]"
++    DebugPuts    2 "tcltest::testsDirectory     = [testsDirectory]"
++    DebugPuts    2 "tcltest::workingDirectory   = [workingDirectory]"
++    DebugPuts    2 "tcltest::temporaryDirectory = [temporaryDirectory]"
++    DebugPuts    2 "tcltest::outputChannel      = [outputChannel]"
++    DebugPuts    2 "tcltest::errorChannel       = [errorChannel]"
++    DebugPuts    2 "Original environment (tcltest::originalEnv):"
++    DebugPArray  2 originalEnv
++    DebugPuts    2 "Constraints:"
++    DebugPArray  2 testConstraints
++}
++
++#####################################################################
++
++# Code to run the tests goes here.
++
++# tcltest::TestPuts --
++#
++#	Used to redefine puts in test environment.  Stores whatever goes
++#	out on stdout in tcltest::outData and stderr in errData before
++#	sending it on to the regular puts.
++#
++# Arguments:
++#	same as standard puts
++#
++# Results:
++#	none
++#
++# Side effects:
++#       Intercepts puts; data that would otherwise go to stdout, stderr,
++#	or file channels specified in outputChannel and errorChannel
++#	does not get sent to the normal puts function.
++namespace eval tcltest::Replace {
++    namespace export puts
++}
++proc tcltest::Replace::puts {args} {
++    variable [namespace parent]::outData
++    variable [namespace parent]::errData
++    switch [llength $args] {
++	1 {
++	    # Only the string to be printed is specified
++	    append outData [lindex $args 0]\n
++	    return
++	    # return [Puts [lindex $args 0]]
++	}
++	2 {
++	    # Either -nonewline or channelId has been specified
++	    if {[lindex $args 0] eq "-nonewline"} {
++		append outData [lindex $args end]
++		return
++		# return [Puts -nonewline [lindex $args end]]
++	    } else {
++		set channel [lindex $args 0]
++		set newline \n
++	    }
++	}
++	3 {
++	    if {[lindex $args 0] eq "-nonewline"} {
++		# Both -nonewline and channelId are specified, unless
++		# it's an error.  -nonewline is supposed to be argv[0].
++		set channel [lindex $args 1]
++		set newline ""
++	    }
++	}
++    }
++
++    if {[info exists channel]} {
++	if {$channel in [list [[namespace parent]::outputChannel] stdout]} {
++	    append outData [lindex $args end]$newline
++	    return
++	} elseif {$channel in [list [[namespace parent]::errorChannel] stderr]} {
++	    append errData [lindex $args end]$newline
++	    return
++	}
++    }
++
++    # If we haven't returned by now, we don't know how to handle the
++    # input.  Let puts handle it.
++    return [Puts {*}$args]
++}
++
++# tcltest::Eval --
++#
++#	Evaluate the script in the test environment.  If ignoreOutput is
++#       false, store data sent to stderr and stdout in outData and
++#       errData.  Otherwise, ignore this output altogether.
++#
++# Arguments:
++#	script             Script to evaluate
++#       ?ignoreOutput?     Indicates whether or not to ignore output
++#			   sent to stdout & stderr
++#
++# Results:
++#	result from running the script
++#
++# Side effects:
++#	Empties the contents of outData and errData before running a
++#	test if ignoreOutput is set to 0.
++
++proc tcltest::Eval {script {ignoreOutput 1}} {
++    variable outData
++    variable errData
++    DebugPuts 3 "[lindex [info level 0] 0] called"
++    if {!$ignoreOutput} {
++	set outData {}
++	set errData {}
++	rename ::puts [namespace current]::Replace::Puts
++	namespace eval :: [list namespace import [namespace origin Replace::puts]]
++	namespace import Replace::puts
++    }
++    set result [uplevel 1 $script]
++    if {!$ignoreOutput} {
++	namespace forget puts
++	namespace eval :: namespace forget puts
++	rename [namespace current]::Replace::Puts ::puts
++    }
++    return $result
++}
++
++# tcltest::CompareStrings --
++#
++#	compares the expected answer to the actual answer, depending on
++#	the mode provided.  Mode determines whether a regexp, exact,
++#	glob or custom comparison is done.
++#
++# Arguments:
++#	actual - string containing the actual result
++#       expected - pattern to be matched against
++#       mode - type of comparison to be done
++#
++# Results:
++#	result of the match
++#
++# Side effects:
++#	None.
++
++proc tcltest::CompareStrings {actual expected mode} {
++    variable CustomMatch
++    if {![info exists CustomMatch($mode)]} {
++        return -code error "No matching command registered for `-match $mode'"
++    }
++    set match [namespace eval :: $CustomMatch($mode) [list $expected $actual]]
++    if {[catch {expr {$match && $match}} result]} {
++	return -code error "Invalid result from `-match $mode' command: $result"
++    }
++    return $match
++}
++
++# tcltest::customMatch --
++#
++#	registers a command to be called when a particular type of
++#	matching is required.
++#
++# Arguments:
++#	nickname - Keyword for the type of matching
++#	cmd - Incomplete command that implements that type of matching
++#		when completed with expected string and actual string
++#		and then evaluated.
++#
++# Results:
++#	None.
++#
++# Side effects:
++#	Sets the variable tcltest::CustomMatch
++
++proc tcltest::customMatch {mode script} {
++    variable CustomMatch
++    if {![info complete $script]} {
++	return -code error \
++		"invalid customMatch script; can't evaluate after completion"
++    }
++    set CustomMatch($mode) $script
++}
++
++# tcltest::SubstArguments list
++#
++# This helper function takes in a list of words, then perform a
++# substitution on the list as though each word in the list is a separate
++# argument to the Tcl function.  For example, if this function is
++# invoked as:
++#
++#      SubstArguments {$a {$a}}
++#
++# Then it is as though the function is invoked as:
++#
++#      SubstArguments $a {$a}
++#
++# This code is adapted from Paul Duffin's function "SplitIntoWords".
++# The original function can be found  on:
++#
++#      http://purl.org/thecliff/tcl/wiki/858.html
++#
++# Results:
++#     a list containing the result of the substitution
++#
++# Exceptions:
++#     An error may occur if the list containing unbalanced quote or
++#     unknown variable.
++#
++# Side Effects:
++#     None.
++#
++
++proc tcltest::SubstArguments {argList} {
++
++    # We need to split the argList up into tokens but cannot use list
++    # operations as they throw away some significant quoting, and
++    # [split] ignores braces as it should.  Therefore what we do is
++    # gradually build up a string out of whitespace-separated strings.
++    # We cannot use [split] to split the argList into whitespace
++    # separated strings as it throws away the whitespace which maybe
++    # important so we have to do it all by hand.
++
++    set result {}
++    set token ""
++
++    while {[string length $argList]} {
++        # Look for the next word containing a quote: " { }
++        if {[regexp -indices {[^ \t\n]*[\"\{\}]+[^ \t\n]*} \
++		$argList all]} {
++            # Get the text leading up to this word, but not including
++	    # this word, from the argList.
++            set text [string range $argList 0 \
++		    [expr {[lindex $all 0] - 1}]]
++            # Get the word with the quote
++            set word [string range $argList \
++                    [lindex $all 0] [lindex $all 1]]
++
++            # Remove all text up to and including the word from the
++            # argList.
++            set argList [string range $argList \
++                    [expr {[lindex $all 1] + 1}] end]
++        } else {
++            # Take everything up to the end of the argList.
++            set text $argList
++            set word {}
++            set argList {}
++        }
++
++        if {$token ne {}} {
++            # If we saw a word with quote before, then there is a
++            # multi-word token starting with that word.  In this case,
++            # add the text and the current word to this token.
++            append token $text $word
++        } else {
++            # Add the text to the result.  There is no need to parse
++            # the text because it couldn't be a part of any multi-word
++            # token.  Then start a new multi-word token with the word
++            # because we need to pass this token to the Tcl parser to
++            # check for balancing quotes
++            append result $text
++            set token $word
++        }
++
++        if { [catch {llength $token} length] == 0 && $length == 1} {
++            # The token is a valid list so add it to the result.
++            # lappend result [string trim $token]
++            append result \{$token\}
++            set token {}
++        }
++    }
++
++    # If the last token has not been added to the list then there
++    # is a problem.
++    if { [string length $token] } {
++        error "incomplete token \"$token\""
++    }
++
++    return $result
++}
++
++
++# tcltest::test --
++#
++# This procedure runs a test and prints an error message if the test
++# fails.  If verbose has been set, it also prints a message even if the
++# test succeeds.  The test will be skipped if it doesn't match the
++# match variable, if it matches an element in skip, or if one of the
++# elements of "constraints" turns out not to be true.
++#
++# If testLevel is 1, then this is a top level test, and we record
++# pass/fail information; otherwise, this information is not logged and
++# is not added to running totals.
++#
++# Attributes:
++#   Only description is a required attribute.  All others are optional.
++#   Default values are indicated.
++#
++#   constraints -	A list of one or more keywords, each of which
++#			must be the name of an element in the array
++#			"testConstraints".  If any of these elements is
++#			zero, the test is skipped. This attribute is
++#			optional; default is {}
++#   body -	        Script to run to carry out the test.  It must
++#		        return a result that can be checked for
++#		        correctness.  This attribute is optional;
++#                       default is {}
++#   result -	        Expected result from script.  This attribute is
++#                       optional; default is {}.
++#   output -            Expected output sent to stdout.  This attribute
++#                       is optional; default is {}.
++#   errorOutput -       Expected output sent to stderr.  This attribute
++#                       is optional; default is {}.
++#   returnCodes -       Expected return codes.  This attribute is
++#                       optional; default is {0 2}.
++#   errorCode -         Expected error code.  This attribute is
++#                       optional; default is {*}. It is a glob pattern.
++#                       If given, returnCodes defaults to {1}.
++#   setup -             Code to run before $script (above).  This
++#                       attribute is optional; default is {}.
++#   cleanup -           Code to run after $script (above).  This
++#                       attribute is optional; default is {}.
++#   match -             specifies type of matching to do on result,
++#                       output, errorOutput; this must be a string
++#			previously registered by a call to [customMatch].
++#			The strings exact, glob, and regexp are preregistered
++#			by the tcltest package.  Default value is exact.
++#
++# Arguments:
++#   name -		Name of test, in the form foo-1.2.
++#   description -	Short textual description of the test, to
++#  		  	help humans understand what it does.
++#
++# Results:
++#	None.
++#
++# Side effects:
++#       Just about anything is possible depending on the test.
++#
++
++proc tcltest::test {name description args} {
++    global tcl_platform
++    variable testLevel
++    variable coreModTime
++    variable fullutf
++
++    DebugPuts 3 "test $name $args"
++    DebugDo 1 {
++	variable TestNames
++	catch {
++	    puts "test name '$name' re-used; prior use in $TestNames($name)"
++	}
++	set TestNames($name) [info script]
++    }
++
++    FillFilesExisted
++    incr testLevel
++
++    # Predefine everything to null except output and errorOutput.  We
++    # determine whether or not to trap output based on whether or not
++    # these variables (output & errorOutput) are defined.
++    lassign {} constraints setup cleanup body result returnCodes errorCode match
++
++    # Set the default match mode
++    set match exact
++
++    # Set the default match values for return codes (0 is the standard
++    # expected return value if everything went well; 2 represents
++    # 'return' being used in the test script).
++    set returnCodes [list 0 2]
++
++    # Set the default error code pattern
++    set errorCode "*"
++
++    # The old test format can't have a 3rd argument (constraints or
++    # script) that starts with '-'.
++    if {[string match -* [lindex $args 0]] || ([llength $args] <= 1)} {
++	if {[llength $args] == 1} {
++	    set list [SubstArguments [lindex $args 0]]
++	    foreach {element value} $list {
++		set testAttributes($element) $value
++	    }
++	    foreach item {constraints match setup body cleanup \
++		    result returnCodes errorCode output errorOutput} {
++		if {[info exists testAttributes(-$item)]} {
++		    set testAttributes(-$item) [uplevel 1 \
++			    ::concat $testAttributes(-$item)]
++		}
++	    }
++	} else {
++	    array set testAttributes $args
++	}
++
++	set validFlags {-setup -cleanup -body -result -returnCodes \
++		-errorCode -match -output -errorOutput -constraints}
++
++	foreach flag [array names testAttributes] {
++	    if {$flag ni $validFlags} {
++		incr testLevel -1
++		set sorted [lsort $validFlags]
++		set options [join [lrange $sorted 0 end-1] ", "]
++		append options ", or [lindex $sorted end]"
++		return -code error "bad option \"$flag\": must be $options"
++	    }
++	}
++
++	# store whatever the user gave us
++	foreach item [array names testAttributes] {
++	    set [string trimleft $item "-"] $testAttributes($item)
++	}
++
++	# Check the values supplied for -match
++	variable CustomMatch
++	if {$match ni [array names CustomMatch]} {
++	    incr testLevel -1
++	    set sorted [lsort [array names CustomMatch]]
++	    set values [join [lrange $sorted 0 end-1] ", "]
++	    append values ", or [lindex $sorted end]"
++	    return -code error "bad -match value \"$match\":\
++		    must be $values"
++	}
++
++	# Replace symbolic valies supplied for -returnCodes
++	foreach {strcode numcode} {ok 0 normal 0 error 1 return 2 break 3 continue 4} {
++	    set returnCodes [string map -nocase [list $strcode $numcode] $returnCodes]
++	}
++        # errorCode without returnCode 1 is meaningless
++        if {$errorCode ne "*" && 1 ni $returnCodes} {
++            set returnCodes 1
++        }
++    } else {
++	# This is parsing for the old test command format; it is here
++	# for backward compatibility.
++	set result [lindex $args end]
++	if {[llength $args] == 2} {
++	    set body [lindex $args 0]
++	} elseif {[llength $args] == 3} {
++	    set constraints [lindex $args 0]
++	    set body [lindex $args 1]
++	} else {
++	    incr testLevel -1
++	    return -code error "wrong # args:\
++		    should be \"test name desc ?options?\""
++	}
++    }
++
++    if {[Skipped $name $constraints]} {
++	incr testLevel -1
++	return
++    }
++
++    # Save information about the core file.
++    if {[preserveCore]} {
++	if {[file exists [file join [workingDirectory] core]]} {
++	    set coreModTime [file mtime [file join [workingDirectory] core]]
++	}
++    }
++
++    # First, run the setup script (or a hook if it presents):
++    if {[set cmd [namespace which -command [namespace current]::SetupTest]] ne ""} {
++	set setup [list $cmd $setup]
++    }
++    set processTest 1
++    set code [catch {uplevel 1 $setup} setupMsg]
++    if {$code == 1} {
++	set errorInfo(setup) $::errorInfo
++	set errorCodeRes(setup) $::errorCode
++	if {$errorCodeRes(setup) eq "BYPASS-SKIPPED-TEST"} {
++	    _noticeSkipped $name $setupMsg
++	    set processTest [set code 0]
++	}
++    }
++    set setupFailure [expr {$code != 0}]
++
++    # Only run the test body if the setup was successful
++    if {$processTest && !$setupFailure} {
++
++	# Register startup time
++	if {[IsVerbose msec] || [IsVerbose usec]} {
++	    set timeStart [clock microseconds]
++	}
++
++	# Verbose notification of $body start
++	if {[IsVerbose start]} {
++	    puts [outputChannel] "---- $name start"
++	    flush [outputChannel]
++	}
++
++	set command [list [namespace origin RunTest] $name $body]
++	if {[info exists output] || [info exists errorOutput]} {
++	    set testResult [uplevel 1 [list [namespace origin Eval] $command 0]]
++	} else {
++	    set testResult [uplevel 1 [list [namespace origin Eval] $command 1]]
++	}
++	lassign $testResult actualAnswer returnCode
++	if {$returnCode == 1} {
++	    set errorInfo(body) $::errorInfo
++	    set errorCodeRes(body) $::errorCode
++	    if {$errorCodeRes(body) eq "BYPASS-SKIPPED-TEST"} {
++		_noticeSkipped $name $actualAnswer
++		set processTest [set returnCode 0]
++	    }
++	}
++    }
++
++    # check if the return code matched the expected return code
++    set codeFailure 0
++    if {$processTest && !$setupFailure && ($returnCode ni $returnCodes)} {
++	set codeFailure 1
++    }
++    set errorCodeFailure 0
++    if {$processTest && !$setupFailure && !$codeFailure && $returnCode == 1 && \
++                ![string match $errorCode $errorCodeRes(body)]} {
++	set errorCodeFailure 1
++    }
++
++    # If expected output/error strings exist, we have to compare
++    # them.  If the comparison fails, then so did the test.
++    set outputFailure 0
++    variable outData
++    if {$processTest && [info exists output] && !$codeFailure} {
++	if {[set outputCompare [catch {
++	    CompareStrings $outData $output $match
++	} outputMatch]] == 0} {
++	    set outputFailure [expr {!$outputMatch}]
++	} else {
++	    set outputFailure 1
++	}
++    }
++
++    set errorFailure 0
++    variable errData
++    if {$processTest && [info exists errorOutput] && !$codeFailure} {
++	if {[set errorCompare [catch {
++	    CompareStrings $errData $errorOutput $match
++	} errorMatch]] == 0} {
++	    set errorFailure [expr {!$errorMatch}]
++	} else {
++	    set errorFailure 1
++	}
++    }
++
++    # check if the answer matched the expected answer
++    # Only check if we ran the body of the test (no setup failure)
++    if {!$processTest} {
++    	set scriptFailure 0
++    } elseif {$setupFailure || $codeFailure} {
++	set scriptFailure 0
++    } elseif {[set scriptCompare [catch {
++	CompareStrings $actualAnswer $result $match
++    } scriptMatch]] == 0} {
++	set scriptFailure [expr {!$scriptMatch}]
++    } else {
++	set scriptFailure 1
++    }
++
++    # Always run the cleanup script (or a hook if it presents):
++    if {[set cmd [namespace which -command [namespace current]::CleanupTest]] ne ""} {
++	set cleanup [list $cmd $cleanup]
++    }
++    set code [catch {uplevel 1 $cleanup} cleanupMsg]
++    if {$code == 1} {
++	set errorInfo(cleanup) $::errorInfo
++	set errorCodeRes(cleanup) $::errorCode
++    }
++    set cleanupFailure [expr {$code != 0}]
++
++    set coreFailure 0
++    set coreMsg ""
++    # check for a core file first - if one was created by the test,
++    # then the test failed
++    if {[preserveCore]} {
++	if {[file exists [file join [workingDirectory] core]]} {
++	    # There's only a test failure if there is a core file
++	    # and (1) there previously wasn't one or (2) the new
++	    # one is different from the old one.
++	    if {[info exists coreModTime]} {
++		if {$coreModTime != [file mtime \
++			[file join [workingDirectory] core]]} {
++		    set coreFailure 1
++		}
++	    } else {
++		set coreFailure 1
++	    }
++
++	    if {([preserveCore] > 1) && ($coreFailure)} {
++		append coreMsg "\nMoving file to:\
++		    [file join [temporaryDirectory] core-$name]"
++		catch {file rename -force -- \
++		    [file join [workingDirectory] core] \
++		    [file join [temporaryDirectory] core-$name]
++		} msg
++		if {$msg ne {}} {
++		    append coreMsg "\nError:\
++			Problem renaming core file: $msg"
++		}
++	    }
++	}
++    }
++
++    if {[IsVerbose msec] || [IsVerbose usec]} {
++	set t [expr {[clock microseconds] - $timeStart}]
++	if {[IsVerbose usec]} {
++	    puts [outputChannel] "++++ $name took $t \xB5s"
++	}
++	if {[IsVerbose msec]} {
++	    puts [outputChannel] "++++ $name took [expr {round($t/1000.)}] ms"
++	}
++    }
++
++    # if skipped, it is safe to return here
++    if {!$processTest} {
++	incr testLevel -1
++	return
++    }
++
++    # if we didn't experience any failures, then we passed
++    variable numTests
++    if {!($setupFailure || $cleanupFailure || $coreFailure
++	    || $outputFailure || $errorFailure || $codeFailure
++	    || $errorCodeFailure || $scriptFailure)} {
++	if {$testLevel == 1} {
++	    incr numTests(Passed)
++	    if {[IsVerbose pass]} {
++		puts [outputChannel] "++++ $name PASSED"
++	    }
++	}
++	incr testLevel -1
++	return
++    }
++
++    # We know the test failed, tally it...
++    if {$testLevel == 1} {
++	incr numTests(Failed)
++    }
++
++    # ... then report according to the type of failure
++    variable currentFailure true
++    if {![IsVerbose body]} {
++	set body ""
++    }
++    puts [outputChannel] "\n"
++    if {[IsVerbose line]} {
++	if {![catch {set testFrame [info frame -1]}] &&
++		[dict get $testFrame type] eq "source"} {
++	    set testFile [dict get $testFrame file]
++	    set testLine [dict get $testFrame line]
++	} else {
++	    set testFile [file normalize [uplevel 1 {info script}]]
++	    if {[file readable $testFile]} {
++		set testFd [open $testFile r]
++		if {$fullutf} {
++		    fconfigure $testFd -profile tcl8 -encoding utf-8
++		}
++		set testLine [expr {[lsearch -regexp \
++			[split [read $testFd] "\n"] \
++			"^\[ \t\]*test [string map {. \\.} $name] "] + 1}]
++		close $testFd
++	    }
++	}
++	if {[info exists testLine]} {
++	    puts [outputChannel] "$testFile:$testLine: error: test failed:\
++		    $name [string trim $description]"
++	}
++    }
++    puts [outputChannel] "==== $name\
++	    [string trim $description] FAILED"
++    if {[string length $body]} {
++	puts [outputChannel] "==== Contents of test case:"
++	puts [outputChannel] $body
++    }
++    if {$setupFailure} {
++	puts [outputChannel] "---- Test setup\
++		failed:\n$setupMsg"
++	if {[info exists errorInfo(setup)]} {
++	    puts [outputChannel] "---- errorInfo(setup): $errorInfo(setup)"
++	    puts [outputChannel] "---- errorCode(setup): $errorCodeRes(setup)"
++	}
++    }
++    if {$processTest && $scriptFailure} {
++	if {$scriptCompare} {
++	    puts [outputChannel] "---- Error testing result: $scriptMatch"
++	} else {
++	    if {[catch {
++		puts [outputChannel] "---- Result was:\n[Asciify $actualAnswer]"
++	    } errMsg]} {
++		puts [outputChannel] "\n---- Result was:\n<error printing result: $errMsg>"
++	    }
++	    puts [outputChannel] "---- Result should have been\
++		    ($match matching):\n[Asciify $result]"
++	}
++    }
++    if {$errorCodeFailure} {
++	puts [outputChannel] "---- Error code was: '$errorCodeRes(body)'"
++	puts [outputChannel] "---- Error code should have been: '$errorCode'"
++    }
++    if {$codeFailure} {
++	switch -- $returnCode {
++	    0 { set msg "Test completed normally" }
++	    1 { set msg "Test generated error" }
++	    2 { set msg "Test generated return exception" }
++	    3 { set msg "Test generated break exception" }
++	    4 { set msg "Test generated continue exception" }
++	    default { set msg "Test generated exception" }
++	}
++	puts [outputChannel] "---- $msg; Return code was: $returnCode"
++	puts [outputChannel] "---- Return code should have been\
++		one of: $returnCodes"
++	if {[IsVerbose error]} {
++	    if {[info exists errorInfo(body)] && (1 ni $returnCodes)} {
++		puts [outputChannel] "---- errorInfo: $errorInfo(body)"
++		puts [outputChannel] "---- errorCode: $errorCodeRes(body)"
++	    }
++	}
++    }
++    if {$outputFailure} {
++	if {$outputCompare} {
++	    puts [outputChannel] "---- Error testing output: $outputMatch"
++	} else {
++	    puts [outputChannel] "---- Output was:\n$outData"
++	    puts [outputChannel] "---- Output should have been\
++		    ($match matching):\n$output"
++	}
++    }
++    if {$errorFailure} {
++	if {$errorCompare} {
++	    puts [outputChannel] "---- Error testing errorOutput: $errorMatch"
++	} else {
++	    puts [outputChannel] "---- Error output was:\n$errData"
++	    puts [outputChannel] "---- Error output should have\
++		    been ($match matching):\n$errorOutput"
++	}
++    }
++    if {$cleanupFailure} {
++	puts [outputChannel] "---- Test cleanup failed:\n$cleanupMsg"
++	if {[info exists errorInfo(cleanup)]} {
++	    puts [outputChannel] "---- errorInfo(cleanup): $errorInfo(cleanup)"
++	    puts [outputChannel] "---- errorCode(cleanup): $errorCodeRes(cleanup)"
++	}
++    }
++    if {$coreFailure} {
++	puts [outputChannel] "---- Core file produced while running\
++		test!  $coreMsg"
++    }
++    puts [outputChannel] "==== $name FAILED\n"
++
++    incr testLevel -1
++    return
++}
++
++# Skip --
++#
++# Skips a running test and add a reason to skipped "constraints". Can be used
++# to conditional intended abort of the test.
++#
++# Side Effects:  Maintains tally of total tests seen and tests skipped.
++#
++proc tcltest::Skip {reason} {
++    return -code error -errorcode BYPASS-SKIPPED-TEST $reason
++}
++
++proc tcltest::_noticeSkipped {name reason} {
++    variable testLevel
++    variable numTests
++
++    if {[IsVerbose skip]} {
++	puts [outputChannel] "++++ $name SKIPPED: $reason"
++    }
++
++    if {$testLevel == 1} {
++	incr numTests(Skipped)
++	AddToSkippedBecause $reason
++    }
++}
++
++
++# Skipped --
++#
++# Given a test name and it constraints, returns a boolean indicating
++# whether the current configuration says the test should be skipped.
++#
++# Side Effects:  Maintains tally of total tests seen and tests skipped.
++#
++proc tcltest::Skipped {name constraints} {
++    variable testLevel
++    variable numTests
++    variable testConstraints
++
++    if {$testLevel == 1} {
++	incr numTests(Total)
++    }
++    # skip the test if it's name matches an element of skip
++    foreach pattern [skip] {
++	if {[string match $pattern $name]} {
++	    if {$testLevel == 1} {
++		incr numTests(Skipped)
++		DebugDo 1 {AddToSkippedBecause userSpecifiedSkip}
++	    }
++	    return 1
++	}
++    }
++    # skip the test if it's name doesn't match any element of match
++    set ok 0
++    foreach pattern [match] {
++	if {[string match $pattern $name]} {
++	    set ok 1
++	    break
++	}
++    }
++    if {!$ok} {
++	if {$testLevel == 1} {
++	    incr numTests(Skipped)
++	    DebugDo 1 {AddToSkippedBecause userSpecifiedNonMatch}
++	}
++	return 1
++    }
++    if {$constraints eq {}} {
++	# If we're limited to the listed constraints and there aren't
++	# any listed, then we shouldn't run the test.
++	if {[limitConstraints]} {
++	    AddToSkippedBecause userSpecifiedLimitConstraint
++	    if {$testLevel == 1} {
++		incr numTests(Skipped)
++	    }
++	    return 1
++	}
++    } else {
++	# "constraints" argument exists;
++	# make sure that the constraints are satisfied.
++
++	set doTest 0
++        set constraints [string trim $constraints]
++	if {[string match {*[$\[]*} $constraints] != 0} {
++	    # full expression, e.g. {$foo > [info tclversion]}
++	    catch {set doTest [uplevel #0 [list expr $constraints]]}
++	} elseif {[regexp {[^.:_a-zA-Z0-9 \n\r\t]+} $constraints] != 0} {
++	    # something like {a || b} should be turned into
++	    # $testConstraints(a) || $testConstraints(b).
++	    regsub -all {[.\w]+} $constraints {$testConstraints(&)} c
++	    catch {set doTest [eval [list expr $c]]}
++	} elseif {![catch {llength $constraints}]} {
++	    # just simple constraints such as {unixOnly fonts}.
++	    set doTest 1
++	    foreach constraint $constraints {
++		if {(![info exists testConstraints($constraint)]) \
++			|| (!$testConstraints($constraint))} {
++		    set doTest 0
++
++		    # store the constraint that kept the test from
++		    # running
++		    set constraints $constraint
++		    break
++		}
++	    }
++	}
++
++	if {!$doTest} {
++	    _noticeSkipped $name $constraints
++	    return 1
++	}
++    }
++    return 0
++}
++
++# RunTest --
++#
++# This is where the body of a test is evaluated.  The combination of
++# [RunTest] and [Eval] allows the output and error output of the test
++# body to be captured for comparison against the expected values.
++
++proc tcltest::RunTest {name script} {
++    DebugPuts 3 "Running $name {$script}"
++
++    # If there is no "memory" command (because memory debugging isn't
++    # enabled), then don't attempt to use the command.
++
++    if {[llength [info commands memory]] == 1} {
++	memory tag $name
++    }
++
++    # run the test script (or a hook if it presents):
++    if {[set cmd [namespace which -command [namespace current]::EvalTest]] ne ""} {
++	set script [list $cmd $script]
++    }
++    set code [catch {uplevel 1 $script} actualAnswer]
++
++    return [list $actualAnswer $code]
++}
++
++#####################################################################
++
++# tcltest::cleanupTestsHook --
++#
++#	This hook allows a harness that builds upon tcltest to specify
++#       additional things that should be done at cleanup.
++#
++
++if {[llength [info commands tcltest::cleanupTestsHook]] == 0} {
++    proc tcltest::cleanupTestsHook {} {}
++}
++
++# tcltest::cleanupTests --
++#
++# Remove files and dirs created using the makeFile and makeDirectory
++# commands since the last time this proc was invoked.
++#
++# Print the names of the files created without the makeFile command
++# since the tests were invoked.
++#
++# Print the number tests (total, passed, failed, and skipped) since the
++# tests were invoked.
++#
++# Restore original environment (as reported by special variable env).
++#
++# Arguments:
++#      calledFromAllFile - if 0, behave as if we are running a single
++#      test file within an entire suite of tests.  if we aren't running
++#      a single test file, then don't report status.  check for new
++#      files created during the test run and report on them.  if 1,
++#      report collated status from all the test file runs.
++#
++# Results:
++#      None.
++#
++# Side Effects:
++#      None
++#
++
++proc tcltest::cleanupTests {{calledFromAllFile 0}} {
++    variable filesMade
++    variable filesExisted
++    variable createdNewFiles
++    variable testSingleFile
++    variable numTests
++    variable numTestFiles
++    variable failFiles
++    variable skippedBecause
++    variable currentFailure
++    variable originalEnv
++    variable originalTclPlatform
++    variable coreModTime
++
++    FillFilesExisted
++    set testFileName [file tail [info script]]
++
++    # Hook to handle reporting to a parent interpreter
++    if {[llength [info commands [namespace current]::ReportToParent]]} {
++	ReportToParent $numTests(Total) $numTests(Passed) $numTests(Skipped) \
++	    $numTests(Failed) [array get skippedBecause] \
++	    [array get createdNewFiles]
++	set testSingleFile false
++    }
++
++    # Call the cleanup hook
++    cleanupTestsHook
++
++    # Remove files and directories created by the makeFile and
++    # makeDirectory procedures.  Record the names of files in
++    # workingDirectory that were not preexisting, and associate them
++    # with the test file that created them.
++
++    if {!$calledFromAllFile} {
++	foreach file $filesMade {
++	    if {[file exists $file]} {
++		DebugDo 1 {Warn "cleanupTests deleting $file..."}
++		catch {file delete -force -- $file}
++	    }
++	}
++	set currentFiles {}
++	foreach file [glob -nocomplain \
++		-directory [temporaryDirectory] *] {
++	    lappend currentFiles [file tail $file]
++	}
++	set newFiles {}
++	foreach file $currentFiles {
++	    if {$file ni $filesExisted} {
++		lappend newFiles $file
++	    }
++	}
++	set filesExisted $currentFiles
++	if {[llength $newFiles] > 0} {
++	    set createdNewFiles($testFileName) $newFiles
++	}
++    }
++
++    if {$calledFromAllFile || $testSingleFile} {
++
++	# print stats
++
++	puts -nonewline [outputChannel] "$testFileName:"
++	foreach index [list "Total" "Passed" "Skipped" "Failed"] {
++	    puts -nonewline [outputChannel] \
++		    "\t$index\t$numTests($index)"
++	}
++	puts [outputChannel] ""
++
++	# print number test files sourced
++	# print names of files that ran tests which failed
++
++	if {$calledFromAllFile} {
++	    puts [outputChannel] \
++		    "Sourced $numTestFiles Test Files."
++	    set numTestFiles 0
++	    if {[llength $failFiles] > 0} {
++		puts [outputChannel] \
++			"Files with failing tests: $failFiles"
++		set failFiles {}
++	    }
++	}
++
++	# if any tests were skipped, print the constraints that kept
++	# them from running.
++
++	set constraintList [array names skippedBecause]
++	if {[llength $constraintList] > 0} {
++	    puts [outputChannel] \
++		    "Number of tests skipped for each constraint:"
++	    foreach constraint [lsort $constraintList] {
++		puts [outputChannel] \
++			"\t$skippedBecause($constraint)\t$constraint"
++		unset skippedBecause($constraint)
++	    }
++	}
++
++	# report the names of test files in createdNewFiles, and reset
++	# the array to be empty.
++
++	set testFilesThatTurded [lsort [array names createdNewFiles]]
++	if {[llength $testFilesThatTurded] > 0} {
++	    puts [outputChannel] "Warning: files left behind:"
++	    foreach testFile $testFilesThatTurded {
++		puts [outputChannel] \
++			"\t$testFile:\t$createdNewFiles($testFile)"
++		unset createdNewFiles($testFile)
++	    }
++	}
++
++	# reset filesMade, filesExisted, and numTests
++
++	set filesMade {}
++	foreach index [list "Total" "Passed" "Skipped" "Failed"] {
++	    set numTests($index) 0
++	}
++
++	# exit only if running Tk in non-interactive mode
++	# This should be changed to determine if an event
++	# loop is running, which is the real issue.
++	# Actually, this doesn't belong here at all.  A package
++	# really has no business [exit]-ing an application.
++	if {[info exists ::tk_version] && ![testConstraint interactive]} {
++	    exit
++	}
++    } else {
++
++	# if we're deferring stat-reporting until all files are sourced,
++	# then add current file to failFile list if any tests in this
++	# file failed
++
++	if {$currentFailure && ($testFileName ni $failFiles)} {
++	    lappend failFiles $testFileName
++	}
++	set currentFailure false
++
++	# restore the environment to the state it was in before this package
++	# was loaded
++
++	set newEnv {}
++	set changedEnv {}
++	set removedEnv {}
++	foreach index [array names ::env] {
++	    if {![info exists originalEnv($index)]} {
++		lappend newEnv $index
++		unset ::env($index)
++	    }
++	}
++	foreach index [array names originalEnv] {
++	    if {![info exists ::env($index)]} {
++		lappend removedEnv $index
++		set ::env($index) $originalEnv($index)
++	    } elseif {$::env($index) ne $originalEnv($index)} {
++		lappend changedEnv $index
++		set ::env($index) $originalEnv($index)
++	    }
++	}
++	if {[llength $newEnv] > 0} {
++	    puts [outputChannel] \
++		    "env array elements created:\t$newEnv"
++	}
++	if {[llength $changedEnv] > 0} {
++	    puts [outputChannel] \
++		    "env array elements changed:\t$changedEnv"
++	}
++	if {[llength $removedEnv] > 0} {
++	    puts [outputChannel] \
++		    "env array elements removed:\t$removedEnv"
++	}
++
++	set changedTclPlatform {}
++	foreach index [array names originalTclPlatform] {
++	    if {$::tcl_platform($index) \
++		    != $originalTclPlatform($index)} {
++		lappend changedTclPlatform $index
++		set ::tcl_platform($index) $originalTclPlatform($index)
++	    }
++	}
++	if {[llength $changedTclPlatform] > 0} {
++	    puts [outputChannel] "tcl_platform array elements\
++		    changed:\t$changedTclPlatform"
++	}
++
++	if {[file exists [file join [workingDirectory] core]]} {
++	    if {[preserveCore] > 1} {
++		puts "rename core file (> 1)"
++		puts [outputChannel] "produced core file! \
++			Moving file to: \
++			[file join [temporaryDirectory] core-$testFileName]"
++		catch {file rename -force -- \
++			[file join [workingDirectory] core] \
++			[file join [temporaryDirectory] core-$testFileName]
++		} msg
++		if {$msg ne {}} {
++		    PrintError "Problem renaming file: $msg"
++		}
++	    } else {
++		# Print a message if there is a core file and (1) there
++		# previously wasn't one or (2) the new one is different
++		# from the old one.
++
++		if {[info exists coreModTime]} {
++		    if {$coreModTime != [file mtime \
++			    [file join [workingDirectory] core]]} {
++			puts [outputChannel] "A core file was created!"
++		    }
++		} else {
++		    puts [outputChannel] "A core file was created!"
++		}
++	    }
++	}
++    }
++    flush [outputChannel]
++    flush [errorChannel]
++    return
++}
++
++#####################################################################
++
++# Procs that determine which tests/test files to run
++
++# tcltest::GetMatchingFiles
++#
++#       Looks at the patterns given to match and skip files and uses
++#	them to put together a list of the tests that will be run.
++#
++# Arguments:
++#       directory to search
++#
++# Results:
++#       The constructed list is returned to the user.  This will
++#	primarily be used in 'all.tcl' files.  It is used in
++#	runAllTests.
++#
++# Side Effects:
++#       None
++
++# a lower case version is needed for compatibility with tcltest 1.0
++proc tcltest::getMatchingFiles args {GetMatchingFiles {*}$args}
++
++proc tcltest::GetMatchingFiles { args } {
++    if {[llength $args]} {
++	set dirList $args
++    } else {
++	# Finding tests only in [testsDirectory] is normal operation.
++	# This procedure is written to accept multiple directory arguments
++	# only to satisfy version 1 compatibility.
++	set dirList [list [testsDirectory]]
++    }
++
++    set matchingFiles [list]
++    foreach directory $dirList {
++
++	# List files in $directory that match patterns to run.
++	set matchFileList [list]
++	foreach match [matchFiles] {
++	    set matchFileList [concat $matchFileList \
++		    [glob -directory $directory -types {b c f p s} \
++		    -nocomplain -- $match]]
++	}
++
++	# List files in $directory that match patterns to skip.
++	set skipFileList [list]
++	foreach skip [skipFiles] {
++	    set skipFileList [concat $skipFileList \
++		    [glob -directory $directory -types {b c f p s} \
++		    -nocomplain -- $skip]]
++	}
++
++	# Add to result list all files in match list and not in skip list
++	foreach file $matchFileList {
++	    if {$file ni $skipFileList} {
++		lappend matchingFiles $file
++	    }
++	}
++    }
++
++    if {[llength $matchingFiles] == 0} {
++	PrintError "No test files remain after applying your match and\
++		skip patterns!"
++    }
++    return $matchingFiles
++}
++
++# tcltest::GetMatchingDirectories --
++#
++#	Looks at the patterns given to match and skip directories and
++#	uses them to put together a list of the test directories that we
++#	should attempt to run.  (Only subdirectories containing an
++#	"all.tcl" file are put into the list.)
++#
++# Arguments:
++#	root directory from which to search
++#
++# Results:
++#	The constructed list is returned to the user.  This is used in
++#	the primary all.tcl file.
++#
++# Side Effects:
++#       None.
++
++proc tcltest::GetMatchingDirectories {rootdir} {
++
++    # Determine the skip list first, to avoid [glob]-ing over subdirectories
++    # we're going to throw away anyway.  Be sure we skip the $rootdir if it
++    # comes up to avoid infinite loops.
++    set skipDirs [list $rootdir]
++    foreach pattern [skipDirectories] {
++	set skipDirs [concat $skipDirs [glob -directory $rootdir -types d \
++		-nocomplain -- $pattern]]
++    }
++
++    # Now step through the matching directories, prune out the skipped ones
++    # as you go.
++    set matchDirs [list]
++    foreach pattern [matchDirectories] {
++	foreach path [glob -directory $rootdir -types d -nocomplain -- \
++		$pattern] {
++	    if {$path ni $skipDirs} {
++		set matchDirs [concat $matchDirs [GetMatchingDirectories $path]]
++		if {[file exists [file join $path all.tcl]]} {
++		    lappend matchDirs $path
++		}
++	    }
++	}
++    }
++
++    if {[llength $matchDirs] == 0} {
++	DebugPuts 1 "No test directories remain after applying match\
++		and skip patterns!"
++    }
++    return [lsort $matchDirs]
++}
++
++# tcltest::runAllTests --
++#
++#	prints output and sources test files according to the match and
++#	skip patterns provided.  after sourcing test files, it goes on
++#	to source all.tcl files in matching test subdirectories.
++#
++# Arguments:
++#	shell being tested
++#
++# Results:
++#	Whether there were any failures.
++#
++# Side effects:
++#	None.
++
++proc tcltest::runAllTests { {shell ""} } {
++    variable testSingleFile
++    variable numTestFiles
++    variable numTests
++    variable failFiles
++    variable DefaultValue
++    variable fullutf
++
++    FillFilesExisted
++    if {[llength [info level 0]] == 1} {
++	set shell [interpreter]
++    }
++
++    set testSingleFile false
++
++    puts [outputChannel] "Tests running in interp:  $shell"
++    puts [outputChannel] "Tests located in:  [testsDirectory]"
++    puts [outputChannel] "Tests running in:  [workingDirectory]"
++    puts [outputChannel] "Temporary files stored in\
++	    [temporaryDirectory]"
++
++    # [file system] first available in Tcl 8.4
++    if {![catch {file system [testsDirectory]} result]
++	    && ([lindex $result 0] ne "native")} {
++	# If we aren't running in the native filesystem, then we must
++	# run the tests in a single process (via 'source'), because
++	# trying to run then via a pipe will fail since the files don't
++	# really exist.
++	singleProcess 1
++    }
++
++    if {[singleProcess]} {
++	puts [outputChannel] \
++		"Test files sourced into current interpreter"
++    } else {
++	puts [outputChannel] \
++		"Test files run in separate interpreters"
++    }
++    if {[llength [skip]] > 0} {
++	puts [outputChannel] "Skipping tests that match:  [skip]"
++    }
++    puts [outputChannel] "Running tests that match:  [match]"
++
++    if {[llength [skipFiles]] > 0} {
++	puts [outputChannel] \
++		"Skipping test files that match:  [skipFiles]"
++    }
++    if {[llength [matchFiles]] > 0} {
++	puts [outputChannel] \
++		"Only running test files that match:  [matchFiles]"
++    }
++
++    set timeCmd {clock format [clock seconds]}
++    puts [outputChannel] "Tests began at [eval $timeCmd]"
++
++    # Run each of the specified tests
++    foreach file [lsort [GetMatchingFiles]] {
++	set tail [file tail $file]
++	puts [outputChannel] $tail
++	flush [outputChannel]
++
++	if {[singleProcess]} {
++	    if {[catch {
++		incr numTestFiles
++		uplevel 1 [list ::source -encoding utf-8 $file]
++	    } msg]} {
++		puts [outputChannel] "Test file error: $msg"
++		# append the name of the test to a list to be reported
++		# later
++		lappend testFileFailures $file
++	    }
++	    if {$numTests(Failed) > 0} {
++		set failFilesSet 1
++	    }
++	} else {
++	    # Pass along our configuration to the child processes.
++	    # EXCEPT for the -outfile, because the parent process
++	    # needs to read and process output of children.
++	    set childargv [list]
++	    foreach opt [Configure] {
++		if {$opt eq "-outfile"} {continue}
++		set value [Configure $opt]
++		# Don't bother passing default configuration options
++		if {$value eq $DefaultValue($opt)} {
++			continue
++		}
++		lappend childargv $opt $value
++	    }
++	    set cmd [linsert $childargv 0 | $shell $file]
++	    if {[catch {
++		incr numTestFiles
++		set pipeFd [open $cmd "r"]
++		if {$fullutf} {
++		    fconfigure $pipeFd -profile tcl8 -encoding utf-8
++		}
++		while {[gets $pipeFd line] >= 0} {
++		    if {[regexp [join {
++			    {^([^:]+):\t}
++			    {Total\t([0-9]+)\t}
++			    {Passed\t([0-9]+)\t}
++			    {Skipped\t([0-9]+)\t}
++			    {Failed\t([0-9]+)}
++			    } ""] $line null testFile \
++			    Total Passed Skipped Failed]} {
++			foreach index {Total Passed Skipped Failed} {
++			    incr numTests($index) [set $index]
++			}
++			if {$Failed > 0} {
++			    lappend failFiles $testFile
++			    set failFilesSet 1
++			}
++		    } elseif {[regexp [join {
++			    {^Number of tests skipped }
++			    {for each constraint:}
++			    {|^\t(\d+)\t(.+)$}
++			    } ""] $line match skipped constraint]} {
++			if {[string match \t* $match]} {
++			    AddToSkippedBecause $constraint $skipped
++			}
++		    } else {
++			puts [outputChannel] $line
++		    }
++		}
++		close $pipeFd
++	    } msg]} {
++		puts [outputChannel] "Test file error: $msg"
++		# append the name of the test to a list to be reported
++		# later
++		lappend testFileFailures $file
++	    }
++	}
++    }
++
++    # cleanup
++    puts [outputChannel] "\nTests ended at [eval $timeCmd]"
++    cleanupTests 1
++    if {[info exists testFileFailures]} {
++	puts [outputChannel] "\nTest files exiting with errors:  \n"
++	foreach file $testFileFailures {
++	    puts [outputChannel] "  [file tail $file]\n"
++	}
++    }
++
++    # Checking for subdirectories in which to run tests
++    foreach directory [GetMatchingDirectories [testsDirectory]] {
++	set dir [file tail $directory]
++	puts [outputChannel] [string repeat ~ 44]
++	puts [outputChannel] "$dir test began at [eval $timeCmd]\n"
++
++	uplevel 1 [list ::source -encoding utf-8 [file join $directory all.tcl]]
++
++	set endTime [eval $timeCmd]
++	puts [outputChannel] "\n$dir test ended at $endTime"
++	puts [outputChannel] ""
++	puts [outputChannel] [string repeat ~ 44]
++    }
++    return [expr {[info exists testFileFailures] || [info exists failFilesSet]}]
++}
++
++#####################################################################
++
++# Test utility procs - not used in tcltest, but may be useful for
++# testing.
++
++# tcltest::loadTestedCommands --
++#
++#     Uses the specified script to load the commands to test. Allowed to
++#     be empty, as the tested commands could have been compiled into the
++#     interpreter.
++#
++# Arguments
++#     none
++#
++# Results
++#     none
++#
++# Side Effects:
++#     none.
++
++proc tcltest::loadTestedCommands {} {
++    return [uplevel 1 [loadScript]]
++}
++
++# tcltest::saveState --
++#
++#	Save information regarding what procs and variables exist.
++#
++# Arguments:
++#	none
++#
++# Results:
++#	Modifies the variable saveState
++#
++# Side effects:
++#	None.
++
++proc tcltest::saveState {} {
++    variable saveState
++    uplevel 1 [list ::set [namespace which -variable saveState]] \
++	    {[::list [::info procs] [::info vars]]}
++    DebugPuts  2 "[lindex [info level 0] 0]: $saveState"
++    return
++}
++
++# tcltest::restoreState --
++#
++#	Remove procs and variables that didn't exist before the call to
++#       [saveState].
++#
++# Arguments:
++#	none
++#
++# Results:
++#	Removes procs and variables from your environment if they don't
++#	exist in the saveState variable.
++#
++# Side effects:
++#	None.
++
++proc tcltest::restoreState {} {
++    variable saveState
++    foreach p [uplevel 1 {::info procs}] {
++	if {($p ni [lindex $saveState 0]) && ("[namespace current]::$p" ne
++		[uplevel 1 [list ::namespace origin $p]])} {
++
++	    DebugPuts 2 "[lindex [info level 0] 0]: Removing proc $p"
++	    uplevel 1 [list ::catch [list ::rename $p {}]]
++	}
++    }
++    foreach p [uplevel 1 {::info vars}] {
++	if {$p ni [lindex $saveState 1]} {
++	    DebugPuts 2 "[lindex [info level 0] 0]:\
++		    Removing variable $p"
++	    uplevel 1 [list ::catch [list ::unset $p]]
++	}
++    }
++    return
++}
++
++# tcltest::normalizeMsg --
++#
++#	Removes "extra" newlines from a string.
++#
++# Arguments:
++#	msg        String to be modified
++#
++# Results:
++#	string with extra newlines removed
++#
++# Side effects:
++#	None.
++
++proc tcltest::normalizeMsg {msg} {
++    regsub "\n$" [string tolower $msg] "" msg
++    set msg [string map [list "\n\n" "\n"] $msg]
++    return [string map [list "\n\}" "\}"] $msg]
++}
++
++# tcltest::makeFile --
++#
++# Create a new file with the name <name>, and write <contents> to it.
++#
++# If this file hasn't been created via makeFile since the last time
++# cleanupTests was called, add it to the $filesMade list, so it will be
++# removed by the next call to cleanupTests.
++#
++# Arguments:
++#	contents        content of the new file
++#       name            name of the new file
++#       directory       directory name for new file
++#
++# Results:
++#	absolute path to the file created
++#
++# Side effects:
++#	None.
++
++proc tcltest::makeFile {contents name {directory ""}} {
++    variable filesMade
++    variable fullutf
++
++    FillFilesExisted
++
++    if {[llength [info level 0]] == 3} {
++	set directory [temporaryDirectory]
++    }
++
++    set fullName [file join $directory $name]
++
++    DebugPuts 3 "[lindex [info level 0] 0]:\
++	     putting ``$contents'' into $fullName"
++
++    set fd [open $fullName w]
++    fconfigure $fd -translation lf
++    if {$fullutf} {
++	fconfigure $fd -profile tcl8 -encoding utf-8
++    }
++    if {[string index $contents end] eq "\n"} {
++	puts -nonewline $fd $contents
++    } else {
++	puts $fd $contents
++    }
++    close $fd
++
++    if {$fullName ni $filesMade} {
++	lappend filesMade $fullName
++    }
++    return $fullName
++}
++
++# tcltest::removeFile --
++#
++#	Removes the named file from the filesystem
++#
++# Arguments:
++#	name          file to be removed
++#       directory     directory from which to remove file
++#
++# Results:
++#	return value from [file delete]
++#
++# Side effects:
++#	None.
++
++proc tcltest::removeFile {name {directory ""}} {
++    variable filesMade
++    FillFilesExisted
++    if {[llength [info level 0]] == 2} {
++	set directory [temporaryDirectory]
++    }
++    set fullName [file join $directory $name]
++    DebugPuts 3 "[lindex [info level 0] 0]: removing $fullName"
++    set idx [lsearch -exact $filesMade $fullName]
++    if {$idx < 0} {
++	DebugDo 1 {
++	    Warn "removeFile removing \"$fullName\":\n  not created by makeFile"
++	}
++    } else {
++	set filesMade [lreplace $filesMade $idx $idx]
++    }
++    if {![file isfile $fullName]} {
++	DebugDo 1 {
++	    Warn "removeFile removing \"$fullName\":\n  not a file"
++	}
++    }
++    if {[catch {file delete -- $fullName} msg ]} {
++	DebugDo 1 {
++	    Warn "removeFile removing \"$fullName\":\n  failed: $msg"
++	}
++    }
++    return
++}
++
++# tcltest::makeDirectory --
++#
++# Create a new dir with the name <name>.
++#
++# If this dir hasn't been created via makeDirectory since the last time
++# cleanupTests was called, add it to the $directoriesMade list, so it
++# will be removed by the next call to cleanupTests.
++#
++# Arguments:
++#       name            name of the new directory
++#       directory       directory in which to create new dir
++#
++# Results:
++#	absolute path to the directory created
++#
++# Side effects:
++#	None.
++
++proc tcltest::makeDirectory {name {directory ""}} {
++    variable filesMade
++    FillFilesExisted
++    if {[llength [info level 0]] == 2} {
++	set directory [temporaryDirectory]
++    }
++    set fullName [file join $directory $name]
++    DebugPuts 3 "[lindex [info level 0] 0]: creating $fullName"
++    file mkdir $fullName
++    if {$fullName ni $filesMade} {
++	lappend filesMade $fullName
++    }
++    return $fullName
++}
++
++# tcltest::removeDirectory --
++#
++#	Removes a named directory from the file system.
++#
++# Arguments:
++#	name          Name of the directory to remove
++#       directory     Directory from which to remove
++#
++# Results:
++#	return value from [file delete]
++#
++# Side effects:
++#	None
++
++proc tcltest::removeDirectory {name {directory ""}} {
++    variable filesMade
++    FillFilesExisted
++    if {[llength [info level 0]] == 2} {
++	set directory [temporaryDirectory]
++    }
++    set fullName [file join $directory $name]
++    DebugPuts 3 "[lindex [info level 0] 0]: deleting $fullName"
++    set idx [lsearch -exact $filesMade $fullName]
++    set filesMade [lreplace $filesMade $idx $idx]
++    if {$idx < 0} {
++	DebugDo 1 {
++	    Warn "removeDirectory removing \"$fullName\":\n  not created\
++		    by makeDirectory"
++	}
++    }
++    if {![file isdirectory $fullName]} {
++	DebugDo 1 {
++	    Warn "removeDirectory removing \"$fullName\":\n  not a directory"
++	}
++    }
++    return [file delete -force -- $fullName]
++}
++
++# tcltest::viewFile --
++#
++#	reads the content of a file and returns it
++#
++# Arguments:
++#	name of the file to read
++#       directory in which file is located
++#
++# Results:
++#	content of the named file
++#
++# Side effects:
++#	None.
++
++proc tcltest::viewFile {name {directory ""}} {
++    variable fullutf
++
++    FillFilesExisted
++    if {[llength [info level 0]] == 2} {
++	set directory [temporaryDirectory]
++    }
++    set fullName [file join $directory $name]
++    set f [open $fullName]
++    if {$fullutf} {
++	fconfigure $f -profile tcl8 -encoding utf-8
++    }
++    set data [read -nonewline $f]
++    close $f
++    return $data
++}
++
++# tcltest::bytestring --
++#
++# Construct a string that consists of the requested sequence of bytes,
++# as opposed to a string of properly formed UTF-8 characters.
++# This allows the tester to
++# 1. Create denormalized or improperly formed strings to pass to C
++#    procedures that are supposed to accept strings with embedded NULL
++#    bytes.
++# 2. Confirm that a string result has a certain pattern of bytes, for
++#    instance to confirm that "\xE0\0" in a Tcl script is stored
++#    internally in UTF-8 as the sequence of bytes "\xC3\xA0\xC0\x80".
++#
++# Generally, it's a bad idea to examine the bytes in a Tcl string or to
++# construct improperly formed strings in this manner, because it involves
++# exposing that Tcl uses UTF-8 internally.
++#
++# This function doesn't work any more in Tcl 8.7, since the 'identity'
++# is gone (TIP #345)
++#
++# Arguments:
++#	string being converted
++#
++# Results:
++#	result fom encoding
++#
++# Side effects:
++#	None
++
++if {!$::tcltest::fullutf} {
++    proc tcltest::bytestring {string} {
++	return [encoding convertfrom identity $string]
++    }
++}
++
++# tcltest::OpenFiles --
++#
++#	used in io tests, uses testchannel
++#
++# Arguments:
++#	None.
++#
++# Results:
++#	???
++#
++# Side effects:
++#	None.
++
++proc tcltest::OpenFiles {} {
++    if {[catch {testchannel open} result]} {
++	return {}
++    }
++    return $result
++}
++
++# tcltest::LeakFiles --
++#
++#	used in io tests, uses testchannel
++#
++# Arguments:
++#	None.
++#
++# Results:
++#	???
++#
++# Side effects:
++#	None.
++
++proc tcltest::LeakFiles {old} {
++    if {[catch {testchannel open} new]} {
++	return {}
++    }
++    set leak {}
++    foreach p $new {
++	if {$p ni $old} {
++	    lappend leak $p
++	}
++    }
++    return $leak
++}
++
++#
++# Internationalization / ISO support procs     -- dl
++#
++
++# tcltest::SetIso8859_1_Locale --
++#
++#	used in cmdIL.test, uses testlocale
++#
++# Arguments:
++#	None.
++#
++# Results:
++#	None.
++#
++# Side effects:
++#	None.
++
++proc tcltest::SetIso8859_1_Locale {} {
++    variable previousLocale
++    variable isoLocale
++    if {[info commands testlocale] != ""} {
++	set previousLocale [testlocale ctype]
++	testlocale ctype $isoLocale
++    }
++    return
++}
++
++# tcltest::RestoreLocale --
++#
++#	used in cmdIL.test, uses testlocale
++#
++# Arguments:
++#	None.
++#
++# Results:
++#	None.
++#
++# Side effects:
++#	None.
++
++proc tcltest::RestoreLocale {} {
++    variable previousLocale
++    if {[info commands testlocale] != ""} {
++	testlocale ctype $previousLocale
++    }
++    return
++}
++
++# tcltest::threadReap --
++#
++#	Kill all threads except for the main thread.
++#	Do nothing if testthread is not defined.
++#
++# Arguments:
++#	none.
++#
++# Results:
++#	Returns the number of existing threads.
++#
++# Side Effects:
++#       none.
++#
++
++proc tcltest::threadReap {} {
++    if {[info commands testthread] ne {}} {
++
++	# testthread built into tcltest
++
++	testthread errorproc ThreadNullError
++	while {[llength [testthread names]] > 1} {
++	    foreach tid [testthread names] {
++		if {$tid != [mainThread]} {
++		    catch {
++			testthread send -async $tid {testthread exit}
++		    }
++		}
++	    }
++	    ## Enter a bit a sleep to give the threads enough breathing
++	    ## room to kill themselves off, otherwise the end up with a
++	    ## massive queue of repeated events
++	    after 1
++	}
++	testthread errorproc ThreadError
++	return [llength [testthread names]]
++    } elseif {[info commands thread::id] ne {}} {
++
++	# Thread extension
++
++	thread::errorproc ThreadNullError
++	while {[llength [thread::names]] > 1} {
++	    foreach tid [thread::names] {
++		if {$tid != [mainThread]} {
++		    catch {thread::send -async $tid {thread::exit}}
++		}
++	    }
++	    ## Enter a bit a sleep to give the threads enough breathing
++	    ## room to kill themselves off, otherwise the end up with a
++	    ## massive queue of repeated events
++	    after 1
++	}
++	thread::errorproc ThreadError
++	return [llength [thread::names]]
++    } else {
++	return 1
++    }
++    return 0
++}
++
++# Initialize the constraints and set up command line arguments
++namespace eval tcltest {
++    # Define initializers for all the built-in constraint definitions
++    DefineConstraintInitializers
++
++    # Set up the constraints in the testConstraints array to be lazily
++    # initialized by a registered initializer, or by "false" if no
++    # initializer is registered.
++    trace add variable testConstraints read [namespace code SafeFetch]
++
++    # Only initialize constraints at package load time if an
++    # [initConstraintsHook] has been predefined.  This is only
++    # for compatibility support.  The modern way to add a custom
++    # test constraint is to just call the [testConstraint] command
++    # straight away, without all this "hook" nonsense.
++    if {[namespace current] eq
++	    [namespace qualifiers [namespace which initConstraintsHook]]} {
++	InitConstraints
++    } else {
++	proc initConstraintsHook {} {}
++    }
++
++    # Define the standard match commands
++    customMatch exact	[list string equal]
++    customMatch glob	[list string match]
++    customMatch regexp	[list regexp --]
++
++    # If the TCLTEST_OPTIONS environment variable exists, configure
++    # tcltest according to the option values it specifies.  This has
++    # the effect of resetting tcltest's default configuration.
++    proc ConfigureFromEnvironment {} {
++	upvar #0 env(TCLTEST_OPTIONS) options
++	if {[catch {llength $options} msg]} {
++	    Warn "invalid TCLTEST_OPTIONS \"$options\":\n  invalid\
++		    Tcl list: $msg"
++	    return
++	}
++	if {[llength $options] % 2} {
++	    Warn "invalid TCLTEST_OPTIONS: \"$options\":\n  should be\
++		    -option value ?-option value ...?"
++	    return
++	}
++	if {[catch {Configure {*}$options} msg]} {
++	    Warn "invalid TCLTEST_OPTIONS: \"$options\":\n  $msg"
++	    return
++	}
++    }
++    if {[info exists ::env(TCLTEST_OPTIONS)]} {
++	ConfigureFromEnvironment
++    }
++
++    proc LoadTimeCmdLineArgParsingRequired {} {
++	set required false
++	if {[info exists ::argv] && ("-help" in $::argv)} {
++	    # The command line asks for -help, so give it (and exit)
++	    # right now.  ([configure] does not process -help)
++	    set required true
++	}
++	foreach hook { PrintUsageInfoHook processCmdLineArgsHook
++			processCmdLineArgsAddFlagsHook } {
++	    if {[namespace current] eq
++		    [namespace qualifiers [namespace which $hook]]} {
++		set required true
++	    } else {
++		proc $hook args {}
++	    }
++	}
++	return $required
++    }
++
++    # Only initialize configurable options from the command line arguments
++    # at package load time if necessary for backward compatibility.  This
++    # lets the tcltest user call [configure] for themselves if they wish.
++    # Traces are established for auto-configuration from the command line
++    # if any configurable options are accessed before the user calls
++    # [configure].
++    if {[LoadTimeCmdLineArgParsingRequired]} {
++	ProcessCmdLineArgs
++    } else {
++	EstablishAutoConfigureTraces
++    }
++
++    package provide [namespace tail [namespace current]] $Version
++}
+diff --git a/tools/encoding/Makefile b/tools/encoding/Makefile
+new file mode 100644
+index 000000000000..361239e9c23a
+--- /dev/null
++++ b/tools/encoding/Makefile
+@@ -0,0 +1,110 @@
++#
++# This file is a Makefile to compile all the encoding files.
++#
++# Run "make" to compile all the encoding files (*.txt,*.esc) into the
++# format that Tcl can use (*.enc).  It is your responsibility to move the
++# encoding files to the appropriate place ($TCL_ROOT/library/encoding
++#
++# The .txt files in this directory come from the Unicode CD and are covered
++# by the following copyright notice:
++#
++#---------------------------------------------------------------------------
++#
++# Copyright (c) 1996 Unicode, Inc.  All Rights reserved.
++#
++# This file is provided as-is by Unicode, Inc. (The Unicode Consortium).
++# No claims are made as to fitness for any particular purpose.  No
++# warranties of any kind are expressed or implied.  The recipient
++# agrees to determine applicability of information provided.  If this
++# file has been provided on magnetic media by Unicode, Inc., the sole
++# remedy for any claim will be exchange of defective media within 90
++# days of receipt.
++#
++# Recipient is granted the right to make copies in any form for
++# internal distribution and to freely use the information supplied
++# in the creation of products supporting Unicode.  Unicode, Inc.
++# specifically excludes the right to re-distribute this file directly
++# to third parties or other organizations whether for profit or not.
++#
++# In other words:  Don't put this file on the Internet.  People who want to
++# get it over the Internet should do so directly from ftp://unicode.org.  They
++# can therefore be assured of getting the most recent and accurate version.
++#
++#----------------------------------------------------------------------------
++#
++# The txt2enc program built by this makefile is used to compile individual
++# .txt files into .enc files, the format that Tcl understands for encoding
++# files.  This compilation to a different format is allowed by the above
++# restriction.
++#
++# The files shiftjis.txt and jis0208.txt were modified from the original
++# ones provided on the Unicode CD.  The double-width backslash character
++# 0x815F in these two Japanese encodings was being mapped to Unicode 005C
++# (REVERSE SOLIDUS), the normal backslash character.  They have been
++# changed to map 0x815F to Unicode FF3C (FULLWIDTH REVERSE SOLIDUS) and let
++# the regular backslash character map to itself.  This follows how cp932
++# behaves.
++#
++# Copyright (c) 1998 Sun Microsystems, Inc.
++#
++# See the file "license.terms" for information on usage and redistribution
++# of this file, and for a DISCLAIMER OF ALL WARRANTIES.
++#
++# SCCS: @(#) Makefile 1.1 98/01/28 11:41:36
++#
++
++EUC_ENCODINGS = euc-cn.txt euc-kr.txt euc-jp.txt
++
++encodings: clean txt2enc $(EUC_ENCODINGS)
++	@echo Compiling encoding files.
++	@for p in *.esc; do \
++	    base=`echo $$p | sed 's/\..*$$//'`; \
++	    echo $$base.enc; \
++	    echo "# Encoding file: $$base, escape-driven" > $$base.enc; \
++	    echo "E" >> $$base.enc; \
++	    cat $$p >> $$base.enc; \
++	done
++	@for p in *.txt; do \
++	    enc=`echo $$p | sed 's/\..*$$/\.enc/'`; \
++	    echo $$enc; \
++	    ./txt2enc -e 0 -u 1 $$p > $$enc; \
++	done
++	@echo
++	@echo Compiling special versions of encoding files.
++	@for p in ascii.txt; do \
++	    enc=`echo $$p | sed 's/\..*$$/\.enc/'`; \
++	    echo $$enc; \
++	    ./txt2enc -m $$p > $$enc; \
++	done
++	@for p in jis0208.txt; do \
++	    enc=`echo $$p | sed 's/\..*$$/\.enc/'`; \
++	    echo $$enc; \
++	    ./txt2enc -e 1 -u 2 $$p > $$enc; \
++	done
++	@for p in symbol.txt dingbats.txt macDingbats.txt; do \
++	    enc=`echo $$p | sed 's/\..*$$/\.enc/'`; \
++	    echo $$enc; \
++	    ./txt2enc -e 0 -u 1 -s $$p > $$enc; \
++	done
++
++clean:
++	@rm -f txt2enc *.enc $(EUC_ENCODINGS)
++
++txt2enc: txt2enc.c
++	@gcc -o txt2enc txt2enc.c
++
++euc-jp.txt: ascii.txt jis0208.txt Makefile
++	@echo Building euc-jp.txt from components.
++	@cat ascii.txt > euc-jp.txt
++	@grep '^0x[A-F]' jis0201.txt | sed 's/0x/0x8E/' >> euc-jp.txt
++	@cat jis0208.txt | awk 'BEGIN {print "ibase=16"} index($$1,"#") != 1 {print substr($$2,3) "+" 8080; print substr($$3,3)}' | bc | awk '{ str = $$1; getline; printf "0x%04x 0x%04x\n", str, $$0}' >> euc-jp.txt
++
++euc-kr.txt: ascii.txt ksc5601.txt Makefile
++	@echo Building euc-kr.txt from components.
++	@cat ascii.txt > euc-kr.txt
++	@cat ksc5601.txt | awk 'BEGIN {print "ibase=16"} index($$1,"#") != 1 {print substr($$1,3) "+" 8080; print substr($$2,3)}' | bc | awk '{ str = $$1; getline; printf "0x%04x 0x%04x\n", str, $$0}' >> euc-kr.txt
++
++euc-cn.txt: ascii.txt gb2312.txt Makefile
++	@echo Building euc-cn.txt from components.
++	@cat ascii.txt > euc-cn.txt
++	@cat gb2312.txt | awk 'BEGIN {print "ibase=16"} index($$1,"#") != 1 {print substr($$1,3) "+" 8080; print substr($$2,3)}' | bc | awk '{ str = $$1; getline; printf "0x%04x 0x%04x\n", str, $$0}' >> euc-cn.txt
+diff --git a/tools/tclsh.svg b/tools/tclsh.svg
+new file mode 100644
+index 000000000000..34d45a45515f
+--- /dev/null
++++ b/tools/tclsh.svg
+@@ -0,0 +1,67 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   xmlns:dc="http://purl.org/dc/elements/1.1/"
++   xmlns:cc="http://creativecommons.org/ns#"
++   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
++   xmlns:svg="http://www.w3.org/2000/svg"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
++   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
++   width="256"
++   height="256"
++   id="svg2309"
++   sodipodi:version="0.32"
++   inkscape:version="0.46"
++   sodipodi:modified="true"
++   version="1.0"
++   sodipodi:docname="tcl.svg"
++   inkscape:output_extension="org.inkscape.output.svg.inkscape"
++   inkscape:export-filename="tcl.png"
++   inkscape:export-xdpi="8.4399996"
++   inkscape:export-ydpi="8.4399996">
++  <defs
++     id="defs2311" />
++  <sodipodi:namedview
++     id="base"
++     pagecolor="#ffffff"
++     bordercolor="#666666"
++     borderopacity="1.0"
++     gridtolerance="10000"
++     guidetolerance="10"
++     objecttolerance="10"
++     inkscape:pageopacity="0.0"
++     inkscape:pageshadow="2"
++     inkscape:zoom="1.8096812"
++     inkscape:cx="110.83011"
++     inkscape:cy="132.34375"
++     inkscape:document-units="px"
++     inkscape:current-layer="layer1"
++     inkscape:window-width="993"
++     inkscape:window-height="669"
++     inkscape:window-x="5"
++     inkscape:window-y="49"
++     showgrid="false" />
++  <g
++     inkscape:label="Layer 1"
++     inkscape:groupmode="layer"
++     id="layer1"
++     transform="translate(-311.79308,-365.73272)">
++    <g
++       id="g2392"
++       transform="matrix(0.9671783,0,0,0.9671783,10.08245,12.003966)">
++      <path
++         id="path4426"
++         d="M 499.58925,374.01397 C 499.97085,397.34606 499.27848,420.4264 479.08925,442.35772 L 478.33925,443.20147 L 479.46425,443.20147 L 487.71425,443.32647 C 474.30875,471.21288 465.58677,499.02017 446.308,526.79522 L 445.6205,527.79522 L 446.808,527.57647 L 456.9955,525.63897 C 449.7786,543.94928 437.43792,556.07176 424.058,560.13897 C 420.3754,508.57034 446.11026,463.05191 467.96425,417.67022 C 467.98435,417.62848 468.00666,417.58696 468.02675,417.54522 L 467.21425,416.98272 C 431.42858,456.99623 415.30305,513.43153 409.21425,559.98272 C 397.08579,553.13549 393.04346,544.06962 388.933,531.73272 L 397.40175,535.29522 L 398.27675,535.67022 L 398.08925,534.73272 C 391.65291,506.11299 401.64573,485.57026 411.33925,458.57647 L 418.308,463.23272 L 419.1205,463.79522 L 419.08925,462.82647 C 418.54325,440.89528 433.31028,418.87866 452.90175,399.23272 L 455.6205,406.51397 L 455.9955,407.48272 L 456.52675,406.57647 L 462.4955,396.63897 L 462.52675,396.57647 C 472.37862,383.00695 482.79421,378.58965 499.58925,374.01397 z"
++         style="opacity:1;fill:#3465a4;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;display:inline" />
++      <path
++         sodipodi:nodetypes="ccccccccccccccccccccccc"
++         id="path7600"
++         d="M 499.59927,374.00103 C 482.86154,378.56724 472.31963,383.0333 462.48689,396.57647 L 462.45564,396.63897 L 456.48689,406.57647 L 455.95564,407.48272 L 455.58064,406.51397 L 452.86189,399.23272 C 433.27042,418.87866 418.50339,440.89528 419.04939,462.82647 L 419.08064,463.79522 L 418.26814,463.23272 L 411.29939,458.57647 C 401.60587,485.57026 391.61305,506.11299 398.04939,534.73272 L 398.23689,535.67022 L 397.36189,535.29522 L 388.98689,531.76397 C 389.01386,531.93545 389.0525,532.09443 389.08064,532.26397 C 393.12974,544.32172 397.22634,553.23735 409.17439,559.98272 C 409.64601,556.37703 410.17162,552.69478 410.76814,548.98272 C 396.17755,514.81858 408.84232,489.70162 414.61189,467.10772 L 423.48689,472.23272 C 422.26097,451.07724 434.68113,428.26233 450.83064,408.35772 L 455.51814,416.60772 C 467.52689,391.90688 477.02451,381.99197 499.59927,374.00103 z"
++         style="opacity:1;fill:#eeeeec;fill-opacity:1;fill-rule:evenodd;stroke:#eff1cb;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;display:inline" />
++      <path
++         style="opacity:1;fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;display:inline"
++         d="M 505.90485,365.73272 L 505.3736,365.82647 C 485.689,369.25998 466.41815,376.49266 457.96735,393.79522 L 454.40485,387.57647 L 454.09235,387.01397 L 453.6236,387.48272 C 443.92989,396.7586 433.52309,408.77328 425.84235,420.57647 C 418.63263,431.65584 413.85062,442.49956 414.3736,450.79522 L 409.34235,444.51397 L 408.84235,443.88897 L 408.4986,444.60772 C 402.37467,457.83671 396.19429,474.11179 392.4986,489.04522 C 388.9946,503.20407 387.73979,516.09228 390.9986,524.20147 L 382.71735,519.38897 L 382.02985,518.98272 L 381.96735,519.79522 C 380.40824,543.41224 390.00555,554.68855 401.02985,565.57647 L 391.84235,567.85772 L 389.9986,568.32647 L 391.84235,568.82647 C 397.11688,570.2558 402.11758,571.86507 405.59235,574.54522 C 409.06712,577.22537 411.06333,580.91104 410.46735,586.79522 L 410.46735,586.82647 L 410.46735,612.32647 L 410.46735,612.48272 L 410.5611,612.60772 L 422.0611,629.10772 L 422.96735,630.42022 L 422.96735,628.82647 L 422.96735,589.95147 C 424.48916,583.40757 426.27542,578.90352 428.84235,575.92022 C 431.40928,572.93692 434.74946,571.40505 439.52985,570.82647 L 441.2486,570.60772 L 439.6861,569.88897 L 433.6236,567.01397 C 448.07909,558.31023 464.26865,536.97467 468.52985,516.70147 L 468.71735,515.88897 L 467.9361,516.10772 L 460.4361,518.13897 C 467.09909,511.88271 473.81127,499.48743 480.1861,485.04522 C 486.94715,469.72802 493.25982,452.38054 498.4361,438.51397 L 498.71735,437.76397 L 497.9361,437.82647 L 492.15485,438.23272 C 499.30195,430.64691 503.27438,418.11982 505.21735,404.88897 C 507.23962,391.11815 507.0977,376.61792 505.96735,366.26397 L 505.90485,365.73272 z M 500.46735,374.01397 C 500.84895,397.34606 500.15658,420.4264 479.96735,442.35772 L 479.21735,443.20147 L 480.34235,443.20147 L 488.59235,443.32647 C 475.18685,471.21288 466.46487,499.02017 447.1861,526.79522 L 446.4986,527.79522 L 447.6861,527.57647 L 457.8736,525.63897 C 450.6567,543.94928 438.31602,556.07176 424.9361,560.13897 C 421.2535,508.57034 446.98836,463.05191 468.84235,417.67022 C 468.86245,417.62848 468.88476,417.58696 468.90485,417.54522 L 468.09235,416.98272 C 432.30668,456.99623 416.18115,513.43153 410.09235,559.98272 C 397.96389,553.13549 393.92156,544.06962 389.8111,531.73272 L 398.27985,535.29522 L 399.15485,535.67022 L 398.96735,534.73272 C 392.53101,506.11299 402.52383,485.57026 412.21735,458.57647 L 419.1861,463.23272 L 419.9986,463.79522 L 419.96735,462.82647 C 419.42135,440.89528 434.18838,418.87866 453.77985,399.23272 L 456.4986,406.51397 L 456.8736,407.48272 L 457.40485,406.57647 L 463.3736,396.63897 L 463.40485,396.57647 C 473.25672,383.00695 483.67231,378.58965 500.46735,374.01397 z"
++         id="path2177" />
++    </g>
++  </g>
++</svg>
+diff --git a/unix/config.status.lineno b/unix/config.status.lineno
+new file mode 100755
+index 000000000000..f25236363dc9
+--- /dev/null
++++ b/unix/config.status.lineno
+@@ -0,0 +1,920 @@
++#! /bin/bash
++# Generated by configure.
++# Run this file to recreate the current configuration.
++# Compiler output produced by configure, useful for debugging
++# configure, is in config.log if it exists.
++
++debug=false
++ac_cs_recheck=false
++ac_cs_silent=false
++SHELL=${CONFIG_SHELL-/bin/bash}
++## --------------------- ##
++## M4sh Initialization.  ##
++## --------------------- ##
++
++# Be Bourne compatible
++if test -n "${ZSH_VERSION+set}" && (emulate sh) >/dev/null 2>&1; then
++  emulate sh
++  NULLCMD=:
++  # Zsh 3.x and 4.x performs word splitting on ${1+"$@"}, which
++  # is contrary to our usage.  Disable this feature.
++  alias -g '${1+"$@"}'='"$@"'
++elif test -n "${BASH_VERSION+set}" && (set -o posix) >/dev/null 2>&1; then
++  set -o posix
++fi
++DUALCASE=1; export DUALCASE # for MKS sh
++
++# Support unset when possible.
++if ( (MAIL=60; unset MAIL) || exit) >/dev/null 2>&1; then
++  as_unset=unset
++else
++  as_unset=false
++fi
++
++
++# Work around bugs in pre-3.0 UWIN ksh.
++$as_unset ENV MAIL MAILPATH
++PS1='$ '
++PS2='> '
++PS4='+ '
++
++# NLS nuisances.
++for as_var in \
++  LANG LANGUAGE LC_ADDRESS LC_ALL LC_COLLATE LC_CTYPE LC_IDENTIFICATION \
++  LC_MEASUREMENT LC_MESSAGES LC_MONETARY LC_NAME LC_NUMERIC LC_PAPER \
++  LC_TELEPHONE LC_TIME
++do
++  if (set +x; test -z "`(eval $as_var=C; export $as_var) 2>&1`"); then
++    eval $as_var=C; export $as_var
++  else
++    $as_unset $as_var
++  fi
++done
++
++# Required to use basename.
++if expr a : '\(a\)' >/dev/null 2>&1; then
++  as_expr=expr
++else
++  as_expr=false
++fi
++
++if (basename /) >/dev/null 2>&1 && test "X`basename / 2>&1`" = "X/"; then
++  as_basename=basename
++else
++  as_basename=false
++fi
++
++
++# Name of the executable.
++as_me=`$as_basename "$0" ||
++$as_expr X/"$0" : '.*/\([^/][^/]*\)/*$' \| \
++	 X"$0" : 'X\(//\)$' \| \
++	 X"$0" : 'X\(/\)$' \| \
++	 .     : '\(.\)' 2>/dev/null ||
++echo X/"$0" |
++    sed '/^.*\/\([^/][^/]*\)\/*$/{ s//\1/; q; }
++  	  /^X\/\(\/\/\)$/{ s//\1/; q; }
++  	  /^X\/\(\/\).*/{ s//\1/; q; }
++  	  s/.*/./; q'`
++
++
++# PATH needs CR, and LINENO needs CR and PATH.
++# Avoid depending upon Character Ranges.
++as_cr_letters='abcdefghijklmnopqrstuvwxyz'
++as_cr_LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
++as_cr_Letters=$as_cr_letters$as_cr_LETTERS
++as_cr_digits='0123456789'
++as_cr_alnum=$as_cr_Letters$as_cr_digits
++
++# The user is always right.
++if test "${PATH_SEPARATOR+set}" != set; then
++  echo "#! /bin/sh" >conf$$.sh
++  echo  "exit 0"   >>conf$$.sh
++  chmod +x conf$$.sh
++  if (PATH="/nonexistent;."; conf$$.sh) >/dev/null 2>&1; then
++    PATH_SEPARATOR=';'
++  else
++    PATH_SEPARATOR=:
++  fi
++  rm -f conf$$.sh
++fi
++
++
++  as_lineno_1=103
++  as_lineno_2=104
++  as_lineno_3=`(expr $as_lineno_1 + 1) 2>/dev/null`
++  test "x$as_lineno_1" != "x$as_lineno_2" &&
++  test "x$as_lineno_3"  = "x$as_lineno_2"  || {
++  # Find who we are.  Look in the path if we contain no path at all
++  # relative or not.
++  case $0 in
++    *[\\/]* ) as_myself=$0 ;;
++    *) as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++  test -r "$as_dir/$0" && as_myself=$as_dir/$0 && break
++done
++
++       ;;
++  esac
++  # We did not find ourselves, most probably we were run as `sh COMMAND'
++  # in which case we are not to be found in the path.
++  if test "x$as_myself" = x; then
++    as_myself=$0
++  fi
++  if test ! -f "$as_myself"; then
++    { { echo "$as_me:128: error: cannot find myself; rerun with an absolute path" >&5
++echo "$as_me: error: cannot find myself; rerun with an absolute path" >&2;}
++   { (exit 1); exit 1; }; }
++  fi
++  case $CONFIG_SHELL in
++  '')
++    as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in /bin$PATH_SEPARATOR/usr/bin$PATH_SEPARATOR$PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++  for as_base in sh bash ksh sh5; do
++	 case $as_dir in
++	 /*)
++	   if ("$as_dir/$as_base" -c '
++  as_lineno_1=143
++  as_lineno_2=144
++  as_lineno_3=`(expr $as_lineno_1 + 1) 2>/dev/null`
++  test "x$as_lineno_1" != "x$as_lineno_2" &&
++  test "x$as_lineno_3"  = "x$as_lineno_2" ') 2>/dev/null; then
++	     $as_unset BASH_ENV || test "${BASH_ENV+set}" != set || { BASH_ENV=; export BASH_ENV; }
++	     $as_unset ENV || test "${ENV+set}" != set || { ENV=; export ENV; }
++	     CONFIG_SHELL=$as_dir/$as_base
++	     export CONFIG_SHELL
++	     exec "$CONFIG_SHELL" "$0" ${1+"$@"}
++	   fi;;
++	 esac
++       done
++done
++;;
++  esac
++
++  # Create $as_me.lineno as a copy of $as_myself, but with 160
++  # uniformly replaced by the line number.  The first 'sed' inserts a
++  # line-number line before each line; the second 'sed' does the real
++  # work.  The second script uses 'N' to pair each line-number line
++  # with the numbered line, and appends trailing '-' during
++  # substitution so that 165 is not a special case at line end.
++  # (Raja R Harinath suggested sed '=', and Paul Eggert wrote the
++  # second 'sed' script.  Blame Lee E. McMahon for sed's syntax.  :-)
++  sed '=' <$as_myself |
++    sed '
++      N
++      s,$,-,
++      : loop
++      s,^\(['$as_cr_digits']*\)\(.*\)[$]LINENO\([^'$as_cr_alnum'_]\),\1\2\1\3,
++      t loop
++      s,-$,,
++      s,^['$as_cr_digits']*\n,,
++    ' >$as_me.lineno &&
++  chmod +x $as_me.lineno ||
++    { { echo "$as_me:179: error: cannot create $as_me.lineno; rerun with a POSIX shell" >&5
++echo "$as_me: error: cannot create $as_me.lineno; rerun with a POSIX shell" >&2;}
++   { (exit 1); exit 1; }; }
++
++  # Don't try to exec as it changes $[0], causing all sort of problems
++  # (the dirname of $[0] is not the place where we might find the
++  # original and so on.  Autoconf is especially sensible to this).
++  . ./$as_me.lineno
++  # Exit status is that of the last command.
++  exit
++}
++
++
++case `echo "testing\c"; echo 1,2,3`,`echo -n testing; echo 1,2,3` in
++  *c*,-n*) ECHO_N= ECHO_C='
++' ECHO_T='	' ;;
++  *c*,*  ) ECHO_N=-n ECHO_C= ECHO_T= ;;
++  *)       ECHO_N= ECHO_C='\c' ECHO_T= ;;
++esac
++
++if expr a : '\(a\)' >/dev/null 2>&1; then
++  as_expr=expr
++else
++  as_expr=false
++fi
++
++rm -f conf$$ conf$$.exe conf$$.file
++echo >conf$$.file
++if ln -s conf$$.file conf$$ 2>/dev/null; then
++  # We could just check for DJGPP; but this test a) works b) is more generic
++  # and c) will remain valid once DJGPP supports symlinks (DJGPP 2.04).
++  if test -f conf$$.exe; then
++    # Don't use ln at all; we don't have any links
++    as_ln_s='cp -p'
++  else
++    as_ln_s='ln -s'
++  fi
++elif ln conf$$.file conf$$ 2>/dev/null; then
++  as_ln_s=ln
++else
++  as_ln_s='cp -p'
++fi
++rm -f conf$$ conf$$.exe conf$$.file
++
++if mkdir -p . 2>/dev/null; then
++  as_mkdir_p=:
++else
++  test -d ./-p && rmdir ./-p
++  as_mkdir_p=false
++fi
++
++as_executable_p="test -f"
++
++# Sed expression to map a string onto a valid CPP name.
++as_tr_cpp="eval sed 'y%*$as_cr_letters%P$as_cr_LETTERS%;s%[^_$as_cr_alnum]%_%g'"
++
++# Sed expression to map a string onto a valid variable name.
++as_tr_sh="eval sed 'y%*+%pp%;s%[^_$as_cr_alnum]%_%g'"
++
++
++# IFS
++# We need space, tab and new line, in precisely that order.
++as_nl='
++'
++IFS=" 	$as_nl"
++
++# CDPATH.
++$as_unset CDPATH
++
++exec 6>&1
++
++# Open the log real soon, to keep \$[0] and so on meaningful, and to
++# report actual input values of CONFIG_FILES etc. instead of their
++# values after options handling.  Logging --version etc. is OK.
++exec 5>>config.log
++{
++  echo
++  sed 'h;s/./-/g;s/^.../## /;s/...$/ ##/;p;x;p;x' <<_ASBOX
++## Running $as_me. ##
++_ASBOX
++} >&5
++cat >&5 <<_CSEOF
++
++This file was extended by tcl $as_me 8.6, which was
++generated by GNU Autoconf 2.59.  Invocation command line was
++
++  CONFIG_FILES    = $CONFIG_FILES
++  CONFIG_HEADERS  = $CONFIG_HEADERS
++  CONFIG_LINKS    = $CONFIG_LINKS
++  CONFIG_COMMANDS = $CONFIG_COMMANDS
++  $ $0 $@
++
++_CSEOF
++echo "on `(hostname || uname -n) 2>/dev/null | sed 1q`" >&5
++echo >&5
++config_files=" Makefile:../unix/Makefile.in dltest/Makefile:../unix/dltest/Makefile.in tclConfig.sh:../unix/tclConfig.sh.in tcl.pc:../unix/tcl.pc.in"
++
++ac_cs_usage="\
++\`$as_me' instantiates files from templates according to the
++current configuration.
++
++Usage: $0 [OPTIONS] [FILE]...
++
++  -h, --help       print this help, then exit
++  -V, --version    print version number, then exit
++  -q, --quiet      do not print progress messages
++  -d, --debug      don't remove temporary files
++      --recheck    update $as_me by reconfiguring in the same conditions
++  --file=FILE[:TEMPLATE]
++		   instantiate the configuration file FILE
++
++Configuration files:
++$config_files
++
++Configuration commands:
++$config_commands
++
++Report bugs to <bug-autoconf@gnu.org>."
++ac_cs_version="\
++tcl config.status 8.6
++configured by ./configure, generated by GNU Autoconf 2.59,
++  with options \"'--prefix=/home/jima/space/ins/lin64/dynamic/main'\"
++
++Copyright (C) 2003 Free Software Foundation, Inc.
++This config.status script is free software; the Free Software Foundation
++gives unlimited permission to copy, distribute and modify it."
++srcdir=/home/jima/space/bui/lin64/dynamic/main/tcl/unix
++# If no file are specified by the user, then we need to provide default
++# value.  By we need to know if files were specified by the user.
++ac_need_defaults=:
++while test $# != 0
++do
++  case $1 in
++  --*=*)
++    ac_option=`expr "x$1" : 'x\([^=]*\)='`
++    ac_optarg=`expr "x$1" : 'x[^=]*=\(.*\)'`
++    ac_shift=:
++    ;;
++  -*)
++    ac_option=$1
++    ac_optarg=$2
++    ac_shift=shift
++    ;;
++  *) # This is not an option, so the user has probably given explicit
++     # arguments.
++     ac_option=$1
++     ac_need_defaults=false;;
++  esac
++
++  case $ac_option in
++  # Handling of the options.
++  -recheck | --recheck | --rechec | --reche | --rech | --rec | --re | --r)
++    ac_cs_recheck=: ;;
++  --version | --vers* | -V )
++    echo "$ac_cs_version"; exit 0 ;;
++  --he | --h)
++    # Conflict between --help and --header
++    { { echo "$as_me:336: error: ambiguous option: $1
++Try \`$0 --help' for more information." >&5
++echo "$as_me: error: ambiguous option: $1
++Try \`$0 --help' for more information." >&2;}
++   { (exit 1); exit 1; }; };;
++  --help | --hel | -h )
++    echo "$ac_cs_usage"; exit 0 ;;
++  --debug | --d* | -d )
++    debug=: ;;
++  --file | --fil | --fi | --f )
++    $ac_shift
++    CONFIG_FILES="$CONFIG_FILES $ac_optarg"
++    ac_need_defaults=false;;
++  --header | --heade | --head | --hea )
++    $ac_shift
++    CONFIG_HEADERS="$CONFIG_HEADERS $ac_optarg"
++    ac_need_defaults=false;;
++  -q | -quiet | --quiet | --quie | --qui | --qu | --q \
++  | -silent | --silent | --silen | --sile | --sil | --si | --s)
++    ac_cs_silent=: ;;
++
++  # This is an error.
++  -*) { { echo "$as_me:358: error: unrecognized option: $1
++Try \`$0 --help' for more information." >&5
++echo "$as_me: error: unrecognized option: $1
++Try \`$0 --help' for more information." >&2;}
++   { (exit 1); exit 1; }; } ;;
++
++  *) ac_config_targets="$ac_config_targets $1" ;;
++
++  esac
++  shift
++done
++
++ac_configure_extra_args=
++
++if $ac_cs_silent; then
++  exec 6>/dev/null
++  ac_configure_extra_args="$ac_configure_extra_args --silent"
++fi
++
++if $ac_cs_recheck; then
++  echo "running /bin/bash ./configure " '--prefix=/home/jima/space/ins/lin64/dynamic/main' $ac_configure_extra_args " --no-create --no-recursion" >&6
++  exec /bin/bash ./configure '--prefix=/home/jima/space/ins/lin64/dynamic/main' $ac_configure_extra_args --no-create --no-recursion
++fi
++
++#
++# INIT-COMMANDS section.
++#
++
++VERSION=8.6
++
++for ac_config_target in $ac_config_targets
++do
++  case "$ac_config_target" in
++  # Handling of arguments.
++  "Tcl-Info.plist" ) CONFIG_FILES="$CONFIG_FILES Tcl-Info.plist:../macosx/Tcl-Info.plist.in" ;;
++  "Tclsh-Info.plist" ) CONFIG_FILES="$CONFIG_FILES Tclsh-Info.plist:../macosx/Tclsh-Info.plist.in" ;;
++  "Makefile" ) CONFIG_FILES="$CONFIG_FILES Makefile:../unix/Makefile.in" ;;
++  "dltest/Makefile" ) CONFIG_FILES="$CONFIG_FILES dltest/Makefile:../unix/dltest/Makefile.in" ;;
++  "tclConfig.sh" ) CONFIG_FILES="$CONFIG_FILES tclConfig.sh:../unix/tclConfig.sh.in" ;;
++  "tcl.pc" ) CONFIG_FILES="$CONFIG_FILES tcl.pc:../unix/tcl.pc.in" ;;
++  "Tcl.framework" ) CONFIG_COMMANDS="$CONFIG_COMMANDS Tcl.framework" ;;
++  *) { { echo "$as_me:399: error: invalid argument: $ac_config_target" >&5
++echo "$as_me: error: invalid argument: $ac_config_target" >&2;}
++   { (exit 1); exit 1; }; };;
++  esac
++done
++
++# If the user did not use the arguments to specify the items to instantiate,
++# then the envvar interface is used.  Set only those that are not.
++# We use the long form for the default assignment because of an extremely
++# bizarre bug on SunOS 4.1.3.
++if $ac_need_defaults; then
++  test "${CONFIG_FILES+set}" = set || CONFIG_FILES=$config_files
++  test "${CONFIG_COMMANDS+set}" = set || CONFIG_COMMANDS=$config_commands
++fi
++
++# Have a temporary directory for convenience.  Make it in the build tree
++# simply because there is no reason to put it here, and in addition,
++# creating and moving files from /tmp can sometimes cause problems.
++# Create a temporary directory, and hook for its removal unless debugging.
++$debug ||
++{
++  trap 'exit_status=$?; rm -rf $tmp && exit $exit_status' 0
++  trap '{ (exit 1); exit 1; }' 1 2 13 15
++}
++
++# Create a (secure) tmp directory for tmp files.
++
++{
++  tmp=`(umask 077 && mktemp -d -q "./confstatXXXXXX") 2>/dev/null` &&
++  test -n "$tmp" && test -d "$tmp"
++}  ||
++{
++  tmp=./confstat$$-$RANDOM
++  (umask 077 && mkdir $tmp)
++} ||
++{
++   echo "$me: cannot create a temporary directory in ." >&2
++   { (exit 1); exit 1; }
++}
++
++
++#
++# CONFIG_FILES section.
++#
++
++# No need to generate the scripts if there are no CONFIG_FILES.
++# This happens for instance when ./config.status config.h
++if test -n "$CONFIG_FILES"; then
++  # Protect against being on the right side of a sed subst in config.status.
++  sed 's/,@/@@/; s/@,/@@/; s/,;t t$/@;t t/; /@;t t$/s/[\\&,]/\\&/g;
++   s/@@/,@/; s/@@/@,/; s/@;t t$/,;t t/' >$tmp/subs.sed <<\CEOF
++s,@SHELL@,/bin/bash,;t t
++s,@PATH_SEPARATOR@,:,;t t
++s,@PACKAGE_NAME@,tcl,;t t
++s,@PACKAGE_TARNAME@,tcl,;t t
++s,@PACKAGE_VERSION@,8.6,;t t
++s,@PACKAGE_STRING@,tcl 8.6,;t t
++s,@PACKAGE_BUGREPORT@,,;t t
++s,@exec_prefix@,/home/jima/space/ins/lin64/dynamic/main,;t t
++s,@prefix@,/home/jima/space/ins/lin64/dynamic/main,;t t
++s,@program_transform_name@,s,x,x,,;t t
++s,@bindir@,${exec_prefix}/bin,;t t
++s,@sbindir@,${exec_prefix}/sbin,;t t
++s,@libexecdir@,${exec_prefix}/libexec,;t t
++s,@datadir@,${prefix}/share,;t t
++s,@sysconfdir@,${prefix}/etc,;t t
++s,@sharedstatedir@,${prefix}/com,;t t
++s,@localstatedir@,${prefix}/var,;t t
++s,@libdir@,/home/jima/space/ins/lin64/dynamic/main/lib,;t t
++s,@includedir@,${prefix}/include,;t t
++s,@oldincludedir@,/usr/include,;t t
++s,@infodir@,${prefix}/info,;t t
++s,@mandir@,${prefix}/man,;t t
++s,@build_alias@,,;t t
++s,@host_alias@,,;t t
++s,@target_alias@,,;t t
++s,@DEFS@,-DPACKAGE_NAME=\"tcl\" -DPACKAGE_TARNAME=\"tcl\" -DPACKAGE_VERSION=\"8.6\" -DPACKAGE_STRING=\"tcl\ 8.6\" -DPACKAGE_BUGREPORT=\"\" -DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STRINGS_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DHAVE_SYS_PARAM_H=1 -DUSE_THREAD_ALLOC=1 -D_REENTRANT=1 -D_THREAD_SAFE=1 -DHAVE_PTHREAD_ATTR_SETSTACKSIZE=1 -DHAVE_PTHREAD_ATFORK=1 -DTCL_THREADS=1 -DTCL_CFGVAL_ENCODING=\"iso8859-1\" -DHAVE_ZLIB=1 -DMODULE_SCOPE=extern\ __attribute__\(\(__visibility__\(\"hidden\"\)\)\) -DHAVE_HIDDEN=1 -DHAVE_CAST_TO_UNION=1 -DTCL_SHLIB_EXT=\".so\" -DNDEBUG=1 -DTCL_CFG_OPTIMIZED=1 -DTCL_TOMMATH=1 -DMP_PREC=4 -D_LARGEFILE64_SOURCE=1 -DTCL_WIDE_INT_IS_LONG=1 -DHAVE_GETCWD=1 -DHAVE_MKSTEMP=1 -DHAVE_OPENDIR=1 -DHAVE_STRTOL=1 -DHAVE_WAITPID=1 -DHAVE_GETNAMEINFO=1 -DHAVE_GETADDRINFO=1 -DHAVE_FREEADDRINFO=1 -DHAVE_GAI_STRERROR=1 -DHAVE_STRUCT_ADDRINFO=1 -DHAVE_STRUCT_IN6_ADDR=1 -DHAVE_STRUCT_SOCKADDR_IN6=1 -DHAVE_STRUCT_SOCKADDR_STORAGE=1 -DHAVE_GETPWUID_R_5=1 -DHAVE_GETPWUID_R=1 -DHAVE_GETPWNAM_R_5=1 -DHAVE_GETPWNAM_R=1 -DHAVE_GETGRGID_R_5=1 -DHAVE_GETGRGID_R=1 -DHAVE_GETGRNAM_R_5=1 -DHAVE_GETGRNAM_R=1 -DHAVE_DECL_GETHOSTBYNAME_R=1 -DHAVE_GETHOSTBYNAME_R_6=1 -DHAVE_GETHOSTBYNAME_R=1 -DHAVE_DECL_GETHOSTBYADDR_R=1 -DHAVE_GETHOSTBYADDR_R_8=1 -DHAVE_GETHOSTBYADDR_R=1 -DHAVE_TERMIOS_H=1 -DHAVE_SYS_IOCTL_H=1 -DHAVE_SYS_TIME_H=1 -DTIME_WITH_SYS_TIME=1 -DHAVE_GMTIME_R=1 -DHAVE_LOCALTIME_R=1 -DHAVE_MKTIME=1 -DHAVE_TM_GMTOFF=1 -DHAVE_TIMEZONE_VAR=1 -DHAVE_STRUCT_STAT_ST_BLOCKS=1 -DHAVE_STRUCT_STAT_ST_BLKSIZE=1 -DHAVE_BLKCNT_T=1 -DHAVE_INTPTR_T=1 -DHAVE_UINTPTR_T=1 -DNO_UNION_WAIT=1 -DHAVE_SIGNED_CHAR=1 -DHAVE_LANGINFO=1 -DHAVE_MKSTEMPS=1 -DHAVE_FTS=1 -DHAVE_SYS_IOCTL_H=1 -DTCL_UNLOAD_DLLS=1 -DHAVE_CPUID=1 ,;t t
++s,@ECHO_C@,,;t t
++s,@ECHO_N@,-n,;t t
++s,@ECHO_T@,,;t t
++s,@LIBS@,-lz  -lpthread,;t t
++s,@MAN_FLAGS@,,;t t
++s,@CC@,gcc,;t t
++s,@CFLAGS@, -pipe ,;t t
++s,@LDFLAGS@, -Wl,--export-dynamic ,;t t
++s,@CPPFLAGS@,,;t t
++s,@ac_ct_CC@,gcc,;t t
++s,@EXEEXT@,,;t t
++s,@OBJEXT@,o,;t t
++s,@CPP@,gcc -E,;t t
++s,@EGREP@,grep -E,;t t
++s,@TCL_THREADS@,1,;t t
++s,@TCLSH_PROG@,/usr/bin/tclsh8.6,;t t
++s,@ZLIB_OBJS@,,;t t
++s,@ZLIB_SRCS@,,;t t
++s,@ZLIB_INCLUDE@,,;t t
++s,@RANLIB@,ranlib,;t t
++s,@ac_ct_RANLIB@,ranlib,;t t
++s,@AR@,ar,;t t
++s,@ac_ct_AR@,ar,;t t
++s,@LIBOBJS@,,;t t
++s,@TCL_LIBS@,-ldl -lz  -lpthread -lm,;t t
++s,@DL_LIBS@,-ldl,;t t
++s,@DL_OBJS@,tclLoadDl.o,;t t
++s,@PLAT_OBJS@,,;t t
++s,@PLAT_SRCS@,,;t t
++s,@LDAIX_SRC@,,;t t
++s,@CFLAGS_DEBUG@,-g,;t t
++s,@CFLAGS_OPTIMIZE@,-O2,;t t
++s,@CFLAGS_WARNING@,-Wall,;t t
++s,@LDFLAGS_DEBUG@,,;t t
++s,@LDFLAGS_OPTIMIZE@,,;t t
++s,@CC_SEARCH_FLAGS@,-Wl,-rpath,${LIB_RUNTIME_DIR},;t t
++s,@LD_SEARCH_FLAGS@,-Wl,-rpath,${LIB_RUNTIME_DIR},;t t
++s,@STLIB_LD@,${AR} cr,;t t
++s,@SHLIB_LD@,${CC} ${CFLAGS} ${LDFLAGS} -shared,;t t
++s,@TCL_SHLIB_LD_EXTRAS@,,;t t
++s,@TK_SHLIB_LD_EXTRAS@,,;t t
++s,@SHLIB_LD_LIBS@,${LIBS},;t t
++s,@SHLIB_CFLAGS@,-fPIC,;t t
++s,@SHLIB_SUFFIX@,.so,;t t
++s,@MAKE_LIB@,${SHLIB_LD} -o $@ ${OBJS} ${SHLIB_LD_LIBS} ${TCL_SHLIB_LD_EXTRAS} ${TK_SHLIB_LD_EXTRAS} ${LD_SEARCH_FLAGS},;t t
++s,@MAKE_STUB_LIB@,${STLIB_LD} $@ ${STUB_LIB_OBJS} ; ${RANLIB} $@,;t t
++s,@INSTALL_LIB@,$(INSTALL_LIBRARY) $(LIB_FILE) "$(LIB_INSTALL_DIR)/$(LIB_FILE)",;t t
++s,@DLL_INSTALL_DIR@,$(LIB_INSTALL_DIR),;t t
++s,@INSTALL_STUB_LIB@,$(INSTALL_LIBRARY) $(STUB_LIB_FILE) "$(LIB_INSTALL_DIR)/$(STUB_LIB_FILE)",;t t
++s,@CFLAGS_DEFAULT@,$(CFLAGS_OPTIMIZE),;t t
++s,@LDFLAGS_DEFAULT@,$(LDFLAGS_OPTIMIZE),;t t
++s,@DTRACE@,,;t t
++s,@TCL_VERSION@,8.6,;t t
++s,@TCL_MAJOR_VERSION@,8,;t t
++s,@TCL_MINOR_VERSION@,6,;t t
++s,@TCL_PATCH_LEVEL@,.10,;t t
++s,@TCL_YEAR@,,;t t
++s,@PKG_CFG_ARGS@,'--prefix=/home/jima/space/ins/lin64/dynamic/main' ,;t t
++s,@TCL_LIB_FILE@,libtcl8.6.so,;t t
++s,@TCL_LIB_FLAG@,-ltcl8.6,;t t
++s,@TCL_LIB_SPEC@,-L/home/jima/space/ins/lin64/dynamic/main/lib -ltcl8.6,;t t
++s,@TCL_STUB_LIB_FILE@,libtclstub8.6.a,;t t
++s,@TCL_STUB_LIB_FLAG@,-ltclstub8.6,;t t
++s,@TCL_STUB_LIB_SPEC@,-L/home/jima/space/ins/lin64/dynamic/main/lib -ltclstub8.6,;t t
++s,@TCL_STUB_LIB_PATH@,/home/jima/space/ins/lin64/dynamic/main/lib/libtclstub8.6.a,;t t
++s,@TCL_INCLUDE_SPEC@,-I/home/jima/space/ins/lin64/dynamic/main/include,;t t
++s,@TCL_BUILD_STUB_LIB_SPEC@,-L/home/jima/space/bui/lin64/dynamic/main/tcl/unix -ltclstub8.6,;t t
++s,@TCL_BUILD_STUB_LIB_PATH@,/home/jima/space/bui/lin64/dynamic/main/tcl/unix/libtclstub8.6.a,;t t
++s,@TCL_SRC_DIR@,/home/jima/space/bui/lin64/dynamic/main/tcl,;t t
++s,@CFG_TCL_SHARED_LIB_SUFFIX@,${VERSION}.so,;t t
++s,@CFG_TCL_UNSHARED_LIB_SUFFIX@,${VERSION}.a,;t t
++s,@TCL_SHARED_BUILD@,1,;t t
++s,@LD_LIBRARY_PATH_VAR@,LD_LIBRARY_PATH,;t t
++s,@TCL_BUILD_LIB_SPEC@,-L/home/jima/space/bui/lin64/dynamic/main/tcl/unix -ltcl8.6,;t t
++s,@TCL_LIB_VERSIONS_OK@,ok,;t t
++s,@TCL_SHARED_LIB_SUFFIX@,${VERSION}${SHLIB_SUFFIX},;t t
++s,@TCL_UNSHARED_LIB_SUFFIX@,${VERSION}.a,;t t
++s,@TCL_HAS_LONGLONG@,,;t t
++s,@INSTALL_TZDATA@,,;t t
++s,@DTRACE_SRC@,,;t t
++s,@DTRACE_HDR@,,;t t
++s,@DTRACE_OBJ@,,;t t
++s,@MAKEFILE_SHELL@,/bin/sh,;t t
++s,@BUILD_DLTEST@,$(DLTEST_TARGETS),;t t
++s,@TCL_PACKAGE_PATH@,/home/jima/space/ins/lin64/dynamic/main/lib ,;t t
++s,@TCL_MODULE_PATH@,,;t t
++s,@TCL_LIBRARY@,$(prefix)/lib/tcl$(VERSION),;t t
++s,@PRIVATE_INCLUDE_DIR@,$(includedir),;t t
++s,@HTML_DIR@,$(DISTDIR)/html,;t t
++s,@PACKAGE_DIR@,/home/jima/space/ins/lin64/dynamic/main/lib,;t t
++s,@EXTRA_CC_SWITCHES@,,;t t
++s,@EXTRA_APP_CC_SWITCHES@,,;t t
++s,@EXTRA_INSTALL@,,;t t
++s,@EXTRA_INSTALL_BINARIES@,@:,;t t
++s,@EXTRA_BUILD_HTML@,@:,;t t
++s,@EXTRA_TCLSH_LIBS@,,;t t
++s,@DLTEST_LD@,${SHLIB_LD},;t t
++s,@DLTEST_SUFFIX@,,;t t
++CEOF
++
++  # Split the substitutions into bite-sized pieces for seds with
++  # small command number limits, like on Digital OSF/1 and HP-UX.
++  ac_max_sed_lines=48
++  ac_sed_frag=1 # Number of current file.
++  ac_beg=1 # First line for current file.
++  ac_end=$ac_max_sed_lines # Line after last line for current file.
++  ac_more_lines=:
++  ac_sed_cmds=
++  while $ac_more_lines; do
++    if test $ac_beg -gt 1; then
++      sed "1,${ac_beg}d; ${ac_end}q" $tmp/subs.sed >$tmp/subs.frag
++    else
++      sed "${ac_end}q" $tmp/subs.sed >$tmp/subs.frag
++    fi
++    if test ! -s $tmp/subs.frag; then
++      ac_more_lines=false
++    else
++      # The purpose of the label and of the branching condition is to
++      # speed up the sed processing (if there are no `@' at all, there
++      # is no need to browse any of the substitutions).
++      # These are the two extra sed commands mentioned above.
++      (echo ':t
++  /@[a-zA-Z_][a-zA-Z_0-9]*@/!b' && cat $tmp/subs.frag) >$tmp/subs-$ac_sed_frag.sed
++      if test -z "$ac_sed_cmds"; then
++	ac_sed_cmds="sed -f $tmp/subs-$ac_sed_frag.sed"
++      else
++	ac_sed_cmds="$ac_sed_cmds | sed -f $tmp/subs-$ac_sed_frag.sed"
++      fi
++      ac_sed_frag=`expr $ac_sed_frag + 1`
++      ac_beg=$ac_end
++      ac_end=`expr $ac_end + $ac_max_sed_lines`
++    fi
++  done
++  if test -z "$ac_sed_cmds"; then
++    ac_sed_cmds=cat
++  fi
++fi # test -n "$CONFIG_FILES"
++
++for ac_file in : $CONFIG_FILES; do test "x$ac_file" = x: && continue
++  # Support "outfile[:infile[:infile...]]", defaulting infile="outfile.in".
++  case $ac_file in
++  - | *:- | *:-:* ) # input from stdin
++	cat >$tmp/stdin
++	ac_file_in=`echo "$ac_file" | sed 's,[^:]*:,,'`
++	ac_file=`echo "$ac_file" | sed 's,:.*,,'` ;;
++  *:* ) ac_file_in=`echo "$ac_file" | sed 's,[^:]*:,,'`
++	ac_file=`echo "$ac_file" | sed 's,:.*,,'` ;;
++  * )   ac_file_in=$ac_file.in ;;
++  esac
++
++  # Compute @srcdir@, @top_srcdir@, and @INSTALL@ for subdirectories.
++  ac_dir=`(dirname "$ac_file") 2>/dev/null ||
++$as_expr X"$ac_file" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$ac_file" : 'X\(//\)[^/]' \| \
++	 X"$ac_file" : 'X\(//\)$' \| \
++	 X"$ac_file" : 'X\(/\)' \| \
++	 .     : '\(.\)' 2>/dev/null ||
++echo X"$ac_file" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{ s//\1/; q; }
++  	  /^X\(\/\/\)[^/].*/{ s//\1/; q; }
++  	  /^X\(\/\/\)$/{ s//\1/; q; }
++  	  /^X\(\/\).*/{ s//\1/; q; }
++  	  s/.*/./; q'`
++  { if $as_mkdir_p; then
++    mkdir -p "$ac_dir"
++  else
++    as_dir="$ac_dir"
++    as_dirs=
++    while test ! -d "$as_dir"; do
++      as_dirs="$as_dir $as_dirs"
++      as_dir=`(dirname "$as_dir") 2>/dev/null ||
++$as_expr X"$as_dir" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$as_dir" : 'X\(//\)[^/]' \| \
++	 X"$as_dir" : 'X\(//\)$' \| \
++	 X"$as_dir" : 'X\(/\)' \| \
++	 .     : '\(.\)' 2>/dev/null ||
++echo X"$as_dir" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{ s//\1/; q; }
++  	  /^X\(\/\/\)[^/].*/{ s//\1/; q; }
++  	  /^X\(\/\/\)$/{ s//\1/; q; }
++  	  /^X\(\/\).*/{ s//\1/; q; }
++  	  s/.*/./; q'`
++    done
++    test ! -n "$as_dirs" || mkdir $as_dirs
++  fi || { { echo "$as_me:660: error: cannot create directory \"$ac_dir\"" >&5
++echo "$as_me: error: cannot create directory \"$ac_dir\"" >&2;}
++   { (exit 1); exit 1; }; }; }
++
++  ac_builddir=.
++
++if test "$ac_dir" != .; then
++  ac_dir_suffix=/`echo "$ac_dir" | sed 's,^\.[\\/],,'`
++  # A "../" for each directory in $ac_dir_suffix.
++  ac_top_builddir=`echo "$ac_dir_suffix" | sed 's,/[^\\/]*,../,g'`
++else
++  ac_dir_suffix= ac_top_builddir=
++fi
++
++case $srcdir in
++  .)  # No --srcdir option.  We are building in place.
++    ac_srcdir=.
++    if test -z "$ac_top_builddir"; then
++       ac_top_srcdir=.
++    else
++       ac_top_srcdir=`echo $ac_top_builddir | sed 's,/$,,'`
++    fi ;;
++  [\\/]* | ?:[\\/]* )  # Absolute path.
++    ac_srcdir=$srcdir$ac_dir_suffix;
++    ac_top_srcdir=$srcdir ;;
++  *) # Relative path.
++    ac_srcdir=$ac_top_builddir$srcdir$ac_dir_suffix
++    ac_top_srcdir=$ac_top_builddir$srcdir ;;
++esac
++
++# Do not use `cd foo && pwd` to compute absolute paths, because
++# the directories may not exist.
++case `pwd` in
++.) ac_abs_builddir="$ac_dir";;
++*)
++  case "$ac_dir" in
++  .) ac_abs_builddir=`pwd`;;
++  [\\/]* | ?:[\\/]* ) ac_abs_builddir="$ac_dir";;
++  *) ac_abs_builddir=`pwd`/"$ac_dir";;
++  esac;;
++esac
++case $ac_abs_builddir in
++.) ac_abs_top_builddir=${ac_top_builddir}.;;
++*)
++  case ${ac_top_builddir}. in
++  .) ac_abs_top_builddir=$ac_abs_builddir;;
++  [\\/]* | ?:[\\/]* ) ac_abs_top_builddir=${ac_top_builddir}.;;
++  *) ac_abs_top_builddir=$ac_abs_builddir/${ac_top_builddir}.;;
++  esac;;
++esac
++case $ac_abs_builddir in
++.) ac_abs_srcdir=$ac_srcdir;;
++*)
++  case $ac_srcdir in
++  .) ac_abs_srcdir=$ac_abs_builddir;;
++  [\\/]* | ?:[\\/]* ) ac_abs_srcdir=$ac_srcdir;;
++  *) ac_abs_srcdir=$ac_abs_builddir/$ac_srcdir;;
++  esac;;
++esac
++case $ac_abs_builddir in
++.) ac_abs_top_srcdir=$ac_top_srcdir;;
++*)
++  case $ac_top_srcdir in
++  .) ac_abs_top_srcdir=$ac_abs_builddir;;
++  [\\/]* | ?:[\\/]* ) ac_abs_top_srcdir=$ac_top_srcdir;;
++  *) ac_abs_top_srcdir=$ac_abs_builddir/$ac_top_srcdir;;
++  esac;;
++esac
++
++
++
++  if test x"$ac_file" != x-; then
++    { echo "$as_me:732: creating $ac_file" >&5
++echo "$as_me: creating $ac_file" >&6;}
++    rm -f "$ac_file"
++  fi
++  # Let's still pretend it is `configure' which instantiates (i.e., don't
++  # use $as_me), people would be surprised to read:
++  #    /* config.h.  Generated by config.status.  */
++  if test x"$ac_file" = x-; then
++    configure_input=
++  else
++    configure_input="$ac_file.  "
++  fi
++  configure_input=$configure_input"Generated from `echo $ac_file_in |
++				     sed 's,.*/,,'` by configure."
++
++  # First look for the input files in the build tree, otherwise in the
++  # src tree.
++  ac_file_inputs=`IFS=:
++    for f in $ac_file_in; do
++      case $f in
++      -) echo $tmp/stdin ;;
++      [\\/$]*)
++	 # Absolute (can't be DOS-style, as IFS=:)
++	 test -f "$f" || { { echo "$as_me:755: error: cannot find input file: $f" >&5
++echo "$as_me: error: cannot find input file: $f" >&2;}
++   { (exit 1); exit 1; }; }
++	 echo "$f";;
++      *) # Relative
++	 if test -f "$f"; then
++	   # Build tree
++	   echo "$f"
++	 elif test -f "$srcdir/$f"; then
++	   # Source tree
++	   echo "$srcdir/$f"
++	 else
++	   # /dev/null tree
++	   { { echo "$as_me:768: error: cannot find input file: $f" >&5
++echo "$as_me: error: cannot find input file: $f" >&2;}
++   { (exit 1); exit 1; }; }
++	 fi;;
++      esac
++    done` || { (exit 1); exit 1; }
++  sed "
++
++:t
++/@[a-zA-Z_][a-zA-Z_0-9]*@/!b
++s,@configure_input@,$configure_input,;t t
++s,@srcdir@,$ac_srcdir,;t t
++s,@abs_srcdir@,$ac_abs_srcdir,;t t
++s,@top_srcdir@,$ac_top_srcdir,;t t
++s,@abs_top_srcdir@,$ac_abs_top_srcdir,;t t
++s,@builddir@,$ac_builddir,;t t
++s,@abs_builddir@,$ac_abs_builddir,;t t
++s,@top_builddir@,$ac_top_builddir,;t t
++s,@abs_top_builddir@,$ac_abs_top_builddir,;t t
++" $ac_file_inputs | (eval "$ac_sed_cmds") >$tmp/out
++  rm -f $tmp/stdin
++  if test x"$ac_file" != x-; then
++    mv $tmp/out $ac_file
++  else
++    cat $tmp/out
++    rm -f $tmp/out
++  fi
++
++done
++
++#
++# CONFIG_COMMANDS section.
++#
++for ac_file in : $CONFIG_COMMANDS; do test "x$ac_file" = x: && continue
++  ac_dest=`echo "$ac_file" | sed 's,:.*,,'`
++  ac_source=`echo "$ac_file" | sed 's,[^:]*:,,'`
++  ac_dir=`(dirname "$ac_dest") 2>/dev/null ||
++$as_expr X"$ac_dest" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$ac_dest" : 'X\(//\)[^/]' \| \
++	 X"$ac_dest" : 'X\(//\)$' \| \
++	 X"$ac_dest" : 'X\(/\)' \| \
++	 .     : '\(.\)' 2>/dev/null ||
++echo X"$ac_dest" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{ s//\1/; q; }
++  	  /^X\(\/\/\)[^/].*/{ s//\1/; q; }
++  	  /^X\(\/\/\)$/{ s//\1/; q; }
++  	  /^X\(\/\).*/{ s//\1/; q; }
++  	  s/.*/./; q'`
++  { if $as_mkdir_p; then
++    mkdir -p "$ac_dir"
++  else
++    as_dir="$ac_dir"
++    as_dirs=
++    while test ! -d "$as_dir"; do
++      as_dirs="$as_dir $as_dirs"
++      as_dir=`(dirname "$as_dir") 2>/dev/null ||
++$as_expr X"$as_dir" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$as_dir" : 'X\(//\)[^/]' \| \
++	 X"$as_dir" : 'X\(//\)$' \| \
++	 X"$as_dir" : 'X\(/\)' \| \
++	 .     : '\(.\)' 2>/dev/null ||
++echo X"$as_dir" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{ s//\1/; q; }
++  	  /^X\(\/\/\)[^/].*/{ s//\1/; q; }
++  	  /^X\(\/\/\)$/{ s//\1/; q; }
++  	  /^X\(\/\).*/{ s//\1/; q; }
++  	  s/.*/./; q'`
++    done
++    test ! -n "$as_dirs" || mkdir $as_dirs
++  fi || { { echo "$as_me:837: error: cannot create directory \"$ac_dir\"" >&5
++echo "$as_me: error: cannot create directory \"$ac_dir\"" >&2;}
++   { (exit 1); exit 1; }; }; }
++
++  ac_builddir=.
++
++if test "$ac_dir" != .; then
++  ac_dir_suffix=/`echo "$ac_dir" | sed 's,^\.[\\/],,'`
++  # A "../" for each directory in $ac_dir_suffix.
++  ac_top_builddir=`echo "$ac_dir_suffix" | sed 's,/[^\\/]*,../,g'`
++else
++  ac_dir_suffix= ac_top_builddir=
++fi
++
++case $srcdir in
++  .)  # No --srcdir option.  We are building in place.
++    ac_srcdir=.
++    if test -z "$ac_top_builddir"; then
++       ac_top_srcdir=.
++    else
++       ac_top_srcdir=`echo $ac_top_builddir | sed 's,/$,,'`
++    fi ;;
++  [\\/]* | ?:[\\/]* )  # Absolute path.
++    ac_srcdir=$srcdir$ac_dir_suffix;
++    ac_top_srcdir=$srcdir ;;
++  *) # Relative path.
++    ac_srcdir=$ac_top_builddir$srcdir$ac_dir_suffix
++    ac_top_srcdir=$ac_top_builddir$srcdir ;;
++esac
++
++# Do not use `cd foo && pwd` to compute absolute paths, because
++# the directories may not exist.
++case `pwd` in
++.) ac_abs_builddir="$ac_dir";;
++*)
++  case "$ac_dir" in
++  .) ac_abs_builddir=`pwd`;;
++  [\\/]* | ?:[\\/]* ) ac_abs_builddir="$ac_dir";;
++  *) ac_abs_builddir=`pwd`/"$ac_dir";;
++  esac;;
++esac
++case $ac_abs_builddir in
++.) ac_abs_top_builddir=${ac_top_builddir}.;;
++*)
++  case ${ac_top_builddir}. in
++  .) ac_abs_top_builddir=$ac_abs_builddir;;
++  [\\/]* | ?:[\\/]* ) ac_abs_top_builddir=${ac_top_builddir}.;;
++  *) ac_abs_top_builddir=$ac_abs_builddir/${ac_top_builddir}.;;
++  esac;;
++esac
++case $ac_abs_builddir in
++.) ac_abs_srcdir=$ac_srcdir;;
++*)
++  case $ac_srcdir in
++  .) ac_abs_srcdir=$ac_abs_builddir;;
++  [\\/]* | ?:[\\/]* ) ac_abs_srcdir=$ac_srcdir;;
++  *) ac_abs_srcdir=$ac_abs_builddir/$ac_srcdir;;
++  esac;;
++esac
++case $ac_abs_builddir in
++.) ac_abs_top_srcdir=$ac_top_srcdir;;
++*)
++  case $ac_top_srcdir in
++  .) ac_abs_top_srcdir=$ac_abs_builddir;;
++  [\\/]* | ?:[\\/]* ) ac_abs_top_srcdir=$ac_top_srcdir;;
++  *) ac_abs_top_srcdir=$ac_abs_builddir/$ac_top_srcdir;;
++  esac;;
++esac
++
++
++  { echo "$as_me:907: executing $ac_dest commands" >&5
++echo "$as_me: executing $ac_dest commands" >&6;}
++  case $ac_dest in
++    Tcl.framework ) n=Tcl &&
++        f=$n.framework && v=Versions/$VERSION &&
++        rm -rf $f && mkdir -p $f/$v/Resources &&
++        ln -s $v/$n $v/Resources $f && ln -s ../../../$n $f/$v &&
++        ln -s ../../../../$n-Info.plist $f/$v/Resources/Info.plist &&
++        unset n f v
++     ;;
++  esac
++done
++
++{ (exit 0); exit 0; }
+diff --git a/win/coffbase.txt b/win/coffbase.txt
+new file mode 100644
+index 000000000000..96d03e1fe15d
+--- /dev/null
++++ b/win/coffbase.txt
+@@ -0,0 +1,43 @@
++;
++; This file defines the virtual base addresses for the Dynamic Link Libraries
++; that are part of the Tcl system.  The first token on a line is the key (or name
++; of the DLL) and the second token is the virtual base address, in hexadecimal.
++; The third token is the maximum size of the DLL image file, including symbols.
++;
++; Using a specified "preferred load address" should speed loading time by avoiding
++; relocations (NT supported only).  It is assumed extension authors will contribute
++; their modules to this grand-master list.  You can use the dumpbin utility with
++; the /headers option to get the "size of image" data (already in hex).  If the
++; maximum size is too small a linker warning will occur.  Modules can overlap when
++; they're mutually exclusive.  This info is placed in the DLL's PE header by the
++; linker with the `-base:@$(TCLDIR)\win\coffbase.txt,<key>` option.
++
++tcl		0x10000000	0x00200000
++tcldde		0x10200000	0x00010000
++tclreg		0x10210000	0x00010000
++tk		0x10220000	0x00200000
++expect		0x10480000	0x00080000
++itcl		0x10500000	0x00080000
++itk		0x10580000	0x00080000
++bltlite		0x10600000	0x00080000
++blt		0x10680000	0x00080000
++iocpsock	0x10700000	0x00080000
++tls		0x10780000	0x00100000
++winico		0x10880000	0x00010000
++sample		0x108B0000	0x00010000
++tile		0x10900000	0x00080000
++memchan		0x109D0000	0x00010000
++tdom		0x109E0000	0x00080000
++tclvfs		0x10A70000	0x00010000
++tkvideo		0x10B00000	0x00010000
++tclsdl		0x10B20000	0x00080000
++vqtcl		0x10C00000	0x00010000
++tdbc		0x10C40000	0x00010000
++thread		0x10C80000	0x00020000
++nsf		0x10ca0000	0x00080000
++;
++; insert new packages here
++;
++snack		0x1E000000	0x00400000
++sound		0x1E400000	0x00400000
++snackogg	0x1E800000	0x00200000
+diff --git a/win/tclsh.exe.manifest.in b/win/tclsh.exe.manifest.in
+new file mode 100644
+index 000000000000..8b06fce7c1d5
+--- /dev/null
++++ b/win/tclsh.exe.manifest.in
+@@ -0,0 +1,53 @@
++<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"
++	xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
++    <assemblyIdentity
++	    version="@TCL_WIN_VERSION@"
++	    processorArchitecture="@MACHINE@"
++	    name="Tcl.tclsh"
++	    type="win32"
++	/>
++    <description>Tcl command line shell (tclsh)</description>
++    <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
++	<security>
++	    <requestedPrivileges>
++		<requestedExecutionLevel
++			level="asInvoker"
++			uiAccess="false"
++		    />
++	    </requestedPrivileges>
++	</security>
++    </trustInfo>
++    <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
++	<application>
++	    <!-- Windows 10 -->
++	    <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
++	    <!-- Windows 8.1 -->
++	    <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
++	    <!-- Windows 8 -->
++	    <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
++	    <!-- Windows 7 -->
++	    <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>
++	    <!-- Windows Vista -->
++	    <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}"/>
++	</application>
++    </compatibility>
++    <asmv3:application>
++	<asmv3:windowsSettings
++		xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">
++	    <dpiAware>true</dpiAware>
++	</asmv3:windowsSettings>
++    </asmv3:application>
++    <dependency>
++	<dependentAssembly>
++	    <assemblyIdentity
++		    type="win32"
++		    name="Microsoft.Windows.Common-Controls"
++		    version="6.0.0.0"
++		    processorArchitecture="@MACHINE@"
++		    publicKeyToken="6595b64144ccf1df"
++		    language="*"
++		/>
++	</dependentAssembly>
++    </dependency>
++</assembly>
+diff --git a/win/tclsh.ico b/win/tclsh.ico
+new file mode 100644
+index 000000000000..e2543187962f
+Binary files /dev/null and b/win/tclsh.ico differ
+diff --git a/win/tclsh.rc b/win/tclsh.rc
+new file mode 100644
+index 000000000000..685bebd1af5d
+--- /dev/null
++++ b/win/tclsh.rc
+@@ -0,0 +1,81 @@
++//
++// Version Resource Script
++//
++
++#include <winver.h>
++#include <tcl.h>
++
++//
++// build-up the name suffix that defines the type of build this is.
++//
++#if TCL_THREADS
++#define SUFFIX_THREADS	    "t"
++#else
++#define SUFFIX_THREADS	    ""
++#endif
++
++#if STATIC_BUILD
++#define SUFFIX_STATIC	    "s"
++#else
++#define SUFFIX_STATIC	    ""
++#endif
++
++#if DEBUG && !UNCHECKED
++#define SUFFIX_DEBUG	    "g"
++#else
++#define SUFFIX_DEBUG	    ""
++#endif
++
++#define SUFFIX		    SUFFIX_THREADS SUFFIX_STATIC SUFFIX_DEBUG
++
++
++LANGUAGE 0x9, 0x1	/* LANG_ENGLISH, SUBLANG_DEFAULT */
++
++VS_VERSION_INFO VERSIONINFO
++ FILEVERSION 	TCL_MAJOR_VERSION,TCL_MINOR_VERSION,TCL_RELEASE_LEVEL,TCL_RELEASE_SERIAL
++ PRODUCTVERSION TCL_MAJOR_VERSION,TCL_MINOR_VERSION,TCL_RELEASE_LEVEL,TCL_RELEASE_SERIAL
++ FILEFLAGSMASK 	0x3fL
++#ifdef DEBUG
++ FILEFLAGS 	VS_FF_DEBUG
++#else
++ FILEFLAGS 	0x0L
++#endif
++ FILEOS 	VOS__WINDOWS32
++ FILETYPE 	VFT_APP
++ FILESUBTYPE 	0x0L
++BEGIN
++    BLOCK "StringFileInfo"
++    BEGIN
++        BLOCK "040904b0"
++        BEGIN
++            VALUE "FileDescription", "Tclsh Application\0"
++            VALUE "OriginalFilename", "tclsh" STRINGIFY(TCL_MAJOR_VERSION) STRINGIFY(TCL_MINOR_VERSION) SUFFIX ".exe\0"
++            VALUE "FileVersion", TCL_PATCH_LEVEL
++            VALUE "LegalCopyright", "Copyright \251 1987-2022 Regents of the University of California and other parties\0"
++            VALUE "ProductName", "Tcl " TCL_VERSION " for Windows\0"
++            VALUE "ProductVersion", TCL_PATCH_LEVEL
++        END
++    END
++    BLOCK "VarFileInfo"
++    BEGIN
++        VALUE "Translation", 0x409, 1200
++    END
++END
++
++//
++// Icon
++//
++
++tclsh                      ICON    DISCARDABLE     "tclsh.ico"
++
++//
++// This is needed for Windows 8.1 onwards.
++//
++
++#ifndef RT_MANIFEST
++#define RT_MANIFEST     24
++#endif
++#ifndef CREATEPROCESS_MANIFEST_RESOURCE_ID
++#define CREATEPROCESS_MANIFEST_RESOURCE_ID 1
++#endif
++CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "tclsh.exe.manifest"
+diff --git a/win/x86_64-w64-mingw32-nmakehlp.exe b/win/x86_64-w64-mingw32-nmakehlp.exe
+new file mode 100755
+index 000000000000..2564ec9894ea
+Binary files /dev/null and b/win/x86_64-w64-mingw32-nmakehlp.exe differ

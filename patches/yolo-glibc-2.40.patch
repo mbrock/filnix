@@ -1,0 +1,563 @@
+diff --git a/configure.ac b/configure.ac
+index 9cbc0bf68f19..58ee9138b30b 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1527,7 +1527,7 @@ dnl If not, then don't use it.
+ dnl Note that _FORTIFY_SOURCE may have been set through FLAGS too.
+ dnl _FORTIFY_SOURCE value will be selectively disabled for function that can't
+ dnl support it
+-no_fortify_source="-Wp,-U_FORTIFY_SOURCE"
++no_fortify_source="-U_FORTIFY_SOURCE"
+ fortify_source="${no_fortify_source}"
+ 
+ AC_CACHE_CHECK([for maximum supported _FORTIFY_SOURCE level],
+@@ -1546,7 +1546,7 @@ AS_CASE([$enable_fortify_source],
+         [libc_cv_fortify_source=no])
+ 
+ AS_IF([test "$libc_cv_fortify_source" = yes],
+-      [fortify_source="${fortify_source},-D_FORTIFY_SOURCE=${enable_fortify_source}"]
++      [fortify_source="${fortify_source} -D_FORTIFY_SOURCE=${enable_fortify_source}"]
+       )
+ 
+ AC_SUBST(enable_fortify_source)
+diff --git a/debug/Makefile b/debug/Makefile
+index 3903cc97a370..2ad5ef7cdc82 100644
+--- a/debug/Makefile
++++ b/debug/Makefile
+@@ -171,16 +171,16 @@ CFLAGS-recvfrom_chk.c += -fexceptions -fasynchronous-unwind-tables
+ # set up for us, so keep the CFLAGS/CPPFLAGS split logical as the order is:
+ # <user CFLAGS> <test CFLAGS> <user CPPFLAGS> <test CPPFLAGS>
+ CFLAGS-tst-longjmp_chk.c += -fexceptions -fasynchronous-unwind-tables
+-CPPFLAGS-tst-longjmp_chk.c += $(no-fortify-source),-D_FORTIFY_SOURCE=1
++CPPFLAGS-tst-longjmp_chk.c += $(no-fortify-source) -D_FORTIFY_SOURCE=1
+ CFLAGS-tst-longjmp_chk2.c += -fexceptions -fasynchronous-unwind-tables
+-CPPFLAGS-tst-longjmp_chk2.c += $(no-fortify-source),-D_FORTIFY_SOURCE=1
++CPPFLAGS-tst-longjmp_chk2.c += $(no-fortify-source) -D_FORTIFY_SOURCE=1
+ CFLAGS-tst-longjmp_chk3.c += -fexceptions -fasynchronous-unwind-tables
+-CPPFLAGS-tst-longjmp_chk3.c += $(no-fortify-source),-D_FORTIFY_SOURCE=1
+-CPPFLAGS-tst-realpath-chk.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
+-CPPFLAGS-tst-chk-cancel.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
+-CFLAGS-tst-sprintf-fortify-rdonly.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
+-CFLAGS-tst-fortify-syslog.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
+-CFLAGS-tst-fortify-wide.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
++CPPFLAGS-tst-longjmp_chk3.c += $(no-fortify-source) -D_FORTIFY_SOURCE=1
++CPPFLAGS-tst-realpath-chk.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
++CPPFLAGS-tst-chk-cancel.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
++CFLAGS-tst-sprintf-fortify-rdonly.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
++CFLAGS-tst-fortify-syslog.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
++CFLAGS-tst-fortify-wide.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
+ 
+ # _FORTIFY_SOURCE tests.
+ # Auto-generate tests for _FORTIFY_SOURCE for different levels, compilers and
+@@ -218,7 +218,7 @@ src-chk-nongnu = \#undef _GNU_SOURCE
+ # cannot be disabled via pragmas, so require -Wno-error to be used.
+ define gen-chk-test
+ tests-$(1)-$(4)-chk += tst-fortify-$(1)-$(2)-$(3)-$(4)
+-CFLAGS-tst-fortify-$(1)-$(2)-$(3)-$(4).$(1) += $(no-fortify-source),-D_FORTIFY_SOURCE=$(3) -Wno-format \
++CFLAGS-tst-fortify-$(1)-$(2)-$(3)-$(4).$(1) += $(no-fortify-source) -D_FORTIFY_SOURCE=$(3) -Wno-format \
+ 					  -Wno-deprecated-declarations \
+ 					  -Wno-error
+ $(eval $(call cflags-$(2),$(1),$(3),$(4)))
+diff --git a/elf/dl-load.c b/elf/dl-load.c
+index 8a89b71016d4..f92f80a7157e 100644
+--- a/elf/dl-load.c
++++ b/elf/dl-load.c
+@@ -33,6 +33,9 @@
+ #include <sys/types.h>
+ #include <gnu/lib-names.h>
+ 
++#undef LIBC_SO
++#define LIBC_SO "libyolocimpl.so"
++
+ /* Type for the buffer we put the ELF header and hopefully the program
+    header.  This buffer does not really have to be too large.  In most
+    cases the program header follows the ELF header directly.  If this
+diff --git a/elf/elf.h b/elf/elf.h
+index 33aea7f743b8..d614976b5d24 100644
+--- a/elf/elf.h
++++ b/elf/elf.h
+@@ -1270,6 +1270,8 @@ typedef struct
+ 
+ #define AT_MINSIGSTKSZ		51 /* Stack needed for signal delivery  */
+ 
++#define AT_MAX_KEY              51
++
+ /* Note section contents.  Each entry in the note section begins with
+    a header of a fixed form.  */
+ 
+diff --git a/io/Makefile b/io/Makefile
+index 19932d50f7e9..1ab527a973eb 100644
+--- a/io/Makefile
++++ b/io/Makefile
+@@ -291,7 +291,7 @@ CFLAGS-read.c += -fexceptions -fasynchronous-unwind-tables $(config-cflags-wno-i
+ CFLAGS-write.c += -fexceptions -fasynchronous-unwind-tables $(config-cflags-wno-ignored-attributes)
+ CFLAGS-close.c += -fexceptions -fasynchronous-unwind-tables
+ CFLAGS-lseek64.c += $(config-cflags-wno-ignored-attributes)
+-CFLAGS-tst-read-zero.c += $(no-fortify-source),-D_FORTIFY_SOURCE=$(supported-fortify)
++CFLAGS-tst-read-zero.c += $(no-fortify-source) -D_FORTIFY_SOURCE=$(supported-fortify)
+ 
+ CFLAGS-test-stat.c += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
+ CFLAGS-test-lfs.c += -D_LARGEFILE64_SOURCE
+diff --git a/math/Versions b/math/Versions
+index 49d61f212ff2..834dd9b096fe 100644
+--- a/math/Versions
++++ b/math/Versions
+@@ -191,7 +191,7 @@ libm {
+     __yn_finite; __ynf_finite; __ynl_finite;
+     __lgamma_r_finite; __lgammaf_r_finite; __lgammal_r_finite;
+     __log_finite; __logf_finite; __logl_finite;
+-    __log10_finite; __log10f_finite; __log10l_finite;
++    __log10_finite; __log10f_finite;
+     __log2_finite; __log2f_finite; __log2l_finite;
+     __pow_finite; __powf_finite; __powl_finite;
+     __remainder_finite; __remainderf_finite; __remainderl_finite;
+@@ -652,5 +652,21 @@ libm {
+     log2p1f64x; log2p1f128;
+     log10p1f64x; log10p1f128;
+     logp1f64x; logp1f128;
++
++    # For Fil-C
++    __ieee754_expl;
++    __ieee754_fmodl;
++    __ieee754_ilogbl;
++    __ieee754_scalbl;
++    __ieee754_exp10l;
++    __ieee754_exp2l;
++    __ieee754_log10l;
++    __log10l_finite;
++    __ieee754_log2l;
++    __log2l_finite;
++    __ieee754_logl;
++    __logl_finite;
++    __ieee754_powl;
++    __ieee754_remainderl;
+   }
+ }
+diff --git a/math/math.h b/math/math.h
+index 1e300c4223be..48fb3be407c0 100644
+--- a/math/math.h
++++ b/math/math.h
+@@ -31,6 +31,8 @@
+ # warning This will cause compilation problems.
+ #endif
+ 
++#define FILC_YOLO_MATH_HACKS 1
++
+ __BEGIN_DECLS
+ 
+ /* Get definitions of __intmax_t and __uintmax_t.  */
+diff --git a/nptl/Makefile b/nptl/Makefile
+index c4c27e0d23c8..96d7cc59c62c 100644
+--- a/nptl/Makefile
++++ b/nptl/Makefile
+@@ -29,6 +29,7 @@ headers := \
+   bits/struct_rwlock.h \
+   pthread.h \
+   semaphore.h \
++  futex_calls.h \
+   # headers
+ 
+ extra-libs := libpthread
+diff --git a/nptl/Versions b/nptl/Versions
+index 3221de89d134..3ee2c7e7b129 100644
+--- a/nptl/Versions
++++ b/nptl/Versions
+@@ -72,6 +72,12 @@ libc {
+     sem_post;
+     sem_trywait;
+     sem_wait;
++    yolo_futex_wake;
++    yolo_futex_wait;
++    yolo_futex_timedwait;
++    yolo_futex_unlock_pi;
++    yolo_futex_lock_pi;
++    yolo_futex_requeue;
+   }
+   GLIBC_2.1 {
+     pthread_attr_getguardsize;
+diff --git a/nptl/futex-internal.c b/nptl/futex-internal.c
+index 0bb1dd51f668..fb7d51718ce1 100644
+--- a/nptl/futex-internal.c
++++ b/nptl/futex-internal.c
+@@ -21,6 +21,7 @@
+ #include <time.h>
+ #include <futex-internal.h>
+ #include <kernel-features.h>
++#include <futex_calls.h>
+ 
+ #ifndef __ASSUME_TIME64_SYSCALLS
+ static int
+@@ -203,3 +204,67 @@ __futex_lock_pi64 (int *futex_word, clockid_t clockid,
+       futex_fatal_error ();
+     }
+ }
++
++static int
++yolo_priv_to_lll (int priv)
++{
++  return priv ? LLL_PRIVATE : LLL_SHARED;
++}
++
++void
++yolo_futex_wake (volatile int *addr, int cnt, int priv)
++{
++  futex_wake ((unsigned int*)addr, cnt, yolo_priv_to_lll (priv));
++}
++
++void
++yolo_futex_wait (volatile int *addr, int val, int priv)
++{
++  futex_wait ((unsigned int*)addr, val, yolo_priv_to_lll (priv));
++}
++
++int
++yolo_futex_timedwait (volatile int *addr, int val, int clock_id,
++                      const struct timespec *timeout, int priv)
++{
++  struct __timespec64 timeout64;
++  if (timeout)
++    {
++      timeout64.tv_sec = timeout->tv_sec;
++      timeout64.tv_nsec = timeout->tv_nsec;
++    }
++  return __futex_abstimed_wait64 ((unsigned int*)addr, val, clock_id,
++                                  timeout ? &timeout64 : NULL,
++                                  yolo_priv_to_lll (priv));
++}
++
++int
++yolo_futex_unlock_pi (volatile int *addr, int priv)
++{
++  return futex_unlock_pi ((unsigned int*)addr, yolo_priv_to_lll (priv));
++}
++
++int yolo_futex_lock_pi(volatile int *addr, int priv,
++                       const struct timespec *timeout)
++{
++  struct __timespec64 timeout64;
++  if (timeout)
++    {
++      timeout64.tv_sec = timeout->tv_sec;
++      timeout64.tv_nsec = timeout->tv_nsec;
++    }
++  return __futex_lock_pi64 ((int *) addr, CLOCK_REALTIME,
++                            timeout ? &timeout64 : NULL,
++                            yolo_priv_to_lll (priv));
++}
++
++int yolo_futex_requeue(volatile int *addr, int priv, int wake_count,
++                       int requeue_count, volatile int *addr2)
++{
++  return lll_futex_syscall (5, addr,
++                            __lll_private_flag (FUTEX_REQUEUE,
++                                                yolo_priv_to_lll (priv)),
++                            wake_count, requeue_count, addr2);
++}
++
++
+diff --git a/nptl/pthread_exit.c b/nptl/pthread_exit.c
+index dc2635f82700..9d54e3f4d38e 100644
+--- a/nptl/pthread_exit.c
++++ b/nptl/pthread_exit.c
+@@ -24,13 +24,6 @@
+ void
+ __pthread_exit (void *value)
+ {
+-  {
+-    struct unwind_link *unwind_link = __libc_unwind_link_get ();
+-    if (unwind_link == NULL)
+-      __libc_fatal (LIBGCC_S_SO
+-                    " must be installed for pthread_exit to work\n");
+-  }
+-
+   THREAD_SETMEM (THREAD_SELF, result, value);
+ 
+   __do_cancel ();
+diff --git a/nptl/unwind.c b/nptl/unwind.c
+index 3688981ef726..ef6667ea2719 100644
+--- a/nptl/unwind.c
++++ b/nptl/unwind.c
+@@ -25,71 +25,10 @@
+ #include <jmpbuf-unwind.h>
+ #include <shlib-compat.h>
+ 
+-#if _STACK_GROWS_DOWN
+-# define FRAME_LEFT(frame, other, adj) \
+-  ((uintptr_t) frame - adj >= (uintptr_t) other - adj)
+-#elif _STACK_GROWS_UP
+-# define FRAME_LEFT(frame, other, adj) \
+-  ((uintptr_t) frame - adj <= (uintptr_t) other - adj)
+-#else
+-# error "Define either _STACK_GROWS_DOWN or _STACK_GROWS_UP"
+-#endif
+-
+-static _Unwind_Reason_Code
+-unwind_stop (int version, _Unwind_Action actions,
+-	     _Unwind_Exception_Class exc_class,
+-	     struct _Unwind_Exception *exc_obj,
+-	     struct _Unwind_Context *context, void *stop_parameter)
++void
++__cleanup_fct_attribute __attribute ((noreturn))
++__pthread_unwind (__pthread_unwind_buf_t *buf)
+ {
+-  struct pthread_unwind_buf *buf = stop_parameter;
+-  struct pthread *self = THREAD_SELF;
+-  struct _pthread_cleanup_buffer *curp = THREAD_GETMEM (self, cleanup);
+-  int do_longjump = 0;
+-
+-  /* Adjust all pointers used in comparisons, so that top of thread's
+-     stack is at the top of address space.  Without that, things break
+-     if stack is allocated above the main stack.  */
+-  uintptr_t adj = (uintptr_t) self->stackblock + self->stackblock_size;
+-
+-  /* Do longjmp if we're at "end of stack", aka "end of unwind data".
+-     We assume there are only C frame without unwind data in between
+-     here and the jmp_buf target.  Otherwise simply note that the CFA
+-     of a function is NOT within it's stack frame; it's the SP of the
+-     previous frame.  */
+-  if ((actions & _UA_END_OF_STACK)
+-      || ! _JMPBUF_CFA_UNWINDS_ADJ (buf->cancel_jmp_buf[0].jmp_buf, context,
+-				    adj))
+-    do_longjump = 1;
+-
+-  if (__glibc_unlikely (curp != NULL))
+-    {
+-      /* Handle the compatibility stuff.  Execute all handlers
+-	 registered with the old method which would be unwound by this
+-	 step.  */
+-      struct _pthread_cleanup_buffer *oldp = buf->priv.data.cleanup;
+-      void *cfa = (void *) (_Unwind_Ptr) _Unwind_GetCFA (context);
+-
+-      if (curp != oldp && (do_longjump || FRAME_LEFT (cfa, curp, adj)))
+-	{
+-	  do
+-	    {
+-	      /* Pointer to the next element.  */
+-	      struct _pthread_cleanup_buffer *nextp = curp->__prev;
+-
+-	      /* Call the handler.  */
+-	      curp->__routine (curp->__arg);
+-
+-	      /* To the next.  */
+-	      curp = nextp;
+-	    }
+-	  while (curp != oldp
+-		 && (do_longjump || FRAME_LEFT (cfa, curp, adj)));
+-
+-	  /* Mark the current element as handled.  */
+-	  THREAD_SETMEM (self, cleanup, curp);
+-	}
+-    }
+-
+   DIAG_PUSH_NEEDS_COMMENT;
+ #if __GNUC_PREREQ (7, 0)
+   /* This call results in a -Wstringop-overflow warning because struct
+@@ -98,38 +37,12 @@ unwind_stop (int version, _Unwind_Action actions,
+      the saved signal mask), so that is a false positive.  */
+   DIAG_IGNORE_NEEDS_COMMENT (11, "-Wstringop-overflow=");
+ #endif
+-  if (do_longjump)
+-    __libc_unwind_longjmp ((struct __jmp_buf_tag *) buf->cancel_jmp_buf, 1);
++  /* HACK: We run yolo-glibc without the gcc unwind runtime, and also Yolo-land doesn't ever do
++     anything that would require forced unwinding on thread exit. And there's no cancellation. And
++     there are no cleanups pushed on any stack. */
++  __libc_unwind_longjmp ((struct __jmp_buf_tag *) buf->__cancel_jmp_buf, 1);
+   DIAG_POP_NEEDS_COMMENT;
+ 
+-  return _URC_NO_REASON;
+-}
+-
+-
+-static void
+-unwind_cleanup (_Unwind_Reason_Code reason, struct _Unwind_Exception *exc)
+-{
+-  /* When we get here a C++ catch block didn't rethrow the object.  We
+-     cannot handle this case and therefore abort.  */
+-  __libc_fatal ("FATAL: exception not rethrown\n");
+-}
+-
+-
+-void
+-__cleanup_fct_attribute __attribute ((noreturn))
+-__pthread_unwind (__pthread_unwind_buf_t *buf)
+-{
+-  struct pthread_unwind_buf *ibuf = (struct pthread_unwind_buf *) buf;
+-  struct pthread *self = THREAD_SELF;
+-
+-  /* This is not a catchable exception, so don't provide any details about
+-     the exception type.  We do need to initialize the field though.  */
+-  THREAD_SETMEM (self, exc.exception_class, 0);
+-  THREAD_SETMEM (self, exc.exception_cleanup, &unwind_cleanup);
+-
+-  _Unwind_ForcedUnwind (&self->exc, unwind_stop, ibuf);
+-  /* NOTREACHED */
+-
+   /* We better do not get here.  */
+   abort ();
+ }
+diff --git a/signal/Versions b/signal/Versions
+index c844d4c14491..c81b587e3f98 100644
+--- a/signal/Versions
++++ b/signal/Versions
+@@ -29,7 +29,10 @@ libc {
+     sigemptyset; sigfillset; siggetmask; siginterrupt; sigisemptyset;
+     sigismember; siglongjmp; signal; sigorset; sigpause; sigpending;
+     sigprocmask; sigreturn; sigsetmask; sigstack; sigsuspend; sigvec;
+-    sigwait; ssignal;
++    sigwait; ssignal; sigdelsetyolo;
++
++    libc_internal_signals;
++    num_libc_internal_signals;
+   }
+   GLIBC_2.1 {
+     # helper functions
+diff --git a/signal/allocrtsig.c b/signal/allocrtsig.c
+index 1803ba1532cd..c840304bc477 100644
+--- a/signal/allocrtsig.c
++++ b/signal/allocrtsig.c
+@@ -68,3 +68,10 @@ __libc_allocate_rtsig (int high)
+   return high ? current_rtmin++ : current_rtmax--;
+ #endif
+ }
++
++int libc_internal_signals[2] = {
++    SIGCANCEL,
++    SIGSETXID
++};
++
++unsigned num_libc_internal_signals = 2;
+diff --git a/signal/sigdelset.c b/signal/sigdelset.c
+index 7ee48e00287c..be3c0ce0dfef 100644
+--- a/signal/sigdelset.c
++++ b/signal/sigdelset.c
+@@ -35,3 +35,16 @@ sigdelset (sigset_t *set, int signo)
+   return 0;
+ }
+ libc_hidden_def (sigdelset)
++
++int
++sigdelsetyolo (sigset_t *set, int signo)
++{
++  if (set == NULL || signo <= 0 || signo >= NSIG)
++    {
++      __set_errno (EINVAL);
++      return -1;
++    }
++
++  __sigdelset (set, signo);
++  return 0;
++}
+diff --git a/signal/signal.h b/signal/signal.h
+index 8e07b041b1c0..1564d7a76b6b 100644
+--- a/signal/signal.h
++++ b/signal/signal.h
+@@ -206,6 +206,7 @@ extern int sigaddset (sigset_t *__set, int __signo) __THROW __nonnull ((1));
+ 
+ /* Remove SIGNO from SET.  */
+ extern int sigdelset (sigset_t *__set, int __signo) __THROW __nonnull ((1));
++extern int sigdelsetyolo (sigset_t *__set, int __signo) __THROW __nonnull ((1));
+ 
+ /* Return 1 if SIGNO is in SET, 0 if not.  */
+ extern int sigismember (const sigset_t *__set, int __signo)
+@@ -390,6 +391,9 @@ extern int __libc_current_sigrtmax (void) __THROW;
+ /* System-specific extensions.  */
+ #include <bits/signal_ext.h>
+ 
++extern int libc_internal_signals[];
++extern unsigned num_libc_internal_signals;
++
+ __END_DECLS
+ 
+ #endif /* not signal.h */
+diff --git a/stdio-common/Makefile b/stdio-common/Makefile
+index 3396090be189..f3ab1cf65f39 100644
+--- a/stdio-common/Makefile
++++ b/stdio-common/Makefile
+@@ -517,7 +517,7 @@ CFLAGS-tst-gets.c += -Wno-deprecated-declarations
+ 
+ # BZ #11319 was first fixed for regular vdprintf, then reopened because
+ # the fortified version had the same bug.
+-CFLAGS-tst-bz11319-fortify2.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
++CFLAGS-tst-bz11319-fortify2.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
+ 
+ CFLAGS-tst-memstream-string.c += -fno-builtin-fprintf
+ 
+diff --git a/sysdeps/nptl/futex_calls.h b/sysdeps/nptl/futex_calls.h
+new file mode 100644
+index 000000000000..cff9271087a1
+--- /dev/null
++++ b/sysdeps/nptl/futex_calls.h
+@@ -0,0 +1,16 @@
++#ifndef _FUTEX_CALLS_H_
++#define _FUTEX_CALLS_H_
++
++#include <sys/time.h>
++
++void yolo_futex_wake(volatile int *addr, int cnt, int priv);
++void yolo_futex_wait(volatile int *addr, int val, int priv);
++
++/* These return the errno as a negative value. */
++int yolo_futex_timedwait(volatile int *addr, int val, int clock_id, const struct timespec *timeout, int priv);
++int yolo_futex_unlock_pi(volatile int *addr, int priv);
++int yolo_futex_lock_pi(volatile int *addr, int priv, const struct timespec *timeout);
++int yolo_futex_requeue(volatile int *addr, int priv, int wake_count, int requeue_count, volatile int *addr2);
++
++#endif /* _FUTEX_CALLS_H_ */
++
+diff --git a/sysdeps/unix/sysv/linux/bits/fcntl-linux.h b/sysdeps/unix/sysv/linux/bits/fcntl-linux.h
+index 628612b8856b..d8b4d6472f99 100644
+--- a/sysdeps/unix/sysv/linux/bits/fcntl-linux.h
++++ b/sysdeps/unix/sysv/linux/bits/fcntl-linux.h
+@@ -197,9 +197,11 @@
+ #endif
+ 
+ #ifdef __USE_GNU
++# define F_GETOWNER_UIDS 17
+ # define F_SETLEASE	1024	/* Set a lease.  */
+ # define F_GETLEASE	1025	/* Enquire what lease is active.  */
+ # define F_NOTIFY	1026	/* Request notifications on a directory.  */
++# define F_CANCELLK	1029
+ # define F_SETPIPE_SZ	1031	/* Set pipe page size array.  */
+ # define F_GETPIPE_SZ	1032	/* Set pipe page size array.  */
+ # define F_ADD_SEALS	1033	/* Add seals to file.  */
+diff --git a/sysdeps/x86_64/fpu/e_log10l.S b/sysdeps/x86_64/fpu/e_log10l.S
+index cebde8271502..dad95967faf8 100644
+--- a/sysdeps/x86_64/fpu/e_log10l.S
++++ b/sysdeps/x86_64/fpu/e_log10l.S
+@@ -86,4 +86,4 @@ ENTRY(__log10l_finite)
+ 	fyl2xp1			// log10(x)
+ 	ret
+ END(__log10l_finite)
+-libm_alias_finite (__log10l_finite, __log10l)
++
+diff --git a/sysdeps/x86_64/fpu/e_log2l.S b/sysdeps/x86_64/fpu/e_log2l.S
+index dd3d9cb86aa2..8cd11ff26cdd 100644
+--- a/sysdeps/x86_64/fpu/e_log2l.S
++++ b/sysdeps/x86_64/fpu/e_log2l.S
+@@ -86,4 +86,3 @@ ENTRY(__log2l_finite)
+ 	fyl2xp1			// log(x)
+ 	ret
+ END (__log2l_finite)
+-libm_alias_finite (__log2l_finite, __log2l)
+diff --git a/sysdeps/x86_64/fpu/e_logl.S b/sysdeps/x86_64/fpu/e_logl.S
+index 126f6c533252..3071fee9746c 100644
+--- a/sysdeps/x86_64/fpu/e_logl.S
++++ b/sysdeps/x86_64/fpu/e_logl.S
+@@ -89,4 +89,3 @@ ENTRY(__logl_finite)
+ 	fyl2xp1			// log(x)
+ 	ret
+ END (__logl_finite)
+-libm_alias_finite (__logl_finite, __logl)
+diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
+index 63adf0e8efec..37a44e62c3fb 100644
+--- a/wcsmbs/Makefile
++++ b/wcsmbs/Makefile
+@@ -264,7 +264,7 @@ CFLAGS-wcstod_l.c += $(strtox-CFLAGS) $(config-cflags-wno-ignored-attributes)
+ CFLAGS-wcstold_l.c += $(strtox-CFLAGS) $(config-cflags-wno-ignored-attributes)
+ CFLAGS-wcstof128_l.c += $(strtox-CFLAGS)
+ CFLAGS-wcstof_l.c += $(strtox-CFLAGS) $(config-cflags-wno-ignored-attributes)
+-CPPFLAGS-tst-wchar-h.c += $(no-fortify-source),-D_FORTIFY_SOURCE=2
++CPPFLAGS-tst-wchar-h.c += $(no-fortify-source) -D_FORTIFY_SOURCE=2
+ 
+ CFLAGS-wcschr.c += $(config-cflags-wno-ignored-attributes)
+ CFLAGS-wmemchr.c += $(config-cflags-wno-ignored-attributes)
