@@ -282,6 +282,64 @@ File issues:
 - Fil-C itself: https://github.com/pizlonator/fil-c/issues
 - Nix packaging: https://github.com/mbrock/filnix/issues
 
-* Status
+* Roadmap
 
-Experimental. Working: toolchain builds, many packages run, CVE mitigation demonstrated. TODO: more ports, NixOS module, benchmarking, CI.
+** Current: Standalone Flake
+
+This repository packages Fil-C as a standalone flake. Users reference it explicitly:
+
+#+BEGIN_SRC nix
+filc = (builtins.getFlake "github:mbrock/filnix").packages.${pkgs.system};
+#+END_SRC
+
+Works now. Requires manual flake reference for each package.
+
+** Goal: nixpkgs Cross-Platform Integration
+
+Nixpkgs supports cross-compilation targets via =pkgsCross= - alternative toolchains for building packages. Examples: =pkgsCross.musl.bash= (musl libc), =pkgsCross.mingwW64.curl= (Windows).
+
+Integration plan:
+
+1. *Add Fil-C as cross-compilation target to nixpkgs*
+   - Similar to how musl, uclibc, mingw are integrated
+   - Defines stdenv using Fil-C compiler and runtime
+
+2. *Enable via =pkgsCross.filc=*
+   #+BEGIN_SRC nix
+   pkgs.pkgsCross.filc.bash       # Memory-safe bash
+   pkgs.pkgsCross.filc.coreutils  # Memory-safe coreutils
+   pkgs.pkgsCross.filc.openssh    # Memory-safe openssh
+   #+END_SRC
+
+3. *Automatic access to 80,000+ packages*
+   - Any nixpkgs package becomes =pkgsCross.filc.package=
+   - No manual porting needed for packages that compile
+   - Patches live in nixpkgs tree
+
+** Benefits of Integration
+
+- *Official builds*: Hydra CI automatically builds and tests
+- *Binary cache*: Pre-built binaries from cache.nixos.org
+- *Community maintenance*: Package updates tracked with nixpkgs
+- *Simple usage*: No flake references, just =pkgsCross.filc.anything=
+- *Overlay compatibility*: Works with existing nixpkgs infrastructure
+
+Example system configuration after integration:
+
+#+BEGIN_SRC nix
+{ pkgs, ... }: {
+  environment.systemPackages = with pkgs.pkgsCross.filc; [
+    bash coreutils openssh curl
+  ];
+}
+#+END_SRC
+
+** Current Status
+
+Experimental standalone flake. Working: toolchain builds, many packages run, CVE mitigation demonstrated.
+
+Active work:
+- Port more packages to validate cross-compilation approach
+- Document integration requirements for nixpkgs maintainers
+- Establish CI and binary caching infrastructure
+- Verify ABI stability across nixpkgs updates
