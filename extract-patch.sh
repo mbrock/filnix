@@ -15,6 +15,14 @@ if [[ -z "$PROJECT" ]]; then
     exit 1
 fi
 
+# Skip glibc projects - these are built directly from fil-c source tree
+case "$PROJECT" in
+    yolo-glibc-*|user-glibc-*|yolomusl|usermusl)
+        echo "$PROJECT: Skipping (glibc project, built from fil-c source)"
+        exit 0
+        ;;
+esac
+
 if [[ ! -d "$REPO_DIR" ]]; then
     echo "Error: Repository directory $REPO_DIR does not exist"
     exit 1

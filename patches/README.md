@@ -74,32 +74,142 @@ The biggest patches are for core libraries with extensive changes:
 
 ## Common patch patterns
 
-### Pointer table usage
+The patches use several patterns to make code Fil-C compatible. Here are real examples from various projects:
 
-Instead of casting pointers to integers:
+### Pattern 1: Pointer tables (Perl, Python)
 
-```c
--    int encoded = PTR2IV(some_ptr);
-+    int encoded = zptrtable_encode(my_table, some_ptr);
+The most common pattern: using `zptrtable` to convert pointers to integers safely.
 
--    void *decoded = INT2PTR(void*, encoded_val);
-+    void *decoded = zptrtable_decode(my_table, encoded_val);
-```
-
-### Adding stdfil.h
-
+**Perl's `builtin.c`** - Storing callback pointers as integers:
 ```c
 +#include <stdfil.h>
-```
-
-### Initializing pointer tables
-
-```c
-+static zptrtable* my_ptrtable;
++
++static zptrtable* builtin_ptrtable;
 +
 +static void construct_ptrtable(void) __attribute__((constructor));
 +static void construct_ptrtable(void)
 +{
-+    my_ptrtable = zptrtable_new();
++    builtin_ptrtable = zptrtable_new();
 +}
+
+ static OP *ck_builtin_const(pTHX_ OP *entersubop, GV *namegv, SV *ckobj)
+ {
+-    const struct BuiltinFuncDescriptor *builtin = NUM2PTR(..., SvUV(ckobj));
++    const struct BuiltinFuncDescriptor *builtin = zptrtable_decode(builtin_ptrtable, SvUV(ckobj));
 ```
+
+**Python's `longobject.c`** - Converting C pointers to Python ints:
+```c
++#include <stdfil.h>
++
++static zexact_ptrtable* ptrtable;
++
++static void construct_ptrtable(void) __attribute__((constructor));
++static void construct_ptrtable(void)
++{
++    ptrtable = zexact_ptrtable_new();
++}
+
+ PyObject *
+ PyLong_FromVoidPtr(void *p)
+ {
+-    return PyLong_FromUnsignedLong((unsigned long)(uintptr_t)p);
++    return PyLong_FromUnsignedLong((unsigned long)(uintptr_t)zexact_ptrtable_encode(ptrtable, p));
+ }
+
+ void *
+ PyLong_AsVoidPtr(PyObject *vv)
+ {
+     long x;
+     // ... extract x from Python long ...
+-    return (void *)x;
++    return (void *)zexact_ptrtable_decode(ptrtable, x);
+ }
+```
+
+**Note**: `zptrtable` is for general use, `zexact_ptrtable` preserves exact pointer identity (needed for `==` comparisons).
+
+### Pattern 2: Type adjustments (Git)
+
+Sometimes storing as `void*` and casting on access is simpler than pointer tables.
+
+**Git's `parse-options.h`** - Changing defval storage type:
+```c
+ struct option {
+     // ...
+     parse_opt_cb *callback;
+-    intptr_t defval;
++    void *defval;  // Store as pointer instead of integer
+ };
+
+ #define OPT_SET_INT_F(s, l, v, h, i, f) { \
+     // ...
+-    .defval = (i), \
++    .defval = (void *)(i),  // Cast to void* when initializing
+ }
+```
+
+**Git's `parse-options.c`** - Casting back to integer:
+```c
+ case OPTION_SET_INT:
+-    *(int *)opt->value = unset ? 0 : opt->defval;
++    *(int *)opt->value = unset ? 0 : (intptr_t)opt->defval;
+```
+
+### Pattern 3: Build system adjustments (Lua)
+
+Some projects just need build flags changed.
+
+**Lua's `makefile`** - Removing problematic flags:
+```c
+-MYCFLAGS= $(LOCAL) -std=c99 -DLUA_USE_LINUX -DLUA_USE_READLINE
++MYCFLAGS= $(LOCAL) -std=c99 -DLUA_USE_LINUX
+
+-MYLIBS= -ldl -lreadline
++MYLIBS= -ldl
+
+-CFLAGS= -Wall -O2 $(MYCFLAGS)
++CFLAGS= -Wall -O2 -g $(MYCFLAGS)  # Add -g for debugging
+```
+
+### Pattern 4: Symbol versioning (xz)
+
+Libraries with symbol versioning need Fil-C-specific directives.
+
+**xz's `common.h`** - Conditional symbol versioning:
+```c
++#elif __PIZLONATOR_WAS_HERE__
++    #define LZMA_SYMVER_API(extnamever, type, intname) \
++        __asm__(".filc_symver " #intname "," extnamever); \
++        extern LZMA_API(type) intname
+ #else
+     #define LZMA_SYMVER_API(extnamever, type, intname) \
+         __asm__(".symver " #intname "," extnamever); \
+```
+
+**Note**: `__PIZLONATOR_WAS_HERE__` is defined by the Fil-C compiler.
+
+### Pattern 5: Alignment fixes (xz)
+
+Some types need explicit alignment for Fil-C's capability system.
+
+**xz's `file_io.h`** - Adding alignment attribute:
+```c
+-typedef union {
++typedef union __attribute__((aligned(16))) {
+     uint8_t u8[IO_BUFFER_SIZE];
+     uint32_t u32[IO_BUFFER_SIZE / sizeof(uint32_t)];
+     uint64_t u64[IO_BUFFER_SIZE / sizeof(uint64_t)];
+ } io_buf;
+```
+
+### Pattern 6: Header additions
+
+Most projects just need the Fil-C runtime header.
+
+**Python's `Python.h`**, **Perl's `perl.h`**, etc:
+```c
++#include <stdfil.h>
+```
+
+This provides access to `zptrtable`, `zexact_ptrtable`, and other Fil-C runtime functions.
