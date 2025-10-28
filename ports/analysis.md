@@ -33,88 +33,162 @@ The 71 projects span diverse domains:
 - **Libraries:** openssl, glib, cairo, libuv, sqlite, libffi
 - **Build tools:** binutils, cmake, bison, m4
 
-Combined patch scope: ~32,000 lines of changes. Note: patches are extracted from git history in the upstream fil-c repository, so they include some build artifacts alongside actual code changes (autotools scripts, library files, Windows resources, etc.). Common build artifacts like prebuilt binaries, CI configs, and generated documentation are filtered out during patch extraction.
+Combined patch scope: ~22,500 lines of changes. Note: patches are extracted from git history in the upstream fil-c repository, so they include some build artifacts alongside actual code changes (autotools scripts, library files, Windows resources, etc.). Common build artifacts like prebuilt binaries, CI configs, and generated documentation are filtered out during patch extraction.
 
 ### Patch Overview
 
 Complete listing of all analyzed patches, sorted by size (largest changes first). Technical terms use `monospace` formatting.
+Note: tcl-8.6.15 is excluded (no code changes, only artifacts).
 
 <details>
-<summary><b>Click to expand full patch table (71 projects)</b></summary>
+<summary><b>Click to expand full patch table (70 projects)</b></summary>
 
 | Project | Version | Lines | Summary |
 |---------|---------|-------|---------|
-| toybox | 8.12 | 5447 | Patch consists entirely of build configuration files (good-config, kconfig binaries) with no Fil-C compatibility changes. |
-| tcl | 8.6.15 | 3927 | Patch is 99% build artifact bloat: zlib prebuilt binaries, generated configure scripts, tcltest library duplication, Windows resources, and generated man pages; no actual Fil-C compatibility code changes. |
 | openssl | 3.3.1 | 2640 | Removes -Wl prefix from symbol versioning flags and adds extensive assembly function wrappers with bounds checking. |
 | linux | 6.10.5 | 2292 | Extensive VMware GPU driver refactoring removing dumb buffer surface features and code cleanup. |
 | glib | 2.80.4 | 2252 | Changes `GType` from integer typedef to opaque pointer, adds `uintptr_t` casts throughout, includes CI/build artifacts. |
 | libpng | 1.6.43 | 1741 | Adds APNG (Animated PNG) support by defining PNG_APNG_SUPPORTED and implementing frame control chunks (acTL, fcTL, fdAT), animation metadata, and progressive/write APIs. |
-| python | 3.12.5 | 1551 | Major refactor of Python's internal pointer handling: GC linked lists use real pointers, atomic operations use `void*_Atomic`, interpreter frames use GC allocation, `zptrtable` for code object caches, and disabled SIMD/atomic intrinsics. |
-| nghttp2 | 1.62.1 | 1298 | Build artifacts only (m4 macros) after filtering; no actual code changes. |
-| pam | 1.7.1 | 926 | Replaces hardcoded paths with build-time macros and adds Debian-specific features. |
-| perl | 5.40.0 | 892 | Extensive `zptrtable` integration for pointer encoding across XS modules, perl internals, and threading; replaces all PTR2IV/INT2PTR macros with capability-safe encoding. |
-| libuev | 2.4.1 | 823 | Build artifacts only (Debian packaging, docs) after filtering; no actual code changes. |
-| zlib | 1.3 | 605 | Disabled ARM CRC32 intrinsics and replaced configure-time detection with hardcoded values. |
+| Python | 3.12.5 | 1551 |  |
+| nghttp2 | 1.62.1 | 1298 | Massive build artifact bloat (INSTALL file + autotools scripts) with no actual code changes. |
+| Linux-PAM | 1.7.1 | 926 |  |
+| perl | 5.40.0 | 892 | Extensive `zptrtable` integration for pointer encoding across XS modules, perl internals, and threading; replaces all `PTR2IV`/`INT2PTR` macros with capability-safe encoding. |
+| libuev | 2.4.1 | 823 | Massive autotools bloat - deletes .codedocs CI config and adds thousands of lines of generated autotools scripts (ar-lib, compile, ltmain.sh, etc). |
+| zlib | 1.3 | 605 | Disabled ARM CRC32 intrinsics and replaced configure-time detection with hardcoded values, deleted build artifacts. |
 | emacs | 30.1 | 588 | Replaces Emacs' custom memory management with Fil-C's `zgc_alloc`, disables signal handling and garbage collection. |
-| git | 2.46.0 | 524 | Converts `intptr_t` casts to/from `void*` in option parsing structures throughout Git codebase. |
-| sqlite | — | 473 | Added `zptrtable` for TCL test pointer encoding, disabled atomic intrinsics, created Makefile.filc build system, extensive test harness pointer safety fixes. |
+| git | 2.46.0 | 524 | Converts `intptr_t` casts to/from void* in option parsing structures throughout Git codebase. |
+| sqlite |  | 473 | Added `zptrtable` for TCL test pointer encoding, disabled atomic intrinsics, created Makefile.filc build system, extensive test harness pointer safety fixes. |
 | cairo | 1.18.0 | 463 | Replaced GLib's gsize-based once initialization with `gpointer` variants for type system compatibility. |
 | systemd | 256.4 | 455 | Removed `-Wl,` prefix from version-script linker flags, disabled ELF section-based error map registration, inlined all bus error maps into bus_standard_errors array, added signal safety check via `zis_unsafe_signal_for_handlers`. |
-| libffi | 3.4.6 | 440 | Major Fil-C port with custom closure/trampoline implementation using `zclosure`, custom calling convention (FFI_FILC), stack-based argument marshaling, and symbol versioning changes. |
+| libffi | 3.4.6 | 440 | Major Fil-C port with custom closure/trampoline implementation using `zclosure`, custom calling convention (FFI_FILC), stack-based argument marshaling, and symbol versioning changes; includes test files and documentation updates. |
 | kbd | 2.6.4 | 407 | Removes integer casts from ioctl calls and fixes keymap definitions (mostly keymap data file corrections). |
-| m4 | 1.4.19 | 332 | Disables problematic tests, adds Fil-C compatibility for FPU control, obstack pointer alignment with `zmkptr`, and sigsegv detection. |
+| m4 | 1.4.19 | 332 | Disables problematic tests, adds Fil-C compatibility for FPU control, obstack pointer alignment, and sigsegv detection. |
 | gettext | 0.22.5 | 306 | Fixes pointer arithmetic in localealias.c, adds symbol name prefixing, and skips two failing tests. |
-| binutils | 2.43.1 | 236 | Converted `intptr_t` variables to `void*` pointers throughout, added template instantiations, disabled sbrk, and adjusted linker version script flags. |
+| binutils | 2.43.1 | 236 | Converted `intptr_t` variables to void* pointers throughout, added template instantiations, disabled sbrk, and adjusted linker version script flags. |
 | weston | 12.0.5 | 231 | Replaced ELF section-based test registration with constructor-based dynamic allocation in three separate test frameworks. |
-| keyutils | 1.6.3 | 203 | Replaces raw syscalls with Fil-C syscall wrappers (`zsys_*`), splits install target, removes unused function. |
-| libuv | 1.48.0 | 197 | Disables io_uring on Fil-C, adds signal safety checks, uses `zexact_ptrtable` for signal handler communication, fixes process title calculation with `zlength`. |
+| keyutils | 1.6.3 | 203 | Replaces raw syscalls with Fil-C syscall wrappers (zsys_*), splits install target, removes unused function. |
+| libuv-v1.48.0 |  | 197 |  |
 | xz | 5.6.2 | 174 | Added `.filc_symver` symbol versioning support, `zmkptr` for pointer alignment, alignment fix for I/O buffer, disabled optimized decoder, and fixed linker flag syntax. |
-| expat | 2.7.1 | 148 | Build artifact (generated autoheader config template). |
-| texinfo | 7.1 | 143 | Fixed pointer alignment macro in obstack.h and replaced `intptr_t` with `void*` for proper Fil-C pointer tracking. |
+| expat | 2.7.1 | 148 | Adds generated autoheader config template file (build artifact). |
+| toybox | 8.12 | 143 | Patch consists entirely of build configuration files (good-config, kconfig binaries) with no Fil-C compatibility changes. |
+| texinfo | 7.1 | 143 | Fixed pointer alignment macro in obstack.h and replaced `intptr_t` with void* for proper Fil-C pointer tracking. |
 | wayland | 1.24.0 | 134 | Replaced ELF section-based test registration with constructor-based dynamic linked list for Fil-C compatibility. |
 | libdrm | 2.4.122 | 127 | Uses `zexact_ptrtable` to encode/decode pointers in DRM ioctl structures, with most conversions being one-way since kernel doesn't return pointers. |
 | libinput | 1.29.1 | 122 | Replaces linker section-based test device and test collection registration with constructor-based linked lists and changes `-Wl,--version-script` to `--version-script`. |
 | sed | 4.9 | 118 | Disabled heap memory mapping checks and malloc size limit tests in gnulib test suite using `__FILC__` guards; added capability-aware `__BPTR_ALIGN` macro to obstack.h. |
-| quickjs | — | 107 | Disabled direct dispatch, fixed pointer tagging in JSProperty autoinit realm_and_id field, forced rqsort compatibility, added stdfil.h include. |
-| e2fsprogs | 1.47.1 | 106 | Replaced all `sbrk(0)` calls with NULL for memory tracking in resource tracking code. |
+| quickjs |  | 107 | Disabled direct dispatch, fixed pointer tagging in JSProperty autoinit realm_and_id field, forced rqsort compatibility, added stdfil.h include. |
+| e2fsprogs | 1.47.1 | 106 | Replaced all sbrk(0) calls with NULL for memory tracking in resource tracking code. |
 | zstd | 1.5.6 | 102 | Used standard cpuid.h for CPU feature detection and disabled inline assembly loop alignment optimizations for Fil-C compatibility. |
-| libarchive | 3.7.4 | 98 | Adds Fil-C tagged pointer operations (`zretagptr`, `zorptr`, `zandptr`, `zxorptr`) to red-black tree implementation and changes pointer-storing deque to use `void**` instead of `size_t*`. |
+| libarchive | 3.7.4 | 98 | Adds Fil-C tagged pointer operations (`zretagptr`, `zorptr`, `zandptr`, `zxorptr`) to red-black tree implementation and changes pointer-storing deque to use void** instead of size_t*. |
 | libevdev | 1.11.0 | 89 | Replaces linker section-based test registration with constructor-based linked list and changes `-Wl,--version-script` to `--version-script`. |
 | icu | 76.1 | 77 | Adds early return for timezone, `zmkptr` for alignment, compiler fence for aliasing, and disables assembly object code generation. |
 | diffutils | 3.10 | 77 | Added Clang diagnostic pragmas to suppress warnings and disabled stack overflow recovery for Fil-C. |
 | libevent | 2.1.12 | 73 | Disables several flaky SSL/HTTPS tests and casts legacy test function pointer to correct signature. |
 | dhcpcd | 10.0.8 | 69 | Extensive red-black tree modifications using Fil-C pointer operations (`zretagptr`, `zorptr`, `zandptr`, `zxorptr`) for capability-preserving bit manipulation. |
-| pcre2 | 10.44 | 48 | Disabled locale test in RunGrepTest; remaining patch is autotools artifacts. |
-| libxkbcommon | 1.11.0 | 47 | Changes `-Wl,--version-script` to `--version-script` in all meson.build symbol versioning flags. |
+| pcre2 | 10.44 | 48 | Disabled locale test in RunGrepTest; patch bloated with massive autotools artifact files (INSTALL, ar-lib, compile scripts). |
+| libxkbcommon-xkbcommon | 1.11.0 | 47 |  |
 | zsh | 5.8.0.1-dev | 46 | Disabled zsh's custom heap allocator (zhalloc/hrealloc) by forcing malloc/free and added missing HashNode flags field. |
 | krb5 | 1.21.3 | 38 | Removes -Wl prefix from version script flag and adds Fil-C fences to libev event loop. |
 | grep | 3.11 | 38 | Adds `zmkptr` macro for pointer alignment and disables stack overflow recovery in obstack and sigsegv. |
-| bzip3 | — | 38 | Build system changes to disable pkgconfig and add version file; includes binary shakespeare.txt.bz3 file. |
-| simdutf | 5.5.0 | 36 | Added Fil-C support for CPUID detection and xgetbv instruction via `zxgetbv()` runtime helper; forced GCC CPUID path. |
+| bzip3 |  | 38 | Build system changes to disable pkgconfig and add version file; includes binary shakespeare.txt.bz3 file. |
+| simdutf | 5.5.0 | 36 | Added Fil-C support for CPUID detection and xgetbv instruction via `zxgetbv`() runtime helper; forced GCC CPUID path. |
 | libxcrypt | 4.4.36 | 35 | Disables SSE/SSE2 in yescrypt and changes `.symver` to `.filc_symver` for symbol versioning. |
-| pam | 1.6.1 | 34 | Earlier PAM version patch. |
+| Linux-PAM | 1.6.1 | 34 |  |
 | elfutils | 0.191 | 26 | Added Clang diagnostic pragmas to suppress unused parameter and unused const variable warnings. |
 | tar | 1.35 | 25 | Added capability-aware `__BPTR_ALIGN` macro to gnu/obstack.h using `zmkptr` for pointer alignment operations (identical to sed patch). |
 | lfs-bootscripts | 20240825 | 25 | Creates /run/user directory at boot and enables unlimited core dumps for debugging. |
-| jpeg | 6b | 25 | Changes alignment type from `void*` to double and removes test binary images. |
+| jpeg-6b |  | 25 |  |
 | bison | 3.8.2 | 25 | Modified pointer alignment macro in obstack.h to use `zmkptr` for proper capability preservation. |
 | p11-kit | 0.25.5 | 22 | Removes -Wl prefix from symbol versioning linker flags. |
 | make | 4.4.1 | 22 | Adds bounds check for environment variable array access. |
 | lua | 5.4.7 | 21 | Disables readline library and adds debug flags to makefile. |
-| procps | 4.0.4 | 19 | Fixes `va_arg` undefined behavior in pids_oldproc_open by conditionally reading pointer argument only when flags indicate it's present. |
+| procps-ng | 4.0.4 | 19 |  |
 | attr | 2.5.2 | 18 | Symbol versioning directives changed from `.symver` to `.filc_symver` for Fil-C linker compatibility. |
-| tmux | 3.5a | 16 | Build artifacts only (autotools scripts) after filtering; no code changes. |
+| tmux | 3.5a | 16 | Patch consists entirely of autotools build artifacts (compile, config.guess, config.sub scripts) with no Fil-C compatibility changes. |
 | cmake | 3.30.2 | 16 | Changed default library directory from lib64 to lib for 64-bit systems. |
 | openssh | 9.8p1 | 14 | Adds sched_yield syscall to seccomp sandbox allow-list. |
 | libedit | 20240808-3.1 | 14 | Adds `__linux__` to platforms that don't require `__STDC_ISO_10646__` definition. |
-| XML-Parser | 2.47 | 13 | Used `zptrtable_decode` to properly recover Perl XS pointer from integer representation. |
+| XML-Parser | 2.47 | 13 | Used zptrtable_decode to properly recover Perl XS pointer from integer representation. |
 | vim | 9.1.0660 | 13 | Fixed sigaction call to pass NULL when func is SIG_ERR to prevent dereferencing invalid pointer. |
-| seatd | 0.9.1 | 13 | Changed linker version script flag from `-Wl,--version-script` to bare `--version-script` in meson.build. |
+| seatd | 0.9.1 | 13 | Changed linker version script flag from ``-Wl,--version-script`` to bare ``--version-script`` in meson.build. |
 | man-db | 2.12.1 | 13 | Removes unsafe cast in ioctl call for FIEMAP file extent mapping. |
 | libxml2 | 2.14.4 | 13 | Adds `_Atomic` qualifier to one struct field for thread safety. |
-| dash | 0.5.12 | 13 | Replaced `vfork` with `fork`; patch includes autotools bloat. |
-| bash | 5.2.32 | 13 | Changed flexible array member from char to `void*` in SAVED_VAR struct for proper pointer table handling. |
+| dash | 0.5.12 | 13 | Replaced `vfork` with `fork`; patch includes extensive autotools bloat (INSTALL, compile, install-sh, missing scripts). |
+| bash | 5.2.32 | 13 | Changed flexible array member from char to void* in SAVED_VAR struct for proper pointer table handling. |
+</details>
+
+| Project | Version | Lines | Summary |
+|---------|---------|-------|---------|
+| openssl | 3.3.1 | 2640 | Removes -Wl prefix from symbol versioning flags and adds extensive assembly function wrappers with bounds checking. |
+| linux | 6.10.5 | 2292 | Extensive VMware GPU driver refactoring removing dumb buffer surface features and code cleanup. |
+| glib | 2.80.4 | 2252 | Changes `GType` from integer typedef to opaque pointer, adds `uintptr_t` casts throughout, includes CI/build artifacts. |
+| libpng | 1.6.43 | 1741 | Adds APNG (Animated PNG) support by defining PNG_APNG_SUPPORTED and implementing frame control chunks (acTL, fcTL, fdAT), animation metadata, and progressive/write APIs. |
+| Python | 3.12.5 | 1551 |  |
+| nghttp2 | 1.62.1 | 1298 | Massive build artifact bloat (INSTALL file + autotools scripts) with no actual code changes. |
+| Linux-PAM | 1.7.1 | 926 |  |
+| perl | 5.40.0 | 892 | Extensive `zptrtable` integration for pointer encoding across XS modules, perl internals, and threading; replaces all `PTR2IV`/`INT2PTR` macros with capability-safe encoding. |
+| libuev | 2.4.1 | 823 | Massive autotools bloat - deletes .codedocs CI config and adds thousands of lines of generated autotools scripts (ar-lib, compile, ltmain.sh, etc). |
+| zlib | 1.3 | 605 | Disabled ARM CRC32 intrinsics and replaced configure-time detection with hardcoded values, deleted build artifacts. |
+| emacs | 30.1 | 588 | Replaces Emacs' custom memory management with Fil-C's `zgc_alloc`, disables signal handling and garbage collection. |
+| git | 2.46.0 | 524 | Converts `intptr_t` casts to/from void* in option parsing structures throughout Git codebase. |
+| sqlite |  | 473 | Added `zptrtable` for TCL test pointer encoding, disabled atomic intrinsics, created Makefile.filc build system, extensive test harness pointer safety fixes. |
+| cairo | 1.18.0 | 463 | Replaced GLib's gsize-based once initialization with `gpointer` variants for type system compatibility. |
+| systemd | 256.4 | 455 | Removed `-Wl,` prefix from version-script linker flags, disabled ELF section-based error map registration, inlined all bus error maps into bus_standard_errors array, added signal safety check via `zis_unsafe_signal_for_handlers`. |
+| libffi | 3.4.6 | 440 | Major Fil-C port with custom closure/trampoline implementation using `zclosure`, custom calling convention (FFI_FILC), stack-based argument marshaling, and symbol versioning changes; includes test files and documentation updates. |
+| kbd | 2.6.4 | 407 | Removes integer casts from ioctl calls and fixes keymap definitions (mostly keymap data file corrections). |
+| m4 | 1.4.19 | 332 | Disables problematic tests, adds Fil-C compatibility for FPU control, obstack pointer alignment, and sigsegv detection. |
+| gettext | 0.22.5 | 306 | Fixes pointer arithmetic in localealias.c, adds symbol name prefixing, and skips two failing tests. |
+| binutils | 2.43.1 | 236 | Converted `intptr_t` variables to void* pointers throughout, added template instantiations, disabled sbrk, and adjusted linker version script flags. |
+| weston | 12.0.5 | 231 | Replaced ELF section-based test registration with constructor-based dynamic allocation in three separate test frameworks. |
+| keyutils | 1.6.3 | 203 | Replaces raw syscalls with Fil-C syscall wrappers (zsys_*), splits install target, removes unused function. |
+| libuv-v1.48.0 |  | 197 |  |
+| xz | 5.6.2 | 174 | Added `.filc_symver` symbol versioning support, `zmkptr` for pointer alignment, alignment fix for I/O buffer, disabled optimized decoder, and fixed linker flag syntax. |
+| expat | 2.7.1 | 148 | Adds generated autoheader config template file (build artifact). |
+| toybox | 8.12 | 143 | Patch consists entirely of build configuration files (good-config, kconfig binaries) with no Fil-C compatibility changes. |
+| texinfo | 7.1 | 143 | Fixed pointer alignment macro in obstack.h and replaced `intptr_t` with void* for proper Fil-C pointer tracking. |
+| wayland | 1.24.0 | 134 | Replaced ELF section-based test registration with constructor-based dynamic linked list for Fil-C compatibility. |
+| libdrm | 2.4.122 | 127 | Uses `zexact_ptrtable` to encode/decode pointers in DRM ioctl structures, with most conversions being one-way since kernel doesn't return pointers. |
+| libinput | 1.29.1 | 122 | Replaces linker section-based test device and test collection registration with constructor-based linked lists and changes `-Wl,--version-script` to `--version-script`. |
+| sed | 4.9 | 118 | Disabled heap memory mapping checks and malloc size limit tests in gnulib test suite using `__FILC__` guards; added capability-aware `__BPTR_ALIGN` macro to obstack.h. |
+| quickjs |  | 107 | Disabled direct dispatch, fixed pointer tagging in JSProperty autoinit realm_and_id field, forced rqsort compatibility, added stdfil.h include. |
+| e2fsprogs | 1.47.1 | 106 | Replaced all sbrk(0) calls with NULL for memory tracking in resource tracking code. |
+| zstd | 1.5.6 | 102 | Used standard cpuid.h for CPU feature detection and disabled inline assembly loop alignment optimizations for Fil-C compatibility. |
+| libarchive | 3.7.4 | 98 | Adds Fil-C tagged pointer operations (`zretagptr`, `zorptr`, `zandptr`, `zxorptr`) to red-black tree implementation and changes pointer-storing deque to use void** instead of size_t*. |
+| libevdev | 1.11.0 | 89 | Replaces linker section-based test registration with constructor-based linked list and changes `-Wl,--version-script` to `--version-script`. |
+| icu | 76.1 | 77 | Adds early return for timezone, `zmkptr` for alignment, compiler fence for aliasing, and disables assembly object code generation. |
+| diffutils | 3.10 | 77 | Added Clang diagnostic pragmas to suppress warnings and disabled stack overflow recovery for Fil-C. |
+| libevent | 2.1.12 | 73 | Disables several flaky SSL/HTTPS tests and casts legacy test function pointer to correct signature. |
+| dhcpcd | 10.0.8 | 69 | Extensive red-black tree modifications using Fil-C pointer operations (`zretagptr`, `zorptr`, `zandptr`, `zxorptr`) for capability-preserving bit manipulation. |
+| pcre2 | 10.44 | 48 | Disabled locale test in RunGrepTest; patch bloated with massive autotools artifact files (INSTALL, ar-lib, compile scripts). |
+| libxkbcommon-xkbcommon | 1.11.0 | 47 |  |
+| zsh | 5.8.0.1-dev | 46 | Disabled zsh's custom heap allocator (zhalloc/hrealloc) by forcing malloc/free and added missing HashNode flags field. |
+| krb5 | 1.21.3 | 38 | Removes -Wl prefix from version script flag and adds Fil-C fences to libev event loop. |
+| grep | 3.11 | 38 | Adds `zmkptr` macro for pointer alignment and disables stack overflow recovery in obstack and sigsegv. |
+| bzip3 |  | 38 | Build system changes to disable pkgconfig and add version file; includes binary shakespeare.txt.bz3 file. |
+| simdutf | 5.5.0 | 36 | Added Fil-C support for CPUID detection and xgetbv instruction via `zxgetbv`() runtime helper; forced GCC CPUID path. |
+| libxcrypt | 4.4.36 | 35 | Disables SSE/SSE2 in yescrypt and changes `.symver` to `.filc_symver` for symbol versioning. |
+| Linux-PAM | 1.6.1 | 34 |  |
+| elfutils | 0.191 | 26 | Added Clang diagnostic pragmas to suppress unused parameter and unused const variable warnings. |
+| tar | 1.35 | 25 | Added capability-aware `__BPTR_ALIGN` macro to gnu/obstack.h using `zmkptr` for pointer alignment operations (identical to sed patch). |
+| lfs-bootscripts | 20240825 | 25 | Creates /run/user directory at boot and enables unlimited core dumps for debugging. |
+| jpeg-6b |  | 25 |  |
+| bison | 3.8.2 | 25 | Modified pointer alignment macro in obstack.h to use `zmkptr` for proper capability preservation. |
+| p11-kit | 0.25.5 | 22 | Removes -Wl prefix from symbol versioning linker flags. |
+| make | 4.4.1 | 22 | Adds bounds check for environment variable array access. |
+| lua | 5.4.7 | 21 | Disables readline library and adds debug flags to makefile. |
+| procps-ng | 4.0.4 | 19 |  |
+| attr | 2.5.2 | 18 | Symbol versioning directives changed from `.symver` to `.filc_symver` for Fil-C linker compatibility. |
+| tmux | 3.5a | 16 | Patch consists entirely of autotools build artifacts (compile, config.guess, config.sub scripts) with no Fil-C compatibility changes. |
+| cmake | 3.30.2 | 16 | Changed default library directory from lib64 to lib for 64-bit systems. |
+| openssh | 9.8p1 | 14 | Adds sched_yield syscall to seccomp sandbox allow-list. |
+| libedit | 20240808-3.1 | 14 | Adds `__linux__` to platforms that don't require `__STDC_ISO_10646__` definition. |
+| XML-Parser | 2.47 | 13 | Used zptrtable_decode to properly recover Perl XS pointer from integer representation. |
+| vim | 9.1.0660 | 13 | Fixed sigaction call to pass NULL when func is SIG_ERR to prevent dereferencing invalid pointer. |
+| seatd | 0.9.1 | 13 | Changed linker version script flag from ``-Wl,--version-script`` to bare ``--version-script`` in meson.build. |
+| man-db | 2.12.1 | 13 | Removes unsafe cast in ioctl call for FIEMAP file extent mapping. |
+| libxml2 | 2.14.4 | 13 | Adds `_Atomic` qualifier to one struct field for thread safety. |
+| dash | 0.5.12 | 13 | Replaced `vfork` with `fork`; patch includes extensive autotools bloat (INSTALL, compile, install-sh, missing scripts). |
+| bash | 5.2.32 | 13 | Changed flexible array member from char to void* in SAVED_VAR struct for proper pointer table handling. |
 
 </details>
 
