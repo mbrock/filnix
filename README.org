@@ -48,22 +48,25 @@ This flake enables selective hardening - replace security-critical components wi
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        ({ pkgs, ... }: {
-          environment.systemPackages = [
-            filnix.packages.${pkgs.system}.bash          # Memory-safe shell
-            filnix.packages.${pkgs.system}.coreutils     # Memory-safe core utilities
-            pkgs.vim                                     # Regular editor
-            pkgs.firefox                                 # Regular browser
-          ];
+        ({ pkgs, ... }:
+          let
+            filc = filnix.packages.${pkgs.system};
+          in {
+            environment.systemPackages = [
+              filc.bash          # Memory-safe shell
+              filc.coreutils     # Memory-safe core utilities
+              pkgs.vim           # Regular editor
+              pkgs.firefox       # Regular browser
+            ];
 
-          programs.bash.package = filnix.packages.${pkgs.system}.bash;
+            programs.bash.package = filc.bash;
 
-          # Run SSH server with memory safety
-          services.openssh = {
-            enable = true;
-            package = filnix.packages.${pkgs.system}.openssh;
-          };
-        })
+            # Run SSH server with memory safety
+            services.openssh = {
+              enable = true;
+              package = filc.openssh;
+            };
+          })
       ];
     };
   };
