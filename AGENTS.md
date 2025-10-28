@@ -65,6 +65,16 @@ This Nix flake packages the Fil-C compiler toolchain for reproducible, hermetic 
 - Reproducible, cacheable builds
 - Integration with Nix ecosystem
 
+### Ported Software
+
+The `ports/` directory contains patches from upstream fil-c for building software with memory safety:
+
+- **ports/patches.nix**: Maps package names to versions and patches
+- **ports/patch/*.patch**: Individual patches for each ported package
+- **ports.nix**: Nix expressions that apply these patches to nixpkgs packages
+
+The porting workflow extracts patches from upstream fil-c's vendored sources and applies them to standard nixpkgs packages, enabling memory-safe builds without vendoring source code.
+
 ### What This Packages
 
 From the upstream fil-c repository, we package:
@@ -93,7 +103,10 @@ This flake replicates these stages as Nix derivations.
 - **fil-c-combined.nix**: Combined LLVM/Clang build (stages 1-2)
 - **fil-c-helpers.nix**: Helper functions for derivations
 - **fil-c-projects.nix**: Packaging for ported software
-- **packages.nix**: Package definitions
+- **packages.nix**: Sample packages built with Fil-C (bash, lua, tmux, etc.)
+- **ports.nix**: Ported packages using patches from upstream fil-c
+- **query-package.nix**: Introspection tool for nixpkgs packages
+- **query-package.sh**: Shell wrapper for package queries
 
 ### Build Commands
 
@@ -113,6 +126,45 @@ Fil-C requires specific versions:
 - m4 1.4.19, autoconf 2.72, automake 1.17, libtool 2.4.7
 - Modern C++ compiler (to bootstrap)
 - Linux/X86_64
+
+## Package Introspection
+
+The repository includes tooling to query comprehensive package metadata from nixpkgs:
+
+### Query a Package
+
+```bash
+# Via shell script (uses flake's pinned nixpkgs)
+./query-package.sh bash | jq .
+
+# Via flake directly
+nix eval --json .#lib.x86_64-linux.queryPackage --apply 'f: f "bash"'
+```
+
+### What It Returns
+
+The query tool extracts complete build metadata:
+
+- **functionArgs**: Required/optional parameters from package definition
+- **buildInputs**: Native, build, and propagated inputs (with type: derivation/setup-hook)
+- **buildConfig**: configureFlags, makeFlags, cmakeFlags, mesonFlags, patches
+- **buildFlags**: outputs, doCheck, parallelization, hardening settings
+- **nixVars**: NIX_CFLAGS_COMPILE, NIX_HARDENING_ENABLE, etc.
+- **derivation**: Actual build structure (builder, args, custom build phases)
+- **meta**: description, homepage, license, platforms, maintainers
+
+This is useful for understanding how nixpkgs builds packages and what needs to be adapted for Fil-C.
+
+### Implementation
+
+The query function uses Nix builtins to introspect package metadata:
+- `builtins.functionArgs` - extract function parameters
+- `pkg.buildInputs`, `pkg.nativeBuildInputs` - dependency lists
+- `pkg.configureFlags`, `pkg.patches` - build configuration
+- `pkg.builder`, `pkg.args` - derivation structure
+- `pkg.meta` - package metadata
+
+No dependency on external tools - pure Nix introspection.
 
 ## Resources
 

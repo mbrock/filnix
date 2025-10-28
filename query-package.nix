@@ -97,6 +97,13 @@ let
   position = pkg.meta.position or "";
   args = getFunctionArgs pkg;
 
+  # Extract source info separately first
+  s = pkg.src or null;
+  srcName = if s != null then s.name else null;
+  srcUrls = if s != null then (s.urls or (if s ? url then [s.url] else [])) else [];
+  srcHash = if s != null then (s.outputHash or null) else null;
+  srcOutPath = if s != null then "${s}" else null;
+
 in {
   # Basic info
   name = packageName;
@@ -152,27 +159,14 @@ in {
         else pkg.meta.license
       else null;
     mainProgram = pkg.meta.mainProgram or null;
-    platforms = pkg.meta.platforms or [];
     position = position;
   };
   
   # Source information
-  src = 
-    if pkg ? src then
-      if builtins.isAttrs pkg.src then {
-        type = "derivation";
-        drvPath = pkg.src.drvPath or null;
-        outPath = pkg.src.outPath or null;
-        urls = pkg.src.urls or [];
-        hash = pkg.src.outputHash or null;
-      }
-      else if builtins.isPath pkg.src then {
-        type = "path";
-        path = builtins.toString pkg.src;
-      }
-      else {
-        type = "unknown";
-        value = builtins.toString pkg.src;
-      }
-    else null;
+  src = if s != null then {
+    name = srcName;
+    urls = srcUrls;
+    hash = srcHash;
+    storePath = srcOutPath;
+  } else null;
 }

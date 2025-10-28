@@ -152,14 +152,25 @@ in rec {
     patches = [./ports/patch/zlib-1.3.patch];
   };
 
+  # zlib-ng: High-performance zlib replacement with optimizations
+  # Deps: gtest (for tests)
+  # Options: withZlibCompat (enable zlib compatibility mode)
+  zlib-ng = port base.zlib-ng {
+    source = {
+      version = "2.2.4";
+      hash = "sha256-Khmrhp5qy4vvoQe4WgoogpjWrgcUB/q8zZeqIydthYg=";
+      url = "https://github.com/zlib-ng/zlib-ng/archive/2.2.4.tar.gz";
+    };
+    deps = { };
+  };
+
   # pcre2: Perl Compatible Regular Expressions library v2
   pcre2 = port base.pcre2 {
     source = {
       version = "10.44";
-      hash = "sha256-A4su+bdDBO14Th5tcJELEP24WMVM/VRv3S01E6j87N8=";
+      hash = "sha256-008C4RPPcZOh6/J3DTrFJwiNSF1OBH7RDl0hfG713pY=";
       url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.bz2";
     };
-    patches = [./ports/patch/pcre2-10.44.patch];
   };
 
   # openssl: SSL/TLS cryptography library
@@ -167,7 +178,7 @@ in rec {
   openssl = port base.openssl {
     source = {
       version = "3.3.1";
-      hash = "sha256-ubslRwBHJ8O2f7VCaYL65HPprgWcJ5ddYaOXNTlThAI=";
+      hash = "sha256-d3zVlihMiDN1oqehG/XSeG/FQTJV76sgxQ1v/m0CC34=";
       url = "https://www.openssl.org/source/openssl-3.3.1.tar.gz";
     };
     patches = [./ports/patch/openssl-3.3.1.patch];
@@ -283,12 +294,6 @@ in rec {
   # Deps: ncurses, libevent
   # Options: withSystemd, withUtf8proc
   tmux = port base.tmux {
-    source = {
-      version = "3.5a";
-      hash = "sha256-7pFcxbqTYIbaBhTpF/HhcPjuI2pMl5wB+dMaZbp9P/U=";
-      url = "https://github.com/tmux/tmux/releases/download/3.5a/tmux-3.5a.tar.gz";
-    };
-    patches = [./ports/patch/tmux-3.5a.patch];
     deps = { inherit ncurses libevent; withSystemd = false; };
   };
 
@@ -339,12 +344,18 @@ in rec {
   git = port base.git {
     source = {
       version = "2.46.0";
-      hash = "sha256-DJiQzl8LgrauGnIOh0zfqy51GAy6o/O31PqgY1bPQ6c=";
+      hash = "sha256-fxI0YqKLfKPr4mB0hfcWhVTCsQ38FVx+xGMAZmrCf5U=";
       url = "https://www.kernel.org/pub/software/scm/git/git-2.46.0.tar.xz";
     };
-    patches = [./ports/patch/git-2.46.0.patch];
-    deps = { inherit openssl zlib pcre2; withManual = false; perlSupport = false; pythonSupport = false; };
-    attrs = old: { doCheck = false; };
+    deps = { inherit openssl pcre2 zlib-ng; withManual = false; perlSupport = false; pythonSupport = false; sendEmailSupport = false; };
+    attrs = old: {
+      doCheck = false;
+      # Filter out the git-send-email-honor-PATH.patch (fails on 2.46.0) but keep other nixpkgs patches
+      patches = (builtins.filter
+        (p: !(base.lib.hasSuffix "git-send-email-honor-PATH.patch" (builtins.toString p)))
+        (old.patches or [])
+      ) ++ [./ports/patch/git-2.46.0.patch];
+    };
   };
 
   # Text processing
