@@ -1,0 +1,774 @@
+#+TITLE: Fil-C Project Commit Logs
+#+AUTHOR: Auto-generated
+
+Commit history for all ported projects from fil-c repository.
+
+* Projects
+
+** Linux-PAM-1.6.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-20 | =2585db2e0c04= | Add PAM to the optfil build. | +7/-7 |
+| 2025-10-20 | =4e2af4f820ac= | Make PAM build. Needed some version script stuff. | +48/-48 |
+| 2025-10-20 | =063384d49d05= | Add Linux PAM as a project, not as a tarball, because it'll need changes. Initial commit of Linux-PAM 1.6.1 | +302323/-0 |
+
+** Linux-PAM-1.7.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-24 | =441a154787ca= | Apply a subset of Ubuntu PAM packages from 1.7.0-5ubuntu2. 0001-pam_access-fix-group-name-match-regression.patch was already incorporated into 1.7.1. Then applied 0003-pam_unix-obscure-checks.patch, 008_modules_pam_limits_chroot, 031_pam_include, 032_pam_limits_EPERM_NOT_FATAL, 036_pam_wheel_getlogin_considered_harmful, 040_pam_limits_log_failure, 045_pam_dispatch_jump_is_ignore, nullok_secure-compat.patch, pam_env-remove-deprecation-notice-for-user_readenv.patch, update-motd. This required adding syscall(2) support for some setr*id syscalls. This also required adding support for keyctl. It's now starting to be possible to use the /opt/fil PAM with the Pop_OS 22.04 /etc/pam.d, but password auth still doesn't work in that configuration, like because of missing pam_ecryptfs.so. | +416/-118 |
+| 2025-10-22 | =e9c4d1d5eaeb= | Make PAM look for the configs in a configurable location | +6/-5 |
+| 2025-10-22 | =ecd6e048bd2b= | Fix version scripts | +4/-4 |
+| 2025-10-22 | =d41f9fea6030= | Initial commit of Linux-PAM 1.7.1. I think I want to use the latest version. | +129874/-0 |
+
+** Python-3.12.5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =4d81217a0e27= | Fil-C changes to Python-3.12.5 since 1a15073b68442ceb1faf371972aa8e3a2782a129 | +230/-403 |
+| 2025-08-08 | =63878724a7ef= | Initial commit of Python-3.12.5 at 1a15073b68442ceb1faf371972aa8e3a2782a129 | +2513012/-0 |
+
+** XML-Parser-2.47
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =ec07d373ddfc= | Fil-C changes | +1/-1 |
+| 2025-09-22 | =8cb5ccaf0c8e= | Initial commit XML Parser 2.47 | +13898/-0 |
+
+** attr-2.5.2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =e7a51cba299e= | Fil-C changes | +3/-3 |
+| 2025-09-22 | =fc164765b68f= | Initial commit of attr 2.5.2 | +64202/-0 |
+
+** bash-5.2.32
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-03 | =8bc7c3edea01= | Fix a misaligned flex array | +1/-1 |
+| 2025-09-03 | =3e97a58d1788= | Initial commiut of bash 5.2.32 | +733254/-0 |
+
+** binutils-2.43.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-03 | =13f83c58e97b= | Fix uses of integers as pointers in binutils. Fix some extern template hacks in gold. Fix linker script issues. | +45/-27 |
+| 2025-09-03 | =ba9093700eac= | Initial commit of binutils 2.43.1 | +7743575/-0 |
+
+** bison-3.8.2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =89fcacdaa2cf= | Add my own test of bison | +96/-0 |
+| 2025-09-22 | =a176006fbd13= | Fil-C Changes | +6/-1 |
+| 2025-09-22 | =faed17e0b51b= | Initial commit of bison 3.8.2 | +1119496/-0 |
+
+** brotli-1.1.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-15 | =c6ae63936c02= | Initial commit of brotli 1.1.0 | +44738/-0 |
+
+** busybox-1.37.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-03 | =e655dc7aa257= | Add busybox 1.37 source and building script. | +365141/-0 |
+
+** bzip2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =687656d0b9c0= | Initial commit of bzip2 at fbc4b11da543753b3b803e5546f56e26ec90c2a7 | +14198/-0 |
+
+** bzip3
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =a1df821e23d6= | Add configure junk | +44943/-295 |
+| 2025-08-09 | =49da9690df7b= | Fil-C changes to bzip3 since ee68d3386e981f10467ca6c586cc4159705d8fe8 | +0/-5 |
+| 2025-08-09 | =17c888a9b4d9= | Initial commit of bzip3 at ee68d3386e981f10467ca6c586cc4159705d8fe8 | +137129/-0 |
+
+** cairo-1.18.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-14 |
+| 2025-09-19 | =84e5765e7d3f= | Almost make cairo build | +69/-69 |
+| 2025-09-19 | =d681004ecfd0= | Initial commit cairo 1.18.0 | +357604/-0 |
+
+** check-0.15.2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =bb0c0803f295= | Fil-C changes | +1/-1 |
+| 2025-09-22 | =075ed12f85be= | Initial commmit of check 0.15.2 | +104524/-0 |
+
+** cmake-3.30.2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-27 | =16eec52fcf76= | Make cmake use lib instead of lib64 | +2/-2 |
+| 2025-08-27 | =eaed1ffd12d4= | Initial commit of cmake 3.30.2 | +1506451/-0 |
+
+** coreutils-9.5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-03 | =e04d92f683e0= | Add coreutils 9.5 to the corpus. | +1413118/-0 |
+
+** curl-8.9.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =f06e3c0f4d4f= | Fil-C changes to curl-8.9.1 since 3b066f30440171e9fe2fb1b30f4119932ec481ae | +8/-8 |
+| 2025-08-08 | =7d5ce24e85de= | Initial commit of curl-8.9.1 at 3b066f30440171e9fe2fb1b30f4119932ec481ae | +683223/-0 |
+
+** dash-0.5.12
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-05 | =1dd649568fd4= | Add another dash missing file | +368/-0 |
+| 2025-09-05 | =813227d550d4= | Fix configure junk in dash | +3724/-2442 |
+| 2025-08-09 | =e218d041ced9= | Add configure junk | +10040/-42 |
+| 2025-08-09 | =af99270df234= | Fil-C changes to dash-0.5.12 since 5c84685fb199b0a2a113b1aa54daf2596b8c007d | +1/-1 |
+| 2025-08-09 | =c511ede8ab7c= | Initial commit of dash-0.5.12 at 5c84685fb199b0a2a113b1aa54daf2596b8c007d | +25924/-0 |
+
+** dhcpcd-10.0.8
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-6 |
+| 2025-09-22 | =632404d1c09b= | Fil-C changes | +17/-16 |
+| 2025-09-22 | =9524eba155e8= | Initial commit dhcpcd 10.0.8 | +58279/-0 |
+
+** diffutils-3.10
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =f4b9aa8eb75c= | Add my own tests | +25062/-0 |
+| 2025-09-22 | =cb5deb537535= | Fil-C changes | +10/-1 |
+| 2025-09-22 | =2415447c7d0a= | Initial commit diffutils 3.10 | +377622/-0 |
+
+** dummy-pam-ecryptfs
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-25 | =044e229d0ada= | Add a dummy pam_ecryptfs implementation. | +298/-0 |
+
+** e2fsprogs-1.47.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-6 |
+| 2025-09-22 | =2c2e617fb579= | Fil-C changes | +10/-10 |
+| 2025-09-22 | =62f2f3936315= | Initial commit of e2fsprogs 1.47.1 | +532834/-0 |
+
+** elfutils-0.191
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =693787cb5771= | Fil-C changes | +10/-6 |
+| 2025-09-22 | =3342cded5777= | Initial commit elfutils 0.191 | +363751/-0 |
+
+** emacs-30.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-4 |
+| 2025-09-13 | =e24fc2434b90= | Make emacs run in Fil-C, just without dumping | +217/-174 |
+| 2025-09-13 | =5aa98a2ccbf4= | Initial commit of emacs 30.1 | +6222622/-0 |
+
+** emacs-lisp
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-13 | =106f926cff6c= | Add my emacs-lisp favorites to the projects | +15229/-0 |
+
+** expat-2.7.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =657bb03ced65= | Add more configure junk | +26471/-0 |
+| 2025-08-09 | =ada938d8830b= | Remove more gitignores | +0/-71 |
+| 2025-08-09 | =ffe5d8ea4a97= | Remove another gitignore file | +0/-11 |
+| 2025-08-09 | =a0d9b5b47364= | Add configure junk | +30910/-2249 |
+| 2025-08-09 | =767aa133276e= | Initial commit of expat-2.7.1 at f9a3eeb3e09fbea04b1c451ffc422ab2f1e45744 | +920481/-0 |
+
+** gettext-0.22.5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =5f02a5c91991= | Fil-C changes | +174/-170 |
+| 2025-09-22 | =4d74a012c5e7= | Initial commit gettest 0.22.5 | +3065695/-0 |
+
+** git-2.46.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-60 |
+| 2025-09-05 | =2c2f4ea90110= | Make git work | +55/-55 |
+| 2025-09-05 | =1965e9cc579a= | Initial commit of git 2.46.0 | +1488085/-0 |
+
+** glib-2.80.4
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-34 |
+| 2025-09-19 | =cc4ceb798b7f= | Get glib to build | +7/-5 |
+| 2025-09-19 | =4522a33874b0= | make some progress on glib building | +396/-386 |
+| 2025-09-19 | =59212352a019= | Add the gitlab ci directory because evidently it's required | +1364/-0 |
+| 2025-09-19 | =f0a0ae4a88fe= | Disable valgrind | +3/-0 |
+| 2025-09-19 | =824e937e0947= | Initial commit of glib 2.80.4 | +1466137/-0 |
+
+** gmp-6.3.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =1e8b2b9d95a3= | Fil-C Changes | +4/-4 |
+| 2025-09-22 | =7720bc37f28f= | Initial commit gmp 6.3..0 | +557732/-0 |
+
+** grep-3.11
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =99a4049dedc1= | Fil-C changes | +7/-2 |
+| 2025-09-22 | =47c301a29fe6= | Initial commit grep 3.11 | +372071/-0 |
+
+** icu-76.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =4063312e3e33= | De-LFS-ify icu | +0/-129 |
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-3439 |
+| 2025-08-09 | =3801b2990a2d= | Fil-C changes to icu-76.1 since 8eca245c7484ac6cc179e3e5f7c1ea7680810f39 | +15/-1 |
+| 2025-08-09 | =6d223d43255c= | Initial commit of icu-76.1 at 8eca245c7484ac6cc179e3e5f7c1ea7680810f39 | +8568607/-0 |
+
+** jpeg-6b
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =e889cc3a3170= | Fil-C changes to jpeg-6b since 14a4dd1dad7fc6a58d85d1af93e587644c2f7f67 | +1/-1 |
+| 2025-08-08 | =c6926164fbad= | Initial commit of jpeg-6b at 14a4dd1dad7fc6a58d85d1af93e587644c2f7f67 | +110403/-0 |
+
+** kbd-2.6.4
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =feb9c1bd3c06= | Fil-C changes | +13/-13 |
+| 2025-09-22 | =e58d823d0054= | Apply the LFS 12.2 sed edits | +3/-3 |
+| 2025-09-22 | =e847c85d0996= | Apply the LFS b12.2 backspace patch | +25/-25 |
+| 2025-09-22 | =f2a6d00adf63= | Initial commit kbd 2.6.4 | +305740/-0 |
+
+** keyutils-1.6.3
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-25 | =e9c68f14821a= | Make keyutils work. Add the dummy pam_ecrypts to the build. | +2/-4 |
+| 2025-10-24 | =3a0aad16f067= | Make keyutils work. This involves adding the keyctl, add_key, and request_key syscalls. Because some of the ops of keyctl have a hard-to-make-safe ABI and keyutils has a safer ABI, this introduces a handful of "syscalls" that are replacements for keyctl ops. I believe this is OK because nobody that I'm aware of uses keyctl directly for these particular ops other than keyutils, and I changed keyutils. | +14/-70 |
+| 2025-10-24 | =c2ea16cf84d5= | Initial commit keyutils 1.6.3 | +21774/-0 |
+
+** kmod-33
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =1a899238f3b8= | Fil-C changes | +2/-2 |
+| 2025-09-22 | =35a81db3103a= | Initial commit kmod-33 | +81182/-0 |
+
+** krb5-1.21.3
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-26 | =a29fb29bf8b3= | Use Fil-C API for fences in Kerberos. This is enough to make Kerberos completely functional. | +7/-0 |
+| 2025-10-25 | =1bc85c2bc8fe= | Make krb5 build as part of /opt/fil. Also update some comments. | +1/-1 |
+| 2025-10-25 | =fc02b27ebfc9= | Initial commit of krb5 1.21.3 | +977345/-0 |
+
+** lfs-bootscripts-20240825
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =b002539cbcfe= | Make sure there's a /run/user | +2/-0 |
+| 2025-09-22 | =f9351256ca1b= | Set the core limit to unlimited | +1/-0 |
+| 2025-09-22 | =f05a3cc57fa9= | Initial commit lfs-bootscripts 20240825 | +4738/-0 |
+
+** libarchive-3.7.4
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-15 | =f03f8684793d= | Make execve accept null envp (because that's acceptable on Linux). Fix the rbtree and cdeque in libarchive so that libarchive passes all of its tests. | +19/-18 |
+| 2025-08-15 | =94ad808ef5ce= | Initial commit of libarchive 3.7.4 | +500674/-0 |
+
+** libcap-2.70
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =e2d75342693d= | Initial commit libcap 2.70 | +26916/-0 |
+
+** libdrm-2.4.122
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-7 |
+| 2025-09-20 | =67ec40067cf9= | Fix libdrm and wayland. | +3/-3 |
+| 2025-09-20 | =2a361324ffbc= | Fix libdrm | +35/-21 |
+| 2025-09-20 | =b37446493ecd= | Initial commit libdrm 2.4.122 | +109863/-0 |
+
+** libedit-20240808-3.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =19d01d61f644= | Add configure files | +22466/-0 |
+| 2025-08-09 | =5766bc9efab3= | Fil-C changes to libedit-20240808-3.1 since 64d95bede6579870a88b456134e4e20bc1346ced | +2/-22776 |
+| 2025-08-09 | =c36e254d9b29= | Initial commit of libedit-20240808-3.1 at 64d95bede6579870a88b456134e4e20bc1346ced | +77342/-0 |
+
+** libevdev-1.11.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-19 | =a4c92a5d92d7= | Fix the test suite | +6/-6 |
+| 2025-09-19 | =1ddb61ee8ee2= | Make the test suite build | +20/-11 |
+| 2025-09-19 | =3b62e1340f2e= | Make the version script work | +1/-1 |
+| 2025-09-19 | =c507607520d9= | Initial commit of libevdev-1.11.0 | +93735/-0 |
+
+** libevent-2.1.12
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =5c544559e46f= | Add configure junk | +54292/-1008 |
+| 2025-08-09 | =2fcc57dfda2c= | Fil-C changes to libevent-2.1.12 since 5df3037d10556bfcb675bc73e516978b75fc7bc7 | +10/-7 |
+| 2025-08-09 | =ae515e29ded1= | Initial commit of libevent-2.1.12 at 5df3037d10556bfcb675bc73e516978b75fc7bc7 | +101676/-0 |
+
+** libffi-3.4.6
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =ecfe6e4a83a5= | Fil-C changes to libffi-3.4.6 since 4e84c3f55e556886981eadbca76d2286324cbcf6 | +1697/-1182 |
+| 2025-08-08 | =80980126f776= | Initial commit of libffi-3.4.6 at 4e84c3f55e556886981eadbca76d2286324cbcf6 | +176928/-0 |
+
+** libidn2-2.3.7
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =76cdded5e212= | Fil-C changes | +1/-1 |
+| 2025-09-22 | =e1cd1c540890= | Initial commit libidn2 2.3.7 | +277845/-0 |
+
+** libinput-1.29.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-14 |
+| 2025-09-19 | =a4c92a5d92d7= | Fix the test suite | +30/-16 |
+| 2025-09-19 | =df8a1b3af089= | Fix version script | +1/-1 |
+| 2025-09-19 | =e98e40601c8b= | Initial commit libinput-1.29.1 | +186179/-0 |
+
+** libpipeline-1.5.7
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =5bb8b143321a= | Add my own test of libpipeline | +29/-0 |
+| 2025-09-22 | =62b191e32bc9= | Fil-C changes | +8/-8 |
+| 2025-09-22 | =0cc9362ca579= | Initial commit libpipeline 1.5.7 | +142867/-0 |
+
+** libpng-1.6.43
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-6 |
+| 2025-09-19 | =b67276bb9291= | Fix version script | +1/-1 |
+| 2025-09-19 | =93498b361b15= | Apply thee libpng-1.6.43-apng.patch.gz patch that BLFS suggests | +1387/-3 |
+| 2025-09-19 | =9e67259c096c= | Initial commit of libpng 1.6.43 | +177133/-0 |
+
+** libtasn1-4.19.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =90a83cc24d89= | Fil-C changes | +1/-1 |
+| 2025-09-22 | =89465e612328= | Initial commit libtasn1 4.19.0 | +198942/-0 |
+
+** libuev-2.4.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-05 | =e966048c548b= | Again try to fix the configure junk situation in libuev | +9077/-575 |
+| 2025-09-05 | =12cae59e54a2= | Fix configure junk in libuev. | +18370/-1165 |
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-294 |
+| 2025-08-09 | =de2ea47dbea8= | Add configure stuff | +22924/-36 |
+| 2025-08-09 | =1c09f3c7831e= | Initial commit of libuev-2.4.1 at 332f28e5e15b3d556050e774d7b3d8e35ec09006 | +7998/-0 |
+
+** libuv-v1.48.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-15 | =e7f9607aa807= | Disable stack limit test in libuv | +1/-1 |
+| 2025-08-14 | =70e8d440b8e6= | Add libuv to the corpus and make it pass its test suite. Added a variable of zexact_ptrtable that uses weak pointers. Make epoll use weak zexact_ptrtable internally. Add support for copy_file_range syscall. Make dlsym work with RTLD_DEFAULT. Make sched_getparam and sched_getscheduler work better, kinda. Fix libuv's proctitle support, which I'm pretty sure was just broken (it makes assumptions that are just bonkers). Fix libuv's signal support for use zexact_ptrtable. Fix usermusl's zthread_kill for the main thread. Skip some libuv tests that are flaky or fail for weird reasons (a timer test was flaky, some priority-related tests fail for weird reasons). | +40/-27 |
+| 2025-08-13 | =7c0b62349512= | Start to support libuv. It still fails some tests. But it gave me an excuse to implement inotify syscalls, sched_getcpu, statx, clock_getres, pthread_getschedparam, and close via syscall. | +6/-1 |
+| 2025-08-13 | =dc21ab2457ae= | Initial commit of libuv 1.48.0 | +178096/-0 |
+
+** libxcrypt-4.4.36
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-18 | =c465acc1cb8d= | Port libxcrypt to Fil-C | +6/-3 |
+| 2025-09-18 | =0f9595361396= | Initial commit of libxcrypt 4.4.36 | +90842/-0 |
+
+** libxkbcommon-xkbcommon-1.11.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-14 |
+| 2025-09-19 | =605495769e5d= | Fix version scripts | +6/-6 |
+| 2025-09-19 | =56563b6b6798= | Initial commit of libxkbcommon-xkbcommon-1.11.0 | +176255/-0 |
+
+** libxml2-2.14.4
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =914a6852ee04= | Fil-C changes to libxml2-2.14.4 since f3995f22fdaea9d648f53638964bee26e640cfa4 | +1/-1 |
+| 2025-08-09 | =22cbc9a4e6cb= | Initial commit of libxml2-2.14.4 at f3995f22fdaea9d648f53638964bee26e640cfa4 | +847657/-0 |
+
+** linux-6.10.5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =7430007169e1= | Revert patch d6667f0ddf46 because that breaks vmwgfx's ability to work at all. | +502/-740 |
+| 2025-09-22 | =581d839d6fd1= | Fil-C changes (so that the kernel can be built in a Fil-C userland) | +18/-48 |
+| 2025-09-22 | =059d8b7a5971= | Initial commit linux kernel 6.10.5 | +38640874/-0 |
+
+** lua-5.4.7
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =5c1a31fddc73= | Fil-C changes to lua-5.4.7 since 1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3 | +3/-3 |
+| 2025-08-08 | =c5c0372f5205= | Initial commit of lua-5.4.7 at 1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3 | +58566/-0 |
+
+** lz4-1.10.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-19 |
+| 2025-09-04 | =e233548dc0b1= | Initial commit of lz4 1.10.0 | +39386/-0 |
+
+** m4-1.4.19
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-06 | =f2a19efccaf3= | Remove a test that sometimes fails in m4 | +0/-23 |
+| 2025-09-06 | =ac225413d949= | Get m4 to work | +40/-42 |
+| 2025-09-06 | =a9385e1b2bc7= | Initial commit of m4-1.4.19 | +415772/-0 |
+
+** make-4.4.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =3ec4cadcea62= | Fil-C changes | +3/-1 |
+| 2025-09-22 | =d3a04c1a9f9c= | Initial commit make 4.4.1 | +244546/-0 |
+
+** man-db-2.12.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =38857694e9f9= | Fil-C changes | +1/-1 |
+| 2025-09-22 | =4f077ad35385= | Initial commit man-db 2.12.1 | +539744/-0 |
+
+** mg-3.7
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-05 | =5cd3d75c1951= | Add mg 3.7. | +43457/-0 |
+
+** ncurses-6.5-20240720
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =242f755686a8= | Initial commit of ncurses-6.5-20240720 at 28ac88ee0a31fabdce388b719ce947d91637e4e7 | +507436/-0 |
+
+** nghttp2-1.62.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-10 | =d15375b09c30= | Make nghttp2 work and have curl build against it. Required rerunning autoreconf to pull in the pkgconf m4 script correctly. Also, switched openssl to using lib instead of lib64, since that simplifies everything. | +2043/-38 |
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-734 |
+| 2025-08-08 | =39f10deab0f5= | Add configure files | +72645/-0 |
+| 2025-08-08 | =02493a3c70e6= | Remove the gitignore file | +0/-64 |
+| 2025-08-08 | =e9d4cf4a0e39= | Initial commit of nghttp2-1.62.1 at d13a5758373931064636c1641db6277db45552dc | +178582/-0 |
+
+** openssh-9.8p1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-12 | =b89435c80662= | Make sshd's seccomp filter work | +3/-0 |
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-1119 |
+| 2025-08-08 | =b3989cc92df5= | Initial commit of openssh-9.8p1 at 7156e09716e0c6eec8e7123722fb2248bac6313d | +253660/-0 |
+
+** openssl-3.3.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-11 | =76f9fca0dbe3= | Correctly bounds check MD5 (MD5_CBLOCK measures blocks in bytes, MD5_LBLOCK measures them in words). | +1/-1 |
+| 2025-10-11 | =dfb7383fe959= | Add some checked adds in some places and make bsaes ctr mode correctly treat the len as blocks not bytes | +8/-8 |
+| 2025-10-11 | =8f7f8cd72fa7= | Fix aesni_sha forwarders to do checks based on the sha block size, not the aes block size. | +10/-10 |
+| 2025-10-11 | =9323262508f5= | Make OpenSSL use the assembly implementations of crypto so that we have higher assurance regarding timing side channels. | +1282/-232 |
+| 2025-10-05 | =a8d314a0e071= | unskip the OpenSSL 90-test_threads test | +0/-2 |
+| 2025-10-05 | =4265a3de3e70= | Skip OpenSSL threads test for now (it found a bug). | +2/-0 |
+| 2025-10-05 | =4586bf809523= | Run the OpenSSL tests. I skipped the tests that fail right now. They all fail for reasons that are not super important (one of them was asserting symbol names but they are mangled so it failed, two of them wanted secmem but it's disabled, one of them wanted dladdr but it's not implemented, and another wanted to directly issue some low level aio syscall that I don't support). | +0/-365 |
+| 2025-08-08 | =8316a7f5ee05= | Fil-C changes to openssl-3.3.1 since c42928a80285b31761c590dad07b4f492f4608a7 | +5/-2 |
+| 2025-08-08 | =7523cb47c08d= | Initial commit of openssl-3.3.1 at c42928a80285b31761c590dad07b4f492f4608a7 | +1600490/-0 |
+
+** p11-kit-0.25.5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =8ef0affb1591= | Fil-C changes | +2/-2 |
+| 2025-09-22 | =171e76fbdbc6= | Initial commit p11-kit | +315815/-0 |
+
+** pcre-8.39
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =7fa390cf56c4= | Add autoconf files | +29122/-0 |
+| 2025-08-08 | =869d1b6ae169= | Fil-C changes to pcre-8.39 since a69b70d874e9e0bece88e80631e838ffb0778520 | +0/-27951 |
+| 2025-08-08 | =9e8099208315= | Initial commit of pcre-8.39 at a69b70d874e9e0bece88e80631e838ffb0778520 | +296028/-0 |
+
+** pcre2-10.44
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-349 |
+| 2025-08-08 | =e4f81ab3a861= | Remove gitignore | +0/-104 |
+| 2025-08-08 | =24fc0de4cc9a= | Add configure files | +51553/-0 |
+| 2025-08-08 | =a5e854c61474= | Fil-C changes to pcre2-10.44 since 6ae58beca071f13ccfed31d03b3f479ab520639b | +11/-471 |
+| 2025-08-08 | =52a387d1c2db= | Initial commit of pcre2-10.44 at 6ae58beca071f13ccfed31d03b3f479ab520639b | +393542/-0 |
+
+** perl-5.40.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-21 | =0465b263262b= | Fix perl's jhandling of DIR | +11/-3 |
+| 2025-09-04 | =b14fce6d8d8a= | Make perl5 work in Fil-C and add some of my own tests | +328/-80 |
+| 2025-09-04 | =7ceb5e640386= | Initial commit of perl 5.40.0 | +2902833/-0 |
+
+** pkgconf-2.3.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =6ba3216b1741= | Fil-C changes to pkgconf-2.3.0 since d53950347bb1c7fefb2af9861531ba4980ede9d0 | +8/-8 |
+| 2025-08-09 | =04979730a385= | Initial commit of pkgconf-2.3.0 at d53950347bb1c7fefb2af9861531ba4980ede9d0 | +63415/-0 |
+
+** procps-ng-4.0.4
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =4d0b80469086= | Fil-C changes | +3/-3 |
+| 2025-09-22 | =f3391e59e4e7= | Initial commit procps-ng 4.0.4 | +360593/-0 |
+
+** quickjs
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =ed63240cc7e6= | Fix the makefile of quickjs | +3/-2 |
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-166 |
+| 2025-08-09 | =efe955802e48= | Fil-C changes to quickjs since 6e2e68fd0896957f92eb6c242a2e048c1ef3cae0 | +23/-11 |
+| 2025-08-09 | =601bab4bc9a3= | Initial commit of quickjs at 6e2e68fd0896957f92eb6c242a2e048c1ef3cae0 | +102231/-0 |
+
+** seatd-0.9.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-20 | =522cdd23284d= | More fixes to weston and seatd | +1/-1 |
+| 2025-09-20 | =278042ee0a4f= | Initial commit seatd 0.9.1 | +6850/-0 |
+
+** sed-4.9
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =32783d6411ed= | Fil-C changes | +15/-2 |
+| 2025-09-22 | =4e8007056b22= | Initial commit sed 4.9 | +312089/-0 |
+
+** shadow-4.16.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =1c6e549d6c06= | Fil-C changes | +8/-8 |
+| 2025-09-22 | =b0053bb1f025= | Initial commit shadow 4.16.0 | +925630/-0 |
+
+** simdutf-5.5.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-868 |
+| 2025-08-08 | =255cd881f5fa= | Fil-C changes to simdutf-5.5.0 since bb2f8bcd7e1cd97c4be1dd13b9711a0e6de0e4ae | +7/-2 |
+| 2025-08-08 | =4a97d5d4affa= | Initial commit of simdutf-5.5.0 at bb2f8bcd7e1cd97c4be1dd13b9711a0e6de0e4ae | +114001/-0 |
+
+** sqlite
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =cf696b23b191= | Fil-C changes to sqlite since 1aa94b58213bb39fc7252e04ba867c766460871c | +183/-22 |
+| 2025-08-08 | =d9ab79f072c2= | Initial commit of sqlite at 1aa94b58213bb39fc7252e04ba867c766460871c | +1157019/-0 |
+
+** sudo-1.9.15p5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =3f934d80a952= | Fil-C changes to sudo-1.9.15p5 since 0df2479cdfefd99fcbd13cbbfd4db6d0756acb88 | +2/-2 |
+| 2025-08-09 | =092988c0ebdd= | Initial commit of sudo-1.9.15p5 at 0df2479cdfefd99fcbd13cbbfd4db6d0756acb88 | +613485/-0 |
+
+** systemd-256.4
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =f232f755b0d5= | Fil-C changes | +168/-181 |
+| 2025-09-22 | =45c77ca06385= | Initial commit systemd 256.4 | +1978308/-0 |
+
+** tar-1.35
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =6c466a5f9ae8= | Fil-C changes | +6/-1 |
+| 2025-09-22 | =3a3b1b81bd53= | Initial commit tar 1.35 | +559826/-0 |
+
+** tcl-8.6.15
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =31298e8e293e= | Remove gitignore file and add more junk: | +5247/-66 |
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-264 |
+| 2025-08-09 | =ea07e0247f77= | Initial commit of tcl-8.6.15 at 1a98213e55128c8a2136379fedfaef0c8e15320b | +987438/-0 |
+
+** texinfo-7.1
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =baa6bbd8d46c= | Fil-C changes | +19/-14 |
+| 2025-09-22 | =299917ad2505= | Initial commit texinfo 7.1 | +2633327/-0 |
+
+** tmux-3.5a
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =e6e7f0e33367= | Add configure junk | +20786/-342 |
+| 2025-08-09 | =8a9f879dc73b= | Initial commit of tmux-3.5a at 549c35b06165f6ae023115eb76f83f2cbf945395 | +113322/-0 |
+
+** toybox-8.12
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =a57452c4676f= | Add kconfig stuff | +4863/-0 |
+| 2025-08-09 | =582c42392cac= | Remove github stuff | +0/-46 |
+| 2025-08-09 | =3eff450c203a= | Fil-C changes to toybox-8.12 since 7eaddbdb9c1712801ddf131ed79ead0c981ffcb1 | +410/-14 |
+| 2025-08-09 | =32d3eb907ce9= | Initial commit of toybox-8.12 at 7eaddbdb9c1712801ddf131ed79ead0c981ffcb1 | +139652/-0 |
+
+** user-glibc-2.40
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-04 | =a84b2a61939a= | Fix how glibc handles __libc_enable_secure | +8/-0 |
+| 2025-10-03 | =bc31d0c67717= | Fix glibc build. Also make the perl build more parallel. | +2/-2 |
+| 2025-09-26 | =bf83c4b7f537= | Make both musl and glibc support thrd_yield. | +2/-1 |
+| 2025-09-20 | =fc17f6dfc321= | Make glibc support posix_fallocate64 | +2/-7 |
+| 2025-09-19 | =20808ef079f6= | Fix pthread_cleanup_push | +3/-3 |
+| 2025-09-19 | =cc4ceb798b7f= | Get glib to build | +2/-2 |
+| 2025-09-18 | =1fa979acf654= | Add forgotten files | +204/-0 |
+| 2025-09-18 | =c786e47cb568= | Make glibc work in Fil-C as a userland libc. | +1127/-24482 |
+| 2025-09-04 | =5b874a537846= | Initially commit glibc to the corpus as both yolo and user (just like I did with musl). They don't work yet. | +4999145/-0 |
+
+** usermusl
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-10-22 | =33e34fdfba70= | Make tcgetwinsize work in musl. Weirdly, glibc doesn't even have this function. | +1/-1 |
+| 2025-09-26 | =bf83c4b7f537= | Make both musl and glibc support thrd_yield. | +1/-1 |
+| 2025-09-13 | =40be6ad400ff= | Support tcdrain in usermusl. Add emacs to the corpus. | +1/-1 |
+| 2025-08-16 | =e6cf04582e50= | Fix musl xattr syscalls. Also disable the make check of libarchive, since it hits musl issues. | +11/-11 |
+| 2025-08-14 | =70e8d440b8e6= | Add libuv to the corpus and make it pass its test suite. Added a variable of zexact_ptrtable that uses weak pointers. Make epoll use weak zexact_ptrtable internally. Add support for copy_file_range syscall. Make dlsym work with RTLD_DEFAULT. Make sched_getparam and sched_getscheduler work better, kinda. Fix libuv's proctitle support, which I'm pretty sure was just broken (it makes assumptions that are just bonkers). Fix libuv's signal support for use zexact_ptrtable. Fix usermusl's zthread_kill for the main thread. Skip some libuv tests that are flaky or fail for weird reasons (a timer test was flaky, some priority-related tests fail for weird reasons). | +5/-4 |
+| 2025-08-13 | =7c0b62349512= | Start to support libuv. It still fails some tests. But it gave me an excuse to implement inotify syscalls, sched_getcpu, statx, clock_getres, pthread_getschedparam, and close via syscall. | +15/-59 |
+| 2025-08-08 | =dea417757158= | Fil-C changes to usermusl since f314e133929b6379eccc632bef32eaebb66a7335 | +4975/-12257 |
+| 2025-08-08 | =b5e1ef6977a8= | Initial commit of usermusl at f314e133929b6379eccc632bef32eaebb66a7335 | +124377/-0 |
+
+** util-linux-2.40.2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =ca1ddb46f0f6= | Fil-C changes | +10/-10 |
+| 2025-09-22 | =9aeded2e01d4= | Initial commit util-limit 2.40.2 | +2000914/-0 |
+
+** vim-9.1.0660
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-15 | =f0293030c6a5= | Make vim work | +13/-13 |
+| 2025-09-15 | =661a789a8f4b= | Initial commit of vim-9.1.0660 | +1933693/-0 |
+
+** wayland-1.24.0
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-20 | =67ec40067cf9= | Fix libdrm and wayland. | +1/-1 |
+| 2025-09-17 | =d248f1c74d49= | Make the test runner work in Fil-C by using global constructors instead of section hacks | +41/-19 |
+| 2025-09-16 | =ac26ae3efd74= | Initial commit of wayland-1.24.0 | +52974/-0 |
+
+** weston-12.0.5
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-22 | =880e6f91fca6= | Remove the flist files (they were accidentally added) | +0/-2 |
+| 2025-09-20 | =522cdd23284d= | More fixes to weston and seatd | +1/-0 |
+| 2025-09-20 | =070a7848cee2= | Fix the weston test suites | +64/-32 |
+| 2025-09-20 | =615095fde6f1= | Initial commit weston 12.0.5 | +196397/-0 |
+
+** wg14_signals
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =3afb6d80129f= | Remove the .guthubs | +0/-101 |
+| 2025-08-09 | =d52acd4043f1= | Initial commit of wg14_signals at c1b054fd652993f346c7d9c5bf1b29eb74d3d7c4 | +36403/-0 |
+
+** xz-5.6.2
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =40752dee4df9= | Add configure files | +69271/-0 |
+| 2025-08-08 | =34bec66ecdb9= | Fil-C changes to xz-5.6.2 since 3ec664d3f652133136587a51d4505b1abe1acdd7 | +12/-91 |
+| 2025-08-08 | =05542d5b91c5= | Initial commit of xz-5.6.2 at 3ec664d3f652133136587a51d4505b1abe1acdd7 | +136152/-0 |
+
+** yolo-glibc-2.40
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-09-18 | =26dbad6a2db6= | Add forgotten file | +16/-0 |
+| 2025-09-18 | =211ac5bf89a9= | Make yolo-glibc suitable as a yololand libc. | +148/-9678 |
+| 2025-09-04 | =5b874a537846= | Initially commit glibc to the corpus as both yolo and user (just like I did with musl). They don't work yet. | +4999145/-0 |
+
+** yolomusl
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =ffa237d3cd94= | Fil-C changes to yolomusl since f314e133929b6379eccc632bef32eaebb66a7335 | +119/-34 |
+| 2025-08-08 | =d26b9ecdcee0= | Initial commit of yolomusl at f314e133929b6379eccc632bef32eaebb66a7335 | +124377/-0 |
+
+** zlib-1.3
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-08 | =5d7711a953da= | Fil-C changes to zlib-1.3 since 9a7aa1ba37e1a1ebd1761d57b2d37376fd84467b | +5/-563 |
+| 2025-08-08 | =f64b13452e4f= | Initial commit of zlib-1.3 at 9a7aa1ba37e1a1ebd1761d57b2d37376fd84467b | +79175/-0 |
+
+** zsh-5.8.0.1-dev
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-22 | =d292f5dbb951= | Rebase Fil-C to clang/llvm 20.1.8 | +0/-40465 |
+| 2025-08-08 | =02493a3c70e6= | Remove the gitignore file | +0/-157 |
+| 2025-08-08 | =45dbeaa98c0f= | Add configure files | +59108/-0 |
+| 2025-08-08 | =7b1c1ec70c4f= | Fil-C changes to zsh-5.8.0.1-dev since 4ce0cff5e91608598adf4a72318fc868681e398d | +10/-0 |
+| 2025-08-08 | =dd889d05a2d7= | Initial commit of zsh-5.8.0.1-dev at 4ce0cff5e91608598adf4a72318fc868681e398d | +407454/-0 |
+
+** zstd-1.5.6
+
+| Date | Hash | Message | +/- |
+|------+------+---------+-----|
+| 2025-08-09 | =81122deaab7b= | Fil-C changes to zstd-1.5.6 since 92eae3fcaf4d62239f022cda201b49237f334bb3 | +29/-5 |
+| 2025-08-09 | =742c0cc73b20= | Initial commit of zstd-1.5.6 at 92eae3fcaf4d62239f022cda201b49237f334bb3 | +174288/-0 |
+

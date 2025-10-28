@@ -1,1 +1,0 @@
-Disabled ARM CRC32 intrinsics and replaced configure-time detection with hardcoded values, deleted build artifacts.

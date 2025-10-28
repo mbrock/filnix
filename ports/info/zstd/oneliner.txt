@@ -1,1 +1,0 @@
-Used standard cpuid.h for CPU feature detection and disabled inline assembly loop alignment optimizations for Fil-C compatibility.

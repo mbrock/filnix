@@ -1,1 +1,0 @@
-Replaced GLib's gsize-based once initialization with gpointer variants for type system compatibility.

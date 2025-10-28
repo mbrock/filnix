@@ -1,1 +1,0 @@
-Disables vfork (replaced with fork or ENOSYS), adds signal safety checks via zis_unsafe_signal_for_handlers, converts unsigned long to void* in ls.c print formatting.

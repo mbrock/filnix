@@ -1,1 +1,0 @@
-Disables SSE/SSE2 in yescrypt and changes .symver to .filc_symver for symbol versioning.

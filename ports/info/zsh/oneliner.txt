@@ -1,1 +1,0 @@
-Disabled zsh's custom heap allocator (zhalloc/hrealloc) by forcing malloc/free and added missing HashNode flags field.

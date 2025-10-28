@@ -1,1 +1,0 @@
-Replaced ELF section-based test registration with constructor-based dynamic linked list for Fil-C compatibility.

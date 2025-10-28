@@ -1,1 +1,0 @@
-Adds early return for timezone, zmkptr for alignment, compiler fence for aliasing, and disables assembly object code generation.

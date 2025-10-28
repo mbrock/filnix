@@ -1,1 +1,0 @@
-Patch is 99% build artifact bloat: zlib prebuilt binaries, generated configure scripts, tcltest library duplication, Windows resources, and generated man pages; no actual Fil-C compatibility code changes.

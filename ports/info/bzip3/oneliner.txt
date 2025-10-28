@@ -1,1 +1,0 @@
-Build system changes to disable pkgconfig and add version file; includes binary shakespeare.txt.bz3 file.

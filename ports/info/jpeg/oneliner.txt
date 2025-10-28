@@ -1,1 +1,0 @@
-Changes alignment type from void* to double and removes test binary images.

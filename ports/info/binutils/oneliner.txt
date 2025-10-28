@@ -1,1 +1,0 @@
-Converted intptr_t variables to void* pointers throughout, added template instantiations, disabled sbrk, and adjusted linker version script flags.

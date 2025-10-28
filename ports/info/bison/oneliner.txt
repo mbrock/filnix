@@ -1,1 +1,0 @@
-Modified pointer alignment macro in obstack.h to use zmkptr for proper capability preservation.

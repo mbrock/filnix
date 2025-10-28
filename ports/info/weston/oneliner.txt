@@ -1,1 +1,0 @@
-Replaced ELF section-based test registration with constructor-based dynamic allocation in three separate test frameworks.

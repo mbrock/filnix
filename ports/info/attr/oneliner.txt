@@ -1,1 +1,0 @@
-Symbol versioning directives changed from .symver to .filc_symver for Fil-C linker compatibility.

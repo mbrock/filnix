@@ -1,1 +1,0 @@
-Replaced vfork with fork; patch includes extensive autotools bloat (INSTALL, compile, install-sh, missing scripts).

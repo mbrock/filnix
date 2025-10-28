@@ -1,1 +1,0 @@
-Changed linker version script flag from `-Wl,--version-script` to bare `--version-script` in meson.build.

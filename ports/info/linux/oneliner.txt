@@ -1,1 +1,0 @@
-Extensive VMware GPU driver refactoring removing dumb buffer surface features and code cleanup.

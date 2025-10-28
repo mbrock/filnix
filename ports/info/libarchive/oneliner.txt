@@ -1,1 +1,0 @@
-Adds Fil-C tagged pointer operations (zretagptr, zorptr, zandptr, zxorptr) to red-black tree implementation and changes pointer-storing deque to use void** instead of size_t*.

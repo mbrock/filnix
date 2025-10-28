@@ -1,1 +1,0 @@
-Replaces Emacs' custom memory management with Fil-C's zgc_alloc, disables signal handling and garbage collection.

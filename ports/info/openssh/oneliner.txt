@@ -1,1 +1,0 @@
-Adds sched_yield syscall to seccomp sandbox allow-list.

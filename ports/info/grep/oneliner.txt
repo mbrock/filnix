@@ -1,1 +1,0 @@
-Adds zmkptr macro for pointer alignment and disables stack overflow recovery in obstack and sigsegv.

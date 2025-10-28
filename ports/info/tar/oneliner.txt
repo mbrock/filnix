@@ -1,1 +1,0 @@
-Added capability-aware __BPTR_ALIGN macro to gnu/obstack.h using zmkptr for pointer alignment operations (identical to sed patch).

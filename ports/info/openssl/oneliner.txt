@@ -1,1 +1,0 @@
-Removes -Wl prefix from symbol versioning flags and adds extensive assembly function wrappers with bounds checking.

@@ -1,1 +1,0 @@
-Adds APNG (Animated PNG) support by defining PNG_APNG_SUPPORTED and implementing frame control chunks (acTL, fcTL, fdAT), animation metadata, and progressive/write APIs.

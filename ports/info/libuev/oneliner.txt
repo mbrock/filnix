@@ -1,1 +1,0 @@
-Reduced from 18KB to <1KB after filtering; remaining patch contains src/README.md addition only.
