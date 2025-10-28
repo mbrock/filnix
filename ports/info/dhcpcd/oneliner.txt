@@ -1,0 +1,1 @@
+Extensive red-black tree modifications using Fil-C pointer operations (zretagptr, zorptr, zandptr, zxorptr) for capability-preserving bit manipulation.

@@ -1,0 +1,1 @@
+Replaces linker section-based test device and test collection registration with constructor-based linked lists and changes -Wl,--version-script to --version-script.

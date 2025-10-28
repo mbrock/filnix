@@ -1,0 +1,1 @@
+Converts intptr_t casts to/from void* in option parsing structures throughout Git codebase.

@@ -1,0 +1,1 @@
+Added zptrtable for TCL test pointer encoding, disabled atomic intrinsics, created Makefile.filc build system, extensive test harness pointer safety fixes.

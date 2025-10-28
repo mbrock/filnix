@@ -1,0 +1,1 @@
+Added Clang diagnostic pragmas to suppress unused parameter and unused const variable warnings.

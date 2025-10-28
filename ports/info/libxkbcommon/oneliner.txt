@@ -1,0 +1,1 @@
+Changes -Wl,--version-script to --version-script in all meson.build symbol versioning flags.

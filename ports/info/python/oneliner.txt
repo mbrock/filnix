@@ -1,0 +1,1 @@
+Major refactor of Python's internal pointer handling: GC linked lists use real pointers, atomic operations use void*_Atomic, interpreter frames use GC allocation, zptrtable for code object caches, and disabled SIMD/atomic intrinsics.

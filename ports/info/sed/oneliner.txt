@@ -1,0 +1,1 @@
+Disabled heap memory mapping checks and malloc size limit tests in gnulib test suite using __FILC__ guards; added capability-aware __BPTR_ALIGN macro to obstack.h.

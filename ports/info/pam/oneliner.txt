@@ -1,0 +1,1 @@
+Replaces hardcoded paths with build-time macros and adds Debian-specific features (both PAM 1.6.1 and 1.7.1 patches).

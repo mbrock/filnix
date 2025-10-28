@@ -1,0 +1,1 @@
+Changed flexible array member from char to void* in SAVED_VAR struct for proper pointer table handling.

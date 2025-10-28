@@ -1,0 +1,1 @@
+Extensive zptrtable integration for pointer encoding across XS modules, perl internals, and threading; replaces all PTR2IV/INT2PTR macros with capability-safe encoding.

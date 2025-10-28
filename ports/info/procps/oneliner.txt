@@ -1,0 +1,1 @@
+Fixes va_arg undefined behavior in pids_oldproc_open by conditionally reading pointer argument only when flags indicate it's present.

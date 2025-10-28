@@ -1,0 +1,1 @@
+Disables several flaky SSL/HTTPS tests and casts legacy test function pointer to correct signature.

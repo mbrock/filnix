@@ -1,0 +1,1 @@
+Disables readline library and adds debug flags to makefile.

@@ -1,0 +1,1 @@
+Disabled locale test in RunGrepTest; patch bloated with massive autotools artifact files (INSTALL, ar-lib, compile scripts).

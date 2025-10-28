@@ -1,0 +1,1 @@
+Massive autotools bloat - deletes .codedocs CI config and adds thousands of lines of generated autotools scripts (ar-lib, compile, ltmain.sh, etc).

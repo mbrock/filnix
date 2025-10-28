@@ -1,0 +1,1 @@
+Fixed sigaction call to pass NULL when func is SIG_ERR to prevent dereferencing invalid pointer.

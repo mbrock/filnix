@@ -1,0 +1,1 @@
+Removed `-Wl,` prefix from version-script linker flags, disabled ELF section-based error map registration, inlined all bus error maps into bus_standard_errors array, added signal safety check via zis_unsafe_signal_for_handlers.

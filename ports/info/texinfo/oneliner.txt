@@ -1,0 +1,1 @@
+Fixed pointer alignment macro in obstack.h and replaced intptr_t with void* for proper Fil-C pointer tracking.

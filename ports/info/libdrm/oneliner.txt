@@ -1,0 +1,1 @@
+Uses zexact_ptrtable to encode/decode pointers in DRM ioctl structures, with most conversions being one-way since kernel doesn't return pointers.

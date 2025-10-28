@@ -1,0 +1,1697 @@
+# Fil-C Porting Patterns: A Technical Analysis
+
+**Analysis of 71 software ports to the Fil-C memory-safe C/C++ compiler**
+
+## 1. Introduction
+
+This document synthesizes the porting experience of 71 substantial C/C++ projects to Fil-C, Filip Pizlo's memory-safe C implementation. The analysis draws from detailed patch reviews covering everything from small utilities (dash, vim) to massive systems (emacs, python, systemd). The goal: create a reference guide for understanding the core challenges and patterns when porting C/C++ software to a capability-based memory safety model.
+
+### 1.1 The Fil-C Memory Model
+
+Fil-C achieves complete memory safety through **capabilities** — every pointer carries hidden metadata (bounds, type information) tracked by the runtime. The FilPizlonator LLVM pass instruments all code to maintain these capabilities, while the InvisiCap runtime represents pointers as `(value, capability)` pairs. FUGC (Fil's Unified Garbage Collector) prevents use-after-free by keeping freed objects alive until all references die.
+
+**Key implication:** Any code that treats pointers as integers, manipulates their bits, or makes assumptions about memory layout will break under Fil-C. This drives nearly every porting pattern documented below.
+
+### 1.2 Scope of Analysis
+
+The 71 projects span diverse domains:
+
+- **System utilities:** bash, dash, grep, sed, tar, make, vim
+- **Language runtimes:** python, perl, lua, quickjs, zsh
+- **Network services:** openssh, systemd, dhcpcd
+- **Libraries:** openssl, glib, cairo, libuv, sqlite, libffi
+- **Build tools:** binutils, cmake, bison, m4
+
+Combined patch scope: ~50,000+ lines of changes. Note: patches are extracted from git history in the upstream fil-c repository, so they include build artifacts like autotools scripts and generated files alongside actual code changes.
+
+## 2. Core Porting Patterns
+
+### 2.1 Pointer Table Encoding (zptrtable)
+
+**Problem:** Code stores pointers as integers (`intptr_t`, `uintptr_t`) for later retrieval. This destroys capabilities — when reconstructing the pointer, bounds information is lost.
+
+**Solution:** Use `zptrtable` or `zexact_ptrtable` to encode pointers as integers while preserving capabilities in a side table.
+
+**API:**
+
+```c
+#include <stdfil.h>
+
+zptrtable* table = zptrtable_new_weak();
+uintptr_t encoded = zptrtable_encode(table, ptr);
+void* decoded = zptrtable_decode(table, encoded);
+```
+
+**Case Study: Perl XS Interface (perl/)**
+
+Perl's XS (eXtension System) extensively converts pointers to integers using `PTR2IV` / `INT2PTR` macros. The Fil-C port creates pointer tables at multiple levels:
+
+1. **Global table** (`Perl_xsub_ptrtable`) for shared XS usage
+2. **Per-module tables** for specific subsystems:
+   - `builtin_ptrtable` in builtin.c for `BuiltinFuncDescriptor*`
+   - `encode_ptrtable` in Encode.xs for character encoding contexts
+   - `threads_ptrtable` in threads.xs for thread management
+   - `sharedsv_ptrtable` in threads-shared for shared variables
+   - `dir_ptrtable` in doio.c for directory handles
+
+**From perl/builtin.c:**
+
+```c
++static zptrtable* builtin_ptrtable;
++
+ static OP *ck_builtin_const(pTHX_ OP *o) {
+     const struct BuiltinFuncDescriptor *desc =
+-        INT2PTR(struct BuiltinFuncDescriptor *, SvUV(cSVOP_sv));
++        zptrtable_decode(builtin_ptrtable, SvUV(cSVOP_sv));
+```
+
+**Pattern consistency:** All 20+ Perl source files follow the same approach — create a table at module initialization, encode on storage, decode on retrieval.
+
+**Case Study: Python Code Object Caching (python/)**
+
+Python embeds `PyObject*` pointers directly in bytecode instruction streams for inline caches. The port introduces `_PyCode_PtrTable`:
+
+**From Objects/codeobject.c:**
+
+```c
++extern zptrtable* _PyCode_PtrTable;
+
+ static inline void write_obj(uint16_t *p, PyObject *val) {
+-    memcpy(p, &val, sizeof(val));
++    uintptr_t valint = zptrtable_encode(_PyCode_PtrTable, val);
++    memcpy(p, &valint, sizeof(valint));
+ }
+```
+
+This ensures bytecode cache invalidation cycles preserve object capabilities.
+
+**Case Study: SQLite TCL Test Interface (sqlite/)**
+
+SQLite's test suite passes C pointers to TCL (which stores them as integers) and later retrieves them. The port adds centralized encode/decode functions:
+
+**From src/test1.c:**
+
+```c
++static zptrtable* externalPtrTable;
++
++void* sqlite3EncodeExternalTestPtr(void *p) {
++    ensureExternalPtrTable();
++    return (void*)zptrtable_encode(externalPtrTable, p);
++}
++
++void* sqlite3DecodeExternalTestPtr(void *p) {
++    ensureExternalPtrTable();
++    return zptrtable_decode(externalPtrTable, (size_t)p);
++}
+```
+
+Used throughout 10+ test files whenever passing pointers to TCL:
+
+```c
+-sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", p->db);
++sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", sqlite3EncodeExternalTestPtr(p->db));
+```
+
+**Variant: zexact_ptrtable**
+
+For bijective (reversible) mappings, use `zexact_ptrtable`:
+
+**From Python's longobject.c:**
+
+```c
++static zexact_ptrtable* ptrtable;
+
+ PyObject *PyLong_FromVoidPtr(void *p) {
+-    return PyLong_FromUnsignedLong((unsigned long)(uintptr_t)p);
++    return PyLong_FromUnsignedLong(zexact_ptrtable_encode(ptrtable, p));
+ }
+
+ void *PyLong_AsVoidPtr(PyObject *vv) {
+-    return (void*)(uintptr_t)x;
++    return zexact_ptrtable_decode(ptrtable, x);
+ }
+```
+
+**From libuv's signal.c (signal handler safety):**
+
+```c
++static zexact_ptrtable* handle_table;
+
+ // In signal handler (async-signal-safe context):
+ msg.handle = (void*)zexact_ptrtable_encode(handle_table, handle);
+
+ // In event loop:
+ handle = zexact_ptrtable_decode(handle_table, (uintptr_t)msg->handle);
+```
+
+**Guidelines:**
+
+- Use `zptrtable` for one-way encoding (pointer → integer for storage)
+- Use `zexact_ptrtable` for round-trip encoding (must decode back to same pointer)
+- Initialize tables with `_new_weak()` to avoid GC retention
+- Create per-subsystem tables rather than global tables when possible
+
+### 2.2 Tagged Pointers (zorptr/zandptr/zxorptr/zretagptr)
+
+**Problem:** Data structures store metadata in pointer low bits (alignment guarantees bottom 2-3 bits are zero). Direct bitwise operations destroy capabilities.
+
+**Solution:** Fil-C provides tagged pointer intrinsics that preserve capabilities while manipulating bits.
+
+**API:**
+
+```c
+void* zorptr(void* ptr, uintptr_t bits);      // OR bits into pointer
+void* zandptr(void* ptr, uintptr_t mask);     // AND mask with pointer
+void* zxorptr(void* ptr, uintptr_t bits);     // XOR bits with pointer
+void* zretagptr(void* new_ptr, void* old_ptr, uintptr_t mask);  // Replace pointer, preserve tag
+```
+
+**Case Study: Red-Black Trees (dhcpcd, libarchive)**
+
+Red-black trees commonly pack color (1 bit) and position (1 bit) into the parent pointer's low bits.
+
+**From dhcpcd/compat/rbtree.h:**
+
+```c
+ typedef struct rb_node {
+-    uintptr_t rb_info;  // Parent pointer + flags in low bits
++    struct rb_node *rb_info;
+ } rb_node;
+
+ #define RB_FATHER(rb) \
+-    ((struct rb_node *)((rb)->rb_info & ~RB_FLAG_MASK))
++    ((struct rb_node *)((uintptr_t)(rb)->rb_info & ~RB_FLAG_MASK))
+
+ #define RB_SET_FATHER(rb, father) \
+-    ((rb)->rb_info = (uintptr_t)(father) | ((rb)->rb_info & RB_FLAG_MASK))
++    ((rb)->rb_info = zretagptr((father), (rb)->rb_info, ~RB_FLAG_MASK))
+
+ #define RB_MARK_RED(rb) \
+-    ((rb)->rb_info |= RB_FLAG_RED)
++    ((rb)->rb_info = zorptr((rb)->rb_info, RB_FLAG_RED))
+
+ #define RB_MARK_BLACK(rb) \
+-    ((rb)->rb_info &= ~RB_FLAG_RED)
++    ((rb)->rb_info = zandptr((rb)->rb_info, ~RB_FLAG_RED))
+
+ #define RB_INVERT_COLOR(rb) \
+-    ((rb)->rb_info ^= RB_FLAG_RED)
++    ((rb)->rb_info = zxorptr((rb)->rb_info, RB_FLAG_RED))
+```
+
+**Key insight:**
+
+- Store as pointer (`struct rb_node*`) not integer
+- Cast to `uintptr_t` only when _extracting_ flag bits for testing
+- Use `z*ptr` functions when _modifying_ tag bits
+
+**Case Study: Python GC Headers (python/)**
+
+Python's GC uses linked lists with flags in low bits of `_gc_prev`:
+
+**From Include/internal/pycore_gc.h:**
+
+```c
+ typedef struct PyGC_Head {
+-    uintptr_t _gc_next;
+-    uintptr_t _gc_prev;  // Low 2 bits used for flags
++    PyGC_Head* _gc_next;
++    PyGC_Head* _gc_prev;
+ } PyGC_Head;
+```
+
+**Updated helpers:**
+
+```c
+-#define _PyGCHead_PREV(gc) ((PyGC_Head*)((gc)->_gc_prev & ~_PyGC_PREV_MASK))
++#define _PyGCHead_PREV(gc) ((PyGC_Head*)zandptr((gc)->_gc_prev, _PyGC_PREV_MASK))
+
+-#define _PyGCHead_SET_PREV(gc, prev) \
+-    ((gc)->_gc_prev = ((uintptr_t)(prev)) | ((gc)->_gc_prev & ~_PyGC_PREV_MASK))
++#define _PyGCHead_SET_PREV(gc, prev) \
++    ((gc)->_gc_prev = zretagptr(prev, (gc)->_gc_prev, _PyGC_PREV_MASK))
+
+-#define _PyGCHead_SET_FINALIZED(gc) ((gc)->_gc_prev |= _PyGC_PREV_MASK_FINALIZED)
++#define _PyGCHead_SET_FINALIZED(gc) \
++    ((gc)->_gc_prev = zorptr((gc)->_gc_prev, _PyGC_PREV_MASK_FINALIZED))
+```
+
+**Case Study: QuickJS Property Autoinit (quickjs/)**
+
+QuickJS stores `JSContext*` with a 2-bit autoinit ID in `realm_and_id`:
+
+**From quickjs.c:**
+
+```c
+ typedef struct JSProperty {
+     union {
+         struct {
+-            uintptr_t realm_and_id;
++            void* realm_and_id;
+             void *opaque;
+         } init;
+     } u;
+ } JSProperty;
+
+ static JSContext *js_autoinit_get_realm(JSProperty *pr) {
+-    return (JSContext *)(pr->u.init.realm_and_id & ~3);
++    return (JSContext *)((uintptr_t)pr->u.init.realm_and_id & ~3);
+ }
+
+ static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr) {
+-    return pr->u.init.realm_and_id & 3;
++    return (uintptr_t)pr->u.init.realm_and_id & 3;
+ }
+
+ // Setting value:
+-pr->u.init.realm_and_id = (uintptr_t)JS_DupContext(ctx);
+-pr->u.init.realm_and_id |= id;
++pr->u.init.realm_and_id = JS_DupContext(ctx);
++pr->u.init.realm_and_id = (void*)((uintptr_t)pr->u.init.realm_and_id | id);
+```
+
+**Pattern:** Store as `void*`, cast to `uintptr_t` for bit operations, cast result back to `void*`.
+
+**Guidelines:**
+
+- **Storage:** Use pointer types, not `uintptr_t`
+- **Reading flags:** Cast to `uintptr_t` temporarily, extract bits, use result
+- **Writing flags:** Use `z*ptr` intrinsics to preserve capability
+- **Replacing pointer:** Use `zretagptr(new_ptr, old_ptr, mask)` to preserve tag bits
+
+### 2.3 Pointer Alignment (zmkptr)
+
+**Problem:** Aligning pointers via arithmetic (`(base + offset)`) creates new pointers without proper provenance. The result may not have correct bounds.
+
+**Solution:** Use `zmkptr(base_ptr, computed_address)` to create aligned pointer with capability derived from base.
+
+**API:**
+
+```c
+void* zmkptr(void* base, uintptr_t address);
+```
+
+**Case Study: Obstack Allocator (bison, grep, sed, tar, texinfo, m4)**
+
+Obstack is a stack-like allocator from gnulib. The `__BPTR_ALIGN` macro aligns pointers within allocated chunks:
+
+**Original (broken):**
+
+```c
+#define __BPTR_ALIGN(B, P, A) ((B) + (((P) - (B) + (A)) & ~(A)))
+```
+
+**Problem:** Expression `(B) + offset` creates pointer from integer addition. No capability provenance.
+
+**Fixed version:**
+
+```c
+#include <stdfil.h>
+#include <inttypes.h>
+
+#define __BPTR_ALIGN(B, P, A)                                           \
+  __extension__                                                         \
+    ({ char *__P = (char *) (P);                                        \
+       zmkptr(__P, (uintptr_t)((B) + ((__P - (B) + (A)) & ~(A)))); })
+```
+
+**How it works:**
+
+1. Compute alignment offset as pure integer arithmetic: `(B) + ((__P - (B) + (A)) & ~(A))`
+2. Use `zmkptr(__P, computed_address)` to create new pointer
+3. Capability bounds derived from base pointer `__P`
+4. Result: aligned pointer with correct provenance
+
+**Seen in:** bison, grep, sed, tar, texinfo, m4 (all use gnulib's obstack)
+
+**Case Study: XZ CRC SIMD Alignment (xz/)**
+
+SIMD code often requires 16-byte aligned buffers:
+
+**From src/liblzma/check/crc_x86_clmul.h:**
+
+```c
++#include <stdfil.h>
+
+ const __m128i *aligned_buf = (const __m128i *)zmkptr(
+     buf, (uintptr_t)buf & ~(uintptr_t)15);
+```
+
+Aligns `buf` to 16-byte boundary while preserving capability from original `buf` pointer.
+
+**Guidelines:**
+
+- Compute alignment as integer arithmetic (avoids capability loss)
+- Use `zmkptr(original_ptr, aligned_address)` to create result
+- Base pointer provides capability bounds for aligned pointer
+- Essential for allocators, SIMD alignment, struct padding
+
+### 2.4 Atomic Pointer Operations
+
+**Problem:** C11 atomics with `atomic_uintptr_t` store pointers as integers, destroying capabilities.
+
+**Solution:** Use `void*_Atomic` or `_Atomic(void*)` for capability-aware pointer atomics.
+
+**Case Study: Python Atomics (python/)**
+
+**From Include/internal/pycore_atomic.h:**
+
+```c
+ typedef struct _Py_atomic_address {
+-    atomic_uintptr_t _value;
++    void*_Atomic _value;
+ } _Py_atomic_address;
+```
+
+**Disabled intrinsics:**
+
+```c
++#ifdef __PIZLONATOR_WAS_HERE__
++# error "Fil-C doesn't support atomic intrinsics"
++#endif
+```
+
+Forces fallback to C11 standard atomics that work with capabilities.
+
+**From Include/internal/pycore_interp.h:**
+
+```c
+-_Py_atomic_store_relaxed(&interp->_finalizing, (uintptr_t)tstate);
++_Py_atomic_store_relaxed(&interp->_finalizing, tstate);
+```
+
+**Guidelines:**
+
+- Use `void*_Atomic` instead of `atomic_uintptr_t` for pointers
+- Disable compiler intrinsics (`__sync_*`, `__atomic_*`) that assume integer representation
+- Rely on C11 standard atomic operations
+- Avoid `_Atomic` with integer types for pointer storage
+
+### 2.5 ELF Section Elimination
+
+**Problem:** Code uses ELF linker sections to collect data/functions:
+
+```c
+__attribute__((section("custom_section"))) struct foo data;
+extern struct foo __start_custom_section, __stop_custom_section;
+for (p = &__start_custom_section; p < &__stop_custom_section; p++) ...
+```
+
+Section boundaries are raw addresses, not capability-bearing pointers. Iteration breaks.
+
+**Solution:** Replace with constructor-based registration using linked lists or arrays.
+
+**Pattern:**
+
+```c
+// Old: Section-based
+__attribute__((section("test_section"))) struct test tests[] = { ... };
+
+// New: Constructor-based
+struct test *first_test = NULL;
+
+__attribute__((constructor))
+static void register_test_foo() {
+    struct test *t = malloc(sizeof(*t));
+    t->next = first_test;
+    first_test = t;
+}
+```
+
+**Case Study: Test Framework Registration (libevdev, libinput, wayland, weston)**
+
+All four projects used section-based test discovery:
+
+**libevdev before:**
+
+```c
+#define _TEST_SUITE(name, ...) \
+    static const struct libevdev_test _test_##name \
+        __attribute__((section ("test_section"))) = { ... };
+
+// Iteration:
+extern const struct libevdev_test __start_test_section, __stop_test_section;
+for (t = &__start_test_section; t < &__stop_test_section; t++)
+    run_test(t);
+```
+
+**libevdev after:**
+
+```c
++const struct libevdev_test *first_test = NULL;
+
+ #define _TEST_SUITE(name, ...) \
++    __attribute__((constructor)) \
++    static void register_##name() { \
++        struct libevdev_test *t = malloc(sizeof(*t)); \
++        t->name = #name; \
++        t->next = first_test; \
++        first_test = t; \
++    }
+
+ // Iteration:
+-for (t = &__start_test_section; t < &__stop_test_section; t++)
++for (t = first_test; t; t = t->next)
+     run_test(t);
+```
+
+**Same pattern in:**
+
+- **libinput:** Test devices + test collections (dual registration)
+- **wayland:** Single test list
+- **weston:** Three frameworks (ivi-layout, weston-test-runner, zunitc)
+
+**Case Study: systemd Error Maps (systemd/)**
+
+systemd used sections to collect error code mappings from multiple compilation units:
+
+**Before:**
+
+```c
+#define BUS_ERROR_MAP_ELF_REGISTER \
+    __attribute__((__section__("SYSTEMD_BUS_ERROR_MAP"))) \
+    __attribute__((__used__)) \
+    __attribute__((__retain__))
+
+BUS_ERROR_MAP_ELF_REGISTER const sd_bus_error_map bus_standard_errors[] = {
+    SD_BUS_ERROR_MAP(SD_BUS_ERROR_FAILED, EACCES),
+    ...
+};
+
+BUS_ERROR_MAP_ELF_REGISTER const sd_bus_error_map bus_common_errors[] = {
+    SD_BUS_ERROR_MAP(BUS_ERROR_NO_SUCH_UNIT, ENOENT),
+    ...
+};
+
+// Lookup:
+extern sd_bus_error_map __start_SYSTEMD_BUS_ERROR_MAP, __stop_SYSTEMD_BUS_ERROR_MAP;
+for (m = &__start_SYSTEMD_BUS_ERROR_MAP; m < &__stop_SYSTEMD_BUS_ERROR_MAP; m++)
+    if (streq(m->name, name)) return m->code;
+```
+
+**After (inlined consolidation):**
+
+```c
+-BUS_ERROR_MAP_ELF_REGISTER const sd_bus_error_map bus_standard_errors[] = {
++const sd_bus_error_map bus_standard_errors[] = {
+     SD_BUS_ERROR_MAP(SD_BUS_ERROR_FAILED, EACCES),
+     ...
++    // INLINED: All 140+ entries from bus_common_errors
++    SD_BUS_ERROR_MAP(BUS_ERROR_NO_SUCH_UNIT, ENOENT),
++    ...
+     SD_BUS_ERROR_MAP_END
+ };
+
+ // bus_common_errors.c is now empty
+
+ // Lookup (simplified):
+-for (m = &__start_SYSTEMD_BUS_ERROR_MAP; m < &__stop_SYSTEMD_BUS_ERROR_MAP; m++)
++for (m = bus_standard_errors; m->code != BUS_ERROR_MAP_END_MARKER; m++)
+     if (streq(m->name, name)) return m->code;
+```
+
+**Trade-off:** Loses modularity (can't add error maps via separate compilation units) but acceptable since all systemd errors are in libsystemd.
+
+**Guidelines:**
+
+- Constructor registration preferred for tests/plugins (maintains modularity)
+- Inlined consolidation acceptable for static data (error tables, etc.)
+- Use `malloc()` in constructors (GC handles cleanup)
+- Maintain linked lists with prepend (O(1) insertion)
+- Consider converting to array if original code needs indexing/sorting
+
+### 2.6 Syscall Wrappers
+
+**Problem:** Direct syscalls via `syscall(__NR_xxx, ...)` bypass Fil-C's safety validation. Malformed syscalls can leak capabilities or violate memory safety.
+
+**Solution:** Use Fil-C's `zsys_*` wrappers that validate arguments before invoking kernel.
+
+**Case Study: keyutils (keyutils/)**
+
+Keyutils makes extensive kernel key management syscalls:
+
+**From keyutils.c:**
+
+```c
++#include <pizlonated_syscalls.h>
+
+ key_serial_t add_key(const char *type, const char *description,
+                      const void *payload, size_t plen,
+                      key_serial_t ringid) {
+-    return syscall(__NR_add_key, type, description, payload, plen, ringid);
++    return zsys_add_key(type, description, payload, plen, ringid);
+ }
+
+ key_serial_t request_key(const char *type, const char *description,
+                          const char *callout_info, key_serial_t destringid) {
+-    return syscall(__NR_request_key, type, description, callout_info, destringid);
++    return zsys_request_key(type, description, callout_info, destringid);
+ }
+```
+
+**Variadic keyctl:**
+
+```c
+-long keyctl(int cmd, ...) {
+-    va_list va;
+-    va_start(va, cmd);
+-    // ... extract args ...
+-    return syscall(__NR_keyctl, cmd, arg2, arg3, arg4, arg5);
+-}
++long keyctl(int cmd, ...) {
++    return *(long*)zcall(zsys_keyctl, zargs());
++}
+```
+
+Uses `zcall` mechanism with `zargs()` to forward all varargs safely.
+
+**Specialized wrappers:**
+
+```c
+-long keyctl_dh_compute(key_serial_t private, key_serial_t prime,
+-                       key_serial_t base, char *buffer, size_t buflen) {
+-    return syscall(__NR_keyctl, KEYCTL_DH_COMPUTE, &dh_params, buffer, buflen, NULL);
+-}
++long keyctl_dh_compute(...) {
++    return zsys_keyctl_dh_compute(private, prime, base, buffer, buflen);
++}
+```
+
+**Case Study: SQLite mremap (sqlite/)**
+
+**From src/test_syscall.c:**
+
+```c
++#include <stdfil.h>
+
+-#define MEM(args...) (void*)((intptr_t)syscall(args))
++#define MEM(args...) (void*)((intptr_t)zcall(args, zargs()))
+
+ void *xMremap(void *old, int nOld, int nNew, int flags) {
+     void *pNew = MEM(SYS_mremap,
+-        old, nOld, nNew, flags
++        zcan_va_arg(old), nOld, nNew, flags
+     );
+     return pNew;
+ }
+```
+
+Uses `zcan_va_arg()` to validate argument before passing to syscall wrapper.
+
+**Guidelines:**
+
+- Replace `syscall(__NR_xxx, ...)` with `zsys_xxx(...)`
+- Use `zcall(zsys_xxx, zargs())` for variadic forwarding
+- Check `<pizlonated_syscalls.h>` for available wrappers
+- Part of "GIMSO" principle: even malicious input can't escape safety
+
+## 3. Case Studies: Major Refactors
+
+### 3.1 Emacs: Memory Manager Replacement
+
+**Challenge:** Emacs has a sophisticated custom memory manager with object pools, memory reserves, and its own garbage collector. All incompatible with FUGC.
+
+**Approach:** Wholesale replacement — disable all custom allocation, use `zgc_alloc()` directly.
+
+**From src/alloc.c:**
+
+```c
+// Bypass all Lisp allocators
++#define make_interval() ({ if ((true)) return zgc_alloc(sizeof(INTERVAL)); ... })
++#define allocate_string() ({ if ((true)) return zgc_alloc(sizeof(struct Lisp_String)); ... })
++#define make_float() ({ if ((true)) return zgc_alloc(sizeof(struct Lisp_Float)); ... })
++#define Fcons() ({ if ((true)) return zgc_alloc(sizeof(struct Lisp_Cons)); ... })
+```
+
+**Disable GC:**
+
+```c
+-void garbage_collect(void) {
+-    // ... 1000+ lines of custom GC ...
+-}
++void garbage_collect(void) {
++    // Disabled - FUGC handles collection
++    return;
++}
+```
+
+**Symbol handling (src/lisp.h):**
+
+```c
+ #define make_lisp_symbol_internal(sym) \
+-    TAG_PTR(Lisp_Symbol, sym)
++    TAG_PTR_INITIALLY(Lisp_Symbol, sym)  // Capability-aware tagging
+```
+
+**Signal handler elimination (src/sysdep.c):**
+
+```c
+ int init_sigsegv(void) {
+-    // Install SIGSEGV handler for stack overflow detection
+-    struct sigaction sa;
+-    sa.sa_sigaction = sigsegv_handler;
+-    sigaction(SIGSEGV, &sa, NULL);
++    // Disabled - conflicts with FUGC
+     return 0;
+ }
+```
+
+**Impact:**
+
+- Emacs Lisp objects now garbage collected by FUGC
+- No custom allocation pools
+- No stack overflow recovery (FUGC manages stack)
+- Massive simplification at cost of Emacs-specific optimizations
+
+### 3.2 Python: GC, Atomics, and Frame Allocation
+
+**Challenge:** Python's internals make extensive low-level assumptions about pointer representation, atomic operations, and stack frame allocation.
+
+**Changes span 30+ files across multiple subsystems:**
+
+#### GC Header Rewrite
+
+**Problem:** GC headers use `uintptr_t` for linked list pointers with tag bits in low bits.
+
+**Solution:** Real pointers + tagged pointer operations.
+
+**From Include/internal/pycore_gc.h:**
+
+```c
+ typedef struct PyGC_Head {
+-    uintptr_t _gc_next;
+-    uintptr_t _gc_prev;  // Low 2 bits: finalized flag, unreachable flag
++    PyGC_Head* _gc_next;
++    PyGC_Head* _gc_prev;
+ } PyGC_Head;
+
+-#define _PyGCHead_SET_PREV(gc, prev) \
+-    ((gc)->_gc_prev = ((uintptr_t)(prev)) | ((gc)->_gc_prev & _PyGC_PREV_MASK))
++#define _PyGCHead_SET_PREV(gc, prev) \
++    ((gc)->_gc_prev = zretagptr(prev, (gc)->_gc_prev, _PyGC_PREV_MASK))
+```
+
+#### Atomic Operation Overhaul
+
+**From Include/internal/pycore_atomic.h:**
+
+```c
+ typedef struct _Py_atomic_address {
+-    atomic_uintptr_t _value;
++    void*_Atomic _value;
+ } _Py_atomic_address;
+
++#ifdef HAVE_BUILTIN_ATOMIC
++# error "Fil-C doesn't support atomic intrinsics"
++#endif
+```
+
+Forces C11 atomics instead of compiler intrinsics.
+
+#### Frame Allocation Redesign
+
+**Original:** Frames allocated from chunked stack (arena-style):
+
+```c
+struct PyThreadState {
+    _PyStackChunk *datastack_chunk;
+    PyObject **datastack_top;
+    PyObject **datastack_limit;
+};
+
+_PyInterpreterFrame *new_frame = (_PyInterpreterFrame *)tstate->datastack_top;
+tstate->datastack_top += code->co_framesize;
+```
+
+**Problem:** Chunk-based allocation uses pointer arithmetic incompatible with capabilities.
+
+**New design:** GC-allocated frames with linked list tracking:
+
+```c
+struct PyThreadState {
+-    _PyStackChunk *datastack_chunk;
+-    PyObject **datastack_top;
+-    PyObject **datastack_limit;
++    struct _PyInterpreterFrame *datastack_top_frame;
+};
+
+typedef struct _PyInterpreterFrame {
+    PyCodeObject *f_code;
++    struct _PyInterpreterFrame *_f_caller_frame;  // Track caller
+    struct _PyInterpreterFrame *previous;
+    // ...
+} _PyInterpreterFrame;
+
+// Allocation:
+-_PyInterpreterFrame *new_frame = (_PyInterpreterFrame *)tstate->datastack_top;
+-tstate->datastack_top += code->co_framesize;
++size_t size = code->co_nlocalsplus + code->co_stacksize + FRAME_SPECIALS_SIZE;
++_PyInterpreterFrame *new_frame = (_PyInterpreterFrame *)zgc_alloc(size * sizeof(PyObject *));
++new_frame->_f_caller_frame = tstate->datastack_top_frame;
++tstate->datastack_top_frame = new_frame;
+```
+
+**Rationale:** Each frame allocation is now a separate GC object with proper capability bounds. Caller chain tracked explicitly.
+
+#### Code Object Inline Caches
+
+**Problem:** Bytecode instructions embed `PyObject*` in instruction stream.
+
+**From Objects/codeobject.c:**
+
+```c
++extern zptrtable* _PyCode_PtrTable;
+
+ static inline void write_obj(uint16_t *p, PyObject *val) {
+-    memcpy(p, &val, sizeof(val));
++    uintptr_t valint = zptrtable_encode(_PyCode_PtrTable, val);
++    memcpy(p, &valint, sizeof(valint));
+ }
+
+ static inline PyObject* read_obj(uint16_t *p) {
+-    PyObject *val;
+-    memcpy(&val, p, sizeof(val));
++    uintptr_t valint;
++    memcpy(&valint, p, sizeof(valint));
++    PyObject *val = zptrtable_decode(_PyCode_PtrTable, valint);
+     return val;
+ }
+```
+
+**Assessment:**
+
+- Most invasive Python port
+- Required deep understanding of CPython internals
+- Performance impact: frame allocation now causes GC pressure
+- Correctness: systematic approach preserves semantics
+
+### 3.3 Perl: Comprehensive zptrtable Integration
+
+**Challenge:** Perl's XS interface extensively converts pointers to integers throughout the codebase. Required systematic refactoring across 20+ files.
+
+**Architecture:**
+
+1. **Global table** for shared usage:
+
+```c
+// perl.h
++extern zptrtable* Perl_xsub_ptrtable;
+
+// perl.c
++zptrtable* Perl_xsub_ptrtable;
++__attribute__((constructor)) static void init_xsub_ptrtable() {
++    Perl_xsub_ptrtable = zptrtable_new_weak();
++}
+```
+
+2. **Module-specific tables** for subsystem isolation:
+
+```c
+// builtin.c
++static zptrtable* builtin_ptrtable;
+
+// Encode.xs
++static zptrtable* encode_ptrtable;
+
+// threads.xs
++static zptrtable* threads_ptrtable;
+```
+
+3. **Typemap defaults** updated in `lib/ExtUtils/typemap`:
+
+```c
+ T_PTR
+     INPUT:
+-        $var = INT2PTR($type, SvIV($arg))
++        $var = ($type)zptrtable_decode(Perl_xsub_ptrtable, SvIV($arg))
+     OUTPUT:
+-        sv_setiv($arg, PTR2IV($var));
++        sv_setiv($arg, zptrtable_encode(Perl_xsub_ptrtable, $var));
+```
+
+**Example conversions:**
+
+**From dist/Storable/Storable.xs:**
+
+```c
+-#define dSTCXT_PTR \
+-    pTHX; \
+-    stcxt_t *cxt = INT2PTR(stcxt_t *, SvIV(get_sv("Storable::context", GV_ADD)))
++static zptrtable* perinterp_ptrtable;
++#define dSTCXT_PTR \
++    pTHX; \
++    stcxt_t *cxt = zptrtable_decode(perinterp_ptrtable, \
++                     SvIV(get_sv("Storable::context", GV_ADD)))
+```
+
+**From ext/B/B.xs (introspection):**
+
+```c
+-IV PTR2IV(OP *o) { return (IV)o; }
+-OP *INT2PTR(IV iv) { return (OP*)iv; }
++IV PTR2IV(OP *o) { return zptrtable_encode(Perl_xsub_ptrtable, o); }
++OP *INT2PTR(IV iv) { return zptrtable_decode(Perl_xsub_ptrtable, iv); }
+```
+
+**Assessment:**
+
+- Systematic pattern applied consistently
+- Each module creates table on first use
+- Clean separation between subsystems
+- Total: ~20 files touched, all following same approach
+
+### 3.4 libffi: Closure & Trampoline Replacement
+
+**Challenge:** libffi creates executable trampolines via `mmap(PROT_EXEC)` to bounce from C to closure. Incompatible with Fil-C's no-executable-data model.
+
+**Solution:** Replace assembly trampolines with Fil-C's native closure system.
+
+**Closure allocation (src/closures.c):**
+
+```c
++#ifdef __FILC__
++void *ffi_closure_alloc(size_t size, void **code) {
++    ffi_closure *closure = zclosure_new(ffi_closure_callback, NULL);
++    if (code) *code = closure;
++    return closure;
++}
++
++void ffi_closure_free(void *closure) {
++    // No-op - GC handles cleanup
++}
++#else
+ void *ffi_closure_alloc(size_t size, void **code) {
+     return mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC, ...);
+ }
++#endif
+```
+
+**Calling convention (src/x86/ffi64.c):**
+
+**Stack-based marshaling:**
+
+```c
++static bool is_filc = true;
+
+ void ffi_call_int(ffi_cif *cif, void (*fn)(void), void *rvalue,
+                   void **avalue, void *closure) {
++    if (is_filc) {
++        // Allocate stack frame
++        char *stack = alloca(cif->bytes);
++        char *argp = stack;
++
++        // Marshal arguments onto stack
++        for (i = 0; i < cif->nargs; i++) {
++            size_t size = cif->arg_types[i]->size;
++            size_t align = cif->arg_types[i]->alignment;
++            argp = (char*)ALIGN(argp, align);
++            memcpy(argp, avalue[i], size);
++            argp += size;
++        }
++
++        // Call via zcall
++        void *ret = zcall(fn, stack);
++        memcpy(rvalue, &ret, cif->rtype->size);
++        return;
++    }
+     // Original assembly path
+     ffi_call_unix64(cif, fn, rvalue, avalue);
+ }
+```
+
+**Closure callback:**
+
+```c
++#ifdef __FILC__
++static void *ffi_closure_callback(void) {
++    ffi_closure *closure = zcallee_closure_data();
++    void *args = zargs();
++
++    // Unmarshal arguments
++    void **avalue = alloca(closure->cif->nargs * sizeof(void*));
++    char *argp = args;
++    for (i = 0; i < closure->cif->nargs; i++) {
++        avalue[i] = argp;
++        argp += closure->cif->arg_types[i]->size;
++    }
++
++    // Call user function
++    void *rvalue = alloca(closure->cif->rtype->size);
++    (closure->fun)(closure->cif, rvalue, avalue, closure->user_data);
++
++    // Return
++    return zreturn(rvalue);
++}
++#endif
+```
+
+**Disabled features:**
+
+```c
++#if defined(__FILC__)
++# undef FFI_GO_CLOSURES  // Go closures not supported
++#endif
+```
+
+**Assessment:**
+
+- Complete replacement of FFI mechanism
+- Stack-based calling convention instead of register classification
+- Simpler marshaling (everything on stack)
+- Performance impact: likely slower than assembly, but portable and safe
+
+### 3.5 SQLite: Test Harness Pointer Encoding
+
+**Challenge:** TCL (test framework) stores C pointers as integers. All test infrastructure passes handles between C and TCL.
+
+**Solution:** Centralized encoding functions used throughout test suite.
+
+**From src/test1.c:**
+
+```c
++#ifdef __PIZLONATOR_WAS_HERE__
++static zptrtable* externalPtrTable;
++
++static void ensureExternalPtrTable() {
++    if (!externalPtrTable)
++        externalPtrTable = zptrtable_new_weak();
++}
++
++void* sqlite3EncodeExternalTestPtr(void *p) {
++    ensureExternalPtrTable();
++    return (void*)zptrtable_encode(externalPtrTable, p);
++}
++
++void* sqlite3DecodeExternalTestPtr(void *p) {
++    ensureExternalPtrTable();
++    return zptrtable_decode(externalPtrTable, (size_t)p);
++}
++#endif
+```
+
+**Usage throughout 10+ test files:**
+
+**Database handles (test1.c):**
+
+```c
+-sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", p->db);
++sqlite3_snprintf(sizeof(zBuf), zBuf, "%p", sqlite3EncodeExternalTestPtr(p->db));
+```
+
+**Pager objects (test2.c):**
+
+```c
+-Tcl_SetObjResult(interp, Tcl_NewWideIntObj(PTR_TO_INT(pPager)));
++Tcl_SetObjResult(interp, Tcl_NewWideIntObj(
++    PTR_TO_INT(sqlite3EncodeExternalTestPtr(pPager))));
+```
+
+**Blob handles (test_blob.c), mutexes (test_mutex.c), file handles (test_quota.c)** — all follow same pattern.
+
+**Bidirectional encoding (test_malloc.c):**
+
+```c
+// C → TCL
+-Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)p));
++Tcl_SetObjResult(interp, Tcl_NewWideIntObj(
++    (Tcl_WideInt)sqlite3EncodeExternalTestPtr(p)));
+
+// TCL → C
+-void *p = (void*)sqlite3Atoi64(z);
++void *p = sqlite3DecodeExternalTestPtr((void*)sqlite3Atoi64(z));
+```
+
+**Core changes:**
+
+**Disable atomics (src/sqliteInt.h):**
+
+```c
+-#if GCC_VERSION>=4007000 || __has_extension(c_atomic)
++#if (GCC_VERSION>=4007000 || __has_extension(c_atomic)) && !defined(__PIZLONATOR_WAS_HERE__)
+ # define SQLITE_ATOMIC_INTRINSICS 1
+```
+
+**Assessment:**
+
+- Centralized approach scales well (10+ files use same functions)
+- Clean separation: core SQLite code unchanged, only test harness
+- Bidirectional encoding where needed
+- Tests behave as if running under sanitizers (some checks disabled)
+
+## 4. Tooling & Infrastructure
+
+### 4.1 Build System Changes
+
+#### Symbol Versioning Directive
+
+**Pattern:** `.symver` → `.filc_symver`
+
+Fil-C's assembler uses different directive for symbol versioning.
+
+**Projects affected:** attr, libxcrypt, xz
+
+**From libxcrypt/lib/crypt-port.h:**
+
+```c
+-__asm__ (".symver " #intname "," extstr "@" #version)
++__asm__ (".filc_symver " #intname "," extstr "@" #version)
+```
+
+**From xz/src/liblzma/common/common.h:**
+
+```c
++#elif __PIZLONATOR_WAS_HERE__
++# define LZMA_SYMVER_API(extnamever, type, intname) \
++    __asm__(".filc_symver " #intname "," extnamever); \
++    extern LZMA_API(type) intname
+```
+
+#### Linker Flag Format
+
+**Pattern:** `-Wl,--version-script=file` → `--version-script=file`
+
+Fil-C's compiler wrapper expects linker flags directly, not wrapped with `-Wl,`.
+
+**Projects affected:** binutils, libevdev, libinput, libxkbcommon, openssl, p11-kit, seatd, systemd
+
+**From systemd/meson.build (3 occurrences):**
+
+```c
+-                    '-Wl,--version-script=' + libsystemd_sym_path],
++                    '--version-script=' + libsystemd_sym_path],
+```
+
+**From openssl/Configurations/shared-info.pl:**
+
+```perl
+-        ldflags => add("-Wl,--version-script="),
++        ldflags => add("--version-script="),
+```
+
+**Alternative (xz):**
+
+```make
+-    -Wl,--version-script=$(srcdir)/liblzma.map
++    -XCClinker --version-script=$(srcdir)/liblzma.map
+```
+
+### 4.2 Compiler Feature Detection
+
+#### Disable Assembly Intrinsics
+
+Many projects detect compiler features and use hand-optimized assembly or intrinsics. Fil-C often can't support these.
+
+**Atomic intrinsics (sqlite):**
+
+```c
+-#if GCC_VERSION>=4007000 || __has_extension(c_atomic)
++#if (GCC_VERSION>=4007000 || __has_extension(c_atomic)) && !defined(__PIZLONATOR_WAS_HERE__)
+ # define SQLITE_ATOMIC_INTRINSICS 1
+```
+
+**Byte swap intrinsics (git):**
+
+```c
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+     static inline uint32_t default_swab32(uint32_t val) {
+         return __builtin_bswap32(val);
+     }
+```
+
+**SIMD (libxcrypt):**
+
+```c
++#undef __SSE2__
++#undef __SSE__
+ #include "alg-yescrypt-common.c"
+```
+
+**Computed goto (quickjs):**
+
+```c
+-#if defined(EMSCRIPTEN)
++#if defined(EMSCRIPTEN) || defined(__PIZLONATOR_WAS_HERE__)
+ #define DIRECT_DISPATCH  0  // Disable &&label extension
+```
+
+**Inline assembly loop alignment (zstd):**
+
+```c
++#if defined(__PIZLONATOR_WAS_HERE__)
++# undef __GNUC__  // Disable inline asm alignment
++#endif
+```
+
+#### SIMD Alignment
+
+When SIMD is supported, ensure proper alignment:
+
+**XZ buffer alignment (xz/src/xz/file_io.h):**
+
+```c
+-typedef union {
++typedef union __attribute__((aligned(16))) {
+     uint8_t u8[IO_BUFFER_SIZE];
+     uint32_t u32[IO_BUFFER_SIZE / sizeof(uint32_t)];
+     uint64_t u64[IO_BUFFER_SIZE / sizeof(uint64_t)];
+ } io_buf;
+```
+
+### 4.3 Signal Handling
+
+**Problem:** Fil-C runtime reserves certain signals. Code that installs handlers for all signals can conflict with runtime.
+
+**Solution:** Use `zis_unsafe_signal_for_handlers()` to skip reserved signals.
+
+**Pattern:**
+
+```c
+#include <stdfil.h>
+
+for (int sig = 1; sig < _NSIG; sig++) {
+    if (sig == SIGKILL || sig == SIGSTOP)
+        continue;
++    if (zis_unsafe_signal_for_handlers(sig))
++        continue;
+    sigaction(sig, &sa, NULL);
+}
+```
+
+**Projects:** systemd, libuv
+
+**From systemd/src/basic/signal-util.c:**
+
+```c
++#include <stdfil.h>
+
+ int reset_all_signal_handlers(void) {
+     for (int sig = 1; sig < _NSIG; sig++) {
+         if (IN_SET(sig, SIGKILL, SIGSTOP))
+             continue;
++        if (zis_unsafe_signal_for_handlers(sig))
++            continue;
+         r = RET_NERRNO(sigaction(sig, &sa, NULL));
+     }
+ }
+```
+
+**Disable stack overflow recovery:**
+
+Many projects use SIGSEGV handlers for stack overflow detection. Conflicts with FUGC.
+
+**Pattern:**
+
+```c
+-#ifdef HAVE_STACK_OVERFLOW_RECOVERY
++#if defined(HAVE_STACK_OVERFLOW_RECOVERY) && !defined(__FILC__)
+```
+
+**Projects:** grep, m4, diffutils
+
+**From emacs/src/sysdep.c (complete disable):**
+
+```c
+ int init_sigsegv(void) {
+-    struct sigaction sa;
+-    sa.sa_sigaction = sigsegv_handler;
+-    sigaction(SIGSEGV, &sa, NULL);
++    // Disabled - conflicts with FUGC
+     return 0;
+ }
+```
+
+### 4.4 Syscall Sandboxing
+
+**OpenSSH seccomp filter** needs to allow Fil-C runtime syscalls:
+
+**From openssh/sandbox-seccomp-filter.c:**
+
+```c
++#ifdef __NR_sched_yield
++    SC_ALLOW(__NR_sched_yield),  // Fil-C GC needs this
++#endif
+```
+
+Fil-C's garbage collector uses `sched_yield()` for cooperative scheduling.
+
+### 4.5 Platform-Specific Workarounds
+
+#### io_uring (libuv)
+
+Fil-C doesn't support Linux's io_uring API:
+
+**From libuv/src/unix/linux.c:**
+
+```c
++#elif defined(__FILC__)
++  return 0;  /* io_uring not supported by Fil-C */
+```
+
+#### vfork (dash)
+
+vfork's shared address space semantics incompatible with capabilities:
+
+**From dash (throughout):**
+
+```c
+-    pid = vfork();
++    pid = fork();
+```
+
+#### Process title (libuv)
+
+**From libuv/src/unix/proctitle.c:**
+
+```c
++#include <stdfil.h>
+
+-pt.cap = argv[i - 1] + size - argv[0];
++pt.cap = zlength(pt.str);
+```
+
+Use `zlength()` instead of pointer arithmetic on argv array.
+
+## 5. Challenges & Solutions
+
+### 5.1 Pointer Provenance
+
+**Challenge:** C code assumes pointers can be constructed from arbitrary addresses.
+
+**Example (broken):**
+
+```c
+void *aligned = (void*)((uintptr_t)ptr & ~15);
+```
+
+**Problem:** Cast from integer loses capability bounds.
+
+**Solution:** Use `zmkptr()` to derive new pointer from original:
+
+```c
+void *aligned = zmkptr(ptr, (uintptr_t)ptr & ~15);
+```
+
+**Guideline:** Never construct pointers from integer arithmetic alone. Always derive from existing pointer.
+
+### 5.2 Flexible Array Members
+
+**Challenge:** Flexible array members at end of struct may cause alignment issues.
+
+**Example (bash):**
+
+```c
+struct SAVED_VAR {
+    // ...
+-    char desired_setting[1];  // Flexible array
++    void *desired_setting[1];
+};
+```
+
+**Reason:** Pointer types ensure proper alignment and capability tracking.
+
+### 5.3 Memory Allocator Integration
+
+**Challenge:** Custom allocators using arena/slab/pool allocation are incompatible with capability tracking.
+
+**Solutions:**
+
+**Option 1: Bypass custom allocator (zsh):**
+
+```c
+ void *zhalloc(size_t size) {
++    if ((1)) return malloc(size);  // Force standard malloc
+     // ... custom arena allocator ...
+ }
+```
+
+**Option 2: Replace entirely (emacs):**
+
+```c
+-Lisp_Object Fcons(Lisp_Object car, Lisp_Object cdr) {
+-    // ... allocate from cons pool ...
+-}
++Lisp_Object Fcons(Lisp_Object car, Lisp_Object cdr) {
++    if ((true)) return zgc_alloc(sizeof(struct Lisp_Cons));
++}
+```
+
+**Guideline:** Arena allocators break capability provenance. Use standard malloc/GC allocation instead.
+
+### 5.4 Type Confusion: Integer vs Pointer
+
+**Challenge:** Code uses integers to store pointers for type erasure or polymorphism.
+
+**Example (Git):**
+
+```c
+struct option {
+-    intptr_t defval;  // Sometimes int, sometimes pointer
++    void *defval;
+};
+```
+
+**Reading as integer:**
+
+```c
+-int value = opt->defval;
++int value = (intptr_t)opt->defval;
+```
+
+**Writing integer:**
+
+```c
+-opt->defval = 42;
++opt->defval = (void*)42;
+```
+
+**Example (GLib):**
+
+```c
+-typedef gsize GType;  // Type ID as integer
++typedef struct _GTypeOpaque *GType;  // Type ID as opaque pointer
+```
+
+All arithmetic now requires casts:
+
+```c
+-if (type & TYPE_FLAG_MASK)
++if ((uintptr_t)type & TYPE_FLAG_MASK)
+```
+
+**Guideline:** Store as pointer, cast to integer only for arithmetic/comparison.
+
+### 5.5 Undefined Behavior Detection
+
+Fil-C catches UB that standard C allows:
+
+**Example (procps):**
+
+```c
+ int pids_oldproc_open(flags, ...) {
+     va_list vl;
+-    int *ids;
++    int *ids = NULL;
+
+     va_start(vl, flags);
+-    ids = va_arg(vl, int*);  // UB if flags doesn't indicate arg exists
++    if (flags & (PROC_PID | PROC_UID))
++        ids = va_arg(vl, int*);
+ }
+```
+
+**Example (vim):**
+
+```c
+-if (sigaction(sig, &sa, &old) == -1)
++if (sigaction(sig, func == SIG_ERR ? NULL : &sa, &old) == -1)
+```
+
+Don't pass struct with invalid function pointer to kernel.
+
+**Guideline:** Fil-C enforces stricter semantics. Code must be correct, not just "works in practice."
+
+### 5.6 Test Suite Adjustments
+
+Many tests make assumptions about allocator behavior:
+
+**Pattern (sed, m4, gnulib tests):**
+
+```c
++#ifndef __FILC__
+ // Test that malloc(PTRDIFF_MAX) fails
+ if (PTRDIFF_MAX < SIZE_MAX) {
+     p = malloc(PTRDIFF_MAX + 1);
+     assert(p == NULL);
+ }
++#endif
+```
+
+**Disable flaky tests (libuv):**
+
+```c
++// FIXME: This has a flaky failure in Fil-C where the second
++// uv_run call returns 1 instead of 0.
++#if 0
+ TEST_IMPL(timer_run_once) {
+     // ... test body ...
+ }
++#endif
+```
+
+**Guideline:**
+
+- Disable allocator assumption tests with `#ifndef __FILC__`
+- Mark flaky tests with FIXME comments
+- Some behavior differences acceptable (GC timing, etc.)
+
+## 6. Patch Composition
+
+### 6.1 Build Artifacts in Patches
+
+**Note on patch generation:** These patches are extracted from the upstream fil-c repository's git history using `extract-patch.sh`. The git commits include build artifacts (autotools-generated files, configure scripts, etc.) that were part of the development workflow. The presence of these artifacts doesn't indicate poor porting practice—it's just how the patches were captured from git.
+
+**Projects with primarily build artifacts (minimal code changes):**
+
+| Project | Code changes                                        | Artifacts included                                             |
+| ------- | --------------------------------------------------- | -------------------------------------------------------------- |
+| tcl     | None                                                | Prebuilt zlib binaries, Windows resources, generated man pages |
+| pcre2   | 1 line (disabled test)                              | Autotools artifacts (INSTALL, ar-lib, compile scripts)         |
+| nghttp2 | None                                                | Autotools scripts only                                         |
+| libuev  | Minimal                                             | Thousands of lines of generated autotools                      |
+| tmux    | None                                                | Autotools artifacts (compile, config.guess)                    |
+| toybox  | None                                                | Config files, kconfig binaries                                 |
+| expat   | None                                                | autogen template                                               |
+| glib    | Substantial GType changes                           | 76% CI/GitLab configuration                                    |
+| dash    | vfork→fork replacement                              | ~50% autotools scripts                                         |
+| libffi  | Major closure reimplementation                      | ~30% test files and generated docs                             |
+
+**For cleaner patch analysis:** The `extract-patch.sh` script already excludes common build artifacts (`.gitignore`, `configure`, `Makefile.in`, etc.), but the exclusion patterns are still being refined. Some artifacts like prebuilt binaries, CI configs, and autotools helper scripts still slip through.
+
+**Projects with clean patches (primarily code changes):**
+
+- emacs, perl, python, sqlite, systemd, dhcpcd, libarchive, git, binutils, openssl, keyutils
+
+### 6.2 Quality Metrics
+
+**Minimal patches (1-10 line changes):**
+
+- vim, bash, openssh, seatd, attr, elfutils, lua
+
+**Well-structured (systematic patterns):**
+
+- perl (consistent zptrtable across 20 files)
+- python (organized by subsystem)
+- openssl (wrapper layer architecture)
+
+**Complex but necessary:**
+
+- emacs (memory manager replacement)
+- libffi (closure reimplementation)
+- systemd (ELF section removal)
+
+## 7. Lessons Learned
+
+### 7.1 What Makes a Good Fil-C Port
+
+**1. Systematic application of patterns**
+
+Good example (Perl): Centralized pattern applied consistently across 20 files.
+
+Bad example: Ad-hoc fixes scattered without clear architecture.
+
+**2. Minimal invasiveness**
+
+Good: dhcpcd — changed red-black tree macros, rest of code untouched.
+
+Less ideal: emacs — wholesale replacement of memory manager.
+
+**3. Preserve semantics**
+
+systemd's error map consolidation loses modularity but is acceptable because all errors are in one library. Would be problematic for plugin systems.
+
+**4. Clean separation**
+
+SQLite: core unchanged, only test harness modified. Python: clear subsystem boundaries (GC, atomics, frames).
+
+**5. Document trade-offs**
+
+libuv FIXMEs explain why tests are disabled. QuickJS comments note hardcoded compiler path is bad practice.
+
+### 7.2 Common Mistakes to Avoid
+
+**❌ Casting pointers to integers without encoding:**
+
+```c
+uintptr_t encoded = (uintptr_t)ptr;  // Lost capability!
+```
+
+**✅ Use pointer tables:**
+
+```c
+uintptr_t encoded = zptrtable_encode(table, ptr);
+```
+
+**❌ Direct bit manipulation on pointers:**
+
+```c
+ptr = (void*)((uintptr_t)ptr | FLAGS);  // Lost capability!
+```
+
+**✅ Use tagged pointer ops:**
+
+```c
+ptr = zorptr(ptr, FLAGS);
+```
+
+**❌ Pointer arithmetic for alignment:**
+
+```c
+aligned = base + ((ptr - base + align) & ~align);  // Wrong provenance!
+```
+
+**✅ Use zmkptr:**
+
+```c
+aligned = zmkptr(ptr, (uintptr_t)base + ((ptr - base + align) & ~align));
+```
+
+**❌ Assuming allocator behavior:**
+
+```c
+assert(malloc(SIZE_MAX) == NULL);  // May differ under GC
+```
+
+**✅ Guard assumptions:**
+
+```c
+#ifndef __FILC__
+assert(malloc(SIZE_MAX) == NULL);
+#endif
+```
+
+**❌ Hardcoded compiler paths:**
+
+```c
+CC=/path/to/fil-c/build/bin/clang  // Non-portable
+```
+
+**✅ Use environment variables:**
+
+```c
+CC ?= clang  # User can override
+```
+
+### 7.3 Architecture Considerations
+
+**When to use pointer tables:**
+
+- FFI boundaries (C ↔ TCL, C ↔ Perl SV)
+- Signal handler communication
+- Serialization/deserialization
+- Any pointer → integer conversion
+
+**When to use tagged pointers:**
+
+- Data structures with pointer metadata (red-black trees, linked lists with flags)
+- GC headers with mark bits
+- Type tagging systems
+
+**When to inline data:**
+
+- ELF section elimination (when modularity not required)
+- Error tables, constant data
+- Acceptable loss of extensibility
+
+**When to bypass custom allocators:**
+
+- Arena allocators
+- Slab allocators
+- Object pools
+- Capability tracking more important than allocation performance
+
+### 7.4 Testing Strategy
+
+**Essential tests:**
+
+- Round-trip pointer encoding/decoding
+- Tagged pointer operations preserve values
+- Alignment calculations preserve bounds
+- Signal handlers don't conflict with runtime
+
+**Acceptable to skip:**
+
+- Allocator behavior tests (size limits, fragmentation)
+- Timing-dependent tests (GC introduces non-determinism)
+- Platform-specific tests (io_uring, vfork)
+
+**Document disabled tests:**
+
+```c
+// FIXME: Why isn't the Fil-C runtime getting this right?
+#if 0
+TEST(pthread_priority) { ... }
+#endif
+```
+
+### 7.5 Performance Implications
+
+**Overhead sources:**
+
+1. **Capability checks:** Bounds validation on every pointer deference
+2. **Pointer table lookups:** Hash table overhead for encoding/decoding
+3. **GC allocation:** Frame allocation (Python) creates GC pressure
+4. **No SIMD:** Many optimizations disabled (SSE, AVX)
+5. **No assembly:** Bytecode dispatch (QuickJS), trampolines (libffi) use portable C
+
+**Measured overhead (from upstream):** 1.5x - 4x vs unsafe C
+
+**Mitigation:**
+
+- Use `zexact_ptrtable` for hot paths (O(1) decode)
+- Minimize pointer encoding (cache decoded values)
+- Profile before optimizing (bounds checks often not bottleneck)
+
+### 7.6 Maintainability
+
+**Upstream compatibility:**
+
+**Good:** Keep patches minimal. dhcpcd's red-black tree changes are localized — easy to forward-port to new versions.
+
+**Challenging:** emacs memory manager replacement is invasive — requires re-audit on every Emacs release.
+
+**Documentation:**
+
+Every details.md file should explain:
+
+- Why changes are necessary (not just what changed)
+- Trade-offs made
+- Known issues/FIXMEs
+
+**Build system:**
+
+Prefer environment variables over hardcoded paths:
+
+```make
+# Bad
+CC = /home/user/fil-c/build/bin/clang
+
+# Good
+CC ?= clang
+FILC_ROOT ?= /usr/local
+```
+
+## 8. Conclusion
+
+Porting C/C++ to Fil-C requires understanding the **capability model** and applying systematic patterns:
+
+1. **Pointer tables** (zptrtable) for pointer-as-integer conversions
+2. **Tagged pointer ops** (z\*ptr) for metadata in pointer bits
+3. **Pointer creation** (zmkptr) for alignment and arithmetic
+4. **Atomic operations** (void\*\_Atomic) for concurrent pointers
+5. **Constructor registration** replacing ELF section magic
+6. **Syscall wrappers** (zsys\_\*) for kernel interaction
+
+The 71 projects analyzed demonstrate these patterns are **sufficient** to port substantial codebases — from text editors (vim, emacs) to language runtimes (python, perl) to system services (systemd, openssh).
+
+**Key insight:** Fil-C enforces strict pointer provenance and memory safety. Code must be **correct**, not merely "works in practice." This catches real bugs (procps va_arg, vim SIG_ERR) while requiring disciplined engineering for pointer manipulation.

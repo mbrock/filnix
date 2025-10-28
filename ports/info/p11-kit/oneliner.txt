@@ -1,0 +1,1 @@
+Removes -Wl prefix from symbol versioning linker flags.

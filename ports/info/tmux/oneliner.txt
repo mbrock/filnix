@@ -1,0 +1,1 @@
+Patch consists entirely of autotools build artifacts (compile, config.guess, config.sub scripts) with no Fil-C compatibility changes.

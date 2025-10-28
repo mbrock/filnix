@@ -1,0 +1,1 @@
+Adds __linux__ to platforms that don't require __STDC_ISO_10646__ definition.

@@ -1,0 +1,1 @@
+Added .filc_symver symbol versioning support, zmkptr for pointer alignment, alignment fix for I/O buffer, disabled optimized decoder, and fixed linker flag syntax.
