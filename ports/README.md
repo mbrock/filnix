@@ -1,8 +1,10 @@
-# Fil-C Patches
+# Fil-C Ports
 
-This directory contains patches for building upstream software with Fil-C.
-The patches are generated from the Fil-C repository's `projects` directory
-with the `../extract-patch.sh` script.
+This directory contains patches and tooling for porting upstream software to Fil-C.
+
+- `patch/` - Patches for 71 projects (3.0MB)
+- `extract-patch.sh` - Script to extract patches for a single project
+- `Makefile` - Parallel patch generation (`make -j20`)
 
 ## What's excluded
 

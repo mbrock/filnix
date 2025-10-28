@@ -8,7 +8,7 @@ set -e
 
 PROJECT="$1"
 REPO_DIR="${2:-$HOME/fil-c-projects}"
-OUTPUT_DIR="${3:-./patches}"
+OUTPUT_DIR="${3:-./patch}"
 
 if [[ -z "$PROJECT" ]]; then
     echo "Usage: $0 PROJECT_NAME [REPO_DIR] [OUTPUT_DIR]"
