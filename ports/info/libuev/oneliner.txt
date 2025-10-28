@@ -1,1 +1,1 @@
-Massive autotools bloat - deletes .codedocs CI config and adds thousands of lines of generated autotools scripts (ar-lib, compile, ltmain.sh, etc).
+Reduced from 18KB to <1KB after filtering; remaining patch contains src/README.md addition only.

@@ -1,28 +1,34 @@
 # libuev 2.4.1
 
 ## Summary
-**Almost entirely build artifact bloat** - deletes one CI file and adds massive autotools generated scripts. No actual Fil-C compatibility changes to source code.
+No actual Fil-C compatibility changes. After filtering autotools artifacts, the remaining patch contains Debian packaging, documentation, and an autogen script.
 
 ## Fil-C Compatibility Changes
-**None** - zero changes to C source code.
+None.
 
-## Build Artifact Bloat
+## Remaining Artifacts (after filtering)
 
-**Deleted Files**:
-- `.codedocs` (193 lines): Doxygen/CodeDocs.xyz configuration
+**Debian packaging (14 files):**
+- `debian/*` - Complete Debian package configuration
 
-**Added Files (Generated Autotools Scripts)**:
-- `aux/ar-lib` (271 lines): Wrapper for Microsoft lib.exe
-- `aux/compile` (348 lines): Wrapper for compilers without `-c -o`
-- `aux/ltmain.sh` (continuation of massive libtool script, thousands of lines visible in excerpt)
+**Documentation:**
+- `doc/HACKING.md`
+- `doc/TODO.md`
+- `src/README.md` (appears twice in patch - likely modification)
 
-**Estimated Total**: The patch shows 8500+ lines just in the portion displayed, likely 10,000+ total with ltmain.sh complete.
+**Build script:**
+- `autogen.sh` - Autotools bootstrap script
+
+## What Was Filtered Out
+
+The original 18,290-line patch was 99% autotools bloat:
+- `aux/` directory with ar-lib, compile, ltmain.sh, config.guess/sub, etc.
+- Thousands of lines of generated autotools helper scripts
+
+These are now filtered by the patch extraction script, reducing the patch from 18KB to 823 lines.
 
 ## Assessment
-- **Patch quality**: **Excessive bloat** - should not include generated files
-- **Actual changes**: **None** - no Fil-C compatibility work
-- **Pattern**: Autotools regeneration artifact accidentally committed
-- **Recommendation**: 
-  - Exclude `aux/ar-lib`, `aux/compile`, `aux/ltmain.sh` from patch
-  - Regenerate autotools at build time instead
-  - Keep only `.codedocs` deletion if needed
+- **Patch quality**: No code changes
+- **Actual changes**: None
+- **Conclusion**: libuev 2.4.1 builds cleanly with Fil-C without modifications
+- **Note**: The remaining files are development infrastructure (Debian packaging, docs) rather than source code changes

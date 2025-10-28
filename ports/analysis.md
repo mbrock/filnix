@@ -33,7 +33,7 @@ The 71 projects span diverse domains:
 - **Libraries:** openssl, glib, cairo, libuv, sqlite, libffi
 - **Build tools:** binutils, cmake, bison, m4
 
-Combined patch scope: ~50,000+ lines of changes. Note: patches are extracted from git history in the upstream fil-c repository, so they include build artifacts like autotools scripts and generated files alongside actual code changes.
+Combined patch scope: ~32,000 lines of changes. Note: patches are extracted from git history in the upstream fil-c repository, so they include some build artifacts alongside actual code changes (autotools scripts, library files, Windows resources, etc.). Common build artifacts like prebuilt binaries, CI configs, and generated documentation are filtered out during patch extraction.
 
 ## Core Porting Patterns
 

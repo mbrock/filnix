@@ -1,1 +1,1 @@
-Massive build artifact bloat (INSTALL file + autotools scripts) with no actual code changes.
+Build artifacts only (m4 macros and autotools scripts) after filtering; no actual Fil-C code changes.
