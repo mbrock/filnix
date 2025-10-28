@@ -87,6 +87,11 @@ Upstream fil-c is a development repository with shell-script builds. This reposi
 * Quick Start
 
 #+BEGIN_SRC bash
+# Run memory-safe packages directly (no installation needed)
+nix run github:mbrock/filnix#nethack
+nix run github:mbrock/filnix#bash
+nix run github:mbrock/filnix#kitty-doom
+
 # Development shell with Fil-C compiler
 nix develop github:mbrock/filnix
 
