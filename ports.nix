@@ -281,9 +281,10 @@ in rec {
   # libevent: Event notification library
   # Options: sslSupport
   libevent = port base.libevent {
+    deps = { inherit openssl; };
     source = {
       version = "2.1.12";
-      hash = "sha256-BRp15w/ZTfvMU5gefZbQsppdwWQ/SP0SJSMnOh6EaGI=";
+      hash = "sha256-kubeG+nsF2Qo/SNnZ35hzv/C7hyxGQNQN6J9NGsEA7s=";
       url = "https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz";
     };
     patches = [./ports/patch/libevent-2.1.12.patch];
@@ -588,14 +589,7 @@ in rec {
   };
 
   # tcl: Tool Command Language scripting language
-  # Note: tcl 8 reportedly works without patches (patch may be unnecessary bloat)
   tcl = port base.tcl {
-    source = {
-      version = "8.6.15";
-      hash = "sha256-hh4Vl1Py4vvW7BSEEDcVsL5WvjNXUiuFjTy7X4k//vE=";
-      url = "mirror://sourceforge/tcl/tcl8.6.15-src.tar.gz";
-    };
-    # patches = [./ports/patch/tcl-8.6.15.patch];  # Disabled - may not be needed
   };
 
   # System utilities
@@ -603,71 +597,36 @@ in rec {
   # Deps: gmp (for extended precision in numfmt)
   # Options: withOpenssl, withPrefix, singleBinary
   coreutils = port base.coreutils {
-    source = {
-      version = "9.5";
-      hash = "sha256-yydpOzN6oENEgTHPjGISYJZfZQ+nZvnzU0dGh4mz7yg=";
-      url = "mirror://gnu/coreutils/coreutils-9.5.tar.xz";
-    };
     deps = { inherit gmp; };
     attrs = old: { doCheck = false; };
   };
 
   # gmp: GNU Multiple Precision Arithmetic Library
   gmp = port base.gmp {
-    source = {
-      version = "6.3.0";
-      hash = "sha256-+yizkHZcF27d1/MrHKq4KEUCWbvhhPrCNECp+nZn7c8=";
-      url = "mirror://gnu/gmp/gmp-6.3.0.tar.xz";
-    };
     attrs = old: { doCheck = false; };
   };
 
   # gawk: GNU AWK text processing language
   gawk = port base.gawk {
-    source = {
-      version = "5.3.0";
-      hash = "sha256-+djHlVe05Z9KkMn7tD5sFwJSqwNzrYmDJSGkfDJJZhY=";
-      url = "mirror://gnu/gawk/gawk-5.3.0.tar.xz";
-    };
     attrs = old: { doCheck = false; };
   };
 
   # bzip2: Compression utility
   bzip2 = port base.bzip2 {
-    source = {
-      version = "1.0.8";
-      hash = "sha256-q1jst6TzEN9cwP14qCCJPj5urwZ6l2Lrvgky/t+16hw=";
-      url = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz";
-    };
   };
 
   # which: Shows full path of commands
   which = port base.which {
-    source = {
-      version = "2.21";
-      hash = "sha256-0yqBfi5n1YCQQ7nOILLevS7kx7Y5bLc5F3S1ggJSQd8=";
-      url = "mirror://gnu/which/which-2.21.tar.gz";
-    };
   };
 
   # file: File type identification utility
   file = port base.file {
-    source = {
-      version = "5.45";
-      hash = "sha256-Z7V+cG11V+PyHkh23S+fGVk9AB1OdvTZwDWgM7xYvZU=";
-      url = "https://astron.com/pub/file/file-5.45.tar.gz";
-    };
     attrs = old: { doCheck = false; };
   };
 
   # nano: Pico clone text editor
   # Deps: ncurses
   nano = port base.nano {
-    source = {
-      version = "8.2";
-      hash = "sha256-HFB+d/AAPMF2R32tG4vTRn6v/YbtbJmJQj0GCiouaI8=";
-      url = "mirror://gnu/nano/nano-8.2.tar.xz";
-    };
     deps = { inherit ncurses; };
   };
 
