@@ -1,6 +1,31 @@
-# Ported packages from upstream fil-c with patches
-# Based on ports/patches.nix
-# See nixpkgs-package-info.nix for package metadata (args, versions)
+# This way of doing it lets us build a bunch of specific packages
+# and it's a great way to get started with applying Fil-C to nixpkgs
+# but it's basically not the right way to do it.
+#
+# Why?  Basically because packages that do stuff like `withPackages`
+# and other such recursive fixpoint kind of thingies only work
+# properly when the toolchain permeates the whole system in some
+# beautiful way that I don't even remotely understand.
+#
+# That's the problem with basing your whole system on recursive
+# duck-typed fixpoint combinators!  It's literally impossible
+# to understand!  Anyway I'll fix it later.
+#
+# See the "insane-slop" folder in this repository for a whole
+# library of AI generated bullshit about how to implement the
+# cross compiling toolchain and so on.  I tried it and I got
+# pretty far, but then the recursive duck-typed fixpoint combinator
+# threw an "infinite recursion" error and I spent a whole day
+# just trying to understand where the recursion was coming from.
+#
+# But I'm sure I'll figure it out real soon now.
+#
+# Anyway it's great to start this way and just actually make sure
+# that we can build and run Perl, Python, Bash, coreutils,
+# and all kinds of core libraries.  We'll be happy that's
+# already taken care of once we actually start doing the
+# cross compilation thing.
+
 { base, filenv, filc-src, withFilC, fix, filcc }:
 
 let
@@ -195,12 +220,12 @@ in rec {
   # Deps: readline, ncurses (for interactive shell)
   # Options: interactive (enable readline in CLI)
   sqlite = port base.sqlite {
-    source = {
-      version = "3.46.0";
-      hash = "sha256-V5OyEuEfaWh2p/iNckCAyRZGcpPHko35TiNYI/3Qn64=";
-      url = "https://sqlite.org/2024/sqlite-autoconf-3460000.tar.gz";
-    };
-    patches = [./ports/patch/sqlite.patch];
+    # source = {
+    #   version = "3.46.0";
+    #   hash = "sha256-V5OyEuEfaWh2p/iNckCAyRZGcpPHko35TiNYI/3Qn64=";
+    #   url = "https://sqlite.org/2024/sqlite-autoconf-3460000.tar.gz";
+    # };
+    # patches = [./ports/patch/sqlite.patch];
     deps = { inherit readline ncurses; interactive = true; };
     attrs = old: { doCheck = false; };
   };
@@ -222,7 +247,7 @@ in rec {
   expat = port base.expat {
     source = {
       version = "2.7.1";
-      hash = "sha256-vUfJHkbB3kCLEVZ5LQFV0fFrTMt6BQF1YlHaNd4UwY4=";
+      hash = "sha256-NUVSVEuPmQEuUGL31XDsd/FLQSo/9cfY0NrmLA0hfDA=";
       url = "https://github.com/libexpat/libexpat/releases/download/R_2_7_1/expat-2.7.1.tar.xz";
     };
     patches = [./ports/patch/expat-2.7.1.patch];
@@ -243,10 +268,18 @@ in rec {
   libffi = port base.libffi {
     source = {
       version = "3.4.6";
-      hash = "sha256-IBnRw/OmKMIr2iTy3kHdy7MOLre+tlpv1NWwO/vgVOo=";
+      hash = "sha256-sN6p3yPIY6elDoJUQPPr/6vWXfFJcQjl1Dd0eEOJWk4=";
       url = "https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz";
     };
     patches = [./ports/patch/libffi-3.4.6.patch];
+    attrs = old: {
+      configureFlags = [
+        "--with-gcc-arch=native"
+        "--disable-static"
+        "--disable-exec-static-tramp"
+      ];
+      doCheck = false;
+    };
   };
 
   # libarchive: Multi-format archive/compression library
@@ -358,18 +391,42 @@ in rec {
     attrs = old: { doCheck = false; };
   };
 
+  # NOT YET WORKING!
+  #
+  # Something's wrong with either "frozen modules" or "perf bootstrap"
+  # or something else.
+  #
   # python3: Python programming language
   # Deps: openssl (SSL/TLS), zlib, readline, sqlite (for sqlite3 module), expat (XML), libffi (ctypes)
   # Options: mimetypesSupport, enableOptimizations, stripBytecode, stripTests, bluezSupport, x11Support
   python3 = port base.python3 {
     source = {
       version = "3.12.5";
-      hash = "sha256-XnxUJE2YuGSKGW7LWLtqGKEXWxvyexCvu3JW5GFiH5I=";
+      hash = "sha256-+oouEsXmILCfU+ZbzYdVDS5aHi4Ev4upkdzFUROHY5c=";
       url = "https://www.python.org/ftp/python/3.12.5/Python-3.12.5.tar.xz";
     };
     patches = [./ports/patch/Python-3.12.5.patch];
-    deps = { inherit openssl zlib readline sqlite expat libffi; mimetypesSupport = true; };
-    attrs = old: { doCheck = false; };
+    deps = { 
+      inherit openssl zlib readline sqlite expat libffi; 
+      mimetypesSupport = true;
+      enableLTO = false;
+    };
+    attrs = old: { 
+      doCheck = false;
+      preConfigure = ''
+        export NIX_CFLAGS_COMPILE="''${NIX_CFLAGS_COMPILE//-Wa,--compress-debug-sections/}"
+      '';
+      configureFlags = old.configureFlags ++ [
+      ];
+      nativeBuildInputs = with base; [
+        base.python3 
+        autoreconfHook
+        autoconf
+        automake libtool autoconf-archive
+        m4
+        pkg-config
+      ];
+    };
   };
 
   # Version control
