@@ -813,13 +813,21 @@
     # Projects: packages built directly from fil-c/projects vendored sources
     projects = import ./fil-c-projects.nix {
       inherit base filenv filcc;
-      filc-src = filc-projects-src;
+      filc-sources = filc-projects-src;
     };
 
     # Ports: nixpkgs packages with upstream fil-c patches
     ports = import ./ports.nix {
       inherit base filenv filc-src withFilC fix;
       inherit filcc;
+    };
+
+    filc-runit-demo = import ./filc-runit-qemu.nix {
+      inherit base ports filc-sysroot;
+    };
+
+    filc-runit-docker = import ./filc-runit-docker.nix {
+      inherit base ports filc-sysroot;
     };
 
     # Combined: all projects merged into single output
@@ -871,15 +879,11 @@
       inherit fil-c-env;
       inherit projects;
       inherit ports;
+      inherit filc-runit-demo;
+      inherit filc-runit-docker;
 
-      # Export sources for hash fixing
-      inherit filc0-src libcxx-src libpas-src yolo-glibc-src user-glibc-src libxcrypt-src filc-projects-src;
-
-      # qemu-image = nixos-generators.nixosGenerate {
-      #   inherit system;
-      #   format = "qcow";
-      #   modules = [ nixosConfig ];
-      # };
+#      filc-runit-initrd = filc-runit-demo.initrd;
+#      filc-runit-runner = filc-runit-demo.runner;
     }
 
     // ports
@@ -948,6 +952,24 @@
           echo "See README.txt for details"
           echo
         '';
+      };
+    };
+
+    apps.${system} = {
+      filc-runit-qemu = {
+        type = "app";
+        program = "${filc-runit-demo.runner}/bin/run-filc-runit-qemu";
+      };
+      filc-runit-docker-load = {
+        type = "app";
+        program = "${base.writeShellScriptBin "load-filc-runit-image" ''
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "docker: command not found" >&2
+            exit 1
+          fi
+          docker load < ${filc-runit-docker}
+        ''}/bin/load-filc-runit-image";
       };
     };
   };

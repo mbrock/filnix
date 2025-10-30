@@ -54,7 +54,7 @@ in rec {
   # bash: GNU Bourne-Again Shell
   # Deps: readline (for interactive mode), ncurses (via readline)
   # Options: interactive (enable readline), withDocs (man pages), forFHSEnv (FHS compatibility)
-  bash = port base.bash {
+  bash = port base.bashInteractive {
     source = {
       version = "5.2.32";
       hash = "sha256-1b1593ffea2155ccc27cbee01754680b37c23dacae11d315f1cb===";
@@ -153,6 +153,8 @@ in rec {
     attrs = old: { doCheck = false; };
   };
 
+  runit = port base.runit {};
+
   # gnumake: GNU Make build tool
   # Options: guileSupport (Guile scripting - disabled here)
   gnumake = port base.gnumake {
@@ -163,6 +165,15 @@ in rec {
     };
     patches = [./ports/patch/make-4.4.1.patch];
     deps = { guileSupport = false; };
+  };
+
+  # busybox: compact userspace toolkit (init-friendly build)
+  busybox = port base.busybox {
+    attrs = old: {
+      enableStatic = false;
+      enableAppletSymlinks = false;
+      enableMinimal = false;
+    };
   };
 
   # Libraries
@@ -578,6 +589,7 @@ in rec {
       url = "http://gondor.apana.org.au/~herbert/dash/files/dash-0.5.12.tar.gz";
     };
     patches = [./ports/patch/dash-0.5.12.patch];
+    deps = { inherit libedit; };
   };
 
   # Additional libraries
