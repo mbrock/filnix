@@ -625,9 +625,15 @@
     #
     # We use djb's approach for better compatibility with existing packages.
     # Patch from: https://cr.yp.to/2025/20251030-filian-install-compiler.sh
-    filc-binutils = base.binutils-unwrapped.overrideAttrs (old: {
+    filc-binutils = base.binutils-unwrapped.overrideAttrs (old: rec {
+      version = "2.43.1";
+      src = base.fetchurl {
+        url = "mirror://gnu/binutils/binutils-${version}.tar.bz2";
+        hash = "sha256-vsqsXSleA3WHtjpC+tV/49nXuD9HjrJLZ/nuxdDxhy8=";
+      };
       patches = (old.patches or []) ++ [
         ./binutils-pizlonated-demangle.patch
+        ./ports/patch/binutils-2.43.1.patch
       ];
       nativeBuildInputs = old.nativeBuildInputs ++ [base.texinfo];
     });
@@ -730,14 +736,16 @@
       '';
 
     filenv = base.overrideCC base.stdenv filcc;
-    withFilC = pkg: pkg.override { stdenv = filenv; };
+    withFilC = pkg: pkg.override { 
+      stdenv = filenv;
+    };
     
     # Combine withFilC, override, and overrideAttrs in one call
     # Usage: fix base.pkg { deps = {}; attrs = old: {}; }
     fix = pkg: { deps ? {}, attrs ? _: {} }:
       let
         pkgName = pkg.pname or (builtins.parseDrvName pkg.name).name;
-        hasBuildInputs = (pkg.buildInputs or []) != [] || 
+        hasBuildInputs = (pkg.buildInputs or []) != [] ||
                          (pkg.propagatedBuildInputs or []) != [];
         noDepsProvided = deps == {};
       in

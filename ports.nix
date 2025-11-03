@@ -54,14 +54,25 @@ in rec {
   # bash: GNU Bourne-Again Shell
   # Deps: readline (for interactive mode), ncurses (via readline)
   # Options: interactive (enable readline), withDocs (man pages), forFHSEnv (FHS compatibility)
-  bash = port base.bashInteractive {
-    source = {
-      version = "5.2.32";
-      hash = "sha256-1b1593ffea2155ccc27cbee01754680b37c23dacae11d315f1cb===";
-      url = "mirror://gnu/bash/bash-5.2.tar.gz";
-    };
-    patches = [./ports/patch/bash-5.2.32.patch];
+  bash = port base.bash {
+    # source = {
+    #   version = "5.2.32";
+    #   hash = "sha256-0++A0rZ9jLvk0yZcY6csRvmyeOrW4OBtYYAbWPI/ULU=";
+    #   url = "mirror://gnu/bash/bash-5.2.32.tar.gz";
+    # };
+#    patches = [./ports/patch/bash-5.2.32.patch];
     deps = { inherit readline; interactive = true; };
+    attrs = old: { doCheck = false; };
+  };
+
+  bashNonInteractive = port base.bash {
+    # source = {
+    #   version = "5.2.32";
+    #   hash = "sha256-0++A0rZ9jLvk0yZcY6csRvmyeOrW4OBtYYAbWPI/ULU=";
+    #   url = "mirror://gnu/bash/bash-5.2.32.tar.gz";
+    # };
+#    patches = [./ports/patch/bash-5.2.32.patch];
+    deps = { inherit readline; interactive = false; };
     attrs = old: { doCheck = false; };
   };
 
@@ -215,16 +226,9 @@ in rec {
   };
 
   # openssl: SSL/TLS cryptography library
-  # Deps: zlib (compression support)
-  openssl = port base.openssl {
-    source = {
-      version = "3.3.1";
-      hash = "sha256-d3zVlihMiDN1oqehG/XSeG/FQTJV76sgxQ1v/m0CC34=";
-      url = "https://www.openssl.org/source/openssl-3.3.1.tar.gz";
-    };
-    patches = [./ports/patch/openssl-3.3.1.patch];
+  # Simple build avoiding nixpkgs complexity
+  openssl = port (base.callPackage ./ports/openssl.nix {}) {
     deps = { inherit zlib; };
-    attrs = old: { doCheck = false; };
   };
 
   # sqlite: Embedded SQL database engine
@@ -550,11 +554,17 @@ in rec {
   };
 
   # curl: Command-line tool for transferring data with URLs
-  # Deps: openssl, zlib, krb5, brotli, nghttp2, libidn2, libssh2, libpsl, zstd
+  # Note: nixpkgs defines curl as curlMinimal.override, so we do the same
+  # to get a proper package with .override support
+  # Deps: openssl, zlib, brotli, nghttp2, libidn2, libssh2, libpsl, zstd
   # Options: Multiple protocol/feature support flags (see query-package.sh curl)
-  curl = port base.curl {
-    deps = { 
-      inherit openssl zlib krb5 brotli nghttp2 libidn2 libssh2 libpsl zstd;
+  curl = port base.curlMinimal {
+    deps = {
+      inherit openssl zlib brotli nghttp2 libidn2 libssh2 libpsl zstd;
+      idnSupport = true;
+      pslSupport = true;
+      zstdSupport = true;
+      brotliSupport = true;
     };
     attrs = old: { doCheck = false; };
   };
@@ -572,12 +582,18 @@ in rec {
 
   # zstd: Zstandard compression algorithm
   zstd = port base.zstd {
-    source = {
-      version = "1.5.6";
-      hash = "sha256-IcmH9cBaI+Q/+7ZH/irwW98YhVuAkKAR0CCIHnkNJ+8=";
-      url = "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz";
-    };
     patches = [./ports/patch/zstd-1.5.6.patch];
+    deps = { inherit bashNonInteractive; };
+    attrs = old: {
+      # Disable assembly for Fil-C compatibility
+      # CMake doesn't have a ZSTD_NO_ASM option, so we pass the flag directly
+      cmakeFlags = (old.cmakeFlags or []) ++ [
+        "-DCMAKE_C_FLAGS=-DZSTD_DISABLE_ASM"
+      ];
+
+      # playTests do a filc panic
+      doCheck = false;
+    };
   };
 
   # Shells
@@ -645,12 +661,17 @@ in rec {
   # Deps: c-ares, libev, zlib, openssl
   # Options: enableApp, enableHttp3, enableJemalloc, enablePython
   nghttp2 = port base.nghttp2 {
-    deps = { inherit c-ares libev zlib openssl; };
+    deps = { 
+      inherit libev zlib openssl; 
+      c-aresMinimal = c-ares;
+    };
   };
 
   # libidn2: Internationalized domain names (IDNA2008/TR46) library
+  # Note: nixpkgs wraps libidn2 in no-bootstrap-reference.nix which removes .override
+  # so we call the package directly to get the unwrapped version
   # Deps: libunistring
-  libidn2 = port base.libidn2 {
+  libidn2 = port (base.callPackage "${base.path}/pkgs/development/libraries/libidn2" {}) {
     deps = { inherit libunistring; };
   };
 
