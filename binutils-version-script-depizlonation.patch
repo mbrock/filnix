@@ -1,0 +1,49 @@
+diff --git a/ld/ldlang.c b/ld/ldlang.c
+index 9e8cc224f4d0..950c412f912d 100644
+--- a/ld/ldlang.c
++++ b/ld/ldlang.c
+@@ -9304,6 +9304,25 @@ lang_leave_overlay (etree_type *lma_expr,
+ 
+ /* Version handling.  This is only useful for ELF.  */
+ 
++/* Strip pizlonated_ prefix for Fil-C symbol matching.
++   Returns the original pointer if no prefix, or pointer past the prefix.
++   Can be disabled with FILC_PRESERVE_PREFIX environment variable. */
++
++static const char *
++depizlonate (const char *sym)
++{
++  if (getenv ("FILC_PRESERVE_PREFIX"))
++    return sym;
++
++  if (strncmp (sym, "pizlonated_", 11) == 0)
++    {
++      fprintf (stderr, "depizlonated: %s\n", sym);
++      return sym + 11;
++    }
++
++  return sym;
++}
++
+ /* If PREV is NULL, return first version pattern matching particular symbol.
+    If PREV is non-NULL, return first version pattern matching particular
+    symbol after PREV (previously returned by lang_vers_match).  */
+@@ -9314,11 +9330,16 @@ lang_vers_match (struct bfd_elf_version_expr_head *head,
+ 		 const char *sym)
+ {
+   const char *c_sym;
+-  const char *cxx_sym = sym;
+-  const char *java_sym = sym;
++  const char *cxx_sym;
++  const char *java_sym;
+   struct bfd_elf_version_expr *expr = NULL;
+   enum demangling_styles curr_style;
+ 
++  /* Strip pizlonated_ prefix if present for version script matching */
++  sym = depizlonate (sym);
++  cxx_sym = sym;
++  java_sym = sym;
++
+   curr_style = CURRENT_DEMANGLING_STYLE;
+   cplus_demangle_set_style (no_demangling);
+   c_sym = bfd_demangle (link_info.output_bfd, sym, DMGL_NO_OPTS);

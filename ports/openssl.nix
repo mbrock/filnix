@@ -1,6 +1,9 @@
-# Simple OpenSSL build for Fil-C
-# Based on the upstream fil-c build script, avoiding nixpkgs complexity
-{ lib, fetchurl, perl, stdenv, zlib }:
+# Simple OpenSSL build for Fil-C.
+# Based on the upstream fil-c build script and nixpkgs' openssl derivation.
+# It was easier to get this working without all of nixpkgs special stuff.
+# But maybe now that I figured out the version script issues,
+# we can use the nixpkgs openssl derivation with some patching.
+{ lib, fetchurl, perl, pkg-config, stdenv, zlib }:
 
 stdenv.mkDerivation rec {
   pname = "openssl";
@@ -23,18 +26,17 @@ stdenv.mkDerivation rec {
     patchShebangs Configure config
   '';
 
-  # OpenSSL uses a custom configure system, not autotools
-  # Disable automatic platform flag generation
   configurePlatforms = [];
   dontAddStaticConfigureFlags = true;
-
-  # OpenSSL's config script does platform detection
   configureScript = "./config";
 
   configureFlags = [
+    "shared"
     "zlib"
     "--prefix=${placeholder "out"}"
     "--libdir=lib"
+    "--with-zlib-lib=${zlib}/lib"
+    "--with-zlib-include=${zlib}/include"
   ];
 
   enableParallelBuilding = true;

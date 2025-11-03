@@ -1,0 +1,30 @@
+diff --git a/libctf/configure.ac b/libctf/configure.ac
+index 64544b83a9f1..6836bc9d6979 100644
+--- a/libctf/configure.ac
++++ b/libctf/configure.ac
+@@ -257,11 +257,11 @@ AC_CACHE_CHECK([for linker versioning flags], [ac_cv_libctf_version_script],
+   [echo 'FOO { global: mai*; local: ctf_fo*; };' > conftest.ver
+    old_LDFLAGS="$LDFLAGS"
+    old_CFLAGS="$CFLAGS"
+-   LDFLAGS="$LDFLAGS -shared -Wl,--version-script=conftest.ver"
++   LDFLAGS="$LDFLAGS -shared --version-script=conftest.ver"
+    CFLAGS="$CFLAGS -fPIC"
+    AC_LINK_IFELSE([AC_LANG_SOURCE([[int ctf_foo (void) { return 0; }
+ 				    int main (void) { return ctf_foo(); }]])],
+-		  [ac_cv_libctf_version_script="-Wl,--version-script"],
++		  [ac_cv_libctf_version_script="--version-script"],
+ 		  [])
+    LDFLAGS="$old_LDFLAGS"
+ 
+diff --git a/libsframe/Makefile.am b/libsframe/Makefile.am
+index c31eec9320f8..bd30d7fcb63f 100644
+--- a/libsframe/Makefile.am
++++ b/libsframe/Makefile.am
+@@ -37,7 +37,7 @@ if HAVE_LD_VERSION_SCRIPT
+ if HAVE_SOLARIS_LD
+   libsframe_version_script = -Wl,-M -Wl,$(srcdir)/libsframe.ver
+ else
+-  libsframe_version_script = -Wl,--version-script=$(srcdir)/libsframe.ver
++  libsframe_version_script = --version-script=$(srcdir)/libsframe.ver
+ endif
+ endif

@@ -623,8 +623,9 @@
     # 2. djb's approach: Patch binutils to strip "pizlonated_" when demangling
     #    symbols (transparent, works with unmodified version scripts)
     #
-    # We use djb's approach for better compatibility with existing packages.
-    # Patch from: https://cr.yp.to/2025/20251030-filian-install-compiler.sh
+    # djb's patch from: https://cr.yp.to/2025/20251030-filian-install-compiler.sh
+    #
+    # We use Filip's approach for now.
     filc-binutils = base.binutils-unwrapped.overrideAttrs (old: rec {
       version = "2.43.1";
       src = base.fetchurl {
@@ -632,39 +633,71 @@
         hash = "sha256-vsqsXSleA3WHtjpC+tV/49nXuD9HjrJLZ/nuxdDxhy8=";
       };
       patches = (old.patches or []) ++ [
-        ./binutils-pizlonated-demangle.patch
-        ./ports/patch/binutils-2.43.1.patch
+        # I split this up into two patches just for clarity
+        # and for testing various things, but we just apply both
+        # now anyway.
+        ./binutils-version-script.patch
+        ./binutils-other-fixes.patch
       ];
-      nativeBuildInputs = old.nativeBuildInputs ++ [base.texinfo];
+
+      nativeBuildInputs = old.nativeBuildInputs ++ (with base; [
+        texinfo
+        autoconf269
+        automake
+        libtool
+        gettext
+      ]);
+
+      # The patch changes some .am files so we need to autoreconf.
+      # I do it just in the affected directories cuz I had some issues
+      # autoreconfing everything.
+      preConfigure = ''
+        for i in libctf libsframe; do
+          pushd $(dirname $i)
+          autoreconf -vfi
+          popd
+        done
+        for i in {binutils,gas,ld,gold}/Makefile.in; do
+          sed -i "$i" -e 's|ln |ln -s |'
+        done
+        configureScript="$PWD/configure"
+        mkdir $NIX_BUILD_TOP/build
+        cd $NIX_BUILD_TOP/build
+      '';
     });
 
     filc-cc = base.runCommand "filc-cc" {} ''
       mkdir -p $out/bin
       ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
-#      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/gcc
       ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/clang++
-#      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/g++
     '';
 
     filcache = flavor: base.writeShellScriptBin ("ccache-${flavor}") ''
       ${setupCcache}
-      ${base.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "$@"
+
+      # Fil-C Clang driver has special version script handling.
+      #
+      # This only works if we give the version script flag
+      # to the Clang driver, not to the actual linker.  
+      #
+      # When version scripts aren't "pizlonated" properly,
+      # you get a bunch of linker errors when building anything
+      # that uses version scripts (e.g. OpenSSL).
+      #
+      # XXX: This shouldn't really be in the ccache setup wrapper.
+      new_args=("''${@//-Wl,--version-script=/--version-script=}")
+      exec ${base.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "''${new_args[@]}"
     '';
 
-    # Complete Fil-C sysroot - the full memory-safe sandwich + C++
     filc-sysroot = addLibcMetadata
       (mergeLayers "filc-sysroot" [
-        libyolo       # Layer 1: Yolo runtime libraries (bottom)
-        libpizlo      # Layer 2: Memory safety runtime (middle)
-        libmojo       # Layer 3: Memory-safe user glibc
-        filc-libcxx   # Layer 4: C++ standard library (top)
+        libyolo libpizlo libmojo filc-libcxx
       ])
       {
         dynamicLinker = "ld-yolo-x86_64.so";
         crts = ["crt1.o" "rcrt1.o" "Scrt1.o" "crti.o" "crtn.o"];
       };
 
-    # Define a Nix conventional binary toolchain.
     filc-bintools = base.wrapBintoolsWith {
       bintools = filc-binutils;
       libc     = filc-sysroot;
@@ -677,7 +710,6 @@
       '';
     };
 
-    # Fil-C toolchain with full C and C++ support
     filcc = base.wrapCCWith {
       cc       = filc-cc;
       libc     = filc-sysroot;
@@ -686,8 +718,6 @@
 
       extraBuildCommands = ''
         echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
-#        echo "-nostdinc++" >> $out/nix-support/libcxx-cxxflags
-#        echo "-isystem ${filc-libcxx}/include/c++" >> $out/nix-support/libcxx-cxxflags
         echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
         echo "-gz=none" >> $out/nix-support/cc-cflags
       '';
@@ -710,7 +740,7 @@
       fi
     '';
 
-    # Merge multiple derivations into one(layers applied in order)
+    # Merge multiple derivations into one (layers applied in order)
     mergeLayers = name: layers: base.runCommand name {
       nativeBuildInputs = [base.rsync];
     } ''
@@ -775,12 +805,6 @@
       inherit system;
       config.replaceStdenv = { pkgs, ... }:
         pkgs.overrideCC pkgs.stdenv filcc;
-    };
-
-    # Sample packages built with Fil-C
-    sample-packages = import ./packages.nix {
-      inherit base filenv filc-src withFilC fix;
-      inherit wasm3-src;
     };
 
     # Ports: nixpkgs packages with upstream fil-c patches
