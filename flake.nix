@@ -860,6 +860,17 @@
       inherit filcc;
       inherit ports;
 
+      push-filcc = base.writeShellScriptBin "push-filcc" ''
+        cachix push filc ${filcc}
+      '';
+
+      push-pkg = base.writeShellScriptBin "push-pkg" ''
+        for pkg in "$@"; do
+          storePath=$(nix build .#"$pkg" --print-out-paths --no-link)
+          cachix push filc "$storePath"
+        done
+      '';
+
       filcimg = filc-runit-docker;
 
 #      filc-runit-initrd = filc-runit-demo.initrd;
