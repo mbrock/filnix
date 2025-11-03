@@ -759,7 +759,6 @@ in rec {
   # Deps: ncurses
   nethack = port base.nethack {
     deps = { inherit ncurses; };
-    attrs = old: { enableParallelBuilding = true; };
   };
 
   # wasm3: Fast WebAssembly interpreter
