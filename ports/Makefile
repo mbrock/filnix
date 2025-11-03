@@ -1,6 +1,6 @@
 # Makefile for extracting Fil-C patches in parallel
 
-REPO_DIR ?= $(HOME)/fil-c-projects
+REPO_DIR ?= $(HOME)/fil-c
 OUTPUT_DIR ?= patch
 
 # Discover all projects
