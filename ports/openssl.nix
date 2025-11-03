@@ -16,7 +16,9 @@ stdenv.mkDerivation rec {
 
   patches = [ ./patch/openssl-3.3.1.patch ];
 
-  outputs = [ "out" "dev" "bin" ];
+  outputs = [ "out" "dev" "bin" 
+    # "man"
+  ];
   setOutputFlags = false;  # Don't let stdenv add --bindir/--libdir flags
 
   nativeBuildInputs = [perl];
@@ -34,29 +36,34 @@ stdenv.mkDerivation rec {
     "shared"
     "zlib"
     "--prefix=${placeholder "out"}"
+    "--openssldir=etc/ssl"
     "--libdir=lib"
     "--with-zlib-lib=${zlib}/lib"
     "--with-zlib-include=${zlib}/include"
   ];
 
+  # makeFlags = [
+  #   "MANDIR=$(man)/share/man"
+  #   "MANSUFFIX=ssl"
+  # ];
+
   enableParallelBuilding = true;
 
   doCheck = false;
 
-  # Use install_sw (software only, no docs) and install_ssldirs
+  # skip man pages, takes a long time and you already have them
   installTargets = [ "install_sw" "install_ssldirs" ];
 
   postInstall = ''
-    # Move binaries to separate output
     mkdir -p $bin
     mv $out/bin $bin/bin
 
-    # Move headers to dev output
     mkdir -p $dev
     mv $out/include $dev/
 
-    # Remove perl scripts we don't need
     rm -rf $out/etc/ssl/misc
+    rmdir $out/etc/ssl/{certs,private}
+    rm -rf $dev/lib/cmake
   '';
 
   meta = with lib; {

@@ -31,8 +31,8 @@
 let
   # Helper to create a ported package with source + patches override
   # pkg: the nixpkgs package (e.g., base.bash, base.gnused)
-  # config: { source?: { version, hash, url }, patches?, deps?, attrs? }
-  port = pkg: { source ? null, patches ? [], deps ? {}, attrs ? _: {} }:
+  # config: { source?: { version, hash, url }, patches?, skipPatches?, deps?, attrs? }
+  port = pkg: { source ? null, patches ? [], skipPatches ? [], deps ? {}, attrs ? _: {} }:
     fix pkg {
       inherit deps;
       attrs = old: 
@@ -45,9 +45,14 @@ let
             hash = source.hash;
           };
         } else {}) // {
-          patches = (old.patches or []) ++ patches;
+          patches = (builtins.filter
+            (p: !builtins.any (skip: base.lib.hasInfix skip (builtins.toString p)) skipPatches)
+            (old.patches or [])
+          ) ++ patches;
         } // attrs old;
     };
+
+  inherit (base) lib;
 
 in rec {
   # Core utilities
@@ -454,6 +459,8 @@ in rec {
       hash = "sha256-fxI0YqKLfKPr4mB0hfcWhVTCsQ38FVx+xGMAZmrCf5U=";
       url = "https://www.kernel.org/pub/software/scm/git/git-2.46.0.tar.xz";
     };
+    skipPatches = ["git-send-email-honor-PATH.patch"];
+    patches = [./ports/patch/git-2.46.0.patch];
     deps = { 
       inherit openssl pcre2 curl;
       withManual = false; 
@@ -464,11 +471,6 @@ in rec {
     };
     attrs = old: {
       doCheck = false;
-      # Filter out the git-send-email-honor-PATH.patch (fails on 2.46.0) but keep other nixpkgs patches
-      patches = (builtins.filter
-        (p: !(base.lib.hasSuffix "git-send-email-honor-PATH.patch" (builtins.toString p)))
-        (old.patches or [])
-      ) ++ [./ports/patch/git-2.46.0.patch];
       makeFlags = base.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
     };
   };
@@ -560,11 +562,12 @@ in rec {
   # Options: Multiple protocol/feature support flags (see query-package.sh curl)
   curl = port base.curlMinimal {
     deps = {
-      inherit openssl zlib brotli nghttp2 libidn2 libssh2 libpsl zstd;
+      inherit openssl zlib brotli nghttp2 libidn2 libpsl zstd libkrb5;
       idnSupport = true;
       pslSupport = true;
       zstdSupport = true;
       brotliSupport = true;
+      scpSupport = false;
     };
     attrs = old: { doCheck = false; };
   };
@@ -643,14 +646,17 @@ in rec {
   # krb5: Kerberos network authentication protocol
   # Deps: openssl, keyutils, libedit
   # Options: withLdap, withLibedit, withVerto
-  krb5 = port base.libkrb5 {
+  libkrb5 = port base.libkrb5 {
     source = {
       version = "1.21.3";
-      hash = "sha256-jxKpqLuAF360kOjFkh935LjNkTgDNnlVqEPP91fSPqM=";
+      hash = "sha256-t6TNXq1n+wi5gLIavRUP9yF+heoyDJ7QxtrdMEhArTU=";
       url = "https://kerberos.org/dist/krb5/1.21/krb5-1.21.3.tar.gz";
     };
     patches = [./ports/patch/krb5-1.21.3.patch];
     deps = { inherit openssl keyutils libedit; };
+    attrs = old: {
+      patchFlags = ["-p2"];
+    };
   };
 
   # brotli: Generic lossless compression algorithm
@@ -662,8 +668,20 @@ in rec {
   # Options: enableApp, enableHttp3, enableJemalloc, enablePython
   nghttp2 = port base.nghttp2 {
     deps = { 
-      inherit libev zlib openssl; 
-      c-aresMinimal = c-ares;
+      inherit zlib openssl; 
+#      c-aresMinimal = c-ares;
+    };
+    attrs = old: {
+      nativeBuildInputs = [
+        depizloing-nm
+      ] ++ (old.nativeBuildInputs or []);
+
+      configureFlags = [
+        "--disable-app"
+      ];
+
+      # don't warn about -Wdeprecated-literal-operator
+      NIX_CFLAGS_COMPILE = "-Wno-deprecated-literal-operator";
     };
   };
 
@@ -675,10 +693,26 @@ in rec {
     deps = { inherit libunistring; };
   };
 
+  depizloing-nm = base.writeShellScriptBin "nm" ''
+    ${filcc}/bin/nm "$@" | sed 's/\bpizlonated_//g'
+  '';
+
   # libssh2: SSH2 client-side library
   # Deps: zlib, openssl
   libssh2 = port base.libssh2 {
     deps = { inherit zlib openssl; };
+    attrs = old: {
+      nativeBuildInputs = 
+        [
+          depizloing-nm
+          base.pkg-config
+        ] ++ (old.nativeBuildInputs or []);
+      doCheck = false;
+      configureFlags = [
+        # examples don't link properly with Fil-C toolchain
+        "--disable-examples-build"
+      ] ++ (old.configureFlags or []);
+    };
   };
 
   # libpsl: Public Suffix List library
@@ -707,6 +741,7 @@ in rec {
       hash = "sha256-ph1XBhNq5MBb1I+GGGvP29iN2L1RB+Phlckkz8Gzm7Q=";
       url = "https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git/snapshot/keyutils-1.6.3.tar.gz";
     };
+    skipPatches = ["after_eq"]; # our patch does this already
     patches = [./ports/patch/keyutils-1.6.3.patch];
   };
 
