@@ -184,7 +184,7 @@ nix build .#wasm3
 
 ** Ports
 
-The =ports.nix= file is the main entry point for ported applications. It applies patches from the upstream fil-c repository to nixpkgs packages. The =ports/= directory contains these patches, and =ports/patches.nix= maps packages to their required versions and patches.
+The =ports.nix= file is the main entry point for ported applications. It uses nixpkgs packages and applies Fil-C compilation via the =fix= function, which switches packages to use the Fil-C stdenv. Some packages require patches from the upstream fil-c repository, which are managed in =ports/patches.nix=.
 
 * Development
 
@@ -269,8 +269,8 @@ git clone https://github.com/mbrock/filnix
 cd filnix
 
 nix build .#filcc      # Build the toolchain
-nix build .#bash       # Build sample packages
-nix build .#ports      # Build all ported packages
+nix build .#bash       # Build individual ported packages
+nix build .#wasm3      # Build another ported package
 #+END_SRC
 
 * Resources
@@ -374,7 +374,7 @@ After integration, system configuration would become much simpler:
 
 ** Current Status
 
-Fil-C is now fully packaged as a standalone flake. In principle, we should be able to build and expose all of Pizlo's ported packages from the upstream repository, plus anything else that happens to run unmodified. This includes nontrivial packages like tmux, sqlite, and nethack that work without requiring patches. However, there are still some random stumbling blocks that need to be fixed before everything builds reliably.
+Fil-C is now fully packaged as a standalone flake. The =ports.nix= approach allows building any nixpkgs package with Fil-C by overriding the stdenv. Many packages work unmodified, while others require patches that are maintained in the =ports/= directory. This includes nontrivial packages like tmux, sqlite, and nethack that work without requiring patches. However, there are still some random stumbling blocks that need to be fixed before everything builds reliably.
 
 The immediate priority is setting up continuous integration infrastructure, possibly using Hydra, that continually verifies the building of all the core packages and catches regressions early.
 

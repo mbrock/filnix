@@ -11,7 +11,7 @@
     base = import nixpkgs { inherit system; };
     inherit (base) fetchgit;
 
-    filc-rev = "594c0b05910038865f8c53fdd25cab8d69de1524";
+    filc-rev = "d1f83629d6c56d1fdf6f3e207d7f06c2ef31ecda";
 
     # Minimal clang compiler only (filc0)
     filc-src = filc0-src;
@@ -28,7 +28,7 @@
         "libcxxabi"
         "runtimes"
       ];
-      hash = "sha256-uHsxpXONHyy2KSOABpO/Yus1xOkygzNVvW3UUPA7aSE=";
+      hash = "sha256-iLdlrzcEZfFdhEo1Zz8l/1ZiUBc8f3slGdX2X6oRU6A=";
     };
 
     # LLVM + libcxx + libcxxabi (for filc-libcxx build)
@@ -42,7 +42,7 @@
         "libpas"
         "filc"
       ];
-      hash = "sha256-UGhUqk/whTL9qfUxjdTom51UpebO3B2NL0xX3YmX8T8=";
+      hash = "sha256-uiraSFXY0mhH/PtcV4IwTT7qrePW0t/ji3JjPRFDtTE=";
     };
 
     # Yolo glibc (stage 1 runtime)
@@ -52,7 +52,7 @@
       sparseCheckout = [
         "projects/yolo-glibc-2.40"
       ];
-      hash = "sha256-gYU8uVfaKjIY4lp3e0JXDX3XSovaxMDqd0JqCTrhyXg=";
+      hash = "sha256-BGF8EWfzLYUAheyMVETNoV4KNsQTATc4FxBktgEEqTE=";
     };
 
     # User glibc (memory-safe glibc)
@@ -62,7 +62,7 @@
       sparseCheckout = [
         "projects/user-glibc-2.40"
       ];
-      hash = "sha256-lNYzviWiV9xffBSg3/psr0CulILRR4kcvFlyak0cHWo=";
+      hash = "sha256-NaDSI9zonbam48fk/UzUMNnpX/ATKjDET7qJDffVDGo=";
     };
 
     # libxcrypt
@@ -72,66 +72,7 @@
       sparseCheckout = [
         "projects/libxcrypt-4.4.36"
       ];
-      hash = "sha256-RtyFq/G+jywY/1o1K3cbuTaFOxFx2Kvl5Y/8pxmX0FA=";
-    };
-
-    # Additional projects (for fil-c-projects.nix builds)
-    filc-projects-src = fetchgit {
-      url = "https://github.com/mbrock/fil-c";
-      rev = filc-rev;
-      sparseCheckout = [
-        "projects/zlib-1.3"
-        "projects/zstd-1.5.6"
-        "projects/xz-5.6.2"
-        "projects/bzip2"
-        "projects/lz4-1.10.0"
-        "projects/grep-3.11"
-        "projects/sed-4.9"
-        "projects/diffutils-3.10"
-        "projects/m4-1.4.19"
-        "projects/make-4.4.1"
-        "projects/bison-3.8.2"
-        "projects/libffi-3.4.6"
-        "projects/expat-2.7.1"
-        "projects/pcre2-10.44"
-        "projects/libevent-2.1.12"
-        "projects/openssl-3.3.1"
-        "projects/curl-8.9.1"
-        "projects/nghttp2-1.62.1"
-        "projects/lua-5.4.7"
-        "projects/quickjs"
-        "projects/sqlite"
-        "projects/libpng-1.6.43"
-        "projects/gmp-6.3.0"
-        "projects/ncurses-6.5-20240720"
-        "projects/bash-5.2.32"
-        "projects/coreutils-9.5"
-        "projects/brotli-1.1.0"
-        "projects/tcl-8.6.15"
-        "projects/git-2.46.0"
-        "projects/vim-9.1.0660"
-        "projects/tmux-3.5a"
-        "projects/openssh-9.8p1"
-        "projects/libxml2-2.14.4"
-        "projects/gettext-0.22.5"
-        "projects/libarchive-3.7.4"
-        "projects/libuv-v1.48.0"
-        "projects/binutils-2.43.1"
-        "projects/cmake-3.30.2"
-        "projects/perl-5.40.0"
-        "projects/dash-0.5.12"
-        "projects/pkgconf-2.3.0"
-        "projects/check-0.15.2"
-        "projects/attr-2.5.2"
-        "projects/libedit-20240808-3.1"
-        "projects/libcap-2.70"
-        "projects/libpipeline-1.5.7"
-        "projects/busybox-1.37.0"
-        "projects/toybox-8.12"
-        "projects/texinfo-7.1"
-        "projects/icu-76.1"
-      ];
-      hash = "sha256-BoBDhHmU+g7MFiIbrxD7aGGISU38iZz55/XFHjrkkS8=";
+      hash = base.lib.fakeHash;
     };
 
     kitty-doom-src = base.fetchgit {
@@ -667,6 +608,30 @@
       meta.description = "libxcrypt compiled with Fil-C";
     };
 
+    # Patched binutils that strips pizlonated_ prefix from symbols
+    #
+    # Fil-C mangles all symbols by prepending "pizlonated_" for memory safety.
+    # This causes issues with version scripts in shared libraries:
+    #
+    # Version scripts declare symbols like "malloc" and "free", but at link
+    # time the actual symbols are "pizlonated_malloc" and "pizlonated_free",
+    # causing version script matching to fail.
+    #
+    # Two solutions exist:
+    # 1. Filip's approach: Add --version-script= to clang driver to mangle
+    #    version scripts automatically (requires patching build systems)
+    # 2. djb's approach: Patch binutils to strip "pizlonated_" when demangling
+    #    symbols (transparent, works with unmodified version scripts)
+    #
+    # We use djb's approach for better compatibility with existing packages.
+    # Patch from: https://cr.yp.to/2025/20251030-filian-install-compiler.sh
+    filc-binutils = base.binutils-unwrapped.overrideAttrs (old: {
+      patches = (old.patches or []) ++ [
+        ./binutils-pizlonated-demangle.patch
+      ];
+      nativeBuildInputs = old.nativeBuildInputs ++ [base.texinfo];
+    });
+
     filc-cc = base.runCommand "filc-cc" {} ''
       mkdir -p $out/bin
       ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
@@ -695,7 +660,7 @@
 
     # Define a Nix conventional binary toolchain.
     filc-bintools = base.wrapBintoolsWith {
-      bintools = base.binutils-unwrapped;
+      bintools = filc-binutils;
       libc     = filc-sysroot;
       defaultHardeningFlags = [];
 
@@ -810,30 +775,14 @@
       inherit wasm3-src;
     };
 
-    # Projects: packages built directly from fil-c/projects vendored sources
-    projects = import ./fil-c-projects.nix {
-      inherit base filenv filcc;
-      filc-sources = filc-projects-src;
-    };
-
     # Ports: nixpkgs packages with upstream fil-c patches
     ports = import ./ports.nix {
       inherit base filenv filc-src withFilC fix;
       inherit filcc;
     };
 
-    filc-runit-demo = import ./filc-runit-qemu.nix {
-      inherit base ports filc-sysroot;
-    };
-
     filc-runit-docker = import ./filc-runit-docker.nix {
       inherit base ports filc-sysroot;
-    };
-
-    # Combined: all projects merged into single output
-    fil-c-env = import ./fil-c-combined.nix {
-      inherit base filenv;
-      packages = projects;
     };
 
     # CVE test payloads for wasm3
@@ -875,12 +824,11 @@
       inherit libmojo;
       inherit filc-xcrypt;
       inherit filc-sysroot;
+      inherit filc-binutils;
       inherit filcc;
-      inherit fil-c-env;
-      inherit projects;
       inherit ports;
-      inherit filc-runit-demo;
-      inherit filc-runit-docker;
+
+      filcimg = filc-runit-docker;
 
 #      filc-runit-initrd = filc-runit-demo.initrd;
 #      filc-runit-runner = filc-runit-demo.runner;
@@ -955,22 +903,22 @@
       };
     };
 
-    apps.${system} = {
-      filc-runit-qemu = {
-        type = "app";
-        program = "${filc-runit-demo.runner}/bin/run-filc-runit-qemu";
-      };
-      filc-runit-docker-load = {
-        type = "app";
-        program = "${base.writeShellScriptBin "load-filc-runit-image" ''
-          set -euo pipefail
-          if ! command -v docker >/dev/null 2>&1; then
-            echo "docker: command not found" >&2
-            exit 1
-          fi
-          docker load < ${filc-runit-docker}
-        ''}/bin/load-filc-runit-image";
-      };
-    };
+    # apps.${system} = {
+    #   filc-runit-qemu = {
+    #     type = "app";
+    #     program = "${filc-runit-demo.runner}/bin/run-filc-runit-qemu";
+    #   };
+    #   filc-runit-docker-load = {
+    #     type = "app";
+    #     program = "${base.writeShellScriptBin "load-filc-runit-image" ''
+    #       set -euo pipefail
+    #       if ! command -v docker >/dev/null 2>&1; then
+    #         echo "docker: command not found" >&2
+    #         exit 1
+    #       fi
+    #       docker load < ${filc-runit-docker}
+    #     ''}/bin/load-filc-runit-image";
+    #   };
+    # };
   };
 }

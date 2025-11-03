@@ -1,0 +1,58 @@
+--- a/bfd/bfd.c
++++ b/bfd/bfd.c
+@@ -2902,8 +2902,8 @@ DESCRIPTION
+ 	Wrapper around cplus_demangle.  Strips leading underscores and
+ 	other such chars that would otherwise confuse the demangler.
+ 	If passed a g++ v3 ABI mangled name, returns a buffer allocated
+-	with malloc holding the demangled name.  Returns NULL otherwise
+-	and on memory alloc failure.
++	with malloc holding the demangled name.
++	Aborts on memory alloc failure since caller misinterprets that.
+ */
+
+ char *
+@@ -2929,6 +2929,11 @@ bfd_demangle (bfd *abfd, const char *name, int options)
+     ++name;
+   pre_len = name - pre;
+
++  /* 20251030 djb: strip off pizlonated_ */
++  /* XXX: is doing this after . and $ conceptually correct? */
++  /* XXX: should symbols without this add depizlonated_ for invertibility? */
++  if (!getenv("FILC_PRESERVE_PREFIX") && !strncmp(name,"pizlonated_",11)) name += 11;
++
+   /* Strip off @plt and suchlike too.  */
+   alloc = NULL;
+   suf = strchr (name, '@');
+@@ -2936,7 +2941,7 @@ bfd_demangle (bfd *abfd, const char *name, int options)
+     {
+       alloc = (char *) bfd_malloc (suf - name + 1);
+       if (alloc == NULL)
+-	return NULL;
++	abort();
+       memcpy (alloc, name, suf - name);
+       alloc[suf - name] = '\0';
+       name = alloc;
+@@ -2948,16 +2953,13 @@ bfd_demangle (bfd *abfd, const char *name, int options)
+
+   if (res == NULL)
+     {
+-      if (skip_lead)
+-	{
+-	  size_t len = strlen (pre) + 1;
+-	  alloc = (char *) bfd_malloc (len);
+-	  if (alloc == NULL)
+-	    return NULL;
+-	  memcpy (alloc, pre, len);
+-	  return alloc;
+-	}
+-      return NULL;
++      size_t len = pre_len + strlen (name) + 1;
++      alloc = (char *) bfd_malloc (len);
++      if (alloc == NULL)
++        abort();
++      memcpy (alloc, pre, pre_len);
++      memcpy (alloc + pre_len, name, strlen(name) + 1);
++      return alloc;
+     }
+
+   /* Put back any prefix or suffix.  */

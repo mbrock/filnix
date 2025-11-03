@@ -21,8 +21,8 @@ EOF
     chmod +x etc/service/banner/run
   '';
 in
-base.dockerTools.buildLayeredImage {
-  name = "filc-runit";
+base.dockerTools.streamLayeredImage {
+  name = "filc-runit-2";
   tag = "latest";
   architecture = "amd64";
 
