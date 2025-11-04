@@ -1,130 +1,144 @@
 { pkgs, ports }:
 let
-  # Memory-safe bash script wrapper
-  bashScript =
-    name:
-    {
-      deps ? [ ],
-      code,
-      excludeShellChecks ? [ ],
-      bashOptions ? [
-        "errexit"
-        "nounset"
-        "pipefail"
-      ],
-    }:
-    pkgs.writeShellApplication {
-      inherit name excludeShellChecks bashOptions;
-      runtimeInputs = deps;
-      text = code;
-      derivationArgs = {
-        postBuild = ''
-          substituteInPlace $out/bin/${name} \
-            --replace-fail '${pkgs.runtimeShell}' '${ports.bash}/bin/bash'
-        '';
-      };
-    };
+  web = import ./web.nix { inherit pkgs ports; };
+  inherit (web) bashScript filcProgram cgi-bin www-root;
 
-  # Memory-safe C program builder
-  filcProgram =
-    name:
-    {
-      deps ? [ ],
-      code,
-    }:
-    pkgs.stdenv.mkDerivation {
-      inherit name;
-      src = pkgs.writeText "${name}.c" code;
-      nativeBuildInputs = [ ports.filcc ];
-      buildInputs = deps;
-      unpackPhase = "true";
+  lighttpd-demo = bashScript "lighttpd-demo" {
+    deps =
+      (with pkgs; [
+        netcat
+        systemd
+      ])
+      ++ (with ports; [
+        coreutils
+        ncurses
+        gnused
+        figlet
+        clolcat
+        file
+      ]);
 
-      CFLAGS = pkgs.lib.concatMapStringsSep " " (dep: "-I${dep}/include") deps;
+    excludeShellChecks = [
+      "SC2086"
+      "SC2064"
+      "SC2034"
+    ];
 
-      LDFLAGS = pkgs.lib.concatMapStringsSep " " (dep: "-L${dep}/lib") deps;
+    code = ''
+      if [ -t 1 ]; then
+        BOLD=$(tput bold)
+        GREEN=$(tput setaf 2)
+        BLUE=$(tput setaf 4)
+        CYAN=$(tput setaf 6)
+        DIM=$(tput dim)
+        RESET=$(tput sgr0)
+      else
+        BOLD="" GREEN="" BLUE="" CYAN="" DIM="" RESET=""
+      fi
 
-      buildPhase = ''
-        clang -o ${name} $src $CFLAGS $LDFLAGS -O2
-      '';
+      # Find a free port in range 9000-9999
+      find_free_port() {
+        for port in $(seq 9000 9999); do
+          if ! nc -z localhost $port 2>/dev/null; then
+            echo $port
+            return
+          fi
+        done
+        echo "No free port found in range 9000-9999" >&2
+        exit 1
+      }
 
-      installPhase = ''
-        mkdir -p $out/bin
-        cp ${name} $out/bin/
-      '';
-    };
+      PORT=$(find_free_port)
 
-  # Build CGI document root from attrset of scripts
-  cgi-bin =
-    scripts:
-    pkgs.runCommand "cgi-bin" { } ''
-      mkdir -p $out
-      ${pkgs.lib.concatStringsSep "\n" (
-        pkgs.lib.mapAttrsToList (name: drv: ''
-          ln -s ${drv}/bin/${name} $out/${name}
-        '') scripts
-      )}
+      # Create runtime directory
+      RUNDIR=''${XDG_RUNTIME_DIR:-/tmp}/filnix-lighttpd
+      mkdir -p "$RUNDIR/cache"
+
+      CONF="$RUNDIR/lighttpd.conf"
+
+      sed -e "s|PORT_PLACEHOLDER|$PORT|g" \
+          -e "s|RUNDIR_PLACEHOLDER|$RUNDIR|g" \
+          ${lighttpd-conf-template} > "$CONF"
+
+      echo
+      tput bold
+      figlet -f fender "Fil-C" | head -n-1 | clolcat -f
+      tput dim
+      echo "  Pretty Good CGI Server"
+      tput sgr0
+      echo
+      echo "  ''${BLUE}http://localhost:''${BOLD}$PORT''${RESET}''${DIM}"
+      echo
+      tput sgr0
+      echo "  ${cgi-docroot}"
+      echo
+
+      # Collect script info into a table
+      for script in ${cgi-docroot}/*.cgi; do
+        [ -f "$script" ] || continue
+        name=$(basename "$script")
+        size=$(stat -L -c %s "$script" | numfmt --to=iec-i --suffix=B --padding=7)
+        
+        # Determine type - check if binary first to avoid null byte warnings
+        if file -b -L "$script" | grep -q "^ELF"; then
+          # For binaries, show full file output
+          type=$(file -b -L "$script" | cut -d',' -f1-2)
+        else
+          # For scripts, check shebang
+          first_line=$(head -n1 "$script")
+          if [[ "$first_line" =~ ^#!.*bash ]]; then
+            type="bash script"
+          elif [[ "$first_line" =~ ^#! ]]; then
+            interp=$(echo "$first_line" | sed 's/^#!//' | awk '{print $1}')
+            type="$(basename "$interp") script"
+          else
+            type=$(file -b -L "$script" | cut -d',' -f1)
+          fi
+        fi
+        
+        printf "    ''${CYAN}%-15s''${RESET} ''${DIM}%s''${RESET}  %s\n" "$name" "$size" "$type"
+      done | sort
+
+      echo
+
+      tput dim
+      echo "  Press Ctrl-C to stop"
+      tput sgr0
+      echo
+
+      systemd-run \
+        --user \
+        --scope \
+        --unit=filnix-lighttpd \
+        --description="Fil-C Lighttpd Demo" \
+        --property=MemoryMax=512M \
+        --property=MemoryHigh=384M \
+        --property=TasksMax=128 \
+        --property=CPUQuota=100% \
+        ${ports.lighttpd}/sbin/lighttpd -D -f "$CONF" 2>&1 | sed 's/^/>>> /'
     '';
+  };  
 
-  # Build document root with both CGI scripts and static files
-  www-root =
-    {
-      scripts ? { },
-      static ? { },
-    }:
-    pkgs.runCommand "www-root" { } ''
-      mkdir -p $out
-      ${pkgs.lib.concatStringsSep "\n" (
-        pkgs.lib.mapAttrsToList (name: drv: ''
-          ln -s ${drv}/bin/${name} $out/${name}
-        '') scripts
-      )}
-      ${pkgs.lib.concatStringsSep "\n" (
-        pkgs.lib.mapAttrsToList (name: file: ''
-          ln -s ${file} $out/${name}
-        '') static
-      )}
-    '';
-in
-let
   style-css = pkgs.writeText "style.css" ''
-    body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
-    .font-gallery { display: flex; flex-wrap: wrap; gap: 15px; margin: 20px 0; }
-    .font-sample { 
-      flex: 0 0 auto;
-      padding: 15px; 
-      background: #2d2d2d; 
-      border-left: 4px solid #007acc;
-      min-width: 200px;
-      max-width: 100%;
-    }
-    .font-name { color: #4ec9b0; font-weight: bold; margin-bottom: 10px; font-size: 0.85em; }
-    pre { margin: 0; white-space: pre; overflow-x: auto; color: #ce9178; }
+    * { margin: 0; box-sizing: border-box; }
+    body { font: 14px/1.5 monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+    h1 { color: #4ec9b0; margin-bottom: 20px; }
+    a { color: #569cd6; }
+    a:hover { text-decoration: none; }
+    pre { white-space: pre; overflow-x: auto; color: #ce9178; }
     form { margin: 20px 0; padding: 20px; background: #252526; border: 1px solid #3e3e42; }
-    input[type="text"] { 
-      padding: 10px; 
-      width: 300px; 
-      background: #3c3c3c; 
-      border: 1px solid #6e6e6e; 
-      color: #d4d4d4;
-      font-family: monospace;
-    }
-    input[type="submit"] {
-      padding: 10px 20px;
-      background: #0e639c;
-      border: none;
-      color: white;
-      cursor: pointer;
-      font-family: monospace;
-    }
+    input { font: inherit; padding: 10px; }
+    input[type="text"] { width: 300px; background: #3c3c3c; border: 1px solid #6e6e6e; color: inherit; }
+    input[type="submit"] { background: #0e639c; border: 0; color: #fff; cursor: pointer; }
     input[type="submit"]:hover { background: #1177bb; }
-    h1 { color: #4ec9b0; }
-    .back { color: #569cd6; text-decoration: none; }
-    .back:hover { text-decoration: underline; }
+    .font-gallery { display: flex; flex-wrap: wrap; gap: 15px; margin: 20px 0; }
+    .font-sample { padding: 15px; background: #2d2d2d; border-left: 4px solid #007acc; min-width: 200px; }
+    .font-name { color: #4ec9b0; font-weight: bold; margin-bottom: 10px; font-size: .85em; }
   '';
-in
-let
+
   html-escape = filcProgram "html-escape" {
     deps = with ports; [ ];
+    lang = "c";
     code = ''
       #include <stdio.h>
 
@@ -160,11 +174,80 @@ let
     '';
   };
 
+  parse-query = filcProgram "parse-query" {
+    deps = with ports; [ ];
+    code = ''
+      #include <iostream>
+      #include <string>
+      #include <string_view>
+      #include <optional>
+      #include <charconv>
+      #include <cstdlib>
+
+      using namespace std;
+
+      auto url_decode(string_view encoded) -> string {
+        string result;
+        for (size_t i = 0; i < encoded.size(); ++i) {
+          if (encoded[i] == '+') {
+            result += ' ';
+          } else if (encoded[i] == '%' && i + 2 < encoded.size()) {
+            int value;
+            auto [ptr, ec] = from_chars(encoded.data() + i + 1, 
+                                        encoded.data() + i + 3, value, 16);
+            if (ec == errc{}) {
+              result += static_cast<char>(value);
+              i += 2;
+            } else {
+              result += encoded[i];
+            }
+          } else {
+            result += encoded[i];
+          }
+        }
+        return result;
+      }
+
+      auto extract_param(string_view query, string_view param) -> optional<string> {
+        string pattern = string(param) + "=";
+        
+        for (size_t pos = 0; pos < query.size();) {
+          pos = query.find(pattern, pos);
+          if (pos == string_view::npos) break;
+          
+          if (pos == 0 || query[pos - 1] == '&') {
+            pos += pattern.size();
+            auto end = query.find('&', pos);
+            auto value = query.substr(pos, end - pos);
+            return url_decode(value);
+          }
+          ++pos;
+        }
+        return nullopt;
+      }
+
+      int main(int argc, char* argv[]) {
+        if (argc != 2) {
+          cerr << "Usage: " << argv[0] << " PARAM_NAME\n";
+          return 1;
+        }
+
+        if (auto query = getenv("QUERY_STRING")) {
+          if (auto value = extract_param(query, argv[1])) {
+            cout << *value;
+          }
+        }
+        return 0;
+      }
+    '';
+  };
+
   figlet-cgi = bashScript "figlet.cgi" {
     deps = with ports; [
       coreutils
       figlet
       html-escape
+      parse-query
       gnused
       gawk
     ];
@@ -174,12 +257,8 @@ let
     ]; # No pipefail - we handle errors manually
     code = ''
       # Parse query string for text parameter
-      TEXT="Fil-C"
-      if [ -n "$QUERY_STRING" ]; then
-        # Simple URL decode and extract text parameter
-        TEXT=$(echo "$QUERY_STRING" | sed -n 's/.*text=\([^&]*\).*/\1/p' | sed 's/+/ /g' | sed 's/%20/ /g')
-        [ -z "$TEXT" ] && TEXT="Fil-C"
-      fi
+      TEXT=$(parse-query text)
+      [ -z "$TEXT" ] && TEXT="Fil-C"
 
       # Escape for safe HTML output using Fil-C program
       TEXT_ESCAPED=$(echo "$TEXT" | html-escape)
@@ -284,6 +363,7 @@ let
 
   demo-cgi = filcProgram "demo.cgi" {
     deps = with ports; [ ];
+    lang = "c";
     code = ''
       #include <stdio.h>
       #include <stdlib.h>
@@ -422,120 +502,6 @@ let
     server.errorlog = "RUNDIR_PLACEHOLDER/error.log"
   '';
 
-  lighttpd-demo = bashScript "lighttpd-demo" {
-    deps =
-      (with pkgs; [
-        netcat
-        systemd
-        ncurses
-      ])
-      ++ (with ports; [
-        coreutils
-        gnused
-        figlet
-        clolcat
-        file
-      ]);
 
-    excludeShellChecks = [
-      "SC2086"
-      "SC2064"
-      "SC2034"
-    ];
-    code = ''
-      # Terminal colors (only if stdout is a terminal)
-      if [ -t 1 ]; then
-        BOLD=$(tput bold)
-        GREEN=$(tput setaf 2)
-        BLUE=$(tput setaf 4)
-        CYAN=$(tput setaf 6)
-        DIM=$(tput dim)
-        RESET=$(tput sgr0)
-      else
-        BOLD="" GREEN="" BLUE="" CYAN="" DIM="" RESET=""
-      fi
-
-      # Find a free port in range 9000-9999
-      find_free_port() {
-        for port in $(seq 9000 9999); do
-          if ! nc -z localhost $port 2>/dev/null; then
-            echo $port
-            return
-          fi
-        done
-        echo "No free port found in range 9000-9999" >&2
-        exit 1
-      }
-
-      PORT=$(find_free_port)
-
-      # Create runtime directory
-      RUNDIR=''${XDG_RUNTIME_DIR:-/tmp}/filnix-lighttpd
-      mkdir -p "$RUNDIR/cache"
-
-      CONF="$RUNDIR/lighttpd.conf"
-
-      sed -e "s|PORT_PLACEHOLDER|$PORT|g" \
-          -e "s|RUNDIR_PLACEHOLDER|$RUNDIR|g" \
-          ${lighttpd-conf-template} > "$CONF"
-
-      echo
-      tput bold
-      figlet -f fender "Fil-C" | head -n-1 | clolcat -f
-      tput dim
-      echo "  Pretty Good CGI Server"
-      tput sgr0
-      echo
-      echo "  ''${BLUE}http://localhost:''${BOLD}$PORT''${RESET}''${DIM}"
-      echo
-      tput sgr0
-      echo "  ${cgi-docroot}"
-      echo
-
-      # Collect script info into a table
-      for script in ${cgi-docroot}/*.cgi; do
-        [ -f "$script" ] || continue
-        name=$(basename "$script")
-        size=$(stat -L -c %s "$script" | numfmt --to=iec-i --suffix=B --padding=7)
-        
-        # Determine type - check if binary first to avoid null byte warnings
-        if file -b -L "$script" | grep -q "^ELF"; then
-          # For binaries, show full file output
-          type=$(file -b -L "$script" | cut -d',' -f1-2)
-        else
-          # For scripts, check shebang
-          first_line=$(head -n1 "$script")
-          if [[ "$first_line" =~ ^#!.*bash ]]; then
-            type="bash script"
-          elif [[ "$first_line" =~ ^#! ]]; then
-            interp=$(echo "$first_line" | sed 's/^#!//' | awk '{print $1}')
-            type="$(basename "$interp") script"
-          else
-            type=$(file -b -L "$script" | cut -d',' -f1)
-          fi
-        fi
-        
-        printf "    ''${CYAN}%-15s''${RESET} ''${DIM}%s''${RESET}  %s\n" "$name" "$size" "$type"
-      done | sort
-
-      echo
-
-      tput dim
-      echo "  Press Ctrl-C to stop"
-      tput sgr0
-      echo
-
-      systemd-run \
-        --user \
-        --scope \
-        --unit=filnix-lighttpd \
-        --description="Fil-C Lighttpd Demo" \
-        --property=MemoryMax=512M \
-        --property=MemoryHigh=384M \
-        --property=TasksMax=128 \
-        --property=CPUQuota=100% \
-        ${ports.lighttpd}/sbin/lighttpd -D -f "$CONF" 2>&1 | sed 's/^/>>> /'
-    '';
-  };
 in
 lighttpd-demo
