@@ -954,6 +954,9 @@
       inherit ports;
       inherit filc-world-shell;
       inherit filc-world-docker;
+      
+      # Expose port function for external flakes to define custom ports
+      inherit (ports) port;
 
       push-filcc = base.writeShellScriptBin "push-filcc" ''
         cachix push filc ${filcc}

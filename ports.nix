@@ -55,6 +55,8 @@ let
   inherit (base) lib;
 
 in rec {
+  # Expose port function for external use
+  inherit port;
   # Core utilities
   # bash: GNU Bourne-Again Shell
   # Deps: readline (for interactive mode), ncurses (via readline)
@@ -918,12 +920,5 @@ in rec {
 
   jq = port base.jq {
     deps = { inherit oniguruma; };
-  };
-
-  lighttpd = port base.lighttpd {
-    deps = { inherit openssl zlib bzip2 pcre2; };
-    attrs = old: {
-      doCheck = false;
-    };
   };
 }
