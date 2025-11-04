@@ -1,0 +1,43 @@
+diff -Naur /tmp/lighttpd-1.4.82/src/mod_cgi.c /home/mbrock/nixit/lighttpd/src/mod_cgi.c
+--- /tmp/lighttpd-1.4.82/src/mod_cgi.c	2025-09-12 22:08:20.000000000 +0300
++++ /home/mbrock/nixit/lighttpd/src/mod_cgi.c	2025-11-04 09:59:43.062223124 +0200
+@@ -1,5 +1,9 @@
+ #include "first.h"
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++#endif
++
+ #include "base.h"
+ #include "stat_cache.h"
+ #include "http_kv.h"
+@@ -929,8 +933,13 @@
+ 		envp = (char **)env->offsets;
+ 		envp[env->oused] = NULL;
+ 		const uintptr_t baseptr = (uintptr_t)env->b->ptr;
+-		for (i = 0; i < env->oused; ++i)
++		for (i = 0; i < env->oused; ++i) {
++		  #ifdef __FILC__
++			envp[i] = zmkptr(env->b->ptr, (uintptr_t)envp[i] + baseptr);
++		  #else
+ 			envp[i] += baseptr;
++		  #endif
++		}
+ 
+ 		/* set up args */
+ 		i = 0;
+diff -Naur /tmp/lighttpd-1.4.82/src/server.c /home/mbrock/nixit/lighttpd/src/server.c
+--- /tmp/lighttpd-1.4.82/src/server.c	2025-09-12 22:08:20.000000000 +0300
++++ /home/mbrock/nixit/lighttpd/src/server.c	2025-11-04 09:53:52.459681853 +0200
+@@ -1902,8 +1902,9 @@
+ 	/* clear Linux ambient capabilities, if any had been granted
+ 	 * (avoid leaking privileges to CGI or other subprocesses) */
+ 	if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0L, 0L, 0L) < 0
+-           /* not supported before linux 4.3 / on some emulators (e.g. Cloud Run 1st gen) */
+-           && errno != EINVAL) {
++           /* not supported before linux 4.3 / on some emulators / Fil-C */
++           && errno != EINVAL
++           && errno != ENOSYS) {
+ 		log_perror(srv->errh, __FILE__, __LINE__,
+ 		  "prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL)");
+ 		return -1;
