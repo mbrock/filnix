@@ -918,7 +918,8 @@
       };
 
       # shell with cool programs compiled with Fil-C
-      pure = filc-world;
+      inherit filc-world;
+      pure = filc-world; # legacy alias
 
       # wasm3 CVE testing environment
       wasm3-cve-test = base.mkShell {
