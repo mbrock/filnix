@@ -14,7 +14,9 @@ stdenv.mkDerivation rec {
     hash = "sha256-d3zVlihMiDN1oqehG/XSeG/FQTJV76sgxQ1v/m0CC34=";
   };
 
-  patches = [ ./patch/openssl-3.3.1.patch ];
+  patches = [ 
+    ./patch/openssl-3.3.1.patch 
+  ];
 
   outputs = [ "out" "dev" "bin" 
     # "man"

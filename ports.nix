@@ -234,6 +234,10 @@ in rec {
   # Simple build avoiding nixpkgs complexity
   openssl = port (base.callPackage ./ports/openssl.nix {}) {
     deps = { inherit zlib; };
+    # extract the nixpkgs base openssl patch from the nixpkgs source
+    patches = [ 
+      "${base.path}/pkgs/development/libraries/openssl/3.0/nix-ssl-cert-file.patch" 
+    ];
   };
 
   # sqlite: Embedded SQL database engine
@@ -682,6 +686,17 @@ in rec {
 
       # don't warn about -Wdeprecated-literal-operator
       NIX_CFLAGS_COMPILE = "-Wno-deprecated-literal-operator";
+    };
+  };
+
+  nghttp3 = port base.nghttp3 {
+  };
+
+  # Doesn't work, needs QuicTLS instead of OpenSSL.
+  # Porting Fil-C's OpenSSL patch to QuicTLS is probably easy?
+  ngtcp2 = port base.ngtcp2 {
+    deps = {
+      inherit brotli libev nghttp3 openssl;
     };
   };
 
