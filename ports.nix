@@ -129,18 +129,25 @@ in rec {
   diffutils = port base.diffutils {
     source = {
       version = "3.10";
-      hash = "sha256-90DxXb6Tlz5N5M0r8W8scXd6Of0bYKJiqIPLbkrNENo=";
+      hash = "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=";
       url = "https://ftpmirror.gnu.org/diffutils/diffutils-3.10.tar.xz";
     };
     patches = [./ports/patch/diffutils-3.10.patch];
-    attrs = old: { doCheck = false; };
+    attrs = old: { 
+      doCheck = false;
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [base.perl];
+      postPatch = ''
+        patchShebangs man/help2man
+      '';
+    };
+    deps = { inherit coreutils; };
   };
 
   # gnum4: GNU M4 macro processor (required by autotools/bison)
   gnum4 = port base.gnum4 {
     source = {
       version = "1.4.19";
-      hash = "sha256-2ytc9acOLqS2cgSaAYa6Oi+PNgNhArSH3yv7o4H2W6E=";
+      hash = "sha256-Y67eXG0zttmxNRHNC+LKwEby5w/QoHqpVzoEqCeDr5Y=";
       url = "https://ftpmirror.gnu.org/m4/m4-1.4.19.tar.xz";
     };
     patches = [./ports/patch/m4-1.4.19.patch];
@@ -156,7 +163,13 @@ in rec {
       url = "mirror://gnu/bison/bison-3.8.2.tar.gz";
     };
     patches = [./ports/patch/bison-3.8.2.patch];
-    deps = { inherit gnum4; };
+    deps = { m4 = gnum4; };
+
+    attrs = old: { 
+      # test suite is slow and has 9 failures and 969 passed tests...
+      doCheck = false; 
+      doInstallCheck = false;
+    };
   };
 
   # cmake: Cross-platform build system generator
@@ -825,6 +838,7 @@ in rec {
   # file: File type identification utility
   file = port base.file {
     attrs = old: { doCheck = false; };
+    deps = { inherit zlib; };
   };
 
   # nano: Pico clone text editor

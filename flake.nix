@@ -838,6 +838,21 @@
     #   '';
     # };
 
+    filc-world = base.mkShellNoCC {
+      name = "filc-world";
+
+      buildInputs = with ports; [
+        bash coreutils gnumake gnum4 bison
+        gawk gnused gnugrep 
+        which file diffutils
+        gnutar bzip2 zstd xz 
+        tmux nano nethack
+        sqlite lua perl tcl
+        filcc
+        curl
+      ];
+    };
+
   in {
     # Query package information from nixpkgs (using flake's pinned nixpkgs)
     # Usage: nix eval --json .#lib.x86_64-linux.queryPackage --apply 'f: f "bash"'
@@ -859,6 +874,7 @@
       inherit filc-binutils;
       inherit filcc;
       inherit ports;
+      inherit filc-world;
 
       push-filcc = base.writeShellScriptBin "push-filcc" ''
         cachix push filc ${filcc}
@@ -901,22 +917,8 @@
         '';
       };
 
-      # Pure Fil-C environment - all tools compiled with Fil-C.
-      pure = base.mkShell {
-        name = "filc-pure";
-
-        buildInputs = with ports; [
-          bash coreutils
-          gawk gnused gnugrep
-          gnutar bzip2
-          tmux
-          sqlite lua
-          nano nethack
-          perl
-          xz
-          zstd
-        ];
-      };
+      # shell with cool programs compiled with Fil-C
+      pure = filc-world;
 
       # wasm3 CVE testing environment
       wasm3-cve-test = base.mkShell {
