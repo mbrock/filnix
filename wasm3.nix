@@ -7,7 +7,7 @@ stdenv.mkDerivation {
   src = fetchgit {
     url = "https://github.com/wasm3/wasm3";
     rev = "79d412ea5fcf92f0efe658d52827a0e0a96ff442";
-    hash = "sha256-CmNngYLD/PtiEW8pGORjW4d7TAmW5ZZMBAeKzjYMMdw=";
+    hash = "sha256-CmNngYLD/PtiEW8pGORjW4d7TAmW5ZZMBAeKzJYMMdw=";
   };
 
   enableParallelBuilding = true;

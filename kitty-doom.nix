@@ -1,4 +1,4 @@
-{ stdenv, lib, curl, makeWrapper, fetchgit, fetchurl }:
+{ stdenv, lib, makeWrapper, curl, fetchgit, fetchurl }:
 
 stdenv.mkDerivation {
   pname = "kitty-doom";
@@ -10,17 +10,17 @@ stdenv.mkDerivation {
     hash = "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=";
   };
 
-  nativeBuildInputs = [ curl makeWrapper ];
+  nativeBuildInputs = [ makeWrapper curl ];
 
   preBuild = 
     let
       doom1-wad = fetchurl {
         url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
-        hash = "sha256-0wf7r8kaalpn2qc74ng8flqg6fwwwbrviq0mwhkxjrqya2z46z8x";
+        hash = "sha256-HX1DvlAeZ9kn5BXguPPinDvzMHXoWXIYFvZSpSbKx3E=";
       };
       puredoom-h = fetchurl {
         url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
-        hash = "sha256-0rypvk8m90qvir13jiwxw7jklszawsvz3g7h2g5if4361mqghbbg";
+        hash = "sha256-by34cA1mEBfLE/C88bfm6ms65eGdRzlCjhuDVNHc12c=";
       };
     in ''
     cp ${doom1-wad} DOOM1.WAD

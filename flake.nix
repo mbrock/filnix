@@ -75,28 +75,6 @@
       hash = base.lib.fakeHash;
     };
 
-    kitty-doom-src = base.fetchgit {
-      url = "https://github.com/mbrock/kitty-doom";
-      rev = "ca6c5e40156617489712746bbb594e66293a0aa1";
-      hash = "sha256-2DRLohKapV0TiF0ysxITv8yaIprLbV4BU/f6o6IwX40=";
-    };
-
-    doom1-wad = base.fetchurl {
-      url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
-      hash = "sha256-0wf7r8kaalpn2qc74ng8flqg6fwwwbrviq0mwhkxjrqya2z46z8x";
-    };
-
-    puredoom-h = base.fetchurl {
-      url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
-      hash = "sha256-0rypvk8m90qvir13jiwxw7jklszawsvz3g7h2g5if4361mqghbbg";
-    };
-
-    wasm3-src = base.fetchgit {
-      url = "https://github.com/wasm3/wasm3";
-      rev = "79d412ea5fcf92f0efe658d52827a0e0a96ff442";
-      hash = "sha256-CmNngYLD/PtiEW8pGORjW4d7TAmW5ZZMBAeKzJYMMdw=";
-    };
-
     lib = base.lib;
     join = lib.concatStringsSep;
 
@@ -829,25 +807,17 @@
       nativeBuildInputs = old.nativeBuildInputs or [] ++ [base.pkgs.breakpointHook];
     });
 
-    # experimental full Fil-C nixpkgs (original approach)
-    # filpkgs = import nixpkgs {
-    #   inherit system;
-    #   config.replaceStdenv = { pkgs, ... }:
-    #     pkgs.overrideCC pkgs.stdenv filcc;
-    # };
-
-    # Ports: nixpkgs packages with upstream fil-c patches
-    ports = import ./ports.nix {
-      inherit base filenv filc-src withFilC fix;
-      inherit filcc;
+    # New port set using DSL
+    portset = import ./portset.nix {
+      inherit base filenv filc-src withFilC fix filcc;
     };
 
     filc-runit-docker = import ./filc-runit-docker.nix {
-      inherit base ports filc-sysroot;
+      inherit base portset filc-sysroot;
     };
 
     filc-world-docker = import ./filc-world-docker.nix {
-      inherit base ports world-pkgs dank-bashrc ghostty-terminfo;
+      inherit base portset world-pkgs dank-bashrc ghostty-terminfo;
     };
 
     # CVE test payloads for wasm3
@@ -871,7 +841,7 @@
     #   '';
     # };
 
-    world-pkgs = with ports; [
+    world-pkgs = with portset; [
       bash coreutils gnumake gnum4 bison
       gawk gnused gnugrep lesspipe
       flex bc ed
@@ -886,6 +856,8 @@
       autoconf automake libtool depizloing-nm
       ghostty-terminfo
       util-linux
+      wasm3
+      kittydoom
     ];
 
     filc-world = base.mkShellNoCC {
@@ -932,17 +904,13 @@
         source ${dank-bashrc}
       '';
     in base.writeShellScriptBin "filc-world-shell" ''
-      exec ${ports.bash}/bin/bash --rcfile ${pure-dank-bashrc} --noprofile
+      exec ${portset.bash}/bin/bash --rcfile ${pure-dank-bashrc} --noprofile
     '';    
 
   in {
-    # Query package information from nixpkgs (using flake's pinned nixpkgs)
-    # Usage: nix eval --json .#lib.x86_64-linux.queryPackage --apply 'f: f "bash"'
     lib.${system}.queryPackage = import ./query-package.nix base;
     
-    # Finally, we define the package collection!
     packages.${system} = rec {
-#      inherit filpkgs;
       inherit filc0;
       inherit filc1;
       inherit filc2;
@@ -954,15 +922,13 @@
       inherit filc-sysroot;
       inherit filc-binutils;
       inherit filcc;
-      inherit ports;
+      inherit portset;
       inherit filc-world-shell;
       inherit filc-world-docker;
       
-      # Expose port function for external flakes to define custom ports
-      inherit (ports) port;
+      inherit (portset) port;
       
-      # Demo applications
-      lighttpd-demo = base.callPackage ./httpd/demo.nix { inherit ports; };
+      lighttpd-demo = base.callPackage ./httpd/demo.nix { inherit portset; };
 
       push-filcc = base.writeShellScriptBin "push-filcc" ''
         cachix push filc ${filcc}
@@ -975,12 +941,9 @@
       '';
 
       filcimg = filc-runit-docker;
-
-#      filc-runit-initrd = filc-runit-demo.initrd;
-#      filc-runit-runner = filc-runit-demo.runner;
     }
 
-    // ports
+    // portset
     ;
     
     formatter.${system} = base.nixfmt-rfc-style;
@@ -1020,7 +983,7 @@
       wasm3-cve-test = base.mkShell {
         name = "wasm3-cve-test";
 
-        buildInputs = [ ports.wasm3 ];
+        buildInputs = [ portset.wasm3 ];
 
         shellHook = ''
           cd ${wasm3-cve-payloads}
