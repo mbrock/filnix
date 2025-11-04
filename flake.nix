@@ -866,8 +866,7 @@
 
       push-pkg = base.writeShellScriptBin "push-pkg" ''
         for pkg in "$@"; do
-          storePath=$(nix build .#"$pkg" --print-out-paths --no-link)
-          cachix push filc "$storePath"
+          cachix push filc $(nix build .#"$pkg" --print-out-paths --no-link)
         done
       '';
 
