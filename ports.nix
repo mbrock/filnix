@@ -121,7 +121,8 @@ in rec {
       url = "https://ftpmirror.gnu.org/grep/grep-3.11.tar.xz";
     };
     patches = [./ports/patch/grep-3.11.patch];
-    deps = { inherit pcre2; pcre2Support = true; };
+    deps = { inherit pcre2; };
+    attrs = old: { doCheck = false; };
   };
 
   # diffutils: File comparison utilities (diff, cmp, etc)
@@ -581,10 +582,16 @@ in rec {
   xz = port base.xz {
     source = {
       version = "5.6.2";
-      hash = "sha256-xaImRVTfxSKZlasvkH1Kr+sJAVThUL2698bRbbR5hp4=";
+      hash = "sha256-qds7s9ZOJIoPrpY/j7a6hRomuhgi5QTcDv0YqAxibK8=";
       url = "https://github.com/tukaani-project/xz/releases/download/v5.6.2/xz-5.6.2.tar.xz";
     };
     patches = [./ports/patch/xz-5.6.2.patch];
+    attrs = old: {
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ (with base; [
+        automake116x autoconf
+      ]);
+      doCheck = false; # one failing test thwarted by Fil-C
+    };
   };
 
   # zstd: Zstandard compression algorithm

@@ -913,6 +913,9 @@
           tmux
           sqlite lua
           nano nethack
+          perl
+          xz
+          zstd
         ];
       };
 
