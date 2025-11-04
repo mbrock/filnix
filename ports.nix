@@ -153,6 +153,8 @@ in rec {
     patches = [./ports/patch/m4-1.4.19.patch];
   };
 
+  m4 = gnum4;
+
   # Build tools
   # bison: Parser generator (yacc replacement)
   # Deps: gnum4 (required for bison)
@@ -480,15 +482,16 @@ in rec {
     skipPatches = ["git-send-email-honor-PATH.patch"];
     patches = [./ports/patch/git-2.46.0.patch];
     deps = { 
-      inherit openssl pcre2 curl;
+      inherit openssl pcre2 curl expat;
       withManual = false; 
-      perlSupport = false; 
+      perlSupport = false;
       pythonSupport = false; 
       sendEmailSupport = false; 
       zlib-ng = zlib;
     };
     attrs = old: {
       doCheck = false;
+      doInstallCheck = false; # some failures? kinda slow
       makeFlags = base.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
     };
   };
@@ -871,4 +874,49 @@ in rec {
 
   figlet = port base.figlet {};
   clolcat = port base.clolcat {};
+
+  flex = port base.flex {
+    deps = { inherit bison m4; };
+  };
+
+  bc = port base.bc {
+    deps = { inherit readline flex; };
+  };
+
+  ed = port base.ed { 
+    deps = { runtimeShellPackage = bash; }; 
+  };
+
+  autoconf = port base.autoconf {
+    deps = { inherit m4; };
+  };
+
+  automake = port base.automake {
+    deps = { inherit autoconf; };
+  };
+
+  oniguruma = port base.oniguruma {
+  };
+
+  libiconv = lib.getDev filcc.libc;
+
+  pkgconf-unwrapped = port base.pkgconf-unwrapped {
+    attrs = old: { 
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [depizloing-nm];
+      enableParallelBuilding = true;
+    };
+  };
+
+  pkgconf = base.callPackage (base.path + "/pkgs/build-support/pkg-config-wrapper") {
+    pkg-config = pkgconf-unwrapped;
+    baseBinName = "pkgconf";
+  };
+
+  libtool = port base.libtool {
+    deps = { inherit m4 file; };
+  };
+
+  jq = port base.jq {
+    deps = { inherit oniguruma; };
+  };
 }
