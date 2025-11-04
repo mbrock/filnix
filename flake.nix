@@ -143,7 +143,7 @@
       filcimg = filc-runit-docker;
 
       # Demos
-      lighttpd-demo = base.callPackage ./httpd/demo.nix { inherit portset; };
+      lighttpd-demo = base.callPackage ./httpd/demo.nix { ports = portset; };
 
       # Utilities
       push-filcc = base.writeShellScriptBin "push-filcc" ''
