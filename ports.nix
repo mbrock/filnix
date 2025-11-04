@@ -919,4 +919,11 @@ in rec {
   jq = port base.jq {
     deps = { inherit oniguruma; };
   };
+
+  lighttpd = port base.lighttpd {
+    deps = { inherit openssl zlib bzip2 pcre2; };
+    attrs = old: {
+      doCheck = false;
+    };
+  };
 }

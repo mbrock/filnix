@@ -377,6 +377,7 @@
 
       # Wrap clang with Fil-C paths using explicit flags
       makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang \
+        --add-flags "-Wno-unused-command-line-argument" \
         --add-flags "--gcc-toolchain=${gcc.cc}" \
         --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
         --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
@@ -742,6 +743,12 @@
       '';
     };
 
+    filc-aliases = base.runCommand "filc-aliases" {} ''
+      mkdir -p $out/bin
+      ln -s ${filcc}/bin/clang $out/bin/filc
+      ln -s ${filcc}/bin/clang++ $out/bin/filc++
+    '';
+
     cmakeFlags = opts: lib.mapAttrsToList (k: v:
       let val = if lib.isBool v then (if v then "ON" else "OFF") else toString v;
       in "-D${k}=${val}"
@@ -836,6 +843,10 @@
       inherit base ports filc-sysroot;
     };
 
+    filc-world-docker = import ./filc-world-docker.nix {
+      inherit base ports world-pkgs dank-bashrc ghostty-terminfo;
+    };
+
     # CVE test payloads for wasm3
     wasm3-cve-payloads = (import ./wasm3-cves.nix { pkgs = base; }).cve-tests;
 
@@ -866,6 +877,7 @@
       tmux nano nethack figlet clolcat ncurses
       sqlite lua perl tcl
       filcc
+      filc-aliases
       openssl
       curl git pkgconf 
       autoconf automake libtool depizloing-nm
@@ -896,8 +908,8 @@
       tput sgr0
       echo
 
-      export CC=clang
-      export CXX=clang++
+      export CC=filc
+      export CXX=filc++
       export PKG_CONFIG=pkgconf
     '';
 
@@ -941,6 +953,7 @@
       inherit filcc;
       inherit ports;
       inherit filc-world-shell;
+      inherit filc-world-docker;
 
       push-filcc = base.writeShellScriptBin "push-filcc" ''
         cachix push filc ${filcc}
@@ -967,15 +980,20 @@
 
         buildInputs = with base; [
           filcc
+          filc-aliases
           cmake ninja ccache git
           gdb valgrind strace ltrace hexdump
           ripgrep fd jq bat
         ];
 
         shellHook = ''
+          export CC=filc
+          export CXX=filc++
+          
           clang --version | head -1
           echo
-          echo "  clang    $(which clang)"
+          echo "  filc     $(which filc)"
+          echo "  filc++   $(which filc++)"
           echo "  pizlo    ${libpizlo}"
           echo "  glibc    ${libmojo}"
           echo "  libc++   ${filc-libcxx}"
