@@ -982,6 +982,8 @@
 
     // ports
     ;
+    
+    formatter.${system} = base.nixfmt-rfc-style;
 
     devShells.${system} = {
       default = base.mkShell {
