@@ -864,4 +864,11 @@ in rec {
   kitty-doom = base.callPackage ./kitty-doom.nix {
     stdenv = filenv;
   };
+
+  lesspipe = port base.lesspipe {
+    deps = { inherit perl bash; };
+  };
+
+  figlet = port base.figlet {};
+  clolcat = port base.clolcat {};
 }

@@ -838,20 +838,46 @@
     #   '';
     # };
 
+    world-pkgs = with ports; [
+      bash coreutils gnumake gnum4 bison
+      gawk gnused gnugrep lesspipe
+      which file diffutils
+      gnutar bzip2 zstd xz 
+      tmux nano nethack figlet clolcat ncurses
+      sqlite lua perl tcl
+      filcc
+      curl
+    ];
+
     filc-world = base.mkShellNoCC {
       name = "filc-world";
-
-      buildInputs = with ports; [
-        bash coreutils gnumake gnum4 bison
-        gawk gnused gnugrep 
-        which file diffutils
-        gnutar bzip2 zstd xz 
-        tmux nano nethack
-        sqlite lua perl tcl
-        filcc
-        curl
-      ];
+      buildInputs = world-pkgs;
     };
+
+    # This shell gives you a pure PATH with nothing from your system!
+    filc-world-shell = let 
+      env = base.buildEnv {
+        name = "filc-world";
+        paths = world-pkgs;
+      }; 
+      bashrc = base.writeText "bashrc" ''
+        export PS1='\[\033[1;32m\][filc]\[\033[0m\] \w \$ '
+        export PATH="${env}/bin"
+        eval $(dircolors)
+        alias ls='ls --color=auto'
+        echo
+        tput bold
+        figlet -f fender "Fil-C" | sed 's/^/   /' | clolcat -f | head -n-1
+        tput sgr0; tput dim
+        echo -n '    '; clang 2>&1 -v | grep Fil-C
+        tput sgr0
+        echo; echo '  You feel an uncanny sense of safety...'
+        tput sgr0
+        echo
+      '';
+    in base.writeShellScriptBin "filc-world-shell" ''
+      exec ${ports.bash}/bin/bash --rcfile ${bashrc} --noprofile
+    '';    
 
   in {
     # Query package information from nixpkgs (using flake's pinned nixpkgs)
@@ -874,7 +900,7 @@
       inherit filc-binutils;
       inherit filcc;
       inherit ports;
-      inherit filc-world;
+      inherit filc-world-shell;
 
       push-filcc = base.writeShellScriptBin "push-filcc" ''
         cachix push filc ${filcc}
