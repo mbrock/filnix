@@ -53,6 +53,23 @@ let
       # Create runtime directory
       RUNDIR=''${XDG_RUNTIME_DIR:-/tmp}/filnix-lighttpd
       mkdir -p "$RUNDIR/cache"
+      mkdir -p "$RUNDIR/dav"
+      chmod 777 "$RUNDIR/dav"
+      
+      # Create a welcome file in WebDAV directory
+      echo "Welcome to memory-safe WebDAV! Upload files here." > "$RUNDIR/dav/README.txt"
+      chmod 644 "$RUNDIR/dav/README.txt"
+
+      # Create htdigest password file for WebDAV
+      # Default user: demo / password: demo
+      # Format: user:realm:md5(user:realm:password)
+      REALM="WebDAV"
+      USER="demo"
+      PASS="demo"
+      
+      # MD5 hash of "demo:WebDAV:demo"
+      HASH=$(echo -n "$USER:$REALM:$PASS" | md5sum | cut -d' ' -f1)
+      echo "$USER:$REALM:$HASH" > "$RUNDIR/htdigest"
 
       CONF="$RUNDIR/lighttpd.conf"
 
@@ -102,20 +119,19 @@ let
       echo
 
       tput dim
+      echo "  WebDAV credentials: demo / demo"
+      tput sgr0
+      echo
+ 
+      tput dim
       echo "  Press Ctrl-C to stop"
       tput sgr0
       echo
 
-      systemd-run \
-        --user \
-        --scope \
-        --unit=filnix-lighttpd \
-        --description="Fil-C Lighttpd Demo" \
-        --property=MemoryMax=512M \
-        --property=MemoryHigh=384M \
-        --property=TasksMax=128 \
-        --property=CPUQuota=100% \
-        ${ports.lighttpd}/sbin/lighttpd -D -f "$CONF" 2>&1 | sed 's/^/>>> /'
+      # Set environment for PAM to find config in runtime dir
+      export PAM_CONF_DIR="$RUNDIR/pam.d"
+      
+      ${ports.lighttpd}/sbin/lighttpd -D -f "$CONF" 2>&1 | sed 's/^/>>> /'
     '';
   };  
 
@@ -337,7 +353,7 @@ let
       <h2>Features enabled:</h2>
       <ul>
         <li>Compression: brotli, zstd, bzip2, gzip</li>
-        <li>WebDAV support</li>
+        <li><a href="/dav/">WebDAV</a> with digest authentication (user: demo / pass: demo)</li>
         <li>Lua scripting (mod_magnet)</li>
         <li>Kerberos authentication</li>
       </ul>
@@ -474,9 +490,13 @@ let
     server.modules = (
       "mod_access",
       "mod_accesslog",
+      "mod_alias",
+      "mod_authn_file",
+      "mod_auth",
       "mod_cgi",
       "mod_status",
       "mod_deflate",
+      "mod_webdav",
     )
 
     # Enable streaming for CGI responses
@@ -497,6 +517,23 @@ let
     deflate.allowed-encodings = ( "brotli", "gzip", "deflate", "zstd" )
 
     cgi.assign = ( ".cgi" => "" )
+
+    # WebDAV configuration for /dav directory
+    $HTTP["url"] =~ "^/dav($|/)" {
+      alias.url = ( "/dav" => "RUNDIR_PLACEHOLDER/dav" )
+      webdav.activate = "enable"
+      webdav.is-readonly = "disable"
+      webdav.sqlite-db-name = "RUNDIR_PLACEHOLDER/cache/webdav_lock.db"
+      dir-listing.activate = "enable"
+      
+      auth.backend = "htdigest"
+      auth.backend.htdigest.userfile = "RUNDIR_PLACEHOLDER/htdigest"
+      auth.require = ( "" => (
+        "method" => "digest",
+        "realm" => "WebDAV",
+        "require" => "valid-user"
+      ))
+    }
 
     accesslog.filename = "RUNDIR_PLACEHOLDER/access.log"
     server.errorlog = "RUNDIR_PLACEHOLDER/error.log"

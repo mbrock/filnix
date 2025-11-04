@@ -270,7 +270,15 @@ in rec {
     # patches = [./ports/patch/sqlite.patch];
     deps = { inherit readline ncurses; interactive = true; };
     attrs = old: { 
-      doCheck = false; 
+      doCheck = false;
+      # nixpkgs enables SQLITE_ENABLE_STMT_SCANSTATUS which uses rdtsc inline asm
+      # Override to remove it (can't use NIX_CFLAGS_COMPILE due to env restriction)
+      env = old.env // {
+        NIX_CFLAGS_COMPILE = base.lib.replaceStrings 
+          ["-DSQLITE_ENABLE_STMT_SCANSTATUS"] 
+          [""] 
+          old.env.NIX_CFLAGS_COMPILE;
+      };
     };
   };
 
@@ -976,18 +984,38 @@ EOF
       enableParallelBuilding = true;
     };    
     deps = {
-      inherit zlib sqlite;
-      libxcrypt = libxcrypt;
+      inherit zlib sqlite pam libxcrypt;
       capabilitiesSupport = false;
       cryptsetupSupport = false;
       nlsSupport = false;
       ncursesSupport = false;
-      pamSupport = false;
-      shadowSupport = false;
+      pamSupport = true;
+      shadowSupport = true;
       systemdSupport = false;
       translateManpages = false;
 #      withLastlog = false;      
     };
+  };
+
+  pam = port base.linux-pam {
+#    patches = [ ./ports/patch/Linux-PAM-1.6.1.patch ];
+    deps = {
+      inherit libxcrypt db4;
+    };
+    attrs = old: {
+      doCheck = false;
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [depizloing-nm];
+      # Override sysconfdir to /etc so PAM looks for configs in /etc/pam.d
+      # (fil-c patch uses SYSCONFDIR macro for PAM_CONFIG_D)
+      # preConfigure = ''
+      #   configureFlagsArray+=(--sysconfdir=/etc)
+      # '';
+#      configureFlags = (old.configureFlags or []) ++ ["--sysconfdir=/etc"];
+    };
+  };
+
+  db4 = db48;
+  db48 = port base.db48 {
   };
 
   lighttpd = port base.lighttpd {
@@ -997,8 +1025,10 @@ EOF
       inherit zlib bzip2;
       inherit which file;
       lua5_1 = lua;
+      linux-pam = pam;
       enableMagnet = true;
       enableWebDAV = true;
+      enablePam = true;
     };
     attrs = old: {
       doCheck = false;
