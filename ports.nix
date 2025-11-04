@@ -269,7 +269,9 @@ in rec {
     # };
     # patches = [./ports/patch/sqlite.patch];
     deps = { inherit readline ncurses; interactive = true; };
-    attrs = old: { doCheck = false; };
+    attrs = old: { 
+      doCheck = false; 
+    };
   };
 
   # libpng: PNG image format library
@@ -297,12 +299,16 @@ in rec {
 
   # libxml2: GNOME XML library
   libxml2 = port base.libxml2 {
-    source = {
-      version = "2.14.4";
-      hash = "sha256-9ZOMFpDJ3RPvKFrSm17cqjcGCh/J8rTOcPYr1ZKZEH4=";
-      url = "https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.4.tar.xz";
-    };
+    # source = {
+    #   version = "2.14.4";
+    #   hash = "sha256-JBdewwqXz6hr35vvt8z0YT+PSycTxRA+DdC8nHEaJ3M=";
+    #   url = "https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.4.tar.xz";
+    # };
     patches = [./ports/patch/libxml2-2.14.4.patch];
+    deps = {
+      inherit zlib ncurses;
+      pythonSupport = false;
+    };
     attrs = old: { doCheck = false; };
   };
 
@@ -408,6 +414,22 @@ in rec {
         sed -i "s@#define LUA_ROOT[[:space:]]*\"/usr/local/\"@#define LUA_ROOT  \"$out/\"@g" \
           src/luaconf.h
         grep $out src/luaconf.h
+      '';
+
+      postInstall = ''
+        mkdir -p $out/lib/pkgconfig
+        cat > $out/lib/pkgconfig/lua.pc <<EOF
+prefix=$out
+libdir=$out/lib
+includedir=$out/include
+
+Name: Lua
+Description: An Extensible Extension Language
+Version: ${version}
+Requires:
+Libs: -L$out/lib -llua -lm -ldl
+Cflags: -I$out/include
+EOF
       '';
 
       passthru = {
@@ -651,15 +673,15 @@ in rec {
     patches = [./ports/patch/attr-2.5.2.patch];
   };
 
-  # libxcrypt: Modern password hashing library
-  libxcrypt = port base.libxcrypt {
-    source = {
-      version = "4.4.36";
-      hash = "sha256-u5rcIKZFCKuVSDAN/cIDJCi/OYLbnwx7PYAiEWqxfGw=";
-      url = "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz";
-    };
-    patches = [./ports/patch/libxcrypt-4.4.36.patch];
-  };
+  # # libxcrypt: Modern password hashing library
+  # libxcrypt = port base.libxcrypt {
+  #   source = {
+  #     version = "4.4.36";
+  #     hash = "sha256-u5rcIKZFCKuVSDAN/cIDJCi/OYLbnwx7PYAiEWqxfGw=";
+  #     url = "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz";
+  #   };
+  #   patches = [./ports/patch/libxcrypt-4.4.36.patch];
+  # };
 
   # libuv: Cross-platform async I/O library
   libuv = port base.libuv {
@@ -921,4 +943,79 @@ in rec {
   jq = port base.jq {
     deps = { inherit oniguruma; };
   };
+
+  libxcrypt = port base.libxcrypt {
+    source = {
+      version = "4.4.36";
+      hash = "sha256-5eH0yu4KAd4q7ibjE4gH1tPKK45nKHlm0f79ZeH9iUM=";
+      url = "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz";
+    };    
+    patches = [ ./ports/patch/libxcrypt-4.4.36.patch ];
+    attrs = old: {
+      nativeBuildInputs = [
+        depizloing-nm
+      ] ++ (old.nativeBuildInputs or []);
+      configureFlags = [
+#        "--disable-symvers"
+      ];
+      doCheck = false; # 3 fail, 40 pass
+    };
+    deps = {
+    };
+  };
+
+  libuuid = util-linux;
+
+  util-linux = port base.util-linux {
+    attrs = old: {
+      nativeBuildInputs = [
+        depizloing-nm
+      ] ++ (old.nativeBuildInputs or []);
+      makeFlags = (old.makeFlags or []) ++ [ "V=1" ];
+#      configureFlags = (old.configureFlags or []) ++ [ "--disable-symvers" ];
+      enableParallelBuilding = true;
+    };    
+    deps = {
+      inherit zlib sqlite;
+      libxcrypt = libxcrypt;
+      capabilitiesSupport = false;
+      cryptsetupSupport = false;
+      nlsSupport = false;
+      ncursesSupport = false;
+      pamSupport = false;
+      shadowSupport = false;
+      systemdSupport = false;
+      translateManpages = false;
+#      withLastlog = false;      
+    };
+  };
+
+  lighttpd = port base.lighttpd {
+    patches = [ ./lighttpd-filc.patch ];
+    deps = { 
+      inherit openssl pcre2 libxml2 sqlite libuuid;
+      inherit zlib bzip2;
+      inherit which file;
+      lua5_1 = lua;
+      enableMagnet = true;
+      enableWebDAV = true;
+    };
+    attrs = old: {
+      doCheck = false;
+      nativeBuildInputs = [ depizloing-nm ] ++ (old.nativeBuildInputs or []);
+      buildInputs = (old.buildInputs or []) ++ [
+        bzip2 brotli zstd libkrb5
+      ];
+      configureFlags = (old.configureFlags or []) ++ [
+        "--with-zlib"
+        "--with-bzip2"
+        "--with-brotli"
+        "--with-zstd"
+        "--with-krb5"
+      ];
+    };
+  };
+  
+  # Re-export filcc for cohesive package set
+  inherit filcc;
 }

@@ -694,8 +694,11 @@
         if [[ "$arg" == "-Wl,--version-script="* ]]; then
           # Form 1: -Wl,--version-script=file
           new_args+=("--version-script=''${arg#-Wl,--version-script=}")
-        elif [[ "$arg" == "-Wl,-version-script" ]]; then
-          # Form 2: -Wl,-version-script (file comes next)
+        elif [[ "$arg" == "-Wl,--version-script,"* ]]; then
+          # Form 2: -Wl,--version-script,file
+          new_args+=("--version-script=''${arg#-Wl,--version-script,}")
+        elif [[ "$arg" == "-Wl,-version-script" ]] || [[ "$arg" == "-Wl,--version-script" ]]; then
+          # Form 3: -Wl,-version-script or -Wl,--version-script (file comes next)
           prev_was_version_script=1
         elif [[ $prev_was_version_script -eq 1 ]]; then
           # This is the file argument
@@ -827,11 +830,11 @@
     });
 
     # experimental full Fil-C nixpkgs (original approach)
-    filpkgs = import nixpkgs {
-      inherit system;
-      config.replaceStdenv = { pkgs, ... }:
-        pkgs.overrideCC pkgs.stdenv filcc;
-    };
+    # filpkgs = import nixpkgs {
+    #   inherit system;
+    #   config.replaceStdenv = { pkgs, ... }:
+    #     pkgs.overrideCC pkgs.stdenv filcc;
+    # };
 
     # Ports: nixpkgs packages with upstream fil-c patches
     ports = import ./ports.nix {
@@ -882,6 +885,7 @@
       curl git pkgconf 
       autoconf automake libtool depizloing-nm
       ghostty-terminfo
+      util-linux
     ];
 
     filc-world = base.mkShellNoCC {
@@ -938,7 +942,7 @@
     
     # Finally, we define the package collection!
     packages.${system} = rec {
-      inherit filpkgs;
+#      inherit filpkgs;
       inherit filc0;
       inherit filc1;
       inherit filc2;
@@ -947,7 +951,6 @@
       inherit libyolo;
       inherit libpizlo;
       inherit libmojo;
-      inherit filc-xcrypt;
       inherit filc-sysroot;
       inherit filc-binutils;
       inherit filcc;
@@ -957,6 +960,9 @@
       
       # Expose port function for external flakes to define custom ports
       inherit (ports) port;
+      
+      # Demo applications
+      lighttpd-demo = base.callPackage ./httpd/demo.nix { inherit ports; };
 
       push-filcc = base.writeShellScriptBin "push-filcc" ''
         cachix push filc ${filcc}
