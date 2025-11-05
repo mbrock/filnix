@@ -698,6 +698,19 @@ rec {
 
   tcl = port [ base.tcl ];
 
+  # C99 Prolog implementation
+  trealla = port [
+    base.trealla
+    { inherit openssl; }
+    { inherit libffi; }
+    { inherit readline; }
+    { lineEditingLibrary = "readline"; }
+
+    # many fail with thwart in `bif_iso_write` hitting `isatty`.
+    # also slow
+    skipTests
+  ];
+
   tree-sitter = port [
     base.tree-sitter
     { inherit (base) installShellFiles; }

@@ -74,6 +74,7 @@ let
     strace
     shutdown-tools
     lighttpd
+    trealla # prolog
   ];
 
 in
