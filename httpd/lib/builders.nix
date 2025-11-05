@@ -5,7 +5,8 @@
     name:
     {
       deps ? [ ],
-      code,
+      code ? null,
+      src ? null,
       excludeShellChecks ? [ ],
       bashOptions ? [
         "errexit"
@@ -16,7 +17,7 @@
     pkgs.writeShellApplication {
       inherit name excludeShellChecks bashOptions;
       runtimeInputs = deps;
-      text = code;
+      text = if src != null then builtins.readFile src else code;
       derivationArgs = {
         postBuild = ''
           substituteInPlace $out/bin/${name} \
@@ -30,16 +31,19 @@
     name:
     {
       deps ? [ ],
-      code,
+      code ? null,
+      src ? null,
       lang ? "c++",
     }:
     let
       extension = if lang == "c++" then "cpp" else "c";
       compiler = if lang == "c++" then "clang++" else "clang";
+      sourceFile =
+        if src != null then src else pkgs.writeText "${name}.${extension}" code;
     in
     pkgs.stdenv.mkDerivation {
       inherit name;
-      src = pkgs.writeText "${name}.${extension}" code;
+      src = sourceFile;
       nativeBuildInputs = [ ports.filcc ];
       buildInputs = deps;
       unpackPhase = "true";

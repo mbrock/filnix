@@ -3,7 +3,8 @@
 let
   inherit (base) fetchgit;
   filc-rev = "d1f83629d6c56d1fdf6f3e207d7f06c2ef31ecda";
-in rec {
+in
+rec {
   # Minimal clang compiler only (filc0)
   filc0-src = fetchgit {
     url = "https://github.com/mbrock/fil-c";

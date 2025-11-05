@@ -1,4 +1,9 @@
-{ base, sources, filc2, libpizlo }:
+{
+  base,
+  sources,
+  filc2,
+  libpizlo,
+}:
 
 {
   # Memory-safe glibc compiled with Fil-C
@@ -6,12 +11,17 @@
     pname = "libmojo";
     version = "2.40";
     src = "${sources.user-glibc-src}/projects/user-glibc-2.40";
-    outputs = ["out"];
+    outputs = [ "out" ];
 
     enableParallelBuilding = true;
 
     nativeBuildInputs = with base; [
-      gnumake autoconf bison python3 binutils glibc.dev
+      gnumake
+      autoconf
+      bison
+      python3
+      binutils
+      glibc.dev
     ];
 
     preConfigure = ''

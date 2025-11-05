@@ -42,25 +42,31 @@ let
   };
 
   # Convert attribute set to CMake flags
-  cmakeFlags = opts: lib.mapAttrsToList (k: v:
-    let val = if lib.isBool v then (if v then "ON" else "OFF") else toString v;
-    in "-D${k}=${val}"
-  ) opts;
+  cmakeFlags =
+    opts:
+    lib.mapAttrsToList (
+      k: v:
+      let
+        val = if lib.isBool v then (if v then "ON" else "OFF") else toString v;
+      in
+      "-D${k}=${val}"
+    ) opts;
 
   # This is just a function that abstracts some common stuff
   # for doing CMake/ninja/ccache builds.
-  mkFilcLLVMBuild = {
-    pname,
-    cmakeOptions ? {},
-    cmakeSource,
-    buildDir ? "build",
-    ninjaTargets ? [],
-    installTargets ? ["install"],
-    preConfigure ? "",
-    postBuild ? "",
-    customInstall ? null,
-    meta ? {}
-  }:
+  mkFilcLLVMBuild =
+    {
+      pname,
+      cmakeOptions ? { },
+      cmakeSource,
+      buildDir ? "build",
+      ninjaTargets ? [ ],
+      installTargets ? [ "install" ],
+      preConfigure ? "",
+      postBuild ? "",
+      customInstall ? null,
+      meta ? { },
+    }:
     base.ccacheStdenv.mkDerivation {
       inherit pname meta;
       version = "git";
@@ -69,48 +75,73 @@ let
       enableParallelBuilding = true;
 
       nativeBuildInputs = with base; [
-        cmake ninja python3 git patchelf ccache lld
+        cmake
+        ninja
+        python3
+        git
+        patchelf
+        ccache
+        lld
       ];
 
-      configurePhase = let
-        allOptions = commonLLVMOptions // cmakeOptions;
-      in ''
-        export HOME=$TMPDIR
-        export HOSTNAME=nix-build
-        ${setupCcache}
+      configurePhase =
+        let
+          allOptions = commonLLVMOptions // cmakeOptions;
+        in
+        ''
+          export HOME=$TMPDIR
+          export HOSTNAME=nix-build
+          ${setupCcache}
 
-        ${preConfigure}
+          ${preConfigure}
 
-        mkdir -p ${buildDir}
-        cmake -B ${buildDir} -S ${cmakeSource} -G Ninja ${join " " (cmakeFlags allOptions)}
-      '';
+          mkdir -p ${buildDir}
+          cmake -B ${buildDir} -S ${cmakeSource} -G Ninja ${join " " (cmakeFlags allOptions)}
+        '';
 
       buildPhase = ''
         NINJA_STATUS="[B %f/%t %es] " ninja -v -C ${buildDir} ${join " " ninjaTargets}
         ${postBuild}
       '';
 
-      installPhase = if customInstall != null then customInstall else ''
-        NINJA_STATUS="[I %f/%t %es] " ninja -v -C ${buildDir} ${join " " installTargets}
-      '';
+      installPhase =
+        if customInstall != null then
+          customInstall
+        else
+          ''
+            NINJA_STATUS="[I %f/%t %es] " ninja -v -C ${buildDir} ${join " " installTargets}
+          '';
     };
 
   # Merge multiple derivations into one (layers applied in order)
-  mergeLayers = name: layers: base.runCommand name {
-    nativeBuildInputs = [base.rsync];
-  } ''
-    mkdir -p $out/{lib,include,bin}
-    ${lib.concatMapStringsSep "\n" (layer: ''
-      [ -d ${layer}/lib ] && rsync -a ${layer}/lib/ $out/lib/ || true
-      [ -d ${layer}/include ] && rsync -a ${layer}/include/ $out/include/ || true
-      [ -d ${layer}/bin ] && rsync -a ${layer}/bin/ $out/bin/ || true
-    '') layers}
-    chmod -R u+w $out
-  '';
+  mergeLayers =
+    name: layers:
+    base.runCommand name
+      {
+        nativeBuildInputs = [ base.rsync ];
+      }
+      ''
+        mkdir -p $out/{lib,include,bin}
+        ${lib.concatMapStringsSep "\n" (layer: ''
+          [ -d ${layer}/lib ] && rsync -a ${layer}/lib/ $out/lib/ || true
+          [ -d ${layer}/include ] && rsync -a ${layer}/include/ $out/include/ || true
+          [ -d ${layer}/bin ] && rsync -a ${layer}/bin/ $out/bin/ || true
+        '') layers}
+        chmod -R u+w $out
+      '';
 
   # Add nixpkgs libc contract metadata to a sysroot
-  addLibcMetadata = sysroot: { dynamicLinker, crts ? ["crt1.o" "crti.o" "crtn.o"] }:
-    base.runCommand "${sysroot.name}-with-metadata" {} ''
+  addLibcMetadata =
+    sysroot:
+    {
+      dynamicLinker,
+      crts ? [
+        "crt1.o"
+        "crti.o"
+        "crtn.o"
+      ],
+    }:
+    base.runCommand "${sysroot.name}-with-metadata" { } ''
       cp -r ${sysroot} $out
       chmod -R u+w $out
       mkdir -p $out/nix-support
@@ -120,9 +151,16 @@ let
       '') crts}
     '';
 
-in {
+in
+{
   inherit lib join;
-  inherit gcc llvm llvmMajor targetPlatform gcc-lib;
+  inherit
+    gcc
+    llvm
+    llvmMajor
+    targetPlatform
+    gcc-lib
+    ;
   inherit setupCcache commonLLVMOptions cmakeFlags;
   inherit mkFilcLLVMBuild mergeLayers addLibcMetadata;
 

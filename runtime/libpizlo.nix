@@ -1,9 +1,18 @@
-{ base, lib, sources, filc1-runtime, libyolo-glibc, libyolo, filc-stdfil-headers }:
+{
+  base,
+  lib,
+  sources,
+  filc1-runtime,
+  libyolo-glibc,
+  libyolo,
+  filc-stdfil-headers,
+}:
 
 let
   inherit (lib) setupCcache base-clang;
 
-in rec {
+in
+rec {
 
   # Build libpizlo (Fil-C runtime library - GC + memory safety)
   # Use the original Makefile - it knows which files to build
@@ -12,7 +21,13 @@ in rec {
     version = "git";
     src = sources.libpas-src;
 
-    nativeBuildInputs = [base.gnumake base.ruby base-clang filc1-runtime base.ccache];
+    nativeBuildInputs = [
+      base.gnumake
+      base.ruby
+      base-clang
+      filc1-runtime
+      base.ccache
+    ];
 
     preConfigure = ''
       cd libpas

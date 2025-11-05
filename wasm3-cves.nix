@@ -13,14 +13,21 @@ let
     sha256 = "sha256-L53OS5YiySPa0wZEqJxX1ineFw1XS4mvTEqglsdkNX0=";
   };
 
-  cve-tests = pkgs.runCommand "wasm3-cve-tests" {
-    nativeBuildInputs = [ pkgs.gzip pkgs.unzip ];
-  } ''
-    mkdir -p $out
-    gunzip -c ${cve-2022-39974-gz} > $out/cve-2022-39974.wasm
-    unzip -p ${cve-2022-34529-zip} poc.wasm > $out/cve-2022-34529.wasm
-  '';
+  cve-tests =
+    pkgs.runCommand "wasm3-cve-tests"
+      {
+        nativeBuildInputs = [
+          pkgs.gzip
+          pkgs.unzip
+        ];
+      }
+      ''
+        mkdir -p $out
+        gunzip -c ${cve-2022-39974-gz} > $out/cve-2022-39974.wasm
+        unzip -p ${cve-2022-34529-zip} poc.wasm > $out/cve-2022-34529.wasm
+      '';
 
-in {
+in
+{
   inherit cve-tests;
 }

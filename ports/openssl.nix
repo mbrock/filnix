@@ -3,7 +3,14 @@
 # It was easier to get this working without all of nixpkgs special stuff.
 # But maybe now that I figured out the version script issues,
 # we can use the nixpkgs openssl derivation with some patching.
-{ lib, fetchurl, perl, pkg-config, stdenv, zlib }:
+{
+  lib,
+  fetchurl,
+  perl,
+  pkg-config,
+  stdenv,
+  zlib,
+}:
 
 stdenv.mkDerivation rec {
   pname = "openssl";
@@ -14,23 +21,26 @@ stdenv.mkDerivation rec {
     hash = "sha256-d3zVlihMiDN1oqehG/XSeG/FQTJV76sgxQ1v/m0CC34=";
   };
 
-  patches = [ 
-    ./patch/openssl-3.3.1.patch 
+  patches = [
+    ./patch/openssl-3.3.1.patch
   ];
 
-  outputs = [ "out" "dev" "bin" 
+  outputs = [
+    "out"
+    "dev"
+    "bin"
     # "man"
   ];
-  setOutputFlags = false;  # Don't let stdenv add --bindir/--libdir flags
+  setOutputFlags = false; # Don't let stdenv add --bindir/--libdir flags
 
-  nativeBuildInputs = [perl];
-  buildInputs = [zlib];
+  nativeBuildInputs = [ perl ];
+  buildInputs = [ zlib ];
 
   postPatch = ''
     patchShebangs Configure config
   '';
 
-  configurePlatforms = [];
+  configurePlatforms = [ ];
   dontAddStaticConfigureFlags = true;
   configureScript = "./config";
 
@@ -54,7 +64,10 @@ stdenv.mkDerivation rec {
   doCheck = false;
 
   # skip man pages, takes a long time and you already have them
-  installTargets = [ "install_sw" "install_ssldirs" ];
+  installTargets = [
+    "install_sw"
+    "install_ssldirs"
+  ];
 
   postInstall = ''
     mkdir -p $bin

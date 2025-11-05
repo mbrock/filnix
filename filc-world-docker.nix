@@ -1,4 +1,10 @@
-{ base, ports, world-pkgs, dank-bashrc, ghostty-terminfo }:
+{
+  base,
+  ports,
+  world-pkgs,
+  dank-bashrc,
+  ghostty-terminfo,
+}:
 
 let
   world-env = base.buildEnv {
@@ -14,7 +20,12 @@ base.dockerTools.streamLayeredImage {
   contents = [ world-env ];
 
   config = {
-    Cmd = [ "${ports.bash}/bin/bash" "--rcfile" "/root/.bashrc" "-i" ];
+    Cmd = [
+      "${ports.bash}/bin/bash"
+      "--rcfile"
+      "/root/.bashrc"
+      "-i"
+    ];
     Env = [
       "PATH=${world-env}/bin"
       "TERMINFO_DIRS=${ghostty-terminfo}/share/terminfo"
@@ -26,9 +37,9 @@ base.dockerTools.streamLayeredImage {
   };
 
   extraCommands = ''
-    mkdir -p root
-    cat > root/.bashrc <<'EOF'
-${builtins.readFile dank-bashrc}
-EOF
+        mkdir -p root
+        cat > root/.bashrc <<'EOF'
+    ${builtins.readFile dank-bashrc}
+    EOF
   '';
 }

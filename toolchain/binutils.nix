@@ -25,7 +25,7 @@
       url = "mirror://gnu/binutils/binutils-${version}.tar.bz2";
       hash = "sha256-vsqsXSleA3WHtjpC+tV/49nXuD9HjrJLZ/nuxdDxhy8=";
     };
-    patches = (old.patches or []) ++ [
+    patches = (old.patches or [ ]) ++ [
       # I split this up into two patches just for clarity
       # and for testing various things, but we just apply both
       # now anyway.
@@ -33,13 +33,15 @@
       ../binutils-other-fixes.patch
     ];
 
-    nativeBuildInputs = old.nativeBuildInputs ++ (with base; [
-      texinfo
-      autoconf269
-      automake
-      libtool
-      gettext
-    ]);
+    nativeBuildInputs =
+      old.nativeBuildInputs
+      ++ (with base; [
+        texinfo
+        autoconf269
+        automake
+        libtool
+        gettext
+      ]);
 
     # The patch changes some .am files so we need to autoreconf.
     # I do it just in the affected directories cuz I had some issues

@@ -1,4 +1,10 @@
-{ base, sources, filc2, libpizlo, libmojo }:
+{
+  base,
+  sources,
+  filc2,
+  libpizlo,
+  libmojo,
+}:
 
 {
   filc-xcrypt = base.stdenv.mkDerivation {
@@ -8,7 +14,13 @@
     enableParallelBuilding = true;
 
     nativeBuildInputs = with base; [
-      gnumake automake116x autoconf libtool binutils perl python3
+      gnumake
+      automake116x
+      autoconf
+      libtool
+      binutils
+      perl
+      python3
     ];
 
     preConfigure = ''

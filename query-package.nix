@@ -3,53 +3,68 @@
 pkgs: packageName:
 
 let
-  
-  extractInput = x: 
-    if builtins.isPath x then {
-      type = "setup-hook";
-      path = builtins.baseNameOf (builtins.toString x);
-      fullPath = builtins.toString x;
-    }
-    else if builtins.isAttrs x then {
-      type = "derivation";
-      name = x.pname or x.name or "unnamed";
-    }
-    else if builtins.isString x then {
-      type = "string";
-      value = x;
-    }
-    else {
-      type = "unknown";
-      typeOf = builtins.typeOf x;
-    };
-  
+
+  extractInput =
+    x:
+    if builtins.isPath x then
+      {
+        type = "setup-hook";
+        path = builtins.baseNameOf (builtins.toString x);
+        fullPath = builtins.toString x;
+      }
+    else if builtins.isAttrs x then
+      {
+        type = "derivation";
+        name = x.pname or x.name or "unnamed";
+      }
+    else if builtins.isString x then
+      {
+        type = "string";
+        value = x;
+      }
+    else
+      {
+        type = "unknown";
+        typeOf = builtins.typeOf x;
+      };
+
   # Extract list-like attributes safely
-  extractList = pkg: attr: 
-    let val = pkg.${attr} or null;
-    in if val == null then []
-       else if builtins.isList val then val
-       else [val];
-  
+  extractList =
+    pkg: attr:
+    let
+      val = pkg.${attr} or null;
+    in
+    if val == null then
+      [ ]
+    else if builtins.isList val then
+      val
+    else
+      [ val ];
+
   # Extract NIX_ environment variables
-  extractNixVars = pkg:
+  extractNixVars =
+    pkg:
     let
       allAttrs = builtins.attrNames pkg;
-      nixAttrs = builtins.filter (name: 
-        builtins.substring 0 4 name == "NIX_"
+      nixAttrs = builtins.filter (
+        name: builtins.substring 0 4 name == "NIX_"
       ) allAttrs;
-    in builtins.listToAttrs (map (name: { 
-      name = name; 
-      value = pkg.${name}; 
-    }) nixAttrs);
-  
+    in
+    builtins.listToAttrs (
+      map (name: {
+        name = name;
+        value = pkg.${name};
+      }) nixAttrs
+    );
+
   # Extract derivation structure
   extractDerivation = pkg: {
     type = pkg.type or null;
     system = pkg.system or null;
     builder = builtins.toString (pkg.builder or "");
-    args = pkg.args or [];
+    args = pkg.args or [ ];
     drvPath = pkg.drvPath or null;
-    
+
     # Custom build phases (if defined)
     phases = {
       preConfigure = pkg.preConfigure or null;
@@ -66,61 +81,75 @@ let
       postFixup = pkg.postFixup or null;
     };
   };
-  
+
   # Get function arguments from package definition
-  getFunctionArgs = pkg:
+  getFunctionArgs =
+    pkg:
     let
       position = pkg.meta.position or "";
-      filePath = if position != "" then 
-        builtins.head (builtins.split ":" position)
-      else null;
+      filePath =
+        if position != "" then builtins.head (builtins.split ":" position) else null;
       pkgFunc = if filePath != null then import filePath else null;
-    in if pkgFunc != null then builtins.functionArgs pkgFunc else {};
-  
+    in
+    if pkgFunc != null then builtins.functionArgs pkgFunc else { };
+
   # Format function args as required/optional
-  formatArgs = args:
+  formatArgs =
+    args:
     let
-      required = builtins.filter (name: args.${name} == false) (builtins.attrNames args);
-      optional = builtins.filter (name: args.${name} == true) (builtins.attrNames args);
-    in { inherit required optional; };
-  
+      required = builtins.filter (name: args.${name} == false) (
+        builtins.attrNames args
+      );
+      optional = builtins.filter (name: args.${name} == true) (
+        builtins.attrNames args
+      );
+    in
+    {
+      inherit required optional;
+    };
+
   # Extract relative path from nix store position
-  extractPath = position:
+  extractPath =
+    position:
     let
       parts = builtins.split "-source/" position;
       hasSource = builtins.length parts > 1;
       afterSource = if hasSource then builtins.elemAt parts 2 else "";
       pathParts = builtins.split ":" afterSource;
-    in if afterSource != "" then builtins.head pathParts else "";
-  
-  pkg = pkgs.${packageName} or (throw "Package '${packageName}' not found in nixpkgs");
+    in
+    if afterSource != "" then builtins.head pathParts else "";
+
+  pkg =
+    pkgs.${packageName} or (throw "Package '${packageName}' not found in nixpkgs");
   position = pkg.meta.position or "";
   args = getFunctionArgs pkg;
 
   # Extract source info separately first
   s = pkg.src or null;
   srcName = if s != null then s.name else null;
-  srcUrls = if s != null then (s.urls or (if s ? url then [s.url] else [])) else [];
+  srcUrls =
+    if s != null then (s.urls or (if s ? url then [ s.url ] else [ ])) else [ ];
   srcHash = if s != null then (s.outputHash or null) else null;
   srcOutPath = if s != null then "${s}" else null;
 
-in {
+in
+{
   # Basic info
   name = packageName;
   version = pkg.version or "unknown";
   pname = pkg.pname or packageName;
   path = extractPath position;
-  
+
   # Function signature
   functionArgs = formatArgs args;
-  
+
   # Build inputs (with structured types)
   buildInputs = {
-    native = map extractInput (pkg.nativeBuildInputs or []);
-    build = map extractInput (pkg.buildInputs or []);
-    propagated = map extractInput (pkg.propagatedBuildInputs or []);
+    native = map extractInput (pkg.nativeBuildInputs or [ ]);
+    build = map extractInput (pkg.buildInputs or [ ]);
+    propagated = map extractInput (pkg.propagatedBuildInputs or [ ]);
   };
-  
+
   # Build configuration
   buildConfig = {
     configureFlags = extractList pkg "configureFlags";
@@ -129,44 +158,50 @@ in {
     mesonFlags = extractList pkg "mesonFlags";
     patches = map builtins.toString (extractList pkg "patches");
   };
-  
+
   # Build flags
   buildFlags = {
-    outputs = pkg.outputs or ["out"];
+    outputs = pkg.outputs or [ "out" ];
     doCheck = pkg.doCheck or null;
     doInstallCheck = pkg.doInstallCheck or null;
     enableParallelBuilding = pkg.enableParallelBuilding or null;
     enableParallelChecking = pkg.enableParallelChecking or null;
     separateDebugInfo = pkg.separateDebugInfo or null;
     strictDeps = pkg.strictDeps or null;
-    hardeningDisable = pkg.hardeningDisable or [];
+    hardeningDisable = pkg.hardeningDisable or [ ];
   };
-  
+
   # NIX environment variables
   nixVars = extractNixVars pkg;
-  
+
   # Derivation structure (how it's actually built)
   derivation = extractDerivation pkg;
-  
+
   # Metadata
   meta = {
     description = pkg.meta.description or null;
     homepage = pkg.meta.homepage or null;
-    license = 
+    license =
       if pkg.meta ? license then
         if builtins.isAttrs pkg.meta.license then
           pkg.meta.license.shortName or pkg.meta.license.spdxId or "unknown"
-        else pkg.meta.license
-      else null;
+        else
+          pkg.meta.license
+      else
+        null;
     mainProgram = pkg.meta.mainProgram or null;
     position = position;
   };
-  
+
   # Source information
-  src = if s != null then {
-    name = srcName;
-    urls = srcUrls;
-    hash = srcHash;
-    storePath = srcOutPath;
-  } else null;
+  src =
+    if s != null then
+      {
+        name = srcName;
+        urls = srcUrls;
+        hash = srcHash;
+        storePath = srcOutPath;
+      }
+    else
+      null;
 }

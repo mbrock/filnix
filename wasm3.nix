@@ -1,4 +1,10 @@
-{ stdenv, lib, fetchgit, cmake, ninja }:
+{
+  stdenv,
+  lib,
+  fetchgit,
+  cmake,
+  ninja,
+}:
 
 stdenv.mkDerivation {
   pname = "wasm3";
@@ -12,7 +18,10 @@ stdenv.mkDerivation {
 
   enableParallelBuilding = true;
 
-  nativeBuildInputs = [ cmake ninja ];
+  nativeBuildInputs = [
+    cmake
+    ninja
+  ];
 
   cmakeFlags = [
     "-DBUILD_WASI=simple"

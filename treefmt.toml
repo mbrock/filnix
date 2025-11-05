@@ -1,0 +1,4 @@
+[formatter.nixfmt-rfc-style]
+command = "nixfmt"
+options = ["-w", "80"]
+includes = ["*.nix"]

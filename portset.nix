@@ -42,7 +42,10 @@ rec {
   openssl = port [
     (base.callPackage ./ports/openssl.nix { })
     { inherit zlib; }
-    (patch ("${base.path}/pkgs/development/libraries" + "/openssl/3.0/nix-ssl-cert-file.patch"))
+    (patch (
+      "${base.path}/pkgs/development/libraries"
+      + "/openssl/3.0/nix-ssl-cert-file.patch"
+    ))
   ];
 
   libevent = port [
@@ -127,7 +130,9 @@ rec {
 
   bison = port [
     base.bison
-    (src "3.8.2" (gnu "bison") "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I=")
+    (src "3.8.2" (gnu "bison")
+      "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I="
+    )
     (patch ./ports/patch/bison-3.8.2.patch)
     { m4 = gnum4; }
     skipTests
@@ -198,7 +203,9 @@ rec {
 
   diffutils = port [
     base.diffutils
-    (src "3.10" (gnu "diffutils") "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=")
+    (src "3.10" (gnu "diffutils")
+      "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4="
+    )
     (patch ./ports/patch/diffutils-3.10.patch)
     { inherit coreutils; }
     (tool base.perl)
@@ -283,7 +290,9 @@ rec {
 
   gnumake = port [
     base.gnumake
-    (src "4.4.1" (gnuTarGz "make") "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M=")
+    (src "4.4.1" (gnuTarGz "make")
+      "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M="
+    )
     (patch ./ports/patch/make-4.4.1.patch)
     { guileSupport = false; }
   ];
@@ -475,8 +484,14 @@ rec {
     (configure "--with-krb5")
   ];
 
-  lua = base.callPackage ./ports/lua.nix { 
-    inherit filenv filcc ncurses readline base;
+  lua = base.callPackage ./ports/lua.nix {
+    inherit
+      filenv
+      filcc
+      ncurses
+      readline
+      base
+      ;
   };
 
   m4 = gnum4;
@@ -551,10 +566,12 @@ rec {
     parallelize
   ];
 
-  pkgconf = base.callPackage (base.path + "/pkgs/build-support/pkg-config-wrapper") {
-    pkg-config = pkgconf-unwrapped;
-    baseBinName = "pkgconf";
-  };
+  pkgconf =
+    base.callPackage (base.path + "/pkgs/build-support/pkg-config-wrapper")
+      {
+        pkg-config = pkgconf-unwrapped;
+        baseBinName = "pkgconf";
+      };
 
   python3 = port [
     base.python3
@@ -667,10 +684,10 @@ rec {
   ];
 
   wasm3 = port [
-    (base.callPackage ./wasm3.nix {})
+    (base.callPackage ./wasm3.nix { })
   ];
 
   kittydoom = port [
-    (base.callPackage ./kitty-doom.nix {})
+    (base.callPackage ./kitty-doom.nix { })
   ];
 }
