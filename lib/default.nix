@@ -1,14 +1,14 @@
-{ base }:
+{ pkgs }:
 
 let
-  lib = base.lib;
+  lib = pkgs.lib;
   join = lib.concatStringsSep;
 
   # Toolchain versions
-  gcc = base.gcc14;
-  llvm = base.llvmPackages_20;
+  gcc = pkgs.gcc14;
+  llvm = pkgs.llvmPackages_20;
   llvmMajor = lib.versions.major llvm.release_version;
-  targetPlatform = base.stdenv.targetPlatform.config;
+  targetPlatform = pkgs.stdenv.targetPlatform.config;
   gcc-lib = "${gcc.cc}/lib/gcc/${targetPlatform}/${gcc.version}";
 
   # Standard ccache setup for all builds
@@ -67,14 +67,14 @@ let
       customInstall ? null,
       meta ? { },
     }:
-    base.ccacheStdenv.mkDerivation {
+    pkgs.ccacheStdenv.mkDerivation {
       inherit pname meta;
       version = "git";
 
       # Let Nix decide how many cores to use.
       enableParallelBuilding = true;
 
-      nativeBuildInputs = with base; [
+      nativeBuildInputs = with pkgs; [
         cmake
         ninja
         python3
@@ -116,9 +116,9 @@ let
   # Merge multiple derivations into one (layers applied in order)
   mergeLayers =
     name: layers:
-    base.runCommand name
+    pkgs.runCommand name
       {
-        nativeBuildInputs = [ base.rsync ];
+        nativeBuildInputs = [ pkgs.rsync ];
       }
       ''
         mkdir -p $out/{lib,include,bin}
@@ -141,7 +141,7 @@ let
         "crtn.o"
       ],
     }:
-    base.runCommand "${sysroot.name}-with-metadata" { } ''
+    pkgs.runCommand "${sysroot.name}-with-metadata" { } ''
       cp -r ${sysroot} $out
       chmod -R u+w $out
       mkdir -p $out/nix-support
@@ -166,9 +166,9 @@ in
 
   # Define a version of the host Clang that doesn't have any
   # automatic stuff, to build libpizlo in a clean and consistent way.
-  clang-rsrc = base.lib.getLib llvm.clang.cc;
-  clang-include = "${base.lib.getLib llvm.clang.cc}/lib/clang/${llvmMajor}/include";
-  base-clang = base.writeShellScriptBin "clang" ''
-    exec ${llvm.clang.cc}/bin/clang -isystem ${base.lib.getLib llvm.clang.cc}/lib/clang/${llvmMajor}/include "$@"
+  clang-rsrc = pkgs.lib.getLib llvm.clang.cc;
+  clang-include = "${pkgs.lib.getLib llvm.clang.cc}/lib/clang/${llvmMajor}/include";
+  base-clang = pkgs.writeShellScriptBin "clang" ''
+    exec ${llvm.clang.cc}/bin/clang -isystem ${pkgs.lib.getLib llvm.clang.cc}/lib/clang/${llvmMajor}/include "$@"
   '';
 }

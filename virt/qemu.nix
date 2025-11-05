@@ -1,16 +1,16 @@
 {
-  base,
+  pkgs,
   ports,
   world-pkgs,
 }:
 
 let
-  common = import ./common.nix { inherit base ports; };
+  common = import ./common.nix { inherit pkgs ports; };
   inherit (common) ghostty-terminfo dank-bashrc lighttpd-demo;
 
   # Minimal headless QEMU without GUI dependencies
   qemu-headless = (
-    base.qemu_kvm.override {
+    pkgs.qemu_kvm.override {
       hostCpuOnly = true; # Only build for host CPU architecture
       gtkSupport = false;
       sdlSupport = false;
@@ -37,7 +37,7 @@ let
     import ./core.nix
       {
         inherit
-          base
+          pkgs
           ports
           world-pkgs
           dank-bashrc
@@ -52,22 +52,22 @@ let
 
   inherit (core) env mkRootfsScript;
 
-  kernel = base.linuxPackages_latest.kernel.override {
+  kernel = pkgs.linuxPackages_latest.kernel.override {
     ignoreConfigErrors = true;
     autoModules = false;
 
-    structuredExtraConfig = with base.lib.kernel; {
+    structuredExtraConfig = with pkgs.lib.kernel; {
       VIRTIO = yes;
       VIRTIO_MENU = yes;
       VIRTIO_PCI = yes;
       VIRTIO_PCI_LIB = yes;
       VIRTIO_BLK = yes;
-      MODVERSIONS = base.lib.mkForce no;
+      MODVERSIONS = pkgs.lib.mkForce no;
     };
   };
 
   # Script that builds the rootfs and creates a disk image
-  imageBuilder = base.writeShellScript "build-filc-qemu-image" ''
+  imageBuilder = pkgs.writeShellScript "build-filc-qemu-image" ''
     set -euo pipefail
 
     output="''${1:-filc-rootfs.img}"
@@ -86,42 +86,42 @@ let
     ${mkRootfsScript "$rootfs"}
 
     # Calculate actual size needed (with 20% overhead)
-    actual_size=$(${base.coreutils}/bin/du -sb "$rootfs" | ${base.coreutils}/bin/cut -f1)
+    actual_size=$(${pkgs.coreutils}/bin/du -sb "$rootfs" | ${pkgs.coreutils}/bin/cut -f1)
     size_with_overhead=$((actual_size * 120 / 100))
     echo "Rootfs size: $actual_size bytes (allocating $size_with_overhead bytes with overhead)"
 
     # Create raw disk image
     echo "Creating raw ext4 disk image..."
-    ${base.coreutils}/bin/truncate -s "$size_with_overhead" "$output"
+    ${pkgs.coreutils}/bin/truncate -s "$size_with_overhead" "$output"
 
     # Format as ext4
-    ${base.e2fsprogs}/bin/mkfs.ext4 -q -L filc-root "$output"
+    ${pkgs.e2fsprogs}/bin/mkfs.ext4 -q -L filc-root "$output"
 
     # Mount and copy rootfs
     echo "Copying rootfs to disk..."
     mnt="$workdir/mnt"
     mkdir -p "$mnt"
-    sudo ${base.util-linux}/bin/mount -o loop "$output" "$mnt"
-    trap 'sudo ${base.util-linux}/bin/umount "$mnt" 2>/dev/null || true; chmod -R +w "$workdir" 2>/dev/null || true; rm -rf "$workdir"' EXIT
+    sudo ${pkgs.util-linux}/bin/mount -o loop "$output" "$mnt"
+    trap 'sudo ${pkgs.util-linux}/bin/umount "$mnt" 2>/dev/null || true; chmod -R +w "$workdir" 2>/dev/null || true; rm -rf "$workdir"' EXIT
 
-    sudo ${base.rsync}/bin/rsync -a "$rootfs/" "$mnt/"
-    sudo ${base.util-linux}/bin/umount "$mnt"
+    sudo ${pkgs.rsync}/bin/rsync -a "$rootfs/" "$mnt/"
+    sudo ${pkgs.util-linux}/bin/umount "$mnt"
 
     echo "Disk image created: $output"
-    ${base.coreutils}/bin/ls -lh "$output"
+    ${pkgs.coreutils}/bin/ls -lh "$output"
     echo
     echo "To compress for distribution:"
     echo "  ${qemu-headless}/bin/qemu-img convert -f raw -O qcow2 -c $output ''${output%.img}.qcow2"
   '';
 
 in
-base.buildEnv {
+pkgs.buildEnv {
   name = "filc-qemu";
   paths = [
-    (base.writeShellScriptBin "build-filc-qemu-image" ''
+    (pkgs.writeShellScriptBin "build-filc-qemu-image" ''
       exec ${imageBuilder} "$@"
     '')
-    (base.writeShellScriptBin "run-filc-qemu" ''
+    (pkgs.writeShellScriptBin "run-filc-qemu" ''
       set -euo pipefail
 
       disk="''${1:-/tmp/filc.img}"

@@ -1,12 +1,13 @@
 {
-  base,
-  lib,
-  sources,
+  pkgs,
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
+  sources = import ../lib/sources.nix { inherit pkgs; };
+
   inherit (lib) setupCcache;
-  stdlib = base.lib;
+  stdlib = pkgs.lib;
 
   cmakeFlags =
     lib.cmakeFlags or (
@@ -25,14 +26,14 @@ in
   # This is the basic Fil-C Clang LLVM build.
   # It produces a bare compiler without Fil-C runtime.
   # Uses pinned source and inlined build logic to avoid casual rebuilds.
-  filc0 = base.ccacheStdenv.mkDerivation {
+  filc0 = pkgs.ccacheStdenv.mkDerivation {
     pname = "filc0";
     version = "git";
     src = sources.filc0-src;
 
     enableParallelBuilding = true;
 
-    nativeBuildInputs = with base; [
+    nativeBuildInputs = with pkgs; [
       cmake
       ninja
       python3

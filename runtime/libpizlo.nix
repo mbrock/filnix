@@ -1,29 +1,29 @@
 {
-  base,
-  lib,
-  sources,
+  pkgs,
   filc,
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
+  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) setupCcache base-clang;
 
 in
-rec {
+{
 
   # Build libpizlo (Fil-C runtime library - GC + memory safety)
   # Use the original Makefile - it knows which files to build
-  libpizlo = base.stdenv.mkDerivation {
+  libpizlo = pkgs.stdenv.mkDerivation {
     pname = "libpizlo";
     version = "git";
     src = sources.libpas-src;
 
     nativeBuildInputs = [
-      base.gnumake
-      base.ruby
+      pkgs.gnumake
+      pkgs.ruby
       base-clang
       filc
-      base.ccache
+      pkgs.ccache
     ];
 
     preConfigure = ''
@@ -33,7 +33,7 @@ rec {
       export FILC_CLANG="${filc}/bin/clang"
       # These env vars are for the Makefile to find libraries/headers
       export FILC_YOLO_INCLUDE="${filc.libyolo-impl}/include"
-      export FILC_OS_INCLUDE="${base.linuxHeaders}/include"
+      export FILC_OS_INCLUDE="${pkgs.linuxHeaders}/include"
       export FILC_STDFIL_INCLUDE="${sources.libpas-src}/filc/include"
       export FILC_INCLUDE_DIR="${filc.libyolo-impl}/include"
       export FILC_YOLO_LIB_DIR="${filc.libyolo}/lib"
@@ -49,7 +49,7 @@ rec {
 
     buildPhase = ''
       mkdir -p build
-      ${base.ruby}/bin/ruby src/libpas/generate_pizlonated_forwarders.rb src/libpas/filc_native.h
+      ${pkgs.ruby}/bin/ruby src/libpas/generate_pizlonated_forwarders.rb src/libpas/filc_native.h
       make -j$NIX_BUILD_CORES FILCFLAGS="-O3 -g -W -Werror -Wno-unused-command-line-argument -MD -I../filc/include"
     '';
 

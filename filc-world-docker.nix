@@ -1,5 +1,5 @@
 {
-  base,
+  pkgs,
   ports,
   world-pkgs,
   dank-bashrc,
@@ -7,12 +7,12 @@
 }:
 
 let
-  world-env = base.buildEnv {
+  world-env = pkgs.buildEnv {
     name = "filc-world";
     paths = world-pkgs;
   };
 in
-base.dockerTools.streamLayeredImage {
+pkgs.dockerTools.streamLayeredImage {
   name = "filc-world";
   tag = "latest";
   architecture = "amd64";

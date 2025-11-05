@@ -1,5 +1,5 @@
 {
-  base,
+  pkgs,
   toolchain,
   ports,
 }:
@@ -7,12 +7,12 @@
 let
   inherit (toolchain) filcc filc-aliases;
 
-  ghostty-terminfo = base.runCommand "ghostty-terminfo" { } ''
+  ghostty-terminfo = pkgs.runCommand "ghostty-terminfo" { } ''
     mkdir -p $out/share/terminfo
-    ${base.ncurses}/bin/tic -x -o $out/share/terminfo ${../ghostty.terminfo}
+    ${pkgs.ncurses}/bin/tic -x -o $out/share/terminfo ${../ghostty.terminfo}
   '';
 
-  dank-bashrc = base.writeText "dank-bashrc" ''
+  dank-bashrc = pkgs.writeText "dank-bashrc" ''
     echo
     tput bold
     figlet -f fender "Fil-C" | sed 's/^/   /' | clolcat -f | head -n-1
@@ -30,12 +30,12 @@ let
 
   shutdown-tools =
     let
-      shutdown-bin = base.writeShellScriptBin "shutdown" ''
+      shutdown-bin = pkgs.writeShellScriptBin "shutdown" ''
         sync
         kill -CONT 1
       '';
     in
-    base.runCommand "shutdown-tools" {} ''
+    pkgs.runCommand "shutdown-tools" { } ''
       mkdir -p $out/bin
       ln -s ${shutdown-bin}/bin/shutdown $out/bin/poweroff
       ln -s ${shutdown-bin}/bin/shutdown $out/bin/halt
@@ -98,7 +98,7 @@ let
 
 in
 rec {
-  filc-world = base.mkShellNoCC {
+  filc-world = pkgs.mkShellNoCC {
     name = "filc-world";
     buildInputs = world-pkgs;
     shellHook = ''
@@ -109,11 +109,11 @@ rec {
   # This shell gives you a pure PATH with nothing from your system!
   filc-world-shell =
     let
-      env = base.buildEnv {
+      env = pkgs.buildEnv {
         name = "filc-world";
         paths = world-pkgs;
       };
-      pure-dank-bashrc = base.writeText "pure-dank-bashrc" ''
+      pure-dank-bashrc = pkgs.writeText "pure-dank-bashrc" ''
         export PATH="${env}/bin"
         export TERMINFO_DIRS="${ghostty-terminfo}/share/terminfo"
         export PS1='\[\033[1;32m\][filc]\[\033[0m\] \w \$ '
@@ -122,12 +122,9 @@ rec {
         source ${dank-bashrc}
       '';
     in
-    base.writeShellScriptBin "filc-world-shell" ''
+    pkgs.writeShellScriptBin "filc-world-shell" ''
       exec ${ports.bash}/bin/bash --rcfile ${pure-dank-bashrc} --noprofile
     '';
-
-  # Legacy alias
-  pure = filc-world;
 
   inherit world-pkgs;
 }

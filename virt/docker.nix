@@ -1,18 +1,18 @@
 {
-  base,
+  pkgs,
   ports,
   world-pkgs,
 }:
 
 let
-  common = import ./common.nix { inherit base ports; };
+  common = import ./common.nix { inherit pkgs ports; };
   inherit (common) ghostty-terminfo dank-bashrc lighttpd-demo;
 
   core =
     import ./core.nix
       {
         inherit
-          base
+          pkgs
           ports
           world-pkgs
           dank-bashrc
@@ -28,7 +28,7 @@ let
   inherit (core) env mkDockerExtraCommands;
 
 in
-base.dockerTools.streamLayeredImage {
+pkgs.dockerTools.streamLayeredImage {
   name = "filc-runit";
   tag = "latest";
   architecture = "amd64";

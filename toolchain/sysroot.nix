@@ -1,12 +1,17 @@
 {
-  base,
-  lib,
+  pkgs,
   filc,
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
   inherit (lib) mergeLayers addLibcMetadata;
-  inherit (filc) yolo-glibc libpizlo filc-glibc filc-libcxx;
+  inherit (filc)
+    yolo-glibc
+    libpizlo
+    filc-glibc
+    filc-libcxx
+    ;
 
 in
 addLibcMetadata

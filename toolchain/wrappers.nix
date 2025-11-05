@@ -1,12 +1,12 @@
 {
-  base,
-  lib,
+  pkgs,
   filc,
   filc-sysroot,
   filc-binutils,
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
   inherit (lib) setupCcache;
   inherit (filc) filc-libcxx filc-glibc;
   filc3xx = filc;
@@ -15,7 +15,7 @@ let
   # ccache wrapper with version script handling
   filcache =
     flavor:
-    base.writeShellScriptBin ("ccache-${flavor}") ''
+    pkgs.writeShellScriptBin ("ccache-${flavor}") ''
       ${setupCcache}
 
       # Fil-C Clang driver has special version script handling.
@@ -51,12 +51,12 @@ let
         fi
       done
 
-      exec ${base.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "''${new_args[@]}"
+      exec ${pkgs.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "''${new_args[@]}"
     '';
 
   filcache-tranquil =
     flavor:
-    base.writeShellScriptBin ("ccache-${flavor}") ''
+    pkgs.writeShellScriptBin ("ccache-${flavor}") ''
       ${setupCcache}
 
       # Fil-C Clang driver has special version script handling.
@@ -92,24 +92,24 @@ let
         fi
       done
 
-      exec ${base.ccache}/bin/ccache ${filc3xx-tranquil}/bin/${flavor} "''${new_args[@]}"
+      exec ${pkgs.ccache}/bin/ccache ${filc3xx-tranquil}/bin/${flavor} "''${new_args[@]}"
     '';
 
 in
 rec {
-  filc-cc = base.runCommand "filc-cc" { } ''
+  filc-cc = pkgs.runCommand "filc-cc" { } ''
     mkdir -p $out/bin
     ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
     ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/clang++
   '';
 
-  filc-cc-tranquil = base.runCommand "filc-cc" { } ''
+  filc-cc-tranquil = pkgs.runCommand "filc-cc" { } ''
     mkdir -p $out/bin
     ln -s ${filcache-tranquil "clang"}/bin/ccache-clang $out/bin/clang
     ln -s ${filcache-tranquil "clang++"}/bin/ccache-clang++ $out/bin/clang++
   '';
 
-  filc-bintools = base.wrapBintoolsWith {
+  filc-bintools = pkgs.wrapBintoolsWith {
     bintools = filc-binutils;
     libc = filc-sysroot;
     defaultHardeningFlags = [ ];
@@ -121,7 +121,7 @@ rec {
     '';
   };
 
-  filcc = base.wrapCCWith {
+  filcc = pkgs.wrapCCWith {
     cc = filc-cc;
     libc = filc-sysroot;
     libcxx = filc-libcxx;
@@ -134,7 +134,7 @@ rec {
     '';
   };
 
-  filcc-tranquil = base.wrapCCWith {
+  filcc-tranquil = pkgs.wrapCCWith {
     cc = filc-cc-tranquil;
     libc = filc-sysroot;
     libcxx = filc-libcxx;
@@ -147,14 +147,14 @@ rec {
     '';
   };
 
-  filc-aliases = base.runCommand "filc-aliases" { } ''
+  filc-aliases = pkgs.runCommand "filc-aliases" { } ''
     mkdir -p $out/bin
     ln -s ${filcc}/bin/clang $out/bin/filc
     ln -s ${filcc}/bin/clang++ $out/bin/filc++
   '';
 
-  filenv = base.overrideCC base.stdenv filcc;
-  filenv-tranquil = base.overrideCC base.stdenv filcc-tranquil;
+  filenv = pkgs.overrideCC pkgs.stdenv filcc;
+  filenv-tranquil = pkgs.overrideCC pkgs.stdenv filcc-tranquil;
 
   withFilC =
     pkg:
@@ -169,7 +169,7 @@ rec {
     };
 
   # Combine withFilC, override, and overrideAttrs in one call
-  # Usage: fix base.pkg { deps = {}; attrs = old: {}; }
+  # Usage: fix pkgs.pkg { deps = {}; attrs = old: {}; }
   fix =
     pkg:
     {
@@ -208,7 +208,7 @@ rec {
     pkg:
     pkg.overrideAttrs (old: {
       nativeBuildInputs = old.nativeBuildInputs or [ ] ++ [
-        base.pkgs.breakpointHook
+        pkgs.breakpointHook
       ];
     });
 }

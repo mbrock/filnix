@@ -6,13 +6,13 @@ let
   };
 
   html-escape = builders.filcProgram "html-escape" {
-    deps = with ports; [ ];
+    deps = [ ];
     lang = "c";
     src = ./src/html-escape.c;
   };
 
   parse-query = builders.filcProgram "parse-query" {
-    deps = with ports; [ ];
+    deps = [ ];
     src = ./src/parse-query.cxx;
   };
 
@@ -22,7 +22,7 @@ let
   };
 
   demo-cgi = builders.filcProgram "demo.cgi" {
-    deps = with ports; [ ];
+    deps = [ ];
     lang = "c";
     src = ./src/demo.c;
   };

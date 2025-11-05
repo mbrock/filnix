@@ -1,5 +1,5 @@
 {
-  base,
+  pkgs,
   ports,
   world-pkgs,
   dank-bashrc,
@@ -16,7 +16,7 @@
 let
   runit = ports.runit;
 
-   runit-config = base.runCommand "runit-config" { } ''
+   runit-config = pkgs.runCommand "runit-config" { } ''
     mkdir -p $out/etc/runit $out/etc/service/shell $out/etc/service/lighttpd $out/sbin
 
     cp ${runit-stage1} $out/etc/runit/1
@@ -37,7 +37,7 @@ let
     ln -s ../bin/runit $out/sbin/runit
   '';
 
-  env = base.buildEnv {
+  env = pkgs.buildEnv {
     name = "filc-world-env";
     paths = [
       runit
@@ -48,17 +48,17 @@ let
     ++ world-pkgs;
   };
 
-  closure = base.closureInfo { rootPaths = [ env ]; };
+  closure = pkgs.closureInfo { rootPaths = [ env ]; };
 
   # Configuration files
-  os-release = base.writeText "os-release" ''
+  os-release = pkgs.writeText "os-release" ''
     NAME="Fil-C Runit"
     ID=filc
     PRETTY_NAME="Fil-C Runit Container"
     VERSION="latest"
   '';
 
-  bashrc = base.writeText "bashrc" ''
+  bashrc = pkgs.writeText "bashrc" ''
     export PATH=${env}/bin
     export TERMINFO_DIRS=/usr/share/terminfo
     export PS1='\[\033[1;32m\][filc]\[\033[0m\] \w \$ '
@@ -69,11 +69,11 @@ let
     ${builtins.readFile dank-bashrc}
   '';
 
-  bash_profile = base.writeText "bash_profile" ''
+  bash_profile = pkgs.writeText "bash_profile" ''
     [ -f ~/.bashrc ] && source ~/.bashrc
   '';
 
-  runit-stage1 = base.writeShellScript "runit-stage1" (
+  runit-stage1 = pkgs.writeShellScript "runit-stage1" (
     ''
       PATH=/bin
       export PATH
@@ -111,14 +111,14 @@ let
     ''
   );
 
-  runit-stage2 = base.writeShellScript "runit-stage2" ''
+  runit-stage2 = pkgs.writeShellScript "runit-stage2" ''
     PATH=/bin
     export PATH
     echo "[stage2] supervising services"
     runsvdir -P /var/service
   '';
 
-  runit-stage3 = base.writeShellScript "runit-stage3" (
+  runit-stage3 = pkgs.writeShellScript "runit-stage3" (
     ''
       PATH=/bin
       export PATH
@@ -141,7 +141,7 @@ let
     ''
   );
 
-  shell-service = base.writeShellScript "shell-run" ''
+  shell-service = pkgs.writeShellScript "shell-run" ''
     PATH=/bin
     export PATH
     export HOME=/root
@@ -150,7 +150,7 @@ let
     exec setsid bash +m -l <${consoleDevice} >${consoleDevice} 2>&1
   '';
 
-  lighttpd-service = base.writeShellScript "lighttpd-run" ''
+  lighttpd-service = pkgs.writeShellScript "lighttpd-run" ''
     PATH=/bin
     export PATH
     export HOME=/root

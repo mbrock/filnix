@@ -17,24 +17,17 @@
     }:
     let
       system = "x86_64-linux";
-      base = import nixpkgs { inherit system; };
+      pkgs = import nixpkgs { inherit system; };
 
-      # Import helper libraries and sources
-      lib = import ./lib { inherit base; };
-      sources = import ./lib/sources.nix { inherit base; };
+      sources = import ./lib/sources.nix { inherit pkgs; };
 
-      # Build the complete Fil-C compiler with all dependencies
-      filc = import ./build-filc.nix { inherit base lib sources; };
-
-      # Build toolchain components directly
-      filc-binutils = import ./toolchain/binutils.nix { inherit base; };
-
-      filc-sysroot = import ./toolchain/sysroot.nix { inherit base lib filc; };
-
+      filc0 = (import ./compiler/filc0.nix { inherit pkgs; }).filc0;
+      filc = import ./build-filc.nix { inherit pkgs filc0; };
+      filc-binutils = import ./toolchain/binutils.nix { inherit pkgs; };
+      filc-sysroot = import ./toolchain/sysroot.nix { inherit pkgs filc; };
       toolchain = import ./toolchain/wrappers.nix {
         inherit
-          base
-          lib
+          pkgs
           filc
           filc-sysroot
           filc-binutils
@@ -42,7 +35,7 @@
       };
 
       ports = import ./ports.nix {
-        inherit base;
+        inherit pkgs;
         inherit (toolchain)
           filenv
           withFilC
@@ -52,121 +45,99 @@
         filc-src = sources.filc0-src;
       };
 
-      # Build shells
-      shell-world = import ./shells/world.nix { inherit base toolchain ports; };
-      shell-wasm3-cve = import ./shells/wasm3-cve-test.nix { inherit base ports; };
-
-      # Virtualization variants (nspawn, qemu, docker)
-      virt-nspawn = import ./virt/nspawn.nix {
-        inherit base ports;
-        world-pkgs = shell-world.world-pkgs;
-      };
-      virt-qemu = import ./virt/qemu.nix {
-        inherit base ports;
-        world-pkgs = shell-world.world-pkgs;
-      };
-      virt-docker = import ./virt/docker.nix {
-        inherit base ports;
-        world-pkgs = shell-world.world-pkgs;
+      filc-shell-stuff = import ./shells/world.nix {
+        inherit pkgs toolchain ports;
       };
 
+      shell-wasm3-cve = import ./shells/wasm3-cve-test.nix {
+        inherit pkgs ports;
+      };
+
+      filc-shell = filc-shell-stuff.filc-world-shell;
+
+      filc-nspawn = import ./virt/nspawn.nix {
+        inherit pkgs ports;
+        inherit (filc-shell-stuff) world-pkgs;
+      };
+
+      filc-qemu = import ./virt/qemu.nix {
+        inherit pkgs ports;
+        inherit (filc-shell-stuff) world-pkgs;
+      };
+
+      filc-docker = import ./virt/docker.nix {
+        inherit pkgs ports;
+        inherit (filc-shell-stuff) world-pkgs;
+      };
+
+      pkgsFilc = import nixpkgs-filc {
+        localSystem = { inherit system; };
+        crossSystem.config = "x86_64-unknown-linux-filc";
+        config.replaceCrossStdenv = _: toolchain.filenv;
+      };
     in
     {
-      lib.${system}.queryPackage = import ./query-package.nix base;
+      lib.${system}.queryPackage = import ./query-package.nix pkgs;
 
       overlays.default = final: prev: ports;
 
-      packages.${system} =
-      {
-        # Test Fil-C cross-compilation
-        test-cross-hello =
-          let
-            nixpkgs-with-filc = import nixpkgs-filc {
-              localSystem = { inherit system; };
-              crossSystem = {
-                config = "x86_64-unknown-linux-filc";
-              };
-              config.replaceCrossStdenv =
-                {
-                  buildPackages,
-                  baseStdenv,
-                }:
-                toolchain.filenv;
-            };
-          in
-          nixpkgs-with-filc.lynx;
+      packages.${system} = {
+        test-cross-hello = pkgsFilc.lynx;
 
-        # Main compiler and toolchain
-        inherit filc;
-        inherit (toolchain) filcc filenv;
+        inherit filc0;
+        filcc = toolchain.filcc;
 
-        # Ports
-        inherit ports;
-        inherit (ports) port;
+        inherit filc-shell;
+        inherit filc-nspawn;
+        inherit filc-qemu;
+        inherit filc-docker;
 
-        # Shells
-        filc-world-shell = shell-world;
+        lighttpd-demo = pkgs.callPackage ./httpd { inherit ports; };
 
-        # Virtualization
-        filc-nspawn = virt-nspawn;
-        filc-qemu = virt-qemu;
-        filc-docker = virt-docker;
-
-        # Demos
-        lighttpd-demo = base.callPackage ./httpd { inherit ports; };
-
-        # Utilities
-        push-filcc = base.writeShellScriptBin "push-filcc" ''
+        push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
           cachix push filc ${toolchain.filcc}
         '';
 
-        push-pkg = base.writeShellScriptBin "push-pkg" ''
+        push-pkg = pkgs.writeShellScriptBin "push-pkg" ''
           for pkg in "$@"; do
             cachix push filc $(nix build .#"$pkg" --print-out-paths --no-link)
           done
         '';
       }
-      // ports # Export all ported packages at top level
-      ;
+      // ports;
 
       apps.${system} = {
         run-filc-docker = {
           type = "app";
-          program = "${virt-docker}";
+          program = filc-docker;
         };
 
         run-filc-sandbox = {
           type = "app";
-          program = "${base.writeShellScript "filc-sandbox" ''
+          program = "${pkgs.writeShellScript "filc-sandbox" ''
             exec sudo systemd-nspawn --ephemeral \
               -M filbox \
-              -D ${virt-nspawn} /bin/runit-init
+              -D ${filc-nspawn} /bin/runit-init
           ''}";
         };
 
         run-filc-qemu = {
           type = "app";
-          program = "${virt-qemu}/bin/run-filc-qemu";
+          program = "${filc-qemu}/bin/run-filc-qemu";
         };
 
         build-filc-qemu-image = {
           type = "app";
-          program = "${virt-qemu}/bin/build-filc-qemu-image";
+          program = "${filc-qemu}/bin/build-filc-qemu-image";
         };
 
-        debug-filc-qemu = {
-          type = "app";
-          program = "${virt-qemu}/bin/debug-filc-qemu";
-        };
       };
 
-      formatter.${system} = base.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt-rfc-style;
 
       devShells.${system} = {
-        default = shell-world;
-        world = shell-world;
+        default = filc-shell-stuff;
         wasm3-cve = shell-wasm3-cve;
-        world-pkgs = shell-world.world-pkgs;
       };
     };
 }

@@ -3,13 +3,13 @@
   filcc,
   ncurses,
   readline,
-  base,
+  pkgs,
 }:
 let
   lua = filenv.mkDerivation rec {
     pname = "lua";
     version = "5.4.7";
-    src = base.fetchurl {
+    src = pkgs.fetchurl {
       url = "https://www.lua.org/ftp/lua-${version}.tar.gz";
       sha256 = "sha256-n79eKO+GxphY9tPTTszDLpEcGii0Eg/z6EqqcM+/HjA=";
     };

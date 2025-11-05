@@ -1,8 +1,6 @@
 {
-  base,
-  lib,
+  pkgs,
   filc0,
-  sources,
   yolo,
   libpizlo ? null,
   filc-libc ? null,
@@ -10,6 +8,8 @@
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
+  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib)
     gcc
     llvmMajor
@@ -23,9 +23,9 @@ let
 
   # Build CRT library directory
   crtLib =
-    base.runCommand "filc-crt-lib"
+    pkgs.runCommand "filc-crt-lib"
       {
-        nativeBuildInputs = [ base.rsync ];
+        nativeBuildInputs = [ pkgs.rsync ];
       }
       ''
         mkdir -p $out
@@ -39,7 +39,7 @@ let
         cp -r ${gcc-lib}/* $out/gcc/${targetPlatform}/${gcc.version}/
 
         # Add libpizlo if available
-        ${base.lib.optionalString (libpizlo != null) ''
+        ${pkgs.lib.optionalString (libpizlo != null) ''
           cp ${libpizlo}/lib/filc_crt.o $out/ || true
           cp ${libpizlo}/lib/filc_mincrt.o $out/ || true
           cp ${libpizlo}/lib/libpizlo.so $out/ || true
@@ -49,9 +49,9 @@ let
 
   # Assemble the wrapper with appropriate flags
   wrapper =
-    base.runCommand "filc"
+    pkgs.runCommand "filc"
       {
-        nativeBuildInputs = [ base.makeWrapper ];
+        nativeBuildInputs = [ pkgs.makeWrapper ];
       }
       ''
         mkdir -p $out/bin
@@ -64,9 +64,9 @@ let
           --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
           --add-flags "--filc-crt-path=${crtLib}" \
           --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
-          --add-flags "--filc-os-include=${base.linuxHeaders}/include" \
+          --add-flags "--filc-os-include=${pkgs.linuxHeaders}/include" \
           --add-flags "--filc-include=${yolo-glibc-impl}/include" \
-        ${base.lib.optionalString (filc-libc != null) ''
+        ${pkgs.lib.optionalString (filc-libc != null) ''
           --add-flags "-isystem ${filc-libc}/include" \
           --add-flags "-L${filc-libc}/lib"
         ''}
@@ -75,17 +75,17 @@ let
         ${
           if filc-libcxx != null then
             ''
-              makeWrapper ${filc0}/bin/clang++-${llvmMajor} $out/bin/clang++ \
+              makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang++ \
                 --add-flags "-Wno-unused-command-line-argument" \
                 --add-flags "--gcc-toolchain=${gcc.cc}" \
                 --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
                 --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
                 --add-flags "--filc-crt-path=${crtLib}" \
                 --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
-                --add-flags "--filc-os-include=${base.linuxHeaders}/include" \
+                --add-flags "--filc-os-include=${pkgs.linuxHeaders}/include" \
                 --add-flags "--filc-include=${yolo-glibc-impl}/include" \
                 ${
-                  base.lib.optionalString (filc-libc != null) ''
+                  pkgs.lib.optionalString (filc-libc != null) ''
                     --add-flags "-isystem ${filc-libc}/include" \
                     --add-flags "-L${filc-libc}/lib" \
                   ''

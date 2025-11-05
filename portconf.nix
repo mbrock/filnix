@@ -7,7 +7,7 @@
 {
   lib,
   fix,
-  base,
+  pkgs,
 }:
 
 let
@@ -57,7 +57,7 @@ let
         pname = old.pname or (builtins.parseDrvName old.name).name;
       in
       {
-        src = base.fetchurl {
+        src = pkgs.fetchurl {
           url = urlf v;
           hash = h;
         };

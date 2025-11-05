@@ -1,13 +1,12 @@
 {
-  base,
-  lib,
-  sources,
+  pkgs,
   filc,
-  libpizlo,
   filc-glibc,
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
+  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) mkFilcLLVMBuild;
 
 in

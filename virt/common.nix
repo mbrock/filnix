@@ -1,12 +1,12 @@
-{ base, ports }:
+{ pkgs, ports }:
 
 {
-  ghostty-terminfo = base.runCommand "ghostty-terminfo" { } ''
+  ghostty-terminfo = pkgs.runCommand "ghostty-terminfo" { } ''
     mkdir -p $out/share/terminfo
-    ${base.ncurses}/bin/tic -x -o $out/share/terminfo ${../ghostty.terminfo}
+    ${pkgs.ncurses}/bin/tic -x -o $out/share/terminfo ${../ghostty.terminfo}
   '';
 
-  dank-bashrc = base.writeText "dank-bashrc" ''
+  dank-bashrc = pkgs.writeText "dank-bashrc" ''
     echo
     tput bold
     figlet -f fender "Fil-C" | sed 's/^/   /' | clolcat -f | head -n-1
@@ -22,6 +22,6 @@
     export PKG_CONFIG=pkgconf
   '';
 
-  lighttpd-demo = base.callPackage ../httpd { inherit ports; };
+  lighttpd-demo = pkgs.callPackage ../httpd { inherit ports; };
 }
 

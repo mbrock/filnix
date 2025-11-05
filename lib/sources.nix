@@ -1,7 +1,7 @@
-{ base }:
+{ pkgs }:
 
 let
-  inherit (base) fetchgit;
+  inherit (pkgs) fetchgit;
   filc-rev = "d1f83629d6c56d1fdf6f3e207d7f06c2ef31ecda";
 in
 rec {
@@ -63,6 +63,6 @@ rec {
     sparseCheckout = [
       "projects/libxcrypt-4.4.36"
     ];
-    hash = base.lib.fakeHash;
+    hash = pkgs.lib.fakeHash;
   };
 }

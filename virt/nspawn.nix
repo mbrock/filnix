@@ -1,18 +1,18 @@
 {
-  base,
+  pkgs,
   ports,
   world-pkgs,
 }:
 
 let
-  common = import ./common.nix { inherit base ports; };
+  common = import ./common.nix { inherit pkgs ports; };
   inherit (common) ghostty-terminfo dank-bashrc lighttpd-demo;
 
   core =
     import ./core.nix
       {
         inherit
-          base
+          pkgs
           ports
           world-pkgs
           dank-bashrc
@@ -28,4 +28,4 @@ let
   inherit (core) env mkRootfsScript;
 
 in
-base.runCommand "filc-runit-nspawn-standalone" { } (mkRootfsScript "$out")
+pkgs.runCommand "filc-runit-nspawn-standalone" { } (mkRootfsScript "$out")

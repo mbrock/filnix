@@ -1,14 +1,16 @@
 {
-  base,
-  lib,
-  sources,
+  pkgs,
   filc,
   libpizlo,
 }:
 
+let
+  sources = import ../lib/sources.nix { inherit pkgs; };
+in
+
 {
   # Memory-safe glibc compiled with Fil-C
-  filc-glibc = base.stdenv.mkDerivation {
+  filc-glibc = pkgs.stdenv.mkDerivation {
     pname = "filc-glibc";
     version = "2.40";
     src = "${sources.user-glibc-src}/projects/user-glibc-2.40";
@@ -16,7 +18,7 @@
 
     enableParallelBuilding = true;
 
-    nativeBuildInputs = with base; [
+    nativeBuildInputs = with pkgs; [
       gnumake
       autoconf
       bison
@@ -50,7 +52,7 @@
       "--disable-mathvec"
       "--disable-nscd"
       "--disable-werror"
-      "--with-headers=${base.linuxHeaders}/include"
+      "--with-headers=${pkgs.linuxHeaders}/include"
     ];
 
     meta.description = "Memory-safe glibc compiled with Fil-C";

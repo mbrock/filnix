@@ -1,5 +1,5 @@
 {
-  base,
+  pkgs,
   filenv,
   filc-src,
   withFilC,
@@ -7,7 +7,7 @@
   filcc,
 }:
 let
-  DSL = import ./portconf.nix { inherit lib fix base; };
+  DSL = import ./portconf.nix { inherit lib fix pkgs; };
   inherit (DSL)
     buildPort
     arg
@@ -27,13 +27,13 @@ let
     wip
     ;
   inherit (DSL) github gnu gnuTarGz;
-  inherit (base) lib;
+  inherit (pkgs) lib;
 
   port = buildPort;
 in
 rec {
   zlib = port [
-    base.zlib
+    pkgs.zlib
     (src "1.3" (github "madler/zlib" (
       v: "v${v}/zlib-${v}.tar.gz"
     )) "sha256-/wukwpIBPbwnUws6geH5qBPNOd4Byl4Pi/NVcC76WT4=")
@@ -43,16 +43,16 @@ rec {
   ];
 
   openssl = port [
-    (base.callPackage ./ports/openssl.nix { })
+    (pkgs.callPackage ./ports/openssl.nix { })
     { inherit zlib; }
     (patch (
-      "${base.path}/pkgs/development/libraries"
+      "${pkgs.path}/pkgs/development/libraries"
       + "/openssl/3.0/nix-ssl-cert-file.patch"
     ))
   ];
 
   libevent = port [
-    base.libevent
+    pkgs.libevent
     { inherit openssl; }
     (src "2.1.12" (github "libevent/libevent" (
       v: "release-${v}-stable/libevent-${v}-stable.tar.gz"
@@ -60,17 +60,17 @@ rec {
     (patch ./ports/patch/libevent-2.1.12.patch)
   ];
 
-  ncurses = port [ base.ncurses ];
+  ncurses = port [ pkgs.ncurses ];
 
-  utf8proc = port [ base.utf8proc ];
+  utf8proc = port [ pkgs.utf8proc ];
 
   libutempter = port [
-    base.libutempter
+    pkgs.libutempter
     { glib = null; }
   ];
 
   tmux = port [
-    base.tmux
+    pkgs.tmux
     { inherit ncurses; }
     { inherit libevent; }
     { inherit libutempter; }
@@ -80,18 +80,18 @@ rec {
 
   inherit filcc;
 
-  depizloing-nm = base.writeShellScriptBin "nm" ''
+  depizloing-nm = pkgs.writeShellScriptBin "nm" ''
     ${filcc}/bin/nm "$@" | sed 's/\bpizlonated_//g'
   '';
 
   # Work in progress (alphabetically sorted)
   acl = port [
-    base.acl
+    pkgs.acl
     { inherit attr; }
   ];
 
   attr = port [
-    base.attr
+    pkgs.attr
     (src "2.5.2" (
       v: "mirror://savannah/attr/attr-${v}.tar.gz"
     ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
@@ -99,17 +99,17 @@ rec {
   ];
 
   autoconf = port [
-    base.autoconf
+    pkgs.autoconf
     { inherit m4; }
   ];
 
   automake = port [
-    base.automake
+    pkgs.automake
     { inherit autoconf; }
   ];
 
   bash = port [
-    base.bash
+    pkgs.bash
     {
       inherit readline;
       interactive = true;
@@ -118,7 +118,7 @@ rec {
   ];
 
   bashNonInteractive = port [
-    base.bash
+    pkgs.bash
     {
       inherit readline;
       interactive = false;
@@ -127,12 +127,12 @@ rec {
   ];
 
   bc = port [
-    base.bc
+    pkgs.bc
     { inherit readline flex; }
   ];
 
   bison = port [
-    base.bison
+    pkgs.bison
     (src "3.8.2" (gnu "bison")
       "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I="
     )
@@ -141,10 +141,10 @@ rec {
     skipTests
   ];
 
-  brotli = port [ base.brotli ];
+  brotli = port [ pkgs.brotli ];
 
   busybox = port [
-    base.busybox
+    pkgs.busybox
     (use {
       enableStatic = false;
       enableAppletSymlinks = false;
@@ -152,14 +152,14 @@ rec {
     })
   ];
 
-  bzip2 = port [ base.bzip2 ];
+  bzip2 = port [ pkgs.bzip2 ];
 
-  c-ares = port [ base.c-aresMinimal ];
+  c-ares = port [ pkgs.c-aresMinimal ];
 
-  clolcat = port [ base.clolcat ];
+  clolcat = port [ pkgs.clolcat ];
 
   cmake = port [
-    base.cmake
+    pkgs.cmake
     (src "3.30.2" (
       v: "https://cmake.org/files/v3.30/cmake-${v}.tar.gz"
     ) "sha256-47dznBKRw0Rz24wY4h4bGZmNpQQJaFy+6KjvKVQoZSw=")
@@ -168,13 +168,13 @@ rec {
   ];
 
   coreutils = port [
-    base.coreutils
+    pkgs.coreutils
     { inherit gmp; }
     skipCheck
   ];
 
   curl = port [
-    base.curlMinimal
+    pkgs.curlMinimal
     { inherit openssl; }
     { inherit zlib; }
     { inherit brotli; }
@@ -192,7 +192,7 @@ rec {
   ];
 
   dash = port [
-    base.dash
+    pkgs.dash
     (src "0.5.12" (
       v: "http://gondor.apana.org.au/~herbert/dash/files/dash-${v}.tar.gz"
     ) "sha256-akdKxG6LCzKRbExg32lMggWNMpfYs4W3RQgDDKSo8oo=")
@@ -202,27 +202,27 @@ rec {
 
   db4 = db48;
 
-  db48 = port [ base.db48 ];
+  db48 = port [ pkgs.db48 ];
 
   diffutils = port [
-    base.diffutils
+    pkgs.diffutils
     (src "3.10" (gnu "diffutils")
       "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4="
     )
     (patch ./ports/patch/diffutils-3.10.patch)
     { inherit coreutils; }
-    (tool base.perl)
+    (tool pkgs.perl)
     (use { postPatch = "patchShebangs man/help2man"; })
     skipCheck
   ];
 
   ed = port [
-    base.ed
+    pkgs.ed
     { runtimeShellPackage = bash; }
   ];
 
   emacs = port [
-    base.emacs
+    pkgs.emacs
     (src "30.1" (
       v: "https://git.savannah.gnu.org/cgit/emacs.git/snapshot/emacs-${v}.tar.gz"
     ) "sha256-eTWjpRgLXbA9OQZnbrWPIHPcbj/QYkv58I3IWx5lCIQ=")
@@ -231,32 +231,32 @@ rec {
   ];
 
   expat = port [
-    base.expat
+    pkgs.expat
     (src "2.7.1" (github "libexpat/libexpat" (
       v: "R_${builtins.replaceStrings [ "." ] [ "_" ] v}/expat-${v}.tar.xz"
     )) "sha256-NUVSVEuPmQEuUGL31XDsd/FLQSo/9cfY0NrmLA0hfDA=")
     (patch ./ports/patch/expat-2.7.1.patch)
   ];
 
-  figlet = port [ base.figlet ];
+  figlet = port [ pkgs.figlet ];
 
   file = port [
-    base.file
+    pkgs.file
     { inherit zlib; }
     skipCheck
   ];
 
   find = port [
-    base.find
+    pkgs.find
   ];
 
   flex = port [
-    base.flex
+    pkgs.flex
     { inherit bison m4; }
   ];
 
   git = port [
-    base.git
+    pkgs.git
     (src "2.46.0" (
       v: "https://www.kernel.org/pub/software/scm/git/git-${v}.tar.xz"
     ) "sha256-fxI0YqKLfKPr4mB0hfcWhVTCsQ38FVx+xGMAZmrCf5U=")
@@ -273,22 +273,22 @@ rec {
     { zlib-ng = zlib; }
     skipTests
     (use (old: {
-      makeFlags = base.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
+      makeFlags = pkgs.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
     }))
   ];
 
   gawk = port [
-    base.gawk
+    pkgs.gawk
     skipCheck
   ];
 
   gmp = port [
-    base.gmp
+    pkgs.gmp
     skipCheck
   ];
 
   gnugrep = port [
-    base.gnugrep
+    pkgs.gnugrep
     (src "3.11" (gnu "grep") "sha256-HbKu3eidDepCsW2VKPiUyNFdrk4ZC1muzHj1qVEnbqs=")
     (patch ./ports/patch/grep-3.11.patch)
     { inherit pcre2; }
@@ -296,7 +296,7 @@ rec {
   ];
 
   gnumake = port [
-    base.gnumake
+    pkgs.gnumake
     (src "4.4.1" (gnuTarGz "make")
       "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M="
     )
@@ -305,47 +305,47 @@ rec {
   ];
 
   gnused = port [
-    base.gnused
+    pkgs.gnused
     (src "4.9" (gnu "sed") "sha256-biJrcy4c1zlGStaGK9Ghq6QteYKSLaelNRljHSSXUYE=")
     (patch ./ports/patch/sed-4.9.patch)
     skipCheck
   ];
 
   gnutar = port [
-    base.gnutar
+    pkgs.gnutar
     (src "1.35" (gnu "tar") "sha256-TWL/NzQux67XSFNTI5MMfPlKz3HDWRiCsmp+pQ8+3BY=")
     (patch ./ports/patch/tar-1.35.patch)
     { aclSupport = false; }
   ];
 
   gnum4 = port [
-    base.gnum4
+    pkgs.gnum4
     (src "1.4.19" (gnu "m4") "sha256-Y67eXG0zttmxNRHNC+LKwEby5w/QoHqpVzoEqCeDr5Y=")
     (patch ./ports/patch/m4-1.4.19.patch)
   ];
 
-  gtest = port [ base.gtest ];
+  gtest = port [ pkgs.gtest ];
 
   inetutils = port [
-    base.inetutils
+    pkgs.inetutils
     { inherit ncurses; }
     { inherit libxcrypt; }
   ];
 
   strace = port [
-    base.strace
+    pkgs.strace
     { inherit libunwind; }
     { inherit elfutils; }
     (use { postPatch = ''sed -i 's/ vfork/ fork/g' */strace.c''; })
   ];
 
   libunwind = port [
-    base.libunwind
+    pkgs.libunwind
     { inherit xz; }
   ];
 
   elfutils = port [
-    base.elfutils
+    pkgs.elfutils
     { inherit zlib; }
     { inherit zstd; }
     { inherit bzip2; }
@@ -364,21 +364,21 @@ rec {
   ];
 
   json_c = port [
-    base.json_c
+    pkgs.json_c
   ];
 
   libmicrohttpd = port [
-    (base.callPackage ./libmicrohttpd.nix { })
+    (pkgs.callPackage ./libmicrohttpd.nix { })
     { inherit curl; }
   ];
 
   jq = port [
-    base.jq
+    pkgs.jq
     { inherit oniguruma; }
   ];
 
   keyutils = port [
-    base.keyutils
+    pkgs.keyutils
     (src "1.6.3" (
       v:
       "https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git/snapshot/keyutils-${v}.tar.gz"
@@ -388,13 +388,13 @@ rec {
   ];
 
   lesspipe = port [
-    base.lesspipe
+    pkgs.lesspipe
     { inherit perl; }
     { inherit bash; }
   ];
 
   libarchive = port [
-    base.libarchive
+    pkgs.libarchive
     (src "3.7.4" (github "libarchive/libarchive" (
       v: "v${v}/libarchive-${v}.tar.xz"
     )) "sha256-+Id1XENKc2pgnL0o2H3b++nWo7tbcDwiwC9q+AqAJzU=")
@@ -413,7 +413,7 @@ rec {
   ];
 
   libedit = port [
-    base.libedit
+    pkgs.libedit
     (src "20240808-3.1" (
       v: "https://thrysoee.dk/editline/libedit-${v}.tar.gz"
     ) "sha256-XwVzNJ13xKSJZxkc3WY03Xql9jmMalf+A3zAJpbWCZ8=")
@@ -421,10 +421,10 @@ rec {
     { inherit ncurses; }
   ];
 
-  libev = port [ base.libev ];
+  libev = port [ pkgs.libev ];
 
   libffi = port [
-    base.libffi
+    pkgs.libffi
     (src "3.4.6" (github "libffi/libffi" (
       v: "v${v}/libffi-${v}.tar.gz"
     )) "sha256-sN6p3yPIY6elDoJUQPPr/6vWXfFJcQjl1Dd0eEOJWk4=")
@@ -438,12 +438,12 @@ rec {
   libiconv = lib.getDev filcc.libc;
 
   libidn2 = port [
-    (base.callPackage "${base.path}/pkgs/development/libraries/libidn2" { })
+    (pkgs.callPackage "${pkgs.path}/pkgs/development/libraries/libidn2" { })
     { inherit libunistring; }
   ];
 
   libkrb5 = port [
-    base.libkrb5
+    pkgs.libkrb5
     (src "1.21.3" (
       v: "https://kerberos.org/dist/krb5/1.21/krb5-${v}.tar.gz"
     ) "sha256-t6TNXq1n+wi5gLIavRUP9yF+heoyDJ7QxtrdMEhArTU=")
@@ -455,7 +455,7 @@ rec {
   ];
 
   libpng = port [
-    base.libpng
+    pkgs.libpng
     (src "1.6.43" (
       v: "mirror://sourceforge/libpng/libpng-${v}.tar.xz"
     ) "sha256-Uw5O1JHsI91X2FYBy3XTVbUzDN9Vae7JkNn2Yw7W9tI=")
@@ -464,33 +464,33 @@ rec {
   ];
 
   libpsl = port [
-    base.libpsl
+    pkgs.libpsl
     { inherit libidn2; }
     { inherit libunistring; }
   ];
 
   libssh2 = port [
-    base.libssh2
+    pkgs.libssh2
     { inherit zlib; }
     { inherit openssl; }
     (tool depizloing-nm)
-    (tool base.pkg-config)
+    (tool pkgs.pkg-config)
     skipCheck
     (configure "--disable-examples-build")
   ];
 
   libtool = port [
-    base.libtool
+    pkgs.libtool
     { inherit m4; }
     { inherit file; }
   ];
 
-  libunistring = port [ base.libunistring ];
+  libunistring = port [ pkgs.libunistring ];
 
   libuuid = util-linux;
 
   libuv = port [
-    base.libuv
+    pkgs.libuv
     (src "1.48.0" (
       v: "https://dist.libuv.org/dist/v${v}/libuv-v${v}.tar.gz"
     ) "sha256-fx24rDaNidG68WO6wepf5RIGl6c5EMiuay//s1UdWfs=")
@@ -498,7 +498,7 @@ rec {
   ];
 
   libxcrypt = port [
-    base.libxcrypt
+    pkgs.libxcrypt
     (src "4.4.36" (github "besser82/libxcrypt" (
       v: "v${v}/libxcrypt-${v}.tar.xz"
     )) "sha256-5eH0yu4KAd4q7ibjE4gH1tPKK45nKHlm0f79ZeH9iUM=")
@@ -508,7 +508,7 @@ rec {
   ];
 
   libxml2 = port [
-    base.libxml2
+    pkgs.libxml2
     (patch ./ports/patch/libxml2-2.14.4.patch)
     { inherit zlib; }
     { inherit ncurses; }
@@ -517,7 +517,7 @@ rec {
   ];
 
   lighttpd = port [
-    base.lighttpd
+    pkgs.lighttpd
     (patch ./lighttpd-filc.patch)
     { inherit openssl; }
     { inherit pcre2; }
@@ -545,30 +545,30 @@ rec {
     (configure "--with-krb5")
   ];
 
-  lua = base.callPackage ./ports/lua.nix {
+  lua = pkgs.callPackage ./ports/lua.nix {
     inherit
       filenv
       filcc
       ncurses
       readline
-      base
+      pkgs
       ;
   };
 
   m4 = gnum4;
 
   nano = port [
-    base.nano
+    pkgs.nano
     { inherit ncurses; }
   ];
 
   nethack = port [
-    base.nethack
+    pkgs.nethack
     { inherit ncurses; }
   ];
 
   ngtcp2 = port [
-    base.ngtcp2
+    pkgs.ngtcp2
     { inherit brotli; }
     { inherit libev; }
     { inherit nghttp3; }
@@ -576,7 +576,7 @@ rec {
   ];
 
   nghttp2 = port [
-    base.nghttp2
+    pkgs.nghttp2
     { inherit zlib; }
     { inherit openssl; }
     (tool depizloing-nm)
@@ -584,12 +584,12 @@ rec {
     (addCFlag "-Wno-deprecated-literal-operator")
   ];
 
-  nghttp3 = port [ base.nghttp3 ];
+  nghttp3 = port [ pkgs.nghttp3 ];
 
-  oniguruma = port [ base.oniguruma ];
+  oniguruma = port [ pkgs.oniguruma ];
 
   openssh = port [
-    base.openssh
+    pkgs.openssh
     (src "9.8p1" (
       v: "mirror://openbsd/OpenSSH/portable/openssh-${v}.tar.gz"
     ) "sha256-6pz8/fR51/K/SWKjKSrKNEAiEaUQwOjW6Pf+YY4j3to=")
@@ -598,21 +598,21 @@ rec {
   ];
 
   pam = port [
-    base.linux-pam
+    pkgs.linux-pam
     { inherit libxcrypt db4; }
     (tool depizloing-nm)
     skipCheck
   ];
 
   pcre2 = port [
-    base.pcre2
+    pkgs.pcre2
     (src "10.44" (github "PCRE2Project/pcre2" (
       v: "pcre2-${v}/pcre2-${v}.tar.bz2"
     )) "sha256-008C4RPPcZOh6/J3DTrFJwiNSF1OBH7RDl0hfG713pY=")
   ];
 
   perl = port [
-    base.perl
+    pkgs.perl
     (src "5.40.0" (
       v: "https://www.cpan.org/src/5.0/perl-${v}.tar.gz"
     ) "sha256-x0A0jzVzljJ6l5XT6DI7r9D+ilx4NfwcuroMyN/nFh8=")
@@ -623,27 +623,27 @@ rec {
   ];
 
   procps = port [
-    base.procps
+    pkgs.procps
     { inherit ncurses; }
     { withSystemd = false; }
     (patch ./ports/patch/procps-ng-4.0.4.patch)
   ];
 
   pkgconf-unwrapped = port [
-    base.pkgconf-unwrapped
+    pkgs.pkgconf-unwrapped
     (tool depizloing-nm)
     parallelize
   ];
 
   pkgconf =
-    base.callPackage (base.path + "/pkgs/build-support/pkg-config-wrapper")
+    pkgs.callPackage (pkgs.path + "/pkgs/build-support/pkg-config-wrapper")
       {
         pkg-config = pkgconf-unwrapped;
         baseBinName = "pkgconf";
       };
 
   python3 = port [
-    base.python3
+    pkgs.python3
     (src "3.12.5" (
       v: "https://www.python.org/ftp/python/${v}/Python-${v}.tar.xz"
     ) "sha256-+oouEsXmILCfU+ZbzYdVDS5aHi4Ev4upkdzFUROHY5c=")
@@ -657,19 +657,19 @@ rec {
     { mimetypesSupport = true; }
     { enableLTO = false; }
     skipCheck
-    (tool base.python3)
-    (tool base.autoreconfHook)
-    (tool base.autoconf)
-    (tool base.automake)
-    (tool base.libtool)
-    (tool base.autoconf-archive)
-    (tool base.m4)
-    (tool base.pkg-config)
+    (tool pkgs.python3)
+    (tool pkgs.autoreconfHook)
+    (tool pkgs.autoconf)
+    (tool pkgs.automake)
+    (tool pkgs.libtool)
+    (tool pkgs.autoconf-archive)
+    (tool pkgs.m4)
+    (tool pkgs.pkg-config)
     (removeCFlag "-Wa,--compress-debug-sections")
   ];
 
   quickjs = port [
-    base.quickjs
+    pkgs.quickjs
     (src "2024-02-14" (
       v: "https://bellard.org/quickjs/quickjs-2024-01-13.tar.xz"
     ) "sha256-PEv4+JW/pUvrSGyNEhgRJ3Hs/FrDvhA2hR70FWghLgM=")
@@ -678,17 +678,17 @@ rec {
   ];
 
   readline = port [
-    base.readline
+    pkgs.readline
     { inherit ncurses; }
   ];
 
   runit = port [
-    base.runit
+    pkgs.runit
     (patch ./runit-pid-namespace.patch)
   ];
 
   sqlite = port [
-    base.sqlite
+    pkgs.sqlite
     { inherit readline; }
     { inherit ncurses; }
     { interactive = true; }
@@ -696,19 +696,19 @@ rec {
     (removeCFlag "-DSQLITE_ENABLE_STMT_SCANSTATUS")
   ];
 
-  tcl = port [ base.tcl ];
+  tcl = port [ pkgs.tcl ];
 
   # C99 Prolog implementation
   trealla = port [
-    base.trealla
+    pkgs.trealla
     { inherit openssl; }
     { inherit libffi; }
     { inherit readline; }
     { lineEditingLibrary = "readline"; }
-    (src "2.84.14" 
+    (src "2.84.14"
       (v: "https://github.com/trealla-prolog/trealla/archive/v${v}.tar.gz")
       "sha256-W1erZMHlX3s0Px62LHoMAcHWUeepDk3T63/R2QAyDAQ=")
-    
+
     (patch ./patches/trealla-filc-ffi-zptrtable.patch)
 
     # many fail with thwart in `bif_iso_write` hitting `isatty`.
@@ -717,17 +717,17 @@ rec {
   ];
 
   tree-sitter = port [
-    base.tree-sitter
-    { inherit (base) installShellFiles; }
+    pkgs.tree-sitter
+    { inherit (pkgs) installShellFiles; }
   ];
 
   unibilium = port [
-    base.unibilium
+    pkgs.unibilium
     { inherit ncurses; }
   ];
 
   util-linux = port [
-    base.util-linux
+    pkgs.util-linux
     { inherit zlib; }
     { inherit sqlite; }
     { inherit pam; }
@@ -744,21 +744,21 @@ rec {
     parallelize
   ];
 
-  which = port [ base.which ];
+  which = port [ pkgs.which ];
 
   xz = port [
-    base.xz
+    pkgs.xz
     (src "5.6.2" (github "tukaani-project/xz" (
       v: "v${v}/xz-${v}.tar.xz"
     )) "sha256-qds7s9ZOJIoPrpY/j7a6hRomuhgi5QTcDv0YqAxibK8=")
     (patch ./ports/patch/xz-5.6.2.patch)
-    (tool base.automake116x)
-    (tool base.autoconf)
+    (tool pkgs.automake116x)
+    (tool pkgs.autoconf)
     skipCheck
   ];
 
   zlib-ng = port [
-    base.zlib-ng
+    pkgs.zlib-ng
     (src "2.2.4" (github "zlib-ng/zlib-ng" (
       v: "${v}.tar.gz"
     )) "sha256-pzNDwwk+XNxQ2Td5l8OBW4eP0RC/ZRHCx3WfKvuQ9aM=")
@@ -766,7 +766,7 @@ rec {
   ];
 
   zstd = port [
-    base.zstd
+    pkgs.zstd
     (patch ./ports/patch/zstd-1.5.6.patch)
     { inherit bashNonInteractive; }
     skipCheck
@@ -774,10 +774,10 @@ rec {
   ];
 
   wasm3 = port [
-    (base.callPackage ./wasm3.nix { })
+    (pkgs.callPackage ./wasm3.nix { })
   ];
 
   kittydoom = port [
-    (base.callPackage ./kitty-doom.nix { })
+    (pkgs.callPackage ./kitty-doom.nix { })
   ];
 }

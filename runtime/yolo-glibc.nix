@@ -1,16 +1,14 @@
-{
-  base,
-  lib,
-  sources,
-}:
+{ pkgs }:
 
 let
+  lib = import ../lib { inherit pkgs; };
+  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) setupCcache;
 in
 rec {
   # This just builds the Fil-C glibc yolo fork with the normal
   # host GCC toolchain.
-  yolo-glibc-impl = base.stdenv.mkDerivation rec {
+  yolo-glibc-impl = pkgs.stdenv.mkDerivation rec {
     pname = "yolo-glibc-impl";
     version = "2.40";
     src = "${sources.yolo-glibc-src}/projects/yolo-glibc-${version}";
@@ -20,7 +18,7 @@ rec {
 
     enableParallelBuilding = true;
 
-    nativeBuildInputs = with base; [
+    nativeBuildInputs = with pkgs; [
       python3
       git
       file
@@ -60,15 +58,15 @@ rec {
       "--disable-mathvec"
       "--disable-nscd"
       "--disable-werror"
-      "--with-headers=${base.linuxHeaders}/include"
+      "--with-headers=${pkgs.linuxHeaders}/include"
     ];
   };
 
   # Rename yolo-glibc components so they don't conflict with normal glibc
   yolo-glibc =
-    base.runCommand "yolo-glibc"
+    pkgs.runCommand "yolo-glibc"
       {
-        nativeBuildInputs = [ base.patchelf ];
+        nativeBuildInputs = [ pkgs.patchelf ];
       }
       ''
         mkdir -p $out/lib
