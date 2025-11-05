@@ -182,7 +182,7 @@
           ;
 
         # Toolchain
-        inherit (toolchain) filc-sysroot filc-binutils filcc;
+        inherit (toolchain) filc-sysroot filc-binutils filcc filenv;
 
         # Portset
         inherit portset;
