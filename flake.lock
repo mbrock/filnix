@@ -16,9 +16,23 @@
         "type": "github"
       }
     },
+    "nixpkgs-filc": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1762361187,
+        "narHash": "sha256-EaFfBOdaO9huAsIUlWaSEY1+Qzioh0+N2MJh0IrDJag=",
+        "path": "/home/mbrock/nixpkgs",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/mbrock/nixpkgs",
+        "type": "path"
+      }
+    },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "nixpkgs-filc": "nixpkgs-filc"
       }
     }
   },

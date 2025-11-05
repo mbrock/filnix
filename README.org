@@ -145,7 +145,7 @@ The Fil-C toolchain is built in multiple stages:
 2. *filc1* - Add operating system headers to the bootstrap compiler
 3. *filc2* - Add the yolo runtime (a minimally-modified glibc)
 4. *libpizlo* - Build the Fil-C runtime library and FUGC garbage collector
-5. *libmojo* - Build the memory-safe user glibc (heavily modified for safety)
+5. *filc-glibc* - Build the memory-safe user glibc (heavily modified for safety)
 6. *filc-libcxx* - Build the C++ standard library
 7. *filcc* - Assemble the complete toolchain with all components
 
@@ -153,13 +153,13 @@ The Fil-C toolchain is built in multiple stages:
 
 #+BEGIN_EXAMPLE
 Application Code
-├─ libmojo (user glibc)     ← Applications link here
-├─ libpizlo (Fil-C runtime) ← Memory safety + FUGC
-├─ libyolo (yolo glibc)     ← Runtime uses this
+├─ filc-glibc (user glibc)    ← Applications link here
+├─ libpizlo (Fil-C runtime)   ← Memory safety + FUGC
+├─ yolo-glibc (yolo glibc)    ← Runtime uses this
 └─ Linux kernel
 #+END_EXAMPLE
 
-Both libc implementations are required for a working system. Applications link against libmojo, which itself depends on libpizlo for memory safety features, which in turn uses libyolo for low-level system calls.
+Both libc implementations are required for a working system. Applications link against filc-glibc, which itself depends on libpizlo for memory safety features, which in turn uses yolo-glibc for low-level system calls.
 
 * Packages
 
@@ -170,7 +170,7 @@ The repository provides several core components:
 - =filcc= - The wrapped toolchain (this is what you should use for compilation)
 - =filc0-7= - Individual build stages for bootstrapping
 - =libpizlo= - The Fil-C runtime library
-- =libmojo= - The memory-safe glibc implementation
+- =filc-glibc= - The memory-safe glibc implementation
 - =filc-libcxx= - The C++ standard library
 
 ** Applications

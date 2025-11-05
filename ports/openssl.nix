@@ -10,6 +10,7 @@
   pkg-config,
   stdenv,
   zlib,
+  ...
 }:
 
 stdenv.mkDerivation rec {

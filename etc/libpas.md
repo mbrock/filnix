@@ -152,11 +152,11 @@ Fil-C layers on top of libpas:
 ```
 [User Code & Libraries - Fil-C compiled]
     ↓
-[libc.so - musl/glibc compiled with Fil-C]
+[filc-glibc - glibc compiled with Fil-C]
     ↓
 [libpizlo.so - Runtime (includes libpas + FUGC)]
     ↓
-[libyoloc.so - musl/glibc compiled with normal C]
+[yolo-glibc - glibc compiled with normal C]
     ↓
 [Linux Kernel]
 ```

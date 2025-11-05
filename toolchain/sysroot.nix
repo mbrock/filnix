@@ -1,33 +1,28 @@
 {
   base,
   lib,
-  runtime,
-  compiler,
+  filc,
 }:
 
 let
   inherit (lib) mergeLayers addLibcMetadata;
-  inherit (runtime) libyolo libpizlo libmojo;
-  inherit (compiler) filc-libcxx;
+  inherit (filc) yolo-glibc libpizlo filc-glibc filc-libcxx;
 
 in
-{
-  filc-sysroot =
-    addLibcMetadata
-      (mergeLayers "filc-sysroot" [
-        libyolo
-        libpizlo
-        libmojo
-        filc-libcxx
-      ])
-      {
-        dynamicLinker = "ld-yolo-x86_64.so";
-        crts = [
-          "crt1.o"
-          "rcrt1.o"
-          "Scrt1.o"
-          "crti.o"
-          "crtn.o"
-        ];
-      };
-}
+addLibcMetadata
+  (mergeLayers "filc-sysroot" [
+    yolo-glibc
+    libpizlo
+    filc-glibc
+    filc-libcxx
+  ])
+  {
+    dynamicLinker = "ld-yolo-x86_64.so";
+    crts = [
+      "crt1.o"
+      "rcrt1.o"
+      "Scrt1.o"
+      "crti.o"
+      "crtn.o"
+    ];
+  }

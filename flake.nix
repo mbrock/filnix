@@ -3,10 +3,18 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
+    # Modified nixpkgs with Fil-C cross-compilation support
+    nixpkgs-filc.url = "path:/home/mbrock/nixpkgs";
+    nixpkgs-filc.flake = false;
   };
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      nixpkgs-filc,
+      ...
+    }:
     let
       system = "x86_64-linux";
       base = import nixpkgs { inherit system; };
@@ -15,77 +23,25 @@
       lib = import ./lib { inherit base; };
       sources = import ./lib/sources.nix { inherit base; };
 
-      # Build runtime and compiler using a fixed-point to resolve circular dependencies
-      # The runtime needs the compiler, and the compiler needs the runtime
-      fix =
-        let
-          # Stage 1: Build runtime without compiler dependencies
-          runtime-stage1 = import ./runtime {
-            inherit base lib sources;
-            filc1-runtime = null;
-            filc2 = null;
-          };
+      # Build the complete Fil-C compiler with all dependencies
+      filc = import ./build-filc.nix { inherit base lib sources; };
 
-          # Stage 2: Build compiler stage 1 with libyolo
-          compiler-stage1 = import ./compiler/filc0.nix { inherit base lib sources; };
-          compiler-stage1b = import ./compiler/filc1.nix {
-            inherit base lib;
-            inherit (compiler-stage1) filc0;
-            inherit (runtime-stage1) libyolo-glibc libyolo filc-stdfil-headers;
-          };
+      # Build toolchain components directly
+      filc-binutils = import ./toolchain/binutils.nix { inherit base; };
 
-          # Stage 3: Build libpizlo with filc1-runtime
-          runtime-stage2 = import ./runtime {
-            inherit base lib sources;
-            filc1-runtime = compiler-stage1b.filc1-runtime;
-            filc2 = null;
-          };
+      filc-sysroot = import ./toolchain/sysroot.nix { inherit base lib filc; };
 
-          # Stage 4: Build compiler stage 2 with libpizlo
-          compiler-stage2 = import ./compiler/filc2.nix {
-            inherit base lib;
-            inherit (compiler-stage1) filc0;
-            inherit (runtime-stage2)
-              libyolo
-              libyolo-glibc
-              libpizlo
-              filc-stdfil-headers
-              ;
-          };
-
-          # Stage 5: Build libmojo with filc2
-          runtime-stage3 = import ./runtime {
-            inherit base lib sources;
-            inherit (compiler-stage1b) filc1-runtime;
-            filc2 = compiler-stage2.filc2;
-          };
-
-          # Stage 6: Build complete compiler with all stages
-          compiler-final = import ./compiler {
-            inherit base lib sources;
-            runtime = runtime-stage3;
-          };
-
-        in
-        {
-          runtime = runtime-stage3;
-          compiler = compiler-final;
-        };
-
-      inherit (fix) runtime compiler;
-
-      # Build toolchain (binutils, sysroot, wrappers)
-      toolchain = import ./toolchain {
+      toolchain = import ./toolchain/wrappers.nix {
         inherit
           base
           lib
-          runtime
-          compiler
+          filc
+          filc-sysroot
+          filc-binutils
           ;
       };
 
-      # Port set for ported packages
-      portset = import ./portset.nix {
+      ports = import ./ports.nix {
         inherit base;
         inherit (toolchain)
           filenv
@@ -96,112 +52,68 @@
         filc-src = sources.filc0-src;
       };
 
-      # Additional utilities
-      ghostty-terminfo = base.runCommand "ghostty-terminfo" { } ''
-        mkdir -p $out/share/terminfo
-        ${base.ncurses}/bin/tic -x -o $out/share/terminfo ${./ghostty.terminfo}
-      '';
-
-      dank-bashrc = base.writeText "dank-bashrc" ''
-        echo
-        tput bold
-        figlet -f fender "Fil-C" | sed 's/^/   /' | clolcat -f | head -n-1
-        tput sgr0; tput dim
-        echo -n '    '; clang 2>&1 -v | grep Fil-C
-        tput sgr0
-        echo; echo '  You feel an uncanny sense of safety...'
-        tput sgr0
-        echo
-
-        export CC=filc
-        export CXX=filc++
-        export PKG_CONFIG=pkgconf
-      '';
-
-      # CVE test payloads for wasm3
-      wasm3-cve-payloads = (import ./wasm3-cves.nix { pkgs = base; }).cve-tests;
-
       # Build shells
-      shells = import ./shells {
-        inherit
-          base
-          toolchain
-          compiler
-          runtime
-          portset
-          wasm3-cve-payloads
-          ghostty-terminfo
-          dank-bashrc
-          ;
-      };
+      shell-world = import ./shells/world.nix { inherit base toolchain ports; };
+      shell-wasm3-cve = import ./shells/wasm3-cve-test.nix { inherit base ports; };
 
       # Virtualization variants (nspawn, qemu, docker)
-      virt = import ./virt {
-        inherit
-          base
-          ghostty-terminfo
-          dank-bashrc
-          ;
-        ports = portset;
-        world-pkgs = shells.world-pkgs;
+      virt-nspawn = import ./virt/nspawn.nix {
+        inherit base ports;
+        world-pkgs = shell-world.world-pkgs;
       };
-
-      world-pkgs = shells.world-pkgs;
-
-      # Legacy docker image (non-runit)
-      filc-world-docker = import ./filc-world-docker.nix {
-        inherit
-          base
-          ghostty-terminfo
-          dank-bashrc
-          ;
-        ports = portset;
-        world-pkgs = shells.world-pkgs;
+      virt-qemu = import ./virt/qemu.nix {
+        inherit base ports;
+        world-pkgs = shell-world.world-pkgs;
+      };
+      virt-docker = import ./virt/docker.nix {
+        inherit base ports;
+        world-pkgs = shell-world.world-pkgs;
       };
 
     in
     {
       lib.${system}.queryPackage = import ./query-package.nix base;
 
+      overlays.default = final: prev: ports;
+
       packages.${system} =
       {
-        # Compiler stages
-        inherit (compiler)
-          filc0
-          filc1
-          filc2
-          filc-libcxx
-          ;
+        # Test Fil-C cross-compilation
+        test-cross-hello =
+          let
+            nixpkgs-with-filc = import nixpkgs-filc {
+              localSystem = { inherit system; };
+              crossSystem = {
+                config = "x86_64-unknown-linux-filc";
+              };
+              config.replaceCrossStdenv =
+                {
+                  buildPackages,
+                  baseStdenv,
+                }:
+                toolchain.filenv;
+            };
+          in
+          nixpkgs-with-filc.lynx;
 
-        # Runtime libraries
-        inherit (runtime)
-          libyolo-glibc
-          libyolo
-          libpizlo
-          libmojo
-          ;
+        # Main compiler and toolchain
+        inherit filc;
+        inherit (toolchain) filcc filenv;
 
-        # Toolchain
-        inherit (toolchain) filc-sysroot filc-binutils filcc filenv;
-
-        # Portset
-        inherit portset;
-        inherit (portset) port;
+        # Ports
+        inherit ports;
+        inherit (ports) port;
 
         # Shells
-        inherit (shells) filc-world-shell;
+        filc-world-shell = shell-world;
 
         # Virtualization
-        inherit virt;
-        filc-nspawn = virt.nspawn;
-        filc-qemu = virt.qemu;
-        filc-docker = virt.docker;
-
-        # Legacy
-        inherit filc-world-docker;
+        filc-nspawn = virt-nspawn;
+        filc-qemu = virt-qemu;
+        filc-docker = virt-docker;
 
         # Demos
-        lighttpd-demo = base.callPackage ./httpd { portset = portset; };
+        lighttpd-demo = base.callPackage ./httpd { inherit ports; };
 
         # Utilities
         push-filcc = base.writeShellScriptBin "push-filcc" ''
@@ -214,18 +126,13 @@
           done
         '';
       }
-      // portset # Export all ported packages at top level
+      // ports # Export all ported packages at top level
       ;
 
       apps.${system} = {
-        run-filc-world-docker = {
-          type = "app";
-          program = "${filc-world-docker}";
-        };
-
         run-filc-docker = {
           type = "app";
-          program = "${virt.docker}";
+          program = "${virt-docker}";
         };
 
         run-filc-sandbox = {
@@ -233,28 +140,33 @@
           program = "${base.writeShellScript "filc-sandbox" ''
             exec sudo systemd-nspawn --ephemeral \
               -M filbox \
-              -D ${virt.nspawn} /bin/runit-init
+              -D ${virt-nspawn} /bin/runit-init
           ''}";
         };
 
         run-filc-qemu = {
           type = "app";
-          program = "${virt.qemu}/bin/run-filc-qemu";
+          program = "${virt-qemu}/bin/run-filc-qemu";
         };
 
         build-filc-qemu-image = {
           type = "app";
-          program = "${virt.qemu}/bin/build-filc-qemu-image";
+          program = "${virt-qemu}/bin/build-filc-qemu-image";
         };
 
         debug-filc-qemu = {
           type = "app";
-          program = "${virt.qemu}/bin/debug-filc-qemu";
+          program = "${virt-qemu}/bin/debug-filc-qemu";
         };
       };
 
       formatter.${system} = base.nixfmt-rfc-style;
 
-      devShells.${system} = shells;
+      devShells.${system} = {
+        default = shell-world;
+        world = shell-world;
+        wasm3-cve = shell-wasm3-cve;
+        world-pkgs = shell-world.world-pkgs;
+      };
     };
 }

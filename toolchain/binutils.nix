@@ -1,7 +1,6 @@
 { base }:
 
-{
-  # Patched binutils that strips pizlonated_ prefix from symbols
+# Patched binutils that strips pizlonated_ prefix from symbols
   #
   # Fil-C mangles all symbols by prepending "pizlonated_" for memory safety.
   # This causes issues with version scripts in shared libraries:
@@ -59,5 +58,4 @@
       mkdir $NIX_BUILD_TOP/build
       cd $NIX_BUILD_TOP/build
     '';
-  });
-}
+  })

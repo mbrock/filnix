@@ -10,8 +10,8 @@ in
 rec {
   # This just builds the Fil-C glibc yolo fork with the normal
   # host GCC toolchain.
-  libyolo-glibc = base.stdenv.mkDerivation rec {
-    pname = "libyolo-glibc";
+  yolo-glibc-impl = base.stdenv.mkDerivation rec {
+    pname = "yolo-glibc-impl";
     version = "2.40";
     src = "${sources.yolo-glibc-src}/projects/yolo-glibc-${version}";
 
@@ -65,8 +65,8 @@ rec {
   };
 
   # Rename yolo-glibc components so they don't conflict with normal glibc
-  libyolo =
-    base.runCommand "libyolo"
+  yolo-glibc =
+    base.runCommand "yolo-glibc"
       {
         nativeBuildInputs = [ base.patchelf ];
       }
@@ -75,22 +75,22 @@ rec {
         cd $out/lib
 
         # Copy all .o files
-        cp ${libyolo-glibc}/lib/*.o .
+        cp ${yolo-glibc-impl}/lib/*.o .
 
         # Copy and rename static libs
-        cp ${libyolo-glibc}/lib/libc.a libyoloc.a
-        cp ${libyolo-glibc}/lib/libc_nonshared.a libyoloc_nonshared.a
-        cp ${libyolo-glibc}/lib/libm.a libyolom.a
-        cp ${libyolo-glibc}/lib/*.a .  # Copy other .a files as-is
+        cp ${yolo-glibc-impl}/lib/libc.a libyoloc.a
+        cp ${yolo-glibc-impl}/lib/libc_nonshared.a libyoloc_nonshared.a
+        cp ${yolo-glibc-impl}/lib/libm.a libyolom.a
+        cp ${yolo-glibc-impl}/lib/*.a .  # Copy other .a files as-is
         chmod -R u+w .
 
         # Copy and rename dynamic linker
-        cp ${libyolo-glibc}/lib/ld-linux-x86-64.so.2 ld-yolo-x86_64.so
+        cp ${yolo-glibc-impl}/lib/ld-linux-x86-64.so.2 ld-yolo-x86_64.so
         chmod u+w ld-yolo-x86_64.so
         patchelf --remove-rpath ld-yolo-x86_64.so
 
         # Copy and patch libc implementation
-        cp ${libyolo-glibc}/lib/libc.so.6 libyolocimpl.so
+        cp ${yolo-glibc-impl}/lib/libc.so.6 libyolocimpl.so
         chmod u+w libyolocimpl.so
         patchelf --set-soname libyolocimpl.so \
                  --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \
@@ -98,7 +98,7 @@ rec {
                  libyolocimpl.so
 
         # Copy and patch libm implementation
-        cp ${libyolo-glibc}/lib/libm.so.6 libyolomimpl.so
+        cp ${yolo-glibc-impl}/lib/libm.so.6 libyolomimpl.so
         chmod u+w libyolomimpl.so
         patchelf --set-soname libyolomimpl.so \
                  --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \

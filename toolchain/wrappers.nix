@@ -1,16 +1,16 @@
 {
   base,
   lib,
-  compiler,
-  runtime,
+  filc,
   filc-sysroot,
   filc-binutils,
 }:
 
 let
   inherit (lib) setupCcache;
-  inherit (compiler) filc3xx filc-libcxx filc3xx-tranquil;
-  inherit (runtime) libmojo;
+  inherit (filc) filc-libcxx filc-glibc;
+  filc3xx = filc;
+  filc3xx-tranquil = filc;
 
   # ccache wrapper with version script handling
   filcache =
@@ -115,7 +115,7 @@ rec {
     defaultHardeningFlags = [ ];
 
     extraBuildCommands = ''
-      echo "-L${libmojo}/lib" >> $out/nix-support/libc-ldflags
+      echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
       echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
       echo "${filc-sysroot}/lib/ld-yolo-x86_64.so" > $out/nix-support/dynamic-linker
     '';
@@ -179,8 +179,7 @@ rec {
     }:
     let
       pkgName = pkg.pname or (builtins.parseDrvName pkg.name).name;
-      hasBuildInputs =
-        (pkg.buildInputs or [ ]) != [ ] || (pkg.propagatedBuildInputs or [ ]) != [ ];
+      hasBuildInputs = (pkg.buildInputs or [ ]) != [ ] || (pkg.propagatedBuildInputs or [ ]) != [ ];
       noDepsProvided = deps == { };
       withFilC_ = if tranquilize then withFilC-tranquil else withFilC;
     in

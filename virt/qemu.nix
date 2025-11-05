@@ -2,12 +2,12 @@
   base,
   ports,
   world-pkgs,
-  dank-bashrc,
-  ghostty-terminfo,
-  lighttpd-demo,
 }:
 
 let
+  common = import ./common.nix { inherit base ports; };
+  inherit (common) ghostty-terminfo dank-bashrc lighttpd-demo;
+
   # Minimal headless QEMU without GUI dependencies
   qemu-headless = (
     base.qemu_kvm.override {

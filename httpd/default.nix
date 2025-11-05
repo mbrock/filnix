@@ -1,36 +1,35 @@
-{ pkgs, portset }:
+{ pkgs, ports }:
 
 let
   builders = import ./lib/builders.nix {
-    inherit pkgs;
-    ports = portset;
+    inherit pkgs ports;
   };
 
   html-escape = builders.filcProgram "html-escape" {
-    deps = with portset; [ ];
+    deps = with ports; [ ];
     lang = "c";
     src = ./src/html-escape.c;
   };
 
   parse-query = builders.filcProgram "parse-query" {
-    deps = with portset; [ ];
+    deps = with ports; [ ];
     src = ./src/parse-query.cxx;
   };
 
   hello-cgi = builders.bashScript "hello.cgi" {
-    deps = with portset; [ coreutils ];
+    deps = with ports; [ coreutils ];
     src = ./src/hello.sh;
   };
 
   demo-cgi = builders.filcProgram "demo.cgi" {
-    deps = with portset; [ ];
+    deps = with ports; [ ];
     lang = "c";
     src = ./src/demo.c;
   };
 
   figlet-cgi = builders.bashScript "figlet.cgi" {
     deps =
-      (with portset; [
+      (with ports; [
         coreutils
         figlet
         gnused
@@ -70,8 +69,8 @@ let
       builders
       lighttpd-conf-template
       cgi-docroot
+      ports
       ;
-    ports = portset;
   };
 
 in

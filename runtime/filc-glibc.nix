@@ -1,14 +1,15 @@
 {
   base,
+  lib,
   sources,
-  filc2,
+  filc,
   libpizlo,
 }:
 
 {
   # Memory-safe glibc compiled with Fil-C
-  libmojo = base.stdenv.mkDerivation {
-    pname = "libmojo";
+  filc-glibc = base.stdenv.mkDerivation {
+    pname = "filc-glibc";
     version = "2.40";
     src = "${sources.user-glibc-src}/projects/user-glibc-2.40";
     outputs = [ "out" ];
@@ -29,8 +30,8 @@
       FILCXXFLAGS="-nostdlibinc -Wno-ignored-attributes -Wno-pointer-sign"
       FILCFLAGS="$FILCXXFLAGS -Wno-unused-command-line-argument -Wno-macro-redefined"
 
-      export CC="${filc2}/bin/clang $FILCFLAGS -isystem ${libpizlo}/include"
-      export CXX="${filc2}/bin/clang++ $FILCXXFLAGS -isystem ${libpizlo}/include"
+      export CC="${filc}/bin/clang $FILCFLAGS -isystem ${libpizlo}/include"
+      export CXX="${filc}/bin/clang++ $FILCXXFLAGS -isystem ${libpizlo}/include"
 
       # glibc requires out-of-tree build
       autoconf

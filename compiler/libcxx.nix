@@ -2,8 +2,9 @@
   base,
   lib,
   sources,
-  filc3,
-  libmojo,
+  filc,
+  libpizlo,
+  filc-glibc,
 }:
 
 let
@@ -11,7 +12,7 @@ let
 
 in
 {
-  # Then we use filc3 to build libcxx!
+  # Build libcxx with filc
   filc-libcxx =
     (mkFilcLLVMBuild {
       pname = "filc-libcxx";
@@ -48,10 +49,10 @@ in
         LIBCXX_ENABLE_WIDE_CHARACTERS = true;
         LIBCXX_INCLUDE_TESTS = false;
         LIBCXX_INCLUDE_BENCHMARKS = false;
-        CMAKE_C_COMPILER = "${filc3}/bin/clang";
-        CMAKE_CXX_COMPILER = "${filc3}/bin/clang";
-        CMAKE_C_FLAGS = "-isystem ${libmojo}/include";
-        CMAKE_CXX_FLAGS = "-isystem ${libmojo}/include";
+        CMAKE_C_COMPILER = "${filc}/bin/clang";
+        CMAKE_CXX_COMPILER = "${filc}/bin/clang";
+        CMAKE_C_FLAGS = "-isystem ${filc-glibc}/include";
+        CMAKE_CXX_FLAGS = "-isystem ${filc-glibc}/include";
       };
       meta.description = "Fil-C LLVM C++ runtimes";
     }).overrideAttrs

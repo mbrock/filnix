@@ -2,10 +2,7 @@
   base,
   lib,
   sources,
-  filc1-runtime,
-  libyolo-glibc,
-  libyolo,
-  filc-stdfil-headers,
+  filc,
 }:
 
 let
@@ -25,7 +22,7 @@ rec {
       base.gnumake
       base.ruby
       base-clang
-      filc1-runtime
+      filc
       base.ccache
     ];
 
@@ -33,13 +30,14 @@ rec {
       cd libpas
       ${setupCcache}
       export CC="ccache clang"
-      export FILC_CLANG="${filc1-runtime}/bin/clang"
-      export FILC_YOLO_INCLUDE="${libyolo-glibc}/include"
+      export FILC_CLANG="${filc}/bin/clang"
+      # These env vars are for the Makefile to find libraries/headers
+      export FILC_YOLO_INCLUDE="${filc.libyolo-impl}/include"
       export FILC_OS_INCLUDE="${base.linuxHeaders}/include"
-      export FILC_STDFIL_INCLUDE="${filc-stdfil-headers}"
-      export FILC_INCLUDE_DIR="${libyolo-glibc}/include"
-      export FILC_YOLO_LIB_DIR="${libyolo}/lib"
-      export FILC_DYNAMIC_LINKER="${libyolo}/lib/ld-yolo-x86_64.so"
+      export FILC_STDFIL_INCLUDE="${sources.libpas-src}/filc/include"
+      export FILC_INCLUDE_DIR="${filc.libyolo-impl}/include"
+      export FILC_YOLO_LIB_DIR="${filc.libyolo}/lib"
+      export FILC_DYNAMIC_LINKER="${filc.libyolo}/lib/ld-yolo-x86_64.so"
       PIZFIX_OUT="$PWD/pizfix"
       export FILC_LIB_DIR="$PIZFIX_OUT/lib"
       export FILC_LIB_TEST_DIR="$PIZFIX_OUT/lib_test"
