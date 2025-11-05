@@ -37,8 +37,8 @@ base.dockerTools.streamLayeredImage {
   };
 
   extraCommands = ''
-        mkdir -p root
-        cat > root/.bashrc <<'EOF'
+    mkdir -p root
+    cat > root/.bashrc <<'EOF'
     ${builtins.readFile dank-bashrc}
     EOF
   '';

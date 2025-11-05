@@ -135,20 +135,28 @@
           ;
       };
 
-      # Docker images
-      filc-runit-docker = import ./filc-runit-docker.nix {
-        inherit base portset;
-        inherit (toolchain) filc-sysroot;
-      };
-
-      filc-world-docker = import ./filc-world-docker.nix {
+      # Virtualization variants (nspawn, qemu, docker)
+      virt = import ./virt {
         inherit
           base
-          portset
           ghostty-terminfo
           dank-bashrc
           ;
-        world-pkgs = shells.filc-world.buildInputs;
+        ports = portset;
+        world-pkgs = shells.world-pkgs;
+      };
+
+      world-pkgs = shells.world-pkgs;
+
+      # Legacy docker image (non-runit)
+      filc-world-docker = import ./filc-world-docker.nix {
+        inherit
+          base
+          ghostty-terminfo
+          dank-bashrc
+          ;
+        ports = portset;
+        world-pkgs = shells.world-pkgs;
       };
 
     in
@@ -183,9 +191,14 @@
         # Shells
         inherit (shells) filc-world-shell;
 
-        # Docker images
+        # Virtualization
+        inherit virt;
+        filc-nspawn = virt.nspawn;
+        filc-qemu = virt.qemu;
+        filc-docker = virt.docker;
+
+        # Legacy
         inherit filc-world-docker;
-        filcimg = filc-runit-docker;
 
         # Demos
         lighttpd-demo = base.callPackage ./httpd { portset = portset; };
@@ -203,6 +216,42 @@
       }
       // portset # Export all ported packages at top level
       ;
+
+      apps.${system} = {
+        run-filc-world-docker = {
+          type = "app";
+          program = "${filc-world-docker}";
+        };
+
+        run-filc-docker = {
+          type = "app";
+          program = "${virt.docker}";
+        };
+
+        run-filc-sandbox = {
+          type = "app";
+          program = "${base.writeShellScript "filc-sandbox" ''
+            exec sudo systemd-nspawn --ephemeral \
+              -M filbox \
+              -D ${virt.nspawn} /bin/runit-init
+          ''}";
+        };
+
+        run-filc-qemu = {
+          type = "app";
+          program = "${virt.qemu}/bin/run-filc-qemu";
+        };
+
+        build-filc-qemu-image = {
+          type = "app";
+          program = "${virt.qemu}/bin/build-filc-qemu-image";
+        };
+
+        debug-filc-qemu = {
+          type = "app";
+          program = "${virt.qemu}/bin/debug-filc-qemu";
+        };
+      };
 
       formatter.${system} = base.nixfmt-rfc-style;
 

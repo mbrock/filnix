@@ -1,0 +1,15 @@
+--- a/src/runit.c
++++ b/src/runit.c
+@@ -299,6 +299,12 @@ int main ( int argc, const char * const * argv, const char * const * envp )
+   strerr_warn2(INFO, "sending KILL signal to all processes...", 0);
+   kill(-1, SIGKILL);
+ 
++  /* If running in a PID namespace all we can do is exit */
++  if (stat("/proc/self/ns/pid", &s) != -1) {
++    strerr_warn2(INFO, "exiting to let container stop", 0);
++    return(0);
++  }
++
+   pid =fork();
+   switch (pid) {
+   case 0:

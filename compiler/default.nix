@@ -76,7 +76,7 @@ let
       filc-libcxx
       ;
   };
-  inherit (stage3-with-cxx) filc3xx;
+  inherit (stage3-with-cxx) filc3xx filc3xx-tranquil;
 
 in
 {
@@ -87,6 +87,7 @@ in
     filc2
     filc3
     filc3xx
+    filc3xx-tranquil
     filc-libcxx
     ;
 }

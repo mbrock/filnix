@@ -9,6 +9,20 @@
 let
   inherit (toolchain) filcc filc-aliases;
 
+  shutdown-tools =
+    let
+      shutdown-bin = base.writeShellScriptBin "shutdown" ''
+        sync
+        kill -CONT 1
+      '';
+    in
+    base.runCommand "shutdown-tools" {} ''
+      mkdir -p $out/bin
+      ln -s ${shutdown-bin}/bin/shutdown $out/bin/poweroff
+      ln -s ${shutdown-bin}/bin/shutdown $out/bin/halt
+      ln -s ${shutdown-bin}/bin/shutdown $out/bin/reboot
+    '';
+
   world-pkgs = with portset; [
     bash
     coreutils
@@ -32,6 +46,7 @@ let
     tmux
     nano
     nethack
+    ncurses
     figlet
     clolcat
     ncurses
@@ -53,6 +68,12 @@ let
     util-linux
     wasm3
     kittydoom
+    procps
+    inetutils
+    elfutils
+    strace
+    shutdown-tools
+    lighttpd
   ];
 
 in
@@ -87,4 +108,6 @@ rec {
 
   # Legacy alias
   pure = filc-world;
+
+  inherit world-pkgs;
 }

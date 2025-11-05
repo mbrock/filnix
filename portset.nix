@@ -16,6 +16,7 @@ let
     skipTests
     skipCheck
     parallelize
+    tranquilize
     tool
     link
     patch
@@ -37,6 +38,8 @@ rec {
       v: "v${v}/zlib-${v}.tar.gz"
     )) "sha256-/wukwpIBPbwnUws6geH5qBPNOd4Byl4Pi/NVcC76WT4=")
     (patch ./ports/patch/zlib-1.3.patch)
+
+    tranquilize # perl needs zlib
   ];
 
   openssl = port [
@@ -91,7 +94,7 @@ rec {
     base.attr
     (src "2.5.2" (
       v: "mirror://savannah/attr/attr-${v}.tar.gz"
-    ) "sha256-qKRTtGN4ZZLgcmyGPQFRQ5gSMWj/1dC2qdNuXe1qWoE=")
+    ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
     (patch ./ports/patch/attr-2.5.2.patch)
   ];
 
@@ -243,6 +246,10 @@ rec {
     skipCheck
   ];
 
+  find = port [
+    base.find
+  ];
+
   flex = port [
     base.flex
     { inherit bison m4; }
@@ -319,6 +326,52 @@ rec {
 
   gtest = port [ base.gtest ];
 
+  inetutils = port [
+    base.inetutils
+    { inherit ncurses; }
+    { inherit libxcrypt; }
+  ];
+
+  strace = port [
+    base.strace
+    { inherit libunwind; }
+    { inherit elfutils; }
+    (use { postPatch = ''sed -i 's/ vfork/ fork/g' */strace.c''; })
+  ];
+
+  libunwind = port [
+    base.libunwind
+    { inherit xz; }
+  ];
+
+  elfutils = port [
+    base.elfutils
+    { inherit zlib; }
+    { inherit zstd; }
+    { inherit bzip2; }
+    { inherit xz; }
+    { inherit sqlite; }
+    { inherit curl; }
+    { inherit json_c; }
+    { inherit libmicrohttpd; }
+    { inherit libarchive; }
+    (tool depizloing-nm)
+    (configure "--disable-symbol-versioning")
+    (configure "--disable-debuginfod")
+    #    (configure "--enable-libdebuginfod=dummy")
+    (addCFlag "-Wno-error=unused-parameter")
+    skipTests
+  ];
+
+  json_c = port [
+    base.json_c
+  ];
+
+  libmicrohttpd = port [
+    (base.callPackage ./libmicrohttpd.nix { })
+    { inherit curl; }
+  ];
+
   jq = port [
     base.jq
     { inherit oniguruma; }
@@ -344,11 +397,19 @@ rec {
     base.libarchive
     (src "3.7.4" (github "libarchive/libarchive" (
       v: "v${v}/libarchive-${v}.tar.xz"
-    )) "sha256-t1y0XMXN9hfxCv2O0HdJBX4k2iLSxqFzfSn/zFXnYZo=")
+    )) "sha256-+Id1XENKc2pgnL0o2H3b++nWo7tbcDwiwC9q+AqAJzU=")
     (patch ./ports/patch/libarchive-3.7.4.patch)
     { inherit zlib; }
     { inherit openssl; }
+    { inherit libxml2; }
+    { inherit bzip2; }
+    { inherit zstd; }
+    { inherit xz; }
+    { inherit attr; }
+    { inherit acl; }
+
     skipCheck
+    (skipPatch "mac")
   ];
 
   libedit = port [
@@ -558,6 +619,14 @@ rec {
     (patch ./ports/patch/perl-5.40.0.patch)
     { inherit zlib; }
     skipCheck
+    tranquilize
+  ];
+
+  procps = port [
+    base.procps
+    { inherit ncurses; }
+    { withSystemd = false; }
+    (patch ./ports/patch/procps-ng-4.0.4.patch)
   ];
 
   pkgconf-unwrapped = port [
@@ -613,7 +682,10 @@ rec {
     { inherit ncurses; }
   ];
 
-  runit = port [ base.runit ];
+  runit = port [
+    base.runit
+    (patch ./runit-pid-namespace.patch)
+  ];
 
   sqlite = port [
     base.sqlite

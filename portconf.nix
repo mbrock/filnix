@@ -17,6 +17,7 @@ let
   Init = {
     deps = { };
     attrs = (_: { }); # old -> { ... }
+    tranquilize = false;
   };
 
   # Compose two attrs fns - thread changes through and merge results
@@ -34,6 +35,7 @@ let
   # Endofunctor "port step" = FixArgs -> FixArgs
   overDeps = d: fa: fa // { deps = fa.deps // d; };
   overAttrs = f: fa: fa // { attrs = merge fa.attrs f; };
+  overTranquilize = f: fa: fa // { tranquilize = f; };
 
   # Primitives
   arg = kv: overDeps kv;
@@ -43,8 +45,10 @@ let
     f:
     overAttrs (if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f);
 
+  tranquilize = overTranquilize true;
+
   # Cohesive source step: version + URL mapping + hash
-  # usage: (src "3.10" (v: "https://example/${v}.tar.xz") "sha256-...")
+  # usage: (src "3.10" (v: "https:// ftp/${v}.tar.xz") "sha256-...")
   src =
     v: urlf: h:
     use (
@@ -79,6 +83,7 @@ let
     fix pkg {
       deps = acc.deps;
       attrs = acc.attrs;
+      tranquilize = acc.tranquilize;
     };
 
   # Common helpers
@@ -165,6 +170,7 @@ in
     skipTests
     skipCheck
     parallelize
+    tranquilize
     tool
     link
     patch

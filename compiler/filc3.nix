@@ -35,6 +35,27 @@ rec {
             --add-flags "-L${libmojo}/lib"
           makeWrapper ${filc2}/bin/clang++ $out/bin/clang++ \
             --add-flags "-nostdinc++" \
+            --add-flags "-I ${filc-libcxx}/include/c++" \
+            --add-flags "-isystem ${libmojo}/include" \
+            --add-flags "-L${filc-libcxx}/lib" \
+            --add-flags "-L${libmojo}/lib"
+        ''
+    else
+      null;
+
+  filc3xx-tranquil =
+    if filc-libcxx != null then
+      base.runCommand "filc3xx"
+        {
+          nativeBuildInputs = [ base.makeWrapper ];
+        }
+        ''
+          mkdir -p $out/bin
+          makeWrapper ${filc2}/bin/clang $out/bin/clang \
+            --add-flags "-isystem ${libmojo}/include" \
+            --add-flags "-L${libmojo}/lib"
+          makeWrapper ${filc2}/bin/clang++ $out/bin/clang++ \
+            --add-flags "-nostdinc++" \
             --add-flags "-isystem ${filc-libcxx}/include/c++" \
             --add-flags "-isystem ${libmojo}/include" \
             --add-flags "-L${filc-libcxx}/lib" \

@@ -36,8 +36,10 @@ in
   inherit filc-binutils filc-sysroot;
   inherit (wrappers)
     filc-cc
+    filc-cc-tranquil
     filc-bintools
     filcc
+    filcc-tranquil
     filc-aliases
     ;
   inherit (wrappers)
