@@ -1,5 +1,5 @@
 --- trealla-clean/src/bif_ffi.c	2025-11-05 07:20:11.000000000 +0200
-+++ trealla-patched/src/bif_ffi.c	2025-11-05 14:56:01.138435161 +0200
++++ trealla-patched/src/bif_ffi.c	2025-11-05 14:56:34.290889044 +0200
 @@ -6,12 +6,23 @@
  #if USE_FFI
  #include <dlfcn.h>
@@ -17,7 +17,7 @@
 +
 +static void ensure_ffi_handles(void) {
 +	if (!g_ffi_handles)
-+		g_ffi_handles = zptrtable_new_weak();
++		g_ffi_handles = zptrtable_new();
 +}
 +#endif
 +

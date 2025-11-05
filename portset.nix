@@ -705,6 +705,11 @@ rec {
     { inherit libffi; }
     { inherit readline; }
     { lineEditingLibrary = "readline"; }
+    (src "2.84.14" 
+      (v: "https://github.com/trealla-prolog/trealla/archive/v${v}.tar.gz")
+      "sha256-W1erZMHlX3s0Px62LHoMAcHWUeepDk3T63/R2QAyDAQ=")
+    
+    (patch ./ports/patch/trealla-filc-ffi-zptrtable.patch)
 
     # many fail with thwart in `bif_iso_write` hitting `isatty`.
     # also slow
