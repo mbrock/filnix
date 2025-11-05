@@ -4,6 +4,7 @@
   world-pkgs,
   dank-bashrc,
   ghostty-terminfo,
+  lighttpd-demo,
 }:
 
 let
@@ -41,6 +42,7 @@ let
           world-pkgs
           dank-bashrc
           ghostty-terminfo
+          lighttpd-demo
           ;
       }
       {

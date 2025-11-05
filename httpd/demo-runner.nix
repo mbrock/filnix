@@ -80,18 +80,18 @@ builders.bashScript "lighttpd-demo" {
         -e "s|RUNDIR_PLACEHOLDER|$RUNDIR|g" \
         ${lighttpd-conf-template} > "$CONF"
 
-    echo
-    tput bold
-    figlet -f fender "Fil-C" | head -n-1 | clolcat -f
-    tput dim
-    echo "  Pretty Good CGI Server"
-    tput sgr0
-    echo
+#    echo
+#    tput bold
+#    figlet -f fender "Fil-C" | head -n-1 | clolcat -f
+    # tput dim
+    # echo "  Pretty Good CGI Server"
+    # tput sgr0
+#    echo
     echo "  ''${BLUE}http://localhost:''${BOLD}$PORT''${RESET}''${DIM}"
-    echo
-    tput sgr0
-    echo "  ${cgi-docroot}"
-    echo
+#    echo
+    # tput sgr0
+    # echo "  ${cgi-docroot}"
+    # echo
 
     # Collect script info into a table
     for script in ${cgi-docroot}/*.cgi; do
@@ -119,20 +119,12 @@ builders.bashScript "lighttpd-demo" {
       printf "    ''${CYAN}%-15s''${RESET} ''${DIM}%s''${RESET}  %s\n" "$name" "$size" "$type"
     done | sort
 
-    echo
+ #   echo
 
     tput dim
     echo "  WebDAV credentials: demo / demo"
     tput sgr0
-    echo
-
-    tput dim
-    echo "  Press Ctrl-C to stop"
-    tput sgr0
-    echo
-
-    # Set environment for PAM to find config in runtime dir
-    export PAM_CONF_DIR="$RUNDIR/pam.d"
+#    echo
 
     ${ports.lighttpd}/sbin/lighttpd -D -f "$CONF" 2>&1 | sed 's/^/>>> /'
   '';

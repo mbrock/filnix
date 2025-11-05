@@ -7,6 +7,8 @@
 }:
 
 let
+  lighttpd-demo = base.callPackage ../httpd { portset = ports; };
+
   commonArgs = {
     inherit
       base
@@ -14,6 +16,7 @@ let
       world-pkgs
       dank-bashrc
       ghostty-terminfo
+      lighttpd-demo
       ;
   };
 in

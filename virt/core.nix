@@ -4,6 +4,7 @@
   world-pkgs,
   dank-bashrc,
   ghostty-terminfo,
+  lighttpd-demo,
 }:
 
 {
@@ -16,7 +17,7 @@ let
   runit = ports.runit;
 
    runit-config = base.runCommand "runit-config" { } ''
-    mkdir -p $out/etc/runit $out/etc/service/banner $out/etc/service/shell $out/sbin
+    mkdir -p $out/etc/runit $out/etc/service/shell $out/etc/service/lighttpd $out/sbin
 
     cp ${runit-stage1} $out/etc/runit/1
     cp ${runit-stage2} $out/etc/runit/2
@@ -27,11 +28,11 @@ let
     touch $out/etc/runit/stopit
     chmod +x $out/etc/runit/stopit
 
-    cp ${banner-service} $out/etc/service/banner/run
-    chmod +x $out/etc/service/banner/run
-
     cp ${shell-service} $out/etc/service/shell/run
     chmod +x $out/etc/service/shell/run
+
+    cp ${lighttpd-service} $out/etc/service/lighttpd/run
+    chmod +x $out/etc/service/lighttpd/run
 
     ln -s ../bin/runit $out/sbin/runit
   '';
@@ -42,6 +43,7 @@ let
       runit
       ghostty-terminfo
       runit-config
+      lighttpd-demo
     ]
     ++ world-pkgs;
   };
@@ -85,7 +87,7 @@ let
     + (
       if mountFilesystems then
         ''
-          mkdir -p /proc /sys /run /dev /var/service /var/log
+          mkdir -p /proc /sys /run /dev /var/service /var/log /var/tmp
           mount -t proc proc /proc
           mount -t sysfs sysfs /sys
           mount -t devtmpfs devtmpfs /dev
@@ -94,7 +96,7 @@ let
         ''
       else
         ''
-          mkdir -p /var/service /var/log /run
+          mkdir -p /var/service /var/log /var/tmp /run
         ''
     )
     + ''
@@ -139,17 +141,6 @@ let
     ''
   );
 
-  banner-service = base.writeShellScript "banner-run" ''
-    PATH=/bin
-    export PATH
-    trap 'echo "[banner] shutting down"; exit 0' TERM INT KILL
-    while true; do
-      sleep 5
-      uptime=$(cat /proc/uptime | cut -d' ' -f1)
-      printf '[uptime] %.0fs\n' "$uptime"
-    done
-  '';
-
   shell-service = base.writeShellScript "shell-run" ''
     PATH=/bin
     export PATH
@@ -159,8 +150,23 @@ let
     exec setsid bash +m -l <${consoleDevice} >${consoleDevice} 2>&1
   '';
 
+  lighttpd-service = base.writeShellScript "lighttpd-run" ''
+    PATH=/bin
+    export PATH
+    export HOME=/root
+
+    # Create runtime directory for lighttpd
+    RUNDIR=/var/log/lighttpd
+    mkdir -p "$RUNDIR"
+
+    echo "[lighttpd] starting web server..."
+
+    # Run lighttpd-demo (redirects to log file)
+    exec ${lighttpd-demo}/bin/lighttpd-demo 2>&1
+  '';
+
   mkRootfsScript = targetDir: ''
-    mkdir -p ${targetDir}/{var/log,var/service,run,tmp,root,dev,nix/store,usr/share/terminfo,proc,sys}
+    mkdir -p ${targetDir}/{var/log,var/service,var/tmp,run,tmp,root,dev,nix/store,usr/share/terminfo,proc,sys}
 
     # Copy entire closure into /nix/store
     for path in $(cat ${closure}/store-paths); do
@@ -183,7 +189,7 @@ let
   '';
 
   mkDockerExtraCommands = ''
-    mkdir -p var/log var/service run tmp root dev usr/share/terminfo
+    mkdir -p var/log var/service var/tmp run tmp root dev usr/share/terminfo
 
     # Install ghostty terminfo (can't be in nix store symlink)
     ${ports.ncurses}/bin/tic -x -o usr/share/terminfo ${../ghostty.terminfo}
@@ -205,8 +211,8 @@ in
     runit-stage1
     runit-stage2
     runit-stage3
-    banner-service
     shell-service
+    lighttpd-service
     mkRootfsScript
     mkDockerExtraCommands
     ;
