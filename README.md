@@ -18,6 +18,44 @@ cachix use filc
 
 The principle is GIMSO (Garbage In, Memory Safety Out) — even adversarial C code can't escape the safety guarantees. The performance overhead is 1.5x-4x compared to unsafe C. Currently Linux/X86_64 only. It runs real programs: OpenSSH, CPython, curl, SQLite, Emacs, systemd, and over 100 others.
 
+## Try Thwarting Memory Safety
+
+The `runfilc` command compiles and runs C code as a one-liner. Code is automatically wrapped in `int main() { ... }` and common headers (stdio, stdlib, string, stdint, stdbool) are included. Watch Fil-C thwart various exploits:
+
+```bash
+$ nix run .#runfilc -- 'int x[5] = {1,2,3,4,5}; return x[999];'
+# filc safety error: cannot read 4000 bytes when upper - ptr = 32.
+#     pointer: 0x720fa4708580,0x720fa4708580,0x720fa47085a0
+#     expected 4000 writable bytes.
+# [pid] filc panic: thwarted a futile attempt to violate memory safety.
+
+$ nix run .#runfilc -- 'char buf[8]; strcpy(buf, "this string is way too long");'
+# warning: 'strcpy' will always overflow; destination buffer has size 8, but size 28
+# filc safety error: cannot write pointer with ptr >= upper.
+#     pointer: 0x741912d05160,0x741912d05150,0x741912d05160
+#     expected 8 writable bytes.
+# [pid] filc panic: thwarted a futile attempt to violate memory safety.
+
+$ nix run .#runfilc -- 'int *p = malloc(sizeof(int)); free(p); *p = 42;'
+# filc safety error: cannot write pointer to free object.
+#     pointer: 0x7ee2a5306ab0,0x7ee2a5306ab0,0x7ee2a5306ab0,free
+#     expected 4 writable bytes.
+# [pid] filc panic: thwarted a futile attempt to violate memory safety.
+
+$ nix run .#runfilc -- 'void *p = malloc(100); free(p); free(p);'
+# filc safety error: cannot free pointer to free object.
+#     pointer: 0x7f8e4c906ab0,0x7f8e4c906ab0,0x7f8e4c906ab0,free
+# [pid] filc panic: thwarted a futile attempt to violate memory safety.
+
+$ nix run .#runfilc -- 'int x = 5; int *p = &x; p += 1000000; return *p;'
+# filc safety error: cannot read pointer with ptr >= upper.
+#     pointer: 0x7ffd8c3d1004,0x7ffd8c3d0eb4,0x7ffd8c3d0eb8
+#     expected 4 readable bytes.
+# [pid] filc panic: thwarted a futile attempt to violate memory safety.
+```
+
+Every violation is caught with a detailed error showing the pointer values, capability bounds, and full stack trace. The program terminates safely instead of corrupting memory or allowing exploitation.
+
 ## Why Nix?
 
 This repository packages Fil-C as reproducible Nix derivations. The [upstream](https://github.com/pizlonator/fil-c) is a development repo with shell-script builds and 100+ vendored projects. This flake takes a different approach: it's modular (compiler separate from applications), reproducible (hermetic builds, binary caching), and integrates with the ecosystem (port any nixpkgs package by overriding stdenv). Memory-safe and regular packages coexist peacefully via `/nix/store` paths — no conflicts.

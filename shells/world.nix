@@ -2,6 +2,7 @@
   pkgs,
   toolchain,
   ports,
+  runfilc,
 }:
 
 let
@@ -75,6 +76,7 @@ let
     tcl
     filcc
     filc-aliases
+    runfilc
     openssl
     curl
     git

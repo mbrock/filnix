@@ -46,7 +46,12 @@
       };
 
       filc-shell-stuff = import ./shells/world.nix {
-        inherit pkgs toolchain ports;
+        inherit
+          pkgs
+          toolchain
+          ports
+          runfilc
+          ;
       };
 
       shell-wasm3-cve = import ./shells/wasm3-cve-test.nix {
@@ -69,6 +74,8 @@
         inherit pkgs ports;
         inherit (filc-shell-stuff) world-pkgs;
       };
+
+      runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
 
       pkgsFilc = import nixpkgs-filc {
         localSystem = { inherit system; };
@@ -103,6 +110,8 @@
             cachix push filc $(nix build .#"$pkg" --print-out-paths --no-link)
           done
         '';
+
+        inherit runfilc;
       }
       // ports;
 
@@ -129,6 +138,11 @@
         build-filc-qemu-image = {
           type = "app";
           program = "${filc-qemu}/bin/build-filc-qemu-image";
+        };
+
+        runfilc = {
+          type = "app";
+          program = "${self.packages.${system}.runfilc}/bin/runfilc";
         };
 
       };
