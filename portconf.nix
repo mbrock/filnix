@@ -43,9 +43,15 @@ let
   # `use` embeds any (old: { ... }) transform or plain attrset
   use =
     f:
-    overAttrs (if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f);
+    overAttrs (
+      if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f
+    );
 
   tranquilize = overTranquilize true;
+  serialize = overAttrs (old: {
+    # set parallel building to false
+    enableParallelBuilding = false;
+  });
 
   # Cohesive source step: version + URL mapping + hash
   # usage: (src "3.10" (v: "https:// ftp/${v}.tar.xz") "sha256-...")
@@ -138,6 +144,16 @@ let
         NIX_CFLAGS_COMPILE = ((old.env or { }).NIX_CFLAGS_COMPILE or "") + " ${flag}";
       };
     });
+  addCMakeFlag =
+    flag:
+    use (old: {
+      cmakeFlags = (old.cmakeFlags or [ ]) ++ [ flag ];
+    });
+  removeCMakeFlag =
+    flag:
+    use (old: {
+      cmakeFlags = builtins.filter (f: f != flag) (old.cmakeFlags or [ ]);
+    });
   configure =
     flag:
     use (old: {
@@ -170,6 +186,7 @@ in
     skipTests
     skipCheck
     parallelize
+    serialize
     tranquilize
     tool
     link
@@ -177,6 +194,8 @@ in
     skipPatch
     removeCFlag
     addCFlag
+    removeCMakeFlag
+    addCMakeFlag
     configure
     wip
     ;
