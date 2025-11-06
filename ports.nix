@@ -16,6 +16,7 @@ let
     skipTests
     skipCheck
     parallelize
+    serialize
     tranquilize
     tool
     link
@@ -23,6 +24,8 @@ let
     skipPatch
     removeCFlag
     addCFlag
+    removeCMakeFlag
+    addCMakeFlag
     configure
     wip
     ;
@@ -45,10 +48,7 @@ rec {
   openssl = port [
     (pkgs.callPackage ./ports/openssl.nix { })
     { inherit zlib; }
-    (patch (
-      "${pkgs.path}/pkgs/development/libraries"
-      + "/openssl/3.0/nix-ssl-cert-file.patch"
-    ))
+    (patch ("${pkgs.path}/pkgs/development/libraries" + "/openssl/3.0/nix-ssl-cert-file.patch"))
   ];
 
   libevent = port [
@@ -94,7 +94,7 @@ rec {
     pkgs.attr
     (src "2.5.2" (
       v: "mirror://savannah/attr/attr-${v}.tar.gz"
-    ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
+    ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigYTiXNDMqYwmmgMbIc=")
     (patch ./ports/patch/attr-2.5.2.patch)
   ];
 
@@ -133,9 +133,7 @@ rec {
 
   bison = port [
     pkgs.bison
-    (src "3.8.2" (gnu "bison")
-      "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I="
-    )
+    (src "3.8.2" (gnu "bison") "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I=")
     (patch ./ports/patch/bison-3.8.2.patch)
     { m4 = gnum4; }
     skipTests
@@ -160,6 +158,19 @@ rec {
 
   cmake = port [
     pkgs.cmake
+    {
+      inherit
+        bzip2
+        expat
+        libarchive
+        xz
+        zlib
+        libuv
+        openssl
+        ;
+      curlMinimal = curl;
+      rhash = pkgs.rhash; # not ported yet
+    }
     (src "3.30.2" (
       v: "https://cmake.org/files/v3.30/cmake-${v}.tar.gz"
     ) "sha256-47dznBKRw0Rz24wY4h4bGZmNpQQJaFy+6KjvKVQoZSw=")
@@ -206,9 +217,7 @@ rec {
 
   diffutils = port [
     pkgs.diffutils
-    (src "3.10" (gnu "diffutils")
-      "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4="
-    )
+    (src "3.10" (gnu "diffutils") "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=")
     (patch ./ports/patch/diffutils-3.10.patch)
     { inherit coreutils; }
     (tool pkgs.perl)
@@ -223,10 +232,44 @@ rec {
 
   emacs = port [
     pkgs.emacs
+    {
+      inherit ncurses zlib libxml2;
+      # Disable TLS for now (gnutls has too many deps)
+      gnutls = null;
+      # Minimal terminal-only Emacs - disable everything we can
+      withX = false;
+      withGTK3 = false;
+      withXwidgets = false;
+      withNS = false;
+      withPgtk = false;
+      withImageMagick = false;
+      withWebP = false;
+      withTreeSitter = false;
+      withSQLite3 = false;
+      withGpm = false;
+      withSelinux = false;
+      withSystemd = false;
+      withAcl = false;
+      withMailutils = false;
+      withNativeCompilation = false;
+      withCsrc = false;
+      withCairo = false;
+      withAthena = false;
+      withMotif = false;
+      withDbus = false;
+      withAlsaLib = false;
+      withGlibNetworking = false;
+      withXinput2 = false;
+      withJansson = false;
+    }
     (src "30.1" (
       v: "https://git.savannah.gnu.org/cgit/emacs.git/snapshot/emacs-${v}.tar.gz"
-    ) "sha256-eTWjpRgLXbA9OQZnbrWPIHPcbj/QYkv58I3IWx5lCIQ=")
+    ) "sha256-5PJeGhy7/LMfqIxckfwohs/Up+Eip+uWcNPsSm+BCEs=")
     (patch ./ports/patch/emacs-30.1.patch)
+    (configure "--with-gnutls=ifavailable")
+    (configure "--with-dumping=none")
+    (configure "--with-pdumper=no")
+    (configure "--with-unexec=no")
     skipCheck
   ];
 
@@ -246,8 +289,9 @@ rec {
     skipCheck
   ];
 
-  find = port [
-    pkgs.find
+  findutils = port [
+    pkgs.findutils
+    { inherit coreutils; }
   ];
 
   flex = port [
@@ -297,9 +341,7 @@ rec {
 
   gnumake = port [
     pkgs.gnumake
-    (src "4.4.1" (gnuTarGz "make")
-      "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M="
-    )
+    (src "4.4.1" (gnuTarGz "make") "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M=")
     (patch ./ports/patch/make-4.4.1.patch)
     { guileSupport = false; }
   ];
@@ -382,7 +424,7 @@ rec {
     (src "1.6.3" (
       v:
       "https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git/snapshot/keyutils-${v}.tar.gz"
-    ) "sha256-ph1XBhNq5MBb1I+GGGvP29iN2L1RB+Phlckkz8Gzm7Q=")
+    ) "sha256-ph1XBhNq5MBb1I+G2GvP29iN2L1RB+Phlckkz8Gzm7Q=")
     (patch ./ports/patch/keyutils-1.6.3.patch)
     (skipPatch "after_eq")
   ];
@@ -567,13 +609,13 @@ rec {
     { inherit ncurses; }
   ];
 
-  ngtcp2 = port [
-    pkgs.ngtcp2
-    { inherit brotli; }
-    { inherit libev; }
-    { inherit nghttp3; }
-    { inherit openssl; }
-  ];
+  # ngtcp2 = port [
+  #   pkgs.ngtcp2
+  #   { inherit brotli; }
+  #   { inherit libev; }
+  #   { inherit nghttp3; }
+  #   { inherit openssl; }
+  # ];
 
   nghttp2 = port [
     pkgs.nghttp2
@@ -592,9 +634,56 @@ rec {
     pkgs.openssh
     (src "9.8p1" (
       v: "mirror://openbsd/OpenSSH/portable/openssh-${v}.tar.gz"
-    ) "sha256-6pz8/fR51/K/SWKjKSrKNEAiEaUQwOjW6Pf+YY4j3to=")
+    ) "sha256-3YvQAqN5tdSZ37BQ3R+pr4Ap6ARh9LtsUjxJlz9aOfM=")
     (patch ./ports/patch/openssh-9.8p1.patch)
+    {
+      inherit
+        zlib
+        libedit
+        openssl
+        #        libfido2
+        ldns
+        pam
+        ;
+    }
     skipCheck
+    { withFIDO = false; }
+  ];
+
+  libfido2 = port [
+    pkgs.libfido2
+    { inherit zlib openssl libcbor; }
+    (use {
+      buildInputs = [
+        zlib
+        openssl
+        libcbor
+        # systemd is too big and complicated to port right now
+      ];
+    })
+    (addCMakeFlag "-DUSE_PCSC=OFF")
+  ];
+
+  libcbor = port [
+    pkgs.libcbor
+    { inherit cmocka; }
+    { inherit libfido2; }
+    (addCMakeFlag "-DCMAKE_VERBOSE_MAKEFILE=ON")
+    (addCMakeFlag "-DCMAKE_NO_EXAMPLES=ON")
+    (addCMakeFlag "-DCMAKE_SANITIZE=OFF")
+    skipTests
+  ];
+
+  cmocka = port [
+    pkgs.cmocka
+    skipTests
+    (addCMakeFlag "-DWITH_EXAMPLES=OFF")
+  ];
+
+  ldns = port [
+    pkgs.ldns
+    { inherit openssl; }
+    (tool depizloing-nm)
   ];
 
   pam = port [
@@ -635,12 +724,10 @@ rec {
     parallelize
   ];
 
-  pkgconf =
-    pkgs.callPackage (pkgs.path + "/pkgs/build-support/pkg-config-wrapper")
-      {
-        pkg-config = pkgconf-unwrapped;
-        baseBinName = "pkgconf";
-      };
+  pkgconf = pkgs.callPackage (pkgs.path + "/pkgs/build-support/pkg-config-wrapper") {
+    pkg-config = pkgconf-unwrapped;
+    baseBinName = "pkgconf";
+  };
 
   python3 = port [
     pkgs.python3
@@ -655,7 +742,6 @@ rec {
     { inherit expat; }
     { inherit libffi; }
     { mimetypesSupport = true; }
-    { enableLTO = false; }
     skipCheck
     (tool pkgs.python3)
     (tool pkgs.autoreconfHook)
@@ -705,9 +791,9 @@ rec {
     { inherit libffi; }
     { inherit readline; }
     { lineEditingLibrary = "readline"; }
-    (src "2.84.14"
-      (v: "https://github.com/trealla-prolog/trealla/archive/v${v}.tar.gz")
-      "sha256-W1erZMHlX3s0Px62LHoMAcHWUeepDk3T63/R2QAyDAQ=")
+    (src "2.84.14" (
+      v: "https://github.com/trealla-prolog/trealla/archive/v${v}.tar.gz"
+    ) "sha256-W1erZMHlX3s0Px62LHoMAcHWUeepDk3T63/R2QAyDAQ=")
 
     (patch ./patches/trealla-filc-ffi-zptrtable.patch)
 
