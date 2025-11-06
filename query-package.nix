@@ -120,7 +120,8 @@ let
     if afterSource != "" then builtins.head pathParts else "";
 
   pkg =
-    pkgs.${packageName} or (throw "Package '${packageName}' not found in nixpkgs");
+    pkgs.${packageName}
+      or (throw "Package '${packageName}' not found in nixpkgs");
   position = pkg.meta.position or "";
   args = getFunctionArgs pkg;
 

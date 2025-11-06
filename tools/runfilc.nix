@@ -26,4 +26,3 @@ pkgs.writeShellScriptBin "runfilc" ''
   ${toolchain.filcc}/bin/clang -o "$tmpdir/script" "$tmpdir/script.c"
   exec "$tmpdir/script"
 ''
-

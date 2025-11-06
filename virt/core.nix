@@ -16,7 +16,7 @@
 let
   runit = ports.runit;
 
-   runit-config = pkgs.runCommand "runit-config" { } ''
+  runit-config = pkgs.runCommand "runit-config" { } ''
     mkdir -p $out/etc/runit $out/etc/service/shell $out/etc/service/lighttpd $out/sbin
 
     cp ${runit-stage1} $out/etc/runit/1
