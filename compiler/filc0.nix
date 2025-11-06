@@ -23,15 +23,6 @@ let
 
 in
 {
-  # This is the basic Fil-C Clang LLVM build.
-  # It produces a bare compiler without Fil-C runtime.
-  # Uses pinned source and inlined build logic to avoid casual rebuilds.
-  #
-  # Split outputs:
-  # - out: Essential compiler tools (~400-500 MB)
-  # - dev: Headers and static libraries for LLVM development (~1.0 GB)
-  # - bin: Extra LLVM utilities (~1.5 GB)
-  # - lib: Documentation and helper scripts (~1 MB)
   filc0 = pkgs.ccacheStdenv.mkDerivation {
     pname = "filc0";
     version = "git";

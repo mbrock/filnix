@@ -1,6 +1,8 @@
+diff --git a/bfd/bfd.c b/bfd/bfd.c
+index a93be109f111..0f16aee4cae4 100644
 --- a/bfd/bfd.c
 +++ b/bfd/bfd.c
-@@ -2902,8 +2902,8 @@ DESCRIPTION
+@@ -2902,14 +2902,14 @@ DESCRIPTION
  	Wrapper around cplus_demangle.  Strips leading underscores and
  	other such chars that would otherwise confuse the demangler.
  	If passed a g++ v3 ABI mangled name, returns a buffer allocated
@@ -11,12 +13,19 @@
  */
 
  char *
+ bfd_demangle (bfd *abfd, const char *name, int options)
+ {
+-  char *res, *alloc;
++  char *res, *alloc, *alloc2;
+   const char *pre, *suf;
+   size_t pre_len;
+   bool skip_lead;
 @@ -2929,6 +2929,11 @@ bfd_demangle (bfd *abfd, const char *name, int options)
      ++name;
    pre_len = name - pre;
 
 +  /* 20251030 djb: strip off pizlonated_ */
-+  /* XXX: is doing this after . and $ conceptually correct? */
++  // XXX: is doing this after . and $ conceptually correct? */
 +  /* XXX: should symbols without this add depizlonated_ for invertibility? */
 +  if (!getenv("FILC_PRESERVE_PREFIX") && !strncmp(name,"pizlonated_",11)) name += 11;
 +
@@ -32,8 +41,12 @@
        memcpy (alloc, name, suf - name);
        alloc[suf - name] = '\0';
        name = alloc;
-@@ -2948,16 +2953,13 @@ bfd_demangle (bfd *abfd, const char *name, int options)
+@@ -2944,22 +2949,20 @@ bfd_demangle (bfd *abfd, const char *name, int options)
 
+   res = cplus_demangle (name, options);
+
+-  free (alloc);
+-
    if (res == NULL)
      {
 -      if (skip_lead)
@@ -47,12 +60,17 @@
 -	}
 -      return NULL;
 +      size_t len = pre_len + strlen (name) + 1;
-+      alloc = (char *) bfd_malloc (len);
-+      if (alloc == NULL)
++      alloc2 = (char *) bfd_malloc (len);
++      if (alloc2 == NULL)
 +        abort();
-+      memcpy (alloc, pre, pre_len);
-+      memcpy (alloc + pre_len, name, strlen(name) + 1);
-+      return alloc;
++      memcpy (alloc2, pre, pre_len);
++      memcpy (alloc2 + pre_len, name, strlen(name) + 1);
++      free (alloc);
++      return alloc2;
      }
 
++  free (alloc);
++
    /* Put back any prefix or suffix.  */
+   if (pre_len != 0 || suf != NULL)
+     {
