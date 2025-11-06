@@ -150,6 +150,8 @@ pkgs.buildEnv {
         -m 512 \
         -kernel "$kernel" \
         -drive file="$disk",if=virtio,format="$format" \
+        -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22 \
+        -device virtio-net-pci,netdev=net0 \
         -append "console=ttyS0 root=/dev/vda rootwait init=/bin/runit-init panic=-1 oops=panic earlyprintk=serial,ttyS0,115200" \
         -nographic \
         -no-reboot \

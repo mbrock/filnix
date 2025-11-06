@@ -16,8 +16,83 @@
 let
   runit = ports.runit;
 
+  passwd = pkgs.writeText "passwd" ''
+    root:x:0:0:root:/root:/bin/bash
+    sshd:x:74:74:Privilege-separated SSH:/var/empty/sshd:/bin/false
+    nobody:x:65534:65534:nobody:/:/bin/false
+  '';
+
+  shadow = pkgs.writeText "shadow" ''
+    root:*:19659:0:99999:7:::
+    sshd:*:19659:0:99999:7:::
+    nobody:*:19659:0:99999:7:::
+  '';
+
+  group = pkgs.writeText "group" ''
+    root:x:0:
+    sshd:x:74:
+    nogroup:x:65534:
+  '';
+
+  nsswitch = pkgs.writeText "nsswitch.conf" ''
+    passwd: files
+    group: files
+    shadow: files
+    hosts: files dns
+    networks: files
+    protocols: files
+    services: files
+    ethers: files
+    rpc: files
+  '';
+
+  sshd-config = pkgs.writeText "sshd_config" ''
+    Port 22
+    ListenAddress 0.0.0.0
+    HostKey /var/ssh/ssh_host_ed25519_key
+    HostKey /var/ssh/ssh_host_rsa_key
+    PermitRootLogin yes
+    PasswordAuthentication no
+    ChallengeResponseAuthentication no
+    UsePAM no
+    AuthorizedKeysFile .ssh/authorized_keys
+    Subsystem sftp ${ports.openssh}/libexec/sftp-server
+    PrintMotd no
+    ClientAliveInterval 30
+    ClientAliveCountMax 5
+    ModuliFile ${ports.openssh}/etc/ssh/moduli
+  '';
+
+  sshd-service = pkgs.writeShellScript "sshd-run" ''
+    PATH=/bin:${ports.openssh}/bin
+    export PATH
+
+    mkdir -p /var/run/sshd /var/ssh /root/.ssh
+    chmod 700 /root/.ssh
+
+    if [ ! -f /var/ssh/ssh_host_ed25519_key ]; then
+      echo "[sshd] generating ed25519 host key"
+      ${ports.openssh}/bin/ssh-keygen -t ed25519 -N "" -f /var/ssh/ssh_host_ed25519_key
+    fi
+
+    if [ ! -f /var/ssh/ssh_host_rsa_key ]; then
+      echo "[sshd] generating RSA host key"
+      ${ports.openssh}/bin/ssh-keygen -t rsa -b 4096 -N "" -f /var/ssh/ssh_host_rsa_key
+    fi
+
+    chmod 600 /var/ssh/ssh_host_*_key
+
+    mkdir -p /var/empty/sshd
+    chown sshd:sshd /var/empty/sshd
+    chmod 755 /var/empty
+    chmod 755 /var/empty/sshd
+
+    echo "[sshd] starting ssh daemon..."
+    exec ${ports.openssh}/bin/sshd -D -e -f /etc/ssh/filnix_sshd_config
+  '';
+
   runit-config = pkgs.runCommand "runit-config" { } ''
-    mkdir -p $out/etc/runit $out/etc/service/shell $out/etc/service/lighttpd $out/sbin
+    mkdir -p $out/etc/runit $out/etc/service/shell $out/etc/service/lighttpd $out/etc/service/sshd $out/etc/ssh $out/sbin
 
     cp ${runit-stage1} $out/etc/runit/1
     cp ${runit-stage2} $out/etc/runit/2
@@ -33,6 +108,16 @@ let
 
     cp ${lighttpd-service} $out/etc/service/lighttpd/run
     chmod +x $out/etc/service/lighttpd/run
+
+    cp ${sshd-service} $out/etc/service/sshd/run
+    chmod +x $out/etc/service/sshd/run
+
+    cp ${passwd} $out/etc/passwd
+    cp ${shadow} $out/etc/shadow
+    cp ${group} $out/etc/group
+    cp ${nsswitch} $out/etc/nsswitch.conf
+    cp ${sshd-config} $out/etc/ssh/filnix_sshd_config
+    chmod 600 $out/etc/shadow
 
     ln -s ../bin/runit $out/sbin/runit
   '';
@@ -87,12 +172,24 @@ let
     + (
       if mountFilesystems then
         ''
-          mkdir -p /proc /sys /run /dev /var/service /var/log /var/tmp
-          mount -t proc proc /proc
-          mount -t sysfs sysfs /sys
-          mount -t devtmpfs devtmpfs /dev
-          mount -t tmpfs tmpfs /run
-          hostname filux
+                    mkdir -p /proc /sys /run /dev /var/service /var/log /var/tmp
+                    mount -t proc proc /proc
+                    mount -t sysfs sysfs /sys
+                    mount -t devtmpfs devtmpfs /dev
+                    mount -t tmpfs tmpfs /run
+                    hostname filux
+                    if command -v ifconfig >/dev/null 2>&1; then
+                      ifconfig lo 127.0.0.1 up || true
+                      ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up || true
+                      if command -v route >/dev/null 2>&1; then
+                        route add default gw 10.0.2.2 || true
+                      fi
+                    fi
+                    if [ ! -f /etc/resolv.conf ]; then
+                      cat <<'EOF' >/etc/resolv.conf
+          nameserver 10.0.2.3
+          EOF
+                    fi
         ''
       else
         ''
@@ -172,12 +269,18 @@ let
     for path in $(cat ${closure}/store-paths); do
       dst="${targetDir}$path"
       mkdir -p "$(dirname "$dst")"
-      cp -a --no-preserve=ownership "$path" "$dst"
+      ${pkgs.coreutils}/bin/cp -a --no-preserve=ownership "$path" "$dst"
     done
 
     # Symlink env structure into rootfs (includes runit-config merged in)
     for item in ${env}/*; do
-      ln -s $item "${targetDir}/$(basename $item)"
+      name=$(basename "$item")
+      if [ "$name" = "etc" ]; then
+        mkdir -p "${targetDir}/etc"
+        ${pkgs.coreutils}/bin/cp -a --no-preserve=ownership "$item/." "${targetDir}/etc/"
+      else
+        ln -s $item "${targetDir}/$name"
+      fi
     done
 
     # Install ghostty terminfo
@@ -213,6 +316,7 @@ in
     runit-stage3
     shell-service
     lighttpd-service
+    sshd-service
     mkRootfsScript
     mkDockerExtraCommands
     ;

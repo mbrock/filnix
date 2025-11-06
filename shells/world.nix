@@ -79,6 +79,7 @@ let
     runfilc
     openssl
     curl
+    openssh
     git
     pkgconf
     autoconf

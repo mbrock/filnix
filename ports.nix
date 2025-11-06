@@ -94,7 +94,7 @@ rec {
     pkgs.attr
     (src "2.5.2" (
       v: "mirror://savannah/attr/attr-${v}.tar.gz"
-    ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigYTiXNDMqYwmmgMbIc=")
+    ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
     (patch ./ports/patch/attr-2.5.2.patch)
   ];
 
@@ -424,7 +424,7 @@ rec {
     (src "1.6.3" (
       v:
       "https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git/snapshot/keyutils-${v}.tar.gz"
-    ) "sha256-ph1XBhNq5MBb1I+G2GvP29iN2L1RB+Phlckkz8Gzm7Q=")
+    ) "sha256-ph1XBhNq5MBb1I+GGGvP29iN2L1RB+Phlckkz8Gzm7Q=")
     (patch ./ports/patch/keyutils-1.6.3.patch)
     (skipPatch "after_eq")
   ];
