@@ -1,26 +1,50 @@
 # Filnix
 
-> Nix packaging for Fil-C — memory-safe C/C++ that just works
+> Fil-C wrapped in Nix
 
-**Try it now:**
 ```bash
-nix run github:mbrock/filnix#lighttpd-demo  # Memory-safe web server + CGI
-nix run github:mbrock/filnix#nethack        # Memory-safe roguelike
-nix run github:mbrock/filnix#filc-shell     # Full memory-safe environment
+nix run github:mbrock/filnix#lighttpd-demo
+nix run github:mbrock/filnix#nethack
+nix run github:mbrock/filnix#filc-shell
 
-# Enable binary cache (saves ~2 hours of LLVM compilation)
+# if you don't like watching cmake build llvm for hours
 cachix use filc
 ```
+
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/filc-lighttpd.png" alt="Lighttpd demo homepage">
+      <p align="center"><i>Lighttpd demo homepage</i></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/filc-cgi-bug.png" alt="Memory safety in action">
+      <p align="center"><i>Fil-C thwarting out-of-bounds access</i></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/filc-figlet-cgi.png" alt="Figlet font gallery">
+      <p align="center"><i>Figlet font gallery (streaming ASCII art)</i></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/filc-qemu-boot.png" alt="QEMU boot">
+      <p align="center"><i>QEMU VM boot sequence</i></p>
+    </td>
+  </tr>
+</table>
+
 
 ## What is Fil-C?
 
 [Fil-C](https://github.com/pizlonator/fil-c) by [Filip Pizlo](https://twitter.com/filpizlo) is memory-safe C and C++. It prevents use-after-free, out-of-bounds access, and type confusion without changing your code and without unsafe escape hatches. Every pointer carries hidden capability metadata (bounds + type). All accesses are checked. A concurrent garbage collector prevents use-after-free.
 
-The principle is GIMSO (Garbage In, Memory Safety Out) — even adversarial C code can't escape the safety guarantees. The performance overhead is 1.5x-4x compared to unsafe C. Currently Linux/X86_64 only. It runs real programs: OpenSSH, CPython, curl, SQLite, Emacs, systemd, and over 100 others.
+The principle is *Garbage In, Memory Safety Out*.  Even adversarial C code is thwarted immediately. Yeah, yeah, it's a bit slower than "normal" C and right now it's on x64 Linux only. But it works enough to run OpenSSH, CPython, curl, SQLite, Emacs, Trealla Prolog, and over 100 other beautiful programs.
 
 ## Try Thwarting Memory Safety
 
-The `runfilc` command compiles and runs C code as a one-liner. Code is automatically wrapped in `int main() { ... }` and common headers (stdio, stdlib, string, stdint, stdbool) are included. Watch Fil-C thwart various exploits:
+The `runfilc` command compiles and runs C code as a one-liner.  Watch Fil-C in action, protecting your shell and your soul:
 
 ```bash
 $ nix run .#runfilc -- 'int x[5] = {1,2,3,4,5}; return x[999];'
@@ -58,7 +82,8 @@ Every violation is caught with a detailed error showing the pointer values, capa
 
 ## Why Nix?
 
-This repository packages Fil-C as reproducible Nix derivations. The [upstream](https://github.com/pizlonator/fil-c) is a development repo with shell-script builds and 100+ vendored projects. This flake takes a different approach: it's modular (compiler separate from applications), reproducible (hermetic builds, binary caching), and integrates with the ecosystem (port any nixpkgs package by overriding stdenv). Memory-safe and regular packages coexist peacefully via `/nix/store` paths — no conflicts.
+This repository packages Fil-C as reproducible Nix derivations. The [upstream](https://github.com/pizlonator/fil-c) is a development repo with shell-script builds and 100+ vendored projects. This flake takes a different approach: it's modular (compiler separate from applications), reproducible (hermetic builds, binary caching), and integrates with the ecosystem (port any nixpkgs package by overriding stdenv). Memory-safe and regular packages coexist peacefully via
+`/nix/store` paths, everything stays moisturized and flourishing.
 
 Currently a standalone flake, working toward nixpkgs integration as a cross-compilation target (`pkgsCross.filc.*`).
 
@@ -86,7 +111,11 @@ The [figlet.sh](httpd/src/figlet.sh) script demonstrates memory-safe bash callin
 
 ### Containers & VMs
 
-Run a complete memory-safe environment ("filux" — runit-based mini-distro):
+I'm experimenting with defining a minimal "Linux distribution"
+with `runit` as PID1 and a `/bin` full of memory safe goodies.
+
+It's not exactly NixOS, but it's fun and might somehow be useful
+for something.
 
 ```bash
 nix run .#run-filc-docker     # Docker container
@@ -103,8 +132,8 @@ Packages ported here that aren't in upstream fil-c:
 | Package | Description |
 |---------|-------------|
 | lighttpd | HTTP server with mod_cgi, WebDAV, compression |
-| nethack | Classic roguelike |
-| kitty-doom | Console Doom |
+| nethack | Nobody's ascended in Fil-C Nethack yet... |
+| kitty-doom | Console DOOM |
 | wasm3 | WebAssembly runtime (see [CVE demos](#cve-prevention-wasm3)) |
 | trealla | ISO Prolog with Fil-C FFI integration |
 | figlet | ASCII art generator |
@@ -141,27 +170,4 @@ sqlite = port [
 ];
 ```
 
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="screenshots/filc-lighttpd.png" alt="Lighttpd demo homepage">
-      <p align="center"><i>Lighttpd demo homepage</i></p>
-    </td>
-    <td width="50%">
-      <img src="screenshots/filc-cgi-bug.png" alt="Memory safety in action">
-      <p align="center"><i>Fil-C thwarting out-of-bounds access</i></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="screenshots/filc-figlet-cgi.png" alt="Figlet font gallery">
-      <p align="center"><i>Figlet font gallery (streaming ASCII art)</i></p>
-    </td>
-    <td width="50%">
-      <img src="screenshots/filc-qemu-boot.png" alt="QEMU boot">
-      <p align="center"><i>QEMU VM boot sequence</i></p>
-    </td>
-  </tr>
-</table>
+Hopefully soon we won't need to declare dependencies manually... My goal is to have large parts of Nixpkgs just work automatically without even trying.
