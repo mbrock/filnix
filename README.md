@@ -140,3 +140,28 @@ sqlite = port [
   skipTests  # TCL test harness needs adaptation
 ];
 ```
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/filc-lighttpd.png" alt="Lighttpd demo homepage">
+      <p align="center"><i>Lighttpd demo homepage</i></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/filc-cgi-bug.png" alt="Memory safety in action">
+      <p align="center"><i>Fil-C thwarting out-of-bounds access</i></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/filc-figlet-cgi.png" alt="Figlet font gallery">
+      <p align="center"><i>Figlet font gallery (streaming ASCII art)</i></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/filc-qemu-boot.png" alt="QEMU boot">
+      <p align="center"><i>QEMU VM boot sequence</i></p>
+    </td>
+  </tr>
+</table>

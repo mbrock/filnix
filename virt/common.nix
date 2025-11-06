@@ -24,4 +24,3 @@
 
   lighttpd-demo = pkgs.callPackage ../httpd { inherit ports; };
 }
-
