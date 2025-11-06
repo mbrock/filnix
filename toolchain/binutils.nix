@@ -59,4 +59,8 @@ pkgs.binutils-unwrapped.overrideAttrs (old: rec {
     mkdir $NIX_BUILD_TOP/build
     cd $NIX_BUILD_TOP/build
   '';
+
+  configureFlags = old.configureFlags ++ [
+    "--enable-gold=default"
+  ];
 })
