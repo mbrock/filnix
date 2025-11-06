@@ -53,7 +53,7 @@
         inherit pkgs ports;
       };
 
-      filc-shell = filc-shell-stuff.filc-world-shell;
+      filc-world-shell = filc-shell-stuff.filc-world-shell;
 
       filc-nspawn = import ./virt/nspawn.nix {
         inherit pkgs ports;
@@ -87,7 +87,7 @@
         inherit filc0;
         filcc = toolchain.filcc;
 
-        inherit filc-shell;
+        inherit filc-world-shell;
         inherit filc-nspawn;
         inherit filc-qemu;
         inherit filc-docker;
