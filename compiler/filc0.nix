@@ -62,6 +62,7 @@ in
           CMAKE_INSTALL_PREFIX = "$out";
           LLVM_USE_LINKER = "lld";
           LLVM_ENABLE_PROJECTS = "clang";
+          LLVM_BINUTILS_INCDIR = "${pkgs.binutils-unwrapped.dev}/include";
         };
       in
       ''
@@ -78,7 +79,7 @@ in
     '';
 
     installPhase = ''
-      NINJA_STATUS="[I %f/%t %es] " ninja -v -C build install-clang install-clang-resource-headers
+      NINJA_STATUS="[I %f/%t %es] " ninja -v -C build install
     '';
 
     meta.description = "Fil-C Clang compiler (LLVM stage only, pinned and isolated)";

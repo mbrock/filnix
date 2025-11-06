@@ -93,6 +93,7 @@
 
         inherit filc0;
         filcc = toolchain.filcc;
+        filc-bintools = toolchain.filc-bintools;
 
         inherit filc-world-shell;
         inherit filc-nspawn;

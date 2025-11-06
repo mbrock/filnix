@@ -179,7 +179,8 @@ rec {
     }:
     let
       pkgName = pkg.pname or (builtins.parseDrvName pkg.name).name;
-      hasBuildInputs = (pkg.buildInputs or [ ]) != [ ] || (pkg.propagatedBuildInputs or [ ]) != [ ];
+      hasBuildInputs =
+        (pkg.buildInputs or [ ]) != [ ] || (pkg.propagatedBuildInputs or [ ]) != [ ];
       noDepsProvided = deps == { };
       withFilC_ = if tranquilize then withFilC-tranquil else withFilC;
     in
