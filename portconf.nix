@@ -3,11 +3,16 @@
 # This module provides a compositional DSL for defining package ports.
 # Instead of passing large attribute sets, we use a pipeline of small
 # transformations that are easier to read and maintain.
+#
+# Modes:
+#   "standalone" - builds individual packages using withFilC/fix (default)
+#   "overlay"    - returns overlay functions for cross-compilation
 
 {
   lib,
-  fix,
+  fix ? null,
   pkgs,
+  mode ? "standalone",
 }:
 
 let
@@ -17,7 +22,6 @@ let
   Init = {
     deps = { };
     attrs = (_: { }); # old -> { ... }
-    tranquilize = false;
   };
 
   # Compose two attrs fns - thread changes through and merge results
@@ -35,19 +39,13 @@ let
   # Endofunctor "port step" = FixArgs -> FixArgs
   overDeps = d: fa: fa // { deps = fa.deps // d; };
   overAttrs = f: fa: fa // { attrs = merge fa.attrs f; };
-  overTranquilize = f: fa: fa // { tranquilize = f; };
 
   # Primitives
   arg = kv: overDeps kv;
 
   # `use` embeds any (old: { ... }) transform or plain attrset
-  use =
-    f:
-    overAttrs (
-      if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f
-    );
+  use = f: overAttrs (if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f);
 
-  tranquilize = overTranquilize true;
   serialize = overAttrs (old: {
     # set parallel building to false
     enableParallelBuilding = false;
@@ -80,17 +78,27 @@ let
     let
       pkg = builtins.head steps;
       rawSteps = builtins.tail steps;
-      normalizeStep =
-        step:
-        if builtins.isAttrs step && !builtins.isFunction step then arg step else step;
+      normalizeStep = step: if builtins.isAttrs step && !builtins.isFunction step then arg step else step;
       normalizedSteps = builtins.map normalizeStep rawSteps;
       acc = foldl' (fa: step: step fa) Init normalizedSteps;
     in
-    fix pkg {
-      deps = acc.deps;
-      attrs = acc.attrs;
-      tranquilize = acc.tranquilize;
-    };
+    if mode == "standalone" then
+      # Original behavior: build standalone package using fix
+      (
+        assert fix != null;
+        fix pkg {
+          deps = acc.deps;
+          attrs = acc.attrs;
+        }
+      )
+    else if mode == "overlay" then
+      # New behavior: return attribute transformer for overlay
+      # In overlay mode, we IGNORE dependencies (cross-compilation handles them)
+      # We ONLY return the attribute transformations (patches, flags, etc.)
+      # Returns: old -> { patches = ...; ... }
+      acc.attrs
+    else
+      throw "Unknown portconf mode: ${mode}. Use 'standalone' or 'overlay'.";
 
   # Common helpers
   skipTests = use (_: {
@@ -121,17 +129,13 @@ let
   skipPatch =
     p:
     use (old: {
-      patches = builtins.filter (patch: !(lib.hasInfix p (toString patch))) (
-        old.patches or [ ]
-      );
+      patches = builtins.filter (patch: !(lib.hasInfix p (toString patch))) (old.patches or [ ]);
     });
   removeCFlag =
     flag:
     use (old: {
       env = (old.env or { }) // {
-        NIX_CFLAGS_COMPILE = lib.replaceStrings [ flag ] [ "" ] (
-          (old.env or { }).NIX_CFLAGS_COMPILE or ""
-        );
+        NIX_CFLAGS_COMPILE = lib.replaceStrings [ flag ] [ "" ] ((old.env or { }).NIX_CFLAGS_COMPILE or "");
       };
       preConfigure = (old.preConfigure or "") + ''
         export NIX_CFLAGS_COMPILE="''${NIX_CFLAGS_COMPILE//${flag}/}"
@@ -187,7 +191,6 @@ in
     skipCheck
     parallelize
     serialize
-    tranquilize
     tool
     link
     patch

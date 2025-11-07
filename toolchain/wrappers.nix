@@ -10,12 +10,11 @@ let
   inherit (lib) setupCcache;
   inherit (filc) filc-libcxx filc-glibc;
   filc3xx = filc;
-  filc3xx-tranquil = filc;
 
   # ccache wrapper with version script handling
   filcache =
     flavor:
-    pkgs.writeShellScriptBin ("ccache-${flavor}") ''
+    pkgs.writeShellScriptBin "ccache-${flavor}" ''
       ${setupCcache}
 
       # Fil-C Clang driver has special version script handling.
@@ -54,60 +53,19 @@ let
       exec ${pkgs.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "''${new_args[@]}"
     '';
 
-  filcache-tranquil =
-    flavor:
-    pkgs.writeShellScriptBin ("ccache-${flavor}") ''
-      ${setupCcache}
-
-      # Fil-C Clang driver has special version script handling.
-      #
-      # This only works if we give the version script flag
-      # to the Clang driver, not to the actual linker.
-      #
-      # When version scripts aren't "pizlonated" properly,
-      # you get a bunch of linker errors when building anything
-      # that uses version scripts (e.g. OpenSSL).
-      #
-      # XXX: This shouldn't really be in the ccache setup wrapper.
-
-      # Handle both -Wl,--version-script=file and -Wl,--version-script -Wl,file
-      new_args=()
-      prev_was_version_script=0
-      for arg in "$@"; do
-        if [[ "$arg" == "-Wl,--version-script="* ]]; then
-          # Form 1: -Wl,--version-script=file
-          new_args+=("--version-script=''${arg#-Wl,--version-script=}")
-        elif [[ "$arg" == "-Wl,--version-script,"* ]]; then
-          # Form 2: -Wl,--version-script,file
-          new_args+=("--version-script=''${arg#-Wl,--version-script,}")
-        elif [[ "$arg" == "-Wl,-version-script" ]] || [[ "$arg" == "-Wl,--version-script" ]]; then
-          # Form 3: -Wl,-version-script or -Wl,--version-script (file comes next)
-          prev_was_version_script=1
-        elif [[ $prev_was_version_script -eq 1 ]]; then
-          # This is the file argument
-          new_args+=("--version-script=''${arg#-Wl,}")
-          prev_was_version_script=0
-        else
-          new_args+=("$arg")
-        fi
-      done
-
-      exec ${pkgs.ccache}/bin/ccache ${filc3xx-tranquil}/bin/${flavor} "''${new_args[@]}"
-    '';
-
 in
 rec {
-  filc-cc = pkgs.runCommand "filc-cc" { } ''
-    mkdir -p $out/bin
-    ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
-    ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/clang++
-  '';
-
-  filc-cc-tranquil = pkgs.runCommand "filc-cc" { } ''
-    mkdir -p $out/bin
-    ln -s ${filcache-tranquil "clang"}/bin/ccache-clang $out/bin/clang
-    ln -s ${filcache-tranquil "clang++"}/bin/ccache-clang++ $out/bin/clang++
-  '';
+  filc-cc =
+    let
+      targetPrefix = pkgs.lib.optionalString (
+        pkgs.stdenv.hostPlatform != pkgs.stdenv.targetPlatform
+      ) "${pkgs.stdenv.targetPlatform.config}-";
+    in
+    pkgs.runCommand "filc-cc" { } ''
+      mkdir -p $out/bin
+      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/${targetPrefix}clang
+      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/${targetPrefix}clang++
+    '';
 
   filc-bintools = pkgs.wrapBintoolsWith {
     bintools = filc-binutils;
@@ -134,19 +92,6 @@ rec {
     '';
   };
 
-  filcc-tranquil = pkgs.wrapCCWith {
-    cc = filc-cc-tranquil;
-    libc = filc-sysroot;
-    libcxx = filc-libcxx;
-    bintools = filc-bintools;
-
-    extraBuildCommands = ''
-      echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
-      echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
-      echo "-gz=none" >> $out/nix-support/cc-cflags
-    '';
-  };
-
   filc-aliases = pkgs.runCommand "filc-aliases" { } ''
     mkdir -p $out/bin
     ln -s ${filcc}/bin/clang $out/bin/filc
@@ -154,18 +99,11 @@ rec {
   '';
 
   filenv = pkgs.overrideCC pkgs.stdenv filcc;
-  filenv-tranquil = pkgs.overrideCC pkgs.stdenv filcc-tranquil;
 
   withFilC =
     pkg:
     pkg.override {
       stdenv = filenv;
-    };
-
-  withFilC-tranquil =
-    pkg:
-    pkg.override {
-      stdenv = filenv-tranquil;
     };
 
   # Combine withFilC, override, and overrideAttrs in one call
@@ -175,14 +113,11 @@ rec {
     {
       deps ? { },
       attrs ? _: { },
-      tranquilize ? false,
     }:
     let
       pkgName = pkg.pname or (builtins.parseDrvName pkg.name).name;
-      hasBuildInputs =
-        (pkg.buildInputs or [ ]) != [ ] || (pkg.propagatedBuildInputs or [ ]) != [ ];
+      hasBuildInputs = (pkg.buildInputs or [ ]) != [ ] || (pkg.propagatedBuildInputs or [ ]) != [ ];
       noDepsProvided = deps == { };
-      withFilC_ = if tranquilize then withFilC-tranquil else withFilC;
     in
     if hasBuildInputs && noDepsProvided then
       throw ''
@@ -191,7 +126,7 @@ rec {
         Then add 'deps = { ... }' to your port configuration.
       ''
     else
-      (withFilC_ (pkg.override deps)).overrideAttrs attrs;
+      (withFilC (pkg.override deps)).overrideAttrs attrs;
 
   parallelize =
     pkg:

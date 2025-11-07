@@ -35,6 +35,8 @@ in
       "lib"
     ];
 
+    patches = [ ./filc0-symver.patch ];
+
     enableParallelBuilding = true;
 
     nativeBuildInputs = with pkgs; [

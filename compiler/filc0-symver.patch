@@ -1,0 +1,13 @@
+diff --git a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+index 176a8b19222b..76ee787934b5 100644
+--- a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
++++ b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+@@ -8874,7 +8874,7 @@ class Pizlonator {
+           }
+           continue;
+         }
+-        if (Tok.Str == ".filc_symver") {
++        if (Tok.Str == ".filc_symver" || Tok.Str == ".symver") {
+           std::string LocalName = MAT.getNextSpecific(MATokenKind::Identifier).Str;
+           MAT.getNextSpecific(MATokenKind::Comma);
+           std::string VersionedName = MAT.getNextSpecific(MATokenKind::Identifier).Str;

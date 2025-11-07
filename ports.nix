@@ -1,13 +1,19 @@
 {
   pkgs,
-  filenv,
-  filc-src,
-  withFilC,
-  fix,
-  filcc,
+  filenv ? null,
+  fix ? null,
+  filcc ? null,
+  mode ? "standalone", # "standalone" or "overlay"
 }:
 let
-  DSL = import ./portconf.nix { inherit lib fix pkgs; };
+  DSL = import ./portconf.nix {
+    inherit
+      lib
+      fix
+      pkgs
+      mode
+      ;
+  };
   inherit (DSL)
     buildPort
     arg
@@ -17,7 +23,6 @@ let
     skipCheck
     parallelize
     serialize
-    tranquilize
     tool
     link
     patch
@@ -41,14 +46,11 @@ rec {
       v: "v${v}/zlib-${v}.tar.gz"
     )) "sha256-/wukwpIBPbwnUws6geH5qBPNOd4Byl4Pi/NVcC76WT4=")
     (patch ./ports/patch/zlib-1.3.patch)
-
-    tranquilize # perl needs zlib
   ];
 
   openssl = port [
     (pkgs.callPackage ./ports/openssl.nix { })
     { inherit zlib; }
-    (patch ("${pkgs.path}/pkgs/development/libraries" + "/openssl/3.0/nix-ssl-cert-file.patch"))
   ];
 
   libevent = port [
@@ -80,9 +82,13 @@ rec {
 
   inherit filcc;
 
-  depizloing-nm = pkgs.writeShellScriptBin "nm" ''
-    ${filcc}/bin/nm "$@" | sed 's/\bpizlonated_//g'
-  '';
+  libsepol = port [
+    pkgs.libsepol
+    (src "3.9" (github "SELinuxProject/selinux" (
+      v: "releases/download/v${v}/libsepol-${v}.tar.gz"
+    )) "sha256-umMLWeUMX7+endRes3NPNzz3jWidjBDFNxFMm9dp+i4=")
+    (patch ./ports/patch/libsepol-3.9.patch)
+  ];
 
   # Work in progress (alphabetically sorted)
   acl = port [
@@ -397,7 +403,6 @@ rec {
     { inherit json_c; }
     { inherit libmicrohttpd; }
     { inherit libarchive; }
-    (tool depizloing-nm)
     (configure "--disable-symbol-versioning")
     (configure "--disable-debuginfod")
     #    (configure "--enable-libdebuginfod=dummy")
@@ -477,7 +482,11 @@ rec {
     (configure "--disable-exec-static-tramp")
   ];
 
-  libiconv = lib.getDev filcc.libc;
+  libiconv =
+    if mode == "overlay" then
+      (old: { }) # In overlay mode, return empty attrs (libiconv comes from nixpkgs)
+    else
+      lib.getDev filcc.libc;
 
   libidn2 = port [
     (pkgs.callPackage "${pkgs.path}/pkgs/development/libraries/libidn2" { })
@@ -500,7 +509,7 @@ rec {
     pkgs.libpng
     (src "1.6.43" (
       v: "mirror://sourceforge/libpng/libpng-${v}.tar.xz"
-    ) "sha256-Uw5O1JHsI91X2FYBy3XTVbUzDN9Vae7JkNn2Yw7W9tI=")
+    ) "sha256-alygZSOSotfJ2yrltAIQhDwLvAgcvUEIJasAzFnxSmw=")
     (patch ./ports/patch/libpng-1.6.43.patch)
     { inherit zlib; }
   ];
@@ -515,7 +524,6 @@ rec {
     pkgs.libssh2
     { inherit zlib; }
     { inherit openssl; }
-    (tool depizloing-nm)
     (tool pkgs.pkg-config)
     skipCheck
     (configure "--disable-examples-build")
@@ -545,7 +553,6 @@ rec {
       v: "v${v}/libxcrypt-${v}.tar.xz"
     )) "sha256-5eH0yu4KAd4q7ibjE4gH1tPKK45nKHlm0f79ZeH9iUM=")
     (patch ./ports/patch/libxcrypt-4.4.36.patch)
-    (tool depizloing-nm)
     skipCheck
   ];
 
@@ -575,7 +582,6 @@ rec {
     { enableMagnet = true; }
     { enableWebDAV = true; }
     { enablePam = true; }
-    (tool depizloing-nm)
     skipCheck
     (link brotli)
     (link zstd)
@@ -621,7 +627,6 @@ rec {
     pkgs.nghttp2
     { inherit zlib; }
     { inherit openssl; }
-    (tool depizloing-nm)
     (configure "--disable-app")
     (addCFlag "-Wno-deprecated-literal-operator")
   ];
@@ -650,24 +655,24 @@ rec {
     { withFIDO = false; }
   ];
 
-  libfido2 = port [
-    pkgs.libfido2
-    { inherit zlib openssl libcbor; }
-    (use {
-      buildInputs = [
-        zlib
-        openssl
-        libcbor
-        # systemd is too big and complicated to port right now
-      ];
-    })
-    (addCMakeFlag "-DUSE_PCSC=OFF")
-  ];
+  # libfido2 = port [
+  #   pkgs.libfido2
+  #   { inherit zlib openssl libcbor; }
+  #   (use {
+  #     buildInputs = [
+  #       zlib
+  #       openssl
+  #       libcbor
+  #       # systemd is too big and complicated to port right now
+  #     ];
+  #   })
+  #   (addCMakeFlag "-DUSE_PCSC=OFF")
+  # ];
 
   libcbor = port [
     pkgs.libcbor
     { inherit cmocka; }
-    { inherit libfido2; }
+    #    { inherit libfido2; }
     (addCMakeFlag "-DCMAKE_VERBOSE_MAKEFILE=ON")
     (addCMakeFlag "-DCMAKE_NO_EXAMPLES=ON")
     (addCMakeFlag "-DCMAKE_SANITIZE=OFF")
@@ -683,13 +688,11 @@ rec {
   ldns = port [
     pkgs.ldns
     { inherit openssl; }
-    (tool depizloing-nm)
   ];
 
   pam = port [
     pkgs.linux-pam
     { inherit libxcrypt db4; }
-    (tool depizloing-nm)
     skipCheck
   ];
 
@@ -708,7 +711,6 @@ rec {
     (patch ./ports/patch/perl-5.40.0.patch)
     { inherit zlib; }
     skipCheck
-    tranquilize
   ];
 
   procps = port [
@@ -720,7 +722,6 @@ rec {
 
   pkgconf-unwrapped = port [
     pkgs.pkgconf-unwrapped
-    (tool depizloing-nm)
     parallelize
   ];
 
@@ -826,7 +827,6 @@ rec {
     { shadowSupport = true; }
     { systemdSupport = false; }
     { translateManpages = false; }
-    (tool depizloing-nm)
     parallelize
   ];
 

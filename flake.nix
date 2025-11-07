@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
     # Modified nixpkgs with Fil-C cross-compilation support
-    nixpkgs-filc.url = "path:/home/mbrock/nixpkgs";
+    nixpkgs-filc.url = "github:lessrest/filnixpkgs/filc";
     nixpkgs-filc.flake = false;
   };
 
@@ -38,11 +38,9 @@
         inherit pkgs;
         inherit (toolchain)
           filenv
-          withFilC
           fix
           filcc
           ;
-        filc-src = sources.filc0-src;
       };
 
       filc-shell-stuff = import ./shells/world.nix {
@@ -77,10 +75,20 @@
 
       runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
 
-      pkgsFilc = import nixpkgs-filc {
-        localSystem = { inherit system; };
-        crossSystem.config = "x86_64-unknown-linux-filc";
-        config.replaceCrossStdenv = _: toolchain.filenv;
+      pkgsFilcWithOverlay = import nixpkgs-filc {
+        localSystem = system;
+        crossSystem.config = "x86_64-unknown-linux-gnufilc";
+        config.replaceCrossStdenv =
+          { buildPackages, baseStdenv }:
+          baseStdenv.override {
+            cc = toolchain.filcc;
+          };
+        crossOverlays = [
+          (final: prev: {
+            gnufilc = toolchain.filcc;
+          })
+          (import ./ports-as-overlay.nix pkgs)
+        ];
       };
     in
     {
@@ -89,7 +97,14 @@
       overlays.default = final: prev: ports;
 
       packages.${system} = {
-        test-cross-hello = pkgsFilc.lynx;
+        # Test 1: GNU hello (no dependencies, should just work)
+        test-cross-hello = pkgsFilcWithOverlay.hello;
+
+        # Test 2: file (depends on zlib, which gets patched)
+        test-cross-file = pkgsFilcWithOverlay.file;
+
+        # Test 3: tmux (complex: ncurses, libevent->openssl, libutempter, utf8proc)
+        test-cross-tmux = pkgsFilcWithOverlay.tmux;
 
         inherit filc0;
         filcc = toolchain.filcc;

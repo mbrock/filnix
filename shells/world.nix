@@ -85,7 +85,6 @@ let
     autoconf
     automake
     libtool
-    depizloing-nm
     ghostty-terminfo
     util-linux
     wasm3

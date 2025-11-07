@@ -31,7 +31,7 @@ pkgs.binutils-unwrapped.overrideAttrs (old: rec {
     # now anyway.
     ../binutils-version-script.patch
     ../binutils-other-fixes.patch
-    #    ../binutils-pizlonated-demangle.patch
+    ../binutils-pizlonated-demangle.patch
   ];
 
   nativeBuildInputs =
@@ -64,4 +64,15 @@ pkgs.binutils-unwrapped.overrideAttrs (old: rec {
   configureFlags = old.configureFlags ++ [
     "--enable-gold=default"
   ];
+
+  # # Wrap nm to strip pizlonated_ prefix from symbols
+  # # This makes nm output cleaner when working with Fil-C binaries
+  # postInstall = (old.postInstall or "") + ''
+  #       mv $out/bin/nm $out/bin/.nm-wrapped
+  #       cat > $out/bin/nm << EOF
+  #   #!/bin/sh
+  #   exec $out/bin/.nm-wrapped "\$@" | sed 's/\bpizlonated_//g'
+  #   EOF
+  #       chmod +x $out/bin/nm
+  # '';
 })

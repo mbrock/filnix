@@ -1,0 +1,23 @@
+diff --git a/src/Makefile b/src/Makefile
+index a1aed072d29..94cd067a599 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -35,7 +35,8 @@ ifeq (yes,$(shell printf '${H}include <stdlib.h>\nint main(void){return realloca
+ override CFLAGS += -DHAVE_REALLOCARRAY
+ endif
+ 
+-LD_SONAME_FLAGS=-soname,$(LIBSO),--version-script=$(LIBMAP),-z,defs
++LD_SONAME_FLAGS=-soname,$(LIBSO),-z,defs
++EXTRA_LFLAGS=--version-script=$(LIBMAP)
+ 
+ LN=ln
+ OS := $(shell uname)
+@@ -56,7 +57,7 @@ $(LIBA):  $(OBJS)
+ 	$(RANLIB) $@
+ 
+ $(LIBSO): $(LOBJS) $(LIBMAP)
+-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -shared -o $@ $(LOBJS) -Wl,$(LD_SONAME_FLAGS)
++	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -shared -o $@ $(LOBJS) -Wl,$(LD_SONAME_FLAGS) $(EXTRA_LFLAGS)
+ 	ln -sf $@ $(TARGET) 
+ 
+ $(LIBPC): $(LIBPC).in ../VERSION
