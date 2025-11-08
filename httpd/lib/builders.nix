@@ -1,4 +1,4 @@
-{ pkgs, ports }:
+{ pkgs, ports, filcc }:
 {
   # Memory-safe bash script wrapper
   bashScript =
@@ -44,7 +44,7 @@
     pkgs.stdenv.mkDerivation {
       inherit name;
       src = sourceFile;
-      nativeBuildInputs = [ ports.filcc ];
+      nativeBuildInputs = [ filcc ];
       buildInputs = deps;
       unpackPhase = "true";
 

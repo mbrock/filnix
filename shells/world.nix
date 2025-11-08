@@ -87,7 +87,7 @@ let
     libtool
     ghostty-terminfo
     util-linux
-    wasm3
+    #    wasm3
     kittydoom
     procps
     inetutils

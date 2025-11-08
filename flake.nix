@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
     # Modified nixpkgs with Fil-C cross-compilation support
-    nixpkgs-filc.url = "github:lessrest/filnixpkgs/filc";
+    nixpkgs-filc.url = "github:lessrest/filnixpkgs/400439b089773d3fc593b512250e283a33485de4";
     nixpkgs-filc.flake = false;
   };
 
@@ -34,50 +34,9 @@
           ;
       };
 
-      ports = import ./ports.nix {
-        inherit pkgs;
-        inherit (toolchain)
-          filenv
-          fix
-          filcc
-          ;
-      };
-
-      filc-shell-stuff = import ./shells/world.nix {
-        inherit
-          pkgs
-          toolchain
-          ports
-          runfilc
-          ;
-      };
-
-      shell-wasm3-cve = import ./shells/wasm3-cve-test.nix {
-        inherit pkgs ports;
-      };
-
-      filc-world-shell = filc-shell-stuff.filc-world-shell;
-
-      filc-nspawn = import ./virt/nspawn.nix {
-        inherit pkgs ports;
-        inherit (filc-shell-stuff) world-pkgs;
-      };
-
-      filc-qemu = import ./virt/qemu.nix {
-        inherit pkgs ports;
-        inherit (filc-shell-stuff) world-pkgs;
-      };
-
-      filc-docker = import ./virt/docker.nix {
-        inherit pkgs ports;
-        inherit (filc-shell-stuff) world-pkgs;
-      };
-
-      runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
-
       pkgsFilcWithOverlay = import nixpkgs-filc {
         localSystem = system;
-        crossSystem.config = "x86_64-unknown-linux-gnufilc";
+        crossSystem.config = "x86_64-unknown-linux-gnufilc0";
         config.replaceCrossStdenv =
           { buildPackages, baseStdenv }:
           baseStdenv.override {
@@ -85,16 +44,58 @@
           };
         crossOverlays = [
           (final: prev: {
-            gnufilc = toolchain.filcc;
+            gnufilc0 = toolchain.filcc;
           })
           (import ./ports-as-overlay.nix pkgs)
         ];
       };
+
+      filc-shell-stuff = import ./shells/world.nix {
+        inherit
+          pkgs
+          toolchain
+          runfilc
+          ;
+        ports = pkgsFilcWithOverlay;
+      };
+
+      # shell-wasm3-cve = import ./shells/wasm3-cve-test.nix {
+      #   inherit pkgs;
+      #   ports = pkgsFilcWithOverlay;
+      # };
+
+      filc-world-shell = filc-shell-stuff.filc-world-shell;
+
+      filc-nspawn = import ./virt/nspawn.nix {
+        inherit pkgs;
+        ports = pkgsFilcWithOverlay;
+        filcc = toolchain.filcc;
+        inherit (filc-shell-stuff) world-pkgs;
+      };
+
+      filc-qemu = import ./virt/qemu.nix {
+        inherit pkgs;
+        ports = pkgsFilcWithOverlay;
+        filcc = toolchain.filcc;
+        inherit (filc-shell-stuff) world-pkgs;
+      };
+
+      filc-docker = import ./virt/docker.nix {
+        inherit pkgs;
+        ports = pkgsFilcWithOverlay;
+        filcc = toolchain.filcc;
+        inherit (filc-shell-stuff) world-pkgs;
+      };
+
+      runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
     in
     {
       lib.${system}.queryPackage = import ./query-package.nix pkgs;
 
-      overlays.default = final: prev: ports;
+      overlays.default = import ./ports-as-overlay.nix pkgs;
+
+      # Export the full cross-compiled package set
+      legacyPackages.${system}.pkgsFilc = pkgsFilcWithOverlay;
 
       packages.${system} = {
         # Test 1: GNU hello (no dependencies, should just work)
@@ -115,7 +116,10 @@
         inherit filc-qemu;
         inherit filc-docker;
 
-        lighttpd-demo = pkgs.callPackage ./httpd { inherit ports; };
+        lighttpd-demo = pkgs.callPackage ./httpd {
+          ports = pkgsFilcWithOverlay;
+          filcc = toolchain.filcc;
+        };
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
           cachix push filc ${toolchain.filcc}
@@ -128,13 +132,12 @@
         '';
 
         inherit runfilc;
-      }
-      // ports;
+      };
 
       apps.${system} = {
         run-filc-docker = {
           type = "app";
-          program = filc-docker;
+          program = "${filc-docker}";
         };
 
         run-filc-sandbox = {
@@ -166,8 +169,8 @@
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
       devShells.${system} = {
-        default = filc-shell-stuff;
-        wasm3-cve = shell-wasm3-cve;
+        #        default = filc-shell-stuff;
+        #        wasm3-cve = shell-wasm3-cve;
       };
     };
 }

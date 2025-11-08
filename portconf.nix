@@ -1,18 +1,15 @@
-# DSL for defining Fil-C ports
+# DSL for defining Fil-C ports as overlays
 #
 # This module provides a compositional DSL for defining package ports.
 # Instead of passing large attribute sets, we use a pipeline of small
 # transformations that are easier to read and maintain.
 #
-# Modes:
-#   "standalone" - builds individual packages using withFilC/fix (default)
-#   "overlay"    - returns overlay functions for cross-compilation
+# Each port returns an attribute transformer: old -> { patches = ...; ... }
+# Dependencies are handled automatically by Nix cross-compilation.
 
 {
   lib,
-  fix ? null,
   pkgs,
-  mode ? "standalone",
 }:
 
 let
@@ -21,6 +18,7 @@ let
   # The builder we transform (endofunctor target)
   Init = {
     deps = { };
+    overrideArgs = { }; # Function arguments for .override
     attrs = (_: { }); # old -> { ... }
   };
 
@@ -38,13 +36,31 @@ let
 
   # Endofunctor "port step" = FixArgs -> FixArgs
   overDeps = d: fa: fa // { deps = fa.deps // d; };
+  overArgs = a: fa: fa // { overrideArgs = fa.overrideArgs // a; };
   overAttrs = f: fa: fa // { attrs = merge fa.attrs f; };
 
   # Primitives
-  arg = kv: overDeps kv;
+  arg = kv: overArgs kv;
 
   # `use` embeds any (old: { ... }) transform or plain attrset
   use = f: overAttrs (if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f);
+
+  # Mark a package as broken for Fil-C (prevents accidental dependencies)
+  # Only marks as broken when cross-compiling to filc targets
+  broken = reason: {
+    attrs = old: {
+      meta = (old.meta or {}) // (
+        if (old.stdenv.hostPlatform.isFilc or false) ||
+           (lib.hasInfix "filc" (old.stdenv.hostPlatform.config or ""))
+        then {
+          broken = true;
+          description = (old.meta.description or "Package") + " (not available for Fil-C: ${reason})";
+        }
+        else {}
+      );
+    };
+    overrideArgs = {};
+  };
 
   serialize = overAttrs (old: {
     # set parallel building to false
@@ -72,33 +88,31 @@ let
     );
 
   # Build a single port from a list [basePkg step1 step2 ...]
-  # Plain attrsets are automatically wrapped with arg
+  # Plain attrsets without wrapping are treated as deps (ignored in overlay mode)
+  # Use arg({ ... }) to mark as function arguments for .override
+  # Returns { attrs = old -> { ... }; overrideArgs = { ... } }
+  # OR for custom derivations: { __customDrv = path; __deps = {}; __attrs = fn }
   buildPort =
     steps:
     let
       pkg = builtins.head steps;
       rawSteps = builtins.tail steps;
-      normalizeStep = step: if builtins.isAttrs step && !builtins.isFunction step then arg step else step;
+
+      # Check if this is a custom derivation (path to .nix file)
+      isCustomDrv = builtins.isPath pkg || (builtins.isString pkg && lib.hasSuffix ".nix" pkg);
+
+      # Plain attrsets become deps (will be ignored), use arg() for override args
+      normalizeStep = step: if builtins.isAttrs step && !builtins.isFunction step then overDeps step else step;
       normalizedSteps = builtins.map normalizeStep rawSteps;
       acc = foldl' (fa: step: step fa) Init normalizedSteps;
     in
-    if mode == "standalone" then
-      # Original behavior: build standalone package using fix
-      (
-        assert fix != null;
-        fix pkg {
-          deps = acc.deps;
-          attrs = acc.attrs;
-        }
-      )
-    else if mode == "overlay" then
-      # New behavior: return attribute transformer for overlay
-      # In overlay mode, we IGNORE dependencies (cross-compilation handles them)
-      # We ONLY return the attribute transformations (patches, flags, etc.)
-      # Returns: old -> { patches = ...; ... }
-      acc.attrs
+    if isCustomDrv then
+      # Custom derivation - return special structure for overlay to callPackage
+      { __customDrv = pkg; __deps = acc.deps; __attrs = acc.attrs; }
     else
-      throw "Unknown portconf mode: ${mode}. Use 'standalone' or 'overlay'.";
+      # Normal port - return attrs and overrideArgs for overlay use
+      # Dependencies (deps field) are ignored - cross-compilation rebuilds them automatically
+      { inherit (acc) attrs overrideArgs; };
 
   # Common helpers
   skipTests = use (_: {
@@ -163,6 +177,11 @@ let
     use (old: {
       configureFlags = (old.configureFlags or [ ]) ++ [ flag ];
     });
+  removeConfigureFlag =
+    flag:
+    use (old: {
+      configureFlags = builtins.filter (f: f != flag) (old.configureFlags or [ ]);
+    });
   wip = throw "This port is marked as work-in-progress and cannot be built yet";
 
   # URL builders
@@ -185,7 +204,7 @@ let
 in
 {
   inherit buildPort;
-  inherit arg use src;
+  inherit arg use src broken;
   inherit
     skipTests
     skipCheck
@@ -200,6 +219,7 @@ in
     removeCMakeFlag
     addCMakeFlag
     configure
+    removeConfigureFlag
     wip
     ;
   inherit github gnu gnuTarGz;

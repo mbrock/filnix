@@ -1,0 +1,21 @@
+--- a/tccpp.c
++++ b/tccpp.c
+@@ -161,6 +161,9 @@
+ #ifdef TAL_DEBUG
+     int     line_num; /* negative line_num used for double free check */
+     char    file_name[TAL_DEBUG_FILE_LEN + 1];
++    char    _pad[15]; /* pad to multiple of 8 bytes */
++#else
++    char    _pad[4]; /* pad to 8 bytes for alignment */
+ #endif
+ } tal_header_t;
+
+@@ -246,7 +249,7 @@
+     tal_header_t *header;
+     void *ret;
+     int is_own;
+-    unsigned adj_size = (size + 3) & -4;
++    unsigned adj_size = (size + 7) & -8;
+     TinyAlloc *al = *pal;
+
+ tail_call:

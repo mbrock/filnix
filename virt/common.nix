@@ -1,4 +1,4 @@
-{ pkgs, ports }:
+{ pkgs, ports, filcc }:
 
 {
   ghostty-terminfo = pkgs.runCommand "ghostty-terminfo" { } ''
@@ -22,5 +22,5 @@
     export PKG_CONFIG=pkgconf
   '';
 
-  lighttpd-demo = pkgs.callPackage ../httpd { inherit ports; };
+  lighttpd-demo = pkgs.callPackage ../httpd { inherit ports filcc; };
 }

@@ -1,8 +1,8 @@
-{ pkgs, ports }:
+{ pkgs, ports, filcc }:
 
 let
   builders = import ./lib/builders.nix {
-    inherit pkgs ports;
+    inherit pkgs ports filcc;
   };
 
   html-escape = builders.filcProgram "html-escape" {

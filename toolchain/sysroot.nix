@@ -20,6 +20,7 @@ addLibcMetadata
     libpizlo
     filc-glibc
     filc-libcxx
+    pkgs.linuxHeaders
   ])
   {
     dynamicLinker = "ld-yolo-x86_64.so";

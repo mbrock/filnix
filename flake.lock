@@ -19,17 +19,17 @@
     "nixpkgs-filc": {
       "flake": false,
       "locked": {
-        "lastModified": 1762441179,
-        "narHash": "sha256-y6ZZpGGkL1/4+R0FqBr+KhD5PRG3yjwAzfVwEJWgnro=",
+        "lastModified": 1762633274,
+        "narHash": "sha256-Ygv7dtGtshVgYPWE9pNaCxA7s9V8OleD7UbFjuZr5ug=",
         "owner": "lessrest",
         "repo": "filnixpkgs",
-        "rev": "5d1c2c23569181360e89b1caccb4fc2a40df9788",
+        "rev": "400439b089773d3fc593b512250e283a33485de4",
         "type": "github"
       },
       "original": {
         "owner": "lessrest",
-        "ref": "filc",
         "repo": "filnixpkgs",
+        "rev": "400439b089773d3fc593b512250e283a33485de4",
         "type": "github"
       }
     },
