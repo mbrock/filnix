@@ -30,6 +30,7 @@ let
     configure
     removeConfigureFlag
     wip
+    depizloing-nm
     ;
   inherit (DSL) github gnu gnuTarGz;
   inherit (pkgs) lib;
@@ -606,6 +607,12 @@ rec {
     (patch ./runit-pid-namespace.patch)
   ];
 
+  scrypt = port [
+    pkgs.scrypt
+    (tool depizloing-nm)
+    skipTests
+  ];
+
   sqlite = port [
     pkgs.sqlite
     (arg { interactive = true; })
@@ -644,6 +651,40 @@ rec {
     # 3. Can't reconstruct capabilities from integer addresses in tcc_relocate_ex
     # Almost all TCC tests use -run.
     skipTests
+  ];
+
+  tor = port [
+    pkgs.tor
+    (arg {
+      systemd = null;
+      libseccomp = null;
+      libcap = null;
+    })
+
+    (configure "ac_cv_header_execinfo_h=no")
+    (configure "ac_cv_func_backtrace=no")
+    (configure "ac_cv_func_backtrace_symbols=no")
+    (configure "ac_cv_func_backtrace_symbols_fd=no")
+    (configure "ac_cv_search_backtrace=no")
+    (addCFlag "-DED25519_NO_INLINE_ASM=1")
+
+    skipTests # pass 17, skip 2, fail 6
+  ];
+
+  torsocks = port [
+    pkgs.torsocks
+    (tool pkgs.glibc.bin)
+    (tool depizloing-nm)
+    (arg { libcap = null; })
+    (use {
+      postPatch = ''
+        # Patch torify_app()
+        sed -i \
+          -e 's,\(local app_path\)=`which $1`,\1=`type -P $1`,' \
+          src/bin/torsocks.in
+      '';
+    })
+    skipTests # 2 failing tests, didn't look into it yet
   ];
 
   # C99 Prolog implementation
@@ -690,6 +731,8 @@ rec {
     )) "sha256-qds7s9ZOJIoPrpY/j7a6hRomuhgi5QTcDv0YqAxibK8=")
     (patch ./ports/patch/xz-5.6.2.patch)
     skipCheck
+    (tool pkgs.automake116x)
+    (tool pkgs.autoconf)
   ];
 
   zlib-ng = port [

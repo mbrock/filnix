@@ -184,6 +184,12 @@ let
     });
   wip = throw "This port is marked as work-in-progress and cannot be built yet";
 
+  # Wrapper for nm that strips pizlonated_ prefix from symbols
+  # Some build systems need to see "clean" symbol names
+  depizloing-nm = pkgs.writeShellScriptBin "nm" ''
+    ${pkgs.binutils}/bin/nm "$@" | sed 's/\bpizlonated_//g'
+  '';
+
   # URL builders
   # GitHub releases: owner/repo and path function
   # Usage: github "owner/repo" (v: "v${v}/pkg-${v}.tar.gz")
@@ -221,6 +227,7 @@ in
     configure
     removeConfigureFlag
     wip
+    depizloing-nm
     ;
   inherit github gnu gnuTarGz;
 }
