@@ -123,6 +123,20 @@
         '';
 
         inherit runfilc;
+
+        lua-with-stuff = pkgsFilc.lua5.withPackages (
+          ps: with ps; [
+            lpeg
+            luafilesystem
+            luabitop
+            luadbi
+            luadbi-sqlite3
+            luaffi
+            lua-ffi-zlib
+            luaposix
+            lua-pam
+          ]
+        );
       };
 
       apps.${system} = {
