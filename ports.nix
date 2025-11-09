@@ -4,6 +4,7 @@
 
 {
   pkgs,
+  prev,
 }:
 let
   DSL = import ./portconf.nix {
@@ -150,7 +151,7 @@ rec {
     }
     (src "3.30.2" (
       v: "https://cmake.org/files/v3.30/cmake-${v}.tar.gz"
-    ) "sha256-47dznBKRw0Rz24wY4h4bGZmNpQQJaFy+6KjvKVQoZSw=")
+    ) "sha256-RgdMeB7M68Qz6Y8Lv6Jlyj/UOB8kXKOxQOdxFTHWDbI=")
     (patch ./ports/patch/cmake-3.30.2.patch)
     skipCheck
   ];
@@ -168,6 +169,11 @@ rec {
     (arg { brotliSupport = true; })
     (arg { scpSupport = false; })
     skipCheck
+  ];
+
+  gdbm = port [
+    pkgs.gdbm
+    (tool depizloing-nm)
   ];
 
   dash = port [
@@ -195,11 +201,35 @@ rec {
     (arg { runtimeShellPackage = bash; })
   ];
 
-  emacs = port [
-    pkgs.emacs
+  gettext = port [
+    pkgs.gettext
+    (tool depizloing-nm)
+    (use (old: {
+      env = old.env // {
+        gettextNeedsLdflags = false;
+      };
+    }))
+  ];
+
+  luajit = port [
+    pkgs.luajit
+    (use (old: {
+      meta = old.meta // {
+        badPlatforms = [ "x86_64-linux" ];
+        broken = true;
+      };
+    }))
+  ];
+
+  emacs30 = port [
+    pkgs.emacs30
     (arg {
       # Disable TLS for now (gnutls has too many deps)
       gnutls = null;
+      systemd = null;
+      mailutils = null;
+      dbus = null;
+      harfbuzz = null;
       # Minimal terminal-only Emacs - disable everything we can
       withX = false;
       withGTK3 = false;
@@ -239,6 +269,7 @@ rec {
 
   expat = port [
     pkgs.expat
+    (tool depizloing-nm)
     (src "2.7.1" (github "libexpat/libexpat" (
       v: "R_${builtins.replaceStrings [ "." ] [ "_" ] v}/expat-${v}.tar.xz"
     )) "sha256-NUVSVEuPmQEuUGL31XDsd/FLQSo/9cfY0NrmLA0hfDA=")
@@ -296,6 +327,29 @@ rec {
     (src "4.4.1" (gnuTarGz "make") "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M=")
     (patch ./ports/patch/make-4.4.1.patch)
     (arg { guileSupport = false; })
+  ];
+
+  libbsd = port [
+    pkgs.libbsd
+    (tool depizloing-nm)
+    serialize
+    (use (old: {
+      meta = old.meta // {
+        badPlatforms = [ "x86_64-linux" ];
+        broken = true;
+      };
+    }))
+  ];
+
+  rhash = port [
+    pkgs.rhash
+    (use {
+      # -Wl,--version-script,exports.sym,-soname,librhash.so.1
+      preConfigure = ''
+        sed -i 's/,-soname/ -Wl,-soname/' configure
+      '';
+    })
+    (addCFlag "-DRHASH_NO_ASM=1")
   ];
 
   gnused = port [
@@ -382,6 +436,7 @@ rec {
 
   libffi = port [
     pkgs.libffi
+    (tool depizloing-nm)
     (src "3.4.6" (github "libffi/libffi" (
       v: "v${v}/libffi-${v}.tar.gz"
     )) "sha256-sN6p3yPIY6elDoJUQPPr/6vWXfFJcQjl1Dd0eEOJWk4=")
@@ -460,7 +515,7 @@ rec {
   lighttpd = port [
     pkgs.lighttpd
     (patch ./lighttpd-filc.patch)
-    { lua5_1 = lua; } # dependency override - will be ignored in overlay mode
+    #    { lua5_1 = lua; } # dependency override - will be ignored in overlay mode
     { linux-pam = pam; } # dependency override - will be ignored in overlay mode
     (arg { enableMagnet = true; })
     (arg { enableWebDAV = true; })
@@ -473,23 +528,26 @@ rec {
     (configure "--with-krb5")
   ];
 
-  # lua is a custom derivation that doesn't fit the overlay model
-  # TODO: Convert to use nixpkgs lua with patches, or handle specially
-  # lua = pkgs.callPackage ./ports/lua.nix {
-  #   inherit
-  #     filenv
-  #     filcc
-  #     ncurses
-  #     readline
-  #     pkgs
-  #     ;
-  # };
-  lua = {
-    attrs = old: { };
-    overrideArgs = { };
-  };
+  # # Lua 5.4 - we use our custom build since nixpkgs lua needs special handling
+  # lua5_4 = port [
+  #   ./ports/lua.nix
+  # ];
 
-  m4 = gnum4;
+  # # Alias for default lua (5.4)
+  # lua = port [
+  #   ./ports/lua.nix
+  # ];
+
+  #  m4 = gnum4;
+
+  lzo = port [
+    pkgs.lzo
+    skipTests
+    (tool depizloing-nm)
+    (configure "--disable-asm")
+  ];
+
+  tree-sitter = broken "tries to cross compile rustc hahaha";
 
   nano = port [ pkgs.nano ];
 
@@ -700,11 +758,6 @@ rec {
     # many fail with thwart in `bif_iso_write` hitting `isatty`.
     # also slow
     skipTests
-  ];
-
-  tree-sitter = port [
-    pkgs.tree-sitter
-    { inherit (pkgs) installShellFiles; } # build tool - will be ignored in overlay mode
   ];
 
   unibilium = port [ pkgs.unibilium ];

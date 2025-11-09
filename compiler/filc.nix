@@ -21,6 +21,12 @@ let
 
   filc-stdfil-headers = "${sources.libpas-src}/filc/include";
 
+  # Extract just the resource directory to avoid depending on the entire filc0 build
+  filc0-resource-dir = pkgs.runCommand "filc0-resource-dir" { } ''
+    mkdir -p $out/lib
+    cp -r ${filc0}/lib/clang $out/lib/
+  '';
+
   # Build CRT library directory
   crtLib =
     pkgs.runCommand "filc-crt-lib"
@@ -60,7 +66,7 @@ let
         makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang \
           --add-flags "-Wno-unused-command-line-argument" \
           --add-flags "--gcc-toolchain=${gcc.cc}" \
-          --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
+          --add-flags "-resource-dir ${filc0-resource-dir}/lib/clang/${llvmMajor}" \
           --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
           --add-flags "--filc-crt-path=${crtLib}" \
           --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
@@ -78,7 +84,7 @@ let
               makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang++ \
                 --add-flags "-Wno-unused-command-line-argument" \
                 --add-flags "--gcc-toolchain=${gcc.cc}" \
-                --add-flags "-resource-dir ${filc0}/lib/clang/${llvmMajor}" \
+                --add-flags "-resource-dir ${filc0-resource-dir}/lib/clang/${llvmMajor}" \
                 --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
                 --add-flags "--filc-crt-path=${crtLib}" \
                 --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \

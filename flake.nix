@@ -34,7 +34,7 @@
           ;
       };
 
-      pkgsFilcWithOverlay = import nixpkgs-filc {
+      pkgsFilc = import nixpkgs-filc {
         localSystem = system;
         crossSystem.config = "x86_64-unknown-linux-gnufilc0";
         config.replaceCrossStdenv =
@@ -56,7 +56,7 @@
           toolchain
           runfilc
           ;
-        ports = pkgsFilcWithOverlay;
+        ports = pkgsFilc;
       };
 
       # shell-wasm3-cve = import ./shells/wasm3-cve-test.nix {
@@ -68,21 +68,21 @@
 
       filc-nspawn = import ./virt/nspawn.nix {
         inherit pkgs;
-        ports = pkgsFilcWithOverlay;
+        ports = pkgsFilc;
         filcc = toolchain.filcc;
         inherit (filc-shell-stuff) world-pkgs;
       };
 
       filc-qemu = import ./virt/qemu.nix {
         inherit pkgs;
-        ports = pkgsFilcWithOverlay;
+        ports = pkgsFilc;
         filcc = toolchain.filcc;
         inherit (filc-shell-stuff) world-pkgs;
       };
 
       filc-docker = import ./virt/docker.nix {
         inherit pkgs;
-        ports = pkgsFilcWithOverlay;
+        ports = pkgsFilc;
         filcc = toolchain.filcc;
         inherit (filc-shell-stuff) world-pkgs;
       };
@@ -95,18 +95,9 @@
       overlays.default = import ./ports-as-overlay.nix pkgs;
 
       # Export the full cross-compiled package set
-      legacyPackages.${system}.pkgsFilc = pkgsFilcWithOverlay;
+      legacyPackages.${system}.pkgsFilc = pkgsFilc;
 
       packages.${system} = {
-        # Test 1: GNU hello (no dependencies, should just work)
-        test-cross-hello = pkgsFilcWithOverlay.hello;
-
-        # Test 2: file (depends on zlib, which gets patched)
-        test-cross-file = pkgsFilcWithOverlay.file;
-
-        # Test 3: tmux (complex: ncurses, libevent->openssl, libutempter, utf8proc)
-        test-cross-tmux = pkgsFilcWithOverlay.tmux;
-
         inherit filc0;
         filcc = toolchain.filcc;
         filc-bintools = toolchain.filc-bintools;
@@ -117,7 +108,7 @@
         inherit filc-docker;
 
         lighttpd-demo = pkgs.callPackage ./httpd {
-          ports = pkgsFilcWithOverlay;
+          ports = pkgsFilc;
           filcc = toolchain.filcc;
         };
 
