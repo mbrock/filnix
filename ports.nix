@@ -198,8 +198,18 @@ rec {
     (src "3.30.2" (
       v: "https://cmake.org/files/v3.30/cmake-${v}.tar.gz"
     ) "sha256-RgdMeB7M68Qz6Y8Lv6Jlyj/UOB8kXKOxQOdxFTHWDbI=")
-    (patch ./ports/patch/cmake-3.30.2.patch)
     skipCheck
+    (addCMakeFlag "-DCMAKE_VERBOSE_MAKEFILE=ON")
+
+    # nixpkgs also attempts to override these,
+    # but it relies on a target prefix and not a full path.
+    # We don't seem to set up the target prefix correctly,
+    # so we just use the full path.
+    (addCMakeFlag "-DCMAKE_CXX_COMPILER=${pkgs.lib.getBin prev.stdenv.cc}/bin/c++")
+    (addCMakeFlag "-DCMAKE_C_COMPILER=${pkgs.lib.getBin prev.stdenv.cc}/bin/cc")
+
+    # add -lm to the link flags for `lround` etc
+    (addCMakeFlag "-DCMAKE_EXE_LINKER_FLAGS=-lm")
   ];
 
   coreutils = port [
