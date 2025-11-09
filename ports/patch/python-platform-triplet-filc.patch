@@ -1,0 +1,21 @@
+diff --git a/configure.ac b/configure.ac
+index 0d6df8e24e42..0d5ad8e18a4d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -941,8 +941,14 @@ cat > conftest.c <<EOF
+ #if defined(__ANDROID__)
+     # Android is not a multiarch system.
+ #elif defined(__linux__)
+ # include <features.h>
+-# if defined(__UCLIBC__)
++# if defined(__FILC__)
++#  define LIBC gnufilc0
++#  define LIBC_X32 gnufilc0
++#  define LIBC_ARM gnufilc0
++#  define LIBC_LA gnufilc0
++#  define LIBC_MIPS gnufilc0
++#  define LIBC_PPC gnufilc0
++# elif defined(__UCLIBC__)
+ #  error uclibc not supported
+ # elif defined(__dietlibc__)
+ #  error dietlibc not supported

@@ -1,0 +1,16 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -946,6 +946,12 @@
+ #  error uclibc not supported
+ # elif defined(__dietlibc__)
+ #  error dietlibc not supported
++# elif defined(__PIZLONATOR_WAS_HERE__)
++#  if defined(__GLIBC__)
++#   define LIBC gnufilc0
++#  else
++#   error unknown Fil-C libc
++#  endif
+ # elif defined(__GLIBC__)
+ #  define LIBC gnu
+ #  define LIBC_X32 gnux32
+

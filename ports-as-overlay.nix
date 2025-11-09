@@ -63,6 +63,9 @@ ported
   # Also provide emacs30Packages as an alias
   emacs30Packages = prev.emacsPackagesFor ported.emacs30;
 
+  # pythonPackages scope using our cross-compiled python3
+  python3Packages = ported.python3.pkgs;
+
   # luaPackages scope using our cross-compiled lua (5.4)
   luaPackages = prev.lua54Packages.override {
     lua = ported.lua5_4;

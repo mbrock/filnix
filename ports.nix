@@ -243,6 +243,12 @@ rec {
     (arg { runtimeShellPackage = bash; })
   ];
 
+  e2fsprogs = port [
+    pkgs.e2fsprogs
+    (arg { withFuse = false; })
+    skipTests
+  ];
+
   gettext = port [
     pkgs.gettext
     (tool depizloing-nm)
@@ -502,6 +508,7 @@ rec {
 
   libssh2 = port [
     pkgs.libssh2
+    (tool depizloing-nm)
     skipCheck
     (configure "--disable-examples-build")
   ];
@@ -618,10 +625,13 @@ rec {
       v: "https://www.python.org/ftp/python/${v}/Python-${v}.tar.xz"
     ) "sha256-+oouEsXmILCfU+ZbzYdVDS5aHi4Ev4upkdzFUROHY5c=")
     (patch ./ports/patch/Python-3.12.5.patch)
-    (arg { mimetypesSupport = true; })
-    skipCheck
+    (patch ./python-filc-triplet-detection.patch)
     (removeCFlag "-Wa,--compress-debug-sections")
     (arg { enableLTO = false; })
+    (configure "--without-pymalloc")
+    (configure "--without-freelists")
+    (configure "ac_cv_func_chflags=no")
+    (configure "ac_cv_func_lchflags=no")
   ];
 
   p11-kit = port [
