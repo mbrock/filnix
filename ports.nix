@@ -59,13 +59,24 @@ rec {
     (patch ./ports/patch/libevent-2.1.12.patch)
   ];
 
-  ncurses = port [ pkgs.ncurses ];
-
-  utf8proc = port [ pkgs.utf8proc ];
-
   libutempter = port [
     pkgs.libutempter
     (arg { glib = null; })
+  ];
+
+  nettle = port [
+    pkgs.nettle
+    (removeConfigureFlag "--enable-fat")
+    (configure "--disable-assembler")
+  ];
+
+  glib = port [
+    pkgs.glib
+    (src "2.80.4" (
+      v: "https://gitlab.gnome.org/GNOME/glib/-/archive/${v}/glib-${v}.tar.bz2"
+    ) "sha256-/OX1T47yVkRWKwPaqaVAOd0vT0JEyABAqyGVGYPCkeQ=")
+    (patch ./ports/patch/glib-2.80.4.patch)
+    (arg { libsysprof-capture = null; })
   ];
 
   tmux = port [
@@ -81,8 +92,70 @@ rec {
     (patch ./ports/patch/libsepol-3.9.patch)
   ];
 
-  # Work in progress (alphabetically sorted)
-  acl = port [ pkgs.acl ];
+  libselinux = port [
+    pkgs.libselinux
+    (patch ./ports/patch/libselinux-3.9.patch)
+  ];
+
+  libgpg-error =
+    let
+      lock-obj-gnufilc0 = pkgs.writeText "lock-obj-pub.x86_64-unknown-linux-gnufilc0.h" ''
+        ## File created by gen-posix-lock-obj - DO NOT EDIT
+        ## To be included by mkheader into gpg-error.h
+
+        typedef struct
+        {
+          long _vers;
+          union {
+            volatile char _priv[40];
+            long _x_align;
+            long *_xp_align;
+          } u;
+        } gpgrt_lock_t;
+
+        #define GPGRT_LOCK_INITIALIZER {1,{{0,0,0,0,0,0,0,0, \
+                                            0,0,0,0,0,0,0,0, \
+                                            0,0,0,0,0,0,0,0, \
+                                            0,0,0,0,0,0,0,0, \
+                                            0,0,0,0,0,0,0,0}}}
+        ##
+        ## Local Variables:
+        ## mode: c
+        ## buffer-read-only: t
+        ## End:
+        ##
+      '';
+    in
+    port [
+      pkgs.libgpg-error
+      (use {
+        postPatch = ''
+          cp ${lock-obj-gnufilc0} src/syscfg/lock-obj-pub.x86_64-unknown-linux-gnufilc0.h
+        '';
+        postConfigure = ''
+          cp ${lock-obj-gnufilc0} src/lock-obj-pub.native.h
+        '';
+      })
+    ];
+
+  libgcrypt = port [
+    pkgs.libgcrypt
+    (configure "--disable-asm")
+    (configure "gcry_cv_gcc_amd64_platform_as_ok=no")
+    (use { configurePlatforms = [ "host" ]; })
+    (use {
+      buildPhase = ''
+        sed -i '/HAVE_GCC_ASM_VOLATILE_MEMORY/d' config.h
+        touch config.status
+        make -j$NIX_BUILD_CORES
+      '';
+    })
+  ];
+
+  libtasn1 = port [
+    pkgs.libtasn1
+    skipTests
+  ];
 
   attr = port [
     pkgs.attr
@@ -91,10 +164,6 @@ rec {
     ) "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
     (patch ./ports/patch/attr-2.5.2.patch)
   ];
-
-  autoconf = port [ pkgs.autoconf ];
-
-  automake = port [ pkgs.automake ];
 
   bash = port [
     pkgs.bash
@@ -108,16 +177,12 @@ rec {
     skipCheck
   ];
 
-  bc = port [ pkgs.bc ];
-
   bison = port [
     pkgs.bison
     (src "3.8.2" (gnu "bison") "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I=")
     (patch ./ports/patch/bison-3.8.2.patch)
     skipTests
   ];
-
-  brotli = port [ pkgs.brotli ];
 
   busybox = port [
     pkgs.busybox
@@ -128,27 +193,8 @@ rec {
     })
   ];
 
-  bzip2 = port [ pkgs.bzip2 ];
-
-  c-ares = port [ pkgs.c-aresMinimal ];
-
-  clolcat = port [ pkgs.clolcat ];
-
   cmake = port [
     pkgs.cmake
-    {
-      inherit
-        bzip2
-        expat
-        libarchive
-        xz
-        zlib
-        libuv
-        openssl
-        ;
-      curlMinimal = curl;
-      rhash = pkgs.rhash; # not ported yet
-    }
     (src "3.30.2" (
       v: "https://cmake.org/files/v3.30/cmake-${v}.tar.gz"
     ) "sha256-RgdMeB7M68Qz6Y8Lv6Jlyj/UOB8kXKOxQOdxFTHWDbI=")
@@ -184,10 +230,6 @@ rec {
     (patch ./ports/patch/dash-0.5.12.patch)
   ];
 
-  db4 = db48;
-
-  db48 = port [ pkgs.db48 ];
-
   diffutils = port [
     pkgs.diffutils
     (src "3.10" (gnu "diffutils") "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=")
@@ -219,6 +261,11 @@ rec {
         broken = true;
       };
     }))
+  ];
+
+  rspamd = port [
+    pkgs.rspamd
+    (arg { withLuaJIT = false; })
   ];
 
   emacs30 = port [
@@ -276,16 +323,10 @@ rec {
     (patch ./ports/patch/expat-2.7.1.patch)
   ];
 
-  figlet = port [ pkgs.figlet ];
-
   file = port [
     pkgs.file
     skipCheck
   ];
-
-  findutils = port [ pkgs.findutils ];
-
-  flex = port [ pkgs.flex ];
 
   git = port [
     pkgs.git
@@ -372,16 +413,10 @@ rec {
     (patch ./ports/patch/m4-1.4.19.patch)
   ];
 
-  gtest = port [ pkgs.gtest ];
-
-  inetutils = port [ pkgs.inetutils ];
-
   strace = port [
     pkgs.strace
     (use { postPatch = ''sed -i 's/ vfork/ fork/g' */strace.c''; })
   ];
-
-  libunwind = port [ pkgs.libunwind ];
 
   elfutils = port [
     pkgs.elfutils
@@ -389,18 +424,13 @@ rec {
     (configure "--disable-debuginfod")
     #    (configure "--enable-libdebuginfod=dummy")
     (addCFlag "-Wno-error=unused-parameter")
+    (arg { enableDebuginfod = false; })
     skipTests
-  ];
-
-  json_c = port [
-    pkgs.json_c
   ];
 
   libmicrohttpd = port [
     (pkgs.callPackage ./libmicrohttpd.nix { })
   ];
-
-  jq = port [ pkgs.jq ];
 
   keyutils = port [
     pkgs.keyutils
@@ -411,8 +441,6 @@ rec {
     (patch ./ports/patch/keyutils-1.6.3.patch)
     (skipPatch "after_eq")
   ];
-
-  lesspipe = port [ pkgs.lesspipe ];
 
   libarchive = port [
     pkgs.libarchive
@@ -431,8 +459,6 @@ rec {
     ) "sha256-XwVzNJ13xKSJZxkc3WY03Xql9jmMalf+A3zAJpbWCZ8=")
     (patch ./ports/patch/libedit-20240808-3.1.patch)
   ];
-
-  libev = port [ pkgs.libev ];
 
   libffi = port [
     pkgs.libffi
@@ -474,19 +500,11 @@ rec {
     (patch ./ports/patch/libpng-1.6.43.patch)
   ];
 
-  libpsl = port [ pkgs.libpsl ];
-
   libssh2 = port [
     pkgs.libssh2
     skipCheck
     (configure "--disable-examples-build")
   ];
-
-  libtool = port [ pkgs.libtool ];
-
-  libunistring = port [ pkgs.libunistring ];
-
-  libuuid = util-linux;
 
   libuv = port [
     pkgs.libuv
@@ -528,18 +546,6 @@ rec {
     (configure "--with-krb5")
   ];
 
-  # # Lua 5.4 - we use our custom build since nixpkgs lua needs special handling
-  # lua5_4 = port [
-  #   ./ports/lua.nix
-  # ];
-
-  # # Alias for default lua (5.4)
-  # lua = port [
-  #   ./ports/lua.nix
-  # ];
-
-  #  m4 = gnum4;
-
   lzo = port [
     pkgs.lzo
     skipTests
@@ -549,27 +555,11 @@ rec {
 
   tree-sitter = broken "tries to cross compile rustc hahaha";
 
-  nano = port [ pkgs.nano ];
-
-  nethack = port [ pkgs.nethack ];
-
-  # ngtcp2 = port [
-  #   pkgs.ngtcp2
-  #   { inherit brotli; }
-  #   { inherit libev; }
-  #   { inherit nghttp3; }
-  #   { inherit openssl; }
-  # ];
-
   nghttp2 = port [
     pkgs.nghttp2
     (configure "--disable-app")
     (addCFlag "-Wno-deprecated-literal-operator")
   ];
-
-  nghttp3 = port [ pkgs.nghttp3 ];
-
-  oniguruma = port [ pkgs.oniguruma ];
 
   openssh = port [
     pkgs.openssh
@@ -580,20 +570,6 @@ rec {
     skipCheck
     (arg { withFIDO = false; })
   ];
-
-  # libfido2 = port [
-  #   pkgs.libfido2
-  #   { inherit zlib openssl libcbor; }
-  #   (use {
-  #     buildInputs = [
-  #       zlib
-  #       openssl
-  #       libcbor
-  #       # systemd is too big and complicated to port right now
-  #     ];
-  #   })
-  #   (addCMakeFlag "-DUSE_PCSC=OFF")
-  # ];
 
   libcbor = port [
     pkgs.libcbor
@@ -608,8 +584,6 @@ rec {
     skipTests
     (addCMakeFlag "-DWITH_EXAMPLES=OFF")
   ];
-
-  ldns = port [ pkgs.ldns ];
 
   pam = port [
     pkgs.linux-pam
@@ -647,6 +621,12 @@ rec {
     (arg { mimetypesSupport = true; })
     skipCheck
     (removeCFlag "-Wa,--compress-debug-sections")
+    (arg { enableLTO = false; })
+  ];
+
+  p11-kit = port [
+    pkgs.p11-kit
+    skipTests # 1 failure
   ];
 
   quickjs = port [
@@ -657,8 +637,6 @@ rec {
     (patch ./ports/patch/quickjs.patch)
     skipCheck
   ];
-
-  readline = port [ pkgs.readline ];
 
   runit = port [
     pkgs.runit
@@ -677,8 +655,6 @@ rec {
     skipCheck
     (removeCFlag "-DSQLITE_ENABLE_STMT_SCANSTATUS")
   ];
-
-  tcl = port [ pkgs.tcl ];
 
   tinycc = port [
     pkgs.tinycc
@@ -760,8 +736,6 @@ rec {
     skipTests
   ];
 
-  unibilium = port [ pkgs.unibilium ];
-
   util-linux = port [
     pkgs.util-linux
     (arg { capabilitiesSupport = false; })
@@ -775,7 +749,10 @@ rec {
     parallelize
   ];
 
-  which = port [ pkgs.which ];
+  shadow = port [
+    pkgs.shadow
+    (tool depizloing-nm)
+  ];
 
   xz = port [
     pkgs.xz
