@@ -26,9 +26,6 @@
   (eglot-report-progress nil)
   (eglot-confirm-server-initiated-edits nil)
   (eglot-events-buffer-size 0)
-  :config
-  ;; Keep the mode-line leaner but still expose the keymap prefix.
-  (define-key eglot-mode-map (kbd "C-c l") eglot-command-map)
   (let ((clangd (or (filc/eglot--executable "clangd") "clangd")))
     (cl-pushnew
      `((c-mode c++-mode c-ts-mode c++-ts-mode)

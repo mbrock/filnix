@@ -2,8 +2,8 @@
 
 pkgs:
 let
-  # Import pythonPorts.nix - returns a list of port specs
-  portList = import ./pythonPorts.nix { inherit pkgs; };
+  # Import pyports.nix - returns a list of port specs
+  portList = import ../pyports.nix { inherit pkgs; };
 
   # Convert list to attrset keyed by pname (same logic as ports2-as-overlay)
   portSpecs = builtins.listToAttrs (

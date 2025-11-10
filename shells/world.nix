@@ -6,11 +6,11 @@
 }:
 
 let
-  inherit (toolchain) filcc filc-aliases;
+  inherit (toolchain) filcc;
 
   ghostty-terminfo = pkgs.runCommand "ghostty-terminfo" { } ''
     mkdir -p $out/share/terminfo
-    ${pkgs.ncurses}/bin/tic -x -o $out/share/terminfo ${../ghostty.terminfo}
+    ${pkgs.ncurses}/bin/tic -x -o $out/share/terminfo ${../misc/ghostty.terminfo}
   '';
 
   dank-bashrc = pkgs.writeText "dank-bashrc" ''
@@ -75,7 +75,6 @@ let
     perl
     tcl
     filcc
-    filc-aliases
     runfilc
     openssl
     curl

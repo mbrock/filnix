@@ -1,10 +1,8 @@
-# DSL for list-based Fil-C ports (portconf2)
+# Fil-C Ports DSL and Overlay Infrastructure
 #
-# Simplified and optimized for the list-based structure.
-# Key improvements:
-# - pin: Simple version override that reuses existing URL patterns
-# - Cleaner composition
-# - Designed for overlay-native workflows
+# This file provides:
+# 1. The DSL for defining ports (pin, patch, configure, etc.)
+# 2. The overlay-making machinery that converts port lists to overlays
 
 {
   lib,
@@ -285,38 +283,115 @@ let
   gnu = pkg: v: "mirror://gnu/${pkg}/${pkg}-${v}.tar.xz";
   gnuTarGz = pkg: v: "mirror://gnu/${pkg}/${pkg}-${v}.tar.gz";
 
+  # DSL functions to export
+  dsl = {
+    inherit for;
+    inherit
+      arg
+      use
+      pin
+      src
+      broken
+      markAsNotNecessarilyInsecure
+      ;
+    inherit
+      skipTests
+      skipCheck
+      parallelize
+      serialize
+      tool
+      link
+      patch
+      skipPatch
+      removeCFlag
+      addCFlag
+      removeCMakeFlag
+      addCMakeFlag
+      addMakeFlag
+      removeMakeFlag
+      addMesonFlag
+      removeMesonFlag
+      configure
+      removeConfigureFlag
+      wip
+      depizloing-nm
+      ;
+    inherit github gnu gnuTarGz;
+  };
+
+  # Create an overlay from a list of port specs
+  # Each item in portList is either:
+  #   - A port spec: { pname, attrs, overrideArgs, ... }
+  #   - An attrset with explicit names: { foo = <port-spec>; bar = <port-spec>; }
+  makeOverlay =
+    portList: final: prev:
+    let
+      # Convert list to flat attrset keyed by pname
+      # Handles both direct specs and attrset-wrapped specs
+      portSpecs = builtins.listToAttrs (
+        lib.flatten (
+          map (
+            item:
+            if item ? pname then
+              # Direct port spec with pname field
+              {
+                name = item.pname;
+                value = item;
+              }
+            else
+              # Attrset with explicit names: { foo = <spec>; bar = <spec>; }
+              # Extract each key-value pair
+              lib.mapAttrsToList (name: spec: {
+                inherit name;
+                value = spec;
+              }) item
+          ) portList
+        )
+      );
+
+      # Apply each spec to the corresponding package in prev
+      ported = prev.lib.mapAttrs (
+        name: spec:
+        if spec ? __customDrv then
+          # Custom derivation - call it with final context for auto-injected deps
+          (final.callPackage spec.__customDrv { }).overrideAttrs spec.__attrs
+        else if prev ? ${name} then
+          # Package exists in nixpkgs - apply overlay transformations
+          let
+            base = if spec.overrideArgs != { } then prev.${name}.override spec.overrideArgs else prev.${name};
+          in
+          base.overrideAttrs spec.attrs
+        else
+          # Package not in nixpkgs and not a custom drv - shouldn't happen
+          throw "Package '${name}' not found in nixpkgs and no __customDrv provided"
+      ) portSpecs;
+
+    in
+    ported
+    // rec {
+      # Emacs package sets using our ported emacs30
+      emacsPackages = prev.emacsPackagesFor ported.emacs30;
+      emacs30Packages = prev.emacsPackagesFor ported.emacs30;
+
+      # Python aliases - python312 is explicitly named, provides both python3 and python312
+      python3 = ported.python312;
+      python312Packages = ported.python312.pkgs;
+      python3Packages = prev.dontRecurseIntoAttrs python312Packages;
+
+      # Perl package set using our ported perl
+      perl540 = ported.perl540;
+      perl = ported.perl540;
+      perl540Packages = ported.perl540.pkgs;
+      perlPackages = prev.dontRecurseIntoAttrs perl540Packages;
+
+      #      perlPackages = prev.dontRecurseIntoAttrs perl540Packages;
+
+      # pkg-config alias
+      pkg-config = prev.pkg-config.override {
+        pkg-config = ported.pkgconf-unwrapped;
+        baseBinName = "pkgconf";
+      };
+    };
+
 in
-{
-  inherit for;
-  inherit
-    arg
-    use
-    pin
-    src
-    broken
-    markAsNotNecessarilyInsecure
-    ;
-  inherit
-    skipTests
-    skipCheck
-    parallelize
-    serialize
-    tool
-    link
-    patch
-    skipPatch
-    removeCFlag
-    addCFlag
-    removeCMakeFlag
-    addCMakeFlag
-    addMakeFlag
-    removeMakeFlag
-    addMesonFlag
-    removeMesonFlag
-    configure
-    removeConfigureFlag
-    wip
-    depizloing-nm
-    ;
-  inherit github gnu gnuTarGz;
-}
+dsl // { inherit makeOverlay; }

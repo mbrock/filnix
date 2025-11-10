@@ -44,7 +44,7 @@
           (final: prev: {
             gnufilc0 = toolchain.filcc;
           })
-          (import ./ports-as-overlay.nix pkgs)
+          (import ./ports/overlay.nix pkgs)
         ];
       };
 
@@ -60,7 +60,7 @@
           (final: prev: {
             gnufilc0 = toolchain.filcc;
           })
-          (import ./ports2-as-overlay.nix pkgs)
+          (import ./ports/overlay.nix pkgs)
         ];
       };
 
@@ -103,16 +103,15 @@
 
       runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
 
-      filc-emacs-bundle = import ./emacs.nix {
+      filc-emacs-bundle = import ./emacs/emacs.nix {
         inherit pkgs;
         pkgsFilc = pkgsFilc2;
       };
     in
     {
-      lib.${system}.queryPackage = import ./query-package.nix pkgs;
+      lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
-      overlays.default = import ./ports-as-overlay.nix pkgs;
-      overlays.ports2 = import ./ports2-as-overlay.nix pkgs;
+      overlays.default = import ./ports/overlay.nix pkgs;
 
       # Export the full cross-compiled package sets
       legacyPackages.${system} = {
@@ -132,6 +131,11 @@
         lighttpd-demo = pkgs.callPackage ./httpd {
           ports = pkgsFilc;
           filcc = toolchain.filcc;
+        };
+
+        ttyd-emacs-demo = pkgs.callPackage ./ttyd-demo {
+          ports = pkgsFilc;
+          filc-emacs = filc-emacs-bundle.filc-emacs;
         };
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
@@ -179,6 +183,19 @@
           demo-src = ./demo;
         };
 
+        perl-demos = pkgsFilc.callPackage ./demo/perl { };
+
+        perl-with-stuff = pkgsFilc.perl.withPackages (
+          ps: with ps; [
+            InlineC
+            # JSONXS
+            # YAMLLibYAML
+            # DBI
+            # DBDSQLite
+            #            ack
+          ]
+        );
+
         inherit (filc-emacs-bundle) filc-emacs;
         emacs = filc-emacs-bundle.filc-emacs;
         filc-emacs-config = filc-emacs-bundle.configDir;
@@ -218,6 +235,16 @@
         demo = {
           type = "app";
           program = "${self.packages.${system}.python-web-demo}/bin/filc-demo";
+        };
+
+        ttyd-emacs = {
+          type = "app";
+          program = "${self.packages.${system}.ttyd-emacs-demo}/bin/ttyd-emacs-demo";
+        };
+
+        perl-demos = {
+          type = "app";
+          program = "${self.packages.${system}.perl-demos}/bin/perl-demo";
         };
 
       };
@@ -268,6 +295,53 @@
 
         # Full Fil-C compilation environment (opt-in with 'nix develop .#world')
         world = filc-world-shell;
+
+        # Perl demos development environment
+        perl-demos = pkgs.mkShell {
+          name = "filc-perl-demos";
+          packages = [
+            (pkgsFilc.perl.withPackages (
+              ps: with ps; [
+                # C integration
+                InlineC
+
+                # Fast C-based data processing
+                JSONXS
+                YAMLLibYAML # YAML::LibYAML - fast C-based YAML parser
+
+                # Database with C backend
+                DBI
+                DBDSQLite
+
+                # XML parsing (libxml2)
+                XMLLibXML
+
+                # Compression (zlib, bzip2)
+                CompressZlib
+                CompressBzip2
+
+                # Other useful XS modules
+                ListMoreUtils
+                ScalarListUtils
+              ]
+            ))
+          ];
+
+          shellHook = ''
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  Perl + C Integration with Fil-C Memory Safety"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo
+            echo "Demo scripts:"
+            echo "  perl demo.pl      - Multiple C libraries (JSON, XML, SQLite, zlib)"
+            echo "  perl inline-c.pl  - Write memory-safe C directly in Perl"
+            echo "  ./run-all.sh      - Run both demos"
+            echo
+            echo "✓ All C code compiled with Fil-C memory safety"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo
+          '';
+        };
       };
     };
 }

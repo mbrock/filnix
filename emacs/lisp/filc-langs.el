@@ -13,9 +13,10 @@
          (sly-mode . enable-paredit-mode)
          (sly-repl-mode . enable-paredit-mode)))
 
-(use-package sweeprolog
+(use-package meson-mode
   :ensure nil
-  :mode ("\\.pl\\'" . sweeprolog-mode))
+  :mode (("meson\\.build\\'" . meson-mode)
+         ("meson_options\\.txt\\'" . meson-mode)))
 
 (provide 'filc-langs)
 ;;; filc-langs.el ends here

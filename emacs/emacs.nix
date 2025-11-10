@@ -9,7 +9,9 @@ let
   baseEmacs = emacsPackages.withPackages (
     epkgs: with epkgs; [
       cmake-mode
+      company
       consult
+      diff-hl
       embark
       embark-consult
       envrc
@@ -21,10 +23,31 @@ let
       nix-mode
       orderless
       paredit
-      treesit-grammars.with-all-grammars
+      rainbow-delimiters
+      (treesit-grammars.with-grammars (
+        gs: with gs; [
+          tree-sitter-bash
+          tree-sitter-c
+          tree-sitter-cpp
+          tree-sitter-cmake
+          tree-sitter-go
+          tree-sitter-javascript
+          tree-sitter-json
+          tree-sitter-lua
+          tree-sitter-markdown
+          tree-sitter-nix
+          tree-sitter-python
+          tree-sitter-rust
+          tree-sitter-toml
+          tree-sitter-typescript
+          tree-sitter-yaml
+          tree-sitter-zig
+        ]
+      ))
       use-package
       vertico
       vterm
+      which-key
     ]
   );
 
@@ -40,7 +63,7 @@ let
 
   configDir = pkgs.lib.cleanSourceWith {
     name = "filc-emacs-config";
-    src = ./emacs;
+    src = ./.;
     filter = pkgs.lib.cleanSourceFilter;
   };
 

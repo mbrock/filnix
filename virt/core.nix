@@ -284,7 +284,7 @@ let
     done
 
     # Install ghostty terminfo
-    ${ports.ncurses}/bin/tic -x -o "${targetDir}/usr/share/terminfo" ${../ghostty.terminfo}
+    ${ports.ncurses}/bin/tic -x -o "${targetDir}/usr/share/terminfo" ${../misc/ghostty.terminfo}
 
     # Install user configuration files
     cp ${bashrc} "${targetDir}/root/.bashrc"
@@ -295,7 +295,7 @@ let
     mkdir -p var/log var/service var/tmp run tmp root dev usr/share/terminfo
 
     # Install ghostty terminfo (can't be in nix store symlink)
-    ${ports.ncurses}/bin/tic -x -o usr/share/terminfo ${../ghostty.terminfo}
+    ${ports.ncurses}/bin/tic -x -o usr/share/terminfo ${../misc/ghostty.terminfo}
 
     # Install user configuration files (need writable /root)
     cp ${bashrc} root/.bashrc

@@ -3,35 +3,38 @@
 (eval-when-compile
   (require 'use-package))
 
+;; which-key - Show available keybindings in popup
+(use-package which-key
+  :ensure nil
+  :demand t
+  :config
+  (which-key-mode 1)
+  :custom
+  (which-key-idle-delay 0.5)
+  (which-key-popup-type 'minibuffer)
+  (which-key-sort-order 'which-key-prefix-then-key-order))
+
+;; diff-hl - Show git diff in fringe
+(use-package diff-hl
+  :ensure nil
+  :demand t
+  :config
+  (global-diff-hl-mode 1)
+  :hook
+  ((magit-pre-refresh . diff-hl-magit-pre-refresh)
+   (magit-post-refresh . diff-hl-magit-post-refresh)))
+
+;; rainbow-delimiters - Colorful nested delimiters
+(use-package rainbow-delimiters
+  :ensure nil
+  :hook
+  ((prog-mode . rainbow-delimiters-mode)))
+
+;; envrc - direnv integration for Nix flakes
 (use-package envrc
   :ensure nil
-  :init
+  :config
   (envrc-global-mode 1))
-
-(defface filc/hole-face
-  '((t :inherit font-lock-warning-face :weight bold))
-  "Face used to highlight Fil-C style hole placeholders."
-  :group 'filc)
-
-(defconst filc/hole--regexp ":<[[:alnum:]-_]+>"
-  "Regexp that matches Fil-C placeholder holes.")
-
-(defvar filc/hole--keywords
-  `((,filc/hole--regexp 0 'filc/hole-face prepend))
-  "Font-lock keywords used by `filc/hole-mode'.")
-
-(define-minor-mode filc/hole-mode
-  "Highlight Fil-C placeholders shaped like :<foo>."
-  :lighter " :<>"
-  (if filc/hole-mode
-      (progn
-        (font-lock-add-keywords nil filc/hole--keywords 'append)
-        (font-lock-flush)
-        (font-lock-ensure))
-    (font-lock-remove-keywords nil filc/hole--keywords)
-    (font-lock-flush)))
-
-(add-hook 'prog-mode-hook #'filc/hole-mode)
 
 (provide 'filc-devtools)
 ;;; filc-devtools.el ends here

@@ -1,3 +1,5 @@
 result*
 wasm3-cve-tests/
 __pycache__/
+.direnv
+

@@ -29,9 +29,9 @@ pkgs.binutils-unwrapped.overrideAttrs (old: rec {
     # I split this up into two patches just for clarity
     # and for testing various things, but we just apply both
     # now anyway.
-    ../binutils-version-script.patch
-    ../binutils-other-fixes.patch
-    ../binutils-pizlonated-demangle.patch
+    ../patches/binutils-version-script.patch
+    ../patches/binutils-other-fixes.patch
+    ../patches/binutils-pizlonated-demangle.patch
 
   ];
 

@@ -103,9 +103,15 @@ This flake replicates these stages as Nix derivations.
 ### Key Files in This Repo
 
 - **flake.nix**: Main Nix flake exposing fil-c packages
-- **ports.nix**: Ported packages using patches from upstream fil-c
-- **query-package.nix**: Introspection tool for nixpkgs packages
-- **query-package.sh**: Shell wrapper for package queries
+- **ports.nix**: Main ports definition file - list of packages ported to Fil-C
+- **pyports.nix**: Python packages ported to Fil-C
+- **ports/**: Port infrastructure
+  - **default.nix**: DSL for configuring package builds and overlay machinery
+  - **overlay.nix**: Converts ports.nix to a nixpkgs overlay
+  - **patch/**: Patches extracted from upstream fil-c for each ported package
+- **scripts/query-package.nix**: Introspection tool for nixpkgs packages
+- **scripts/query-package.sh**: Shell wrapper for package queries
+- **emacs/emacs.nix**: Emacs configuration bundle for Fil-C development
 
 ## Package Introspection
 
@@ -115,7 +121,7 @@ The repository includes tooling to query comprehensive package metadata from nix
 
 ```bash
 # Via shell script (uses flake's pinned nixpkgs)
-./query-package.sh nethack
+./scripts/query-package.sh nethack
 ```
 
 ### What It Returns

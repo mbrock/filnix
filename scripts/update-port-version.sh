@@ -11,7 +11,8 @@ PKG="$1"
 NEW_VERSION="$2"
 
 # Get current package info
-INFO=$(./query-package.sh --full "$PKG" 2>/dev/null)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INFO=$("$SCRIPT_DIR/query-package.sh" --full "$PKG" 2>/dev/null)
 
 OLD_VERSION=$(echo "$INFO" | jq -r '.version')
 

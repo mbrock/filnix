@@ -6,7 +6,7 @@
   pkgs,
 }:
 let
-  inherit (import ./portconf2.nix { inherit (pkgs) lib pkgs; })
+  inherit (import ./ports { inherit (pkgs) lib pkgs; })
     for
     arg
     use

@@ -9,16 +9,13 @@
 
 (add-to-list 'load-path (expand-file-name "lisp" filc/config-root))
 
+(load-theme 'modus-vivendi t)
+
 (require 'filc-paths)
 (require 'filc-basics)
 (require 'filc-completion)
 (require 'filc-langs)
 (require 'filc-eglot)
-(require 'filc-devtools)
-
-;; Optional modules:
-;; (require 'filc-org)
-;; (require 'filc-llm)
 
 (when (file-exists-p custom-file)
   (load custom-file 'no-error 'nomessage))
