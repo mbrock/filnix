@@ -19,8 +19,6 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
 
-      sources = import ./lib/sources.nix { inherit pkgs; };
-
       filc0 = (import ./compiler/filc0.nix { inherit pkgs; }).filc0;
       filc = import ./build-filc.nix { inherit pkgs filc0; };
       filc-binutils = import ./toolchain/binutils.nix { inherit pkgs; };
@@ -227,8 +225,49 @@
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
       devShells.${system} = {
-        #        default = filc-shell-stuff;
-        #        wasm3-cve = shell-wasm3-cve;
+        default = pkgs.mkShell {
+          name = "filnix-dev";
+          packages = with pkgs; [
+            # Nix development tools
+            nixfmt-rfc-style
+            nixd
+            nil
+
+            # General development tools
+            git
+            direnv
+            nix-direnv
+          ];
+
+          shellHook = ''
+            # Get git info
+            branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "no-git")
+            if git diff-index --quiet HEAD -- 2>/dev/null; then
+              status="✓"
+            else
+              status="●"
+            fi
+
+            echo
+            # All three lines of logo in bold
+            tput bold 2>/dev/null || true
+            printf "  ┌─┐┬┬  ┌─┐    "
+            tput sgr0 2>/dev/null || true; tput dim 2>/dev/null || true
+            printf "⎇ %s %s\n" "$branch" "$status"
+            tput sgr0 2>/dev/null || true; tput bold 2>/dev/null || true
+            printf "  ├┤ ││──│  \n"
+            printf "  └  ┴┴─┘└─┘\n"
+            tput sgr0 2>/dev/null || true
+            echo
+            # Recent commits
+            git log -3 --pretty=format:'  %C(cyan)%h%C(reset) %s %C(dim)%ar%C(reset)' 2>/dev/null
+            tput sgr0 2>/dev/null || true
+            echo; echo
+          '';
+        };
+
+        # Full Fil-C compilation environment (opt-in with 'nix develop .#world')
+        world = filc-world-shell;
       };
     };
 }
