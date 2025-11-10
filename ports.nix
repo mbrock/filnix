@@ -474,6 +474,7 @@ rec {
     (arg { perlSupport = false; })
     (arg { pythonSupport = false; })
     (arg { sendEmailSupport = false; })
+    (arg { zlib-ng = pkgs.zlib; })
     skipTests
     (use (old: {
       makeFlags = pkgs.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
@@ -1061,9 +1062,6 @@ rec {
 
   zlib-ng = port [
     pkgs.zlib-ng
-    (src "2.2.4" (github "zlib-ng/zlib-ng" (
-      v: "${v}.tar.gz"
-    )) "sha256-pzNDwwk+XNxQ2Td5l8OBW4eP0RC/ZRHCx3WfKvuQ9aM=")
   ];
 
   zstd = port [

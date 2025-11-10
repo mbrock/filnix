@@ -124,6 +124,43 @@ let
       # Normal port - return attrs and overrideArgs for overlay use
       { inherit (acc) attrs overrideArgs; };
 
+  # Extract pname from a package reference
+  # pkgs.coreutils -> "coreutils"
+  # pkgs.gnumake -> "gnumake"
+  extractPname = pkg:
+    if pkg ? pname then
+      pkg.pname
+    else if pkg ? name then
+      (builtins.parseDrvName pkg.name).name
+    else
+      throw "Cannot extract pname from package: ${toString pkg}";
+
+  # Build a port with automatic pname extraction (for list-based ports)
+  # Usage: for pkgs.coreutils [skipCheck]
+  # Returns { pname, attrs, overrideArgs } or { pname, __customDrv, __attrs }
+  #
+  # For explicit names when pname differs from attr, wrap in attrset:
+  #   { gmp = for pkgs.gmp [...]; }  # uses "gmp" instead of "gmp-with-cxx"
+  for =
+    pkg: steps:
+    let
+      # Check if this is a custom derivation (path to .nix file)
+      isCustomDrv = builtins.isPath pkg || (builtins.isString pkg && lib.hasSuffix ".nix" pkg);
+
+      # If custom drv, we can't extract pname automatically
+      pname = if isCustomDrv then null else extractPname pkg;
+
+      # Apply all transformation steps
+      acc = foldl' (fa: step: step fa) Init steps;
+
+      spec =
+        if isCustomDrv then
+          { __customDrv = pkg; __attrs = acc.attrs; }
+        else
+          { inherit (acc) attrs overrideArgs; };
+    in
+    spec // { inherit pname; };
+
   # Common helpers
   skipTests = use (_: {
     doCheck = false;
@@ -219,7 +256,7 @@ let
 
 in
 {
-  inherit buildPort;
+  inherit buildPort for;
   inherit arg use src broken;
   inherit
     skipTests

@@ -50,6 +50,22 @@
         ];
       };
 
+      pkgsFilc2 = import nixpkgs-filc {
+        localSystem = system;
+        crossSystem.config = "x86_64-unknown-linux-gnufilc0";
+        config.replaceCrossStdenv =
+          { buildPackages, baseStdenv }:
+          baseStdenv.override {
+            cc = toolchain.filcc;
+          };
+        crossOverlays = [
+          (final: prev: {
+            gnufilc0 = toolchain.filcc;
+          })
+          (import ./ports2-as-overlay.nix pkgs)
+        ];
+      };
+
       filc-shell-stuff = import ./shells/world.nix {
         inherit
           pkgs
@@ -88,14 +104,22 @@
       };
 
       runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
+
+      filc-emacs-bundle = import ./emacs.nix {
+        inherit pkgs;
+        pkgsFilc = pkgsFilc2;
+      };
     in
     {
       lib.${system}.queryPackage = import ./query-package.nix pkgs;
 
       overlays.default = import ./ports-as-overlay.nix pkgs;
+      overlays.ports2 = import ./ports2-as-overlay.nix pkgs;
 
-      # Export the full cross-compiled package set
-      legacyPackages.${system}.pkgsFilc = pkgsFilc;
+      # Export the full cross-compiled package sets
+      legacyPackages.${system} = {
+        inherit pkgsFilc pkgsFilc2;
+      };
 
       packages.${system} = {
         inherit filc0;
@@ -157,12 +181,10 @@
           demo-src = ./demo;
         };
 
-        emacs = pkgsFilc.emacs30Packages.withPackages (
-          ps: with ps; [
-            vterm
-            treesit-grammars.with-all-grammars
-          ]
-        );
+        inherit (filc-emacs-bundle) filc-emacs;
+        emacs = filc-emacs-bundle.filc-emacs;
+        filc-emacs-config = filc-emacs-bundle.configDir;
+        filc-emacs-base = filc-emacs-bundle.baseEmacs;
       };
 
       apps.${system} = {

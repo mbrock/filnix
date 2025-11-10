@@ -1,0 +1,22 @@
+#+TITLE: Fil-C Emacs Notes
+#+AUTHOR: Mikael Brockman
+
+* Welcome
+This directory is bundled into the Fil-C Emacs derivation. Tweak any of
+these files and rebuild the flake to iterate on the configuration.
+
+* Core modules
+- =filc-basics= keeps the UI lean (menus/bars off, undecorated frames), sets =C-c c= to =recompile= and =C-c j= to =join-line=, and enables staples like =global-auto-revert-mode=.
+- =filc-completion= wires up Vertico, Orderless, Consult, Embark(+embark-consult), Marginalia, and Savehist with lapdog-style keybindings.
+- =filc-langs= enables Paredit across Lisp-y modes and teaches Emacs about =sweeprolog= files.
+- =filc-eglot= auto-starts Eglot for C/C++, CMake, Meson, Nix, and LLVM projects, wiring in sensible language servers and build-directory detection.
+- =filc-devtools= turns on =envrc-global-mode= and keeps =filc/hole-mode= lit anywhere you edit code.
+
+* Optional extras
+- Load =filc-org= to point Org capture at =~/index.org= and bind =C-c n= to =org-capture=. It also enables a small Babel language set and Texinfo exports.
+- Load =filc-llm= if you want the legacy =C-c e= placeholder for LLM integrations; it’s intentionally inert until you hook it up.
+- Language servers from normal =pkgs= (clangd, nixd/nil, cmake-language-server, mesonlsp, mlir-lsp) are added to =PATH= automatically when you launch `filc-emacs`.
+
+* Docs
+=M-x filc/export-emacs-org-to-info= exports this file to Texinfo, handy for validating doc builds in Fil-C environments.
+
