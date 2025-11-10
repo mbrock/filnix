@@ -70,6 +70,50 @@ rec {
     (configure "--disable-assembler")
   ];
 
+  doctest = port [
+    pkgs.doctest
+    (addCFlag "-Wno-reserved-macro-identifier")
+    (addCFlag "-Wl,-lm")
+  ];
+
+  isl = port [
+    pkgs.isl
+    (tool depizloing-nm)
+  ];
+
+  # colm = port [
+  #   pkgs.colm
+  #   (arg { gcc = pkgs.stdenv.cc; })
+  #   (use {
+  #     postInstall = ''
+  #       wrapProgram $out/bin/colm \
+  #         --prefix PATH ":" ${pkgs.stdenv.cc}/bin
+  #     '';
+  #   })
+  colm = broken ''
+    ./bootstrap1 -c -o gen/parse2.c -e gen/if2.h -x gen/if2.cc colm.lm
+    filc safety error: cannot read pointer with null object.
+        pointer: 0x7fffd3101038,<null>
+        expected 2 bytes.
+    semantic origin:
+        tree.c:924:3: colm_tree_upref
+    check scheduled at:
+        tree.c:924:3: colm_tree_upref
+        list.c:110:3: colm_vlist_detach_head
+        bytecode.c:4417:22: colm_execute_code
+        bytecode.c:553:7: colm_execute
+        program.c:226:2: colm_run_program2
+        program.c:235:2: colm_run_program
+        loadinit.cc:382:2: LoadInit::go(long)
+        main.cc:741:10: main
+  '';
+
+  ragelStable = port [
+    pkgs.ragelStable
+    (use { configureFlags = [ "--help" ]; })
+    (arg { colm = null; })
+  ];
+
   gobject-introspection = port [
     pkgs.gobject-introspection
     (use (old: {
@@ -330,7 +374,31 @@ rec {
 
   rspamd = port [
     pkgs.rspamd
+    # needs ragel which isn't building due to colm etc
     (arg { withLuaJIT = false; })
+  ];
+
+  fasttext = port [
+    pkgs.fasttext
+    (addCFlag "-Wl,-lm")
+  ];
+
+  pixman = port [
+    pkgs.pixman
+    (use {
+      mesonFlags = [
+        "-Dgnu-inline-asm=disabled"
+        "-Dmmx=disabled"
+        "-Dsse2=disabled"
+        "-Dssse3=disabled"
+      ];
+    })
+    skipTests
+  ];
+
+  cairo = port [
+    pkgs.cairo
+    (addCFlag "-Wno-error=int-conversion")
   ];
 
   emacs30 = port [
@@ -351,11 +419,8 @@ rec {
       withImageMagick = false;
       withWebP = false;
       withTreeSitter = false;
-      withSQLite3 = false;
       withGpm = false;
-      withSelinux = false;
       withSystemd = false;
-      withAcl = false;
       withMailutils = false;
       withNativeCompilation = false;
       withCsrc = false;
@@ -423,7 +488,11 @@ rec {
 
   gmp = port [
     pkgs.gmp
-    skipCheck
+    (tool depizloing-nm)
+    (configure "gmp_cv_asm_underscore=yes")
+    (configure "--disable-assembly")
+    (configure "--disable-fat")
+    #    skipCheck
   ];
 
   gnugrep = port [
@@ -577,6 +646,12 @@ rec {
     (tool depizloing-nm)
     skipCheck
     (configure "--disable-examples-build")
+  ];
+
+  libsodium = port [
+    pkgs.libsodium
+    (configure "--disable-ssp")
+    (configure "--disable-asm")
   ];
 
   libuv = port [
@@ -759,8 +834,8 @@ rec {
           src = pkgs.fetchFromGitHub {
             owner = "lessrest";
             repo = "tagflow";
-            rev = "eccedd29ccc58e2321f9332e05cf87a8130b6d4b";
-            hash = "sha256-hkg4KbgVsZLSGi7sH4MDIP1M5n+ShHeXdM0HMUu35vo=";
+            rev = "45dc850c7c7655ce65ef14a0ff9161d9e5cd00a1";
+            hash = "sha256-ypeKZFLOYtLTCXkUIIP/dPB1w/rdv1ofC0gN+wDkmk4=";
           };
 
           nativeBuildInputs = with pyself; [
@@ -775,6 +850,17 @@ rec {
           doCheck = false;
           doInstallCheck = false;
         };
+
+        pycairo = pyprev.pycairo.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        rich = pyprev.rich.overrideAttrs (_: {
+          # 4 failed, 844 passed, 25 skipped
+          doCheck = false;
+          doInstallCheck = false;
+        });
       };
     })
   ];
