@@ -185,8 +185,8 @@ index 2129aaf8a..da8462428 100644
 
 diff --git a/meson.options b/meson.options
 index 69a2135bc..cfe14bb09 100644
---- a/meson.options
-+++ b/meson.options
+--- a/meson_options.txt
++++ b/meson_options.txt
 @@ -4,6 +4,11 @@ option('runtime_libdir',
         description : 'install runtime libraries relative to libdir',
         deprecated: true)

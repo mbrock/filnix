@@ -70,6 +70,38 @@ rec {
     (configure "--disable-assembler")
   ];
 
+  gobject-introspection = port [
+    pkgs.gobject-introspection
+    (use (old: {
+      # turn this thing off so glib builds perfectly
+      meta = old.meta // {
+        badPlatforms = [ "x86_64-linux" ];
+        broken = true;
+      };
+    }))
+  ];
+
+  gobject-introspection-unwrapped = port [
+    pkgs.gobject-introspection-unwrapped
+    # (src "1.81.4" (
+    #   v:
+    #   "mirror://gnome/sources/gobject-introspection/${lib.versions.majorMinor v}/gobject-introspection-${v}.tar.xz"
+    # ) "sha256-CruZA9tDMLK157qEOde7xIu0Ah8lD41Pu36oFtQAZDA=")
+    (use (old: {
+      # lol futile attempt absolutely doesn't work
+      postPatch = (old.postPatch or "") + ''
+        sed -i 's/2.82.0/2.80.4/' meson.build
+        sed -i 's/case G_TYPE/case (uintptr_t) G_TYPE/g' $(find . -name '*.c')
+      '';
+      env = (old.env or { }) // {
+        NIX_CFLAGS_COMPILE = toString [
+          "-Wno-error=nonnull"
+          "-DG_DISABLE_CAST_CHECKS"
+        ];
+      };
+    }))
+  ];
+
   glib = port [
     # wtf
     pkgs.glib
@@ -77,22 +109,22 @@ rec {
       v: "mirror://gnome/sources/glib/${lib.versions.majorMinor v}/glib-${v}.tar.xz"
     ) "sha256-JOApxd/JtE5Fc2l63zMHipgnxIk4VVAEs7kJb6TqA08=")
     (patch ./ports/patch/glib-2.80.4.patch)
+    (patch ./glib-inline.patch)
     (skipPatch "split-dev-programs.patch")
-    #    (patch ./glib-split-backport.patch)
+    (patch ./glib-split-backport.patch)
     (arg { libsysprof-capture = null; })
     skipTests
     (use {
       mesonFlags = [
+        "-Ddevbindir=${placeholder "dev"}/bin"
         "-Dglib_debug=disabled"
-        "-Ddocumentation=false"
+        "-Ddocumentation=true"
         (lib.mesonBool "dtrace" false)
-        #        (lib.mesonBool "systemtap" false)
+        (lib.mesonBool "systemtap" false)
         "-Dnls=enabled"
-        #    "-Ddevbindir=${placeholder "dev"}/bin"
         (lib.mesonEnable "introspection" false)
-        #        "-Dtests=true"
+        "-Dtests=false"
       ];
-
     })
   ];
 

@@ -1,0 +1,15 @@
+--- a/girepository/gitypelib-internal.h
++++ b/girepository/gitypelib-internal.h
+@@ -196,11 +196,11 @@
+
+
+ #if defined (G_CAN_INLINE) && defined (G_ALWAYS_INLINE)
+
+ G_ALWAYS_INLINE
+-inline gboolean
++static inline gboolean
+ _blob_is_registered_type (GITypelibBlobType blob_type)
+ {
+   switch (blob_type)
+     {
+       case BLOB_TYPE_STRUCT:
