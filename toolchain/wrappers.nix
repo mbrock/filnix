@@ -56,16 +56,32 @@ let
 in
 rec {
   filc-cc =
-    let
-      targetPrefix = pkgs.lib.optionalString (
-        pkgs.stdenv.hostPlatform != pkgs.stdenv.targetPlatform
-      ) "${pkgs.stdenv.targetPlatform.config}-";
-    in
-    pkgs.runCommand "filc-cc" { } ''
-      mkdir -p $out/bin
-      ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/${targetPrefix}clang
-      ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/${targetPrefix}clang++
-    '';
+    pkgs.runCommand "filc-cc"
+      {
+        passthru = {
+          # Fil-C provides memory safety via bounds checking and GC, so some
+          # hardening flags are redundant or may conflict:
+          # - fortify/fortify3: CONFLICTS with Fil-C's own bounds checks
+          # - stackprotector: Redundant (Fil-C catches buffer overflows)
+          # - stackclashprotection: Redundant (Fil-C prevents stack corruption)
+          #
+          # We keep: pie, pic (needed for ASLR/shared libs), strictoverflow
+          # (C semantics), format (compile warnings are helpful), and others.
+          hardeningUnsupportedFlags = [
+            "fortify"
+            "fortify3"
+            "stackprotector"
+            "stackclashprotection"
+          ];
+        };
+      }
+      ''
+        mkdir -p $out/bin
+        ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/clang
+        ln -s ${filcache "clang"}/bin/ccache-clang $out/bin/filcc
+        ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/clang++
+        ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/filc++
+      '';
 
   filc-bintools = pkgs.wrapBintoolsWith {
     bintools = filc-binutils;
@@ -91,12 +107,6 @@ rec {
       echo "-gz=none" >> $out/nix-support/cc-cflags
     '';
   };
-
-  filc-aliases = pkgs.runCommand "filc-aliases" { } ''
-    mkdir -p $out/bin
-    ln -s ${filcc}/bin/clang $out/bin/filc
-    ln -s ${filcc}/bin/clang++ $out/bin/filc++
-  '';
 
   filenv = pkgs.overrideCC pkgs.stdenv filcc;
 
