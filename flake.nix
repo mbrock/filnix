@@ -137,6 +137,18 @@
             lua-pam
           ]
         );
+
+        python-with-stuff = pkgsFilc.python3.withPackages (
+          ps: with ps; [
+            (lxml.overrideAttrs (_: {
+              env.CFLAGS = "-O0";
+            }))
+            uvicorn
+            starlette
+            msgspec
+            tagflow
+          ]
+        );
       };
 
       apps.${system} = {

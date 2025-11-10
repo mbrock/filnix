@@ -56,23 +56,24 @@ let
 
 in
 ported
-// {
-  # emacsPackages scope using our cross-compiled emacs30
+// rec {
   emacsPackages = prev.emacsPackagesFor ported.emacs30;
-
-  # Also provide emacs30Packages as an alias
   emacs30Packages = prev.emacsPackagesFor ported.emacs30;
 
-  # pythonPackages scope using our cross-compiled python3
-  python3Packages = ported.python3.pkgs;
+  python3 = ported.python312;
+  python312Packages = ported.python312.pkgs;
+  python3Packages = prev.dontRecurseIntoAttrs python312Packages;
 
-  # luaPackages scope using our cross-compiled lua (5.4)
   luaPackages = prev.lua54Packages.override {
     lua = ported.lua5_4;
   };
 
-  # Also provide lua54Packages as an alias
   lua54Packages = prev.lua54Packages.override {
     lua = ported.lua5_4;
+  };
+
+  pkg-config = prev.pkg-config.override {
+    pkg-config = ported.pkgconf-unwrapped;
+    baseBinName = "pkgconf";
   };
 }

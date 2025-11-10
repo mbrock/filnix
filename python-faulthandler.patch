@@ -1,0 +1,30 @@
+--- a/Modules/faulthandler.c
++++ b/Modules/faulthandler.c
+@@ -63,6 +63,15 @@
+ #endif /* FAULTHANDLER_USER */
+
+
++#ifdef __PIZLONATOR_WAS_HERE__
++/* Fil-C forbids handling any of these signals,
++   but it does print at least aC traceback on crash.
++
++   Rather than make `faulthandler` annoyingly broken,
++   we just define zero handlers. */
++static fault_handler_t faulthandler_handlers[] = {};
++static const size_t faulthandler_nsignals = 0;
++#else
+ static fault_handler_t faulthandler_handlers[] = {
+ #ifdef SIGBUS
+     {SIGBUS, 0, "Bus error", },
+@@ -76,8 +85,10 @@
+        handler fails in faulthandler_fatal_error() */
+     {SIGSEGV, 0, "Segmentation fault", }
+ };
++
+ static const size_t faulthandler_nsignals = \
+-    Py_ARRAY_LENGTH(faulthandler_handlers);
++Py_ARRAY_LENGTH(faulthandler_handlers);
++#endif
+
+ #ifdef FAULTHANDLER_USE_ALT_STACK
+ #  define stack _PyRuntime.faulthandler.stack

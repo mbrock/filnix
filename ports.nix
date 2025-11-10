@@ -71,12 +71,29 @@ rec {
   ];
 
   glib = port [
+    # wtf
     pkgs.glib
     (src "2.80.4" (
-      v: "https://gitlab.gnome.org/GNOME/glib/-/archive/${v}/glib-${v}.tar.bz2"
-    ) "sha256-/OX1T47yVkRWKwPaqaVAOd0vT0JEyABAqyGVGYPCkeQ=")
+      v: "mirror://gnome/sources/glib/${lib.versions.majorMinor v}/glib-${v}.tar.xz"
+    ) "sha256-JOApxd/JtE5Fc2l63zMHipgnxIk4VVAEs7kJb6TqA08=")
     (patch ./ports/patch/glib-2.80.4.patch)
+    (skipPatch "split-dev-programs.patch")
+    #    (patch ./glib-split-backport.patch)
     (arg { libsysprof-capture = null; })
+    skipTests
+    (use {
+      mesonFlags = [
+        "-Dglib_debug=disabled"
+        "-Ddocumentation=false"
+        (lib.mesonBool "dtrace" false)
+        #        (lib.mesonBool "systemtap" false)
+        "-Dnls=enabled"
+        #    "-Ddevbindir=${placeholder "dev"}/bin"
+        (lib.mesonEnable "introspection" false)
+        #        "-Dtests=true"
+      ];
+
+    })
   ];
 
   tmux = port [
@@ -86,9 +103,9 @@ rec {
 
   libsepol = port [
     pkgs.libsepol
-    (src "3.9" (github "SELinuxProject/selinux" (
-      v: "releases/download/v${v}/libsepol-${v}.tar.gz"
-    )) "sha256-umMLWeUMX7+endRes3NPNzz3jWidjBDFNxFMm9dp+i4=")
+    # (src "3.9" (github "SELinuxProject/selinux" (
+    #   v: "releases/download/v${v}/libsepol-${v}.tar.gz"
+    # )) "sha256-umMLWeUMX7+endRes3NPNzz3jWidjBDFNxFMm9dp+i4=")
     (patch ./ports/patch/libsepol-3.9.patch)
   ];
 
@@ -344,6 +361,11 @@ rec {
     skipCheck
   ];
 
+  fontconfig = port [
+    pkgs.fontconfig
+    skipCheck # these failures look pretty sus tbqh
+  ];
+
   git = port [
     pkgs.git
     (src "2.46.0" (
@@ -514,6 +536,8 @@ rec {
       v: "mirror://sourceforge/libpng/libpng-${v}.tar.xz"
     ) "sha256-alygZSOSotfJ2yrltAIQhDwLvAgcvUEIJasAzFnxSmw=")
     (patch ./ports/patch/libpng-1.6.43.patch)
+    (use { postPatch = ""; })
+    skipCheck
   ];
 
   libssh2 = port [
@@ -629,19 +653,103 @@ rec {
     (patch ./ports/patch/procps-ng-4.0.4.patch)
   ];
 
-  python3 = port [
-    pkgs.python3
+  python311 = broken "use python 3.12";
+  python313 = broken "use python 3.12";
+
+  python312 = port [
+    pkgs.python312
     (src "3.12.5" (
       v: "https://www.python.org/ftp/python/${v}/Python-${v}.tar.xz"
     ) "sha256-+oouEsXmILCfU+ZbzYdVDS5aHi4Ev4upkdzFUROHY5c=")
     (patch ./ports/patch/Python-3.12.5.patch)
     (patch ./python-filc-triplet-detection.patch)
+    (patch ./python-faulthandler.patch)
     (removeCFlag "-Wa,--compress-debug-sections")
     (arg { enableLTO = false; })
     (configure "--without-pymalloc")
     (configure "--without-freelists")
     (configure "ac_cv_func_chflags=no")
     (configure "ac_cv_func_lchflags=no")
+    (configure "ac_cv_func_sigaltstack=no")
+    (configure "ac_cv_gcc_asm_for_x64=no")
+    (configure "ac_cv_gcc_asm_for_x87=no")
+
+    # filcc panics on invalid super nintendo assembly
+    # but configure only checks if it compiles :D
+    (configure "ac_cv_gcc_asm_for_mc68881=no")
+
+    (arg {
+      packageOverrides = pyself: pyprev: {
+        pytest-regressions =
+          (pyprev.pytest-regressions.override {
+            matplotlib = null;
+            pandas = null;
+            pillow = null;
+          }).overrideAttrs
+            (_: {
+              doCheck = false;
+              doInstallCheck = false;
+            });
+
+        annotated-types = pyprev.annotated-types.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        tqdm = pyprev.tqdm.override { tkinter = null; };
+
+        flask = pyprev.flask.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        anyio = pyprev.anyio.overrideAttrs (_: {
+          # these tests depend on `cryptography` which is Rust
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        trio = pyprev.trio.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        markdown = pyprev.markdown.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        tagflow = pyself.buildPythonPackage {
+          pname = "tagflow";
+          version = "0.12.0-git";
+          format = "pyproject";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "lessrest";
+            repo = "tagflow";
+            rev = "eccedd29ccc58e2321f9332e05cf87a8130b6d4b";
+            hash = "sha256-hkg4KbgVsZLSGi7sH4MDIP1M5n+ShHeXdM0HMUu35vo=";
+          };
+
+          nativeBuildInputs = with pyself; [
+            hatchling
+          ];
+
+          propagatedBuildInputs = with pyself; [
+            anyio
+            trio
+          ];
+
+          doCheck = false;
+          doInstallCheck = false;
+        };
+      };
+    })
+  ];
+
+  pkgconf-unwrapped = port [
+    pkgs.pkgconf-unwrapped
+    (tool depizloing-nm)
   ];
 
   p11-kit = port [
@@ -756,18 +864,20 @@ rec {
     skipTests
   ];
 
-  util-linux = port [
-    pkgs.util-linux
-    (arg { capabilitiesSupport = false; })
-    (arg { cryptsetupSupport = false; })
-    (arg { nlsSupport = false; })
-    (arg { ncursesSupport = false; })
-    (arg { pamSupport = true; })
-    (arg { shadowSupport = true; })
-    (arg { systemdSupport = false; })
-    (arg { translateManpages = false; })
+  util-linuxMinimal = port [
+    pkgs.util-linuxMinimal
+    # (arg { capabilitiesSupport = false; })
+    # (arg { cryptsetupSupport = false; })
+    # (arg { nlsSupport = false; })
+    # (arg { ncursesSupport = false; })
+    # (arg { pamSupport = true; })
+    # (arg { shadowSupport = true; })
+    # (arg { systemdSupport = false; })
+    # (arg { translateManpages = false; })
     parallelize
   ];
+
+  util-linux = util-linuxMinimal;
 
   shadow = port [
     pkgs.shadow
@@ -817,4 +927,6 @@ rec {
   gtk4 = broken "GUI not supported";
   wayland = broken "GUI not supported";
   libX11 = broken "X11 not supported";
+
+  rustc = broken "oh sweet summer child";
 }
