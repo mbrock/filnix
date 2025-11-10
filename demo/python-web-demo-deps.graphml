@@ -1,0 +1,892 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns='http://graphml.graphdrawing.org/xmlns'
+    xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
+    xsi:schemaLocation='http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd'>
+<key id='narSize' for='node' attr.name='narSize' attr.type='long'/><key id='name' for='node' attr.name='name' attr.type='string'/><key id='type' for='node' attr.name='type' attr.type='string'/><graph id='G' edgedefault='directed'>
+  <node id="sfxqwwjdmmx2sdzjlag6qyvla9zls6ap-filc-demo">
+    <data key="narSize">1088</data>
+    <data key="name">filc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="sfxqwwjdmmx2sdzjlag6qyvla9zls6ap-filc-demo" target="5dch6lnsl91768byrj24chzg1pwbbrsy-demo"/>
+  <edge source="sfxqwwjdmmx2sdzjlag6qyvla9zls6ap-filc-demo" target="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37"/>
+  <edge source="sfxqwwjdmmx2sdzjlag6qyvla9zls6ap-filc-demo" target="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env"/>
+  <node id="5dch6lnsl91768byrj24chzg1pwbbrsy-demo">
+    <data key="narSize">18176</data>
+    <data key="name"></data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37">
+    <data key="narSize">12493904</data>
+    <data key="name">bash-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git">
+    <data key="narSize">130245968</data>
+    <data key="name">filc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <node id="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env">
+    <data key="narSize">439376</data>
+    <data key="name">python3-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="0bygvpqh1hsd8dc5sfpfyzwdm23916p2-python3.12-ptyprocess-0.7.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="0ja74h4g64qy3449aqvsrgxmifcsiwdg-python3.12-python-multipart-0.0.20-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="0pp6nnknmkjx7gjj8c17v60bi9i0ls86-python3.12-executing-2.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="1a98r8sbbga6qv5gjgpwfabs1mpkxvky-python3.12-beautifulsoup4-4.12.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="1y793ajxf301bdv4wyh7dk9c95rp9hs2-python3.12-click-8.1.8-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="36clzivzszrn30jvkccgyg4n2svs4jgy-python3.12-typing-extensions-4.13.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="41084k2myfq2jrzd0ivxyv59zws2kjll-python3.12-jedi-0.19.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="5xrnay9p35azrsd9hgisw5ln2wyhn73d-python3.12-wcwidth-0.2.13-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="89861j1xdkmjxn1nmmmqbf9d7zl1glnf-python3.12-jinja2-3.1.6-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="9bk4m9a6vkc1fw15jqgw13354m3wn3pl-python3.12-traitlets-5.14.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="9v13p94b3pbw3wzkbpmdpl8p7dhifink-python3.12-idna-3.10-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="a17hyv5y0hi975pxh88d52mkyj6s8zck-python3.12-soupsieve-2.6-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="ap2qngp3qj1bdjiplh0ak8gqyx233rkx-python3.12-sniffio-1.3.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="axd07j07fl93rph6jfc9h6h57zz692c3-python3.12-jsonpickle-4.0.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="b8xhhsslazfd9x0iy2bv7w1ysgj9mg0n-python3.12-prompt-toolkit-3.0.50-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="iy1gx1wd9a1mqqzllj7idzkzdxy8pczh-python3.12-networkx-3.4.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="j5s5jq5iw3mb8jxgcsmnmby6a39k1mcn-python3.12-chardet-5.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="jv7w8d3q05cjd03jfaj2aww7mv96xnxm-python3.12-pure-eval-0.2.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="kb0k8afv229d01anhq89mj9kvfg13ygz-python3.12-starlette-0.46.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="kvz17lz5a7ni5fxicpymrx438hzf6pfx-python3.12-asttokens-3.0.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="l8yj0as7hfw5vr4msxay1zkn99jrw6mh-python3.12-tagflow-0.13.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="n7lfpk96vsy0bdjx34yys3m22yqzpiys-python3.12-h11-0.16.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="pwcg9vm4mpqg81pazsh0fy8q9rs23y55-python3.12-six-1.17.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="rsdx1zv99gp6b2m0w2i61dcp37wc0xky-python3.12-toml-0.10.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="sqpmnly358iwl5ys5x70d1b99fq87ffl-python3.12-ipython-pygments-lexers-1.1.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="sqvkcx6l445hmkfldms1pflw0vr5mjv2-python3.12-parso-0.8.4-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="wncggxqnj2b2j87i6q6rxbmwzp271xlf-python3.12-pexpect-4.9.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="x7d7fz8kw9f8xvlha9ib4ygp73whfn7w-python3.12-decorator-5.2.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="xnlb4nn2w4gm07gm364061sjibf08vy9-python3.12-pygments-2.19.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="y9p8cx7p5alahxwnah1sfc1jsvi31za8-python3.12-matplotlib-inline-0.1.7-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="myzrjil7jvww9irjbq671s8imx71vxzv-python3-3.12.5-x86_64-unknown-linux-gnufilc0-env" target="zkzp1w17r29a228z1d0vlcxkkdnahq3n-python3.12-uvicorn-0.34.0-x86_64-unknown-linux-gnufilc0"/>
+  <node id="0bygvpqh1hsd8dc5sfpfyzwdm23916p2-python3.12-ptyprocess-0.7.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">127960</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="0bygvpqh1hsd8dc5sfpfyzwdm23916p2-python3.12-ptyprocess-0.7.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="0ja74h4g64qy3449aqvsrgxmifcsiwdg-python3.12-python-multipart-0.0.20-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">258992</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="0ja74h4g64qy3449aqvsrgxmifcsiwdg-python3.12-python-multipart-0.0.20-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="0pp6nnknmkjx7gjj8c17v60bi9i0ls86-python3.12-executing-2.2.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">271128</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="0pp6nnknmkjx7gjj8c17v60bi9i0ls86-python3.12-executing-2.2.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="1a98r8sbbga6qv5gjgpwfabs1mpkxvky-python3.12-beautifulsoup4-4.12.3-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">1735104</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="1a98r8sbbga6qv5gjgpwfabs1mpkxvky-python3.12-beautifulsoup4-4.12.3-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="1a98r8sbbga6qv5gjgpwfabs1mpkxvky-python3.12-beautifulsoup4-4.12.3-x86_64-unknown-linux-gnufilc0" target="a17hyv5y0hi975pxh88d52mkyj6s8zck-python3.12-soupsieve-2.6-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="1a98r8sbbga6qv5gjgpwfabs1mpkxvky-python3.12-beautifulsoup4-4.12.3-x86_64-unknown-linux-gnufilc0" target="j5s5jq5iw3mb8jxgcsmnmby6a39k1mcn-python3.12-chardet-5.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <node id="1y793ajxf301bdv4wyh7dk9c95rp9hs2-python3.12-click-8.1.8-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">1257376</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="1y793ajxf301bdv4wyh7dk9c95rp9hs2-python3.12-click-8.1.8-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="36clzivzszrn30jvkccgyg4n2svs4jgy-python3.12-typing-extensions-4.13.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">539232</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="36clzivzszrn30jvkccgyg4n2svs4jgy-python3.12-typing-extensions-4.13.2-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">1566264</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0" target="36clzivzszrn30jvkccgyg4n2svs4jgy-python3.12-typing-extensions-4.13.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0" target="9v13p94b3pbw3wzkbpmdpl8p7dhifink-python3.12-idna-3.10-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0" target="ap2qngp3qj1bdjiplh0ak8gqyx233rkx-python3.12-sniffio-1.3.1-x86_64-unknown-linux-gnufilc0"/>
+  <node id="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">236416</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0" target="0pp6nnknmkjx7gjj8c17v60bi9i0ls86-python3.12-executing-2.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0" target="jv7w8d3q05cjd03jfaj2aww7mv96xnxm-python3.12-pure-eval-0.2.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0" target="kvz17lz5a7ni5fxicpymrx438hzf6pfx-python3.12-asttokens-3.0.0-x86_64-unknown-linux-gnufilc0"/>
+  <node id="41084k2myfq2jrzd0ivxyv59zws2kjll-python3.12-jedi-0.19.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">7093424</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="41084k2myfq2jrzd0ivxyv59zws2kjll-python3.12-jedi-0.19.2-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="41084k2myfq2jrzd0ivxyv59zws2kjll-python3.12-jedi-0.19.2-x86_64-unknown-linux-gnufilc0" target="sqvkcx6l445hmkfldms1pflw0vr5mjv2-python3.12-parso-0.8.4-x86_64-unknown-linux-gnufilc0"/>
+  <node id="5xrnay9p35azrsd9hgisw5ln2wyhn73d-python3.12-wcwidth-0.2.13-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">602520</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="5xrnay9p35azrsd9hgisw5ln2wyhn73d-python3.12-wcwidth-0.2.13-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">232267824</data>
+    <data key="name">python3-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="0pilshgv4pr0bzlh0rwy8647hibfg2dm-mpdecimal-x86_64-unknown-linux-gnufilc0-4.0.0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="98xlv7yfgrfm3aj647vm54mpabb5q1mc-gdbm-x86_64-unknown-linux-gnufilc0-1.25-lib"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="acjc3mr531p5a55p0jcp3dzil0qq09d3-libxcrypt-4.4.36-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="jmx2vndpdk17a4k6mn90any3m6g2529d-fil-c-d1f8362"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="ps6pq5h8w3zd3hprjgszqicyvxlqpc8d-mailcap-x86_64-unknown-linux-gnufilc0-2.1.54"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="vaniyfzjqj1klh78sbqs1jb9n0flixjb-tzdata-x86_64-unknown-linux-gnufilc0-2025b"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0" target="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1"/>
+  <node id="0pilshgv4pr0bzlh0rwy8647hibfg2dm-mpdecimal-x86_64-unknown-linux-gnufilc0-4.0.0">
+    <data key="narSize">1197848</data>
+    <data key="name">mpdecimal-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="0pilshgv4pr0bzlh0rwy8647hibfg2dm-mpdecimal-x86_64-unknown-linux-gnufilc0-4.0.0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="0pilshgv4pr0bzlh0rwy8647hibfg2dm-mpdecimal-x86_64-unknown-linux-gnufilc0-4.0.0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="0pilshgv4pr0bzlh0rwy8647hibfg2dm-mpdecimal-x86_64-unknown-linux-gnufilc0-4.0.0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="0pilshgv4pr0bzlh0rwy8647hibfg2dm-mpdecimal-x86_64-unknown-linux-gnufilc0-4.0.0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0">
+    <data key="narSize">30933408</data>
+    <data key="name">sqlite-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">506176</data>
+    <data key="name">zlib-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="89861j1xdkmjxn1nmmmqbf9d7zl1glnf-python3.12-jinja2-3.1.6-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">1865216</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="89861j1xdkmjxn1nmmmqbf9d7zl1glnf-python3.12-jinja2-3.1.6-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="89861j1xdkmjxn1nmmmqbf9d7zl1glnf-python3.12-jinja2-3.1.6-x86_64-unknown-linux-gnufilc0" target="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0"/>
+  <node id="98xlv7yfgrfm3aj647vm54mpabb5q1mc-gdbm-x86_64-unknown-linux-gnufilc0-1.25-lib">
+    <data key="narSize">1172048</data>
+    <data key="name">gdbm-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="98xlv7yfgrfm3aj647vm54mpabb5q1mc-gdbm-x86_64-unknown-linux-gnufilc0-1.25-lib" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="98xlv7yfgrfm3aj647vm54mpabb5q1mc-gdbm-x86_64-unknown-linux-gnufilc0-1.25-lib" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="98xlv7yfgrfm3aj647vm54mpabb5q1mc-gdbm-x86_64-unknown-linux-gnufilc0-1.25-lib" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="98xlv7yfgrfm3aj647vm54mpabb5q1mc-gdbm-x86_64-unknown-linux-gnufilc0-1.25-lib" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="9bk4m9a6vkc1fw15jqgw13354m3wn3pl-python3.12-traitlets-5.14.3-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">1066536</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="9bk4m9a6vkc1fw15jqgw13354m3wn3pl-python3.12-traitlets-5.14.3-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="9v13p94b3pbw3wzkbpmdpl8p7dhifink-python3.12-idna-3.10-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">926624</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="9v13p94b3pbw3wzkbpmdpl8p7dhifink-python3.12-idna-3.10-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="a17hyv5y0hi975pxh88d52mkyj6s8zck-python3.12-soupsieve-2.6-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">453152</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="a17hyv5y0hi975pxh88d52mkyj6s8zck-python3.12-soupsieve-2.6-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="acjc3mr531p5a55p0jcp3dzil0qq09d3-libxcrypt-4.4.36-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">567448</data>
+    <data key="name">libxcrypt-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="acjc3mr531p5a55p0jcp3dzil0qq09d3-libxcrypt-4.4.36-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="acjc3mr531p5a55p0jcp3dzil0qq09d3-libxcrypt-4.4.36-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="acjc3mr531p5a55p0jcp3dzil0qq09d3-libxcrypt-4.4.36-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="acjc3mr531p5a55p0jcp3dzil0qq09d3-libxcrypt-4.4.36-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="ap2qngp3qj1bdjiplh0ak8gqyx233rkx-python3.12-sniffio-1.3.1-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">45560</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="ap2qngp3qj1bdjiplh0ak8gqyx233rkx-python3.12-sniffio-1.3.1-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="axd07j07fl93rph6jfc9h6h57zz692c3-python3.12-jsonpickle-4.0.5-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">508840</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="axd07j07fl93rph6jfc9h6h57zz692c3-python3.12-jsonpickle-4.0.5-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="b8xhhsslazfd9x0iy2bv7w1ysgj9mg0n-python3.12-prompt-toolkit-3.0.50-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">4752104</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="b8xhhsslazfd9x0iy2bv7w1ysgj9mg0n-python3.12-prompt-toolkit-3.0.50-x86_64-unknown-linux-gnufilc0" target="5xrnay9p35azrsd9hgisw5ln2wyhn73d-python3.12-wcwidth-0.2.13-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="b8xhhsslazfd9x0iy2bv7w1ysgj9mg0n-python3.12-prompt-toolkit-3.0.50-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="b8xhhsslazfd9x0iy2bv7w1ysgj9mg0n-python3.12-prompt-toolkit-3.0.50-x86_64-unknown-linux-gnufilc0" target="pwcg9vm4mpqg81pazsh0fy8q9rs23y55-python3.12-six-1.17.0-x86_64-unknown-linux-gnufilc0"/>
+  <node id="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5">
+    <data key="narSize">22735400</data>
+    <data key="name">ncurses-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib">
+    <data key="narSize">19047880</data>
+    <data key="name">util-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib" target="2cpr0m5hbq0sb15gvh41iqmpsid42p0v-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.48.0"/>
+  <edge source="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">6375784</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="0bygvpqh1hsd8dc5sfpfyzwdm23916p2-python3.12-ptyprocess-0.7.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="0pp6nnknmkjx7gjj8c17v60bi9i0ls86-python3.12-executing-2.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="3xm2n97bah0p2clw34xri6x050sh1asq-python3.12-stack-data-0.6.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="41084k2myfq2jrzd0ivxyv59zws2kjll-python3.12-jedi-0.19.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="5xrnay9p35azrsd9hgisw5ln2wyhn73d-python3.12-wcwidth-0.2.13-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="9bk4m9a6vkc1fw15jqgw13354m3wn3pl-python3.12-traitlets-5.14.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="b8xhhsslazfd9x0iy2bv7w1ysgj9mg0n-python3.12-prompt-toolkit-3.0.50-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="jv7w8d3q05cjd03jfaj2aww7mv96xnxm-python3.12-pure-eval-0.2.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="kvz17lz5a7ni5fxicpymrx438hzf6pfx-python3.12-asttokens-3.0.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="pwcg9vm4mpqg81pazsh0fy8q9rs23y55-python3.12-six-1.17.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="rsdx1zv99gp6b2m0w2i61dcp37wc0xky-python3.12-toml-0.10.2-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="sqpmnly358iwl5ys5x70d1b99fq87ffl-python3.12-ipython-pygments-lexers-1.1.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="sqvkcx6l445hmkfldms1pflw0vr5mjv2-python3.12-parso-0.8.4-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="wncggxqnj2b2j87i6q6rxbmwzp271xlf-python3.12-pexpect-4.9.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="x7d7fz8kw9f8xvlha9ib4ygp73whfn7w-python3.12-decorator-5.2.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="xnlb4nn2w4gm07gm364061sjibf08vy9-python3.12-pygments-2.19.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0" target="y9p8cx7p5alahxwnah1sfc1jsvi31za8-python3.12-matplotlib-inline-0.1.7-x86_64-unknown-linux-gnufilc0"/>
+  <node id="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13">
+    <data key="narSize">4244072</data>
+    <data key="name">readline-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13" target="c8mr0d53jm3syqyz4p49cl4sg2y5j8h2-ncurses-x86_64-unknown-linux-gnufilc0-6.5"/>
+  <edge source="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="fa230sr7zwngzim138qqj3698qcxlczx-readline-x86_64-unknown-linux-gnufilc0-8.2p13" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">101752</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="hpz4ji5d862hkf4jqbkxmj9k60zbmmy9-python3.12-markupsafe-3.0.2-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="iy1gx1wd9a1mqqzllj7idzkzdxy8pczh-python3.12-networkx-3.4.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">22340560</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="iy1gx1wd9a1mqqzllj7idzkzdxy8pczh-python3.12-networkx-3.4.2-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="j5s5jq5iw3mb8jxgcsmnmby6a39k1mcn-python3.12-chardet-5.2.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">3170432</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="j5s5jq5iw3mb8jxgcsmnmby6a39k1mcn-python3.12-chardet-5.2.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="j5s5jq5iw3mb8jxgcsmnmby6a39k1mcn-python3.12-chardet-5.2.0-x86_64-unknown-linux-gnufilc0" target="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37"/>
+  <node id="jmx2vndpdk17a4k6mn90any3m6g2529d-fil-c-d1f8362">
+    <data key="narSize">31101472</data>
+    <data key="name">fil-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="jv7w8d3q05cjd03jfaj2aww7mv96xnxm-python3.12-pure-eval-0.2.3-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">110488</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="jv7w8d3q05cjd03jfaj2aww7mv96xnxm-python3.12-pure-eval-0.2.3-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="jv7w8d3q05cjd03jfaj2aww7mv96xnxm-python3.12-pure-eval-0.2.3-x86_64-unknown-linux-gnufilc0" target="rsdx1zv99gp6b2m0w2i61dcp37wc0xky-python3.12-toml-0.10.2-x86_64-unknown-linux-gnufilc0"/>
+  <node id="kb0k8afv229d01anhq89mj9kvfg13ygz-python3.12-starlette-0.46.1-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">969384</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="kb0k8afv229d01anhq89mj9kvfg13ygz-python3.12-starlette-0.46.1-x86_64-unknown-linux-gnufilc0" target="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="kb0k8afv229d01anhq89mj9kvfg13ygz-python3.12-starlette-0.46.1-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="kvz17lz5a7ni5fxicpymrx438hzf6pfx-python3.12-asttokens-3.0.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">212360</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="kvz17lz5a7ni5fxicpymrx438hzf6pfx-python3.12-asttokens-3.0.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">5295600</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0" target="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2"/>
+  <edge source="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="kxh2nm3kv7fzn1ghw01vgrkmy599h79m-python3.12-pycairo-1.27.0-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2">
+    <data key="narSize">77108648</data>
+    <data key="name">cairo-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="bp74m173lrwjvq7igincy25082ybf6d8-pixman-x86_64-unknown-linux-gnufilc0-0.44.2"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="1fx6r97swvypwwavizjv6xm3c1f5qhmr-cairo-x86_64-unknown-linux-gnufilc0-1.18.2" target="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3"/>
+  <node id="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6">
+    <data key="narSize">1008408</data>
+    <data key="name">libXext-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6" target="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12"/>
+  <edge source="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="37n282piwpfkf92mx42p0rqb2avvi7z4-libXext-x86_64-unknown-linux-gnufilc0-1.3.6" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12">
+    <data key="narSize">386512</data>
+    <data key="name">libXrender-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12" target="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12"/>
+  <edge source="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="6igk8jd3h0h2mwbc7ifd2vr14bp7jwrc-libXrender-x86_64-unknown-linux-gnufilc0-0.9.12" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0">
+    <data key="narSize">7235032</data>
+    <data key="name">libxcb-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0" target="m722ybidpp295n8ns339q5rsrrgs5n5s-libXau-x86_64-unknown-linux-gnufilc0-1.0.12"/>
+  <edge source="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0" target="rrbpcfjmy7j5gpsf2phglahx9j7kvzsn-libXdmcp-x86_64-unknown-linux-gnufilc0-1.1.5"/>
+  <edge source="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib">
+    <data key="narSize">3106768</data>
+    <data key="name">fontconfig-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="hlany4q1p9x5a39zbh6dhkdd7ilpr01x-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="j9gbq524lgy4w5akbbnxbz503k227bjm-dejavu-fonts-minimal-x86_64-unknown-linux-gnufilc0-2.37"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="9ghgwni9v4gsyylqvdj3dnl9f3j53ii6-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0-lib" target="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3"/>
+  <node id="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">2158840</data>
+    <data key="name">libpng-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12">
+    <data key="narSize">11200976</data>
+    <data key="name">libX11-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12" target="86w5ns8gvwc4jg3hvbz166q0zm7iwhhx-libxcb-x86_64-unknown-linux-gnufilc0-1.17.0"/>
+  <edge source="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12" target="sn7lp5rlyyi58qf2m266n7flb5wqkkj1-xtrans-x86_64-unknown-linux-gnufilc0-1.6.0"/>
+  <edge source="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="aqvm7j0rm13mi124ajfl6g75idnq0wm5-libX11-x86_64-unknown-linux-gnufilc0-1.8.12" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="bp74m173lrwjvq7igincy25082ybf6d8-pixman-x86_64-unknown-linux-gnufilc0-0.44.2">
+    <data key="narSize">14407456</data>
+    <data key="name">pixman-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="bp74m173lrwjvq7igincy25082ybf6d8-pixman-x86_64-unknown-linux-gnufilc0-0.44.2" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="bp74m173lrwjvq7igincy25082ybf6d8-pixman-x86_64-unknown-linux-gnufilc0-0.44.2" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="bp74m173lrwjvq7igincy25082ybf6d8-pixman-x86_64-unknown-linux-gnufilc0-0.44.2" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">170019792</data>
+    <data key="name">glib-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="cmkcw8r3jmsh64h0p9bc9lfmbdj8msdy-util-linux-minimal-x86_64-unknown-linux-gnufilc0-2.41.1-lib"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="jmx2vndpdk17a4k6mn90any3m6g2529d-fil-c-d1f8362"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="grshw4985906bndk85h026id6jnhsw67-glib-2.80.4-x86_64-unknown-linux-gnufilc0" target="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0"/>
+  <node id="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1">
+    <data key="narSize">3897032</data>
+    <data key="name">libselinux-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="fllkh0bg8d9hs3qs7grqkfjzyjgw2ivk-libselinux-x86_64-unknown-linux-gnufilc0-3.8.1" target="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0"/>
+  <node id="hlany4q1p9x5a39zbh6dhkdd7ilpr01x-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0">
+    <data key="narSize">1268528</data>
+    <data key="name">fontconfig-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="hlany4q1p9x5a39zbh6dhkdd7ilpr01x-fontconfig-x86_64-unknown-linux-gnufilc0-2.16.0" target="j9gbq524lgy4w5akbbnxbz503k227bjm-dejavu-fonts-minimal-x86_64-unknown-linux-gnufilc0-2.37"/>
+  <node id="j9gbq524lgy4w5akbbnxbz503k227bjm-dejavu-fonts-minimal-x86_64-unknown-linux-gnufilc0-2.37">
+    <data key="narSize">760472</data>
+    <data key="name">dejavu-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="l8yj0as7hfw5vr4msxay1zkn99jrw6mh-python3.12-tagflow-0.13.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">125432</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="l8yj0as7hfw5vr4msxay1zkn99jrw6mh-python3.12-tagflow-0.13.0-x86_64-unknown-linux-gnufilc0" target="1a98r8sbbga6qv5gjgpwfabs1mpkxvky-python3.12-beautifulsoup4-4.12.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="l8yj0as7hfw5vr4msxay1zkn99jrw6mh-python3.12-tagflow-0.13.0-x86_64-unknown-linux-gnufilc0" target="3ha69gbsahbbis7s78nfggdmdrxnqc2i-python3.12-anyio-4.9.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="l8yj0as7hfw5vr4msxay1zkn99jrw6mh-python3.12-tagflow-0.13.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="m722ybidpp295n8ns339q5rsrrgs5n5s-libXau-x86_64-unknown-linux-gnufilc0-1.0.12">
+    <data key="narSize">67896</data>
+    <data key="name">libXau-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="m722ybidpp295n8ns339q5rsrrgs5n5s-libXau-x86_64-unknown-linux-gnufilc0-1.0.12" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="m722ybidpp295n8ns339q5rsrrgs5n5s-libXau-x86_64-unknown-linux-gnufilc0-1.0.12" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="m722ybidpp295n8ns339q5rsrrgs5n5s-libXau-x86_64-unknown-linux-gnufilc0-1.0.12" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="m722ybidpp295n8ns339q5rsrrgs5n5s-libXau-x86_64-unknown-linux-gnufilc0-1.0.12" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="n7lfpk96vsy0bdjx34yys3m22yqzpiys-python3.12-h11-0.16.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">276336</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="n7lfpk96vsy0bdjx34yys3m22yqzpiys-python3.12-h11-0.16.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">2323248</data>
+    <data key="name">xz-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <edge source="ncx821w9hqz96624jlalqb1ndzywa2d2-xz-5.6.2-x86_64-unknown-linux-gnufilc0" target="xwsh78i85gvaywpk4q5cqri08jsz43j1-filc0-resource-dir"/>
+  <node id="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40">
+    <data key="narSize">97636448</data>
+    <data key="name">filc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40" target="cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37"/>
+  <edge source="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40" target="nf0vbgbnpwzvx6a53kimpng62dzrgrhi-libpizlo-git"/>
+  <edge source="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37">
+    <data key="narSize">1654112</data>
+    <data key="name">bash-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <node id="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66">
+    <data key="narSize">30200720</data>
+    <data key="name">glibc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66" target="16hvpw4b3r05girazh4rnwbw0jgjkb4l-xgcc-14.3.0-libgcc"/>
+  <edge source="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66" target="2q1vszdygbs1icp1cd18a4d11zcsc97y-libidn2-2.3.8"/>
+  <node id="16hvpw4b3r05girazh4rnwbw0jgjkb4l-xgcc-14.3.0-libgcc">
+    <data key="narSize">201848</data>
+    <data key="name">xgcc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="2q1vszdygbs1icp1cd18a4d11zcsc97y-libidn2-2.3.8">
+    <data key="narSize">368208</data>
+    <data key="name">libidn2-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="2q1vszdygbs1icp1cd18a4d11zcsc97y-libidn2-2.3.8" target="7r0k7ywzmgkscjxgzmgwsng0545h8id6-libunistring-1.3"/>
+  <node id="7r0k7ywzmgkscjxgzmgwsng0545h8id6-libunistring-1.3">
+    <data key="narSize">2070232</data>
+    <data key="name">libunistring-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="nf0vbgbnpwzvx6a53kimpng62dzrgrhi-libpizlo-git">
+    <data key="narSize">5851792</data>
+    <data key="name">libpizlo-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="nf0vbgbnpwzvx6a53kimpng62dzrgrhi-libpizlo-git" target="b6rqzvxkg833i5jl2dqf4vir0ky0ac4j-yolo-glibc"/>
+  <node id="b6rqzvxkg833i5jl2dqf4vir0ky0ac4j-yolo-glibc">
+    <data key="narSize">20901272</data>
+    <data key="name">yolo-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="b6rqzvxkg833i5jl2dqf4vir0ky0ac4j-yolo-glibc" target="9ink699ppfnlfagzjbm4sw3dkslqsfi1-yolo-glibc-impl-2.40"/>
+  <node id="9ink699ppfnlfagzjbm4sw3dkslqsfi1-yolo-glibc-impl-2.40">
+    <data key="narSize">42187296</data>
+    <data key="name">yolo-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="9ink699ppfnlfagzjbm4sw3dkslqsfi1-yolo-glibc-impl-2.40" target="cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37"/>
+  <node id="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">4093144</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0" target="89861j1xdkmjxn1nmmmqbf9d7zl1glnf-python3.12-jinja2-3.1.6-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0" target="axd07j07fl93rph6jfc9h6h57zz692c3-python3.12-jsonpickle-4.0.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0" target="cwwcr6g3dj471dx1ds3pw3ipm871jvci-python3.12-ipython-9.2.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="prp3nvpdrvnwxbara0r54zf3ypfgdcil-python3.12-pyvis-0.3.2-x86_64-unknown-linux-gnufilc0" target="iy1gx1wd9a1mqqzllj7idzkzdxy8pczh-python3.12-networkx-3.4.2-x86_64-unknown-linux-gnufilc0"/>
+  <node id="ps6pq5h8w3zd3hprjgszqicyvxlqpc8d-mailcap-x86_64-unknown-linux-gnufilc0-2.1.54">
+    <data key="narSize">119360</data>
+    <data key="name">mailcap-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="pwcg9vm4mpqg81pazsh0fy8q9rs23y55-python3.12-six-1.17.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">124128</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="pwcg9vm4mpqg81pazsh0fy8q9rs23y55-python3.12-six-1.17.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib">
+    <data key="narSize">2263384</data>
+    <data key="name">brotli-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8">
+    <data key="narSize">620696</data>
+    <data key="name">bzip2-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">5113640</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="qwwm1ivhm0kz3p7j0k58mpyvvmxx366s-python3.12-msgspec-0.19.0-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="rrbpcfjmy7j5gpsf2phglahx9j7kvzsn-libXdmcp-x86_64-unknown-linux-gnufilc0-1.1.5">
+    <data key="narSize">128336</data>
+    <data key="name">libXdmcp-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="rrbpcfjmy7j5gpsf2phglahx9j7kvzsn-libXdmcp-x86_64-unknown-linux-gnufilc0-1.1.5" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="rrbpcfjmy7j5gpsf2phglahx9j7kvzsn-libXdmcp-x86_64-unknown-linux-gnufilc0-1.1.5" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="rrbpcfjmy7j5gpsf2phglahx9j7kvzsn-libXdmcp-x86_64-unknown-linux-gnufilc0-1.1.5" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="rrbpcfjmy7j5gpsf2phglahx9j7kvzsn-libXdmcp-x86_64-unknown-linux-gnufilc0-1.1.5" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="rsdx1zv99gp6b2m0w2i61dcp37wc0xky-python3.12-toml-0.10.2-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">189680</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="rsdx1zv99gp6b2m0w2i61dcp37wc0xky-python3.12-toml-0.10.2-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="sn7lp5rlyyi58qf2m266n7flb5wqkkj1-xtrans-x86_64-unknown-linux-gnufilc0-1.6.0">
+    <data key="narSize">218776</data>
+    <data key="name">xtrans-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="sqpmnly358iwl5ys5x70d1b99fq87ffl-python3.12-ipython-pygments-lexers-1.1.1-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">60504</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="sqpmnly358iwl5ys5x70d1b99fq87ffl-python3.12-ipython-pygments-lexers-1.1.1-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="sqpmnly358iwl5ys5x70d1b99fq87ffl-python3.12-ipython-pygments-lexers-1.1.1-x86_64-unknown-linux-gnufilc0" target="xnlb4nn2w4gm07gm364061sjibf08vy9-python3.12-pygments-2.19.1-x86_64-unknown-linux-gnufilc0"/>
+  <node id="sqvkcx6l445hmkfldms1pflw0vr5mjv2-python3.12-parso-0.8.4-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">1015696</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="sqvkcx6l445hmkfldms1pflw0vr5mjv2-python3.12-parso-0.8.4-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">2342440</data>
+    <data key="name">expat-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="v4srp0493lh3f1g7vi3b7n05gcb7mqh5-expat-2.7.1-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">97280</data>
+    <data key="name">libffi-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="v93yq6jn9rq1ghq2f3fn5fla8b6lp7fq-libffi-3.4.6-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="vaniyfzjqj1klh78sbqs1jb9n0flixjb-tzdata-x86_64-unknown-linux-gnufilc0-2025b">
+    <data key="narSize">2145368</data>
+    <data key="name">tzdata-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata">
+    <data key="narSize">236626096</data>
+    <data key="name">filc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="9ink699ppfnlfagzjbm4sw3dkslqsfi1-yolo-glibc-impl-2.40"/>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="b6rqzvxkg833i5jl2dqf4vir0ky0ac4j-yolo-glibc"/>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37"/>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="nf0vbgbnpwzvx6a53kimpng62dzrgrhi-libpizlo-git"/>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="wncggxqnj2b2j87i6q6rxbmwzp271xlf-python3.12-pexpect-4.9.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">650936</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="wncggxqnj2b2j87i6q6rxbmwzp271xlf-python3.12-pexpect-4.9.0-x86_64-unknown-linux-gnufilc0" target="0bygvpqh1hsd8dc5sfpfyzwdm23916p2-python3.12-ptyprocess-0.7.0-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="wncggxqnj2b2j87i6q6rxbmwzp271xlf-python3.12-pexpect-4.9.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib">
+    <data key="narSize">47515072</data>
+    <data key="name">filc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib" target="9ink699ppfnlfagzjbm4sw3dkslqsfi1-yolo-glibc-impl-2.40"/>
+  <edge source="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib" target="b6rqzvxkg833i5jl2dqf4vir0ky0ac4j-yolo-glibc"/>
+  <edge source="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib" target="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib"/>
+  <edge source="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib" target="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0"/>
+  <node id="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib">
+    <data key="narSize">9982176</data>
+    <data key="name">gcc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib" target="4j6p91af1bfgnn31agg1c9ijr0kyg6gi-gcc-14.3.0-libgcc"/>
+  <edge source="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <node id="4j6p91af1bfgnn31agg1c9ijr0kyg6gi-gcc-14.3.0-libgcc">
+    <data key="narSize">201848</data>
+    <data key="name">gcc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0">
+    <data key="narSize">257883880</data>
+    <data key="name">gcc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="8icpg7vrz95c6ap3mznmlmg7h0l2av1w-zlib-1.3.1"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="a13yhlvpf0mz6qhnzgl7k6jgdvz46ndk-libmpc-1.3.1"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="j6fp6i6i2n84dh9fqig05x5znbbhlsw0-gcc-14.3.0-lib"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="m3n0h7646c7qwf6dbvdqhslmxmv2dg3z-glibc-2.40-66-dev"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="r7hq8cp4prsb8idcv8y2v8g09p1vhakw-isl-0.20"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="sczv655dl25a5ng4z50p80k5g4vbsqh7-mpfr-4.2.2"/>
+  <edge source="kxm6wzygmj1439ylqdgyl9zqjgf10dy7-gcc-14.3.0" target="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0"/>
+  <node id="8icpg7vrz95c6ap3mznmlmg7h0l2av1w-zlib-1.3.1">
+    <data key="narSize">132264</data>
+    <data key="name">zlib-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="8icpg7vrz95c6ap3mznmlmg7h0l2av1w-zlib-1.3.1" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <node id="a13yhlvpf0mz6qhnzgl7k6jgdvz46ndk-libmpc-1.3.1">
+    <data key="narSize">284088</data>
+    <data key="name">libmpc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="a13yhlvpf0mz6qhnzgl7k6jgdvz46ndk-libmpc-1.3.1" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="a13yhlvpf0mz6qhnzgl7k6jgdvz46ndk-libmpc-1.3.1" target="sczv655dl25a5ng4z50p80k5g4vbsqh7-mpfr-4.2.2"/>
+  <edge source="a13yhlvpf0mz6qhnzgl7k6jgdvz46ndk-libmpc-1.3.1" target="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0"/>
+  <node id="j6fp6i6i2n84dh9fqig05x5znbbhlsw0-gcc-14.3.0-lib">
+    <data key="narSize">10121176</data>
+    <data key="name">gcc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="j6fp6i6i2n84dh9fqig05x5znbbhlsw0-gcc-14.3.0-lib" target="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib"/>
+  <edge source="j6fp6i6i2n84dh9fqig05x5znbbhlsw0-gcc-14.3.0-lib" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="j6fp6i6i2n84dh9fqig05x5znbbhlsw0-gcc-14.3.0-lib" target="h0jgsh9na08l4n5spv4wgysbv10x2ry7-gcc-14.3.0-libgcc"/>
+  <node id="h0jgsh9na08l4n5spv4wgysbv10x2ry7-gcc-14.3.0-libgcc">
+    <data key="narSize">201848</data>
+    <data key="name">gcc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="m3n0h7646c7qwf6dbvdqhslmxmv2dg3z-glibc-2.40-66-dev">
+    <data key="narSize">2427432</data>
+    <data key="name">glibc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="m3n0h7646c7qwf6dbvdqhslmxmv2dg3z-glibc-2.40-66-dev" target="3s46ky4siqwkg82rjjqm83slbiqadav5-linux-headers-6.12.7"/>
+  <edge source="m3n0h7646c7qwf6dbvdqhslmxmv2dg3z-glibc-2.40-66-dev" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="m3n0h7646c7qwf6dbvdqhslmxmv2dg3z-glibc-2.40-66-dev" target="p2ixvjsas4qw58dcwk01d22skwq4fyka-glibc-2.40-66-bin"/>
+  <node id="3s46ky4siqwkg82rjjqm83slbiqadav5-linux-headers-6.12.7">
+    <data key="narSize">6964336</data>
+    <data key="name">linux-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="p2ixvjsas4qw58dcwk01d22skwq4fyka-glibc-2.40-66-bin">
+    <data key="narSize">2847496</data>
+    <data key="name">glibc-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="p2ixvjsas4qw58dcwk01d22skwq4fyka-glibc-2.40-66-bin" target="16hvpw4b3r05girazh4rnwbw0jgjkb4l-xgcc-14.3.0-libgcc"/>
+  <edge source="p2ixvjsas4qw58dcwk01d22skwq4fyka-glibc-2.40-66-bin" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <node id="r7hq8cp4prsb8idcv8y2v8g09p1vhakw-isl-0.20">
+    <data key="narSize">2638376</data>
+    <data key="name">isl-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="r7hq8cp4prsb8idcv8y2v8g09p1vhakw-isl-0.20" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="r7hq8cp4prsb8idcv8y2v8g09p1vhakw-isl-0.20" target="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0"/>
+  <node id="sczv655dl25a5ng4z50p80k5g4vbsqh7-mpfr-4.2.2">
+    <data key="narSize">822792</data>
+    <data key="name">mpfr-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="sczv655dl25a5ng4z50p80k5g4vbsqh7-mpfr-4.2.2" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <edge source="sczv655dl25a5ng4z50p80k5g4vbsqh7-mpfr-4.2.2" target="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0"/>
+  <node id="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0">
+    <data key="narSize">791712</data>
+    <data key="name">gmp-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0" target="dj06r96j515npcqi9d8af1d1c60bx2vn-gcc-14.3.0-lib"/>
+  <edge source="wx2hkwfpc39ixyww2hai0v697zzrpbxr-gmp-with-cxx-6.3.0" target="g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66"/>
+  <node id="x7d7fz8kw9f8xvlha9ib4ygp73whfn7w-python3.12-decorator-5.2.1-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">68840</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="x7d7fz8kw9f8xvlha9ib4ygp73whfn7w-python3.12-decorator-5.2.1-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <node id="xnlb4nn2w4gm07gm364061sjibf08vy9-python3.12-pygments-2.19.1-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">12392616</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="xnlb4nn2w4gm07gm364061sjibf08vy9-python3.12-pygments-2.19.1-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="xnlb4nn2w4gm07gm364061sjibf08vy9-python3.12-pygments-2.19.1-x86_64-unknown-linux-gnufilc0" target="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37"/>
+  <node id="xwsh78i85gvaywpk4q5cqri08jsz43j1-filc0-resource-dir">
+    <data key="narSize">7398456</data>
+    <data key="name">filc0-</data>
+    <data key="type">output-path</data>
+  </node>
+  <node id="y9p8cx7p5alahxwnah1sfc1jsvi31za8-python3.12-matplotlib-inline-0.1.7-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">61504</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="y9p8cx7p5alahxwnah1sfc1jsvi31za8-python3.12-matplotlib-inline-0.1.7-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="y9p8cx7p5alahxwnah1sfc1jsvi31za8-python3.12-matplotlib-inline-0.1.7-x86_64-unknown-linux-gnufilc0" target="9bk4m9a6vkc1fw15jqgw13354m3wn3pl-python3.12-traitlets-5.14.3-x86_64-unknown-linux-gnufilc0"/>
+  <node id="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">9668392</data>
+    <data key="name">pcre2-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="z03dr77aym5n66w517ibd2min1fqvbzk-pcre2-10.44-x86_64-unknown-linux-gnufilc0" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1">
+    <data key="narSize">100804408</data>
+    <data key="name">openssl-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="z1gp7qrxafb0kvn703bzbnb93hn2kwf7-openssl-x86_64-unknown-linux-gnufilc0-3.3.1" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+  <node id="zkzp1w17r29a228z1d0vlcxkkdnahq3n-python3.12-uvicorn-0.34.0-x86_64-unknown-linux-gnufilc0">
+    <data key="narSize">752392</data>
+    <data key="name">python3.12-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="zkzp1w17r29a228z1d0vlcxkkdnahq3n-python3.12-uvicorn-0.34.0-x86_64-unknown-linux-gnufilc0" target="1y793ajxf301bdv4wyh7dk9c95rp9hs2-python3.12-click-8.1.8-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="zkzp1w17r29a228z1d0vlcxkkdnahq3n-python3.12-uvicorn-0.34.0-x86_64-unknown-linux-gnufilc0" target="620gq0mlvs3x992dl2zh7n6d7dgi6rls-python3-3.12.5-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="zkzp1w17r29a228z1d0vlcxkkdnahq3n-python3.12-uvicorn-0.34.0-x86_64-unknown-linux-gnufilc0" target="f8i3gl2wcrsx8ha4qdgzc4vzkm3krimj-bash-x86_64-unknown-linux-gnufilc0-5.2p37"/>
+  <edge source="zkzp1w17r29a228z1d0vlcxkkdnahq3n-python3.12-uvicorn-0.34.0-x86_64-unknown-linux-gnufilc0" target="n7lfpk96vsy0bdjx34yys3m22yqzpiys-python3.12-h11-0.16.0-x86_64-unknown-linux-gnufilc0"/>
+  <node id="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3">
+    <data key="narSize">71888448</data>
+    <data key="name">freetype-</data>
+    <data key="type">output-path</data>
+  </node>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="69x2agcyfrdnhd8sgph6sd0s2l4r5z3n-zlib-1.3-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="a4x0i1vzm7mmzlcq1cczp8izvv2czbs3-libpng-apng-1.6.43-x86_64-unknown-linux-gnufilc0"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="i1ss1x65x3gi11wh7i68p0b1zwgx01xs-filc-libcxx-git"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="phh24nfm9k0jh0arcp689fi2vgy65jxv-filc-glibc-2.40"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="px4n9ds8lmmqx8anymb1vd78xvsqch07-brotli-x86_64-unknown-linux-gnufilc0-1.1.0-lib"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="qbq4qyzgyp1m9m4mnz1lamg2ynxca944-bzip2-x86_64-unknown-linux-gnufilc0-1.0.8"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="vf160n109401l9xb84998x6nadji5c08-filc-sysroot-with-metadata"/>
+  <edge source="zm0wz84ccp5n24wm6fjwn89j58njrhc8-freetype-x86_64-unknown-linux-gnufilc0-2.13.3" target="x6d91bclg2gg3kracsg08aqkvaq8w799-filc-crt-lib"/>
+</graph>
+</graphml>

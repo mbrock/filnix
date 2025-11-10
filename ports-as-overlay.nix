@@ -2,7 +2,7 @@
 # This is the judo: same ports.nix definitions, interpreted as overlay!
 #
 # In overlay mode:
-# - Dependencies are ignored (cross-compilation rebuilds them automatically)
+# - Dependencies are auto-resolved by cross-compilation infrastructure
 # - Only patches and attribute transformations are applied
 # - The result is a pure overlay that works with nixpkgs cross-compilation
 
@@ -10,8 +10,8 @@ pkgs: final: prev:
 let
   # Import ports.nix - returns attribute transformers for each package
   # Each port is either:
-  #   - An attrs function: old -> { patches = ...; ... }
-  #   - A custom derivation spec: { __customDrv = path; __deps = {}; __attrs = fn }
+  #   - { attrs = old -> { ... }; overrideArgs = { ... } } - normal package
+  #   - { __customDrv = path; __attrs = fn } - custom derivation (e.g., OpenSSL)
   portSpecs = import ./ports.nix {
     inherit pkgs;
     inherit prev;
@@ -21,14 +21,9 @@ let
   ported = prev.lib.mapAttrs (
     name: spec:
     if spec ? __customDrv then
-      # Custom derivation (e.g., OpenSSL) - call it with final context for deps
+      # Custom derivation (e.g., OpenSSL) - call it with final context
       # callPackage will auto-inject dependencies from final (cross-compiled pkgs)
-      # then we override with __deps, then apply __attrs
-      let
-        base = final.callPackage spec.__customDrv { };
-        withDeps = if spec.__deps != { } then base.override spec.__deps else base;
-      in
-      withDeps.overrideAttrs spec.__attrs
+      (final.callPackage spec.__customDrv { }).overrideAttrs spec.__attrs
     else if prev ? ${name} then
       # Package exists in nixpkgs - apply overlay transformations
       # First apply function argument overrides, then attribute overrides

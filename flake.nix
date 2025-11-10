@@ -147,6 +147,20 @@
             starlette
             msgspec
             tagflow
+            pycairo
+            rich
+            python-multipart
+          ]
+        );
+
+        python-web-demo = pkgsFilc.callPackage ./demo {
+          demo-src = ./demo;
+        };
+
+        emacs = pkgsFilc.emacs30Packages.withPackages (
+          ps: with ps; [
+            vterm
+            treesit-grammars.with-all-grammars
           ]
         );
       };
@@ -179,6 +193,11 @@
         runfilc = {
           type = "app";
           program = "${self.packages.${system}.runfilc}/bin/runfilc";
+        };
+
+        demo = {
+          type = "app";
+          program = "${self.packages.${system}.python-web-demo}/bin/filc-demo";
         };
 
       };

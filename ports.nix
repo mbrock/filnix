@@ -343,7 +343,7 @@ rec {
 
   ed = port [
     pkgs.ed
-    (arg { runtimeShellPackage = bash; })
+    # runtimeShellPackage will be auto-resolved from the cross-compiled bash
   ];
 
   e2fsprogs = port [
@@ -435,7 +435,7 @@ rec {
     })
     (src "30.1" (
       v: "https://git.savannah.gnu.org/cgit/emacs.git/snapshot/emacs-${v}.tar.gz"
-    ) "sha256-5PJeGhy7/LMfqIxckfwohs/Up+Eip+uWcNPsSm+BCEs=")
+    ) "sha256-eTWjpRgLXbA9OQZnbrWPIHPcbj/QYkv58I3IWx5lCIQ=")
     (patch ./ports/patch/emacs-30.1.patch)
     (configure "--with-gnutls=ifavailable")
     (configure "--with-dumping=none")
@@ -474,7 +474,6 @@ rec {
     (arg { perlSupport = false; })
     (arg { pythonSupport = false; })
     (arg { sendEmailSupport = false; })
-    { zlib-ng = zlib; } # dependency override - will be ignored in overlay mode
     skipTests
     (use (old: {
       makeFlags = pkgs.lib.filter (p: p != "ZLIB_NG=1") old.makeFlags;
@@ -681,8 +680,6 @@ rec {
   lighttpd = port [
     pkgs.lighttpd
     (patch ./lighttpd-filc.patch)
-    #    { lua5_1 = lua; } # dependency override - will be ignored in overlay mode
-    { linux-pam = pam; } # dependency override - will be ignored in overlay mode
     (arg { enableMagnet = true; })
     (arg { enableWebDAV = true; })
     (arg { enablePam = true; })
@@ -828,14 +825,14 @@ rec {
 
         tagflow = pyself.buildPythonPackage {
           pname = "tagflow";
-          version = "0.12.0-git";
+          version = "0.13.0";
           format = "pyproject";
 
           src = pkgs.fetchFromGitHub {
             owner = "lessrest";
             repo = "tagflow";
-            rev = "45dc850c7c7655ce65ef14a0ff9161d9e5cd00a1";
-            hash = "sha256-ypeKZFLOYtLTCXkUIIP/dPB1w/rdv1ofC0gN+wDkmk4=";
+            rev = "cf84326fb41037db8efcefd09898b7659931e77e";
+            hash = "sha256-CLeLDoh2cxPkqt4rircCUUxemdgskWJYBdPBd7X07Bo=";
           };
 
           nativeBuildInputs = with pyself; [
@@ -844,12 +841,61 @@ rec {
 
           propagatedBuildInputs = with pyself; [
             anyio
-            trio
+            beautifulsoup4
           ];
 
           doCheck = false;
           doInstallCheck = false;
         };
+
+        decorator = pyprev.decorator.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        jsonpickle = pyprev.jsonpickle.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        jedi = pyprev.jedi.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        networkx = pyprev.networkx.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        ipython = pyprev.ipython.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        pyvis = pyprev.pyvis.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        jinja2 = pyprev.jinja2.overrideAttrs (_: {
+          # i think python 3 lack of motorola assembly
+          # is actually making it print floats in a fucked up way
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        prompt-toolkit = pyprev.prompt-toolkit.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+        });
+
+        chardet = pyprev.chardet.overrideAttrs (_: {
+          doCheck = false;
+          doInstallCheck = false;
+          # jesus this is the most slow and boring test suite
+          # I could ever imagine
+        });
 
         pycairo = pyprev.pycairo.overrideAttrs (_: {
           doCheck = false;

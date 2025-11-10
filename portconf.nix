@@ -1,11 +1,25 @@
-# DSL for defining Fil-C ports as overlays
+# DSL for defining Fil-C ports as pure overlays
 #
-# This module provides a compositional DSL for defining package ports.
-# Instead of passing large attribute sets, we use a pipeline of small
-# transformations that are easier to read and maintain.
+# This module provides a compositional DSL for defining package ports that work
+# seamlessly with Nix cross-compilation infrastructure. Each port is a pipeline
+# of small transformations applied to a base package.
 #
-# Each port returns an attribute transformer: old -> { patches = ...; ... }
-# Dependencies are handled automatically by Nix cross-compilation.
+# Key design principles:
+# - Pure overlays: No manual dependency tracking
+# - Composable: Each transformation is a small, focused function
+# - Cross-compilation native: Dependencies auto-resolved by nixpkgs
+#
+# Each port returns: { attrs = old -> { ... }; overrideArgs = { ... } }
+# OR for custom derivations: { __customDrv = path; __attrs = fn }
+#
+# Example:
+#   zlib = port [
+#     pkgs.zlib                    # Base package from nixpkgs
+#     (src "1.3" urlFn hash)       # Override version and source
+#     (patch ./my.patch)           # Add a patch
+#     (arg { enableStatic = true; }) # Pass arg to .override
+#     skipTests                    # Disable tests
+#   ];
 
 {
   lib,
@@ -17,7 +31,6 @@ let
 
   # The builder we transform (endofunctor target)
   Init = {
-    deps = { };
     overrideArgs = { }; # Function arguments for .override
     attrs = (_: { }); # old -> { ... }
   };
@@ -35,7 +48,6 @@ let
     );
 
   # Endofunctor "port step" = FixArgs -> FixArgs
-  overDeps = d: fa: fa // { deps = fa.deps // d; };
   overArgs = a: fa: fa // { overrideArgs = fa.overrideArgs // a; };
   overAttrs = f: fa: fa // { attrs = merge fa.attrs f; };
 
@@ -88,10 +100,10 @@ let
     );
 
   # Build a single port from a list [basePkg step1 step2 ...]
-  # Plain attrsets without wrapping are treated as deps (ignored in overlay mode)
-  # Use arg({ ... }) to mark as function arguments for .override
+  # Use arg({ ... }) to pass function arguments to .override
+  # Use use({ ... }) or other DSL functions to modify package attributes
   # Returns { attrs = old -> { ... }; overrideArgs = { ... } }
-  # OR for custom derivations: { __customDrv = path; __deps = {}; __attrs = fn }
+  # OR for custom derivations: { __customDrv = path; __attrs = fn }
   buildPort =
     steps:
     let
@@ -101,17 +113,15 @@ let
       # Check if this is a custom derivation (path to .nix file)
       isCustomDrv = builtins.isPath pkg || (builtins.isString pkg && lib.hasSuffix ".nix" pkg);
 
-      # Plain attrsets become deps (will be ignored), use arg() for override args
-      normalizeStep = step: if builtins.isAttrs step && !builtins.isFunction step then overDeps step else step;
-      normalizedSteps = builtins.map normalizeStep rawSteps;
-      acc = foldl' (fa: step: step fa) Init normalizedSteps;
+      # All steps must be functions that transform our Init structure
+      # Plain attrsets are no longer supported - use arg() or use() explicitly
+      acc = foldl' (fa: step: step fa) Init rawSteps;
     in
     if isCustomDrv then
       # Custom derivation - return special structure for overlay to callPackage
-      { __customDrv = pkg; __deps = acc.deps; __attrs = acc.attrs; }
+      { __customDrv = pkg; __attrs = acc.attrs; }
     else
       # Normal port - return attrs and overrideArgs for overlay use
-      # Dependencies (deps field) are ignored - cross-compilation rebuilds them automatically
       { inherit (acc) attrs overrideArgs; };
 
   # Common helpers
