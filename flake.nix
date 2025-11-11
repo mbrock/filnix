@@ -103,9 +103,14 @@
 
       runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
 
-      filc-emacs-bundle = import ./emacs/emacs.nix {
+      emacs-safe = import ./emacs/emacs.nix {
         inherit pkgs;
         pkgsFilc = pkgsFilc2;
+      };
+
+      emacs-unsafe = import ./emacs/emacs.nix {
+        inherit pkgs;
+        pkgsFilc = pkgs;
       };
     in
     {
@@ -135,7 +140,7 @@
 
         ttyd-emacs-demo = pkgs.callPackage ./ttyd-demo {
           ports = pkgsFilc;
-          filc-emacs = filc-emacs-bundle.filc-emacs;
+          filc-emacs = emacs-safe.filc-emacs;
         };
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
@@ -196,10 +201,9 @@
           ]
         );
 
-        inherit (filc-emacs-bundle) filc-emacs;
-        emacs = filc-emacs-bundle.filc-emacs;
-        filc-emacs-config = filc-emacs-bundle.configDir;
-        filc-emacs-base = filc-emacs-bundle.baseEmacs;
+        inherit (emacs-safe) filc-emacs;
+        emacs = emacs-safe.filc-emacs;
+        emacs-unsafe = emacs-unsafe.filc-emacs;
       };
 
       apps.${system} = {

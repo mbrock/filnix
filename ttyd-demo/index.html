@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #terminal {
+      flex: 1;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+
+  <script>
+    const term = new Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#d4d4d4'
+      }
+    });
+
+    const fitAddon = new FitAddon.FitAddon();
+    const webglAddon = new WebglAddon.WebglAddon();
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+
+    term.loadAddon(fitAddon);
+    term.loadAddon(webLinksAddon);
+
+    term.open(document.getElementById('terminal'));
+
+    try {
+      term.loadAddon(webglAddon);
+    } catch (e) {
+      console.warn('WebGL addon failed, using canvas renderer', e);
+    }
+
+    fitAddon.fit();
+    window.addEventListener('resize', () => fitAddon.fit());
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}${window.location.pathname}ws`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+      term.onData(data => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(new TextEncoder().encode(data));
+        }
+      });
+
+      term.onResize(({ cols, rows }) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(new TextEncoder().encode(`\x1b[8;${rows};${cols}t`));
+        }
+      });
+    };
+
+    ws.onmessage = (event) => {
+      const data = new Uint8Array(event.data);
+      term.write(data);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      term.write('\r\n\x1b[31mWebSocket connection error\x1b[0m\r\n');
+    };
+
+    ws.onclose = () => {
+      term.write('\r\n\x1b[31mConnection closed\x1b[0m\r\n');
+    };
+  </script>
+</body>
+</html>

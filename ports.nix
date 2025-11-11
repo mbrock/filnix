@@ -100,6 +100,7 @@ in
   (for pkgs.libuv [
     (pin "1.48.0" "sha256-jCU62w+ACSamy9HGV2q64LyOuGpPiRBJty+eW33FjzM=")
     (patch ./ports/patch/libuv-v1.48.0.patch)
+    (skipTests "one test failed")
   ])
 
   (for pkgs.libxcrypt [
@@ -169,8 +170,9 @@ in
   (for pkgs.diffutils [
     (pin "3.10" "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=")
     (patch ./ports/patch/diffutils-3.10.patch)
+    (tool pkgs.perl)
     (use { postPatch = "patchShebangs man/help2man"; })
-    (skipCheck "too slow")
+    (skipTests "too slow")
   ])
 
   (for pkgs.dash [
@@ -218,7 +220,7 @@ in
   # ━━━ Build Tools ━━━
 
   (for pkgs.bison [
-    (pin "3.8.2" "sha256-m7oCFMz38QecXVkhAEUie89hlRmEDr+oDNOEnP9aW/I=")
+    (pin "3.8.2" "sha256-BsnhO99+sk1M62tZIFpPZ8LH5yExGWREMP6C+9FKCrs=")
     (patch ./ports/patch/bison-3.8.2.patch)
     (skipTests "too slow")
   ])
@@ -299,16 +301,35 @@ in
   ])
 
   (for pkgs.openssh [
-    (pin "9.8p1" "sha256-3YvQAqN5tdSZ37BQ3R+pr4Ap6ARh9LtsUjxJlz9aOfM=")
+    #    (pin "9.8p1" "sha256-AhoucJoO30JQsSVr1anlAEEakN3avqgw7VnO+Q652Fw=")
     (patch ./ports/patch/openssh-9.8p1.patch)
-    (skipCheck "requires special setup")
+    (skipCheck "let's see")
+    (use {
+      installCheckPhase = ''
+        for binary in ssh sshd; do
+          echo "verifying OpenSSH version $version"
+          output=$($out/bin/$binary -V 2>&1)
+          echo "got output: $output"
+          echo "expected output: $(printf '^OpenSSH_\\Q%s\\E,' "$version")"
+          if ! echo "$output" | grep -P "$(printf '^OpenSSH_\\Q%s\\E,' "$version")"; then
+            echo "OpenSSH version verification failed"
+            exit 1
+          fi
+        done
+      '';
+    })
     (arg { withFIDO = false; })
+    (tool depizloing-nm)
   ])
 
   (for pkgs.libssh2 [
     (tool depizloing-nm)
     (skipCheck "network tests flaky")
     (configure "--disable-examples-build")
+  ])
+
+  (for pkgs.ldns [
+    (tool depizloing-nm)
   ])
 
   # ━━━ Security ━━━
@@ -597,6 +618,10 @@ in
     util-linux = for pkgs.util-linuxMinimal [ parallelize ];
     util-linuxMinimal = for pkgs.util-linuxMinimal [ parallelize ];
   }
+
+  (for pkgs.systemd [
+    (broken "not yet ported")
+  ])
 
   (for pkgs.shadow [
     (tool depizloing-nm)

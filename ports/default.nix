@@ -233,26 +233,12 @@ let
   # Only sets broken/badPlatforms when actually cross-compiling to Fil-C
   broken =
     reason:
-    use (
-      old:
-      let
-        isFilcTarget =
-          (old.stdenv.hostPlatform.isFilc or false)
-          || (lib.hasInfix "filc" (old.stdenv.hostPlatform.config or ""));
-      in
-      if isFilcTarget then
-        {
-          meta = (old.meta or { }) // {
-            broken = true;
-            badPlatforms = (old.meta.badPlatforms or [ ]) ++ [ old.stdenv.hostPlatform.system ];
-            description = (old.meta.description or "Package") + " (Fil-C: ${reason})";
-          };
-        }
-      else
-        {
-          meta = old.meta or { };
-        }
-    );
+    use (old: {
+      meta = (old.meta or { }) // {
+        broken = true;
+        badPlatforms = [ "x86_64-linux" ];
+      };
+    });
 
   # Mark packages as memory-safe when built with Fil-C
   # Removes knownVulnerabilities since memory safety eliminates whole classes of bugs

@@ -4,7 +4,7 @@
 }:
 
 let
-  emacsPackages = pkgsFilc.emacs30Packages;
+  inherit (pkgsFilc) emacsPackages;
 
   baseEmacs = emacsPackages.withPackages (
     epkgs: with epkgs; [
@@ -48,15 +48,16 @@ let
       vertico
       vterm
       which-key
+      eat
     ]
   );
 
   languageServers = with pkgs; [
     llvmPackages_21.clang-tools
-    nixd
     cmake-language-server
     mesonlsp
     llvmPackages_21.mlir
+    nixd
   ];
 
   languageServerBinPath = pkgs.lib.makeBinPath languageServers;

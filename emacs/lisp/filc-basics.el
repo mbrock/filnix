@@ -21,8 +21,8 @@
 (setq-default indent-tabs-mode nil)
 
 ;; Display enhancements
-(global-display-line-numbers-mode 1)
-(global-hl-line-mode 1)
+(global-display-line-numbers-mode 0)
+(global-hl-line-mode 0)
 (show-paren-mode 1)
 (setq show-paren-delay 0)
 

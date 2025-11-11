@@ -18,6 +18,9 @@
   :mode (("meson\\.build\\'" . meson-mode)
          ("meson_options\\.txt\\'" . meson-mode)))
 
+(use-package nix-mode
+  :ensure nil)
+
 (provide 'filc-langs)
 ;;; filc-langs.el ends here
 

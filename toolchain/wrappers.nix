@@ -58,22 +58,22 @@ rec {
   filc-cc =
     pkgs.runCommand "filc-cc"
       {
-        passthru = {
-          # Fil-C provides memory safety via bounds checking and GC, so some
-          # hardening flags are redundant or may conflict:
-          # - fortify/fortify3: CONFLICTS with Fil-C's own bounds checks
-          # - stackprotector: Redundant (Fil-C catches buffer overflows)
-          # - stackclashprotection: Redundant (Fil-C prevents stack corruption)
-          #
-          # We keep: pie, pic (needed for ASLR/shared libs), strictoverflow
-          # (C semantics), format (compile warnings are helpful), and others.
-          hardeningUnsupportedFlags = [
-            "fortify"
-            "fortify3"
-            "stackprotector"
-            "stackclashprotection"
-          ];
-        };
+        # passthru = {
+        #   # Fil-C provides memory safety via bounds checking and GC, so some
+        #   # hardening flags are redundant or may conflict:
+        #   # - fortify/fortify3: CONFLICTS with Fil-C's own bounds checks
+        #   # - stackprotector: Redundant (Fil-C catches buffer overflows)
+        #   # - stackclashprotection: Redundant (Fil-C prevents stack corruption)
+        #   #
+        #   # We keep: pie, pic (needed for ASLR/shared libs), strictoverflow
+        #   # (C semantics), format (compile warnings are helpful), and others.
+        #   hardeningUnsupportedFlags = [
+        #     "fortify"
+        #     "fortify3"
+        #     "stackprotector"
+        #     "stackclashprotection"
+        #   ];
+        # };
       }
       ''
         mkdir -p $out/bin

@@ -17,7 +17,11 @@ in
 # This will be converted to a packageOverrides function
 [
   (for "pytest-regressions" [
-    (arg { matplotlib = null; pandas = null; pillow = null; })
+    (arg {
+      matplotlib = null;
+      pandas = null;
+      pillow = null;
+    })
     (skipCheck "requires optional dependencies")
   ])
 
@@ -43,6 +47,10 @@ in
 
   (for "markdown" [
     (skipCheck "slow")
+  ])
+
+  (for "markdown-it-py" [
+    (skipTests "needs pandas")
   ])
 
   (for "decorator" [
@@ -93,25 +101,29 @@ in
   {
     tagflow = {
       pname = "tagflow";
-      __customPython = pyself: pyself.buildPythonPackage {
-        pname = "tagflow";
-        version = "0.13.0";
-        format = "pyproject";
+      __customPython =
+        pyself:
+        pyself.buildPythonPackage {
+          pname = "tagflow";
+          version = "0.13.0";
+          format = "pyproject";
 
-        src = pkgs.fetchFromGitHub {
-          owner = "lessrest";
-          repo = "tagflow";
-          rev = "cf84326fb41037db8efcefd09898b7659931e77e";
-          hash = "sha256-CLeLDoh2cxPkqt4rircCUUxemdgskWJYBdPBd7X07Bo=";
+          src = pkgs.fetchFromGitHub {
+            owner = "lessrest";
+            repo = "tagflow";
+            rev = "cf84326fb41037db8efcefd09898b7659931e77e";
+            hash = "sha256-CLeLDoh2cxPkqt4rircCUUxemdgskWJYBdPBd7X07Bo=";
+          };
+
+          nativeBuildInputs = [ pyself.hatchling ];
+          propagatedBuildInputs = with pyself; [
+            anyio
+            beautifulsoup4
+          ];
+
+          doCheck = false;
+          doInstallCheck = false;
         };
-
-        nativeBuildInputs = [ pyself.hatchling ];
-        propagatedBuildInputs = with pyself; [ anyio beautifulsoup4 ];
-
-        doCheck = false;
-        doInstallCheck = false;
-      };
     };
   }
 ]
-
