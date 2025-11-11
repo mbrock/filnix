@@ -101,6 +101,10 @@
         inherit (filc-shell-stuff) world-pkgs;
       };
 
+      uacme-tools = import ./tools/uacme.nix {
+        pkgs = pkgsFilc;
+      };
+
       runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
 
       emacs-safe = import ./emacs/emacs.nix {
@@ -204,6 +208,9 @@
         inherit (emacs-safe) filc-emacs;
         emacs = emacs-safe.filc-emacs;
         emacs-unsafe = emacs-unsafe.filc-emacs;
+
+        # ACME/Let's Encrypt tools
+        inherit (uacme-tools) uacme challengeServer getFilcCert;
       };
 
       apps.${system} = {
@@ -244,6 +251,11 @@
         ttyd-emacs = {
           type = "app";
           program = "${self.packages.${system}.ttyd-emacs-demo}/bin/ttyd-emacs-demo";
+        };
+
+        get-cert = {
+          type = "app";
+          program = "${self.packages.${system}.getFilcCert}/bin/uacme-get-cert";
         };
 
         perl-demos = {

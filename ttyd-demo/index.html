@@ -6,6 +6,31 @@
   <title>Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <style>
+    @font-face {
+      font-family: 'Monaspace Neon';
+      src: url('MonaspaceNeon-Regular.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Monaspace Neon';
+      src: url('MonaspaceNeon-Medium.woff2') format('woff2');
+      font-weight: 500;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Monaspace Neon';
+      src: url('MonaspaceNeon-SemiBold.woff2') format('woff2');
+      font-weight: 600;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Monaspace Neon';
+      src: url('MonaspaceNeon-Bold.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+    }
+
     body {
       margin: 0;
       padding: 0;
@@ -30,10 +55,12 @@
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
 
   <script>
+    window.addEventListener('load', () => {
+    console.log('Page loaded, initializing terminal...');
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontSize: 16,
+      fontFamily: '"Monaspace Neon", monospace',
       theme: {
         background: '#1e1e1e',
         foreground: '#d4d4d4'
@@ -59,28 +86,56 @@
     window.addEventListener('resize', () => fitAddon.fit());
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}${window.location.pathname}ws`;
-    const ws = new WebSocket(wsUrl);
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl, ['tty']);
 
     ws.binaryType = 'arraybuffer';
 
+    const textEncoder = new TextEncoder();
+
     ws.onopen = () => {
+      console.log('WebSocket opened');
+
+      // Send initial terminal size (ttyd protocol requirement)
+      const msg = JSON.stringify({
+        AuthToken: '',
+        columns: term.cols,
+        rows: term.rows
+      });
+      ws.send(textEncoder.encode(msg));
+      console.log('Sent terminal size:', msg);
+
       term.onData(data => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(new TextEncoder().encode(data));
+          // ttyd protocol: prefix with '0' for INPUT command
+          const payload = new Uint8Array(data.length + 1);
+          payload[0] = '0'.charCodeAt(0);
+          const encoded = textEncoder.encodeInto(data, payload.subarray(1));
+          ws.send(payload.subarray(0, encoded.written + 1));
         }
       });
 
       term.onResize(({ cols, rows }) => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(new TextEncoder().encode(`\x1b[8;${rows};${cols}t`));
+          const resizeMsg = JSON.stringify({ columns: cols, rows: rows });
+          ws.send('2' + resizeMsg);
         }
       });
     };
 
     ws.onmessage = (event) => {
       const data = new Uint8Array(event.data);
-      term.write(data);
+      console.log('Received', data.length, 'bytes');
+
+      // ttyd protocol: first byte is command ('0' = OUTPUT, '1' = SET_WINDOW_TITLE, '2' = SET_PREFERENCES)
+      const cmd = String.fromCharCode(data[0]);
+      const payload = data.subarray(1);
+
+      if (cmd === '0') {
+        term.write(payload);
+      } else if (cmd === '1') {
+        document.title = new TextDecoder().decode(payload);
+      }
     };
 
     ws.onerror = (error) => {
@@ -91,6 +146,7 @@
     ws.onclose = () => {
       term.write('\r\n\x1b[31mConnection closed\x1b[0m\r\n');
     };
+    });
   </script>
 </body>
 </html>
