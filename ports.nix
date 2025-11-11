@@ -469,20 +469,20 @@ in
     (broken "turn this thing off so glib builds perfectly")
   ])
 
-  (for pkgs.gobject-introspection-unwrapped [
-    (use (old: {
-      postPatch = (old.postPatch or "") + ''
-        sed -i 's/2.82.0/2.80.4/' meson.build
-        sed -i 's/case G_TYPE/case (uintptr_t) G_TYPE/g' $(find . -name '*.c')
-      '';
-      env = (old.env or { }) // {
-        NIX_CFLAGS_COMPILE = toString [
-          "-Wno-error=nonnull"
-          "-DG_DISABLE_CAST_CHECKS"
-        ];
-      };
-    }))
-  ])
+  # (for pkgs.gobject-introspection-unwrapped [
+  #   (use (old: {
+  #     postPatch = (old.postPatch or "") + ''
+  #       sed -i 's/2.82.0/2.80.4/' meson.build
+  #       sed -i 's/case G_TYPE/case (uintptr_t) G_TYPE/g' $(find . -name '*.c')
+  #     '';
+  #     env = (old.env or { }) // {
+  #       NIX_CFLAGS_COMPILE = toString [
+  #         "-Wno-error=nonnull"
+  #         "-DG_DISABLE_CAST_CHECKS"
+  #       ];
+  #     };
+  #   }))
+  # ])
 
   # ━━━ Development Tools & Libraries ━━━
 

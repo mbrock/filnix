@@ -9,9 +9,7 @@ let
   inherit (import ./ports { inherit (pkgs) lib pkgs; })
     for
     arg
-    use
     skipTests
-    skipCheck
     ;
 in
 # This will be converted to a packageOverrides function
@@ -22,11 +20,15 @@ in
       pandas = null;
       pillow = null;
     })
-    (skipCheck "requires optional dependencies")
+    (skipTests "requires optional dependencies")
   ])
 
   (for "annotated-types" [
-    (skipCheck "test dependencies missing")
+    (skipTests "test dependencies missing")
+  ])
+
+  (for "decorator" [
+    (skipTests "float printing discrepancies")
   ])
 
   (for "tqdm" [
@@ -34,19 +36,19 @@ in
   ])
 
   (for "flask" [
-    (skipCheck "slow integration tests")
+    (skipTests "slow integration tests")
   ])
 
   (for "anyio" [
-    (skipCheck "depends on cryptography which is Rust")
+    (skipTests "depends on cryptography which is Rust")
   ])
 
   (for "trio" [
-    (skipCheck "network tests flaky")
+    (skipTests "network tests flaky")
   ])
 
   (for "markdown" [
-    (skipCheck "slow")
+    (skipTests "slow")
   ])
 
   (for "markdown-it-py" [
@@ -54,47 +56,51 @@ in
   ])
 
   (for "decorator" [
-    (skipCheck "not critical")
+    (skipTests "not critical")
   ])
 
   (for "jsonpickle" [
-    (skipCheck "not critical")
+    (skipTests "not critical")
   ])
 
   (for "jedi" [
-    (skipCheck "slow")
+    (skipTests "slow")
   ])
 
   (for "networkx" [
-    (skipCheck "slow graph tests")
+    (skipTests "slow graph tests")
   ])
 
   (for "ipython" [
-    (skipCheck "terminal interaction tests flaky")
+    (skipTests "terminal interaction tests flaky")
   ])
 
   (for "pyvis" [
-    (skipCheck "not critical")
+    (skipTests "not critical")
   ])
 
   (for "jinja2" [
-    (skipCheck "float formatting differs without Motorola assembly")
+    (skipTests "float formatting differs without Motorola assembly")
   ])
 
   (for "prompt-toolkit" [
-    (skipCheck "terminal tests flaky")
+    (skipTests "terminal tests flaky")
   ])
 
   (for "chardet" [
-    (skipCheck "incredibly slow test suite")
+    (skipTests "incredibly slow test suite")
   ])
 
   (for "pycairo" [
-    (skipCheck "requires X11")
+    (skipTests "requires X11")
   ])
 
   (for "rich" [
-    (skipCheck "4 failed, 844 passed - close enough")
+    (skipTests "4 failed, 844 passed - close enough")
+  ])
+
+  (for "httpx" [
+    (skipTests "huge dependency tree")
   ])
 
   # Custom package - defined inline since it's not in pyprev

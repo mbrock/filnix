@@ -1,16 +1,4 @@
-# Filnix
-
-> Fil-C wrapped in Nix
-
-```bash
-nix run github:mbrock/filnix#lighttpd-demo
-nix run github:mbrock/filnix#nethack
-nix run github:mbrock/filnix#filc-shell
-
-# if you don't like watching cmake build llvm for hours
-cachix use filc
-```
-
+# Fil-C as a Nix C/C++ toolchain and cross platform
 
 <table>
   <tr>
@@ -35,57 +23,84 @@ cachix use filc
   </tr>
 </table>
 
+## What's This Repo?
+
+This repository packages [Fil-C](https://github.com/pizlonator/fil-c) (memory-safe C/C++) as Nix derivations. It contains:
+
+1. **Core toolchain packaging** - the Fil-C compiler, runtime, and build infrastructure
+2. **Ports overlay** - minimal changes to build 100+ nixpkgs packages with memory safety
+3. **Playground** - demos, integration tests, and experiments (web servers, VMs, dev environments)
+
+Parts 1 and 2 are designed for eventual nixpkgs integration. Part 3 is where we explore what's possible.
 
 ## What is Fil-C?
 
-[Fil-C](https://github.com/pizlonator/fil-c) by [Filip Pizlo](https://twitter.com/filpizlo) is memory-safe C and C++. It prevents use-after-free, out-of-bounds access, and type confusion without changing your code and without unsafe escape hatches. Every pointer carries hidden capability metadata (bounds + type). All accesses are checked. A concurrent garbage collector prevents use-after-free.
+[Fil-C](https://github.com/pizlonator/fil-c) by [Filip Pizlo](https://twitter.com/filpizlo) is a memory-safe C/C++ compiler. It prevents use-after-free, buffer overflows, and type confusion through runtime bounds checking and garbage collection - no code changes, no unsafe escape hatches. See [fil-c.org](https://fil-c.org) and the [upstream repo](https://github.com/pizlonator/fil-c) for details on how it works.
 
-The principle is *Garbage In, Memory Safety Out*.  Even adversarial C code is thwarted immediately. Yeah, yeah, it's a bit slower than "normal" C and right now it's on x64 Linux only. But it works enough to run OpenSSH, CPython, curl, SQLite, Emacs, Trealla Prolog, and over 100 other beautiful programs.
+## Binary Cache
 
-## Try Thwarting Memory Safety
-
-The `runfilc` command compiles and runs C code as a one-liner.  Watch Fil-C in action, protecting your shell and your soul:
+The `filc` Cachix cache has prebuilt binaries for the toolchain and many ported packages:
 
 ```bash
-$ nix run .#runfilc -- 'int x[5] = {1,2,3,4,5}; return x[999];'
-# filc safety error: cannot read 4000 bytes when upper - ptr = 32.
-#     pointer: 0x720fa4708580,0x720fa4708580,0x720fa47085a0
-#     expected 4000 writable bytes.
-# [pid] filc panic: thwarted a futile attempt to violate memory safety.
-
-$ nix run .#runfilc -- 'char buf[8]; strcpy(buf, "this string is way too long");'
-# warning: 'strcpy' will always overflow; destination buffer has size 8, but size 28
-# filc safety error: cannot write pointer with ptr >= upper.
-#     pointer: 0x741912d05160,0x741912d05150,0x741912d05160
-#     expected 8 writable bytes.
-# [pid] filc panic: thwarted a futile attempt to violate memory safety.
-
-$ nix run .#runfilc -- 'int *p = malloc(sizeof(int)); free(p); *p = 42;'
-# filc safety error: cannot write pointer to free object.
-#     pointer: 0x7ee2a5306ab0,0x7ee2a5306ab0,0x7ee2a5306ab0,free
-#     expected 4 writable bytes.
-# [pid] filc panic: thwarted a futile attempt to violate memory safety.
-
-$ nix run .#runfilc -- 'void *p = malloc(100); free(p); free(p);'
-# filc safety error: cannot free pointer to free object.
-#     pointer: 0x7f8e4c906ab0,0x7f8e4c906ab0,0x7f8e4c906ab0,free
-# [pid] filc panic: thwarted a futile attempt to violate memory safety.
-
-$ nix run .#runfilc -- 'int x = 5; int *p = &x; p += 1000000; return *p;'
-# filc safety error: cannot read pointer with ptr >= upper.
-#     pointer: 0x7ffd8c3d1004,0x7ffd8c3d0eb4,0x7ffd8c3d0eb8
-#     expected 4 readable bytes.
-# [pid] filc panic: thwarted a futile attempt to violate memory safety.
+cachix use filc
 ```
 
-Every violation is caught with a detailed error showing the pointer values, capability bounds, and full stack trace. The program terminates safely instead of corrupting memory or allowing exploitation.
+Building from source on a fresh system means waiting for LLVM to compile, then glibc twice, coreutils, Perl, bash, and so on and on. This can be fascinating and inspiring but you may prefer to use the cache and see results immediately.
+
+Most packages mentioned `ports.nix` should have binaries available. If you're building something that's not cached yet, it'll fall back to building from source automatically.
+
+Please note that the binary cache and the artifacts cached thereupon are provided by yours truly for entertainment purposes only, with absolutely no kind of implicit warranty and no actual security auditing or any kind of rigorous principled approach at all.
 
 ## Why Nix?
 
-This repository packages Fil-C as reproducible Nix derivations. The [upstream](https://github.com/pizlonator/fil-c) is a development repo with shell-script builds and 100+ vendored projects. This flake takes a different approach: it's modular (compiler separate from applications), reproducible (hermetic builds, binary caching), and integrates with the ecosystem (port any nixpkgs package by overriding stdenv). Memory-safe and regular packages coexist peacefully via
-`/nix/store` paths, everything stays moisturized and flourishing.
+This repository packages Fil-C as reproducible Nix derivations. The [upstream](https://github.com/pizlonator/fil-c) is a development repo with shell-script builds and 100+ vendored projects. This flake takes a different approach: it's modular (compiler separate from applications), reproducible (hermetic builds, binary caching), and integrates with the ecosystem (port any nixpkgs package via cross-compilation). Memory-safe and regular packages coexist peacefully via `/nix/store` paths, everything stays moisturized and flourishing.
 
-Currently a standalone flake, working toward nixpkgs integration as a cross-compilation target (`pkgsCross.filc.*`).
+### Why Cross-Compilation Integration?
+
+By treating Fil-C as a cross-compilation target, nixpkgs dependency resolution works automatically. When you port one package, you accidentally port its entire dependency tree.
+
+**Transitive dependencies**: Want Python with a web stack? Write this:
+
+```nix
+python3.withPackages (ps: with ps; [
+  uvicorn starlette msgspec pycairo
+  networkx pyvis ipython
+])
+```
+
+You get 40+ Python packages plus their C dependencies built with Fil-C automatically. CPython itself, pycairo, msgspec, markupsafe - but also cairo, pixman, fontconfig, freetype, libpng, glib, sqlite, gdbm, bzip2, brotli, xz, and the entire X11 graphics stack (libX11, libXext, libXrender, libxcb). You didn't set out to port fontconfig or pixman or libXdmcp - they came along because pycairo needs cairo needs fontconfig needs freetype needs libpng. Check [demo/python-web-demo-deps.graphml](demo/python-web-demo-deps.graphml) for the full transitive dependency graph (spoiler: it includes dejavu-fonts-minimal, mailcap, and tzdata).
+
+Sure, to make `pycairo` work you need a `ports.nix` entry that disables some tests and adds cairo as a dependency. But once you do, everything that depends on it builds automatically. The [demo/app.py](demo/) web app with SQLite, JSON, graphics rendering, and more builds by listing 8 top-level packages - the transitive closure brings in dozens more.
+
+**Language ecosystems**: Perl with XS modules works the same way. Port `perl` once (with tests disabled, some configure flags tweaked), and the [demo/perl/](demo/perl/) shows JSON::XS, XML::LibXML, DBD::SQLite, Compress::Zlib, and Inline::C all working. Each C extension needs its own `ports.nix` entry (pin version, apply patch, skip incompatible tests), but once defined, they compose freely.
+
+**System composition**: Building a container with bash, coreutils, git, OpenSSL, lighttpd, SQLite, Lua, Perl, Python? List the top-level packages, let dependency resolution handle the rest. Everything links against the same memory-safe libc and runtime because it's cross-compilation - not ad-hoc wrappers.
+
+Yes, most packages need *some* porting work (check `ports.nix` - it's full of `skipTests`, configure flags, dependency tweaks). But you do that work once per package, not once per composition. That's the win: porting effort is proportional to the number of unique packages, not the number of ways you combine them.
+
+### Repository Structure
+
+This repo has three distinct parts with different purposes:
+
+**1. Core Toolchain** (`compiler/`, `toolchain/`, `runtime/`)
+
+The foundation: packaging the Fil-C compiler (modified LLVM/Clang), binutils, sysroot, runtime libraries (libpas, FUGC), and build wrappers as Nix derivations. This is the "hard" part that transforms upstream fil-c's shell scripts into reproducible Nix builds.
+
+**2. Ports Overlay** (`ports/`, `ports.nix`, `pyports.nix`)
+
+A clean DSL and overlay machinery that makes nixpkgs packages build with Fil-C. The philosophy: apply the *smallest possible changes* - pin versions to match upstream fil-c patches, apply those patches, tweak build flags, skip incompatible tests. The DSL (`for`, `pin`, `patch`, etc.) makes porting readable and maintainable.
+
+The `ports/patch/` directory contains auto-generated patches extracted from upstream fil-c's monorepo. A script diffs each project subdirectory in upstream's `projects/` tree (with filtering logic) and generates patch files. This bridges the gap: upstream vendors entire source trees, we apply patches to nixpkgs packages. As coverage expands, the goal is to need fewer and fewer manual interventions.
+
+**3. Playground & Demos** (`httpd/`, `virt/`, `demo/`, `emacs/`, `ttyd-demo/`)
+
+Integration tests, experiments, and explorations of what memory-safe systems can look like. Web servers with CGI scripts, QEMU VMs, Docker containers, development environments, terminal demos. This is where we test if the toolchain actually works for realistic use cases and where interesting/fun/valuable applications emerge.
+
+**Path to Nixpkgs**: Parts 1 and 2 are designed for upstream integration. Hacking in this dedicated repo is more convenient and intelligible than working in the massive nixpkgs tree, but the architecture (cross-compilation, minimal patches, overlay structure) is built to merge. If the community finds this valuable, it could mean first-class platform support, Hydra CI, official binary caching, and more. Part 3 stays here as the laboratory.
+
+### Cross-Compilation Architecture
+
+Fil-C uses Nix's cross-compilation infrastructure (`x86_64-unknown-linux-gnufilc0`) with a lightly-patched nixpkgs fork that recognizes the `gnufilc0` ABI tag. The flake imports nixpkgs with `crossSystem.config` set and uses `replaceCrossStdenv` to inject a custom `stdenv` wrapping the Fil-C compiler. The ports overlay applies patches and configuration to nixpkgs packages, allowing most packages to build with minimal changes. The fork's patches are minimal (gnu-config awareness, ABI tag recognition), making future nixpkgs integration straightforward.
 
 ## What's Fun Here
 
@@ -144,30 +159,31 @@ The [ports/analysis.md](ports/analysis.md) document is a technical deep-dive gen
 
 ### Port Configuration DSL
 
-The [ports.nix](ports.nix) file uses a clean DSL for porting packages:
+The [ports.nix](ports.nix) file uses a clean DSL for porting packages. It's now structured as a list that gets automatically converted to an overlay:
 
 ```nix
-tmux = port [
-  pkgs.tmux
-  { inherit ncurses; }
-  { inherit libevent; }
-  { inherit libutempter; }
-  { withSystemd = false; }
-];
+# Simple list-based port definitions
+[
+  # Basic port with version pinning and patches
+  (for pkgs.zlib [
+    (pin "1.3" "sha256-/wukwpIBPbwnUws6geH5qBPNOd4Byl4Pi/NVcC76WT4=")
+    (patch ./ports/patch/zlib-1.3.patch)
+  ])
 
-lighttpd = port [
-  (pkgs.callPackage ./ports/lighttpd.nix { })
-  { inherit bzip2 openssl pcre2 zlib zstd; }
-  (patch ./ports/patch/lighttpd-6a4880a.patch)
-  (addCFlag "-Wno-unused-but-set-variable")
-];
+  # Port with explicit name and dependencies
+  {
+    lighttpd = for ./ports/lighttpd.nix [
+      (patch ./ports/patch/lighttpd-6a4880a.patch)
+      (addCFlag "-Wno-unused-but-set-variable")
+    ];
+  }
 
-sqlite = port [
-  pkgs.sqlite
-  { inherit ncurses readline; }
-  (patch ./ports/patch/sqlite.patch)
-  skipTests  # TCL test harness needs adaptation
-];
+  # Port with tests disabled
+  (for pkgs.sqlite [
+    (patch ./ports/patch/sqlite.patch)
+    (skipCheck "TCL test harness needs adaptation")
+  ])
+]
 ```
 
-Hopefully soon we won't need to declare dependencies manually... My goal is to have large parts of Nixpkgs just work automatically without even trying.
+The DSL includes helpers for version pinning (`pin`), patching (`patch`), configure flags (`configure`, `addCFlag`, `addCMakeFlag`), and test control (`skipTests`, `skipCheck`). The [ports/default.nix](ports/default.nix) file implements the overlay machinery that converts these declarations into working package overrides.
