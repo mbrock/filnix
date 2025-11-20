@@ -58,10 +58,6 @@
         inherit (filc-shell-stuff) world-pkgs;
       };
 
-      uacme-tools = import ./tools/uacme.nix {
-        pkgs = pkgsFilc;
-      };
-
       emacs-safe = import ./emacs/emacs.nix {
         inherit pkgs pkgsFilc;
       };
@@ -116,9 +112,6 @@
         inherit (emacs-safe) filc-emacs;
         emacs = emacs-safe.filc-emacs;
         emacs-unsafe = emacs-unsafe.filc-emacs;
-
-        # ACME/Let's Encrypt tools
-        inherit (uacme-tools) uacme challengeServer getFilcCert;
       };
 
       apps.${system} = virt.apps;
