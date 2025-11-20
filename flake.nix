@@ -56,19 +56,7 @@
 
       filc-world-shell = filc-shell-stuff.filc-world-shell;
 
-      filc-nspawn = import ./virt/nspawn.nix {
-        inherit pkgs filcc;
-        ports = pkgsFilc;
-        inherit (filc-shell-stuff) world-pkgs;
-      };
-
-      filc-qemu = import ./virt/qemu.nix {
-        inherit pkgs filcc;
-        ports = pkgsFilc;
-        inherit (filc-shell-stuff) world-pkgs;
-      };
-
-      filc-docker = import ./virt/docker.nix {
+      virt = import ./virt.nix {
         inherit pkgs filcc;
         ports = pkgsFilc;
         inherit (filc-shell-stuff) world-pkgs;
@@ -101,9 +89,7 @@
         inherit filc0 filcc;
 
         inherit filc-world-shell;
-        inherit filc-nspawn;
-        inherit filc-qemu;
-        inherit filc-docker;
+        inherit (virt) filc-nspawn filc-qemu filc-docker;
 
         lighttpd-demo = pkgs.callPackage ./httpd {
           inherit filcc;
@@ -184,7 +170,7 @@
       apps.${system} = {
         run-filc-docker = {
           type = "app";
-          program = "${filc-docker}";
+          program = "${virt.filc-docker}";
         };
 
         run-filc-sandbox = {
@@ -192,18 +178,18 @@
           program = "${pkgs.writeShellScript "filc-sandbox" ''
             exec sudo systemd-nspawn --ephemeral \
               -M filbox \
-              -D ${filc-nspawn} /bin/runit-init
+              -D ${virt.filc-nspawn} /bin/runit-init
           ''}";
         };
 
         run-filc-qemu = {
           type = "app";
-          program = "${filc-qemu}/bin/run-filc-qemu";
+          program = "${virt.filc-qemu}/bin/run-filc-qemu";
         };
 
         build-filc-qemu-image = {
           type = "app";
-          program = "${filc-qemu}/bin/build-filc-qemu-image";
+          program = "${virt.filc-qemu}/bin/build-filc-qemu-image";
         };
 
         runfilc = {
