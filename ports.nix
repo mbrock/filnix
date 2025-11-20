@@ -469,20 +469,21 @@ in
     (broken "turn this thing off so glib builds perfectly")
   ])
 
-  # (for pkgs.gobject-introspection-unwrapped [
-  #   (use (old: {
-  #     postPatch = (old.postPatch or "") + ''
-  #       sed -i 's/2.82.0/2.80.4/' meson.build
-  #       sed -i 's/case G_TYPE/case (uintptr_t) G_TYPE/g' $(find . -name '*.c')
-  #     '';
-  #     env = (old.env or { }) // {
-  #       NIX_CFLAGS_COMPILE = toString [
-  #         "-Wno-error=nonnull"
-  #         "-DG_DISABLE_CAST_CHECKS"
-  #       ];
-  #     };
-  #   }))
-  # ])
+  (for pkgs.gobject-introspection-unwrapped [
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        sed -i 's/2.82.0/2.80.4/' meson.build
+        sed -i 's/case G_TYPE/case (uintptr_t) G_TYPE/g' $(find . -name '*.c')
+      '';
+      env = (old.env or { }) // {
+        NIX_CFLAGS_COMPILE = toString [
+          "-Wno-error=nonnull"
+          "-DG_DISABLE_CAST_CHECKS"
+        ];
+      };
+    }))
+    (broken "neither necessary nor working")
+  ])
 
   # ━━━ Development Tools & Libraries ━━━
 
@@ -688,24 +689,26 @@ in
 
   # ━━━ Alternative Implementations & VMs ━━━
 
-  (for pkgs.tinycc [
-    (patch ./patches/tinycc-alignment.patch)
-    (use (old: {
-      preConfigure = ''
-        echo ${old.version} > VERSION
-      '';
-      configureFlags = [
-        "--cc=$CC"
-        "--ar=$AR"
-        "--crtprefix=${pkgs.glibc}/lib"
-        "--sysincludepaths={B}/include:${pkgs.glibc.dev}/include"
-        "--libpaths=$lib/lib/tcc:$lib/lib:${pkgs.glibc}/lib"
-        "--elfinterp=${pkgs.glibc}/lib/ld-linux-x86-64.so.2"
-      ];
-    }))
-    (tool pkgs.glibc.bin)
-    (skipTests "-run feature incompatible with Fil-C")
-  ])
+  {
+    tinycc = for pkgs.tinycc [
+      (patch ./patches/tinycc-alignment.patch)
+      (use (old: {
+        preConfigure = ''
+          echo ${old.version} > VERSION
+        '';
+        configureFlags = [
+          "--cc=$CC"
+          "--ar=$AR"
+          "--crtprefix=${pkgs.glibc}/lib"
+          "--sysincludepaths={B}/include:${pkgs.glibc.dev}/include"
+          "--libpaths=$lib/lib/tcc:$lib/lib:${pkgs.glibc}/lib"
+          "--elfinterp=${pkgs.glibc}/lib/ld-linux-x86-64.so.2"
+        ];
+      }))
+      (tool pkgs.glibc.bin)
+      (skipTests "-run feature incompatible with Fil-C")
+    ];
+  }
 
   (for pkgs.quickjs [
     (pin "2024-02-14" "sha256-PEv4+JW/pUvrSGyNEhgRJ3Hs/FrDvhA2hR70FWghLgM=")
