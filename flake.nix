@@ -2,29 +2,25 @@
   description = "Fil-C wrapped as a Nix stdenv";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/c8aa8cc00a5cb57fada0851a038d35c08a36a2bb";
     # Modified nixpkgs with Fil-C cross-compilation support
-    nixpkgs-filc.url = "github:lessrest/filnixpkgs/400439b089773d3fc593b512250e283a33485de4";
-    nixpkgs-filc.flake = false;
+    nixpkgs.url = "github:lessrest/filnixpkgs/400439b089773d3fc593b512250e283a33485de4";
+    nixpkgs.flake = false;
   };
 
   outputs =
     {
       self,
       nixpkgs,
-      nixpkgs-filc,
       ...
     }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs-filc { inherit system; };
+      pkgs = import nixpkgs { inherit system; };
 
-      filc0 = (import ./compiler/filc0.nix { inherit pkgs; }).filc0;
-      filc = import ./build-filc.nix { inherit pkgs filc0; };
-      filcc = import ./toolchain.nix { inherit pkgs filc; };
+      filcc = import ./toolchain.nix { inherit pkgs; };
       runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
-      pkgsFilc = import nixpkgs-filc {
+      pkgsFilc = import nixpkgs {
         localSystem = system;
         crossSystem.config = "x86_64-unknown-linux-gnufilc0";
         config.replaceCrossStdenv =
@@ -74,6 +70,11 @@
         inherit pkgs;
         pkgsFilc = pkgs;
       };
+
+      demo = import ./demo.nix {
+        inherit pkgs pkgsFilc filcc;
+        filc-emacs = emacs-safe.filc-emacs;
+      };
     in
     {
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
@@ -86,20 +87,19 @@
       };
 
       packages.${system} = {
-        inherit filc0 filcc;
+        inherit filcc;
 
         inherit filc-world-shell;
         inherit (virt) filc-nspawn filc-qemu filc-docker;
-
-        lighttpd-demo = pkgs.callPackage ./httpd {
-          inherit filcc;
-          ports = pkgsFilc;
-        };
-
-        ttyd-emacs-demo = pkgs.callPackage ./ttyd-demo {
-          ports = pkgsFilc;
-          filc-emacs = emacs-safe.filc-emacs;
-        };
+        inherit (demo)
+          lighttpd-demo
+          ttyd-emacs-demo
+          lua-with-stuff
+          python-with-stuff
+          python-web-demo
+          perl-demos
+          perl-with-stuff
+          ;
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
           cachix push filc ${filcc}
@@ -113,52 +113,6 @@
 
         inherit runfilc;
 
-        lua-with-stuff = pkgsFilc.lua5.withPackages (
-          ps: with ps; [
-            lpeg
-            luafilesystem
-            luabitop
-            luadbi
-            luadbi-sqlite3
-            luaffi
-            lua-ffi-zlib
-            luaposix
-            lua-pam
-          ]
-        );
-
-        python-with-stuff = pkgsFilc.python3.withPackages (
-          ps: with ps; [
-            (lxml.overrideAttrs (_: {
-              env.CFLAGS = "-O0";
-            }))
-            uvicorn
-            starlette
-            msgspec
-            tagflow
-            pycairo
-            rich
-            python-multipart
-          ]
-        );
-
-        python-web-demo = pkgsFilc.callPackage ./demo {
-          demo-src = ./demo;
-        };
-
-        perl-demos = pkgsFilc.callPackage ./demo/perl { };
-
-        perl-with-stuff = pkgsFilc.perl.withPackages (
-          ps: with ps; [
-            InlineC
-            # JSONXS
-            # YAMLLibYAML
-            # DBI
-            # DBDSQLite
-            #            ack
-          ]
-        );
-
         inherit (emacs-safe) filc-emacs;
         emacs = emacs-safe.filc-emacs;
         emacs-unsafe = emacs-unsafe.filc-emacs;
@@ -167,31 +121,7 @@
         inherit (uacme-tools) uacme challengeServer getFilcCert;
       };
 
-      apps.${system} = {
-        run-filc-docker = {
-          type = "app";
-          program = "${virt.filc-docker}";
-        };
-
-        run-filc-sandbox = {
-          type = "app";
-          program = "${pkgs.writeShellScript "filc-sandbox" ''
-            exec sudo systemd-nspawn --ephemeral \
-              -M filbox \
-              -D ${virt.filc-nspawn} /bin/runit-init
-          ''}";
-        };
-
-        run-filc-qemu = {
-          type = "app";
-          program = "${virt.filc-qemu}/bin/run-filc-qemu";
-        };
-
-        build-filc-qemu-image = {
-          type = "app";
-          program = "${virt.filc-qemu}/bin/build-filc-qemu-image";
-        };
-
+      apps.${system} = virt.apps // {
         runfilc = {
           type = "app";
           program = "${self.packages.${system}.runfilc}/bin/runfilc";
@@ -199,12 +129,12 @@
 
         demo = {
           type = "app";
-          program = "${self.packages.${system}.python-web-demo}/bin/filc-demo";
+          program = "${demo.python-web-demo}/bin/filc-demo";
         };
 
         ttyd-emacs = {
           type = "app";
-          program = "${self.packages.${system}.ttyd-emacs-demo}/bin/ttyd-emacs-demo";
+          program = "${demo.ttyd-emacs-demo}/bin/ttyd-emacs-demo";
         };
 
         get-cert = {
@@ -214,7 +144,7 @@
 
         perl-demos = {
           type = "app";
-          program = "${self.packages.${system}.perl-demos}/bin/perl-demo";
+          program = "${demo.perl-demos}/bin/perl-demo";
         };
 
       };
