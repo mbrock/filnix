@@ -1,6 +1,6 @@
 { pkgs, filcc }:
 
-pkgs.writeShellScriptBin "runfilc" ''
+(pkgs.writeShellScriptBin "runfilc" ''
   set -euo pipefail
 
   if [ $# -eq 0 ]; then
@@ -25,4 +25,6 @@ pkgs.writeShellScriptBin "runfilc" ''
   echo "}" >> "$tmpdir/script.c"
   ${filcc}/bin/clang -o "$tmpdir/script" "$tmpdir/script.c"
   exec "$tmpdir/script"
-''
+'').overrideAttrs (_: {
+  meta.mainProgram = "runfilc";
+})

@@ -121,33 +121,7 @@
         inherit (uacme-tools) uacme challengeServer getFilcCert;
       };
 
-      apps.${system} = virt.apps // {
-        runfilc = {
-          type = "app";
-          program = "${self.packages.${system}.runfilc}/bin/runfilc";
-        };
-
-        demo = {
-          type = "app";
-          program = "${demo.python-web-demo}/bin/filc-demo";
-        };
-
-        ttyd-emacs = {
-          type = "app";
-          program = "${demo.ttyd-emacs-demo}/bin/ttyd-emacs-demo";
-        };
-
-        get-cert = {
-          type = "app";
-          program = "${self.packages.${system}.getFilcCert}/bin/uacme-get-cert";
-        };
-
-        perl-demos = {
-          type = "app";
-          program = "${demo.perl-demos}/bin/perl-demo";
-        };
-
-      };
+      apps.${system} = virt.apps;
 
       formatter.${system} = pkgs.nixfmt-rfc-style;
 

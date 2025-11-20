@@ -1,14 +1,20 @@
 { pkgs, pkgsFilc, filcc, filc-emacs }:
 {
-  lighttpd-demo = pkgs.callPackage ./httpd {
-    inherit filcc;
-    ports = pkgsFilc;
-  };
+  lighttpd-demo =
+    (pkgs.callPackage ./httpd {
+      inherit filcc;
+      ports = pkgsFilc;
+    }).overrideAttrs (_: {
+      meta.mainProgram = "lighttpd-demo";
+    });
 
-  ttyd-emacs-demo = pkgs.callPackage ./ttyd-demo {
-    ports = pkgsFilc;
-    inherit filc-emacs;
-  };
+  ttyd-emacs-demo =
+    (pkgs.callPackage ./ttyd-demo {
+      ports = pkgsFilc;
+      inherit filc-emacs;
+    }).overrideAttrs (_: {
+      meta.mainProgram = "ttyd-emacs-demo";
+    });
 
   lua-with-stuff = pkgsFilc.lua5.withPackages (
     ps: with ps; [
@@ -39,9 +45,12 @@
     ]
   );
 
-  python-web-demo = pkgsFilc.callPackage ./demo {
-    demo-src = ./demo;
-  };
+  python-web-demo =
+    (pkgsFilc.callPackage ./demo {
+      demo-src = ./demo;
+    }).overrideAttrs (_: {
+      meta.mainProgram = "python-web-demo";
+    });
 
   perl-demos = pkgsFilc.callPackage ./demo/perl { };
 

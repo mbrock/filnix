@@ -18,7 +18,7 @@ let
     ]
   );
 in
-pkgs.writeShellScriptBin "filc-demo" ''
+pkgs.writeShellScriptBin "python-web-demo" ''
   PORT=8000
   HOST=127.0.0.1
 
@@ -34,7 +34,7 @@ pkgs.writeShellScriptBin "filc-demo" ''
         ;;
       *)
         echo "Unknown option: $1"
-        echo "Usage: filc-demo [--port PORT] [--host HOST]"
+        echo "Usage: python-web-demo [--port PORT] [--host HOST]"
         exit 1
         ;;
     esac

@@ -42,7 +42,7 @@ let
       ${perlEnv}/bin/perl ${script}
     '';
 
-  runAll = pkgs.writeShellScriptBin "perl-demos-all" ''
+  runAll = pkgs.writeShellScriptBin "perl-demos" ''
     cd ${./.}
     exec bash ${./run-all.sh}
   '';
@@ -59,6 +59,7 @@ pkgs.buildEnv {
   ];
 
   meta = {
+    mainProgram = "perl-demos";
     description = "Perl + C integration demos with Fil-C memory safety";
     longDescription = ''
       Two concise demos showing Perl XS (C extension) modules with Fil-C:
