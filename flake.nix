@@ -17,20 +17,12 @@
     }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+      pkgs = import nixpkgs-filc { inherit system; };
 
       filc0 = (import ./compiler/filc0.nix { inherit pkgs; }).filc0;
       filc = import ./build-filc.nix { inherit pkgs filc0; };
-      filc-binutils = import ./toolchain/binutils.nix { inherit pkgs; };
-      filc-sysroot = import ./toolchain/sysroot.nix { inherit pkgs filc; };
-      toolchain = import ./toolchain/wrappers.nix {
-        inherit
-          pkgs
-          filc
-          filc-sysroot
-          filc-binutils
-          ;
-      };
+      filcc = import ./toolchain.nix { inherit pkgs filc; };
+      runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
       pkgsFilc = import nixpkgs-filc {
         localSystem = system;
@@ -38,27 +30,11 @@
         config.replaceCrossStdenv =
           { buildPackages, baseStdenv }:
           baseStdenv.override {
-            cc = toolchain.filcc;
+            cc = filcc;
           };
         crossOverlays = [
           (final: prev: {
-            gnufilc0 = toolchain.filcc;
-          })
-          (import ./ports/overlay.nix pkgs)
-        ];
-      };
-
-      pkgsFilc2 = import nixpkgs-filc {
-        localSystem = system;
-        crossSystem.config = "x86_64-unknown-linux-gnufilc0";
-        config.replaceCrossStdenv =
-          { buildPackages, baseStdenv }:
-          baseStdenv.override {
-            cc = toolchain.filcc;
-          };
-        crossOverlays = [
-          (final: prev: {
-            gnufilc0 = toolchain.filcc;
+            gnufilc0 = filcc;
           })
           (import ./ports/overlay.nix pkgs)
         ];
@@ -67,7 +43,7 @@
       filc-shell-stuff = import ./shells/world.nix {
         inherit
           pkgs
-          toolchain
+          filcc
           runfilc
           ;
         ports = pkgsFilc;
@@ -81,23 +57,20 @@
       filc-world-shell = filc-shell-stuff.filc-world-shell;
 
       filc-nspawn = import ./virt/nspawn.nix {
-        inherit pkgs;
+        inherit pkgs filcc;
         ports = pkgsFilc;
-        filcc = toolchain.filcc;
         inherit (filc-shell-stuff) world-pkgs;
       };
 
       filc-qemu = import ./virt/qemu.nix {
-        inherit pkgs;
+        inherit pkgs filcc;
         ports = pkgsFilc;
-        filcc = toolchain.filcc;
         inherit (filc-shell-stuff) world-pkgs;
       };
 
       filc-docker = import ./virt/docker.nix {
-        inherit pkgs;
+        inherit pkgs filcc;
         ports = pkgsFilc;
-        filcc = toolchain.filcc;
         inherit (filc-shell-stuff) world-pkgs;
       };
 
@@ -105,11 +78,8 @@
         pkgs = pkgsFilc;
       };
 
-      runfilc = import ./tools/runfilc.nix { inherit pkgs toolchain; };
-
       emacs-safe = import ./emacs/emacs.nix {
-        inherit pkgs;
-        pkgsFilc = pkgsFilc2;
+        inherit pkgs pkgsFilc;
       };
 
       emacs-unsafe = import ./emacs/emacs.nix {
@@ -124,13 +94,11 @@
 
       # Export the full cross-compiled package sets
       legacyPackages.${system} = {
-        inherit pkgsFilc pkgsFilc2;
+        inherit pkgsFilc;
       };
 
       packages.${system} = {
-        inherit filc0;
-        filcc = toolchain.filcc;
-        filc-bintools = toolchain.filc-bintools;
+        inherit filc0 filcc;
 
         inherit filc-world-shell;
         inherit filc-nspawn;
@@ -138,8 +106,8 @@
         inherit filc-docker;
 
         lighttpd-demo = pkgs.callPackage ./httpd {
+          inherit filcc;
           ports = pkgsFilc;
-          filcc = toolchain.filcc;
         };
 
         ttyd-emacs-demo = pkgs.callPackage ./ttyd-demo {
@@ -148,7 +116,7 @@
         };
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
-          cachix push filc ${toolchain.filcc}
+          cachix push filc ${filcc}
         '';
 
         push-pkg = pkgs.writeShellScriptBin "push-pkg" ''

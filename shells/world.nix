@@ -1,13 +1,11 @@
 {
   pkgs,
-  toolchain,
+  filcc,
   ports,
   runfilc,
 }:
 
 let
-  inherit (toolchain) filcc;
-
   ghostty-terminfo = pkgs.runCommand "ghostty-terminfo" { } ''
     mkdir -p $out/share/terminfo
     ${pkgs.ncurses}/bin/tic -x -o $out/share/terminfo ${../misc/ghostty.terminfo}

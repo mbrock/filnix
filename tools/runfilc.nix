@@ -1,4 +1,4 @@
-{ pkgs, toolchain }:
+{ pkgs, filcc }:
 
 pkgs.writeShellScriptBin "runfilc" ''
   set -euo pipefail
@@ -23,6 +23,6 @@ pkgs.writeShellScriptBin "runfilc" ''
   echo "int main() {" >> "$tmpdir/script.c"
   echo "$@" >> "$tmpdir/script.c"
   echo "}" >> "$tmpdir/script.c"
-  ${toolchain.filcc}/bin/clang -o "$tmpdir/script" "$tmpdir/script.c"
+  ${filcc}/bin/clang -o "$tmpdir/script" "$tmpdir/script.c"
   exec "$tmpdir/script"
 ''
