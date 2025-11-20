@@ -109,7 +109,19 @@
         emacs-unsafe = emacs-unsafe.filc-emacs;
       };
 
-      apps.${system} = virt.apps;
+      apps.${system} =
+        virt.apps
+        // {
+          filcc = {
+            type = "app";
+            program = "${filcc}/bin/clang";
+          };
+
+          "filc++" = {
+            type = "app";
+            program = "${filcc}/bin/clang++";
+          };
+        };
 
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
