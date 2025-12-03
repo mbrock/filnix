@@ -724,6 +724,9 @@ in
           rustPlatform = null;
           rustc = null;
         })
+        (arg {
+          defaultGemConfig = pkgs.defaultGemConfig // (import ./ports/rubyPorts-as-gemConfig.nix pkgs);
+        })
       ]
     );
   }
