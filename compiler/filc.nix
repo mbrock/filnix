@@ -2,6 +2,8 @@
   pkgs,
   filc0,
   yolo,
+  compiler-rt,
+  yolounwind,
   libpizlo ? null,
   filc-libc ? null,
   filc-libcxx ? null,
@@ -13,8 +15,6 @@ let
   inherit (lib)
     gcc
     llvmMajor
-    targetPlatform
-    gcc-lib
     ;
 
   inherit (yolo) yolo-glibc yolo-glibc-impl;
@@ -36,13 +36,17 @@ let
       ''
         mkdir -p $out
 
-        # Base: yolo-glibc libs + gcc crt files
+        # Base: yolo-glibc libs
         rsync -a ${yolo-glibc}/lib/ $out/
         chmod -R u+w $out
-        cp ${gcc-lib}/crt*.o $out/
-        cp ${gcc-lib}/libgcc* $out/ || true
-        mkdir -p $out/gcc/${targetPlatform}/${gcc.version}
-        cp -r ${gcc-lib}/* $out/gcc/${targetPlatform}/${gcc.version}/
+
+        # CRT files and builtins from compiler-rt
+        cp ${compiler-rt}/lib/crtbegin.o $out/
+        cp ${compiler-rt}/lib/crtend.o $out/
+        cp ${compiler-rt}/lib/libyolort.a $out/
+
+        # Stub unwind library
+        cp ${yolounwind}/lib/libyolounwind.a $out/
 
         # Add libpizlo if available
         ${pkgs.lib.optionalString (libpizlo != null) ''

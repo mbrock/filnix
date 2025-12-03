@@ -10,12 +10,20 @@ let
   # Build yolo-glibc (no compiler needed)
   yolo = import ./runtime/yolo-glibc.nix { inherit pkgs; };
 
+  # Build compiler-rt (CRT files and builtins, uses host compiler)
+  compiler-rt = (import ./runtime/compiler-rt.nix { inherit pkgs; }).compiler-rt;
+
+  # Build yolounwind (stub unwind library, uses host compiler)
+  yolounwind = (import ./runtime/yolounwind.nix { inherit pkgs; }).yolounwind;
+
   # Base filc compiler (overridable)
   filc = pkgs.lib.makeOverridable (import ./compiler/filc.nix) {
     inherit
       pkgs
       filc0
       yolo
+      compiler-rt
+      yolounwind
       ;
   };
 
@@ -55,6 +63,7 @@ filc-complete.overrideAttrs (old: {
     # Expose build components as attributes (metadata only!)
     inherit (yolo) yolo-glibc yolo-glibc-impl;
     inherit libpizlo filc-libcxx filc0;
+    inherit compiler-rt yolounwind;
 
     # Expose libc with generic name
     filc-libc = filc-glibc;

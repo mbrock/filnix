@@ -35,7 +35,7 @@ in
       "lib"
     ];
 
-    patches = [ ./filc0-symver.patch ];
+#    patches = [ ./filc0-symver.patch ];
 
     enableParallelBuilding = true;
 
@@ -138,11 +138,6 @@ in
         [ -e "bin/$tool" ] && ln -s lld $out/bin/$tool
       done
 
-      # LTO-related tools
-      for tool in llvm-lto llvm-lto2; do
-        [ -e "bin/$tool" ] && cp -p "bin/$tool" $out/bin/
-      done
-
       # Clang driver wrappers and resource tools
       for tool in \
         clang-linker-wrapper \
@@ -156,20 +151,12 @@ in
         cp -r lib/clang $out/lib/
       fi
 
-      # LTO gold plugin (essential for LTO with ld.gold)
-      if [ -e lib/LLVMgold.so ]; then
-        cp -p lib/LLVMgold.so $out/lib/
-      fi
-
       # Shared libraries needed at runtime (copy all symlinks and files)
       if ls lib/libclang.so* 1> /dev/null 2>&1; then
         cp -a lib/libclang.so* $out/lib/
       fi
       if ls lib/libclang-cpp.so* 1> /dev/null 2>&1; then
         cp -a lib/libclang-cpp.so* $out/lib/
-      fi
-      if ls lib/libLTO.so* 1> /dev/null 2>&1; then
-        cp -a lib/libLTO.so* $out/lib/
       fi
       if ls lib/libRemarks.so* 1> /dev/null 2>&1; then
         cp -a lib/libRemarks.so* $out/lib/

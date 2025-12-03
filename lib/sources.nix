@@ -2,12 +2,12 @@
 
 let
   inherit (pkgs) fetchgit;
-  filc-rev = "d1f83629d6c56d1fdf6f3e207d7f06c2ef31ecda";
+  filc-rev = "b71bd6a69294b779fda363e151a3ba11614c7211";
 in
 rec {
   # Minimal clang compiler only (filc0)
   filc0-src = fetchgit {
-    url = "https://github.com/mbrock/fil-c";
+    url = "https://github.com/pizlonator/fil-c";
     rev = filc-rev;
     sparseCheckout = [
       "llvm"
@@ -19,7 +19,7 @@ rec {
       "libcxxabi"
       "runtimes"
     ];
-    hash = "sha256-iLdlrzcEZfFdhEo1Zz8l/1ZiUBc8f3slGdX2X6oRU6A=";
+    hash = "sha256-rgNapyNF8Mu3DS4Dca4yiGlZN8lqeH9Y2yoAVVznT0E=";
   };
 
   # LLVM + libcxx + libcxxabi (for filc-libcxx build)
@@ -27,42 +27,64 @@ rec {
 
   # Just libpas + filc headers
   libpas-src = fetchgit {
-    url = "https://github.com/mbrock/fil-c";
+    url = "https://github.com/pizlonator/fil-c";
     rev = filc-rev;
     sparseCheckout = [
       "libpas"
       "filc"
     ];
-    hash = "sha256-uiraSFXY0mhH/PtcV4IwTT7qrePW0t/ji3JjPRFDtTE=";
+    hash = "sha256-UlzhbAlMzesjiIZVYCUewbqTSwgLl4c04PHgBIAkmhE=";
   };
 
   # Yolo glibc (stage 1 runtime)
   yolo-glibc-src = fetchgit {
-    url = "https://github.com/mbrock/fil-c";
+    url = "https://github.com/pizlonator/fil-c";
     rev = filc-rev;
     sparseCheckout = [
       "projects/yolo-glibc-2.40"
     ];
-    hash = "sha256-BGF8EWfzLYUAheyMVETNoV4KNsQTATc4FxBktgEEqTE=";
+    hash = "sha256-qyieetxCggG7QfSKAkvEP/uNYzYuqtf/0I0PuLDMl3w=";
   };
 
   # User glibc (memory-safe glibc)
   user-glibc-src = fetchgit {
-    url = "https://github.com/mbrock/fil-c";
+    url = "https://github.com/pizlonator/fil-c";
     rev = filc-rev;
     sparseCheckout = [
       "projects/user-glibc-2.40"
     ];
-    hash = "sha256-NaDSI9zonbam48fk/UzUMNnpX/ATKjDET7qJDffVDGo=";
+    hash = "sha256-FNZQspQBxMfyo+P1z6q5ggkoGE9DDW95DXZB5RmNNZQ=";
   };
 
   # libxcrypt
   libxcrypt-src = fetchgit {
-    url = "https://github.com/mbrock/fil-c";
+    url = "https://github.com/pizlonator/fil-c";
     rev = filc-rev;
     sparseCheckout = [
       "projects/libxcrypt-4.4.36"
     ];
     hash = pkgs.lib.fakeHash;
+  };
+
+  # compiler-rt (CRT files and builtins)
+  compiler-rt-src = fetchgit {
+    url = "https://github.com/pizlonator/fil-c";
+    rev = filc-rev;
+    sparseCheckout = [
+      "compiler-rt"
+      "cmake"
+      "llvm"
+    ];
+    hash = "sha256-RChLGaSdzHqHImkj6MJOa0vBZ6H+9T5wbj5l8bsemPs=";
+  };
+
+  # yolounwind (stub unwind library for yolo runtime)
+  yolounwind-src = fetchgit {
+    url = "https://github.com/pizlonator/fil-c";
+    rev = filc-rev;
+    sparseCheckout = [
+      "yolounwind"
+    ];
+    hash = "sha256-bgjXmlv52KpmjgmXh5Ff3Wau5qkeeqJdvN45C9RMZBg=";
   };
 }
