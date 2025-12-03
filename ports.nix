@@ -91,6 +91,17 @@ in
     ];
   }
 
+  {
+    libjpeg_turbo = (
+      for pkgs.libjpeg_turbo [
+        (patch ./ports/patch/libjpeg-turbo-3.0.1.patch)
+        (addCMakeFlag "-DCMAKE_ASM_NASM_COMPILER=")
+        (addCMakeFlag "-DCMAKE_SKIP_INSTALL_RPATH=ON")
+        (arg { nasm = pkgs.hello; })
+      ]
+    );
+  }
+
   (for pkgs.libxml2 [
     (patch ./ports/patch/libxml2-2.14.4.patch)
     (arg { pythonSupport = false; })
@@ -445,11 +456,34 @@ in
   ])
 
   (for pkgs.cairo [
-    (addCFlag "-Wno-error=int-conversion")
+    (patch ./ports/patch/cairo-1.18.0.patch)
+  ])
+
+  (for pkgs.pango [
+    (patch ./ports/patch/pango-1.54.0.patch)
   ])
 
   (for pkgs.fontconfig [
-    (skipCheck "some failures look sus")
+    (patch ./ports/patch/fontconfig-2.15.0.patch)
+    (use {
+      postPatch = ''
+        sed -i 's/ftglue.c/ftglue.c fcfilc.h fcfilc.c/' src/Makefile.am
+      '';
+    })
+    (tool pkgs.autoreconfHook)
+    (skipTests "tests pass but some test needs weird deps")
+  ])
+
+  (for pkgs.freetype [
+    (patch ./ports/patch/freetype-2.13.3.patch)
+    (skipPatch "subpixel-rendering.patch") # no need
+    (skipPatch "enable-table-validation.patch") # no need
+  ])
+
+  (for pkgs.harfbuzz [
+    (patch ./ports/patch/harfbuzz-9.0.0.patch)
+    (arg { withGraphite2 = false; })
+    (skipCheck "fuzzing fails")
   ])
 
   (for pkgs.glib [
@@ -474,25 +508,73 @@ in
     })
   ])
 
-  (for pkgs.gobject-introspection [
-    (broken "turn this thing off so glib builds perfectly")
+  {
+    gobject-introspection-unwrapped = for pkgs.gobject-introspection-unwrapped [
+
+      (broken "utterly cursed recursive self-dependency in nixpkgs")
+      (pin "1.80.1" "sha256-od98Qk4VvaGrY5wA6QUbmt9c6hqeUS+KYDtTzRmbxtg=")
+      (patch ./ports/patch/gobject-introspection-1.80.1.patch)
+      (skipPatch "Prefer-some-getters-over-others.patch")
+      (arg { propagateFullGlib = false; })
+      (use {
+        preConfigure = ''
+          sed -i 's/2.82.0/2.80.4/g' meson.build
+        '';
+      })
+    ];
+  }
+
+  (for pkgs.wayland [
+    (patch ./ports/patch/wayland-1.24.0.patch)
   ])
 
-  (for pkgs.gobject-introspection-unwrapped [
-    (use (old: {
-      postPatch = (old.postPatch or "") + ''
-        sed -i 's/2.82.0/2.80.4/' meson.build
-        sed -i 's/case G_TYPE/case (uintptr_t) G_TYPE/g' $(find . -name '*.c')
-      '';
-      env = (old.env or { }) // {
-        NIX_CFLAGS_COMPILE = toString [
-          "-Wno-error=nonnull"
-          "-DG_DISABLE_CAST_CHECKS"
-        ];
-      };
-    }))
-    (broken "neither necessary nor working")
+  (for pkgs.weston [
+    (pin "12.0.5" "sha256-UJKoruwDnD4iX5OAh9BbxTDeIvW/7wKmVk0bQu/7Mqs=")
+    (patch ./ports/patch/weston-12.0.5.patch)
+    (skipPatch "25ed1.patch")
+    (arg { pipewireSupport = false; })
+    (arg { rdpSupport = false; })
+    (arg { remotingSupport = false; })
+    (arg { vaapiSupport = false; })
+    (arg { vncSupport = false; })
+    (arg { xwaylandSupport = false; })
+    (arg { lcmsSupport = false; })
+  (addMesonFlag "-Dsystemd=false")
   ])
+
+  (for pkgs.libglvnd [
+    (configure "--disable-asm")
+  ])
+
+  (for pkgs.libinput [
+    (pin "1.29.1" "sha256-4BVHu9370s5hqugS/Lj/JEXwXXmmVRSMfjkvqpI9aq8=")
+    (patch ./ports/patch/libinput-1.29.1.patch)
+    (arg { libwacom = pkgs.hello; })
+    (addMesonFlag "-Dlibwacom=false")
+    (addMesonFlag "-Ddebug-gui=false")
+  ])
+
+  {
+    libxkbcommon = (
+      for pkgs.libxkbcommon [
+        (patch ./ports/patch/libxkbcommon-xkbcommon-1.11.0.patch)
+        (skipTests "eh")
+        (addMesonFlag "-Denable-x11=false")
+      ]
+    );
+  }
+
+  (for pkgs.libwebp [
+    (patch ./ports/patch/libwebp-1.4.0.patch)
+    (arg { tiffSupport = false; })
+  ])
+
+  (for pkgs.libevdev [
+    (pin "1.11.0" "sha256-Y/TqFImFihCQgOC0C9Q+TgkDoeEuqIjVgduMSVdHwtA=")
+    (patch ./ports/patch/libevdev-1.11.0.patch)
+  ])
+
+  (for pkgs.valgrind [(broken "not yet ported")])
 
   # ━━━ Development Tools & Libraries ━━━
 
@@ -612,9 +694,12 @@ in
         (patch ./ports/patch/ruby-3.3.10.patch)
         (arg { yjitSupport = false; })
         (arg { jitSupport = false; })
-        (arg { cargo = null; rustPlatform = null; rustc = null; })
-#        (arg { useBaseRuby = false; })
-       ]
+        (arg {
+          cargo = null;
+          rustPlatform = null;
+          rustc = null;
+        })
+      ]
     );
   }
 
@@ -833,10 +918,6 @@ in
     (broken "not yet ported")
   ])
 
-  (for pkgs.dbus [
-    (broken "not yet ported")
-  ])
-
   (for pkgs.gnutls [
     (broken "too many dependencies")
   ])
@@ -850,10 +931,6 @@ in
       (broken "GUI not supported")
     ];
   }
-
-  (for pkgs.wayland [
-    (broken "display server not supported")
-  ])
 
   (for pkgs.xorg.libX11 [
     (broken "X11 not supported")

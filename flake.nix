@@ -34,6 +34,12 @@
           })
           (import ./ports/overlay.nix pkgs)
         ];
+
+        overlays = [
+          # (final: prev: {
+          #   inherit (import ./ports/overlay.nix pkgs final prev) glib gobject-introspection-unwrapped;
+          # })
+        ];
       };
 
       filc-shell-stuff = import ./shells/world.nix {
@@ -109,19 +115,17 @@
         emacs-unsafe = emacs-unsafe.filc-emacs;
       };
 
-      apps.${system} =
-        virt.apps
-        // {
-          filcc = {
-            type = "app";
-            program = "${filcc}/bin/clang";
-          };
-
-          "filc++" = {
-            type = "app";
-            program = "${filcc}/bin/clang++";
-          };
+      apps.${system} = virt.apps // {
+        filcc = {
+          type = "app";
+          program = "${filcc}/bin/clang";
         };
+
+        "filc++" = {
+          type = "app";
+          program = "${filcc}/bin/clang++";
+        };
+      };
 
       formatter.${system} = pkgs.nixfmt-rfc-style;
 

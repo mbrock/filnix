@@ -103,6 +103,13 @@ in
     (skipTests "huge dependency tree")
   ])
 
+  (for "libevdev" [
+    (skipTests "broken?")
+  ])
+
+  (for "pyyaml" [
+    (skipTests "slow")])
+
   # Custom package - defined inline since it's not in pyprev
   {
     tagflow = {
