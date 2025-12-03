@@ -539,7 +539,7 @@ in
     (arg { vncSupport = false; })
     (arg { xwaylandSupport = false; })
     (arg { lcmsSupport = false; })
-  (addMesonFlag "-Dsystemd=false")
+    (addMesonFlag "-Dsystemd=false")
   ])
 
   (for pkgs.libglvnd [
@@ -574,7 +574,7 @@ in
     (patch ./ports/patch/libevdev-1.11.0.patch)
   ])
 
-  (for pkgs.valgrind [(broken "not yet ported")])
+  (for pkgs.valgrind [ (broken "not yet ported") ])
 
   # ━━━ Development Tools & Libraries ━━━
 
@@ -705,6 +705,49 @@ in
 
   # ━━━ Terminal & System ━━━
 
+  (for pkgs.libcap [
+    (pin "2.70" "sha256-I6bviq2vHj6HX2M7stEWz++JUtunvHxWmxNFjhlSsw8=")
+    (arg { withGo = false; })
+    (arg { usePam = false; })
+  ])
+
+  {
+    binutils-unwrapped = for pkgs.binutils-unwrapped [
+      (patch ./ports/patch/binutils-2.43.1.patch)
+      (tool depizloing-nm)
+    ];
+  }
+
+  (for pkgs.kbd [
+    (patch ./ports/patch/kbd-2.6.4.patch)
+    (tool depizloing-nm)
+  ])
+
+  {
+    systemdLibs = for pkgs.systemd [
+      (pin "256.4" "sha256-eGHVRBkPk4ysGyQmJNeMlv4uu8e3L4YWboi1BFHG+lg=")
+      (patch ./ports/patch/systemd-256.4.patch)
+      (arg { withKexectools = false; })
+      (arg { withLibseccomp = false; })
+      (arg { getent = pkgs.stdenv.cc.libc.getent; }) # otherwise this defaults to netbsd impl
+      (skipPatch "specific-unit-directories.patch") # not installing units anyway
+      (removeMesonFlag "-Dshellprofiledir") # not in this version
+      (addMesonFlag "-Dlink-udev-shared=false")
+      (use {
+        # the automatic patchelf hook was segfaulting
+        # while trying to patch some debug info files?!
+        separateDebugInfo = false;
+      })
+
+      # this seems to not be a real problem
+      (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
+    ];
+  }
+
+  (for pkgs.go [
+    (broken "not yet ported")
+  ])
+
   (for pkgs.tmux [
     (arg { withSystemd = false; })
   ])
@@ -726,10 +769,6 @@ in
     util-linux = for pkgs.util-linuxMinimal [ parallelize ];
     util-linuxMinimal = for pkgs.util-linuxMinimal [ parallelize ];
   }
-
-  (for pkgs.systemd [
-    (broken "not yet ported")
-  ])
 
   (for pkgs.shadow [
     (tool depizloing-nm)
@@ -914,9 +953,9 @@ in
     (broken "tries to cross compile rustc")
   ])
 
-  (for pkgs.systemd [
-    (broken "not yet ported")
-  ])
+  # (for pkgs.systemd [
+  #   (broken "not yet ported")
+  # ])
 
   (for pkgs.gnutls [
     (broken "too many dependencies")

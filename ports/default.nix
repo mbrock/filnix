@@ -226,7 +226,7 @@ let
   removeMesonFlag =
     flag:
     use (old: {
-      mesonFlags = builtins.filter (f: f != flag) (old.mesonFlags or [ ]);
+      mesonFlags = builtins.filter (f: !(lib.hasPrefix flag f)) (old.mesonFlags or [ ]);
     });
 
   # Mark as broken for Fil-C with a reason
