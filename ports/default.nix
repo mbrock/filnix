@@ -251,6 +251,22 @@ let
 
   wip = throw "Work in progress";
 
+  # AST-based code rewriting using ast-grep
+  # Usage: astRewrite "file.c" "c" "pattern with $VAR" "replacement with $VAR"
+  # Patterns use ast-grep syntax: $VAR for single node, $$$VAR for multiple nodes
+  astRewrite =
+    file: lang: pattern: replacement:
+    use (old: {
+      nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.ast-grep ];
+      postPatch = (old.postPatch or "") + ''
+        ast-grep --pattern ${lib.escapeShellArg pattern} \
+          --rewrite ${lib.escapeShellArg replacement} \
+          --lang ${lang} \
+          --update-all \
+          ${file}
+      '';
+    });
+
   # Utilities
   depizloing-nm = pkgs.writeShellScriptBin "nm" ''
     ${pkgs.binutils}/bin/nm "$@" | sed 's/\bpizlonated_//g'
@@ -301,6 +317,7 @@ let
       removeConfigureFlag
       wip
       depizloing-nm
+      astRewrite
       ;
     inherit github gnu gnuTarGz;
   };
@@ -376,6 +393,14 @@ let
       pkg-config = prev.pkg-config.override {
         pkg-config = ported.pkgconf-unwrapped;
         baseBinName = "pkgconf";
+      };
+
+      # Re-call defaultGemConfig with final packages so gems get Fil-C dependencies
+      # This ensures ffi gem gets final.libffi (Fil-C version), not pkgs.libffi
+      defaultGemConfig = final.callPackage (prev.path + "/pkgs/development/ruby-modules/gem-config") {
+        # Darwin-only args that don't exist in final (not ported to Fil-C)
+        inherit (prev.darwin) DarwinTools;
+        inherit (prev) autoSignDarwinBinariesHook;
       };
     };
 

@@ -37,6 +37,7 @@ let
     removeConfigureFlag
     wip
     depizloing-nm
+    astRewrite
     github
     gnu
     gnuTarGz
@@ -82,6 +83,23 @@ in
     (configure "--with-gcc-arch=native")
     (configure "--disable-static")
     (configure "--disable-exec-static-tramp")
+    # Fix ffi_closure_alloc to return writable struct, not zclosure
+    # The zclosure is a "special object" that can't be written to as a struct
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/closures.c \
+          --replace-fail '#include <stdfil.h>' '#include <stdfil.h>
+#include <stdlib.h>'
+      '';
+    }))
+    (astRewrite "src/closures.c" "c"
+      "void * ffi_closure_alloc(size_t size, void **code) { $$$BODY }"
+      "void * ffi_closure_alloc(size_t size, void **code) {
+  void *closure = malloc(size);
+  if (!closure) return NULL;
+  *code = zclosure_new(ffi_closure_callback, closure);
+  return closure;
+}")
   ])
 
   {
@@ -717,6 +735,28 @@ in
       for pkgs.ruby_3_3 [
         (pin "3.3.10" "sha256-tVW6pGejBs/I5sbtJNDSeyfpob7R2R2VUJhZ6saw6Sg=")
         (patch ./ports/patch/ruby-3.3.10.patch)
+        # Disable ractor shareability deep checking - requires rb_objspace_reachable_objects_from
+        # which isn't implemented in Fil-C. Return false = conservatively assume not shareable.
+        (astRewrite "ractor.c" "c"
+          "bool rb_ractor_shareable_p_continue($PARAM) { $$$BODY }"
+          "bool rb_ractor_shareable_p_continue($PARAM) {
+#ifdef __FILC__
+    return false;
+#else
+    $$$BODY
+#endif
+}")
+        # Also patch rb_ractor_make_shareable to skip traversal
+        (astRewrite "ractor.c" "c"
+          "VALUE rb_ractor_make_shareable(VALUE $OBJ) { $$$BODY }"
+          "VALUE rb_ractor_make_shareable(VALUE $OBJ) {
+#ifdef __FILC__
+    FL_SET_RAW($OBJ, RUBY_FL_SHAREABLE);
+    return $OBJ;
+#else
+    $$$BODY
+#endif
+}")
         (arg { yjitSupport = false; })
         (arg { jitSupport = false; })
         (arg {
@@ -725,7 +765,7 @@ in
           rustc = null;
         })
         (arg {
-          defaultGemConfig = pkgs.defaultGemConfig // (import ./ports/rubyPorts-as-gemConfig.nix pkgs);
+          defaultGemConfig = final.defaultGemConfig // (import ./ports/rubyPorts-as-gemConfig.nix { inherit pkgs final; });
         })
       ]
     );

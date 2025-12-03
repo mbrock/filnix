@@ -1,10 +1,11 @@
-pkgs:
+{ pkgs, final }:
 let
   inherit (pkgs) lib;
 
-  baseGemConfig = pkgs.defaultGemConfig;
+  # Use final.defaultGemConfig to get Fil-C dependencies (like final.libffi)
+  baseGemConfig = final.defaultGemConfig;
 
-  portList = import ../rubyports.nix { inherit pkgs; };
+  portList = (import ../rubyports.nix { inherit pkgs final; }).ports;
 
   portSpecs = builtins.listToAttrs (
     lib.flatten (

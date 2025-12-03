@@ -72,6 +72,11 @@
         inherit pkgs pkgsFilc filcc;
         filc-emacs = emacs-safe.filc-emacs;
       };
+
+      # Ruby with individual gems for testing - auto-generated for all available gems
+      rubyWithGem = pkgs.lib.mapAttrs
+        (name: _: pkgsFilc.ruby.withPackages (ps: [ ps.${name} ]))
+        pkgsFilc.rubyPackages;
     in
     {
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
@@ -96,6 +101,7 @@
           python-web-demo
           perl-demos
           perl-with-stuff
+          ruby-maxxed
           ;
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
@@ -109,6 +115,8 @@
         '';
 
         inherit runfilc;
+
+        inherit rubyWithGem;
 
         inherit (emacs-safe) filc-emacs;
         emacs = emacs-safe.filc-emacs;
