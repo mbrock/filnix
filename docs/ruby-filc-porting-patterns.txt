@@ -1,0 +1,274 @@
+Ruby Fil-C Porting Patterns
+============================
+
+This document catalogues the changes required to compile Ruby 3.3.10 with
+Fil-C, a memory-safe C compiler. The patterns described here are derived
+from the 9,715-line patch in ports/patch/ruby-3.3.10.patch.
+
+
+Background: Why These Changes Are Needed
+-----------------------------------------
+
+Standard Ruby defines VALUE as an unsigned integer type:
+
+    typedef unsigned long VALUE;
+
+Fil-C redefines VALUE as a pointer type so that its capability-tracking
+garbage collector can trace all Ruby object references. This single change
+breaks hundreds of assumptions throughout Ruby's codebase where VALUE is
+treated as a bag of bits rather than a typed pointer.
+
+Similarly, st_data_t (used in Ruby's hash tables) changes from:
+
+    typedef unsigned long st_data_t;
+
+to:
+
+    typedef rb_value_unit* st_data_t;
+
+where rb_value_unit is an opaque struct type. This ensures hash table keys
+and values are also tracked by the GC.
+
+
+Pattern Categories
+------------------
+
+The changes fall into several distinct categories:
+
+
+1. SWITCH STATEMENTS ON VALUE
+
+Problem: C does not allow switching on pointer types.
+
+Before:
+    switch (val) {
+      case Qnil:   ...
+      case Qtrue:  ...
+      case Qfalse: ...
+    }
+
+After:
+    switch ((uintptr_t)val) {
+      case (uintptr_t)Qnil:   ...
+      case (uintptr_t)Qtrue:  ...
+      case (uintptr_t)Qfalse: ...
+    }
+
+This is the most common pattern, appearing in array.c, class.c, string.c,
+struct.c, bigdecimal.c, io/console, socket, and many other files. Ruby
+frequently switches on VALUE to dispatch based on object type or to handle
+special constants like nil/true/false.
+
+
+2. API FUNCTIONS EXPECTING int BUT RECEIVING Qtrue/Qfalse
+
+Problem: Functions with int parameters cannot accept pointer-typed VALUEs.
+
+Affected APIs:
+  - rb_attr(klass, name, read, write, pub)  -- pub is int
+  - rb_cstr_to_inum(str, base, badcheck)    -- badcheck is int
+
+Before:
+    rb_attr(cSSLContext, rb_intern("cert"), 1, 1, Qfalse);
+    rb_cstr_to_inum(txt, 16, Qtrue);
+
+After:
+    rb_attr(cSSLContext, rb_intern("cert"), 1, 1, (int)Qfalse);
+    rb_cstr_to_inum(txt, 16, (int)Qtrue);
+
+The OpenSSL extension alone has 30+ instances of rb_attr needing this fix.
+
+
+3. BITWISE OPERATIONS ON VALUE
+
+Problem: Bit manipulation operators expect integer operands.
+
+Ruby's tagged pointer scheme uses low bits to distinguish fixnums, symbols,
+and other immediate values. Operations that mask, shift, or OR bits into
+VALUE must convert through uintptr_t.
+
+Before:
+    #define FIXNUM_INC(n, i) ((n)+(INT2FIX(i)&~FIXNUM_FLAG))
+    ref >>= 4;
+    RBASIC(b)->flags |= ((VALUE)w << SHIFT);
+
+After:
+    #define FIXNUM_INC(n, i) ((VALUE)((n)+((uintptr_t)INT2FIX(i)&~FIXNUM_FLAG)))
+    ref = (VALUE)((uintptr_t)ref >> 4);
+    RBASIC(b)->flags |= ((uintptr_t)w << SHIFT);
+
+
+4. STRUCT FIELD TYPE CHANGES
+
+Problem: Fields that store flags, counts, or other integer data were typed
+as VALUE but should be uintptr_t.
+
+Before (vm_callinfo.h):
+    struct rb_callinfo {
+        VALUE flags;
+        VALUE mid;
+        VALUE flag;
+        VALUE argc;
+    };
+
+After:
+    struct rb_callinfo {
+        uintptr_t flags;
+        uintptr_t mid;
+        uintptr_t flag;
+        uintptr_t argc;
+    };
+
+Before (objspace.h):
+    VALUE flags;
+
+After:
+    uintptr_t flags;
+
+This pattern appears throughout vm_callinfo.h, vm_callcache, internal
+headers, and extension code.
+
+
+5. FUNCTION SIGNATURE CHANGES
+
+Problem: Functions that operate on instruction indices, hash values, or
+other numeric data were typed with VALUE but need uintptr_t.
+
+Before:
+    static const char *insn_name(VALUE insn);
+    static int insn_len(VALUE insn);
+    VALUE rb_wb_protected_newobj_of(..., VALUE flags, size_t);
+
+After:
+    static const char *insn_name(uintptr_t insn);
+    static int insn_len(uintptr_t insn);
+    VALUE rb_wb_protected_newobj_of(..., uintptr_t flags, size_t);
+
+
+6. MACRO CONSTANT TYPE CHANGES
+
+Problem: Bit masks and flag constants typed as VALUE need uintptr_t.
+
+Before (internal/bignum.h):
+    #define BIGNUM_EMBED_FLAG ((VALUE)FL_USER2)
+    #define BIGNUM_EMBED_LEN_MASK (~(~(VALUE)0U << BITS) << SHIFT)
+
+After:
+    #define BIGNUM_EMBED_FLAG ((uintptr_t)FL_USER2)
+    #define BIGNUM_EMBED_LEN_MASK (~(~(uintptr_t)0U << BITS) << SHIFT)
+
+
+7. RETURN VALUE CASTS
+
+Problem: Functions returning VALUE but computing an integer result.
+
+Before:
+    return state->max_nesting = FIX2LONG(depth);
+    return sendmsg(arg->fd, &arg->msg, 0);
+
+After:
+    return (VALUE)(state->max_nesting = FIX2LONG(depth));
+    return (VALUE)sendmsg(arg->fd, &arg->msg, 0);
+
+
+8. st_table OPERATIONS
+
+Problem: Literal integers passed to st_* functions need casting.
+
+Before:
+    st_add_direct(tbl, (st_data_t)result, 1);
+
+After:
+    st_add_direct(tbl, (st_data_t)result, (st_data_t)1);
+
+
+9. TAGGED POINTER CREATION WITH zorptr
+
+Problem: Ruby's tagged pointer scheme ORs tag bits into pointers. This
+violates Fil-C's capability model. The zorptr() function creates tagged
+pointers while preserving capability metadata.
+
+Before:
+    VALUE key = (VALUE)node | 1;
+    rb_ary_push(labels, (VALUE)label | 1);
+
+After:
+    VALUE key = zorptr(node, 1);
+    rb_ary_push(labels, zorptr(label, 1));
+
+Files using zorptr must include <stdfil.h>.
+
+
+10. VARIABLE TYPE CORRECTIONS
+
+Problem: Variables typed as VALUE but actually holding non-pointer data.
+
+Before (ossl_pkey_ec.c):
+    VALUE ret;  // actually holds an ID
+
+After:
+    ID ret;
+
+
+11. PLATFORM-SPECIFIC CODE
+
+The patch disables inline assembly for stack pointer capture on Fil-C:
+
+    #if defined(__FILC__)
+    #define SET_MACHINE_STACK_END(p)
+    #elif defined(__x86_64__) ...
+
+Fil-C manages the stack differently; the GC integration doesn't need
+explicit stack bounds.
+
+
+Extension-Specific Notes
+------------------------
+
+OPENSSL:
+  Heaviest extension to port. Mostly rb_attr() boolean fixes.
+  A few rb_protect() calls passing long as VALUE.
+
+BIGDECIMAL:
+  Switch statements on VALUE, returning Qfalse from int-returning functions.
+
+JSON:
+  Return value cast for integer assignment expressions.
+
+FIDDLE:
+  Exports Qtrue/Qfalse/Qnil/Qundef as integer constants. Must cast to
+  uintptr_t before passing to INT2NUM.
+
+SOCKET:
+  Switch statements, return value casts for sendmsg/recvmsg wrappers.
+
+OBJSPACE:
+  Hash table operations, pointer arithmetic for hex dumps.
+
+
+Summary Statistics
+------------------
+
+Total patch size: 9,715 lines
+Files modified: ~60
+Casting fixes: ~536 instances
+zorptr insertions: ~9 instances
+stdfil.h includes: 4 files
+Struct field changes: ~20 fields
+Function signature changes: ~15 functions
+
+
+Porting Methodology
+-------------------
+
+When porting a Ruby extension to Fil-C:
+
+1. Compile with Fil-C and collect errors
+2. For each error, identify which pattern applies
+3. Apply the minimal fix (prefer casts over restructuring)
+4. For tagged pointer creation, use zorptr() and include <stdfil.h>
+5. Test thoroughly - some VALUE/integer confusion may cause runtime issues
+   rather than compile errors
+
+The compiler catches most issues, but be alert for cases where an implicit
+conversion succeeds but produces wrong behavior at runtime.
