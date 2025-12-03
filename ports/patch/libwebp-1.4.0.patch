@@ -1,0 +1,30 @@
+diff --git a/src/dsp/cpu.c b/src/dsp/cpu.c
+index 8ba8f683357b..bf7e63417bc4 100644
+--- a/src/dsp/cpu.c
++++ b/src/dsp/cpu.c
+@@ -22,6 +22,10 @@
+ #include <cpu-features.h>
+ #endif
+ 
++#ifdef __FILC__
++#include <cpuid.h>
++#endif
++
+ //------------------------------------------------------------------------------
+ // SSE2 detection.
+ //
+@@ -38,10 +42,14 @@ static WEBP_INLINE void GetCPUInfo(int cpu_info[4], int info_type) {
+ }
+ #elif defined(__i386__) || defined(__x86_64__)
+ static WEBP_INLINE void GetCPUInfo(int cpu_info[4], int info_type) {
++#ifdef __FILC__
++  __get_cpuid(info_type, cpu_info + 0, cpu_info + 1, cpu_info + 2, cpu_info + 3);
++#else
+   __asm__ volatile (
+     "cpuid\n"
+     : "=a"(cpu_info[0]), "=b"(cpu_info[1]), "=c"(cpu_info[2]), "=d"(cpu_info[3])
+     : "a"(info_type), "c"(0));
++#endif
+ }
+ #elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+ 

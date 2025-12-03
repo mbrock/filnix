@@ -1,0 +1,84 @@
+diff --git a/src/fcfilc.c b/src/fcfilc.c
+new file mode 100644
+index 000000000000..ed5bff9fa606
+--- /dev/null
++++ b/src/fcfilc.c
+@@ -0,0 +1,51 @@
++/*
++ * fontconfig/src/fcfilc.c
++ *
++ * Copyright © 2015 Epic Games, Inc.
++ *
++ * Permission to use, copy, modify, distribute, and sell this software and its
++ * documentation for any purpose is hereby granted without fee, provided that
++ * the above copyright notice appear in all copies and that both that
++ * copyright notice and this permission notice appear in supporting
++ * documentation, and that the name of the author(s) not be used in
++ * advertising or publicity pertaining to distribution of the software without
++ * specific, written prior permission.  The authors make no
++ * representations about the suitability of this software for any purpose.  It
++ * is provided "as is" without express or implied warranty.
++ *
++ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
++ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
++ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
++ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
++ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
++ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
++ * PERFORMANCE OF THIS SOFTWARE.
++ */
++
++#include "fcint.h"
++#include <stdfil.h>
++
++static zexact_ptrtable* ptrtable;
++
++static void constructor(void) __attribute__((constructor));
++static void constructor(void)
++{
++    ptrtable = zexact_ptrtable_new();
++}
++
++ptrdiff_t FcPtrToOffsetImpl(const void* base, const void* ptr)
++{
++    intptr_t offset = (char*)ptr - (char*)base;
++    if (!zinbounds((char*)base + offset))
++        zexact_ptrtable_encode(ptrtable, ptr);
++    return offset;
++}
++
++void* FcOffsetToPtrImpl(const void *base, ptrdiff_t offset)
++{
++    void* ptr = (char*)base + offset;
++    if (zinbounds(ptr))
++        return ptr;
++    return zexact_ptrtable_decode(ptrtable, (uintptr_t)ptr);
++}
++
+diff --git a/src/fcint.h b/src/fcint.h
+index fbf0e8156087..7977274369a5 100644
+--- a/src/fcint.h
++++ b/src/fcint.h
+@@ -143,6 +143,9 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
+ #define FcStrdup(s) ((FcChar8 *) strdup ((const char *) (s)))
+ #define FcFree(s) (free ((FcChar8 *) (s)))
+ 
++ptrdiff_t FcPtrToOffsetImpl(const void* base, const void* ptr);
++void* FcOffsetToPtrImpl(const void* base, ptrdiff_t offset);
++
+ /*
+  * Serialized data structures use only offsets instead of pointers
+  * A low bit of 1 indicates an offset.
+@@ -158,10 +161,10 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
+ #define FcOffsetDecode(p)	(((intptr_t) (p)) & ~1)
+ 
+ /* Compute pointer offset */
+-#define FcPtrToOffset(b,p)	((ptrdiff_t) ((intptr_t) (p) - (intptr_t) (b)))
++#define FcPtrToOffset(b,p)	FcPtrToOffsetImpl(b, p)
+ 
+ /* Given base address, offset and type, return a pointer */
+-#define FcOffsetToPtr(b,o,t)	((t *) ((intptr_t) (b) + (ptrdiff_t) (o)))
++#define FcOffsetToPtr(b,o,t)	((t *) FcOffsetToPtrImpl(b, o))
+ 
+ /* Given base address, encoded offset and type, return a pointer */
+ #define FcEncodedOffsetToPtr(b,p,t) FcOffsetToPtr(b,FcOffsetDecode(p),t)

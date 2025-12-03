@@ -1,0 +1,73 @@
+diff --git a/pango/pango-enum-types.c.template b/pango/pango-enum-types.c.template
+index b71b0a396a8d..e1746c0b16cd 100644
+--- a/pango/pango-enum-types.c.template
++++ b/pango/pango-enum-types.c.template
+@@ -13,9 +13,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static gsize g_define_type_id__volatile = 0;
++  static gpointer g_define_type_id__volatile = 0;
+ 
+-  if (g_once_init_enter (&g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -29,10 +29,10 @@ GType
+       };
+       GType g_define_type_id =
+         g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id);
+     }
+ 
+-  return g_define_type_id__volatile;
++  return (GType) g_define_type_id__volatile;
+ }
+ 
+ /*** END value-tail ***/
+diff --git a/pango/pango-language.c b/pango/pango-language.c
+index 410e6f9813df..a77b5587d27c 100644
+--- a/pango/pango-language.c
++++ b/pango/pango-language.c
+@@ -292,7 +292,7 @@ pango_language_get_default (void)
+ {
+   static PangoLanguage *result = NULL; /* MT-safe */
+ 
+-  if (g_once_init_enter (&result))
++  if (g_once_init_enter_pointer (&result))
+     {
+       gchar *lc_ctype;
+       PangoLanguage *lang;
+@@ -301,7 +301,7 @@ pango_language_get_default (void)
+       lang = pango_language_from_string (lc_ctype);
+       g_free (lc_ctype);
+ 
+-      g_once_init_leave (&result, lang);
++      g_once_init_leave_pointer (&result, lang);
+     }
+ 
+   return result;
+diff --git a/pango/shape.c b/pango/shape.c
+index acf4be59dcf2..73dc505ec6fc 100644
+--- a/pango/shape.c
++++ b/pango/shape.c
+@@ -240,7 +240,7 @@ pango_font_get_hb_font_for_context (PangoFont           *font,
+ 
+   hb_font = pango_font_get_hb_font (font);
+ 
+-  if (G_UNLIKELY (g_once_init_enter (&funcs)))
++  if (G_UNLIKELY (g_once_init_enter_pointer (&funcs)))
+     {
+       hb_font_funcs_t *f = hb_font_funcs_create ();
+ 
+@@ -250,7 +250,7 @@ pango_font_get_hb_font_for_context (PangoFont           *font,
+       hb_font_funcs_set_glyph_extents_func (f, pango_hb_font_get_glyph_extents, NULL, NULL);
+ 
+       hb_font_funcs_make_immutable (f);
+-      g_once_init_leave (&funcs, f);
++      g_once_init_leave_pointer (&funcs, f);
+     }
+ 
+   context->font = font;

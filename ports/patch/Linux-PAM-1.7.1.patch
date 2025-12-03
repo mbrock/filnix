@@ -62,27 +62,6 @@ index ce790d0a59c6..9813f9934059 100644
  	    tok = _pam_tokenize(NULL, &nexttok);
  	    if (pam_include) {
  		if (substack) {
-diff --git a/libpam/pam_private.h b/libpam/pam_private.h
-index 77dc5a69878c..143f4aeb858a 100644
---- a/libpam/pam_private.h
-+++ b/libpam/pam_private.h
-@@ -25,11 +25,11 @@
- 
- /* the Linux-PAM configuration file */
- 
--#define PAM_CONFIG         "/etc/pam.conf"
--#define PAM_CONFIG_D       "/etc/pam.d"
--#define PAM_CONFIG_DF      "/etc/pam.d/%s"
--#define PAM_CONFIG_DIST_D  "/usr/lib/pam.d"
--#define PAM_CONFIG_DIST_DF "/usr/lib/pam.d/%s"
-+#define PAM_CONFIG         SYSCONFDIR"/pam.conf"
-+#define PAM_CONFIG_D       SYSCONFDIR"/pam.d"
-+#define PAM_CONFIG_DF      SYSCONFDIR"/pam.d/%s"
-+#define PAM_CONFIG_DIST_D  LIBDIR"/pam.d"
-+#define PAM_CONFIG_DIST_DF LIBDIR"/pam.d/%s"
- #ifdef VENDORDIR
- #define PAM_CONFIG_DIST2_D  VENDORDIR"/pam.d"
- #define PAM_CONFIG_DIST2_DF VENDORDIR"/pam.d/%s"
 diff --git a/libpam_misc/meson.build b/libpam_misc/meson.build
 index e0bb30f52717..bd3189eccc7c 100644
 --- a/libpam_misc/meson.build
@@ -109,18 +88,6 @@ index f5da06793866..5b87ec0b57d3 100644
  
  libpamc = shared_library(
    'pamc',
-diff --git a/meson.build b/meson.build
-index 0827a53ecfa7..791d4c4d3963 100644
---- a/meson.build
-+++ b/meson.build
-@@ -42,6 +42,7 @@ cdata.set_quoted('PAM_VERSION', meson.project_version())
- cdata.set('UNUSED', '__attribute__((__unused__))')
- cdata.set('PAM_NO_HEADER_FUNCTIONS', 1, description: 'Disable function bodies in headers')
- cdata.set_quoted('SYSCONFDIR', sysconfdir)
-+cdata.set_quoted('LIBDIR', libdir)
- cdata.set_quoted('LTDIR', '')
- # used in configure_file() only, so not quoted
- cdata.set('sbindir', sbindir)
 diff --git a/modules/meson.build b/modules/meson.build
 index 20cebdbb76e0..545fa766b86e 100644
 --- a/modules/meson.build

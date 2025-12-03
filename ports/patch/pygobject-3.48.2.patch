@@ -1,0 +1,542 @@
+diff --git a/gi/gimodule.c b/gi/gimodule.c
+index 3541040b34d4..7911264b7f15 100644
+--- a/gi/gimodule.c
++++ b/gi/gimodule.c
+@@ -192,8 +192,8 @@ create_property (const gchar  *prop_name,
+ {
+     GParamSpec *pspec = NULL;
+ 
+-    switch (G_TYPE_FUNDAMENTAL(prop_type)) {
+-    case G_TYPE_CHAR:
++    switch ((uintptr_t)G_TYPE_FUNDAMENTAL(prop_type)) {
++    case (uintptr_t)G_TYPE_CHAR:
+ 	{
+ 	    gchar minimum, maximum, default_value;
+ 
+@@ -204,7 +204,7 @@ create_property (const gchar  *prop_name,
+ 				       maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t)G_TYPE_UCHAR:
+ 	{
+ 	    gchar minimum, maximum, default_value;
+ 
+@@ -215,7 +215,7 @@ create_property (const gchar  *prop_name,
+ 					maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t)G_TYPE_BOOLEAN:
+ 	{
+ 	    gboolean default_value;
+ 
+@@ -225,7 +225,7 @@ create_property (const gchar  *prop_name,
+ 					  default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_INT:
++    case (uintptr_t)G_TYPE_INT:
+ 	{
+ 	    gint minimum, maximum, default_value;
+ 
+@@ -236,7 +236,7 @@ create_property (const gchar  *prop_name,
+ 				      maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_UINT:
++    case (uintptr_t)G_TYPE_UINT:
+ 	{
+ 	    guint minimum, maximum, default_value;
+ 
+@@ -247,7 +247,7 @@ create_property (const gchar  *prop_name,
+ 				       maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_LONG:
++    case (uintptr_t)G_TYPE_LONG:
+ 	{
+ 	    glong minimum, maximum, default_value;
+ 
+@@ -258,7 +258,7 @@ create_property (const gchar  *prop_name,
+ 				       maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t)G_TYPE_ULONG:
+ 	{
+ 	    gulong minimum, maximum, default_value;
+ 
+@@ -269,7 +269,7 @@ create_property (const gchar  *prop_name,
+ 					maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_INT64:
++    case (uintptr_t)G_TYPE_INT64:
+ 	{
+ 	    gint64 minimum, maximum, default_value;
+ 
+@@ -280,7 +280,7 @@ create_property (const gchar  *prop_name,
+ 					maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t)G_TYPE_UINT64:
+ 	{
+ 	    guint64 minimum, maximum, default_value;
+ 
+@@ -291,7 +291,7 @@ create_property (const gchar  *prop_name,
+ 					 maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t)G_TYPE_ENUM:
+ 	{
+ 	    gint default_value;
+ 	    PyObject *pydefault;
+@@ -307,7 +307,7 @@ create_property (const gchar  *prop_name,
+ 				       prop_type, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t)G_TYPE_FLAGS:
+ 	{
+ 	    guint default_value;
+ 	    PyObject *pydefault;
+@@ -323,7 +323,7 @@ create_property (const gchar  *prop_name,
+ 					prop_type, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t)G_TYPE_FLOAT:
+ 	{
+ 	    gfloat minimum, maximum, default_value;
+ 
+@@ -334,7 +334,7 @@ create_property (const gchar  *prop_name,
+ 					maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t)G_TYPE_DOUBLE:
+ 	{
+ 	    gdouble minimum, maximum, default_value;
+ 
+@@ -345,7 +345,7 @@ create_property (const gchar  *prop_name,
+ 					 maximum, default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_STRING:
++    case (uintptr_t)G_TYPE_STRING:
+ 	{
+ 	    const gchar *default_value;
+ 
+@@ -355,17 +355,17 @@ create_property (const gchar  *prop_name,
+ 					 default_value, flags);
+ 	}
+ 	break;
+-    case G_TYPE_PARAM:
++    case (uintptr_t)G_TYPE_PARAM:
+ 	if (!PyArg_ParseTuple(args, ""))
+ 	    return NULL;
+ 	pspec = g_param_spec_param (prop_name, nick, blurb, prop_type, flags);
+ 	break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t)G_TYPE_BOXED:
+ 	if (!PyArg_ParseTuple(args, ""))
+ 	    return NULL;
+ 	pspec = g_param_spec_boxed (prop_name, nick, blurb, prop_type, flags);
+ 	break;
+-    case G_TYPE_POINTER:
++    case (uintptr_t)G_TYPE_POINTER:
+ 	if (!PyArg_ParseTuple(args, ""))
+ 	    return NULL;
+ 	if (prop_type == G_TYPE_GTYPE)
+@@ -373,13 +373,13 @@ create_property (const gchar  *prop_name,
+ 	else
+ 	    pspec = g_param_spec_pointer (prop_name, nick, blurb, flags);
+ 	break;
+-    case G_TYPE_OBJECT:
+-    case G_TYPE_INTERFACE:
++    case (uintptr_t)G_TYPE_OBJECT:
++    case (uintptr_t)G_TYPE_INTERFACE:
+ 	if (!PyArg_ParseTuple(args, ""))
+ 	    return NULL;
+ 	pspec = g_param_spec_object (prop_name, nick, blurb, prop_type, flags);
+ 	break;
+-    case G_TYPE_VARIANT:
++    case (uintptr_t)G_TYPE_VARIANT:
+ 	{
+ 	    PyObject *pydefault;
+             GVariant *default_value = NULL;
+diff --git a/gi/pygi-value.c b/gi/pygi-value.c
+index fa213169a7f0..6f40431107e1 100644
+--- a/gi/pygi-value.c
++++ b/gi/pygi-value.c
+@@ -326,8 +326,8 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+ {
+     GType value_type = G_VALUE_TYPE(value);
+ 
+-    switch (G_TYPE_FUNDAMENTAL(value_type)) {
+-    case G_TYPE_INTERFACE:
++    switch ((uintptr_t)G_TYPE_FUNDAMENTAL(value_type)) {
++    case (uintptr_t)G_TYPE_INTERFACE:
+         /* we only handle interface types that have a GObject prereq */
+         if (g_type_is_a(value_type, G_TYPE_OBJECT)) {
+             if (obj == Py_None)
+@@ -349,7 +349,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+             return -1;
+         }
+         break;
+-    case G_TYPE_CHAR:
++    case (uintptr_t)G_TYPE_CHAR:
+     {
+         gint8 temp;
+         if (pygi_gschar_from_py (obj, &temp)) {
+@@ -358,7 +358,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_UCHAR:
++    case (uintptr_t)G_TYPE_UCHAR:
+     {
+         guchar temp;
+         if (pygi_guchar_from_py (obj, &temp)) {
+@@ -367,7 +367,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t)G_TYPE_BOOLEAN:
+     {
+         gboolean temp;
+         if (pygi_gboolean_from_py (obj, &temp)) {
+@@ -376,7 +376,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_INT:
++    case (uintptr_t)G_TYPE_INT:
+     {
+         gint temp;
+         if (pygi_gint_from_py (obj, &temp)) {
+@@ -385,7 +385,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_UINT:
++    case (uintptr_t)G_TYPE_UINT:
+     {
+         guint temp;
+         if (pygi_guint_from_py (obj, &temp)) {
+@@ -394,7 +394,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_LONG:
++    case (uintptr_t)G_TYPE_LONG:
+     {
+         glong temp;
+         if (pygi_glong_from_py (obj, &temp)) {
+@@ -403,7 +403,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_ULONG:
++    case (uintptr_t)G_TYPE_ULONG:
+     {
+         gulong temp;
+         if (pygi_gulong_from_py (obj, &temp)) {
+@@ -412,7 +412,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_INT64:
++    case (uintptr_t)G_TYPE_INT64:
+     {
+         gint64 temp;
+         if (pygi_gint64_from_py (obj, &temp)) {
+@@ -421,7 +421,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_UINT64:
++    case (uintptr_t)G_TYPE_UINT64:
+     {
+         guint64 temp;
+         if (pygi_guint64_from_py (obj, &temp)) {
+@@ -430,7 +430,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_ENUM:
++    case (uintptr_t)G_TYPE_ENUM:
+     {
+         gint val = 0;
+         if (pyg_enum_get_value(G_VALUE_TYPE(value), obj, &val) < 0) {
+@@ -439,7 +439,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         g_value_set_enum(value, val);
+     }
+     break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t)G_TYPE_FLAGS:
+     {
+         guint val = 0;
+         if (pyg_flags_get_value(G_VALUE_TYPE(value), obj, &val) < 0) {
+@@ -449,7 +449,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         return 0;
+     }
+     break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t)G_TYPE_FLOAT:
+     {
+         gfloat temp;
+         if (pygi_gfloat_from_py (obj, &temp)) {
+@@ -458,7 +458,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t)G_TYPE_DOUBLE:
+     {
+         gdouble temp;
+         if (pygi_gdouble_from_py (obj, &temp)) {
+@@ -467,7 +467,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         } else
+             return -1;
+     }
+-    case G_TYPE_STRING:
++    case (uintptr_t)G_TYPE_STRING:
+     {
+         gchar *temp;
+         if (pygi_utf8_from_py (obj, &temp)) {
+@@ -489,7 +489,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+             return -1;
+         }
+     }
+-    case G_TYPE_POINTER:
++    case (uintptr_t)G_TYPE_POINTER:
+         if (obj == Py_None)
+             g_value_set_pointer(value, NULL);
+         else if (PyObject_TypeCheck(obj, &PyGPointer_Type) &&
+@@ -504,7 +504,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+             return -1;
+         }
+         break;
+-    case G_TYPE_BOXED: {
++    case (uintptr_t)G_TYPE_BOXED: {
+         PyGTypeMarshal *bm;
+         gboolean holds_value_array;
+ 
+@@ -561,7 +561,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+         }
+         break;
+     }
+-    case G_TYPE_PARAM:
++    case (uintptr_t)G_TYPE_PARAM:
+         /* we need to support both the wrapped _gi.GParamSpec and the GI
+          * GObject.ParamSpec */
+         if (G_IS_PARAM_SPEC (pygobject_get (obj)))
+@@ -573,7 +573,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+             return -1;
+         }
+         break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t)G_TYPE_OBJECT:
+         if (obj == Py_None) {
+             g_value_set_object(value, NULL);
+         } else if (PyObject_TypeCheck(obj, &PyGObject_Type) &&
+@@ -585,7 +585,7 @@ pyg_value_from_pyobject_with_error(GValue *value, PyObject *obj)
+             return -1;
+         }
+         break;
+-    case G_TYPE_VARIANT:
++    case (uintptr_t)G_TYPE_VARIANT:
+     {
+         if (obj == Py_None)
+             g_value_set_variant(value, NULL);
+@@ -683,36 +683,36 @@ PyObject *
+ pygi_value_to_py_basic_type (const GValue *value, GType fundamental, gboolean *handled)
+ {
+     *handled = TRUE;
+-    switch (fundamental) {
+-        case G_TYPE_CHAR:
++    switch ((uintptr_t)fundamental) {
++        case (uintptr_t)G_TYPE_CHAR:
+             return PyLong_FromLong (g_value_get_schar (value));
+-        case G_TYPE_UCHAR:
++        case (uintptr_t)G_TYPE_UCHAR:
+             return PyLong_FromLong (g_value_get_uchar (value));
+-        case G_TYPE_BOOLEAN:
++        case (uintptr_t)G_TYPE_BOOLEAN:
+             return pygi_gboolean_to_py (g_value_get_boolean (value));
+-        case G_TYPE_INT:
++        case (uintptr_t)G_TYPE_INT:
+             return pygi_gint_to_py (g_value_get_int (value));
+-        case G_TYPE_UINT:
++        case (uintptr_t)G_TYPE_UINT:
+             return pygi_guint_to_py (g_value_get_uint (value));
+-        case G_TYPE_LONG:
++        case (uintptr_t)G_TYPE_LONG:
+             return pygi_glong_to_py (g_value_get_long(value));
+-        case G_TYPE_ULONG:
++        case (uintptr_t)G_TYPE_ULONG:
+             return pygi_gulong_to_py (g_value_get_ulong (value));
+-        case G_TYPE_INT64:
++        case (uintptr_t)G_TYPE_INT64:
+             return pygi_gint64_to_py (g_value_get_int64 (value));
+-        case G_TYPE_UINT64:
++        case (uintptr_t)G_TYPE_UINT64:
+             return pygi_guint64_to_py (g_value_get_uint64 (value));
+-        case G_TYPE_ENUM:
++        case (uintptr_t)G_TYPE_ENUM:
+             return pyg_enum_from_gtype (G_VALUE_TYPE (value),
+                                         g_value_get_enum (value));
+-        case G_TYPE_FLAGS:
++        case (uintptr_t)G_TYPE_FLAGS:
+             return pyg_flags_from_gtype (G_VALUE_TYPE (value),
+                                          g_value_get_flags (value));
+-        case G_TYPE_FLOAT:
++        case (uintptr_t)G_TYPE_FLOAT:
+             return pygi_gfloat_to_py (g_value_get_float (value));
+-        case G_TYPE_DOUBLE:
++        case (uintptr_t)G_TYPE_DOUBLE:
+             return pygi_gdouble_to_py (g_value_get_double (value));
+-        case G_TYPE_STRING:
++        case (uintptr_t)G_TYPE_STRING:
+             return pygi_utf8_to_py (g_value_get_string (value));
+         default:
+             *handled = FALSE;
+@@ -735,20 +735,20 @@ value_to_py_structured_type (const GValue *value, GType fundamental, gboolean co
+ {
+     const gchar *type_name;
+ 
+-    switch (fundamental) {
+-    case G_TYPE_INTERFACE:
++    switch ((uintptr_t)fundamental) {
++    case (uintptr_t)G_TYPE_INTERFACE:
+         if (g_type_is_a(G_VALUE_TYPE(value), G_TYPE_OBJECT))
+             return pygobject_new(g_value_get_object(value));
+         else
+             break;
+ 
+-    case G_TYPE_POINTER:
++    case (uintptr_t)G_TYPE_POINTER:
+         if (G_VALUE_HOLDS_GTYPE (value))
+             return pyg_type_wrapper_new (g_value_get_gtype (value));
+         else
+             return pyg_pointer_new(G_VALUE_TYPE(value),
+                     g_value_get_pointer(value));
+-    case G_TYPE_BOXED: {
++    case (uintptr_t)G_TYPE_BOXED: {
+         PyGTypeMarshal *bm;
+         gboolean holds_value_array;
+ 
+@@ -792,11 +792,11 @@ value_to_py_structured_type (const GValue *value, GType fundamental, gboolean co
+                         g_value_get_boxed(value),FALSE,FALSE);
+         }
+     }
+-    case G_TYPE_PARAM:
++    case (uintptr_t)G_TYPE_PARAM:
+         return pyg_param_spec_new(g_value_get_param(value));
+-    case G_TYPE_OBJECT:
++    case (uintptr_t)G_TYPE_OBJECT:
+         return pygobject_new(g_value_get_object(value));
+-    case G_TYPE_VARIANT:
++    case (uintptr_t)G_TYPE_VARIANT:
+     {
+         GVariant *v = g_value_get_variant(value);
+         if (v == NULL) {
+@@ -805,7 +805,7 @@ value_to_py_structured_type (const GValue *value, GType fundamental, gboolean co
+         }
+         return pygi_struct_new_from_g_type (G_TYPE_VARIANT, g_variant_ref(v), FALSE);
+     }
+-    case G_TYPE_INVALID:
++    case (uintptr_t)G_TYPE_INVALID:
+         PyErr_SetString (PyExc_TypeError, "Invalid type");
+         return NULL;
+     default:
+diff --git a/gi/pygobject-object.c b/gi/pygobject-object.c
+index 8db78a64adb5..b287fc782ffc 100644
+--- a/gi/pygobject-object.c
++++ b/gi/pygobject-object.c
+@@ -1905,7 +1905,7 @@ pygobject_emit(PyGObject *self, PyObject *args)
+ 
+     for (i = 0; i < query.n_params; i++)
+ 	g_value_init(&params[i + 1],
+-		     query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++		     zandptr(query.param_types[i], ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+     for (i = 0; i < query.n_params; i++) {
+ 	PyObject *item = PyTuple_GetItem(args, i+1);
+ 
+@@ -1926,7 +1926,7 @@ pygobject_emit(PyGObject *self, PyObject *args)
+     }    
+ 
+     if (query.return_type != G_TYPE_NONE)
+-	g_value_init(&ret, query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++	g_value_init(&ret, zandptr(query.return_type, ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+     
+     Py_BEGIN_ALLOW_THREADS;
+     g_signal_emitv(params, signal_id, detail, &ret);
+@@ -1936,7 +1936,7 @@ pygobject_emit(PyGObject *self, PyObject *args)
+ 	g_value_unset(&params[i]);
+     
+     g_free(params);
+-    if ((query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE) != G_TYPE_NONE) {
++    if ((zandptr(query.return_type, ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE)) != G_TYPE_NONE) {
+       gboolean was_floating = FALSE;
+ 
+       if (G_VALUE_HOLDS_OBJECT (&ret)) {
+@@ -2000,11 +2000,11 @@ pygobject_chain_from_overridden(PyGObject *self, PyObject *args)
+ 
+     for (i = 0; i < query.n_params; i++)
+ 	g_value_init(&params[i + 1],
+-		     query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++		     zandptr(query.param_types[i], ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+     for (i = 0; i < query.n_params; i++) {
+ 	PyObject *item = PyTuple_GetItem(args, i);
+ 
+-	if (pyg_boxed_check(item, (query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE))) {
++	if (pyg_boxed_check(item, (zandptr(query.param_types[i], ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE)))) {
+ 	    g_value_set_static_boxed(&params[i+1], pyg_boxed_get(item, void));
+ 	}
+ 	else if (pyg_value_from_pyobject(&params[i+1], item) < 0) {
+@@ -2022,7 +2022,7 @@ pygobject_chain_from_overridden(PyGObject *self, PyObject *args)
+ 	}
+     }
+     if (query.return_type != G_TYPE_NONE)
+-	g_value_init(&ret, query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++	g_value_init(&ret, zandptr(query.return_type, ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+     g_signal_chain_from_overridden(params, &ret);
+     for (i = 0; i < query.n_params + 1; i++)
+ 	g_value_unset(&params[i]);
+diff --git a/tests/testhelpermodule.c b/tests/testhelpermodule.c
+index eb17af87e656..e0b253489818 100644
+--- a/tests/testhelpermodule.c
++++ b/tests/testhelpermodule.c
+@@ -383,20 +383,20 @@ test_gvalue_ret_callback (GObject *object, GType type)
+   ret = g_malloc0 (sizeof (GValue));
+   g_value_init (ret, type);
+ 
+-  switch (type) {
+-    case G_TYPE_INT:
++  switch ((uintptr_t)type) {
++    case (uintptr_t)G_TYPE_INT:
+       g_value_set_int(ret, G_MAXINT);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t)G_TYPE_INT64:
+       g_value_set_int64(ret, G_MAXINT64);
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t)G_TYPE_UINT:
+       g_value_set_uint(ret, G_MAXUINT);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t)G_TYPE_UINT64:
+       g_value_set_uint64(ret, G_MAXUINT64);
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t)G_TYPE_STRING:
+       g_value_set_string(ret, "hello");
+       break;
+     default:

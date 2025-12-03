@@ -873,6 +873,19 @@ index 4312cbac29e3..e257e7f16fe5 100644
  
    blob = (const RegisteredTypeBlob *) &base_info->typelib->data[base_info->offset];
  
+diff --git a/girepository/tests/registered-type-info.c b/girepository/tests/registered-type-info.c
+index 16dbf82aff33..57f442e0bda1 100644
+--- a/girepository/tests/registered-type-info.c
++++ b/girepository/tests/registered-type-info.c
+@@ -95,7 +95,7 @@ test_boxed (RepositoryFixture *fx,
+ 
+       g_test_message ("Expecting %s to %s", types[i].name, types[i].expect_boxed ? "be boxed" : "not be boxed");
+ 
+-      g_assert_cmpuint (G_TYPE_FROM_INSTANCE (type_info), ==, types[i].expect_info_type);
++      g_assert_cmpuint ((uintptr_t)G_TYPE_FROM_INSTANCE (type_info), ==, (uintptr_t)types[i].expect_info_type);
+ 
+       if (types[i].expect_nonnull_gtype_info)
+         {
 diff --git a/glib/gatomic.c b/glib/gatomic.c
 index 2d3755e684bf..df6388f1f7d9 100644
 --- a/glib/gatomic.c
@@ -1165,6 +1178,26 @@ index 992e17368217..07fb48d66b28 100644
  
    g_pointer_bit_lock_and_get ((void **) datalist, DATALIST_LOCK_BIT, &ptr);
    return G_DATALIST_CLEAN_POINTER (ptr);
+diff --git a/glib/gqsort.c b/glib/gqsort.c
+index 9d6bb1e14b58..43117837f8f4 100644
+--- a/glib/gqsort.c
++++ b/glib/gqsort.c
+@@ -264,6 +264,7 @@ msort_r (void *b, size_t n, size_t s, GCompareDataFunc cmp, void *arg)
+     }
+   else
+     {
++#ifndef __FILC__
+       if ((s & (sizeof (guint32) - 1)) == 0
+ 	  && (gsize) (guintptr) b % G_ALIGNOF(guint32) == 0)
+ 	{
+@@ -276,6 +277,7 @@ msort_r (void *b, size_t n, size_t s, GCompareDataFunc cmp, void *arg)
+ 		   && (gsize) (guintptr) b % G_ALIGNOF(void *) == 0)
+ 	    p.var = 2;
+ 	}
++#endif
+       msort_with_tmp (&p, b, n);
+     }
+   g_free (tmp);
 diff --git a/glib/gtypes.h b/glib/gtypes.h
 index 9d912d52363d..969eb1a4b197 100644
 --- a/glib/gtypes.h

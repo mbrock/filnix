@@ -16,6 +16,55 @@ index 85b3a52b4865..c605c914fec7 100644
  endif
  
  liblzma_la_SOURCES += ../common/tuklib_physmem.c
+diff --git a/src/liblzma/check/crc32_fast.c b/src/liblzma/check/crc32_fast.c
+index 16dbb7467513..8b00f4c7fa45 100644
+--- a/src/liblzma/check/crc32_fast.c
++++ b/src/liblzma/check/crc32_fast.c
+@@ -21,6 +21,7 @@
+ #	include "crc32_arm64.h"
+ #endif
+ 
++#include <stdfil.h>
+ 
+ #ifdef CRC32_GENERIC
+ 
+@@ -185,6 +186,10 @@ lzma_crc32(const uint8_t *buf, size_t size, uint32_t crc)
+ 		return crc32_generic(buf, size, crc);
+ #endif
+ 
++        if (!zinbounds(zmkptr(buf, (uintptr_t)buf & -16)) ||
++            !zinbounds(zmkptr(buf, (((uintptr_t)buf + size + 15) & -16) - 1)))
++                return crc32_generic(buf, size, crc);
++
+ /*
+ #ifndef HAVE_FUNC_ATTRIBUTE_CONSTRUCTOR
+ 	// See crc32_dispatch(). This would be the alternative which uses
+diff --git a/src/liblzma/check/crc64_fast.c b/src/liblzma/check/crc64_fast.c
+index 0ce83fe4ad36..dddb6ac44767 100644
+--- a/src/liblzma/check/crc64_fast.c
++++ b/src/liblzma/check/crc64_fast.c
+@@ -18,6 +18,7 @@
+ #	include "crc_x86_clmul.h"
+ #endif
+ 
++#include <stdfil.h>
+ 
+ #ifdef CRC64_GENERIC
+ 
+@@ -139,7 +140,12 @@ lzma_crc64(const uint8_t *buf, size_t size, uint64_t crc)
+ 	if (size <= 16)
+ 		return crc64_generic(buf, size, crc);
+ #endif
+-	return crc64_func(buf, size, crc);
++
++        if (!zinbounds(zmkptr(buf, (uintptr_t)buf & -16)) ||
++            !zinbounds(zmkptr(buf, (((uintptr_t)buf + size + 15) & -16) - 1)))
++                return crc64_generic(buf, size, crc);
++
++        return crc64_func(buf, size, crc);
+ 
+ #elif defined(CRC64_ARCH_OPTIMIZED)
+ 	// If arch-optimized version is used unconditionally without runtime
 diff --git a/src/liblzma/check/crc_x86_clmul.h b/src/liblzma/check/crc_x86_clmul.h
 index f1254ece18ed..8a6800a13a72 100644
 --- a/src/liblzma/check/crc_x86_clmul.h
@@ -39,21 +88,6 @@ index f1254ece18ed..8a6800a13a72 100644
  
  	// If size2 <= 16 then the whole input fits into a single 16-byte
  	// vector. If size2 > 16 then at least two 16-byte vectors must
-diff --git a/src/liblzma/common/common.h b/src/liblzma/common/common.h
-index 20af32f6d6cd..677901132819 100644
---- a/src/liblzma/common/common.h
-+++ b/src/liblzma/common/common.h
-@@ -90,6 +90,10 @@
- #		define LZMA_SYMVER_API(extnamever, type, intname) \
- 			extern __attribute__((__symver__(extnamever))) \
- 					LZMA_API(type) intname
-+#	elif __PIZLONATOR_WAS_HERE__
-+#		define LZMA_SYMVER_API(extnamever, type, intname) \
-+			__asm__(".filc_symver " #intname "," extnamever); \
-+			extern LZMA_API(type) intname
- #	else
- #		define LZMA_SYMVER_API(extnamever, type, intname) \
- 			__asm__(".symver " #intname "," extnamever); \
 diff --git a/src/liblzma/rangecoder/range_decoder.h b/src/liblzma/rangecoder/range_decoder.h
 index 31a58d1ffbed..4e5e96bf6839 100644
 --- a/src/liblzma/rangecoder/range_decoder.h

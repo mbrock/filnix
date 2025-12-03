@@ -1,8 +1,48 @@
+diff --git a/src/unix/fs.c b/src/unix/fs.c
+index 717f3fab3693..b4e47352dfaf 100644
+--- a/src/unix/fs.c
++++ b/src/unix/fs.c
+@@ -463,7 +463,7 @@ static ssize_t uv__preadv_or_pwritev(int fd,
+                                      const struct iovec* bufs,
+                                      size_t nbufs,
+                                      off_t off,
+-                                     _Atomic uintptr_t* cache,
++                                     void*_Atomic* cache,
+                                      int is_pread) {
+   ssize_t (*f)(int, const struct iovec*, uv__iovcnt, off_t);
+   void* p;
+@@ -481,7 +481,7 @@ static ssize_t uv__preadv_or_pwritev(int fd,
+ #endif  /* RTLD_DEFAULT */
+     if (p == NULL)
+       p = is_pread ? uv__preadv_emul : uv__pwritev_emul;
+-    atomic_store_explicit(cache, (uintptr_t) p, memory_order_relaxed);
++    atomic_store_explicit(cache, p, memory_order_relaxed);
+   }
+ 
+   f = p;
+@@ -493,7 +493,7 @@ static ssize_t uv__preadv(int fd,
+                           const struct iovec* bufs,
+                           size_t nbufs,
+                           off_t off) {
+-  static _Atomic uintptr_t cache;
++  static void*_Atomic cache;
+   return uv__preadv_or_pwritev(fd, bufs, nbufs, off, &cache, /*is_pread*/1);
+ }
+ 
+@@ -502,7 +502,7 @@ static ssize_t uv__pwritev(int fd,
+                            const struct iovec* bufs,
+                            size_t nbufs,
+                            off_t off) {
+-  static _Atomic uintptr_t cache;
++  static void*_Atomic cache;
+   return uv__preadv_or_pwritev(fd, bufs, nbufs, off, &cache, /*is_pread*/0);
+ }
+ 
 diff --git a/src/unix/linux.c b/src/unix/linux.c
-index 4164e90dbb0a..963577117ddb 100644
+index ea3e2de0384b..3352c2fe0699 100644
 --- a/src/unix/linux.c
 +++ b/src/unix/linux.c
-@@ -466,6 +466,9 @@ static int uv__use_io_uring(void) {
+@@ -464,6 +464,9 @@ static int uv__use_io_uring(uint32_t flags) {
  #elif defined(__powerpc64__) || defined(__ppc64__)
    /* See https://github.com/libuv/libuv/issues/4283. */
    return 0; /* Random SIGSEGV in signal handler. */
@@ -13,10 +53,10 @@ index 4164e90dbb0a..963577117ddb 100644
    /* Ternary: unknown=0, yes=1, no=-1 */
    static _Atomic int use_io_uring;
 diff --git a/src/unix/process.c b/src/unix/process.c
-index 4812a90f2f50..2a82fe7ec13e 100644
+index 43e6b798458f..4bd52faae09e 100644
 --- a/src/unix/process.c
 +++ b/src/unix/process.c
-@@ -73,6 +73,8 @@ extern char **environ;
+@@ -70,6 +70,8 @@ extern char **environ;
  #define UV_USE_SIGCHLD
  #endif
  
@@ -25,7 +65,7 @@ index 4812a90f2f50..2a82fe7ec13e 100644
  
  #ifdef UV_USE_SIGCHLD
  static void uv__chld(uv_signal_t* handle, int signum) {
-@@ -290,7 +292,7 @@ static void uv__process_child_init(const uv_process_options_t* options,
+@@ -300,7 +302,7 @@ static void uv__process_child_init(const uv_process_options_t* options,
     * them internally.
     */
    for (n = 1; n < 32; n += 1) {
@@ -56,7 +96,7 @@ index 9d1f00ddf66e..d94007686cf7 100644
    args_mem = new_argv;
    process_title = pt;
 diff --git a/src/unix/signal.c b/src/unix/signal.c
-index bc4206e6d864..867d838be73a 100644
+index ccaa72db457c..ab80e6519073 100644
 --- a/src/unix/signal.c
 +++ b/src/unix/signal.c
 @@ -27,6 +27,14 @@
@@ -83,7 +123,7 @@ index bc4206e6d864..867d838be73a 100644
  
      /* write() should be atomic for small data chunks, so the entire message
       * should be written at once. In theory the pipe could become full, in
-@@ -471,7 +479,7 @@ static void uv__signal_event(uv_loop_t* loop,
+@@ -477,7 +485,7 @@ static void uv__signal_event(uv_loop_t* loop,
  
      for (i = 0; i < end; i += sizeof(uv__signal_msg_t)) {
        msg = (uv__signal_msg_t*) (buf + i);
@@ -108,6 +148,28 @@ index 941e4b363910..64dc155e11ed 100644
    }
  
    /* Verify that invalid priorities return UV_EINVAL. */
+diff --git a/test/test-thread-name.c b/test/test-thread-name.c
+index 39340744290a..4499c1c73c73 100644
+--- a/test/test-thread-name.c
++++ b/test/test-thread-name.c
+@@ -69,7 +69,7 @@ TEST_IMPL(thread_name) {
+ #if defined(__ANDROID_API__) && __ANDROID_API__ < 26 || \
+     defined(_AIX) || \
+     defined(__MVS__) || \
+-    defined(__PASE__)
++    defined(__PASE__) || defined(__FILC__) /* FIXME: Fil-C should support this https://github.com/pizlonator/fil-c/issues/112 */
+   RETURN_SKIP("API not available on this platform");
+ #endif
+ 
+@@ -179,7 +179,7 @@ static void after_work_cb(uv_work_t* req, int status) {
+ 
+ TEST_IMPL(thread_name_threadpool) {
+ 
+-#if defined(_AIX) || defined(__PASE__)
++#if defined(_AIX) || defined(__PASE__) || defined(__FILC__)
+   RETURN_SKIP("API not available on this platform");
+ #endif
+   uv_work_t req;
 diff --git a/test/test-thread-priority.c b/test/test-thread-priority.c
 index 0aaf297722b1..19c57772854c 100644
 --- a/test/test-thread-priority.c
@@ -138,7 +200,7 @@ index 0aaf297722b1..19c57772854c 100644
 \ No newline at end of file
 +}
 diff --git a/test/test-thread.c b/test/test-thread.c
-index d0094e304435..385abd77b486 100644
+index 819bbd5c9239..adc140b77274 100644
 --- a/test/test-thread.c
 +++ b/test/test-thread.c
 @@ -223,7 +223,7 @@ static void thread_check_stack(void* arg) {

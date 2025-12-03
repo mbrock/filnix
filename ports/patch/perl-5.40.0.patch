@@ -741,6 +741,19 @@ index a07e83f9012a..84749564c877 100644
  T_PTRREF
  	sv_setref_pv($arg, Nullch, (void*)$var);
  T_REF_IV_REF
+diff --git a/mg.c b/mg.c
+index 4b6d4ab62266..77dc102e5ac0 100644
+--- a/mg.c
++++ b/mg.c
+@@ -2991,7 +2991,7 @@ S_set_dollarzero(pTHX_ SV *sv)
+             PL_origargv[i] = 0;
+ #ifdef HAS_PRCTL_SET_NAME
+         /* Set the legacy process name in addition to the POSIX name on Linux */
+-        if (prctl(PR_SET_NAME, (unsigned long)s, 0, 0, 0) != 0) {
++        if (prctl(PR_SET_NAME, s, 0, 0, 0) != 0) {
+             /* diag_listed_as: SKIPME */
+             Perl_croak(aTHX_ "Can't set $0 with prctl(): %s", Strerror(errno));
+         }
 diff --git a/perl.c b/perl.c
 index 0f1872dd177b..a5694de1afa7 100644
 --- a/perl.c

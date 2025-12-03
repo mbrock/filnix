@@ -1,0 +1,7 @@
+diff --git a/configure.txt b/configure.txt
+new file mode 100644
+index 000000000000..977231529344
+--- /dev/null
++++ b/configure.txt
+@@ -0,0 +1 @@
++CC=$PWD/../../build/bin/clang CXX=$PWD/../../build/bin/clang++ ./configure --enable-shared --prefix=$PWD/../../pizfix
