@@ -6,6 +6,7 @@
 {
   pkgs,
   prev,
+  final,
 }:
 let
   inherit (import ./ports { inherit (pkgs) lib pkgs; })
@@ -21,6 +22,7 @@ let
     parallelize
     serialize
     tool
+    link
     patch
     skipPatch
     removeCFlag
@@ -542,6 +544,10 @@ in
     (addMesonFlag "-Dsystemd=false")
   ])
 
+  (for pkgs.seatd [
+    (arg { systemd = final.systemdLibs; })
+  ])
+
   (for pkgs.libglvnd [
     (configure "--disable-asm")
   ])
@@ -564,9 +570,13 @@ in
     );
   }
 
+  (for pkgs.libtiff [
+    (patch ./ports/patch/tiff-4.6.0.patch)
+    (arg { libdeflate = final.hello; })
+  ])
+
   (for pkgs.libwebp [
     (patch ./ports/patch/libwebp-1.4.0.patch)
-    (arg { tiffSupport = false; })
   ])
 
   (for pkgs.libevdev [
@@ -575,6 +585,21 @@ in
   ])
 
   (for pkgs.valgrind [ (broken "not yet ported") ])
+
+  (for pkgs.cups [
+    (arg { gnutls = final.openssl; })
+    (arg { systemd = final.systemdLibs; })
+  ])
+
+  (for pkgs.avahi [
+    (tool depizloing-nm)
+  ])
+
+  (for pkgs.dbus [
+    (arg { systemdMinimal = final.systemdLibs; })
+    (arg { libapparmor = final.hello; })
+    (configure "--disable-apparmor")
+  ])
 
   # ━━━ Development Tools & Libraries ━━━
 
@@ -723,45 +748,50 @@ in
     (tool depizloing-nm)
   ])
 
-  {
-    systemdLibs = for pkgs.systemd [
-      (pin "256.4" "sha256-eGHVRBkPk4ysGyQmJNeMlv4uu8e3L4YWboi1BFHG+lg=")
-      (patch ./ports/patch/systemd-256.4.patch)
-      (arg { withKexectools = false; })
-      (arg { withLibseccomp = false; })
-      (arg { getent = pkgs.stdenv.cc.libc.getent; }) # otherwise this defaults to netbsd impl
-      (skipPatch "specific-unit-directories.patch") # not installing units anyway
-      (removeMesonFlag "-Dshellprofiledir") # not in this version
-      (addMesonFlag "-Dlink-udev-shared=false")
-      (use {
-        # the automatic patchelf hook was segfaulting
-        # while trying to patch some debug info files?!
-        separateDebugInfo = false;
-      })
+  (
+    let
+      getent = pkgs.writeShellScriptBin "getent" ''
+        ${final.stdenv.cc.libc}/bin/getent "$@"
+      '';
+    in
+    {
+      systemdLibs = for pkgs.systemdLibs [
+        (pin "256.4" "sha256-eGHVRBkPk4ysGyQmJNeMlv4uu8e3L4YWboi1BFHG+lg=")
+        (patch ./ports/patch/systemd-256.4.patch)
+        (arg { withKexectools = false; })
+        (arg { withLibseccomp = false; })
+        (arg { inherit getent; })
+        (link getent)
 
-      # this seems to not be a real problem
-      (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
-    ];
-  }
+        (skipPatch "specific-unit-directories.patch") # not installing units anyway
+        (removeMesonFlag "-Dshellprofiledir") # not in this version
+        (addMesonFlag "-Dsshconfdir=no")
+        (use {
+          # the automatic patchelf hook was segfaulting
+          # while trying to patch some debug info files?!
+          separateDebugInfo = false;
+        })
+
+        # this seems to not be a real problem
+        (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
+      ];
+    }
+  )
 
   (for pkgs.go [
     (broken "not yet ported")
   ])
 
   (for pkgs.tmux [
-    (arg { withSystemd = false; })
+    (arg { systemd = final.systemdLibs; })
   ])
 
   (for pkgs.ttyd [
     (skipCheck "network service tests")
   ])
 
-  (for pkgs.libutempter [
-    (arg { glib = null; })
-  ])
-
   (for pkgs.procps [
-    (arg { withSystemd = false; })
+    (arg { systemd = final.systemdLibs; })
     (patch ./ports/patch/procps-ng-4.0.4.patch)
   ])
 
@@ -806,9 +836,9 @@ in
 
   (for pkgs.tor [
     (arg {
-      systemd = null;
+      systemd = final.systemdLibs;
       libseccomp = null;
-      libcap = null;
+      # libcap = null;
     })
     (configure "ac_cv_header_execinfo_h=no")
     (configure "ac_cv_func_backtrace=no")
@@ -891,21 +921,18 @@ in
     emacs30 = for pkgs.emacs30 [
       (arg {
         gnutls = null;
-        systemd = null;
-        mailutils = null;
+        systemd = final.systemdLibs;
         dbus = null;
-        harfbuzz = null;
         withX = false;
         withGTK3 = false;
         withXwidgets = false;
+        withMailutils = false;
         withNS = false;
         withPgtk = false;
         withImageMagick = false;
-        withWebP = false;
         withTreeSitter = false;
         withGpm = false;
-        withSystemd = false;
-        withMailutils = false;
+        withSystemd = true;
         withNativeCompilation = false;
         withCsrc = true;
         withCairo = false;
@@ -953,10 +980,6 @@ in
     (broken "tries to cross compile rustc")
   ])
 
-  # (for pkgs.systemd [
-  #   (broken "not yet ported")
-  # ])
-
   (for pkgs.gnutls [
     (broken "too many dependencies")
   ])
@@ -970,10 +993,6 @@ in
       (broken "GUI not supported")
     ];
   }
-
-  (for pkgs.xorg.libX11 [
-    (broken "X11 not supported")
-  ])
 
   (for pkgs.rustc [
     (broken "oh sweet summer child")

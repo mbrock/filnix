@@ -4,7 +4,7 @@
 pkgs: final: prev:
 let
   portDSL = import ./default.nix { inherit (pkgs) lib pkgs; };
-  portList = import ../ports.nix { inherit pkgs prev; };
+  portList = import ../ports.nix { inherit pkgs prev final; };
 in
 portDSL.makeOverlay portList final prev
 
