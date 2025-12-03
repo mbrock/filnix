@@ -61,10 +61,10 @@ in
     (patch ./ports/patch/libevent-2.1.12.patch)
   ])
 
-  (for pkgs.attr [
-    (pin "2.5.2" "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
-    (patch ./ports/patch/attr-2.5.2.patch)
-  ])
+  # (for pkgs.attr [
+  #   (pin "2.5.2" "sha256-Ob9nRS+kHQlIwhl2AQU/SLPXigKTiXNDMqYwmmgMbIc=")
+  #   (patch ./ports/patch/attr-2.5.2.patch)
+  # ])
 
   (for pkgs.expat [
     (tool depizloing-nm)
