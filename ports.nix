@@ -301,7 +301,16 @@ in
   ])
 
   (for pkgs.openssh [
-    #    (pin "9.8p1" "sha256-AhoucJoO30JQsSVr1anlAEEakN3avqgw7VnO+Q652Fw=")
+    (use rec {
+      # our `pin` function doesn't work for this package, so we use a custom source.
+      # i guess the version number of the package isn't verbatim in the url.
+      version = "9.8p1";
+      name = "openssh-${version}";
+      src = pkgs.fetchurl {
+        url = "mirror://openbsd/OpenSSH/portable/openssh-${version}.tar.gz";
+        hash = "sha256-3YvQAqN5tdSZ37BQ3R+pr4Ap6ARh9LtsUjxJlz9aOfM=";
+      };
+    })
     (patch ./ports/patch/openssh-9.8p1.patch)
     (skipCheck "let's see")
     (use {
@@ -310,8 +319,8 @@ in
           echo "verifying OpenSSH version $version"
           output=$($out/bin/$binary -V 2>&1)
           echo "got output: $output"
-          echo "expected output: $(printf '^OpenSSH_\\Q%s\\E,' "$version")"
-          if ! echo "$output" | grep -P "$(printf '^OpenSSH_\\Q%s\\E,' "$version")"; then
+          echo "expected output: $(printf '^OpenSSH_%s,' "$version")"
+          if ! echo "$output" | grep -P "$(printf '^OpenSSH_%s,' "$version")"; then
             echo "OpenSSH version verification failed"
             exit 1
           fi
