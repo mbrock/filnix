@@ -44,7 +44,7 @@ let
       old:
       let
         pname = old.pname or (builtins.parseDrvName old.name).name;
-        oldVersion = old.version or "";
+        oldVersion = "${old.version or ""}";
 
         # Get the original URL and replace old version with new version
         # This handles most common URL patterns automatically

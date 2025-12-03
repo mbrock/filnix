@@ -605,6 +605,19 @@ in
     ];
   }
 
+  {
+    ruby_3_3 = (
+      for pkgs.ruby_3_3 [
+        (pin "3.3.10" "sha256-tVW6pGejBs/I5sbtJNDSeyfpob7R2R2VUJhZ6saw6Sg=")
+        (patch ./ports/patch/ruby-3.3.10.patch)
+        (arg { yjitSupport = false; })
+        (arg { jitSupport = false; })
+        (arg { cargo = null; rustPlatform = null; rustc = null; })
+#        (arg { useBaseRuby = false; })
+       ]
+    );
+  }
+
   # ━━━ Terminal & System ━━━
 
   (for pkgs.tmux [
