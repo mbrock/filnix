@@ -6,6 +6,7 @@
 
 let
   sources = import ../lib/sources.nix { inherit pkgs; };
+
 in
 
 {
@@ -26,6 +27,17 @@ in
       binutils
       glibc.dev
     ];
+
+    postPatch = ''
+      # Add inotify_init to x86_64 syscalls.list so make-syscalls.sh generates
+      # a pizlonated wrapper using zsys_inotify_init instead of using the
+      # hand-written inotify_init.c which has INLINE_SYSCALL_CALL
+      echo 'inotify_init	-	inotify_init	i:	__inotify_init	inotify_init' \
+        >> sysdeps/unix/sysv/linux/x86_64/syscalls.list
+
+      # Remove the .c file so syscalls.list takes precedence
+      rm -f sysdeps/unix/sysv/linux/inotify_init.c
+    '';
 
     preConfigure = ''
       # Fil-C compiler flags from build script
