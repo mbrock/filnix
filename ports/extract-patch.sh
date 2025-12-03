@@ -146,6 +146,30 @@ exclude_patterns=(
     ":(exclude)*/library/tcltest/*"
 )
 
+# Dynamically exclude yacc/bison/flex generated files
+# Find .y files and exclude their generated .c/.h counterparts
+while IFS= read -r yfile; do
+    dir=$(dirname "$yfile")
+    base=$(basename "$yfile" .y)
+    # Common generated file patterns from yacc/bison
+    exclude_patterns+=(":(exclude)$dir/$base.c")
+    exclude_patterns+=(":(exclude)$dir/$base.h")
+    exclude_patterns+=(":(exclude)$dir/$base.tab.c")
+    exclude_patterns+=(":(exclude)$dir/$base.tab.h")
+    exclude_patterns+=(":(exclude)$dir/y.tab.c")
+    exclude_patterns+=(":(exclude)$dir/y.tab.h")
+done < <(find "$project_dir" -name '*.y' -type f 2>/dev/null)
+
+# Find .l files and exclude their generated .c counterparts
+while IFS= read -r lfile; do
+    dir=$(dirname "$lfile")
+    base=$(basename "$lfile" .l)
+    # Common generated file patterns from lex/flex
+    exclude_patterns+=(":(exclude)$dir/$base.c")
+    exclude_patterns+=(":(exclude)$dir/lex.$base.c")
+    exclude_patterns+=(":(exclude)$dir/lex.yy.c")
+done < <(find "$project_dir" -name '*.l' -type f 2>/dev/null)
+
 # Generate the patch, removing the projects/$PROJECT/ path prefix and excluding generated files
 git diff "$first_commit" "$last_commit" -- "$project_dir" "${exclude_patterns[@]}" | \
     sed "s|a/projects/$PROJECT/|a/|g" | \
