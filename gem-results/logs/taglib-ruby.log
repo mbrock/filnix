@@ -1,0 +1,231 @@
+warning: Git tree '/home/mbrock/filnix' has uncommitted changes
+this derivation will be built:
+  /nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv
+this path will be fetched (0.45 MiB download, 2.49 MiB unpacked):
+  /nix/store/il05hbif7wv6jw4425np0dyhpv47hawj-taglib-2.0.2
+copying path '/nix/store/il05hbif7wv6jw4425np0dyhpv47hawj-taglib-2.0.2' from 'https://cache.nixos.org'...
+building '/nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'...
+copying 0 paths...
+error: build of '/nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh' failed: Cannot build '/nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0
+       Last 25 log lines:
+       >    79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+       >       |                                   ^
+       > /nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+       >    36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+       >       |                                                     ^
+       > taglib_base_wrap.cxx:2356:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+       >  2356 |   VALUE type = TYPE(obj);
+       >       |         ^      ~~~~~~~~~
+       > taglib_base_wrap.cxx:2358:15: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+       >  2358 |   *res = type == T_FIXNUM ? NUM2LL(obj) : rb_big2ll(obj);
+       >       |          ~~~~ ^  ~~~~~~~~
+       > taglib_base_wrap.cxx:2366:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+       >  2366 |   VALUE type = TYPE(obj);
+       >       |         ^      ~~~~~~~~~
+       > taglib_base_wrap.cxx:2367:13: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+       >  2367 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+       >       |        ~~~~ ^  ~~~~~~~~
+       > fatal error: too many errors emitted, stopping now [-ferror-limit=]
+       > 5 warnings and 20 errors generated.
+       > make: *** [Makefile:232: taglib_base_wrap.o] Error 1
+       >
+       > make failed, exit code 2
+       >
+       > Gem files will remain installed in /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/taglib-ruby-2.0.0 for inspection.
+       > Results logged to /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/taglib-ruby-2.0.0/gem_make.out
+       For full logs, run:
+         nix log /nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv
+error: Cannot build '/nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0
+       Last 25 log lines:
+       >    79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+       >       |                                   ^
+       > /nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+       >    36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+       >       |                                                     ^
+       > taglib_base_wrap.cxx:2356:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+       >  2356 |   VALUE type = TYPE(obj);
+       >       |         ^      ~~~~~~~~~
+       > taglib_base_wrap.cxx:2358:15: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+       >  2358 |   *res = type == T_FIXNUM ? NUM2LL(obj) : rb_big2ll(obj);
+       >       |          ~~~~ ^  ~~~~~~~~
+       > taglib_base_wrap.cxx:2366:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+       >  2366 |   VALUE type = TYPE(obj);
+       >       |         ^      ~~~~~~~~~
+       > taglib_base_wrap.cxx:2367:13: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+       >  2367 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+       >       |        ~~~~ ^  ~~~~~~~~
+       > fatal error: too many errors emitted, stopping now [-ferror-limit=]
+       > 5 warnings and 20 errors generated.
+       > make: *** [Makefile:232: taglib_base_wrap.o] Error 1
+       >
+       > make failed, exit code 2
+       >
+       > Gem files will remain installed in /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/taglib-ruby-2.0.0 for inspection.
+       > Results logged to /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/taglib-ruby-2.0.0/gem_make.out
+       For full logs, run:
+         nix log /nix/store/26anrb9pfv9zrai7xn7d7ds00w6ar00y-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0.drv
+copying path '/nix/store/63kh7k947a1sb02cbvynf6w6bqcaz86c-taglib-ruby-2.0.0.gem' from 'https://cache.nixos.org'...
+copying path '/nix/store/il05hbif7wv6jw4425np0dyhpv47hawj-taglib-2.0.2' from 'https://cache.nixos.org'...
+Running phase: unpackPhase
+Running phase: patchPhase
+Running phase: updateAutotoolsGnuConfigScriptsPhase
+Running phase: updateAutotoolsGnuConfigScriptsPhase
+Running phase: configurePhase
+no configure script, doing nothing
+Running phase: installPhase
+buildFlags: 
+WARNING:  You build with buildroot.
+  Build root: /
+  Bin dir: /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin
+  Gem home: /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0
+  Plugins dir: /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins
+Building native extensions. This could take a while...
+ERROR:  Error installing /nix/store/63kh7k947a1sb02cbvynf6w6bqcaz86c-taglib-ruby-2.0.0.gem:
+        ERROR: Failed to build gem native extension.
+
+    current directory: /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/taglib-ruby-2.0.0/ext/taglib_base
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb
+checking for -lstdc++... yes
+checking for -ltag... yes
+creating Makefile
+
+current directory: /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/taglib-ruby-2.0.0/ext/taglib_base
+make DESTDIR\= sitearchdir\=./.gem.20251203-36-ofsb79 sitelibdir\=./.gem.20251203-36-ofsb79 clean
+
+current directory: /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/taglib-ruby-2.0.0/ext/taglib_base
+make DESTDIR\= sitearchdir\=./.gem.20251203-36-ofsb79 sitelibdir\=./.gem.20251203-36-ofsb79
+compiling taglib_base_wrap.cxx
+taglib_base_wrap.cxx:1274:3: warning: 'rb_define_virtual_variable' is deprecated: Use of ANYARGS in this function is deprecated [-Wdeprecated-declarations]
+ 1274 |   rb_define_virtual_variable("SWIG_TRACKINGS_COUNT",
+      |   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/cxxanyargs.hpp:64:1: note: 'rb_define_virtual_variable' has been explicitly marked deprecated here
+   64 | RUBY_CXX_DEPRECATED("Use of ANYARGS in this function is deprecated")
+      | ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/2/attributes.h:79:35: note: expanded from macro 'RUBY_CXX_DEPRECATED'
+   79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+      |                                   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+      |                                                     ^
+taglib_base_wrap.cxx:1331:3: warning: 'rb_st_foreach' is deprecated: Use of ANYARGS in this function is deprecated [-Wdeprecated-declarations]
+ 1331 |   st_foreach(swig_ruby_trackings,
+      |   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/st.h:148:20: note: expanded from macro 'st_foreach'
+  148 | #define st_foreach rb_st_foreach
+      |                    ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/cxxanyargs.hpp:421:1: note: 'rb_st_foreach' has been explicitly marked deprecated here
+  421 | RUBY_CXX_DEPRECATED("Use of ANYARGS in this function is deprecated")
+      | ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/2/attributes.h:79:35: note: expanded from macro 'RUBY_CXX_DEPRECATED'
+   79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+      |                                   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+      |                                                     ^
+taglib_base_wrap.cxx:2178:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2178 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2180:15: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2180 |   *res = type == T_FIXNUM ? NUM2ULONG(obj) : rb_big2ulong(obj);
+      |          ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2188:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2188 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2189:13: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2189 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |        ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2189:35: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2189 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |                              ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2194:9: warning: 'rb_rescue' is deprecated: Use of ANYARGS in this function is deprecated [-Wdeprecated-declarations]
+ 2194 |     if (rb_rescue(VALUEFUNC(SWIG_AUX_NUM2ULONG), (VALUE)a, VALUEFUNC(SWIG_ruby_failed), 0) != Qnil) {
+      |         ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/cxxanyargs.hpp:246:1: note: 'rb_rescue' has been explicitly marked deprecated here
+  246 | RUBY_CXX_DEPRECATED("Use of ANYARGS in this function is deprecated")
+      | ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/2/attributes.h:79:35: note: expanded from macro 'RUBY_CXX_DEPRECATED'
+   79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+      |                                   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+      |                                                     ^
+taglib_base_wrap.cxx:2231:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2231 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2233:15: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2233 |   *res = type == T_FIXNUM ? NUM2LONG(obj) : rb_big2long(obj);
+      |          ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2241:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2241 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2242:13: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2242 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |        ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2242:35: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2242 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |                              ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2247:9: warning: 'rb_rescue' is deprecated: Use of ANYARGS in this function is deprecated [-Wdeprecated-declarations]
+ 2247 |     if (rb_rescue(VALUEFUNC(SWIG_AUX_NUM2LONG), (VALUE)a, VALUEFUNC(SWIG_ruby_failed), 0) != Qnil) {
+      |         ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/cxxanyargs.hpp:246:1: note: 'rb_rescue' has been explicitly marked deprecated here
+  246 | RUBY_CXX_DEPRECATED("Use of ANYARGS in this function is deprecated")
+      | ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/2/attributes.h:79:35: note: expanded from macro 'RUBY_CXX_DEPRECATED'
+   79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+      |                                   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+      |                                                     ^
+taglib_base_wrap.cxx:2303:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2303 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2305:15: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2305 |   *res = type == T_FIXNUM ? NUM2ULL(obj) : rb_big2ull(obj);
+      |          ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2313:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2313 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2314:13: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2314 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |        ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2314:35: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2314 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |                              ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2319:9: warning: 'rb_rescue' is deprecated: Use of ANYARGS in this function is deprecated [-Wdeprecated-declarations]
+ 2319 |     if (rb_rescue(VALUEFUNC(SWIG_AUX_NUM2ULL), (VALUE)a, VALUEFUNC(SWIG_ruby_failed), 0) != Qnil) {
+      |         ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/cxxanyargs.hpp:246:1: note: 'rb_rescue' has been explicitly marked deprecated here
+  246 | RUBY_CXX_DEPRECATED("Use of ANYARGS in this function is deprecated")
+      | ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/2/attributes.h:79:35: note: expanded from macro 'RUBY_CXX_DEPRECATED'
+   79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))
+      |                                   ^
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'
+   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))
+      |                                                     ^
+taglib_base_wrap.cxx:2356:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2356 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2358:15: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2358 |   *res = type == T_FIXNUM ? NUM2LL(obj) : rb_big2ll(obj);
+      |          ~~~~ ^  ~~~~~~~~
+taglib_base_wrap.cxx:2366:9: error: cannot initialize a variable of type 'VALUE' (aka 'rb_value_unit_struct *') with an rvalue of type 'int'
+ 2366 |   VALUE type = TYPE(obj);
+      |         ^      ~~~~~~~~~
+taglib_base_wrap.cxx:2367:13: error: comparison between pointer and integer ('VALUE' (aka 'rb_value_unit_struct *') and 'ruby_value_type')
+ 2367 |   if ((type == T_FIXNUM) || (type == T_BIGNUM)) {
+      |        ~~~~ ^  ~~~~~~~~
+fatal error: too many errors emitted, stopping now [-ferror-limit=]
+5 warnings and 20 errors generated.
+make: *** [Makefile:232: taglib_base_wrap.o] Error 1
+
+make failed, exit code 2
+
+Gem files will remain installed in /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/taglib-ruby-2.0.0 for inspection.
+Results logged to /nix/store/7xc64b5v7h1kscd7dlpdml8fccsbzhhn-ruby3.3-taglib-ruby-2.0.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/taglib-ruby-2.0.0/gem_make.out

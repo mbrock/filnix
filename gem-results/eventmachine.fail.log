@@ -1,0 +1,562 @@
+@nix {"action":"start","id":17083460053106688,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.eventmachine'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17083460053106688}
+@nix {"action":"start","id":17083666211536896,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"start","fields":["/nix/store/234d3i7j0diaj271bvr83wig9wdk5ryc-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17083666211536897,"level":4,"parent":0,"text":"querying info about '/nix/store/234d3i7j0diaj271bvr83wig9wdk5ryc-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/234d3i7j0diaj271bvr83wig9wdk5ryc.narinfo"],"id":17083666211536898,"level":4,"parent":17083666211536897,"text":"downloading 'https://cache.nixos.org/234d3i7j0diaj271bvr83wig9wdk5ryc.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536898,"type":105}
+@nix {"action":"stop","id":17083666211536897}
+@nix {"action":"stop","id":17083666211536898}
+@nix {"action":"start","fields":["/nix/store/234d3i7j0diaj271bvr83wig9wdk5ryc-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17083666211536899,"level":4,"parent":0,"text":"querying info about '/nix/store/234d3i7j0diaj271bvr83wig9wdk5ryc-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/234d3i7j0diaj271bvr83wig9wdk5ryc.narinfo"],"id":17083666211536900,"level":4,"parent":17083666211536899,"text":"downloading 'https://filc.cachix.org/234d3i7j0diaj271bvr83wig9wdk5ryc.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536900,"type":105}
+@nix {"action":"stop","id":17083666211536899}
+@nix {"action":"stop","id":17083666211536900}
+@nix {"action":"start","fields":["/nix/store/c8wcs16mzfjxn85kz5aj5z64py6bxcdl-ruby-gems","https://cache.nixos.org"],"id":17083666211536901,"level":4,"parent":0,"text":"querying info about '/nix/store/c8wcs16mzfjxn85kz5aj5z64py6bxcdl-ruby-gems' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/c8wcs16mzfjxn85kz5aj5z64py6bxcdl.narinfo"],"id":17083666211536902,"level":4,"parent":17083666211536901,"text":"downloading 'https://cache.nixos.org/c8wcs16mzfjxn85kz5aj5z64py6bxcdl.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"start","fields":["/nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17083666211536903,"level":4,"parent":0,"text":"querying info about '/nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"start","fields":["https://cache.nixos.org/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr.narinfo"],"id":17083666211536904,"level":4,"parent":17083666211536903,"text":"downloading 'https://cache.nixos.org/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536902,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"stop","id":17083666211536901}
+@nix {"action":"stop","id":17083666211536902}
+@nix {"action":"start","fields":["/nix/store/c8wcs16mzfjxn85kz5aj5z64py6bxcdl-ruby-gems","https://filc.cachix.org"],"id":17083666211536905,"level":4,"parent":0,"text":"querying info about '/nix/store/c8wcs16mzfjxn85kz5aj5z64py6bxcdl-ruby-gems' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/c8wcs16mzfjxn85kz5aj5z64py6bxcdl.narinfo"],"id":17083666211536906,"level":4,"parent":17083666211536905,"text":"downloading 'https://filc.cachix.org/c8wcs16mzfjxn85kz5aj5z64py6bxcdl.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17083666211536904,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"stop","id":17083666211536903}
+@nix {"action":"stop","id":17083666211536904}
+@nix {"action":"start","fields":["/nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17083666211536907,"level":4,"parent":0,"text":"querying info about '/nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr.narinfo"],"id":17083666211536908,"level":4,"parent":17083666211536907,"text":"downloading 'https://filc.cachix.org/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"stop","id":17083666211536905}
+@nix {"action":"stop","id":17083666211536906}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17083666211536908,"type":105}
+@nix {"action":"stop","id":17083666211536907}
+@nix {"action":"stop","id":17083666211536908}
+@nix {"action":"stop","id":17083666211536896}
+@nix {"action":"msg","level":3,"msg":"these 3 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/z5q0idys21npxg24va2waq285h1vlv4q-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/9sv8056zl3kpscdyd97xgdzdyafmzii0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17083666211536909,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17083666211536910,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17083666211536911,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"start","id":17083666211536912,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17083666211536912}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"start","id":17083666211536913,"level":4,"parent":17083666211536909,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17083666211536913}
+@nix {"action":"start","fields":["/nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv","ssh://mbrock@swa.sh",1,1],"id":17083666211536914,"level":3,"parent":0,"text":"building '/nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,3,1,0],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"start","id":17083666211536915,"level":4,"parent":17083666211536909,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17083666211536915}
+@nix {"action":"start","id":17083666211536916,"level":4,"parent":17083666211536909,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"start","id":17083666211536917,"level":3,"parent":17083666211536909,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17083666211536917,"type":106}
+@nix {"action":"stop","id":17083666211536917}
+@nix {"action":"stop","id":17083666211536916}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Unpacked gem: '/build/container/7h6vb3chg8fh9hh833ks6w7wgc70jnvz-eventmachine-1.2.7'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["substituteStream() in derivation ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0: WARNING: '--replace' is deprecated, use --replace-{fail,warn,quiet}. (file 'ext/em.cpp')"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["no configure script, doing nothing"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Running phase: buildPhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["WARNING:  expected RubyGems version 3.6.6, was 2.5.2"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["WARNING:  License identifier 'GPL-2.0' is deprecated. Use an identifier from"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["https://spdx.org/licenses or 'Nonstandard' for a nonstandard license,"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["or set it to nil if you don't want to specify a license."],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Did you mean 'EPL-2.0', 'MPL-2.0', 'ZPL-2.0'?"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["WARNING:  make sure you specify the oldest ruby version constraint (like \">= 3.0\") that you want your gem to support by setting the `required_ruby_version` gemspec attribute"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["WARNING:  See https://guides.rubygems.org/specification-reference/ for help"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Successfully built RubyGem"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Name: eventmachine"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Version: 1.2.7"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  File: eventmachine-1.2.7.gem"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["gem package built: eventmachine-1.2.7.gem"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["buildFlags: "],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["WARNING:  You build with buildroot."],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Build root: /"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Bin dir: /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Gem home: /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  Plugins dir: /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Building native extensions. This could take a while..."],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["ERROR:  Error installing eventmachine-1.2.7.gem:"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["        ERROR: Failed to build gem native extension."],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":[""],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["    current directory: /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/eventmachine-1.2.7/ext"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for pkg-config for openssl... not found"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for -lcrypto... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for -lssl... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for openssl/ssl.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for openssl/err.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_trap_immediate in ruby.h,rubysig.h... no"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_thread_blocking_region()... no"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_thread_call_without_gvl() in ruby/thread.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_thread_fd_select()... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_fdset_t in ruby/intern.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_wait_for_single_fd()... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_enable_interrupt()... no"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for rb_time_new()... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for inotify_init() in sys/inotify.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for writev() in sys/uio.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for pipe2() in unistd.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for accept4() in sys/socket.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for SOCK_CLOEXEC in sys/socket.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for sys/event.h... no"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for epoll_create() in sys/epoll.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for clock_gettime()... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for CLOCK_MONOTONIC_RAW in time.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["checking for CLOCK_MONOTONIC in time.h... yes"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["CXXFLAGS=-fdeclspec -Wall -Wextra -Wno-deprecated-declarations -Wno-ignored-qualifiers -Wno-unused-result -Wno-address"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["creating Makefile"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":[""],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/eventmachine-1.2.7/ext"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-88-spia4a sitelibdir\\=./.gem.20251203-88-spia4a clean"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":[""],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/eventmachine-1.2.7/ext"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-88-spia4a sitelibdir\\=./.gem.20251203-88-spia4a"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling binder.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling cmain.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling ed.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling em.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling kb.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling page.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling pipe.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["compiling rubymain.cpp"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:116:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  116 |                         rb_funcall (conn, Intern_receive_data, 1, rb_str_new (data_str, data_num));"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:121:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  121 |                         rb_funcall (EmModule, Intern_event_callback, 3, BSIG2NUM(signature), INT2FIX(event), ULONG2NUM(data_num));"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:126:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  126 |                         rb_funcall (EmModule, Intern_event_callback, 3, BSIG2NUM(signature), INT2FIX(event), ULONG2NUM(data_num));"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:132:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  132 |                         rb_funcall (conn, Intern_connection_completed, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:138:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  138 |                         rb_funcall (conn, Intern_notify_readable, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:144:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  144 |                         rb_funcall (conn, Intern_notify_writable, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:149:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  149 |                         rb_funcall (EmModule, Intern_run_deferred_callbacks, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:154:18: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  154 |                         VALUE timer = rb_funcall (EmTimersHash, Intern_delete, 1, ULONG2NUM (data_num));"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                                       ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:160:5: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  160 |                                 rb_funcall (timer, Intern_call, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                                 ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:168:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  168 |                         rb_funcall (conn, Intern_ssl_handshake_completed, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:174:26: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  174 |                         VALUE should_accept = rb_funcall (conn, Intern_ssl_verify_peer, 1, rb_str_new(data_str, data_num));"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                                               ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:183:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  183 |                         rb_funcall (conn, Intern_proxy_target_unbound, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:189:4: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  189 |                         rb_funcall (conn, Intern_proxy_completed, 0);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:201:24: error: no matching function for call to 'rb_ivar_get'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  201 |         VALUE error_handler = rb_ivar_get(EmModule, Intern_at_error_handler);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                               ^~~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  228 | VALUE rb_ivar_get(VALUE obj, ID name);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:202:2: error: no matching function for call to 'rb_funcall'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  202 |         rb_funcall (error_handler, Intern_call, 1, err);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |         ^~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:217:7: error: no matching function for call to 'rb_ivar_defined'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  217 |         if (!rb_ivar_defined(EmModule, Intern_at_error_handler))"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |              ^~~~~~~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:254:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  254 | VALUE rb_ivar_defined(VALUE obj, ID name);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                          ~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:220:3: warning: 'rb_rescue' is deprecated: Use of ANYARGS in this function is deprecated [-Wdeprecated-declarations]"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  220 |                 rb_rescue((VALUE (*)(ANYARGS))event_callback, (VALUE)&e, (VALUE (*)(ANYARGS))event_error_handler, Qnil);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                 ^"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/cxxanyargs.hpp:246:1: note: 'rb_rescue' has been explicitly marked deprecated here"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  246 | RUBY_CXX_DEPRECATED(\"Use of ANYARGS in this function is deprecated\")"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      | ^"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/backward/2/attributes.h:79:35: note: expanded from macro 'RUBY_CXX_DEPRECATED'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["   79 | #define RUBY_CXX_DEPRECATED(mseg) RBIMPL_ATTR_DEPRECATED((mseg))"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                                   ^"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                                                     ^"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:229:16: error: no matching function for call to 'rb_ivar_get'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  229 |         EmConnsHash = rb_ivar_get (EmModule, Intern_at_conns);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                       ^~~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  228 | VALUE rb_ivar_get(VALUE obj, ID name);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:230:17: error: no matching function for call to 'rb_ivar_get'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  230 |         EmTimersHash = rb_ivar_get (EmModule, Intern_at_timers);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |                        ^~~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["  228 | VALUE rb_ivar_get(VALUE obj, ID name);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |       ^                      ~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["rubymain.cpp:1220:8: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'rb_value_unit_struct *') from 'int'"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":[" 1220 |         arg = (NIL_P(arg)) ? -1 : NUM2INT (arg);"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["fatal error: too many errors emitted, stopping now [-ferror-limit=]"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["1 warning and 20 errors generated."],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:240: rubymain.o] Error 1"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":[""],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["make failed, exit code 2"],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":[""],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Gem files will remain installed in /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/eventmachine-1.2.7 for inspection."],"id":17083666211536914,"type":101}
+@nix {"action":"result","fields":["Results logged to /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/eventmachine-1.2.7/gem_make.out"],"id":17083666211536914,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       >    36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))\n       >       |                                                     ^\n       > rubymain.cpp:229:16: error: no matching function for call to 'rb_ivar_get'\n       >   229 |         EmConnsHash = rb_ivar_get (EmModule, Intern_at_conns);\n       >       |                       ^~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument\n       >   228 | VALUE rb_ivar_get(VALUE obj, ID name);\n       >       |       ^                      ~~~~~~~\n       > rubymain.cpp:230:17: error: no matching function for call to 'rb_ivar_get'\n       >   230 |         EmTimersHash = rb_ivar_get (EmModule, Intern_at_timers);\n       >       |                        ^~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument\n       >   228 | VALUE rb_ivar_get(VALUE obj, ID name);\n       >       |       ^                      ~~~~~~~\n       > rubymain.cpp:1220:8: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'rb_value_unit_struct *') from 'int'\n       >  1220 |         arg = (NIL_P(arg)) ? -1 : NUM2INT (arg);\n       >       |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n       > fatal error: too many errors emitted, stopping now [-ferror-limit=]\n       > 1 warning and 20 errors generated.\n       > make: *** [Makefile:240: rubymain.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/eventmachine-1.2.7 for inspection.\n       > Results logged to /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/eventmachine-1.2.7/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"stop","id":17083666211536914}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       >    36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))\n       >       |                                                     ^\n       > rubymain.cpp:229:16: error: no matching function for call to 'rb_ivar_get'\n       >   229 |         EmConnsHash = rb_ivar_get (EmModule, Intern_at_conns);\n       >       |                       ^~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument\n       >   228 | VALUE rb_ivar_get(VALUE obj, ID name);\n       >       |       ^                      ~~~~~~~\n       > rubymain.cpp:230:17: error: no matching function for call to 'rb_ivar_get'\n       >   230 |         EmTimersHash = rb_ivar_get (EmModule, Intern_at_timers);\n       >       |                        ^~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/variable.h:228:7: note: candidate function not viable: no known conversion from 'VALUE' (aka 'rb_value_unit_struct *') to 'ID' (aka 'unsigned long') for 2nd argument\n       >   228 | VALUE rb_ivar_get(VALUE obj, ID name);\n       >       |       ^                      ~~~~~~~\n       > rubymain.cpp:1220:8: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'rb_value_unit_struct *') from 'int'\n       >  1220 |         arg = (NIL_P(arg)) ? -1 : NUM2INT (arg);\n       >       |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n       > fatal error: too many errors emitted, stopping now [-ferror-limit=]\n       > 1 warning and 20 errors generated.\n       > make: *** [Makefile:240: rubymain.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/eventmachine-1.2.7 for inspection.\n       > Results logged to /nix/store/jwnyf8x68ap5vnbgpjicf8fhfqjih1jr-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/eventmachine-1.2.7/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/zyw91lqa58cg3js6lan1fkdgfx3mkjkz-ruby3.3-eventmachine-1.2.7-x86_64-unknown-linux-gnufilc0.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17083666211536910,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17083666211536911,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17083666211536909,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17083666211536909,"type":106}
+@nix {"action":"stop","id":17083666211536911}
+@nix {"action":"stop","id":17083666211536910}
+@nix {"action":"stop","id":17083666211536909}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/9sv8056zl3kpscdyd97xgdzdyafmzii0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/234d3i7j0diaj271bvr83wig9wdk5ryc-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/9sv8056zl3kpscdyd97xgdzdyafmzii0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/234d3i7j0diaj271bvr83wig9wdk5ryc-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}

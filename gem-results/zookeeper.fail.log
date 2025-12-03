@@ -1,0 +1,695 @@
+@nix {"action":"start","id":17081475778215936,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.zookeeper'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17081475778215936}
+@nix {"action":"start","id":17081690526580736,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"start","fields":["/nix/store/x61862h21qdmk75jq4rwfzaw1qirads0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17081690526580737,"level":4,"parent":0,"text":"querying info about '/nix/store/x61862h21qdmk75jq4rwfzaw1qirads0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/x61862h21qdmk75jq4rwfzaw1qirads0.narinfo"],"id":17081690526580738,"level":4,"parent":17081690526580737,"text":"downloading 'https://cache.nixos.org/x61862h21qdmk75jq4rwfzaw1qirads0.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580738,"type":105}
+@nix {"action":"stop","id":17081690526580737}
+@nix {"action":"stop","id":17081690526580738}
+@nix {"action":"start","fields":["/nix/store/x61862h21qdmk75jq4rwfzaw1qirads0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17081690526580739,"level":4,"parent":0,"text":"querying info about '/nix/store/x61862h21qdmk75jq4rwfzaw1qirads0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/x61862h21qdmk75jq4rwfzaw1qirads0.narinfo"],"id":17081690526580740,"level":4,"parent":17081690526580739,"text":"downloading 'https://filc.cachix.org/x61862h21qdmk75jq4rwfzaw1qirads0.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580740,"type":105}
+@nix {"action":"stop","id":17081690526580739}
+@nix {"action":"stop","id":17081690526580740}
+@nix {"action":"start","fields":["/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17081690526580741,"level":4,"parent":0,"text":"querying info about '/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw.narinfo"],"id":17081690526580742,"level":4,"parent":17081690526580741,"text":"downloading 'https://cache.nixos.org/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"start","fields":["/nix/store/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5-ruby-gems","https://cache.nixos.org"],"id":17081690526580743,"level":4,"parent":0,"text":"querying info about '/nix/store/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5-ruby-gems' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5.narinfo"],"id":17081690526580744,"level":4,"parent":17081690526580743,"text":"downloading 'https://cache.nixos.org/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580742,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"stop","id":17081690526580741}
+@nix {"action":"stop","id":17081690526580742}
+@nix {"action":"start","fields":["/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17081690526580745,"level":4,"parent":0,"text":"querying info about '/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw.narinfo"],"id":17081690526580746,"level":4,"parent":17081690526580745,"text":"downloading 'https://filc.cachix.org/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17081690526580744,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"stop","id":17081690526580743}
+@nix {"action":"stop","id":17081690526580744}
+@nix {"action":"start","fields":["/nix/store/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5-ruby-gems","https://filc.cachix.org"],"id":17081690526580747,"level":4,"parent":0,"text":"querying info about '/nix/store/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5-ruby-gems' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5.narinfo"],"id":17081690526580748,"level":4,"parent":17081690526580747,"text":"downloading 'https://filc.cachix.org/r6h9pwdfbc2iqi21brnkz89g3r1jxjq5.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580748,"type":105}
+@nix {"action":"stop","id":17081690526580747}
+@nix {"action":"stop","id":17081690526580748}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17081690526580746,"type":105}
+@nix {"action":"stop","id":17081690526580745}
+@nix {"action":"stop","id":17081690526580746}
+@nix {"action":"stop","id":17081690526580736}
+@nix {"action":"msg","level":3,"msg":"these 3 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/hgz2dm3dgh69cp1m1ha6j05i951z3rhg-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/dwgqmi3j540ny596lsnpphqp8km58834-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17081690526580749,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17081690526580750,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17081690526580751,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"start","id":17081690526580752,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17081690526580752}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"start","id":17081690526580753,"level":4,"parent":17081690526580749,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17081690526580753}
+@nix {"action":"start","fields":["/nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv","ssh://mbrock@swa.sh",1,1],"id":17081690526580754,"level":3,"parent":0,"text":"building '/nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,3,1,0],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"start","id":17081690526580755,"level":4,"parent":17081690526580749,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17081690526580755}
+@nix {"action":"start","id":17081690526580756,"level":4,"parent":17081690526580749,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"result","fields":["copying path '/nix/store/3s481j9c94v0nvn3m7zbfa6py8n4s64k-zookeeper-1.5.5.gem' from 'https://cache.nixos.org'..."],"id":17081690526580754,"type":101}
+@nix {"action":"start","id":17081690526580757,"level":3,"parent":17081690526580749,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17081690526580757,"type":106}
+@nix {"action":"stop","id":17081690526580757}
+@nix {"action":"stop","id":17081690526580756}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["no configure script, doing nothing"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["buildFlags: "],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["WARNING:  You build with buildroot."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["  Build root: /"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["  Bin dir: /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["  Gem home: /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["  Plugins dir: /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Building native extensions. This could take a while..."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ERROR:  Error installing /nix/store/3s481j9c94v0nvn3m7zbfa6py8n4s64k-zookeeper-1.5.5.gem:"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        ERROR: Failed to build gem native extension."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[""],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["    current directory: /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5/ext"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Building zkc."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["tar xzf zkc-3.4.5.tar.gz 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patch -p0 < patches/zkc-3.4.5-buffer-overflow.patch 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/src/zookeeper.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #1 succeeded at 3418 (offset 7 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patch -p0 < patches/zkc-3.4.5-config.patch 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/config.guess"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/config.sub"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patch -p0 < patches/zkc-3.4.5-fetch-and-add.patch 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/src/mt_adaptor.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patch -p0 < patches/zkc-3.4.5-logging.patch 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/src/zookeeper.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patch -p0 < patches/zkc-3.4.5-out-of-order-ping.patch 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/src/zookeeper.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #3 succeeded at 2065 (offset 8 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #4 succeeded at 2182 (offset 8 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #5 succeeded at 2256 (offset 8 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/tests/TestOperations.cc"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patch -p0 < patches/zkc-3.4.5-yosemite-htonl-fix.patch 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/include/recordio.h"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/src/recordio.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/src/zookeeper.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #1 succeeded at 1403 (offset -5 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #2 succeeded at 1411 (offset -5 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Hunk #3 succeeded at 1442 (offset -5 lines)."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["patching file zkc-3.4.5/c/tests/ZKMocks.cc"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./configure --prefix=/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5/ext --with-pic --without-cppunit --disable-dependency-tracking  2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for doxygen... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for perl... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for dot... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for a BSD-compatible install... /nix/store/rry6qingvsrqmc7ll7jgaqpybcbdgf5v-coreutils-9.7/bin/install -c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether build environment is sane... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for gawk... gawk"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether make sets $(MAKE)... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for generated/zookeeper.jute.c... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for generated/zookeeper.jute.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for gcc... clang"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for C compiler default output file name... a.out"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether the C compiler works... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether we are cross compiling... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for suffix of executables... "],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for suffix of object files... o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether we are using the GNU C compiler... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether clang accepts -g... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for clang option to accept ANSI C... none needed"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for style of include used by make... GNU"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking dependency style of clang... none"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether clang and cc understand -c and -o together... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether we are using the GNU C++ compiler... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether clang++ accepts -g... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking dependency style of clang++... none"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for a BSD-compatible install... /nix/store/rry6qingvsrqmc7ll7jgaqpybcbdgf5v-coreutils-9.7/bin/install -c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether ln -s works... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking build system type... x86_64-pc-linux-gnu"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking host system type... x86_64-pc-linux-gnu"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for a sed that does not truncate output... /nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for egrep... grep -E"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ld used by clang... ld"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if the linker (ld) is GNU ld... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ld option to reload object files... -r"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for BSD-compatible nm... nm"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking how to recognise dependent libraries... (cached) pass_all"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./configure: line 6444: /usr/bin/file: not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking how to run the C preprocessor... clang -E"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ANSI C header files... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for sys/types.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for sys/stat.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for stdlib.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for string.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for memory.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for strings.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for inttypes.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for stdint.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for unistd.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking dlfcn.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking dlfcn.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for dlfcn.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking how to run the C++ preprocessor... clang++ -E"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for g77... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for f77... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for xlf... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for frt... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for pgf77... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for fort77... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for fl32... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for af77... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for f90... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for xlf90... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for pgf90... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for epcf90... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for f95... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for fort... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for xlf95... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ifc... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for efc... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for pgf95... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for lf95... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for gfortran... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether we are using the GNU Fortran 77 compiler... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether  accepts -g... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking the maximum length of command line arguments... 32768"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking command to parse nm output from clang object... failed"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for objdir... .libs"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ar... ar"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ranlib... ranlib"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for strip... strip"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang supports -fno-rtti -fno-exceptions... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for clang option to produce PIC... -fPIC"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang PIC flag -fPIC works... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang static flag -static works... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang supports -c -o file.o... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether the clang linker (ld) supports shared libraries... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether -lc should be explicitly linked in... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking dynamic linker characteristics... ./configure: line 10151: /usr/bin/file: not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["GNU/Linux ld.so"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking how to hardcode library paths into programs... immediate"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether stripping libraries is possible... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if libtool supports shared libraries... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether to build shared libraries... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether to build static libraries... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["configure: creating libtool"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["appending configuration tag \"CXX\" to libtool"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ld used by clang++... ld"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if the linker (ld) is GNU ld... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether the clang++ linker (ld) supports shared libraries... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for clang++ option to produce PIC... -fPIC"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang++ PIC flag -fPIC works... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang++ static flag -static works... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking if clang++ supports -c -o file.o... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether the clang++ linker (ld) supports shared libraries... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking dynamic linker characteristics... ./configure: line 12143: /usr/bin/file: not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["GNU/Linux ld.so"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking how to hardcode library paths into programs... immediate"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["appending configuration tag \"F77\" to libtool"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for pthread_mutex_lock in -lpthread... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["configure: building with SyncAPI support"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for ANSI C header files... (cached) no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking arpa/inet.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking arpa/inet.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for arpa/inet.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking fcntl.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking fcntl.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for fcntl.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking netdb.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking netdb.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for netdb.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking netinet/in.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking netinet/in.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for netinet/in.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for stdlib.h... (cached) yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for string.h... (cached) yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking sys/socket.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking sys/socket.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for sys/socket.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking sys/time.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking sys/time.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for sys/time.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for unistd.h... (cached) yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking sys/utsname.h usability... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking sys/utsname.h presence... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for sys/utsname.h... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for an ANSI C-conforming const... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for inline... inline"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether time.h and sys/time.h may both be included... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for nfds_t... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking whether to enable ipv6... no"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for getcwd... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for gethostbyname... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for gethostname... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for getlogin... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for getpwuid_r... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for gettimeofday... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for getuid... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for memmove... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for memset... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for poll... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for socket... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for strchr... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for strdup... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for strerror... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["checking for strtol... yes"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["configure: creating ./config.status"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["config.status: creating Makefile"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["config.status: creating config.h"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["config.status: executing depfiles commands"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["make  2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["make  all-am"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["make[1]: Entering directory '/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5/ext/zkc-3.4.5/c'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o zookeeper.lo `test -f 'src/zookeeper.c' || echo './'`src/zookeeper.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["mkdir .libs"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/zookeeper.c  -fPIC -DPIC -o .libs/zookeeper.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/zookeeper.c  -fPIC -DPIC -o zookeeper.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o recordio.lo `test -f 'src/recordio.c' || echo './'`src/recordio.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/recordio.c  -fPIC -DPIC -o .libs/recordio.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/recordio.c  -fPIC -DPIC -o recordio.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o zookeeper.jute.lo `test -f 'generated/zookeeper.jute.c' || echo './'`generated/zookeeper.jute.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c generated/zookeeper.jute.c  -fPIC -DPIC -o .libs/zookeeper.jute.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c generated/zookeeper.jute.c  -fPIC -DPIC -o zookeeper.jute.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o zk_log.lo `test -f 'src/zk_log.c' || echo './'`src/zk_log.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/zk_log.c  -fPIC -DPIC -o .libs/zk_log.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/zk_log.c  -fPIC -DPIC -o zk_log.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o zk_hashtable.lo `test -f 'src/zk_hashtable.c' || echo './'`src/zk_hashtable.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/zk_hashtable.c  -fPIC -DPIC -o .libs/zk_hashtable.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/zk_hashtable.c  -fPIC -DPIC -o zk_hashtable.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o st_adaptor.lo `test -f 'src/st_adaptor.c' || echo './'`src/st_adaptor.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/st_adaptor.c  -fPIC -DPIC -o .libs/st_adaptor.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/st_adaptor.c  -fPIC -DPIC -o st_adaptor.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=link clang -Wall -Werror  -g -O2 -D_GNU_SOURCE   -o libzkst.la   zookeeper.lo recordio.lo zookeeper.jute.lo zk_log.lo zk_hashtable.lo st_adaptor.lo -lm "],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ar cru .libs/libzkst.a .libs/zookeeper.o .libs/recordio.o .libs/zookeeper.jute.o .libs/zk_log.o .libs/zk_hashtable.o .libs/st_adaptor.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ar: `u' modifier ignored since `D' is the default (see `U')"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ranlib .libs/libzkst.a"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["creating libzkst.la"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["(cd .libs && rm -f libzkst.la && ln -s ../libzkst.la libzkst.la)"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o hashtable_itr.lo `test -f 'src/hashtable/hashtable_itr.c' || echo './'`src/hashtable/hashtable_itr.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/hashtable/hashtable_itr.c  -fPIC -DPIC -o .libs/hashtable_itr.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/hashtable/hashtable_itr.c  -fPIC -DPIC -o hashtable_itr.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=compile clang -DHAVE_CONFIG_H -I. -I. -I.  -I./include -I./tests -I./generated  -Wall -Werror  -g -O2 -D_GNU_SOURCE -c -o hashtable.lo `test -f 'src/hashtable/hashtable.c' || echo './'`src/hashtable/hashtable.c"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/hashtable/hashtable.c  -fPIC -DPIC -o .libs/hashtable.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[" clang -DHAVE_CONFIG_H -I. -I. -I. -I./include -I./tests -I./generated -Wall -Werror -g -O2 -D_GNU_SOURCE -c src/hashtable/hashtable.c  -fPIC -DPIC -o hashtable.o >/dev/null 2>&1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=link clang -Wall -Werror  -g -O2 -D_GNU_SOURCE   -o libhashtable.la   hashtable_itr.lo hashtable.lo  "],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ar cru .libs/libhashtable.a .libs/hashtable_itr.o .libs/hashtable.o"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ar: `u' modifier ignored since `D' is the default (see `U')"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["ranlib .libs/libhashtable.a"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["creating libhashtable.la"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["(cd .libs && rm -f libhashtable.la && ln -s ../libhashtable.la libhashtable.la)"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash ./libtool --tag=CC --mode=link clang -Wall -Werror  -g -O2 -D_GNU_SOURCE   -o libzookeeper_st.la -rpath /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5/ext/lib -no-undefined -version-info 2 -export-symbols-regex '(zoo_|zookeeper_|zhandle|Z|format_log_message|log_message|logLevel|deallocate_|zerror|is_unrecoverable)'  libzkst.la libhashtable.la "],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 96: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: line 97: gcc: command not found"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["/nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed: -e expression #1, char 0: no previous regular expression"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["generating symbol list for `libzookeeper_st.la'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["nm   ./.libs/libzkst.a ./.libs/libhashtable.a |  | /nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed 's/.* //' | sort | uniq > .libs/libzookeeper_st.exp"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: eval: line 4326: syntax error near unexpected token `|'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["./libtool: eval: line 4326: `nm   ./.libs/libzkst.a ./.libs/libhashtable.a |  | /nix/store/4rpiqv9yr2pw5094v4wc33ijkqjpm9sa-gnused-4.9/bin/sed 's/.* //' | sort | uniq > .libs/libzookeeper_st.exp'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["make[1]: *** [Makefile:567: libzookeeper_st.la] Error 2"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["make[1]: Leaving directory '/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5/ext/zkc-3.4.5/c'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:468: all] Error 2"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["*** extconf.rb failed ***"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Could not create Makefile due to some reason, probably lack of necessary"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["libraries and/or headers.  Check the mkmf.log file for more details.  You may"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["need configuration options."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[""],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Provided configuration options:"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --with-opt-dir"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --without-opt-dir"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --with-opt-include=${opt-dir}/include"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --without-opt-include"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --with-opt-lib=${opt-dir}/lib"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --without-opt-lib"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --with-make-prog"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --without-make-prog"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --srcdir=."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --curdir"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        --ruby=/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/$(RUBY_BASE_NAME)"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["extconf.rb:51:in `safe_sh': command failed! make  2>&1 (RuntimeError)"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        from extconf.rb:76:in `block (2 levels) in <main>'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        from extconf.rb:71:in `chdir'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        from extconf.rb:71:in `block in <main>'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        from extconf.rb:55:in `chdir'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["        from extconf.rb:55:in `<main>'"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[""],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["extconf failed, exit code 1"],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":[""],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Gem files will remain installed in /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5 for inspection."],"id":17081690526580754,"type":101}
+@nix {"action":"result","fields":["Results logged to /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/zookeeper-1.5.5/gem_make.out"],"id":17081690526580754,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > need configuration options.\n       >\n       > Provided configuration options:\n       > \t--with-opt-dir\n       > \t--without-opt-dir\n       > \t--with-opt-include=${opt-dir}/include\n       > \t--without-opt-include\n       > \t--with-opt-lib=${opt-dir}/lib\n       > \t--without-opt-lib\n       > \t--with-make-prog\n       > \t--without-make-prog\n       > \t--srcdir=.\n       > \t--curdir\n       > \t--ruby=/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/$(RUBY_BASE_NAME)\n       > extconf.rb:51:in `safe_sh': command failed! make  2>&1 (RuntimeError)\n       > \tfrom extconf.rb:76:in `block (2 levels) in <main>'\n       > \tfrom extconf.rb:71:in `chdir'\n       > \tfrom extconf.rb:71:in `block in <main>'\n       > \tfrom extconf.rb:55:in `chdir'\n       > \tfrom extconf.rb:55:in `<main>'\n       >\n       > extconf failed, exit code 1\n       >\n       > Gem files will remain installed in /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5 for inspection.\n       > Results logged to /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/zookeeper-1.5.5/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"stop","id":17081690526580754}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > need configuration options.\n       >\n       > Provided configuration options:\n       >         --with-opt-dir\n       >         --without-opt-dir\n       >         --with-opt-include=${opt-dir}/include\n       >         --without-opt-include\n       >         --with-opt-lib=${opt-dir}/lib\n       >         --without-opt-lib\n       >         --with-make-prog\n       >         --without-make-prog\n       >         --srcdir=.\n       >         --curdir\n       >         --ruby=/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/$(RUBY_BASE_NAME)\n       > extconf.rb:51:in `safe_sh': command failed! make  2>&1 (RuntimeError)\n       >         from extconf.rb:76:in `block (2 levels) in <main>'\n       >         from extconf.rb:71:in `chdir'\n       >         from extconf.rb:71:in `block in <main>'\n       >         from extconf.rb:55:in `chdir'\n       >         from extconf.rb:55:in `<main>'\n       >\n       > extconf failed, exit code 1\n       >\n       > Gem files will remain installed in /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/zookeeper-1.5.5 for inspection.\n       > Results logged to /nix/store/rzzh48j9nilmkrx6d6nb35i9a5ii7yrw-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/zookeeper-1.5.5/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/8raqvpll0m5a4gld5xm13rz9arisxr1n-ruby3.3-zookeeper-1.5.5-x86_64-unknown-linux-gnufilc0.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17081690526580750,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17081690526580751,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17081690526580749,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17081690526580749,"type":106}
+@nix {"action":"stop","id":17081690526580751}
+@nix {"action":"stop","id":17081690526580750}
+@nix {"action":"stop","id":17081690526580749}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/dwgqmi3j540ny596lsnpphqp8km58834-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/x61862h21qdmk75jq4rwfzaw1qirads0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/dwgqmi3j540ny596lsnpphqp8km58834-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/x61862h21qdmk75jq4rwfzaw1qirads0-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}

@@ -1,0 +1,1207 @@
+@nix {"action":"start","id":17081978289389568,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.curb'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17081978289389568}
+@nix {"action":"start","id":17082193037754368,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"start","fields":["/nix/store/1jhwgwwilhz0qxgyryslibiv35qx8c3n-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17082193037754369,"level":4,"parent":0,"text":"querying info about '/nix/store/1jhwgwwilhz0qxgyryslibiv35qx8c3n-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/1jhwgwwilhz0qxgyryslibiv35qx8c3n.narinfo"],"id":17082193037754370,"level":4,"parent":17082193037754369,"text":"downloading 'https://cache.nixos.org/1jhwgwwilhz0qxgyryslibiv35qx8c3n.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754370,"type":105}
+@nix {"action":"stop","id":17082193037754369}
+@nix {"action":"stop","id":17082193037754370}
+@nix {"action":"start","fields":["/nix/store/1jhwgwwilhz0qxgyryslibiv35qx8c3n-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17082193037754371,"level":4,"parent":0,"text":"querying info about '/nix/store/1jhwgwwilhz0qxgyryslibiv35qx8c3n-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/1jhwgwwilhz0qxgyryslibiv35qx8c3n.narinfo"],"id":17082193037754372,"level":4,"parent":17082193037754371,"text":"downloading 'https://filc.cachix.org/1jhwgwwilhz0qxgyryslibiv35qx8c3n.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754372,"type":105}
+@nix {"action":"stop","id":17082193037754371}
+@nix {"action":"stop","id":17082193037754372}
+@nix {"action":"start","fields":["/nix/store/1rh1rdfwblp2b90ycwrsxscsw2qlznci-ruby-gems","https://cache.nixos.org"],"id":17082193037754373,"level":4,"parent":0,"text":"querying info about '/nix/store/1rh1rdfwblp2b90ycwrsxscsw2qlznci-ruby-gems' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/1rh1rdfwblp2b90ycwrsxscsw2qlznci.narinfo"],"id":17082193037754374,"level":4,"parent":17082193037754373,"text":"downloading 'https://cache.nixos.org/1rh1rdfwblp2b90ycwrsxscsw2qlznci.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"start","fields":["/nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17082193037754375,"level":4,"parent":0,"text":"querying info about '/nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz.narinfo"],"id":17082193037754376,"level":4,"parent":17082193037754375,"text":"downloading 'https://cache.nixos.org/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754374,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"stop","id":17082193037754373}
+@nix {"action":"stop","id":17082193037754374}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17082193037754376,"type":105}
+@nix {"action":"start","fields":["/nix/store/1rh1rdfwblp2b90ycwrsxscsw2qlznci-ruby-gems","https://filc.cachix.org"],"id":17082193037754377,"level":4,"parent":0,"text":"querying info about '/nix/store/1rh1rdfwblp2b90ycwrsxscsw2qlznci-ruby-gems' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"stop","id":17082193037754375}
+@nix {"action":"stop","id":17082193037754376}
+@nix {"action":"start","fields":["https://filc.cachix.org/1rh1rdfwblp2b90ycwrsxscsw2qlznci.narinfo"],"id":17082193037754378,"level":4,"parent":17082193037754377,"text":"downloading 'https://filc.cachix.org/1rh1rdfwblp2b90ycwrsxscsw2qlznci.narinfo'","type":101}
+@nix {"action":"start","fields":["/nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17082193037754379,"level":4,"parent":0,"text":"querying info about '/nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"start","fields":["https://filc.cachix.org/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz.narinfo"],"id":17082193037754380,"level":4,"parent":17082193037754379,"text":"downloading 'https://filc.cachix.org/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754378,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"stop","id":17082193037754377}
+@nix {"action":"stop","id":17082193037754378}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17082193037754380,"type":105}
+@nix {"action":"stop","id":17082193037754379}
+@nix {"action":"stop","id":17082193037754380}
+@nix {"action":"stop","id":17082193037754368}
+@nix {"action":"msg","level":3,"msg":"these 3 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/vbrj02xi02va6cbjq2fwzqp62pmqbpdf-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/iwfxswc0lssdlq5hjvla88wlkwsll9dg-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17082193037754381,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17082193037754382,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17082193037754383,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"start","id":17082193037754384,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17082193037754384}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"start","id":17082193037754385,"level":4,"parent":17082193037754381,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17082193037754385}
+@nix {"action":"start","fields":["/nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv","ssh://mbrock@swa.sh",1,1],"id":17082193037754386,"level":3,"parent":0,"text":"building '/nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,3,1,0],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"start","id":17082193037754387,"level":4,"parent":17082193037754381,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17082193037754387}
+@nix {"action":"start","id":17082193037754388,"level":4,"parent":17082193037754381,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"start","id":17082193037754389,"level":3,"parent":17082193037754381,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17082193037754389,"type":106}
+@nix {"action":"stop","id":17082193037754389}
+@nix {"action":"stop","id":17082193037754388}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["no configure script, doing nothing"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["buildFlags: "],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["WARNING:  You build with buildroot."],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  Build root: /"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  Bin dir: /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  Gem home: /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  Plugins dir: /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Building native extensions. This could take a while..."],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["ERROR:  Error installing /nix/store/l227b67qw38bqm2198y0k8lcvb8qiydl-curb-1.0.9.gem:"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["        ERROR: Failed to build gem native extension."],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[""],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["    current directory: /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/curb-1.0.9/ext"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl-config... no"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for -lcurl... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl/curl.h... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tcp_keepalive... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tcp_keepidle... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tcp_keepintvl... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_appconnect_time... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_redirect_time... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_response_code... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_filetime... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_redirect_count... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_os_errno... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_num_connects... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_cookielist... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_ftp_entry_path... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_ssl... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_libz... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_ntlm... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_gssnegotiate... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_debug... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_asynchdns... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_spnego... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_largefile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_idn... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_sspi... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_conv... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_version_http2... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproxy_http... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproxy_socks4... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproxy_socks4a... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproxy_socks5... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproxy_socks5_hostname... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_basic... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_digest... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_gssnegotiate... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_ntlm... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_anysafe... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_any... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_notfound... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_perm... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_diskfull... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_illegal... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_unknownid... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_exists... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_tftp_nosuchuser... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_send_fail_rewind... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_engine_initfailed... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_login_denied... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_nosignal... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlmopt_pipelining... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlmopt_maxconnects... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_seekfunction... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_seekdata... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sockoptfunction... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sockoptdata... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_opensocketfunction... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_opensocketdata... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_conv_failed... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_conv_reqd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_cacert_badfile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_remote_file_not_found... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssh... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_shutdown_failed... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_again... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_crl_badfile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_issuer_error... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_redirect_url... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_username... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_password... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlinfo_primary_ip... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_digest_ie... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpmethod_multicwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpmethod_nocwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpmethod_singlecwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlm_bad_socket... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlm_unknown_option... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_multi_timeout()... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_multi_fdset()... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_multi_perform()... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_haproxyprotocol... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_interleavefunction... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_interleavedata... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_chunk_bgn_function... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_chunk_end_function... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_chunk_data... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_fnmatch_function... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_fnmatch_data... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_errorbuffer... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_stderr... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_failonerror... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_url... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_protocols... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_redir_protocols... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxy... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxyport... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxytype... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_noproxy... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_httpproxytunnel... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_socks5_gssapi_service... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_socks5_gssapi_nec... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_interface... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_localport... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_dns_cache_timeout... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_dns_use_global_cache... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_buffersize... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_port... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tcp_nodelay... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_address_scope... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_netrc... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_netrc_optional... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_netrc_ignored... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_netrc_required... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_netrc_file... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_userpwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxyuserpwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_username... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_password... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_password... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_password... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_httpauth... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_digest_ie... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlauth_only... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tlsauth_type... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tlsauth_srp... no"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tlsauth_username... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tlsauth_password... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxyauth... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_autoreferer... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_encoding... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_followlocation... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_unrestricted_auth... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_maxredirs... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_postredir... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_put... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_post... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_postfields... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_postfieldsize... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_postfieldsize_large... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_copypostfields... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_httppost... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_referer... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_useragent... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_httpheader... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxyheader... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_http200aliases... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_cookie... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_cookiefile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_cookiejar... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_cookiesession... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_cookielist... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_httpget... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_http_version... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_http_version_none... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_http_version_1_0... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_http_version_1_1... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ignore_content_length... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_http_content_decoding... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_http_transfer_decoding... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_mail_from... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_mail_rcpt... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_tftp_blksize... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftpport... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_quote... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_postquote... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_prequote... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_dirlistonly... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_append... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_use_eprt... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_use_epsv... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_use_pret... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_create_missing_dirs... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_response_timeout... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_alternative_to_user... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_skip_pasv_ip... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftpsslauth... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpauth_default... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpauth_ssl... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpauth_tls... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_ssl_ccc... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpssl_ccc_none... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpssl_ccc_passive... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpssl_ccc_active... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_account... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ftp_filemethod... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpmethod_multicwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpmethod_nocwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlftpmethod_singlecwd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_request... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_options... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_describe... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_announce... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_setup... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_play... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_pause... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_teardown... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_get_parameter... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_set_parameter... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_record... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_rtspreq_receive... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_session_id... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_stream_uri... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_transport... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_header... no"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_client_cseq... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_rtsp_server_cseq... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_transfertext... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxy_transfer_mode... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_crlf... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_range... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_resume_from... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_resume_from_large... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_customrequest... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_filetime... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_nobody... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_infilesize... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_infilesize_large... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_upload... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_maxfilesize... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_maxfilesize_large... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_timecondition... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_timevalue... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_timeout... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_timeout_ms... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_low_speed_limit... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_low_speed_time... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_max_send_speed_large... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_max_recv_speed_large... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_maxconnects... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_closepolicy... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_fresh_connect... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_forbid_reuse... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_connecttimeout... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_connecttimeout_ms... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ipresolve... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_ipresolve_whatever... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_ipresolve_v4... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_ipresolve_v6... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_connect_only... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_use_ssl... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlusessl_none... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlusessl_try... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlusessl_control... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlusessl_all... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_resolve... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslcert... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslcerttype... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslkey... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslkeytype... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_keypasswd... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslengine... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslengine_default... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_sslversion... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_sslversion_default... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_TLSv1... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_SSLv2... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_SSLv3... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_TLSv1_0... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_TLSv1_1... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_TLSv1_2... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURL_SSLVERSION_TLSv1_3... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssl_verifypeer... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_cainfo... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_issuercert... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_capath... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_crlfile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssl_verifyhost... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_certinfo... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_random_file... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_egdsocket... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssl_cipher_list... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssl_sessionid_cache... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_krblevel... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_auth_types... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_host_public_key_md5... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_public_keyfile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_private_keyfile... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_knownhosts... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_keyfunction... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlkhstat_fine_add_to_file... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlkhstat_fine... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlkhstat_reject... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlkhstat_defer... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_ssh_keydata... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_private... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_share... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_new_file_perms... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_new_directory_perms... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_telnetoptions... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_not_built_in... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_obsolete... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ftp_pret_failed... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_rtsp_cseq_error... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_rtsp_session_error... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ftp_bad_file_list... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_chunk_failed... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_no_connection_available... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_pinnedpubkeynotmatch... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_ssl_invalidcertstatus... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curle_http2_stream... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_gssapi_delegation... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlgssapi_delegation_policy_flag... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlgssapi_delegation_flag... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for CURLM_ADDED_ALREADY... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_unix_socket_path... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_path_as_is... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_pipewait... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlopt_proxy_ssl_verifyhost... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_all... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_dict... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_file... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_ftp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_ftps... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_gopher... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_http... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_https... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_imap... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_imaps... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_ldap... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_ldaps... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_pop3... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_pop3s... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtmp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtmpe... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtmps... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtmpt... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtmpte... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtmpts... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_rtsp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_scp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_sftp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_smb... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_smbs... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_smtp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_smtps... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_telnet... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curlproto_tftp... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_easy_escape... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for rb_thread_blocking_region()... no"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for ruby/thread.h... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for rb_thread_call_without_gvl() in ruby/thread.h... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for ruby/io.h... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for rb_io_stdio_file()... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_multi_wait()... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["checking for curl_easy_duphandle()... yes"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["creating curb_config.h"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["creating Makefile"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[""],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/curb-1.0.9/ext"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-qzocln sitelibdir\\=./.gem.20251203-36-qzocln clean"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[""],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/curb-1.0.9/ext"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-qzocln sitelibdir\\=./.gem.20251203-36-qzocln"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["compiling curb.c"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:434:15: warning: 'CURLOPT_IOCTLFUNCTION' is deprecated: since 7.18.0. Use CURLOPT_SEEKFUNCTION [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  434 |   CURB_DEFINE(CURLOPT_IOCTLFUNCTION);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1620:3: note: 'CURLOPT_IOCTLFUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1620 |   CURLOPTDEPRECATED(CURLOPT_IOCTLFUNCTION, CURLOPTTYPE_FUNCTIONPOINT, 130,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:435:15: warning: 'CURLOPT_IOCTLDATA' is deprecated: since 7.18.0. Use CURLOPT_SEEKDATA [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  435 |   CURB_DEFINE(CURLOPT_IOCTLDATA);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1622:3: note: 'CURLOPT_IOCTLDATA' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1622 |   CURLOPTDEPRECATED(CURLOPT_IOCTLDATA, CURLOPTTYPE_CBPOINT, 131,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:454:15: warning: 'CURLOPT_PROGRESSFUNCTION' is deprecated: since 7.32.0. Use CURLOPT_XFERINFOFUNCTION [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  454 |   CURB_DEFINE(CURLOPT_PROGRESSFUNCTION);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1337:3: note: 'CURLOPT_PROGRESSFUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1337 |   CURLOPTDEPRECATED(CURLOPT_PROGRESSFUNCTION, CURLOPTTYPE_FUNCTIONPOINT, 56,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:462:15: warning: 'CURLOPT_CONV_TO_NETWORK_FUNCTION' is deprecated: since 7.82.0. Serves no purpose anymore [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  462 |   CURB_DEFINE(CURLOPT_CONV_TO_NETWORK_FUNCTION);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1668:3: note: 'CURLOPT_CONV_TO_NETWORK_FUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1668 |   CURLOPTDEPRECATED(CURLOPT_CONV_TO_NETWORK_FUNCTION,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:463:15: warning: 'CURLOPT_CONV_FROM_NETWORK_FUNCTION' is deprecated: since 7.82.0. Serves no purpose anymore [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  463 |   CURB_DEFINE(CURLOPT_CONV_FROM_NETWORK_FUNCTION);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1662:3: note: 'CURLOPT_CONV_FROM_NETWORK_FUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1662 |   CURLOPTDEPRECATED(CURLOPT_CONV_FROM_NETWORK_FUNCTION,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:464:15: warning: 'CURLOPT_CONV_FROM_UTF8_FUNCTION' is deprecated: since 7.82.0. Serves no purpose anymore [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  464 |   CURB_DEFINE(CURLOPT_CONV_FROM_UTF8_FUNCTION);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1675:3: note: 'CURLOPT_CONV_FROM_UTF8_FUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1675 |   CURLOPTDEPRECATED(CURLOPT_CONV_FROM_UTF8_FUNCTION,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:498:15: warning: 'CURLOPT_PROTOCOLS' is deprecated: since 7.85.0. Use CURLOPT_PROTOCOLS_STR [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  498 |   CURB_DEFINE(CURLOPT_PROTOCOLS);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1789:3: note: 'CURLOPT_PROTOCOLS' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1789 |   CURLOPTDEPRECATED(CURLOPT_PROTOCOLS, CURLOPTTYPE_LONG, 181,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:501:15: warning: 'CURLOPT_REDIR_PROTOCOLS' is deprecated: since 7.85.0. Use CURLOPT_REDIR_PROTOCOLS_STR [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  501 |   CURB_DEFINE(CURLOPT_REDIR_PROTOCOLS);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1795:3: note: 'CURLOPT_REDIR_PROTOCOLS' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1795 |   CURLOPTDEPRECATED(CURLOPT_REDIR_PROTOCOLS, CURLOPTTYPE_LONG, 182,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:513:15: warning: 'CURLOPT_SOCKS5_GSSAPI_SERVICE' is deprecated: since 7.49.0. Use CURLOPT_PROXY_SERVICE_NAME [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  513 |   CURB_DEFINE(CURLOPT_SOCKS5_GSSAPI_SERVICE);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1778:3: note: 'CURLOPT_SOCKS5_GSSAPI_SERVICE' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1778 |   CURLOPTDEPRECATED(CURLOPT_SOCKS5_GSSAPI_SERVICE,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:523:15: warning: 'CURLOPT_DNS_USE_GLOBAL_CACHE' is deprecated: since 7.11.1. Use CURLOPT_SHARE [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  523 |   CURB_DEFINE(CURLOPT_DNS_USE_GLOBAL_CACHE);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1464:3: note: 'CURLOPT_DNS_USE_GLOBAL_CACHE' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1464 |   CURLOPTDEPRECATED(CURLOPT_DNS_USE_GLOBAL_CACHE, CURLOPTTYPE_LONG, 91,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:545:5: warning: 'HAVE_CURLOPT_PROXYUSERNAME' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  545 | #if HAVE_CURLOPT_PROXYUSERNAME"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:548:5: warning: 'HAVE_CURLOPT_PROXYPASSWORD' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  548 | #if HAVE_CURLOPT_PROXYPASSWORD"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:564:5: warning: 'HAVE_CURLOPT_TLSAUTH_SRP' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  564 | #if HAVE_CURLOPT_TLSAUTH_SRP"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:595:15: warning: 'CURLOPT_PUT' is deprecated: since 7.12.1. Use CURLOPT_UPLOAD [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  595 |   CURB_DEFINE(CURLOPT_PUT);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1328:3: note: 'CURLOPT_PUT' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1328 |   CURLOPTDEPRECATED(CURLOPT_PUT, CURLOPTTYPE_LONG, 54,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:609:15: warning: 'CURLOPT_HTTPPOST' is deprecated: since 7.56.0. Use CURLOPT_MIMEPOST [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  609 |   CURB_DEFINE(CURLOPT_HTTPPOST);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1238:3: note: 'CURLOPT_HTTPPOST' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1238 |   CURLOPTDEPRECATED(CURLOPT_HTTPPOST, CURLOPTTYPE_OBJECTPOINT, 24,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:785:5: warning: 'HAVE_CURLOPT_RTSP_HEADER' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  785 | #if HAVE_CURLOPT_RTSP_HEADER"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:936:5: warning: 'HAVE_CURL_SSLVERSION_TLSv1' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  936 | #if HAVE_CURL_SSLVERSION_TLSv1"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:939:5: warning: 'HAVE_CURL_SSLVERSION_SSLv2' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  939 | #if HAVE_CURL_SSLVERSION_SSLv2"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:942:5: warning: 'HAVE_CURL_SSLVERSION_SSLv3' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  942 | #if HAVE_CURL_SSLVERSION_SSLv3"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:945:5: warning: 'HAVE_CURL_SSLVERSION_TLSv1_0' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  945 | #if HAVE_CURL_SSLVERSION_TLSv1_0"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:949:5: warning: 'HAVE_CURL_SSLVERSION_TLSv1_1' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  949 | #if HAVE_CURL_SSLVERSION_TLSv1_1"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:953:5: warning: 'HAVE_CURL_SSLVERSION_TLSv1_2' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  953 | #if HAVE_CURL_SSLVERSION_TLSv1_2"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:957:5: warning: 'HAVE_CURL_SSLVERSION_TLSv1_3' is not defined, evaluates to 0 [-Wundef]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  957 | #if HAVE_CURL_SSLVERSION_TLSv1_3"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:983:15: warning: 'CURLOPT_RANDOM_FILE' is deprecated: since 7.84.0. Serves no purpose anymore [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  983 |   CURB_DEFINE(CURLOPT_RANDOM_FILE);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1404:3: note: 'CURLOPT_RANDOM_FILE' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1404 |   CURLOPTDEPRECATED(CURLOPT_RANDOM_FILE, CURLOPTTYPE_STRINGPOINT, 76,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb.c:986:15: warning: 'CURLOPT_EGDSOCKET' is deprecated: since 7.84.0. Serves no purpose anymore [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  986 |   CURB_DEFINE(CURLOPT_EGDSOCKET);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |               ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1408:3: note: 'CURLOPT_EGDSOCKET' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1408 |   CURLOPTDEPRECATED(CURLOPT_EGDSOCKET, CURLOPTTYPE_STRINGPOINT, 77,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["25 warnings generated."],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["compiling curb_easy.c"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:127:30: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  127 |   procret = rb_funcall(proc, idCall, 1, rb_str_new(stream, size * nmemb));"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                              ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:165:43: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  165 |   return rb_funcall(rb_ary_entry(ary, 0), idCall, 4,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:197:43: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  197 |   return rb_funcall(rb_ary_entry(ary, 0), idCall, 2,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:250:34: warning: 'CURLOPT_PROGRESSFUNCTION' is deprecated: since 7.32.0. Use CURLOPT_XFERINFOFUNCTION [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  250 |     curl_easy_setopt(rbce->curl, CURLOPT_PROGRESSFUNCTION, NULL);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1337:3: note: 'CURLOPT_PROGRESSFUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1337 |   CURLOPTDEPRECATED(CURLOPT_PROGRESSFUNCTION, CURLOPTTYPE_FUNCTIONPOINT, 56,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:368:21: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  368 |     rb_funcall(blk, idCall, 1, self);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                     ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:1089:3: warning: implicit conversion loses integer precision: 'long' to 'int' [-Wshorten-64-to-32]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1089 |   CURB_IMMED_SETTER(ruby_curl_easy, proxy_type, -1);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["./curb_macros.h:110:27: note: expanded from macro 'CURB_IMMED_SETTER'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  110 |               ptr->attr = NUM2LONG(attr);                           \\"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                         ~ ^~~~~~~~~~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/arithmetic/long.h:51:22: note: expanded from macro 'NUM2LONG'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   51 | #define NUM2LONG     RB_NUM2LONG          /**< @old{RB_NUM2LONG} */"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                      ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/arithmetic/long.h:57:22: note: expanded from macro 'RB_NUM2LONG'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   57 | #define RB_NUM2LONG  rb_num2long_inline   /**< @alias{rb_num2long_inline} */"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                      ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2329:28: warning: 'CURLOPT_PROGRESSFUNCTION' is deprecated: since 7.32.0. Use CURLOPT_XFERINFOFUNCTION [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2329 |     curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, (curl_progress_callback)&proc_progress_handler);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                            ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1337:3: note: 'CURLOPT_PROGRESSFUNCTION' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1337 |   CURLOPTDEPRECATED(CURLOPT_PROGRESSFUNCTION, CURLOPTTYPE_FUNCTIONPOINT, 56,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2358:24: warning: comparison between pointer and integer ('char' and 'VALUE' (aka 'struct rb_value_unit_struct *')) [-Wpointer-integer-compare]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2358 |   if ((rbce->use_netrc != Qnil) && (rbce->use_netrc != Qfalse)) {"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |        ~~~~~~~~~~~~~~~ ^  ~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2358:53: warning: comparison between pointer and integer ('char' and 'VALUE' (aka 'struct rb_value_unit_struct *')) [-Wpointer-integer-compare]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2358 |   if ((rbce->use_netrc != Qnil) && (rbce->use_netrc != Qfalse)) {"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                     ~~~~~~~~~~~~~~~ ^  ~~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2517:7: warning: 'rb_iterate' is deprecated: by: rb_block_call since 1.9 [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2517 |       rb_iterate(rb_each, rb_easy_get(\"headers\"), cb_each_http_header, wrap);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |       ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/iterator.h:269:1: note: 'rb_iterate' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  269 | RBIMPL_ATTR_DEPRECATED((\"by: rb_block_call since 1.9\"))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      | ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                                     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2535:7: warning: 'rb_iterate' is deprecated: by: rb_block_call since 1.9 [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2535 |       rb_iterate(rb_each, rb_easy_get(\"proxy_headers\"), cb_each_http_proxy_header, wrap);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |       ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/iterator.h:269:1: note: 'rb_iterate' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  269 | RBIMPL_ATTR_DEPRECATED((\"by: rb_block_call since 1.9\"))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      | ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                                     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2551:7: warning: 'rb_iterate' is deprecated: by: rb_block_call since 1.9 [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2551 |       rb_iterate(rb_each, rb_easy_get(\"ftp_commands\"), cb_each_ftp_command, wrap);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |       ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/iterator.h:269:1: note: 'rb_iterate' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  269 | RBIMPL_ATTR_DEPRECATED((\"by: rb_block_call since 1.9\"))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      | ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                                     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2564:7: warning: 'rb_iterate' is deprecated: by: rb_block_call since 1.9 [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2564 |       rb_iterate(rb_each, rb_easy_get(\"resolve\"), cb_each_resolve, wrap);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |       ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/iterator.h:269:1: note: 'rb_iterate' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  269 | RBIMPL_ATTR_DEPRECATED((\"by: rb_block_call since 1.9\"))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      | ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/attr/deprecated.h:36:53: note: expanded from macro 'RBIMPL_ATTR_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   36 | # define RBIMPL_ATTR_DEPRECATED(msg) __attribute__((__deprecated__ msg))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                                     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2733:28: warning: 'CURLOPT_HTTPPOST' is deprecated: since 7.56.0. Use CURLOPT_MIMEPOST [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2733 |     curl_easy_setopt(curl, CURLOPT_HTTPPOST, first);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                            ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1238:3: note: 'CURLOPT_HTTPPOST' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1238 |   CURLOPTDEPRECATED(CURLOPT_HTTPPOST, CURLOPTTYPE_OBJECTPOINT, 24,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2735:5: warning: 'curl_formfree' is deprecated: since 7.56.0. Use curl_mime_free() [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2735 |     curl_formfree(first);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2672:18: note: 'curl_formfree' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2672 | CURL_EXTERN void CURL_DEPRECATED(7.56.0, \"Use curl_mime_free()\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2741:43: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2741 |     if ((post_body = rb_funcall(args_ary, idJoin, 1, rbstrAmp)) == Qnil) {"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2820:28: warning: 'CURLOPT_HTTPPOST' is deprecated: since 7.56.0. Use CURLOPT_MIMEPOST [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2820 |     curl_easy_setopt(curl, CURLOPT_HTTPPOST, first);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                            ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1238:3: note: 'CURLOPT_HTTPPOST' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1238 |   CURLOPTDEPRECATED(CURLOPT_HTTPPOST, CURLOPTTYPE_OBJECTPOINT, 24,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2822:5: warning: 'curl_formfree' is deprecated: since 7.56.0. Use curl_mime_free() [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2822 |     curl_formfree(first);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2672:18: note: 'curl_formfree' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2672 | CURL_EXTERN void CURL_DEPRECATED(7.56.0, \"Use curl_mime_free()\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2826:45: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2826 |     VALUE patch_body = rb_funcall(args_ary, idJoin, 1, rbstrAmp);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                             ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2900:28: warning: 'CURLOPT_HTTPPOST' is deprecated: since 7.56.0. Use CURLOPT_MIMEPOST [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2900 |     curl_easy_setopt(curl, CURLOPT_HTTPPOST, first);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                            ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1238:3: note: 'CURLOPT_HTTPPOST' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1238 |   CURLOPTDEPRECATED(CURLOPT_HTTPPOST, CURLOPTTYPE_OBJECTPOINT, 24,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2904:5: warning: 'curl_formfree' is deprecated: since 7.56.0. Use curl_mime_free() [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2904 |     curl_formfree(first);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |     ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2672:18: note: 'curl_formfree' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2672 | CURL_EXTERN void CURL_DEPRECATED(7.56.0, \"Use curl_mime_free()\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:2909:44: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2909 |     VALUE post_body = rb_funcall(args_ary, idJoin, 1, rbstrAmp);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                            ^~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/eval.h:131:33: note: passing argument to parameter 'mid' here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["  131 | VALUE rb_funcall(VALUE recv, ID mid, int n, ...);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3273:33: warning: 'CURLINFO_SIZE_UPLOAD' is deprecated: since 7.55.0. Use CURLINFO_SIZE_UPLOAD_T [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3273 |   curl_easy_getinfo(rbce->curl, CURLINFO_SIZE_UPLOAD, &bytes);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2915:24: note: 'CURLINFO_SIZE_UPLOAD' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2915 |   CURLINFO_SIZE_UPLOAD CURL_DEPRECATED(7.55.0, \"Use CURLINFO_SIZE_UPLOAD_T\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3290:33: warning: 'CURLINFO_SIZE_DOWNLOAD' is deprecated: since 7.55.0. Use CURLINFO_SIZE_DOWNLOAD_T [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3290 |   curl_easy_getinfo(rbce->curl, CURLINFO_SIZE_DOWNLOAD, &bytes);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2919:24: note: 'CURLINFO_SIZE_DOWNLOAD' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2919 |                        CURL_DEPRECATED(7.55.0, \"Use CURLINFO_SIZE_DOWNLOAD_T\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3307:33: warning: 'CURLINFO_SPEED_UPLOAD' is deprecated: since 7.55.0. Use CURLINFO_SPEED_UPLOAD_T [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3307 |   curl_easy_getinfo(rbce->curl, CURLINFO_SPEED_UPLOAD, &bytes);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2927:24: note: 'CURLINFO_SPEED_UPLOAD' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2927 |                        CURL_DEPRECATED(7.55.0, \"Use CURLINFO_SPEED_UPLOAD_T\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3324:33: warning: 'CURLINFO_SPEED_DOWNLOAD' is deprecated: since 7.55.0. Use CURLINFO_SPEED_DOWNLOAD_T [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3324 |   curl_easy_getinfo(rbce->curl, CURLINFO_SPEED_DOWNLOAD, &bytes);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2923:24: note: 'CURLINFO_SPEED_DOWNLOAD' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2923 |                        CURL_DEPRECATED(7.55.0, \"Use CURLINFO_SPEED_DOWNLOAD_T\")"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3401:33: warning: 'CURLINFO_CONTENT_LENGTH_DOWNLOAD' is deprecated: since 7.55.0. Use CURLINFO_CONTENT_LENGTH_DOWNLOAD_T [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3401 |   curl_easy_getinfo(rbce->curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &bytes);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2936:24: note: 'CURLINFO_CONTENT_LENGTH_DOWNLOAD' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2936 |                        CURL_DEPRECATED(7.55.0,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3417:33: warning: 'CURLINFO_CONTENT_LENGTH_UPLOAD' is deprecated: since 7.55.0. Use CURLINFO_CONTENT_LENGTH_UPLOAD_T [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3417 |   curl_easy_getinfo(rbce->curl, CURLINFO_CONTENT_LENGTH_UPLOAD, &bytes);"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                 ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:2941:24: note: 'CURLINFO_CONTENT_LENGTH_UPLOAD' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 2941 |                        CURL_DEPRECATED(7.55.0,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3806:8: warning: 'CURLOPT_PROTOCOLS' is deprecated: since 7.85.0. Use CURLOPT_PROTOCOLS_STR [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3806 |   case CURLOPT_PROTOCOLS:"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1789:3: note: 'CURLOPT_PROTOCOLS' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1789 |   CURLOPTDEPRECATED(CURLOPT_PROTOCOLS, CURLOPTTYPE_LONG, 181,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3807:8: warning: 'CURLOPT_REDIR_PROTOCOLS' is deprecated: since 7.85.0. Use CURLOPT_REDIR_PROTOCOLS_STR [-Wdeprecated-declarations]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3807 |   case CURLOPT_REDIR_PROTOCOLS:"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |        ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1795:3: note: 'CURLOPT_REDIR_PROTOCOLS' has been explicitly marked deprecated here"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1795 |   CURLOPTDEPRECATED(CURLOPT_REDIR_PROTOCOLS, CURLOPTTYPE_LONG, 182,"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |   ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                                           ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["/nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["   44 |   __attribute__((deprecated(\"since \" # version \". \" message)))"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |                  ^"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3947:10: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'struct rb_value_unit_struct *') from 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3947 |   idCall = rb_intern(\"call\");"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |          ^ ~~~~~~~~~~~~~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["curb_easy.c:3948:10: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'struct rb_value_unit_struct *') from 'ID' (aka 'unsigned long') [-Wint-conversion]"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[" 3948 |   idJoin = rb_intern(\"join\");"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["      |          ^ ~~~~~~~~~~~~~~~~~"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["23 warnings and 9 errors generated."],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:248: curb_easy.o] Error 1"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[""],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["make failed, exit code 2"],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":[""],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Gem files will remain installed in /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/curb-1.0.9 for inspection."],"id":17082193037754386,"type":101}
+@nix {"action":"result","fields":["Results logged to /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/curb-1.0.9/gem_make.out"],"id":17082193037754386,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > curb_easy.c:3807:8: warning: 'CURLOPT_REDIR_PROTOCOLS' is deprecated: since 7.85.0. Use CURLOPT_REDIR_PROTOCOLS_STR [-Wdeprecated-declarations]\n       >  3807 |   case CURLOPT_REDIR_PROTOCOLS:\n       >       |        ^\n       > /nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1795:3: note: 'CURLOPT_REDIR_PROTOCOLS' has been explicitly marked deprecated here\n       >  1795 |   CURLOPTDEPRECATED(CURLOPT_REDIR_PROTOCOLS, CURLOPTTYPE_LONG, 182,\n       >       |   ^\n       > /nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'\n       >  1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu\n       >       |                                           ^\n       > /nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'\n       >    44 |   __attribute__((deprecated(\"since \" # version \". \" message)))\n       >       |                  ^\n       > curb_easy.c:3947:10: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'struct rb_value_unit_struct *') from 'ID' (aka 'unsigned long') [-Wint-conversion]\n       >  3947 |   idCall = rb_intern(\"call\");\n       >       |          ^ ~~~~~~~~~~~~~~~~~\n       > curb_easy.c:3948:10: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'struct rb_value_unit_struct *') from 'ID' (aka 'unsigned long') [-Wint-conversion]\n       >  3948 |   idJoin = rb_intern(\"join\");\n       >       |          ^ ~~~~~~~~~~~~~~~~~\n       > 23 warnings and 9 errors generated.\n       > make: *** [Makefile:248: curb_easy.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/curb-1.0.9 for inspection.\n       > Results logged to /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/curb-1.0.9/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"stop","id":17082193037754386}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > curb_easy.c:3807:8: warning: 'CURLOPT_REDIR_PROTOCOLS' is deprecated: since 7.85.0. Use CURLOPT_REDIR_PROTOCOLS_STR [-Wdeprecated-declarations]\n       >  3807 |   case CURLOPT_REDIR_PROTOCOLS:\n       >       |        ^\n       > /nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1795:3: note: 'CURLOPT_REDIR_PROTOCOLS' has been explicitly marked deprecated here\n       >  1795 |   CURLOPTDEPRECATED(CURLOPT_REDIR_PROTOCOLS, CURLOPTTYPE_LONG, 182,\n       >       |   ^\n       > /nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:1124:43: note: expanded from macro 'CURLOPTDEPRECATED'\n       >  1124 | #define CURLOPTDEPRECATED(na,t,nu,v,m) na CURL_DEPRECATED(v,m) = t + nu\n       >       |                                           ^\n       > /nix/store/za2zv3sp018x807vc5sq1fdc3036jjm1-curl-x86_64-unknown-linux-gnufilc0-8.14.1-dev/include/curl/curl.h:44:18: note: expanded from macro 'CURL_DEPRECATED'\n       >    44 |   __attribute__((deprecated(\"since \" # version \". \" message)))\n       >       |                  ^\n       > curb_easy.c:3947:10: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'struct rb_value_unit_struct *') from 'ID' (aka 'unsigned long') [-Wint-conversion]\n       >  3947 |   idCall = rb_intern(\"call\");\n       >       |          ^ ~~~~~~~~~~~~~~~~~\n       > curb_easy.c:3948:10: error: incompatible integer to pointer conversion assigning to 'VALUE' (aka 'struct rb_value_unit_struct *') from 'ID' (aka 'unsigned long') [-Wint-conversion]\n       >  3948 |   idJoin = rb_intern(\"join\");\n       >       |          ^ ~~~~~~~~~~~~~~~~~\n       > 23 warnings and 9 errors generated.\n       > make: *** [Makefile:248: curb_easy.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/curb-1.0.9 for inspection.\n       > Results logged to /nix/store/xjn9mfckj0m0m60gx8ymfdh1bjd9svfz-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/curb-1.0.9/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/17ccyc2mzkpc5kkzrwdfscy0hgc3cz42-ruby3.3-curb-1.0.9-x86_64-unknown-linux-gnufilc0.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17082193037754382,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17082193037754383,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17082193037754381,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17082193037754381,"type":106}
+@nix {"action":"stop","id":17082193037754383}
+@nix {"action":"stop","id":17082193037754382}
+@nix {"action":"stop","id":17082193037754381}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/iwfxswc0lssdlq5hjvla88wlkwsll9dg-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/1jhwgwwilhz0qxgyryslibiv35qx8c3n-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/iwfxswc0lssdlq5hjvla88wlkwsll9dg-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/1jhwgwwilhz0qxgyryslibiv35qx8c3n-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}

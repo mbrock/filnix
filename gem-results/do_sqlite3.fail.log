@@ -1,0 +1,337 @@
+@nix {"action":"start","id":17062406123421696,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.do_sqlite3'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17062406123421696}
+@nix {"action":"start","id":17062612281851904,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17062612281851904}
+@nix {"action":"msg","level":3,"msg":"these 3 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/cjb304jvlvi58n12kcnlirvp0s7z1hsp-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/rjjnd1ajiw3szv7k3bmpg3nf0ym4h5hr-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17062612281851905,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17062612281851906,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17062612281851907,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"start","id":17062612281851908,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17062612281851908}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,13,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"start","id":17062612281851909,"level":4,"parent":17062612281851905,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17062612281851909}
+@nix {"action":"start","fields":["/nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv","ssh://mbrock@swa.sh",1,1],"id":17062612281851910,"level":3,"parent":0,"text":"building '/nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,3,1,0],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"start","id":17062612281851911,"level":4,"parent":17062612281851905,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17062612281851911}
+@nix {"action":"start","id":17062612281851912,"level":4,"parent":17062612281851905,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"start","id":17062612281851913,"level":3,"parent":17062612281851905,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17062612281851913,"type":106}
+@nix {"action":"stop","id":17062612281851913}
+@nix {"action":"stop","id":17062612281851912}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["no configure script, doing nothing"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["buildFlags: "],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["WARNING:  You build with buildroot."],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  Build root: /"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  Bin dir: /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  Gem home: /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  Plugins dir: /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Building native extensions. This could take a while..."],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["ERROR:  Error installing /nix/store/m6pi4fjqnl36khqwd9xql8i5chjfvj1f-do_sqlite3-0.10.17.gem:"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["        ERROR: Failed to build gem native extension."],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":[""],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["    current directory: /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/do_sqlite3-0.10.17/ext/do_sqlite3"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for sqlite3.h... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for sqlite3_open() in -lsqlite3... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for localtime_r()... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for gmtime_r()... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for sqlite3_prepare_v2()... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for sqlite3_open_v2()... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["checking for sqlite3_enable_load_extension()... yes"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["creating Makefile"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":[""],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/do_sqlite3-0.10.17/ext/do_sqlite3"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-9fhwdt sitelibdir\\=./.gem.20251203-36-9fhwdt clean"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":[""],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/do_sqlite3-0.10.17/ext/do_sqlite3"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-9fhwdt sitelibdir\\=./.gem.20251203-36-9fhwdt"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["compiling do_common.c"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:64:118: warning: implicit conversion loses integer precision: 'do_int64' (aka 'long long') to 'int' [-Wshorten-64-to-32]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["   64 |   message = rb_funcall(cDO_Logger_Message, DO_ID_NEW, 3, string, rb_time_new(start->tv_sec, start->tv_usec), INT2NUM(duration));"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                                                                                              ~~~~~~~ ^~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:69:127: warning: function 'data_objects_raise_error' could be declared with attribute 'noreturn' [-Wmissing-noreturn]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["   69 | void data_objects_raise_error(VALUE self, const struct errcodes *errors, int errnum, VALUE message, VALUE query, VALUE state) {"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                                                                                                               ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:443:22: warning: incompatible pointer types passing 'ID *' (aka 'unsigned long *') to parameter of type 'VALUE *' (aka 'struct rb_value_unit_struct **') [-Wincompatible-pointer-types]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  443 |   rb_global_variable(&DO_ID_NEW_DATE);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                      ^~~~~~~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  418 | void rb_global_variable(VALUE *);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:444:22: warning: incompatible pointer types passing 'ID *' (aka 'unsigned long *') to parameter of type 'VALUE *' (aka 'struct rb_value_unit_struct **') [-Wincompatible-pointer-types]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  444 |   rb_global_variable(&DO_ID_RATIONAL);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                      ^~~~~~~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  418 | void rb_global_variable(VALUE *);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:445:22: warning: incompatible pointer types passing 'ID *' (aka 'unsigned long *') to parameter of type 'VALUE *' (aka 'struct rb_value_unit_struct **') [-Wincompatible-pointer-types]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  445 |   rb_global_variable(&DO_ID_CONST_GET);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                      ^~~~~~~~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  418 | void rb_global_variable(VALUE *);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:446:22: warning: incompatible pointer types passing 'ID *' (aka 'unsigned long *') to parameter of type 'VALUE *' (aka 'struct rb_value_unit_struct **') [-Wincompatible-pointer-types]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  446 |   rb_global_variable(&DO_ID_ESCAPE);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                      ^~~~~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  418 | void rb_global_variable(VALUE *);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:447:22: warning: incompatible pointer types passing 'ID *' (aka 'unsigned long *') to parameter of type 'VALUE *' (aka 'struct rb_value_unit_struct **') [-Wincompatible-pointer-types]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  447 |   rb_global_variable(&DO_ID_LOG);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                      ^~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  418 | void rb_global_variable(VALUE *);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:448:22: warning: incompatible pointer types passing 'ID *' (aka 'unsigned long *') to parameter of type 'VALUE *' (aka 'struct rb_value_unit_struct **') [-Wincompatible-pointer-types]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  448 |   rb_global_variable(&DO_ID_NEW);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                      ^~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  418 | void rb_global_variable(VALUE *);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["do_common.c:481:47: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'int' [-Wint-conversion]"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  481 |     return rb_float_new(rb_cstr_to_dbl(value, Qfalse));"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                               ^~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/special_consts.h:59:25: note: expanded from macro 'Qfalse'"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["   59 | #define Qfalse          RUBY_Qfalse            /**< @old{RUBY_Qfalse} */"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                         ^~~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/special_consts.h:345:21: note: expanded from macro 'RUBY_Qfalse'"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  345 | #define RUBY_Qfalse RBIMPL_CAST((VALUE)RUBY_Qfalse)"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/cast.h:31:28: note: expanded from macro 'RBIMPL_CAST'"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["   31 | # define RBIMPL_CAST(expr) (expr)"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                            ^~~~~~"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/object.h:486:44: note: passing argument to parameter 'mode' here"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["  486 | double rb_cstr_to_dbl(const char *str, int mode);"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["      |                                            ^"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["8 warnings and 1 error generated."],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:248: do_common.o] Error 1"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":[""],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["make failed, exit code 2"],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":[""],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Gem files will remain installed in /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/do_sqlite3-0.10.17 for inspection."],"id":17062612281851910,"type":101}
+@nix {"action":"result","fields":["Results logged to /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/do_sqlite3-0.10.17/gem_make.out"],"id":17062612281851910,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here\n       >   418 | void rb_global_variable(VALUE *);\n       >       |                                ^\n       > do_common.c:481:47: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'int' [-Wint-conversion]\n       >   481 |     return rb_float_new(rb_cstr_to_dbl(value, Qfalse));\n       >       |                                               ^~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/special_consts.h:59:25: note: expanded from macro 'Qfalse'\n       >    59 | #define Qfalse          RUBY_Qfalse            /**< @old{RUBY_Qfalse} */\n       >       |                         ^~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/special_consts.h:345:21: note: expanded from macro 'RUBY_Qfalse'\n       >   345 | #define RUBY_Qfalse RBIMPL_CAST((VALUE)RUBY_Qfalse)\n       >       |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/cast.h:31:28: note: expanded from macro 'RBIMPL_CAST'\n       >    31 | # define RBIMPL_CAST(expr) (expr)\n       >       |                            ^~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/object.h:486:44: note: passing argument to parameter 'mode' here\n       >   486 | double rb_cstr_to_dbl(const char *str, int mode);\n       >       |                                            ^\n       > 8 warnings and 1 error generated.\n       > make: *** [Makefile:248: do_common.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/do_sqlite3-0.10.17 for inspection.\n       > Results logged to /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/do_sqlite3-0.10.17/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"stop","id":17062612281851910}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/gc.h:418:32: note: passing argument to parameter here\n       >   418 | void rb_global_variable(VALUE *);\n       >       |                                ^\n       > do_common.c:481:47: error: incompatible pointer to integer conversion passing 'VALUE' (aka 'struct rb_value_unit_struct *') to parameter of type 'int' [-Wint-conversion]\n       >   481 |     return rb_float_new(rb_cstr_to_dbl(value, Qfalse));\n       >       |                                               ^~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/special_consts.h:59:25: note: expanded from macro 'Qfalse'\n       >    59 | #define Qfalse          RUBY_Qfalse            /**< @old{RUBY_Qfalse} */\n       >       |                         ^~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/special_consts.h:345:21: note: expanded from macro 'RUBY_Qfalse'\n       >   345 | #define RUBY_Qfalse RBIMPL_CAST((VALUE)RUBY_Qfalse)\n       >       |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/cast.h:31:28: note: expanded from macro 'RBIMPL_CAST'\n       >    31 | # define RBIMPL_CAST(expr) (expr)\n       >       |                            ^~~~~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/object.h:486:44: note: passing argument to parameter 'mode' here\n       >   486 | double rb_cstr_to_dbl(const char *str, int mode);\n       >       |                                            ^\n       > 8 warnings and 1 error generated.\n       > make: *** [Makefile:248: do_common.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/do_sqlite3-0.10.17 for inspection.\n       > Results logged to /nix/store/jhyw6wyivllzlafqqlv1ng27f2kkk4mh-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/do_sqlite3-0.10.17/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/lfy9x45vm43i2qgqq78xg7l3rsmb7sgb-ruby3.3-do_sqlite3-0.10.17-x86_64-unknown-linux-gnufilc0.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17062612281851906,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17062612281851907,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17062612281851905,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17062612281851905,"type":106}
+@nix {"action":"stop","id":17062612281851907}
+@nix {"action":"stop","id":17062612281851906}
+@nix {"action":"stop","id":17062612281851905}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/rjjnd1ajiw3szv7k3bmpg3nf0ym4h5hr-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/r62hm1hdi6v7wkh615fc8agq5ws7x7sy-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/rjjnd1ajiw3szv7k3bmpg3nf0ym4h5hr-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/r62hm1hdi6v7wkh615fc8agq5ws7x7sy-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}

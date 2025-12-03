@@ -1,0 +1,47 @@
+@nix {"action":"start","id":17060447618334720,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.digest-sha3'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"start","id":17060447618334721,"level":5,"parent":0,"text":"hashing '/home/mbrock/filnix/'","type":0}
+@nix {"action":"stop","id":17060447618334721}
+@nix {"action":"start","id":17060447618334722,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/patches/binutils-version-script.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334722}
+@nix {"action":"start","id":17060447618334723,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/patches/binutils-other-fixes.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334723}
+@nix {"action":"start","id":17060447618334724,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/patches/binutils-pizlonated-demangle.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334724}
+@nix {"action":"start","id":17060447618334725,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/perl-5.40.0.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334725}
+@nix {"action":"start","id":17060447618334726,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/zlib-1.3.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334726}
+@nix {"action":"start","id":17060447618334727,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/libxcrypt-4.4.36.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334727}
+@nix {"action":"start","id":17060447618334728,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/m4-1.4.19.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334728}
+@nix {"action":"start","id":17060447618334729,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/libffi-3.4.6.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334729}
+@nix {"action":"start","id":17060447618334730,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/openssl-3.3.1.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334730}
+@nix {"action":"start","id":17060447618334731,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/ruby-3.3.10.patch' to the store","type":0}
+@nix {"action":"stop","id":17060447618334731}
+@nix {"action":"stop","id":17060447618334720}
+@nix {"action":"start","id":17060670956634112,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17060670956634112}
+@nix {"action":"start","id":17060670956634113,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17060670956634114,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17060670956634115,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17060670956634114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17060670956634115,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17060670956634113,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17060670956634113,"type":106}
+@nix {"action":"start","id":17060670956634116,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17060670956634116}
+@nix {"action":"result","fields":[0,1,0,0],"id":17060670956634114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17060670956634115,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17060670956634113,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17060670956634113,"type":106}
+@nix {"action":"result","fields":[0,0,0,0],"id":17060670956634114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17060670956634115,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17060670956634113,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17060670956634113,"type":106}
+@nix {"action":"stop","id":17060670956634115}
+@nix {"action":"stop","id":17060670956634114}
+@nix {"action":"stop","id":17060670956634113}

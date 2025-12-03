@@ -1,0 +1,25 @@
+@nix {"action":"start","id":17091289778487296,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.ffi'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17091289778487296}
+@nix {"action":"start","id":17091504526852096,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17091504526852096}
+@nix {"action":"start","id":17091504526852097,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17091504526852098,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17091504526852099,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17091504526852098,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17091504526852099,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17091504526852097,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17091504526852097,"type":106}
+@nix {"action":"start","id":17091504526852100,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17091504526852100}
+@nix {"action":"result","fields":[0,1,0,0],"id":17091504526852098,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17091504526852099,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17091504526852097,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17091504526852097,"type":106}
+@nix {"action":"result","fields":[0,0,0,0],"id":17091504526852098,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17091504526852099,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17091504526852097,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17091504526852097,"type":106}
+@nix {"action":"stop","id":17091504526852099}
+@nix {"action":"stop","id":17091504526852098}
+@nix {"action":"stop","id":17091504526852097}

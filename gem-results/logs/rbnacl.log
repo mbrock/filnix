@@ -1,0 +1,74 @@
+warning: Git tree '/home/mbrock/filnix' has uncommitted changes
+these 2 derivations will be built:
+  /nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv
+  /nix/store/n017a7fqsdpmhcaw16v0gxbfkmn4rcnm-ruby3.3-rbnacl-7.1.2-x86_64-unknown-linux-gnufilc0.drv
+building '/nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'...
+copying 0 paths...
+error: build of '/nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh' failed: Cannot build '/nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/0jqckqjaylnr41vk4ra13y1ckl7qaqiy-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0
+       Last 25 log lines:
+       > 31 libc.so.6 0x00007ffff7c2a47e
+       > 32 libc.so.6 0x00007ffff7c2a539 __libc_start_main + 137
+       > 33 clang-20  0x0000000000c741d5 _start + 37
+       > clang-20: error: clang frontend command failed with exit code 134 (use -v to see invocation)
+       > Fil-C 0.675 clang version 20.1.8
+       > Target: x86_64-pc-linux-gnu
+       > Thread model: posix
+       > InstalledDir: /nix/store/vgskqs0704cixafnd126s6jjis2jwmyl-filc0-git/bin
+       > Build config: +assertions
+       > clang-20: note: diagnostic msg:
+       > ********************
+       >
+       > PLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:
+       > Preprocessed source(s) and associated run script(s) are located at:
+       > clang-20: note: diagnostic msg: /build/MethodHandle-eb4a2f.c
+       > clang-20: note: diagnostic msg: /build/MethodHandle-eb4a2f.sh
+       > clang-20: note: diagnostic msg:
+       >
+       > ********************
+       > make: *** [Makefile:248: MethodHandle.o] Error 1
+       >
+       > make failed, exit code 2
+       >
+       > Gem files will remain installed in /nix/store/0jqckqjaylnr41vk4ra13y1ckl7qaqiy-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/ffi-1.17.1 for inspection.
+       > Results logged to /nix/store/0jqckqjaylnr41vk4ra13y1ckl7qaqiy-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/ffi-1.17.1/gem_make.out
+       For full logs, run:
+         nix log /nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv
+error: Cannot build '/nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/0jqckqjaylnr41vk4ra13y1ckl7qaqiy-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0
+       Last 25 log lines:
+       > 31 libc.so.6 0x00007ffff7c2a47e
+       > 32 libc.so.6 0x00007ffff7c2a539 __libc_start_main + 137
+       > 33 clang-20  0x0000000000c741d5 _start + 37
+       > clang-20: error: clang frontend command failed with exit code 134 (use -v to see invocation)
+       > Fil-C 0.675 clang version 20.1.8
+       > Target: x86_64-pc-linux-gnu
+       > Thread model: posix
+       > InstalledDir: /nix/store/vgskqs0704cixafnd126s6jjis2jwmyl-filc0-git/bin
+       > Build config: +assertions
+       > clang-20: note: diagnostic msg:
+       > ********************
+       >
+       > PLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:
+       > Preprocessed source(s) and associated run script(s) are located at:
+       > clang-20: note: diagnostic msg: /build/MethodHandle-eb4a2f.c
+       > clang-20: note: diagnostic msg: /build/MethodHandle-eb4a2f.sh
+       > clang-20: note: diagnostic msg:
+       >
+       > ********************
+       > make: *** [Makefile:248: MethodHandle.o] Error 1
+       >
+       > make failed, exit code 2
+       >
+       > Gem files will remain installed in /nix/store/0jqckqjaylnr41vk4ra13y1ckl7qaqiy-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/ffi-1.17.1 for inspection.
+       > Results logged to /nix/store/0jqckqjaylnr41vk4ra13y1ckl7qaqiy-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/ffi-1.17.1/gem_make.out
+       For full logs, run:
+         nix log /nix/store/laxh98jf1mk6bywj7z7i8psr07xg5nrd-ruby3.3-ffi-1.17.1-x86_64-unknown-linux-gnufilc0.drv
+error: Cannot build '/nix/store/n017a7fqsdpmhcaw16v0gxbfkmn4rcnm-ruby3.3-rbnacl-7.1.2-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: 1 dependency failed.
+       Output paths:
+         /nix/store/dr4n1lcjal68xm8c35rrfjngvr64igxx-ruby3.3-rbnacl-7.1.2-x86_64-unknown-linux-gnufilc0

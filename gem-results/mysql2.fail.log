@@ -1,0 +1,909 @@
+@nix {"action":"start","id":17062796965445632,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.mysql2'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"start","id":17062796965445633,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/keyutils-1.6.3.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445633}
+@nix {"action":"start","id":17062796965445634,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/libedit-20240808-3.1.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445634}
+@nix {"action":"start","id":17062796965445635,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/krb5-1.21.3.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445635}
+@nix {"action":"start","id":17062796965445636,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/libxml2-2.14.4.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445636}
+@nix {"action":"start","id":17062796965445637,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/expat-2.7.1.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445637}
+@nix {"action":"start","id":17062796965445638,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/xz-5.6.2.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445638}
+@nix {"action":"start","id":17062796965445639,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/Python-3.12.5.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445639}
+@nix {"action":"start","id":17062796965445640,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/patches/python-filc-triplet-detection.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445640}
+@nix {"action":"start","id":17062796965445641,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/patches/python-faulthandler.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445641}
+@nix {"action":"start","id":17062796965445642,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/zstd-1.5.6.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445642}
+@nix {"action":"start","id":17062796965445643,"level":5,"parent":0,"text":"copying '/home/mbrock/filnix/ports/patch/grep-3.11.patch' to the store","type":0}
+@nix {"action":"stop","id":17062796965445643}
+@nix {"action":"stop","id":17062796965445632}
+@nix {"action":"start","id":17063011713810432,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17063011713810432}
+@nix {"action":"msg","level":3,"msg":"these 4 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/z2yrpym97rs3897f4c192mibnqc7v6pf-ruby3.3-mysql2-0.5.6-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/4aw8babwijn7wjm3wkqpsxsxd6jf7iiz-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/m1c43412ih1if42j9s7qw95al52d2cd2-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17063011713810433,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17063011713810434,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17063011713810435,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"start","id":17063011713810436,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17063011713810436}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,13,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,14,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,13,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,13,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"start","id":17063011713810437,"level":4,"parent":17063011713810433,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17063011713810437}
+@nix {"action":"start","fields":["/nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv","ssh://mbrock@swa.sh",1,1],"id":17063011713810438,"level":3,"parent":0,"text":"building '/nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,4,1,0],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"start","id":17063011713810439,"level":4,"parent":17063011713810433,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17063011713810439}
+@nix {"action":"start","id":17063011713810440,"level":4,"parent":17063011713810433,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"start","id":17063011713810441,"level":3,"parent":17063011713810433,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17063011713810441,"type":106}
+@nix {"action":"stop","id":17063011713810441}
+@nix {"action":"stop","id":17063011713810440}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["unpacking source archive /nix/store/jrgylbjbcsl688bs9yhy5kgaf8qx2q11-source"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["source root is source"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["substituteStream() in derivation mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5: WARNING: '--replace' is deprecated, use --replace-{fail,warn,quiet}. (file 'mariadb_config/mariadb_config.c.in')"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["fixing cmake files..."],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["cmake flags: -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_LOCALEDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/share/locale -DCMAKE_INSTALL_LIBEXECDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/libexec -DCMAKE_INSTALL_LIBDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/lib -DCMAKE_INSTALL_DOCDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/share/doc/mariadb-connector-c -DCMAKE_INSTALL_INFODIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/share/info -DCMAKE_INSTALL_MANDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/share/man -DCMAKE_INSTALL_INCLUDEDIR=/nix/store/l7xs4jkqvqhs8r58hq9scanpyq1hzwxz-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5-dev/include -DCMAKE_INSTALL_SBINDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/sbin -DCMAKE_INSTALL_BINDIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/bin -DCMAKE_INSTALL_NAME_DIR=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5/lib -DCMAKE_POLICY_DEFAULT_CMP0025=NEW -DCMAKE_FIND_FRAMEWORK=LAST -DCMAKE_STRIP=/nix/store/a0nc03czg70yaj0p9qphx5b3ppnb939i-filc-cc-wrapper-/bin/strip -DCMAKE_RANLIB=/nix/store/a0nc03czg70yaj0p9qphx5b3ppnb939i-filc-cc-wrapper-/bin/ranlib -DCMAKE_AR=/nix/store/a0nc03czg70yaj0p9qphx5b3ppnb939i-filc-cc-wrapper-/bin/ar -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX=/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5 -DMARIADB_UNIX_ADDR=/run/mysqld/mysqld.sock -DWITH_CURL=ON -DWITH_EXTERNAL_ZLIB=ON -DWITH_MYSQLCOMPAT=ON -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_HOST_SYSTEM_NAME=Linux -DCMAKE_HOST_SYSTEM_PROCESSOR=x86_64 -DCMAKE_CROSSCOMPILING_EMULATOR=env"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["CMake Deprecation Warning at CMakeLists.txt:5 (CMAKE_MINIMUM_REQUIRED):"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  Compatibility with CMake < 3.10 will be removed from a future version of"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  CMake."],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":[""],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  to tell CMake that the project requires at least <min> but has been updated"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  to work with policies introduced by <max> or earlier."],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":[""],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":[""],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- The C compiler identification is Clang 20.1.8"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Detecting C compiler ABI info"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Detecting C compiler ABI info - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check for working C compiler: /nix/store/a0nc03czg70yaj0p9qphx5b3ppnb939i-filc-cc-wrapper-/bin/clang - skipped"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Detecting C compile features"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Detecting C compile features - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Found CURL: /nix/store/rm2ib22y9xmgv0x2g5m1w7xk6m3a6lh6-curl-x86_64-unknown-linux-gnufilc0-8.14.1/lib/libcurl.so (found version \"8.14.1\")"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Could NOT find Git (missing: GIT_EXECUTABLE) "],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_BINDIR=bin"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_LIBDIR=lib/mariadb"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_PCDIR=lib/pkgconfig"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_INCLUDEDIR=include/mariadb"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_DOCSDIR="],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_PLUGINDIR=lib/mariadb/plugin"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: INSTALL_MANDIR=man"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector C: LIBMARIADB_STATIC_NAME mariadbclient"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Found ZSTD: /nix/store/926770ymlwn632cx8w1mz4b1r3dx7l15-zstd-x86_64-unknown-linux-gnufilc0-1.5.7/lib/libzstd.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Found ZLIB: /nix/store/ksm9abcghbc5smqy0n0v1jcn5s148sw4-zlib-1.3-x86_64-unknown-linux-gnufilc0/lib/libz.so (found version \"1.3\")"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file alloca.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file alloca.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file dlfcn.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file dlfcn.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file fcntl.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file fcntl.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file float.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file float.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file limits.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file limits.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file linux/limits.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file linux/limits.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file pwd.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file pwd.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file select.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file select.h - not found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file signal.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file signal.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file stddef.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file stddef.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file stdint.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file stdint.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file stdlib.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file stdlib.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file string.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file string.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/ioctl.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/ioctl.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/select.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/select.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/socket.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/socket.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/types.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/types.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/stat.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/stat.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/un.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file sys/un.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file unistd.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file unistd.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file ucontext.h"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for include file ucontext.h - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for alloca"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for alloca - not found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for dlerror"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for dlerror - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for dlopen"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for dlopen - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for fcntl"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for fcntl - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for memcpy"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for memcpy - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for nl_langinfo"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for nl_langinfo - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for setlocale"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for setlocale - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for poll"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for poll - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for getpwuid"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for getpwuid - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for makecontext"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for makecontext - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for cuserid"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for cuserid - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of char *"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of char * - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of long"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of long - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of long long"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of long long - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of size_t"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of size_t - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of ulong"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of ulong - done"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int8"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int8 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint8"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint8 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int16"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int16 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint16"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint16 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int32"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int32 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint32"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint32 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int64"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of int64 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint64"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of uint64 - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of socklen_t"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Check size of socklen_t - failed"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Performing Test SOCKET_SIZE_FOUND_socklen_t"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Performing Test SOCKET_SIZE_FOUND_socklen_t - Success"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for floor"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for floor - not found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for floor in m"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for floor in m - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for pthread_getspecific"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for pthread_getspecific - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for gethostbyname_r"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for gethostbyname_r - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for setsockopt"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Looking for setsockopt - found"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Performing Test CMAKE_HAVE_LIBC_PTHREAD"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Found Threads: TRUE"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Found OpenSSL: /nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libcrypto.so (found version \"3.3.1\")"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- TLS library/version: OpenSSL 3.3.1"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- SYSTEM_LIBS /nix/store/ksm9abcghbc5smqy0n0v1jcn5s148sw4-zlib-1.3-x86_64-unknown-linux-gnufilc0/lib/libz.so;dl;m;dl;m;/nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libssl.so;/nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libcrypto.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- SYSTEM_LIBS: /nix/store/ksm9abcghbc5smqy0n0v1jcn5s148sw4-zlib-1.3-x86_64-unknown-linux-gnufilc0/lib/libz.so;dl;m;dl;m;/nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libssl.so;/nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libcrypto.so;/nix/store/ksm9abcghbc5smqy0n0v1jcn5s148sw4-zlib-1.3-x86_64-unknown-linux-gnufilc0/lib/libz.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Dynamic column API support: ON"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- SYSTEM processor: x86_64"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- MariaDB Connector/c configuration:"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Static PLUGINS mysql_native_password;mysql_old_password;zlib;pvio_socket"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Dynamic PLUGINS dialog;client_ed25519;caching_sha2_password;sha256_password;mysql_clear_password;zstd;remote_io"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- CPack generation: TGZ"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- SSL support: OPENSSL Libs: /nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libssl.so;/nix/store/ky5n2nwrqf1lc3n8z2n83qfzmwm22h2p-openssl-x86_64-unknown-linux-gnufilc0-3.3.1/lib/libcrypto.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Zlib support: ON"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- ZStd support: TRUE"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Installation layout: DEFAULT"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Include files will be installed in include/mariadb"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Libraries will be installed in lib/mariadb"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Binaries will be installed in bin"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Documentation included from "],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Required: /nix/store/ksm9abcghbc5smqy0n0v1jcn5s148sw4-zlib-1.3-x86_64-unknown-linux-gnufilc0/lib/libz.so;dl;m"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Configuring done (4.8s)"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Generating done (0.0s)"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["CMake Warning:"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  Manually-specified variables were not used by the project:"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":[""],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    BUILD_TESTING"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_CXX_COMPILER"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_EXPORT_NO_PACKAGE_REGISTRY"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_BINDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_DOCDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_INCLUDEDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_INFODIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_LIBDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_LIBEXECDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_LOCALEDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_MANDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["    CMAKE_INSTALL_SBINDIR"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":[""],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":[""],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["-- Build files have been written to: /build/source/build"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["cmake: enabled parallel building"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["cmake: enabled parallel installing"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["Running phase: buildPhase"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["build flags: -j32 SHELL=/nix/store/cfqbabpc7xwg8akbcchqbq3cai6qq2vs-bash-5.2p37/bin/bash"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  1%] Building C object CMakeFiles/dialog.dir/plugins/auth/dialog.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  1%] Building C object CMakeFiles/dialog.dir/libmariadb/get_password.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  1%] Building C object CMakeFiles/caching_sha2_password.dir/plugins/auth/caching_sha2_pw.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  3%] Building C object CMakeFiles/caching_sha2_password.dir/libmariadb/secure/openssl_crypt.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  3%] Building C object CMakeFiles/mysql_clear_password.dir/plugins/auth/mariadb_cleartext.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  4%] Building C object CMakeFiles/zstd.dir/plugins/compress/c_zstd.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  5%] Building C object CMakeFiles/remote_io.dir/plugins/io/remote_io.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  5%] Building C object unittest/mytap/CMakeFiles/cctap.dir/tap.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  5%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ed25519.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  6%] Building C object CMakeFiles/sha256_password.dir/plugins/auth/sha256_pw.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  6%] Building C object mariadb_config/CMakeFiles/mariadb_config.dir/mariadb_config.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  8%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_isnegative.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  8%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/__/plugins/auth/my_auth.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  8%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_0.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[  8%] Building C object unittest/libmariadb/CMakeFiles/ma_getopt.dir/ma_getopt.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 10%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/__/plugins/auth/old_password.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 10%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_sub.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 12%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/__/plugins/compress/c_zlib.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 12%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p1p1_to_p2.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 12%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/__/plugins/pvio/pvio_socket.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 12%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p3_to_cached.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 13%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/open.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 14%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_charset.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 15%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_isnonzero.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 15%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p1p1_to_p3.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 16%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_decimal.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 16%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_hashtbl.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 17%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_1.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 20%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_array.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 20%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_tobytes.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 20%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_net.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 20%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/mariadb_charset.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/build/source/build/mariadb_config/mariadb_config.c:254:22: warning: data argument not used by format string [-Wformat-extra-args]"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  254 |       printf(CFLAGS, installation_dir, installation_dir);"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["      |              ~~~~~~  ^"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/build/source/build/mariadb_config/mariadb_config.c:260:23: warning: data argument not used by format string [-Wformat-extra-args]"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  260 |       printf(INCLUDE, installation_dir, installation_dir);"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["      |              ~~~~~~~  ^"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/build/source/build/mariadb_config/mariadb_config.c:264:20: warning: data argument not used by format string [-Wformat-extra-args]"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  264 |       printf(LIBS, installation_dir);"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["      |              ~~~~  ^"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/build/source/build/mariadb_config/mariadb_config.c:279:26: warning: data argument not used by format string [-Wformat-extra-args]"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  279 |       printf(PLUGIN_DIR, installation_dir);"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["      |              ~~~~~~~~~~  ^"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["4 warnings generated."],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 21%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_time.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 21%] Linking C static library libma_getopt.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 21%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p3_to_p2.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 22%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/sc_muladd.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 22%] Linking C shared module mysql_clear_password.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/build/source/libmariadb/ma_decimal.c:230:68: warning: for loop has empty body [-Wempty-body]"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["  230 |     for (i=(intg-1) % DIG_PER_DEC1; *buf0 < powers10[i--]; intg--) ;"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["      |                                                                    ^"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/build/source/libmariadb/ma_decimal.c:230:68: note: put the semicolon on a separate line to silence this warning"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["1 warning generated."],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 24%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_add.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 25%] Linking C shared module dialog.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 25%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_default.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 26%] Linking C executable mariadb_config"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 28%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_errmsg.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 30%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_add.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 29%] Linking C shared module remote_io.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 26%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_mul.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 30%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/mariadb_lib.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 30%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p2_0.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 31%] Linking C shared module caching_sha2_password.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 32%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_precomp_0.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 32%] Linking C shared module zstd.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 33%] Linking C static library libcctap.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 34%] Linking C shared module sha256_password.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 35%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_pvio.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 35%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/sc_reduce.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 36%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_list.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 37%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_cmov.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 37%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_neg.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 38%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_tls.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 39%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_double_scalarmult.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 40%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p2_dbl.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 41%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_init.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 42%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_alloc.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 40%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_scalarmult_base.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 42%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_compress.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 43%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_password.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 44%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/sign.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 44%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_ll2str.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 45%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_copy.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 45%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_pow22523.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 47%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_sha1.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 47%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_frombytes.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 48%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/mariadb_stmt.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 49%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p3_0.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 49%] Built target ma_getopt"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 49%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_sub.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 50%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_stmt_codec.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 51%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/verify.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 51%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_loaddata.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 53%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_frombytes.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 53%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_string.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 53%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_sq2.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 53%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_dtoa.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 54%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_madd.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 55%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p3_dbl.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 55%] Built target cctap"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 55%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_tobytes.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 56%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/mariadb_rpl.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 57%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_client_plugin.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 57%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_io.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 58%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/secure/openssl.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 59%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_sq.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 59%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_msub.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 61%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/mariadb_async.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 61%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/mariadb_dyncol.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 61%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/fe_invert.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 62%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/ge_p3_tobytes.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 63%] Building C object CMakeFiles/client_ed25519.dir/plugins/auth/ref10/keypair.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 63%] Building C object CMakeFiles/client_ed25519.dir/libmariadb/secure/openssl_crypt.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 64%] Building C object libmariadb/CMakeFiles/mariadb_obj.dir/ma_context.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 64%] Built target mysql_clear_password"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 64%] Built target dialog"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 64%] Built target remote_io"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 64%] Built target mariadb_config"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 65%] Linking C shared module client_ed25519.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 65%] Built target zstd"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 65%] Built target caching_sha2_password"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 65%] Built target mariadb_obj"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 65%] Built target sha256_password"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 66%] Linking C shared library libmariadb.so"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 67%] Linking C static library libmariadbclient.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: /build/source/build/libmariadb/mariadbclient.def:1:9: invalid use of VERSION in input file"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: /build/source/build/libmariadb/mariadbclient.def:250:9: invalid use of VERSION in input file"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: /build/source/build/libmariadb/mariadbclient.def:370:9: invalid use of VERSION in input file"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 67%] Built target client_ed25519"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 67%] Built target mariadbclient"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_affected_rows' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_autocommit' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_change_user' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_character_set_name' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_client_find_plugin' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_client_register_plugin' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_close' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_commit' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_data_seek' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_debug' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_dump_debug_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_embedded' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_eof' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_errno' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_error' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_escape_string' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_fetch_field' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_fetch_field_direct' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_fetch_fields' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_fetch_lengths' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_fetch_row' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_field_count' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_field_seek' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_field_tell' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_free_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_character_set_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_charset_by_name' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_charset_by_nr' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_client_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_client_version' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_host_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_option' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_optionv' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_parameters' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_proto_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_server_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_server_name' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_server_version' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_socket' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_get_ssl_cipher' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_hex_string' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_info' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_init' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_insert_id' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_kill' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_list_dbs' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_list_fields' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_list_processes' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_list_tables' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_load_plugin' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_load_plugin_v' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_more_results' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_net_field_length' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_net_read_packet' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_next_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_num_fields' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_num_rows' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_options' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_options4' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_ping' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_query' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_read_query_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_real_connect' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_real_escape_string' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_real_query' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_refresh' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_reset_connection' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_rollback' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_row_seek' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_row_tell' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_select_db' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_send_query' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_server_end' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_server_init' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_session_track_get_next' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_session_track_get_first' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_set_character_set' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_set_local_infile_default' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_set_local_infile_handler' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_set_server_option' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_shutdown' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_sqlstate' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_ssl_set' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stat' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_affected_rows' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_attr_get' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_attr_set' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_bind_param' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_bind_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_close' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_data_seek' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_errno' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_error' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_execute' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_fetch' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_fetch_column' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_field_count' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_free_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_init' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_insert_id' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_more_results' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_next_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_num_rows' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_param_count' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_param_metadata' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_prepare' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_reset' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_result_metadata' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_row_seek' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_row_tell' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_send_long_data' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_sqlstate' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_stmt_store_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_store_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_thread_end' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_thread_id' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_thread_init' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_thread_safe' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_use_result' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["/nix/store/fmj1ilm5jk1hba6s3cv6gkpgsjvkxaqv-binutils-2.43.1/bin/ld: error: undefined symbol 'mysql_warning_count' referenced in expression"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 68%] Generating libmysqlclient.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 68%] Generating libmariadb.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 69%] Building C object unittest/libmariadb/CMakeFiles/conc336.dir/conc336.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 70%] Generating libmysqlclient_r.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["clang-20: error: linker command failed with exit code 1 (use -v to see invocation)"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 71%] Building C object unittest/libmariadb/CMakeFiles/basic-t.dir/basic-t.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 72%] Building C object unittest/libmariadb/CMakeFiles/bulk1.dir/bulk1.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 73%] Building C object unittest/libmariadb/CMakeFiles/charset.dir/charset.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 74%] Building C object unittest/libmariadb/CMakeFiles/performance.dir/performance.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 74%] Building C object unittest/libmariadb/CMakeFiles/logs.dir/logs.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 74%] Building C object unittest/libmariadb/CMakeFiles/fetch.dir/fetch.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 74%] Building C object unittest/libmariadb/CMakeFiles/cursor.dir/cursor.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 74%] Building C object unittest/libmariadb/CMakeFiles/thread.dir/thread.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 75%] Building C object unittest/libmariadb/CMakeFiles/view.dir/view.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 77%] Building C object unittest/libmariadb/CMakeFiles/errors.dir/errors.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 77%] Building C object unittest/libmariadb/CMakeFiles/ps_bugs.dir/ps_bugs.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["make[2]: *** [libmariadb/CMakeFiles/libmariadb.dir/build.make:160: libmariadb/libmariadb.so.3] Error 1"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 78%] Building C object unittest/libmariadb/CMakeFiles/sp.dir/sp.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["make[1]: *** [CMakeFiles/Makefile2:620: libmariadb/CMakeFiles/libmariadb.dir/all] Error 2"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 78%] Building C object unittest/libmariadb/CMakeFiles/ps.dir/ps.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["make[1]: *** Waiting for unfinished jobs...."],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 80%] Building C object unittest/libmariadb/CMakeFiles/result.dir/result.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 80%] Building C object unittest/libmariadb/CMakeFiles/ps_new.dir/ps_new.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 81%] Building C object unittest/libmariadb/CMakeFiles/connection.dir/connection.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 81%] Building C object unittest/libmariadb/CMakeFiles/features-10_2.dir/features-10_2.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 81%] Building C object unittest/libmariadb/CMakeFiles/misc.dir/misc.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 82%] Building C object unittest/libmariadb/CMakeFiles/dyncol.dir/dyncol.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 82%] Building C object unittest/libmariadb/CMakeFiles/async.dir/async.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Building C object unittest/libmariadb/CMakeFiles/rpl_api.dir/rpl_api.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Building C object unittest/libmariadb/CMakeFiles/t_conc173.dir/t_conc173.c.o"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Built target SYM_libmysqlclient_r.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Linking C executable conc336"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Built target SYM_libmysqlclient.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Built target SYM_libmariadb.a"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Linking C executable charset"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 84%] Linking C executable basic-t"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 85%] Linking C executable bulk1"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 85%] Linking C executable view"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 86%] Linking C executable performance"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 87%] Linking C executable cursor"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 88%] Linking C executable thread"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 89%] Linking C executable result"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 89%] Linking C executable logs"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 89%] Linking C executable sp"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 90%] Linking C executable features-10_2"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 91%] Linking C executable dyncol"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 91%] Linking C executable async"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 94%] Linking C executable fetch"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 94%] Linking C executable errors"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 94%] Linking C executable ps_new"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 95%] Linking C executable t_conc173"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 97%] Linking C executable rpl_api"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 97%] Linking C executable misc"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 98%] Linking C executable connection"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Linking C executable ps"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Linking C executable ps_bugs"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target charset"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target conc336"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target cursor"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target bulk1"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target basic-t"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target async"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target ps_new"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target sp"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target t_conc173"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target ps_bugs"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target connection"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target dyncol"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target thread"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target logs"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target features-10_2"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target rpl_api"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target fetch"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target view"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target performance"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target result"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target ps"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target misc"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["[ 99%] Built target errors"],"id":17063011713810438,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:156: all] Error 2"],"id":17063011713810438,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 2\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5\u001b[0m\n         \u001b[35;1m/nix/store/l7xs4jkqvqhs8r58hq9scanpyq1hzwxz-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5-dev\u001b[0m\n       Last 25 log lines:\n       > [ 99%] \u001b[32m\u001b[1mLinking C executable ps_bugs\u001b[0m\n       > [ 99%] Built target charset\n       > [ 99%] Built target conc336\n       > [ 99%] Built target cursor\n       > [ 99%] Built target bulk1\n       > [ 99%] Built target basic-t\n       > [ 99%] Built target async\n       > [ 99%] Built target ps_new\n       > [ 99%] Built target sp\n       > [ 99%] Built target t_conc173\n       > [ 99%] Built target ps_bugs\n       > [ 99%] Built target connection\n       > [ 99%] Built target dyncol\n       > [ 99%] Built target thread\n       > [ 99%] Built target logs\n       > [ 99%] Built target features-10_2\n       > [ 99%] Built target rpl_api\n       > [ 99%] Built target fetch\n       > [ 99%] Built target view\n       > [ 99%] Built target performance\n       > [ 99%] Built target result\n       > [ 99%] Built target ps\n       > [ 99%] Built target misc\n       > [ 99%] Built target errors\n       > make: *** [Makefile:156: all] Error 2\n       For full logs, run:\n         \u001b[1mnix log /nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,4,0,1],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"stop","id":17063011713810438}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/6vsy0grk6mf7r96d089nyjmrxk0rpwlc-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5\u001b[0m\n         \u001b[35;1m/nix/store/l7xs4jkqvqhs8r58hq9scanpyq1hzwxz-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5-dev\u001b[0m\n       Last 25 log lines:\n       > [ 99%] Linking C executable ps_bugs\n       > [ 99%] Built target charset\n       > [ 99%] Built target conc336\n       > [ 99%] Built target cursor\n       > [ 99%] Built target bulk1\n       > [ 99%] Built target basic-t\n       > [ 99%] Built target async\n       > [ 99%] Built target ps_new\n       > [ 99%] Built target sp\n       > [ 99%] Built target t_conc173\n       > [ 99%] Built target ps_bugs\n       > [ 99%] Built target connection\n       > [ 99%] Built target dyncol\n       > [ 99%] Built target thread\n       > [ 99%] Built target logs\n       > [ 99%] Built target features-10_2\n       > [ 99%] Built target rpl_api\n       > [ 99%] Built target fetch\n       > [ 99%] Built target view\n       > [ 99%] Built target performance\n       > [ 99%] Built target result\n       > [ 99%] Built target ps\n       > [ 99%] Built target misc\n       > [ 99%] Built target errors\n       > make: *** [Makefile:156: all] Error 2\n       For full logs, run:\n         \u001b[1mnix log /nix/store/3bz68jx0449a6zrrkbvvj9cr55a8iq10-mariadb-connector-c-x86_64-unknown-linux-gnufilc0-3.3.5.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/z2yrpym97rs3897f4c192mibnqc7v6pf-ruby3.3-mysql2-0.5.6-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/kcgly3133n2ai7xvc0d1f4wp6c0vssir-ruby3.3-mysql2-0.5.6-x86_64-unknown-linux-gnufilc0\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17063011713810434,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17063011713810435,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17063011713810433,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17063011713810433,"type":106}
+@nix {"action":"stop","id":17063011713810435}
+@nix {"action":"stop","id":17063011713810434}
+@nix {"action":"stop","id":17063011713810433}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/m1c43412ih1if42j9s7qw95al52d2cd2-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/wqrs5wky2jv4n3symrx9rc98yhvzpxv9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/m1c43412ih1if42j9s7qw95al52d2cd2-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/wqrs5wky2jv4n3symrx9rc98yhvzpxv9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}

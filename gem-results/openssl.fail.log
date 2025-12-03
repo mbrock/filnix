@@ -1,0 +1,344 @@
+@nix {"action":"start","id":17060971604344832,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.openssl'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17060971604344832}
+@nix {"action":"start","id":17061177762775040,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17061177762775040}
+@nix {"action":"msg","level":3,"msg":"these 3 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/a2wf1n2s6yc7d9qfncbcigrycs5xkbmm-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/i2z1blr58569l01fd5fzj6cxn1xpq5jf-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17061177762775041,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17061177762775042,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17061177762775043,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"start","id":17061177762775044,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17061177762775044}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"start","id":17061177762775045,"level":4,"parent":17061177762775041,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17061177762775045}
+@nix {"action":"start","fields":["/nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv","ssh://mbrock@swa.sh",1,1],"id":17061177762775046,"level":3,"parent":0,"text":"building '/nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,3,1,0],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"start","id":17061177762775047,"level":4,"parent":17061177762775041,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17061177762775047}
+@nix {"action":"start","id":17061177762775048,"level":4,"parent":17061177762775041,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"start","id":17061177762775049,"level":3,"parent":17061177762775041,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17061177762775049,"type":106}
+@nix {"action":"stop","id":17061177762775049}
+@nix {"action":"stop","id":17061177762775048}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["no configure script, doing nothing"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["buildFlags: "],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["WARNING:  You build with buildroot."],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["  Build root: /"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["  Bin dir: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["  Gem home: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["  Plugins dir: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Building native extensions. This could take a while..."],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["ERROR:  Error installing /nix/store/w2qc5hasq6x0kvgvdrnja6qdrmsk9a54-openssl-3.3.0.gem:"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["        ERROR: Failed to build gem native extension."],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":[""],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["    current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for rb_io_descriptor()... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for rb_io_maybe_wait(0, Qnil, Qnil, Qnil) in ruby/io.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for rb_io_timeout() in ruby/io.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for t_open() in -lnsl... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for socket() in -lsocket... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for pkg-config for openssl... not found"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for CRYPTO_malloc() in -lcrypto... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_new() in -lssl... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for LIBRESSL_VERSION_NUMBER in openssl/opensslv.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for OpenSSL version >= 1.0.2... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for RAND_egd() in openssl/rand.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_dynamic() in openssl/engine.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_4758cca() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_aep() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_atalla() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_chil() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_cswift() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_nuron() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_sureware() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_ubsec() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_padlock() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_capi() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_gmp() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_gost() in openssl/engine.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ENGINE_load_cryptodev() in openssl/engine.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for i2d_re_X509_tbs(NULL, NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL.ctx in openssl/ssl.h... no"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_MD_CTX_new() in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_MD_CTX_free(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_MD_CTX_pkey_ctx(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_get_ex_data(NULL, 0) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_set_ex_data(NULL, 0, NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_get_ex_new_index(0, NULL, NULL, NULL, NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_CRL_get0_signature(NULL, NULL, NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_REQ_get0_signature(NULL, NULL, NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_REVOKED_get0_serialNumber(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_REVOKED_get0_revocationDate(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_get0_tbs_sigalg(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_CTX_get0_untrusted(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_CTX_get0_cert(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_CTX_get0_chain(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for OCSP_SINGLERESP_get0_id(NULL) in openssl/ocsp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_CTX_get_ciphers(NULL) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_up_ref(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_CRL_up_ref(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_up_ref(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_SESSION_up_ref(NULL) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_PKEY_up_ref(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_CTX_set_min_proto_version(NULL, 0) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_CTX_get_security_level(NULL) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_get0_notBefore(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_SESSION_get_protocol_version(NULL) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_STATUS_INFO_get0_status(NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_STATUS_INFO_get0_text(NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_STATUS_INFO_get0_failure_info(NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_VERIFY_CTS_set_certs(NULL, NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_VERIFY_CTX_set_store(NULL, NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_VERIFY_CTX_add_flags(NULL, 0) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_RESP_CTX_set_time_cb(NULL, NULL, NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_PBE_scrypt(\"\", 0, (unsigned char *)\"\", 0, 0, 0, 0, 0, NULL, 0) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_CTX_set_post_handshake_auth(NULL, 0) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for X509_STORE_get0_param(NULL) in openssl/x509.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_PKEY_check(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_PKEY_new_raw_private_key(0, NULL, (unsigned char *)\"\", 0) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_CTX_set_ciphersuites(NULL, \"\") in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_set0_tmp_dh_pkey(NULL, NULL) in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for ERR_get_error_all(NULL, NULL, NULL, NULL, NULL) in openssl/err.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for TS_VERIFY_CTX_set_certs(NULL, NULL) in openssl/ts.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for SSL_CTX_load_verify_file(NULL, \"\") in openssl/ssl.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for BN_check_prime(NULL, NULL, NULL) in openssl/bn.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_MD_CTX_get0_md(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_MD_CTX_get_pkey_ctx(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_PKEY_eq(NULL, NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["checking for EVP_PKEY_dup(NULL) in openssl/evp.h... yes"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["creating extconf.h"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["creating Makefile"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":[""],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-5wsb8t sitelibdir\\=./.gem.20251203-36-5wsb8t clean"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":[""],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-5wsb8t sitelibdir\\=./.gem.20251203-36-5wsb8t"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["compiling openssl_missing.c"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["compiling ossl.c"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["ossl.c:112:38: error: incompatible integer to pointer conversion passing 'long' to parameter of type 'VALUE' (aka 'struct rb_value_unit_struct *') [-Wint-conversion]"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["  112 |     str = rb_protect(ossl_str_new_i, len, &state);"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["      |                                      ^~~"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/proc.h:349:51: note: passing argument to parameter 'args' here"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["  349 | VALUE rb_protect(VALUE (*func)(VALUE args), VALUE args, int *state);"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["      |                                                   ^"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["1 error generated."],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:248: ossl.o] Error 1"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":[""],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["make failed, exit code 2"],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":[""],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Gem files will remain installed in /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0 for inspection."],"id":17061177762775046,"type":101}
+@nix {"action":"result","fields":["Results logged to /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/gem_make.out"],"id":17061177762775046,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > checking for EVP_PKEY_eq(NULL, NULL) in openssl/evp.h... yes\n       > checking for EVP_PKEY_dup(NULL) in openssl/evp.h... yes\n       > creating extconf.h\n       > creating Makefile\n       >\n       > current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl\n       > make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-5wsb8t sitelibdir\\=./.gem.20251203-36-5wsb8t clean\n       >\n       > current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl\n       > make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-5wsb8t sitelibdir\\=./.gem.20251203-36-5wsb8t\n       > compiling openssl_missing.c\n       > compiling ossl.c\n       > ossl.c:112:38: error: incompatible integer to pointer conversion passing 'long' to parameter of type 'VALUE' (aka 'struct rb_value_unit_struct *') [-Wint-conversion]\n       >   112 |     str = rb_protect(ossl_str_new_i, len, &state);\n       >       |                                      ^~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/proc.h:349:51: note: passing argument to parameter 'args' here\n       >   349 | VALUE rb_protect(VALUE (*func)(VALUE args), VALUE args, int *state);\n       >       |                                                   ^\n       > 1 error generated.\n       > make: *** [Makefile:248: ossl.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0 for inspection.\n       > Results logged to /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"stop","id":17061177762775046}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > checking for EVP_PKEY_eq(NULL, NULL) in openssl/evp.h... yes\n       > checking for EVP_PKEY_dup(NULL) in openssl/evp.h... yes\n       > creating extconf.h\n       > creating Makefile\n       >\n       > current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl\n       > make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-5wsb8t sitelibdir\\=./.gem.20251203-36-5wsb8t clean\n       >\n       > current directory: /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl\n       > make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-5wsb8t sitelibdir\\=./.gem.20251203-36-5wsb8t\n       > compiling openssl_missing.c\n       > compiling ossl.c\n       > ossl.c:112:38: error: incompatible integer to pointer conversion passing 'long' to parameter of type 'VALUE' (aka 'struct rb_value_unit_struct *') [-Wint-conversion]\n       >   112 |     str = rb_protect(ossl_str_new_i, len, &state);\n       >       |                                      ^~~\n       > /nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/include/ruby-3.3.0/ruby/internal/intern/proc.h:349:51: note: passing argument to parameter 'args' here\n       >   349 | VALUE rb_protect(VALUE (*func)(VALUE args), VALUE args, int *state);\n       >       |                                                   ^\n       > 1 error generated.\n       > make: *** [Makefile:248: ossl.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0 for inspection.\n       > Results logged to /nix/store/m750v0wak24r0wcc5kmh8c6qkx34dqnp-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/2n77ljqgzs9a811wzzm0vpdmqg21qs2d-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17061177762775042,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17061177762775043,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17061177762775041,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17061177762775041,"type":106}
+@nix {"action":"stop","id":17061177762775043}
+@nix {"action":"stop","id":17061177762775042}
+@nix {"action":"stop","id":17061177762775041}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/i2z1blr58569l01fd5fzj6cxn1xpq5jf-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/f1acy1axdj32iwlk1df2k34hh7abvls5-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/i2z1blr58569l01fd5fzj6cxn1xpq5jf-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/f1acy1axdj32iwlk1df2k34hh7abvls5-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}

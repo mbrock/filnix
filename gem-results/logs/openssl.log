@@ -1,0 +1,163 @@
+warning: Git tree '/home/mbrock/filnix' has uncommitted changes
+this derivation will be built:
+  /nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv
+building '/nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'...
+copying 0 paths...
+error: build of '/nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh' failed: Cannot build '/nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0
+       Last 25 log lines:
+       >  --without-socket-lib
+       >    --with-socketlib
+       >        --without-socketlib
+       >     --with-openssl-config
+       >   --without-openssl-config
+       >        --with-pkg-config
+       >       --without-pkg-config
+       >    --with-crypto-dir
+       >       --without-crypto-dir
+       >    --with-crypto-include=${crypto-dir}/include
+       >     --without-crypto-include
+       >        --with-crypto-lib=${crypto-dir}/lib
+       >     --without-crypto-lib
+       >    --with-cryptolib
+       >        --without-cryptolib
+       > extconf.rb:116:in `<main>': OpenSSL library could not be found. You might want to use --with-openssl-dir=<dir> option to specify the prefix where OpenSSL is installed. (RuntimeError)
+       >
+       > To see why this extension failed to compile, please check the mkmf.log which can be found here:
+       >
+       >   /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/mkmf.log
+       >
+       > extconf failed, exit code 1
+       >
+       > Gem files will remain installed in /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0 for inspection.
+       > Results logged to /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/gem_make.out
+       For full logs, run:
+         nix log /nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv
+error: Cannot build '/nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0
+       Last 25 log lines:
+       >         --without-socket-lib
+       >         --with-socketlib
+       >         --without-socketlib
+       >         --with-openssl-config
+       >         --without-openssl-config
+       >         --with-pkg-config
+       >         --without-pkg-config
+       >         --with-crypto-dir
+       >         --without-crypto-dir
+       >         --with-crypto-include=${crypto-dir}/include
+       >         --without-crypto-include
+       >         --with-crypto-lib=${crypto-dir}/lib
+       >         --without-crypto-lib
+       >         --with-cryptolib
+       >         --without-cryptolib
+       > extconf.rb:116:in `<main>': OpenSSL library could not be found. You might want to use --with-openssl-dir=<dir> option to specify the prefix where OpenSSL is installed. (RuntimeError)
+       >
+       > To see why this extension failed to compile, please check the mkmf.log which can be found here:
+       >
+       >   /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/mkmf.log
+       >
+       > extconf failed, exit code 1
+       >
+       > Gem files will remain installed in /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0 for inspection.
+       > Results logged to /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/gem_make.out
+       For full logs, run:
+         nix log /nix/store/a87vnxh9dcizfzp5gf9xcxhapzdz4k55-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0.drv
+Running phase: unpackPhase
+Running phase: patchPhase
+Running phase: updateAutotoolsGnuConfigScriptsPhase
+Running phase: updateAutotoolsGnuConfigScriptsPhase
+Running phase: configurePhase
+no configure script, doing nothing
+Running phase: installPhase
+buildFlags: 
+WARNING:  You build with buildroot.
+  Build root: /
+  Bin dir: /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin
+  Gem home: /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0
+  Plugins dir: /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins
+Building native extensions. This could take a while...
+ERROR:  Error installing /nix/store/w2qc5hasq6x0kvgvdrnja6qdrmsk9a54-openssl-3.3.0.gem:
+        ERROR: Failed to build gem native extension.
+
+    current directory: /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0/ext/openssl
+/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb
+checking for rb_io_descriptor()... yes
+checking for rb_io_maybe_wait(0, Qnil, Qnil, Qnil) in ruby/io.h... yes
+checking for rb_io_timeout() in ruby/io.h... yes
+checking for t_open() in -lnsl... no
+checking for socket() in -lsocket... no
+checking for pkg-config for openssl... not found
+checking for openssl/ssl.h... yes
+checking for CRYPTO_malloc() in -lcrypto... no
+*** extconf.rb failed ***
+Could not create Makefile due to some reason, probably lack of necessary
+libraries and/or headers.  Check the mkmf.log file for more details.  You may
+need configuration options.
+
+Provided configuration options:
+        --with-opt-dir
+        --without-opt-dir
+        --with-opt-include=${opt-dir}/include
+        --without-opt-include
+        --with-opt-lib=${opt-dir}/lib
+        --without-opt-lib
+        --with-make-prog
+        --without-make-prog
+        --srcdir=.
+        --curdir
+        --ruby=/nix/store/qxhdcwgcw8n0nh5kibcvx3pv56838vp9-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/$(RUBY_BASE_NAME)
+        --with-openssl-dir
+        --without-openssl-dir
+        --with-openssl-include=${openssl-dir}/include
+        --without-openssl-include
+        --with-openssl-lib=${openssl-dir}/lib
+        --without-openssl-lib
+        --with-kerberos-dir
+        --without-kerberos-dir
+        --with-kerberos-include=${kerberos-dir}/include
+        --without-kerberos-include
+        --with-kerberos-lib=${kerberos-dir}/lib
+        --without-kerberos-lib
+        --with-nsl-dir
+        --without-nsl-dir
+        --with-nsl-include=${nsl-dir}/include
+        --without-nsl-include
+        --with-nsl-lib=${nsl-dir}/lib
+        --without-nsl-lib
+        --with-nsllib
+        --without-nsllib
+        --with-socket-dir
+        --without-socket-dir
+        --with-socket-include=${socket-dir}/include
+        --without-socket-include
+        --with-socket-lib=${socket-dir}/lib
+        --without-socket-lib
+        --with-socketlib
+        --without-socketlib
+        --with-openssl-config
+        --without-openssl-config
+        --with-pkg-config
+        --without-pkg-config
+        --with-crypto-dir
+        --without-crypto-dir
+        --with-crypto-include=${crypto-dir}/include
+        --without-crypto-include
+        --with-crypto-lib=${crypto-dir}/lib
+        --without-crypto-lib
+        --with-cryptolib
+        --without-cryptolib
+extconf.rb:116:in `<main>': OpenSSL library could not be found. You might want to use --with-openssl-dir=<dir> option to specify the prefix where OpenSSL is installed. (RuntimeError)
+
+To see why this extension failed to compile, please check the mkmf.log which can be found here:
+
+  /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/mkmf.log
+
+extconf failed, exit code 1
+
+Gem files will remain installed in /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/openssl-3.3.0 for inspection.
+Results logged to /nix/store/wfjj0jvqgyljna8swfhjsfjk1skj3b7a-ruby3.3-openssl-3.3.0-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/openssl-3.3.0/gem_make.out

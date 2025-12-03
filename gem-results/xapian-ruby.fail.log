@@ -1,0 +1,4 @@
+@nix {"action":"start","id":17081235260047360,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.xapian-ruby'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17081235260047360}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m flake '\u001b[35;1mgit+file:///home/mbrock/filnix\u001b[0m' does not provide attribute \u001b[35;1m'packages.x86_64-linux.rubyWithGem.xapian-ruby', 'legacyPackages.x86_64-linux.rubyWithGem.xapian-ruby' or 'rubyWithGem.xapian-ruby'\u001b[0m","raw_msg":"flake '\u001b[35;1mgit+file:///home/mbrock/filnix\u001b[0m' does not provide attribute \u001b[35;1m'packages.x86_64-linux.rubyWithGem.xapian-ruby', 'legacyPackages.x86_64-linux.rubyWithGem.xapian-ruby' or 'rubyWithGem.xapian-ruby'\u001b[0m"}

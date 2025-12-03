@@ -1,0 +1,437 @@
+@nix {"action":"start","id":17088489459810304,"level":4,"parent":0,"text":"evaluating derivation 'git+file:///home/mbrock/filnix#rubyWithGem.libxml-ruby'","type":0}
+@nix {"action":"msg","level":1,"msg":"\u001b[35;1mwarning:\u001b[0m Git tree '/home/mbrock/filnix' has uncommitted changes"}
+@nix {"action":"stop","id":17088489459810304}
+@nix {"action":"start","id":17088704208175104,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"start","fields":["/nix/store/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17088704208175105,"level":4,"parent":0,"text":"querying info about '/nix/store/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4.narinfo"],"id":17088704208175106,"level":4,"parent":17088704208175105,"text":"downloading 'https://cache.nixos.org/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175106,"type":105}
+@nix {"action":"stop","id":17088704208175105}
+@nix {"action":"stop","id":17088704208175106}
+@nix {"action":"start","fields":["/nix/store/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17088704208175107,"level":4,"parent":0,"text":"querying info about '/nix/store/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4.narinfo"],"id":17088704208175108,"level":4,"parent":17088704208175107,"text":"downloading 'https://filc.cachix.org/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175108,"type":105}
+@nix {"action":"stop","id":17088704208175107}
+@nix {"action":"stop","id":17088704208175108}
+@nix {"action":"start","fields":["/nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0","https://cache.nixos.org"],"id":17088704208175109,"level":4,"parent":0,"text":"querying info about '/nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"start","fields":["https://cache.nixos.org/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1.narinfo"],"id":17088704208175110,"level":4,"parent":17088704208175109,"text":"downloading 'https://cache.nixos.org/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"start","fields":["/nix/store/4kwna8kry8pamna28niqjffli7r358q3-ruby-gems","https://cache.nixos.org"],"id":17088704208175111,"level":4,"parent":0,"text":"querying info about '/nix/store/4kwna8kry8pamna28niqjffli7r358q3-ruby-gems' on 'https://cache.nixos.org'","type":109}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"start","fields":["https://cache.nixos.org/4kwna8kry8pamna28niqjffli7r358q3.narinfo"],"id":17088704208175112,"level":4,"parent":17088704208175111,"text":"downloading 'https://cache.nixos.org/4kwna8kry8pamna28niqjffli7r358q3.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175110,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"stop","id":17088704208175109}
+@nix {"action":"stop","id":17088704208175110}
+@nix {"action":"start","fields":["/nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0","https://filc.cachix.org"],"id":17088704208175113,"level":4,"parent":0,"text":"querying info about '/nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1.narinfo"],"id":17088704208175114,"level":4,"parent":17088704208175113,"text":"downloading 'https://filc.cachix.org/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[3,3,0,0],"id":17088704208175112,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"stop","id":17088704208175111}
+@nix {"action":"stop","id":17088704208175112}
+@nix {"action":"start","fields":["/nix/store/4kwna8kry8pamna28niqjffli7r358q3-ruby-gems","https://filc.cachix.org"],"id":17088704208175115,"level":4,"parent":0,"text":"querying info about '/nix/store/4kwna8kry8pamna28niqjffli7r358q3-ruby-gems' on 'https://filc.cachix.org'","type":109}
+@nix {"action":"start","fields":["https://filc.cachix.org/4kwna8kry8pamna28niqjffli7r358q3.narinfo"],"id":17088704208175116,"level":4,"parent":17088704208175115,"text":"downloading 'https://filc.cachix.org/4kwna8kry8pamna28niqjffli7r358q3.narinfo'","type":101}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175114,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"stop","id":17088704208175113}
+@nix {"action":"stop","id":17088704208175114}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"result","fields":[15,0,0,0],"id":17088704208175116,"type":105}
+@nix {"action":"stop","id":17088704208175115}
+@nix {"action":"stop","id":17088704208175116}
+@nix {"action":"stop","id":17088704208175104}
+@nix {"action":"msg","level":3,"msg":"these 3 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/spq611al97i3dqlqw1ha3l7cv4mk8a92-ruby-gems.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/aww1kqzzz4q9ax90i348l9qj7l9z70br-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv"}
+@nix {"action":"start","id":17088704208175117,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":17088704208175118,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":17088704208175119,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"start","id":17088704208175120,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":17088704208175120}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,2,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,13,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,12,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,11,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,10,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,9,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,8,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,7,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"start","id":17088704208175121,"level":4,"parent":17088704208175117,"text":"connecting to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17088704208175121}
+@nix {"action":"start","fields":["/nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv","ssh://mbrock@swa.sh",1,1],"id":17088704208175122,"level":3,"parent":0,"text":"building '/nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv' on 'ssh://mbrock@swa.sh'","type":105}
+@nix {"action":"result","fields":[0,3,1,0],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"start","id":17088704208175123,"level":4,"parent":17088704208175117,"text":"waiting for the upload lock to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"stop","id":17088704208175123}
+@nix {"action":"start","id":17088704208175124,"level":4,"parent":17088704208175117,"text":"copying dependencies to 'ssh://mbrock@swa.sh'","type":0}
+@nix {"action":"start","id":17088704208175125,"level":3,"parent":17088704208175117,"text":"copying 0 paths","type":103}
+@nix {"action":"result","fields":[100,0],"id":17088704208175125,"type":106}
+@nix {"action":"stop","id":17088704208175125}
+@nix {"action":"stop","id":17088704208175124}
+@nix {"action":"result","fields":["Running phase: unpackPhase"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Running phase: patchPhase"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Running phase: updateAutotoolsGnuConfigScriptsPhase"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["no configure script, doing nothing"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["buildFlags: --with-xml2-lib=/nix/store/i92z6561z4d29vq69ybkwb2v38zff5nw-libxml2-x86_64-unknown-linux-gnufilc0-2.13.8/lib --with-xml2-include=/nix/store/wpccq3f1256262v4varbm857rnadmmra-libxml2-x86_64-unknown-linux-gnufilc0-2.13.8-dev/include/libxml2"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["WARNING:  You build with buildroot."],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["  Build root: /"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["  Bin dir: /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/bin"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["  Gem home: /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["  Plugins dir: /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/plugins"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Building native extensions with: '--with-xml2-lib=/nix/store/i92z6561z4d29vq69ybkwb2v38zff5nw-libxml2-x86_64-unknown-linux-gnufilc0-2.13.8/lib --with-xml2-include=/nix/store/wpccq3f1256262v4varbm857rnadmmra-libxml2-x86_64-unknown-linux-gnufilc0-2.13.8-dev/include/libxml2'"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["This could take a while..."],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["ERROR:  Error installing /nix/store/zp83pl2h432q3ljvaplviv24n29w9y7p-libxml-ruby-5.0.3.gem:"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["        ERROR: Failed to build gem native extension."],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":[""],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["    current directory: /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/libxml-ruby-5.0.3/ext/libxml"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["/nix/store/65in3amyafclxn1lg3yjb1v9a3ngk1rm-ruby-3.3.10-x86_64-unknown-linux-gnufilc0/bin/ruby extconf.rb --with-xml2-lib\\=/nix/store/i92z6561z4d29vq69ybkwb2v38zff5nw-libxml2-x86_64-unknown-linux-gnufilc0-2.13.8/lib --with-xml2-include\\=/nix/store/wpccq3f1256262v4varbm857rnadmmra-libxml2-x86_64-unknown-linux-gnufilc0-2.13.8-dev/include/libxml2"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["checking for libxml/xmlversion.h in /opt/include/libxml2,/opt/local/include/libxml2,/opt/homebrew/opt/libxml2/include/libxml2,/usr/local/include/libxml2,/usr/include/libxml2,/usr/local/include,/usr/local/opt/libxml2/include/libxml2... yes"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["checking for xmlParseDoc() in -lxml2... yes"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["creating extconf.h"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["creating Makefile"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":[""],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/libxml-ruby-5.0.3/ext/libxml"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-8y1zwn sitelibdir\\=./.gem.20251203-36-8y1zwn clean"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":[""],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["current directory: /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/libxml-ruby-5.0.3/ext/libxml"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["make DESTDIR\\= sitearchdir\\=./.gem.20251203-36-8y1zwn sitelibdir\\=./.gem.20251203-36-8y1zwn"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling libxml.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_attr.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_attr_decl.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_attributes.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_cbg.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_document.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_dtd.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_encoding.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_error.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["ruby_xml_error.c:142:26: warning: comparison between pointer and integer ('int' and 'VALUE' (aka 'struct rb_value_unit_struct *')) [-Wpointer-integer-compare]"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["  142 |   if (rb_block_given_p() == Qfalse)"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["      |       ~~~~~~~~~~~~~~~~~~ ^  ~~~~~~"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["1 warning generated."],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_html_parser.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["compiling ruby_xml_html_parser_context.c"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["ruby_xml_html_parser_context.c:342:11: error: incompatible pointer to integer conversion assigning to 'ID' (aka 'unsigned long') from 'VALUE' (aka 'struct rb_value_unit_struct *') [-Wint-conversion]"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["  342 |   IO_ATTR = ID2SYM(rb_intern(\"@io\"));"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["      |           ^ ~~~~~~~~~~~~~~~~~~~~~~~~"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["1 error generated."],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["make: *** [Makefile:248: ruby_xml_html_parser_context.o] Error 1"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":[""],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["make failed, exit code 2"],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":[""],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Gem files will remain installed in /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/libxml-ruby-5.0.3 for inspection."],"id":17088704208175122,"type":101}
+@nix {"action":"result","fields":["Results logged to /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/libxml-ruby-5.0.3/gem_make.out"],"id":17088704208175122,"type":101}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m build of '\u001b[35;1m/nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv\u001b[0m' on '\u001b[35;1mssh://mbrock@swa.sh\u001b[0m' failed: \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > compiling ruby_xml.c\n       > compiling ruby_xml_attr.c\n       > compiling ruby_xml_attr_decl.c\n       > compiling ruby_xml_attributes.c\n       > compiling ruby_xml_cbg.c\n       > compiling ruby_xml_document.c\n       > compiling ruby_xml_dtd.c\n       > compiling ruby_xml_encoding.c\n       > compiling ruby_xml_error.c\n       > ruby_xml_error.c:142:26: warning: comparison between pointer and integer ('int' and 'VALUE' (aka 'struct rb_value_unit_struct *')) [-Wpointer-integer-compare]\n       >   142 |   if (rb_block_given_p() == Qfalse)\n       >       |       ~~~~~~~~~~~~~~~~~~ ^  ~~~~~~\n       > 1 warning generated.\n       > compiling ruby_xml_html_parser.c\n       > compiling ruby_xml_html_parser_context.c\n       > ruby_xml_html_parser_context.c:342:11: error: incompatible pointer to integer conversion assigning to 'ID' (aka 'unsigned long') from 'VALUE' (aka 'struct rb_value_unit_struct *') [-Wint-conversion]\n       >   342 |   IO_ATTR = ID2SYM(rb_intern(\"@io\"));\n       >       |           ^ ~~~~~~~~~~~~~~~~~~~~~~~~\n       > 1 error generated.\n       > make: *** [Makefile:248: ruby_xml_html_parser_context.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/libxml-ruby-5.0.3 for inspection.\n       > Results logged to /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/libxml-ruby-5.0.3/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv\u001b[0m\u001b[0m"}
+@nix {"action":"result","fields":[0,3,0,1],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"stop","id":17088704208175122}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 1\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0\u001b[0m\n       Last 25 log lines:\n       > compiling ruby_xml.c\n       > compiling ruby_xml_attr.c\n       > compiling ruby_xml_attr_decl.c\n       > compiling ruby_xml_attributes.c\n       > compiling ruby_xml_cbg.c\n       > compiling ruby_xml_document.c\n       > compiling ruby_xml_dtd.c\n       > compiling ruby_xml_encoding.c\n       > compiling ruby_xml_error.c\n       > ruby_xml_error.c:142:26: warning: comparison between pointer and integer ('int' and 'VALUE' (aka 'struct rb_value_unit_struct *')) [-Wpointer-integer-compare]\n       >   142 |   if (rb_block_given_p() == Qfalse)\n       >       |       ~~~~~~~~~~~~~~~~~~ ^  ~~~~~~\n       > 1 warning generated.\n       > compiling ruby_xml_html_parser.c\n       > compiling ruby_xml_html_parser_context.c\n       > ruby_xml_html_parser_context.c:342:11: error: incompatible pointer to integer conversion assigning to 'ID' (aka 'unsigned long') from 'VALUE' (aka 'struct rb_value_unit_struct *') [-Wint-conversion]\n       >   342 |   IO_ATTR = ID2SYM(rb_intern(\"@io\"));\n       >       |           ^ ~~~~~~~~~~~~~~~~~~~~~~~~\n       > 1 error generated.\n       > make: *** [Makefile:248: ruby_xml_html_parser_context.o] Error 1\n       >\n       > make failed, exit code 2\n       >\n       > Gem files will remain installed in /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/gems/libxml-ruby-5.0.3 for inspection.\n       > Results logged to /nix/store/qi5d0j2bc0pvrpkwjbx0182yfvqdy8w1-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0/lib/ruby/gems/3.3.0/extensions/x86_64-linux/3.3.0/libxml-ruby-5.0.3/gem_make.out\n       For full logs, run:\n         \u001b[1mnix log /nix/store/26kni9j0kn2ykfs3s8awbl27cck0i9cb-ruby3.3-libxml-ruby-5.0.3-x86_64-unknown-linux-gnufilc0.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,2,0,1],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[0,1,0,1],"id":17088704208175118,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":17088704208175119,"type":105}
+@nix {"action":"result","fields":[101,0],"id":17088704208175117,"type":106}
+@nix {"action":"result","fields":[100,0],"id":17088704208175117,"type":106}
+@nix {"action":"stop","id":17088704208175119}
+@nix {"action":"stop","id":17088704208175118}
+@nix {"action":"stop","id":17088704208175117}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/aww1kqzzz4q9ax90i348l9qj7l9z70br-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m","raw_msg":"\u001b[35;1m\u001b[0mCannot build '\u001b[35;1m/nix/store/aww1kqzzz4q9ax90i348l9qj7l9z70br-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/x1jjbkbs2pa2rwqyx9vlac9ppkrs9hn4-ruby-3.3.10-x86_64-unknown-linux-gnufilc0-with-packages-x86_64-unknown-linux-gnufilc0\u001b[0m\u001b[0m"}
