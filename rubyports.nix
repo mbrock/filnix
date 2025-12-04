@@ -41,6 +41,17 @@ let
       '';
     });
 
+  # AST-grep without selector (for switch/case patterns)
+  astGrepAny = pattern: rewrite:
+    use (attrs: {
+      nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.ast-grep ];
+      postPatch = (attrs.postPatch or "") + ''
+        ast-grep run -p ${pkgs.lib.escapeShellArg pattern} \
+                 -r ${pkgs.lib.escapeShellArg rewrite} \
+                 -l c -U .
+      '';
+    });
+
   # AST-grep with custom selector (e.g., switch_statement)
   astGrepSel = selector: pattern: rewrite:
     use (attrs: {
@@ -223,6 +234,13 @@ in
         "return INT2NUM(evma_set_rlimit_nofile(limit));")
     ])
 
+    # date - VALUE to st_index_t conversion for hash function
+    (for "date" [
+      native
+      (astGrepSel "assignment_expression" "h[0] = m_nth($X)" "h[0] = (st_index_t)(uintptr_t)m_nth($X)")
+      (astGrepSel "assignment_expression" "h[3] = m_sf($X)" "h[3] = (st_index_t)(uintptr_t)m_sf($X)")
+    ])
+
     # nokogiri - can't switch on VALUE (pointer), convert to if-else
     (for "nokogiri" [
       native
@@ -255,6 +273,59 @@ in
       (replace "ext/curb_multi.c"
         "return method == Qtrue ? 1 : 0;"
         "return (method == Qtrue) ? Qtrue : Qfalse;")
+    ])
+
+    # bigdecimal - switch on VALUE, rb_protect int<->VALUE casting
+    (for "bigdecimal" [
+      native
+      # Convert switch(val) case Qnil/Qtrue/Qfalse to if-else
+      (replace "ext/bigdecimal/bigdecimal.c"
+        "switch (val) {
+      case Qnil:
+      case Qtrue:
+      case Qfalse:"
+        "if (val == Qnil || val == Qtrue || val == Qfalse) {")
+      (replace "ext/bigdecimal/bigdecimal.c"
+        "return Qnil;
+
+      default:
+        break;
+    }"
+        "return Qnil;
+    }")
+      # is_zero()/is_one() return int, not VALUE - return 0 instead of Qfalse
+      (astGrepSel "case_statement" "case T_BIGNUM: return Qfalse;" "case T_BIGNUM: return 0;")
+      # Fix rb_protect callback: store result in struct instead of casting int<->VALUE
+      (replace "ext/bigdecimal/bigdecimal.c"
+        "const char *exp_chr;
+  size_t ne;
+};"
+        "const char *exp_chr;
+  size_t ne;
+  int result;
+};")
+      (replace "ext/bigdecimal/bigdecimal.c"
+        "return (VALUE)VpCtoV(x->a, x->int_chr, x->ni, x->frac, x->nf, x->exp_chr, x->ne);"
+        "x->result = VpCtoV(x->a, x->int_chr, x->ni, x->frac, x->nf, x->exp_chr, x->ne);
+  return Qnil;")
+      (replace "ext/bigdecimal/bigdecimal.c"
+        "VALUE result = rb_protect(call_VpCtoV, (VALUE)&args, &state);"
+        "rb_protect(call_VpCtoV, (VALUE)&args, &state);")
+      (replace "ext/bigdecimal/bigdecimal.c"
+        "return (int)result;"
+        "return args.result;")
+    ])
+
+    # io-console - switch on VALUE needs uintptr_t cast
+    (for "io-console" [
+      native
+      # Cast switch expressions to uintptr_t
+      (astGrepAny "switch ($X)" "switch ((uintptr_t)$X)")
+      # Cast case labels to uintptr_t
+      (astGrepAny "case Qtrue:" "case (uintptr_t)Qtrue:")
+      (astGrepAny "case Qfalse:" "case (uintptr_t)Qfalse:")
+      (astGrepAny "case Qundef:" "case (uintptr_t)Qundef:")
+      (astGrepAny "case Qnil:" "case (uintptr_t)Qnil:")
     ])
 
     # Database drivers - just need native flag, nixpkgs provides buildInputs

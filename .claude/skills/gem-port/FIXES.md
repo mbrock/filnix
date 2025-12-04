@@ -159,6 +159,73 @@
 ])
 ```
 
+### date
+**Issues:** VALUE to st_index_t conversion in hash function (m_nth and m_sf return VALUE)
+
+**Fixes:**
+```nix
+(for "date" [
+  native
+  (astGrepSel "assignment_expression" "h[0] = m_nth($X)" "h[0] = (st_index_t)(uintptr_t)m_nth($X)")
+  (astGrepSel "assignment_expression" "h[3] = m_sf($X)" "h[3] = (st_index_t)(uintptr_t)m_sf($X)")
+])
+```
+
+**Note:** This also unlocks **psych** (YAML parser) and **stringio**.
+
+### bigdecimal
+**Issues:** switch on VALUE with case Qnil/Qtrue/Qfalse; int functions returning Qfalse; rb_protect int↔VALUE casting
+
+**Fixes:**
+```nix
+(for "bigdecimal" [
+  native
+  # Convert switch(val) case Qnil/Qtrue/Qfalse to if-else
+  (replace "ext/bigdecimal/bigdecimal.c"
+    "switch (val) {\n      case Qnil:\n      case Qtrue:\n      case Qfalse:"
+    "if (val == Qnil || val == Qtrue || val == Qfalse) {")
+  (replace "ext/bigdecimal/bigdecimal.c"
+    "return Qnil;\n\n      default:\n        break;\n    }"
+    "return Qnil;\n    }")
+  # is_zero()/is_one() return int, not VALUE
+  (astGrepSel "case_statement" "case T_BIGNUM: return Qfalse;" "case T_BIGNUM: return 0;")
+  # rb_protect callback: store result in struct instead of casting
+  (replace "ext/bigdecimal/bigdecimal.c"
+    "const char *exp_chr;\n  size_t ne;\n};"
+    "const char *exp_chr;\n  size_t ne;\n  int result;\n};")
+  (replace "ext/bigdecimal/bigdecimal.c"
+    "return (VALUE)VpCtoV(...);"
+    "x->result = VpCtoV(...); return Qnil;")
+  (replace "ext/bigdecimal/bigdecimal.c"
+    "VALUE result = rb_protect(...);"
+    "rb_protect(...);")
+  (replace "ext/bigdecimal/bigdecimal.c"
+    "return (int)result;"
+    "return args.result;")
+])
+```
+
+**Note:** This unlocks **Rails** and its dependencies.
+
+### io-console
+**Issues:** switch on VALUE with case Qtrue/Qfalse/Qnil/Qundef
+
+**Fixes:** Cast switch expression and case labels to uintptr_t:
+```nix
+(for "io-console" [
+  native
+  # Cast switch expressions to uintptr_t
+  (astGrepAny "switch ($X)" "switch ((uintptr_t)$X)")
+  # Cast case labels to uintptr_t
+  (astGrepAny "case Qtrue:" "case (uintptr_t)Qtrue:")
+  (astGrepAny "case Qfalse:" "case (uintptr_t)Qfalse:")
+  (astGrepAny "case Qundef:" "case (uintptr_t)Qundef:")
+  (astGrepAny "case Qnil:" "case (uintptr_t)Qnil:")
+])
+```
+
+**Note:** Uses `astGrepAny` (no selector) for switch/case patterns.
+
 ### sqlite3, pg
 **Status:** Work with just `native` flag (nixpkgs provides deps)
 
