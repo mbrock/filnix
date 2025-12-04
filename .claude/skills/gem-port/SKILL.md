@@ -111,4 +111,4 @@ ast-grep run -p 'case Q$CONST:' -l c .
 | VALUE reused for int | `arg = ... (bitwise op)` | Use separate int variable |
 | int return from VALUE func | `return 1;` in VALUE function | `return Qtrue;` |
 
-See REFERENCE.md for full patterns and FIXES.md for per-gem solutions.
+See REFERENCE.md for full patterns, FIXES.md for per-gem solutions, and AST_GREP.md for comprehensive ast-grep documentation.
