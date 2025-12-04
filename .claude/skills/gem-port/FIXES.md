@@ -108,6 +108,23 @@
 ])
 ```
 
+### curb
+**Issues:** `idCall`/`idJoin` declared as VALUE but should be ID; int return from VALUE function
+
+**Fixes:**
+```nix
+(for "curb" [
+  native
+  (replace "ext/curb_easy.c" "static VALUE idCall;" "static ID idCall;")
+  (replace "ext/curb_easy.c" "static VALUE idJoin;" "static ID idJoin;")
+  (replace "ext/curb_multi.c" "static VALUE idCall;" "static ID idCall;")
+  (replace "ext/curb_postfield.c" "static VALUE idCall;" "static ID idCall;")
+  (replace "ext/curb_multi.c"
+    "return method == Qtrue ? 1 : 0;"
+    "return (method == Qtrue) ? Qtrue : Qfalse;")
+])
+```
+
 ### sqlite3, pg
 **Status:** Work with just `native` flag (nixpkgs provides deps)
 

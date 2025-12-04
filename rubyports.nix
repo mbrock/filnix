@@ -212,6 +212,18 @@ in
         "return INT2NUM(evma_set_rlimit_nofile(limit));")
     ])
 
+    # curb - idCall/idJoin are ID not VALUE; int return from VALUE function
+    (for "curb" [
+      native
+      (replace "ext/curb_easy.c" "static VALUE idCall;" "static ID idCall;")
+      (replace "ext/curb_easy.c" "static VALUE idJoin;" "static ID idJoin;")
+      (replace "ext/curb_multi.c" "static VALUE idCall;" "static ID idCall;")
+      (replace "ext/curb_postfield.c" "static VALUE idCall;" "static ID idCall;")
+      (replace "ext/curb_multi.c"
+        "return method == Qtrue ? 1 : 0;"
+        "return (method == Qtrue) ? Qtrue : Qfalse;")
+    ])
+
     # Database drivers - just need native flag, nixpkgs provides buildInputs
     (for "sqlite3" [ native ])
     (for "pg" [ native ])
