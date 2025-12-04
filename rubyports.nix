@@ -249,9 +249,29 @@ in
         "{ VALUE range_result = rb_range_beg_len($ARG, $BEG, $LEN, $SIZE, $FLAG); if (range_result == Qfalse) { } else if (range_result == Qnil) { return Qnil; } else { return subseq($SELF, $B, $L); } }")
     ])
 
-    # nio4r - don't reuse VALUE param for int bitwise op results
+    # nio4r - use system libev (bundled has inline asm), fix VALUE/int issues
     (for "nio4r" [
       native
+      # Use system libev instead of bundled (avoids inline asm mfence)
+      (use (attrs: {
+        buildInputs = (attrs.buildInputs or []) ++ [ final.libev ];
+      }))
+      # Use system libev header instead of bundled ev.c
+      (replace "ext/nio4r/nio4r_ext.c"
+        "#include \"../libev/ev.c\""
+        "#include <ev.h>")
+      # Add allocator wrapper after nio4r.h (which defines xrealloc)
+      (replace "ext/nio4r/nio4r_ext.c"
+        "#include \"nio4r.h\""
+        "#include \"nio4r.h\"\nstatic void *nio4r_ev_realloc(void *ptr, long size) { return xrealloc(ptr, (size_t)size); }")
+      (replace "ext/nio4r/nio4r_ext.c"
+        "ev_set_allocator(xrealloc)"
+        "ev_set_allocator(nio4r_ev_realloc)")
+      # Link with system libev
+      (replace "ext/nio4r/extconf.rb"
+        "$defs << \"-DEV_STANDALONE\" # prevent libev from assuming \"config.h\" exists"
+        "$libs << \" -lev\"  # use system libev")
+      # Don't reuse VALUE param for int bitwise op results
       (replace "ext/nio4r/monitor.c"
         "interest = monitor->interests | NIO_Monitor_symbol2interest(interest);"
         "int new_interest = monitor->interests | NIO_Monitor_symbol2interest(interest);")

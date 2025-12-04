@@ -59,6 +59,21 @@ in
     openssl = for ./ports/openssl.nix [ ];
   }
 
+  (for pkgs.libev [
+    # Replace inline asm mfence with __atomic_thread_fence (Fil-C can't handle inline asm)
+    (use (attrs: {
+      postPatch = (attrs.postPatch or "") + ''
+        substituteInPlace ev.c \
+          --replace-fail '#define ECB_MEMORY_FENCE         __asm__ __volatile__ ("mfence"   : : : "memory")' \
+                         '#define ECB_MEMORY_FENCE         __atomic_thread_fence(__ATOMIC_SEQ_CST)' \
+          --replace-fail '#define ECB_MEMORY_FENCE_ACQUIRE __asm__ __volatile__ (""         : : : "memory")' \
+                         '#define ECB_MEMORY_FENCE_ACQUIRE __atomic_thread_fence(__ATOMIC_ACQUIRE)' \
+          --replace-fail '#define ECB_MEMORY_FENCE_RELEASE __asm__ __volatile__ (""         : : : "memory")' \
+                         '#define ECB_MEMORY_FENCE_RELEASE __atomic_thread_fence(__ATOMIC_RELEASE)'
+      '';
+    }))
+  ])
+
   (for pkgs.libevent [
     (pin "2.1.12" "sha256-kubeG+nsF2Qo/SNnZ35hzv/C7hyxGQNQN6J9NGsEA7s=")
     (patch ./ports/patch/libevent-2.1.12.patch)
