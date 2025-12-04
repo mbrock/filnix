@@ -212,6 +212,20 @@ in
         "return INT2NUM(evma_set_rlimit_nofile(limit));")
     ])
 
+    # nio4r - don't reuse VALUE param for int bitwise op results
+    (for "nio4r" [
+      native
+      (replace "ext/nio4r/monitor.c"
+        "interest = monitor->interests | NIO_Monitor_symbol2interest(interest);"
+        "int new_interest = monitor->interests | NIO_Monitor_symbol2interest(interest);")
+      (replace "ext/nio4r/monitor.c"
+        "interest = monitor->interests & ~NIO_Monitor_symbol2interest(interest);"
+        "int new_interest = monitor->interests & ~NIO_Monitor_symbol2interest(interest);")
+      (replace "ext/nio4r/monitor.c"
+        "NIO_Monitor_update_interests(self, (int)interest);"
+        "NIO_Monitor_update_interests(self, new_interest);")
+    ])
+
     # curb - idCall/idJoin are ID not VALUE; int return from VALUE function
     (for "curb" [
       native

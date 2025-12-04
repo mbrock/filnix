@@ -108,6 +108,27 @@
 ])
 ```
 
+### nio4r
+**Issues:** VALUE param reused for int bitwise operation results
+
+**Fixes:**
+```nix
+(for "nio4r" [
+  native
+  (replace "ext/nio4r/monitor.c"
+    "interest = monitor->interests | NIO_Monitor_symbol2interest(interest);"
+    "int new_interest = monitor->interests | NIO_Monitor_symbol2interest(interest);")
+  (replace "ext/nio4r/monitor.c"
+    "interest = monitor->interests & ~NIO_Monitor_symbol2interest(interest);"
+    "int new_interest = monitor->interests & ~NIO_Monitor_symbol2interest(interest);")
+  (replace "ext/nio4r/monitor.c"
+    "NIO_Monitor_update_interests(self, (int)interest);"
+    "NIO_Monitor_update_interests(self, new_interest);")
+])
+```
+
+**Note:** This also unlocks **puma** (Rails default web server).
+
 ### curb
 **Issues:** `idCall`/`idJoin` declared as VALUE but should be ID; int return from VALUE function
 
