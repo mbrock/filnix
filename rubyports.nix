@@ -192,6 +192,14 @@ in
         "point_conversion_form_t form;\n    ID ret;")
     ])
 
+    # racc - ERROR_TOKEN (int) passed where VALUE expected, use vERROR_TOKEN
+    (for "racc" [
+      native
+      (replace "ext/racc/cparse/cparse.c"
+        "SHIFT(v, act, ERROR_TOKEN, val)"
+        "SHIFT(v, act, vERROR_TOKEN, val)")
+    ])
+
     # Database drivers - just need native flag, nixpkgs provides buildInputs
     (for "sqlite3" [ native ])
     (for "pg" [ native ])
