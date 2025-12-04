@@ -41,6 +41,17 @@ let
       '';
     });
 
+  # AST-grep with custom selector (e.g., switch_statement)
+  astGrepSel = selector: pattern: rewrite:
+    use (attrs: {
+      nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.ast-grep ];
+      postPatch = (attrs.postPatch or "") + ''
+        ast-grep run -p ${pkgs.lib.escapeShellArg pattern} \
+                 -r ${pkgs.lib.escapeShellArg rewrite} \
+                 -l c --selector ${selector} -U .
+      '';
+    });
+
 in
 {
   # Native gems organized by category (excluding GTK3 ecosystem)
@@ -210,6 +221,14 @@ in
       (replace "ext/rubymain.cpp"
         "return INT2NUM (evma_set_rlimit_nofile (arg));"
         "return INT2NUM(evma_set_rlimit_nofile(limit));")
+    ])
+
+    # nokogiri - can't switch on VALUE (pointer), convert to if-else
+    (for "nokogiri" [
+      native
+      (astGrepSel "switch_statement"
+        "switch (rb_range_beg_len($ARG, $BEG, $LEN, $SIZE, $FLAG)) { case Qfalse: break; case Qnil: return Qnil; default: return subseq($SELF, $B, $L); }"
+        "{ VALUE range_result = rb_range_beg_len($ARG, $BEG, $LEN, $SIZE, $FLAG); if (range_result == Qfalse) { } else if (range_result == Qnil) { return Qnil; } else { return subseq($SELF, $B, $L); } }")
     ])
 
     # nio4r - don't reuse VALUE param for int bitwise op results

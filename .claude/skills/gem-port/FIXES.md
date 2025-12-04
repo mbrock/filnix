@@ -146,6 +146,19 @@
 ])
 ```
 
+### nokogiri
+**Issues:** `switch` on VALUE (case Qfalse/Qnil) - VALUE is pointer in Fil-C, can't be switch case label
+
+**Fixes:** Use ast-grep with `switch_statement` selector to convert to if-else:
+```nix
+(for "nokogiri" [
+  native
+  (astGrepSel "switch_statement"
+    "switch (rb_range_beg_len($ARG, $BEG, $LEN, $SIZE, $FLAG)) { case Qfalse: break; case Qnil: return Qnil; default: return subseq($SELF, $B, $L); }"
+    "{ VALUE range_result = rb_range_beg_len($ARG, $BEG, $LEN, $SIZE, $FLAG); if (range_result == Qfalse) { } else if (range_result == Qnil) { return Qnil; } else { return subseq($SELF, $B, $L); } }")
+])
+```
+
 ### sqlite3, pg
 **Status:** Work with just `native` flag (nixpkgs provides deps)
 
@@ -156,9 +169,4 @@
 
 ## Known Problematic Gems
 
-### nokogiri
-**Issue:** Tries to build libxml2 from source, autoconf doesn't recognize `x86_64-unknown-linux-filc0`.
-
-**Potential fix:** Use `--enable-system-libraries`, but then hits `-Werror` issues with Ruby headers.
-
-**Status:** Needs deeper investigation into Ruby header warnings.
+(None currently - nokogiri now works!)

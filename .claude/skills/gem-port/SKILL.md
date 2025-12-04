@@ -12,6 +12,7 @@ Fil-C is a memory-safe C compiler. Ruby's VALUE type becomes a pointer (`struct 
 - Stores VALUE in int variables
 - Does bitwise ops on VALUE
 - Mixes VALUE and ID types
+- Uses `switch` on VALUE (case labels must be integer constants)
 
 ## Workflow
 
@@ -21,6 +22,8 @@ Each command runs independently (no persistent shell). Use `ruby_3_3` not `ruby`
 ```bash
 rm -rf /tmp/gem-port && mkdir -p /tmp/gem-port
 nix develop .#pkgsFilc.ruby_3_3.gems.<name> --command bash -c 'gem unpack $src'
+# Move to /tmp if unpacked in current dir
+mv *<name>* /tmp/gem-port/ 2>/dev/null || true
 ```
 
 ### 2. Find ext structure
@@ -48,29 +51,64 @@ Edit files in `/tmp/gem-port/*/ext/` directly, then re-run step 4. No need to re
 
 ### 6. Add to rubyports.nix and verify
 ```bash
-nix build .#pkgsFilc.ruby_3_3.gems.<name> -L
+# Always capture stderr and check exit code
+nix build .#pkgsFilc.ruby_3_3.gems.<name> 2>&1; echo "EXIT: $?"
+ls result/ 2>&1
 ```
 
-## ast-grep for C Function Calls
+## ast-grep Usage
 
-**Critical**: Use `--selector call_expression` for C function calls, otherwise patterns parse as macros.
+**ALWAYS use ast-grep for pattern-based code fixes.** It handles whitespace variations that break string replacement.
 
+### Selectors
+Different C constructs need different selectors:
+- `call_expression` - function calls like `rb_attr($A, $B, Qfalse)`
+- `switch_statement` - switch blocks with case labels
+- `declaration` - variable declarations
+
+### Examples
+
+**Function call replacement:**
 ```bash
 ast-grep run -p 'rb_attr($A, $B, $C, $D, Qfalse)' \
              -r 'rb_attr($A, $B, $C, $D, 0)' \
              -l c --selector call_expression -U .
 ```
 
-## Adding Fixes to rubyports.nix
-
-Use the helpers in rubyports.nix:
-
-```nix
-(for "gemname" [
-  native
-  (astGrep "pattern($A)" "replacement($A)")
-  (replace "path/to/file.c" "old string" "new string")
-])
+**Switch to if-else (VALUE can't be case label):**
+```bash
+ast-grep run \
+  -p 'switch (rb_range_beg_len($A, $B, $L, $S, $F)) { case Qfalse: break; case Qnil: return Qnil; default: return subseq($X, $Y, $Z); }' \
+  -r '{ VALUE r = rb_range_beg_len($A, $B, $L, $S, $F); if (r == Qfalse) { } else if (r == Qnil) { return Qnil; } else { return subseq($X, $Y, $Z); } }' \
+  -l c --selector switch_statement -U .
 ```
 
-See REFERENCE.md for common patterns and FIXES.md for per-gem solutions.
+**Finding patterns (no -U):**
+```bash
+ast-grep run -p 'static VALUE $NAME;' -l c .
+ast-grep run -p 'case Q$CONST:' -l c .
+```
+
+## rubyports.nix Helpers
+
+```nix
+# String replacement (fragile - prefer ast-grep)
+(replace "path/to/file.c" "old string" "new string")
+
+# ast-grep with call_expression selector
+(astGrep "pattern($A)" "replacement($A)")
+
+# ast-grep with custom selector
+(astGrepSel "switch_statement" "switch(...)" "if-else...")
+```
+
+## Common Patterns
+
+| Issue | Pattern | Fix |
+|-------|---------|-----|
+| VALUE→ID for rb_intern | `static VALUE id = rb_intern(...)` | `static ID id = ...` |
+| int→VALUE in switch | `case Qfalse: case Qnil:` | Convert to if-else |
+| VALUE reused for int | `arg = ... (bitwise op)` | Use separate int variable |
+| int return from VALUE func | `return 1;` in VALUE function | `return Qtrue;` |
+
+See REFERENCE.md for full patterns and FIXES.md for per-gem solutions.
