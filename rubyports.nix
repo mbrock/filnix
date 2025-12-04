@@ -29,6 +29,18 @@ let
       '';
     });
 
+  # AST-based pattern replacement using ast-grep
+  # Use --selector call_expression for C function calls
+  astGrep = pattern: rewrite:
+    use (attrs: {
+      nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.ast-grep ];
+      postPatch = (attrs.postPatch or "") + ''
+        ast-grep run -p ${pkgs.lib.escapeShellArg pattern} \
+                 -r ${pkgs.lib.escapeShellArg rewrite} \
+                 -l c --selector call_expression -U .
+      '';
+    });
+
 in
 {
   # Native gems organized by category (excluding GTK3 ecosystem)
@@ -155,6 +167,29 @@ in
       (replace "ext/ffi_c/Struct.h"
         "#define FIELD_CACHE_LOOKUP(this, sym) ( &(this)->cache_row[((sym) >> 8) & 0xff] )"
         "#define FIELD_CACHE_LOOKUP(this, sym) ( &(this)->cache_row[(((uintptr_t)(sym)) >> 8) & 0xff] )")
+    ])
+
+    # openssl - various VALUE/int mismatches (fixed via ast-grep patterns)
+    (for "openssl" [
+      native
+      # rb_attr takes int, not VALUE - fix Qfalse -> 0
+      (astGrep "rb_attr($A, $B, $C, $D, Qfalse)" "rb_attr($A, $B, $C, $D, 0)")
+      # rb_cstr_to_inum takes int badcheck, not VALUE
+      (astGrep "rb_cstr_to_inum($A, $B, Qtrue)" "rb_cstr_to_inum($A, $B, 1)")
+      # rb_str_new size cast needs uintptr_t
+      (astGrep "rb_str_new(NULL, (long)$A)" "rb_str_new(NULL, (long)(uintptr_t)$A)")
+      # rb_protect expects VALUE, but len is long
+      (replace "ext/openssl/ossl.c"
+        "str = rb_protect(ossl_str_new_i, len, &state);"
+        "str = rb_protect(ossl_str_new_i, (VALUE)(uintptr_t)len, &state);")
+      # int ret = Qnil -> int ret = -1 (function returns int, not VALUE)
+      (replace "ext/openssl/ossl_pkcs7.c"
+        "int i, ret = Qnil;"
+        "int i, ret = -1;")
+      # VALUE ret stores ID values, should be ID ret
+      (replace "ext/openssl/ossl_pkey_ec.c"
+        "point_conversion_form_t form;\n    VALUE ret;"
+        "point_conversion_form_t form;\n    ID ret;")
     ])
 
     # Database drivers - just need native flag, nixpkgs provides buildInputs
