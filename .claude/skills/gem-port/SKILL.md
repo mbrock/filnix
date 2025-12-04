@@ -15,26 +15,41 @@ Fil-C is a memory-safe C compiler. Ruby's VALUE type becomes a pointer (`struct 
 
 ## Workflow
 
-### Setup (once per gem)
+Each command runs independently (no persistent shell). Use `ruby_3_3` not `ruby`.
+
+### 1. Unpack gem
 ```bash
-mkdir -p /tmp/gem-port && cd /tmp/gem-port
-nix develop .#pkgsFilc.ruby.gems.<name> --command bash -c '
-  source $stdenv/setup
-  gem unpack $src
-  cd *-*/
-  patchPhase
-  cd ext/<name>
-  ruby extconf.rb
-'
+rm -rf /tmp/gem-port && mkdir -p /tmp/gem-port
+nix develop .#pkgsFilc.ruby_3_3.gems.<name> --command bash -c 'gem unpack $src'
 ```
 
-### Iterate
+### 2. Find ext structure
 ```bash
-cd /tmp/gem-port/*-*/ext/<name>
-nix develop .#pkgsFilc.ruby.gems.<name> --command make
+ls /tmp/gem-port/*/ext/
+```
+Note: Some gems have `ext/<name>/`, others have files directly in `ext/`.
+
+### 3. Run extconf.rb
+```bash
+nix develop .#pkgsFilc.ruby_3_3.gems.<name> --command bash -c \
+  'cd /tmp/gem-port/*/ext && ruby extconf.rb'
+# Or if nested: cd /tmp/gem-port/*/ext/<name>
 ```
 
-Fix errors, re-run make. No need to re-unpack.
+### 4. Build and capture errors
+```bash
+nix develop .#pkgsFilc.ruby_3_3.gems.<name> --command bash -c \
+  'cd /tmp/gem-port/*/ext && make 2>&1' > /tmp/build.log
+cat /tmp/build.log | head -100
+```
+
+### 5. Fix and iterate
+Edit files in `/tmp/gem-port/*/ext/` directly, then re-run step 4. No need to re-unpack or re-run extconf.
+
+### 6. Add to rubyports.nix and verify
+```bash
+nix build .#pkgsFilc.ruby_3_3.gems.<name> -L
+```
 
 ## ast-grep for C Function Calls
 

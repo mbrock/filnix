@@ -89,6 +89,25 @@
 ])
 ```
 
+### eventmachine
+**Issues:** `Intern_*` symbols declared as VALUE but should be ID; int assigned to VALUE var
+
+**Fixes:**
+```nix
+(for "eventmachine" [
+  native
+  # Intern_* are IDs from rb_intern(), not VALUEs
+  (replace "ext/rubymain.cpp" "static VALUE Intern_" "static ID Intern_")
+  # Don't reuse VALUE arg for int
+  (replace "ext/rubymain.cpp"
+    "arg = (NIL_P(arg)) ? -1 : NUM2INT (arg);"
+    "int limit = (NIL_P(arg)) ? -1 : NUM2INT(arg);")
+  (replace "ext/rubymain.cpp"
+    "return INT2NUM (evma_set_rlimit_nofile (arg));"
+    "return INT2NUM(evma_set_rlimit_nofile(limit));")
+])
+```
+
 ### sqlite3, pg
 **Status:** Work with just `native` flag (nixpkgs provides deps)
 

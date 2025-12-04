@@ -200,6 +200,18 @@ in
         "SHIFT(v, act, vERROR_TOKEN, val)")
     ])
 
+    # eventmachine - Intern_* vars are ID, not VALUE; also int reuse in set_rlimit
+    (for "eventmachine" [
+      native
+      (replace "ext/rubymain.cpp" "static VALUE Intern_" "static ID Intern_")
+      (replace "ext/rubymain.cpp"
+        "arg = (NIL_P(arg)) ? -1 : NUM2INT (arg);"
+        "int limit = (NIL_P(arg)) ? -1 : NUM2INT(arg);")
+      (replace "ext/rubymain.cpp"
+        "return INT2NUM (evma_set_rlimit_nofile (arg));"
+        "return INT2NUM(evma_set_rlimit_nofile(limit));")
+    ])
+
     # Database drivers - just need native flag, nixpkgs provides buildInputs
     (for "sqlite3" [ native ])
     (for "pg" [ native ])
