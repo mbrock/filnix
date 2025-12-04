@@ -109,12 +109,21 @@
 ```
 
 ### nio4r
-**Issues:** VALUE param reused for int bitwise operation results
+**Issues:**
+1. VALUE param reused for int bitwise operation results
+2. Bundled libev has inline asm `mfence` that Fil-C can't handle
 
 **Fixes:**
 ```nix
 (for "nio4r" [
   native
+  # Replace inline asm mfence macro with __atomic_thread_fence in bundled libev
+  # ast-grep matches #define as preproc_def with body as preproc_arg (raw text)
+  # Must match exact whitespace in the #define line
+  (astGrepAny
+    "#define ECB_MEMORY_FENCE         __asm__ __volatile__ (\"mfence\"   : : : \"memory\")"
+    "#define ECB_MEMORY_FENCE         __atomic_thread_fence(__ATOMIC_SEQ_CST)")
+  # Don't reuse VALUE param for int bitwise op results
   (replace "ext/nio4r/monitor.c"
     "interest = monitor->interests | NIO_Monitor_symbol2interest(interest);"
     "int new_interest = monitor->interests | NIO_Monitor_symbol2interest(interest);")
@@ -127,7 +136,9 @@
 ])
 ```
 
-**Note:** This also unlocks **puma** (Rails default web server).
+**Note:** Uses bundled libev (not system libev) because it has Ruby GVL-release patches (`rb_thread_call_without_gvl`).
+
+**Note:** This unlocks **puma** (Rails default web server) - tested working!
 
 ### curb
 **Issues:** `idCall`/`idJoin` declared as VALUE but should be ID; int return from VALUE function
@@ -237,3 +248,63 @@
 ## Known Problematic Gems
 
 (None currently - nokogiri now works!)
+
+## ast-grep Reference
+
+### How ast-grep Parses C Code
+
+ast-grep uses tree-sitter to parse code into an AST. Key insights for C:
+
+1. **Preprocessor Directives**: `#define` macros ARE matchable!
+   - Parsed as `preproc_def` nodes
+   - Macro body is `preproc_arg` (raw text, not parsed as C code)
+   - Must match exact whitespace in the pattern
+
+2. **Function Calls**: Plain `test($A)` may be ambiguous
+   - tree-sitter-c may parse as `macro_type_specifier`
+   - Add context: use `test($A);` with `--selector call_expression`
+
+3. **Inline ASM**: `__asm__ __volatile__ (...)` parses as `gnu_asm_expression`
+
+### Debugging Patterns
+
+Use `--debug-query` to see how patterns parse:
+```bash
+ast-grep run --lang c --pattern 'your_pattern' --debug-query=ast
+ast-grep run --lang c --pattern 'your_pattern' --debug-query=cst
+```
+
+### Our Helpers in rubyports.nix
+
+```nix
+# With call_expression selector (for function calls)
+astGrep = pattern: rewrite: ...
+
+# Without selector (for switch/case, #define, etc.)
+astGrepAny = pattern: rewrite: ...
+
+# With custom selector
+astGrepSel = selector: pattern: rewrite: ...
+```
+
+### Pattern Examples
+
+```nix
+# Function call pattern
+(astGrep "rb_attr($A, $B, $C, $D, Qfalse)" "rb_attr($A, $B, $C, $D, 0)")
+
+# Switch statement (must use if-else rewrite in C)
+(astGrepSel "switch_statement" "switch (expr) { case Qfalse: ... }" "{ if (expr == Qfalse) ... }")
+
+# Preprocessor macro (exact whitespace matters!)
+(astGrepAny
+  "#define ECB_MEMORY_FENCE         __asm__ __volatile__ (\"mfence\"   : : : \"memory\")"
+  "#define ECB_MEMORY_FENCE         __atomic_thread_fence(__ATOMIC_SEQ_CST)")
+```
+
+### Resources
+
+- [ast-grep docs](https://ast-grep.github.io/)
+- [Pattern syntax](https://ast-grep.github.io/guide/pattern-syntax.html)
+- [C language catalog](https://ast-grep.github.io/catalog/c/)
+- [Deep dive on patterns](https://ast-grep.github.io/advanced/pattern-parse.html)
