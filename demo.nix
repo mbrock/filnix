@@ -84,4 +84,48 @@ in
       name = "ruby-maxxed";
       paths = [ ruby ] ++ map (name: gems.${name}) availableGems;
     };
+
+  # Sinatra + Puma web demo
+  # NOTE: Currently crashes due to rb_define_finalizer_no_check null pointer in gc.c
+  # The finalizer code needs porting to Fil-C (null object pointer at 0x8)
+  sinatra-demo =
+    let
+      ruby = pkgsFilc.ruby_3_3;
+      gems = ruby.gems;
+      rubyEnv = pkgsFilc.buildEnv {
+        name = "sinatra-env";
+        paths = [ ruby gems.sinatra gems.puma gems.rack ];
+      };
+    in
+    pkgs.writeShellScriptBin "sinatra-demo" ''
+      export GEM_PATH="${rubyEnv}/lib/ruby/gems/3.3.0"
+      export GEM_HOME="${rubyEnv}/lib/ruby/gems/3.3.0"
+      cd "$(mktemp -d)"
+
+      cat > app.rb << 'EOF'
+require 'sinatra/base'
+
+class App < Sinatra::Base
+  get '/' do
+    'Hello from Sinatra on Fil-C!'
+  end
+
+  get '/time' do
+    "The time is: #{Time.now}"
+  end
+
+  get '/hello/:name' do
+    "Hello, #{params[:name]}!"
+  end
+end
+EOF
+
+      cat > config.ru << 'EOF'
+require './app'
+run App
+EOF
+
+      echo "Starting Sinatra on http://127.0.0.1:9292"
+      exec ${rubyEnv}/bin/puma -b tcp://127.0.0.1:9292 config.ru
+    '';
 }

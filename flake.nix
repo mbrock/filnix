@@ -102,6 +102,7 @@
           perl-demos
           perl-with-stuff
           ruby-maxxed
+          sinatra-demo
           ;
 
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
