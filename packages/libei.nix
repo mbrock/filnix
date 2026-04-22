@@ -47,7 +47,13 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
-    make -C src -f "$OTP_HOST/Makefile" ERL_TOP="$ERL_TOP" opt
+    # OTP's shared-lib rule injects LIB_LD_FLAG_RUNTIME_LIBRARY_PATH before the
+    # object list. On GNU ld, the configured "-Wl,-R" turns the first object
+    # into a --just-symbols input, corrupting libei.so. Override it away.
+    make -C src -f "$OTP_HOST/Makefile" \
+      ERL_TOP="$ERL_TOP" \
+      LIB_LD_FLAG_RUNTIME_LIBRARY_PATH= \
+      opt
     runHook postBuild
   '';
 
@@ -68,7 +74,7 @@ stdenv.mkDerivation {
   '';
 
   meta = with lib; {
-    description = "Memory-safe Erlang ei/erl_interface C library built with Fil-C";
+    description = "Erlang ei/erl_interface C library";
     homepage = "https://www.erlang.org/";
     license = licenses.asl20;
     mainProgram = "erl_call";

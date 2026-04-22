@@ -68,14 +68,19 @@
         pkgsFilc = pkgs;
       };
 
-      demo = import ./demo.nix {
-        inherit pkgs pkgsFilc filcc;
-        filc-emacs = emacs-safe.filc-emacs;
-      };
-
       libei = pkgsFilc.callPackage ./packages/libei.nix {
         otpSrc = pkgs.erlang.src;
         otpVersion = pkgs.erlang.version;
+      };
+
+      demo = import ./demo.nix {
+        inherit
+          pkgs
+          pkgsFilc
+          filcc
+          libei
+          ;
+        filc-emacs = emacs-safe.filc-emacs;
       };
 
       # Ruby with individual gems for testing - auto-generated for all available gems
@@ -107,6 +112,7 @@
           python-web-demo
           perl-demos
           perl-with-stuff
+          libei-ping-demo
           sinatra-demo
           ;
 
