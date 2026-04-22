@@ -1,10 +1,4 @@
 { pkgs, pkgsFilc, filcc, filc-emacs }:
-let
-  rubyNativeGems = (import ./rubyports.nix { inherit pkgs; }).nativeGems;
-
-  # Flatten all native gem categories into a single list
-  allNativeGemNames = pkgs.lib.flatten (builtins.attrValues rubyNativeGems);
-in
 {
   lighttpd-demo =
     (pkgs.callPackage ./httpd {
@@ -70,20 +64,6 @@ in
       #            ack
     ]
   );
-
-  # Ruby with all native extension gems (excluding GTK3)
-  # See rubyports.nix for the categorized list
-  ruby-maxxed =
-    let
-      ruby = pkgsFilc.ruby_3_3;
-      gems = ruby.gems;
-      # Filter to gems that actually exist in nixpkgs
-      availableGems = builtins.filter (name: gems ? ${name}) allNativeGemNames;
-    in
-    pkgsFilc.buildEnv {
-      name = "ruby-maxxed";
-      paths = [ ruby ] ++ map (name: gems.${name}) availableGems;
-    };
 
   # Sinatra + Puma web demo
   # NOTE: Currently crashes due to rb_define_finalizer_no_check null pointer in gc.c

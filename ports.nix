@@ -854,8 +854,10 @@ in
   ])
 
   {
-    util-linux = for pkgs.util-linuxMinimal [ parallelize ];
-    util-linuxMinimal = for pkgs.util-linuxMinimal [ parallelize ];
+    util-linux = for pkgs.util-linuxMinimal [
+      (arg { systemd = final.systemdLibs; })
+      parallelize
+    ];
   }
 
   (for pkgs.shadow [

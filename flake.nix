@@ -101,7 +101,6 @@
           python-web-demo
           perl-demos
           perl-with-stuff
-          ruby-maxxed
           sinatra-demo
           ;
 
