@@ -73,10 +73,15 @@
         filc-emacs = emacs-safe.filc-emacs;
       };
 
+      libei = pkgsFilc.callPackage ./packages/libei.nix {
+        otpSrc = pkgs.erlang.src;
+        otpVersion = pkgs.erlang.version;
+      };
+
       # Ruby with individual gems for testing - auto-generated for all available gems
-      rubyWithGem = pkgs.lib.mapAttrs
-        (name: _: pkgsFilc.ruby.withPackages (ps: [ ps.${name} ]))
-        pkgsFilc.rubyPackages;
+      rubyWithGem = pkgs.lib.mapAttrs (
+        name: _: pkgsFilc.ruby.withPackages (ps: [ ps.${name} ])
+      ) pkgsFilc.rubyPackages;
     in
     {
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
@@ -90,6 +95,7 @@
 
       packages.${system} = {
         inherit filcc;
+        inherit libei;
 
         inherit filc-world-shell;
         inherit (virt) filc-nspawn filc-qemu filc-docker;
