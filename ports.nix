@@ -391,6 +391,11 @@ in
     (tool depizloing-nm)
   ])
 
+  (for pkgs.unbound [
+    fixSympat
+    (configure "ac_cv_type_pthread_spinlock_t=no")
+  ])
+
   # ━━━ Security ━━━
 
   (for pkgs.libsepol [
