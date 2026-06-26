@@ -147,7 +147,7 @@ in
 
   (for pkgs.libuv [
     (pin "1.51.0" "sha256-ayTk3qkeeAjrGj5ab7wF7vpWI8XWS1EeKKUqzaD/LY0=")
-    (patch ./ports/patch/libuv-v1.51.0.patch)
+    (patch ./ports/patch/libuv-1.51.0.patch)
     (skipTests "one test failed")
   ])
 
