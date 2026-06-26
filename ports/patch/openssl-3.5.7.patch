@@ -356,7 +356,7 @@ index 000000000000..76d09c1186d4
 +
 diff --git a/crypto/aes/aesni_sha256_asm_forward.c b/crypto/aes/aesni_sha256_asm_forward.c
 new file mode 100644
-index 000000000000..4c606d8d8a5d
+index 000000000000..5126309d998a
 --- /dev/null
 +++ b/crypto/aes/aesni_sha256_asm_forward.c
 @@ -0,0 +1,29 @@
@@ -383,12 +383,85 @@ index 000000000000..4c606d8d8a5d
 +    if (iv)
 +        zcheck(iv, 16);
 +    if (ctx)
-+        zcheck(ctx, sizeof(SHA_CTX));
++        zcheck(ctx, sizeof(SHA256_CTX));
 +    zcheck_readonly(in0, zchecked_mul(blocks, 64));
 +    return zunsafe_call("aesni_cbc_sha256_enc", inp, out, blocks, key, iv, ctx, in0);
 +}
 +
 +
+diff --git a/crypto/aes/aesni_xts_avx512_asm_forward.c b/crypto/aes/aesni_xts_avx512_asm_forward.c
+new file mode 100644
+index 000000000000..0a9377920fc1
+--- /dev/null
++++ b/crypto/aes/aesni_xts_avx512_asm_forward.c
+@@ -0,0 +1,67 @@
++#include "internal/deprecated.h"
++
++#include <assert.h>
++
++#include <stdlib.h>
++#include <openssl/crypto.h>
++#include <openssl/aes.h>
++#include "crypto/modes.h"
++#include "crypto/aes_platform.h"
++#include <stdfil.h>
++
++int aesni_xts_avx512_eligible(void)
++{
++    return zunsafe_fast_call("aesni_xts_avx512_eligible");
++}
++
++void aesni_xts_128_encrypt_avx512(const unsigned char *in, unsigned char *out,
++                                  size_t len, const AES_KEY *key1,
++                                  const AES_KEY *key2,
++                                  const unsigned char iv[16])
++{
++    zcheck_readonly(in, len);
++    zcheck(out, len);
++    zcheck_readonly(key1, sizeof(AES_KEY));
++    zcheck_readonly(key2, sizeof(AES_KEY));
++    zcheck_readonly(iv, 16);
++    zunsafe_buf_call(len, "aesni_xts_128_encrypt_avx512", in, out, len, key1, key2, iv);
++}
++
++void aesni_xts_256_encrypt_avx512(const unsigned char *in, unsigned char *out,
++                                  size_t len, const AES_KEY *key1,
++                                  const AES_KEY *key2,
++                                  const unsigned char iv[16])
++{
++    zcheck_readonly(in, len);
++    zcheck(out, len);
++    zcheck_readonly(key1, sizeof(AES_KEY));
++    zcheck_readonly(key2, sizeof(AES_KEY));
++    zcheck_readonly(iv, 16);
++    zunsafe_buf_call(len, "aesni_xts_256_encrypt_avx512", in, out, len, key1, key2, iv);
++}
++
++void aesni_xts_128_decrypt_avx512(const unsigned char *in, unsigned char *out,
++                                  size_t len, const AES_KEY *key1,
++                                  const AES_KEY *key2,
++                                  const unsigned char iv[16])
++{
++    zcheck_readonly(in, len);
++    zcheck(out, len);
++    zcheck_readonly(key1, sizeof(AES_KEY));
++    zcheck_readonly(key2, sizeof(AES_KEY));
++    zcheck_readonly(iv, 16);
++    zunsafe_buf_call(len, "aesni_xts_128_decrypt_avx512", in, out, len, key1, key2, iv);
++}
++
++void aesni_xts_256_decrypt_avx512(const unsigned char *in, unsigned char *out,
++                                  size_t len, const AES_KEY *key1,
++                                  const AES_KEY *key2,
++                                  const unsigned char iv[16])
++{
++    zcheck_readonly(in, len);
++    zcheck(out, len);
++    zcheck_readonly(key1, sizeof(AES_KEY));
++    zcheck_readonly(key2, sizeof(AES_KEY));
++    zcheck_readonly(iv, 16);
++    zunsafe_buf_call(len, "aesni_xts_256_decrypt_avx512", in, out, len, key1, key2, iv);
++}
 diff --git a/crypto/aes/bsaes_asm_forward.c b/crypto/aes/bsaes_asm_forward.c
 new file mode 100644
 index 000000000000..67d383cad833
@@ -454,20 +527,22 @@ index 000000000000..67d383cad833
 +}
 +
 diff --git a/crypto/aes/build.info b/crypto/aes/build.info
-index 2dc16a2b2ef9..fc9b43d5215d 100644
+index 11d27d0451c7..18e724647593 100644
 --- a/crypto/aes/build.info
 +++ b/crypto/aes/build.info
-@@ -8,8 +8,11 @@ IF[{- !$disabled{asm} -}]
+@@ -8,9 +8,12 @@ IF[{- !$disabled{asm} -}]
    $AESDEF_x86_sse2=VPAES_ASM OPENSSL_IA32_SSE2
  
    $AESASM_x86_64=\
 -        aes-x86_64.s vpaes-x86_64.s bsaes-x86_64.s aesni-x86_64.s \
--        aesni-sha1-x86_64.s aesni-sha256-x86_64.s aesni-mb-x86_64.s
+-        aesni-sha1-x86_64.s aesni-sha256-x86_64.s aesni-mb-x86_64.s \
+-        aesni-xts-avx512.s
 +        aes_asm_forward.c aes-x86_64.s vpaes_asm_forward.c vpaes-x86_64.s \
 +        bsaes_asm_forward.c bsaes-x86_64.s aesni_asm_forward.c aesni-x86_64.s \
 +        aesni_sha1_asm_forward.c aesni-sha1-x86_64.s \
 +        aesni_sha256_asm_forward.c aesni-sha256-x86_64.s \
-+        aesni_mb_asm_forward.c aesni-mb-x86_64.s
++        aesni_mb_asm_forward.c aesni-mb-x86_64.s \
++        aesni_xts_avx512_asm_forward.c aesni-xts-avx512.s
    $AESDEF_x86_64=AES_ASM VPAES_ASM BSAES_ASM
  
    $AESASM_ia64=aes_core.c aes_cbc.c aes-ia64.s
@@ -533,7 +608,7 @@ index 000000000000..c8d788b7c875
 +    zunsafe_buf_call(length, "vpaes_cbc_encrypt", in, out, length, key, ivp, enc);
 +}
 diff --git a/crypto/bn/bn_asm.c b/crypto/bn/bn_asm.c
-index c39907a7dfd3..c7700bb9e97b 100644
+index 0a77f1b070e1..98d3fbd019b8 100644
 --- a/crypto/bn/bn_asm.c
 +++ b/crypto/bn/bn_asm.c
 @@ -11,6 +11,7 @@
@@ -544,10 +619,10 @@ index c39907a7dfd3..c7700bb9e97b 100644
  
  #if defined(BN_LLONG) || defined(BN_UMULT_HIGH)
  
-@@ -1040,3 +1041,16 @@ int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
- # endif
+@@ -1079,3 +1080,16 @@ int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
+ #endif
  
- #endif                          /* !BN_MUL_COMBA */
+ #endif /* !BN_MUL_COMBA */
 +
 +#ifndef OPENSSL_NO_ASM
 +int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
@@ -562,29 +637,30 @@ index c39907a7dfd3..c7700bb9e97b 100644
 +}
 +#endif
 diff --git a/crypto/bn/bn_div.c b/crypto/bn/bn_div.c
-index ff66baa48f22..51643b9b6e9b 100644
+index fc61d70a9da4..22f66e643ef2 100644
 --- a/crypto/bn/bn_div.c
 +++ b/crypto/bn/bn_div.c
 @@ -159,7 +159,7 @@ static int bn_left_align(BIGNUM *num)
  }
  
- # if !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) \
+ #if !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) \
 -    && !defined(PEDANTIC) && !defined(BN_DIV3W)
 +    && !defined(PEDANTIC) && !defined(BN_DIV3W) && !defined(__FILC__)
- #  if defined(__GNUC__) && __GNUC__>=2
- #   if defined(__i386) || defined (__i386__)
-    /*-
+ #if defined(__GNUC__) && __GNUC__ >= 2
+ #if defined(__i386) || defined(__i386__)
+ /*-
 diff --git a/crypto/bn/build.info b/crypto/bn/build.info
-index 2f30681b3b26..e3f6f44119c0 100644
+index a82271136cba..78376cf54f0b 100644
 --- a/crypto/bn/build.info
 +++ b/crypto/bn/build.info
-@@ -22,15 +22,18 @@ IF[{- !$disabled{asm} -}]
+@@ -22,16 +22,19 @@ IF[{- !$disabled{asm} -}]
    $BNDEF_x86=OPENSSL_BN_ASM_PART_WORDS OPENSSL_BN_ASM_MONT OPENSSL_BN_ASM_GF2m
    $BNDEF_x86_sse2=OPENSSL_IA32_SSE2
  
 -  $BNASM_x86_64=\
 -          x86_64-mont.s x86_64-mont5.s x86_64-gf2m.s rsaz_exp.c rsaz-x86_64.s \
--          rsaz-avx2.s rsaz_exp_x2.c rsaz-2k-avx512.s rsaz-3k-avx512.s rsaz-4k-avx512.s
+-          rsaz-avx2.s rsaz_exp_x2.c rsaz-2k-avx512.s rsaz-3k-avx512.s rsaz-4k-avx512.s \
+-          rsaz-2k-avxifma.s rsaz-3k-avxifma.s rsaz-4k-avxifma.s
 -  IF[{- $config{target} !~ /^VC/ -}]
 -    $BNASM_x86_64=asm/x86_64-gcc.c $BNASM_x86_64
 -  ELSE
@@ -596,7 +672,8 @@ index 2f30681b3b26..e3f6f44119c0 100644
 +  $BNDEF_x86_64=OPENSSL_BN_ASM_MONT
 +  # $BNASM_x86_64=\
 +  #         x86_64-mont.s x86_64-mont5.s x86_64-gf2m.s rsaz_exp.c rsaz-x86_64.s \
-+  #         rsaz-avx2.s rsaz_exp_x2.c rsaz-2k-avx512.s rsaz-3k-avx512.s rsaz-4k-avx512.s
++  #         rsaz-avx2.s rsaz_exp_x2.c rsaz-2k-avx512.s rsaz-3k-avx512.s rsaz-4k-avx512.s \
++  #         rsaz-2k-avxifma.s rsaz-3k-avxifma.s rsaz-4k-avxifma.s
 +  # IF[{- $config{target} !~ /^VC/ -}]
 +  #   $BNASM_x86_64=asm/x86_64-gcc.c $BNASM_x86_64
 +  # ELSE
@@ -607,20 +684,22 @@ index 2f30681b3b26..e3f6f44119c0 100644
  
    IF[{- $config{target} !~ /^VC/ -}]
 diff --git a/crypto/bn/rsaz_exp.h b/crypto/bn/rsaz_exp.h
-index 45dc9cc197d0..4b127444d9b0 100644
+index b3510c0a66e1..867335f8927a 100644
 --- a/crypto/bn/rsaz_exp.h
 +++ b/crypto/bn/rsaz_exp.h
-@@ -16,7 +16,9 @@
- # define OSSL_CRYPTO_BN_RSAZ_EXP_H
+@@ -16,7 +16,11 @@
+ #define OSSL_CRYPTO_BN_RSAZ_EXP_H
  
- # undef RSAZ_ENABLED
--# if defined(OPENSSL_BN_ASM_MONT) && \
+ #undef RSAZ_ENABLED
+-#if defined(OPENSSL_BN_ASM_MONT) && (defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64))
 +/* FIXME: No reason why we can't enable these for Fil-C at some point. My understanding is that these
 +   code paths are just an optimization and they're not meant to be anything but that. */
-+# if !defined(__FILC__) && defined(OPENSSL_BN_ASM_MONT) &&  \
-         (defined(__x86_64) || defined(__x86_64__) || \
-          defined(_M_AMD64) || defined(_M_X64))
- #  define RSAZ_ENABLED
++#if !defined(__FILC__) && defined(OPENSSL_BN_ASM_MONT) &&  \
++        (defined(__x86_64) || defined(__x86_64__) || \
++         defined(_M_AMD64) || defined(_M_X64))
+ #define RSAZ_ENABLED
+ 
+ #include <openssl/bn.h>
 diff --git a/crypto/camellia/build.info b/crypto/camellia/build.info
 index f13cd8c958be..c38ee92f6a56 100644
 --- a/crypto/camellia/build.info
@@ -708,7 +787,7 @@ index 000000000000..adc7ce51bb2f
 +    zunsafe_buf_call(len, "Camellia_cbc_encrypt", in, out, len, key, ivec, enc);
 +}
 diff --git a/crypto/chacha/build.info b/crypto/chacha/build.info
-index c1352c9b62de..3180893af64d 100644
+index c151e190429d..9db522af321e 100644
 --- a/crypto/chacha/build.info
 +++ b/crypto/chacha/build.info
 @@ -3,7 +3,7 @@ LIBS=../../libcrypto
@@ -743,7 +822,7 @@ index 000000000000..5bcdeb244d80
 +    zunsafe_buf_call(len, "ChaCha20_ctr32", out, inp, len, key, counter);
 +}
 diff --git a/crypto/cpuid.c b/crypto/cpuid.c
-index 51cbe5ea090e..c47a418283b1 100644
+index d659135919d1..108c54fbcad6 100644
 --- a/crypto/cpuid.c
 +++ b/crypto/cpuid.c
 @@ -9,6 +9,7 @@
@@ -752,18 +831,18 @@ index 51cbe5ea090e..c47a418283b1 100644
  #include "crypto/cryptlib.h"
 +#include <stdfil.h>
  
- #if     defined(__i386)   || defined(__i386__)   || defined(_M_IX86) || \
-         defined(__x86_64) || defined(__x86_64__) || \
-@@ -92,10 +93,18 @@ static variant_char *ossl_strchr(const variant_char *str, char srch)
- #  define OPENSSL_CPUID_SETUP
+ #if defined(__i386) || defined(__i386__) || defined(_M_IX86) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+ 
+@@ -91,10 +92,18 @@ static variant_char *ossl_strchr(const variant_char *str, char srch)
+ #define OPENSSL_CPUID_SETUP
  typedef uint64_t IA32CAP;
  
-+unsigned int OPENSSL_ia32cap_P[4];
++unsigned int OPENSSL_ia32cap_P[OPENSSL_IA32CAP_P_MAX_INDEXES];
 +asm(".filc_unsafe_export OPENSSL_ia32cap_P");
 +
 +static IA32CAP OPENSSL_ia32_cpuid(unsigned int *ptr)
 +{
-+    zcheck(ptr, sizeof(unsigned int) * 4);
++    zcheck(ptr, sizeof(unsigned int) * OPENSSL_IA32CAP_P_MAX_INDEXES);
 +    return zunsafe_fast_call("OPENSSL_ia32_cpuid", ptr);
 +}
 +
@@ -773,8 +852,8 @@ index 51cbe5ea090e..c47a418283b1 100644
 -    IA32CAP OPENSSL_ia32_cpuid(unsigned int *);
      IA32CAP vec;
      const variant_char *env;
- 
-@@ -155,6 +164,39 @@ void OPENSSL_cpuid_setup(void)
+     int index = 2;
+@@ -169,6 +178,40 @@ void OPENSSL_cpuid_setup(void)
      OPENSSL_ia32cap_P[0] = (unsigned int)vec | (1 << 10);
      OPENSSL_ia32cap_P[1] = (unsigned int)(vec >> 32);
  }
@@ -806,32 +885,33 @@ index 51cbe5ea090e..c47a418283b1 100644
 +    zcheck(buf, len);
 +    return zunsafe_buf_call(len, "OPENSSL_ia32_rdseed_bytes", buf, len);
 +}
++
 +size_t OPENSSL_ia32_rdrand_bytes(unsigned char *buf, size_t len)
 +{
 +    zcheck(buf, len);
 +    return zunsafe_buf_call(len, "OPENSSL_ia32_rdrand_bytes", buf, len);
 +}
- # else
- unsigned int OPENSSL_ia32cap_P[4];
- # endif
+ #else
+ unsigned int OPENSSL_ia32cap_P[OPENSSL_IA32CAP_P_MAX_INDEXES];
+ #endif
 diff --git a/crypto/des/des_local.h b/crypto/des/des_local.h
-index d43f2c87374d..69b890a2ecfc 100644
+index 8d08aca7e612..4ff9effa9ea5 100644
 --- a/crypto/des/des_local.h
 +++ b/crypto/des/des_local.h
-@@ -85,7 +85,7 @@
- #  define ROTATE(a,n)     (_lrotr(a,n))
- # elif defined(__ICC)
- #  define ROTATE(a,n)     (_rotr(a,n))
--# elif defined(__GNUC__) && __GNUC__>=2 && !defined(__STRICT_ANSI__) && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(PEDANTIC)
-+# elif defined(__GNUC__) && __GNUC__>=2 && !defined(__STRICT_ANSI__) && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(PEDANTIC) && !defined(__FILC__)
- #  if defined(__i386) || defined(__i386__) || defined(__x86_64) || defined(__x86_64__)
- #   define ROTATE(a,n)   ({ register unsigned int ret;   \
-                                 asm ("rorl %1,%0"       \
+@@ -103,7 +103,7 @@
+ #define ROTATE(a, n) (_lrotr(a, n))
+ #elif defined(__ICC)
+ #define ROTATE(a, n) (_rotr(a, n))
+-#elif defined(__GNUC__) && __GNUC__ >= 2 && !defined(__STRICT_ANSI__) && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(PEDANTIC)
++#elif defined(__GNUC__) && __GNUC__ >= 2 && !defined(__STRICT_ANSI__) && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(PEDANTIC) && !defined(__FILC__)
+ #if defined(__i386) || defined(__i386__) || defined(__x86_64) || defined(__x86_64__)
+ #define ROTATE(a, n) ({        \
+     register unsigned int ret; \
 diff --git a/crypto/ec/asm/ecp_nistz256-x86_64.pl b/crypto/ec/asm/ecp_nistz256-x86_64.pl
-index 430b14c86d8d..44cca451aec6 100755
+index 4da9a149a99a..db653ba8e052 100755
 --- a/crypto/ec/asm/ecp_nistz256-x86_64.pl
 +++ b/crypto/ec/asm/ecp_nistz256-x86_64.pl
-@@ -4706,35 +4706,35 @@ $code.=<<___ if ($addx);
+@@ -4708,36 +4708,36 @@ $code.=<<___ if ($addx);
  ___
  }
  
@@ -852,7 +932,7 @@ index 430b14c86d8d..44cca451aec6 100755
 -die "insane number of elements" if ($#arr != 64*16*37-1);
 -
 -print <<___;
--.text
+-.section .rodata align=4096
 -.globl	ecp_nistz256_precomputed
 -.type	ecp_nistz256_precomputed,\@object
 -.align	4096
@@ -864,6 +944,7 @@ index 430b14c86d8d..44cca451aec6 100755
 -print <<___;
 -.size	ecp_nistz256_precomputed,.-ecp_nistz256_precomputed
 -___
+-
 +# ########################################################################
 +# # Convert ecp_nistz256_table.c to layout expected by ecp_nistz_gather_w7
 +# #
@@ -881,7 +962,7 @@ index 430b14c86d8d..44cca451aec6 100755
 +# die "insane number of elements" if ($#arr != 64*16*37-1);
 +# 
 +# print <<___;
-+# .text
++# .section .rodata align=4096
 +# .globl	ecp_nistz256_precomputed
 +# .type	ecp_nistz256_precomputed,\@object
 +# .align	4096
@@ -893,9 +974,10 @@ index 430b14c86d8d..44cca451aec6 100755
 +# print <<___;
 +# .size	ecp_nistz256_precomputed,.-ecp_nistz256_precomputed
 +# ___
- 
++# 
  $code =~ s/\`([^\`]*)\`/eval $1/gem;
  print $code;
+ close STDOUT or die "error closing STDOUT: $!";
 diff --git a/crypto/ec/build.info b/crypto/ec/build.info
 index dbe69578ef52..a6143918a364 100644
 --- a/crypto/ec/build.info
@@ -910,7 +992,7 @@ index dbe69578ef52..a6143918a364 100644
    IF[{- !$disabled{'ecx'} -}]
      $ECASM_x86_64=$ECASM_x86_64 x25519-x86_64.s
 diff --git a/crypto/ec/curve25519.c b/crypto/ec/curve25519.c
-index cae2ac101dba..4085c65c445b 100644
+index c6886763aba7..681eab3c3502 100644
 --- a/crypto/ec/curve25519.c
 +++ b/crypto/ec/curve25519.c
 @@ -20,6 +20,7 @@
@@ -919,9 +1001,9 @@ index cae2ac101dba..4085c65c445b 100644
  #include "internal/numbers.h"
 +#include <stdfil.h>
  
- #if defined(X25519_ASM) && (defined(__x86_64) || defined(__x86_64__) || \
-                             defined(_M_AMD64) || defined(_M_X64))
-@@ -28,7 +29,10 @@
+ #if defined(X25519_ASM) && (defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64))
+ 
+@@ -27,7 +28,10 @@
  
  typedef uint64_t fe64[4];
  
@@ -933,7 +1015,7 @@ index cae2ac101dba..4085c65c445b 100644
  
  /*
   * Following subroutines perform corresponding operations modulo
-@@ -39,12 +43,45 @@ int x25519_fe64_eligible(void);
+@@ -38,12 +42,45 @@ int x25519_fe64_eligible(void);
   *
   * There are no reference C implementations for these.
   */
@@ -982,13 +1064,13 @@ index cae2ac101dba..4085c65c445b 100644
 +    zcheck_readonly(f, sizeof(fe64));
 +    zunsafe_fast_call("x25519_fe64_tobytes", s, f);
 +}
- # define fe64_mul x25519_fe64_mul
- # define fe64_sqr x25519_fe64_sqr
- # define fe64_mul121666 x25519_fe64_mul121666
-@@ -387,9 +424,25 @@ static void fe51_tobytes(uint8_t *s, const fe51 h)
+ #define fe64_mul x25519_fe64_mul
+ #define fe64_sqr x25519_fe64_sqr
+ #define fe64_mul121666 x25519_fe64_mul121666
+@@ -394,9 +431,25 @@ static void fe51_tobytes(uint8_t *s, const fe51 h)
  }
  
- # if defined(X25519_ASM)
+ #if defined(X25519_ASM)
 -void x25519_fe51_mul(fe51 h, const fe51 f, const fe51 g);
 -void x25519_fe51_sqr(fe51 h, const fe51 f);
 -void x25519_fe51_mul121666(fe51 h, fe51 f);
@@ -1011,11 +1093,11 @@ index cae2ac101dba..4085c65c445b 100644
 +    zcheck(f, sizeof(fe51));
 +    zunsafe_fast_call("x25519_fe51_mul121666", h, f);
 +}
- #  define fe51_mul x25519_fe51_mul
- #  define fe51_sq  x25519_fe51_sqr
- #  define fe51_mul121666 x25519_fe51_mul121666
+ #define fe51_mul x25519_fe51_mul
+ #define fe51_sq x25519_fe51_sqr
+ #define fe51_mul121666 x25519_fe51_mul121666
 diff --git a/crypto/ec/ecp_nistz256.c b/crypto/ec/ecp_nistz256.c
-index 5760639a2ee2..a6a3222799d2 100644
+index 40054116b6e5..0c65e105ddb8 100644
 --- a/crypto/ec/ecp_nistz256.c
 +++ b/crypto/ec/ecp_nistz256.c
 @@ -30,6 +30,7 @@
@@ -1025,12 +1107,12 @@ index 5760639a2ee2..a6a3222799d2 100644
 +#include <stdfil.h>
  
  #if BN_BITS2 != 64
- # define TOBN(hi,lo)    lo,hi
+ #define TOBN(hi, lo) lo, hi
 @@ -39,6 +40,7 @@
  
- #define ALIGNPTR(p,N)   ((unsigned char *)p+N-(size_t)p%N)
- #define P256_LIMBS      (256/BN_BITS2)
-+#define P256_BYTES      (256/8)
+ #define ALIGNPTR(p, N) ((unsigned char *)p + N - (size_t)p % N)
+ #define P256_LIMBS (256 / BN_BITS2)
++#define P256_BYTES (256 / 8)
  
  typedef unsigned short u16;
  
@@ -1039,8 +1121,8 @@ index 5760639a2ee2..a6a3222799d2 100644
   */
  /* Modular add: res = a+b mod P   */
 -void ecp_nistz256_add(BN_ULONG res[P256_LIMBS],
--                      const BN_ULONG a[P256_LIMBS],
--                      const BN_ULONG b[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS],
+-    const BN_ULONG b[P256_LIMBS]);
 +static void ecp_nistz256_add(BN_ULONG res[P256_LIMBS],
 +                             const BN_ULONG a[P256_LIMBS],
 +                             const BN_ULONG b[P256_LIMBS])
@@ -1052,7 +1134,7 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Modular mul by 2: res = 2*a mod P */
 -void ecp_nistz256_mul_by_2(BN_ULONG res[P256_LIMBS],
--                           const BN_ULONG a[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS]);
 +static void ecp_nistz256_mul_by_2(BN_ULONG res[P256_LIMBS],
 +                                  const BN_ULONG a[P256_LIMBS])
 +{
@@ -1062,7 +1144,7 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Modular mul by 3: res = 3*a mod P */
 -void ecp_nistz256_mul_by_3(BN_ULONG res[P256_LIMBS],
--                           const BN_ULONG a[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS]);
 +static void ecp_nistz256_mul_by_3(BN_ULONG res[P256_LIMBS],
 +                                  const BN_ULONG a[P256_LIMBS])
 +{
@@ -1073,7 +1155,7 @@ index 5760639a2ee2..a6a3222799d2 100644
  
  /* Modular div by 2: res = a/2 mod P */
 -void ecp_nistz256_div_by_2(BN_ULONG res[P256_LIMBS],
--                           const BN_ULONG a[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS]);
 +static void ecp_nistz256_div_by_2(BN_ULONG res[P256_LIMBS],
 +                                  const BN_ULONG a[P256_LIMBS])
 +{
@@ -1083,8 +1165,8 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Modular sub: res = a-b mod P   */
 -void ecp_nistz256_sub(BN_ULONG res[P256_LIMBS],
--                      const BN_ULONG a[P256_LIMBS],
--                      const BN_ULONG b[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS],
+-    const BN_ULONG b[P256_LIMBS]);
 +static void ecp_nistz256_sub(BN_ULONG res[P256_LIMBS],
 +                             const BN_ULONG a[P256_LIMBS],
 +                             const BN_ULONG b[P256_LIMBS])
@@ -1104,8 +1186,8 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Montgomery mul: res = a*b*2^-256 mod P */
 -void ecp_nistz256_mul_mont(BN_ULONG res[P256_LIMBS],
--                           const BN_ULONG a[P256_LIMBS],
--                           const BN_ULONG b[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS],
+-    const BN_ULONG b[P256_LIMBS]);
 +static void ecp_nistz256_mul_mont(BN_ULONG res[P256_LIMBS],
 +                                  const BN_ULONG a[P256_LIMBS],
 +                                  const BN_ULONG b[P256_LIMBS])
@@ -1117,7 +1199,7 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Montgomery sqr: res = a*a*2^-256 mod P */
 -void ecp_nistz256_sqr_mont(BN_ULONG res[P256_LIMBS],
--                           const BN_ULONG a[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS]);
 +static void ecp_nistz256_sqr_mont(BN_ULONG res[P256_LIMBS],
 +                                  const BN_ULONG a[P256_LIMBS])
 +{
@@ -1127,7 +1209,7 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Convert a number from Montgomery domain, by multiplying with 1 */
 -void ecp_nistz256_from_mont(BN_ULONG res[P256_LIMBS],
--                            const BN_ULONG in[P256_LIMBS]);
+-    const BN_ULONG in[P256_LIMBS]);
 +static void ecp_nistz256_from_mont(BN_ULONG res[P256_LIMBS],
 +                                   const BN_ULONG in[P256_LIMBS])
 +{
@@ -1137,7 +1219,7 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Convert a number to Montgomery domain, by multiplying with 2^512 mod P*/
 -void ecp_nistz256_to_mont(BN_ULONG res[P256_LIMBS],
--                          const BN_ULONG in[P256_LIMBS]);
+-    const BN_ULONG in[P256_LIMBS]);
 +static void ecp_nistz256_to_mont(BN_ULONG res[P256_LIMBS],
 +                                 const BN_ULONG in[P256_LIMBS])
 +{
@@ -1147,13 +1229,13 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  /* Functions that perform constant time access to the precomputed tables */
 -void ecp_nistz256_scatter_w5(P256_POINT *val,
--                             const P256_POINT *in_t, int idx);
+-    const P256_POINT *in_t, int idx);
 -void ecp_nistz256_gather_w5(P256_POINT *val,
--                            const P256_POINT *in_t, int idx);
+-    const P256_POINT *in_t, int idx);
 -void ecp_nistz256_scatter_w7(P256_POINT_AFFINE *val,
--                             const P256_POINT_AFFINE *in_t, int idx);
+-    const P256_POINT_AFFINE *in_t, int idx);
 -void ecp_nistz256_gather_w7(P256_POINT_AFFINE *val,
--                            const P256_POINT_AFFINE *in_t, int idx);
+-    const P256_POINT_AFFINE *in_t, int idx);
 +static void ecp_nistz256_scatter_w5(P256_POINT *val,
 +                                    const P256_POINT *in_t, int idx)
 +{
@@ -1191,10 +1273,10 @@ index 5760639a2ee2..a6a3222799d2 100644
  #ifndef ECP_NISTZ256_REFERENCE_IMPLEMENTATION
 -void ecp_nistz256_point_double(P256_POINT *r, const P256_POINT *a);
 -void ecp_nistz256_point_add(P256_POINT *r,
--                            const P256_POINT *a, const P256_POINT *b);
+-    const P256_POINT *a, const P256_POINT *b);
 -void ecp_nistz256_point_add_affine(P256_POINT *r,
--                                   const P256_POINT *a,
--                                   const P256_POINT_AFFINE *b);
+-    const P256_POINT *a,
+-    const P256_POINT_AFFINE *b);
 +static void ecp_nistz256_point_double(P256_POINT *r, const P256_POINT *a)
 +{
 +    zcheck(r, sizeof(P256_POINT));
@@ -1221,16 +1303,16 @@ index 5760639a2ee2..a6a3222799d2 100644
  #else
  /* Point double: r = 2*a */
  static void ecp_nistz256_point_double(P256_POINT *r, const P256_POINT *a)
-@@ -1269,12 +1361,23 @@ static int ecp_nistz256_window_have_precompute_mult(const EC_GROUP *group)
+@@ -1250,12 +1342,23 @@ static int ecp_nistz256_window_have_precompute_mult(const EC_GROUP *group)
  /*
   * Montgomery mul modulo Order(P): res = a*b*2^-256 mod Order(P)
   */
 -void ecp_nistz256_ord_mul_mont(BN_ULONG res[P256_LIMBS],
--                               const BN_ULONG a[P256_LIMBS],
--                               const BN_ULONG b[P256_LIMBS]);
+-    const BN_ULONG a[P256_LIMBS],
+-    const BN_ULONG b[P256_LIMBS]);
 -void ecp_nistz256_ord_sqr_mont(BN_ULONG res[P256_LIMBS],
--                               const BN_ULONG a[P256_LIMBS],
--                               BN_ULONG rep);
+-    const BN_ULONG a[P256_LIMBS],
+-    BN_ULONG rep);
 +static void ecp_nistz256_ord_mul_mont(BN_ULONG res[P256_LIMBS],
 +                                      const BN_ULONG a[P256_LIMBS],
 +                                      const BN_ULONG b[P256_LIMBS])
@@ -1250,12 +1332,12 @@ index 5760639a2ee2..a6a3222799d2 100644
 +}
  
  static int ecp_nistz256_inv_mod_ord(const EC_GROUP *group, BIGNUM *r,
-                                     const BIGNUM *x, BN_CTX *ctx)
+     const BIGNUM *x, BN_CTX *ctx)
 diff --git a/crypto/ec/ecp_nistz256_table.c b/crypto/ec/ecp_nistz256_table.c
-index 71430d4b8142..0351fe68ceef 100644
+index 2c2ee3aca5bb..a426922a48b0 100644
 --- a/crypto/ec/ecp_nistz256_table.c
 +++ b/crypto/ec/ecp_nistz256_table.c
-@@ -21,16 +21,16 @@
+@@ -21,15 +21,16 @@
   * appears to lead to invalid ELF files being produced.
   */
  
@@ -1267,17 +1349,16 @@ index 71430d4b8142..0351fe68ceef 100644
  #elif defined(_MSC_VER)
  __declspec(align(4096))
  #elif defined(__SUNPRO_C)
- # pragma align 4096(ecp_nistz256_precomputed)
+ #pragma align 4096(ecp_nistz256_precomputed)
  #endif
--static const BN_ULONG ecp_nistz256_precomputed[37][64 *
--                                                   sizeof(P256_POINT_AFFINE) /
--                                                   sizeof(BN_ULONG)] = {
+-static const BN_ULONG ecp_nistz256_precomputed[37][64 * sizeof(P256_POINT_AFFINE) / sizeof(BN_ULONG)]
+-    = {
 +const unsigned long ecp_nistz256_precomputed[37][64 * 8] = {
-     {TOBN(0x79e730d4, 0x18a9143c), TOBN(0x75ba95fc, 0x5fedb601),
-      TOBN(0x79fb732b, 0x77622510), TOBN(0x18905f76, 0xa53755c6),
-      TOBN(0xddf25357, 0xce95560a), TOBN(0x8b4ab8e4, 0xba19e45c),
+           { TOBN(0x79e730d4, 0x18a9143c), TOBN(0x75ba95fc, 0x5fedb601),
+               TOBN(0x79fb732b, 0x77622510), TOBN(0x18905f76, 0xa53755c6),
+               TOBN(0xddf25357, 0xce95560a), TOBN(0x8b4ab8e4, 0xba19e45c),
 diff --git a/crypto/evp/e_aes_cbc_hmac_sha1.c b/crypto/evp/e_aes_cbc_hmac_sha1.c
-index 8843c8ae119f..f0eb6580bba0 100644
+index 3ff7126b29ef..f99b6c7b9de0 100644
 --- a/crypto/evp/e_aes_cbc_hmac_sha1.c
 +++ b/crypto/evp/e_aes_cbc_hmac_sha1.c
 @@ -27,6 +27,7 @@
@@ -1288,9 +1369,9 @@ index 8843c8ae119f..f0eb6580bba0 100644
  
  typedef struct {
      AES_KEY ks;
-@@ -99,7 +100,12 @@ static int aesni_cbc_hmac_sha1_init_key(EVP_CIPHER_CTX *ctx,
- #  define aes_off 0
- # endif
+@@ -97,7 +98,12 @@ static int aesni_cbc_hmac_sha1_init_key(EVP_CIPHER_CTX *ctx,
+ #define aes_off 0
+ #endif
  
 -void sha1_block_data_order(void *c, const void *p, size_t len);
 +void sha1_block_data_order(void *c, const void *p, size_t len)
@@ -1302,7 +1383,7 @@ index 8843c8ae119f..f0eb6580bba0 100644
  
  static void sha1_update(SHA_CTX *c, const void *data, size_t len)
  {
-@@ -147,7 +153,20 @@ typedef struct {
+@@ -145,7 +151,20 @@ typedef struct {
      int blocks;
  } HASH_DESC;
  
@@ -1325,7 +1406,7 @@ index 8843c8ae119f..f0eb6580bba0 100644
  typedef struct {
      const unsigned char *inp;
 diff --git a/crypto/evp/e_aes_cbc_hmac_sha256.c b/crypto/evp/e_aes_cbc_hmac_sha256.c
-index 3a5f757dbff3..a7727851db66 100644
+index 8155164ca357..6535b22d19a3 100644
 --- a/crypto/evp/e_aes_cbc_hmac_sha256.c
 +++ b/crypto/evp/e_aes_cbc_hmac_sha256.c
 @@ -27,6 +27,7 @@
@@ -1336,7 +1417,7 @@ index 3a5f757dbff3..a7727851db66 100644
  
  typedef struct {
      AES_KEY ks;
-@@ -141,7 +142,20 @@ typedef struct {
+@@ -139,7 +140,20 @@ typedef struct {
      int blocks;
  } HASH_DESC;
  
@@ -1359,21 +1440,21 @@ index 3a5f757dbff3..a7727851db66 100644
  typedef struct {
      const unsigned char *inp;
 diff --git a/crypto/evp/e_chacha20_poly1305.c b/crypto/evp/e_chacha20_poly1305.c
-index 731c1a1dc70c..de6324902469 100644
+index 1751444a904c..1afcdb38524d 100644
 --- a/crypto/evp/e_chacha20_poly1305.c
 +++ b/crypto/evp/e_chacha20_poly1305.c
 @@ -18,6 +18,7 @@
- # include "crypto/evp.h"
- # include "evp_local.h"
- # include "crypto/chacha.h"
+ #include "crypto/evp.h"
+ #include "evp_local.h"
+ #include "crypto/chacha.h"
 +# include <stdfil.h>
  
  typedef struct {
      union {
-@@ -204,8 +205,20 @@ static int chacha20_poly1305_init_key(EVP_CIPHER_CTX *ctx,
- #   if defined(POLY1305_ASM) && (defined(__x86_64) || defined(__x86_64__) || \
-                                  defined(_M_AMD64) || defined(_M_X64))
- #    define XOR128_HELPERS
+@@ -206,8 +207,20 @@ static int chacha20_poly1305_init_key(EVP_CIPHER_CTX *ctx,
+ 
+ #if defined(POLY1305_ASM) && (defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64))
+ #define XOR128_HELPERS
 -void *xor128_encrypt_n_pad(void *out, const void *inp, void *otp, size_t len);
 -void *xor128_decrypt_n_pad(void *out, const void *inp, void *otp, size_t len);
 +void *xor128_encrypt_n_pad(void *out, const void *inp, void *otp, size_t len)
@@ -1391,10 +1472,10 @@ index 731c1a1dc70c..de6324902469 100644
 +    return zmkptr(otp, zunsafe_buf_call(len, "xor128_decrypt_n_pad", out, inp, otp, len));
 +}
  static const unsigned char zero[4 * CHACHA_BLK_SIZE] = { 0 };
- #   else
+ #else
  static const unsigned char zero[2 * CHACHA_BLK_SIZE] = { 0 };
 diff --git a/crypto/md5/md5_dgst.c b/crypto/md5/md5_dgst.c
-index 913b1ea5cad6..f0c41741417d 100644
+index 4b240e1fc6fb..e34f6f6fd9b6 100644
 --- a/crypto/md5/md5_dgst.c
 +++ b/crypto/md5/md5_dgst.c
 @@ -16,6 +16,7 @@
@@ -1418,11 +1499,11 @@ index 913b1ea5cad6..f0c41741417d 100644
 +}
  #endif
 diff --git a/crypto/mem_sec.c b/crypto/mem_sec.c
-index 269c7dcb6d41..a9ad53f854b1 100644
+index 21275d6cb23e..0b2758e7ca00 100644
 --- a/crypto/mem_sec.c
 +++ b/crypto/mem_sec.c
-@@ -87,6 +87,8 @@ VirtualLock(
- # define MAP_ANON MAP_ANONYMOUS
+@@ -86,6 +86,8 @@ BOOL
+ #define MAP_ANON MAP_ANONYMOUS
  #endif
  
 +#include <stdfil.h>
@@ -1430,7 +1511,7 @@ index 269c7dcb6d41..a9ad53f854b1 100644
  #ifndef OPENSSL_NO_SECURE_MEMORY
  static size_t secure_mem_used;
  
-@@ -107,6 +109,7 @@ static int sh_allocated(const char *ptr);
+@@ -106,6 +108,7 @@ static int sh_allocated(const char *ptr);
  
  int CRYPTO_secure_malloc_init(size_t size, size_t minsize)
  {
@@ -1479,7 +1560,7 @@ index 000000000000..80f280fe6e9a
 +}
 +
 diff --git a/crypto/modes/build.info b/crypto/modes/build.info
-index 52d2df19c6d9..a9de2a547d02 100644
+index 9fb2d503d8d6..17b43e788514 100644
 --- a/crypto/modes/build.info
 +++ b/crypto/modes/build.info
 @@ -4,7 +4,7 @@ $MODESASM=
@@ -1492,7 +1573,7 @@ index 52d2df19c6d9..a9de2a547d02 100644
  
    # ghash-ia64.s doesn't work on VMS
 diff --git a/crypto/modes/gcm128.c b/crypto/modes/gcm128.c
-index f8901ed07c53..1a64b1bb8f68 100644
+index 16c13e2961e4..aa1fc77747a6 100644
 --- a/crypto/modes/gcm128.c
 +++ b/crypto/modes/gcm128.c
 @@ -12,6 +12,7 @@
@@ -1503,13 +1584,13 @@ index f8901ed07c53..1a64b1bb8f68 100644
  
  #if defined(__GNUC__) && !defined(STRICT_ALIGNMENT)
  typedef size_t size_t_aX __attribute((__aligned__(1)));
-@@ -320,9 +321,21 @@ static void gcm_ghash_4bit(u64 Xi[2], const u128 Htable[16],
+@@ -321,9 +322,21 @@ static void gcm_ghash_4bit(u64 Xi[2], const u128 Htable[16],
  }
- #  endif
- # else
+ #endif
+ #else
 -void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16]);
 -void gcm_ghash_4bit(u64 Xi[2], const u128 Htable[16], const u8 *inp,
--                    size_t len);
+-    size_t len);
 +static void gcm_gmult_4bit(u64 Xi[2], const u128 Htable[16])
 +{
 +    zcheck(Xi, sizeof(u64) * 2);
@@ -1525,17 +1606,17 @@ index f8901ed07c53..1a64b1bb8f68 100644
 +    zcheck_readonly(inp, len);
 +    zunsafe_buf_call(len, "gcm_ghash_4bit", Xi, Htable, inp, len);
 +}
- # endif
+ #endif
  
- # define GCM_MUL(ctx)      ctx->funcs.gmult(ctx->Xi.u,ctx->Htable)
-@@ -343,20 +356,56 @@ void gcm_ghash_4bit(u64 Xi[2], const u128 Htable[16], const u8 *inp,
-          defined(_M_IX86)       || defined(_M_AMD64)    || defined(_M_X64))
- #  define GHASH_ASM_X86_OR_64
+ #define GCM_MUL(ctx) ctx->funcs.gmult(ctx->Xi.u, ctx->Htable)
+@@ -341,20 +354,56 @@ void gcm_ghash_4bit(u64 Xi[2], const u128 Htable[16], const u8 *inp,
+ #if !defined(I386_ONLY) && (defined(__i386) || defined(__i386__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_AMD64) || defined(_M_X64))
+ #define GHASH_ASM_X86_OR_64
  
 -void gcm_init_clmul(u128 Htable[16], const u64 Xi[2]);
 -void gcm_gmult_clmul(u64 Xi[2], const u128 Htable[16]);
 -void gcm_ghash_clmul(u64 Xi[2], const u128 Htable[16], const u8 *inp,
--                     size_t len);
+-    size_t len);
 +static void gcm_init_clmul(u128 Htable[16], const u64 Xi[2])
 +{
 +    zcheck(Htable, sizeof(u128) * 16);
@@ -1559,11 +1640,11 @@ index f8901ed07c53..1a64b1bb8f68 100644
 +    zunsafe_buf_call(len, "gcm_ghash_clmul", Xi, Htable, inp, len);
 +}
  
- #  if defined(__i386) || defined(__i386__) || defined(_M_IX86)
- #   define gcm_init_avx   gcm_init_clmul
- #   define gcm_gmult_avx  gcm_gmult_clmul
- #   define gcm_ghash_avx  gcm_ghash_clmul
- #  else
+ #if defined(__i386) || defined(__i386__) || defined(_M_IX86)
+ #define gcm_init_avx gcm_init_clmul
+ #define gcm_gmult_avx gcm_gmult_clmul
+ #define gcm_ghash_avx gcm_ghash_clmul
+ #else
 -void gcm_init_avx(u128 Htable[16], const u64 Xi[2]);
 -void gcm_gmult_avx(u64 Xi[2], const u128 Htable[16]);
 +static void gcm_init_avx(u128 Htable[16], const u64 Xi[2])
@@ -1581,19 +1662,19 @@ index f8901ed07c53..1a64b1bb8f68 100644
 +}
 +
  void gcm_ghash_avx(u64 Xi[2], const u128 Htable[16], const u8 *inp,
--                   size_t len);
-+                          size_t len)
+-    size_t len);
++                   size_t len)
 +{
 +    zcheck(Xi, sizeof(u64) * 2);
 +    zcheck_readonly(Htable, sizeof(u128) * 16);
 +    zcheck_readonly(inp, len);
 +    zunsafe_buf_call(len, "gcm_ghash_avx", Xi, Htable, inp, len);
 +}
- #  endif
+ #endif
  
- #  if   defined(__i386) || defined(__i386__) || defined(_M_IX86)
+ #if defined(__i386) || defined(__i386__) || defined(_M_IX86)
 diff --git a/crypto/poly1305/asm/poly1305-x86_64.pl b/crypto/poly1305/asm/poly1305-x86_64.pl
-index 4cddca1c514c..696af7c1c08e 100755
+index 305099ca0308..5789ed9194b4 100755
 --- a/crypto/poly1305/asm/poly1305-x86_64.pl
 +++ b/crypto/poly1305/asm/poly1305-x86_64.pl
 @@ -95,6 +95,11 @@ if (!$avx && `$ENV{CC} -v 2>&1` =~ /((?:clang|LLVM) version|.*based on LLVM) ([0
@@ -1609,7 +1690,7 @@ index 4cddca1c514c..696af7c1c08e 100755
      or die "can't call $xlate: $!";
  *STDOUT=*OUT;
 diff --git a/crypto/poly1305/poly1305.c b/crypto/poly1305/poly1305.c
-index b3bf2b117bbf..200cf73b4a6a 100644
+index 8836dbf79ae4..8de410010163 100644
 --- a/crypto/poly1305/poly1305.c
 +++ b/crypto/poly1305/poly1305.c
 @@ -12,6 +12,7 @@
@@ -1620,15 +1701,15 @@ index b3bf2b117bbf..200cf73b4a6a 100644
  
  size_t Poly1305_ctx_size(void)
  {
-@@ -423,11 +424,28 @@ static void poly1305_emit(void *ctx, unsigned char mac[16],
+@@ -394,11 +395,28 @@ static void poly1305_emit(void *ctx, unsigned char mac[16],
  }
- # endif
+ #endif
  #else
 -int poly1305_init(void *ctx, const unsigned char key[16], void *func);
 -void poly1305_blocks(void *ctx, const unsigned char *inp, size_t len,
--                     unsigned int padbit);
+-    unsigned int padbit);
 -void poly1305_emit(void *ctx, unsigned char mac[16],
--                   const unsigned int nonce[4]);
+-    const unsigned int nonce[4]);
 +static int poly1305_init(void *ctx, const unsigned char key[16], void *func)
 +{
 +    zcheck(ctx, sizeof(poly1305_opaque));
@@ -1654,8 +1735,8 @@ index b3bf2b117bbf..200cf73b4a6a 100644
  #endif
  
  void Poly1305_Init(POLY1305 *ctx, const unsigned char key[32])
-@@ -456,26 +474,8 @@ void Poly1305_Init(POLY1305 *ctx, const unsigned char key[32])
- 
+@@ -426,26 +444,8 @@ void Poly1305_Init(POLY1305 *ctx, const unsigned char key[32])
+     ctx->num = 0;
  }
  
 -#ifdef POLY1305_ASM
@@ -1663,8 +1744,8 @@ index b3bf2b117bbf..200cf73b4a6a 100644
 - * This "eclipses" poly1305_blocks and poly1305_emit, but it's
 - * conscious choice imposed by -Wshadow compiler warnings.
 - */
--# define poly1305_blocks (*poly1305_blocks_p)
--# define poly1305_emit   (*poly1305_emit_p)
+-#define poly1305_blocks (*poly1305_blocks_p)
+-#define poly1305_emit (*poly1305_emit_p)
 -#endif
 -
  void Poly1305_Update(POLY1305 *ctx, const unsigned char *inp, size_t len)
@@ -1681,7 +1762,7 @@ index b3bf2b117bbf..200cf73b4a6a 100644
      size_t rem, num;
  
      if ((num = ctx->num)) {
-@@ -509,10 +509,6 @@ void Poly1305_Update(POLY1305 *ctx, const unsigned char *inp, size_t len)
+@@ -479,10 +479,6 @@ void Poly1305_Update(POLY1305 *ctx, const unsigned char *inp, size_t len)
  
  void Poly1305_Final(POLY1305 *ctx, unsigned char mac[16])
  {
@@ -1812,7 +1893,7 @@ index 000000000000..03a2837a40c8
 +
 +
 diff --git a/crypto/sha/sha256.c b/crypto/sha/sha256.c
-index 6ef218e86e3d..66776e6bfbf1 100644
+index 0268e09dde94..28ea623d8a8e 100644
 --- a/crypto/sha/sha256.c
 +++ b/crypto/sha/sha256.c
 @@ -23,6 +23,7 @@
@@ -1823,9 +1904,9 @@ index 6ef218e86e3d..66776e6bfbf1 100644
  
  int SHA224_Init(SHA256_CTX *c)
  {
-@@ -123,6 +124,15 @@ void sha256_block_data_order_c(SHA256_CTX *ctx, const void *in, size_t num);
+@@ -132,6 +133,15 @@ void sha256_block_data_order_c(SHA256_CTX *ctx, const void *in, size_t num);
  #endif /* SHA256_ASM */
- void sha256_block_data_order(SHA256_CTX *ctx, const void *in, size_t num);
+     void sha256_block_data_order(SHA256_CTX *ctx, const void *in, size_t num);
  
 +#ifdef SHA256_ASM
 +void sha256_block_data_order(SHA256_CTX *ctx, const void *in, size_t num)
@@ -1840,7 +1921,7 @@ index 6ef218e86e3d..66776e6bfbf1 100644
  
  #if !defined(SHA256_ASM) || defined(INCLUDE_C_SHA256)
 diff --git a/crypto/sha/sha512.c b/crypto/sha/sha512.c
-index bc547d7cdc26..2fffef10cd0e 100644
+index 4c3a3b6c093d..67e31d924bf8 100644
 --- a/crypto/sha/sha512.c
 +++ b/crypto/sha/sha512.c
 @@ -58,6 +58,7 @@
@@ -1849,11 +1930,11 @@ index bc547d7cdc26..2fffef10cd0e 100644
  #include "crypto/sha.h"
 +#include <stdfil.h>
  
- #if defined(__i386) || defined(__i386__) || defined(_M_IX86) || \
-     defined(__x86_64) || defined(_M_AMD64) || defined(_M_X64) || \
-@@ -156,6 +157,15 @@ void sha512_block_data_order_c(SHA512_CTX *ctx, const void *in, size_t num);
+ #if defined(__i386) || defined(__i386__) || defined(_M_IX86) || defined(__x86_64) || defined(_M_AMD64) || defined(_M_X64) || defined(__s390__) || defined(__s390x__) || defined(__aarch64__) || defined(SHA512_ASM)
+ #define SHA512_BLOCK_CAN_MANAGE_UNALIGNED_DATA
+@@ -152,6 +153,15 @@ void sha512_block_data_order_c(SHA512_CTX *ctx, const void *in, size_t num);
  #endif
- void sha512_block_data_order(SHA512_CTX *ctx, const void *in, size_t num);
+     void sha512_block_data_order(SHA512_CTX *ctx, const void *in, size_t num);
  
 +#ifdef SHA512_ASM
 +void sha512_block_data_order(SHA512_CTX *ctx, const void *in, size_t num)
@@ -1901,25 +1982,24 @@ index 000000000000..d319b2ac4de9
 +    zunsafe_buf_call(zchecked_mul(n, WHIRLPOOL_BBLOCK / 8), "whirlpool_block", ctx, inp, n);
 +}
 diff --git a/crypto/x86_64cpuid.pl b/crypto/x86_64cpuid.pl
-index 53685ec26390..f03071fabf35 100644
+index f0eb8510ed2e..adb02c7c7f07 100644
 --- a/crypto/x86_64cpuid.pl
 +++ b/crypto/x86_64cpuid.pl
-@@ -27,14 +27,6 @@ open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\""
- 				 ("%rdi","%rsi","%rdx","%rcx");	# Unix order
+@@ -28,13 +28,6 @@ open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\""
  
  print<<___;
+ #include crypto/cryptlib.h
 -.extern		OPENSSL_cpuid_setup
 -.hidden		OPENSSL_cpuid_setup
 -.section	.init
 -	call	OPENSSL_cpuid_setup
 -
 -.hidden	OPENSSL_ia32cap_P
--.comm	OPENSSL_ia32cap_P,16,4
--
+-.comm	OPENSSL_ia32cap_P,40,4	# <--Should match with internal/cryptlib.h OPENSSL_IA32CAP_P_MAX_INDEXES
  .text
  
  .globl	OPENSSL_atomic_add
-@@ -237,44 +229,6 @@ OPENSSL_ia32_cpuid:
+@@ -263,44 +256,6 @@ OPENSSL_ia32_cpuid:
  .cfi_endproc
  .size	OPENSSL_ia32_cpuid,.-OPENSSL_ia32_cpuid
  
@@ -1965,7 +2045,7 @@ index 53685ec26390..f03071fabf35 100644
  .type   CRYPTO_memcmp,\@abi-omnipotent
  .align  16
 diff --git a/engines/e_padlock.c b/engines/e_padlock.c
-index 7e0cfc21fc9b..e2a0aea74110 100644
+index 8eba5ecf0863..5c9f8e000b25 100644
 --- a/engines/e_padlock.c
 +++ b/engines/e_padlock.c
 @@ -24,6 +24,7 @@
@@ -1976,7 +2056,7 @@ index 7e0cfc21fc9b..e2a0aea74110 100644
  
  #ifndef OPENSSL_NO_PADLOCKENG
  
-@@ -214,27 +215,83 @@ struct padlock_cipher_data {
+@@ -212,23 +213,84 @@ struct padlock_cipher_data {
  };
  
  /* Interface to assembler module */
@@ -1985,22 +2065,18 @@ index 7e0cfc21fc9b..e2a0aea74110 100644
 -void padlock_verify_context(struct padlock_cipher_data *ctx);
 -void padlock_reload_key(void);
 -void padlock_aes_block(void *out, const void *inp,
--                       struct padlock_cipher_data *ctx);
+-    struct padlock_cipher_data *ctx);
 -int padlock_ecb_encrypt(void *out, const void *inp,
--                        struct padlock_cipher_data *ctx, size_t len);
+-    struct padlock_cipher_data *ctx, size_t len);
 -int padlock_cbc_encrypt(void *out, const void *inp,
--                        struct padlock_cipher_data *ctx, size_t len);
+-    struct padlock_cipher_data *ctx, size_t len);
 -int padlock_cfb_encrypt(void *out, const void *inp,
--                        struct padlock_cipher_data *ctx, size_t len);
+-    struct padlock_cipher_data *ctx, size_t len);
 -int padlock_ofb_encrypt(void *out, const void *inp,
--                        struct padlock_cipher_data *ctx, size_t len);
+-    struct padlock_cipher_data *ctx, size_t len);
 -int padlock_ctr32_encrypt(void *out, const void *inp,
--                          struct padlock_cipher_data *ctx, size_t len);
+-    struct padlock_cipher_data *ctx, size_t len);
 -int padlock_xstore(void *out, int edx);
--void padlock_sha1_oneshot(void *ctx, const void *inp, size_t len);
--void padlock_sha1(void *ctx, const void *inp, size_t len);
--void padlock_sha256_oneshot(void *ctx, const void *inp, size_t len);
--void padlock_sha256(void *ctx, const void *inp, size_t len);
 +static unsigned int padlock_capability(void)
 +{
 +    return zunsafe_fast_call("padlock_capability");
@@ -2078,58 +2154,59 @@ index 7e0cfc21fc9b..e2a0aea74110 100644
 +                       16 bytes. */
 +    return zunsafe_fast_call("padlock_xstore", out, edx);
 +}
- 
- /*
-  * Load supported features of the CPU to see if the PadLock is available.
++
+ void padlock_sha1_oneshot(void *ctx, const void *inp, size_t len);
+ void padlock_sha1(void *ctx, const void *inp, size_t len);
+ void padlock_sha256_oneshot(void *ctx, const void *inp, size_t len);
 diff --git a/include/crypto/md32_common.h b/include/crypto/md32_common.h
-index 46214f3237cc..ade29b59e778 100644
+index 6cc60d8d0d7d..fa771e2ec2f4 100644
 --- a/include/crypto/md32_common.h
 +++ b/include/crypto/md32_common.h
-@@ -101,7 +101,7 @@
+@@ -100,7 +100,7 @@
+ #define ROTATE(a, n) (((a) << (n)) | (((a) & 0xffffffff) >> (32 - (n))))
  
  #ifndef PEDANTIC
- # if defined(__GNUC__) && __GNUC__>=2 && \
--     !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM)
-+    !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(__FILC__)
- #  if defined(__riscv_zbb) || defined(__riscv_zbkb)
- #   if __riscv_xlen == 64
- #   undef ROTATE
+-#if defined(__GNUC__) && __GNUC__ >= 2 && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM)
++#if defined(__GNUC__) && __GNUC__ >= 2 && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(__FILC__)
+ #if defined(__riscv_zbb) || defined(__riscv_zbkb)
+ #if __riscv_xlen == 64
+ #undef ROTATE
 diff --git a/include/crypto/modes.h b/include/crypto/modes.h
-index d03ca83d00f2..8461e24092ff 100644
+index 918d4e04b540..f58c30461e6a 100644
 --- a/include/crypto/modes.h
 +++ b/include/crypto/modes.h
-@@ -38,7 +38,7 @@ typedef unsigned char u8;
- # endif
+@@ -34,7 +34,7 @@ typedef unsigned char u8;
+ #endif
  #endif
  
 -#if !defined(PEDANTIC) && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM)
 +#if !defined(PEDANTIC) && !defined(OPENSSL_NO_ASM) && !defined(OPENSSL_NO_INLINE_ASM) && !defined(__FILC__)
- # if defined(__GNUC__) && __GNUC__>=2
- #  if defined(__x86_64) || defined(__x86_64__)
- #   define BSWAP8(x) ({ u64 ret_=(x);                   \
+ #if defined(__GNUC__) && __GNUC__ >= 2
+ #if defined(__x86_64) || defined(__x86_64__)
+ #define BSWAP8(x) ({ u64 ret_=(x);                   \
 diff --git a/include/crypto/poly1305.h b/include/crypto/poly1305.h
-index ba54f3bdcbe1..a4b92a12ff0f 100644
+index a7e1a2c28c75..dbce83cbcc2a 100644
 --- a/include/crypto/poly1305.h
 +++ b/include/crypto/poly1305.h
-@@ -24,11 +24,12 @@ typedef void (*poly1305_blocks_f) (void *ctx, const unsigned char *inp,
- typedef void (*poly1305_emit_f) (void *ctx, unsigned char mac[16],
-                                  const unsigned int nonce[4]);
+@@ -24,11 +24,12 @@ typedef void (*poly1305_blocks_f)(void *ctx, const unsigned char *inp,
+ typedef void (*poly1305_emit_f)(void *ctx, unsigned char mac[16],
+     const unsigned int nonce[4]);
  
 +typedef double poly1305_opaque[24]; /* large enough to hold internal state, declared
 +                                     * 'double' to ensure at least 64-bit invariant
 +                                     * alignment across all platforms and
 +                                     * configurations */
  struct poly1305_context {
--    double opaque[24];  /* large enough to hold internal state, declared
--                         * 'double' to ensure at least 64-bit invariant
--                         * alignment across all platforms and
--                         * configurations */
+-    double opaque[24]; /* large enough to hold internal state, declared
+-                        * 'double' to ensure at least 64-bit invariant
+-                        * alignment across all platforms and
+-                        * configurations */
 +    poly1305_opaque opaque;
      unsigned int nonce[4];
      unsigned char data[POLY1305_BLOCK_SIZE];
      size_t num;
 diff --git a/providers/implementations/ciphers/cipher_aes_gcm_hw.c b/providers/implementations/ciphers/cipher_aes_gcm_hw.c
-index 207a16bc70e7..3ad5d6311a90 100644
+index d2b7437cde34..b6dacc8c4241 100644
 --- a/providers/implementations/ciphers/cipher_aes_gcm_hw.c
 +++ b/providers/implementations/ciphers/cipher_aes_gcm_hw.c
 @@ -16,6 +16,7 @@
@@ -2139,15 +2216,7 @@ index 207a16bc70e7..3ad5d6311a90 100644
 +#include <stdfil.h>
  
  static int aes_gcm_initkey(PROV_GCM_CTX *ctx, const unsigned char *key,
-                                    size_t keylen)
-@@ -26,6 +27,7 @@ static int aes_gcm_initkey(PROV_GCM_CTX *ctx, const unsigned char *key,
- # ifdef HWAES_CAPABLE
-     if (HWAES_CAPABLE) {
- #  ifdef HWAES_ctr32_encrypt_blocks
-+
-         GCM_HW_SET_KEY_CTR_FN(ks, HWAES_set_encrypt_key, HWAES_encrypt,
-                               HWAES_ctr32_encrypt_blocks);
- #  else
+     size_t keylen)
 diff --git a/providers/implementations/ciphers/cipher_aes_gcm_hw_vaes_avx512.inc b/providers/implementations/ciphers/cipher_aes_gcm_hw_vaes_avx512.inc
 index c892c0754e8d..900dfed08d8d 100644
 --- a/providers/implementations/ciphers/cipher_aes_gcm_hw_vaes_avx512.inc
@@ -2232,7 +2301,7 @@ index c892c0754e8d..900dfed08d8d 100644
  static int vaes_gcm_setkey(PROV_GCM_CTX *ctx, const unsigned char *key,
                             size_t keylen)
 diff --git a/providers/implementations/rands/seeding/rand_cpu_x86.c b/providers/implementations/rands/seeding/rand_cpu_x86.c
-index 0e062fa45aa2..b961b8fd2e64 100644
+index f2021ed10905..6f3de8a4871d 100644
 --- a/providers/implementations/rands/seeding/rand_cpu_x86.c
 +++ b/providers/implementations/rands/seeding/rand_cpu_x86.c
 @@ -11,6 +11,7 @@
@@ -2242,13 +2311,13 @@ index 0e062fa45aa2..b961b8fd2e64 100644
 +#include <stdfil.h>
  
  #ifdef OPENSSL_RAND_SEED_RDCPU
- # if defined(OPENSSL_SYS_TANDEM) && defined(_TNS_X_TARGET)
+ #if defined(OPENSSL_SYS_TANDEM) && defined(_TNS_X_TARGET)
 diff --git a/test/recipes/01-test_symbol_presence.t b/test/recipes/01-test_symbol_presence.t
 deleted file mode 100644
-index 222b1886aec0..000000000000
+index 6c8de64b0b32..000000000000
 --- a/test/recipes/01-test_symbol_presence.t
 +++ /dev/null
-@@ -1,242 +0,0 @@
+@@ -1,244 +0,0 @@
 -#! /usr/bin/env perl
 -# -*- mode: Perl -*-
 -# Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
@@ -2275,6 +2344,8 @@ index 222b1886aec0..000000000000
 -plan skip_all => "Test is disabled on NonStop" if config('target') =~ m|^nonstop|;
 -# MacOS arranges symbol names differently
 -plan skip_all => "Test is disabled on MacOS" if config('target') =~ m|^darwin|;
+-# AIX reports symbol names differently
+-plan skip_all => "Test is disabled on AIX" if config('target') =~ m|^aix|;
 -plan skip_all => "This is unsupported on platforms that don't have 'nm'"
 -    unless IPC::Cmd::can_run('nm');
 -
@@ -2512,6 +2583,25 @@ index b9846c5204f6..000000000000
 -setup("test_param_build");
 -
 -simple_test("test_param_build", "param_build_test");
+diff --git a/test/recipes/20-test_speed.t b/test/recipes/20-test_speed.t
+index c6a982460f1d..655d748c6174 100644
+--- a/test/recipes/20-test_speed.t
++++ b/test/recipes/20-test_speed.t
+@@ -93,11 +93,10 @@ SKIP: {
+ }
+ 
+ SKIP: {
+-    skip "Mlock option is not supported by this OpenSSL build", 1
+-       if $^O !~ /^(linux|MSWin32)$/;
++    skip "Mlock option is not supported by this OpenSSL build", 1;
+ 
+-       ok(run(app(['openssl', 'speed', '-testmode', '-mlock'])),
+-              "Test the mlock option");
++    # Fil-C's mlock requires mmapped memory, but the speed app uses malloc/stack
++    # buffers, so this test cannot pass. Skip it.
+ }
+ 
+ #We don't expect these options to have an effect in testmode but we at least
 diff --git a/test/recipes/30-test_afalg.t b/test/recipes/30-test_afalg.t
 deleted file mode 100644
 index 572a847511a8..000000000000

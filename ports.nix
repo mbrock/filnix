@@ -350,14 +350,14 @@ in
     (use rec {
       # our `pin` function doesn't work for this package, so we use a custom source.
       # i guess the version number of the package isn't verbatim in the url.
-      version = "9.8p1";
+      version = "10.3p1";
       name = "openssh-${version}";
       src = pkgs.fetchurl {
         url = "mirror://openbsd/OpenSSH/portable/openssh-${version}.tar.gz";
-        hash = "sha256-3YvQAqN5tdSZ37BQ3R+pr4Ap6ARh9LtsUjxJlz9aOfM=";
+        hash = "sha256-VmgqNruS3PS08Bb9jsjnQFm3mo3iXBXWcNcx59GORfQ=";
       };
     })
-    (patch ./ports/patch/openssh-9.8p1.patch)
+    (patch ./ports/patch/openssh-10.3p1.patch)
     (skipCheck "let's see")
     (use {
       installCheckPhase = ''

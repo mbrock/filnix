@@ -9,15 +9,15 @@
 
 stdenv.mkDerivation rec {
   pname = "openssl";
-  version = "3.3.1";
+  version = "3.5.7";
 
   src = fetchurl {
     url = "https://www.openssl.org/source/openssl-${version}.tar.gz";
-    hash = "sha256-d3zVlihMiDN1oqehG/XSeG/FQTJV76sgxQ1v/m0CC34=";
+    hash = "sha256-qMDSilKcpID582z1eS4s0hmEVSo8jkqhGiSqMa6smOg=";
   };
 
   patches = [
-    ./patch/openssl-3.3.1.patch
+    ./patch/openssl-3.5.7.patch
   ];
 
   outputs = [

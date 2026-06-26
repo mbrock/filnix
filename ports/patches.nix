@@ -176,12 +176,12 @@
     patches = [ ./patch/man-db-2.12.1.patch ];
   };
   openssh = {
-    version = "9.8p1";
-    patches = [ ./patch/openssh-9.8p1.patch ];
+    version = "10.3p1";
+    patches = [ ./patch/openssh-10.3p1.patch ];
   };
   openssl = {
-    version = "3.3.1";
-    patches = [ ./patch/openssl-3.3.1.patch ];
+    version = "3.5.7";
+    patches = [ ./patch/openssl-3.5.7.patch ];
   };
   p11-kit = {
     version = "0.25.5";
