@@ -146,7 +146,7 @@ in
   ])
 
   (for pkgs.libuv [
-    (pin "1.51.0" "sha256-ayTk3qkeeAjrGj5ab7wF7vpWI8XWS1EeKKUqzaD/LY0=")
+    (pin "1.51.0" "sha256-J+Vc9wg5E7+2gmynjN6d52R83tZI018kFj8tMbufUc0=")
     (patch ./ports/patch/libuv-1.51.0.patch)
     (skipTests "one test failed")
   ])
