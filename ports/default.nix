@@ -291,6 +291,55 @@ let
       -e 's/pizlonatedFI[0-9]+_//g'
   '';
 
+  # Teach generated libtool configure scripts to recognize Fil-C's raw nm
+  # output. This preserves libtool's distinction between the raw symbol
+  # (pizlonated_foo) and the C spelling it emits in generated probes (foo).
+  #
+  # This is not equivalent to depizloing-nm: packages like gettext/libtextstyle
+  # reuse libtool's global-symbol machinery to generate namespace-hiding
+  # headers, and they need to see the actual pizlonated symbol names there.
+  fixSympat = use (old: {
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.python3 ];
+    postPatch = (old.postPatch or "") + ''
+      python3 - <<'PY'
+      from pathlib import Path
+
+      replacements = [
+          (r"sympat='\([_A-Za-z][_A-Za-z0-9]*\)'",
+           r"sympat='\(pizlonated_[_A-Za-z][_A-Za-z0-9]*\)'"),
+          (r"s/^T .* \(.*\)$/extern int \1();/p",
+           r"s/^T .* pizlonated_\(.*\)$/extern int \1();/p"),
+          (r"s/^$symcode$symcode* .* \(.*\)$/extern char \1;/p",
+           r"s/^$symcode$symcode* .* pizlonated_\(.*\)$/extern char \1;/p"),
+          (r"s/^$symcode$symcode* .* \(.*\)$/  {\"\1\", (void *) \&\1},/p",
+           r"s/^$symcode$symcode* .* pizlonated_\(.*\)$/  {\"\1\", (void *) \&\1},/p"),
+          (r"s/^$symcode$symcode* .* \(.*\)$/  {\"lib\1\", (void *) \&\1},/p",
+           r"s/^$symcode$symcode* .* pizlonated_\(.*\)$/  {\"lib\1\", (void *) \&\1},/p"),
+          (r"GREP ' nm_test_var$'",
+           r"GREP ' pizlonated_nm_test_var$'"),
+          (r"GREP ' nm_test_func$'",
+           r"GREP ' pizlonated_nm_test_func$'"),
+          (r"s/^$symcode$symcode* .* \(.*\)$/  {\"\1\", (void *) \&\1},/",
+           r"s/^$symcode$symcode* .* pizlonated_\(.*\)$/  {\"\1\", (void *) \&\1},/"),
+      ]
+
+      marker = replacements[0][0]
+
+      for path in Path(".").rglob("configure"):
+          text = path.read_text()
+          if marker not in text:
+              continue
+
+          original = text
+          for old, new in replacements:
+              text = text.replace(old, new)
+
+          if text != original:
+              path.write_text(text)
+      PY
+    '';
+  });
+
   # URL helpers
   github =
     orgRepo: pathFn: v:
@@ -336,6 +385,7 @@ let
       removeConfigureFlag
       wip
       depizloing-nm
+      fixSympat
       astRewrite
       ;
     inherit github gnu gnuTarGz;

@@ -37,6 +37,7 @@ let
     removeConfigureFlag
     wip
     depizloing-nm
+    fixSympat
     astRewrite
     github
     gnu
@@ -653,7 +654,7 @@ in
   ])
 
   (for pkgs.gettext [
-    (tool depizloing-nm)
+    fixSympat
     (use (old: {
       env = old.env // {
         gettextNeedsLdflags = false;
