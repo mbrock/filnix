@@ -1,0 +1,33 @@
+{
+  "filc-rev": "ab5c5169d16b16f61e0ced74aa2bc7f3b5b3b606",
+  "sparseCheckouts": {
+    "filc0-src": [
+      "llvm",
+      "clang",
+      "cmake",
+      "third-party",
+      "libc",
+      "libcxx",
+      "libcxxabi",
+      "runtimes"
+    ],
+    "libpas-src": [
+      "libpas",
+      "filc"
+    ],
+    "yolo-glibc-src": [
+      "projects/yolo-glibc-2.40"
+    ],
+    "user-glibc-src": [
+      "projects/user-glibc-2.40"
+    ],
+    "compiler-rt-src": [
+      "compiler-rt",
+      "cmake",
+      "llvm"
+    ],
+    "yolounwind-src": [
+      "yolounwind"
+    ]
+  }
+}

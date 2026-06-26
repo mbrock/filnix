@@ -1,6 +1,7 @@
 {
   pkgs,
   filc,
+  compiler-rt,
 }:
 
 let
@@ -44,6 +45,9 @@ in
       export FILC_LIB_GCVERIFY_DIR="$PIZFIX_OUT/lib_gcverify"
       export FILC_LIB_TEST_GCVERIFY_DIR="$PIZFIX_OUT/lib_test_gcverify"
       mkdir -p "$FILC_LIB_DIR" "$FILC_LIB_TEST_DIR" "$FILC_LIB_GCVERIFY_DIR" "$FILC_LIB_TEST_GCVERIFY_DIR"
+      cp ${compiler-rt}/lib/crtbegin.o "$FILC_LIB_DIR"/
+      cp ${compiler-rt}/lib/crtend.o "$FILC_LIB_DIR"/
+      cp ${compiler-rt}/lib/libyolort.a "$FILC_LIB_DIR"/
       patchShebangs .
     '';
 

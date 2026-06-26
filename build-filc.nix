@@ -30,7 +30,7 @@ let
   # Build libpizlo
   libpizlo =
     (import ./runtime/libpizlo.nix {
-      inherit pkgs filc;
+      inherit pkgs filc compiler-rt;
     }).libpizlo;
 
   # Build filc-glibc
