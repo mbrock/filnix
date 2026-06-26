@@ -796,6 +796,9 @@ in
 
   {
     binutils-unwrapped = for pkgs.binutils-unwrapped [
+      (src "2.43.1" "sha256-vsqsXSleA3WHtjpC+tV/49nXuD9HjrJLZ/nuxdDxhy8=" (
+        version: "mirror://gnu/binutils/binutils-${version}.tar.bz2"
+      ))
       (patch ./ports/patch/binutils-2.43.1.patch)
       (tool depizloing-nm)
     ];

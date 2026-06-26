@@ -150,6 +150,174 @@ index 842d4153005e..a44f7999ddfa 100644
    *internal_mode = 0;
    add_intrinsic_variable ("internalmode", internal_mode);
  
+diff --git a/gas/frags.c b/gas/frags.c
+index 820763de7ef2..4a6a8856cb02 100644
+--- a/gas/frags.c
++++ b/gas/frags.c
+@@ -72,8 +72,8 @@ frag_alloc_check (const struct obstack *ob)
+    Call this routine from everywhere else, so that all the weird alignment
+    hackery can be done in just one place.  */
+ 
+-fragS *
+-frag_alloc (struct obstack *ob)
++static fragS *
++frag_alloc_impl (struct obstack *ob, size_t size)
+ {
+   fragS *ptr;
+   int oalign;
+@@ -81,62 +81,24 @@ frag_alloc (struct obstack *ob)
+   (void) obstack_alloc (ob, 0);
+   oalign = obstack_alignment_mask (ob);
+   obstack_alignment_mask (ob) = 0;
+-  ptr = (fragS *) obstack_alloc (ob, SIZEOF_STRUCT_FRAG);
++
++  obstack_blank (ob, SIZEOF_STRUCT_FRAG + size);
++  ptr = (fragS *)obstack_base (ob);
++  ob->next_free -= size;
++  obstack_finish (ob);
++
+   obstack_alignment_mask (ob) = oalign;
+   memset (ptr, 0, SIZEOF_STRUCT_FRAG);
+   totalfrags++;
+   return ptr;
+ }
+-
+-/* Try to augment current frag by nchars chars.
+-   If there is no room, close off the current frag with a ".fill 0"
+-   and begin a new frag.  Then loop until the new frag has at least
+-   nchars chars available.  Does not set up any fields in frag_now.  */
+ 
+-void
+-frag_grow (size_t nchars)
++fragS *
++frag_alloc (struct obstack *ob)
+ {
+-  if (obstack_room (&frchain_now->frch_obstack) < nchars)
+-    {
+-      size_t oldc;
+-      size_t newc;
+-
+-      /* Try to allocate a bit more than needed right now.  But don't do
+-         this if we would waste too much memory.  Especially necessary
+-         for extremely big (like 2GB initialized) frags.  */
+-      if (nchars < 0x10000)
+-        newc = 2 * nchars;
+-      else
+-        newc = nchars + 0x10000;
+-      newc += SIZEOF_STRUCT_FRAG;
+-
+-      /* Check for possible overflow.  */
+-      if (newc < nchars)
+-	as_fatal (ngettext ("can't extend frag %lu char",
+-			    "can't extend frag %lu chars",
+-			    (unsigned long) nchars),
+-		  (unsigned long) nchars);
+-
+-      /* Force to allocate at least NEWC bytes, but not less than the
+-         default.  */
+-      oldc = obstack_chunk_size (&frchain_now->frch_obstack);
+-      if (newc > oldc)
+-	obstack_chunk_size (&frchain_now->frch_obstack) = newc;
+-
+-      while (obstack_room (&frchain_now->frch_obstack) < nchars)
+-        {
+-          /* Not enough room in this frag.  Close it and start a new one.
+-             This must be done in a loop because the created frag may not
+-             be big enough if the current obstack chunk is used.  */
+-          frag_wane (frag_now);
+-          frag_new (0);
+-        }
+-
+-      /* Restore the old chunk size.  */
+-      obstack_chunk_size (&frchain_now->frch_obstack) = oldc;
+-    }
++  return frag_alloc_impl(ob, 100);
+ }
+-
++
+ /* Call this to close off a completed frag, and start up a new (empty)
+    frag, in the same subsegment as the old frag.
+    [frchain_now remains the same but frag_now is updated.]
+@@ -154,10 +116,8 @@ frag_grow (size_t nchars)
+    Make a new frag, initialising some components. Link new frag at end
+    of frchain_now.  */
+ 
+-void
+-frag_new (size_t old_frags_var_max_size
+-	  /* Number of chars (already allocated on obstack frags) in
+-	     variable_length part of frag.  */)
++static void 
++frag_new_impl (size_t old_frags_var_max_size, size_t new_frag_size)
+ {
+   fragS *former_last_fragP;
+   frchainS *frchP;
+@@ -180,7 +140,7 @@ frag_new (size_t old_frags_var_max_size
+   former_last_fragP = frchP->frch_last;
+   gas_assert (former_last_fragP != 0);
+   gas_assert (former_last_fragP == frag_now);
+-  frag_now = frag_alloc (&frchP->frch_obstack);
++  frag_now = frag_alloc_impl (&frchP->frch_obstack, new_frag_size);
+ 
+   frag_now->fr_file = as_where (&frag_now->fr_line);
+ 
+@@ -202,6 +162,57 @@ frag_new (size_t old_frags_var_max_size
+ 
+   frag_now->fr_next = NULL;
+ }
++
++void
++frag_new (size_t old_frags_var_max_size
++	  /* Number of chars (already allocated on obstack frags) in
++	     variable_length part of frag.  */)
++{
++  frag_new_impl(old_frags_var_max_size, 100);
++}
++
++/* Try to augment current frag by nchars chars.
++   If there is no room, close off the current frag with a ".fill 0"
++   and begin a new frag.  Then loop until the new frag has at least
++   nchars chars available.  Does not set up any fields in frag_now.  */
++
++void
++frag_grow (size_t nchars)
++{
++  if (obstack_room (&frchain_now->frch_obstack) < nchars)
++    {
++      size_t newc;
++
++      /* Try to allocate a bit more than needed right now.  But don't do
++         this if we would waste too much memory.  Especially necessary
++         for extremely big (like 2GB initialized) frags.  */
++      if (nchars < 0x10000)
++        newc = 2 * nchars;
++      else
++        newc = nchars + 0x10000;
++      newc += SIZEOF_STRUCT_FRAG;
++
++      /* Check for possible overflow.  */
++      if (newc < nchars)
++	as_fatal (ngettext ("can't extend frag %lu char",
++			    "can't extend frag %lu chars",
++			    (unsigned long) nchars),
++		  (unsigned long) nchars);
++
++      /* Force to allocate at least NEWC bytes, but not less than the
++         default.  */
++
++      while (obstack_room (&frchain_now->frch_obstack) < nchars)
++        {
++          /* Not enough room in this frag.  Close it and start a new one.
++             This must be done in a loop because the created frag may not
++             be big enough if the current obstack chunk is used.  */
++          frag_wane (frag_now);
++          frag_new_impl (0, nchars);
++        }
++    }
++}
++
+ 
+ /* Start a new frag unless we have n more chars of room in the current frag.
+    Close off the old frag with a .fill 0.
 diff --git a/gold/symtab.cc b/gold/symtab.cc
 index 5857dd7b098d..bbe9c46f3620 100644
 --- a/gold/symtab.cc
@@ -173,6 +341,30 @@ index 5857dd7b098d..bbe9c46f3620 100644
 +#endif
 +
  } // End namespace gold.
+diff --git a/include/obstack.h b/include/obstack.h
+index 0b0e29d629fd..c8917adffac0 100644
+--- a/include/obstack.h
++++ b/include/obstack.h
+@@ -376,8 +376,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_SIZE_T __len = (length);				      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len); })
+ 
+ # define obstack_alloc(OBSTACK, length)					      \
+@@ -492,8 +491,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.i = (length),						      \
+-   ((obstack_room (h) < (h)->temp.i)					      \
+-   ? (_obstack_newchunk ((h), (h)->temp.i), 0) : 0),			      \
++   _obstack_newchunk ((h), (h)->temp.i),			      \
+    obstack_blank_fast (h, (h)->temp.i))
+ 
+ # define obstack_alloc(h, length)					      \
 diff --git a/include/splay-tree.h b/include/splay-tree.h
 index 5993cca24fad..0e9cc4f42ffd 100644
 --- a/include/splay-tree.h
@@ -206,6 +398,65 @@ index 64544b83a9f1..6836bc9d6979 100644
  		  [])
     LDFLAGS="$old_LDFLAGS"
  
+diff --git a/libiberty/obstack.c b/libiberty/obstack.c
+index f6d4eb7f50c1..a4ddaec427b0 100644
+--- a/libiberty/obstack.c
++++ b/libiberty/obstack.c
+@@ -118,25 +118,10 @@ _obstack_begin_worker (struct obstack *h,
+ 
+   if (alignment == 0)
+     alignment = DEFAULT_ALIGNMENT;
+-  if (size == 0)
+-    /* Default size is what GNU malloc can fit in a 4096-byte block.  */
+-    {
+-      /* 12 is sizeof (mhead) and 4 is EXTRA from GNU malloc.
+-         Use the values for range checking, because if range checking is off,
+-         the extra bytes won't be missed terribly, but if range checking is on
+-         and we used a larger request, a whole extra 4096 bytes would be
+-         allocated.
+-
+-         These number are irrelevant to the new GNU malloc.  I suspect it is
+-         less sensitive to the size of the request.  */
+-      int extra = ((((12 + DEFAULT_ROUNDING - 1) & ~(DEFAULT_ROUNDING - 1))
+-                    + 4 + DEFAULT_ROUNDING - 1)
+-                   & ~(DEFAULT_ROUNDING - 1));
+-      size = 4096 - extra;
+-    }
+ 
+-  h->chunk_size = size;
+   h->alignment_mask = alignment - 1;
++  size = sizeof(struct _obstack_chunk) + h->alignment_mask;
++  h->chunk_size = size;
+ 
+   chunk = (struct _obstack_chunk *) call_chunkfun (h, h->chunk_size);
+   if (!chunk)
+@@ -190,19 +175,18 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_SIZE_T length)
+   struct _obstack_chunk *old_chunk = h->chunk;
+   struct _obstack_chunk *new_chunk = 0;
+   size_t obj_size = h->next_free - h->object_base;
++  size_t new_size;
+   char *object_base;
+ 
+   /* Compute size for new chunk.  */
+-  size_t sum1 = obj_size + length;
+-  size_t sum2 = sum1 + h->alignment_mask;
+-  size_t new_size = sum2 + (obj_size >> 3) + 100;
+-  if (new_size < sum2)
+-    new_size = sum2;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  if (obj_size <= sum1 && sum1 <= sum2)
++  if (new_size >= length && new_size >= obj_size)
+     new_chunk = (struct _obstack_chunk *) call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
 diff --git a/libiberty/xmalloc.c b/libiberty/xmalloc.c
 index 652ffd3299c7..13e7539ae577 100644
 --- a/libiberty/xmalloc.c

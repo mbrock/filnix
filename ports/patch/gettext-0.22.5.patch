@@ -13,6 +13,178 @@ index 703e416be3a7..636f84168228 100644
  			    }
  			}
  
+diff --git a/gettext-tools/gnulib-lib/obstack.c b/gettext-tools/gnulib-lib/obstack.c
+index b00cd88e1aca..f66941e6289c 100644
+--- a/gettext-tools/gnulib-lib/obstack.c
++++ b/gettext-tools/gnulib-lib/obstack.c
+@@ -92,26 +92,12 @@ _obstack_begin_worker (struct obstack *h,
+ 
+   if (alignment == 0)
+     alignment = DEFAULT_ALIGNMENT;
+-  if (size == 0)
+-    /* Default size is what GNU malloc can fit in a 4096-byte block.  */
+-    {
+-      /* 12 is sizeof (mhead) and 4 is EXTRA from GNU malloc.
+-         Use the values for range checking, because if range checking is off,
+-         the extra bytes won't be missed terribly, but if range checking is on
+-         and we used a larger request, a whole extra 4096 bytes would be
+-         allocated.
+-
+-         These number are irrelevant to the new GNU malloc.  I suspect it is
+-         less sensitive to the size of the request.  */
+-      int extra = ((((12 + DEFAULT_ROUNDING - 1) & ~(DEFAULT_ROUNDING - 1))
+-                    + 4 + DEFAULT_ROUNDING - 1)
+-                   & ~(DEFAULT_ROUNDING - 1));
+-      size = 4096 - extra;
+-    }
+ 
+-  h->chunk_size = size;
+   h->alignment_mask = alignment - 1;
+ 
++  size = sizeof (struct _obstack_chunk) + h->alignment_mask;
++  h->chunk_size = size;
++
+   chunk = h->chunk = call_chunkfun (h, h->chunk_size);
+   if (!chunk)
+     (*obstack_alloc_failed_handler) ();
+@@ -166,19 +152,19 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_SIZE_T length)
+   char *object_base;
+ 
+   /* Compute size for new chunk.  */
+-  size_t sum1 = obj_size + length;
+-  size_t sum2 = sum1 + h->alignment_mask;
+-  size_t new_size = sum2 + (obj_size >> 3) + 100;
+-  if (new_size < sum2)
+-    new_size = sum2;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  size_t new_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  if (obj_size <= sum1 && sum1 <= sum2)
++  if (new_size >= length && new_size >= obj_size)
+     new_chunk = call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
++
+   h->chunk = new_chunk;
+   new_chunk->prev = old_chunk;
+   new_chunk->limit = h->chunk_limit = (char *) new_chunk + new_size;
+diff --git a/gettext-tools/gnulib-lib/obstack.in.h b/gettext-tools/gnulib-lib/obstack.in.h
+index cf149947be74..27a8fdffbb66 100644
+--- a/gettext-tools/gnulib-lib/obstack.in.h
++++ b/gettext-tools/gnulib-lib/obstack.in.h
+@@ -394,8 +394,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_SIZE_T __len = (length);				      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len); })
+ 
+ # define obstack_alloc(OBSTACK, length)					      \
+@@ -510,8 +509,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.i = (length),						      \
+-   ((obstack_room (h) < (h)->temp.i)					      \
+-   ? (_obstack_newchunk ((h), (h)->temp.i), 0) : 0),			      \
++   _obstack_newchunk ((h), (h)->temp.i),			      \
+    obstack_blank_fast (h, (h)->temp.i))
+ 
+ # define obstack_alloc(h, length)					      \
+diff --git a/gettext-tools/libgettextpo/obstack.c b/gettext-tools/libgettextpo/obstack.c
+index b00cd88e1aca..f66941e6289c 100644
+--- a/gettext-tools/libgettextpo/obstack.c
++++ b/gettext-tools/libgettextpo/obstack.c
+@@ -92,26 +92,12 @@ _obstack_begin_worker (struct obstack *h,
+ 
+   if (alignment == 0)
+     alignment = DEFAULT_ALIGNMENT;
+-  if (size == 0)
+-    /* Default size is what GNU malloc can fit in a 4096-byte block.  */
+-    {
+-      /* 12 is sizeof (mhead) and 4 is EXTRA from GNU malloc.
+-         Use the values for range checking, because if range checking is off,
+-         the extra bytes won't be missed terribly, but if range checking is on
+-         and we used a larger request, a whole extra 4096 bytes would be
+-         allocated.
+-
+-         These number are irrelevant to the new GNU malloc.  I suspect it is
+-         less sensitive to the size of the request.  */
+-      int extra = ((((12 + DEFAULT_ROUNDING - 1) & ~(DEFAULT_ROUNDING - 1))
+-                    + 4 + DEFAULT_ROUNDING - 1)
+-                   & ~(DEFAULT_ROUNDING - 1));
+-      size = 4096 - extra;
+-    }
+ 
+-  h->chunk_size = size;
+   h->alignment_mask = alignment - 1;
+ 
++  size = sizeof (struct _obstack_chunk) + h->alignment_mask;
++  h->chunk_size = size;
++
+   chunk = h->chunk = call_chunkfun (h, h->chunk_size);
+   if (!chunk)
+     (*obstack_alloc_failed_handler) ();
+@@ -166,19 +152,19 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_SIZE_T length)
+   char *object_base;
+ 
+   /* Compute size for new chunk.  */
+-  size_t sum1 = obj_size + length;
+-  size_t sum2 = sum1 + h->alignment_mask;
+-  size_t new_size = sum2 + (obj_size >> 3) + 100;
+-  if (new_size < sum2)
+-    new_size = sum2;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  size_t new_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  if (obj_size <= sum1 && sum1 <= sum2)
++  if (new_size >= length && new_size >= obj_size)
+     new_chunk = call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
++
+   h->chunk = new_chunk;
+   new_chunk->prev = old_chunk;
+   new_chunk->limit = h->chunk_limit = (char *) new_chunk + new_size;
+diff --git a/gettext-tools/libgettextpo/obstack.in.h b/gettext-tools/libgettextpo/obstack.in.h
+index cf149947be74..27a8fdffbb66 100644
+--- a/gettext-tools/libgettextpo/obstack.in.h
++++ b/gettext-tools/libgettextpo/obstack.in.h
+@@ -394,8 +394,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_SIZE_T __len = (length);				      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len); })
+ 
+ # define obstack_alloc(OBSTACK, length)					      \
+@@ -510,8 +509,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.i = (length),						      \
+-   ((obstack_room (h) < (h)->temp.i)					      \
+-   ? (_obstack_newchunk ((h), (h)->temp.i), 0) : 0),			      \
++   _obstack_newchunk ((h), (h)->temp.i),			      \
+    obstack_blank_fast (h, (h)->temp.i))
+ 
+ # define obstack_alloc(h, length)					      \
 diff --git a/gettext-tools/tests/msgfmt-6 b/gettext-tools/tests/msgfmt-6
 index aededbcbadf5..88543a737090 100755
 --- a/gettext-tools/tests/msgfmt-6
@@ -304,3 +476,89 @@ index b068b7bfdbd0..1ab0f92c4048 100644
 +pizlonated_term_styled_ostream_get_hyperlink_ref
 +pizlonated_term_styled_ostream_set_hyperlink
 +pizlonated_term_styled_ostream_write_mem
+diff --git a/libtextstyle/lib/obstack.c b/libtextstyle/lib/obstack.c
+index b00cd88e1aca..f66941e6289c 100644
+--- a/libtextstyle/lib/obstack.c
++++ b/libtextstyle/lib/obstack.c
+@@ -92,26 +92,12 @@ _obstack_begin_worker (struct obstack *h,
+ 
+   if (alignment == 0)
+     alignment = DEFAULT_ALIGNMENT;
+-  if (size == 0)
+-    /* Default size is what GNU malloc can fit in a 4096-byte block.  */
+-    {
+-      /* 12 is sizeof (mhead) and 4 is EXTRA from GNU malloc.
+-         Use the values for range checking, because if range checking is off,
+-         the extra bytes won't be missed terribly, but if range checking is on
+-         and we used a larger request, a whole extra 4096 bytes would be
+-         allocated.
+-
+-         These number are irrelevant to the new GNU malloc.  I suspect it is
+-         less sensitive to the size of the request.  */
+-      int extra = ((((12 + DEFAULT_ROUNDING - 1) & ~(DEFAULT_ROUNDING - 1))
+-                    + 4 + DEFAULT_ROUNDING - 1)
+-                   & ~(DEFAULT_ROUNDING - 1));
+-      size = 4096 - extra;
+-    }
+ 
+-  h->chunk_size = size;
+   h->alignment_mask = alignment - 1;
+ 
++  size = sizeof (struct _obstack_chunk) + h->alignment_mask;
++  h->chunk_size = size;
++
+   chunk = h->chunk = call_chunkfun (h, h->chunk_size);
+   if (!chunk)
+     (*obstack_alloc_failed_handler) ();
+@@ -166,19 +152,19 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_SIZE_T length)
+   char *object_base;
+ 
+   /* Compute size for new chunk.  */
+-  size_t sum1 = obj_size + length;
+-  size_t sum2 = sum1 + h->alignment_mask;
+-  size_t new_size = sum2 + (obj_size >> 3) + 100;
+-  if (new_size < sum2)
+-    new_size = sum2;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  size_t new_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  if (obj_size <= sum1 && sum1 <= sum2)
++  if (new_size >= length && new_size >= obj_size)
+     new_chunk = call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
++
+   h->chunk = new_chunk;
+   new_chunk->prev = old_chunk;
+   new_chunk->limit = h->chunk_limit = (char *) new_chunk + new_size;
+diff --git a/libtextstyle/lib/obstack.in.h b/libtextstyle/lib/obstack.in.h
+index cf149947be74..27a8fdffbb66 100644
+--- a/libtextstyle/lib/obstack.in.h
++++ b/libtextstyle/lib/obstack.in.h
+@@ -394,8 +394,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_SIZE_T __len = (length);				      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len); })
+ 
+ # define obstack_alloc(OBSTACK, length)					      \
+@@ -510,8 +509,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.i = (length),						      \
+-   ((obstack_room (h) < (h)->temp.i)					      \
+-   ? (_obstack_newchunk ((h), (h)->temp.i), 0) : 0),			      \
++   _obstack_newchunk ((h), (h)->temp.i),			      \
+    obstack_blank_fast (h, (h)->temp.i))
+ 
+ # define obstack_alloc(h, length)					      \

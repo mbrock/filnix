@@ -215,10 +215,6 @@
     version = "4.9";
     patches = [ ./patch/sed-4.9.patch ];
   };
-  simdutf = {
-    version = "5.5.0";
-    patches = [ ./patch/simdutf-5.5.0.patch ];
-  };
   sqlite = {
     version = "3.46.0";
     patches = [ ./patch/sqlite.patch ];
