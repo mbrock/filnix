@@ -37,6 +37,7 @@ let
     removeConfigureFlag
     wip
     depizloing-nm
+    libtoolGlobalSymbols
     astRewrite
     github
     gnu
@@ -385,6 +386,7 @@ in
 
   (for pkgs.ldns [
     (tool depizloing-nm)
+    libtoolGlobalSymbols
   ])
 
   # ━━━ Security ━━━
