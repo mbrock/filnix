@@ -70,10 +70,13 @@ in
 
   (for "msgpack" [
     native
-    (replace "ext/msgpack/buffer_class.c" "unsigned long max = ((VALUE*) args)[2];"
+    (replace "ext/msgpack/buffer_class.c"
+      "unsigned long max = ((VALUE*) args)[2];"
       "unsigned long max = (unsigned long)(uintptr_t)((VALUE*) args)[2];"
     )
-    (replace "ext/msgpack/buffer_class.c" "(VALUE) max," "(VALUE)(uintptr_t) max,")
+    (replace "ext/msgpack/buffer_class.c" "(VALUE) max,"
+      "(VALUE)(uintptr_t) max,"
+    )
   ])
 
   # ffi - Uses Fil-C's libffi (bundled libffi has incompatible asm)
@@ -111,7 +114,8 @@ in
     # int ret = Qnil -> int ret = -1 (function returns int, not VALUE)
     (replace "ext/openssl/ossl_pkcs7.c" "int i, ret = Qnil;" "int i, ret = -1;")
     # VALUE ret stores ID values, should be ID ret
-    (replace "ext/openssl/ossl_pkey_ec.c" "point_conversion_form_t form;\n    VALUE ret;"
+    (replace "ext/openssl/ossl_pkey_ec.c"
+      "point_conversion_form_t form;\n    VALUE ret;"
       "point_conversion_form_t form;\n    ID ret;"
     )
   ])
@@ -139,8 +143,12 @@ in
   # date - VALUE to st_index_t conversion for hash function
   (for "date" [
     native
-    (astGrepSel "assignment_expression" "h[0] = m_nth($X)" "h[0] = (st_index_t)(uintptr_t)m_nth($X)")
-    (astGrepSel "assignment_expression" "h[3] = m_sf($X)" "h[3] = (st_index_t)(uintptr_t)m_sf($X)")
+    (astGrepSel "assignment_expression" "h[0] = m_nth($X)"
+      "h[0] = (st_index_t)(uintptr_t)m_nth($X)"
+    )
+    (astGrepSel "assignment_expression" "h[3] = m_sf($X)"
+      "h[3] = (st_index_t)(uintptr_t)m_sf($X)"
+    )
   ])
 
   # nokogiri - can't switch on VALUE (pointer), convert to if-else
@@ -169,7 +177,8 @@ in
       "interest = monitor->interests & ~NIO_Monitor_symbol2interest(interest);"
       "int new_interest = monitor->interests & ~NIO_Monitor_symbol2interest(interest);"
     )
-    (replace "ext/nio4r/monitor.c" "NIO_Monitor_update_interests(self, (int)interest);"
+    (replace "ext/nio4r/monitor.c"
+      "NIO_Monitor_update_interests(self, (int)interest);"
       "NIO_Monitor_update_interests(self, new_interest);"
     )
   ])
@@ -197,7 +206,8 @@ in
       case Qfalse:"
       "if (val == Qnil || val == Qtrue || val == Qfalse) {"
     )
-    (replace "ext/bigdecimal/bigdecimal.c" "return Qnil;
+    (replace "ext/bigdecimal/bigdecimal.c"
+      "return Qnil;
 
       default:
         break;
@@ -206,7 +216,9 @@ in
     }"
     )
     # is_zero()/is_one() return int, not VALUE - return 0 instead of Qfalse
-    (astGrepSel "case_statement" "case T_BIGNUM: return Qfalse;" "case T_BIGNUM: return 0;")
+    (astGrepSel "case_statement" "case T_BIGNUM: return Qfalse;"
+      "case T_BIGNUM: return 0;"
+    )
     # Fix rb_protect callback: store result in struct instead of casting int<->VALUE
     (replace "ext/bigdecimal/bigdecimal.c" "const char *exp_chr;
   size_t ne;
@@ -225,7 +237,9 @@ in
       "VALUE result = rb_protect(call_VpCtoV, (VALUE)&args, &state);"
       "rb_protect(call_VpCtoV, (VALUE)&args, &state);"
     )
-    (replace "ext/bigdecimal/bigdecimal.c" "return (int)result;" "return args.result;")
+    (replace "ext/bigdecimal/bigdecimal.c" "return (int)result;"
+      "return args.result;"
+    )
   ])
 
   # io-console - switch on VALUE needs uintptr_t cast

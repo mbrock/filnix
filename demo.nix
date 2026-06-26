@@ -6,7 +6,9 @@
   libei,
 }:
 let
-  libei-ping-cnode = pkgsFilc.callPackage ./demo/libei/cnode.nix { inherit libei; };
+  libei-ping-cnode = pkgsFilc.callPackage ./demo/libei/cnode.nix {
+    inherit libei;
+  };
 in
 {
   lighttpd-demo =

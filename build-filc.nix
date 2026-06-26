@@ -11,7 +11,8 @@ let
   yolo = import ./runtime/yolo-glibc.nix { inherit pkgs; };
 
   # Build compiler-rt (CRT files and builtins, uses host compiler)
-  compiler-rt = (import ./runtime/compiler-rt.nix { inherit pkgs; }).compiler-rt;
+  compiler-rt =
+    (import ./runtime/compiler-rt.nix { inherit pkgs; }).compiler-rt;
 
   # Build yolounwind (stub unwind library, uses host compiler)
   yolounwind = (import ./runtime/yolounwind.nix { inherit pkgs; }).yolounwind;

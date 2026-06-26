@@ -31,19 +31,19 @@ stdenv.mkDerivation rec {
   '';
 
   postInstall = ''
-    mkdir -p $out/lib/pkgconfig
-    cat > $out/lib/pkgconfig/lua.pc <<EOF
-prefix=$out
-libdir=$out/lib
-includedir=$out/include
+        mkdir -p $out/lib/pkgconfig
+        cat > $out/lib/pkgconfig/lua.pc <<EOF
+    prefix=$out
+    libdir=$out/lib
+    includedir=$out/include
 
-Name: Lua
-Description: An Extensible Extension Language
-Version: ${version}
-Requires:
-Libs: -L$out/lib -llua -lm -ldl
-Cflags: -I$out/include
-EOF
+    Name: Lua
+    Description: An Extensible Extension Language
+    Version: ${version}
+    Requires:
+    Libs: -L$out/lib -llua -lm -ldl
+    Cflags: -I$out/include
+    EOF
   '';
 
   passthru = {

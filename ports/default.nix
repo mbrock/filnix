@@ -33,7 +33,11 @@ let
 
   # Core primitives
   arg = kv: overArgs kv;
-  use = f: overAttrs (if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f);
+  use =
+    f:
+    overAttrs (
+      if builtins.isAttrs f && !builtins.isFunction f then (_: f) else f
+    );
 
   # Pin a specific version and hash
   # Automatically substitutes version in the existing URL
@@ -106,7 +110,8 @@ let
   for =
     pkg: steps:
     let
-      isCustomDrv = builtins.isPath pkg || (builtins.isString pkg && lib.hasSuffix ".nix" pkg);
+      isCustomDrv =
+        builtins.isPath pkg || (builtins.isString pkg && lib.hasSuffix ".nix" pkg);
       isStringName = builtins.isString pkg && !lib.hasSuffix ".nix" pkg;
       pname =
         if isStringName then
@@ -163,14 +168,18 @@ let
   skipPatch =
     p:
     use (old: {
-      patches = builtins.filter (patch: !(lib.hasInfix p (toString patch))) (old.patches or [ ]);
+      patches = builtins.filter (patch: !(lib.hasInfix p (toString patch))) (
+        old.patches or [ ]
+      );
     });
 
   removeCFlag =
     flag:
     use (old: {
       env = (old.env or { }) // {
-        NIX_CFLAGS_COMPILE = lib.replaceStrings [ flag ] [ "" ] ((old.env or { }).NIX_CFLAGS_COMPILE or "");
+        NIX_CFLAGS_COMPILE = lib.replaceStrings [ flag ] [ "" ] (
+          (old.env or { }).NIX_CFLAGS_COMPILE or ""
+        );
       };
       preConfigure = (old.preConfigure or "") + ''
         export NIX_CFLAGS_COMPILE="''${NIX_CFLAGS_COMPILE//${flag}/}"
@@ -226,7 +235,9 @@ let
   removeMesonFlag =
     flag:
     use (old: {
-      mesonFlags = builtins.filter (f: !(lib.hasPrefix flag f)) (old.mesonFlags or [ ]);
+      mesonFlags = builtins.filter (f: !(lib.hasPrefix flag f)) (
+        old.mesonFlags or [ ]
+      );
     });
 
   # Mark as broken for Fil-C with a reason
@@ -245,7 +256,8 @@ let
   markAsNotNecessarilyInsecure = use (old: {
     meta = (old.meta or { }) // {
       knownVulnerabilities = [ ];
-      description = (old.meta.description or "Package") + " (Memory-safe via Fil-C)";
+      description =
+        (old.meta.description or "Package") + " (Memory-safe via Fil-C)";
     };
   });
 
@@ -388,7 +400,11 @@ let
         else if prev ? ${name} then
           # Package exists in nixpkgs - apply overlay transformations
           let
-            base = if spec.overrideArgs != { } then prev.${name}.override spec.overrideArgs else prev.${name};
+            base =
+              if spec.overrideArgs != { } then
+                prev.${name}.override spec.overrideArgs
+              else
+                prev.${name};
           in
           base.overrideAttrs spec.attrs
         else
@@ -424,11 +440,13 @@ let
 
       # Re-call defaultGemConfig with final packages so gems get Fil-C dependencies
       # This ensures ffi gem gets final.libffi (Fil-C version), not pkgs.libffi
-      defaultGemConfig = final.callPackage (prev.path + "/pkgs/development/ruby-modules/gem-config") {
-        # Darwin-only args that don't exist in final (not ported to Fil-C)
-        inherit (prev.darwin) DarwinTools;
-        inherit (prev) autoSignDarwinBinariesHook;
-      };
+      defaultGemConfig =
+        final.callPackage (prev.path + "/pkgs/development/ruby-modules/gem-config")
+          {
+            # Darwin-only args that don't exist in final (not ported to Fil-C)
+            inherit (prev.darwin) DarwinTools;
+            inherit (prev) autoSignDarwinBinariesHook;
+          };
     };
 
 in

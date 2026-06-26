@@ -1,4 +1,9 @@
-{ pkgs, ports, filcc, world-pkgs }:
+{
+  pkgs,
+  ports,
+  filcc,
+  world-pkgs,
+}:
 rec {
   filc-nspawn = import ./virt/nspawn.nix {
     inherit pkgs ports filcc;

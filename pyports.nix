@@ -108,7 +108,8 @@ in
   ])
 
   (for "pyyaml" [
-    (skipTests "slow")])
+    (skipTests "slow")
+  ])
 
   # Custom package - defined inline since it's not in pyprev
   {

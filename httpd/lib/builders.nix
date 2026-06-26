@@ -1,4 +1,8 @@
-{ pkgs, ports, filcc }:
+{
+  pkgs,
+  ports,
+  filcc,
+}:
 {
   # Memory-safe bash script wrapper
   bashScript =

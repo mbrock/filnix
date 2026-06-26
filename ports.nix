@@ -103,9 +103,9 @@ in
     # The zclosure is a "special object" that can't be written to as a struct
     (use (old: {
       postPatch = (old.postPatch or "") + ''
-        substituteInPlace src/closures.c \
-          --replace-fail '#include <stdfil.h>' '#include <stdfil.h>
-#include <stdlib.h>'
+                substituteInPlace src/closures.c \
+                  --replace-fail '#include <stdfil.h>' '#include <stdfil.h>
+        #include <stdlib.h>'
       '';
     }))
     (astRewrite "src/closures.c" "c"
@@ -115,7 +115,8 @@ in
   if (!closure) return NULL;
   *code = zclosure_new(ffi_closure_callback, closure);
   return closure;
-}")
+}"
+    )
   ])
 
   {
@@ -177,7 +178,9 @@ in
     (patch ./ports/patch/libedit-20240808-3.1.patch)
   ])
 
-  (for (pkgs.callPackage "${pkgs.path}/pkgs/development/libraries/libidn2" { }) [ ])
+  (for (pkgs.callPackage "${pkgs.path}/pkgs/development/libraries/libidn2"
+    { }
+  ) [ ])
 
   # Special case - libiconv comes from glibc in cross-compilation
   {
@@ -762,7 +765,8 @@ in
 #else
     $$$BODY
 #endif
-}")
+}"
+        )
         # Also patch rb_ractor_make_shareable to skip traversal
         (astRewrite "ractor.c" "c"
           "VALUE rb_ractor_make_shareable(VALUE $OBJ) { $$$BODY }"
@@ -773,7 +777,8 @@ in
 #else
     $$$BODY
 #endif
-}")
+}"
+        )
         (arg { yjitSupport = false; })
         (arg { jitSupport = false; })
         (arg {
@@ -782,7 +787,9 @@ in
           rustc = null;
         })
         (arg {
-          defaultGemConfig = final.defaultGemConfig // (import ./ports/rubyPorts-as-gemConfig.nix { inherit pkgs final; });
+          defaultGemConfig =
+            final.defaultGemConfig
+            // (import ./ports/rubyPorts-as-gemConfig.nix { inherit pkgs final; });
         })
       ]
     );

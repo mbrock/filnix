@@ -25,6 +25,7 @@
   echo "}" >> "$tmpdir/script.c"
   ${filcc}/bin/clang -o "$tmpdir/script" "$tmpdir/script.c"
   exec "$tmpdir/script"
-'').overrideAttrs (_: {
-  meta.mainProgram = "runfilc";
-})
+'').overrideAttrs
+  (_: {
+    meta.mainProgram = "runfilc";
+  })

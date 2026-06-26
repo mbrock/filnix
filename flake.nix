@@ -68,7 +68,8 @@
         pkgsFilc = pkgs;
       };
 
-      makeLibei = erlang: pkgsFilc.callPackage ./packages/libei.nix { inherit erlang; };
+      makeLibei =
+        erlang: pkgsFilc.callPackage ./packages/libei.nix { inherit erlang; };
       libei = makeLibei pkgs.erlang;
       libei_24 = makeLibei pkgs.erlang_24;
       libei_25 = makeLibei pkgs.erlang_25;
@@ -165,6 +166,7 @@
           packages = with pkgs; [
             # Nix development tools
             nixfmt-rfc-style
+            treefmt
             nixd
             nil
 
@@ -173,6 +175,10 @@
             direnv
             nix-direnv
           ];
+
+          shellHook = ''
+            git config core.hooksPath scripts/git-hooks
+          '';
         };
 
         # Full Fil-C compilation environment (opt-in with 'nix develop .#world')
