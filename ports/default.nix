@@ -281,34 +281,15 @@ let
 
   # Utilities
   depizloing-nm = pkgs.writeShellScriptBin "nm" ''
-    ${pkgs.binutils}/bin/nm "$@" | sed 's/\bpizlonated_//g'
+    # Show build systems the source-level names for Fil-C function symbols.
+    # The new direct-call ABI adds signature-bearing FI/FIP entrypoints and
+    # weak ET helper thunks; libtool's nm probe cannot call those as C symbols.
+    ${pkgs.binutils}/bin/nm "$@" | sed -E \
+      -e 's/pizlonated_//g' \
+      -e '/[[:space:]]pizlonated[12]ET[0-9]+$/d' \
+      -e 's/pizlonatedFIP[0-9]+_//g' \
+      -e 's/pizlonatedFI[0-9]+_//g'
   '';
-
-  # Some libtool configure probes try to validate their nm parsing by compiling
-  # a second test file that references symbols discovered in the first object.
-  # Fil-C pizlonates those references too, so even with depizloing-nm the probe
-  # can fail and leave global_symbol_pipe empty, later producing commands like
-  # "nm objects | | sed ...".  Preseed the usual Linux/ELF libtool cache values
-  # for ports that need libtool's generated export-symbols machinery.
-  libtoolGlobalSymbols =
-    let
-      sed = "${pkgs.gnused}/bin/sed";
-      symcode = "[ABCDGIRSTW]";
-      symbolPattern = "[_A-Za-z][_A-Za-z0-9]*";
-      globalSymbolPipe = "${sed} -n -e 's/^.*[[:space:]]\\(${symcode}${symcode}*\\)[[:space:]][[:space:]]*\\(${symbolPattern}\\)$/\\1 \\2 \\2/p' | ${sed} '/ __gnu_lto/d'";
-      globalSymbolToCdecl = "${sed} -n -e 's/^T .* \\(.*\\)$/extern int \\1();/p' -e 's/^${symcode}${symcode}* .* \\(.*\\)$/extern char \\1;/p'";
-      globalSymbolToCNameAddress = "${sed} -n -e 's/^: \\(.*\\) .*$/  {\"\\1\", (void *) 0},/p' -e 's/^${symcode}${symcode}* .* \\(.*\\)$/  {\"\\1\", (void *) \\&\\1},/p'";
-      globalSymbolToCNameAddressLibPrefix = "${sed} -n -e 's/^: \\(.*\\) .*$/  {\"\\1\", (void *) 0},/p' -e 's/^${symcode}${symcode}* .* \\(lib.*\\)$/  {\"\\1\", (void *) \\&\\1},/p' -e 's/^${symcode}${symcode}* .* \\(.*\\)$/  {\"lib\\1\", (void *) \\&\\1},/p'";
-    in
-    use (old: {
-      preConfigure = (old.preConfigure or "") + ''
-        export lt_cv_sys_global_symbol_pipe=${lib.escapeShellArg globalSymbolPipe}
-        export lt_cv_sys_global_symbol_to_cdecl=${lib.escapeShellArg globalSymbolToCdecl}
-        export lt_cv_sys_global_symbol_to_import=
-        export lt_cv_sys_global_symbol_to_c_name_address=${lib.escapeShellArg globalSymbolToCNameAddress}
-        export lt_cv_sys_global_symbol_to_c_name_address_lib_prefix=${lib.escapeShellArg globalSymbolToCNameAddressLibPrefix}
-      '';
-    });
 
   # URL helpers
   github =
@@ -355,7 +336,6 @@ let
       removeConfigureFlag
       wip
       depizloing-nm
-      libtoolGlobalSymbols
       astRewrite
       ;
     inherit github gnu gnuTarGz;
