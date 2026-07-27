@@ -1021,6 +1021,7 @@ in
         withJansson = true;
       })
       (pin "30.1" "sha256-eTWjpRgLXbA9OQZnbrWPIHPcbj/QYkv58I3IWx5lCIQ=")
+      (link final.zlib)
       (use {
         src = pkgs.fetchFromGitHub {
           owner = "mbrock";
