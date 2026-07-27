@@ -142,6 +142,7 @@
         inherit rubyWithGem;
 
         inherit (emacs-safe) filc-emacs;
+        emacs30 = pkgsFilc.emacs30;
         emacs = emacs-safe.filc-emacs;
         emacs-unsafe = emacs-unsafe.filc-emacs;
       };
