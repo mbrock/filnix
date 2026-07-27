@@ -1026,8 +1026,8 @@ in
         src = pkgs.fetchFromGitHub {
           owner = "mbrock";
           repo = "emacs";
-          rev = "0bdeee8b3003811a04cab68de07f2022c80f3332";
-          hash = "sha256-w87aRaLaqaN+GjD2cBm1mXN3i1V4Xi7PQM0vHfPioXs=";
+          rev = "3f0b0a6fc1a24eb7ff0f0c0c57b4a5164c418531";
+          hash = "sha256-IO7nyEJFb/nFqiSX/5/7IpRIfm/Z3EFTVz9sMeU7lKc=";
         };
       })
       (configure "--with-gnutls=ifavailable")
@@ -1037,11 +1037,19 @@ in
       (configure "--with-native-compilation=yes")
       (configure "--with-native-compilation-backend=comphack")
       (configure "--with-comphack-cc=${final.gnufilc0}/bin/clang")
+      (addMakeFlag "NATIVE_COMP_ZYGOTE=yes")
+      (addMakeFlag "NATIVE_COMP_ZYGOTE_JOBS=12")
       (use (old: {
         preBuild = (old.preBuild or "") + ''
           # Fil-C's larger native frames overflow the usual 8 MiB stack while
           # Comphack compiles large preloaded files such as window.el.
           ulimit -S -s 65536
+        '';
+        postInstall = (old.postInstall or "") + ''
+          # A no-dump Emacs runs loadup.el at startup before startup.el can
+          # process EMACSNATIVELOADPATH.  Make the installed ELNs visible at
+          # the early path derived from the executable prefix.
+          ln -s "lib/emacs/${old.version}/native-lisp" "$out/native-lisp"
         '';
       }))
       (skipCheck "some tests fail")
