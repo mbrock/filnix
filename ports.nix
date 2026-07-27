@@ -1021,11 +1021,27 @@ in
         withJansson = true;
       })
       (pin "30.1" "sha256-eTWjpRgLXbA9OQZnbrWPIHPcbj/QYkv58I3IWx5lCIQ=")
-      (patch ./ports/patch/emacs-30.1.patch)
+      (use {
+        src = pkgs.fetchFromGitHub {
+          owner = "mbrock";
+          repo = "emacs";
+          rev = "bf972b8d485d05d936c8ee838bdf5ca95724746a";
+          hash = "sha256-ZaElPqtXcXYWohiGijYGH11JmAY1QQptmIIU5oJncjA=";
+        };
+      })
       (configure "--with-gnutls=ifavailable")
       (configure "--with-dumping=none")
       (configure "--with-pdumper=no")
       (configure "--with-unexec=no")
+      (configure "--with-native-compilation=yes")
+      (configure "--with-native-compilation-backend=comphack")
+      (use (old: {
+        preBuild = (old.preBuild or "") + ''
+          # Fil-C's larger native frames overflow the usual 8 MiB stack while
+          # Comphack compiles large preloaded files such as window.el.
+          ulimit -S -s 65536
+        '';
+      }))
       (skipCheck "some tests fail")
     ];
   }
