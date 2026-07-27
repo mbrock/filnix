@@ -1026,8 +1026,8 @@ in
         src = pkgs.fetchFromGitHub {
           owner = "mbrock";
           repo = "emacs";
-          rev = "3f0b0a6fc1a24eb7ff0f0c0c57b4a5164c418531";
-          hash = "sha256-IO7nyEJFb/nFqiSX/5/7IpRIfm/Z3EFTVz9sMeU7lKc=";
+          rev = "a55126f6150b43ffc2fbc0682dcd594d5a98f96d";
+          hash = "sha256-LWnniS61uEE55tfMV8HTQdKzs+IPwr5dwoSxyfApTss=";
         };
       })
       (configure "--with-gnutls=ifavailable")
