@@ -1026,8 +1026,8 @@ in
         src = pkgs.fetchFromGitHub {
           owner = "mbrock";
           repo = "emacs";
-          rev = "bf972b8d485d05d936c8ee838bdf5ca95724746a";
-          hash = "sha256-ZaElPqtXcXYWohiGijYGH11JmAY1QQptmIIU5oJncjA=";
+          rev = "0bdeee8b3003811a04cab68de07f2022c80f3332";
+          hash = "sha256-w87aRaLaqaN+GjD2cBm1mXN3i1V4Xi7PQM0vHfPioXs=";
         };
       })
       (configure "--with-gnutls=ifavailable")
@@ -1036,6 +1036,7 @@ in
       (configure "--with-unexec=no")
       (configure "--with-native-compilation=yes")
       (configure "--with-native-compilation-backend=comphack")
+      (configure "--with-comphack-cc=${final.gnufilc0}/bin/clang")
       (use (old: {
         preBuild = (old.preBuild or "") + ''
           # Fil-C's larger native frames overflow the usual 8 MiB stack while
