@@ -83,15 +83,16 @@ rec {
         chmod -R u+w .
 
         # Copy and rename dynamic linker
-        cp ${yolo-glibc-impl}/lib/ld-linux-x86-64.so.2 ld-yolo-x86_64.so
-        chmod u+w ld-yolo-x86_64.so
-        patchelf --remove-rpath ld-yolo-x86_64.so
+        cp ${yolo-glibc-impl}/lib/ld-linux-x86-64.so.2 ld-fil1-x86_64.so
+        chmod u+w ld-fil1-x86_64.so
+        patchelf --remove-rpath ld-fil1-x86_64.so
+        patchelf --set-soname ld-fil1-x86_64.so ld-fil1-x86_64.so
 
         # Copy and patch libc implementation
         cp ${yolo-glibc-impl}/lib/libc.so.6 libyolocimpl.so
         chmod u+w libyolocimpl.so
         patchelf --set-soname libyolocimpl.so \
-                 --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \
+                 --replace-needed ld-linux-x86-64.so.2 ld-fil1-x86_64.so \
                  --set-rpath '$ORIGIN' \
                  libyolocimpl.so
 
@@ -99,7 +100,7 @@ rec {
         cp ${yolo-glibc-impl}/lib/libm.so.6 libyolomimpl.so
         chmod u+w libyolomimpl.so
         patchelf --set-soname libyolomimpl.so \
-                 --replace-needed ld-linux-x86-64.so.2 ld-yolo-x86_64.so \
+                 --replace-needed ld-linux-x86-64.so.2 ld-fil1-x86_64.so \
                  --replace-needed libc.so.6 libyolocimpl.so \
                  --set-rpath '$ORIGIN' \
                  libyolomimpl.so
@@ -112,7 +113,7 @@ rec {
 
         cat > libyoloc.so <<'EOF'
         OUTPUT_FORMAT(elf64-x86-64)
-        GROUP(libyolocimpl.so libyoloc_nonshared.a AS_NEEDED(ld-yolo-x86_64.so))
+        GROUP(libyolocimpl.so libyoloc_nonshared.a AS_NEEDED(ld-fil1-x86_64.so))
         EOF
       '';
 }
