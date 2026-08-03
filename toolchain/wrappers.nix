@@ -91,7 +91,7 @@ rec {
     extraBuildCommands = ''
       echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
       echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
-      echo "${filc-sysroot}/lib/ld-yolo-x86_64.so" > $out/nix-support/dynamic-linker
+      echo "${filc-sysroot}/lib/ld-fil1-x86_64.so" > $out/nix-support/dynamic-linker
     '';
   };
 

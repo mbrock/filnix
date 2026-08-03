@@ -3,13 +3,7 @@
   pkgsFilc,
   filcc,
   filc-emacs,
-  libei,
 }:
-let
-  libei-ping-cnode = pkgsFilc.callPackage ./demo/libei/cnode.nix {
-    inherit libei;
-  };
-in
 {
   lighttpd-demo =
     (pkgs.callPackage ./httpd {
@@ -67,14 +61,6 @@ in
       });
 
   perl-demos = pkgsFilc.callPackage ./demo/perl { };
-
-  libei-ping-demo = pkgs.callPackage ./demo/libei {
-    cnode = libei-ping-cnode;
-    erlang = pkgs.erlang;
-    runnerName = "libei-ping-demo";
-    alive = "filc_libei_ping";
-    description = "End-to-end ping demo proving Fil-C libei can talk to an Erlang node";
-  };
 
   perl-with-stuff = pkgsFilc.perl.withPackages (
     ps: with ps; [

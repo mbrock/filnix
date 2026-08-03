@@ -9,31 +9,31 @@
 
 let
   # Perl with required XS modules
-  perlEnv = with perl540Packages; [
-    perl
+  perlEnv = perl540Packages.perl.withPackages (
+    ps: with ps; [
+      # C integration
+      InlineC
 
-    # C integration
-    InlineC
+      # Fast C-based data processing
+      JSONXS
+      YAMLLibYAML # YAML::LibYAML - fast C-based YAML parser
 
-    # Fast C-based data processing
-    JSONXS
-    YAMLLibYAML # YAML::LibYAML - fast C-based YAML parser
+      # Database with C backend
+      DBI
+      DBDSQLite
 
-    # Database with C backend
-    DBI
-    DBDSQLite
+      # XML parsing (libxml2)
+      XMLLibXML
 
-    # XML parsing (libxml2)
-    XMLLibXML
+      # Compression (zlib, bzip2)
+      CompressZlib
+      CompressBzip2
 
-    # Compression (zlib, bzip2)
-    CompressZlib
-    CompressBzip2
-
-    # Other useful XS modules
-    ListMoreUtils
-    ScalarListUtils
-  ];
+      # Other useful XS modules
+      ListMoreUtils
+      ScalarListUtils
+    ]
+  );
 
   # Create wrapper scripts
   makeDemo =

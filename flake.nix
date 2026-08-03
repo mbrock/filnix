@@ -68,21 +68,11 @@
         pkgsFilc = pkgs;
       };
 
-      makeLibei =
-        erlang: pkgsFilc.callPackage ./packages/libei.nix { inherit erlang; };
-      libei = makeLibei pkgs.erlang;
-      libei_24 = makeLibei pkgs.erlang_24;
-      libei_25 = makeLibei pkgs.erlang_25;
-      libei_26 = makeLibei pkgs.erlang_26;
-      libei_27 = makeLibei pkgs.erlang_27;
-      libei_28 = makeLibei pkgs.erlang_28;
-
       demo = import ./demo.nix {
         inherit
           pkgs
           pkgsFilc
           filcc
-          libei
           ;
         filc-emacs = emacs-safe.filc-emacs;
       };
@@ -99,19 +89,11 @@
 
       # Export the full cross-compiled package sets
       legacyPackages.${system} = {
-        inherit pkgsFilc;
+        inherit pkgsFilc rubyWithGem;
       };
 
       packages.${system} = {
         inherit filcc;
-        inherit
-          libei
-          libei_24
-          libei_25
-          libei_26
-          libei_27
-          libei_28
-          ;
 
         inherit filc-world-shell;
         inherit (virt) filc-nspawn filc-qemu filc-docker;
@@ -123,7 +105,6 @@
           python-web-demo
           perl-demos
           perl-with-stuff
-          libei-ping-demo
           sinatra-demo
           ;
 
@@ -138,8 +119,6 @@
         '';
 
         inherit runfilc;
-
-        inherit rubyWithGem;
 
         inherit (emacs-safe) filc-emacs;
         emacs30 = pkgsFilc.emacs30;
