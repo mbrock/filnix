@@ -566,6 +566,19 @@ in
     (arg { withVersion3 = false; })
   ])
 
+/*
+  (for pkgs.pipewire [
+    (arg { enableSystemd = false; })
+    (arg { vulkanSupport = false; })
+    (arg { bluezSupport = false; })
+    (arg { zeroconfSupport = false; })
+    (arg { raopSupport = false; })
+    (arg { rocSupport = false; })
+    (arg { x11Support = false; })
+    (arg { ffadoSupport = false; })
+  ])
+*/
+
   # ━━━ Graphics ━━━
 
   (for pkgs.pixman [
