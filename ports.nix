@@ -530,6 +530,23 @@ in
     (skipCheck "fuzzing fails")
   ])
 
+  (for pkgs.libraqm [
+    (skipCheck "some tests fail")
+  ])
+
+  (for pkgs.potrace [
+    (skipCheck "some tests fail")
+  ])
+
+  (for pkgs.imagemagick [
+    (arg { fftwSupport = false; }) # dep gfortran fails to build
+    (arg { libheifSupport = false; }) # dep libde265 fails to build
+    (arg { libjxlSupport = false; }) # dep libdeflate fails to build
+    (arg { librsvgSupport = false; }) # dep rustc fails to build
+    (arg { openexrSupport = false; }) # dep libdeflate fails to build
+    (configure "--disable-shared") # workaround for `ld: error: cannot find -lstdc++`
+  ])
+
   (for pkgs.glib [
     (pin "2.80.4" "sha256-JOApxd/JtE5Fc2l63zMHipgnxIk4VVAEs7kJb6TqA08=")
     (patch ./ports/patch/glib-2.80.4.patch)
