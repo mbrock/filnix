@@ -485,6 +485,87 @@ in
     (skipTests "1 failure")
   ])
 
+  # ━━━ Audio ━━━
+
+  (for pkgs.libopus [
+    (skipCheck "some tests fail")
+  ])
+
+  (for pkgs.mbedtls [
+    (skipCheck "some tests fail")
+  ])
+
+  (for pkgs.speex [
+    (arg { withFft = false; }) # dep gfortran fails to build
+  ])
+
+  (for pkgs.speexdsp [
+    (arg { withFftw3 = false; }) # dep gfortran fails to build
+  ])
+
+  (for pkgs.ffmpeg-headless [
+    (arg { withAlsa = false; }) # dep alsa-lib fails to build
+    (arg { withAom = false; }) # dep libaom fails to build
+    (arg { withBluray = false; }) # dep libbluray fails to build
+    (arg { withCudaLLVM = false; }) # dep clang fails to build
+    (arg { withDav1d = false; }) # dep dav1d fails to build
+    (arg { withFontconfig = false; }) # workaround for `ERROR: fontconfig not found using pkg-config` (actual error: `require_pkg_config libfontconfig fontconfig fontconfig/fontconfig.h FcInit` ... `test.c:(.text+0x5): undefined reference to 'FcInit'`)
+    (arg { withFreetype = false; }) # workaround for `ERROR: freetype2 not found using pkg-config` (actual error: `require_pkg_config libfreetype freetype2 ft2build.h FT_FREETYPE_H FT_Init_FreeType` ... `test.c:(.text+0x5): undefined reference to 'FT_Init_FreeType'`)
+    (arg { withFribidi = false; }) # workaround for `ERROR: fribidi not found using pkg-config` (actual error: `require_pkg_config libfribidi fribidi fribidi.h fribidi_version_info` ... `test.c:(.text+0x7): undefined reference to 'fribidi_version_info'`)
+    (arg { withHarfbuzz = false; }) # workaround for `ERROR: harfbuzz not found using pkg-config` (actual error: `require_pkg_config libharfbuzz harfbuzz hb.h hb_buffer_create` ... `test.c:(.text+0x5): undefined reference to 'hb_buffer_create'`)
+    (arg { withGnutls = false; }) # gnutls disabled in this packageset
+    (arg { withOpenmpt = false; }) # dep alsa-lib fails to build
+    (arg { withSrt = false; }) # dep srt fails to build
+    (arg { withSvtav1 = false; }) # dep svt-av1 fails to build
+    (arg { withX264 = false; }) # dep x264 fails to build
+    (arg { withX265 = false; }) # dep x265 fails to build
+    (configure "--cc=${pkgs.lib.getExe pkgs.stdenv.cc}")
+    # made it to buildPhase!
+
+    (arg { buildAvutil = false; })
+    (arg { withPixelutils = false; })
+    # it's being built anyway???
+    (use {
+      postPatch = ''
+        sed '/tests\/fate\/libavutil.mak/d' -i tests/Makefile
+        sed '/pixelutils/d' -i libavutil/Makefile
+        rm libavutil/tests/pixelutils.c
+      '';
+    })
+
+#   (use { preConfigure = ''grep -FIr pixelutils libavutil; exit 1''; })
+
+    # just turning as much off as possible, probably overkill
+    (arg { buildAvcodec = false; })
+    (arg { buildAvdevice = false; })
+    (arg { buildAvfilter = false; })
+    (arg { buildAvformat = false; })
+    (arg { buildAvresample = false; })
+    (arg { buildFfmpeg = false; })
+    (arg { buildFfprobe = false; })
+    (arg { buildPostproc = false; })
+    (arg { buildSwresample = false; })
+    (arg { buildSwscale = false; })
+    (arg { withBin = false; })
+    (arg { withDoc = false; })
+    (arg { withDocumentation = false; })
+    (arg { withGPL = false; })
+    (arg { withGPLv3 = false; })
+    (arg { withHardcodedTables = false; })
+    (arg { withHeadlessDeps = false; })
+    (arg { withHtmlDoc = false; })
+    (arg { withLib = false; })
+    (arg { withManPages = false; })
+    (arg { withMultithread = false; })
+    (arg { withNetwork = false; })
+    (arg { withOptimisations = false; })
+    (arg { withPodDoc = false; })
+    (arg { withRuntimeCPUDetection = false; })
+    (arg { withSafeBitstreamReader = false; })
+    (arg { withTxtDoc = false; })
+    (arg { withVersion3 = false; })
+  ])
+
   # ━━━ Graphics ━━━
 
   (for pkgs.pixman [
