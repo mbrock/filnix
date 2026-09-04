@@ -1,23 +1,13 @@
 { pkgs }:
 
-# Patched binutils that strips pizlonated_ prefix from symbols
+# Fil-C binutils includes djb's BFD demangler change from:
+# https://cr.yp.to/2025/20251030-filian-install-compiler.sh
+# It strips pizlonated_ during demangling (e.g. nm -C), unless
+# FILC_PRESERVE_PREFIX is set. Plain nm still reports the real ELF names;
+# libtool's ABI adaptation lives in the compiler setup hook instead.
 #
-# Fil-C mangles all symbols by prepending "pizlonated_" for memory safety.
-# This causes issues with version scripts in shared libraries:
-#
-# Version scripts declare symbols like "malloc" and "free", but at link
-# time the actual symbols are "pizlonated_malloc" and "pizlonated_free",
-# causing version script matching to fail.
-#
-# Two solutions exist:
-# 1. Filip's approach: Add --version-script= to clang driver to mangle
-#    version scripts automatically (requires patching build systems)
-# 2. djb's approach: Patch binutils to strip "pizlonated_" when demangling
-#    symbols (transparent, works with unmodified version scripts)
-#
-# djb's patch from: https://cr.yp.to/2025/20251030-filian-install-compiler.sh
-#
-# We use Filip's approach for now.
+# Version scripts are passed through Fil-C's Clang driver by wrappers.nix.
+# The separate binutils-version-script-depizlonation.patch is not applied.
 
 pkgs.binutils-unwrapped.overrideAttrs (old: rec {
   version = "2.43.1";

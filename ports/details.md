@@ -457,7 +457,8 @@ None - no C/C++ code modifications.
 
 ## Gettext 0.22.5
 
-Minor pointer arithmetic fix and wholesale symbol renaming with "pizlonated_" prefix for libtextstyle library to avoid symbol conflicts.
+Pointer arithmetic fixes and test adjustments. Libtextstyle's symbol list uses
+C names; the toolchain handles the Fil-C ABI prefix.
 
 ### Fil-C Compatibility Changes
 
@@ -466,10 +467,9 @@ Minor pointer arithmetic fix and wholesale symbol renaming with "pizlonated_" pr
   - Same for `map[i].value`
   - Prevents undefined behavior from pointer difference used as integer offset
 
-- **libtextstyle/lib/libtextstyle.sym.in**: Symbol versioning for Fil-C
-  - All 130 exported symbols renamed with "pizlonated_" prefix
-  - Example: `_libtextstyle_version` → `pizlonated__libtextstyle_version`
-  - Prevents symbol conflicts in Fil-C's unified namespace
+- **libtextstyle/lib/libtextstyle.sym.in**: The upstream prefix-only patch is
+  omitted. This list also drives C namespace-hiding macros and must retain C
+  names. See [toolchain symbol handling](../docs/toolchain-symbols.md).
 
 - **Test skips**:
   - `gettext-tools/tests/msgfmt-6`: Division by zero test (exit 77)
@@ -2193,4 +2193,3 @@ Zstd required replacing inline CPUID assembly with standard library calls and di
 - **Pattern**: Inline assembly removal
 
 ---
-

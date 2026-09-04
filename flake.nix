@@ -95,6 +95,10 @@
     {
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
+      checks.${system}.libtool-symbols = import ./tests/libtool-symbols.nix {
+        inherit pkgs filcc;
+      };
+
       overlays.default = import ./ports/overlay.nix pkgs;
 
       # Export the full cross-compiled package sets

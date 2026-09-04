@@ -95,18 +95,30 @@ rec {
     '';
   };
 
-  filcc = pkgs.wrapCCWith {
-    cc = filc-cc;
-    libc = filc-sysroot;
-    libcxx = filc-libcxx;
-    bintools = filc-bintools;
+  filcc =
+    (pkgs.wrapCCWith {
+      cc = filc-cc;
+      libc = filc-sysroot;
+      libcxx = filc-libcxx;
+      bintools = filc-bintools;
 
-    extraBuildCommands = ''
-      echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
-      echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
-      echo "-gz=none" >> $out/nix-support/cc-cflags
-    '';
-  };
+      extraBuildCommands = ''
+        echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
+        echo "-L${filc-libcxx}/lib" >> $out/nix-support/cc-ldflags
+        echo "-gz=none" >> $out/nix-support/cc-cflags
+      '';
+    }).overrideAttrs
+      (old: {
+        # Keep ABI-specific build-system integration outside the expensive compiler
+        # and runtime derivations. nm itself continues to report real ELF symbols.
+        setupHooks = old.setupHooks ++ [
+          (pkgs.replaceVars ./libtool-setup-hook.sh {
+            out = null; # substituted by the cc-wrapper builder
+            python = "${pkgs.python3}/bin/python3";
+            patcher = "${./libtool-symbols.py}";
+          })
+        ];
+      });
 
   filenv = pkgs.overrideCC pkgs.stdenv filcc;
 }

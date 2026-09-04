@@ -36,8 +36,6 @@ let
     configure
     removeConfigureFlag
     wip
-    depizloing-nm
-    fixSympat
     astRewrite
     github
     gnu
@@ -86,13 +84,11 @@ in
   # ])
 
   (for pkgs.expat [
-    (tool depizloing-nm)
     (pin "2.7.1" "sha256-NUVSVEuPmQEuUGL31XDsd/FLQSo/9cfY0NrmLA0hfDA=")
     (patch ./ports/patch/expat-2.7.1.patch)
   ])
 
   (for pkgs.libffi [
-    (tool depizloing-nm)
     (pin "3.4.6" "sha256-sN6p3yPIY6elDoJUQPPr/6vWXfFJcQjl1Dd0eEOJWk4=")
     (patch ./ports/patch/libffi-3.4.6.patch)
     (skipCheck "incompatible with static trampolines")
@@ -286,16 +282,9 @@ in
 
   {
     gmp = for pkgs.gmp [
-      (tool depizloing-nm)
       (configure "gmp_cv_asm_underscore=yes")
       (configure "--disable-assembly")
       (configure "--disable-fat")
-    ];
-  }
-
-  {
-    pkgconf-unwrapped = for pkgs.pkgconf-unwrapped [
-      (tool depizloing-nm)
     ];
   }
 
@@ -317,7 +306,6 @@ in
 
   (for pkgs.lzo [
     (skipTests "too slow")
-    (tool depizloing-nm)
     (configure "--disable-asm")
   ])
 
@@ -378,21 +366,14 @@ in
       '';
     })
     (arg { withFIDO = false; })
-    (tool depizloing-nm)
   ])
 
   (for pkgs.libssh2 [
-    (tool depizloing-nm)
     (skipCheck "network tests flaky")
     (configure "--disable-examples-build")
   ])
 
-  (for pkgs.ldns [
-    (tool depizloing-nm)
-  ])
-
   (for pkgs.unbound [
-    fixSympat
     (configure "ac_cv_type_pthread_spinlock_t=no")
   ])
 
@@ -633,10 +614,6 @@ in
     (arg { systemd = final.systemdLibs; })
   ])
 
-  (for pkgs.avahi [
-    (tool depizloing-nm)
-  ])
-
   (for pkgs.dbus [
     (arg { systemdMinimal = final.systemdLibs; })
     (arg { libapparmor = final.hello; })
@@ -650,16 +627,7 @@ in
     (addCFlag "-Wl,-lm")
   ])
 
-  (for pkgs.isl [
-    (tool depizloing-nm)
-  ])
-
-  (for pkgs.gdbm [
-    (tool depizloing-nm)
-  ])
-
   (for pkgs.gettext [
-    fixSympat
     (use (old: {
       env = old.env // {
         gettextNeedsLdflags = false;
@@ -692,7 +660,6 @@ in
   ])
 
   (for pkgs.libbsd [
-    (tool depizloing-nm)
     serialize
     (broken "not yet ported successfully")
   ])
@@ -711,7 +678,6 @@ in
   ])
 
   (for pkgs.scrypt [
-    (tool depizloing-nm)
     (skipTests "some tests fail")
   ])
 
@@ -813,13 +779,11 @@ in
         version: "mirror://gnu/binutils/binutils-${version}.tar.bz2"
       ))
       (patch ./ports/patch/binutils-2.43.1.patch)
-      (tool depizloing-nm)
     ];
   }
 
   (for pkgs.kbd [
     (patch ./ports/patch/kbd-2.6.4.patch)
-    (tool depizloing-nm)
   ])
 
   (
@@ -876,10 +840,6 @@ in
     ];
   }
 
-  (for pkgs.shadow [
-    (tool depizloing-nm)
-  ])
-
   (for pkgs.e2fsprogs [
     (arg { withFuse = false; })
     (skipTests "requires special setup")
@@ -927,7 +887,6 @@ in
 
   (for pkgs.torsocks [
     (tool pkgs.glibc.bin)
-    (tool depizloing-nm)
     (arg { libcap = null; })
     (use {
       postPatch = ''
