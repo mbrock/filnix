@@ -34,6 +34,9 @@ against C names to generate namespace-hiding macros. The list must contain C
 names; the Fil-C compiler wrapper already passes linker version scripts through
 Clang for ABI translation. Keeping prefixes here would incorrectly rename the
 public API. The other upstream gettext fixes remain applied.
+`ports/extract-patch.sh` omits this rewrite when regenerating patches, but only
+when removing the prefixes reproduces the original symbol list exactly. Other
+upstream changes to that file remain in the extracted patch for review.
 
 ## Bernstein's binutils patch
 

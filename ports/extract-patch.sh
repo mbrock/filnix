@@ -146,6 +146,22 @@ exclude_patterns=(
     ":(exclude)*/library/tcltest/*"
 )
 
+# Filnix's compiler handles version-script ABI translation, and gettext also
+# uses this list for C namespace hiding. Omit upstream's prefix-only rewrite;
+# preserve any other changes to the list so they can be reviewed on updates.
+# See docs/toolchain-symbols.md in the Filnix repository.
+case "$PROJECT" in
+    gettext-*)
+        symbol_list="${project_dir}libtextstyle/lib/libtextstyle.sym.in"
+        if git cat-file -e "$first_commit:$symbol_list" 2>/dev/null && \
+           git cat-file -e "$last_commit:$symbol_list" 2>/dev/null && \
+           cmp -s <(git show "$first_commit:$symbol_list") \
+                  <(git show "$last_commit:$symbol_list" | sed 's/^pizlonated_//'); then
+            exclude_patterns+=(":(exclude)$symbol_list")
+        fi
+        ;;
+esac
+
 # Dynamically exclude yacc/bison/flex generated files
 # Find .y files and exclude their generated .c/.h counterparts
 while IFS= read -r yfile; do
