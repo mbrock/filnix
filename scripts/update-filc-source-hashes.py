@@ -50,7 +50,7 @@ def copy_without_git(source, dest):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Update Fil-C sparse fetchgit hashes from one local clone."
+        description="Update the core pin and exact sparse fetchgit hashes from one local clone."
     )
     parser.add_argument(
         "--repo",
@@ -60,7 +60,7 @@ def main():
     )
     parser.add_argument(
         "--rev",
-        help="also update lib/filc-upstream.json to this revision before hashing",
+        help="update the core revision after all source hashes have been computed",
     )
     parser.add_argument(
         "--pull",
@@ -75,11 +75,10 @@ def main():
 
     upstream = load_json(upstream_path)
     if args.rev:
-        upstream["filc-rev"] = args.rev
-        write_json(upstream_path, upstream)
+        upstream["coreRev"] = args.rev
 
-    rev = upstream["filc-rev"]
-    sparse_checkouts = upstream["sparseCheckouts"]
+    rev = upstream["coreRev"]
+    sparse_checkouts = upstream["sourcePatterns"]
     repo = repo_root(Path(args.repo).expanduser())
 
     if args.pull:
@@ -92,6 +91,8 @@ def main():
     ):
         run(["git", "-C", str(repo), "fetch", "--tags", "origin", rev])
 
+    rev = output(["git", "-C", str(repo), "rev-parse", "--verify", f"{rev}^{{commit}}"])
+    upstream["coreRev"] = rev
     hashes = {}
     current_worktree = None
 
@@ -117,7 +118,7 @@ def main():
                         rev,
                     ]
                 )
-                run(["git", "-C", str(current_worktree), "sparse-checkout", "init", "--cone"])
+                run(["git", "-C", str(current_worktree), "sparse-checkout", "init", "--no-cone"])
                 run(
                     [
                         "git",
@@ -125,17 +126,21 @@ def main():
                         str(current_worktree),
                         "sparse-checkout",
                         "set",
-                        *paths,
-                    ]
+                        "--no-cone",
+                        "--stdin",
+                    ],
+                    input="\n".join(paths) + "\n",
                 )
                 run(["git", "-C", str(current_worktree), "checkout"], stdout=subprocess.DEVNULL)
 
                 copy_without_git(current_worktree, hash_dir)
+                if not any(hash_dir.iterdir()):
+                    raise SystemExit(f"error: {name}: source patterns matched no files at {rev}")
                 source_hash = output(
                     ["nix", "hash", "path", "--type", "sha256", "--sri", str(hash_dir)]
                 )
                 hashes[name] = source_hash
-                print(f"{name} {source_hash}")
+                print(f"{name} {source_hash}", flush=True)
 
                 run(
                     [
@@ -170,10 +175,11 @@ def main():
     write_json(
         hashes_path,
         {
-            "filc-rev": rev,
+            "coreRev": rev,
             "hashes": hashes,
         },
     )
+    write_json(upstream_path, upstream)
 
 
 if __name__ == "__main__":

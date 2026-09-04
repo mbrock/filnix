@@ -1,33 +1,48 @@
 {
-  "filc-rev": "b3f4f2fb1438d40128e3aebc3fb104fb563e2145",
-  "sparseCheckouts": {
+  "coreRev": "b3f4f2fb1438d40128e3aebc3fb104fb563e2145",
+  "sourcePatterns": {
     "filc0-src": [
-      "llvm",
-      "clang",
-      "cmake",
-      "third-party",
-      "libc",
-      "libcxx",
-      "libcxxabi",
-      "runtimes"
+      "/LLVM-LICENSE.txt",
+      "/llvm/",
+      "/clang/",
+      "/cmake/",
+      "/third-party/"
+    ],
+    "libcxx-src": [
+      "/LLVM-LICENSE.txt",
+      "/libcxx/",
+      "/libcxxabi/",
+      "/libc/",
+      "/runtimes/",
+      "/cmake/",
+      "/third-party/",
+      "/llvm/cmake/",
+      "/llvm/utils/llvm-lit/",
+      "/llvm/utils/lit/",
+      "/llvm/utils/merge-json.py"
     ],
     "libpas-src": [
-      "libpas",
-      "filc"
+      "/libpas/",
+      "/filc/include/",
+      "/filc/src/",
+      "/filc/main/"
     ],
     "yolo-glibc-src": [
-      "projects/yolo-glibc-2.40"
+      "/projects/yolo-glibc-2.40/"
     ],
     "user-glibc-src": [
-      "projects/user-glibc-2.40"
+      "/projects/user-glibc-2.40/"
     ],
     "compiler-rt-src": [
-      "compiler-rt",
-      "cmake",
-      "llvm"
+      "/LLVM-LICENSE.txt",
+      "/compiler-rt/",
+      "/cmake/",
+      "/llvm/cmake/",
+      "/llvm/utils/llvm-lit/",
+      "/llvm/utils/lit/"
     ],
     "yolounwind-src": [
-      "yolounwind"
+      "/yolounwind/"
     ]
   }
 }

@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 #
 # Extract Fil-C patch for a single project
-# Usage: extract-patch.sh PROJECT_NAME REPO_DIR OUTPUT_DIR
+# Usage: extract-patch.sh PROJECT_NAME [REPO_DIR] [OUTPUT_DIR] [REV]
 #
 
-set -e
+set -euo pipefail
 
-PROJECT="$1"
-REPO_DIR="${2:-$HOME/fil-c-projects}"
-OUTPUT_DIR="${3:-./patch}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+PROJECT="${1:-}"
+REPO_DIR="${2:-$HOME/fil-c}"
+OUTPUT_DIR="${3:-$SCRIPT_DIR/patch}"
+REV="${4:-$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["portsRev"])' "$SCRIPT_DIR/upstream.json")}"
 
-if [[ -z "$PROJECT" ]]; then
-    echo "Usage: $0 PROJECT_NAME [REPO_DIR] [OUTPUT_DIR]"
+if [[ -z "$PROJECT" || "$PROJECT" == */* || "$PROJECT" == .* ]]; then
+    echo "Usage: $0 PROJECT_NAME [REPO_DIR] [OUTPUT_DIR] [REV]" >&2
     exit 1
 fi
 
@@ -41,36 +43,23 @@ cd "$REPO_DIR"
 
 project_dir="projects/$PROJECT/"
 
-if [[ ! -d "$project_dir" ]]; then
-    echo "Error: Project $PROJECT not found in $REPO_DIR/projects/"
+# Resolve once: neither another branch nor an uncommitted file may affect a patch.
+last_commit=$(git rev-parse --verify "$REV^{commit}")
+if [[ "$(git cat-file -t "$last_commit:${project_dir%/}" 2>/dev/null || true)" != tree ]]; then
+    echo "Error: Project $PROJECT not found at $last_commit" >&2
     exit 1
 fi
 
-# Get commit history for this project
-commits=$(git log --oneline --all "$project_dir" 2>/dev/null || true)
+# The original import is the unmodified upstream release. Restrict history to
+# ancestors of the chosen ports revision; diff against that revision's tree.
+mapfile -t commits < <(git log --format=%H --reverse "$last_commit" -- "$project_dir")
+first_commit="${commits[0]:?No project history}"
+echo "$PROJECT: extracting $first_commit..$last_commit"
 
-if [[ -z "$commits" ]]; then
-    echo "$PROJECT: No git history"
-    exit 0
-fi
-
-# Get first and last commit that touched this directory
-first_commit=$(git log --oneline --all --reverse "$project_dir" | head -1 | awk '{print $1}')
-last_commit=$(git log --oneline --all "$project_dir" | head -1 | awk '{print $1}')
-
-if [[ -z "$first_commit" ]] || [[ -z "$last_commit" ]]; then
-    echo "$PROJECT: Couldn't find commits"
-    exit 0
-fi
-
-# If first and last are the same, no changes were made
-if [[ "$first_commit" == "$last_commit" ]]; then
-    echo "$PROJECT: No changes after initial import"
-    exit 0
-fi
-
-# Generate patch between first and last commit
+# Publish only a complete patch, leaving an existing patch intact on failure.
 patch_file="$OUTPUT_DIR/${PROJECT}.patch"
+patch_tmp=$(mktemp "$OUTPUT_DIR/.${PROJECT}.XXXXXX")
+trap 'rm -f "$patch_tmp"' EXIT
 
 # List of autotools-generated files and repo infrastructure to exclude
 exclude_patterns=(
@@ -164,7 +153,7 @@ esac
 
 # Dynamically exclude yacc/bison/flex generated files
 # Find .y files and exclude their generated .c/.h counterparts
-while IFS= read -r yfile; do
+while IFS= read -r -d '' yfile; do
     dir=$(dirname "$yfile")
     base=$(basename "$yfile" .y)
     # Common generated file patterns from yacc/bison
@@ -174,29 +163,35 @@ while IFS= read -r yfile; do
     exclude_patterns+=(":(exclude)$dir/$base.tab.h")
     exclude_patterns+=(":(exclude)$dir/y.tab.c")
     exclude_patterns+=(":(exclude)$dir/y.tab.h")
-done < <(find "$project_dir" -name '*.y' -type f 2>/dev/null)
+done < <(git ls-tree -r -z --name-only "$last_commit" -- "$project_dir" | while IFS= read -r -d '' path; do
+    [[ "$path" != *.y ]] || printf '%s\0' "$path"
+done)
 
 # Find .l files and exclude their generated .c counterparts
-while IFS= read -r lfile; do
+while IFS= read -r -d '' lfile; do
     dir=$(dirname "$lfile")
     base=$(basename "$lfile" .l)
     # Common generated file patterns from lex/flex
     exclude_patterns+=(":(exclude)$dir/$base.c")
     exclude_patterns+=(":(exclude)$dir/lex.$base.c")
     exclude_patterns+=(":(exclude)$dir/lex.yy.c")
-done < <(find "$project_dir" -name '*.l' -type f 2>/dev/null)
+done < <(git ls-tree -r -z --name-only "$last_commit" -- "$project_dir" | while IFS= read -r -d '' path; do
+    [[ "$path" != *.l ]] || printf '%s\0' "$path"
+done)
 
 # Generate the patch, removing the projects/$PROJECT/ path prefix and excluding generated files
-git diff "$first_commit" "$last_commit" -- "$project_dir" "${exclude_patterns[@]}" | \
+git diff --no-ext-diff --no-textconv --no-renames --src-prefix=a/ --dst-prefix=b/ "$first_commit" "$last_commit" -- "$project_dir" "${exclude_patterns[@]}" | \
     sed "s|a/projects/$PROJECT/|a/|g" | \
-    sed "s|b/projects/$PROJECT/|b/|g" > "$patch_file"
+    sed "s|b/projects/$PROJECT/|b/|g" > "$patch_tmp"
 
 # Check if patch is empty
-if [[ ! -s "$patch_file" ]]; then
+if [[ ! -s "$patch_tmp" ]]; then
     echo "$PROJECT: No changes (empty patch)"
-    rm "$patch_file"
+    rm -f "$patch_file"
     exit 0
 fi
 
+chmod 644 "$patch_tmp"
+mv "$patch_tmp" "$patch_file"
 lines=$(wc -l < "$patch_file")
 echo "$PROJECT: Generated patch ($lines lines)"

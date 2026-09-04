@@ -37,6 +37,9 @@ Parts 1 and 2 are designed for eventual nixpkgs integration. Part 3 is where we 
 
 [Fil-C](https://github.com/pizlonator/fil-c) by [Filip Pizlo](https://twitter.com/filpizlo) is a memory-safe C/C++ compiler. It prevents use-after-free, buffer overflows, and type confusion through runtime bounds checking and garbage collection - no code changes, no unsafe escape hatches. See [fil-c.org](https://fil-c.org) and the [upstream repo](https://github.com/pizlonator/fil-c) for details on how it works.
 
+See [Updating Fil-C sources and ports](docs/upstream-updates.md) for the separate
+core and application pins, source filtering, and update checks.
+
 ## Binary Cache
 
 The `filc` Cachix cache has prebuilt binaries for the toolchain and many ported packages:

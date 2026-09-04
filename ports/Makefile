@@ -1,32 +1,25 @@
-# Makefile for extracting Fil-C patches in parallel
-
+# Regenerate patches from the pinned upstream tree (never the worktree).
 REPO_DIR ?= $(HOME)/fil-c
 OUTPUT_DIR ?= patch
+REV ?= $(shell python3 -c 'import json; print(json.load(open("upstream.json"))["portsRev"])')
 
-# Discover all projects
-PROJECTS := $(notdir $(wildcard $(REPO_DIR)/projects/*))
+PROJECTS = $(shell git -C "$(REPO_DIR)" ls-tree -d --name-only "$(REV):projects")
+PATCHES = $(addprefix $(OUTPUT_DIR)/,$(addsuffix .patch,$(PROJECTS)))
 
-# Generate patch file targets
-PATCHES := $(addprefix $(OUTPUT_DIR)/,$(addsuffix .patch,$(PROJECTS)))
-
-.PHONY: all clean list test
-
+.PHONY: all clean list test FORCE
 all: $(PATCHES)
 
-# Pattern rule to generate a patch for each project
-$(OUTPUT_DIR)/%.patch: | $(OUTPUT_DIR)
-	@./extract-patch.sh $* $(REPO_DIR) $(OUTPUT_DIR)
+# Always regenerate requested patches, including ones that already exist.
+$(OUTPUT_DIR)/%.patch: FORCE
+	@./extract-patch.sh "$*" "$(REPO_DIR)" "$(OUTPUT_DIR)" "$(REV)"
 
-$(OUTPUT_DIR):
-	@mkdir -p $(OUTPUT_DIR)
+FORCE:
 
 clean:
-	rm -rf $(OUTPUT_DIR)
+	rm -rf "$(OUTPUT_DIR)"
 
 list:
-	@echo "Projects found: $(words $(PROJECTS))"
-	@echo $(PROJECTS) | tr ' ' '\n' | sort
+	@git -C "$(REPO_DIR)" ls-tree -d --name-only "$(REV):projects"
 
-# Test with a single project
 test:
-	@./extract-patch.sh perl-5.40.0 $(REPO_DIR) $(OUTPUT_DIR)
+	@python3 ../tests/upstream-sources.py

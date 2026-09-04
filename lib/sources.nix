@@ -4,29 +4,33 @@ let
   inherit (pkgs) fetchgit;
   upstream = builtins.fromJSON (builtins.readFile ./filc-upstream.json);
   hashData = builtins.fromJSON (builtins.readFile ./filc-hashes.json);
-  filc-rev = upstream."filc-rev";
-  sparseCheckouts = upstream.sparseCheckouts;
+  coreRev = upstream.coreRev;
+  sourcePatterns = upstream.sourcePatterns;
   filcHashes =
-    assert hashData."filc-rev" == filc-rev;
+    assert hashData.coreRev == coreRev;
     hashData.hashes;
 
+  # Stable names and exact sparse patterns make unchanged component content
+  # reusable across core revisions. Cone mode also includes ancestor files.
   mkFilcSrc =
     name:
     fetchgit {
       url = "https://github.com/pizlonator/fil-c";
-      rev = filc-rev;
-      sparseCheckout = sparseCheckouts.${name};
+      inherit name;
+      rev = coreRev;
+      nonConeMode = true;
+      sparseCheckout = sourcePatterns.${name};
       hash = filcHashes.${name};
     };
 in
-rec {
-  inherit filc-rev sparseCheckouts filcHashes;
+{
+  inherit coreRev sourcePatterns filcHashes;
 
   # Minimal clang compiler only (filc0)
   filc0-src = mkFilcSrc "filc0-src";
 
-  # LLVM + libcxx + libcxxabi (for filc-libcxx build)
-  libcxx-src = filc0-src;
+  # C++ runtimes and their CMake support, independent of compiler sources.
+  libcxx-src = mkFilcSrc "libcxx-src";
 
   # Just libpas + filc headers
   libpas-src = mkFilcSrc "libpas-src";
