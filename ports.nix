@@ -56,6 +56,7 @@ in
 
   {
     openssl = for ./ports/openssl.nix [ ];
+    openssl-sarcasm = for ./ports/openssl-sarcasm.nix [ ];
   }
 
   (for pkgs.libev [

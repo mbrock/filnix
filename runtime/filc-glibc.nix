@@ -42,7 +42,7 @@ in
     preConfigure = ''
       # Fil-C compiler flags from build script
       FILCXXFLAGS="-nostdlibinc -Wno-ignored-attributes -Wno-pointer-sign"
-      FILCFLAGS="$FILCXXFLAGS -Wno-unused-command-line-argument -Wno-macro-redefined"
+      FILCFLAGS="$FILCXXFLAGS -yolo-assembler -Wno-unused-command-line-argument -Wno-macro-redefined"
 
       export CC="${filc}/bin/clang $FILCFLAGS -isystem ${libpizlo}/include"
       export CXX="${filc}/bin/clang++ $FILCXXFLAGS -isystem ${libpizlo}/include"

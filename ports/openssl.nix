@@ -4,6 +4,7 @@
   perl,
   stdenv,
   zlib,
+  withSafeAssembly ? false,
   ...
 }:
 
@@ -39,7 +40,8 @@ stdenv.mkDerivation rec {
   dontAddStaticConfigureFlags = true;
   configureScript = "./config";
 
-  configureFlags = [
+  # The older port uses runtime forwarders into ordinary assembly.
+  configureFlags = lib.optional (!withSafeAssembly) "-yolo-assembler" ++ [
     "shared"
     "zlib"
     "--prefix=${placeholder "out"}"
@@ -79,7 +81,8 @@ stdenv.mkDerivation rec {
   meta = with lib; {
     description = "Cryptographic library (SSL/TLS) - Fil-C build";
     homepage = "https://www.openssl.org/";
-    license = licenses.openssl;
+    license = licenses.asl20;
+    mainProgram = "openssl";
     platforms = platforms.unix;
   };
 }

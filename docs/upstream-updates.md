@@ -3,7 +3,7 @@
 Filnix tracks two revisions of the same upstream monorepo:
 
 - `lib/filc-upstream.json`: `coreRev` selects the compiler, runtime, libc,
-  libc++, compiler-rt and yolounwind sources. `lib/filc-hashes.json` records
+  libc++, compiler-rt, yolounwind and the SaRCAsm/minilute sources. `lib/filc-hashes.json` records
   their content hashes at that revision.
 - `ports/upstream.json`: `portsRev` selects the Git history and tree used to
   extract application patches. Nix builds consume the checked-in patches and
@@ -87,17 +87,18 @@ Run importer regression tests with the packaged tool available:
 nix develop -c python3 tests/upstream-sources.py
 ```
 
-### September 2026 refresh
+### Initial September 2026 ports refresh
 
 The ports pin is `4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`. Existing checked-in
 patches were regenerated for their existing versions; libffi moves from 3.4.6
 to Projeny's 3.8.0 and uses upstream's closure allocation fix. Archived patches
 for ports not currently enabled are retained, but regeneration alone does not
 validate those packages. In particular, the OpenSSL 3.5.7 update is the async
-context-switch fix; adopting the separate 3.6.4 assembly port requires a core
-and SaRCAsm update.
+context-switch fix; the separate 3.6.4 assembly port needed the subsequent
+core and SaRCAsm update described below.
 
-The core pin advances only to `2adb1051abf8a73778d8cb3cd94f4126363e5a08`:
+That initial refresh advanced the core only to
+`2adb1051abf8a73778d8cb3cd94f4126363e5a08`:
 upstream's fix for C++ exceptions crossing `zcall`. The first libffi run
 passed 1,738 checks but failed both exception-unwinding cases with the old
 runtime. This core update changes only two runtime files; the LLVM source
@@ -117,6 +118,57 @@ The refreshed active ports (libffi, Bison, Grep, M4, Tar, OpenSSL, libwebp and
 Ruby) build with this core. Runtime checks cover parser generation, macro
 expansion, matching, archive and lossless image roundtrips, OpenSSL async AES,
 and Ruby Fiddle calls/closures, BigDecimal, io/console and 100 finalizers.
+
+## SaRCAsm and the current core
+
+The complete core now uses `4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`,
+matching the ports pin. SaRCAsm and minilute have separate sparse source
+components at the core revision: they implement the compiler/runtime ABI,
+while changes to their sources do not invalidate LLVM's source component.
+Minilute includes only its own tree and the vendored Luau subtree it needs.
+Both tools build natively, avoiding a compiler bootstrap cycle.
+
+The compiler wrapper pins the Fil-C resource directory containing SaRCAsm.
+Its ccache check hashes wrapper contents, including the pinned runtime and assembler paths,
+rather than relying on Nix-normalized timestamps and file sizes. SaRCAsm invokes
+its pinned GNU assembler by absolute path after inserting Fil-C capability
+checks. The loader is now named `ld-fil1-x86_64.so`, including its ELF soname
+and the stdenv's dynamic-linker metadata. Bootstrap glibc explicitly uses
+`-yolo-assembler`, as in upstream's bootstrap script.
+
+OpenSSL 3.6.4 is an alternative package, leaving the existing 3.5.7 port as
+the default. It is also exposed as `pkgsFilc.openssl-sarcasm` for dependency
+overrides:
+
+```sh
+nix build -L .#openssl-sarcasm
+nix run .#openssl-sarcasm -- version -a
+```
+
+Its perlasm generators run with `SARCASM=1`, assembly uses the compiler's
+SaRCAsm default, and the unsupported VIA PadLock engine is disabled. The
+3.5.7 port continues using its runtime forwarders and ordinary assembler.
+The alternative runs the upstream OpenSSL test suite during its build.
+
+```sh
+nix build -L .#filcc .#sarcasm .#checks.x86_64-linux.sarcasm \
+  .#checks.x86_64-linux.libffi .#checks.x86_64-linux.libtool-symbols \
+  .#checks.x86_64-linux.openssl-sarcasm
+```
+
+The SaRCAsm integration check compiles annotated assembly through the final
+compiler, verifies pointer-return capabilities, and requires an out-of-bounds
+assembly load to report a Fil-C safety error. The OpenSSL check verifies an
+AES known-answer vector and requires an invalid output pointer to trap inside
+`AES_encrypt`. The full suite patches test-helper shebangs for the Nix
+sandbox before execution.
+
+At this revision the OpenSSL suite passes all 4,561 tests across 352 files.
+The installed binary also passes SHA-256, an AES encryption/decryption
+roundtrip, AES-GCM and asynchronous AES-CBC checks. The default OpenSSL
+3.5.7 still builds and passes its SHA-256 smoke check with Fil-C 0.684.
+Libffi reports 1,742 expected passes, no failures and two unsupported tests;
+its C++ exception checks and the libtool symbol check also pass.
 
 ## Update the core
 

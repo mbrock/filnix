@@ -38,7 +38,7 @@ in
       export FILC_STDFIL_INCLUDE="${sources.libpas-src}/filc/include"
       export FILC_INCLUDE_DIR="${filc.libyolo-impl}/include"
       export FILC_YOLO_LIB_DIR="${filc.libyolo}/lib"
-      export FILC_DYNAMIC_LINKER="${filc.libyolo}/lib/ld-yolo-x86_64.so"
+      export FILC_DYNAMIC_LINKER="${filc.libyolo}/lib/ld-fil1-x86_64.so"
       PIZFIX_OUT="$PWD/pizfix"
       export FILC_LIB_DIR="$PIZFIX_OUT/lib"
       export FILC_LIB_TEST_DIR="$PIZFIX_OUT/lib_test"

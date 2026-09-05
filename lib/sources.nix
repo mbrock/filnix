@@ -26,6 +26,9 @@ in
 {
   inherit coreRev sourcePatterns filcHashes;
 
+  minilute-src = mkFilcSrc "minilute-src";
+  sarcasm-src = mkFilcSrc "sarcasm-src";
+
   # Minimal clang compiler only (filc0)
   filc0-src = mkFilcSrc "filc0-src";
 

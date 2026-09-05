@@ -16,6 +16,9 @@ let
     flavor:
     pkgs.writeShellScriptBin "ccache-${flavor}" ''
       ${setupCcache}
+      # Nix normalizes mtimes, and store paths have fixed lengths. Hash the
+      # compiler wrapper, whose contents pin the runtime and SaRCAsm paths.
+      export CCACHE_COMPILERCHECK=content
 
       # Fil-C Clang driver has special version script handling.
       #
@@ -91,7 +94,7 @@ rec {
     extraBuildCommands = ''
       echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
       echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
-      echo "${filc-sysroot}/lib/ld-yolo-x86_64.so" > $out/nix-support/dynamic-linker
+      echo "${filc-sysroot}/lib/ld-fil1-x86_64.so" > $out/nix-support/dynamic-linker
     '';
   };
 

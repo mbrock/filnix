@@ -18,6 +18,7 @@
       pkgs = import nixpkgs { inherit system; };
 
       filcc = import ./toolchain.nix { inherit pkgs; };
+      sarcasm = import ./packages/sarcasm.nix { inherit pkgs; };
       projeny = pkgs.callPackage ./packages/projeny.nix { };
       runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
@@ -97,6 +98,11 @@
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
       checks.${system} = {
+        openssl-sarcasm = import ./tests/openssl-sarcasm.nix {
+          inherit pkgs filcc;
+          openssl = pkgsFilc.openssl-sarcasm;
+        };
+        sarcasm = import ./tests/sarcasm.nix { inherit pkgs filcc; };
         libtool-symbols = import ./tests/libtool-symbols.nix {
           inherit pkgs filcc;
         };
@@ -115,7 +121,9 @@
       };
 
       packages.${system} = {
-        inherit filcc projeny;
+        inherit filcc projeny sarcasm;
+        inherit (sarcasm) minilute;
+        inherit (pkgsFilc) openssl-sarcasm;
         inherit
           libei
           libei_24
@@ -160,6 +168,10 @@
       };
 
       apps.${system} = virt.apps // {
+        openssl-sarcasm = {
+          type = "app";
+          program = "${pkgsFilc.openssl-sarcasm.bin}/bin/openssl";
+        };
         filcc = {
           type = "app";
           program = "${filcc}/bin/clang";

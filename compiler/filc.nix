@@ -19,6 +19,8 @@ let
 
   inherit (yolo) yolo-glibc yolo-glibc-impl;
 
+  sarcasm = import ../packages/sarcasm.nix { inherit pkgs; };
+
   filc-stdfil-headers = "${sources.libpas-src}/filc/include";
 
   # Extract just the resource directory to avoid depending on the entire filc0 build
@@ -68,10 +70,11 @@ let
 
         # Base wrapper for C compiler
         makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang \
+          --add-flags "--filc-resource-dir=${sarcasm}" \
           --add-flags "-Wno-unused-command-line-argument" \
           --add-flags "--gcc-toolchain=${gcc.cc}" \
           --add-flags "-resource-dir ${filc0-resource-dir}/lib/clang/${llvmMajor}" \
-          --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
+          --add-flags "--filc-dynamic-linker=${crtLib}/ld-fil1-x86_64.so" \
           --add-flags "--filc-crt-path=${crtLib}" \
           --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
           --add-flags "--filc-os-include=${pkgs.linuxHeaders}/include" \
@@ -86,10 +89,11 @@ let
           if filc-libcxx != null then
             ''
               makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang++ \
+                --add-flags "--filc-resource-dir=${sarcasm}" \
                 --add-flags "-Wno-unused-command-line-argument" \
                 --add-flags "--gcc-toolchain=${gcc.cc}" \
                 --add-flags "-resource-dir ${filc0-resource-dir}/lib/clang/${llvmMajor}" \
-                --add-flags "--filc-dynamic-linker=${crtLib}/ld-yolo-x86_64.so" \
+                --add-flags "--filc-dynamic-linker=${crtLib}/ld-fil1-x86_64.so" \
                 --add-flags "--filc-crt-path=${crtLib}" \
                 --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
                 --add-flags "--filc-os-include=${pkgs.linuxHeaders}/include" \
