@@ -36,6 +36,14 @@ pkgs.runCommand "sarcasm-prolog-check"
       test ! -s rejected.s
       grep -E '(unsupported|unknown)_target' error
     done
+    python ${../experiments/sarcasm-prolog/diagnostic-tests.py} ${sarcasm-prolog}/bin/sarcasm-prolog
+    mkdir generated
+    pushd generated
+    python ${../experiments/sarcasm-prolog/generated-tests.py} \
+      ${sarcasm-prolog}/bin/sarcasm-prolog ${filcc}/bin/clang \
+      ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
+    popd
     mkdir $out
+    cp -r generated $out/
     cp grouped.c separate.c grouped.s separate.s prolog.log $out/
   ''

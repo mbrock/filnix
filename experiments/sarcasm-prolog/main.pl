@@ -1,3 +1,8 @@
+% Entry points load the module graph explicitly; runtime passes use qualified
+% calls so their dependencies and authority are visible.
+:- use_module('effects.pl', []).
+:- use_module('accesses.pl', []).
+:- use_module('report.pl', []).
 :- use_module('parser.pl').
 :- use_module('ir.pl').
 :- use_module('x86_64.pl').
@@ -6,23 +11,34 @@
 :- initialization(main).
 
 main :- catch((run -> halt(0); throw(error(compilation_failed))), Error,
-    (format(user_error,'sarcasm-prolog: ~q~n',[Error]),halt(1))).
+    (sp_report:diagnostic('sarcasm-prolog',Error),halt(1))).
 run :- current_prolog_flag(argv,Chars), maplist(atom_chars,Args,Chars),
-    options(Args,x86_64,on,c,Arch,Opt,Mode,Path),
-    % Reject unsupported architectures before interpreting x86 input.
+    (memberchk(Args,[['--help'],['-h']]) -> usage
+    ; options(Args,x86_64,on,default,Arch,Opt,Mode,Path),
+      catch(compile(Path,Arch,Opt,Mode),Error,
+            (sp_report:diagnostic(Path,Error),halt(1)))).
+compile(Path,Arch,Opt,Mode) :-
     (Arch=x86_64 -> true; emit(Arch,[])),
-    parse_file(Path,Statements), lower(Statements,Functions),
-    maplist(prepare(Opt),Functions,Prepared),
-    (Mode=ir -> maplist(print_ir,Prepared); emit(Arch,Prepared)).
+    parse_file(Path,Statements), lower(Statements,Functions,Effects),
+    maplist(prepare(Opt),Functions,Prepared,Traces),
+    (Mode=ir -> sp_report:print_terms(Prepared)
+    ; Mode=effects -> sp_report:print_terms(Effects)
+    ; Mode=explain -> sp_report:explain(Path,Prepared,Traces)
+    ; emit(Arch,Prepared)).
 options(['--arch',A|Xs],_,O,M,Arch,Opt,Mode,P) :- !, options(Xs,A,O,M,Arch,Opt,Mode,P).
 options(['--no-coalesce'|Xs],A,_,M,Arch,Opt,Mode,P) :- !, options(Xs,A,off,M,Arch,Opt,Mode,P).
-options(['--emit-c'|Xs],A,O,_,Arch,Opt,Mode,P) :- !, options(Xs,A,O,c,Arch,Opt,Mode,P).
-options(['--emit-ir'|Xs],A,O,_,Arch,Opt,Mode,P) :- !, options(Xs,A,O,ir,Arch,Opt,Mode,P).
-options([P],A,O,M,A,O,M,P) :- !.
-options(_,_,_,_,_,_,_,_) :- throw(error(usage('sarcasm-prolog [--arch x86_64|aarch64] [--no-coalesce] [--emit-ir] FILE'))).
-prepare(Opt,function(N,A,IR),function(N,A,Plan)) :- plan(Opt,IR,Plan), validate(IR,Plan).
-print_ir(function(N,A,Plan)) :-
-    format('function(~q,~q,[~n',[N,A]), print_steps(Plan), format(']).~n',[]).
-print_steps([]).
-print_steps([P|Ps]) :- write('  '), write_term(P,[quoted(true)]),
-    (Ps=[] -> nl; write(','),nl), print_steps(Ps).
+options([Flag|Xs],A,O,M,Arch,Opt,Mode,P) :- output_flag(Flag,Next), !,
+    ((M=default; M=Next) -> options(Xs,A,O,Next,Arch,Opt,Mode,P)
+    ; throw(error(conflicting_output_modes(M,Next)))).
+options([P],A,O,M,A,O,M,P) :- atom_chars(P,[C|_]), char_code(C,Code), Code =\= 45, !.
+options(_,_,_,_,_,_,_,_) :- throw(error(invalid_arguments('see --help; select at most one output mode'))).
+output_flag('--emit-c',c).
+output_flag('--emit-ir',ir).
+output_flag('--emit-effects',effects).
+output_flag('--explain',explain).
+prepare(Opt,function(N,A,IR),function(N,A,Plan),trace(N,Decisions)) :-
+    sp_accesses:plan(Opt,IR,Plan,Decisions), validate(IR,Plan).
+usage :-
+    format('sarcasm-prolog [--arch x86_64|aarch64] [--no-coalesce] [MODE] FILE~n',[]),
+    format('MODE: --emit-c | --emit-ir | --emit-effects | --explain~n',[]),
+    format('The installed wrapper emits Fil-C assembly by default; this Prolog entry emits C.~n',[]).

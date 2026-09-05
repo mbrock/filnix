@@ -13,9 +13,12 @@ output through Fil-C-generated C. The Nix check covers the table-entry
 example, arithmetic, negative plans, runtime safety failures, and explicit
 rejection of ARM64. See [README.md](README.md) for the precise subset.
 
-Everything below is planned work. Follow the milestones in order; keep each
-extension small enough to review with its semantic rules and tests. The
-parked zstd port is motivation and potential future fixture material, not
+Milestone 1 is also complete: instruction effects and the semantic contract
+are explicit, grouping decisions are inspectable, and native differential
+tests cover the unchanged executable subset. Milestones 2–7 remain planned
+work. Follow them in order; keep each extension small enough to review with
+its semantic rules and tests. The parked zstd port is motivation and
+potential future fixture material, not
 an active package migration or a requirement to revive its builds now.
 
 ## Rules for extending the experiment
@@ -39,7 +42,15 @@ an active package migration or a requirement to revive its builds now.
 
 ## 1. Make the semantic contract explicit
 
-**Deliverable:** extract instruction effects from the current `step`
+**Status: complete.** `effects.pl` owns the finite instruction catalogue and
+normalized actions/effects; `ir.pl` consumes its typed reads and writes.
+`accesses.pl` separates traced proposals from independent validation.
+`--emit-effects` and `--explain` expose those decisions, and
+[SEMANTICS.md](SEMANTICS.md) records the contract and runtime obligations.
+The accepted instruction subset is unchanged. Arithmetic flag effects are
+classified but their values are not implemented or consumed.
+
+**Deliverable:** extract instruction effects from the original `step`
 clauses in `ir.pl` into a shared relation consumed by lowering and available
 for inspection. Keep the current executable subset unchanged initially.
 Describe register reads/writes and widths, pointer versus integer values,
@@ -56,6 +67,15 @@ driven tests cover every supported instruction form and representative
 illegal forms. Diagnostics identify the offending source line and missing
 condition. Add malformed-source and generated small-program tests with
 bounded execution, recording failures as small permanent fixtures.
+
+**Evidence:** all 29 instruction forms have table-driven coverage; 20
+malformed-source fixtures check diagnostics. The native oracle executes
+148 deterministic small programs and compares 37,888 exact results per
+grouped/ungrouped variant. The original 32,000-case lookup checks and Fil-C
+safety failures still pass. The table-entry example's grouped and ungrouped
+C remain unchanged. Normalizing masked shift counts in the scalar example
+also leaves its compiled assembly unchanged. This work reuses the existing
+compiler/runtime.
 
 **Review question:** can a reviewer find the complete meaning of an
 instruction without reconstructing assumptions across several passes?
@@ -209,7 +229,15 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Implement milestone 1's instruction-effects relation and explainable
-read-group decisions, with unchanged executable coverage. This makes the
-next pointer/store extension reviewable and provides a concrete test of
-the original Prolog hypothesis before expanding the language surface.
+Start milestone 2 with pointer-preserving `movq` register copies and a
+narrow `lea` subset. First decide how a copied or offset pointer is
+represented in the value IR, how its capability follows it, and which
+offsets the initial slice accepts. Give these operations explicit effects
+and tests before extending lowering or the C emitter.
+
+The first fixture should copy a pointer, derive another pointer and read
+through it. Compare results against a C reference and verify that bad
+capabilities and out-of-bounds offsets still trap. Inspect the generated C
+to confirm pointers remain pointer-typed. Keep stores for the following
+slice so pointer propagation and mutation can be reviewed independently;
+the full milestone 2 acceptance criteria apply when both are implemented.
