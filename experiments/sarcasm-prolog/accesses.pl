@@ -52,6 +52,8 @@ operation_origin(pointer_offset(_,_,_,_,_,L),L,pointer_offset).
 operation_origin(store(_,_,_,_,_,_,L),L,store).
 operation_origin(pointer_load(_,_,_,_,_,L),L,pointer_load).
 operation_origin(pointer_store(_,_,_,_,_,L),L,pointer_store).
+operation_origin(flag_values(_,_,_,_,_,L),L,flags).
+operation_origin(compare(_,_,_,_,L),L,comparison).
 
 % Validation deliberately does not call choose/probe/compatibility. It checks
 % the proposal against the original ordered operations with its own coverage

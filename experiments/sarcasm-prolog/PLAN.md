@@ -16,8 +16,9 @@ rejection of ARM64. See [README.md](README.md) for the precise subset.
 Milestone 1 is also complete: instruction effects and the semantic contract
 are explicit, grouping decisions are inspectable, and native differential
 tests cover that executable subset. Milestone 2 is also complete: pointer
-copies, `leaq`, integer stores and annotated pointer loads/stores. Milestones
-3–7 remain planned. Follow them in order; keep each extension small enough
+copies, `leaq`, integer stores and annotated pointer loads/stores. Milestone
+3 is complete: typed basic blocks, flag values and conditional control flow.
+Milestones 4–7 remain planned. Follow them in order; keep each extension small enough
 to review with its semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
 requirement to revive its builds now.
@@ -48,8 +49,8 @@ normalized actions/effects; `ir.pl` consumes its typed reads and writes.
 `accesses.pl` separates traced proposals from independent validation.
 `--emit-effects` and `--explain` expose those decisions, and
 [SEMANTICS.md](SEMANTICS.md) records the contract and runtime obligations.
-The accepted instruction subset is unchanged. Arithmetic flag effects are
-classified but their values are not implemented or consumed.
+This milestone retained the original instruction subset and classified
+flag effects. Milestone 3 subsequently added flag values and consumers.
 
 **Deliverable:** extract instruction effects from the original `step`
 clauses in `ir.pl` into a shared relation consumed by lowering and available
@@ -127,6 +128,28 @@ non-null integer bits cannot manufacture an accepted pointer.
 or memory fact, and where is that rule encoded?
 
 ## 3. Introduce basic blocks and conditional control flow
+
+**Status: complete.** `cfg.pl` constructs explicit blocks, resolves targets,
+filters unreachable blocks and joins typed register/flag states with a
+finite topological worklist. Every reachable predecessor must supply a
+usable value. Pointer parameters carry the incoming pointer's own capability.
+`flags.pl` models condition dependencies and flag identities; C recipes
+implement actual values. The edge validator is independent of edge
+construction and checks transfers against recorded exit states. Edge
+assignments use temporary values before overwriting destinations. Read
+grouping remains inside a block; `--linear` retains the previous reference.
+Reachable cycles are explicitly rejected until milestone 4.
+
+**Evidence:** 61 instruction forms, 48 malformed-source fixtures, and
+mutation tests for changed/missing/mistyped edge inputs, targets and
+conditions. The original 181 native programs pass through four variants
+(block/linear, grouped/ungrouped). Another 525 branch programs agree with
+native x86 on 134,400 return/full-buffer outcomes per variant, including
+all 16 conditions and flag joins. Fil-C callers check 4,096 pointer
+selections, stores and swaps per variant, seven safety failures through
+both arms, and an executable cyclic edge assignment. These include a
+successful access on one predecessor followed by selection of a different
+capability whose address bits denote the already-read object.
 
 **Deliverable:** add explicit blocks and edges, then a bounded set of
 comparisons and conditional branches. Model the flags those branches read;

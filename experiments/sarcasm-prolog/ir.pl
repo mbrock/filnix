@@ -1,4 +1,5 @@
-:- module(sp_ir, [lower/2, lower/3, plan/3, validate/2, constant/2]).
+:- module(sp_ir, [lower/2, lower/3, plan/3, validate/2, constant/2,
+                 strip_metadata/2, c_name/1, initial_state/2, lower_step/7, resolved/3]).
 :- use_module(library(lists)).
 
 % Typed SSA values distinguish changing registers from immutable address inputs.
@@ -32,20 +33,30 @@ body([located(L,Instruction)|Ss],Rest,State,N,_,[IR|IRs],[located(L,Semantics)|E
     instruction(Instruction), !,
     catch(sp_effects:instruction_effects(Instruction,Semantics),
           error(Reason),throw(error(at(L,Reason)))),
-    Semantics=semantics(Action,effects(registers(Reads,Writes),_,_,Control,_)),
-    resolve_reads(Reads,State,Bindings,L), lower_action(Action,Bindings,N,L,IR),
+    Semantics=semantics(Action,effects(_,_,_,Control,_)),
+    (memberchk(Control,[control(next),control(return)]) -> true
+    ; throw(error(at(L,linear_control_flow(Action))))),
+    lower_step(Semantics,State,N,L,IR,Next,_),
     (Control=control(return) -> Rest=Ss, IRs=[], Effects=[]
-    ; apply_writes(Writes,Bindings,v(N),State,Next), N1 is N+1,
+    ; N1 is N+1,
       body(Ss,Rest,Next,N1,L,IRs,Effects)).
 body([located(L,S)|_],_,_,_,_,_,_) :- throw(error(at(L,unsupported_control_flow(S)))).
 body([],_,_,_,LastLine,_,_) :- throw(error(at(LastLine,missing_return))).
 instruction(instruction(_,_)).
 instruction(instruction(_,_,_)).
 
+% Shared instruction lowering. Control-flow analysis supplies its input state;
+% the linear reference uses the same value semantics without block joins.
+lower_step(semantics(Action,effects(registers(Reads,Writes),_,_,_,_)),
+           State,N,L,IR,Next,Bindings) :-
+    resolve_reads(Reads,State,Bindings,L),lower_action(Action,Bindings,N,L,IR),
+    apply_writes(Writes,Bindings,v(N),State,Next).
+
 resolve_reads([],_,[],_).
 resolve_reads([read(R,Type)|Rs],State,[binding(R,Value)|Bs],L) :-
     R=register(Root,W),
     (memberchk(Root-Found,State) -> true; throw(error(at(L,uninitialized_register(Root))))),
+    (Found=incompatible(Types) -> throw(error(at(L,incompatible_register_types(Root,Types))));true),
     (memberchk(Type,[integer,value]), Found=int(V) -> Value=view(V,W)
     ; memberchk(Type,[pointer,value]), Found=ptr(P), W=64 -> Value=pointer(P)
     ; throw(error(at(L,register_type(Root,expected(Type),actual(Found)))))),
@@ -71,6 +82,8 @@ lower_action(binary(K,S,R),Bs,N,L,binary(v(N),K,W,A,B,L)) :-
     R=register(_,W), resolved(R,Bs,A), resolved(S,Bs,B).
 lower_action(shift(K,Count,R),Bs,N,L,binary(v(N),K,W,A,literal(Count),L)) :-
     R=register(_,W), resolved(R,Bs,A).
+lower_action(compare(K,S,R),Bs,_,L,compare(K,W,A,B,L)) :-
+    R=register(_,W),resolved(R,Bs,A),resolved(S,Bs,B).
 lower_action(return(R),Bs,_,_,return(V)) :- resolved(R,Bs,V).
 apply_writes([],_,_,State,State).
 apply_writes([write(register(Root,_),Type,_)|Ws],Bindings,V,State,Next) :-

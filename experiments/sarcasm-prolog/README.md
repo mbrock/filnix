@@ -3,9 +3,9 @@
 This is an independent, deliberately restricted assembly frontend hosted
 by Fil-C-built Trealla. It is not a replacement for upstream SaRCAsm.
 
-The first complete slice accepts annotated x86-64 AT&T assembly, parses it
-with DCGs, describes instruction effects, tracks scalar register values,
-groups compatible reads, checks the proposed grouping, and emits C.
+The experiment accepts annotated x86-64 AT&T assembly, parses it with DCGs,
+describes instruction effects, tracks typed values and flags through basic
+blocks, validates edge transfers, groups compatible reads, and emits C.
 Fil-C then lowers that C to assembly.
 The installed command emits assembly by default:
 
@@ -16,6 +16,8 @@ nix run .#sarcasm-prolog -- --emit-ir experiments/sarcasm-prolog/examples/table-
 nix run .#sarcasm-prolog -- --emit-effects experiments/sarcasm-prolog/examples/table-entry.s
 nix run .#sarcasm-prolog -- --explain experiments/sarcasm-prolog/examples/table-entry.s
 nix run .#sarcasm-prolog -- --no-coalesce --emit-c experiments/sarcasm-prolog/examples/table-entry.s
+nix run .#sarcasm-prolog -- --emit-ir experiments/sarcasm-prolog/examples/branches.s
+nix run .#sarcasm-prolog -- --linear --emit-c experiments/sarcasm-prolog/examples/table-entry.s
 nix build .#checks.x86_64-linux.sarcasm-prolog
 ```
 
@@ -43,7 +45,7 @@ planner's actual choices. For this example it reports:
 
 ```text
 line 6: read v(0) selects 4 bytes [0,4); source lines [6,6,7]
-  address: pointer arg0, index view(arg1,64), scale 4
+  address: pointer param(0,reg(rdi)), index view(param(0,reg(rsi)),64), scale 4
   8 bytes rejected: line 8: binary(shl) is an ordering barrier
   4 bytes accepted: same pointer/index/scale, exact adjacent ranges, original order
 ```
@@ -58,17 +60,21 @@ Both inspection modes require valid input and a validated access plan.
 | `parser.pl` | Character and token DCGs, source lines, assembly syntax and constant-expression trees |
 | `effects.pl` | Finite instruction catalogue, normalized actions, typed register effects, memory, flags, control flow and traps |
 | `ir.pl` | Signature assumptions, initialized-register/type checks, register-to-value mapping and action lowering |
+| `flags.pl` | Branch conditions, flag dependencies and value availability |
+| `cfg.pl` | Blocks, finite worklist, typed joins and independent edge-transfer validation |
 | `accesses.pl` | Read-group proposals, decision traces and an independent structural validator |
 | `target.pl` | Architecture selection; explicit rejection for AArch64/arm64 and unknown targets |
 | `x86_64.pl` | Little-endian extraction and unsigned integer semantics expressed as Fil-C C |
+| `x86-flags.pl`, `x86-cfg.pl` | Flag computation, branches and simultaneous typed edge assignments in C |
 | `report.pl` | Prolog inspection output, grouping explanations and source-located diagnostics |
 | `main.pl` | CLI, pass sequencing and output selection |
 | `tests.pl`, `effects-tests.pl` | Parser, effect catalogue, normalized semantics, access plans and decision traces |
 | `pointer-tests.pl` | Pointer-copy type propagation, derived addresses and aliased operands |
 | `store-tests.pl` | Write effects, immediate ranges, preserved registers and ordering barriers |
 | `pointer-memory-tests.pl` | Pointer annotations, typed memory effects and register/value flow |
+| `cfg-tests.pl`, `edge-swap-test.pl` | Joins, unavailable flags, malformed edges and an executable cyclic assignment |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
-| `generated-tests.py` | Deterministic small-program comparison against native x86-64 execution |
+| `generated-tests.py`, `branch-generated-tests.py`, `native_oracle.py` | Deterministic scalar/branch comparisons against native x86-64 execution |
 
 The [semantic contract](SEMANTICS.md) defines the effect terms, value rules,
 assumptions and runtime obligations. The effect relation accepts ground
@@ -85,15 +91,22 @@ The executable subset has `unsigned long(ptr)` and
 `unsigned long(ptr, unsigned long)` signatures, with a pointer in `%rdi`
 and an optional integer in `%rsi`. It supports ordinary integer loads,
 32/64-bit integer moves and stores, addition, bitwise operations, immediate shifts,
-and return. A 64-bit register copy preserves either an integer or a pointer;
+comparisons, conditional/direct branches, and return. A 64-bit register
+copy preserves either an integer or a pointer;
 `leaq` derives a pointer from a pointer base, optional integer index and
 nonnegative displacement. Registers are mapped to distinct values after
 each write;
 32-bit writes zero-extend, arithmetic wraps, and shift counts are masked.
 The pointer argument remains pointer-typed in generated C.
 
-No branches, calls, stack manipulation, SIMD, atomics, or partial 8/16-bit
-register writes are supported.
+Branch conditions use actual flag values. All incoming paths must supply a
+flag before a branch can read it. Pointer joins preserve whichever pointer
+the incoming edge selects, including its capability. Read grouping stays
+inside each block. The previous straight-line frontend remains available
+with `--linear` for differential testing.
+
+Calls, reachable loops, stack manipulation, SIMD, atomics, and partial
+8/16-bit register writes remain unsupported.
 Unsupported instructions fail explicitly. AArch64 is a deliberately failing
 target boundary, not an x86 fallback.
 
@@ -118,7 +131,7 @@ pointer value, index value and scale. It stops at any intervening scalar or poin
 operation or store. It cannot move reads across a store, even when the
 address expressions differ. Pointer loads and stores also separate read
 groups; the planner never replaces a typed pointer access with an integer
-read. Calls and branches remain unsupported.
+read. A block boundary also ends a read group.
 
 The validator independently matches the plan against the original ordered
 IR, verifies address identities and exact contiguous coverage, and rejects
@@ -150,14 +163,24 @@ Negative cases exercise null capabilities, out-of-bounds reads in both
 variants, and offset overflow. Unsupported architectures must fail without
 producing assembly.
 
-The effect table covers all 36 accepted instruction forms. Thirty-six
+The effect table covers all 61 accepted instruction forms. Forty-eight
 malformed-source fixtures check failure reasons and source lines. A
 deterministic generator exercises 181 small programs, comparing 46,336
-return values and full memory buffers per grouped/ungrouped variant against the original
-assembly executed natively. This oracle does not reuse the Prolog rules or
+return values and full memory buffers in four variants (block/linear frontend,
+each with grouping on/off) against the original assembly executed natively. This oracle does not reuse the Prolog rules or
 C emitter. Subprocess execution is bounded. The check output retains the
 generated sources, case descriptions, binaries and result streams, along
 with the original example's C and assembly, for inspection.
+
+Another 525 programs test branches, including all 16 conditions, signed and
+unsigned comparisons, parity/carry/overflow, flag replacement and preservation,
+and flag joins. Native execution agrees on 134,400 return/full-buffer
+outcomes per grouped/ungrouped variant. `examples/branches.s` additionally
+checks 4,096 selections, stores and swaps per variant with real Fil-C
+pointer slots. Seven failure modes exercise both arms, including a pointer
+whose address was changed while retaining the wrong capability, after a
+successful access to the other object. Null, freed, out-of-bounds and
+read-only selections still fail.
 
 `examples/pointers.s` copies a pointer, derives an indexed pointer with
 `leaq`, copies it again and performs the table lookup. Another 32,000 cases
@@ -186,8 +209,8 @@ failure fixture.
 
 The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
-before adding loops or a direct assembly backend. Milestone 1 is complete;
-milestone 2 is also complete: pointer copies, the narrow `leaq` subset,
-integer stores and annotated pointer loads/stores. Basic blocks and
-conditional control flow are next. The remaining milestones describe
+before adding loops or a direct assembly backend. Milestones 1–3 are
+complete: explicit effects, pointer operations and stores, then basic
+blocks and conditional control flow. A bounded decoder loop is next.
+The remaining milestones describe
 planned extensions, not currently supported input.

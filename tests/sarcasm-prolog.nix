@@ -9,6 +9,11 @@ pkgs.runCommand "sarcasm-prolog-check"
   ''
     ${trealla}/bin/tpl -q -f ${../experiments/sarcasm-prolog}/tests.pl > prolog.log
     grep -Fx 'prolog checks: ok' prolog.log
+    if grep -E '^Error:' prolog.log; then exit 1; fi
+
+    ${trealla}/bin/tpl -q -f ${../experiments/sarcasm-prolog}/edge-swap-test.pl > edge-swap.c
+    ${filcc}/bin/clang -O2 edge-swap.c -o edge-swap
+    ./edge-swap
 
     cp ${../experiments/sarcasm-prolog/examples/table-entry.s} input.s
     ${sarcasm-prolog}/bin/sarcasm-prolog --emit-c input.s > grouped.c
@@ -52,6 +57,19 @@ pkgs.runCommand "sarcasm-prolog-check"
     ./pointer-runtime
     python ${../experiments/sarcasm-prolog/pointer-memory-safety.py}
 
+    cp ${../experiments/sarcasm-prolog/examples/branches.s} branches-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-c branches-input.s > branches.c
+    ${sarcasm-prolog}/bin/sarcasm-prolog branches-input.s > branches.s
+    sed 's/branch_/branch_plain_/g' branches-input.s > branches-plain-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --no-coalesce branches-plain-input.s > branches-plain.s
+    for file in branches branches-plain; do
+      ${pkgs.binutils}/bin/as "$file.s" -o "$file.o"
+    done
+    ${filcc}/bin/clang -O2 ${../experiments/sarcasm-prolog/branch-runtime.c} \
+      branches.o branches-plain.o -o branch-runtime
+    ./branch-runtime
+    python ${../experiments/sarcasm-prolog/branch-safety.py}
+
     for arch in arm64 aarch64 mips; do
       if ${sarcasm-prolog}/bin/sarcasm-prolog --arch "$arch" input.s > rejected.s 2> error; then
         echo "unexpected target acceptance: $arch" >&2
@@ -63,12 +81,19 @@ pkgs.runCommand "sarcasm-prolog-check"
     python ${../experiments/sarcasm-prolog/diagnostic-tests.py} ${sarcasm-prolog}/bin/sarcasm-prolog
     mkdir generated
     pushd generated
-    python ${../experiments/sarcasm-prolog/generated-tests.py} \
+    python ${../experiments/sarcasm-prolog}/generated-tests.py \
+      ${sarcasm-prolog}/bin/sarcasm-prolog ${filcc}/bin/clang \
+      ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
+    popd
+    mkdir branches
+    pushd branches
+    python ${../experiments/sarcasm-prolog}/branch-generated-tests.py \
       ${sarcasm-prolog}/bin/sarcasm-prolog ${filcc}/bin/clang \
       ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
     popd
     mkdir $out
-    cp -r generated $out/
+    cp -r generated branches $out/
     cp grouped.c separate.c grouped.s separate.s pointers.c pointers.s stores.c stores.s prolog.log $out/
     cp pointer-memory.c pointer-memory.s $out/
+    cp branches.c branches.s edge-swap.c $out/
   ''

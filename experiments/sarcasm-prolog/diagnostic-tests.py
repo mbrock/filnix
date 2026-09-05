@@ -36,20 +36,40 @@ cases = [
     ("annotated-copy", "movq %rdi,%r8 #! ptr\n", "pointer_memory_operands"),
     ("unannotated-pointer", "movq (%rdi),%r8; movq (%r8),%rax; ret\n", "register_type(r8"),
     ("annotated-directive", ".globl probe #! ptr\n", "annotation_on_directive"),
-    ("integer-pointer-store", "movq %rsi,(%rdi) #! ptr\n", "register_type(rsi"),
+    ("integer-pointer-store", "movq %rsi,(%rdi) #! ptr\nret\n", "register_type(rsi"),
     ("directive", ".p2align 4\n", "unsupported_directive"),
     ("octal", "movq $08,%rax; ret\n", "unexpected_character"),
     ("quote", '.ascii "unterminated\n', "unexpected_character"),
     ("separator", "movq $1,%rax ret\n", "statement_syntax"),
     ("ret-operands", "ret $8\n", "operand_count"),
+    ("unknown-target", "jmp .Lmissing\n", "unknown_label"),
+    ("register-jump", "jmp %rax\n", "direct_branch_target_required"),
+    ("indirect-jump", "jmp *%rax\n", "statement_syntax"),
+    ("entry-cycle", "jmp probe\n", "cyclic_control_flow"),
+    ("no-fallthrough", "je probe\n", "missing_fallthrough"),
+    ("duplicate-label", ".Lsame:\n.Lsame:\nmovq $0,%rax\nret\n", "duplicate_label", 3),
+    ("entry-flags", "je .Lyes\nmovq $0,%rax\n.Lyes:\nret\n", "unavailable_flag(zf)"),
+    ("undefined-shift-overflow", "movq %rsi,%rax\nshlq $2,%rax\njo .Lyes\nret\n.Lyes:\nret\n",
+     "unavailable_flag(of)", 4),
+    ("missing-join-input", "testq %rsi,%rsi\nje .Ljoin\nmovq $1,%rax\n.Ljoin:\nret\n",
+     "uninitialized_register(rax)", 6),
+    ("conflicting-join-types",
+     "testq %rsi,%rsi\nje .Lleft\nmovq $1,%rax\njmp .Ljoin\n.Lleft:\nmovq %rdi,%rax\n.Ljoin:\nret\n",
+     "incompatible_register_types(rax", 9),
+    ("undefined-on-one-predecessor",
+     "movq %rsi,%rax\ntestq %rsi,%rsi\nje .Lleft\nshlq $2,%rax\njmp .Ljoin\n.Lleft:\naddq $1,%rax\n.Ljoin:\njo .Lyes\nret\n.Lyes:\nret\n",
+     "unavailable_flag(of)", 10),
+    ("unreachable-unknown",
+     "movq $9,%rax\njmp .Llive\n.Ldead:\nud2\n.Llive:\nret\n", "unsupported_instruction(ud2)", 5),
 ]
-for name, body, reason in cases:
+for name, body, reason, *location in cases:
     path = Path(f"invalid-{name}.s")
     path.write_text(prefix + body)
     result = subprocess.run([translator, str(path)], capture_output=True, timeout=10)
     assert result.returncode != 0 and not result.stdout, (name, result)
     message = result.stderr.decode()
-    assert f"{path}:2:" in message and reason in message, (name, message, reason)
+    line = location[0] if location else 2
+    assert f"{path}:{line}:" in message and reason in message, (name, message, reason)
 
 sample = "input.s"
 for options, expected in [

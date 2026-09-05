@@ -27,16 +27,25 @@ case(ret,return,[],return).
 case(leaq,pointer_offset,[mem(const(0),rdi,rsi,const(4)),reg(rax)],pointer_offset).
 case(movq,pointer_load,[mem(const(0),rdi,rsi,const(4)),reg(rax)],pointer_load).
 case(movq,pointer_store,[reg(rax),mem(const(0),rdi,rsi,const(4))],pointer_store).
+case(Op,compare(K,W,Kind),[S,reg(D)],compare) :-
+    member(Op-K-W-D-R,[cmpl-sub-32-eax-ecx,cmpq-sub-64-rax-rcx,
+                      testl-and-32-eax-ecx,testq-and-64-rax-rcx]),
+    member(Kind-S,[register-reg(R),immediate-imm(const(7))]).
+case(jmp,jump,[symbol(target)],jump).
+case(Op,branch(C),[symbol(target)],branch) :-
+    member(Op-C,[je-e,jne-ne,jb-b,jae-ae,jbe-be,ja-a,jl-l,jge-ge,
+                 jle-le,jg-g,js-s,jns-ns,jo-o,jno-no,jp-p,jnp-np]).
 
 tests :-
     findall(Op-Form,case(Op,Form,_,_),Expected0), sort(Expected0,Expected),
     findall(Op-Form,sp_effects:instruction_form(Op,Form),Actual0), sort(Actual0,Actual),
-    must(Expected==Actual), must(length(Actual,36)),
+    must(Expected==Actual), must(length(Actual,61)),
     forall(case(Op,Form,Args,Kind),check_case(Op,Form,Args,Kind)),
     forall(member(Op-W-D,[shll-32-eax,shrl-32-eax,shlq-64-rax,shrq-64-rax]),
       forall(member(Raw,[0,1,2,31,32,63,64,65,255]),check_shift(Op,W,D,Raw))),
     fails(sp_effects:instruction_effects(_, _),non_ground_instruction),
-    fails(sp_effects:instruction_effects(instruction(jmp,[symbol(f)]),_),unsupported_instruction(jmp)),
+    fails(sp_effects:instruction_effects(instruction(call,[symbol(f)]),_),unsupported_instruction(call)),
+    fails(sp_effects:instruction_effects(instruction(jmp,[reg(rax)]),_),direct_branch_target_required(reg(rax))),
     fails(sp_effects:instruction_effects(instruction(ret,[imm(const(8))]),_),operand_count(expected(0),actual(1))),
     fails(sp_effects:instruction_effects(instruction(movl,[reg(rax),reg(eax)]),_),register_width(rax,expected(32),actual(64))),
     fails(sp_effects:instruction_effects(instruction(movq,[reg(ah),reg(rax)]),_),unsupported_register(ah)),
@@ -55,7 +64,9 @@ check_case(Op,Form,Args,Kind) :-
     must(ground(E)), E=effects(registers(Reads,Writes),memory(Mem),Flags,control(Control),may_trap(Traps)),
     check_flags(Flags),
     (Kind=return -> must(Reads=[read(register(rax,64),integer)]), must(Writes=[]), must(Control=return)
-    ; memberchk(Kind,[store,pointer_store]) -> must(Writes=[]), must(Control=next)
+    ; Kind=jump -> must(Writes=[]),must(Reads=[]),must(Control=jump(target))
+    ; Kind=branch -> Form=branch(Condition),must(Writes=[]),must(Reads=[]),must(Control=branch(Condition,target))
+    ; memberchk(Kind,[store,pointer_store,compare]) -> must(Writes=[]), must(Control=next)
     ; must(Control=next), Writes=[write(register(rax,W),Type,Policy)],
       (memberchk(Kind,[pointer_offset,pointer_load]) -> must(Type=pointer)
       ; Form=move(64,register) -> must(Type=same_type_as(register(rcx,64))), must(Reads=[read(register(rcx,64),value)])
@@ -79,13 +90,17 @@ check_case(Op,Form,Args,Kind) :-
       must(Traps=[address_overflow,Failure,pointer_alignment]),
       must(Reads=[read(register(rdi,64),pointer),read(register(rsi,64),integer)|Tail])
     ; must(Mem=[]),must(Traps=[])),
-    (memberchk(Kind,[load,store,move,return,pointer_offset,pointer_load,pointer_store]) -> Flags=flags(reads([]),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of]))
+    (memberchk(Kind,[load,store,move,return,pointer_offset,pointer_load,pointer_store,jump]) -> Flags=flags(reads([]),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of]))
+    ; Kind=branch -> Form=branch(C),sp_flags:condition_reads(C,Needed),
+      Flags=flags(reads(Needed),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of]))
+    ; Kind=compare,Form=compare(sub,_,_) -> Flags=flags(reads([]),defined([cf,pf,af,zf,sf,of]),cleared([]),undefined([]),preserved([]))
+    ; Kind=compare,Form=compare(and,_,_) -> Flags=flags(reads([]),defined([pf,zf,sf]),cleared([cf,of]),undefined([af]),preserved([]))
     ; Kind=add -> Flags=flags(reads([]),defined([cf,pf,af,zf,sf,of]),cleared([]),undefined([]),preserved([]))
     ; memberchk(Kind,[and,or,xor]) -> Flags=flags(reads([]),defined([pf,zf,sf]),cleared([cf,of]),undefined([af]),preserved([]))
     ; true).
 check_flags(flags(reads(R),defined(D),cleared(C),undefined(U),preserved(P))) :-
     append(D,C,A),append(A,U,B),append(B,P,All),sort(All,Set),
-    must(Set=[af,cf,of,pf,sf,zf]),must(length(All,6)),must(R=[]).
+    must(Set=[af,cf,of,pf,sf,zf]),must(length(All,6)),must(forall(member(F,R),memberchk(F,Set))).
 check_shift(Op,W,D,Raw) :-
     sp_effects:instruction_effects(instruction(Op,[imm(const(Raw)),reg(D)]),
       semantics(shift(_,Count,_),effects(_,_,F,_,_))),

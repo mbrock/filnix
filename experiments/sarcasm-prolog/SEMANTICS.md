@@ -1,6 +1,6 @@
 # Semantic contract
 
-This document covers the current straight-line x86-64 subset. The compiler
+This document covers the current acyclic x86-64 subset. The compiler
 accepts annotated assembly and produces Fil-C C, then delegates machine
 code, capabilities, GC roots and the calling convention to Fil-C. The
 observable results are the function's integer return value and permitted
@@ -12,7 +12,7 @@ memory reads and writes; source registers and arithmetic flags are internal stat
 instruction AST from the parser. It either produces a normalized action
 and its effects or rejects the instruction. It does not infer input types
 from how a register happens to be used. `instruction_form/2` enumerates the
-36 supported forms independently of a particular function or register
+61 supported forms independently of a particular function or register
 state.
 
 For example, `movzwl 2(%rdi,%rsi,4), %eax` has this description:
@@ -58,6 +58,8 @@ cannot turn integer bits into a pointer. A 32-bit copy remains integer-only.
 | An operand reads an integer or a pointer of a particular width | Instruction effect rule, checked against initialized register state by lowering |
 | Integer width, zero extension, address scale and access size | Normalized instruction semantics |
 | Two loads use the same pointer/index values and adjoining byte ranges | Ordered IR and independent access-plan validation |
+| A block input is initialized with a coherent type, or a flag is available | Every reachable predecessor's exit state, joined by `cfg.pl` |
+| An edge transfers the right typed values to its original target | Independent edge validator against recorded typed exit states |
 | Offset arithmetic does not wrap and fits `PTRDIFF_MAX` | Explicit guards in generated C |
 | An accessed capability is live, covers the access and permits a write when requested | Fil-C instrumentation and runtime |
 
@@ -85,10 +87,14 @@ before any destination write, including when source and destination alias.
 | Register/immediate-source `addl`/`addq` | Add modulo the destination width |
 | Register/immediate-source `andl`/`andq`, `orl`/`orq`, `xorl`/`xorq` | Bitwise operation in the destination width |
 | Immediate-source `shll`/`shlq`, `shrl`/`shrq` | Logical shift by the immediate modulo 32/64; discard bits beyond the destination width |
+| Register/immediate-source `cmpl`/`cmpq`, `testl`/`testq` | Compute subtraction/AND flags from destination and source; write no register |
+| `jmp Label` | Transfer control to a named block in the same function |
+| `je`, `jne`, `jb`, `jae`, `jbe`, `ja`, `jl`, `jge`, `jle`, `jg`, `js`, `jns`, `jo`, `jno`, `jp`, `jnp` | Read the specified condition's flags and choose the named target or fallthrough block |
 | `ret` | Return the integer in `%rax` through the Fil-C ABI |
 
 Move immediates range from `-2^(W-1)` to `2^W-1`, interpreted modulo the
-destination width `W`. Arithmetic/bitwise immediates range from `-2^31` to
+destination width `W`. Arithmetic, bitwise and comparison immediates range
+from `-2^31` to
 `2^32-1` for 32-bit operations, or `-2^31` to `2^31-1` for 64-bit operations
 (the latter sign-extend). Shift immediates must be in `[0,255]` before
 masking. The supported scale factors are 1, 2, 4 and 8; displacements are
@@ -166,13 +172,14 @@ source-level memory-effect list. Stack instructions remain unsupported.
 ## Arithmetic flags
 
 Effects partition the six arithmetic flags into defined, cleared,
-undefined and preserved sets. No accepted instruction reads a flag.
+undefined and preserved sets. Branches declare the flags their condition
+reads. They preserve all flags for subsequent blocks.
 
 | Operation | Defined | Cleared | Undefined | Preserved |
 |---|---|---|---|---|
-| Load, store, move, LEA, return, shift with masked count 0 | — | — | — | CF, PF, AF, ZF, SF, OF |
-| Add | CF, PF, AF, ZF, SF, OF | — | — | — |
-| AND, OR, XOR | PF, ZF, SF | CF, OF | AF | — |
+| Load, store, move, LEA, return, jump/branch, shift with masked count 0 | — | — | — | CF, PF, AF, ZF, SF, OF |
+| ADD, CMP | CF, PF, AF, ZF, SF, OF | — | — | — |
+| AND, OR, XOR, TEST | PF, ZF, SF | CF, OF | AF | — |
 | Shift with masked count 1 | CF, PF, ZF, SF, OF | — | AF | — |
 | Shift with larger masked count | CF, PF, ZF, SF | — | AF, OF | — |
 
@@ -180,11 +187,80 @@ These classifications follow the instruction descriptions in the
 [Intel instruction-set reference](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html).
 The supported 32/64-bit shifts mask counts below the operand width.
 
-The descriptions do **not** compute flag values. C lowering drops flags
-because the accepted subset cannot observe them; it does not promise their
-preservation across the function ABI. Before accepting a branch or another
-flag consumer, implement flag values, their dependencies and control-flow
-joins as described in [milestone 3](PLAN.md#3-introduce-basic-blocks-and-conditional-control-flow).
+`flags.pl` binds each defined or cleared flag to its producing instruction.
+`x86-flags.pl` computes the flag bits with unsigned width-limited arithmetic:
+carry/borrow, signed overflow from sign-bit relations, auxiliary carry,
+low-byte even parity, zero and sign. CMP computes destination minus source;
+TEST computes their AND. Undefined flags have no usable value. A zero-count
+shift retains previous flag identities; changing a compared register with
+MOV does not change the comparison's captured operands. C arithmetic cannot
+overflow a signed temporary in these recipes.
+
+| Conditions | Expression (the second condition is the inverse) |
+|---|---|
+| E / NE | ZF |
+| B / AE | CF |
+| BE / A | CF or ZF |
+| L / GE | SF differs from OF |
+| LE / G | ZF or (SF differs from OF) |
+| S / NS | SF |
+| O / NO | OF |
+| P / NP | PF |
+
+Flags are initially unavailable. A consumer of an unavailable or undefined
+flag fails at the source line, including OF after a shift greater than one.
+The C helper may compute deterministic bits for undefined flags, but those
+bits never enter the usable flag state. Flags are internal values; their
+physical machine-register state is not promised across the function ABI.
+
+## Blocks, joins and edges
+
+Labels and terminators form explicit blocks. Adjacent labels alias one
+block. Targets must name a label inside the same function; conditional
+branches need a fallthrough block, and every path must end in a return.
+Unknown opcodes, duplicate labels, unresolved targets and malformed block
+structure are rejected before reachability filtering. Unreachable blocks
+then contribute no values and produce no code.
+
+A finite topological worklist starts at block zero and lowers a block only
+after every reachable predecessor has completed. A synthetic entry edge
+supplies the signature's input state. Each block is processed once; a
+nonempty worklist with no ready block rejects reachable cyclic control
+flow. Backedges require the separate fixed-point analysis in milestone 4.
+
+At a join, possible register types accumulate across predecessors. A value
+is usable only if every predecessor supplies the same type: all integers
+produce an integer block parameter, all pointers a pointer block parameter.
+A missing value remains unavailable; incompatible types remain a conflict.
+An unconditional overwrite may replace either before any read. A flag is
+available only if every predecessor supplies it. Entry has no flags, so it
+cannot establish a flag merely by having no earlier block.
+
+Pointer parameters may select different objects or different derived
+addresses. Each incoming edge copies the complete typed pointer; its
+capability travels with its address. The join does not union bounds or
+establish protection for any access. A successful check on one predecessor
+does not authorize an access on another. Every actual access still goes
+through Fil-C.
+
+An edge lists typed simultaneous assignments to the target's block
+parameters. The C emitter saves every source in a temporary before
+overwriting any destination. This handles cyclic swaps of both integers
+and pointers; an executable self-edge assignment test covers that staging
+even while runtime loops remain unsupported.
+
+The independent edge validator compares the proposed graph with recorded
+typed exit states and original terminators. It checks groundness, block
+identity and order, unchanged bodies and conditions, original targets,
+parameter count, destination/type, and the exact outgoing value for each
+register or flag. It does not call the edge-construction predicates or
+repeat the worklist search. It trusts the lowering and recorded state;
+this validates edge construction, not the entire dataflow analysis.
+Read grouping runs separately inside each validated block.
+
+`--linear` retains the earlier straight-line lowering as a differential
+reference. It shares instruction/value semantics but has no block analysis,
+edge assignments or flag consumers; branches fail explicitly.
 
 ## Read-group proposals and validation
 
@@ -216,7 +292,7 @@ does not authorize unchecked machine instructions. The input contract
 permits ordinary nonvolatile, nonatomic reads and unobserved intermediate
 register state. A group may trap earlier than a later individual read
 would have trapped. Stores retain their original order and separate read
-groups. Calls and branches remain outside this subset.
+groups. No read group crosses a block boundary. Calls remain unsupported.
 
 ## Evidence and next extension
 
@@ -228,7 +304,6 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-The pointer and memory operations in milestone 2 are implemented. Basic
-blocks and conditional control flow are next. Implement actual flag values
-and define joins for typed values before accepting flag consumers; see
-[milestone 3](PLAN.md#3-introduce-basic-blocks-and-conditional-control-flow).
+Milestones 1–3 are implemented. Next is a finite analysis for backedges and
+loop-carried values, exercised by one bounded decoder loop; see
+[milestone 4](PLAN.md#4-complete-one-bounded-decoder-shaped-loop).

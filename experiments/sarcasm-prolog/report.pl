@@ -2,6 +2,8 @@
 :- use_module(library(lists)).
 
 print_terms(Functions) :- maplist(print_function,Functions).
+print_function(function(N,A,cfg(E,Blocks))) :- !,
+    format('function(~q,~q,cfg(~q,[~n',[N,A,E]),print_steps(Blocks),format('])).~n',[]).
 print_function(function(N,A,Body)) :-
     format('function(~q,~q,[~n',[N,A]), print_steps(Body), format(']).~n',[]).
 print_steps([]).
@@ -11,9 +13,14 @@ print_steps([P|Ps]) :- write('  '), write_term(P,[quoted(true)]),
 explain(Path,Functions,Traces) :-
     format('~w: read grouping (runtime checks remain Fil-C obligations)~n',[Path]),
     maplist(explain_function,Functions,Traces).
+explain_function(function(N,_,cfg(_,Blocks)),trace(N,blocks(Traces))) :- !,
+    format('~n~w:~n',[N]),maplist(explain_block,Blocks,Traces).
 explain_function(function(N,_,Plan),trace(N,Decisions)) :-
     format('~n~w:~n',[N]),
-    (Decisions=[] -> format('  no memory reads~n',[]); maplist(explain_decision(Plan),Decisions)).
+    (Decisions=[] -> format('  no integer reads to group~n',[]); maplist(explain_decision(Plan),Decisions)).
+explain_block(block(B,Labels,_,Ops,_),trace_block(B,Ds)) :-
+    format('  block ~d ~q:~n',[B,Labels]),
+    (Ds=[] -> format('    no integer reads to group~n',[]);maplist(explain_decision(Ops),Ds)).
 explain_decision(Plan,decision(V,L,W,Lines,Attempts)) :-
     member(read(P,I,K,O,W,[load(V,_,_,_,_,_,_)|_]),Plan), !,
     End is O+W,

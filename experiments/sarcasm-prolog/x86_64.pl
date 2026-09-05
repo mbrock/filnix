@@ -1,4 +1,4 @@
-:- module(sp_x86_64, [emit_c/1]).
+:- module(sp_x86_64, [emit_c/1, emit_plan/2, value/1, origin/1]).
 :- use_module(library(lists)).
 
 % Compiler-backed first target: Fil-C owns ABI, capabilities, roots and checks.
@@ -6,14 +6,19 @@ emit_c(Functions) :-
     format('#include <stdint.h>~n#include <stddef.h>~n#include <limits.h>~n', []),
     format('#if !defined(__FILC__) || !defined(__x86_64__)~n#error "requires x86-64 Fil-C"~n#endif~n', []),
     format('_Static_assert(sizeof(void *) == 8 && _Alignof(void *) == 8, "requires 8-byte pointer layout");~n', []),
+    sp_x86_flags:emit_helpers,
     format('static const unsigned char *sp_address(const unsigned char *p, uint64_t i, uint64_t s, uint64_t d) {~n', []),
     format('  uint64_t o;~n  if (__builtin_mul_overflow(i,s,&o) || __builtin_add_overflow(o,d,&o) || o > PTRDIFF_MAX) __builtin_trap();~n  return p + (ptrdiff_t)o;~n}~n', []),
     maplist(emit_function,Functions).
 emit_function(function(Name,Args,Plan)) :-
     format('uint64_t ~w(const unsigned char *arg0', [Name]),
     (Args=[ptr,u64] -> format(', uint64_t arg1',[]); true),
-    format(') {~n',[]), emit_plan(Plan,0), format('}~n',[]).
+    format(') {~n',[]),
+    (Plan=cfg(_,_) -> sp_x86_cfg:emit_body(Plan);emit_plan(Plan,0)),format('}~n',[]).
 emit_plan([], _).
+emit_plan([flag_values(Id,K,W,A,B,L)|Xs],N) :- !,
+    sp_x86_flags:emit_values(Id,K,W,A,B,L),emit_plan(Xs,N).
+emit_plan([compare(_,_,_,_,_)|Xs],N) :- !,emit_plan(Xs,N).
 emit_plan([read(P,I,S,O,W,Loads)|Xs],N) :- !,
     Bits is W*8,
     format('  /* covering read: offset ~d, width ~d */~n  uint~d_t chunk~d;~n  __builtin_memcpy(&chunk~d, ',[O,W,Bits,N,N]),
@@ -52,6 +57,9 @@ address(P,I,S,O) :-
     format(', UINT64_C(~d), UINT64_C(~d))',[S,O]).
 value(view(V,W)) :- format('((uint~d_t)',[W]), value(V), format(')',[]).
 value(v(N)) :- format('v~d',[N]).
+value(param(B,reg(R))) :- format('sp_b~d_r_~w',[B,R]).
+value(param(B,flag(F))) :- format('sp_b~d_f_~w',[B,F]).
+value(flag_value(N,F)) :- sp_flags:bit(F,Bit),format('((flags~d >> ~d) & 1u)',[N,Bit]).
 value(arg0) :- format('arg0',[]).
 value(arg1) :- format('arg1',[]).
 value(literal(N)) :- format('UINT64_C(~d)',[N]).

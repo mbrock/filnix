@@ -14,6 +14,10 @@ instruction_form(Op, store(Bytes,Source)) :-
 instruction_form(Op, binary(K,W,Source)) :-
     binary_opcode(Op,K,W), member(Source,[register,immediate]).
 instruction_form(Op, shift(K,W)) :- shift_opcode(Op,K,W).
+instruction_form(Op, compare(K,W,Source)) :-
+    compare_opcode(Op,K,W), member(Source,[register,immediate]).
+instruction_form(jmp,jump).
+instruction_form(Op,branch(C)) :- sp_flags:branch_opcode(Op,C).
 instruction_form(leaq, pointer_offset).
 instruction_form(movq, pointer_load).
 instruction_form(movq, pointer_store).
@@ -25,6 +29,8 @@ binary_opcode(orl,or,32). binary_opcode(orq,or,64).
 binary_opcode(andl,and,32). binary_opcode(andq,and,64).
 shift_opcode(shll,shl,32). shift_opcode(shlq,shl,64).
 shift_opcode(shrl,shr,32). shift_opcode(shrq,shr,64).
+compare_opcode(cmpl,sub,32). compare_opcode(cmpq,sub,64).
+compare_opcode(testl,and,32). compare_opcode(testq,and,64).
 
 % Ground input makes rejection distinct from an incomplete relational search.
 % The action and its effects come from the same normalized operands.
@@ -37,12 +43,17 @@ instruction_action(instruction(Op,Operands,ptr),Action) :- !,
 instruction_action(instruction(Op,Operands),Action) :- !,
     require(instruction_form(Op,_), unsupported_instruction(Op)),
     (Op=ret -> arity(Operands,0), Action=return(register(rax,64))
+    ; Op=jmp -> branch_target(Operands,Label),Action=jump(Label)
+    ; sp_flags:branch_opcode(Op,C) -> branch_target(Operands,Label),Action=branch(C,Label)
     ; arity(Operands,2), Operands=[Source,Dest],
       normalize(Op,Source,Dest,Action)).
 instruction_action(Other,_) :- throw(error(unsupported_instruction_form(Other))).
 require(Goal,Reason) :- (call(Goal) -> true; throw(error(Reason))).
 arity(Operands,N) :- length(Operands,Actual),
     require(Actual=:=N, operand_count(expected(N),actual(Actual))).
+branch_target(Operands,Label) :-
+    arity(Operands,1),Operands=[Target],
+    require(Target=symbol(Label),direct_branch_target_required(Target)).
 
 normalize_pointer(mem(D,B,I,S),Dest,pointer_load(Address,R)) :- !,
     destination(Dest,64,R), address(mem(D,B,I,S),Address).
@@ -70,6 +81,10 @@ normalize(Op,Source,Dest,binary(K,Value,R)) :- binary_opcode(Op,K,W), !,
     destination(Dest,W,R), scalar_source(Source,W,Value),
     (Value=immediate(N) -> (W=64 -> Max=2147483647; Max=4294967295),
       range(N,-2147483648,Max,arithmetic_immediate); true).
+normalize(Op,Source,Dest,compare(K,Value,R)) :- compare_opcode(Op,K,W), !,
+    destination(Dest,W,R),scalar_source(Source,W,Value),
+    (Value=immediate(N) -> (W=64 -> Max=2147483647;Max=4294967295),
+      range(N,-2147483648,Max,compare_immediate);true).
 normalize(Op,Source,Dest,shift(K,Count,R)) :- shift_opcode(Op,K,W), !,
     destination(Dest,W,R),
     require(Source=imm(E), immediate_shift_required(Source)),
@@ -147,6 +162,16 @@ action_effects(binary(K,V,R),
 action_effects(shift(_,Count,R),
     effects(registers([read(R,integer)],[Write]),memory([]),Flags,control(next),may_trap([]))) :-
     integer_write(R,Write), shift_flags(Count,Flags).
+action_effects(compare(K,V,R),
+    effects(registers(Reads,[]),memory([]),Flags,control(next),may_trap([]))) :-
+    source_reads(V,SourceReads),Reads=[read(R,integer)|SourceReads],binary_flags(K,Flags).
+action_effects(jump(Label),
+    effects(registers([],[]),memory([]),Flags,control(jump(Label)),may_trap([]))) :-
+    preserve_flags(Flags).
+action_effects(branch(C,Label),
+    effects(registers([],[]),memory([]),Flags,control(branch(C,Label)),may_trap([]))) :-
+    sp_flags:condition_reads(C,Reads),
+    Flags=flags(reads(Reads),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of])).
 action_effects(return(R),
     effects(registers([read(R,integer)],[]),memory([]),Flags,control(return),may_trap([]))) :-
     preserve_flags(Flags).
@@ -156,11 +181,11 @@ address_reads(address(Base,Index,_,_),[read(Base,pointer)|Reads]) :- source_read
 integer_write(register(R,32),write(register(R,32),integer,zero_extend(64))).
 integer_write(register(R,64),write(register(R,64),integer,replace)).
 
-% Partition all six arithmetic flags. "Defined" names effects, not computed
-% flag values. Nothing in this subset consumes flags, so C lowering drops them.
-% Future branches must implement their values before using this metadata.
+% Partition all six arithmetic flags. flags.pl supplies value recipes and
+% enforces availability at consumers; the C backend implements those recipes.
 preserve_flags(flags(reads([]),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of]))).
 binary_flags(add,flags(reads([]),defined([cf,pf,af,zf,sf,of]),cleared([]),undefined([]),preserved([]))).
+binary_flags(sub,flags(reads([]),defined([cf,pf,af,zf,sf,of]),cleared([]),undefined([]),preserved([]))).
 binary_flags(K,flags(reads([]),defined([pf,zf,sf]),cleared([cf,of]),undefined([af]),preserved([]))) :-
     memberchk(K,[and,or,xor]).
 shift_flags(0,F) :- !, preserve_flags(F).
