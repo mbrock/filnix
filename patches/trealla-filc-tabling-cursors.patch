@@ -1,0 +1,71 @@
+diff --git a/src/bif_tabling.c b/src/bif_tabling.c
+index 764929e0..e49f9aa6 100644
+--- a/src/bif_tabling.c
++++ b/src/bif_tabling.c
+@@ -734,7 +734,7 @@ typedef struct {
+ 
+ 	// Bumped by abolish; enumerations carry the generation they started
+ 	// in and stop cleanly if the tables were pulled out from under them.
+-	// int64_t (not uint64_t) to match q->st.v2, where they stash it.
++	// int64_t (not uint64_t) to match q->st.table_generation, where they stash it.
+ 
+ 	int64_t generation;
+ 
+@@ -1975,10 +1975,10 @@ static bool bif_tbl_get_answer_2(query *q)
+ 
+ 	// Stop cleanly if the tables were abolished under a live enumeration.
+ 
+-	if (q->retry && (q->st.v2 != s->generation))
++	if (q->retry && (q->st.table_generation != s->generation))
+ 		return false;
+ 
+-	tbl_ans *a = q->retry ? (tbl_ans*)(size_t)q->st.v1 : t->first_ans;
++	tbl_ans *a = q->retry ? (tbl_ans*)q->st.table_cursor : t->first_ans;
+ 
+ 	if (!a)
+ 		return false;
+@@ -1991,8 +1991,8 @@ static bool bif_tbl_get_answer_2(query *q)
+ 	// and either would silently drop answers here.
+ 
+ 	if (a->next) {
+-		q->st.v1 = (uint64_t)(size_t)a->next;
+-		q->st.v2 = s->generation;
++		q->st.table_cursor = a->next;
++		q->st.table_generation = s->generation;
+ 		CHECKED(push_choice(q));
+ 	}
+ 
+@@ -2150,17 +2150,17 @@ static bool bif_tbl_wkl_work_3(query *q)
+ 	if (!t)
+ 		return throw_error(q, p1, p1_ctx, "type_error", "table_handle");
+ 
+-	if (q->retry && (q->st.v2 != s->generation))
++	if (q->retry && (q->st.table_generation != s->generation))
+ 		return false;
+ 
+-	tbl_pair *p = q->retry ? (tbl_pair*)(size_t)q->st.v1 : t->pending;
++	tbl_pair *p = q->retry ? (tbl_pair*)q->st.table_cursor : t->pending;
+ 
+ 	if (!p)
+ 		return false;
+ 
+ 	if (p->next) {
+-		q->st.v1 = (uint64_t)(size_t)p->next;
+-		q->st.v2 = s->generation;
++		q->st.table_cursor = p->next;
++		q->st.table_generation = s->generation;
+ 		CHECKED(push_choice(q));
+ 	}
+ 
+diff --git a/src/internal.h b/src/internal.h
+index 45775cc7..216ff890 100644
+--- a/src/internal.h
++++ b/src/internal.h
+@@ -648,6 +648,7 @@ struct run_state_ {
+ 			iter_single:1;
+ 		};
+ 		struct { uint64_t uv1, uv2; };
++		struct { void *table_cursor; int64_t table_generation; };
+ 		struct { int64_t v1, v2; };
+ 		struct { cell *c; pl_ctx c_ctx; };
+ 		int64_t cnt;

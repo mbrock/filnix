@@ -924,9 +924,29 @@ in
 
   (for pkgs.trealla [
     (arg { lineEditingLibrary = "readline"; })
-    (pin "2.84.14" "sha256-W1erZMHlX3s0Px62LHoMAcHWUeepDk3T63/R2QAyDAQ=")
+    (src "unstable-2026-09-05"
+      "sha256-/SWCY+oui0ZZewTSMwHm5cvElv45QPu249sPpr/pJqw="
+      (
+        _:
+        "https://github.com/trealla-prolog/trealla/archive/12f4cbd7fc2269265e7306775ded2f6410671499.tar.gz"
+      )
+    )
+    (use (old: {
+      postPatch =
+        builtins.replaceStrings [ "Makefile" ] [ "GNUmakefile" ]
+          old.postPatch;
+      makeFlags = old.makeFlags ++ [
+        "READLINE=1"
+        "LIBDIR=$(out)/share/trealla"
+      ];
+      postInstall = (old.postInstall or "") + ''
+        mkdir -p $out/share/trealla/library
+        find library -name '*.pl' -exec cp --parents -t $out/share/trealla {} +
+      '';
+    }))
     (patch ./patches/trealla-filc-ffi-zptrtable.patch)
-    (skipTests "many fail with thwart in bif_iso_write, also slow")
+    (patch ./patches/trealla-filc-tabling-cursors.patch)
+    (skipTests "runtime coverage lives in checks.x86_64-linux.trealla")
   ])
 
   (for pkgs.wasm3 [

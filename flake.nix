@@ -107,6 +107,10 @@
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
       checks.${system} = {
+        trealla = import ./tests/trealla.nix {
+          inherit pkgs filcc;
+          trealla = pkgsFilc.trealla;
+        };
         baseline = baseline.baseline;
         openssl-sarcasm = import ./tests/openssl-sarcasm.nix {
           inherit pkgs filcc;
