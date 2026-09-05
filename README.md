@@ -50,7 +50,23 @@ cachix use filc
 
 Building from source on a fresh system means waiting for LLVM to compile, then glibc twice, coreutils, Perl, bash, and so on and on. This can be fascinating and inspiring but you may prefer to use the cache and see results immediately.
 
-Most packages mentioned `ports.nix` should have binaries available. If you're building something that's not cached yet, it'll fall back to building from source automatically.
+The curated cache baseline is defined in [`shells/baseline.nix`](shells/baseline.nix). It covers shell utilities, build tools, compression and networking libraries, Bash, Python, Perl, Ruby, Lua, SQLite, Git, OpenSSH, and both OpenSSL variants. Packages outside this baseline may also be cached; missing binaries fall back to building from source.
+
+```sh
+nix build .#baseline
+nix run .#baseline                  # interactive Fil-C Bash environment
+nix run .#baseline -- -c 'python3 --version; sqlite3 --version'
+```
+
+The baseline retains every selected package output, including development headers and libraries, under `result/packages/<name>/<output>`. Its `manifest.json` records exact versions and paths. Building it also runs installed-program smoke tests, Python extension checks, and a C consumer of SQLite, libffi, and zlib. The alternative assembly-enabled OpenSSL is available as `openssl-sarcasm` in the shell.
+
+To build and publish the entire baseline closure:
+
+```sh
+nix run .#push-baseline -- --max-jobs 4 --cores 8
+```
+
+This uses pinned Nix and Cachix clients, uploads to `filc`, then verifies every closure path and its content hash against the public Fil-C and official NixOS caches. Authentication comes from your private Cachix configuration or `CACHIX_AUTH_TOKEN` / `CACHIX_SIGNING_KEY`; credentials are never part of the derivation. Run from this checkout, or set `FILNIX_FLAKE` to another checkout's path. For a background build and upload, use `swash start -- nix run .#push-baseline -- --max-jobs 4 --cores 8`, followed by `swash follow <id>`.
 
 Please note that the binary cache and the artifacts cached thereupon are provided by yours truly for entertainment purposes only, with absolutely no kind of implicit warranty and no actual security auditing or any kind of rigorous principled approach at all.
 

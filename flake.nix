@@ -54,6 +54,15 @@
       };
 
       filc-world-shell = filc-shell-stuff.filc-world-shell;
+      baseline = import ./shells/baseline.nix {
+        inherit
+          pkgs
+          filcc
+          sarcasm
+          projeny
+          ;
+        ports = pkgsFilc;
+      };
 
       virt = import ./virt.nix {
         inherit pkgs filcc;
@@ -98,6 +107,7 @@
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
       checks.${system} = {
+        baseline = baseline.baseline;
         openssl-sarcasm = import ./tests/openssl-sarcasm.nix {
           inherit pkgs filcc;
           openssl = pkgsFilc.openssl-sarcasm;
@@ -121,6 +131,8 @@
       };
 
       packages.${system} = {
+        baseline = baseline.baseline;
+        baseline-shell = baseline.shell;
         inherit filcc projeny sarcasm;
         inherit (sarcasm) minilute;
         inherit (pkgsFilc) openssl-sarcasm;
@@ -147,13 +159,27 @@
           sinatra-demo
           ;
 
+        push-baseline = pkgs.writeShellApplication {
+          name = "filc-push-baseline";
+          runtimeInputs = [
+            pkgs.nix
+            pkgs.cachix
+            pkgs.coreutils
+            (pkgs.writeScriptBin "filc-verify-cache" (
+              "#!${pkgs.python3}/bin/python3\n"
+              + builtins.readFile ./scripts/verify-cache.py
+            ))
+          ];
+          text = builtins.readFile ./scripts/push-baseline.sh;
+        };
+
         push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
-          cachix push filc ${filcc}
+          ${pkgs.cachix}/bin/cachix push filc ${filcc}
         '';
 
         push-pkg = pkgs.writeShellScriptBin "push-pkg" ''
           for pkg in "$@"; do
-            cachix push filc $(nix build .#"$pkg" --print-out-paths --no-link)
+            ${pkgs.cachix}/bin/cachix push filc $(${pkgs.nix}/bin/nix build .#"$pkg" --print-out-paths --no-link)
           done
         '';
 
@@ -168,6 +194,10 @@
       };
 
       apps.${system} = virt.apps // {
+        baseline = {
+          type = "app";
+          program = "${baseline.shell}/bin/filc-baseline-shell";
+        };
         openssl-sarcasm = {
           type = "app";
           program = "${pkgsFilc.openssl-sarcasm.bin}/bin/openssl";

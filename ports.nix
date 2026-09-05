@@ -45,6 +45,21 @@ in
 [
   # ━━━ Core Libraries ━━━
 
+  (for pkgs.mpfr [
+    (addCFlag "-DNO_ASM")
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        # Fil-C aborts and allocation-size traps terminate with SIGTRAP.
+        substituteInPlace tests/tests.c --replace-fail SIGABRT SIGTRAP
+      '';
+    }))
+  ])
+
+  (for pkgs.oniguruma [
+    # Hash keys and values carry pointers; ordinary longs lose capabilities.
+    (patch ./patches/oniguruma-pointer-data.patch)
+  ])
+
   (for pkgs.zlib [
     (pin "1.3" "sha256-/wukwpIBPbwnUws6geH5qBPNOd4Byl4Pi/NVcC76WT4=")
     (patch ./ports/patch/zlib-1.3.patch)
@@ -264,7 +279,15 @@ in
 
   {
     gmp = for pkgs.gmp [
-      (configure "gmp_cv_asm_underscore=yes")
+      # Upstream Fil-C disables this standalone assembly timing helper in
+      # generated configure; the port extractor deliberately omits that file.
+      (use (old: {
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace configure \
+            --replace-fail 'SPEED_CYCLECOUNTER_OBJ_64=x86_64.lo' 'SPEED_CYCLECOUNTER_OBJ_64=' \
+            --replace-fail 'cyclecounter_size_64=2' 'cyclecounter_size_64='
+        '';
+      }))
       (configure "--disable-assembly")
       (configure "--disable-fat")
     ];
