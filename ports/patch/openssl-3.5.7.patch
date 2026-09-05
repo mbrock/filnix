@@ -607,6 +607,27 @@ index 000000000000..c8d788b7c875
 +    zcheck(ivp, 16);
 +    zunsafe_buf_call(length, "vpaes_cbc_encrypt", in, out, length, key, ivp, enc);
 +}
+diff --git a/crypto/async/arch/async_posix.h b/crypto/async/arch/async_posix.h
+index 449ca27d222f..1315336364b1 100644
+--- a/crypto/async/arch/async_posix.h
++++ b/crypto/async/arch/async_posix.h
+@@ -26,7 +26,7 @@
+ #define ASYNC_POSIX
+ #define ASYNC_ARCH
+ 
+-#if defined(__CET__) || defined(__ia64__)
++#if defined(__CET__) || defined(__ia64__) || defined(__FILC__)
+ /*
+  * When Intel CET is enabled, makecontext will create a different
+  * shadow stack for each context.  async_fibre_swapcontext cannot
+@@ -34,6 +34,7 @@
+  * well as normal stack.
+  * On IA64 the register stack engine is not saved across setjmp/longjmp. Here
+  * swapcontext() performs correctly.
++ * In Fil-C, you cannot use longjmp in combination with makecontext.
+  */
+ #define USE_SWAPCONTEXT
+ #endif
 diff --git a/crypto/bn/bn_asm.c b/crypto/bn/bn_asm.c
 index 0a77f1b070e1..98d3fbd019b8 100644
 --- a/crypto/bn/bn_asm.c

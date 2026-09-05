@@ -116,8 +116,8 @@
     patches = [ ./patch/libevent-2.1.12.patch ];
   };
   libffi = {
-    version = "3.4.6";
-    patches = [ ./patch/libffi-3.4.6.patch ];
+    version = "3.8.0";
+    patches = [ ./patch/libffi-3.8.0.patch ];
   };
   libinput = {
     version = "1.29.1";

@@ -163,18 +163,9 @@ index 139e182eb1aa..c38a6fe6a15c 100644
 +	rm -f mksourceid
 +
 diff --git a/src/sqliteInt.h b/src/sqliteInt.h
-index 0d33f9ee2aa9..a0e4551e19de 100644
+index 0d33f9ee2aa9..e7ede45ee198 100644
 --- a/src/sqliteInt.h
 +++ b/src/sqliteInt.h
-@@ -230,7 +230,7 @@
- #ifndef __has_extension
- # define __has_extension(x) 0     /* compatibility with non-clang compilers */
- #endif
--#if GCC_VERSION>=4007000 || __has_extension(c_atomic)
-+#if (GCC_VERSION>=4007000 || __has_extension(c_atomic)) && !defined(__PIZLONATOR_WAS_HERE__)
- # define SQLITE_ATOMIC_INTRINSICS 1
- # define AtomicLoad(PTR)       __atomic_load_n((PTR),__ATOMIC_RELAXED)
- # define AtomicStore(PTR,VAL)  __atomic_store_n((PTR),(VAL),__ATOMIC_RELAXED)
 @@ -4766,6 +4766,8 @@ char *sqlite3VMPrintf(sqlite3*,const char*, va_list);
    void sqlite3DebugPrintf(const char*, ...);
  #endif
@@ -458,16 +449,3 @@ index 3cd1034d3f69..67d9562ce790 100644
    return orig_mremap(a, b, c, d, pArg);
  }
  
-diff --git a/tool/lemon.c b/tool/lemon.c
-index 06b9109a1dbf..457ec0c2fb23 100644
---- a/tool/lemon.c
-+++ b/tool/lemon.c
-@@ -1718,7 +1718,7 @@ int main(int argc, char **argv){
-   static int quiet = 0;
-   static int statistics = 0;
-   static int mhflag = 0;
--  static int nolinenosflag = 0;
-+  static int nolinenosflag = 1;
-   static int noResort = 0;
-   static int sqlFlag = 0;
-   static int printPP = 0;

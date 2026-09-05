@@ -272,6 +272,19 @@ index 5d423b1e2066..28d7d956ac36 100644
        g_value_set_param (gvalue, (gpointer)value->v_pointer);
        break;
    default:
+diff --git a/giscanner/ccompiler.py b/giscanner/ccompiler.py
+index d0ed70a3c4a1..ba40b14de547 100644
+--- a/giscanner/ccompiler.py
++++ b/giscanner/ccompiler.py
+@@ -82,7 +82,7 @@ def customize_compiler(compiler):
+         else:
+             archiver = ar + ' ' + ar_flags
+ 
+-        cc_cmd = cc + ' ' + cflags
++        cc_cmd = cc + ' ' + cflags + ' -g'
+         compiler.set_executables(
+             preprocessor=cpp,
+             compiler=cc_cmd,
 diff --git a/tests/gimarshallingtests.c b/tests/gimarshallingtests.c
 index c50988f1fbf8..7410c1617ab7 100644
 --- a/tests/gimarshallingtests.c

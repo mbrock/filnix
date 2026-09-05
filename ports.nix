@@ -89,30 +89,11 @@ in
   ])
 
   (for pkgs.libffi [
-    (pin "3.4.6" "sha256-sN6p3yPIY6elDoJUQPPr/6vWXfFJcQjl1Dd0eEOJWk4=")
-    (patch ./ports/patch/libffi-3.4.6.patch)
-    (skipCheck "incompatible with static trampolines")
-    (configure "--with-gcc-arch=native")
+    (pin "3.8.0" "sha256-faPi2aFx6woDj1kuytP/K7JVDzSW2Hs7Ka0M9EMMDbQ=")
+    (patch ./ports/patch/libffi-3.8.0.patch)
+    (tool pkgs.autoreconfHook)
     (configure "--disable-static")
     (configure "--disable-exec-static-tramp")
-    # Fix ffi_closure_alloc to return writable struct, not zclosure
-    # The zclosure is a "special object" that can't be written to as a struct
-    (use (old: {
-      postPatch = (old.postPatch or "") + ''
-                substituteInPlace src/closures.c \
-                  --replace-fail '#include <stdfil.h>' '#include <stdfil.h>
-        #include <stdlib.h>'
-      '';
-    }))
-    (astRewrite "src/closures.c" "c"
-      "void * ffi_closure_alloc(size_t size, void **code) { $$$BODY }"
-      "void * ffi_closure_alloc(size_t size, void **code) {
-  void *closure = malloc(size);
-  if (!closure) return NULL;
-  *code = zclosure_new(ffi_closure_callback, closure);
-  return closure;
-}"
-    )
   ])
 
   {
@@ -722,9 +703,10 @@ in
 
   {
     ruby_3_3 = (
-      for pkgs.ruby_3_3 [
-        (pin "3.3.10" "sha256-tVW6pGejBs/I5sbtJNDSeyfpob7R2R2VUJhZ6saw6Sg=")
+      for ./ports/ruby.nix [
         (patch ./ports/patch/ruby-3.3.10.patch)
+        # Upstream's Fil-C port uses pthread coroutines, not native assembly.
+        (configure "--with-coroutine=pthread")
         # Disable ractor shareability deep checking - requires rb_objspace_reachable_objects_from
         # which isn't implemented in Fil-C. Return false = conservatively assume not shareable.
         (astRewrite "ractor.c" "c"
@@ -749,18 +731,7 @@ in
 #endif
 }"
         )
-        (arg { yjitSupport = false; })
-        (arg { jitSupport = false; })
-        (arg {
-          cargo = null;
-          rustPlatform = null;
-          rustc = null;
-        })
-        (arg {
-          defaultGemConfig =
-            final.defaultGemConfig
-            // (import ./ports/rubyPorts-as-gemConfig.nix { inherit pkgs final; });
-        })
+
       ]
     );
   }

@@ -124,6 +124,22 @@ index 32291192aea2..862902444065 100644
  }
  
  guint
+diff --git a/gdk/wayland/gdkcairocontext-wayland.c b/gdk/wayland/gdkcairocontext-wayland.c
+index a07852654460..1970f23b0dde 100644
+--- a/gdk/wayland/gdkcairocontext-wayland.c
++++ b/gdk/wayland/gdkcairocontext-wayland.c
+@@ -98,7 +98,10 @@ gdk_wayland_cairo_context_buffer_release (void             *_data,
+ 
+   /* context was destroyed before compositor released this buffer */
+   if (self == NULL)
+-    return;
++    {
++      cairo_surface_destroy (cairo_surface);
++      return;
++    }
+ 
+   /* Cache one surface for reuse when drawing */
+   if (self->cached_surface == NULL)
 diff --git a/gdk/wayland/gdkdisplay-wayland.c b/gdk/wayland/gdkdisplay-wayland.c
 index bbe2e41f14e5..1a1cdf59d0de 100644
 --- a/gdk/wayland/gdkdisplay-wayland.c
@@ -278,6 +294,24 @@ index 0f767e93349b..2fbda35acdb3 100644
  }
  
  #endif
+diff --git a/gsk/gskcontour.c b/gsk/gskcontour.c
+index 948f846bc394..73974f6dd93f 100644
+--- a/gsk/gskcontour.c
++++ b/gsk/gskcontour.c
+@@ -1307,8 +1307,11 @@ gsk_standard_contour_init (GskContour             *contour,
+ 
+   offset += self->points - points;
+   for (gsize i = 0; i < n_ops; i++)
+-    self->ops[i] = gsk_pathop_encode (gsk_pathop_op (ops[i]),
+-                                      gsk_pathop_points (ops[i]) + offset);
++    {
++      gsize raw_point = (gsize) (gsk_pathop_points (ops[i]) + offset);
++      self->ops[i] = gsk_pathop_encode (gsk_pathop_op (ops[i]),
++                                        zmkptr (self->points, raw_point));
++    }
+ 
+   gsk_bounding_box_init (&self->bounds,  &self->points[0], &self->points[0]);
+   for (gsize i = 1; i < self->n_points; i ++)
 diff --git a/gsk/gskenumtypes.c.template b/gsk/gskenumtypes.c.template
 index ae1d0de50192..b09cd2369bd9 100644
 --- a/gsk/gskenumtypes.c.template
@@ -307,6 +341,35 @@ index ae1d0de50192..b09cd2369bd9 100644
  }
  
  /*** END value-tail ***/
+diff --git a/gsk/gskpathopprivate.h b/gsk/gskpathopprivate.h
+index db1801c2fa68..6370bcd5d87a 100644
+--- a/gsk/gskpathopprivate.h
++++ b/gsk/gskpathopprivate.h
+@@ -23,6 +23,8 @@
+ #include "gskpath.h"
+ #include "gskpathbuilder.h"
+ 
++#include <stdfil.h>
++
+ G_BEGIN_DECLS
+ 
+ typedef gpointer gskpathop;
+@@ -66,13 +68,13 @@ gsk_pathop_encode (GskPathOperation        op,
+   /* g_assert (op & GSK_PATHOP_OPERATION_MASK == op); */
+   g_assert ((GPOINTER_TO_SIZE (pts) & GSK_PATHOP_OPERATION_MASK) == 0);
+ 
+-  return GSIZE_TO_POINTER (GPOINTER_TO_SIZE (pts) | op);
++  return zorptr (pts, op);
+ }
+ 
+ static inline const graphene_point_t *
+ gsk_pathop_points (gskpathop pop)
+ {
+-  return GSIZE_TO_POINTER (GPOINTER_TO_SIZE (pop) & ~GSK_PATHOP_OPERATION_MASK);
++  return zandptr (pop, ~GSK_PATHOP_OPERATION_MASK);
+ }
+ 
+ static inline
 diff --git a/gsk/gskrenderer.c b/gsk/gskrenderer.c
 index 0db034ee7dad..0edce759cb0e 100644
 --- a/gsk/gskrenderer.c

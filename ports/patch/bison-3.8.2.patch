@@ -1,5 +1,67 @@
+diff --git a/lib/obstack.c b/lib/obstack.c
+index 3017b585b432..3f5a884ba8e5 100644
+--- a/lib/obstack.c
++++ b/lib/obstack.c
+@@ -112,26 +112,12 @@ _obstack_begin_worker (struct obstack *h,
+ 
+   if (alignment == 0)
+     alignment = DEFAULT_ALIGNMENT;
+-  if (size == 0)
+-    /* Default size is what GNU malloc can fit in a 4096-byte block.  */
+-    {
+-      /* 12 is sizeof (mhead) and 4 is EXTRA from GNU malloc.
+-         Use the values for range checking, because if range checking is off,
+-         the extra bytes won't be missed terribly, but if range checking is on
+-         and we used a larger request, a whole extra 4096 bytes would be
+-         allocated.
+-
+-         These number are irrelevant to the new GNU malloc.  I suspect it is
+-         less sensitive to the size of the request.  */
+-      int extra = ((((12 + DEFAULT_ROUNDING - 1) & ~(DEFAULT_ROUNDING - 1))
+-                    + 4 + DEFAULT_ROUNDING - 1)
+-                   & ~(DEFAULT_ROUNDING - 1));
+-      size = 4096 - extra;
+-    }
+ 
+-  h->chunk_size = size;
+   h->alignment_mask = alignment - 1;
+ 
++  size = sizeof (struct _obstack_chunk) + h->alignment_mask;
++  h->chunk_size = size;
++
+   chunk = h->chunk = call_chunkfun (h, h->chunk_size);
+   if (!chunk)
+     (*obstack_alloc_failed_handler) ();
+@@ -186,19 +172,19 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_SIZE_T length)
+   char *object_base;
+ 
+   /* Compute size for new chunk.  */
+-  size_t sum1 = obj_size + length;
+-  size_t sum2 = sum1 + h->alignment_mask;
+-  size_t new_size = sum2 + (obj_size >> 3) + 100;
+-  if (new_size < sum2)
+-    new_size = sum2;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  size_t new_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  if (obj_size <= sum1 && sum1 <= sum2)
++  if (new_size >= length && new_size >= obj_size)
+     new_chunk = call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
++
+   h->chunk = new_chunk;
+   new_chunk->prev = old_chunk;
+   new_chunk->limit = h->chunk_limit = (char *) new_chunk + new_size;
 diff --git a/lib/obstack.h b/lib/obstack.h
-index 92aa49fec9b1..35b04d170d3c 100644
+index 92aa49fec9b1..7107a07d326e 100644
 --- a/lib/obstack.h
 +++ b/lib/obstack.h
 @@ -109,6 +109,8 @@
@@ -23,3 +85,23 @@ index 92aa49fec9b1..35b04d170d3c 100644
  
  /* Similar to __BPTR_ALIGN (B, P, A), except optimize the common case
     where pointers can be converted to integers, aligned as integers,
+@@ -387,8 +392,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_SIZE_T __len = (length);				      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len); })
+ 
+ # define obstack_alloc(OBSTACK, length)					      \
+@@ -503,8 +507,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.i = (length),						      \
+-   ((obstack_room (h) < (h)->temp.i)					      \
+-   ? (_obstack_newchunk ((h), (h)->temp.i), 0) : 0),			      \
++   _obstack_newchunk ((h), (h)->temp.i),			      \
+    obstack_blank_fast (h, (h)->temp.i))
+ 
+ # define obstack_alloc(h, length)					      \

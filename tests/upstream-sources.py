@@ -42,9 +42,87 @@ class UpstreamTests(unittest.TestCase):
         for directory in ("lib", "scripts", "ports"):
             (self.filnix / directory).mkdir(parents=True)
         for name in ("lib/filc-upstream.json", "lib/filc-hashes.json", "lib/sources.nix",
-                     "scripts/update-filc-source-hashes.py", "ports/extract-patch.sh",
-                     "ports/upstream.json", "ports/Makefile"):
+                     "scripts/update-filc-source-hashes.py", "scripts/update-ports-pin.py", "ports/extract-patch.sh",
+                     "ports/upstream.json", "ports/Makefile", "ports/extract-projeny.py"):
             shutil.copy2(ROOT / name, self.filnix / name)
+
+    def test_ports_pin(self):
+        write(self.repo / "projects/projeny/Makefile", "all:\n\ttrue\n")
+        first = self.commit()
+        script = self.filnix / "scripts/update-ports-pin.py"
+        pin = self.filnix / "ports/upstream.json"
+        def update(rev):
+            return run("python3", str(script), "--repo", str(self.repo), "--rev", rev, check=False)
+        self.assertEqual(update(first).returncode, 0)
+        before = json.loads(pin.read_text())
+        write(self.repo / "projects/other/source.c", "unrelated port\n")
+        second = self.commit()
+        self.assertEqual(update(second).returncode, 0)
+        after = json.loads(pin.read_text())
+        self.assertEqual(before["projenyHash"], after["projenyHash"])
+        self.assertEqual(after["portsRev"], second)
+        write(self.repo / "projects/projeny/Makefile", "all:\n\tfalse\n")
+        third = self.commit()
+        self.assertEqual(update(third).returncode, 0)
+        self.assertNotEqual(after["projenyHash"], json.loads(pin.read_text())["projenyHash"])
+        expected = pin.read_bytes()
+        self.assertNotEqual(update("not-a-revision").returncode, 0)
+        self.assertEqual(pin.read_bytes(), expected)
+        shutil.rmtree(self.repo / "projects/projeny")
+        self.assertNotEqual(update(self.commit()).returncode, 0)
+        self.assertEqual(pin.read_bytes(), expected)
+
+    @unittest.skipUnless(shutil.which(os.environ.get("PROJENY", "projeny")), "requires packaged Projeny")
+    def test_projeny_import(self):
+        projeny = shutil.which(os.environ.get("PROJENY", "projeny"))
+        projects = self.repo / "projects"
+        original = projects / "example-1.0"
+        write(original / "source.c", "original\n")
+        write(original / "configure", "generated original\n")
+        write(original / "removed.c", "remove me\n")
+        run("tar", "czf", "example-1.0.tar.gz", "example-1.0", cwd=projects)
+        shutil.rmtree(original)
+        descriptor = projects / "example.projeny"
+        write(descriptor, "Archive: example-1.0.tar.gz\nOrigname: example-1.0\nName: example\n\n")
+        run(projeny, "setup", str(descriptor))
+        work = projects / "example"
+        write(work / "source.c", "ported\n")
+        write(work / "configure", "generated ported\n")
+        write(work / "added.c", "new source\n")
+        run(projeny, "add", str(descriptor), str(work / "added.c"))
+        run(projeny, "rm", str(descriptor), str(work / "removed.c"))
+        run(projeny, "commit", str(descriptor))
+        shutil.rmtree(work)
+        revision = self.commit()
+        output = self.base / "patches"
+        extractor = self.filnix / "ports/extract-patch.sh"
+        def extract(rev):
+            return run(str(extractor), "example.projeny", str(self.repo), str(output), rev, check=False)
+        self.assertEqual(extract(revision).returncode, 0)
+        patch = output / "example-1.0.patch"
+        expected = patch.read_bytes()
+        self.assertNotIn(b"generated", expected)
+        run("tar", "xf", "example-1.0.tar.gz", cwd=projects)
+        run("patch", "-p1", "-i", str(patch), cwd=original)
+        self.assertEqual((original / "source.c").read_text(), "ported\n")
+        self.assertTrue((original / "added.c").exists())
+        self.assertFalse((original / "removed.c").exists())
+        self.assertEqual((original / "configure").read_text(), "generated original\n")
+        descriptor.write_text("dirty descriptor must not participate\n")
+        self.assertEqual(extract(revision).returncode, 0)
+        self.assertEqual(patch.read_bytes(), expected)
+        self.assertNotEqual(extract("invalid-revision").returncode, 0)
+        self.assertEqual(patch.read_bytes(), expected)
+        self.git("checkout", revision, "--", "projects/example.projeny")
+        run(projeny, "setup", str(descriptor))
+        (work / "binary.dat").write_bytes(b"\x00\x01binary")
+        run(projeny, "add", str(descriptor), str(work / "binary.dat"))
+        run(projeny, "commit", str(descriptor))
+        binary_revision = self.commit()
+        result = extract(binary_revision)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Binary changes", result.stderr)
+        self.assertEqual(patch.read_bytes(), expected)
 
     def git(self, *args):
         return run("git", "-C", str(self.repo), *args).stdout.strip()

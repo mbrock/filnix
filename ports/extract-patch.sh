@@ -19,6 +19,10 @@ fi
 
 # Skip glibc projects and projects with no actual code changes
 case "$PROJECT" in
+    projeny|minilute|sarcasm)
+        echo "$PROJECT: Skipping (Fil-C tool, not a port of an upstream release)"
+        exit 0
+        ;;
     yolo-glibc-*|user-glibc-*|yolomusl|usermusl)
         echo "$PROJECT: Skipping (glibc project, built from fil-c source)"
         exit 0
@@ -45,6 +49,10 @@ project_dir="projects/$PROJECT/"
 
 # Resolve once: neither another branch nor an uncommitted file may affect a patch.
 last_commit=$(git rev-parse --verify "$REV^{commit}")
+if [[ "$PROJECT" == *.projeny ]]; then
+    echo "$PROJECT: materializing Projeny port at $last_commit"
+    exec python3 "$SCRIPT_DIR/extract-projeny.py" "$PROJECT" "$REPO_DIR" "$OUTPUT_DIR" "$last_commit"
+fi
 if [[ "$(git cat-file -t "$last_commit:${project_dir%/}" 2>/dev/null || true)" != tree ]]; then
     echo "Error: Project $PROJECT not found at $last_commit" >&2
     exit 1

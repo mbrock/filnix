@@ -5,7 +5,7 @@ let
   # Use final.defaultGemConfig to get Fil-C dependencies (like final.libffi)
   baseGemConfig = final.defaultGemConfig;
 
-  portList = (import ../rubyports.nix { inherit pkgs final; }).ports;
+  portList = import ../rubyports.nix { inherit pkgs final; };
 
   portSpecs = builtins.listToAttrs (
     lib.flatten (

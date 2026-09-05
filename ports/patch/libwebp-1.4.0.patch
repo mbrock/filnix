@@ -1,19 +1,20 @@
 diff --git a/src/dsp/cpu.c b/src/dsp/cpu.c
-index 8ba8f683357b..bf7e63417bc4 100644
+index 8ba8f683357b..bf2b541f7785 100644
 --- a/src/dsp/cpu.c
 +++ b/src/dsp/cpu.c
-@@ -22,6 +22,10 @@
+@@ -22,6 +22,11 @@
  #include <cpu-features.h>
  #endif
  
-+#ifdef __FILC__
++// cpuid.h only exists for x86 in Fil-C.
++#if defined(__FILC__) && (defined(__i386__) || defined(__x86_64__))
 +#include <cpuid.h>
 +#endif
 +
  //------------------------------------------------------------------------------
  // SSE2 detection.
  //
-@@ -38,10 +42,14 @@ static WEBP_INLINE void GetCPUInfo(int cpu_info[4], int info_type) {
+@@ -38,10 +43,14 @@ static WEBP_INLINE void GetCPUInfo(int cpu_info[4], int info_type) {
  }
  #elif defined(__i386__) || defined(__x86_64__)
  static WEBP_INLINE void GetCPUInfo(int cpu_info[4], int info_type) {

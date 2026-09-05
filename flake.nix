@@ -18,6 +18,7 @@
       pkgs = import nixpkgs { inherit system; };
 
       filcc = import ./toolchain.nix { inherit pkgs; };
+      projeny = pkgs.callPackage ./packages/projeny.nix { };
       runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
       pkgsFilc = import nixpkgs {
@@ -95,8 +96,15 @@
     {
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
-      checks.${system}.libtool-symbols = import ./tests/libtool-symbols.nix {
-        inherit pkgs filcc;
+      checks.${system} = {
+        libtool-symbols = import ./tests/libtool-symbols.nix {
+          inherit pkgs filcc;
+        };
+        inherit projeny;
+        libffi = import ./tests/libffi.nix {
+          inherit pkgs filcc;
+          inherit (pkgsFilc) libffi;
+        };
       };
 
       overlays.default = import ./ports/overlay.nix pkgs;
@@ -107,7 +115,7 @@
       };
 
       packages.${system} = {
-        inherit filcc;
+        inherit filcc projeny;
         inherit
           libei
           libei_24
@@ -174,6 +182,9 @@
             treefmt
             nixd
             nil
+
+            projeny
+            python3
 
             # General development tools
             git

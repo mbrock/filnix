@@ -14,3 +14,34 @@ index ed34c4a919d2..0368d2b4b2a0 100644
          endif()
        endif()
      endif()
+diff --git a/Source/CTest/cmCTestCurl.h b/Source/CTest/cmCTestCurl.h
+index 7836f4b9c78a..441953883f46 100644
+--- a/Source/CTest/cmCTestCurl.h
++++ b/Source/CTest/cmCTestCurl.h
+@@ -52,7 +52,9 @@ private:
+   std::vector<std::string> HttpHeaders;
+   std::string HTTPProxyAuth;
+   std::string HTTPProxy;
+-  curl_proxytype HTTPProxyType;
++  // Fil-C: curl 8.16+ defines CURLPROXY_* as long macros rather than enum
++  // constants, so keep this as a long (this is what upstream cmake does too).
++  long HTTPProxyType;
+   bool UseHttp10 = false;
+   bool Quiet = false;
+   int TimeOutSeconds = 0;
+diff --git a/Source/cmCurl.cxx b/Source/cmCurl.cxx
+index 65fccd035059..060326c59eab 100644
+--- a/Source/cmCurl.cxx
++++ b/Source/cmCurl.cxx
+@@ -161,7 +161,10 @@ std::string cmCurlSetNETRCOption(::CURL* curl, const std::string& netrc_level,
+                                  const std::string& netrc_file)
+ {
+   std::string e;
+-  CURL_NETRC_OPTION curl_netrc_level = CURL_NETRC_LAST;
++  // Fil-C: curl 8.16+ defines CURL_NETRC_* as long macros rather than enum
++  // constants, so keep the level in a long (this is what upstream cmake does
++  // too).
++  long curl_netrc_level = CURL_NETRC_LAST;
+   ::CURLcode res;
+ 
+   if (!netrc_level.empty()) {

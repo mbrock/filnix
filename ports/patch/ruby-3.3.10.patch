@@ -2238,10 +2238,10 @@ index a8475e3e6090..1ee6830b232f 100644
  
  /*
 diff --git a/gc.c b/gc.c
-index 0346812f42bb..6959f9725c42 100644
+index 0346812f42bb..7dedc93898f0 100644
 --- a/gc.c
 +++ b/gc.c
-@@ -338,6 +338,2074 @@ size_mul_add_mul_or_raise(size_t x, size_t y, size_t z, size_t w, VALUE exc)
+@@ -338,6 +338,2105 @@ size_mul_add_mul_or_raise(size_t x, size_t y, size_t z, size_t w, VALUE exc)
      }
  }
  
@@ -2416,9 +2416,23 @@ index 0346812f42bb..6959f9725c42 100644
 +
 +#define RANY(o) ((RVALUE*)(o))
 +
++struct finalizer_payload {
++    VALUE table;
++    struct finalizer_payload* prev;
++    struct finalizer_payload* next;
++};
++
++struct finalizer_box {
++    VALUE object;
++    struct finalizer_payload* payload;
++    bool is_file;
++};
++
 +struct rb_objspace {
 +    zweak_map *finalizer_table;
 +    zgc_finq *finalizer_queue;
++    struct finalizer_payload head;
++    struct finalizer_payload tail;
 +    rb_postponed_job_handle_t finalize_deferred_pjob;
 +    rb_atomic_t finalizing;
 +    zgc_cycle_number completed_cycle;
@@ -2433,6 +2447,8 @@ index 0346812f42bb..6959f9725c42 100644
 +    struct rb_objspace *result = malloc(sizeof(struct rb_objspace));
 +    result->finalizer_table = zweak_map_new();
 +    result->finalizer_queue = zgc_finq_new();
++    result->head.next = &result->tail;
++    result->tail.prev = &result->head;
 +    result->finalize_deferred_pjob = rb_postponed_job_preregister(0, gc_finalize_deferred, result);
 +    if (result->finalize_deferred_pjob == POSTPONED_JOB_HANDLE_INVALID) {
 +        rb_bug("Could not preregister postponed job for GC");
@@ -2464,12 +2480,6 @@ index 0346812f42bb..6959f9725c42 100644
 +{
 +    return size <= rb_size_pool_slot_size(SIZE_POOL_COUNT - 1);
 +}
-+
-+struct finalizer_box {
-+    VALUE object;
-+    VALUE table;
-+    bool is_file;
-+};
 +
 +static inline VALUE newobj(VALUE klass, uintptr_t flags, VALUE v1, VALUE v2, VALUE v3, size_t size)
 +{
@@ -2898,26 +2908,31 @@ index 0346812f42bb..6959f9725c42 100644
 +
 +    box = zweak_map_get(objspace->finalizer_table, obj);
 +    if (!box) {
-+        struct finalizer_box* box = zgc_finq_alloc(objspace->finalizer_queue,
-+                                                   sizeof(struct finalizer_box));
++        box = zgc_finq_alloc(objspace->finalizer_queue,
++                             sizeof(struct finalizer_box));
 +        box->object = obj;
 +        zweak_map_set(objspace->finalizer_table, obj, box);
 +    }
 +
-+    if (box->table) {
-+        long len = RARRAY_LEN(box->table);
++    if (box->payload) {
++        long len = RARRAY_LEN(box->payload->table);
 +        long i;
 +        for (i = 0; i < len; i++) {
-+            VALUE recv = RARRAY_AREF(box->table, i);
++            VALUE recv = RARRAY_AREF(box->payload->table, i);
 +            if (rb_equal(recv, block)) {
 +                block = recv;
 +                goto end;
 +            }
 +        }
-+        rb_ary_push(box->table, block);
++        rb_ary_push(box->payload->table, block);
 +    } else {
-+        box->table = rb_ary_new3(1, block);
-+        RBASIC_CLEAR_CLASS(box->table);
++        box->payload = malloc(sizeof(struct finalizer_payload));
++        box->payload->prev = &objspace->head;
++        box->payload->next = objspace->head.next;
++        objspace->head.next->prev = box->payload;
++        objspace->head.next = box->payload;
++        box->payload->table = rb_ary_new3(1, block);
++        RBASIC_CLEAR_CLASS(box->payload->table);
 +    }
 +  end:
 +    block = rb_ary_new3(2, INT2FIX(0), block);
@@ -2966,7 +2981,7 @@ index 0346812f42bb..6959f9725c42 100644
 +        struct finalizer_box *new_box = zgc_finq_alloc(objspace->finalizer_queue,
 +                                                       sizeof(struct finalizer_box));
 +        new_box->object = dest;
-+        new_box->table = box->table;
++        new_box->payload = box->payload;
 +        zweak_map_set(objspace->finalizer_table, dest, new_box);
 +    }
 +
@@ -2979,6 +2994,17 @@ index 0346812f42bb..6959f9725c42 100644
 +}
 +
 +static void
++finalize_box_payload(struct finalizer_box* box)
++{
++    if (box->payload && box->payload->table) {
++        run_finalizer(box->object, box->payload->table);
++        box->payload->next->prev = box->payload->prev;
++        box->payload->prev->next = box->payload->next;
++        box->payload->table = NULL;
++    }
++}
++
++static void
 +finalize_box(struct finalizer_box* box, bool expect_valid)
 +{
 +    if (expect_valid) {
@@ -2988,14 +3014,12 @@ index 0346812f42bb..6959f9725c42 100644
 +            return;
 +        }
 +    }
-+    if (box->table) {
-+        run_finalizer(box->object, box->table);
-+    }
++    finalize_box_payload(box);
 +    if (box->is_file) {
 +        rb_io_fptr_finalize_internal(RANY(box->object)->as.file.fptr);
 +    }
 +    box->object = NULL;
-+    box->table = NULL;
++    box->payload = NULL;
 +    box->is_file = false;
 +}
 +
@@ -3021,9 +3045,16 @@ index 0346812f42bb..6959f9725c42 100644
 +rb_objspace_call_finalizer(struct rb_objspace *objspace)
 +{
 +    if (ATOMIC_EXCHANGE(objspace->finalizing, 1)) return;
++
 +    finalize_deferred(objspace, true);
 +
++    /* Make sure all user finalizers get called first. */
 +    zweak_map_iter *iter = zweak_map_get_iter(objspace->finalizer_table);
++    while (zweak_map_iter_next(iter)) {
++        finalize_box_payload(zweak_map_iter_value(iter));
++    }
++
++    iter = zweak_map_get_iter(objspace->finalizer_table);
 +    while (zweak_map_iter_next(iter)) {
 +        finalize_box(zweak_map_iter_value(iter), false);
 +    }
@@ -4316,7 +4347,7 @@ index 0346812f42bb..6959f9725c42 100644
  #if defined(HAVE_RB_GC_GUARDED_PTR_VAL) && HAVE_RB_GC_GUARDED_PTR_VAL
  /* trick the compiler into thinking a external signal handler uses this */
  volatile VALUE rb_gc_guarded_val;
-@@ -963,7 +3031,6 @@ typedef struct rb_objspace {
+@@ -963,7 +3062,6 @@ typedef struct rb_objspace {
  
  #define BASE_SLOT_SIZE sizeof(RVALUE)
  
@@ -4324,7 +4355,7 @@ index 0346812f42bb..6959f9725c42 100644
  enum {
      HEAP_PAGE_ALIGN = (1UL << HEAP_PAGE_ALIGN_LOG),
      HEAP_PAGE_ALIGN_MASK = (~(~0UL << HEAP_PAGE_ALIGN_LOG)),
-@@ -1334,13 +3401,9 @@ struct RZombie {
+@@ -1334,13 +3432,9 @@ struct RZombie {
  
  #define RZOMBIE(o) ((struct RZombie *)(o))
  
@@ -4338,7 +4369,7 @@ index 0346812f42bb..6959f9725c42 100644
  int ruby_enable_autocompact = 0;
  #if RGENGC_CHECK_MODE
  gc_compact_compare_func ruby_autocompact_compare_func;
-@@ -1348,13 +3411,10 @@ gc_compact_compare_func ruby_autocompact_compare_func;
+@@ -1348,13 +3442,10 @@ gc_compact_compare_func ruby_autocompact_compare_func;
  
  void rb_iseq_mark_and_move(rb_iseq_t *iseq, bool referece_updating);
  void rb_iseq_free(const rb_iseq_t *iseq);
@@ -4352,7 +4383,7 @@ index 0346812f42bb..6959f9725c42 100644
  NORETURN(static void negative_size_allocation_error(const char *));
  
  static void init_mark_stack(mark_stack_t *stack);
-@@ -1429,8 +3489,6 @@ PRINTF_ARGS(static void gc_report_body(int level, rb_objspace_t *objspace, const
+@@ -1429,8 +3520,6 @@ PRINTF_ARGS(static void gc_report_body(int level, rb_objspace_t *objspace, const
  static const char *obj_info(VALUE obj);
  static const char *obj_type_name(VALUE obj);
  
@@ -4361,7 +4392,7 @@ index 0346812f42bb..6959f9725c42 100644
  /*
   * 1 - TSC (H/W Time Stamp Counter)
   * 2 - getrusage
-@@ -2577,7 +4635,7 @@ gc_event_hook_body(rb_execution_context_t *ec, rb_objspace_t *objspace, const rb
+@@ -2577,7 +4666,7 @@ gc_event_hook_body(rb_execution_context_t *ec, rb_objspace_t *objspace, const rb
  #define gc_event_hook(objspace, event, data) gc_event_hook_prep(objspace, event, data, (void)0)
  
  static inline VALUE
@@ -4370,7 +4401,7 @@ index 0346812f42bb..6959f9725c42 100644
  {
  #if !__has_feature(memory_sanitizer)
      GC_ASSERT(BUILTIN_TYPE(obj) == T_NONE);
-@@ -2850,10 +4908,10 @@ newobj_zero_slot(VALUE obj)
+@@ -2850,10 +4939,10 @@ newobj_zero_slot(VALUE obj)
      memset((char *)obj + sizeof(struct RBasic), 0, rb_gc_obj_slot_size(obj) - sizeof(struct RBasic));
  }
  
@@ -4383,7 +4414,7 @@ index 0346812f42bb..6959f9725c42 100644
  {
      VALUE obj;
      unsigned int lev;
-@@ -2884,25 +4942,25 @@ newobj_slowpath(VALUE klass, VALUE flags, rb_objspace_t *objspace, rb_ractor_t *
+@@ -2884,25 +4973,25 @@ newobj_slowpath(VALUE klass, VALUE flags, rb_objspace_t *objspace, rb_ractor_t *
      return obj;
  }
  
@@ -4414,7 +4445,7 @@ index 0346812f42bb..6959f9725c42 100644
  {
      VALUE obj;
      rb_objspace_t *objspace = &rb_objspace;
-@@ -2942,21 +5000,21 @@ newobj_of0(VALUE klass, VALUE flags, int wb_protected, rb_ractor_t *cr, size_t a
+@@ -2942,21 +5031,21 @@ newobj_of0(VALUE klass, VALUE flags, int wb_protected, rb_ractor_t *cr, size_t a
  }
  
  static inline VALUE
@@ -4439,7 +4470,7 @@ index 0346812f42bb..6959f9725c42 100644
  {
      GC_ASSERT((flags & FL_WB_PROTECTED) == 0);
      return newobj_of(rb_ec_ractor_ptr(ec), klass, flags, 0, 0, 0, TRUE, size);
-@@ -2971,7 +5029,7 @@ rb_newobj(void)
+@@ -2971,7 +5060,7 @@ rb_newobj(void)
  }
  
  static VALUE
@@ -4448,7 +4479,7 @@ index 0346812f42bb..6959f9725c42 100644
  {
      GC_ASSERT((flags & RUBY_T_MASK) == T_OBJECT);
      GC_ASSERT(flags & ROBJECT_EMBED);
-@@ -3003,7 +5061,7 @@ rb_class_instance_allocate_internal(VALUE klass, VALUE flags, bool wb_protected)
+@@ -3003,7 +5092,7 @@ rb_class_instance_allocate_internal(VALUE klass, VALUE flags, bool wb_protected)
  }
  
  VALUE
@@ -4457,7 +4488,7 @@ index 0346812f42bb..6959f9725c42 100644
  {
      if ((flags & RUBY_T_MASK) == T_OBJECT) {
          return rb_class_instance_allocate_internal(klass, (flags | ROBJECT_EMBED) & ~FL_WB_PROTECTED, flags & FL_WB_PROTECTED);
-@@ -3013,10 +5071,6 @@ rb_newobj_of(VALUE klass, VALUE flags)
+@@ -3013,10 +5102,6 @@ rb_newobj_of(VALUE klass, VALUE flags)
      }
  }
  
@@ -4468,7 +4499,7 @@ index 0346812f42bb..6959f9725c42 100644
  const char *
  rb_imemo_name(enum imemo_type type)
  {
-@@ -3048,7 +5102,7 @@ VALUE
+@@ -3048,7 +5133,7 @@ VALUE
  rb_imemo_new(enum imemo_type type, VALUE v1, VALUE v2, VALUE v3, VALUE v0)
  {
      size_t size = RVALUE_SIZE;
@@ -4477,7 +4508,7 @@ index 0346812f42bb..6959f9725c42 100644
      return newobj_of(GET_RACTOR(), v0, flags, v1, v2, v3, TRUE, size);
  }
  
-@@ -3056,7 +5110,7 @@ static VALUE
+@@ -3056,7 +5141,7 @@ static VALUE
  rb_imemo_tmpbuf_new(VALUE v1, VALUE v2, VALUE v3, VALUE v0)
  {
      size_t size = sizeof(struct rb_imemo_tmpbuf_struct);
@@ -4486,7 +4517,7 @@ index 0346812f42bb..6959f9725c42 100644
      return newobj_of(GET_RACTOR(), v0, flags, v1, v2, v3, FALSE, size);
  }
  
-@@ -3895,7 +5949,6 @@ Init_gc_stress(void)
+@@ -3895,7 +5980,6 @@ Init_gc_stress(void)
      gc_stress_set(objspace, ruby_initial_gc_stress);
  }
  
@@ -4494,7 +4525,7 @@ index 0346812f42bb..6959f9725c42 100644
  typedef int each_page_callback(struct heap_page *, void *);
  
  static void objspace_each_objects(rb_objspace_t *objspace, each_obj_callback *callback, void *data, bool protected);
-@@ -4404,64 +6457,6 @@ rb_gc_copy_finalizer(VALUE dest, VALUE obj)
+@@ -4404,64 +6488,6 @@ rb_gc_copy_finalizer(VALUE dest, VALUE obj)
      FL_SET(dest, FL_FINALIZE);
  }
  
@@ -4559,7 +4590,7 @@ index 0346812f42bb..6959f9725c42 100644
  static void
  run_final(rb_objspace_t *objspace, VALUE zombie)
  {
-@@ -4473,7 +6468,7 @@ run_final(rb_objspace_t *objspace, VALUE zombie)
+@@ -4473,7 +6499,7 @@ run_final(rb_objspace_t *objspace, VALUE zombie)
  
      key = (st_data_t)zombie;
      if (st_delete(finalizer_table, &key, &table)) {
@@ -4568,7 +4599,7 @@ index 0346812f42bb..6959f9725c42 100644
      }
  }
  
-@@ -12215,47 +14210,6 @@ objspace_reachable_objects_from_root(rb_objspace_t *objspace, void (func)(const
+@@ -12215,47 +14241,6 @@ objspace_reachable_objects_from_root(rb_objspace_t *objspace, void (func)(const
    ------------------------ Extended allocator ------------------------
  */
  
@@ -4616,7 +4647,7 @@ index 0346812f42bb..6959f9725c42 100644
  static void objspace_xfree(rb_objspace_t *objspace, void *ptr, size_t size);
  
  static void
-@@ -14403,6 +16357,8 @@ Init_GC(void)
+@@ -14403,6 +16388,8 @@ Init_GC(void)
      }
  }
  
