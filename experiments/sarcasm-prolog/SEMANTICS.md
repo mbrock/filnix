@@ -213,6 +213,23 @@ The C helper may compute deterministic bits for undefined flags, but those
 bits never enter the usable flag state. Flags are internal values; their
 physical machine-register state is not promised across the function ABI.
 
+After graph and access validation, `conditions.pl` may replace one of the
+first five pairs of conditions above with a direct comparison if every
+referenced flag has the same local CMP producer. The proof names that
+producer; the validator independently matches the original formula to the
+comparison's signedness, relation, width and captured operands. It also
+requires unchanged entry, blocks, operations and outgoing edges. Merely
+finding a nearby CMP is insufficient. A later MOV does not change the
+captured operands; a later ADD replaces the relevant flag identities.
+Block-parameter flags and mixed producers retain the original formula.
+
+Unsigned comparisons use width-specific casts. Signed ordering uses the
+equivalent unsigned ordering after toggling both operands' sign bit, avoiding
+out-of-range signed casts and signed overflow. Equality uses unsigned bits.
+The rewrite introduces no memory accesses or offset calculations and removes
+no protection. `--no-simplify-conditions` retains the original flag formula
+as a selectable reference; it is independent of `--no-coalesce`.
+
 ## Blocks, joins and edges
 
 Labels and terminators form explicit blocks. Adjacent labels alias one

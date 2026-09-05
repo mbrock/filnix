@@ -112,3 +112,13 @@ wrapper's `-O2 -fno-addrsig` lowering. The Nix check retains `decoder.c`,
 These findings guide milestones 5–6: distinguish a source proof from actual
 machine-check elimination, inspect existing compiler reuse, and investigate
 condition lowering and register pressure before considering a direct backend.
+
+## Condition simplification
+
+The optional value pass now derives direct comparisons from a single
+recorded local CMP producer. The normal decoder emits one comparison against
+63, replacing the earlier comparisons against 62 and 63. Its stack reservation
+remains 152 bytes, and the node walk remains at 40 bytes. This is a concrete
+code-quality improvement, not yet a measured speedup. The old output is
+reproducible with `--no-simplify-conditions`; the Nix check retains both
+assemblies and tests both condition modes with grouping on and off.

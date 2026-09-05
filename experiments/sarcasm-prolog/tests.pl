@@ -15,6 +15,8 @@
 :- use_module('cfg-tests.pl', []).
 :- use_module('dataflow-tests.pl', []).
 :- use_module('check-tests.pl', []).
+:- use_module('conditions.pl', []).
+:- use_module('condition-tests.pl', []).
 :- use_module('parser.pl').
 :- use_module('ir.pl').
 :- use_module('x86_64.pl').
@@ -34,6 +36,7 @@ tests :-
     sp_cfg_tests:tests,
     sp_dataflow_tests:tests,
     sp_check_tests:tests,
+    sp_condition_tests:tests,
     parse_chars("f: #! unsigned long(ptr)\nmovq $0x10+2*3, %rax; ret # a comment\n",S),
     lower(S,[function(f,[ptr],[assign(v(0),64,literal(22),2),return(view(v(0),64))])]),
     parse_chars(".section .note.GNU-stack,\"\",@progbits\n",[_]),

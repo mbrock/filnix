@@ -74,4 +74,6 @@ add("adjacent label aliases and explicit fallthrough", [
 
 check_programs(programs, translator, filcc, native_cc, assembler, variants=[
     ("grouped", []), ("separate", ["--no-coalesce"]),
+    ("flags", ["--no-simplify-conditions"]),
+    ("flags-separate", ["--no-simplify-conditions", "--no-coalesce"]),
 ])

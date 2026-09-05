@@ -21,7 +21,8 @@ copies, `leaq`, integer stores and annotated pointer loads/stores. Milestone
 Milestone 4 is complete: a finite analysis for backedges and a bounded table
 decoder with loop-carried pointers. Milestone 5 adds independently validated,
 advisory protection certificates and measures existing compiler reuse.
-Milestones 6–7 remain planned. Follow
+Milestone 6 retains the compiler-backed backend after a validated condition
+improvement. Milestone 7 remains planned. Follow
 them in order; keep each extension small enough
 to review with its semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
@@ -290,6 +291,29 @@ not evidence that a returned set is complete.
 
 ## 6. Decide whether a direct backend is justified
 
+**Status: complete. Decision: retain Fil-C C lowering.** Existing compiler
+check reuse is effective without a new unchecked mechanism. A bounded value
+pass can fix the observed decoder comparison through ordinary C: all flags
+must name one local CMP; a separate checker validates the formula, operands,
+width, producer and unchanged graph. `--no-simplify-conditions` retains the
+original formula. Signed order is expressed using sign-bit-biased unsigned
+values, avoiding signed overflow and out-of-range casts.
+
+**Evidence:** the decoder now uses one comparison against 63 instead of
+comparisons against 62 and 63. The stack reservation remains 152 bytes, so
+this does not claim to solve register pressure. The native branch and loop
+suites run all four grouping/condition combinations; mutation tests reject
+wrong widths, operands, signedness, producers, formulas and changed edges.
+Decoder reference and safety cases also run both condition modes.
+
+No demonstrated requirement currently justifies owning entrypoints,
+capability layout, roots, polling, register allocation and failure ABI here.
+Keep those responsibilities with the pinned compiler. Milestone 7 should
+measure the remaining costs against C and upstream SaRCAsm. Revisit this
+decision only with a concrete workload and an optimization that cannot be
+expressed through checked C; then the ABI and liveness work below becomes
+required. ARM64 remains explicitly rejected pending an executable slice.
+
 This is a decision milestone, not an automatic rewrite. First record what
 is limiting the compiler-backed path: missing semantics, inability to
 express a validated optimization, or generated-code quality. Direct
@@ -336,10 +360,11 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Before the backend decision, simplify the decoder's unsigned comparison
-using its recorded flag producer and operands. Keep the original flag
-formula selectable and use independent validation plus native differential
-tests. This is a value optimization with no change to memory protection.
-Then evaluate representative leaf/loop routines through the compiler-backed
-path, record code quality and timings, and decide whether measured limits
-justify a different backend or another bounded frontend extension.
+Evaluate the table-entry leaf, bounded decoder and node walk against C,
+both condition/grouping choices, and pinned upstream SaRCAsm where their
+contracts overlap. Record exact inputs, code size, frontend time and repeated
+interleaved runtime measurements with CPU affinity and hardware counters.
+Upstream currently requires alignment for some integer accesses where this
+prototype permits unaligned access: test and report that boundary explicitly.
+Choose the next frontend extension from the resulting evidence, without
+reviving the parked zstd package migration.

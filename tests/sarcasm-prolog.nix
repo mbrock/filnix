@@ -91,6 +91,22 @@ pkgs.runCommand "sarcasm-prolog-check"
       decoder-input.s loops-input.s -o decoder-native
     timeout 30 ./decoder-native
 
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-ir decoder-input.s > decoder.ir
+    grep -Fq 'comparison(unsigned,gt,32' decoder.ir
+    mkdir decoder-flags
+    for file in decoder loops; do
+      ${sarcasm-prolog}/bin/sarcasm-prolog --no-simplify-conditions "$file-input.s" > "$file-flags.s"
+      ${sarcasm-prolog}/bin/sarcasm-prolog --no-simplify-conditions --no-coalesce "$file-plain-input.s" > "$file-plain-flags.s"
+      ${pkgs.binutils}/bin/as "$file-flags.s" -o "$file-flags.o"
+      ${pkgs.binutils}/bin/as "$file-plain-flags.s" -o "$file-plain-flags.o"
+    done
+    ${filcc}/bin/clang -O2 ${../experiments/sarcasm-prolog/decoder-runtime.c} \
+      decoder-flags.o decoder-plain-flags.o loops-flags.o loops-plain-flags.o -o decoder-flags/decoder-runtime
+    pushd decoder-flags
+    timeout 30 ./decoder-runtime
+    python ${../experiments/sarcasm-prolog/decoder-safety.py}
+    popd
+
     cp ${../experiments/sarcasm-prolog/examples/checks.s} checks-input.s
     ${sarcasm-prolog}/bin/sarcasm-prolog --emit-checks checks-input.s > checks.report
     python - <<'PY'
@@ -164,5 +180,6 @@ pkgs.runCommand "sarcasm-prolog-check"
     cp pointer-memory.c pointer-memory.s $out/
     cp branches.c branches.s edge-swap.c $out/
     cp decoder.c decoder-separate.c decoder.s decoder-plain.s loops.s loops-plain.s $out/
+    cp decoder-flags.s decoder-plain-flags.s loops-flags.s loops-plain-flags.s decoder.ir $out/
     cp checks.c checks.s checks-plain.s checks.report $out/
   ''

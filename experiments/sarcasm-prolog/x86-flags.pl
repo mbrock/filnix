@@ -51,3 +51,14 @@ emit_condition(truth(V)) :- sp_x86_64:value(V).
 emit_condition(not(A)) :- write('!('),emit_condition(A),write(')').
 emit_condition(either(A,B)) :- write('('),emit_condition(A),write(' || '),emit_condition(B),write(')').
 emit_condition(different(A,B)) :- write('('),emit_condition(A),write(' != '),emit_condition(B),write(')').
+emit_condition(comparison(Sign,Rel,W,A,B)) :-
+    write('('),operand(Sign,W,A),operator(Rel),operand(Sign,W,B),write(')').
+% Biasing the sign bit expresses signed order using unsigned C operations.
+% No out-of-range signed cast or signed overflow is needed.
+operand(unsigned,W,V) :- format('((uint~d_t)(',[W]),sp_x86_64:value(V),write('))').
+operand(signed,W,V) :-
+    write('('),operand(unsigned,W,V),Sign is 2^(W-1),
+    format(' ^ UINT~d_C(~d))',[W,Sign]).
+operator(eq) :- write(' == '). operator(ne) :- write(' != ').
+operator(lt) :- write(' < '). operator(ge) :- write(' >= ').
+operator(le) :- write(' <= '). operator(gt) :- write(' > ').

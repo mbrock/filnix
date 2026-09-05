@@ -17,6 +17,7 @@ nix run .#sarcasm-prolog -- --emit-effects experiments/sarcasm-prolog/examples/t
 nix run .#sarcasm-prolog -- --explain experiments/sarcasm-prolog/examples/table-entry.s
 nix run .#sarcasm-prolog -- --no-coalesce --emit-c experiments/sarcasm-prolog/examples/table-entry.s
 nix run .#sarcasm-prolog -- --emit-ir experiments/sarcasm-prolog/examples/branches.s
+nix run .#sarcasm-prolog -- --no-simplify-conditions --emit-c experiments/sarcasm-prolog/examples/decoder.s
 nix run .#sarcasm-prolog -- --emit-checks experiments/sarcasm-prolog/examples/checks.s
 nix run .#sarcasm-prolog -- --verify-checks --emit-c experiments/sarcasm-prolog/examples/checks.s
 nix run .#sarcasm-prolog -- --linear --emit-c experiments/sarcasm-prolog/examples/table-entry.s
@@ -65,6 +66,7 @@ Both inspection modes require valid input and a validated access plan.
 | `flags.pl` | Branch conditions, flag dependencies and value availability |
 | `cfg.pl` | Blocks, typed value lowering and independent edge-transfer validation |
 | `dataflow.pl` | Finite type/flag fixed point and local inductive obligation checker |
+| `conditions.pl`, `condition-tests.pl` | Proposals and independent validation for direct comparisons from recorded CMP flag producers |
 | `accesses.pl` | Read-group proposals, decision traces and an independent structural validator |
 | `check-model.pl`, `check-reuse.pl`, `check-validator.pl` | Protection requirements, bounded witness search and independent certificate validation |
 | `target.pl` | Architecture selection; explicit rejection for AArch64/arm64 and unknown targets |
@@ -111,6 +113,12 @@ flag before a branch can read it. Pointer joins preserve whichever pointer
 the incoming edge selects, including its capability. Read grouping stays
 inside each block. The previous straight-line frontend remains available
 with `--linear` for differential testing.
+
+When all flags in a condition come from one CMP in the same block,
+`conditions.pl` can express equality or signed/unsigned ordering directly
+using that CMP's captured operands. A separate validator checks the producer,
+formula, widths and unchanged graph. `--no-simplify-conditions` preserves
+the original flag formula. Joins and mixed producers remain conservative.
 
 Backedges and loop-carried values are supported. Analysis terminates over
 a finite domain; source programs may still contain nonterminating loops.
@@ -191,7 +199,8 @@ with the original example's C and assembly, for inspection.
 Another 525 programs test branches, including all 16 conditions, signed and
 unsigned comparisons, parity/carry/overflow, flag replacement and preservation,
 and flag joins. Native execution agrees on 134,400 return/full-buffer
-outcomes per grouped/ungrouped variant. `examples/branches.s` additionally
+outcomes in all four combinations of read grouping and condition simplification.
+`examples/branches.s` additionally
 checks 4,096 selections, stores and swaps per variant with real Fil-C
 pointer slots. Seven failure modes exercise both arms, including a pointer
 whose address was changed while retaining the wrong capability, after a
@@ -222,7 +231,7 @@ that changed address bits cannot escape the original capability's bounds.
 `examples/decoder.s` is a bounded table decoder with input/output cursors
 and a status result. It agrees with a bytewise C reference in 10,240 cases
 per variant, including five layouts where buffers can overlap. Another 55
-native loop programs compare 14,080 complete outcomes per variant; a bounded
+native loop programs compare 14,080 complete outcomes in all four combinations; a bounded
 node walk checks capabilities across different objects. Nineteen failure
 modes cover later iterations, pointer backedges and partial table entries.
 [DECODER.md](DECODER.md) gives the format, contract and assembly findings.
@@ -236,6 +245,6 @@ with implementation boundaries, acceptance criteria, and explicit decisions
 before adding a direct assembly backend. Milestones 1–5 are
 complete: explicit effects, pointer operations and stores, blocks and
 branches, a bounded decoder loop, and the check-reuse investigation.
-The backend decision and representative performance evaluation are next.
+The compiler-backed backend is retained; representative performance evaluation is next.
 The remaining milestones describe
 planned extensions, not currently supported input.
