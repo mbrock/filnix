@@ -112,6 +112,8 @@ immediate_limits :-
     forall(member(Op-D-Low-High,[movl-eax-(-2147483648)-4294967295,
         movq-rax-(-9223372036854775808)-18446744073709551615,
         addl-eax-(-2147483648)-4294967295,addq-rax-(-2147483648)-2147483647,
+        cmpl-eax-(-2147483648)-4294967295,cmpq-rax-(-2147483648)-2147483647,
+        testl-eax-(-2147483648)-4294967295,testq-rax-(-2147483648)-2147483647,
         shlq-rax-0-255]),
       (must(sp_effects:instruction_effects(instruction(Op,[imm(const(Low)),reg(D)]),_)),
        must(sp_effects:instruction_effects(instruction(Op,[imm(const(High)),reg(D)]),_)),

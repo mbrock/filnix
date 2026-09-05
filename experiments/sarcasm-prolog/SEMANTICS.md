@@ -1,6 +1,6 @@
 # Semantic contract
 
-This document covers the current acyclic x86-64 subset. The compiler
+This document covers the current x86-64 subset with control flow. The compiler
 accepts annotated assembly and produces Fil-C C, then delegates machine
 code, capabilities, GC roots and the calling convention to Fil-C. The
 observable results are the function's integer return value and permitted
@@ -58,7 +58,7 @@ cannot turn integer bits into a pointer. A 32-bit copy remains integer-only.
 | An operand reads an integer or a pointer of a particular width | Instruction effect rule, checked against initialized register state by lowering |
 | Integer width, zero extension, address scale and access size | Normalized instruction semantics |
 | Two loads use the same pointer/index values and adjoining byte ranges | Ordered IR and independent access-plan validation |
-| A block input is initialized with a coherent type, or a flag is available | Every reachable predecessor's exit state, joined by `cfg.pl` |
+| A block input is initialized with a coherent type, or a flag is available | Every reachable predecessor's state and the virtual entry, checked by `dataflow.pl` |
 | An edge transfers the right typed values to its original target | Independent edge validator against recorded typed exit states |
 | Offset arithmetic does not wrap and fits `PTRDIFF_MAX` | Explicit guards in generated C |
 | An accessed capability is live, covers the access and permits a write when requested | Fil-C instrumentation and runtime |
@@ -94,8 +94,8 @@ before any destination write, including when source and destination alias.
 
 Move immediates range from `-2^(W-1)` to `2^W-1`, interpreted modulo the
 destination width `W`. Arithmetic, bitwise and comparison immediates range
-from `-2^31` to
-`2^32-1` for 32-bit operations, or `-2^31` to `2^31-1` for 64-bit operations
+from `-2^31` to `2^32-1` for 32-bit operations, or `-2^31` to `2^31-1`
+for 64-bit operations
 (the latter sign-extend). Shift immediates must be in `[0,255]` before
 masking. The supported scale factors are 1, 2, 4 and 8; displacements are
 nonnegative unsigned 64-bit constants. Larger effective offsets can still
@@ -217,16 +217,36 @@ physical machine-register state is not promised across the function ABI.
 
 Labels and terminators form explicit blocks. Adjacent labels alias one
 block. Targets must name a label inside the same function; conditional
-branches need a fallthrough block, and every path must end in a return.
+branches need a fallthrough block, and falling out of a function is
+rejected. Cycles need not terminate at runtime.
 Unknown opcodes, duplicate labels, unresolved targets and malformed block
 structure are rejected before reachability filtering. Unreachable blocks
 then contribute no values and produce no code.
 
-A finite topological worklist starts at block zero and lowers a block only
-after every reachable predecessor has completed. A synthetic entry edge
-supplies the signature's input state. Each block is processed once; a
-nonempty worklist with no ready block rejects reachable cyclic control
-flow. Backedges require the separate fixed-point analysis in milestone 4.
+`dataflow.pl` computes a finite fixed point before any value lowering.
+Each register carries a nonempty set of possible types: integer, pointer,
+or uninitialized. Each flag carries a nonempty subset of defined/undefined.
+A synthetic entry edge supplies signature types, uninitialized remaining
+registers and undefined flags, including when a backedge targets block zero.
+Joins union these possibilities. Instruction writes replace the affected
+type; a typed copy transfers its source's possibilities. Defined/cleared
+flags become defined, undefined flags become undefined, and other flags
+retain their state. Read requirements are enforced after convergence.
+
+The worklist starts at entry and queues successors whenever an exit state
+changes. Known states only grow in this finite domain. With nine supported
+register roots and six flags, there are at most 39 facts per block, so
+39 times the block count bounds successful state updates. Reaching the
+budget before convergence throws an error; no partial result is emitted.
+A source loop can run forever while its compilation analysis terminates.
+
+A separate checker verifies local inductive obligations without running
+the worklist again. States must cover the entry state and **all** predecessor
+outputs, and each output must cover its instruction effects applied to its
+input. Every domain is nonempty and contains only allowed values. These
+obligations permit conservative overapproximations but cannot omit a real
+path or manufacture first-iteration initialization from a backedge. The
+graph, entry signature and instruction-effect transfer remain trusted.
 
 At a join, possible register types accumulate across predecessors. A value
 is usable only if every predecessor supplies the same type: all integers
@@ -247,7 +267,7 @@ An edge lists typed simultaneous assignments to the target's block
 parameters. The C emitter saves every source in a temporary before
 overwriting any destination. This handles cyclic swaps of both integers
 and pointers; an executable self-edge assignment test covers that staging
-even while runtime loops remain unsupported.
+and is complemented by executable source loops.
 
 The independent edge validator compares the proposed graph with recorded
 typed exit states and original terminators. It checks groundness, block
@@ -304,6 +324,7 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-Milestones 1–3 are implemented. Next is a finite analysis for backedges and
-loop-carried values, exercised by one bounded decoder loop; see
-[milestone 4](PLAN.md#4-complete-one-bounded-decoder-shaped-loop).
+Milestones 1–4 are implemented. The bounded decoder's contract and assembly
+inspection are in [DECODER.md](DECODER.md). Next is an investigation of
+check reuse with separate, explicit obligations; see
+[milestone 5](PLAN.md#5-explore-check-reuse-with-explicit-obligations).

@@ -37,7 +37,7 @@ tests :-
     rejects("movq $9,%rax\njmp .Llive\n.Ldead:\nud2\n.Llive:\nret\n",at(5,unsupported_instruction(ud2))),
     rejects("jmp .Lmissing\n",at(2,unknown_label('.Lmissing'))),
     rejects("je p\n",at(2,missing_fallthrough)),
-    rejects("jmp p\n",at(2,cyclic_control_flow(_))),
+    lower("jmp p\n",_,_),
     rejects(".Lsame:\n.Lsame:\nmovq $1,%rax\nret\n",at(3,duplicate_label('.Lsame'))),
     rejects("je .Lyes\nmovq $0,%rax\n.Lyes:\nret\n",at(2,unavailable_flag(zf))),
     rejects("movq %rsi,%rax\ncmpq $0,%rax\nshlq $2,%rax\njo .Lyes\nret\n.Lyes:\nret\n",

@@ -61,7 +61,8 @@ Both inspection modes require valid input and a validated access plan.
 | `effects.pl` | Finite instruction catalogue, normalized actions, typed register effects, memory, flags, control flow and traps |
 | `ir.pl` | Signature assumptions, initialized-register/type checks, register-to-value mapping and action lowering |
 | `flags.pl` | Branch conditions, flag dependencies and value availability |
-| `cfg.pl` | Blocks, finite worklist, typed joins and independent edge-transfer validation |
+| `cfg.pl` | Blocks, typed value lowering and independent edge-transfer validation |
+| `dataflow.pl` | Finite type/flag fixed point and local inductive obligation checker |
 | `accesses.pl` | Read-group proposals, decision traces and an independent structural validator |
 | `target.pl` | Architecture selection; explicit rejection for AArch64/arm64 and unknown targets |
 | `x86_64.pl` | Little-endian extraction and unsigned integer semantics expressed as Fil-C C |
@@ -72,9 +73,10 @@ Both inspection modes require valid input and a validated access plan.
 | `pointer-tests.pl` | Pointer-copy type propagation, derived addresses and aliased operands |
 | `store-tests.pl` | Write effects, immediate ranges, preserved registers and ordering barriers |
 | `pointer-memory-tests.pl` | Pointer annotations, typed memory effects and register/value flow |
+| `dataflow-tests.pl` | Cycles, first-iteration facts, missing predecessors and resource exhaustion |
 | `cfg-tests.pl`, `edge-swap-test.pl` | Joins, unavailable flags, malformed edges and an executable cyclic assignment |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
-| `generated-tests.py`, `branch-generated-tests.py`, `native_oracle.py` | Deterministic scalar/branch comparisons against native x86-64 execution |
+| `generated-tests.py`, `branch-generated-tests.py`, `loop-generated-tests.py`, `native_oracle.py` | Deterministic scalar/branch comparisons against native x86-64 execution |
 
 The [semantic contract](SEMANTICS.md) defines the effect terms, value rules,
 assumptions and runtime obligations. The effect relation accepts ground
@@ -105,8 +107,10 @@ the incoming edge selects, including its capability. Read grouping stays
 inside each block. The previous straight-line frontend remains available
 with `--linear` for differential testing.
 
-Calls, reachable loops, stack manipulation, SIMD, atomics, and partial
-8/16-bit register writes remain unsupported.
+Backedges and loop-carried values are supported. Analysis terminates over
+a finite domain; source programs may still contain nonterminating loops.
+The test loops have explicit bounds. Calls, stack manipulation, SIMD,
+atomics, and partial 8/16-bit register writes remain unsupported.
 Unsupported instructions fail explicitly. AArch64 is a deliberately failing
 target boundary, not an x86 fallback.
 
@@ -163,7 +167,7 @@ Negative cases exercise null capabilities, out-of-bounds reads in both
 variants, and offset overflow. Unsupported architectures must fail without
 producing assembly.
 
-The effect table covers all 61 accepted instruction forms. Forty-eight
+The effect table covers all 61 accepted instruction forms. Fifty-one
 malformed-source fixtures check failure reasons and source lines. A
 deterministic generator exercises 181 small programs, comparing 46,336
 return values and full memory buffers in four variants (block/linear frontend,
@@ -203,14 +207,22 @@ bounds and lifetime, read-only destinations, and real addresses rebuilt
 byte by byte without a capability. A separate overwritten-slot case checks
 that changed address bits cannot escape the original capability's bounds.
 
+`examples/decoder.s` is a bounded table decoder with input/output cursors
+and a status result. It agrees with a bytewise C reference in 10,240 cases
+per variant, including five layouts where buffers can overlap. Another 55
+native loop programs compare 14,080 complete outcomes per variant; a bounded
+node walk checks capabilities across different objects. Nineteen failure
+modes cover later iterations, pointer backedges and partial table entries.
+[DECODER.md](DECODER.md) gives the format, contract and assembly findings.
+
 The tests intentionally cross the actual allocation boundary: Fil-C rounds
 small allocations up, so `malloc(3)` is not a reliable four-byte-read
 failure fixture.
 
 The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
-before adding loops or a direct assembly backend. Milestones 1–3 are
-complete: explicit effects, pointer operations and stores, then basic
-blocks and conditional control flow. A bounded decoder loop is next.
+before adding loops or a direct assembly backend. Milestones 1–4 are
+complete: explicit effects, pointer operations and stores, blocks and
+branches, and a bounded decoder loop. Check-reuse analysis is next.
 The remaining milestones describe
 planned extensions, not currently supported input.

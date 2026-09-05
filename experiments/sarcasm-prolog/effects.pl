@@ -1,4 +1,4 @@
-:- module(sp_effects, [instruction_form/2, instruction_effects/2, constant/2]).
+:- module(sp_effects, [instruction_form/2, instruction_effects/2, constant/2, register_roots/1]).
 :- use_module(library(lists)).
 
 % A finite, queryable catalogue. It describes the accepted source forms,
@@ -108,6 +108,7 @@ alias(r8,r8,64). alias(r8d,r8,32).
 alias(r9,r9,64). alias(r9d,r9,32).
 alias(r10,r10,64). alias(r10d,r10,32).
 alias(r11,r11,64). alias(r11d,r11,32).
+register_roots(Roots) :- findall(R,alias(_,R,64),Rs),sort(Rs,Roots).
 address(mem(D,B,I,S),address(Base,Index,Scale,Offset)) :-
     register(B,64,Base),
     (I=none -> Index=immediate(0); register(I,64,Index)),

@@ -3,6 +3,7 @@
 :- use_module('flags.pl', []).
 :- use_module('effects.pl', []).
 :- use_module('cfg.pl', []).
+:- use_module('dataflow.pl', []).
 :- use_module('x86-flags.pl', []).
 :- use_module('x86-cfg.pl', []).
 :- use_module('accesses.pl', []).

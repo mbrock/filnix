@@ -70,6 +70,27 @@ pkgs.runCommand "sarcasm-prolog-check"
     ./branch-runtime
     python ${../experiments/sarcasm-prolog/branch-safety.py}
 
+    cp ${../experiments/sarcasm-prolog/examples/decoder.s} decoder-input.s
+    cp ${../experiments/sarcasm-prolog/examples/loops.s} loops-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-c decoder-input.s > decoder.c
+    ${sarcasm-prolog}/bin/sarcasm-prolog --no-coalesce --emit-c decoder-input.s > decoder-separate.c
+    test "$(grep -c 'covering read: offset 0, width 4' decoder.c)" = 1
+    test "$(grep -c 'covering read: offset .*width 2' decoder-separate.c)" = 2
+    for file in decoder loops; do
+      ${sarcasm-prolog}/bin/sarcasm-prolog "$file-input.s" > "$file.s"
+      sed -e 's/tiny_decode/tiny_decode_plain/g' -e 's/loop_walk/loop_walk_plain/g' "$file-input.s" > "$file-plain-input.s"
+      ${sarcasm-prolog}/bin/sarcasm-prolog --no-coalesce "$file-plain-input.s" > "$file-plain.s"
+      ${pkgs.binutils}/bin/as "$file.s" -o "$file.o"
+      ${pkgs.binutils}/bin/as "$file-plain.s" -o "$file-plain.o"
+    done
+    ${filcc}/bin/clang -O2 ${../experiments/sarcasm-prolog/decoder-runtime.c} \
+      decoder.o decoder-plain.o loops.o loops-plain.o -o decoder-runtime
+    timeout 30 ./decoder-runtime
+    python ${../experiments/sarcasm-prolog/decoder-safety.py}
+    ${pkgs.stdenv.cc}/bin/cc -O2 -DNATIVE ${../experiments/sarcasm-prolog/decoder-runtime.c} \
+      decoder-input.s loops-input.s -o decoder-native
+    timeout 30 ./decoder-native
+
     for arch in arm64 aarch64 mips; do
       if ${sarcasm-prolog}/bin/sarcasm-prolog --arch "$arch" input.s > rejected.s 2> error; then
         echo "unexpected target acceptance: $arch" >&2
@@ -91,9 +112,16 @@ pkgs.runCommand "sarcasm-prolog-check"
       ${sarcasm-prolog}/bin/sarcasm-prolog ${filcc}/bin/clang \
       ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
     popd
+    mkdir loops
+    pushd loops
+    python ${../experiments/sarcasm-prolog}/loop-generated-tests.py \
+      ${sarcasm-prolog}/bin/sarcasm-prolog ${filcc}/bin/clang \
+      ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
+    popd
     mkdir $out
-    cp -r generated branches $out/
+    cp -r generated branches loops $out/
     cp grouped.c separate.c grouped.s separate.s pointers.c pointers.s stores.c stores.s prolog.log $out/
     cp pointer-memory.c pointer-memory.s $out/
     cp branches.c branches.s edge-swap.c $out/
+    cp decoder.c decoder-separate.c decoder.s decoder-plain.s loops.s loops-plain.s $out/
   ''

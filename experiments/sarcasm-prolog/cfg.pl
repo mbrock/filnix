@@ -15,8 +15,9 @@ functions([located(L,label(N)),located(_,signature(u64,Args))|Ss],
     maplist(resolve_block(Labels,Raw),Raw,Resolved),
     reachable([0],Resolved,[],Reach0),sort(Reach0,Reach),
     include_reachable(Resolved,Reach,Pending),
-    sp_ir:initial_state(Args,Initial),analyze(Pending,Resolved,Reach,state(Initial,[]),[],Bounds0),
-    order_bounds(Pending,Bounds0,Bounds),
+    sp_ir:initial_state(Args,Initial),maplist(flow_block,Pending,FlowGraph),
+    sp_dataflow:analyze(FlowGraph,Initial,Analysis,_),
+    maplist(lower_block(Analysis),Pending,Bounds),
     connect_edge(0,Initial,[],Bounds,Entry),maplist(connect_block(Bounds),Bounds,Connected),
     Graph=cfg(Entry,Connected),Proof=flow(state(Initial,[]),Bounds),
     validate_flow(Graph,Proof), functions(Rest,Fs,Es,Ps).
@@ -77,48 +78,23 @@ include_reachable([],_,[]).
 include_reachable([raw(B,N,S,T)|Xs],Reach,Ys) :-
     (memberchk(B,Reach) -> Ys=[raw(B,N,S,T)|Rest];Ys=Rest),include_reachable(Xs,Reach,Rest).
 
-% A finite topological worklist. Every reachable predecessor must be complete
-% before a join is lowered. Cycles are explicitly deferred to the loop milestone.
-analyze([],_,_,_,Done,Done).
-analyze(Pending,All,Reach,Initial,Done,Result) :-
-    (select(Block,Pending,Rest),Block=raw(B,_,_,_),predecessors(B,All,Reach,Preds),
-     forall(member(P,Preds),(P=entry;memberchk(bound(P,_,_,_,_,_,_),Done))) ->
-        incoming(Preds,Initial,Done,Inputs),join(B,Inputs,Params,State,Flags),
-        Block=raw(B,Names,Nodes,T),lower_nodes(Nodes,State,Flags,Ops,Out,OutFlags),
-        lower_term(T,Out,OutFlags,Term),
-        analyze(Rest,All,Reach,Initial,[bound(B,Names,Params,Ops,Term,Out,OutFlags)|Done],Result)
-    ; findall(Id,member(raw(Id,_,_,_),Pending),Ids),
-      Pending=[First|_],block_line(First,L),
-      throw(error(at(L,cyclic_control_flow(Ids))))).
-block_line(raw(_,_,[node(_,L,_)|_],_),L) :- !.
-block_line(raw(_,_,[],jump(L,_)),L).
-block_line(raw(_,_,[],branch(L,_,_,_)),L).
-block_line(raw(_,_,[],return_node(node(_,L,_))),L).
-predecessors(B,All,Reach,Preds) :-
-    findall(P,(member(raw(P,_,_,T),All),memberchk(P,Reach),successors(T,Next),memberchk(B,Next)),Ps),
-    (B=0 -> sort([entry|Ps],Preds);sort(Ps,Preds)).
-incoming([],_,_,[]).
-incoming([entry|Ps],Initial,Done,[Initial|Ss]) :- !,incoming(Ps,Initial,Done,Ss).
-incoming([P|Ps],Initial,Done,[state(S,F)|Ss]) :-
-    memberchk(bound(P,_,_,_,_,S,F),Done),incoming(Ps,Initial,Done,Ss).
-join(B,Inputs,Params,State,Flags) :-
-    require(Inputs=[_|_],invalid_control_flow(empty_join(B))),
-    findall(R,(member(state(S,_),Inputs),member(R-_,S)),Rs),sort(Rs,Roots),
-    join_registers(Roots,B,Inputs,RegParams,State),
-    findall(F,(member(F,[cf,pf,af,zf,sf,of]),forall(member(state(_,Fs),Inputs),memberchk(F-_,Fs))),Available),
-    findall(parameter(flag(F),boolean,param(B,flag(F))),member(F,Available),FlagParams),
-    findall(F-param(B,flag(F)),member(F,Available),Flags),append(RegParams,FlagParams,Params).
-join_registers([],_,_,[],[]).
-join_registers([R|Rs],B,Inputs,Params,State) :-
-    findall(T,(member(state(S,_),Inputs),types_at(R,S,Types),member(T,Types)),All),sort(All,Types),
+% Type/flag availability reaches a finite fixed point before any value IR is
+% produced. Parameter identities break cycles in the value representation.
+flow_block(raw(B,_,Nodes,Term),flow_block(B,Nodes,Next)) :- successors(Term,Next).
+lower_block(Analysis,raw(B,Names,Nodes,T),bound(B,Names,Params,Ops,Term,Out,OutFlags)) :-
+    memberchk(block_state(B,abstract(Types,Available),_),Analysis),
+    register_inputs(Types,B,RegParams,State),
+    findall(parameter(flag(F),boolean,param(B,flag(F))),member(F-[defined],Available),FlagParams),
+    findall(F-param(B,flag(F)),member(F-[defined],Available),Flags),
+    append(RegParams,FlagParams,Params),
+    lower_nodes(Nodes,State,Flags,Ops,Out,OutFlags),lower_term(T,Out,OutFlags,Term).
+register_inputs([],_,[],[]).
+register_inputs([R-Types|Rs],B,Params,State) :-
     (memberchk(uninitialized,Types) -> Params=Ps,State=Ss
     ; Types=[integer] -> Params=[parameter(reg(R),integer,param(B,reg(R)))|Ps],State=[R-int(param(B,reg(R)))|Ss]
     ; Types=[pointer] -> Params=[parameter(reg(R),pointer,param(B,reg(R)))|Ps],State=[R-ptr(param(B,reg(R)))|Ss]
     ; Params=Ps,State=[R-incompatible(Types)|Ss]),
-    join_registers(Rs,B,Inputs,Ps,Ss).
-types_at(R,S,Types) :-
-    (memberchk(R-V,S) -> (V=int(_) -> Types=[integer];V=ptr(_) -> Types=[pointer];V=incompatible(Types))
-    ; Types=[uninitialized]).
+    register_inputs(Rs,B,Ps,Ss).
 lower_nodes([],S,F,[],S,F).
 lower_nodes([node(N,L,Sem)|Ns],State,Flags,Ops,Out,OutFlags) :-
     sp_ir:lower_step(Sem,State,N,L,Op,Next,Bindings),
@@ -129,9 +105,6 @@ lower_term(return_node(node(N,L,Sem)),State,_,Term) :-
     sp_ir:lower_step(Sem,State,N,L,Term,_,_).
 lower_term(jump(_,B),_,_,jump(B)).
 lower_term(branch(L,C,A,B),_,Flags,branch(Expr,A,B)) :- sp_flags:condition(C,Flags,L,Expr).
-order_bounds([],_,[]).
-order_bounds([raw(B,_,_,_)|Xs],Done,[Found|Ys]) :-
-    memberchk(bound(B,N,P,O,T,S,F),Done),Found=bound(B,N,P,O,T,S,F),order_bounds(Xs,Done,Ys).
 
 connect_block(All,bound(B,N,P,O,T,S,F),block(B,N,P,O,Term)) :- connect_term(T,S,F,All,Term).
 connect_term(return(V),_,_,_,return(V)).

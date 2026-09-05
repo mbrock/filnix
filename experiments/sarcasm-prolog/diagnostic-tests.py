@@ -45,7 +45,7 @@ cases = [
     ("unknown-target", "jmp .Lmissing\n", "unknown_label"),
     ("register-jump", "jmp %rax\n", "direct_branch_target_required"),
     ("indirect-jump", "jmp *%rax\n", "statement_syntax"),
-    ("entry-cycle", "jmp probe\n", "cyclic_control_flow"),
+    ("entry-cycle-flags", "je probe\nmovq $0,%rax\nret\n", "unavailable_flag(zf)"),
     ("no-fallthrough", "je probe\n", "missing_fallthrough"),
     ("duplicate-label", ".Lsame:\n.Lsame:\nmovq $0,%rax\nret\n", "duplicate_label", 3),
     ("entry-flags", "je .Lyes\nmovq $0,%rax\n.Lyes:\nret\n", "unavailable_flag(zf)"),
@@ -61,6 +61,13 @@ cases = [
      "unavailable_flag(of)", 10),
     ("unreachable-unknown",
      "movq $9,%rax\njmp .Llive\n.Ldead:\nud2\n.Llive:\nret\n", "unsupported_instruction(ud2)", 5),
+    ("first-iteration-register", ".Lloop:\nmovq %rax,%rcx\nmovq $1,%rax\njmp .Lloop\n",
+     "uninitialized_register(rax)", 3),
+    ("backedge-pointer-conflict", "movq %rdi,%r8\n.Lloop:\nmovq (%r8),%rax\nmovq %rsi,%r8\njmp .Lloop\n",
+     "incompatible_register_types(r8", 4),
+    ("backedge-undefined-flags",
+     "movq %rsi,%rax\naddq $1,%rax\n.Lloop:\njo .Ldone\nshlq $2,%rax\njmp .Lloop\n.Ldone:\nret\n",
+     "unavailable_flag(of)", 5),
 ]
 for name, body, reason, *location in cases:
     path = Path(f"invalid-{name}.s")

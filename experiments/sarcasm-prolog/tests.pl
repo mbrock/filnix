@@ -1,6 +1,7 @@
 :- use_module('flags.pl', []).
 :- use_module('effects.pl', []).
 :- use_module('cfg.pl', []).
+:- use_module('dataflow.pl', []).
 :- use_module('x86-flags.pl', []).
 :- use_module('x86-cfg.pl', []).
 :- use_module('accesses.pl', []).
@@ -9,6 +10,7 @@
 :- use_module('store-tests.pl', []).
 :- use_module('pointer-memory-tests.pl', []).
 :- use_module('cfg-tests.pl', []).
+:- use_module('dataflow-tests.pl', []).
 :- use_module('parser.pl').
 :- use_module('ir.pl').
 :- use_module('x86_64.pl').
@@ -26,6 +28,7 @@ tests :-
     sp_store_tests:tests,
     sp_pointer_memory_tests:tests,
     sp_cfg_tests:tests,
+    sp_dataflow_tests:tests,
     parse_chars("f: #! unsigned long(ptr)\nmovq $0x10+2*3, %rax; ret # a comment\n",S),
     lower(S,[function(f,[ptr],[assign(v(0),64,literal(22),2),return(view(v(0),64))])]),
     parse_chars(".section .note.GNU-stack,\"\",@progbits\n",[_]),

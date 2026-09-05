@@ -18,7 +18,9 @@ are explicit, grouping decisions are inspectable, and native differential
 tests cover that executable subset. Milestone 2 is also complete: pointer
 copies, `leaq`, integer stores and annotated pointer loads/stores. Milestone
 3 is complete: typed basic blocks, flag values and conditional control flow.
-Milestones 4–7 remain planned. Follow them in order; keep each extension small enough
+Milestone 4 is complete: a finite analysis for backedges and a bounded table
+decoder with loop-carried pointers. Milestones 5–7 remain planned. Follow
+them in order; keep each extension small enough
 to review with its semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
 requirement to revive its builds now.
@@ -138,7 +140,8 @@ implement actual values. The edge validator is independent of edge
 construction and checks transfers against recorded exit states. Edge
 assignments use temporary values before overwriting destinations. Read
 grouping remains inside a block; `--linear` retains the previous reference.
-Reachable cycles are explicitly rejected until milestone 4.
+At completion this milestone rejected reachable cycles; milestone 4
+subsequently replaced the topological analysis with a finite fixed point.
 
 **Evidence:** 61 instruction forms, 48 malformed-source fixtures, and
 mutation tests for changed/missing/mistyped edge inputs, targets and
@@ -174,6 +177,37 @@ capability together for whichever value the program actually selects?
 
 ## 4. Complete one bounded decoder-shaped loop
 
+**Status: complete.** `dataflow.pl` computes possible types and flag states
+before lowering values. A finite union domain and a budget bound successful
+worklist updates. A separate checker verifies local entry, predecessor and
+instruction-transfer obligations; missing facts, empty domains, incomplete
+results and resource exhaustion cannot authorize lowering. Explicit typed
+block parameters carry values through backedges, including backedges to
+the function's entry and pointers to different heap objects.
+
+`examples/decoder.s` decodes at most the requested number of input bytes
+through a 64-entry table, writes four bytes per valid symbol, and returns
+status plus final cursors and the consumed count. The table's two halfword
+reads exercise grouping inside a loop. A separate bounded node walk tests
+capability changes on backedges. [DECODER.md](DECODER.md) specifies both
+fixtures and records the initial assembly inspection.
+
+**Evidence:** 55 native loop programs compare 14,080 return/full-buffer
+outcomes per grouped/ungrouped variant, in addition to all earlier native
+programs. Native assembly and both Fil-C variants agree with a bytewise C
+decoder on 10,240 cases per variant across five alias layouts, plus exact
+input/output/table boundaries, zero iterations and malformed symbols. Each
+variant also checks 520 bounded walks through separately allocated nodes.
+Nineteen failure modes cover later-iteration bounds and lifetime failures,
+read-only writes, partial table entries and a changed address with the wrong
+capability after a backedge. CLI diagnostics now cover 51 malformed inputs.
+
+**Inspection:** grouped lookup emits one 32-bit table load; ungrouped emits
+two 16-bit loads. Neither has a flag-helper call. The normal loop retains
+access checks and GC polling, with stack reloads and a redundant-looking
+two-comparison unsigned condition to investigate before making performance
+claims. All work uses the existing compiler/runtime.
+
 **Deliverable:** extend the block representation to backedges and loop-
 carried values, then implement a tiny table decoder: load a table entry,
 write decoded bytes, advance input/output positions, and repeat with an
@@ -196,6 +230,14 @@ for unexpected calls, repeated checks and spills before timing it.
 rather than a collection of special cases for one input file?
 
 ## 5. Explore check reuse with explicit obligations
+
+**Starting evidence from milestone 4:** Fil-C already combines protection
+for the node's integer value and pointer slot, while the ungrouped decoder
+retains separate checks for its halfwords. Loop backedges contain compiler-
+inserted GC polling even though the source IR has no call instruction.
+Any source-level reuse analysis must account for that implicit invalidation
+boundary. The redundant-looking unsigned comparison is a separate value-
+lowering opportunity; it requires no change to memory protection.
 
 **Deliverable:** represent established protection separately from memory
 operations and define its validity interval. Start with reuse of an earlier
@@ -274,15 +316,20 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Start milestone 3 with an explicit basic-block graph and validated edges.
-Keep the current straight-line path as a reference. Define typed block
-inputs and joins before implementing a diamond-shaped branch, and keep
-read grouping inside individual blocks.
+Start milestone 5 by distinguishing prior successful protection from an
+access or read group. A proposal must name the exact pointer/capability and
+index identities, range, permission, alignment and dominating source check.
+Build a separate local obligation checker and deliberately corrupt each
+part of a proposal. Keep runtime accesses checked while assessing what the
+existing Fil-C backend can express and eliminate.
 
-Add comparisons and a small conditional-branch family only alongside
-their actual flag-value semantics. Track which instruction defines each
-flag and reject undefined or unavailable flag reads. The first execution
-fixture should select between integer values and then between pointers
-from different origins; both paths must retain the selected capability.
-Test malformed targets, incompatible or uninitialized incoming values,
-stale flags and parallel edge assignments before introducing loops.
+Begin with reuse inside a block, then only extend across forward edges when
+all incoming paths satisfy the obligation. Treat stores, pointer changes
+and loop backedges with compiler-inserted GC polling as barriers until their
+invalidation semantics are defined. Do not use incomplete analysis results
+or introduce an unchecked primitive to make the experiment look faster.
+
+In parallel with that investigation, the unsigned comparison in DECODER.md
+is a bounded code-quality opportunity: simplifying a known flag formula
+must use its recorded producer and operands, with native differential tests
+and a selectable unoptimized path. It must not guess from nearby text.
