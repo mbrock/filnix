@@ -15,6 +15,8 @@ instruction_form(Op, binary(K,W,Source)) :-
     binary_opcode(Op,K,W), member(Source,[register,immediate]).
 instruction_form(Op, shift(K,W)) :- shift_opcode(Op,K,W).
 instruction_form(leaq, pointer_offset).
+instruction_form(movq, pointer_load).
+instruction_form(movq, pointer_store).
 instruction_form(ret, return).
 move_width(movl,32). move_width(movq,64).
 binary_opcode(addl,add,32). binary_opcode(addq,add,64).
@@ -28,15 +30,25 @@ shift_opcode(shrl,shr,32). shift_opcode(shrq,shr,64).
 % The action and its effects come from the same normalized operands.
 instruction_effects(Instruction, semantics(Action,Effects)) :-
     require(ground(Instruction), non_ground_instruction),
-    Instruction=instruction(Op,Operands),
+    instruction_action(Instruction,Action), action_effects(Action,Effects).
+instruction_action(instruction(Op,Operands,ptr),Action) :- !,
+    require(Op==movq,pointer_access_requires_movq(Op)),
+    arity(Operands,2), Operands=[Source,Dest], normalize_pointer(Source,Dest,Action).
+instruction_action(instruction(Op,Operands),Action) :- !,
     require(instruction_form(Op,_), unsupported_instruction(Op)),
     (Op=ret -> arity(Operands,0), Action=return(register(rax,64))
     ; arity(Operands,2), Operands=[Source,Dest],
-      normalize(Op,Source,Dest,Action)),
-    action_effects(Action,Effects).
+      normalize(Op,Source,Dest,Action)).
+instruction_action(Other,_) :- throw(error(unsupported_instruction_form(Other))).
 require(Goal,Reason) :- (call(Goal) -> true; throw(error(Reason))).
 arity(Operands,N) :- length(Operands,Actual),
     require(Actual=:=N, operand_count(expected(N),actual(Actual))).
+
+normalize_pointer(mem(D,B,I,S),Dest,pointer_load(Address,R)) :- !,
+    destination(Dest,64,R), address(mem(D,B,I,S),Address).
+normalize_pointer(reg(Source),mem(D,B,I,S),pointer_store(Address,R)) :- !,
+    register(Source,64,R), address(mem(D,B,I,S),Address).
+normalize_pointer(Source,Dest,_) :- throw(error(pointer_memory_operands(Source,Dest))).
 
 normalize(leaq,mem(D,B,I,S),Dest,pointer_offset(Address,R)) :- !,
     destination(Dest,64,R), address(mem(D,B,I,S),Address).
@@ -100,7 +112,7 @@ constant(mul(A,B),N) :- constant(A,X), constant(B,Y), N is X*Y.
 % read(R,Type) is a static type requirement, not an inferred capability.
 action_effects(load(A,Bytes,R),
     effects(registers(Reads,[Write]),
-            memory([access(read,A,Bytes,alignment(1),ordinary)]),
+            memory([access(read,A,Bytes,alignment(1),ordinary,integer)]),
             Flags,control(next),may_trap([address_overflow,invalid_read]))) :-
     address_reads(A,Reads), integer_write(R,Write), preserve_flags(Flags).
 action_effects(copy(S,D),
@@ -108,10 +120,19 @@ action_effects(copy(S,D),
             memory([]),Flags,control(next),may_trap([]))) :- preserve_flags(Flags).
 action_effects(store(A,Bytes,V),
     effects(registers(Reads,[]),
-            memory([access(write,A,Bytes,alignment(1),ordinary)]),
+            memory([access(write,A,Bytes,alignment(1),ordinary,integer)]),
             Flags,control(next),may_trap([address_overflow,invalid_write]))) :-
     address_reads(A,AddressReads), source_reads(V,ValueReads),
     append(AddressReads,ValueReads,Reads), preserve_flags(Flags).
+action_effects(pointer_load(A,D),
+    effects(registers(Reads,[write(D,pointer,replace)]),
+            memory([access(read,A,8,alignment(8),ordinary,pointer)]),
+            Flags,control(next),may_trap([address_overflow,invalid_read,pointer_alignment]))) :-
+    address_reads(A,Reads), preserve_flags(Flags).
+action_effects(pointer_store(A,S),
+    effects(registers(Reads,[]),memory([access(write,A,8,alignment(8),ordinary,pointer)]),
+            Flags,control(next),may_trap([address_overflow,invalid_write,pointer_alignment]))) :-
+    address_reads(A,AddressReads), append(AddressReads,[read(S,pointer)],Reads), preserve_flags(Flags).
 action_effects(pointer_offset(A,D),
     effects(registers(Reads,[write(D,pointer,replace)]),memory([]),
             Flags,control(next),may_trap([address_overflow]))) :-

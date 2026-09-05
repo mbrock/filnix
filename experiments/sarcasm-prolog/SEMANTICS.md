@@ -12,7 +12,7 @@ memory reads and writes; source registers and arithmetic flags are internal stat
 instruction AST from the parser. It either produces a normalized action
 and its effects or rejects the instruction. It does not infer input types
 from how a register happens to be used. `instruction_form/2` enumerates the
-34 supported forms independently of a particular function or register
+36 supported forms independently of a particular function or register
 state.
 
 For example, `movzwl 2(%rdi,%rsi,4), %eax` has this description:
@@ -25,7 +25,7 @@ semantics(
       [read(register(rdi,64),pointer),read(register(rsi,64),integer)],
       [write(register(rax,32),integer,zero_extend(64))]),
     memory([access(read,
-      address(register(rdi,64),register(rsi,64),4,2),2,alignment(1),ordinary)]),
+      address(register(rdi,64),register(rsi,64),4,2),2,alignment(1),ordinary,integer)]),
     flags(reads([]),defined([]),cleared([]),undefined([]),
           preserved([cf,pf,af,zf,sf,of])),
     control(next),
@@ -109,10 +109,10 @@ Overflow can trap at pointer derivation even before a dereference; bounds
 and liveness remain obligations of any later memory access. Copying a
 pointer does not prove those obligations or change its capability.
 
-Integer stores declare `access(write,Address,Bytes,alignment(1),ordinary)`
+Integer stores declare `access(write,Address,Bytes,alignment(1),ordinary,integer)`
 and possible `address_overflow` or `invalid_write` failures. The source must
-be an integer, even for `movq`; pointer stores will require an explicit
-annotation in the next slice. Store immediates use the same ranges as
+be an integer, even for `movq`; pointer stores require an explicit
+annotation. Store immediates use the same ranges as
 arithmetic immediates, including sign extension for the 64-bit form.
 
 The backend evaluates the source into a width-specific C integer and uses
@@ -123,6 +123,41 @@ write. Static integer/pointer types describe allowed source operations,
 not an assertion that C integer values or integer-written memory have no
 Fil-C metadata. In particular, integer writes must not be treated as proof
 that an existing slot's capability has been erased.
+
+## Pointer memory and annotations
+
+`movq Address,%register #! ptr` loads a pointer, and
+`movq %register,Address #! ptr` stores one. The annotation must follow the
+instruction on the same physical line; `;! ptr` is equivalent. The DCG
+produces `instruction(movq,Operands,ptr)`. Naked annotations, annotations
+on directives, other opcodes, immediate sources and register-only copies
+are rejected. Register copies already preserve their source type.
+
+The pointer load writes a pointer register value; the pointer store reads
+a pointer register and writes no register. Both declare a memory access
+with width 8, `alignment(8)`, `ordinary` ordering and `pointer` value type.
+Permission, width, alignment and value type are separate fields. The
+backend asserts that its C pointer size and alignment match this layout.
+
+The value IR has distinct `pointer_load` and `pointer_store` operations.
+The C backend dereferences pointer-typed slots, leaving both the address
+word and its invisible capability to Fil-C. It does not load an integer
+and reinterpret it to reconstruct a capability. Fil-C checks slot bounds,
+alignment and write permission; any later dereference separately checks
+the loaded pointer's own capability. A pointer value need not address an
+eight-byte-aligned pointee when the later access is an ordinary byte load.
+
+Annotations specify access semantics, not a proof of valid memory. An
+integer-only slot can yield non-null address bits with a null capability,
+and a loaded pointer can refer to a freed object. Both remain unusable for
+an invalid dereference. A slot that previously held a pointer may retain
+that capability after bytewise integer writes; changing its address bits
+does not expand the original bounds. The tests cover these cases using
+real live addresses, rather than relying on unmapped-address faults.
+
+All pointer loads/stores are ordering barriers for the read planner. They
+are never grouped with ordinary integer reads, because that would need a
+separate argument about capability metadata as well as byte coverage.
 
 `ret` is a function-level action here. Its physical stack read and stack
 pointer adjustment belong to the backend's calling convention, not the
@@ -193,8 +228,7 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-Pointer-preserving copies, the initial `leaq` subset and integer stores are
-implemented. Annotated pointer loads/stores are next. Specify the source
-annotation, alignment, permission and capability round-trip behavior before
-extending lowering; see
-[milestone 2](PLAN.md#2-add-straight-line-pointer-operations-and-stores).
+The pointer and memory operations in milestone 2 are implemented. Basic
+blocks and conditional control flow are next. Implement actual flag values
+and define joins for typed values before accepting flag consumers; see
+[milestone 3](PLAN.md#3-introduce-basic-blocks-and-conditional-control-flow).

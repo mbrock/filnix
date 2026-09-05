@@ -28,8 +28,9 @@ name_char(C) :- letter(C); char_code(C,N), N>=48,N=<57.
 initial_state([ptr],[rdi-ptr(arg0)]).
 initial_state([ptr,u64],[rdi-ptr(arg0),rsi-int(arg1)]).
 % Lowering uses the effect relation's normalized action and typed reads/writes.
-body([located(L,instruction(Op,Args))|Ss],Rest,State,N,_,[IR|IRs],[located(L,Semantics)|Effects]) :- !,
-    catch(sp_effects:instruction_effects(instruction(Op,Args),Semantics),
+body([located(L,Instruction)|Ss],Rest,State,N,_,[IR|IRs],[located(L,Semantics)|Effects]) :-
+    instruction(Instruction), !,
+    catch(sp_effects:instruction_effects(Instruction,Semantics),
           error(Reason),throw(error(at(L,Reason)))),
     Semantics=semantics(Action,effects(registers(Reads,Writes),_,_,Control,_)),
     resolve_reads(Reads,State,Bindings,L), lower_action(Action,Bindings,N,L,IR),
@@ -38,6 +39,8 @@ body([located(L,instruction(Op,Args))|Ss],Rest,State,N,_,[IR|IRs],[located(L,Sem
       body(Ss,Rest,Next,N1,L,IRs,Effects)).
 body([located(L,S)|_],_,_,_,_,_,_) :- throw(error(at(L,unsupported_control_flow(S)))).
 body([],_,_,_,LastLine,_,_) :- throw(error(at(LastLine,missing_return))).
+instruction(instruction(_,_)).
+instruction(instruction(_,_,_)).
 
 resolve_reads([],_,[],_).
 resolve_reads([read(R,Type)|Rs],State,[binding(R,Value)|Bs],L) :-
@@ -53,6 +56,10 @@ lower_action(load(address(B,I,K,O),Bytes,_),Bs,N,L,load(v(N),P,Index,K,O,Bytes,L
     resolved(B,Bs,pointer(P)), resolved(I,Bs,Index).
 lower_action(store(address(B,I,K,O),Bytes,S),Bs,_,L,store(P,Index,K,O,Bytes,Value,L)) :-
     resolved(B,Bs,pointer(P)), resolved(I,Bs,Index), resolved(S,Bs,Value).
+lower_action(pointer_load(address(B,I,K,O),_),Bs,N,L,pointer_load(v(N),P,Index,K,O,L)) :-
+    resolved(B,Bs,pointer(P)), resolved(I,Bs,Index).
+lower_action(pointer_store(address(B,I,K,O),S),Bs,_,L,pointer_store(P,Index,K,O,Value,L)) :-
+    resolved(B,Bs,pointer(P)), resolved(I,Bs,Index), resolved(S,Bs,pointer(Value)).
 lower_action(move(S,register(_,W)),Bs,N,L,assign(v(N),W,V,L)) :- resolved(S,Bs,V).
 lower_action(copy(S,_),Bs,N,L,IR) :-
     resolved(S,Bs,Value),

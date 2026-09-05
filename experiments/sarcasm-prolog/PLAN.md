@@ -15,10 +15,10 @@ rejection of ARM64. See [README.md](README.md) for the precise subset.
 
 Milestone 1 is also complete: instruction effects and the semantic contract
 are explicit, grouping decisions are inspectable, and native differential
-tests cover that executable subset. Milestone 2 is in progress: its pointer
-copy/`leaq` and integer-store slices are complete. The remaining work is planned below.
-Follow the milestones in order; keep each extension small enough to review with
-its semantic rules and tests. The parked zstd port is motivation and
+tests cover that executable subset. Milestone 2 is also complete: pointer
+copies, `leaq`, integer stores and annotated pointer loads/stores. Milestones
+3–7 remain planned. Follow them in order; keep each extension small enough
+to review with its semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
 requirement to revive its builds now.
 
@@ -83,7 +83,7 @@ instruction without reconstructing assumptions across several passes?
 
 ## 2. Add straight-line pointer operations and stores
 
-**Status: in progress.** Pointer-preserving register copies and `leaq`
+**Status: complete.** Pointer-preserving register copies and `leaq`
 with a pointer base, integer index and nonnegative displacement are complete.
 The effect relation declares type preservation; lowering keeps fresh pointer
 values pointer-typed through copies and derivation. Read planning treats
@@ -91,7 +91,18 @@ these operations as barriers. Integer stores now have explicit write
 effects and unconditional grouping barriers. Tests cover aliased
 inputs/destinations, overlapping stores, read-only destinations, capability
 failures, boundary crossing and native return-value/full-buffer comparisons.
-Annotated pointer loads/stores remain to be implemented.
+Pointer loads/stores use a same-line `#! ptr` annotation, have explicit
+eight-byte alignment and pointer value-type effects, and lower to typed C
+pointer accesses. They are never merged with integer reads.
+
+**Evidence:** the table covers 36 instruction forms and 36 malformed-source
+fixtures. Native execution compares 46,336 return/full-buffer outcomes
+per variant. Fil-C callers check pointer round trips and self references;
+15 failure modes per variant exercise slot/pointee bounds, lifetime,
+alignment, write permission and real address bits without a capability.
+Bytewise writes to a preexisting pointer slot are tested separately from
+fresh integer-only storage. Negative displacements remain explicitly
+outside the accepted contract, including for `leaq`.
 
 **Deliverable:** support pointer-preserving register copies and a narrow
 `lea` subset, followed by integer stores and explicitly annotated pointer
@@ -240,10 +251,15 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Add annotated pointer loads/stores, specifying which source annotation
-selects a pointer access, its alignment, and how capabilities survive a
-round trip through memory. Test that non-null integer bits without a
-capability cannot create an accessible pointer. Do not assume an integer
-write erases a preexisting slot capability; use fresh integer-only storage
-for the missing-capability test and separately exercise overwritten slots.
-The full milestone 2 acceptance criteria apply when this slice is complete.
+Start milestone 3 with an explicit basic-block graph and validated edges.
+Keep the current straight-line path as a reference. Define typed block
+inputs and joins before implementing a diamond-shaped branch, and keep
+read grouping inside individual blocks.
+
+Add comparisons and a small conditional-branch family only alongside
+their actual flag-value semantics. Track which instruction defines each
+flag and reject undefined or unavailable flag reads. The first execution
+fixture should select between integer values and then between pointers
+from different origins; both paths must retain the selected capability.
+Test malformed targets, incompatible or uninitialized incoming values,
+stale flags and parallel edge assignments before introducing loops.

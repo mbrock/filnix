@@ -39,6 +39,19 @@ pkgs.runCommand "sarcasm-prolog-check"
     ./runtime
     python ${../experiments/sarcasm-prolog/safety.py}
 
+    cp ${../experiments/sarcasm-prolog/examples/pointer-memory.s} pointer-memory-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-c pointer-memory-input.s > pointer-memory.c
+    ${sarcasm-prolog}/bin/sarcasm-prolog pointer-memory-input.s > pointer-memory.s
+    sed 's/slot_/slot_plain_/g' pointer-memory-input.s > pointer-memory-plain-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --no-coalesce pointer-memory-plain-input.s > pointer-memory-plain.s
+    for file in pointer-memory pointer-memory-plain; do
+      ${pkgs.binutils}/bin/as "$file.s" -o "$file.o"
+    done
+    ${filcc}/bin/clang -O2 ${../experiments/sarcasm-prolog/pointer-memory-runtime.c} \
+      pointer-memory.o pointer-memory-plain.o -o pointer-runtime
+    ./pointer-runtime
+    python ${../experiments/sarcasm-prolog/pointer-memory-safety.py}
+
     for arch in arm64 aarch64 mips; do
       if ${sarcasm-prolog}/bin/sarcasm-prolog --arch "$arch" input.s > rejected.s 2> error; then
         echo "unexpected target acceptance: $arch" >&2
@@ -57,4 +70,5 @@ pkgs.runCommand "sarcasm-prolog-check"
     mkdir $out
     cp -r generated $out/
     cp grouped.c separate.c grouped.s separate.s pointers.c pointers.s stores.c stores.s prolog.log $out/
+    cp pointer-memory.c pointer-memory.s $out/
   ''

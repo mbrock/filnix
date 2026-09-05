@@ -49,12 +49,20 @@ statements([]) --> [].
 statements(Ss) --> [at(_,Sep)], { memberchk(Sep,[newline,';']) }, !, statements(Ss).
 statements([located(L,label(Name))|Ss]) --> [at(L,id(Name)),at(_,':')], !, statements(Ss).
 statements([located(L,signature(R,Args))|Ss]) --> [at(L,annotation(Text))], !,
-    { phrase(tokens(L,Ts), Text), (phrase(signature(R,Args),Ts) -> true; throw(error(signature_syntax(L)))) }, statements(Ss).
+    { phrase(tokens(L,Ts), Text),
+      (Ts=[at(_,id(ptr))] -> throw(error(at(L,orphan_pointer_annotation)))
+      ; phrase(signature(R,Args),Ts) -> true; throw(error(signature_syntax(L)))) }, statements(Ss).
 statements([located(L,directive('.section',[symbol(Name)|Ops]))|Ss]) -->
     [at(L,id('.section'))], section_name(Name), more_operands(Ops), boundary, !, statements(Ss).
-statements([located(L,Stmt)|Ss]) --> [at(L,id(Name))], operands(Ops), boundary, !,
-    { (atom_chars(Name,['.'|_]) -> Stmt=directive(Name,Ops); Stmt=instruction(Name,Ops)) }, statements(Ss).
+statements([located(L,Stmt)|Ss]) --> [at(L,id(Name))], operands(Ops), instruction_annotation(L,Ann), boundary, !,
+    { (atom_chars(Name,['.'|_]) ->
+        (Ann=none -> Stmt=directive(Name,Ops); throw(error(at(L,annotation_on_directive(Name)))))
+      ; Ann=none -> Stmt=instruction(Name,Ops); Stmt=instruction(Name,Ops,Ann)) }, statements(Ss).
 statements(_) --> [at(L,T)], { throw(error(statement_syntax(L,T))) }.
+instruction_annotation(L,ptr) --> [at(L,annotation(Text))], !,
+    { phrase(tokens(L,Ts),Text),
+      (Ts=[at(_,id(ptr))] -> true; throw(error(at(L,pointer_annotation_syntax)))) }.
+instruction_annotation(_,none) --> [].
 section_name(Name) --> [at(_,id(A))], section_parts(As), { atomic_list_concat([A|As],'-',Name) }.
 section_parts([A|As]) --> [at(_,'-'),at(_,id(A))], !, section_parts(As).
 section_parts([]) --> [].

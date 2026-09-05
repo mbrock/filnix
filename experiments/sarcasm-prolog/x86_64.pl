@@ -5,6 +5,7 @@
 emit_c(Functions) :-
     format('#include <stdint.h>~n#include <stddef.h>~n#include <limits.h>~n', []),
     format('#if !defined(__FILC__) || !defined(__x86_64__)~n#error "requires x86-64 Fil-C"~n#endif~n', []),
+    format('_Static_assert(sizeof(void *) == 8 && _Alignof(void *) == 8, "requires 8-byte pointer layout");~n', []),
     format('static const unsigned char *sp_address(const unsigned char *p, uint64_t i, uint64_t s, uint64_t d) {~n', []),
     format('  uint64_t o;~n  if (__builtin_mul_overflow(i,s,&o) || __builtin_add_overflow(o,d,&o) || o > PTRDIFF_MAX) __builtin_trap();~n  return p + (ptrdiff_t)o;~n}~n', []),
     maplist(emit_function,Functions).
@@ -23,6 +24,12 @@ emit_plan([store(P,I,S,O,W,V,L)|Xs],N) :- !,
     format('  { uint~d_t stored = (uint~d_t)(',[Bits,Bits]), value(V),
     format(');~n    __builtin_memcpy((void *)',[]), address(P,I,S,O),
     format(', &stored, ~d); }~n',[W]), emit_plan(Xs,N).
+emit_plan([pointer_load(V,P,I,S,O,L)|Xs],N) :- !,
+    origin(L), pointer_declaration(V), format('*(const unsigned char * const *)',[]),
+    address(P,I,S,O), format(';~n',[]), emit_plan(Xs,N).
+emit_plan([pointer_store(P,I,S,O,V,L)|Xs],N) :- !,
+    origin(L), format('  *(const unsigned char **)',[]), address(P,I,S,O),
+    format(' = ',[]), value(V), format(';~n',[]), emit_plan(Xs,N).
 emit_plan([assign(V,W,A,L)|Xs],N) :- !,
     origin(L), declaration(V), format('(uint~d_t)(',[W]), value(A), format(');~n',[]), emit_plan(Xs,N).
 emit_plan([pointer_copy(V,P,L)|Xs],N) :- !,

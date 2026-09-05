@@ -66,6 +66,7 @@ Both inspection modes require valid input and a validated access plan.
 | `tests.pl`, `effects-tests.pl` | Parser, effect catalogue, normalized semantics, access plans and decision traces |
 | `pointer-tests.pl` | Pointer-copy type propagation, derived addresses and aliased operands |
 | `store-tests.pl` | Write effects, immediate ranges, preserved registers and ordering barriers |
+| `pointer-memory-tests.pl` | Pointer annotations, typed memory effects and register/value flow |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
 | `generated-tests.py` | Deterministic small-program comparison against native x86-64 execution |
 
@@ -91,10 +92,23 @@ each write;
 32-bit writes zero-extend, arithmetic wraps, and shift counts are masked.
 The pointer argument remains pointer-typed in generated C.
 
-No branches, calls, stack manipulation, pointer loads/stores,
-SIMD, atomics, or partial 8/16-bit register writes are supported.
+No branches, calls, stack manipulation, SIMD, atomics, or partial 8/16-bit
+register writes are supported.
 Unsupported instructions fail explicitly. AArch64 is a deliberately failing
 target boundary, not an x86 fallback.
+
+Pointer loads and stores use `movq` with a trailing `#! ptr` annotation
+(`;! ptr` also works):
+
+```asm
+movq (%rdi), %r8       #! ptr
+movq %r8, 8(%rdi)      #! ptr
+```
+
+These operations access an eight-byte-aligned pointer slot and preserve
+Fil-C's capability metadata. A pointer store requires a pointer source;
+the annotation does not turn an integer register into one. Without the
+annotation, memory-source/destination `movq` remains an integer operation.
 
 ## Grouping and its limits
 
@@ -102,7 +116,9 @@ The optimizer proposes a partition of consecutive loads into reads of
 1, 2, 4 or 8 bytes. It groups only adjoining byte ranges with the same
 pointer value, index value and scale. It stops at any intervening scalar or pointer
 operation or store. It cannot move reads across a store, even when the
-address expressions differ. Calls and branches remain unsupported.
+address expressions differ. Pointer loads and stores also separate read
+groups; the planner never replaces a typed pointer access with an integer
+read. Calls and branches remain unsupported.
 
 The validator independently matches the plan against the original ordered
 IR, verifies address identities and exact contiguous coverage, and rejects
@@ -134,7 +150,7 @@ Negative cases exercise null capabilities, out-of-bounds reads in both
 variants, and offset overflow. Unsupported architectures must fail without
 producing assembly.
 
-The effect table covers all 34 accepted instruction forms. Twenty-eight
+The effect table covers all 36 accepted instruction forms. Thirty-six
 malformed-source fixtures check failure reasons and source lines. A
 deterministic generator exercises 181 small programs, comparing 46,336
 return values and full memory buffers per grouped/ungrouped variant against the original
@@ -156,6 +172,14 @@ tests cover read-only memory, missing/freed capabilities, allocation
 boundaries and offset overflow. Whole-buffer comparisons include untouched
 bytes, so a correct return value cannot hide an incorrect store.
 
+`examples/pointer-memory.s` loads, copies, stores and dereferences pointers,
+including pointers back to their own slots. Fil-C callers check 16,384
+indexed reads, 2,048 round trips and 256 self references per variant.
+Fifteen failure modes per variant cover pointer alignment, slot/pointee
+bounds and lifetime, read-only destinations, and real addresses rebuilt
+byte by byte without a capability. A separate overwritten-slot case checks
+that changed address bits cannot escape the original capability's bounds.
+
 The tests intentionally cross the actual allocation boundary: Fil-C rounds
 small allocations up, so `malloc(3)` is not a reliable four-byte-read
 failure fixture.
@@ -163,7 +187,7 @@ failure fixture.
 The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
 before adding loops or a direct assembly backend. Milestone 1 is complete;
-pointer copies and the narrow `leaq` subset at the start of milestone 2 are
-also complete, along with integer stores. Annotated pointer loads/stores
-are next. The remaining milestones describe
+milestone 2 is also complete: pointer copies, the narrow `leaq` subset,
+integer stores and annotated pointer loads/stores. Basic blocks and
+conditional control flow are next. The remaining milestones describe
 planned extensions, not currently supported input.
