@@ -33,6 +33,19 @@ This repository packages [Fil-C](https://github.com/pizlonator/fil-c) (memory-sa
 
 Parts 1 and 2 are designed for eventual nixpkgs integration. Part 3 is where we explore what's possible.
 
+## Experiments
+
+The [Prolog SaRCAsm prototype](experiments/sarcasm-prolog/README.md) explores
+DCG assembly parsing, explicit memory accesses, and validated read grouping
+with Trealla. Its first x86-64 slice uses Fil-C for final lowering. See the
+[development plan](experiments/sarcasm-prolog/PLAN.md) for staged extensions
+and the evidence required at each step.
+
+```sh
+nix run .#sarcasm-prolog -- experiments/sarcasm-prolog/examples/table-entry.s
+nix build .#checks.x86_64-linux.sarcasm-prolog
+```
+
 ## What is Fil-C?
 
 [Fil-C](https://github.com/pizlonator/fil-c) by [Filip Pizlo](https://twitter.com/filpizlo) is a memory-safe C/C++ compiler. It prevents use-after-free, buffer overflows, and type confusion through runtime bounds checking and garbage collection - no code changes, no unsafe escape hatches. See [fil-c.org](https://fil-c.org) and the [upstream repo](https://github.com/pizlonator/fil-c) for details on how it works.

@@ -19,6 +19,10 @@
 
       filcc = import ./toolchain.nix { inherit pkgs; };
       sarcasm = import ./packages/sarcasm.nix { inherit pkgs; };
+      sarcasm-prolog = import ./packages/sarcasm-prolog.nix {
+        inherit pkgs filcc;
+        trealla = pkgsFilc.trealla;
+      };
       projeny = pkgs.callPackage ./packages/projeny.nix { };
       runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
@@ -107,6 +111,10 @@
       lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
 
       checks.${system} = {
+        sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
+          inherit pkgs filcc sarcasm-prolog;
+          trealla = pkgsFilc.trealla;
+        };
         trealla = import ./tests/trealla.nix {
           inherit pkgs filcc;
           trealla = pkgsFilc.trealla;
@@ -137,7 +145,12 @@
       packages.${system} = {
         baseline = baseline.baseline;
         baseline-shell = baseline.shell;
-        inherit filcc projeny sarcasm;
+        inherit
+          filcc
+          projeny
+          sarcasm
+          sarcasm-prolog
+          ;
         inherit (sarcasm) minilute;
         inherit (pkgsFilc) openssl-sarcasm;
         inherit
