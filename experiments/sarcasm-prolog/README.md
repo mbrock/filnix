@@ -17,6 +17,8 @@ nix run .#sarcasm-prolog -- --emit-effects experiments/sarcasm-prolog/examples/t
 nix run .#sarcasm-prolog -- --explain experiments/sarcasm-prolog/examples/table-entry.s
 nix run .#sarcasm-prolog -- --no-coalesce --emit-c experiments/sarcasm-prolog/examples/table-entry.s
 nix run .#sarcasm-prolog -- --emit-ir experiments/sarcasm-prolog/examples/branches.s
+nix run .#sarcasm-prolog -- --emit-checks experiments/sarcasm-prolog/examples/checks.s
+nix run .#sarcasm-prolog -- --verify-checks --emit-c experiments/sarcasm-prolog/examples/checks.s
 nix run .#sarcasm-prolog -- --linear --emit-c experiments/sarcasm-prolog/examples/table-entry.s
 nix build .#checks.x86_64-linux.sarcasm-prolog
 ```
@@ -64,6 +66,7 @@ Both inspection modes require valid input and a validated access plan.
 | `cfg.pl` | Blocks, typed value lowering and independent edge-transfer validation |
 | `dataflow.pl` | Finite type/flag fixed point and local inductive obligation checker |
 | `accesses.pl` | Read-group proposals, decision traces and an independent structural validator |
+| `check-model.pl`, `check-reuse.pl`, `check-validator.pl` | Protection requirements, bounded witness search and independent certificate validation |
 | `target.pl` | Architecture selection; explicit rejection for AArch64/arm64 and unknown targets |
 | `x86_64.pl` | Little-endian extraction and unsigned integer semantics expressed as Fil-C C |
 | `x86-flags.pl`, `x86-cfg.pl` | Flag computation, branches and simultaneous typed edge assignments in C |
@@ -74,6 +77,8 @@ Both inspection modes require valid input and a validated access plan.
 | `store-tests.pl` | Write effects, immediate ranges, preserved registers and ordering barriers |
 | `pointer-memory-tests.pl` | Pointer annotations, typed memory effects and register/value flow |
 | `dataflow-tests.pl` | Cycles, first-iteration facts, missing predecessors and resource exhaustion |
+| `check-tests.pl`, `check-runtime.c`, `check-safety.py` | Protection certificate mutations, native/C comparisons and conditional failure behavior |
+| `protection-probe.py`, `protection-probe*.c` | Compiler check scheduling inspection and lifetime tests |
 | `cfg-tests.pl`, `edge-swap-test.pl` | Joins, unavailable flags, malformed edges and an executable cyclic assignment |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
 | `generated-tests.py`, `branch-generated-tests.py`, `loop-generated-tests.py`, `native_oracle.py` | Deterministic scalar/branch comparisons against native x86-64 execution |
@@ -157,6 +162,13 @@ rejected in this slice. Effective offsets must fit `PTRDIFF_MAX` without
 multiplication or addition overflow; generated guards trap otherwise.
 This intentionally excludes assembly that relies on address wraparound.
 
+`--emit-checks` reports advisory certificates for prior covering reads,
+including forward joins where every predecessor satisfies the obligation.
+`--verify-checks` validates them while emitting unchanged C. Stores, pointer
+operations and cyclic edges are conservative barriers. The analysis retains
+offset guards and never authorizes unchecked emission. [CHECK_REUSE.md](CHECK_REUSE.md)
+describes the proof boundary, rejection tests and measured compiler behavior.
+
 ## Validation and next steps
 
 The Nix check runs Prolog tests, builds both grouped and ungrouped assembly,
@@ -221,8 +233,9 @@ failure fixture.
 
 The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
-before adding loops or a direct assembly backend. Milestones 1–4 are
+before adding a direct assembly backend. Milestones 1–5 are
 complete: explicit effects, pointer operations and stores, blocks and
-branches, and a bounded decoder loop. Check-reuse analysis is next.
+branches, a bounded decoder loop, and the check-reuse investigation.
+The backend decision and representative performance evaluation are next.
 The remaining milestones describe
 planned extensions, not currently supported input.

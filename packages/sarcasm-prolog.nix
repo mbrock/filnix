@@ -9,7 +9,7 @@ pkgs.writeShellApplication {
   text = ''
     for arg in "$@"; do
       case "$arg" in
-        --emit-c|--emit-ir|--emit-effects|--explain|--help|-h)
+        --emit-c|--emit-ir|--emit-effects|--explain|--emit-checks|--help|-h)
           exec ${trealla}/bin/tpl -q -f ${../experiments/sarcasm-prolog}/main.pl -- "$@"
           ;;
       esac

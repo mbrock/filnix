@@ -19,7 +19,9 @@ tests cover that executable subset. Milestone 2 is also complete: pointer
 copies, `leaq`, integer stores and annotated pointer loads/stores. Milestone
 3 is complete: typed basic blocks, flag values and conditional control flow.
 Milestone 4 is complete: a finite analysis for backedges and a bounded table
-decoder with loop-carried pointers. Milestones 5–7 remain planned. Follow
+decoder with loop-carried pointers. Milestone 5 adds independently validated,
+advisory protection certificates and measures existing compiler reuse.
+Milestones 6–7 remain planned. Follow
 them in order; keep each extension small enough
 to review with its semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
@@ -231,6 +233,24 @@ rather than a collection of special cases for one input file?
 
 ## 5. Explore check reuse with explicit obligations
 
+**Status: complete.** Separate protection descriptors, a bounded backward
+witness search and a local certificate checker cover integer reads within
+blocks and across forward joins. Every predecessor is checked. Stores,
+pointer operations, unknown effects and every cyclic edge invalidate facts;
+target offset guards are retained. Analysis is optional and advisory: C
+output is byte-identical with `--verify-checks`. No partial result escapes
+budget exhaustion or exceptions. Trealla tabling is not needed for this
+finite search and is not introduced.
+
+**Evidence:** mutation tests cover changed identities, actual witness ranges,
+permission, alignment, omitted predecessors and invalidation. Seven assembly
+fixtures agree with native/C references on 14,336 complete cases per variant,
+plus conditional boundary behavior and eight safety failure modes. Pinned
+compiler probes distinguish ordinary load elimination from actual Fil-C
+check reuse and verify a lifetime failure after an opaque freeing call.
+[CHECK_REUSE.md](CHECK_REUSE.md) records the obligations and measured guards,
+including the source/machine witness gap and the explicit-check limitation.
+
 **Starting evidence from milestone 4:** Fil-C already combines protection
 for the node's integer value and pointer slot, while the ungrouped decoder
 retains separate checks for its halfwords. Loop backedges contain compiler-
@@ -316,20 +336,10 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Start milestone 5 by distinguishing prior successful protection from an
-access or read group. A proposal must name the exact pointer/capability and
-index identities, range, permission, alignment and dominating source check.
-Build a separate local obligation checker and deliberately corrupt each
-part of a proposal. Keep runtime accesses checked while assessing what the
-existing Fil-C backend can express and eliminate.
-
-Begin with reuse inside a block, then only extend across forward edges when
-all incoming paths satisfy the obligation. Treat stores, pointer changes
-and loop backedges with compiler-inserted GC polling as barriers until their
-invalidation semantics are defined. Do not use incomplete analysis results
-or introduce an unchecked primitive to make the experiment look faster.
-
-In parallel with that investigation, the unsigned comparison in DECODER.md
-is a bounded code-quality opportunity: simplifying a known flag formula
-must use its recorded producer and operands, with native differential tests
-and a selectable unoptimized path. It must not guess from nearby text.
+Before the backend decision, simplify the decoder's unsigned comparison
+using its recorded flag producer and operands. Keep the original flag
+formula selectable and use independent validation plus native differential
+tests. This is a value optimization with no change to memory protection.
+Then evaluate representative leaf/loop routines through the compiler-backed
+path, record code quality and timings, and decide whether measured limits
+justify a different backend or another bounded frontend extension.

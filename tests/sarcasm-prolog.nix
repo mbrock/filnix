@@ -91,6 +91,46 @@ pkgs.runCommand "sarcasm-prolog-check"
       decoder-input.s loops-input.s -o decoder-native
     timeout 30 ./decoder-native
 
+    cp ${../experiments/sarcasm-prolog/examples/checks.s} checks-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-checks checks-input.s > checks.report
+    python - <<'PY'
+    from pathlib import Path
+    reports = Path("checks.report").read_text().splitlines()
+    expected = dict(zip(["cover", "diamond", "one_path", "store", "index", "cycle", "local_loop"],
+                        [1, 1, 0, 0, 0, 0, 1]))
+    assert len(reports) == len(expected), reports
+    for line, (name, count) in zip(reports, expected.items()):
+        assert line.startswith(f"checks(checks_{name},report("), line
+        assert line.count("covered(reuse(") == count, line
+    PY
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-c checks-input.s > checks.c
+    ${sarcasm-prolog}/bin/sarcasm-prolog --verify-checks --emit-c checks-input.s > checks-verified.c
+    cmp checks.c checks-verified.c
+    ${sarcasm-prolog}/bin/sarcasm-prolog --verify-checks checks-input.s > checks.s
+    sed 's/checks_/checks_plain_/g' checks-input.s > checks-plain-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --verify-checks --no-coalesce checks-plain-input.s > checks-plain.s
+    for file in checks checks-plain; do
+      ${pkgs.binutils}/bin/as "$file.s" -o "$file.o"
+    done
+    ${filcc}/bin/clang -O2 ${../experiments/sarcasm-prolog/check-runtime.c} \
+      checks.o checks-plain.o -o check-runtime
+    timeout 30 ./check-runtime
+    python ${../experiments/sarcasm-prolog/check-safety.py}
+    ${pkgs.stdenv.cc}/bin/cc -O2 -DNATIVE ${../experiments/sarcasm-prolog/check-runtime.c} \
+      checks-input.s -o check-native
+    timeout 30 ./check-native
+    if ${sarcasm-prolog}/bin/sarcasm-prolog --linear --emit-checks input.s > rejected.s 2> error; then
+      echo 'unexpected acceptance of check analysis on linear IR' >&2
+      exit 1
+    fi
+    test ! -s rejected.s
+    grep -F 'check_analysis_requires_cfg' error
+
+    mkdir protection-probes
+    pushd protection-probes
+    python ${../experiments/sarcasm-prolog}/protection-probe.py ${filcc}/bin/clang
+    popd
+
     for arch in arm64 aarch64 mips; do
       if ${sarcasm-prolog}/bin/sarcasm-prolog --arch "$arch" input.s > rejected.s 2> error; then
         echo "unexpected target acceptance: $arch" >&2
@@ -119,9 +159,10 @@ pkgs.runCommand "sarcasm-prolog-check"
       ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
     popd
     mkdir $out
-    cp -r generated branches loops $out/
+    cp -r generated branches loops protection-probes $out/
     cp grouped.c separate.c grouped.s separate.s pointers.c pointers.s stores.c stores.s prolog.log $out/
     cp pointer-memory.c pointer-memory.s $out/
     cp branches.c branches.s edge-swap.c $out/
     cp decoder.c decoder-separate.c decoder.s decoder-plain.s loops.s loops-plain.s $out/
+    cp checks.c checks.s checks-plain.s checks.report $out/
   ''

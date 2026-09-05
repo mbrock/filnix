@@ -316,6 +316,21 @@ groups. No read group crosses a block boundary. Calls remain unsupported.
 
 ## Evidence and next extension
 
+Protection analysis is separate from read grouping. An advisory certificate
+names a prior checked read, the exact pointer/capability and index identities,
+range, permission, alignment, and every intervening operation/edge. All
+incoming paths must reach the witness without invalidation. Stores, pointer
+operations, unknown effects and edges belonging to cycles are barriers.
+Effective-offset guards remain obligations even when byte coverage follows.
+The independent validator checks the supplied certificate without repeating
+witness search. Exhaustion and exceptions return no partial analysis result.
+
+These statements concern normal continuation of a **modeled checked read**;
+LLVM might eliminate that read before instrumentation. A certificate is
+therefore not evidence that a real machine guard remains. `--emit-checks`
+and `--verify-checks` leave every C access unchanged. [CHECK_REUSE.md](CHECK_REUSE.md)
+specifies the obligations, conservative limits and actual compiler evidence.
+
 The Nix check combines a complete instruction-form table, negative effect
 and access-plan tests, source-located malformed-input fixtures, native
 differential execution of deterministic small programs, and Fil-C runtime
@@ -324,7 +339,6 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-Milestones 1–4 are implemented. The bounded decoder's contract and assembly
-inspection are in [DECODER.md](DECODER.md). Next is an investigation of
-check reuse with separate, explicit obligations; see
-[milestone 5](PLAN.md#5-explore-check-reuse-with-explicit-obligations).
+Milestones 1–5 are implemented. The bounded decoder's contract and assembly
+inspection are in [DECODER.md](DECODER.md). The backend decision and
+representative evaluation follow in [PLAN.md](PLAN.md).
