@@ -57,6 +57,14 @@ for widths in [(1, 1), (2, 2), (4, 4), (2, 1, 1), (1, 1, 2), (1, 2, 1), (1, 1, 1
 # operands look alike but their address values are distinct.
 add("load overwrites index", ["andq $15, %rsi", "movzbl (%rdi,%rsi,1), %esi",
                              "andq $15, %rsi", "movzbl 1(%rdi,%rsi,1), %eax"])
+for scale in [1, 2, 4, 8]:
+    for dest in ["rsi", "r8", "rdi"]:
+        add(f"pointer copy/lea, scale {scale}, destination {dest}", [
+            "andq $15,%rsi", "movq %rdi,%r8", f"leaq 3(%r8,%rsi,{scale}),%{dest}",
+            f"movq %{dest},%r9", "movzwl (%r9),%eax", "movzwl 2(%r9),%ecx", "xorq %rcx,%rax"])
+add("pointer self-copy and overwrite", ["movq %rdi,%rdi", "leaq 2(%rdi),%rdi",
+    "movq %rdi,%rax", "movzbl (%rax),%eax"])
+add("pointer copy becomes integer", ["movq %rdi,%rax", "movq %rsi,%rax"])
 for n in range(40):
     body = base.copy()
     for _ in range(rng.randrange(3, 14)):

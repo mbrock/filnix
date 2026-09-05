@@ -2,7 +2,7 @@
 :- use_module(library(lists)).
 
 % A finite, queryable catalogue. It describes the accepted source forms,
-% not every encoding of these x86 mnemonics. No new forms are enabled here.
+% not every encoding of these x86 mnemonics.
 instruction_form(movzbl, load(1,32)).
 instruction_form(movzwl, load(2,32)).
 instruction_form(movl, load(4,32)).
@@ -12,6 +12,7 @@ instruction_form(Op, move(W,Source)) :-
 instruction_form(Op, binary(K,W,Source)) :-
     binary_opcode(Op,K,W), member(Source,[register,immediate]).
 instruction_form(Op, shift(K,W)) :- shift_opcode(Op,K,W).
+instruction_form(leaq, pointer_offset).
 instruction_form(ret, return).
 move_width(movl,32). move_width(movq,64).
 binary_opcode(addl,add,32). binary_opcode(addq,add,64).
@@ -35,6 +36,10 @@ require(Goal,Reason) :- (call(Goal) -> true; throw(error(Reason))).
 arity(Operands,N) :- length(Operands,Actual),
     require(Actual=:=N, operand_count(expected(N),actual(Actual))).
 
+normalize(leaq,mem(D,B,I,S),Dest,pointer_offset(Address,R)) :- !,
+    destination(Dest,64,R), address(mem(D,B,I,S),Address).
+normalize(movq,reg(Source),Dest,copy(R,D)) :- !,
+    register(Source,64,R), destination(Dest,64,D).
 normalize(Op,mem(D,B,I,S),Dest,load(Address,Bytes,R)) :- !,
     require(instruction_form(Op,load(Bytes,W)), unsupported_memory_source(Op)),
     destination(Dest,W,R), address(mem(D,B,I,S),Address).
@@ -90,8 +95,14 @@ action_effects(load(A,Bytes,R),
     effects(registers(Reads,[Write]),
             memory([access(read,A,Bytes,alignment(1),ordinary)]),
             Flags,control(next),may_trap([address_overflow,invalid_read]))) :-
-    A=address(Base,Index,_,_), source_reads(Index,IndexReads),
-    Reads=[read(Base,pointer)|IndexReads], integer_write(R,Write), preserve_flags(Flags).
+    address_reads(A,Reads), integer_write(R,Write), preserve_flags(Flags).
+action_effects(copy(S,D),
+    effects(registers([read(S,value)],[write(D,same_type_as(S),replace)]),
+            memory([]),Flags,control(next),may_trap([]))) :- preserve_flags(Flags).
+action_effects(pointer_offset(A,D),
+    effects(registers(Reads,[write(D,pointer,replace)]),memory([]),
+            Flags,control(next),may_trap([address_overflow]))) :-
+    address_reads(A,Reads), preserve_flags(Flags).
 action_effects(move(V,R),
     effects(registers(Reads,[Write]),memory([]),Flags,control(next),may_trap([]))) :-
     source_reads(V,Reads), integer_write(R,Write), preserve_flags(Flags).
@@ -107,6 +118,7 @@ action_effects(return(R),
     preserve_flags(Flags).
 source_reads(register(R,W),[read(register(R,W),integer)]).
 source_reads(immediate(_),[]).
+address_reads(address(Base,Index,_,_),[read(Base,pointer)|Reads]) :- source_reads(Index,Reads).
 integer_write(register(R,32),write(register(R,32),integer,zero_extend(64))).
 integer_write(register(R,64),write(register(R,64),integer,replace)).
 

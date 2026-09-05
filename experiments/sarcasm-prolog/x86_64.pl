@@ -15,11 +15,15 @@ emit_function(function(Name,Args,Plan)) :-
 emit_plan([], _).
 emit_plan([read(P,I,S,O,W,Loads)|Xs],N) :- !,
     Bits is W*8,
-    format('  /* covering read: offset ~d, width ~d */~n  uint~d_t chunk~d;~n  __builtin_memcpy(&chunk~d, sp_address(~w, ',[O,W,Bits,N,N,P]),
-    value(I), format(', UINT64_C(~d), UINT64_C(~d)), ~d);~n',[S,O,W]),
+    format('  /* covering read: offset ~d, width ~d */~n  uint~d_t chunk~d;~n  __builtin_memcpy(&chunk~d, ',[O,W,Bits,N,N]),
+    address(P,I,S,O), format(', ~d);~n',[W]),
     maplist(extract(N,O),Loads), N1 is N+1, emit_plan(Xs,N1).
 emit_plan([assign(V,W,A,L)|Xs],N) :- !,
     origin(L), declaration(V), format('(uint~d_t)(',[W]), value(A), format(');~n',[]), emit_plan(Xs,N).
+emit_plan([pointer_copy(V,P,L)|Xs],N) :- !,
+    origin(L), pointer_declaration(V), value(P), format(';~n',[]), emit_plan(Xs,N).
+emit_plan([pointer_offset(V,P,I,S,O,L)|Xs],N) :- !,
+    origin(L), pointer_declaration(V), address(P,I,S,O), format(';~n',[]), emit_plan(Xs,N).
 emit_plan([binary(V,K,W,A,B,L)|Xs],N) :- !,
     origin(L), declaration(V), format('(uint~d_t)(',[W]), value(A), operator(K),
     (memberchk(K,[shl,shr]) -> format('(',[]), value(B), Mask is W-1, format(' & ~d)',[Mask]); value(B)),
@@ -30,8 +34,13 @@ extract(N,O,load(V,_,_,_,D,W,L)) :-
     origin(L), declaration(V), format('(uint~d_t)(chunk~d >> ~d);~n',[Bits,N,Shift]).
 origin(L) :- format('  /* source line ~d */~n',[L]).
 declaration(v(N)) :- format('  uint64_t v~d = ',[N]).
+pointer_declaration(v(N)) :- format('  const unsigned char *v~d = ',[N]).
+address(P,I,S,O) :-
+    format('sp_address(',[]), value(P), format(', ',[]), value(I),
+    format(', UINT64_C(~d), UINT64_C(~d))',[S,O]).
 value(view(V,W)) :- format('((uint~d_t)',[W]), value(V), format(')',[]).
 value(v(N)) :- format('v~d',[N]).
+value(arg0) :- format('arg0',[]).
 value(arg1) :- format('arg1',[]).
 value(literal(N)) :- format('UINT64_C(~d)',[N]).
 operator(add) :- format(' + ',[]).

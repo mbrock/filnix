@@ -1,7 +1,7 @@
 :- module(sp_ir, [lower/2, lower/3, plan/3, validate/2, constant/2]).
 :- use_module(library(lists)).
 
-% Scalar SSA values distinguish changing registers from immutable address inputs.
+% Typed SSA values distinguish changing registers from immutable address inputs.
 lower(Statements, Functions) :- lower(Statements,Functions,_).
 lower(Statements, Functions, Effects) :-
     strip_metadata(Statements, Code), functions(Code, Functions, Effects),
@@ -34,7 +34,7 @@ body([located(L,instruction(Op,Args))|Ss],Rest,State,N,_,[IR|IRs],[located(L,Sem
     Semantics=semantics(Action,effects(registers(Reads,Writes),_,_,Control,_)),
     resolve_reads(Reads,State,Bindings,L), lower_action(Action,Bindings,N,L,IR),
     (Control=control(return) -> Rest=Ss, IRs=[], Effects=[]
-    ; apply_writes(Writes,v(N),State,Next), N1 is N+1,
+    ; apply_writes(Writes,Bindings,v(N),State,Next), N1 is N+1,
       body(Ss,Rest,Next,N1,L,IRs,Effects)).
 body([located(L,S)|_],_,_,_,_,_,_) :- throw(error(at(L,unsupported_control_flow(S)))).
 body([],_,_,_,LastLine,_,_) :- throw(error(at(LastLine,missing_return))).
@@ -43,8 +43,8 @@ resolve_reads([],_,[],_).
 resolve_reads([read(R,Type)|Rs],State,[binding(R,Value)|Bs],L) :-
     R=register(Root,W),
     (memberchk(Root-Found,State) -> true; throw(error(at(L,uninitialized_register(Root))))),
-    (Type=integer, Found=int(V) -> Value=view(V,W)
-    ; Type=pointer, Found=ptr(P), W=64 -> Value=pointer(P)
+    (memberchk(Type,[integer,value]), Found=int(V) -> Value=view(V,W)
+    ; memberchk(Type,[pointer,value]), Found=ptr(P), W=64 -> Value=pointer(P)
     ; throw(error(at(L,register_type(Root,expected(Type),actual(Found)))))),
     resolve_reads(Rs,State,Bs,L).
 resolved(immediate(N),_,literal(V)) :- V is N mod 18446744073709551616.
@@ -52,14 +52,26 @@ resolved(register(R,W),Bs,V) :- memberchk(binding(register(R,W),V),Bs).
 lower_action(load(address(B,I,K,O),Bytes,_),Bs,N,L,load(v(N),P,Index,K,O,Bytes,L)) :-
     resolved(B,Bs,pointer(P)), resolved(I,Bs,Index).
 lower_action(move(S,register(_,W)),Bs,N,L,assign(v(N),W,V,L)) :- resolved(S,Bs,V).
+lower_action(copy(S,_),Bs,N,L,IR) :-
+    resolved(S,Bs,Value),
+    (Value=pointer(P) -> IR=pointer_copy(v(N),P,L)
+    ; IR=assign(v(N),64,Value,L)).
+lower_action(pointer_offset(address(B,I,K,O),_),Bs,N,L,pointer_offset(v(N),P,Index,K,O,L)) :-
+    resolved(B,Bs,pointer(P)), resolved(I,Bs,Index).
 lower_action(binary(K,S,R),Bs,N,L,binary(v(N),K,W,A,B,L)) :-
     R=register(_,W), resolved(R,Bs,A), resolved(S,Bs,B).
 lower_action(shift(K,Count,R),Bs,N,L,binary(v(N),K,W,A,literal(Count),L)) :-
     R=register(_,W), resolved(R,Bs,A).
 lower_action(return(R),Bs,_,_,return(V)) :- resolved(R,Bs,V).
-apply_writes([],_,State,State).
-apply_writes([write(register(Root,_),integer,_)|Ws],V,State,Next) :-
-    remove_reg(Root,State,Rest), apply_writes(Ws,V,[Root-int(V)|Rest],Next).
+apply_writes([],_,_,State,State).
+apply_writes([write(register(Root,_),Type,_)|Ws],Bindings,V,State,Next) :-
+    written_value(Type,Bindings,V,Typed), remove_reg(Root,State,Rest),
+    apply_writes(Ws,Bindings,V,[Root-Typed|Rest],Next).
+written_value(integer,_,V,int(V)).
+written_value(pointer,_,V,ptr(V)).
+written_value(same_type_as(R),Bindings,V,Typed) :-
+    resolved(R,Bindings,Source),
+    (Source=pointer(_) -> Typed=ptr(V); Source=view(_,_) -> Typed=int(V)).
 remove_reg(_,[],[]).
 remove_reg(R,[R-_|Ss],Rest) :- !, remove_reg(R,Ss,Rest).
 remove_reg(R,[X|Ss],[X|Rest]) :- remove_reg(R,Ss,Rest).

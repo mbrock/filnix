@@ -19,12 +19,18 @@ pkgs.runCommand "sarcasm-prolog-check"
     sed 's/table_entry/table_entry_plain/g' input.s > plain-input.s
     ${sarcasm-prolog}/bin/sarcasm-prolog --no-coalesce plain-input.s > separate.s
     ${sarcasm-prolog}/bin/sarcasm-prolog ${../experiments/sarcasm-prolog/examples/scalars.s} > scalars.s
+    cp ${../experiments/sarcasm-prolog/examples/pointers.s} pointers-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog pointers-input.s > pointers.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --emit-c pointers-input.s > pointers.c
+    grep -F 'const unsigned char *v1 = sp_address(v0,' pointers.c
+    sed 's/pointer_entry/pointer_entry_plain/g' pointers-input.s > pointers-plain-input.s
+    ${sarcasm-prolog}/bin/sarcasm-prolog --no-coalesce pointers-plain-input.s > pointers-plain.s
     # These are already Fil-C compiler outputs, so use the ordinary assembler.
-    for file in grouped separate scalars; do
+    for file in grouped separate scalars pointers pointers-plain; do
       ${pkgs.binutils}/bin/as "$file.s" -o "$file.o"
     done
     ${filcc}/bin/clang -O2 ${../experiments/sarcasm-prolog/runtime.c} \
-      grouped.o separate.o scalars.o -o runtime
+      grouped.o separate.o scalars.o pointers.o pointers-plain.o -o runtime
     ./runtime
     python ${../experiments/sarcasm-prolog/safety.py}
 
@@ -45,5 +51,5 @@ pkgs.runCommand "sarcasm-prolog-check"
     popd
     mkdir $out
     cp -r generated $out/
-    cp grouped.c separate.c grouped.s separate.s prolog.log $out/
+    cp grouped.c separate.c grouped.s separate.s pointers.c pointers.s prolog.log $out/
   ''

@@ -15,11 +15,12 @@ rejection of ARM64. See [README.md](README.md) for the precise subset.
 
 Milestone 1 is also complete: instruction effects and the semantic contract
 are explicit, grouping decisions are inspectable, and native differential
-tests cover the unchanged executable subset. Milestones 2–7 remain planned
-work. Follow them in order; keep each extension small enough to review with
+tests cover that executable subset. Milestone 2 is in progress: its pointer
+copy and `leaq` slice is complete. The remaining work is planned below.
+Follow the milestones in order; keep each extension small enough to review with
 its semantic rules and tests. The parked zstd port is motivation and
-potential future fixture material, not
-an active package migration or a requirement to revive its builds now.
+potential future fixture material, not an active package migration or a
+requirement to revive its builds now.
 
 ## Rules for extending the experiment
 
@@ -68,7 +69,7 @@ illegal forms. Diagnostics identify the offending source line and missing
 condition. Add malformed-source and generated small-program tests with
 bounded execution, recording failures as small permanent fixtures.
 
-**Evidence:** all 29 instruction forms have table-driven coverage; 20
+**Evidence at completion:** all 29 instruction forms have table-driven coverage; 20
 malformed-source fixtures check diagnostics. The native oracle executes
 148 deterministic small programs and compares 37,888 exact results per
 grouped/ungrouped variant. The original 32,000-case lookup checks and Fil-C
@@ -81,6 +82,14 @@ compiler/runtime.
 instruction without reconstructing assumptions across several passes?
 
 ## 2. Add straight-line pointer operations and stores
+
+**Status: in progress.** Pointer-preserving register copies and `leaq`
+with a pointer base, integer index and nonnegative displacement are complete.
+The effect relation declares type preservation; lowering keeps fresh pointer
+values pointer-typed through copies and derivation. Read planning treats
+these operations as barriers. Tests cover aliased inputs/destinations,
+capability failures, boundary crossing and native execution. Integer stores
+and annotated pointer loads/stores remain to be implemented.
 
 **Deliverable:** support pointer-preserving register copies and a narrow
 `lea` subset, followed by integer stores and explicitly annotated pointer
@@ -229,15 +238,15 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Start milestone 2 with pointer-preserving `movq` register copies and a
-narrow `lea` subset. First decide how a copied or offset pointer is
-represented in the value IR, how its capability follows it, and which
-offsets the initial slice accepts. Give these operations explicit effects
-and tests before extending lowering or the C emitter.
+Add 32/64-bit integer stores, with explicit write effects and unconditional
+ordering barriers for read grouping. Use an ordinary unaligned-safe C store
+through Fil-C, and verify a read/modify/write routine against a C reference.
+Include aliasing stores, read-only destinations, capability failures and
+allocation-boundary crossings. Keep the existing nonnegative offset
+contract explicit rather than changing address arithmetic incidentally.
 
-The first fixture should copy a pointer, derive another pointer and read
-through it. Compare results against a C reference and verify that bad
-capabilities and out-of-bounds offsets still trap. Inspect the generated C
-to confirm pointers remain pointer-typed. Keep stores for the following
-slice so pointer propagation and mutation can be reviewed independently;
-the full milestone 2 acceptance criteria apply when both are implemented.
+Then add annotated pointer loads/stores in their own slice, specifying
+which source annotation selects a pointer access, its alignment, and how
+capabilities survive a round trip through memory. Test that non-null integer
+bits without a capability cannot create an accessible pointer. The full
+milestone 2 acceptance criteria apply when both store slices are complete.

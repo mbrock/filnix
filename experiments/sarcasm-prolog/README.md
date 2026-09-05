@@ -64,6 +64,7 @@ Both inspection modes require valid input and a validated access plan.
 | `report.pl` | Prolog inspection output, grouping explanations and source-located diagnostics |
 | `main.pl` | CLI, pass sequencing and output selection |
 | `tests.pl`, `effects-tests.pl` | Parser, effect catalogue, normalized semantics, access plans and decision traces |
+| `pointer-tests.pl` | Pointer-copy type propagation, derived addresses and aliased operands |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
 | `generated-tests.py` | Deterministic small-program comparison against native x86-64 execution |
 
@@ -82,12 +83,15 @@ The executable subset has `unsigned long(ptr)` and
 `unsigned long(ptr, unsigned long)` signatures, with a pointer in `%rdi`
 and an optional integer in `%rsi`. It supports ordinary integer loads,
 32/64-bit integer moves, addition, bitwise operations, immediate shifts,
-and return. Registers are mapped to distinct values after each write;
+and return. A 64-bit register copy preserves either an integer or a pointer;
+`leaq` derives a pointer from a pointer base, optional integer index and
+nonnegative displacement. Registers are mapped to distinct values after
+each write;
 32-bit writes zero-extend, arithmetic wraps, and shift counts are masked.
 The pointer argument remains pointer-typed in generated C.
 
-No branches, calls, stack manipulation, stores, pointer loads, pointer
-copies, SIMD, atomics, or partial 8/16-bit register writes are supported.
+No branches, calls, stack manipulation, stores, pointer loads,
+SIMD, atomics, or partial 8/16-bit register writes are supported.
 Unsupported instructions fail explicitly. AArch64 is a deliberately failing
 target boundary, not an x86 fallback.
 
@@ -95,7 +99,7 @@ target boundary, not an x86 fallback.
 
 The optimizer proposes a partition of consecutive loads into reads of
 1, 2, 4 or 8 bytes. It groups only adjoining byte ranges with the same
-pointer value, index value and scale. It stops at any intervening scalar
+pointer value, index value and scale. It stops at any intervening scalar or pointer
 operation. It does not move reads across calls, stores, branches, or other
 observable effects; those instructions are not yet in the executable subset.
 
@@ -129,14 +133,21 @@ Negative cases exercise null capabilities, out-of-bounds reads in both
 variants, and offset overflow. Unsupported architectures must fail without
 producing assembly.
 
-The effect table covers all 29 accepted instruction forms. Twenty
+The effect table covers all 30 accepted instruction forms. Twenty-four
 malformed-source fixtures check failure reasons and source lines. A
-deterministic generator exercises 148 small programs, comparing 37,888
+deterministic generator exercises 162 small programs, comparing 41,472
 results per grouped/ungrouped variant byte-for-byte against the original
 assembly executed natively. This oracle does not reuse the Prolog rules or
 C emitter. Subprocess execution is bounded. The check output retains the
 generated sources, case descriptions, binaries and result streams, along
 with the original example's C and assembly, for inspection.
+
+`examples/pointers.s` copies a pointer, derives an indexed pointer with
+`leaq`, copies it again and performs the table lookup. Another 32,000 cases
+per variant compare this against a C reference. Null, freed and missing
+capabilities, crossing the allocation boundary and offset overflow must
+still fail after copying or deriving a pointer. The check retains its
+generated C so the pointer representations can be inspected directly.
 
 The tests intentionally cross the actual allocation boundary: Fil-C rounds
 small allocations up, so `malloc(3)` is not a reliable four-byte-read
@@ -145,6 +156,6 @@ failure fixture.
 The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
 before adding loops or a direct assembly backend. Milestone 1 is complete;
-the next slice is pointer-preserving register copies and a narrow `lea`
-subset at the start of milestone 2. The remaining milestones describe
+pointer copies and the narrow `leaq` subset at the start of milestone 2 are
+also complete. Integer stores are next. The remaining milestones describe
 planned extensions, not currently supported input.

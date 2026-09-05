@@ -12,7 +12,7 @@ memory reads; source registers and arithmetic flags are internal state.
 instruction AST from the parser. It either produces a normalized action
 and its effects or rejects the instruction. It does not infer input types
 from how a register happens to be used. `instruction_form/2` enumerates the
-29 supported forms independently of a particular function or register
+30 supported forms independently of a particular function or register
 state.
 
 For example, `movzwl 2(%rdi,%rsi,4), %eax` has this description:
@@ -44,6 +44,12 @@ current register state, lowers the action, and applies its declared writes.
 Each write creates a fresh value identity, so changing an index register
 changes the address identity seen by subsequent passes.
 
+For a 64-bit register copy the read requirement is `read(Source,value)`
+and the write is `write(Destination,same_type_as(Source),replace)`. This
+rule accepts either an integer or a pointer and preserves its static type.
+Lowering resolves that constraint using the source's old value. The rule
+cannot turn integer bits into a pointer. A 32-bit copy remains integer-only.
+
 ## Where the facts come from
 
 | Fact | Source and enforcement |
@@ -72,7 +78,9 @@ before any destination write, including when source and destination alias.
 | Forms | Action |
 |---|---|
 | `movzbl`, `movzwl`, memory-source `movl`/`movq` | Read 1/2/4/8 bytes in little-endian order; zero-extend the loaded integer |
-| Register/immediate-source `movl`/`movq` | Copy the source integer into the destination width |
+| Register-source `movq` | Copy the complete typed value, preserving a pointer and its capability or an integer |
+| Register-source `movl`, immediate-source `movl`/`movq` | Copy an integer into the destination width |
+| `leaq` with a memory-address operand and 64-bit destination | Derive a pointer from a pointer base, optional integer index, scale and nonnegative displacement; perform no memory access |
 | Register/immediate-source `addl`/`addq` | Add modulo the destination width |
 | Register/immediate-source `andl`/`andq`, `orl`/`orq`, `xorl`/`xorq` | Bitwise operation in the destination width |
 | Immediate-source `shll`/`shlq`, `shrl`/`shrq` | Logical shift by the immediate modulo 32/64; discard bits beyond the destination width |
@@ -86,6 +94,20 @@ masking. The supported scale factors are 1, 2, 4 and 8; displacements are
 nonnegative unsigned 64-bit constants. Larger effective offsets can still
 fail the runtime guards.
 
+Pointer copies and offsets have distinct `pointer_copy` and
+`pointer_offset` operations in the value IR. Both produce pointer-typed C
+temporaries. Inputs are read before the destination is overwritten, so
+`leaq (%rdi,%rsi,4),%rsi` uses the old integer `%rsi` and then makes `%rsi`
+a pointer. Returning that pointer as an integer or using it for integer
+arithmetic is rejected; an explicit later integer write can change its type.
+
+The initial `leaq` subset deliberately rejects negative displacements,
+integer-only address arithmetic, pointer-valued indices and address
+wraparound. It uses the same checked offset calculation as memory accesses.
+Overflow can trap at pointer derivation even before a dereference; bounds
+and liveness remain obligations of any later memory access. Copying a
+pointer does not prove those obligations or change its capability.
+
 `ret` is a function-level action here. Its physical stack read and stack
 pointer adjustment belong to the backend's calling convention, not the
 source-level memory-effect list. Stack instructions remain unsupported.
@@ -97,7 +119,7 @@ undefined and preserved sets. No accepted instruction reads a flag.
 
 | Operation | Defined | Cleared | Undefined | Preserved |
 |---|---|---|---|---|
-| Load, move, return, shift with masked count 0 | — | — | — | CF, PF, AF, ZF, SF, OF |
+| Load, move, LEA, return, shift with masked count 0 | — | — | — | CF, PF, AF, ZF, SF, OF |
 | Add | CF, PF, AF, ZF, SF, OF | — | — | — |
 | AND, OR, XOR | PF, ZF, SF | CF, OF | AF | — |
 | Shift with masked count 1 | CF, PF, ZF, SF, OF | — | AF | — |
@@ -153,7 +175,8 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-The next extension is pointer-preserving register copies and a narrow
-`lea` subset. Define their actions, typed effects and offset behavior here
-before adding lowering. Integer stores and annotated pointer loads/stores
-follow in separate slices; see [milestone 2](PLAN.md#2-add-straight-line-pointer-operations-and-stores).
+Pointer-preserving copies and the initial `leaq` subset are implemented.
+Integer stores are next, followed by annotated pointer loads/stores in a
+separate slice. Specify their permission, width, alignment and ordering
+effects before extending lowering; see
+[milestone 2](PLAN.md#2-add-straight-line-pointer-operations-and-stores).
