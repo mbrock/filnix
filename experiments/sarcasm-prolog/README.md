@@ -81,6 +81,7 @@ Both inspection modes require valid input and a validated access plan.
 | `dataflow-tests.pl` | Cycles, first-iteration facts, missing predecessors and resource exhaustion |
 | `check-tests.pl`, `check-runtime.c`, `check-safety.py` | Protection certificate mutations, native/C comparisons and conditional failure behavior |
 | `protection-probe.py`, `protection-probe*.c` | Compiler check scheduling inspection and lifetime tests |
+| `evaluate.py`, `evaluation*.c`, `evaluation.h` | C/upstream/native correctness gates, reproducible timing and controlled hardware counters |
 | `cfg-tests.pl`, `edge-swap-test.pl` | Joins, unavailable flags, malformed edges and an executable cyclic assignment |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
 | `generated-tests.py`, `branch-generated-tests.py`, `loop-generated-tests.py`, `native_oracle.py` | Deterministic scalar/branch comparisons against native x86-64 execution |
@@ -242,9 +243,10 @@ failure fixture.
 
 The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
-before adding a direct assembly backend. Milestones 1–5 are
+before adding a direct assembly backend. Milestones 1–7 are
 complete: explicit effects, pointer operations and stores, blocks and
 branches, a bounded decoder loop, and the check-reuse investigation.
-The compiler-backed backend is retained; representative performance evaluation is next.
-The remaining milestones describe
-planned extensions, not currently supported input.
+The compiler-backed backend is retained. [EVALUATION.md](EVALUATION.md)
+compares three routines with checked C and upstream SaRCAsm, records the
+limits and selects a bounded bit-reservoir slice as the next semantic
+extension. Variable shifts and the rest of zstd's routine remain future work.

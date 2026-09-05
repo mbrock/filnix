@@ -96,6 +96,11 @@ int main(int argc, char **argv) {
     for (unsigned trial = 0; trial < 256; trial++)
       for (unsigned alignment = 0; alignment < 8; alignment++)
         for (unsigned alias = 0; alias < 5; alias++) {
+#ifdef ALIGNED_ONLY
+          /* Shared contract with pinned upstream SaRCAsm's natural-alignment
+             checks. Normal prototype tests still cover every layout. */
+          if (alignment || alias == 2 || alias == 3) continue;
+#endif
           unsigned char table[272], expected_table[272], arena[640], expected_arena[640];
           for (unsigned i = 0; i < sizeof table; i++)
             table[i] = (unsigned char)((random_word(&rng) >> 32) & (trial % 2 ? 255 : 63));
@@ -152,5 +157,9 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < 8; i++) free(nodes[i]);
     free(table); free(input); free(output);
   }
+#ifdef ALIGNED_ONLY
+  puts("decoder: ok (768 aligned cases, three alias layouts, exact boundaries and 520 node walks per variant)");
+#else
   puts("decoder: ok (10240 cases, five alias layouts, exact boundaries and 520 node walks per variant)");
+#endif
 }

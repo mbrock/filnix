@@ -356,6 +356,7 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-Milestones 1–5 are implemented. The bounded decoder's contract and assembly
-inspection are in [DECODER.md](DECODER.md). The backend decision and
-representative evaluation follow in [PLAN.md](PLAN.md).
+Milestones 1–7 are complete. The bounded decoder's contract and assembly
+inspection are in [DECODER.md](DECODER.md). [EVALUATION.md](EVALUATION.md)
+records the performance evidence and contract differences with the C and
+upstream comparisons. [PLAN.md](PLAN.md) selects the next bounded scope.

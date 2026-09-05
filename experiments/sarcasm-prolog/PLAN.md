@@ -22,9 +22,10 @@ Milestone 4 is complete: a finite analysis for backedges and a bounded table
 decoder with loop-carried pointers. Milestone 5 adds independently validated,
 advisory protection certificates and measures existing compiler reuse.
 Milestone 6 retains the compiler-backed backend after a validated condition
-improvement. Milestone 7 remains planned. Follow
-them in order; keep each extension small enough
-to review with its semantic rules and tests. The parked zstd port is motivation and
+improvement. Milestone 7 evaluates three representative routines against C,
+native assembly and upstream SaRCAsm. All seven milestones are complete;
+the next scope below follows from their evidence. Keep subsequent extensions
+small enough to review with semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
 requirement to revive its builds now.
 
@@ -340,6 +341,30 @@ or calling-convention rules behind a shared instruction spelling.
 
 ## 7. Evaluate representative routines and choose the next scope
 
+**Status: complete.** [EVALUATION.md](EVALUATION.md) and the committed raw
+result record the table leaf, 64/65,536-byte decoder and 4,096-node walk.
+Nine variants include bytewise and packed checked C, all four Prolog
+optimization combinations, pinned upstream and native baselines. The Nix
+check runs their correctness/safety gates; timings run separately with CPU
+affinity, nine interleaved rounds and two controlled hardware-counter rounds.
+Exact inputs, source hashes, code sizes, commands and tool paths are retained.
+
+**Evidence:** the optimized large decoder is about even with packed C at
+1.9 ns/input byte, versus 3.7 for upstream on this host. Its instruction
+count is 47/input byte versus 45 for packed C and 86 for upstream. The leaf
+has a roughly 1.10 paired time ratio to packed C; the walk is about even.
+Ranges overlap for small differences, and condition simplification has no
+isolated, stable timing win. Prolog emission takes around 0.47 seconds to C
+and 0.53 seconds to assembly, versus 0.058 for upstream; interpreter builds
+differ. Upstream's alignment restriction and statement/annotation adaptation
+are tested and recorded, along with the deliberately restricted input scope.
+
+**Decision:** keep the checked C backend. Next, profile frontend phases and
+add a bounded one-stream bit-reservoir fixture with precisely specified
+variable shifts. Defer direct ABI emission, check elision and a full zstd
+port. The inventory in EVALUATION.md identifies further requirements rather
+than silently broadening the accepted subset.
+
 Only after the smaller slices pass should zstd-sized routines become a
 candidate. Inventory the specific missing instruction forms and state
 behavior before porting one. Other workloads are equally acceptable if
@@ -358,13 +383,20 @@ unsupported cases. Promote no variant to a default package merely because
 it builds. Choose the next extension from demonstrated needs and evidence
 about clarity, validation burden, and generated code.
 
-## Immediate next change
+## Next scope after this plan
 
-Evaluate the table-entry leaf, bounded decoder and node walk against C,
-both condition/grouping choices, and pinned upstream SaRCAsm where their
-contracts overlap. Record exact inputs, code size, frontend time and repeated
-interleaved runtime measurements with CPU affinity and hardware counters.
-Upstream currently requires alignment for some integer accesses where this
-prototype permits unaligned access: test and report that boundary explicitly.
-Choose the next frontend extension from the resulting evidence, without
-reviving the parked zstd package migration.
+The seven-milestone experiment is complete. A follow-on plan should begin
+with two bounded investigations:
+
+1. Measure parsing, type analysis, lowering and validation separately, and
+   compare equivalent Trealla builds before attributing frontend cost to
+   Prolog or replacing the explicit finite analyses.
+2. Specify a single-stream bit reservoir using register-count logical shifts
+   (BMI2 forms are useful because they preserve flags). State count masking,
+   widths and zero/count-boundary behavior, retain an unoptimized reference,
+   and require native differential and Fil-C failure tests before extension.
+
+Keep C lowering, explicit multiarch rejection, complete analysis outcomes
+and independent validation. Any future large routine must inventory its
+remaining instruction, pointer and state requirements first. The parked
+zstd package work remains separate.

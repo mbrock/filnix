@@ -36,4 +36,5 @@ tiny_decode: #! unsigned long(ptr, unsigned long)
     movq %r10,16(%rdi) #! ptr
     movq %rcx,24(%rdi)
     ret
+.size tiny_decode, .-tiny_decode
 .section .note.GNU-stack,"",@progbits

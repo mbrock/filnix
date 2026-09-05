@@ -4,6 +4,11 @@
   trealla,
   sarcasm-prolog,
 }:
+let
+  sarcasm = import ../packages/sarcasm.nix { inherit pkgs; };
+  coreRevision =
+    (builtins.fromJSON (builtins.readFile ../lib/filc-upstream.json)).coreRev;
+in
 pkgs.runCommand "sarcasm-prolog-check"
   { nativeBuildInputs = [ pkgs.python3 ]; }
   ''
@@ -174,8 +179,13 @@ pkgs.runCommand "sarcasm-prolog-check"
       ${sarcasm-prolog}/bin/sarcasm-prolog ${filcc}/bin/clang \
       ${pkgs.stdenv.cc}/bin/cc ${pkgs.binutils}/bin/as
     popd
+    python ${../experiments/sarcasm-prolog}/evaluate.py --check-only --out evaluation \
+      --translator ${sarcasm-prolog}/bin/sarcasm-prolog --filcc ${filcc}/bin/clang \
+      --sarcasm ${sarcasm}/bin/sarcasm --cc ${pkgs.stdenv.cc}/bin/cc \
+      --assembler ${pkgs.binutils}/bin/as --nm ${pkgs.binutils}/bin/nm \
+      --objdump ${pkgs.binutils}/bin/objdump --core-revision ${coreRevision}
     mkdir $out
-    cp -r generated branches loops protection-probes $out/
+    cp -r generated branches loops protection-probes evaluation $out/
     cp grouped.c separate.c grouped.s separate.s pointers.c pointers.s stores.c stores.s prolog.log $out/
     cp pointer-memory.c pointer-memory.s $out/
     cp branches.c branches.s edge-swap.c $out/

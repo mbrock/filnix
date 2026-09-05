@@ -17,4 +17,5 @@ loop_walk: #! unsigned long(ptr, unsigned long)
     jmp .Lwalk
 .Lwalk_done:
     ret
+.size loop_walk, .-loop_walk
 .section .note.GNU-stack,"",@progbits
