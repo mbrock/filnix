@@ -2,6 +2,7 @@
 :- use_module('accesses.pl', []).
 :- use_module('effects-tests.pl', []).
 :- use_module('pointer-tests.pl', []).
+:- use_module('store-tests.pl', []).
 :- use_module('parser.pl').
 :- use_module('ir.pl').
 :- use_module('x86_64.pl').
@@ -16,6 +17,7 @@ rejects(G) :- catch((call(G),Result=accepted),_,Result=rejected), must(Result==r
 tests :-
     sp_effect_tests:tests,
     sp_pointer_tests:tests,
+    sp_store_tests:tests,
     parse_chars("f: #! unsigned long(ptr)\nmovq $0x10+2*3, %rax; ret # a comment\n",S),
     lower(S,[function(f,[ptr],[assign(v(0),64,literal(22),2),return(view(v(0),64))])]),
     parse_chars(".section .note.GNU-stack,\"\",@progbits\n",[_]),

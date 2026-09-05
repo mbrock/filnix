@@ -49,6 +49,7 @@ operation_origin(assign(_,_,_,L),L,assignment).
 operation_origin(binary(_,K,_,_,_,L),L,binary(K)).
 operation_origin(pointer_copy(_,_,L),L,pointer_copy).
 operation_origin(pointer_offset(_,_,_,_,_,L),L,pointer_offset).
+operation_origin(store(_,_,_,_,_,_,L),L,store).
 
 % Validation deliberately does not call choose/probe/compatibility. It checks
 % the proposal against the original ordered operations with its own coverage

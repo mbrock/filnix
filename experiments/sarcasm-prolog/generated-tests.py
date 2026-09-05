@@ -65,6 +65,17 @@ for scale in [1, 2, 4, 8]:
 add("pointer self-copy and overwrite", ["movq %rdi,%rdi", "leaq 2(%rdi),%rdi",
     "movq %rdi,%rax", "movzbl (%rax),%eax"])
 add("pointer copy becomes integer", ["movq %rdi,%rax", "movq %rsi,%rax"])
+for op, source in [("movl", "esi"), ("movq", "rsi")]:
+    for offset in [0, 1, 3, 7]:
+        add(f"{op} register store, offset {offset}", [f"{op} %{source},{offset}(%rdi)",
+            f"movq {offset}(%rdi),%rax"])
+    for immediate in [0, -1, -2147483648, 4294967295 if op == "movl" else 2147483647]:
+        add(f"{op} immediate store {immediate}", [f"{op} ${immediate},1(%rdi)", "movq 1(%rdi),%rax"])
+add("overlapping stores and reads", ["movq (%rdi),%rax", "movq %rax,1(%rdi)",
+    "movl 1(%rdi),%ecx", "addl %esi,%ecx", "movl %ecx,2(%rdi)", "movq 1(%rdi),%rax"])
+add("store preserves register", ["movq %rsi,(%rdi)", "movq %rsi,%rax"])
+add("store through derived pointer", ["movq %rdi,%r8", "leaq 7(%r8),%r9",
+    "movq %rsi,(%r9)", "movq (%r9),%rax"])
 for n in range(40):
     body = base.copy()
     for _ in range(rng.randrange(3, 14)):
@@ -99,11 +110,12 @@ int main(void) {
     state=state*UINT64_C(6364136223846793005)+1;
     values[i]=state;
   }
-  for (unsigned i=0;i<sizeof bytes;i++) bytes[i]=(unsigned char)(i*179+31);
   for (unsigned f=0;f<sizeof functions/sizeof functions[0];f++)
     for (unsigned v=0;v<64;v++) for (unsigned alignment=0;alignment<4;alignment++) {
+      for (unsigned i=0;i<sizeof bytes;i++) bytes[i]=(unsigned char)(i*179+31+v);
       uint64_t result=functions[f](bytes+alignment,values[v]);
       if (fwrite(&result,sizeof result,1,stdout)!=1) return 1;
+      if (fwrite(bytes,sizeof bytes,1,stdout)!=1) return 1;
     }
 }
 """)
@@ -119,7 +131,9 @@ def run(args, *, output=None, limit=60):
 run([native_cc, "-O2", "generated.c", "generated.s", "-o", "native-reference"])
 run(["./native-reference"], output="native-results.bin", limit=15)
 expected = Path("native-results.bin").read_bytes()
-assert len(expected) == len(programs) * 64 * 4 * 8
+record_size = 8 + 256  # Return value plus the entire buffer, including guard bytes.
+records = len(programs) * 64 * 4
+assert len(expected) == records * record_size
 for mode, options in [("grouped", []), ("separate", ["--no-coalesce"])]:
     run([translator, *options, "generated.s"], output=f"generated-{mode}.s")
     run([assembler, f"generated-{mode}.s", "-o", f"generated-{mode}.o"])
@@ -127,9 +141,14 @@ for mode, options in [("grouped", []), ("separate", ["--no-coalesce"])]:
     run([f"./translated-{mode}"], output=f"{mode}-results.bin", limit=15)
     actual = Path(f"{mode}-results.bin").read_bytes()
     assert len(actual) == len(expected), (mode, len(actual), len(expected))
-    for i, (a, b) in enumerate(zip(struct.iter_unpack("<Q", expected), struct.iter_unpack("<Q", actual))):
+    for i in range(records):
+        start = i * record_size
+        a, b = expected[start:start + record_size], actual[start:start + record_size]
         if a != b:
             p = i // 256
+            byte = next(j for j in range(record_size) if a[j] != b[j])
+            difference = (("return", struct.unpack_from("<Q", a)[0], struct.unpack_from("<Q", b)[0])
+                          if byte < 8 else ("memory byte", byte - 8, a[byte], b[byte]))
             raise AssertionError((mode, programs[p], "value index", (i % 256)//4,
-                                  "alignment", i % 4, "native", a, "translated", b))
-print(f"native differential: {len(programs)} programs, {len(expected)//8} exact results per variant")
+                                  "alignment", i % 4, "native/translated", difference))
+print(f"native differential: {len(programs)} programs, {records} return-and-memory results per variant")

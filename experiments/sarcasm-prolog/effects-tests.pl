@@ -12,6 +12,9 @@ case(Op,load(B,W),[mem(const(0),rdi,rsi,const(4)),reg(D)],load) :-
 case(Op,move(W,Kind),[S,reg(D)],move) :-
     member(Op-W-D-R,[movl-32-eax-ecx,movq-64-rax-rcx]),
     member(Kind-S,[register-reg(R),immediate-imm(const(7))]).
+case(Op,store(B,Kind),[S,mem(const(0),rdi,rsi,const(4))],store) :-
+    member(Op-B-R,[movl-4-eax,movq-8-rax]),
+    member(Kind-S,[register-reg(R),immediate-imm(const(7))]).
 case(Op,binary(K,W,Kind),[S,reg(D)],K) :-
     member(Op-K-W-D-R,[addl-add-32-eax-ecx,addq-add-64-rax-rcx,
         xorl-xor-32-eax-ecx,xorq-xor-64-rax-rcx,
@@ -26,7 +29,7 @@ case(leaq,pointer_offset,[mem(const(0),rdi,rsi,const(4)),reg(rax)],pointer_offse
 tests :-
     findall(Op-Form,case(Op,Form,_,_),Expected0), sort(Expected0,Expected),
     findall(Op-Form,sp_effects:instruction_form(Op,Form),Actual0), sort(Actual0,Actual),
-    must(Expected==Actual), must(length(Actual,30)),
+    must(Expected==Actual), must(length(Actual,34)),
     forall(case(Op,Form,Args,Kind),check_case(Op,Form,Args,Kind)),
     forall(member(Op-W-D,[shll-32-eax,shrl-32-eax,shlq-64-rax,shrq-64-rax]),
       forall(member(Raw,[0,1,2,31,32,63,64,65,255]),check_shift(Op,W,D,Raw))),
@@ -38,7 +41,7 @@ tests :-
     fails(sp_effects:instruction_effects(instruction(shlq,[reg(rcx),reg(rax)]),_),immediate_shift_required(reg(rcx))),
     fails(sp_effects:instruction_effects(instruction(movq,[mem(const(0),rdi,none,const(3)),reg(rax)]),_),invalid_scale(3)),
     fails(sp_effects:instruction_effects(instruction(movq,[mem(symbol(x),rdi,none,const(1)),reg(rax)]),_),constant_expression_required(symbol(x))),
-    fails(sp_effects:instruction_effects(instruction(movq,[reg(rax),mem(const(0),rdi,none,const(1))]),_),register_destination_required(mem(const(0),rdi,none,const(1)))),
+    fails(sp_effects:instruction_effects(instruction(addq,[reg(rax),mem(const(0),rdi,none,const(1))]),_),unsupported_memory_destination(addq)),
     immediate_limits,
     address_effects,
     trace_tests,
@@ -48,6 +51,7 @@ check_case(Op,Form,Args,Kind) :-
     must(ground(E)), E=effects(registers(Reads,Writes),memory(Mem),Flags,control(Control),may_trap(Traps)),
     check_flags(Flags),
     (Kind=return -> must(Reads=[read(register(rax,64),integer)]), must(Writes=[]), must(Control=return)
+    ; Kind=store -> must(Writes=[]), must(Control=next)
     ; must(Control=next), Writes=[write(register(rax,W),Type,Policy)],
       (Kind=pointer_offset -> must(Type=pointer)
       ; Form=move(64,register) -> must(Type=same_type_as(register(rcx,64))), must(Reads=[read(register(rcx,64),value)])
@@ -59,8 +63,13 @@ check_case(Op,Form,Args,Kind) :-
       must(Traps=[address_overflow,invalid_read])
     ; Kind=pointer_offset -> must(Mem=[]),must(Traps=[address_overflow]),
       must(Reads=[read(register(rdi,64),pointer),read(register(rsi,64),integer)])
+    ; Kind=store -> Form=store(Bytes,SourceKind),
+      must(Mem=[access(write,address(register(rdi,64),register(rsi,64),4,0),Bytes,alignment(1),ordinary)]),
+      must(Traps=[address_overflow,invalid_write]), W is Bytes*8,
+      (SourceKind=register -> Tail=[read(register(rax,W),integer)]; Tail=[]),
+      must(Reads=[read(register(rdi,64),pointer),read(register(rsi,64),integer)|Tail])
     ; must(Mem=[]),must(Traps=[])),
-    (memberchk(Kind,[load,move,return,pointer_offset]) -> Flags=flags(reads([]),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of]))
+    (memberchk(Kind,[load,store,move,return,pointer_offset]) -> Flags=flags(reads([]),defined([]),cleared([]),undefined([]),preserved([cf,pf,af,zf,sf,of]))
     ; Kind=add -> Flags=flags(reads([]),defined([cf,pf,af,zf,sf,of]),cleared([]),undefined([]),preserved([]))
     ; memberchk(Kind,[and,or,xor]) -> Flags=flags(reads([]),defined([pf,zf,sf]),cleared([cf,of]),undefined([af]),preserved([]))
     ; true).
@@ -100,7 +109,8 @@ trace_tests :-
         load(v(1),arg0,view(arg1,64),4,3,2,5)-noncontiguous(expected(2),actual(3)),
         assign(v(1),64,literal(7),5)-ordering_barrier(assignment),
         pointer_copy(v(1),arg0,5)-ordering_barrier(pointer_copy),
-        pointer_offset(v(1),arg0,literal(0),1,2,5)-ordering_barrier(pointer_offset)]),
+        pointer_offset(v(1),arg0,literal(0),1,2,5)-ordering_barrier(pointer_offset),
+        store(arg0,literal(0),1,8,4,literal(7),5)-ordering_barrier(store)]),
       (sp_accesses:plan(on,[A,C],_,[decision(v(0),4,2,[4],[attempt(8,rejected(at(5,Reason)))|_])|_]))),
     sp_accesses:plan(off,[A],_,[decision(v(0),4,2,[4],[disabled])]),
     fails(sp_accesses:plan(on,_,_,_),invalid_access_plan(non_ground_input)).

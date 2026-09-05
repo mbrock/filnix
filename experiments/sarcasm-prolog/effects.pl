@@ -9,6 +9,8 @@ instruction_form(movl, load(4,32)).
 instruction_form(movq, load(8,64)).
 instruction_form(Op, move(W,Source)) :-
     move_width(Op,W), member(Source,[register,immediate]).
+instruction_form(Op, store(Bytes,Source)) :-
+    move_width(Op,W), Bytes is W//8, member(Source,[register,immediate]).
 instruction_form(Op, binary(K,W,Source)) :-
     binary_opcode(Op,K,W), member(Source,[register,immediate]).
 instruction_form(Op, shift(K,W)) :- shift_opcode(Op,K,W).
@@ -38,6 +40,11 @@ arity(Operands,N) :- length(Operands,Actual),
 
 normalize(leaq,mem(D,B,I,S),Dest,pointer_offset(Address,R)) :- !,
     destination(Dest,64,R), address(mem(D,B,I,S),Address).
+normalize(Op,Source,mem(D,B,I,S),store(Address,Bytes,Value)) :- !,
+    require(instruction_form(Op,store(Bytes,_)), unsupported_memory_destination(Op)),
+    W is Bytes*8, scalar_source(Source,W,Value), address(mem(D,B,I,S),Address),
+    (Value=immediate(N) -> (W=64 -> Max=2147483647; Max=4294967295),
+      range(N,-2147483648,Max,store_immediate); true).
 normalize(movq,reg(Source),Dest,copy(R,D)) :- !,
     register(Source,64,R), destination(Dest,64,D).
 normalize(Op,mem(D,B,I,S),Dest,load(Address,Bytes,R)) :- !,
@@ -99,6 +106,12 @@ action_effects(load(A,Bytes,R),
 action_effects(copy(S,D),
     effects(registers([read(S,value)],[write(D,same_type_as(S),replace)]),
             memory([]),Flags,control(next),may_trap([]))) :- preserve_flags(Flags).
+action_effects(store(A,Bytes,V),
+    effects(registers(Reads,[]),
+            memory([access(write,A,Bytes,alignment(1),ordinary)]),
+            Flags,control(next),may_trap([address_overflow,invalid_write]))) :-
+    address_reads(A,AddressReads), source_reads(V,ValueReads),
+    append(AddressReads,ValueReads,Reads), preserve_flags(Flags).
 action_effects(pointer_offset(A,D),
     effects(registers(Reads,[write(D,pointer,replace)]),memory([]),
             Flags,control(next),may_trap([address_overflow]))) :-

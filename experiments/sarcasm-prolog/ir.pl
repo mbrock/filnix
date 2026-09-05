@@ -51,6 +51,8 @@ resolved(immediate(N),_,literal(V)) :- V is N mod 18446744073709551616.
 resolved(register(R,W),Bs,V) :- memberchk(binding(register(R,W),V),Bs).
 lower_action(load(address(B,I,K,O),Bytes,_),Bs,N,L,load(v(N),P,Index,K,O,Bytes,L)) :-
     resolved(B,Bs,pointer(P)), resolved(I,Bs,Index).
+lower_action(store(address(B,I,K,O),Bytes,S),Bs,_,L,store(P,Index,K,O,Bytes,Value,L)) :-
+    resolved(B,Bs,pointer(P)), resolved(I,Bs,Index), resolved(S,Bs,Value).
 lower_action(move(S,register(_,W)),Bs,N,L,assign(v(N),W,V,L)) :- resolved(S,Bs,V).
 lower_action(copy(S,_),Bs,N,L,IR) :-
     resolved(S,Bs,Value),

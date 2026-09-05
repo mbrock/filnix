@@ -65,6 +65,7 @@ Both inspection modes require valid input and a validated access plan.
 | `main.pl` | CLI, pass sequencing and output selection |
 | `tests.pl`, `effects-tests.pl` | Parser, effect catalogue, normalized semantics, access plans and decision traces |
 | `pointer-tests.pl` | Pointer-copy type propagation, derived addresses and aliased operands |
+| `store-tests.pl` | Write effects, immediate ranges, preserved registers and ordering barriers |
 | `diagnostic-tests.py` | Malformed-source fixtures and CLI inspection modes |
 | `generated-tests.py` | Deterministic small-program comparison against native x86-64 execution |
 
@@ -82,7 +83,7 @@ directive does not imply that lowering accepts it.
 The executable subset has `unsigned long(ptr)` and
 `unsigned long(ptr, unsigned long)` signatures, with a pointer in `%rdi`
 and an optional integer in `%rsi`. It supports ordinary integer loads,
-32/64-bit integer moves, addition, bitwise operations, immediate shifts,
+32/64-bit integer moves and stores, addition, bitwise operations, immediate shifts,
 and return. A 64-bit register copy preserves either an integer or a pointer;
 `leaq` derives a pointer from a pointer base, optional integer index and
 nonnegative displacement. Registers are mapped to distinct values after
@@ -90,7 +91,7 @@ each write;
 32-bit writes zero-extend, arithmetic wraps, and shift counts are masked.
 The pointer argument remains pointer-typed in generated C.
 
-No branches, calls, stack manipulation, stores, pointer loads,
+No branches, calls, stack manipulation, pointer loads/stores,
 SIMD, atomics, or partial 8/16-bit register writes are supported.
 Unsupported instructions fail explicitly. AArch64 is a deliberately failing
 target boundary, not an x86 fallback.
@@ -100,8 +101,8 @@ target boundary, not an x86 fallback.
 The optimizer proposes a partition of consecutive loads into reads of
 1, 2, 4 or 8 bytes. It groups only adjoining byte ranges with the same
 pointer value, index value and scale. It stops at any intervening scalar or pointer
-operation. It does not move reads across calls, stores, branches, or other
-observable effects; those instructions are not yet in the executable subset.
+operation or store. It cannot move reads across a store, even when the
+address expressions differ. Calls and branches remain unsupported.
 
 The validator independently matches the plan against the original ordered
 IR, verifies address identities and exact contiguous coverage, and rejects
@@ -133,10 +134,10 @@ Negative cases exercise null capabilities, out-of-bounds reads in both
 variants, and offset overflow. Unsupported architectures must fail without
 producing assembly.
 
-The effect table covers all 30 accepted instruction forms. Twenty-four
+The effect table covers all 34 accepted instruction forms. Twenty-eight
 malformed-source fixtures check failure reasons and source lines. A
-deterministic generator exercises 162 small programs, comparing 41,472
-results per grouped/ungrouped variant byte-for-byte against the original
+deterministic generator exercises 181 small programs, comparing 46,336
+return values and full memory buffers per grouped/ungrouped variant against the original
 assembly executed natively. This oracle does not reuse the Prolog rules or
 C emitter. Subprocess execution is bounded. The check output retains the
 generated sources, case descriptions, binaries and result streams, along
@@ -149,6 +150,12 @@ capabilities, crossing the allocation boundary and offset overflow must
 still fail after copying or deriving a pointer. The check retains its
 generated C so the pointer representations can be inspected directly.
 
+`examples/stores.s` includes overlapping 32/64-bit reads and writes, checked
+against a bytewise C reference in 8,000 cases per variant. Failed-store
+tests cover read-only memory, missing/freed capabilities, allocation
+boundaries and offset overflow. Whole-buffer comparisons include untouched
+bytes, so a correct return value cannot hide an incorrect store.
+
 The tests intentionally cross the actual allocation boundary: Fil-C rounds
 small allocations up, so `malloc(3)` is not a reliable four-byte-read
 failure fixture.
@@ -157,5 +164,6 @@ The [development plan](PLAN.md) turns the next steps into ordered milestones,
 with implementation boundaries, acceptance criteria, and explicit decisions
 before adding loops or a direct assembly backend. Milestone 1 is complete;
 pointer copies and the narrow `leaq` subset at the start of milestone 2 are
-also complete. Integer stores are next. The remaining milestones describe
+also complete, along with integer stores. Annotated pointer loads/stores
+are next. The remaining milestones describe
 planned extensions, not currently supported input.

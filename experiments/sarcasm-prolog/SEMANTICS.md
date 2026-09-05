@@ -4,7 +4,7 @@ This document covers the current straight-line x86-64 subset. The compiler
 accepts annotated assembly and produces Fil-C C, then delegates machine
 code, capabilities, GC roots and the calling convention to Fil-C. The
 observable results are the function's integer return value and permitted
-memory reads; source registers and arithmetic flags are internal state.
+memory reads and writes; source registers and arithmetic flags are internal state.
 
 ## Instruction actions and effects
 
@@ -12,7 +12,7 @@ memory reads; source registers and arithmetic flags are internal state.
 instruction AST from the parser. It either produces a normalized action
 and its effects or rejects the instruction. It does not infer input types
 from how a register happens to be used. `instruction_form/2` enumerates the
-30 supported forms independently of a particular function or register
+34 supported forms independently of a particular function or register
 state.
 
 For example, `movzwl 2(%rdi,%rsi,4), %eax` has this description:
@@ -59,7 +59,7 @@ cannot turn integer bits into a pointer. A 32-bit copy remains integer-only.
 | Integer width, zero extension, address scale and access size | Normalized instruction semantics |
 | Two loads use the same pointer/index values and adjoining byte ranges | Ordered IR and independent access-plan validation |
 | Offset arithmetic does not wrap and fits `PTRDIFF_MAX` | Explicit guards in generated C |
-| An accessed capability is live and covers the memory access | Fil-C instrumentation and runtime |
+| An accessed capability is live, covers the access and permits a write when requested | Fil-C instrumentation and runtime |
 
 Annotations cannot manufacture a capability. The backend keeps the pointer
 parameter pointer-typed, and every access remains a Fil-C memory operation.
@@ -80,6 +80,7 @@ before any destination write, including when source and destination alias.
 | `movzbl`, `movzwl`, memory-source `movl`/`movq` | Read 1/2/4/8 bytes in little-endian order; zero-extend the loaded integer |
 | Register-source `movq` | Copy the complete typed value, preserving a pointer and its capability or an integer |
 | Register-source `movl`, immediate-source `movl`/`movq` | Copy an integer into the destination width |
+| Register/immediate-source `movl`/`movq` with a memory destination | Store the low 4/8 bytes of an integer in little-endian order; write no register |
 | `leaq` with a memory-address operand and 64-bit destination | Derive a pointer from a pointer base, optional integer index, scale and nonnegative displacement; perform no memory access |
 | Register/immediate-source `addl`/`addq` | Add modulo the destination width |
 | Register/immediate-source `andl`/`andq`, `orl`/`orq`, `xorl`/`xorq` | Bitwise operation in the destination width |
@@ -108,6 +109,21 @@ Overflow can trap at pointer derivation even before a dereference; bounds
 and liveness remain obligations of any later memory access. Copying a
 pointer does not prove those obligations or change its capability.
 
+Integer stores declare `access(write,Address,Bytes,alignment(1),ordinary)`
+and possible `address_overflow` or `invalid_write` failures. The source must
+be an integer, even for `movq`; pointer stores will require an explicit
+annotation in the next slice. Store immediates use the same ranges as
+arithmetic immediates, including sign extension for the 64-bit form.
+
+The backend evaluates the source into a width-specific C integer and uses
+`__builtin_memcpy` to support unaligned destinations. Its destination cast
+removes C's `const` qualifier from the address helper's result; it cannot
+grant write permission to a read-only capability. Fil-C still checks each
+write. Static integer/pointer types describe allowed source operations,
+not an assertion that C integer values or integer-written memory have no
+Fil-C metadata. In particular, integer writes must not be treated as proof
+that an existing slot's capability has been erased.
+
 `ret` is a function-level action here. Its physical stack read and stack
 pointer adjustment belong to the backend's calling convention, not the
 source-level memory-effect list. Stack instructions remain unsupported.
@@ -119,7 +135,7 @@ undefined and preserved sets. No accepted instruction reads a flag.
 
 | Operation | Defined | Cleared | Undefined | Preserved |
 |---|---|---|---|---|
-| Load, move, LEA, return, shift with masked count 0 | — | — | — | CF, PF, AF, ZF, SF, OF |
+| Load, store, move, LEA, return, shift with masked count 0 | — | — | — | CF, PF, AF, ZF, SF, OF |
 | Add | CF, PF, AF, ZF, SF, OF | — | — | — |
 | AND, OR, XOR | PF, ZF, SF | CF, OF | AF | — |
 | Shift with masked count 1 | CF, PF, ZF, SF, OF | — | AF | — |
@@ -140,7 +156,9 @@ joins as described in [milestone 3](PLAN.md#3-introduce-basic-blocks-and-conditi
 The planner greedily tries supported widths 8, 4 and 2 larger than the
 original load. Each candidate must cover an exact prefix of adjoining
 loads with the same pointer identity, index value and scale. It cannot
-split a load or cross a scalar operation. If no candidate works, it retains
+split a load or cross another operation. Stores are unconditional barriers;
+different address expressions are not sufficient evidence of non-aliasing.
+If no candidate works, it retains
 the original width. `--no-coalesce` retains every individual load.
 
 `plan/4` returns decisions containing the first load's value and line,
@@ -162,8 +180,8 @@ its component integers. It establishes neither bounds nor liveness and
 does not authorize unchecked machine instructions. The input contract
 permits ordinary nonvolatile, nonatomic reads and unobserved intermediate
 register state. A group may trap earlier than a later individual read
-would have trapped. Calls, stores, branches and other observable effects
-remain outside this subset.
+would have trapped. Stores retain their original order and separate read
+groups. Calls and branches remain outside this subset.
 
 ## Evidence and next extension
 
@@ -175,8 +193,8 @@ null-capability and offset-overflow tests exercise failures separately.
 These tests increase confidence in the implementation without replacing
 its contract or proving it complete.
 
-Pointer-preserving copies and the initial `leaq` subset are implemented.
-Integer stores are next, followed by annotated pointer loads/stores in a
-separate slice. Specify their permission, width, alignment and ordering
-effects before extending lowering; see
+Pointer-preserving copies, the initial `leaq` subset and integer stores are
+implemented. Annotated pointer loads/stores are next. Specify the source
+annotation, alignment, permission and capability round-trip behavior before
+extending lowering; see
 [milestone 2](PLAN.md#2-add-straight-line-pointer-operations-and-stores).

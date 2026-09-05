@@ -16,7 +16,7 @@ rejection of ARM64. See [README.md](README.md) for the precise subset.
 Milestone 1 is also complete: instruction effects and the semantic contract
 are explicit, grouping decisions are inspectable, and native differential
 tests cover that executable subset. Milestone 2 is in progress: its pointer
-copy and `leaq` slice is complete. The remaining work is planned below.
+copy/`leaq` and integer-store slices are complete. The remaining work is planned below.
 Follow the milestones in order; keep each extension small enough to review with
 its semantic rules and tests. The parked zstd port is motivation and
 potential future fixture material, not an active package migration or a
@@ -87,9 +87,11 @@ instruction without reconstructing assumptions across several passes?
 with a pointer base, integer index and nonnegative displacement are complete.
 The effect relation declares type preservation; lowering keeps fresh pointer
 values pointer-typed through copies and derivation. Read planning treats
-these operations as barriers. Tests cover aliased inputs/destinations,
-capability failures, boundary crossing and native execution. Integer stores
-and annotated pointer loads/stores remain to be implemented.
+these operations as barriers. Integer stores now have explicit write
+effects and unconditional grouping barriers. Tests cover aliased
+inputs/destinations, overlapping stores, read-only destinations, capability
+failures, boundary crossing and native return-value/full-buffer comparisons.
+Annotated pointer loads/stores remain to be implemented.
 
 **Deliverable:** support pointer-preserving register copies and a narrow
 `lea` subset, followed by integer stores and explicitly annotated pointer
@@ -238,15 +240,10 @@ about clarity, validation burden, and generated code.
 
 ## Immediate next change
 
-Add 32/64-bit integer stores, with explicit write effects and unconditional
-ordering barriers for read grouping. Use an ordinary unaligned-safe C store
-through Fil-C, and verify a read/modify/write routine against a C reference.
-Include aliasing stores, read-only destinations, capability failures and
-allocation-boundary crossings. Keep the existing nonnegative offset
-contract explicit rather than changing address arithmetic incidentally.
-
-Then add annotated pointer loads/stores in their own slice, specifying
-which source annotation selects a pointer access, its alignment, and how
-capabilities survive a round trip through memory. Test that non-null integer
-bits without a capability cannot create an accessible pointer. The full
-milestone 2 acceptance criteria apply when both store slices are complete.
+Add annotated pointer loads/stores, specifying which source annotation
+selects a pointer access, its alignment, and how capabilities survive a
+round trip through memory. Test that non-null integer bits without a
+capability cannot create an accessible pointer. Do not assume an integer
+write erases a preexisting slot capability; use fresh integer-only storage
+for the missing-capability test and separately exercise overwritten slots.
+The full milestone 2 acceptance criteria apply when this slice is complete.

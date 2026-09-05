@@ -18,6 +18,11 @@ emit_plan([read(P,I,S,O,W,Loads)|Xs],N) :- !,
     format('  /* covering read: offset ~d, width ~d */~n  uint~d_t chunk~d;~n  __builtin_memcpy(&chunk~d, ',[O,W,Bits,N,N]),
     address(P,I,S,O), format(', ~d);~n',[W]),
     maplist(extract(N,O),Loads), N1 is N+1, emit_plan(Xs,N1).
+emit_plan([store(P,I,S,O,W,V,L)|Xs],N) :- !,
+    Bits is W*8, origin(L),
+    format('  { uint~d_t stored = (uint~d_t)(',[Bits,Bits]), value(V),
+    format(');~n    __builtin_memcpy((void *)',[]), address(P,I,S,O),
+    format(', &stored, ~d); }~n',[W]), emit_plan(Xs,N).
 emit_plan([assign(V,W,A,L)|Xs],N) :- !,
     origin(L), declaration(V), format('(uint~d_t)(',[W]), value(A), format(');~n',[]), emit_plan(Xs,N).
 emit_plan([pointer_copy(V,P,L)|Xs],N) :- !,
