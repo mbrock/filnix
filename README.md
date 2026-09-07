@@ -184,6 +184,7 @@ Packages ported here that aren't in upstream fil-c:
 | wasm3 | WebAssembly runtime (see [CVE demos](#cve-prevention-wasm3)) |
 | trealla | ISO Prolog with Fil-C FFI integration |
 | figlet | ASCII art generator |
+| ffmpeg-headless | swiss army knife for audio and video encoding |
 
 ### Ports Analysis
 
