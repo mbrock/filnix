@@ -12,6 +12,7 @@ from .attempt import directory
 from .model import blockers, connect, stamp
 from .graph import live_graph
 from .logs import build_log
+from .history import history, attempt_detail
 
 
 def snapshot(db, campaign=None, search="", state="", offset=0):
@@ -91,6 +92,7 @@ def snapshot(db, campaign=None, search="", state="", offset=0):
         campaign=dict(
             id=cid,
             name=row["name"],
+            created=row["created"],
             mode=row["mode"],
             revision=row["revision"],
             heartbeat=row["heartbeat"],
@@ -234,6 +236,8 @@ def application(state):
                     "/graph.js",
                     "/logs.js",
                     "/logs.css",
+                    "/history.js",
+                    "/history.css",
                     "/style.css",
                 ):
                     payload = (static / path[1:]).read_bytes()
@@ -273,6 +277,23 @@ def application(state):
                             get("available") == "1",
                             max(0, min(int(get("page", "0")), 1000000)),
                         )
+                elif path == "/api/history":
+                    with closing(connect(state, readonly=True)) as db:
+                        db.execute("BEGIN")
+                        payload = history(
+                            db,
+                            get("campaign"),
+                            get("anchor"),
+                            get("before"),
+                            get("kind"),
+                            get("outcome"),
+                            get("q"),
+                            max(0, min(int(get("window", "0")), 86400)),
+                        )
+                elif path == "/api/history/attempt":
+                    with closing(connect(state, readonly=True)) as db:
+                        db.execute("BEGIN")
+                        payload = attempt_detail(db, get("campaign"), get("id"))
                 elif path == "/api/events":
                     with closing(connect(state, readonly=True)) as db:
                         rows = [

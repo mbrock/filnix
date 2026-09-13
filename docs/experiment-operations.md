@@ -234,6 +234,41 @@ test-suite name extraction remain extensions. The persisted graph is the build
 derivation graph. Downstream check claims follow only explicitly evaluated host
 dependency edges; unknown/native edges cannot produce a positive claim.
 
+## Following history
+
+The dashboard starts with current inventory counters and a campaign-wide timeline.
+Builds and recipe evaluations have separate lanes, positioned by their recorded
+admission and finish times. Gaps represent time without a recorded attempt; all
+labels use UTC. Range controls zoom the timeline without changing the ledger's
+search or filters. Select an interval or a ledger row to inspect its targets,
+duration, result, observed build activities, and logs.
+
+The ledger covers every attempt, newest first, with package/attempt search,
+job/outcome filters, and pages of 24. Selecting an attempt, scrolling down the ledger, or opening an older page holds
+its admission cursor. New attempts are counted without displacing the
+page; **Follow latest** returns to the newest page. Timeline and current work
+continue updating while history is held. Connection failures retain the last
+view and report staleness. On a narrow screen, scroll the ledger horizontally to
+reach all columns.
+
+History uses facts attached to the original attempt. Observed build counts
+include dependencies and are not success counts. Successful check counts come
+from persisted test evidence, not a stopped activity or a configured check flag.
+A failed batch can contain successful builds and checks. A completed evaluation
+worker can contain individual evaluation refusals. Current inventory status is
+shown separately; later realization or retry cannot change a historical batch's
+result. There is no reconstructed per-package success curve: the first runner
+did not persist complete output-availability snapshots at every batch boundary.
+
+The web process queries SQLite read-only and never launches Nix for history.
+`/api/history` returns a bounded ledger page and overview; `/api/history/attempt`
+returns one campaign-scoped record and up to 100 observed activities. Above 400
+visible attempts, the timeline aggregates occupancy into 160 time intervals
+instead of silently dropping older work. A long attempt can touch multiple
+intervals, so occupancy counts must not be summed. Shorter ranges expose
+individual attempts again. No controller restart or database migration is
+required for this view.
+
 ## Reacting to failures
 
 While working on the experiment, inspect new failures and their explaining
@@ -289,6 +324,7 @@ python3 tests/package-inventory.py
 # With a local headless Chromium debugging port 9228:
 node tests/experiment-browser.mjs https://nix.swa.sh results/experiment-ui
 node tests/experiment-logs-browser.mjs https://nix.swa.sh results/experiment-log-ui
+node tests/experiment-history-browser.mjs https://nix.swa.sh results/experiment-history-ui
 ```
 
 `tests/experiment-calibration.py` prepares fresh native fixtures with the

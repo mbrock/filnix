@@ -24,6 +24,7 @@ function render(d) {
     counts = d.counts;
   window.dependencyMap?.updateCampaign(c.id);
   window.buildLogs?.update(d);
+  window.attemptHistory?.updateCampaign(c.id);
   if ($("campaign-select").options.length !== d.campaigns.length) {
     $("campaign-select").replaceChildren(
       ...d.campaigns.map((c) => {
@@ -44,10 +45,10 @@ function render(d) {
     : "○ Controller offline / stale";
   $("notice").textContent =
     c.hold ||
-    c.manifest.purpose ||
     (c.mode === "paused"
-      ? "Campaign paused. The input set is frozen; planning and calibration can be inspected here. No new package batches will be admitted."
-      : "Campaign running. Small batches share dependencies through Nix. Test evidence is recorded separately from output availability.");
+      ? "Campaign paused · no new batches will be admitted."
+      : "");
+  $("notice").hidden = !$("notice").textContent;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   $("selected").textContent = fmt(total);
   $("planned").textContent = fmt(
@@ -57,6 +58,24 @@ function render(d) {
     fmt(d.unique_derivations) + " unique root derivations";
   $("available").textContent = fmt(counts.available);
   $("tested").textContent = fmt(d.tested);
+  $("evaluated").textContent = fmt(total - (counts.unplanned || 0));
+  $("failed").textContent = fmt(counts.failed);
+  $("blocked").textContent = fmt(counts.blocked);
+  $("eval-errors").textContent = fmt(counts["evaluation-error"]);
+  $("remaining").textContent = fmt(counts.unplanned);
+  replace(
+    "inventory-progress",
+    Object.entries(counts)
+      .filter(([, n]) => n)
+      .map(([state, n]) => {
+        const segment = el("span", null, state);
+        segment.style.width = (100 * n) / Math.max(1, total) + "%";
+        segment.title = `${state}: ${fmt(n)} inputs`;
+        return segment;
+      }),
+  );
+  $("inventory-progress-label").textContent =
+    `${((100 * (total - (counts.unplanned || 0))) / Math.max(1, total)).toFixed(1)}% evaluated · ${fmt(counts.running)} running · ${fmt(counts.queued)} queued`;
   $("matches").textContent = fmt(d.filtered) + " packages";
   replace(
     "packages",
@@ -117,7 +136,7 @@ function render(d) {
           Object.assign(
             el(
               "button",
-              `${a.drv.split("/").pop().slice(33, -4)} · ${a.phase || "starting"} ↗`,
+              `${a.drv.split("/").pop().slice(33, -4).replace("-x86_64-unknown-linux-gnufilc0", "")} · ${a.phase || "starting"} ↗`,
               "attempt",
             ),
             { onclick: () => showLog(a.attempt, a.drv) },
@@ -143,20 +162,6 @@ function render(d) {
             "No proven dependency failures yet. Unplanned packages remain unknown.",
           ),
         ],
-  );
-  replace(
-    "attempts",
-    d.attempts.length
-      ? d.attempts.map((a) => {
-          const b = el(
-            "button",
-            `${a.kind} · ${a.result ? JSON.parse(a.result).reason : a.state}\n${a.id.slice(0, 8)}`,
-            "attempt",
-          );
-          b.onclick = () => showLog(a.id);
-          return b;
-        })
-      : [el("p", "No attempts recorded.")],
   );
   $("footer-version").textContent = `filnix ${d.version} · ${c.nix_version}`;
 }
