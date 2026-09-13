@@ -36,6 +36,13 @@ const evaluate = async (expression) =>
     })
   ).result.value;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(expression) {
+  for (let n = 0; n < 100; n++) {
+    if (await evaluate(expression)) return;
+    await wait(100);
+  }
+  assert.fail("Timed out: " + expression);
+}
 await call("Runtime.enable");
 await call("Page.enable");
 await call("Emulation.setDeviceMetricsOverride", {
@@ -52,10 +59,28 @@ assert.equal(
 );
 assert.match(
   await evaluate("document.getElementById('connection').textContent"),
-  /connected/,
+  /Connected/,
 );
 let shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/desktop.png", Buffer.from(shot.data, "base64"));
+assert.equal(
+  await evaluate("document.querySelector('#history-record').open"),
+  false,
+);
+await evaluate("document.querySelector('[data-tab=dependencies]').click()");
+assert.equal(await evaluate("location.hash"), "#dependency-map");
+await evaluate("history.back()");
+await wait(150);
+assert.equal(
+  await evaluate("document.querySelector('#history').hidden"),
+  false,
+);
+await evaluate("history.forward()");
+await wait(150);
+assert.equal(
+  await evaluate("document.querySelector('#dependency-map').hidden"),
+  false,
+);
 assert.ok(
   await evaluate("document.querySelector('#graph-focus [data-drv]') !== null"),
 );
@@ -91,20 +116,15 @@ assert.equal(
   ),
   originalFocus,
 );
-await evaluate(
-  "document.getElementById('dependency-map').scrollIntoView({block:'start'})",
-);
+await evaluate("document.querySelector('[data-tab=dependencies]').click()");
 await wait(100);
 shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/graph-desktop.png", Buffer.from(shot.data, "base64"));
 await evaluate(
-  "document.getElementById('search').value='hello';document.getElementById('search').dispatchEvent(new Event('input'))",
+  "document.querySelector('[data-tab=packages]').click();document.getElementById('search').value='hello';document.getElementById('search').dispatchEvent(new Event('input'))",
 );
-await wait(600);
-assert.ok(
-  await evaluate(
-    "document.querySelectorAll('.pkg').length > 0 && document.querySelectorAll('.pkg').length < 50",
-  ),
+await until(
+  "document.querySelectorAll('.pkg').length > 0 && document.querySelectorAll('.pkg').length < 50",
 );
 await evaluate(
   "[...document.querySelectorAll('.pkg')].find(n=>n.querySelector('.pkg-name').firstChild.textContent==='hello').click()",
@@ -132,11 +152,35 @@ assert.equal(
   await evaluate("document.documentElement.scrollWidth <= innerWidth"),
   true,
 );
+await call("Emulation.setTouchEmulationEnabled", {
+  enabled: true,
+  maxTouchPoints: 5,
+});
 shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/mobile.png", Buffer.from(shot.data, "base64"));
-await evaluate(
-  "document.getElementById('dependency-map').scrollIntoView({block:'start'})",
+await call("Emulation.setDeviceMetricsOverride", {
+  width: 320,
+  height: 740,
+  deviceScaleFactor: 1,
+  mobile: true,
+});
+await evaluate("document.querySelector('#campaign-options summary').click()");
+assert.ok(
+  await evaluate(
+    "document.querySelector('#campaign-options .menu-body').getBoundingClientRect().left >= 0 && document.documentElement.scrollWidth<=innerWidth",
+  ),
+  "Campaign menu fits a narrow phone",
 );
+shot = await call("Page.captureScreenshot", { format: "png" });
+await writeFile(out + "/mobile-campaign.png", Buffer.from(shot.data, "base64"));
+await evaluate("document.querySelector('#campaign-options summary').click()");
+await call("Emulation.setDeviceMetricsOverride", {
+  width: 390,
+  height: 1000,
+  deviceScaleFactor: 1,
+  mobile: true,
+});
+await evaluate("document.querySelector('[data-tab=dependencies]').click()");
 await wait(100);
 shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/graph-mobile.png", Buffer.from(shot.data, "base64"));
@@ -165,7 +209,7 @@ await call("Network.emulateNetworkConditions", {
 await wait(5500);
 assert.match(
   await evaluate("document.getElementById('connection').textContent"),
-  /connected/,
+  /Connected/,
 );
 assert.deepEqual(errors, []);
 console.log(

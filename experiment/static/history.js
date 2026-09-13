@@ -36,10 +36,10 @@
           : "Running"
       : a.reason === "completed"
         ? a.kind === "plan"
-          ? "Evaluated"
+          ? "Plan finished"
           : "Completed"
         : {
-            "build-error": "Build error",
+            "build-error": "With errors",
             timeout: "Timed out",
             "log-limit": "Log limit",
             "resource-interruption": "Resource limit",
@@ -57,7 +57,8 @@
     detailRequest = null,
     generation = 0,
     detailGeneration = 0,
-    busy = false;
+    busy = false,
+    scrollPage = false;
   $("history-zone").textContent = "UTC";
 
   function hold() {
@@ -72,17 +73,32 @@
   function followButton() {
     $("history-follow").setAttribute("aria-pressed", String(following));
     $("history-follow").textContent = following
-      ? "● Following latest"
+      ? "● Live"
       : snapshot?.newer
-        ? `↑ ${fmt(snapshot.newer)} new · follow`
-        : "↑ Follow latest";
+        ? `↑ ${fmt(snapshot.newer)} new`
+        : "↑ Latest";
+  }
+  function pageTop() {
+    document.querySelector(".ledger-scroll").scrollTop = 0;
+    if (
+      !$("history").hidden &&
+      matchMedia("(max-width:650px)").matches &&
+      scrollY > document.querySelector(".ledger").offsetTop
+    ) {
+      window.scrollTo(
+        0,
+        document.querySelector(".ledger").getBoundingClientRect().top +
+          scrollY -
+          document.querySelector(".app-chrome").offsetHeight,
+      );
+    }
   }
   function reset() {
     pages = [""];
     anchor = "";
     following = true;
     $("history-rows").replaceChildren();
-    $("history-rows").parentElement.parentElement.scrollTop = 0;
+    pageTop();
     load(true);
   }
   function renderTimeline(o, now) {
@@ -91,7 +107,7 @@
     $("history-span").textContent =
       `${date(o.start)}${date(o.start) !== date(o.end) ? " – " + date(o.end) : ""} / UTC`;
     $("history-summary").textContent =
-      `${fmt(o.kinds.build)} build batches · ${fmt(o.kinds.plan)} plans · ${fmt(o.totals.error)} with errors · ${elapsed(o.end - o.created)} elapsed`;
+      `${fmt((o.kinds.build || 0) + (o.kinds.plan || 0))} batches · ${elapsed(o.end - o.created)}`;
     const ticks = [];
     for (let i = 0; i <= 4; i++)
       ticks.push(el("span", time(o.start + (span * i) / 4)));
@@ -111,10 +127,7 @@
         n.style.left = left(a.created) + "%";
         const w = Math.max(0, left(a.finished || now) - left(a.created));
         n.style.width = `max(3px, ${w}%)`;
-        n.textContent =
-          w > 7
-            ? `${a.targets} pkg / ${elapsed((a.finished || now) - a.created)}`
-            : "";
+        n.textContent = w > 7 ? elapsed((a.finished || now) - a.created) : "";
         const description = `${kind} ${a.id.slice(0, 8)} · ${time(a.created)}–${a.finished ? time(a.finished) : "now"} UTC · ${elapsed((a.finished || now) - a.created)} · ${a.targets} requested · ${label(a)}`;
         n.title = description;
         n.setAttribute("aria-label", description);
@@ -174,7 +187,7 @@
         tr = el("tr");
         tr.dataset.attempt = a.id;
         tr.onclick = () => selectAttempt(a.id);
-        for (let i = 0; i < 8; i++) tr.append(el("td"));
+        for (let i = 0; i < 7; i++) tr.append(el("td"));
         const inspect = el("button", time(a.created), "history-inspect");
         inspect.setAttribute(
           "aria-label",
@@ -182,17 +195,18 @@
         );
         inspect.title = `${date(a.created)} ${time(a.created)} UTC`;
         tr.children[0].append(el("small", date(a.created)), inspect);
-        tr.children[2].append(
-          el("span", a.kind.toUpperCase()),
-          el("small", a.id.slice(0, 8)),
-        );
+        tr.children[2].append(el("span", a.kind === "plan" ? "Plan" : "Build"));
+        tr.children[2].title = a.id;
         const packages = el(
           "span",
           a.targets.map((t) => t.label).join(", "),
           "history-targets",
         );
         packages.title = a.targets.map((t) => t.label).join(", ");
-        tr.children[3].append(el("b", fmt(a.targets.length)), packages);
+        tr.children[3].append(
+          el("b", fmt(a.targets.length), "target-count"),
+          packages,
+        );
         const logs = el("button", "↗", "history-log");
         logs.setAttribute(
           "aria-label",
@@ -202,17 +216,18 @@
           event.stopPropagation();
           window.buildLogs.open(a.id);
         };
-        tr.children[7].append(logs);
+        tr.children[6].append(logs);
       }
       tr.classList.toggle("selected", selected === a.id);
       tr.children[0]
         .querySelector("button")
         .setAttribute("aria-pressed", String(selected === a.id));
       tr.children[1].textContent = elapsed((a.finished || d.now) - a.created);
-      tr.children[4].textContent = a.kind === "build" ? fmt(a.builds) : "—";
-      tr.children[5].textContent = a.checks ? fmt(a.checks) : "—";
-      tr.children[6].textContent = label(a);
-      tr.children[6].className = "history-result " + status(a);
+      tr.children[4].textContent = a.checks ? fmt(a.checks) : "—";
+      tr.children[4].title =
+        "Derivations with recorded successful checks in this batch";
+      tr.children[5].textContent = label(a);
+      tr.children[5].className = "history-result " + status(a);
       nodes.push(tr);
     }
     for (const n of [...body.children]) if (!nodes.includes(n)) n.remove();
@@ -225,7 +240,7 @@
     $("history-newer").disabled = pages.length === 1;
     const first = (pages.length - 1) * 24;
     $("history-page").textContent =
-      `${nodes.length ? first + 1 : 0}–${first + nodes.length} / ${fmt(d.total)} attempts${following ? " · latest first" : " · position held"}`;
+      `${nodes.length ? first + 1 : 0}–${first + nodes.length} / ${fmt(d.total)} attempts${following ? "" : " · paused"}`;
     followButton();
   }
   function renderDetail(a) {
@@ -245,10 +260,8 @@
         "Elapsed",
         elapsed((a.finished || snapshot?.now || Date.now() / 1000) - a.created),
       ],
-      [
-        "Builds / checks",
-        `${fmt(a.builds)} observed / ${fmt(a.checks)} checked`,
-      ],
+      ["Build activity", `${fmt(a.builds)} derivations`],
+      ["Successful checks", `${fmt(a.checks)} derivations`],
     ];
     for (const [key, value] of pairs)
       facts.append(el("dt", key), el("dd", value));
@@ -271,17 +284,9 @@
       ),
       targets,
     ];
-    if (a.kind === "plan")
-      nodes.push(
-        el(
-          "p",
-          "Evaluation completion includes packages refused individually. Consult the inventory for their current state.",
-          "record-note",
-        ),
-      );
     if (a.error) nodes.push(el("p", a.error, "record-note error"));
     if (a.activities.length) {
-      nodes.push(el("h3", "Captured build activity"));
+      nodes.push(el("h3", "Builds"));
       const list = el("div", null, "record-activities");
       for (const b of a.activities) {
         const n = el("button");
@@ -290,9 +295,10 @@
           el(
             "small",
             b.checked
-              ? "check evidence"
-              : (b.phase || "no phase recorded") +
-                  (b.stopped ? " · ended" : ""),
+              ? "Checks passed"
+              : a.state === "finished" || b.stopped
+                ? window.lastPhase(b.phase)
+                : window.phaseName(b.phase),
           ),
         );
         n.onclick = () => window.buildLogs.open(a.id, b.drv);
@@ -318,7 +324,8 @@
       renderRows(snapshot);
       renderTimeline(snapshot.overview, snapshot.now);
     }
-    $("history-detail").textContent = "Reading attempt…";
+    $("history-detail").textContent = "Loading…";
+    if (!$("history-record").open) $("history-record").showModal();
     await loadDetail();
   }
   async function loadDetail() {
@@ -372,13 +379,20 @@
       if (!following && !anchor) anchor = d.anchor;
       renderTimeline(d.overview, d.now);
       renderRows(d);
-      $("history-freshness").textContent = `Updated ${time(d.now)} UTC`;
-      if (!selected && d.rows.length) selectAttempt(d.rows[0].id, false);
-      else if (selectedInfo && selectedInfo.state !== "finished") loadDetail();
+      if (scrollPage) {
+        pageTop();
+        scrollPage = false;
+      }
+      $("history-freshness").textContent = `Live · ${time(d.now)} UTC`;
+      if (
+        $("history-record").open &&
+        selectedInfo &&
+        selectedInfo.state !== "finished"
+      )
+        loadDetail();
     } catch (e) {
       if (token === generation)
-        $("history-freshness").textContent =
-          "Connection lost · retaining history · retrying";
+        $("history-freshness").textContent = "Connection lost · retrying";
     } finally {
       clearTimeout(timer);
       if (token === generation) busy = false;
@@ -389,16 +403,38 @@
     .addEventListener("scroll", (event) => {
       if (following && event.currentTarget.scrollTop > 8) hold();
     });
+  $("history-close").onclick = () => $("history-record").close();
+  $("history-record").addEventListener("close", () => {
+    if ($("history-record").open) return;
+    detailRequest?.abort();
+    ++detailGeneration;
+  });
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (
+        following &&
+        !$("history").hidden &&
+        matchMedia("(max-width: 650px)").matches &&
+        document.querySelector(".ledger-scroll")?.getBoundingClientRect().top <
+          -50
+      )
+        hold();
+    },
+    { passive: true },
+  );
   $("history-follow").onclick = () => (following ? hold() : reset());
   $("history-older").onclick = () => {
     if (!snapshot?.more) return;
     hold();
     pages.push(snapshot.rows.at(-1).id);
+    scrollPage = true;
     load(true);
   };
   $("history-newer").onclick = () => {
     if (pages.length > 1) {
       pages.pop();
+      scrollPage = true;
       load(true);
     }
   };
@@ -413,6 +449,7 @@
     updateCampaign(id) {
       if (campaign === id) return;
       campaign = id;
+      $("history-record").close();
       selected = "";
       selectedInfo = null;
       snapshot = null;

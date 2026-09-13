@@ -151,10 +151,8 @@
             ? "Campaign paused"
             : "Between batches";
     $("graph-batch-label").textContent =
-      g.batch?.state === "finished"
-        ? "Last build batch"
-        : "Requested in this batch";
-    $("graph-follow").textContent = focus ? "Follow live" : "● Following live";
+      g.batch?.state === "finished" ? "Last build batch" : "Batch";
+    $("graph-follow").textContent = focus ? "Follow live" : "● Live";
     $("graph-follow").setAttribute("aria-pressed", String(!focus));
     $("graph-back").disabled = !history.length;
     const nextSignature = JSON.stringify([
@@ -254,8 +252,9 @@
     replace("graph-focus", center);
     $("graph-previous").hidden = g.page === 0;
     $("graph-next").hidden = !g.totals.more;
-    $("graph-explanation").textContent =
-      `Arrows lead from inputs to consumers. Click any neighbor to explore.${g.totals.hidden_available ? " " + g.totals.hidden_available + " available inputs hidden." : ""} Activity ending is not yet proof of success.`;
+    $("graph-explanation").textContent = g.totals.hidden_available
+      ? `${g.totals.hidden_available} ready inputs hidden`
+      : "";
     if (focused)
       [...$("graph-stage").querySelectorAll("[data-drv]")]
         .find((n) => n.dataset.drv === focused)
@@ -295,6 +294,7 @@
       refreshGraph();
     },
     locate(drv) {
+      window.showView("dependencies");
       choose(drv);
       $("detail").close();
       $("dependency-map").scrollIntoView({

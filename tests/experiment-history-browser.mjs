@@ -58,7 +58,7 @@ await call("Emulation.setDeviceMetricsOverride", {
 });
 await call("Page.navigate", { url: base });
 await until(
-  "document.querySelectorAll('#history-rows tr').length===24 && document.querySelector('.record-facts')",
+  "document.querySelectorAll('#history-rows tr').length===24 && !document.querySelector('#history-record').open",
 );
 assert.ok(
   await evaluate(
@@ -105,7 +105,7 @@ await until(
   `document.getElementById('history-selection').textContent===${JSON.stringify(old.slice(0, 8))}`,
 );
 await evaluate(
-  "document.querySelector('#history-rows .history-inspect').focus();document.querySelector('.ledger-scroll').scrollTop=120",
+  "document.querySelector('#history-close').click();document.querySelector('#history-rows .history-inspect').focus();document.querySelector('.ledger-scroll').scrollTop=120",
 );
 const scroll = await evaluate(
   "document.querySelector('.ledger-scroll').scrollTop",
@@ -180,6 +180,7 @@ assert.equal(
   await evaluate("document.getElementById('history-selection').textContent"),
 );
 await capture("timeline-selection");
+await evaluate("document.querySelector('#history-close').click()");
 // The new-admission badge is a browser-only fixture; cursor consistency is also
 // verified against actual SQLite inserts in test_experiment_history.py.
 await evaluate(
@@ -214,7 +215,7 @@ await call("Network.emulateNetworkConditions", {
   uploadThroughput: -1,
 });
 await until(
-  "document.getElementById('history-freshness').textContent.startsWith('Updated')",
+  "document.getElementById('history-freshness').textContent.startsWith('Live')",
 );
 await evaluate(
   "document.getElementById('history-window').value='0';document.getElementById('history-window').dispatchEvent(new Event('change'));document.getElementById('history-outcome').value='';document.getElementById('history-outcome').dispatchEvent(new Event('change'));window.scrollTo(0,0)",
@@ -224,6 +225,10 @@ await call("Emulation.setDeviceMetricsOverride", {
   height: 1000,
   deviceScaleFactor: 1,
   mobile: true,
+});
+await call("Emulation.setTouchEmulationEnabled", {
+  enabled: true,
+  maxTouchPoints: 5,
 });
 await wait(400);
 assert.equal(
@@ -237,11 +242,32 @@ await evaluate(
 await capture("mobile-history");
 assert.ok(
   await evaluate(
-    "document.querySelector('.ledger-scroll').scrollWidth>document.querySelector('.ledger-scroll').clientWidth",
+    "document.querySelector('.ledger-scroll').scrollWidth<=document.querySelector('.ledger-scroll').clientWidth",
   ),
 );
-await evaluate("document.querySelector('.ledger-scroll').scrollLeft=600");
+await evaluate("window.scrollTo(0,750)");
+await until(
+  "document.querySelector('#history-follow').getAttribute('aria-pressed')==='false'",
+);
+await evaluate("document.querySelector('#history-older').click()");
+await until(
+  "document.querySelector('#history-page').textContent.includes('25–')",
+);
+assert.ok(
+  await evaluate(
+    "document.querySelector('.ledger-scroll').getBoundingClientRect().top >= document.querySelector('.app-chrome').getBoundingClientRect().bottom",
+  ),
+  "Pagination returns to the first row",
+);
 await capture("mobile-results");
+await evaluate(
+  "document.querySelector('#history-rows .history-inspect').click()",
+);
+await until(
+  "document.querySelector('#history-record').open && document.querySelector('.record-facts')",
+);
+await capture("mobile-record");
+await evaluate("document.querySelector('#history-close').click()");
 // Rapid campaign changes must not let an old response repopulate the new view.
 await evaluate(
   "document.getElementById('campaign-select').selectedIndex=1;document.getElementById('campaign-select').dispatchEvent(new Event('change'))",
@@ -257,7 +283,7 @@ await until(
 );
 assert.deepEqual(errors, []);
 console.log(
-  "History browser checks passed: complete timeline, stable pagination/focus/scroll, attempt inspection and log opening, target search, outcome filters, timeline range/selection, new-admission notice, offline recovery, narrow screen scrolling, campaign switch.",
+  "History browser checks passed: complete timeline, stable pagination/focus/scroll, attempt inspection and log opening, target search, outcome filters, timeline range/selection, new-admission notice, offline recovery, mobile ledger without horizontal scrolling, campaign switch.",
 );
 ws.close();
 await fetch("http://127.0.0.1:9228/json/close/" + tab.id);

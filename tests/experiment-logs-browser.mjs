@@ -106,6 +106,11 @@ try {
     ),
     "User zoom remains enabled",
   );
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-search-tools').hidden && !document.querySelector('#log-options').open",
+    ),
+  );
   await screenshot("logs-desktop.png");
   await evaluate(
     "document.querySelector('#log-scroll').dispatchEvent(new WheelEvent('wheel',{deltaY:-200}));document.querySelector('#log-scroll').scrollTop=140",
@@ -170,7 +175,7 @@ try {
     "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
   );
   await evaluate(
-    "document.querySelector('#log-search').value='error';document.querySelector('#log-search').dispatchEvent(new Event('input'))",
+    "document.querySelector('#log-find').click();document.querySelector('#log-search').value='error';document.querySelector('#log-search').dispatchEvent(new Event('input'))",
   );
   assert.ok(
     await evaluate("document.querySelectorAll('#log-lines mark').length > 0"),
@@ -187,7 +192,7 @@ try {
     "/nix/store/vbrvash4lq7vgalq2mrix6i6cs4vw6pn-libopus-x86_64-unknown-linux-gnufilc0-1.5.2.drv";
   await evaluate(`showLog(${JSON.stringify(aid)}, ${JSON.stringify(drv)})`);
   await until(
-    "document.querySelectorAll('.log-row').length > 0 && document.querySelector('#log-status').textContent.includes('ended')",
+    "document.querySelectorAll('.log-row').length > 0 && document.querySelector('#log-status').textContent.includes('Finished')",
   );
   assert.ok(
     await evaluate(
@@ -248,13 +253,19 @@ try {
     "Wrapped output fits the phone",
   );
   await screenshot("logs-mobile.png");
+  await evaluate(
+    "document.querySelector('#log-source-select').value='';document.querySelector('#log-source-select').dispatchEvent(new Event('change'))",
+  );
+  await until(
+    "!document.querySelector('#log-scroll').classList.contains('scoped') && document.querySelectorAll('.log-row').length>0",
+  );
   // The reported failure was the unwrapped, mixed-build mobile view; inspect
   // that case as well as scoped and wrapped output, with touch media queries.
   await evaluate(
     `document.querySelector('#log-wrap').checked=false;document.querySelector('#log-wrap').dispatchEvent(new Event('change'));showLog(${JSON.stringify(aid)})`,
   );
   await until(
-    "document.querySelectorAll('.log-row').length>0 && document.querySelector('#log-status').textContent.includes('ended')",
+    "document.querySelectorAll('.log-row').length>0 && document.querySelector('#log-status').textContent.includes('Finished')",
   );
   const mobileType = await evaluate(`(() => {
     const samples=[...document.querySelectorAll('.log-text')].filter(n=>/^[\x20-\x7e]+$/.test(n.textContent));
@@ -268,7 +279,7 @@ try {
   );
   assert.ok(
     await evaluate(
-      "document.querySelector('#log-scroll').clientHeight > innerHeight*0.5",
+      "document.querySelector('#log-scroll').clientHeight > innerHeight*0.75",
     ),
     "Output receives most of the phone viewport",
   );
@@ -287,7 +298,7 @@ try {
   );
   assert.ok(
     await evaluate(
-      "document.querySelector('#log-watch').getBoundingClientRect().right <= document.querySelector('.log-size-label').getBoundingClientRect().left",
+      "document.querySelector('#log-find').getBoundingClientRect().right <= document.querySelector('.log-wrap-label').getBoundingClientRect().left && document.querySelector('.log-wrap-label').getBoundingClientRect().right <= document.querySelector('#log-options').getBoundingClientRect().left",
     ),
     "Narrow phone controls do not overlap",
   );
@@ -314,6 +325,14 @@ try {
   await evaluate(
     "document.querySelector('#log-size').value='14';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
   );
+  await evaluate("document.querySelector('#log-options summary').click()");
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-options .menu-body').getBoundingClientRect().left >= 0",
+    ),
+  );
+  await screenshot("logs-mobile-options.png");
+  await evaluate("document.querySelector('#log-options summary').click()");
   await screenshot("logs-mobile-larger.png");
   await evaluate(
     "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
@@ -353,7 +372,7 @@ try {
     window.buildLogs.update = () => {};
     window.buildLogs.open(${JSON.stringify(aid)}, "", true)`);
   await until(
-    "document.querySelectorAll('.log-row').length > 0 && document.querySelector('#log-status').textContent.includes('ended')",
+    "document.querySelectorAll('.log-row').length > 0 && document.querySelector('#log-status').textContent.includes('Finished')",
   );
   await evaluate("document.querySelector('#log-follow').click()");
   const next = "6e1ee130-399a-4f83-a98d-42ce24e8e28a";
@@ -366,7 +385,7 @@ try {
   );
   await evaluate("document.querySelector('#log-follow').click()");
   await until(
-    "document.querySelectorAll('.log-row').length > 0 && document.querySelector('#log-status').textContent.includes('ended')",
+    "document.querySelectorAll('.log-row').length > 0 && document.querySelector('#log-status').textContent.includes('Finished')",
   );
   await evaluate("window.restoreLogUpdate(window.testSnapshot)");
   await until(

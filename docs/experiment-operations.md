@@ -5,6 +5,30 @@ The dashboard is **https://nix.swa.sh/**. It is read-only. The main campaign con
 and building in bounded batches. Synthetic native runner calibrations are
 separate campaigns, clearly labeled in the campaign selector.
 
+## Dashboard layout
+
+**Activity** is the default: inventory progress, current builds, a compact
+campaign timeline, and the batch ledger. **Packages** provides the searchable
+inventory and shared blockers; **Dependencies** contains the graph. The views
+have URL fragments and support browser back/forward navigation. Campaign
+selection, source revision, resource meters, and additional inventory counts
+live in the run menu beside **Live logs**.
+
+The design follows the build-to-job-to-log navigation used by
+[Buildkite](https://buildkite.com/docs/pipelines/build-page) and the emphasis on
+clear, dense information in [U.S. Graphics](https://usgraphics.com/). Current work
+and changes stay visible; detailed evidence opens on demand. Shared typography,
+restrained status colors, aligned rows, and small gaps replace repeated headings,
+explanatory captions, and a permanent inspector. Phone layouts adapt the content
+instead of shrinking a desktop table or retaining a wide sidebar.
+
+**Available** counts selected attributes whose required outputs were observed.
+**Checked** counts distinct selected derivations with successful check evidence;
+it is not a count of every transitive dependency or individual test case. Batch
+check counts include dependency derivations. A batch labeled **With errors** may
+still contain successful builds and checks; **Plan finished** describes the
+worker, not the acceptability of all recipes it evaluated.
+
 ## Watching dependencies
 
 The live map follows an active build and draws its inputs on the left and direct
@@ -36,13 +60,13 @@ optional `focus` derivation, `available=1`, and a neighbor `page`.
 
 **Live logs** opens the current build batch near the end of its captured
 output. It follows subsequent batches while following output is enabled.
-Opening an individual attempt pins that attempt; **Follow batches** opts into
+Opening an individual attempt pins that attempt; **Next batches: on** in the log options menu opts into
 automatic transitions. Scrolling back, searching, or loading history pauses
-both scrolling and batch transitions. **Jump to live** returns to the current
+both scrolling and batch transitions. **Resume** (or the new-output byte count) returns to the current
 end of the selected attempt. Paused viewers keep their text and position while
 checking for new output, and show how many captured bytes are waiting.
 
-Select a build in the sidebar to isolate its output. Links from the dependency
+Select a build in the sidebar, or the source picker on phones, to isolate its output. Links from the dependency
 map, current work, and recorded package/derivation results open that build's
 log. The reader searches backward for recent output from quiet builds. Phase
 boundaries and diagnostics stand out; Nix progress counters and cache-query
@@ -50,18 +74,21 @@ events are hidden. Output is attributed through recorded Nix activity IDs.
 Native tools retain their own identities. Unattributed evaluator/Nix messages
 remain in **All builds**. Ending an activity does not create a success claim.
 
-**Load earlier output** pages backward without moving the line being read.
+**Earlier output** pages backward without moving the line being read.
 Search highlights text within the loaded window; Enter/Shift+Enter or the arrow
 buttons move among matches. Wrap controls long lines. The browser retains up to
 2,000 records and approximately 1 MiB of decoded text; older/newer windows can
-be loaded again. **Raw log** downloads the original captured stderr, including
+be loaded again. **Download raw log** in the options menu downloads the original captured stderr, including
 event metadata, escape sequences and progress records omitted from the viewer.
 
-The log toolbar offers 12, 14, and 16 px text sizes (relative to the browser's
+The log options menu offers 12, 14, and 16 px text sizes (relative to the browser's
 base text preference); the choice is saved locally when storage is available.
 Changing size or wrapping retains the visible row when scrolling is paused.
 Normal browser zoom remains available. On phones, the build picker becomes a
-compact horizontal strip and the output retains most of the viewport.
+native select and consecutive rows share a source label above the output. Find
+opens the search row; Escape closes it first. Wrapping and follow controls remain
+visible. With search closed, output occupies over three quarters of the phone
+viewport, including at a 320 px width.
 
 `experiment/static/theme.css` owns the shared type, spacing, and color scale for
 the dashboard, history, graph, and log viewer. Component styles consume those
@@ -184,18 +211,18 @@ The actual cgroup is
 because the name contains a hyphen. It contains the daemon and attempt units.
 The controller, web server, SSH and Caddy are outside it.
 
-| Setting | Installed value |
-| --- | --- |
-| CPUs | `2-15,18-31`; two complete physical cores reserved |
-| MemoryHigh / MemoryMax | 70% / 80%; observed maximum 107,296,374,784 bytes |
-| Swap | 2 GiB |
-| Nix admission | One client batch, four jobs, six requested cores per job |
-| Build wall / silence budget | 7,200 / 900 seconds |
-| Evaluator | Two CPUs, 4 GiB address space, 90 seconds per candidate |
-| Attempt service | 8 GiB client/evaluator memory, 1,024 tasks, three-hour backstop |
-| Log budgets | 128 MiB per attempt; 20 GiB retained logs |
-| Disk reserve | Stop admission below 50 GiB free |
-| Scratch | `/var/tmp/filnix-build` for daemon, `/var/tmp/filnix-eval` for evaluation |
+| Setting                     | Installed value                                                           |
+| --------------------------- | ------------------------------------------------------------------------- |
+| CPUs                        | `2-15,18-31`; two complete physical cores reserved                        |
+| MemoryHigh / MemoryMax      | 70% / 80%; observed maximum 107,296,374,784 bytes                         |
+| Swap                        | 2 GiB                                                                     |
+| Nix admission               | One client batch, four jobs, six requested cores per job                  |
+| Build wall / silence budget | 7,200 / 900 seconds                                                       |
+| Evaluator                   | Two CPUs, 4 GiB address space, 90 seconds per candidate                   |
+| Attempt service             | 8 GiB client/evaluator memory, 1,024 tasks, three-hour backstop           |
+| Log budgets                 | 128 MiB per attempt; 20 GiB retained logs                                 |
+| Disk reserve                | Stop admission below 50 GiB free                                          |
+| Scratch                     | `/var/tmp/filnix-build` for daemon, `/var/tmp/filnix-eval` for evaluation |
 
 Memory figures are aggregate cgroup readings, not per-package peaks. Aggregate
 OOM changes make failure attribution inconclusive. Per-build cgroups remain
@@ -252,20 +279,23 @@ dependency edges; unknown/native edges cannot produce a positive claim.
 
 ## Following history
 
-The dashboard starts with current inventory counters and a campaign-wide timeline.
+The Activity view starts with inventory counters, current work, and a campaign-wide timeline.
 Builds and recipe evaluations have separate lanes, positioned by their recorded
 admission and finish times. Gaps represent time without a recorded attempt; all
 labels use UTC. Range controls zoom the timeline without changing the ledger's
 search or filters. Select an interval or a ledger row to inspect its targets,
-duration, result, observed build activities, and logs.
+duration, result, observed build activities, and logs in a detail sheet. No batch
+is opened automatically.
 
 The ledger covers every attempt, newest first, with package/attempt search,
 job/outcome filters, and pages of 24. Selecting an attempt, scrolling down the ledger, or opening an older page holds
 its admission cursor. New attempts are counted without displacing the
-page; **Follow latest** returns to the newest page. Timeline and current work
+page; **Latest** returns to the newest page. Timeline and current work
 continue updating while history is held. Connection failures retain the last
-view and report staleness. On a narrow screen, scroll the ledger horizontally to
-reach all columns.
+view and report staleness. On phones, time, package names, duration, and result
+fit each row without horizontal scrolling. Tap a row for the remaining facts and
+logs. Scrolling down the page holds the admission cursor; changing ledger pages
+returns to the first row under the sticky filters.
 
 History uses facts attached to the original attempt. Observed build counts
 include dependencies and are not success counts. Successful check counts come

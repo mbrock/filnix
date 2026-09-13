@@ -13,11 +13,90 @@ let data = JSON.parse($("initial").textContent),
 function replace(id, nodes) {
   $(id).replaceChildren(...nodes);
 }
+const viewIds = {
+  activity: "history",
+  packages: "inventory",
+  dependencies: "dependency-map",
+};
+window.showView = (view, updateURL = true) => {
+  if (!viewIds[view]) view = "activity";
+  for (const panel of document.querySelectorAll("[data-view]"))
+    panel.hidden = panel.dataset.view !== view;
+  for (const link of document.querySelectorAll("[data-tab]")) {
+    if (link.dataset.tab === view) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  if (updateURL && location.hash !== "#" + viewIds[view])
+    history.pushState(
+      null,
+      "",
+      location.pathname + location.search + "#" + viewIds[view],
+    );
+  window.dispatchEvent(new Event("resize"));
+};
+function viewFromURL() {
+  const campaign =
+    new URLSearchParams(location.search).get("campaign") ||
+    data.campaigns?.[0]?.id;
+  if (campaign && data.campaign && campaign !== data.campaign.id) {
+    data.campaign.id = campaign;
+    offset = 0;
+    refresh();
+  }
+  window.showView(
+    Object.keys(viewIds).find((k) => "#" + viewIds[k] === location.hash) ||
+      "activity",
+    false,
+  );
+}
+for (const link of document.querySelectorAll("[data-tab]"))
+  link.onclick = (event) => {
+    event.preventDefault();
+    window.showView(link.dataset.tab);
+    window.scrollTo(0, 0);
+  };
+window.addEventListener("popstate", viewFromURL);
+window.addEventListener("hashchange", viewFromURL);
+viewFromURL();
+new ResizeObserver(([entry]) =>
+  document.documentElement.style.setProperty(
+    "--chrome-height",
+    entry.target.getBoundingClientRect().height + "px",
+  ),
+).observe(document.querySelector(".app-chrome"));
+document.addEventListener("pointerdown", (event) => {
+  for (const menu of document.querySelectorAll(".menu[open]"))
+    if (!menu.contains(event.target)) menu.open = false;
+});
+window.lastPhase = (phase) =>
+  phase
+    ? "Last: " +
+      phase
+        .replace(/Phase$/, "")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .toLowerCase()
+    : "No phase recorded";
+window.phaseName = (phase) =>
+  ({
+    buildPhase: "Building",
+    checkPhase: "Testing",
+    pytestCheckPhase: "Testing",
+    installCheckPhase: "Install tests",
+    configurePhase: "Configuring",
+    autoreconfPhase: "Configuring",
+    unpackPhase: "Unpacking",
+    patchPhase: "Patching",
+    installPhase: "Installing",
+    fixupPhase: "Finishing",
+  })[phase] ||
+  (phase
+    ? phase.replace(/Phase$/, "").replace(/([a-z])([A-Z])/g, "$1 $2")
+    : "Starting");
 function render(d) {
   data = d;
   if (!d.campaign) {
-    $("notice").textContent =
-      "No campaigns imported. Importing an inventory creates a paused campaign.";
+    $("notice").textContent = "No campaigns imported.";
+    $("notice").hidden = false;
     return;
   }
   const c = d.campaign,
@@ -38,13 +117,12 @@ function render(d) {
   $("campaign-name").textContent = c.name;
   $("revision").textContent = "SOURCE " + c.revision.slice(0, 12);
   $("mode").textContent = c.mode.toUpperCase();
-  $("mode").className = "badge " + c.mode;
+  $("mode").className = c.mode;
   const fresh = c.heartbeat && Date.now() / 1000 - c.heartbeat < 30;
-  $("connection").textContent = fresh
-    ? "● Controller connected"
-    : "○ Controller offline / stale";
+  $("connection").textContent = fresh ? "● Connected" : "○ Offline";
   $("notice").textContent =
     c.hold ||
+    (!fresh ? "Controller offline · showing the last observation." : "") ||
     (c.mode === "paused"
       ? "Campaign paused · no new batches will be admitted."
       : "");
@@ -54,7 +132,7 @@ function render(d) {
   $("planned").textContent = fmt(
     total - (counts.unplanned || 0) - (counts["evaluation-error"] || 0),
   );
-  $("unique").textContent = fmt(d.unique_derivations) + " unique derivations";
+  $("unique").textContent = fmt(d.unique_derivations);
   $("available").textContent = fmt(counts.available);
   $("tested").textContent = fmt(d.tested);
   $("evaluated").textContent = fmt(total - (counts.unplanned || 0));
@@ -74,7 +152,7 @@ function render(d) {
       }),
   );
   $("inventory-progress-label").textContent =
-    `${((100 * (total - (counts.unplanned || 0))) / Math.max(1, total)).toFixed(1)}% evaluated · ${fmt(counts.running)} running · ${fmt(counts.queued)} queued`;
+    `${((100 * (total - (counts.unplanned || 0))) / Math.max(1, total)).toFixed(1)}% of the inventory`;
   $("matches").textContent = fmt(d.filtered) + " packages";
   replace(
     "packages",
@@ -128,39 +206,61 @@ function render(d) {
     ),
   );
   replace("resources", resources);
-  replace(
-    "active",
-    d.active.length
-      ? d.active.map((a) =>
-          Object.assign(
-            el(
-              "button",
-              `${a.drv.split("/").pop().slice(33, -4).replace("-x86_64-unknown-linux-gnufilc0", "")} · ${a.phase || "starting"} ↗`,
-              "attempt",
-            ),
-            { onclick: () => showLog(a.attempt, a.drv) },
-          ),
-        )
-      : [el("p", "No builds in flight. Planning does not compile packages.")],
+  const activeAttempt = d.attempts.find((a) => a.state !== "finished");
+  $("now-summary").textContent =
+    `${activeAttempt?.kind === "plan" ? "Evaluating" : d.active.length ? `${fmt(d.active.length)} building` : c.mode === "paused" ? "Paused" : "Preparing"} · ${fmt(counts.queued)} queued`;
+  const oldActive = new Map(
+    [...$("active").children].map((n) => [n.dataset.drv, n]),
   );
+  const activeNodes = d.active.slice(0, 4).map((a) => {
+    const n = oldActive.get(a.drv) || el("button", null, "active-build");
+    n.dataset.drv = a.drv;
+    if (!n.children.length) n.append(el("span"), el("small"));
+    n.children[0].textContent = a.drv
+      .split("/")
+      .pop()
+      .slice(33, -4)
+      .replace("-x86_64-unknown-linux-gnufilc0", "");
+    n.children[1].textContent = window.phaseName(a.phase);
+    n.onclick = () => showLog(a.attempt, a.drv);
+    return n;
+  });
+  if (!activeNodes.length)
+    activeNodes.push(
+      el(
+        "p",
+        activeAttempt?.kind === "plan"
+          ? "Evaluating the next packages…"
+          : c.mode === "paused"
+            ? "No new batches will start."
+            : "Resolving dependencies…",
+        "idle-work",
+      ),
+    );
+  if (d.active.length > 4) {
+    const more = el("button", `+${d.active.length - 4} more`, "active-more");
+    more.onclick = () => $("watch-builds").click();
+    activeNodes.push(more);
+  }
+  for (const n of [...$("active").children])
+    if (!activeNodes.includes(n)) n.remove();
+  activeNodes.forEach((n, i) => {
+    if ($("active").children[i] !== n)
+      $("active").insertBefore(n, $("active").children[i] || null);
+  });
   replace(
     "blockers",
     d.blockers.length
       ? d.blockers.map((b) => {
           const n = el(
             "button",
-            `${b.name} · ${b.failure} · ${b.affected} planned inputs affected`,
+            `${b.name.replace("-x86_64-unknown-linux-gnufilc0", "")} · ${b.affected} dependents`,
             "attempt",
           );
           n.onclick = () => showDerivation(b.drv);
           return n;
         })
-      : [
-          el(
-            "p",
-            "No proven dependency failures yet. Unplanned packages remain unknown.",
-          ),
-        ],
+      : [el("p", "No shared blockers.")],
   );
   $("footer-version").textContent = `filnix ${d.version} · ${c.nix_version}`;
 }
@@ -178,8 +278,11 @@ async function refresh() {
     const d = await response.json();
     if (g === generation) render(d);
   } catch (e) {
-    if (g === generation)
+    if (g === generation) {
       $("connection").textContent = "○ Connection lost · retrying";
+      $("notice").textContent = "Connection lost · retrying";
+      $("notice").hidden = false;
+    }
   }
 }
 async function showPackage(id) {
@@ -371,10 +474,11 @@ $("next").onclick = () => {
   refresh();
 };
 $("campaign-select").onchange = () => {
+  $("campaign-options").open = false;
   const id = $("campaign-select").value;
   data.campaign.id = id;
   offset = 0;
-  history.replaceState(null, "", "/?campaign=" + id);
+  history.replaceState(null, "", "/?campaign=" + id + location.hash);
   refresh();
 };
 render(data);

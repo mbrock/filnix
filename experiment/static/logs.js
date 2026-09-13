@@ -41,7 +41,8 @@
     seeking = false;
   let sourceSignature = "",
     attemptSignature = "",
-    skipped = false;
+    skipped = false,
+    sourceChoiceSignature = "";
 
   const textSizes = {
     12: "var(--text-base)",
@@ -65,7 +66,12 @@
     suppressScroll = performance.now() + 250;
     change();
     if (following) bottom();
-    else if (anchor) scroll.scrollTop += anchor.getBoundingClientRect().top - y;
+    else if (anchor) {
+      const current = [...lines.children].find(
+        (n) => n.dataset.offset === anchor.dataset.offset,
+      );
+      if (current) scroll.scrollTop += current.getBoundingClientRect().top - y;
+    }
   }
   $("log-size").onchange = () => {
     const value = $("log-size").value;
@@ -98,32 +104,34 @@
     const a = info?.attempt;
     const lag = info ? Math.max(0, info.size - end) : 0;
     $("log-follow").textContent = following
-      ? "● Following output"
+      ? watch
+        ? "● Live"
+        : "● Following"
       : lag
-        ? `↓ ${bytes(lag)} new · Jump to live`
-        : "↓ Jump to live";
+        ? `↓ ${bytes(lag)} new`
+        : "↓ Resume";
     $("log-watch").setAttribute("aria-pressed", String(watch));
     $("log-watch").textContent = watch
-      ? "● Following batches"
-      : "Follow batches";
+      ? "Next batches: on"
+      : "Next batches: off";
     $("log-status").textContent = disconnected
       ? "Connection lost · retrying…"
       : busy
-        ? "Reading output…"
+        ? "Loading…"
         : !following
-          ? "Paused scrolling · your place is saved"
+          ? "Paused"
           : info?.finished
-            ? `Attempt ended · ${a.result?.reason || a.state}`
+            ? `Finished · ${a.result?.reason === "completed" ? "completed" : a.result?.reason === "build-error" ? "with errors" : a.result?.reason || a.state}`
             : lag
               ? "Catching up…"
-              : "Live · waiting for output";
+              : "Live";
     $("log-status").classList.toggle("disconnected", disconnected);
     $("log-range").textContent = info
       ? `${entries.length.toLocaleString()} records loaded · ${bytes(info.captured)} captured${skipped ? " · oversized record omitted; available in raw log" : ""}`
       : "Opening log…";
     $("log-earlier").disabled = busy || start === 0;
     $("log-earlier").textContent =
-      start > 0 ? "↑ Load earlier output" : "Beginning of captured output";
+      start > 0 ? "↑ Earlier output" : "Beginning of log";
     $("log-empty").hidden = entries.length !== 0;
     $("log-empty").textContent = busy
       ? "Looking for captured output…"
@@ -134,9 +142,9 @@
           : "No build output in this window. Nix may be preparing inputs.";
     if (a) {
       const when = new Date(a.created * 1000).toLocaleTimeString();
-      $("log-title").textContent = drv ? name(drv) : "All builds in this batch";
+      $("log-title").textContent = drv ? name(drv) : "All builds";
       $("log-subtitle").textContent =
-        `${a.kind === "plan" ? "Planning" : "Build batch"} ${id.slice(0, 8)} · started ${when}`;
+        `${a.kind === "plan" ? "Plan" : "Batch"} ${id.slice(0, 8)} · ${when}`;
       $("log-evidence").textContent = info.finished
         ? `Attempt result: ${a.result?.reason || a.state}${a.result?.exit_code != null ? " · exit " + a.result.exit_code : ""}`
         : "Build activity ending is not proof of success.";
@@ -184,6 +192,20 @@
     );
     all.onclick = () => open(id, "", watch);
     all.setAttribute("aria-pressed", String(!drv));
+    const choiceSignature = JSON.stringify([drv, sources.map((a) => a.drv)]);
+    if (choiceSignature !== sourceChoiceSignature) {
+      sourceChoiceSignature = choiceSignature;
+      const choices = [
+        Object.assign(node("option", `All builds (${sources.length})`), {
+          value: "",
+        }),
+        ...sources.map((a) =>
+          Object.assign(node("option", name(a.drv)), { value: a.drv }),
+        ),
+      ];
+      $("log-source-select").replaceChildren(...choices);
+      $("log-source-select").value = drv;
+    }
     nav.replaceChildren(
       all,
       ...sources.map((a) => {
@@ -198,7 +220,9 @@
           node("span", name(a.drv)),
           node(
             "small",
-            `${!a.stopped && !info.finished ? "● " : ""}${a.phase || "starting"}${a.stopped ? " · output ended" : ""}`,
+            !a.stopped && !info.finished
+              ? `● ${window.phaseName(a.phase)}`
+              : window.lastPhase(a.phase),
           ),
         );
         b.onclick = () => open(id, a.drv, watch);
@@ -215,8 +239,11 @@
   function renderEntries() {
     const q = $("log-search").value.toLowerCase();
     const fragment = document.createDocumentFragment();
+    let previousSource = Symbol();
     for (const e of entries) {
       const row = node("div", "", "log-row " + e.kind);
+      row.classList.toggle("source-start", e.drv !== previousSource);
+      previousSource = e.drv;
       row.dataset.offset = e.offset;
       const label = node("button", name(e.drv), "log-owner");
       label.title = e.drv || "Nix / evaluator output";
@@ -365,14 +392,14 @@
     );
     scroll.classList.toggle("scoped", Boolean(drv));
     $("log-search").value = "";
-    $("log-title").textContent = selected
-      ? name(selected)
-      : "All builds in this batch";
+    $("log-title").textContent = selected ? name(selected) : "All builds";
     $("log-subtitle").textContent = attempt;
     $("log-download").href = "/api/log/download?attempt=" + id;
     follow(true);
     renderEntries();
     attemptOptions();
+    $("log-options").open = false;
+    setSearch(false);
     if (!dialog.open) dialog.showModal();
     read("tail");
   }
@@ -407,6 +434,30 @@
     },
   };
   $("watch-builds").onclick = () => open(newest()?.id, "", true);
+  function setSearch(visible) {
+    reflow(() => {
+      $("log-search-tools").hidden = !visible;
+      $("log-find").setAttribute("aria-expanded", String(visible));
+      if (!visible && $("log-search").value) {
+        $("log-search").value = "";
+        renderEntries();
+      }
+    });
+    if (visible) $("log-search").focus({ preventScroll: true });
+  }
+  dialog.addEventListener("cancel", (event) => {
+    if (!$("log-search-tools").hidden) {
+      event.preventDefault();
+      setSearch(false);
+      $("log-find").focus();
+    } else if ($("log-options").open) {
+      event.preventDefault();
+      $("log-options").open = false;
+    }
+  });
+  $("log-find").onclick = () => setSearch($("log-search-tools").hidden);
+  $("log-source-select").onchange = () =>
+    open(id, $("log-source-select").value, watch);
   $("log-close").onclick = () => dialog.close();
   dialog.addEventListener("close", () => {
     // A queued close event can arrive after the viewer has already reopened.
