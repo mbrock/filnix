@@ -1,9 +1,36 @@
 # Operating the Filnix experiment
 
-The dashboard is **https://nix.swa.sh/**. It is read-only. The first campaign has
-13,772 selected attributes, twelve planned recipes, and **no admitted package
-builds**. It remains paused. Synthetic native runner calibrations are separate
-campaigns, clearly labeled in the campaign selector.
+The dashboard is **https://nix.swa.sh/**. It is read-only. The main campaign contains
+13,772 selected attributes and was started on 2026-09-13. It continues planning
+and building in bounded batches. Synthetic native runner calibrations are
+separate campaigns, clearly labeled in the campaign selector.
+
+## Watching dependencies
+
+The live map follows an active build and draws its inputs on the left and direct
+consumers on the right. Arrows point from dependency to consumer. Click a neighbor
+to move through the graph; this pins the focus while its states keep updating.
+Back returns to the previous node; Follow live resumes automatic selection.
+Requested roots and active build phases are shortcuts into the same map, and a
+package's detail view has an Explore on dependency map button.
+
+Available inputs collapse into an expandable group. Neighbor pages limit the
+display to six real nodes per side. The center also identifies the current batch
+targets reachable downstream and counts selected dependent attributes (including
+aliases), while the map itself deduplicates derivations. Shared native tools are
+part of the build graph; role annotations are shown where recorded.
+
+The map reports recipe evaluation progress and store preflight separately from
+actual builds. It uses the recorded graph, active attempt's store observations,
+and Nix phase events, without launching Nix queries from HTTP requests. A stopped
+activity remains awaiting result until stronger evidence exists. A consumer
+reaching a build phase establishes that its required input outputs were provided;
+that availability is labeled as an inference in the node tooltip and never
+creates a local-build or test-pass claim. This follows Nix's
+[input realization before execution](https://github.com/NixOS/nix/blob/2.32.1/src/libstore/build/derivation-building-goal.cc#L180).
+Edges use their required output names, so a consumer needing `dev` does not wait
+for an unrelated missing output. The public `/api/graph` accepts `campaign`,
+optional `focus` derivation, `available=1`, and a neighbor `page`.
 
 ## Responsibilities
 
@@ -14,6 +41,8 @@ campaigns, clearly labeled in the campaign selector.
   raw logs and atomic completion record. Never writes the database.
 - `experiment/web.py` and `experiment/static/`: read-only WSGI app, Waitress,
   ordinary browser JavaScript. No frontend dependency installation.
+- `experiment/graph.py`: live, campaign-scoped graph neighborhoods and readiness
+  evidence. No database writes and no change to build admission.
 - `deploy/experiment/`: fixed systemd units, narrow launcher, installation helper,
   and Caddy snippet. No automatic build activation.
 
@@ -67,7 +96,7 @@ can be cleared with `retry-derivation`; other known blockers stay in force.
 
 **`filnix-experiment run CAMPAIGN` enables the continuing experiment.** It builds
 queued roots in batches, then plans another 32 unplanned inputs when the queue is
-empty. This command has **not** been issued for the main inventory. Newly
+empty. This command has been issued for the main inventory. Newly
 imported campaigns never become running just because services restart. Automatic
 ordering is initially deterministic by attribute name. Cost/fanout scheduling is
 a future policy change, not an undocumented heuristic in this release.
@@ -190,7 +219,7 @@ dependency edges; unknown/native edges cannot produce a positive claim.
   disconnect/reconnect. Captures are in ignored `results/experiment-ui/`.
 
 ```sh
-python3 -m unittest discover -s tests -p test_experiment.py -v
+python3 -m unittest discover -s tests -p 'test_experiment*.py' -v
 python3 tests/package-inventory.py
 # With a local headless Chromium debugging port 9228:
 node tests/experiment-browser.mjs https://nix.swa.sh results/experiment-ui

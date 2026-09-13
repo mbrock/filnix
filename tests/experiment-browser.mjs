@@ -56,6 +56,47 @@ assert.match(
 );
 let shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/desktop.png", Buffer.from(shot.data, "base64"));
+assert.ok(
+  await evaluate("document.querySelector('#graph-focus [data-drv]') !== null"),
+);
+await evaluate(
+  "document.getElementById('graph-available').checked=true;document.getElementById('graph-available').dispatchEvent(new Event('change'))",
+);
+await wait(400);
+assert.ok(
+  await evaluate("document.querySelectorAll('#graph-edges > path').length > 0"),
+);
+const originalFocus = await evaluate(
+  "document.querySelector('#graph-focus [data-drv]').dataset.drv",
+);
+await evaluate("document.querySelector('#graph-inputs [data-drv]').click()");
+await wait(400);
+assert.notEqual(
+  await evaluate(
+    "document.querySelector('#graph-focus [data-drv]').dataset.drv",
+  ),
+  originalFocus,
+);
+assert.equal(
+  await evaluate(
+    "document.getElementById('graph-follow').getAttribute('aria-pressed')",
+  ),
+  "false",
+);
+await evaluate("document.getElementById('graph-back').click()");
+await wait(400);
+assert.equal(
+  await evaluate(
+    "document.querySelector('#graph-focus [data-drv]').dataset.drv",
+  ),
+  originalFocus,
+);
+await evaluate(
+  "document.getElementById('dependency-map').scrollIntoView({block:'start'})",
+);
+await wait(100);
+shot = await call("Page.captureScreenshot", { format: "png" });
+await writeFile(out + "/graph-desktop.png", Buffer.from(shot.data, "base64"));
 await evaluate(
   "document.getElementById('search').value='hello';document.getElementById('search').dispatchEvent(new Event('input'))",
 );
@@ -93,6 +134,12 @@ assert.equal(
 );
 shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/mobile.png", Buffer.from(shot.data, "base64"));
+await evaluate(
+  "document.getElementById('dependency-map').scrollIntoView({block:'start'})",
+);
+await wait(100);
+shot = await call("Page.captureScreenshot", { format: "png" });
+await writeFile(out + "/graph-mobile.png", Buffer.from(shot.data, "base64"));
 await call("Network.enable");
 await call("Network.emulateNetworkConditions", {
   offline: true,
@@ -103,6 +150,10 @@ await call("Network.emulateNetworkConditions", {
 await wait(5500);
 assert.match(
   await evaluate("document.getElementById('connection').textContent"),
+  /lost/,
+);
+assert.match(
+  await evaluate("document.getElementById('graph-freshness').textContent"),
   /lost/,
 );
 await call("Network.emulateNetworkConditions", {
@@ -118,7 +169,7 @@ assert.match(
 );
 assert.deepEqual(errors, []);
 console.log(
-  "Browser checks passed: real inventory, search, recipe detail, mobile width, disconnect/reconnect, no JS exceptions.",
+  "Browser checks passed: live dependency arrows, navigation/back, pinned focus, real inventory, search, recipe detail, mobile width, disconnect/reconnect, no JS exceptions.",
 );
 ws.close();
 await fetch("http://127.0.0.1:9228/json/close/" + tab.id);

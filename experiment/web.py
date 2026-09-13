@@ -9,6 +9,7 @@ from urllib.parse import parse_qs
 from . import VERSION, nix
 from .attempt import directory
 from .model import blockers, connect, stamp
+from .graph import live_graph
 
 
 def snapshot(db, campaign=None, search="", state="", offset=0):
@@ -226,7 +227,7 @@ def application(state):
                         .encode()
                     )
                     mime = "text/html; charset=utf-8"
-                elif path in ("/app.js", "/style.css"):
+                elif path in ("/app.js", "/graph.js", "/style.css"):
                     payload = (static / path[1:]).read_bytes()
                     mime = (
                         "text/javascript; charset=utf-8"
@@ -252,6 +253,17 @@ def application(state):
                             get("drv"),
                             get("campaign"),
                             max(0, min(int(get("offset", "0")), 1000000)),
+                        )
+                elif path == "/api/graph":
+                    with closing(connect(state, readonly=True)) as db:
+                        db.execute("BEGIN")
+                        payload = live_graph(
+                            db,
+                            state,
+                            get("campaign"),
+                            get("focus") or None,
+                            get("available") == "1",
+                            max(0, min(int(get("page", "0")), 1000000)),
                         )
                 elif path == "/api/events":
                     with closing(connect(state, readonly=True)) as db:

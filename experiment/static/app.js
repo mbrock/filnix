@@ -25,6 +25,7 @@ function render(d) {
   }
   const c = d.campaign,
     counts = d.counts;
+  window.dependencyMap?.updateCampaign(c.id);
   if ($("campaign-select").options.length !== d.campaigns.length) {
     $("campaign-select").replaceChildren(
       ...d.campaigns.map((c) => {
@@ -189,6 +190,9 @@ async function showPackage(id) {
   ];
   if (p.error) nodes.push(el("h3", "Observation"), el("pre", p.error));
   if (p.recipe) {
+    const locate = el("button", "Explore on dependency map ↗", "graph-log");
+    locate.onclick = () => window.dependencyMap?.locate(p.drv);
+    nodes.push(locate);
     nodes.push(
       el("h3", "Recipe and provenance"),
       el("p", `${p.recipe.name} · ${p.recipe.hostPlatform}`),
@@ -285,6 +289,9 @@ async function showDerivation(drv, offset = 0) {
       `Availability: ${d.derivation.available ? "observed available" : "not observed"} · Origin: ${d.derivation.origin}`,
     ),
   ];
+  const locate = el("button", "Explore on dependency map ↗", "graph-log");
+  locate.onclick = () => window.dependencyMap?.locate(drv);
+  nodes.push(locate);
   if (d.derivation.failure)
     nodes.push(el("p", "Failure: " + d.derivation.failure));
   for (const t of d.tests) {

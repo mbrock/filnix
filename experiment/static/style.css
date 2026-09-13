@@ -480,3 +480,459 @@ a {
   font-size: 11px;
   padding: 7px;
 }
+
+/* The map is a small neighborhood, not the entire derivation closure. */
+.dependency-map {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin-bottom: 35px;
+  overflow: hidden;
+  scroll-margin-top: 20px;
+}
+.graph-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 26px 18px;
+  gap: 16px;
+}
+.graph-heading .eyebrow {
+  font-size: 9px;
+  margin-bottom: 7px;
+}
+.graph-heading h2 {
+  font-size: 22px;
+  font-weight: 550;
+  letter-spacing: -0.4px;
+}
+.graph-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.graph-controls button,
+.graph-bottom button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fcfdf8;
+  padding: 8px 11px;
+  font-size: 12px;
+  color: var(--muted);
+}
+#graph-follow[aria-pressed="true"] {
+  color: var(--green);
+  border-color: #b4cbb0;
+  background: #eff5e9;
+}
+.graph-work {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 13px 26px;
+  background: #f0f4e9;
+  border-top: 1px solid #e4eadc;
+  border-bottom: 1px solid #e4eadc;
+  font-size: 13px;
+}
+#graph-freshness {
+  font-size: 11px;
+  color: var(--muted);
+}
+.graph-running {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 26px 0;
+}
+.graph-running:empty {
+  display: none;
+}
+.graph-live-build {
+  background: #e4f1df;
+  color: #2c693c;
+  border: 1px solid #bfd5b3;
+  border-radius: 5px;
+  padding: 8px 11px;
+  font:
+    12px ui-monospace,
+    monospace;
+  text-align: left;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.graph-live-build::before {
+  content: "●";
+  margin-right: 8px;
+  color: #558747;
+}
+.graph-batch {
+  padding: 17px 26px 14px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.graph-batch > span {
+  font-size: 10px;
+  color: var(--muted);
+  min-width: 114px;
+  margin-top: 7px;
+}
+.graph-roots {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.graph-chip {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fafbf6;
+  padding: 5px 8px;
+  font:
+    11px ui-monospace,
+    monospace;
+  color: var(--muted);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.graph-chip.selected {
+  border-color: #5f8553;
+  color: var(--green);
+}
+.graph-chip.building {
+  background: #e4f1df;
+  color: var(--green);
+}
+.graph-chip.failed,
+.graph-chip.blocked {
+  background: #f5e6df;
+  color: #994838;
+}
+.graph-chip.available {
+  background: #f0f3ec;
+  color: #58704e;
+}
+.graph-legend {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 26px;
+  border-top: 1px solid #ecefe5;
+  font-size: 10px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.graph-legend .building {
+  color: #427433;
+}
+.graph-legend .waiting {
+  color: #927543;
+}
+.graph-legend .available {
+  color: #7a8d6d;
+}
+.graph-legend .failed {
+  color: #aa6550;
+}
+.graph-legend label {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.graph-legend input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--green);
+}
+.graph-columns-heading {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  gap: 64px;
+  padding: 20px 26px 0;
+  font-size: 9px;
+  letter-spacing: 1.3px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.graph-columns-heading span:nth-child(2) {
+  text-align: center;
+}
+.graph-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  gap: 64px;
+  padding: 18px 26px 24px;
+  min-height: 210px;
+  background: radial-gradient(#dfe6d6 0.7px, transparent 0.7px);
+  background-size: 12px 12px;
+}
+.graph-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+  z-index: 1;
+}
+.graph-node {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid #d5ddcf;
+  border-left: 3px solid #b8c3b1;
+  border-radius: 6px;
+  padding: 12px 14px;
+  min-height: 73px;
+  box-shadow: 0 2px 5px #31452406;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.graph-node:hover,
+.graph-node:focus-visible {
+  border-color: #5d8650;
+  box-shadow: 0 2px 8px #31452416;
+  outline: 2px solid #77976355;
+  outline-offset: 2px;
+}
+.graph-node-name {
+  font:
+    12px ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.graph-node-state {
+  font-size: 10px;
+  color: var(--muted);
+}
+.graph-node.building {
+  background: #eff7e9;
+  border-color: #9cbf89;
+  border-left-color: #4e8638;
+}
+.graph-node.building .graph-node-state {
+  color: #3a772b;
+}
+.graph-node.building .graph-node-state::before {
+  content: "● ";
+  color: #5b9343;
+}
+.graph-node.available {
+  border-left-color: #94ac81;
+  background: #fcfdf8;
+}
+.graph-node.failed,
+.graph-node.blocked {
+  border-left-color: #b75d43;
+  background: #fcf4ef;
+}
+.graph-node.failed .graph-node-state,
+.graph-node.blocked .graph-node-state {
+  color: #994838;
+}
+.graph-node.waiting {
+  border-left-color: #c0a269;
+}
+.graph-node.settling {
+  border-left-color: #8699b1;
+}
+.graph-node.focal {
+  min-height: 108px;
+  padding: 20px;
+  border-width: 1px;
+  border-left-width: 4px;
+  box-shadow: 0 4px 14px #3145240d;
+}
+.graph-node.focal .graph-node-name {
+  font-size: 15px;
+}
+.graph-node.focal .graph-node-state {
+  font-size: 12px;
+}
+.graph-role {
+  font-size: 9px;
+}
+.graph-impact {
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.graph-empty {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.65;
+  padding: 12px;
+  background: #fff9;
+  border-radius: 5px;
+}
+.graph-log {
+  font-size: 12px;
+  color: var(--green);
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  text-align: left;
+}
+.graph-center > .graph-log {
+  text-align: center;
+}
+.graph-target-label {
+  font-size: 9px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 8px;
+}
+.graph-affected {
+  justify-content: center;
+}
+.graph-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  border-top: 1px solid var(--line);
+  padding: 15px 26px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.graph-bottom > div {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+#graph-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+#graph-edges > path {
+  fill: none;
+  stroke: #a5b49a;
+  stroke-width: 1.4;
+}
+.graph-node.unknown {
+  border-style: dashed;
+}
+@media (max-width: 850px) {
+  .graph-stage,
+  .graph-columns-heading {
+    gap: 32px;
+  }
+  .graph-legend {
+    gap: 10px;
+  }
+  .graph-node {
+    padding: 11px;
+  }
+  .graph-node.focal {
+    padding: 15px;
+  }
+}
+@media (max-width: 650px) {
+  .graph-heading {
+    padding: 20px 16px;
+    align-items: flex-start;
+  }
+  .graph-heading h2 {
+    font-size: 20px;
+  }
+  .graph-controls {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .graph-work {
+    padding: 13px 16px;
+    display: block;
+  }
+  .graph-work > span {
+    display: block;
+  }
+  #graph-freshness {
+    margin-top: 5px;
+  }
+  .graph-batch {
+    padding: 15px 16px;
+    display: block;
+  }
+  .graph-batch > span {
+    display: block;
+    margin: 0 0 10px;
+  }
+  .graph-running {
+    padding: 14px 16px 0;
+  }
+  .graph-legend {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .graph-legend label {
+    margin: 4px 0 0;
+    width: 100%;
+  }
+  .graph-columns-heading {
+    display: none;
+  }
+  .graph-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 45px;
+    padding: 20px 16px;
+  }
+  .graph-column {
+    gap: 10px;
+  }
+  .graph-column:before {
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    color: var(--muted);
+    background: white;
+    align-self: flex-start;
+    padding: 3px 0;
+  }
+  .graph-column:first-of-type:before {
+    content: "DEPENDS ON";
+  }
+  .graph-center:before {
+    content: "FOCUS";
+  }
+  .graph-column:last-of-type:before {
+    content: "NEEDED BY";
+  }
+  .graph-node {
+    min-height: 65px;
+  }
+  .graph-bottom {
+    padding: 15px 16px;
+    display: block;
+  }
+  .graph-bottom > div {
+    margin-top: 10px;
+  }
+  .graph-node.focal {
+    padding: 20px;
+  }
+}
+@media (max-width: 650px) {
+  .graph-column {
+    padding-left: 14px;
+  }
+  #graph-edges > path {
+    stroke-linejoin: round;
+  }
+}

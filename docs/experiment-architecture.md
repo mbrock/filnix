@@ -3,7 +3,8 @@
 Status: the initial controller, planner, attempt worker, dashboard, and deployment
 are implemented. The inventory is checkpointed at `b14a53e`. See the
 [operator guide](experiment-operations.md) for the implemented interface,
-calibration evidence, and remaining extensions. The main campaign remains paused.
+calibration evidence, and remaining extensions. The main campaign is running;
+the dashboard now includes a live dependency map.
 
 The application should make the experiment easy to operate and interesting to
 watch: what is building, what now works, which test suites ran, and which shared
