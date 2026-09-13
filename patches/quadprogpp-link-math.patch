@@ -1,0 +1,11 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -6,6 +6,7 @@ set(library_sources ${sources})
+ list(REMOVE_ITEM library_sources ${CMAKE_CURRENT_SOURCE_DIR}/main.cc)
+ add_library(quadprog STATIC ${library_sources} ${headers})
++target_link_libraries(quadprog PUBLIC m)
+ set_property(TARGET quadprog PROPERTY POSITION_INDEPENDENT_CODE 1)
+ set_property(TARGET quadprog PROPERTY PUBLIC_HEADER ${headers})
+ 
+ add_executable(main main.cc ${headers})

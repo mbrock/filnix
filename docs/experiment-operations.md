@@ -194,6 +194,31 @@ test-suite name extraction remain extensions. The persisted graph is the build
 derivation graph. Downstream check claims follow only explicitly evaluated host
 dependency edges; unknown/native edges cannot produce a positive claim.
 
+## Reacting to failures
+
+While working on the experiment, inspect new failures and their explaining
+dependency chains. Prefer small fixes with a clear cause, especially shared
+dependencies. Record larger investigations in [the triage ledger](experiment-triage.md)
+with the original derivation and evidence before moving on. A failure in one
+dependency can block many selected roots; those roots are not independent
+compiler failures.
+
+Keep the first campaign's source and observations immutable. Validate recipe
+changes with separate, bounded builds from a committed follow-up revision,
+recording old and new derivations. Compare their input closures before building
+to catch unintended compiler/runtime rebuilds. During the sweep, use one job
+and two cores for these probes; daemon builds remain under the installed cgroup
+ceiling. Passing a modified recipe does not change the original campaign's
+result. Include fixes in a subsequent campaign when testing their wider effects.
+
+Retain upstream tests. A missing test tool, missing link dependency, evaluator
+policy refusal, unsupported language dependency, safety trap, and resource limit
+are different findings. Do not turn a failure into success by disabling its
+checks, and do not retry a deterministic failure without a relevant change.
+Use `retry` for a changed external condition on the same recipe; a changed recipe
+requires a new source revision. This is an operator workflow, not an unattended
+patching or retry loop.
+
 ## Verification recorded on 2026-09-13
 
 - The frozen 13,772-attribute inventory imported paused from commit `b14a53e`.

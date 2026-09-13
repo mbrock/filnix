@@ -9,11 +9,22 @@ let
   inherit (import ./ports { inherit (pkgs) lib pkgs; })
     for
     arg
+    use
     skipTests
     ;
 in
 # This will be converted to a packageOverrides function
 [
+  (for "pycparser" [
+    (use (old: {
+      # Its parser tests invoke cpp. Fil-C's compiler wrapper has no cpp alias;
+      # preprocessing fixtures needs only a native tool, not a target compiler.
+      preCheck = (old.preCheck or "") + ''
+        export PATH="${pkgs.lib.getBin pkgs.stdenv.cc}/bin:$PATH"
+      '';
+    }))
+  ])
+
   (for "pytest-regressions" [
     (arg {
       matplotlib = null;

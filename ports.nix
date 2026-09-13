@@ -45,6 +45,12 @@ in
 [
   # ━━━ Core Libraries ━━━
 
+  {
+    QuadProgpp = for pkgs.QuadProgpp [
+      (patch ./patches/quadprogpp-link-math.patch)
+    ];
+  }
+
   (for pkgs.mpfr [
     (addCFlag "-DNO_ASM")
     (use (old: {
