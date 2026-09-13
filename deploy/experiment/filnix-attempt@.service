@@ -1,0 +1,23 @@
+[Unit]
+Description=Filnix experiment attempt %i
+After=nix-daemon.service
+
+[Service]
+User=filnix-experiment
+Group=filnix-observe
+UMask=0027
+Slice=filnix-workload.slice
+WorkingDirectory=/var/lib/filnix-experiment
+Environment=PATH=/usr/bin:/bin:/nix/var/nix/profiles/default/bin
+Environment=TMPDIR=/var/tmp/filnix-eval
+ExecStart=/opt/filnix-experiment/bin/filnix-attempt /var/lib/filnix-experiment %i
+KillMode=mixed
+TimeoutStopSec=30
+RuntimeMaxSec=3h
+Restart=no
+MemoryMax=8G
+TasksMax=1024
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/filnix-experiment /var/tmp/filnix-eval

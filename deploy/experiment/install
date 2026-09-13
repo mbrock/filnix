@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Install the application and fixed units. Import/run are separate explicit commands.
+set -euo pipefail
+if [[ $EUID != 0 || $# != 1 || $1 != /nix/store/* || ! -x $1/bin/filnix-experiment ]]; then
+  echo 'Usage: sudo deploy/experiment/install /nix/store/...-filnix-experiment-0.1.0' >&2
+  exit 2
+fi
+deploy_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+getent group filnix-observe >/dev/null || groupadd --system filnix-observe
+id filnix-experiment >/dev/null 2>&1 || useradd --system --gid filnix-observe --home-dir /var/lib/filnix-experiment --shell /usr/sbin/nologin filnix-experiment
+id filnix-web >/dev/null 2>&1 || useradd --system --gid filnix-observe --no-create-home --shell /usr/sbin/nologin filnix-web
+install -d -o filnix-experiment -g filnix-observe -m 0750 /var/lib/filnix-experiment /var/tmp/filnix-eval
+install -d -o filnix-experiment -g filnix-observe -m 0750 /nix/var/nix/gcroots/filnix-campaigns
+if [[ ! -e /var/lib/filnix-experiment/roots ]]; then
+  ln -s /nix/var/nix/gcroots/filnix-campaigns /var/lib/filnix-experiment/roots
+fi
+install -d -m 0755 /var/tmp/filnix-build /usr/local/libexec
+ln -sfn "$1" /opt/filnix-experiment
+ln -sfn /opt/filnix-experiment /nix/var/nix/gcroots/filnix-application
+install -m 0755 "$deploy_dir/filnix-attempt-unit" /usr/local/libexec/filnix-attempt-unit
+visudo -cf "$deploy_dir/sudoers"
+install -m 0440 "$deploy_dir/sudoers" /etc/sudoers.d/filnix-experiment
+install -m 0644 "$deploy_dir/filnix-controller.service" "$deploy_dir/filnix-web.service" "$deploy_dir/filnix-attempt@.service" "$deploy_dir/filnix-workload.slice" /etc/systemd/system/
+systemctl daemon-reload
+echo 'Installed. Campaigns must be imported before starting the controller and web services.'
+echo 'The daemon resource drop-in and Caddy vhost are separate host configuration steps.'

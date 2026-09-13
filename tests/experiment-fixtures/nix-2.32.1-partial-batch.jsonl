@@ -1,0 +1,138 @@
+@nix {"action":"start","id":10809195733450752,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":10809195733450752}
+@nix {"action":"msg","level":3,"msg":"these 4 derivations will be built:"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/l97d9q2asrhgmf6avcg7m9mckv6apm3n-filnix-calibration-bad-library-1789312190.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/h18cg4dfc7zj3pk9sz9i6wqslv3wzi50-filnix-calibration-sibling-1789312190.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/ig5vmvh9rjjc5cb8x8c8hjljcjr5ps4p-filnix-calibration-dependent-1789312190.drv"}
+@nix {"action":"msg","level":3,"msg":"  /nix/store/qan6w9bnrwl625qnwgas8v83xinhplcw-filnix-calibration-good-1789312190.drv"}
+@nix {"action":"start","id":10809195733450753,"level":0,"parent":0,"text":"","type":102}
+@nix {"action":"start","id":10809195733450754,"level":0,"parent":0,"text":"","type":104}
+@nix {"action":"start","id":10809195733450755,"level":0,"parent":0,"text":"","type":103}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"start","id":10809195733450756,"level":6,"parent":0,"text":"querying info about missing paths","type":0}
+@nix {"action":"stop","id":10809195733450756}
+@nix {"action":"result","fields":[0,1,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,2,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,3,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,6,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,5,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,1,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,4,0,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"start","fields":["/nix/store/qan6w9bnrwl625qnwgas8v83xinhplcw-filnix-calibration-good-1789312190.drv","",1,1],"id":10809195733450757,"level":3,"parent":0,"text":"building '/nix/store/qan6w9bnrwl625qnwgas8v83xinhplcw-filnix-calibration-good-1789312190.drv'","type":105}
+@nix {"action":"result","fields":[0,4,1,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,5,1,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,6,1,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,5,1,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,4,1,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"start","fields":["/nix/store/l97d9q2asrhgmf6avcg7m9mckv6apm3n-filnix-calibration-bad-library-1789312190.drv","",1,1],"id":10809195733450758,"level":3,"parent":0,"text":"building '/nix/store/l97d9q2asrhgmf6avcg7m9mckv6apm3n-filnix-calibration-bad-library-1789312190.drv'","type":105}
+@nix {"action":"result","fields":[0,4,2,0],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":10809195733450757,"type":101}
+@nix {"action":"result","fields":["configurePhase"],"id":10809195733450757,"type":104}
+@nix {"action":"result","fields":["Running phase: buildPhase"],"id":10809195733450757,"type":101}
+@nix {"action":"result","fields":["buildPhase"],"id":10809195733450757,"type":104}
+@nix {"action":"result","fields":["Running phase: configurePhase"],"id":10809195733450758,"type":101}
+@nix {"action":"result","fields":["configurePhase"],"id":10809195733450758,"type":104}
+@nix {"action":"result","fields":["deliberate-calibration-failure"],"id":10809195733450758,"type":101}
+@nix {"action":"result","fields":[0,4,1,1],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"stop","id":10809195733450758}
+@nix {"action":"msg","level":0,"msg":"\u001b[31;1merror:\u001b[0m Cannot build '\u001b[35;1m/nix/store/l97d9q2asrhgmf6avcg7m9mckv6apm3n-filnix-calibration-bad-library-1789312190.drv\u001b[0m'.\n       Reason: \u001b[31;1mbuilder failed with exit code 17\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/4wqzm8cmyjb1mbng92cp05aqqgnpmbaj-filnix-calibration-bad-library-1789312190\u001b[0m\n       Last 2 log lines:\n       > Running phase: configurePhase\n       > deliberate-calibration-failure\n       For full logs, run:\n         \u001b[1mnix log /nix/store/l97d9q2asrhgmf6avcg7m9mckv6apm3n-filnix-calibration-bad-library-1789312190.drv\u001b[0m"}
+@nix {"action":"result","fields":[0,3,1,1],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[0,3,1,1],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":["Running phase: checkPhase"],"id":10809195733450757,"type":101}
+@nix {"action":"result","fields":["checkPhase"],"id":10809195733450757,"type":104}
+@nix {"action":"result","fields":["Running phase: installPhase"],"id":10809195733450757,"type":101}
+@nix {"action":"result","fields":["installPhase"],"id":10809195733450757,"type":104}
+@nix {"action":"result","fields":[1,2,0,1],"id":10809195733450754,"type":105}
+@nix {"action":"result","fields":[0,0,0,0],"id":10809195733450755,"type":105}
+@nix {"action":"result","fields":[101,0],"id":10809195733450753,"type":106}
+@nix {"action":"result","fields":[100,0],"id":10809195733450753,"type":106}
+@nix {"action":"stop","id":10809195733450757}
+@nix {"action":"stop","id":10809195733450755}
+@nix {"action":"stop","id":10809195733450754}
+@nix {"action":"stop","id":10809195733450753}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[0mCannot build '\u001b[35;1m/nix/store/ig5vmvh9rjjc5cb8x8c8hjljcjr5ps4p-filnix-calibration-dependent-1789312190.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/jv8l3r8gbzmn2s7bkzgan7vlxi34w1x5-filnix-calibration-dependent-1789312190\u001b[0m","raw_msg":"\u001b[0mCannot build '\u001b[35;1m/nix/store/ig5vmvh9rjjc5cb8x8c8hjljcjr5ps4p-filnix-calibration-dependent-1789312190.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/jv8l3r8gbzmn2s7bkzgan7vlxi34w1x5-filnix-calibration-dependent-1789312190\u001b[0m"}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m \u001b[0mCannot build '\u001b[35;1m/nix/store/h18cg4dfc7zj3pk9sz9i6wqslv3wzi50-filnix-calibration-sibling-1789312190.drv\u001b[0m'.\n       Reason: \u001b[31;1m1 dependency failed\u001b[0m.\n       Output paths:\n         \u001b[35;1m/nix/store/8dm2aawmmql18wildackrpbj7ghc5z8y-filnix-calibration-sibling-1789312190\u001b[0m","raw_msg":"\u001b[0mCannot build '\u001b[35;1m/nix/store/h18cg4dfc7zj3pk9sz9i6wqslv3wzi50-filnix-calibration-sibling-1789312190.drv\u001b[0m'.\nReason: \u001b[31;1m1 dependency failed\u001b[0m.\nOutput paths:\n  \u001b[35;1m/nix/store/8dm2aawmmql18wildackrpbj7ghc5z8y-filnix-calibration-sibling-1789312190\u001b[0m"}
+@nix {"action":"msg","column":null,"file":null,"level":0,"line":null,"msg":"\u001b[31;1merror:\u001b[0m build of \u001b[35;1m'/nix/store/h18cg4dfc7zj3pk9sz9i6wqslv3wzi50-filnix-calibration-sibling-1789312190.drv^*', '/nix/store/ig5vmvh9rjjc5cb8x8c8hjljcjr5ps4p-filnix-calibration-dependent-1789312190.drv^*'\u001b[0m failed","raw_msg":"build of \u001b[35;1m'/nix/store/h18cg4dfc7zj3pk9sz9i6wqslv3wzi50-filnix-calibration-sibling-1789312190.drv^*', '/nix/store/ig5vmvh9rjjc5cb8x8c8hjljcjr5ps4p-filnix-calibration-dependent-1789312190.drv^*'\u001b[0m failed"}

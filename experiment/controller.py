@@ -1,0 +1,562 @@
+"""Single writer, explicit admission, durable intent before independent execution."""
+
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import uuid
+
+from . import nix
+from .attempt import directory
+from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
+
+
+class Units:
+    def __init__(self, state, launcher="/usr/local/libexec/filnix-attempt-unit"):
+        self.state, self.launcher = Path(state), launcher
+
+    def start(self, aid):
+        subprocess.run(
+            [self.launcher, "start", aid], check=True, timeout=20, capture_output=True
+        )
+
+    def stop(self, aid):
+        subprocess.run(
+            [self.launcher, "stop", aid], check=True, timeout=30, capture_output=True
+        )
+
+    def active(self, aid):
+        r = subprocess.run(
+            [
+                "systemctl",
+                "show",
+                f"filnix-attempt@{aid}.service",
+                "--value",
+                "-p",
+                "ActiveState",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        return r.stdout.strip() in ("active", "activating", "deactivating", "reloading")
+
+
+class Controller:
+    def __init__(self, db, state, units=None):
+        self.db, self.state = db, Path(state)
+        self.units = units or Units(state)
+        (self.state / "attempts").mkdir(exist_ok=True)
+        (self.state / "roots").mkdir(exist_ok=True)
+
+    def campaign(self, cid):
+        row = self.db.execute("SELECT * FROM campaigns WHERE id=?", (cid,)).fetchone()
+        if not row:
+            raise ValueError("unknown campaign")
+        return row
+
+    def root(self, path):
+        # Deployment registers this directory under /nix/var/nix/gcroots.
+        if path and Path(path).exists():
+            link = self.state / "roots" / Path(path).name
+            if not link.is_symlink():
+                link.symlink_to(path)
+
+    def intent(self, campaign, kind, targets, **extra):
+        if self.db.execute(
+            "SELECT 1 FROM attempts WHERE state IN ('intended','running')"
+        ).fetchone():
+            raise ValueError("an attempt is already active")
+        aid = str(uuid.uuid4())
+        spec = dict(
+            kind=kind,
+            targets=targets,
+            policy=json.loads(campaign["policy"]),
+            source=campaign["source"],
+            nix_version=campaign["nix_version"],
+            **extra,
+        )
+        # Files can be orphaned before the transaction; DB intent can always recreate them.
+        folder = directory(self.state, aid)
+        folder.mkdir()
+        atomic_json(folder / "spec.json", spec)
+        with self.db:
+            self.db.execute(
+                "INSERT INTO attempts(id,campaign,kind,targets,state,created,spec) VALUES(?,?,?,?,'intended',?,?)",
+                (aid, campaign["id"], kind, encode(targets), stamp(), encode(spec)),
+            )
+            if kind == "build":
+                self.db.executemany(
+                    "UPDATE candidates SET state='running' WHERE campaign=? AND drv=?",
+                    [(campaign["id"], t) for t in targets],
+                )
+            event(
+                self.db,
+                campaign["id"],
+                "attempt-intended",
+                {"id": aid, "kind": kind, "count": len(targets)},
+            )
+        return aid
+
+    def plan(self, cid, ids):
+        campaign = self.campaign(cid)
+        if not ids or len(ids) > 64:
+            raise ValueError("plan requires 1–64 candidate IDs")
+        targets = []
+        for i in ids:
+            row = self.db.execute(
+                "SELECT * FROM candidates WHERE id=? AND campaign=?", (int(i), cid)
+            ).fetchone()
+            if not row or row["drv"]:
+                raise ValueError("candidate absent or already planned")
+            targets.append({"id": row["id"], "attr": json.loads(row["attr"])})
+        return self.intent(campaign, "plan", targets)
+
+    def ingest(self, attempt):
+        folder = directory(self.state, attempt["id"])
+        log = folder / "stderr.log"
+        if not log.exists():
+            return
+        with log.open("rb") as f:
+            f.seek(attempt["offset"])
+            data = f.read(4 * 1024**2)
+        # Only commit complete lines; a torn final line remains raw evidence.
+        end = data.rfind(b"\n") + 1
+        if not end and len(data) == 4 * 1024**2:
+            # A compiler can emit a single enormous line. Keep it on disk, but
+            # skip it without unbounded allocation or wedging reconciliation.
+            with log.open("rb") as f:
+                f.seek(attempt["offset"])
+                while True:
+                    fragment = f.readline(1024**2)
+                    if fragment.endswith(b"\n"):
+                        break
+                    if not fragment:
+                        if not (folder / "exit.json").exists():
+                            return
+                        break
+                end = f.tell() - attempt["offset"]
+            with self.db:
+                self.db.execute(
+                    "UPDATE attempts SET offset=? WHERE id=? AND offset=?",
+                    (attempt["offset"] + end, attempt["id"], attempt["offset"]),
+                )
+                event(
+                    self.db,
+                    attempt["campaign"],
+                    "oversized-log-line",
+                    {
+                        "attempt": attempt["id"],
+                        "offset": attempt["offset"],
+                        "bytes": end,
+                    },
+                )
+            return
+        if end:
+            with self.db:
+                actual = self.db.execute(
+                    "SELECT offset FROM attempts WHERE id=?", (attempt["id"],)
+                ).fetchone()[0]
+                if actual != attempt["offset"]:
+                    return
+                for line in data[:end].splitlines():
+                    nix.observe(self.db, attempt["id"], line)
+                self.db.execute(
+                    "UPDATE attempts SET offset=offset+? WHERE id=?",
+                    (end, attempt["id"]),
+                )
+
+    def finish_plan(self, attempt, result):
+        folder = directory(self.state, attempt["id"])
+        seen = set()
+        rows = folder / "plan.jsonl"
+        if rows.exists():
+            for line in rows.read_bytes().splitlines(keepends=True):
+                if not line.endswith(b"\n"):
+                    continue
+                row = json.loads(line)
+                seen.add(row["id"])
+                if "error" in row:
+                    self.db.execute(
+                        "UPDATE candidates SET state='evaluation-error',error=? WHERE id=?",
+                        (row["error"], row["id"]),
+                    )
+                    continue
+                recipe = row["recipe"]
+                nix.add_graph(self.db, json.loads((folder / row["graph"]).read_text()))
+                self.root(recipe["drv"])
+                self.db.execute(
+                    "UPDATE candidates SET state='queued',drv=?,recipe=?,error=NULL WHERE id=?",
+                    (recipe["drv"], encode(recipe), row["id"]),
+                )
+                for role in recipe["roles"]:
+                    self.db.execute(
+                        "INSERT OR IGNORE INTO roles VALUES(?,?,?,?)",
+                        (attempt["campaign"], recipe["drv"], role["drv"], role["role"]),
+                    )
+        for target in json.loads(attempt["targets"]):
+            if target["id"] not in seen:
+                self.db.execute(
+                    "UPDATE candidates SET state='evaluation-error',error=? WHERE id=?",
+                    ("planning interrupted; no completed observation", target["id"]),
+                )
+
+    def finish_build(self, attempt, result):
+        folder = directory(self.state, attempt["id"])
+        spec = json.loads(attempt["spec"])
+        paths = set(spec["output_paths"])
+        available = nix.valid(paths)
+        before_file = folder / "before.json"
+        before = (
+            set(json.loads(before_file.read_text())) if before_file.exists() else set()
+        )
+        activities = {
+            r["drv"]: r
+            for r in self.db.execute(
+                "SELECT * FROM activities WHERE attempt=? AND drv IS NOT NULL",
+                (attempt["id"],),
+            )
+        }
+        raw = (
+            (folder / "stderr.log").read_bytes()
+            if (folder / "stderr.log").exists()
+            else b""
+        )
+        # Resource/cancel failures do not diagnose package compatibility.
+        failures = (
+            nix.failure_messages(raw) if result["reason"] == "build-error" else set()
+        )
+        for drv in spec["derivations"]:
+            row = self.db.execute(
+                "SELECT * FROM derivations WHERE drv=?", (drv,)
+            ).fetchone()
+            outputs = set(json.loads(row["outputs"]).values())
+            complete = bool(outputs) and None not in outputs and outputs <= available
+            activity = activities.get(drv)
+            if complete:
+                origin = (
+                    "pre-existing"
+                    if outputs <= before
+                    else "local"
+                    if activity
+                    else "unknown"
+                )
+                # If absent before, successful realization plus its build activity establishes
+                # successful observed phases; batch exit status alone does not.
+                self.db.execute(
+                    "UPDATE derivations SET available=1,origin=?,failure=NULL,evidence_attempt=? WHERE drv=?",
+                    (origin, attempt["id"], drv),
+                )
+                for output in outputs:
+                    self.root(output)
+                if origin == "local" and activity and not result.get("truncated"):
+                    for phase in set(json.loads(activity["checks"])):
+                        self.db.execute(
+                            "INSERT OR IGNORE INTO tests VALUES(?,?,?,?)",
+                            (
+                                attempt["id"],
+                                drv,
+                                phase,
+                                "phase observed in local build; outputs realized after attempt",
+                            ),
+                        )
+            elif drv in failures:
+                phase = activity["phase"] if activity else None
+                failure = {
+                    "configurePhase": "configure",
+                    "buildPhase": "compile-or-link",
+                    "checkPhase": "check",
+                    "installCheckPhase": "check",
+                }.get(phase, "build")
+                self.db.execute(
+                    "UPDATE derivations SET available=0,failure=?,evidence_attempt=? WHERE drv=?",
+                    (failure, attempt["id"], drv),
+                )
+        self.db.execute(
+            "UPDATE candidates SET state='queued' WHERE campaign=? AND state='running'",
+            (attempt["campaign"],),
+        )
+        refresh_candidates(self.db, attempt["campaign"])
+        # Inconclusive roots require an explicit retry, never an automatic failure loop.
+        for drv in json.loads(attempt["targets"]):
+            self.db.execute(
+                "UPDATE candidates SET state='inconclusive',error=? WHERE campaign=? AND drv=? AND state='queued'",
+                (result["reason"], attempt["campaign"], drv),
+            )
+
+    def reconcile(self):
+        for row in self.db.execute(
+            "SELECT * FROM attempts WHERE state IN ('intended','running')"
+        ).fetchall():
+            folder = directory(self.state, row["id"])
+            folder.mkdir(exist_ok=True)
+            if not (folder / "spec.json").exists():
+                atomic_json(folder / "spec.json", json.loads(row["spec"]))
+            self.ingest(row)
+            completion = folder / "exit.json"
+            if completion.exists():
+                # Drain the bounded raw log before terminal reconciliation.
+                current = self.db.execute(
+                    "SELECT * FROM attempts WHERE id=?", (row["id"],)
+                ).fetchone()
+                size = (
+                    (folder / "stderr.log").stat().st_size
+                    if (folder / "stderr.log").exists()
+                    else 0
+                )
+                if size - current["offset"] > 4 * 1024**2:
+                    continue
+                self.ingest(current)
+                result = json.loads(completion.read_text())
+            elif self.units.active(row["id"]):
+                if row["cancel_requested"]:
+                    self.units.stop(row["id"])
+                with self.db:
+                    self.db.execute(
+                        "UPDATE attempts SET state='running' WHERE id=?", (row["id"],)
+                    )
+                continue
+            elif not (folder / "started.json").exists() and row["state"] == "intended":
+                if row["cancel_requested"]:
+                    result = {
+                        "reason": "cancelled",
+                        "exit_code": None,
+                        "finished": stamp(),
+                    }
+                else:
+                    self.units.start(row["id"])
+                    continue
+            else:
+                result = {
+                    "reason": "cancelled" if row["cancel_requested"] else "interrupted",
+                    "exit_code": None,
+                    "finished": stamp(),
+                }
+            with self.db:
+                if row["kind"] == "plan":
+                    self.finish_plan(row, result)
+                else:
+                    self.finish_build(row, result)
+                self.db.execute(
+                    "UPDATE attempts SET state='finished',finished=?,result=? WHERE id=?",
+                    (result["finished"], encode(result), row["id"]),
+                )
+                event(
+                    self.db,
+                    row["campaign"],
+                    "attempt-finished",
+                    {"id": row["id"], "reason": result["reason"]},
+                )
+
+    def admission_reason(self, policy):
+        resources = nix.resources(policy)
+        reason = resources["reason"] if not resources["verified"] else ""
+        if resources.get("memory", 0) >= resources.get("high", float("inf")):
+            reason = "memory pressure: waiting below MemoryHigh"
+        if shutil.disk_usage(self.state).free < policy["min_free_bytes"]:
+            reason = "disk reserve reached"
+        log_size = sum(
+            p.stat().st_size for p in (self.state / "attempts").glob("*/*.log")
+        )
+        if log_size >= policy["retained_log_bytes"]:
+            reason = "retained log budget reached; archive attempts before continuing"
+        return reason
+
+    def admit(self, campaign):
+        policy = json.loads(campaign["policy"])
+        reason = self.admission_reason(policy)
+        with self.db:
+            self.db.execute(
+                "UPDATE campaigns SET hold=? WHERE id=?", (reason, campaign["id"])
+            )
+        if reason:
+            return
+        targets = [
+            r[0]
+            for r in self.db.execute(
+                "SELECT DISTINCT drv FROM candidates WHERE campaign=? AND state='queued' ORDER BY label LIMIT ?",
+                (campaign["id"], policy["batch_size"]),
+            )
+        ]
+        if not targets:
+            unplanned = [
+                r[0]
+                for r in self.db.execute(
+                    "SELECT id FROM candidates WHERE campaign=? AND state='unplanned' ORDER BY label LIMIT 32",
+                    (campaign["id"],),
+                )
+            ]
+            if unplanned:
+                self.plan(campaign["id"], unplanned)
+            return
+        self.build_targets(campaign, targets)
+
+    def build_targets(self, campaign, targets):
+        drvs = set(d for target in targets for d in closure(self.db, target))
+        outputs = set()
+        for drv in drvs:
+            r = self.db.execute(
+                "SELECT outputs FROM derivations WHERE drv=?", (drv,)
+            ).fetchone()
+            if r:
+                outputs.update(p for p in json.loads(r[0]).values() if p)
+        return self.intent(
+            campaign,
+            "build",
+            targets,
+            output_paths=sorted(outputs),
+            derivations=sorted(drvs),
+        )
+
+    def tick(self):
+        self.reconcile()
+        for c in self.db.execute("SELECT * FROM campaigns ORDER BY created").fetchall():
+            if (
+                c["mode"] == "running"
+                and not self.db.execute(
+                    "SELECT 1 FROM attempts WHERE state IN ('intended','running')"
+                ).fetchone()
+            ):
+                self.admit(c)
+            with self.db:
+                self.db.execute(
+                    "UPDATE campaigns SET heartbeat=? WHERE id=?", (stamp(), c["id"])
+                )
+
+    def dispatch(self, request):
+        op, cid = request["op"], request.get("campaign")
+        if op == "plan":
+            return self.plan(cid, request["ids"])
+        if op == "build-once":
+            campaign = self.campaign(cid)
+            policy = json.loads(campaign["policy"])
+            reason = self.admission_reason(policy)
+            if reason:
+                raise ValueError(reason)
+            if campaign["mode"] != "paused":
+                raise ValueError("pause the campaign before submitting a bounded batch")
+            ids = request["ids"]
+            if not ids or len(ids) > policy["batch_size"]:
+                raise ValueError("batch exceeds campaign size budget")
+            targets = []
+            for i in ids:
+                row = self.db.execute(
+                    "SELECT drv,state FROM candidates WHERE campaign=? AND id=?",
+                    (cid, i),
+                ).fetchone()
+                if (
+                    not row
+                    or not row["drv"]
+                    or row["state"] not in ("queued", "available")
+                ):
+                    raise ValueError(
+                        "candidate must be planned and ready; explicitly retry failures first"
+                    )
+                targets.append(row["drv"])
+            return self.build_targets(campaign, sorted(set(targets)))
+        if op == "retry-derivation":
+            self.campaign(cid)
+            drv = request["drv"]
+            belongs = self.db.execute(
+                """WITH RECURSIVE deps(drv) AS (
+              SELECT drv FROM candidates WHERE campaign=? AND drv IS NOT NULL
+              UNION SELECT child FROM edges JOIN deps ON parent=deps.drv)
+              SELECT 1 FROM deps WHERE drv=?""",
+                (cid, drv),
+            ).fetchone()
+            if not belongs:
+                raise ValueError(
+                    "derivation does not belong to the planned campaign graph"
+                )
+            with self.db:
+                self.db.execute(
+                    "UPDATE derivations SET failure=NULL WHERE drv=?", (drv,)
+                )
+                refresh_candidates(self.db, cid)
+                event(self.db, cid, op, {"drv": drv})
+            return "failure cleared for explicit retry"
+        if op in ("run", "pause"):
+            self.campaign(cid)
+            with self.db:
+                self.db.execute(
+                    "UPDATE campaigns SET mode=?,hold='' WHERE id=?",
+                    ("running" if op == "run" else "paused", cid),
+                )
+                event(self.db, cid, op, {})
+            return op
+        if op == "cancel":
+            aid = request["attempt"]
+            row = self.db.execute(
+                "SELECT * FROM attempts WHERE id=? AND state IN ('intended','running')",
+                (aid,),
+            ).fetchone()
+            if not row:
+                raise ValueError("attempt is not active")
+            with self.db:
+                self.db.execute(
+                    "UPDATE attempts SET cancel_requested=1 WHERE id=?", (aid,)
+                )
+                self.db.execute(
+                    "UPDATE campaigns SET mode='paused' WHERE id=?", (row["campaign"],)
+                )
+            if self.units.active(aid):
+                self.units.stop(aid)
+            return "cancellation requested; campaign paused"
+        if op == "retry":
+            self.campaign(cid)
+            ids = request["ids"]
+            with self.db:
+                for i in ids:
+                    r = self.db.execute(
+                        "SELECT drv,state FROM candidates WHERE campaign=? AND id=?",
+                        (cid, i),
+                    ).fetchone()
+                    if not r or not r["drv"] or r["state"] == "running":
+                        raise ValueError("retry requires a planned, inactive candidate")
+                    self.db.execute(
+                        "UPDATE derivations SET failure=NULL WHERE drv=?", (r["drv"],)
+                    )
+                    self.db.execute(
+                        "UPDATE candidates SET state='queued',error=NULL WHERE campaign=? AND drv=?",
+                        (cid, r["drv"]),
+                    )
+                refresh_candidates(self.db, cid)
+                event(self.db, cid, "retry", {"ids": ids})
+            return "queued; retry failed dependencies explicitly if still blocked"
+        raise ValueError("unknown command")
+
+    def serve(self):
+        path = self.state / "control.sock"
+        path.unlink(missing_ok=True)
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(str(path))
+            os.chmod(path, 0o600)
+            server.listen(8)
+            server.settimeout(1)
+            while True:
+                self.tick()
+                try:
+                    client, _ = server.accept()
+                except socket.timeout:
+                    continue
+                with client:
+                    client.settimeout(5)
+                    try:
+                        raw = b""
+                        while b"\n" not in raw and len(raw) < 65536:
+                            block = client.recv(4096)
+                            if not block:
+                                break
+                            raw += block
+                        response = {"ok": self.dispatch(json.loads(raw))}
+                    except (
+                        ValueError,
+                        KeyError,
+                        OSError,
+                        subprocess.SubprocessError,
+                    ) as e:
+                        response = {"error": str(e)}
+                    client.sendall((encode(response) + "\n").encode())

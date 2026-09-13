@@ -1,0 +1,21 @@
+[Unit]
+Description=Filnix read-only experiment dashboard
+After=filnix-controller.service
+
+[Service]
+User=filnix-web
+Group=filnix-observe
+Environment=PATH=/usr/bin:/bin:/nix/var/nix/profiles/default/bin
+ExecStart=/opt/filnix-experiment/bin/filnix-experiment web --port 8777
+Restart=on-failure
+RestartSec=3
+MemoryMax=512M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/filnix-experiment
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

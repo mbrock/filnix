@@ -1,0 +1,12 @@
+#!/usr/bin/python3
+"""Root-owned launcher: fixed template, only start/stop, canonical UUID argument."""
+import os
+import re
+import sys
+
+if len(sys.argv) != 3 or sys.argv[1] not in ("start", "stop") or not re.fullmatch(
+        r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", sys.argv[2]):
+    sys.exit("expected start|stop and canonical attempt UUID")
+if os.geteuid() != 0:
+    os.execv("/usr/bin/sudo", ["sudo", "-n", "--", "/usr/local/libexec/filnix-attempt-unit", *sys.argv[1:]])
+os.execv("/usr/bin/systemctl", ["systemctl", sys.argv[1], "--no-block", "filnix-attempt@" + sys.argv[2] + ".service"])

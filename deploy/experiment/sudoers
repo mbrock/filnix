@@ -1,0 +1,1 @@
+filnix-experiment ALL=(root) NOPASSWD: /usr/local/libexec/filnix-attempt-unit

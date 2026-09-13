@@ -1,0 +1,22 @@
+[Unit]
+Description=Filnix experiment controller
+After=nix-daemon.service
+
+[Service]
+User=filnix-experiment
+Group=filnix-observe
+UMask=0027
+WorkingDirectory=/var/lib/filnix-experiment
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/nix/var/nix/profiles/default/bin
+ExecStart=/opt/filnix-experiment/bin/filnix-experiment controller
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+MemoryMax=2G
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/filnix-experiment /nix/var/nix/gcroots/filnix-campaigns
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

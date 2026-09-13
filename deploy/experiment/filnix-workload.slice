@@ -1,0 +1,10 @@
+[Unit]
+Description=Bounded Filnix evaluation and Nix daemon workload
+
+[Slice]
+AllowedCPUs=2-15,18-31
+MemoryHigh=70%
+MemoryMax=80%
+MemorySwapMax=2G
+MemoryAccounting=yes
+TasksMax=16384
