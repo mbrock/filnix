@@ -154,6 +154,7 @@ filnix-experiment import /path/to/inputs.json --name 'Campaign name' \
   --repo /path/to/filnix --revision COMMIT --inventory /path/to/inventory.jsonl
 filnix-experiment plan CAMPAIGN CANDIDATE_ID [CANDIDATE_ID ...]
 filnix-experiment build-once CAMPAIGN CANDIDATE_ID [CANDIDATE_ID ...]
+filnix-experiment schedule CAMPAIGN --batch-size 32 --plan-ahead 128
 filnix-experiment pause CAMPAIGN
 filnix-experiment cancel ATTEMPT_UUID
 filnix-experiment retry CAMPAIGN CANDIDATE_ID [CANDIDATE_ID ...]
@@ -170,19 +171,63 @@ exposes a durable event cursor. The browser refreshes a paginated snapshot every
 five seconds and bounded log chunks every 1.5 seconds.
 
 `plan` accepts up to 64 IDs, uses no IFD and no builds, and records errors per
-candidate. `build-once` admits at most eight unique roots in a paused campaign;
+candidate. `build-once` respects the configured batch size in a paused campaign;
 it checks containment and budgets and leaves the campaign paused afterward.
-`pause` drains an active attempt. `cancel` also pauses its campaign, requests
-termination, and reconciles the eventual exit. It never stops the shared daemon.
+`pause` drains both active lanes. `cancel` pauses its campaign, terminates only
+the named attempt, and reconciles its eventual exit; the other lane drains. It never stops the shared daemon.
 `retry` requeues an inconclusive or failed candidate. A shared failed dependency
 can be cleared with `retry-derivation`; other known blockers stay in force.
 
-**`filnix-experiment run CAMPAIGN` enables the continuing experiment.** It builds
-queued roots in batches, then plans another 32 unplanned inputs when the queue is
-empty. This command has been issued for the main inventory. Newly
-imported campaigns never become running just because services restart. Automatic
-ordering is initially deterministic by attribute name. Cost/fanout scheduling is
-a future policy change, not an undocumented heuristic in this release.
+**`filnix-experiment run CAMPAIGN` enables the continuing experiment.** Newly
+imported campaigns never become running just because services restart. Ordering
+remains deterministic by attribute name, deduplicated by derivation. Cost/fanout
+scheduling is a future policy change.
+
+## Keeping builds supplied
+
+Version 0.6 permits one planner and one Nix build client in the same campaign.
+The main campaign uses **32 roots per build batch** and a **128-derivation ready
+buffer**. The planner evaluates at most 32 inputs per attempt and stops admitting
+work when the buffer is full. Evaluation failures, cached outputs, aliases, and
+known blockers do not consume ready slots. The last planning chunk is bounded by
+remaining buffer capacity. Only finished plan records enter the queue.
+
+This addresses two observed gaps: an eight-root batch often ended with one large
+build while other packages waited, and evaluation began only after all ready work
+was exhausted. A 176-second sample during `aws-sdk-cpp` used 6.0 of 28 allowed CPU
+threads, with about 55.5 GiB in the 100 GiB workload limit and no pressure/OOM
+events. The first 24 plan attempts consumed 858 seconds, averaging 36 seconds each.
+Larger batches expose more independent work to Nix; overlapping planning removes
+most evaluation gaps. This is not a measured overall speedup, and a batch can still
+end with one long build.
+
+Use `schedule CAMPAIGN` to inspect settings. `--batch-size` accepts 1–64 roots;
+`--plan-ahead` accepts 0–256 ready derivations. Zero keeps the original serial
+admission behavior; new imports default to eight roots and no lookahead until
+explicitly configured. Settings apply to future attempts. Setting lookahead to
+zero lets any existing overlap finish without cancelling it. `schedule` does not
+start a paused campaign.
+
+The local command records old/new settings and the runner version as a
+`scheduling-updated` event. Every new attempt freezes its complete policy and
+runner version in `spec.json`; existing attempts retain their original specs.
+Source revision, input manifest, recipe derivations, test settings, and historical
+results remain unchanged. Resource caps cannot be edited by `schedule`.
+
+There is still exactly one Nix build client, with **four jobs and six requested
+cores per job**, plus one evaluator constrained to two allowed CPUs and 4 GiB.
+Both attempt units and the daemon remain inside the existing workload cgroup.
+Memory pressure, disk reserve, and retained log budget gate new automatic work in
+either lane. Existing wall-time and 128 MiB per-attempt log budgets remain in force.
+Other campaigns cannot occupy a spare lane. No duplicate build client is launched
+on restart; cancelling a planner cannot cancel an unrelated ongoing build.
+
+Plan reconciliation immediately applies recorded availability and shared failure
+facts to new recipes. It also marks newly discovered aliases of active build roots
+as running. This prevents freshly discovered dependents of a known failed library
+from being submitted again, while preserving check evidence and inconclusive
+results. The dashboard keeps active attempts visible even if many newer plans
+finish, and reports planning alongside build activity.
 
 ## Installed host configuration
 
@@ -216,7 +261,7 @@ The controller, web server, SSH and Caddy are outside it.
 | CPUs                        | `2-15,18-31`; two complete physical cores reserved                        |
 | MemoryHigh / MemoryMax      | 70% / 80%; observed maximum 107,296,374,784 bytes                         |
 | Swap                        | 2 GiB                                                                     |
-| Nix admission               | One client batch, four jobs, six requested cores per job                  |
+| Nix admission               | One client, 32 roots, four jobs, six requested cores per job              |
 | Build wall / silence budget | 7,200 / 900 seconds                                                       |
 | Evaluator                   | Two CPUs, 4 GiB address space, 90 seconds per candidate                   |
 | Attempt service             | 8 GiB client/evaluator memory, 1,024 tasks, three-hour backstop           |

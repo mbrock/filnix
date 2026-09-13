@@ -150,6 +150,9 @@
           : g.mode === "paused"
             ? "Campaign paused"
             : "Between batches";
+    if (g.planning && w.kind === "build")
+      $("graph-work-status").textContent +=
+        ` · planning ${g.planning.completed}/${g.planning.total}`;
     $("graph-batch-label").textContent =
       g.batch?.state === "finished" ? "Last build batch" : "Batch";
     $("graph-follow").textContent = focus ? "Follow live" : "● Live";

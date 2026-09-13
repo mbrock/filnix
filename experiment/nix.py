@@ -14,6 +14,7 @@ DEFAULT_POLICY = dict(
     max_jobs=4,
     cores=6,
     batch_size=8,
+    plan_ahead=0,  # Explicit opt-in; old campaigns retain serial admission.
     wall_seconds=7200,
     silent_seconds=900,
     log_bytes=128 * 1024**2,

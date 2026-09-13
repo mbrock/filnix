@@ -59,7 +59,7 @@ def snapshot(db, campaign=None, search="", state="", offset=0):
     attempts = [
         dict(r)
         for r in db.execute(
-            "SELECT id,kind,state,created,finished,result,cancel_requested FROM attempts WHERE campaign=? ORDER BY created DESC LIMIT 12",
+            "SELECT id,kind,state,created,finished,result,cancel_requested FROM attempts WHERE campaign=? ORDER BY state IN ('intended','running') DESC, created DESC LIMIT 12",
             (cid,),
         )
     ]

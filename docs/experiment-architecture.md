@@ -52,14 +52,14 @@ web user cannot launch attempts or access the administrative socket.
 
 Keep a selected package, a derivation, and an execution attempt distinct.
 
-| Record | Meaning |
-| --- | --- |
-| Campaign | An input manifest, immutable Filnix checkout, toolchain/input pins, and execution policy |
-| Candidate | One selected attribute path in that campaign |
-| Derivation | A concrete `.drv` identity, its requested outputs, and dependency edges |
-| Attempt | One invocation with its own UUID, systemd unit, timestamps, logs, and outcome |
-| Test observation | Evidence about configured or executed checks, tied to the relevant derivation/attempt |
-| Event | A numbered change used by the UI and diagnostic history |
+| Record           | Meaning                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| Campaign         | An input manifest, immutable Filnix checkout, toolchain/input pins, and execution policy |
+| Candidate        | One selected attribute path in that campaign                                             |
+| Derivation       | A concrete `.drv` identity, its requested outputs, and dependency edges                  |
+| Attempt          | One invocation with its own UUID, systemd unit, timestamps, logs, and outcome            |
+| Test observation | Evidence about configured or executed checks, tied to the relevant derivation/attempt    |
+| Event            | A numbered change used by the UI and diagnostic history                                  |
 
 Several candidates can resolve to the same derivation. Several candidates can
 also require the same library. Deduplicate execution by derivation/output identity
@@ -98,6 +98,17 @@ four local builds and request six threads per build. A batch may contain several
 candidate roots; Nix schedules their shared dependencies. Avoid multiplying
 concurrency by launching a separate unrestricted Nix client for every candidate.
 
+The implemented scheduler can overlap one bounded planner with that build client.
+The first campaign was tuned from eight-root serial batches to 32-root batches
+and a 128-derivation ready buffer after observing idle capacity at batch tails.
+New imports retain serial admission until explicitly configured. Admission tuning
+is recorded in an event; existing attempt specs remain immutable. Each new attempt
+captures its effective policy and runner version. CPU/memory caps and source/test
+settings are not admission tuning knobs. Planning immediately applies existing
+availability/failure facts before making new roots ready. See the
+[operating guide](experiment-operations.md#keeping-builds-supplied) for bounds and
+pause/recovery behavior.
+
 Prioritize inexpensive candidates, candidates with enabled checks, and shared
 libraries whose success opens useful groups of packages. Keep some uncertain and
 assembly-tagged candidates in the early batches. The queue must not silently
@@ -114,15 +125,15 @@ and show a dependency chain explaining each relationship.
 Use independent fields for realization, provenance, test coverage, and artifact
 availability. A single green/red field cannot carry all four meanings.
 
-| Observation | What the UI may say |
-| --- | --- |
-| Required outputs realized | Built/available, with local build, substitution, pre-existing, or unknown origin |
-| Compiler/runtime evidence checked | Fil-C provenance checked; mixed or unknown components remain visible |
-| Check flag enabled in native inventory | Native recipe enables checks |
-| Check flag enabled in the evaluated Filnix recipe | Filnix recipe enables checks |
-| Check phase observed to finish successfully | Check phase passed, with a link to evidence |
-| A particular suite/import/smoke test observed | That named test passed |
-| No execution evidence | Tests not observed or coverage unknown |
+| Observation                                       | What the UI may say                                                              |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Required outputs realized                         | Built/available, with local build, substitution, pre-existing, or unknown origin |
+| Compiler/runtime evidence checked                 | Fil-C provenance checked; mixed or unknown components remain visible             |
+| Check flag enabled in native inventory            | Native recipe enables checks                                                     |
+| Check flag enabled in the evaluated Filnix recipe | Filnix recipe enables checks                                                     |
+| Check phase observed to finish successfully       | Check phase passed, with a link to evidence                                      |
+| A particular suite/import/smoke test observed     | That named test passed                                                           |
+| No execution evidence                             | Tests not observed or coverage unknown                                           |
 
 Nix can substitute outputs instead of building them, so availability alone does
 not establish a fresh build or fresh test run.
@@ -198,14 +209,14 @@ not contain them. This intentionally limits all local daemon builds on the host.
 
 Proposed starting policy for this machine:
 
-| Control | Initial setting |
-| --- | --- |
-| Workload CPUs | `AllowedCPUs=2-15,18-31`, leaving two complete physical cores outside the workload |
-| Memory pressure threshold | `MemoryHigh=70%` |
-| Aggregate memory ceiling | `MemoryMax=80%`, approximately 99 GiB here |
-| Swap ceiling | `MemorySwapMax=2G` |
-| Nix parallelism | `max-jobs=4`, `cores=6`, one batch submission at a time |
-| Scratch space | A disk-backed directory, rather than this host's tmpfs `/tmp` |
+| Control                   | Initial setting                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| Workload CPUs             | `AllowedCPUs=2-15,18-31`, leaving two complete physical cores outside the workload |
+| Memory pressure threshold | `MemoryHigh=70%`                                                                   |
+| Aggregate memory ceiling  | `MemoryMax=80%`, approximately 99 GiB here                                         |
+| Swap ceiling              | `MemorySwapMax=2G`                                                                 |
+| Nix parallelism           | `max-jobs=4`, `cores=6`, one batch submission at a time                            |
+| Scratch space             | A disk-backed directory, rather than this host's tmpfs `/tmp`                      |
 
 Systemd's memory ceiling can invoke the OOM killer inside the limited group. The
 controller should react earlier to memory pressure by withholding new work.

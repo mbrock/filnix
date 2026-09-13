@@ -149,6 +149,18 @@ class LiveGraphTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.view(focus=x)
 
+    def test_concurrent_planner_does_not_replace_build_focus(self):
+        self.ctl.dispatch({"op": "schedule", "campaign": self.cid, "plan_ahead": 128})
+        build = self.build()
+        plan = self.ctl.intent(
+            self.ctl.campaign(self.cid), "plan", [{"id": 99, "attr": ["next"]}]
+        )
+        (self.state / "attempts" / plan / "plan.jsonl").write_text("{}\n")
+        view = self.view()
+        self.assertEqual(view["work"]["kind"], "build")
+        self.assertEqual(view["work"]["attempt"], build)
+        self.assertEqual(view["planning"], dict(attempt=plan, completed=1, total=1))
+
     def test_planning_reports_completed_rows_without_build_activity(self):
         aid = self.ctl.intent(
             self.ctl.campaign(self.cid),

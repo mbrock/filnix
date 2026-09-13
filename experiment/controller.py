@@ -8,7 +8,7 @@ import socket
 import subprocess
 import uuid
 
-from . import nix
+from . import VERSION, nix
 from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
 
@@ -65,14 +65,26 @@ class Controller:
             if not link.is_symlink():
                 link.symlink_to(path)
 
+    def active_attempts(self):
+        return self.db.execute(
+            "SELECT * FROM attempts WHERE state IN ('intended','running') ORDER BY rowid"
+        ).fetchall()
+
     def intent(self, campaign, kind, targets, **extra):
-        if self.db.execute(
-            "SELECT 1 FROM attempts WHERE state IN ('intended','running')"
-        ).fetchone():
-            raise ValueError("an attempt is already active")
+        if kind not in ("plan", "build"):
+            raise ValueError("unknown attempt kind")
+        # Exactly one build client owns realization evidence. A bounded planner
+        # may overlap it in the same campaign; other campaigns still wait.
+        active = self.active_attempts()
+        ahead = json.loads(campaign["policy"]).get("plan_ahead", 0)
+        if any(r["kind"] == kind or r["campaign"] != campaign["id"] for r in active):
+            raise ValueError("attempt lane already occupied or another campaign active")
+        if active and not ahead:
+            raise ValueError("an attempt is already active; planning ahead is disabled")
         aid = str(uuid.uuid4())
         spec = dict(
             kind=kind,
+            runner_version=VERSION,
             targets=targets,
             policy=json.loads(campaign["policy"]),
             source=campaign["source"],
@@ -188,9 +200,19 @@ class Controller:
                 recipe = row["recipe"]
                 nix.add_graph(self.db, json.loads((folder / row["graph"]).read_text()))
                 self.root(recipe["drv"])
+                held = self.db.execute(
+                    "SELECT error FROM candidates WHERE campaign=? AND drv=? AND state='inconclusive' LIMIT 1",
+                    (attempt["campaign"], recipe["drv"]),
+                ).fetchone()
                 self.db.execute(
-                    "UPDATE candidates SET state='queued',drv=?,recipe=?,error=NULL WHERE id=?",
-                    (recipe["drv"], encode(recipe), row["id"]),
+                    "UPDATE candidates SET state=?,drv=?,recipe=?,error=? WHERE id=?",
+                    (
+                        "inconclusive" if held else "queued",
+                        recipe["drv"],
+                        encode(recipe),
+                        held["error"] if held else None,
+                        row["id"],
+                    ),
                 )
                 for role in recipe["roles"]:
                     self.db.execute(
@@ -203,6 +225,15 @@ class Controller:
                     "UPDATE candidates SET state='evaluation-error',error=? WHERE id=?",
                     ("planning interrupted; no completed observation", target["id"]),
                 )
+
+        refresh_candidates(self.db, attempt["campaign"])
+        # An alias discovered by the planner may name an active build root.
+        self.db.execute(
+            """UPDATE candidates SET state='running' WHERE campaign=? AND drv IN (
+              SELECT j.value FROM attempts a,json_each(a.targets) j
+              WHERE a.campaign=? AND a.kind='build' AND a.state IN ('intended','running'))""",
+            (attempt["campaign"], attempt["campaign"]),
+        )
 
     def finish_build(self, attempt, result):
         folder = directory(self.state, attempt["id"])
@@ -367,6 +398,13 @@ class Controller:
 
     def admit(self, campaign):
         policy = json.loads(campaign["policy"])
+        active = self.active_attempts()
+        if any(r["campaign"] != campaign["id"] for r in active):
+            return
+        ahead = policy.get("plan_ahead", 0)
+        lanes = {r["kind"] for r in active}
+        if active and (not ahead or lanes == {"plan", "build"}):
+            return
         reason = self.admission_reason(policy)
         with self.db:
             self.db.execute(
@@ -374,25 +412,36 @@ class Controller:
             )
         if reason:
             return
-        targets = [
-            r[0]
-            for r in self.db.execute(
-                "SELECT DISTINCT drv FROM candidates WHERE campaign=? AND state='queued' ORDER BY label LIMIT ?",
-                (campaign["id"], policy["batch_size"]),
-            )
-        ]
-        if not targets:
-            unplanned = [
+        if "build" not in lanes:
+            targets = [
                 r[0]
                 for r in self.db.execute(
-                    "SELECT id FROM candidates WHERE campaign=? AND state='unplanned' ORDER BY label LIMIT 32",
-                    (campaign["id"],),
+                    """SELECT drv FROM candidates WHERE campaign=? AND state='queued'
+                       GROUP BY drv ORDER BY min(label) LIMIT ?""",
+                    (campaign["id"], policy["batch_size"]),
                 )
             ]
-            if unplanned:
-                self.plan(campaign["id"], unplanned)
+            if targets:
+                self.build_targets(campaign, targets)
+                lanes.add("build")
+        if "plan" in lanes or ("build" in lanes and not ahead):
             return
-        self.build_targets(campaign, targets)
+        queued = self.db.execute(
+            "SELECT count(DISTINCT drv) FROM candidates WHERE campaign=? AND state='queued'",
+            (campaign["id"],),
+        ).fetchone()[0]
+        quota = min(32, max(0, ahead - queued)) if ahead else 32
+        if not quota:
+            return
+        unplanned = [
+            r[0]
+            for r in self.db.execute(
+                "SELECT id FROM candidates WHERE campaign=? AND state='unplanned' ORDER BY label LIMIT ?",
+                (campaign["id"], quota),
+            )
+        ]
+        if unplanned:
+            self.plan(campaign["id"], unplanned)
 
     def build_targets(self, campaign, targets):
         drvs = set(d for target in targets for d in closure(self.db, target))
@@ -414,12 +463,7 @@ class Controller:
     def tick(self):
         self.reconcile()
         for c in self.db.execute("SELECT * FROM campaigns ORDER BY created").fetchall():
-            if (
-                c["mode"] == "running"
-                and not self.db.execute(
-                    "SELECT 1 FROM attempts WHERE state IN ('intended','running')"
-                ).fetchone()
-            ):
+            if c["mode"] == "running":
                 self.admit(c)
             with self.db:
                 self.db.execute(
@@ -428,6 +472,38 @@ class Controller:
 
     def dispatch(self, request):
         op, cid = request["op"], request.get("campaign")
+        if op == "schedule":
+            campaign = self.campaign(cid)
+            policy = json.loads(campaign["policy"])
+            before = {
+                "batch_size": policy["batch_size"],
+                "plan_ahead": policy.get("plan_ahead", 0),
+            }
+            after = dict(before)
+            for key, low, high in (("batch_size", 1, 64), ("plan_ahead", 0, 256)):
+                value = request.get(key)
+                if value is not None:
+                    if type(value) is not int or not low <= value <= high:
+                        raise ValueError(
+                            f"{key} must be an integer from {low} to {high}"
+                        )
+                    after[key] = value
+            if after != before:
+                # Historical attempt specs stay immutable, including their policy.
+                # Only admission settings change; limits, recipes, pins and checks do not.
+                policy.update(after)
+                with self.db:
+                    self.db.execute(
+                        "UPDATE campaigns SET policy=? WHERE id=?",
+                        (encode(policy), cid),
+                    )
+                    event(
+                        self.db,
+                        cid,
+                        "scheduling-updated",
+                        {"before": before, "after": after, "runner_version": VERSION},
+                    )
+            return after
         if op == "plan":
             return self.plan(cid, request["ids"])
         if op == "build-once":

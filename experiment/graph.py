@@ -36,10 +36,12 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
     ).fetchone()
     if not c:
         raise ValueError("unknown campaign")
-    active = db.execute(
-        "SELECT * FROM attempts WHERE campaign=? AND state IN ('intended','running') ORDER BY created DESC LIMIT 1",
+    active_rows = db.execute(
+        "SELECT * FROM attempts WHERE campaign=? AND state IN ('intended','running') ORDER BY kind='build' DESC,created DESC",
         (campaign,),
-    ).fetchone()
+    ).fetchall()
+    active = active_rows[0] if active_rows else None
+    planner = next((r for r in active_rows if r["kind"] == "plan"), None)
     batch = db.execute(
         "SELECT * FROM attempts WHERE campaign=? AND kind='build' ORDER BY created DESC LIMIT 1",
         (campaign,),
@@ -174,16 +176,21 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         attempt=active["id"] if active else None,
         started=active["created"] if active else None,
     )
-    if active and active["kind"] == "plan":
-        total = len(json.loads(active["targets"]))
+    planning = None
+    if planner:
+        total = len(json.loads(planner["targets"]))
         completed = 0
         try:
-            with (directory(state, active["id"]) / "plan.jsonl").open("rb") as f:
+            with (directory(state, planner["id"]) / "plan.jsonl").open("rb") as f:
                 completed = f.read(8 * 1024**2).count(b"\n")
         except OSError:
             pass
-        work.update(completed=min(completed, total), total=total)
-    elif in_flight:
+        planning = dict(
+            attempt=planner["id"], completed=min(completed, total), total=total
+        )
+        if active["kind"] == "plan":
+            work.update(completed=planning["completed"], total=total)
+    if in_flight:
         work["stage"] = (
             "building" if building else "preflight" if before is None else "resolving"
         )
@@ -193,6 +200,7 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         heartbeat=c["heartbeat"],
         now=stamp(),
         work=work,
+        planning=planning,
         batch=dict(id=batch["id"], state=batch["state"], created=batch["created"])
         if batch
         else None,

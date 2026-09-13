@@ -206,9 +206,14 @@ function render(d) {
     ),
   );
   replace("resources", resources);
-  const activeAttempt = d.attempts.find((a) => a.state !== "finished");
+  const activeAttempt = d.attempts.find(
+    (a) => a.kind === "build" && a.state !== "finished",
+  );
+  const planning = d.attempts.some(
+    (a) => a.kind === "plan" && a.state !== "finished",
+  );
   $("now-summary").textContent =
-    `${activeAttempt?.kind === "plan" ? "Evaluating" : d.active.length ? `${fmt(d.active.length)} building` : c.mode === "paused" ? "Paused" : "Preparing"} · ${fmt(counts.queued)} queued`;
+    `${d.active.length ? `${fmt(d.active.length)} building` : activeAttempt ? "Preparing build" : c.mode === "paused" ? "Paused" : "Preparing"}${planning ? " · planning" : ""} · ${fmt(counts.queued)} queued`;
   const oldActive = new Map(
     [...$("active").children].map((n) => [n.dataset.drv, n]),
   );
@@ -229,7 +234,7 @@ function render(d) {
     activeNodes.push(
       el(
         "p",
-        activeAttempt?.kind === "plan"
+        planning && !activeAttempt
           ? "Evaluating the next packages…"
           : c.mode === "paused"
             ? "No new batches will start."

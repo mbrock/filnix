@@ -293,6 +293,244 @@ class ExperimentTests(unittest.TestCase):
             self.controller.admit(self.controller.campaign(self.cid))
         self.assertEqual(self.sql("SELECT count(*) FROM attempts").fetchone()[0], 0)
 
+    def scheduling(self, **settings):
+        return self.controller.dispatch(
+            {"op": "schedule", "campaign": self.cid, **settings}
+        )
+
+    def test_schedule_is_audited_without_rewriting_active_attempt(self):
+        aid = self.attempt("build")
+        before = self.sql("SELECT spec FROM attempts WHERE id=?", (aid,)).fetchone()[0]
+        self.scheduling(batch_size=32, plan_ahead=128)
+        self.assertEqual(
+            self.sql("SELECT spec FROM attempts WHERE id=?", (aid,)).fetchone()[0],
+            before,
+        )
+        policy = json.loads(self.controller.campaign(self.cid)["policy"])
+        self.assertEqual(policy["max_jobs"], 4)
+        self.assertEqual(policy["cores"], 6)
+        record = json.loads(
+            self.sql(
+                "SELECT payload FROM events WHERE kind='scheduling-updated'"
+            ).fetchone()[0]
+        )
+        self.assertEqual(record["before"], {"batch_size": 8, "plan_ahead": 0})
+        self.assertEqual(record["after"], {"batch_size": 32, "plan_ahead": 128})
+        self.assertEqual(self.controller.campaign(self.cid)["mode"], "paused")
+        with self.assertRaises(ValueError):
+            self.scheduling(batch_size=64, plan_ahead=257)
+        self.assertEqual(self.scheduling(), record["after"])
+
+    def test_serial_policy_and_kind_limits(self):
+        self.attempt("build")
+        with self.assertRaises(ValueError):
+            self.attempt("plan")
+        self.scheduling(plan_ahead=128)
+        self.attempt("plan")
+        for kind in ("build", "plan"):
+            with self.assertRaises(ValueError):
+                self.attempt(kind)
+
+    def test_other_campaign_cannot_take_spare_lane(self):
+        self.scheduling(plan_ahead=128)
+        self.attempt("build")
+        other = import_campaign(
+            self.db,
+            "other",
+            {"attrPaths": [["x"]]},
+            "/source",
+            "abc",
+            dict(nix.DEFAULT_POLICY, plan_ahead=128),
+            "test",
+        )
+        with self.assertRaises(ValueError):
+            self.controller.plan(other, [4])
+
+    def test_overlap_recovers_without_duplicate_launch(self):
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        plan = self.attempt("plan")
+        self.controller.reconcile()
+        Controller(self.db, self.state, self.units).reconcile()
+        self.assertEqual(self.units.starts, [build, plan])
+        self.assertEqual(len(self.controller.active_attempts()), 2)
+
+    def test_cancel_planner_leaves_build_running_and_pauses_admission(self):
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        plan = self.attempt("plan")
+        self.controller.reconcile()
+        atomic_json(self.folder(plan) / "started.json", {"pid": 42})
+        self.controller.dispatch({"op": "cancel", "attempt": plan})
+        self.controller.tick()
+        self.assertTrue(self.units.active(build))
+        self.assertEqual(self.units.starts, [build, plan])
+        self.assertEqual(self.controller.campaign(self.cid)["mode"], "paused")
+        self.assertEqual(
+            self.sql("SELECT state FROM attempts WHERE id=?", (plan,)).fetchone()[0],
+            "finished",
+        )
+
+    def test_pause_drains_both_lanes_without_new_admission(self):
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        plan = self.attempt("plan")
+        self.controller.reconcile()
+        self.controller.dispatch({"op": "pause", "campaign": self.cid})
+        self.controller.tick()
+        self.assertEqual(self.units.live, {build, plan})
+        self.assertEqual(self.units.starts, [build, plan])
+
+    def test_plan_ahead_while_build_is_active(self):
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        with patch.object(self.controller, "admission_reason", return_value=""):
+            self.controller.admit(self.controller.campaign(self.cid))
+        active = self.controller.active_attempts()
+        self.assertEqual([r["kind"] for r in active], ["build", "plan"])
+        self.assertEqual(active[0]["id"], build)
+        self.assertEqual(len(json.loads(active[1]["targets"])), 3)
+
+    def test_memory_pressure_blocks_planning_ahead(self):
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        with patch.object(
+            self.controller, "admission_reason", return_value="memory pressure"
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        self.assertEqual([r["id"] for r in self.controller.active_attempts()], [build])
+        self.assertEqual(self.controller.campaign(self.cid)["hold"], "memory pressure")
+
+    def test_ready_buffer_is_counted_by_derivation_and_bounded(self):
+        self.graph()  # Three attributes, two distinct ready derivations.
+        with self.db:
+            self.sql(
+                "INSERT INTO candidates(campaign,attr,label,selection) VALUES(?,?,?,?)",
+                (self.cid, '["extra"]', "extra", "{}"),
+            )
+        self.scheduling(plan_ahead=1)
+        self.attempt("build")  # Marks A running, leaves two aliases of B queued.
+        with patch.object(self.controller, "admission_reason", return_value=""):
+            self.controller.admit(self.controller.campaign(self.cid))
+            self.assertEqual(len(self.controller.active_attempts()), 1)
+            self.scheduling(plan_ahead=2)
+            self.controller.admit(self.controller.campaign(self.cid))
+        plan = self.sql("SELECT targets FROM attempts WHERE kind='plan'").fetchone()
+        self.assertEqual(len(json.loads(plan[0])), 1)
+
+    def test_larger_batch_deduplicates_roots_and_overlaps_planner(self):
+        self.scheduling(batch_size=32, plan_ahead=128)
+        with self.db:
+            self.sql("DELETE FROM candidates")
+            for i in range(40):
+                drv = f"/nix/store/{i:032x}-package.drv"
+                self.sql(
+                    "INSERT INTO derivations(drv,name,outputs) VALUES(?,?,?)",
+                    (drv, str(i), "{}"),
+                )
+                for alias in ("a", "b"):
+                    self.sql(
+                        "INSERT INTO candidates(campaign,attr,label,selection,state,drv) VALUES(?,?,?,?,'queued',?)",
+                        (
+                            self.cid,
+                            encode([str(i), alias]),
+                            f"{i:02}-{alias}",
+                            "{}",
+                            drv,
+                        ),
+                    )
+            self.sql(
+                "INSERT INTO candidates(campaign,attr,label,selection) VALUES(?,?,?,?)",
+                (self.cid, '["extra"]', "extra", "{}"),
+            )
+        with patch.object(self.controller, "admission_reason", return_value=""):
+            self.controller.admit(self.controller.campaign(self.cid))
+        build, plan = self.controller.active_attempts()
+        self.assertEqual((build["kind"], plan["kind"]), ("build", "plan"))
+        targets = json.loads(build["targets"])
+        self.assertEqual(len(targets), 32)
+        self.assertEqual(len(set(targets)), 32)
+        self.assertEqual(
+            self.sql(
+                "SELECT count(*) FROM candidates WHERE state='running'"
+            ).fetchone()[0],
+            64,
+        )
+
+    def plan_record(self, aid, target, drv):
+        graph_file = f"graph-{target}.json"
+        atomic_json(
+            self.folder(aid) / graph_file,
+            {drv: {"outputs": {"out": {"path": OUTPUT}}, "inputDrvs": {}}},
+        )
+        with (self.folder(aid) / "plan.jsonl").open("a") as f:
+            f.write(
+                encode(
+                    {
+                        "id": target,
+                        "recipe": {"drv": drv, "roles": []},
+                        "graph": graph_file,
+                    }
+                )
+                + "\n"
+            )
+
+    def test_plan_completion_reuses_facts_and_preserves_live_aliases(self):
+        self.graph()
+        with self.db:
+            self.sql(
+                "UPDATE candidates SET drv=NULL,state='unplanned' WHERE id IN (2,3)"
+            )
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        plan = self.controller.plan(self.cid, [2, 3])
+        self.plan_record(plan, 2, A)  # Alias of a root already being built.
+        self.plan_record(plan, 3, C)  # Blocked by a previously failed dependency.
+        self.sql("UPDATE derivations SET failure='configure' WHERE drv=?", (B,))
+        self.sql("INSERT INTO edges VALUES(?,?,?)", (C, B, '["out"]'))
+        self.db.commit()
+        self.finish(plan)
+        self.controller.reconcile()
+        self.assertEqual(
+            [r[0] for r in self.sql("SELECT state FROM candidates ORDER BY id")],
+            ["running", "running", "blocked"],
+        )
+        self.assertTrue(self.units.active(build))
+        self.assertEqual(self.sql("SELECT count(*) FROM tests").fetchone()[0], 0)
+
+    def test_alias_planned_after_interruption_requires_explicit_retry(self):
+        self.graph()
+        with self.db:
+            self.sql("UPDATE candidates SET drv=NULL,state='unplanned' WHERE id=3")
+        self.scheduling(plan_ahead=128)
+        build = self.attempt("build")
+        plan = self.controller.plan(self.cid, [3])
+        self.controller.reconcile()
+        self.finish(build, "timeout")
+        with patch("experiment.nix.valid", return_value=set()):
+            self.controller.reconcile()
+        self.plan_record(plan, 3, A)
+        self.finish(plan)
+        self.controller.reconcile()
+        self.assertEqual(
+            self.sql("SELECT state,error FROM candidates WHERE id=3").fetchone()[:],
+            ("inconclusive", "timeout"),
+        )
+
+    def test_snapshot_keeps_active_build_amid_many_newer_plans(self):
+        from experiment.web import snapshot
+
+        build = self.attempt("build")
+        original = self.sql("SELECT * FROM attempts WHERE id=?", (build,)).fetchone()
+        with self.db:
+            for i in range(20):
+                self.sql(
+                    "INSERT INTO attempts(id,campaign,kind,targets,state,created,spec) VALUES(?,?,'plan','[]','finished',?,'{}')",
+                    (f"plan-{i}", self.cid, original["created"] + i + 1),
+                )
+        data = snapshot(self.db, self.cid)
+        self.assertEqual(data["attempts"][0]["id"], build)
+
     def test_new_nix_relative_store_schema(self):
         data = {
             Path(A).name: {

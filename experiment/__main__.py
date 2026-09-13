@@ -43,6 +43,18 @@ def main():
             cmd.add_argument("ids", type=int, nargs="+")
         if op == "retry-derivation":
             cmd.add_argument("drv")
+    schedule = sub.add_parser(
+        "schedule", help="inspect or tune admission for future attempts"
+    )
+    schedule.add_argument("campaign")
+    schedule.add_argument(
+        "--batch-size", type=int, help="roots offered to one Nix client (1–64)"
+    )
+    schedule.add_argument(
+        "--plan-ahead",
+        type=int,
+        help="queued derivations to prepare (0–256; 0 disables overlap)",
+    )
     cancel = sub.add_parser("cancel")
     cancel.add_argument("attempt")
     args = p.parse_args()
@@ -91,6 +103,7 @@ def main():
         "cancel",
         "build-once",
         "retry-derivation",
+        "schedule",
     ):
         request = {k: v for k, v in vars(args).items() if k not in ("state", "command")}
         request["op"] = args.command
