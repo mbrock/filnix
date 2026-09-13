@@ -55,6 +55,7 @@ def main():
         type=int,
         help="queued derivations to prepare (0–256; 0 disables overlap)",
     )
+    schedule.add_argument("--build-lanes", type=int, help="bounded build clients (1–2)")
     cancel = sub.add_parser("cancel")
     cancel.add_argument("attempt")
     args = p.parse_args()

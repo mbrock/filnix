@@ -11,6 +11,7 @@ import uuid
 from . import VERSION, nix
 from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
+from .scheduling import build_policy, reservations
 
 
 class Units:
@@ -73,20 +74,33 @@ class Controller:
     def intent(self, campaign, kind, targets, **extra):
         if kind not in ("plan", "build"):
             raise ValueError("unknown attempt kind")
-        # Exactly one build client owns realization evidence. A bounded planner
-        # may overlap it in the same campaign; other campaigns still wait.
         active = self.active_attempts()
-        ahead = json.loads(campaign["policy"]).get("plan_ahead", 0)
-        if any(r["kind"] == kind or r["campaign"] != campaign["id"] for r in active):
-            raise ValueError("attempt lane already occupied or another campaign active")
+        policy = json.loads(campaign["policy"])
+        ahead = policy.get("plan_ahead", 0)
+        builds = [r for r in active if r["kind"] == "build"]
+        if any(r["campaign"] != campaign["id"] for r in active):
+            raise ValueError("another campaign is active")
+        if kind == "plan" and any(r["kind"] == "plan" for r in active):
+            raise ValueError("planner already occupied")
         if active and not ahead:
             raise ValueError("an attempt is already active; planning ahead is disabled")
+        if kind == "build":
+            effective = build_policy(policy, builds)
+            if not effective:
+                raise ValueError("build lanes or requested CPU budget occupied")
+            if policy.get("build_lanes", 1) > 1 or builds:
+                graph, held, available = reservations(self.db, self.state, builds)
+                needed = graph.needed(targets, available, held)
+                if needed & held or graph.paths(needed) & graph.paths(held):
+                    raise ValueError("build dependencies are owned by another attempt")
+                extra["admission_available"] = sorted(available)
+            policy = effective
         aid = str(uuid.uuid4())
         spec = dict(
             kind=kind,
             runner_version=VERSION,
             targets=targets,
-            policy=json.loads(campaign["policy"]),
+            policy=policy,
             source=campaign["source"],
             nix_version=campaign["nix_version"],
             **extra,
@@ -277,10 +291,13 @@ class Controller:
                 )
                 # If absent before, successful realization plus its build activity establishes
                 # successful observed phases; batch exit status alone does not.
-                self.db.execute(
-                    "UPDATE derivations SET available=1,origin=?,failure=NULL,evidence_attempt=? WHERE drv=?",
-                    (origin, attempt["id"], drv),
-                )
+                # A cached dependency reused by another lane must not erase the
+                # original build/test provenance when that lane finishes later.
+                if origin == "local" or not row["available"]:
+                    self.db.execute(
+                        "UPDATE derivations SET available=1,origin=?,failure=NULL,evidence_attempt=? WHERE drv=?",
+                        (origin, attempt["id"], drv),
+                    )
                 for output in outputs:
                     self.root(output)
                 if origin == "local" and activity and not result.get("truncated"):
@@ -306,9 +323,9 @@ class Controller:
                     "UPDATE derivations SET available=0,failure=?,evidence_attempt=? WHERE drv=?",
                     (failure, attempt["id"], drv),
                 )
-        self.db.execute(
-            "UPDATE candidates SET state='queued' WHERE campaign=? AND state='running'",
-            (attempt["campaign"],),
+        self.db.executemany(
+            "UPDATE candidates SET state='queued' WHERE campaign=? AND drv=? AND state='running'",
+            [(attempt["campaign"], drv) for drv in json.loads(attempt["targets"])],
         )
         refresh_candidates(self.db, attempt["campaign"])
         # Inconclusive roots require an explicit retry, never an automatic failure loop.
@@ -403,7 +420,9 @@ class Controller:
             return
         ahead = policy.get("plan_ahead", 0)
         lanes = {r["kind"] for r in active}
-        if active and (not ahead or lanes == {"plan", "build"}):
+        builds = [r for r in active if r["kind"] == "build"]
+        can_build = build_policy(policy, builds) is not None
+        if active and (not ahead or (not can_build and "plan" in lanes)):
             return
         reason = self.admission_reason(policy)
         with self.db:
@@ -412,15 +431,25 @@ class Controller:
             )
         if reason:
             return
-        if "build" not in lanes:
-            targets = [
+        if can_build:
+            candidates = [
                 r[0]
                 for r in self.db.execute(
                     """SELECT drv FROM candidates WHERE campaign=? AND state='queued'
                        GROUP BY drv ORDER BY min(label) LIMIT ?""",
-                    (campaign["id"], policy["batch_size"]),
+                    (campaign["id"], max(policy["batch_size"], min(256, ahead))),
                 )
             ]
+            targets = []
+            graph, held, available = reservations(self.db, self.state, builds)
+            held_paths = graph.paths(held)
+            for drv in candidates:
+                needed = graph.needed([drv], available, held) if builds else set()
+                if needed & held or graph.paths(needed) & held_paths:
+                    continue
+                targets.append(drv)
+                if len(targets) >= policy["batch_size"]:
+                    break
             if targets:
                 self.build_targets(campaign, targets)
                 lanes.add("build")
@@ -478,9 +507,14 @@ class Controller:
             before = {
                 "batch_size": policy["batch_size"],
                 "plan_ahead": policy.get("plan_ahead", 0),
+                "build_lanes": policy.get("build_lanes", 1),
             }
             after = dict(before)
-            for key, low, high in (("batch_size", 1, 64), ("plan_ahead", 0, 256)):
+            for key, low, high in (
+                ("batch_size", 1, 64),
+                ("plan_ahead", 0, 256),
+                ("build_lanes", 1, 2),
+            ):
                 value = request.get(key)
                 if value is not None:
                     if type(value) is not int or not low <= value <= high:

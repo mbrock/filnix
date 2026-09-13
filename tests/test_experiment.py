@@ -314,8 +314,12 @@ class ExperimentTests(unittest.TestCase):
                 "SELECT payload FROM events WHERE kind='scheduling-updated'"
             ).fetchone()[0]
         )
-        self.assertEqual(record["before"], {"batch_size": 8, "plan_ahead": 0})
-        self.assertEqual(record["after"], {"batch_size": 32, "plan_ahead": 128})
+        self.assertEqual(
+            record["before"], {"batch_size": 8, "plan_ahead": 0, "build_lanes": 1}
+        )
+        self.assertEqual(
+            record["after"], {"batch_size": 32, "plan_ahead": 128, "build_lanes": 1}
+        )
         self.assertEqual(self.controller.campaign(self.cid)["mode"], "paused")
         with self.assertRaises(ValueError):
             self.scheduling(batch_size=64, plan_ahead=257)
@@ -456,6 +460,128 @@ class ExperimentTests(unittest.TestCase):
             ).fetchone()[0],
             64,
         )
+
+    def lane_graph(self):
+        self.graph()
+        self.sql("DELETE FROM edges WHERE parent=?", (C,))
+        for drv in (A, B, C):
+            self.sql(
+                "UPDATE derivations SET outputs=? WHERE drv=?",
+                (encode({"out": drv[:-4]}), drv),
+            )
+        self.sql("UPDATE candidates SET drv=? WHERE id=3", (C,))
+        self.db.commit()
+
+    def test_second_lane_skips_dependency_owner_and_preserves_legacy_limits(self):
+        self.lane_graph()
+        first = self.controller.build_targets(self.controller.campaign(self.cid), [A])
+        original = (self.folder(first) / "spec.json").read_bytes()
+        self.scheduling(build_lanes=2, plan_ahead=128)
+        with patch.object(self.controller, "admission_reason", return_value=""):
+            self.controller.admit(self.controller.campaign(self.cid))
+        active = self.controller.active_attempts()
+        self.assertEqual(len(active), 2)
+        self.assertEqual(json.loads(active[1]["targets"]), [C])
+        policy = json.loads(active[1]["spec"])["policy"]
+        self.assertEqual((policy["max_jobs"], policy["cores"]), (1, 4))
+        self.assertEqual((self.folder(first) / "spec.json").read_bytes(), original)
+        with self.assertRaises(ValueError):
+            self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        self.controller.reconcile()
+        Controller(self.db, self.state, self.units).reconcile()
+        self.assertEqual(self.units.starts, [r["id"] for r in active])
+
+    def test_lanes_split_jobs_and_reject_shared_missing_dependency(self):
+        self.lane_graph()
+        self.scheduling(build_lanes=2, plan_ahead=128)
+        self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        with self.assertRaisesRegex(ValueError, "dependencies"):
+            self.controller.build_targets(self.controller.campaign(self.cid), [A])
+        self.controller.build_targets(self.controller.campaign(self.cid), [C])
+        policies = [
+            json.loads(r["spec"])["policy"] for r in self.controller.active_attempts()
+        ]
+        self.assertEqual(
+            [(p["max_jobs"], p["cores"]) for p in policies], [(2, 6), (2, 6)]
+        )
+
+    def test_cached_dependency_can_be_shared_without_erasing_its_evidence(self):
+        self.lane_graph()
+        self.sql("INSERT INTO edges VALUES(?,?,?)", (C, A, '["out"]'))
+        self.sql(
+            "UPDATE derivations SET available=1,origin='local',evidence_attempt='original' WHERE drv=?",
+            (A,),
+        )
+        self.scheduling(build_lanes=2, plan_ahead=128)
+        first = self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        second = self.controller.build_targets(self.controller.campaign(self.cid), [C])
+        atomic_json(self.folder(second) / "before.json", [A[:-4]])
+        self.finish(second)
+        with patch("experiment.nix.valid", return_value={A[:-4], C[:-4]}):
+            self.controller.reconcile()
+        self.assertEqual(
+            self.sql("SELECT state FROM candidates WHERE drv=?", (B,)).fetchone()[0],
+            "running",
+        )
+        self.assertEqual(
+            self.sql("SELECT state FROM candidates WHERE drv=?", (C,)).fetchone()[0],
+            "available",
+        )
+        self.assertEqual(
+            self.sql(
+                "SELECT evidence_attempt FROM derivations WHERE drv=?", (A,)
+            ).fetchone()[0],
+            "original",
+        )
+        self.assertTrue(self.units.active(first))
+        self.assertEqual(self.sql("SELECT count(*) FROM tests").fetchone()[0], 0)
+
+    def test_cancel_one_build_leaves_other_running(self):
+        self.lane_graph()
+        self.scheduling(build_lanes=2, plan_ahead=128)
+        first = self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        second = self.controller.build_targets(self.controller.campaign(self.cid), [C])
+        self.controller.reconcile()
+        atomic_json(self.folder(second) / "started.json", {"pid": 42})
+        self.controller.dispatch({"op": "cancel", "attempt": second})
+        with patch("experiment.nix.valid", return_value=set()):
+            self.controller.tick()
+        self.assertTrue(self.units.active(first))
+        self.assertEqual(
+            self.sql("SELECT state FROM candidates WHERE drv=?", (B,)).fetchone()[0],
+            "running",
+        )
+        self.assertEqual(
+            self.sql("SELECT state FROM candidates WHERE drv=?", (C,)).fetchone()[0],
+            "inconclusive",
+        )
+        self.assertEqual(self.controller.campaign(self.cid)["mode"], "paused")
+
+    def test_requested_cpu_budget_never_uses_observed_idle_slots(self):
+        from experiment.scheduling import build_policy
+
+        policy = dict(nix.DEFAULT_POLICY, build_lanes=2, plan_ahead=128, cpus="0-23")
+        legacy = {"spec": encode({"policy": nix.DEFAULT_POLICY})}
+        self.assertIsNone(build_policy(policy, [legacy]))
+        policy["cpus"] = "0-27"
+        self.assertEqual(build_policy(policy, [legacy])["cores"], 4)
+        with self.assertRaises(ValueError):
+            self.scheduling(build_lanes=3)
+
+    def test_cached_required_output_prunes_unbuilt_ancestors(self):
+        from experiment.scheduling import BuildGraph
+
+        self.lane_graph()
+        self.sql(
+            "UPDATE derivations SET outputs=? WHERE drv=?",
+            (encode({"out": A[:-4], "dev": OUTPUT}), A),
+        )
+        self.sql("UPDATE edges SET outputs=? WHERE parent=?", ('["dev"]', B))
+        self.sql("INSERT INTO edges VALUES(?,?,?)", (A, C, '["out"]'))
+        graph = BuildGraph(self.db)
+        self.assertEqual(graph.needed([B], {OUTPUT}), {B})
+        self.assertEqual(graph.needed([B], set()), {A, B, C})
+        self.assertEqual(graph.needed([B], {OUTPUT}, held={A}), {A, B, C})
 
     def plan_record(self, aid, target, drv):
         graph_file = f"graph-{target}.json"

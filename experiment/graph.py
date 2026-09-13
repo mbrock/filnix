@@ -46,37 +46,41 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         "SELECT * FROM attempts WHERE campaign=? AND kind='build' ORDER BY created DESC LIMIT 1",
         (campaign,),
     ).fetchone()
-    targets = json.loads(batch["targets"]) if batch else []
-    in_flight = bool(batch and batch["state"] in ("intended", "running"))
-    before = attempt_file(state, batch["id"], "before.json") if in_flight else None
-    existing = set(before or [])
-    activities = {
-        r["drv"]: dict(r)
-        for r in db.execute(
-            "SELECT * FROM activities WHERE attempt=? ORDER BY rowid",
-            (batch["id"] if batch else "",),
+    builds = [r for r in active_rows if r["kind"] == "build"]
+    batches = builds or ([batch] if batch else [])
+    if builds:
+        batch = builds[0]
+    targets = list(dict.fromkeys(d for r in batches for d in json.loads(r["targets"])))
+    in_flight = bool(builds)
+    observations = [attempt_file(state, r["id"], "before.json") for r in builds]
+    before = next((v for v in observations if v is not None), None)
+    existing = set(p for v in observations for p in (v or []))
+    activities = {}
+    provided, requested = set(), set()
+    for current in builds:
+        activities.update(
+            {
+                r["drv"]: dict(r)
+                for r in db.execute(
+                    "SELECT * FROM activities WHERE attempt=? ORDER BY rowid",
+                    (current["id"],),
+                )
+            }
         )
-    }
-    # Once a consumer actually emits a build phase, its required input outputs
-    # have been provided by Nix. This inference concerns availability only, not
-    # whether those inputs were built locally or passed checks. See Nix 2.32's
-    # DerivationBuildingGoal::gaveUpOnSubstitution (inputs before build).
-    provided = set()
-    if in_flight:
+        # A consumer's build phase establishes availability of its required
+        # input outputs, without claiming local builds or successful checks.
         for r in db.execute(
             """SELECT e.outputs AS required,d.outputs FROM edges e
           JOIN activities a ON a.drv=e.parent JOIN derivations d ON d.drv=e.child
           WHERE a.attempt=? AND a.phase IS NOT NULL""",
-            (batch["id"],),
+            (current["id"],),
         ):
             required = json.loads(r["required"])
             if isinstance(required, dict):
                 required = required.get("outputs", [])
             outputs = json.loads(r["outputs"])
             provided.update(outputs[k] for k in required if outputs.get(k))
-    requested = (
-        set(json.loads(batch["spec"]).get("derivations", [])) if in_flight else set()
-    )
+        requested.update(json.loads(current["spec"]).get("derivations", []))
     # Restrict blockers and reverse edges to this campaign, including its native tools.
     scope = {r[0] for r in db.execute(SCOPE + "SELECT drv FROM scope", (campaign,))}
     bad = {
@@ -150,7 +154,7 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
             else None,
             labels=labels,
             required_outputs=wanted,
-            attempt=batch["id"] if activity else record.get("evidence_attempt"),
+            attempt=activity["attempt"] if activity else record.get("evidence_attempt"),
         )
 
     roots = [node(d) for d in targets]
@@ -204,6 +208,9 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         batch=dict(id=batch["id"], state=batch["state"], created=batch["created"])
         if batch
         else None,
+        batches=[
+            dict(id=r["id"], state=r["state"], created=r["created"]) for r in batches
+        ],
         roots=roots,
         building=building[:30],
         focus=None,

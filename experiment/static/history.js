@@ -117,13 +117,20 @@
       const existing = new Map(
         [...track.children].map((n) => [n.dataset.key, n]),
       );
-      const records = o.intervals.filter((a) => a.kind === kind);
-      const nodes = [];
+      const records = o.intervals
+        .filter((a) => a.kind === kind)
+        .sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
+      const nodes = [],
+        ends = [];
       for (const a of records) {
+        let row = ends.findIndex((end) => end <= a.created);
+        if (row < 0) row = ends.length;
+        ends[row] = a.finished || now;
         const n = existing.get(a.id) || el("button", null, "timeline-interval");
         n.dataset.key = a.id;
         n.dataset.attempt = a.id;
         n.className = `timeline-interval ${a.outcome}${selected === a.id ? " selected" : ""}`;
+        n.style.top = 2 + row * 18 + "px";
         n.style.left = left(a.created) + "%";
         const w = Math.max(0, left(a.finished || now) - left(a.created));
         n.style.width = `max(3px, ${w}%)`;
@@ -138,6 +145,7 @@
         n.onclick = () => selectAttempt(a.id);
         nodes.push(n);
       }
+      track.style.height = 20 + Math.max(0, ends.length - 1) * 18 + "px";
       // At large scales show duration occupancy for every interval, not a recent sample.
       const buckets = new Map();
       for (const b of o.buckets.filter((b) => b.kind === kind)) {

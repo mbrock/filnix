@@ -14,6 +14,7 @@ DEFAULT_POLICY = dict(
     max_jobs=4,
     cores=6,
     batch_size=8,
+    build_lanes=1,  # Two bounded clients require explicit opt-in and lookahead.
     plan_ahead=0,  # Explicit opt-in; old campaigns retain serial admission.
     wall_seconds=7200,
     silent_seconds=900,

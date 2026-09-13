@@ -154,7 +154,11 @@
       $("graph-work-status").textContent +=
         ` · planning ${g.planning.completed}/${g.planning.total}`;
     $("graph-batch-label").textContent =
-      g.batch?.state === "finished" ? "Last build batch" : "Batch";
+      g.batches?.length > 1
+        ? `${g.batches.length} active batches`
+        : g.batch?.state === "finished"
+          ? "Last build batch"
+          : "Batch";
     $("graph-follow").textContent = focus ? "Follow live" : "● Live";
     $("graph-follow").setAttribute("aria-pressed", String(!focus));
     $("graph-back").disabled = !history.length;

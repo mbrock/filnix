@@ -93,12 +93,16 @@ roles rather than guessing from a package name. The UI's blocker counts refer to
 the graph actually evaluated; unevaluated inputs retain their own count.
 
 `run` enables admission. Submit small batches of already evaluated derivations
-through one active Nix build invocation, using `--keep-going`. Initially allow
+through bounded Nix build invocations, using `--keep-going`. Initially allow
 four local builds and request six threads per build. A batch may contain several
 candidate roots; Nix schedules their shared dependencies. Avoid multiplying
 concurrency by launching a separate unrestricted Nix client for every candidate.
 
-The implemented scheduler can overlap one bounded planner with that build client.
+The scheduler can overlap one bounded planner with up to two build clients.
+Two clients normally split the four-job allowance; admission reserves requested
+threads from every immutable active spec against the workload CPU set. Batches
+may share cached inputs, but cannot own overlapping unrealized dependencies.
+Each completion reconciles only its roots and preserves prior dependency evidence.
 The first campaign was tuned from eight-root serial batches to 32-root batches
 and a 128-derivation ready buffer after observing idle capacity at batch tails.
 New imports retain serial admission until explicitly configured. Admission tuning
@@ -215,7 +219,7 @@ Proposed starting policy for this machine:
 | Memory pressure threshold | `MemoryHigh=70%`                                                                   |
 | Aggregate memory ceiling  | `MemoryMax=80%`, approximately 99 GiB here                                         |
 | Swap ceiling              | `MemorySwapMax=2G`                                                                 |
-| Nix parallelism           | `max-jobs=4`, `cores=6`, one batch submission at a time                            |
+| Nix parallelism           | Four jobs with six cores, split across at most two bounded clients                 |
 | Scratch space             | A disk-backed directory, rather than this host's tmpfs `/tmp`                      |
 
 Systemd's memory ceiling can invoke the OOM killer inside the limited group. The

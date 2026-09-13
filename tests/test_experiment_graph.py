@@ -161,6 +161,34 @@ class LiveGraphTests(unittest.TestCase):
         self.assertEqual(view["work"]["attempt"], build)
         self.assertEqual(view["planning"], dict(attempt=plan, completed=1, total=1))
 
+    def test_both_build_lanes_keep_live_nodes_and_their_log_owners(self):
+        self.ctl.dispatch(
+            {
+                "op": "schedule",
+                "campaign": self.cid,
+                "plan_ahead": 128,
+                "build_lanes": 2,
+            }
+        )
+        self.db.execute("UPDATE derivations SET available=1 WHERE drv=?", (A,))
+        first = self.ctl.build_targets(self.ctl.campaign(self.cid), [B])
+        second = self.ctl.build_targets(self.ctl.campaign(self.cid), [C])
+        for aid, drv in ((first, B), (second, C)):
+            self.db.execute(
+                "INSERT INTO activities(attempt,activity,drv,kind,phase) VALUES(?,'1',?,'build','buildPhase')",
+                (aid, drv),
+            )
+        view = self.view(focus=B)
+        self.assertEqual({n["drv"] for n in view["building"]}, {B, C})
+        self.assertEqual({n["drv"] for n in view["roots"]}, {B, C})
+        self.assertEqual(view["focus"]["attempt"], first)
+        self.assertEqual(self.view(focus=C)["focus"]["attempt"], second)
+        self.db.execute("UPDATE attempts SET state='finished' WHERE id=?", (second,))
+        view = self.view(focus=B)
+        self.assertEqual(view["batch"]["id"], first)
+        self.assertEqual(view["focus"]["state"], "building")
+        self.assertEqual({n["drv"] for n in view["building"]}, {B})
+
     def test_planning_reports_completed_rows_without_build_activity(self):
         aid = self.ctl.intent(
             self.ctl.campaign(self.cid),

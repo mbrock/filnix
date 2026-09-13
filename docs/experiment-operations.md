@@ -202,7 +202,7 @@ most evaluation gaps. This is not a measured overall speedup, and a batch can st
 end with one long build.
 
 Use `schedule CAMPAIGN` to inspect settings. `--batch-size` accepts 1–64 roots;
-`--plan-ahead` accepts 0–256 ready derivations. Zero keeps the original serial
+`--plan-ahead` accepts 0–256 ready derivations; `--build-lanes` accepts 1–2 clients. Zero keeps the original serial
 admission behavior; new imports default to eight roots and no lookahead until
 explicitly configured. Settings apply to future attempts. Setting lookahead to
 zero lets any existing overlap finish without cancelling it. `schedule` does not
@@ -214,13 +214,40 @@ runner version in `spec.json`; existing attempts retain their original specs.
 Source revision, input manifest, recipe derivations, test settings, and historical
 results remain unchanged. Resource caps cannot be edited by `schedule`.
 
-There is still exactly one Nix build client, with **four jobs and six requested
-cores per job**, plus one evaluator constrained to two allowed CPUs and 4 GiB.
-Both attempt units and the daemon remain inside the existing workload cgroup.
-Memory pressure, disk reserve, and retained log budget gate new automatic work in
-either lane. Existing wall-time and 128 MiB per-attempt log budgets remain in force.
-Other campaigns cannot occupy a spare lane. No duplicate build client is launched
-on restart; cancelling a planner cannot cancel an unrelated ongoing build.
+A long batch tail can still strand ready work. Opt into **two build lanes** with:
+
+```sh
+sudo /opt/filnix-experiment/bin/filnix-experiment schedule CAMPAIGN --build-lanes 2
+```
+
+Lookahead must also be nonzero to admit overlapping work. Normally each client
+gets two jobs with six requested cores per job: four jobs in total. Admission
+reserves each active client's full `max_jobs * cores` request, using its immutable
+spec, against the 28 allowed workload CPUs. It never treats momentarily idle jobs
+as spare reservations. While an older four-job/six-core batch drains, the second
+lane gets only one job with four cores. Each new attempt records its effective
+limits. The CPU set and 80% aggregate memory cap remain the hard limits; Nix's
+`cores` is a build-system hint. The planner still uses at most two allowed CPUs
+and 4 GiB. No running attempt or daemon needs restarting to enable this policy.
+
+Before admitting another batch, the controller walks required dependency outputs,
+stopping at outputs previously observed available. A new batch cannot overlap
+another active batch's potentially unrealized derivations or their output paths.
+Already available tools and libraries can be shared. Dependencies are reserved
+until their owning attempt reconciles, even if some finish early. Unknown outputs
+are treated conservatively. Selection scans up to the lookahead window (at most
+256 queued roots), skips overlapping work, and retains skipped roots in the queue.
+If that entire window shares unfinished dependencies, it waits. This is a bounded
+scheduler, not a guarantee of full utilization.
+
+Memory pressure, disk reserve, and retained log budget gate all new automatic
+work. Existing wall-time and 128 MiB per-attempt log budgets remain in force.
+Other campaigns cannot occupy a spare lane. Lowering `--build-lanes` or disabling
+lookahead drains already admitted workers without cancellation. Restart recovery
+preserves every attempt. Cancelling one attempt pauses new admission while other
+workers keep running. Completion updates only that attempt's candidate roots;
+reuse of cached dependencies preserves their earlier local-build/test provenance.
+The graph and live cards include both build lanes and open the correct logs.
 
 Plan reconciliation immediately applies recorded availability and shared failure
 facts to new recipes. It also marks newly discovered aliases of active build roots
