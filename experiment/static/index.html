@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Filnix / Package experiment</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/history.css"><link rel="stylesheet" href="/logs.css"><script src="/logs.js" defer></script><script src="/app.js" defer></script><script src="/graph.js" defer></script><script src="/history.js" defer></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Filnix / Package experiment</title><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/history.css"><link rel="stylesheet" href="/logs.css"><script src="/logs.js" defer></script><script src="/app.js" defer></script><script src="/graph.js" defer></script><script src="/history.js" defer></script></head>
 <body>
 <header><a class="brand" href="/">filnix<span class="brand-dot">●</span></a><span class="header-note">PACKAGE EXPERIMENT</span><nav aria-label="Dashboard sections"><a href="#history">01 History</a><a href="#dependency-map">02 Dependencies</a><a href="#inventory">03 Inventory</a></nav><span id="connection">Connecting</span><button id="watch-builds">Live logs ↗</button></header>
 <main>
 <div class="intro"><div><p class="eyebrow">FIL-C / C & C++ / NIXPKGS</p><h1 id="campaign-name">The package experiment</h1></div><div class="campaign-box"><span id="mode" class="badge">Paused</span><small id="revision"></small><select id="campaign-select" aria-label="Campaign"></select></div></div>
 <div id="notice" role="status" hidden></div>
 <section class="metrics" aria-label="Current inventory status">
-<article><span>Selected inputs</span><strong id="selected">—</strong><small id="unique">Fixed inventory</small></article>
+<article><span>Selected inputs</span><strong id="selected">—</strong><small id="unique" title="Distinct root derivations evaluated so far">Fixed inventory</small></article>
 <article><span>Evaluated</span><strong id="evaluated">—</strong><small><span id="planned">—</span> recipes obtained</small></article>
 <article class="positive"><span>Available</span><strong id="available">—</strong><small>Outputs in the store</small></article>
 <article class="positive"><span>Checks observed</span><strong id="tested">—</strong><small>Root packages tested</small></article>
@@ -44,8 +44,8 @@
 <dialog id="detail"><button id="close-detail" class="close" aria-label="Close package details">×</button><div id="detail-content"></div></dialog>
 <dialog id="log-view" aria-labelledby="log-title">
 <div class="log-header"><div><p class="eyebrow">BUILD OUTPUT</p><h2 id="log-title">Live build logs</h2><p id="log-subtitle"></p></div><button id="log-close" aria-label="Close build logs">×</button></div>
-<div class="log-toolbar"><label class="log-attempt-label">Batch<select id="log-attempt" aria-label="Choose attempt"></select></label><button id="log-watch" aria-pressed="false">Follow batches</button><a id="log-download" download>Raw log ↓</a></div>
-<div class="log-layout"><nav id="log-sources" aria-label="Builds in this batch"></nav><section class="log-main" aria-label="Log output"><div class="log-tools"><input id="log-search" type="search" placeholder="Find in loaded output…" aria-label="Find in loaded output"><span id="log-matches"></span><button id="log-prev-match" aria-label="Previous match">↑</button><button id="log-next-match" aria-label="Next match">↓</button><label><input id="log-wrap" type="checkbox"> Wrap</label></div>
+<div class="log-toolbar"><label class="log-attempt-label">Batch<select id="log-attempt" aria-label="Choose attempt"></select></label><button id="log-watch" aria-pressed="false">Follow batches</button><label class="log-size-label"><span>Text</span><select id="log-size" aria-label="Log text size"><option value="12">12 px</option><option value="14">14 px</option><option value="16">16 px</option></select></label><a id="log-download" download>Raw log ↓</a></div>
+<div class="log-layout"><nav id="log-sources" aria-label="Builds in this batch"></nav><section class="log-main" aria-label="Log output"><div class="log-tools"><input id="log-search" type="search" placeholder="Find in output…" aria-label="Find in loaded output"><span id="log-matches"></span><button id="log-prev-match" aria-label="Previous match">↑</button><button id="log-next-match" aria-label="Next match">↓</button><label><input id="log-wrap" type="checkbox"> Wrap</label></div>
 <div id="log-scroll" tabindex="0" aria-label="Scrollable build output"><button id="log-earlier">↑ Load earlier output</button><div id="log-lines"></div><p id="log-empty">Loading captured output…</p></div>
 <div class="log-bottom"><span id="log-status" role="status"></span><button id="log-follow" aria-pressed="true">● Following output</button></div></section></div>
 <div class="log-footer"><span id="log-range"></span><span id="log-evidence">Build activity ending is not proof of success.</span></div>

@@ -239,6 +239,7 @@ def application(state):
                     "/history.js",
                     "/history.css",
                     "/style.css",
+                    "/theme.css",
                 ):
                     payload = (static / path[1:]).read_bytes()
                     mime = (

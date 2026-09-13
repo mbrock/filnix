@@ -2,35 +2,35 @@
   border: 1px solid var(--line);
   border-top: 2px solid var(--ink);
   background: #fff;
-  margin-bottom: 16px;
-  scroll-margin-top: 12px;
+  margin-bottom: var(--space-4);
+  scroll-margin-top: var(--space-3);
 }
 .history > .section-heading {
-  padding: 12px;
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
 }
 .timeline-toolbar {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   display: flex;
   align-items: center;
-  gap: 18px;
-  font-size: 10px;
+  gap: var(--space-5);
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .timeline-toolbar > label {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   white-space: nowrap;
 }
 .timeline-toolbar select {
-  padding: 4px;
-  font-size: 10px;
+  padding: var(--space-1);
+  font-size: var(--text-control);
 }
 .timeline-key {
   display: flex;
-  gap: 14px;
+  gap: var(--space-4);
 }
 .complete {
   color: var(--green);
@@ -42,18 +42,18 @@
   color: var(--blue);
 }
 #timeline {
-  padding: 2px 12px 0;
+  padding: 2px var(--space-3) 0;
 }
 .timeline-lane {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 4px 0;
+  gap: var(--space-3);
+  margin: var(--space-1) 0;
 }
 .timeline-lane > span {
   width: 44px;
   flex: none;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .timeline-track {
@@ -73,11 +73,11 @@
   position: absolute;
   top: 3px;
   height: 21px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border-radius: 0;
   border: 0;
   border-right: 1px solid white;
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-align: center;
@@ -119,27 +119,27 @@
   display: block;
 }
 .timeline-empty {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--muted);
-  padding: 7px;
+  padding: var(--space-2);
   display: block;
 }
 .timeline-axis {
   display: flex;
   justify-content: space-between;
-  margin: 7px 0 0 56px;
-  font-size: 10px;
+  margin: var(--space-2) 0 0 56px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .timeline-note {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 15px;
-  margin-top: 6px;
-  padding: 6px 12px 10px;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.5;
 }
 #timeline-readout {
@@ -158,15 +158,15 @@
 }
 .history-filters {
   display: flex;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
 }
 .history-filters input {
   width: 130px;
 }
 .history-filters button {
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 #history-follow[aria-pressed="true"] {
@@ -185,19 +185,19 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .history-table th {
   position: sticky;
   top: 0;
   background: #f1f2eb;
   z-index: 1;
-  font-size: 9px;
+  font-size: var(--text-xs);
   font-weight: 400;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.1px;
-  padding: 7px 6px;
+  padding: var(--space-2) var(--space-2);
   text-align: left;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -213,7 +213,7 @@
 }
 .history-table th:nth-child(5),
 .history-table th:nth-child(6) {
-  width: 47px;
+  width: 60px;
   text-align: right;
 }
 .history-table th:nth-child(7) {
@@ -224,7 +224,7 @@
 }
 .history-table td {
   border-bottom: 1px solid #e5e6de;
-  padding: 6px;
+  padding: var(--space-1-5);
   height: 35px;
   white-space: nowrap;
   overflow: hidden;
@@ -235,11 +235,11 @@
   text-align: right;
 }
 .history-table td:first-child {
-  padding-left: 10px;
+  padding-left: var(--space-3);
 }
 .history-table td small {
   display: block;
-  font-size: 9px;
+  font-size: var(--text-xs);
   margin-top: 2px;
 }
 .history-table td:first-child small {
@@ -251,7 +251,7 @@
   text-overflow: clip;
 }
 .history-table td:nth-child(3) > span {
-  font-size: 9px;
+  font-size: var(--text-xs);
 }
 .history-table td:nth-child(4) b {
   font-weight: 400;
@@ -285,38 +285,38 @@
   border-radius: 0;
   color: var(--ink);
   background: none;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .history-log {
   width: 22px;
   height: 26px;
 }
 .history-result {
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .history-result.active::before {
   content: "● ";
-  font-size: 9px;
+  font-size: var(--text-xs);
 }
 .history-pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--line);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .history-pagination button {
-  font-size: 10px;
-  padding: 4px 6px;
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
 }
 .ledger-note {
-  font-size: 9px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   margin: 0;
-  padding: 0 10px 8px;
+  padding: 0 var(--space-3) var(--space-2);
   color: var(--muted);
 }
 .operations {
@@ -331,25 +331,25 @@
   overflow: auto;
 }
 #resources p {
-  font-size: 9px;
+  font-size: var(--text-xs);
 }
 .record-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 10px 0;
-  gap: 8px;
+  margin: var(--space-3) 0;
+  gap: var(--space-2);
 }
 .record-heading button {
-  font-size: 10px;
-  padding: 4px 8px;
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
 }
 .record-facts {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.8;
-  margin: 8px 0;
+  margin: var(--space-2) 0;
 }
 .record-facts dt {
   color: var(--muted);
@@ -359,26 +359,26 @@
   overflow-wrap: anywhere;
 }
 .attempt-inspector h3 {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   font-weight: 400;
   color: var(--muted);
-  margin: 12px 0 6px;
+  margin: var(--space-3) 0 var(--space-2);
 }
 .record-targets {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .record-targets button {
-  font-size: 10px;
-  padding: 3px 5px;
+  font-size: var(--text-xs);
+  padding: 3px var(--space-1);
   overflow-wrap: anywhere;
   max-width: 100%;
   text-align: left;
 }
 .record-note {
-  font-size: 10px !important;
+  font-size: var(--text-xs) !important;
 }
 .record-activities button {
   width: 100%;
@@ -386,9 +386,9 @@
   border: 0;
   border-bottom: 1px solid #e5e6de;
   background: none;
-  padding: 5px 0;
+  padding: var(--space-1) 0;
   overflow-wrap: anywhere;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .record-activities small {
   display: block;
@@ -427,11 +427,11 @@
   .history > .section-heading {
     align-items: flex-start;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .timeline-toolbar {
     flex-wrap: wrap;
-    gap: 8px 16px;
+    gap: var(--space-2) var(--space-4);
   }
   .timeline-toolbar > label {
     margin-left: 0;
@@ -439,18 +439,18 @@
   .timeline-key {
     order: 3;
     width: 100%;
-    gap: 10px;
+    gap: var(--space-3);
   }
   .timeline-lane > span {
     width: 32px;
-    font-size: 9px;
+    font-size: var(--text-xs);
   }
   .timeline-lane {
-    gap: 6px;
+    gap: var(--space-2);
   }
   .timeline-axis {
     margin-left: 38px;
-    font-size: 9px;
+    font-size: var(--text-xs);
   }
   .timeline-axis span:nth-child(2),
   .timeline-axis span:nth-child(4) {
@@ -459,17 +459,17 @@
   .timeline-note {
     flex-direction: column;
     align-items: flex-start;
-    gap: 5px;
+    gap: var(--space-1);
   }
   .history-filters {
-    gap: 5px;
+    gap: var(--space-1);
   }
   .history-filters select {
     flex: 1;
-    font-size: 10px;
+    font-size: var(--text-control);
   }
   .history-filters button {
-    padding: 6px;
+    padding: var(--space-2);
   }
   .ledger-scroll {
     max-height: 340px;
@@ -484,7 +484,7 @@
     flex-wrap: wrap;
   }
   .history-pagination button {
-    padding: 7px 5px;
+    padding: var(--space-2) var(--space-1);
   }
   .operations {
     display: block;

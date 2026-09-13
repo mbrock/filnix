@@ -43,6 +43,40 @@
     attemptSignature = "",
     skipped = false;
 
+  const textSizes = {
+    12: "var(--text-base)",
+    14: "var(--text-md)",
+    16: "var(--text-lg)",
+  };
+  const textPreference = "filnix.log.text-size";
+  try {
+    const saved = localStorage.getItem(textPreference);
+    if (Object.hasOwn(textSizes, saved)) $("log-size").value = saved;
+  } catch {
+    /* Storage may be unavailable; the viewer still works. */
+  }
+  dialog.style.setProperty("--log-text-size", textSizes[$("log-size").value]);
+  function reflow(change) {
+    const top = scroll.getBoundingClientRect().top;
+    const anchor = following
+      ? null
+      : [...lines.children].find((n) => n.getBoundingClientRect().bottom > top);
+    const y = anchor?.getBoundingClientRect().top;
+    suppressScroll = performance.now() + 250;
+    change();
+    if (following) bottom();
+    else if (anchor) scroll.scrollTop += anchor.getBoundingClientRect().top - y;
+  }
+  $("log-size").onchange = () => {
+    const value = $("log-size").value;
+    if (!Object.hasOwn(textSizes, value)) return;
+    reflow(() => dialog.style.setProperty("--log-text-size", textSizes[value]));
+    try {
+      localStorage.setItem(textPreference, value);
+    } catch {
+      /* Optional preference. */
+    }
+  };
   function stop() {
     epoch++;
     clearTimeout(timer);
@@ -415,8 +449,7 @@
     if (["PageUp", "Home", "ArrowUp"].includes(e.key)) follow(false);
   });
   $("log-wrap").onchange = () => {
-    scroll.classList.toggle("wrapped", $("log-wrap").checked);
-    if (following) bottom();
+    reflow(() => scroll.classList.toggle("wrapped", $("log-wrap").checked));
   };
   $("log-search").oninput = () => {
     follow(false);

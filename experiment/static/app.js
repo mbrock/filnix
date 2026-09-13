@@ -54,8 +54,7 @@ function render(d) {
   $("planned").textContent = fmt(
     total - (counts.unplanned || 0) - (counts["evaluation-error"] || 0),
   );
-  $("unique").textContent =
-    fmt(d.unique_derivations) + " unique root derivations";
+  $("unique").textContent = fmt(d.unique_derivations) + " unique derivations";
   $("available").textContent = fmt(counts.available);
   $("tested").textContent = fmt(d.tested);
   $("evaluated").textContent = fmt(total - (counts.unplanned || 0));

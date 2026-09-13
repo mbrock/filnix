@@ -34,7 +34,7 @@ optional `focus` derivation, `available=1`, and a neighbor `page`.
 
 ## Following build output
 
-**Watch build logs** opens the current build batch near the end of its captured
+**Live logs** opens the current build batch near the end of its captured
 output. It follows subsequent batches while following output is enabled.
 Opening an individual attempt pins that attempt; **Follow batches** opts into
 automatic transitions. Scrolling back, searching, or loading history pauses
@@ -56,6 +56,22 @@ buttons move among matches. Wrap controls long lines. The browser retains up to
 2,000 records and approximately 1 MiB of decoded text; older/newer windows can
 be loaded again. **Raw log** downloads the original captured stderr, including
 event metadata, escape sequences and progress records omitted from the viewer.
+
+The log toolbar offers 12, 14, and 16 px text sizes (relative to the browser's
+base text preference); the choice is saved locally when storage is available.
+Changing size or wrapping retains the visible row when scrolling is paused.
+Normal browser zoom remains available. On phones, the build picker becomes a
+compact horizontal strip and the output retains most of the viewport.
+
+`experiment/static/theme.css` owns the shared type, spacing, and color scale for
+the dashboard, history, graph, and log viewer. Component styles consume those
+variables directly; no CSS compilation or runtime styling dependency is needed.
+The root and wide log blocks explicitly set `text-size-adjust: 100%` (including
+the WebKit prefix) to prevent individual log rows from receiving different
+mobile text inflation. Touch inputs use the larger control size. Browser checks
+cover mixed and scoped logs, wrapping, uniform long/short row metrics, narrow
+phone controls, persisted size choices, and scroll anchoring. Chromium touch
+emulation is a layout check, not a substitute for validation on an actual iPhone.
 
 The read-only `/api/build-log` accepts `attempt`, optional `drv`, a byte `cursor`,
 and `direction=tail|before|after|status`. Each request reads bounded windows

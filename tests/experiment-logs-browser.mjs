@@ -61,6 +61,9 @@ try {
   await until(
     "window.buildLogs && document.querySelector('#selected').textContent === '13,772'",
   );
+  await evaluate(
+    "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
+  );
   const aid = "ea14ba14-da7c-4ee1-8f13-429cdee27b62"; // Real completed multi-build batch.
   await evaluate(`showLog(${JSON.stringify(aid)})`);
   await until(
@@ -84,6 +87,24 @@ try {
     await evaluate(
       "Math.abs(document.querySelector('#log-scroll').scrollHeight - document.querySelector('#log-scroll').clientHeight - document.querySelector('#log-scroll').scrollTop) < 3",
     ),
+  );
+  assert.deepEqual(
+    await evaluate(
+      "[...new Set([...document.querySelectorAll('.log-text')].map(n=>getComputedStyle(n).fontSize))]",
+    ),
+    ["12px"],
+  );
+  assert.equal(
+    await evaluate(
+      "getComputedStyle(document.querySelector('#log-lines')).webkitTextSizeAdjust",
+    ),
+    "100%",
+  );
+  assert.ok(
+    await evaluate(
+      "document.querySelector('meta[name=viewport]').content==='width=device-width,initial-scale=1'",
+    ),
+    "User zoom remains enabled",
   );
   await screenshot("logs-desktop.png");
   await evaluate(
@@ -122,6 +143,31 @@ try {
   assert.ok(
     Math.abs(anchorAfter - anchor[1]) < 3,
     "History insertion preserves the visible row",
+  );
+  // Explicit font changes preserve the paused reading anchor, even with very
+  // long interleaved compiler output. Preferences survive a full page reload.
+  await evaluate(
+    "document.querySelector('#log-size').value='16';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
+  );
+  assert.equal(
+    await evaluate(
+      "getComputedStyle(document.querySelector('.log-text')).fontSize",
+    ),
+    "16px",
+  );
+  const resizedAnchor = await evaluate(
+    `[...document.querySelectorAll('.log-row')].find(n=>n.dataset.offset===${JSON.stringify(anchor[0])})?.getBoundingClientRect().top`,
+  );
+  assert.ok(
+    Math.abs(resizedAnchor - anchorAfter) < 3,
+    "Text resize preserves the paused row",
+  );
+  assert.equal(
+    await evaluate("localStorage.getItem('filnix.log.text-size')"),
+    "16",
+  );
+  await evaluate(
+    "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
   );
   await evaluate(
     "document.querySelector('#log-search').value='error';document.querySelector('#log-search').dispatchEvent(new Event('input'))",
@@ -178,7 +224,100 @@ try {
       "document.querySelector('#log-view').scrollWidth <= innerWidth",
     ),
   );
+  await call("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 5,
+  });
+  await wait(100);
+  assert.equal(
+    await evaluate(
+      "getComputedStyle(document.querySelector('#log-search')).fontSize",
+    ),
+    "16px",
+  );
+  assert.equal(
+    await evaluate(
+      "document.querySelector('#log-scroll').classList.contains('wrapped')",
+    ),
+    true,
+  );
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-lines').scrollWidth <= document.querySelector('#log-scroll').clientWidth",
+    ),
+    "Wrapped output fits the phone",
+  );
   await screenshot("logs-mobile.png");
+  // The reported failure was the unwrapped, mixed-build mobile view; inspect
+  // that case as well as scoped and wrapped output, with touch media queries.
+  await evaluate(
+    `document.querySelector('#log-wrap').checked=false;document.querySelector('#log-wrap').dispatchEvent(new Event('change'));showLog(${JSON.stringify(aid)})`,
+  );
+  await until(
+    "document.querySelectorAll('.log-row').length>0 && document.querySelector('#log-status').textContent.includes('ended')",
+  );
+  const mobileType = await evaluate(`(() => {
+    const samples=[...document.querySelectorAll('.log-text')].filter(n=>/^[\x20-\x7e]+$/.test(n.textContent));
+    return {sizes:[...new Set(samples.map(n=>getComputedStyle(n).fontSize))],heights:[...new Set(samples.map(n=>n.getBoundingClientRect().height))]};
+  })()`);
+  assert.deepEqual(mobileType.sizes, ["12px"]);
+  assert.equal(
+    mobileType.heights.length,
+    1,
+    "Long and short output rows share one text height",
+  );
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-scroll').clientHeight > innerHeight*0.5",
+    ),
+    "Output receives most of the phone viewport",
+  );
+  await call("Emulation.setDeviceMetricsOverride", {
+    width: 320,
+    height: 740,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await wait(100);
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-view').scrollWidth<=innerWidth",
+    ),
+    "Narrow phone has no modal overflow",
+  );
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-watch').getBoundingClientRect().right <= document.querySelector('.log-size-label').getBoundingClientRect().left",
+    ),
+    "Narrow phone controls do not overlap",
+  );
+  await screenshot("logs-narrow.png");
+  await call("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await wait(100);
+  await screenshot("logs-mobile-all.png");
+  await evaluate(
+    "document.querySelector('#log-wrap').checked=true;document.querySelector('#log-wrap').dispatchEvent(new Event('change'))",
+  );
+  await wait(100);
+  assert.ok(
+    await evaluate(
+      "document.querySelector('#log-lines').scrollWidth <= document.querySelector('#log-scroll').clientWidth",
+    ),
+    "Interleaved wrapped output fits",
+  );
+  await screenshot("logs-mobile-all-wrapped.png");
+  await evaluate(
+    "document.querySelector('#log-size').value='14';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
+  );
+  await screenshot("logs-mobile-larger.png");
+  await evaluate(
+    "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
+  );
   await call("Network.emulateNetworkConditions", {
     offline: true,
     latency: 0,
@@ -248,9 +387,27 @@ try {
   });
   await wait(300);
   await screenshot("logs-live.png");
+  await evaluate(
+    "document.querySelector('#log-size').value='14';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
+  );
+  await call("Page.navigate", { url: base });
+  await until(
+    "window.buildLogs && document.querySelector('#log-size').value==='14'",
+  );
+  await evaluate(`showLog(${JSON.stringify(aid)})`);
+  await until("document.querySelectorAll('.log-row').length>0");
+  assert.equal(
+    await evaluate(
+      "getComputedStyle(document.querySelector('.log-text')).fontSize",
+    ),
+    "14px",
+  );
+  await evaluate(
+    "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
+  );
   assert.deepEqual(errors, []);
   console.log(
-    "Log browser checks passed: tail, readable output, scoped builds, request switching, scroll pause, history, search, mobile, reconnect, download, watch mode.",
+    "Log browser checks passed: tail, readable output, scoped builds, request switching, scroll pause, history, search, mobile, uniform row typography, text-size preference and reading anchor, touch controls, wrapping, reconnect, download, watch mode.",
   );
 } catch (error) {
   console.error(JSON.stringify(errors));
