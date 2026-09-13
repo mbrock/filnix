@@ -32,6 +32,46 @@ Edges use their required output names, so a consumer needing `dev` does not wait
 for an unrelated missing output. The public `/api/graph` accepts `campaign`,
 optional `focus` derivation, `available=1`, and a neighbor `page`.
 
+## Following build output
+
+**Watch build logs** opens the current build batch near the end of its captured
+output. It follows subsequent batches while following output is enabled.
+Opening an individual attempt pins that attempt; **Follow batches** opts into
+automatic transitions. Scrolling back, searching, or loading history pauses
+both scrolling and batch transitions. **Jump to live** returns to the current
+end of the selected attempt. Paused viewers keep their text and position while
+checking for new output, and show how many captured bytes are waiting.
+
+Select a build in the sidebar to isolate its output. Links from the dependency
+map, current work, and recorded package/derivation results open that build's
+log. The reader searches backward for recent output from quiet builds. Phase
+boundaries and diagnostics stand out; Nix progress counters and cache-query
+events are hidden. Output is attributed through recorded Nix activity IDs.
+Native tools retain their own identities. Unattributed evaluator/Nix messages
+remain in **All builds**. Ending an activity does not create a success claim.
+
+**Load earlier output** pages backward without moving the line being read.
+Search highlights text within the loaded window; Enter/Shift+Enter or the arrow
+buttons move among matches. Wrap controls long lines. The browser retains up to
+2,000 records and approximately 1 MiB of decoded text; older/newer windows can
+be loaded again. **Raw log** downloads the original captured stderr, including
+event metadata, escape sequences and progress records omitted from the viewer.
+
+The read-only `/api/build-log` accepts `attempt`, optional `drv`, a byte `cursor`,
+and `direction=tail|before|after|status`. Each request reads bounded windows
+(256 KiB normally, at most 1 MiB for a record); complete records retain their
+original byte offsets. Oversized records are noted and remain in the raw log.
+Live reads stop at the controller's committed ingestion offset, which commits
+activity ownership and cursor together. This prevents a new build's lines being
+consumed before their owner is known. UTF-8 records are decoded whole; terminal
+fragments remain visible. No Nix queries or database writes occur on this path.
+The older raw `/api/log` endpoint remains available.
+
+Requests are serialized, aborted when switching views, and protected by a view
+generation token. Reconnection resumes at the last consumed cursor. The log
+viewer is independent of the controller and attempt processes; updating it only
+requires restarting `filnix-web` after selecting the new application package.
+
 ## Responsibilities
 
 - `experiment/model.py`: SQLite schema, campaign import, graph queries, events.
@@ -248,6 +288,7 @@ python3 -m unittest discover -s tests -p 'test_experiment*.py' -v
 python3 tests/package-inventory.py
 # With a local headless Chromium debugging port 9228:
 node tests/experiment-browser.mjs https://nix.swa.sh results/experiment-ui
+node tests/experiment-logs-browser.mjs https://nix.swa.sh results/experiment-log-ui
 ```
 
 `tests/experiment-calibration.py` prepares fresh native fixtures with the

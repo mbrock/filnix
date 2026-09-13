@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Filnix — The package experiment</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/graph.js" defer></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Filnix — The package experiment</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/logs.css"><script src="/logs.js" defer></script><script src="/app.js" defer></script><script src="/graph.js" defer></script></head>
 <body>
 <header><a class="brand" href="/">filnix<span class="brand-dot">●</span></a><span class="header-note">THE PACKAGE EXPERIMENT</span><span id="connection">Connecting</span></header>
 <main>
@@ -7,7 +7,7 @@
 <div id="notice" role="status"></div>
 <section class="metrics" aria-label="Experiment totals"><article><span>SELECTED INPUTS</span><strong id="selected">—</strong><small>A fixed, versioned inventory</small></article><article><span>PLANNED</span><strong id="planned">—</strong><small id="unique">Unique derivations pending</small></article><article><span>OUTPUTS AVAILABLE</span><strong id="available">—</strong><small>Origin recorded separately</small></article><article><span>OBSERVED CHECKS</span><strong id="tested">—</strong><small>Packages with execution evidence</small></article></section>
 <section id="dependency-map" class="dependency-map" aria-labelledby="graph-title">
-<div class="graph-heading"><div><p class="eyebrow">FOLLOW THE BUILD</p><h2 id="graph-title">Build dependencies</h2></div><div class="graph-controls"><button id="graph-back" disabled>← Back</button><button id="graph-follow" aria-pressed="true">● Following live</button></div></div>
+<div class="graph-heading"><div><p class="eyebrow">FOLLOW THE BUILD</p><h2 id="graph-title">Build dependencies</h2></div><div class="graph-controls"><button id="watch-builds">Watch build logs ↗</button><button id="graph-back" disabled>← Back</button><button id="graph-follow" aria-pressed="true">● Following live</button></div></div>
 <div class="graph-work"><span id="graph-work-status" role="status">Reading the current batch…</span><span id="graph-freshness"></span></div>
 <div id="graph-running" class="graph-running"></div>
 <div class="graph-batch"><span id="graph-batch-label">Requested packages</span><div id="graph-roots" class="graph-roots"></div></div>
@@ -21,5 +21,13 @@
 <footer><span>Evidence over assumptions.</span><span id="footer-version"></span></footer>
 </main>
 <dialog id="detail"><button id="close-detail" class="close" aria-label="Close package details">×</button><div id="detail-content"></div></dialog>
+<dialog id="log-view" aria-labelledby="log-title">
+<div class="log-header"><div><p class="eyebrow">BUILD OUTPUT</p><h2 id="log-title">Live build logs</h2><p id="log-subtitle"></p></div><button id="log-close" aria-label="Close build logs">×</button></div>
+<div class="log-toolbar"><label class="log-attempt-label">Batch<select id="log-attempt" aria-label="Choose attempt"></select></label><button id="log-watch" aria-pressed="false">Follow batches</button><a id="log-download" download>Raw log ↓</a></div>
+<div class="log-layout"><nav id="log-sources" aria-label="Builds in this batch"></nav><section class="log-main" aria-label="Log output"><div class="log-tools"><input id="log-search" type="search" placeholder="Find in loaded output…" aria-label="Find in loaded output"><span id="log-matches"></span><button id="log-prev-match" aria-label="Previous match">↑</button><button id="log-next-match" aria-label="Next match">↓</button><label><input id="log-wrap" type="checkbox"> Wrap</label></div>
+<div id="log-scroll" tabindex="0" aria-label="Scrollable build output"><button id="log-earlier">↑ Load earlier output</button><div id="log-lines"></div><p id="log-empty">Loading captured output…</p></div>
+<div class="log-bottom"><span id="log-status" role="status"></span><button id="log-follow" aria-pressed="true">● Following output</button></div></section></div>
+<div class="log-footer"><span id="log-range"></span><span id="log-evidence">Build activity ending is not proof of success.</span></div>
+</dialog>
 <script id="initial" type="application/json">__INITIAL__</script>
 </body></html>

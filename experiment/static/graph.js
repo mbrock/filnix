@@ -247,7 +247,7 @@
       }
       if (g.focus.attempt) {
         const log = el("button", "Open build log ↗", "graph-log");
-        log.onclick = () => showLog(g.focus.attempt);
+        log.onclick = () => showLog(g.focus.attempt, g.focus.drv);
         center.push(log);
       }
     }

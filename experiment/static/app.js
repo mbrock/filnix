@@ -9,9 +9,6 @@ const fmt = (x) => Number(x || 0).toLocaleString();
 let data = JSON.parse($("initial").textContent),
   offset = 0,
   generation = 0,
-  logAttempt = null,
-  logOffset = 0,
-  logText = "",
   detailGeneration = 0;
 function replace(id, nodes) {
   $(id).replaceChildren(...nodes);
@@ -26,6 +23,7 @@ function render(d) {
   const c = d.campaign,
     counts = d.counts;
   window.dependencyMap?.updateCampaign(c.id);
+  window.buildLogs?.update(d);
   if ($("campaign-select").options.length !== d.campaigns.length) {
     $("campaign-select").replaceChildren(
       ...d.campaigns.map((c) => {
@@ -116,9 +114,13 @@ function render(d) {
     "active",
     d.active.length
       ? d.active.map((a) =>
-          el(
-            "p",
-            `${a.drv.split("/").pop().slice(33, -4)} · ${a.phase || "starting"}`,
+          Object.assign(
+            el(
+              "button",
+              `${a.drv.split("/").pop().slice(33, -4)} · ${a.phase || "starting"} ↗`,
+              "attempt",
+            ),
+            { onclick: () => showLog(a.attempt, a.drv) },
           ),
         )
       : [el("p", "No builds in flight. Planning does not compile packages.")],
@@ -178,7 +180,6 @@ async function refresh() {
 }
 async function showPackage(id) {
   const g = ++detailGeneration;
-  logAttempt = null;
   const response = await fetch("/api/package?id=" + id);
   if (!response.ok) return;
   const p = await response.json();
@@ -208,6 +209,11 @@ async function showPackage(id) {
       ),
       el("pre", p.drv),
     );
+  }
+  if (p.realization?.evidence_attempt) {
+    const log = el("button", "Open recorded build log ↗", "graph-log");
+    log.onclick = () => showLog(p.realization.evidence_attempt, p.drv);
+    nodes.push(log);
   }
   if (p.realization)
     nodes.push(
@@ -275,7 +281,6 @@ async function showPackage(id) {
 }
 async function showDerivation(drv, offset = 0) {
   const g = ++detailGeneration;
-  logAttempt = null;
   const q = new URLSearchParams({ drv, campaign: data.campaign.id, offset });
   const response = await fetch("/api/derivation?" + q);
   if (!response.ok) return;
@@ -292,11 +297,16 @@ async function showDerivation(drv, offset = 0) {
   const locate = el("button", "Explore on dependency map ↗", "graph-log");
   locate.onclick = () => window.dependencyMap?.locate(drv);
   nodes.push(locate);
+  if (d.derivation.evidence_attempt) {
+    const log = el("button", "Open recorded build log ↗", "graph-log");
+    log.onclick = () => showLog(d.derivation.evidence_attempt, drv);
+    nodes.push(log);
+  }
   if (d.derivation.failure)
     nodes.push(el("p", "Failure: " + d.derivation.failure));
   for (const t of d.tests) {
     const b = el("button", t.phase + " passed · open attempt log", "attempt");
-    b.onclick = () => showLog(t.attempt);
+    b.onclick = () => showLog(t.attempt, drv);
     nodes.push(b);
   }
   nodes.push(el("h3", "Build dependencies (up to 100)"));
@@ -328,40 +338,14 @@ async function showDerivation(drv, offset = 0) {
   replace("detail-content", nodes);
   if (!$("detail").open) $("detail").showModal();
 }
-async function showLog(id) {
-  detailGeneration++;
-  logAttempt = id;
-  logOffset = 0;
-  logText = "";
-  replace("detail-content", [
-    el("h2", "Attempt log"),
-    el("p", id),
-    el("pre", "", "log"),
-  ]);
-  if (!$("detail").open) $("detail").showModal();
-  await pollLog();
-}
-async function pollLog() {
-  if (!logAttempt || !$("detail").open) return;
-  const id = logAttempt;
-  try {
-    const response = await fetch(`/api/log?attempt=${id}&offset=${logOffset}`);
-    if (!response.ok) return;
-    const r = await response.json();
-    if (id !== logAttempt) return;
-    logOffset = r.offset;
-    logText = (logText + r.text).slice(-200000);
-    $("detail-content").querySelector("pre").textContent =
-      logText || "Waiting for captured stderr…";
-  } catch (e) {}
+function showLog(id, drv = "") {
+  window.buildLogs?.open(id, drv);
 }
 $("close-detail").onclick = () => {
   $("detail").close();
-  logAttempt = null;
   detailGeneration++;
 };
 $("detail").addEventListener("close", () => {
-  logAttempt = null;
   detailGeneration++;
 });
 let timer;
@@ -391,4 +375,3 @@ $("campaign-select").onchange = () => {
 };
 render(data);
 setInterval(refresh, 5000);
-setInterval(pollLog, 1500);

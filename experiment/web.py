@@ -5,11 +5,13 @@ import json
 from pathlib import Path
 import sqlite3
 from urllib.parse import parse_qs
+from wsgiref.util import FileWrapper
 
 from . import VERSION, nix
 from .attempt import directory
 from .model import blockers, connect, stamp
 from .graph import live_graph
+from .logs import build_log
 
 
 def snapshot(db, campaign=None, search="", state="", offset=0):
@@ -227,7 +229,13 @@ def application(state):
                         .encode()
                     )
                     mime = "text/html; charset=utf-8"
-                elif path in ("/app.js", "/graph.js", "/style.css"):
+                elif path in (
+                    "/app.js",
+                    "/graph.js",
+                    "/logs.js",
+                    "/logs.css",
+                    "/style.css",
+                ):
                     payload = (static / path[1:]).read_bytes()
                     mime = (
                         "text/javascript; charset=utf-8"
@@ -307,6 +315,42 @@ def application(state):
                         "text": data.decode(errors="replace"),
                         "offset": offset + len(data),
                     }
+                elif path == "/api/build-log":
+                    with closing(connect(state, readonly=True)) as db:
+                        db.execute("BEGIN")
+                        payload = build_log(
+                            db,
+                            state,
+                            get("attempt"),
+                            get("direction", "tail"),
+                            int(get("cursor", "0")),
+                            get("drv"),
+                        )
+                elif path == "/api/log/download":
+                    aid = get("attempt")
+                    with closing(connect(state, readonly=True)) as db:
+                        if not db.execute(
+                            "SELECT 1 FROM attempts WHERE id=?", (aid,)
+                        ).fetchone():
+                            raise ValueError("unknown attempt")
+                    log = directory(state, aid) / "stderr.log"
+                    stream = log.open("rb")
+                    start_response(
+                        "200 OK",
+                        [
+                            ("Content-Type", "text/plain; charset=utf-8"),
+                            (
+                                "Content-Disposition",
+                                f'attachment; filename="filnix-{aid}.log"',
+                            ),
+                            ("Cache-Control", "no-store"),
+                            ("X-Content-Type-Options", "nosniff"),
+                        ],
+                    )
+                    if environ["REQUEST_METHOD"] == "HEAD":
+                        stream.close()
+                        return []
+                    return FileWrapper(stream, 65536)
                 elif path == "/healthz":
                     with closing(connect(state, readonly=True)) as db:
                         heartbeat = db.execute(
