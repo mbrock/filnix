@@ -124,6 +124,14 @@ class Controller:
                     "UPDATE candidates SET state='running' WHERE campaign=? AND drv=?",
                     [(campaign["id"], t) for t in targets],
                 )
+            elif spec.get("previous_candidates"):
+                # The old recipe is preserved in this immutable attempt. Detach
+                # it atomically so reconciliation cannot queue it while its
+                # replacement is being evaluated, including after a restart.
+                self.db.executemany(
+                    "UPDATE candidates SET state='unplanned',drv=NULL,recipe=NULL,error=NULL WHERE id=? AND campaign=?",
+                    [(t["id"], campaign["id"]) for t in targets],
+                )
             event(
                 self.db,
                 campaign["id"],
@@ -151,12 +159,27 @@ class Controller:
                 raise ValueError("revision planning requires a frozen committed flake")
             extra.update(source=source, revision=revision)
         targets = []
+        active_drvs = {
+            drv
+            for attempt in self.active_attempts()
+            if attempt["kind"] == "build"
+            for drv in json.loads(attempt["spec"]).get("derivations", [])
+        }
         for i in ids:
             row = self.db.execute(
                 "SELECT * FROM candidates WHERE id=? AND campaign=?", (int(i), cid)
             ).fetchone()
-            if not row or row["drv"] or row["state"] == "excluded":
+            if not row or row["state"] == "excluded":
                 raise ValueError("candidate absent or already planned")
+            if row["drv"]:
+                if not extra or row["state"] not in (
+                    "failed",
+                    "blocked",
+                    "inconclusive",
+                ):
+                    raise ValueError("candidate absent or already planned")
+                if row["drv"] in active_drvs:
+                    raise ValueError("candidate is a dependency of an active build")
             targets.append({"id": row["id"], "attr": json.loads(row["attr"])})
         if extra:
             # Preserve the prior projection too, including failures without logs.

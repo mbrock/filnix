@@ -860,6 +860,76 @@ class ExperimentTests(unittest.TestCase):
                 self.controller.plan(self.cid, [1], source, "f" * 40)
         self.assertEqual(self.sql("SELECT count(*) FROM attempts").fetchone()[0], 0)
 
+    def test_revision_replaces_failed_recipe_without_requeueing_old_build(self):
+        self.graph()
+        self.sql("UPDATE derivations SET failure='compile' WHERE drv=?", (A,))
+        self.sql("UPDATE candidates SET recipe=? WHERE id=1", (encode({"drv": A}),))
+        refresh_candidates(self.db, self.cid)
+        self.db.commit()
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            new = self.controller.plan(self.cid, [1], source, "f" * 40)
+        spec = json.loads((self.folder(new) / "spec.json").read_text())
+        previous = spec["previous_candidates"][0]
+        self.assertEqual((previous["drv"], previous["state"]), (A, "failed"))
+        self.assertEqual(json.loads(previous["recipe"]), {"drv": A})
+        # Reconciliation/restart cannot resurrect the old recipe while planning.
+        Controller(self.db, self.state, self.units).reconcile()
+        refresh_candidates(self.db, self.cid)
+        pending = self.sql(
+            "SELECT drv,recipe,state FROM candidates WHERE id=1"
+        ).fetchone()
+        self.assertEqual(tuple(pending), (None, None, "unplanned"))
+        self.assertEqual(
+            self.sql("SELECT state FROM candidates WHERE id=2").fetchone()[0], "blocked"
+        )
+        self.plan_record(new, 1, C)
+        self.finish(new)
+        self.controller.reconcile()
+        self.assertEqual(
+            self.sql("SELECT drv FROM candidates WHERE id=1").fetchone()[0], C
+        )
+        self.assertEqual(
+            self.sql("SELECT failure FROM derivations WHERE drv=?", (A,)).fetchone()[0],
+            "compile",
+        )
+
+    def test_failed_revision_evaluation_does_not_restore_old_blocked_recipe(self):
+        self.graph()
+        self.sql("UPDATE derivations SET failure='compile' WHERE drv=?", (A,))
+        refresh_candidates(self.db, self.cid)
+        self.db.commit()
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            new = self.controller.plan(self.cid, [2], source, "f" * 40)
+        (self.folder(new) / "plan.jsonl").write_text(
+            encode({"id": 2, "error": "new error"}) + "\n"
+        )
+        self.finish(new)
+        self.controller.reconcile()
+        self.assertEqual(
+            tuple(
+                self.sql("SELECT drv,state,error FROM candidates WHERE id=2").fetchone()
+            ),
+            (None, "evaluation-error", "new error"),
+        )
+
+    def test_revision_refuses_dependency_owned_by_active_build(self):
+        self.graph()
+        build = self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        self.sql("UPDATE candidates SET state='inconclusive' WHERE id=1")
+        self.db.commit()
+        previous = dict(self.sql("SELECT * FROM candidates WHERE id=1").fetchone())
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            with self.assertRaisesRegex(ValueError, "active build"):
+                self.controller.plan(self.cid, [1], source, "f" * 40)
+        self.assertEqual(
+            dict(self.sql("SELECT * FROM candidates WHERE id=1").fetchone()), previous
+        )
+        self.assertEqual(len(self.controller.active_attempts()), 1)
+        self.assertEqual(self.controller.active_attempts()[0]["id"], build)
+
     def test_source_snapshot_excludes_worktree_edits(self):
         from experiment.__main__ import committed_source
 

@@ -251,7 +251,7 @@ the named attempt, and reconciles its eventual exit; the other lane drains. It n
 `retry` requeues an inconclusive or failed candidate. A shared failed dependency
 can be cleared with `retry-derivation`; other known blockers stay in force.
 
-For an explicit follow-up to **evaluation failures**, plan only the selected IDs
+For an explicit follow-up to **evaluation or build failures**, plan only the selected IDs
 from a committed revision:
 
 ```sh
@@ -262,8 +262,12 @@ The CLI archives that commit into the store, excluding worktree changes. The
 controller roots it and records the revision, source, and previous candidate
 observations in the new plan's immutable spec. Successful evaluations enter the
 ordinary build queue; the campaign's mode and resource limits still control
-admission. No other failed evaluation is reset. Planned candidates and excluded
-inputs are refused, and the original manifest, campaign source, attempt records,
+admission. No other failed evaluation is reset. A failed, blocked, or inconclusive
+recipe can be replaced; its old recipe and result remain in the new attempt's
+spec. The selected candidate is detached from that recipe while planning, so a
+restart cannot accidentally requeue the old build. Queued, successful, excluded,
+and active inputs (including dependencies of active builds) are refused.
+The original manifest, campaign source, attempt records,
 and raw logs stay unchanged. The planner lane must be free, as for ordinary `plan`.
 
 Each resulting recipe records its plan attempt and source revision. Build batches
