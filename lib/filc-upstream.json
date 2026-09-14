@@ -1,5 +1,5 @@
 {
-  "coreRev": "4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c",
+  "coreRev": "b6dd63481f796f8bff8502165c7dfc61091dbbd6",
   "sourcePatterns": {
     "filc0-src": [
       "/LLVM-LICENSE.txt",
@@ -28,10 +28,10 @@
       "/filc/main/"
     ],
     "yolo-glibc-src": [
-      "/projects/yolo-glibc-2.40/"
+      "/projects/yolo-glibc-2.44/"
     ],
     "user-glibc-src": [
-      "/projects/user-glibc-2.40/"
+      "/projects/user-glibc-2.44/"
     ],
     "compiler-rt-src": [
       "/LLVM-LICENSE.txt",

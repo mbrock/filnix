@@ -13,9 +13,10 @@ in
   # Memory-safe glibc compiled with Fil-C
   filc-glibc = pkgs.stdenv.mkDerivation {
     pname = "filc-glibc";
-    version = "2.40";
-    src = "${sources.user-glibc-src}/projects/user-glibc-2.40";
+    version = "2.44";
+    src = "${sources.user-glibc-src}/projects/user-glibc-2.44";
     outputs = [ "out" ];
+    patches = [ ../patches/glibc-filc-cancellation.patch ];
 
     enableParallelBuilding = true;
 

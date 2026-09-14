@@ -73,6 +73,6 @@ filc-complete.overrideAttrs (old: {
     inherit filc-glibc;
 
     # Fil-C headers
-    filc-stdfil-headers = "${sources.libpas-src}/filc/include";
+    filc-stdfil-headers = "${libpizlo}/include";
   };
 })

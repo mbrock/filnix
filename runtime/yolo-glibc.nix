@@ -10,7 +10,7 @@ rec {
   # host GCC toolchain.
   yolo-glibc-impl = pkgs.stdenv.mkDerivation rec {
     pname = "yolo-glibc-impl";
-    version = "2.40";
+    version = "2.44";
     src = "${sources.yolo-glibc-src}/projects/yolo-glibc-${version}";
 
     # Use single output (glibc tries to split into multiple outputs by default)

@@ -29,6 +29,10 @@ The follow-up [implementation proposal](pthread-cancellation-design.md) defines
 a candidate Fil-C/glibc contract, runtime and compiler responsibilities, and
 acceptance tests. It is a proposed design, not an implemented general fix.
 
+The [implementation checkpoint](pthread-cancellation-implementation.md) records
+the resulting native runtime/glibc patches, executed Fil-C tests and remaining
+coverage gaps.
+
 ## Cancellation is a request, not an immediate kill
 
 A successful `pthread_cancel(worker)` call means that cancellation has been

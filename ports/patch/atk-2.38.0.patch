@@ -1,0 +1,71 @@
+diff --git a/atk/atk-enum-types.c.template b/atk/atk-enum-types.c.template
+index dc2cae9f9e53..cbf4bdabb19d 100644
+--- a/atk/atk-enum-types.c.template
++++ b/atk/atk-enum-types.c.template
+@@ -15,9 +15,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static gsize g_define_type_id__volatile;
++  static GType g_define_type_id__volatile;
+ 
+-  if (g_once_init_enter (&g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -31,7 +31,7 @@ GType
+       };
+       GType g_define_type_id =
+         g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id);
+     }
+   return g_define_type_id__volatile;
+ }
+diff --git a/atk/atkcomponent.c b/atk/atkcomponent.c
+index 3949116bb91c..770a262ff128 100644
+--- a/atk/atkcomponent.c
++++ b/atk/atkcomponent.c
+@@ -19,6 +19,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdfil.h>
++
+ #include "atkcomponent.h"
+ 
+ /**
+@@ -117,7 +119,7 @@ atk_component_base_init (AtkComponentIface *class)
+                       (GSignalAccumulator) NULL, NULL,
+                       g_cclosure_marshal_VOID__BOXED,
+                       G_TYPE_NONE, 1,
+-                      ATK_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
++                      zorptr (ATK_TYPE_RECTANGLE, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+       initialized = TRUE;
+     }
+diff --git a/atk/atkutil.h b/atk/atkutil.h
+index 2bac96311652..d8525101f849 100644
+--- a/atk/atkutil.h
++++ b/atk/atkutil.h
+@@ -322,8 +322,8 @@ ATK_AVAILABLE_IN_ALL \
+ GType \
+ type_name##_get_type (void) \
+ { \
+-  static volatile gsize g_define_type_id__volatile = 0; \
+-  if (g_once_init_enter (&g_define_type_id__volatile))  \
++  static GType g_define_type_id__volatile = 0; \
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))  \
+     { \
+       AtkObjectFactory *factory; \
+       GType derived_type; \
+@@ -350,7 +350,7 @@ type_name##_get_type (void) \
+ #define _ATK_DEFINE_TYPE_EXTENDED_END()	\
+         /* following custom code */	\
+       }					\
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id); \
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id); \
+     }					\
+   return g_define_type_id__volatile;	\
+ } /* closes type_name##_get_type() */

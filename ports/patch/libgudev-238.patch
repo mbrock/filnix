@@ -1,0 +1,40 @@
+diff --git a/gudev/gudevenumtypes.c.template b/gudev/gudevenumtypes.c.template
+index c8d5977e2ec6..e7812c54c4df 100644
+--- a/gudev/gudevenumtypes.c.template
++++ b/gudev/gudevenumtypes.c.template
+@@ -11,9 +11,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static gsize static_g_define_type_id = 0;
++  static gpointer static_g_define_type_id = 0;
+ 
+-  if (g_once_init_enter (&static_g_define_type_id))
++  if (g_once_init_enter_pointer (&static_g_define_type_id))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -27,7 +27,7 @@ GType
+       };
+       GType g_define_type_id =
+         g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+-      g_once_init_leave (&static_g_define_type_id, g_define_type_id);
++      g_once_init_leave_pointer (&static_g_define_type_id, g_define_type_id);
+     }
+ 
+   return static_g_define_type_id;
+diff --git a/gudev/meson.build b/gudev/meson.build
+index e904203a1265..06a12c0672fc 100644
+--- a/gudev/meson.build
++++ b/gudev/meson.build
+@@ -33,8 +33,8 @@ libgudev_c_args = [
+ ]
+ 
+ libgudev_link_args = [
+-  '-export-dynamic',
+-  '-Wl,--version-script,@0@/libgudev-1.0.sym'.format(top_srcdir),
++  '-Wl,--export-dynamic',
++  '--version-script=@0@/libgudev-1.0.sym'.format(top_srcdir),
+ ]
+ 
+ libgudev_enums = gnome.mkenums(

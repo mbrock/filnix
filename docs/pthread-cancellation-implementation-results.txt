@@ -1,0 +1,180 @@
+Fil-C b6dd63481f796f8bff8502165c7dfc61091dbbd6 + Filnix cancellation patches
+Native x86-64 syscall gate and shared Fil-C glibc 2.44
+
+Final Nix gates:
+filc-cancellation-native-check> case=0: 20 passes
+filc-cancellation-native-check> case=1: 20 passes
+filc-cancellation-native-check> case=2: 20 passes
+filc-cancellation-native-check> case=3: 20 passes
+filc-cancellation-native-check> case=4: 20 passes
+filc-cancellation-native-check> case=5: 20 passes
+filc-cancellation-native-check> case=6: 20 passes
+filc-cancellation-native-check> case=7: 20 passes
+filc-cancellation-native-check> case=8: 20 passes
+filc-cancellation-native-check> case=9: 20 passes
+filc-cancellation-native-check> instruction window: 13 injection points passed
+filc-cancellation-check> Fil-C libc: 128 cancellation/signal cases and cleanup checks passed
+filc-cancellation-check> Fil-C libc: 128 cancellation/signal cases and cleanup checks passed
+filc-cancellation-check> scenario 0: 20 passes
+filc-cancellation-check> scenario 1: 20 passes
+filc-cancellation-check> scenario 2: 20 passes
+filc-cancellation-check> scenario 3: 20 passes
+filc-cancellation-check> scenario 4: 20 passes
+filc-cancellation-check> scenario 5: 20 passes
+filc-cancellation-check> scenario 6: 20 passes
+filc-cancellation-check> scenario 7: 20 passes
+filc-cancellation-check> scenario 8: 20 passes
+filc-cancellation-check> scenario 9: 20 passes
+filc-cancellation-check> scenario 10: 20 passes
+filc-cancellation-check> scenario 11: 20 passes
+filc-cancellation-check> scenario 12: 20 passes
+filc-cancellation-check> scenario 13: 20 passes
+filc-cancellation-check> scenario 14: 20 passes
+filc-cancellation-check> scenario 15: 20 passes
+filc-cancellation-check> scenario 16: 20 passes
+filc-cancellation-check> scenario 17: 20 passes
+filc-cancellation-check> scenario 18: 20 passes
+filc-cancellation-check> scenario 19: 20 passes
+filc-cancellation-check> scenario 20: 20 passes
+filc-cancellation-check> scenario 21: 20 passes
+filc-cancellation-check> scenario 22: 20 passes
+filc-cancellation-check> scenario 23: 20 passes
+filc-cancellation-check> scenario 24: 20 passes
+filc-cancellation-check> scenario 25: 20 passes
+filc-cancellation-check> scenario 26: 20 passes
+filc-cancellation-check> scenario 27: 20 passes
+filc-cancellation-check> scenario 0: 20 passes
+filc-cancellation-check> scenario 1: 20 passes
+filc-cancellation-check> scenario 2: 20 passes
+filc-cancellation-check> scenario 3: 20 passes
+filc-cancellation-check> scenario 4: 20 passes
+filc-cancellation-check> scenario 5: 20 passes
+filc-cancellation-check> scenario 6: 20 passes
+filc-cancellation-check> scenario 7: 20 passes
+filc-cancellation-check> scenario 8: 20 passes
+filc-cancellation-check> scenario 9: 20 passes
+filc-cancellation-check> scenario 10: 20 passes
+filc-cancellation-check> scenario 11: 20 passes
+filc-cancellation-check> scenario 12: 20 passes
+filc-cancellation-check> scenario 13: 20 passes
+filc-cancellation-check> scenario 14: 20 passes
+filc-cancellation-check> scenario 15: 20 passes
+filc-cancellation-check> scenario 16: 20 passes
+filc-cancellation-check> scenario 17: 20 passes
+filc-cancellation-check> scenario 18: 20 passes
+filc-cancellation-check> scenario 19: 20 passes
+filc-cancellation-check> scenario 20: 20 passes
+filc-cancellation-check> scenario 21: 20 passes
+filc-cancellation-check> scenario 22: 20 passes
+filc-cancellation-check> scenario 23: 20 passes
+filc-cancellation-check> scenario 24: 20 passes
+filc-cancellation-check> scenario 25: 20 passes
+filc-cancellation-check> scenario 26: 20 passes
+filc-cancellation-check> scenario 27: 20 passes
+/nix/store/j7wjvrc5dc69y508bgaj6f6s75a11xwx-filc-cancellation-check
+/nix/store/27am55zvngnf4ajccmr6vyq0md4vm3a2-filc-cancellation-native-check
+
+Differential observations on the final implementation:
+case 0 exit 0
+case=0 cleaned_inside_handler=0 handler_returned=1 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=0 errno=0
+case=0 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+
+case 1 exit 0
+case=1 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+
+case 2 exit 0
+case=2 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+
+case 3 exit 0
+case=3 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+
+case 4 exit 0
+case=4 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+case=4 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+
+case 5 exit 0
+case=5 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+case=5 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+
+
+Unpatched Filnix 2.44 baseline:
+case 0 exit -5
+libgcc_s.so.6661 must be installed for pthread_cancel to work
+filc user error: abort(3) called.
+    (libpizlo.so) <runtime>: zerror
+    (libc.so.6666) abort.c:78:3: __GI_abort
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:138:3: __libc_message_impl
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:147:5: __GI___libc_fatal
+    (libc.so.6666) pthread_cancel.c:90:7: __pthread_cancel
+    (baseline-differential) <somewhere>: main
+    (libc.so.6666) ../sysdeps/nptl/libc_start_call_main.h:59:16: __libc_start_call_main
+    (libc.so.6666) ../csu/libc-start.c:159:3: __libc_start_main
+    (libpizlo.so) <runtime>: start_program
+[3952091] filc panic: user thwarted themselves.
+
+case 1 exit -5
+libgcc_s.so.6661 must be installed for pthread_cancel to work
+filc user error: abort(3) called.
+    (libpizlo.so) <runtime>: zerror
+    (libc.so.6666) abort.c:78:3: __GI_abort
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:138:3: __libc_message_impl
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:147:5: __GI___libc_fatal
+    (libc.so.6666) pthread_cancel.c:90:7: __pthread_cancel
+    (baseline-differential) <somewhere>: worker
+    (libc.so.6666) pthread_create.c:362:8: start_thread
+    (libpizlo.so) <runtime>: start_thread
+[3952097] filc panic: user thwarted themselves.
+
+case 2 exit -5
+libgcc_s.so.6661 must be installed for pthread_cancel to work
+filc user error: abort(3) called.
+    (libpizlo.so) <runtime>: zerror
+    (libc.so.6666) abort.c:78:3: __GI_abort
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:138:3: __libc_message_impl
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:147:5: __GI___libc_fatal
+    (libc.so.6666) pthread_cancel.c:90:7: __pthread_cancel
+    (baseline-differential) <somewhere>: worker
+    (libc.so.6666) pthread_create.c:362:8: start_thread
+    (libpizlo.so) <runtime>: start_thread
+[3952103] filc panic: user thwarted themselves.
+
+case 3 exit -5
+libgcc_s.so.6661 must be installed for pthread_cancel to work
+filc user error: abort(3) called.
+    (libpizlo.so) <runtime>: zerror
+    (libc.so.6666) abort.c:78:3: __GI_abort
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:138:3: __libc_message_impl
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:147:5: __GI___libc_fatal
+    (libc.so.6666) pthread_cancel.c:90:7: __pthread_cancel
+    (baseline-differential) <somewhere>: worker
+    (libc.so.6666) pthread_create.c:362:8: start_thread
+    (libpizlo.so) <runtime>: start_thread
+[3952109] filc panic: user thwarted themselves.
+
+case 4 exit -5
+libgcc_s.so.6661 must be installed for pthread_cancel to work
+filc user error: abort(3) called.
+    (libpizlo.so) <runtime>: zerror
+    (libc.so.6666) abort.c:78:3: __GI_abort
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:138:3: __libc_message_impl
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:147:5: __GI___libc_fatal
+    (libc.so.6666) pthread_cancel.c:90:7: __pthread_cancel
+    (baseline-differential) <somewhere>: main
+    (libc.so.6666) ../sysdeps/nptl/libc_start_call_main.h:59:16: __libc_start_call_main
+    (libc.so.6666) ../csu/libc-start.c:159:3: __libc_start_main
+    (libpizlo.so) <runtime>: start_program
+[3952115] filc panic: user thwarted themselves.
+
+case 5 exit -5
+libgcc_s.so.6661 must be installed for pthread_cancel to work
+filc user error: abort(3) called.
+    (libpizlo.so) <runtime>: zerror
+    (libc.so.6666) abort.c:78:3: __GI_abort
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:138:3: __libc_message_impl
+    (libc.so.6666) ../sysdeps/posix/libc_fatal.c:147:5: __GI___libc_fatal
+    (libc.so.6666) pthread_cancel.c:90:7: __pthread_cancel
+    (baseline-differential) <somewhere>: main
+    (libc.so.6666) ../sysdeps/nptl/libc_start_call_main.h:59:16: __libc_start_call_main
+    (libc.so.6666) ../csu/libc-start.c:159:3: __libc_start_main
+    (libpizlo.so) <runtime>: start_program
+[3952121] filc panic: user thwarted themselves.

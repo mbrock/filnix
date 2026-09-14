@@ -318,6 +318,14 @@ scheduling is a future policy change.
 
 ## Keeping builds supplied
 
+New campaigns imported with runner 0.12.5 use CPUs `1-15,17-31` and four
+build jobs with seven requested cores each. With two build lanes, each client
+gets two jobs. That reserves 28 of the 30 workload CPUs for builds and leaves
+room for the planner; CPUs 0 and 16, one physical core, remain outside the
+workload slice. The aggregate memory high/max limits remain 70%/80%.
+Existing campaigns retain their frozen policy and need not be rewritten.
+
+
 Version 0.6 permits one planner and one Nix build client in the same campaign.
 The main campaign uses **32 roots per build batch** and a **128-derivation ready
 buffer**. The planner evaluates at most 32 inputs per attempt and stops admitting
@@ -353,12 +361,12 @@ A long batch tail can still strand ready work. Opt into **two build lanes** with
 sudo /opt/filnix-experiment/bin/filnix-experiment schedule CAMPAIGN --build-lanes 2
 ```
 
-Lookahead must also be nonzero to admit overlapping work. Normally each client
-gets two jobs with six requested cores per job: four jobs in total. Admission
+Lookahead must also be nonzero to admit overlapping work. New 0.12.5 campaigns give each client
+two jobs with seven requested cores per job: four jobs in total. Admission
 reserves each active client's full `max_jobs * cores` request, using its immutable
-spec, against the 28 allowed workload CPUs. It never treats momentarily idle jobs
-as spare reservations. While an older four-job/six-core batch drains, the second
-lane gets only one job with four cores. Each new attempt records its effective
+spec, against the 30 allowed workload CPUs. It never treats momentarily idle jobs
+as spare reservations. Historical 28-CPU policies keep their original limits; while an older
+four-job/six-core batch drains, the second lane gets only one job with four cores. Each new attempt records its effective
 limits. The CPU set and 80% aggregate memory cap remain the hard limits; Nix's
 `cores` is a build-system hint. The planner still uses at most two allowed CPUs
 and 4 GiB. No running attempt or daemon needs restarting to enable this policy.
@@ -418,10 +426,10 @@ The controller, web server, SSH and Caddy are outside it.
 
 | Setting                     | Installed value                                                           |
 | --------------------------- | ------------------------------------------------------------------------- |
-| CPUs                        | `2-15,18-31`; two complete physical cores reserved                        |
+| CPUs                        | `1-15,17-31`; one complete physical core reserved                        |
 | MemoryHigh / MemoryMax      | 70% / 80%; observed maximum 107,296,374,784 bytes                         |
 | Swap                        | 2 GiB                                                                     |
-| Nix admission               | One client, 32 roots, four jobs, six requested cores per job              |
+| Nix admission               | New campaign policy: four jobs, seven requested cores per job; up to two clients |
 | Build wall / silence budget | 7,200 / 900 seconds                                                       |
 | Evaluator                   | Two CPUs, 4 GiB address space, 90 seconds per candidate                   |
 | Attempt service             | 8 GiB client/evaluator memory, 1,024 tasks, three-hour backstop           |

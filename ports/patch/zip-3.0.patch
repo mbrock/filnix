@@ -1,0 +1,33 @@
+diff --git a/timezone.c b/timezone.c
+index 485ec02d773b..18aecbda7c41 100644
+--- a/timezone.c
++++ b/timezone.c
+@@ -41,6 +41,7 @@
+ #include "timezone.h"
+ #include <ctype.h>
+ #include <errno.h>
++#include <time.h>
+ 
+ #ifdef IZTZ_DEFINESTDGLOBALS
+ long timezone = 0;
+diff --git a/zip.h b/zip.h
+index ba031602737c..731e2c52d9e8 100644
+--- a/zip.h
++++ b/zip.h
+@@ -722,11 +722,11 @@ int bfcopy OF((uzoff_t));
+ 
+ int fcopy OF((FILE *, FILE *, uzoff_t));
+ 
+-#ifdef ZMEM
+-   char *memset OF((char *, int, unsigned int));
+-   char *memcpy OF((char *, char *, unsigned int));
+-   int memcmp OF((char *, char *, unsigned int));
+-#endif /* ZMEM */
++// #ifdef ZMEM
++//    char *memset OF((char *, int, unsigned int));
++//    char *memcpy OF((char *, char *, unsigned int));
++//    int memcmp OF((char *, char *, unsigned int));
++// #endif /* ZMEM */
+ 
+         /* in system dependent fileio code (<system>.c) */
+ #ifndef UTIL

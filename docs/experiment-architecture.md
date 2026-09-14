@@ -215,7 +215,7 @@ Proposed starting policy for this machine:
 
 | Control                   | Initial setting                                                                    |
 | ------------------------- | ---------------------------------------------------------------------------------- |
-| Workload CPUs             | `AllowedCPUs=2-15,18-31`, leaving two complete physical cores outside the workload |
+| Workload CPUs             | `AllowedCPUs=1-15,17-31`, leaving one complete physical core outside the workload |
 | Memory pressure threshold | `MemoryHigh=70%`                                                                   |
 | Aggregate memory ceiling  | `MemoryMax=80%`, approximately 99 GiB here                                         |
 | Swap ceiling              | `MemorySwapMax=2G`                                                                 |

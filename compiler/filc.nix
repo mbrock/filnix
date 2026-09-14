@@ -21,7 +21,11 @@ let
 
   sarcasm = import ../packages/sarcasm.nix { inherit pkgs; };
 
-  filc-stdfil-headers = "${sources.libpas-src}/filc/include";
+  filc-stdfil-headers =
+    if libpizlo == null then
+      "${sources.libpas-src}/filc/include"
+    else
+      "${libpizlo}/include";
 
   # Extract just the resource directory to avoid depending on the entire filc0 build
   filc0-resource-dir = pkgs.runCommand "filc0-resource-dir" { } ''

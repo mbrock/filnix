@@ -1,0 +1,66 @@
+diff --git a/lib/compress/zstd_compress_internal.h b/lib/compress/zstd_compress_internal.h
+index ca5e2a4c5bf6..a6c56ade53f0 100644
+--- a/lib/compress/zstd_compress_internal.h
++++ b/lib/compress/zstd_compress_internal.h
+@@ -630,7 +630,7 @@ MEM_STATIC int ZSTD_cParam_withinBounds(ZSTD_cParameter cParam, int value)
+ MEM_STATIC const BYTE*
+ ZSTD_selectAddr(U32 index, U32 lowLimit, const BYTE* candidate, const BYTE* backup)
+ {
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     __asm__ (
+         "cmp %1, %2\n"
+         "cmova %3, %0\n"
+diff --git a/lib/compress/zstd_lazy.c b/lib/compress/zstd_lazy.c
+index 272ebe0ece7d..62d186830b98 100644
+--- a/lib/compress/zstd_lazy.c
++++ b/lib/compress/zstd_lazy.c
+@@ -1571,7 +1571,7 @@ size_t ZSTD_compressBlock_lazy_generic(
+     }
+ 
+     /* Match Loop */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+      */
+@@ -1969,7 +1969,7 @@ size_t ZSTD_compressBlock_lazy_extDict_generic(
+     }
+ 
+     /* Match Loop */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+      */
+diff --git a/lib/decompress/zstd_decompress_block.c b/lib/decompress/zstd_decompress_block.c
+index 862785a49c68..b3ce2a25b51f 100644
+--- a/lib/decompress/zstd_decompress_block.c
++++ b/lib/decompress/zstd_decompress_block.c
+@@ -1481,7 +1481,7 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
+                 *
+                 *   https://gist.github.com/terrelln/9889fc06a423fd5ca6e99351564473f4
+                 */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+             __asm__(".p2align 6");
+ #  if __GNUC__ >= 7
+ 	    /* good for gcc-7, gcc-9, and gcc-11 */
+@@ -1543,7 +1543,7 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
+         if (nbSeq > 0) {
+             /* there is remaining lit from extra buffer */
+ 
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+             __asm__(".p2align 6");
+             __asm__("nop");
+ #  if __GNUC__ != 7
+@@ -1642,7 +1642,7 @@ ZSTD_decompressSequences_body(ZSTD_DCtx* dctx,
+         ZSTD_initFseState(&seqState.stateML, &seqState.DStream, dctx->MLTptr);
+         assert(dst != NULL);
+ 
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+             __asm__(".p2align 6");
+             __asm__("nop");
+ #  if __GNUC__ >= 7

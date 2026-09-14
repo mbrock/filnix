@@ -1,0 +1,250 @@
+diff --git a/gnulib-tests/test-free.c b/gnulib-tests/test-free.c
+index 49b76bc5435a..e4ddfc9c2f9c 100644
+--- a/gnulib-tests/test-free.c
++++ b/gnulib-tests/test-free.c
+@@ -109,7 +109,7 @@ main ()
+      But do not test it with glibc < 2.15, since that triggers a glibc internal
+      abort: "malloc.c:3551: munmap_chunk: Assertion `ret == 0' failed."
+    */
+-  #if defined __linux__ && !(__GLIBC__ == 2 && __GLIBC_MINOR__ < 15)
++  #if defined __linux__ && !(__GLIBC__ == 2 && __GLIBC_MINOR__ < 15) && !defined __FILC__
+   if (open ("/proc/sys/vm/max_map_count", O_RDONLY) >= 0)
+     {
+       /* Preparations.  */
+diff --git a/gnulib-tests/test-malloc-gnu.c b/gnulib-tests/test-malloc-gnu.c
+index 7b243ac462a5..c7cbeb4141c2 100644
+--- a/gnulib-tests/test-malloc-gnu.c
++++ b/gnulib-tests/test-malloc-gnu.c
+@@ -38,6 +38,7 @@ main (int argc, _GL_UNUSED char **argv)
+   ASSERT (p != NULL);
+   free (p);
+ 
++#ifndef __FILC__
+   /* Check that malloc (n) fails when n exceeds PTRDIFF_MAX.  */
+   if (PTRDIFF_MAX < SIZE_MAX)
+     {
+@@ -46,6 +47,7 @@ main (int argc, _GL_UNUSED char **argv)
+       ASSERT (p == NULL);
+       ASSERT (errno == ENOMEM);
+     }
++#endif
+ 
+   return test_exit_status;
+ }
+diff --git a/gnulib-tests/test-malloc-posix.c b/gnulib-tests/test-malloc-posix.c
+index e64dffb7f93b..f3c2ea9c84c0 100644
+--- a/gnulib-tests/test-malloc-posix.c
++++ b/gnulib-tests/test-malloc-posix.c
+@@ -34,6 +34,7 @@ void *(*volatile my_malloc) (size_t) = malloc;
+ int
+ main ()
+ {
++#ifndef __FILC__
+   /* Check that malloc sets errno when it fails.
+      Do this only in 64-bit processes, because there are many bi-arch systems
+      nowadays where a 32-bit process can actually allocate 2 GiB of RAM.  */
+@@ -50,12 +51,13 @@ main ()
+       p = malloc (SIZE_MAX / 3);
+       ASSERT (p == NULL);
+       ASSERT (errno == ENOMEM);
+-
+-      return test_exit_status;
+     }
+   else
+     {
+       fputs ("Skipping test: size_t is not 64-bits wide\n", stderr);
+       return 77;
+     }
++#endif
++
++  return test_exit_status;
+ }
+diff --git a/gnulib-tests/test-memset_explicit.c b/gnulib-tests/test-memset_explicit.c
+index 02cb7e01ef89..9945724cc031 100644
+--- a/gnulib-tests/test-memset_explicit.c
++++ b/gnulib-tests/test-memset_explicit.c
+@@ -156,6 +156,7 @@ test_heap (void)
+   memset_explicit (heapbuf, 0, SECRET_SIZE);
+   free (heapbuf);
+   heapbuf = (char *) addr;
++#ifndef __FILC__
+   if (is_range_mapped (addr, addr + SECRET_SIZE))
+     {
+       /* some implementation could override freed memory by canaries so
+@@ -164,6 +165,7 @@ test_heap (void)
+       printf ("test_heap: address range is still mapped after free().\n");
+     }
+   else
++#endif
+     printf ("test_heap: address range is unmapped after free().\n");
+ }
+ 
+diff --git a/gnulib-tests/test-realloc-posix.c b/gnulib-tests/test-realloc-posix.c
+index 0782b2b6ce62..d3d674bc3ad0 100644
+--- a/gnulib-tests/test-realloc-posix.c
++++ b/gnulib-tests/test-realloc-posix.c
+@@ -53,6 +53,7 @@ main (int argc, _GL_UNUSED char **argv)
+   ASSERT (p != NULL);
+ #endif
+ 
++#ifndef __FILC__
+   /* Check that realloc (p, n) fails when p is non-null and n exceeds
+      PTRDIFF_MAX.  */
+   if (PTRDIFF_MAX < SIZE_MAX)
+@@ -65,7 +66,9 @@ main (int argc, _GL_UNUSED char **argv)
+       if (!getenv ("MALLOC_CHECK_"))
+         ASSERT (errno == ENOMEM);
+     }
++#endif
+ 
++#ifndef __FILC__
+   /* Check that realloc sets errno when it fails.
+      Do this only in 64-bit processes, because there are many bi-arch systems
+      nowadays where a 32-bit process can actually allocate 2 GiB of RAM.  */
+@@ -83,6 +86,7 @@ main (int argc, _GL_UNUSED char **argv)
+       ASSERT (r == NULL);
+       ASSERT (errno == ENOMEM);
+     }
++#endif
+ 
+   free (p);
+   return test_exit_status;
+diff --git a/gnulib-tests/test-reallocarray.c b/gnulib-tests/test-reallocarray.c
+index ec7fbceb4eaf..648f42340a85 100644
+--- a/gnulib-tests/test-reallocarray.c
++++ b/gnulib-tests/test-reallocarray.c
+@@ -36,6 +36,7 @@ void *(*volatile my_reallocarray) (void *, size_t, size_t) = reallocarray;
+ int
+ main ()
+ {
++#ifndef __FILC__
+   /* Check that reallocarray fails when requested to allocate a block
+      of memory larger than PTRDIFF_MAX or SIZE_MAX bytes.  */
+   for (size_t n = 2; n != 0; n <<= 1)
+@@ -59,6 +60,7 @@ main ()
+       p = reallocarray (p, n, 0);
+       free (p);
+     }
++#endif
+ 
+   return test_exit_status;
+ }
+diff --git a/lib/obstack.c b/lib/obstack.c
+index c48a6830ad14..5743be671d00 100644
+--- a/lib/obstack.c
++++ b/lib/obstack.c
+@@ -36,7 +36,6 @@
+ # define __alignof__(type) alignof (type)
+ #endif
+ 
+-#include <stdckdint.h>
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <stdlib.h>
+@@ -71,16 +70,6 @@ struct obstack *_obstack_compat = NULL;
+ compat_symbol (libc, _obstack_compat, _obstack, GLIBC_2_0);
+ #endif
+ 
+-/* Set *R to the least multiple of MASK + 1 that is not less than SIZE.
+-   MASK + 1 must be a power of 2.  Return true (setting *R = 0)
+-   if the result overflows, false otherwise.  */
+-static bool
+-align_chunk_size_up (_OBSTACK_CHUNK_SIZE_T *r, size_t mask,
+-                     _OBSTACK_CHUNK_SIZE_T size)
+-{
+-  return ckd_add (r, mask & -size, size);
+-}
+-
+ /* Call functions with either the traditional malloc/free calling
+    interface, or the mmalloc/mfree interface (that adds an extra first
+    argument), based on the value of use_extra_arg.  */
+@@ -119,30 +108,13 @@ _obstack_begin_worker (struct obstack *h,
+   if (alignment == 0)
+     alignment = __alignof__ (max_align_t);
+ 
+-  /* The minimum size to request from the allocator, such that the
+-     result is guaranteed to have enough room to start with the struct
+-     _obstack_chunk sans contents, followed by minimal padding, up to
+-     but possibly not including the start of an aligned object.
+-     This value is zero if no size is large enough.  */
+-  _OBSTACK_CHUNK_SIZE_T aligned_prefix_size;
+-  bool v = align_chunk_size_up (&aligned_prefix_size, alignment - 1,
+-                                offsetof (struct _obstack_chunk, contents));
+-
+-  _OBSTACK_CHUNK_SIZE_T size = chunk_size;
+-  if (size < aligned_prefix_size)
+-    {
+-      size = aligned_prefix_size;
+-
+-      /* For speed in the typical case, allocate at least a "good" size.  */
+-      int good_size = 4000;
+-      if (size < good_size)
+-        size = good_size;
+-    }
++  h->alignment_mask = alignment - 1;
+ 
++  _OBSTACK_CHUNK_SIZE_T size
++    = sizeof (struct _obstack_chunk) + h->alignment_mask;
+   h->chunk_size = size;
+-  h->alignment_mask = alignment - 1;
+ 
+-  chunk = h->chunk = v ? NULL : call_chunkfun (h, size);
++  chunk = h->chunk = call_chunkfun (h, size);
+   if (!chunk)
+     (*obstack_alloc_failed_handler) ();
+   h->next_free = h->object_base = __PTR_ALIGN ((char *) chunk, chunk->contents,
+@@ -197,21 +169,17 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_INDEX_T length)
+   size_t obj_size = h->next_free - h->object_base;
+ 
+   /* Compute size for new chunk.  */
+-  _OBSTACK_CHUNK_SIZE_T s, new_size;
+-  bool v = length < 0;
+-  v |= ckd_add (&s, obj_size, length);
+-  v |= align_chunk_size_up (&s, h->alignment_mask, s);
+-  v |= ckd_add (&s, s,
+-                (offsetof (struct _obstack_chunk, contents)
+-                 + h->alignment_mask));
+-  if (ckd_add (&new_size, s, (obj_size >> 3) + 100))
+-    new_size = s;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  size_t new_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  struct _obstack_chunk *new_chunk =
+-    v ? NULL : call_chunkfun (h, new_size);
++  struct _obstack_chunk *new_chunk = NULL;
++  if (new_size >= length && new_size >= obj_size)
++    new_chunk = call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
+   h->chunk = new_chunk;
+diff --git a/lib/obstack.in.h b/lib/obstack.in.h
+index b74c0908e187..9d63ea73cee7 100644
+--- a/lib/obstack.in.h
++++ b/lib/obstack.in.h
+@@ -447,8 +447,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_INDEX_T __len = length;					      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len);					      \
+        (void) 0; })
+ 
+@@ -563,8 +562,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.tempint = (length),					      \
+-   ((obstack_room (h) < (h)->temp.tempint)				      \
+-   ? (_obstack_newchunk ((h), (h)->temp.tempint), 0) : 0),		      \
++   _obstack_newchunk ((h), (h)->temp.tempint),			      \
+    obstack_blank_fast (h, (h)->temp.tempint),				      \
+    (void) 0)
+ 

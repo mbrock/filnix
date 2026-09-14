@@ -2,7 +2,7 @@
 Description=Bounded Filnix evaluation and Nix daemon workload
 
 [Slice]
-AllowedCPUs=2-15,18-31
+AllowedCPUs=1-15,17-31
 MemoryHigh=70%
 MemoryMax=80%
 MemorySwapMax=2G

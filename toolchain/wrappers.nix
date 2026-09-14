@@ -112,6 +112,9 @@ rec {
       '';
     }).overrideAttrs
       (old: {
+        passthru = (old.passthru or { }) // {
+          inherit filc-glibc;
+        };
         # Keep ABI-specific build-system integration outside the expensive compiler
         # and runtime derivations. nm itself continues to report real ELF symbols.
         setupHooks = old.setupHooks ++ [

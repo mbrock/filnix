@@ -81,12 +81,12 @@ in
       '';
 
     buildPhase = ''
-      NINJA_STATUS="[B %f/%t %es] " ninja -v -C build clang
+      NINJA_STATUS="[B %f/%t %es] " ninja -j$NIX_BUILD_CORES -v -C build clang
     '';
 
     installPhase = ''
       # Install everything to a temporary location
-      NINJA_STATUS="[I %f/%t %es] " ninja -v -C build install
+      NINJA_STATUS="[I %f/%t %es] " ninja -j$NIX_BUILD_CORES -v -C build install
 
       cd $TMPDIR/install
 

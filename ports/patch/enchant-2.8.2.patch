@@ -1,0 +1,95 @@
+diff --git a/lib/composite.c b/lib/composite.c
+index a3cfe059544d..631143503123 100644
+--- a/lib/composite.c
++++ b/lib/composite.c
+@@ -492,11 +492,11 @@ enchant_composite_dict_get_type_once (void)
+ GType
+ enchant_composite_dict_get_type (void)
+ {
+-	static volatile gsize enchant_composite_dict_type_id__once = 0;
+-	if (g_once_init_enter (&enchant_composite_dict_type_id__once)) {
++	static volatile GType enchant_composite_dict_type_id__once = 0;
++	if (g_once_init_enter_pointer (&enchant_composite_dict_type_id__once)) {
+ 		GType enchant_composite_dict_type_id;
+ 		enchant_composite_dict_type_id = enchant_composite_dict_get_type_once ();
+-		g_once_init_leave (&enchant_composite_dict_type_id__once, enchant_composite_dict_type_id);
++		g_once_init_leave_pointer (&enchant_composite_dict_type_id__once, enchant_composite_dict_type_id);
+ 	}
+ 	return enchant_composite_dict_type_id__once;
+ }
+diff --git a/lib/dict.c b/lib/dict.c
+index dfb94e109b4c..e2c866ea9939 100644
+--- a/lib/dict.c
++++ b/lib/dict.c
+@@ -1744,11 +1744,11 @@ enchant_dict_get_type_once (void)
+ GType
+ enchant_dict_get_type (void)
+ {
+-	static volatile gsize enchant_dict_type_id__once = 0;
+-	if (g_once_init_enter (&enchant_dict_type_id__once)) {
++	static volatile GType enchant_dict_type_id__once = 0;
++	if (g_once_init_enter_pointer (&enchant_dict_type_id__once)) {
+ 		GType enchant_dict_type_id;
+ 		enchant_dict_type_id = enchant_dict_get_type_once ();
+-		g_once_init_leave (&enchant_dict_type_id__once, enchant_dict_type_id);
++		g_once_init_leave_pointer (&enchant_dict_type_id__once, enchant_dict_type_id);
+ 	}
+ 	return enchant_dict_type_id__once;
+ }
+diff --git a/lib/provider.c b/lib/provider.c
+index efc076243d96..07fa81c484ff 100644
+--- a/lib/provider.c
++++ b/lib/provider.c
+@@ -991,11 +991,11 @@ enchant_provider_get_type_once (void)
+ GType
+ enchant_provider_get_type (void)
+ {
+-	static volatile gsize enchant_provider_type_id__once = 0;
+-	if (g_once_init_enter (&enchant_provider_type_id__once)) {
++	static volatile GType enchant_provider_type_id__once = 0;
++	if (g_once_init_enter_pointer (&enchant_provider_type_id__once)) {
+ 		GType enchant_provider_type_id;
+ 		enchant_provider_type_id = enchant_provider_get_type_once ();
+-		g_once_init_leave (&enchant_provider_type_id__once, enchant_provider_type_id);
++		g_once_init_leave_pointer (&enchant_provider_type_id__once, enchant_provider_type_id);
+ 	}
+ 	return enchant_provider_type_id__once;
+ }
+diff --git a/lib/pwl.c b/lib/pwl.c
+index a48469fcd7bf..033fd3e100d9 100644
+--- a/lib/pwl.c
++++ b/lib/pwl.c
+@@ -2151,11 +2151,11 @@ enchant_pwl_get_type_once (void)
+ GType
+ enchant_pwl_get_type (void)
+ {
+-	static volatile gsize enchant_pwl_type_id__once = 0;
+-	if (g_once_init_enter (&enchant_pwl_type_id__once)) {
++	static volatile GType enchant_pwl_type_id__once = 0;
++	if (g_once_init_enter_pointer (&enchant_pwl_type_id__once)) {
+ 		GType enchant_pwl_type_id;
+ 		enchant_pwl_type_id = enchant_pwl_get_type_once ();
+-		g_once_init_leave (&enchant_pwl_type_id__once, enchant_pwl_type_id);
++		g_once_init_leave_pointer (&enchant_pwl_type_id__once, enchant_pwl_type_id);
+ 	}
+ 	return enchant_pwl_type_id__once;
+ }
+diff --git a/lib/session.c b/lib/session.c
+index cc42bee45273..8a8f2bbaf58a 100644
+--- a/lib/session.c
++++ b/lib/session.c
+@@ -962,11 +962,11 @@ enchant_session_get_type_once (void)
+ GType
+ enchant_session_get_type (void)
+ {
+-	static volatile gsize enchant_session_type_id__once = 0;
+-	if (g_once_init_enter (&enchant_session_type_id__once)) {
++	static volatile GType enchant_session_type_id__once = 0;
++	if (g_once_init_enter_pointer (&enchant_session_type_id__once)) {
+ 		GType enchant_session_type_id;
+ 		enchant_session_type_id = enchant_session_get_type_once ();
+-		g_once_init_leave (&enchant_session_type_id__once, enchant_session_type_id);
++		g_once_init_leave_pointer (&enchant_session_type_id__once, enchant_session_type_id);
+ 	}
+ 	return enchant_session_type_id__once;
+ }

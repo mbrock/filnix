@@ -1,0 +1,74 @@
+diff --git a/cipher/cipher-internal.h b/cipher/cipher-internal.h
+index cd8ff7888576..84dfe24e9646 100644
+--- a/cipher/cipher-internal.h
++++ b/cipher/cipher-internal.h
+@@ -762,7 +762,7 @@ ocb_get_l (gcry_cipher_hd_t c, u64 n)
+ {
+   unsigned long ntz;
+ 
+-#if ((defined(__i386__) || defined(__x86_64__)) && __GNUC__ >= 4)
++#if ((defined(__i386__) || defined(__x86_64__)) && __GNUC__ >= 4) && !defined(ASM_DISABLED)
+   /* Assumes that N != 0. */
+   asm ("rep;bsfl %k[low], %k[ntz]\n\t"
+         : [ntz] "=r" (ntz)
+diff --git a/cipher/keccak.c b/cipher/keccak.c
+index aaf83a62bfd2..791c4dcd792c 100644
+--- a/cipher/keccak.c
++++ b/cipher/keccak.c
+@@ -273,7 +273,7 @@ keccak_absorb_lane32bi(u32 *lane, u32 x0, u32 x1)
+ /* Construct generic 64-bit implementation. */
+ #ifdef USE_64BIT
+ 
+-#if __GNUC__ >= 4 && defined(__x86_64__)
++#if __GNUC__ >= 4 && defined(__x86_64__) && !defined(ASM_DISABLED)
+ 
+ static inline void absorb_lanes64_8(u64 *dst, const byte *in)
+ {
+diff --git a/mpi/longlong.h b/mpi/longlong.h
+index 21bd1a7efbf4..46152d2da903 100644
+--- a/mpi/longlong.h
++++ b/mpi/longlong.h
+@@ -108,7 +108,7 @@ SPDX-License-Identifier: LGPL-2.1-or-later
+ #ifdef __riscos__
+ #pragma continue_after_hash_error
+ #else /* !__riscos__ */
+-#if defined (__GNUC__) && !defined (NO_ASM)
++#if defined (__GNUC__) && !defined (ASM_DISABLED)
+ 
+ /* We sometimes need to clobber "cc" with gcc2, but that would not be
+    understood by gcc1.	Use cpp to avoid major code duplication.  */
+diff --git a/src/const-time.h b/src/const-time.h
+index fe07cc7aa76d..80764b2b3e83 100644
+--- a/src/const-time.h
++++ b/src/const-time.h
+@@ -91,7 +91,7 @@ unsigned int _gcry_ct_memequal (const void *b1, const void *b2, size_t len);
+      ct_##name##_gen_mask (unsigned long op_enable) \
+      { \
+        type mask = -(type)op_enable; \
+-       asm volatile ("\n" : "+r" (mask) :: "memory"); \
++       asm volatile ("" : "+r" (mask) :: "memory"); \
+        return mask; \
+      }
+ #else
+@@ -115,7 +115,7 @@ DEFINE_CT_TYPE_GEN_MASK(ulong, unsigned long)
+      ct_##name##_gen_inv_mask (unsigned long op_enable) \
+      { \
+        type mask = (type)op_enable - (type)1; \
+-       asm volatile ("\n" : "+r" (mask) :: "memory"); \
++       asm volatile ("" : "+r" (mask) :: "memory"); \
+        return mask; \
+      }
+ #else
+diff --git a/src/g10lib.h b/src/g10lib.h
+index adf03e861778..76a52ec9530a 100644
+--- a/src/g10lib.h
++++ b/src/g10lib.h
+@@ -380,7 +380,7 @@ void __gcry_burn_stack (unsigned int bytes);
+ #ifdef HAVE_GCC_ASM_VOLATILE_MEMORY
+ #define fast_wipememory2_inline(_ptr,_set,_len) do { \
+ 	      memset((_ptr), (_set), (_len)); \
+-	      asm volatile ("\n" :: "r" (_ptr) : "memory"); \
++	      asm volatile ("" :: "r" (_ptr) : "memory"); \
+ 	    } while(0)
+ #else
+ #define fast_wipememory2_inline(_ptr,_set,_len) \

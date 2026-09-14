@@ -1,0 +1,1851 @@
+diff --git a/ext/aes/gstaeshelper.c b/ext/aes/gstaeshelper.c
+index 663593a464b4..8777bdc3bda7 100644
+--- a/ext/aes/gstaeshelper.c
++++ b/ext/aes/gstaeshelper.c
+@@ -55,7 +55,7 @@ gst_aes_cipher_get_type (void)
+ {
+   static GType aes_cipher_type = 0;
+ 
+-  if (g_once_init_enter (&aes_cipher_type)) {
++  if (g_once_init_enter_pointer (&aes_cipher_type)) {
+     static GEnumValue aes_cipher_types[] = {
+       {GST_AES_CIPHER_128_CBC, "AES 128 bit cipher key using CBC method",
+           "aes-128-cbc"},
+@@ -68,7 +68,7 @@ gst_aes_cipher_get_type (void)
+     GType temp = g_enum_register_static ("GstAesCipher",
+         aes_cipher_types);
+ 
+-    g_once_init_leave (&aes_cipher_type, temp);
++    g_once_init_leave_pointer (&aes_cipher_type, temp);
+   }
+ 
+   return aes_cipher_type;
+diff --git a/ext/avtp/gstavtpaafpay.c b/ext/avtp/gstavtpaafpay.c
+index 7418365f1ba5..277f37dc3e8a 100644
+--- a/ext/avtp/gstavtpaafpay.c
++++ b/ext/avtp/gstavtpaafpay.c
+@@ -71,16 +71,16 @@ gst_avtp_aaf_timestamp_mode_get_type (void)
+     {GST_AVTP_AAF_TIMESTAMP_MODE_SPARSE, "Sparse timestamping mode", "sparse"},
+     {0, NULL, NULL},
+   };
+-  static gsize id = 0;
++  static gpointer id = 0;
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType new_type;
+ 
+     new_type =
+         g_enum_register_static ("GstAvtpAafTimestampMode",
+         timestamp_mode_types);
+ 
+-    g_once_init_leave (&id, (gsize) new_type);
++    g_once_init_leave_pointer (&id, new_type);
+   }
+ 
+   return (GType) id;
+diff --git a/ext/avtp/gstavtpbasedepayload.c b/ext/avtp/gstavtpbasedepayload.c
+index 4ee2f61698f5..6ac935a740b4 100644
+--- a/ext/avtp/gstavtpbasedepayload.c
++++ b/ext/avtp/gstavtpbasedepayload.c
+@@ -56,7 +56,7 @@ gst_avtp_base_depayload_get_type (void)
+ {
+   static GType avtpbasedepayload_type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & avtpbasedepayload_type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & avtpbasedepayload_type)) {
+     static const GTypeInfo avtpbasedepayload_info = {
+       sizeof (GstAvtpBaseDepayloadClass),
+       NULL,
+@@ -73,7 +73,7 @@ gst_avtp_base_depayload_get_type (void)
+     _type = g_type_register_static (GST_TYPE_ELEMENT, "GstAvtpBaseDepayload",
+         &avtpbasedepayload_info, G_TYPE_FLAG_ABSTRACT);
+ 
+-    g_once_init_leave ((gsize *) & avtpbasedepayload_type, _type);
++    g_once_init_leave_pointer ((gpointer *) & avtpbasedepayload_type, _type);
+   }
+   return avtpbasedepayload_type;
+ }
+diff --git a/ext/avtp/gstavtpbasepayload.c b/ext/avtp/gstavtpbasepayload.c
+index aa3af399b155..404a8a1a95f2 100644
+--- a/ext/avtp/gstavtpbasepayload.c
++++ b/ext/avtp/gstavtpbasepayload.c
+@@ -61,7 +61,7 @@ gst_avtp_base_payload_get_type (void)
+ {
+   static GType avtpbasepayload_type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & avtpbasepayload_type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & avtpbasepayload_type)) {
+     static const GTypeInfo avtpbasepayload_info = {
+       sizeof (GstAvtpBasePayloadClass),
+       NULL,
+@@ -78,7 +78,7 @@ gst_avtp_base_payload_get_type (void)
+     _type = g_type_register_static (GST_TYPE_ELEMENT, "GstAvtpBasePayload",
+         &avtpbasepayload_info, G_TYPE_FLAG_ABSTRACT);
+ 
+-    g_once_init_leave ((gsize *) & avtpbasepayload_type, _type);
++    g_once_init_leave_pointer ((gpointer *) & avtpbasepayload_type, _type);
+   }
+   return avtpbasepayload_type;
+ }
+diff --git a/ext/closedcaption/gstccconverter.c b/ext/closedcaption/gstccconverter.c
+index 0fecce14d48b..07603aa16cf6 100644
+--- a/ext/closedcaption/gstccconverter.c
++++ b/ext/closedcaption/gstccconverter.c
+@@ -91,12 +91,12 @@ gst_cc_converter_cdp_mode_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstCCConverterCDPMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/ext/closedcaption/gstceaccoverlay.c b/ext/closedcaption/gstceaccoverlay.c
+index bd22b2b299b2..39fa13a17dcf 100644
+--- a/ext/closedcaption/gstceaccoverlay.c
++++ b/ext/closedcaption/gstceaccoverlay.c
+@@ -175,7 +175,7 @@ gst_cea_cc_overlay_get_type (void)
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & type)) {
+     static const GTypeInfo info = {
+       sizeof (GstCeaCcOverlayClass),
+       (GBaseInitFunc) gst_base_cea_cc_overlay_base_init,
+@@ -188,7 +188,7 @@ gst_cea_cc_overlay_get_type (void)
+       (GInstanceInitFunc) gst_base_cea_cc_overlay_init,
+     };
+ 
+-    g_once_init_leave ((gsize *) & type,
++    g_once_init_leave_pointer ((gpointer *) & type,
+         g_type_register_static (GST_TYPE_ELEMENT, "GstCeaCcOverlay", &info, 0));
+   }
+ 
+diff --git a/ext/closedcaption/gstline21dec.c b/ext/closedcaption/gstline21dec.c
+index 4e5b7702c6fd..cfe766e75bfe 100644
+--- a/ext/closedcaption/gstline21dec.c
++++ b/ext/closedcaption/gstline21dec.c
+@@ -89,12 +89,12 @@ gst_line_21_decoder_mode_get_type (void)
+   };
+   static volatile GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstLine21DecoderMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/ext/colormanagement/gstlcms.c b/ext/colormanagement/gstlcms.c
+index 290d3a750396..c5f4d90a23ef 100644
+--- a/ext/colormanagement/gstlcms.c
++++ b/ext/colormanagement/gstlcms.c
+@@ -67,7 +67,7 @@ enum
+ GType
+ gst_lcms_intent_get_type (void)
+ {
+-  static gsize intent_type = 0;
++  static gpointer intent_type = 0;
+   static const GEnumValue intent[] = {
+     {GST_LCMS_INTENT_PERCEPTUAL, "Perceptual",
+         "perceptual"},
+@@ -80,9 +80,9 @@ gst_lcms_intent_get_type (void)
+     {0, NULL, NULL},
+   };
+ 
+-  if (g_once_init_enter (&intent_type)) {
++  if (g_once_init_enter_pointer (&intent_type)) {
+     GType tmp = g_enum_register_static ("GstLcmsIntent", intent);
+-    g_once_init_leave (&intent_type, tmp);
++    g_once_init_leave_pointer (&intent_type, tmp);
+   }
+   return (GType) intent_type;
+ }
+@@ -90,7 +90,7 @@ gst_lcms_intent_get_type (void)
+ static GType
+ gst_lcms_lookup_method_get_type (void)
+ {
+-  static gsize lookup_method_type = 0;
++  static gpointer lookup_method_type = 0;
+   static const GEnumValue lookup_method[] = {
+     {GST_LCMS_LOOKUP_METHOD_UNCACHED,
+           "Uncached, calculate every pixel on the fly (very slow playback)",
+@@ -104,9 +104,9 @@ gst_lcms_lookup_method_get_type (void)
+     {0, NULL, NULL},
+   };
+ 
+-  if (g_once_init_enter (&lookup_method_type)) {
++  if (g_once_init_enter_pointer (&lookup_method_type)) {
+     GType tmp = g_enum_register_static ("GstLcmsLookupMethod", lookup_method);
+-    g_once_init_leave (&lookup_method_type, tmp);
++    g_once_init_leave_pointer (&lookup_method_type, tmp);
+   }
+   return (GType) lookup_method_type;
+ }
+diff --git a/ext/directfb/dfbvideosink.c b/ext/directfb/dfbvideosink.c
+index b81f17f8ebe1..2948e978650f 100644
+--- a/ext/directfb/dfbvideosink.c
++++ b/ext/directfb/dfbvideosink.c
+@@ -128,7 +128,7 @@ static const char *gst_dfbvideosink_get_format_name (DFBSurfacePixelFormat
+ static GType
+ gst_dfbvideosink_layer_mode_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {0, "NONE", "none"},
+     {DLSCL_EXCLUSIVE, "DLSCL_EXCLUSIVE", "exclusive"},
+@@ -136,9 +136,9 @@ gst_dfbvideosink_layer_mode_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDfbVideoSinkLayerMode", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -150,9 +150,9 @@ gst_meta_dfbsurface_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "memory", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstMetaDfbSurfaceAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -176,14 +176,14 @@ gst_meta_dfbsurface_get_info (void)
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter (&meta_info)) {
++  if (g_once_init_enter_pointer (&meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (gst_meta_dfbsurface_api_get_type (),
+         "GstMetaDfbSurface", sizeof (GstMetaDfbSurface),
+         (GstMetaInitFunction) gst_meta_dfbsurface_init,
+         (GstMetaFreeFunction) NULL,
+         (GstMetaTransformFunction) NULL);
+-    g_once_init_leave (&meta_info, meta);
++    g_once_init_leave_pointer (&meta_info, meta);
+   }
+   return meta_info;
+ }
+diff --git a/ext/dtls/gstdtlsdec.c b/ext/dtls/gstdtlsdec.c
+index ca9f8fd6b72b..8598d7211a7f 100644
+--- a/ext/dtls/gstdtlsdec.c
++++ b/ext/dtls/gstdtlsdec.c
+@@ -664,7 +664,7 @@ get_agent_by_pem (const gchar * pem)
+   GstDtlsAgent *agent;
+ 
+   if (!pem) {
+-    if (g_once_init_enter (&generated_cert_agent)) {
++    if (g_once_init_enter_pointer (&generated_cert_agent)) {
+       GstDtlsAgent *new_agent;
+       GObject *certificate;
+ 
+@@ -675,7 +675,7 @@ get_agent_by_pem (const gchar * pem)
+ 
+       GST_DEBUG_OBJECT (generated_cert_agent,
+           "no agent with generated cert found, creating new");
+-      g_once_init_leave (&generated_cert_agent, new_agent);
++      g_once_init_leave_pointer (&generated_cert_agent, new_agent);
+     } else {
+       GST_DEBUG_OBJECT (generated_cert_agent,
+           "using agent with generated cert");
+diff --git a/ext/iqa/iqa.c b/ext/iqa/iqa.c
+index 9362fd8459a5..8051978ede90 100644
+--- a/ext/iqa/iqa.c
++++ b/ext/iqa/iqa.c
+@@ -161,12 +161,12 @@ gst_iqa_mode_flags_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstIqaMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/ext/onnx/tensor/gsttensormeta.c b/ext/onnx/tensor/gsttensormeta.c
+index c350bc3ac9e6..0ba83355f8bf 100644
+--- a/ext/onnx/tensor/gsttensormeta.c
++++ b/ext/onnx/tensor/gsttensormeta.c
+@@ -51,9 +51,9 @@ gst_tensor_meta_api_get_type (void)
+   static GType type = 0;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstTensorMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -64,7 +64,7 @@ gst_tensor_meta_get_info (void)
+ {
+   static const GstMetaInfo *tmeta_info = NULL;
+ 
+-  if (g_once_init_enter (&tmeta_info)) {
++  if (g_once_init_enter_pointer (&tmeta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (gst_tensor_meta_api_get_type (),
+         "GstTensorMeta",
+@@ -72,7 +72,7 @@ gst_tensor_meta_get_info (void)
+         gst_tensor_meta_init,
+         gst_tensor_meta_free,
+         NULL);                  /* tensor_meta_transform not implemented */
+-    g_once_init_leave (&tmeta_info, meta);
++    g_once_init_leave_pointer (&tmeta_info, meta);
+   }
+   return tmeta_info;
+ }
+diff --git a/ext/openjpeg/gstopenjpegenc.c b/ext/openjpeg/gstopenjpegenc.c
+index c6deb29b9a04..2dc624292458 100644
+--- a/ext/openjpeg/gstopenjpegenc.c
++++ b/ext/openjpeg/gstopenjpegenc.c
+@@ -64,12 +64,12 @@ gst_openjpeg_enc_progression_order_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpenJPEGEncProgressionOrder", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/ext/resindvd/rsndec.c b/ext/resindvd/rsndec.c
+index bb747757febd..b9936686442c 100644
+--- a/ext/resindvd/rsndec.c
++++ b/ext/resindvd/rsndec.c
+@@ -346,9 +346,9 @@ rsn_dec_change_state (GstElement * element, GstStateChange transition)
+ GType
+ rsn_dec_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo type_info = {
+       sizeof (RsnDecClass),
+@@ -364,7 +364,7 @@ rsn_dec_get_type (void)
+ 
+     _type = g_type_register_static (GST_TYPE_BIN,
+         "RsnDec", &type_info, G_TYPE_FLAG_ABSTRACT);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/ext/sctp/sctpassociation.c b/ext/sctp/sctpassociation.c
+index 68c05e62f316..83dd629e698b 100644
+--- a/ext/sctp/sctpassociation.c
++++ b/ext/sctp/sctpassociation.c
+@@ -58,10 +58,10 @@ gst_sctp_association_state_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+     _id = g_enum_register_static ("GstSctpAssociationState", values);
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/ext/ttml/gstttmlrender.c b/ext/ttml/gstttmlrender.c
+index d04db4f67ef5..52a03aa415ec 100644
+--- a/ext/ttml/gstttmlrender.c
++++ b/ext/ttml/gstttmlrender.c
+@@ -204,7 +204,7 @@ gst_ttml_render_get_type (void)
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & type)) {
+     static const GTypeInfo info = {
+       sizeof (GstTtmlRenderClass),
+       (GBaseInitFunc) gst_ttml_render_base_init,
+@@ -217,7 +217,7 @@ gst_ttml_render_get_type (void)
+       (GInstanceInitFunc) gst_ttml_render_init,
+     };
+ 
+-    g_once_init_leave ((gsize *) & type,
++    g_once_init_leave_pointer ((gpointer *) & type,
+         g_type_register_static (GST_TYPE_ELEMENT, "GstTtmlRender", &info, 0));
+   }
+ 
+diff --git a/ext/ttml/subtitlemeta.c b/ext/ttml/subtitlemeta.c
+index 3ce569f6e84f..b98c06e6f61b 100644
+--- a/ext/ttml/subtitlemeta.c
++++ b/ext/ttml/subtitlemeta.c
+@@ -1,3 +1,4 @@
++
+ /* GStreamer
+  * Copyright (C) <2015> British Broadcasting Corporation
+  *   Author: Chris Bass <dash@rd.bbc.co.uk>
+@@ -35,9 +36,9 @@ gst_subtitle_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "memory", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstSubtitleMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -65,12 +66,12 @@ gst_subtitle_meta_get_info (void)
+ {
+   static const GstMetaInfo *subtitle_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&subtitle_meta_info)) {
++  if (g_once_init_enter_pointer (&subtitle_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_SUBTITLE_META_API_TYPE, "GstSubtitleMeta",
+         sizeof (GstSubtitleMeta), gst_subtitle_meta_init,
+         gst_subtitle_meta_free, (GstMetaTransformFunction) NULL);
+-    g_once_init_leave (&subtitle_meta_info, meta);
++    g_once_init_leave_pointer (&subtitle_meta_info, meta);
+   }
+   return subtitle_meta_info;
+ }
+diff --git a/gst-libs/gst/adaptivedemux/gstadaptivedemux.c b/gst-libs/gst/adaptivedemux/gstadaptivedemux.c
+index b783a21967c7..26f08ef6f231 100644
+--- a/gst-libs/gst/adaptivedemux/gstadaptivedemux.c
++++ b/gst-libs/gst/adaptivedemux/gstadaptivedemux.c
+@@ -312,9 +312,9 @@ gst_adaptive_demux_requires_periodical_playlist_update_default (GstAdaptiveDemux
+ GType
+ gst_adaptive_demux_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstAdaptiveDemuxClass),
+@@ -334,7 +334,7 @@ gst_adaptive_demux_get_type (void)
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstAdaptiveDemuxPrivate));
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/gst-libs/gst/analytics/gstanalyticsmeta.c b/gst-libs/gst/analytics/gstanalyticsmeta.c
+index bcec73470a23..d47493dde2d5 100644
+--- a/gst-libs/gst/analytics/gstanalyticsmeta.c
++++ b/gst-libs/gst/analytics/gstanalyticsmeta.c
+@@ -291,12 +291,12 @@ gst_analytics_relation_meta_api_get_type (void)
+     GST_META_TAG_VIDEO_STR,
+     NULL
+   };
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType newType =
+         gst_meta_api_type_register ("GstAnalyticsRelationMetaAPI", tags);
+     GST_DEBUG_CATEGORY_INIT (an_relation_meta_debug, "anrelmeta",
+         GST_DEBUG_FG_BLACK, "Content analysis meta relations meta");
+-    g_once_init_leave (&type, newType);
++    g_once_init_leave_pointer (&type, newType);
+   }
+   return type;
+ }
+@@ -464,7 +464,7 @@ const GstMetaInfo *
+ gst_analytics_relation_meta_get_info (void)
+ {
+   static const GstMetaInfo *info = NULL;
+-  if (g_once_init_enter ((GstMetaInfo **) & info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & info)) {
+     GstMetaInfo *meta = gst_meta_info_new (GST_ANALYTICS_RELATION_META_API_TYPE,
+         "GstAnalyticsRelationMeta",
+         sizeof (GstAnalyticsRelationMeta));
+@@ -473,7 +473,7 @@ gst_analytics_relation_meta_get_info (void)
+     meta->transform_func = gst_analytics_relation_meta_transform;
+     meta->clear_func = gst_analytics_relation_meta_clear;
+     meta = (GstMetaInfo *) gst_meta_info_register (meta);
+-    g_once_init_leave ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
+   }
+   return info;
+ }
+diff --git a/gst-libs/gst/audio/gstnonstreamaudiodecoder.c b/gst-libs/gst/audio/gstnonstreamaudiodecoder.c
+index 89b05e833393..26a3b4fd1919 100644
+--- a/gst-libs/gst/audio/gstnonstreamaudiodecoder.c
++++ b/gst-libs/gst/audio/gstnonstreamaudiodecoder.c
+@@ -339,9 +339,9 @@ gst_nonstream_audio_decoder_subsong_mode_get_type (void)
+ GType
+ gst_nonstream_audio_decoder_get_type (void)
+ {
+-  static gsize nonstream_audio_decoder_type = 0;
++  static gpointer nonstream_audio_decoder_type = 0;
+ 
+-  if (g_once_init_enter (&nonstream_audio_decoder_type)) {
++  if (g_once_init_enter_pointer (&nonstream_audio_decoder_type)) {
+     GType type_;
+     static const GTypeInfo nonstream_audio_decoder_info = {
+       sizeof (GstNonstreamAudioDecoderClass),
+@@ -359,7 +359,7 @@ gst_nonstream_audio_decoder_get_type (void)
+     type_ = g_type_register_static (GST_TYPE_ELEMENT,
+         "GstNonstreamAudioDecoder",
+         &nonstream_audio_decoder_info, G_TYPE_FLAG_ABSTRACT);
+-    g_once_init_leave (&nonstream_audio_decoder_type, type_);
++    g_once_init_leave_pointer (&nonstream_audio_decoder_type, type_);
+   }
+ 
+   return nonstream_audio_decoder_type;
+diff --git a/gst-libs/gst/codecparsers/gstav1parser.c b/gst-libs/gst/codecparsers/gstav1parser.c
+index 66db0a054e60..63b16657cf88 100644
+--- a/gst-libs/gst/codecparsers/gstav1parser.c
++++ b/gst-libs/gst/codecparsers/gstav1parser.c
+@@ -86,14 +86,14 @@
+ static GstDebugCategory *
+ gst_av1_debug_category_get (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "codecparsers_av1", 0, "av1 parse library");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gsth264parser.c b/gst-libs/gst/codecparsers/gsth264parser.c
+index 386fe5a1bb36..258bbe6eec81 100644
+--- a/gst-libs/gst/codecparsers/gsth264parser.c
++++ b/gst-libs/gst/codecparsers/gsth264parser.c
+@@ -85,14 +85,14 @@
+ static GstDebugCategory *
+ gst_h264_debug_category_get (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "codecparsers_h264", 0, "h264 parse library");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gsth265parser.c b/gst-libs/gst/codecparsers/gsth265parser.c
+index 9d126080f218..0b0c97b3a1a0 100644
+--- a/gst-libs/gst/codecparsers/gsth265parser.c
++++ b/gst-libs/gst/codecparsers/gsth265parser.c
+@@ -77,14 +77,14 @@
+ static GstDebugCategory *
+ gst_h265_debug_category_get (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "codecparsers_h265", 0, "h265 parse library");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gstjpegparser.c b/gst-libs/gst/codecparsers/gstjpegparser.c
+index 64110763f21f..cb56c5091e85 100644
+--- a/gst-libs/gst/codecparsers/gstjpegparser.c
++++ b/gst-libs/gst/codecparsers/gstjpegparser.c
+@@ -42,15 +42,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("codecparsers_jpeg", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("codecparsers_jpeg", 0,
+         "GstJpegCodecParser");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gstmpeg4parser.c b/gst-libs/gst/codecparsers/gstmpeg4parser.c
+index 3ee48f4dc9a7..3f6a72a8a54d 100644
+--- a/gst-libs/gst/codecparsers/gstmpeg4parser.c
++++ b/gst-libs/gst/codecparsers/gstmpeg4parser.c
+@@ -47,15 +47,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("codecparsers_mpeg4", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("codecparsers_mpeg4", 0,
+         "GstMpeg4 codec parsing library");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gstmpegvideometa.c b/gst-libs/gst/codecparsers/gstmpegvideometa.c
+index c0e05e842ed8..6b4ea015ef4d 100644
+--- a/gst-libs/gst/codecparsers/gstmpegvideometa.c
++++ b/gst-libs/gst/codecparsers/gstmpegvideometa.c
+@@ -98,12 +98,12 @@ gst_mpeg_video_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "memory", NULL };      /* don't know what to set here */
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstMpegVideoMetaAPI", tags);
+     GST_DEBUG_CATEGORY_INIT (mpegv_meta_debug, "mpegvideometa", 0,
+         "MPEG-1/2 video GstMeta");
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -113,13 +113,13 @@ gst_mpeg_video_meta_get_info (void)
+ {
+   static const GstMetaInfo *mpeg_video_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & mpeg_video_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & mpeg_video_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_MPEG_VIDEO_META_API_TYPE,
+         "GstMpegVideoMeta", sizeof (GstMpegVideoMeta),
+         (GstMetaInitFunction) gst_mpeg_video_meta_init,
+         (GstMetaFreeFunction) gst_mpeg_video_meta_free,
+         (GstMetaTransformFunction) gst_mpeg_video_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & mpeg_video_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & mpeg_video_meta_info,
+         (GstMetaInfo *) meta);
+   }
+ 
+diff --git a/gst-libs/gst/codecparsers/gstmpegvideoparser.c b/gst-libs/gst/codecparsers/gstmpegvideoparser.c
+index b7d8ff1ac7d5..e5f4374c3eb7 100644
+--- a/gst-libs/gst/codecparsers/gstmpegvideoparser.c
++++ b/gst-libs/gst/codecparsers/gstmpegvideoparser.c
+@@ -124,15 +124,15 @@ static const VLCTable mpeg2_mbaddr_vlc_table[] = {
+ static GstDebugCategory *
+ gst_mpegvideo_debug_category_get (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "codecparsers_mpegvideo", 0,
+         "mpegvideo parser library");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gstvc1parser.c b/gst-libs/gst/codecparsers/gstvc1parser.c
+index f9af175a9b2e..7db410bf172c 100644
+--- a/gst-libs/gst/codecparsers/gstvc1parser.c
++++ b/gst-libs/gst/codecparsers/gstvc1parser.c
+@@ -47,15 +47,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("codecparsers_vc1", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("codecparsers_vc1", 0,
+         "VC1 codec parsing library");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecparsers/gstvp8parser.c b/gst-libs/gst/codecparsers/gstvp8parser.c
+index 2de34f0b9543..478131be6ec5 100644
+--- a/gst-libs/gst/codecparsers/gstvp8parser.c
++++ b/gst-libs/gst/codecparsers/gstvp8parser.c
+@@ -44,14 +44,14 @@
+ static GstDebugCategory *
+ gst_vp8_debug_category_get (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "codecparsers_vp8", 0, "vp8 parser library");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/codecs/gsth264decoder.c b/gst-libs/gst/codecs/gsth264decoder.c
+index 2ba22a90f28e..c8b8b8834bf2 100644
+--- a/gst-libs/gst/codecs/gsth264decoder.c
++++ b/gst-libs/gst/codecs/gsth264decoder.c
+@@ -245,7 +245,7 @@ enum
+ GType
+ gst_h264_decoder_compliance_get_type (void)
+ {
+-  static gsize h264_decoder_compliance_type = 0;
++  static gpointer h264_decoder_compliance_type = 0;
+   static const GEnumValue compliances[] = {
+     {GST_H264_DECODER_COMPLIANCE_AUTO, "GST_H264_DECODER_COMPLIANCE_AUTO",
+         "auto"},
+@@ -259,11 +259,11 @@ gst_h264_decoder_compliance_get_type (void)
+   };
+ 
+ 
+-  if (g_once_init_enter (&h264_decoder_compliance_type)) {
++  if (g_once_init_enter_pointer (&h264_decoder_compliance_type)) {
+     GType _type;
+ 
+     _type = g_enum_register_static ("GstH264DecoderCompliance", compliances);
+-    g_once_init_leave (&h264_decoder_compliance_type, _type);
++    g_once_init_leave_pointer (&h264_decoder_compliance_type, _type);
+   }
+ 
+   return (GType) h264_decoder_compliance_type;
+diff --git a/gst-libs/gst/codecs/gstvp9statefulparser.c b/gst-libs/gst/codecs/gstvp9statefulparser.c
+index 950d3e2900d5..5e065395cf36 100644
+--- a/gst-libs/gst/codecs/gstvp9statefulparser.c
++++ b/gst-libs/gst/codecs/gstvp9statefulparser.c
+@@ -74,15 +74,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("codecparsers_vp9stateful", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("codecparsers_vp9stateful", 0,
+         "VP9 parser library");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff --git a/gst-libs/gst/mpegts/gst-mpegtspesmetadatameta.c b/gst-libs/gst/mpegts/gst-mpegtspesmetadatameta.c
+index cc9ce3877e74..5864baf9c3b2 100644
+--- a/gst-libs/gst/mpegts/gst-mpegtspesmetadatameta.c
++++ b/gst-libs/gst/mpegts/gst-mpegtspesmetadatameta.c
+@@ -68,10 +68,10 @@ gst_mpegts_pes_metadata_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstMpegtsPESMetadataMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -81,14 +81,14 @@ gst_mpegts_pes_metadata_meta_get_info (void)
+ {
+   static const GstMetaInfo *mpegts_pes_metadata_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & mpegts_pes_metadata_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & mpegts_pes_metadata_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_MPEGTS_PES_METADATA_META_API_TYPE,
+         "GstMpegtsPESMetadataMeta", sizeof (GstMpegtsPESMetadataMeta),
+         (GstMetaInitFunction) gst_mpegts_pes_metadata_meta_init,
+         (GstMetaFreeFunction) gst_mpegts_pes_metadata_meta_free,
+         (GstMetaTransformFunction) gst_mpegts_pes_metadata_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & mpegts_pes_metadata_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & mpegts_pes_metadata_meta_info,
+         (GstMetaInfo *) meta);
+   }
+ 
+diff --git a/gst-libs/gst/play/gstplay.c b/gst-libs/gst/play/gstplay.c
+index 64adcd12d9aa..70082d2af3f2 100644
+--- a/gst-libs/gst/play/gstplay.c
++++ b/gst-libs/gst/play/gstplay.c
+@@ -4155,7 +4155,7 @@ gst_play_set_subtitle_video_offset (GstPlay * self, gint64 offset)
+ GType
+ gst_play_color_balance_type_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAY_COLOR_BALANCE_HUE), "GST_PLAY_COLOR_BALANCE_HUE",
+         "hue"},
+@@ -4168,9 +4168,9 @@ gst_play_color_balance_type_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayColorBalanceType", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -4198,7 +4198,7 @@ gst_play_color_balance_type_get_name (GstPlayColorBalanceType type)
+ GType
+ gst_play_state_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAY_STATE_STOPPED), "GST_PLAY_STATE_STOPPED", "stopped"},
+     {C_ENUM (GST_PLAY_STATE_BUFFERING), "GST_PLAY_STATE_BUFFERING",
+@@ -4208,9 +4208,9 @@ gst_play_state_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayState", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -4219,7 +4219,7 @@ gst_play_state_get_type (void)
+ GType
+ gst_play_message_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAY_MESSAGE_URI_LOADED), "GST_PLAY_MESSAGE_URI_LOADED",
+         "uri-loaded"},
+@@ -4250,9 +4250,9 @@ gst_play_message_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayMessage", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -4307,15 +4307,15 @@ gst_play_message_get_name (GstPlayMessage message_type)
+ GType
+ gst_play_error_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAY_ERROR_FAILED), "GST_PLAY_ERROR_FAILED", "failed"},
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayError", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+diff --git a/gst-libs/gst/player/gstplayer.c b/gst-libs/gst/player/gstplayer.c
+index ad78731ae481..e0e5ba1a48be 100644
+--- a/gst-libs/gst/player/gstplayer.c
++++ b/gst-libs/gst/player/gstplayer.c
+@@ -1438,7 +1438,7 @@ gst_player_set_subtitle_video_offset (GstPlayer * self, gint64 offset)
+ GType
+ gst_player_color_balance_type_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAYER_COLOR_BALANCE_HUE), "GST_PLAYER_COLOR_BALANCE_HUE",
+         "hue"},
+@@ -1451,9 +1451,9 @@ gst_player_color_balance_type_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayerColorBalanceType", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -1480,7 +1480,7 @@ gst_player_color_balance_type_get_name (GstPlayerColorBalanceType type)
+ GType
+ gst_player_state_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAYER_STATE_STOPPED), "GST_PLAYER_STATE_STOPPED", "stopped"},
+     {C_ENUM (GST_PLAYER_STATE_BUFFERING), "GST_PLAYER_STATE_BUFFERING",
+@@ -1490,9 +1490,9 @@ gst_player_state_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayerState", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -1527,15 +1527,15 @@ gst_player_state_get_name (GstPlayerState state)
+ GType
+ gst_player_error_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {C_ENUM (GST_PLAYER_ERROR_FAILED), "GST_PLAYER_ERROR_FAILED", "failed"},
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstPlayerError", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+diff --git a/gst-libs/gst/sctp/sctpreceivemeta.c b/gst-libs/gst/sctp/sctpreceivemeta.c
+index 11def65238dc..a146c5eb7e26 100644
+--- a/gst-libs/gst/sctp/sctpreceivemeta.c
++++ b/gst-libs/gst/sctp/sctpreceivemeta.c
+@@ -38,9 +38,9 @@ gst_sctp_receive_meta_api_get_type (void)
+ {
+   static const gchar *tags[] = { NULL };
+   static GType type;
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstSctpReceiveMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -50,14 +50,14 @@ gst_sctp_receive_meta_get_info (void)
+ {
+   static const GstMetaInfo *gst_sctp_receive_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&gst_sctp_receive_meta_info)) {
++  if (g_once_init_enter_pointer (&gst_sctp_receive_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_SCTP_RECEIVE_META_API_TYPE,
+         "GstSctpReceiveMeta",
+         sizeof (GstSctpReceiveMeta),
+         gst_sctp_receive_meta_init,
+         (GstMetaFreeFunction) NULL,
+         gst_sctp_receive_meta_transform);
+-    g_once_init_leave (&gst_sctp_receive_meta_info, meta);
++    g_once_init_leave_pointer (&gst_sctp_receive_meta_info, meta);
+   }
+   return gst_sctp_receive_meta_info;
+ }
+diff --git a/gst-libs/gst/sctp/sctpsendmeta.c b/gst-libs/gst/sctp/sctpsendmeta.c
+index e29cd7d9273f..5e49e28151fa 100644
+--- a/gst-libs/gst/sctp/sctpsendmeta.c
++++ b/gst-libs/gst/sctp/sctpsendmeta.c
+@@ -38,9 +38,9 @@ gst_sctp_send_meta_api_get_type (void)
+ {
+   static const gchar *tags[] = { NULL };
+   static GType type;
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstSctpSendMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -50,14 +50,14 @@ gst_sctp_send_meta_get_info (void)
+ {
+   static const GstMetaInfo *gst_sctp_send_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&gst_sctp_send_meta_info)) {
++  if (g_once_init_enter_pointer (&gst_sctp_send_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_SCTP_SEND_META_API_TYPE,
+         "GstSctpSendMeta",
+         sizeof (GstSctpSendMeta),
+         gst_sctp_send_meta_init,
+         (GstMetaFreeFunction) NULL,
+         gst_sctp_send_meta_transform);
+-    g_once_init_leave (&gst_sctp_send_meta_info, meta);
++    g_once_init_leave_pointer (&gst_sctp_send_meta_info, meta);
+   }
+   return gst_sctp_send_meta_info;
+ }
+diff --git a/gst/camerabin2/gstcamerabin2.c b/gst/camerabin2/gstcamerabin2.c
+index f05192be5e40..ab7fbcd9ac4c 100644
+--- a/gst/camerabin2/gstcamerabin2.c
++++ b/gst/camerabin2/gstcamerabin2.c
+@@ -265,12 +265,12 @@ gst_cam_flags_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstCamFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/gst/codectimestamper/gstcodectimestamper.c b/gst/codectimestamper/gstcodectimestamper.c
+index 14ac71580b0f..c2f99a773f7b 100644
+--- a/gst/codectimestamper/gstcodectimestamper.c
++++ b/gst/codectimestamper/gstcodectimestamper.c
+@@ -97,9 +97,9 @@ static gint private_offset = 0;
+ GType
+ gst_codec_timestamper_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstCodecTimestamperClass),
+@@ -119,7 +119,7 @@ gst_codec_timestamper_get_type (void)
+     private_offset = g_type_add_instance_private (_type,
+         sizeof (GstCodecTimestamperPrivate));
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/gst/debugutils/gstclockselect.c b/gst/debugutils/gstclockselect.c
+index 663228a39f1f..50909e919e67 100644
+--- a/gst/debugutils/gstclockselect.c
++++ b/gst/debugutils/gstclockselect.c
+@@ -51,7 +51,7 @@ gst_clock_select_clock_id_get_type (void)
+ {
+   static GType clock_id_type = 0;
+ 
+-  if (g_once_init_enter (&clock_id_type)) {
++  if (g_once_init_enter_pointer ((gpointer *) &clock_id_type)) {
+     GType type;
+     static const GEnumValue clock_id_types[] = {
+       {GST_CLOCK_SELECT_CLOCK_ID_DEFAULT,
+@@ -65,7 +65,7 @@ gst_clock_select_clock_id_get_type (void)
+     };
+ 
+     type = g_enum_register_static ("GstClockSelectClockId", clock_id_types);
+-    g_once_init_leave (&clock_id_type, type);
++    g_once_init_leave_pointer ((gpointer *) &clock_id_type, type);
+   }
+ 
+   return clock_id_type;
+diff --git a/gst/debugutils/gstfakeaudiosink.c b/gst/debugutils/gstfakeaudiosink.c
+index eb10cf8cc6ee..0080f78c6abd 100644
+--- a/gst/debugutils/gstfakeaudiosink.c
++++ b/gst/debugutils/gstfakeaudiosink.c
+@@ -43,6 +43,8 @@
+ 
+ #include <gst/audio/audio.h>
+ 
++#include <stdfil.h>
++
+ typedef enum
+ {
+   FAKE_SINK_STATE_ERROR_NONE = 0,
+@@ -282,7 +284,7 @@ gst_fake_audio_sink_class_init (GstFakeAudioSinkClass * klass)
+   gst_fake_audio_sink_signals[SIGNAL_HANDOFF] =
+       g_signal_new ("handoff", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstFakeAudioSinkClass, handoff), NULL, NULL,
+-      NULL, G_TYPE_NONE, 2, GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE,
++      NULL, G_TYPE_NONE, 2, zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
+       GST_TYPE_PAD);
+ 
+   /**
+@@ -299,7 +301,7 @@ gst_fake_audio_sink_class_init (GstFakeAudioSinkClass * klass)
+       g_signal_new ("preroll-handoff", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstFakeAudioSinkClass,
+           preroll_handoff), NULL, NULL, NULL, G_TYPE_NONE, 2,
+-      GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE, GST_TYPE_PAD);
++      zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), GST_TYPE_PAD);
+ 
+   g_object_class_install_property (object_class, PROP_STATE_ERROR,
+       g_param_spec_enum ("state-error", "State Error",
+diff --git a/gst/debugutils/gstfakevideosink.c b/gst/debugutils/gstfakevideosink.c
+index 8c3275006ded..7f9ae34158a1 100644
+--- a/gst/debugutils/gstfakevideosink.c
++++ b/gst/debugutils/gstfakevideosink.c
+@@ -43,6 +43,8 @@
+ 
+ #include <gst/video/video.h>
+ 
++#include <stdfil.h>
++
+ #define C_FLAGS(v) ((guint) v)
+ 
+ GType
+@@ -58,13 +60,13 @@ gst_fake_video_sink_allocation_meta_flags_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id =
+         g_flags_register_static ("GstFakeVideoSinkAllocationMetaFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+@@ -341,7 +343,7 @@ gst_fake_video_sink_class_init (GstFakeVideoSinkClass * klass)
+   gst_fake_video_sink_signals[SIGNAL_HANDOFF] =
+       g_signal_new ("handoff", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstFakeVideoSinkClass, handoff), NULL, NULL,
+-      NULL, G_TYPE_NONE, 2, GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE,
++      NULL, G_TYPE_NONE, 2, zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
+       GST_TYPE_PAD);
+ 
+   /**
+@@ -358,7 +360,7 @@ gst_fake_video_sink_class_init (GstFakeVideoSinkClass * klass)
+       g_signal_new ("preroll-handoff", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstFakeVideoSinkClass,
+           preroll_handoff), NULL, NULL, NULL, G_TYPE_NONE, 2,
+-      GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE, GST_TYPE_PAD);
++      zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), GST_TYPE_PAD);
+ 
+   g_object_class_install_property (object_class, PROP_STATE_ERROR,
+       g_param_spec_enum ("state-error", "State Error",
+diff --git a/gst/mxf/mxfmetadata.c b/gst/mxf/mxfmetadata.c
+index 50c31299adb0..17edc6d953a8 100644
+--- a/gst/mxf/mxfmetadata.c
++++ b/gst/mxf/mxfmetadata.c
+@@ -6544,8 +6544,8 @@ mxf_descriptive_metadata_new (guint8 scheme, guint32 type,
+ GType
+ mxf_descriptive_metadata_framework_get_type (void)
+ {
+-  static gsize type = 0;
+-  if (g_once_init_enter (&type)) {
++  static gpointer type = 0;
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = 0;
+     static const GTypeInfo info = {
+       sizeof (MXFDescriptiveMetadataFrameworkInterface),
+@@ -6563,7 +6563,7 @@ mxf_descriptive_metadata_framework_get_type (void)
+ 
+     g_type_interface_add_prerequisite (_type, MXF_TYPE_DESCRIPTIVE_METADATA);
+ 
+-    g_once_init_leave (&type, (gsize) _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+ 
+   return (GType) type;
+diff --git a/gst/netsim/gstnetsim.c b/gst/netsim/gstnetsim.c
+index 55853b8fd01b..410050cf1281 100644
+--- a/gst/netsim/gstnetsim.c
++++ b/gst/netsim/gstnetsim.c
+@@ -38,8 +38,8 @@ GST_DEBUG_CATEGORY (netsim_debug);
+ static GType
+ distribution_get_type (void)
+ {
+-  static gsize static_g_define_type_id = 0;
+-  if (g_once_init_enter (&static_g_define_type_id)) {
++  static gpointer static_g_define_type_id = 0;
++  if (g_once_init_enter_pointer (&static_g_define_type_id)) {
+     static const GEnumValue values[] = {
+       {DISTRIBUTION_UNIFORM, "uniform", "uniform"},
+       {DISTRIBUTION_NORMAL, "normal", "normal"},
+@@ -48,7 +48,7 @@ distribution_get_type (void)
+     };
+     GType g_define_type_id =
+         g_enum_register_static ("GstNetSimDistribution", values);
+-    g_once_init_leave (&static_g_define_type_id, g_define_type_id);
++    g_once_init_leave_pointer (&static_g_define_type_id, g_define_type_id);
+   }
+   return static_g_define_type_id;
+ }
+diff --git a/gst/rist/gstristsink.c b/gst/rist/gstristsink.c
+index ce6d5741862e..6ad87936af66 100644
+--- a/gst/rist/gstristsink.c
++++ b/gst/rist/gstristsink.c
+@@ -169,7 +169,7 @@ struct _GstRistSink
+ static GType
+ gst_rist_bonding_method_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue values[] = {
+     {GST_RIST_BONDING_METHOD_BROADCAST,
+         "GST_RIST_BONDING_METHOD_BROADCAST", "broadcast"},
+@@ -178,9 +178,9 @@ gst_rist_bonding_method_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstRistBondingMethodType", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+diff --git a/gst/rtmp2/rtmp/rtmpclient.c b/gst/rtmp2/rtmp/rtmpclient.c
+index fdd1419fd0e4..dae4c911b6dc 100644
+--- a/gst/rtmp2/rtmp/rtmpclient.c
++++ b/gst/rtmp2/rtmp/rtmpclient.c
+@@ -66,16 +66,16 @@ static const gchar *scheme_strings[] = {
+ GType
+ gst_rtmp_scheme_get_type (void)
+ {
+-  static gsize scheme_type = 0;
++  static gpointer scheme_type = 0;
+   static const GEnumValue scheme[] = {
+     {GST_RTMP_SCHEME_RTMP, "GST_RTMP_SCHEME_RTMP", "rtmp"},
+     {GST_RTMP_SCHEME_RTMPS, "GST_RTMP_SCHEME_RTMPS", "rtmps"},
+     {0, NULL, NULL},
+   };
+ 
+-  if (g_once_init_enter (&scheme_type)) {
++  if (g_once_init_enter_pointer (&scheme_type)) {
+     GType tmp = g_enum_register_static ("GstRtmpScheme", scheme);
+-    g_once_init_leave (&scheme_type, tmp);
++    g_once_init_leave_pointer (&scheme_type, tmp);
+   }
+ 
+   return (GType) scheme_type;
+@@ -142,7 +142,7 @@ gst_rtmp_scheme_get_default_port (GstRtmpScheme scheme)
+ GType
+ gst_rtmp_authmod_get_type (void)
+ {
+-  static gsize authmod_type = 0;
++  static gpointer authmod_type = 0;
+   static const GEnumValue authmod[] = {
+     {GST_RTMP_AUTHMOD_NONE, "GST_RTMP_AUTHMOD_NONE", "none"},
+     {GST_RTMP_AUTHMOD_AUTO, "GST_RTMP_AUTHMOD_AUTO", "auto"},
+@@ -150,9 +150,9 @@ gst_rtmp_authmod_get_type (void)
+     {0, NULL, NULL},
+   };
+ 
+-  if (g_once_init_enter (&authmod_type)) {
++  if (g_once_init_enter_pointer (&authmod_type)) {
+     GType tmp = g_enum_register_static ("GstRtmpAuthmod", authmod);
+-    g_once_init_leave (&authmod_type, tmp);
++    g_once_init_leave_pointer (&authmod_type, tmp);
+   }
+ 
+   return (GType) authmod_type;
+@@ -169,7 +169,7 @@ gst_rtmp_authmod_get_nick (GstRtmpAuthmod value)
+ GType
+ gst_rtmp_stop_commands_get_type (void)
+ {
+-  static gsize stop_commands_type = 0;
++  static gpointer stop_commands_type = 0;
+   static const GFlagsValue stop_commands[] = {
+     {GST_RTMP_STOP_COMMANDS_NONE, "No command", "none"},
+     {GST_RTMP_STOP_COMMANDS_FCUNPUBLISH, "FCUnpublish", "fcunpublish"},
+@@ -178,9 +178,9 @@ gst_rtmp_stop_commands_get_type (void)
+     {0, NULL, NULL},
+   };
+ 
+-  if (g_once_init_enter (&stop_commands_type)) {
++  if (g_once_init_enter_pointer (&stop_commands_type)) {
+     GType tmp = g_flags_register_static ("GstRtmpStopCommands", stop_commands);
+-    g_once_init_leave (&stop_commands_type, tmp);
++    g_once_init_leave_pointer (&stop_commands_type, tmp);
+   }
+ 
+   return (GType) stop_commands_type;
+@@ -365,11 +365,11 @@ gst_rtmp_client_connect_async (const GstRtmpLocation * location,
+ 
+   init_debug ();
+ 
+-  if (g_once_init_enter (&auth_regex)) {
++  if (g_once_init_enter_pointer (&auth_regex)) {
+     GRegex *re = g_regex_new ("\\[ *AccessManager.Reject *\\] *: *"
+         "\\[ *authmod=(?<authmod>.*?) *\\] *: *"
+         "(?<query>\\?.*)\\Z", G_REGEX_DOTALL, 0, NULL);
+-    g_once_init_leave (&auth_regex, re);
++    g_once_init_leave_pointer (&auth_regex, re);
+   }
+ 
+   task = g_task_new (NULL, cancellable, callback, user_data);
+diff --git a/gst/rtmp2/rtmp/rtmpmessage.c b/gst/rtmp2/rtmp/rtmpmessage.c
+index d284cb367755..5c2b4b17d503 100644
+--- a/gst/rtmp2/rtmp/rtmpmessage.c
++++ b/gst/rtmp2/rtmp/rtmpmessage.c
+@@ -151,11 +151,11 @@ gst_rtmp_meta_api_get_type (void)
+     NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer ((gpointer *) &type)) {
+     GType _type = gst_meta_api_type_register ("GstRtmpMetaAPI", tags);
+     GST_DEBUG_CATEGORY_INIT (gst_rtmp_message_debug_category,
+         "rtmpmessage", 0, "debug category for rtmp messages");
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer ((gpointer *) &type, _type);
+   }
+   return type;
+ }
+@@ -205,11 +205,11 @@ gst_rtmp_meta_get_info (void)
+ {
+   static const GstMetaInfo *rtmp_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&rtmp_meta_info)) {
++  if (g_once_init_enter_pointer (&rtmp_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_RTMP_META_API_TYPE,
+         "GstRtmpMeta", sizeof (GstRtmpMeta), gst_rtmp_meta_init, NULL,
+         gst_rtmp_meta_transform);
+-    g_once_init_leave (&rtmp_meta_info, meta);
++    g_once_init_leave_pointer (&rtmp_meta_info, meta);
+   }
+   return rtmp_meta_info;
+ }
+diff --git a/gst/segmentclip/gstsegmentclip.c b/gst/segmentclip/gstsegmentclip.c
+index 167bac4bff22..2d00453d3348 100644
+--- a/gst/segmentclip/gstsegmentclip.c
++++ b/gst/segmentclip/gstsegmentclip.c
+@@ -56,9 +56,9 @@ static GstElementClass *parent_class;
+ GType
+ gst_segment_clip_get_type (void)
+ {
+-  static gsize segment_clip_type = 0;
++  static gpointer segment_clip_type = 0;
+ 
+-  if (g_once_init_enter (&segment_clip_type)) {
++  if (g_once_init_enter_pointer (&segment_clip_type)) {
+     GType _type;
+ 
+     _type = g_type_register_static_simple (GST_TYPE_ELEMENT,
+@@ -66,7 +66,7 @@ gst_segment_clip_get_type (void)
+         (GClassInitFunc) gst_segment_clip_class_init, sizeof (GstSegmentClip),
+         (GInstanceInitFunc) gst_segment_clip_init, G_TYPE_FLAG_ABSTRACT);
+ 
+-    g_once_init_leave (&segment_clip_type, _type);
++    g_once_init_leave_pointer (&segment_clip_type, _type);
+   }
+   return segment_clip_type;
+ }
+diff --git a/sys/androidmedia/gstamcaudiodec.c b/sys/androidmedia/gstamcaudiodec.c
+index 398a6e1bd3b9..d1041d715946 100644
+--- a/sys/androidmedia/gstamcaudiodec.c
++++ b/sys/androidmedia/gstamcaudiodec.c
+@@ -90,9 +90,9 @@ static GstAudioDecoderClass *parent_class = NULL;
+ GType
+ gst_amc_audio_dec_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstAmcAudioDecClass),
+@@ -113,7 +113,7 @@ gst_amc_audio_dec_get_type (void)
+     GST_DEBUG_CATEGORY_INIT (gst_amc_audio_dec_debug_category, "amcaudiodec", 0,
+         "Android MediaCodec audio decoder");
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/sys/androidmedia/gstamcvideodec.c b/sys/androidmedia/gstamcvideodec.c
+index e9230fb38689..2d8b22614a41 100644
+--- a/sys/androidmedia/gstamcvideodec.c
++++ b/sys/androidmedia/gstamcvideodec.c
+@@ -263,9 +263,9 @@ static GstVideoDecoderClass *parent_class = NULL;
+ GType
+ gst_amc_video_dec_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstAmcVideoDecClass),
+@@ -286,7 +286,7 @@ gst_amc_video_dec_get_type (void)
+     GST_DEBUG_CATEGORY_INIT (gst_amc_video_dec_debug_category, "amcvideodec", 0,
+         "Android MediaCodec video decoder");
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/sys/androidmedia/gstamcvideoenc.c b/sys/androidmedia/gstamcvideoenc.c
+index d04a1d2684cc..2e3b414a2019 100644
+--- a/sys/androidmedia/gstamcvideoenc.c
++++ b/sys/androidmedia/gstamcvideoenc.c
+@@ -114,9 +114,9 @@ static GstVideoEncoderClass *parent_class = NULL;
+ GType
+ gst_amc_video_enc_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstAmcVideoEncClass),
+@@ -137,7 +137,7 @@ gst_amc_video_enc_get_type (void)
+     GST_DEBUG_CATEGORY_INIT (gst_amc_video_enc_debug_category, "amcvideoenc", 0,
+         "Android MediaCodec video encoder");
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/sys/applemedia/coremediabuffer.c b/sys/applemedia/coremediabuffer.c
+index 2bdebb65b7cb..d5caba7a25ce 100644
+--- a/sys/applemedia/coremediabuffer.c
++++ b/sys/applemedia/coremediabuffer.c
+@@ -96,9 +96,9 @@ gst_core_media_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "memory", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstCoreMediaMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -108,13 +108,13 @@ gst_core_media_meta_get_info (void)
+ {
+   static const GstMetaInfo *core_media_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&core_media_meta_info)) {
++  if (g_once_init_enter_pointer (&core_media_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_CORE_MEDIA_META_API_TYPE,
+         "GstCoreMediaMeta", sizeof (GstCoreMediaMeta),
+         (GstMetaInitFunction) gst_core_media_meta_init,
+         (GstMetaFreeFunction) gst_core_media_meta_free,
+         (GstMetaTransformFunction) gst_core_media_meta_transform);
+-    g_once_init_leave (&core_media_meta_info, meta);
++    g_once_init_leave_pointer (&core_media_meta_info, meta);
+   }
+   return core_media_meta_info;
+ }
+diff --git a/sys/applemedia/corevideobuffer.c b/sys/applemedia/corevideobuffer.c
+index 409c6ac7dc52..6ce752bfba72 100644
+--- a/sys/applemedia/corevideobuffer.c
++++ b/sys/applemedia/corevideobuffer.c
+@@ -83,9 +83,9 @@ gst_core_video_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "memory", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstCoreVideoMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -95,13 +95,13 @@ gst_core_video_meta_get_info (void)
+ {
+   static const GstMetaInfo *core_video_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&core_video_meta_info)) {
++  if (g_once_init_enter_pointer (&core_video_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_CORE_VIDEO_META_API_TYPE,
+         "GstCoreVideoMeta", sizeof (GstCoreVideoMeta),
+         (GstMetaInitFunction) gst_core_video_meta_init,
+         (GstMetaFreeFunction) gst_core_video_meta_free,
+         (GstMetaTransformFunction) gst_core_video_meta_transform);
+-    g_once_init_leave (&core_video_meta_info, meta);
++    g_once_init_leave_pointer (&core_video_meta_info, meta);
+   }
+   return core_video_meta_info;
+ }
+diff --git a/sys/decklink/gstdecklink.cpp b/sys/decklink/gstdecklink.cpp
+index 47fd63eaa3cb..3360f8ec62db 100644
+--- a/sys/decklink/gstdecklink.cpp
++++ b/sys/decklink/gstdecklink.cpp
+@@ -39,7 +39,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_decklink_debug);
+ GType
+ gst_decklink_mode_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue modes[] = {
+     {GST_DECKLINK_MODE_AUTO, "Automatic detection", "auto"},
+ 
+@@ -130,9 +130,9 @@ gst_decklink_mode_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDecklinkModes", modes);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -141,7 +141,7 @@ gst_decklink_mode_get_type (void)
+ GType
+ gst_decklink_connection_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue connections[] = {
+     {GST_DECKLINK_CONNECTION_AUTO, "Auto", "auto"},
+     {GST_DECKLINK_CONNECTION_SDI, "SDI", "sdi"},
+@@ -153,9 +153,9 @@ gst_decklink_connection_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDecklinkConnection", connections);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -164,7 +164,7 @@ gst_decklink_connection_get_type (void)
+ GType
+ gst_decklink_video_format_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue types[] = {
+     {GST_DECKLINK_VIDEO_FORMAT_AUTO, "Auto", "auto"},
+     {GST_DECKLINK_VIDEO_FORMAT_8BIT_YUV, "bmdFormat8BitYUV", "8bit-yuv"},
+@@ -181,9 +181,9 @@ gst_decklink_video_format_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDecklinkVideoFormat", types);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -205,7 +205,7 @@ gst_decklink_video_format_get_type (void)
+ GType
+ gst_decklink_profile_id_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue types[] = {
+     {GST_DECKLINK_PROFILE_ID_DEFAULT, "Default, don't change profile",
+         "default"},
+@@ -222,9 +222,9 @@ gst_decklink_profile_id_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDecklinkProfileId", types);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -243,7 +243,7 @@ gst_decklink_profile_id_get_type (void)
+ GType
+ gst_decklink_mapping_format_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue mappingformats[] = {
+     {GST_DECKLINK_MAPPING_FORMAT_DEFAULT, "Default, don't change mapping format",
+       "default"},
+@@ -252,9 +252,9 @@ gst_decklink_mapping_format_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDecklinkMappingFormat", mappingformats);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -263,7 +263,7 @@ gst_decklink_mapping_format_get_type (void)
+ GType
+ gst_decklink_timecode_format_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue timecodeformats[] = {
+     {GST_DECKLINK_TIMECODE_FORMAT_RP188VITC1, "bmdTimecodeRP188VITC1",
+         "rp188vitc1"},
+@@ -278,10 +278,10 @@ gst_decklink_timecode_format_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp =
+         g_enum_register_static ("GstDecklinkTimecodeFormat", timecodeformats);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -290,7 +290,7 @@ gst_decklink_timecode_format_get_type (void)
+ GType
+ gst_decklink_keyer_mode_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue keyermodes[] = {
+     {GST_DECKLINK_KEYER_MODE_OFF, "Off", "off"},
+     {GST_DECKLINK_KEYER_MODE_INTERNAL, "Internal", "internal"},
+@@ -298,9 +298,9 @@ gst_decklink_keyer_mode_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_enum_register_static ("GstDecklinkKeyerMode", keyermodes);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -309,7 +309,7 @@ gst_decklink_keyer_mode_get_type (void)
+ GType
+ gst_decklink_audio_connection_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue connections[] = {
+     {GST_DECKLINK_AUDIO_CONNECTION_AUTO, "Automatic", "auto"},
+     {GST_DECKLINK_AUDIO_CONNECTION_EMBEDDED, "SDI/HDMI embedded audio",
+@@ -323,10 +323,10 @@ gst_decklink_audio_connection_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp =
+         g_enum_register_static ("GstDecklinkAudioConnection", connections);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+@@ -335,7 +335,7 @@ gst_decklink_audio_connection_get_type (void)
+ GType
+ gst_decklink_audio_channels_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const GEnumValue connections[] = {
+     {GST_DECKLINK_AUDIO_CHANNELS_2, "2 Channels", "2"},
+     {GST_DECKLINK_AUDIO_CHANNELS_8, "8 Channels", "8"},
+@@ -344,10 +344,10 @@ gst_decklink_audio_channels_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp =
+         g_enum_register_static ("GstDecklinkAudioChannels", connections);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+diff --git a/sys/ipcpipeline/gstipcpipelinecomm.c b/sys/ipcpipeline/gstipcpipelinecomm.c
+index afe61b833501..2ad80454c5fd 100644
+--- a/sys/ipcpipeline/gstipcpipelinecomm.c
++++ b/sys/ipcpipeline/gstipcpipelinecomm.c
+@@ -456,7 +456,7 @@ typedef struct
+ 
+   guint64 size;
+   guint32 flags;
+-  guint64 api;
++  gpointer api;
+   char *str;
+ } MetaBuildInfo;
+ 
+diff --git a/sys/opensles/openslescommon.c b/sys/opensles/openslescommon.c
+index 72cfc9d5da2f..cb532edd0091 100644
+--- a/sys/opensles/openslescommon.c
++++ b/sys/opensles/openslescommon.c
+@@ -44,12 +44,12 @@ gst_opensles_recording_preset_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpenSLESRecordingPreset", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+@@ -102,12 +102,12 @@ gst_opensles_stream_type_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpenSLESStreamType", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/sys/va/gstvafilter.c b/sys/va/gstvafilter.c
+index 05dff4510196..676038ac5953 100644
+--- a/sys/va/gstvafilter.c
++++ b/sys/va/gstvafilter.c
+@@ -1933,7 +1933,7 @@ gst_va_filter_has_video_format (GstVaFilter * self, GstVideoFormat format,
+ GType
+ gst_va_scale_method_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+   static const GEnumValue values[] = {
+     {VA_FILTER_SCALING_DEFAULT, "Default scaling method", "default"},
+     {VA_FILTER_SCALING_FAST, "Fast scaling method", "fast"},
+@@ -1941,9 +1941,9 @@ gst_va_scale_method_get_type (void)
+     {0, NULL, NULL},
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     const GType _type = g_enum_register_static ("GstVaScaleMethod", values);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/sys/wasapi/gstwasapiutil.c b/sys/wasapi/gstwasapiutil.c
+index 3fd15a0b00ce..346737b635e9 100644
+--- a/sys/wasapi/gstwasapiutil.c
++++ b/sys/wasapi/gstwasapiutil.c
+@@ -204,12 +204,12 @@ gst_wasapi_device_role_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstWasapiDeviceRole", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/sys/wasapi2/gstwasapi2src.c b/sys/wasapi2/gstwasapi2src.c
+index c9fabd73fa6c..f85ddb9b7879 100644
+--- a/sys/wasapi2/gstwasapi2src.c
++++ b/sys/wasapi2/gstwasapi2src.c
+@@ -106,9 +106,9 @@ gst_wasapi2_src_loopback_mode_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&loopback_type)) {
++  if (g_once_init_enter_pointer (&loopback_type)) {
+     GType gtype = g_enum_register_static ("GstWasapi2SrcLoopbackMode", types);
+-    g_once_init_leave (&loopback_type, gtype);
++    g_once_init_leave_pointer (&loopback_type, gtype);
+   }
+ 
+   return loopback_type;

@@ -17,6 +17,11 @@ shared 2.40 toolchain and the private PipeWire libc remain separate from this
 proposal. Implementing the proposal will require runtime changes, not just a
 patch to user glibc.
 
+A subsequent [implementation checkpoint](pthread-cancellation-implementation.md)
+implements and tests a bounded subset of this proposal on the shared 2.44
+baseline. Its coverage table and limitations are the implementation status;
+this document remains the wider design contract.
+
 ## The contract
 
 Cancellation is a persistent request. The notification signal is only a way to

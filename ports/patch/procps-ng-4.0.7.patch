@@ -1,0 +1,19 @@
+diff --git a/library/pids.c b/library/pids.c
+index 2eaa1c93d9d1..3ee2f595ff7d 100644
+--- a/library/pids.c
++++ b/library/pids.c
+@@ -1097,12 +1097,12 @@ static inline int pids_oldproc_open (
+         ...)
+ {
+     va_list vl;
+-    int *ids;
++    int *ids = NULL;
+     int num = 0;
+ 
+     if (*this == NULL) {
+         va_start(vl, flags);
+-        ids = va_arg(vl, int*);
++        if (flags & (PROC_PID | PROC_UID)) ids = va_arg(vl, int*);
+         if (flags & PROC_UID) num = va_arg(vl, int);
+         va_end(vl);
+         if (NULL == (*this = openproc(flags, ids, num)))

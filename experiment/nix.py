@@ -13,7 +13,7 @@ NIX = os.environ.get("FILNIX_NIX", "nix")
 DRV = re.compile(r"/nix/store/[a-z0-9]{32}-[^\s'\";]+\.drv")
 DEFAULT_POLICY = dict(
     max_jobs=4,
-    cores=6,
+    cores=7,
     batch_size=8,
     build_lanes=1,  # Two bounded clients require explicit opt-in and lookahead.
     plan_ahead=0,  # Explicit opt-in; old campaigns retain serial admission.
@@ -25,7 +25,7 @@ DEFAULT_POLICY = dict(
     min_free_bytes=50 * 1024**3,
     retained_log_bytes=20 * 1024**3,
     slice="/sys/fs/cgroup/filnix.slice/filnix-workload.slice",
-    cpus="2-15,18-31",
+    cpus="1-15,17-31",
     memory_fraction=0.80,
 )
 

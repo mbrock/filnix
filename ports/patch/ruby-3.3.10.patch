@@ -964,6 +964,35 @@ index 000000000000..4a1929bff567
 +++ b/configure.txt
 @@ -0,0 +1 @@
 +CC=$PWD/../../build/bin/clang CXX=$PWD/../../build/bin/clang++ ./configure --enable-shared --disable-yjit --disable-rjit --without-jit --without-gcc --without-valgrind --with-thread=pthread --without-jemalloc --with-coroutine=pthread --prefix=$PWD/../../pizfix
+diff --git a/coroutine/pthread/Context.c b/coroutine/pthread/Context.c
+index 38774cda0b40..3a00ba100c6b 100644
+--- a/coroutine/pthread/Context.c
++++ b/coroutine/pthread/Context.c
+@@ -163,11 +163,24 @@ int coroutine_create_thread(struct coroutine_context *context)
+         return result;
+     }
+ 
++#ifdef __FILC__
++    /* Fil-C allocates every thread stack in its runtime (the garbage
++       collector must conservatively scan thread stacks, so it must be the
++       one that vends them) and refuses pthread_attr_setstack with
++       "Cannot set custom stack address because memory safety.".  So let
++       pthread_create use its own stack.  The fiber then runs on that
++       runtime-allocated stack, which the collector can scan; context->stack
++       is still used for the fiber pool accounting.  The fiber's machine
++       stack bounds recorded by fiber_initialize_coroutine are not used by
++       the Fil-C Ruby port (its own machine stack scanning is stubbed out;
++       the Fil-C collector scans the real stacks). */
++#else
+     result = pthread_attr_setstack(&attr, context->stack, (size_t)context->size);
+     if (result != 0) {
+         pthread_attr_destroy(&attr);
+         return result;
+     }
++#endif
+ 
+     result = pthread_cond_init(&context->schedule, NULL);
+     if (result != 0) {
 diff --git a/debug.c b/debug.c
 index e84e3d602a3e..3d4b1ffbcfe3 100644
 --- a/debug.c
@@ -9174,7 +9203,7 @@ index 937f0582c4a6..09a954916ede 100644
      return result;
    missing:
 diff --git a/vm_insnhelper.c b/vm_insnhelper.c
-index 1af20721a733..85533f640ab0 100644
+index 1af20721a733..a261694e8038 100644
 --- a/vm_insnhelper.c
 +++ b/vm_insnhelper.c
 @@ -431,7 +431,7 @@ vm_pop_frame(rb_execution_context_t *ec, rb_control_frame_t *cfp, const VALUE *e
@@ -9342,7 +9371,35 @@ index 1af20721a733..85533f640ab0 100644
                    calling->recv,
                    VM_GUARDED_PREV_EP(captured->ep),
                    (VALUE)cme,
-@@ -4780,7 +4780,7 @@ vm_yield_with_cfunc(rb_execution_context_t *ec,
+@@ -4231,6 +4231,19 @@ vm_call_refined(rb_execution_context_t *ec, rb_control_frame_t *cfp, struct rb_c
+     const rb_callable_method_entry_t *ref_cme = search_refined_method(ec, cfp, calling);
+ 
+     if (ref_cme) {
++#ifdef __FILC__
++        /* Fil-C: use the on-stack CC even when the call site has a CC, i.e.
++           never cache a cc_type_refinement CC in cd->cc.  Caching one there
++           would require rb_clear_all_refinement_method_cache to find and
++           invalidate all such CCs on every method definition, and the Fil-C
++           port has no heap walker to do that (rb_objspace_each_objects is
++           unimplemented).  Re-resolving the refinement on each call is
++           always correct and matches what upstream does for call sites
++           without a CC. */
++        struct rb_callcache *ref_cc =  &VM_CC_ON_STACK(Qundef, vm_call_general, {{ 0 }}, ref_cme);
++        calling->cc= ref_cc;
++        return vm_call_method(ec, cfp, calling);
++#else
+         if (calling->cd->cc) {
+             const struct rb_callcache *cc = calling->cc = vm_cc_new(vm_cc_cme(calling->cc)->defined_class, ref_cme, vm_call_general, cc_type_refinement);
+             RB_OBJ_WRITE(cfp->iseq, &calling->cd->cc, cc);
+@@ -4241,6 +4254,7 @@ vm_call_refined(rb_execution_context_t *ec, rb_control_frame_t *cfp, struct rb_c
+             calling->cc= ref_cc;
+             return vm_call_method(ec, cfp, calling);
+         }
++#endif
+     }
+     else {
+         return vm_call_method_nome(ec, cfp, calling);
+@@ -4780,7 +4794,7 @@ vm_yield_with_cfunc(rb_execution_context_t *ec,
      }
  
      vm_push_frame(ec, (const rb_iseq_t *)captured->code.ifunc,
@@ -9351,7 +9408,7 @@ index 1af20721a733..85533f640ab0 100644
                    self,
                    VM_GUARDED_PREV_EP(captured->ep),
                    (VALUE)me,
-@@ -4905,7 +4905,7 @@ vm_invoke_iseq_block(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp,
+@@ -4905,7 +4919,7 @@ vm_invoke_iseq_block(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp,
      SET_SP(rsp);
  
      vm_push_frame(ec, iseq,
@@ -9360,7 +9417,7 @@ index 1af20721a733..85533f640ab0 100644
                    captured->self,
                    VM_GUARDED_PREV_EP(captured->ep), 0,
                    ISEQ_BODY(iseq)->iseq_encoded + opt_pc,
-@@ -5850,7 +5850,7 @@ vm_ic_track_const_chain(rb_control_frame_t *cfp, IC ic, const ID *segments)
+@@ -5850,7 +5864,7 @@ vm_ic_track_const_chain(rb_control_frame_t *cfp, IC ic, const ID *segments)
  
  // For RJIT inlining
  static inline bool
@@ -9369,7 +9426,7 @@ index 1af20721a733..85533f640ab0 100644
  {
      if ((flags & IMEMO_CONST_CACHE_SHAREABLE) || rb_ractor_main_p()) {
          VM_ASSERT(ractor_incidental_shareable_p(flags & IMEMO_CONST_CACHE_SHAREABLE, value));
-@@ -6282,7 +6282,7 @@ vm_opt_and(VALUE recv, VALUE obj)
+@@ -6282,7 +6296,7 @@ vm_opt_and(VALUE recv, VALUE obj)
      // will be 1 on both.  1 & 1 == 1, so the result value will also
      // be a fixnum.  If either side is *not* a fixnum, then the tag bit
      // will be 0, and we return Qundef.
@@ -9378,7 +9435,7 @@ index 1af20721a733..85533f640ab0 100644
  
      if (FIXNUM_P(ret) &&
          BASIC_OP_UNREDEFINED_P(BOP_AND, INTEGER_REDEFINED_OP_FLAG)) {
-@@ -6298,7 +6298,7 @@ vm_opt_or(VALUE recv, VALUE obj)
+@@ -6298,7 +6312,7 @@ vm_opt_or(VALUE recv, VALUE obj)
  {
      if (FIXNUM_2_P(recv, obj) &&
          BASIC_OP_UNREDEFINED_P(BOP_OR, INTEGER_REDEFINED_OP_FLAG)) {
@@ -9387,7 +9444,7 @@ index 1af20721a733..85533f640ab0 100644
      }
      else {
          return Qundef;
-@@ -6419,9 +6419,9 @@ vm_opt_length(VALUE recv, int bop)
+@@ -6419,9 +6433,9 @@ vm_opt_length(VALUE recv, int bop)
  static VALUE
  vm_opt_empty_p(VALUE recv)
  {
@@ -9400,7 +9457,7 @@ index 1af20721a733..85533f640ab0 100644
        default: return Qfalse;
      }
  }
-@@ -6446,12 +6446,12 @@ vm_opt_nil_p(const rb_iseq_t *iseq, CALL_DATA cd, VALUE recv)
+@@ -6446,12 +6460,12 @@ vm_opt_nil_p(const rb_iseq_t *iseq, CALL_DATA cd, VALUE recv)
  static VALUE
  fix_succ(VALUE x)
  {
@@ -9677,7 +9734,7 @@ index e4a6c5b492ac..b3bb7a2498fb 100644
      VM_ASSERT(THROW_DATA_P(obj));
      obj->throw_state = st;
 diff --git a/vm_method.c b/vm_method.c
-index d09c7aab9b6e..1f67d52d4542 100644
+index d09c7aab9b6e..019a6095584b 100644
 --- a/vm_method.c
 +++ b/vm_method.c
 @@ -300,10 +300,10 @@ rb_clear_method_cache(VALUE klass_or_module, ID mid)
@@ -9693,7 +9750,23 @@ index d09c7aab9b6e..1f67d52d4542 100644
      }
      else {
          clear_method_cache_by_id_in_class(klass_or_module, mid);
-@@ -347,7 +347,7 @@ vm_ci_hash(VALUE v)
+@@ -313,6 +313,7 @@ rb_clear_method_cache(VALUE klass_or_module, ID mid)
+ // gc.c
+ void rb_cc_table_free(VALUE klass);
+ 
++#ifndef __FILC__
+ static int
+ invalidate_all_refinement_cc(void *vstart, void *vend, size_t stride, void *data)
+ {
+@@ -336,6 +337,7 @@ invalidate_all_refinement_cc(void *vstart, void *vend, size_t stride, void *data
+     }
+     return 0; // continue to iteration
+ }
++#endif /* !__FILC__ */
+ 
+ static st_index_t
+ vm_ci_hash(VALUE v)
+@@ -347,7 +349,7 @@ vm_ci_hash(VALUE v)
      h = rb_hash_uint(h, ci->argc);
      if (ci->kwarg) {
          for (int i = 0; i < ci->kwarg->keyword_len; i++) {
@@ -9702,7 +9775,24 @@ index d09c7aab9b6e..1f67d52d4542 100644
          }
      }
      return h;
-@@ -2358,7 +2358,7 @@ rb_mod_alias_method(VALUE mod, VALUE newname, VALUE oldname)
+@@ -454,8 +456,16 @@ rb_vm_ci_free(const struct rb_callinfo *ci)
+ void
+ rb_clear_all_refinement_method_cache(void)
+ {
++#ifdef __FILC__
++    /* Fil-C: vm_call_refined never caches cc_type_refinement CCs at call
++       sites (see vm_insnhelper.c), so there are no refinement CCs that need
++       invalidating here.  We also could not walk the heap to find them
++       because rb_objspace_each_objects is unimplemented in this port. */
++    rb_yjit_invalidate_all_method_lookup_assumptions();
++#else
+     rb_objspace_each_objects(invalidate_all_refinement_cc, NULL);
+     rb_yjit_invalidate_all_method_lookup_assumptions();
++#endif
+ }
+ 
+ void
+@@ -2358,7 +2368,7 @@ rb_mod_alias_method(VALUE mod, VALUE newname, VALUE oldname)
      if (!oldid) {
          rb_print_undef_str(mod, oldname);
      }
@@ -9711,7 +9801,7 @@ index d09c7aab9b6e..1f67d52d4542 100644
      rb_alias(mod, id, oldid);
      return ID2SYM(id);
  }
-@@ -2830,7 +2830,7 @@ call_method_entry(rb_execution_context_t *ec, VALUE defined_class, VALUE obj, ID
+@@ -2830,7 +2840,7 @@ call_method_entry(rb_execution_context_t *ec, VALUE defined_class, VALUE obj, ID
                    const rb_callable_method_entry_t *cme, int argc, const VALUE *argv, int kw_splat)
  {
      VALUE passed_block_handler = vm_passed_block_handler(ec);

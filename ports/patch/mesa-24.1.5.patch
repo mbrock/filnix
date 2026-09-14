@@ -99,6 +99,51 @@ index dee53381935c..c1a4fd7f37ce 100644
  
  # Check for standard headers and functions
  if (cc.has_header_symbol('sys/sysmacros.h', 'major') and
+diff --git a/src/c11/impl/threads_posix.c b/src/c11/impl/threads_posix.c
+index 2540e3e0c491..154cc3df6e47 100644
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -68,6 +68,7 @@ impl_thrd_routine(void *p)
+ }
+ 
+ 
++#ifndef __once_flag_defined
+ /*--------------- 7.25.2 Initialization functions ---------------*/
+ // 7.25.2.1
+ void
+@@ -75,6 +76,7 @@ call_once(once_flag *flag, void (*func)(void))
+ {
+     pthread_once(flag, func);
+ }
++#endif
+ 
+ 
+ /*------------- 7.25.3 Condition variable functions -------------*/
+diff --git a/src/c11/threads.h b/src/c11/threads.h
+index dbcb3459a9b2..6cdd4a26ba27 100644
+--- a/src/c11/threads.h
++++ b/src/c11/threads.h
+@@ -118,8 +118,10 @@ typedef pthread_cond_t  cnd_t;
+ typedef pthread_t       thrd_t;
+ typedef pthread_key_t   tss_t;
+ typedef pthread_mutex_t mtx_t;
++#  ifndef __once_flag_defined
+ typedef pthread_once_t  once_flag;
+ #  define ONCE_FLAG_INIT PTHREAD_ONCE_INIT
++#  endif
+ #  ifdef PTHREAD_DESTRUCTOR_ITERATIONS
+ #    define TSS_DTOR_ITERATIONS PTHREAD_DESTRUCTOR_ITERATIONS
+ #  else
+@@ -148,7 +150,9 @@ enum
+ 
+ /*-------------------------- functions --------------------------*/
+ 
++#ifndef __once_flag_defined
+ void call_once(once_flag *, void (*)(void));
++#endif
+ int cnd_broadcast(cnd_t *);
+ void cnd_destroy(cnd_t *);
+ int cnd_init(cnd_t *);
 diff --git a/src/util/blake3/meson.build b/src/util/blake3/meson.build
 index 6b53daab6b32..1e6432e30c98 100644
 --- a/src/util/blake3/meson.build

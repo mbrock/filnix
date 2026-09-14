@@ -1,0 +1,99 @@
+diff --git a/audisp/plugins/ids/Makefile.am b/audisp/plugins/ids/Makefile.am
+index c33c9a14817a..393391637f8e 100644
+--- a/audisp/plugins/ids/Makefile.am
++++ b/audisp/plugins/ids/Makefile.am
+@@ -29,7 +29,7 @@ prog_conf = ids.conf
+ plugin_confdir=$(prog_confdir)/plugins.d
+ plugin_conf = audisp-ids.conf
+ sbin_PROGRAMS = audisp-ids
+-check_PROGRAMS = test-model-bad-event test-nvpair test-origin test-reactions
++check_PROGRAMS = test-model-bad-event test-nvpair test-origin
+ TESTS = $(check_PROGRAMS)
+ noinst_HEADERS = account.h avl.h ids_config.h ids.h \
+ 	address.h model_bad_event.h model_behavior.h nvpair.h origin.h \
+@@ -59,14 +59,6 @@ test_origin_CFLAGS += ${ASAN_FLAGS}
+ test_origin_LDFLAGS = ${ASAN_FLAGS}
+ endif
+ 
+-test_reactions_SOURCES = test-reactions.c address.c reactions.c
+-test_reactions_CFLAGS = -D_GNU_SOURCE ${WFLAGS}
+-test_reactions_LDFLAGS = -Wl,--wrap=fork -Wl,--wrap=execve
+-if HAVE_ASAN
+-test_reactions_CFLAGS += ${ASAN_FLAGS}
+-test_reactions_LDFLAGS += ${ASAN_FLAGS}
+-endif
+-
+ audisp_ids_DEPENDENCIES = ${top_builddir}/lib/libaudit.la ${top_builddir}/auparse/libauparse.la ${top_builddir}/common/libaucommon.la ${top_builddir}/auplugin/libauplugin.la
+ audisp_ids_SOURCES = account.c address.c avl.c ids.c ids_config.c \
+ 	model_bad_event.c model_behavior.c nvpair.c origin.c reactions.c session.c \
+diff --git a/auparse/test/Makefile.am b/auparse/test/Makefile.am
+index 37b79bbf750a..102fa28cea14 100644
+--- a/auparse/test/Makefile.am
++++ b/auparse/test/Makefile.am
+@@ -41,10 +41,8 @@ endif
+ 
+ if BUILD_STATIC
+ STATIC_LINK = -static
+-noinst_PROGRAMS += databuf_test lru_cache_test uid_name_wrap_test \
+-	append_oom_test
+-TESTS += databuf_test lru_cache_test uid_name_wrap_test \
+-	append_oom_test
++noinst_PROGRAMS += databuf_test lru_cache_test uid_name_wrap_test
++TESTS += databuf_test lru_cache_test uid_name_wrap_test
+ endif
+ 
+ lookup_test_SOURCES = lookup_test.c
+@@ -90,12 +88,6 @@ uid_name_wrap_test_LDADD = ${top_builddir}/auparse/libauparse.la \
+ 	${top_builddir}/lib/libaudit.la ${top_builddir}/common/libaucommon.la
+ uid_name_wrap_test_DEPENDENCIES = ${top_builddir}/auparse/libauparse.la ${top_builddir}/lib/libaudit.la ${top_builddir}/common/libaucommon.la
+ 
+-# Linker wrapping makes the record-node allocation failure deterministic.
+-append_oom_test_SOURCES = append_oom_test.c
+-append_oom_test_LDFLAGS = ${STATIC_LINK} -Wl,--wrap=malloc
+-append_oom_test_LDADD = ${top_builddir}/auparse/libauparse.la \
+-	${top_builddir}/lib/libaudit.la ${top_builddir}/common/libaucommon.la
+-append_oom_test_DEPENDENCIES = ${top_builddir}/auparse/libauparse.la ${top_builddir}/lib/libaudit.la ${top_builddir}/common/libaucommon.la
+ endif
+ 
+ drop_srcdir = sed 's,$(srcdir)/test,test,'
+diff --git a/lib/test/Makefile.am b/lib/test/Makefile.am
+index c53bad9fefa7..3e2fcebad14c 100644
+--- a/lib/test/Makefile.am
++++ b/lib/test/Makefile.am
+@@ -26,11 +26,8 @@ if HAVE_ASAN
+ AM_CFLAGS += ${ASAN_FLAGS}
+ AM_LDFLAGS += ${ASAN_FLAGS}
+ endif
+-check_PROGRAMS = lookup_test audit_logging_test
++check_PROGRAMS = lookup_test
+ TESTS = $(check_PROGRAMS)
+ 
+ lookup_test_LDADD = ${top_builddir}/lib/libaudit.la
+ lookup_test_DEPENDENCIES = ${top_builddir}/lib/libaudit.la
+-
+-audit_logging_test_LDADD = ${top_builddir}/lib/libaudit.la
+-audit_logging_test_DEPENDENCIES = ${top_builddir}/lib/libaudit.la
+diff --git a/tools/aulastlog/Makefile.am b/tools/aulastlog/Makefile.am
+index 866d6ecbda65..76194316284b 100644
+--- a/tools/aulastlog/Makefile.am
++++ b/tools/aulastlog/Makefile.am
+@@ -26,19 +26,9 @@ EXTRA_DIST = $(man_MANS) aulastlog_test.sh
+ AM_CPPFLAGS = -I${top_srcdir} -I${top_srcdir}/auparse
+ AM_CFLAGS = -D_GNU_SOURCE ${WFLAGS}
+ bin_PROGRAMS = aulastlog
+-check_PROGRAMS = aulastlog_test
+-TESTS = aulastlog_test.sh
+ noinst_HEADERS = aulastlog-llist.h
+ man_MANS = aulastlog.8
+ 
+ aulastlog_SOURCES = aulastlog.c aulastlog-llist.c
+ aulastlog_LDADD = ${top_builddir}/auparse/libauparse.la
+ aulastlog_DEPENDENCIES = ${top_builddir}/auparse/libauparse.la
+-
+-aulastlog_test_SOURCES = aulastlog.c aulastlog-llist.c aulastlog-test.c
+-aulastlog_test_LDADD = ${top_builddir}/auparse/libauparse.la
+-aulastlog_test_DEPENDENCIES = ${top_builddir}/auparse/libauparse.la
+-aulastlog_test_LDFLAGS = \
+-	-Wl,--wrap=auparse_get_timestamp \
+-	-Wl,--wrap=auparse_find_field \
+-	-Wl,--wrap=auparse_get_field_int

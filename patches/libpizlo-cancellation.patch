@@ -1,0 +1,770 @@
+Subject: Native cancellation control, typed syscall gates and cleanup frame identities
+Origin: Filnix
+Upstream-Status: Experimental, not submitted
+
+Based on Fil-C b6dd63481f796f8bff8502165c7dfc61091dbbd6.
+See docs/pthread-cancellation-implementation.md for the supported entry points,
+validation and remaining limitations. This does not implement arbitrary async
+cancellation or cancellation that unwinds out of an application signal handler.
+
+diff --git a/filc/include/pizlonated_runtime.h b/filc/include/pizlonated_runtime.h
+index 9d9f1f61951e..18e835b39136 100644
+--- a/filc/include/pizlonated_runtime.h
++++ b/filc/include/pizlonated_runtime.h
+@@ -84,6 +84,9 @@ filc_bool zthread_join(void* thread, void** result); /* Only fails with ESRCH fo
+                                                         Returns true on success, false on failure
+                                                         and sets errno. */
+ filc_bool zthread_kill(void* thread, int sig);
++unsigned zthread_cancel_get(void);
++unsigned zthread_cancel_set(unsigned mask, unsigned bits);
++filc_bool zthread_cancel_request(void* thread);
+ 
+ void* zthread_stack_limit(void* thread);
+ void* zthread_stack_top(void* thread);
+diff --git a/filc/include/pizlonated_syscalls.h b/filc/include/pizlonated_syscalls.h
+index af4280826768..6117a64a1a6a 100644
+--- a/filc/include/pizlonated_syscalls.h
++++ b/filc/include/pizlonated_syscalls.h
+@@ -47,10 +47,13 @@ extern "C" {
+ int zsys_ioctl(int fd, int request, ...);
+ long zsys_writev(int fd, const void* iov, int iovcnt);
+ long zsys_read(int fd, void* buf, __SIZE_TYPE__ size);
++long zsys_read_cancel(int fd, void* buf, __SIZE_TYPE__ size, int* canceled);
+ long zsys_readv(int fd, const void* iov, int iovcnt);
+ long zsys_write(int fd, const void* buf, __SIZE_TYPE__ size);
+ int zsys_close_impl(int fd);
+ int zsys_close(int fd);
++int zsys_close_cancel_impl(int fd, int* canceled);
++int zsys_close_cancel(int fd, int* canceled);
+ long zsys_lseek(int fd, long offset, int whence);
+ void zsys_exit_soft(int return_code); /* Uses the yolo exit(3), so calls destructors. */
+ void zsys_exit_hard(int return_code); /* Uses the yolo _Exit(2), so no destructors. */
+@@ -85,6 +88,7 @@ unsigned zsys_umask(unsigned mask);
+ int zsys_getitimer(int which, void* curr_value);
+ int zsys_setitimer(int which, const void* new_value, void* old_value);
+ int zsys_pause(void);
++int zsys_pause_cancel(int* canceled);
+ int zsys_pselect(int nfds, void* readfds, void* writefds, void* exceptfds, const void* timeout,
+                  const void* sigmask);
+ int zsys_kill(int pid, int sig);
+@@ -134,6 +138,7 @@ void* zsys_dlsym(void* handle, const char* symbol);
+ void* zsys_dlvsym(void* handle, const char* symbol, const char* version);
+ int zsys_dladdr(const void* addr, void* info);
+ int zsys_poll(void* pollfds, unsigned long nfds, int timeout);
++int zsys_poll_cancel(void* pollfds, unsigned long nfds, int timeout, int* canceled);
+ int zsys_faccessat(int dirfd, const char* pathname, int mode, int flags);
+ int zsys_sigwait(const void* sigmask, int* sig);
+ int zsys_fsync(int fd);
+@@ -229,6 +234,8 @@ void zsys_futex_wait(volatile int* addr, int val, int priv);
+    uses! */
+ int zsys_futex_timedwait(volatile int* addr, int val, int clock_id, const void* absolute_timeout,
+                          int priv);
++int zsys_futex_timedwait_cancel(volatile int* addr, int val, int clock_id,
++                                const void* absolute_timeout, int priv, int* canceled);
+ int zsys_futex_unlock_pi(volatile int* addr, int priv);
+ int zsys_futex_lock_pi(volatile int* addr, int priv, const void* timeout);
+ void zsys_futex_requeue(volatile int* addr, int priv, int wake_count, int requeue_count,
+@@ -237,6 +244,7 @@ int zsys_getdents(int fd, void* dirent, __SIZE_TYPE__ size);
+ long zsys_getrandom(void* buf, __SIZE_TYPE__ buflen, unsigned flags);
+ int zsys_epoll_create1_impl(int flags);
+ int zsys_epoll_ctl_impl(int epfd, int op, int fd, void* event);
++int zsys_epoll_wait_cancel(int epfd, void* events, int maxevents, int timeout, int* canceled);
+ int zsys_epoll_wait_impl(int epfd, void* events, int maxevents, int timeout);
+ int zsys_epoll_pwait_impl(int epfd, void* events, int maxevents, int timeout, const void* sigmask);
+ int zsys_epoll_pwait2_impl(int epfd, void* events, int maxevents, const void* timeout,
+@@ -412,6 +420,19 @@ long zsys_set_mempolicy(int mode, const unsigned long *nodemask,
+ int zsys_clock_adjtime(int clock_id, void* buf);
+ void zsys_abort(void);
+ 
++/* Cancellation variants return a separate outcome after native result conversion. */
++long zsys_write_cancel(int fd, const void* buf, __SIZE_TYPE__ size, int* canceled_ptr);
++long zsys_readv_cancel(int fd, const void* iov_ptr, int count, int* canceled_ptr);
++long zsys_writev_cancel(int fd, const void* iov_ptr, int count, int* canceled_ptr);
++long zsys_pread_cancel(int fd, void* buf, __SIZE_TYPE__ size, long offset, int* canceled_ptr);
++long zsys_pwrite_cancel(int fd, const void* buf, __SIZE_TYPE__ size, long offset, int* canceled_ptr);
++int zsys_openat_cancel(int fd, const char* path_ptr, int flags, unsigned mode, int* canceled_ptr);
++int zsys_accept4_cancel(int fd, void* addr_ptr, unsigned* addrlen_ptr, int flags, int* canceled_ptr);
++long zsys_sendmsg_cancel(int fd, const void* msg_ptr, int flags, int* canceled_ptr);
++long zsys_recvmsg_cancel(int fd, void* msg_ptr, int flags, int* canceled_ptr);
++int zsys_clock_nanosleep_cancel(int clockid, int flags, const void* req_ptr, void* rem_ptr, int* canceled_ptr);
++int zsys_epoll_wait_cancel_impl(int fd, void* events_ptr, int maxevents, int timeout, int* canceled_ptr);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/filc/include/stdfil.h b/filc/include/stdfil.h
+index 050c0567ecd1..cc66545db273 100644
+--- a/filc/include/stdfil.h
++++ b/filc/include/stdfil.h
+@@ -687,6 +687,11 @@ typedef struct zjmp_buf zjmp_buf;
+    that has no capability (it might as well be an integer). */
+ void* zget_jmp_buf_impl_frame(zjmp_buf* jmp_buf_impl);
+ 
++/* Return an identity for a call frame: depth 0 is the caller, depth 1 its
++   caller, etc. The returned pointer cannot be dereferenced. Like the frame
++   of a jump buffer, it is only meaningful while that frame remains live. */
++void* zget_call_frame(unsigned depth);
++
+ /* Given a jmp_buf, return the frame that it jumps to. This is the __builtin_frame_address() or
+    _Unwind_GetCFA() value for that frame. Note that this is a pointer that has no capability (it might
+    as well be an integer).
+diff --git a/filc/src/runtime.c b/filc/src/runtime.c
+index 8cea249b2bd7..e38b73223e3b 100644
+--- a/filc/src/runtime.c
++++ b/filc/src/runtime.c
+@@ -308,6 +308,22 @@ int zsys_close(int fd)
+     return result;
+ }
+ 
++int zsys_close_cancel(int fd, int* canceled)
++{
++    struct fd_holder* holder = fd >= 0 ? get_locked_existing_fd_holder(fd) : 0;
++    int result = zsys_close_cancel_impl(fd, canceled);
++    if (holder) {
++        /* The native gate cancels only before Linux executes close. Once the
++           call returns, even with EINTR, this descriptor's backer is no longer
++           owned by it. Keep the holder locked across both native completion
++           and this update so reuse cannot observe the old association. */
++        if (!*canceled)
++            holder->backer = 0;
++        lock_unlock(&holder->lock);
++    }
++    return result;
++}
++
+ int zsys_fcntl(int fd, int cmd, ...)
+ {
+     if (fd < 0) {
+@@ -414,6 +430,13 @@ int zsys_epoll_wait(int epfd, void* events, int maxevents, int timeout)
+     return result;
+ }
+ 
++int zsys_epoll_wait_cancel(int epfd, void* events, int maxevents, int timeout, int* canceled)
++{
++    int result = zsys_epoll_wait_cancel_impl(epfd, events, maxevents, timeout, canceled);
++    fix_events(epfd, events, result);
++    return result;
++}
++
+ int zsys_epoll_pwait(int epfd, void* events, int maxevents, int timeout, const void* sigmask)
+ {
+     int result = zsys_epoll_pwait_impl(epfd, events, maxevents, timeout, sigmask);
+diff --git a/libpas/src/libpas/filc_cancel_syscall.S b/libpas/src/libpas/filc_cancel_syscall.S
+new file mode 100644
+index 000000000000..fe908466c636
+--- /dev/null
++++ b/libpas/src/libpas/filc_cancel_syscall.S
+@@ -0,0 +1,42 @@
++/* The final request check and syscall instruction must share one PC window.
++   In particular, the instruction immediately after syscall is outside it:
++   Linux resumes there when returning a completed/partial result, and at the
++   syscall instruction when restarting an interrupted operation. */
++#if defined(__x86_64__)
++    .text
++    .p2align 4
++    .globl filc_cancel_syscall
++    .hidden filc_cancel_syscall
++    .type filc_cancel_syscall,@function
++filc_cancel_syscall:
++    .cfi_startproc
++    .globl filc_cancel_syscall_begin
++    .hidden filc_cancel_syscall_begin
++filc_cancel_syscall_begin:
++    movl (%rdi), %eax
++    andl $25, %eax                /* pending, enabled, not exiting */
++    cmpl $8, %eax
++    je filc_cancel_syscall_abort
++    movq %rsi, %rax               /* syscall number */
++    movq %rdx, %rdi               /* argument 1 */
++    movq %rcx, %rsi               /* argument 2 */
++    movq %r8, %rdx                /* argument 3 */
++    movq %r9, %r10                /* argument 4 */
++    movq 8(%rsp), %r8             /* argument 5 */
++    movq 16(%rsp), %r9            /* argument 6 */
++    syscall
++    .globl filc_cancel_syscall_end
++    .hidden filc_cancel_syscall_end
++filc_cancel_syscall_end:
++    xorl %edx, %edx               /* result.canceled = false */
++    ret
++    .globl filc_cancel_syscall_abort
++    .hidden filc_cancel_syscall_abort
++filc_cancel_syscall_abort:
++    xorl %eax, %eax               /* no kernel result */
++    movl $1, %edx                 /* result.canceled = true */
++    ret
++    .cfi_endproc
++    .size filc_cancel_syscall, .-filc_cancel_syscall
++    .section .note.GNU-stack,"",@progbits
++#endif
+diff --git a/libpas/src/libpas/filc_cancel_syscall.h b/libpas/src/libpas/filc_cancel_syscall.h
+new file mode 100644
+index 000000000000..f68dedc2ffcf
+--- /dev/null
++++ b/libpas/src/libpas/filc_cancel_syscall.h
+@@ -0,0 +1,28 @@
++/* Native Linux cancellation gate. The signal handler may redirect execution
++   from [filc_cancel_syscall_begin, filc_cancel_syscall_end) to
++   filc_cancel_syscall_abort. All paths return normally to the native caller.
++   The gate never invokes Fil-C or unwinds a native signal frame. */
++#ifndef FILC_CANCEL_SYSCALL_H
++#define FILC_CANCEL_SYSCALL_H
++
++#ifndef __ASSEMBLER__
++typedef struct {
++    long value;
++    long canceled;
++} filc_cancel_syscall_result;
++
++/* State bits match the glibc cancellation control word. Other bits are ignored.
++   This is an internal native interface, not an unchecked Fil-C syscall API. */
++#define FILC_CANCEL_DISABLED 1u
++#define FILC_CANCEL_ASYNC 2u
++#define FILC_CANCEL_PENDING 8u
++#define FILC_CANCEL_EXITING 16u
++
++extern filc_cancel_syscall_result filc_cancel_syscall(
++    const unsigned* state, long number,
++    long arg1, long arg2, long arg3, long arg4, long arg5, long arg6);
++extern const char filc_cancel_syscall_begin[], filc_cancel_syscall_end[];
++extern const char filc_cancel_syscall_abort[];
++#endif
++
++#endif
+diff --git a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
+index d9d4973a87fe..511cf7ed6bbd 100644
+--- a/libpas/src/libpas/filc_runtime.c
++++ b/libpas/src/libpas/filc_runtime.c
+@@ -37,6 +37,7 @@
+ #include "filc_dump_heap.h"
+ #include "filc_dump_stacks.h"
+ #include "filc_native.h"
++#include "filc_cancel_syscall.h"
+ #include "filc_runtime_inlines.h"
+ #include "filc_sampling_profiler.h"
+ #include "filc_setproctitle.h"
+@@ -55,6 +56,7 @@
+ #include <fcntl.h>
+ #include <sys/stat.h>
+ #include <signal.h>
++#include <ucontext.h>
+ #include <sys/select.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+@@ -72,6 +74,7 @@
+ #include <sys/file.h>
+ #include <sys/sendfile.h>
+ #include <futex_calls.h>
++#include <linux/futex.h>
+ #include <dirent.h>
+ #include <sys/random.h>
+ #include <sys/epoll.h>
+@@ -466,8 +469,50 @@ static void open_new_log_file_if_necessary(void)
+ static void add_cpu_indicator_globals(void);
+ #endif
+ 
++static int filc_cancel_signal;
++
++static bool filc_cancel_pending(unsigned state)
++{
++    return (state & (FILC_CANCEL_DISABLED | FILC_CANCEL_PENDING | FILC_CANCEL_EXITING))
++        == FILC_CANCEL_PENDING;
++}
++
++static void filc_cancel_signal_handler(int signum, siginfo_t* info, void* context)
++{
++    PAS_UNUSED_PARAM(info);
++    filc_thread* thread = filc_get_my_thread();
++    if (!thread || !filc_cancel_pending(__atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE)))
++        return;
++#if defined(__x86_64__)
++    ucontext_t* uc = (ucontext_t*)context;
++    uintptr_t pc = uc->uc_mcontext.gregs[REG_RIP];
++    sigaddset(&uc->uc_sigmask, signum);
++    if (pc >= (uintptr_t)filc_cancel_syscall_begin && pc < (uintptr_t)filc_cancel_syscall_end) {
++        uc->uc_mcontext.gregs[REG_RIP] = (uintptr_t)filc_cancel_syscall_abort;
++        return;
++    }
++    /* Preserve a notification delivered inside an application signal handler.
++       Blocking it in that context avoids a storm; an outer signal return or
++       the next explicit cancellation gate will unblock it again. */
++    syscall(SYS_tgkill, getpid(), syscall(SYS_gettid), signum);
++#else
++    PAS_UNUSED_PARAM(context);
++    PAS_UNUSED_PARAM(signum);
++#endif
++}
++
++static void filc_cancel_set_signal_mask(bool block)
++{
++    sigset_t set;
++    PAS_ASSERT(!sigemptyset(&set));
++    PAS_ASSERT(!sigaddset(&set, filc_cancel_signal));
++    PAS_ASSERT(!pthread_sigmask(block ? SIG_BLOCK : SIG_UNBLOCK, &set, NULL));
++}
++
+ static bool is_unsafe_signal_for_kill(int signum)
+ {
++    if (signum == filc_cancel_signal)
++        return true;
+     unsigned index;
+     for (index = num_libc_internal_signals; index--;) {
+         if (signum == libc_internal_signals[index])
+@@ -520,6 +565,13 @@ static filc_signal_handler* install_dummy_signal_handler(int signum)
+ 
+ void filc_initialize(filc_stack_limit stack_limit)
+ {
++    filc_cancel_signal = SIGRTMIN;
++    struct sigaction cancel_action;
++    pas_zero_memory(&cancel_action, sizeof(cancel_action));
++    cancel_action.sa_sigaction = filc_cancel_signal_handler;
++    cancel_action.sa_flags = SA_SIGINFO | SA_RESTART;
++    PAS_ASSERT(!sigfillset(&cancel_action.sa_mask));
++    PAS_ASSERT(!sigaction(filc_cancel_signal, &cancel_action, NULL));
+     bool should_log_to_file = false;
+     filc_get_bool_env("FILC_LOG_TO_FILE", &should_log_to_file);
+     if (should_log_to_file)
+@@ -7907,6 +7959,14 @@ filc_ptr filc_native_zget_jmp_buf_impl_frame(filc_thread* my_thread, filc_ptr jm
+     return filc_ptr_forge_invalid(jmp_buf->saved_top_frame);
+ }
+ 
++filc_ptr filc_native_zget_call_frame(filc_thread* thread, unsigned depth)
++{
++    filc_frame* frame = thread->top_frame->parent;
++    while (depth-- && frame)
++        frame = frame->parent;
++    return filc_ptr_forge_invalid(frame);
++}
++
+ void filc_native_zmake_setjmp_save_sigmask(filc_thread* my_thread, bool save_sigmask)
+ {
+     PAS_UNUSED_PARAM(my_thread);
+@@ -8500,6 +8560,48 @@ ssize_t filc_native_zsys_writev(filc_thread* my_thread, int fd, filc_ptr user_io
+     return result;
+ }
+ 
++static filc_cancel_syscall_result filc_cancellable_syscall(
++    filc_thread* thread, long number, long a1, long a2, long a3, long a4, long a5, long a6,
++    bool cancel_on_eintr)
++{
++    filc_exit(thread);
++    unsigned state = __atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE);
++    if (!(state & (FILC_CANCEL_DISABLED | FILC_CANCEL_EXITING)))
++        filc_cancel_set_signal_mask(false);
++    filc_cancel_syscall_result result = filc_cancel_syscall(
++        &thread->cancel_state, number, a1, a2, a3, a4, a5, a6);
++    if (cancel_on_eintr && result.value == -EINTR
++        && filc_cancel_pending(__atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE)))
++        result.canceled = true;
++    filc_enter(thread);
++    return result;
++}
++
++static long filc_return_cancellable_syscall(
++    filc_cancel_syscall_result result, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = !!result.canceled;
++    if (result.canceled)
++        return -1;
++    if ((unsigned long)result.value >= (unsigned long)-4095) {
++        filc_set_errno(-result.value);
++        return -1;
++    }
++    return result.value;
++}
++
++ssize_t filc_native_zsys_read_cancel(
++    filc_thread* thread, int fd, filc_ptr buf, size_t size, filc_ptr canceled_ptr)
++{
++    check_fd(fd);
++    filc_check_write(buf, size);
++    filc_check_write(canceled_ptr, sizeof(int));
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_read, fd, (long)filc_ptr_ptr(buf), size, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
+ ssize_t filc_native_zsys_read(filc_thread* my_thread, int fd, filc_ptr buf, size_t size)
+ {
+     check_fd(fd);
+@@ -8541,6 +8643,39 @@ int filc_native_zsys_close_impl(filc_thread* my_thread, int fd)
+     return result;
+ }
+ 
++int filc_native_zsys_close_cancel_impl(filc_thread* thread, int fd, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    if (is_reserved_fd(fd)) {
++        filc_cancel_syscall_result result = { 0, filc_cancel_pending(
++            __atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE)) };
++        return filc_return_cancellable_syscall(result, canceled_ptr);
++    }
++    /* Linux has released the descriptor when close returns EINTR. Preserve
++       every post-execution result instead of canceling or retrying it. */
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_close, fd, 0, 0, 0, 0, 0, false);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++int filc_native_zsys_pause_cancel(filc_thread* thread, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_pause, 0, 0, 0, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++int filc_native_zsys_poll_cancel(
++    filc_thread* thread, filc_ptr fds, unsigned long nfds, int timeout, filc_ptr canceled_ptr)
++{
++    filc_check_write(fds, filc_mul_size(sizeof(struct pollfd), nfds));
++    filc_check_write(canceled_ptr, sizeof(int));
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_poll, (long)filc_ptr_ptr(fds), nfds, timeout, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
+ long filc_native_zsys_lseek(filc_thread* my_thread, int fd, long offset, int whence)
+ {
+     check_fd(fd);
+@@ -8710,7 +8845,7 @@ int filc_native_zsys_sigaction(
+     if (verbose)
+         pas_log("[%d] sigaction on signum = %d\n", getpid(), signum);
+     
+-    if (signum < 0 || signum > FILC_MAX_USER_SIGNUM) {
++    if (signum < 0 || signum > FILC_MAX_USER_SIGNUM || signum == filc_cancel_signal) {
+         if (verbose)
+             pas_log("bogus signum.\n");
+         filc_set_errno(EINVAL);
+@@ -9024,6 +9159,14 @@ int filc_native_zsys_sigprocmask(filc_thread* my_thread, int user_how, filc_ptr
+         filc_check_user_sigset(user_set_ptr, filc_read_access);
+         set = (sigset_t*)filc_bmalloc_allocate_tmp(my_thread, sizeof(sigset_t));
+         filc_from_user_sigset((sigset_t*)filc_ptr_ptr(user_set_ptr), set);
++        /* The private cancellation signal follows cancellation state, not an
++           application mask. In particular an in-flight notification remains
++           blocked after cancellation has been disabled. */
++        sigdelset(set, filc_cancel_signal);
++        if (how == SIG_SETMASK
++            && (__atomic_load_n(&my_thread->cancel_state, __ATOMIC_ACQUIRE)
++                & (FILC_CANCEL_DISABLED | FILC_CANCEL_EXITING)))
++            sigaddset(set, filc_cancel_signal);
+     } else
+         set = NULL;
+     if (filc_ptr_ptr(user_oldset_ptr)) {
+@@ -9933,6 +10076,7 @@ void filc_from_user_sigset(sigset_t* user_sigset,
+ void filc_to_user_sigset(sigset_t* sigset, sigset_t* user_sigset)
+ {
+     memcpy(user_sigset, sigset, sizeof(sigset_t));
++    PAS_ASSERT(!sigdelsetyolo(user_sigset, filc_cancel_signal));
+ }
+ 
+ typedef struct {
+@@ -11207,6 +11351,33 @@ int filc_native_zsys_futex_timedwait(filc_thread* my_thread, filc_ptr addr_ptr,
+     return result;
+ }
+ 
++/* Like yolo_futex_timedwait, this uses an absolute deadline and returns a
++   positive errno. Only the cancellable NPTL waits use this entry point. */
++int filc_native_zsys_futex_timedwait_cancel(
++    filc_thread* thread, filc_ptr addr_ptr, int val, int clock_id,
++    filc_ptr timeout_ptr, int priv, filc_ptr canceled_ptr)
++{
++    filc_check_read(addr_ptr, sizeof(int));
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    struct timespec timeout;
++    if (filc_ptr_ptr(timeout_ptr)) {
++        filc_check_read(timeout_ptr, sizeof(timeout));
++        timeout = *(const struct timespec*)filc_ptr_ptr(timeout_ptr);
++        if (timeout.tv_sec < 0)
++            return ETIMEDOUT;
++    }
++    if (clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC)
++        return EINVAL;
++    int op = FUTEX_WAIT_BITSET | (priv ? FUTEX_PRIVATE_FLAG : 0)
++        | (clock_id == CLOCK_REALTIME ? FUTEX_CLOCK_REALTIME : 0);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_futex, (long)filc_ptr_ptr(addr_ptr), op, val,
++        filc_ptr_ptr(timeout_ptr) ? (long)&timeout : 0, 0, FUTEX_BITSET_MATCH_ANY, true);
++    *(int*)filc_ptr_ptr(canceled_ptr) = !!result.canceled;
++    return result.canceled ? EINTR : -result.value;
++}
++
+ int filc_native_zsys_futex_unlock_pi(filc_thread* my_thread, filc_ptr addr_ptr, int priv)
+ {
+     filc_check_write(addr_ptr, sizeof(int));
+@@ -13439,6 +13610,55 @@ void filc_native_zsys_abort(filc_thread* my_thread)
+     PAS_ASSERT(!"Should not get here");
+ }
+ 
++unsigned filc_native_zthread_cancel_get(filc_thread* thread)
++{
++    return __atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE);
++}
++
++unsigned filc_native_zthread_cancel_set(filc_thread* thread, unsigned mask, unsigned bits)
++{
++    FILC_CHECK(!(mask & ~(FILC_CANCEL_DISABLED | FILC_CANCEL_ASYNC | FILC_CANCEL_EXITING)),
++               NULL, "invalid cancellation state mask");
++    FILC_CHECK(!(bits & ~mask), NULL, "invalid cancellation state bits");
++    /* Block before publishing DISABLED so a sender that observed the old
++       enabled state cannot interrupt a subsequent disabled poll/read. */
++    filc_cancel_set_signal_mask(true);
++    unsigned old = __atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE);
++    unsigned value;
++    do {
++        value = (old & ~mask) | bits;
++        /* EXITING suppresses delivery independently of the public settings.
++           Cleanup may still query/change type while cancellation is disabled. */
++        if (old & FILC_CANCEL_EXITING)
++            value |= FILC_CANCEL_EXITING;
++    } while (!__atomic_compare_exchange_n(&thread->cancel_state, &old, value, true,
++                                          __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE));
++    if (!(value & (FILC_CANCEL_DISABLED | FILC_CANCEL_EXITING)))
++        filc_cancel_set_signal_mask(false);
++    return old;
++}
++
++bool filc_native_zthread_cancel_request(filc_thread* my_thread, filc_ptr thread_ptr)
++{
++    check_zthread(thread_ptr);
++    filc_thread* thread = (filc_thread*)filc_ptr_ptr(thread_ptr);
++    filc_exit(my_thread);
++    pas_system_mutex_lock(&thread->lock);
++    int error = 0;
++    if (thread->forked)
++        error = ESRCH;
++    else if (thread->thread) {
++        unsigned old = __atomic_fetch_or(&thread->cancel_state, FILC_CANCEL_PENDING, __ATOMIC_ACQ_REL);
++        if (!(old & (FILC_CANCEL_DISABLED | FILC_CANCEL_EXITING)))
++            error = pthread_kill(thread->thread, filc_cancel_signal);
++    }
++    pas_system_mutex_unlock(&thread->lock);
++    filc_enter(my_thread);
++    if (error)
++        filc_set_errno(error);
++    return !error;
++}
++
+ filc_ptr filc_native_zthread_self(filc_thread* my_thread)
+ {
+     static const bool verbose = false;
+@@ -14377,10 +14597,154 @@ int filc_native_zmath_fetestexcept(filc_thread* my_thread, int excepts)
+     return fetestexcept(excepts);
+ }
+ 
++
++/* Explicit cancellation variants; the ordinary zsys entries stay noncancellable. */
++long filc_native_zsys_write_cancel(filc_thread* thread, int fd, filc_ptr buf, size_t size, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    filc_check_read(buf, size);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_write, fd, (long)filc_ptr_ptr(buf), size, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++long filc_native_zsys_readv_cancel(filc_thread* thread, int fd, filc_ptr iov_ptr, int count, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    struct iovec* iov = filc_prepare_iovec(thread, iov_ptr, count, filc_extended_write_access);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_readv, fd, (long)iov, count, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++long filc_native_zsys_writev_cancel(filc_thread* thread, int fd, filc_ptr iov_ptr, int count, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    struct iovec* iov = filc_prepare_iovec(thread, iov_ptr, count, filc_extended_read_access);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_writev, fd, (long)iov, count, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++long filc_native_zsys_pread_cancel(filc_thread* thread, int fd, filc_ptr buf, size_t size, long offset, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    filc_check_write(buf, size);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_pread64, fd, (long)filc_ptr_ptr(buf), size, offset, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++long filc_native_zsys_pwrite_cancel(filc_thread* thread, int fd, filc_ptr buf, size_t size, long offset, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    filc_check_read(buf, size);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_pwrite64, fd, (long)filc_ptr_ptr(buf), size, offset, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++int filc_native_zsys_openat_cancel(filc_thread* thread, int fd, filc_ptr path_ptr, int flags, unsigned mode, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    char* path = filc_check_and_get_tmp_str(thread, path_ptr);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_openat, fd, (long)path, flags, mode, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++int filc_native_zsys_accept4_cancel(filc_thread* thread, int fd, filc_ptr addr_ptr, filc_ptr addrlen_ptr, int flags, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    unsigned* addrlen;
++    if (!handle_returned_addr(thread, addr_ptr, addrlen_ptr, &addrlen))
++        return -1;
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_accept4, fd, (long)filc_ptr_ptr(addr_ptr), (long)addrlen, flags, 0, 0, true);
++    if (!result.canceled && result.value >= 0 && addrlen)
++        *(unsigned*)filc_ptr_ptr(addrlen_ptr) = *addrlen;
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++long filc_native_zsys_sendmsg_cancel(filc_thread* thread, int fd, filc_ptr msg_ptr, int flags, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    check_msghdr(msg_ptr, filc_read_access);
++    struct msghdr msg;
++    from_user_msghdr_for_send(thread, msg_ptr, &msg);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_sendmsg, fd, (long)&msg, flags, 0, 0, 0, true);
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++long filc_native_zsys_recvmsg_cancel(filc_thread* thread, int fd, filc_ptr msg_ptr, int flags, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    check_msghdr(msg_ptr, filc_write_access);
++    struct msghdr msg;
++    from_user_msghdr_for_recv(thread, msg_ptr, &msg);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_recvmsg, fd, (long)&msg, flags, 0, 0, 0, true);
++    /* Return ancillary data, lengths and flags before libc may unwind. In
++       particular, successful SCM_RIGHTS reception has transferred ownership. */
++    if (!result.canceled && result.value >= 0) {
++        check_msghdr(msg_ptr, filc_write_access);
++        to_user_msghdr_for_recv(&msg, msg_ptr);
++    }
++    return filc_return_cancellable_syscall(result, canceled_ptr);
++}
++
++int filc_native_zsys_clock_nanosleep_cancel(filc_thread* thread, int clockid, int flags, filc_ptr req_ptr, filc_ptr rem_ptr, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    filc_check_read(req_ptr, sizeof(struct timespec));
++    if (filc_ptr_ptr(rem_ptr))
++        filc_check_write(rem_ptr, sizeof(struct timespec));
++    /* Match glibc's public clock mapping and positive-errno convention. */
++    if (clockid == CLOCK_THREAD_CPUTIME_ID)
++        return EINVAL;
++    if (clockid == CLOCK_PROCESS_CPUTIME_ID)
++        clockid = -6; /* Linux MAKE_PROCESS_CPUCLOCK(0, CPUCLOCK_SCHED). */
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_clock_nanosleep, clockid, flags, (long)filc_ptr_ptr(req_ptr),
++        (long)filc_ptr_ptr(rem_ptr), 0, 0, true);
++    *(int*)filc_ptr_ptr(canceled_ptr) = !!result.canceled;
++    return result.canceled ? EINTR : -result.value;
++}
++
++int filc_native_zsys_epoll_wait_cancel_impl(filc_thread* thread, int fd, filc_ptr events_ptr, int maxevents, int timeout, filc_ptr canceled_ptr)
++{
++    filc_check_write(canceled_ptr, sizeof(int));
++    *(int*)filc_ptr_ptr(canceled_ptr) = 0;
++    check_fd(fd);
++    struct epoll_event* events = make_epoll_events(thread, maxevents);
++    filc_cancel_syscall_result result = filc_cancellable_syscall(
++        thread, SYS_epoll_wait, fd, (long)events, maxevents, timeout, 0, 0, true);
++    int count = filc_return_cancellable_syscall(result, canceled_ptr);
++    return to_user_epoll_events(count, events, events_ptr);
++}
++
+ PAS_END_EXTERN_C;
+ 
+ #endif /* PAS_ENABLE_FILC */
+ 
+ #endif /* LIBPAS_ENABLED */
+-
+-
+diff --git a/libpas/src/libpas/filc_runtime.h b/libpas/src/libpas/filc_runtime.h
+index 98b7e44ecfbc..94844bd72607 100644
+--- a/libpas/src/libpas/filc_runtime.h
++++ b/libpas/src/libpas/filc_runtime.h
+@@ -834,6 +834,10 @@ struct PAS_ALIGNED(FILC_CC_ALIGNMENT) filc_thread {
+        by having a guard page. */
+     char* space_with_guard_page;
+     char* guard_page;
++
++    /* Cancellation control belongs to the runtime, so native signal delivery
++       does not inspect a user-owned TLS object. Zero means enabled/deferred. */
++    unsigned cancel_state;
+ };
+ 
+ enum filc_exit_allowed_mode {
+diff --git a/libpas/src/libpas/generate_pizlonated_forwarders.rb b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+index 4b41e9896537..e07a3d02143f 100644
+--- a/libpas/src/libpas/generate_pizlonated_forwarders.rb
++++ b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+@@ -172,6 +172,7 @@ addSig nil, "void", "zerror", "filc_ptr"
+ addSig nil, "void", "zsafety_error", "filc_ptr"
+ addSig nil, "exception/filc_ptr", "zcall", "filc_ptr", "filc_ptr"
+ addSig nil, "filc_ptr", "zget_jmp_buf_impl_frame", "filc_ptr"
++addSig nil, "filc_ptr", "zget_call_frame", "unsigned"
+ addSig nil, "filc_ptr", "zclosure_new", "filc_ptr", "filc_ptr"
+ addSig nil, "filc_ptr", "zclosure_get_data", "filc_ptr"
+ addSig nil, "void", "zclosure_set_data", "filc_ptr", "filc_ptr"
+@@ -220,6 +221,13 @@ addSig nil, "void", "zsetproctitle", "filc_ptr"
+ addSig nil, "int", "zsys_ioctl", "int", "int", "..."
+ addSig nil, "ssize_t", "zsys_writev", "int", "filc_ptr", "int"
+ addSig nil, "ssize_t", "zsys_read", "int", "filc_ptr", "size_t"
++addSig nil, "ssize_t", "zsys_read_cancel", "int", "filc_ptr", "size_t", "filc_ptr"
++addSig nil, "int", "zsys_close_cancel_impl", "int", "filc_ptr"
++addSig nil, "int", "zsys_pause_cancel", "filc_ptr"
++addSig nil, "int", "zsys_poll_cancel", "filc_ptr", "unsigned long", "int", "filc_ptr"
++addSig nil, "unsigned", "zthread_cancel_get"
++addSig nil, "unsigned", "zthread_cancel_set", "unsigned", "unsigned"
++addSig nil, "bool", "zthread_cancel_request", "filc_ptr"
+ addSig nil, "ssize_t", "zsys_readv", "int", "filc_ptr", "int"
+ addSig nil, "ssize_t", "zsys_write", "int", "filc_ptr", "size_t"
+ addSig nil, "int", "zsys_close_impl", "int"
+@@ -385,6 +393,19 @@ addSig nil, "int", "zsys_sendfile", "int", "int", "filc_ptr", "size_t"
+ addSig nil, "void", "zsys_futex_wake", "filc_ptr", "int", "int"
+ addSig nil, "void", "zsys_futex_wait", "filc_ptr", "int", "int"
+ addSig nil, "int", "zsys_futex_timedwait", "filc_ptr", "int", "int", "filc_ptr", "int"
++
++addSig nil, "long", "zsys_write_cancel", "int", "filc_ptr", "size_t", "filc_ptr"
++addSig nil, "long", "zsys_readv_cancel", "int", "filc_ptr", "int", "filc_ptr"
++addSig nil, "long", "zsys_writev_cancel", "int", "filc_ptr", "int", "filc_ptr"
++addSig nil, "long", "zsys_pread_cancel", "int", "filc_ptr", "size_t", "long", "filc_ptr"
++addSig nil, "long", "zsys_pwrite_cancel", "int", "filc_ptr", "size_t", "long", "filc_ptr"
++addSig nil, "int", "zsys_openat_cancel", "int", "filc_ptr", "int", "unsigned", "filc_ptr"
++addSig nil, "int", "zsys_accept4_cancel", "int", "filc_ptr", "filc_ptr", "int", "filc_ptr"
++addSig nil, "long", "zsys_sendmsg_cancel", "int", "filc_ptr", "int", "filc_ptr"
++addSig nil, "long", "zsys_recvmsg_cancel", "int", "filc_ptr", "int", "filc_ptr"
++addSig nil, "int", "zsys_clock_nanosleep_cancel", "int", "int", "filc_ptr", "filc_ptr", "filc_ptr"
++addSig nil, "int", "zsys_epoll_wait_cancel_impl", "int", "filc_ptr", "int", "int", "filc_ptr"
++addSig nil, "int", "zsys_futex_timedwait_cancel", "filc_ptr", "int", "int", "filc_ptr", "int", "filc_ptr"
+ addSig nil, "int", "zsys_futex_unlock_pi", "filc_ptr", "int"
+ addSig nil, "int", "zsys_futex_lock_pi", "filc_ptr", "int", "filc_ptr"
+ addSig nil, "void", "zsys_futex_requeue", "filc_ptr", "int", "int", "int", "filc_ptr"

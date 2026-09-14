@@ -1,4 +1,4 @@
-# Core profile with the ordinary toolchain; cancellation remains a libc blocker.
+# Core profile with the shared cancellation-capable Fil-C toolchain.
 let
   f = builtins.getFlake (toString ../.);
 in

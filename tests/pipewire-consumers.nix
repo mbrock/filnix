@@ -2,14 +2,14 @@ let
   f = builtins.getFlake (toString ../.);
   native = import f.inputs.nixpkgs { system = "x86_64-linux"; };
   p = f.legacyPackages.x86_64-linux.pkgsFilc;
-  private = import ../toolchain/cancellation.nix {
-    pkgs = native;
-    baseStdenv = p.stdenv;
+  libc = f.packages.x86_64-linux.filcc.filc-glibc;
+  pipewire = import ../packages/pipewire-core.nix {
+    native = native;
+    p = p;
   };
-  pipewire = p.sdl3.filcRuntime.pipewire;
   client =
     major: dependency:
-    private.stdenv.mkDerivation {
+    p.stdenv.mkDerivation {
       name = "pipewire-sdl${toString major}-client";
       dontUnpack = true;
       nativeBuildInputs = [ native.pkg-config ];
@@ -34,11 +34,11 @@ in
     ;
   cavaRuntime = native.runCommand "cava-runtime-check" { } ''
     ${native.python3}/bin/python ${./cava-runtime.py} \
-      ${p.cava}/bin/cava ${private.libc} > "$out"
+      ${p.cava}/bin/cava ${libc} > "$out"
   '';
   runtime = native.runCommand "pipewire-consumers-runtime-check" { } ''
     ${native.python3}/bin/python ${./pipewire-runtime.py} \
-      --pipewire ${pipewire} --libc ${private.libc} \
+      --pipewire ${pipewire} --libc ${libc} \
       --client ${sdl3Client}/bin/client --client ${sdl2Client}/bin/client \
       --wpctl ${p.wireplumber}/bin/wpctl > "$out"
   '';

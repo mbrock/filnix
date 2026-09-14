@@ -1,0 +1,14 @@
+diff --git a/lib/alg-yescrypt-opt.c b/lib/alg-yescrypt-opt.c
+index 7210270bbb8c..57141bc76b14 100644
+--- a/lib/alg-yescrypt-opt.c
++++ b/lib/alg-yescrypt-opt.c
+@@ -30,6 +30,9 @@
+ 
+ #include "crypt-port.h"
+ 
++#undef __SSE2__
++#undef __SSE__
++
+ #if INCLUDE_yescrypt || INCLUDE_scrypt || INCLUDE_gost_yescrypt || \
+     INCLUDE_sm3_yescrypt
+ 

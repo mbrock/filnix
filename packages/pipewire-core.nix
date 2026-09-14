@@ -5,7 +5,7 @@
   stdenv ? p.stdenv,
 }:
 stdenv.mkDerivation {
-  pname = "pipewire-core-probe";
+  pname = "pipewire-core";
   inherit (p.pipewire) version src;
   patches = [
     ../patches/pipewire-log-topics.patch

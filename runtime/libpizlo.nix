@@ -18,6 +18,7 @@ in
     pname = "libpizlo";
     version = "git";
     src = sources.libpas-src;
+    patches = [ ../patches/libpizlo-cancellation.patch ];
 
     nativeBuildInputs = [
       pkgs.gnumake
@@ -35,7 +36,7 @@ in
       # These env vars are for the Makefile to find libraries/headers
       export FILC_YOLO_INCLUDE="${filc.libyolo-impl}/include"
       export FILC_OS_INCLUDE="${pkgs.linuxHeaders}/include"
-      export FILC_STDFIL_INCLUDE="${sources.libpas-src}/filc/include"
+      export FILC_STDFIL_INCLUDE="$PWD/../filc/include"
       export FILC_INCLUDE_DIR="${filc.libyolo-impl}/include"
       export FILC_YOLO_LIB_DIR="${filc.libyolo}/lib"
       export FILC_DYNAMIC_LINKER="${filc.libyolo}/lib/ld-fil1-x86_64.so"

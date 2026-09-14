@@ -1,0 +1,24 @@
+diff --git a/include/private/cpuid-x86.h b/include/private/cpuid-x86.h
+index 1f87fdac5d0e..13e70acc12bd 100644
+--- a/include/private/cpuid-x86.h
++++ b/include/private/cpuid-x86.h
+@@ -11,6 +11,10 @@
+ #ifndef HWLOC_PRIVATE_CPUID_X86_H
+ #define HWLOC_PRIVATE_CPUID_X86_H
+ 
++#ifdef __FILC__
++#include <cpuid.h>
++#endif
++
+ /* A macro for annotating memory as uninitialized when building with MSAN
+  * (and otherwise having no effect). See below for why this is used with
+  * our custom assembly.
+@@ -68,7 +72,7 @@ static __hwloc_inline int hwloc_have_x86_cpuid(void) { return 1; }
+ 
+ static __hwloc_inline void hwloc_x86_cpuid(unsigned *eax, unsigned *ebx, unsigned *ecx, unsigned *edx)
+ {
+-#ifdef HWLOC_HAVE_MSVC_CPUIDEX
++#if defined(HWLOC_HAVE_MSVC_CPUIDEX) || defined(__FILC__)
+   int regs[4];
+   __cpuidex(regs, *eax, *ecx);
+   *eax = regs[0];

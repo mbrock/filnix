@@ -1,0 +1,48 @@
+diff --git a/Makefile b/Makefile
+deleted file mode 100644
+index 6bba86c73fca..000000000000
+--- a/Makefile
++++ /dev/null
+@@ -1,5 +0,0 @@
+-all:
+-	-@echo "Please use ./configure first.  Thank you."
+-
+-distclean:
+-	make -f Makefile.in distclean
+diff --git a/crc32.c b/crc32.c
+index d9ade5150239..e949ad80f41a 100644
+--- a/crc32.c
++++ b/crc32.c
+@@ -106,10 +106,10 @@
+ #endif
+ 
+ /* If available, use the ARM processor CRC32 instruction. */
+-#if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && \
+-    defined(W) && W == 8
+-#  define ARMCRC32
+-#endif
++//#if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && \
++//    defined(W) && W == 8
++//#  define ARMCRC32
++//#endif
+ 
+ #if defined(W) && (!defined(ARMCRC32) || defined(DYNAMIC_CRC_TABLE))
+ /*
+diff --git a/zconf.h b/zconf.h
+index 828ca617e907..b68cc2814387 100644
+--- a/zconf.h
++++ b/zconf.h
+@@ -443,11 +443,11 @@ typedef uLong FAR uLongf;
+    typedef unsigned long z_crc_t;
+ #endif
+ 
+-#if HAVE_UNISTD_H-0     /* may be set to #if 1 by ./configure */
++#if 1    /* was set to #if 1 by ./configure */
+ #  define Z_HAVE_UNISTD_H
+ #endif
+ 
+-#if HAVE_STDARG_H-0     /* may be set to #if 1 by ./configure */
++#if 1    /* was set to #if 1 by ./configure */
+ #  define Z_HAVE_STDARG_H
+ #endif
+ 

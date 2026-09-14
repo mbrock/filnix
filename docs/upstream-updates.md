@@ -16,6 +16,22 @@ participate in its ABI and bootstrap. Directory location alone is not the
 boundary. New application patches can still require a newer compiler/runtime
 feature; test each updated port with the pinned toolchain before accepting it.
 
+## September 14 cancellation baseline
+
+The core and ports pins now select
+`b6dd63481f796f8bff8502165c7dfc61091dbbd6`. Both glibc source components move
+from 2.40 to 2.44. The native Projeny build and all seven source/import tests pass.
+All projects present at the new pin were passed through the patch importer;
+existing-version changes include Mesa, Ruby, Tar and the OpenSSL 3.6.4 port.
+New version patches are retained for subsequent package upgrades. Older curated
+package versions remain explicit in `ports.nix`; extraction does not silently
+change their source archives or claim that every new version builds.
+
+The shared runtime/glibc cancellation patches and test evidence are described
+in [the implementation checkpoint](pthread-cancellation-implementation.md).
+LLVM build and install both honor `NIX_BUILD_CORES` through an explicit Ninja
+job limit. The compiler bootstrap is rebuilt for this source update.
+
 ## Update application patches
 
 Fetch the upstream clone, then update the ports pin and Projeny source hash
@@ -249,3 +265,9 @@ with `swash start --tag PROJECT=filnix --` to run it in the background. Swash
 prints a session ID; `swash poll ID` retrieves saved output and
 `swash follow ID` follows it through completion, returning the build's exit
 status. Detaching a follower leaves the build running.
+
+The Lute 1.0.0 extraction also contains roughly 492,000 lines of vendored
+third-party source changes. It is not consumed by a Filnix port and is not
+checked in as a release patch; the pinned upstream tree remains its source.
+Other newly extracted version patches are retained as an archive, without
+implicitly enabling those package versions.

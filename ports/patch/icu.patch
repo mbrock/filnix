@@ -1,0 +1,173 @@
+diff --git a/source/common/putil.cpp b/source/common/putil.cpp
+index ea15fdf..9cee6a6 100644
+--- a/source/common/putil.cpp
++++ b/source/common/putil.cpp
+@@ -641,6 +641,24 @@ uprv_tzset()
+ U_CAPI int32_t U_EXPORT2
+ uprv_timezone()
+ {
++#ifdef __PIZLONATOR_WAS_HERE__
++    /* Fil-C only (the upstream fallback below stays live for Yolo-C in the
++       #else branch): return the libc's timezone global directly instead of
++       exercising the localtime/mktime/gmtime fallback, which is fragile
++       under Fil-C. Where the platform defines U_TIMEZONE, prefer it: on
++       glibc it expands to __timezone, the only correct name there, while a
++       bare `timezone` would not compile. On this target (musl-derived
++       pizfix) U_TIMEZONE is not defined for Linux-based platforms (see
++       putilimp.h: only glibc/NewLIB/Android/Windows define it), so use the
++       plain `timezone` global -- exactly what the U_TIMEZONE path would have
++       returned on platforms where it exists. */
++#ifdef U_TIMEZONE
++    return U_TIMEZONE;
++#else
++    return timezone;
++#endif
++#else
++    /* Upstream path (Yolo-C and all non-Fil-C builds). */
+ #ifdef U_TIMEZONE
+     return U_TIMEZONE;
+ #else
+@@ -672,6 +690,7 @@ uprv_timezone()
+ #endif
+     return tdiff;
+ #endif
++#endif  /* Fil-C/Yolo-C split above: __PIZLONATOR_WAS_HERE__ vs upstream. */
+ }
+ 
+ /* Note that U_TZNAME does *not* have to be tzname, but if it is,
+diff --git a/source/common/ucnv.cpp b/source/common/ucnv.cpp
+index c7926d2..c6b4ff0 100644
+--- a/source/common/ucnv.cpp
++++ b/source/common/ucnv.cpp
+@@ -43,6 +43,14 @@
+ #include "ucnv_cnv.h"
+ #include "ucnv_bld.h"
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++/* Fil-C: ucnv_clone() below uses zmkptr() to re-derive an aligned pointer
++   without stripping its capability. Include stdfil.h directly rather than
++   relying on the transitive unicode/uset.h -> unicode/char16ptr.h -> stdfil.h
++   chain, so this TU keeps building if those headers ever drop the include. */
++#include <stdfil.h>
++#endif
++
+ /* size of intermediate and preflighting buffers in ucnv_convert() */
+ #define CHUNK_SIZE 1024
+ 
+@@ -233,7 +241,10 @@ ucnv_safeClone(const UConverter* cnv, void *stackBuffer, int32_t *pBufferSize, U
+         uintptr_t aligned_p = (p + alignof(UConverter) - 1) & ~(alignof(UConverter) - 1);
+         ptrdiff_t pointerAdjustment = aligned_p - p;
+         if (bufferSizeNeeded + pointerAdjustment <= stackBufferSize) {
+-            stackBuffer = reinterpret_cast<void *>(aligned_p);
++            /* Fil-C: cast to unsigned long, zmkptr()'s parameter type in
++               stdfil.h, so the address is not truncated on LLP64 targets
++               where unsigned long is 32 bits but pointers are 64. */
++            stackBuffer = zmkptr(stackBuffer, static_cast<unsigned long>(aligned_p));
+             stackBufferSize -= static_cast<int32_t>(pointerAdjustment);
+         } else {
+             /* prevent using the stack buffer but keep the size > 0 so that we do not just preflight */
+diff --git a/source/common/ucnv_io.cpp b/source/common/ucnv_io.cpp
+index 46a26f8..986f95d 100644
+--- a/source/common/ucnv_io.cpp
++++ b/source/common/ucnv_io.cpp
+@@ -249,14 +249,39 @@ static void U_CALLCONV initAliasData(UErrorCode &errCode) {
+ 
+     sectionSizes = static_cast<const uint32_t*>(udata_getMemory(data));
+     int32_t dataLength = udata_getLength(data); // This is the length minus the UDataInfo size
+-    if (dataLength <= int32_t(sizeof(sectionSizes[0]))) {
++    /* Fil-C: udata_getLength() (see udatamem.cpp) returns -1 if and only if the
++       length is unknown, which happens exactly when the data uses a pointer
++       table of contents (compiled-in static data) rather than a memory-mapped
++       file or a common data archive. In that case there is no byte count to
++       validate against, so the length-vs-size checks below are skipped.
++       This cannot mask a corrupt TOC: tableStart is range-checked against
++       [minTocLength, normalizedStringTableIndex] unconditionally (see below),
++       and pointer-TOC data is built into the binary (not attacker-controlled
++       input), while every file/archive path yields dataLength >= 0 and keeps
++       the full truncation checks. */
++    UBool isDataLengthKnown = dataLength >= 0;
++    if (isDataLengthKnown && dataLength <= int32_t(sizeof(sectionSizes[0]))) {
+         // We don't even have a TOC!
+         goto invalidFormat;
+     }
+     table = reinterpret_cast<const uint16_t*>(sectionSizes);
+     tableStart = sectionSizes[0];
++    /* Fil-C: bound tableStart above as well as below. The only valid values
++       are minTocLength (8, no normalized string table) and
++       normalizedStringTableIndex (9, with one); the TOC layout for this data
++       format (pinned to formatVersion 3 by isAcceptable() above) is fixed.
++       When the data length is unknown there is no byte count to validate
++       against, so without this upper bound a corrupt tableStart would drive
++       the sectionSizes[section] loop below out of bounds -- do not rely on a
++       Fil-C capability trap to catch that, fail closed here instead.
++       Bounding first also keeps the (tableStart + 1) * sizeof sizeOfTOC
++       computation from wrapping on a huge tableStart. */
++    if (tableStart < minTocLength || tableStart > normalizedStringTableIndex) {
++        // We don't have a whole TOC!
++        goto invalidFormat;
++    }
+     sizeOfTOC = int32_t((tableStart + 1) * sizeof(sectionSizes[0]));
+-    if (tableStart < minTocLength || dataLength <= sizeOfTOC) {
++    if (isDataLengthKnown && dataLength <= sizeOfTOC) {
+         // We don't have a whole TOC!
+         goto invalidFormat;
+     }
+@@ -277,9 +302,15 @@ static void U_CALLCONV initAliasData(UErrorCode &errCode) {
+ 
+     sizeOfData = sizeOfTOC;
+     for (uint32_t section = 1; section <= tableStart; section++) {
++        /* Fil-C: guard the accumulation against overflow. sectionSizes[]
++           entries are untrusted 32-bit values on the file/archive path; a
++           wrapped sizeOfData would defeat the truncation check below. */
++        if (sectionSizes[section] > uint32_t(INT32_MAX - sizeOfData) / uint32_t(sizeof(table[0]))) {
++            goto invalidFormat;
++        }
+         sizeOfData += sectionSizes[section] * sizeof(table[0]);
+     }
+-    if (dataLength < sizeOfData) {
++    if (isDataLengthKnown && dataLength < sizeOfData) {
+         // Truncated file!
+         goto invalidFormat;
+     }
+diff --git a/source/common/unicode/char16ptr.h b/source/common/unicode/char16ptr.h
+index 049de9e..5643281 100644
+--- a/source/common/unicode/char16ptr.h
++++ b/source/common/unicode/char16ptr.h
+@@ -17,6 +17,10 @@
+ 
+ #endif
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++#include <stdfil.h>
++#endif
++
+ /**
+  * \file
+  * \brief C++ API: char16_t pointer wrappers with
+diff --git a/source/configure.ac b/source/configure.ac
+index 8ffacf8..64dcd7f 100644
+--- a/source/configure.ac
++++ b/source/configure.ac
+@@ -642,6 +642,7 @@ ia64-*-hpux*)
+ #    GENCCODE_ASSEMBLY="-a aCC-ia64"
+     ;;
+ esac
++GENCCODE_ASSEMBLY=
+ AC_SUBST(GENCCODE_ASSEMBLY)
+ 
+ AC_MSG_RESULT($GENCCODE_ASSEMBLY)
+diff --git a/source/tools/toolutil/pkg_genc.h b/source/tools/toolutil/pkg_genc.h
+index ef966ab..b449f99 100644
+--- a/source/tools/toolutil/pkg_genc.h
++++ b/source/tools/toolutil/pkg_genc.h
+@@ -29,6 +29,10 @@
+ #define BUILD_DATA_WITHOUT_ASSEMBLY
+ #endif
+ 
++#ifdef __PIZLONATOR_WAS_HERE__
++#define U_DISABLE_OBJ_CODE
++#endif
++
+ #ifndef U_DISABLE_OBJ_CODE /* testing */
+ #if defined(WINDOWS_WITH_MSVC) || U_PLATFORM_IS_LINUX_BASED
+ #define CAN_WRITE_OBJ_CODE

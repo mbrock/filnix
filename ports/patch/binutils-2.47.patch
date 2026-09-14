@@ -1,0 +1,540 @@
+diff --git a/bfd/doc/chew.c b/bfd/doc/chew.c
+index b8608fd09663..7f440cfc697e 100644
+--- a/bfd/doc/chew.c
++++ b/bfd/doc/chew.c
+@@ -112,7 +112,7 @@ typedef union
+   void (*f) (void);
+   struct dict_struct *e;
+   char *s;
+-  intptr_t l;
++  void *l;
+ } pcu;
+ 
+ typedef struct dict_struct
+@@ -125,7 +125,7 @@ typedef struct dict_struct
+ } dict_type;
+ 
+ int internal_wanted;
+-intptr_t *internal_mode;
++void **internal_mode;
+ 
+ int warning;
+ 
+@@ -135,8 +135,8 @@ string_type *tos;
+ unsigned int pos_idx = 0; /* Pos in input buffer */
+ string_type *buf_ptr; /* and the buffer */
+ 
+-intptr_t istack[STACK];
+-intptr_t *isp = &istack[0];
++void *istack[STACK];
++void **isp = &istack[0];
+ 
+ dict_type *root;
+ 
+@@ -1080,7 +1080,7 @@ skip_past_newline (void)
+ static void
+ maybecatstr (void)
+ {
+-  if (internal_wanted == *internal_mode)
++  if (internal_wanted == (intptr_t)*internal_mode)
+     {
+       catstr (tos - 1, tos);
+     }
+@@ -1093,7 +1093,7 @@ maybecatstr (void)
+ static void
+ catstrif (void)
+ {
+-  int cond = isp[0];
++  int cond = (intptr_t)isp[0];
+   isp--;
+   icheck_range ();
+   if (cond)
+@@ -1312,19 +1312,19 @@ add_intrinsic (char *name, void (*func) (void))
+ }
+ 
+ static void
+-add_variable (char *name, intptr_t *loc)
++add_variable (char *name, void **loc)
+ {
+   dict_type *new_d = newentry (name);
+   pcu p = { push_variable };
+   add_to_definition (new_d, p);
+-  p.l = (intptr_t) loc;
++  p.l = loc;
+   add_to_definition (new_d, p);
+   p.f = 0;
+   add_to_definition (new_d, p);
+ }
+ 
+ static void
+-add_intrinsic_variable (const char *name, intptr_t *loc)
++add_intrinsic_variable (const char *name, void **loc)
+ {
+   add_variable (xstrdup (name), loc);
+ }
+@@ -1383,7 +1383,7 @@ compile (char *string)
+ 		     function */
+ 		  p.f = push_number;
+ 		  add_to_definition (ptr, p);
+-		  p.l = atol (word);
++		  p.l = (void *) atol (word);
+ 		  add_to_definition (ptr, p);
+ 		  free (word);
+ 		  break;
+@@ -1408,7 +1408,7 @@ compile (char *string)
+ 	  string = nextword (string, &word);
+ 	  if (!string)
+ 	    continue;
+-	  intptr_t *loc = xmalloc (sizeof (intptr_t));
++	  void **loc = xmalloc (sizeof (void *));
+ 	  *loc = 0;
+ 	  add_variable (word, loc);
+ 	  string = nextword (string, &word);
+@@ -1424,7 +1424,7 @@ compile (char *string)
+ static void
+ bang (void)
+ {
+-  *(intptr_t *) ((isp[0])) = isp[-1];
++  *(void **) ((isp[0])) = isp[-1];
+   isp -= 2;
+   icheck_range ();
+   pc++;
+@@ -1433,7 +1433,7 @@ bang (void)
+ static void
+ atsign (void)
+ {
+-  isp[0] = *(intptr_t *) (isp[0]);
++  isp[0] = *(void **) (isp[0]);
+   pc++;
+ }
+ 
+@@ -1449,7 +1449,7 @@ stdout_ (void)
+ {
+   isp++;
+   icheck_range ();
+-  *isp = 1;
++  *isp = (void *) 1;
+   pc++;
+ }
+ 
+@@ -1458,19 +1458,19 @@ stderr_ (void)
+ {
+   isp++;
+   icheck_range ();
+-  *isp = 2;
++  *isp = (void *) 2;
+   pc++;
+ }
+ 
+ static void
+ print (void)
+ {
+-  if (*isp == 1)
++  if (*isp == (void *) 1)
+     write_buffer (tos, stdout);
+-  else if (*isp == 2)
++  else if (*isp == (void *) 2)
+     write_buffer (tos, stderr);
+   else
+-    fprintf (stderr, "print: illegal print destination `%" PRIdPTR "'\n", *isp);
++    fprintf (stderr, "print: illegal print destination `%" PRIdPTR "'\n", (intptr_t) *isp);
+   isp--;
+   tos--;
+   icheck_range ();
+@@ -1559,7 +1559,7 @@ main (int ac, char *av[])
+   add_intrinsic ("strip_trailing_newlines", strip_trailing_newlines);
+   add_intrinsic ("collapse_whitespace", collapse_whitespace);
+ 
+-  internal_mode = xmalloc (sizeof (intptr_t));
++  internal_mode = xmalloc (sizeof (void *));
+   *internal_mode = 0;
+   add_intrinsic_variable ("internalmode", internal_mode);
+ 
+diff --git a/gas/frags.c b/gas/frags.c
+index fce6f7362af3..4d4b8f9bbc3f 100644
+--- a/gas/frags.c
++++ b/gas/frags.c
+@@ -70,10 +70,17 @@ frag_alloc_check (const struct obstack *ob)
+ 
+ /* Allocate a frag on the specified obstack.
+    Call this routine every time a new frag is made, so that the
+-   alignment hackery can be done in just one place.  */
++   alignment hackery can be done in just one place.
+ 
+-fragS *
+-frag_alloc (struct obstack *ob, size_t extra)
++   Fil-C: with our obstack changes (see include/obstack.h and
++   libiberty/obstack.c), obstack_blank always allocates a fresh chunk,
++   so each frag - the struct and its literal data - lives in its own
++   chunk.  This means that out of bounds writes between a frag struct
++   and its data, or between different frags, are caught by the
++   capability system.  */
++
++static fragS *
++frag_alloc_impl (struct obstack *ob, size_t extra, size_t slack)
+ {
+   fragS *ptr;
+ 
+@@ -85,60 +92,21 @@ frag_alloc (struct obstack *ob, size_t extra)
+      the frag (via obstack_finish adjusting obstack next_free
+      pointer), making it seem like the frag already has contents in
+      fr_literal.  */
+-  obstack_blank (ob, extra + SIZEOF_STRUCT_FRAG);
++  obstack_blank (ob, extra + SIZEOF_STRUCT_FRAG + slack);
+   ptr = obstack_base (ob);
++  /* Pull the slack back out of the object, so that obstack_room says
++     how much room is left for this frag's literal data to grow within
++     its own chunk.  */
++  ob->next_free -= slack;
+   memset (ptr, 0, SIZEOF_STRUCT_FRAG);
+   totalfrags++;
+   return ptr;
+ }
+-
+-/* Try to augment current frag by nchars chars.
+-   If there is no room, close off the current frag with a ".fill 0"
+-   and begin a new frag.  Then loop until the new frag has at least
+-   nchars chars available.  Does not set up any fields in frag_now.  */
+ 
+-void
+-frag_grow (size_t nchars)
++fragS *
++frag_alloc (struct obstack *ob, size_t extra)
+ {
+-  if (obstack_room (&frchain_now->frch_obstack) < nchars)
+-    {
+-      size_t oldc;
+-      size_t newc;
+-
+-      /* Try to allocate a bit more than needed right now.  But don't do
+-         this if we would waste too much memory.  Especially necessary
+-         for extremely big (like 2GB initialized) frags.  */
+-      if (nchars < 0x10000)
+-        newc = 2 * nchars;
+-      else
+-        newc = nchars + 0x10000;
+-      newc += SIZEOF_STRUCT_FRAG;
+-
+-      /* Check for possible overflow.  */
+-      if (newc < nchars)
+-	as_fatal (ngettext ("can't extend frag %lu char",
+-			    "can't extend frag %lu chars",
+-			    (unsigned long) nchars),
+-		  (unsigned long) nchars);
+-
+-      /* Force to allocate at least NEWC bytes, but not less than the
+-         default.  */
+-      oldc = obstack_chunk_size (&frchain_now->frch_obstack);
+-      if (newc > oldc)
+-	obstack_chunk_size (&frchain_now->frch_obstack) = newc;
+-
+-      while (obstack_room (&frchain_now->frch_obstack) < nchars)
+-        {
+-          /* Not enough room in this frag.  Close it and start a new one.
+-             This must be done in a loop because the created frag may not
+-             be big enough if the current obstack chunk is used.  */
+-          frag_wane (frag_now);
+-          frag_new (0);
+-        }
+-
+-      /* Restore the old chunk size.  */
+-      obstack_chunk_size (&frchain_now->frch_obstack) = oldc;
+-    }
++  return frag_alloc_impl (ob, extra, 100);
+ }
+ 
+ /* Call this to close off a completed frag, and start up a new (empty)
+@@ -158,10 +126,8 @@ frag_grow (size_t nchars)
+    Make a new frag, initialising some components. Link new frag at end
+    of frchain_now.  */
+ 
+-void
+-frag_new (size_t old_frags_var_max_size
+-	  /* Number of chars (already allocated on obstack frags) in
+-	     variable_length part of frag.  */)
++static void
++frag_new_impl (size_t old_frags_var_max_size, size_t new_frag_size)
+ {
+   fragS *former_last_fragP;
+   frchainS *frchP;
+@@ -181,7 +147,7 @@ frag_new (size_t old_frags_var_max_size
+   former_last_fragP = frchP->frch_last;
+   gas_assert (former_last_fragP != 0);
+   gas_assert (former_last_fragP == frag_now);
+-  frag_now = frag_alloc (&frchP->frch_obstack, 0);
++  frag_now = frag_alloc_impl (&frchP->frch_obstack, 0, new_frag_size);
+ 
+   frag_now->fr_file = as_where (&frag_now->fr_line);
+ 
+@@ -200,6 +166,56 @@ frag_new (size_t old_frags_var_max_size
+ 
+   frag_now->fr_next = NULL;
+ }
++
++void
++frag_new (size_t old_frags_var_max_size
++	  /* Number of chars (already allocated on obstack frags) in
++	     variable_length part of frag.  */)
++{
++  frag_new_impl (old_frags_var_max_size, 100);
++}
++
++/* Try to augment current frag by nchars chars.
++   If there is no room, close off the current frag with a ".fill 0"
++   and begin a new frag.  Then loop until the new frag has at least
++   nchars chars available.  Does not set up any fields in frag_now.  */
++
++void
++frag_grow (size_t nchars)
++{
++  if (obstack_room (&frchain_now->frch_obstack) < nchars)
++    {
++      size_t newc;
++
++      /* Try to allocate a bit more than needed right now.  But don't do
++         this if we would waste too much memory.  Especially necessary
++         for extremely big (like 2GB initialized) frags.  */
++      if (nchars < 0x10000)
++        newc = 2 * nchars;
++      else
++        newc = nchars + 0x10000;
++      newc += SIZEOF_STRUCT_FRAG;
++
++      /* Check for possible overflow.  */
++      if (newc < nchars)
++	as_fatal (ngettext ("can't extend frag %lu char",
++			    "can't extend frag %lu chars",
++			    (unsigned long) nchars),
++		  (unsigned long) nchars);
++
++      /* With Fil-C's obstack, each frag lives in its own chunk, so the
++         only way to get more room is to close off the current frag and
++         start a new one that reserves NCHARS bytes of room.  */
++      while (obstack_room (&frchain_now->frch_obstack) < nchars)
++        {
++          /* Not enough room in this frag.  Close it and start a new one.
++             This must be done in a loop because the created frag may not
++             be big enough if the current obstack chunk is used.  */
++          frag_wane (frag_now);
++          frag_new_impl (0, nchars);
++        }
++    }
++}
+ 
+ /* Start a new frag unless we have n more chars of room in the current frag.
+    Close off the old frag with a .fill 0.
+diff --git a/gas/hash.h b/gas/hash.h
+index 8cd90a9ca590..93725e40f6df 100644
+--- a/gas/hash.h
++++ b/gas/hash.h
+@@ -24,7 +24,7 @@
+ struct string_tuple
+ {
+   const char *key;
+-  intptr_t value;
++  void *value;
+ };
+ 
+ typedef struct string_tuple string_tuple_t;
+@@ -50,7 +50,7 @@ extern void htab_print_statistics (FILE *f, const char *name, htab_t table);
+ /* Inline string hash table functions.  */
+ 
+ static inline string_tuple_t *
+-string_tuple_alloc (htab_t table, const char *key, intptr_t value)
++string_tuple_alloc (htab_t table, const char *key, void *value)
+ {
+   string_tuple_t *tuple = table->alloc_f (1, sizeof (*tuple));
+   tuple->key = key;
+@@ -63,7 +63,7 @@ str_hash_find (htab_t table, const char *key)
+ {
+   string_tuple_t needle = { key, 0 };
+   string_tuple_t *tuple = htab_find (table, &needle);
+-  return tuple != NULL ? (void *) tuple->value : NULL;
++  return tuple != NULL ? tuple->value : NULL;
+ }
+ 
+ static inline intptr_t
+@@ -71,7 +71,7 @@ str_hash_find_int (htab_t table, const char *key)
+ {
+   string_tuple_t needle = { key, 0 };
+   string_tuple_t *tuple = htab_find (table, &needle);
+-  return tuple != NULL ? tuple->value : -1;
++  return tuple != NULL ? (intptr_t) tuple->value : -1;
+ }
+ 
+ static inline void *
+@@ -83,7 +83,7 @@ str_hash_find_n (htab_t table, const char *key, size_t n)
+   string_tuple_t needle = { tmp, 0 };
+   string_tuple_t *tuple = htab_find (table, &needle);
+   free (tmp);
+-  return tuple != NULL ? (void *) tuple->value : NULL;
++  return tuple != NULL ? tuple->value : NULL;
+ }
+ 
+ static inline void
+@@ -96,7 +96,7 @@ str_hash_delete (htab_t table, const char *key)
+ static inline void **
+ str_hash_insert_int (htab_t table, const char *key, intptr_t value, int replace)
+ {
+-  string_tuple_t *elt = string_tuple_alloc (table, key, value);
++  string_tuple_t *elt = string_tuple_alloc (table, key, (void *) value);
+   void **slot = htab_insert (table, elt, replace);
+   if (slot && !replace && table->free_f)
+     table->free_f (elt);
+@@ -106,7 +106,11 @@ str_hash_insert_int (htab_t table, const char *key, intptr_t value, int replace)
+ static inline void **
+ str_hash_insert (htab_t table, const char *key, const void *value, int replace)
+ {
+-  return str_hash_insert_int (table, key, (intptr_t) value, replace);
++  string_tuple_t *elt = string_tuple_alloc (table, key, (void *) value);
++  void **slot = htab_insert (table, elt, replace);
++  if (slot && !replace && table->free_f)
++    table->free_f (elt);
++  return slot;
+ }
+ 
+ static inline htab_t
+diff --git a/include/obstack.h b/include/obstack.h
+index 799036c414c2..8f5a117a1984 100644
+--- a/include/obstack.h
++++ b/include/obstack.h
+@@ -376,8 +376,7 @@ extern int obstack_exit_failure;
+   __extension__								      \
+     ({ struct obstack *__o = (OBSTACK);					      \
+        _OBSTACK_SIZE_T __len = (length);				      \
+-       if (obstack_room (__o) < __len)					      \
+-         _obstack_newchunk (__o, __len);				      \
++       _obstack_newchunk (__o, __len);				      \
+        obstack_blank_fast (__o, __len); })
+ 
+ # define obstack_alloc(OBSTACK, length)					      \
+@@ -492,8 +491,7 @@ extern int obstack_exit_failure;
+ 
+ # define obstack_blank(h, length)					      \
+   ((h)->temp.i = (length),						      \
+-   ((obstack_room (h) < (h)->temp.i)					      \
+-   ? (_obstack_newchunk ((h), (h)->temp.i), 0) : 0),			      \
++   _obstack_newchunk ((h), (h)->temp.i),			      \
+    obstack_blank_fast (h, (h)->temp.i))
+ 
+ # define obstack_alloc(h, length)					      \
+diff --git a/include/splay-tree.h b/include/splay-tree.h
+index 81e46525ed93..a1f53c1b71e5 100644
+--- a/include/splay-tree.h
++++ b/include/splay-tree.h
+@@ -47,8 +47,8 @@ extern "C" {
+    these types, if necessary.  These types should be sufficiently wide
+    that any pointer or scalar can be cast to these types, and then
+    cast back, without loss of precision.  */
+-typedef uintptr_t splay_tree_key;
+-typedef uintptr_t splay_tree_value;
++typedef void* splay_tree_key;
++typedef void* splay_tree_value;
+ 
+ /* Forward declaration for a node in the tree.  */
+ typedef struct splay_tree_node_s *splay_tree_node;
+diff --git a/libctf/configure.ac b/libctf/configure.ac
+index 1e1b429c98e3..59152dd7cfbb 100644
+--- a/libctf/configure.ac
++++ b/libctf/configure.ac
+@@ -265,11 +265,11 @@ AC_CACHE_CHECK([for linker versioning flags], [ac_cv_libctf_version_script],
+   [echo 'FOO { global: mai*; local: ctf_fo*; };' > conftest.ver
+    old_LDFLAGS="$LDFLAGS"
+    old_CFLAGS="$CFLAGS"
+-   LDFLAGS="$LDFLAGS -shared -Wl,--version-script=conftest.ver"
++   LDFLAGS="$LDFLAGS -shared --version-script=conftest.ver"
+    CFLAGS="$CFLAGS -fPIC"
+    AC_LINK_IFELSE([AC_LANG_SOURCE([[int ctf_foo (void) { return 0; }
+ 				    int main (void) { return ctf_foo(); }]])],
+-		  [ac_cv_libctf_version_script="-Wl,--version-script"],
++		  [ac_cv_libctf_version_script="--version-script"],
+ 		  [])
+    LDFLAGS="$old_LDFLAGS"
+ 
+diff --git a/libiberty/obstack.c b/libiberty/obstack.c
+index 02a968970754..80be2778a0c5 100644
+--- a/libiberty/obstack.c
++++ b/libiberty/obstack.c
+@@ -118,25 +118,10 @@ _obstack_begin_worker (struct obstack *h,
+ 
+   if (alignment == 0)
+     alignment = DEFAULT_ALIGNMENT;
+-  if (size == 0)
+-    /* Default size is what GNU malloc can fit in a 4096-byte block.  */
+-    {
+-      /* 12 is sizeof (mhead) and 4 is EXTRA from GNU malloc.
+-         Use the values for range checking, because if range checking is off,
+-         the extra bytes won't be missed terribly, but if range checking is on
+-         and we used a larger request, a whole extra 4096 bytes would be
+-         allocated.
+-
+-         These number are irrelevant to the new GNU malloc.  I suspect it is
+-         less sensitive to the size of the request.  */
+-      int extra = ((((12 + DEFAULT_ROUNDING - 1) & ~(DEFAULT_ROUNDING - 1))
+-                    + 4 + DEFAULT_ROUNDING - 1)
+-                   & ~(DEFAULT_ROUNDING - 1));
+-      size = 4096 - extra;
+-    }
+ 
+-  h->chunk_size = size;
+   h->alignment_mask = alignment - 1;
++  size = sizeof(struct _obstack_chunk) + h->alignment_mask;
++  h->chunk_size = size;
+ 
+   chunk = (struct _obstack_chunk *) call_chunkfun (h, h->chunk_size);
+   if (!chunk)
+@@ -190,19 +175,18 @@ _obstack_newchunk (struct obstack *h, _OBSTACK_SIZE_T length)
+   struct _obstack_chunk *old_chunk = h->chunk;
+   struct _obstack_chunk *new_chunk = 0;
+   size_t obj_size = h->next_free - h->object_base;
++  size_t new_size;
+   char *object_base;
+ 
+   /* Compute size for new chunk.  */
+-  size_t sum1 = obj_size + length;
+-  size_t sum2 = sum1 + h->alignment_mask;
+-  size_t new_size = sum2 + (obj_size >> 3) + 100;
+-  if (new_size < sum2)
+-    new_size = sum2;
+-  if (new_size < h->chunk_size)
+-    new_size = h->chunk_size;
++  if (obj_size)
++    new_size = 2 * (obj_size + length);
++  else
++    new_size = length;
++  new_size += sizeof (struct _obstack_chunk) + h->alignment_mask;
+ 
+   /* Allocate and initialize the new chunk.  */
+-  if (obj_size <= sum1 && sum1 <= sum2)
++  if (new_size >= length && new_size >= obj_size)
+     new_chunk = (struct _obstack_chunk *) call_chunkfun (h, new_size);
+   if (!new_chunk)
+     (*obstack_alloc_failed_handler)();
+diff --git a/libiberty/xmalloc.c b/libiberty/xmalloc.c
+index f38cc06c8148..0ea9af81f430 100644
+--- a/libiberty/xmalloc.c
++++ b/libiberty/xmalloc.c
+@@ -71,6 +71,10 @@ function will be called to print an error message and terminate execution.
+ 
+ #include <stddef.h>
+ 
++#ifdef HAVE_SBRK
++#undef HAVE_SBRK
++#endif
++
+ #if VMS
+ #include <stdlib.h>
+ #include <unixlib.h>
+diff --git a/libsframe/Makefile.am b/libsframe/Makefile.am
+index 8f4ed7e1f8b1..05b9e0ae73e0 100644
+--- a/libsframe/Makefile.am
++++ b/libsframe/Makefile.am
+@@ -37,7 +37,7 @@ if HAVE_LD_VERSION_SCRIPT
+ if HAVE_SOLARIS_LD
+   libsframe_version_script = -Wl,-M -Wl,$(srcdir)/libsframe.ver
+ else
+-  libsframe_version_script = -Wl,--version-script=$(srcdir)/libsframe.ver
++  libsframe_version_script = --version-script=$(srcdir)/libsframe.ver
+ endif
+ endif
+ 

@@ -1,4 +1,4 @@
-# Explicit first cohort. Do not replace stdenv or pipewire in the whole scope.
+# Application profiles using the shared Fil-C toolchain and PipeWire core.
 {
   pkgs,
   prev,
@@ -16,37 +16,14 @@ let
     configure
     patch
     ;
-  private = import ../toolchain/cancellation.nix {
-    inherit pkgs;
-    baseStdenv = prev.stdenv;
+  pipewire = import ../packages/pipewire-core.nix {
+    native = pkgs;
+    p = final;
   };
-  pipewire =
-    (import ../packages/pipewire-core.nix {
-      native = pkgs;
-      p = final;
-      stdenv = private.stdenv;
-    }).overrideAttrs
-      { pname = "pipewire-core"; };
-  consumer =
-    name: steps:
-    for name (
-      [
-        (arg { stdenv = private.stdenv; })
-        (use (old: {
-          passthru = (old.passthru or { }) // {
-            filcRuntime = {
-              name = "pipewire-cancellation";
-              inherit (private) libc cc;
-              inherit pipewire;
-            };
-          };
-        }))
-      ]
-      ++ steps
-    );
+
 in
 {
-  sdl3 = consumer "sdl3" [
+  sdl3 = for "sdl3" [
     (patch ../patches/sdl3-fork.patch)
     (patch ../patches/sdl3-cpu-probe.patch)
     (patch ../patches/sdl3-aligned-allocation.patch)
@@ -97,7 +74,7 @@ in
     ))
   ];
 
-  sdl2-compat = consumer "sdl2-compat" [
+  sdl2-compat = for "sdl2-compat" [
     (patch ../patches/sdl2-symbol-loader.patch)
     (patch ../patches/sdl2-capabilities.patch)
     (use (old: {
@@ -114,7 +91,7 @@ in
     }))
   ];
 
-  cava = consumer "cava" [
+  cava = for "cava" [
     (arg {
       inherit pipewire;
       # CAVA uses FFTW's C API. Avoid the unsupported target Fortran compiler
@@ -162,7 +139,7 @@ in
     }))
   ];
 
-  wireplumber = consumer "wireplumber" [
+  wireplumber = for "wireplumber" [
     (patch ../patches/wireplumber-gtype.patch)
     (patch ../patches/wireplumber-pointer-properties.patch)
     (arg {
@@ -177,7 +154,9 @@ in
         builtins.filter (
           flag: !(pkgs.lib.hasPrefix "-Dsysconfdir=" flag)
         ) old.mesonFlags
-        ++ [ "-Dsysconfdir=etc" ];
+        ++ [
+          "-Dsysconfdir=etc"
+        ];
       preCheck = (old.preCheck or "") + ''
         export FUGC_THREADS="$NIX_BUILD_CORES"
         mesonCheckFlagsArray+=(--num-processes "$NIX_BUILD_CORES")

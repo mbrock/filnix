@@ -1,0 +1,41 @@
+diff --git a/libavformat/allformats.c b/libavformat/allformats.c
+index e39eab8e85d7..31f10490a4a0 100644
+--- a/libavformat/allformats.c
++++ b/libavformat/allformats.c
+@@ -585,15 +585,15 @@ extern const FFInputFormat  ff_vapoursynth_demuxer;
+ #include "libavformat/muxer_list.c"
+ #include "libavformat/demuxer_list.c"
+ 
+-static atomic_uintptr_t indev_list_intptr  = 0;
+-static atomic_uintptr_t outdev_list_intptr = 0;
++static void*_Atomic indev_list_intptr  = NULL;
++static void*_Atomic outdev_list_intptr = NULL;
+ 
+ const AVOutputFormat *av_muxer_iterate(void **opaque)
+ {
+     static const uintptr_t size = sizeof(muxer_list)/sizeof(muxer_list[0]) - 1;
+     uintptr_t i = (uintptr_t)*opaque;
+     const FFOutputFormat *f = NULL;
+-    uintptr_t tmp;
++    void*_Atomic tmp;
+ 
+     if (i < size) {
+         f = muxer_list[i];
+@@ -614,7 +614,7 @@ const AVInputFormat *av_demuxer_iterate(void **opaque)
+     static const uintptr_t size = sizeof(demuxer_list)/sizeof(demuxer_list[0]) - 1;
+     uintptr_t i = (uintptr_t)*opaque;
+     const FFInputFormat *f = NULL;
+-    uintptr_t tmp;
++    void*_Atomic tmp;
+ 
+     if (i < size) {
+         f = demuxer_list[i];
+@@ -632,6 +632,6 @@ const AVInputFormat *av_demuxer_iterate(void **opaque)
+ 
+ void avpriv_register_devices(const FFOutputFormat * const o[], const FFInputFormat * const i[])
+ {
+-    atomic_store_explicit(&outdev_list_intptr, (uintptr_t)o, memory_order_relaxed);
+-    atomic_store_explicit(&indev_list_intptr,  (uintptr_t)i, memory_order_relaxed);
++    atomic_store_explicit(&outdev_list_intptr, (void *)o, memory_order_relaxed);
++    atomic_store_explicit(&indev_list_intptr,  (void *)i, memory_order_relaxed);
+ }

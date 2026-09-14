@@ -1,0 +1,13 @@
+diff --git a/meson.build b/meson.build
+index a774ea6f5ba7..5bcc70859dfe 100644
+--- a/meson.build
++++ b/meson.build
+@@ -53,7 +53,7 @@ symbol_map = join_paths(meson.current_source_dir(), meson.project_name() + '.map
+ module_ldflags = []
+ 
+ if host_system.contains('linux') or host_system == 'android'
+-  test_ldflag = '-Wl,--version-script,' + symbol_map
++  test_ldflag = '--version-script,' + symbol_map
+   module_ldflags += cc.get_supported_link_arguments(test_ldflag)
+ endif
+ 

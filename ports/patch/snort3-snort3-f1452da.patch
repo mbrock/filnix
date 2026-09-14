@@ -1,0 +1,198 @@
+diff --git a/cmake/FindLuaJIT.cmake b/cmake/FindLuaJIT.cmake
+index a2d4ad043bcf..f12411c906f2 100644
+--- a/cmake/FindLuaJIT.cmake
++++ b/cmake/FindLuaJIT.cmake
+@@ -1,55 +1,49 @@
+ #
+-# Locate LuaJIT library
++# Locate Lua library (hacked to accept regular Lua in place of LuaJIT)
+ # This module defines
+ #  LUAJIT_FOUND, if false, do not try to link to Lua
+ #  LUAJIT_LIBRARIES
+ #  LUAJIT_INCLUDE_DIR, where to find lua.h
+-#  LUAJIT_VERSION_STRING, the version of LuaJIT found
++#  LUAJIT_VERSION_STRING, the version of Lua found
+ 
+ set(ERROR_MESSAGE
+-    "\n\tCan't Find luajit!  Get it from
+-    http://luajit.org/download.html or use the --with-luajit-*
+-    options if you have it installed inn an unusual place.\n"
++    "\n\tCan't Find Lua!  Use the --with-luajit-*
++    options if you have it installed in an unusual place.\n"
+ )
+ 
+-find_package(PkgConfig)
+-pkg_check_modules(PC_LUAJIT luajit)
+-
+-# Use LUAJIT_INCLUDE_DIR_HINT and LUAJIT_LIBRARY_DIR_HINT from configure_cmake.sh as primary hints
+-# and then package config information after that.
+-find_path(LUAJIT_INCLUDE_DIR luajit.h
+-    HINTS ${LUAJIT_INCLUDE_DIR_HINT} ${PC_LUAJIT_INCLUDEDIR} ${PC_LUAJIT_INCLUDE_DIRS})
++# Use LUAJIT_INCLUDE_DIR_HINT and LUAJIT_LIBRARY_DIR_HINT from configure_cmake.sh as primary hints.
++# Look for lua.h instead of luajit.h.
++find_path(LUAJIT_INCLUDE_DIR lua.h
++    HINTS ${LUAJIT_INCLUDE_DIR_HINT} ${CMAKE_PREFIX_PATH}/include/lua5.4 ${CMAKE_PREFIX_PATH}/include)
+ if (STATIC_LUAJIT)
+-  find_library(LUAJIT_LIBRARIES NAMES libluajit-5.1.a
+-    HINTS ${LUAJIT_LIBRARIES_DIR_HINT} ${PC_LUAJIT_LIBDIR} ${PC_LUAJIT_LIBRARY_DIRS})
++  find_library(LUAJIT_LIBRARIES NAMES liblua5.4.a liblua.a
++    HINTS ${LUAJIT_LIBRARIES_DIR_HINT} ${CMAKE_PREFIX_PATH}/lib)
+ else()
+-  find_library(LUAJIT_LIBRARIES NAMES luajit-5.1
+-    HINTS ${LUAJIT_LIBRARIES_DIR_HINT} ${PC_LUAJIT_LIBDIR} ${PC_LUAJIT_LIBRARY_DIRS})
++  find_library(LUAJIT_LIBRARIES NAMES lua5.4 lua
++    HINTS ${LUAJIT_LIBRARIES_DIR_HINT} ${CMAKE_PREFIX_PATH}/lib)
+ endif()
+ 
+-if(LUAJIT_INCLUDE_DIR AND EXISTS "${LUAJIT_INCLUDE_DIR}/luajit.h")
+-    file(STRINGS "${LUAJIT_INCLUDE_DIR}/luajit.h" luajit_version_str REGEX "^#define[ \t]+LUAJIT_VERSION[ \t]+\"LuaJIT .+\"")
++# Extract version from lua.h instead of luajit.h
++if(LUAJIT_INCLUDE_DIR AND EXISTS "${LUAJIT_INCLUDE_DIR}/lua.h")
++    file(STRINGS "${LUAJIT_INCLUDE_DIR}/lua.h" lua_version_major REGEX "^#define[ \t]+LUA_VERSION_MAJOR[ \t]+\".+\"")
++    file(STRINGS "${LUAJIT_INCLUDE_DIR}/lua.h" lua_version_minor REGEX "^#define[ \t]+LUA_VERSION_MINOR[ \t]+\".+\"")
++    file(STRINGS "${LUAJIT_INCLUDE_DIR}/lua.h" lua_version_release REGEX "^#define[ \t]+LUA_VERSION_RELEASE[ \t]+\".+\"")
++
++    string(REGEX REPLACE "^#define[ \t]+LUA_VERSION_MAJOR[ \t]+\"([^\"]+)\".*" "\\1" LUA_VMAJ "${lua_version_major}")
++    string(REGEX REPLACE "^#define[ \t]+LUA_VERSION_MINOR[ \t]+\"([^\"]+)\".*" "\\1" LUA_VMIN "${lua_version_minor}")
++    string(REGEX REPLACE "^#define[ \t]+LUA_VERSION_RELEASE[ \t]+\"([^\"]+)\".*" "\\1" LUA_VREL "${lua_version_release}")
+ 
+-    string(REGEX REPLACE "^#define[ \t]+LUAJIT_VERSION[ \t]+\"LuaJIT ([^\"]+)\".*" "\\1" LUAJIT_VERSION_STRING "${luajit_version_str}")
+-    unset(luajit_version_str)
++    set(LUAJIT_VERSION_STRING "${LUA_VMAJ}.${LUA_VMIN}.${LUA_VREL}")
++    unset(lua_version_major)
++    unset(lua_version_minor)
++    unset(lua_version_release)
+ endif()
+ 
+ include(FindPackageHandleStandardArgs)
+-# handle the QUIETLY and REQUIRED arguments and set LUA_FOUND to TRUE if
+-# all listed variables are TRUE
+ find_package_handle_standard_args(LuaJIT
+     REQUIRED_VARS LUAJIT_LIBRARIES LUAJIT_INCLUDE_DIR
+     VERSION_VAR LUAJIT_VERSION_STRING
+     FAIL_MESSAGE "${ERROR_MESSAGE}"
+ )
+ 
+-if (APPLE)
+-    if(LUAJIT_VERSION_STRING VERSION_LESS "2.1")
+-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LUAJIT_LIBRARIES} -pagezero_size 10000 -image_base 100000000")
+-    else()
+-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LUAJIT_LIBRARIES}")
+-    endif()
+-endif()
+-
+ mark_as_advanced(LUAJIT_INCLUDE_DIR LUAJIT_LIBRARIES)
+-
+diff --git a/configure.txt b/configure.txt
+new file mode 100644
+index 000000000000..9790fbd5bef3
+--- /dev/null
++++ b/configure.txt
+@@ -0,0 +1 @@
++CC=/opt/fil/bin/filcc CXX=/opt/fil/bin/fil++ ./configure_cmake.sh --define=CMAKE_PREFIX_PATH=/opt/fil --with-luajit-includes=/opt/fil/include/lua5.1 --with-luajit-libraries=/opt/fil/lib/lua5.1 --prefix=/opt/fil
+diff --git a/src/file_api/file_lib.cc b/src/file_api/file_lib.cc
+index 769983377193..c20720e0bbfb 100644
+--- a/src/file_api/file_lib.cc
++++ b/src/file_api/file_lib.cc
+@@ -554,7 +554,7 @@ void FileContext::log_file_event(Flow* flow, FilePolicyBase* policy)
+             DataBus::publish(intrinsic_pub_id, IntrinsicEventIds::FILE_VERDICT, (const uint8_t*)"RESET", 5, flow);
+             break;
+         default:
+-            log_needed = false;
++            DataBus::publish(intrinsic_pub_id, IntrinsicEventIds::FILE_VERDICT, (const uint8_t*)"LOG", 3, flow);
+             break;
+         }
+ 
+diff --git a/src/main/process.cc b/src/main/process.cc
+index 87fa290e206a..a0d762040ffb 100644
+--- a/src/main/process.cc
++++ b/src/main/process.cc
+@@ -24,7 +24,7 @@
+ 
+ #include <fcntl.h>
+ #include <grp.h>
+-#include <luajit.h>
++#include <lua.h>
+ #include <openssl/crypto.h>
+ #include <pcap.h>
+ #include <pwd.h>
+@@ -680,7 +680,7 @@ void StoreSnortInfoStrings()
+ 
+ int DisplayBanner()
+ {
+-    const char* ljv = LUAJIT_VERSION;
++    const char* ljv = LUA_VERSION;
+     while ( *ljv && !isdigit(*ljv) )
+         ++ljv;
+ 
+@@ -716,7 +716,7 @@ int DisplayBanner()
+     LogMessage("           Using LibML version %s\n", libml::version());
+ #endif
+     LogMessage("           Using %s\n", pcap_lib_version());
+-    LogMessage("           Using LuaJIT version %s\n", ljv);
++    LogMessage("           Using Lua version %s\n", ljv);
+ #ifdef HAVE_LZMA
+     LogMessage("           Using LZMA version %s\n", lzma_version_string());
+ #endif
+diff --git a/src/main/shell.cc b/src/main/shell.cc
+index 846a5db7bd3f..2ecf29d4555f 100644
+--- a/src/main/shell.cc
++++ b/src/main/shell.cc
+@@ -85,7 +85,7 @@ static const char* versions[] = {
+ static const char* dep_versions[] = {
+     "SNORT_DEP_VERSIONS",
+     "DAQ",
+-    "LUAJIT",
++    "LUA",
+     "OPENSSL",
+     "LIBPCAP",
+     "PCRE",
+@@ -147,7 +147,7 @@ static void install_dependencies_strings(Shell* sh, lua_State* L)
+         abort();
+ 
+     std::vector<const char*> vs;
+-    const char* ljv = LUAJIT_VERSION;
++    const char* ljv = LUA_VERSION;
+     const char* osv = OpenSSL_version(SSLEAY_VERSION);
+     const char* lpv = pcap_lib_version();
+ 
+diff --git a/src/protocols/ssl.h b/src/protocols/ssl.h
+index 96246fc64c34..962e34d1747b 100644
+--- a/src/protocols/ssl.h
++++ b/src/protocols/ssl.h
+@@ -223,6 +223,8 @@ struct SSLv2_client_master_key_t
+     uint8_t cipher_spec[3];
+ };
+ 
++#pragma pack()
++
+ struct SO_PUBLIC SSLV3ClientHelloData
+ {
+     ~SSLV3ClientHelloData();
+@@ -248,6 +250,8 @@ struct SO_PUBLIC SSLV3ServerCertData
+     int subject_info_strlen = 0;
+ };
+ 
++#pragma pack(1)
++
+ struct SO_PUBLIC TLSConnectionParams
+ {
+     int32_t curve = -1;
+@@ -255,6 +259,8 @@ struct SO_PUBLIC TLSConnectionParams
+     int32_t selected_tls_version = -1;
+ };
+ 
++#pragma pack()
++
+ struct SO_PUBLIC TLSConnectionData
+ {
+     void process(const SSLV3ServerCertData& cert_data);
+@@ -277,6 +283,8 @@ enum class SSLV3RecordType : uint8_t
+     CERTIFICATE_STATUS = 22
+ };
+ 
++#pragma pack(1)
++
+ /* Usually referred to as a Certificate Handshake. */
+ struct ServiceSSLV3CertsRecord
+ {

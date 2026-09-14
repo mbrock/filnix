@@ -52,7 +52,7 @@ ascii_max_range = 1000
             # CAVA cleans up, restores SIG_DFL and re-raises the received signal.
             result = child.wait(timeout=10)
             assert result == -signal.SIGTERM, f"CAVA shutdown failed: {result}"
-            print("CAVA: private libc, config/resources, eight-bar raw output and shutdown passed")
+            print("CAVA: shared libc, config/resources, eight-bar raw output and shutdown passed")
         except BaseException:
             errors.flush()
             errors.seek(0)

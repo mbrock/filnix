@@ -1,0 +1,1094 @@
+Subject: Route selected cancellation points through Fil-C and preserve NPTL cleanup
+Origin: Filnix
+Upstream-Status: Experimental, not submitted
+
+Based on Fil-C b6dd63481f796f8bff8502165c7dfc61091dbbd6.
+See docs/pthread-cancellation-implementation.md for the supported entry points,
+validation and remaining limitations. This does not implement arbitrary async
+cancellation or cancellation that unwinds out of an application signal handler.
+
+diff --git a/nptl/cancellation.c b/nptl/cancellation.c
+index 4368cb723194..495c8d01958b 100644
+--- a/nptl/cancellation.c
++++ b/nptl/cancellation.c
+@@ -29,12 +29,11 @@ __internal_syscall_cancel (__syscall_arg_t a1, __syscall_arg_t a2,
+ 			   __syscall_arg_t nr)
+ {
+   long int result;
+-  struct pthread *pd = THREAD_SELF;
+ 
+   /* If cancellation is not enabled, call the syscall directly and also
+      for thread terminatation to avoid call __syscall_do_cancel while
+      executing cleanup handlers.  */
+-  int ch = atomic_load_relaxed (&pd->cancelhandling);
++  int ch = zthread_cancel_get ();
+   if (SINGLE_THREAD_P || !cancel_enabled (ch) || cancel_exiting (ch))
+     {
+       result = INTERNAL_SYSCALL_NCS_CALL (nr, a1, a2, a3, a4, a5, a6
+@@ -46,12 +45,12 @@ __internal_syscall_cancel (__syscall_arg_t a1, __syscall_arg_t a2,
+ 
+   /* Call the arch-specific entry points that contains the globals markers
+      to be checked by SIGCANCEL handler.  */
+-  result = __syscall_cancel_arch (&pd->cancelhandling, nr, a1, a2, a3, a4, a5,
++  result = __syscall_cancel_arch (&ch, nr, a1, a2, a3, a4, a5,
+ 			          a6 __SYSCALL_CANCEL7_ARCH_ARG7);
+ 
+   /* If the cancellable syscall was interrupted by SIGCANCEL and it has no
+      side-effect, cancel the thread if cancellation is enabled.  */
+-  ch = atomic_load_relaxed (&pd->cancelhandling);
++  ch = zthread_cancel_get ();
+   /* The behaviour here assumes that EINTR is returned only if there are no
+      visible side effects.  POSIX Issue 7 has not yet provided any stronger
+      language for close, and in theory the close syscall could return EINTR
+@@ -84,27 +83,5 @@ __syscall_cancel (__syscall_arg_t a1, __syscall_arg_t a2,
+ _Noreturn void
+ __syscall_do_cancel (void)
+ {
+-  struct pthread *self = THREAD_SELF;
+-
+-  /* Disable thread cancellation to avoid cancellable entrypoints calling
+-     __syscall_do_cancel recursively.  We atomic load relaxed to check the
+-     state of cancelhandling, there is no particular ordering requirement
+-     between the syscall call and the other thread setting our cancelhandling
+-     with a atomic store acquire.
+-
+-     POSIX Issue 7 notes that the cancellation occurs asynchronously on the
+-     target thread, that implies there is no ordering requirements.  It does
+-     not need a MO release store here.  */
+-  int oldval = atomic_load_relaxed (&self->cancelhandling);
+-  while (1)
+-    {
+-      int newval = oldval | CANCELSTATE_BITMASK;
+-      if (oldval == newval)
+-	break;
+-      if (atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						&oldval, newval))
+-	break;
+-    }
+-
+   __do_cancel (PTHREAD_CANCELED);
+ }
+diff --git a/nptl/cleanup_compat.c b/nptl/cleanup_compat.c
+index c87bd9b63d24..d51f90a60140 100644
+--- a/nptl/cleanup_compat.c
++++ b/nptl/cleanup_compat.c
+@@ -28,6 +28,7 @@ __pthread_cleanup_push (struct _pthread_cleanup_buffer *buffer,
+   buffer->__routine = routine;
+   buffer->__arg = arg;
+   buffer->__prev = THREAD_GETMEM (self, cleanup);
++  buffer->__filc_frame = zget_call_frame (1);
+ 
+   THREAD_SETMEM (self, cleanup, buffer);
+ }
+diff --git a/nptl/cleanup_defer.c b/nptl/cleanup_defer.c
+index db4f7e802280..dee53d778a08 100644
+--- a/nptl/cleanup_defer.c
++++ b/nptl/cleanup_defer.c
+@@ -25,29 +25,11 @@ ___pthread_register_cancel_defer (__pthread_unwind_buf_t *buf)
+ {
+   struct pthread_unwind_buf *ibuf = (struct pthread_unwind_buf *) buf;
+   struct pthread *self = THREAD_SELF;
+-
+-  /* Store old info.  */
+   ibuf->priv.data.prev = THREAD_GETMEM (self, cleanup_jmp_buf);
+   ibuf->priv.data.cleanup = THREAD_GETMEM (self, cleanup);
+-
+-  int cancelhandling = atomic_load_relaxed (&self->cancelhandling);
+-  if (__glibc_unlikely (cancelhandling & CANCELTYPE_BITMASK))
+-    {
+-      int newval;
+-      do
+-	{
+-	  newval = cancelhandling & ~CANCELTYPE_BITMASK;
+-	}
+-      while (!atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						    &cancelhandling,
+-						    newval));
+-    }
+-
+-  ibuf->priv.data.canceltype = (cancelhandling & CANCELTYPE_BITMASK
+-				? PTHREAD_CANCEL_ASYNCHRONOUS
+-				: PTHREAD_CANCEL_DEFERRED);
+-
+-  /* Store the new cleanup handler info.  */
++  unsigned old = zthread_cancel_set (CANCELTYPE_BITMASK, 0);
++  ibuf->priv.data.canceltype = old & CANCELTYPE_BITMASK
++    ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
+   THREAD_SETMEM (self, cleanup_jmp_buf, (struct pthread_unwind_buf *) buf);
+ }
+ versioned_symbol (libc, ___pthread_register_cancel_defer,
+@@ -62,27 +44,13 @@ void
+ __cleanup_fct_attribute
+ ___pthread_unregister_cancel_restore (__pthread_unwind_buf_t *buf)
+ {
+-  struct pthread *self = THREAD_SELF;
+   struct pthread_unwind_buf *ibuf = (struct pthread_unwind_buf *) buf;
+-
+-  THREAD_SETMEM (self, cleanup_jmp_buf, ibuf->priv.data.prev);
+-
+-  if (ibuf->priv.data.canceltype == PTHREAD_CANCEL_DEFERRED)
+-    return;
+-
+-  int cancelhandling = atomic_load_relaxed (&self->cancelhandling);
+-  if ((cancelhandling & CANCELTYPE_BITMASK) == 0)
++  THREAD_SETMEM (THREAD_SELF, cleanup_jmp_buf, ibuf->priv.data.prev);
++  if (ibuf->priv.data.canceltype == PTHREAD_CANCEL_ASYNCHRONOUS)
+     {
+-      int newval;
+-      do
+-	{
+-	  newval = cancelhandling | CANCELTYPE_BITMASK;
+-	}
+-      while (!atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						    &cancelhandling, newval));
+-
+-      if (cancel_enabled_and_canceled (cancelhandling))
+-	__do_cancel (PTHREAD_CANCELED);
++      zthread_cancel_set (CANCELTYPE_BITMASK, CANCELTYPE_BITMASK);
++      if (cancel_enabled_and_canceled (zthread_cancel_get ()))
++        __do_cancel (PTHREAD_CANCELED);
+     }
+ }
+ versioned_symbol (libc, ___pthread_unregister_cancel_restore,
+diff --git a/nptl/futex-internal.c b/nptl/futex-internal.c
+index e50fac04e3a9..40c36a418e46 100644
+--- a/nptl/futex-internal.c
++++ b/nptl/futex-internal.c
+@@ -21,6 +21,7 @@
+ #include <time.h>
+ #include <futex-internal.h>
+ #include <kernel-features.h>
++#include <pthreadP.h>
+ 
+ int
+ __futex_abstimed_wait64 (unsigned int* futex_word, unsigned int expected,
+@@ -38,8 +39,14 @@ __futex_abstimed_wait_cancelable64 (unsigned int* futex_word,
+                                     const struct __timespec64* abstime,
+                                     int private)
+ {
+-  return __futex_abstimed_wait64 (futex_word, expected, clockid, abstime,
+-                                  private);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_futex_timedwait_cancel (
++    (volatile int *) futex_word, expected, clockid, abstime,
++    __lll_zsys_private_arg (private), &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__futex_abstimed_wait_cancelable64)
+ 
+diff --git a/nptl/libc-cleanup.c b/nptl/libc-cleanup.c
+index 604267dda907..e5d08d8decd6 100644
+--- a/nptl/libc-cleanup.c
++++ b/nptl/libc-cleanup.c
+@@ -23,28 +23,11 @@ void
+ __libc_cleanup_push_defer (struct _pthread_cleanup_buffer *buffer)
+ {
+   struct pthread *self = THREAD_SELF;
+-
+   buffer->__prev = THREAD_GETMEM (self, cleanup);
+-
+-  int cancelhandling = atomic_load_relaxed (&self->cancelhandling);
+-
+-  /* Disable asynchronous cancellation for now.  */
+-  if (__glibc_unlikely (cancelhandling & CANCELTYPE_BITMASK))
+-    {
+-      int newval;
+-      do
+-	{
+-	  newval = cancelhandling & ~CANCELTYPE_BITMASK;
+-	}
+-      while (!atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						    &cancelhandling,
+-						    newval));
+-    }
+-
+-  buffer->__canceltype = (cancelhandling & CANCELTYPE_BITMASK
+-			  ? PTHREAD_CANCEL_ASYNCHRONOUS
+-			  : PTHREAD_CANCEL_DEFERRED);
+-
++  buffer->__filc_frame = zget_call_frame (1);
++  unsigned old = zthread_cancel_set (CANCELTYPE_BITMASK, 0);
++  buffer->__canceltype = old & CANCELTYPE_BITMASK
++    ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
+   THREAD_SETMEM (self, cleanup, buffer);
+ }
+ libc_hidden_def (__libc_cleanup_push_defer)
+@@ -52,24 +35,12 @@ libc_hidden_def (__libc_cleanup_push_defer)
+ void
+ __libc_cleanup_pop_restore (struct _pthread_cleanup_buffer *buffer)
+ {
+-  struct pthread *self = THREAD_SELF;
+-
+-  THREAD_SETMEM (self, cleanup, buffer->__prev);
+-
+-  int cancelhandling = atomic_load_relaxed (&self->cancelhandling);
+-  if (buffer->__canceltype != PTHREAD_CANCEL_DEFERRED
+-      && (cancelhandling & CANCELTYPE_BITMASK) == 0)
++  THREAD_SETMEM (THREAD_SELF, cleanup, buffer->__prev);
++  if (buffer->__canceltype == PTHREAD_CANCEL_ASYNCHRONOUS)
+     {
+-      int newval;
+-      do
+-	{
+-	  newval = cancelhandling | CANCELTYPE_BITMASK;
+-	}
+-      while (!atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						    &cancelhandling, newval));
+-
+-      if (cancel_enabled_and_canceled (cancelhandling))
+-	__do_cancel (PTHREAD_CANCELED);
++      zthread_cancel_set (CANCELTYPE_BITMASK, CANCELTYPE_BITMASK);
++      if (cancel_enabled_and_canceled (zthread_cancel_get ()))
++        __do_cancel (PTHREAD_CANCELED);
+     }
+ }
+ libc_hidden_def (__libc_cleanup_pop_restore)
+diff --git a/nptl/pthread_cancel.c b/nptl/pthread_cancel.c
+index 5a5a637d7c66..6659e92a2400 100644
+--- a/nptl/pthread_cancel.c
++++ b/nptl/pthread_cancel.c
+@@ -28,129 +28,20 @@
+ #include <gnu/lib-names.h>
+ #include <sys/single_threaded.h>
+ 
+-/* For asynchronous cancellation we use a signal.  */
+-static void
+-sigcancel_handler (int sig, siginfo_t *si, void *ctx)
+-{
+-  /* Safety check.  It would be possible to call this function for
+-     other signals and send a signal from another process.  This is not
+-     correct and might even be a security problem.  Try to catch as
+-     many incorrect invocations as possible.  */
+-  if (sig != SIGCANCEL
+-      || si->si_pid != __getpid()
+-      || si->si_code != SI_TKILL)
+-    return;
+-
+-  /* Check if asynchronous cancellation mode is set and cancellation is not
+-     already in progress, or if interrupted instruction pointer falls within
+-     the cancellable syscall bridge.
+-     For interruptable syscalls with external side-effects (i.e. partial
+-     reads), the kernel will set the IP to after __syscall_cancel_arch_end,
+-     thus disabling the cancellation and allowing the process to handle such
+-     conditions.  */
+-  struct pthread *self = THREAD_SELF;
+-  int oldval = atomic_load_relaxed (&self->cancelhandling);
+-  if (cancel_enabled_and_canceled_and_async (oldval)
+-      || cancellation_pc_check (ctx))
+-    __syscall_do_cancel ();
+-}
++/* Native notification and request state are owned by libpizlo. */
+ 
+ int
+ __pthread_cancel (pthread_t th)
+ {
+-  volatile struct pthread *pd = (volatile struct pthread *) th;
+-
+-  unsigned int state = atomic_load_relaxed (&pd->joinstate);
+-  if (state == THREAD_STATE_EXITED)
+-    /* The thread has already exited on the kernel side.  Its outcome
+-       (regular exit, other cancelation) has already been
+-       determined.  */
++  struct pthread *pd = (struct pthread *) th;
++  if (atomic_load_relaxed (&pd->joinstate) == THREAD_STATE_EXITED)
+     return 0;
+-
+-  static int init_sigcancel = 0;
+-  if (atomic_load_relaxed (&init_sigcancel) == 0)
+-    {
+-      struct sigaction sa;
+-      sa.sa_sigaction = sigcancel_handler;
+-      /* The signal handle should be non-interruptible to avoid the risk of
+-	 spurious EINTR caused by SIGCANCEL sent to process or if
+-	 pthread_cancel() is called while cancellation is disabled in the
+-	 target thread.  */
+-      sa.sa_flags = SA_SIGINFO | SA_RESTART;
+-      __sigemptyset (&sa.sa_mask);
+-      __libc_sigaction (SIGCANCEL, &sa, NULL);
+-      atomic_store_relaxed (&init_sigcancel, 1);
+-    }
+-
+-#ifdef SHARED
+-  /* Trigger an error if libgcc_s cannot be loaded.  */
+-  {
+-    struct unwind_link *unwind_link = __libc_unwind_link_get ();
+-    if (unwind_link == NULL)
+-      __libc_fatal (UNWIND_SONAME
+-		    " must be installed for pthread_cancel to work\n");
+-  }
+-#endif
+-
+-  /* Some syscalls are never restarted after being interrupted by a signal
+-     handler, regardless of the use of SA_RESTART (they always fail with
+-     EINTR).  So pthread_cancel cannot send SIGCANCEL unless the cancellation
+-     is enabled.
+-     In this case the target thread is set as 'cancelled' (CANCELED_BITMASK)
+-     by atomically setting 'cancelhandling' and the cancellation will be acted
+-     upon on next cancellation entrypoint in the target thread.
+-
+-     It also requires to atomically check if cancellation is enabled, so the
+-     state are also tracked on 'cancelhandling'.  */
+-
+-  int result = 0;
+-  int oldval = atomic_load_relaxed (&pd->cancelhandling);
+-  int newval;
+-  do
+-    {
+-    again:
+-      newval = oldval | CANCELED_BITMASK;
+-      if (oldval == newval)
+-	break;
+-
+-      /* Only send the SIGCANCEL signal if cancellation is enabled, since some
+-	 syscalls are never restarted even with SA_RESTART.  The signal
+-	 will act iff async cancellation is enabled.  */
+-      if (cancel_enabled (newval))
+-	{
+-	  if (!atomic_compare_exchange_weak_acquire (&pd->cancelhandling,
+-						     &oldval, newval))
+-	    goto again;
+-
+-	  if (pd == THREAD_SELF)
+-	    /* This is not merely an optimization: An application may
+-	       call pthread_cancel (pthread_self ()) without calling
+-	       pthread_create, so the signal handler may not have been
+-	       set up for a self-cancel.  */
+-	    {
+-	      if (cancel_async_enabled (newval))
+-		__do_cancel (PTHREAD_CANCELED);
+-	    }
+-	  else
+-	    /* The cancellation handler will take care of marking the
+-	       thread as canceled.  */
+-	    result = __pthread_kill_internal (th, SIGCANCEL);
+-
+-	  break;
+-	}
+-    }
+-  while (!atomic_compare_exchange_weak_acquire (&pd->cancelhandling, &oldval,
+-						newval));
+-
+-  /* A single-threaded process should be able to kill itself, since there is
+-     nothing in the POSIX specification that says that it cannot.  So we set
+-     multiple_threads to true so that cancellation points get executed.  */
+-  THREAD_SETMEM (THREAD_SELF, header.multiple_threads, 1);
+-#ifndef TLS_MULTIPLE_THREADS_IN_TCB
+-  __libc_single_threaded_internal = 0;
+-#endif
+-
+-  return result;
++  if (!zthread_cancel_request (pd->zthread))
++    return errno;
++  if (pd == THREAD_SELF
++      && cancel_enabled_and_canceled_and_async (zthread_cancel_get ()))
++    __do_cancel (PTHREAD_CANCELED);
++  return 0;
+ }
+ versioned_symbol (libc, __pthread_cancel, pthread_cancel, GLIBC_2_34);
+ 
+diff --git a/nptl/pthread_cond_wait.c b/nptl/pthread_cond_wait.c
+index cd27a2bed519..6287d8c55df3 100644
+--- a/nptl/pthread_cond_wait.c
++++ b/nptl/pthread_cond_wait.c
+@@ -330,6 +330,9 @@ static __always_inline int
+ __pthread_cond_wait_common (pthread_cond_t *cond, pthread_mutex_t *mutex,
+     clockid_t clockid, const struct __timespec64 *abstime)
+ {
++  /* A request already pending on entry must also cancel the fast path.
++     The caller still owns MUTEX here, as cancellation cleanup requires. */
++  __pthread_testcancel ();
+   int err;
+   int result = 0;
+ 
+diff --git a/nptl/pthread_create.c b/nptl/pthread_create.c
+index 1bdad862f665..13d3d1d8674d 100644
+--- a/nptl/pthread_create.c
++++ b/nptl/pthread_create.c
+@@ -363,6 +363,9 @@ start_thread (void *arg)
+       THREAD_SETMEM (pd, result, ret);
+     }
+ 
++  zthread_cancel_set (CANCELSTATE_BITMASK | CANCELTYPE_BITMASK | EXITING_BITMASK,
++                      CANCELSTATE_BITMASK | EXITING_BITMASK);
++
+   /* Call destructors for the thread_local TLS variables.  */
+   call_function_static_weak (__call_tls_dtors);
+ 
+diff --git a/nptl/pthread_join_common.c b/nptl/pthread_join_common.c
+index c4c77c35bf74..2f17af564b07 100644
+--- a/nptl/pthread_join_common.c
++++ b/nptl/pthread_join_common.c
+@@ -65,7 +65,7 @@ __pthread_clockjoin_ex (pthread_t threadid, void **thread_return,
+ 
+   struct pthread *self = THREAD_SELF;
+   if (pd == self
+-      && !cancel_enabled_and_canceled (self->cancelhandling))
++      && !cancel_enabled_and_canceled (zthread_cancel_get ()))
+     return EDEADLK;
+ 
+   /* POSIX states calling pthread_join on a non joinable thread is
+diff --git a/nptl/pthread_setcancelstate.c b/nptl/pthread_setcancelstate.c
+index 8286bfef75d6..434a55dd825a 100644
+--- a/nptl/pthread_setcancelstate.c
++++ b/nptl/pthread_setcancelstate.c
+@@ -23,37 +23,14 @@
+ int
+ __pthread_setcancelstate (int state, int *oldstate)
+ {
+-  volatile struct pthread *self;
+-
+   if (state < PTHREAD_CANCEL_ENABLE || state > PTHREAD_CANCEL_DISABLE)
+     return EINVAL;
+-
+-  self = THREAD_SELF;
+-
+-  int oldval = atomic_load_relaxed (&self->cancelhandling);
+-  while (1)
+-    {
+-      int newval = (state == PTHREAD_CANCEL_DISABLE
+-		    ? oldval | CANCELSTATE_BITMASK
+-		    : oldval & ~CANCELSTATE_BITMASK);
+-
+-      if (oldstate != NULL)
+-	*oldstate = ((oldval & CANCELSTATE_BITMASK)
+-		     ? PTHREAD_CANCEL_DISABLE : PTHREAD_CANCEL_ENABLE);
+-
+-      if (oldval == newval)
+-	break;
+-
+-      if (atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						&oldval, newval))
+-	{
+-	  if (cancel_enabled_and_canceled_and_async (newval))
+-	    __do_cancel (PTHREAD_CANCELED);
+-
+-	  break;
+-	}
+-    }
+-
++  int old = zthread_cancel_set (CANCELSTATE_BITMASK,
++                                state == PTHREAD_CANCEL_DISABLE ? CANCELSTATE_BITMASK : 0);
++  if (oldstate != NULL)
++    *oldstate = old & CANCELSTATE_BITMASK ? PTHREAD_CANCEL_DISABLE : PTHREAD_CANCEL_ENABLE;
++  if (cancel_enabled_and_canceled_and_async (zthread_cancel_get ()))
++    __do_cancel (PTHREAD_CANCELED);
+   return 0;
+ }
+ libc_hidden_def (__pthread_setcancelstate)
+diff --git a/nptl/pthread_setcanceltype.c b/nptl/pthread_setcanceltype.c
+index cd77f296c790..486386e215f1 100644
+--- a/nptl/pthread_setcanceltype.c
++++ b/nptl/pthread_setcanceltype.c
+@@ -25,36 +25,12 @@ __pthread_setcanceltype (int type, int *oldtype)
+ {
+   if (type < PTHREAD_CANCEL_DEFERRED || type > PTHREAD_CANCEL_ASYNCHRONOUS)
+     return EINVAL;
+-
+-  volatile struct pthread *self = THREAD_SELF;
+-
+-  int oldval = atomic_load_relaxed (&self->cancelhandling);
+-  while (1)
+-    {
+-      int newval = (type == PTHREAD_CANCEL_ASYNCHRONOUS
+-		    ? oldval | CANCELTYPE_BITMASK
+-		    : oldval & ~CANCELTYPE_BITMASK);
+-
+-      if (oldtype != NULL)
+-	*oldtype = ((oldval & CANCELTYPE_BITMASK)
+-		    ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED);
+-
+-      if (oldval == newval)
+-	break;
+-
+-      if (atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						&oldval, newval))
+-	{
+-	  if (cancel_enabled_and_canceled_and_async (newval))
+-	    {
+-	      THREAD_SETMEM (self, result, PTHREAD_CANCELED);
+-	      __do_cancel (PTHREAD_CANCELED);
+-	    }
+-
+-	  break;
+-	}
+-    }
+-
++  int old = zthread_cancel_set (CANCELTYPE_BITMASK,
++                                type == PTHREAD_CANCEL_ASYNCHRONOUS ? CANCELTYPE_BITMASK : 0);
++  if (oldtype != NULL)
++    *oldtype = old & CANCELTYPE_BITMASK ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
++  if (cancel_enabled_and_canceled_and_async (zthread_cancel_get ()))
++    __do_cancel (PTHREAD_CANCELED);
+   return 0;
+ }
+ libc_hidden_def (__pthread_setcanceltype)
+diff --git a/nptl/pthread_testcancel.c b/nptl/pthread_testcancel.c
+index 175a434f5ea9..03772095c4c7 100644
+--- a/nptl/pthread_testcancel.c
++++ b/nptl/pthread_testcancel.c
+@@ -22,9 +22,7 @@
+ void
+ ___pthread_testcancel (void)
+ {
+-  struct pthread *self = THREAD_SELF;
+-  int cancelhandling = atomic_load_relaxed (&self->cancelhandling);
+-  if (cancel_enabled_and_canceled (cancelhandling))
++  if (cancel_enabled_and_canceled (zthread_cancel_get ()))
+     __do_cancel (PTHREAD_CANCELED);
+ }
+ versioned_symbol (libc, ___pthread_testcancel, pthread_testcancel, GLIBC_2_34);
+diff --git a/nptl/unwind.c b/nptl/unwind.c
+index 3eba5f08207d..8121f0d87732 100644
+--- a/nptl/unwind.c
++++ b/nptl/unwind.c
+@@ -61,7 +61,18 @@ unwind_stop (int version, _Unwind_Action actions,
+ 				    adj))
+     do_longjump = 1;
+ 
+-  ZASSERT(!curp);
++  /* The compatibility list is still used by NPTL waits and libc locks.
++     Compare call-frame identities, not heap addresses of cleanup buffers.
++     The modern cleanup scope's saved list head is the nesting boundary. */
++  void *frame = (void *) (_Unwind_Ptr) _Unwind_GetCFA (context);
++  while (curp != NULL && curp != buf->priv.data.cleanup
++         && (do_longjump || curp->__filc_frame == frame))
++    {
++      struct _pthread_cleanup_buffer *next = curp->__prev;
++      THREAD_SETMEM (self, cleanup, next);
++      curp->__routine (curp->__arg);
++      curp = THREAD_GETMEM (self, cleanup);
++    }
+ 
+   DIAG_PUSH_NEEDS_COMMENT;
+ #if __GNUC_PREREQ (7, 0)
+diff --git a/sysdeps/nptl/pthread.h b/sysdeps/nptl/pthread.h
+index 3f0e95cbd564..a628684016d5 100644
+--- a/sysdeps/nptl/pthread.h
++++ b/sysdeps/nptl/pthread.h
+@@ -162,6 +162,9 @@ struct _pthread_cleanup_buffer
+   void *__arg;                            /* Its argument.  */
+   int __canceltype;                       /* Saved cancellation type. */
+   struct _pthread_cleanup_buffer *__prev; /* Chaining of cleanup functions.  */
++  /* Fil-C locals may be heap allocated, so the buffer address cannot locate
++     its owning call frame during forced unwinding. */
++  void *__filc_frame;
+ };
+ 
+ /* Cancellation */
+diff --git a/sysdeps/nptl/pthreadP.h b/sysdeps/nptl/pthreadP.h
+index 668d08deda00..85372c0682a6 100644
+--- a/sysdeps/nptl/pthreadP.h
++++ b/sysdeps/nptl/pthreadP.h
+@@ -19,6 +19,7 @@
+ #define _PTHREADP_H	1
+ 
+ #include <pthread.h>
++#include <pizlonated_runtime.h>
+ #include <setjmp.h>
+ #include <stdbool.h>
+ #include <sys/syscall.h>
+@@ -249,27 +250,13 @@ __attribute ((noreturn, always_inline))
+ __do_cancel (void *result)
+ {
+   struct pthread *self = THREAD_SELF;
+-
+   self->result = result;
+-
+-  /* Make sure we get no more cancellations.  */
+-  int oldval = atomic_load_relaxed (&self->cancelhandling);
+-  int newval;
+-  do
+-    {
+-      /* It is required by POSIX XSH 2.9.5 Thread Cancellation under the
+-	 heading Thread Cancellation Cleanup Handlers and also prevents
+-	 further cancellation points from acting on cancellation.  */
+-      newval = oldval | CANCELSTATE_BITMASK | EXITING_BITMASK;
+-      newval = newval & ~CANCELTYPE_BITMASK;
+-      if (oldval == newval)
+-	break;
+-    }
+-  while (!atomic_compare_exchange_weak_acquire (&self->cancelhandling,
+-						&oldval, newval));
+-
+-  __pthread_unwind ((__pthread_unwind_buf_t *)
+-		    THREAD_GETMEM (self, cleanup_jmp_buf));
++  zthread_cancel_set (CANCELSTATE_BITMASK | CANCELTYPE_BITMASK | EXITING_BITMASK,
++                      CANCELSTATE_BITMASK | EXITING_BITMASK);
++  /* Preserve the user-libc TCB lifetime/setxid protocol. Pending, enabled and
++     type state are authoritative only in the native thread control. */
++  atomic_fetch_or_relaxed (&self->cancelhandling, EXITING_BITMASK);
++  __pthread_unwind ((__pthread_unwind_buf_t *) THREAD_GETMEM (self, cleanup_jmp_buf));
+ }
+ 
+ extern long int __syscall_cancel_arch (volatile int *, __syscall_arg_t nr,
+diff --git a/sysdeps/unix/sysv/linux/accept.c b/sysdeps/unix/sysv/linux/accept.c
+index 79242477747c..862aa2b7f865 100644
+--- a/sysdeps/unix/sysv/linux/accept.c
++++ b/sysdeps/unix/sysv/linux/accept.c
+@@ -19,11 +19,17 @@
+ #include <sysdep-cancel.h>
+ #include <socketcall.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ int
+ __libc_accept (int fd, __SOCKADDR_ARG addr, socklen_t *len)
+ {
+-  return zsys_accept (fd, addr.__sockaddr__, len);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_accept4_cancel (fd, addr.__sockaddr__, len, 0, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ static_weak_alias (__libc_accept, accept)
+ libc_hidden_def (accept)
+diff --git a/sysdeps/unix/sysv/linux/accept4.c b/sysdeps/unix/sysv/linux/accept4.c
+index 23a6490c7ca9..81c44dcbe366 100644
+--- a/sysdeps/unix/sysv/linux/accept4.c
++++ b/sysdeps/unix/sysv/linux/accept4.c
+@@ -24,9 +24,15 @@
+ #include <socketcall.h>
+ #include <kernel-features.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ int
+ accept4 (int fd, __SOCKADDR_ARG addr, socklen_t *addr_len, int flags)
+ {
+-  return zsys_accept4 (fd, addr.__sockaddr__, addr_len, flags);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_accept4_cancel (fd, addr.__sockaddr__, addr_len, flags, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+diff --git a/sysdeps/unix/sysv/linux/clock_nanosleep.c b/sysdeps/unix/sysv/linux/clock_nanosleep.c
+index 3085e883c2de..647169230cb9 100644
+--- a/sysdeps/unix/sysv/linux/clock_nanosleep.c
++++ b/sysdeps/unix/sysv/linux/clock_nanosleep.c
+@@ -24,6 +24,7 @@
+ 
+ #include <shlib-compat.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ /* We can simply use the syscall.  The CPU clocks are not supported
+    with this function.  */
+@@ -32,7 +33,12 @@ __clock_nanosleep_time64 (clockid_t clock_id, int flags,
+ 			  const struct __timespec64 *req,
+ 			  struct __timespec64 *rem)
+ {
+-  return zsys_clock_nanosleep (clock_id, flags, req, rem);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_clock_nanosleep_cancel (clock_id, flags, req, rem, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ 
+ #if __TIMESIZE != 64
+diff --git a/sysdeps/unix/sysv/linux/close.c b/sysdeps/unix/sysv/linux/close.c
+index 8491252b6831..c3d67cc863d5 100644
+--- a/sysdeps/unix/sysv/linux/close.c
++++ b/sysdeps/unix/sysv/linux/close.c
+@@ -18,6 +18,7 @@
+ 
+ #include <unistd.h>
+ #include <sysdep-cancel.h>
++#include <pthreadP.h>
+ #include <not-cancel.h>
+ #include <pizlonated_syscalls.h>
+ 
+@@ -25,7 +26,12 @@
+ int
+ __close (int fd)
+ {
+-  return zsys_close (fd);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_close_cancel (fd, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__close)
+ strong_alias (__close, __libc_close)
+diff --git a/sysdeps/unix/sysv/linux/epoll_wait.c b/sysdeps/unix/sysv/linux/epoll_wait.c
+index cf9061524ee1..fe220edd020c 100644
+--- a/sysdeps/unix/sysv/linux/epoll_wait.c
++++ b/sysdeps/unix/sysv/linux/epoll_wait.c
+@@ -23,9 +23,15 @@
+ 
+ #include <sysdep-cancel.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ int
+ epoll_wait (int epfd, struct epoll_event *events, int maxevents, int timeout)
+ {
+-  return zsys_epoll_wait (epfd, events, maxevents, timeout);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_epoll_wait_cancel (epfd, events, maxevents, timeout, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+diff --git a/sysdeps/unix/sysv/linux/internal-signals.h b/sysdeps/unix/sysv/linux/internal-signals.h
+index 28fa5c5f731c..510198f0ca5e 100644
+--- a/sysdeps/unix/sysv/linux/internal-signals.h
++++ b/sysdeps/unix/sysv/linux/internal-signals.h
+@@ -29,35 +29,37 @@
+ #include <pizlonated_syscalls.h>
+ 
+ /* The signal used for asynchronous cancelation.  */
+-#define SIGCANCEL       __SIGRTMIN
++#define SIGCANCEL       (__SIGRTMIN + 2)
+ 
+ 
+ /* Signal used to implement the setuid et.al. functions.  */
+-#define SIGSETXID       (__SIGRTMIN + 1)
++#define SIGSETXID       (__SIGRTMIN + 3)
+ 
+ 
+ /* Signal needed for the kernel-supported POSIX timer implementation.
+    We can reuse the cancellation signal since we can distinguish
+    cancellation from timer expirations.  */
+-#define SIGTIMER        (__SIGRTMIN + 2)
++#define SIGTIMER        (__SIGRTMIN + 4)
+ 
+ 
+ /* How many signal numbers need to be reserved for libpthread's private uses
+    (SIGCANCEL and SIGSETXID).  */
+-#define RESERVED_SIGRT  3
++#define RESERVED_SIGRT  5
+ 
+ 
+ /* Return is sig is used internally.  */
+ static inline bool
+ is_internal_signal (int sig)
+ {
+-  return (sig == SIGCANCEL) || (sig == SIGSETXID) || (sig == SIGTIMER);
++  return sig >= __SIGRTMIN && sig < __SIGRTMIN + RESERVED_SIGRT;
+ }
+ 
+ /* Remove internal glibc signal from the mask.  */
+ static inline void
+ clear_internal_signals (sigset_t *set)
+ {
++  __sigdelset (set, __SIGRTMIN);
++  __sigdelset (set, __SIGRTMIN + 1);
+   __sigdelset (set, SIGCANCEL);
+   __sigdelset (set, SIGSETXID);
+   __sigdelset (set, SIGTIMER);
+diff --git a/sysdeps/unix/sysv/linux/open64.c b/sysdeps/unix/sysv/linux/open64.c
+index f69f2d2d910f..f21663cc7b25 100644
+--- a/sysdeps/unix/sysv/linux/open64.c
++++ b/sysdeps/unix/sysv/linux/open64.c
+@@ -23,13 +23,27 @@
+ #include <sysdep-cancel.h>
+ #include <shlib-compat.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ /* Open FILE with access OFLAG.  If O_CREAT or O_TMPFILE is in OFLAG,
+    a third argument is the file protection.  */
+ int
+ __libc_open64 (const char *file, int oflag, ...)
+ {
+-  return *(int *) zcall (zsys_open, zargs ());
++  __pthread_testcancel ();
++  mode_t mode = 0;
++  if (__OPEN_NEEDS_MODE (oflag))
++    {
++      va_list ap;
++      va_start (ap, oflag);
++      mode = va_arg (ap, int);
++      va_end (ap);
++    }
++  int canceled;
++  int result = zsys_openat_cancel (AT_FDCWD, file, oflag, mode, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ 
+ strong_alias (__libc_open64, __open64)
+diff --git a/sysdeps/unix/sysv/linux/openat64.c b/sysdeps/unix/sysv/linux/openat64.c
+index 6b7ad05c1662..7e6890362b8f 100644
+--- a/sysdeps/unix/sysv/linux/openat64.c
++++ b/sysdeps/unix/sysv/linux/openat64.c
+@@ -21,6 +21,7 @@
+ 
+ #include <sysdep-cancel.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ /* Open FILE with access OFLAG.  Interpret relative paths relative to
+    the directory associated with FD.  If OFLAG includes O_CREAT or
+@@ -28,7 +29,20 @@
+ int
+ __libc_openat64 (int fd, const char *file, int oflag, ...)
+ {
+-  return *(int *) zcall (zsys_openat, zargs ());
++  __pthread_testcancel ();
++  mode_t mode = 0;
++  if (__OPEN_NEEDS_MODE (oflag))
++    {
++      va_list ap;
++      va_start (ap, oflag);
++      mode = va_arg (ap, int);
++      va_end (ap);
++    }
++  int canceled;
++  int result = zsys_openat_cancel (fd, file, oflag, mode, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ 
+ strong_alias (__libc_openat64, __openat64)
+diff --git a/sysdeps/unix/sysv/linux/pause.c b/sysdeps/unix/sysv/linux/pause.c
+index 8b67f9435e55..74335ed35334 100644
+--- a/sysdeps/unix/sysv/linux/pause.c
++++ b/sysdeps/unix/sysv/linux/pause.c
+@@ -19,6 +19,7 @@
+ #include <signal.h>
+ #include <unistd.h>
+ #include <sysdep-cancel.h>
++#include <pthreadP.h>
+ #include <pizlonated_syscalls.h>
+ 
+ /* Suspend the process until a signal arrives.
+@@ -26,6 +27,11 @@
+ int
+ __libc_pause (void)
+ {
+-  return zsys_pause ();
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_pause_cancel (&canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ weak_alias (__libc_pause, pause)
+diff --git a/sysdeps/unix/sysv/linux/poll.c b/sysdeps/unix/sysv/linux/poll.c
+index b2d8616f8697..963f010a9406 100644
+--- a/sysdeps/unix/sysv/linux/poll.c
++++ b/sysdeps/unix/sysv/linux/poll.c
+@@ -20,13 +20,19 @@
+ #include <sys/poll.h>
+ 
+ #include <sysdep-cancel.h>
++#include <pthreadP.h>
+ #include <sys/syscall.h>
+ #include <pizlonated_syscalls.h>
+ 
+ int
+ __poll (struct pollfd *fds, nfds_t nfds, int timeout)
+ {
+-  return zsys_poll (fds, nfds, timeout);
++  __pthread_testcancel ();
++  int canceled;
++  int result = zsys_poll_cancel (fds, nfds, timeout, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__poll)
+ weak_alias (__poll, poll)
+diff --git a/sysdeps/unix/sysv/linux/pread64.c b/sysdeps/unix/sysv/linux/pread64.c
+index 920724918da5..2eb392fbdfac 100644
+--- a/sysdeps/unix/sysv/linux/pread64.c
++++ b/sysdeps/unix/sysv/linux/pread64.c
+@@ -19,11 +19,17 @@
+ #include <sysdep-cancel.h>
+ #include <shlib-compat.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ ssize_t
+ __libc_pread64 (int fd, void *buf, size_t count, off64_t offset)
+ {
+-  return zsys_pread (fd, buf, count, offset);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_pread_cancel (fd, buf, count, offset, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ 
+ strong_alias (__libc_pread64, __pread64)
+diff --git a/sysdeps/unix/sysv/linux/pwrite64.c b/sysdeps/unix/sysv/linux/pwrite64.c
+index fc5d21b7e731..1b6dd79d8501 100644
+--- a/sysdeps/unix/sysv/linux/pwrite64.c
++++ b/sysdeps/unix/sysv/linux/pwrite64.c
+@@ -19,11 +19,17 @@
+ #include <sysdep-cancel.h>
+ #include <shlib-compat.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ ssize_t
+ __libc_pwrite64 (int fd, const void *buf, size_t count, off64_t offset)
+ {
+-  return zsys_pwrite (fd, buf, count, offset);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_pwrite_cancel (fd, buf, count, offset, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ 
+ strong_alias (__libc_pwrite64, __pwrite64)
+diff --git a/sysdeps/unix/sysv/linux/read.c b/sysdeps/unix/sysv/linux/read.c
+index 514d676ea3ca..b30c9d02575f 100644
+--- a/sysdeps/unix/sysv/linux/read.c
++++ b/sysdeps/unix/sysv/linux/read.c
+@@ -18,13 +18,19 @@
+ 
+ #include <unistd.h>
+ #include <sysdep-cancel.h>
++#include <pthreadP.h>
+ #include <pizlonated_syscalls.h>
+ 
+ /* Read NBYTES into BUF from FD.  Return the number read or -1.  */
+ ssize_t
+ __libc_read (int fd, void *buf, size_t nbytes)
+ {
+-  return zsys_read (fd, buf, nbytes);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_read_cancel (fd, buf, nbytes, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__libc_read)
+ 
+diff --git a/sysdeps/unix/sysv/linux/readv.c b/sysdeps/unix/sysv/linux/readv.c
+index 8186ab13b2b4..e8f428c12696 100644
+--- a/sysdeps/unix/sysv/linux/readv.c
++++ b/sysdeps/unix/sysv/linux/readv.c
+@@ -20,11 +20,17 @@
+ #include <sys/uio.h>
+ #include <sysdep-cancel.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ ssize_t
+ __readv (int fd, const struct iovec *iov, int iovcnt)
+ {
+-  return zsys_readv (fd, iov, iovcnt);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_readv_cancel (fd, iov, iovcnt, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__readv)
+ weak_alias (__readv, readv)
+diff --git a/sysdeps/unix/sysv/linux/recvmsg.c b/sysdeps/unix/sysv/linux/recvmsg.c
+index c231f3d80d2f..7c2876df231b 100644
+--- a/sysdeps/unix/sysv/linux/recvmsg.c
++++ b/sysdeps/unix/sysv/linux/recvmsg.c
+@@ -20,11 +20,17 @@
+ #include <sysdep-cancel.h>
+ #include <socketcall.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ static int
+ __recvmsg_syscall (int fd, struct msghdr *msg, int flags)
+ {
+-  return zsys_recvmsg (fd, msg, flags);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_recvmsg_cancel (fd, msg, flags, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ 
+ ssize_t
+diff --git a/sysdeps/unix/sysv/linux/sendmsg.c b/sysdeps/unix/sysv/linux/sendmsg.c
+index 4db5332b92af..eb31e9b26cbc 100644
+--- a/sysdeps/unix/sysv/linux/sendmsg.c
++++ b/sysdeps/unix/sysv/linux/sendmsg.c
+@@ -21,11 +21,17 @@
+ #include <socketcall.h>
+ #include <shlib-compat.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ ssize_t
+ __libc_sendmsg (int fd, const struct msghdr *msg, int flags)
+ {
+-  return zsys_sendmsg (fd, msg, flags);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_sendmsg_cancel (fd, msg, flags, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ weak_alias (__libc_sendmsg, sendmsg)
+ weak_alias (__libc_sendmsg, __sendmsg)
+diff --git a/sysdeps/unix/sysv/linux/write.c b/sysdeps/unix/sysv/linux/write.c
+index c50f51d7ad8d..c647f8988b49 100644
+--- a/sysdeps/unix/sysv/linux/write.c
++++ b/sysdeps/unix/sysv/linux/write.c
+@@ -19,12 +19,18 @@
+ #include <unistd.h>
+ #include <sysdep-cancel.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ /* Write NBYTES of BUF to FD.  Return the number written, or -1.  */
+ ssize_t
+ __libc_write (int fd, const void *buf, size_t nbytes)
+ {
+-  return zsys_write (fd, buf, nbytes);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_write_cancel (fd, buf, nbytes, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__libc_write)
+ 
+diff --git a/sysdeps/unix/sysv/linux/writev.c b/sysdeps/unix/sysv/linux/writev.c
+index e15937c32867..e051f5e0292a 100644
+--- a/sysdeps/unix/sysv/linux/writev.c
++++ b/sysdeps/unix/sysv/linux/writev.c
+@@ -20,11 +20,17 @@
+ #include <sys/uio.h>
+ #include <sysdep-cancel.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
+ 
+ ssize_t
+ __writev (int fd, const struct iovec *iov, int iovcnt)
+ {
+-  return zsys_writev (fd, iov, iovcnt);
++  __pthread_testcancel ();
++  int canceled;
++  ssize_t result = zsys_writev_cancel (fd, iov, iovcnt, &canceled);
++  if (canceled)
++    __do_cancel (PTHREAD_CANCELED);
++  return result;
+ }
+ libc_hidden_def (__writev)
+ weak_alias (__writev, writev)

@@ -1,0 +1,13 @@
+diff --git a/src/jobs.c b/src/jobs.c
+index 914b383..d5db262 100644
+--- a/src/jobs.c
++++ b/src/jobs.c
+@@ -999,7 +999,7 @@ struct job *vforkexec(union node *n, char **argv, const char *path, int idx)
+ 		mypid = getpid();
+ 	vforked = mypid;
+ 
+-	pid = vfork();
++	pid = fork();
+ 
+ 	if (!pid) {
+ 		forkchild(jp, n, FORK_FG);

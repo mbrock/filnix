@@ -117,7 +117,7 @@ context.modules = [
                 assert not named_nodes(), "node survived destruction"
                 daemon.terminate()
                 assert daemon.wait(timeout=15) == 0, "daemon failed during shutdown"
-                print("private libc: installed daemon, pw-cli, pw-dump, adapter "
+                print("shared libc: installed daemon, pw-cli, pw-dump, adapter "
                       "creation/destruction and clean shutdown passed")
             except BaseException as error:
                 log.flush()

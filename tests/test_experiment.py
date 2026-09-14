@@ -309,7 +309,7 @@ class ExperimentTests(unittest.TestCase):
         )
         policy = json.loads(self.controller.campaign(self.cid)["policy"])
         self.assertEqual(policy["max_jobs"], 4)
-        self.assertEqual(policy["cores"], 6)
+        self.assertEqual(policy["cores"], 7)
         record = json.loads(
             self.sql(
                 "SELECT payload FROM events WHERE kind='scheduling-updated'"
@@ -638,7 +638,7 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(len(active), 2)
         self.assertEqual(json.loads(active[1]["targets"]), [C])
         policy = json.loads(active[1]["spec"])["policy"]
-        self.assertEqual((policy["max_jobs"], policy["cores"]), (1, 4))
+        self.assertEqual((policy["max_jobs"], policy["cores"]), (1, 2))
         self.assertEqual((self.folder(first) / "spec.json").read_bytes(), original)
         with self.assertRaises(ValueError):
             self.controller.build_targets(self.controller.campaign(self.cid), [B])
@@ -657,7 +657,7 @@ class ExperimentTests(unittest.TestCase):
             json.loads(r["spec"])["policy"] for r in self.controller.active_attempts()
         ]
         self.assertEqual(
-            [(p["max_jobs"], p["cores"]) for p in policies], [(2, 6), (2, 6)]
+            [(p["max_jobs"], p["cores"]) for p in policies], [(2, 7), (2, 7)]
         )
 
     def test_cached_dependency_can_be_shared_without_erasing_its_evidence(self):
@@ -716,7 +716,7 @@ class ExperimentTests(unittest.TestCase):
         from experiment.scheduling import build_policy
 
         policy = dict(nix.DEFAULT_POLICY, build_lanes=2, plan_ahead=128, cpus="0-23")
-        legacy = {"spec": encode({"policy": nix.DEFAULT_POLICY})}
+        legacy = {"spec": encode({"policy": dict(nix.DEFAULT_POLICY, cores=6)})}
         self.assertIsNone(build_policy(policy, [legacy]))
         policy["cpus"] = "0-27"
         self.assertEqual(build_policy(policy, [legacy])["cores"], 4)

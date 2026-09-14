@@ -1,4 +1,4 @@
-/* Cancellation through a private libc, with the ordinary Fil-C toolchain. */
+/* Cancellation and signal behavior through the shared Fil-C toolchain. */
 #define _GNU_SOURCE 1
 #include <assert.h>
 #include <errno.h>
@@ -120,7 +120,7 @@ static void wait_for_pause(struct scenario *s)
         fclose(file);
         char *end;
         long nr = strtol(line, &end, 10);
-        if (end != line && nr == SYS_rt_sigsuspend)
+        if (end != line && (nr == SYS_rt_sigsuspend || nr == SYS_pause))
             return;
         assert(!clock_gettime(CLOCK_MONOTONIC, &now));
         assert(now.tv_sec - started.tv_sec < 5);
@@ -188,6 +188,6 @@ int main(int argc, char **argv)
     for (unsigned i = 0; i < 16; ++i)
         for (enum mode mode = COOPERATIVE; mode <= ASYNC_SIGNAL_ONLY; ++mode)
             run_case(mode);
-    puts("private libc: 128 cancellation/signal cases and cleanup checks passed");
+    puts("Fil-C libc: 128 cancellation/signal cases and cleanup checks passed");
     return 0;
 }
