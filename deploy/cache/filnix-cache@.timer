@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry and publish Filnix outputs to %i
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+Unit=filnix-cache@%i.service
+
+[Install]
+WantedBy=timers.target

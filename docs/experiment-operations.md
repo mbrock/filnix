@@ -187,6 +187,14 @@ generation token. Reconnection resumes at the last consumed cursor. The log
 viewer is independent of the controller and attempt processes; updating it only
 requires restarting `filnix-web` after selecting the new application package.
 
+## Binary caches
+
+Successful campaign outputs and their reference closures are published in the
+background to Cachix and <https://nix.swa.sh/cache>. Each cache has independent
+receipts and retries; upload failures do not change build outcomes. See
+[binary cache operations](binary-caches.md) for client configuration, status,
+installation, and restore verification.
+
 ## Responsibilities
 
 - `experiment/model.py`: SQLite schema, campaign import, graph queries, events.

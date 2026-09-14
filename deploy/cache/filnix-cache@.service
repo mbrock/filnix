@@ -1,0 +1,23 @@
+[Unit]
+Description=Publish Filnix campaign outputs to %i
+Wants=network-online.target
+After=network-online.target nix-daemon.service
+
+[Service]
+Type=oneshot
+User=filnix-cache
+Group=filnix-observe
+UMask=0022
+ExecStart=/opt/filnix-cache/bin/filnix-publish-cache %i
+TimeoutStartSec=5h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=200%
+MemoryHigh=3G
+MemoryMax=4G
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/filnix-cache /var/www/filnix-cache

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Install a publisher. Public HTTP routing and enabling the timers are separate.
+set -euo pipefail
+if [[ $EUID != 0 || $# != 3 || $1 != /nix/store/* || ! -x $1/bin/filnix-publish-cache ]]; then
+  echo 'Usage: sudo deploy/cache/install /nix/store/...-filnix-publish-cache CAMPAIGN CACHIX_CONFIG' >&2
+  exit 2
+fi
+application=$1
+campaign=$2
+cachix_config=$3
+deploy_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+getent group filnix-observe >/dev/null
+id filnix-cache >/dev/null 2>&1 || useradd --system --gid filnix-observe --home-dir /var/lib/filnix-cache --shell /usr/sbin/nologin filnix-cache
+install -d -o filnix-cache -g filnix-observe -m 0700 /var/lib/filnix-cache
+install -d -o filnix-cache -g filnix-observe -m 0755 /var/www/filnix-cache
+install -d -m 0755 /etc/filnix-cache
+install -m 0600 "$cachix_config" /etc/filnix-cache/cachix.dhall
+# systemd loads the private credential; the JSON contains only configuration.
+python3 - "$campaign" <<'PY'
+import json,sys
+from pathlib import Path
+p=Path('/etc/filnix-cache/config.json')
+if p.exists() and json.loads(p.read_text())['campaign'] != sys.argv[1]:
+    raise SystemExit('Existing publisher belongs to a different campaign; review config.json first')
+if not p.exists():
+    p.write_text(json.dumps(dict(
+        campaign=sys.argv[1], experiment='/var/lib/filnix-experiment',
+        state='/var/lib/filnix-cache',
+        local=dict(directory='/var/www/filnix-cache',secret_key='/var/lib/filnix-cache/secret-key'),
+        cachix=dict(cache='filc'),
+    ),indent=2)+'\n')
+    p.chmod(0o644)
+PY
+if [[ ! -e /var/lib/filnix-cache/secret-key && ! -e /var/lib/filnix-cache/public-key ]]; then
+  umask 077
+  /nix/var/nix/profiles/default/bin/nix-store --generate-binary-cache-key \
+    nix.swa.sh-1 /var/lib/filnix-cache/secret-key /var/lib/filnix-cache/public-key
+fi
+test -s /var/lib/filnix-cache/secret-key
+test -s /var/lib/filnix-cache/public-key
+chown filnix-cache:filnix-observe /var/lib/filnix-cache/{secret-key,public-key}
+chmod 0600 /var/lib/filnix-cache/secret-key
+install -m 0644 /var/lib/filnix-cache/public-key /var/www/filnix-cache/cache.pub
+ln -sfn "$application" /opt/filnix-cache
+ln -sfn /opt/filnix-cache /nix/var/nix/gcroots/filnix-cache-application
+install -m 0644 "$deploy_dir/filnix-cache@.service" "$deploy_dir/filnix-cache@.timer" /etc/systemd/system/
+install -d -m 0755 /etc/systemd/system/filnix-cache@cachix.service.d
+install -m 0644 "$deploy_dir/cachix-credentials.conf" /etc/systemd/system/filnix-cache@cachix.service.d/credentials.conf
+systemctl daemon-reload
+echo 'Installed. Configure the /cache Caddy route, then enable filnix-cache@{local,cachix}.timer.'
