@@ -109,8 +109,27 @@ Plan `ef458359-6ce6-45f3-acb7-083c7849494f` evaluates 62 selected downstream
 roots from `921eb54aa6366d1c71cd1cd10fcaad491e7671fd`: all 62 evaluations succeed,
 30 recipes enter the ready queue, and 32 have other recorded dependency failures.
 This is a follow-up result, not a reclassification of the original campaign.
-GTK3 subsequently drops its disabled `devdoc` output; queued GTK3 consumers can
-receive that correction from the next committed revision before admission.
+GTK3 subsequently drops its disabled `devdoc` output. Plan
+`a5bc20ac-fe95-42a7-802d-706a7b06c0fb` updates its 21 selected consumers from
+`58f7bc9f8a3b8cae3339f07c903a08f7c489c1fc`, before their builds start.
+Plan `e4c3ca39-ba4f-43e2-95c1-5ca1ecd0f434` adds 14 other selected GnuTLS
+evaluation failures from that same revision: apcupsd, apt, apt-cacher-ng, atop,
+bitlbee, chrony, conntrack-tools, corosync, coturn, dnsdist, gnupg, mailutils,
+rdesktop and squid. This brings the explicit follow-up selection to 76 roots.
+
+The final separate GnuTLS check passes 526 tests with 60 skips and no failures
+across its TLS, certificate and slow suites. Libmicrohttpd 1.0.1 builds without
+additional package changes. These local checks and builds reuse the unchanged
+Fil-C compiler, GLib and Python derivations.
+
+Two additional local probes identify further porting work. GtkSourceView 4.8.4
+sets `GLIB_VERSION_MAX_ALLOWED` below 2.80, selecting the still-integer fallback
+of GLib's `_g_type_once_init_type` macros. Libsoup 2.74.3 generates enum registration
+code using `gsize` and integer once initialization; this blocks GSSDP as well.
+These failures are retained in `results/gtk-unlock/downstream-1.log`. A future
+GLib header correction should cover the old API branch without changing the
+pointer ABI; libsoup also needs its enum template adapted. The working GTK
+consumer checks do not imply these downstream packages pass.
 
 ### Earlier findings
 

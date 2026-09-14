@@ -80,6 +80,21 @@ not establish compatibility for every GNOME application.
 
 ## Reproducing the checks
 
+Observed results on 2026-09-14:
+
+| Check | Result |
+| --- | --- |
+| GObject introspection suite | 60 passed |
+| DConf suite | 14 passed |
+| libproxy suite | 6 passed |
+| GLib networking suite | 6 groups passed, no skips |
+| GnuTLS TLS, certificate and slow suites | 526 passed, 60 skipped, no failures |
+| GTK3 and GTK4 Broadway consumers | Both passed |
+| PyGObject properties, callbacks and Gio | Passed |
+| Duktape stack resize and GC | Passed |
+
+Libmicrohttpd 1.0.1 also builds unchanged against the repaired dependency stack.
+
 Evaluation checks scanner selection, retained GnuTLS security patches and the
 shared dependency choices without building during evaluation:
 
