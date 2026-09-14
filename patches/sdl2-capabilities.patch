@@ -1,0 +1,52 @@
+Subject: Preserve audio-converter pointer alignment and use canonical CPUID
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/src/sdl2_compat.h
++++ b/src/sdl2_compat.h
+@@ -1186,7 +1186,7 @@
+  *  set both its (buf) field to a pointer that is aligned to 16 bytes, and its
+  *  (len) field to something that's a multiple of 16, if possible.
+  */
+-#if defined(__GNUC__) && !defined(__CHERI_PURE_CAPABILITY__)
++#if defined(__GNUC__) && !defined(__CHERI_PURE_CAPABILITY__) && !defined(__FILC__)
+ /* This structure is 84 bytes on 32-bit architectures, make sure GCC doesn't
+    pad it out to 88 bytes to guarantee ABI compatibility between compilers.
+    This is not a concern on CHERI architectures, where pointers must be stored
+--- a/include/SDL2/SDL_audio.h
++++ b/include/SDL2/SDL_audio.h
+@@ -211,7 +211,7 @@
+  *  set both its (buf) field to a pointer that is aligned to 16 bytes, and its
+  *  (len) field to something that's a multiple of 16, if possible.
+  */
+-#if defined(__GNUC__) && !defined(__CHERI_PURE_CAPABILITY__)
++#if defined(__GNUC__) && !defined(__CHERI_PURE_CAPABILITY__) && !defined(__FILC__)
+ /* This structure is 84 bytes on 32-bit architectures, make sure GCC doesn't
+    pad it out to 88 bytes to guarantee ABI compatibility between compilers.
+    This is not a concern on CHERI architectures, where pointers must be stored
+--- a/src/sdl2_compat.c
++++ b/src/sdl2_compat.c
+@@ -8674,7 +8674,9 @@
+ 
+ /* *INDENT-OFF* */
+ #ifndef SDL_CPUINFO_DISABLED
+-#if (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
++#if defined(__FILC__) && defined(__x86_64__)
++    has_CPUID = 1; /* CPUID is mandatory on x86-64. */
++#elif (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
+     __asm__ (
+ "        pushfl                      # Get original EFLAGS             \n"
+ "        popl    %%eax                                                 \n"
+@@ -8765,7 +8767,11 @@
+     return has_CPUID;
+ }
+ 
+-#if (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
++#if defined(__FILC__) && defined(__x86_64__)
++#define cpuid(func, a, b, c, d) \
++    __asm__ __volatile__("cpuid" \
++        : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(func), "c"(0))
++#elif (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
+ #define cpuid(func, a, b, c, d) \
+     __asm__ __volatile__ ( \
+ "        pushl %%ebx        \n" \

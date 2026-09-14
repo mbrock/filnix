@@ -492,6 +492,13 @@ The local patches are separate from generated upstream ports:
   workaround, and XGETBV uses the supported instruction spelling. Explicit
   VZEROUPPER transition hints are omitted under Fil-C; they do not affect the
   numerical transform. The ordinary and threaded upstream checks pass.
+- SDL2 compatibility uses canonical CPUID probes and leaves `SDL_AudioCVT`
+  unpacked under Fil-C, in both its public and internal headers, so its filter
+  pointers stay aligned. This is a Fil-C-specific layout; consumers compile
+  against these matching headers. Keeping `LoadSDL3Symbol` out of line prevents
+  its repeated error-handling code from exploding the instrumented startup
+  function. Before this, compiler snapshots showed LLVM stuck in SROA for
+  minutes; the changed build reaches its tests in seconds.
 - CAVA embeds its configuration, shaders and themes as ordinary C arrays rather
   than assembler `incbin` objects, preserving the NUL-inclusive resource sizes.
 - WirePlumber preserves pointer-valued GTypes in initialization, lookup keys and
@@ -522,3 +529,9 @@ SDL3 passes all 23 CTest groups. CAVA builds, passes its installed version
 check, and runs with silent FIFO input: its raw output contains eight zero-valued
 bars per frame, its loaded libc is the private one, and it exits through its
 normal SIGTERM handling. This does not claim hardware audio capture coverage.
+
+SDL2 compatibility passes all 13 CTest groups, retaining nixpkgs' existing
+`SDL_TESTS_QUICK` policy. The combined installed-runtime check also passes:
+both SDL API versions verify the private libc in their process maps and
+discover the virtual sink through their PipeWire audio backend, `wpctl status`
+sees it, and the daemon exits cleanly. No `LD_LIBRARY_PATH` override is used.

@@ -1,0 +1,17 @@
+Subject: Keep repeated symbol lookup out of the giant startup function
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/src/sdl2_compat.c
++++ b/src/sdl2_compat.c
+@@ -446,7 +446,9 @@
+ #endif
+ 
+ 
+-static void *
++/* Inlining this for every SDL3 symbol makes Fil-C's instrumented startup
++ * function prohibitively expensive for LLVM's scalar replacement pass. */
++static __attribute__((noinline)) void *
+ LoadSDL3Symbol(const char *fn, bool *okay)
+ {
+     void *retval = NULL;

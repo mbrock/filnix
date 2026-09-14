@@ -98,6 +98,8 @@ in
   ];
 
   sdl2-compat = consumer "sdl2-compat" [
+    (patch ../patches/sdl2-symbol-loader.patch)
+    (patch ../patches/sdl2-capabilities.patch)
     (use (old: {
       # This cohort's SDL3 has no OpenGL backend; keep the non-GL tests.
       checkInputs = [ ];
