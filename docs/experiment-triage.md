@@ -60,6 +60,30 @@ closure comparisons are in ignored `results/experiment-triage-20260913/`.
 
 ## Deferred findings from the first batches
 
+### Targeted GTK follow-up, 2026-09-14
+
+Plan `83b6d44e-5ce8-483c-80d6-5bffbdc047a4` evaluated only
+`gobject-introspection-unwrapped`, `gnutls`, `gtk3` and `gtk4` from committed
+revision `05ca9018d024e526347c98a29da09cd0afafeafe`. All four evaluations
+succeeded. Introspection and GnuTLS entered the ready queue; GTK3 and GTK4
+remain held by previously recorded dependency failures. The campaign's default
+source and 4,216 other evaluation failures were verified unchanged.
+
+GTK3's eight blockers all enter through `at-spi2-core` and its systemd dependency
+(including kexec-tools, libapparmor, cryptsetup and libseccomp). GTK4's 32 blockers
+enter through `gst-plugins-base` and `gst-plugins-bad`, including the existing
+ALSA, Opus, codec and systemd failures. These are dependency results, not evidence
+that the patched GTK sources failed to compile.
+
+The next bounded investigation is the optional dependency configuration:
+AT-SPI exposes `systemdSupport`, and GTK4's media backend pulls in the large
+GStreamer plugin closure. Any such recipe changes need a fresh recorded
+revision. This queue submission did not clear shared failures or disable tests.
+Full explaining chains were saved in
+`results/gtk-gnutls-ports/{gtk3,gtk4}-queue-blockers.json`.
+
+### Earlier findings
+
 These are diagnostic leads, not fixes or complete root-cause analyses. Use the
 named original attempt to find its recorded derivations and logs.
 
