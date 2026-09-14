@@ -654,6 +654,10 @@ in
     (patch ./patches/gssdp-signal-types.patch)
   ])
 
+  (for pkgs.gupnp [
+    (patch ./patches/gupnp-gtype.patch)
+  ])
+
   (for pkgs.libhandy [
     (patch ./patches/libhandy-destroy-visible-child.patch)
     (use (old: {

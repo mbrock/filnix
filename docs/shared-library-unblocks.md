@@ -161,6 +161,19 @@ select it automatically. These are focused runtime checks, not the entire Boost
 suite. The full Boost package build and both installed-consumer executables
 pass. The compiler derivation remains unchanged.
 
-The next bounded Boost retry selection contains 141 failed/blocked attributes
-whose only recorded failing dependency is Boost 1.87. Older explicitly selected
-Boost versions are not silently redirected to this release.
+All 141 selected Boost candidates were replanned from `b60f3a2`; their first
+batches are running. They were selected because Boost 1.87 was their only
+recorded failing dependency. Older explicitly selected Boost versions are not
+silently redirected to this release.
+
+The five GTK follow-ups were also replanned from `b60f3a2`: libhandy, GSSDP and
+both GtkSourceView versions became built; GUPnP reached its own GType failures.
+The subsequent `gupnp-gtype.patch` preserves type pointers in resource tables,
+uses pointer-valued GOnce for the default factory, and adapts fundamental-type
+switches without reconstructing pointers from integers. Its existing context,
+context-filter and bug-regression groups all pass. The old size-based once API
+had caused a null-capability trap on the default factory in the bug suite.
+
+Remaining follow-up candidates include gtk-doc's generated GType scanner
+(librest still fails there) and the Node.js/V8 runtime assumptions described
+above. These are recorded failures, not disabled tests or claimed successes.

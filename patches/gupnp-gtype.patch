@@ -1,0 +1,248 @@
+Subject: Preserve stored GTypes and adapt fundamental type dispatch
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C. Size conversion on lookup fails to compile;
+size conversion on insertion would discard the capability. Cast directly
+between GType and gpointer in both directions. The casts also support the
+native integer GType ABI. The default factory singleton uses pointer-valued GOnce,
+available at the original GLib API ceiling, instead of size-based once storage. Fundamental type dispatch compares pointer-width
+integer values only; no pointer is reconstructed from the switch expression.
+
+--- a/libgupnp/gupnp-resource-factory.c
++++ b/libgupnp/gupnp-resource-factory.c
+@@ -103,6 +103,12 @@
+         return g_object_new (GUPNP_TYPE_RESOURCE_FACTORY, NULL);
+ }
+ 
++static gpointer
++create_default_factory (gpointer unused)
++{
++        return gupnp_resource_factory_new ();
++}
++
+ /**
+  * gupnp_resource_factory_get_default:
+  *
+@@ -113,16 +119,9 @@
+ GUPnPResourceFactory *
+ gupnp_resource_factory_get_default (void)
+ {
+-        static GUPnPResourceFactory *default_factory = NULL;
+-
+-        if (g_once_init_enter (&default_factory)) {
+-                GUPnPResourceFactory *factory =
+-                        g_object_new (GUPNP_TYPE_RESOURCE_FACTORY, NULL);
+-
+-                g_once_init_leave (&default_factory, factory);
+-        }
+-
+-        return default_factory;
++        static GOnce once = G_ONCE_INIT;
++
++        return g_once (&once, create_default_factory, NULL);
+ }
+ 
+ static GType
+@@ -164,7 +163,7 @@
+                 }
+ 
+                 if (value != NULL) {
+-                        type = GPOINTER_TO_SIZE (value);
++                        type = (GType) value;
+                 }
+ 
+                 g_debug ("Will return type %s for UPnP type %s", g_type_name (type), upnp_type);
+@@ -458,7 +457,7 @@
+ 
+         g_hash_table_insert (priv->resource_type_hash,
+                              g_strdup (upnp_type),
+-                             GSIZE_TO_POINTER (type));
++                             (gpointer) type);
+ }
+ 
+ /**
+@@ -509,7 +508,7 @@
+ 
+         g_hash_table_insert (priv->proxy_type_hash,
+                              g_strdup (upnp_type),
+-                             GSIZE_TO_POINTER (type));
++                             (gpointer) type);
+ }
+ 
+ /**
+--- a/libgupnp/gvalue-util.c
++++ b/libgupnp/gvalue-util.c
+@@ -12,6 +12,7 @@
+ #include <stdlib.h>
+ 
+ #include "gvalue-util.h"
++#include <stdint.h>
+ #include "xml-util.h"
+ #include "gupnp-types.h"
+ 
+@@ -24,63 +25,63 @@
+ 
+         g_return_val_if_fail (str != NULL, FALSE);
+ 
+-        switch (G_VALUE_TYPE (value)) {
+-        case G_TYPE_STRING:
++        switch ((uintptr_t) G_VALUE_TYPE (value)) {
++        case (uintptr_t) G_TYPE_STRING:
+                 g_value_set_string (value, str);
+ 
+                 break;
+ 
+-        case G_TYPE_CHAR:
++        case (uintptr_t) G_TYPE_CHAR:
+                 g_value_set_schar (value, *str);
+ 
+                 break;
+ 
+-        case G_TYPE_UCHAR:
++        case (uintptr_t) G_TYPE_UCHAR:
+                 g_value_set_uchar (value, *str);
+ 
+                 break;
+ 
+-        case G_TYPE_INT:
++        case (uintptr_t) G_TYPE_INT:
+                 g_value_set_int (value, strtol (str, NULL, 10));
+ 
+                 break;
+ 
+-        case G_TYPE_UINT:
++        case (uintptr_t) G_TYPE_UINT:
+                 g_value_set_uint (value, strtoul (str, NULL, 10));
+ 
+                 break;
+ 
+-        case G_TYPE_INT64:
++        case (uintptr_t) G_TYPE_INT64:
+                 g_value_set_int64 (value, g_ascii_strtoll (str, NULL, 10));
+ 
+                 break;
+ 
+-        case G_TYPE_UINT64:
++        case (uintptr_t) G_TYPE_UINT64:
+                 g_value_set_uint64 (value, g_ascii_strtoull (str, NULL, 10));
+ 
+                 break;
+ 
+-        case G_TYPE_LONG:
++        case (uintptr_t) G_TYPE_LONG:
+                 g_value_set_long (value, strtol (str, NULL, 10));
+ 
+                 break;
+ 
+-        case G_TYPE_ULONG:
++        case (uintptr_t) G_TYPE_ULONG:
+                 g_value_set_ulong (value, strtoul (str, NULL, 10));
+ 
+                 break;
+ 
+-        case G_TYPE_FLOAT:
++        case (uintptr_t) G_TYPE_FLOAT:
+                 g_value_set_float (value, g_ascii_strtod (str, NULL));
+ 
+                 break;
+ 
+-        case G_TYPE_DOUBLE:
++        case (uintptr_t) G_TYPE_DOUBLE:
+                 g_value_set_double (value, g_ascii_strtod (str, NULL));
+ 
+                 break;
+ 
+-        case G_TYPE_BOOLEAN:
++        case (uintptr_t) G_TYPE_BOOLEAN:
+                 if (g_ascii_strcasecmp (str, "true") == 0 ||
+                     g_ascii_strcasecmp (str, "yes") == 0)
+                         g_value_set_boolean (value, TRUE);
+@@ -154,8 +155,8 @@
+         const char *tmp;
+         char buf[G_ASCII_DTOSTR_BUF_SIZE];
+ 
+-        switch (G_VALUE_TYPE (value)) {
+-        case G_TYPE_STRING:
++        switch ((uintptr_t) G_VALUE_TYPE (value)) {
++        case (uintptr_t) G_TYPE_STRING:
+                 /* Escape and append */
+                 tmp = g_value_get_string (value);
+                 if (tmp != NULL)
+@@ -163,49 +164,49 @@
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_CHAR:
++        case (uintptr_t) G_TYPE_CHAR:
+                 g_string_append_c (str, g_value_get_schar (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_UCHAR:
++        case (uintptr_t) G_TYPE_UCHAR:
+                 g_string_append_c (str, g_value_get_uchar (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_INT:
++        case (uintptr_t) G_TYPE_INT:
+                 g_string_append_printf (str, "%d", g_value_get_int (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_UINT:
++        case (uintptr_t) G_TYPE_UINT:
+                 g_string_append_printf (str, "%u", g_value_get_uint (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_INT64:
++        case (uintptr_t) G_TYPE_INT64:
+                 g_string_append_printf (str, "%"G_GINT64_FORMAT,
+                                         g_value_get_int64 (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_UINT64:
++        case (uintptr_t) G_TYPE_UINT64:
+                 g_string_append_printf (str, "%"G_GUINT64_FORMAT,
+                                         g_value_get_uint64 (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_LONG:
++        case (uintptr_t) G_TYPE_LONG:
+                 g_string_append_printf (str, "%ld", g_value_get_long (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_ULONG:
++        case (uintptr_t) G_TYPE_ULONG:
+                 g_string_append_printf (str, "%lu", g_value_get_ulong (value));
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_FLOAT:
++        case (uintptr_t) G_TYPE_FLOAT:
+                 g_string_append (str,
+                                  g_ascii_dtostr (buf,
+                                                  sizeof (buf),
+@@ -213,7 +214,7 @@
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_DOUBLE:
++        case (uintptr_t) G_TYPE_DOUBLE:
+                 g_string_append (str,
+                                  g_ascii_dtostr (buf,
+                                                  sizeof (buf),
+@@ -221,7 +222,7 @@
+ 
+                 return TRUE;
+ 
+-        case G_TYPE_BOOLEAN:
++        case (uintptr_t) G_TYPE_BOOLEAN:
+                 /* We don't want to convert to "TRUE"/"FALSE" */
+                 if (g_value_get_boolean (value))
+                         g_string_append_c (str, '1');
