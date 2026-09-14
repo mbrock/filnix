@@ -528,7 +528,11 @@ in
     (patch ./patches/glib-inline.patch)
     (skipPatch "split-dev-programs.patch")
     (patch ./patches/glib-split-backport.patch)
-    (arg { libsysprof-capture = null; })
+    (arg {
+      libsysprof-capture = null;
+      # Keep the bootstrap GLib free of scanner inputs as well as GIR output.
+      withIntrospection = false;
+    })
     (skipTests "many failures")
     (use {
       mesonFlags = [
@@ -546,17 +550,37 @@ in
 
   {
     gobject-introspection-unwrapped = for pkgs.gobject-introspection-unwrapped [
-
-      (broken "utterly cursed recursive self-dependency in nixpkgs")
       (pin "1.80.1" "sha256-od98Qk4VvaGrY5wA6QUbmt9c6hqeUS+KYDtTzRmbxtg=")
       (patch ./ports/patch/gobject-introspection-1.80.1.patch)
+      (patch ./patches/gobject-introspection-filc-tools.patch)
       (skipPatch "Prefer-some-getters-over-others.patch")
-      (arg { propagateFullGlib = false; })
-      (use {
-        preConfigure = ''
-          sed -i 's/2.82.0/2.80.4/g' meson.build
-        '';
+      (arg {
+        propagateFullGlib = false;
+        # Fil-C executables run directly on the build machine. Bootstrap the
+        # scanner here instead of recursively asking for a prebuilt scanner.
+        gobject-introspection-unwrapped = null;
       })
+      (removeMesonFlag "-Dgi_cross_use_prebuilt_gi=true")
+      (addMesonFlag "-Dgi_cross_use_prebuilt_gi=false")
+      (use (old: {
+        nativeBuildInputs = builtins.filter (
+          input: input != null
+        ) old.nativeBuildInputs;
+        # _giscanner is compiled with Fil-C and must be loaded by Fil-C Python.
+        mesonFlags = old.mesonFlags ++ [
+          "-Dpython=${
+            final.python3.withPackages (ps: [
+              ps.mako
+              ps.markdown
+              ps.setuptools
+            ])
+          }/bin/python3"
+        ];
+        outputs = builtins.filter (output: output != "devdoc") old.outputs;
+        # Runnable cross builds now install their own patched test sources.
+        # Do not replace them with files/docs from the native 1.84 package.
+        postInstall = "";
+      }))
     ];
   }
 
@@ -1063,16 +1087,39 @@ in
   ])
 
   (for pkgs.gnutls [
-    (broken "too many dependencies")
+    # Upstream's 3.8.7.1 fix also applies to Nixpkgs' 3.8.9 release.
+    (patch ./ports/patch/gnutls-3.8.7.1.patch)
+    (configure "--disable-hardware-acceleration")
   ])
 
   {
     gtk3 = for pkgs.gtk3 [
-      (broken "GUI not supported")
+      (pin "3.24.52" "sha256-gJMfpHKne5oWT2dA48C0RPrGdwBUYy01p/+dZ55ee58=")
+      (patch ./ports/patch/gtk-3.24.52.patch)
+      (arg {
+        # The scanner's extension and generated dumpers use the Fil-C ABI.
+        gobject-introspection = final.gobject-introspection;
+        x11Support = false;
+        xineramaSupport = false;
+        waylandSupport = true;
+        broadwaySupport = true;
+      })
     ];
 
     gtk4 = for pkgs.gtk4 [
-      (broken "GUI not supported")
+      (pin "4.14.5" "sha256-VUfyufAGsTOZPgcLh8F4BOBR79o5E/6soRCPor5B4k0=")
+      (patch ./ports/patch/gtk-4.14.5.patch)
+      (addMesonFlag "-Dintrospection=enabled")
+      (arg {
+        # The scanner's extension and generated dumpers use the Fil-C ABI.
+        gobject-introspection = final.gobject-introspection;
+        x11Support = false;
+        xineramaSupport = false;
+        waylandSupport = true;
+        broadwaySupport = true;
+        vulkanSupport = false;
+        trackerSupport = false;
+      })
     ];
   }
 
