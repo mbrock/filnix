@@ -1,0 +1,87 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 000000000..e8e886bb0
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,12 @@
++bin.v2/
++stage/
++b2
++bjam
++project-config.jam
++tools/build/src/engine/b2
++tools/build/src/engine/*.o
++*.o
++*.so
++*.so.*
++*.a
++config.log
+diff --git a/boost/context/continuation.hpp b/boost/context/continuation.hpp
+index 8db62a950..443def1b5 100644
+--- a/boost/context/continuation.hpp
++++ b/boost/context/continuation.hpp
+@@ -4,6 +4,8 @@
+ //    (See accompanying file LICENSE_1_0.txt or copy at
+ //          http://www.boost.org/LICENSE_1_0.txt)
+ 
++#include <boost/context/detail/config.hpp>
++
+ #if defined(BOOST_USE_UCONTEXT)
+ #include <boost/context/continuation_ucontext.hpp>
+ #elif defined(BOOST_USE_WINFIB)
+diff --git a/boost/context/detail/config.hpp b/boost/context/detail/config.hpp
+index 06737fdf9..4c3a44d21 100644
+--- a/boost/context/detail/config.hpp
++++ b/boost/context/detail/config.hpp
+@@ -30,7 +30,7 @@
+ # define BOOST_CONTEXT_DECL
+ #endif
+ 
+-#if ! defined(BOOST_USE_UCONTEXT) && defined(__CYGWIN__)
++#if ! defined(BOOST_USE_UCONTEXT) && ( defined(__CYGWIN__) || defined(__FILC__) )
+ # define BOOST_USE_UCONTEXT
+ #endif
+ 
+diff --git a/boost/context/fiber.hpp b/boost/context/fiber.hpp
+index ff1b79e2d..9cd419ca5 100644
+--- a/boost/context/fiber.hpp
++++ b/boost/context/fiber.hpp
+@@ -4,6 +4,8 @@
+ //    (See accompanying file LICENSE_1_0.txt or copy at
+ //          http://www.boost.org/LICENSE_1_0.txt)
+ 
++#include <boost/context/detail/config.hpp>
++
+ #if defined(BOOST_USE_UCONTEXT)
+ #include <boost/context/fiber_ucontext.hpp>
+ #elif defined(BOOST_USE_WINFIB)
+diff --git a/boost/multi_index/detail/ord_index_node.hpp b/boost/multi_index/detail/ord_index_node.hpp
+index 72bffe33c..29719aedd 100644
+--- a/boost/multi_index/detail/ord_index_node.hpp
++++ b/boost/multi_index/detail/ord_index_node.hpp
+@@ -36,6 +36,12 @@
+ #ifndef BOOST_MULTI_INDEX_DETAIL_ORD_INDEX_NODE_HPP
+ #define BOOST_MULTI_INDEX_DETAIL_ORD_INDEX_NODE_HPP
+ 
++#ifdef __FILC__
++// Fil-C: Disable compressed ordered index nodes because they store
++// parent pointers as uintptr_type integers, losing Fil-C object capabilities.
++#define BOOST_MULTI_INDEX_DISABLE_COMPRESSED_ORDERED_INDEX_NODES
++#endif
++
+ #if defined(_MSC_VER)
+ #pragma once
+ #endif
+diff --git a/tools/build/src/engine/execunix.cpp b/tools/build/src/engine/execunix.cpp
+index fd8220e77..5b0e84889 100644
+--- a/tools/build/src/engine/execunix.cpp
++++ b/tools/build/src/engine/execunix.cpp
+@@ -32,7 +32,7 @@
+ 
+ #include <sys/times.h>
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) || defined(__FILC__)
+     #define NO_VFORK
+ #endif
+ 

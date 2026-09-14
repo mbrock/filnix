@@ -43,8 +43,10 @@ class UpstreamTests(unittest.TestCase):
             (self.filnix / directory).mkdir(parents=True)
         for name in ("lib/filc-upstream.json", "lib/filc-hashes.json", "lib/sources.nix",
                      "scripts/update-filc-source-hashes.py", "scripts/update-ports-pin.py", "ports/extract-patch.sh",
-                     "ports/upstream.json", "ports/Makefile", "ports/extract-projeny.py"):
+                     "ports/upstream.json", "ports/Makefile", "ports/extract-projeny.py",
+                     "ports/patch-sources.json"):
             shutil.copy2(ROOT / name, self.filnix / name)
+        write_json(self.filnix / "ports/patch-sources.json", {})
 
     def test_ports_pin(self):
         write(self.repo / "projects/projeny/Makefile", "all:\n\ttrue\n")
@@ -260,6 +262,45 @@ class UpstreamTests(unittest.TestCase):
         self.assertEqual(expected, patch.read_bytes())
         self.extract(rev=original)
         self.assertFalse(patch.exists(), "an empty diff must remove a stale patch")
+
+    def test_upstream_refresh_preserves_local_patches(self):
+        source = self.repo / "pizlix/example.patch"
+        write(source, "upstream patch\n")
+        pinned = self.commit()
+        write_json(self.filnix / "ports/upstream.json", {"portsRev": pinned})
+        write_json(self.filnix / "ports/patch-sources.json", {"example": "pizlix/example.patch"})
+        local = self.filnix / "patches/example.patch"
+        write(local, "local addition\n")
+        self.extract("example")
+        generated = self.base / "patch/example.patch"
+        self.assertEqual(generated.read_bytes(), source.read_bytes())
+        write(source, "future patch\n")
+        later = self.commit()
+        write(source, "dirty patch\n")
+        self.extract("example")
+        self.assertEqual(generated.read_text(), "upstream patch\n")
+        self.extract("example", later)
+        self.assertEqual(generated.read_text(), "future patch\n")
+        self.assertNotEqual(self.extract("example", pinned + "bad", check=False).returncode, 0)
+        self.assertEqual(generated.read_text(), "future patch\n")
+        alias = self.base / "local-alias"
+        alias.symlink_to(local.parent, target_is_directory=True)
+        for output in (local.parent, local.parent / "nested", alias):
+            result = run("bash", str(self.filnix / "ports/extract-patch.sh"),
+                         "example", str(self.repo), str(output), pinned, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("local patches", result.stderr)
+            result = run("python3", str(self.filnix / "ports/extract-projeny.py"),
+                         "example.projeny", str(self.repo), str(output), pinned, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("local patches", result.stderr)
+        result = run("make", "clean", f"OUTPUT_DIR={local.parent}", cwd=self.filnix / "ports", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        (self.filnix / "ports/patch").symlink_to(local.parent, target_is_directory=True)
+        for output in ("patch", str(local.parent)):
+            result = run("make", "clean", f"OUTPUT_DIR={output}", cwd=self.filnix / "ports", check=False)
+            self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(local.read_text(), "local addition\n")
 
     def test_gettext_symbol_list(self):
         symbols = self.repo / "projects/gettext-1/libtextstyle/lib/libtextstyle.sym.in"

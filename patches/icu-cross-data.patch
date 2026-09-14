@@ -1,0 +1,64 @@
+Subject: Generate cross-build data as C, including test fixtures
+Origin: Filnix
+Upstream-Status: Nix cross-build integration
+Applies-After: ports/patch/icu-76.1.patch
+
+Nixpkgs runs the native pkgdata from its ICU build root. That binary can emit
+ELF directly even when the target configure disables assembly. Force its C
+path so Fil-C supplies symbol names and capabilities for the embedded data.
+
+--- a/icu4c/source/data/Makefile.in
++++ b/icu4c/source/data/Makefile.in
+@@ -47,9 +47,9 @@
+ CURDIR=.
+ endif
+ ifeq ($(BUILD_HOST_ICU),OS390)
+-PKGDATA = $(TOOLBINDIR)/pkgdata $(PKGDATA_OPTS) -z -q -c -s $(CURDIR)/out/build/$(ICUDATA_PLATFORM_NAME) -d $(ICUPKGDATA_OUTDIR)
+-else
+-PKGDATA = $(TOOLBINDIR)/pkgdata $(PKGDATA_OPTS) -q -c -s $(CURDIR)/out/build/$(ICUDATA_PLATFORM_NAME) -d $(ICUPKGDATA_OUTDIR)
++PKGDATA = $(TOOLBINDIR)/pkgdata --without-assembly $(PKGDATA_OPTS) -z -q -c -s $(CURDIR)/out/build/$(ICUDATA_PLATFORM_NAME) -d $(ICUPKGDATA_OUTDIR)
++else
++PKGDATA = $(TOOLBINDIR)/pkgdata --without-assembly $(PKGDATA_OPTS) -q -c -s $(CURDIR)/out/build/$(ICUDATA_PLATFORM_NAME) -d $(ICUPKGDATA_OUTDIR)
+ endif
+ 
+ # OBJDATADIR must be a short path (with ..'s) to the data.
+--- a/icu4c/source/test/testdata/Makefile.in
++++ b/icu4c/source/test/testdata/Makefile.in
+@@ -114,7 +114,7 @@
+ CURDIR=.
+ endif
+ 
+-PKGDATA = $(TOOLBINDIR)/pkgdata -q -c -s $(CURDIR)/out/build/$(ICUDATA_PLATFORM_NAME)
++PKGDATA = $(TOOLBINDIR)/pkgdata --without-assembly -q -c -s $(CURDIR)/out/build/$(ICUDATA_PLATFORM_NAME)
+ PKGDATA_INVOKE:=$(INVOKE) $(PKGDATA_INVOKE_OPTS)
+ 
+ # Contains all 'intermediate' files (and temp files) except for 'unpackaged data' below
+--- a/icu4c/source/extra/uconv/Makefile.in
++++ b/icu4c/source/extra/uconv/Makefile.in
+@@ -111,7 +111,7 @@
+ 	$(RMV) $(OBJECTS) $(TARGET)
+ 
+ resclean:
+-	@#-$(INVOKE) $(TOOLBINDIR)/pkgdata --clean -p $(RESDIR) -O pkgdata.inc -m $(PKGMODE) -d $(RESDIR) -T $(RESDIR) $(RESDIR)/$(RESDIR).lst
++	@#-$(INVOKE) $(TOOLBINDIR)/pkgdata --without-assembly --clean -p $(RESDIR) -O pkgdata.inc -m $(PKGMODE) -d $(RESDIR) -T $(RESDIR) $(RESDIR)/$(RESDIR).lst
+ 	$(RMV) pkgdata.inc $(RESDIR)
+ 
+ distclean-local: clean-local
+@@ -155,7 +155,7 @@
+ endif
+ 
+ $(UCONVMSG_LIB): $(RESFILES) $(RESDIR)/$(RESDIR).lst pkgdata.inc
+-	$(INVOKE) $(PKGDATA_INVOKE_OPTS) $(TOOLBINDIR)/pkgdata -p $(MSGNAME) $(PKGDATA_OPTS) -m $(PKGMODE) -s $(RESDIR) -d $(RESDIR) -T $(RESDIR) $(RESDIR)/$(RESDIR).lst
++	$(INVOKE) $(PKGDATA_INVOKE_OPTS) $(TOOLBINDIR)/pkgdata --without-assembly -p $(MSGNAME) $(PKGDATA_OPTS) -m $(PKGMODE) -s $(RESDIR) -d $(RESDIR) -T $(RESDIR) $(RESDIR)/$(RESDIR).lst
+ 
+ $(RESDIR)/$(RESDIR).lst: Makefile $(srcdir)/resfiles.mk
+ 	@-$(RMV) $@
+@@ -167,7 +167,7 @@
+ ifneq ($(UCONVMSG_MODE),static)
+ install-resfiles: $(RESFILES) $(RESDIR)/$(RESDIR).lst pkgdata.inc 
+ 	$(MKINSTALLDIRS) $(DESTDIR)$(ICUDATA_DIR)
+-	$(INVOKE) $(TOOLBINDIR)/pkgdata -p $(RESDIR) -O pkgdata.inc -m $(PKGMODE) -d $(RESDIR) -I $(INSTALLTO) -T $(RESDIR) $(RESDIR)/$(RESDIR).lst
++	$(INVOKE) $(TOOLBINDIR)/pkgdata --without-assembly -p $(RESDIR) -O pkgdata.inc -m $(PKGMODE) -d $(RESDIR) -I $(INSTALLTO) -T $(RESDIR) $(RESDIR)/$(RESDIR).lst
+ else
+ install-resfiles:
+ endif

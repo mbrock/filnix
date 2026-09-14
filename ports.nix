@@ -46,6 +46,30 @@ in
   # ━━━ Core Libraries ━━━
 
   {
+    icu76 = for pkgs.icu76 [
+      (patch ./ports/patch/icu-76.1.patch)
+      (patch ./patches/icu-cross-data.patch)
+      (tool pkgs.autoreconfHook)
+      (tool pkgs.pkg-config)
+      (use {
+        # Nixpkgs unpacks into icu/source; the upstream tree has icu4c/source.
+        patchFlags = [ "-p3" ];
+        # ICU disables its upstream suite for cross builds; its "test" target
+        # is just a directory. Exercise the real target libraries explicitly.
+        doCheck = true;
+        checkPhase = ''
+          runHook preCheck
+          $CXX ${./tests/icu.cpp} -Icommon -Ii18n -Llib \
+            -Wl,-rpath,"$PWD/lib" -licui18n -licuuc -licudata -o icu-check
+          ./icu-check
+          LD_LIBRARY_PATH="$PWD/lib" ./bin/uconv -V
+          runHook postCheck
+        '';
+      })
+    ];
+  }
+
+  {
     QuadProgpp = for pkgs.QuadProgpp [
       (patch ./patches/quadprogpp-link-math.patch)
     ];

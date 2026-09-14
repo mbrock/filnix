@@ -140,6 +140,9 @@
         gnutls-tls = import ./tests/gnutls-tls.nix {
           inherit pkgs pkgsFilc;
         };
+        icu = import ./tests/icu.nix {
+          inherit pkgs pkgsFilc;
+        };
         glib-networking = import ./tests/glib-networking.nix {
           inherit pkgs pkgsFilc;
         };

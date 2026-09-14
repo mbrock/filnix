@@ -55,6 +55,29 @@ an older project version that no longer exists at the default revision:
 ports/extract-patch.sh PROJECT "$HOME/fil-c" /tmp/patch-review FULL_COMMIT_ID
 ```
 
+## Patch ownership and standalone upstream patches
+
+`ports/patch/` is generated upstream material; `patches/` is maintained locally.
+Keep additions in a separate local patch applied after the upstream patch. See
+[the local patch convention](../patches/README.md) for provenance headers and
+refresh review. Importers reject the local directory as an output destination,
+and `make clean` is restricted to the generated directory.
+
+Some upstream ports already exist as standalone patches rather than vendored
+project trees. `ports/patch-sources.json` maps an extraction name to its upstream
+Git path. These files are copied byte-for-byte from `portsRev`, and are included
+in `make -C ports` and `make -C ports list`:
+
+```sh
+ports/extract-patch.sh boost-filc "$HOME/fil-c"
+# Imports pizlix/boost-filc.patch into ports/patch/boost-filc.patch.
+```
+
+The generated patch is an input, not a port declaration. Wire it into the actual
+package attribute in `ports.nix`, check source-version compatibility and patch
+order, and test the result. Merely adding a `ports/patches.nix` inventory entry
+does not change a derivation.
+
 ## Projeny ports
 
 `nix build .#projeny` builds the native C++ tool and runs its upstream test

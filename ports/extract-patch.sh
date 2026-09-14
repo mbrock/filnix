@@ -41,6 +41,13 @@ fi
 # Make paths absolute before changing directory
 REPO_DIR="$(realpath "$REPO_DIR")"
 OUTPUT_DIR="$(realpath -m "$OUTPUT_DIR")"
+local_patches="$(realpath -m "$SCRIPT_DIR/../patches")"
+case "$OUTPUT_DIR/" in
+    "$local_patches/"*)
+        echo "Error: patches/ contains local patches; extract into ports/patch/ or a review directory" >&2
+        exit 1
+        ;;
+esac
 mkdir -p "$OUTPUT_DIR"
 
 cd "$REPO_DIR"
@@ -52,6 +59,19 @@ last_commit=$(git rev-parse --verify "$REV^{commit}")
 if [[ "$PROJECT" == *.projeny ]]; then
     echo "$PROJECT: materializing Projeny port at $last_commit"
     exec python3 "$SCRIPT_DIR/extract-projeny.py" "$PROJECT" "$REPO_DIR" "$OUTPUT_DIR" "$last_commit"
+fi
+source_file=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$SCRIPT_DIR/patch-sources.json" "$PROJECT")
+if [[ -n "$source_file" ]]; then
+    # Some upstream ports are maintained as patch files, outside projects/.
+    # Copy the pinned blob verbatim; local additions belong in patches/.
+    patch_file="$OUTPUT_DIR/${PROJECT}.patch"
+    patch_tmp=$(mktemp "$OUTPUT_DIR/.${PROJECT}.XXXXXX")
+    trap 'rm -f "$patch_tmp"' EXIT
+    git show "$last_commit:$source_file" > "$patch_tmp"
+    chmod 644 "$patch_tmp"
+    mv "$patch_tmp" "$patch_file"
+    echo "$PROJECT: imported $source_file at $last_commit"
+    exit 0
 fi
 if [[ "$(git cat-file -t "$last_commit:${project_dir%/}" 2>/dev/null || true)" != tree ]]; then
     echo "Error: Project $PROJECT not found at $last_commit" >&2

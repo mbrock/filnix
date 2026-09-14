@@ -4,6 +4,7 @@ OUTPUT_DIR ?= patch
 REV ?= $(shell python3 -c 'import json; print(json.load(open("upstream.json"))["portsRev"])')
 
 PROJECTS = $(shell git -C "$(REPO_DIR)" ls-tree -d --name-only "$(REV):projects")
+PROJECTS += $(shell python3 -c 'import json; print(" ".join(json.load(open("patch-sources.json"))))')
 PROJENY_PROJECTS = $(shell git -C "$(REPO_DIR)" ls-tree --name-only "$(REV):projects" | sed -n '/\.projeny$$/p')
 PATCHES = $(addprefix $(OUTPUT_DIR)/,$(addsuffix .patch,$(PROJECTS)))
 
@@ -20,7 +21,8 @@ $(PROJENY_PROJECTS):
 FORCE:
 
 clean:
-	rm -rf "$(OUTPUT_DIR)"
+	@test "$$(realpath -m "$(OUTPUT_DIR)")" = "$$(pwd -P)/patch" || { echo 'clean only removes ports/patch; remove review directories explicitly' >&2; exit 1; }
+	rm -rf -- "$(OUTPUT_DIR)"
 
 list:
 	@printf '%s\n' $(PROJECTS) $(PROJENY_PROJECTS)

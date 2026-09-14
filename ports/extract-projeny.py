@@ -15,6 +15,9 @@ def run(*args, **kwargs):
 def extract(descriptor, repo, output, rev):
     script = Path(__file__).with_name('extract-patch.sh').resolve()
     repo, output = Path(repo).resolve(), Path(output).resolve()
+    local_patches = (script.parent.parent / 'patches').resolve()
+    if output == local_patches or local_patches in output.parents:
+        raise SystemExit('patches/ contains local patches; extract into ports/patch/ or a review directory')
     projeny = shutil.which(os.environ.get('PROJENY', 'projeny'))
     if not projeny:
         raise SystemExit('Projeny is required: run this importer with nix develop -c make -C ports')
