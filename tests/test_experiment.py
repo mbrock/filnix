@@ -610,7 +610,7 @@ class ExperimentTests(unittest.TestCase):
         self.db.execute("PRAGMA user_version=1")
         self.db.close()
         self.db = connect(self.state)
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 3)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 4)
         self.assertEqual(self.sql("SELECT count(*) FROM derivations").fetchone()[0], 3)
         self.assertIsNone(
             self.sql("SELECT exclusion FROM derivations LIMIT 1").fetchone()[0]
@@ -994,6 +994,231 @@ class ExperimentTests(unittest.TestCase):
 
         with patch("experiment.__main__.subprocess.check_output", side_effect=execute):
             self.assertEqual(committed_source(str(repo), "HEAD"), (source, revision))
+
+    def queue_replan(self, ids, revision="f" * 40):
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            return self.controller.dispatch(
+                dict(
+                    op="queue-replan",
+                    campaign=self.cid,
+                    ids=ids,
+                    source="/nix/store/" + "e" * 32 + "-filnix-campaign-source",
+                    revision=revision,
+                )
+            )
+
+    def evaluation_errors(self):
+        with self.db:
+            self.sql(
+                "UPDATE candidates SET state='evaluation-error',error='old exclusion'"
+            )
+
+    def test_replan_queue_survives_restart_and_respects_pause(self):
+        self.evaluation_errors()
+        old = [dict(r) for r in self.sql("SELECT * FROM candidates")]
+        campaign = dict(self.controller.campaign(self.cid))
+        queued = self.queue_replan([1, 2])
+        self.assertEqual(queued["queued"], 2)
+        self.assertEqual([dict(r) for r in self.sql("SELECT * FROM candidates")], old)
+        self.assertEqual(dict(self.controller.campaign(self.cid)), campaign)
+        self.db.close()
+        self.db = connect(self.state)
+        self.controller = Controller(self.db, self.state, self.units)
+        self.controller.tick()
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 2)
+        self.assertFalse(self.controller.active_attempts())
+        self.controller.dispatch(dict(op="run", campaign=self.cid))
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.tick()
+        attempt = self.controller.active_attempts()[0]
+        spec = json.loads(attempt["spec"])
+        self.assertEqual(spec["revision"], "f" * 40)
+        self.assertEqual([r["id"] for r in spec["previous_candidates"]], [1, 2])
+        self.assertTrue(
+            all(r["error"] == "old exclusion" for r in spec["previous_candidates"])
+        )
+        self.assertEqual(spec["replan_requests"][0]["request"], queued["request"])
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+        self.assertEqual(
+            self.sql("SELECT error FROM candidates WHERE id=3").fetchone()[0],
+            "old exclusion",
+        )
+
+    def test_replan_queue_failure_is_not_automatically_retried(self):
+        self.evaluation_errors()
+        self.queue_replan([1])
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+            aid = self.controller.active_attempts()[0]["id"]
+            (self.folder(aid) / "plan.jsonl").write_text(
+                encode({"id": 1, "error": "new failure"}) + "\n"
+            )
+            self.finish(aid)
+            self.controller.reconcile()
+            self.controller.admit(self.controller.campaign(self.cid))
+        self.assertFalse(self.controller.active_attempts())
+        self.assertEqual(self.sql("SELECT count(*) FROM attempts").fetchone()[0], 1)
+        self.assertEqual(
+            self.sql("SELECT error FROM candidates WHERE id=1").fetchone()[0],
+            "new failure",
+        )
+
+    def test_replan_queue_validates_whole_request_and_deduplicates(self):
+        self.evaluation_errors()
+        for ids in ([1, 1], [1, 999], [1, True]):
+            with self.assertRaises(ValueError):
+                self.queue_replan(ids)
+        for state in (
+            "unplanned",
+            "available",
+            "excluded",
+            "running",
+            "queued",
+            "blocked",
+        ):
+            with self.db:
+                self.sql("UPDATE candidates SET state=? WHERE id=2", (state,))
+            with self.assertRaisesRegex(ValueError, "inactive evaluation failure"):
+                self.queue_replan([1, 2])
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+        self.queue_replan([1])
+        self.assertEqual(self.queue_replan([1])["already_queued"], 1)
+        with self.assertRaisesRegex(ValueError, "different revision"):
+            self.queue_replan([3, 1], "a" * 40)
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 1)
+        self.assertEqual(
+            self.sql(
+                "SELECT count(*) FROM events WHERE kind='replan-queued'"
+            ).fetchone()[0],
+            1,
+        )
+
+    def test_replan_queue_refuses_active_evaluation_and_mutable_source(self):
+        self.evaluation_errors()
+        self.controller.plan(self.cid, [1])
+        with self.assertRaisesRegex(ValueError, "inactive evaluation failure"):
+            self.queue_replan([1])
+        with self.assertRaisesRegex(ValueError, "frozen committed flake"):
+            self.controller.queue_replan(self.cid, [2], "/home/worktree", "f" * 40)
+
+    def test_replan_queue_respects_resource_and_ready_buffer_limits(self):
+        self.graph()
+        with self.db:
+            self.sql(
+                "UPDATE candidates SET drv=NULL,state='evaluation-error' WHERE id=3"
+            )
+        self.queue_replan([3])
+        self.scheduling(plan_ahead=1)
+        build = self.attempt("build")  # B fills the single ready slot.
+        with patch.object(self.controller, "admission_reason", return_value=""):
+            self.controller.admit(self.controller.campaign(self.cid))
+        self.assertEqual(len(self.controller.active_attempts()), 1)
+        self.scheduling(plan_ahead=128)
+        with patch.object(
+            self.controller, "admission_reason", return_value="memory pressure"
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        self.assertEqual(len(self.controller.active_attempts()), 1)
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        active = self.controller.active_attempts()
+        self.assertEqual([r["kind"] for r in active], ["build", "plan"])
+        self.assertEqual(active[0]["id"], build)
+        self.assertEqual(json.loads(active[1]["targets"])[0]["id"], 3)
+
+    def test_large_replan_queue_uses_bounded_revision_batches(self):
+        self.evaluation_errors()
+        with self.db:
+            self.db.executemany(
+                "INSERT INTO candidates(id,campaign,attr,label,selection,state) VALUES(?,?,?,?,?,'evaluation-error')",
+                [(i, self.cid, encode([str(i)]), str(i), "{}") for i in range(4, 1004)],
+            )
+        self.queue_replan(list(range(1, 1004)))
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        spec = json.loads(self.controller.active_attempts()[0]["spec"])
+        self.assertEqual(len(spec["targets"]), 32)
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 971)
+
+    def test_replan_queue_and_attempt_commit_atomically(self):
+        self.evaluation_errors()
+        self.queue_replan([1])
+        # Fail after intent insertion, candidate detachment and queue consumption.
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ), patch("experiment.controller.event", side_effect=RuntimeError("crash")):
+            with self.assertRaisesRegex(RuntimeError, "crash"):
+                self.controller.admit(self.controller.campaign(self.cid))
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 1)
+        self.assertEqual(self.sql("SELECT count(*) FROM attempts").fetchone()[0], 0)
+        self.assertEqual(
+            self.sql("SELECT error FROM candidates WHERE id=1").fetchone()[0],
+            "old exclusion",
+        )
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+        self.controller.reconcile()
+        self.controller.reconcile()
+        self.assertEqual(len(self.units.starts), 1)
+
+    def test_replan_queue_keeps_revisions_separate(self):
+        self.evaluation_errors()
+        self.queue_replan([1], "a" * 40)
+        self.queue_replan([2, 3], "b" * 40)
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+            first = self.controller.active_attempts()[0]
+            self.assertEqual(json.loads(first["spec"])["revision"], "a" * 40)
+            self.assertEqual(len(json.loads(first["targets"])), 1)
+            self.finish(first["id"])
+            self.controller.reconcile()
+            self.controller.admit(self.controller.campaign(self.cid))
+        second = self.controller.active_attempts()[0]
+        self.assertEqual(json.loads(second["spec"])["revision"], "b" * 40)
+        self.assertEqual([t["id"] for t in json.loads(second["targets"])], [2, 3])
+
+    def test_manual_plan_consumes_pending_request_and_exclusions_win(self):
+        self.evaluation_errors()
+        self.queue_replan([1, 2])
+        with self.assertRaisesRegex(ValueError, "explicit revision"):
+            self.controller.plan(self.cid, [1])
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            aid = self.controller.plan(
+                self.cid,
+                [1],
+                "/nix/store/" + "e" * 32 + "-filnix-campaign-source",
+                "a" * 40,
+            )
+        spec = json.loads(self.controller.active_attempts()[0]["spec"])
+        self.assertEqual(spec["revision"], "a" * 40)
+        self.assertEqual(spec["replan_requests"][0]["revision"], "f" * 40)
+        self.finish(aid)
+        self.controller.reconcile()
+        with self.db:
+            self.sql("UPDATE candidates SET state='excluded' WHERE id=2")
+        with patch.object(self.controller, "admission_reason", return_value=""):
+            self.controller.admit(self.controller.campaign(self.cid))
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+        self.assertFalse(self.controller.active_attempts())
+        skipped = json.loads(
+            self.sql(
+                "SELECT payload FROM events WHERE kind='replan-skipped'"
+            ).fetchone()[0]
+        )
+        self.assertEqual(skipped["candidates"][0]["candidate"], 2)
 
     def test_alias_planned_after_interruption_requires_explicit_retry(self):
         self.graph()

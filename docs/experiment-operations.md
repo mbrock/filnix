@@ -277,6 +277,32 @@ The package catalog prefers the evaluated version while preserving the frozen
 inventory metadata. This is an explicit per-package follow-up, not a campaign-wide
 source update or an automatic downstream retry.
 
+For a larger cohort of **failed evaluations**, enqueue the complete selection:
+
+```sh
+filnix-experiment queue-replan CAMPAIGN ID [ID ...] --repo /path/to/filnix --revision COMMIT
+```
+
+Version 0.12.4 persists these requests in schema 4's `replans` table. Only inactive
+evaluation failures without recipes are accepted, up to 8,192 distinct IDs per
+request. Validation is atomic; repeating a still-pending ID at the same source
+and revision does not duplicate it. `status` includes `pending_replans` per campaign.
+The `replan-queued` event retains the full selection, request UUID and frozen source.
+
+The queue survives controller restarts and waits while its campaign is paused.
+Normal admission takes up to 32 IDs from one request, subject to resource limits,
+the single planner lane and the ready-buffer budget. Follow-ups take priority over
+the original unplanned inventory. Previous observations remain visible until an
+attempt is admitted; the attempt then preserves them along with the request's
+provenance. Intent creation and queue consumption commit together. New evaluation
+failures are recorded once and require another explicit request to try again.
+
+An explicit `plan --revision` can supersede a queued request for the same ID; its
+attempt records both the pending request and the actual revision. Exclusions or
+other intervening outcomes are skipped with a `replan-skipped` event. The queue
+does not change the campaign's original source, enable a paused campaign, or reset
+any other failures. Existing build workers keep running during the controller upgrade.
+
 **`filnix-experiment run CAMPAIGN` enables the continuing experiment.** Newly
 imported campaigns never become running just because services restart. Ordering
 remains deterministic by attribute name, deduplicated by derivation. Cost/fanout

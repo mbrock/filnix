@@ -17,6 +17,18 @@ from .scope import REASON, kernel_metadata
 from .timing import ingest_times
 
 
+def validate_source(source, revision):
+    if (
+        not isinstance(source, str)
+        or not re.fullmatch(r"/nix/store/[0-9a-z]{32}-filnix-campaign-source", source)
+        or not isinstance(revision, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", revision)
+        or not (Path(source) / "flake.nix").is_file()
+        or not (Path(source) / "flake.lock").is_file()
+    ):
+        raise ValueError("revision planning requires a frozen committed flake")
+
+
 class Units:
     def __init__(self, state, launcher="/usr/local/libexec/filnix-attempt-unit"):
         self.state, self.launcher = Path(state), launcher
@@ -99,6 +111,16 @@ class Controller:
                     raise ValueError("build dependencies are owned by another attempt")
                 extra["admission_available"] = sorted(available)
             policy = effective
+        if kind == "plan":
+            requests = [
+                dict(row)
+                for target in targets
+                for row in self.db.execute(
+                    "SELECT * FROM replans WHERE candidate=?", (target["id"],)
+                )
+            ]
+            if requests:
+                extra["replan_requests"] = requests
         aid = str(uuid.uuid4())
         spec = dict(
             kind=kind,
@@ -132,6 +154,13 @@ class Controller:
                     "UPDATE candidates SET state='unplanned',drv=NULL,recipe=NULL,error=NULL WHERE id=? AND campaign=?",
                     [(t["id"], campaign["id"]) for t in targets],
                 )
+            if kind == "plan":
+                # Consume pending work in the same transaction as the intent.
+                # A crash leaves either the request or a recoverable attempt.
+                self.db.executemany(
+                    "DELETE FROM replans WHERE candidate=?",
+                    [(t["id"],) for t in targets],
+                )
             event(
                 self.db,
                 campaign["id"],
@@ -146,17 +175,7 @@ class Controller:
             raise ValueError("plan requires 1–64 candidate IDs")
         extra = {}
         if source is not None or revision is not None:
-            if (
-                not isinstance(source, str)
-                or not re.fullmatch(
-                    r"/nix/store/[0-9a-z]{32}-filnix-campaign-source", source
-                )
-                or not isinstance(revision, str)
-                or not re.fullmatch(r"[0-9a-f]{40}", revision)
-                or not (Path(source) / "flake.nix").is_file()
-                or not (Path(source) / "flake.lock").is_file()
-            ):
-                raise ValueError("revision planning requires a frozen committed flake")
+            validate_source(source, revision)
             extra.update(source=source, revision=revision)
         targets = []
         active_drvs = {
@@ -171,6 +190,15 @@ class Controller:
             ).fetchone()
             if not row or row["state"] == "excluded":
                 raise ValueError("candidate absent or already planned")
+            if (
+                not extra
+                and self.db.execute(
+                    "SELECT 1 FROM replans WHERE candidate=?", (row["id"],)
+                ).fetchone()
+            ):
+                raise ValueError(
+                    "candidate has a queued replan; use an explicit revision"
+                )
             if row["drv"]:
                 if not extra or row["state"] not in (
                     "queued",
@@ -195,6 +223,67 @@ class Controller:
             ]
             self.root(source)
         return self.intent(campaign, "plan", targets, **extra)
+
+    def queue_replan(self, cid, ids, source, revision):
+        self.campaign(cid)
+        validate_source(source, revision)
+        if (
+            not ids
+            or len(ids) > 8192
+            or any(type(i) is not int for i in ids)
+            or len(set(ids)) != len(ids)
+        ):
+            raise ValueError("queue-replan requires 1–8192 distinct candidate IDs")
+        active = {
+            target["id"]
+            for attempt in self.active_attempts()
+            if attempt["kind"] == "plan"
+            for target in json.loads(attempt["targets"])
+        }
+        pending = []
+        for i in ids:
+            row = self.db.execute(
+                "SELECT state,drv FROM candidates WHERE id=? AND campaign=?", (i, cid)
+            ).fetchone()
+            if (
+                not row
+                or row["state"] != "evaluation-error"
+                or row["drv"]
+                or i in active
+            ):
+                raise ValueError(
+                    f"candidate {i} must be an inactive evaluation failure"
+                )
+            queued = self.db.execute(
+                "SELECT source,revision FROM replans WHERE candidate=?", (i,)
+            ).fetchone()
+            if queued:
+                if tuple(queued) != (source, revision):
+                    raise ValueError(
+                        f"candidate {i} already has a different revision queued"
+                    )
+            else:
+                pending.append(i)
+        request = str(uuid.uuid4()) if pending else None
+        if pending:
+            self.root(source)
+            created = stamp()
+            with self.db:
+                self.db.executemany(
+                    "INSERT INTO replans(candidate,source,revision,request,created) VALUES(?,?,?,?,?)",
+                    [(i, source, revision, request, created) for i in pending],
+                )
+                event(
+                    self.db,
+                    cid,
+                    "replan-queued",
+                    dict(
+                        request=request, ids=pending, source=source, revision=revision
+                    ),
+                )
+        return dict(
+            request=request, queued=len(pending), already_queued=len(ids) - len(pending)
+        )
 
     def ingest(self, attempt):
         folder = directory(self.state, attempt["id"])
@@ -523,6 +612,42 @@ class Controller:
         quota = min(32, max(0, ahead - queued)) if ahead else 32
         if not quota:
             return
+        # Requests retain their old observations until admitted. An explicit
+        # exclusion or other intervening result takes precedence over the queue.
+        with self.db:
+            skipped = [
+                dict(r)
+                for r in self.db.execute(
+                    """SELECT candidate,request,state FROM replans
+                       JOIN candidates ON candidates.id=replans.candidate
+                       WHERE campaign=? AND (state!='evaluation-error' OR drv IS NOT NULL)""",
+                    (campaign["id"],),
+                )
+            ]
+            if skipped:
+                self.db.executemany(
+                    "DELETE FROM replans WHERE candidate=?",
+                    [(r["candidate"],) for r in skipped],
+                )
+                event(
+                    self.db, campaign["id"], "replan-skipped", {"candidates": skipped}
+                )
+        request = self.db.execute(
+            """SELECT request,source,revision FROM replans
+               JOIN candidates ON candidates.id=replans.candidate
+               WHERE campaign=? ORDER BY created,candidate LIMIT 1""",
+            (campaign["id"],),
+        ).fetchone()
+        if request:
+            ids = [
+                r[0]
+                for r in self.db.execute(
+                    "SELECT candidate FROM replans WHERE request=? ORDER BY candidate LIMIT ?",
+                    (request["request"], quota),
+                )
+            ]
+            self.plan(campaign["id"], ids, request["source"], request["revision"])
+            return
         unplanned = [
             r[0]
             for r in self.db.execute(
@@ -730,6 +855,10 @@ class Controller:
         if op == "plan":
             return self.plan(
                 cid, request["ids"], request.get("source"), request.get("revision")
+            )
+        if op == "queue-replan":
+            return self.queue_replan(
+                cid, request["ids"], request["source"], request["revision"]
             )
         if op == "build-once":
             campaign = self.campaign(cid)

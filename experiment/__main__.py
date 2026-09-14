@@ -61,18 +61,27 @@ def main():
     sub.add_parser("status")
     backup = sub.add_parser("backup")
     backup.add_argument("destination")
-    for op in ("plan", "run", "pause", "retry", "build-once", "retry-derivation"):
+    for op in (
+        "plan",
+        "queue-replan",
+        "run",
+        "pause",
+        "retry",
+        "build-once",
+        "retry-derivation",
+    ):
         cmd = sub.add_parser(op)
         cmd.add_argument("campaign")
-        if op in ("plan", "retry", "build-once"):
+        if op in ("plan", "queue-replan", "retry", "build-once"):
             cmd.add_argument("ids", type=int, nargs="+")
         if op == "retry-derivation":
             cmd.add_argument("drv")
-        if op == "plan":
+        if op in ("plan", "queue-replan"):
             cmd.add_argument("--repo", help="repository for an explicit revision")
             cmd.add_argument(
                 "--revision",
-                help="try only these unplanned/failed evaluations at this commit",
+                required=op == "queue-replan",
+                help="try only these candidates at this commit",
             )
     schedule = sub.add_parser(
         "schedule", help="inspect or tune admission for future attempts"
@@ -117,7 +126,11 @@ def main():
                     [
                         dict(r)
                         for r in db.execute(
-                            "SELECT id,name,mode,hold,heartbeat FROM campaigns"
+                            """SELECT id,name,mode,hold,heartbeat,
+                               (SELECT count(*) FROM replans JOIN candidates
+                                ON candidates.id=replans.candidate
+                                WHERE candidates.campaign=campaigns.id) AS pending_replans
+                               FROM campaigns"""
                         )
                     ],
                     indent=2,
@@ -135,6 +148,7 @@ def main():
         return
     if args.command in (
         "plan",
+        "queue-replan",
         "run",
         "pause",
         "retry",
@@ -146,7 +160,7 @@ def main():
     ):
         request = {k: v for k, v in vars(args).items() if k not in ("state", "command")}
         request["op"] = args.command
-        if args.command == "plan":
+        if args.command in ("plan", "queue-replan"):
             repo, revision = request.pop("repo"), request.pop("revision")
             if repo and not revision:
                 p.error("--repo requires --revision")

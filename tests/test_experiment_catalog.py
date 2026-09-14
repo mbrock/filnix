@@ -374,7 +374,7 @@ class CatalogTests(unittest.TestCase):
         self.db.execute("PRAGMA user_version=2")
         self.db.commit()
         migrated = connect(self.state)
-        self.assertEqual(migrated.execute("PRAGMA user_version").fetchone()[0], 3)
+        self.assertEqual(migrated.execute("PRAGMA user_version").fetchone()[0], 4)
         self.assertEqual(
             migrated.execute("SELECT count(*) FROM activities").fetchone()[0], 1
         )
