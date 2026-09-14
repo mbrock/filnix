@@ -10,6 +10,8 @@ import sqlite3
 import time
 import uuid
 
+from .scope import REASON, kernel_metadata
+
 
 def stamp():
     return time.time()
@@ -67,7 +69,7 @@ CREATE INDEX IF NOT EXISTS candidates_drv ON candidates(drv);
 CREATE TABLE IF NOT EXISTS derivations (
  drv TEXT PRIMARY KEY, name TEXT NOT NULL, outputs TEXT NOT NULL,
  available INTEGER NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT 'unknown',
- failure TEXT, evidence_attempt TEXT);
+ failure TEXT, evidence_attempt TEXT, exclusion TEXT);
 CREATE TABLE IF NOT EXISTS edges (
  parent TEXT NOT NULL, child TEXT NOT NULL, outputs TEXT NOT NULL,
  PRIMARY KEY(parent,child));
@@ -90,7 +92,7 @@ CREATE TABLE IF NOT EXISTS tests (
 CREATE TABLE IF NOT EXISTS events (
  seq INTEGER PRIMARY KEY AUTOINCREMENT, time REAL NOT NULL,
  campaign TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL);
-PRAGMA user_version=1;
+PRAGMA user_version=2;
 """
 
 
@@ -107,11 +109,15 @@ def connect(state, readonly=False):
         db.execute("PRAGMA query_only=ON")
     else:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             raise ValueError(f"unsupported database version {version}")
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=FULL")
         db.execute("PRAGMA wal_autocheckpoint=1000")
+        if version == 1:
+            db.executescript(
+                "BEGIN IMMEDIATE; ALTER TABLE derivations ADD COLUMN exclusion TEXT; PRAGMA user_version=2; COMMIT;"
+            )
         db.executescript(SCHEMA)
     return db
 
@@ -159,6 +165,14 @@ def import_campaign(
                 for p in paths
             ],
         )
+        for selection in selections:
+            if kernel_metadata(
+                selection.get("metadata", {}), selection.get("sourceFile")
+            ):
+                db.execute(
+                    "UPDATE candidates SET state='excluded',error=? WHERE campaign=? AND attr=?",
+                    (REASON, cid, encode(selection["attrPath"])),
+                )
         event(
             db,
             cid,
@@ -189,7 +203,7 @@ def blockers(db, drv):
             continue
         seen.add(node)
         row = db.execute(
-            "SELECT failure FROM derivations WHERE drv=?", (node,)
+            "SELECT coalesce(exclusion,failure) FROM derivations WHERE drv=?", (node,)
         ).fetchone()
         if row and row[0]:
             found.append({"drv": node, "failure": row[0], "chain": chain})
@@ -206,7 +220,7 @@ def refresh_candidates(db, campaign):
         """UPDATE candidates SET state=CASE
       WHEN EXISTS(SELECT 1 FROM derivations d WHERE d.drv=candidates.drv AND d.available=1) THEN 'available'
       WHEN EXISTS(SELECT 1 FROM derivations d WHERE d.drv=candidates.drv AND d.failure IS NOT NULL) THEN 'failed'
-      ELSE 'queued' END WHERE campaign=? AND drv IS NOT NULL AND state NOT IN ('running','inconclusive')""",
+      ELSE 'queued' END WHERE campaign=? AND drv IS NOT NULL AND state NOT IN ('running','inconclusive','excluded')""",
         (campaign,),
     )
     db.execute(
@@ -215,4 +229,24 @@ def refresh_candidates(db, campaign):
       UNION SELECT parent FROM edges JOIN bad ON child=bad.drv)
       UPDATE candidates SET state='blocked' WHERE campaign=? AND state='queued' AND drv IN bad""",
         (campaign,),
+    )
+
+    # Preserve observed outputs and checks; exclusion changes eligibility, not
+    # the historical realization facts. Direct kernels include cached successes.
+    db.execute(
+        """UPDATE candidates SET state='excluded',error=(
+          SELECT exclusion FROM derivations WHERE drv=candidates.drv)
+          WHERE campaign=? AND drv IN (SELECT drv FROM derivations WHERE exclusion IS NOT NULL)""",
+        (campaign,),
+    )
+    db.execute(
+        """WITH RECURSIVE outside(drv) AS (
+          SELECT drv FROM derivations WHERE exclusion IS NOT NULL
+          UNION SELECT parent FROM edges JOIN outside ON child=outside.drv)
+          UPDATE candidates SET state='excluded',error=?
+          WHERE campaign=? AND state='queued' AND drv IN outside""",
+        (
+            "Requires a Linux kernel build; outside the Fil-C userspace experiment",
+            campaign,
+        ),
     )

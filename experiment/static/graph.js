@@ -2,6 +2,7 @@
 (() => {
   const states = {
     building: "Building",
+    excluded: "Excluded",
     available: "Available",
     failed: "Failed",
     blocked: "Blocked",

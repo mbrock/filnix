@@ -139,6 +139,9 @@ function render(d) {
   $("failed").textContent = fmt(counts.failed);
   $("blocked").textContent = fmt(counts.blocked);
   $("eval-errors").textContent = fmt(counts["evaluation-error"]);
+  $("excluded-count").textContent = counts.excluded
+    ? ` · ${fmt(counts.excluded)} excluded`
+    : "";
   $("remaining").textContent = fmt(counts.unplanned);
   replace(
     "inventory-progress",

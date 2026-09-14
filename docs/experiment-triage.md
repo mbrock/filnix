@@ -81,3 +81,19 @@ Some candidates also stop at evaluation because Nixpkgs marks dependencies
 broken (for example GTK, GnuTLS, and GObject Introspection), or rejects an
 unfree package under the current policy. Those are evaluation refusals, not
 evidence that Fil-C compilation failed. The original inventory remains intact.
+
+## Scope correction — 2026-09-14
+
+The hardened kernel variants escaped the original inventory's directory filter
+because their metadata position points to `pkgs/top-level/linux-kernels.nix`.
+They are excluded from the userspace experiment, including two variants whose
+outputs were already realized; those outputs do not establish Fil-C kernel
+compatibility. The inventory and runner now recognize kernel builders explicitly.
+Kernel headers and userspace programs stay eligible.
+
+Batch `02a8d98c-c9bf-4961-a74a-b4456c9ed61c` was cancelled while Linux 6.1.141
+and 6.12.43 were compiling. Its history records the scope exclusion and preserves
+the worker's cancellation result and raw logs. Unrelated interrupted roots from
+that batch are explicitly requeued. Batch `81ce27c5-fd6d-45b8-a870-56eba8938dc8`
+continued running independently. Local verification is retained in
+`results/experiment-kernel-exclusions/`.

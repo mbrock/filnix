@@ -84,7 +84,7 @@ def snapshot(db, campaign=None, search="", state="", offset=0):
         )
     ]
     tests = db.execute(
-        "SELECT count(DISTINCT t.drv) FROM tests t JOIN candidates c ON c.drv=t.drv WHERE c.campaign=?",
+        "SELECT count(DISTINCT t.drv) FROM tests t JOIN candidates c ON c.drv=t.drv WHERE c.campaign=? AND c.state!='excluded'",
         (cid,),
     ).fetchone()[0]
     return dict(

@@ -39,6 +39,7 @@
           ? "Plan finished"
           : "Completed"
         : {
+            excluded: "Kernel excluded",
             "build-error": "With errors",
             timeout: "Timed out",
             "log-limit": "Log limit",

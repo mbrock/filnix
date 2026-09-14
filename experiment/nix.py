@@ -7,6 +7,7 @@ import re
 import subprocess
 
 from .model import encode, stamp
+from .scope import REASON, kernel_derivation
 
 NIX = os.environ.get("FILNIX_NIX", "nix")
 DRV = re.compile(r"/nix/store/[a-z0-9]{32}-[^\s'\";]+\.drv")
@@ -120,6 +121,8 @@ def add_graph(db, data):
                 encode(outputs),
             ),
         )
+        if kernel_derivation(info):
+            db.execute("UPDATE derivations SET exclusion=? WHERE drv=?", (REASON, drv))
         for child, required in info["inputDrvs"].items():
             db.execute(
                 "INSERT OR IGNORE INTO edges VALUES(?,?,?)",

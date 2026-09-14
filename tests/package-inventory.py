@@ -105,6 +105,16 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(inventory.classify(package(hasSource=False))["decision"], "deferred")
         self.assertEqual(inventory.classify(package(), "pkgs/os-specific/linux/kernel/generic.nix")["decision"], "excluded")
 
+    def test_hardened_kernel_aggregate_position_is_excluded(self):
+        value = package("linux-hardened", position="/nix/store/source/pkgs/top-level/linux-kernels.nix:61")
+        self.assertEqual(inventory.classify(value)["decision"], "excluded")
+        self.assertFalse(inventory.classify(package("renamed-kernel", isLinuxKernel=True))["selected"])
+
+    def test_linux_userspace_and_headers_remain_in_scope(self):
+        for name in ("linux-pam", "linux-gpib-user", "linux-headers", "linuxptp", "kernelshark"):
+            self.assertTrue(inventory.classify(package(name))["selected"])
+        self.assertTrue(inventory.classify(package("linux-headers"), "pkgs/os-specific/linux/kernel-headers/default.nix")["selected"])
+
     def test_shared_expression_does_not_supply_other_packages_signals(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

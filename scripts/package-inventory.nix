@@ -34,6 +34,13 @@ let
         sourceProvenance = map (s: s.shortName or "unknown") (
           p.meta.sourceProvenance or [ ]
         );
+        isLinuxKernel =
+          let
+            flags = p.buildFlags or [ ];
+          in
+          builtins.isList flags
+          && builtins.elem "vmlinux" flags
+          && lib.any (lib.hasPrefix "KBUILD_BUILD_VERSION=") flags;
         hasSource = p ? src && p.src != null;
         hasCompiler = p.stdenv.hasCC or false;
         dontBuild = p.dontBuild or false;

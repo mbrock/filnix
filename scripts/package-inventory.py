@@ -16,7 +16,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPRESSION = ROOT / "scripts/package-inventory.nix"
-POLICY_VERSION = 1
+sys.path.insert(0, str(ROOT))
+from experiment.scope import kernel_metadata
+
+POLICY_VERSION = 2
 SELECTED = {"candidate", "uncertain"}
 ASSEMBLY = re.compile(r"(?i)(?:\b|_)(?:asm|assembly|assembler|nasm|yasm|simd|sse[234]?|avx\w*|neon)(?:\b|_)")
 JIT = re.compile(r"(?i)\b(?:jit|luajit|javascriptcore|v8)\b")
@@ -221,7 +224,7 @@ def classify(record, source_file=None, source_tags=(), evidence=()):
         # The compilers/runtimes themselves can evade their ecosystem builders.
         if pname in {"go", "rustc", "cargo", "ghc", "ocaml", "erlang", "zig"} and not unsupported:
             unsupported.append(pname)
-        kernel = source_file and source_file.startswith("pkgs/os-specific/linux/kernel/")
+        kernel = kernel_metadata(m, source_file)
         binary = any(s in {"binaryNativeCode", "binaryBytecode", "binaryFirmware"}
                      for s in (m.get("sourceProvenance") or []))
         c_clues = "c-build-mentioned" in tags or any(

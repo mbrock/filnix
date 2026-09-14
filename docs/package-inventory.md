@@ -98,3 +98,12 @@ Validate the selector and its no-build boundary with:
 ```sh
 python3 tests/package-inventory.py
 ```
+
+### Kernel filter correction (policy 2)
+
+Hardened kernels override `meta.position` to `pkgs/top-level/linux-kernels.nix`,
+so checking only `pkgs/os-specific/linux/kernel/` missed them. Policy 2 handles
+that location and records an `isLinuxKernel` signal from the kernel image build
+flags (`vmlinux` and `KBUILD_BUILD_VERSION`). Headers and unrelated userspace
+packages whose names contain Linux stay in scope. Existing experiment manifests
+are retained; the runner records the correction as an explicit exclusion.

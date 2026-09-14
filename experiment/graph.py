@@ -86,7 +86,7 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
     bad = {
         r[0]
         for r in db.execute("""WITH RECURSIVE bad(drv) AS (
-      SELECT drv FROM derivations WHERE failure IS NOT NULL
+      SELECT drv FROM derivations WHERE failure IS NOT NULL OR exclusion IS NOT NULL
       UNION SELECT parent FROM edges JOIN bad ON child=bad.drv) SELECT drv FROM bad""")
     }
     cache = {}
@@ -125,6 +125,8 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         activity = activities.get(drv) if in_flight else None
         if activity and not activity["stopped"]:
             status = "building"
+        elif record.get("exclusion"):
+            status = "excluded"
         elif consumed:
             status = "available"
         elif activity:
@@ -145,7 +147,7 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
             name=record["name"],
             state=status,
             phase=activity["phase"] if activity else None,
-            failure=record["failure"],
+            failure=record.get("exclusion") or record["failure"],
             origin="pre-existing" if present else record["origin"],
             availability_evidence="consumer-phase"
             if consumed and not present and not record["available"]
@@ -256,6 +258,7 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
             consumers.append(node(e[0]))
     priority = {
         "building": 0,
+        "excluded": 1,
         "failed": 1,
         "blocked": 2,
         "settling": 3,

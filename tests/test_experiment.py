@@ -461,6 +461,160 @@ class ExperimentTests(unittest.TestCase):
             64,
         )
 
+    def test_kernel_builder_is_excluded_even_as_a_renamed_dependency(self):
+        self.graph()
+        nix.add_graph(
+            self.db,
+            {
+                A: {
+                    "env": {
+                        "buildFlags": "KBUILD_BUILD_VERSION=1-NixOS bzImage vmlinux modules"
+                    },
+                    "outputs": {"out": {"path": OUTPUT}},
+                    "inputDrvs": {},
+                }
+            },
+        )
+        refresh_candidates(self.db, self.cid)
+        self.assertEqual(
+            [r[0] for r in self.sql("SELECT state FROM candidates ORDER BY id")],
+            ["excluded"] * 3,
+        )
+        self.db.commit()
+        with self.assertRaisesRegex(ValueError, "excluded"):
+            self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        with self.assertRaises(ValueError):
+            self.controller.dispatch({"op": "retry", "campaign": self.cid, "ids": [1]})
+        with self.assertRaises(ValueError):
+            self.controller.dispatch(
+                {"op": "retry-derivation", "campaign": self.cid, "drv": A}
+            )
+        self.sql("UPDATE candidates SET state='queued' WHERE id=1")
+        with self.assertRaises(ValueError):
+            self.controller.intent(self.controller.campaign(self.cid), "build", [A])
+
+    def test_kernel_exclusion_keeps_outputs_and_checks_without_claiming_success(self):
+        self.graph()
+        self.sql(
+            "UPDATE derivations SET available=1,origin='local',exclusion='kernel' WHERE drv=?",
+            (A,),
+        )
+        self.sql("INSERT INTO tests VALUES('old',?,'checkPhase','observed')", (A,))
+        refresh_candidates(self.db, self.cid)
+        self.assertEqual(
+            self.sql("SELECT state FROM candidates WHERE id=1").fetchone()[0],
+            "excluded",
+        )
+        self.assertEqual(
+            self.sql("SELECT available FROM derivations WHERE drv=?", (A,)).fetchone()[
+                0
+            ],
+            1,
+        )
+        self.assertEqual(self.sql("SELECT count(*) FROM tests").fetchone()[0], 1)
+
+    def test_explicit_kernel_stop_requeues_only_its_collateral(self):
+        from experiment.scope import REASON
+
+        self.lane_graph()
+        self.sql(
+            "UPDATE candidates SET selection=? WHERE id=1",
+            (
+                encode(
+                    {
+                        "metadata": {"pname": "linux-hardened"},
+                        "sourceFile": "pkgs/top-level/linux-kernels.nix",
+                    }
+                ),
+            ),
+        )
+        aid = self.controller.build_targets(self.controller.campaign(self.cid), [A, C])
+        original_spec = (self.folder(aid) / "spec.json").read_bytes()
+        self.finish(aid, "cancelled")
+        with patch("experiment.nix.valid", return_value=set()):
+            self.controller.reconcile()
+        self.sql(
+            "UPDATE candidates SET state='inconclusive',error='timeout' WHERE id=2"
+        )
+        definition = {
+            A: {
+                "env": {"buildFlags": "KBUILD_BUILD_VERSION=1 vmlinux"},
+                "outputs": {"out": {"path": A[:-4]}},
+                "inputDrvs": {},
+            }
+        }
+        with patch("experiment.nix.query", return_value=definition):
+            report = self.controller.dispatch(
+                {"op": "exclude-kernels", "campaign": self.cid, "attempt": aid}
+            )
+        self.assertEqual(len(report["excluded"]), 1)
+        self.assertEqual(
+            [r[0] for r in self.sql("SELECT state FROM candidates ORDER BY id")],
+            ["excluded", "inconclusive", "queued"],
+        )
+        result = json.loads(
+            self.sql("SELECT result FROM attempts WHERE id=?", (aid,)).fetchone()[0]
+        )
+        self.assertEqual(
+            (result["reason"], result["worker_reason"]), ("excluded", "cancelled")
+        )
+        self.assertEqual(result["error"], REASON)
+        self.assertEqual((self.folder(aid) / "spec.json").read_bytes(), original_spec)
+        self.assertEqual(
+            json.loads((self.folder(aid) / "exit.json").read_text())["reason"],
+            "cancelled",
+        )
+        self.assertEqual(
+            self.sql(
+                "SELECT count(*) FROM events WHERE kind='kernels-excluded'"
+            ).fetchone()[0],
+            1,
+        )
+
+    def test_headers_and_userspace_are_not_kernel_builders(self):
+        from experiment.scope import kernel_derivation
+
+        for flags in ("headers_install", "modules", "", "vmlinux"):
+            self.assertFalse(kernel_derivation({"env": {"buildFlags": flags}}))
+
+    def test_kernel_selection_is_excluded_before_evaluation(self):
+        cid = import_campaign(
+            self.db,
+            "scope",
+            {"attrPaths": [["linux_hardened"]]},
+            "/source",
+            "rev",
+            nix.DEFAULT_POLICY,
+            "test",
+            [{"attrPath": ["linux_hardened"], "metadata": {"isLinuxKernel": True}}],
+        )
+        row = self.sql(
+            "SELECT id,state FROM candidates WHERE campaign=?", (cid,)
+        ).fetchone()
+        self.assertEqual(row["state"], "excluded")
+        with self.assertRaises(ValueError):
+            self.controller.plan(cid, [row["id"]])
+        refresh_candidates(self.db, cid)
+        self.assertEqual(
+            self.sql(
+                "SELECT state FROM candidates WHERE campaign=?", (cid,)
+            ).fetchone()[0],
+            "excluded",
+        )
+
+    def test_schema_one_migrates_without_losing_facts(self):
+        self.graph()
+        self.db.commit()
+        self.db.execute("ALTER TABLE derivations DROP COLUMN exclusion")
+        self.db.execute("PRAGMA user_version=1")
+        self.db.close()
+        self.db = connect(self.state)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(self.sql("SELECT count(*) FROM derivations").fetchone()[0], 3)
+        self.assertIsNone(
+            self.sql("SELECT exclusion FROM derivations LIMIT 1").fetchone()[0]
+        )
+
     def lane_graph(self):
         self.graph()
         self.sql("DELETE FROM edges WHERE parent=?", (C,))

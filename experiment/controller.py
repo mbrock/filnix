@@ -12,6 +12,7 @@ from . import VERSION, nix
 from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
 from .scheduling import build_policy, reservations
+from .scope import REASON, kernel_metadata
 
 
 class Units:
@@ -85,6 +86,7 @@ class Controller:
         if active and not ahead:
             raise ValueError("an attempt is already active; planning ahead is disabled")
         if kind == "build":
+            self.check_scope(targets)
             effective = build_policy(policy, builds)
             if not effective:
                 raise ValueError("build lanes or requested CPU budget occupied")
@@ -136,7 +138,7 @@ class Controller:
             row = self.db.execute(
                 "SELECT * FROM candidates WHERE id=? AND campaign=?", (int(i), cid)
             ).fetchone()
-            if not row or row["drv"]:
+            if not row or row["drv"] or row["state"] == "excluded":
                 raise ValueError("candidate absent or already planned")
             targets.append({"id": row["id"], "attr": json.loads(row["attr"])})
         return self.intent(campaign, "plan", targets)
@@ -472,6 +474,112 @@ class Controller:
         if unplanned:
             self.plan(campaign["id"], unplanned)
 
+    def check_scope(self, targets):
+        for target in targets:
+            row = self.db.execute(
+                """WITH RECURSIVE deps(drv) AS (
+                  VALUES(?) UNION SELECT child FROM edges JOIN deps ON parent=deps.drv)
+                  SELECT name,exclusion FROM derivations JOIN deps USING(drv)
+                  WHERE exclusion IS NOT NULL LIMIT 1""",
+                (target,),
+            ).fetchone()
+            if row:
+                raise ValueError(f"excluded: {row['name']}: {row['exclusion']}")
+
+    def exclude_kernels(self, cid, aid=None):
+        campaign = self.campaign(cid)
+        if campaign["mode"] != "paused":
+            raise ValueError("pause the campaign before reclassifying its scope")
+        attempt = None
+        if aid:
+            attempt = self.db.execute(
+                "SELECT * FROM attempts WHERE id=? AND campaign=?", (aid, cid)
+            ).fetchone()
+            if (
+                not attempt
+                or attempt["kind"] != "build"
+                or attempt["state"] != "finished"
+                or json.loads(attempt["result"] or "{}").get("reason")
+                not in ("cancelled", "excluded")
+            ):
+                raise ValueError("attempt must be a cancelled build in this campaign")
+        selected = []
+        for row in self.db.execute(
+            "SELECT id,drv,selection FROM candidates WHERE campaign=?", (cid,)
+        ):
+            selection = json.loads(row["selection"])
+            if kernel_metadata(
+                selection.get("metadata", {}), selection.get("sourceFile")
+            ):
+                selected.append(row)
+        # Backfill old records, which did not retain kernel builder metadata.
+        # Inspect definitions only; no evaluation or realization. New planning
+        # detects the builder from its flags, even when an overlay renames it.
+        suspects = {
+            r[0]
+            for r in self.db.execute(
+                "SELECT drv FROM derivations WHERE lower(name) LIKE 'linux-%'"
+            )
+        }
+        suspects.update(r["drv"] for r in selected if r["drv"])
+        definitions = []
+        ordered = sorted(suspects)
+        for i in range(0, len(ordered), 64):
+            definitions.append(nix.query("derivation", "show", *ordered[i : i + 64]))
+        with self.db:
+            for data in definitions:
+                nix.add_graph(self.db, data)
+            for row in selected:
+                self.db.execute(
+                    "UPDATE candidates SET state='excluded',error=? WHERE id=?",
+                    (REASON, row["id"]),
+                )
+                if row["drv"]:
+                    self.db.execute(
+                        "UPDATE derivations SET exclusion=? WHERE drv=?",
+                        (REASON, row["drv"]),
+                    )
+            if attempt:
+                targets = json.loads(attempt["targets"])
+                if not any(
+                    self.db.execute(
+                        "SELECT 1 FROM derivations WHERE drv=? AND exclusion IS NOT NULL",
+                        (t,),
+                    ).fetchone()
+                    for t in targets
+                ):
+                    raise ValueError("cancelled batch has no excluded kernel root")
+                result = json.loads(attempt["result"])
+                result.update(
+                    reason="excluded",
+                    worker_reason=result.get("worker_reason", result["reason"]),
+                    error=REASON,
+                )
+                self.db.execute(
+                    "UPDATE attempts SET result=? WHERE id=?", (encode(result), aid)
+                )
+                # Only this explicit cancellation's inconclusive collateral is
+                # retried. Preserve independent failures and older interruptions.
+                self.db.executemany(
+                    "UPDATE candidates SET state='queued',error=NULL WHERE campaign=? AND drv=? AND state='inconclusive' AND error='cancelled'",
+                    [(cid, t) for t in targets],
+                )
+            refresh_candidates(self.db, cid)
+            report = dict(
+                reason=REASON,
+                attempt=aid,
+                runner_version=VERSION,
+                excluded=[
+                    dict(r)
+                    for r in self.db.execute(
+                        "SELECT id,label,drv,error FROM candidates WHERE campaign=? AND state='excluded' ORDER BY label",
+                        (cid,),
+                    )
+                ],
+            )
+            event(self.db, cid, "kernels-excluded", report)
+        return report
+
     def build_targets(self, campaign, targets):
         drvs = set(d for target in targets for d in closure(self.db, target))
         outputs = set()
@@ -501,6 +609,8 @@ class Controller:
 
     def dispatch(self, request):
         op, cid = request["op"], request.get("campaign")
+        if op == "exclude-kernels":
+            return self.exclude_kernels(cid, request.get("attempt"))
         if op == "schedule":
             campaign = self.campaign(cid)
             policy = json.loads(campaign["policy"])
@@ -581,6 +691,7 @@ class Controller:
                 raise ValueError(
                     "derivation does not belong to the planned campaign graph"
                 )
+            self.check_scope([drv])
             with self.db:
                 self.db.execute(
                     "UPDATE derivations SET failure=NULL WHERE drv=?", (drv,)
@@ -624,8 +735,9 @@ class Controller:
                         "SELECT drv,state FROM candidates WHERE campaign=? AND id=?",
                         (cid, i),
                     ).fetchone()
-                    if not r or not r["drv"] or r["state"] == "running":
+                    if not r or not r["drv"] or r["state"] in ("running", "excluded"):
                         raise ValueError("retry requires a planned, inactive candidate")
+                    self.check_scope([r["drv"]])
                     self.db.execute(
                         "UPDATE derivations SET failure=NULL WHERE drv=?", (r["drv"],)
                     )

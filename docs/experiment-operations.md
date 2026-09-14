@@ -449,3 +449,44 @@ node tests/experiment-history-browser.mjs https://nix.swa.sh results/experiment-
 controller stopped and queues one bounded attempt; it requires the installed
 units and resource policy before execution. It deliberately does not modify the
 main inventory. Adapt its state/pinned-Nixpkgs arguments for another host.
+
+## Excluding Linux kernels
+
+Linux kernel images are outside this userspace experiment. Inventory policy 2
+recognizes the actual kernel build flags and the overridden metadata location of
+hardened kernels (`pkgs/top-level/linux-kernels.nix`). A `linux` substring alone
+is not an exclusion: kernel headers, Linux-PAM, linuxptp, and similar userspace
+packages remain eligible.
+
+Planning records a separate derivation `exclusion` when it encounters the kernel
+builder's `vmlinux` and `KBUILD_BUILD_VERSION` flags, including renamed kernels
+and dependencies. Excluded roots and queued consumers are not admitted. Manual
+build and retry commands also check the recorded dependency graph. This is a
+conservative scope filter: a dependency on an excluded kernel is sufficient to
+refuse new work, including when outputs happen to be cached.
+
+For an older campaign, pause admission, cancel a batch containing kernels, then
+apply the scope correction through the controller:
+
+```sh
+sudo /opt/filnix-experiment/bin/filnix-experiment cancel ATTEMPT
+sudo /opt/filnix-experiment/bin/filnix-experiment exclude-kernels CAMPAIGN --attempt ATTEMPT
+sudo /opt/filnix-experiment/bin/filnix-experiment run CAMPAIGN
+```
+
+Wait for cancellation to reconcile before invoking `exclude-kernels`. The command
+requires a paused campaign and a finished cancelled build. It inspects existing
+Linux-named derivations without building, reclassifies old inventory metadata,
+and records a `kernels-excluded` event. Without `--attempt`, it only applies the
+scope correction. For an attached cancelled batch, the displayed outcome becomes
+**Kernel excluded**, retaining `worker_reason=cancelled` and the explanation.
+Original `spec.json`, `exit.json`, and logs remain unchanged. Only that batch's
+nonexcluded candidates left inconclusive by cancellation are explicitly requeued;
+older interruptions remain held. Independent active workers continue running.
+
+The original manifest and selection evidence remain frozen. Excluded candidates
+stay inspectable through the package filter and are counted separately from
+compatibility failures. Existing output availability and check records are kept;
+excluded kernel outputs no longer count as eligible package successes. Database
+schema 2 adds the independent exclusion field; the controller migrates schema 1
+transactionally. Older controllers do not support the new schema.

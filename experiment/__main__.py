@@ -56,6 +56,12 @@ def main():
         help="queued derivations to prepare (0–256; 0 disables overlap)",
     )
     schedule.add_argument("--build-lanes", type=int, help="bounded build clients (1–2)")
+    exclude = sub.add_parser(
+        "exclude-kernels",
+        help="exclude kernel recipes and optionally reconcile their cancelled batch",
+    )
+    exclude.add_argument("campaign")
+    exclude.add_argument("--attempt")
     cancel = sub.add_parser("cancel")
     cancel.add_argument("attempt")
     args = p.parse_args()
@@ -105,6 +111,7 @@ def main():
         "build-once",
         "retry-derivation",
         "schedule",
+        "exclude-kernels",
     ):
         request = {k: v for k, v in vars(args).items() if k not in ("state", "command")}
         request["op"] = args.command

@@ -11,7 +11,7 @@ let
     filter = path: type: builtins.baseNameOf path != "__pycache__";
   };
 in
-pkgs.runCommand "filnix-experiment-0.7.0" { } ''
+pkgs.runCommand "filnix-experiment-0.8.0" { } ''
   mkdir -p $out/lib/experiment $out/bin
   cp -r ${source}/* $out/lib/experiment/
   cat > $out/bin/filnix-experiment <<EOF

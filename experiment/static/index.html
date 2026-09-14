@@ -55,7 +55,11 @@
             <span
               ><b id="evaluated">—</b> /
               <span id="selected">—</span> evaluated</span
-            ><span><b id="eval-errors">—</b> eval errors</span>
+            ><span
+              ><b id="eval-errors">—</b> eval errors<span
+                id="excluded-count"
+              ></span
+            ></span>
           </div>
           <div
             id="inventory-progress"
@@ -234,6 +238,7 @@
                 <option>failed</option>
                 <option>evaluation-error</option>
                 <option>inconclusive</option>
+                <option>excluded</option>
               </select>
             </div>
             <div id="packages"></div>
