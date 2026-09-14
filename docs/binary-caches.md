@@ -22,7 +22,8 @@ extra-trusted-public-keys = nix.swa.sh-1:DgkPkGAie779HuF0oEkglCmDUoDGcK21mM2DT+0
 ```
 
 Cachix and the local cache contain the experiment's actual outputs, including
-its explicitly selected private-libc profiles. Cache presence establishes output
+the first campaign's private-libc profiles and subsequent shared-libc builds.
+Cache presence establishes output
 availability; it does not establish tests passed or comprehensive POSIX
 cancellation support. Source revisions, compiler choices, profiles, and test
 evidence remain in the campaign records.
@@ -139,3 +140,13 @@ checks passed for the entire initial cohort, including content and signature
 verification. `tests/test_cache_publication.py` covers discovery boundaries,
 partial batch success, durable deduplication, independent destinations,
 retry isolation, timeouts, and the disk reserve.
+
+## Moving to a new campaign
+
+After importing a new campaign, change only `campaign` in
+`/etc/filnix-cache/config.json` to its ID using an atomic file replacement.
+The destination settings and receipt databases stay unchanged: receipts are
+keyed by store path and cache destination, and pending uploads from the old
+campaign continue to drain. An upload already running finishes with its loaded
+configuration; the next timer run discovers the new campaign. Verify the
+newly observed outputs appear in both receipt databases.

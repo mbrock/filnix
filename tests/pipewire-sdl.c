@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 #endif
     assert(!strcmp(SDL_GetCurrentAudioDriver(), "pipewire"));
     SDL_Quit();
-    printf("SDL%d: private libc and live PipeWire device discovery passed\n",
+    printf("SDL%d: shared libc and live PipeWire device discovery passed\n",
            SDL_MAJOR_VERSION);
     return 0;
 }

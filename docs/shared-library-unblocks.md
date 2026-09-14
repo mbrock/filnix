@@ -364,7 +364,13 @@ The full GStreamer build also passes at six CPUs: 110 test groups pass with
 the one existing upstream skip. GObject introspection passes all 60 groups,
 and the installed GStreamer fake-source/fake-sink pipeline runs to completion.
 
-Cancellation investigation uses a separate libc derivation, leaving the shared
+The following private-libc investigation records the implementation before
+`46be74e`. Its private wrapper and pause-only patches were removed in that
+commit. For the current shared-runtime implementation and commands, see
+[pthread cancellation implementation](pthread-cancellation-implementation.md).
+The historical commands below require the earlier source revision.
+
+That cancellation investigation used a separate libc derivation, leaving the shared
 compiler/runtime graph unchanged. Three independent problems were exposed:
 
 - The libc still preflighted `libgcc_s.so.6661`, although Fil-C supplies its own

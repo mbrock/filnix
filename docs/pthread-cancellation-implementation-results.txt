@@ -178,3 +178,18 @@ filc user error: abort(3) called.
     (libc.so.6666) ../csu/libc-start.c:159:3: __libc_start_main
     (libpizlo.so) <runtime>: start_program
 [3952121] filc panic: user thwarted themselves.
+
+Application gates on the shared toolchain:
+/nix/store/64qf1smhr06v9fr1n150jxhh2zrkxf5j-pipewire-shared-libc-runtime-check
+shared libc: installed daemon, pw-cli, pw-dump, adapter creation/destruction and clean shutdown passed
+
+/nix/store/6ii5qsv0c3p80gdynjhxj3kipzl29lrk-pipewire-consumers-runtime-check
+SDL3: shared libc and live PipeWire device discovery passed
+SDL2: shared libc and live PipeWire device discovery passed
+WirePlumber: live PipeWire virtual sink discovery passed
+shared libc: installed daemon, pw-cli, pw-dump, adapter creation/destruction and clean shutdown passed
+
+/nix/store/vz25hxn44p7624vvh7mgpr87galdidd9-cava-runtime-check
+CAVA: shared libc, config/resources, eight-bar raw output and shutdown passed
+
+PipeWire: 48/48 groups passed; SDL3: 23/23; SDL2 compatibility: 13/13; WirePlumber: 52/52.

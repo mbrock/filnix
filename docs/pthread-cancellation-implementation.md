@@ -132,9 +132,25 @@ forced unwind in its own runtime; the candidate removes that inappropriate
 native-libgcc preflight. See the recorded
 [implementation observations](pthread-cancellation-implementation-results.txt).
 
-PipeWire application validation is a separate gate. Its former private-libc
-wrapper and pause-only patches have been removed from the candidate tree; the
-PipeWire core profile and explicit consumers now use the shared toolchain.
+The shared toolchain also passed the PipeWire core profile's **48 test groups**,
+SDL3's **23**, SDL2 compatibility's **13**, and WirePlumber's **52**. Installed
+runtime checks verify the exact shared libc, start a private PipeWire daemon,
+create/destroy a virtual sink, discover it through both SDL APIs and WirePlumber,
+and shut down cleanly. CAVA produces eight silent raw-output bars and exits
+through its normal signal handling. No sound hardware or host session is used.
+The former private-libc wrapper and pause-only patches have been removed; the
+explicit consumer feature profiles and their application patches are retained.
+This does not replace the full Nixpkgs PipeWire package with the core profile.
+
+Application check outputs:
+
+- `64qf1smhr06v9fr1n150jxhh2zrkxf5j-pipewire-shared-libc-runtime-check`
+- `6ii5qsv0c3p80gdynjhxj3kipzl29lrk-pipewire-consumers-runtime-check`
+- `vz25hxn44p7624vvh7mgpr87galdidd9-cava-runtime-check`
+
+The GnuTLS TLS/certificate/slow check derivation and ICU consumer check also
+passed with the new toolchain. Existing GnuTLS test exclusions remain explicit
+in its port; no cancellation tests were removed to obtain these results.
 
 ## Remaining work and release limits
 
