@@ -47,6 +47,17 @@ CELL = ["px-2", "py-1.5", "align-top"]
 HEADING = ["font-semibold", "text-left"]
 STATES = {
     "ready": ("Ready", ["text-stone-500"]),
+    "built": ("Built", ["text-stone-400"]),
+    "awaiting-result": ("Awaiting result", MUTED),
+    "build-result-unknown": ("Result not recorded", MUTED),
+    "starting": ("Starting", ["text-sky-800"]),
+    "finished": ("Finished", ["text-emerald-800"]),
+    "finished-errors": ("Finished · errors", ["text-red-800"]),
+    "cancelled": ("Cancelled", ["text-amber-800"]),
+    "interrupted": ("Interrupted", ["text-amber-800"]),
+    "timed-out": ("Timed out", ["text-amber-800"]),
+    "resource-limit": ("Resource limit", ["text-amber-800"]),
+    "result-unknown": ("Finished · outcome unknown", MUTED),
     "available": ("Built", ["text-stone-400"]),
     "tested": ("Tested", ["text-emerald-800", "font-medium"]),
     "failed": ("Failed", ["text-red-800"]),

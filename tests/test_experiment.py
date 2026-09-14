@@ -256,6 +256,11 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(
             self.sql("SELECT phase FROM tests").fetchone()[0], "checkPhase"
         )
+        result = json.loads(
+            self.sql("SELECT result FROM attempts WHERE id=?", (aid,)).fetchone()[0]
+        )
+        self.assertEqual(result["build_outcomes"], {A: "tested"})
+        self.assertEqual(result["build_outcomes_source"], "batch-completion")
 
     def test_stop_event_does_not_prove_success(self):
         self.graph()
@@ -270,6 +275,33 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(
             self.sql("SELECT state FROM candidates WHERE id=1").fetchone()[0],
             "inconclusive",
+        )
+        result = json.loads(
+            self.sql("SELECT result FROM attempts WHERE id=?", (aid,)).fetchone()[0]
+        )
+        self.assertEqual(result["build_outcomes"], {A: "unknown"})
+
+    def test_build_outcome_survives_a_later_derivation_result(self):
+        self.graph()
+        aid = self.attempt("build")
+        self.log(aid, dict(action="start", type=105, id=3, fields=[A]))
+        self.log(
+            aid, dict(action="msg", msg=f"builder for '{A}' failed with exit code 1")
+        )
+        self.finish(aid, "build-error")
+        with patch("experiment.nix.valid", return_value=set()):
+            self.controller.reconcile()
+        result = json.loads(
+            self.sql("SELECT result FROM attempts WHERE id=?", (aid,)).fetchone()[0]
+        )
+        self.assertEqual(result["build_outcomes"], {A: "failed"})
+        self.sql(
+            "UPDATE derivations SET available=1,failure=NULL,evidence_attempt='later'"
+        )
+        from experiment.history import attempt_detail
+
+        self.assertEqual(
+            attempt_detail(self.db, self.cid, aid)["activities"][0]["status"], "failed"
         )
 
     def test_oom_does_not_blame_recipe(self):

@@ -1,6 +1,7 @@
 """Read-only attempt history. Outcomes belong to attempts, never to today's outputs."""
 
 import json
+from collections import Counter
 
 from .model import stamp
 
@@ -19,6 +20,24 @@ def campaign_row(db, campaign):
     if not row:
         raise ValueError("unknown campaign")
     return row
+
+
+def batch_status(state, reason):
+    if state == "intended":
+        return "starting"
+    if state != "finished":
+        return "running"
+    return {
+        "completed": "finished",
+        "build-error": "finished-errors",
+        "cancelled": "cancelled",
+        "timeout": "timed-out",
+        "silent-timeout": "timed-out",
+        "resource-limit": "resource-limit",
+        "resource-interruption": "resource-limit",
+        "log-limit": "resource-limit",
+        "interrupted": "interrupted",
+    }.get(reason, "finished-errors" if reason else "result-unknown")
 
 
 def reference(db, campaign, aid):
@@ -64,6 +83,7 @@ def item(db, row):
         id=row["id"],
         kind=row["kind"],
         state=row["state"],
+        status=batch_status(row["state"], result.get("reason")),
         created=row["created"],
         finished=row["finished"],
         reason=result.get("reason"),
@@ -211,14 +231,41 @@ def attempt_detail(db, campaign, aid):
     if not row:
         raise ValueError("unknown campaign attempt")
     result = item(db, row)
+    outcomes = (json.loads(row["result"]) if row["result"] else {}).get(
+        "build_outcomes", {}
+    )
     result["activities"] = [
         dict(r)
         for r in db.execute(
             """SELECT a.drv,coalesce(d.name,a.drv) AS name,a.phase,a.stopped,
             EXISTS(SELECT 1 FROM tests t WHERE t.attempt=a.attempt AND t.drv=a.drv) AS checked
             FROM activities a LEFT JOIN derivations d ON d.drv=a.drv
-            WHERE a.attempt=? AND a.kind='build' ORDER BY a.stopped,a.rowid LIMIT 100""",
+            WHERE a.attempt=? AND a.kind='build' ORDER BY a.stopped,a.rowid""",
             (aid,),
         )
     ]
+    # Only one row per derivation, including an activity restarted in this batch.
+    result["activities"] = list(
+        {a["drv"]: a for a in reversed(result["activities"])}.values()
+    )
+    for activity in result["activities"]:
+        activity["status"] = (
+            "tested"
+            if activity["checked"]
+            else outcomes.get(activity["drv"], "unknown")
+            if row["state"] == "finished"
+            else "awaiting-result"
+            if activity["stopped"]
+            else "building"
+        )
+    order = {
+        "building": 0,
+        "failed": 1,
+        "awaiting-result": 2,
+        "unknown": 3,
+        "tested": 4,
+        "built": 5,
+    }
+    result["activities"].sort(key=lambda a: (order[a["status"]], a["name"]))
+    result["activity_counts"] = dict(Counter(a["status"] for a in result["activities"]))
     return result

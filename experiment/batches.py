@@ -3,7 +3,7 @@
 from collections import defaultdict
 import json
 
-from .history import campaign_row, OUTCOME
+from .history import batch_status, campaign_row, OUTCOME
 from .model import stamp
 
 
@@ -58,6 +58,7 @@ def batches(db, campaign):
         end = now if r["state"] != "finished" else r["finished"]
         duration = max(0, end - r["created"]) if end is not None else None
         r.update(
+            status=batch_status(r["state"], r["reason"]),
             duration=duration,
             roots=roots,
             names=sorted(names),

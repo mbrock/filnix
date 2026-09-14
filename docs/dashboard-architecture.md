@@ -114,10 +114,24 @@ overlapping timeline rows and test evidence scoped to its campaign.
 Dependency nodes say Ready when their required outputs are available; this does
 not claim they were compiled in this campaign. The evidence tooltip distinguishes
 a store observation from inference through a consumer reaching a build phase.
-A stopped activity says Stopped until successful check evidence supports Tested.
+Batch headers distinguish Running, Finished and Finished with errors, and remain
+visible while scrolling the build list. All observed derivations are shown, with
+active builds and failures first. An ended activity says Awaiting result while
+the batch still runs: Nix's activity stop event does not establish success.
+Once the batch finishes, immutable per-derivation results distinguish Built,
+Tested, Failed and Result not recorded. A later retry cannot rewrite that history.
 Build failures and evaluation errors have separate filters, so the overview
 counts lead to the matching rows; All failures combines the failure categories.
 Failed refreshes display a notice until that reader successfully recovers.
+
+The controller captures `build_outcomes` inside the attempt's existing result
+JSON after checking output validity and recording test evidence. On startup it
+fills older results from retained facts only when their evidence still belongs
+to that attempt, plus immutable test records. This migration is idempotent;
+overwritten or absent observations remain unknown. The web service does not
+write these facts or query Nix to reconstruct historical results. Batch outcomes
+and individual outcomes are separate: a batch can finish with errors while many
+of its dependencies built successfully.
 
 Blocked packages distinguish their own planning/build history from the failed
 dependency. Each blocker links directly to the batch that owns its evidence,

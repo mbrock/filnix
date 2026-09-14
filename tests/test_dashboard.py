@@ -390,8 +390,37 @@ class DashboardTests(unittest.TestCase):
         ]
         self.assertNotEqual(*lanes)
         soup = BeautifulSoup(self.get("/batches/" + aid).text, "html.parser")
-        self.assertIn("Stopped", soup.get_text())
+        self.assertIn("Awaiting result", soup.get_text())
+        self.assertNotIn("Stopped", soup.get_text())
         self.assertNotIn("Tested", soup.get_text())
+        self.assertIn(
+            "awaiting result", soup.select_one("#batch-build-summary").text
+        )
+
+    def test_batch_completion_and_results_are_distinct(self):
+        self.graph()
+        aid = self.attempt("build")
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,stopped) VALUES(?,'1',?,'build',1)",
+            (aid, A),
+        )
+        from experiment.model import encode
+
+        self.sql(
+            "UPDATE attempts SET state='finished',finished=created+10,result=? WHERE id=?",
+            (encode({"reason": "build-error", "build_outcomes": {A: "built"}}), aid),
+        )
+        self.db.commit()
+        page = BeautifulSoup(self.get("/batches/" + aid).text, "html.parser")
+        self.assertIn("Finished · errors", page.select_one("#batch-heading").text)
+        self.assertEqual(page.select_one("#batch-status")["hx-trigger"], "none")
+        self.assertEqual(
+            page.select_one("[data-build-status]")["data-build-status"], "built"
+        )
+        self.assertIn("Built", page.select_one("[data-build-status]").text)
+        self.assertNotIn("Stopped", page.text)
+        self.assertNotIn("await confirmation", page.text)
+        self.assertIn("Finished · errors", self.get("/batches").text)
 
 
 if __name__ == "__main__":

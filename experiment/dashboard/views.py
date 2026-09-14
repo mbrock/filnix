@@ -286,7 +286,7 @@ def batch_rows(rows, cid, view):
                                 text(f"{r['tested']} tested")
                     with tag.td([CELL, "text-right"]):
                         with link(LOG.url(view, cid=cid, aid=r["id"]), FOCUS):
-                            status(r["outcome"])
+                            status(r["status"])
                     with tag.td(
                         [CELL, "text-right", "tabular-nums", "whitespace-nowrap"]
                     ):
@@ -466,9 +466,9 @@ def batches(result, campaign, view):
             "outcome",
             [
                 ("", "All results"),
-                ("error", "With errors"),
+                ("error", "Finished with errors"),
                 ("active", "Running"),
-                ("complete", "Completed"),
+                ("complete", "Finished normally"),
             ],
             view.outcome,
             "Batch results",
@@ -502,18 +502,29 @@ def batch_status(result, campaign, view, now):
             trigger=view.trigger,
             done=result["state"] == "finished",
         )
-        with tag.div(["flex", "gap-3", "items-center", "flex-wrap", "mb-3"]):
+        with tag.div(
+            [
+                "flex",
+                "gap-x-3",
+                "gap-y-1",
+                "items-center",
+                "flex-wrap",
+                "mb-2",
+                "sticky",
+                "top-0",
+                "z-10",
+                "bg-[#f7f7f2]",
+                "border-b",
+                "border-stone-300",
+                "py-2",
+            ],
+            id="batch-heading",
+        ):
             with tag.h1(HEADING):
                 text(
                     ("Build" if result["kind"] == "build" else "Plan") + " · " + aid[:8]
                 )
-            status(
-                "active"
-                if result["state"] != "finished"
-                else "complete"
-                if result["reason"] == "completed"
-                else "error"
-            )
+            status(result["status"])
             with tag.span("tabular-nums"):
                 text(
                     duration(
@@ -525,10 +536,16 @@ def batch_status(result, campaign, view, now):
                     )
                 )
             with link(LOG.url(view, cid=cid, aid=aid), BUTTON):
-                text("Open log")
+                text("Batch log")
+            if result["state"] != "finished":
+                with tag.span(MUTED):
+                    text(f"{result['activity_counts'].get('building', 0)} building")
         with tag.p([MUTED, "mb-3"]):
+            text("Started ")
             timestamp(result["created"])
-            text(f" · {result['builds']} observed builds · {result['checks']} tested")
+            if result["finished"] is not None:
+                text(" · Finished ")
+                timestamp(result["finished"])
         if result["error"]:
             with tag.pre(
                 [
@@ -540,40 +557,55 @@ def batch_status(result, campaign, view, now):
                 ]
             ):
                 text(result["error"])
-        with tag.h2([HEADING, "mb-1"]):
-            text("Requested packages")
-        with tag.ul(["mb-3", "columns-1", "sm:columns-2", "lg:columns-3"]):
-            for root in result["targets"]:
-                with tag.li(["break-inside-avoid", "py-0.5"]):
-                    url = (
-                        PACKAGE.url(view, cid=cid, pid=root["id"])
-                        if "id" in root
-                        else GRAPH.url(view.with_(focus=root["drv"]), cid=cid)
-                    )
-                    with link(url):
-                        text(root["label"])
+        with tag.details("mb-3"):
+            with tag.summary([FOCUS, HEADING, "cursor-pointer"]):
+                text(f"Requested packages · {len(result['targets'])}")
+            with tag.ul(["columns-1", "sm:columns-2", "lg:columns-3"]):
+                for root in result["targets"]:
+                    with tag.li(["break-inside-avoid", "py-0.5"]):
+                        url = (
+                            PACKAGE.url(view, cid=cid, pid=root["id"])
+                            if "id" in root
+                            else GRAPH.url(view.with_(focus=root["drv"]), cid=cid)
+                        )
+                        with link(url):
+                            text(root["label"])
         if result["activities"]:
             with tag.h2([HEADING, "mb-1"]):
+                text(f"Builds in this batch · {len(result['activities'])}")
+            with tag.p([MUTED, "mb-2"], id="batch-build-summary"):
                 text(
-                    f"Builds in this batch · {len(result['activities'])} / {result['builds']}"
+                    " · ".join(
+                        f"{count} { {'building': 'building', 'awaiting-result': 'awaiting result', 'unknown': 'without a recorded result'}.get(key, key) }"
+                        for key, count in result["activity_counts"].items()
+                    )
                 )
+            if result["activity_counts"].get("awaiting-result"):
+                with tag.p([MUTED, "mb-2"]):
+                    text(
+                        "Ended activities await confirmation when the whole batch finishes."
+                    )
+            if result["activity_counts"].get("unknown"):
+                with tag.p([MUTED, "mb-2"]):
+                    text(
+                        "This batch has ended. Some individual results were not confirmed; their logs are still available."
+                    )
             with tag.div(["grid", "sm:grid-cols-2", "gap-x-5"]):
                 for a in result["activities"]:
                     with tag.div(
-                        [ROW, "flex", "justify-between", "gap-2", "py-1", "min-w-0"]
+                        [ROW, "flex", "justify-between", "gap-2", "py-1", "min-w-0"],
+                        data_build_status=a["status"],
                     ):
                         with link(
                             LOG.url(view.with_(drv=a["drv"]), cid=cid, aid=aid),
                             [LINK, "truncate"],
                         ):
                             text(build_name(a["name"]))
-                        with tag.span([MUTED, "shrink-0"]):
-                            text(
-                                "Tested"
-                                if a["checked"]
-                                else "Stopped"
-                                if a["stopped"]
-                                else (a["phase"] or "building").removesuffix("Phase")
+                        with tag.span("shrink-0", title=a["phase"] or None):
+                            status(
+                                "build-result-unknown"
+                                if a["status"] == "unknown"
+                                else a["status"]
                             )
 
 

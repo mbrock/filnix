@@ -12,6 +12,7 @@ import uuid
 from . import VERSION, nix
 from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
+from .outcomes import backfill, snapshot as build_outcomes
 from .scheduling import build_policy, reservations
 from .scope import REASON, kernel_metadata
 from .timing import ingest_times
@@ -67,6 +68,7 @@ class Controller:
         self.units = units or Units(state)
         (self.state / "attempts").mkdir(exist_ok=True)
         (self.state / "roots").mkdir(exist_ok=True)
+        backfill(self.db)
 
     def campaign(self, cid):
         row = self.db.execute("SELECT * FROM campaigns WHERE id=?", (cid,)).fetchone()
@@ -480,6 +482,8 @@ class Controller:
                 "UPDATE candidates SET state='inconclusive',error=? WHERE campaign=? AND drv=? AND state='queued'",
                 (result["reason"], attempt["campaign"], drv),
             )
+        result["build_outcomes"] = build_outcomes(self.db, attempt["id"])
+        result["build_outcomes_source"] = "batch-completion"
 
     def reconcile(self):
         for row in self.db.execute(

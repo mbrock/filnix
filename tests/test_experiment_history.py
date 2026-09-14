@@ -15,6 +15,7 @@ from experiment.history import (
 )
 from experiment.model import connect, encode, import_campaign
 from experiment.nix import DEFAULT_POLICY
+from experiment.outcomes import backfill
 
 DRV = "/nix/store/" + "a" * 32 + "-program.drv"
 
@@ -131,6 +132,57 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(a["builds"], 1)
         self.assertEqual(a["checks"], 0)
         self.assertFalse(a["activities"][0]["checked"])
+        self.assertEqual(a["activities"][0]["status"], "unknown")
+        self.assertEqual(a["status"], "finished")
+
+    def test_backfill_freezes_only_evidence_owned_by_that_batch(self):
+        old = self.attempt(1, reason="build-error")
+        new = self.attempt(2)
+        for aid in (old, new):
+            self.db.execute(
+                "INSERT INTO activities(attempt,activity,drv,kind,stopped) VALUES(?,'1',?,'build',1)",
+                (aid, DRV),
+            )
+        self.db.execute(
+            "UPDATE derivations SET failure='compile-or-link',evidence_attempt=?",
+            (old,),
+        )
+        backfill(self.db)
+        original = attempt_detail(self.db, self.cid, old)
+        self.assertEqual(original["activities"][0]["status"], "failed")
+        self.assertEqual(
+            attempt_detail(self.db, self.cid, new)["activities"][0]["status"], "unknown"
+        )
+        self.db.execute(
+            "UPDATE derivations SET failure=NULL,available=1,evidence_attempt=?", (new,)
+        )
+        backfill(self.db)
+        self.assertEqual(attempt_detail(self.db, self.cid, old), original)
+        # Missing historical evidence is not replaced by a later success.
+        self.assertEqual(
+            attempt_detail(self.db, self.cid, new)["activities"][0]["status"], "unknown"
+        )
+
+    def test_live_stopped_activity_is_pending_and_history_is_complete(self):
+        aid = self.attempt(1, state="running")
+        for n in range(125):
+            self.db.execute(
+                "INSERT INTO activities(attempt,activity,drv,kind,stopped) VALUES(?,?,?,'build',?)",
+                (aid, str(n), DRV + str(n), n != 0),
+            )
+        value = attempt_detail(self.db, self.cid, aid)
+        self.assertEqual(len(value["activities"]), 125)
+        self.assertEqual(
+            value["activity_counts"], {"building": 1, "awaiting-result": 124}
+        )
+        self.assertEqual(value["status"], "running")
+        self.db.execute(
+            "UPDATE attempts SET state='finished',result=? WHERE id=?",
+            (encode({"reason": "cancelled"}), aid),
+        )
+        value = attempt_detail(self.db, self.cid, aid)
+        self.assertEqual(value["status"], "cancelled")
+        self.assertEqual(value["activity_counts"], {"unknown": 125})
 
     def test_campaign_scopes_rows_targets_and_cursors(self):
         self.attempt(1)

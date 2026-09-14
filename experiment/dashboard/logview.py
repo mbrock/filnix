@@ -16,7 +16,9 @@ from .base import (
     link,
     select,
     timestamp,
+    status,
 )
+from ..history import batch_status
 from .resources import BATCH, LIVE_LOG, LOG, LOG_STATUS
 
 LIMIT = 2000
@@ -232,10 +234,13 @@ def tools(result, campaign, view, *, live=False):
                     + aid[:8]
                 )
             with tag.span([MUTED, "text-xs"]):
-                if result["finished"]:
-                    text("Finished · ")
-                else:
-                    text("Running · ")
+                status(
+                    batch_status(
+                        result["attempt"]["state"],
+                        (result["attempt"]["result"] or {}).get("reason"),
+                    )
+                )
+                text(" · ")
                 timestamp(result["attempt"]["created"])
         with tag.div(["flex", "flex-wrap", "items-center", "gap-2", "mb-2"]):
             with tag.form(

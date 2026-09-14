@@ -29,7 +29,12 @@ Use browser Find. Source links, diagnostics, test evidence and dependencies are 
 the package's own page. A visible timestamp and refresh link identify the snapshot; the options menu
 contains CSV export.
 **Batches** holds the timing data, with all attempts, outcome/type filters, search
-and duration/date sorting. **Dependencies** follows a current build, or a pinned
+and duration/date sorting. A batch says Running, Finished, or Finished with errors;
+its compact status header stays visible through the full build list. Awaiting
+result means an activity has ended but the controller has not reconciled the
+whole batch yet. Final rows distinguish Built, Tested, Failed and Result not
+recorded, with failures first. Confirmed outcomes remain attached to that batch
+through later retries. **Dependencies** follows a current build, or a pinned
 package, with inputs and consumers. Built inputs can be expanded.
 
 The campaign menu retains the first campaign and calibration histories. Canonical
