@@ -25,6 +25,10 @@ The explanation comes first. Exact source revisions, test output, and commands
 are in the [research notes](pthread-cancellation-notes.md). Those notes separate
 what was tested from what was learned by reading source code.
 
+The follow-up [implementation proposal](pthread-cancellation-design.md) defines
+a candidate Fil-C/glibc contract, runtime and compiler responsibilities, and
+acceptance tests. It is a proposed design, not an implemented general fix.
+
 ## Cancellation is a request, not an immediate kill
 
 A successful `pthread_cancel(worker)` call means that cancellation has been
