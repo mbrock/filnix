@@ -7,7 +7,6 @@ const el = (tag, text, cls) => {
 };
 const fmt = (x) => Number(x || 0).toLocaleString();
 let data = JSON.parse($("initial").textContent),
-  offset = 0,
   generation = 0,
   detailGeneration = 0;
 function replace(id, nodes) {
@@ -33,6 +32,7 @@ window.showView = (view, updateURL = true) => {
       location.pathname + location.search + "#" + viewIds[view],
     );
   window.dispatchEvent(new Event("resize"));
+  window.dispatchEvent(new Event("viewchange"));
 };
 function viewFromURL() {
   const campaign =
@@ -40,7 +40,7 @@ function viewFromURL() {
     data.campaigns?.[0]?.id;
   if (campaign && data.campaign && campaign !== data.campaign.id) {
     data.campaign.id = campaign;
-    offset = 0;
+    window.packageBrowser?.changeCampaign(campaign);
     refresh();
   }
   window.showView(
@@ -104,6 +104,7 @@ function render(d) {
   window.dependencyMap?.updateCampaign(c.id);
   window.buildLogs?.update(d);
   window.attemptHistory?.updateCampaign(c.id);
+  window.packageBrowser?.update(d);
   if ($("campaign-select").options.length !== d.campaigns.length) {
     $("campaign-select").replaceChildren(
       ...d.campaigns.map((c) => {
@@ -156,31 +157,6 @@ function render(d) {
   );
   $("inventory-progress-label").textContent =
     `${((100 * (total - (counts.unplanned || 0))) / Math.max(1, total)).toFixed(1)}% of the inventory`;
-  $("matches").textContent = fmt(d.filtered) + " packages";
-  replace(
-    "packages",
-    d.candidates.length
-      ? d.candidates.map((p) => {
-          const row = el("button", null, "pkg"),
-            name = el("span", p.label, "pkg-name");
-          name.append(
-            el("span", [p.decision, ...p.tags].join(" · "), "pkg-tags"),
-          );
-          row.append(
-            name,
-            el("span", p.state, "badge " + p.state),
-            el("span", "↗", "arrow"),
-          );
-          row.onclick = () => showPackage(p.id);
-          return row;
-        })
-      : [el("p", "No packages match this filter.", "empty")],
-  );
-  $("page").textContent = d.filtered
-    ? `${fmt(offset + 1)}–${fmt(Math.min(offset + 50, d.filtered))}`
-    : "0";
-  $("previous").disabled = offset === 0;
-  $("next").disabled = offset + 50 >= d.filtered;
   const r = d.resources,
     resources = [];
   const line = el("div", null, "resource-line");
@@ -277,9 +253,6 @@ async function refresh() {
   try {
     const q = new URLSearchParams({
       campaign: data.campaign?.id || "",
-      q: $("search").value,
-      state: $("filter").value,
-      offset,
     });
     const response = await fetch("/api/snapshot?" + q);
     if (!response.ok) throw new Error("snapshot unavailable");
@@ -302,8 +275,24 @@ async function showPackage(id) {
   const nodes = [
     el("h2", p.label),
     el("span", p.state, "badge " + p.state),
-    el("p", (p.selection?.reasons || []).join(" · ")),
+    el(
+      "p",
+      p.selection?.metadata?.description || "No description recorded.",
+      "package-description",
+    ),
+    el("p", p.selection?.metadata?.version || ""),
   ];
+  if (p.source_url) {
+    const source = el(
+      "a",
+      (p.selection?.sourceFile || "Nixpkgs source") + " ↗",
+      "package-source",
+    );
+    source.href = p.source_url;
+    source.target = "_blank";
+    source.rel = "noopener";
+    nodes.push(source);
+  }
   if (p.error) nodes.push(el("h3", "Observation"), el("pre", p.error));
   if (p.recipe) {
     const locate = el("button", "Explore on dependency map ↗", "graph-log");
@@ -463,30 +452,14 @@ $("close-detail").onclick = () => {
 $("detail").addEventListener("close", () => {
   detailGeneration++;
 });
-let timer;
-$("search").oninput = () => {
-  clearTimeout(timer);
-  offset = 0;
-  timer = setTimeout(refresh, 250);
-};
-$("filter").onchange = () => {
-  offset = 0;
-  refresh();
-};
-$("previous").onclick = () => {
-  offset = Math.max(0, offset - 50);
-  refresh();
-};
-$("next").onclick = () => {
-  offset += 50;
-  refresh();
-};
 $("campaign-select").onchange = () => {
   $("campaign-options").open = false;
   const id = $("campaign-select").value;
   data.campaign.id = id;
-  offset = 0;
-  history.replaceState(null, "", "/?campaign=" + id + location.hash);
+  window.packageBrowser?.changeCampaign(id);
+  const url = new URL(location.href);
+  url.searchParams.set("campaign", id);
+  history.replaceState(null, "", url);
   refresh();
 };
 render(data);

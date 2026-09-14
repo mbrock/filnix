@@ -1,6 +1,7 @@
 """Read-only WSGI application; bounded queries and no administrative endpoints."""
 
 from contextlib import closing
+import gzip
 import json
 from pathlib import Path
 import sqlite3
@@ -13,6 +14,7 @@ from .model import blockers, connect, stamp
 from .graph import live_graph
 from .logs import build_log
 from .history import history, attempt_detail
+from .catalog import catalog, source_link
 
 
 def snapshot(db, campaign=None, search="", state="", offset=0):
@@ -128,6 +130,12 @@ def detail(db, candidate):
     result = dict(row)
     for key in ("attr", "selection", "recipe"):
         result[key] = json.loads(result[key]) if result[key] else None
+    manifest = json.loads(
+        db.execute(
+            "SELECT manifest FROM campaigns WHERE id=?", (row["campaign"],)
+        ).fetchone()[0]
+    )
+    result["source_url"] = source_link(manifest, result["selection"])
     drv = result["drv"]
     result["blockers"] = blockers(db, drv) if drv else []
     result["tests"] = [
@@ -233,6 +241,8 @@ def application(state):
                     mime = "text/html; charset=utf-8"
                 elif path in (
                     "/app.js",
+                    "/packages.js",
+                    "/packages.css",
                     "/graph.js",
                     "/logs.js",
                     "/logs.css",
@@ -256,6 +266,10 @@ def application(state):
                             get("state"),
                             max(0, min(int(get("offset", "0")), 1000000)),
                         )
+                elif path == "/api/packages":
+                    with closing(connect(state, readonly=True)) as db:
+                        db.execute("BEGIN")
+                        payload = catalog(db, get("campaign"))
                 elif path == "/api/package":
                     with closing(connect(state, readonly=True)) as db:
                         payload = detail(db, int(get("id")))
@@ -396,9 +410,27 @@ def application(state):
             )
         if not isinstance(payload, bytes):
             payload = json.dumps(payload).encode()
+        encoding_headers = []
+        if environ.get("PATH_INFO") == "/api/packages":
+            encoding_headers.append(("Vary", "Accept-Encoding"))
+            for encoding in environ.get("HTTP_ACCEPT_ENCODING", "").lower().split(","):
+                parts = encoding.strip().split(";")
+                quality = 1.0
+                try:
+                    for param in parts[1:]:
+                        key, sep, value = param.strip().partition("=")
+                        if key.strip() == "q" and sep:
+                            quality = float(value)
+                except ValueError:
+                    quality = 0.0
+                if parts[0] == "gzip" and 0 < quality <= 1:
+                    payload = gzip.compress(payload, compresslevel=3)
+                    encoding_headers.append(("Content-Encoding", "gzip"))
+                    break
         start_response(
             status,
             [
+                *encoding_headers,
                 ("Content-Type", mime),
                 ("Content-Length", str(len(payload))),
                 ("Cache-Control", "no-store"),

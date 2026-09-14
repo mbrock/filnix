@@ -13,6 +13,7 @@ from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
 from .scheduling import build_policy, reservations
 from .scope import REASON, kernel_metadata
+from .timing import ingest_times
 
 
 class Units:
@@ -346,6 +347,8 @@ class Controller:
             if not (folder / "spec.json").exists():
                 atomic_json(folder / "spec.json", json.loads(row["spec"]))
             self.ingest(row)
+            with self.db:
+                ingest_times(self.db, folder, row["id"])
             completion = folder / "exit.json"
             if completion.exists():
                 # Drain the bounded raw log before terminal reconciliation.
@@ -360,6 +363,8 @@ class Controller:
                 if size - current["offset"] > 4 * 1024**2:
                     continue
                 self.ingest(current)
+                with self.db:
+                    ingest_times(self.db, folder, row["id"])
                 result = json.loads(completion.read_text())
             elif self.units.active(row["id"]):
                 if row["cancel_requested"]:

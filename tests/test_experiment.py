@@ -609,7 +609,7 @@ class ExperimentTests(unittest.TestCase):
         self.db.execute("PRAGMA user_version=1")
         self.db.close()
         self.db = connect(self.state)
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 3)
         self.assertEqual(self.sql("SELECT count(*) FROM derivations").fetchone()[0], 3)
         self.assertIsNone(
             self.sql("SELECT exclusion FROM derivations LIMIT 1").fetchone()[0]

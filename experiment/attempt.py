@@ -14,6 +14,7 @@ import uuid
 
 from . import nix
 from .model import atomic_json, encode, stamp
+from .timing import BuildTimes
 
 
 def directory(state, aid):
@@ -119,6 +120,7 @@ def build(folder, spec):
     before = sorted(nix.valid(set(spec["output_paths"])))
     atomic_json(folder / "before.json", before)
     initial_resources = nix.resources(policy)
+    times = BuildTimes(folder)
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
     )
@@ -154,10 +156,13 @@ def build(folder, spec):
                 data = os.read(key.fileobj.fileno(), 65536)
                 if not data:
                     selector.unregister(key.fileobj)
+                    key.fileobj.close()
                     continue
                 last = now
                 remaining = max(0, policy["log_bytes"] - written)
                 key.data.write(data[:remaining])
+                if key.data is err:
+                    times.feed(data[:remaining])
                 written += min(len(data), remaining)
                 if len(data) > remaining and not signalled:
                     stop(signal.SIGINT)

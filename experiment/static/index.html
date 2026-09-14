@@ -8,8 +8,10 @@
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/history.css" />
     <link rel="stylesheet" href="/logs.css" />
+    <link rel="stylesheet" href="/packages.css" />
     <script src="/logs.js" defer></script>
     <script src="/app.js" defer></script>
+    <script src="/packages.js" defer></script>
     <script src="/graph.js" defer></script>
     <script src="/history.js" defer></script>
   </head>
@@ -216,44 +218,91 @@
       </section>
 
       <section id="inventory" data-view="packages" hidden>
-        <div class="workspace">
-          <section class="inventory">
-            <div class="section-heading">
-              <h2>Packages</h2>
-              <span id="matches"></span>
-            </div>
-            <div class="filters">
-              <input
-                id="search"
-                aria-label="Search packages"
-                placeholder="Find a package"
-                type="search"
-              /><select id="filter" aria-label="Filter by state">
-                <option value="">All states</option>
-                <option>unplanned</option>
-                <option>queued</option>
-                <option>running</option>
-                <option>available</option>
-                <option>blocked</option>
-                <option>failed</option>
-                <option>evaluation-error</option>
-                <option>inconclusive</option>
-                <option>excluded</option>
-              </select>
-            </div>
-            <div id="packages"></div>
-            <div class="pagination">
-              <button id="previous">← Previous</button><span id="page"></span
-              ><button id="next">Next →</button>
-            </div>
-          </section>
-          <aside class="blocker-panel">
-            <section>
-              <h2>Shared blockers</h2>
-              <div id="blockers"></div>
-            </section>
-          </aside>
+        <div class="catalog-controls">
+          <div class="catalog-heading">
+            <h2>Packages</h2>
+            <span id="matches" role="status">Loading inventory…</span>
+            <button id="package-refresh">Refresh</button
+            ><button id="package-export" disabled>CSV ↓</button>
+          </div>
+          <div
+            id="package-tabs"
+            class="package-tabs"
+            aria-label="Package results"
+          >
+            <button data-result="available" aria-pressed="true">
+              Available <b></b>
+            </button>
+            <button data-result="checked" aria-pressed="false">
+              Checked <b></b>
+            </button>
+            <button data-result="failed" aria-pressed="false">
+              Failed <b></b>
+            </button>
+            <button data-result="blocked" aria-pressed="false">
+              Blocked <b></b>
+            </button>
+            <button data-result="tried" aria-pressed="false">
+              All tried <b></b>
+            </button>
+          </div>
+          <div class="catalog-filters">
+            <input
+              id="search"
+              aria-label="Search packages"
+              placeholder="Name, description, source, or error…"
+              type="search"
+            />
+            <select id="filter" aria-label="Filter by state">
+              <option value="available">Available</option>
+              <option value="checked">Successful checks</option>
+              <option value="failed">Build failures</option>
+              <option value="blocked">Blocked by dependencies</option>
+              <option value="tried">All tried / evaluated</option>
+              <option value="evaluation-error">Evaluation errors</option>
+              <option value="running">Running</option>
+              <option value="inconclusive">Inconclusive</option>
+              <option value="excluded">Excluded</option>
+              <option value="queued">Queued</option>
+              <option value="unplanned">Not evaluated</option>
+              <option value="all">Entire inventory</option>
+            </select>
+            <select id="package-sort" aria-label="Sort packages">
+              <option value="name">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="recent">Most recent</option>
+              <option value="duration">Longest time</option>
+              <option value="shortest">Shortest time</option>
+            </select>
+            <label
+              ><input id="package-paths" type="checkbox" /> Source paths</label
+            >
+          </div>
+          <div class="catalog-note">
+            <span id="package-freshness" role="status"></span
+            ><span>Batch = whole job; build = individual derivation.</span>
+          </div>
         </div>
+        <table class="package-table" aria-label="Package inventory">
+          <thead>
+            <tr>
+              <th scope="col">Package / version</th>
+              <th scope="col">Description</th>
+              <th scope="col">Result / checks</th>
+              <th scope="col">Time</th>
+              <th scope="col">Last attempt</th>
+              <th scope="col"><span class="sr-only">Log</span></th>
+            </tr>
+          </thead>
+          <tbody id="packages"></tbody>
+        </table>
+        <p id="package-empty" class="empty" hidden>
+          No packages match. Try another result or search.
+        </p>
+        <details class="catalog-blockers">
+          <summary>Shared blockers</summary>
+          <div id="blockers"></div>
+        </details>
       </section>
       <footer>
         <span>Fil-C × Nixpkgs</span><span id="footer-version"></span>

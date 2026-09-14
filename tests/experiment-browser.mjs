@@ -131,10 +131,10 @@ await evaluate(
   "document.querySelector('[data-tab=packages]').click();document.getElementById('search').value='hello';document.getElementById('search').dispatchEvent(new Event('input'))",
 );
 await until(
-  "document.querySelectorAll('.pkg').length > 0 && document.querySelectorAll('.pkg').length < 50",
+  "document.querySelectorAll('.package-name').length > 0 && document.querySelectorAll('.package-name').length < 50",
 );
 await evaluate(
-  "[...document.querySelectorAll('.pkg')].find(n=>n.querySelector('.pkg-name').firstChild.textContent==='hello').click()",
+  "[...document.querySelectorAll('.package-name')].find(n=>n.textContent==='hello').click()",
 );
 await until("document.getElementById('detail').open");
 assert.equal(await evaluate("document.getElementById('detail').open"), true);

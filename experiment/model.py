@@ -92,7 +92,10 @@ CREATE TABLE IF NOT EXISTS tests (
 CREATE TABLE IF NOT EXISTS events (
  seq INTEGER PRIMARY KEY AUTOINCREMENT, time REAL NOT NULL,
  campaign TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL);
-PRAGMA user_version=2;
+CREATE TABLE IF NOT EXISTS build_times (
+ attempt TEXT NOT NULL, activity TEXT NOT NULL, started REAL NOT NULL, finished REAL,
+ PRIMARY KEY(attempt,activity));
+PRAGMA user_version=3;
 """
 
 
@@ -109,7 +112,7 @@ def connect(state, readonly=False):
         db.execute("PRAGMA query_only=ON")
     else:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2):
+        if version not in (0, 1, 2, 3):
             raise ValueError(f"unsupported database version {version}")
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=FULL")

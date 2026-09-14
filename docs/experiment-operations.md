@@ -9,7 +9,8 @@ separate campaigns, clearly labeled in the campaign selector.
 
 **Activity** is the default: inventory progress, current builds, a compact
 campaign timeline, and the batch ledger. **Packages** provides the searchable
-inventory and shared blockers; **Dependencies** contains the graph. The views
+full inventory with descriptions, outcomes, timing, and source links;
+**Dependencies** contains the graph. The views
 have URL fragments and support browser back/forward navigation. Campaign
 selection, source revision, resource meters, and additional inventory counts
 live in the run menu beside **Live logs**.
@@ -28,6 +29,41 @@ it is not a count of every transitive dependency or individual test case. Batch
 check counts include dependency derivations. A batch labeled **With errors** may
 still contain successful builds and checks; **Plan finished** describes the
 worker, not the acceptability of all recipes it evaluated.
+
+## Browsing packages
+
+The Packages view loads **all selected attributes**, with no pages or virtual rows.
+It opens on Available; Checked, Failed, Blocked, and All tried are one-click filters.
+All tried includes evaluations, exclusions, and inconclusive results but excludes
+unplanned/queued inputs. The state selector also offers the entire inventory.
+Counts in this browser refer to attributes (including aliases); the result count
+also shows the number of distinct derivations. Checked uses successful evidence
+from this campaign, never recipe flags or mere availability.
+
+Search covers attribute names, versions, descriptions, source paths, derivations,
+and the displayed observation. Sort by name, most recent attempt, or time.
+Descriptions and versions come from the frozen native inventory metadata; source
+links point to the campaign's pinned Nixpkgs repository and revision. Missing
+metadata stays empty. Enable Source paths to see the tree location in every row;
+package details also include the source link and full description. Shared blockers
+are below the list in a disclosure. CSV exports every filtered row in the current
+sort order, with separate seconds and timing-kind columns.
+
+The catalog is a consistent database snapshot, compressed in transit when supported.
+It is loaded when the view first opens and on explicit Refresh, not on every five-second
+status poll. New activity offers Update list; reading position and filters survive
+refreshes. The loaded list remains searchable offline. Query, result, sort, and
+source-path visibility are preserved in the URL. Dates use the browser's local time.
+
+Workers from version 0.9 record Nix build activity start/stop times in an atomic
+`build-times.json` sidecar. The controller joins these to already observed activities
+and persists them in schema 3's `build_times` table. This survives controller restarts
+and leaves immutable workers from older versions running normally. These are observed
+wall times across build phases, not CPU time. Older logs have no timestamps: those
+rows display **batch** (or **eval batch**) duration, never an invented individual
+build time. Missing stops do not create a completed build duration. Time and last
+attempt can differ after a cached retry; the timing tooltip identifies its source job.
+A stopped activity alone still establishes neither success nor successful checks.
 
 ## Watching dependencies
 
@@ -162,13 +198,14 @@ filnix-experiment retry-derivation CAMPAIGN /nix/store/NAME.drv
 filnix-experiment backup /path/to/backup.sqlite
 ```
 
-Candidate IDs appear in `/api/snapshot`, which supports `campaign`, `q`, `state`,
-and `offset` parameters. The exact input manifest is at
+The full catalog, including candidate IDs, is at `/api/packages?campaign=CAMPAIGN`.
+The older bounded `/api/snapshot` supports `campaign`, `q`, `state`, and `offset` parameters. The exact input manifest is at
 `/api/manifest?campaign=CAMPAIGN`. Package details are at `/api/package?id=ID`;
 `/api/derivation` expands a dependency, its role annotations, and paginated
 selected dependents. Logs use bounded byte offsets. `/api/events?after=SEQ`
-exposes a durable event cursor. The browser refreshes a paginated snapshot every
-five seconds and bounded log chunks every 1.5 seconds.
+exposes a durable event cursor. The browser refreshes status every
+five seconds and bounded log chunks every 1.5 seconds. The package catalog refreshes
+only on request.
 
 `plan` accepts up to 64 IDs, uses no IFD and no builds, and records errors per
 candidate. `build-once` respects the configured batch size in a paused campaign;
