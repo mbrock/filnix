@@ -33,27 +33,35 @@ worker, not the acceptability of all recipes it evaluated.
 ## Browsing packages
 
 The Packages view loads **all selected attributes**, with no pages or virtual rows.
-It opens on Available; Checked, Failed, Blocked, and All tried are one-click filters.
-All tried includes evaluations, exclusions, and inconclusive results but excludes
-unplanned/queued inputs. The state selector also offers the entire inventory.
-Counts in this browser refer to attributes (including aliases); the result count
-also shows the number of distinct derivations. Checked uses successful evidence
-from this campaign, never recipe flags or mere availability.
+The result selector opens on Available and includes Checked, Failed, Blocked,
+All tried, and the entire inventory. All tried includes evaluations, exclusions,
+and inconclusive results but excludes unplanned/queued inputs. Counts refer to
+attributes, including aliases. Checked means successful evidence in this campaign,
+never recipe flags or availability alone.
 
-Search covers attribute names, versions, descriptions, source paths, derivations,
-and the displayed observation. Sort by name, most recent attempt, or time.
-Descriptions and versions come from the frozen native inventory metadata; source
-links point to the campaign's pinned Nixpkgs repository and revision. Missing
-metadata stays empty. Enable Source paths to see the tree location in every row;
-package details also include the source link and full description. Shared blockers
-are below the list in a disclosure. CSV exports every filtered row in the current
-sort order, with separate seconds and timing-kind columns.
+There is no in-app package search; use the browser's Find command on the full list.
+The list uses one sans-serif text size, compact rows, and ordinary document scrolling.
+Only the column headings remain sticky. Campaign statistics appear on the other
+views. Sort order, source paths, last-attempt dates, CSV export, and refresh live in
+the list's options menu. Mobile rows keep names, descriptions, results, and timing;
+versions remain in the package details and desktop table. Clicking a time opens its
+recorded job log. Descriptions and versions come from the frozen native inventory;
+source links use the campaign's pinned Nixpkgs repository and revision.
 
 The catalog is a consistent database snapshot, compressed in transit when supported.
-It is loaded when the view first opens and on explicit Refresh, not on every five-second
-status poll. New activity offers Update list; reading position and filters survive
-refreshes. The loaded list remains searchable offline. Query, result, sort, and
-source-path visibility are preserved in the URL. Dates use the browser's local time.
+It loads when the view first opens and on explicit refresh. Routine status polling
+keeps the list still. Refresh preserves the visible row; offline readers retain the
+loaded list. CSV exports the complete selected result set in the current sort order,
+with separate seconds and timing-kind columns. Displayed dates use local time.
+
+Views, result/sort choices, campaign changes, graph focus, packages, batch details,
+and logs have URL-backed browser history. Back/Forward restores the prior view,
+selection, and document scroll position. A log opened from a package returns to that
+package; the next Back returns to the list. Close buttons and Escape use the same
+history. Opening a direct detail/log URL works after reload; closing a direct link
+returns to its underlying view instead of leaving the site. Switching log sources
+or following new batches replaces the current log entry, so it does not accumulate
+an entry for every update. Native links support opening packages/logs in new tabs.
 
 Workers from version 0.9 record Nix build activity start/stop times in an atomic
 `build-times.json` sidecar. The controller joins these to already observed activities

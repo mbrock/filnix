@@ -73,24 +73,12 @@ assert.ok(
     "document.querySelector('.package-description').textContent.length > 5",
   ),
 );
-await controls("search", "ambisonics", "input");
-await until(
-  "document.querySelectorAll('.package-row').length > 0 && document.querySelectorAll('.package-row').length < 100",
-);
-assert.ok(
-  await evaluate(
-    "document.querySelector('#packages').textContent.includes('AMB-plugins')",
-  ),
-  "Description-only search",
-);
+assert.equal(await evaluate("document.getElementById('search')"), null);
 await evaluate("document.getElementById('package-paths').click()");
 assert.match(
   await evaluate("document.querySelector('.package-path').href"),
   /github.com\/lessrest\/filnixpkgs\/blob\/400439/,
 );
-await screenshot("packages-search");
-await controls("search", "", "input");
-await until(`document.querySelectorAll('.package-row').length === ${count}`);
 // CSV includes the full filtered set, not just the visible viewport.
 await evaluate(
   `window.__blob=null;window.__createURL=URL.createObjectURL;window.__anchorClick=HTMLAnchorElement.prototype.click;URL.createObjectURL=(b)=>{window.__blob=b;return window.__createURL(b)};HTMLAnchorElement.prototype.click=function(){};document.getElementById('package-export').click();URL.createObjectURL=window.__createURL;HTMLAnchorElement.prototype.click=window.__anchorClick`,
@@ -143,14 +131,16 @@ assert.ok(await evaluate("Math.abs(window.__scroll-scrollY)<5"));
 await controls("filter", "available");
 await controls("package-sort", "name");
 count = await evaluate("document.querySelectorAll('.package-row').length");
-await controls("search", "hello", "input");
+
 await until(
   "[...document.querySelectorAll('.package-name')].some(n=>n.textContent==='hello')",
 );
 await evaluate(
   "[...document.querySelectorAll('.package-name')].find(n=>n.textContent==='hello').click()",
 );
-await until("document.getElementById('detail').open");
+await until(
+  "document.getElementById('detail').open && document.querySelector('#detail .package-source') !== null",
+);
 assert.ok(
   await evaluate(
     "document.querySelector('#detail .package-source').href.includes('/blob/400439')",
@@ -163,7 +153,8 @@ assert.ok(
 );
 await screenshot("package-detail");
 await evaluate("document.getElementById('close-detail').click()");
-await controls("search", "", "input");
+await until("!document.getElementById('detail').open");
+
 await until(`document.querySelectorAll('.package-row').length === ${count}`);
 await evaluate("window.scrollTo(0,0)");
 await call("Emulation.setTouchEmulationEnabled", {
@@ -182,12 +173,6 @@ for (const width of [390, 320]) {
     await evaluate("document.documentElement.scrollWidth<=innerWidth"),
     "No horizontal overflow at " + width,
   );
-  assert.equal(
-    await evaluate(
-      "getComputedStyle(document.getElementById('search')).fontSize",
-    ),
-    "16px",
-  );
   await screenshot("packages-mobile-" + width);
 }
 await call("Network.enable");
@@ -205,10 +190,11 @@ assert.equal(
   await evaluate("document.querySelectorAll('.package-row').length"),
   count,
 );
-await controls("search", "library", "input");
-await until(
-  "document.querySelectorAll('.package-row').length>0 && document.querySelectorAll('.package-row').length<1000",
+await controls("filter", "failed");
+assert.ok(
+  await evaluate("document.querySelectorAll('.package-row').length>900"),
 );
+await controls("filter", "available");
 await call("Network.emulateNetworkConditions", {
   offline: false,
   latency: 0,
@@ -216,7 +202,7 @@ await call("Network.emulateNetworkConditions", {
   uploadThroughput: -1,
 });
 // A quick campaign switch cannot publish an obsolete request into the current list.
-await controls("search", "", "input");
+
 await evaluate(
   `const select=document.getElementById('campaign-select');select.selectedIndex=1;select.dispatchEvent(new Event('change'));select.value=${JSON.stringify(cid)};select.dispatchEvent(new Event('change'))`,
 );

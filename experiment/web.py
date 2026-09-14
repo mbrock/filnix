@@ -241,6 +241,7 @@ def application(state):
                     mime = "text/html; charset=utf-8"
                 elif path in (
                     "/app.js",
+                    "/navigation.js",
                     "/packages.js",
                     "/packages.css",
                     "/graph.js",

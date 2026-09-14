@@ -1,3 +1,3 @@
 """Filnix experiment controller. No builds are started on import."""
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"

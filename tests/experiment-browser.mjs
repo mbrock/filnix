@@ -127,16 +127,14 @@ await evaluate("document.querySelector('[data-tab=dependencies]').click()");
 await wait(100);
 shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/graph-desktop.png", Buffer.from(shot.data, "base64"));
-await evaluate(
-  "document.querySelector('[data-tab=packages]').click();document.getElementById('search').value='hello';document.getElementById('search').dispatchEvent(new Event('input'))",
-);
-await until(
-  "document.querySelectorAll('.package-name').length > 0 && document.querySelectorAll('.package-name').length < 50",
-);
+await evaluate("document.querySelector('[data-tab=packages]').click()");
+await until("document.querySelectorAll('.package-name').length > 2000");
 await evaluate(
   "[...document.querySelectorAll('.package-name')].find(n=>n.textContent==='hello').click()",
 );
-await until("document.getElementById('detail').open");
+await until(
+  "document.getElementById('detail').open && document.querySelector('#detail .package-description') !== null",
+);
 assert.equal(await evaluate("document.getElementById('detail').open"), true);
 assert.match(
   await evaluate("document.getElementById('detail-content').textContent"),
@@ -144,9 +142,7 @@ assert.match(
 );
 shot = await call("Page.captureScreenshot", { format: "png" });
 await writeFile(out + "/package.png", Buffer.from(shot.data, "base64"));
-await evaluate(
-  "document.getElementById('close-detail').click();document.getElementById('search').value='';document.getElementById('search').dispatchEvent(new Event('input'))",
-);
+await evaluate("document.getElementById('close-detail').click()");
 await wait(600);
 await call("Emulation.setDeviceMetricsOverride", {
   width: 390,
@@ -220,7 +216,7 @@ assert.match(
 );
 assert.deepEqual(errors, []);
 console.log(
-  "Browser checks passed: live dependency arrows, navigation/back, pinned focus, real inventory, search, recipe detail, mobile width, disconnect/reconnect, no JS exceptions.",
+  "Browser checks passed: live dependency arrows, navigation/back, pinned focus, full inventory, recipe detail, mobile width, disconnect/reconnect, no JS exceptions.",
 );
 ws.close();
 await fetch("http://127.0.0.1:9228/json/close/" + tab.id);

@@ -325,7 +325,9 @@
     }
     $("history-detail").replaceChildren(...nodes);
   }
-  async function selectAttempt(id, pin = true) {
+  async function selectAttempt(id, pin = true, fromRoute = false) {
+    if (window.dashboardNavigation && !fromRoute)
+      return window.dashboardNavigation.attempt(id);
     if (pin) hold();
     selected = id;
     selectedInfo = null;
@@ -388,6 +390,7 @@
       if (!following && !anchor) anchor = d.anchor;
       renderTimeline(d.overview, d.now);
       renderRows(d);
+      window.dispatchEvent(new Event("contentready"));
       if (scrollPage) {
         pageTop();
         scrollPage = false;
@@ -412,7 +415,8 @@
     .addEventListener("scroll", (event) => {
       if (following && event.currentTarget.scrollTop > 8) hold();
     });
-  $("history-close").onclick = () => $("history-record").close();
+  $("history-close").onclick = () =>
+    window.dashboardNavigation.close("attempt");
   $("history-record").addEventListener("close", () => {
     if ($("history-record").open) return;
     detailRequest?.abort();
@@ -455,6 +459,7 @@
     debounce = setTimeout(reset, 200);
   };
   window.attemptHistory = {
+    open: (id) => selectAttempt(id, true, true),
     updateCampaign(id) {
       if (campaign === id) return;
       campaign = id;

@@ -59,7 +59,7 @@ try {
   });
   await call("Page.navigate", { url: base });
   await until(
-    "window.buildLogs && document.querySelector('#selected').textContent === '13,772'",
+    "window.dashboardNavigation && window.buildLogs && document.querySelector('#selected').textContent === '13,772'",
   );
   await evaluate(
     "document.querySelector('#log-size').value='12';document.querySelector('#log-size').dispatchEvent(new Event('change'))",
@@ -392,8 +392,10 @@ try {
     `document.querySelector('#log-attempt').value === ${JSON.stringify(next)}`,
   );
   await evaluate(
-    "window.buildLogs.update = window.restoreLogUpdate;document.querySelector('#log-close').click();document.querySelector('#watch-builds').click()",
+    "window.buildLogs.update = window.restoreLogUpdate;document.querySelector('#log-close').click()",
   );
+  await until("!document.querySelector('#log-view').open");
+  await evaluate("document.querySelector('#watch-builds').click()");
   await until(
     "document.querySelector('#log-view').open && document.querySelector('#log-watch').getAttribute('aria-pressed')==='true'",
   );
@@ -411,7 +413,7 @@ try {
   );
   await call("Page.navigate", { url: base });
   await until(
-    "window.buildLogs && document.querySelector('#log-size').value==='14'",
+    "window.dashboardNavigation && window.buildLogs && document.querySelector('#log-size').value==='14'",
   );
   await evaluate(`showLog(${JSON.stringify(aid)})`);
   await until("document.querySelectorAll('.log-row').length>0");

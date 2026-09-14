@@ -25,8 +25,8 @@
       : s < 60
         ? `${Math.floor(s)}s`
         : s < 3600
-          ? `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`
-          : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+          ? `${Math.floor(s / 60)}m`
+          : `${(s / 3600).toFixed(1)}h`;
   const timeKind = (p) =>
     ({
       build: "build",
@@ -52,31 +52,33 @@
     request = 0,
     controller,
     loading = false,
-    timer;
+    filterSignature = "";
   function readURL() {
     const q = new URLSearchParams(location.search);
-    $("search").value = q.get("q") || "";
+
     $("filter").value = q.get("result") || "available";
     if (!$("filter").value) $("filter").value = "available";
     $("package-sort").value = q.get("sort") || "name";
     if (!$("package-sort").value) $("package-sort").value = "name";
     $("package-paths").checked = q.get("paths") === "1";
+    $("package-dates").checked = q.get("dates") === "1";
   }
   function saveURL() {
     const u = new URL(location.href);
     for (const [key, value] of [
-      ["q", $("search").value],
       ["result", $("filter").value === "available" ? "" : $("filter").value],
       [
         "sort",
         $("package-sort").value === "name" ? "" : $("package-sort").value,
       ],
       ["paths", $("package-paths").checked ? "1" : ""],
+      ["dates", $("package-dates").checked ? "1" : ""],
     ]) {
       if (value) u.searchParams.set(key, value);
       else u.searchParams.delete(key);
     }
-    history.replaceState(null, "", u);
+    u.searchParams.delete("q");
+    window.dashboardNavigation.go(u, { scroll: "keep" });
   }
   function matches(p, state) {
     if (state === "all") return true;
@@ -86,30 +88,16 @@
   }
   function render(keepPosition = false) {
     if (!snapshot) return;
-    // Locate the first visible row, even when the toolbar has become sticky.
     const visible = keepPosition
       ? [...$("packages").children].find(
-          (n) =>
-            n.getBoundingClientRect().bottom >
-            $("inventory")
-              .querySelector(".catalog-controls")
-              .getBoundingClientRect().bottom +
-              30,
+          (n) => n.getBoundingClientRect().bottom > 30,
         )
       : null;
     const oldTop = visible?.getBoundingClientRect().top,
       oldId = visible?.dataset.id,
       oldScroll = scrollY;
-    const query = $("search")
-        .value.trim()
-        .toLocaleLowerCase()
-        .split(/\s+/)
-        .filter(Boolean),
-      state = $("filter").value;
-    shown = rows.filter(
-      (p) =>
-        matches(p, state) && query.every((term) => p.search.includes(term)),
-    );
+    const state = $("filter").value;
+    shown = rows.filter((p) => matches(p, state));
     const order = $("package-sort").value;
     shown.sort((a, b) => {
       if (order === "recent" || order === "duration" || order === "shortest") {
@@ -129,9 +117,14 @@
       const tr = node("tr", null, "package-row");
       tr.dataset.id = p.id;
       const name = node("td", null, "package-identity");
-      const open = node("button", p.label, "package-name");
+      const open = node("a", p.label, "package-name");
+      open.href = window.dashboardNavigation.packageURL(p.id);
       open.dataset.package = p.id;
-      name.append(open, node("span", p.version, "package-version"));
+      name.append(
+        open,
+        document.createTextNode(" "),
+        node("span", p.version, "package-version"),
+      );
       const description = node("td", null, "package-info");
       const text = node(
         "span",
@@ -163,31 +156,47 @@
         description.append(path);
       }
       const result = node("td", null, "package-result");
-      result.append(
-        node("span", states[p.state] || p.state, "package-state " + p.state),
-      );
-      const checks = node(
+      const status = node(
         "span",
-        p.checks.length ? "✓ Checks passed" : "— No check evidence",
-        "package-checks",
+        p.checks.length && p.state === "available"
+          ? "Checked"
+          : states[p.state] || p.state,
+        "package-state " + p.state,
       );
-      checks.title = p.checks.length
-        ? p.checks.join(", ") + " completed successfully in this campaign"
-        : "No recorded successful checks in this campaign";
-      if (p.checks.length) checks.classList.add("checked");
-      result.append(checks);
+      status.title = p.checks.length
+        ? p.checks.join(", ") + " passed in this campaign"
+        : "No successful check evidence recorded";
+      result.append(status);
       const elapsed = node("td", null, "package-time");
-      elapsed.append(
-        node("span", duration(p.duration)),
-        node("small", timeKind(p)),
-      );
+      const timeText =
+        p.duration == null
+          ? p.attempt
+            ? "Log"
+            : "—"
+          : duration(p.duration) + " " + timeKind(p);
+      const time = node(p.attempt ? "a" : "span", timeText);
+      if (p.attempt) {
+        const aid = p.time_attempt || p.attempt;
+        const drv =
+          p.timing === "build" || p.timing === "building"
+            ? p.drv
+            : p.log_drv || "";
+        time.href = window.dashboardNavigation.logURL(aid, drv);
+        time.dataset.log = aid;
+        time.dataset.drv = drv;
+        time.setAttribute("aria-label", timeText + ": log for " + p.label);
+      }
       elapsed.title =
         p.duration == null
-          ? "Individual build time was not recorded"
+          ? "Open recorded attempt log"
           : (p.timing?.includes("batch")
-              ? "Duration of the entire job, including other packages and dependencies."
-              : "Worker-observed Nix build activity, including its build phases.") +
-            (p.time_attempt ? " Job " + p.time_attempt.slice(0, 8) : "");
+              ? "Whole job duration, including other packages and dependencies."
+              : "Individual build activity duration.") +
+            " " +
+            Math.round(p.duration) +
+            " seconds. Job " +
+            p.time_attempt;
+      elapsed.append(time);
       const last = node(
         "td",
         p.last ? date.format(p.last * 1000) : "—",
@@ -196,29 +205,18 @@
       if (p.last)
         last.title =
           new Date(p.last * 1000).toLocaleString() + " · " + p.attempt;
-      const log = node("td", null, "package-log");
-      if (p.attempt) {
-        const b = node("button", "Log ↗");
-        b.dataset.log = p.attempt;
-        b.dataset.drv = p.log_drv || "";
-        b.setAttribute("aria-label", "Build or evaluation log for " + p.label);
-        log.append(b);
-      }
-      tr.append(name, description, result, elapsed, last, log);
+      tr.append(name, description, result, elapsed, last);
       fragment.append(tr);
     }
     $("packages").replaceChildren(fragment);
     $("inventory").classList.toggle("show-paths", $("package-paths").checked);
-    $("matches").textContent =
-      `${number(shown.length)} ${query.length ? "matches" : "packages"} · ${number(new Set(shown.map((p) => p.drv).filter(Boolean)).size)} derivations`;
+    $("inventory").classList.toggle("show-dates", $("package-dates").checked);
+    $("matches").textContent = number(shown.length);
+    $("matches").title =
+      number(new Set(shown.map((p) => p.drv).filter(Boolean)).size) +
+      " distinct derivations";
     $("package-empty").hidden = shown.length !== 0;
     $("package-export").disabled = shown.length === 0;
-    for (const b of $("package-tabs").children) {
-      b.setAttribute("aria-pressed", String(b.dataset.result === state));
-      b.querySelector("b").textContent = number(
-        rows.filter((p) => matches(p, b.dataset.result)).length,
-      );
-    }
     if (keepPosition) {
       const newAnchor =
         oldId &&
@@ -252,13 +250,9 @@
       if (generation !== request || requestedCampaign !== campaign) return;
       const preserve = !!snapshot;
       snapshot = result;
-      rows = result.rows.map((p) => ({
-        ...p,
-        search: [p.label, p.description, p.version, p.source, p.reason, p.drv]
-          .join(" ")
-          .toLocaleLowerCase(),
-      }));
+      rows = result.rows;
       render(preserve);
+      window.dispatchEvent(new Event("contentready"));
       $("package-freshness").textContent =
         "Loaded " +
         new Date(result.now * 1000).toLocaleTimeString([], {
@@ -266,7 +260,7 @@
           minute: "2-digit",
         }) +
         " · full list";
-      $("package-refresh").textContent = "Refresh";
+      $("package-refresh").textContent = "Refresh list";
     } catch (e) {
       if (generation !== request) return;
       $("package-freshness").textContent = snapshot
@@ -293,11 +287,11 @@
     $("package-export").disabled = true;
     $("package-refresh").disabled = false;
     $("package-empty").hidden = true;
-    for (const b of $("package-tabs").children)
-      b.querySelector("b").textContent = "";
+
     load();
   }
   window.packageBrowser = {
+    ready: () => !!snapshot,
     changeCampaign,
     update(d) {
       if (!d.campaign) return;
@@ -315,30 +309,22 @@
   $("packages").onclick = (event) => {
     const p = event.target.closest("[data-package]"),
       log = event.target.closest("[data-log]");
+    if (
+      event.button ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    if (p || log) event.preventDefault();
     if (p) window.showPackage(Number(p.dataset.package));
     if (log) window.showLog(log.dataset.log, log.dataset.drv);
   };
-  function filterChanged() {
-    saveURL();
-    render();
-  }
-  $("search").oninput = () => {
-    clearTimeout(timer);
-    timer = setTimeout(filterChanged, 120);
-  };
-  $("filter").onchange = filterChanged;
-  $("package-sort").onchange = filterChanged;
-  $("package-paths").onchange = () => {
-    saveURL();
-    $("inventory").classList.toggle("show-paths", $("package-paths").checked);
-  };
-  $("package-tabs").onclick = (event) => {
-    const b = event.target.closest("[data-result]");
-    if (b) {
-      $("filter").value = b.dataset.result;
-      filterChanged();
-    }
-  };
+  $("filter").onchange = saveURL;
+  $("package-sort").onchange = saveURL;
+  $("package-paths").onchange = saveURL;
+  $("package-dates").onchange = saveURL;
   $("package-refresh").onclick = load;
   $("package-export").onclick = () => {
     const cell = (v) =>
@@ -390,16 +376,19 @@
   window.addEventListener("viewchange", () => {
     if (!snapshot) load();
   });
-  window.addEventListener("popstate", () => {
+  window.addEventListener("routechange", () => {
     readURL();
-    render();
+    const signature = [
+      $("filter").value,
+      $("package-sort").value,
+      $("package-paths").checked,
+      $("package-dates").checked,
+    ].join("/");
+    if (signature !== filterSignature) {
+      filterSignature = signature;
+      render();
+    }
   });
-  new ResizeObserver(([entry]) =>
-    $("inventory").style.setProperty(
-      "--catalog-height",
-      entry.target.getBoundingClientRect().height + "px",
-    ),
-  ).observe(document.querySelector(".catalog-controls"));
   readURL();
-  load();
+  // Navigation initializes after all view modules have registered.
 })();

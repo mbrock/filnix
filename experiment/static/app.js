@@ -18,46 +18,51 @@ const viewIds = {
   dependencies: "dependency-map",
 };
 window.showView = (view, updateURL = true) => {
+  if (window.dashboardNavigation && updateURL)
+    return window.dashboardNavigation.view(view);
   if (!viewIds[view]) view = "activity";
+  document.body.dataset.view = view;
+  document.querySelector(".overview").hidden = view === "packages";
   for (const panel of document.querySelectorAll("[data-view]"))
     panel.hidden = panel.dataset.view !== view;
   for (const link of document.querySelectorAll("[data-tab]")) {
     if (link.dataset.tab === view) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
-  if (updateURL && location.hash !== "#" + viewIds[view])
-    history.pushState(
-      null,
-      "",
-      location.pathname + location.search + "#" + viewIds[view],
-    );
   window.dispatchEvent(new Event("resize"));
   window.dispatchEvent(new Event("viewchange"));
 };
-function viewFromURL() {
-  const campaign =
-    new URLSearchParams(location.search).get("campaign") ||
-    data.campaigns?.[0]?.id;
-  if (campaign && data.campaign && campaign !== data.campaign.id) {
-    data.campaign.id = campaign;
-    window.packageBrowser?.changeCampaign(campaign);
-    refresh();
-  }
-  window.showView(
-    Object.keys(viewIds).find((k) => "#" + viewIds[k] === location.hash) ||
-      "activity",
-    false,
-  );
-}
+window.changeCampaign = (id) => {
+  if (!id || data.campaign?.id === id) return;
+  data.campaign.id = id;
+  $("campaign-select").value = id;
+  $("campaign-name").textContent =
+    data.campaigns.find((c) => c.id === id)?.name || "Campaign";
+  $("mode").textContent = "Loading";
+  $("notice").hidden = true;
+  window.packageBrowser?.changeCampaign(id);
+  window.dependencyMap?.updateCampaign(id);
+  window.attemptHistory?.updateCampaign(id);
+  refresh();
+};
 for (const link of document.querySelectorAll("[data-tab]"))
   link.onclick = (event) => {
+    if (
+      event.button ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
     event.preventDefault();
     window.showView(link.dataset.tab);
-    window.scrollTo(0, 0);
   };
-window.addEventListener("popstate", viewFromURL);
-window.addEventListener("hashchange", viewFromURL);
-viewFromURL();
+window.showView(
+  Object.keys(viewIds).find((k) => "#" + viewIds[k] === location.hash) ||
+    "activity",
+  false,
+);
 new ResizeObserver(([entry]) =>
   document.documentElement.style.setProperty(
     "--chrome-height",
@@ -266,11 +271,24 @@ async function refresh() {
     }
   }
 }
-async function showPackage(id) {
+async function showPackage(id, fromRoute = false) {
+  if (window.dashboardNavigation && !fromRoute)
+    return window.dashboardNavigation.package(id);
   const g = ++detailGeneration;
-  const response = await fetch("/api/package?id=" + id);
-  if (!response.ok) return;
-  const p = await response.json();
+  replace("detail-content", [el("p", "Loading package…")]);
+  if (!$("detail").open) $("detail").showModal();
+  let p;
+  try {
+    const response = await fetch("/api/package?id=" + id);
+    if (!response.ok) throw new Error("Package unavailable");
+    p = await response.json();
+  } catch {
+    if (g === detailGeneration)
+      replace("detail-content", [
+        el("p", "Package unavailable. Close and reopen to retry."),
+      ]);
+    return;
+  }
   if (g !== detailGeneration) return;
   const nodes = [
     el("h2", p.label),
@@ -383,12 +401,25 @@ async function showPackage(id) {
   replace("detail-content", nodes);
   if (!$("detail").open) $("detail").showModal();
 }
-async function showDerivation(drv, offset = 0) {
+async function showDerivation(drv, offset = 0, fromRoute = false) {
+  if (window.dashboardNavigation && !fromRoute)
+    return window.dashboardNavigation.derivation(drv, offset);
   const g = ++detailGeneration;
   const q = new URLSearchParams({ drv, campaign: data.campaign.id, offset });
-  const response = await fetch("/api/derivation?" + q);
-  if (!response.ok) return;
-  const d = await response.json();
+  replace("detail-content", [el("p", "Loading derivation…")]);
+  if (!$("detail").open) $("detail").showModal();
+  let d;
+  try {
+    const response = await fetch("/api/derivation?" + q);
+    if (!response.ok) throw new Error("Derivation unavailable");
+    d = await response.json();
+  } catch {
+    if (g === detailGeneration)
+      replace("detail-content", [
+        el("p", "Derivation unavailable. Close and reopen to retry."),
+      ]);
+    return;
+  }
   if (g !== detailGeneration) return;
   const nodes = [
     el("h2", d.derivation.name),
@@ -445,22 +476,17 @@ async function showDerivation(drv, offset = 0) {
 function showLog(id, drv = "") {
   window.buildLogs?.open(id, drv);
 }
-$("close-detail").onclick = () => {
+window.closeDetails = () => {
+  detailGeneration++;
   $("detail").close();
-  detailGeneration++;
 };
+$("close-detail").onclick = () => window.dashboardNavigation.close("detail");
 $("detail").addEventListener("close", () => {
-  detailGeneration++;
+  if (!$("detail").open) detailGeneration++;
 });
 $("campaign-select").onchange = () => {
   $("campaign-options").open = false;
-  const id = $("campaign-select").value;
-  data.campaign.id = id;
-  window.packageBrowser?.changeCampaign(id);
-  const url = new URL(location.href);
-  url.searchParams.set("campaign", id);
-  history.replaceState(null, "", url);
-  refresh();
+  window.dashboardNavigation.campaign($("campaign-select").value);
 };
 render(data);
 setInterval(refresh, 5000);

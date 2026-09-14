@@ -375,7 +375,9 @@
       }
     }
   }
-  function open(attempt, selected = "", continuous = false) {
+  function open(attempt, selected = "", continuous = false, fromRoute = false) {
+    if (window.dashboardNavigation && !fromRoute)
+      return window.dashboardNavigation.log(attempt, selected, continuous);
     if (!attempt) return;
     stop();
     id = attempt;
@@ -458,7 +460,7 @@
   $("log-find").onclick = () => setSearch($("log-search-tools").hidden);
   $("log-source-select").onchange = () =>
     open(id, $("log-source-select").value, watch);
-  $("log-close").onclick = () => dialog.close();
+  $("log-close").onclick = () => window.dashboardNavigation.close("log");
   dialog.addEventListener("close", () => {
     // A queued close event can arrive after the viewer has already reopened.
     if (dialog.open) return;
@@ -469,7 +471,10 @@
   $("log-watch").onclick = () => {
     watch = !watch;
     if (watch && newest()) open(newest().id, "", true);
-    else status();
+    else {
+      window.dashboardNavigation?.logFollowing(false);
+      status();
+    }
   };
   $("log-follow").onclick = () => {
     if (following) follow(false);

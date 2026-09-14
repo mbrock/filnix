@@ -22,7 +22,6 @@
   };
   let campaign = null,
     focus = null,
-    history = [],
     page = 0,
     generation = 0,
     current = null,
@@ -34,8 +33,9 @@
     n.state === "building"
       ? phases[n.phase] || n.phase || states[n.state]
       : states[n.state];
-  function choose(drv) {
-    if (current?.focus) history.push(current.focus.drv);
+  function choose(drv, fromRoute = false) {
+    if (window.dashboardNavigation && !fromRoute)
+      return window.dashboardNavigation.focus(drv);
     focus = drv;
     page = 0;
     signature = null;
@@ -162,7 +162,7 @@
           : "Batch";
     $("graph-follow").textContent = focus ? "Follow live" : "● Live";
     $("graph-follow").setAttribute("aria-pressed", String(!focus));
-    $("graph-back").disabled = !history.length;
+    $("graph-back").disabled = !focus;
     const nextSignature = JSON.stringify([
       g.focus,
       g.inputs,
@@ -296,34 +296,19 @@
       if (id === campaign) return;
       campaign = id;
       focus = null;
-      history = [];
       page = 0;
       signature = null;
       refreshGraph();
     },
+    focus: (drv) => {
+      if (focus !== drv) choose(drv, true);
+    },
     locate(drv) {
-      window.showView("dependencies");
-      choose(drv);
-      $("detail").close();
-      $("dependency-map").scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+      window.dashboardNavigation.focus(drv);
     },
   };
-  $("graph-follow").onclick = () => {
-    focus = null;
-    history = [];
-    page = 0;
-    signature = null;
-    refreshGraph();
-  };
-  $("graph-back").onclick = () => {
-    focus = history.pop() || null;
-    page = 0;
-    signature = null;
-    refreshGraph();
-  };
+  $("graph-follow").onclick = () => window.dashboardNavigation.focus(null);
+  $("graph-back").onclick = () => window.dashboardNavigation.backGraph();
   $("graph-available").onchange = () => {
     page = 0;
     signature = null;

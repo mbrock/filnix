@@ -1,192 +1,176 @@
-/* Full document scrolling keeps every result reachable, searchable and printable. */
-.catalog-controls {
-  position: sticky;
-  top: var(--chrome-height, 80px);
-  z-index: 8;
-  background: var(--paper);
-  border-bottom: 1px solid var(--ink);
-  padding: 10px 0 0;
+/* The list scrolls as a document. Only its column headings stay in view. */
+body[data-view="packages"] {
+  font-family: var(--font-sans);
+  font-size: 14px;
 }
-.catalog-heading {
+body[data-view="packages"] .app-chrome {
+  position: static;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.catalog-heading h2 {
-  margin: 0;
-  font-size: 16px;
-}
-.catalog-heading #matches {
-  color: var(--muted);
-  margin-right: auto;
-  font-size: 11px;
-}
-.catalog-heading button {
-  padding: 4px 8px;
-  white-space: nowrap;
-}
-.package-tabs {
-  display: flex;
-  gap: 20px;
+  gap: 16px;
+  padding: 4px 12px;
   border-bottom: 1px solid var(--line);
-  margin-bottom: 9px;
 }
-.package-tabs button {
+body[data-view="packages"] header {
+  display: contents;
+}
+body[data-view="packages"] header h1,
+body[data-view="packages"] #connection,
+body[data-view="packages"] #watch-builds {
+  display: none;
+}
+body[data-view="packages"] .view-tabs {
+  order: 1;
+  padding: 0;
+  gap: 16px;
   border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  padding: 5px 0 7px;
-  border-radius: 0;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--muted);
-}
-.package-tabs button[aria-pressed="true"] {
-  color: var(--ink);
-  border-bottom-color: var(--ink);
-}
-.package-tabs b {
-  font-weight: 400;
-  font-size: 11px;
-  margin-left: 5px;
-}
-.catalog-filters {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.catalog-filters input[type="search"] {
-  min-width: 100px;
   flex: 1;
 }
-.catalog-filters input,
-.catalog-filters select {
-  padding: 6px 8px;
+body[data-view="packages"] #campaign-options {
+  order: 2;
+  margin: 0;
 }
-.catalog-filters label {
+body[data-view="packages"] #campaign-options summary {
+  border: 0;
+  padding: 6px;
+  font-size: 0;
+}
+body[data-view="packages"] #campaign-options summary::after {
+  content: "•••";
+  font-size: 14px;
+}
+body[data-view="packages"] #mode {
+  display: none;
+}
+body[data-view="packages"] .view-tabs a {
+  padding: 8px 0;
+  min-height: 0;
+}
+body[data-view="packages"] main {
+  padding-top: 0;
+}
+.catalog-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  font-size: 11px;
-}
-.catalog-filters input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  flex: none;
-}
-.catalog-note {
-  display: flex;
-  justify-content: space-between;
   gap: 8px;
-  font-size: 10px;
+  padding: 6px 0;
+}
+.catalog-controls #filter {
+  border: 0;
+  background: transparent;
+  padding: 5px 0;
+  font: inherit;
+  font-weight: 600;
+  max-width: calc(100% - 80px);
+}
+.catalog-controls #matches {
   color: var(--muted);
-  padding: 7px 0;
+}
+#package-options {
+  margin-left: auto;
+}
+#package-options summary {
+  border: 0;
+  padding: 6px;
+}
+#package-options .menu-body {
+  font-size: 14px;
+}
+#package-options .catalog-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+#package-options input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+#package-options button {
+  width: 100%;
+  text-align: left;
+}
+#package-options p {
+  line-height: 1.4;
+  font-size: inherit;
 }
 .package-table {
   width: 100%;
-  border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12px;
+  border-collapse: collapse;
+  font: inherit;
+  line-height: 1.3;
 }
 .package-table th {
-  font-weight: 400;
-  text-align: left;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 6px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
   background: var(--paper);
+  text-align: left;
+  font-weight: 400;
   color: var(--muted);
+  border-block: 1px solid var(--line);
+  padding: 5px 8px;
 }
 .package-table th:first-child {
-  width: 25%;
+  width: 26%;
 }
 .package-table th:nth-child(3) {
-  width: 136px;
+  width: 100px;
 }
 .package-table th:nth-child(4) {
-  width: 87px;
+  width: 125px;
 }
 .package-table th:nth-child(5) {
-  width: 122px;
-}
-.package-table th:last-child {
-  width: 63px;
+  width: 155px;
 }
 .package-table td {
-  padding: 7px 8px;
+  padding: 5px 8px;
   vertical-align: top;
-  border-top: 1px solid var(--line);
-}
-.package-table tr:hover {
-  background: #eceee7;
+  border-bottom: 1px solid var(--line);
 }
 .package-table td:first-child,
 .package-table th:first-child {
   padding-left: 0;
 }
+.package-table tr:hover {
+  background: #eceee7;
+}
 .package-name {
-  display: block;
-  text-align: left;
-  border: 0;
-  background: none;
-  border-radius: 0;
-  padding: 0;
-  font-size: 12px;
+  font: inherit;
   font-weight: 600;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-  max-width: 100%;
   color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
 }
 .package-name:hover {
-  color: var(--blue);
   text-decoration: underline;
-  background: none;
 }
 .package-version {
-  display: block;
-  font-size: 10px;
   color: var(--muted);
   overflow-wrap: anywhere;
-  margin-top: 2px;
 }
-.package-info .package-description {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.35;
+.package-description {
+  overflow-wrap: anywhere;
+}
+.package-reason {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-.package-reason {
-  display: block;
-  margin-top: 3px;
   color: var(--orange);
-  font-size: 10px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .package-path {
   display: none;
   color: var(--muted);
-  font-size: 10px;
-  margin-top: 3px;
   overflow-wrap: anywhere;
 }
 .show-paths .package-path {
   display: block;
 }
-.package-state {
-  display: block;
-  font-size: 11px;
-}
-.package-state.available,
-.package-checks.checked {
+.package-state.available {
   color: var(--green);
 }
 .package-state.failed,
@@ -200,40 +184,30 @@
 .package-state.running {
   color: var(--blue);
 }
-.package-checks {
-  display: block;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 3px;
-}
 .package-time {
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  font-size: 11px;
+  text-align: right;
 }
-.package-time small {
-  display: block;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 3px;
+.package-table th:nth-child(4) {
+  text-align: right;
+}
+.package-time a {
+  color: inherit;
+  text-decoration: none;
+}
+.package-time a:hover {
+  color: var(--blue);
+  text-decoration: underline;
 }
 .package-last {
-  font-size: 10px;
+  display: none;
   color: var(--muted);
-  line-height: 1.5;
 }
-.package-log button {
-  padding: 0;
-  background: none;
-  border: 0;
-  font-size: 11px;
-  color: var(--blue);
-  white-space: nowrap;
+.show-dates .package-last {
+  display: table-cell;
 }
 .catalog-blockers {
-  border-top: 1px solid var(--line);
-  margin-top: 16px;
-  padding-top: 10px;
+  padding: 10px 0;
 }
 .catalog-blockers summary {
   cursor: pointer;
@@ -245,179 +219,126 @@
   gap: 8px;
 }
 .package-source {
-  overflow-wrap: anywhere;
   display: block;
-  margin-bottom: 14px;
-}
-#detail .package-description {
-  font-family: var(--font-sans);
-  font-size: 15px;
+  overflow-wrap: anywhere;
+  margin-bottom: 12px;
 }
 @media (max-width: 800px) {
-  .catalog-heading {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 5px 6px;
+  body[data-view="packages"] .app-chrome {
+    gap: 12px;
+    padding: 2px 8px;
   }
-  .catalog-heading h2 {
-    font-size: 14px;
+  body[data-view="packages"] .brand {
+    font-size: 20px;
   }
-  .catalog-heading #matches {
-    font-size: 10px;
-    grid-row: 2;
-    grid-column: 1 / -1;
+  body[data-view="packages"] .view-tabs {
+    gap: 12px;
   }
-  .catalog-heading button {
-    font-size: 11px;
+  body[data-view="packages"] #campaign-options .menu-body {
+    top: 40px;
   }
-  .package-tabs {
-    gap: 0;
-    justify-content: space-between;
-  }
-  .package-tabs button {
-    font-size: 11px;
-  }
-  .package-tabs b {
+  .package-table {
     display: block;
-    margin: 3px 0 0;
-    font-size: 10px;
   }
-  .catalog-filters {
-    flex-wrap: wrap;
-  }
-  .catalog-filters input[type="search"] {
-    width: 100%;
-    flex-basis: 100%;
-  }
-  .catalog-filters select {
-    flex: 1;
-    min-width: 0;
-    font-size: 12px;
-  }
-  .catalog-filters label {
-    font-size: 10px;
-  }
-  .catalog-note {
-    font-size: 9px;
-    flex-wrap: wrap;
-    gap: 2px;
-  }
-  .package-table,
+  .package-table thead,
   .package-table tbody {
     display: block;
   }
   .package-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--paper);
   }
   .package-table tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 65px 63px;
-    gap: 0 6px;
-    padding: 9px 0;
-    border-top: 1px solid var(--line);
+    grid-template-columns: minmax(0, 1fr) 74px 94px;
+    column-gap: 6px;
+  }
+  .package-table thead tr {
+    border-block: 1px solid var(--line);
+  }
+  .package-table th {
+    position: static;
+    width: auto !important;
+    border: 0;
+    padding: 4px 0;
+  }
+  .package-table th:nth-child(2) {
+    display: none;
+  }
+  .package-table th:nth-child(3) {
+    grid-column: 2;
+  }
+  .package-table th:nth-child(4) {
+    grid-column: 3;
+  }
+  .package-table tbody tr {
+    padding: 5px 0;
+    border-bottom: 1px solid var(--line);
+    row-gap: 1px;
   }
   .package-table td {
-    display: block;
     padding: 0;
     border: 0;
     min-width: 0;
   }
   .package-identity {
-    grid-column: 1/3;
     grid-row: 1;
-  }
-  .package-name {
-    display: inline;
-    font-size: 12px;
-  }
-  .package-version {
-    display: inline;
-    margin-left: 6px;
-    font-size: 10px;
+    grid-column: 1;
   }
   .package-info {
-    grid-column: 1/-1;
     grid-row: 2;
-    padding: 4px 0 6px !important;
-  }
-  .package-info .package-description {
-    font-size: 13px;
+    grid-column: 1 / -1;
   }
   .package-result {
-    grid-column: 1;
-    grid-row: 3;
-  }
-  .package-checks {
-    display: inline;
-    margin-left: 6px;
-    font-size: 9px;
-  }
-  .package-state {
-    display: inline;
-    font-size: 10px;
+    grid-row: 1;
+    grid-column: 2;
   }
   .package-time {
-    grid-column: 2;
-    grid-row: 3;
-    text-align: right;
-    font-size: 10px;
-  }
-  .package-time small {
-    font-size: 9px;
-    margin-top: 2px;
-  }
-  .package-last {
-    grid-column: 1;
-    grid-row: 4;
-    margin-top: 3px;
-    font-size: 9px;
-  }
-  .package-log {
+    grid-row: 1;
     grid-column: 3;
-    grid-row: 3;
-    text-align: right;
   }
-  .package-log button {
-    padding: 2px 0 8px 6px;
+  .package-version {
+    display: none;
+  }
+  .show-dates .package-last {
+    display: block;
+    grid-row: 3;
+    grid-column: 1 / -1;
+  }
+  .package-table th.package-last {
+    display: none;
   }
 }
-@media (max-width: 380px) {
-  .catalog-filters label {
-    width: 100%;
+@media (max-width: 360px) {
+  body[data-view="packages"] .app-chrome {
+    gap: 8px;
+  }
+  body[data-view="packages"] .view-tabs {
+    gap: 8px;
+  }
+  body[data-view="packages"] .brand {
+    font-size: 18px;
+  }
+  .package-table tr {
+    grid-template-columns: minmax(0, 1fr) 64px 85px;
   }
 }
 @media (pointer: coarse) {
-  .catalog-filters input[type="search"],
-  .catalog-filters select {
+  .catalog-controls #filter {
     font-size: 16px;
-  }
-  .package-name {
-    padding: 3px 0;
   }
 }
 @media print {
-  .catalog-controls {
-    position: static;
-  }
   .app-chrome,
-  .overview,
+  .catalog-controls,
   footer,
-  .catalog-filters,
-  .package-tabs,
-  .catalog-heading button,
-  .package-log {
+  .catalog-blockers {
     display: none !important;
   }
-}
-
-@media (min-width: 801px) {
+  .package-table thead,
   .package-table th {
-    position: sticky;
-    top: calc(var(--chrome-height, 80px) + var(--catalog-height, 160px));
-    z-index: 7;
+    position: static;
   }
 }
