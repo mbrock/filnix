@@ -1,0 +1,90 @@
+Subject: Wait on pointer bit locks using their atomic state
+Origin: Filnix
+Applies-After: ports/patch/glib-2.80.4.patch
+Upstream-Status: Not submitted
+
+Fil-C stores the authoritative atomic pointer in an atomic box. The ordinary
+address bytes mirrored after an exchange can lag later exchanges; a kernel
+futex comparison against those bytes can sleep after the pointer is unlocked.
+Use bucketed condition variables with an atomic pointer predicate for pointer
+bit locks. The existing waiter counters avoid taking a mutex without waiters.
+Integer bit locks retain their native futex path.
+
+--- a/glib/gbitlock.c
++++ b/glib/gbitlock.c
+@@ -399,6 +399,39 @@
+   return int_address;
+ }
+ 
++/* Fil-C's authoritative atomic pointer is in a capability-bearing atomic
++ * box. Its ordinary address bytes can lag concurrent stores, so the kernel
++ * cannot use those bytes as a futex predicate. Pair a condition variable with
++ * an atomic pointer recheck instead. Hash collisions require broadcasting. */
++#ifdef __FILC__
++static struct {
++  GMutex mutex;
++  GCond cond;
++} pointer_waiters[CONTENTION_CLASSES];
++
++static void
++pointer_bit_wait (gpointer address, guintptr mask)
++{
++  guint class = bit_lock_contended_class (address);
++
++  g_mutex_lock (&pointer_waiters[class].mutex);
++  if ((guintptr) g_atomic_pointer_get ((gpointer *) address) & mask)
++    g_cond_wait (&pointer_waiters[class].cond, &pointer_waiters[class].mutex);
++  g_mutex_unlock (&pointer_waiters[class].mutex);
++}
++
++static void
++pointer_bit_wake (gpointer address)
++{
++  guint class = bit_lock_contended_class (address);
++
++  /* Do not dereference address: the last unlock may allow it to be freed. */
++  g_mutex_lock (&pointer_waiters[class].mutex);
++  g_cond_broadcast (&pointer_waiters[class].cond);
++  g_mutex_unlock (&pointer_waiters[class].mutex);
++}
++#endif
++
+ G_ALWAYS_INLINE static inline gpointer
+ pointer_bit_lock_mask_ptr (gpointer ptr, guint lock_bit, gboolean set, guintptr preserve_mask, gpointer preserve_ptr)
+ {
+@@ -460,7 +493,11 @@
+     /* already locked */
+     {
+       g_atomic_int_add (&g_bit_lock_contended[class], +1);
++#ifdef __FILC__
++      pointer_bit_wait (address, mask);
++#else
+       g_futex_wait (g_futex_int_address (address), (guint) v);
++#endif
+       g_atomic_int_add (&g_bit_lock_contended[class], -1);
+       goto retry;
+     }
+@@ -575,7 +612,11 @@
+       guint class = bit_lock_contended_class (address_nonvolatile);
+ 
+       if (g_atomic_int_get (&g_bit_lock_contended[class]))
++#ifdef __FILC__
++        pointer_bit_wake (address_nonvolatile);
++#else
+         g_futex_wake (g_futex_int_address (address_nonvolatile));
++#endif
+     }
+   }
+ }
+@@ -657,7 +698,11 @@
+     }
+ 
+   if (g_atomic_int_get (&g_bit_lock_contended[class]) > 0)
++#ifdef __FILC__
++    pointer_bit_wake (address);
++#else
+     g_futex_wake (g_futex_int_address (address));
++#endif
+ 
+   /* It makes no sense, if unlocking mangles the pointer. Assert against
+    * that.

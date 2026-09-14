@@ -1,0 +1,608 @@
+Subject: Preserve SPA pointer-string capabilities across plugin boundaries
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Route pointer-valued properties through one shared weak exact-pointer table.
+The original owner retains lifetime responsibility; property strings neither
+keep unreachable objects alive nor synthesize capabilities for unknown values.
+Use the same interface for audio/video followers, DSP, JACK, Bluetooth and
+custom thread creators. Native builds retain their existing pointer format.
+
+--- a/pipewire-jack/src/pipewire-jack.c
++++ b/pipewire-jack/src/pipewire-jack.c
+@@ -3,6 +3,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2024 Nedko Arnaudov */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include "config.h"
+ 
+ #include <stdio.h>
+@@ -3408,7 +3409,7 @@
+ 		for (i = 0; i < n_items; i++)
+ 			items[i] = props->items[i];
+ 
+-		snprintf(creator_ptr, sizeof(creator_ptr), "pointer:%p", globals.creator);
++		snprintf(creator_ptr, sizeof(creator_ptr), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(globals.creator));
+ 		items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_THREAD_CREATOR,
+ 				creator_ptr);
+ 
+--- a/spa/examples/adapter-control.c
++++ b/spa/examples/adapter-control.c
+@@ -13,6 +13,7 @@
+  [doc]
+  */
+ 
++#include <spa/utils/ptr-string.h>
+ #include "config.h"
+ 
+ #include <math.h>
+@@ -542,7 +543,7 @@
+ 	}
+ 
+ 	/* make the source adapter node */
+-	snprintf(value, sizeof(value), "pointer:%p", data->source_follower_node);
++	snprintf(value, sizeof(value), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(data->source_follower_node));
+ 	items[1] = SPA_DICT_ITEM_INIT("audio.adapt.follower", value);
+ 	if ((res = make_node(data, &data->source_node,
+ 					"audioconvert/libspa-audioconvert.so",
+@@ -594,7 +595,7 @@
+ 	printf("created sink follower node %p\n", data->sink_follower_node);
+ 
+ 	/* make the sink adapter node */
+-	snprintf(value, sizeof(value), "pointer:%p", data->sink_follower_node);
++	snprintf(value, sizeof(value), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(data->sink_follower_node));
+ 	items[1] = SPA_DICT_ITEM_INIT("audio.adapt.follower", value);
+ 	if ((res = make_node(data, &data->sink_node,
+ 					"audioconvert/libspa-audioconvert.so",
+--- /dev/null
++++ b/spa/filc-pointers.c
+@@ -0,0 +1,43 @@
++/* PipeWire */
++/* SPDX-License-Identifier: MIT */
++#include <errno.h>
++#include <inttypes.h>
++#include <pthread.h>
++#include <stdfil.h>
++#include <string.h>
++#include <spa/utils/ptr-string.h>
++
++static pthread_once_t table_once = PTHREAD_ONCE_INIT;
++static zexact_ptrtable *table;
++
++static void init_table(void)
++{
++    /* Do not retain otherwise unreachable objects via a property string. */
++    table = zexact_ptrtable_new_weak();
++}
++
++size_t spa_filc_pointer_encode(void *pointer)
++{
++    pthread_once(&table_once, init_table);
++    return zexact_ptrtable_encode(table, pointer);
++}
++
++int spa_filc_pointer_parse(const char *text, void **pointer)
++{
++    char *end;
++    uintmax_t token;
++    void *decoded;
++    if (!text || strncmp(text, "pointer:", 8) != 0 ||
++        !strchr("0123456789abcdefABCDEF", text[8]) || text[8] == '\0')
++        return 0;
++    errno = 0;
++    token = strtoumax(text + 8, &end, 16);
++    if (*end != '\0' || errno == ERANGE || token > SIZE_MAX)
++        return 0;
++    pthread_once(&table_once, init_table);
++    decoded = zexact_ptrtable_decode(table, token);
++    if (token != 0 && !zhasvalidcap(decoded))
++        return 0;
++    *pointer = decoded;
++    return 1;
++}
+--- /dev/null
++++ b/spa/include/spa/utils/ptr-string.h
+@@ -0,0 +1,38 @@
++/* PipeWire */
++/* SPDX-License-Identifier: MIT */
++#ifndef SPA_PTR_STRING_H
++#define SPA_PTR_STRING_H
++
++#include <stddef.h>
++#include <stdio.h>
++
++#ifdef __FILC__
++#ifdef __cplusplus
++extern "C" {
++#endif
++/* One shared table for the application and all independently loaded SPA DSOs.
++ * Tokens borrow the original pointer's lifetime, just as native pointer strings
++ * do. They cannot create capabilities for pointers never registered here. */
++__attribute__((visibility("default")))
++size_t spa_filc_pointer_encode(void *pointer);
++__attribute__((visibility("default")))
++int spa_filc_pointer_parse(const char *text, void **pointer);
++#ifdef __cplusplus
++}
++#endif
++#define SPA_POINTER_FORMAT "pointer:%zx"
++#define SPA_POINTER_VALUE(p) spa_filc_pointer_encode((void *)(p))
++#define spa_pointer_parse(text, destination) ({ \
++    __typeof__(destination) _spa_destination = (destination); \
++    void *_spa_pointer; \
++    int _spa_result = spa_filc_pointer_parse((text), &_spa_pointer); \
++    if (_spa_result == 1) \
++        *_spa_destination = (__typeof__(*_spa_destination))_spa_pointer; \
++    _spa_result; \
++})
++#else
++#define SPA_POINTER_FORMAT "pointer:%p"
++#define SPA_POINTER_VALUE(p) (p)
++#define spa_pointer_parse(text, destination) sscanf((text), "pointer:%p", (destination))
++#endif
++#endif
+--- a/spa/meson.build
++++ b/spa/meson.build
+@@ -5,12 +5,23 @@
+ #pthread_lib = dependencies('threads')
+ #mathlib = cc.find_library('m', required : false)
+ 
++# Fil-C pointer strings need a table shared across RTLD_LOCAL plugins.
++spa_pointer_libs = []
++if cc.has_define('__FILC__')
++  spa_pointer_libs += shared_library('spa-filc-pointers', 'filc-pointers.c',
++    include_directories : include_directories('include'),
++    dependencies : [pthread_lib],
++    install : true,
++  )
++endif
++
+ spa_dep = declare_dependency(
+   include_directories : [
+     include_directories('include'),
+     include_directories('include-private'),
+   ],
+   dependencies : [atomic_dep],
++  link_with : spa_pointer_libs,
+   version : spaversion,
+   variables : {
+     'plugindir' : meson.current_build_dir() / 'plugins',
+@@ -22,6 +33,7 @@
+ 
+ pkgconfig.generate(filebase : 'lib@0@'.format(spa_name),
+   name : 'libspa',
++  libraries : spa_pointer_libs,
+   subdirs : spa_name,
+   description : 'Simple Plugin API',
+   version : spaversion,
+--- a/spa/plugins/audioconvert/audioadapter.c
++++ b/spa/plugins/audioconvert/audioadapter.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <spa/support/plugin.h>
+ #include <spa/support/plugin-loader.h>
+ #include <spa/support/log.h>
+@@ -2096,7 +2097,7 @@
+ 	    (str = spa_dict_lookup(info, "audio.adapt.follower")) == NULL)
+ 		return -EINVAL;
+ 
+-	sscanf(str, "pointer:%p", &this->follower);
++	spa_pointer_parse(str, &this->follower);
+ 	if (this->follower == NULL)
+ 		return -EINVAL;
+ 
+--- a/spa/plugins/audioconvert/meson.build
++++ b/spa/plugins/audioconvert/meson.build
+@@ -126,7 +126,7 @@
+   'spa-resample-dump-coeffs',
+   sparesampledumpcoeffs_sources,
+   c_args : [ cc_flags_native, '-DRESAMPLE_DISABLE_PRECOMP' ],
+-  dependencies : [ spa_dep, mathlib_native ],
++  dependencies : [ spa_dep.partial_dependency(includes : true, compile_args : true), mathlib_native ],
+   install : false,
+   native : true,
+ )
+--- a/spa/plugins/audioconvert/test-audioadapter.c
++++ b/spa/plugins/audioconvert/test-audioadapter.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <string.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -82,7 +83,7 @@
+ 	ctx->adapter_handle = calloc(1, size);
+ 	spa_assert_se(ctx->adapter_handle != NULL);
+ 
+-	snprintf(value, sizeof(value), "pointer:%p", ctx->follower_node);
++	snprintf(value, sizeof(value), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(ctx->follower_node));
+ 	items[0] = SPA_DICT_ITEM_INIT("audio.adapt.follower", value);
+ 
+ 	res = spa_handle_factory_init(factory,
+--- a/spa/plugins/bluez5/bluez5-dbus.c
++++ b/spa/plugins/bluez5/bluez5-dbus.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <errno.h>
+ #include <stddef.h>
+ #include <unistd.h>
+@@ -1740,7 +1741,7 @@
+ 	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_ICON, device->icon);
+ 	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_PATH, device->path);
+ 	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_ADDRESS, device->address);
+-	snprintf(dev, sizeof(dev), "pointer:%p", device);
++	snprintf(dev, sizeof(dev), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(device));
+ 	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_DEVICE, dev);
+ 	snprintf(class, sizeof(class), "0x%06x", device->bluetooth_class);
+ 	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_CLASS, class);
+--- a/spa/plugins/bluez5/bluez5-device.c
++++ b/spa/plugins/bluez5/bluez5-device.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <stddef.h>
+ #include <stdio.h>
+ #include <sys/types.h>
+@@ -658,7 +659,7 @@
+ 	else
+ 		in_device_set = this->device_set.source_enabled;
+ 
+-	snprintf(transport, sizeof(transport), "pointer:%p", t);
++	snprintf(transport, sizeof(transport), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(t));
+ 	items[0] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_TRANSPORT, transport);
+ 	items[1] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_PROFILE, spa_bt_profile_name(t->profile));
+ 	items[2] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_CODEC, get_codec_name(t, a2dp_duplex));
+@@ -2990,7 +2991,7 @@
+ 	spa_log_topic_init(this->log, &log_topic);
+ 
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_DEVICE)))
+-		sscanf(str, "pointer:%p", &this->bt_dev);
++		spa_pointer_parse(str, &this->bt_dev);
+ 
+ 	if (this->bt_dev == NULL) {
+ 		spa_log_error(this->log, "a device is needed");
+--- a/spa/plugins/bluez5/media-sink.c
++++ b/spa/plugins/bluez5/media-sink.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <unistd.h>
+ #include <stddef.h>
+ #include <stdio.h>
+@@ -2211,7 +2212,7 @@
+ 		this->is_internal = spa_atob(str);
+ 
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)))
+-		sscanf(str, "pointer:%p", &this->transport);
++		spa_pointer_parse(str, &this->transport);
+ 
+ 	if (this->transport == NULL) {
+ 		spa_log_error(this->log, "a transport is needed");
+--- a/spa/plugins/bluez5/media-source.c
++++ b/spa/plugins/bluez5/media-source.c
+@@ -3,6 +3,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Collabora Ltd. */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <unistd.h>
+ #include <stddef.h>
+ #include <stdio.h>
+@@ -1876,7 +1877,7 @@
+ 		if (info && (str = spa_dict_lookup(info, "clock.quantum-limit")))
+ 			spa_atou32(str, &this->quantum_limit, 0);
+ 		if ((str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)) != NULL)
+-			sscanf(str, "pointer:%p", &this->transport);
++			spa_pointer_parse(str, &this->transport);
+ 		if ((str = spa_dict_lookup(info, "bluez5.media-source-role")) != NULL)
+ 			this->is_input = spa_streq(str, "input");
+ 		if ((str = spa_dict_lookup(info, "api.bluez5.a2dp-duplex")) != NULL)
+--- a/spa/plugins/bluez5/sco-sink.c
++++ b/spa/plugins/bluez5/sco-sink.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Collabora Ltd. */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <unistd.h>
+ #include <stddef.h>
+ #include <stdio.h>
+@@ -1701,7 +1702,7 @@
+ 		this->is_internal = spa_atob(str);
+ 
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)))
+-		sscanf(str, "pointer:%p", &this->transport);
++		spa_pointer_parse(str, &this->transport);
+ 
+ 	if (this->transport == NULL) {
+ 		spa_log_error(this->log, "a transport is needed");
+--- a/spa/plugins/bluez5/sco-source.c
++++ b/spa/plugins/bluez5/sco-source.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Collabora Ltd. */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <unistd.h>
+ #include <stddef.h>
+ #include <stdio.h>
+@@ -1723,7 +1724,7 @@
+ 		this->is_internal = spa_atob(str);
+ 
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)))
+-		sscanf(str, "pointer:%p", &this->transport);
++		spa_pointer_parse(str, &this->transport);
+ 
+ 	if (this->transport == NULL) {
+ 		spa_log_error(this->log, "a transport is needed");
+--- a/spa/plugins/filter-graph/builtin_plugin.c
++++ b/spa/plugins/filter-graph/builtin_plugin.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2021 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include "config.h"
+ 
+ #include <float.h>
+@@ -2587,7 +2588,7 @@
+ 		const char *k = info->items[i].key;
+ 		const char *s = info->items[i].value;
+ 		if (spa_streq(k, "filter.graph.audio.dsp"))
+-			sscanf(s, "pointer:%p", &impl->dsp);
++			spa_pointer_parse(s, &impl->dsp);
+ 	}
+ 	if (impl->dsp == NULL) {
+ 		spa_log_error(impl->log, "%p: could not find DSP functions", impl);
+--- a/spa/plugins/filter-graph/ebur128_plugin.c
++++ b/spa/plugins/filter-graph/ebur128_plugin.c
+@@ -1,3 +1,4 @@
++#include <spa/utils/ptr-string.h>
+ #include "config.h"
+ 
+ #include <limits.h>
+@@ -578,7 +579,7 @@
+ 		if (spa_streq(k, "clock.quantum-limit"))
+ 			spa_atou32(s, &impl->quantum_limit, 0);
+ 		if (spa_streq(k, "filter.graph.audio.dsp"))
+-			sscanf(s, "pointer:%p", &impl->dsp);
++			spa_pointer_parse(s, &impl->dsp);
+ 	}
+ 	if (impl->dsp == NULL) {
+ 		spa_log_error(impl->log, "%p: could not find DSP functions", impl);
+--- a/spa/plugins/filter-graph/filter-graph.c
++++ b/spa/plugins/filter-graph/filter-graph.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2021 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <string.h>
+ #include <stdio.h>
+ #include <errno.h>
+@@ -781,7 +782,7 @@
+ 	spa_scnprintf(factory_name, sizeof(factory_name),
+ 			"filter.graph.plugin.%s", type);
+ 	spa_scnprintf(dsp_ptr, sizeof(dsp_ptr),
+-			"pointer:%p", impl->dsp);
++			SPA_POINTER_FORMAT, SPA_POINTER_VALUE(impl->dsp));
+ 
+ 	hndl = spa_plugin_loader_load(impl->loader, factory_name,
+ 			&SPA_DICT_ITEMS(
+--- a/spa/plugins/filter-graph/sofa_plugin.c
++++ b/spa/plugins/filter-graph/sofa_plugin.c
+@@ -1,3 +1,4 @@
++#include <spa/utils/ptr-string.h>
+ #include "config.h"
+ 
+ #include <limits.h>
+@@ -490,7 +491,7 @@
+ 		if (spa_streq(k, "clock.quantum-limit"))
+ 			spa_atou32(s, &impl->quantum_limit, 0);
+ 		if (spa_streq(k, "filter.graph.audio.dsp"))
+-			sscanf(s, "pointer:%p", &impl->dsp);
++			spa_pointer_parse(s, &impl->dsp);
+ 	}
+ 
+ 	if (impl->data_loop == NULL || impl->main_loop == NULL) {
+--- a/spa/plugins/jack/jack-device.c
++++ b/spa/plugins/jack/jack-device.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <stddef.h>
+ #include <stdio.h>
+ #include <sys/types.h>
+@@ -80,7 +81,7 @@
+                 info.factory_name = SPA_NAME_API_JACK_SOURCE;
+ 
+ 	info.change_mask = SPA_DEVICE_OBJECT_CHANGE_MASK_PROPS;
+-	snprintf(jack_client, sizeof(jack_client), "pointer:%p", &this->client);
++	snprintf(jack_client, sizeof(jack_client), SPA_POINTER_FORMAT, SPA_POINTER_VALUE(&this->client));
+ 	items[0] = SPA_DICT_ITEM_INIT(SPA_KEY_API_JACK_CLIENT, jack_client);
+ 	info.props = &SPA_DICT_INIT(items, 1);
+ 
+--- a/spa/plugins/jack/jack-sink.c
++++ b/spa/plugins/jack/jack-sink.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <errno.h>
+ #include <stddef.h>
+ #include <unistd.h>
+@@ -839,7 +840,7 @@
+ 	this->log = spa_support_find(support, n_support, SPA_TYPE_INTERFACE_Log);
+ 
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_JACK_CLIENT)))
+-		sscanf(str, "pointer:%p", &this->client);
++		spa_pointer_parse(str, &this->client);
+ 
+ 	if (this->client == NULL) {
+ 		spa_log_error(this->log, "%p: missing "SPA_KEY_API_JACK_CLIENT
+--- a/spa/plugins/jack/jack-source.c
++++ b/spa/plugins/jack/jack-source.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <errno.h>
+ #include <stddef.h>
+ #include <unistd.h>
+@@ -864,7 +865,7 @@
+ 	this->log = spa_support_find(support, n_support, SPA_TYPE_INTERFACE_Log);
+ 
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_JACK_CLIENT)))
+-		sscanf(str, "pointer:%p", &this->client);
++		spa_pointer_parse(str, &this->client);
+ 
+ 	if (this->client == NULL) {
+ 		spa_log_error(this->log, "%p: missing "SPA_KEY_API_JACK_CLIENT
+--- a/spa/plugins/videoconvert/videoadapter.c
++++ b/spa/plugins/videoconvert/videoadapter.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <spa/utils/dict.h>
+ #include <spa/support/plugin.h>
+ #include <spa/support/plugin-loader.h>
+@@ -1932,7 +1933,7 @@
+ 	    (str = spa_dict_lookup(info, "video.adapt.follower")) == NULL)
+ 		return -EINVAL;
+ 
+-	sscanf(str, "pointer:%p", &this->follower);
++	spa_pointer_parse(str, &this->follower);
+ 	if (this->follower == NULL)
+ 		return -EINVAL;
+ 
+--- a/src/modules/module-adapter.c
++++ b/src/modules/module-adapter.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <string.h>
+ #include <stdio.h>
+ #include <errno.h>
+@@ -204,13 +205,13 @@
+ 	spa_follower = NULL;
+ 	str = pw_properties_get(properties, "adapt.follower.node");
+ 	if (str != NULL) {
+-		if (sscanf(str, "pointer:%p", &follower) != 1)
++		if (spa_pointer_parse(str, &follower) != 1)
+ 			goto error_properties;
+ 		spa_follower = pw_impl_node_get_implementation(follower);
+ 	}
+ 	str = pw_properties_get(properties, "adapt.follower.spa-node");
+ 	if (str != NULL) {
+-		if (sscanf(str, "pointer:%p", &spa_follower) != 1)
++		if (spa_pointer_parse(str, &spa_follower) != 1)
+ 			goto error_properties;
+ 	}
+ 
+--- a/src/modules/module-adapter/adapter.c
++++ b/src/modules/module-adapter/adapter.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <string.h>
+ #include <stdio.h>
+ #include <errno.h>
+@@ -183,7 +184,7 @@
+ 		goto error;
+ 
+ 	if (media_type == SPA_MEDIA_TYPE_audio) {
+-		pw_properties_setf(props, "audio.adapt.follower", "pointer:%p", follower);
++		pw_properties_setf(props, "audio.adapt.follower", SPA_POINTER_FORMAT, SPA_POINTER_VALUE(follower));
+ 		pw_properties_set(props, SPA_KEY_LIBRARY_NAME, "audioconvert/libspa-audioconvert");
+ 		if (pw_properties_get(props, PW_KEY_MEDIA_CLASS) == NULL)
+ 			pw_properties_setf(props, PW_KEY_MEDIA_CLASS, "Audio/%s",
+@@ -191,7 +192,7 @@
+ 		factory_name = SPA_NAME_AUDIO_ADAPT;
+ 	}
+ 	else if (media_type == SPA_MEDIA_TYPE_video) {
+-		pw_properties_setf(props, "video.adapt.follower", "pointer:%p", follower);
++		pw_properties_setf(props, "video.adapt.follower", SPA_POINTER_FORMAT, SPA_POINTER_VALUE(follower));
+ 		pw_properties_set(props, SPA_KEY_LIBRARY_NAME, "videoconvert/libspa-videoconvert");
+ 		if (pw_properties_get(props, PW_KEY_MEDIA_CLASS) == NULL)
+ 			pw_properties_setf(props, PW_KEY_MEDIA_CLASS, "Video/%s",
+--- a/src/pipewire/impl-device.c
++++ b/src/pipewire/impl-device.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <errno.h>
+ 
+ #include <spa/debug/types.h>
+@@ -848,7 +849,7 @@
+ 		if ((str = pw_properties_get(props, "node.adapter")) != NULL) {
+ 			char name[64];
+ 			snprintf(name, sizeof(name), "%s.follower", str);
+-	                pw_properties_setf(props, name, "pointer:%p", iface);
++	                pw_properties_setf(props, name, SPA_POINTER_FORMAT, SPA_POINTER_VALUE(iface));
+ 
+ 			subhandle = handle;
+ 
+--- a/src/pipewire/stream.c
++++ b/src/pipewire/stream.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <errno.h>
+ #include <stdio.h>
+ #include <math.h>
+@@ -2128,8 +2129,7 @@
+ 			res = -ENOENT;
+ 			goto error_node;
+ 		}
+-		pw_properties_setf(props, "adapt.follower.spa-node", "pointer:%p",
+-				&impl->impl_node);
++		pw_properties_setf(props, "adapt.follower.spa-node", SPA_POINTER_FORMAT, SPA_POINTER_VALUE(&impl->impl_node));
+ 		pw_properties_set(props, "object.register", "false");
+ 		stream->node = pw_impl_factory_create_object(factory,
+ 				NULL,
+--- a/src/pipewire/thread.c
++++ b/src/pipewire/thread.c
+@@ -2,6 +2,7 @@
+ /* SPDX-FileCopyrightText: Copyright © 2021 Wim Taymans */
+ /* SPDX-License-Identifier: MIT */
+ 
++#include <spa/utils/ptr-string.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+ #include <sys/types.h>
+@@ -99,7 +100,7 @@
+ 
+ 	if (props == NULL ||
+ 	   (str = spa_dict_lookup(props, SPA_KEY_THREAD_CREATOR)) == NULL ||
+-	   sscanf(str, "pointer:%p", &create_func) != 1)
++	   spa_pointer_parse(str, &create_func) != 1)
+ 		create_func = pthread_create;
+ 
+ 	err = create_func(&pt, attr, start, arg);

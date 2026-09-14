@@ -1,4 +1,4 @@
-# Experimental profile; both known test failures remain enabled.
+# Experimental profile; the remaining cancellation failure stays enabled.
 let
   f = builtins.getFlake (toString ../.);
   p = f.legacyPackages.x86_64-linux.pkgsFilc;
@@ -13,11 +13,19 @@ p.stdenv.mkDerivation {
     ../patches/pipewire-pulse-modules.patch
     ../patches/pipewire-cpu-probe.patch
     ../patches/pipewire-pointer-arithmetic.patch
+    ../patches/pipewire-pointer-properties.patch
     ../patches/pipewire-test-runtime.patch
   ];
   NIX_CFLAGS_COMPILE = "-DNVALGRIND";
   preCheck = ''
     export FUGC_THREADS="$NIX_BUILD_CORES"
+    for module in a b; do
+      $CC -shared -fPIC -I../spa/include \
+        ${./pipewire-pointer-module.c} -Lspa -lspa-filc-pointers \
+        -Wl,-rpath,"$PWD/spa" -o "pointer-$module.so"
+    done
+    $CC -O2 ${./pipewire-pointer-properties.c} -ldl -pthread -o pointer-check
+    timeout 30 ./pointer-check
     mesonCheckFlagsArray+=(--num-processes "$NIX_BUILD_CORES")
   '';
   nativeBuildInputs = [

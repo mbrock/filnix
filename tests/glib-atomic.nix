@@ -5,7 +5,7 @@ pkgsFilc.stdenv.mkDerivation {
   nativeBuildInputs = [ pkgs.pkg-config ];
   buildInputs = [ pkgsFilc.glib ];
   buildPhase = ''
-    $CC -O2 -Werror ${./glib-atomic.c} $(pkg-config --cflags --libs glib-2.0) -o check
+    $CC -O2 -Werror ${./glib-atomic.c} $(pkg-config --cflags --libs gobject-2.0) -o check
     FUGC_THREADS=2 timeout 30 ./check
   '';
   installPhase = ''touch "$out"'';

@@ -257,9 +257,9 @@ from a timeout to a 1.5-second pass. GLib's existing GType checks still pass.
 `toolchain/meson-check-cores.nix` bounds Meson's test concurrency, Fil-C collector
 workers and test CPU affinity to `NIX_BUILD_CORES`. Merely limiting Meson jobs
 left clock stress tests creating hundreds of threads from the machine's CPU
-count. A six-CPU clock rescheduling stress run still timed out after the atomic
-repair; that remains an unresolved concurrency limitation, not a disabled test
-or a claim of unrestricted stress-test success.
+count. A six-CPU clock rescheduling stress run still timed out after that first atomic
+repair. The follow-up below identifies and repairs a separate pointer-wait
+problem; CPU limits remain useful for respecting the build allocation.
 
 Run the focused installed-consumer checks with:
 
@@ -281,7 +281,7 @@ ALSA, D-Bus, libsystemd/logind, audio conversion/mixing and basic video plugins.
 Optional dependency-heavy plugins are left out so failures in PipeWire itself
 can be isolated. The default package still has its original plugin selection.
 
-The six local `patches/pipewire-*.patch` files are applied only by this profile:
+The local `patches/pipewire-*.patch` files are applied only by this profile:
 
 - SPA log topics, built-in PulseAudio modules and test suites use C registration
   instead of enumerating linker sections. Log registration uses static nodes
@@ -298,9 +298,8 @@ The six local `patches/pipewire-*.patch` files are applied only by this profile:
   cleanup while avoiding glibc's unported `__openat64_nocancel` path. Two tests
   of explicit `abort()` expect Fil-C's diagnostic SIGTRAP instead of SIGABRT.
 
-All compilation/linking steps complete. The final two-core test run passes
-46 of 48 groups, with no skipped groups. The derivation deliberately still
-fails its check phase:
+The initial core checkpoint completed compilation/linking and passed 46 of 48
+groups, with no skipped groups. It exposed two further problems:
 
 1. `test-audioadapter` passes its follower node through a `pointer:%p` string.
    Parsing it in the plugin reconstructs an address without its capability.
@@ -322,3 +321,56 @@ Full systemd was also tested with optional TPM integration disabled. That
 reached cryptsetup, whose checks fail when secure-allocation helpers apply
 memory-mapping operations to malloc-backed memory. This is another distinct
 blocker; TPM and cryptsetup tests have not been disabled in the main ports.
+
+
+## Pointer properties and weak-reference contention
+
+The PipeWire core profile now also applies `pipewire-pointer-properties.patch`.
+Audio/video followers, DSP interfaces, JACK clients, Bluetooth transports and
+custom thread creators use the same pointer-string helpers. Under Fil-C, one
+shared library owns a weak exact-pointer table for both the application and
+independently loaded plugins. It restores only registered capabilities, rejects
+unknown/freed pointers and retains the original owner's lifetime responsibility.
+Native builds keep `%p` serialization. The native resampler code generator uses
+only SPA headers, so it does not link this target library in a cross build.
+
+`pipewire-pointer-properties.c` loads two separate DSOs with `RTLD_LOCAL` and
+checks concurrent first use, interior pointers, function pointers, null values,
+malformed/unknown tokens and invalidation after `free()`. That check passes, as
+does the original audio-adapter test. The profile now passes **47 of 48** groups,
+with no skips; cancellation remains enabled and failing.
+
+GStreamer's intermittent clock stress timeout was another GLib issue. A Fil-C
+`zdump_stacks()` watchdog showed workers blocked in `g_weak_ref_get()`, including
+pointer bit-lock waiters, with no thread making progress. Fil-C's atomic pointer
+box is authoritative; the ordinary address bytes mirrored after exchanges can
+lag concurrent operations. A kernel futex comparing those ordinary bytes can
+therefore sleep even after the actual atomic pointer is unlocked.
+
+`glib-pointer-bit-wait.patch` replaces pointer bit-lock futex predicates with
+bucketed condition variables and atomic pointer rechecks. Unlock wakes the
+bucket while holding its mutex; broadcasts handle unrelated addresses hashing
+to the same bucket. Existing contention counters keep uncontended unlocks cheap.
+Integer bit locks retain their ordinary futex implementation. The patch is local
+and applied after the extracted upstream port and the earlier CAS-load repair.
+
+The expanded GLib regression performs 192,000 weak-reference acquisitions across
+48 threads, in addition to the existing 80,000 pointer-lock operations. The same
+executable passes against the repaired library and times out against the previous
+library. GStreamer's unchanged two clock stress cases pass ten consecutive runs
+at six CPUs with six collector workers after the repair; before it, four of five
+identical runs timed out. No GStreamer tests were removed or relaxed.
+The full GStreamer build also passes at six CPUs: 110 test groups pass with
+the one existing upstream skip. GObject introspection passes all 60 groups,
+and the installed GStreamer fake-source/fake-sink pipeline runs to completion.
+
+Cancellation investigation used a separate libc derivation, leaving the main
+compiler/runtime graph unchanged. Removing `pthread_cancel()`'s obsolete
+`libgcc_s.so.6661` preflight allows a focused cooperative cancellation test to
+pass, including its cleanup handler and `PTHREAD_CANCELED` result. PipeWire then
+times out in its blocking `pause()` test: the upstream Fil-C wrapper calls
+`zsys_pause()` without glibc's cancellation-point setup. A downstream wrapper
+restoring asynchronous cancellation around that call remains timing-sensitive;
+adding diagnostic output changes the outcome. This is not a verified fix, so
+neither experimental libc change is enabled in the main toolchain. The remaining
+work is reliable cancellation/signal delivery across a blocking runtime call.

@@ -690,6 +690,7 @@ in
     (patch ./ports/patch/glib-2.80.4.patch)
     (patch ./patches/glib-gtype-api-ceiling.patch)
     (patch ./patches/glib-atomic-pointer-load.patch)
+    (patch ./patches/glib-pointer-bit-wait.patch)
     (patch ./patches/glib-inline.patch)
     (skipPatch "split-dev-programs.patch")
     (patch ./patches/glib-split-backport.patch)

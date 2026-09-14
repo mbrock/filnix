@@ -1,9 +1,23 @@
 /* Exercise contended pointer bit locks, including pointer capability reloads. */
 #include <glib.h>
+#include <glib-object.h>
 
 static gpointer slot;
 static int values[2];
 static unsigned count;
+static GWeakRef weak;
+static GObject *object;
+
+static gpointer weak_worker(gpointer unused)
+{
+    (void)unused;
+    for (unsigned i = 0; i < 4000; ++i) {
+        GObject *strong = g_weak_ref_get(&weak);
+        g_assert_true(strong == object);
+        g_object_unref(strong);
+    }
+    return NULL;
+}
 
 static gpointer worker(gpointer unused)
 {
@@ -29,5 +43,18 @@ int main(void)
         g_thread_join(threads[i]);
     g_assert_cmpuint(count, ==, 80000);
     g_assert_cmpint(values[0] + values[1], ==, 80000);
+
+    /* This path unlocks without replacing the pointer. Contention must not
+     * sleep on stale ordinary bytes while the atomic pointer is unlocked. */
+    GThread *weak_threads[48];
+    object = g_object_new(G_TYPE_OBJECT, NULL);
+    g_weak_ref_init(&weak, object);
+    for (unsigned i = 0; i < G_N_ELEMENTS(weak_threads); ++i)
+        weak_threads[i] = g_thread_new("weak-ref", weak_worker, NULL);
+    for (unsigned i = 0; i < G_N_ELEMENTS(weak_threads); ++i)
+        g_thread_join(weak_threads[i]);
+    g_object_unref(object);
+    g_assert_null(g_weak_ref_get(&weak));
+    g_weak_ref_clear(&weak);
     return 0;
 }
