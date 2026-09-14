@@ -94,8 +94,13 @@ assert.ok(
 const originalFocus = await evaluate(
   "document.querySelector('#graph-focus [data-drv]').dataset.drv",
 );
+const inputFocus = await evaluate(
+  "document.querySelector('#graph-inputs [data-drv]').dataset.drv",
+);
 await evaluate("document.querySelector('#graph-inputs [data-drv]').click()");
-await wait(400);
+await until(
+  `document.querySelector('#graph-focus [data-drv]')?.dataset.drv === ${JSON.stringify(inputFocus)}`,
+);
 assert.notEqual(
   await evaluate(
     "document.querySelector('#graph-focus [data-drv]').dataset.drv",
@@ -109,7 +114,9 @@ assert.equal(
   "false",
 );
 await evaluate("document.getElementById('graph-back').click()");
-await wait(400);
+await until(
+  `document.querySelector('#graph-focus [data-drv]')?.dataset.drv === ${JSON.stringify(originalFocus)}`,
+);
 assert.equal(
   await evaluate(
     "document.querySelector('#graph-focus [data-drv]').dataset.drv",
@@ -129,7 +136,7 @@ await until(
 await evaluate(
   "[...document.querySelectorAll('.pkg')].find(n=>n.querySelector('.pkg-name').firstChild.textContent==='hello').click()",
 );
-await wait(300);
+await until("document.getElementById('detail').open");
 assert.equal(await evaluate("document.getElementById('detail').open"), true);
 assert.match(
   await evaluate("document.getElementById('detail-content').textContent"),
