@@ -1,0 +1,108 @@
+Subject: Register SPA log topics with C constructors
+Origin: Filnix
+Upstream-Status: Not submitted
+
+ELF __start/__stop symbols do not describe a C allocation with pointer
+capabilities. Collect the same topics as static C list nodes in each DSO.
+The Fil-C-only enumeration extension is consumed by its matching host;
+explicit arrays and the native compiler ABI keep their existing behavior.
+No heap storage, weak function calls, or constructor priorities are needed.
+
+--- a/spa/include/spa/support/log.h
++++ b/spa/include/spa/support/log.h
+@@ -97,11 +97,26 @@
+  *
+  * \since 1.1.0
+  */
++#ifdef __FILC__
++struct spa_log_topic_registration {
++	struct spa_log_topic *topic;
++	struct spa_log_topic_registration *next;
++};
++/* One list per DSO. Hidden weak data coalesces translation units without
++ * undefined weak function thunks or cross-plugin symbol interposition. */
++__attribute__((weak, visibility("hidden")))
++struct spa_log_topic_registration *spa_log_topic_registrations;
++#endif
++
+ struct spa_log_topic_enum {
+ #define SPA_VERSION_LOG_TOPIC_ENUM	0
+ 	uint32_t version;
+ 	/** Array of pointers to log topics */
+ 	struct spa_log_topic * const * const topics;
++#ifdef __FILC__
++	/* Fil-C-only extension: constructors register capability-bearing nodes. */
++	struct spa_log_topic_registration **registrations;
++#endif
+ 	/** End of topics array */
+ 	struct spa_log_topic * const * const topics_end;
+ };
+@@ -337,10 +352,19 @@
+  *
+  * \since 1.1.0
+  */
++#ifdef __FILC__
++#define SPA_LOG_TOPIC_REGISTER(v) \
++	static struct spa_log_topic_registration spa_log_topic_node_##v = { .topic = &v }; \
++	static void __attribute__((constructor)) spa_log_topic_init_##v(void) { \
++		spa_log_topic_node_##v.next = spa_log_topic_registrations; \
++		spa_log_topic_registrations = &spa_log_topic_node_##v; \
++	}
++#else
+ #define SPA_LOG_TOPIC_REGISTER(v)		      \
+ 	__attribute__((used)) __attribute__((retain)) \
+ 	__attribute__((section("spa_log_topic"))) __attribute__((aligned(__alignof__(struct spa_log_topic *)))) \
+ 	static struct spa_log_topic * const spa_log_topic_export_##v = &v
++#endif
+ 
+ /**
+  * Define and magically register a \ref spa_log_topic
+@@ -366,10 +390,18 @@
+  *
+  * \since 1.1.0
+  */
++#ifdef __FILC__
++#define SPA_LOG_TOPIC_ENUM_DEFINE_REGISTERED \
++	SPA_EXPORT struct spa_log_topic_enum spa_log_topic_enum = { \
++		.version = SPA_VERSION_LOG_TOPIC_ENUM, \
++		.registrations = &spa_log_topic_registrations, \
++	}
++#else
+ #define SPA_LOG_TOPIC_ENUM_DEFINE_REGISTERED \
+ 	extern struct spa_log_topic * const __start_spa_log_topic[]; \
+ 	extern struct spa_log_topic * const __stop_spa_log_topic[]; \
+ 	SPA_LOG_TOPIC_ENUM_DEFINE(__start_spa_log_topic, __stop_spa_log_topic)
++#endif
+ 
+ /** \fn spa_log_error */
+ 
+--- a/src/pipewire/log.c
++++ b/src/pipewire/log.c
+@@ -178,6 +178,13 @@
+ 	if (!e)
+ 		return;
+ 
++#ifdef __FILC__
++	if (e->registrations) {
++		for (struct spa_log_topic_registration *r = *e->registrations; r; r = r->next)
++			pw_log_topic_register(r->topic);
++		return;
++	}
++#endif
+ 	for (t = e->topics; t < e->topics_end; ++t)
+ 		pw_log_topic_register(*t);
+ }
+@@ -189,6 +196,13 @@
+ 	if (!e)
+ 		return;
+ 
++#ifdef __FILC__
++	if (e->registrations) {
++		for (struct spa_log_topic_registration *r = *e->registrations; r; r = r->next)
++			pw_log_topic_unregister(r->topic);
++		return;
++	}
++#endif
+ 	for (t = e->topics; t < e->topics_end; ++t)
+ 		pw_log_topic_unregister(*t);
+ }

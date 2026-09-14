@@ -1,0 +1,87 @@
+Subject: Discover PipeWire test suites through C registration
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The test harness also enumerates ELF sections. Preserve suite order and
+all test cases with constructor registration, without forged linker bounds.
+
+--- a/test/pwtest-implementation.h
++++ b/test/pwtest-implementation.h
+@@ -109,9 +109,15 @@
+ 		 ...) SPA_SENTINEL;
+ 
+ struct pwtest_suite_decl {
++#ifdef __FILC__
++	struct pwtest_suite_decl *next;
++#endif
+ 	const char *name;
+ 	enum pwtest_result (*setup)(struct pwtest_context *, struct pwtest_suite *);
+ };
+ 
++#ifdef __FILC__
++void pwtest_register_suite(struct pwtest_suite_decl *suite);
++#endif
+ 
+ #endif /* PWTEST_IMPLEMENTATION_H */
+--- a/test/pwtest.h
++++ b/test/pwtest.h
+@@ -472,6 +472,17 @@
+  *
+  * Test suites are automatically discovered at build-time.
+  */
++#ifdef __FILC__
++#define PWTEST_SUITE(cname) \
++	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite); \
++	static struct pwtest_suite_decl _test_suite = { \
++		.name = #cname, .setup = cname##__setup, \
++	}; \
++	static void __attribute__((constructor)) cname##__register(void) { \
++		pwtest_register_suite(&_test_suite); \
++	} \
++	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite)
++#else
+ #define PWTEST_SUITE(cname) \
+ 	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite); \
+ 	__attribute__((used)) \
+@@ -483,6 +494,7 @@
+ 	   .setup = cname##__setup, \
+ 	}; \
+ 	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite)
++#endif
+ 
+ struct pwtest_spa_plugin {
+ #define PWTEST_PLUGIN_MAX 32
+--- a/test/pwtest.c
++++ b/test/pwtest.c
+@@ -534,8 +534,19 @@
+ 	spa_list_append(&suite->tests, &t->link);
+ }
+ 
++#ifdef __FILC__
++static struct pwtest_suite_decl *registered_suites;
++static struct pwtest_suite_decl **registered_suites_tail = &registered_suites;
++
++void pwtest_register_suite(struct pwtest_suite_decl *suite)
++{
++	*registered_suites_tail = suite;
++	registered_suites_tail = &suite->next;
++}
++#else
+ extern const struct pwtest_suite_decl __start_pwtest_suite_section;
+ extern const struct pwtest_suite_decl __stop_pwtest_suite_section;
++#endif
+ 
+ static void add_suite(struct pwtest_context *ctx,
+ 		      const struct pwtest_suite_decl *decl)
+@@ -573,7 +584,11 @@
+ {
+ 	const struct pwtest_suite_decl *c;
+ 
++#ifdef __FILC__
++	for (c = registered_suites; c; c = c->next) {
++#else
+ 	for (c = &__start_pwtest_suite_section; c < &__stop_pwtest_suite_section; c++) {
++#endif
+ 		if (suite_filter == NULL || fnmatch(suite_filter, c->name, 0) == 0)
+ 			add_suite(ctx, c);
+ 	}

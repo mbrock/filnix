@@ -1,0 +1,19 @@
+Subject: Spell xgetbv as an instruction rather than raw bytes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C recognizes and safely lowers xgetbv with these register constraints.
+The older raw-byte encoding hides the instruction from that analysis.
+Keep CPU feature detection and SIMD dispatch enabled.
+
+--- a/spa/plugins/support/cpu-x86.c
++++ b/spa/plugins/support/cpu-x86.c
+@@ -114,7 +114,7 @@
+ 	(XSTATE_SSE | XSTATE_YMM | XSTATE_OPMASK | XSTATE_ZMM | XSTATE_HI_ZMM)
+ 
+ 	if (has_osxsave)
+-		asm (".byte 0x0f; .byte 0x01; .byte 0xd0"
++		asm ("xgetbv"
+ 			: "=a" (eax), "=d" (edx)
+ 			: "c" (XCR_XFEATURE_ENABLED_MASK));
+ 	else

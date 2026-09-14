@@ -272,3 +272,53 @@ nix build .#checks.x86_64-linux.media-foundations \
 The default PipeWire package now requests `systemdLibs`, which supplies the API
 it uses. Its larger default plugin graph still needs additional ports; this
 change alone does not establish a successful full PipeWire build.
+
+## PipeWire core experiment
+
+`tests/pipewire-core.nix` is a standalone diagnostic profile rather than a
+replacement for Nixpkgs' default PipeWire configuration. It keeps the core,
+ALSA, D-Bus, libsystemd/logind, audio conversion/mixing and basic video plugins.
+Optional dependency-heavy plugins are left out so failures in PipeWire itself
+can be isolated. The default package still has its original plugin selection.
+
+The six local `patches/pipewire-*.patch` files are applied only by this profile:
+
+- SPA log topics, built-in PulseAudio modules and test suites use C registration
+  instead of enumerating linker sections. Log registration uses static nodes
+  and a Fil-C-only enumeration field, with one hidden list per shared object.
+  It avoids undefined weak function calls and constructor-priority dependencies.
+- Pointer offset, container and alignment helpers preserve capabilities. Their
+  native implementations remain unchanged, and C++ header checks still compile.
+- The CPU probe spells `xgetbv` as an instruction instead of raw bytes, allowing
+  Fil-C's existing safe lowering. SIMD feature detection and implementations
+  remain enabled; their arithmetic/format tests pass.
+- `NVALGRIND` selects the bundled Valgrind headers' existing opt-out. Fil-C cannot
+  execute their native client-request assembly with pointer operands.
+- Test cleanup uses `nftw` with one open descriptor. This preserves recursive
+  cleanup while avoiding glibc's unported `__openat64_nocancel` path. Two tests
+  of explicit `abort()` expect Fil-C's diagnostic SIGTRAP instead of SIGABRT.
+
+All compilation/linking steps complete. The final two-core test run passes
+46 of 48 groups, with no skipped groups. The derivation deliberately still
+fails its check phase:
+
+1. `test-audioadapter` passes its follower node through a `pointer:%p` string.
+   Parsing it in the plugin reconstructs an address without its capability.
+   This needs a real pointer-preserving interface or shared pointer table;
+   casting the parsed address cannot repair it.
+2. `test-loop` passes its ordinary destruction, recursion and source-lifetime
+   cases, but `cancel_thread_while_dispatching` aborts because glibc cannot load
+   `libgcc_s.so.6661`. Fil-C has forced-unwind machinery, but the compatible
+   unwind-library integration still needs to be established and tested.
+
+Reproduce the current experiment, including its failures:
+
+```sh
+nix build --impure --file tests/pipewire-core.nix \
+  --max-jobs 1 --cores 2 --keep-failed --no-link -L
+```
+
+Full systemd was also tested with optional TPM integration disabled. That
+reached cryptsetup, whose checks fail when secure-allocation helpers apply
+memory-mapping operations to malloc-backed memory. This is another distinct
+blocker; TPM and cryptsetup tests have not been disabled in the main ports.

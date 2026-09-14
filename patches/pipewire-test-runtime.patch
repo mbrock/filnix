@@ -1,0 +1,54 @@
+Subject: Adapt test cleanup and explicit-abort expectations to Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Retain recursive cleanup using nftw's one-descriptor mode, which uses the
+supported opendir path. This does not repair glibc's openat_nocancel wrapper.
+The two explicit-abort tests expect Fil-C's diagnostic SIGTRAP rather than
+native SIGABRT. Other signal expectations and all test cases remain intact.
+
+--- a/test/pwtest.c
++++ b/test/pwtest.c
+@@ -625,7 +625,13 @@
+ 		return;
+ 	}
+ 
++#ifdef __FILC__
++	/* With one descriptor nftw closes the parent before opening the child,
++	 * avoiding glibc's still-unported __openat64_nocancel path. */
++	nftw(xdg_dir, remove_file, 1, FTW_DEPTH | FTW_PHYS);
++#else
+ 	nftw(xdg_dir, remove_file, 16, FTW_DEPTH | FTW_PHYS);
++#endif
+ }
+ 
+ static void cleanup(struct pwtest_context *ctx)
+--- a/test/test-spa-utils.c
++++ b/test/test-spa-utils.c
+@@ -2,6 +2,13 @@
+ /* SPDX-FileCopyrightText: Copyright © 2018 Collabora Ltd. */
+ /*                         @author George Kiagiadakis <george.kiagiadakis@collabora.com> */
+ /* SPDX-License-Identifier: MIT */
++
++/* Fil-C reports an explicit abort through its diagnostic trap. */
++#ifdef __FILC__
++#define EXPECTED_ABORT_SIGNAL SIGTRAP
++#else
++#define EXPECTED_ABORT_SIGNAL SIGABRT
++#endif
+ 
+ #include <locale.h>
+ #include <unistd.h>
+@@ -1018,10 +1025,10 @@
+ 	pwtest_add(utils_streq, PWTEST_NOARG);
+ 	pwtest_add(utils_strendswith, PWTEST_NOARG);
+ 	pwtest_add(utils_strendswith_null_suffix,
+-		   PWTEST_ARG_SIGNAL, SIGABRT);
++		   PWTEST_ARG_SIGNAL, EXPECTED_ABORT_SIGNAL);
+ 	pwtest_add(utils_snprintf, PWTEST_NOARG);
+ 	pwtest_add(utils_snprintf_abort_neg_size,
+-		   PWTEST_ARG_SIGNAL, SIGABRT,
++		   PWTEST_ARG_SIGNAL, EXPECTED_ABORT_SIGNAL,
+ 		   PWTEST_ARG_RANGE, -2, 0);
+ 	pwtest_add(utils_atob, PWTEST_NOARG);
+ 	pwtest_add(utils_ansi, PWTEST_NOARG);

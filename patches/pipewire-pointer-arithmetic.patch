@@ -1,0 +1,51 @@
+Subject: Preserve allocation identity in SPA pointer arithmetic
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The shared offset and container macros must carry the original pointer
+capability. Integer tokens used only as iterator counters remain integers;
+actual array elements and aligned pointers use byte-pointer arithmetic.
+
+--- a/spa/include/spa/utils/defs.h
++++ b/spa/include/spa/utils/defs.h
+@@ -199,7 +199,11 @@
+ /**
+  * Return the address (buffer + offset) as pointer of \a type
+  */
++#ifdef __FILC__
++#define SPA_PTROFF(ptr_,offset_,type_) ((type_*)((char*)(ptr_) + (ptrdiff_t)(offset_)))
++#else
+ #define SPA_PTROFF(ptr_,offset_,type_) ((type_*)((uintptr_t)(ptr_) + (ptrdiff_t)(offset_)))
++#endif
+ #define SPA_PTROFF_ALIGN(ptr_,offset_,alignment_,type_) \
+    SPA_PTR_ALIGN(SPA_PTROFF(ptr_,offset_,type_),alignment_,type_)
+ 
+@@ -209,7 +213,11 @@
+ #define SPA_MEMBER(b,o,t) SPA_PTROFF(b,o,t)
+ #define SPA_MEMBER_ALIGN(b,o,a,t) SPA_PTROFF_ALIGN(b,o,a,t)
+ 
++#ifdef __FILC__
++#define SPA_CONTAINER_OF(p,t,m) ((t*)((char*)(p) - offsetof(t,m)))
++#else
+ #define SPA_CONTAINER_OF(p,t,m) ((t*)((uintptr_t)(p) - offsetof(t,m)))
++#endif
+ 
+ #define SPA_PTRDIFF(p1,p2) ((intptr_t)(p1) - (intptr_t)(p2))
+ 
+@@ -309,7 +317,16 @@
+ 
+ #define SPA_PTR_ALIGNMENT(p,align)	((uintptr_t)(p) & ((align)-1))
+ #define SPA_IS_ALIGNED(p,align)		(SPA_PTR_ALIGNMENT(p,align) == 0)
++#ifdef __FILC__
++#define SPA_PTR_ALIGN(p,align,type) \
++({ \
++	const char *_spa_ptr = (const char *)(p); \
++	size_t _spa_align = (align); \
++	(type *)(_spa_ptr + ((-(uintptr_t)_spa_ptr) & (_spa_align - 1))); \
++})
++#else
+ #define SPA_PTR_ALIGN(p,align,type)	((type*)SPA_ROUND_UP_N((intptr_t)(p), (intptr_t)(align)))
++#endif
+ 
+ #ifndef SPA_LIKELY
+ #ifdef __GNUC__
