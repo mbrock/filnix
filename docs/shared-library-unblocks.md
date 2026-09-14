@@ -1,5 +1,40 @@
 # Shared-library campaign repairs
 
+## Re-enabling downstream evaluations
+
+On 2026-09-14, campaign `eaaa75f8-2149-452d-8c0e-e76d6c584029` queued
+4,261 previously failed evaluations against port revision
+`35e3f40ca5173a8d72beec11f5becd5d0d48da96`. The selection matches the terminal
+Nix diagnostic's “marked as broken” package, after discarding warning/trace
+prefixes, and includes only candidates still in `evaluation-error`:
+
+| Obsolete exclusion | Selected attributes |
+| --- | ---: |
+| GTK3 | 1,851 |
+| GnuTLS | 1,675 |
+| GObject introspection | 558 |
+| GTK4 | 177 |
+
+These exclusions were already removed in the repaired ports. No global
+`allowBroken` override or additional port change was needed. The other 781
+evaluation errors were left for separate diagnosis. Counts include aliases and
+are retry inputs, not successful builds or predictions of success.
+
+Runner 0.12.4's durable `queue-replan` request is
+`c1487cb5-af84-410b-9bd1-68c9131a4fd6`. Its `replan-queued` event retains all
+selected candidate IDs and the frozen source
+`/nix/store/8fx8dj9af52hdbgxb1xpmlqw64y81vkz-filnix-campaign-source`.
+The first planning attempt is `73778b3c-0099-406a-861b-2676a39db52d`.
+DisnixWebService, MMA, OVMFFull, R and SDL passed its initial evaluations;
+building and testing are separate subsequent observations.
+
+The queue runs through ordinary bounded admission and persists across restarts.
+The original campaign revision, old observations, kernel exclusions, CPU and
+memory limits remain intact. The two active build workers continued during
+deployment. All 117 runner tests passed, including queue recovery and atomic
+admission; migration of a live database copy preserved every existing table's
+row count and the active attempt specs and passed SQLite's quick check.
+
 ## ICU 76.1
 
 The upstream `ports/patch/icu-76.1.patch` was already extracted, but no port
