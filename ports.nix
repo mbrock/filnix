@@ -46,6 +46,36 @@ in
   # ━━━ Core Libraries ━━━
 
   {
+    boost187 = for pkgs.boost187 [
+      (patch ./ports/patch/boost-filc.patch)
+      (patch ./patches/boost-context-feature.patch)
+      (patch ./patches/boost-gdb-scripts.patch)
+      (arg {
+        # Match upstream pizlix: Context and Coroutine2 use ucontext.
+        # The older Coroutine v1 library requires fcontext and is omitted.
+        toolset = "clang";
+        extraB2Args = [
+          "context-impl=ucontext"
+          "--without-coroutine"
+        ];
+      })
+      (use {
+        doCheck = true;
+        checkPhase = ''
+          runHook preCheck
+          $CXX -std=c++17 -I. ${./tests/boost-context.cpp} \
+            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -lboost_json -pthread -o boost-check
+          LD_LIBRARY_PATH="$PWD/stage/lib" ./boost-check
+          $CXX -std=c++17 -I. ${./tests/boost-continuation.cpp} \
+            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -pthread -o continuation-check
+          LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
+          runHook postCheck
+        '';
+      })
+    ];
+  }
+
+  {
     icu76 = for pkgs.icu76 [
       (patch ./ports/patch/icu-76.1.patch)
       (patch ./patches/icu-cross-data.patch)
@@ -596,6 +626,60 @@ in
       (patch ./ports/patch/libsoup-3.4.4.patch)
     ];
   }
+
+  {
+    gtksourceview3 = for pkgs.gtksourceview3 [
+      (patch ./patches/gtksourceview3-signal-types.patch)
+      (tool pkgs.libxml2)
+      (use (
+        import ./toolchain/broadway-check.nix {
+          inherit pkgs;
+          gtk = final.gtk3;
+        }
+      ))
+    ];
+    gtksourceview4 = for pkgs.gtksourceview4 [
+      (patch ./patches/gtksourceview4-signal-types.patch)
+      (use (
+        import ./toolchain/broadway-check.nix {
+          inherit pkgs;
+          gtk = final.gtk3;
+        }
+      ))
+      (use { doCheck = true; })
+    ];
+  }
+
+  (for pkgs.gssdp [
+    (patch ./patches/gssdp-signal-types.patch)
+  ])
+
+  (for pkgs.libhandy [
+    (patch ./patches/libhandy-destroy-visible-child.patch)
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        # The target has no Rust SVG loader. Keep symbolic icon recoloring by
+        # embedding GTK's encoded PNG format, generated with native tools.
+        for icon in src/icons/scalable/*/*.svg; do
+          directory=$(dirname "$icon" | sed s,scalable,128x128,)
+          mkdir -p "$directory"
+          GDK_PIXBUF_MODULE_FILE=${pkgs.librsvg}/${pkgs.gdk-pixbuf.binaryDir}/loaders.cache \
+            ${pkgs.gtk3.dev}/bin/gtk-encode-symbolic-svg "$icon" 128x128 -o "$directory"
+          png="$directory/$(basename "$icon" .svg).symbolic.png"
+          test -s "$png"
+          substituteInPlace src/handy.gresources.xml --replace-fail \
+            "<file preprocess=\"xml-stripblanks\">''${icon#src/}</file>" \
+            "<file>''${png#src/}</file>"
+        done
+      '';
+    }))
+    (use (
+      import ./toolchain/broadway-check.nix {
+        inherit pkgs;
+        gtk = final.gtk3;
+      }
+    ))
+  ])
 
   (for pkgs.glib [
     (pin "2.80.4" "sha256-JOApxd/JtE5Fc2l63zMHipgnxIk4VVAEs7kJb6TqA08=")

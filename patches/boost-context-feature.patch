@@ -1,0 +1,51 @@
+Subject: Declare context-impl before B2 expands the top-level build request
+Origin: Filnix
+Upstream-Status: Not submitted; adaptation for Boost 1.87
+Applies-After: ports/patch/boost-filc.patch
+
+Boost 1.87's B2 loads shared feature declarations before lazily loading library
+Jamfiles. context-impl=ucontext is rejected while its declaration remains in
+the Context Jamfile. Move the existing declaration beside the other Context
+features; keep one declaration and preserve its defaults and compositions.
+This makes the pinned upstream Fil-C build recipe usable with Nixpkgs' release.
+
+--- a/libs/context/build/Jamfile.v2
++++ b/libs/context/build/Jamfile.v2
+@@ -49,16 +49,6 @@
+     ;
+ 
+ 
+-feature.feature context-impl
+-    : fcontext
+-      ucontext
+-      winfib
+-    : propagated
+-      composite
+-    ;
+-feature.set-default context-impl : fcontext ;
+-feature.compose <context-impl>ucontext : <define>BOOST_USE_UCONTEXT ;
+-feature.compose <context-impl>winfib : <define>BOOST_USE_WINFIB ;
+ 
+ 
+ # ARM
+--- a/libs/context/boost-context-features.jam
++++ b/libs/context/boost-context-features.jam
+@@ -14,6 +14,18 @@
+ 
+ feature.feature valgrind : on : optional propagated composite ;
+ feature.compose <valgrind>on : <define>BOOST_USE_VALGRIND ;
++
++feature.feature context-impl
++    : fcontext
++      ucontext
++      winfib
++    : propagated
++      composite
++    ;
++feature.set-default context-impl : fcontext ;
++feature.compose <context-impl>ucontext : <define>BOOST_USE_UCONTEXT ;
++feature.compose <context-impl>winfib : <define>BOOST_USE_WINFIB ;
++
+ 
+ local rule default_binary_format ( )
+ {

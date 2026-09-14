@@ -1,0 +1,27 @@
+Subject: Preserve GType capabilities while tagging static signal arguments
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C. Use its pointer-tagging operation instead of
+integer OR when adding G_SIGNAL_TYPE_STATIC_SCOPE. The argument types and
+static-scope signal ownership semantics are unchanged.
+
+--- a/libgssdp/gssdp-client.c
++++ b/libgssdp/gssdp-client.c
+@@ -17,6 +17,7 @@
+ #include <config.h>
+ 
+ #include <gio/gio.h>
++#include <stdfil.h>
+ 
+ #include "gssdp-client.h"
+ #include "gssdp-client-private.h"
+@@ -724,7 +725,7 @@
+                               NULL, NULL, NULL,
+                               G_TYPE_NONE,
+                               4,
+-                              G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE,
++                              zorptr (G_TYPE_STRING, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
+                               G_TYPE_UINT,
+                               G_TYPE_INT,
+                               soup_message_headers_get_type());

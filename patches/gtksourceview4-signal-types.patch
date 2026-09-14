@@ -1,0 +1,48 @@
+Subject: Preserve GType capabilities while tagging static signal arguments
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C. Use its pointer-tagging operation instead of
+integer OR when adding G_SIGNAL_TYPE_STATIC_SCOPE. The argument types and
+static-scope signal ownership semantics are unchanged.
+
+--- a/gtksourceview/gtksourcebuffer.c
++++ b/gtksourceview/gtksourcebuffer.c
+@@ -32,6 +32,7 @@
+ #include <string.h>
+ #include <stdlib.h>
+ #include <gtk/gtk.h>
++#include <stdfil.h>
+ 
+ #include "gtksourcelanguage.h"
+ #include "gtksourcelanguage-private.h"
+@@ -489,8 +490,8 @@
+ 					_gtk_source_marshal_VOID__BOXED_BOXED,
+ 	                                G_TYPE_NONE,
+ 	                                2,
+-	                                GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-	                                GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE);
++	                                zorptr (GTK_TYPE_TEXT_ITER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++	                                zorptr (GTK_TYPE_TEXT_ITER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 	g_signal_set_va_marshaller (buffer_signals[HIGHLIGHT_UPDATED],
+ 	                            G_TYPE_FROM_CLASS (klass),
+ 	                            _gtk_source_marshal_VOID__BOXED_BOXEDv);
+--- a/gtksourceview/gtksourceview.c
++++ b/gtksourceview/gtksourceview.c
+@@ -30,6 +30,7 @@
+ #include <string.h> /* For strlen */
+ #include <fribidi.h>
+ #include <gtk/gtk.h>
++#include <stdfil.h>
+ #include <gdk/gdkkeysyms.h>
+ #include <pango/pango-tabs.h>
+ #include <glib/gi18n-lib.h>
+@@ -790,7 +791,7 @@
+ 			      G_TYPE_NONE,
+ 			      2,
+ 			      GTK_TYPE_TEXT_ITER,
+-			      GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++			      zorptr (GDK_TYPE_EVENT, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 	g_signal_set_va_marshaller (signals[LINE_MARK_ACTIVATED],
+ 	                            G_TYPE_FROM_CLASS (klass),
+ 	                            _gtk_source_marshal_VOID__BOXED_BOXEDv);

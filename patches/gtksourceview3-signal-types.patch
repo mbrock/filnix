@@ -1,0 +1,48 @@
+Subject: Preserve GType capabilities while tagging static signal arguments
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C. Use its pointer-tagging operation instead of
+integer OR when adding G_SIGNAL_TYPE_STATIC_SCOPE. The argument types and
+static-scope signal ownership semantics are unchanged.
+
+--- a/gtksourceview/gtksourcebuffer.c
++++ b/gtksourceview/gtksourcebuffer.c
+@@ -33,6 +33,7 @@
+ #include <string.h>
+ #include <stdlib.h>
+ #include <gtk/gtk.h>
++#include <stdfil.h>
+ 
+ #include "gtksourcelanguage.h"
+ #include "gtksourcelanguage-private.h"
+@@ -435,8 +436,8 @@
+ 					NULL, NULL, NULL,
+ 	                                G_TYPE_NONE,
+ 	                                2,
+-	                                GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-	                                GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE);
++	                                zorptr (GTK_TYPE_TEXT_ITER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++	                                zorptr (GTK_TYPE_TEXT_ITER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * GtkSourceBuffer::source-mark-updated:
+--- a/gtksourceview/gtksourceview.c
++++ b/gtksourceview/gtksourceview.c
+@@ -31,6 +31,7 @@
+ #include <string.h> /* For strlen */
+ 
+ #include <gtk/gtk.h>
++#include <stdfil.h>
+ #include <gdk/gdkkeysyms.h>
+ #include <pango/pango-tabs.h>
+ 
+@@ -767,7 +768,7 @@
+ 			      G_TYPE_NONE,
+ 			      2,
+ 			      GTK_TYPE_TEXT_ITER,
+-			      GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++			      zorptr (GDK_TYPE_EVENT, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * GtkSourceView::move-lines:

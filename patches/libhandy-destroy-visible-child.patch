@@ -1,0 +1,29 @@
+Subject: Clear the visible child when removing children during destruction
+Origin: Filnix
+Upstream-Status: Not submitted
+
+set_visible_child_info returns early while the container is being destroyed.
+The removed child's info is then freed, leaving visible_child dangling. The
+next removal dereferences it in get_visible_child. Clear it during destruction,
+while preserving normal transitions outside destruction. Fil-C reproduces the
+use-after-free in the existing Deck and Leaflet navigation tests.
+
+--- a/src/hdy-stackable-box.c
++++ b/src/hdy-stackable-box.c
+@@ -2314,8 +2314,14 @@
+                                         hdy_stackable_box_child_visibility_notify_cb,
+                                         self);
+ 
+-  if (hdy_stackable_box_get_visible_child (self) == widget)
+-    set_visible_child_info (self, NULL, self->transition_type, self->child_transition.duration, TRUE);
++  if (self->visible_child == child_info) {
++    /* set_visible_child_info skips transitions during destruction, but the
++     * child info will still be freed when this function returns. */
++    if (gtk_widget_in_destruction (GTK_WIDGET (self->container)))
++      self->visible_child = NULL;
++    else
++      set_visible_child_info (self, NULL, self->transition_type, self->child_transition.duration, TRUE);
++  }
+ 
+   if (child_info == self->last_visible_child)
+     self->last_visible_child = NULL;

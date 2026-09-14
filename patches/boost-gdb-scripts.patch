@@ -1,0 +1,23 @@
+Subject: Disable embedded GDB script assembly for Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/boost-filc.patch
+
+Use Boost's existing opt-out in the compiler configuration so it also applies
+to installed header consumers. JSON and Unordered otherwise emit .pushsection
+module assembly, rejected by Fil-C. This only removes embedded debugger scripts.
+
+--- a/boost/config/compiler/clang.hpp
++++ b/boost/config/compiler/clang.hpp
+@@ -9,6 +9,11 @@
+ // Clang compiler setup.
+ 
+ #define BOOST_HAS_PRAGMA_ONCE
++
++// Fil-C does not accept the module assembly used to embed debugger scripts.
++#if defined(__FILC__) && !defined(BOOST_ALL_NO_EMBEDDED_GDB_SCRIPTS)
++#  define BOOST_ALL_NO_EMBEDDED_GDB_SCRIPTS
++#endif
+ 
+ // Detecting `-fms-extension` compiler flag assuming that _MSC_VER defined when that flag is used.
+ #if defined (_MSC_VER) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 4))

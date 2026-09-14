@@ -143,6 +143,7 @@
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };
+        boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
         libsoup2-runtime = import ./tests/libsoup.nix {
           inherit pkgs pkgsFilc;
           major = 2;

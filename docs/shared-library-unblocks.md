@@ -43,7 +43,7 @@ See [upstream updates](upstream-updates.md) and [local patches](../patches/READM
 `ports/patch-sources.json` also supports verbatim standalone patch imports.
 The pinned upstream revision already has `pizlix/boost-filc.patch`, which the
 project-subtree extractor previously missed; it is now imported separately.
-Importing the patch alone does not enable a Boost port.
+The Boost port explicitly applies it before the local integration patches.
 
 ## GLib type registration and introspection
 
@@ -78,3 +78,89 @@ for known failures; these checks do not claim those suites pass.
 
 Libnotify also builds with these changes. The compiler derivation remains
 `01r837vgn2lsxxv1bwxwi415zv77hds0`; GLib and its consumers rebuild as expected.
+
+GTK3 and PyGObject also pass their installed runtime checks with the repaired
+stack. The first 17 GLib follow-up candidates produced eight built attributes:
+cmusfm, gnome-autoar, libnotify, libsoup_2_4, libsoup_3, phodav, tg and wmderland.
+Further failures are recorded separately rather than counted as successes.
+
+## Libhandy and signal type consumers
+
+Libhandy's tests need a display backend enabled in Fil-C GTK3. The reusable
+`toolchain/broadway-check.nix` replaces Xvfb with Broadway, waits for a real GTK
+connection, supplies fonts and respects the build's test parallelism limit.
+It retains the package's surrounding environment and test command.
+
+Running the suite exposed a use-after-free in libhandy 1.8.3. During container
+destruction, `set_visible_child_info` skips transitions and returns without
+clearing the visible-child pointer. Removing that child frees its bookkeeping;
+removing the next child dereferences the stale pointer. The local
+`libhandy-destroy-visible-child.patch` clears it during destruction, preserving
+normal transitions outside destruction. Existing Deck and Leaflet navigation
+tests reproduce the failure and verify the fix.
+
+The target has no Rust SVG loader. Native GTK and librsvg tools convert the
+five bundled SVG icons to GTK's encoded symbolic PNG format at build time.
+The resulting resource keeps symbolic recoloring and removes the runtime SVG
+loader requirement for these icons. This rasterizes them at 128 pixels; it does
+not add general SVG support to the target. Libhandy passes all 30 test groups,
+including avatar drawing, with no test exclusions.
+
+GSSDP's static signal argument is adapted with Fil-C's pointer-tagging operation,
+retaining the GType capability. Both its functional and regression groups pass.
+GtkSourceView 3 and 4 need the same treatment for text-iterator and event types;
+the release-specific patches stay separate because their surrounding code differs.
+Version 3 passes its 22 program tests plus language/style validations after adding
+the missing native xmllint tool. Version 4's suite is re-enabled and all 23 groups
+pass against the pinned GLib stack. Both suites run through Broadway.
+
+## Campaign retries and logging
+
+The 307 ICU candidates were explicitly replanned from commit `438ffa8`, with
+prior recipes and attempts preserved. At the first completed snapshot, six
+attributes were built: icu, icu76, darling-dmg, hfst-ospell, prosody and thelounge.
+Most remaining candidates have reached another failed dependency. In particular,
+Node.js 22 now fails linking a V8 generator against `pizlonated___libc_stack_end`;
+that is a separate runtime/porting issue, not an ICU data failure.
+
+Those retries also exposed a runner problem: Nix's download progress counters
+could consume the entire 128 MiB log allowance before meaningful work completed.
+Runner 0.12.3 filters only those counters before accounting for retained logs;
+build output, phase events, errors and unknown records remain intact. All 108
+runner tests pass. A completed live batch omitted 2,065,525 such records
+(185,323,508 bytes), retained its build output, and finished without truncation.
+The existing CPU reservation and 80 percent memory limit remain in force.
+
+## Boost 1.87
+
+The pinned upstream revision already supports Boost.Context and Coroutine2 using
+ucontext. Its standalone patch was previously absent from the project-subtree
+imports. The port now applies that patch and follows the upstream build recipe:
+`context-impl=ucontext --without-coroutine`. This excludes legacy Coroutine v1,
+which requires fcontext; it does not exclude Coroutine2.
+
+Two local integration patches follow the unchanged upstream patch:
+
+- `boost-context-feature.patch` moves B2's existing context implementation feature
+  declaration into the shared feature file, so Boost 1.87 recognizes the command
+  line before lazily loading the Context Jamfile.
+- `boost-gdb-scripts.patch` selects Boost's existing embedded-GDB-script opt-out
+  in the Fil-C compiler configuration. This applies to installed headers too;
+  JSON and Unordered otherwise emit module assembly rejected by Fil-C. See the
+  [Boost maintainer discussion](https://listarchives.boost.org/Archives/boost/2024/09/257956.php)
+  for the shared opt-out macro.
+
+The checks exercise Coroutine2 yields and resumption, pointer mutation across
+suspension, explicit GC on both sides, exception propagation, and destruction of
+a suspended coroutine. They also cover MultiIndex insert/erase/lookup (including
+the upstream capability-preserving node change), JSON parsing and Unordered
+storage across GC. The continuation API has a separate executable because
+Boost's two ucontext headers define conflicting internal forced-unwind types.
+Neither check manually defines BOOST_USE_UCONTEXT: the installed headers must
+select it automatically. These are focused runtime checks, not the entire Boost
+suite. The full Boost package build and both installed-consumer executables
+pass. The compiler derivation remains unchanged.
+
+The next bounded Boost retry selection contains 141 failed/blocked attributes
+whose only recorded failing dependency is Boost 1.87. Older explicitly selected
+Boost versions are not silently redirected to this release.
