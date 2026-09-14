@@ -10,6 +10,7 @@ from starlette.routing import Route
 
 @dataclass(frozen=True)
 class View:
+    watch: int = 1
     state: str = "available"
     q: str = ""
     kind: str = ""
@@ -27,7 +28,7 @@ class View:
     @property
     def trigger(self):
         return (
-            "campaign-changed from:body, every 15s"
+            "campaign-changed from:body, every 5s"
             if self.transport == "sse"
             else "every 3s"
         )
@@ -57,7 +58,8 @@ class Resource:
 
 
 BASE = "/campaigns/{cid}"
-ACTIVITY = Resource(BASE, ("transport",))
+ACTIVITY = Resource(BASE, ("watch", "transport"))
+ACTIVITY_FEED = Resource(BASE + "/activity", ("watch", "transport"))
 SUMMARY = Resource(BASE + "/summary", ("transport",))
 EVENTS = Resource(BASE + "/events")
 PACKAGES = Resource(BASE + "/packages", ("state", "transport"))
@@ -93,7 +95,7 @@ def options(request):
     values = {
         key: p.get(key, getattr(View(), key)) for key in View.__dataclass_fields__
     }
-    for key in ("follow", "wrap", "available"):
+    for key in ("follow", "wrap", "available", "watch"):
         values[key] = integer(values[key], 0, 1)
     values["page"] = integer(values["page"], 0, 1000000)
     values["size"] = integer(values["size"], 12, 16)
@@ -102,6 +104,7 @@ def options(request):
             "available",
             "tested",
             "failed",
+            "failures",
             "blocked",
             "tried",
             "all",

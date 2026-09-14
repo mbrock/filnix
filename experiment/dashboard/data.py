@@ -123,7 +123,8 @@ def selected(row, state):
         "all": True,
         "available": row["state"] == "available",
         "tested": row["state"] == "available" and bool(row["checks"]),
-        "failed": row["state"] in ("failed", "evaluation-error", "inconclusive"),
+        "failed": row["state"] == "failed",
+        "failures": row["state"] in ("failed", "evaluation-error", "inconclusive"),
         "blocked": row["state"] == "blocked",
         "evaluation-error": row["state"] == "evaluation-error",
         "tried": row["state"] not in ("unplanned", "queued"),
@@ -134,6 +135,7 @@ def packages(db, cid, view):
     result = catalog(db, cid)
     result["rows"] = [r for r in result["rows"] if selected(r, view.state)]
     result["revision"] = revision(db, cid)
+    result["sampled"] = int(stamp())
     result["done"] = finished(db, cid)
     return result
 
@@ -181,15 +183,8 @@ def package(db, cid, pid):
     ).fetchone():
         raise HTTPException(404, "Package not found in this campaign")
     result = detail(db, pid)
-    # Restrict direct check evidence to this campaign, as in the package list.
-    result["tests"] = [
-        dict(r)
-        for r in db.execute(
-            """SELECT t.* FROM tests t
-        JOIN attempts a ON a.id=t.attempt WHERE t.drv=? AND a.campaign=?""",
-            (result["drv"], cid),
-        )
-    ]
+    result["done"] = finished(db, cid)
+    result["sampled"] = stamp()
     result["log"] = db.execute(
         """SELECT a.attempt FROM activities a
         JOIN attempts t ON t.id=a.attempt WHERE a.drv=? AND t.campaign=?

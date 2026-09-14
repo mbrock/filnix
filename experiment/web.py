@@ -91,7 +91,7 @@ def snapshot(db, campaign=None, search="", state="", offset=0):
         )
     ]
     tests = db.execute(
-        "SELECT count(DISTINCT t.drv) FROM tests t JOIN candidates c ON c.drv=t.drv WHERE c.campaign=? AND c.state!='excluded'",
+        "SELECT count(DISTINCT t.drv) FROM tests t JOIN candidates c ON c.drv=t.drv JOIN attempts a ON a.id=t.attempt AND a.campaign=c.campaign WHERE c.campaign=? AND c.state='available'",
         (cid,),
     ).fetchone()[0]
     return dict(
@@ -146,7 +146,7 @@ def detail(db, candidate):
     drv = result["drv"]
     result["blockers"] = blockers(db, drv) if drv else []
     result["tests"] = [
-        dict(r) for r in db.execute("SELECT * FROM tests WHERE drv=?", (drv,))
+        dict(r) for r in db.execute("SELECT t.* FROM tests t JOIN attempts a ON a.id=t.attempt WHERE t.drv=? AND a.campaign=?", (drv, row["campaign"]))
     ]
     d = db.execute("SELECT * FROM derivations WHERE drv=?", (drv,)).fetchone()
     result["realization"] = dict(d) if d else None
@@ -177,8 +177,9 @@ def detail(db, candidate):
       SELECT parent FROM roles WHERE child=? AND campaign=? AND role='host'
       UNION SELECT parent FROM roles JOIN up ON child=up.drv WHERE campaign=? AND role='host')
       SELECT DISTINCT c.id,c.label,t.phase,t.attempt FROM tests t JOIN candidates c ON c.drv=t.drv
-      WHERE c.campaign=? AND c.drv IN up LIMIT 100""",
-            (drv, row["campaign"], row["campaign"], row["campaign"]),
+      WHERE c.campaign=? AND c.drv IN up
+      AND t.attempt IN (SELECT id FROM attempts WHERE campaign=?) LIMIT 100""",
+            (drv, row["campaign"], row["campaign"], row["campaign"], row["campaign"]),
         )
     ]
     return result
@@ -210,7 +211,7 @@ def derivation_detail(db, drv, campaign, offset=0):
         derivation=dict(row),
         dependencies=dependencies,
         dependents=dependents,
-        tests=[dict(r) for r in db.execute("SELECT * FROM tests WHERE drv=?", (drv,))],
+        tests=[dict(r) for r in db.execute("SELECT t.* FROM tests t JOIN attempts a ON a.id=t.attempt WHERE t.drv=? AND a.campaign=?", (drv, row["campaign"]))],
         blockers=blockers(db, drv),
         offset=offset,
     )

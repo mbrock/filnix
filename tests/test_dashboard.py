@@ -1,11 +1,12 @@
 """HTML representation, isolation and byte-reader contracts."""
 
 import unittest
+from unittest.mock import patch
 
 import test_experiment as fixtures
 from bs4 import BeautifulSoup
 from starlette.testclient import TestClient
-from test_experiment import A
+from test_experiment import A, B
 
 from experiment import nix
 from experiment.dashboard.app import create_app
@@ -28,7 +29,8 @@ class DashboardTests(unittest.TestCase):
     def get(self, suffix, **kwargs):
         return self.client.get(self.prefix + suffix, **kwargs)
 
-    def test_full_inventory_stable_html_and_conditional_get(self):
+    @patch("experiment.dashboard.data.stamp", return_value=1800000000)
+    def test_full_inventory_stable_html_and_conditional_get(self, _clock):
         response = self.get("/packages?state=all")
         self.assertEqual(response.status_code, 200)
         soup = BeautifulSoup(response.text, "html.parser")
@@ -160,6 +162,83 @@ class DashboardTests(unittest.TestCase):
                 if url.startswith(self.prefix) and "/events" not in url:
                     with self.subTest(url=url):
                         self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_live_activity_and_held_inventory_contracts(self):
+        self.graph()
+        aid = self.attempt("build")
+        first = BeautifulSoup(self.get("").text, "html.parser")
+        self.assertIn("every 5s", first.select_one("#activity-feed")["hx-trigger"])
+        held = BeautifulSoup(self.get("?watch=0").text, "html.parser")
+        self.assertEqual(held.select_one("#activity-feed")["hx-trigger"], "none")
+        self.assertNotEqual(held.select_one("#summary")["hx-trigger"], "none")
+        self.sql("UPDATE candidates SET state='failed' WHERE id=1")
+        self.sql("UPDATE candidates SET state='evaluation-error' WHERE id=2")
+        self.db.commit()
+        for state, count in [("failed", 1), ("evaluation-error", 1), ("failures", 2)]:
+            page = BeautifulSoup(
+                self.get("/packages?state=" + state).text, "html.parser"
+            )
+            self.assertEqual(len(page.select("#package-list tbody tr")), count)
+            self.assertIsNone(page.select_one("#package-list").get("hx-trigger"))
+            self.assertIsNone(page.select_one("#updates").find_parent("details"))
+        feed = BeautifulSoup(self.get("/activity").text, "html.parser")
+        self.assertIsNotNone(feed.select_one('[data-batch="' + aid + '"]'))
+
+    def test_detail_refresh_and_campaign_scoped_test_evidence(self):
+        self.graph()
+        aid = self.attempt("build")
+        page = BeautifulSoup(self.get("/packages/1").text, "html.parser")
+        self.assertEqual(
+            page.select_one("#package-detail")["hx-select"], "#package-detail"
+        )
+        self.assertIn("every 5s", page.select_one("#package-detail")["hx-trigger"])
+        self.sql("UPDATE candidates SET state='available'")
+        other = import_campaign(
+            self.db,
+            "Other",
+            {"attrPaths": [["elsewhere"]]},
+            "/source",
+            "abc",
+            nix.DEFAULT_POLICY,
+            "test",
+        )
+        self.sql(
+            "INSERT INTO attempts(id,campaign,kind,state,targets,created,spec) VALUES('outside',?,'build','finished','[]',1,'{}')",
+            (other,),
+        )
+        for drv in (A, B):
+            self.sql("INSERT INTO tests VALUES('outside',?,'checkPhase','{}')", (drv,))
+        self.sql("INSERT INTO roles VALUES(?,?,?,'host')", (self.cid, B, A))
+        self.db.commit()
+        page = self.get("/packages/1").text
+        self.assertNotIn("Tested consumers", page)
+        self.assertNotIn("Test evidence", page)
+        self.assertEqual(self.client.get("/api/snapshot?campaign="+self.cid).json()["tested"],0)
+        self.sql("INSERT INTO tests VALUES(?,?,'checkPhase','{}')", (aid, B))
+        self.db.commit()
+        self.assertIn("Tested consumers", self.get("/packages/1").text)
+
+    def test_parallel_timeline_and_stopped_activities(self):
+        self.graph()
+        aid = self.attempt("build")
+        self.sql(
+            "INSERT INTO attempts(id,campaign,kind,state,targets,created,spec) SELECT 'parallel',campaign,kind,state,targets,created,spec FROM attempts WHERE id=?",
+            (aid,),
+        )
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,phase,stopped) VALUES(?,'1',?,'build','buildPhase',1)",
+            (aid, A),
+        )
+        self.db.commit()
+        soup = BeautifulSoup(self.get("/activity").text, "html.parser")
+        lanes = [
+            soup.select_one('[data-batch="' + v + '"]')["data-lane"]
+            for v in (aid, "parallel")
+        ]
+        self.assertNotEqual(*lanes)
+        soup = BeautifulSoup(self.get("/batches/" + aid).text, "html.parser")
+        self.assertIn("Stopped", soup.get_text())
+        self.assertNotIn("Tested", soup.get_text())
 
 
 if __name__ == "__main__":

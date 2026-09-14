@@ -23,6 +23,7 @@ from ..model import stamp
 from . import base, data, logview, views
 from .resources import (
     ACTIVITY,
+    ACTIVITY_FEED,
     BATCH,
     BATCH_STATUS,
     BATCHES,
@@ -129,6 +130,17 @@ def create_app(state):
             return c["name"], lambda: views.activity(summary, ledger, v)
 
         return page(request, "activity", prepare)
+
+    def activity_feed(request):
+        view, cid = options(request), request.path_params["cid"]
+        with data.read(state) as db:
+            campaign = data.campaign(db, cid)
+            ledger = data.ledger(
+                db, cid, view.with_(sort="recent", kind="", outcome="", q="")
+            )
+        return representation(
+            request, lambda: views.activity_feed(ledger, campaign, view)
+        )
 
     def summary(request):
         view, cid = options(request), request.path_params["cid"]
@@ -418,6 +430,7 @@ def create_app(state):
         routes=[
             Route("/", home),
             ACTIVITY.route(activity),
+            ACTIVITY_FEED.route(activity_feed),
             SUMMARY.route(summary),
             EVENTS.route(events),
             PACKAGES.route(packages),

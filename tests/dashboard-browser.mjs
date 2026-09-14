@@ -1,5 +1,5 @@
 // Run against an installed dashboard and Chromium's loopback debugging endpoint.
-// node tests/experiment-browser.mjs http://127.0.0.1:8777 results/tagflow
+// node tests/dashboard-browser.mjs http://127.0.0.1:8777 results/tagflow
 import { mkdir, writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 const base = process.argv[2] || "http://127.0.0.1:8777",
@@ -67,10 +67,22 @@ await go(base + "/", "document.querySelector('#summary') && window.htmx");
 assert.equal(await evaluate("document.querySelector('#workspace').dataset.campaign"),cid);
 assert.equal(await evaluate("document.documentElement.scrollWidth"),390);
 await screenshot("activity-mobile");
+const initialSample = await evaluate("Number(document.querySelector('#activity-feed').dataset.sampled)");
+await wait(6200);
+assert.ok(await evaluate("Number(document.querySelector('#activity-feed').dataset.sampled)") > initialSample, 'Timeline and recent batches refresh');
+await evaluate("document.querySelector('#activity-toggle').click()");
+await until("document.querySelector('#activity-feed').dataset.watch === '0'");
+const heldSample = await evaluate("document.querySelector('#activity-feed').dataset.sampled");
+await wait(6200);
+assert.equal(await evaluate("document.querySelector('#activity-feed').dataset.sampled"),heldSample,'Paused history stays still');
+assert.equal(await evaluate("document.querySelector('#summary').getAttribute('hx-trigger').includes('every')"),true);
+await evaluate("document.querySelector('#activity-toggle').click()");
+await until("document.querySelector('#activity-feed').dataset.watch === '1'");
+
 await go(url(old,"/packages"), "document.querySelectorAll('#package-list tbody tr').length > 3000");
 const fonts=await evaluate("[...document.querySelector('#package-list tbody tr').querySelectorAll('a,span,div')].map(e=>({size:getComputedStyle(e).fontSize,family:getComputedStyle(e).fontFamily}))");
 assert.ok(fonts.every(f=>f.size==='14px' && !f.family.includes('mono')));
-assert.ok(await evaluate("document.querySelector('#package-list tbody').getBoundingClientRect().top < 175"));
+assert.ok(await evaluate("document.querySelector('#package-list tbody').getBoundingClientRect().top < 205"));
 await screenshot("packages-mobile");
 await evaluate("scrollTo(0,2500)"); await wait(150);
 const before=await evaluate("scrollY");
@@ -95,8 +107,14 @@ console.log('log',await evaluate("({attempt:document.querySelector('#log-reader'
 assert.equal(await evaluate("document.documentElement.scrollWidth"),390);
 assert.deepEqual(await evaluate("[...new Set([...document.querySelectorAll('#log-scroll pre')].map(e=>getComputedStyle(e).fontSize))]"),['12px']);
 await screenshot("log-mobile");
+await evaluate("document.querySelector('#log-tools details').open=true");
+await wait(4500);
+assert.equal(await evaluate("document.querySelector('#log-tools details').open"),true,'Log options remain open across refreshes');
+await screenshot("log-options-mobile");
+await evaluate("document.querySelector('#log-tools details').open=false");
+
 // Fail one cursor request and hold the next beyond its polling interval.
-let cursorRequests = 0, delayedFinished = false;
+let cursorRequests = 0, delayedFinished = false, interruptionVisible = false;
 await call("Fetch.enable", {patterns:[{urlPattern:"*part=chunk*",requestStage:"Request"}]});
 const intercept = async (event) => {
   const m=JSON.parse(event.data);
@@ -106,17 +124,22 @@ const intercept = async (event) => {
   try {
     if(cursorRequests===1) await call("Fetch.failRequest",{requestId,errorReason:"Failed"});
     else {
-      if(cursorRequests===2) await wait(4500);
+      if(cursorRequests===2) {
+        interruptionVisible = await evaluate("!document.querySelector('#connection-status').hidden");
+        await wait(4500);
+      }
       await call("Fetch.continueRequest",{requestId});
       if(cursorRequests===2) delayedFinished=true;
     }
   } catch(error) { errors.push(error); }
 };
 ws.addEventListener("message",intercept);
-await wait(11000);
+await wait(13500);
 await call("Fetch.disable");ws.removeEventListener("message",intercept);
 assert.ok(cursorRequests>=3 && delayedFinished,`Cursor recovers from failure and slowness: ${cursorRequests}`);
-await wait(4500);
+assert.equal(interruptionVisible, true, 'A failed live request is visible');
+await wait(1000);
+assert.equal(await evaluate("document.querySelector('#connection-status').hidden"),true,'The error clears when that reader recovers');
 assert.equal(await evaluate("new Set([...document.querySelectorAll('[data-offset]')].map(e=>e.dataset.offset)).size === document.querySelectorAll('[data-offset]').length"),true);
 await evaluate("document.querySelector('#log-toggle').click()");
 await until("document.querySelector('#log-reader').dataset.follow==='0' && !document.querySelector('#log-reader').dataset.pausing");

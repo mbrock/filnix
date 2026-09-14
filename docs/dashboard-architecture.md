@@ -34,16 +34,21 @@ uses `hx.navigate` to select `#workspace` from that same response. There is no
 `HX-Request` response variant, viewer cookie or server-side viewer session.
 Browser history retains the visited URL and scroll position.
 
-Activity counts/current work, batch status and dependency neighborhoods refresh
+Activity counts/current work, timeline/recent batches, package details, batch
+status and dependency neighborhoods refresh
 independently with `hx.refresh` and `outerMorph`. The campaign SSE connection sits
 inside the workspace but outside these replacing regions. It emits named revision
 hints, which trigger normal HTML requests. Reconnection announces the current
-revision; a 15-second poll repairs missed notifications. `transport=poll` uses a
+revision; a five-second poll also picks up phase/heartbeat changes that do not append
+campaign events. `transport=poll` uses a
 three-second poll without SSE. Finished resources stop refreshing.
 
-Inventories and batch tables are held snapshots. All matching rows are present in
+Activity follows by default, with an explicit Pause/Follow control for its
+timeline and recent batches. Concurrent attempts occupy separate timeline rows.
+Inventories and the full batch table are held snapshots with a visible timestamp
+and refresh notice. All matching rows are present in
 the document, including all 13,772 inventory attributes if selected. Browser Find
-works across them. A small notice offers an explicit refresh; progress does not
+works across them. The notice offers an explicit refresh; progress does not
 continually reorder the list. Package rows show name, version, description and
 result, with Built muted and Tested emphasized. Timings belong to the batch page.
 
@@ -61,7 +66,9 @@ cursor requests the next full HTML page and selects only its new records and nex
 cursor. Replacing that cursor avoids duplicate append on retry. `hx.read_cursor`
 uses recurring requests plus click-to-retry and `this:drop`, so another tick does
 not abort a slow request. A source picker and capture metadata refresh separately
-without rereading the raw log.
+without rereading the raw log. Those automatic reads wait while the source
+form or options menu is being used, so they cannot close the menu or reset a
+selection. Open diagnostic sections also survive morph updates.
 
 Invalid offsets and the 2,000-record display cap replace the requesting reader.
 `hx.recover_reader(closest="#log-reader")` resolves relative to that requester:
@@ -96,11 +103,21 @@ node tests/dashboard-browser.mjs http://127.0.0.1:8788 results/tagflow
 The browser regression uses the two real inventory campaign IDs, without writing
 to either campaign. It checks full lists, mobile fonts and widths, package/detail
 history with scroll restoration, batch filters, dependencies, live log cursors,
-pause/resume, failed/slow cursor requests, duplicate offsets, desktop rendering,
+pause/resume, failed/slow cursor requests and visible recovery, options staying
+open across refreshes, live/paused timeline sampling, duplicate offsets, desktop rendering,
 no-JavaScript pages and the
 absence of UI JSON requests. Inspect its captured images as well as the assertions.
 Unit tests cover escaping, exact full-page/cache parity, ownership, validation,
-reader reset headers, bounded cursors, completion and CSV.
+reader reset headers, bounded cursors, completion, CSV, refresh contracts,
+overlapping timeline rows and test evidence scoped to its campaign.
+
+Dependency nodes say Ready when their required outputs are available; this does
+not claim they were compiled in this campaign. The evidence tooltip distinguishes
+a store observation from inference through a consumer reaching a build phase.
+A stopped activity says Stopped until successful check evidence supports Tested.
+Build failures and evaluation errors have separate filters, so the overview
+counts lead to the matching rows; All failures combines the failure categories.
+Failed refreshes display a notice until that reader successfully recovers.
 
 Build an immutable application, run a preview against the real read-only database
 under `filnix-web`, then select that store path with `deploy/experiment/install`

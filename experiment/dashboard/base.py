@@ -46,6 +46,7 @@ ROW = ["border-b", "border-stone-200"]
 CELL = ["px-2", "py-1.5", "align-top"]
 HEADING = ["font-semibold", "text-left"]
 STATES = {
+    "ready": ("Ready", ["text-stone-500"]),
     "available": ("Built", ["text-stone-400"]),
     "tested": ("Tested", ["text-emerald-800", "font-medium"]),
     "failed": ("Failed", ["text-red-800"]),
@@ -250,6 +251,15 @@ def shell(title, campaign, campaigns, view, section, content):
                                 role="status",
                             ):
                                 text("Loading…")
+                with tag.p(
+                    ["text-amber-800", "px-3", "sm:px-5", "py-1", "text-xs"],
+                    id="connection-status",
+                    role="status",
+                    hidden=True,
+                ):
+                    text(
+                        "Could not load new data. Automatic updates will retry; you can also reload."
+                    )
                 with tag.main(
                     ["max-w-[96rem]", "mx-auto", "px-3", "sm:px-5", "py-3"],
                     id="content",

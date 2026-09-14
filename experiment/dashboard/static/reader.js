@@ -2,6 +2,39 @@
 (() => {
   const bound = new WeakSet(), navigations = new WeakSet();
   let anchor = null, adjusting = false;
+  const failedReaders = new Set();
+  const busy = (reader) => !!reader?.querySelector('#log-tools details[open], #log-tools form[data-editing], #log-tools form:focus-within');
+  const readerKey = (ctx) => ctx?.sourceElement?.id || ctx?.target?.id || "workspace";
+  function connectionStatus() {
+    const status = document.querySelector("#connection-status");
+    if (status) status.hidden = failedReaders.size === 0;
+  }
+  function loadFailed(event) {
+    const ctx = event.detail.ctx;
+    if (event.detail.error?.name === "AbortError" || (ctx && !ctx.sourceElement?.isConnected)) return;
+    failedReaders.add(readerKey(ctx));
+    connectionStatus();
+  }
+  document.addEventListener("htmx:error", loadFailed);
+  document.addEventListener("htmx:response:error", loadFailed);
+  document.addEventListener("htmx:after:request", (event) => {
+    const ctx = event.detail.ctx;
+    if (ctx?.response?.status < 400) failedReaders.delete(readerKey(ctx));
+    connectionStatus();
+  });
+  document.addEventListener("input", (event) => {
+    const form = event.target.closest?.("#log-tools form");
+    if (form) form.dataset.editing = "1";
+  });
+  document.addEventListener("htmx:before:morph:attr", (event) => {
+    // Open diagnostic sections belong to the reader, not to refreshed data.
+    if (event.target.tagName === "DETAILS" && event.detail.attrName === "open") event.preventDefault();
+  });
+  document.addEventListener("htmx:before:swap", (event) => {
+    const ctx = event.detail.ctx, source = ctx?.sourceElement;
+    const reader = source?.closest("#log-reader");
+    if (busy(reader) && (source?.id === "log-tools" || (source?.id === "log-cursor" && ctx.target === reader))) event.preventDefault();
+  });
 
   function pauseAt(scroll, reader) {
     const toggle = reader.querySelector("#log-toggle");
@@ -62,11 +95,16 @@
   document.addEventListener("htmx:before:request", (event) => {
     const ctx = event.detail.ctx, source = ctx?.sourceElement;
     if (source?.getAttribute("hx-push-url") === "true") navigations.add(ctx);
+    if ((source?.id === "log-tools" || source?.id === "log-cursor") && busy(source.closest("#log-reader"))) event.preventDefault();
     if (source?.id === "log-cursor" && source.closest("#log-reader")?.dataset.pausing)
       event.preventDefault();
   });
   document.addEventListener("htmx:after:swap", (event) => {
-    if (event.detail.ctx && navigations.has(event.detail.ctx)) window.scrollTo(0, 0);
+    if (event.detail.ctx && navigations.has(event.detail.ctx)) {
+      window.scrollTo(0, 0);
+      failedReaders.clear();
+      connectionStatus();
+    }
     requestAnimationFrame(settle);
   });
   document.addEventListener("htmx:after:settle", () => requestAnimationFrame(settle));

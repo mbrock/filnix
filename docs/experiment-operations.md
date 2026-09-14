@@ -20,11 +20,14 @@ The live viewer uses Tagflow, htmx 4 and Tailwind. See
 [dashboard architecture](dashboard-architecture.md) for the resource contracts,
 module responsibilities and development checks.
 
-**Activity** shows counts, current work, a Build/Plan timeline and recent batches.
+**Activity** follows counts, current work, a Build/Plan timeline and recent
+batches. Pause holds the timeline/history while current work continues updating;
+Follow resumes. Overlapping attempts occupy separate timeline rows.
 **Packages** shows the complete selected result set with no pagination or virtual
 rows: names, versions, descriptions and results. Built is muted; Tested is stronger.
 Use browser Find. Source links, diagnostics, test evidence and dependencies are in
-the package's own page. The options menu contains refresh and CSV export.
+the package's own page. A visible timestamp and refresh link identify the snapshot; the options menu
+contains CSV export.
 **Batches** holds the timing data, with all attempts, outcome/type filters, search
 and duration/date sorting. **Dependencies** follows a current build, or a pinned
 package, with inputs and consumers. Built inputs can be expanded.
@@ -35,7 +38,7 @@ Old query links and view fragments redirect into the new pages. Only package
 column headings remain sticky. All timestamps use UTC.
 
 Inventories and batch lists stay still while reading. Explicit refresh loads a new
-snapshot. Current work and dependency states refresh independently using HTML;
+snapshot. Current work, package details and dependency states refresh independently using HTML;
 SSE supplies revision hints with polling recovery. Paused or completed history
 remains browsable. A completed batch may contain failed individual recipes; a
 batch with errors may contain successful builds and successful checks.
@@ -48,7 +51,7 @@ package list; batch wall time includes preparation, dependencies and all roots.
 
 **Live log** follows a current build and moves to the next batch at EOF. An
 individual batch or package link pins its own log. Source selection isolates a
-build. Scrolling upward or pressing Pause holds the reading position; Resume
+build. Refreshes wait while the log controls are being edited. Scrolling upward or pressing Pause holds the reading position; Resume
 returns to the current tail. Earlier output, wrapping, 12/14/16 px font size,
 window search and raw download are available. The reader is bounded to 2,000
 records, with raw-byte cursors and retry after failed or slow requests. The raw
