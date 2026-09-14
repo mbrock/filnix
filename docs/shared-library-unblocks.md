@@ -374,3 +374,41 @@ restoring asynchronous cancellation around that call remains timing-sensitive;
 adding diagnostic output changes the outcome. This is not a verified fix, so
 neither experimental libc change is enabled in the main toolchain. The remaining
 work is reliable cancellation/signal delivery across a blocking runtime call.
+
+### Isolating libc experiments from the campaign
+
+`tests/pipewire-cancellation.nix` makes this a reproducible, opt-in experiment.
+It derives a private libc from the existing compiler components, without
+changing the compiler wrapper, sysroot or cross package set. PipeWire and its
+dependencies still compile against the ordinary libc. Meson's per-test wrapper
+then prepends the private libc to `LD_LIBRARY_PATH`, after Meson sets its own
+build-tree library paths. The replacement applies to the test process and its
+loaded libraries, rather than mixing two Fil-C libcs within one process.
+
+This approach is for changes that preserve the libc ABI. Future cancellation
+patches can be added to that private derivation without invalidating the
+campaign's existing packages. Comparing recursive derivation closures confirmed
+that all 1,560 existing dependencies are retained: only the private libc and
+runner are added, and the PipeWire leaf derivation changes. The initial private
+libc is exactly the already-built cancellation probe, so it is reused too.
+
+```sh
+# Check the selected libc, cooperative cancellation and cleanup handlers.
+nix build --impure -f tests/pipewire-cancellation.nix probe \
+  --max-jobs 1 --cores 2 --no-link -L
+
+# Exercise PipeWire against that libc; the blocking cancellation test remains
+# enabled and the experiment can fail while the port is being developed.
+nix build --impure -f tests/pipewire-cancellation.nix pipewire \
+  --max-jobs 1 --cores 2 --keep-failed --no-link -L
+```
+
+The focused probe compiles with the ordinary toolchain, verifies the private
+libc's path in `/proc/self/maps`, and checks successful cancellation, cleanup
+and the `PTHREAD_CANCELED` return value. No campaign configuration or global
+libc override is needed to run either experiment.
+Both paths were exercised: the focused probe passes, and the private-libc
+PipeWire run passes 47 groups. Its remaining cancellation test now times out
+instead of aborting on the missing GCC unwinder, matching the earlier isolated
+investigation. This validates the test setup without claiming cancellation is
+fixed.
