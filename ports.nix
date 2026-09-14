@@ -477,6 +477,16 @@ in
     (skipTests "1 failure")
   ])
 
+  (for pkgs.duktape [
+    (patch ./patches/duktape-valstack-rebase.patch)
+    (use {
+      doInstallCheck = true;
+      installCheckPhase = ''
+        "$out/bin/duk" ${./tests/duktape-valstack.js}
+      '';
+    })
+  ])
+
   # ━━━ Graphics ━━━
 
   (for pkgs.pixman [
@@ -499,6 +509,35 @@ in
     (patch ./ports/patch/pango-1.54.0.patch)
   ])
 
+  (for pkgs.gdk-pixbuf [
+    (patch ./ports/patch/gdk-pixbuf-2.42.12.patch)
+  ])
+
+  (for pkgs.graphene [
+    (patch ./ports/patch/graphene-1.10.8.patch)
+    # gtk-doc generates an unported GType scanner; GIR generation stays on.
+    (arg { withDocumentation = false; })
+  ])
+
+  (for pkgs.libepoxy [
+    # Nixpkgs ties EGL to X11, but GTK's Wayland backend also needs EGL.
+    (use (old: {
+      mesonFlags =
+        builtins.filter (f: !(pkgs.lib.hasPrefix "-Degl=" f)) old.mesonFlags
+        ++ [ "-Degl=yes" ];
+      propagatedBuildInputs = pkgs.lib.unique (
+        old.propagatedBuildInputs ++ [ final.libGL ]
+      );
+      env = old.env // {
+        NIX_CFLAGS_COMPILE =
+          (old.env.NIX_CFLAGS_COMPILE or "")
+          + pkgs.lib.optionalString (
+            (old.env.NIX_CFLAGS_COMPILE or "") == ""
+          ) " -DLIBGL_PATH=\"${pkgs.lib.getLib final.libGL}/lib\"";
+      };
+    }))
+  ])
+
   (for pkgs.fontconfig [
     (patch ./ports/patch/fontconfig-2.15.0.patch)
     (use {
@@ -518,7 +557,9 @@ in
 
   (for pkgs.harfbuzz [
     (patch ./ports/patch/harfbuzz-9.0.0.patch)
-    (arg { withGraphite2 = false; })
+    (arg {
+      withGraphite2 = false;
+    })
     (skipCheck "fuzzing fails")
   ])
 
@@ -577,9 +618,22 @@ in
           }/bin/python3"
         ];
         outputs = builtins.filter (output: output != "devdoc") old.outputs;
-        # Runnable cross builds now install their own patched test sources.
-        # Do not replace them with files/docs from the native 1.84 package.
-        postInstall = "";
+        # The installed scanner also needs this when inspecting downstream
+        # dumpers; a build-only PATH entry would leave those scans broken.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace giscanner/shlibs.py \
+            --replace-fail "['ldd', binary.args[0]]" "['${pkgs.glibc.bin}/bin/ldd', binary.args[0]]"
+        '';
+        # GLib's bootstrap build has no scanner. Install the GLib metadata
+        # generated here, which GI 1.80 otherwise keeps only for its tests.
+        # Also retain our patched test sources instead of Nixpkgs' native ones.
+        postInstall = ''
+          mkdir -p "$dev/share/gir-1.0" "$out/lib/girepository-1.0"
+          for namespace in GLib GObject GModule Gio; do
+            cp "gir/$namespace-2.0.gir" "$dev/share/gir-1.0/"
+            cp "gir/$namespace-2.0.typelib" "$out/lib/girepository-1.0/"
+          done
+        '';
       }))
     ];
   }
@@ -1092,13 +1146,49 @@ in
     (configure "--disable-hardware-acceleration")
   ])
 
+  (for pkgs.at-spi2-core [
+    (src "2.60.5" "sha256-YFmnfVB0OP9sjW0GAl+Pn1d0+g+Oq+nJsFmxzEHhu8A=" (
+      v:
+      "https://download.gnome.org/sources/at-spi2-core/2.60/at-spi2-core-${v}.tar.xz"
+    ))
+    (patch ./ports/patch/at-spi2-core-2.60.5.patch)
+    (tool pkgs.python3)
+    (arg {
+      systemd = final.systemdLibs;
+    })
+    (addMesonFlag "-Dintrospection=enabled")
+  ])
+
+  (for pkgs.dconf [
+    (patch ./patches/dconf-filc-gtype.patch)
+    # Vala is used only to generate API metadata here, not linked into dconf.
+    (arg {
+      vala = pkgs.vala;
+      withDocs = false;
+    })
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        # Keep the ABI checks, comparing against Fil-C's exported names.
+        sed -i 's/^/pizlonated_/' client/symbols.txt gsettings/symbols.txt
+      '';
+    }))
+  ])
+
   {
     gtk3 = for pkgs.gtk3 [
       (pin "3.24.52" "sha256-gJMfpHKne5oWT2dA48C0RPrGdwBUYy01p/+dZ55ee58=")
       (patch ./ports/patch/gtk-3.24.52.patch)
+      # GTK3 does not request GLib among its generator inputs itself.
+      (tool final.glib)
+      (addMesonFlag "--cross-file=${pkgs.writeText "gtk3-filc-tools.conf" ''
+        [binaries]
+        gdbus-codegen = '${final.glib.dev}/bin/gdbus-codegen'
+        glib-genmarshal = '${final.glib.dev}/bin/glib-genmarshal'
+        glib-mkenums = '${final.glib.dev}/bin/glib-mkenums'
+      ''}")
+      (removeMesonFlag "-Dgtk_doc=true")
+      (addMesonFlag "-Dgtk_doc=false")
       (arg {
-        # The scanner's extension and generated dumpers use the Fil-C ABI.
-        gobject-introspection = final.gobject-introspection;
         x11Support = false;
         xineramaSupport = false;
         waylandSupport = true;
@@ -1109,10 +1199,22 @@ in
     gtk4 = for pkgs.gtk4 [
       (pin "4.14.5" "sha256-VUfyufAGsTOZPgcLh8F4BOBR79o5E/6soRCPor5B4k0=")
       (patch ./ports/patch/gtk-4.14.5.patch)
+      (link final.libdrm)
       (addMesonFlag "-Dintrospection=enabled")
+      # Keep the UI toolkit independent of the optional GStreamer video
+      # backend and its complete codec/plugin dependency tree.
+      (addMesonFlag "-Dmedia-gstreamer=disabled")
+      (use (old: {
+        buildInputs = builtins.filter (
+          input:
+          !(builtins.elem (input.pname or "") [
+            "gst-plugins-base"
+            "gst-plugins-bad"
+          ])
+        ) old.buildInputs;
+      }))
       (arg {
-        # The scanner's extension and generated dumpers use the Fil-C ABI.
-        gobject-introspection = final.gobject-introspection;
+        meson = import ./toolchain/meson-filc.nix { inherit pkgs; };
         x11Support = false;
         xineramaSupport = false;
         waylandSupport = true;

@@ -1,0 +1,36 @@
+--- a/src/duktape.c
++++ b/src/duktape.c
+@@ -19422,7 +19422,6 @@
+ 	duk_tval *pre_top;
+ 	duk_tval *pre_end;
+ 	duk_tval *pre_alloc_end;
+-	duk_ptrdiff_t ptr_diff;
+ 	duk_tval *new_valstack;
+ 	duk_size_t new_alloc_size;
+ 	duk_tval *tv_prev_alloc_end;
+@@ -19517,16 +19516,16 @@
+ 	DUK_ASSERT(thr->valstack_end - thr->valstack == pre_end - pre_valstack);
+ 	DUK_ASSERT(thr->valstack_alloc_end >= thr->valstack_end);
+ 
+-	/* Write new pointers.  Most pointers can be handled as a pointer
+-	 * difference.
+-	 */
+-	ptr_diff = (duk_ptrdiff_t) ((duk_uint8_t *) new_valstack - (duk_uint8_t *) thr->valstack);
+-	tv_prev_alloc_end = (duk_tval *) (void *) ((duk_uint8_t *) thr->valstack_alloc_end + ptr_diff);
++	/* Rebase from the new allocation, retaining its pointer capability.
++	 * Read offsets after realloc: finalizers may have resized this stack
++	 * recursively.  Arithmetic on the old base does not dereference it.
++	 */
++	tv_prev_alloc_end = new_valstack + (thr->valstack ? thr->valstack_alloc_end - thr->valstack : 0);
++	thr->valstack_bottom = new_valstack + (thr->valstack ? thr->valstack_bottom - thr->valstack : 0);
++	thr->valstack_top = new_valstack + (thr->valstack ? thr->valstack_top - thr->valstack : 0);
++	thr->valstack_end = new_valstack + (thr->valstack ? thr->valstack_end - thr->valstack : 0);
++	thr->valstack_alloc_end = new_valstack + new_size;
+ 	thr->valstack = new_valstack;
+-	thr->valstack_bottom = (duk_tval *) (void *) ((duk_uint8_t *) thr->valstack_bottom + ptr_diff);
+-	thr->valstack_top = (duk_tval *) (void *) ((duk_uint8_t *) thr->valstack_top + ptr_diff);
+-	thr->valstack_end = (duk_tval *) (void *) ((duk_uint8_t *) thr->valstack_end + ptr_diff);
+-	thr->valstack_alloc_end = (duk_tval *) (void *) ((duk_uint8_t *) new_valstack + new_alloc_size);
+ 
+ 	/* Assertions: pointer sanity after pointer updates. */
+ 	DUK_ASSERT(thr->valstack_bottom >= thr->valstack);

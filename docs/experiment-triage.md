@@ -60,7 +60,7 @@ closure comparisons are in ignored `results/experiment-triage-20260913/`.
 
 ## Deferred findings from the first batches
 
-### Targeted GTK follow-up, 2026-09-14
+### Initial targeted GTK follow-up, 2026-09-14
 
 Plan `83b6d44e-5ce8-483c-80d6-5bffbdc047a4` evaluated only
 `gobject-introspection-unwrapped`, `gnutls`, `gtk3` and `gtk4` from committed
@@ -81,6 +81,28 @@ GStreamer plugin closure. Any such recipe changes need a fresh recorded
 revision. This queue submission did not clear shared failures or disable tests.
 Full explaining chains were saved in
 `results/gtk-gnutls-ports/{gtk3,gtk4}-queue-blockers.json`.
+
+### Shared GTK/TLS repairs, 2026-09-14
+
+The subsequent investigation fixes the scanner/tool ABI boundary across the
+Fil-C package scope, builds upstream-patched AT-SPI and PyGObject, and repairs
+DConf and Duktape failures found through GTK's shared inputs. AT-SPI now links
+the systemd libraries without the full tool closure; GTK4 omits its optional
+GStreamer video backend. GTK4 builds, and the original dependency blockers are
+absent from the replacement toolkit graphs. See [gtk-ports.md](gtk-ports.md)
+for version choices, limitations and reproducible consumer checks.
+
+Observed checks include 60 introspection tests, 14 DConf tests, six libproxy
+tests, six GLib networking test groups, and a PyGObject runtime probe. These
+results belong to their exact new derivations; they do not erase the original
+failed attempts. Separate TLS and GTK consumer checks are exposed by the flake.
+
+Runner 0.12.1 accepts explicit source revisions when replanning failed, blocked
+or inconclusive candidates as well as evaluation failures. The new plan records
+each candidate's previous recipe/result before replacing it; active and already
+successful candidates cannot be replaced. This allows a bounded downstream
+retry without changing the campaign's frozen default source or automatically
+reopening every evaluation failure. The regression suite has 104 passing tests.
 
 ### Earlier findings
 

@@ -1,8 +1,9 @@
-# GTK and GObject introspection ports
+# GTK, GObject introspection and GnuTLS
 
-These ports are enabled for build attempts. Patch application and dependency
-evaluation have been checked; this checkpoint has not compiled or run them.
-The existing experiment uses a frozen source snapshot and is unaffected.
+The September 2026 follow-up builds the shared GNOME/TLS dependencies using
+Fil-C. It keeps the compiler, GLib 2.80.4 and Python 3.12.5 derivations unchanged.
+The campaign can retry selected failed candidates from a committed revision;
+its original source, inventory and attempt history remain intact.
 
 ## Source alignment
 
@@ -11,88 +12,107 @@ The existing experiment uses a frozen source snapshot and is unaffected.
 | GTK3 | 3.24.52 | `projects/gtk-3.24.52` |
 | GTK4 | 4.14.5 | `projects/gtk-4.14.5` |
 | GnuTLS | 3.8.9, retaining Nixpkgs security patches | `projects/gnutls-3.8.7.1` |
-| gobject-introspection | 1.80.1, matching GLib 2.80.4 | `projects/gobject-introspection-1.80.1` |
+| gobject-introspection | 1.80.1 | `projects/gobject-introspection-1.80.1` |
+| AT-SPI | 2.60.5 | `projects/at-spi2-core-2.60.5` |
+| PyGObject | 3.48.2 | `projects/pygobject-3.48.2` |
 
-All four project directories are already present at the ports pin,
-`4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`. Their trees are unchanged at the
-upstream revision inspected on 2026-09-14,
-`9a04915f14538072e0662f1dd16f1e3b22dd33e2`. Neither source pin needs to move.
+These project directories exist at the existing ports pin,
+`4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`. The GTK/GI/GnuTLS project trees were
+also unchanged at the upstream revision inspected on 2026-09-14,
+`9a04915f14538072e0662f1dd16f1e3b22dd33e2`. No compiler rebuild or source-pin
+change was needed. Existing upstream patches for GdkPixbuf, Graphene, Pango
+and HarfBuzz are applied as well.
 
-GTK3 and GnuTLS patches were extracted with `ports/extract-patch.sh`. Repeating
-extraction for GTK4 and introspection reproduced their existing patches byte
-for byte. The GTK patches adapt GType handling to Fil-C's pointer semantics;
-they are more than configure-script workarounds. Generated Autotools changes
-remain excluded; the compiler's existing libtool setup hook handles its probes.
+The patches primarily adapt pointer-valued GTypes. Generated Autotools changes
+remain excluded: the existing compiler libtool hook handles those probes.
+GnuTLS keeps Nixpkgs 3.8.9 and all six security patches; its upstream port changes
+the atfork DSO argument and disables hardware acceleration.
 
-The GnuTLS patch changes the `__register_atfork` call's DSO argument. It also
-applies to Nixpkgs' 3.8.9, so the port keeps that release, the certificate-path
-patch, and all six existing security patches. Hardware acceleration is disabled
-as in upstream's build recipe.
+## Matching generators to the target ABI
 
-The backend choices follow upstream's
-[GTK3 recipe](https://github.com/pizlonator/fil-c/blob/4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c/pizlix/build_postlc4_chroot_project_gtk3.sh)
-and
-[GTK4 recipe](https://github.com/pizlonator/fil-c/blob/4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c/pizlix/build_postlc4_chroot_project_gtk4.sh):
-Wayland and Broadway enabled, X11 disabled, and Vulkan disabled for GTK4.
-Tracker support is disabled. Both ports explicitly request introspection.
-Nixpkgs' disabled GTK test suites remain disabled; the upstream recipes do not
-run those suites either.
+The introspection scanner loads a Python C extension, compiles C dumpers and
+executes them against the inspected library. Native scanner tools cannot provide
+Fil-C's GType and pointer semantics. The port builds its own scanner with Fil-C
+Python, disables the prebuilt scanner path, and preserves the interpreter in
+the installed shebang. GLib remains without introspection during bootstrap.
 
-GTK4 is intentionally aligned with the upstream port's 4.14.5 source. A
-downstream package that requires a newer GTK can still fail at configure time.
-Removing the old blanket exclusions does not establish compatibility for every
-dependent package.
+The scanner's test fixtures generate matching GLib/GObject/GModule/Gio GIRs and
+typelibs. They are explicitly installed for consumers, since this GI version
+normally expects GLib to install them. The port fixes static inline linkage,
+new setuptools' MSVC module location, and the installed scanner's absolute ldd
+path. All 60 introspection tests pass.
 
-## Bootstrapping introspection
+`ports/overlay.nix` supplies target GLib and introspection through `newScope`,
+so ordinary `callPackage` consumers also receive the matching tools. Explicit
+scope overrides win; the native package set stays unchanged. GTK3 additionally
+names gdbus-codegen, glib-genmarshal and glib-mkenums in a Meson cross file: a
+transitive native GLib otherwise wins Meson's native pkg-config lookup.
+GTK4 uses a small native Meson override whose built-in enum template emits
+pointer-valued once initialization. This does not rebuild GLib or the compiler.
 
-Introspection builds a C extension for its Python scanner, and the scanner
-compiles and runs small programs linked against the library being inspected.
-Fil-C Python must load the Fil-C extension; the generated programs also need
-the upstream-patched GType dumper.
+PyGObject uses the upstream GType patch and leaves the bootstrap Python type's
+NULL metaclass initializer for `PyType_Ready` until its real metaclass exists.
+The runtime check imports GI and exercises properties, a Python signal callback,
+and a Gio memory stream.
 
-Nixpkgs normally supplies prebuilt scanner tools to a cross build. Here the
-Fil-C host binaries can run directly on the build machine. The port therefore:
+## Other shared dependency fixes
 
-1. Removes its prebuilt introspection input and builds its own scanner with
-   `gi_cross_use_prebuilt_gi=false`.
-2. Selects Fil-C Python with mako, markdown and setuptools. A small local Meson
-   patch preserves that interpreter in the generated scanner's shebang.
-3. Uses GLib without introspection while bootstrapping. The existing GLib port
-   and compiler derivations stay unchanged.
-4. Enables the test subdirectory when `meson.can_run_host_binaries()` is true.
-   This builds the patched fixtures and installs their matching source files
-   for downstream users such as PyGObject. The Nix check phase stays enabled.
-5. Removes the cross-build step that copies documentation and test sources
-   from native introspection 1.84. API documentation is disabled for the
-   introspection package, so its unused `devdoc` output is also removed.
+- AT-SPI links `systemdLibs`, avoiding the full systemd tool closure. Its upstream
+  patch and introspection remain enabled.
+- DConf uses native Vala for VAPI generation, target GLib's DBus generator, and
+  capability-preserving pointer operations for GTypes and once initialization.
+  Its exported-symbol check expects Fil-C's real `pizlonated_` names. All 14
+  DConf tests pass.
+- Duktape's value-stack resize now rebases pointers from the new allocation,
+  preserving offsets after realloc-triggered finalizers. A repeated large-call
+  and GC check passes; downstream libproxy passes all six tests.
+- libepoxy enables EGL independently of X11 for GTK's Wayland backend.
 
-GTK3 and GTK4 explicitly receive the Fil-C introspection wrapper as their
-scanner input. Ordinary Nix splicing would otherwise supply native tools.
-This override is limited to these two ports; other packages that generate
-introspection data may need the same adjustment when they are tested.
+GTK enables Wayland and Broadway and disables X11. GTK4 also disables Vulkan,
+Tracker and the optional GStreamer video backend. GTK3, DConf and Graphene API
+documentation is disabled where its generators are not ported; GIR generation
+is retained. Graphene currently reports no tests defined for the cross build.
+GTK's upstream suites remain disabled as in the Nixpkgs recipes. GTK4 4.14.5
+cannot satisfy applications requiring newer APIs; successful toolkit builds do
+not establish compatibility for every GNOME application.
 
-## Validation and next build
+## Reproducing the checks
 
-Run the evaluation regression check without permitting builds during evaluation:
+Evaluation checks scanner selection, retained GnuTLS security patches and the
+shared dependency choices without building during evaluation:
 
 ```sh
 nix eval --impure --json --offline \
   --option allow-import-from-derivation false --file tests/gtk-ports.nix
 ```
 
-It resolves all four derivations, checks the scanner/Python ABI selection and
-the lack of a direct prebuilt/self scanner input, and verifies that GnuTLS
-retains Nixpkgs' release and patches.
+Focused downstream checks are exposed as flake checks:
 
-At this checkpoint, the complete patch lists were applied in Nix order to
-downloaded release archives. All upstream patches and the local introspection
-patch apply with zero fuzz. Nixpkgs' existing GTK3 immodules-cache patch uses
-one line of fuzz with the normal patch invocation. The GTK post-patch script
-paths also exist in the selected versions. The compiler, Fil-C GLib, native
-GLib and native introspection derivation paths match the pre-change baseline.
+```sh
+nix build .#checks.x86_64-linux.pygobject \
+  .#checks.x86_64-linux.gtk3-runtime \
+  .#checks.x86_64-linux.gtk4-runtime \
+  .#checks.x86_64-linux.glib-networking \
+  .#checks.x86_64-linux.gnutls-tls \
+  --no-link --keep-going --max-jobs 2 --cores 4 -L
+```
 
-The next useful build is introspection alone: it exercises scanner bootstrap,
-GLib/GObject/Gio GIR generation and the test fixtures before GTK is attempted.
-After it succeeds, try GnuTLS, GTK3 and GTK4 separately, followed by a small
-downstream introspection consumer. Neither those builds nor changes to the
-running campaign are part of this checkpoint.
+The GTK checks compile Fil-C applications and run against Broadway, exercising
+builder-created widgets, properties, signals, Pango text shaping and a PNG
+round trip. They are focused consumer checks, not the GTK upstream suites or
+a visual validation.
+
+GLib networking's six test groups pass, including TLS connection and session
+expiry tests. Its check uses a reproducible CA bundle and resolves libc directly
+for its clock interposer because Fil-C does not implement `RTLD_NEXT`.
+
+The GnuTLS check runs the TLS, certificate and slow suites separately from
+gnulib's allocator, stack-inspection and inline-assembly portability probes.
+It fixes the test PKCS#11 module's atfork DSO argument just like the library's
+upstream port, and recognizes Fil-C's abort signal in the deliberate invalid-API
+subtests. The main cross-built packages retain their original check settings;
+separate checks do not invent test evidence in the campaign catalog.
+
+Investigation logs and graph comparisons are retained locally in
+`results/gtk-unlock/`. Nix build logs are available with `nix log` on the recorded
+derivations, and campaign retries retain both original and replacement recipes.

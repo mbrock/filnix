@@ -22,3 +22,42 @@ diff --git a/meson.build b/meson.build
    subdir('tests')
  endif
  
+diff --git a/girepository/gitypelib-internal.h b/girepository/gitypelib-internal.h
+--- a/girepository/gitypelib-internal.h
++++ b/girepository/gitypelib-internal.h
+@@ -189,7 +189,7 @@
+ #if defined (G_CAN_INLINE) && defined (G_ALWAYS_INLINE)
+ 
+ G_ALWAYS_INLINE
+-inline gboolean
++static inline gboolean
+ _blob_is_registered_type (GTypelibBlobType blob_type)
+ {
+   switch (blob_type)
+diff --git a/giscanner/ccompiler.py b/giscanner/ccompiler.py
+--- a/giscanner/ccompiler.py
++++ b/giscanner/ccompiler.py
+@@ -26,7 +26,10 @@
+ import sys
+ import distutils
+ 
+-from distutils.msvccompiler import MSVCCompiler
++try:
++    from distutils.msvccompiler import MSVCCompiler
++except ImportError:
++    from distutils._msvccompiler import MSVCCompiler
+ from distutils.unixccompiler import UnixCCompiler
+ from distutils.cygwinccompiler import Mingw32CCompiler
+ from distutils.sysconfig import get_config_vars
+diff --git a/tests/scanner/test_ccompiler.py b/tests/scanner/test_ccompiler.py
+--- a/tests/scanner/test_ccompiler.py
++++ b/tests/scanner/test_ccompiler.py
+@@ -212,7 +212,7 @@
+         """Checks complete compilation command."""
+         args = self.compile_args(environ=dict(CC='clang'),
+                                  source='/tmp/file.c')
+-        self.assertEqual(['clang',
++        self.assertEqual(['clang', '-g',
+                           '-c', '/tmp/file.c',
+                           '-o', '/tmp/file.o',
+                           '-Wno-deprecated-declarations'],

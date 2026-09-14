@@ -10,11 +10,21 @@ let
     for
     arg
     use
+    src
+    patch
     skipTests
     ;
 in
 # This will be converted to a packageOverrides function
 [
+  (for "pygobject3" [
+    (src "3.48.2" "sha256-B5SutKm+MaCSrCBiG19U7CgPkYWUPTKLEFza5imK0ac=" (
+      v: "https://download.gnome.org/sources/pygobject/3.48/pygobject-${v}.tar.xz"
+    ))
+    (patch ./ports/patch/pygobject-3.48.2.patch)
+    (patch ./patches/pygobject-metaclass-init.patch)
+  ])
+
   (for "pycparser" [
     (use (old: {
       # Its parser tests invoke cpp. Fil-C's compiler wrapper has no cpp alias;

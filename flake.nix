@@ -133,6 +133,23 @@
           inherit pkgs filcc;
           inherit (pkgsFilc) libffi;
         };
+        gtk3-runtime = import ./tests/gtk-runtime.nix {
+          inherit pkgs pkgsFilc;
+          major = 3;
+        };
+        gnutls-tls = import ./tests/gnutls-tls.nix {
+          inherit pkgs pkgsFilc;
+        };
+        glib-networking = import ./tests/glib-networking.nix {
+          inherit pkgs pkgsFilc;
+        };
+        pygobject = import ./tests/pygobject.nix {
+          inherit pkgs pkgsFilc;
+        };
+        gtk4-runtime = import ./tests/gtk-runtime.nix {
+          inherit pkgs pkgsFilc;
+          major = 4;
+        };
       };
 
       overlays.default = import ./ports/overlay.nix pkgs;

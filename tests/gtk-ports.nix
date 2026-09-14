@@ -34,6 +34,36 @@ assert ports.gtk3.version == "3.24.52";
 assert ports.gtk4.version == "4.14.5";
 assert builtins.elem "-Dintrospection=true" ports.gtk3.mesonFlags;
 assert builtins.elem "-Dintrospection=enabled" ports.gtk4.mesonFlags;
+assert builtins.elem "-Dmedia-gstreamer=disabled" ports.gtk4.mesonFlags;
+assert builtins.all (
+  input:
+  !(builtins.elem (input.pname or "") [
+    "gst-plugins-base"
+    "gst-plugins-bad"
+  ])
+) ports.gtk4.buildInputs;
+assert containsDrv ports.systemdLibs ports.at-spi2-core.buildInputs;
+assert !(containsDrv ports.systemd ports.at-spi2-core.buildInputs);
+assert builtins.all
+  (pkg: containsDrv ports.gobject-introspection pkg.nativeBuildInputs)
+  [
+    ports.pango
+    ports.harfbuzz
+    ports.gdk-pixbuf
+    ports.graphene
+    ports.at-spi2-core
+  ];
+# Unported packages inherit ABI-matched generators from callPackage too.
+assert containsDrv ports.gobject-introspection
+  ports.libproxy.nativeBuildInputs;
+assert containsDrv ports.gobject-introspection
+  ports.python3Packages.pygobject3.nativeBuildInputs;
+assert containsDrv ports.glib ports.dconf.nativeBuildInputs;
+assert !(containsDrv ports.vala ports.dconf.buildInputs);
+assert ports.python3Packages.pygobject3.version == "3.48.2";
+assert
+  (pkgs.callPackage ({ gobject-introspection }: gobject-introspection) { })
+  .drvPath == pkgs.gobject-introspection.drvPath;
 # Keep the pinned Nixpkgs release and its security fixes when adding the port.
 assert ports.gnutls.version == pkgs.gnutls.version;
 assert builtins.all (

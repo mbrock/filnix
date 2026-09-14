@@ -1,0 +1,14 @@
+--- a/gi/pygobject-object.c
++++ b/gi/pygobject-object.c
+@@ -560,7 +560,10 @@ pygobject_register_class(PyObject *dict, const gchar *type_name,
+     } else
+         bases = runtime_bases;
+ 
+-    Py_SET_TYPE(type, PyGObject_MetaType);
++    /* The bootstrap GObject type precedes the Python metaclass. Leave its
++     * static NULL initializer for PyType_Ready to inherit from the base. */
++    if (PyGObject_MetaType != NULL)
++        Py_SET_TYPE(type, PyGObject_MetaType);
+     type->tp_bases = bases;
+     if (G_LIKELY(bases)) {
+         type->tp_base = (PyTypeObject *)PyTuple_GetItem(bases, 0);

@@ -1,0 +1,65 @@
+--- a/client/dconf-client.c
++++ b/client/dconf-client.c
+@@ -25,6 +25,7 @@
+ #include "../engine/dconf-engine.h"
+ #include "../common/dconf-paths.h"
+ #include <glib-object.h>
++#include <stdfil.h>
+ 
+ /**
+  * SECTION:client
+@@ -133,9 +134,9 @@
+    **/
+   dconf_client_signals[SIGNAL_CHANGED] = g_signal_new ("changed", DCONF_TYPE_CLIENT, G_SIGNAL_RUN_LAST,
+                                                        0, NULL, NULL, NULL, G_TYPE_NONE, 3,
+-                                                       G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                                                       G_TYPE_STRV | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                                                       G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++                                                       zorptr(G_TYPE_STRING, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++                                                       zorptr(G_TYPE_STRV, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++                                                       zorptr(G_TYPE_STRING, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * DConfClient::writability-changed:
+@@ -149,7 +150,7 @@
+   dconf_client_signals[SIGNAL_WRITABILITY_CHANGED] = g_signal_new ("writability-changed", DCONF_TYPE_CLIENT,
+                                                                    G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                                                    G_TYPE_NONE, 1,
+-                                                                   G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++                                                                   zorptr(G_TYPE_STRING, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ typedef struct
+--- a/shm/dconf-shm.c
++++ b/shm/dconf-shm.c
+@@ -33,8 +33,8 @@
+ {
+   static gchar *shmdir;
+ 
+-  if (g_once_init_enter (&shmdir))
+-    g_once_init_leave (&shmdir, g_build_filename (g_get_user_runtime_dir (), "dconf", NULL));
++  if (g_once_init_enter_pointer (&shmdir))
++    g_once_init_leave_pointer (&shmdir, g_build_filename (g_get_user_runtime_dir (), "dconf", NULL));
+ 
+   return shmdir;
+ }
+--- a/gdbus/dconf-gdbus-thread.c
++++ b/gdbus/dconf-gdbus-thread.c
+@@ -90,7 +90,7 @@
+ {
+   static GMainContext *worker_context;
+ 
+-  if (g_once_init_enter (&worker_context))
++  if (g_once_init_enter_pointer (&worker_context))
+     {
+       GMainContext *context;
+ 
+@@ -119,7 +119,7 @@
+ 
+       context = g_main_context_new ();
+       g_thread_new ("dconf worker", dconf_gdbus_worker_thread, context);
+-      g_once_init_leave (&worker_context, context);
++      g_once_init_leave_pointer (&worker_context, context);
+     }
+ 
+   return worker_context;
