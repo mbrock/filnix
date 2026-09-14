@@ -46,6 +46,10 @@ nix run .#sarcasm-prolog -- experiments/sarcasm-prolog/examples/table-entry.s
 nix build .#checks.x86_64-linux.sarcasm-prolog
 ```
 
+The [thread cancellation investigation](docs/pthread-cancellation.md) compares
+glibc, musl, Cosmopolitan, and FreeBSD libthr, with a reproducible Linux probe,
+recorded observations, and implications for Fil-C's native syscall boundary.
+
 ## What is Fil-C?
 
 [Fil-C](https://github.com/pizlonator/fil-c) by [Filip Pizlo](https://twitter.com/filpizlo) is a memory-safe C/C++ compiler. It prevents use-after-free, buffer overflows, and type confusion through runtime bounds checking and garbage collection - no code changes, no unsafe escape hatches. See [fil-c.org](https://fil-c.org) and the [upstream repo](https://github.com/pizlonator/fil-c) for details on how it works.
