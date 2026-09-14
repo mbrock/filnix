@@ -1,0 +1,75 @@
+=== glibc-2.36 case=0 (20 runs) ===
+     20 case=0 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+     20 case=0 cleaned_inside_handler=1 handler_returned=0 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=0 errno=0
+=== glibc-2.36 case=1 (20 runs) ===
+     20 case=1 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.36 case=2 (20 runs) ===
+     20 case=2 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.36 case=3 (20 runs) ===
+     20 case=3 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.36 case=4 (20 runs) ===
+     20 case=4 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=4 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.36 case=5 (20 runs) ===
+     20 case=5 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=5 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.41 case=0 (20 runs) ===
+     20 case=0 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=0 cleaned_inside_handler=0 handler_returned=1 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.41 case=1 (20 runs) ===
+     20 case=1 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.41 case=2 (20 runs) ===
+     20 case=2 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.41 case=3 (20 runs) ===
+     20 case=3 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.41 case=4 (20 runs) ===
+     20 case=4 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=4 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.41 case=5 (20 runs) ===
+     20 case=5 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=5 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.44 case=0 (20 runs) ===
+     20 case=0 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=0 cleaned_inside_handler=0 handler_returned=1 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.44 case=1 (20 runs) ===
+     20 case=1 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.44 case=2 (20 runs) ===
+     20 case=2 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.44 case=3 (20 runs) ===
+     20 case=3 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== glibc-2.44 case=4 (20 runs) ===
+     20 case=4 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=4 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== glibc-2.44 case=5 (20 runs) ===
+     20 case=5 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=5 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== musl-1.2.6 case=0 (20 runs) ===
+     20 case=0 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+     20 case=0 cleaned_inside_handler=0 handler_returned=1 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=0 errno=0
+=== musl-1.2.6 case=1 (20 runs) ===
+     20 case=1 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== musl-1.2.6 case=2 (20 runs) ===
+     20 case=2 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== musl-1.2.6 case=3 (20 runs) ===
+     20 case=3 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+=== musl-1.2.6 case=4 (20 runs) ===
+     20 case=4 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=4 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=0 blocked_before_rescue=1 returned_before_rescue=0 errno=0
+=== musl-1.2.6 case=5 (20 runs) ===
+     20 case=5 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=5 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=1 errno=4
+=== cosmo-4.0.2 case=0 (20 runs) ===
+     20 case=0 canceled=1 cleaned=1 operation_returned=0 semaphore_count=1 fd_open=1
+     20 case=0 cleaned_inside_handler=0 handler_returned=1 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=0 errno=0
+=== cosmo-4.0.2 case=1 (20 runs) ===
+     20 case=1 canceled=1 cleaned=1 operation_returned=1 semaphore_count=0 fd_open=1
+=== cosmo-4.0.2 case=2 (20 runs) ===
+     20 case=2 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=0
+=== cosmo-4.0.2 case=3 (20 runs) ===
+     20 case=3 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+=== cosmo-4.0.2 case=4 (20 runs) ===
+     20 case=4 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=4 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=1 errno=4
+=== cosmo-4.0.2 case=5 (20 runs) ===
+     20 case=5 canceled=1 cleaned=1 operation_returned=1 semaphore_count=1 fd_open=1
+     20 case=5 cleaned_inside_handler=0 handler_returned=0 cleaned_before_rescue=1 blocked_before_rescue=0 returned_before_rescue=1 errno=4
