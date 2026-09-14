@@ -10,10 +10,13 @@ let
     filc0 = (import ../compiler/filc0.nix { inherit pkgs; }).filc0;
   };
 
-  # Keep the same derivation as the first isolated cancellation probe. Further
-  # libc patches belong on this copy until their behavior is established.
+  # Keep experimental libc changes on this copy, outside the shared toolchain.
   libc = compiler.filc-glibc.overrideAttrs (old: {
     pname = "filc-glibc-cancel-probe";
+    patches = (old.patches or [ ]) ++ [
+      ../patches/glibc-filc-cancellation-signals.patch
+      ../patches/glibc-filc-pause-cancel.patch
+    ];
     postPatch = old.postPatch + ''
       substituteInPlace nptl/pthread_cancel.c \
         --replace-fail '#ifdef SHARED' '#if defined(SHARED) && !defined(__FILC__)'
@@ -27,8 +30,8 @@ let
     exec "$@"
   '';
 in
-{
-  inherit libc;
+rec {
+  inherit libc runner;
 
   # This proves that an executable built with the ordinary toolchain loads
   # the private libc and successfully unwinds through its cleanup handler.
@@ -38,17 +41,25 @@ in
     buildPhase = ''
       $CC -O2 -Werror ${./pthread-cancel.c} -pthread -o check
       FUGC_THREADS=2 ${runner} timeout 15 ./check ${libc}
+      $CC -O2 -Werror -DWITH_CXX_CLEANUP -c ${./pthread-cancel.c} -o check.o
+      $CXX -O2 -Werror ${./pthread-cancel-cxx.cc} check.o -pthread -o check-cxx
+      FUGC_THREADS=2 ${runner} timeout 15 ./check-cxx ${libc}
     '';
     installPhase = ''touch "$out"'';
   };
 
   # Only this leaf derivation changes. Compilation and all dependencies still
   # use the ordinary toolchain; all Meson test processes use the private libc.
-  # Blocking pause() cancellation remains an expected, enabled test failure.
+  # The original blocking-cancellation test stays enabled.
   pipewire = (import ./pipewire-core.nix).overrideAttrs (old: {
     pname = "pipewire-core-cancellation-probe";
     preCheck = old.preCheck + ''
       mesonCheckFlagsArray+=(--wrapper "${runner}")
     '';
   });
+
+  runtime = pkgs.runCommand "pipewire-private-libc-runtime-check" { } ''
+    ${pkgs.python3}/bin/python ${./pipewire-runtime.py} \
+      --pipewire ${pipewire} --runner ${runner} --libc ${libc} > "$out"
+  '';
 }

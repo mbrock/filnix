@@ -364,16 +364,31 @@ The full GStreamer build also passes at six CPUs: 110 test groups pass with
 the one existing upstream skip. GObject introspection passes all 60 groups,
 and the installed GStreamer fake-source/fake-sink pipeline runs to completion.
 
-Cancellation investigation used a separate libc derivation, leaving the main
-compiler/runtime graph unchanged. Removing `pthread_cancel()`'s obsolete
-`libgcc_s.so.6661` preflight allows a focused cooperative cancellation test to
-pass, including its cleanup handler and `PTHREAD_CANCELED` result. PipeWire then
-times out in its blocking `pause()` test: the upstream Fil-C wrapper calls
-`zsys_pause()` without glibc's cancellation-point setup. A downstream wrapper
-restoring asynchronous cancellation around that call remains timing-sensitive;
-adding diagnostic output changes the outcome. This is not a verified fix, so
-neither experimental libc change is enabled in the main toolchain. The remaining
-work is reliable cancellation/signal delivery across a blocking runtime call.
+Cancellation investigation uses a separate libc derivation, leaving the shared
+compiler/runtime graph unchanged. Three independent problems were exposed:
+
+- The libc still preflighted `libgcc_s.so.6661`, although Fil-C supplies its own
+  unwinder. The private derivation removes that obsolete check.
+- Both the native libc underneath Fil-C and its user libc reserved signals 32
+  and 33. The runtime correctly rejects user handlers and sends for these
+  signals; `pthread_cancel()` returned `ENOSYS` when it needed to interrupt an
+  asynchronous worker. Early deferred cancellation did not need a signal,
+  explaining why diagnostic logging appeared to fix the test. The local
+  `glibc-filc-cancellation-signals.patch` gives the user libc signals 34–36 and
+  exposes `SIGRTMIN=37`; it also propagates handler-installation errors.
+- `pause()` had lost its cancellation-point machinery. Restoring an async
+  region alone exposed another boundary: Fil-C cannot force-unwind from a
+  signal callback. `glibc-filc-pause-cancel.patch` gives the callback a temporary
+  `siglongjmp` destination in libc and starts forced unwinding from that normal
+  frame. It blocks cancellation during setup and uses `sigsuspend()` to
+  atomically unblock and sleep. Pending cancellation takes the same path,
+  restoring the signal mask before running cleanup.
+
+This is deliberately a private fix for the `pause()` cancellation point, not
+an implementation of arbitrary asynchronous cancellation across Fil-C poll
+checks or all other blocking calls. The compiler and runtime safety checks are
+unchanged. Both patches are maintained in `patches/`, outside the generated
+upstream port patches.
 
 ### Isolating libc experiments from the campaign
 
@@ -388,27 +403,43 @@ loaded libraries, rather than mixing two Fil-C libcs within one process.
 This approach is for changes that preserve the libc ABI. Future cancellation
 patches can be added to that private derivation without invalidating the
 campaign's existing packages. Comparing recursive derivation closures confirmed
-that all 1,560 existing dependencies are retained: only the private libc and
-runner are added, and the PipeWire leaf derivation changes. The initial private
-libc is exactly the already-built cancellation probe, so it is reused too.
+that all 1,560 existing dependencies are retained. The private libc, its two
+patch sources and the runner are added; only the PipeWire leaf derivation is
+replaced. No LLVM, runtime, compiler wrapper or shared-library dependency is
+rebuilt.
 
 ```sh
-# Check the selected libc, cooperative cancellation and cleanup handlers.
+# Check the selected libc, cancellation races, signal masks and C/C++ cleanup.
 nix build --impure -f tests/pipewire-cancellation.nix probe \
   --max-jobs 1 --cores 2 --no-link -L
 
-# Exercise PipeWire against that libc; the blocking cancellation test remains
-# enabled and the experiment can fail while the port is being developed.
+# Exercise the complete core-profile test suite against the private libc.
 nix build --impure -f tests/pipewire-cancellation.nix pipewire \
   --max-jobs 1 --cores 2 --keep-failed --no-link -L
+
+# Run an installed daemon and clients on a private socket, without hardware.
+nix build --impure -f tests/pipewire-cancellation.nix runtime \
+  --max-jobs 1 --cores 2 --no-link -L
 ```
 
-The focused probe compiles with the ordinary toolchain, verifies the private
-libc's path in `/proc/self/maps`, and checks successful cancellation, cleanup
-and the `PTHREAD_CANCELED` return value. No campaign configuration or global
-libc override is needed to run either experiment.
-Both paths were exercised: the focused probe passes, and the private-libc
-PipeWire run passes 47 groups. Its remaining cancellation test now times out
-instead of aborting on the missing GCC unwinder, matching the earlier isolated
-investigation. This validates the test setup without claiming cancellation is
-fixed.
+The focused probe compiles with the ordinary toolchain and verifies the private
+libc's path in `/proc/self/maps`. It covers cooperative cancellation, a request
+pending before `pause()`, racing entry, cancellation during a confirmed blocked
+syscall (both deferred and explicitly async callers), disabled cancellation,
+and ordinary signal wakeups in both cancellation modes. It checks exactly-once
+cleanup, `PTHREAD_CANCELED`, signal-mask restoration and preservation of the
+caller's mode on ordinary wakeups. The cases also run through a C++ frame to
+check destructor unwinding before the outer pthread cleanup handler. All 128
+C cases and 128 C++ cases pass against the private libc.
+
+The installed-runtime probe starts a daemon on a temporary socket, verifies its
+loaded libc, creates and destroys a virtual audio adapter through `pw-cli`,
+checks the registry with `pw-dump`, and requests a clean daemon shutdown. It
+passes, using no sound hardware, session manager or host service. The core
+profile now builds and installs successfully with **48/48 test groups passing
+and no skips**. Its udev and systemd install directories are explicitly placed
+under the Nix output rather than inherited from the host-style pkg-config
+defaults.
+
+These results apply to the opt-in core profile with the private libc. The main
+campaign's full PipeWire package and the shared Fil-C libc are unchanged.

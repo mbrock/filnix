@@ -17,6 +17,13 @@ p.stdenv.mkDerivation {
     ../patches/pipewire-test-runtime.patch
   ];
   NIX_CFLAGS_COMPILE = "-DNVALGRIND";
+  preConfigure = ''
+    mesonFlagsArray+=(
+      "-Dudevrulesdir=$out/lib/udev/rules.d"
+      "-Dsystemd-system-unit-dir=$out/lib/systemd/system"
+      "-Dsystemd-user-unit-dir=$out/lib/systemd/user"
+    )
+  '';
   preCheck = ''
     export FUGC_THREADS="$NIX_BUILD_CORES"
     for module in a b; do

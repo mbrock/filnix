@@ -1,0 +1,97 @@
+Subject: Cancel Fil-C pause from an unwind-safe libc frame
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Restore pause as a cancellation point. Fil-C cannot force-unwind across
+its native signal callback (or arbitrary poll checks). While pause is active,
+use the supported siglongjmp path back into libc before forced unwinding.
+Block SIGCANCEL during setup and atomically unblock it with sigsuspend, so
+cancellation cannot fall into the unmask-to-sleep gap. Preserve the caller's
+signal mask, cancellation mode and EINTR result. This deliberately addresses
+pause; arbitrary asynchronous cancellation elsewhere remains unsupported.
+
+--- a/sysdeps/unix/sysv/linux/pause.c
++++ b/sysdeps/unix/sysv/linux/pause.c
+@@ -20,12 +20,53 @@
+ #include <unistd.h>
+ #include <sysdep-cancel.h>
+ #include <pizlonated_syscalls.h>
++#include <pthreadP.h>
++#include <setjmp.h>
++
++/* Only live while a cancellation point has a safe return destination. */
++extern __thread struct __jmp_buf_tag *__filc_cancel_jmp attribute_hidden;
+ 
+ /* Suspend the process until a signal arrives.
+    This always returns -1 and sets errno to EINTR.  */
+ int
+ __libc_pause (void)
+ {
+-  return zsys_pause ();
++  sigset_t cancel_set, oldset;
++  __sigemptyset (&cancel_set);
++  __sigaddset (&cancel_set, SIGCANCEL);
++  if (zsys_sigprocmask (SIG_BLOCK, &cancel_set, &oldset) != 0)
++    return -1;
++
++  sigjmp_buf env;
++  struct __jmp_buf_tag *previous = __filc_cancel_jmp;
++  if (sigsetjmp (env, 1))
++    {
++      /* The runtime supports siglongjmp out of a signal callback.  Forced
++         unwind is then started here, through ordinary C/C++ frames, so
++         pthread cleanup handlers and C++ destructors still run normally. */
++      __filc_cancel_jmp = previous;
++      THREAD_SELF->result = PTHREAD_CANCELED;
++      zsys_sigprocmask (SIG_SETMASK, &oldset, NULL);
++      __do_cancel ();
++    }
++
++  __filc_cancel_jmp = env;
++  /* Unlike LIBC_CANCEL_ASYNC, route an already pending request through
++     the same mask-restoring continuation as a delivered signal. */
++  int oldtype = atomic_fetch_or_acquire (&THREAD_SELF->cancelhandling,
++                                         CANCELTYPE_BITMASK);
++  if (cancel_enabled_and_canceled_and_async (oldtype | CANCELTYPE_BITMASK))
++    siglongjmp (env, 1);
++  /* Atomically unblock cancellation and wait.  A separate unmask + pause
++     would lose a cancellation delivered in between those two operations. */
++  int result = zsys_sigsuspend (&oldset);
++  int saved_errno = errno;
++  /* Keep the destination live while pending signals are delivered and
++     the original cancellation type is restored. */
++  zsys_sigprocmask (SIG_SETMASK, &oldset, NULL);
++  LIBC_CANCEL_RESET (oldtype);
++  __filc_cancel_jmp = previous;
++  __set_errno (saved_errno);
++  return result;
+ }
+ weak_alias (__libc_pause, pause)
+--- a/nptl/pthread_cancel.c
++++ b/nptl/pthread_cancel.c
+@@ -26,6 +26,10 @@
+ #include <stdio.h>
+ #include <gnu/lib-names.h>
+ #include <sys/single_threaded.h>
++
++/* The pause cancellation point supplies an unwind-safe return destination.
++   This does not make arbitrary signal callbacks safe for forced unwinding. */
++__thread struct __jmp_buf_tag *__filc_cancel_jmp attribute_hidden;
+ 
+ /* For asynchronous cancellation we use a signal.  */
+ static void
+@@ -61,8 +65,12 @@
+ 
+ 	  /* Make sure asynchronous cancellation is still enabled.  */
+ 	  if ((oldval & CANCELTYPE_BITMASK) != 0)
+-	    /* Run the registered destructors and terminate the thread.  */
+-	    __do_cancel ();
++            {
++              if (__filc_cancel_jmp != NULL)
++                siglongjmp (__filc_cancel_jmp, 1);
++              /* Run the registered destructors and terminate the thread. */
++              __do_cancel ();
++            }
+ 	}
+     }
+ }
