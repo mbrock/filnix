@@ -1188,6 +1188,9 @@ in
       ''}")
       (removeMesonFlag "-Dgtk_doc=true")
       (addMesonFlag "-Dgtk_doc=false")
+      (use (old: {
+        outputs = builtins.filter (output: output != "devdoc") old.outputs;
+      }))
       (arg {
         x11Support = false;
         xineramaSupport = false;

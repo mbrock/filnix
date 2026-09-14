@@ -88,7 +88,8 @@ The subsequent investigation fixes the scanner/tool ABI boundary across the
 Fil-C package scope, builds upstream-patched AT-SPI and PyGObject, and repairs
 DConf and Duktape failures found through GTK's shared inputs. AT-SPI now links
 the systemd libraries without the full tool closure; GTK4 omits its optional
-GStreamer video backend. GTK4 builds, and the original dependency blockers are
+GStreamer video backend. Both GTK versions build and pass the Broadway consumer
+check; the original dependency blockers are
 absent from the replacement toolkit graphs. See [gtk-ports.md](gtk-ports.md)
 for version choices, limitations and reproducible consumer checks.
 
@@ -97,12 +98,19 @@ tests, six GLib networking test groups, and a PyGObject runtime probe. These
 results belong to their exact new derivations; they do not erase the original
 failed attempts. Separate TLS and GTK consumer checks are exposed by the flake.
 
-Runner 0.12.1 accepts explicit source revisions when replanning failed, blocked
+Runner 0.12.2 accepts explicit source revisions when replanning queued, failed, blocked
 or inconclusive candidates as well as evaluation failures. The new plan records
 each candidate's previous recipe/result before replacing it; active and already
 successful candidates cannot be replaced. This allows a bounded downstream
 retry without changing the campaign's frozen default source or automatically
-reopening every evaluation failure. The regression suite has 104 passing tests.
+reopening every evaluation failure. The regression suite has 105 passing tests.
+
+Plan `ef458359-6ce6-45f3-acb7-083c7849494f` evaluates 62 selected downstream
+roots from `921eb54aa6366d1c71cd1cd10fcaad491e7671fd`: all 62 evaluations succeed,
+30 recipes enter the ready queue, and 32 have other recorded dependency failures.
+This is a follow-up result, not a reclassification of the original campaign.
+GTK3 subsequently drops its disabled `devdoc` output; queued GTK3 consumers can
+receive that correction from the next committed revision before admission.
 
 ### Earlier findings
 

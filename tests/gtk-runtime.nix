@@ -18,8 +18,8 @@ pkgsFilc.stdenv.mkDerivation {
   };
   buildPhase = ''
     $CC ${./gtk-runtime.c} $(pkg-config --cflags --libs ${module}) -o gtk-check
-    export XDG_RUNTIME_DIR="$TMPDIR/runtime"
-    mkdir -m 700 "$XDG_RUNTIME_DIR"
+    export XDG_RUNTIME_DIR="$TMPDIR/runtime" XDG_CACHE_HOME="$TMPDIR/cache"
+    mkdir -m 700 "$XDG_RUNTIME_DIR" "$XDG_CACHE_HOME"
     export GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 GTK_A11Y=none NO_AT_BRIDGE=1
     ${gtk.out}/bin/${server} :5 > broadway.log 2>&1 &
     server_pid=$!

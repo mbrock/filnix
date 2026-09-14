@@ -844,7 +844,7 @@ class ExperimentTests(unittest.TestCase):
             [dict(source=campaign["source"], revision=campaign["revision"])],
         )
 
-    def test_revision_plan_rejects_mutable_sources_and_planned_candidates(self):
+    def test_revision_plan_rejects_mutable_sources_and_successful_candidates(self):
         for source, revision in (
             ("/home/worktree", "f" * 40),
             ("/nix/store/source", None),
@@ -854,11 +854,30 @@ class ExperimentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.controller.plan(self.cid, [1, 1])
         self.graph()
+        self.sql("UPDATE candidates SET state='available' WHERE id=1")
         source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
         with patch("experiment.controller.Path.is_file", return_value=True):
             with self.assertRaisesRegex(ValueError, "already planned"):
                 self.controller.plan(self.cid, [1], source, "f" * 40)
         self.assertEqual(self.sql("SELECT count(*) FROM attempts").fetchone()[0], 0)
+
+    def test_revision_detaches_queued_recipe_before_admission(self):
+        self.graph()
+        previous = dict(self.sql("SELECT * FROM candidates WHERE id=1").fetchone())
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+        with self.assertRaisesRegex(ValueError, "already planned"):
+            self.controller.plan(self.cid, [1])
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            aid = self.controller.plan(self.cid, [1], source, "f" * 40)
+        spec = json.loads((self.folder(aid) / "spec.json").read_text())
+        self.assertEqual(spec["previous_candidates"][0]["drv"], previous["drv"])
+        self.assertEqual(spec["previous_candidates"][0]["state"], "queued")
+        Controller(self.db, self.state, self.units).reconcile()
+        refresh_candidates(self.db, self.cid)
+        self.assertEqual(
+            tuple(self.sql("SELECT drv,state FROM candidates WHERE id=1").fetchone()),
+            (None, "unplanned"),
+        )
 
     def test_revision_replaces_failed_recipe_without_requeueing_old_build(self):
         self.graph()
@@ -917,7 +936,7 @@ class ExperimentTests(unittest.TestCase):
     def test_revision_refuses_dependency_owned_by_active_build(self):
         self.graph()
         build = self.controller.build_targets(self.controller.campaign(self.cid), [B])
-        self.sql("UPDATE candidates SET state='inconclusive' WHERE id=1")
+        self.sql("UPDATE candidates SET state='queued' WHERE id=1")
         self.db.commit()
         previous = dict(self.sql("SELECT * FROM candidates WHERE id=1").fetchone())
         source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"

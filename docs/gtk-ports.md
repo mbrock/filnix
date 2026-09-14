@@ -1,7 +1,8 @@
 # GTK, GObject introspection and GnuTLS
 
-The September 2026 follow-up builds the shared GNOME/TLS dependencies using
-Fil-C. It keeps the compiler, GLib 2.80.4 and Python 3.12.5 derivations unchanged.
+The September 2026 follow-up builds GTK3, GTK4 and their shared GNOME/TLS
+dependencies using Fil-C. Both GTK versions pass the Broadway consumer check
+below. It keeps the compiler, GLib 2.80.4 and Python 3.12.5 derivations unchanged.
 The campaign can retry selected failed candidates from a committed revision;
 its original source, inventory and attempt history remain intact.
 
@@ -71,7 +72,8 @@ and a Gio memory stream.
 GTK enables Wayland and Broadway and disables X11. GTK4 also disables Vulkan,
 Tracker and the optional GStreamer video backend. GTK3, DConf and Graphene API
 documentation is disabled where its generators are not ported; GIR generation
-is retained. Graphene currently reports no tests defined for the cross build.
+is retained. GTK3's disabled documentation output is removed as well. Graphene
+currently reports no tests defined for the cross build.
 GTK's upstream suites remain disabled as in the Nixpkgs recipes. GTK4 4.14.5
 cannot satisfy applications requiring newer APIs; successful toolkit builds do
 not establish compatibility for every GNOME application.

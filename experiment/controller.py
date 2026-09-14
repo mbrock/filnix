@@ -173,6 +173,7 @@ class Controller:
                 raise ValueError("candidate absent or already planned")
             if row["drv"]:
                 if not extra or row["state"] not in (
+                    "queued",
                     "failed",
                     "blocked",
                     "inconclusive",
