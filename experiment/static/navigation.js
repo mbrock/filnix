@@ -18,7 +18,8 @@
   const initial = JSON.parse($("initial").textContent);
   let applied = "",
     serial = 0,
-    restoration = null;
+    restoration = null,
+    traversing = false;
   const url = () => new URL(location.href);
   const state = () => history.state?.filnix || {};
   const key = () => crypto.randomUUID();
@@ -125,6 +126,7 @@
     restore();
   }
   function go(next, { replace = false, scroll = "top" } = {}) {
+    if (traversing) return;
     next = new URL(next, location.href);
     if (next.href === location.href) return;
     save();
@@ -175,6 +177,11 @@
     }
     return u.href;
   }
+  function back() {
+    if (traversing) return;
+    traversing = true;
+    history.back();
+  }
   window.dashboardNavigation = {
     go,
     packageURL,
@@ -207,7 +214,7 @@
       go(u, { scroll: "keep" });
     },
     log(id, drv = "", continuous = false) {
-      if (!id) return;
+      if (!id || traversing) return;
       const next = logURL(id, drv, continuous);
       if (next === location.href)
         return window.buildLogs.open(id, drv, continuous, true);
@@ -235,12 +242,23 @@
         state().parent &&
         new URL(state().parent.url).hash === "#" + views.dependencies
       )
-        history.back();
+        back();
       else this.focus(null);
     },
     close(kind) {
+      // Native dismissal can notify multiple open dialogs in one Escape action.
+      // Only the top route may consume it, and only one traversal may be pending.
+      const q = url().searchParams;
+      const top = q.has("log")
+        ? "log"
+        : q.has("package") || q.has("derivation")
+          ? "detail"
+          : q.has("attempt")
+            ? "attempt"
+            : null;
+      if (kind !== top || traversing) return;
       if (state().parent) {
-        history.back();
+        back();
         return;
       }
       const u = url();
@@ -264,7 +282,10 @@
       event.preventDefault();
       window.dashboardNavigation.close(kind);
     });
-  window.addEventListener("popstate", apply);
+  window.addEventListener("popstate", () => {
+    traversing = false;
+    apply();
+  });
   window.addEventListener("hashchange", () => {
     if (location.href !== applied) apply();
   });
