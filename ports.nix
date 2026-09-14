@@ -587,9 +587,20 @@ in
     (skipCheck "fuzzing fails")
   ])
 
+  {
+    libsoup_2_4 = for pkgs.libsoup_2_4 [
+      (patch ./patches/libsoup2-gtype.patch)
+    ];
+    # The upstream 3.4.4 port also applies to Nixpkgs' 3.6.5 release.
+    libsoup_3 = for pkgs.libsoup_3 [
+      (patch ./ports/patch/libsoup-3.4.4.patch)
+    ];
+  }
+
   (for pkgs.glib [
     (pin "2.80.4" "sha256-JOApxd/JtE5Fc2l63zMHipgnxIk4VVAEs7kJb6TqA08=")
     (patch ./ports/patch/glib-2.80.4.patch)
+    (patch ./patches/glib-gtype-api-ceiling.patch)
     (patch ./patches/glib-inline.patch)
     (skipPatch "split-dev-programs.patch")
     (patch ./patches/glib-split-backport.patch)
@@ -618,6 +629,7 @@ in
       (pin "1.80.1" "sha256-od98Qk4VvaGrY5wA6QUbmt9c6hqeUS+KYDtTzRmbxtg=")
       (patch ./ports/patch/gobject-introspection-1.80.1.patch)
       (patch ./patches/gobject-introspection-filc-tools.patch)
+      (patch ./patches/gobject-introspection-link-environment.patch)
       (skipPatch "Prefer-some-getters-over-others.patch")
       (arg {
         propagateFullGlib = false;
@@ -1241,7 +1253,6 @@ in
         ) old.buildInputs;
       }))
       (arg {
-        meson = import ./toolchain/meson-filc.nix { inherit pkgs; };
         x11Support = false;
         xineramaSupport = false;
         waylandSupport = true;

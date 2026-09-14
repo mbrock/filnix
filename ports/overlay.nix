@@ -18,6 +18,8 @@ portDSL.makeOverlay portList final prev
       {
         gobject-introspection = final.gobject-introspection;
         glib = final.glib;
+        # mkenums_simple embeds C templates independently of glib-mkenums.
+        meson = import ../toolchain/meson-filc.nix { inherit pkgs; };
       }
       // extra
     );

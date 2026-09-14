@@ -44,3 +44,37 @@ See [upstream updates](upstream-updates.md) and [local patches](../patches/READM
 The pinned upstream revision already has `pizlix/boost-filc.patch`, which the
 project-subtree extractor previously missed; it is now imported separately.
 Importing the patch alone does not enable a Boost port.
+
+## GLib type registration and introspection
+
+`patches/glib-gtype-api-ceiling.patch` repairs GLib's old-API-ceiling branch.
+Fil-C's GType is always a pointer, even when an application requests an API
+older than 2.80. Private typed once helpers retain the atomic fast path and
+use the pointer once functions internally. Availability-warning suppression is
+limited to those helpers; the application's public API ceiling still applies.
+The check compiles C and C++ against ceilings 2.38, 2.56, 2.74 and 2.80, then
+concurrently exercises object/interface and boxed registration, and enum/flags
+registration where available.
+
+The Fil-C scope now supplies the Meson variant to all consumers. Its
+`mkenums_simple` template is maintained as `patches/meson-gtype.patch` and is
+verified with an actual generated enum library. Native Nixpkgs keeps its normal
+Meson. The duplicate GTK4-specific Meson override is removed.
+
+The introspection scanner previously mutated LD_LIBRARY_PATH for its target
+dumper before launching the native linker. With zlib in the scan's library
+paths, the linker loaded Fil-C's libz and failed to resolve native `compress2`.
+`patches/gobject-introspection-link-environment.patch` snapshots the linker's
+environment before preparing the dumper environment. A standalone scanner and
+typelib compilation check deliberately adds target zlib to reproduce that case.
+The modified introspection package passes its 60 tests.
+
+The upstream libsoup 3.4.4 patch applies to Nixpkgs' 3.6.5 source. A separate
+local adaptation covers libsoup 2.74.3's enum template, tagged signal types,
+session feature keys and test fixtures. Both versions build, and installed
+consumer checks verify loopback HTTP, cookie replacement signals, and disabling
+a session feature for a request. Nixpkgs disables the complete libsoup suites
+for known failures; these checks do not claim those suites pass.
+
+Libnotify also builds with these changes. The compiler derivation remains
+`01r837vgn2lsxxv1bwxwi415zv77hds0`; GLib and its consumers rebuild as expected.

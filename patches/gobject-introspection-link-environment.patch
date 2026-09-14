@@ -1,0 +1,33 @@
+Subject: Keep target runtime libraries out of the native linker environment
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/gobject-introspection-1.80.1.patch
+
+get_internal_link_flags adds target library directories to LD_LIBRARY_PATH
+for the dumper. Passing that modified environment to the native linker makes
+it load Fil-C zlib, which has different symbols (compress2 fails). Snapshot
+the compiler environment first. Keep the modified runtime environment for
+subsequent dumper execution and shared-library discovery. The scanner check
+in tests/gi-link-environment.nix deliberately includes the target zlib directory.
+
+--- a/giscanner/dumper.py
++++ b/giscanner/dumper.py
+@@ -239,6 +239,9 @@
+         pkg_config_libs = pkgconfig.libs(self._packages,
+                                          msvc_syntax=self._compiler.check_is_msvc())
+ 
++        # The linker is a build-platform program. Capture its environment
++        # before adding target runtime paths for the introspection dumper.
++        linker_env = os.environ.copy()
+         if not self._options.external_library:
+             self._compiler.get_internal_link_flags(args,
+                                                    libtool,
+@@ -279,7 +282,7 @@
+             shell = utils.which(shell)
+             args = [shell, tf_name.replace('\\', '/')]
+         try:
+-            subprocess.check_call(args)
++            subprocess.check_call(args, env=linker_env)
+         except subprocess.CalledProcessError as e:
+             raise LinkerError(e)
+         finally:

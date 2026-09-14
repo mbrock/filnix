@@ -1,0 +1,128 @@
+diff --git a/libsoup/cookies/soup-cookie-jar.c b/libsoup/cookies/soup-cookie-jar.c
+index 1609a567467c..56e2128c3e5b 100644
+--- a/libsoup/cookies/soup-cookie-jar.c
++++ b/libsoup/cookies/soup-cookie-jar.c
+@@ -19,6 +19,7 @@
+ #include "soup.h"
+ #include "soup-session-feature-private.h"
+ #include "soup-uri-utils-private.h"
++#include <stdfil.h>
+ 
+ /**
+  * SoupCookieJar:
+@@ -189,8 +190,8 @@ soup_cookie_jar_class_init (SoupCookieJarClass *jar_class)
+ 			      NULL, NULL,
+ 			      NULL,
+ 			      G_TYPE_NONE, 2, 
+-			      SOUP_TYPE_COOKIE | G_SIGNAL_TYPE_STATIC_SCOPE,
+-			      SOUP_TYPE_COOKIE | G_SIGNAL_TYPE_STATIC_SCOPE);
++			      zorptr (SOUP_TYPE_COOKIE, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++			      zorptr (SOUP_TYPE_COOKIE, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * SoupCookieJar:read-only:
+diff --git a/libsoup/hsts/soup-hsts-enforcer.c b/libsoup/hsts/soup-hsts-enforcer.c
+index 1fa3428b0e67..72604e81def3 100644
+--- a/libsoup/hsts/soup-hsts-enforcer.c
++++ b/libsoup/hsts/soup-hsts-enforcer.c
+@@ -17,6 +17,7 @@
+ #include "soup-session-feature-private.h"
+ #include "soup-message-private.h"
+ #include "soup-uri-utils-private.h"
++#include <stdfil.h>
+ 
+ /**
+  * SoupHSTSEnforcer:
+@@ -178,8 +179,8 @@ soup_hsts_enforcer_class_init (SoupHSTSEnforcerClass *hsts_enforcer_class)
+ 			      NULL, NULL,
+ 			      NULL,
+ 			      G_TYPE_NONE, 2,
+-			      SOUP_TYPE_HSTS_POLICY | G_SIGNAL_TYPE_STATIC_SCOPE,
+-			      SOUP_TYPE_HSTS_POLICY | G_SIGNAL_TYPE_STATIC_SCOPE);
++			      zorptr (SOUP_TYPE_HSTS_POLICY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++			      zorptr (SOUP_TYPE_HSTS_POLICY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ /**
+diff --git a/libsoup/http2/soup-client-message-io-http2.c b/libsoup/http2/soup-client-message-io-http2.c
+index cfb64db2e86c..14825c79e7f2 100644
+--- a/libsoup/http2/soup-client-message-io-http2.c
++++ b/libsoup/http2/soup-client-message-io-http2.c
+@@ -1375,7 +1375,7 @@ request_header_is_valid (const char *name)
+ {
+         static GHashTable *invalid_request_headers = NULL;
+ 
+-        if (g_once_init_enter (&invalid_request_headers)) {
++        if (g_once_init_enter_pointer (&invalid_request_headers)) {
+                 GHashTable *headers;
+ 
+                 headers= g_hash_table_new (soup_str_case_hash, soup_str_case_equal);
+@@ -1385,7 +1385,7 @@ request_header_is_valid (const char *name)
+                 g_hash_table_add (headers, "Transfer-Encoding");
+                 g_hash_table_add (headers, "Upgrade");
+ 
+-                g_once_init_leave (&invalid_request_headers, headers);
++                g_once_init_leave_pointer (&invalid_request_headers, headers);
+         }
+ 
+         return !g_hash_table_contains (invalid_request_headers, name);
+diff --git a/libsoup/soup-enum-types.c.template b/libsoup/soup-enum-types.c.template
+index a0a85731e1d3..d094938851f7 100644
+--- a/libsoup/soup-enum-types.c.template
++++ b/libsoup/soup-enum-types.c.template
+@@ -17,7 +17,7 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static gsize id = 0;
++  static gpointer id = 0;
+   static const G@Type@Value values[] = {
+ /*** END value-header ***/
+ 
+@@ -29,9 +29,9 @@ GType
+     { 0, NULL, NULL }
+   };
+ 
+-  if (g_once_init_enter (&id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType tmp = g_@type@_register_static ("@EnumName@", values);
+-    g_once_init_leave (&id, tmp);
++    g_once_init_leave_pointer (&id, tmp);
+   }
+ 
+   return (GType) id;
+diff --git a/libsoup/soup-message.c b/libsoup/soup-message.c
+index ebe9e9f26953..faea3ea7cb0a 100644
+--- a/libsoup/soup-message.c
++++ b/libsoup/soup-message.c
+@@ -2256,7 +2256,7 @@ soup_message_disables_feature (SoupMessage *msg, gpointer feature)
+ 
+         g_hash_table_iter_init (&iter, priv->disabled_features);
+         while (g_hash_table_iter_next (&iter, &key, NULL)) {
+-                if (G_TYPE_CHECK_INSTANCE_TYPE (feature, GPOINTER_TO_SIZE (key)))
++                if (G_TYPE_CHECK_INSTANCE_TYPE (feature, key))
+                         return TRUE;
+         }
+         return FALSE;
+@@ -2290,7 +2290,7 @@ soup_message_is_feature_disabled (SoupMessage *msg, GType feature_type)
+ 
+         g_hash_table_iter_init (&iter, priv->disabled_features);
+         while (g_hash_table_iter_next (&iter, &key, NULL)) {
+-                if (g_type_is_a (GPOINTER_TO_SIZE (key), feature_type))
++                if (g_type_is_a (key, feature_type))
+                         return TRUE;
+         }
+         return FALSE;
+diff --git a/tests/session-test.c b/tests/session-test.c
+index 1c51600c17e8..68ef56eed8d5 100644
+--- a/tests/session-test.c
++++ b/tests/session-test.c
+@@ -360,7 +360,7 @@ static gint
+ compare_by_gtype (gconstpointer a,
+ 		  gconstpointer b)
+ {
+-	return G_TYPE_CHECK_INSTANCE_TYPE (a, GPOINTER_TO_SIZE (b)) ? 0 : 1;
++	return G_TYPE_CHECK_INSTANCE_TYPE (a, b) ? 0 : 1;
+ }
+ 
+ static void

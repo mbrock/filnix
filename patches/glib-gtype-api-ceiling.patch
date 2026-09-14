@@ -1,0 +1,38 @@
+Subject: Preserve pointer-valued GType initialization with older API ceilings
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/glib-2.80.4.patch
+
+The old-version branch still uses gsize, but Fil-C GType always carries a
+pointer capability. Use GLib 2.80's pointer once functions internally at every
+API ceiling. Limit availability-warning suppression to these private helpers;
+consumers still get warnings for newer public APIs. Parentheses bypass the
+public macro's separate availability pragma. tests/glib-gtype.c covers type,
+interface, boxed, enum and flags registration with an older API ceiling.
+
+--- a/gobject/gtype.h
++++ b/gobject/gtype.h
+@@ -2262,7 +2262,22 @@
+ }
+ #endif /* GLIB_VERSION_MAX_ALLOWED >= GLIB_VERSION_2_38 */
+ 
+-#if GLIB_VERSION_MAX_ALLOWED >= GLIB_VERSION_2_80
++#if defined(__FILC__)
++/* GType is always a pointer in Fil-C, including with older API ceilings. */
++#define _g_type_once_init_type GType
++G_GNUC_BEGIN_IGNORE_DEPRECATIONS
++static inline gboolean
++_g_type_once_init_enter (GType *location)
++{
++  return !g_atomic_pointer_get (location) && (g_once_init_enter_pointer) (location);
++}
++static inline void
++_g_type_once_init_leave (GType *location, GType result)
++{
++  (g_once_init_leave_pointer) (location, result);
++}
++G_GNUC_END_IGNORE_DEPRECATIONS
++#elif GLIB_VERSION_MAX_ALLOWED >= GLIB_VERSION_2_80
+ #define _g_type_once_init_type GType
+ #define _g_type_once_init_enter g_once_init_enter_pointer
+ #define _g_type_once_init_leave g_once_init_leave_pointer

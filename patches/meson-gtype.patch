@@ -1,0 +1,45 @@
+Subject: Generate pointer-valued GType storage for Fil-C consumers
+Origin: Filnix
+Upstream-Status: Fil-C target integration
+
+Meson's mkenums_simple embeds its own C template. Preserve GType capabilities
+and use pointer once initialization even for consumers with an older GLib API
+ceiling. The private implementation can use GLib 2.80, our target baseline;
+suppress availability warnings only around the generated function. Explicit
+parenthesized calls avoid the public macro's separate availability pragma.
+This Meson variant is bound only in the Fil-C package scope. The native
+package set remains unchanged. tests/glib-enums/ exercises real generation.
+
+--- a/mesonbuild/modules/gnome.py
++++ b/mesonbuild/modules/gnome.py
+@@ -1889,10 +1889,11 @@
+         c_cmd.append('--vhead')
+         c_cmd.append(textwrap.dedent(
+             f'''
++            G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+             GType
+             {func_prefix}@enum_name@_get_type (void)
+             {{
+-                static gsize gtype_id = 0;
++                static gpointer gtype_id = NULL;
+                 static const G@Type@Value values[] = {{'''))
+ 
+         c_cmd.extend(['--vprod', '        { C_@TYPE@ (@VALUENAME@), "@VALUENAME@", "@valuenick@" },'])
+@@ -1902,12 +1903,13 @@
+             '''\
+                     { 0, NULL, NULL }
+                 };
+-                if (g_once_init_enter (&gtype_id)) {
++                if ((g_once_init_enter_pointer) (&gtype_id)) {
+                     GType new_type = g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+-                    g_once_init_leave (&gtype_id, new_type);
++                    (g_once_init_leave_pointer) (&gtype_id, (gpointer) new_type);
+                 }
+-                return (GType) gtype_id;
+-            }'''))
++                return (GType) gtype_id;
++            }
++            G_GNUC_END_IGNORE_DEPRECATIONS'''))
+         c_cmd.append('@INPUT@')
+ 
+         c_file = self._make_mkenum_impl(state, kwargs['sources'], body_filename, c_cmd)

@@ -143,6 +143,19 @@
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };
+        libsoup2-runtime = import ./tests/libsoup.nix {
+          inherit pkgs pkgsFilc;
+          major = 2;
+        };
+        libsoup3-runtime = import ./tests/libsoup.nix {
+          inherit pkgs pkgsFilc;
+          major = 3;
+        };
+        gi-link-environment = import ./tests/gi-link-environment.nix {
+          inherit pkgs pkgsFilc;
+        };
+        glib-gtype = import ./tests/glib-gtype.nix { inherit pkgs pkgsFilc; };
+        glib-enums = import ./tests/glib-enums.nix { inherit pkgs pkgsFilc; };
         glib-networking = import ./tests/glib-networking.nix {
           inherit pkgs pkgsFilc;
         };
