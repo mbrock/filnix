@@ -5,6 +5,7 @@ import re
 from urllib.parse import quote
 
 from .model import stamp
+from .diagnostics import evaluation_summary
 
 
 def source_link(manifest, selection):
@@ -101,7 +102,9 @@ def catalog(db, campaign):
             version=meta.get("version") or "",
             source=selection.get("sourceFile") or "",
             source_url=source_link(manifest, selection),
-            reason=error[:500],
+            reason=evaluation_summary(error)
+            if p["state"] == "evaluation-error"
+            else error[:500],
             checks=sorted(checks.get(p["drv"], [])) if p["state"] != "excluded" else [],
             phase=activity["phase"] if activity else None,
             duration=duration,

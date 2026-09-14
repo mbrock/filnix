@@ -280,6 +280,52 @@ await until(
 assert.equal(await evaluate("location.href"), batchURL);
 await evaluate("document.querySelector('#history-close').click()");
 await until("!document.querySelector('#history-record').open");
+// Evaluation rows lead with the fatal diagnostic and retain the raw trace.
+await evaluate("document.querySelector('[data-tab=packages]').click()");
+await change("filter", "evaluation-error");
+await until("document.querySelectorAll('.package-row').length>3000");
+assert.ok(
+  await evaluate(
+    "document.querySelector('.package-reason').textContent.includes('marked as broken')",
+  ),
+);
+assert.ok(
+  await evaluate(
+    "!document.querySelector('.package-reason').textContent.includes('GC Warning')",
+  ),
+);
+await evaluate("scrollTo(0,0)");
+await screenshot("evaluation-errors-desktop");
+await call("Emulation.setDeviceMetricsOverride", {
+  width: 390,
+  height: 844,
+  deviceScaleFactor: 1,
+  mobile: true,
+});
+await wait(100);
+await screenshot("evaluation-errors-mobile");
+await evaluate("document.querySelector('.package-name').click()");
+await until(
+  "document.querySelector('#detail .package-error-summary') !== null",
+);
+assert.ok(
+  await evaluate(
+    "document.querySelector('.package-error-summary').textContent.includes('marked as broken')",
+  ),
+);
+assert.equal(
+  await evaluate("document.querySelector('.package-diagnostic').open"),
+  false,
+);
+await screenshot("evaluation-error-detail");
+await evaluate("document.querySelector('.package-diagnostic summary').click()");
+assert.ok(
+  await evaluate(
+    "document.querySelector('.package-diagnostic pre').textContent.includes('GC Warning: Failed to expand heap')",
+  ),
+);
+await evaluate("document.querySelector('#close-detail').click()");
+await until("!document.querySelector('#detail').open");
 assert.deepEqual(errors, []);
 await writeFile(
   out + "/checks.json",

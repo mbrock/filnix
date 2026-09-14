@@ -209,6 +209,13 @@ a.package-state:hover {
   overflow-wrap: anywhere;
   margin-bottom: 12px;
 }
+.package-error-summary {
+  overflow-wrap: anywhere;
+}
+.package-diagnostic summary {
+  cursor: pointer;
+  color: var(--muted);
+}
 @media (max-width: 800px) {
   body:is([data-view="packages"], [data-view="timings"]) .app-chrome {
     gap: 12px;

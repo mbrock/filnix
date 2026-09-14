@@ -316,7 +316,15 @@ async function showPackage(id, fromRoute = false) {
     source.rel = "noopener";
     nodes.push(source);
   }
-  if (p.error) nodes.push(el("h3", "Observation"), el("pre", p.error));
+  if (p.error_summary) {
+    const diagnostic = el("details", null, "package-diagnostic");
+    diagnostic.append(el("summary", "Full diagnostic"), el("pre", p.error));
+    nodes.push(
+      el("h3", "Evaluation error"),
+      el("p", p.error_summary, "package-error-summary"),
+      diagnostic,
+    );
+  } else if (p.error) nodes.push(el("h3", "Observation"), el("pre", p.error));
   if (p.recipe) {
     const locate = el("button", "Explore on dependency map ↗", "graph-log");
     locate.onclick = () => window.dependencyMap?.locate(p.drv);

@@ -50,6 +50,13 @@ and versions come from the frozen native inventory; source links use the campaig
 pinned Nixpkgs repository and revision. Package sizes and file counts are not currently
 measured. No package or batch timings appear in the package list or its CSV export.
 
+Evaluation errors show Nix's final diagnostic, after any startup warnings or evaluation
+trace. The full stored observation remains available under **Full diagnostic** in
+package details. No recorded outcome or raw log is changed by this presentation.
+With the installed Nix, the planner's 4 GiB address-space limit produces a heap-expansion
+warning even for successful evaluation of `1`; that warning alone does not establish
+an out-of-memory failure. Review the terminal error before changing resource limits.
+
 The catalog is a consistent database snapshot, compressed in transit when supported.
 It loads when the view first opens and on explicit refresh. Routine status polling
 keeps the list still. Refresh preserves the visible row; offline readers retain the

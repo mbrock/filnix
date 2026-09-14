@@ -16,6 +16,7 @@ from .logs import build_log
 from .history import history, attempt_detail
 from .catalog import catalog, source_link
 from .batches import batches
+from .diagnostics import evaluation_summary
 
 
 def snapshot(db, campaign=None, search="", state="", offset=0):
@@ -129,6 +130,8 @@ def detail(db, candidate):
     if not row:
         raise ValueError("unknown candidate")
     result = dict(row)
+    if result["state"] == "evaluation-error":
+        result["error_summary"] = evaluation_summary(result["error"])
     for key in ("attr", "selection", "recipe"):
         result[key] = json.loads(result[key]) if result[key] else None
     manifest = json.loads(

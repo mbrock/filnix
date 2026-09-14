@@ -13,7 +13,7 @@ from experiment.catalog import catalog, source_link
 from experiment.model import connect, import_campaign, encode, atomic_json
 from experiment.nix import DEFAULT_POLICY
 from experiment.timing import BuildTimes, ingest_times
-from experiment.web import application
+from experiment.web import application, detail
 
 DRV = "/nix/store/" + "a" * 32 + "-library.drv"
 
@@ -190,6 +190,18 @@ class CatalogTests(unittest.TestCase):
                 self.selection,
             )
         )
+
+    def test_evaluation_summary_preserves_the_full_observation(self):
+        raw = "GC Warning: Failed to expand heap by 4194304 KiB\nerror:\n … while evaluating 'drv'\n\nerror: cannot coerce null to a string: null\n"
+        self.db.execute(
+            "UPDATE candidates SET state='evaluation-error',error=? WHERE campaign=? AND label='package002'",
+            (raw, self.cid),
+        )
+        p = catalog(self.db, self.cid)["rows"][2]
+        self.assertEqual(p["reason"], "cannot coerce null to a string: null")
+        d = detail(self.db, p["id"])
+        self.assertEqual(d["error_summary"], p["reason"])
+        self.assertEqual(d["error"], raw)
 
     def test_full_read_only_api(self):
         seen = []
