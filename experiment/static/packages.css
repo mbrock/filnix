@@ -1,9 +1,9 @@
 /* The list scrolls as a document. Only its column headings stay in view. */
-body[data-view="packages"] {
+body:is([data-view="packages"], [data-view="timings"]) {
   font-family: var(--font-sans);
   font-size: 14px;
 }
-body[data-view="packages"] .app-chrome {
+body:is([data-view="packages"], [data-view="timings"]) .app-chrome {
   position: static;
   display: flex;
   align-items: center;
@@ -11,42 +11,46 @@ body[data-view="packages"] .app-chrome {
   padding: 4px 12px;
   border-bottom: 1px solid var(--line);
 }
-body[data-view="packages"] header {
+body:is([data-view="packages"], [data-view="timings"]) header {
   display: contents;
 }
-body[data-view="packages"] header h1,
-body[data-view="packages"] #connection,
-body[data-view="packages"] #watch-builds {
+body:is([data-view="packages"], [data-view="timings"]) header h1,
+body:is([data-view="packages"], [data-view="timings"]) #connection,
+body:is([data-view="packages"], [data-view="timings"]) #watch-builds {
   display: none;
 }
-body[data-view="packages"] .view-tabs {
+body:is([data-view="packages"], [data-view="timings"]) .view-tabs {
   order: 1;
   padding: 0;
   gap: 16px;
   border: 0;
   flex: 1;
 }
-body[data-view="packages"] #campaign-options {
+body:is([data-view="packages"], [data-view="timings"]) #campaign-options {
   order: 2;
   margin: 0;
 }
-body[data-view="packages"] #campaign-options summary {
+body:is([data-view="packages"], [data-view="timings"])
+  #campaign-options
+  summary {
   border: 0;
   padding: 6px;
   font-size: 0;
 }
-body[data-view="packages"] #campaign-options summary::after {
+body:is([data-view="packages"], [data-view="timings"])
+  #campaign-options
+  summary::after {
   content: "•••";
   font-size: 14px;
 }
-body[data-view="packages"] #mode {
+body:is([data-view="packages"], [data-view="timings"]) #mode {
   display: none;
 }
-body[data-view="packages"] .view-tabs a {
+body:is([data-view="packages"], [data-view="timings"]) .view-tabs a {
   padding: 8px 0;
   min-height: 0;
 }
-body[data-view="packages"] main {
+body:is([data-view="packages"], [data-view="timings"]) main {
   padding-top: 0;
 }
 .catalog-controls {
@@ -119,12 +123,6 @@ body[data-view="packages"] main {
 .package-table th:nth-child(3) {
   width: 100px;
 }
-.package-table th:nth-child(4) {
-  width: 125px;
-}
-.package-table th:nth-child(5) {
-  width: 155px;
-}
 .package-table td {
   padding: 5px 8px;
   vertical-align: top;
@@ -170,8 +168,18 @@ body[data-view="packages"] main {
 .show-paths .package-path {
   display: block;
 }
+.package-state {
+  text-decoration: none;
+}
+a.package-state:hover {
+  text-decoration: underline;
+}
 .package-state.available {
-  color: var(--green);
+  color: var(--muted);
+}
+.package-state.tested {
+  color: var(--ink);
+  font-weight: 600;
 }
 .package-state.failed,
 .package-state.evaluation-error {
@@ -183,28 +191,6 @@ body[data-view="packages"] main {
 }
 .package-state.running {
   color: var(--blue);
-}
-.package-time {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.package-table th:nth-child(4) {
-  text-align: right;
-}
-.package-time a {
-  color: inherit;
-  text-decoration: none;
-}
-.package-time a:hover {
-  color: var(--blue);
-  text-decoration: underline;
-}
-.package-last {
-  display: none;
-  color: var(--muted);
-}
-.show-dates .package-last {
-  display: table-cell;
 }
 .catalog-blockers {
   padding: 10px 0;
@@ -224,17 +210,19 @@ body[data-view="packages"] main {
   margin-bottom: 12px;
 }
 @media (max-width: 800px) {
-  body[data-view="packages"] .app-chrome {
+  body:is([data-view="packages"], [data-view="timings"]) .app-chrome {
     gap: 12px;
     padding: 2px 8px;
   }
-  body[data-view="packages"] .brand {
+  body:is([data-view="packages"], [data-view="timings"]) .brand {
     font-size: 20px;
   }
-  body[data-view="packages"] .view-tabs {
+  body:is([data-view="packages"], [data-view="timings"]) .view-tabs {
     gap: 12px;
   }
-  body[data-view="packages"] #campaign-options .menu-body {
+  body:is([data-view="packages"], [data-view="timings"])
+    #campaign-options
+    .menu-body {
     top: 40px;
   }
   .package-table {
@@ -252,7 +240,7 @@ body[data-view="packages"] main {
   }
   .package-table tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 74px 94px;
+    grid-template-columns: minmax(0, 1fr) 74px;
     column-gap: 6px;
   }
   .package-table thead tr {
@@ -269,9 +257,6 @@ body[data-view="packages"] main {
   }
   .package-table th:nth-child(3) {
     grid-column: 2;
-  }
-  .package-table th:nth-child(4) {
-    grid-column: 3;
   }
   .package-table tbody tr {
     padding: 5px 0;
@@ -295,34 +280,19 @@ body[data-view="packages"] main {
     grid-row: 1;
     grid-column: 2;
   }
-  .package-time {
-    grid-row: 1;
-    grid-column: 3;
-  }
-  .package-version {
-    display: none;
-  }
-  .show-dates .package-last {
-    display: block;
-    grid-row: 3;
-    grid-column: 1 / -1;
-  }
-  .package-table th.package-last {
-    display: none;
-  }
 }
 @media (max-width: 360px) {
-  body[data-view="packages"] .app-chrome {
+  body:is([data-view="packages"], [data-view="timings"]) .app-chrome {
     gap: 8px;
   }
-  body[data-view="packages"] .view-tabs {
+  body:is([data-view="packages"], [data-view="timings"]) .view-tabs {
     gap: 8px;
   }
-  body[data-view="packages"] .brand {
+  body:is([data-view="packages"], [data-view="timings"]) .brand {
     font-size: 18px;
   }
   .package-table tr {
-    grid-template-columns: minmax(0, 1fr) 64px 85px;
+    grid-template-columns: minmax(0, 1fr) 64px;
   }
 }
 @media (pointer: coarse) {

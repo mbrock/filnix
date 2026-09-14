@@ -4,6 +4,7 @@
   const views = {
     activity: "history",
     packages: "inventory",
+    timings: "batch-timings",
     dependencies: "dependency-map",
   };
   const overlayKeys = [
@@ -45,8 +46,10 @@
     requestAnimationFrame(() => {
       if (token !== serial) return;
       const ready =
-        document.body.dataset.view !== "packages" ||
-        window.packageBrowser.ready();
+        (document.body.dataset.view !== "packages" ||
+          window.packageBrowser.ready()) &&
+        (document.body.dataset.view !== "timings" ||
+          window.batchBrowser.ready());
       if (!ready) return;
       scrollTo(0, s.y || 0);
       $("detail").scrollTop = s.detailScroll || 0;

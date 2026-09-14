@@ -94,14 +94,15 @@ assert.match(
   await evaluate("document.getElementById('matches').textContent"),
   /13,772/,
 );
-await controls("package-sort", "name-desc");
-const descending = await evaluate(
-  "document.querySelector('.package-name').textContent",
+assert.equal(
+  await evaluate(
+    "document.querySelector('.package-time, .package-last, #package-sort')",
+  ),
+  null,
 );
-await controls("package-sort", "name");
-assert.notEqual(
-  await evaluate("document.querySelector('.package-name').textContent"),
-  descending,
+await controls("filter", "checked");
+await until(
+  "document.querySelectorAll('.package-row').length > 0 && [...document.querySelectorAll('.package-state')].every(n=>n.textContent==='Tested')",
 );
 await controls("filter", "failed");
 await until("document.querySelectorAll('.package-row').length > 500");
@@ -114,7 +115,6 @@ assert.equal(
 assert.ok(
   await evaluate("document.querySelectorAll('.package-reason').length > 500"),
 );
-await controls("package-sort", "duration");
 await screenshot("packages-failures");
 // Refresh preserves reading position; routine dashboard polling never replaces the list.
 await evaluate(
@@ -129,7 +129,6 @@ await evaluate("document.getElementById('package-refresh').click()");
 await until("!document.getElementById('package-refresh').disabled");
 assert.ok(await evaluate("Math.abs(window.__scroll-scrollY)<5"));
 await controls("filter", "available");
-await controls("package-sort", "name");
 count = await evaluate("document.querySelectorAll('.package-row').length");
 
 await until(

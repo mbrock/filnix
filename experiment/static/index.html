@@ -9,11 +9,13 @@
     <link rel="stylesheet" href="/history.css" />
     <link rel="stylesheet" href="/logs.css" />
     <link rel="stylesheet" href="/packages.css" />
+    <link rel="stylesheet" href="/batches.css" />
     <script src="/logs.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/packages.js" defer></script>
     <script src="/graph.js" defer></script>
     <script src="/history.js" defer></script>
+    <script src="/batches.js" defer></script>
     <script src="/navigation.js" defer></script>
   </head>
   <body>
@@ -73,15 +75,13 @@
           <span id="inventory-progress-label"></span>
         </div>
         <div class="metrics">
-          <article>
-            <strong id="available">—</strong><span>Available</span>
-          </article>
+          <article><strong id="available">—</strong><span>Built</span></article>
           <article>
             <strong
               id="tested"
               title="Selected derivations with recorded successful checks"
               >—</strong
-            ><span>Checked</span>
+            ><span>Tested</span>
           </article>
           <article><strong id="failed">—</strong><span>Failed</span></article>
           <article><strong id="blocked">—</strong><span>Blocked</span></article>
@@ -98,6 +98,7 @@
         <section class="history" aria-labelledby="history-title">
           <div class="section-heading">
             <h2 id="history-title">Activity</h2>
+            <a href="#batch-timings" data-tab="timings">Batch timings →</a>
             <span id="history-summary"></span
             ><select id="history-window" aria-label="Timeline range">
               <option value="0">All time</option>
@@ -194,7 +195,7 @@
         <div class="graph-legend">
           <span class="building">● Building</span
           ><span class="waiting">● Waiting</span
-          ><span class="available">● Available</span
+          ><span class="available">● Built</span
           ><span class="failed">● Failed / blocked</span
           ><label
             ><input id="graph-available" type="checkbox" /> Include ready
@@ -224,8 +225,8 @@
         <div class="catalog-controls">
           <h2 class="sr-only">Packages</h2>
           <select id="filter" aria-label="Package results">
-            <option value="available">Available packages</option>
-            <option value="checked">Checked packages</option>
+            <option value="available">Built packages</option>
+            <option value="checked">Tested packages</option>
             <option value="failed">Failed builds</option>
             <option value="blocked">Blocked packages</option>
             <option value="tried">All tried packages</option>
@@ -241,30 +242,14 @@
           <details id="package-options" class="menu">
             <summary aria-label="Package list options">•••</summary>
             <div class="menu-body">
-              <label
-                >Sort by<select id="package-sort" aria-label="Sort packages">
-                  <option value="name">Name A–Z</option>
-                  <option value="name-desc">Name Z–A</option>
-                  <option value="recent">Most recent</option>
-                  <option value="duration">Longest time</option>
-                  <option value="shortest">Shortest time</option>
-                </select></label
-              >
               <label class="catalog-checkbox"
                 ><input id="package-paths" type="checkbox" /> Source
                 paths</label
               >
-              <label class="catalog-checkbox"
-                ><input id="package-dates" type="checkbox" /> Last
-                attempt</label
-              >
               <button id="package-refresh">Refresh list</button
               ><button id="package-export" disabled>Export CSV</button>
               <p id="package-freshness" role="status"></p>
-              <p>
-                Times marked “batch” cover the whole job. Individual build times
-                are recorded by newer workers.
-              </p>
+              <a href="#batch-timings" data-tab="timings">Batch timings →</a>
             </div>
           </details>
         </div>
@@ -274,8 +259,6 @@
               <th scope="col">Package</th>
               <th scope="col">Description</th>
               <th scope="col">Result</th>
-              <th scope="col">Time</th>
-              <th scope="col" class="package-last">Last attempt</th>
             </tr>
           </thead>
           <tbody id="packages"></tbody>
@@ -287,6 +270,60 @@
           <summary>Shared blockers</summary>
           <div id="blockers"></div>
         </details>
+      </section>
+      <section id="batch-timings" data-view="timings" hidden>
+        <div class="batch-heading">
+          <h2>Batch timings</h2>
+          <span id="batch-count" role="status"></span>
+          <button id="batch-refresh">Refresh</button>
+        </div>
+        <div class="batch-controls">
+          <input
+            id="batch-search"
+            type="search"
+            placeholder="Package or batch…"
+            aria-label="Find batches by package or batch ID"
+          />
+          <select id="batch-kind" aria-label="Batch kind">
+            <option value="build">Builds</option>
+            <option value="plan">Planning</option>
+            <option value="all">Both</option>
+          </select>
+          <select id="batch-sort" aria-label="Sort batches">
+            <option value="longest">Longest</option>
+            <option value="shortest">Shortest</option>
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+          </select>
+          <select id="batch-result" aria-label="Batch outcome">
+            <option value="all">All</option>
+            <option value="error">Errors</option>
+            <option value="complete">Completed</option>
+            <option value="active">Running</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+        <details class="batch-chart" open>
+          <summary>Timeline</summary>
+          <div
+            id="batch-timeline"
+            aria-label="Batch intervals in chronological order"
+          ></div>
+          <div id="batch-axis"></div>
+        </details>
+        <p id="batch-freshness" role="status"></p>
+        <table class="batch-table" aria-label="Batch timings">
+          <thead>
+            <tr>
+              <th scope="col">Duration</th>
+              <th scope="col">Batch / requested packages</th>
+              <th scope="col">Started</th>
+              <th scope="col">Result</th>
+            </tr>
+          </thead>
+          <tbody id="batches"></tbody>
+        </table>
+        <p id="batch-empty" class="empty" hidden>No matching batches.</p>
       </section>
       <footer>
         <span>Fil-C × Nixpkgs</span><span id="footer-version"></span>

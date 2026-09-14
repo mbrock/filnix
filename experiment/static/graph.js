@@ -3,7 +3,7 @@
   const states = {
     building: "Building",
     excluded: "Excluded",
-    available: "Available",
+    available: "Built",
     failed: "Failed",
     blocked: "Blocked",
     waiting: "Waiting / not started",

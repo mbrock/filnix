@@ -15,6 +15,7 @@ function replace(id, nodes) {
 const viewIds = {
   activity: "history",
   packages: "inventory",
+  timings: "batch-timings",
   dependencies: "dependency-map",
 };
 window.showView = (view, updateURL = true) => {
@@ -22,7 +23,9 @@ window.showView = (view, updateURL = true) => {
     return window.dashboardNavigation.view(view);
   if (!viewIds[view]) view = "activity";
   document.body.dataset.view = view;
-  document.querySelector(".overview").hidden = view === "packages";
+  document.querySelector(".overview").hidden = ["packages", "timings"].includes(
+    view,
+  );
   for (const panel of document.querySelectorAll("[data-view]"))
     panel.hidden = panel.dataset.view !== view;
   for (const link of document.querySelectorAll("[data-tab]")) {
@@ -41,6 +44,7 @@ window.changeCampaign = (id) => {
   $("mode").textContent = "Loading";
   $("notice").hidden = true;
   window.packageBrowser?.changeCampaign(id);
+  window.batchBrowser?.changeCampaign(id);
   window.dependencyMap?.updateCampaign(id);
   window.attemptHistory?.updateCampaign(id);
   refresh();
@@ -110,6 +114,7 @@ function render(d) {
   window.buildLogs?.update(d);
   window.attemptHistory?.updateCampaign(c.id);
   window.packageBrowser?.update(d);
+  window.batchBrowser?.update(d);
   if ($("campaign-select").options.length !== d.campaigns.length) {
     $("campaign-select").replaceChildren(
       ...d.campaigns.map((c) => {
@@ -292,7 +297,7 @@ async function showPackage(id, fromRoute = false) {
   if (g !== detailGeneration) return;
   const nodes = [
     el("h2", p.label),
-    el("span", p.state, "badge " + p.state),
+    el("span", p.state === "available" ? "Built" : p.state, "badge " + p.state),
     el(
       "p",
       p.selection?.metadata?.description || "No description recorded.",

@@ -9,7 +9,7 @@
   };
   const number = (n) => n.toLocaleString();
   const states = {
-    available: "Available",
+    available: "Built",
     failed: "Failed",
     blocked: "Blocked",
     "evaluation-error": "Eval error",
@@ -19,30 +19,9 @@
     queued: "Queued",
     unplanned: "Not evaluated",
   };
-  const duration = (s) =>
-    s == null
-      ? "—"
-      : s < 60
-        ? `${Math.floor(s)}s`
-        : s < 3600
-          ? `${Math.floor(s / 60)}m`
-          : `${(s / 3600).toFixed(1)}h`;
-  const timeKind = (p) =>
-    ({
-      build: "build",
-      building: "building",
-      batch: "batch",
-      "eval-batch": "eval batch",
-    })[p.timing] || "";
   const collator = new Intl.Collator(undefined, {
     numeric: true,
     sensitivity: "base",
-  });
-  const date = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
   const initial = JSON.parse($("initial").textContent);
   let campaign = initial.campaign?.id,
@@ -58,26 +37,18 @@
 
     $("filter").value = q.get("result") || "available";
     if (!$("filter").value) $("filter").value = "available";
-    $("package-sort").value = q.get("sort") || "name";
-    if (!$("package-sort").value) $("package-sort").value = "name";
     $("package-paths").checked = q.get("paths") === "1";
-    $("package-dates").checked = q.get("dates") === "1";
   }
   function saveURL() {
     const u = new URL(location.href);
     for (const [key, value] of [
       ["result", $("filter").value === "available" ? "" : $("filter").value],
-      [
-        "sort",
-        $("package-sort").value === "name" ? "" : $("package-sort").value,
-      ],
       ["paths", $("package-paths").checked ? "1" : ""],
-      ["dates", $("package-dates").checked ? "1" : ""],
     ]) {
       if (value) u.searchParams.set(key, value);
       else u.searchParams.delete(key);
     }
-    u.searchParams.delete("q");
+    for (const key of ["q", "sort", "dates"]) u.searchParams.delete(key);
     window.dashboardNavigation.go(u, { scroll: "keep" });
   }
   function matches(p, state) {
@@ -98,20 +69,7 @@
       oldScroll = scrollY;
     const state = $("filter").value;
     shown = rows.filter((p) => matches(p, state));
-    const order = $("package-sort").value;
-    shown.sort((a, b) => {
-      if (order === "recent" || order === "duration" || order === "shortest") {
-        const key = order === "recent" ? "last" : "duration",
-          x = a[key],
-          y = b[key];
-        if (x == null && y != null) return 1;
-        if (x != null && y == null) return -1;
-        if (x !== y) return (order === "shortest" ? 1 : -1) * (x - y);
-      }
-      return (
-        (order === "name-desc" ? -1 : 1) * collator.compare(a.label, b.label)
-      );
-    });
+    shown.sort((a, b) => collator.compare(a.label, b.label));
     const fragment = document.createDocumentFragment();
     for (const p of shown) {
       const tr = node("tr", null, "package-row");
@@ -157,60 +115,35 @@
       }
       const result = node("td", null, "package-result");
       const status = node(
-        "span",
+        p.attempt ? "a" : "span",
         p.checks.length && p.state === "available"
-          ? "Checked"
+          ? "Tested"
           : states[p.state] || p.state,
-        "package-state " + p.state,
+        "package-state " +
+          p.state +
+          (p.checks.length && p.state === "available" ? " tested" : ""),
       );
       status.title = p.checks.length
         ? p.checks.join(", ") + " passed in this campaign"
         : "No successful check evidence recorded";
       result.append(status);
-      const elapsed = node("td", null, "package-time");
-      const timeText =
-        p.duration == null
-          ? p.attempt
-            ? "Log"
-            : "—"
-          : duration(p.duration) + " " + timeKind(p);
-      const time = node(p.attempt ? "a" : "span", timeText);
       if (p.attempt) {
-        const aid = p.time_attempt || p.attempt;
-        const drv =
-          p.timing === "build" || p.timing === "building"
-            ? p.drv
-            : p.log_drv || "";
-        time.href = window.dashboardNavigation.logURL(aid, drv);
-        time.dataset.log = aid;
-        time.dataset.drv = drv;
-        time.setAttribute("aria-label", timeText + ": log for " + p.label);
+        status.href = window.dashboardNavigation.logURL(
+          p.attempt,
+          p.log_drv || "",
+        );
+        status.dataset.log = p.attempt;
+        status.dataset.drv = p.log_drv || "";
+        status.setAttribute(
+          "aria-label",
+          status.textContent + ": log for " + p.label,
+        );
       }
-      elapsed.title =
-        p.duration == null
-          ? "Open recorded attempt log"
-          : (p.timing?.includes("batch")
-              ? "Whole job duration, including other packages and dependencies."
-              : "Individual build activity duration.") +
-            " " +
-            Math.round(p.duration) +
-            " seconds. Job " +
-            p.time_attempt;
-      elapsed.append(time);
-      const last = node(
-        "td",
-        p.last ? date.format(p.last * 1000) : "—",
-        "package-last",
-      );
-      if (p.last)
-        last.title =
-          new Date(p.last * 1000).toLocaleString() + " · " + p.attempt;
-      tr.append(name, description, result, elapsed, last);
+      tr.append(name, description, result);
       fragment.append(tr);
     }
     $("packages").replaceChildren(fragment);
     $("inventory").classList.toggle("show-paths", $("package-paths").checked);
-    $("inventory").classList.toggle("show-dates", $("package-dates").checked);
     $("matches").textContent = number(shown.length);
     $("matches").title =
       number(new Set(shown.map((p) => p.drv).filter(Boolean)).size) +
@@ -322,9 +255,7 @@
     if (log) window.showLog(log.dataset.log, log.dataset.drv);
   };
   $("filter").onchange = saveURL;
-  $("package-sort").onchange = saveURL;
   $("package-paths").onchange = saveURL;
-  $("package-dates").onchange = saveURL;
   $("package-refresh").onclick = load;
   $("package-export").onclick = () => {
     const cell = (v) =>
@@ -339,9 +270,6 @@
       "Description",
       "Result",
       "Checks",
-      "Seconds",
-      "Timing kind",
-      "Last attempt",
       "Source",
       "Derivation",
       "Observation",
@@ -352,11 +280,10 @@
         p.label,
         p.version,
         p.description,
-        p.state,
+        p.state === "available" && p.checks.length
+          ? "Tested"
+          : states[p.state] || p.state,
         p.checks.join("; "),
-        p.duration,
-        p.timing,
-        p.last ? new Date(p.last * 1000).toISOString() : "",
         p.source_url || p.source,
         p.drv,
         p.reason,
@@ -378,12 +305,7 @@
   });
   window.addEventListener("routechange", () => {
     readURL();
-    const signature = [
-      $("filter").value,
-      $("package-sort").value,
-      $("package-paths").checked,
-      $("package-dates").checked,
-    ].join("/");
+    const signature = [$("filter").value, $("package-paths").checked].join("/");
     if (signature !== filterSignature) {
       filterSignature = signature;
       render();

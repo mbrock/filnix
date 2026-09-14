@@ -264,10 +264,19 @@
     const pairs = [
       ["Job", a.kind === "build" ? "Build batch" : "Recipe evaluation"],
       ["Started", `${date(a.created)} ${time(a.created)} UTC`],
-      ["Finished", a.finished ? time(a.finished) + " UTC" : "In progress"],
+      [
+        "Finished",
+        a.finished
+          ? time(a.finished) + " UTC"
+          : a.state === "finished"
+            ? "Unknown"
+            : "In progress",
+      ],
       [
         "Elapsed",
-        elapsed((a.finished || snapshot?.now || Date.now() / 1000) - a.created),
+        a.finished == null && a.state === "finished"
+          ? "—"
+          : elapsed((a.finished ?? Date.now() / 1000) - a.created),
       ],
       ["Build activity", `${fmt(a.builds)} derivations`],
       ["Successful checks", `${fmt(a.checks)} derivations`],

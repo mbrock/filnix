@@ -15,6 +15,7 @@ from .graph import live_graph
 from .logs import build_log
 from .history import history, attempt_detail
 from .catalog import catalog, source_link
+from .batches import batches
 
 
 def snapshot(db, campaign=None, search="", state="", offset=0):
@@ -244,6 +245,8 @@ def application(state):
                     "/navigation.js",
                     "/packages.js",
                     "/packages.css",
+                    "/batches.js",
+                    "/batches.css",
                     "/graph.js",
                     "/logs.js",
                     "/logs.css",
@@ -271,6 +274,10 @@ def application(state):
                     with closing(connect(state, readonly=True)) as db:
                         db.execute("BEGIN")
                         payload = catalog(db, get("campaign"))
+                elif path == "/api/batches":
+                    with closing(connect(state, readonly=True)) as db:
+                        db.execute("BEGIN")
+                        payload = batches(db, get("campaign"))
                 elif path == "/api/package":
                     with closing(connect(state, readonly=True)) as db:
                         payload = detail(db, int(get("id")))
@@ -412,7 +419,7 @@ def application(state):
         if not isinstance(payload, bytes):
             payload = json.dumps(payload).encode()
         encoding_headers = []
-        if environ.get("PATH_INFO") == "/api/packages":
+        if environ.get("PATH_INFO") in ("/api/packages", "/api/batches"):
             encoding_headers.append(("Vary", "Accept-Encoding"))
             for encoding in environ.get("HTTP_ACCEPT_ENCODING", "").lower().split(","):
                 parts = encoding.strip().split(";")

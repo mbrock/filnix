@@ -8,8 +8,9 @@ separate campaigns, clearly labeled in the campaign selector.
 ## Dashboard layout
 
 **Activity** is the default: inventory progress, current builds, a compact
-campaign timeline, and the batch ledger. **Packages** provides the searchable
-full inventory with descriptions, outcomes, timing, and source links;
+campaign timeline, and the batch ledger. **Packages** provides the full inventory
+with descriptions, versions, results, and source links. **Batch timings** opens
+from Activity or the package options menu.
 **Dependencies** contains the graph. The views
 have URL fragments and support browser back/forward navigation. Campaign
 selection, source revision, resource meters, and additional inventory counts
@@ -23,8 +24,8 @@ restrained status colors, aligned rows, and small gaps replace repeated headings
 explanatory captions, and a permanent inspector. Phone layouts adapt the content
 instead of shrinking a desktop table or retaining a wide sidebar.
 
-**Available** counts selected attributes whose required outputs were observed.
-**Checked** counts distinct selected derivations with successful check evidence;
+**Built** counts selected attributes whose required outputs were observed.
+**Tested** counts distinct selected derivations with successful check evidence;
 it is not a count of every transitive dependency or individual test case. Batch
 check counts include dependency derivations. A batch labeled **With errors** may
 still contain successful builds and checks; **Plan finished** describes the
@@ -33,26 +34,26 @@ worker, not the acceptability of all recipes it evaluated.
 ## Browsing packages
 
 The Packages view loads **all selected attributes**, with no pages or virtual rows.
-The result selector opens on Available and includes Checked, Failed, Blocked,
+The result selector opens on Built and includes Tested, Failed, Blocked,
 All tried, and the entire inventory. All tried includes evaluations, exclusions,
 and inconclusive results but excludes unplanned/queued inputs. Counts refer to
-attributes, including aliases. Checked means successful evidence in this campaign,
+attributes, including aliases. Tested means successful evidence in this campaign,
 never recipe flags or availability alone.
 
 There is no in-app package search; use the browser's Find command on the full list.
 The list uses one sans-serif text size, compact rows, and ordinary document scrolling.
 Only the column headings remain sticky. Campaign statistics appear on the other
-views. Sort order, source paths, last-attempt dates, CSV export, and refresh live in
-the list's options menu. Mobile rows keep names, descriptions, results, and timing;
-versions remain in the package details and desktop table. Clicking a time opens its
-recorded job log. Descriptions and versions come from the frozen native inventory;
-source links use the campaign's pinned Nixpkgs repository and revision.
+views. Source paths, CSV export, and refresh live in the list's options menu.
+Rows are alphabetical. Mobile and desktop show versions inline. Built is muted;
+Tested has stronger emphasis. Clicking a result opens its recorded log. Descriptions
+and versions come from the frozen native inventory; source links use the campaign's
+pinned Nixpkgs repository and revision. Package sizes and file counts are not currently
+measured. No package or batch timings appear in the package list or its CSV export.
 
 The catalog is a consistent database snapshot, compressed in transit when supported.
 It loads when the view first opens and on explicit refresh. Routine status polling
 keeps the list still. Refresh preserves the visible row; offline readers retain the
-loaded list. CSV exports the complete selected result set in the current sort order,
-with separate seconds and timing-kind columns. Displayed dates use local time.
+loaded list. CSV exports the complete selected result set in alphabetical order.
 
 Views, result/sort choices, campaign changes, graph focus, packages, batch details,
 and logs have URL-backed browser history. Back/Forward restores the prior view,
@@ -63,15 +64,35 @@ returns to its underlying view instead of leaving the site. Switching log source
 or following new batches replaces the current log entry, so it does not accumulate
 an entry for every update. Native links support opening packages/logs in new tabs.
 
-Workers from version 0.9 record Nix build activity start/stop times in an atomic
-`build-times.json` sidecar. The controller joins these to already observed activities
-and persists them in schema 3's `build_times` table. This survives controller restarts
-and leaves immutable workers from older versions running normally. These are observed
-wall times across build phases, not CPU time. Older logs have no timestamps: those
-rows display **batch** (or **eval batch**) duration, never an invented individual
-build time. Missing stops do not create a completed build duration. Time and last
-attempt can differ after a cached retry; the timing tooltip identifies its source job.
-A stopped activity alone still establishes neither success nor successful checks.
+## Browsing batch timings
+
+**Batch timings** (`#batch-timings`) loads all attempts in the campaign through
+`/api/batches`, without pagination. It opens on build batches, longest first. Search
+matches batch IDs, requested package aliases, and dependency names actually observed
+building. Matching dependency names appear in the table. Choose planning or both kinds,
+filter by outcome, or sort by duration/start time. Filters and search live in the URL;
+typing one search creates one history entry, and Back restores the previous selection.
+
+The timeline draws individual intervals in chronological order, assigning overlapping
+batches to separate rows. Filtering changes both the timeline and table. Click an
+interval or duration/package link for the existing batch detail sheet, targets,
+observed builds, and logs. The full table provides keyboard and touch targets for
+intervals too short to select on the timeline.
+
+Durations are job wall times from admission to recorded finish, including preparation,
+dependencies, and all requested roots. Running batches show **elapsed**, frozen at the
+snapshot time. Refresh updates the snapshot without continually rearranging the list.
+A terminal job without a finish timestamp has unknown duration and no timeline interval.
+Historical outcomes come from the attempt result, never today's package availability.
+Build counts are distinct observed build activities; tested counts are distinct
+derivations with recorded successful tests in that batch, including dependencies.
+A batch with errors can contain successful tests. Displayed dates use local time.
+
+Workers from version 0.9 also record individual Nix activity start/stop times in
+`build-times.json`, persisted in schema 3's `build_times` table. Older workers have no
+such timestamps. Those observations remain in the API for future use, but the package
+list does not mix those times with whole-batch durations. A stopped activity alone
+establishes neither success nor successful tests.
 
 ## Watching dependencies
 
@@ -82,7 +103,7 @@ Back returns to the previous node; Follow live resumes automatic selection.
 Requested roots and active build phases are shortcuts into the same map, and a
 package's detail view has an Explore on dependency map button.
 
-Available inputs collapse into an expandable group. Neighbor pages limit the
+Built inputs collapse into an expandable group. Neighbor pages limit the
 display to six real nodes per side. The center also identifies the current batch
 targets reachable downstream and counts selected dependent attributes (including
 aliases), while the map itself deduplicates derivations. Shared native tools are

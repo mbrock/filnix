@@ -73,7 +73,7 @@ const firstTop = await evaluate(
 );
 assert.ok(firstTop < 130, "Content begins near the top");
 const fonts = await evaluate(
-  "['.package-name','.package-description','.package-state','.package-time'].map(s=>({size:getComputedStyle(document.querySelector(s)).fontSize,family:getComputedStyle(document.querySelector(s)).fontFamily}))",
+  "['.package-name','.package-description','.package-state','.package-version'].map(s=>({size:getComputedStyle(document.querySelector(s)).fontSize,family:getComputedStyle(document.querySelector(s)).fontFamily}))",
 );
 assert.ok(
   fonts.every((f) => f.size === fonts[0].size && f.family === fonts[0].family),
