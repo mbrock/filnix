@@ -149,7 +149,9 @@ Application check outputs:
 - `vz25hxn44p7624vvh7mgpr87galdidd9-cava-runtime-check`
 
 The GnuTLS TLS/certificate/slow check derivation and ICU consumer check also
-passed with the new toolchain. Existing GnuTLS test exclusions remain explicit
+passed with the new toolchain, as did GTK3's installed Broadway runtime check
+(`ymq64i8p9yg4ba512293ypxlpbw9wml5-filc-gtk3-runtime-check-x86_64-unknown-linux-gnufilc0`).
+Existing GnuTLS test exclusions remain explicit
 in its port; no cancellation tests were removed to obtain these results.
 
 ## Remaining work and release limits
@@ -174,3 +176,12 @@ in its port; no cancellation tests were removed to obtain these results.
 
 A campaign using this checkpoint is evidence about the packages and tests it
 actually runs. It is not evidence that pthread cancellation is completely solved.
+
+## Campaign checkpoint
+
+Campaign `3eaf2f72-7c12-4bf2-9934-9646ea9dab4d`, **Fil-C b6dd634 · shared
+cancellation**, started on 2026-09-14 at source `f07cf499adf233bb7dd85ea95e1b63f63a89776a`.
+It reuses the first campaign's explicit 13,772-attribute inventory and pinned
+Nixpkgs, with fresh evaluation against the updated toolchain. The first
+campaign remains paused with its history intact. Both cache publishers follow
+the new campaign while retaining their existing destination receipts.

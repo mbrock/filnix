@@ -1,9 +1,18 @@
 # Operating the Filnix experiment
 
-The dashboard is **https://nix.swa.sh/**. It is read-only. The main campaign contains
-13,772 selected attributes and was started on 2026-09-13. It continues planning
-and building in bounded batches. Synthetic native runner calibrations are
-separate campaigns, clearly labeled in the campaign selector.
+The dashboard is **https://nix.swa.sh/**. It is read-only. The active campaign is
+**Fil-C b6dd634 · shared cancellation** (`3eaf2f72-7c12-4bf2-9934-9646ea9dab4d`),
+started on 2026-09-14 at source `f07cf499adf233bb7dd85ea95e1b63f63a89776a`.
+It repeats the same 13,772 selected attributes with the updated shared toolchain.
+The first inventory, started on 2026-09-13, has completed its queue and remains
+paused with all history preserved. Synthetic native runner calibrations remain
+separate campaigns in the selector.
+
+The active campaign uses 32 roots per batch, a 256-derivation ready buffer and
+two build lanes: four jobs in total with seven requested cores per job. The
+30-CPU workload slice retains a 20% memory reserve for the host. Both binary
+cache publishers discover the active campaign; outstanding uploads from the
+first campaign retain their receipts and continue to drain.
 
 ## Dashboard layout
 
