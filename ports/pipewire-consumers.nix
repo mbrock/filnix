@@ -98,9 +98,17 @@ in
   ];
 
   sdl2-compat = consumer "sdl2-compat" [
-    (use (_: {
+    (use (old: {
       # This cohort's SDL3 has no OpenGL backend; keep the non-GL tests.
       checkInputs = [ ];
+      postPatch = (old.postPatch or "") + ''
+        # Keep SDL3 local to dlopen: direct linking would interpose SDL2 names.
+        substituteInPlace src/sdl2_compat.c \
+          --replace-fail '"libSDL3.so.0"' '"${pkgs.lib.getLib final.sdl3}/lib/libSDL3.so.0"'
+      '';
+      preCheck = (old.preCheck or "") + ''
+        export FUGC_THREADS="$NIX_BUILD_CORES"
+      '';
     }))
   ];
 

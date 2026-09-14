@@ -471,6 +471,8 @@ The first cohort deliberately uses these feature profiles:
   IBus, JACK and PulseAudio stacks remain outside this first attempt. Legacy
   MMX is disabled because Fil-C does not lower its EMMS intrinsic.
 - SDL2 compatibility: that SDL3 profile, with its non-OpenGL checks retained.
+  Its SDL3 `dlopen` name is pinned to the chosen library path too; SDL3 remains
+  locally loaded to avoid interposing incompatible SDL2/SDL3 API symbols.
 - CAVA: PipeWire and ALSA inputs; PulseAudio input disabled. Its private FFTW
   dependency uses C and SIMD through AVX2, without a target Fortran compiler
   or OpenMP. AVX-512 gather intrinsics are not yet supported by Fil-C.
