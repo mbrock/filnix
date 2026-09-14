@@ -1,0 +1,306 @@
+Subject: Preserve GType in once initialization, keys and Lua conversions
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/lib/wp/spa-type.c
++++ b/lib/wp/spa-type.c
+@@ -82,12 +82,12 @@
+ 
+ GType wp_spa_type_get_type (void)
+ {
+-  static gsize id__volatile = 0;
+-  if (g_once_init_enter (&id__volatile)) {
++  static _g_type_once_init_type id__volatile = 0;
++  if (_g_type_once_init_enter (&id__volatile)) {
+     GType id = g_type_register_static_simple (
+         G_TYPE_UINT, g_intern_static_string ("WpSpaType"),
+         0, NULL, 0, NULL, 0);
+-    g_once_init_leave (&id__volatile, id);
++    _g_type_once_init_leave (&id__volatile, id);
+   }
+   return id__volatile;
+ }
+--- a/modules/module-standard-event-source.c
++++ b/modules/module-standard-event-source.c
+@@ -44,17 +44,17 @@
+ static GType
+ rescan_context_get_type (void)
+ {
+-  static gsize gtype_id = 0;
++  static _g_type_once_init_type gtype_id = 0;
+   static const GEnumValue values[] = {
+     { RESCAN_CONTEXT_LINKING, "RESCAN_CONTEXT_LINKING", "linking" },
+     { RESCAN_CONTEXT_DEFAULT_NODES, "RESCAN_CONTEXT_DEFAULT_NODES", "default-nodes" },
+     { 0, NULL, NULL }
+   };
+-  if (g_once_init_enter (&gtype_id)) {
++  if (_g_type_once_init_enter (&gtype_id)) {
+       GType new_type = g_enum_register_static (
+           g_intern_static_string ("WpStandardEventSource_RescanContext"),
+           values);
+-      g_once_init_leave (&gtype_id, new_type);
++      _g_type_once_init_leave (&gtype_id, new_type);
+   }
+   return (GType) gtype_id;
+ }
+--- a/modules/module-mixer-api.c
++++ b/modules/module-mixer-api.c
+@@ -77,16 +77,16 @@
+ static GType
+ wp_mixer_api_volume_scale_enum_get_type (void)
+ {
+-  static gsize gtype_id = 0;
++  static _g_type_once_init_type gtype_id = 0;
+   static const GEnumValue values[] = {
+     { (gint) SCALE_LINEAR, "SCALE_LINEAR", "linear" },
+     { (gint) SCALE_CUBIC, "SCALE_CUBIC", "cubic" },
+     { 0, NULL, NULL }
+   };
+-  if (g_once_init_enter (&gtype_id)) {
++  if (_g_type_once_init_enter (&gtype_id)) {
+     GType new_type = g_enum_register_static (
+         g_intern_static_string ("WpMixerApiVolumeScale"), values);
+-    g_once_init_leave (&gtype_id, new_type);
++    _g_type_once_init_leave (&gtype_id, new_type);
+   }
+   return (GType) gtype_id;
+ }
+--- a/lib/wp/object-manager.c
++++ b/lib/wp/object-manager.c
+@@ -332,8 +332,8 @@
+   child = children = g_type_children (object_type, NULL);
+   while (*child) {
+     WpObjectFeatures existing_ft = (WpObjectFeatures) GPOINTER_TO_UINT (
+-        g_hash_table_lookup (store, GSIZE_TO_POINTER (*child)));
+-    g_hash_table_insert (store, GSIZE_TO_POINTER (*child),
++        g_hash_table_lookup (store, (gpointer) (*child)));
++    g_hash_table_insert (store, (gpointer) (*child),
+         GUINT_TO_POINTER (existing_ft | wanted_features));
+     store_children_object_features (store, *child, wanted_features);
+     child++;
+@@ -360,7 +360,7 @@
+   g_return_if_fail (WP_IS_OBJECT_MANAGER (self));
+   g_return_if_fail (g_type_is_a (object_type, WP_TYPE_OBJECT));
+ 
+-  g_hash_table_insert (self->features, GSIZE_TO_POINTER (object_type),
++  g_hash_table_insert (self->features, (gpointer) (object_type),
+       GUINT_TO_POINTER (wanted_features));
+   store_children_object_features (self->features, object_type, wanted_features);
+ }
+@@ -641,7 +641,7 @@
+     if (SPA_FLAG_IS_SET (match, (WP_INTEREST_MATCH_GTYPE |
+                                  WP_INTEREST_MATCH_PW_GLOBAL_PROPERTIES))) {
+       gpointer ft = g_hash_table_lookup (self->features,
+-          GSIZE_TO_POINTER (global->type));
++          (gpointer) (global->type));
+       *wanted_features = (WpObjectFeatures) GPOINTER_TO_UINT (ft);
+ 
+       /* force INFO to be present so that we can check PW_PROPERTIES constraints */
+--- a/modules/module-lua-scripting/wplua/value.c
++++ b/modules/module-lua-scripting/wplua/value.c
+@@ -199,154 +199,109 @@
+ void
+ wplua_lua_to_gvalue (lua_State *L, int idx, GValue *v)
+ {
+-  switch (g_type_fundamental (G_VALUE_TYPE (v))) {
+-  case G_TYPE_CHAR:
++  GType fundamental = g_type_fundamental (G_VALUE_TYPE (v));
++  if (fundamental == G_TYPE_CHAR) {
+     if (lua_type (L, idx) == LUA_TSTRING)
+       g_value_set_schar (v, *lua_tostring (L, idx));
+     else
+       g_value_set_schar (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_UCHAR:
++  } else if (fundamental == G_TYPE_UCHAR) {
+     g_value_set_uchar (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_INT:
++  } else if (fundamental == G_TYPE_INT) {
+     g_value_set_int (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_UINT:
++  } else if (fundamental == G_TYPE_UINT) {
+     g_value_set_uint (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_LONG:
++  } else if (fundamental == G_TYPE_LONG) {
+     g_value_set_long (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_ULONG:
++  } else if (fundamental == G_TYPE_ULONG) {
+     g_value_set_ulong (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_INT64:
++  } else if (fundamental == G_TYPE_INT64) {
+     g_value_set_int64 (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_UINT64:
++  } else if (fundamental == G_TYPE_UINT64) {
+     g_value_set_uint64 (v, lua_tonumber (L, idx));
+-    break;
+-  case G_TYPE_FLOAT:
++  } else if (fundamental == G_TYPE_FLOAT) {
+     g_value_set_float (v, lua_tonumber (L, idx));
+-    break;
+-  case G_TYPE_DOUBLE:
++  } else if (fundamental == G_TYPE_DOUBLE) {
+     g_value_set_double (v, lua_tonumber (L, idx));
+-    break;
+-  case G_TYPE_BOOLEAN:
++  } else if (fundamental == G_TYPE_BOOLEAN) {
+     g_value_set_boolean (v, lua_toboolean (L, idx));
+-    break;
+-  case G_TYPE_STRING:
++  } else if (fundamental == G_TYPE_STRING) {
+     g_value_set_string (v, lua_tostring (L, idx));
+-    break;
+-  case G_TYPE_POINTER:
++  } else if (fundamental == G_TYPE_POINTER) {
+     if (lua_type (L, idx) == LUA_TLIGHTUSERDATA)
+       g_value_set_pointer (v, lua_touserdata (L, idx));
+-    break;
+-  case G_TYPE_BOXED:
++  } else if (fundamental == G_TYPE_BOXED) {
+     if (_wplua_isgvalue_userdata (L, idx, G_VALUE_TYPE (v)))
+       g_value_set_boxed (v, wplua_toboxed (L, idx));
+     /* table -> WpProperties */
+     else if (lua_istable (L, idx) && G_VALUE_TYPE (v) == WP_TYPE_PROPERTIES)
+       g_value_take_boxed (v, wplua_table_to_properties (L, idx));
+-    break;
+-  case G_TYPE_OBJECT:
+-  case G_TYPE_INTERFACE:
++  } else if (fundamental == G_TYPE_OBJECT || fundamental == G_TYPE_INTERFACE) {
+     if (_wplua_isgvalue_userdata (L, idx, G_VALUE_TYPE (v)))
+       g_value_set_object (v, wplua_toobject (L, idx));
+-    break;
+-  case G_TYPE_ENUM:
++  } else if (fundamental == G_TYPE_ENUM) {
+     g_value_set_enum (v, wplua_lua_to_enum (L, idx, G_VALUE_TYPE (v)));
+-    break;
+-  case G_TYPE_FLAGS:
++  } else if (fundamental == G_TYPE_FLAGS) {
+     g_value_set_flags (v, lua_tointeger (L, idx));
+-    break;
+-  case G_TYPE_VARIANT:
++  } else if (fundamental == G_TYPE_VARIANT) {
+     g_value_set_variant (v, wplua_lua_to_gvariant (L, idx));
+-    break;
+-  default:
+-    break;
+   }
+ }
+ 
+ int
+ wplua_gvalue_to_lua (lua_State *L, const GValue *v)
+ {
+-  switch (g_type_fundamental (G_VALUE_TYPE (v))) {
+-  case G_TYPE_CHAR:
++  GType fundamental = g_type_fundamental (G_VALUE_TYPE (v));
++  if (fundamental == G_TYPE_CHAR) {
+     lua_pushinteger (L, g_value_get_schar (v));
+-    break;
+-  case G_TYPE_UCHAR:
++  } else if (fundamental == G_TYPE_UCHAR) {
+     lua_pushinteger (L, g_value_get_uchar (v));
+-    break;
+-  case G_TYPE_INT:
++  } else if (fundamental == G_TYPE_INT) {
+     lua_pushinteger (L, g_value_get_int (v));
+-    break;
+-  case G_TYPE_UINT:
++  } else if (fundamental == G_TYPE_UINT) {
+     lua_pushinteger (L, g_value_get_uint (v));
+-    break;
+-  case G_TYPE_LONG:
++  } else if (fundamental == G_TYPE_LONG) {
+     lua_pushinteger (L, g_value_get_long (v));
+-    break;
+-  case G_TYPE_ULONG:
++  } else if (fundamental == G_TYPE_ULONG) {
+     lua_pushinteger (L, g_value_get_ulong (v));
+-    break;
+-  case G_TYPE_INT64:
++  } else if (fundamental == G_TYPE_INT64) {
+     lua_pushinteger (L, g_value_get_int64 (v));
+-    break;
+-  case G_TYPE_UINT64:
++  } else if (fundamental == G_TYPE_UINT64) {
+     lua_pushnumber (L, g_value_get_uint64 (v));
+-    break;
+-  case G_TYPE_FLOAT:
++  } else if (fundamental == G_TYPE_FLOAT) {
+     lua_pushnumber (L, g_value_get_float (v));
+-    break;
+-  case G_TYPE_DOUBLE:
++  } else if (fundamental == G_TYPE_DOUBLE) {
+     lua_pushnumber (L, g_value_get_double (v));
+-    break;
+-  case G_TYPE_BOOLEAN:
++  } else if (fundamental == G_TYPE_BOOLEAN) {
+     lua_pushboolean (L, g_value_get_boolean (v));
+-    break;
+-  case G_TYPE_STRING:
++  } else if (fundamental == G_TYPE_STRING) {
+     lua_pushstring (L, g_value_get_string (v));
+-    break;
+-  case G_TYPE_POINTER:
++  } else if (fundamental == G_TYPE_POINTER) {
+     lua_pushlightuserdata (L, g_value_get_pointer (v));
+-    break;
+-  case G_TYPE_BOXED:
++  } else if (fundamental == G_TYPE_BOXED) {
+     if (G_VALUE_TYPE (v) == WP_TYPE_PROPERTIES)
+       wplua_properties_to_table (L, g_value_get_boxed (v));
+     else
+       wplua_pushboxed (L, G_VALUE_TYPE (v), g_value_dup_boxed (v));
+-    break;
+-  case G_TYPE_OBJECT:
+-  case G_TYPE_INTERFACE: {
++  } else if (fundamental == G_TYPE_OBJECT || fundamental == G_TYPE_INTERFACE) {
+     GObject *object = g_value_dup_object (v);
+     if (object)
+       wplua_pushobject (L, object);
+     else
+       lua_pushnil (L);
+-    break;
+-  }
+-  case G_TYPE_ENUM:
++  } else if (fundamental == G_TYPE_ENUM) {
+     wplua_enum_to_lua (L, g_value_get_enum (v), G_VALUE_TYPE (v));
+-    break;
+-  case G_TYPE_FLAGS:
++  } else if (fundamental == G_TYPE_FLAGS) {
+     /* FIXME: push as userdata with methods */
+     lua_pushinteger (L, g_value_get_flags (v));
+-    break;
+-  case G_TYPE_PARAM: {
++  } else if (fundamental == G_TYPE_PARAM) {
+     GParamSpec *pspec = g_value_get_param (v);
+     lua_pushstring (L, pspec->name);
+-    break;
+-  }
+-  case G_TYPE_VARIANT: {
++  } else if (fundamental == G_TYPE_VARIANT) {
+     GVariant *variant = g_value_get_variant (v);
+     wplua_gvariant_to_lua (L, variant);
+-    break;
+-  }
+-  default:
++  } else {
+     lua_pushnil (L);
+-    break;
+   }
+   return 1;
+ }
+--- a/tests/wp/proxy.c
++++ b/tests/wp/proxy.c
+@@ -103,7 +103,7 @@
+ 
+   for (; wp_iterator_next (params, &item); g_value_unset (&item)) {
+     WpSpaPod *pod = NULL;
+-    g_assert_cmpuint (G_VALUE_TYPE (&item), ==, WP_TYPE_SPA_POD);
++    g_assert_true (G_VALUE_TYPE (&item) == WP_TYPE_SPA_POD);
+     pod = g_value_get_boxed (&item);
+     g_assert_nonnull (pod);
+     g_assert_true (wp_spa_pod_is_object (pod));

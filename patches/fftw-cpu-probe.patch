@@ -1,0 +1,26 @@
+Subject: Use the named xgetbv instruction supported by Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/simd-support/x86-cpuid.h
++++ b/simd-support/x86-cpuid.h
+@@ -206,7 +206,7 @@
+      return veax;
+ #    else
+      int eax, edx;
+-     __asm__ (".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c" (op));
++     __asm__ ("xgetbv" : "=a"(eax), "=d"(edx) : "c" (op));
+      return eax;
+ #endif
+ }
+--- a/simd-support/amd64-cpuid.h
++++ b/simd-support/amd64-cpuid.h
+@@ -142,7 +142,7 @@
+ #    endif
+ #    else
+      int eax, edx;
+-     __asm__ (".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c" (op));
++     __asm__ ("xgetbv" : "=a"(eax), "=d"(edx) : "c" (op));
+      return eax;
+ #endif
+ }

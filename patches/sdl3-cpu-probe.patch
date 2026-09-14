@@ -1,0 +1,45 @@
+Subject: Use canonical CPU feature probes supported by Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/src/cpuinfo/SDL_cpuinfo.c
++++ b/src/cpuinfo/SDL_cpuinfo.c
+@@ -136,7 +136,10 @@
+ 
+ /* *INDENT-OFF* */ // clang-format off
+ #ifndef SDL_PLATFORM_EMSCRIPTEN
+-#if (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
++#if defined(__FILC__) && defined(__x86_64__)
++    // CPUID is mandatory on x86-64; no legacy EFLAGS probe is needed.
++    has_CPUID = 1;
++#elif (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
+     __asm__ (
+ "        pushfl                      # Get original EFLAGS             \n"
+ "        popl    %%eax                                                 \n"
+@@ -227,7 +230,11 @@
+     return has_CPUID;
+ }
+ 
+-#if (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
++#if defined(__FILC__) && defined(__x86_64__)
++#define cpuid(func, a, b, c, d) \
++    __asm__ __volatile__("cpuid" \
++        : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(func), "c"(0))
++#elif (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
+ #define cpuid(func, a, b, c, d)              \
+     __asm__ __volatile__(                    \
+         "        pushl %%ebx        \n"      \
+@@ -305,10 +312,9 @@
+                 if (c & 0x08000000) {
+                     // Call xgetbv to see if YMM (etc) register state is saved
+ #if (defined(__GNUC__) || defined(__llvm__)) && (defined(__i386__) || defined(__x86_64__))
+-                    __asm__(".byte 0x0f, 0x01, 0xd0"
+-                            : "=a"(a)
+-                            : "c"(0)
+-                            : "%edx");
++                    __asm__("xgetbv"
++                            : "=a"(a), "=d"(d)
++                            : "c"(0));
+ #elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64)) && (_MSC_FULL_VER >= 160040219) // VS2010 SP1
+                     a = (int)_xgetbv(0);
+ #elif (defined(_MSC_VER) && defined(_M_IX86)) || defined(__WATCOMC__)

@@ -5,23 +5,7 @@ let
   f = builtins.getFlake (toString ../.);
   pkgs = import f.inputs.nixpkgs { system = "x86_64-linux"; };
   p = f.legacyPackages.x86_64-linux.pkgsFilc;
-  compiler = import ../build-filc.nix {
-    inherit pkgs;
-    filc0 = (import ../compiler/filc0.nix { inherit pkgs; }).filc0;
-  };
-
-  # Keep experimental libc changes on this copy, outside the shared toolchain.
-  libc = compiler.filc-glibc.overrideAttrs (old: {
-    pname = "filc-glibc-cancel-probe";
-    patches = (old.patches or [ ]) ++ [
-      ../patches/glibc-filc-cancellation-signals.patch
-      ../patches/glibc-filc-pause-cancel.patch
-    ];
-    postPatch = old.postPatch + ''
-      substituteInPlace nptl/pthread_cancel.c \
-        --replace-fail '#ifdef SHARED' '#if defined(SHARED) && !defined(__FILC__)'
-    '';
-  });
+  libc = import ../runtime/filc-glibc-cancellation.nix { inherit pkgs; };
 
   # Meson sets LD_LIBRARY_PATH for build-tree libraries. Prepend our libc
   # inside the per-test wrapper, after Meson has prepared that environment.

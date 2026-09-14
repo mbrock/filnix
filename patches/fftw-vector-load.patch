@@ -1,0 +1,50 @@
+Subject: Use vector loads and leave AVX transition handling to code generation
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/simd-support/simd-avx.h
++++ b/simd-support/simd-avx.h
+@@ -192,7 +192,7 @@
+ 
+ 	Force the use of vmovapd via asm until compilers stabilize.
+      */
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+      __m128d var;
+      __asm__("vmovapd %1, %0\n" : "=x"(var) : "m"(x[0]));
+      return var;
+@@ -399,6 +399,11 @@
+ /* Use VZEROUPPER to avoid the penalty of switching from AVX to SSE.
+    See Intel Optimization Manual (April 2011, version 248966), Section
+    11.3 */
++#ifdef __FILC__
++/* This is only an AVX/SSE transition optimization, not part of the FFT. */
++#define VLEAVE() ((void)0)
++#else
+ #define VLEAVE _mm256_zeroupper
++#endif
+ 
+ #include "simd-common.h"
+--- a/simd-support/simd-avx2.h
++++ b/simd-support/simd-avx2.h
+@@ -196,7 +196,7 @@
+ 
+ 	Force the use of vmovapd via asm until compilers stabilize.
+      */
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+      __m128d var;
+      __asm__("vmovapd %1, %0\n" : "=x"(var) : "m"(x[0]));
+      return var;
+@@ -409,6 +409,11 @@
+ #endif
+ #define TWVLS (2 * VL)
+ 
++#ifdef __FILC__
++/* This is only an AVX/SSE transition optimization, not part of the FFT. */
++#define VLEAVE() ((void)0)
++#else
+ #define VLEAVE _mm256_zeroupper
++#endif
+ 
+ #include "simd-common.h"

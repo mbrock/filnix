@@ -443,3 +443,80 @@ defaults.
 
 These results apply to the opt-in core profile with the private libc. The main
 campaign's full PipeWire package and the shared Fil-C libc are unchanged.
+
+### A small cohort of PipeWire consumers
+
+`ports/pipewire-consumers.nix` explicitly opts SDL3, SDL2 compatibility (`SDL2`
+and `sdl2-compat` are aliases), CAVA and WirePlumber into the private cancellation
+libc. Each port receives its own `stdenv` compiler argument and the tested
+PipeWire core profile. The ordinary `stdenv`, full PipeWire package and campaign
+source pin remain unchanged. Replanning these five attributes is a bounded
+experiment, not a retry of every blocked PipeWire dependent.
+
+`toolchain/cancellation.nix` reassembles the compiler wrapper and sysroot against
+`runtime/filc-glibc-cancellation.nix`. LLVM, libpizlo, libc++ and the existing
+shared-library dependencies are reused. The ordinary stdenv, GLib, zlib and
+full PipeWire derivation paths are identical before and after this change.
+A recursive derivation comparison finds
+only wrapper/sysroot derivations and the private libc/patches added. The selected
+executables choose the private libc at startup; they do not need an
+`LD_LIBRARY_PATH` launcher. The `filcRuntime` passthru records the compiler, libc,
+and PipeWire profile for each selected port. The campaign records this private
+compiler as different from its original compiler, together with the retry's
+pinned source revision.
+
+The first cohort deliberately uses these feature profiles:
+
+- SDL3: PipeWire and ALSA audio, X11 software rendering. GPU, Wayland, libdecor,
+  IBus, JACK and PulseAudio stacks remain outside this first attempt. Legacy
+  MMX is disabled because Fil-C does not lower its EMMS intrinsic.
+- SDL2 compatibility: that SDL3 profile, with its non-OpenGL checks retained.
+- CAVA: PipeWire and ALSA inputs; PulseAudio input disabled. Its private FFTW
+  dependency uses C and SIMD through AVX2, without a target Fortran compiler
+  or OpenMP. AVX-512 gather intrinsics are not yet supported by Fil-C.
+- WirePlumber: the core PipeWire profile, systemd libraries, Lua and GObject
+  introspection. Documentation generation is disabled; tests remain enabled.
+
+The local patches are separate from generated upstream ports:
+
+- SDL3 uses its existing fork-based background process path, canonical CPUID
+  and XGETBV probes, and no obsolete x86-64 EFLAGS availability probe. Its
+  aligned allocator stores an offset rather than an unaligned pointer in the
+  allocation header. `ports/pin-sdl-libraries.py` resolves the configured
+  backend library names to their declared Nix dependencies: forwarding
+  `dlopen` through Fil-C libc otherwise loses SDL's caller RUNPATH.
+- FFTW preserves capabilities while aligning and tagging pointers. Its AVX
+  loads use the existing vector-load alternative to a GCC 4.6 assembly
+  workaround, and XGETBV uses the supported instruction spelling. Explicit
+  VZEROUPPER transition hints are omitted under Fil-C; they do not affect the
+  numerical transform. The ordinary and threaded upstream checks pass.
+- CAVA embeds its configuration, shaders and themes as ordinary C arrays rather
+  than assembler `incbin` objects, preserving the NUL-inclusive resource sizes.
+- WirePlumber preserves pointer-valued GTypes in initialization, lookup keys and
+  Lua conversions. Session-item pointer properties reuse PipeWire's shared
+  weak token table across independently loaded modules. Its tests encode the
+  same tokens as real Lua clients. A native `dbus-daemon` provides isolated
+  test buses through GTestDBus.
+
+Reproduce the wrapper and cohort checks:
+
+```sh
+nix build --impure -f tests/private-libc-toolchain.nix \
+  --max-jobs 1 --cores 2 --no-link -L
+nix build --impure -f tests/pipewire-consumers.nix \
+  sdl3 sdl2-compat cava wireplumber --max-jobs 3 --cores 4 --no-link -L
+nix build --impure -f tests/pipewire-consumers.nix runtime cavaRuntime \
+  --max-jobs 1 --cores 4 --no-link -L
+```
+
+The private wrapper passes all 128 C and 128 C++ cancellation cases with
+`LD_LIBRARY_PATH` unset, including verification of the loaded libc. PipeWire
+built using that wrapper passes all 48 test groups and installs successfully.
+
+WirePlumber builds and passes all 52 test groups. Its installed `wpctl status`
+sees the virtual sink on the private daemon. No test skips were added.
+
+SDL3 passes all 23 CTest groups. CAVA builds, passes its installed version
+check, and runs with silent FIFO input: its raw output contains eight zero-valued
+bars per frame, its loaded libc is the private one, and it exits through its
+normal SIGTERM handling. This does not claim hardware audio capture coverage.

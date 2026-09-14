@@ -1,76 +1,8 @@
-# Experimental profile; the remaining cancellation failure stays enabled.
+# Core profile with the ordinary toolchain; cancellation remains a libc blocker.
 let
   f = builtins.getFlake (toString ../.);
+in
+import ../packages/pipewire-core.nix {
   p = f.legacyPackages.x86_64-linux.pkgsFilc;
   native = import f.inputs.nixpkgs { system = "x86_64-linux"; };
-in
-p.stdenv.mkDerivation {
-  pname = "pipewire-core-probe";
-  inherit (p.pipewire) version src;
-  patches = [
-    ../patches/pipewire-log-topics.patch
-    ../patches/pipewire-test-suites.patch
-    ../patches/pipewire-pulse-modules.patch
-    ../patches/pipewire-cpu-probe.patch
-    ../patches/pipewire-pointer-arithmetic.patch
-    ../patches/pipewire-pointer-properties.patch
-    ../patches/pipewire-test-runtime.patch
-  ];
-  NIX_CFLAGS_COMPILE = "-DNVALGRIND";
-  preConfigure = ''
-    mesonFlagsArray+=(
-      "-Dudevrulesdir=$out/lib/udev/rules.d"
-      "-Dsystemd-system-unit-dir=$out/lib/systemd/system"
-      "-Dsystemd-user-unit-dir=$out/lib/systemd/user"
-    )
-  '';
-  preCheck = ''
-    export FUGC_THREADS="$NIX_BUILD_CORES"
-    for module in a b; do
-      $CC -shared -fPIC -I../spa/include \
-        ${./pipewire-pointer-module.c} -Lspa -lspa-filc-pointers \
-        -Wl,-rpath,"$PWD/spa" -o "pointer-$module.so"
-    done
-    $CC -O2 ${./pipewire-pointer-properties.c} -ldl -pthread -o pointer-check
-    timeout 30 ./pointer-check
-    mesonCheckFlagsArray+=(--num-processes "$NIX_BUILD_CORES")
-  '';
-  nativeBuildInputs = [
-    native.meson
-    native.ninja
-    native.pkg-config
-    native.python3
-  ];
-  depsBuildBuild = [ native.stdenv.cc ];
-  buildInputs = [
-    p.alsa-lib
-    p.systemdLibs
-    p.dbus
-    p.glib
-  ];
-  mesonFlags = [
-    "-Dauto_features=disabled"
-    "-Dexamples=disabled"
-    "-Dtests=enabled"
-    "-Dspa-plugins=enabled"
-    "-Dsupport=enabled"
-    "-Daudioconvert=enabled"
-    "-Daudiomixer=enabled"
-    "-Daudiotestsrc=enabled"
-    "-Dcontrol=enabled"
-    "-Dtest=enabled"
-    "-Dvolume=enabled"
-    "-Dvideoconvert=enabled"
-    "-Dvideotestsrc=enabled"
-    "-Dalsa=enabled"
-    "-Dpipewire-alsa=enabled"
-    "-Dsystemd=enabled"
-    "-Dlogind=enabled"
-    "-Ddbus=enabled"
-    "-Dsession-managers=[]"
-    "-Dsysconfdir=etc"
-    "-Drlimits-install=false"
-  ];
-  doCheck = true;
-  strictDeps = true;
 }

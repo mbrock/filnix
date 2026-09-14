@@ -1,0 +1,15 @@
+Subject: Use the existing fork-based background spawn path with Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+--- a/src/process/posix/SDL_posixprocess.c
++++ b/src/process/posix/SDL_posixprocess.c
+@@ -309,7 +309,7 @@
+     // Spawn the new process
+     if (process->background) {
+         int status = -1;
+-        #ifdef SDL_PLATFORM_APPLE  // Apple has vfork marked as deprecated and (as of macOS 10.12) is almost identical to calling fork() anyhow.
++        #if defined(SDL_PLATFORM_APPLE) || defined(__FILC__)  // Fil-C has no vfork; use the existing fork-based background spawn path.
+         const pid_t pid = fork();
+         const char *forkname = "fork";
+         #else

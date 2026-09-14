@@ -13,21 +13,28 @@ import time
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pipewire", required=True, type=Path)
-    parser.add_argument("--runner", required=True)
+    parser.add_argument("--runner")
     parser.add_argument("--libc", required=True)
+    parser.add_argument("--client", action="append", default=[])
+    parser.add_argument("--wpctl")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="filnix-pipewire-") as directory:
         root = Path(directory)
         env = {k: v for k, v in os.environ.items() if not k.startswith("PIPEWIRE_")}
+        env.pop("LD_LIBRARY_PATH", None)
         env.update(
             HOME=directory,
             XDG_RUNTIME_DIR=directory,
             XDG_CONFIG_HOME=directory,
+            DBUS_SESSION_BUS_ADDRESS=f"unix:path={directory}/no-session-bus",
+            DBUS_SYSTEM_BUS_ADDRESS=f"unix:path={directory}/no-system-bus",
             SPA_PLUGIN_DIR=str(args.pipewire / "lib/spa-0.2"),
             PIPEWIRE_MODULE_DIR=str(args.pipewire / "lib/pipewire-0.3"),
             PIPEWIRE_REMOTE="filnix-test",
             FUGC_THREADS="2",
+            SDL_AUDIO_DRIVER="pipewire",
+            SDL_AUDIODRIVER="pipewire",
         )
         config = root / "daemon.conf"
         config.write_text("""
@@ -52,7 +59,8 @@ context.modules = [
 """)
 
         def command(tool, *arguments):
-            return [args.runner, str(args.pipewire / "bin" / tool), *arguments]
+            prefix = [args.runner] if args.runner else []
+            return [*prefix, str(args.pipewire / "bin" / tool), *arguments]
 
         def run(tool, *arguments):
             return subprocess.run(
@@ -86,12 +94,17 @@ context.modules = [
                 run("pw-cli", "create-node", "adapter", """{
                     factory.name = support.null-audio-sink
                     node.name = filnix-null
+                    node.description = "Filnix virtual sink"
                     media.class = Audio/Sink
                     object.linger = true
                     audio.position = [ FL FR ]
                 }""")
                 created = named_nodes()
                 assert len(created) == 1, created
+                for client in args.client:
+                    subprocess.run([client, args.libc], env=env, check=True, timeout=20)
+                if args.wpctl:
+                    subprocess.run([args.wpctl, "status"], env=env, check=True, timeout=20)
                 run("pw-cli", "destroy", str(created[0]["id"]))
                 assert not named_nodes(), "node survived destruction"
                 daemon.terminate()

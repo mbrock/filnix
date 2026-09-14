@@ -43,6 +43,8 @@ let
     ;
 in
 [
+  (import ./ports/pipewire-consumers.nix { inherit pkgs prev final; })
+
   # ━━━ Core Libraries ━━━
 
   {
