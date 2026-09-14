@@ -291,6 +291,33 @@ class CatalogTests(unittest.TestCase):
             times["finished"] - times["started"],
         )
 
+    def test_download_progress_does_not_consume_build_log_budget(self):
+        progress = '@nix {"action":"result","type":105,"fields":[0,0,0,0]}\n'
+        evidence = 'compiler output\n@nix {"action":"stop","id":1}\ntrailing'
+        command = [
+            sys.executable,
+            "-c",
+            f"import sys; sys.stderr.write({progress!r} * 10000 + {evidence!r})",
+        ]
+        with (
+            patch("experiment.attempt.nix.resources", return_value=dict(verified=True)),
+            patch("experiment.attempt.nix.command", return_value=command),
+            patch("experiment.attempt.nix.valid", return_value=set()),
+        ):
+            result = build(
+                self.state,
+                dict(
+                    policy=DEFAULT_POLICY | {"log_bytes": 1024},
+                    targets=[DRV],
+                    output_paths=[],
+                ),
+            )
+        self.assertEqual(result["reason"], "completed")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertFalse(result["truncated"])
+        self.assertEqual(result["omitted_progress_records"], 10000)
+        self.assertEqual((self.state / "stderr.log").read_text(), evidence)
+
     def test_worker_times_chunking_recovery_and_malformed_records(self):
         self.attempt()
         self.activity()

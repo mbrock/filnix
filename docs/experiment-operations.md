@@ -591,3 +591,18 @@ compatibility failures. Existing output availability and check records are kept;
 excluded kernel outputs no longer count as eligible package successes. Database
 schema 2 adds the independent exclusion field; the controller migrates schema 1
 transactionally. Older controllers do not support the new schema.
+
+## Download-progress telemetry
+
+Runner 0.12.3 omits Nix `result` records of type 105 containing four integer
+progress counters before applying the retained-log byte budget. Download-heavy
+batches emitted roughly 1.5 million such records in half a minute, filling the
+128 MiB cap before useful compilation. The viewer does not consume these
+counters. Build starts (also numbered 105, but with action `start`), phases,
+compiler output, errors, stops, malformed input, and partial records remain in
+order. Attempt results record the omitted record and byte counts. Old logs are
+preserved. Real output still has the same byte limit.
+
+This change applies to newly launched workers. Retry affected `inconclusive`
+roots explicitly after upgrading; restarting the controller does not replace
+an already running worker.

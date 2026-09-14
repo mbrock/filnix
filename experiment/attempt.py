@@ -13,6 +13,7 @@ import time
 import uuid
 
 from . import nix
+from .capture import BuildLogFilter
 from .model import atomic_json, encode, stamp
 from .timing import BuildTimes
 
@@ -121,6 +122,7 @@ def build(folder, spec):
     atomic_json(folder / "before.json", before)
     initial_resources = nix.resources(policy)
     times = BuildTimes(folder)
+    capture = BuildLogFilter()
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
     )
@@ -157,8 +159,11 @@ def build(folder, spec):
                 if not data:
                     selector.unregister(key.fileobj)
                     key.fileobj.close()
-                    continue
-                last = now
+                    data = capture.finish() if key.data is err else b""
+                else:
+                    last = now
+                    if key.data is err:
+                        data = capture.feed(data)
                 remaining = max(0, policy["log_bytes"] - written)
                 key.data.write(data[:remaining])
                 if key.data is err:
@@ -192,6 +197,8 @@ def build(folder, spec):
         resources_before=initial_resources,
         resources_after=after,
         truncated=reason == "log-limit",
+        omitted_progress_records=capture.omitted_records,
+        omitted_progress_bytes=capture.omitted_bytes,
         command=cmd,
     )
 
