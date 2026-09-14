@@ -1,0 +1,17 @@
+Subject: Use math.h for the double-valued floating point tests
+Origin: Filnix
+Upstream-Status: Not submitted
+
+This test already includes math.h and only uses fabs(double) and isnan.
+It does not need the type-generic header, which rejects Fil-C's float128 setup.
+
+--- a/test/float_ctrl_test.c
++++ b/test/float_ctrl_test.c
+@@ -10,7 +10,6 @@
+ #include <stdarg.h>
+ #include <stddef.h>
+ #include <stdint.h>
+-#include <tgmath.h>
+ 
+ #include <cmocka.h>
+ 

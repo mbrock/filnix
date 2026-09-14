@@ -1,0 +1,47 @@
+Subject: Load CAS operands atomically under contention
+Origin: Filnix
+Applies-After: ports/patch/glib-2.80.4.patch
+Upstream-Status: Not submitted
+
+Use atomic loads in the pointer read-modify-write CAS loops. A plain load
+races with writers and may retain a stale value across failed exchanges.
+GStreamer's concurrent GstTocSetter test exposed a hang in this path.
+
+--- a/glib/gatomic.h
++++ b/glib/gatomic.h
+@@ -286,7 +286,7 @@
+     for (;;)                                                                 \
+       {                                                                      \
+         gpointer _gat_new_value;                                             \
+-        _gat_result = *_gat_ptr;                                             \
++        _gat_result = g_atomic_pointer_get (_gat_ptr);                                             \
+         _gat_new_value = (char *) _gat_result + _gat_val;                    \
+         if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
+           break;                                                             \
+@@ -305,7 +305,7 @@
+     for (;;)                                                                 \
+       {                                                                      \
+         gpointer _gat_new_value;                                             \
+-        _gat_result = *_gat_ptr;                                             \
++        _gat_result = g_atomic_pointer_get (_gat_ptr);                                             \
+         _gat_new_value = (gpointer) ((gsize) _gat_result & _gat_val);        \
+         if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
+           break;                                                             \
+@@ -324,7 +324,7 @@
+     for (;;)                                                                 \
+       {                                                                      \
+         gpointer _gat_new_value;                                             \
+-        _gat_result = *_gat_ptr;                                             \
++        _gat_result = g_atomic_pointer_get (_gat_ptr);                                             \
+         _gat_new_value = (gpointer) ((gsize) _gat_result | _gat_val);        \
+         if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
+           break;                                                             \
+@@ -343,7 +343,7 @@
+     for (;;)                                                                 \
+       {                                                                      \
+         gpointer _gat_new_value;                                             \
+-        _gat_result = *_gat_ptr;                                             \
++        _gat_result = g_atomic_pointer_get (_gat_ptr);                                             \
+         _gat_new_value = (gpointer) ((gsize) _gat_result ^ _gat_val);        \
+         if (g_atomic_pointer_compare_and_exchange(_gat_ptr, _gat_result, _gat_new_value)) \
+           break;                                                             \

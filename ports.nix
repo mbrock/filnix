@@ -689,6 +689,7 @@ in
     (pin "2.80.4" "sha256-JOApxd/JtE5Fc2l63zMHipgnxIk4VVAEs7kJb6TqA08=")
     (patch ./ports/patch/glib-2.80.4.patch)
     (patch ./patches/glib-gtype-api-ceiling.patch)
+    (patch ./patches/glib-atomic-pointer-load.patch)
     (patch ./patches/glib-inline.patch)
     (skipPatch "split-dev-programs.patch")
     (patch ./patches/glib-split-backport.patch)
@@ -784,6 +785,17 @@ in
     (arg { systemd = final.systemdLibs; })
   ])
 
+  (for pkgs.alsa-lib [
+    # ALSA's .symver module assembly is not part of the Fil-C ABI.
+    (configure "--without-versioned")
+    (patch ./patches/alsa-link-warning.patch)
+  ])
+
+  (for pkgs.pipewire [
+    # PipeWire links libsystemd; it does not need the service manager's programs.
+    (arg { systemd = final.systemdLibs; })
+  ])
+
   (for pkgs.libglvnd [
     (configure "--disable-asm")
   ])
@@ -857,10 +869,19 @@ in
   ])
 
   (for pkgs.libcbor [
-    (addCMakeFlag "-DCMAKE_VERBOSE_MAKEFILE=ON")
-    (addCMakeFlag "-DCMAKE_NO_EXAMPLES=ON")
-    (addCMakeFlag "-DCMAKE_SANITIZE=OFF")
-    (skipTests "some tests fail")
+    (patch ./patches/libcbor-test-math.patch)
+    # Fil-C emits instrumented objects; the final native linker cannot consume
+    # the LLVM bitcode produced by libcbor's automatic IPO selection.
+    (addCMakeFlag "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF")
+    (addCMakeFlag "-DWITH_EXAMPLES=OFF")
+    (addCMakeFlag "-DSANITIZE=OFF")
+    (use { doCheck = true; })
+  ])
+
+  (for pkgs.libapparmor [
+    # Configure runs the target Python config tool when linking its extension.
+    (configure "PYTHON=${final.python3}/bin/python3")
+    (configure "PYTHON_CONFIG=${final.python3}/bin/python3-config")
   ])
 
   {
@@ -996,15 +1017,33 @@ in
       '';
     in
     {
-      systemdLibs = for pkgs.systemdLibs [
+      # systemdMinimal and systemdLibs derive from this port through .override;
+      # applying the patch here gives all three variants the same ABI fixes.
+      systemd = for pkgs.systemd [
         (pin "256.4" "sha256-eGHVRBkPk4ysGyQmJNeMlv4uu8e3L4YWboi1BFHG+lg=")
         (patch ./ports/patch/systemd-256.4.patch)
         (arg { withKexectools = false; })
         (arg { withLibseccomp = false; })
+        # EFI/BPF/kexec emit kernel or firmware code, outside Fil-C userspace.
+        (arg {
+          withLibBPF = false;
+          withEfi = false;
+          withBootloader = false;
+        })
         (arg { inherit getent; })
         (link getent)
+        (use (
+          old:
+          pkgs.lib.optionalAttrs (old.pname != "systemd-minimal-libs") {
+            # This getent wrapper intentionally calls the target libc at runtime.
+            # Keep rejecting every other accidental native build-tool reference.
+            disallowedReferences = builtins.filter (p: p != getent) (
+              old.disallowedReferences or [ ]
+            );
+          }
+        ))
 
-        (skipPatch "specific-unit-directories.patch") # not installing units anyway
+        (skipPatch "specific-unit-directories.patch") # Nixpkgs' patch targets 257
         (removeMesonFlag "-Dshellprofiledir") # not in this version
         (addMesonFlag "-Dsshconfdir=no")
         (use {

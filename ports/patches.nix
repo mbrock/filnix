@@ -71,6 +71,10 @@
     version = "3.11";
     patches = [ ./patch/grep-3.11.patch ];
   };
+  gstreamer = {
+    version = "1.24.7";
+    patches = [ ./patch/gstreamer-1.24.7.patch ];
+  };
   icu = {
     version = "76.1";
     patches = [ ./patch/icu-76.1.patch ];

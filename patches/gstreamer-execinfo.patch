@@ -1,0 +1,29 @@
+Subject: Do not advertise the unsupported execinfo symbolization backend
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/gstreamer-1.24.7.patch
+
+Fil-C exports backtrace_symbols as an unsupported-runtime stub. A link probe
+cannot detect this. Keep leak tracking enabled without native stack traces.
+The existing leaks tests exercise the supported configuration automatically.
+
+--- a/meson.build
++++ b/meson.build
+@@ -471,7 +471,7 @@
+   endif
+   backtrace_minimal = true
+ # Basic backtrace() stack trace support
+-elif cc.has_function('backtrace')
++elif cc.get_define('__FILC__') == '' and cc.has_function('backtrace')
+   cdata.set('HAVE_BACKTRACE', 1)
+   backtrace_minimal = true
+ endif
+@@ -484,7 +484,7 @@
+   endif
+ endif
+ 
+-if cc.has_header('execinfo.h')
++if cc.get_define('__FILC__') == '' and cc.has_header('execinfo.h')
+   if cc.has_function('backtrace', prefix : '#include <execinfo.h>')
+     cdata.set('HAVE_BACKTRACE', 1)
+   else

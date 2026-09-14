@@ -212,3 +212,63 @@ had caused a null-capability trap on the default factory in the bug suite.
 Remaining follow-up candidates include gtk-doc's generated GType scanner
 (librest still fails there) and the Node.js/V8 runtime assumptions described
 above. These are recorded failures, not disabled tests or claimed successes.
+
+## Systemd and multimedia foundations
+
+The systemd 256.4 upstream patch now applies to the common `systemd` package,
+so `systemdMinimal` and `systemdLibs` inherit the same port. The existing
+`systemdLibs` and compiler derivations remain unchanged. EFI images, BPF and
+kexec payloads are outside the userspace compiler target; seccomp is still
+unsupported by the runtime. The target-getent wrapper is deliberately allowed
+as a runtime reference; other native build-tool references remain forbidden.
+
+`systemdMinimal` builds, and installed systemd/udev version commands and
+`systemd-escape` run successfully. This does not establish that Fil-C can boot
+as PID 1 or run all systemd services. The full configuration currently reaches
+TPM2-TSS, whose linker-based syscall mocks intercept native runtime symbols but
+provide Fil-C functions. Its unresolved `__wrap_read`, `__wrap_write`,
+`__wrap_socket` and `__wrap_connect` need a separate ABI-aware test adaptation.
+
+Other verified dependency repairs:
+
+- ALSA 1.2.13 omits ELF symbol version directives and deprecated-function warning
+  sections, and expresses weak aliases in C. The installed-library check opens
+  a null PCM device, configures stereo audio, writes and drains samples, and
+  exercises a public weak alias. No physical audio device is needed.
+- Libcbor uses its actual CMake options, disables incompatible automatic LTO,
+  and drops a redundant generic-math include from a test. All 26 test groups
+  pass; the old blanket test exclusion is removed.
+- Libapparmor uses target Python and its configuration tool for its extension.
+  The installed Fil-C Python binding imports and parses a profile/mode string.
+
+GStreamer's upstream 1.24.7 patch applies to Nixpkgs' 1.26.3 release. Its optional
+Rust PTP helper and native unwinding backends are disabled; leak tracking remains
+enabled. Both Meson probes for `backtrace` must reject Fil-C's unsupported
+`backtrace_symbols` backend. With two allocated CPUs, the package passes 110
+Meson test groups and retains one upstream skip.
+
+Those tests exposed a shared GLib problem: the upstream pointer CAS loops used
+non-atomic loads. `glib-atomic-pointer-load.patch` uses atomic loads consistently.
+A four-thread, 80,000-operation regression verifies pointer capabilities and
+mutual exclusion; the same executable times out against the old GLib and passes
+against the repaired library. GStreamer's contended TOC setter test also changes
+from a timeout to a 1.5-second pass. GLib's existing GType checks still pass.
+
+`toolchain/meson-check-cores.nix` bounds Meson's test concurrency, Fil-C collector
+workers and test CPU affinity to `NIX_BUILD_CORES`. Merely limiting Meson jobs
+left clock stress tests creating hundreds of threads from the machine's CPU
+count. A six-CPU clock rescheduling stress run still timed out after the atomic
+repair; that remains an unresolved concurrency limitation, not a disabled test
+or a claim of unrestricted stress-test success.
+
+Run the focused installed-consumer checks with:
+
+```sh
+nix build .#checks.x86_64-linux.media-foundations \
+  .#checks.x86_64-linux.glib-atomic .#checks.x86_64-linux.glib-gtype \
+  --max-jobs 1 --cores 2
+```
+
+The default PipeWire package now requests `systemdLibs`, which supplies the API
+it uses. Its larger default plugin graph still needs additional ports; this
+change alone does not establish a successful full PipeWire build.

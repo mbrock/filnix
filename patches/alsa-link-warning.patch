@@ -1,0 +1,34 @@
+Subject: Omit ELF warning-section assembly with Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The warning sections only ask the native linker to warn about deprecated
+functions. Express weak aliases in C so Fil-C can track their definitions.
+
+--- a/include/local.h
++++ b/include/local.h
+@@ -290,7 +290,9 @@
+ 
+ #define ASM_NAME(name) __SYMBOL_PREFIX name
+ 
+-#ifdef HAVE_GNU_LD
++#ifdef __FILC__
++# define link_warning(symbol, msg)
++#elif defined(HAVE_GNU_LD)
+ # ifdef HAVE_ELF
+ 
+ /* We want the .gnu.warning.SYMBOL section to be unallocated.  */
+--- a/include/alsa-symbols.h
++++ b/include/alsa-symbols.h
+@@ -54,7 +54,10 @@
+ 		default_symbol_version(real, name, version)
+ #else
+ #define use_symbol_version(real, name, version) /* nothing */
+-#if defined(__alpha__) || defined(__mips__)
++#if defined(__FILC__)
++#define use_default_symbol_version(real, name, version) \
++        extern __typeof(real) name __attribute__((weak, alias(#real)))
++#elif defined(__alpha__) || defined(__mips__)
+ #define use_default_symbol_version(real, name, version) \
+         __asm__ (".weak " ASM_NAME(#name)); \
+         __asm__ (ASM_NAME(#name) " = " ASM_NAME(#real))

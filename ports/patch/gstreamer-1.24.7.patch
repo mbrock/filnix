@@ -1,0 +1,1341 @@
+diff --git a/docs/gst-hotdoc-plugins-scanner.c b/docs/gst-hotdoc-plugins-scanner.c
+index ebe8c9d530a7..f4fea1dc4bb6 100644
+--- a/docs/gst-hotdoc-plugins-scanner.c
++++ b/docs/gst-hotdoc-plugins-scanner.c
+@@ -418,8 +418,8 @@ _add_properties (GString * json, GString * other_types,
+       }
+     }
+ 
+-    switch (G_VALUE_TYPE (&value)) {
+-      case G_TYPE_STRING:
++    switch ((uintptr_t) G_VALUE_TYPE (&value)) {
++      case (uintptr_t) G_TYPE_STRING:
+       {
+         const char *string_val = g_value_get_string (&value);
+         gchar *tmpstr = json_strescape (string_val);
+@@ -428,7 +428,7 @@ _add_properties (GString * json, GString * other_types,
+         g_free (tmpstr);
+         break;
+       }
+-      case G_TYPE_BOOLEAN:
++      case (uintptr_t) G_TYPE_BOOLEAN:
+       {
+         gboolean bool_val = g_value_get_boolean (&value);
+ 
+@@ -436,7 +436,7 @@ _add_properties (GString * json, GString * other_types,
+             bool_val ? "true" : "false");
+         break;
+       }
+-      case G_TYPE_ULONG:
++      case (uintptr_t) G_TYPE_ULONG:
+       {
+         GParamSpecULong *pulong = G_PARAM_SPEC_ULONG (spec);
+ 
+@@ -451,7 +451,7 @@ _add_properties (GString * json, GString * other_types,
+             g_param_spec_get_name (spec));
+         break;
+       }
+-      case G_TYPE_LONG:
++      case (uintptr_t) G_TYPE_LONG:
+       {
+         GParamSpecLong *plong = G_PARAM_SPEC_LONG (spec);
+ 
+@@ -466,7 +466,7 @@ _add_properties (GString * json, GString * other_types,
+             g_param_spec_get_name (spec));
+         break;
+       }
+-      case G_TYPE_UINT:
++      case (uintptr_t) G_TYPE_UINT:
+       {
+         GParamSpecUInt *puint = G_PARAM_SPEC_UINT (spec);
+ 
+@@ -477,7 +477,7 @@ _add_properties (GString * json, GString * other_types,
+             g_value_get_uint (&value), puint->minimum, puint->maximum);
+         break;
+       }
+-      case G_TYPE_INT:
++      case (uintptr_t) G_TYPE_INT:
+       {
+         GParamSpecInt *pint = G_PARAM_SPEC_INT (spec);
+ 
+@@ -488,7 +488,7 @@ _add_properties (GString * json, GString * other_types,
+             g_value_get_int (&value), pint->minimum, pint->maximum);
+         break;
+       }
+-      case G_TYPE_UINT64:
++      case (uintptr_t) G_TYPE_UINT64:
+       {
+         GParamSpecUInt64 *puint64 = G_PARAM_SPEC_UINT64 (spec);
+ 
+@@ -499,7 +499,7 @@ _add_properties (GString * json, GString * other_types,
+             g_value_get_uint64 (&value), puint64->minimum, puint64->maximum);
+         break;
+       }
+-      case G_TYPE_INT64:
++      case (uintptr_t) G_TYPE_INT64:
+       {
+         GParamSpecInt64 *pint64 = G_PARAM_SPEC_INT64 (spec);
+ 
+@@ -510,7 +510,7 @@ _add_properties (GString * json, GString * other_types,
+             g_value_get_int64 (&value), pint64->minimum, pint64->maximum);
+         break;
+       }
+-      case G_TYPE_FLOAT:
++      case (uintptr_t) G_TYPE_FLOAT:
+       {
+         GParamSpecFloat *pfloat = G_PARAM_SPEC_FLOAT (spec);
+ 
+@@ -521,7 +521,7 @@ _add_properties (GString * json, GString * other_types,
+             g_value_get_float (&value), pfloat->minimum, pfloat->maximum);
+         break;
+       }
+-      case G_TYPE_DOUBLE:
++      case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         GParamSpecDouble *pdouble = G_PARAM_SPEC_DOUBLE (spec);
+ 
+@@ -532,8 +532,8 @@ _add_properties (GString * json, GString * other_types,
+             g_value_get_double (&value), pdouble->minimum, pdouble->maximum);
+         break;
+       }
+-      case G_TYPE_CHAR:
+-      case G_TYPE_UCHAR:
++      case (uintptr_t) G_TYPE_CHAR:
++      case (uintptr_t) G_TYPE_UCHAR:
+         GST_ERROR_OBJECT (object,
+             "property '%s' of type char: consider changing to " "int/string",
+             g_param_spec_get_name (spec));
+diff --git a/gst/gstbuffer.c b/gst/gstbuffer.c
+index 52ce8e5f1d3c..8441dcc989f3 100644
+--- a/gst/gstbuffer.c
++++ b/gst/gstbuffer.c
+@@ -2680,9 +2680,9 @@ gst_parent_buffer_meta_api_get_type (void)
+   static GType type = 0;
+   static const gchar *tags[] = { GST_META_TAG_MEMORY_REFERENCE_STR, NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstParentBufferMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+ 
+   return type;
+@@ -2702,7 +2702,7 @@ gst_parent_buffer_meta_get_info (void)
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (gst_parent_buffer_meta_api_get_type (),
+         "GstParentBufferMeta",
+@@ -2710,7 +2710,7 @@ gst_parent_buffer_meta_get_info (void)
+         (GstMetaInitFunction) _gst_parent_buffer_meta_init,
+         (GstMetaFreeFunction) _gst_parent_buffer_meta_free,
+         _gst_parent_buffer_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
+   }
+ 
+   return meta_info;
+@@ -2851,10 +2851,10 @@ gst_reference_timestamp_meta_api_get_type (void)
+   static GType type = 0;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstReferenceTimestampMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+ 
+   return type;
+@@ -2917,7 +2917,7 @@ gst_reference_timestamp_meta_get_info (void)
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *meta = NULL;
+     GstMetaInfo *info =
+         gst_meta_info_new (gst_reference_timestamp_meta_api_get_type (),
+@@ -2929,7 +2929,7 @@ gst_reference_timestamp_meta_get_info (void)
+     info->serialize_func = timestamp_meta_serialize;
+     info->deserialize_func = timestamp_meta_deserialize;
+     meta = gst_meta_info_register (info);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
+   }
+ 
+   return meta_info;
+diff --git a/gst/gstchildproxy.c b/gst/gstchildproxy.c
+index fc4f7421ac60..0ba6ec152d05 100644
+--- a/gst/gstchildproxy.c
++++ b/gst/gstchildproxy.c
+@@ -618,9 +618,9 @@ gst_child_proxy_base_init (gpointer g_class)
+ GType
+ gst_child_proxy_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstChildProxyInterface),
+@@ -638,7 +638,7 @@ gst_child_proxy_get_type (void)
+         g_type_register_static (G_TYPE_INTERFACE, "GstChildProxy", &info, 0);
+ 
+     g_type_interface_add_prerequisite (_type, G_TYPE_OBJECT);
+-    g_once_init_leave (&type, (gsize) _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/gst/gstcontrolbinding.c b/gst/gstcontrolbinding.c
+index 9715aa2afd45..19b4ce92bd9a 100644
+--- a/gst/gstcontrolbinding.c
++++ b/gst/gstcontrolbinding.c
+@@ -410,35 +410,35 @@ gst_control_binding_get_g_value_array (GstControlBinding * binding,
+ 
+     GST_INFO_OBJECT (binding, "missing get_g_value_array implementation, we're "
+         "emulating it");
+-    switch (base) {
+-      case G_TYPE_INT:
++    switch ((uintptr_t) base) {
++      case (uintptr_t) G_TYPE_INT:
+         CONVERT_ARRAY (int, INT);
+         break;
+-      case G_TYPE_UINT:
++      case (uintptr_t) G_TYPE_UINT:
+         CONVERT_ARRAY (uint, UINT);
+         break;
+-      case G_TYPE_LONG:
++      case (uintptr_t) G_TYPE_LONG:
+         CONVERT_ARRAY (long, LONG);
+         break;
+-      case G_TYPE_ULONG:
++      case (uintptr_t) G_TYPE_ULONG:
+         CONVERT_ARRAY (ulong, ULONG);
+         break;
+-      case G_TYPE_INT64:
++      case (uintptr_t) G_TYPE_INT64:
+         CONVERT_ARRAY (int64, INT64);
+         break;
+-      case G_TYPE_UINT64:
++      case (uintptr_t) G_TYPE_UINT64:
+         CONVERT_ARRAY (uint64, UINT64);
+         break;
+-      case G_TYPE_FLOAT:
++      case (uintptr_t) G_TYPE_FLOAT:
+         CONVERT_ARRAY (float, FLOAT);
+         break;
+-      case G_TYPE_DOUBLE:
++      case (uintptr_t) G_TYPE_DOUBLE:
+         CONVERT_ARRAY (double, DOUBLE);
+         break;
+-      case G_TYPE_BOOLEAN:
++      case (uintptr_t) G_TYPE_BOOLEAN:
+         CONVERT_ARRAY (boolean, BOOLEAN);
+         break;
+-      case G_TYPE_ENUM:
++      case (uintptr_t) G_TYPE_ENUM:
+       {
+         gint *v = g_new (gint, n_values);
+         ret = gst_control_binding_get_value_array (binding, timestamp, interval,
+diff --git a/gst/gstdeviceprovider.c b/gst/gstdeviceprovider.c
+index f073ede51b75..e81d05035706 100644
+--- a/gst/gstdeviceprovider.c
++++ b/gst/gstdeviceprovider.c
+@@ -84,9 +84,9 @@ static gint private_offset = 0;
+ GType
+ gst_device_provider_get_type (void)
+ {
+-  static gsize gst_device_provider_type = 0;
++  static gpointer gst_device_provider_type = 0;
+ 
+-  if (g_once_init_enter (&gst_device_provider_type)) {
++  if (g_once_init_enter_pointer (&gst_device_provider_type)) {
+     GType _type;
+     static const GTypeInfo element_info = {
+       sizeof (GstDeviceProviderClass),
+@@ -109,7 +109,7 @@ gst_device_provider_get_type (void)
+ 
+     __gst_deviceproviderclass_factory =
+         g_quark_from_static_string ("GST_DEVICEPROVIDERCLASS_FACTORY");
+-    g_once_init_leave (&gst_device_provider_type, _type);
++    g_once_init_leave_pointer (&gst_device_provider_type, _type);
+   }
+   return gst_device_provider_type;
+ }
+diff --git a/gst/gstelement.c b/gst/gstelement.c
+index 10ce62ba62c0..19075b36fdcd 100644
+--- a/gst/gstelement.c
++++ b/gst/gstelement.c
+@@ -171,9 +171,9 @@ GQuark __gst_elementclass_skip_doc = 0;
+ GType
+ gst_element_get_type (void)
+ {
+-  static gsize gst_element_type = 0;
++  static gpointer gst_element_type = 0;
+ 
+-  if (g_once_init_enter (&gst_element_type)) {
++  if (g_once_init_enter_pointer (&gst_element_type)) {
+     GType _type;
+     static const GTypeInfo element_info = {
+       sizeof (GstElementClass),
+@@ -195,7 +195,7 @@ gst_element_get_type (void)
+         g_quark_from_static_string ("GST_ELEMENTCLASS_FACTORY");
+     __gst_elementclass_skip_doc =
+         g_quark_from_static_string ("GST_ELEMENTCLASS_SKIP_DOCUMENTATION");
+-    g_once_init_leave (&gst_element_type, _type);
++    g_once_init_leave_pointer (&gst_element_type, _type);
+   }
+   return gst_element_type;
+ }
+diff --git a/gst/gstinfo.c b/gst/gstinfo.c
+index 4e61dcdff5fe..378569f80ecb 100644
+--- a/gst/gstinfo.c
++++ b/gst/gstinfo.c
+@@ -169,14 +169,14 @@ static GMutex _dwfl_mutex;
+ static Dwfl *
+ get_global_dwfl (void)
+ {
+-  if (g_once_init_enter (&_global_dwfl)) {
++  if (g_once_init_enter_pointer (&_global_dwfl)) {
+     static Dwfl_Callbacks callbacks = {
+       .find_elf = dwfl_linux_proc_find_elf,
+       .find_debuginfo = dwfl_standard_find_debuginfo,
+     };
+     Dwfl *_dwfl = dwfl_begin (&callbacks);
+     g_mutex_init (&_dwfl_mutex);
+-    g_once_init_leave (&_global_dwfl, _dwfl);
++    g_once_init_leave_pointer (&_global_dwfl, _dwfl);
+   }
+ 
+   return _global_dwfl;
+diff --git a/gst/gstmeta.c b/gst/gstmeta.c
+index 6667aff84411..5259de9dca2c 100644
+--- a/gst/gstmeta.c
++++ b/gst/gstmeta.c
+@@ -477,7 +477,7 @@ gst_meta_register (GType api, const gchar * impl, gsize size,
+  * {
+  *   static const GstMetaInfo *meta_info = NULL;
+  *
+- *   if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++ *   if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+  *     GstMetaInfo *info = gst_meta_info_new (
+  *       gst_my_meta_api_get_type (),
+  *         "GstMyMeta",
+@@ -490,7 +490,7 @@ gst_meta_register (GType api, const gchar * impl, gsize size,
+  *     info->serialize_func = my_meta_serialize;
+  *     info->deserialize_func = my_meta_deserialize;
+  *     meta = gst_meta_info_register (info);
+- *     g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
++ *     g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
+  *   }
+  *
+  *   return meta_info;
+diff --git a/gst/gstparamspecs.c b/gst/gstparamspecs.c
+index 39c378ce4116..a84a477dff53 100644
+--- a/gst/gstparamspecs.c
++++ b/gst/gstparamspecs.c
+@@ -126,7 +126,7 @@ gst_param_spec_fraction_get_type (void)
+   static GType gst_faction_type = 0;
+ 
+   /* register GST_TYPE_PARAM_FRACTION */
+-  if (g_once_init_enter (&gst_faction_type)) {
++  if (g_once_init_enter_pointer (&gst_faction_type)) {
+     GType type;
+     static GParamSpecTypeInfo pspec_info = {
+       sizeof (GstParamSpecFraction),    /* instance_size     */
+@@ -140,7 +140,7 @@ gst_param_spec_fraction_get_type (void)
+     };
+     pspec_info.value_type = gst_fraction_get_type ();
+     type = g_param_type_register_static ("GstParamFraction", &pspec_info);
+-    g_once_init_leave (&gst_faction_type, type);
++    g_once_init_leave_pointer (&gst_faction_type, type);
+   }
+ 
+   return gst_faction_type;
+@@ -307,7 +307,7 @@ gst_param_spec_array_get_type (void)
+   static GType gst_array_type = 0;
+ 
+   /* register GST_TYPE_PARAM_FRACTION */
+-  if (g_once_init_enter (&gst_array_type)) {
++  if (g_once_init_enter_pointer (&gst_array_type)) {
+     GType type;
+     static GParamSpecTypeInfo pspec_info = {
+       sizeof (GstParamSpecArray),       /* instance_size     */
+@@ -321,7 +321,7 @@ gst_param_spec_array_get_type (void)
+     };
+     pspec_info.value_type = gst_value_array_get_type ();
+     type = g_param_type_register_static ("GstParamArray", &pspec_info);
+-    g_once_init_leave (&gst_array_type, type);
++    g_once_init_leave_pointer (&gst_array_type, type);
+   }
+ 
+   return gst_array_type;
+diff --git a/gst/gstpreset.c b/gst/gstpreset.c
+index ed25b5bd0809..622994887d6d 100644
+--- a/gst/gstpreset.c
++++ b/gst/gstpreset.c
+@@ -1322,9 +1322,9 @@ gst_preset_base_init (gpointer g_class)
+ GType
+ gst_preset_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     const GTypeInfo info = {
+       sizeof (GstPresetInterface),
+@@ -1338,7 +1338,7 @@ gst_preset_get_type (void)
+       NULL                      /* instance_init */
+     };
+     _type = g_type_register_static (G_TYPE_INTERFACE, "GstPreset", &info, 0);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/gst/gstprotection.c b/gst/gstprotection.c
+index f174da6aebb0..2c876dcb7c8e 100644
+--- a/gst/gstprotection.c
++++ b/gst/gstprotection.c
+@@ -68,9 +68,9 @@ gst_protection_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstProtectionMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -121,13 +121,13 @@ gst_protection_meta_get_info (void)
+ {
+   static const GstMetaInfo *protection_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & protection_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & protection_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_PROTECTION_META_API_TYPE, "GstProtectionMeta",
+         sizeof (GstProtectionMeta), gst_protection_meta_init,
+         gst_protection_meta_free, gst_protection_meta_transform);
+ 
+-    g_once_init_leave ((GstMetaInfo **) & protection_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & protection_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return protection_meta_info;
+diff --git a/gst/gsttask.c b/gst/gsttask.c
+index c13564508447..4a2fa5f009a2 100644
+--- a/gst/gsttask.c
++++ b/gst/gsttask.c
+@@ -314,7 +314,7 @@ gst_task_configure_name (GstTask * task)
+     GST_DEBUG_OBJECT (task, "Could not create thread name for '%s'", name);
+   } else {
+     GST_DEBUG_OBJECT (task, "Setting thread name to '%s'", thread_name);
+-    if (prctl (PR_SET_NAME, (unsigned long int) thread_name, 0, 0, 0))
++    if (prctl (PR_SET_NAME, thread_name, 0, 0, 0))
+       GST_DEBUG_OBJECT (task, "Failed to set thread name");
+   }
+   GST_OBJECT_UNLOCK (task);
+diff --git a/gst/gsturi.c b/gst/gsturi.c
+index b071de7d1c48..49b279bc7efd 100644
+--- a/gst/gsturi.c
++++ b/gst/gsturi.c
+@@ -123,9 +123,9 @@ _gst_ascii_strcasestr (const gchar * s, const gchar * find)
+ GType
+ gst_uri_handler_get_type (void)
+ {
+-  static gsize urihandler_type = 0;
++  static gpointer urihandler_type = 0;
+ 
+-  if (g_once_init_enter (&urihandler_type)) {
++  if (g_once_init_enter_pointer (&urihandler_type)) {
+     GType _type;
+     static const GTypeInfo urihandler_info = {
+       sizeof (GstURIHandlerInterface),
+@@ -145,7 +145,7 @@ gst_uri_handler_get_type (void)
+ 
+     GST_DEBUG_CATEGORY_INIT (gst_uri_handler_debug, "GST_URI", GST_DEBUG_BOLD,
+         "handling of URIs");
+-    g_once_init_leave (&urihandler_type, _type);
++    g_once_init_leave_pointer (&urihandler_type, _type);
+   }
+   return urihandler_type;
+ }
+diff --git a/gst/gstvalue.c b/gst/gstvalue.c
+index 315bcfb4d5ca..8d54cd8aa463 100644
+--- a/gst/gstvalue.c
++++ b/gst/gstvalue.c
+@@ -162,7 +162,7 @@ struct _GstValueList
+ #define FUNDAMENTAL_TYPE_ID_MAX \
+     (G_TYPE_FUNDAMENTAL_MAX >> G_TYPE_FUNDAMENTAL_SHIFT)
+ #define FUNDAMENTAL_TYPE_ID(type) \
+-    ((type) >> G_TYPE_FUNDAMENTAL_SHIFT)
++    ((uintptr_t) (type) >> G_TYPE_FUNDAMENTAL_SHIFT)
+ 
+ #define VALUE_LIST_ARRAY(v) ((GstValueList *) (v)->data[0].v_pointer)
+ #define VALUE_LIST_SIZE(v) (VALUE_LIST_ARRAY(v)->len)
+@@ -8096,7 +8096,7 @@ GType gst_ ## type ## _get_type (void)                          \
+ {                                                               \
+   static GType gst_ ## type ## _type = 0;              \
+                                                                 \
+-  if (g_once_init_enter (&gst_ ## type ## _type)) {             \
++  if (g_once_init_enter_pointer (&gst_ ## type ## _type)) {     \
+     GType _type;                                                \
+     _info.class_size = csize;                                   \
+     _finfo.type_flags = flags;                                  \
+@@ -8105,7 +8105,7 @@ GType gst_ ## type ## _get_type (void)                          \
+         g_type_fundamental_next (),                             \
+         name, &_info, &_finfo, 0);                              \
+     _gst_ ## type ## _type = _type;                             \
+-    g_once_init_leave(&gst_ ## type ## _type, _type);           \
++    g_once_init_leave_pointer(&gst_ ## type ## _type, _type);   \
+   }                                                             \
+                                                                 \
+   return gst_ ## type ## _type;                                 \
+diff --git a/libs/gst/base/gstaggregator.c b/libs/gst/base/gstaggregator.c
+index d60aa14531ea..c852e5d11fed 100644
+--- a/libs/gst/base/gstaggregator.c
++++ b/libs/gst/base/gstaggregator.c
+@@ -112,12 +112,14 @@
+ 
+ #include "gstaggregator.h"
+ 
++#include <stdfil.h>
++
+ GType
+ gst_aggregator_start_time_selection_get_type (void)
+ {
+   static GType gtype = 0;
+ 
+-  if (g_once_init_enter (&gtype)) {
++  if (g_once_init_enter_pointer (&gtype)) {
+     static const GEnumValue values[] = {
+       {GST_AGGREGATOR_START_TIME_SELECTION_ZERO,
+           "GST_AGGREGATOR_START_TIME_SELECTION_ZERO", "zero"},
+@@ -130,7 +132,7 @@ gst_aggregator_start_time_selection_get_type (void)
+     GType new_type =
+         g_enum_register_static ("GstAggregatorStartTimeSelection", values);
+ 
+-    g_once_init_leave (&gtype, new_type);
++    g_once_init_leave_pointer (&gtype, new_type);
+   }
+   return gtype;
+ }
+@@ -3083,9 +3085,9 @@ gst_aggregator_class_init (GstAggregatorClass * klass)
+   gst_aggregator_signals[SIGNAL_SAMPLES_SELECTED] =
+       g_signal_new ("samples-selected", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE, 5,
+-      GST_TYPE_SEGMENT | G_SIGNAL_TYPE_STATIC_SCOPE, GST_TYPE_CLOCK_TIME,
++      zorptr (GST_TYPE_SEGMENT , (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), GST_TYPE_CLOCK_TIME,
+       GST_TYPE_CLOCK_TIME, GST_TYPE_CLOCK_TIME,
+-      GST_TYPE_STRUCTURE | G_SIGNAL_TYPE_STATIC_SCOPE);
++      zorptr (GST_TYPE_STRUCTURE, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   gst_meta_register_custom_simple ("GstAggregatorMissingDataMeta");
+ }
+@@ -3157,9 +3159,9 @@ gst_aggregator_init (GstAggregator * self, GstAggregatorClass * klass)
+ GType
+ gst_aggregator_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstAggregatorClass),
+@@ -3179,7 +3181,7 @@ gst_aggregator_get_type (void)
+     aggregator_private_offset =
+         g_type_add_instance_private (_type, sizeof (GstAggregatorPrivate));
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff --git a/libs/gst/base/gstbaseparse.c b/libs/gst/base/gstbaseparse.c
+index 422e489c3280..b0aa8bd29379 100644
+--- a/libs/gst/base/gstbaseparse.c
++++ b/libs/gst/base/gstbaseparse.c
+@@ -379,9 +379,9 @@ static void gst_base_parse_init (GstBaseParse * parse,
+ GType
+ gst_base_parse_get_type (void)
+ {
+-  static gsize base_parse_type = 0;
++  static gpointer base_parse_type = 0;
+ 
+-  if (g_once_init_enter (&base_parse_type)) {
++  if (g_once_init_enter_pointer (&base_parse_type)) {
+     static const GTypeInfo base_parse_info = {
+       sizeof (GstBaseParseClass),
+       (GBaseInitFunc) NULL,
+@@ -401,7 +401,7 @@ gst_base_parse_get_type (void)
+     base_parse_private_offset =
+         g_type_add_instance_private (_type, sizeof (GstBaseParsePrivate));
+ 
+-    g_once_init_leave (&base_parse_type, _type);
++    g_once_init_leave_pointer (&base_parse_type, _type);
+   }
+   return (GType) base_parse_type;
+ }
+diff --git a/libs/gst/base/gstbasesink.c b/libs/gst/base/gstbasesink.c
+index e94a9572a524..46074f59dabb 100644
+--- a/libs/gst/base/gstbasesink.c
++++ b/libs/gst/base/gstbasesink.c
+@@ -338,9 +338,9 @@ static void gst_base_sink_finalize (GObject * object);
+ GType
+ gst_base_sink_get_type (void)
+ {
+-  static gsize base_sink_type = 0;
++  static gpointer base_sink_type = 0;
+ 
+-  if (g_once_init_enter (&base_sink_type)) {
++  if (g_once_init_enter_pointer (&base_sink_type)) {
+     GType _type;
+     static const GTypeInfo base_sink_info = {
+       sizeof (GstBaseSinkClass),
+@@ -360,7 +360,7 @@ gst_base_sink_get_type (void)
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstBaseSinkPrivate));
+ 
+-    g_once_init_leave (&base_sink_type, _type);
++    g_once_init_leave_pointer (&base_sink_type, _type);
+   }
+   return base_sink_type;
+ }
+diff --git a/libs/gst/base/gstbasesrc.c b/libs/gst/base/gstbasesrc.c
+index a840b4ac24f9..9c8c2fc0a690 100644
+--- a/libs/gst/base/gstbasesrc.c
++++ b/libs/gst/base/gstbasesrc.c
+@@ -284,9 +284,9 @@ static void gst_base_src_finalize (GObject * object);
+ GType
+ gst_base_src_get_type (void)
+ {
+-  static gsize base_src_type = 0;
++  static gpointer base_src_type = 0;
+ 
+-  if (g_once_init_enter (&base_src_type)) {
++  if (g_once_init_enter_pointer (&base_src_type)) {
+     GType _type;
+     static const GTypeInfo base_src_info = {
+       sizeof (GstBaseSrcClass),
+@@ -306,7 +306,7 @@ gst_base_src_get_type (void)
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstBaseSrcPrivate));
+ 
+-    g_once_init_leave (&base_src_type, _type);
++    g_once_init_leave_pointer (&base_src_type, _type);
+   }
+   return base_src_type;
+ }
+diff --git a/libs/gst/base/gstbasetransform.c b/libs/gst/base/gstbasetransform.c
+index 3f38c094b206..f71260fe3a56 100644
+--- a/libs/gst/base/gstbasetransform.c
++++ b/libs/gst/base/gstbasetransform.c
+@@ -219,9 +219,9 @@ static GstFlowReturn default_generate_output (GstBaseTransform * trans,
+ GType
+ gst_base_transform_get_type (void)
+ {
+-  static gsize base_transform_type = 0;
++  static gpointer base_transform_type = 0;
+ 
+-  if (g_once_init_enter (&base_transform_type)) {
++  if (g_once_init_enter_pointer (&base_transform_type)) {
+     GType _type;
+     static const GTypeInfo base_transform_info = {
+       sizeof (GstBaseTransformClass),
+@@ -241,7 +241,7 @@ gst_base_transform_get_type (void)
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstBaseTransformPrivate));
+ 
+-    g_once_init_leave (&base_transform_type, _type);
++    g_once_init_leave_pointer (&base_transform_type, _type);
+   }
+   return base_transform_type;
+ }
+diff --git a/libs/gst/base/gstdataqueue.c b/libs/gst/base/gstdataqueue.c
+index ac93b8e346c7..1fe327c3423b 100644
+--- a/libs/gst/base/gstdataqueue.c
++++ b/libs/gst/base/gstdataqueue.c
+@@ -626,7 +626,7 @@ flushing:
+ static gint
+ is_of_type (gconstpointer a, gconstpointer b)
+ {
+-  return !G_TYPE_CHECK_INSTANCE_TYPE (a, GPOINTER_TO_SIZE (b));
++  return !G_TYPE_CHECK_INSTANCE_TYPE (a, b);
+ }
+ 
+ /**
+diff --git a/libs/gst/controller/gstdirectcontrolbinding.c b/libs/gst/controller/gstdirectcontrolbinding.c
+index 0c4d589f4bda..d167509d2577 100644
+--- a/libs/gst/controller/gstdirectcontrolbinding.c
++++ b/libs/gst/controller/gstdirectcontrolbinding.c
+@@ -252,37 +252,37 @@ gst_direct_control_binding_constructor (GType type, guint n_construct_params,
+     self->byte_size = sizeof (g##type);
+ 
+ 
+-    switch (base) {
+-      case G_TYPE_INT:
++    switch ((uintptr_t) base) {
++      case (uintptr_t) G_TYPE_INT:
+         SET_CONVERT_FUNCTION (int);
+         break;
+-      case G_TYPE_UINT:
++      case (uintptr_t) G_TYPE_UINT:
+         SET_CONVERT_FUNCTION (uint);
+         break;
+-      case G_TYPE_LONG:
++      case (uintptr_t) G_TYPE_LONG:
+         SET_CONVERT_FUNCTION (long);
+         break;
+-      case G_TYPE_ULONG:
++      case (uintptr_t) G_TYPE_ULONG:
+         SET_CONVERT_FUNCTION (ulong);
+         break;
+-      case G_TYPE_INT64:
++      case (uintptr_t) G_TYPE_INT64:
+         SET_CONVERT_FUNCTION (int64);
+         break;
+-      case G_TYPE_UINT64:
++      case (uintptr_t) G_TYPE_UINT64:
+         SET_CONVERT_FUNCTION (uint64);
+         break;
+-      case G_TYPE_FLOAT:
++      case (uintptr_t) G_TYPE_FLOAT:
+         SET_CONVERT_FUNCTION (float);
+         break;
+-      case G_TYPE_DOUBLE:
++      case (uintptr_t) G_TYPE_DOUBLE:
+         SET_CONVERT_FUNCTION (double);
+         break;
+-      case G_TYPE_BOOLEAN:
++      case (uintptr_t) G_TYPE_BOOLEAN:
+         self->convert_g_value = convert_g_value_to_boolean;
+         self->convert_value = convert_value_to_boolean;
+         self->byte_size = sizeof (gboolean);
+         break;
+-      case G_TYPE_ENUM:
++      case (uintptr_t) G_TYPE_ENUM:
+         self->convert_g_value = convert_g_value_to_enum;
+         self->convert_value = convert_value_to_enum;
+         self->byte_size = sizeof (gint);
+diff --git a/libs/gst/controller/gsttimedvaluecontrolsource.c b/libs/gst/controller/gsttimedvaluecontrolsource.c
+index 7325f42f3c64..6f424e697e35 100644
+--- a/libs/gst/controller/gsttimedvaluecontrolsource.c
++++ b/libs/gst/controller/gsttimedvaluecontrolsource.c
+@@ -98,15 +98,15 @@ gst_control_point_copy (GstControlPoint * cp)
+ GType
+ gst_control_point_get_type (void)
+ {
+-  static gsize type_id = 0;
++  static gpointer type_id = 0;
+ 
+-  if (g_once_init_enter (&type_id)) {
++  if (g_once_init_enter_pointer (&type_id)) {
+     GType tmp =
+         g_boxed_type_register_static (g_intern_static_string
+         ("GstControlPoint"),
+         (GBoxedCopyFunc) gst_control_point_copy,
+         (GBoxedFreeFunc) gst_control_point_free);
+-    g_once_init_leave (&type_id, tmp);
++    g_once_init_leave_pointer (&type_id, tmp);
+   }
+ 
+   return type_id;
+diff --git a/libs/gst/net/gstnetaddressmeta.c b/libs/gst/net/gstnetaddressmeta.c
+index 139cac7905e7..f447b893eef7 100644
+--- a/libs/gst/net/gstnetaddressmeta.c
++++ b/libs/gst/net/gstnetaddressmeta.c
+@@ -75,9 +75,9 @@ gst_net_address_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "origin", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstNetAddressMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -87,13 +87,13 @@ gst_net_address_meta_get_info (void)
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_NET_ADDRESS_META_API_TYPE,
+         "GstNetAddressMeta",
+         sizeof (GstNetAddressMeta),
+         net_address_meta_init,
+         net_address_meta_free, net_address_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+diff --git a/libs/gst/net/gstnetcontrolmessagemeta.c b/libs/gst/net/gstnetcontrolmessagemeta.c
+index f4d2a2912f8a..6364876f6daa 100644
+--- a/libs/gst/net/gstnetcontrolmessagemeta.c
++++ b/libs/gst/net/gstnetcontrolmessagemeta.c
+@@ -78,10 +78,10 @@ gst_net_control_message_meta_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "origin", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstNetControlMessageMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -91,7 +91,7 @@ gst_net_control_message_meta_get_info (void)
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi =
+         gst_meta_register (GST_NET_CONTROL_MESSAGE_META_API_TYPE,
+         "GstNetControlMessageMeta",
+@@ -99,7 +99,7 @@ gst_net_control_message_meta_get_info (void)
+         net_control_message_meta_init,
+         net_control_message_meta_free,
+         net_control_message_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+diff --git a/plugins/elements/gstfakesink.c b/plugins/elements/gstfakesink.c
+index 028c87adfbaf..03114c0b6ebd 100644
+--- a/plugins/elements/gstfakesink.c
++++ b/plugins/elements/gstfakesink.c
+@@ -43,6 +43,8 @@
+ #include "gstfakesink.h"
+ #include "gstcoreelementselements.h"
+ 
++#include <stdfil.h>
++
+ static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink",
+     GST_PAD_SINK,
+     GST_PAD_ALWAYS,
+@@ -211,7 +213,7 @@ gst_fake_sink_class_init (GstFakeSinkClass * klass)
+   gst_fake_sink_signals[SIGNAL_HANDOFF] =
+       g_signal_new ("handoff", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstFakeSinkClass, handoff), NULL, NULL,
+-      NULL, G_TYPE_NONE, 2, GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE,
++      NULL, G_TYPE_NONE, 2, zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
+       GST_TYPE_PAD);
+ 
+   /**
+@@ -226,7 +228,7 @@ gst_fake_sink_class_init (GstFakeSinkClass * klass)
+       g_signal_new ("preroll-handoff", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstFakeSinkClass, preroll_handoff),
+       NULL, NULL, NULL, G_TYPE_NONE, 2,
+-      GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE, GST_TYPE_PAD);
++      zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE), GST_TYPE_PAD);
+ 
+   gst_element_class_set_static_metadata (gstelement_class,
+       "Fake Sink",
+diff --git a/plugins/elements/gstfakesrc.c b/plugins/elements/gstfakesrc.c
+index 7142e2c43df6..7131dc5aca55 100644
+--- a/plugins/elements/gstfakesrc.c
++++ b/plugins/elements/gstfakesrc.c
+@@ -53,6 +53,8 @@
+ #include "gstfakesrc.h"
+ #include "gstcoreelementselements.h"
+ 
++#include <stdfil.h>
++
+ static GstStaticPadTemplate srctemplate = GST_STATIC_PAD_TEMPLATE ("src",
+     GST_PAD_SRC,
+     GST_PAD_ALWAYS,
+@@ -335,7 +337,7 @@ gst_fake_src_class_init (GstFakeSrcClass * klass)
+   gst_fake_src_signals[SIGNAL_HANDOFF] =
+       g_signal_new ("handoff", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstFakeSrcClass, handoff), NULL, NULL,
+-      NULL, G_TYPE_NONE, 2, GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE,
++      NULL, G_TYPE_NONE, 2, zorptr (GST_TYPE_BUFFER, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+       GST_TYPE_PAD);
+ 
+   gst_element_class_set_static_metadata (gstelement_class,
+diff --git a/plugins/elements/gstfilesink.c b/plugins/elements/gstfilesink.c
+index 0491080a72db..3929165fc4f3 100644
+--- a/plugins/elements/gstfilesink.c
++++ b/plugins/elements/gstfilesink.c
+@@ -87,7 +87,7 @@ gst_file_sink_file_mode_get_type (void)
+ {
+   static GType file_mode_type = 0;
+ 
+-  if (g_once_init_enter (&file_mode_type)) {
++  if (g_once_init_enter_pointer (&file_mode_type)) {
+     static const GEnumValue file_mode[] = {
+       {GST_FILE_SINK_FILE_MODE_TRUNC, "Truncate file (mode wb)", "truncate"},
+       {GST_FILE_SINK_FILE_MODE_APPEND, "Append file (mode ab)", "output"},
+@@ -99,7 +99,7 @@ gst_file_sink_file_mode_get_type (void)
+     GType new_file_mode_type =
+         g_enum_register_static ("GstFileSinkFileMode", file_mode);
+ 
+-    g_once_init_leave (&file_mode_type, new_file_mode_type);
++    g_once_init_leave_pointer (&file_mode_type, new_file_mode_type);
+   }
+   return file_mode_type;
+ }
+diff --git a/plugins/elements/gstidentity.c b/plugins/elements/gstidentity.c
+index e3063b93278c..8d7a7285aa19 100644
+--- a/plugins/elements/gstidentity.c
++++ b/plugins/elements/gstidentity.c
+@@ -40,6 +40,8 @@
+ #include "gstidentity.h"
+ #include "gstcoreelementselements.h"
+ 
++#include <stdfil.h>
++
+ static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink",
+     GST_PAD_SINK,
+     GST_PAD_ALWAYS,
+@@ -268,7 +270,7 @@ gst_identity_class_init (GstIdentityClass * klass)
+   gst_identity_signals[SIGNAL_HANDOFF] =
+       g_signal_new ("handoff", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstIdentityClass, handoff), NULL, NULL,
+-      NULL, G_TYPE_NONE, 1, GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE);
++      NULL, G_TYPE_NONE, 1, zorptr (GST_TYPE_BUFFER, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstIdentity:stats:
+diff --git a/plugins/elements/gsttypefindelement.c b/plugins/elements/gsttypefindelement.c
+index 6cd4e4b6bd1c..8be3ec0863d9 100644
+--- a/plugins/elements/gsttypefindelement.c
++++ b/plugins/elements/gsttypefindelement.c
+@@ -81,6 +81,8 @@
+ #include <gst/gstutils.h>
+ #include <gst/gsterror.h>
+ 
++#include <stdfil.h>
++
+ GST_DEBUG_CATEGORY_STATIC (gst_type_find_element_debug);
+ #define GST_CAT_DEFAULT gst_type_find_element_debug
+ 
+@@ -276,7 +278,7 @@ gst_type_find_element_class_init (GstTypeFindElementClass * typefind_class)
+       G_TYPE_FROM_CLASS (typefind_class), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstTypeFindElementClass, have_type), NULL, NULL,
+       NULL, G_TYPE_NONE, 2,
+-      G_TYPE_UINT, GST_TYPE_CAPS | G_SIGNAL_TYPE_STATIC_SCOPE);
++      G_TYPE_UINT, zorptr (GST_TYPE_CAPS, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   typefind_class->have_type =
+       GST_DEBUG_FUNCPTR (gst_type_find_element_have_type);
+diff --git a/tests/check/gst/gstcontroller.c b/tests/check/gst/gstcontroller.c
+index 04a11e2c6992..f0cd361e283d 100644
+--- a/tests/check/gst/gstcontroller.c
++++ b/tests/check/gst/gstcontroller.c
+@@ -181,9 +181,9 @@ gst_test_obj_class_init (GstTestObjClass * klass)
+ static GType
+ gst_test_obj_get_type (void)
+ {
+-  static gsize test_obj_type = 0;
++  static gpointer test_obj_type = 0;
+ 
+-  if (g_once_init_enter (&test_obj_type)) {
++  if (g_once_init_enter_pointer (&test_obj_type)) {
+     GType type;
+     static const GTypeInfo info = {
+       (guint16) sizeof (GstTestObjClass),
+@@ -198,7 +198,7 @@ gst_test_obj_get_type (void)
+       NULL                      // value_table
+     };
+     type = g_type_register_static (GST_TYPE_ELEMENT, "GstTestObj", &info, 0);
+-    g_once_init_leave (&test_obj_type, type);
++    g_once_init_leave_pointer (&test_obj_type, type);
+   }
+   return test_obj_type;
+ }
+@@ -276,9 +276,9 @@ gst_test_control_source_init (GstTestControlSource * self)
+ static GType
+ gst_test_control_source_get_type (void)
+ {
+-  static gsize test_countrol_source_type = 0;
++  static gpointer test_countrol_source_type = 0;
+ 
+-  if (g_once_init_enter (&test_countrol_source_type)) {
++  if (g_once_init_enter_pointer (&test_countrol_source_type)) {
+     GType type;
+     static const GTypeInfo info = {
+       (guint16) sizeof (GstTestControlSourceClass),
+@@ -295,7 +295,7 @@ gst_test_control_source_get_type (void)
+     type =
+         g_type_register_static (GST_TYPE_CONTROL_SOURCE, "GstTestControlSource",
+         &info, 0);
+-    g_once_init_leave (&test_countrol_source_type, type);
++    g_once_init_leave_pointer (&test_countrol_source_type, type);
+   }
+   return test_countrol_source_type;
+ }
+@@ -406,9 +406,9 @@ gst_test_control_binding_class_init (gpointer klass, gpointer class_data)
+ static GType
+ gst_test_control_binding_get_type (void)
+ {
+-  static gsize test_countrol_binding_type = 0;
++  static gpointer test_countrol_binding_type = 0;
+ 
+-  if (g_once_init_enter (&test_countrol_binding_type)) {
++  if (g_once_init_enter_pointer (&test_countrol_binding_type)) {
+     GType type;
+     static const GTypeInfo info = {
+       (guint16) sizeof (GstTestControlBindingClass),
+@@ -425,7 +425,7 @@ gst_test_control_binding_get_type (void)
+     type =
+         g_type_register_static (GST_TYPE_CONTROL_BINDING,
+         "GstTestControlBinding", &info, 0);
+-    g_once_init_leave (&test_countrol_binding_type, type);
++    g_once_init_leave_pointer (&test_countrol_binding_type, type);
+   }
+   return test_countrol_binding_type;
+ }
+diff --git a/tests/check/gst/gstmeta.c b/tests/check/gst/gstmeta.c
+index 7228c99e458d..a049efc41d14 100644
+--- a/tests/check/gst/gstmeta.c
++++ b/tests/check/gst/gstmeta.c
+@@ -138,9 +138,9 @@ gst_meta_test_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { "timing", NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstMetaTestAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -164,12 +164,12 @@ gst_meta_test_get_info (void)
+ {
+   static const GstMetaInfo *meta_test_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_test_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_test_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_META_TEST_API_TYPE,
+         "GstMetaTest",
+         sizeof (GstMetaTest),
+         test_init_func, test_free_func, test_transform_func);
+-    g_once_init_leave ((GstMetaInfo **) & meta_test_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_test_info, (GstMetaInfo *) mi);
+   }
+   return meta_test_info;
+ }
+@@ -196,9 +196,9 @@ gst_meta_foo_api_get_type (void)
+   static GType type;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstMetaFooAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -208,12 +208,12 @@ gst_meta_foo_get_info (void)
+ {
+   static const GstMetaInfo *meta_foo_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_foo_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_foo_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_META_FOO_API_TYPE,
+         "GstMetaFoo",
+         sizeof (GstMetaFoo),
+         foo_init_func, foo_free_func, foo_transform_func);
+-    g_once_init_leave ((GstMetaInfo **) & meta_foo_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_foo_info, (GstMetaInfo *) mi);
+   }
+   return meta_foo_info;
+ }
+diff --git a/tests/check/gst/gstobject.c b/tests/check/gst/gstobject.c
+index 9daee3a65088..38face99ea70 100644
+--- a/tests/check/gst/gstobject.c
++++ b/tests/check/gst/gstobject.c
+@@ -48,9 +48,9 @@ struct _GstFakeObjectClass
+ static GType
+ gst_fake_object_get_type (void)
+ {
+-  static gsize fake_object_type = 0;
++  static gpointer fake_object_type = 0;
+ 
+-  if (g_once_init_enter (&fake_object_type)) {
++  if (g_once_init_enter_pointer (&fake_object_type)) {
+     GType type;
+     static const GTypeInfo fake_object_info = {
+       sizeof (GstFakeObjectClass),
+@@ -67,7 +67,7 @@ gst_fake_object_get_type (void)
+ 
+     type = g_type_register_static (GST_TYPE_OBJECT,
+         "GstFakeObject", &fake_object_info, 0);
+-    g_once_init_leave (&fake_object_type, type);
++    g_once_init_leave_pointer (&fake_object_type, type);
+   }
+   return fake_object_type;
+ }
+diff --git a/tests/check/gst/gstpreset.c b/tests/check/gst/gstpreset.c
+index 840e886caf12..324107d789f6 100644
+--- a/tests/check/gst/gstpreset.c
++++ b/tests/check/gst/gstpreset.c
+@@ -114,9 +114,9 @@ gst_preset_test_base_init (GstPresetTestClass * klass)
+ static GType
+ gst_preset_test_get_type (void)
+ {
+-  static gsize preset_test_type = 0;
++  static gpointer preset_test_type = 0;
+ 
+-  if (g_once_init_enter (&preset_test_type)) {
++  if (g_once_init_enter_pointer (&preset_test_type)) {
+     GType type;
+     const GTypeInfo info = {
+       sizeof (GstPresetTestClass),
+@@ -137,7 +137,7 @@ gst_preset_test_get_type (void)
+     };
+     type = g_type_register_static (GST_TYPE_ELEMENT, "GstPresetTest", &info, 0);
+     g_type_add_interface_static (type, GST_TYPE_PRESET, &preset_interface_info);
+-    g_once_init_leave (&preset_test_type, type);
++    g_once_init_leave_pointer (&preset_test_type, type);
+   }
+   return preset_test_type;
+ }
+diff --git a/tests/check/gst/gstprotection.c b/tests/check/gst/gstprotection.c
+index 51908e94ec40..d754549242e8 100644
+--- a/tests/check/gst/gstprotection.c
++++ b/tests/check/gst/gstprotection.c
+@@ -96,9 +96,9 @@ gst_protection_test_base_init (GstProtectionTestClass * klass)
+ static GType
+ gst_protection_test_get_type (void)
+ {
+-  static gsize protection_test_type = 0;
++  static gpointer protection_test_type = 0;
+ 
+-  if (g_once_init_enter (&protection_test_type)) {
++  if (g_once_init_enter_pointer (&protection_test_type)) {
+     GType type;
+     const GTypeInfo info = {
+       sizeof (GstProtectionTestClass),
+@@ -115,7 +115,7 @@ gst_protection_test_get_type (void)
+     type =
+         g_type_register_static (GST_TYPE_ELEMENT, "GstProtectionTest", &info,
+         0);
+-    g_once_init_leave (&protection_test_type, type);
++    g_once_init_leave_pointer (&protection_test_type, type);
+   }
+   return protection_test_type;
+ }
+diff --git a/tests/check/gst/gstvalue.c b/tests/check/gst/gstvalue.c
+index b1d2548584c6..8f99449bbf87 100644
+--- a/tests/check/gst/gstvalue.c
++++ b/tests/check/gst/gstvalue.c
+@@ -3726,12 +3726,12 @@ test_flags_get_type (void)
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("TestFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff --git a/tests/check/libs/controller.c b/tests/check/libs/controller.c
+index 4ada88e9923e..9cef28b2631d 100644
+--- a/tests/check/libs/controller.c
++++ b/tests/check/libs/controller.c
+@@ -48,7 +48,7 @@ typedef enum
+ static GType
+ gst_test_enum_get_type (void)
+ {
+-  static gsize gtype = 0;
++  static gpointer gtype = 0;
+   static const GEnumValue values[] = {
+     {ENUM_V0, "ENUM_V0", "0"},
+     {ENUM_V10, "ENUM_V10", "10"},
+@@ -58,9 +58,9 @@ gst_test_enum_get_type (void)
+     {0, NULL, NULL}
+   };
+ 
+-  if (g_once_init_enter (&gtype)) {
++  if (g_once_init_enter_pointer (&gtype)) {
+     GType tmp = g_enum_register_static ("GstTestEnum", values);
+-    g_once_init_leave (&gtype, tmp);
++    g_once_init_leave_pointer (&gtype, tmp);
+   }
+ 
+   return (GType) gtype;
+@@ -240,9 +240,9 @@ gst_test_obj_base_init (GstTestObjClass * klass)
+ static GType
+ gst_test_obj_get_type (void)
+ {
+-  static gsize test_obj_type = 0;
++  static gpointer test_obj_type = 0;
+ 
+-  if (g_once_init_enter (&test_obj_type)) {
++  if (g_once_init_enter_pointer (&test_obj_type)) {
+     GType type;
+     static const GTypeInfo info = {
+       (guint16) sizeof (GstTestObjClass),
+@@ -257,7 +257,7 @@ gst_test_obj_get_type (void)
+       NULL                      // value_table
+     };
+     type = g_type_register_static (GST_TYPE_ELEMENT, "GstTestObj", &info, 0);
+-    g_once_init_leave (&test_obj_type, type);
++    g_once_init_leave_pointer (&test_obj_type, type);
+   }
+   return test_obj_type;
+ }
+diff --git a/tests/examples/controller/control-sources.c b/tests/examples/controller/control-sources.c
+index 6c190ff61ad2..399b23e6c290 100644
+--- a/tests/examples/controller/control-sources.c
++++ b/tests/examples/controller/control-sources.c
+@@ -153,9 +153,9 @@ gst_test_obj_base_init (GstTestObjClass * klass)
+ static GType
+ gst_test_obj_get_type (void)
+ {
+-  static gsize TEST_OBJ_type = 0;
++  static gpointer TEST_OBJ_type = 0;
+ 
+-  if (g_once_init_enter (&TEST_OBJ_type)) {
++  if (g_once_init_enter_pointer (&TEST_OBJ_type)) {
+     GType type;
+     static const GTypeInfo info = {
+       (guint16) sizeof (GstTestObjClass),
+@@ -170,7 +170,7 @@ gst_test_obj_get_type (void)
+       NULL                      // value_table
+     };
+     type = g_type_register_static (GST_TYPE_ELEMENT, "GstTestObj", &info, 0);
+-    g_once_init_leave (&TEST_OBJ_type, type);
++    g_once_init_leave_pointer (&TEST_OBJ_type, type);
+   }
+   return TEST_OBJ_type;
+ }
+diff --git a/tools/gst-inspect.c b/tools/gst-inspect.c
+index a41334019616..73ac757f74bd 100644
+--- a/tools/gst-inspect.c
++++ b/tools/gst-inspect.c
+@@ -510,8 +510,8 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+     }
+     g_print ("\n");
+ 
+-    switch (G_VALUE_TYPE (&value)) {
+-      case G_TYPE_STRING:
++    switch ((uintptr_t) G_VALUE_TYPE (&value)) {
++      case (uintptr_t) G_TYPE_STRING:
+       {
+         const char *string_val = g_value_get_string (&value);
+ 
+@@ -525,7 +525,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+               PROP_ATTR_VALUE_COLOR, string_val, RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_BOOLEAN:
++      case (uintptr_t) G_TYPE_BOOLEAN:
+       {
+         gboolean bool_val = g_value_get_boolean (&value);
+ 
+@@ -534,7 +534,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             PROP_ATTR_VALUE_COLOR, bool_val ? "true" : "false", RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_ULONG:
++      case (uintptr_t) G_TYPE_ULONG:
+       {
+         GParamSpecULong *pulong = G_PARAM_SPEC_ULONG (param);
+ 
+@@ -550,7 +550,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             g_param_spec_get_name (param));
+         break;
+       }
+-      case G_TYPE_LONG:
++      case (uintptr_t) G_TYPE_LONG:
+       {
+         GParamSpecLong *plong = G_PARAM_SPEC_LONG (param);
+ 
+@@ -565,7 +565,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             g_param_spec_get_name (param));
+         break;
+       }
+-      case G_TYPE_UINT:
++      case (uintptr_t) G_TYPE_UINT:
+       {
+         GParamSpecUInt *puint = G_PARAM_SPEC_UINT (param);
+ 
+@@ -577,7 +577,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             g_value_get_uint (&value), RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_INT:
++      case (uintptr_t) G_TYPE_INT:
+       {
+         GParamSpecInt *pint = G_PARAM_SPEC_INT (param);
+ 
+@@ -588,7 +588,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             g_value_get_int (&value), RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_UINT64:
++      case (uintptr_t) G_TYPE_UINT64:
+       {
+         GParamSpecUInt64 *puint64 = G_PARAM_SPEC_UINT64 (param);
+ 
+@@ -600,7 +600,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             PROP_ATTR_VALUE_COLOR, g_value_get_uint64 (&value), RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_INT64:
++      case (uintptr_t) G_TYPE_INT64:
+       {
+         GParamSpecInt64 *pint64 = G_PARAM_SPEC_INT64 (param);
+ 
+@@ -612,7 +612,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             PROP_ATTR_VALUE_COLOR, g_value_get_int64 (&value), RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_FLOAT:
++      case (uintptr_t) G_TYPE_FLOAT:
+       {
+         GParamSpecFloat *pfloat = G_PARAM_SPEC_FLOAT (param);
+ 
+@@ -624,7 +624,7 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_DOUBLE:
++      case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         GParamSpecDouble *pdouble = G_PARAM_SPEC_DOUBLE (param);
+ 
+@@ -636,8 +636,8 @@ print_object_properties_info (GObject * obj, GObjectClass * obj_class,
+             g_value_get_double (&value), RESET_COLOR);
+         break;
+       }
+-      case G_TYPE_CHAR:
+-      case G_TYPE_UCHAR:
++      case (uintptr_t) G_TYPE_CHAR:
++      case (uintptr_t) G_TYPE_UCHAR:
+         GST_ERROR ("%s: property '%s' of type char: consider changing to "
+             "int/string", G_OBJECT_CLASS_NAME (obj_class),
+             g_param_spec_get_name (param));

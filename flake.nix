@@ -155,6 +155,10 @@
         gi-link-environment = import ./tests/gi-link-environment.nix {
           inherit pkgs pkgsFilc;
         };
+        media-foundations = import ./tests/media-foundations.nix {
+          inherit pkgs pkgsFilc;
+        };
+        glib-atomic = import ./tests/glib-atomic.nix { inherit pkgs pkgsFilc; };
         glib-gtype = import ./tests/glib-gtype.nix { inherit pkgs pkgsFilc; };
         glib-enums = import ./tests/glib-enums.nix { inherit pkgs pkgsFilc; };
         glib-networking = import ./tests/glib-networking.nix {
