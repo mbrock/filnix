@@ -68,13 +68,14 @@ def catalog(db, campaign):
         checks.setdefault(r["drv"], set()).add(r["phase"])
     rows = []
     for r in db.execute(
-        """SELECT c.id,c.label,c.state,c.drv,c.selection,c.error,d.failure
+        """SELECT c.id,c.label,c.state,c.drv,c.selection,c.recipe,c.error,d.failure
         FROM candidates c LEFT JOIN derivations d ON d.drv=c.drv
         WHERE c.campaign=? ORDER BY c.label""",
         (campaign,),
     ):
         p = dict(r)
         selection = json.loads(p.pop("selection"))
+        recipe = json.loads(p.pop("recipe") or "{}")
         meta = selection.get("metadata") or {}
         activity = activities.get(p["drv"])
         a = roots.get(p["drv"])
@@ -99,24 +100,28 @@ def catalog(db, campaign):
         p.pop("failure", None)
         p.update(
             description=meta.get("description") or "",
-            version=meta.get("version") or "",
+            version=recipe.get("version") or meta.get("version") or "",
             source=selection.get("sourceFile") or "",
             source_url=source_link(manifest, selection),
-            reason=evaluation_summary(error)
-            if p["state"] == "evaluation-error"
-            else error[:500],
+            reason=(
+                evaluation_summary(error)
+                if p["state"] == "evaluation-error"
+                else error[:500]
+            ),
             checks=sorted(checks.get(p["drv"], [])) if p["state"] != "excluded" else [],
             phase=activity["phase"] if activity else None,
             duration=duration,
             timing=timing,
             time_attempt=time_attempt,
             attempt=a["id"] if a else None,
-            log_drv=p["drv"]
-            if a
-            and a["kind"] == "build"
-            and activity
-            and a["id"] == activity["attempt"]
-            else None,
+            log_drv=(
+                p["drv"]
+                if a
+                and a["kind"] == "build"
+                and activity
+                and a["id"] == activity["attempt"]
+                else None
+            ),
             last=a["finished"] or a["created"] if a else None,
         )
         rows.append(p)

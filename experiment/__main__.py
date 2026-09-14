@@ -15,6 +15,31 @@ from .controller import Controller
 from .model import atomic_json, connect, import_campaign, writer_lock
 
 
+def committed_source(repo, revision):
+    """Freeze only committed files; the controller never reads a worktree."""
+    rev = subprocess.check_output(
+        [
+            "git",
+            "-C",
+            repo,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            revision + "^{commit}",
+        ],
+        text=True,
+    ).strip()
+    archive = subprocess.check_output(["git", "-C", repo, "archive", rev])
+    with tempfile.TemporaryDirectory(prefix="filnix-source-") as tmp:
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            tar.extractall(tmp, filter="data")
+        source = subprocess.check_output(
+            nix.command("store", "add-path", "--name", "filnix-campaign-source", tmp),
+            text=True,
+        ).strip()
+    return source, rev
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -43,6 +68,12 @@ def main():
             cmd.add_argument("ids", type=int, nargs="+")
         if op == "retry-derivation":
             cmd.add_argument("drv")
+        if op == "plan":
+            cmd.add_argument("--repo", help="repository for an explicit revision")
+            cmd.add_argument(
+                "--revision",
+                help="try only these unplanned/failed evaluations at this commit",
+            )
     schedule = sub.add_parser(
         "schedule", help="inspect or tune admission for future attempts"
     )
@@ -115,6 +146,14 @@ def main():
     ):
         request = {k: v for k, v in vars(args).items() if k not in ("state", "command")}
         request["op"] = args.command
+        if args.command == "plan":
+            repo, revision = request.pop("repo"), request.pop("revision")
+            if repo and not revision:
+                p.error("--repo requires --revision")
+            if revision:
+                request["source"], request["revision"] = committed_source(
+                    repo or ".", revision
+                )
         try:
             with socket.socket(socket.AF_UNIX) as s:
                 s.settimeout(60)
@@ -133,27 +172,7 @@ def main():
             Controller(db, state).serve()
         elif args.command == "import":
             manifest = json.loads(Path(args.manifest).read_text())
-            rev = subprocess.check_output(
-                [
-                    "git",
-                    "-C",
-                    args.repo,
-                    "rev-parse",
-                    "--verify",
-                    args.revision + "^{commit}",
-                ],
-                text=True,
-            ).strip()
-            archive = subprocess.check_output(["git", "-C", args.repo, "archive", rev])
-            with tempfile.TemporaryDirectory(prefix="filnix-source-") as tmp:
-                with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-                    tar.extractall(tmp, filter="data")
-                source = subprocess.check_output(
-                    nix.command(
-                        "store", "add-path", "--name", "filnix-campaign-source", tmp
-                    ),
-                    text=True,
-                ).strip()
+            source, rev = committed_source(args.repo, args.revision)
             selections = []
             if args.inventory:
                 selections = [

@@ -13,6 +13,7 @@ in
 {
   drv = p.drvPath;
   name = p.name;
+  version = p.version or null;
   outputs = builtins.listToAttrs (
     map (o: {
       name = o;

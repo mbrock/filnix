@@ -11,21 +11,21 @@ let
     filter = path: type: builtins.baseNameOf path != "__pycache__";
   };
 in
-pkgs.runCommand "filnix-experiment-0.11.1" { } ''
+pkgs.runCommand "filnix-experiment-0.12.0" { } ''
   mkdir -p $out/lib/experiment $out/bin
   cp -r ${source}/* $out/lib/experiment/
   cat > $out/bin/filnix-experiment <<EOF
   #!${pkgs.runtimeShell}
   export PYTHONPATH=$out/lib
   export FILNIX_NIX=/nix/var/nix/profiles/default/bin/nix
-  exec ${python}/bin/python -m experiment "\$@"
+  exec ${python}/bin/python -P -m experiment "\$@"
   EOF
   chmod +x $out/bin/filnix-experiment
   cat > $out/bin/filnix-attempt <<EOF
   #!${pkgs.runtimeShell}
   export PYTHONPATH=$out/lib
   export FILNIX_NIX=/nix/var/nix/profiles/default/bin/nix
-  exec ${python}/bin/python -m experiment.attempt "\$@"
+  exec ${python}/bin/python -P -m experiment.attempt "\$@"
   EOF
   chmod +x $out/bin/filnix-attempt
 ''

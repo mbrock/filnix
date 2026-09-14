@@ -129,6 +129,22 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual((p["duration"], p["timing"]), (20, "build"))
             self.assertEqual(p["checks"], ["checkPhase"])
 
+    def test_planned_version_takes_precedence_without_rewriting_inventory(self):
+        self.db.execute(
+            "UPDATE candidates SET recipe=? WHERE campaign=? AND label='package000'",
+            (encode({"version": "2.0", "revision": "new"}), self.cid),
+        )
+        rows = catalog(self.db, self.cid)["rows"]
+        self.assertEqual(rows[0]["version"], "2.0")
+        self.assertEqual(rows[1]["version"], "1.2")
+        selection = json.loads(
+            self.db.execute(
+                "SELECT selection FROM candidates WHERE campaign=? AND label='package000'",
+                (self.cid,),
+            ).fetchone()[0]
+        )
+        self.assertEqual(selection, self.selection)
+
     def test_campaign_isolation_exclusions_and_cached_retry(self):
         self.attempt()
         self.activity()

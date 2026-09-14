@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -777,6 +778,133 @@ class ExperimentTests(unittest.TestCase):
         )
         self.assertTrue(self.units.active(build))
         self.assertEqual(self.sql("SELECT count(*) FROM tests").fetchone()[0], 0)
+
+    def test_targeted_revision_preserves_other_failures_and_historical_attempts(self):
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+        revision = "f" * 40
+        old = self.controller.plan(self.cid, [1, 2])
+        (self.folder(old) / "plan.jsonl").write_text(
+            encode({"id": 1, "error": "old exclusion"})
+            + "\n"
+            + encode({"id": 2, "error": "downstream exclusion"})
+            + "\n"
+        )
+        self.finish(old)
+        self.controller.reconcile()
+        history = dict(self.sql("SELECT * FROM attempts WHERE id=?", (old,)).fetchone())
+        campaign = dict(self.controller.campaign(self.cid))
+        untouched = dict(self.sql("SELECT * FROM candidates WHERE id=2").fetchone())
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            new = self.controller.dispatch(
+                dict(
+                    op="plan",
+                    campaign=self.cid,
+                    ids=[1],
+                    source=source,
+                    revision=revision,
+                )
+            )
+        spec = json.loads((self.folder(new) / "spec.json").read_text())
+        self.assertEqual((spec["source"], spec["revision"]), (source, revision))
+        self.assertEqual(spec["previous_candidates"][0]["error"], "old exclusion")
+        self.assertEqual(len(spec["previous_candidates"]), 1)
+        self.plan_record(new, 1, A)
+        self.finish(new)
+        Controller(self.db, self.state, self.units).reconcile()
+        self.assertEqual(dict(self.controller.campaign(self.cid)), campaign)
+        self.assertEqual(
+            dict(self.sql("SELECT * FROM attempts WHERE id=?", (old,)).fetchone()),
+            history,
+        )
+        self.assertEqual(
+            dict(self.sql("SELECT * FROM candidates WHERE id=2").fetchone()), untouched
+        )
+        row = self.sql("SELECT state,recipe FROM candidates WHERE id=1").fetchone()
+        recipe = json.loads(row["recipe"])
+        self.assertEqual(row["state"], "queued")
+        self.assertEqual(
+            (recipe["source"], recipe["revision"], recipe["plan_attempt"]),
+            (source, revision, new),
+        )
+        # Fixed derivations from both revisions can share a resource-bounded batch.
+        with self.db:
+            self.sql(
+                "INSERT INTO derivations(drv,name,outputs) VALUES(?,?,?)", (B, B, "{}")
+            )
+            self.sql("UPDATE candidates SET drv=?,state='queued' WHERE id=3", (B,))
+        build = self.controller.build_targets(
+            self.controller.campaign(self.cid), [A, B]
+        )
+        spec = json.loads((self.folder(build) / "spec.json").read_text())
+        self.assertEqual(
+            spec["recipe_sources"][A], [dict(source=source, revision=revision)]
+        )
+        self.assertEqual(
+            spec["recipe_sources"][B],
+            [dict(source=campaign["source"], revision=campaign["revision"])],
+        )
+
+    def test_revision_plan_rejects_mutable_sources_and_planned_candidates(self):
+        for source, revision in (
+            ("/home/worktree", "f" * 40),
+            ("/nix/store/source", None),
+        ):
+            with self.assertRaisesRegex(ValueError, "frozen committed flake"):
+                self.controller.plan(self.cid, [1], source, revision)
+        with self.assertRaises(ValueError):
+            self.controller.plan(self.cid, [1, 1])
+        self.graph()
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+        with patch("experiment.controller.Path.is_file", return_value=True):
+            with self.assertRaisesRegex(ValueError, "already planned"):
+                self.controller.plan(self.cid, [1], source, "f" * 40)
+        self.assertEqual(self.sql("SELECT count(*) FROM attempts").fetchone()[0], 0)
+
+    def test_source_snapshot_excludes_worktree_edits(self):
+        from experiment.__main__ import committed_source
+
+        repo = self.state / "repo"
+        repo.mkdir()
+
+        def git(*args):
+            return subprocess.check_output(
+                ["git", "-C", str(repo), *args], text=True
+            ).strip()
+
+        git("init", "-q")
+        (repo / "flake.nix").write_text("committed")
+        (repo / "flake.lock").write_text("{}")
+        git("add", ".")
+        git(
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "source",
+        )
+        revision = git("rev-parse", "HEAD")
+        (repo / "flake.nix").write_text("uncommitted")
+        (repo / "untracked").write_text("not included")
+        original = subprocess.check_output
+        source = "/nix/store/" + "e" * 32 + "-filnix-campaign-source"
+
+        def execute(command, **kwargs):
+            if command[0] == "git":
+                return original(command, **kwargs)
+            snapshot = Path(command[-1])
+            self.assertEqual((snapshot / "flake.nix").read_text(), "committed")
+            self.assertFalse((snapshot / "untracked").exists())
+            self.assertIn("add-path", command)
+            return source + "\n"
+
+        with patch("experiment.__main__.subprocess.check_output", side_effect=execute):
+            self.assertEqual(committed_source(str(repo), "HEAD"), (source, revision))
 
     def test_alias_planned_after_interruption_requires_explicit_retry(self):
         self.graph()

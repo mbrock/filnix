@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -104,7 +105,8 @@ class Controller:
             runner_version=VERSION,
             targets=targets,
             policy=policy,
-            source=campaign["source"],
+            source=extra.pop("source", campaign["source"]),
+            revision=extra.pop("revision", campaign["revision"]),
             nix_version=campaign["nix_version"],
             **extra,
         )
@@ -130,10 +132,24 @@ class Controller:
             )
         return aid
 
-    def plan(self, cid, ids):
+    def plan(self, cid, ids, source=None, revision=None):
         campaign = self.campaign(cid)
-        if not ids or len(ids) > 64:
+        if not ids or len(ids) > 64 or len(set(ids)) != len(ids):
             raise ValueError("plan requires 1–64 candidate IDs")
+        extra = {}
+        if source is not None or revision is not None:
+            if (
+                not isinstance(source, str)
+                or not re.fullmatch(
+                    r"/nix/store/[0-9a-z]{32}-filnix-campaign-source", source
+                )
+                or not isinstance(revision, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", revision)
+                or not (Path(source) / "flake.nix").is_file()
+                or not (Path(source) / "flake.lock").is_file()
+            ):
+                raise ValueError("revision planning requires a frozen committed flake")
+            extra.update(source=source, revision=revision)
         targets = []
         for i in ids:
             row = self.db.execute(
@@ -142,7 +158,19 @@ class Controller:
             if not row or row["drv"] or row["state"] == "excluded":
                 raise ValueError("candidate absent or already planned")
             targets.append({"id": row["id"], "attr": json.loads(row["attr"])})
-        return self.intent(campaign, "plan", targets)
+        if extra:
+            # Preserve the prior projection too, including failures without logs.
+            extra["previous_candidates"] = [
+                dict(
+                    self.db.execute(
+                        "SELECT id,state,drv,recipe,error FROM candidates WHERE id=?",
+                        (i,),
+                    ).fetchone()
+                )
+                for i in ids
+            ]
+            self.root(source)
+        return self.intent(campaign, "plan", targets, **extra)
 
     def ingest(self, attempt):
         folder = directory(self.state, attempt["id"])
@@ -200,6 +228,7 @@ class Controller:
 
     def finish_plan(self, attempt, result):
         folder = directory(self.state, attempt["id"])
+        spec = json.loads(attempt["spec"])
         seen = set()
         rows = folder / "plan.jsonl"
         if rows.exists():
@@ -215,6 +244,9 @@ class Controller:
                     )
                     continue
                 recipe = row["recipe"]
+                recipe["source"] = spec["source"]
+                recipe["revision"] = spec.get("revision")
+                recipe["plan_attempt"] = attempt["id"]
                 nix.add_graph(self.db, json.loads((folder / row["graph"]).read_text()))
                 self.root(recipe["drv"])
                 held = self.db.execute(
@@ -288,9 +320,7 @@ class Controller:
                 origin = (
                     "pre-existing"
                     if outputs <= before
-                    else "local"
-                    if activity
-                    else "unknown"
+                    else "local" if activity else "unknown"
                 )
                 # If absent before, successful realization plus its build activity establishes
                 # successful observed phases; batch exit status alone does not.
@@ -586,6 +616,25 @@ class Controller:
         return report
 
     def build_targets(self, campaign, targets):
+        # Builds realize fixed drvs, never reevaluate the campaign flake. A batch
+        # can contain roots planned at different explicit follow-up revisions.
+        recipe_sources = {}
+        for target in targets:
+            sources = []
+            for row in self.db.execute(
+                "SELECT recipe FROM candidates WHERE campaign=? AND drv=? ORDER BY id",
+                (campaign["id"], target),
+            ):
+                recipe = json.loads(row["recipe"] or "{}")
+                origin = {
+                    "source": recipe.get("source", campaign["source"]),
+                    "revision": recipe.get("revision") or campaign["revision"],
+                }
+                if origin not in sources:
+                    sources.append(origin)
+            recipe_sources[target] = sources or [
+                {"source": campaign["source"], "revision": campaign["revision"]}
+            ]
         drvs = set(d for target in targets for d in closure(self.db, target))
         outputs = set()
         for drv in drvs:
@@ -600,6 +649,7 @@ class Controller:
             targets,
             output_paths=sorted(outputs),
             derivations=sorted(drvs),
+            recipe_sources=recipe_sources,
         )
 
     def tick(self):
@@ -654,7 +704,9 @@ class Controller:
                     )
             return after
         if op == "plan":
-            return self.plan(cid, request["ids"])
+            return self.plan(
+                cid, request["ids"], request.get("source"), request.get("revision")
+            )
         if op == "build-once":
             campaign = self.campaign(cid)
             policy = json.loads(campaign["policy"])

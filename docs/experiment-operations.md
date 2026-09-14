@@ -251,6 +251,28 @@ the named attempt, and reconciles its eventual exit; the other lane drains. It n
 `retry` requeues an inconclusive or failed candidate. A shared failed dependency
 can be cleared with `retry-derivation`; other known blockers stay in force.
 
+For an explicit follow-up to **evaluation failures**, plan only the selected IDs
+from a committed revision:
+
+```sh
+filnix-experiment plan CAMPAIGN ID [ID ...] --repo /path/to/filnix --revision COMMIT
+```
+
+The CLI archives that commit into the store, excluding worktree changes. The
+controller roots it and records the revision, source, and previous candidate
+observations in the new plan's immutable spec. Successful evaluations enter the
+ordinary build queue; the campaign's mode and resource limits still control
+admission. No other failed evaluation is reset. Planned candidates and excluded
+inputs are refused, and the original manifest, campaign source, attempt records,
+and raw logs stay unchanged. The planner lane must be free, as for ordinary `plan`.
+
+Each resulting recipe records its plan attempt and source revision. Build batches
+realize those fixed derivations without evaluating the flake again; `recipe_sources`
+in their specs records the source of every root, including mixed-revision batches.
+The package catalog prefers the evaluated version while preserving the frozen
+inventory metadata. This is an explicit per-package follow-up, not a campaign-wide
+source update or an automatic downstream retry.
+
 **`filnix-experiment run CAMPAIGN` enables the continuing experiment.** Newly
 imported campaigns never become running just because services restart. Ordering
 remains deterministic by attribute name, deduplicated by derivation. Cost/fanout
@@ -469,12 +491,14 @@ with the original derivation and evidence before moving on. A failure in one
 dependency can block many selected roots; those roots are not independent
 compiler failures.
 
-Keep the first campaign's source and observations immutable. Validate recipe
-changes with separate, bounded builds from a committed follow-up revision,
+Keep the first campaign's default source and historical observations immutable.
+Use targeted revision planning above for explicit retries of evaluation failures.
+Otherwise validate recipe changes with separate, bounded builds from a committed
+follow-up revision,
 recording old and new derivations. Compare their input closures before building
 to catch unintended compiler/runtime rebuilds. During the sweep, use one job
 and two cores for these probes; daemon builds remain under the installed cgroup
-ceiling. Passing a modified recipe does not change the original campaign's
+ceiling. Passing a modified recipe does not rewrite the original attempt's
 result. Include fixes in a subsequent campaign when testing their wider effects.
 
 Retain upstream tests. A missing test tool, missing link dependency, evaluator
@@ -482,7 +506,7 @@ policy refusal, unsupported language dependency, safety trap, and resource limit
 are different findings. Do not turn a failure into success by disabling its
 checks, and do not retry a deterministic failure without a relevant change.
 Use `retry` for a changed external condition on the same recipe; a changed recipe
-requires a new source revision. This is an operator workflow, not an unattended
+requires an explicitly recorded new source revision. This is an operator workflow, not an unattended
 patching or retry loop.
 
 ## Verification recorded on 2026-09-13
