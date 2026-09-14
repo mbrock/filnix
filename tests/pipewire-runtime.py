@@ -104,7 +104,15 @@ context.modules = [
                 for client in args.client:
                     subprocess.run([client, args.libc], env=env, check=True, timeout=20)
                 if args.wpctl:
-                    subprocess.run([args.wpctl, "status"], env=env, check=True, timeout=20)
+                    status = subprocess.run(
+                        [args.wpctl, "status"], env=env, check=True, timeout=20,
+                        text=True, stdout=subprocess.PIPE,
+                    ).stdout
+                    # The status includes random server cookies and process IDs.
+                    # Preserve the actual assertion without putting that varying
+                    # diagnostic in the Nix check's saved output.
+                    assert "Filnix virtual sink" in status, status
+                    print("WirePlumber: live PipeWire virtual sink discovery passed")
                 run("pw-cli", "destroy", str(created[0]["id"]))
                 assert not named_nodes(), "node survived destruction"
                 daemon.terminate()
