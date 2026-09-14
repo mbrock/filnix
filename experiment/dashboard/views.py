@@ -577,6 +577,46 @@ def batch_status(result, campaign, view, now):
                             )
 
 
+def evidence_link(evidence, cid, view, label="Failure log"):
+    if not evidence:
+        with tag.span(MUTED):
+            text("No captured batch for this evidence.")
+        return
+    with link(
+        LOG.url(
+            view.with_(drv=evidence["drv"]),
+            cid=evidence["campaign"],
+            aid=evidence["id"],
+        ),
+        LINK,
+    ):
+        text(
+            label
+            if evidence["drv"] or evidence["kind"] == "plan"
+            else "Batch diagnostic"
+        )
+    with tag.span(MUTED):
+        text(" · ")
+        timestamp(evidence["finished"] or evidence["created"])
+        text(
+            " · This campaign"
+            if evidence["campaign"] == cid
+            else " · From " + evidence["campaign_name"]
+        )
+
+
+def failure_label(failure, evidence=None):
+    phase = (evidence or {}).get("phase") or ""
+    if "check" in phase.lower():
+        return "Tests failed"
+    return {
+        "compile-or-link": "Compilation or linking failed",
+        "configure": "Configuration failed",
+        "check": "Tests failed",
+        "build": "Build failed",
+    }.get(failure, failure)
+
+
 def package(result, campaign, view):
     with tag.section(id="package-detail", data_sampled=result["sampled"]):
         hx.refresh(
@@ -594,19 +634,47 @@ def package(result, campaign, view):
             with tag.span(MUTED):
                 text(recipe.get("version") or meta.get("version") or "")
             status(result["state"], bool(result["tests"]))
-            if result["log"]:
-                with link(
-                    LOG.url(
-                        view.with_(drv=result["drv"]), cid=cid, aid=result["log"][0]
-                    ),
-                    BUTTON,
-                ):
-                    text("Build log")
             if result["drv"]:
                 with link(GRAPH.url(view.with_(focus=result["drv"]), cid=cid), LINK):
                     text("Dependencies →")
         with tag.p("mb-2"):
             text(meta.get("description") or "")
+        if result["state"] in ("blocked", "failed", "queued", "unplanned"):
+            with tag.p([MUTED, "mb-2"], id="package-scheduling"):
+                text(
+                    {
+                        "blocked": "Blocked by failed dependencies; not queued for a build.",
+                        "failed": "Build failed; an explicit retry is required.",
+                        "queued": "Queued for a build; not running yet.",
+                        "unplanned": "Waiting for evaluation.",
+                    }[result["state"]]
+                )
+                if (
+                    result["state"] in ("queued", "unplanned")
+                    and campaign["mode"] != "running"
+                ):
+                    text(" Campaign paused.")
+        if result["log"]:
+            with tag.p("mb-2"):
+                evidence_link(
+                    result["log"],
+                    cid,
+                    view,
+                    "Failure log"
+                    if result["state"] == "failed"
+                    else "Previous build log"
+                    if result["state"] in ("queued", "blocked")
+                    and result["log"]["state"] == "finished"
+                    else "Build log",
+                )
+        elif result["state"] == "blocked":
+            with tag.p([MUTED, "mb-2"]):
+                text(
+                    "No build output for this package in this campaign. Open a dependency's failure log below."
+                )
+        if result["plan"]:
+            with tag.p("mb-2"):
+                evidence_link(result["plan"], cid, view, "Planning log")
         if result["source_url"]:
             with link(result["source_url"], [LINK, "break-all"], navigate=False):
                 text(result["selection"].get("sourceFile") or "Nixpkgs source")
@@ -634,9 +702,24 @@ def package(result, campaign, view):
             for blocker in result["blockers"]:
                 with tag.div([ROW, "py-2"]):
                     with link(GRAPH.url(view.with_(focus=blocker["drv"]), cid=cid)):
-                        text(blocker["drv"].rsplit("/", 1)[-1][33:-4])
+                        text(build_name(blocker["drv"].rsplit("/", 1)[-1][33:-4]))
                     with tag.p(["text-red-800", "break-words"]):
-                        text(blocker["failure"][:1000])
+                        text(
+                            failure_label(blocker["failure"], blocker["evidence"])[
+                                :1000
+                            ]
+                        )
+                    with tag.p():
+                        evidence_link(blocker["evidence"], cid, view)
+                    if len(blocker["chain"]) > 2:
+                        with tag.p([MUTED, "break-words"]):
+                            text(
+                                "Via "
+                                + " → ".join(
+                                    build_name(d.rsplit("/", 1)[-1][33:-4])
+                                    for d in blocker["chain"][1:-1]
+                                )
+                            )
         if result["tests"]:
             with tag.h2([HEADING, "mt-4", "mb-1"]):
                 text("Test evidence")
@@ -677,7 +760,10 @@ def package(result, campaign, view):
                             else GRAPH.url(view.with_(focus=row["drv"]), cid=cid)
                         )
                         with link(url, [LINK, ROW, "block", "py-1", "break-words"]):
-                            text(row.get("label") or row.get("name") or row["drv"])
+                            text(
+                                row.get("label")
+                                or build_name(row.get("name") or row["drv"])
+                            )
 
 
 def graph_node(node, cid, view, focus=False):
@@ -713,16 +799,46 @@ def graph_node(node, cid, view, focus=False):
                 status("ready" if node["state"] == "available" else node["state"])
             with tag.span(MUTED):
                 text((node["phase"] or "").removesuffix("Phase"))
-            if node["attempt"]:
+            if node.get("evidence") and not focus:
                 with link(
-                    LOG.url(view.with_(drv=node["drv"]), cid=cid, aid=node["attempt"]),
+                    LOG.url(
+                        view.with_(drv=node["evidence"]["drv"]),
+                        cid=node["evidence"]["campaign"],
+                        aid=node["evidence"]["id"],
+                    ),
                     LINK,
                 ):
                     text("Log")
         if focus and node["failure"]:
             with tag.p(["text-red-800", "break-words", "mt-1"]):
-                text(node["failure"][:1000])
+                text(
+                    (
+                        "Previous failure: "
+                        if node["state"] in ("building", "settling", "queued")
+                        else ""
+                    )
+                    + failure_label(node["failure"], node.get("evidence"))[:1000]
+                )
         if focus:
+            if node.get("evidence"):
+                with tag.p("mt-1"):
+                    evidence_link(
+                        node["evidence"],
+                        cid,
+                        view,
+                        "Failure log"
+                        if node["state"] == "failed"
+                        else "Previous build log"
+                        if node["state"] in ("queued", "blocked")
+                        and node["evidence"]["state"] == "finished"
+                        else "Build log",
+                    )
+            if node["state"] == "failed":
+                with tag.p([MUTED, "mt-1"]):
+                    text("Not queued; an explicit retry is required.")
+            elif node["state"] == "blocked":
+                with tag.p([MUTED, "mt-1"]):
+                    text("Waiting for failed dependencies; not queued for a build.")
             for alias in node["labels"]:
                 with link(
                     PACKAGE.url(view, cid=cid, pid=alias["id"]), [LINK, "block", "mt-1"]

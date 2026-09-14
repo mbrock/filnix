@@ -175,7 +175,43 @@ def reader(result, campaign, view, *, live=False, chunk_only=False, count=0):
             tabindex=0,
             aria_label="Build output",
         ):
-            chunk(result, cid, view, count, live)
+            if result.get("searching"):
+                with tag.p(["px-2", "py-2", "text-stone-200"]):
+                    text("Looking for this build's earlier output… ")
+                    text(bytes_(result["size"] - result["start"]) + " searched")
+                url = LOG.url(
+                    view, cid=cid, aid=aid, direction="before", cursor=result["start"]
+                )
+                with tag.a(
+                    ["block", "px-2", "py-2", "text-emerald-200"],
+                    href=url,
+                    id="log-search",
+                ):
+                    hx.refresh(url, trigger="load delay:100ms, every 2s")
+                    attr("hx-swap", "outerHTML ignoreTitle:true")
+                    attr("hx-target", "closest #log-reader")
+                    attr("hx-select", "#log-reader")
+                    attr("hx-sync", "this:drop")
+                    text("Continue searching earlier output")
+            else:
+                if not result["entries"]:
+                    with tag.p(["px-2", "py-2", "text-stone-200"], id="log-empty"):
+                        if view.drv and not any(
+                            s["drv"] == view.drv for s in result["sources"]
+                        ):
+                            text(
+                                "No build output was recorded for this package in this batch. "
+                            )
+                        elif not result["captured"]:
+                            text("This batch has no captured diagnostic output. ")
+                        else:
+                            text("No output in this window. ")
+                        with link(
+                            LOG.url(view.with_(drv=""), cid=cid, aid=aid),
+                            "text-emerald-200",
+                        ):
+                            text("Show all batch output")
+                chunk(result, cid, view, count, live)
 
 
 def tools(result, campaign, view, *, live=False):
@@ -196,6 +232,10 @@ def tools(result, campaign, view, *, live=False):
                     + aid[:8]
                 )
             with tag.span([MUTED, "text-xs"]):
+                if result["finished"]:
+                    text("Finished · ")
+                else:
+                    text("Running · ")
                 timestamp(result["attempt"]["created"])
         with tag.div(["flex", "flex-wrap", "items-center", "gap-2", "mb-2"]):
             with tag.form(
@@ -211,7 +251,17 @@ def tools(result, campaign, view, *, live=False):
                     [FIELD, "w-full"], name="drv", aria_label="Build output source"
                 ):
                     with tag.option(value="", selected=not view.drv):
-                        text(f"All builds ({len(sources)})")
+                        text(
+                            f"All batch output ({len(sources)} builds)"
+                            if result["attempt"]["kind"] == "build"
+                            else "Planning output"
+                        )
+                    if view.drv and view.drv not in sources:
+                        with tag.option(value=view.drv, selected=True):
+                            text(
+                                build_name(view.drv.rsplit("/", 1)[-1][33:-4])
+                                + " · no build output"
+                            )
                     for drv, name in sources.items():
                         with tag.option(value=drv, selected=drv == view.drv):
                             text(build_name(name or drv.rsplit("/", 1)[-1][33:-4]))

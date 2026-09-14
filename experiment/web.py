@@ -192,7 +192,7 @@ def derivation_detail(db, drv, campaign, offset=0):
     dependencies = [
         dict(r)
         for r in db.execute(
-            """SELECT child AS drv,d.name,group_concat(DISTINCT roles.role) AS roles
+            """SELECT e.child AS drv,d.name,group_concat(DISTINCT roles.role) AS roles
       FROM edges e JOIN derivations d ON d.drv=e.child LEFT JOIN roles ON roles.parent=e.parent
       AND roles.child=e.child AND roles.campaign=? WHERE e.parent=? GROUP BY e.child LIMIT 100""",
             (campaign, drv),
@@ -211,7 +211,7 @@ def derivation_detail(db, drv, campaign, offset=0):
         derivation=dict(row),
         dependencies=dependencies,
         dependents=dependents,
-        tests=[dict(r) for r in db.execute("SELECT t.* FROM tests t JOIN attempts a ON a.id=t.attempt WHERE t.drv=? AND a.campaign=?", (drv, row["campaign"]))],
+        tests=[dict(r) for r in db.execute("SELECT t.* FROM tests t JOIN attempts a ON a.id=t.attempt WHERE t.drv=? AND a.campaign=?", (drv, campaign))],
         blockers=blockers(db, drv),
         offset=offset,
     )

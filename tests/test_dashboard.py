@@ -1,6 +1,8 @@
 """HTML representation, isolation and byte-reader contracts."""
 
 import unittest
+import uuid
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 
 import test_experiment as fixtures
@@ -146,6 +148,155 @@ class DashboardTests(unittest.TestCase):
         summary = BeautifulSoup(self.get("/summary").text, "html.parser")
         self.assertEqual(summary.select_one("#summary")["hx-trigger"], "none")
 
+    def test_blocked_package_links_failure_owner_and_unfiltered_plan(self):
+        self.graph()
+        plan = self.attempt("plan")
+        other = import_campaign(
+            self.db,
+            "Earlier campaign",
+            {"attrPaths": [["other"]]},
+            "/source",
+            "old",
+            nix.DEFAULT_POLICY,
+            "test",
+        )
+        aid = str(uuid.uuid4())
+        self.sql(
+            "INSERT INTO attempts(id,campaign,kind,state,targets,created,spec) VALUES(?,?,'build','finished','[]',1,'{}')",
+            (aid, other),
+        )
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,phase,stopped) VALUES(?,'3',?,'build','checkPhase',1)",
+            (aid, A),
+        )
+        self.sql(
+            "UPDATE derivations SET failure='check',evidence_attempt=? WHERE drv=?",
+            (aid, A),
+        )
+        self.sql("UPDATE candidates SET state='blocked' WHERE id=2")
+        # Give the blocked consumer its own planning batch, but no build activity.
+        self.sql(
+            "UPDATE attempts SET targets=? WHERE id=?",
+            ('[{"id":2,"attr":["b"]}]', plan),
+        )
+        self.db.commit()
+        page = BeautifulSoup(self.get("/packages/2").text, "html.parser")
+        self.assertIn("not queued for a build", page.text)
+        self.assertIn("From Earlier campaign", page.text)
+        self.assertIn("Tests failed", page.text)
+        self.assertNotIn("Build log", page.text)
+        planning = next(a for a in page.select("a") if a.text == "Planning log")
+        self.assertNotIn("drv", parse_qs(urlsplit(planning["href"]).query))
+        failure = next(a for a in page.select("a") if a.text == "Failure log")
+        self.assertIn("/campaigns/" + other + "/batches/" + aid, failure["href"])
+        self.assertEqual(parse_qs(urlsplit(failure["href"]).query)["drv"], [A])
+        self.assertEqual(self.client.get(failure["href"]).status_code, 200)
+        graph = BeautifulSoup(
+            self.get("/dependencies", params={"focus": A}).text, "html.parser"
+        )
+        self.assertIn("From Earlier campaign", graph.select_one("#focus-node").text)
+        self.assertIn(
+            other,
+            next(a for a in graph.select("#focus-node a") if a.text == "Failure log")[
+                "href"
+            ],
+        )
+
+    def test_failure_before_builder_starts_uses_batch_diagnostic(self):
+        self.graph()
+        aid = self.attempt("build")
+        self.sql("UPDATE candidates SET state='failed' WHERE id=1")
+        self.sql(
+            "UPDATE derivations SET failure='build',evidence_attempt=? WHERE drv=?",
+            (aid, A),
+        )
+        self.db.commit()
+        page = BeautifulSoup(self.get("/packages/1").text, "html.parser")
+        link = next(a for a in page.select("a") if a.text == "Batch diagnostic")
+        self.assertNotIn("drv", parse_qs(urlsplit(link["href"]).query))
+        # Old bookmarked filtered planning/build URLs also explain their emptiness.
+        page = BeautifulSoup(
+            self.get("/batches/" + aid + "/log", params={"drv": B}).text, "html.parser"
+        )
+        self.assertIn(
+            "No build output was recorded", page.select_one("#log-empty").text
+        )
+        self.assertEqual(page.select_one("option[selected]")["value"], B)
+
+    def test_scoped_log_search_reaches_older_failure_in_bounded_steps(self):
+        from experiment.dashboard import data
+        from experiment.dashboard.resources import View
+        from experiment.logs import PAGE
+
+        self.graph()
+        aid = self.attempt("build")
+        self.log(aid, dict(action="start", type=105, id=3, fields=[A]))
+        self.log(
+            aid,
+            dict(
+                action="result",
+                type=101,
+                id=3,
+                fields=["fatal: actual compiler diagnostic"],
+            ),
+        )
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,stopped) VALUES(?,'3',?,'build',1)",
+            (aid, A),
+        )
+        with (self.folder(aid) / "stderr.log").open("ab") as f:
+            f.write((b"unrelated later build output " + b"x" * 100 + b"\n") * 40000)
+        self.sql(
+            "UPDATE attempts SET state='finished',finished=created WHERE id=?", (aid,)
+        )
+        self.db.commit()
+        v = View(drv=A)
+        result = data.log(self.db, self.state, self.cid, aid, v)
+        self.assertTrue(result["searching"])
+        self.assertLessEqual(result["size"] - result["start"], 9 * PAGE)
+        page = BeautifulSoup(
+            self.get("/batches/" + aid + "/log", params={"drv": A}).text, "html.parser"
+        )
+        self.assertIn("Looking for this build's earlier output", page.text)
+        self.assertIsNotNone(page.select_one("#log-search"))
+        self.assertIsNone(page.select_one("#log-cursor"))
+        for _ in range(5):
+            if not result["searching"]:
+                break
+            previous = result["start"]
+            result = data.log(self.db, self.state, self.cid, aid, v, "before", previous)
+            self.assertLess(result["start"], previous)
+        self.assertFalse(result["searching"])
+        self.assertTrue(
+            any("actual compiler diagnostic" in e["text"] for e in result["entries"])
+        )
+
+    def test_retry_clear_shows_queued_with_previous_log(self):
+        self.graph()
+        aid = self.attempt("build")
+        self.sql("UPDATE attempts SET state='finished' WHERE id=?", (aid,))
+        self.sql("UPDATE candidates SET state='queued' WHERE id=1")
+        self.sql(
+            "UPDATE derivations SET evidence_attempt=?,failure=NULL WHERE drv=?",
+            (aid, A),
+        )
+        self.db.commit()
+        page = BeautifulSoup(
+            self.get("/dependencies", params={"focus": A}).text, "html.parser"
+        )
+        self.assertEqual(
+            page.select_one("#focus-node [data-status]")["data-status"], "queued"
+        )
+        self.assertNotIn(
+            "explicit retry is required", page.select_one("#focus-node").text
+        )
+        self.assertEqual(
+            self.client.get(
+                "/api/derivation", params={"drv": A, "campaign": self.cid}
+            ).status_code,
+            200,
+        )
+
     def test_completed_event_stream_and_owned_html_links(self):
         self.graph()
         self.sql("UPDATE candidates SET state='available'")
@@ -213,7 +364,9 @@ class DashboardTests(unittest.TestCase):
         page = self.get("/packages/1").text
         self.assertNotIn("Tested consumers", page)
         self.assertNotIn("Test evidence", page)
-        self.assertEqual(self.client.get("/api/snapshot?campaign="+self.cid).json()["tested"],0)
+        self.assertEqual(
+            self.client.get("/api/snapshot?campaign=" + self.cid).json()["tested"], 0
+        )
         self.sql("INSERT INTO tests VALUES(?,?,'checkPhase','{}')", (aid, B))
         self.db.commit()
         self.assertIn("Tested consumers", self.get("/packages/1").text)

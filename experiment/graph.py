@@ -10,6 +10,7 @@ import json
 
 from .attempt import directory
 from .model import stamp
+from .evidence import attempt_evidence
 
 
 SCOPE = """WITH RECURSIVE scope(drv) AS (
@@ -92,11 +93,11 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
     cache = {}
     labels_by_drv = {}
     for r in db.execute(
-        "SELECT id,label,drv FROM candidates WHERE campaign=? AND drv IS NOT NULL ORDER BY label",
+        "SELECT id,label,drv,state FROM candidates WHERE campaign=? AND drv IS NOT NULL ORDER BY label",
         (campaign,),
     ):
         labels_by_drv.setdefault(r["drv"], []).append(
-            dict(id=r["id"], label=r["label"])
+            dict(id=r["id"], label=r["label"], state=r["state"])
         )
 
     def node(drv, required=None):
@@ -142,6 +143,9 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         else:
             status = "unknown"
         labels = labels_by_drv.get(drv, [])[:8]
+        if status == "unknown" and any(label["state"] == "queued" for label in labels):
+            status = "queued"
+        aid = activity["attempt"] if activity else record.get("evidence_attempt")
         return dict(
             drv=drv,
             name=record["name"],
@@ -156,7 +160,8 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
             else None,
             labels=labels,
             required_outputs=wanted,
-            attempt=activity["attempt"] if activity else record.get("evidence_attempt"),
+            attempt=aid,
+            evidence=attempt_evidence(db, aid, drv) if aid else None,
         )
 
     roots = [node(d) for d in targets]
@@ -257,6 +262,7 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
         if e[0] in scope:
             consumers.append(node(e[0]))
     priority = {
+        "queued": 5,
         "building": 0,
         "excluded": 1,
         "failed": 1,

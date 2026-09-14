@@ -33,7 +33,7 @@
   document.addEventListener("htmx:before:swap", (event) => {
     const ctx = event.detail.ctx, source = ctx?.sourceElement;
     const reader = source?.closest("#log-reader");
-    if (busy(reader) && (source?.id === "log-tools" || (source?.id === "log-cursor" && ctx.target === reader))) event.preventDefault();
+    if (busy(reader) && (source?.id === "log-tools" || (["log-cursor", "log-search"].includes(source?.id) && ctx.target === reader))) event.preventDefault();
   });
 
   function pauseAt(scroll, reader) {
@@ -95,7 +95,7 @@
   document.addEventListener("htmx:before:request", (event) => {
     const ctx = event.detail.ctx, source = ctx?.sourceElement;
     if (source?.getAttribute("hx-push-url") === "true") navigations.add(ctx);
-    if ((source?.id === "log-tools" || source?.id === "log-cursor") && busy(source.closest("#log-reader"))) event.preventDefault();
+    if (["log-tools", "log-cursor", "log-search"].includes(source?.id) && busy(source.closest("#log-reader"))) event.preventDefault();
     if (source?.id === "log-cursor" && source.closest("#log-reader")?.dataset.pausing)
       event.preventDefault();
   });

@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException
 from ..batches import batches
 from ..catalog import catalog
 from ..graph import live_graph as live_graph
+from ..evidence import attempt_evidence, failure_evidence
 from ..history import COLUMNS, attempt_detail, item
 from ..logs import build_log
 from ..model import connect, stamp
@@ -185,20 +186,25 @@ def package(db, cid, pid):
     result = detail(db, pid)
     result["done"] = finished(db, cid)
     result["sampled"] = stamp()
-    result["log"] = db.execute(
-        """SELECT a.attempt FROM activities a
-        JOIN attempts t ON t.id=a.attempt WHERE a.drv=? AND t.campaign=?
+    build = db.execute(
+        """SELECT a.attempt FROM activities a JOIN attempts t ON t.id=a.attempt
+        WHERE a.drv=? AND a.kind='build' AND t.campaign=?
         ORDER BY t.created DESC LIMIT 1""",
         (result["drv"], cid),
     ).fetchone()
-    if result["log"] is None:
-        result["log"] = db.execute(
-            """SELECT id FROM attempts
-            WHERE campaign=? AND kind='plan' AND EXISTS (
-                SELECT 1 FROM json_each(targets) WHERE json_extract(value,'$.id')=?)
-            ORDER BY created DESC LIMIT 1""",
-            (cid, pid),
-        ).fetchone()
+    result["log"] = attempt_evidence(db, build[0], result["drv"]) if build else None
+    if result["state"] == "failed":
+        result["log"] = failure_evidence(db, result["drv"]) or result["log"]
+    plan = db.execute(
+        """SELECT id FROM attempts WHERE campaign=? AND kind='plan' AND EXISTS (
+        SELECT 1 FROM json_each(targets) WHERE json_extract(value,'$.id')=?)
+        ORDER BY created DESC LIMIT 1""",
+        (cid, pid),
+    ).fetchone()
+    result["plan"] = attempt_evidence(db, plan[0], "") if plan else None
+    result["blockers"] = [b for b in result["blockers"] if b["drv"] != result["drv"]]
+    for blocker in result["blockers"]:
+        blocker["evidence"] = failure_evidence(db, blocker["drv"])
     return result
 
 
@@ -208,12 +214,20 @@ def log(db, state, cid, aid, view, direction="tail", cursor=0):
     ).fetchone():
         raise HTTPException(404, "Log not found in this campaign")
     result = build_log(db, state, aid, direction, cursor, view.drv)
-    # Quiet scoped logs scan a bounded number of older windows on initial load.
-    if direction == "tail" and view.drv:
-        for _ in range(7):
-            if result["entries"] or not result["before"]:
-                break
-            result = build_log(db, state, aid, "before", result["start"], view.drv)
+    # Seek backwards in bounded requests, including for explicit Earlier output.
+    # Large batches can have hundreds of megabytes after a dependency failed.
+    result["searching"] = False
+    if direction in ("tail", "before") and view.drv and not result["reset"]:
+        observed = any(s["drv"] == view.drv for s in result["sources"])
+        if observed:
+            for _ in range(7):
+                if result["entries"] or not result["before"]:
+                    break
+                result = build_log(db, state, aid, "before", result["start"], view.drv)
+        result["searching"] = bool(
+            observed and not result["entries"] and result["before"]
+        )
+
     return result
 
 

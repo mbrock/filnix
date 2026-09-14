@@ -119,6 +119,24 @@ Build failures and evaluation errors have separate filters, so the overview
 counts lead to the matching rows; All failures combines the failure categories.
 Failed refreshes display a notice until that reader successfully recovers.
 
+Blocked packages distinguish their own planning/build history from the failed
+dependency. Each blocker links directly to the batch that owns its evidence,
+with a date, campaign provenance and the intervening dependency chain. Derivation
+facts are shared by exact store path, so an earlier campaign's evidence may still
+block a new campaign; its log URL belongs to that earlier campaign. Different
+derivations of the same named package do not share this evidence. Blocked/failed
+states do not imply an automatic retry. Cleared failures with queued candidates
+show Queued and label the previous log as history.
+
+Planning logs and failures before a builder starts open unfiltered batch output.
+Only recorded build activities produce scoped build-log links. Scoped logs seek
+backwards in at most eight 256 KiB windows per request. If the match is earlier,
+an HTML search cursor continues automatically, with visible progress and a normal
+link for readers without JavaScript. Search requests replace only their owning
+reader, retry on failure, and pause while log controls are being edited. Empty
+bookmarked source filters retain their selected source and explain that no build
+output was recorded, with a link to the full batch output.
+
 Build an immutable application, run a preview against the real read-only database
 under `filnix-web`, then select that store path with `deploy/experiment/install`
 and restart `filnix-web`. Existing workers keep their original executable and
