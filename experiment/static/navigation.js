@@ -72,7 +72,7 @@
       u = url(),
       q = u.searchParams;
     restoration = { token, s: state() };
-    const campaign = q.get("campaign") || initial.campaigns?.[0]?.id;
+    const campaign = q.get("campaign") || initial.campaign?.id || initial.campaigns?.[0]?.id;
     const view =
       Object.keys(views).find((k) => "#" + views[k] === u.hash) || "activity";
     const old = new URL(applied || u.href);

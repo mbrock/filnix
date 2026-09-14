@@ -28,7 +28,10 @@ def snapshot(db, campaign=None, search="", state="", offset=0):
     ]
     if not campaigns:
         return dict(campaigns=[], candidates=[], counts={}, cursor=0)
-    cid = campaign or campaigns[0]["id"]
+    cid = campaign or next(
+        (c["id"] for c in reversed(campaigns) if c["mode"] == "running"),
+        campaigns[-1]["id"],
+    )
     row = db.execute("SELECT * FROM campaigns WHERE id=?", (cid,)).fetchone()
     if not row:
         raise ValueError("unknown campaign")
