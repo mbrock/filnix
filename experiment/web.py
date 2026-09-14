@@ -217,8 +217,6 @@ def derivation_detail(db, drv, campaign, offset=0):
 
 
 def application(state):
-    static = Path(__file__).with_name("static")
-
     def app(environ, start_response):
         status, mime = "200 OK", "application/json; charset=utf-8"
         try:
@@ -234,40 +232,7 @@ def application(state):
                 def get(key, default=""):
                     return args.get(key, [default])[0]
 
-                if path == "/":
-                    with closing(connect(state, readonly=True)) as db:
-                        initial = snapshot(db, get("campaign") or None)
-                    # Embedded JSON escapes '<' to prevent closing its script element.
-                    initial_json = json.dumps(initial).replace("<", "\\u003c")
-                    payload = (
-                        (static / "index.html")
-                        .read_text()
-                        .replace("__INITIAL__", initial_json)
-                        .encode()
-                    )
-                    mime = "text/html; charset=utf-8"
-                elif path in (
-                    "/app.js",
-                    "/navigation.js",
-                    "/packages.js",
-                    "/packages.css",
-                    "/batches.js",
-                    "/batches.css",
-                    "/graph.js",
-                    "/logs.js",
-                    "/logs.css",
-                    "/history.js",
-                    "/history.css",
-                    "/style.css",
-                    "/theme.css",
-                ):
-                    payload = (static / path[1:]).read_bytes()
-                    mime = (
-                        "text/javascript; charset=utf-8"
-                        if path.endswith(".js")
-                        else "text/css; charset=utf-8"
-                    )
-                elif path == "/api/snapshot":
+                if path == "/api/snapshot":
                     with closing(connect(state, readonly=True)) as db:
                         payload = snapshot(
                             db,

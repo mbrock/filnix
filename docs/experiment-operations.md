@@ -16,185 +16,48 @@ first campaign retain their receipts and continue to drain.
 
 ## Dashboard layout
 
-**Activity** is the default: inventory progress, current builds, a compact
-campaign timeline, and the batch ledger. **Packages** provides the full inventory
-with descriptions, versions, results, and source links. **Batch timings** opens
-from Activity or the package options menu.
-**Dependencies** contains the graph. The views
-have URL fragments and support browser back/forward navigation. Campaign
-selection, source revision, resource meters, and additional inventory counts
-live in the run menu beside **Live logs**.
+The live viewer uses Tagflow, htmx 4 and Tailwind. See
+[dashboard architecture](dashboard-architecture.md) for the resource contracts,
+module responsibilities and development checks.
 
-The design follows the build-to-job-to-log navigation used by
-[Buildkite](https://buildkite.com/docs/pipelines/build-page) and the emphasis on
-clear, dense information in [U.S. Graphics](https://usgraphics.com/). Current work
-and changes stay visible; detailed evidence opens on demand. Shared typography,
-restrained status colors, aligned rows, and small gaps replace repeated headings,
-explanatory captions, and a permanent inspector. Phone layouts adapt the content
-instead of shrinking a desktop table or retaining a wide sidebar.
+**Activity** shows counts, current work, a Build/Plan timeline and recent batches.
+**Packages** shows the complete selected result set with no pagination or virtual
+rows: names, versions, descriptions and results. Built is muted; Tested is stronger.
+Use browser Find. Source links, diagnostics, test evidence and dependencies are in
+the package's own page. The options menu contains refresh and CSV export.
+**Batches** holds the timing data, with all attempts, outcome/type filters, search
+and duration/date sorting. **Dependencies** follows a current build, or a pinned
+package, with inputs and consumers. Built inputs can be expanded.
+
+The campaign menu retains the first campaign and calibration histories. Canonical
+page URLs, GET filters and Back/Forward work with ordinary browser navigation.
+Old query links and view fragments redirect into the new pages. Only package
+column headings remain sticky. All timestamps use UTC.
+
+Inventories and batch lists stay still while reading. Explicit refresh loads a new
+snapshot. Current work and dependency states refresh independently using HTML;
+SSE supplies revision hints with polling recovery. Paused or completed history
+remains browsable. A completed batch may contain failed individual recipes; a
+batch with errors may contain successful builds and successful checks.
 
 **Built** counts selected attributes whose required outputs were observed.
-**Tested** counts distinct selected derivations with successful check evidence;
-it is not a count of every transitive dependency or individual test case. Batch
-check counts include dependency derivations. A batch labeled **With errors** may
-still contain successful builds and checks; **Plan finished** describes the
-worker, not the acceptability of all recipes it evaluated.
+**Tested** counts distinct selected derivations with successful check evidence in
+this campaign. It is not a count of every dependency or individual test case.
+Aliases remain separate package rows. No package or batch timing is shown in the
+package list; batch wall time includes preparation, dependencies and all roots.
 
-## Browsing packages
+**Live log** follows a current build and moves to the next batch at EOF. An
+individual batch or package link pins its own log. Source selection isolates a
+build. Scrolling upward or pressing Pause holds the reading position; Resume
+returns to the current tail. Earlier output, wrapping, 12/14/16 px font size,
+window search and raw download are available. The reader is bounded to 2,000
+records, with raw-byte cursors and retry after failed or slow requests. The raw
+captured evidence is unchanged.
 
-The Packages view loads **all selected attributes**, with no pages or virtual rows.
-The result selector opens on Built and includes Tested, Failed, Blocked,
-All tried, and the entire inventory. All tried includes evaluations, exclusions,
-and inconclusive results but excludes unplanned/queued inputs. Counts refer to
-attributes, including aliases. Tested means successful evidence in this campaign,
-never recipe flags or availability alone.
-
-There is no in-app package search; use the browser's Find command on the full list.
-The list uses one sans-serif text size, compact rows, and ordinary document scrolling.
-Only the column headings remain sticky. Campaign statistics appear on the other
-views. Source paths, CSV export, and refresh live in the list's options menu.
-Rows are alphabetical. Mobile and desktop show versions inline. Built is muted;
-Tested has stronger emphasis. Clicking a result opens its recorded log. Descriptions
-and versions come from the frozen native inventory; source links use the campaign's
-pinned Nixpkgs repository and revision. Package sizes and file counts are not currently
-measured. No package or batch timings appear in the package list or its CSV export.
-
-Evaluation errors show Nix's final diagnostic, after any startup warnings or evaluation
-trace. The full stored observation remains available under **Full diagnostic** in
-package details. No recorded outcome or raw log is changed by this presentation.
-With the installed Nix, the planner's 4 GiB address-space limit produces a heap-expansion
-warning even for successful evaluation of `1`; that warning alone does not establish
-an out-of-memory failure. Review the terminal error before changing resource limits.
-
-The catalog is a consistent database snapshot, compressed in transit when supported.
-It loads when the view first opens and on explicit refresh. Routine status polling
-keeps the list still. Refresh preserves the visible row; offline readers retain the
-loaded list. CSV exports the complete selected result set in alphabetical order.
-
-Views, result/sort choices, campaign changes, graph focus, packages, batch details,
-and logs have URL-backed browser history. Back/Forward restores the prior view,
-selection, and document scroll position. A log opened from a package returns to that
-package; the next Back returns to the list. Close buttons and Escape use the same
-history. Opening a direct detail/log URL works after reload; closing a direct link
-returns to its underlying view instead of leaving the site. Switching log sources
-or following new batches replaces the current log entry, so it does not accumulate
-an entry for every update. Native links support opening packages/logs in new tabs.
-
-## Browsing batch timings
-
-**Batch timings** (`#batch-timings`) loads all attempts in the campaign through
-`/api/batches`, without pagination. It opens on build batches, longest first. Search
-matches batch IDs, requested package aliases, and dependency names actually observed
-building. Matching dependency names appear in the table. Choose planning or both kinds,
-filter by outcome, or sort by duration/start time. Filters and search live in the URL;
-typing one search creates one history entry, and Back restores the previous selection.
-
-The timeline draws individual intervals in chronological order, assigning overlapping
-batches to separate rows. Filtering changes both the timeline and table. Click an
-interval or duration/package link for the existing batch detail sheet, targets,
-observed builds, and logs. The full table provides keyboard and touch targets for
-intervals too short to select on the timeline.
-
-Durations are job wall times from admission to recorded finish, including preparation,
-dependencies, and all requested roots. Running batches show **elapsed**, frozen at the
-snapshot time. Refresh updates the snapshot without continually rearranging the list.
-A terminal job without a finish timestamp has unknown duration and no timeline interval.
-Historical outcomes come from the attempt result, never today's package availability.
-Build counts are distinct observed build activities; tested counts are distinct
-derivations with recorded successful tests in that batch, including dependencies.
-A batch with errors can contain successful tests. Displayed dates use local time.
-
-Workers from version 0.9 also record individual Nix activity start/stop times in
-`build-times.json`, persisted in schema 3's `build_times` table. Older workers have no
-such timestamps. Those observations remain in the API for future use, but the package
-list does not mix those times with whole-batch durations. A stopped activity alone
-establishes neither success nor successful tests.
-
-## Watching dependencies
-
-The live map follows an active build and draws its inputs on the left and direct
-consumers on the right. Arrows point from dependency to consumer. Click a neighbor
-to move through the graph; this pins the focus while its states keep updating.
-Back returns to the previous node; Follow live resumes automatic selection.
-Requested roots and active build phases are shortcuts into the same map, and a
-package's detail view has an Explore on dependency map button.
-
-Built inputs collapse into an expandable group. Neighbor pages limit the
-display to six real nodes per side. The center also identifies the current batch
-targets reachable downstream and counts selected dependent attributes (including
-aliases), while the map itself deduplicates derivations. Shared native tools are
-part of the build graph; role annotations are shown where recorded.
-
-The map reports recipe evaluation progress and store preflight separately from
-actual builds. It uses the recorded graph, active attempt's store observations,
-and Nix phase events, without launching Nix queries from HTTP requests. A stopped
-activity remains awaiting result until stronger evidence exists. A consumer
-reaching a build phase establishes that its required input outputs were provided;
-that availability is labeled as an inference in the node tooltip and never
-creates a local-build or test-pass claim. This follows Nix's
-[input realization before execution](https://github.com/NixOS/nix/blob/2.32.1/src/libstore/build/derivation-building-goal.cc#L180).
-Edges use their required output names, so a consumer needing `dev` does not wait
-for an unrelated missing output. The public `/api/graph` accepts `campaign`,
-optional `focus` derivation, `available=1`, and a neighbor `page`.
-
-## Following build output
-
-**Live logs** opens the current build batch near the end of its captured
-output. It follows subsequent batches while following output is enabled.
-Opening an individual attempt pins that attempt; **Next batches: on** in the log options menu opts into
-automatic transitions. Scrolling back, searching, or loading history pauses
-both scrolling and batch transitions. **Resume** (or the new-output byte count) returns to the current
-end of the selected attempt. Paused viewers keep their text and position while
-checking for new output, and show how many captured bytes are waiting.
-
-Select a build in the sidebar, or the source picker on phones, to isolate its output. Links from the dependency
-map, current work, and recorded package/derivation results open that build's
-log. The reader searches backward for recent output from quiet builds. Phase
-boundaries and diagnostics stand out; Nix progress counters and cache-query
-events are hidden. Output is attributed through recorded Nix activity IDs.
-Native tools retain their own identities. Unattributed evaluator/Nix messages
-remain in **All builds**. Ending an activity does not create a success claim.
-
-**Earlier output** pages backward without moving the line being read.
-Search highlights text within the loaded window; Enter/Shift+Enter or the arrow
-buttons move among matches. Wrap controls long lines. The browser retains up to
-2,000 records and approximately 1 MiB of decoded text; older/newer windows can
-be loaded again. **Download raw log** in the options menu downloads the original captured stderr, including
-event metadata, escape sequences and progress records omitted from the viewer.
-
-The log options menu offers 12, 14, and 16 px text sizes (relative to the browser's
-base text preference); the choice is saved locally when storage is available.
-Changing size or wrapping retains the visible row when scrolling is paused.
-Normal browser zoom remains available. On phones, the build picker becomes a
-native select and consecutive rows share a source label above the output. Find
-opens the search row; Escape closes it first. Wrapping and follow controls remain
-visible. With search closed, output occupies over three quarters of the phone
-viewport, including at a 320 px width.
-
-`experiment/static/theme.css` owns the shared type, spacing, and color scale for
-the dashboard, history, graph, and log viewer. Component styles consume those
-variables directly; no CSS compilation or runtime styling dependency is needed.
-The root and wide log blocks explicitly set `text-size-adjust: 100%` (including
-the WebKit prefix) to prevent individual log rows from receiving different
-mobile text inflation. Touch inputs use the larger control size. Browser checks
-cover mixed and scoped logs, wrapping, uniform long/short row metrics, narrow
-phone controls, persisted size choices, and scroll anchoring. Chromium touch
-emulation is a layout check, not a substitute for validation on an actual iPhone.
-
-The read-only `/api/build-log` accepts `attempt`, optional `drv`, a byte `cursor`,
-and `direction=tail|before|after|status`. Each request reads bounded windows
-(256 KiB normally, at most 1 MiB for a record); complete records retain their
-original byte offsets. Oversized records are noted and remain in the raw log.
-Live reads stop at the controller's committed ingestion offset, which commits
-activity ownership and cursor together. This prevents a new build's lines being
-consumed before their owner is known. UTF-8 records are decoded whole; terminal
-fragments remain visible. No Nix queries or database writes occur on this path.
-The older raw `/api/log` endpoint remains available.
-
-Requests are serialized, aborted when switching views, and protected by a view
-generation token. Reconnection resumes at the last consumed cursor. The log
-viewer is independent of the controller and attempt processes; updating it only
-requires restarting `filnix-web` after selecting the new application package.
+Evaluation errors show Nix's final diagnostic; full observations are available in
+package details. The planner's 4 GiB address-space limit produces a heap-expansion
+warning even for successful evaluation of `1`; that warning alone does not prove
+an out-of-memory failure. Inspect the terminal error before changing limits.
 
 ## Binary caches
 
@@ -211,8 +74,8 @@ installation, and restore verification.
 - `experiment/controller.py`: single writer, queue admission, recovery, local commands.
 - `experiment/attempt.py`: independent unit, bounded evaluation/build processes,
   raw logs and atomic completion record. Never writes the database.
-- `experiment/web.py` and `experiment/static/`: read-only WSGI app, Waitress,
-  ordinary browser JavaScript. No frontend dependency installation.
+- `experiment/dashboard/`: read-only Tagflow/Starlette HTML viewer on Hypercorn.
+- `experiment/web.py`: compatibility JSON API, raw logs and health checks.
 - `experiment/graph.py`: live, campaign-scoped graph neighborhoods and readiness
   evidence. No database writes and no change to build admission.
 - `deploy/experiment/`: fixed systemd units, narrow launcher, installation helper,
@@ -501,41 +364,14 @@ dependency edges; unknown/native edges cannot produce a positive claim.
 
 ## Following history
 
-The Activity view starts with inventory counters, current work, and a campaign-wide timeline.
-Builds and recipe evaluations have separate lanes, positioned by their recorded
-admission and finish times. Gaps represent time without a recorded attempt; all
-labels use UTC. Range controls zoom the timeline without changing the ledger's
-search or filters. Select an interval or a ledger row to inspect its targets,
-duration, result, observed build activities, and logs in a detail sheet. No batch
-is opened automatically.
+Activity shows recent attempts; Batches shows the entire filtered ledger. Both
+hold their snapshot until refresh. Select a batch for requested roots, observed
+activities, original result and logs. These facts belong to the attempt; later
+realization or retry does not rewrite its historical outcome. Successful checks
+require persisted evidence, not a stopped activity or a recipe flag.
 
-The ledger covers every attempt, newest first, with package/attempt search,
-job/outcome filters, and pages of 24. Selecting an attempt, scrolling down the ledger, or opening an older page holds
-its admission cursor. New attempts are counted without displacing the
-page; **Latest** returns to the newest page. Timeline and current work
-continue updating while history is held. Connection failures retain the last
-view and report staleness. On phones, time, package names, duration, and result
-fit each row without horizontal scrolling. Tap a row for the remaining facts and
-logs. Scrolling down the page holds the admission cursor; changing ledger pages
-returns to the first row under the sticky filters.
-
-History uses facts attached to the original attempt. Observed build counts
-include dependencies and are not success counts. Successful check counts come
-from persisted test evidence, not a stopped activity or a configured check flag.
-A failed batch can contain successful builds and checks. A completed evaluation
-worker can contain individual evaluation refusals. Current inventory status is
-shown separately; later realization or retry cannot change a historical batch's
-result. There is no reconstructed per-package success curve: the first runner
-did not persist complete output-availability snapshots at every batch boundary.
-
-The web process queries SQLite read-only and never launches Nix for history.
-`/api/history` returns a bounded ledger page and overview; `/api/history/attempt`
-returns one campaign-scoped record and up to 100 observed activities. Above 400
-visible attempts, the timeline aggregates occupancy into 160 time intervals
-instead of silently dropping older work. A long attempt can touch multiple
-intervals, so occupancy counts must not be summed. Shorter ranges expose
-individual attempts again. No controller restart or database migration is
-required for this view.
+The compatibility `/api/history`, `/api/history/attempt` and `/api/batches` endpoints
+remain available. The HTML viewer does not fetch them or launch Nix from requests.
 
 ## Reacting to failures
 
@@ -591,10 +427,8 @@ patching or retry loop.
 ```sh
 python3 -m unittest discover -s tests -p 'test_experiment*.py' -v
 python3 tests/package-inventory.py
-# With a local headless Chromium debugging port 9228:
-node tests/experiment-browser.mjs https://nix.swa.sh results/experiment-ui
-node tests/experiment-logs-browser.mjs https://nix.swa.sh results/experiment-log-ui
-node tests/experiment-history-browser.mjs https://nix.swa.sh results/experiment-history-ui
+# Current viewer checks and build instructions: docs/dashboard-architecture.md
+node tests/dashboard-browser.mjs https://nix.swa.sh results/tagflow
 ```
 
 `tests/experiment-calibration.py` prepares fresh native fixtures with the

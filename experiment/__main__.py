@@ -107,17 +107,14 @@ def main():
     args = p.parse_args()
     state = Path(args.state).resolve()
     if args.command == "web":
-        from waitress import serve
-        from .web import application
+        import asyncio
+        from hypercorn.asyncio import serve
+        from hypercorn.config import Config
+        from .dashboard.app import create_app
 
-        serve(
-            application(state),
-            host="127.0.0.1",
-            port=args.port,
-            threads=4,
-            expose_tracebacks=False,
-            max_request_body_size=0,
-        )
+        config = Config()
+        config.bind = [f"127.0.0.1:{args.port}"]
+        asyncio.run(serve(create_app(state), config))
         return
     if args.command == "status":
         with connect(state, readonly=True) as db:

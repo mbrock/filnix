@@ -1,0 +1,12 @@
+{
+  "name": "tagflow-dashboard",
+  "private": true,
+  "scripts": {
+    "build": "tailwindcss -i tailwind.css -o ../../experiment/dashboard/static/dashboard.css --minify"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3"
+  }
+}

@@ -1278,11 +1278,9 @@ class ExperimentTests(unittest.TestCase):
         self.assertTrue(self.request("/api/run", method="POST")[0].startswith("405"))
         self.assertTrue(self.request("/api/run")[0].startswith("404"))
 
-    def test_web_escapes_embedded_json(self):
-        status, body = self.request("/")
-        self.assertEqual(status, "200 OK")
-        self.assertNotIn(b"<script>bad</script>", body)
-        self.assertIn(b"\\u003cscript>", body)
+    def test_compatibility_api_does_not_serve_retired_viewer(self):
+        for path in ("/", "/app.js", "/logs.js", "/style.css"):
+            self.assertTrue(self.request(path)[0].startswith("404"))
 
     def test_log_path_traversal_rejected(self):
         self.assertTrue(

@@ -3,3 +3,4 @@ wasm3-cve-tests/
 __pycache__/
 .direnv
 
+node_modules/

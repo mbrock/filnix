@@ -1,0 +1,6 @@
+@import "tailwindcss" source(none);
+@source "../../experiment/dashboard/*.py";
+@theme {
+  --font-sans: system-ui, Arial, "DejaVu Sans", sans-serif;
+  --font-mono: ui-monospace, "DejaVu Sans Mono", monospace;
+}

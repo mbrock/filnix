@@ -4,28 +4,29 @@
   )).nodes.nixpkgs.locked) { },
 }:
 let
-  python = pkgs.python3.withPackages (ps: [ ps.waitress ]);
+  python = import ./python.nix { inherit pkgs; };
   source = builtins.path {
     path = ./.;
     name = "filnix-experiment-source";
     filter = path: type: builtins.baseNameOf path != "__pycache__";
   };
 in
-pkgs.runCommand "filnix-experiment-0.12.6" { } ''
-  mkdir -p $out/lib/experiment $out/bin
-  cp -r ${source}/* $out/lib/experiment/
-  cat > $out/bin/filnix-experiment <<EOF
-  #!${pkgs.runtimeShell}
-  export PYTHONPATH=$out/lib
-  export FILNIX_NIX=/nix/var/nix/profiles/default/bin/nix
-  exec ${python}/bin/python -P -m experiment "\$@"
-  EOF
-  chmod +x $out/bin/filnix-experiment
-  cat > $out/bin/filnix-attempt <<EOF
-  #!${pkgs.runtimeShell}
-  export PYTHONPATH=$out/lib
-  export FILNIX_NIX=/nix/var/nix/profiles/default/bin/nix
-  exec ${python}/bin/python -P -m experiment.attempt "\$@"
-  EOF
-  chmod +x $out/bin/filnix-attempt
-''
+pkgs.runCommand "filnix-experiment-0.13.0" { passthru = { inherit python; }; }
+  ''
+    mkdir -p $out/lib/experiment $out/bin
+    cp -r ${source}/* $out/lib/experiment/
+    cat > $out/bin/filnix-experiment <<EOF
+    #!${pkgs.runtimeShell}
+    export PYTHONPATH=$out/lib
+    export FILNIX_NIX=/nix/var/nix/profiles/default/bin/nix
+    exec ${python}/bin/python -P -m experiment "\$@"
+    EOF
+    chmod +x $out/bin/filnix-experiment
+    cat > $out/bin/filnix-attempt <<EOF
+    #!${pkgs.runtimeShell}
+    export PYTHONPATH=$out/lib
+    export FILNIX_NIX=/nix/var/nix/profiles/default/bin/nix
+    exec ${python}/bin/python -P -m experiment.attempt "\$@"
+    EOF
+    chmod +x $out/bin/filnix-attempt
+  ''

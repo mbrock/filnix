@@ -37,7 +37,8 @@ flowchart LR
 
 Deploy a controller service, a web service, and a fixed systemd template for
 individual evaluation/build attempts. The web service serves HTML and a small
-JSON API; ordinary browser JavaScript polls for updates and log offsets. Start
+compatibility JSON API. The Tagflow viewer refreshes HTML resources through htmx 4;
+see [dashboard architecture](dashboard-architecture.md) for the current implementation. Start
 with a Nix-pinned production HTTP server, server-rendered pages, and no frontend
 build pipeline. The public interface is read-only. Administration uses an SSH
 session and the local CLI.
@@ -259,9 +260,8 @@ Dependency navigation should expand around a selected package or blocker, with a
 paginated dependent list. Rendering the entire Nix closure as one large animated
 graph would obscure the question the viewer is trying to answer.
 
-Use cursor-based JSON updates and bounded log ranges. On reconnect, fetch a fresh
-snapshot and continue from its event cursor. This avoids maintaining an elaborate
-streaming protocol initially. Escape logs, attributes, and source excerpts as
+Use HTML resources and bounded byte-cursor log ranges. SSE announces revisions;
+normal HTML requests refresh the affected regions, with polling recovery. Escape logs, attributes, and source excerpts as
 untrusted text; render only this experiment's captured logs, not the host journal.
 
 Serve the web service over a Unix socket or loopback listener behind an explicit
