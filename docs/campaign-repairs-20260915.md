@@ -222,3 +222,15 @@ inactive candidates whose complete recorded failure set is contained in these
 two repaired libraries; unresolved TPM2 and Opus consumers remain excluded.
 
 Selected attributes: `coin3d`, `fltk14`.
+
+Plan `4224c45b-9424-4bd4-a58e-5ec0aac0ae6b` replanned these two attributes
+from repair commit `f3846d414f2ed3ef52552f81253752c506bc3cb7` and finished
+successfully. Both are now recorded as built in the live campaign. The graph
+found no additional inactive consumers blocked solely by these two libraries;
+other recorded blockers must be repaired before retrying those consumers.
+
+After the first cohort and this retry settled, the 180 selected attributes stood
+at **37 built, 56 failed, 84 blocked and three inconclusive**. These are package
+attribute counts, including aliases, not independent projects. There were no
+remaining active attempts at this snapshot (2026-09-15 20:18 UTC). The new
+failures now supply the next bounded repair targets.
