@@ -1,0 +1,21 @@
+Subject: Link static and shared FLTK targets with their math dependency
+Origin: Filnix
+Upstream-Status: Not submitted
+
+FLTK and its consumers call libm directly. libc++ does not supply the implicit
+libm dependency that native libstdc++ builds rely on. OPTIONAL_LIBS is inherited
+by both the static and shared targets and their CMake consumers.
+
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -558,6 +558,10 @@
+   endif (LIB_fontconfig)
+ endif (USE_XFT)
+ 
++if (UNIX)
++  list (APPEND OPTIONAL_LIBS m)
++endif ()
++
+ #######################################################################
+ 
+ FL_ADD_LIBRARY (fltk STATIC "${STATIC_FILES}")

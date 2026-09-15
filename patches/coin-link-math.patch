@@ -1,0 +1,20 @@
+Subject: Export Coin's math-library link dependency
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Both libCoin and its public inline vector operations use libm. Express the
+dependency on the CMake target so the test suite and installed consumers inherit
+it with libc++, instead of relying on libstdc++ to supply it transitively.
+
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -257,6 +257,9 @@
+ 
+ target_include_directories(${PROJECT_NAME} PRIVATE ${COIN_TARGET_INCLUDE_DIRECTORIES})
+ target_link_libraries(${PROJECT_NAME} PRIVATE ${COIN_TARGET_LINK_LIBRARIES})
++if(UNIX)
++  target_link_libraries(${PROJECT_NAME} PUBLIC m)
++endif()
+ if(NOT COIN_BUILD_MAC_FRAMEWORK)
+   target_include_directories(${PROJECT_NAME} INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+ endif()

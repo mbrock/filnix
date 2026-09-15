@@ -111,3 +111,114 @@ intrinsics and runtime CPU dispatch disabled reproduces both failures. That
 rules out simply selecting the scalar implementation as a repair. Keep its
 normal recipe and tests unchanged until the decoder-state failure is reduced
 and understood; do not count the diagnostic build as a successful port.
+
+## Second pass: consumers and test infrastructure
+
+The first bounded cohort exposed further independent failures after the shared
+libraries built. The second pass keeps the compiler, runtime and libc unchanged.
+
+### FLTK 1.4
+
+Declare libm on both CMake library targets. `tests/fltk.nix` then builds an
+installed consumer against each of the static and shared variants. It checks
+nontrivial rotations and every pixel of a scaled RGB image, without a display
+server. Both consumers pass. Since this Nixpkgs configuration enables FLTK's
+Cairo extension, the consumers link its companion Cairo library explicitly
+(the same choice as `fltk-config --use-cairo`). This is build and API evidence;
+it is not an interactive GUI test or FLTK's disabled example suite.
+
+### Coin3D
+
+The math dependency also belongs on Coin's exported target. Enabling its
+previously unrun `CoinTests` exposed an initialization failure: the `realTime`
+field is a separate allocation, but `SoFieldData` reconstructs its address by
+adding an integer offset to its owner. That retains the owner's capability,
+which does not permit accessing the separately allocated field.
+
+`coin-external-fields.patch` preserves the actual field pointer and owner for
+separately allocated fields. Embedded fields retain their original offset
+representation. The retained pointer is used only for that owning instance;
+this does not grant access to unrelated allocations or change how metadata is
+interpreted for another instance.
+
+Boost.Test also needs its portable execution monitor: framework initialization
+installs fault-signal handlers before it parses runtime options, and Fil-C
+rejects these handlers and alternate signal stacks. The local test entry point
+loads Boost's configuration and clears `BOOST_HAS_SIGACTION` for Fil-C only.
+All test cases, assertions and C++ exception handling remain enabled; a runtime
+trap still fails the process instead of being recovered as a signal. The full
+`CoinTests` suite now passes (2.63 seconds).
+
+### TPM2-TSS
+
+The original check phase could not link because GNU ld `--wrap=write` (and
+similar options) intercepted native calls from `libpizlo`, while the test's
+mock functions used instrumented Fil-C symbols. The package-local compiler
+adapter in `toolchain/test-wrap.nix` redirects only the instrumented symbols.
+It renames object-file `__wrap`/`__real` symbols before linking; it does not
+replace or rebuild the shared compiler. It supports the separate compilation
+and `--wrap=NAME` link options used by this test suite.
+
+`tests/link-wrap.nix` verifies both wrapped calls and calls through `__real`
+for `write` and `calloc`, then reads back the pipe data and checks the allocated
+bytes. Native runtime I/O continues to link normally.
+
+This let all 267 upstream test programs run: initially 168 passed, five skipped
+and 94 failed. Inspection found an actual use-after-free in the FAPI test
+harness: `init_fapi` calls `putenv(config_env)` and then frees `config_env`.
+`putenv` retains that pointer. The local patch uses `setenv`, which copies the
+value. The full rerun improves to **242 passed, 11 skipped, 14 failed**. Every
+remaining failure is in a unit-test program; the additional skips are upstream
+unsupported-TPM-feature cases reached after initialization was repaired. No
+integration assertions or unit tests are disabled. This is still a failing
+package build and is not submitted as a successful campaign unblock.
+
+There is also a distinct cmocka pointer-mocking problem: the test suite passes
+pointers through `LargestIntegralType` values, and several returned mock
+pointers reach the consumer without capabilities. Examples include
+`tctildr`, `tctildr-dl` and the mocked TCTI transport tests. This remains a
+separate porting task, not evidence that the underlying TPM operation failed.
+Two other unit programs (`fapi-io` and `fapi-helpers`) exhaust mock expectations;
+the remaining work is not uniformly a pointer-conversion fix.
+
+### Opus: retained diagnostic evidence
+
+The normal Opus recipe still fails and is unchanged. A diagnostic library plus
+the upstream `test_opus_decode.c`, compiled as a separate unoptimized caller,
+reproduces decoder-state corruption. Raising `FUGC_MIN_THRESHOLD` to 1 GiB
+moves the failure later, immediately after the first logged collection.
+Disabling intrinsics, selecting stop-the-world collection, or disabling the
+header's pointer-check macro did not repair it. Optimized caller builds passed
+the initial section in short probes; that is not a full-suite success and is
+not being used as a workaround.
+
+A native GDB hardware watchpoint on the decoder's `channels` field catches the
+write that changes it from one to zero. The stack is:
+
+```
+libyolocimpl memory clearing
+finish_allocate_large
+filc_allocate
+opus_decode
+test_decoder_code0 (invalid-length input)
+```
+
+The decoder remains referenced by the test when another allocation is being
+initialized over its storage. This strongly implicates allocation/lifetime
+tracking, but the source-level root cause is not yet established. Smaller
+create/copy/collect/allocate probes pass, so the full caller's shape still
+matters. Preserve this as a compiler/runtime investigation rather than
+silencing the test or triggering a campaign-wide compiler rebuild.
+
+The precise commands, generated diagnostic variants, full logs and watchpoint
+trace remain under `results/triage-20260915/round-2/` in the repairs checkout.
+The original upstream tests are in the pinned Opus 1.5.2 source; the ordinary
+`libopus` build is also a reproducer for its failing decoder/encoder checks.
+
+For Coin and FLTK, recursive derivation comparisons each find exactly one new
+build: the library itself. Their compiler, libc and dependency derivations are
+identical to the previous recipes. The intended second retry cohort is the
+inactive candidates whose complete recorded failure set is contained in these
+two repaired libraries; unresolved TPM2 and Opus consumers remain excluded.
+
+Selected attributes: `coin3d`, `fltk14`.

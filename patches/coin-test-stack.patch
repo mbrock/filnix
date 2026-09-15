@@ -1,0 +1,25 @@
+Subject: Use Boost.Test's portable execution monitor with Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Boost.Test initializes its signal monitor before parsing runtime options.
+Fil-C rejects fault-signal handlers and alternate signal stacks. Select the
+portable monitor locally, keeping all tests, assertions and C++ exception
+handling. A Fil-C trap remains a failing process exit, not a recovered signal.
+
+--- a/testsuite/TestSuiteMain.cpp
++++ b/testsuite/TestSuiteMain.cpp
+@@ -30,6 +30,13 @@
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ \**************************************************************************/
+ 
++#include <boost/config.hpp>
++#ifdef __FILC__
++// Fil-C owns fault handling and does not support alternate signal stacks.
++// Use Boost.Test's portable execution monitor: a runtime trap still fails
++// the process, while ordinary test assertions and exceptions stay enabled.
++#undef BOOST_HAS_SIGACTION
++#endif
+ #define BOOST_TEST_MODULE CoinTests
+ #define BOOST_TEST_NO_MAIN
+ #define BOOST_TEST_ALTERNATIVE_INIT_API

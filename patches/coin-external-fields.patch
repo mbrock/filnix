@@ -1,0 +1,83 @@
+Subject: Preserve capabilities for separately allocated Coin fields
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Coin normally addresses an embedded field by its offset in a node. Global
+and other dynamically allocated fields may instead live in separate objects.
+Retain the real pointer for the owning instance in that case. Embedded fields
+and accesses through other instances retain the existing offset semantics.
+
+--- a/src/fields/SoFieldData.cpp
++++ b/src/fields/SoFieldData.cpp
+@@ -68,6 +68,9 @@
+ #include <Inventor/fields/SoFieldData.h>
+ 
+ #include <cctype>
++#ifdef __FILC__
++#include <stdfil.h>
++#endif
+ 
+ #include <Inventor/SbName.h>
+ #include <Inventor/SoInput.h>
+@@ -93,7 +96,11 @@
+ 
+ class SoFieldEntry {
+ public:
+-  SoFieldEntry(const char * n, ptrdiff_t o) : name(n), ptroffset(o) { }
++  SoFieldEntry(const char * n, ptrdiff_t o) : name(n), ptroffset(o)
++#ifdef __FILC__
++    , externalowner(NULL), externalfield(NULL)
++#endif
++  { }
+   // Copy constructors.
+   SoFieldEntry(const SoFieldEntry * fe) { this->copy(fe); }
+   SoFieldEntry(const SoFieldEntry & fe) { this->copy(&fe); }
+@@ -109,11 +116,19 @@
+ 
+   SbName name;
+   ptrdiff_t ptroffset;
++#ifdef __FILC__
++  const SoFieldContainer * externalowner;
++  const SoField * externalfield;
++#endif
+ 
+ private:
+   void copy(const SoFieldEntry * fe) {
+     this->name = fe->name;
+     this->ptroffset = fe->ptroffset;
++#ifdef __FILC__
++    this->externalowner = fe->externalowner;
++    this->externalfield = fe->externalfield;
++#endif
+   }
+ };
+ 
+@@ -253,7 +268,16 @@
+     assert(f->isOfType(SoField::getClassTypeId()));
+ #endif
+ 
+-    this->fields.append(new SoFieldEntry(name, offs));
++    SoFieldEntry * entry = new SoFieldEntry(name, offs);
++#ifdef __FILC__
++    // Dynamic fields (including the realTime global) are separate allocations.
++    // Adding their numerical offset to base cannot recover their capability.
++    if (zgetlower((void *)base) != zgetlower((void *)field)) {
++      entry->externalowner = base;
++      entry->externalfield = field;
++    }
++#endif
++    this->fields.append(entry);
+   }
+   CC_GLOBAL_UNLOCK;
+ }
+@@ -331,6 +355,10 @@
+ SoFieldData::getField(const SoFieldContainer * object, int index) const
+ {
+   assert(index >= 0 && index < this->fields.getLength());
++#ifdef __FILC__
++  if (this->fields[index]->externalowner == object)
++    return const_cast<SoField *>(this->fields[index]->externalfield);
++#endif
+   size_t fieldptr = reinterpret_cast<size_t>(object);
+   fieldptr += this->fields[index]->ptroffset;
+   return reinterpret_cast<SoField *>(fieldptr);

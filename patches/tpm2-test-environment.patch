@@ -1,0 +1,24 @@
+Subject: Keep FAPI test configuration valid after initialization
+Origin: Filnix
+Upstream-Status: Not submitted
+
+init_fapi frees config_env after putenv has installed that same pointer in
+environ. Copy its value with setenv so subsequent getenv calls do not read
+freed storage. Keep all integration tests and their assertions enabled.
+
+--- a/test/integration/main-fapi.c
++++ b/test/integration/main-fapi.c
+@@ -506,7 +506,12 @@
+         ret = EXIT_ERROR;
+         goto error;
+     }
+-    putenv(config_env);
++    /* setenv copies the string; config_env is freed below. */
++    if (setenv("TSS2_FAPICONF", config_path, 1) != 0) {
++        LOG_ERROR("Setting FAPI configuration environment");
++        ret = EXIT_ERROR;
++        goto error;
++    }
+ 
+     /***********
+      * Call FAPI
