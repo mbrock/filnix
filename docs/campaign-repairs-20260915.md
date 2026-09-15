@@ -84,6 +84,21 @@ do not clear the old shared derivations' failure facts or reopen unrelated
 failures. Further failures in this cohort are new evidence, not regressions
 in the original campaign totals.
 
+The cohort was submitted from repair commit
+`1c0dc8dce048ee9cb5bdd6f5ce1c96bc22964b31` in these recorded plans:
+
+| Plan | Candidates |
+| --- | ---: |
+| `938a20f1-7084-48cf-a9ab-ca59169cea4f` | 64 |
+| `d57f576a-96e5-4f6e-85cc-93fbf7e8e65b` | 64 |
+| `508c54ac-1a75-40f2-919a-3de7e1ccbcd4` | 52 |
+
+The first two plans evaluated every candidate successfully. Follow-up build
+batches `b1784834-ec79-48fb-b913-1922208f993a` and
+`6f31e916-8266-42bc-afd6-38dd9d5a2ec7` began while the last plan evaluated.
+Their eventual package results belong to the live campaign, not this initial
+submission snapshot. Both cache publishers remain enabled.
+
 The local baseline, selected IDs, old/new derivations, closure comparisons and
 full logs are retained in `results/triage-20260915/` in the repairs checkout.
 The controller records each submitted selection and its previous recipes.
