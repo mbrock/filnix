@@ -44,6 +44,7 @@ let
 in
 [
   (import ./ports/pipewire-consumers.nix { inherit pkgs prev final; })
+  (import ./ports/media.nix { inherit pkgs; })
 
   # ━━━ Core Libraries ━━━
 

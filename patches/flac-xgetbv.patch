@@ -1,0 +1,19 @@
+Subject: Spell XGETBV as an instruction instead of raw opcode bytes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C validates inline instructions and supports xgetbv with these register
+constraints. Raw .byte directives cannot be validated. Preserve the existing
+CPU feature detection and optimized C intrinsics; retain the upstream suite.
+
+--- a/src/libFLAC/cpu.c
++++ b/src/libFLAC/cpu.c
+@@ -77,7 +77,7 @@
+ 	return (uint32_t)_xgetbv(0);
+ #elif defined __GNUC__
+ 	uint32_t lo, hi;
+-	__asm__ volatile (".byte 0x0f, 0x01, 0xd0" : "=a"(lo), "=d"(hi) : "c" (0));
++	__asm__ volatile ("xgetbv" : "=a"(lo), "=d"(hi) : "c" (0));
+ 	return lo;
+ #else
+ 	return 0;

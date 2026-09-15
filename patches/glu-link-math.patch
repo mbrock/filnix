@@ -1,0 +1,20 @@
+Subject: Declare GLU's direct dependency on libm
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GLU calls sin, cos, sqrt and sqrtf. Native libstdc++ can mask the missing
+dependency; Fil-C's libc++ does not. Link the library itself to libm.
+The installed consumer check in tests/media.nix exercises gluProject and
+gluUnProject without a GL context.
+
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -104,7 +104,7 @@
+     inc_include,
+   ],
+   gnu_symbol_visibility : 'hidden',
+-  dependencies : [dep_gl],
++  dependencies : [dep_gl, meson.get_compiler('c').find_library('m')],
+   version : '1.3.1',
+   darwin_versions  : [ '5.0.0', '5.1.0' ],
+   install : true,
