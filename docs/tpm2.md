@@ -117,3 +117,8 @@ nix build --impure --file tests/tpm2-tools.nix --no-link -L
 
 The broker/tools repair only changes the two remaining unsuccessful campaign
 candidates; the four successful results from the first retry are retained.
+
+Repair commit `106097744622bf4580384fded34ca80b6e517d09` was submitted in plan
+`f2486e4b-79e8-418e-94cb-2bc73674d18b`. Build batch
+`418baaf5-a8a8-4880-aa58-b716beafa283` completed with exit code zero. All six
+members of this bounded cohort are now recorded as built in the campaign.
