@@ -95,3 +95,25 @@ The six candidates were submitted from repair commit
 `9e125559-24f3-4936-84b7-ebcb5b0ba47c` started with the already-built TPM2
 derivation. Subsequent consumer results belong to the live campaign; the
 successful TPM2 check above does not imply that every consumer will pass.
+
+## Broker and command-line tools
+
+That first retry built `ima-evm-utils`, `tpm2-openssl` and `tpm2-totp`.
+`tpm2-abrmd` exposed a hand-written enum initializer that stores its `GType`
+in `gsize`; Fil-C's GType is a pointer. `tpm2-abrmd-gtype.patch` changes its
+storage to `GType` and uses GLib's pointer once-initialization functions.
+The broker and its dependent `tpm2-tools` now both build.
+
+Their Nixpkgs recipes do not enable their upstream unit suites. The separate
+`tests/tpm2-tools.nix` check instead runs the installed Fil-C broker and tools
+against an isolated native software TPM on a private D-Bus session and Unix
+sockets. It passes: fetch 32 random bytes, compare a TPM SHA-256 digest with
+`sha256sum`, create an ECC primary key, export its public key, and flush its
+transient objects. The check has a 90-second timeout and cleans up its daemons.
+
+```sh
+nix build --impure --file tests/tpm2-tools.nix --no-link -L
+```
+
+The broker/tools repair only changes the two remaining unsuccessful campaign
+candidates; the four successful results from the first retry are retained.

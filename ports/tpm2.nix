@@ -19,6 +19,9 @@ let
   });
 in
 {
+  tpm2-abrmd = for pkgs.tpm2-abrmd [
+    (patch ../patches/tpm2-abrmd-gtype.patch)
+  ];
   tpm2-tss = for pkgs.tpm2-tss [
     (arg { inherit cmocka; })
     (use (import ../toolchain/test-wrap.nix { inherit pkgs; }))
