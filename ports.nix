@@ -45,6 +45,7 @@ in
 [
   (import ./ports/pipewire-consumers.nix { inherit pkgs prev final; })
   (import ./ports/media.nix { inherit pkgs; })
+  (import ./ports/tpm2.nix { inherit pkgs final; })
 
   # ━━━ Core Libraries ━━━
 

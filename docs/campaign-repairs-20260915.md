@@ -178,8 +178,12 @@ pointers through `LargestIntegralType` values, and several returned mock
 pointers reach the consumer without capabilities. Examples include
 `tctildr`, `tctildr-dl` and the mocked TCTI transport tests. This remains a
 separate porting task, not evidence that the underlying TPM operation failed.
-Two other unit programs (`fapi-io` and `fapi-helpers`) exhaust mock expectations;
-the remaining work is not uniformly a pointer-conversion fix.
+`fapi-io` also exhausts mock expectations; `fapi-helpers` unexpectedly returns
+success where its injected hash failure should be reported. The remaining work
+is not uniformly a pointer-conversion fix.
+
+The [September 19 TPM2 repair](tpm2.md) resolves these failures: the package now
+builds with 256 tests passing, the same 11 upstream skips, and no failures.
 
 ### Opus: retained diagnostic evidence
 

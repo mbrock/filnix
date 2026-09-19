@@ -1,0 +1,21 @@
+Test exception recovery using a signal supported by Fil-C. Fil-C rejects
+handlers for synchronous fault signals (including SIGSEGV); SIGSYS is already
+in cmocka's exception signal list. All three recovery assertions still run.
+
+--- a/tests/test_exception_handler.c
++++ b/tests/test_exception_handler.c
+@@ -6,8 +6,14 @@
+ {
+     (void)state; /* unused */
+ 
++#ifdef __FILC__
++    /* Fil-C does not allow handlers for synchronous memory faults. Test
++     * cmocka's same exception recovery path with a supported signal. */
++    raise(SIGSYS);
++#else
+     /* Raise segmentation fault */
+     raise(SIGSEGV);
++#endif
+ }
+ 
+ static void test_segfault_recovery1(void **state)

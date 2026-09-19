@@ -10,10 +10,6 @@ let
     ;
 in
 {
-  tpm2-tss = for pkgs.tpm2-tss [
-    (use (import ../toolchain/test-wrap.nix { inherit pkgs; }))
-    (patch ../patches/tpm2-test-environment.patch)
-  ];
   coin3d = for pkgs.coin3d [
     (patch ../patches/coin-link-math.patch)
     (patch ../patches/coin-external-fields.patch)

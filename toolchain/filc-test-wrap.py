@@ -38,11 +38,23 @@ def main():
         [os.environ["FILNIX_WRAP_NM"], "--format=posix", "--no-demangle", output],
         text=True,
     )
+    entries = [line.split() for line in symbols.splitlines() if line.strip()]
+    undefined = {entry[0] for entry in entries if entry[1] == "U"}
     renames = []
-    for line in symbols.splitlines():
-        if not line.strip():
-            continue
-        symbol = line.split()[0]
+    for symbol, kind, *_ in entries:
+        # An external call has a weak direct-call thunk that loads its
+        # descriptor. If the real function is linked from another object,
+        # its strong entry point would replace this thunk and bypass --wrap.
+        # Keep the caller's thunk local so it uses the wrapped descriptor.
+        thunk = re.fullmatch(r"pizlonatedFI[0-9]+_(.+)", symbol)
+        if kind == "W" and thunk and f"pizlonated_{thunk[1]}" in undefined:
+            renames += ["--localize-symbol", symbol]
+        # Fil-C lowers malloc/free directly to runtime operations, even with
+        # -fno-builtin. Tests may compile with -Dmalloc=filnix_wrap_malloc
+        # (and likewise free) to keep real, interposable function calls.
+        # Restore the libc descriptor name only after compilation.
+        if symbol in {"pizlonated_filnix_wrap_malloc", "pizlonated_filnix_wrap_free"}:
+            renames += ["--redefine-sym", f"{symbol}={symbol.replace('filnix_wrap_', '')}"]
         match = re.fullmatch(
             r"pizlonated___(wrap|real)_([A-Za-z_][A-Za-z_0-9]*)", symbol
         )

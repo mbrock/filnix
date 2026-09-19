@@ -19,11 +19,18 @@ pkgs.stdenv.mkDerivation (
       runHook postConfigure
     '';
     buildPhase = ''
-      $CC -c ${./link-wrap.c} -o wrapped.o
-      $CC wrapped.o -Wl,--wrap=write,--wrap=calloc -o wrapped
+      $CC -Dmalloc=filnix_wrap_malloc -Dfree=filnix_wrap_free \
+        -c ${./link-wrap.c} -o wrapped.o
+      $CC -c ${./link-wrap-provider.c} -o provider.o
+      flags='-Wl,--wrap=write,--wrap=calloc,--wrap=malloc,--wrap=wrapped_value'
+      $CC wrapped.o provider.o $flags -o wrapped
+      $CC provider.o wrapped.o $flags -o reversed
     '';
     doCheck = true;
-    checkPhase = "./wrapped";
+    checkPhase = ''
+      ./wrapped
+      ./reversed
+    '';
     installPhase = ''
       mkdir -p "$out/bin"
       cp wrapped "$out/bin/"
