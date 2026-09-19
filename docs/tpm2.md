@@ -88,3 +88,10 @@ TPM2, with overlapping blockers. Only six have TPM2 as their sole recorded
 failure: `tpm2-tss`, `tpm2-tools`, `tpm2-abrmd`, `tpm2-openssl`, `tpm2-totp`
 and `ima-evm-utils`. Retry this bounded set in campaign
 `3eaf2f72-7c12-4bf2-9934-9646ea9dab4d`, preserving old recipes and failure evidence.
+
+The six candidates were submitted from repair commit
+`1723cf75266dcf98b4dd3182e4ad0d98848ad8f3`. Plan
+`9b913a21-99fb-4ad0-9dd6-c6d4c14e08b0` completed successfully, and build batch
+`9e125559-24f3-4936-84b7-ebcb5b0ba47c` started with the already-built TPM2
+derivation. Subsequent consumer results belong to the live campaign; the
+successful TPM2 check above does not imply that every consumer will pass.
