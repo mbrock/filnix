@@ -4,7 +4,17 @@
   major,
 }:
 let
-  soup = if major == 3 then pkgsFilc.libsoup_3 else pkgsFilc.libsoup_2_4;
+  soup =
+    if major == 3 then
+      pkgsFilc.libsoup_3
+    else
+      # Nixpkgs marks the EOL 2.x series insecure. Exercising the port does
+      # not endorse it, so only this check ignores the vulnerability list.
+      pkgsFilc.libsoup_2_4.overrideAttrs (old: {
+        meta = old.meta // {
+          knownVulnerabilities = [ ];
+        };
+      });
   module = if major == 3 then "libsoup-3.0" else "libsoup-2.4";
 in
 pkgsFilc.stdenv.mkDerivation {

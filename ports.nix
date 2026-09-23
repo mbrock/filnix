@@ -257,11 +257,15 @@ in
   {
     bash = for pkgs.bash [
       (arg { interactive = true; })
+      # Configure probes CC but builds helpers with CC_FOR_BUILD, a C23
+      # compiler; Nixpkgs applies the same flag when stdenv.cc.isClang.
+      (addCFlag "-std=c23")
       (skipCheck "interactive mode issues")
     ];
 
     bashNonInteractive = for pkgs.bash [
       (arg { interactive = false; })
+      (addCFlag "-std=c23") # see bash
       (skipCheck "test issues")
     ];
   }
@@ -276,6 +280,9 @@ in
 
   (for pkgs.diffutils [
     (pin "3.10" "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=")
+    # Nixpkgs' gnulib test fixes target 3.12.
+    (skipPatch "gnulib-float-h-tests-port-to-C23-PowerPC-GCC.patch")
+    (skipPatch "musl-llvm.patch")
     (patch ./ports/patch/diffutils-3.10.patch)
     (tool pkgs.perl)
     (use { postPatch = "patchShebangs man/help2man"; })
@@ -297,6 +304,8 @@ in
 
   (for pkgs.gnugrep [
     (pin "3.11" "sha256-HbKu3eidDepCsW2VKPiUyNFdrk4ZC1muzHj1qVEnbqs=")
+    # Nixpkgs' gnulib test fix targets 3.12.
+    (skipPatch "gnulib-float-h-tests-port-to-C23-PowerPC-GCC.patch")
     (patch ./ports/patch/grep-3.11.patch)
     (skipCheck "too slow")
   ])
@@ -316,6 +325,7 @@ in
   (for pkgs.gnutar [
     (pin "1.35" "sha256-TWL/NzQux67XSFNTI5MMfPlKz3HDWRiCsmp+pQ8+3BY=")
     (patch ./ports/patch/tar-1.35.patch)
+    (skipPatch "acl-2.4.0-name-conflicts.patch") # also part of the port
     (arg { aclSupport = false; })
   ])
 
@@ -333,7 +343,7 @@ in
   ])
 
   (for pkgs.cmake [
-    (pin "3.30.2" "sha256-RgdMeB7M68Qz6Y8Lv6Jlyj/UOB8kXKOxQOdxFTHWDbI=")
+    # No Fil-C source patch; Nixpkgs 26.05's patches only apply to 4.x.
     (skipCheck "some tests fail")
     (addCMakeFlag "-DCMAKE_VERBOSE_MAKEFILE=ON")
     (addCMakeFlag "-DCMAKE_CXX_COMPILER=${pkgs.lib.getBin prev.stdenv.cc}/bin/c++")
@@ -394,6 +404,9 @@ in
   (for pkgs.git [
     (pin "2.46.0" "sha256-fxI0YqKLfKPr4mB0hfcWhVTCsQ38FVx+xGMAZmrCf5U=")
     (skipPatch "git-send-email-honor-PATH.patch")
+    # Test adjustments for newer releases; the suite is skipped below.
+    (skipPatch "t7703-ignore-ls-total.patch")
+    (skipPatch "expect-gui--askyesno-failure-in-t1517.patch")
     (patch ./ports/patch/git-2.46.0.patch)
     (arg { withManual = true; })
     (arg { perlSupport = false; })
@@ -422,6 +435,9 @@ in
     })
     (patch ./ports/patch/openssh-10.3p1.patch)
     (skipCheck "let's see")
+    # preCheck preloads libredirect, whose dlsym(RTLD_NEXT, ...) interposition
+    # cannot work under Fil-C; referencing it would still build it.
+    (use { preCheck = ""; })
     (use {
       installCheckPhase = ''
         for binary in ssh sshd; do
@@ -529,8 +545,27 @@ in
 
   (for pkgs.libkrb5 [
     (pin "1.21.3" "sha256-t6TNXq1n+wi5gLIavRUP9yF+heoyDJ7QxtrdMEhArTU=")
-    (patch ./ports/patch/krb5-1.21.3.patch)
-    (use { patchFlags = [ "-p2" ]; })
+    # The port is rooted above sourceRoot (src/); Nixpkgs' CVE patches are
+    # -p1 relative to it and also apply to 1.21.3.
+    (use (old: {
+      prePatch = (old.prePatch or "") + ''
+        patch -p2 < ${./ports/patch/krb5-1.21.3.patch}
+      '';
+    }))
+  ])
+
+  (for pkgs.unity-test [
+    # The suite's Makefile defaults to gcc; Nixpkgs passes CC=clang only when
+    # stdenv.cc.isClang, which filcc does not set.
+    (use (old: {
+      checkPhase =
+        builtins.replaceStrings [ "make -C../test" ] [ "make -C../test CC=clang" ]
+          old.checkPhase;
+    }))
+  ])
+
+  (for pkgs.cryptsetup [
+    (patch ./patches/cryptsetup-safe-alloc-mlock.patch)
   ])
 
   (for pkgs.p11-kit [
@@ -566,6 +601,14 @@ in
   ])
 
   (for pkgs.pango [
+    # 1.57 requires GLib 2.82; the GLib port is 2.80.4.
+    (use {
+      version = "1.56.3";
+      src = pkgs.fetchurl {
+        url = "mirror://gnome/sources/pango/1.56/pango-1.56.3.tar.xz";
+        hash = "sha256-JgYlK8Jc2NJOG39+ksOicrN6zWc0NHtztHpIKDS6JJE=";
+      };
+    })
     (patch ./ports/patch/pango-1.54.0.patch)
   ])
 
@@ -599,7 +642,8 @@ in
   ])
 
   (for pkgs.fontconfig [
-    (patch ./ports/patch/fontconfig-2.15.0.patch)
+    # ports/patch/fontconfig-2.15.0.patch rebased onto Nixpkgs' 2.17.
+    (patch ./patches/fontconfig-2.17-filc.patch)
     (use {
       postPatch = ''
         sed -i 's/ftglue.c/ftglue.c fcfilc.h fcfilc.c/' src/Makefile.am
@@ -704,6 +748,9 @@ in
       libsysprof-capture = null;
       # Keep the bootstrap GLib free of scanner inputs as well as GIR output.
       withIntrospection = false;
+      # gdbus-codegen runs on the build Python (3.13); the Fil-C set's
+      # packaging is for the ported 3.12, leaving codegen's path empty.
+      python3Packages = pkgs.python3Packages;
     })
     (skipTests "many failures")
     (use {
@@ -832,6 +879,7 @@ in
 
   (for pkgs.libwebp [
     (patch ./ports/patch/libwebp-1.4.0.patch)
+    (patch ./patches/libwebp-xgetbv.patch)
   ])
 
   (for pkgs.libevdev [
@@ -843,13 +891,14 @@ in
 
   (for pkgs.cups [
     (arg { gnutls = final.openssl; })
-    (arg { systemd = final.systemdLibs; })
   ])
 
   (for pkgs.dbus [
     (arg { systemdMinimal = final.systemdLibs; })
     (arg { libapparmor = final.hello; })
-    (configure "--disable-apparmor")
+    # dbus 1.16 builds with Meson.
+    (removeMesonFlag "-Dapparmor")
+    (addMesonFlag "-Dapparmor=disabled")
   ])
 
   # ━━━ Development Tools & Libraries ━━━
@@ -872,6 +921,8 @@ in
     (configure "--disable-debuginfod")
     (addCFlag "-Wno-error=unused-parameter")
     (arg { enableDebuginfod = false; })
+    # 0.194's configure requires pkg-config; Nixpkgs adds it only for debuginfod.
+    (tool pkgs.pkg-config)
     (skipTests "some tests fail")
   ])
 
@@ -887,12 +938,32 @@ in
 
   (for pkgs.libapparmor [
     # Configure runs the target Python config tool when linking its extension.
-    (configure "PYTHON=${final.python3}/bin/python3")
+    # Since 4.1 it also imports setuptools with that interpreter.
+    (configure "PYTHON=${
+      final.python3.withPackages (ps: [ ps.setuptools ])
+    }/bin/python3")
     (configure "PYTHON_CONFIG=${final.python3}/bin/python3-config")
   ])
 
   {
+    libcap_ng = for pkgs.libcap_ng [
+      (use (old: {
+        # capng_change_id applies ambient capabilities, but the Fil-C runtime
+        # rejects prctl(PR_CAP_AMBIENT) with ENOSYS, so it returns -9.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace src/test/Makefile.am \
+            --replace-fail "thread_test change_id_test" "thread_test"
+        '';
+      }))
+    ];
     pam = for pkgs.linux-pam [ (skipCheck "test setup issues") ];
+    db4 = for pkgs.db4 [
+      # Autoconf 2.73 selects C23, which rejects db's K&R definitions.
+      # Nixpkgs uses 2.69 when stdenv.cc.isClang, which filcc does not set.
+      (use (old: {
+        nativeBuildInputs = [ pkgs.autoconf269 ] ++ old.nativeBuildInputs;
+      }))
+    ];
   }
 
   (for pkgs.cmocka [
@@ -927,12 +998,26 @@ in
   # ━━━ Languages ━━━
 
   {
-    perl540 = (
-      for pkgs.perl540 [
-        (src "5.40.0" "sha256-x0A0jzVzljJ6l5XT6DI7r9D+ilx4NfwcuroMyN/nFh8=" (
-          v: "https://www.cpan.org/src/5.0/perl-${v}.tar.gz"
-        ))
+    # nixpkgs only packages Perl 5.42; the Fil-C port targets 5.40.0.
+    perl5 = (
+      for pkgs.perl5 [
+        (arg {
+          version = "5.40.0";
+          sha256 = "sha256-x0A0jzVzljJ6l5XT6DI7r9D+ilx4NfwcuroMyN/nFh8=";
+          # Nixpkgs builds perl.pkgs with its own perl5 attribute; use the port.
+          self = final.perl5;
+        })
         (patch ./ports/patch/perl-5.40.0.patch)
+        (patch ./patches/perl-5.40-only-c-locale.patch)
+        (use (old: {
+          # postPatch replaces the bundled Compress-Raw-Zlib with a newer
+          # release, discarding the port's typemap change.
+          postPatch = old.postPatch + ''
+            substituteInPlace cpan/Compress-Raw-Zlib/typemap \
+              --replace-fail '$var = INT2PTR($type, tmp);' \
+                '$var = zptrtable_decode(Perl_xsub_ptrtable, tmp);'
+          '';
+        }))
         (skipCheck "too slow")
         # NO overrides arg - that breaks withPackages!
       ]
@@ -967,6 +1052,9 @@ in
         (patch ./ports/patch/ruby-3.3.10.patch)
         # Upstream's Fil-C port uses pthread coroutines, not native assembly.
         (configure "--with-coroutine=pthread")
+        # Autoconf 2.73 would record CC as "clang -std=gnu23" in rbconfig,
+        # which native gem extensions then inherit; keep the compiler default.
+        (configure "ac_cv_prog_cc_c23=no")
         # Disable ractor shareability deep checking - requires rb_objspace_reachable_objects_from
         # which isn't implemented in Fil-C. Return false = conservatively assume not shareable.
         (astRewrite "ractor.c" "c"
@@ -1014,7 +1102,8 @@ in
   }
 
   (for pkgs.kbd [
-    (patch ./ports/patch/kbd-2.6.4.patch)
+    # ports/patch/kbd-2.6.4.patch rebased onto Nixpkgs' 2.9.
+    (patch ./patches/kbd-2.9-filc.patch)
   ])
 
   (
@@ -1037,11 +1126,18 @@ in
           withEfi = false;
           withBootloader = false;
         })
-        (arg { inherit getent; })
         (link getent)
+        (link final.libcap) # dropped from the recipe once systemd stopped needing it
         (use (
           old:
-          pkgs.lib.optionalAttrs (old.pname != "systemd-minimal-libs") {
+          {
+            # Nixpkgs stopped rewriting this path for systemd 258+.
+            postPatch = old.postPatch + ''
+              substituteInPlace src/nspawn/nspawn-setuid.c \
+                --replace-fail /usr/bin/getent ${getent}/bin/getent
+            '';
+          }
+          // pkgs.lib.optionalAttrs (old.pname != "systemd-minimal-libs") {
             # This getent wrapper intentionally calls the target libc at runtime.
             # Keep rejecting every other accidental native build-tool reference.
             disallowedReferences = builtins.filter (p: p != getent) (
@@ -1050,13 +1146,32 @@ in
           }
         ))
 
-        (skipPatch "specific-unit-directories.patch") # Nixpkgs' patch targets 257
-        (removeMesonFlag "-Dshellprofiledir") # not in this version
+        # Nixpkgs' patches target 260; use the 25.05 copies for 256.
+        (skipPatch "Change-usr-share-zoneinfo-to-etc-zoneinfo.patch")
+        (skipPatch "path-util.h-add-placeholder-for-DEFAULT_PATH_NORMAL.patch")
+        (patch ./patches/systemd-256-etc-zoneinfo.patch)
+        (patch ./patches/systemd-256-default-path-placeholder.patch)
+        (patch ./patches/systemd-256-no-statedir.patch)
+        (patch ./patches/systemd-256-no-ssh-dropins.patch)
+        # not in this version
+        (removeMesonFlag "-Dshellprofiledir")
+        (removeMesonFlag "-Dswapon-path")
+        (removeMesonFlag "-Dswapoff-path")
+        (removeMesonFlag "-Dsysupdated")
+        (removeMesonFlag "-Dnspawn")
+        # Options that 260 removed, set as Nixpkgs 25.05 did for 256/257.
+        (addMesonFlag "-Dlibidn=disabled")
+        (addMesonFlag "-Dlibiptc=disabled")
+        (addMesonFlag "-Dsysvinit-path=")
+        (addMesonFlag "-Dsysvrcnd-path=")
         (addMesonFlag "-Dsshconfdir=no")
         (use {
           # the automatic patchelf hook was segfaulting
           # while trying to patch some debug info files?!
           separateDebugInfo = false;
+          # Nixpkgs 26.05 bans bash from the closure; libapparmor's Python
+          # bindings bring the Fil-C interpreter (and its bash) along.
+          disallowedRequisites = [ ];
         })
 
         # this seems to not be a real problem
@@ -1070,7 +1185,9 @@ in
   ])
 
   (for pkgs.tmux [
-    (arg { systemd = final.systemdLibs; })
+    # tmux -V requires a UTF-8 locale; the sandbox has none for Fil-C glibc,
+    # which ships no compiled C.UTF-8 (Nixpkgs' glibc does).
+    (use { doInstallCheck = false; })
   ])
 
   (for pkgs.ttyd [
@@ -1078,13 +1195,11 @@ in
   ])
 
   (for pkgs.procps [
-    (arg { systemd = final.systemdLibs; })
     (patch ./ports/patch/procps-ng-4.0.4.patch)
   ])
 
   {
     util-linux = for pkgs.util-linuxMinimal [
-      (arg { systemd = final.systemdLibs; })
       parallelize
     ];
   }
@@ -1100,8 +1215,18 @@ in
     (removeCFlag "-DSQLITE_ENABLE_STMT_SCANSTATUS")
   ])
 
+  (for pkgs.jq [
+    # The suite dumps deeply nested values recursively; Fil-C frames are
+    # larger than native ones and overflow the default 8 MiB stack.
+    (use (old: {
+      preInstallCheck = (old.preInstallCheck or "") + ''
+        ulimit -s 65536
+      '';
+    }))
+  ])
+
   (for pkgs.strace [
-    (use { postPatch = ''sed -i 's/ vfork/ fork/g' */strace.c''; })
+    (use { postPatch = "sed -i 's/ vfork/ fork/g' */strace.c"; })
   ])
 
   (for pkgs.runit [
@@ -1178,13 +1303,16 @@ in
 
   (for pkgs.trealla [
     (arg { lineEditingLibrary = "readline"; })
-    (src "unstable-2026-09-05"
-      "sha256-/SWCY+oui0ZZewTSMwHm5cvElv45QPu249sPpr/pJqw="
-      (
-        _:
-        "https://github.com/trealla-prolog/trealla/archive/12f4cbd7fc2269265e7306775ded2f6410671499.tar.gz"
-      )
-    )
+    (use {
+      version = "unstable-2026-09-05";
+      # GitHub's archive bytes for this commit changed; hash the contents.
+      src = pkgs.fetchFromGitHub {
+        owner = "trealla-prolog";
+        repo = "trealla";
+        rev = "12f4cbd7fc2269265e7306775ded2f6410671499";
+        hash = "sha256-PL5RyiakGDyFLnoSiOS5/b2AoRNwqoG7W+ShYsNl5a4=";
+      };
+    })
     (use (old: {
       postPatch =
         builtins.replaceStrings [ "Makefile" ] [ "GNUmakefile" ]
@@ -1225,7 +1353,6 @@ in
     emacs30 = for pkgs.emacs30 [
       (arg {
         gnutls = null;
-        systemd = final.systemdLibs;
         dbus = null;
         withX = false;
         withGTK3 = false;
@@ -1247,6 +1374,8 @@ in
         withGlibNetworking = false;
         withXinput2 = false;
         withJansson = true;
+        # The fork below is a git tree without a generated configure.
+        srcRepo = true;
       })
       (pin "30.1" "sha256-eTWjpRgLXbA9OQZnbrWPIHPcbj/QYkv58I3IWx5lCIQ=")
       (link final.zlib)
@@ -1258,6 +1387,11 @@ in
           hash = "sha256-LWnniS61uEE55tfMV8HTQdKzs+IPwr5dwoSxyfApTss=";
         };
       })
+      # Nixpkgs' patches target 30.2; the fork is based on 30.1.
+      (skipPatch "01_all_treesit-0.26.patch") # tree-sitter is disabled
+      (skipPatch "02_all_ts-query-pred.patch")
+      (skipPatch "CVE-2026-79992.patch")
+      (patch ./patches/emacs-fork-CVE-2026-79992.patch)
       (configure "--with-gnutls=ifavailable")
       (configure "--with-dumping=none")
       (configure "--with-pdumper=no")
@@ -1323,9 +1457,6 @@ in
     ))
     (patch ./ports/patch/at-spi2-core-2.60.5.patch)
     (tool pkgs.python3)
-    (arg {
-      systemd = final.systemdLibs;
-    })
     (addMesonFlag "-Dintrospection=enabled")
   ])
 
@@ -1349,7 +1480,8 @@ in
       (pin "3.24.52" "sha256-gJMfpHKne5oWT2dA48C0RPrGdwBUYy01p/+dZ55ee58=")
       (patch ./ports/patch/gtk-3.24.52.patch)
       # GTK3 does not request GLib among its generator inputs itself.
-      (tool final.glib)
+      # Unspliced, or mkDerivation would substitute the build platform's.
+      (tool (removeAttrs final.glib [ "__spliced" ]))
       (addMesonFlag "--cross-file=${pkgs.writeText "gtk3-filc-tools.conf" ''
         [binaries]
         gdbus-codegen = '${final.glib.dev}/bin/gdbus-codegen'
@@ -1371,6 +1503,8 @@ in
 
     gtk4 = for pkgs.gtk4 [
       (pin "4.14.5" "sha256-VUfyufAGsTOZPgcLh8F4BOBR79o5E/6soRCPor5B4k0=")
+      # Nixpkgs' 32-bit Vulkan fix targets newer releases; Vulkan is off here.
+      (skipPatch "fix-32bit-VkImage-null.patch")
       (patch ./ports/patch/gtk-4.14.5.patch)
       (link final.libdrm)
       (addMesonFlag "-Dintrospection=enabled")

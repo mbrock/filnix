@@ -27,6 +27,8 @@ in
     (patch ../patches/sdl3-fork.patch)
     (patch ../patches/sdl3-cpu-probe.patch)
     (patch ../patches/sdl3-aligned-allocation.patch)
+    (patch ../patches/sdl3-process-fork.patch)
+    (patch ../patches/sdl3-testfile-buffer.patch)
     (arg {
       inherit pipewire;
       # First pass: PipeWire/ALSA audio and X11 software rendering.
@@ -38,45 +40,35 @@ in
       ibusSupport = false;
       jackSupport = false;
       pulseaudioSupport = false;
+      vulkanSupport = false;
+      traySupport = false;
     })
-    (use (
-      old:
-      let
-        dlopenInputs = builtins.filter (
-          dep:
-          !(builtins.elem (dep.pname or "") [
-            "libayatana-appindicator"
-            "vulkan-loader"
-            "vulkan-headers"
-          ])
-        ) old.dlopenBuildInputs;
-      in
-      {
-        dlopenBuildInputs = dlopenInputs;
-        cmakeFlags = old.cmakeFlags ++ [
-          "-DSDL_VULKAN=OFF"
-          "-DSDL_MMX=OFF"
-        ];
-        postConfigure = (old.postConfigure or "") + ''
-          # Fil-C forwards dlopen through libc, losing SDL's caller RUNPATH.
-          # Pin every configured backend to the dependency selected by Nix.
-          ${pkgs.python3}/bin/python ${./pin-sdl-libraries.py} \
-            include-config-release/build_config/SDL_build_config.h \
-            ${pkgs.lib.escapeShellArgs (
-              map (p: "${pkgs.lib.getLib p}/lib") dlopenInputs
-            )}
-        '';
-        preCheck = (old.preCheck or "") + ''
-          export FUGC_THREADS="$NIX_BUILD_CORES"
-        '';
-        doCheck = true;
-      }
-    ))
+    (use (old: {
+      cmakeFlags = old.cmakeFlags ++ [
+        "-DSDL_MMX=OFF"
+      ];
+      # Nixpkgs links SDL's backends directly (SDL_DEPS_SHARED=OFF), so this
+      # is normally a no-op; it guards against any backend left on dlopen.
+      postConfigure = (old.postConfigure or "") + ''
+        # Fil-C forwards dlopen through libc, losing SDL's caller RUNPATH.
+        # Pin every configured backend to the dependency selected by Nix.
+        ${pkgs.python3}/bin/python ${./pin-sdl-libraries.py} \
+          include-config-release/build_config/SDL_build_config.h \
+          ${pkgs.lib.escapeShellArgs (
+            map (p: "${pkgs.lib.getLib p}/lib") old.buildInputs
+          )}
+      '';
+      preCheck = (old.preCheck or "") + ''
+        export FUGC_THREADS="$NIX_BUILD_CORES"
+      '';
+      doCheck = true;
+    }))
   ];
 
   sdl2-compat = for "sdl2-compat" [
     (patch ../patches/sdl2-symbol-loader.patch)
     (patch ../patches/sdl2-capabilities.patch)
+    (patch ../patches/sdl2-testfile-buffer.patch)
     (use (old: {
       # This cohort's SDL3 has no OpenGL backend; keep the non-GL tests.
       checkInputs = [ ];
@@ -140,6 +132,17 @@ in
   ];
 
   wireplumber = for "wireplumber" [
+    (use {
+      # The patches were ported and tested against 0.5.10, like the core.
+      version = "0.5.10";
+      src = pkgs.fetchFromGitLab {
+        domain = "gitlab.freedesktop.org";
+        owner = "pipewire";
+        repo = "wireplumber";
+        rev = "0.5.10";
+        hash = "sha256-CZjVCy9FKTBO7C5f+vOejJyVjo2a5YoOKgqzH+w2k3w=";
+      };
+    })
     (patch ../patches/wireplumber-gtype.patch)
     (patch ../patches/wireplumber-pointer-properties.patch)
     (arg {

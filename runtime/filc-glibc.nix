@@ -5,6 +5,7 @@
 }:
 
 let
+  lib = import ../lib { inherit pkgs; };
   sources = import ../lib/sources.nix { inherit pkgs; };
 
 in
@@ -22,7 +23,7 @@ in
 
     nativeBuildInputs = with pkgs; [
       gnumake
-      autoconf
+      lib.autoconf272
       bison
       python3
       binutils
