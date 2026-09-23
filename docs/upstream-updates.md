@@ -120,6 +120,13 @@ Errors preserve the previous patch. Binary changes are rejected explicitly:
 Projeny's binary encoding is not Git's, and Nix's ordinary patch phase cannot
 apply binary diffs. Such a future port should consume materialized source.
 
+A vendored directory may port the same release as a descriptor: at
+`b6dd63481f79`, `projects/openssl-3.6.4/` is the SaRCAsm port and
+`openssl.projeny` (Origname `openssl-3.6.4`) uses zunsafe forwarders into
+ordinary assembly. The directory keeps `openssl-3.6.4.patch`; the descriptor
+then writes `openssl-3.6.4-projeny.patch`. Previously the descriptor's patch
+silently replaced the SaRCAsm one, breaking `openssl-sarcasm`.
+
 Run importer regression tests with the packaged tool available:
 
 ```sh
