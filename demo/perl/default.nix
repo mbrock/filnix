@@ -4,12 +4,12 @@
 {
   lib,
   pkgs,
-  perl540Packages,
+  perlPackages,
 }:
 
 let
   # Perl with required XS modules
-  perlEnv = with perl540Packages; [
+  perlEnv = with perlPackages; [
     perl
 
     # C integration

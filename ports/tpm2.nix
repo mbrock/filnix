@@ -30,13 +30,13 @@ in
     (use (old: {
       postPatch = (old.postPatch or "") + ''
         cp ${../toolchain/cmocka-pointer-mocks.h} test/cmocka-pointer-mocks.h
-        substituteInPlace test/unit/*.c test/integration/*.c \
-          --replace-quiet '#include <cmocka.h>' '#include "../cmocka-pointer-mocks.h"'
+        # Since 4.2 every test includes cmocka through this helper.
+        substituteInPlace test/helper/cmocka_all.h \
+          --replace-fail '#include <cmocka.h>' '#include "../cmocka-pointer-mocks.h"'
         substituteInPlace test/unit/esys-vendor.c \
-          --replace-fail '(const char*)(size_t)mock()' 'mock_ptr_type(const char *)'
-        substituteInPlace test/unit/tcti-libtpms.c \
-          --replace-fail 'check_expected_ptr(st)' 'check_expected(st)' \
-          --replace-fail 'check_expected_ptr(buf_len)' 'check_expected(buf_len)'
+          --replace-fail 'will_return_uint_always(tcti_fake_recv, (uintptr_t) __func__)' \
+            'will_return_ptr_always(tcti_fake_recv, __func__)' \
+          --replace-fail '(const char *)mock_type(uintptr_t)' 'mock_ptr_type(const char *)'
         # Preserve calls to the functions these tests interpose. The compiler
         # adapter restores their descriptor names after Fil-C's lowering.
         substituteInPlace Makefile-test.am \

@@ -6,7 +6,8 @@ pkgsFilc.stdenv.mkDerivation {
     (import ../toolchain/meson-filc.nix { inherit pkgs; })
     pkgs.ninja
     pkgs.pkg-config
-    pkgsFilc.glib
+    # Unspliced: Fil-C's glib-mkenums, not the build platform's.
+    (removeAttrs pkgsFilc.glib [ "__spliced" ])
   ];
   buildInputs = [ pkgsFilc.glib ];
   doCheck = true;

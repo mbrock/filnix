@@ -25,7 +25,7 @@ rec {
       patchelf
       gnumake
       pkg-config
-      autoconf
+      lib.autoconf272
       bison
       gcc-unwrapped
       binutils-unwrapped
