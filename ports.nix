@@ -257,15 +257,11 @@ in
   {
     bash = for pkgs.bash [
       (arg { interactive = true; })
-      # Configure probes CC but builds helpers with CC_FOR_BUILD, a C23
-      # compiler; Nixpkgs applies the same flag when stdenv.cc.isClang.
-      (addCFlag "-std=c23")
       (skipCheck "interactive mode issues")
     ];
 
     bashNonInteractive = for pkgs.bash [
       (arg { interactive = false; })
-      (addCFlag "-std=c23") # see bash
       (skipCheck "test issues")
     ];
   }
@@ -549,16 +545,6 @@ in
       prePatch = (old.prePatch or "") + ''
         patch -p2 < ${./ports/patch/krb5-1.21.3.patch}
       '';
-    }))
-  ])
-
-  (for pkgs.unity-test [
-    # The suite's Makefile defaults to gcc; Nixpkgs passes CC=clang only when
-    # stdenv.cc.isClang, which filcc does not set.
-    (use (old: {
-      checkPhase =
-        builtins.replaceStrings [ "make -C../test" ] [ "make -C../test CC=clang" ]
-          old.checkPhase;
     }))
   ])
 
@@ -954,13 +940,6 @@ in
       }))
     ];
     pam = for pkgs.linux-pam [ (skipCheck "test setup issues") ];
-    db4 = for pkgs.db4 [
-      # Autoconf 2.73 selects C23, which rejects db's K&R definitions.
-      # Nixpkgs uses 2.69 when stdenv.cc.isClang, which filcc does not set.
-      (use (old: {
-        nativeBuildInputs = [ pkgs.autoconf269 ] ++ old.nativeBuildInputs;
-      }))
-    ];
   }
 
   (for pkgs.cmocka [

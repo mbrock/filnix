@@ -17,6 +17,19 @@ let
     patches = [ ../patches/cmocka-filc-signal-test.patch ];
     doCheck = true;
   });
+  # Nixpkgs drops the TCTI unit tests under Clang, whose mocks it cannot make
+  # work there. The pointer-preserving mocks below make them pass.
+  dropTctiTests = ''
+    sed -i '/TESTS_UNIT / {
+      /test\/unit\/tcti-swtpm/d;
+      /test\/unit\/tcti-mssim/d;
+      /test\/unit\/tcti-device/d
+    }' Makefile-test.am
+  '';
+  keepTctiTests =
+    postPatch:
+    assert pkgs.lib.hasInfix dropTctiTests postPatch;
+    builtins.replaceStrings [ dropTctiTests ] [ "" ] postPatch;
 in
 {
   tpm2-abrmd = for pkgs.tpm2-abrmd [
@@ -28,7 +41,7 @@ in
     (patch ../patches/tpm2-test-environment.patch)
     (patch ../patches/tpm2-spi-pointers.patch)
     (use (old: {
-      postPatch = (old.postPatch or "") + ''
+      postPatch = keepTctiTests old.postPatch + ''
         cp ${../toolchain/cmocka-pointer-mocks.h} test/cmocka-pointer-mocks.h
         # Since 4.2 every test includes cmocka through this helper.
         substituteInPlace test/helper/cmocka_all.h \
