@@ -1409,6 +1409,18 @@ in
           # the early path derived from the executable prefix.
           ln -s "lib/emacs/${old.version}/native-lisp" "$out/native-lisp"
         '';
+        # Fil-C sizes the main thread's stack from RLIMIT_STACK at startup.
+        # Byte-compiling large packages such as eat overflows 8 MiB too, so
+        # raise the soft limit in every build that uses this Emacs.
+        setupHook = pkgs.writeText "emacs-setup-hook.sh" (
+          builtins.readFile old.setupHook
+          + ''
+
+            if [[ $(ulimit -S -s) != unlimited && $(ulimit -S -s) -lt 65536 ]]; then
+              ulimit -S -s 65536 2>/dev/null || true
+            fi
+          ''
+        );
       }))
       (skipCheck "some tests fail")
     ];
