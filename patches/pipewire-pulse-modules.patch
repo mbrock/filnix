@@ -6,9 +6,49 @@ Keep all compiled modules discoverable without relying on ELF section
 boundaries. Constructors append static registration nodes in link order;
 module metadata and public module behavior remain unchanged.
 
+--- a/src/modules/module-protocol-pulse/module.c
++++ b/src/modules/module-protocol-pulse/module.c
+@@ -298,6 +298,29 @@ void audioinfo_to_properties(struct spa_audio_info_raw *info, struct pw_properti
+ 	}
+ }
+ 
++#ifdef __FILC__
++static struct module_registration *registered_modules;
++static struct module_registration **registered_modules_tail = &registered_modules;
++
++void module_register(struct module_registration *entry)
++{
++	*registered_modules_tail = entry;
++	registered_modules_tail = &entry->next;
++}
++
++const struct module_info *module_info_next(struct impl *impl, const struct module_info *info)
++{
++	const struct module_registration *entry = registered_modules;
++
++	if (info != NULL) {
++		while (entry != NULL && entry->info != info)
++			entry = entry->next;
++		if (entry != NULL)
++			entry = entry->next;
++	}
++	return entry != NULL ? entry->info : NULL;
++}
++#else
+ const struct module_info *module_info_next(struct impl *impl, const struct module_info *info)
+ {
+ 	extern const struct module_info __start_pw_mod_pulse_modules[];
+@@ -311,6 +334,7 @@ const struct module_info *module_info_next(struct impl *impl, const struct modul
+ 		return NULL;
+ 	return info;
+ }
++#endif
+ 
+ const struct module_info *module_info_find(struct impl *impl, const char *name)
+ {
 --- a/src/modules/module-protocol-pulse/module.h
 +++ b/src/modules/module-protocol-pulse/module.h
-@@ -32,12 +32,27 @@
+@@ -32,12 +32,27 @@ struct module_info {
  	size_t data_size;
  };
  
@@ -36,39 +76,3 @@ module metadata and public module behavior remain unchanged.
  
  struct module_events {
  #define VERSION_MODULE_EVENTS	0
---- a/src/modules/module-protocol-pulse/module.c
-+++ b/src/modules/module-protocol-pulse/module.c
-@@ -293,6 +293,25 @@
- 	}
- }
- 
-+#ifdef __FILC__
-+static struct module_registration *registered_modules;
-+static struct module_registration **registered_modules_tail = &registered_modules;
-+
-+void module_register(struct module_registration *entry)
-+{
-+	*registered_modules_tail = entry;
-+	registered_modules_tail = &entry->next;
-+}
-+
-+const struct module_info *module_info_find(struct impl *impl, const char *name)
-+{
-+	for (const struct module_registration *entry = registered_modules; entry; entry = entry->next) {
-+		if (spa_streq(entry->info->name, name))
-+			return entry->info;
-+	}
-+	return NULL;
-+}
-+#else
- const struct module_info *module_info_find(struct impl *impl, const char *name)
- {
- 	extern const struct module_info __start_pw_mod_pulse_modules[];
-@@ -309,6 +328,7 @@
- 
- 	return NULL;
- }
-+#endif
- 
- static int find_module_by_name(void *item_data, void *data)
- {

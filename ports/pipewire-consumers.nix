@@ -132,17 +132,6 @@ in
   ];
 
   wireplumber = for "wireplumber" [
-    (use {
-      # The patches were ported and tested against 0.5.10, like the core.
-      version = "0.5.10";
-      src = pkgs.fetchFromGitLab {
-        domain = "gitlab.freedesktop.org";
-        owner = "pipewire";
-        repo = "wireplumber";
-        rev = "0.5.10";
-        hash = "sha256-CZjVCy9FKTBO7C5f+vOejJyVjo2a5YoOKgqzH+w2k3w=";
-      };
-    })
     (patch ../patches/wireplumber-gtype.patch)
     (patch ../patches/wireplumber-pointer-properties.patch)
     (arg {
