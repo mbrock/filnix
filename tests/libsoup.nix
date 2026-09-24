@@ -1,32 +1,17 @@
 {
   pkgs,
   pkgsFilc,
-  major,
 }:
-let
-  soup =
-    if major == 3 then
-      pkgsFilc.libsoup_3
-    else
-      # Nixpkgs marks the EOL 2.x series insecure. Exercising the port does
-      # not endorse it, so only this check ignores the vulnerability list.
-      pkgsFilc.libsoup_2_4.overrideAttrs (old: {
-        meta = old.meta // {
-          knownVulnerabilities = [ ];
-        };
-      });
-  module = if major == 3 then "libsoup-3.0" else "libsoup-2.4";
-in
 pkgsFilc.stdenv.mkDerivation {
-  name = "filc-libsoup${toString major}-runtime-check";
+  name = "filc-libsoup3-runtime-check";
   dontUnpack = true;
   nativeBuildInputs = [
     pkgs.pkg-config
     pkgs.python3
   ];
-  buildInputs = [ soup ];
+  buildInputs = [ pkgsFilc.libsoup_3 ];
   buildPhase = ''
-    $CC ${./libsoup.c} $(pkg-config --cflags --libs ${module}) -o check
+    $CC ${./libsoup.c} $(pkg-config --cflags --libs libsoup-3.0) -o check
     python3 ${./libsoup-server.py} > server.log 2>&1 &
     server_pid=$!
     trap 'kill "$server_pid" 2>/dev/null || true' EXIT
