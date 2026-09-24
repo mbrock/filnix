@@ -149,6 +149,9 @@
           inherit pkgs pkgsFilc;
         };
         boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
+        emacs-treesit = import ./tests/emacs-treesit.nix {
+          inherit pkgs pkgsFilc;
+        };
         libsoup3-runtime = import ./tests/libsoup.nix {
           inherit pkgs pkgsFilc;
         };
