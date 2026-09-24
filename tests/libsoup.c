@@ -12,7 +12,6 @@ static void changed(SoupCookieJar *jar, SoupCookie *old_cookie,
 static void request(SoupSession *session, const char *url, gboolean cookies) {
     SoupMessage *message = soup_message_new("GET", url);
     if (!cookies) soup_message_disable_feature(message, SOUP_TYPE_COOKIE_JAR);
-#if SOUP_MAJOR_VERSION >= 3
     GError *error = NULL;
     GBytes *body = soup_session_send_and_read(session, message, NULL, &error);
     g_assert_no_error(error);
@@ -22,11 +21,6 @@ static void request(SoupSession *session, const char *url, gboolean cookies) {
     g_assert_cmpuint(length, ==, 6);
     g_assert_true(memcmp(data, "filnix", length) == 0);
     g_bytes_unref(body);
-#else
-    g_assert_cmpuint(soup_session_send_message(session, message), ==, 200);
-    g_assert_cmpuint(message->response_body->length, ==, 6);
-    g_assert_true(memcmp(message->response_body->data, "filnix", 6) == 0);
-#endif
     g_object_unref(message);
 }
 

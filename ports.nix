@@ -666,9 +666,6 @@ in
   ])
 
   {
-    libsoup_2_4 = for pkgs.libsoup_2_4 [
-      (patch ./patches/libsoup2-gtype.patch)
-    ];
     # The upstream 3.4.4 port also applies to Nixpkgs' 3.6.5 release.
     libsoup_3 = for pkgs.libsoup_3 [
       (patch ./ports/patch/libsoup-3.4.4.patch)
@@ -698,13 +695,15 @@ in
     ];
   }
 
-  (for pkgs.gssdp [
-    (patch ./patches/gssdp-signal-types.patch)
-  ])
-
-  (for pkgs.gupnp [
-    (patch ./patches/gupnp-gtype.patch)
-  ])
+  # The 1.4 series needs the EOL libsoup 2.
+  {
+    gssdp_1_6 = for pkgs.gssdp_1_6 [
+      (patch ./patches/gssdp-signal-types.patch)
+    ];
+    gupnp_1_6 = for pkgs.gupnp_1_6 [
+      (patch ./patches/gupnp-gtype.patch)
+    ];
+  }
 
   (for pkgs.libhandy [
     (patch ./patches/libhandy-destroy-visible-child.patch)
