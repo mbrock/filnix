@@ -18,7 +18,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include "config.h"
  
  #include <stdio.h>
-@@ -3408,7 +3409,7 @@
+@@ -3409,7 +3410,7 @@ static struct spa_thread *impl_create(void *object,
  		for (i = 0; i < n_items; i++)
  			items[i] = props->items[i];
  
@@ -37,7 +37,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include "config.h"
  
  #include <math.h>
-@@ -542,7 +543,7 @@
+@@ -542,7 +543,7 @@ static int make_nodes(struct data *data)
  	}
  
  	/* make the source adapter node */
@@ -46,7 +46,7 @@ custom thread creators. Native builds retain their existing pointer format.
  	items[1] = SPA_DICT_ITEM_INIT("audio.adapt.follower", value);
  	if ((res = make_node(data, &data->source_node,
  					"audioconvert/libspa-audioconvert.so",
-@@ -594,7 +595,7 @@
+@@ -594,7 +595,7 @@ static int make_nodes(struct data *data)
  	printf("created sink follower node %p\n", data->sink_follower_node);
  
  	/* make the sink adapter node */
@@ -168,7 +168,7 @@ custom thread creators. Native builds retain their existing pointer format.
    version : spaversion,
    variables : {
      'plugindir' : meson.current_build_dir() / 'plugins',
-@@ -22,6 +33,7 @@
+@@ -29,6 +40,7 @@ meson.override_dependency('lib@0@'.format(spa_name), spa_dep)
  
  pkgconfig.generate(filebase : 'lib@0@'.format(spa_name),
    name : 'libspa',
@@ -186,7 +186,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <spa/support/plugin.h>
  #include <spa/support/plugin-loader.h>
  #include <spa/support/log.h>
-@@ -2096,7 +2097,7 @@
+@@ -2170,7 +2171,7 @@ impl_init(const struct spa_handle_factory *factory,
  	    (str = spa_dict_lookup(info, "audio.adapt.follower")) == NULL)
  		return -EINVAL;
  
@@ -197,10 +197,10 @@ custom thread creators. Native builds retain their existing pointer format.
  
 --- a/spa/plugins/audioconvert/meson.build
 +++ b/spa/plugins/audioconvert/meson.build
-@@ -126,7 +126,7 @@
+@@ -126,7 +126,7 @@ sparesampledumpcoeffs = executable(
    'spa-resample-dump-coeffs',
    sparesampledumpcoeffs_sources,
-   c_args : [ cc_flags_native, '-DRESAMPLE_DISABLE_PRECOMP' ],
+   c_args : [ '-DRESAMPLE_DISABLE_PRECOMP' ],
 -  dependencies : [ spa_dep, mathlib_native ],
 +  dependencies : [ spa_dep.partial_dependency(includes : true, compile_args : true), mathlib_native ],
    install : false,
@@ -216,7 +216,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <string.h>
  #include <stdio.h>
  #include <stdlib.h>
-@@ -82,7 +83,7 @@
+@@ -82,7 +83,7 @@ static int setup_context(struct context *ctx)
  	ctx->adapter_handle = calloc(1, size);
  	spa_assert_se(ctx->adapter_handle != NULL);
  
@@ -227,15 +227,15 @@ custom thread creators. Native builds retain their existing pointer format.
  	res = spa_handle_factory_init(factory,
 --- a/spa/plugins/bluez5/bluez5-dbus.c
 +++ b/spa/plugins/bluez5/bluez5-dbus.c
-@@ -2,6 +2,7 @@
- /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
- /* SPDX-License-Identifier: MIT */
+@@ -4,6 +4,7 @@
+ 
+ #include "config.h"
  
 +#include <spa/utils/ptr-string.h>
  #include <errno.h>
  #include <stddef.h>
  #include <unistd.h>
-@@ -1740,7 +1741,7 @@
+@@ -2028,7 +2029,7 @@ static void emit_device_info(struct spa_bt_monitor *monitor,
  	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_ICON, device->icon);
  	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_PATH, device->path);
  	items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_ADDRESS, device->address);
@@ -254,7 +254,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <stddef.h>
  #include <stdio.h>
  #include <sys/types.h>
-@@ -658,7 +659,7 @@
+@@ -628,7 +629,7 @@ static void emit_node(struct impl *this, struct spa_bt_transport *t,
  	else
  		in_device_set = this->device_set.source_enabled;
  
@@ -263,7 +263,7 @@ custom thread creators. Native builds retain their existing pointer format.
  	items[0] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_TRANSPORT, transport);
  	items[1] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_PROFILE, spa_bt_profile_name(t->profile));
  	items[2] = SPA_DICT_ITEM_INIT(SPA_KEY_API_BLUEZ5_CODEC, get_codec_name(t, a2dp_duplex));
-@@ -2990,7 +2991,7 @@
+@@ -3356,7 +3357,7 @@ impl_init(const struct spa_handle_factory *factory,
  	spa_log_topic_init(this->log, &log_topic);
  
  	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_DEVICE)))
@@ -282,8 +282,8 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <unistd.h>
  #include <stddef.h>
  #include <stdio.h>
-@@ -2211,7 +2212,7 @@
- 		this->is_internal = spa_atob(str);
+@@ -2631,7 +2632,7 @@ impl_init(const struct spa_handle_factory *factory,
+ 		this->iso_debug_mono = spa_atob(str);
  
  	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)))
 -		sscanf(str, "pointer:%p", &this->transport);
@@ -301,55 +301,36 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <unistd.h>
  #include <stddef.h>
  #include <stdio.h>
-@@ -1876,7 +1877,7 @@
- 		if (info && (str = spa_dict_lookup(info, "clock.quantum-limit")))
- 			spa_atou32(str, &this->quantum_limit, 0);
- 		if ((str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)) != NULL)
--			sscanf(str, "pointer:%p", &this->transport);
-+			spa_pointer_parse(str, &this->transport);
- 		if ((str = spa_dict_lookup(info, "bluez5.media-source-role")) != NULL)
- 			this->is_input = spa_streq(str, "input");
- 		if ((str = spa_dict_lookup(info, "api.bluez5.a2dp-duplex")) != NULL)
---- a/spa/plugins/bluez5/sco-sink.c
-+++ b/spa/plugins/bluez5/sco-sink.c
-@@ -2,6 +2,7 @@
- /* SPDX-FileCopyrightText: Copyright © 2019 Collabora Ltd. */
- /* SPDX-License-Identifier: MIT */
+@@ -2213,7 +2214,7 @@ impl_init(const struct spa_handle_factory *factory,
+ 	this->quantum_limit = 8192;
  
-+#include <spa/utils/ptr-string.h>
- #include <unistd.h>
- #include <stddef.h>
- #include <stdio.h>
-@@ -1701,7 +1702,7 @@
- 		this->is_internal = spa_atob(str);
- 
- 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)))
+ 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)) != NULL)
 -		sscanf(str, "pointer:%p", &this->transport);
 +		spa_pointer_parse(str, &this->transport);
- 
  	if (this->transport == NULL) {
  		spa_log_error(this->log, "a transport is needed");
---- a/spa/plugins/bluez5/sco-source.c
-+++ b/spa/plugins/bluez5/sco-source.c
-@@ -2,6 +2,7 @@
- /* SPDX-FileCopyrightText: Copyright © 2019 Collabora Ltd. */
- /* SPDX-License-Identifier: MIT */
+ 		return -EINVAL;
+--- a/spa/plugins/filter-graph/filter-graph.c
++++ b/spa/plugins/filter-graph/filter-graph.c
+@@ -4,6 +4,7 @@
+ 
+ #include "config.h"
  
 +#include <spa/utils/ptr-string.h>
- #include <unistd.h>
- #include <stddef.h>
+ #include <string.h>
  #include <stdio.h>
-@@ -1723,7 +1724,7 @@
- 		this->is_internal = spa_atob(str);
+ #include <errno.h>
+@@ -905,7 +906,7 @@ static struct plugin *plugin_load(struct impl *impl, const char *type, const cha
+ 	spa_scnprintf(factory_name, sizeof(factory_name),
+ 			"filter.graph.plugin.%s", type);
+ 	spa_scnprintf(dsp_ptr, sizeof(dsp_ptr),
+-			"pointer:%p", impl->dsp);
++			SPA_POINTER_FORMAT, SPA_POINTER_VALUE(impl->dsp));
+ 	spa_scnprintf(filter, sizeof(filter),
+ 			"%s", impl->filter_path ? "true" : "false");
  
- 	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_BLUEZ5_TRANSPORT)))
--		sscanf(str, "pointer:%p", &this->transport);
-+		spa_pointer_parse(str, &this->transport);
- 
- 	if (this->transport == NULL) {
- 		spa_log_error(this->log, "a transport is needed");
---- a/spa/plugins/filter-graph/builtin_plugin.c
-+++ b/spa/plugins/filter-graph/builtin_plugin.c
+--- a/spa/plugins/filter-graph/plugin_builtin.c
++++ b/spa/plugins/filter-graph/plugin_builtin.c
 @@ -2,6 +2,7 @@
  /* SPDX-FileCopyrightText: Copyright © 2021 Wim Taymans */
  /* SPDX-License-Identifier: MIT */
@@ -358,7 +339,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include "config.h"
  
  #include <float.h>
-@@ -2587,7 +2588,7 @@
+@@ -3175,7 +3176,7 @@ impl_init(const struct spa_handle_factory *factory,
  		const char *k = info->items[i].key;
  		const char *s = info->items[i].value;
  		if (spa_streq(k, "filter.graph.audio.dsp"))
@@ -367,14 +348,14 @@ custom thread creators. Native builds retain their existing pointer format.
  	}
  	if (impl->dsp == NULL) {
  		spa_log_error(impl->log, "%p: could not find DSP functions", impl);
---- a/spa/plugins/filter-graph/ebur128_plugin.c
-+++ b/spa/plugins/filter-graph/ebur128_plugin.c
+--- a/spa/plugins/filter-graph/plugin_ebur128.c
++++ b/spa/plugins/filter-graph/plugin_ebur128.c
 @@ -1,3 +1,4 @@
 +#include <spa/utils/ptr-string.h>
  #include "config.h"
  
  #include <limits.h>
-@@ -578,7 +579,7 @@
+@@ -576,7 +577,7 @@ impl_init(const struct spa_handle_factory *factory,
  		if (spa_streq(k, "clock.quantum-limit"))
  			spa_atou32(s, &impl->quantum_limit, 0);
  		if (spa_streq(k, "filter.graph.audio.dsp"))
@@ -383,33 +364,14 @@ custom thread creators. Native builds retain their existing pointer format.
  	}
  	if (impl->dsp == NULL) {
  		spa_log_error(impl->log, "%p: could not find DSP functions", impl);
---- a/spa/plugins/filter-graph/filter-graph.c
-+++ b/spa/plugins/filter-graph/filter-graph.c
-@@ -2,6 +2,7 @@
- /* SPDX-FileCopyrightText: Copyright © 2021 Wim Taymans */
- /* SPDX-License-Identifier: MIT */
- 
-+#include <spa/utils/ptr-string.h>
- #include <string.h>
- #include <stdio.h>
- #include <errno.h>
-@@ -781,7 +782,7 @@
- 	spa_scnprintf(factory_name, sizeof(factory_name),
- 			"filter.graph.plugin.%s", type);
- 	spa_scnprintf(dsp_ptr, sizeof(dsp_ptr),
--			"pointer:%p", impl->dsp);
-+			SPA_POINTER_FORMAT, SPA_POINTER_VALUE(impl->dsp));
- 
- 	hndl = spa_plugin_loader_load(impl->loader, factory_name,
- 			&SPA_DICT_ITEMS(
---- a/spa/plugins/filter-graph/sofa_plugin.c
-+++ b/spa/plugins/filter-graph/sofa_plugin.c
+--- a/spa/plugins/filter-graph/plugin_sofa.c
++++ b/spa/plugins/filter-graph/plugin_sofa.c
 @@ -1,3 +1,4 @@
 +#include <spa/utils/ptr-string.h>
  #include "config.h"
  
  #include <limits.h>
-@@ -490,7 +491,7 @@
+@@ -520,7 +521,7 @@ impl_init(const struct spa_handle_factory *factory,
  		if (spa_streq(k, "clock.quantum-limit"))
  			spa_atou32(s, &impl->quantum_limit, 0);
  		if (spa_streq(k, "filter.graph.audio.dsp"))
@@ -428,7 +390,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <stddef.h>
  #include <stdio.h>
  #include <sys/types.h>
-@@ -80,7 +81,7 @@
+@@ -80,7 +81,7 @@ static int emit_node(struct impl *this, uint32_t id)
                  info.factory_name = SPA_NAME_API_JACK_SOURCE;
  
  	info.change_mask = SPA_DEVICE_OBJECT_CHANGE_MASK_PROPS;
@@ -447,7 +409,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <errno.h>
  #include <stddef.h>
  #include <unistd.h>
-@@ -839,7 +840,7 @@
+@@ -839,7 +840,7 @@ impl_init(const struct spa_handle_factory *factory,
  	this->log = spa_support_find(support, n_support, SPA_TYPE_INTERFACE_Log);
  
  	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_JACK_CLIENT)))
@@ -466,7 +428,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <errno.h>
  #include <stddef.h>
  #include <unistd.h>
-@@ -864,7 +865,7 @@
+@@ -864,7 +865,7 @@ impl_init(const struct spa_handle_factory *factory,
  	this->log = spa_support_find(support, n_support, SPA_TYPE_INTERFACE_Log);
  
  	if (info && (str = spa_dict_lookup(info, SPA_KEY_API_JACK_CLIENT)))
@@ -485,7 +447,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <spa/utils/dict.h>
  #include <spa/support/plugin.h>
  #include <spa/support/plugin-loader.h>
-@@ -1932,7 +1933,7 @@
+@@ -2021,7 +2022,7 @@ impl_init(const struct spa_handle_factory *factory,
  	    (str = spa_dict_lookup(info, "video.adapt.follower")) == NULL)
  		return -EINVAL;
  
@@ -496,15 +458,15 @@ custom thread creators. Native builds retain their existing pointer format.
  
 --- a/src/modules/module-adapter.c
 +++ b/src/modules/module-adapter.c
-@@ -2,6 +2,7 @@
- /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
- /* SPDX-License-Identifier: MIT */
+@@ -4,6 +4,7 @@
+ 
+ #include "config.h"
  
 +#include <spa/utils/ptr-string.h>
  #include <string.h>
  #include <stdio.h>
  #include <errno.h>
-@@ -204,13 +205,13 @@
+@@ -204,13 +205,13 @@ static void *create_object(void *_data,
  	spa_follower = NULL;
  	str = pw_properties_get(properties, "adapt.follower.node");
  	if (str != NULL) {
@@ -522,15 +484,15 @@ custom thread creators. Native builds retain their existing pointer format.
  
 --- a/src/modules/module-adapter/adapter.c
 +++ b/src/modules/module-adapter/adapter.c
-@@ -2,6 +2,7 @@
- /* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
- /* SPDX-License-Identifier: MIT */
+@@ -4,6 +4,7 @@
+ 
+ #include "config.h"
  
 +#include <spa/utils/ptr-string.h>
  #include <string.h>
  #include <stdio.h>
  #include <errno.h>
-@@ -183,7 +184,7 @@
+@@ -183,7 +184,7 @@ struct pw_impl_node *pw_adapter_new(struct pw_context *context,
  		goto error;
  
  	if (media_type == SPA_MEDIA_TYPE_audio) {
@@ -539,7 +501,7 @@ custom thread creators. Native builds retain their existing pointer format.
  		pw_properties_set(props, SPA_KEY_LIBRARY_NAME, "audioconvert/libspa-audioconvert");
  		if (pw_properties_get(props, PW_KEY_MEDIA_CLASS) == NULL)
  			pw_properties_setf(props, PW_KEY_MEDIA_CLASS, "Audio/%s",
-@@ -191,7 +192,7 @@
+@@ -191,7 +192,7 @@ struct pw_impl_node *pw_adapter_new(struct pw_context *context,
  		factory_name = SPA_NAME_AUDIO_ADAPT;
  	}
  	else if (media_type == SPA_MEDIA_TYPE_video) {
@@ -558,7 +520,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <errno.h>
  
  #include <spa/debug/types.h>
-@@ -848,7 +849,7 @@
+@@ -846,7 +847,7 @@ static void device_add_object(struct pw_impl_device *device, uint32_t id,
  		if ((str = pw_properties_get(props, "node.adapter")) != NULL) {
  			char name[64];
  			snprintf(name, sizeof(name), "%s.follower", str);
@@ -577,7 +539,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <errno.h>
  #include <stdio.h>
  #include <math.h>
-@@ -2128,8 +2129,7 @@
+@@ -2202,8 +2203,7 @@ pw_stream_connect(struct pw_stream *stream,
  			res = -ENOENT;
  			goto error_node;
  		}
@@ -597,7 +559,7 @@ custom thread creators. Native builds retain their existing pointer format.
  #include <stdlib.h>
  #include <unistd.h>
  #include <sys/types.h>
-@@ -99,7 +100,7 @@
+@@ -101,7 +102,7 @@ static struct spa_thread *impl_create(void *object,
  
  	if (props == NULL ||
  	   (str = spa_dict_lookup(props, SPA_KEY_THREAD_CREATOR)) == NULL ||

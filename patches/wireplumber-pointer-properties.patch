@@ -1,45 +1,57 @@
-Subject: Preserve session-item pointers with the shared SPA token table
-Origin: Filnix
-Upstream-Status: Not submitted
-
---- a/modules/module-si-standard-link.c
-+++ b/modules/module-si-standard-link.c
+--- a/modules/module-lua-scripting/wplua/boxed.c
++++ b/modules/module-lua-scripting/wplua/boxed.c
 @@ -6,6 +6,7 @@
   * SPDX-License-Identifier: MIT
   */
  
 +#include <spa/utils/ptr-string.h>
+ #include "wplua.h"
+ #include "private.h"
  #include <wp/wp.h>
- #include <pipewire/pipewire.h>
- #include <spa/debug/types.h>
-@@ -81,7 +82,7 @@
-   const gchar *str = NULL;
+@@ -88,7 +89,7 @@ _wplua_gboxed___newindex (lua_State *L)
+         if (wplua_gvalue_userdata_type (L, 3) != G_TYPE_INVALID) {
+           GValue *v = lua_touserdata (L, 3);
+           gpointer p = g_value_peek_pointer (v);
+-          val = g_strdup_printf ("%p", p);
++          val = g_strdup_printf (SPA_POINTER_FORMAT, SPA_POINTER_VALUE (p));
+           break;
+         } else {
+           val = g_strdup (luaL_tolstring (L, 3, NULL));
+--- a/modules/module-lua-scripting/wplua/meson.build
++++ b/modules/module-lua-scripting/wplua/meson.build
+@@ -18,11 +18,11 @@ wplua_lib = static_library('wplua-' + wireplumber_api_version,
+   [ wplua_lib_sources, wplua_resources ],
+   install: false,
+   include_directories: wplua_include_dir,
+-  dependencies : [wp_dep, lua_dep],
++  dependencies : [wp_dep, lua_dep, spa_dep],
+ )
  
-   str = wp_properties_get (props, key);
--  if (!str || sscanf(str, "%p", &res) != 1 || !WP_IS_SI_LINKABLE (res) ||
-+  if (!str || spa_pointer_parse(str, &res) != 1 || !WP_IS_SI_LINKABLE (res) ||
-       !(wp_object_test_active_features (WP_OBJECT (res),
-           WP_SESSION_ITEM_FEATURE_ACTIVE)))
-     return NULL;
---- a/modules/module-si-node.c
-+++ b/modules/module-si-node.c
+ wplua_dep = declare_dependency(
+   link_with: wplua_lib,
+   include_directories: wplua_include_dir,
+-  dependencies: [wp_dep, lua_dep],
++  dependencies: [wp_dep, lua_dep, spa_dep],
+ )
+--- a/modules/module-lua-scripting/wplua/value.c
++++ b/modules/module-lua-scripting/wplua/value.c
 @@ -6,6 +6,7 @@
   * SPDX-License-Identifier: MIT
   */
  
 +#include <spa/utils/ptr-string.h>
+ #include "wplua.h"
+ #include "private.h"
  #include <wp/wp.h>
- #include <pipewire/keys.h>
- #include <pipewire/properties.h>
-@@ -74,7 +75,7 @@
-   si_node_reset (item);
- 
-   str = wp_properties_get (si_props, "item.node");
--  if (!str || sscanf(str, "%p", &node) != 1 || !WP_IS_NODE (node))
-+  if (!str || spa_pointer_parse(str, &node) != 1 || !WP_IS_NODE (node))
-     return FALSE;
- 
-   self->node = g_object_ref (node);
+@@ -36,7 +37,7 @@ wplua_table_to_properties (lua_State *L, int idx)
+         if (wplua_gvalue_userdata_type(L, -2) != G_TYPE_INVALID) {
+           GValue *v = lua_touserdata (L, -2);
+           gpointer p = g_value_peek_pointer (v);
+-          value = g_strdup_printf ("%p", p);
++          value = g_strdup_printf (SPA_POINTER_FORMAT, SPA_POINTER_VALUE (p));
+           lua_pop (L, 2);
+         } else {
+           value = g_strdup (luaL_tolstring (L, -2, NULL));
 --- a/modules/module-si-audio-adapter.c
 +++ b/modules/module-si-audio-adapter.c
 @@ -6,6 +6,7 @@
@@ -50,7 +62,7 @@ Upstream-Status: Not submitted
  #include <wp/wp.h>
  #include <pipewire/keys.h>
  #include <pipewire/properties.h>
-@@ -251,7 +252,7 @@
+@@ -263,7 +264,7 @@ si_audio_adapter_configure (WpSessionItem * item, WpProperties *p)
    si_audio_adapter_reset (item);
  
    str = wp_properties_get (si_props, "item.node");
@@ -59,74 +71,44 @@ Upstream-Status: Not submitted
      return FALSE;
  
    str = wp_properties_get (si_props, PW_KEY_MEDIA_CLASS);
---- a/modules/module-lua-scripting/api/api.c
-+++ b/modules/module-lua-scripting/api/api.c
+--- a/modules/module-si-node.c
++++ b/modules/module-si-node.c
 @@ -6,6 +6,7 @@
   * SPDX-License-Identifier: MIT
   */
  
 +#include <spa/utils/ptr-string.h>
- #include <glib/gstdio.h>
+ #include <wp/wp.h>
+ #include <pipewire/keys.h>
+ #include <pipewire/properties.h>
+@@ -74,7 +75,7 @@ si_node_configure (WpSessionItem * item, WpProperties *p)
+   si_node_reset (item);
+ 
+   str = wp_properties_get (si_props, "item.node");
+-  if (!str || sscanf(str, "%p", &node) != 1 || !WP_IS_NODE (node))
++  if (!str || spa_pointer_parse(str, &node) != 1 || !WP_IS_NODE (node))
+     return FALSE;
+ 
+   self->node = g_object_ref (node);
+--- a/modules/module-si-standard-link.c
++++ b/modules/module-si-standard-link.c
+@@ -6,6 +6,7 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include <spa/utils/ptr-string.h>
  #include <wp/wp.h>
  #include <pipewire/pipewire.h>
-@@ -1418,7 +1419,7 @@
-       case LUA_TUSERDATA: {
-         GValue *v = lua_touserdata (L, -1);
-         gpointer p = g_value_peek_pointer (v);
--        var = g_strdup_printf ("%p", p);
-+        var = g_strdup_printf (SPA_POINTER_FORMAT, SPA_POINTER_VALUE (p));
-         break;
-       }
-       default:
---- a/tests/modules/si-standard-link.c
-+++ b/tests/modules/si-standard-link.c
-@@ -6,6 +6,7 @@
-  * SPDX-License-Identifier: MIT
-  */
+ #include <spa/debug/types.h>
+@@ -81,7 +82,7 @@ get_and_validate_item (WpProperties * props, const gchar *key)
+   const gchar *str = NULL;
  
-+#include <spa/utils/ptr-string.h>
- #include "../common/base-test-fixture.h"
- 
- typedef struct {
-@@ -46,7 +47,7 @@
-   /* configure */
-   {
-     WpProperties *props = wp_properties_new_empty ();
--    wp_properties_setf (props, "item.node", "%p", node);
-+    wp_properties_setf (props, "item.node", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (node));
-     wp_properties_set (props, "media.class", media_class);
-     wp_properties_set (props, "item.node.type", type);
-     g_assert_true (wp_session_item_configure (adapter, props));
-@@ -149,8 +150,8 @@
-   /* configure the link */
-   {
-     g_autoptr (WpProperties) props = wp_properties_new_empty ();
--    wp_properties_setf (props, "out.item", "%p", f->src_item);
--    wp_properties_setf (props, "in.item", "%p", f->sink_item);
-+    wp_properties_setf (props, "out.item", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (f->src_item));
-+    wp_properties_setf (props, "in.item", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (f->sink_item));
-     wp_properties_set (props, "out.item.port.context", "output");
-     wp_properties_set (props, "in.item.port.context", "input");
-     g_assert_true (wp_session_item_configure (link, g_steal_pointer (&props)));
---- a/tests/modules/si-node.c
-+++ b/tests/modules/si-node.c
-@@ -6,6 +6,7 @@
-  * SPDX-License-Identifier: MIT
-  */
- 
-+#include <spa/utils/ptr-string.h>
- #include "../common/base-test-fixture.h"
- 
- typedef struct {
-@@ -104,7 +105,7 @@
- 
-   {
-     WpProperties *props = wp_properties_new_empty ();
--    wp_properties_setf (props, "item.node", "%p", node);
-+    wp_properties_setf (props, "item.node", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (node));
-     wp_properties_set (props, "media.class", data->media_class);
-     g_assert_true (wp_session_item_configure (item, props));
-     g_assert_true (wp_session_item_is_configured (item));
+   str = wp_properties_get (props, key);
+-  if (!str || sscanf(str, "%p", &res) != 1 || !WP_IS_SI_LINKABLE (res) ||
++  if (!str || spa_pointer_parse(str, &res) != 1 || !WP_IS_SI_LINKABLE (res) ||
+       !(wp_object_test_active_features (WP_OBJECT (res),
+           WP_SESSION_ITEM_FEATURE_ACTIVE)))
+     return NULL;
 --- a/tests/modules/si-audio-adapter.c
 +++ b/tests/modules/si-audio-adapter.c
 @@ -6,6 +6,7 @@
@@ -137,7 +119,7 @@ Upstream-Status: Not submitted
  #include "../common/base-test-fixture.h"
  
  typedef struct {
-@@ -93,7 +94,7 @@
+@@ -93,7 +94,7 @@ test_si_audio_adapter_configure_activate (TestFixture * f,
    /* configure */
    {
      WpProperties *props = wp_properties_new_empty ();
@@ -146,3 +128,52 @@ Upstream-Status: Not submitted
      wp_properties_set (props, "media.class", "Audio/Source");
      g_assert_true (wp_session_item_configure (adapter, props));
      g_assert_true (wp_session_item_is_configured (adapter));
+--- a/tests/modules/si-node.c
++++ b/tests/modules/si-node.c
+@@ -6,6 +6,7 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include <spa/utils/ptr-string.h>
+ #include "../common/base-test-fixture.h"
+ 
+ typedef struct {
+@@ -104,7 +105,7 @@ test_si_node_configure_activate (TestFixture * f, gconstpointer user_data)
+ 
+   {
+     WpProperties *props = wp_properties_new_empty ();
+-    wp_properties_setf (props, "item.node", "%p", node);
++    wp_properties_setf (props, "item.node", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (node));
+     wp_properties_set (props, "media.class", data->media_class);
+     g_assert_true (wp_session_item_configure (item, props));
+     g_assert_true (wp_session_item_is_configured (item));
+--- a/tests/modules/si-standard-link.c
++++ b/tests/modules/si-standard-link.c
+@@ -6,6 +6,7 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include <spa/utils/ptr-string.h>
+ #include "../common/base-test-fixture.h"
+ 
+ typedef struct {
+@@ -46,7 +47,7 @@ load_node (TestFixture * f, const gchar * factory, const gchar * media_class,
+   /* configure */
+   {
+     WpProperties *props = wp_properties_new_empty ();
+-    wp_properties_setf (props, "item.node", "%p", node);
++    wp_properties_setf (props, "item.node", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (node));
+     wp_properties_set (props, "media.class", media_class);
+     wp_properties_set (props, "item.node.type", type);
+     g_assert_true (wp_session_item_configure (adapter, props));
+@@ -149,8 +150,8 @@ test_si_standard_link_main (TestFixture * f, gconstpointer user_data)
+   /* configure the link */
+   {
+     g_autoptr (WpProperties) props = wp_properties_new_empty ();
+-    wp_properties_setf (props, "out.item", "%p", f->src_item);
+-    wp_properties_setf (props, "in.item", "%p", f->sink_item);
++    wp_properties_setf (props, "out.item", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (f->src_item));
++    wp_properties_setf (props, "in.item", SPA_POINTER_FORMAT, SPA_POINTER_VALUE (f->sink_item));
+     wp_properties_set (props, "out.item.port.context", "output");
+     wp_properties_set (props, "in.item.port.context", "input");
+     g_assert_true (wp_session_item_configure (link, g_steal_pointer (&props)));

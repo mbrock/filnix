@@ -6,16 +6,7 @@
 }:
 stdenv.mkDerivation {
   pname = "pipewire-core";
-  # The pointer-token patches below were ported and tested against 1.4.7;
-  # Nixpkgs 26.05 packages 1.6, which moves and adds pointer-string sites.
-  version = "1.4.7";
-  src = native.fetchFromGitLab {
-    domain = "gitlab.freedesktop.org";
-    owner = "pipewire";
-    repo = "pipewire";
-    rev = "1.4.7";
-    hash = "sha256-U9J7f6nDO4tp6OCBtBcZ9HP9KDKLfuuRWDEbgLL9Avs=";
-  };
+  inherit (native.pipewire) version src;
   patches = [
     ../patches/pipewire-log-topics.patch
     ../patches/pipewire-test-suites.patch
@@ -73,7 +64,7 @@ stdenv.mkDerivation {
     "-Dvideotestsrc=enabled"
     "-Dalsa=enabled"
     "-Dpipewire-alsa=enabled"
-    "-Dsystemd=enabled"
+    "-Dlibsystemd=enabled"
     "-Dlogind=enabled"
     "-Ddbus=enabled"
     "-Dsession-managers=[]"
