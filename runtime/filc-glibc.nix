@@ -17,7 +17,12 @@ in
     version = "2.44";
     src = "${sources.user-glibc-src}/projects/user-glibc-2.44";
     outputs = [ "out" ];
-    patches = [ ../patches/glibc-filc-cancellation.patch ];
+    patches = [
+      ../patches/glibc-filc-cancellation.patch
+      # Honour LOCALE_ARCHIVE and NixOS' system archive, as Nixpkgs' glibc
+      # does; its 2.42 writes the same archive format as 2.44.
+      "${pkgs.path}/pkgs/development/libraries/glibc/nix-locale-archive.patch"
+    ];
 
     enableParallelBuilding = true;
 
@@ -56,6 +61,10 @@ in
       cd build
       configureScript=$PWD/../$sourceRoot/configure
 
+      # Fil-C defaults to the host's /lib/locale, which Nix builds and NixOS
+      # do not have. Use this output, as upstream glibc does.
+      echo "complocaledir=$out/lib/locale" > configparms
+
       # Set these in shell so $out actually expands
       configureFlagsArray+=(
         "libc_cv_slibdir=$out/lib"
@@ -68,6 +77,21 @@ in
       "--disable-werror"
       "--with-headers=${pkgs.linuxHeaders}/include"
     ];
+
+    # Ship C.UTF-8, as Nixpkgs' glibc does. The localedef built here is a
+    # Fil-C program that cannot run yet, so use the build platform's, as
+    # Nixpkgs does when cross-compiling glibc. Its 2.42 writes the same
+    # locale file format; the definitions come from this source.
+    postInstall = ''
+      mkdir -p $out/lib/locale
+      I18NPATH=../$sourceRoot/localedata \
+        ${pkgs.lib.getBin pkgs.glibc}/bin/localedef \
+        --no-archive \
+        --alias-file=../$sourceRoot/intl/locale.alias \
+        -i ../$sourceRoot/localedata/locales/C \
+        -f ../$sourceRoot/localedata/charmaps/UTF-8 \
+        $out/lib/locale/C.utf8
+    '';
 
     meta.description = "Memory-safe glibc compiled with Fil-C";
   };

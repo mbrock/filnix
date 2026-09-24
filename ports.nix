@@ -1183,12 +1183,6 @@ in
     (broken "not yet ported")
   ])
 
-  (for pkgs.tmux [
-    # tmux -V requires a UTF-8 locale; the sandbox has none for Fil-C glibc,
-    # which ships no compiled C.UTF-8 (Nixpkgs' glibc does).
-    (use { doInstallCheck = false; })
-  ])
-
   (for pkgs.ttyd [
     (skipCheck "network service tests")
   ])
