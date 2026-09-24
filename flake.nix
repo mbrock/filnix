@@ -146,6 +146,7 @@
           inherit pkgs pkgsFilc;
         };
         utf8-locale = import ./tests/locale.nix { inherit pkgsFilc; };
+        pthread-pi = import ./tests/pthread-pi.nix { inherit pkgsFilc; };
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };

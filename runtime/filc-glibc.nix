@@ -19,6 +19,7 @@ in
     outputs = [ "out" ];
     patches = [
       ../patches/glibc-filc-cancellation.patch
+      ../patches/glibc-filc-unlock-pi-errno.patch
       # Honour LOCALE_ARCHIVE and NixOS' system archive, as Nixpkgs' glibc
       # does; its 2.42 writes the same archive format as 2.44.
       "${pkgs.path}/pkgs/development/libraries/glibc/nix-locale-archive.patch"
