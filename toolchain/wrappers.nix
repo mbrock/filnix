@@ -107,6 +107,14 @@ rec {
       libc = filc-sysroot;
       libcxx = filc-libcxx;
       bintools = filc-bintools;
+      # Let Nixpkgs apply its Clang-specific handling to Fil-C's Clang.
+      isClang = true;
+      # There is no GCC tree to use for libraries; callPackage would otherwise
+      # supply the top-level gccForLibs.
+      gccForLibs = null;
+      # The ccache wrapper rewrites version-script flags, which a response
+      # file would hide from it.
+      isCcache = true;
 
       extraBuildCommands = ''
         echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
