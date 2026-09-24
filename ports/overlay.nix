@@ -32,6 +32,10 @@ portDSL.makeOverlay portList final prev
         );
   };
 
+  tree-sitter = final.callPackage ./tree-sitter.nix {
+    inherit (prev) tree-sitter;
+  };
+
   # The scanner executes C dumpers and loads a Python C extension; GLib's
   # gdbus-codegen emits GType operations. Both must match the target GLib ABI
   # even though they run during builds. Explicit scope overrides still win,

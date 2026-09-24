@@ -1360,7 +1360,6 @@ in
         withNS = false;
         withPgtk = false;
         withImageMagick = false;
-        withTreeSitter = false;
         withGpm = false;
         withSystemd = true;
         withNativeCompilation = false;
@@ -1387,8 +1386,8 @@ in
         };
       })
       # Nixpkgs' patches target 30.2; the fork is based on 30.1.
-      (skipPatch "01_all_treesit-0.26.patch") # tree-sitter is disabled
       (skipPatch "02_all_ts-query-pred.patch")
+      (patch ./patches/emacs-fork-ts-query-pred.patch)
       (skipPatch "CVE-2026-79992.patch")
       (patch ./patches/emacs-fork-CVE-2026-79992.patch)
       (configure "--with-gnutls=ifavailable")
@@ -1437,10 +1436,6 @@ in
 
   (for pkgs.ragelStable [
     (broken "depends on colm which is broken")
-  ])
-
-  (for pkgs.tree-sitter [
-    (broken "tries to cross compile rustc")
   ])
 
   (for pkgs.gnutls [
