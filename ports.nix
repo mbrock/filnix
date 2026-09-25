@@ -984,6 +984,18 @@ in
           sha256 = "sha256-x0A0jzVzljJ6l5XT6DI7r9D+ilx4NfwcuroMyN/nFh8=";
           # Nixpkgs builds perl.pkgs with its own perl5 attribute; use the port.
           self = final.perl5;
+          # buildPerlPackage puts perl in nativeBuildInputs, which Nixpkgs
+          # 26.05 resolves to the package set's build-host splice. That was
+          # the build platform's perl, which configured XS modules with its
+          # own Config and then loaded the Fil-C objects in their tests. Fil-C
+          # programs run on the build machine, so splice the port there.
+          passthruFun =
+            args:
+            (import "${prev.path}/pkgs/development/interpreters/perl" {
+              # Recover Nixpkgs' passthruFun, which calls callPackage itself.
+              callPackage = f: a: a.passthruFun or (final.callPackage f a);
+            }).perl5
+              (args // { perlOnBuildForHost = args.self; });
         })
         (patch ./ports/patch/perl-5.40.0.patch)
         (patch ./patches/perl-5.40-only-c-locale.patch)
@@ -1018,6 +1030,11 @@ in
       (configure "ac_cv_gcc_asm_for_x64=no")
       (configure "ac_cv_gcc_asm_for_x87=no")
       (configure "ac_cv_gcc_asm_for_mc68881=no")
+      # Nixpkgs assumes x87 double rounding when cross compiling. With no x87
+      # inline assembly to fix the precision, that disables short float repr
+      # (repr(12.3) == '12.300000000000001'). Fil-C uses SSE2 arithmetic.
+      (removeConfigureFlag "ac_cv_x87_double_rounding=yes")
+      (configure "ac_cv_x87_double_rounding=no")
       (arg {
         packageOverrides = import ./ports/pythonPorts-as-overlay.nix pkgs;
       })
