@@ -347,6 +347,12 @@ in
     (addCMakeFlag "-DCMAKE_EXE_LINKER_FLAGS=-lm")
   ])
 
+  (for pkgs.mpdecimal [
+    # The x64 configuration multiplies with mulq inline assembly that Fil-C
+    # rejects, so str(decimal.Decimal("1.5")) trapped in every Fil-C Python.
+    (configure "MACHINE=ansi64")
+  ])
+
   {
     gmp = for pkgs.gmp [
       # Upstream Fil-C disables this standalone assembly timing helper in
