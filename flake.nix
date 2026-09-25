@@ -42,9 +42,7 @@
         ];
 
         overlays = [
-          # (final: prev: {
-          #   inherit (import ./ports/overlay.nix pkgs final prev) glib gobject-introspection-unwrapped;
-          # })
+          (import ./ports/build-tools.nix)
         ];
       };
 

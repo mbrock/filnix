@@ -748,6 +748,25 @@ in
         "-Dtests=false"
       ];
     })
+    # gio-querymodules loads the modules it indexes, so consumers must run
+    # this one rather than the build GLib's. Meson prefers a cross file's
+    # binaries over its native pkg-config lookup.
+    (use (old: {
+      postFixup = (old.postFixup or "") + ''
+        mkdir -p "$dev/share/meson"
+        cat > "$dev/share/meson/gio-querymodules.ini" <<EOF
+        [binaries]
+        gio-querymodules = '$dev/bin/gio-querymodules'
+        EOF
+        cat >> "$dev/nix-support/setup-hook" <<EOF
+
+        if (( hostOffset == 0 )) && [[ -z "\''${filcGioQuerymodulesCrossFile-}" ]]; then
+          filcGioQuerymodulesCrossFile=1
+          mesonFlagsArray+=("--cross-file=$dev/share/meson/gio-querymodules.ini")
+        fi
+        EOF
+      '';
+    }))
   ])
 
   {
@@ -1457,14 +1476,7 @@ in
       (pin "3.24.52" "sha256-gJMfpHKne5oWT2dA48C0RPrGdwBUYy01p/+dZ55ee58=")
       (patch ./ports/patch/gtk-3.24.52.patch)
       # GTK3 does not request GLib among its generator inputs itself.
-      # Unspliced, or mkDerivation would substitute the build platform's.
-      (tool (removeAttrs final.glib [ "__spliced" ]))
-      (addMesonFlag "--cross-file=${pkgs.writeText "gtk3-filc-tools.conf" ''
-        [binaries]
-        gdbus-codegen = '${final.glib.dev}/bin/gdbus-codegen'
-        glib-genmarshal = '${final.glib.dev}/bin/glib-genmarshal'
-        glib-mkenums = '${final.glib.dev}/bin/glib-mkenums'
-      ''}")
+      (tool final.buildPackages.glib)
       (removeMesonFlag "-Dgtk_doc=true")
       (addMesonFlag "-Dgtk_doc=false")
       (use (old: {
