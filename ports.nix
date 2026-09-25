@@ -1224,6 +1224,9 @@ in
 
   (for pkgs.strace [
     (use { postPatch = "sed -i 's/ vfork/ fork/g' */strace.c"; })
+    # libunwind's register-level unwinder is hand-written assembly without
+    # SaRCAsm annotations. strace uses elfutils for -k instead.
+    (arg { libunwind = null; })
   ])
 
   (for pkgs.runit [
