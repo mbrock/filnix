@@ -1,0 +1,146 @@
+Share the pointer table between Encode and its table modules
+
+Encode::Byte, ::CN and the other generated table modules registered
+their encodings with PTR2IV, which Fil-C cannot turn back into a
+pointer, while Encode.xs decoded them through its own private table.
+Every table encoding (KOI8-R, ISO-8859-5, cp1251, ...) dereferenced a
+null pointer. Use the interpreter-wide Perl_xsub_ptrtable in both.
+
+diff --git a/cpan/Encode/Byte/Makefile.PL b/cpan/Encode/Byte/Makefile.PL
+index 6824bbb..6b7915a 100644
+--- a/cpan/Encode/Byte/Makefile.PL
++++ b/cpan/Encode/Byte/Makefile.PL
+@@ -118,7 +118,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/CN/Makefile.PL b/cpan/Encode/CN/Makefile.PL
+index 094f016..74a38d5 100644
+--- a/cpan/Encode/CN/Makefile.PL
++++ b/cpan/Encode/CN/Makefile.PL
+@@ -94,7 +94,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/EBCDIC/Makefile.PL b/cpan/Encode/EBCDIC/Makefile.PL
+index e9f59a6..b468a58 100644
+--- a/cpan/Encode/EBCDIC/Makefile.PL
++++ b/cpan/Encode/EBCDIC/Makefile.PL
+@@ -75,7 +75,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/Encode.xs b/cpan/Encode/Encode.xs
+index 23746ba..6d26694 100644
+--- a/cpan/Encode/Encode.xs
++++ b/cpan/Encode/Encode.xs
+@@ -33,13 +33,9 @@
+ #define SVfARG(p) ((void*)(p))
+ #endif
+ 
+-static zptrtable* encode_ptrtable;
+-
+-static void construct_ptrtable(void) __attribute__((constructor));
+-static void construct_ptrtable(void)
+-{
+-    encode_ptrtable = zptrtable_new();
+-}
++/* Encode::Byte, ::CN and the other table modules register their encodings
++   with their own copy of Encode_XSEncoding, so the table must be shared. */
++#define encode_ptrtable Perl_xsub_ptrtable
+ 
+ static void
+ Encode_XSEncoding(pTHX_ encode_t * enc)
+diff --git a/cpan/Encode/Encode/Makefile_PL.e2x b/cpan/Encode/Encode/Makefile_PL.e2x
+index c17a509..7a05dbb 100644
+--- a/cpan/Encode/Encode/Makefile_PL.e2x
++++ b/cpan/Encode/Encode/Makefile_PL.e2x
+@@ -110,7 +110,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/JP/Makefile.PL b/cpan/Encode/JP/Makefile.PL
+index da1807b..f38678f 100644
+--- a/cpan/Encode/JP/Makefile.PL
++++ b/cpan/Encode/JP/Makefile.PL
+@@ -94,7 +94,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/KR/Makefile.PL b/cpan/Encode/KR/Makefile.PL
+index 85c056b..ea307ce 100644
+--- a/cpan/Encode/KR/Makefile.PL
++++ b/cpan/Encode/KR/Makefile.PL
+@@ -92,7 +92,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/Symbol/Makefile.PL b/cpan/Encode/Symbol/Makefile.PL
+index 3c01be2..9f2755e 100644
+--- a/cpan/Encode/Symbol/Makefile.PL
++++ b/cpan/Encode/Symbol/Makefile.PL
+@@ -80,7 +80,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/TW/Makefile.PL b/cpan/Encode/TW/Makefile.PL
+index a9f7254..fea5201 100644
+--- a/cpan/Encode/TW/Makefile.PL
++++ b/cpan/Encode/TW/Makefile.PL
+@@ -90,7 +90,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
+diff --git a/cpan/Encode/bin/enc2xs b/cpan/Encode/bin/enc2xs
+index 502ae39..e108d64 100644
+--- a/cpan/Encode/bin/enc2xs
++++ b/cpan/Encode/bin/enc2xs
+@@ -387,7 +387,7 @@ Encode_XSEncoding(pTHX_ encode_t *enc)
+ {
+  dSP;
+  HV *stash = gv_stashpv("Encode::XS", TRUE);
+- SV *iv    = newSViv(PTR2IV(enc));
++ SV *iv    = newSViv(zptrtable_encode(Perl_xsub_ptrtable, enc));
+  SV *sv    = sv_bless(newRV_noinc(iv),stash);
+  int i = 0;
+  /* with the SvLEN() == 0 hack, PVX won't be freed. We cast away name's
