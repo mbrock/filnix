@@ -3,6 +3,7 @@
   filc,
   filc-sysroot,
   filc-binutils,
+  useCcache ? true,
 }:
 
 let
@@ -20,7 +21,9 @@ let
       # compiler wrapper, whose contents pin the runtime and SaRCAsm paths.
       export CCACHE_COMPILERCHECK=content
 
-      # Fil-C Clang driver has special version script handling.
+      ${
+        pkgs.lib.optionalString (!useCcache) "export CCACHE_DISABLE=1\n"
+      }# Fil-C Clang driver has special version script handling.
       #
       # This only works if we give the version script flag
       # to the Clang driver, not to the actual linker.

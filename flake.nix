@@ -317,6 +317,9 @@
 
         # Full Fil-C compilation environment (opt-in with 'nix develop .#world')
         world = filc-world-shell;
+
+        # Incremental Fil-C LLVM hacking; see docs/llvm-dev.md
+        filc-llvm = import ./shells/filc-llvm.nix { inherit pkgs; };
       };
     };
 }
