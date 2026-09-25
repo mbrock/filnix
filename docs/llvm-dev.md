@@ -27,6 +27,11 @@ keys on the wrapper, which stays the same when the dev clang changes. The
 runtime libraries were compiled by the pinned clang, which is fine for pass
 and CodeGen changes that keep the ABI.
 
-When a change works, commit it on the worktree branch, export it with
-`git format-patch`, and add it to `compiler/filc0.nix` so Nix builds pick it
-up (or bump `lib/filc-upstream.json` once it lands upstream).
+When a change works, commit it on the worktree branch and push it to a fork.
+Then set `url` in `lib/filc-upstream.json` to the fork and pin the commit:
+
+```sh
+python3 scripts/update-filc-source-hashes.py --repo ~/fil-c --rev <commit>
+```
+
+Sources whose files did not change keep their hashes and are not rebuilt.
