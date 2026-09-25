@@ -1007,6 +1007,7 @@ in
         (patch ./patches/perl-5.40-only-c-locale.patch)
         (patch ./patches/perl-5.40-encode-shared-ptrtable.patch)
         (patch ./patches/perl-5.40-b-overlay-key.patch)
+        (patch ./patches/perl-5.40-digest-sha-ptrtable.patch)
         (use (old: {
           # postPatch replaces the bundled Compress-Raw-Zlib with a newer
           # release, discarding the port's typemap change.

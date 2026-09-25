@@ -1,6 +1,7 @@
 # Perl XS modules that pass pointers to each other or back to Perl code:
 # Encode's table encodings live in Encode::Byte and friends, which hand their
-# encode_t pointers to Encode, and B::Deparse keys an op overlay by address.
+# encode_t pointers to Encode, B::Deparse keys an op overlay by address, and
+# Digest::SHA objects hold their state pointer.
 { pkgsFilc }:
 pkgsFilc.runCommand "filc-perl-xs-pointers-check" { } ''
   ${pkgsFilc.perl}/bin/perl -MEncode -e '
@@ -17,6 +18,12 @@ pkgsFilc.runCommand "filc-perl-xs-pointers-check" { } ''
     my $t = B::Deparse->new->coderef2text(sub { my (%a) = @_; $a{x} });
     die $t unless $t =~ /my\(%a\) = \@_/;
     print "deparse ok\n";
+  '
+  ${pkgsFilc.perl}/bin/perl -MDigest::SHA -e '
+    my $d = Digest::SHA->new(256);
+    $d->add("abc");
+    die unless $d->hexdigest =~ /^ba7816bf8f01cfea/;
+    print "digest ok\n";
   '
   touch $out
 ''
