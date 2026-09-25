@@ -82,16 +82,14 @@ rec {
         cp ${yolo-glibc-impl}/lib/*.a .  # Copy other .a files as-is
         chmod -R u+w .
 
-        # Copy and rename dynamic linker
-        cp ${yolo-glibc-impl}/lib/ld-linux-x86-64.so.2 ld-fil1-x86_64.so
-        chmod u+w ld-fil1-x86_64.so
-        patchelf --remove-rpath --set-soname ld-fil1-x86_64.so ld-fil1-x86_64.so
+        # Fil-C's glibc names its loader ld-fil1-x86_64.so itself. Patching
+        # the loader with patchelf misbehaves with some older kernels.
+        cp ${yolo-glibc-impl}/lib/ld-fil1-x86_64.so .
 
         # Copy and patch libc implementation
         cp ${yolo-glibc-impl}/lib/libc.so.6 libyolocimpl.so
         chmod u+w libyolocimpl.so
         patchelf --set-soname libyolocimpl.so \
-                 --replace-needed ld-linux-x86-64.so.2 ld-fil1-x86_64.so \
                  --set-rpath '$ORIGIN' \
                  libyolocimpl.so
 
@@ -99,7 +97,6 @@ rec {
         cp ${yolo-glibc-impl}/lib/libm.so.6 libyolomimpl.so
         chmod u+w libyolomimpl.so
         patchelf --set-soname libyolomimpl.so \
-                 --replace-needed ld-linux-x86-64.so.2 ld-fil1-x86_64.so \
                  --replace-needed libc.so.6 libyolocimpl.so \
                  --set-rpath '$ORIGIN' \
                  libyolomimpl.so
