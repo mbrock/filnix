@@ -15,7 +15,7 @@ let
   mkFilcSrc =
     name:
     fetchgit {
-      url = "https://github.com/pizlonator/fil-c";
+      url = upstream.url;
       inherit name;
       rev = coreRev;
       nonConeMode = true;
