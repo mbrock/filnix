@@ -138,13 +138,8 @@ for mode in modes:
          "-o", directory / "decoder-runtime"])
     log = run([directory / "decoder-runtime"]).stdout
     log += run([directory / "bench", "table-check", "1"]).stdout
-    unaligned = run([directory / "bench", "unaligned", "1"], check=False)
-    if mode == "upstream":
-        assert unaligned.returncode != 0 and "alignment requirement" in unaligned.stderr, unaligned
-        (directory / "unaligned-rejection.txt").write_text(unaligned.stderr)
-    else:
-        assert unaligned.returncode == 0, unaligned
-        log += unaligned.stdout
+    # Pinned upstream SaRCAsm, like the prototype, permits unaligned integers.
+    log += run([directory / "bench", "unaligned", "1"]).stdout
     if not native:
         log += run([sys.executable, source / "decoder-safety.py"], cwd=directory).stdout
         for failure in ["table-null", "table-tail", "table-freed"]:
