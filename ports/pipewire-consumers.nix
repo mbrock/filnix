@@ -86,33 +86,6 @@ in
   cava = for "cava" [
     (arg {
       inherit pipewire;
-      # CAVA uses FFTW's C API. Avoid the unsupported target Fortran compiler
-      # and OpenMP runtime without changing FFTW for other packages.
-      fftw = final.fftw.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [
-          ../patches/fftw-cpu-probe.patch
-          ../patches/fftw-pointer-tags.patch
-          ../patches/fftw-vector-load.patch
-        ];
-        nativeBuildInputs = builtins.filter (
-          dep: !(pkgs.lib.hasInfix "gfortran" (dep.name or ""))
-        ) old.nativeBuildInputs;
-        configureFlags =
-          builtins.filter (
-            f:
-            !(builtins.elem f [
-              "--enable-openmp"
-              "--enable-avx512"
-            ])
-          ) old.configureFlags
-          ++ [
-            "--disable-fortran"
-            "--disable-openmp"
-            # Fil-C does not yet lower AVX-512 gather intrinsics.
-            "--disable-avx512"
-          ];
-        doCheck = true;
-      });
     })
     (configure "--disable-input-pulse")
     (use (old: {

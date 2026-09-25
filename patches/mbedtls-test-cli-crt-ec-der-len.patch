@@ -1,0 +1,17 @@
+Pass the DER client certificate its own length
+
+mbedtls_test_ssl_endpoint_certificate_init parses the DER encoding of the
+EC client certificate with the length of its PEM encoding, reading 234
+bytes past the end of the DER array. Fil-C traps the out-of-bounds read.
+
+--- a/tests/src/test_helpers/ssl_helpers.c
++++ b/tests/src/test_helpers/ssl_helpers.c
+@@ -690,7 +690,7 @@
+             ret = mbedtls_x509_crt_parse(
+                 cert->cert,
+                 (const unsigned char *) mbedtls_test_cli_crt_ec_der,
+-                mbedtls_test_cli_crt_ec_len);
++                mbedtls_test_cli_crt_ec_der_len);
+             TEST_ASSERT(ret == 0);
+ 
+             ret = mbedtls_pk_parse_key(

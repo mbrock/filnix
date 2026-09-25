@@ -41,6 +41,38 @@ let
     gnu
     gnuTarGz
     ;
+
+  fftwPort = [
+    (use (old: {
+      patches = (old.patches or [ ]) ++ [
+        ./patches/fftw-cpu-probe.patch
+        ./patches/fftw-pointer-tags.patch
+        ./patches/fftw-vector-load.patch
+      ];
+      nativeBuildInputs = builtins.filter (
+        dep: !(pkgs.lib.hasInfix "gfortran" (dep.name or ""))
+      ) old.nativeBuildInputs;
+      # Nixpkgs adds LLVM's OpenMP when the compiler is Clang.
+      buildInputs = builtins.filter (
+        dep: !(pkgs.lib.hasInfix "openmp" (dep.name or ""))
+      ) (old.buildInputs or [ ]);
+      configureFlags =
+        builtins.filter (
+          f:
+          !(builtins.elem f [
+            "--enable-openmp"
+            "--enable-avx512"
+          ])
+        ) old.configureFlags
+        ++ [
+          "--disable-fortran"
+          "--disable-openmp"
+          # Fil-C does not yet lower AVX-512 gather intrinsics.
+          "--disable-avx512"
+        ];
+      doCheck = true;
+    }))
+  ];
 in
 [
   (import ./ports/pipewire-consumers.nix { inherit pkgs prev final; })
@@ -345,6 +377,108 @@ in
     (addCMakeFlag "-DCMAKE_CXX_COMPILER=${pkgs.lib.getBin prev.stdenv.cc}/bin/c++")
     (addCMakeFlag "-DCMAKE_C_COMPILER=${pkgs.lib.getBin prev.stdenv.cc}/bin/cc")
     (addCMakeFlag "-DCMAKE_EXE_LINKER_FLAGS=-lm")
+  ])
+
+  # Only the C API is used. Avoid the unsupported target Fortran compiler
+  # and OpenMP runtime. The other precisions are overrides of this one.
+  { fftw = for pkgs.fftw fftwPort; }
+
+  (for pkgs.v4l-utils [
+    # The BPF decoders are compiled by a clang for the BPF target.
+    (arg { withBPF = false; })
+  ])
+
+  {
+    ffmpeg-headless = for pkgs.ffmpeg-headless [
+      # Upstream Fil-C's FFmpeg 8.0.1 port applies unchanged to 8.1.
+      (patch ./ports/patch/ffmpeg-8.0.1.patch)
+      # Hand-written x86 assembly and inline assembly; upstream builds the
+      # same way.
+      (configure "--disable-asm")
+      # CUDA kernels would be compiled by a clang for the NVPTX target.
+      (arg {
+        withCudaLLVM = false;
+        withNvcodec = false;
+        # x265 builds its 10/12-bit variants with GCC, and vid.stab uses
+        # OpenMP; neither toolchain targets Fil-C.
+        withX265 = false;
+        withVidStab = false;
+      })
+    ];
+  }
+
+  {
+    libgbm = for pkgs.libgbm [
+      # Mesa's BLAKE3 has hand-written x86-64 assembly; use its C versions, as
+      # Mesa itself does for x32.
+      (use (old: {
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace src/util/blake3/meson.build \
+              --replace-fail "elif cc.sizeof('void *') == 4" "elif true"
+          '';
+      }))
+    ];
+  }
+
+  (for pkgs.imlib2 [
+    # Hand-written AMD64 blending assembly.
+    (configure "--enable-amd64=no")
+  ])
+
+  (for pkgs.libvpx [
+    # Build without the x86 assembly and intrinsics dispatch.
+    (removeConfigureFlag "--target=x86_64-linux-gcc")
+    (configure "--target=generic-gnu")
+    (arg { runtimeCpuDetectSupport = false; })
+  ])
+
+  (for pkgs.libgit2 [
+    (patch ./patches/libgit2-configmap-cache-clear.patch)
+    # xdiff adds src/util as a SYSTEM include directory, which then comes
+    # after the wrapper's -isystem for Fil-C glibc, whose obsolete
+    # <regexp.h> stub shadows libgit2's own "regexp.h".
+    (use (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace deps/xdiff/CMakeLists.txt \
+            --replace-fail "target_include_directories(xdiff SYSTEM PRIVATE" \
+              "target_include_directories(xdiff PRIVATE"
+        '';
+    }))
+  ])
+
+  # Video codecs: build the portable C code paths, without hand-written
+  # assembly or intrinsics dispatch.
+  (for pkgs.x264 [ (configure "--disable-asm") ])
+  (for pkgs.svt-av1 [
+    (removeCMakeFlag "-DSVT_AV1_LTO=ON")
+    (addCMakeFlag "-DCOMPILE_C_ONLY=ON")
+  ])
+  (for pkgs.libaom [ (addCMakeFlag "-DAOM_TARGET_CPU=generic") ])
+
+  (for pkgs.mbedtls [
+    (patch ./patches/mbedtls-test-cli-crt-ec-der-len.patch)
+    # AES-NI, PadLock and bignum inline assembly pass pointers to asm.
+    (use (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          for option in MBEDTLS_AESNI_C MBEDTLS_PADLOCK_C MBEDTLS_HAVE_ASM; do
+            ${pkgs.python3}/bin/python3 scripts/config.py unset $option
+          done
+        '';
+    }))
+  ])
+
+  (for pkgs.liblc3 [
+    # Meson's default b_lto would hand bitcode to the linker.
+    (addMesonFlag "-Db_lto=false")
   ])
 
   (for pkgs.mpdecimal [
@@ -897,6 +1031,10 @@ in
   (for pkgs.doctest [
     (addCFlag "-Wno-reserved-macro-identifier")
     (addCFlag "-Wl,-lm")
+    # The self-tests install signal handlers on an alternate stack
+    # (sigaltstack) and break into the debugger with llvm.debugtrap; Fil-C
+    # supports neither. The library is header-only.
+    (skipCheck "sigaltstack and debugtrap")
   ])
 
   (for pkgs.gettext [

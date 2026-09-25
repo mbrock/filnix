@@ -46,6 +46,35 @@ portDSL.makeOverlay portList final prev
     }
   );
 
+  # Nix itself. Boehm GC scans the native stack and data segments, which
+  # Fil-C objects do not live in; Fil-C collects garbage itself. seccomp
+  # filters and the static busybox sandbox shell are unavailable too.
+  nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
+    nfinal: nprev: {
+      # Boost 1.89 is not ported; 1.87 is (Context uses ucontext).
+      boost = final.boost187;
+      nix-expr = nprev.nix-expr.override { enableGC = false; };
+      nix-store =
+        (nprev.nix-store.override {
+          withSandboxShell = false;
+          withAWS = false;
+        }).overrideAttrs
+          (old: {
+            buildInputs = builtins.filter (
+              dep: !(pkgs.lib.hasInfix "libseccomp" (dep.name or ""))
+            ) old.buildInputs;
+            mesonFlags = map (
+              flag:
+              if flag == "-Dseccomp-sandboxing=enabled" then
+                "-Dseccomp-sandboxing=disabled"
+              else
+                flag
+            ) old.mesonFlags;
+          });
+    }
+  );
+  nix = final.nixComponents.nix-everything;
+
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;
   };
