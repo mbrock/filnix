@@ -82,7 +82,8 @@ let
     autoconf
     automake
     libtool
-    ghostty-terminfo
+    # ghostty-terminfo is on TERMINFO_DIRS; ncurses 6.6 also ships the entry,
+    # so it cannot be in the same buildEnv.
     util-linux
     #    wasm3
     kittydoom
