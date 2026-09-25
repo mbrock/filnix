@@ -995,13 +995,24 @@ in
           # the build platform's perl, which configured XS modules with its
           # own Config and then loaded the Fil-C objects in their tests. Fil-C
           # programs run on the build machine, so splice the port there.
+          # Module fixes from ports/perl-modules.nix apply to the scope, so
+          # dependents and withPackages see them.
           passthruFun =
             args:
-            (import "${prev.path}/pkgs/development/interpreters/perl" {
-              # Recover Nixpkgs' passthruFun, which calls callPackage itself.
-              callPackage = f: a: a.passthruFun or (final.callPackage f a);
-            }).perl5
-              (args // { perlOnBuildForHost = args.self; });
+            let
+              upstream =
+                (import "${prev.path}/pkgs/development/interpreters/perl" {
+                  # Recover Nixpkgs' passthruFun, which calls callPackage itself.
+                  callPackage = f: a: a.passthruFun or (final.callPackage f a);
+                }).perl5
+                  (args // { perlOnBuildForHost = args.self; });
+              pkgs = upstream.pkgs.overrideScope (import ./ports/perl-modules.nix);
+            in
+            upstream
+            // {
+              inherit pkgs;
+              withPackages = f: upstream.buildEnv.override { extraLibs = f pkgs; };
+            };
         })
         (patch ./ports/patch/perl-5.40.0.patch)
         (patch ./patches/perl-5.40-only-c-locale.patch)

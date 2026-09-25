@@ -8,29 +8,43 @@ let
 in
 portDSL.makeOverlay portList final prev
 // pkgs.lib.optionalAttrs prev.stdenv.hostPlatform.isFilc {
-  gst_all_1 = prev.gst_all_1 // {
-    # Only the optional PTP clock helper uses Rust. The multimedia core is C.
-    gstreamer =
-      (prev.gst_all_1.gstreamer.override {
-        withRust = false;
-        # Native stack unwinding does not understand Fil-C frames.
-        withLibunwind = false;
-      }).overrideAttrs
-        (
-          old:
-          (import ../toolchain/meson-check-cores.nix { inherit pkgs; }) old
-          // {
-            patches = (old.patches or [ ]) ++ [
-              ./patch/gstreamer-1.24.7.patch
-              ../patches/gstreamer-execinfo.patch
-            ];
-            doCheck = true;
-            env = (old.env or { }) // {
-              CK_TIMEOUT_MULTIPLIER = "5";
-            };
-          }
-        );
-  };
+  # libunwind's unwinder is hand-written assembly without SaRCAsm
+  # annotations, and cannot follow Fil-C frames anyway. Packages that check
+  # availability (GStreamer, strace, ...) then build without it.
+  libunwind = prev.libunwind.overrideAttrs (old: {
+    meta = old.meta // {
+      badPlatforms = (old.meta.badPlatforms or [ ]) ++ [
+        prev.stdenv.hostPlatform.system
+      ];
+    };
+  });
+
+  # overrideScope, so that the plugins build against this GStreamer.
+  gst_all_1 = prev.gst_all_1.overrideScope (
+    gfinal: gprev: {
+      # Only the optional PTP clock helper uses Rust. The multimedia core is C.
+      gstreamer =
+        (gprev.gstreamer.override {
+          withRust = false;
+          # Native stack unwinding does not understand Fil-C frames.
+          withLibunwind = false;
+        }).overrideAttrs
+          (
+            old:
+            (import ../toolchain/meson-check-cores.nix { inherit pkgs; }) old
+            // {
+              patches = (old.patches or [ ]) ++ [
+                ./patch/gstreamer-1.24.7.patch
+                ../patches/gstreamer-execinfo.patch
+              ];
+              doCheck = true;
+              env = (old.env or { }) // {
+                CK_TIMEOUT_MULTIPLIER = "5";
+              };
+            }
+          );
+    }
+  );
 
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;
