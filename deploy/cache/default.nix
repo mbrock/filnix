@@ -3,6 +3,10 @@
     builtins.readFile ../../flake.lock
   )).nodes.nixpkgs.locked) { },
 }:
+let
+  # The campaign's outputs do not reference the compiler at run time.
+  filcc = import ../../toolchain.nix { inherit pkgs; };
+in
 pkgs.writeShellApplication {
   name = "filnix-publish-cache";
   runtimeInputs = [
@@ -11,6 +15,6 @@ pkgs.writeShellApplication {
   ];
   text = ''
     export PATH=/nix/var/nix/profiles/default/bin:$PATH
-    exec python3 ${../../scripts/publish-cache.py} "$@"
+    exec python3 ${../../scripts/publish-cache.py} --extra-root ${filcc} "$@"
   '';
 }

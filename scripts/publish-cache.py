@@ -130,9 +130,16 @@ def main():
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--batches", type=int, default=8)
+    # Campaign outputs never reference the compiler at run time, so their
+    # closures omit it. The deployed application names the toolchain here.
+    parser.add_argument("--extra-root", action="append", default=[],
+                        help="store path to publish in addition to campaign outputs")
     args = parser.parse_args()
     if args.batch_size < 1 or args.batches < 1:
         parser.error("batch sizes must be positive")
+    for root in args.extra_root:
+        if not STORE_PATH.fullmatch(root) or root.endswith(".drv"):
+            parser.error(f"invalid extra root: {root}")
     config = json.loads(Path(args.config).read_text())
     state = Path(config["state"])
     if args.status:
@@ -154,7 +161,7 @@ def main():
                 with db:
                     db.execute("INSERT INTO destination VALUES(?)", (identity,))
             paths = discover(Path(config["experiment"]) / "experiment.sqlite", config["campaign"])
-            enqueue(db, paths, time.time())
+            enqueue(db, sorted(set(paths) | set(args.extra_root)), time.time())
             for _ in range(args.batches):
                 if not publish(db, config[args.target], args.target, args.batch_size):
                     break

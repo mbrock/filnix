@@ -43,6 +43,11 @@ observations are deduplicated by store path. Each upload includes the root's
 reference closure, following the ordinary
 [Cachix closure workflow](https://docs.cachix.org/pushing).
 
+The deployed application also publishes the `filcc` toolchain of the revision
+it was built from. Campaign outputs reference the Fil-C runtime libraries but
+not the compiler, so their closures alone would leave `filc0` and the compiler
+wrappers out of the caches. Redeploy the publisher after a compiler update.
+
 This covers subsequent builds recorded by this campaign automatically. It does
 not watch the entire host store or automatically publish unrelated ad hoc
 builds. The existing `push-baseline` and `push-pkg` commands remain available

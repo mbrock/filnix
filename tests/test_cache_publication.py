@@ -100,5 +100,39 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(publisher.report(self.db)['published'],0)
 
 
+
+    @patch.dict('os.environ',CREDENTIALS_DIRECTORY='/private/credentials')
+    def test_extra_roots_are_published_with_campaign_outputs(self):
+        experiment=self.directory/'experiment'
+        experiment.mkdir()
+        with sqlite3.connect(experiment/'experiment.sqlite') as db:
+            db.executescript('''
+                CREATE TABLE campaigns(id TEXT);
+                CREATE TABLE candidates(drv TEXT,campaign TEXT);
+                CREATE TABLE derivations(drv TEXT,outputs TEXT,available INTEGER);
+                CREATE TABLE activities(drv TEXT,attempt TEXT);
+                CREATE TABLE attempts(id TEXT,campaign TEXT,state TEXT);
+                INSERT INTO campaigns VALUES('ours');
+                INSERT INTO candidates VALUES('root','ours');
+            ''')
+            db.execute("INSERT INTO derivations VALUES('root',?,1)",
+                       (json.dumps(dict(out=output('a'))),))
+        config=self.directory/'config.json'
+        config.write_text(json.dumps(dict(campaign='ours',experiment=str(experiment),
+                                          state=str(self.directory/'state'),
+                                          cachix=dict(cache='filc'))))
+        pushed=[]
+        def run(cmd,**kwargs):
+            pushed.extend(kwargs['input'].split())
+        argv=['publish','cachix','--config',str(config),'--extra-root',output('t')]
+        with patch('sys.argv',argv), \
+             patch.object(publisher,'publish',
+                          lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
+            publisher.main()
+        self.assertEqual(sorted(pushed),[output('a'),output('t')])
+        with patch('sys.argv',argv[:-1]+['/nix/store/x.drv']), \
+             self.assertRaises(SystemExit):
+            publisher.main()
+
 if __name__ == '__main__':
     unittest.main()
