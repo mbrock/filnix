@@ -223,3 +223,8 @@ The [ports.nix](ports.nix) file uses a clean DSL for porting packages. It's now 
 ```
 
 The DSL includes helpers for version pinning (`pin`), patching (`patch`), configure flags (`configure`, `addCFlag`, `addCMakeFlag`), and test control (`skipTests`, `skipCheck`). The [ports/default.nix](ports/default.nix) file implements the overlay machinery that converts these declarations into working package overrides.
+
+The experimental [`zstd-sarcasm`](docs/zstd-sarcasm.md) package enables
+memory-safe Huffman assembly with a local SaRCAsm extension. Its checks cover
+correctness and safety traps; initial measurements favor keeping the C decoder
+as the default.

@@ -23,6 +23,10 @@
         inherit pkgs filcc;
         trealla = pkgsFilc.trealla;
       };
+      zstd-sarcasm = import ./ports/zstd-sarcasm.nix {
+        inherit pkgs;
+        zstd = pkgsFilc.zstd;
+      };
       projeny = pkgs.callPackage ./packages/projeny.nix { };
       runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
@@ -127,6 +131,10 @@
           inherit pkgs filcc;
           trealla = pkgsFilc.trealla;
         };
+        zstd-sarcasm = import ./tests/zstd-sarcasm.nix {
+          inherit pkgs filcc;
+          zstd = zstd-sarcasm;
+        };
         baseline = baseline.baseline;
         openssl-sarcasm = import ./tests/openssl-sarcasm.nix {
           inherit pkgs filcc;
@@ -196,6 +204,7 @@
           projeny
           sarcasm
           sarcasm-prolog
+          zstd-sarcasm
           ;
         inherit (sarcasm) minilute;
         inherit (pkgsFilc) openssl-sarcasm;
@@ -257,6 +266,10 @@
       };
 
       apps.${system} = virt.apps // {
+        zstd-sarcasm = {
+          type = "app";
+          program = "${zstd-sarcasm.bin}/bin/zstd";
+        };
         baseline = {
           type = "app";
           program = "${baseline.shell}/bin/filc-baseline-shell";

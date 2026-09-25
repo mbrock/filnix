@@ -1,0 +1,65 @@
+--- a/sarcasm/x86_64_parse.luau
++++ b/sarcasm/x86_64_parse.luau
+@@ -867,6 +867,50 @@ local function parseDotAlloca(rest, syntax, t)
+ 	return { kind = "insn", mnemonic = "alloca", operands = ops, raw = t, syntax = syntax, dotAlloca = true }
+ end
+ 
++-- gas accepts several statements on one line separated by `;` (preprocessed
++-- .S macros expand to such lines). Split them, keeping each statement's
++-- source line for diagnostics. A `#` comment or `;!`/`#!` annotation ends the
++-- scan, so the last statement keeps it for splitAnnotation; a `;` inside a
++-- string or a comment never splits, and `lock;` stays a prefix.
++local function isLockPrefix(text)
++	text = trim(text)
++	while true do
++		local _, rest = string.match(text, "^([%w_.$][%w_.$@]*):%s*(.*)$")
++		if not rest then break end
++		text = trim(rest)
++	end
++	return string.lower(text) == "lock"
++end
++
++local function statementLines(text)
++	local result = {}
++	local lineNo = 0
++	for raw in (text .. "\n"):gmatch("(.-)\n") do
++		lineNo += 1
++		local start = 1
++		local inStr = false
++		local i = 1
++		while i <= #raw do
++			local c = string.sub(raw, i, i)
++			if c == '"' then
++				inStr = not inStr
++			elseif inStr and c == "\\" then
++				i += 1
++			elseif not inStr then
++				if c == "#" or (c == ";" and string.sub(raw, i + 1, i + 1) == "!") then
++					break
++				elseif c == ";" and not isLockPrefix(string.sub(raw, start, i - 1)) then
++					table.insert(result, { raw = string.sub(raw, start, i - 1), line = lineNo })
++					start = i + 1
++				end
++			end
++			i += 1
++		end
++		table.insert(result, { raw = string.sub(raw, start), line = lineNo })
++	end
++	return result
++end
++
+ function x86parse.parseString(text, syntax)
+ 	-- Per-file pseudo-registry reset. pseudoNums/numPseudos live at module scope
+ 	-- (the require cache persists them across files in one process), so
+@@ -878,9 +922,8 @@ function x86parse.parseString(text, syntax)
+ 	numPseudos = 0
+ 	local out = {}
+ 	text = (string.gsub(text, "\r\n", "\n"))
+-	local lineNo = 0
+-	for raw in (text .. "\n"):gmatch("(.-)\n") do
+-		lineNo += 1
++	for _, statement in statementLines(text) do
++		local raw, lineNo = statement.raw, statement.line
+ 		-- Split the annotation marker (`;!` everywhere, or `#!` — on x86_64 `#` is
+ 		-- the comment introducer, so `#!` is "a comment that means more") off the
+ 		-- line, string-aware. Comment text must never fabricate an annotation: a

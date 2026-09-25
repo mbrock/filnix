@@ -2,6 +2,7 @@
 """Exercise the installed Fil-C baseline, using its manifest rather than PATH."""
 import json
 import os
+import random
 from pathlib import Path
 import subprocess
 import sys
@@ -54,6 +55,14 @@ assert ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     assert run("lua", "lua", "-e", "print(6*7)").strip() in ("42", "42.0")
     for name, command in [("openssl", "openssl"), ("openssl-sarcasm", "openssl")]:
         assert "ba7816bf8f01cfea" in run(name, command, "dgst", "-sha256", input="abc")
+    # Exercise the compression path that uses ZSTD_selectAddr in zstd 1.5.7.
+    rng = random.Random(42)
+    payload = bytes(rng.randrange(16) for _ in range(262144))
+    encoded = subprocess.run([executable("zstd", "zstd"), "-q", "-c"],
+                             input=payload, stdout=subprocess.PIPE, check=True).stdout
+    decoded = subprocess.run([executable("zstd", "zstd"), "-q", "-d", "-c"],
+                             input=encoded, stdout=subprocess.PIPE, check=True).stdout
+    assert decoded == payload
     Path("payload").write_text("cached and safe\n")
     assert run("curlMinimal", "curl", "--fail", Path("payload").resolve().as_uri()) == "cached and safe\n"
     run("openssh", "ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", "key")

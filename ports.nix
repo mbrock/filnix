@@ -369,6 +369,8 @@ in
 
   (for pkgs.zstd [
     (patch ./ports/patch/zstd-1.5.6.patch)
+    # 1.5.7's pointer-select inline asm is independent of ZSTD_DISABLE_ASM.
+    (patch ./patches/zstd-pointer-select.patch)
     (skipCheck "too slow")
     (addCFlag "-DZSTD_DISABLE_ASM")
   ])

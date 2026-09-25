@@ -1,0 +1,302 @@
+--- a/lib/decompress/huf_decompress_amd64.S
++++ b/lib/decompress/huf_decompress_amd64.S
+@@ -46,17 +46,14 @@
+  * %rbp isn't maintained (no frame pointer).
+  * %rsp contains the stack pointer that grows down.
+  *      No red-zone is assumed, only addresses >= %rsp are used.
+- * All register contents are preserved.
++ * SaRCAsm preserves the Fil-C ABI; scratch registers need not be saved.
++ * The fixed frame holds decoder state, with pointer heap accesses annotated.
+  */
+ 
+ ZSTD_HIDE_ASM_FUNCTION(HUF_decompress4X1_usingDTable_internal_fast_asm_loop)
+ ZSTD_HIDE_ASM_FUNCTION(HUF_decompress4X2_usingDTable_internal_fast_asm_loop)
+-ZSTD_HIDE_ASM_FUNCTION(_HUF_decompress4X2_usingDTable_internal_fast_asm_loop)
+-ZSTD_HIDE_ASM_FUNCTION(_HUF_decompress4X1_usingDTable_internal_fast_asm_loop)
+ .global HUF_decompress4X1_usingDTable_internal_fast_asm_loop
+ .global HUF_decompress4X2_usingDTable_internal_fast_asm_loop
+-.global _HUF_decompress4X1_usingDTable_internal_fast_asm_loop
+-.global _HUF_decompress4X2_usingDTable_internal_fast_asm_loop
+ .text
+ 
+ /* Sets up register mappings for clarity.
+@@ -111,28 +108,11 @@
+     X(2, idx);                             \
+     X(3, idx)
+ 
+-/* Define both _HUF_* & HUF_* symbols because MacOS
+- * C symbols are prefixed with '_' & Linux symbols aren't.
+- */
+-_HUF_decompress4X1_usingDTable_internal_fast_asm_loop:
+-HUF_decompress4X1_usingDTable_internal_fast_asm_loop:
++/* Fil-C uses the Linux entrypoints with explicit SaRCAsm signatures. */
++.type HUF_decompress4X1_usingDTable_internal_fast_asm_loop, @function
++HUF_decompress4X1_usingDTable_internal_fast_asm_loop: ;! void(ptr)
+     ZSTD_CET_ENDBRANCH
+-    /* Save all registers - even if they are callee saved for simplicity. */
+-    push %rax
+-    push %rbx
+-    push %rcx
+-    push %rdx
+-    push %rbp
+-    push %rsi
+-    push %rdi
+-    push %r8
+-    push %r9
+-    push %r10
+-    push %r11
+-    push %r12
+-    push %r13
+-    push %r14
+-    push %r15
++    subq $56, %rsp
+ 
+     /* Read HUF_DecompressAsmArgs* args from %rax */
+ #if defined(_WIN32)
+@@ -140,25 +120,24 @@
+ #else
+     movq %rdi, %rax
+ #endif
+-    movq  0(%rax), %ip0
+-    movq  8(%rax), %ip1
+-    movq 16(%rax), %ip2
+-    movq 24(%rax), %ip3
+-    movq 32(%rax), %op0
+-    movq 40(%rax), %op1
+-    movq 48(%rax), %op2
+-    movq 56(%rax), %op3
++    movq  0(%rax), %ip0 ;! load ptr
++    movq  8(%rax), %ip1 ;! load ptr
++    movq 16(%rax), %ip2 ;! load ptr
++    movq 24(%rax), %ip3 ;! load ptr
++    movq 32(%rax), %op0 ;! load ptr
++    movq 40(%rax), %op1 ;! load ptr
++    movq 48(%rax), %op2 ;! load ptr
++    movq 56(%rax), %op3 ;! load ptr
+     movq 64(%rax), %bits0
+     movq 72(%rax), %bits1
+     movq 80(%rax), %bits2
+     movq 88(%rax), %bits3
+-    movq 96(%rax), %dtable
+-    push %rax      /* argument */
+-    push 104(%rax) /* ilowest */
+-    push 112(%rax) /* oend */
+-    push %olimit   /* olimit space */
+-
+-    subq $24, %rsp
++    movq 96(%rax), %dtable ;! load ptr
++    movq %rax, 48(%rsp)
++    movq 104(%rax), %olimit ;! load ptr
++    movq %olimit, 40(%rsp)
++    movq 112(%rax), %olimit ;! load ptr
++    movq %olimit, 32(%rsp)
+ 
+ .L_4X1_compute_olimit:
+     /* Computes how many iterations we can do safely
+@@ -233,12 +212,13 @@
+  * Moves var[n] to %rax
+  * bits[n] <<= var[n] & 63
+  * op[n][idx] = %rax >> 8
+- * %ah is a way to access bits [8, 16) of %rax
++ * Shift before the byte store: SaRCAsm does not model high-byte aliases.
+  */
+ #define DECODE_FROM_DELT(n, idx)       \
+     movq %var##n, %rax;                \
+     shlxq %var##n, %bits##n, %bits##n; \
+-    movb %ah, idx(%op##n)
++    shrq $8, %rax;                \
++    movb %al, idx(%op##n)
+ 
+ /* Assumes GET_NEXT_DELT has been called.
+  * Calls DECODE_FROM_DELT then GET_NEXT_DELT
+@@ -333,65 +313,29 @@
+ #undef DECODE
+ #undef RELOAD_BITS
+ .L_4X1_exit:
+-    addq $24, %rsp
+-
+-    /* Restore stack (oend & olimit) */
+-    pop %rax /* olimit */
+-    pop %rax /* oend */
+-    pop %rax /* ilowest */
+-    pop %rax /* arg */
++    movq 48(%rsp), %rax
+ 
+     /* Save ip / op / bits */
+-    movq %ip0,  0(%rax)
+-    movq %ip1,  8(%rax)
+-    movq %ip2, 16(%rax)
+-    movq %ip3, 24(%rax)
+-    movq %op0, 32(%rax)
+-    movq %op1, 40(%rax)
+-    movq %op2, 48(%rax)
+-    movq %op3, 56(%rax)
++    movq %ip0,  0(%rax) ;! store ptr
++    movq %ip1,  8(%rax) ;! store ptr
++    movq %ip2, 16(%rax) ;! store ptr
++    movq %ip3, 24(%rax) ;! store ptr
++    movq %op0, 32(%rax) ;! store ptr
++    movq %op1, 40(%rax) ;! store ptr
++    movq %op2, 48(%rax) ;! store ptr
++    movq %op3, 56(%rax) ;! store ptr
+     movq %bits0, 64(%rax)
+     movq %bits1, 72(%rax)
+     movq %bits2, 80(%rax)
+     movq %bits3, 88(%rax)
+ 
+-    /* Restore registers */
+-    pop %r15
+-    pop %r14
+-    pop %r13
+-    pop %r12
+-    pop %r11
+-    pop %r10
+-    pop %r9
+-    pop %r8
+-    pop %rdi
+-    pop %rsi
+-    pop %rbp
+-    pop %rdx
+-    pop %rcx
+-    pop %rbx
+-    pop %rax
++    addq $56, %rsp
+     ret
+ 
+-_HUF_decompress4X2_usingDTable_internal_fast_asm_loop:
+-HUF_decompress4X2_usingDTable_internal_fast_asm_loop:
++.type HUF_decompress4X2_usingDTable_internal_fast_asm_loop, @function
++HUF_decompress4X2_usingDTable_internal_fast_asm_loop: ;! void(ptr)
+     ZSTD_CET_ENDBRANCH
+-    /* Save all registers - even if they are callee saved for simplicity. */
+-    push %rax
+-    push %rbx
+-    push %rcx
+-    push %rdx
+-    push %rbp
+-    push %rsi
+-    push %rdi
+-    push %r8
+-    push %r9
+-    push %r10
+-    push %r11
+-    push %r12
+-    push %r13
+-    push %r14
+-    push %r15
++    subq $64, %rsp
+ 
+     /* Read HUF_DecompressAsmArgs* args from %rax */
+ #if defined(_WIN32)
+@@ -399,37 +343,27 @@
+ #else
+     movq %rdi, %rax
+ #endif
+-    movq  0(%rax), %ip0
+-    movq  8(%rax), %ip1
+-    movq 16(%rax), %ip2
+-    movq 24(%rax), %ip3
+-    movq 32(%rax), %op0
+-    movq 40(%rax), %op1
+-    movq 48(%rax), %op2
+-    movq 56(%rax), %op3
++    movq  0(%rax), %ip0 ;! load ptr
++    movq  8(%rax), %ip1 ;! load ptr
++    movq 16(%rax), %ip2 ;! load ptr
++    movq 24(%rax), %ip3 ;! load ptr
++    movq 32(%rax), %op0 ;! load ptr
++    movq 40(%rax), %op1 ;! load ptr
++    movq 48(%rax), %op2 ;! load ptr
++    movq 56(%rax), %op3 ;! load ptr
+     movq 64(%rax), %bits0
+     movq 72(%rax), %bits1
+     movq 80(%rax), %bits2
+     movq 88(%rax), %bits3
+-    movq 96(%rax), %dtable
+-    push %rax      /* argument */
+-    push %rax      /* olimit */
+-    push 104(%rax) /* ilowest */
+-
+-    movq 112(%rax), %rax
+-    push %rax /* oend3 */
+-
+-    movq %op3, %rax
+-    push %rax /* oend2 */
+-
+-    movq %op2, %rax
+-    push %rax /* oend1 */
+-
+-    movq %op1, %rax
+-    push %rax /* oend0 */
+-
+-    /* Scratch space */
+-    subq $8, %rsp
++    movq 96(%rax), %dtable ;! load ptr
++    movq %rax, 56(%rsp)
++    movq 104(%rax), %olimit ;! load ptr
++    movq %olimit, 40(%rsp)
++    movq 112(%rax), %olimit ;! load ptr
++    movq %olimit, 32(%rsp)
++    movq %op3, 24(%rsp)
++    movq %op2, 16(%rsp)
++    movq %op1, 8(%rsp)
+ 
+ .L_4X2_compute_olimit:
+     /* Computes how many iterations we can do safely
+@@ -557,46 +491,23 @@
+ #undef DECODE
+ #undef RELOAD_BITS
+ .L_4X2_exit:
+-    addq $8, %rsp
+-    /* Restore stack (oend & olimit) */
+-    pop %rax /* oend0 */
+-    pop %rax /* oend1 */
+-    pop %rax /* oend2 */
+-    pop %rax /* oend3 */
+-    pop %rax /* ilowest */
+-    pop %rax /* olimit */
+-    pop %rax /* arg */
++    movq 56(%rsp), %rax
+ 
+     /* Save ip / op / bits */
+-    movq %ip0,  0(%rax)
+-    movq %ip1,  8(%rax)
+-    movq %ip2, 16(%rax)
+-    movq %ip3, 24(%rax)
+-    movq %op0, 32(%rax)
+-    movq %op1, 40(%rax)
+-    movq %op2, 48(%rax)
+-    movq %op3, 56(%rax)
++    movq %ip0,  0(%rax) ;! store ptr
++    movq %ip1,  8(%rax) ;! store ptr
++    movq %ip2, 16(%rax) ;! store ptr
++    movq %ip3, 24(%rax) ;! store ptr
++    movq %op0, 32(%rax) ;! store ptr
++    movq %op1, 40(%rax) ;! store ptr
++    movq %op2, 48(%rax) ;! store ptr
++    movq %op3, 56(%rax) ;! store ptr
+     movq %bits0, 64(%rax)
+     movq %bits1, 72(%rax)
+     movq %bits2, 80(%rax)
+     movq %bits3, 88(%rax)
+ 
+-    /* Restore registers */
+-    pop %r15
+-    pop %r14
+-    pop %r13
+-    pop %r12
+-    pop %r11
+-    pop %r10
+-    pop %r9
+-    pop %r8
+-    pop %rdi
+-    pop %rsi
+-    pop %rbp
+-    pop %rdx
+-    pop %rcx
+-    pop %rbx
+-    pop %rax
++    addq $64, %rsp
+     ret
+ 
+ #endif
