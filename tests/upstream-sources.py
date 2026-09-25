@@ -126,6 +126,37 @@ class UpstreamTests(unittest.TestCase):
         self.assertIn("Binary changes", result.stderr)
         self.assertEqual(patch.read_bytes(), expected)
 
+    @unittest.skipUnless(shutil.which(os.environ.get("PROJENY", "projeny")), "requires packaged Projeny")
+    def test_projeny_import_beside_directory_port(self):
+        # Upstream ports OpenSSL 3.6.4 both as projects/openssl-3.6.4/ and as
+        # openssl.projeny; extracting either must not replace the other's patch.
+        projeny = shutil.which(os.environ.get("PROJENY", "projeny"))
+        projects = self.repo / "projects"
+        original = projects / "example-1.0"
+        write(original / "source.c", "original\n")
+        run("tar", "czf", "example-1.0.tar.gz", "example-1.0", cwd=projects)
+        shutil.rmtree(original)
+        descriptor = projects / "example.projeny"
+        write(descriptor, "Archive: example-1.0.tar.gz\nOrigname: example-1.0\nName: example\n\n")
+        run(projeny, "setup", str(descriptor))
+        write(projects / "example/source.c", "projeny port\n")
+        run(projeny, "commit", str(descriptor))
+        shutil.rmtree(projects / "example")
+        write(original / "source.c", "original\n")
+        self.commit()
+        write(original / "source.c", "directory port\n")
+        revision = self.commit()
+        output = self.base / "patches"
+        extractor = self.filnix / "ports/extract-patch.sh"
+        for project in ("example-1.0", "example.projeny"):
+            run(str(extractor), project, str(self.repo), str(output), revision)
+        self.assertIn("+directory port", (output / "example-1.0.patch").read_text())
+        self.assertIn("+projeny port", (output / "example-1.0-projeny.patch").read_text())
+        # Without the directory port, the Projeny patch keeps its release name.
+        shutil.rmtree(original)
+        run(str(extractor), "example.projeny", str(self.repo), str(output), self.commit())
+        self.assertIn("+projeny port", (output / "example-1.0.patch").read_text())
+
     def git(self, *args):
         return run("git", "-C", str(self.repo), *args).stdout.strip()
 

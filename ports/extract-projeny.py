@@ -36,6 +36,12 @@ def extract(descriptor, repo, output, rev):
         if not value or '/' in value or value.startswith('.'):
             raise ValueError(f'Unsupported {key}: {value!r}')
     project = fields['Origname']
+    # Upstream may keep a directory port of the same release beside the
+    # Projeny port (projects/openssl-3.6.4/ uses SaRCAsm, openssl.projeny
+    # zunsafe forwarders). Name this patch apart rather than overwrite it.
+    kind = subprocess.run(['git', '-C', str(repo), 'cat-file', '-t', f'{rev}:projects/{project}'],
+                          capture_output=True, text=True).stdout.strip()
+    name = project + ('-projeny' if kind == 'tree' else '') + '.patch'
     with tempfile.TemporaryDirectory(prefix='filnix-projeny-') as tmp:
         root = Path(tmp)
         (root / descriptor).write_bytes(data)
@@ -64,7 +70,7 @@ def extract(descriptor, repo, output, rev):
         run(str(script), project, str(history), str(review), 'HEAD')
         patch = review / (project + '.patch')
         output.mkdir(parents=True, exist_ok=True)
-        destination = output / patch.name
+        destination = output / name
         if not patch.exists():
             destination.unlink(missing_ok=True)
         else:
