@@ -1,12 +1,16 @@
 # Operating the Filnix experiment
 
 The dashboard is **https://nix.swa.sh/**. It is read-only. The active campaign is
-**Fil-C b6dd634 · shared cancellation** (`3eaf2f72-7c12-4bf2-9934-9646ea9dab4d`),
-started on 2026-09-14 at source `f07cf499adf233bb7dd85ea95e1b63f63a89776a`.
-It repeats the same 13,772 selected attributes with the updated shared toolchain.
-The first inventory, started on 2026-09-13, has completed its queue and remains
-paused with all history preserved. Synthetic native runner calibrations remain
-separate campaigns in the selector.
+**Fil-C eb534be · nixos-26.05 · Nix on Fil-C** (`eb1a3583-16e3-4a53-a5a5-468ffec1e7bc`),
+started on 2026-09-26 at source `90453acba6dc11a9af2c9b2b2cd0a6df0bb4a2dc` on the
+`next` branch. It builds the 14,647 attributes of the
+[26.05 inventory](../experiments/package-inventory-2605/README.md) with the
+mbrock/fil-c `filnix` compiler (including the -O0 stack aux root fix). It was
+imported from a bare clone under `/var/lib/filnix-experiment/imports/next-2605`,
+since the experiment account cannot read home directories. The earlier
+campaigns, including **Fil-C b6dd634 · shared cancellation**
+(`3eaf2f72-7c12-4bf2-9934-9646ea9dab4d`, fully published), are paused with their
+history preserved.
 
 The active campaign uses 32 roots per batch, a 256-derivation ready buffer and
 two build lanes: four jobs in total with seven requested cores per job. The
