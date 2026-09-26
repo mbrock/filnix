@@ -3,7 +3,7 @@
 
   inputs = {
     # Modified nixpkgs with Fil-C cross-compilation support
-    nixpkgs.url = "github:lessrest/filnixpkgs/400439b089773d3fc593b512250e283a33485de4";
+    nixpkgs.url = "github:lessrest/filnixpkgs/118d872d35b2ddbff87356e6dc407affe40032ad";
     nixpkgs.flake = false;
   };
 
@@ -90,9 +90,6 @@
       makeLibei =
         erlang: pkgsFilc.callPackage ./packages/libei.nix { inherit erlang; };
       libei = makeLibei pkgs.erlang;
-      libei_24 = makeLibei pkgs.erlang_24;
-      libei_25 = makeLibei pkgs.erlang_25;
-      libei_26 = makeLibei pkgs.erlang_26;
       libei_27 = makeLibei pkgs.erlang_27;
       libei_28 = makeLibei pkgs.erlang_28;
 
@@ -156,17 +153,29 @@
         gnutls-tls = import ./tests/gnutls-tls.nix {
           inherit pkgs pkgsFilc;
         };
+        utf8-locale = import ./tests/locale.nix { inherit pkgsFilc; };
+        pthread-pi = import ./tests/pthread-pi.nix { inherit pkgsFilc; };
+        pthread-spin = import ./tests/pthread-spin.nix { inherit pkgsFilc; };
+        fenv = import ./tests/fenv.nix { inherit pkgsFilc; };
+        packed-pointer = import ./tests/packed-pointer.nix { inherit pkgsFilc; };
+        gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
+        nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };
+        nixos-filc = import ./tests/nixos-filc.nix {
+          inherit pkgs;
+          filcModule = self.nixosModules.filc;
+        };
+        perl-xs-pointers = import ./tests/perl-xs-pointers.nix { inherit pkgsFilc; };
+        python-decimal = import ./tests/python-decimal.nix { inherit pkgsFilc; };
+        cxx-coroutines = import ./tests/cxx-coroutines.nix { inherit pkgsFilc; };
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };
         boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
-        libsoup2-runtime = import ./tests/libsoup.nix {
+        emacs-treesit = import ./tests/emacs-treesit.nix {
           inherit pkgs pkgsFilc;
-          major = 2;
         };
         libsoup3-runtime = import ./tests/libsoup.nix {
           inherit pkgs pkgsFilc;
-          major = 3;
         };
         gi-link-environment = import ./tests/gi-link-environment.nix {
           inherit pkgs pkgsFilc;
@@ -191,6 +200,29 @@
 
       overlays.default = import ./ports/overlay.nix pkgs;
 
+      # Run chosen NixOS services and programs as Fil-C builds; see
+      # nixos/filc.nix, docs/nixos.md and the two example machines.
+      nixosModules = rec {
+        filc = import ./nixos/filc.nix { filnix = self; };
+        default = filc;
+      };
+      nixosConfigurations =
+        let
+          machine =
+            module:
+            import "${nixpkgs}/nixos/lib/eval-config.nix" {
+              inherit system;
+              modules = [
+                self.nixosModules.filc
+                module
+              ];
+            };
+        in
+        {
+          filc-demo = machine ./nixos/demo.nix;
+          ec2-filc = machine ./nixos/ec2.nix;
+        };
+
       # Export the full cross-compiled package sets
       legacyPackages.${system} = {
         inherit pkgsFilc;
@@ -210,9 +242,6 @@
         inherit (pkgsFilc) openssl-sarcasm;
         inherit
           libei
-          libei_24
-          libei_25
-          libei_26
           libei_27
           libei_28
           ;
@@ -289,14 +318,14 @@
         };
       };
 
-      formatter.${system} = pkgs.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt;
 
       devShells.${system} = {
         default = pkgs.mkShell {
           name = "filnix-dev";
           packages = with pkgs; [
             # Nix development tools
-            nixfmt-rfc-style
+            nixfmt
             treefmt
             nixd
             nil
@@ -317,6 +346,9 @@
 
         # Full Fil-C compilation environment (opt-in with 'nix develop .#world')
         world = filc-world-shell;
+
+        # Incremental Fil-C LLVM hacking; see docs/llvm-dev.md
+        filc-llvm = import ./shells/filc-llvm.nix { inherit pkgs; };
       };
     };
 }

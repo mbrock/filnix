@@ -1,0 +1,37 @@
+Treat libcamera as installed under Fil-C
+
+Fil-C code cannot see the linker-defined _DYNAMIC array, which
+isLibcameraInstalled() walks to find a build-tree RUNPATH.
+
+--- a/src/libcamera/source_paths.cpp
++++ b/src/libcamera/source_paths.cpp
+@@ -21,8 +21,10 @@
+  * \brief Identify the build and source path of a not-yet-installed library
+  */
+ 
++#ifndef __FILC__
+ /* musl doesn't declare _DYNAMIC in link.h, declare it manually. */
+ extern ElfW(Dyn) _DYNAMIC[];
++#endif
+ 
+ namespace libcamera {
+ 
+@@ -39,6 +41,10 @@
+  */
+ bool isLibcameraInstalled()
+ {
++#ifdef __FILC__
++	/* Fil-C code cannot see the linker-defined _DYNAMIC. */
++	return true;
++#else
+ 	/*
+ 	 * DT_RUNPATH (DT_RPATH when the linker uses old dtags) is removed on
+ 	 * install.
+@@ -49,6 +55,7 @@
+ 	}
+ 
+ 	return true;
++#endif
+ }
+ 
+ } /* namespace */

@@ -1,0 +1,20 @@
+Subject: Size testfile's read buffer for its largest request
+Origin: Filnix
+Upstream-Status: Not submitted
+
+testfile asks for up to 1000 bytes (10 x 100) into a 30-byte buffer and
+relies on end-of-file to return 0. With SDL 3.4 the read reaches glibc's
+fread, which passes the full count to read(2), and Fil-C traps that
+unbounded write.
+
+--- a/test/testfile.c
++++ b/test/testfile.c
+@@ -62,7 +62,7 @@
+ int main(int argc, char *argv[])
+ {
+     SDL_RWops *rwops = NULL;
+-    char test_buf[30];
++    char test_buf[1000];
+ 
+     /* Enable standard application logging */
+     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);

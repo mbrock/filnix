@@ -92,7 +92,10 @@ let
         ${
           if filc-libcxx != null then
             ''
+              # The wrapper execs clang-${llvmMajor}, whose name selects the C
+              # driver; request the C++ one, which also links libm.
               makeWrapper ${filc0}/bin/clang-${llvmMajor} $out/bin/clang++ \
+                --add-flags "--driver-mode=g++" \
                 --add-flags "--filc-resource-dir=${sarcasm}" \
                 --add-flags "-Wno-unused-command-line-argument" \
                 --add-flags "--gcc-toolchain=${gcc.cc}" \

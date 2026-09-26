@@ -1,0 +1,18 @@
+Clear the config cache with the same atomic accesses that fill it
+
+configmap_cache holds intptr_t values but is read and filled with atomic
+pointer operations, and cleared with plain integer stores. Under Fil-C an
+atomic pointer store keeps its value in a side box that later atomic
+loads return, so the plain stores were not observed: config changes after
+the first lookup (core.abbrev, core.filemode, core.autocrlf, ...) were
+ignored.
+--- a/src/libgit2/config_cache.c	2026-09-26 01:20:14.075672752 +0200
++++ b/src/libgit2/config_cache.c	2026-09-26 01:20:14.076515939 +0200
+@@ -136,6 +136,6 @@
+ 	int i;
+ 
+ 	for (i = 0; i < GIT_CONFIGMAP_CACHE_MAX; ++i)
+-		repo->configmap_cache[i] = GIT_CONFIGMAP_NOT_CACHED;
++		(void)git_atomic_swap(repo->configmap_cache[i], (void *)GIT_CONFIGMAP_NOT_CACHED);
+ }
+ 

@@ -1,0 +1,25 @@
+Subject: Enable SDL3's POSIX process backend without vfork
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: patches/sdl3-fork.patch
+
+SDL 3.4 only builds the posix_spawn process backend when libc exports
+vfork. Fil-C cannot provide vfork, so SDL silently fell back to the dummy
+backend and SDL_CreateProcess reported "That operation is not supported"
+(the testprocess suite failed). sdl3-fork.patch already makes the backend
+use fork() for background processes under Fil-C; accept Fil-C here too.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -3487,8 +3487,10 @@ int main(void)
+ " HAVE_POSIX_SPAWN)
+   if(NOT APPLE)
+     check_symbol_exists(vfork "unistd.h" LIBC_HAS_VFORK)
++    # Fil-C has no vfork; SDL_posixprocess.c uses fork there, as on Apple.
++    check_symbol_exists(__FILC__ "stddef.h" SDL_FILC)
+   endif()
+-  if(HAVE_POSIX_SPAWN AND (APPLE OR LIBC_HAS_VFORK))
++  if(HAVE_POSIX_SPAWN AND (APPLE OR LIBC_HAS_VFORK OR SDL_FILC))
+     sdl_glob_sources(
+       "${SDL3_SOURCE_DIR}/src/process/posix/*.c"
+       "${SDL3_SOURCE_DIR}/src/process/posix/*.h"

@@ -1,0 +1,476 @@
+Build GStreamer good plugins with pointer GTypes
+
+Fil-C GLib makes GType a pointer. Register types with the pointer once
+API, switch on (uintptr_t) casts as upstream Fil-C does for the base
+plugins, and pass signal parameter types without the
+G_SIGNAL_TYPE_STATIC_SCOPE bit, which only lets GLib skip a copy.
+
+--- a/ext/adaptivedemux2/gstadaptivedemux.c
++++ b/ext/adaptivedemux2/gstadaptivedemux.c
+@@ -252,9 +252,9 @@
+ GType
+ gst_adaptive_demux_ng_get_type (void)
+ {
+-  static gsize type = 0;
++  static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstAdaptiveDemuxClass),
+@@ -274,7 +274,7 @@
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstAdaptiveDemuxPrivate));
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+--- a/ext/jack/gstjackaudiosink.c
++++ b/ext/jack/gstjackaudiosink.c
+@@ -132,9 +132,9 @@
+ static GType
+ gst_jack_ring_buffer_get_type (void)
+ {
+-  static gsize ringbuffer_type = 0;
++  static GType ringbuffer_type = 0;
+ 
+-  if (g_once_init_enter (&ringbuffer_type)) {
++  if (g_once_init_enter_pointer (&ringbuffer_type)) {
+     static const GTypeInfo ringbuffer_info = {
+       sizeof (GstJackRingBufferClass),
+       NULL,
+@@ -149,7 +149,7 @@
+     };
+     GType tmp = g_type_register_static (GST_TYPE_AUDIO_RING_BUFFER,
+         "GstJackAudioSinkRingBuffer", &ringbuffer_info, 0);
+-    g_once_init_leave (&ringbuffer_type, tmp);
++    g_once_init_leave_pointer (&ringbuffer_type, tmp);
+   }
+ 
+   return (GType) ringbuffer_type;
+--- a/ext/jack/gstjackaudiosrc.c
++++ b/ext/jack/gstjackaudiosrc.c
+@@ -152,9 +152,9 @@
+ static GType
+ gst_jack_ring_buffer_get_type (void)
+ {
+-  static gsize ringbuffer_type = 0;
++  static GType ringbuffer_type = 0;
+ 
+-  if (g_once_init_enter (&ringbuffer_type)) {
++  if (g_once_init_enter_pointer (&ringbuffer_type)) {
+     static const GTypeInfo ringbuffer_info = { sizeof (GstJackRingBufferClass),
+       NULL,
+       NULL,
+@@ -168,7 +168,7 @@
+     };
+     GType tmp = g_type_register_static (GST_TYPE_AUDIO_RING_BUFFER,
+         "GstJackAudioSrcRingBuffer", &ringbuffer_info, 0);
+-    g_once_init_leave (&ringbuffer_type, tmp);
++    g_once_init_leave_pointer (&ringbuffer_type, tmp);
+   }
+ 
+   return (GType) ringbuffer_type;
+--- a/ext/jack/gstjack.c
++++ b/ext/jack/gstjack.c
+@@ -27,9 +27,9 @@
+ GType
+ gst_jack_connect_get_type (void)
+ {
+-  static gsize jack_connect_type = 0;
++  static GType jack_connect_type = 0;
+ 
+-  if (g_once_init_enter (&jack_connect_type)) {
++  if (g_once_init_enter_pointer (&jack_connect_type)) {
+     static const GEnumValue jack_connect_enums[] = {
+       {GST_JACK_CONNECT_NONE,
+           "Don't automatically connect ports to physical ports", "none"},
+@@ -44,7 +44,7 @@
+       {0, NULL, NULL},
+     };
+     GType tmp = g_enum_register_static ("GstJackConnect", jack_connect_enums);
+-    g_once_init_leave (&jack_connect_type, tmp);
++    g_once_init_leave_pointer (&jack_connect_type, tmp);
+   }
+   return (GType) jack_connect_type;
+ }
+@@ -52,9 +52,9 @@
+ GType
+ gst_jack_transport_get_type (void)
+ {
+-  static gsize type = 0;
++  static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const GFlagsValue flag_values[] = {
+       {GST_JACK_TRANSPORT_MASTER,
+           "Start and stop transport with state changes", "master"},
+@@ -63,7 +63,7 @@
+       {0, NULL, NULL},
+     };
+     GType tmp = g_flags_register_static ("GstJackTransport", flag_values);
+-    g_once_init_leave (&type, tmp);
++    g_once_init_leave_pointer (&type, tmp);
+   }
+   return (GType) type;
+ }
+@@ -86,14 +86,14 @@
+ GType
+ gst_jack_client_get_type (void)
+ {
+-  static gsize jack_client_type = 0;
++  static GType jack_client_type = 0;
+ 
+-  if (g_once_init_enter (&jack_client_type)) {
++  if (g_once_init_enter_pointer (&jack_client_type)) {
+     /* hackish, but makes it show up nicely in gst-inspect */
+     GType tmp = g_boxed_type_register_static ("JackClient",
+         (GBoxedCopyFunc) gst_jack_client_copy,
+         (GBoxedFreeFunc) gst_jack_client_free);
+-    g_once_init_leave (&jack_client_type, tmp);
++    g_once_init_leave_pointer (&jack_client_type, tmp);
+   }
+ 
+   return (GType) jack_client_type;
+--- a/ext/pulse/pulseutil.c
++++ b/ext/pulse/pulseutil.c
+@@ -357,8 +357,8 @@
+   /* match prop id */
+ 
+   /* check type */
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_STRING:
++  switch ((uintptr_t) (G_VALUE_TYPE (value))) {
++    case (uintptr_t) G_TYPE_STRING:
+       pa_proplist_sets (p, prop_id, g_value_get_string (value));
+       break;
+     default:
+--- a/ext/vpx/gstvpxdec.c
++++ b/ext/vpx/gstvpxdec.c
+@@ -81,12 +81,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstVPXDecPostProcessingFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+--- a/ext/vpx/gstvpxenc.c
++++ b/ext/vpx/gstvpxenc.c
+@@ -171,12 +171,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstVPXEncEndUsage", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -194,12 +194,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstVPXEncMultipassMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -216,12 +216,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstVPXEncKfMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -238,12 +238,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstVPXEncTuning", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -262,12 +262,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstVPXEncScalingMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -286,12 +286,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstVPXEncTokenPartitions", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -309,12 +309,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstVPXEncErFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+@@ -338,12 +338,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstVPXEncTsLayerFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+--- a/gst/apetag/gstapedemux.c
++++ b/gst/apetag/gstapedemux.c
+@@ -222,8 +222,8 @@
+     if (ape_demux_get_gst_tag_from_tag (tag, &gst_tag, &gst_tag_type)) {
+       GValue v = { 0, };
+ 
+-      switch (gst_tag_type) {
+-        case G_TYPE_INT:{
++      switch ((uintptr_t) (gst_tag_type)) {
++        case (uintptr_t) G_TYPE_INT:{
+           gint v_int;
+ 
+           if (sscanf (val, "%d", &v_int) == 1) {
+@@ -232,7 +232,7 @@
+           }
+           break;
+         }
+-        case G_TYPE_UINT:{
++        case (uintptr_t) G_TYPE_UINT:{
+           guint v_uint, count;
+ 
+           if (strcmp (gst_tag, GST_TAG_TRACK_NUMBER) == 0) {
+@@ -267,12 +267,12 @@
+           }
+           break;
+         }
+-        case G_TYPE_STRING:{
++        case (uintptr_t) G_TYPE_STRING:{
+           g_value_init (&v, G_TYPE_STRING);
+           g_value_set_string (&v, val);
+           break;
+         }
+-        case G_TYPE_DOUBLE:{
++        case (uintptr_t) G_TYPE_DOUBLE:{
+           gdouble v_double;
+           gchar *endptr;
+ 
+--- a/gst/audiofx/gstscaletempo.c
++++ b/gst/audiofx/gstscaletempo.c
+@@ -139,12 +139,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer (&id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstScaletempoMode", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer (&id, _id);
+   }
+ 
+   return id;
+--- a/gst/isomp4/gstqtmux.c
++++ b/gst/isomp4/gstqtmux.c
+@@ -1210,9 +1210,9 @@
+ gst_qt_mux_add_mp4_tag (GstQTMux * qtmux, const GstTagList * list,
+     AtomUDTA * udta, const char *tag, const char *tag2, guint32 fourcc)
+ {
+-  switch (gst_tag_get_type (tag)) {
++  switch ((uintptr_t) (gst_tag_get_type (tag))) {
+       /* strings */
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+     {
+       gchar *str = NULL;
+ 
+@@ -1225,7 +1225,7 @@
+       break;
+     }
+       /* double */
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+     {
+       gdouble value;
+ 
+@@ -1236,7 +1236,7 @@
+       atom_udta_add_uint_tag (udta, fourcc, 21, (gint) value);
+       break;
+     }
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+     {
+       guint value = 0;
+       if (tag2) {
+--- a/gst/isomp4/qtdemux_tags.c
++++ b/gst/isomp4/qtdemux_tags.c
+@@ -732,12 +732,12 @@
+ 
+     for (i = 0; i < G_N_ELEMENTS (tags); ++i) {
+       if (!g_ascii_strncasecmp (tags[i].name, namestr, namesize)) {
+-        switch (gst_tag_get_type (tags[i].tag)) {
+-          case G_TYPE_DOUBLE:
++        switch ((uintptr_t) (gst_tag_get_type (tags[i].tag))) {
++          case (uintptr_t) G_TYPE_DOUBLE:
+             qtdemux_add_double_tag_from_str (demux, taglist, tags[i].tag,
+                 ((guint8 *) data->data) + 16, datasize - 16);
+             break;
+-          case G_TYPE_STRING:
++          case (uintptr_t) G_TYPE_STRING:
+             qtdemux_tag_add_str (demux, taglist, tags[i].tag, NULL, node);
+             break;
+           default:
+--- a/gst/multifile/gstsplitmuxsrc.c
++++ b/gst/multifile/gstsplitmuxsrc.c
+@@ -348,7 +348,7 @@
+       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+       G_CALLBACK (gst_splitmuxsrc_add_fragment),
+       NULL, NULL, NULL,
+-      G_TYPE_BOOLEAN, 3, G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE,
++      G_TYPE_BOOLEAN, 3, G_TYPE_STRING,
+       GST_TYPE_CLOCK_TIME, GST_TYPE_CLOCK_TIME);
+ }
+ 
+--- a/gst/rtpmanager/gstrtpjitterbuffer.c
++++ b/gst/rtpmanager/gstrtpjitterbuffer.c
+@@ -1112,7 +1112,7 @@
+       g_signal_new ("handle-sync", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstRtpJitterBufferClass,
+           handle_sync), NULL, NULL, NULL,
+-      G_TYPE_NONE, 1, GST_TYPE_STRUCTURE | G_SIGNAL_TYPE_STATIC_SCOPE);
++      G_TYPE_NONE, 1, GST_TYPE_STRUCTURE);
+ 
+   /**
+    * GstRtpJitterBuffer::on-npt-stop:
+--- a/gst/rtpmanager/rtpsession.c
++++ b/gst/rtpmanager/rtpsession.c
+@@ -302,7 +302,7 @@
+       g_signal_new ("on-sending-rtcp", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (RTPSessionClass, on_sending_rtcp),
+       accumulate_trues, NULL, NULL, G_TYPE_BOOLEAN, 2,
+-      GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE, G_TYPE_BOOLEAN);
++      GST_TYPE_BUFFER, G_TYPE_BOOLEAN);
+ 
+   /**
+    * RTPSession::on-app-rtcp:
+@@ -393,7 +393,7 @@
+       g_signal_new ("on-receiving-rtcp", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (RTPSessionClass, on_receiving_rtcp),
+       NULL, NULL, NULL, G_TYPE_NONE, 1,
+-      GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_BUFFER);
+ 
+   /**
+    * RTPSession::on-new-sender-ssrc:
+@@ -455,7 +455,7 @@
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (RTPSessionClass, on_sending_nacks),
+       g_signal_accumulator_first_wins, NULL, NULL,
+       G_TYPE_UINT, 4, G_TYPE_UINT, G_TYPE_UINT, G_TYPE_ARRAY,
+-      GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_BUFFER);
+ 
+   properties[PROP_INTERNAL_SSRC] =
+       g_param_spec_uint ("internal-ssrc", "Internal SSRC",
+--- a/gst/rtsp/gstrtspsrc.c
++++ b/gst/rtsp/gstrtspsrc.c
+@@ -1261,8 +1261,8 @@
+   gst_rtspsrc_signals[SIGNAL_HANDLE_REQUEST] =
+       g_signal_new ("handle-request", G_TYPE_FROM_CLASS (klass), 0,
+       0, NULL, NULL, NULL, G_TYPE_NONE, 2,
+-      GST_TYPE_RTSP_MESSAGE | G_SIGNAL_TYPE_STATIC_SCOPE,
+-      GST_TYPE_RTSP_MESSAGE | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_RTSP_MESSAGE,
++      GST_TYPE_RTSP_MESSAGE);
+ 
+   /**
+    * GstRTSPSrc::on-sdp:
+@@ -1283,7 +1283,7 @@
+   gst_rtspsrc_signals[SIGNAL_ON_SDP] =
+       g_signal_new ("on-sdp", G_TYPE_FROM_CLASS (klass), 0,
+       0, NULL, NULL, NULL, G_TYPE_NONE, 1,
+-      GST_TYPE_SDP_MESSAGE | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_SDP_MESSAGE);
+ 
+   /**
+    * GstRTSPSrc::select-stream:
+@@ -1426,7 +1426,7 @@
+       g_signal_new_class_handler ("before-send", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST,
+       (GCallback) default_before_send, before_send_accum, NULL, NULL,
+-      G_TYPE_BOOLEAN, 1, GST_TYPE_RTSP_MESSAGE | G_SIGNAL_TYPE_STATIC_SCOPE);
++      G_TYPE_BOOLEAN, 1, GST_TYPE_RTSP_MESSAGE);
+ 
+   /**
+    * GstRTSPSrc::push-backchannel-buffer:

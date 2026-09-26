@@ -1,11 +1,7 @@
 { pkgs, zstd }:
 let
-  # Keep experiments local: the compiler/runtime and default assembler stay pinned.
-  assembler =
-    (import ../packages/sarcasm.nix { inherit pkgs; }).overrideAttrs
-      (old: {
-        patches = (old.patches or [ ]) ++ [ ../patches/sarcasm-zstd.patch ];
-      });
+  # The pinned SaRCAsm splits semicolon-separated statements.
+  assembler = import ../packages/sarcasm.nix { inherit pkgs; };
 in
 zstd.overrideAttrs (old: {
   pname = "zstd-sarcasm";

@@ -1,0 +1,47 @@
+--- a/src/pulsecore/atomic.h
++++ b/src/pulsecore/atomic.h
+@@ -104,39 +104,21 @@
+ }
+ 
+ typedef struct pa_atomic_ptr {
+-    volatile uintptr_t value;
++    void * volatile value;
+ } pa_atomic_ptr_t;
+ 
+-#define PA_ATOMIC_PTR_INIT(v) { .value = (uintptr_t) (v) }
+-
+-#ifdef HAVE_ATOMIC_BUILTINS_MEMORY_MODEL
+-
+-/* __atomic based implementation */
++#define PA_ATOMIC_PTR_INIT(v) { .value = (void*) (v) }
+ 
+ static inline void* pa_atomic_ptr_load(const pa_atomic_ptr_t *a) {
+-    return (void*) __atomic_load_n(&a->value, __ATOMIC_SEQ_CST);
++    return __atomic_load_n(&a->value, __ATOMIC_SEQ_CST);
+ }
+ 
+ static inline void pa_atomic_ptr_store(pa_atomic_ptr_t *a, void* p) {
+-    __atomic_store_n(&a->value, (uintptr_t) p, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&a->value, p, __ATOMIC_SEQ_CST);
+ }
+ 
+-#else
+-
+-static inline void* pa_atomic_ptr_load(const pa_atomic_ptr_t *a) {
+-    __sync_synchronize();
+-    return (void*) a->value;
+-}
+-
+-static inline void pa_atomic_ptr_store(pa_atomic_ptr_t *a, void *p) {
+-    a->value = (uintptr_t) p;
+-    __sync_synchronize();
+-}
+-
+-#endif
+-
+ static inline bool pa_atomic_ptr_cmpxchg(pa_atomic_ptr_t *a, void *old_p, void* new_p) {
+-    return __sync_bool_compare_and_swap(&a->value, (uintptr_t) old_p, (uintptr_t) new_p);
++    return __atomic_compare_exchange_n(&a->value, &old_p, new_p, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+ }
+ 
+ #elif defined(__NetBSD__) && defined(HAVE_SYS_ATOMIC_H)

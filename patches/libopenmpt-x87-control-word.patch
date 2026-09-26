@@ -1,0 +1,70 @@
+Use the Fil-C runtime for the x87 control word
+
+Fil-C rejects inline assembly with memory operands, so fnstcw and fldcw
+on a stack slot stop the program.
+
+--- a/src/mpt/arch/x86_amd64.hpp
++++ b/src/mpt/arch/x86_amd64.hpp
+@@ -13,6 +13,10 @@
+ #include "mpt/base/utility.hpp"
+ #include "mpt/osinfo/windows_version.hpp"
+ 
++#if defined(__FILC__)
++#include <pizlonated_math.h>
++#endif
++
+ #include <algorithm>
+ #include <array>
+ #if MPT_ARCH_X86 || MPT_ARCH_AMD64
+@@ -1649,6 +1653,17 @@
+ 
+ #elif MPT_COMPILER_GCC || MPT_COMPILER_CLANG
+ 
++#if defined(__FILC__)
++	// Fil-C rejects inline asm with memory operands; its <fpu_control.h>
++	// reaches the x87 control word through the runtime.
++	[[nodiscard]] static MPT_FORCEINLINE uint16 get_x87fcw() noexcept {
++		return static_cast<uint16>(zmath_getcw());
++	}
++
++	static MPT_FORCEINLINE void set_x87fcw(uint16 fcw) noexcept {
++		zmath_setcw(fcw);
++	}
++#else
+ 	[[nodiscard]] static MPT_FORCEINLINE uint16 get_x87fcw() noexcept {
+ 		typedef unsigned int fpu_control_t __attribute__((__mode__(__HI__)));
+ 		fpu_control_t tmp = 0;
+@@ -1665,6 +1680,7 @@
+ 		__asm__ __volatile__("fldcw %0" : : "m" (*&tmp));
+ 		// clang-format on
+ 	}
++#endif
+ 
+ 	[[nodiscard]] static MPT_FORCEINLINE uint32 get_mxcsr() noexcept {
+ #ifdef MPT_ARCH_X86_SSE
+@@ -1881,6 +1897,17 @@
+ 
+ #elif MPT_COMPILER_GCC || MPT_COMPILER_CLANG
+ 
++#if defined(__FILC__)
++	// Fil-C rejects inline asm with memory operands; its <fpu_control.h>
++	// reaches the x87 control word through the runtime.
++	[[nodiscard]] static MPT_FORCEINLINE uint16 get_x87fcw() noexcept {
++		return static_cast<uint16>(zmath_getcw());
++	}
++
++	static MPT_FORCEINLINE void set_x87fcw(uint16 fcw) noexcept {
++		zmath_setcw(fcw);
++	}
++#else
+ 	[[nodiscard]] static MPT_FORCEINLINE uint16 get_x87fcw() noexcept {
+ 		typedef unsigned int fpu_control_t __attribute__((__mode__(__HI__)));
+ 		fpu_control_t tmp = 0;
+@@ -1897,6 +1924,7 @@
+ 		__asm__ __volatile__("fldcw %0" : : "m" (*&tmp));
+ 		// clang-format on
+ 	}
++#endif
+ 
+ 	[[nodiscard]] static MPT_FORCEINLINE uint32 get_mxcsr() noexcept {
+ 		return __builtin_ia32_stmxcsr();

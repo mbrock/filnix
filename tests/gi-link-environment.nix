@@ -4,7 +4,8 @@ pkgsFilc.stdenv.mkDerivation {
   dontUnpack = true;
   nativeBuildInputs = [
     pkgs.pkg-config
-    pkgsFilc.gobject-introspection
+    # Unspliced: the Fil-C scanner, not the build platform's.
+    (removeAttrs pkgsFilc.gobject-introspection [ "__spliced" ])
   ];
   buildInputs = [
     pkgsFilc.glib
