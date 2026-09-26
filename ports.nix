@@ -303,11 +303,17 @@ in
   {
     bash = for pkgs.bash [
       (arg { interactive = true; })
+      # unwind_protect saves jmp_bufs in a misaligned buffer, losing their
+      # capabilities: `bash -c 'set -e; false'` crashed.
+      (patch ./ports/patch/bash-5.3.patch)
       (skipCheck "interactive mode issues")
     ];
 
     bashNonInteractive = for pkgs.bash [
       (arg { interactive = false; })
+      # unwind_protect saves jmp_bufs in a misaligned buffer, losing their
+      # capabilities: `bash -c 'set -e; false'` crashed.
+      (patch ./ports/patch/bash-5.3.patch)
       (skipCheck "test issues")
     ];
   }
