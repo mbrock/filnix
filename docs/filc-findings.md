@@ -116,3 +116,16 @@ oneTBB's tbbmalloc carves objects out of raw mmap chunks, and its
 as `uintptr_t`. These are expected Fil-C porting work rather than bugs; the
 ports build without tbbmalloc and keep the pointers in pointer-typed atomics,
 setting tag bits with pointer arithmetic.
+
+## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
+
+Not a Fil-C issue, but a bug it caught. libopenmpt 0.8.9's
+`decode_locale_impl` (`src/mpt/string_transcode/transcode.hpp`) grows its
+output vector when the codecvt facet returns `partial`, then `continue`s,
+but `out_next` still points into the freed buffer and the do-while
+condition does not continue on `partial`, so it returns
+`std::wstring(out.data(), out_next)` from a dangling pointer. libc++
+returns `partial` for characters the C locale cannot convert, so
+libopenmpt's own test suite hits it; Fil-C reported a 100 MB read from a
+128-byte object. `patches/libopenmpt-codecvt-partial.patch` fixes it and
+is worth sending upstream.

@@ -1,0 +1,44 @@
+Fix a use-after-free in decode_locale_impl with libc++
+
+When the codecvt facet returns partial, decode_locale_impl grows the
+output vector and continues, but out_next still points into the buffer
+that resize() freed, and the do-while condition does not continue on
+partial, so the function returns std::wstring(out.data(), out_next)
+built from the dangling pointer. libc++ returns partial for a character
+the locale cannot convert (and makes no progress when called again at
+it), so decoding non-ASCII text in the C locale read freed memory.
+
+Recompute out_next after the resize, continue the loop on partial, and
+treat a partial result that made no progress as an error.
+
+--- a/src/mpt/string_transcode/transcode.hpp
++++ b/src/mpt/string_transcode/transcode.hpp
+@@ -1419,10 +1419,18 @@
+ 			out_next = nullptr;
+ 			result = facet.in(state, in_begin, in_end, in_next, out_begin, out_end, out_next);
+ 		}
++		if (result == codecvt_type::partial && in_next == in_begin && out_next == out_begin && out_next != out_end) {
++			// libc++ reports an unconvertible character as partial without
++			// advancing; treat it as the error it is.
++			result = codecvt_type::error;
++		}
+ 		if (result == codecvt_type::partial || (result == codecvt_type::error && out_next == out_end)) {
++			// out_next points into the buffer that resize() frees.
++			const std::size_t out_pos = out_next - out.data();
+ 			out.resize(out.size() * 2);
+ 			in_begin = in_next;
+-			out_begin = out.data() + (out_next - out_begin);
++			out_begin = out.data() + out_pos;
++			out_next = out_begin;
+ 			out_end = out.data() + out.size();
+ 			continue;
+ 		}
+@@ -1449,7 +1457,7 @@
+ 		}
+ 		in_begin = in_next;
+ 		out_begin = out_next;
+-	} while ((result == codecvt_type::error && in_next < in_end && out_next < out_end) || (retry == 2 && in_next < in_end));
++	} while ((result == codecvt_type::partial && in_next < in_end) || (result == codecvt_type::error && in_next < in_end && out_next < out_end) || (retry == 2 && in_next < in_end));
+ 	return std::wstring(out.data(), out_next);
+ }
+ 

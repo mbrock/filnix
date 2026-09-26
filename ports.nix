@@ -509,6 +509,13 @@ in
 
   (for pkgs.zix [ (patch ./patches/zix-ring-mlock.patch) ])
 
+  (for pkgs.libopenmpt [
+    (patch ./patches/libopenmpt-x87-control-word.patch)
+    # Found by Fil-C: a use-after-free when libc++'s codecvt returns
+    # partial, as it does for non-ASCII text in the C locale.
+    (patch ./patches/libopenmpt-codecvt-partial.patch)
+  ])
+
   (for pkgs.libpulseaudio [
     # pa_atomic_ptr_t kept pointers in a uintptr_t, dropping their
     # capabilities (pa_once's mutex came back null).
