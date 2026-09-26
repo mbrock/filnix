@@ -173,6 +173,26 @@ portDSL.makeOverlay portList final prev
                 f=$(find . -path '*/nix/store/local-settings.hh')
                 sed -i '/Setting<bool> filterSyscalls{/,/"filter-syscalls"/ s/^\( *\)true,$/\1false,/' "$f"
                 grep -A2 'Setting<bool> filterSyscalls{' "$f" | grep -q false,
+              ''
+              # Fil-C's loader ignores RUNPATH when dlopening a bare soname,
+              # so name libc's nss_dns by path. NixOS's nix.conf check fails
+              # on the warning otherwise.
+              + ''
+                substituteInPlace globals.cc --replace-fail \
+                  'dlopen(LIBNSS_DNS_SO,' \
+                  'dlopen("${final.stdenv.cc.libc}/lib/" LIBNSS_DNS_SO,'
+              ''
+              # The pinned runtime traps on mount's NULL source and lacks
+              # PR_GET_PDEATHSIG (fixed in mbrock/fil-c 6876dcb, 347ed5b). A
+              # remount ignores the source, and startProcess set SIGKILL as
+              # the death signal. Drop these with the next pin bump.
+              + ''
+                substituteInPlace local-store.cc --replace-fail \
+                  'mount(0, config->realStoreDir' \
+                  'mount("", config->realStoreDir'
+                substituteInPlace unix/build/derivation-builder.cc --replace-fail \
+                  'throw SysError("getting death signal");' \
+                  'oldDeathSignal = SIGKILL;'
               '';
             buildInputs = builtins.filter (
               dep: !(pkgs.lib.hasInfix "libseccomp" (dep.name or ""))
