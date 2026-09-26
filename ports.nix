@@ -597,6 +597,10 @@ in
     # BlueZ builds against the copy of ELL's headers in its tarball.
     (patch ./patches/ell-no-debug-section.patch)
     (patch ./patches/bluez-no-debug-section.patch)
+    # The MIDI profile stores pointers into ALSA's packed snd_seq_ev_ext,
+    # at a misaligned offset where Fil-C cannot keep a capability.
+    (removeConfigureFlag "--enable-midi")
+    (configure "--disable-midi")
   ])
 
   (for pkgs.liburcu [
