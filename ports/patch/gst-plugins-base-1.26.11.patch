@@ -100,7 +100,7 @@ diff -urN orig/ext/opus/gstopusenc.c gst-plugins-base-1.26.11/ext/opus/gstopusen
      _id = g_enum_register_static ("GstOpusEncAudioType", values);
  
 -    g_once_init_leave ((gsize *) & id, _id);
-+    g_once_init_leave_pointer ((gointer *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
    }
  
    return id;
@@ -875,7 +875,7 @@ diff -urN orig/gst-libs/gst/pbutils/missing-plugins.c gst-plugins-base-1.26.11/g
  gst_pb_utils_missing_plugins_ensure_debug_category (void)
  {
 -  static gsize cat_gonce = 0;
-+  static gointer cat_gonce = 0;
++  static gpointer cat_gonce = 0;
  
 -  if (g_once_init_enter (&cat_gonce)) {
 +  if (g_once_init_enter_pointer (&cat_gonce)) {

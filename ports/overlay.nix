@@ -47,6 +47,13 @@ portDSL.makeOverlay portList final prev
               };
             }
           );
+      # GType is a pointer in Fil-C's GLib; upstream Fil-C's 1.24.7 patch,
+      # rebased onto 1.26.
+      gst-plugins-base = gprev.gst-plugins-base.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [
+          ./patch/gst-plugins-base-1.26.11.patch
+        ];
+      });
     }
   );
 
