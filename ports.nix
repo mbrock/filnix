@@ -406,6 +406,27 @@ in
     ffmpeg-headless = for pkgs.ffmpeg-headless [
       # Upstream Fil-C's FFmpeg 8.0.1 port applies unchanged to 8.1.
       (patch ./ports/patch/ffmpeg-8.0.1.patch)
+      (use (old: {
+        # 8.1 keeps the log callback in an atomic_uintptr_t, which drops the
+        # function pointer's capability; every av_log call trapped.
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace libavutil/log.c \
+              --replace-fail \
+                'static atomic_uintptr_t av_log_callback = (uintptr_t)av_log_default_callback;' \
+                'static void (*_Atomic av_log_callback)(void*, int, const char*, va_list) = av_log_default_callback;' \
+              --replace-fail \
+                'atomic_store_explicit(&av_log_callback, (uintptr_t)callback,' \
+                'atomic_store_explicit(&av_log_callback, callback,'
+            # flashsv2 rebased block pointers from one buffer into another
+            # with a pointer difference, keeping the first buffer's bounds.
+            substituteInPlace libavcodec/flashsv2enc.c --replace-fail \
+              's->key_blocks[i].enc += (s->keybuffer - s->encbuffer);' \
+              's->key_blocks[i].enc = s->keybuffer + (s->key_blocks[i].enc - s->encbuffer);'
+          '';
+      }))
       # Hand-written x86 assembly and inline assembly; upstream builds the
       # same way.
       (configure "--disable-asm")
@@ -518,6 +539,9 @@ in
   (for pkgs.libblake3 [ (addCMakeFlag "-DBLAKE3_SIMD_TYPE=none") ])
 
   (for pkgs.wavpack [ (configure "--disable-asm") ])
+
+  # Its MMX/SSE routines are yasm assembly, which Fil-C cannot link.
+  (for pkgs.xvidcore [ (configure "--disable-assembly") ])
 
   (for pkgs.libopus [
     (patch ./ports/patch/opus-1.5.2.patch)
@@ -1167,6 +1191,10 @@ in
         };
       });
     })
+    # Nixpkgs enables the native HFP backend's ModemManager support
+    # whenever BlueZ is available.
+    (removeMesonFlag "-Dbluez5-backend-native-mm=enabled")
+    (addMesonFlag "-Dbluez5-backend-native-mm=disabled")
   ])
 
   (for pkgs.libglvnd [
