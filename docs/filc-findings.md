@@ -112,6 +112,15 @@ Code that collects descriptors in a named section and walks it with
 pattern; the ports disable pattern-selected debug output or register the
 entries from constructors.
 
+## `dlopen` of a bare soname ignores the caller's RUNPATH
+
+`dlopen("libnss_dns.so.6662")` fails in a Fil-C program even though the
+library sits in the Fil-C sysroot's lib directory and that directory is in
+the program's RUNPATH. Nix preloads nss_dns this way and warns, which NixOS's
+nix.conf check turns into an error; the Nix port passes libc's full path
+instead. Adding the sysroot lib directory to the loader's trusted
+directories would fix NSS module loading in general.
+
 ## Custom allocators and pointer tagging lose capabilities
 
 oneTBB's tbbmalloc carves objects out of raw mmap chunks, and its

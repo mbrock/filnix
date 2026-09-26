@@ -160,6 +160,10 @@
         packed-pointer = import ./tests/packed-pointer.nix { inherit pkgsFilc; };
         gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
         nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };
+        nixos-filc = import ./tests/nixos-filc.nix {
+          inherit pkgs;
+          filcModule = self.nixosModules.filc;
+        };
         perl-xs-pointers = import ./tests/perl-xs-pointers.nix { inherit pkgsFilc; };
         python-decimal = import ./tests/python-decimal.nix { inherit pkgsFilc; };
         cxx-coroutines = import ./tests/cxx-coroutines.nix { inherit pkgsFilc; };
@@ -195,6 +199,29 @@
       };
 
       overlays.default = import ./ports/overlay.nix pkgs;
+
+      # Run chosen NixOS services and programs as Fil-C builds; see
+      # nixos/filc.nix, docs/nixos.md and the two example machines.
+      nixosModules = rec {
+        filc = import ./nixos/filc.nix { filnix = self; };
+        default = filc;
+      };
+      nixosConfigurations =
+        let
+          machine =
+            module:
+            import "${nixpkgs}/nixos/lib/eval-config.nix" {
+              inherit system;
+              modules = [
+                self.nixosModules.filc
+                module
+              ];
+            };
+        in
+        {
+          filc-demo = machine ./nixos/demo.nix;
+          ec2-filc = machine ./nixos/ec2.nix;
+        };
 
       # Export the full cross-compiled package sets
       legacyPackages.${system} = {
