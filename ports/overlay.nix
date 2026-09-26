@@ -19,6 +19,10 @@ portDSL.makeOverlay portList final prev
     };
   });
 
+  # Boost 1.87 is the ported release (Context uses ucontext); Nixpkgs'
+  # default 1.89 builds its assembly fcontext and fails.
+  boost = final.boost187;
+
   # overrideScope, so that the plugins build against this GStreamer.
   gst_all_1 = prev.gst_all_1.overrideScope (
     gfinal: gprev: {
@@ -51,8 +55,6 @@ portDSL.makeOverlay portList final prev
   # filters and the static busybox sandbox shell are unavailable too.
   nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
     nfinal: nprev: {
-      # Boost 1.89 is not ported; 1.87 is (Context uses ucontext).
-      boost = final.boost187;
       nix-expr = nprev.nix-expr.override { enableGC = false; };
       nix-store =
         (nprev.nix-store.override {
