@@ -506,7 +506,20 @@ in
   (for pkgs.libgudev [
     # The tests preload umockdev, whose Vala-generated code assumes integer
     # GTypes, and LD_PRELOAD interposition does not apply to Fil-C symbols.
-    (use { doCheck = false; })
+    (use (old: {
+      doCheck = false;
+      # GType is a pointer in Fil-C's GLib.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace gudev/gudevenumtypes.c.template \
+          --replace-fail 'static gsize static_g_define_type_id' \
+            'static GType static_g_define_type_id' \
+          --replace-fail 'g_once_init_enter (' 'g_once_init_enter_pointer (' \
+          --replace-fail 'g_once_init_leave (' 'g_once_init_leave_pointer ('
+        # Clang has no -export-dynamic driver flag (GCC passes it to ld).
+        substituteInPlace gudev/meson.build \
+          --replace-fail "'-export-dynamic'," "'-Wl,--export-dynamic',"
+      '';
+    }))
   ])
 
   (for pkgs.libical [
