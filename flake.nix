@@ -159,6 +159,7 @@
         fenv = import ./tests/fenv.nix { inherit pkgsFilc; };
         packed-pointer = import ./tests/packed-pointer.nix { inherit pkgsFilc; };
         gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
+        nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };
         perl-xs-pointers = import ./tests/perl-xs-pointers.nix { inherit pkgsFilc; };
         python-decimal = import ./tests/python-decimal.nix { inherit pkgsFilc; };
         cxx-coroutines = import ./tests/cxx-coroutines.nix { inherit pkgsFilc; };

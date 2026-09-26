@@ -83,7 +83,31 @@ portDSL.makeOverlay portList final prev
             appendToVar mesonFlags "-Db_lto=false"
           '';
         };
-      nix-expr = nprev.nix-expr.override { enableGC = false; };
+      nix-expr =
+        (nprev.nix-expr.override { enableGC = false; }).overrideAttrs
+          (old: {
+            # The 64-bit Value layout packs tag bits into pointers held as
+            # integers, which drops their capabilities; use the plain one.
+            postPatch =
+              (old.postPatch or "")
+              + "\n"
+              + ''
+                substituteInPlace $(find . -path '*/nix/expr/value.hh') --replace-fail \
+                  'useBitPackedValueStorage = (ptrSize == 8)' \
+                  'useBitPackedValueStorage = false && (ptrSize == 8)'
+              '';
+          });
+      # Fil-C has no sigaltstack, and it catches stack overflow itself.
+      nix-main = nprev.nix-main.overrideAttrs (old: {
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace $(find . -path '*/unix/stack.cc') --replace-fail \
+              '#if defined(SA_SIGINFO) && defined(SA_ONSTACK)' \
+              '#if defined(SA_SIGINFO) && defined(SA_ONSTACK) && !defined(__FILC__)'
+          '';
+      });
       # nativeBuildInputs' perl splices to the build platform's perl, which
       # cannot load the Fil-C DBI; Fil-C programs run on the build machine.
       nix-perl-bindings = nprev.nix-perl-bindings.overrideAttrs (old: {
@@ -102,6 +126,13 @@ portDSL.makeOverlay portList final prev
               '$var = ($type) zptrtable_decode(Perl_xsub_ptrtable, SvIV((SV*)SvRV( $arg )));'
           '';
       });
+      nix-functional-tests = nprev.nix-functional-tests.overrideAttrs (old: {
+        # The test plugin cannot resolve Nix's symbols when dlopened.
+        mesonCheckFlags = (old.mesonCheckFlags or [ ]) ++ [
+          "--no-suite"
+          "plugins"
+        ];
+      });
       nix-util-tests = nprev.nix-util-tests.overrideAttrs (old: {
         # The CompressionError from invalid bzip2 input is freed while the
         # test's catch is still unwinding to it (docs/filc-findings.md).
@@ -112,8 +143,19 @@ portDSL.makeOverlay portList final prev
       # Fil-C's libc has no vfork.
       nix-util = nprev.nix-util.overrideAttrs (old: {
         postPatch = (old.postPatch or "") + ''
-          substituteInPlace $(find . -path '*/unix/processes.cc') \
-            --replace-fail 'allowVfork ? vfork() : fork()' 'fork()'
+                    substituteInPlace $(find . -path '*/unix/processes.cc') \
+                      --replace-fail 'allowVfork ? vfork() : fork()' 'fork()'
+                    # Nor clone, which the namespace probes use: report no user,
+                    # mount or PID namespaces.
+                    substituteInPlace $(find . -path '*/linux/linux-namespaces.cc') \
+                      --replace-fail 'bool userNamespacesSupported()
+          {' 'bool userNamespacesSupported()
+          {
+              return false;' \
+                      --replace-fail 'bool mountAndPidNamespacesSupported()
+          {' 'bool mountAndPidNamespacesSupported()
+          {
+              return false;'
         '';
       });
       nix-store =
@@ -122,6 +164,16 @@ portDSL.makeOverlay portList final prev
           withAWS = false;
         }).overrideAttrs
           (old: {
+            # Without seccomp, builds refuse to start unless filter-syscalls
+            # is off, so make that the default.
+            postPatch =
+              (old.postPatch or "")
+              + "\n"
+              + ''
+                f=$(find . -path '*/nix/store/local-settings.hh')
+                sed -i '/Setting<bool> filterSyscalls{/,/"filter-syscalls"/ s/^\( *\)true,$/\1false,/' "$f"
+                grep -A2 'Setting<bool> filterSyscalls{' "$f" | grep -q false,
+              '';
             buildInputs = builtins.filter (
               dep: !(pkgs.lib.hasInfix "libseccomp" (dep.name or ""))
             ) old.buildInputs;

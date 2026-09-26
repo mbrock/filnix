@@ -86,6 +86,18 @@ in
       (patch ./ports/patch/boost-filc.patch)
       (patch ./patches/boost-context-feature.patch)
       (patch ./patches/boost-gdb-scripts.patch)
+      (use (old: {
+        # error_code keeps its source_location pointer in a uintptr_t with
+        # a flag bit, which drops the capability, and what() then trapped
+        # (Boost.URL's parse errors in Nix). Keep no location instead.
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace boost/system/detail/error_code.hpp --replace-fail \
+              '( loc? reinterpret_cast<boost::uintptr_t>( loc ): 2 )' '2'
+          '';
+      }))
       (arg {
         # Match upstream pizlix: Context and Coroutine2 use ucontext.
         # The older Coroutine v1 library requires fcontext and is omitted.
@@ -105,6 +117,8 @@ in
           $CXX -std=c++17 -I. ${./tests/boost-continuation.cpp} \
             -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -pthread -o continuation-check
           LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
+          $CXX -std=c++17 -I. ${./tests/boost-error-code.cpp} -o error-code-check
+          ./error-code-check
           runHook postCheck
         '';
       })
