@@ -489,6 +489,15 @@ in
         # Its own cpuid inline asm does not declare the clobbered ecx.
         "test_mutex"
       ];
+      # Not usable yet: the task scheduler and collaborative_call_once
+      # still keep pointers in integers and trap in most tests, and
+      # test_eh_algorithms spins. Marked unsupported so that dependents
+      # (libblake3's useTBB, ...) leave it out.
+      meta = old.meta // {
+        badPlatforms = (old.meta.badPlatforms or [ ]) ++ [
+          prev.stdenv.hostPlatform.system
+        ];
+      };
     }))
   ])
 
