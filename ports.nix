@@ -538,7 +538,15 @@ in
   (for pkgs.libcamera [
     # LTTng-UST tracepoints; the tracer's own tests exercise signal and
     # namespace machinery Fil-C does not provide.
-    (arg { withTracing = false; })
+    (arg {
+      withTracing = false;
+      # jinja2, PyYAML and ply run on the build Python (3.13); the Fil-C
+      # set is for the ported 3.12, so meson could not import jinja2.
+      python3Packages = pkgs.python3Packages;
+    })
+    # The experimental Python bindings would need the Fil-C Python.
+    (addMesonFlag "-Dpycamera=disabled")
+    (patch ./patches/libcamera-no-dynamic.patch)
   ])
 
   (for pkgs.libgudev [
