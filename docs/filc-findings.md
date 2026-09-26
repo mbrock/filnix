@@ -70,3 +70,49 @@ LD_LIBRARY_PATH=b/src b/tests/test_opus_decode 1770345560
 ```
 
 libopus skips its check for now.
+
+## `<fenv.h>` stopped the program
+
+User glibc's x86_64 `fegetround`, `fesetround`, `fegetenv`, `fesetenv`,
+`feholdexcept`, `fegetexcept`, `fedisableexcept`, `fegetmode` and the rest
+used inline assembly with memory operands (`fnstcw`, `fldcw`, `fnstenv`,
+`fldenv`, `stmxcsr`, `ldmxcsr`), which FilPizlonator rejects when the code
+runs. Only `feclearexcept`, `feenableexcept` and `fetestexcept` went through
+runtime natives. libopenmpt's tests and oneTBB's FPU-state capture hit this.
+The fork now uses the MXCSR builtins, `zmath_getcw`/`zmath_setcw` and the
+register form of `fnstsw`; the x87 status word cannot be loaded, so flags
+that `fldenv` would put there go to MXCSR instead (`checks.fenv`).
+`sysdeps/x86/fpu/fenv_private.h` used the same instructions for the x87 hold
+and restore paths and is fixed too.
+
+## A pointer at a misaligned offset in a constant crashed the compiler
+
+```c
+struct ext { unsigned len; void *ptr; } __attribute__((packed));
+static char buf[4];
+const struct ext e = { sizeof buf, buf };
+```
+
+failed `Assertion '!(Offset % WordSize)'` in `computeConstantRelocations`
+(BlueZ's MIDI test, through ALSA's `snd_seq_ev_ext`). The fork falls back to
+the run-time initializer, which stores the pointer like any misaligned store
+(`checks.packed-pointer`). Loading `e.ptr` later still traps, as misaligned
+pointer loads do.
+
+## Linker-generated `__start_`/`__stop_` section symbols are not visible
+
+Code that collects descriptors in a named section and walks it with
+`__start_SECTION`/`__stop_SECTION` fails to link: the references become
+`pizlonated___start_SECTION`, which the linker does not define. ELL, BlueZ
+(`patches/bluez-no-debug-section.patch`) and weston's test runner use this
+pattern; the ports disable pattern-selected debug output or register the
+entries from constructors.
+
+## Custom allocators and pointer tagging lose capabilities
+
+oneTBB's tbbmalloc carves objects out of raw mmap chunks, and its
+`queuing_rw_mutex` sets a flag bit in queue pointers kept in
+`std::atomic<uintptr_t>`. PulseAudio's `pa_atomic_ptr_t` also stored pointers
+as `uintptr_t`. These are expected Fil-C porting work rather than bugs; the
+ports build without tbbmalloc and keep the pointers in pointer-typed atomics,
+setting tag bits with pointer arithmetic.
