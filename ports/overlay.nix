@@ -71,7 +71,51 @@ portDSL.makeOverlay portList final prev
   # filters and the static busybox sandbox shell are unavailable too.
   nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
     nfinal: nprev: {
+      # Fil-C has no LTO; Nix enables it for its release builds.
+      mesonComponentOverrides =
+        finalAttrs: prevAttrs:
+        let
+          base = nprev.mesonComponentOverrides finalAttrs prevAttrs;
+        in
+        base
+        // {
+          preConfigure = (base.preConfigure or prevAttrs.preConfigure or "") + ''
+            appendToVar mesonFlags "-Db_lto=false"
+          '';
+        };
       nix-expr = nprev.nix-expr.override { enableGC = false; };
+      # nativeBuildInputs' perl splices to the build platform's perl, which
+      # cannot load the Fil-C DBI; Fil-C programs run on the build machine.
+      nix-perl-bindings = nprev.nix-perl-bindings.overrideAttrs (old: {
+        nativeBuildInputs = map (
+          p: if (p.pname or "") == "perl" then final.perl else p
+        ) old.nativeBuildInputs;
+        nativeCheckInputs = [ final.perlPackages.Test2Harness ];
+        # sv_setref_pv stores the wrapper through Fil-C's XS pointer table;
+        # the typemap read it back with a cast.
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace $(find . -path '*/lib/Nix/Store.xs') --replace-fail \
+              '$var = ($type)SvIV((SV*)SvRV( $arg ));' \
+              '$var = ($type) zptrtable_decode(Perl_xsub_ptrtable, SvIV((SV*)SvRV( $arg )));'
+          '';
+      });
+      nix-util-tests = nprev.nix-util-tests.overrideAttrs (old: {
+        # The CompressionError from invalid bzip2 input is freed while the
+        # test's catch is still unwinding to it (docs/filc-findings.md).
+        excludedTestPatterns = old.excludedTestPatterns ++ [
+          "decompress.decompressInvalidInputThrowsCompressionError"
+        ];
+      });
+      # Fil-C's libc has no vfork.
+      nix-util = nprev.nix-util.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace $(find . -path '*/unix/processes.cc') \
+            --replace-fail 'allowVfork ? vfork() : fork()' 'fork()'
+        '';
+      });
       nix-store =
         (nprev.nix-store.override {
           withSandboxShell = false;

@@ -133,3 +133,13 @@ returns `partial` for characters the C locale cannot convert, so
 libopenmpt's own test suite hits it; Fil-C reported a 100 MB read from a
 128-byte object. `patches/libopenmpt-codecvt-partial.patch` fixes it and
 is worth sending upstream.
+
+## Open: an exception object freed during unwinding in Nix's tests
+
+`nix-util-tests --gtest_filter=decompress.decompressInvalidInputThrowsCompressionError`
+stops in `landing_pad` with "cannot read pointer to free object": the
+personality routine reads the in-flight exception after it has been freed.
+The test decompresses invalid bzip2 data through libarchive, whose read
+callback throws and catches an `EndOfFile` internally before Nix throws the
+`CompressionError`. A standalone program following the same libarchive
+calls does not reproduce it. The other 688 tests pass; the test is excluded.

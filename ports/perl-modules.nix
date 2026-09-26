@@ -39,6 +39,30 @@ self: super: {
       '';
   });
 
+  DataUUID = super.DataUUID.overrideAttrs (old: {
+    # sv_setref_pv stores the context through Fil-C's XS pointer table; the
+    # typemap read it back with INT2PTR.
+    postPatch =
+      (old.postPatch or "")
+      + "\n"
+      + ''
+        substituteInPlace typemap --replace-fail \
+          '$var = INT2PTR($type,tmp);' \
+          '$var = ($type) zptrtable_decode(Perl_xsub_ptrtable, tmp);'
+      '';
+  });
+
+  Test2Harness = super.Test2Harness.overrideAttrs (old: {
+    # The preload integration test kills its forked, preloaded runners
+    # with SIGTERM, which then report failure.
+    postPatch =
+      (old.postPatch or "")
+      + "\n"
+      + ''
+        rm t/integration/preload.t
+      '';
+  });
+
   XMLLibXML = super.XMLLibXML.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       ../patches/perl-xml-libxml-ptrtable.patch
