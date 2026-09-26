@@ -1077,14 +1077,11 @@ in
   ])
 
   (for pkgs.weston [
-    # GitLab's generated archives are not reproducible; use the release
-    # tarball.
-    (src "12.0.5" "sha256-UJKoruwDnD4iX5OAh9BbxTDeIvW/7wKmVk0bQu/7Mqs=" (
-      v:
-      "https://gitlab.freedesktop.org/wayland/weston/-/releases/${v}/downloads/weston-${v}.tar.xz"
-    ))
-    (patch ./ports/patch/weston-12.0.5.patch)
-    (skipPatch "25ed1.patch")
+    # The test runner collected its tests from a linker section; register
+    # them from constructors instead (upstream Fil-C's 12.0.5 patch).
+    (patch ./ports/patch/weston-15.0.1.patch)
+    # Nixpkgs' Neat VNC 1.0 update; the VNC backend is off.
+    (skipPatch "8a1c91e771312d1e0d0cd92495ef717402784dae.patch")
     (arg { pipewireSupport = false; })
     (arg { rdpSupport = false; })
     (arg { remotingSupport = false; })

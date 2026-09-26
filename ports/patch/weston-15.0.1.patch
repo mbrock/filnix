@@ -1,0 +1,84 @@
+--- a/tests/weston-test-runner.c
++++ b/tests/weston-test-runner.c
+@@ -52,7 +52,8 @@
+  * \defgroup testharness_private Test harness private
+  */
+ 
+-extern const struct weston_test_entry __start_test_section, __stop_test_section;
++struct weston_test_entry *first_test;
++size_t num_tests;
+ 
+ struct weston_test_run_info {
+ 	char name[512];
+@@ -162,7 +163,7 @@
+ {
+ 	const struct weston_test_entry *t;
+ 
+-	for (t = &__start_test_section; t < &__stop_test_section; t++)
++	for (t = first_test; t; t = t->next)
+ 		if (strcmp(t->name, name) == 0)
+ 			return t;
+ 
+@@ -215,7 +216,7 @@
+ 	}
+ 
+ 	printf("Test names:\n");
+-	for (t = &__start_test_section; t < &__stop_test_section; t++) {
++	for (t = first_test; t; t = t->next) {
+ 		printf("  %s\n", t->name);
+ 		if (t->n_elements > 1)
+ 			printf("    with array of %d cases\n", t->n_elements);
+@@ -513,9 +514,13 @@
+ 		harness->data.tests_count = 1;
+ 		harness->data.case_index = harness->case_ind;
+ 	} else {
+-		harness->data.tests = &__start_test_section;
+-		harness->data.tests_count =
+-			&__stop_test_section - &__start_test_section;
++		struct weston_test_entry *array = malloc(sizeof(struct weston_test_entry) * num_tests);
++		struct weston_test_entry *t;
++		size_t index;
++		for (index = 0, t = first_test; t; index++, t = t->next)
++			array[index] = *t;
++		harness->data.tests = array;
++		harness->data.tests_count = num_tests;
+ 		harness->data.case_index = -1;
+ 	}
+ 
+--- a/tests/weston-test-runner.h
++++ b/tests/weston-test-runner.h
+@@ -59,8 +59,12 @@
+ 	const void *table_data;
+ 	size_t element_size;
+ 	int n_elements;
++	struct weston_test_entry *next;
+ } __attribute__ ((aligned (64)));
+ 
++extern struct weston_test_entry *first_test;
++extern size_t num_tests;
++
+ #define TEST_BEGIN(name, arg)						\
+ 	static enum test_result_code					\
+ 	name(struct wet_testsuite_data *_wet_suite_data, arg)
+@@ -73,11 +77,17 @@
+ 	static enum test_result_code					\
+ 	func(struct wet_testsuite_data *, void *);			\
+ 									\
+-	const struct weston_test_entry test##name			\
+-		__attribute__ ((used, section ("test_section"))) =	\
++	static void register_test##name(void) __attribute__((constructor)); \
++	static void register_test##name(void)				\
+ 	{								\
+-		#name, func, data, size, n_elem				\
+-	};
++		struct weston_test_entry *test =			\
++			malloc(sizeof(struct weston_test_entry));	\
++		*test = (struct weston_test_entry){			\
++			#name, func, data, size, n_elem, first_test	\
++		};							\
++		first_test = test;					\
++		num_tests++;						\
++	}
+ 
+ #define NO_ARG_TEST(name)						\
+ 	TEST_COMMON(wrap##name, name, NULL, 0, 1)			\
