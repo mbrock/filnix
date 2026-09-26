@@ -497,6 +497,36 @@ in
 
   (for pkgs.zix [ (patch ./patches/zix-ring-mlock.patch) ])
 
+  (for pkgs.libpulseaudio [
+    # pa_atomic_ptr_t kept pointers in a uintptr_t, dropping their
+    # capabilities (pa_once's mutex came back null).
+    (patch ./patches/pulseaudio-atomic-ptr.patch)
+    (use (old: {
+      # PA_WARN_REFERENCE emits .gnu.warning sections as module asm, which
+      # FilPizlonator does not accept; drop the link-time warnings.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/pulsecore/macro.h --replace-fail \
+          '#if defined(__GNUC__) && defined(__ELF__)' '#if 0'
+        # The cc wrapper only hands --version-script (two dashes) to the
+        # Fil-C driver, which prefixes the exported names with pizlonated_.
+        substituteInPlace src/pulse/meson.build --replace-fail \
+          "'-Wl,-version-script='" "'-Wl,--version-script='"
+        # Report no MMX/SSE, so the inline-asm mixing and volume routines
+        # stay unused.
+        substituteInPlace src/pulsecore/cpu-x86.c --replace-fail \
+          '/* get standard level */' 'return;'
+        # Fil-C's abort() raises SIGTRAP, and SIGBUS handlers are refused.
+        sed -i 's/\(test_replace_fail_[0-9]\), SIGABRT/\1, SIGTRAP/' \
+          src/tests/core-util-test.c
+        sed -i "/\[ 'sigbus-test', 'sigbus-test.c',/,+1d" src/tests/meson.build
+      '';
+      # The mix and remap benchmarks outlast their 120 s check timeout.
+      env = (old.env or { }) // {
+        CK_TIMEOUT_MULTIPLIER = "5";
+      };
+    }))
+  ])
+
   (for pkgs.libcamera [
     # LTTng-UST tracepoints; the tracer's own tests exercise signal and
     # namespace machinery Fil-C does not provide.
