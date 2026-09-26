@@ -461,6 +461,26 @@ in
   ])
   (for pkgs.libaom [ (addCMakeFlag "-DAOM_TARGET_CPU=generic") ])
 
+  (for pkgs.ell [
+    (patch ./patches/ell-no-debug-section.patch)
+    # test-ecdh wraps l_getrandom with ld --wrap, whose __real_ symbol
+    # Fil-C does not rename.
+    (skipCheck "ld --wrap")
+  ])
+
+  (for pkgs.bluez [
+    # The installed test scripts need dbus-python, whose dbus-glib assumes
+    # integer GTypes.
+    (arg { installTests = false; })
+  ])
+
+  (for pkgs.liburcu [
+    # Use compiler atomics instead of the x86 inline assembly ones.
+    (configure "--enable-compiler-atomic-builtins")
+    # The regression tests use membarrier(2), which the runtime rejects.
+    (skipCheck "membarrier")
+  ])
+
   (for pkgs.mbedtls [
     (patch ./patches/mbedtls-test-cli-crt-ec-der-len.patch)
     # AES-NI, PadLock and bignum inline assembly pass pointers to asm.
@@ -836,6 +856,11 @@ in
   (for pkgs.libhandy [
     (patch ./patches/libhandy-destroy-visible-child.patch)
     (use (old: {
+      # librsvg is Rust; there is no Rust target for Fil-C. The icons are
+      # pre-rendered below.
+      checkInputs = builtins.filter (
+        dep: !(pkgs.lib.hasInfix "librsvg" (dep.name or ""))
+      ) (old.checkInputs or [ ]);
       postPatch = (old.postPatch or "") + ''
         # The target has no Rust SVG loader. Keep symbolic icon recoloring by
         # embedding GTK's encoded PNG format, generated with native tools.
@@ -947,7 +972,12 @@ in
   ])
 
   (for pkgs.weston [
-    (pin "12.0.5" "sha256-UJKoruwDnD4iX5OAh9BbxTDeIvW/7wKmVk0bQu/7Mqs=")
+    # GitLab's generated archives are not reproducible; use the release
+    # tarball.
+    (src "12.0.5" "sha256-UJKoruwDnD4iX5OAh9BbxTDeIvW/7wKmVk0bQu/7Mqs=" (
+      v:
+      "https://gitlab.freedesktop.org/wayland/weston/-/releases/${v}/downloads/weston-${v}.tar.xz"
+    ))
     (patch ./ports/patch/weston-12.0.5.patch)
     (skipPatch "25ed1.patch")
     (arg { pipewireSupport = false; })
@@ -973,6 +1003,18 @@ in
   (for pkgs.pipewire [
     # PipeWire links libsystemd; it does not need the service manager's programs.
     (arg { systemd = final.systemdLibs; })
+    # ROC's build takes ragel (and so colm and a target GCC) from the
+    # host package set.
+    (arg { rocSupport = false; })
+    # ModemManager's libmbim, libqmi and libqrtr generate GType code that
+    # assumes integer GTypes; PipeWire only uses it for HFP modem calls.
+    (arg {
+      modemmanager = final.modemmanager.overrideAttrs (old: {
+        meta = old.meta // {
+          badPlatforms = [ prev.stdenv.hostPlatform.system ];
+        };
+      });
+    })
   ])
 
   (for pkgs.libglvnd [
@@ -1446,7 +1488,21 @@ in
   }
 
   (for pkgs.quickjs [
-    (pin "2024-02-14" "sha256-PEv4+JW/pUvrSGyNEhgRJ3Hs/FrDvhA2hR70FWghLgM=")
+    # bellard.org no longer serves the 2024-02-14 tarball. Upstream Fil-C's
+    # port is based on this commit of the GitHub mirror.
+    (use {
+      version = "2024-02-14";
+      src = pkgs.fetchFromGitHub {
+        owner = "bellard";
+        repo = "quickjs";
+        rev = "6e2e68fd0896957f92eb6c242a2e048c1ef3cae0";
+        hash = "sha256-ZHRRQ1uO3esbn7EUJ+zBizNeRMB54Ktn2Vo9zzmhKww=";
+      };
+      # This snapshot predates the doc/version.texi rule Nixpkgs uses to
+      # build the Info manual.
+      postBuild = "";
+      postInstall = "mkdir -p $info";
+    })
     (patch ./ports/patch/quickjs.patch)
     (skipCheck "some tests fail")
   ])
