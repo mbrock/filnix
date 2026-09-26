@@ -54,6 +54,15 @@ portDSL.makeOverlay portList final prev
           ./patch/gst-plugins-base-1.26.11.patch
         ];
       });
+      gst-plugins-good = gprev.gst-plugins-good.overrideAttrs (old: {
+        # Pointer GTypes: pointer once-inits, switches on uintptr_t, and
+        # signal parameters without G_SIGNAL_TYPE_STATIC_SCOPE bits.
+        patches = (old.patches or [ ]) ++ [
+          ../patches/gst-plugins-good-gtype.patch
+        ];
+        # The deinterlacer's x86 assembly.
+        mesonFlags = old.mesonFlags ++ [ "-Dasm=disabled" ];
+      });
     }
   );
 
