@@ -50,26 +50,30 @@ as GCC does, but FilPizlonator only accepts flag-setting instructions when
 the source also names `"cc"`. Otherwise-valid code such as oneTBB's
 `__asm__("bsr %1,%0" : "=r"(pos) : "r"(n))` is rejected at run time.
 
-## A live Opus decoder is corrupted at -O0 while the collector runs
+## Local pointer arrays at -O0 were not all GC roots
 
 libopus 1.6.1's `test_opus_decode` and `test_opus_encode`, built as Nix builds
-them (meson `--buildtype=plain`, so `-O0`), fail nondeterministically: the
-`channels` field of one decoder becomes 0 after decoding with another. Fil-C
-cannot write across objects, so the decoder's memory must have been reused.
-It reproduces with both the September 14 pin and the current fork, and only
-when the *test program* is unoptimized; the same library passes with the
-tests built at -O1 or higher. With `FUGC_MIN_THRESHOLD=100000000000` it no
-longer fails, and with `FUGC_VERIFY=1` the first `opus_decode` reports the
-live decoder copy as a free object (and the verifier reports "nonzero word"
-in a mark-bits page). Reproduce with opus 1.6.1:
+them (meson `--buildtype=plain`, so `-O0`), freed and reused live decoders.
+The cause was in FilPizlonator's frame layout: a local that is accessed
+at computed offsets gets an explicit stack aux, whose address goes in a
+frame "lowers" slot so the collector can scan it. Slots were assigned by
+interference, but edges were only added at `llvm.lifetime.start`, and
+clang emits no lifetime markers at -O0. Every such local then shared one
+slot, and the collector saw only the stack aux of whichever local was
+initialized last. With two local pointer arrays, the objects held by the
+first were collected (`checks.gc-local-arrays`):
 
-```sh
-CC=filcc meson setup b --buildtype=plain -Dintrinsics=disabled -Drtcd=disabled
-ninja -C b tests/test_opus_decode
-LD_LIBRARY_PATH=b/src b/tests/test_opus_decode 1770345560
+```c
+int *objs[10], *other[10];
+for (int t = 0; t < 10; t++) { objs[t] = malloc(20000); objs[t][2] = t; other[t] = 0; }
+/* allocate a lot; objs[t][2] reads back as 0 */
 ```
 
-libopus skips its check for now.
+The fork makes each always-live explicit local interfere with every other
+one. This affected every meson package in Nixpkgs, since `plain` means no
+`-O`. Clues on the way: making the test's `dec` array static, or letting its
+address escape, hid the bug, and so did deleting later code in the function
+that never ran before the crash.
 
 ## `<fenv.h>` stopped the program
 
