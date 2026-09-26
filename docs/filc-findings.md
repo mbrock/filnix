@@ -143,3 +143,14 @@ The test decompresses invalid bzip2 data through libarchive, whose read
 callback throws and catches an `EndOfFile` internally before Nix throws the
 `CompressionError`. A standalone program following the same libarchive
 calls does not reproduce it. The other 688 tests pass; the test is excluded.
+
+## Found by Fil-C: pointer rebasing across buffers in FFmpeg's flashsv2
+
+`libavcodec/flashsv2enc.c` copies its frame blocks to key blocks and rebases
+their pointers with `key_blocks[i].enc += (s->keybuffer - s->encbuffer)`. The
+address lands in `keybuffer`, but the pointer is still derived from
+`encbuffer`, which is undefined behaviour in C; Fil-C refused the read
+(`fate-vsynth1-flashsv2`). The port writes
+`keybuffer + (enc - encbuffer)`. FFmpeg 8.1 also stores its `av_log`
+callback in an `atomic_uintptr_t`, dropping the function pointer's
+capability.
