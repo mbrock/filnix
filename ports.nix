@@ -484,6 +484,17 @@ in
 
   (for pkgs.wavpack [ (configure "--disable-asm") ])
 
+  (for pkgs.libopus [
+    (patch ./ports/patch/opus-1.5.2.patch)
+    # Without the x86 intrinsics and their run-time CPU dispatch.
+    (addMesonFlag "-Dintrinsics=disabled")
+    (addMesonFlag "-Drtcd=disabled")
+    # test_opus_decode and test_opus_encode corrupt a live decoder when the
+    # tests are built without optimization; the corruption disappears when
+    # the collector never runs (docs/filc-findings.md).
+    (skipCheck "Fil-C collector issue at -O0")
+  ])
+
   (for pkgs.zix [ (patch ./patches/zix-ring-mlock.patch) ])
 
   (for pkgs.libcamera [

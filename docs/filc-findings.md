@@ -49,3 +49,24 @@ Clang marks every x86 `asm` statement as clobbering the flags (`~{flags}`),
 as GCC does, but FilPizlonator only accepts flag-setting instructions when
 the source also names `"cc"`. Otherwise-valid code such as oneTBB's
 `__asm__("bsr %1,%0" : "=r"(pos) : "r"(n))` is rejected at run time.
+
+## A live Opus decoder is corrupted at -O0 while the collector runs
+
+libopus 1.6.1's `test_opus_decode` and `test_opus_encode`, built as Nix builds
+them (meson `--buildtype=plain`, so `-O0`), fail nondeterministically: the
+`channels` field of one decoder becomes 0 after decoding with another. Fil-C
+cannot write across objects, so the decoder's memory must have been reused.
+It reproduces with both the September 14 pin and the current fork, and only
+when the *test program* is unoptimized; the same library passes with the
+tests built at -O1 or higher. With `FUGC_MIN_THRESHOLD=100000000000` it no
+longer fails, and with `FUGC_VERIFY=1` the first `opus_decode` reports the
+live decoder copy as a free object (and the verifier reports "nonzero word"
+in a mark-bits page). Reproduce with opus 1.6.1:
+
+```sh
+CC=filcc meson setup b --buildtype=plain -Dintrinsics=disabled -Drtcd=disabled
+ninja -C b tests/test_opus_decode
+LD_LIBRARY_PATH=b/src b/tests/test_opus_decode 1770345560
+```
+
+libopus skips its check for now.
