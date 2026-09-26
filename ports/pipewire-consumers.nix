@@ -58,6 +58,14 @@ in
             map (p: "${pkgs.lib.getLib p}/lib") old.buildInputs
           )}
       '';
+      # testrwlock's writer can starve behind six readers that each hold
+      # the lock for a second; nixpkgs already calls it intermittent, and
+      # it timed out on a loaded builder.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace test/CMakeLists.txt --replace-fail \
+          'add_sdl_test_executable(testrwlock SOURCES testrwlock.c NONINTERACTIVE NONINTERACTIVE_TIMEOUT 300)' \
+          'add_sdl_test_executable(testrwlock SOURCES testrwlock.c)'
+      '';
       preCheck = (old.preCheck or "") + ''
         export FUGC_THREADS="$NIX_BUILD_CORES"
       '';
