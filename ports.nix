@@ -462,21 +462,33 @@ in
   (for pkgs.libaom [ (addCMakeFlag "-DAOM_TARGET_CPU=generic") ])
 
   (for pkgs.onetbb [
+    # tbbmalloc carves objects out of raw mmap chunks, so its pointers carry
+    # no capability; TBB falls back to malloc without it.
+    (addCMakeFlag "-DTBBMALLOC_BUILD=OFF")
+    # - queuing_rw_mutex tags its queue pointers in std::atomic<uintptr_t>;
+    #   keep them in std::atomic<char*> and set the tag by pointer arithmetic.
+    # - Clang claims __GNUC__ 4, so TBB picked a "lock; notb" fence and
+    #   stmxcsr/fstcw for the FPU state, inline asm with memory operands
+    #   that Fil-C refuses; use std::atomic_thread_fence and <fenv.h>.
+    (patch ./patches/onetbb-fil-c.patch)
     (use (old: {
       postPatch =
         (old.postPatch or "")
         + "\n"
         + ''
-          # tbbmalloc computes a bit position with bsr inline assembly that
-          # has no "cc" clobber, which Fil-C requires (docs/filc-findings.md).
-          substituteInPlace src/tbbmalloc/frontend.cpp --replace-fail \
-            '__asm__ ("bsr %1,%0" : "=r"(pos) : "r"(n));' \
-            'pos = 31 - __builtin_clz(n);'
           # The tests use doctest, whose signal handling needs sigaltstack.
           sed -i '/#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN/a #define DOCTEST_CONFIG_NO_POSIX_SIGNALS' \
             test/common/test.h
           grep -q DOCTEST_CONFIG_NO_POSIX_SIGNALS test/common/test.h
         '';
+      disabledTests = (old.disabledTests or [ ]) ++ [
+        # They expect allocations of nearly 2^64 bytes to throw bad_alloc;
+        # Fil-C stops the program instead.
+        "test_allocators"
+        "conformance_allocators"
+        # Its own cpuid inline asm does not declare the clobbered ecx.
+        "test_mutex"
+      ];
     }))
   ])
 

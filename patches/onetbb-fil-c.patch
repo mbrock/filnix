@@ -213,3 +213,15 @@ diff -ru tbb-a/src/tbb/queuing_rw_mutex.cpp tbb/src/tbb/queuing_rw_mutex.cpp
          __TBB_ASSERT( s.my_state & STATE_COMBINED_UPGRADING, "wrong state at upgrade waiting_retry" );
          __TBB_ASSERT( me==&s, nullptr );
          ITT_NOTIFY(sync_prepare, s.my_mutex);
+diff -ru tbb-a/test/common/fp_control.h tbb/test/common/fp_control.h
+--- a/test/common/fp_control.h
++++ b/test/common/fp_control.h
+@@ -20,7 +20,7 @@
+ #include "common/test.h"
+ #include "oneapi/tbb/detail/_machine.h"
+ 
+-#if ( __TBB_x86_32 || __TBB_x86_64 )
++#if ( __TBB_x86_32 || __TBB_x86_64 ) && !defined(__FILC__)
+ 
+ const int 
+ #if _WIN32 || _WIN64
