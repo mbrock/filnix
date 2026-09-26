@@ -574,6 +574,9 @@ in
     # The installed test scripts need dbus-python, whose dbus-glib assumes
     # integer GTypes.
     (arg { installTests = false; })
+    # BlueZ builds against the copy of ELL's headers in its tarball.
+    (patch ./patches/ell-no-debug-section.patch)
+    (patch ./patches/bluez-no-debug-section.patch)
   ])
 
   (for pkgs.liburcu [
