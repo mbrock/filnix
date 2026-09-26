@@ -486,6 +486,16 @@ in
 
   (for pkgs.zix [ (patch ./patches/zix-ring-mlock.patch) ])
 
+  (for pkgs.libical [
+    # The libical-glib install check runs PyGObject on the build platform,
+    # which the Fil-C Python port's package overrides (pyports.nix) also
+    # reach and break.
+    (use {
+      doInstallCheck = false;
+      nativeInstallCheckInputs = [ ];
+    })
+  ])
+
   (for pkgs.libshout [
     # configure only finds -lssl, but libshout also calls libcrypto directly.
     (addCFlag "-Wl,-lcrypto")
