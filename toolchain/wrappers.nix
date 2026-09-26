@@ -41,6 +41,9 @@ let
         if [[ "$arg" == "-Wl,--version-script="* ]]; then
           # Form 1: -Wl,--version-script=file
           new_args+=("--version-script=''${arg#-Wl,--version-script=}")
+        elif [[ "$arg" == "-Wl,-version-script="* ]]; then
+          # Form 1 with one dash, as in PulseAudio
+          new_args+=("--version-script=''${arg#-Wl,-version-script=}")
         elif [[ "$arg" == "-Wl,--version-script,"* ]]; then
           # Form 2: -Wl,--version-script,file
           new_args+=("--version-script=''${arg#-Wl,--version-script,}")

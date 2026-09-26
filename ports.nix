@@ -507,10 +507,6 @@ in
       postPatch = (old.postPatch or "") + ''
         substituteInPlace src/pulsecore/macro.h --replace-fail \
           '#if defined(__GNUC__) && defined(__ELF__)' '#if 0'
-        # The cc wrapper only hands --version-script (two dashes) to the
-        # Fil-C driver, which prefixes the exported names with pizlonated_.
-        substituteInPlace src/pulse/meson.build --replace-fail \
-          "'-Wl,-version-script='" "'-Wl,--version-script='"
         # Report no MMX/SSE, so the inline-asm mixing and volume routines
         # stay unused.
         substituteInPlace src/pulsecore/cpu-x86.c --replace-fail \
