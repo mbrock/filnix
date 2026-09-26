@@ -38,4 +38,10 @@ self: super: {
         grep -q "Fil-C reserves SIGSEGV" t/test_alien.t
       '';
   });
+
+  XMLLibXML = super.XMLLibXML.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [
+      ../patches/perl-xml-libxml-ptrtable.patch
+    ];
+  });
 }

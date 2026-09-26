@@ -461,6 +461,36 @@ in
   ])
   (for pkgs.libaom [ (addCMakeFlag "-DAOM_TARGET_CPU=generic") ])
 
+  (for pkgs.onetbb [
+    (use (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          # tbbmalloc computes a bit position with bsr inline assembly that
+          # has no "cc" clobber, which Fil-C requires (docs/filc-findings.md).
+          substituteInPlace src/tbbmalloc/frontend.cpp --replace-fail \
+            '__asm__ ("bsr %1,%0" : "=r"(pos) : "r"(n));' \
+            'pos = 31 - __builtin_clz(n);'
+          # The tests use doctest, whose signal handling needs sigaltstack.
+          sed -i '/#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN/a #define DOCTEST_CONFIG_NO_POSIX_SIGNALS' \
+            test/common/test.h
+          grep -q DOCTEST_CONFIG_NO_POSIX_SIGNALS test/common/test.h
+        '';
+    }))
+  ])
+
+  (for pkgs.libblake3 [ (addCMakeFlag "-DBLAKE3_SIMD_TYPE=none") ])
+
+  (for pkgs.wavpack [ (configure "--disable-asm") ])
+
+  (for pkgs.zix [ (patch ./patches/zix-ring-mlock.patch) ])
+
+  (for pkgs.libshout [
+    # configure only finds -lssl, but libshout also calls libcrypto directly.
+    (addCFlag "-Wl,-lcrypto")
+  ])
+
   (for pkgs.ell [
     (patch ./patches/ell-no-debug-section.patch)
     # test-ecdh wraps l_getrandom with ld --wrap, whose __real_ symbol
@@ -1024,6 +1054,9 @@ in
   (for pkgs.libinput [
     (pin "1.29.1" "sha256-4BVHu9370s5hqugS/Lj/JEXwXXmmVRSMfjkvqpI9aq8=")
     (patch ./ports/patch/libinput-1.29.1.patch)
+    # 1.29 predates the Lua plugin option Nixpkgs 26.05 sets.
+    (arg { luaSupport = false; })
+    (removeMesonFlag "-Dlua-plugins=disabled")
     (arg { libwacom = pkgs.hello; })
     (addMesonFlag "-Dlibwacom=false")
     (addMesonFlag "-Ddebug-gui=false")
@@ -1077,6 +1110,14 @@ in
     # (sigaltstack) and break into the debugger with llvm.debugtrap; Fil-C
     # supports neither. The library is header-only.
     (skipCheck "sigaltstack and debugtrap")
+  ])
+
+  # Their suites use doctest, whose signal handling needs sigaltstack.
+  (for pkgs.nlohmann_json [
+    (addCMakeFlag "-DCMAKE_CXX_FLAGS=-DDOCTEST_CONFIG_NO_POSIX_SIGNALS")
+  ])
+  (for pkgs.toml11 [
+    (addCMakeFlag "-DCMAKE_CXX_FLAGS=-DDOCTEST_CONFIG_NO_POSIX_SIGNALS")
   ])
 
   (for pkgs.gettext [

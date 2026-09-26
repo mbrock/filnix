@@ -42,3 +42,10 @@ action, so a self-sent SIGSEGV kills the process (Alien::Build's
 doctest's self-tests use the first two, strace needs `ptrace`, and
 libseccomp's tests call `seccomp` (syscall 317). Nix is built without
 seccomp filtering.
+
+## x86 inline assembly needs an explicit "cc" clobber
+
+Clang marks every x86 `asm` statement as clobbering the flags (`~{flags}`),
+as GCC does, but FilPizlonator only accepts flag-setting instructions when
+the source also names `"cc"`. Otherwise-valid code such as oneTBB's
+`__asm__("bsr %1,%0" : "=r"(pos) : "r"(n))` is rejected at run time.

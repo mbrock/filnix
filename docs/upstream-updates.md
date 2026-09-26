@@ -27,6 +27,8 @@ core pin currently selects the `filnix` branch of
   (`checks.cxx-coroutines`).
 - SaRCAsm splitting of `;`-separated x86_64 statements (`checks.zstd-sarcasm`).
 - The sign of user glibc's `FUTEX_UNLOCK_PI` result (`checks.pthread-pi`).
+- `pthread_spin_init` on x86_64, which user glibc never defined
+  (`checks.pthread-spin`).
 
 Rebase that branch onto a newer `deluge` rather than pinning upstream
 directly until these land there. The ports pin still reads upstream.
