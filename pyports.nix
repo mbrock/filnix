@@ -35,6 +35,15 @@ in
     }))
   ])
 
+  (for "pybind11" [
+    (use {
+      # The CMake check target runs pytest with the build platform's Python,
+      # which cannot import the Fil-C test extension modules.
+      doCheck = false;
+      doInstallCheck = false;
+    })
+  ])
+
   (for "pytest-regressions" [
     (arg {
       matplotlib = null;

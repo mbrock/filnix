@@ -1,0 +1,215 @@
+diff -ru tbb-a/include/oneapi/tbb/detail/_machine.h tbb/include/oneapi/tbb/detail/_machine.h
+--- a/include/oneapi/tbb/detail/_machine.h
++++ b/include/oneapi/tbb/detail/_machine.h
+@@ -80,7 +80,7 @@
+ //--------------------------------------------------------------------------------------------------
+ 
+ static inline void atomic_fence_seq_cst() {
+-#if (__TBB_x86_64 || __TBB_x86_32) && defined(__GNUC__) && __GNUC__ < 11
++#if (__TBB_x86_64 || __TBB_x86_32) && defined(__GNUC__) && __GNUC__ < 11 && !defined(__FILC__)
+     unsigned char dummy = 0u;
+     __asm__ __volatile__ ("lock; notb %0" : "+m" (dummy) :: "memory");
+ #else
+@@ -274,7 +274,7 @@
+ #endif
+     }
+ };
+-#elif (__TBB_x86_32 || __TBB_x86_64)
++#elif (__TBB_x86_32 || __TBB_x86_64) && !defined(__FILC__)
+ // API to retrieve/update FPU control setting
+ #define __TBB_CPU_CTL_ENV_PRESENT 1
+ struct cpu_ctl_env {
+diff -ru tbb-a/include/oneapi/tbb/queuing_rw_mutex.h tbb/include/oneapi/tbb/queuing_rw_mutex.h
+--- a/include/oneapi/tbb/queuing_rw_mutex.h
++++ b/include/oneapi/tbb/queuing_rw_mutex.h
+@@ -67,8 +67,8 @@
+             my_going.store(0, std::memory_order_relaxed);
+ #if TBB_USE_ASSERT
+             my_state = 0xFF; // Set to invalid state
+-            my_next.store(reinterpret_cast<uintptr_t>(reinterpret_cast<void*>(-1)), std::memory_order_relaxed);
+-            my_prev.store(reinterpret_cast<uintptr_t>(reinterpret_cast<void*>(-1)), std::memory_order_relaxed);
++            my_next.store(reinterpret_cast<char*>(~uintptr_t(0)), std::memory_order_relaxed);
++            my_prev.store(reinterpret_cast<char*>(~uintptr_t(0)), std::memory_order_relaxed);
+ #endif /* TBB_USE_ASSERT */
+         }
+ 
+@@ -115,8 +115,8 @@
+         queuing_rw_mutex* my_mutex;
+ 
+         //! The 'pointer' to the previous and next competitors for a mutex
+-        std::atomic<uintptr_t> my_prev;
+-        std::atomic<uintptr_t> my_next;
++        std::atomic<char*> my_prev;
++        std::atomic<char*> my_next;
+ 
+         using state_t = unsigned char ;
+ 
+diff -ru tbb-a/src/tbb/queuing_rw_mutex.cpp tbb/src/tbb/queuing_rw_mutex.cpp
+--- a/src/tbb/queuing_rw_mutex.cpp
++++ b/src/tbb/queuing_rw_mutex.cpp
+@@ -37,32 +37,35 @@
+ template<typename T>
+ class tricky_atomic_pointer {
+ public:
++    // The pointers live in std::atomic<char*> and the flag is set with
++    // pointer arithmetic, so that they keep their Fil-C capabilities.
+     using word = uintptr_t;
++    using slot = std::atomic<char*>;
+ 
+-    static T* fetch_add( std::atomic<word>& location, word addend, std::memory_order memory_order ) {
++    static T* fetch_add( slot& location, word addend, std::memory_order memory_order ) {
+         return reinterpret_cast<T*>(location.fetch_add(addend, memory_order));
+     }
+ 
+-    static T* exchange( std::atomic<word>& location, T* value, std::memory_order memory_order ) {
+-        return reinterpret_cast<T*>(location.exchange(reinterpret_cast<word>(value), memory_order));
++    static T* exchange( slot& location, T* value, std::memory_order memory_order ) {
++        return reinterpret_cast<T*>(location.exchange(reinterpret_cast<char*>(value), memory_order));
+     }
+ 
+-    static T* compare_exchange_strong( std::atomic<word>& obj, const T* expected, const T* desired, std::memory_order memory_order ) {
+-        word expd = reinterpret_cast<word>(expected);
+-        obj.compare_exchange_strong(expd, reinterpret_cast<word>(desired), memory_order);
++    static T* compare_exchange_strong( slot& obj, const T* expected, const T* desired, std::memory_order memory_order ) {
++        char* expd = reinterpret_cast<char*>(const_cast<T*>(expected));
++        obj.compare_exchange_strong(expd, reinterpret_cast<char*>(const_cast<T*>(desired)), memory_order);
+         return reinterpret_cast<T*>(expd);
+     }
+ 
+-    static void store( std::atomic<word>& location, const T* value, std::memory_order memory_order ) {
+-        location.store(reinterpret_cast<word>(value), memory_order);
++    static void store( slot& location, const T* value, std::memory_order memory_order ) {
++        location.store(reinterpret_cast<char*>(const_cast<T*>(value)), memory_order);
+     }
+ 
+-    static T* load( std::atomic<word>& location, std::memory_order memory_order ) {
++    static T* load( slot& location, std::memory_order memory_order ) {
+         return reinterpret_cast<T*>(location.load(memory_order));
+     }
+ 
+-    static void spin_wait_while_eq(const std::atomic<word>& location, const T* value) {
+-        tbb::detail::d0::spin_wait_while_eq(location, reinterpret_cast<word>(value) );
++    static void spin_wait_while_eq(const slot& location, const T* value) {
++        tbb::detail::d0::spin_wait_while_eq(location, reinterpret_cast<char*>(const_cast<T*>(value)) );
+     }
+ 
+     T* & ref;
+@@ -70,10 +73,14 @@
+     tricky_atomic_pointer(const tricky_atomic_pointer&) = delete;
+     tricky_atomic_pointer& operator=(const tricky_atomic_pointer&) = delete;
+     T* operator&( const word operand2 ) const {
+-        return reinterpret_cast<T*>( reinterpret_cast<word>(ref) & operand2 );
++        char* p = reinterpret_cast<char*>(ref);
++        word w = reinterpret_cast<word>(p);
++        return reinterpret_cast<T*>( p + ((w & operand2) - w) );
+     }
+     T* operator|( const word operand2 ) const {
+-        return reinterpret_cast<T*>( reinterpret_cast<word>(ref) | operand2 );
++        char* p = reinterpret_cast<char*>(ref);
++        word w = reinterpret_cast<word>(p);
++        return reinterpret_cast<T*>( p + ((w | operand2) - w) );
+     }
+ };
+ 
+@@ -162,8 +169,8 @@
+         // Must set all fields before the exchange, because once the
+         // exchange executes, *this becomes accessible to other threads.
+         s.my_mutex = &m;
+-        s.my_prev.store(0U, std::memory_order_relaxed);
+-        s.my_next.store(0U, std::memory_order_relaxed);
++        s.my_prev.store(nullptr, std::memory_order_relaxed);
++        s.my_next.store(nullptr, std::memory_order_relaxed);
+         s.my_going.store(0U, std::memory_order_relaxed);
+         s.my_state.store(d1::queuing_rw_mutex::scoped_lock::state_t(write ? STATE_WRITER : STATE_READER), std::memory_order_relaxed);
+         s.my_internal_lock.store(RELEASED, std::memory_order_relaxed);
+@@ -238,7 +245,7 @@
+ #endif
+                 // Failed to become active reader -> need to unblock the next waiting reader first
+                 __TBB_ASSERT( s.my_state.load(std::memory_order_relaxed)==STATE_READER_UNBLOCKNEXT, "unexpected state" );
+-                spin_wait_while_eq(s.my_next, 0U, std::memory_order_acquire);
++                spin_wait_while_eq(s.my_next, nullptr, std::memory_order_acquire);
+                 /* my_state should be changed before unblocking the next otherwise it might finish
+                    and another thread can get our old state and left blocked */
+                 s.my_state.store(STATE_ACTIVEREADER, std::memory_order_relaxed);
+@@ -260,8 +267,8 @@
+ 
+         // Must set all fields before the exchange, because once the
+         // exchange executes, *this becomes accessible to other threads.
+-        s.my_prev.store(0U, std::memory_order_relaxed);
+-        s.my_next.store(0U, std::memory_order_relaxed);
++        s.my_prev.store(nullptr, std::memory_order_relaxed);
++        s.my_next.store(nullptr, std::memory_order_relaxed);
+         s.my_going.store(0U, std::memory_order_relaxed); // TODO: remove dead assignment?
+         s.my_state.store(d1::queuing_rw_mutex::scoped_lock::state_t(write ? STATE_WRITER : STATE_ACTIVEREADER), std::memory_order_relaxed);
+         s.my_internal_lock.store(RELEASED, std::memory_order_relaxed);
+@@ -299,7 +306,7 @@
+                     // this was the only item in the queue, and the queue is now empty.
+                     goto done;
+                 }
+-                spin_wait_while_eq(s.my_next, 0U, std::memory_order_relaxed);
++                spin_wait_while_eq(s.my_next, nullptr, std::memory_order_relaxed);
+                 next = tricky_pointer::load(s.my_next, std::memory_order_acquire);
+             }
+             next->my_going.store(2U, std::memory_order_relaxed); // protect next queue node from being destroyed too early
+@@ -325,7 +332,7 @@
+             } else {
+                 // next->state cannot be STATE_UPGRADE_REQUESTED
+                 __TBB_ASSERT( next->my_state.load(std::memory_order_relaxed) & (STATE_COMBINED_WAITINGREADER | STATE_WRITER), "unexpected state" );
+-                __TBB_ASSERT( !( next->my_prev.load(std::memory_order_relaxed) & FLAG ), "use of corrupted pointer!" );
++                __TBB_ASSERT( !( reinterpret_cast<uintptr_t>(next->my_prev.load(std::memory_order_relaxed)) & FLAG ), "use of corrupted pointer!" );
+                 // Guarantee that above store of 2 into next->my_going happens-before resetting of next->my_prev
+                 tricky_pointer::store(next->my_prev, nullptr, std::memory_order_release);
+                 // We are releasing the mutex
+@@ -366,9 +373,9 @@
+ 
+                 d1::queuing_rw_mutex::scoped_lock* expected = &s;
+                 if( !tricky_pointer::load(s.my_next, std::memory_order_acquire) && !s.my_mutex->q_tail.compare_exchange_strong(expected, predecessor, std::memory_order_release) ) {
+-                    spin_wait_while_eq( s.my_next, 0U, std::memory_order_acquire );
++                    spin_wait_while_eq(s.my_next, nullptr, std::memory_order_acquire );
+                 }
+-                __TBB_ASSERT( !(s.my_next.load(std::memory_order_relaxed) & FLAG), "use of corrupted pointer" );
++                __TBB_ASSERT( !(reinterpret_cast<uintptr_t>(s.my_next.load(std::memory_order_relaxed)) & FLAG), "use of corrupted pointer" );
+ 
+                 // my_next is acquired either with load or spin_wait.
+                 if(d1::queuing_rw_mutex::scoped_lock *const l_next = tricky_pointer::load(s.my_next, std::memory_order_relaxed) ) { // I->next != nil, TODO: rename to next after clearing up and adapting the n in the comment two lines below
+@@ -390,7 +397,7 @@
+                     if( !s.my_mutex->q_tail.compare_exchange_strong(expected, nullptr,
+                         std::memory_order_release, std::memory_order_relaxed) )
+                     {
+-                        spin_wait_while_eq( s.my_next, 0U, std::memory_order_relaxed );
++                        spin_wait_while_eq(s.my_next, nullptr, std::memory_order_relaxed );
+                         next = tricky_pointer::load(s.my_next, std::memory_order_acquire);
+                     } else {
+                         goto unlock_self;
+@@ -430,7 +437,7 @@
+                     return true; // Downgrade completed
+             }
+             /* wait for the next to register */
+-            spin_wait_while_eq(s.my_next, 0U, std::memory_order_relaxed);
++            spin_wait_while_eq(s.my_next, nullptr, std::memory_order_relaxed);
+             next = tricky_pointer::load(s.my_next, std::memory_order_acquire);
+         }
+ 
+@@ -468,11 +475,11 @@
+         // Publish ourselves into my_state that other UPGRADE_WAITING actors can acquire our state.
+         s.my_state.store(STATE_UPGRADE_REQUESTED, std::memory_order_release);
+     requested:
+-        __TBB_ASSERT( !(s.my_next.load(std::memory_order_relaxed) & FLAG), "use of corrupted pointer!" );
++        __TBB_ASSERT( !(reinterpret_cast<uintptr_t>(s.my_next.load(std::memory_order_relaxed)) & FLAG), "use of corrupted pointer!" );
+         acquire_internal_lock(s);
+         d1::queuing_rw_mutex::scoped_lock* expected = &s;
+         if( !s.my_mutex->q_tail.compare_exchange_strong(expected, tricky_pointer(me)|FLAG, std::memory_order_acq_rel) ) {
+-            spin_wait_while_eq( s.my_next, 0U, std::memory_order_relaxed );
++            spin_wait_while_eq(s.my_next, nullptr, std::memory_order_relaxed );
+             queuing_rw_mutex::scoped_lock * next;
+             next = tricky_pointer::fetch_add(s.my_next, FLAG, std::memory_order_acquire);
+             // While we were READER the next READER might reach STATE_UPGRADE_WAITING state.
+@@ -515,7 +522,7 @@
+             s.my_state.compare_exchange_strong(old_state, STATE_UPGRADE_WAITING, std::memory_order_release, std::memory_order_relaxed);
+         }
+     waiting:
+-        __TBB_ASSERT( !( s.my_next.load(std::memory_order_relaxed) & FLAG ), "use of corrupted pointer!" );
++        __TBB_ASSERT( !( reinterpret_cast<uintptr_t>(s.my_next.load(std::memory_order_relaxed)) & FLAG ), "use of corrupted pointer!" );
+         __TBB_ASSERT( s.my_state & STATE_COMBINED_UPGRADING, "wrong state at upgrade waiting_retry" );
+         __TBB_ASSERT( me==&s, nullptr );
+         ITT_NOTIFY(sync_prepare, s.my_mutex);
