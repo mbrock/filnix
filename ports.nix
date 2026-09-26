@@ -486,6 +486,18 @@ in
 
   (for pkgs.zix [ (patch ./patches/zix-ring-mlock.patch) ])
 
+  (for pkgs.libcamera [
+    # LTTng-UST tracepoints; the tracer's own tests exercise signal and
+    # namespace machinery Fil-C does not provide.
+    (arg { withTracing = false; })
+  ])
+
+  (for pkgs.libgudev [
+    # The tests preload umockdev, whose Vala-generated code assumes integer
+    # GTypes, and LD_PRELOAD interposition does not apply to Fil-C symbols.
+    (use { doCheck = false; })
+  ])
+
   (for pkgs.libical [
     # The libical-glib install check runs PyGObject on the build platform,
     # which the Fil-C Python port's package overrides (pyports.nix) also
