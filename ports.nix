@@ -1177,6 +1177,18 @@ in
   ])
 
   (for pkgs.pipewire [
+    # The source fixes from the core profile (packages/pipewire-core.nix).
+    (patch ./patches/pipewire-log-topics.patch)
+    (patch ./patches/pipewire-test-suites.patch)
+    (patch ./patches/pipewire-pulse-modules.patch)
+    (patch ./patches/pipewire-cpu-probe.patch)
+    (patch ./patches/pipewire-pointer-arithmetic.patch)
+    (patch ./patches/pipewire-pointer-properties.patch)
+    (patch ./patches/pipewire-test-runtime.patch)
+    # The GStreamer elements register GTypes through gsize once-inits.
+    (removeMesonFlag "-Dgstreamer")
+    (addMesonFlag "-Dgstreamer=disabled")
+    (addMesonFlag "-Dgstreamer-device-provider=disabled")
     # PipeWire links libsystemd; it does not need the service manager's programs.
     (arg { systemd = final.systemdLibs; })
     # ROC's build takes ragel (and so colm and a target GCC) from the
