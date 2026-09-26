@@ -389,15 +389,17 @@ let
       # Python aliases - python312 is explicitly named, provides both python3 and python312
       python3 = ported.python312;
       python312Packages = ported.python312.pkgs;
-      python3Packages = prev.dontRecurseIntoAttrs python312Packages;
+      python3Packages = lib.dontRecurseIntoAttrs python312Packages;
 
       # Perl package set using our ported perl
-      perl540 = ported.perl540;
-      perl = ported.perl540;
-      perl540Packages = ported.perl540.pkgs;
-      perlPackages = prev.dontRecurseIntoAttrs perl540Packages;
+      perl = ported.perl5;
+      perl5Packages = ported.perl5.pkgs;
+      perlPackages = lib.dontRecurseIntoAttrs perl5Packages;
 
-      #      perlPackages = prev.dontRecurseIntoAttrs perl540Packages;
+      # Nixpkgs' default moved to Ruby 3.4 (YJIT needs a Rust target); keep
+      # the ported 3.3, as the default was before.
+      ruby = ported.ruby_3_3;
+      rubyPackages = final.rubyPackages_3_3;
 
       # pkg-config alias
       pkg-config = prev.pkg-config.override {

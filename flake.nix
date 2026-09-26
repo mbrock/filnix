@@ -3,7 +3,7 @@
 
   inputs = {
     # Modified nixpkgs with Fil-C cross-compilation support
-    nixpkgs.url = "github:lessrest/filnixpkgs/400439b089773d3fc593b512250e283a33485de4";
+    nixpkgs.url = "github:lessrest/filnixpkgs/118d872d35b2ddbff87356e6dc407affe40032ad";
     nixpkgs.flake = false;
   };
 
@@ -46,9 +46,7 @@
         ];
 
         overlays = [
-          # (final: prev: {
-          #   inherit (import ./ports/overlay.nix pkgs final prev) glib gobject-introspection-unwrapped;
-          # })
+          (import ./ports/build-tools.nix)
         ];
       };
 
@@ -90,9 +88,6 @@
       makeLibei =
         erlang: pkgsFilc.callPackage ./packages/libei.nix { inherit erlang; };
       libei = makeLibei pkgs.erlang;
-      libei_24 = makeLibei pkgs.erlang_24;
-      libei_25 = makeLibei pkgs.erlang_25;
-      libei_26 = makeLibei pkgs.erlang_26;
       libei_27 = makeLibei pkgs.erlang_27;
       libei_28 = makeLibei pkgs.erlang_28;
 
@@ -156,17 +151,17 @@
         gnutls-tls = import ./tests/gnutls-tls.nix {
           inherit pkgs pkgsFilc;
         };
+        utf8-locale = import ./tests/locale.nix { inherit pkgsFilc; };
+        pthread-pi = import ./tests/pthread-pi.nix { inherit pkgsFilc; };
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };
         boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
-        libsoup2-runtime = import ./tests/libsoup.nix {
+        emacs-treesit = import ./tests/emacs-treesit.nix {
           inherit pkgs pkgsFilc;
-          major = 2;
         };
         libsoup3-runtime = import ./tests/libsoup.nix {
           inherit pkgs pkgsFilc;
-          major = 3;
         };
         gi-link-environment = import ./tests/gi-link-environment.nix {
           inherit pkgs pkgsFilc;
@@ -210,9 +205,6 @@
         inherit (pkgsFilc) openssl-sarcasm;
         inherit
           libei
-          libei_24
-          libei_25
-          libei_26
           libei_27
           libei_28
           ;
@@ -289,14 +281,14 @@
         };
       };
 
-      formatter.${system} = pkgs.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt;
 
       devShells.${system} = {
         default = pkgs.mkShell {
           name = "filnix-dev";
           packages = with pkgs; [
             # Nix development tools
-            nixfmt-rfc-style
+            nixfmt
             treefmt
             nixd
             nil

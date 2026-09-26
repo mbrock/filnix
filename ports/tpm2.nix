@@ -17,6 +17,19 @@ let
     patches = [ ../patches/cmocka-filc-signal-test.patch ];
     doCheck = true;
   });
+  # Nixpkgs drops the TCTI unit tests under Clang, whose mocks it cannot make
+  # work there. The pointer-preserving mocks below make them pass.
+  dropTctiTests = ''
+    sed -i '/TESTS_UNIT / {
+      /test\/unit\/tcti-swtpm/d;
+      /test\/unit\/tcti-mssim/d;
+      /test\/unit\/tcti-device/d
+    }' Makefile-test.am
+  '';
+  keepTctiTests =
+    postPatch:
+    assert pkgs.lib.hasInfix dropTctiTests postPatch;
+    builtins.replaceStrings [ dropTctiTests ] [ "" ] postPatch;
 in
 {
   tpm2-abrmd = for pkgs.tpm2-abrmd [
@@ -28,15 +41,15 @@ in
     (patch ../patches/tpm2-test-environment.patch)
     (patch ../patches/tpm2-spi-pointers.patch)
     (use (old: {
-      postPatch = (old.postPatch or "") + ''
+      postPatch = keepTctiTests old.postPatch + ''
         cp ${../toolchain/cmocka-pointer-mocks.h} test/cmocka-pointer-mocks.h
-        substituteInPlace test/unit/*.c test/integration/*.c \
-          --replace-quiet '#include <cmocka.h>' '#include "../cmocka-pointer-mocks.h"'
+        # Since 4.2 every test includes cmocka through this helper.
+        substituteInPlace test/helper/cmocka_all.h \
+          --replace-fail '#include <cmocka.h>' '#include "../cmocka-pointer-mocks.h"'
         substituteInPlace test/unit/esys-vendor.c \
-          --replace-fail '(const char*)(size_t)mock()' 'mock_ptr_type(const char *)'
-        substituteInPlace test/unit/tcti-libtpms.c \
-          --replace-fail 'check_expected_ptr(st)' 'check_expected(st)' \
-          --replace-fail 'check_expected_ptr(buf_len)' 'check_expected(buf_len)'
+          --replace-fail 'will_return_uint_always(tcti_fake_recv, (uintptr_t) __func__)' \
+            'will_return_ptr_always(tcti_fake_recv, __func__)' \
+          --replace-fail '(const char *)mock_type(uintptr_t)' 'mock_ptr_type(const char *)'
         # Preserve calls to the functions these tests interpose. The compiler
         # adapter restores their descriptor names after Fil-C's lowering.
         substituteInPlace Makefile-test.am \

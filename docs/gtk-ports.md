@@ -43,13 +43,37 @@ normally expects GLib to install them. The port fixes static inline linkage,
 new setuptools' MSVC module location, and the installed scanner's absolute ldd
 path. All 60 introspection tests pass.
 
-`ports/overlay.nix` supplies target GLib and introspection through `newScope`,
-so ordinary `callPackage` consumers also receive the matching tools. Explicit
-scope overrides win; the native package set stays unchanged. GTK3 additionally
-names gdbus-codegen, glib-genmarshal and glib-mkenums in a Meson cross file: a
-transitive native GLib otherwise wins Meson's native pkg-config lookup.
-GTK4 uses a small native Meson override whose built-in enum template emits
-pointer-valued once initialization. This does not rebuild GLib or the compiler.
+Consumers run build-platform generators, as in any Nixpkgs cross build, but
+those generators are made for their Fil-C target. `ports/build-tools.nix`
+overrides GLib, gobject-introspection and Meson only in the package set whose
+target is Fil-C (`pkgsFilc.buildPackages`). Splicing selects that set for
+`nativeBuildInputs`, so ordinary `callPackage` consumers receive these tools,
+and the native package set stays unchanged.
+
+GLib and gobject-introspection there are native twins of the ports, at the
+same versions (2.80.4 and 1.80.1). Newer generators emit APIs the target GLib
+lacks (gdbus-codegen 2.84+ calls `g_variant_builder_init_static`), and Meson
+chooses scanner options by the build GI's version. The twins apply only the
+target-neutral parts of the port patches, selected by file with `filterdiff`:
+
+- gdbus-codegen and glib-genmarshal cast GTypes through `uintptr_t`;
+- the scanner's `gdump.c` does the same, builds dumpers with debug
+  information, and links them in the build environment;
+- Meson's built-in enum template emits pointer-valued once initialization
+  (`patches/meson-gtype.patch`).
+
+The scanner compiles each dumper with the Fil-C compiler and runs it directly,
+resolving its libraries with an absolute `ldd`. The Fil-C GI port above still
+supplies the target GIRs and typelibs: the build GI propagates it to consumers
+as a target dependency, and its setup hook puts Fil-C dependencies' GIRs on
+`GI_GIR_PATH`. The scanner searches that before `XDG_DATA_DIRS`, where
+build-platform GIRs would otherwise win. `tests/gi-link-environment.nix`
+checks both.
+
+`gio-querymodules` is different: it loads the GIO modules it indexes, so it
+must be the Fil-C binary. The Fil-C GLib's setup hook gives Meson consumers a
+cross file naming its own `gio-querymodules`, which Meson prefers over the
+build GLib's. DConf, GLib networking and both GTKs use it at install time.
 
 PyGObject uses the upstream GType patch and leaves the bootstrap Python type's
 NULL metaclass initializer for `PyType_Ready` until its real metaclass exists.

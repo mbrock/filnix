@@ -1,0 +1,26 @@
+Subject: Negate the Fil-C FUTEX_UNLOCK_PI result for futex_unlock_pi
+Origin: Filnix
+Upstream-Status: Not submitted
+
+zsys_futex_unlock_pi returns the yolo glibc futex_unlock_pi result, which is
+zero or a positive errno. The user glibc's futex_unlock_pi switches on the
+negated errno of a raw syscall, so the EPERM that Linux returns for
+pthread_mutex_init's PTHREAD_PRIO_INHERIT probe reached futex_fatal_error and
+aborted the process.
+
+--- a/sysdeps/nptl/lowlevellock-futex.h
++++ b/sysdeps/nptl/lowlevellock-futex.h
+@@ -118,9 +118,11 @@
+ 		     FUTEX_OP_CLEAR_WAKE_IF_GT_ONE)
+ 
+ 
++/* The runtime returns the yolo futex_unlock_pi result: zero or a positive
++   errno. futex_unlock_pi expects the negated errno of a raw syscall.  */
+ #define lll_futex_timed_unlock_pi(futexp, private) 			\
+-  zsys_futex_unlock_pi ((volatile int *) futexp,                        \
+-                        __lll_zsys_private_arg (private))
++  (-zsys_futex_unlock_pi ((volatile int *) futexp,                      \
++                         __lll_zsys_private_arg (private)))
+ 
+ /* Like lll_futex_requeue, but pairs with lll_futex_wait_requeue_pi
+    and inherits priority from the waiter.  */

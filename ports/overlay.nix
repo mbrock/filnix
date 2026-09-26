@@ -32,19 +32,7 @@ portDSL.makeOverlay portList final prev
         );
   };
 
-  # The scanner executes C dumpers and loads a Python C extension; GLib's
-  # gdbus-codegen emits GType operations. Both must match the target GLib ABI
-  # even though they run during builds. Explicit scope overrides still win,
-  # and the native package set keeps its ordinary tools.
-  newScope =
-    extra:
-    prev.newScope (
-      {
-        gobject-introspection = final.gobject-introspection;
-        glib = final.glib;
-        # mkenums_simple embeds C templates independently of glib-mkenums.
-        meson = import ../toolchain/meson-filc.nix { inherit pkgs; };
-      }
-      // extra
-    );
+  tree-sitter = final.callPackage ./tree-sitter.nix {
+    inherit (prev) tree-sitter;
+  };
 }

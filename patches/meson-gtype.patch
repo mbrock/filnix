@@ -7,8 +7,9 @@ and use pointer once initialization even for consumers with an older GLib API
 ceiling. The private implementation can use GLib 2.80, our target baseline;
 suppress availability warnings only around the generated function. Explicit
 parenthesized calls avoid the public macro's separate availability pragma.
-This Meson variant is bound only in the Fil-C package scope. The native
-package set remains unchanged. tests/glib-enums/ exercises real generation.
+ports/build-tools.nix applies this only to the Meson whose target is Fil-C.
+The native package set remains unchanged. tests/glib-enums/ exercises real
+generation.
 
 --- a/mesonbuild/modules/gnome.py
 +++ b/mesonbuild/modules/gnome.py
