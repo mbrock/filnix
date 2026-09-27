@@ -170,6 +170,7 @@
         cxx-coroutines = import ./tests/cxx-coroutines.nix { inherit pkgsFilc; };
         pointer-tagging = import ./tests/pointer-tagging.nix { inherit pkgsFilc; };
         link-hygiene = import ./tests/link-hygiene.nix { inherit pkgsFilc; };
+        fork-regressions = import ./tests/fork-regressions.nix { inherit pkgsFilc; };
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };
