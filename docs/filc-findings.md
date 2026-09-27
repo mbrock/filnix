@@ -139,6 +139,18 @@ the run-time initializer, which stores the pointer like any misaligned store
 (`checks.packed-pointer`). Loading `e.ptr` later still traps, as misaligned
 pointer loads do.
 
+## `[[clang::annotate]]` on a function crashed the compiler
+
+An annotated function that a translation unit uses makes Clang emit
+`@llvm.global.annotations` (appending linkage, section `llvm.metadata`), and
+FilPizlonator fails `Assertion 'G.getLinkage() != GlobalValue::AppendingLinkage
+|| ...'` in `lockDownLinkage`, which only allows the ctor/dtor and used lists.
+Abseil 20260107's `ABSL_REFACTOR_INLINE` puts `[[clang::annotate("inline-me")]]`
+on the deprecated `MutexLock(Mutex*)` constructors and other inline functions,
+so protobuf, re2 and every other abseil user crashed the compiler.
+`patches/abseil-cpp-no-refactor-annotate.patch` drops the annotation; the
+pass could simply delete `llvm.global.annotations`, which codegen discards.
+
 ## Linker-generated `__start_`/`__stop_` section symbols are not visible
 
 Code that collects descriptors in a named section and walks it with
