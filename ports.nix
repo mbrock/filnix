@@ -150,6 +150,18 @@ in
   }
 
   {
+    # `abseil-cpp` is an alias of this LTS branch, so both names get the port.
+    abseil-cpp_202601 = for pkgs.abseil-cpp_202601 [
+      # Upstream Fil-C's port: Status, Cord, Mutex and BitGenRef keep
+      # pointers in integer words, which drops their capabilities.
+      (patch ./ports/patch/abseil-cpp-20260107.1.patch)
+      # [[clang::annotate]] in the public headers crashed FilPizlonator in
+      # every consumer (protobuf, re2).
+      (patch ./patches/abseil-cpp-no-refactor-annotate.patch)
+    ];
+  }
+
+  {
     QuadProgpp = for pkgs.QuadProgpp [
       (patch ./patches/quadprogpp-link-math.patch)
     ];

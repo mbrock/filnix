@@ -170,6 +170,7 @@
           inherit pkgs pkgsFilc;
         };
         boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
+        re2 = import ./tests/re2.nix { inherit pkgs pkgsFilc; };
         emacs-treesit = import ./tests/emacs-treesit.nix {
           inherit pkgs pkgsFilc;
         };
