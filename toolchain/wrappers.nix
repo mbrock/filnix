@@ -101,6 +101,27 @@ rec {
       echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
       echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
       echo "${filc-sysroot}/lib/ld-fil1-x86_64.so" > $out/nix-support/dynamic-linker
+      # libc-ldflags reach every link, also through the cc wrapper's -Wl
+      # flags, but a relocatable link (ld -r) makes an object and must not
+      # name the runtime's shared libraries.
+      cat > $out/nix-support/ld-wrapper-hook <<'EOF'
+      if (( relocatable )); then
+          filcStrip() {
+              local flag
+              filcKept=()
+              for flag in "$@"; do
+                  case "$flag" in
+                      -lpizlo | -lyoloc | -lyolom | -lc++ | -lc++abi) ;;
+                      *) filcKept+=("$flag") ;;
+                  esac
+              done
+          }
+          filcStrip ''${params+"''${params[@]}"}
+          params=(''${filcKept+"''${filcKept[@]}"})
+          filcStrip ''${extraAfter+"''${extraAfter[@]}"}
+          extraAfter=(''${filcKept+"''${filcKept[@]}"})
+      fi
+      EOF
     '';
   };
 
@@ -136,6 +157,9 @@ rec {
             out = null; # substituted by the cc-wrapper builder
             python = "${pkgs.python3}/bin/python3";
             patcher = "${./libtool-symbols.py}";
+          })
+          (pkgs.replaceVars ./header-references-hook.sh {
+            removeReferencesTo = "${pkgs.removeReferencesTo}/bin/remove-references-to";
           })
         ];
       });
