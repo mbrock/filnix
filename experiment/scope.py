@@ -16,10 +16,10 @@ INHERITED = "Depends on a derivation outside the experiment's scope"
 FILC = "x86_64-unknown-linux-gnufilc0"
 TOOLCHAIN_NAME = re.compile(
     rf"^(?:{FILC}-(?:gcc|gfortran|gnat|gccgo|gdc)"
-    # GCC built to run under Fil-C, and Go, whose runtime is not C.
-    rf"|(?:gcc|gfortran|gnat|gccgo|gdc|go)-{FILC}"
     rf"|(?:llvm|clang|compiler-rt|compiler-rt-libc|lld|mlir|libclang|clang-tools|libllvm|polly|openmp)-{FILC}"
     r")-\d"
+    # GCC built to run under Fil-C (its name puts the triple last).
+    rf"|^(?:gcc|gfortran|gnat|gccgo|gdc)-[0-9][^-]*-{FILC}$"
 )
 # V8 (Node.js) and Chromium (Electron, QtWebEngine) rely on JIT compilation,
 # pointer compression and tagged pointers; porting them is out of scope.
@@ -42,7 +42,8 @@ SHARED_MEMORY_NAME = re.compile(
     rf"^(?!.*-source)(?:postgresql|apache-httpd|nginx|nginxQuic|freenginx|angie|angieQuic"
     rf"|openresty|tengine)-{FILC}-\d"
 )
-RUSTC_NAME = re.compile(r"^rustc(?:-unwrapped)?-\d")
+# rustc and Go targeting Fil-C keep their plain names (Go's runtime is not C).
+RUSTC_NAME = re.compile(r"^(?:rustc|rustc-unwrapped|go)-\d")
 
 
 def kernel_metadata(metadata, source_file=None):
@@ -79,13 +80,13 @@ def kernel_derivation(info):
 def toolchain_derivation(name, info=None):
     """Whether a derivation is a compiler that Fil-C cannot (and need not) build.
 
-    With ``info`` (a ``nix derivation show`` record), rustc counts only when it
-    targets Fil-C; without it, the name alone decides.
+    With ``info`` (a ``nix derivation show`` record), rustc and Go count only
+    when they target Fil-C; without it, the name alone decides.
     """
     if TOOLCHAIN_NAME.match(name or ""):
         return True
     if RUSTC_NAME.match(name or ""):
-        return info is not None and f"--target={FILC}" in json.dumps(info)
+        return info is not None and FILC in json.dumps(info)
     return False
 
 
