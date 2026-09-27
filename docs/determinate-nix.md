@@ -93,4 +93,124 @@ behaviour outside Fil-C.
 The Fil-C-level findings (`RTLD_NEXT`, `syscall()`, Asio) are also in
 [filc-findings.md](filc-findings.md).
 
-BUGS
+## Bugs found in Determinate Nix
+
+### 1. Parallel evaluation mutates one shared exception from several threads
+
+**This is a real bug: a data race in the fork's parallel evaluator that
+becomes heap corruption.** When a thunk fails, `force()` stores
+`std::current_exception()` in a `Value::Failed`
+(`src/libexpr/include/nix/expr/eval-inline.hh`). Everyone who forces that
+value later gets the *same* exception object back from
+`std::rethrow_exception`. On the way up, catch sites decorate it in place:
+`forceInt`/`evalBool`'s `errorCtx`, `callFunction`'s "while calling the
+'…' builtin", `ExprSelect`, and so on all call `BaseError::addTrace`, which
+does `err.traces.push_front(...)` on the shared object. With eval-cores > 1,
+worker threads that reach the same failed thunk run those `push_front`s
+concurrently on one `std::list`, without synchronization.
+`CloneableError::throwClone` ("Useful when the exception can get modified
+when appending traces") exists for exactly this, but nothing calls it.
+
+Reproducer ([tests/determinate-nix/race3.nix](../tests/determinate-nix/race3.nix)):
+
+```nix
+{ n ? 20000 }:
+let
+  bad = builtins.throw "shared failure";
+  xs = builtins.genList (i: builtins.tryEval (builtins.add bad i)) n;
+  failures = builtins.length (builtins.filter (r: !r.success) xs);
+in
+builtins.parallel xs (builtins.seq failures (builtins.sub 0 bad))
+```
+
+```sh
+nix eval --extra-experimental-features parallel-eval --option eval-cores 8 \
+  --impure --expr 'import ./race3.nix {}'
+```
+
+- **Under Fil-C** it stops 3 runs out of 3 with a worker thread writing out
+  of bounds inside `std::list::push_front`:
+
+  ```
+  filc safety error: cannot write pointer with ptr >= upper.
+      (libnixutil.so) list:969:26: std::list<nix::Trace>::__link_nodes_at_front (inlined)
+      (libnixutil.so) list:1247:3: std::list<nix::Trace>::push_front(nix::Trace&&) (inlined)
+      (libnixutil.so) ../error.cc:32:16: nix::BaseError::addTrace(...)
+      (libnixexpr.so) ../eval.cc:898:7: nix::EvalState::addErrorTrace<...>(nix::Error&, nix::PosIdx, ...)
+      (libnixexpr.so) ../eval.cc:1746:25: nix::EvalState::callFunction(...)
+      (libnixexpr.so) ../eval.cc:1853:11: nix::ExprCall::eval(...)
+      (nix) eval-inline.hh:142:23: nix::ValueStorage<8ul, void>::force(...)
+      (libnixexpr.so) ../primops.cc:1207:15: nix::prim_tryEval(...)
+      ...
+      (libnixexpr.so) ../parallel-eval.cc:297:89: nix::prim_parallel(...)::$_0::operator()() const
+      (libnixexpr.so) ../parallel-eval.cc:114:13: nix::Executor::worker()
+  ```
+
+  Other runs report `ptr < lower` at the same place. The same panic happens
+  with no experimental feature at all: `nix eval --json --option eval-cores 8`
+  of an attribute set whose attributes share one failing thunk
+  ([race.nix](../tests/determinate-nix/race.nix)). There `value-to-json`'s
+  `parallelForceDeep` hands the attributes to the workers.
+- **Natively** there is no crash, but updates get lost. With
+  `--show-trace`, the final error prints "(N duplicate frames omitted)",
+  one frame for every thread that ever decorated the shared exception.
+  eval-cores = 1 gives 19999 every time; eval-cores = 8 gave 19823, 19792,
+  19744, 19628 and 19790 in five runs. So 150 to 370 `push_front`s were
+  lost to the race each time.
+- **ThreadSanitizer** (a native TSan build of the same source, `withTSan`)
+  reports it directly: write/write and read/write races in
+  `BaseError::addTrace` from `Executor::worker` threads, on a heap block
+  allocated by `__cxa_allocate_exception` in `primop_throw`. It happens for
+  race3.nix and for the `nix eval --json` variant.
+  [tests/determinate-nix/tsan-addtrace.txt](../tests/determinate-nix/tsan-addtrace.txt)
+  has one full report.
+
+Nixpkgs has plenty of shared failing thunks: aliases that throw, `meta`
+checks, broken packages reached along several paths. So with eval-cores > 1
+this can corrupt the heap in ordinary evaluations that hit errors, not only
+in contrived ones.
+
+The single-threaded half of the problem is shared with upstream Nix 2.35
+(it has `Failed` values too). Every later forcing of a failed thunk prepends
+its frames to the one exception, so an error reports frames from unrelated
+earlier forcings. In [pollute.nix](../tests/determinate-nix/pollute.nix),
+the error from `builtins.sub bad 2` shows "while calling the 'add' builtin"
+from an earlier `tryEval (builtins.add bad 1)`, in both Nix 2.35.2 and
+Determinate Nix.
+
+**Proposed fix**
+([patches/determinate-nix/proposed-fix-rethrow-failed-value-copies.patch](../patches/determinate-nix/proposed-fix-rethrow-failed-value-copies.patch),
+not applied in the port): rethrow a copy.
+
+```c++
+if (InternalType(p0_ & 0xff) == tFailed) {
+    try {
+        std::rethrow_exception((std::bit_cast<Failed *>(p1))->ex);
+    } catch (BaseError & e) {
+        e.throwClone();
+    }
+}
+```
+
+FIXCHECK
+
+### 2. `EvalState::trylevel` is a plain `int` shared by all threads
+
+TSan also reports `prim_tryEval`'s `MaintainCount trylevel(state.trylevel)`:
+all threads increment and decrement it without synchronization. Only the
+debugger reads it, and the debugger turns parallel evaluation off, so the
+effect is harmless today. It is still undefined behaviour and pollutes TSan
+output. An atomic or thread-local counter would fix it.
+
+### 3. The symbol table's arena is never unmapped
+
+`ContiguousArena` (`src/libexpr/symbol-table.cc`) maps 1 GiB per
+`SymbolTable` and has no destructor, so every destroyed `EvalState` leaks
+its symbol pages, plus 1 GiB of address space. That matters for long-lived
+processes and test binaries that create many `EvalState`s. Patch 0005 adds
+the `munmap`. Found while investigating the Fil-C memory blow-up in porting
+change 4; not a safety issue.
+
+## What was checked and came out clean
+
+EVALCHECK

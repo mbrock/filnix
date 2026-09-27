@@ -1,0 +1,40 @@
+WARNING: ThreadSanitizer: data race (pid=323174)
+  Write of size 8 at 0x725000010190 by thread T10:
+    #0 nix::BaseError::addTrace(std::shared_ptr<nix::Pos const>&&, nix::HintFmt, nix::TracePrint) (libnixutil.so+0x112ade)
+    #1 void nix::EvalState::addErrorTrace<char [17], std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(nix::Error&, nix::PosIdx, char cons
+    #2 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x63013)
+    #3 nix::ExprCall::eval(nix::EvalState&, nix::Env&, nix::Value&) (libnixexpr.so+0x11f995)
+    #4 nix::ValueStorage<8ul, void>::force(nix::EvalState&, nix::PosIdx) (libnixexpr.so+0x1e19f5)
+    #5 nix::prim_tryEval(nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&) (libnixexpr.so+0x165650)
+    #6 std::_Function_handler<void (nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&), void (*)(nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&)>::_M_invok
+    #7 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x11deca)
+    #8 nix::ExprCall::eval(nix::EvalState&, nix::Env&, nix::Value&) (libnixexpr.so+0x11f995)
+    #9 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x11c880)
+    #10 nix::ValueStorage<8ul, void>::force(nix::EvalState&, nix::PosIdx) (libnixexpr.so+0x1e1a65)
+    #11 void std::move_only_function<void ()>::_S_invoke<nix::EvalState::makeWork<nix::prim_parallel(nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&)::{lambda()#1
+    #12 nix::Executor::worker() (libnixexpr.so+0x155f8d)
+    #13 boost::detail::thread_data<nix::Executor::createWorker(nix::Executor::State&)::{lambda()#1}>::run() (libnixexpr.so+0x2d771c)
+    #14 thread_proxy (libboost_thread.so.1.89.0+0xccf6)
+  Previous write of size 8 at 0x725000010190 by thread T4:
+    #0 nix::BaseError::addTrace(std::shared_ptr<nix::Pos const>&&, nix::HintFmt, nix::TracePrint) (libnixutil.so+0x112ade)
+    #1 void nix::EvalState::addErrorTrace<char [17], std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(nix::Error&, nix::PosIdx, char cons
+    #2 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x63013)
+    #3 nix::ExprCall::eval(nix::EvalState&, nix::Env&, nix::Value&) (libnixexpr.so+0x11f995)
+    #4 nix::ValueStorage<8ul, void>::force(nix::EvalState&, nix::PosIdx) (libnixexpr.so+0x1e19f5)
+    #5 nix::prim_tryEval(nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&) (libnixexpr.so+0x165650)
+    #6 std::_Function_handler<void (nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&), void (*)(nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&)>::_M_invok
+    #7 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x11deca)
+    #8 nix::ExprCall::eval(nix::EvalState&, nix::Env&, nix::Value&) (libnixexpr.so+0x11f995)
+    #9 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x11c880)
+    #10 nix::ValueStorage<8ul, void>::force(nix::EvalState&, nix::PosIdx) (libnixexpr.so+0x1e1a65)
+    #11 void std::move_only_function<void ()>::_S_invoke<nix::EvalState::makeWork<nix::prim_parallel(nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&)::{lambda()#1
+    #12 nix::Executor::worker() (libnixexpr.so+0x155f8d)
+    #13 boost::detail::thread_data<nix::Executor::createWorker(nix::Executor::State&)::{lambda()#1}>::run() (libnixexpr.so+0x2d771c)
+    #14 thread_proxy (libboost_thread.so.1.89.0+0xccf6)
+  Location is heap block of size 512 at 0x725000010000 allocated by thread T4:
+    #0 malloc (libtsan.so.2+0x8a9ac)
+    #1 __cxa_allocate_exception (libstdc++.so.6+0xc40c3)
+    #2 std::_Function_handler<void (nix::EvalState&, nix::PosIdx, nix::Value**, nix::Value&), nix::primop_throw::{lambda(nix::EvalState&, nix::PosIdx, nix::Value**, nix::
+    #3 nix::EvalState::callFunction(nix::Value&, std::span<nix::Value*, 18446744073709551615ul>, nix::Value&, nix::PosIdx) (libnixexpr.so+0x11deca)
+    #4 nix::ExprCall::eval(nix::EvalState&, nix::Env&, nix::Value&) (libnixexpr.so+0x11f995)
+    #5 nix::ValueStorage<8ul, void>::force(nix::EvalState&, nix::PosIdx) (libnixexpr.so+0x1e19f5)

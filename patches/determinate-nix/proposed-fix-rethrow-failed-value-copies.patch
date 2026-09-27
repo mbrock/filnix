@@ -1,28 +1,56 @@
-From c3e3739eb34fa143018f89ae2bdfb61507edf84b Mon Sep 17 00:00:00 2001
+From 94814bd9293fb0196817173b3c7ae1df9a7ca467 Mon Sep 17 00:00:00 2001
 From: t <a@b>
 Date: Sun, 27 Sep 2026 19:27:07 +0000
-Subject: [PATCH] Rethrow copies of a failed value's exception
+Subject: [PATCH] Never modify a failed value's shared exception
+
+Store a copy of the exception when a thunk fails and rethrow copies of it,
+so that catch sites prepending traces (addTrace) on one thread do not race
+with other threads rethrowing the same object.
 
 Co-authored-by: Mikael Brockman <mikael@brockman.se>
 ---
- src/libexpr/include/nix/expr/eval-inline.hh | 13 +++++++++++--
- 1 file changed, 11 insertions(+), 2 deletions(-)
+ src/libexpr/include/nix/expr/eval-inline.hh | 30 ++++++++++++++++++---
+ 1 file changed, 27 insertions(+), 3 deletions(-)
 
 diff --git a/src/libexpr/include/nix/expr/eval-inline.hh b/src/libexpr/include/nix/expr/eval-inline.hh
-index 6d43911..7bcc85c 100644
+index 6d43911..45ba8fc 100644
 --- a/src/libexpr/include/nix/expr/eval-inline.hh
 +++ b/src/libexpr/include/nix/expr/eval-inline.hh
-@@ -152,8 +152,17 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
+@@ -143,7 +143,22 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
+             }
+         } catch (...) {
+             state.tryFixupBlackHolePos((Value &) *this, pos);
+-            setStorage(new Value::Failed{.ex = std::current_exception()});
++            /* Store a copy: this thread's catch sites keep prepending
++               traces to the exception in flight, while other threads may
++               already be rethrowing the stored one. */
++            std::exception_ptr ex;
++            try {
++                throw;
++            } catch (BaseError & e) {
++                try {
++                    e.throwClone();
++                } catch (...) {
++                    ex = std::current_exception();
++                }
++            } catch (...) {
++                ex = std::current_exception();
++            }
++            setStorage(new Value::Failed{.ex = ex});
+             throw;
+         }
+     }
+@@ -152,8 +167,17 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
          p0_ = waitOnThunk(state, p0_);
  
  done:
 -    if (InternalType(p0_ & 0xff) == tFailed)
 -        std::rethrow_exception((std::bit_cast<Failed *>(p1))->ex);
 +    if (InternalType(p0_ & 0xff) == tFailed) {
-+        /* The failure is shared by every thread (and every later forcing)
-+           that reaches this value, but catch sites prepend traces to the
-+           exception object. Throw a copy so that they never modify the
-+           shared one. */
++        /* The stored failure is shared by every thread (and every later
++           forcing) that reaches this value, but catch sites prepend traces
++           to the exception in flight. Throw a copy so that nobody modifies
++           the shared one. */
 +        try {
 +            std::rethrow_exception((std::bit_cast<Failed *>(p1))->ex);
 +        } catch (BaseError & e) {
