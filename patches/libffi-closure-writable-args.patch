@@ -1,0 +1,16 @@
+diff --git a/src/x86/ffi64.c b/src/x86/ffi64.c
+index 4605bb3..f408f7d 100644
+--- a/src/x86/ffi64.c
++++ b/src/x86/ffi64.c
+@@ -1419,7 +1419,10 @@ ffi_closure_callback (void)
+ 	align = 8;
+ 
+       argp = (void *) FFI_ALIGN (argp, align);
+-      avalue[i] = argp;
++      /* zargs() is read-only, but the handler owns its by-value
++	 arguments and may write to them.  */
++      avalue[i] = memcpy (alloca (arg_types[i]->size), argp,
++			  arg_types[i]->size);
+       argp += arg_types[i]->size;
+     }
+ 

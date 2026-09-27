@@ -244,6 +244,10 @@ in
   (for pkgs.libffi [
     (pin "3.8.0" "sha256-faPi2aFx6woDj1kuytP/K7JVDzSW2Hs7Ka0M9EMMDbQ=")
     (patch ./ports/patch/libffi-3.8.0.patch)
+    # Closure handlers may write to their by-value arguments, which the
+    # runtime passes in the read-only zargs() buffer (cffi's
+    # test_callback_large_struct).
+    (patch ./patches/libffi-closure-writable-args.patch)
     (tool pkgs.autoreconfHook)
     (configure "--disable-static")
     (configure "--disable-exec-static-tramp")
