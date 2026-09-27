@@ -538,6 +538,10 @@ class ExperimentTests(unittest.TestCase):
         self.assertTrue(toolchain_derivation(f + "-gcc-15.3.0"))
         self.assertTrue(toolchain_derivation(f + "-gfortran-15.3.0"))
         self.assertTrue(toolchain_derivation("llvm-" + f + "-21.1.8"))
+        self.assertTrue(toolchain_derivation("gcc-" + f + "-15.3.0"))
+        self.assertTrue(toolchain_derivation("go-" + f + "-1.26.7"))
+        self.assertFalse(toolchain_derivation("gobject-introspection-" + f + "-1.80.1"))
+        self.assertFalse(toolchain_derivation("go-md2man-" + f + "-2.0.6"))
         self.assertTrue(toolchain_derivation("compiler-rt-libc-" + f + "-21.1.8"))
         # Native compilers and Fil-C packages that merely mention them stay in.
         self.assertFalse(toolchain_derivation("gcc-15.3.0"))

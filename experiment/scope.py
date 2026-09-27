@@ -5,7 +5,7 @@ import re
 
 REASON = "Linux kernel; outside the Fil-C userspace runtime"
 TOOLCHAIN_REASON = (
-    "Compiler toolchain (rustc, GCC, LLVM) built for or targeting Fil-C; "
+    "Compiler toolchain (rustc, GCC, LLVM, Go) built for or targeting Fil-C; "
     "outside the experiment, since filcc is the Fil-C compiler"
 )
 INHERITED = "Depends on a derivation outside the experiment's scope"
@@ -16,6 +16,8 @@ INHERITED = "Depends on a derivation outside the experiment's scope"
 FILC = "x86_64-unknown-linux-gnufilc0"
 TOOLCHAIN_NAME = re.compile(
     rf"^(?:{FILC}-(?:gcc|gfortran|gnat|gccgo|gdc)"
+    # GCC built to run under Fil-C, and Go, whose runtime is not C.
+    rf"|(?:gcc|gfortran|gnat|gccgo|gdc|go)-{FILC}"
     rf"|(?:llvm|clang|compiler-rt|compiler-rt-libc|lld|mlir|libclang|clang-tools|libllvm|polly|openmp)-{FILC}"
     r")-\d"
 )
