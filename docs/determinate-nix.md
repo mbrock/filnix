@@ -245,8 +245,10 @@ Checked with native builds of the patched source:
   race3.nix or race.nix (two runs each). Only the `trylevel` race below is
   left.
 
-The functional suite has not been run against the patch. Expected error
-outputs that happen to include accumulated frames would need updating.
+The native functional suite passes with the patch, after one expected
+output is updated. That output is
+`eval-fail-memoised-error-trace-not-mutated`, whose comment promises a fresh
+exception on every forcing but whose `.err.exp` recorded the mutation.
 
 ### 2. `EvalState::trylevel` is a plain `int` shared by all threads
 
