@@ -123,6 +123,11 @@ lib.optionalAttrs
       # use the ordinary native Qt 5.
       qt5 = final.buildPackages.qt5;
       libsForQt5 = final.buildPackages.libsForQt5;
+      # The same holds for Qt 6: a native qttools here linked the GLib twin's
+      # headers against GLib 2.88's libgio and failed on
+      # g_variant_builder_init_static.
+      qt6 = final.buildPackages.qt6;
+      qt6Packages = final.buildPackages.qt6Packages;
       # Graphviz (for docs, e.g. FLAC's) only emits target-neutral output,
       # but here it would see the GLib twin, which is older than Pango
       # requires; pangocairo then goes missing and the build fails on vimdot.

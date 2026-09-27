@@ -81,6 +81,16 @@ in
     }))
   ])
 
+  (for "websockets" [
+    (use (old: {
+      disabledTests = (old.disabledTests or [ ]) ++ [
+        # Timing-sensitive: expects the peer's close frame within a short
+        # timeout, which Fil-C's slower Python misses.
+        "test_writing_in_recv_events_fails"
+      ];
+    }))
+  ])
+
   (for "protobuf7" [
     (use (old: {
       # The upb C extension (google._upb._message) keeps pointers in integer
