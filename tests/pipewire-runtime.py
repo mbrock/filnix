@@ -2,12 +2,15 @@
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+import wave
 
 
 def main():
@@ -17,6 +20,10 @@ def main():
     parser.add_argument("--libc", required=True)
     parser.add_argument("--client", action="append", default=[])
     parser.add_argument("--wpctl")
+    parser.add_argument("--wireplumber",
+                        help="run this WirePlumber daemon as the session manager")
+    parser.add_argument("--play", action="store_true",
+                        help="play a WAV file into the virtual sink with pw-cat")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="filnix-pipewire-") as directory:
@@ -55,6 +62,9 @@ context.modules = [
     { name = libpipewire-module-adapter }
     { name = libpipewire-module-link-factory }
     { name = libpipewire-module-access }
+""" + ("""
+    { name = libpipewire-module-metadata }
+""" if args.wireplumber else "") + """
 ]
 """)
 
@@ -81,6 +91,7 @@ context.modules = [
         with (root / "daemon.log").open("w+") as log:
             daemon = subprocess.Popen(command("pipewire", "-c", str(config)),
                                       env=env, stdout=log, stderr=log)
+            session = None
             try:
                 deadline = time.monotonic() + 15
                 while not (root / "filnix-test").exists():
@@ -91,6 +102,9 @@ context.modules = [
                 libc_maps = [line for line in maps if "/lib/libc.so.6666" in line]
                 assert libc_maps and all(args.libc in line for line in libc_maps)
                 assert not named_nodes()
+                if args.wireplumber:
+                    session = subprocess.Popen([args.wireplumber], env=env,
+                                               stdout=log, stderr=log)
                 run("pw-cli", "create-node", "adapter", """{
                     factory.name = support.null-audio-sink
                     node.name = filnix-null
@@ -101,6 +115,8 @@ context.modules = [
                 }""")
                 created = named_nodes()
                 assert len(created) == 1, created
+                if args.play:
+                    play(root, env, command)
                 for client in args.client:
                     subprocess.run([client, args.libc], env=env, check=True, timeout=20)
                 if args.wpctl:
@@ -115,6 +131,9 @@ context.modules = [
                     print("WirePlumber: live PipeWire virtual sink discovery passed")
                 run("pw-cli", "destroy", str(created[0]["id"]))
                 assert not named_nodes(), "node survived destruction"
+                if session:
+                    session.terminate()
+                    assert session.wait(timeout=15) == 0, "WirePlumber failed"
                 daemon.terminate()
                 assert daemon.wait(timeout=15) == 0, "daemon failed during shutdown"
                 print("shared libc: installed daemon, pw-cli, pw-dump, adapter "
@@ -127,9 +146,34 @@ context.modules = [
                     print(error.stdout, error.stderr, file=sys.stderr)
                 raise
             finally:
+                if session and session.poll() is None:
+                    session.kill()
+                    session.wait()
                 if daemon.poll() is None:
                     daemon.kill()
                     daemon.wait()
+
+
+def play(root, env, command):
+    """Stream a tone through pw-cat (libsndfile) into the virtual sink.
+
+    The session manager configures the stream's ports and links it.
+    """
+    tone = root / "tone.wav"
+    with wave.open(str(tone), "wb") as out:
+        out.setnchannels(2)
+        out.setsampwidth(2)
+        out.setframerate(48000)
+        frames = bytearray()
+        for i in range(48000 // 2):
+            sample = int(8000 * math.sin(2 * math.pi * 440 * i / 48000))
+            frames += struct.pack("<hh", sample, sample)
+        out.writeframes(bytes(frames))
+    subprocess.run(
+        command("pw-cat", "--playback", "--target", "filnix-null", str(tone)),
+        env=env, check=True, timeout=30,
+    )
+    print("pw-cat: played a WAV file into the virtual sink")
 
 
 if __name__ == "__main__":

@@ -123,5 +123,9 @@ lib.optionalAttrs
       # use the ordinary native Qt 5.
       qt5 = final.buildPackages.qt5;
       libsForQt5 = final.buildPackages.libsForQt5;
+      # Graphviz (for docs, e.g. FLAC's) only emits target-neutral output,
+      # but here it would see the GLib twin, which is older than Pango
+      # requires; pangocairo then goes missing and the build fails on vimdot.
+      graphviz = prev.buildPackages.graphviz;
     }
   )
