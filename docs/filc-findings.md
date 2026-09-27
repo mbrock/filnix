@@ -121,14 +121,44 @@ nix.conf check turns into an error; the Nix port passes libc's full path
 instead. Adding the sysroot lib directory to the loader's trusted
 directories would fix NSS module loading in general.
 
-## Custom allocators and pointer tagging lose capabilities
+## Pointer tagging works; integer-typed storage loses capabilities
 
-oneTBB's tbbmalloc carves objects out of raw mmap chunks, and its
-`queuing_rw_mutex` sets a flag bit in queue pointers kept in
-`std::atomic<uintptr_t>`. PulseAudio's `pa_atomic_ptr_t` also stored pointers
-as `uintptr_t`. These are expected Fil-C porting work rather than bugs; the
-ports build without tbbmalloc and keep the pointers in pointer-typed atomics,
-setting tag bits with pointer arithmetic.
+Setting tag bits in a pointer is fine under Fil-C. What drops a capability
+is keeping the pointer in an *integer-typed* location. Upstream's
+`gimso_semantics.md` and `invisicaps_by_example.md` give the rules; this
+matrix (filcc at the current pin, `-O0` and `-O2`, with each store and load
+in a separate `noinline` function) shows them in
+practice:
+
+| Pattern | -O0 | -O2 |
+| --- | --- | --- |
+| Tag and untag with integer math inside one expression (`(T *)((uintptr_t)p & ~7)`) | ok | ok |
+| Same, through a local `uintptr_t` variable | trap | ok |
+| Pointer-typed field or union member, tagged with pointer arithmetic or `zorptr` | ok | ok |
+| Pointer stored, tag bits set by an integer read-modify-write of the same slot, then loaded *as a pointer* | ok | ok |
+| `uintptr_t` field, heap array, union member written as an integer | trap | trap |
+| `_Atomic uintptr_t` / `std::atomic<uintptr_t>` | trap | trap |
+| Tagged value passed or returned as `uintptr_t` | trap | trap |
+| NaN-boxing style high-bit tags in a `uintptr_t` | trap | trap |
+
+Two rules explain it. The FilPizlonator can recover a capability across a
+ptr→int→int-math→ptr chain when it sees the original pointer in the same
+value flow (so optimized code and single expressions work, while `-O0`
+spills to integer-typed stack slots). In memory, a slot's capability lives in
+the shadow space and is written only by *pointer* stores: an integer store
+updates the address but keeps the previous capability, and an integer load
+never carries one. So a tagged representation keeps working if the words are
+declared and loaded as pointers (a `void *` or a pointer member of a union),
+with tag math done by pointer arithmetic, `zorptr`/`zandptr`/`zretagptr`
+from `<stdfil.h>`, or integer math on a pointer-typed load. Rewriting the
+whole representation is rarely needed.
+
+Examples: oneTBB's `queuing_rw_mutex` keeps a flag bit in queue pointers held
+in `std::atomic<uintptr_t>`, and PulseAudio's `pa_atomic_ptr_t` stored pointers
+as `uintptr_t`; both ports change only the atomic's type to a pointer and set
+the bit with pointer arithmetic. oneTBB's tbbmalloc is a different problem: it
+carves objects out of raw `mmap` chunks, which have no per-object capabilities,
+so the port builds without it.
 
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 
