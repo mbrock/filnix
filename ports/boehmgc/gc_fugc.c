@@ -78,6 +78,12 @@ unsigned long GC_time_limit = GC_TIME_UNLIMITED;
 int GC_dont_gc = 0;
 void *GC_least_plausible_heap_addr = 0;
 void *GC_greatest_plausible_heap_addr = 0;
+static void GC_CALLBACK default_on_abort(const char *msg)
+{
+    if (msg)
+        fprintf(stderr, "%s\n", msg);
+}
+GC_abort_func GC_on_abort = default_on_abort;
 int GC_gcj_kind = 0;
 int GC_gcj_debug_kind = 0;
 size_t GC_debug_header_size = 0;
@@ -114,7 +120,6 @@ static GC_start_callback_proc start_callback;
 static GC_push_other_roots_proc push_other_roots;
 static GC_stop_func stop_func;
 static GC_warn_proc warn_proc;
-static GC_abort_func abort_func;
 static GC_toggleref_func toggleref_func;
 static GC_await_finalize_proc await_finalize_proc;
 static GC_sp_corrector_proc sp_corrector;
@@ -178,6 +183,8 @@ static zexact_ptrtable *uncollectable_keep;
 static zweak_map *uncollectable_set; /* obj -> &uncollectable_marker */
 static char uncollectable_marker;
 static zexact_ptrtable *hidden;     /* GC_HIDE_POINTER encodings */
+static atomic_int hidden_used;
+static zweak_map *mark_bits;        /* obj -> struct mark_bit */
 static atomic_size_t finalizers_registered;
 
 static void init_state(void)
@@ -187,6 +194,7 @@ static void init_state(void)
     uncollectable_keep = zexact_ptrtable_new();
     uncollectable_set = zweak_map_new();
     hidden = zexact_ptrtable_new_weak();
+    mark_bits = zweak_map_new();
     heap_size_estimate = resident_bytes();
 }
 
@@ -200,8 +208,21 @@ static void cycle_hook(void);
 /* ------------------------------------------------------------------ */
 /* Allocation.                                                        */
 
+/* Fil-C panics on allocations it cannot satisfy; libgc reports them to
+   the OOM function, which usually returns NULL.  Do that at least for
+   sizes that no machine can provide. */
+#define FUGC_MAX_ALLOC ((size_t)1 << 46)
+
+static void *too_big(size_t n)
+{
+    GC_oom_func f = GC_oom_fn;
+    return f ? f(n) : NULL;
+}
+
 static void *alloc_normal(size_t n)
 {
+    if (n > FUGC_MAX_ALLOC)
+        return too_big(n);
     cycle_hook();
     void *p = zgc_alloc(n ? n : 1);
     count_alloc(n);
@@ -239,7 +260,7 @@ GC_API void *GC_CALL GC_malloc_atomic_uncollectable(size_t n) { return alloc_unc
 GC_API void *GC_CALL GC_memalign(size_t align, size_t n)
 {
     cycle_hook();
-    if (align <= 16)
+    if (align <= 16 || n > FUGC_MAX_ALLOC)
         return alloc_normal(n);
     void *p = zgc_aligned_alloc(align, n ? n : 1);
     count_alloc(n);
@@ -304,6 +325,8 @@ GC_API void *GC_CALL GC_realloc(void *p, size_t n)
         GC_free(p);
         return NULL;
     }
+    if (n > FUGC_MAX_ALLOC)
+        return too_big(n);
     int uncollectable = is_uncollectable(p);
     cycle_hook();
     void *q = zgc_realloc(p, n);
@@ -481,7 +504,7 @@ GC_API void *GC_CALL GC_calloc_explicitly_typed(size_t nelements,
 {
     (void)d;
     if (element_size && nelements > (size_t)-1 / element_size)
-        return GC_oom_fn ? GC_oom_fn((size_t)-1) : NULL;
+        return too_big((size_t)-1);
     return alloc_normal(nelements * element_size);
 }
 
@@ -539,14 +562,31 @@ GC_API GC_hidden_pointer GC_CALL GC_fugc_hide_pointer(const void *p)
     if (!p)
         return ~(GC_hidden_pointer)0;
     ensure_init();
+    atomic_store_explicit(&hidden_used, 1, memory_order_relaxed);
     return ~(GC_hidden_pointer)zexact_ptrtable_encode(hidden, (void *)p);
 }
+
+static void drain_finq(void);
 
 GC_API void *GC_CALL GC_fugc_reveal_pointer(GC_hidden_pointer h)
 {
     if (h == ~(GC_hidden_pointer)0)
         return NULL;
     ensure_init();
+    void *p = zexact_ptrtable_decode(hidden, (size_t)~h);
+    if (zhasvalidcap(p) ||
+        !atomic_load_explicit(&finalizers_registered, memory_order_relaxed))
+        return p;
+    /* FUGC drops weak entries before it revives finalizable objects, but
+       libgc keeps hidden pointers to such objects valid until they are
+       reclaimed.  If a cycle is running, wait for it to queue what it
+       revived, and hide those objects again (drain_finq), then retry. */
+    zgc_cycle_number requested = zgc_requested_cycle();
+    if (requested > zgc_completed_cycle())
+        zgc_wait(requested);
+    pthread_mutex_lock(&state_lock);
+    drain_finq();
+    pthread_mutex_unlock(&state_lock);
     return zexact_ptrtable_decode(hidden, (size_t)~h);
 }
 
@@ -560,11 +600,15 @@ struct sentinel {
     GC_finalization_proc fn;
     void *cd;
     struct sentinel *next; /* pending list */
+    zgc_cycle_number dead_cycle; /* when it was found unreachable */
 };
 
 static struct sentinel *pending_head, *pending_tail;
 static size_t pending_count;
 static _Thread_local int running_finalizers;
+/* The object whose finalizer is running on this thread, for GC_is_marked. */
+static _Thread_local void *finalizing_obj;
+static _Thread_local zgc_cycle_number finalizing_dead_cycle;
 
 static void register_finalizer(void *obj, GC_finalization_proc fn, void *cd,
                                GC_finalization_proc *ofn, void **ocd)
@@ -681,6 +725,9 @@ static void drain_finq(void)
         if (zweak_map_get(finalizers, s->obj) == s)
             zweak_map_set(finalizers, s->obj, NULL);
         atomic_fetch_sub(&finalizers_registered, 1);
+        if (atomic_load_explicit(&hidden_used, memory_order_relaxed))
+            zexact_ptrtable_encode(hidden, s->obj);
+        s->dead_cycle = zgc_completed_cycle();
         s->next = NULL;
         if (pending_tail)
             pending_tail->next = s;
@@ -722,7 +769,13 @@ GC_API int GC_CALL GC_invoke_finalizers(void)
         if (fn) {
             if (await_finalize_proc)
                 await_finalize_proc(obj);
+            void *saved_obj = finalizing_obj;
+            zgc_cycle_number saved_cycle = finalizing_dead_cycle;
+            finalizing_obj = obj;
+            finalizing_dead_cycle = s->dead_cycle;
             fn(obj, s->cd);
+            finalizing_obj = saved_obj;
+            finalizing_dead_cycle = saved_cycle;
             count++;
         }
     }
@@ -771,10 +824,15 @@ GC_API void GC_CALL GC_finalize_all(void)
     GC_invoke_finalizers();
 }
 
+/* A disclaim procedure that returns nonzero keeps the object; it is
+   asked again the next time the object is found unreachable. */
 static void GC_CALLBACK run_disclaim(void *obj, void *cd)
 {
     GC_disclaim_proc proc = (GC_disclaim_proc)cd;
-    proc(obj);
+    if (proc(obj)) {
+        zweak_map_set(mark_bits, obj, NULL);
+        register_finalizer(obj, run_disclaim, cd, NULL, NULL);
+    }
 }
 
 GC_API void GC_CALL GC_register_disclaim_proc(int kind, GC_disclaim_proc proc,
@@ -1153,7 +1211,7 @@ SETTER_GETTER(GC_start_callback_proc, start_callback, start_callback)
 SETTER_GETTER(GC_push_other_roots_proc, push_other_roots, push_other_roots)
 SETTER_GETTER(GC_sp_corrector_proc, sp_corrector, sp_corrector)
 SETTER_GETTER(GC_warn_proc, warn_proc, warn_proc)
-SETTER_GETTER(GC_abort_func, abort_func, abort_func)
+SETTER_GETTER(GC_abort_func, abort_func, GC_on_abort)
 
 GC_API void GC_CALL GC_set_stop_func(GC_stop_func f) { stop_func = f; }
 GC_API GC_stop_func GC_CALL GC_get_stop_func(void) { return stop_func; }
@@ -1287,9 +1345,34 @@ GC_API struct GC_ms_entry *GC_CALL GC_mark_and_push(void *obj,
     (void)src;
     return msp;
 }
-GC_API int GC_CALL GC_is_marked(const void *p) { (void)p; return 1; }
-GC_API void GC_CALL GC_clear_mark_bit(const void *p) { (void)p; }
-GC_API void GC_CALL GC_set_mark_bit(const void *p) { (void)p; }
+/* Mark bits only mean something to finalizers and disclaim procedures:
+   an object whose finalizer is running counts as marked if the client
+   called GC_set_mark_bit on it after the collection that found it
+   unreachable began (that is how libgc clients rescue such objects).
+   Every other object counts as marked. */
+struct mark_bit {
+    zgc_cycle_number cycle;
+};
+
+GC_API int GC_CALL GC_is_marked(const void *p)
+{
+    if (!finalizing_obj || p != finalizing_obj)
+        return 1;
+    struct mark_bit *m = zweak_map_get(mark_bits, (void *)p);
+    return m && m->cycle + 1 >= finalizing_dead_cycle;
+}
+GC_API void GC_CALL GC_clear_mark_bit(const void *p)
+{
+    ensure_init();
+    zweak_map_set(mark_bits, (void *)p, NULL);
+}
+GC_API void GC_CALL GC_set_mark_bit(const void *p)
+{
+    ensure_init();
+    struct mark_bit *m = zgc_alloc(sizeof(*m));
+    m->cycle = zgc_completed_cycle();
+    zweak_map_set(mark_bits, (void *)p, m);
+}
 GC_API void GC_CALL GC_push_all(void *b, void *t) { (void)b; (void)t; }
 GC_API void GC_CALL GC_push_all_eager(void *b, void *t) { (void)b; (void)t; }
 GC_API void GC_CALL GC_push_conditional(void *b, void *t, int all) { (void)b; (void)t; (void)all; }

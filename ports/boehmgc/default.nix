@@ -70,6 +70,13 @@ stdenv.mkDerivation {
     $CC -O2 -Ibuild/include -Ibuild/include/gc cord/tests/cordtest.c -Lbuild -lcord -lgc \
       -o build/cordtest
     LD_LIBRARY_PATH=$PWD/build build/cordtest
+    # Upstream tests that do not depend on collector internals.
+    for t in realloc_test huge_test middle smash_test threadkey_test; do
+      $CC -O2 -w -Ibuild/include -Ibuild/include/gc -DGC_THREADS \
+        tests/$t.c -Lbuild -lgc -lpthread -o build/$t
+      echo "== $t"
+      LD_LIBRARY_PATH=$PWD/build build/$t
+    done
     runHook postCheck
   '';
 

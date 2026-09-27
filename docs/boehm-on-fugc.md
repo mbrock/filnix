@@ -89,6 +89,24 @@ usable pointer. The table is weak, so hiding does not keep objects alive,
 and the usual "hidden pointer plus disappearing link" weak-reference idiom
 works.
 
+FUGC clears weak references before it revives finalizable objects. libgc,
+by contrast, keeps a hidden pointer to an unreachable object that has a
+finalizer valid until the object is reclaimed. Two things bridge the
+difference. When a revived object is queued, the library hides it again.
+And if a reveal fails while finalizers exist, the library waits for the
+running cycle to finish queueing, drains the queue, and retries.
+
+### Disclaim procedures and mark bits
+
+`GC_register_disclaim_proc` runs the procedure as a finalizer on objects
+of that kind. If it returns nonzero, the object is kept and the procedure
+is asked again the next time the object is unreachable. `GC_is_marked`
+and `GC_set_mark_bit` only mean something inside a finalizer or disclaim
+procedure. There, the object being finalized counts as marked if the
+client called `GC_set_mark_bit` on it after the collection that found it
+unreachable started, which is how libgc clients rescue such objects. Every
+other object counts as marked.
+
 ### When cycle effects become visible
 
 FUGC collects on its own threads. A client observes a finished cycle
@@ -143,5 +161,13 @@ similar.
 - Upstream's `cord/tests/cordtest.c` also runs in `checkPhase` against
   libcord built on this libgc.
 - The exported symbols are a superset of upstream libgc 8.2.12's, except
-  for the internal `GC_arrays`, `GC_on_abort` and `GC_push_other_roots`
-  variables.
+  for the internal `GC_arrays` and `GC_push_other_roots` variables.
+- Upstream's own tests, built by hand against this library: `realloc_test`,
+  `huge_test` (absurd sizes go to the OOM function instead of a Fil-C
+  panic), `middle`, `smash_test`, `threadkey_test`, `subthread_create` and
+  `initsecondarythread` pass. `test.c` (gctest) fails: it checks
+  collector internals such as exact sizes, displacement checks and
+  finalization counts under libgc's ordering. `disclaim_test` fails
+  because it depends on ordered finalization. `disclaim_weakmap_test` fails
+  because it stores a pointer in a `GC_word` with flag bits, which Fil-C
+  rejects.
