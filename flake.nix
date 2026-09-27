@@ -186,6 +186,7 @@
         glib-atomic = import ./tests/glib-atomic.nix { inherit pkgs pkgsFilc; };
         glib-gtype = import ./tests/glib-gtype.nix { inherit pkgs pkgsFilc; };
         glib-enums = import ./tests/glib-enums.nix { inherit pkgs pkgsFilc; };
+        dbus-glib = import ./tests/dbus-glib.nix { inherit pkgs pkgsFilc; };
         glib-networking = import ./tests/glib-networking.nix {
           inherit pkgs pkgsFilc;
         };

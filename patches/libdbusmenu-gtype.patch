@@ -1,0 +1,44 @@
+Subject: Dispatch on pointer-valued GTypes in the JSON loader
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C GLib, so the installed JSON loader's switch
+over json_node_get_value_type does not compile. Switch on the (uintptr_t)
+value and cast each G_TYPE_* label; a no-op for integer GTypes.
+
+diff --git a/tests/json-loader.c b/tests/json-loader.c
+index 94982c4..bb4703a 100644
+--- a/tests/json-loader.c
++++ b/tests/json-loader.c
+@@ -20,6 +20,7 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+ #include "json-loader.h"
++#include <stdint.h>
+ 
+ static GVariant * node2variant (JsonNode * node, const gchar * name);
+ 
+@@ -65,16 +66,16 @@ node2variant (JsonNode * node, const gchar * name)
+ 	}
+ 
+ 	if (JSON_NODE_TYPE(node) == JSON_NODE_VALUE) {
+-		switch (json_node_get_value_type(node)) {
+-		case G_TYPE_INT:
+-		case G_TYPE_INT64:
++		switch ((uintptr_t) json_node_get_value_type(node)) {
++		case (uintptr_t) G_TYPE_INT:
++		case (uintptr_t) G_TYPE_INT64:
+ 			return g_variant_new_int32(json_node_get_int(node));
+-		case G_TYPE_DOUBLE:
+-		case G_TYPE_FLOAT:
++		case (uintptr_t) G_TYPE_DOUBLE:
++		case (uintptr_t) G_TYPE_FLOAT:
+ 			return g_variant_new_double(json_node_get_double(node));
+-		case G_TYPE_BOOLEAN:
++		case (uintptr_t) G_TYPE_BOOLEAN:
+ 			return g_variant_new_boolean(json_node_get_boolean(node));
+-		case G_TYPE_STRING: {
++		case (uintptr_t) G_TYPE_STRING: {
+ 			if (g_strcmp0(name, DBUSMENU_MENUITEM_PROP_ICON_DATA) != 0) {
+ 				return g_variant_new_string(json_node_get_string(node));
+ 			} else {

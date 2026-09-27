@@ -44,6 +44,15 @@ in
     })
   ])
 
+  (for "dbus-python" [
+    (use {
+      # Meson's tests run the build platform's Python, which cannot import
+      # the Fil-C _dbus_bindings or pyexpat modules.
+      doCheck = false;
+      doInstallCheck = false;
+    })
+  ])
+
   (for "pytest-regressions" [
     (arg {
       matplotlib = null;
