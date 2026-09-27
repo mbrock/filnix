@@ -1732,7 +1732,17 @@ in
       postInstall = "mkdir -p $info";
     })
     (patch ./ports/patch/quickjs.patch)
-    (skipCheck "some tests fail")
+    (patch ./patches/quickjs-regexp-greedy-cptr.patch)
+    (use {
+      # Upstream's test262 runner has known failures; check the regexp
+      # engine, which every greedy quantifier used to crash.
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        ./qjs ${./tests/quickjs-regexp.js}
+        runHook postCheck
+      '';
+    })
   ])
 
   (for pkgs.trealla [
