@@ -1885,6 +1885,40 @@ in
     (broken "depends on colm which is broken")
   ])
 
+  (for pkgs.libpq [
+    # Nixpkgs adds -flto for Clang, and Fil-C has no LTO: the linker gets
+    # bitcode objects, so configure's first test program fails to link.
+    (use (old: {
+      env = old.env // {
+        CFLAGS = pkgs.lib.replaceStrings [ " -flto" ] [ "" ] old.env.CFLAGS;
+      };
+      # Fil-C keeps the source file of inlined functions for its safety
+      # error reports, so libpq.so names OpenSSL's headers and the
+      # recipe's disallowedReferences rejects the dev output.
+      nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.removeReferencesTo ];
+      postFixup = (old.postFixup or "") + ''
+        remove-references-to -t ${pkgs.lib.getDev final.openssl} "$out"/lib/libpq.so.*
+      '';
+    }))
+  ])
+
+  {
+    # libmysqlclient and mariadb-connector-c are aliases of this attribute.
+    mariadb-connector-c_3_3 = for pkgs.mariadb-connector-c_3_3 [
+      # libmariadb links with an implicit linker script that versions its
+      # exports and aliases mysql_* compatibility names by their C symbol
+      # names, which Fil-C's pizlonated symbols do not match. Link without it;
+      # the library then exports its symbols unversioned, which only
+      # prebuilt binaries expecting libmysqlclient_18 versions would notice.
+      (use (old: {
+        postPatch = old.postPatch + ''
+          substituteInPlace libmariadb/CMakeLists.txt --replace-fail \
+            'SET_TARGET_PROPERTIES(libmariadb PROPERTIES LINK_FLAGS "''${CC_BINARY_DIR}/libmariadb/mariadbclient.def")' ""
+        '';
+      }))
+    ];
+  }
+
   (for pkgs.gnutls [
     # Upstream's 3.8.7.1 fix also applies to Nixpkgs' 3.8.9 release.
     (patch ./ports/patch/gnutls-3.8.7.1.patch)
