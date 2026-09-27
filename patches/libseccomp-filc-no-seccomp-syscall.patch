@@ -1,0 +1,47 @@
+diff --git a/src/system.c b/src/system.c
+index f270952..66d9786 100644
+--- a/src/system.c
++++ b/src/system.c
+@@ -122,6 +122,13 @@ int sys_chk_seccomp_syscall(void)
+ 	if (state.sup_syscall >= 0)
+ 		return state.sup_syscall;
+ 
++#ifdef __FILC__
++	/* Fil-C refuses the seccomp() syscall and stops the program instead
++	 * of failing with ENOSYS, so never probe it.  Filters are loaded with
++	 * prctl(PR_SET_SECCOMP), as on kernels older than 3.17. */
++	goto unsupported;
++#endif
++
+ #if SYSCALL_ALLOWLIST_ENABLE
+ 	/* architecture allowlist */
+ 	switch (arch_def_native->token) {
+@@ -170,6 +177,10 @@ supported:
+  */
+ void sys_set_seccomp_syscall(bool enable)
+ {
++#ifdef __FILC__
++	/* seccomp() is not available under Fil-C, see above */
++	enable = false;
++#endif
+ 	state.sup_syscall = (enable ? 1 : 0);
+ }
+ 
+@@ -394,6 +405,17 @@ int sys_filter_load(struct db_filter_col *col, bool rawrc)
+ 	listener_req = state.sup_user_notif > 0 && \
+ 		       col->notify_used && state.notify_fd == -1;
+ 
++#ifdef __FILC__
++	/* prctl() cannot synchronize threads or create a notification fd;
++	 * fail rather than silently load a weaker filter when a caller has
++	 * forced these on with seccomp_api_set() */
++	if (col->attr.tsync_enable || listener_req) {
++		errno = EOPNOTSUPP;
++		rc = -errno;
++		goto filter_load_out;
++	}
++#endif
++
+ 	/* load the filter into the kernel */
+ 	if (sys_chk_seccomp_syscall() == 1) {
+ 		int flgs = 0;

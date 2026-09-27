@@ -53,8 +53,17 @@ Test's runner in the boost check). Use `zorptr`/`zandptr` from `stdfil.h`.
 ## Unsupported: `sigaltstack`, `llvm.debugtrap`, `ptrace`, `seccomp`
 
 doctest's self-tests use the first two, strace needs `ptrace`, and
-libseccomp's tests call `seccomp` (syscall 317). Nix is built without
-seccomp filtering.
+libseccomp called `seccomp` (syscall 317). Nix is built without seccomp
+filtering.
+
+These stop the program rather than fail with `ENOSYS`, so code that probes
+for them dies. The `seccomp()` syscall is missing, but
+`prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, ...)` passes through and
+installs a filter for the whole process, runtime threads included.
+`patches/libseccomp-filc-no-seccomp-syscall.patch` makes libseccomp treat
+the syscall as absent, as on kernels before 3.17: API level 1, filters
+loaded with `prctl`, and `EOPNOTSUPP` for TSYNC and user notification.
+`tests/libseccomp-prctl-filter.c` loads a filter in the build.
 
 ## x86 inline assembly needs an explicit "cc" clobber
 
