@@ -743,7 +743,7 @@ in
           substituteInPlace lily/system.cc \
             --replace-fail \
               'std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
-              'SCM all_elts_scm = all_elements ()->self_scm ();
+              'SCM all_elts_scm = get_object (this, "all-elements");
           std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
             --replace-fail \
               'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");' \
@@ -811,6 +811,15 @@ in
         # glibcLocales' hook, which does not apply here.
         LOCALE_ARCHIVE = "${pkgs.buildPackages.glibcLocales}/lib/locale/locale-archive";
         LC_ALL = "C.UTF-8";
+        # The wrapper records $GUILE_LOAD_PATH, which also holds the build
+        # platform's Guile libraries (used to compile the modules); their
+        # FFI bindings point at native libraries, which a Fil-C process
+        # cannot load. Keep only the host's.
+        preInstall = (old.preInstall or "") + ''
+          hostOnly() { printf %s "$1" | tr : '\n' | grep -- -gnufilc0- | paste -sd: -; }
+          export GUILE_LOAD_PATH=$(hostOnly "$GUILE_LOAD_PATH")
+          export GUILE_LOAD_COMPILED_PATH=$(hostOnly "$GUILE_LOAD_COMPILED_PATH")
+        '';
       }))
     ];
 
