@@ -1,4 +1,4 @@
-From 94814bd9293fb0196817173b3c7ae1df9a7ca467 Mon Sep 17 00:00:00 2001
+From c95524bf7232b1b026fa4dc05e6de89fdf50b166 Mon Sep 17 00:00:00 2001
 From: t <a@b>
 Date: Sun, 27 Sep 2026 19:27:07 +0000
 Subject: [PATCH] Never modify a failed value's shared exception
@@ -8,9 +8,11 @@ so that catch sites prepending traces (addTrace) on one thread do not race
 with other threads rethrowing the same object.
 
 Co-authored-by: Mikael Brockman <mikael@brockman.se>
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
 ---
- src/libexpr/include/nix/expr/eval-inline.hh | 30 ++++++++++++++++++---
- 1 file changed, 27 insertions(+), 3 deletions(-)
+ src/libexpr/include/nix/expr/eval-inline.hh   | 30 +++++++++++++++++--
+ ...l-memoised-error-trace-not-mutated.err.exp |  4 ---
+ 2 files changed, 27 insertions(+), 7 deletions(-)
 
 diff --git a/src/libexpr/include/nix/expr/eval-inline.hh b/src/libexpr/include/nix/expr/eval-inline.hh
 index 6d43911..45ba8fc 100644
@@ -60,6 +62,21 @@ index 6d43911..45ba8fc 100644
  }
  
  [[gnu::always_inline]]
+diff --git a/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp b/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp
+index 9327371..5482d91 100644
+--- a/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp
++++ b/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp
+@@ -15,10 +15,6 @@ error:
+ 
+        … forcing d
+ 
+-       … forcing c
+-
+-       … forcing b
+-
+        … while calling the 'throw' builtin
+          at /pwd/lang/eval-fail-memoised-error-trace-not-mutated.nix:2:7:
+             1| let
 -- 
 2.55.0
 

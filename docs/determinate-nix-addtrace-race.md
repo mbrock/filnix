@@ -181,6 +181,34 @@ in flight, and rethrow a fresh copy on every later forcing. All `BaseError`
 subclasses are `CloneableError`s, so `throwClone()` keeps the dynamic type.
 `tryEval` still catches `ThrownError` and `AssertionError`.
 
+The suite already states the intended behaviour, and its expected output
+contradicts it. `tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.nix`
+(also in upstream Nix since 2.34) says:
+
+```nix
+let
+  a = throw "nope";
+  b = builtins.addErrorContext "forcing b" a;
+  c = builtins.addErrorContext "forcing c" a;
+  d = builtins.addErrorContext "forcing d" a;
+in
+# Since nix 2.34 errors are memoised. Trying to eval a failed thunk includes
+# the trace from when it was first forced. When forcing a failed value it gets
+# a fresh instance of the exceptions to avoid trace mutation.
+builtins.seq (builtins.tryEval b) (builtins.seq (builtins.tryEval c) d)
+```
+
+Its `.err.exp` expects d's error to show `forcing d`, `forcing c` *and*
+`forcing b`. That output is the mutation the test's name and comment rule
+out: b's and c's contexts were prepended to the one stored exception. With
+the patch, d's error shows only `forcing d` above the `throw`, and the patch
+updates that expected output.
+
+A stored exception can't keep "the trace from when it was first forced" in
+full without a race. The first thrower's outer frames are added after other
+threads can already see the stored value, so the patch keeps the trace up to
+the failing thunk.
+
 ```diff
 diff --git a/src/libexpr/include/nix/expr/eval-inline.hh b/src/libexpr/include/nix/expr/eval-inline.hh
 index 6d43911..45ba8fc 100644
@@ -230,6 +258,21 @@ index 6d43911..45ba8fc 100644
  }
  
  [[gnu::always_inline]]
+diff --git a/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp b/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp
+index 9327371..5482d91 100644
+--- a/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp
++++ b/tests/functional/lang/eval-fail-memoised-error-trace-not-mutated.err.exp
+@@ -15,10 +15,6 @@ error:
+ 
+        … forcing d
+ 
+-       … forcing c
+-
+-       … forcing b
+-
+        … while calling the 'throw' builtin
+          at /pwd/lang/eval-fail-memoised-error-trace-not-mutated.nix:2:7:
+             1| let
 ```
 
 Checked with native builds of v3.22.5 plus this patch:
@@ -238,6 +281,12 @@ Checked with native builds of v3.22.5 plus this patch:
   "duplicate frames omitted".
 - A TSan build reports no `addTrace` races for race3.nix or race.nix (two
   runs each). Only the `trylevel` race above remains.
+- Native functional suite: 212 ok, 10 skipped, and `lang` passes with the
+  updated expected output. The one failure, `gc-closure`, died of SIGPIPE
+  in the test script itself: `printf %s "$input2" | head -n1` under
+  `pipefail`, a harness race, not in Nix. It passes in the unpatched run.
+  Without the `.err.exp` change, the only failure is
+  `eval-fail-memoised-error-trace-not-mutated`.
 - A side effect, also relevant to upstream Nix 2.35, which has `Failed`
   values too: errors no longer carry frames from unrelated earlier forcings.
   Before the patch, this prints "while calling the 'add' builtin" for the
@@ -249,9 +298,3 @@ Checked with native builds of v3.22.5 plus this patch:
     first = builtins.tryEval (builtins.add bad 1);
   in builtins.seq first (builtins.sub bad 2)
   ```
-
-Not yet done: running the functional suite against the patch. Any `.err.exp`
-that happens to contain accumulated frames would change.
-
-An alternative with the same effect is to make the stored value hold an
-immutable error description and construct a new exception on each rethrow.
