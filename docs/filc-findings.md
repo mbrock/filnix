@@ -163,3 +163,59 @@ address lands in `keybuffer`, but the pointer is still derived from
 `keybuffer + (enc - encbuffer)`. FFmpeg 8.1 also stores its `av_log`
 callback in an `atomic_uintptr_t`, dropping the function pointer's
 capability.
+
+## `__sync_*` builtins on pointers drop the capability
+
+Clang lowers `__sync_bool_compare_and_swap`, `__sync_val_compare_and_swap`
+and `__sync_lock_test_and_set` on pointer operands to `ptrtoint` and an
+integer `cmpxchg`/`atomicrmw xchg`, so the stored pointer has no capability
+and the next dereference traps, whether the load is atomic or not:
+
+```c
+static int x = 42;
+int *g;
+__sync_bool_compare_and_swap(&g, 0, &x);
+*g;   /* cannot read pointer with null object */
+```
+
+The `__atomic_*` builtins keep pointers intact. cffi's `_embedding.h` locks
+Python start-up this way (it stores a pointer into
+`PyCapsule_Type.tp_as_buffer`), so every cffi embedding module trapped in
+`Py_InitializeEx`; `patches/cffi-filc.patch` uses
+`__atomic_compare_exchange_n`. Upstream Fil-C has the same lowering
+(`EmitToInt` in `clang/lib/CodeGen/CGBuiltin.cpp`); keeping pointer operands
+pointer-typed there would cover every package that still uses the `__sync`
+builtins on pointers.
+
+## libffi closures receive read-only arguments
+
+The Fil-C libffi port's `ffi_closure_callback` points `avalue[i]` into the
+`zargs()` buffer, which is read-only. A closure handler may write to its
+by-value arguments (they are its own copies in C), and cffi's
+`test_callback_large_struct` does (`s.a += 1` on a struct argument):
+
+```c
+static void handler(ffi_cif *cif, void *ret, void **args, void *data) {
+    *(int *)args[0] += 1;   /* cannot write to read-only object */
+}
+```
+
+Copying each argument into its own buffer fixes it (`avalue[i] = memcpy
+(alloca (size), argp, size)` in `src/x86/ffi64.c`; the handler above and the
+cffi test then pass, as does libffi's test suite). That change rebuilds
+everything above libffi, so for now cffi skips the test.
+
+## cffi
+
+cffi 2.0 works with these changes (`patches/cffi-filc.patch`):
+
+- `ffi.callback()` needs libffi's `ffi_closure_alloc()`; cffi's own
+  write+execute trampoline allocator fails under Fil-C.
+- The type-building recursion limit is 200 instead of 1000 levels: each level
+  takes about 20 KB of stack under Fil-C, so the stack overflowed before
+  cffi could raise its RuntimeError.
+- The pure-Python ctypes backend (`FFI(backend=CTypesBackend())`) does not
+  work: it passes addresses through `ctypes.cast()` from integers. The
+  default `_cffi_backend` is unaffected.
+- `ffi.cast("int *", some_int)` and function pointers round-tripped through
+  `intptr_t` trap when used, as Fil-C intends.

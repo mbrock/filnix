@@ -35,6 +35,46 @@ in
     }))
   ])
 
+  (for "cffi" [
+    (patch ./patches/cffi-filc.patch)
+    (use (old: {
+      disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [
+        # The pure-Python ctypes backend passes every address through
+        # ctypes.cast() from an integer, so its pointers have no capability.
+        # test_ffi_backend.py::TestFFI runs the same tests on _cffi_backend.
+        "testing/cffi0/test_ctypes.py"
+        "testing/cffi0/test_function.py::TestFunction"
+        "testing/cffi0/test_ownlib.py::TestOwnLib"
+        "testing/cffi0/test_verify.py::test_ctypes_backend_forces_generic_engine"
+        "testing/cffi0/test_verify2.py::test_ctypes_backend_forces_generic_engine"
+        "testing/cffi0/test_vgen.py::test_ctypes_backend_forces_generic_engine"
+        "testing/cffi0/test_vgen2.py::test_ctypes_backend_forces_generic_engine"
+        # They cast integers to pointers and dereference them.
+        "src/c/test_c.py::test_cast_between_pointers"
+        "testing/cffi0/test_ffi_backend.py::TestFFI::test_cast_pointer_and_int"
+        "testing/cffi1/test_new_ffi_1.py::TestNewFFI1::test_cast_pointer_and_int"
+        # It calls a function pointer that went through intptr_t.
+        "testing/cffi1/test_recompiler.py::test_convert_api_mode_builtin_function_to_cdata"
+        # It indexes a from_buffer() pointer out of bounds ("hopefully
+        # does not crash").
+        "src/c/test_c.py::test_from_buffer_types"
+        # The callback writes to its by-value struct argument, which the
+        # Fil-C libffi closure hands over in the read-only zargs() buffer.
+        "testing/cffi0/test_ffi_backend.py::TestFFI::test_callback_large_struct"
+        # Fil-C zeroes every allocation, so should_clear_after_alloc=False
+        # never yields dirty memory.
+        "testing/cffi1/test_ffi_obj.py::test_ffi_new_allocator_1"
+        # They dlopen find_library('dl'). libdl has been part of libc since
+        # glibc 2.34 and the sandbox has no ldconfig cache, so -ldl only
+        # resolves to the empty libdl.a.
+        "testing/cffi0/test_ffi_backend.py::TestFFI::test_dlopen_handle"
+        "testing/cffi1/test_re_python.py::test_dlopen_handle"
+        # Fil-C exports pizlonated_* and pizlonated<N>ET* symbols.
+        "testing/cffi1/test_cffi_binary.py::test_no_unknown_exported_symbols"
+      ];
+    }))
+  ])
+
   (for "pybind11" [
     (use {
       # The CMake check target runs pytest with the build platform's Python,
