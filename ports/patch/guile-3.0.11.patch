@@ -1110,7 +1110,7 @@
                                          stream);
 --- a/libguile/ports.h
 +++ b/libguile/ports.h
-@@ -155,13 +155,34 @@
+@@ -155,13 +155,26 @@
  SCM_API SCM scm_port_mode (SCM port);
  
  /* Low-level constructors.  */
@@ -1131,24 +1131,16 @@
 +
 +/* The stream word usually holds a pointer.  Under Fil-C, a pointer
 +   passed as an integer keeps its capability only if the conversion
-+   back to a pointer is visible where the caller made the integer, so
-+   these convert inline and pass the stream as SCM.  */
-+static inline __attribute__ ((__always_inline__)) SCM
-+scm_c_make_port_with_encoding (scm_t_port_type *ptob, unsigned long mode_bits,
-+                               SCM encoding, SCM conversion_strategy,
-+                               scm_t_bits stream)
-+{
-+  return scm_i_c_make_port_with_encoding (ptob, mode_bits, encoding,
-+                                          conversion_strategy,
-+                                          SCM_PACK (stream));
-+}
-+
-+static inline __attribute__ ((__always_inline__)) SCM
-+scm_c_make_port (scm_t_port_type *ptob, unsigned long mode_bits,
-+                 scm_t_bits stream)
-+{
-+  return scm_i_c_make_port (ptob, mode_bits, SCM_PACK (stream));
-+}
++   back to a pointer is in the same expression, or at least visible to
++   the optimizer, where the caller made the integer.  So these are
++   macros that convert in the caller and pass the stream as SCM.  */
++#define scm_c_make_port_with_encoding(ptob, mode_bits, encoding,       \
++                                      conversion_strategy, stream)     \
++  (scm_i_c_make_port_with_encoding ((ptob), (mode_bits), (encoding),   \
++                                    (conversion_strategy),             \
++                                    SCM_PACK ((scm_t_bits) (stream))))
++#define scm_c_make_port(ptob, mode_bits, stream)                        \
++  (scm_i_c_make_port ((ptob), (mode_bits), SCM_PACK ((scm_t_bits) (stream))))
  
  /* Predicates.  */
  SCM_API SCM scm_port_p (SCM x);
@@ -1295,7 +1287,7 @@
    else
      return scm_cell (tc, data);
  }
-@@ -149,7 +150,8 @@
+@@ -149,30 +150,38 @@
    scm_t_bits smobnum = SCM_TC2SMOBNUM (tc);
  
    if (SCM_UNLIKELY (scm_smobs[smobnum].mark || scm_smobs[smobnum].free))
@@ -1305,6 +1297,46 @@
    else
      return scm_double_cell (tc, data1, data2, data3);
  }
+ #endif
+ 
++/* Under Fil-C a pointer passed as a scm_t_bits argument loses its
++   capability unless the optimizer inlines the callee, which it does not
++   at -O0.  So these macros convert the data to SCM in the caller's
++   expression and call scm_i_new_smob and scm_i_new_double_smob, which
++   take SCM.  */
++#define SCM_I_SMOB_WORD(data) (SCM_PACK ((scm_t_bits) (data)))
++
+ #define SCM_NEWSMOB(z, tc, data)                \
+-  z = scm_new_smob ((tc), (scm_t_bits)(data))
++  z = scm_i_new_smob ((tc), SCM_I_SMOB_WORD (data))
+ #define SCM_RETURN_NEWSMOB(tc, data)            \
+-  return scm_new_smob ((tc), (scm_t_bits)(data))
++  return scm_i_new_smob ((tc), SCM_I_SMOB_WORD (data))
+ 
+ #define SCM_NEWSMOB2(z, tc, data1, data2)               \
+-  z = scm_new_double_smob ((tc), (scm_t_bits)(data1),   \
+-                           (scm_t_bits)(data2), 0)
++  z = scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),     \
++                             SCM_I_SMOB_WORD (data2), SCM_PACK (0))
+ #define SCM_RETURN_NEWSMOB2(tc, data1, data2)                   \
+-  return scm_new_double_smob ((tc), (scm_t_bits)(data1),        \
+-                              (scm_t_bits)(data2), 0)
++  return scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),  \
++                                SCM_I_SMOB_WORD (data2), SCM_PACK (0))
+ 
+ #define SCM_NEWSMOB3(z, tc, data1, data2, data3)                        \
+-  z = scm_new_double_smob ((tc), (scm_t_bits)(data1),                   \
+-                           (scm_t_bits)(data2), (scm_t_bits)(data3))
++  z = scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),             \
++                             SCM_I_SMOB_WORD (data2), SCM_I_SMOB_WORD (data3))
+ #define SCM_RETURN_NEWSMOB3(tc, data1, data2, data3)                    \
+-  return scm_new_double_smob ((tc), (scm_t_bits)(data1),                \
+-                              (scm_t_bits)(data2), (scm_t_bits)(data3))
++  return scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),          \
++                                SCM_I_SMOB_WORD (data2), SCM_I_SMOB_WORD (data3))
+ 
+ 
+ 
 --- a/libguile/stackchk.c
 +++ b/libguile/stackchk.c
 @@ -43,11 +43,16 @@

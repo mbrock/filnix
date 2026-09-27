@@ -51,6 +51,13 @@ let
     ln -s ${pkgs.buildPackages.guile_3_0}/bin/* $out/bin/
   '';
 
+  # The Fil-C guile, for builds that must load Fil-C extensions or run
+  # tests with it at build time. It runs on the build machine.
+  filcGuileForBuild = pkgs.runCommand "filc-guile-for-build" { } ''
+    mkdir -p $out/bin
+    ln -s ${final.guile_3_0}/bin/* $out/bin/
+  '';
+
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -413,12 +420,15 @@ in
     # so use the Fil-C guile itself: it runs on the build machine.
     gnu-shepherd = for pkgs.gnu-shepherd [
       (use (old: {
-        nativeBuildInputs = old.nativeBuildInputs ++ [
-          (pkgs.runCommand "filc-guile-for-build" { } ''
-            mkdir -p $out/bin
-            ln -s ${final.guile_3_0}/bin/* $out/bin/
-          '')
-        ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
+      }))
+    ];
+
+    # Pure Guile. As with gnu-shepherd, configure needs a guile, and its
+    # tests run with the Fil-C one.
+    mcron = for pkgs.mcron [
+      (use (old: {
+        nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
       }))
     ];
 

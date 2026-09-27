@@ -32,8 +32,8 @@ traps, and by grepping for `scm_t_bits *`, `uintptr_t` returns and
 | `cache-internal.h`, `fluids.c`, `intrinsics.c` | The fluid cache stores keys and values as `scm_t_bits` | `SCM` fields |
 | `options.h`, `options.c`, `print.c`, `private-options.h` | SCM-valued options (print highlight prefix, keyword style) in a `scm_t_bits` field | The field is a union with an `SCM scm_val` member used for SCM options |
 | `atomics-internal.h` | `scm_atomic_*_scm`/`_pointer` go through `atomic_uintptr_t` | `__atomic_*` builtins on the pointer types |
-| `ports.[ch]` | `scm_c_make_port (…, scm_t_bits stream)` usually gets a pointer as an integer argument | The exported functions are now `scm_i_c_make_port[_with_encoding]` taking `SCM stream`. `scm_c_make_port` and `scm_c_make_port_with_encoding` are always-inline wrappers with the old signature, so a caller's `(scm_t_bits) ptr` is converted back in the caller, where Fil-C can still see the pointer |
-| `smob.[ch]` | `scm_i_new_smob`/`scm_i_new_double_smob` take data words as `scm_t_bits` | Take `SCM`. The inline `scm_new_smob` converts |
+| `ports.[ch]` | `scm_c_make_port (…, scm_t_bits stream)` usually gets a pointer as an integer argument | The exported functions are now `scm_i_c_make_port[_with_encoding]` taking `SCM stream`. `scm_c_make_port` and `scm_c_make_port_with_encoding` are macros with the old arguments that convert with `SCM_PACK ((scm_t_bits) (stream))` in the caller's expression, which keeps the capability even at `-O0` |
+| `smob.[ch]` | `scm_i_new_smob`/`scm_i_new_double_smob` take data words as `scm_t_bits` | Take `SCM`. `SCM_NEWSMOB*` and `SCM_RETURN_NEWSMOB*` convert in the caller's expression and call them directly (mailutils builds its Guile module at `-O0`, where going through the inline `scm_new_smob` lost the pointer) |
 | `inline.h` | `scm_cell`, `scm_words`, `scm_double_cell` and friends take words as `scm_t_bits` | Under `__FILC__`, `SCM_C_EXTERN_INLINE` adds `always_inline`, so the conversion is always visible (at `-O2`; see below) |
 | `vm-engine.c` | u64/s64 stack slots can hold code or data pointers (`load-label`, `word-ref`, `pointer-ref`); they were stored as integers | `SP_REF_U64`/`SP_SET_U64` (and s64, and slot moves) store and load through the slot's `void *` member |
 | `gsubr.c` | `primitive_call_ip` returned the call IP as `uintptr_t` | Returns a pointer |
@@ -145,10 +145,13 @@ stack and work unchanged.
   to libraries that call libguile: a pointer passed through a
   non-inline function parameter, struct field or array of type
   `scm_t_bits` loses its capability. The libguile macros
-  (`SCM_SET_SMOB_DATA`, `SCM_SET_CELL_WORD`, `scm_c_make_port`,
-  `scm_new_smob`) are safe when the pointer is converted in the same
-  function. `scm_c_make_struct` and `scm_c_make_structv` now take
-  `SCM`.
+  (`SCM_SET_SMOB_DATA`, `SCM_SET_CELL_WORD`, `SCM_NEWSMOB`,
+  `scm_c_make_port`) are safe at any optimization level when given the
+  pointer itself. The inline functions that take `scm_t_bits` words
+  (`scm_cell`, `scm_double_cell`, `scm_words`, `scm_new_smob`) are
+  always inlined, which keeps pointers only when the extension is
+  compiled with optimization. `scm_c_make_struct` and
+  `scm_c_make_structv` now take `SCM`.
 - **Raw memory introspection** does not work: `(system base types)` with
   the FFI memory backend (`types.test`) reads words at computed addresses
   and follows them as pointers, which Fil-C forbids by design. Arbitrary
@@ -194,11 +197,11 @@ the same bytecode) against native Guile 3.0.11 in the same harness:
 
 | | Fil-C | native |
 |---|---|---|
-| PASS | 40,142 | 40,159 |
+| PASS | 40,168 | 40,159 |
 | FAIL | 91 | 12 |
 | ERROR | 2 | 3 |
 
-Of the extra failures, 80 are "documented?" checks, an artefact of the
+Of the extra failures, 80 are documentation checks ("documented?", `object-documentation`), an artefact of the
 uninstalled harness: the build looks for `guile-procedures.txt` under
 its configure prefix. With those removed, the lists of failing tests are
 the same for both, except:
@@ -253,6 +256,9 @@ against the Fil-C Guile:
   `make-forkexec-constructor` services, `herd status` lists them,
   `herd stop ticker` kills its process, and `herd stop root` shuts down
   cleanly.
+- **mcron** (1.2.1) builds with the Fil-C `guile` as its build-time
+  guile, and its test suite, which runs in the build with that guile,
+  passes: 74 pass, 1 skipped.
 - **mailutils** (3.21) with Guile support: see `ports.nix`. It needs
   the MySQL backend off (mariadb-connector-c does not link for Fil-C)
   and GSSAPI off, an unprefixed `pkg-config` so that `guile-config`
@@ -260,7 +266,7 @@ against the Fil-C Guile:
   test helpers that Fil-C stops (`cwdrepl.c`, `encode2047.c`,
   `tesh.c`).
 
-Not tried yet: guix, lilypond, mcron and the other guile-* libraries.
+Not tried yet: guix, lilypond and the other guile-* libraries.
 Most guile-* libraries are pure Scheme and should build like guile-json.
 Libraries with C parts that keep pointers in `scm_t_bits` storage will
 need the same kind of changes as libguile (see "Remaining gaps").
