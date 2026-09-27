@@ -14,7 +14,41 @@ nix build -L .#legacyPackages.x86_64-linux.pkgsFilc.determinate-nix
 nix build -L .#legacyPackages.x86_64-linux.pkgsFilc.determinateNixComponents.nix-functional-tests-parallel
 ```
 
-RESULTS
+## Results
+
+- **Builds and passes its suites.** `determinate-nix` (nix-everything) builds,
+  so all of these ran and passed:
+
+  | Suite | Result |
+  | --- | --- |
+  | nix-util-tests | 787 pass, also under `enosys` without openat2/fchmodat2 |
+  | nix-store-tests | 722 pass |
+  | nix-fetchers-tests | 31 pass |
+  | nix-flake-tests | 23 pass |
+  | nix-expr-tests | 366 pass |
+  | functional tests | 184 ok, 0 fail, 38 skipped |
+  | functional tests with `eval-cores = 8` and `parallel-eval` | 184 ok, 0 fail, 38 skipped |
+
+  The skips are the suite's own (no daemon, no network, and so on), plus
+  the tests that need this Nix to create namespaces, plus three that hit the
+  Fil-C unwinding bug.
+- **Parallel evaluation gives the same results as native Nix.** With
+  eval-cores = 8 under Fil-C, the `.drv` paths match native upstream Nix
+  2.35.2 in each of these:
+  - all 25,017 top-level Nixpkgs attributes (22,484 derivations)
+  - four NixOS systems (minimal, server, Xfce desktop, Docker host), forced
+    in parallel by `nix eval --json`
+  - `builtins.parallel` over 2,155 packages
+
+  There were no safety panics. Native Determinate Nix, built from the same
+  scope, also matches with eval-cores 1 and 8.
+- **One real race in parallel evaluation**, caught by Fil-C as an
+  out-of-bounds write and confirmed with ThreadSanitizer and natively (bug 1
+  below). Also two minor issues (bugs 2 and 3).
+- **Porting problems in Fil-C itself**: `dlsym(RTLD_NEXT)`, the width of
+  `syscall()`'s result, shadow memory for huge `mmap` reservations, and
+  nested exceptions during unwinding. The last one is fixed in mbrock/fil-c
+  fa8c296.
 
 ## Packaging
 
@@ -226,4 +260,29 @@ change 4; not a safety issue.
 
 ## What was checked and came out clean
 
-EVALCHECK
+Under Fil-C, every one of these would have trapped on a use-after-free,
+out-of-bounds access or capability loss in the parallel evaluator. None did:
+
+- The thunk state machine (thunk → pending → awaited, `waitOnThunk`,
+  `notifyWaiters`, the waiter domains), `Executor` workers,
+  `parallelForceDeep` in `value-to-json`, `builtins.parallel`, and the
+  concurrent symbol table and `boost::concurrent_flat_map`s. They ran
+  through the whole Nixpkgs and NixOS evaluations above, at 8 threads, with
+  results identical to native Nix.
+- The whole functional suite with eval-cores = 8. It differs from
+  eval-cores = 1 only as expected: stack-overflow errors are reported one
+  frame deeper (`eval-fail-toJSON-stack-overflow`,
+  `eval-fail-derivation-structuredAttrs-stack-overflow`), and the debugger
+  warns that it disables multi-threading (`repl/debugger-*`). The parallel
+  variant drops those cases.
+
+Observed but not a bug: `ValueStorage::isTrivial()` reads `p1` before `p0`.
+That can pair a finished value's payload with a still-pending tag and
+`dynamic_cast` it as an `Expr *`. Its only caller is flake input parsing,
+which is single-threaded.
+
+Memory: Fil-C Determinate Nix needs about 2.5 to 3 times native RSS. Four
+NixOS systems peak at 8.2 GB against 2.5 GB natively. The Nixpkgs sweep was
+therefore run in 16 chunks of about 1,560 attributes each, peaking at
+7 to 10 GB per process
+([tests/determinate-nix/drvs-chunk.nix](../tests/determinate-nix/drvs-chunk.nix)).
