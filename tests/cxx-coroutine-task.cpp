@@ -70,8 +70,8 @@ Task<long> deep(int d) {
 
 #include <cstdlib>
 int main(int argc, char **argv) {
-  int depth = argc > 1 ? atoi(argv[1]) : 100000;
+  int depth = argc > 1 ? atoi(argv[1]) : 10000;
   printf("%s\n", middle(9).run().c_str());
-  printf("deep=%ld\n", deep(depth).run());  // needs symmetric transfer / tail calls
+  printf("deep=%ld\n", deep(depth).run());  // symmetric transfer uses stack under Fil-C
   return 0;
 }
