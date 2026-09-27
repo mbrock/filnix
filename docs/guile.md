@@ -73,7 +73,10 @@ store an aligned value that `make-pointer` would resolve as a pointer,
 and the matching loads record a word that holds a pointer in that table
 and return its address (`scm_i_store_word64`/`scm_i_load_word64` in
 `loader.c`). Only values in the user-space address range are looked up.
-With this, guile-zlib's 141 tests pass.
+With this, guile-zlib's 141 tests pass. For the same reason, a 64-bit
+integer argument of a foreign call is passed through the same store
+(Guix calls `prctl (PR_SET_NAME, (pointer-address p), ...)` with the
+address as an `unsigned-long`).
 
 ### Weak references
 
@@ -315,14 +318,30 @@ against the Fil-C Guile:
   platform's guile baked in; libgcrypt needed `-DNO_ASM` (its
   `mpi/longlong.h` inline asm, used by RSA, traps under Fil-C even with
   `--disable-asm`); and the 64-bit bytevector change above.
-- **Guix** builds: `guix` and `guix-daemon` (the C++ daemon) run
-  (`guix --version`). Without its container networking helper
-  slirp4netns: it needs libseccomp, and the Fil-C runtime rejects the
-  `seccomp` system call (`filc user error: unsupported syscall: 317`).
-  Not yet tested: anything that talks to the daemon. The daemon needs
-  root, a store at the configured `/gnu/store` and build users, which
-  this orb does not provide, and `guix/config.scm` records the build
-  platform's `git`, `gzip`, `bzip2` and `xz` programs.
+- **Guix** builds with `ports.nix` changes: libgcrypt from the host
+  (configure otherwise records the build platform's in
+  `guix/config.scm`), `graphviz-nox` for the documentation figures (the
+  X variant of graphviz does not build natively at this pin), a UTF-8
+  locale for the documentation tools, no slirp4netns, and a wrapper load
+  path without the build platform's Guile libraries (their FFI bindings
+  point at native libraries, which made every hash fail with "Function
+  not implemented"). It works as far as tested: `guix hash` gives the
+  same hashes as `nix hash`, `guix show hello` and `guix package -A`
+  load all package modules (10 s and 14 s). The C++ `guix-daemon` runs
+  as root with a `/gnu/store` and `guixbuild` users (`--disable-chroot`);
+  a client adds files to the store and computes derivations. Building
+  one failed while the Guile patch still lacked the FFI argument change
+  above: `guix substitute` trapped in `prctl (PR_SET_NAME, ...)`. With it,
+  the `prctl` call works in a test program; rebuilding Guix with it and
+  building a derivation is the next step. Remaining blockers for real
+  use: slirp4netns needs libseccomp, and the Fil-C runtime rejects the
+  `seccomp` system call (`filc user error: unsupported syscall: 317`),
+  so `guix shell --container` networking is out; builds with the build
+  daemon's chroot were not tried (this orb has no user namespaces set
+  up); `guix/config.scm` records the build platform's `git`, `gzip`,
+  `bzip2` and `xz` programs; and everything is slow, since the ~2,000
+  modules are compiled by the build platform's Guile but run on the
+  Fil-C one.
 
 Not tried yet: the other guile-* libraries.
 Most guile-* libraries are pure Scheme and should build like guile-json.

@@ -676,7 +676,23 @@
    scm_putc ('>', port);
  }
  
-@@ -1140,8 +1143,11 @@
+@@ -984,11 +987,13 @@
+       else
+ 	*(int32_t *) loc = scm_to_int32 (x);
+       break;
++    /* An integer argument can be an address that Scheme got from
++       pointer-address; see scm_i_store_word64.  */
+     case FFI_TYPE_UINT64:
+-      *(uint64_t *) loc = scm_to_uint64 (x);
++      scm_i_store_word64 (loc, scm_to_uint64 (x));
+       break;
+     case FFI_TYPE_SINT64:
+-      *(int64_t *) loc = scm_to_int64 (x);
++      scm_i_store_word64 (loc, (uint64_t) scm_to_int64 (x));
+       break;
+     case FFI_TYPE_STRUCT:
+       SCM_VALIDATE_POINTER (1, x);
+@@ -1140,8 +1145,11 @@
  	 i++)
      {
        /* Suitably align the storage area for argument I.  */
@@ -690,7 +706,7 @@
        assert ((uintptr_t) args[i] % cif->arg_types[i]->alignment == 0);
        unpack (cif->arg_types[i], args[i], argv[cif->nargs - i - 1].as_scm, 0);
      }
-@@ -1150,8 +1156,9 @@
+@@ -1150,8 +1158,9 @@
       `armv5tel-*-linux-gnueabi', the return value has to be at least
       word-aligned, even if its type doesn't have any alignment requirement as is
       the case with `char'.  */
