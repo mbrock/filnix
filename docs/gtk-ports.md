@@ -102,6 +102,55 @@ GTK's upstream suites remain disabled as in the Nixpkgs recipes. GTK4 4.14.5
 cannot satisfy applications requiring newer APIs; successful toolkit builds do
 not establish compatibility for every GNOME application.
 
+## GTK 2
+
+GTK 2.24.33 has no upstream Fil-C port. `patches/gtk2-filc-gtype.patch` makes
+the GTK 3 port's changes to the older sources and is applied after
+the Nixpkgs patches. Unlike GTK 3/4 here, GTK 2 keeps its X11 backend, since
+it has no other backend on Linux, and GAIL is still built as its
+accessibility module.
+
+With GType a pointer, the unpatched sources do not compile. The changes are:
+
+- **Fundamental-type switches.** GtkArg conversion (`gtkobject.c`,
+  `gtksignal.c`), key-binding argument copying and marshalling
+  (`gtkbindings.c`), GtkBuilder value parsing, GtkSettings, and tree-model
+  row storage (`gtktreedatalist.c`) switch on `(uintptr_t)` of the type, with
+  `(uintptr_t)` case labels. Fundamental types are small constants, so
+  this only compares addresses.
+- **Signal scope flags.** `TYPE | G_SIGNAL_TYPE_STATIC_SCOPE` becomes
+  `zorptr(TYPE, ...)`, and GtkArg's `type & ~G_SIGNAL_TYPE_STATIC_SCOPE`
+  becomes `zandptr`, so registered GTypes keep their capability. This covers
+  about 50 signals in GtkWidget, GtkTextBuffer, GtkTreeModel, GtkEntry and
+  others.
+- **Type registration.** GAIL's accessible factories (the
+  `GAIL_IMPLEMENT_FACTORY` macro) and `GailCellParent` use a pointer
+  `g_once_init_enter_pointer`/`_leave_pointer`, as the GTK 3 templates do.
+  GTK 2's own enum types come from pre-generated `gtktypebuiltins.c`, whose
+  `static GType etype` is already fine.
+- **GTypes in integers.** GtkComboBoxText held a model's column type in a
+  `gint`. No code stores a GType through `G*_TO_POINTER` or similar casts.
+- **Clang errors outside GType.** GtkScale passed its three-argument mark
+  comparator through a `GCompareFunc` cast. `tests/testmenubars.c` used a
+  K&R parameter and an extra argument, and `tests/testtreeview.c` walks
+  types numerically (fixed as in the GTK 3 port).
+
+`checks.gtk2-runtime` compiles `tests/gtk2-runtime.c` with Fil-C and runs it
+against a native Xvfb server with `GTK_MODULES=gail`. It exercises:
+
+- GtkBuilder type lookup and properties;
+- signal emission, including the flagged `insert-text` and `row-inserted`
+  signals;
+- a GtkBindingSet entry and an RC-file binding, activated by key;
+- list-store storage and sorting of string, int, double and boolean columns;
+- GtkComboBoxText, GtkSettings and GtkScale marks;
+- GAIL's accessible types;
+- Pango text measurement and a PNG round trip through GdkPixbuf;
+- showing and mapping a window, then running `gtk_main` until a timeout
+  quits it.
+
+The run produces no GLib warnings or criticals.
+
 ## Reproducing the checks
 
 Observed results on 2026-09-14:
@@ -131,6 +180,7 @@ Focused downstream checks are exposed as flake checks:
 
 ```sh
 nix build .#checks.x86_64-linux.pygobject \
+  .#checks.x86_64-linux.gtk2-runtime \
   .#checks.x86_64-linux.gtk3-runtime \
   .#checks.x86_64-linux.gtk4-runtime \
   .#checks.x86_64-linux.glib-networking \

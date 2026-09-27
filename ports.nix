@@ -1917,6 +1917,13 @@ in
   ])
 
   {
+    # Named explicitly: the pname is "gtk+". GTK 2 has no upstream Fil-C port;
+    # this applies the GTK 3 port's pointer-GType changes to 2.24.33 (see
+    # docs/gtk-ports.md).
+    gtk2 = for pkgs.gtk2 [
+      (patch ./patches/gtk2-filc-gtype.patch)
+    ];
+
     gtk3 = for pkgs.gtk3 [
       (pin "3.24.52" "sha256-gJMfpHKne5oWT2dA48C0RPrGdwBUYy01p/+dZ55ee58=")
       (patch ./ports/patch/gtk-3.24.52.patch)
