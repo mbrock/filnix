@@ -1905,6 +1905,10 @@ in
     (patch ./patches/dbus-glib-gtype.patch)
   ])
 
+  (for pkgs.json-glib [
+    (patch ./patches/json-glib-gtype.patch)
+  ])
+
   (for pkgs.dconf [
     (patch ./patches/dconf-filc-gtype.patch)
     # Vala is used only to generate API metadata here, not linked into dconf.

@@ -1,0 +1,518 @@
+Subject: Dispatch on and order pointer-valued GTypes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C GLib. Switch statements with G_TYPE_* case
+labels do not compile; switch on the (uintptr_t) value and cast each label,
+comparing integer values only. The boxed transform list was ordered by
+subtracting GTypes into a gint, which is pointer arithmetic on an
+incomplete type under Fil-C and truncates on native 64-bit builds; compare
+the uintptr_t values instead, keeping the descending order.
+
+The node and parser tests compared GTypes with g_assert_cmpint; compare
+their names with g_assert_cmpstr, which also reports readable failures.
+All changes are no-ops for the native integer GType ABI.
+
+diff --git a/json-glib/json-gboxed.c b/json-glib/json-gboxed.c
+index 23bed4b..5e97312 100644
+--- a/json-glib/json-gboxed.c
++++ b/json-glib/json-gboxed.c
+@@ -22,6 +22,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdint.h>
++
+ #include <string.h>
+ #include <stdlib.h>
+ 
+@@ -52,7 +54,10 @@ boxed_transforms_cmp (gconstpointer a,
+   const BoxedTransform *ta = a;
+   const BoxedTransform *tb = b;
+ 
+-  return tb->boxed_type - ta->boxed_type;
++  uintptr_t a_type = (uintptr_t) ta->boxed_type;
++  uintptr_t b_type = (uintptr_t) tb->boxed_type;
++
++  return (b_type > a_type) - (b_type < a_type);
+ }
+ 
+ static gint
+diff --git a/json-glib/json-gobject.c b/json-glib/json-gobject.c
+index 9b4a841..63e65e5 100644
+--- a/json-glib/json-gobject.c
++++ b/json-glib/json-gobject.c
+@@ -21,6 +21,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdint.h>
++
+ #include <string.h>
+ #include <stdlib.h>
+ 
+@@ -488,11 +490,11 @@ json_deserialize_pspec (GValue     *value,
+       }
+ #endif
+ 
+-      switch (G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (value)))
++      switch ((uintptr_t) G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (value)))
+         {
+-        case G_TYPE_BOOLEAN:
+-        case G_TYPE_INT64:
+-        case G_TYPE_STRING:
++        case (uintptr_t) G_TYPE_BOOLEAN:
++        case (uintptr_t) G_TYPE_INT64:
++        case (uintptr_t) G_TYPE_STRING:
+ 	  if (G_VALUE_HOLDS (&node_value, G_VALUE_TYPE (value)))
+ 	    {
+ 	      g_value_copy (&node_value, value);
+@@ -500,7 +502,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_INT:
++        case (uintptr_t) G_TYPE_INT:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_int (value, (gint) g_value_get_int64 (&node_value));
+@@ -508,7 +510,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_CHAR:
++        case (uintptr_t) G_TYPE_CHAR:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_schar (value, (gchar) g_value_get_int64 (&node_value));
+@@ -516,7 +518,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_UINT:
++        case (uintptr_t) G_TYPE_UINT:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_uint (value, (guint) g_value_get_int64 (&node_value));
+@@ -524,7 +526,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_UCHAR:
++        case (uintptr_t) G_TYPE_UCHAR:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_uchar (value, (guchar) g_value_get_int64 (&node_value));
+@@ -532,7 +534,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_LONG:
++        case (uintptr_t) G_TYPE_LONG:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_long (value, (glong) g_value_get_int64 (&node_value));
+@@ -540,7 +542,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_ULONG:
++        case (uintptr_t) G_TYPE_ULONG:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_ulong (value, (gulong) g_value_get_int64 (&node_value));
+@@ -548,7 +550,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_UINT64:
++        case (uintptr_t) G_TYPE_UINT64:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_INT64))
+ 	    {
+ 	      g_value_set_uint64 (value, (guint64) g_value_get_int64 (&node_value));
+@@ -556,7 +558,7 @@ json_deserialize_pspec (GValue     *value,
+ 	    }
+           break;
+ 
+-        case G_TYPE_DOUBLE:
++        case (uintptr_t) G_TYPE_DOUBLE:
+ 
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_DOUBLE))
+ 	    {
+@@ -571,7 +573,7 @@ json_deserialize_pspec (GValue     *value,
+ 
+           break;
+ 
+-        case G_TYPE_FLOAT:
++        case (uintptr_t) G_TYPE_FLOAT:
+ 	  if (G_VALUE_HOLDS (&node_value, G_TYPE_DOUBLE))
+ 	    {
+ 	      g_value_set_float (value, (gfloat) g_value_get_double (&node_value));
+@@ -585,7 +587,7 @@ json_deserialize_pspec (GValue     *value,
+ 
+           break;
+ 
+-        case G_TYPE_ENUM:
++        case (uintptr_t) G_TYPE_ENUM:
+           {
+             gint enum_value = 0;
+ 
+@@ -606,7 +608,7 @@ json_deserialize_pspec (GValue     *value,
+           }
+           break;
+ 
+-        case G_TYPE_FLAGS:
++        case (uintptr_t) G_TYPE_FLAGS:
+           {
+             gint flags_value = 0;
+ 
+@@ -662,69 +664,69 @@ json_serialize_pspec (const GValue *real_value,
+   JsonNode *retval = NULL;
+   JsonNodeType node_type;
+ 
+-  switch (G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (real_value)))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (real_value)))
+     {
+     /* JSON native types */
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_int64 (real_value));
+       break;
+ 
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       retval = json_node_init_boolean (json_node_alloc (), g_value_get_boolean (real_value));
+       break;
+ 
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       retval = json_node_init_double (json_node_alloc (), g_value_get_double (real_value));
+       break;
+ 
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       retval = json_node_init_string (json_node_alloc (), g_value_get_string (real_value));
+       break;
+ 
+     /* auto-promoted types */
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_int (real_value));
+       break;
+ 
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_uint (real_value));
+       break;
+ 
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_long (real_value));
+       break;
+ 
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_ulong (real_value));
+       break;
+ 
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_uint64 (real_value));
+       break;
+ 
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       retval = json_node_init_double (json_node_alloc (), g_value_get_float (real_value));
+       break;
+ 
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       retval = json_node_alloc ();
+       json_node_init_int (retval, g_value_get_schar (real_value));
+       break;
+ 
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_uchar (real_value));
+       break;
+ 
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_enum (real_value));
+       break;
+ 
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       retval = json_node_init_int (json_node_alloc (), g_value_get_flags (real_value));
+       break;
+ 
+     /* complex types */
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       if (G_VALUE_HOLDS (real_value, G_TYPE_STRV))
+         {
+           gchar **strv = g_value_get_boxed (real_value);
+@@ -756,7 +758,7 @@ json_serialize_pspec (const GValue *real_value,
+                    g_type_name (G_VALUE_TYPE (real_value)));
+       break;
+ 
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       {
+         GObject *object = g_value_get_object (real_value);
+ 
+@@ -772,7 +774,7 @@ json_serialize_pspec (const GValue *real_value,
+       }
+       break;
+ 
+-    case G_TYPE_NONE:
++    case (uintptr_t) G_TYPE_NONE:
+       retval = json_node_new (JSON_NODE_NULL);
+       break;
+ 
+diff --git a/json-glib/json-gvariant.c b/json-glib/json-gvariant.c
+index cfd77f0..c57fa37 100644
+--- a/json-glib/json-gvariant.c
++++ b/json-glib/json-gvariant.c
+@@ -21,6 +21,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdint.h>
++
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <errno.h>
+@@ -421,21 +423,21 @@ json_to_gvariant_get_next_class (JsonNode     *json_node,
+       switch (json_node_get_node_type (json_node))
+         {
+         case JSON_NODE_VALUE:
+-          switch (json_node_get_value_type (json_node))
++          switch ((uintptr_t) json_node_get_value_type (json_node))
+             {
+-            case G_TYPE_BOOLEAN:
++            case (uintptr_t) G_TYPE_BOOLEAN:
+               class = G_VARIANT_CLASS_BOOLEAN;
+               break;
+ 
+-            case G_TYPE_INT64:
++            case (uintptr_t) G_TYPE_INT64:
+               class = G_VARIANT_CLASS_INT64;
+               break;
+ 
+-            case G_TYPE_DOUBLE:
++            case (uintptr_t) G_TYPE_DOUBLE:
+               class = G_VARIANT_CLASS_DOUBLE;
+               break;
+ 
+-            case G_TYPE_STRING:
++            case (uintptr_t) G_TYPE_STRING:
+               class = G_VARIANT_CLASS_STRING;
+               break;
+             }
+diff --git a/json-glib/json-node.c b/json-glib/json-node.c
+index 733c11b..2dd3a85 100644
+--- a/json-glib/json-node.c
++++ b/json-glib/json-node.c
+@@ -27,6 +27,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdint.h>
++
+ #include <glib.h>
+ 
+ #include "json-types.h"
+@@ -736,21 +738,21 @@ json_node_get_value (JsonNode *node,
+   if (node->data.value)
+     {
+       g_value_init (value, JSON_VALUE_TYPE (node->data.value));
+-      switch (JSON_VALUE_TYPE (node->data.value))
++      switch ((uintptr_t) JSON_VALUE_TYPE (node->data.value))
+         {
+-        case G_TYPE_INT64:
++        case (uintptr_t) G_TYPE_INT64:
+           g_value_set_int64 (value, json_value_get_int (node->data.value));
+           break;
+ 
+-        case G_TYPE_DOUBLE:
++        case (uintptr_t) G_TYPE_DOUBLE:
+           g_value_set_double (value, json_value_get_double (node->data.value));
+           break;
+ 
+-        case G_TYPE_BOOLEAN:
++        case (uintptr_t) G_TYPE_BOOLEAN:
+           g_value_set_boolean (value, json_value_get_boolean (node->data.value));
+           break;
+ 
+-        case G_TYPE_STRING:
++        case (uintptr_t) G_TYPE_STRING:
+           g_value_set_string (value, json_value_get_string (node->data.value));
+           break;
+ 
+@@ -796,11 +798,11 @@ json_node_set_value (JsonNode     *node,
+   if (node->data.value == NULL)
+     node->data.value = json_value_alloc ();
+ 
+-  switch (G_VALUE_TYPE (value))
++  switch ((uintptr_t) G_VALUE_TYPE (value))
+     {
+     /* auto-promote machine integers to 64 bit integers */
+-    case G_TYPE_INT64:
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT:
+       json_value_init (node->data.value, JSON_VALUE_INT);
+       if (G_VALUE_TYPE (value) == G_TYPE_INT64)
+         json_value_set_int (node->data.value, g_value_get_int64 (value));
+@@ -808,14 +810,14 @@ json_node_set_value (JsonNode     *node,
+         json_value_set_int (node->data.value, g_value_get_int (value));
+       break;
+ 
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       json_value_init (node->data.value, JSON_VALUE_BOOLEAN);
+       json_value_set_boolean (node->data.value, g_value_get_boolean (value));
+       break;
+ 
+     /* auto-promote single-precision floats to double precision floats */
+-    case G_TYPE_DOUBLE:
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_FLOAT:
+       json_value_init (node->data.value, JSON_VALUE_DOUBLE);
+       if (G_VALUE_TYPE (value) == G_TYPE_DOUBLE)
+         json_value_set_double (node->data.value, g_value_get_double (value));
+@@ -823,7 +825,7 @@ json_node_set_value (JsonNode     *node,
+         json_value_set_double (node->data.value, g_value_get_float (value));
+       break;
+ 
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       json_value_init (node->data.value, JSON_VALUE_STRING);
+       json_value_set_string (node->data.value, g_value_get_string (value));
+       break;
+diff --git a/json-glib/tests/node.c b/json-glib/tests/node.c
+index 20b0c5a..178b127 100644
+--- a/json-glib/tests/node.c
++++ b/json-glib/tests/node.c
+@@ -76,7 +76,7 @@ test_copy_null (void)
+   JsonNode *copy = json_node_copy (node);
+ 
+   g_assert_cmpint (json_node_get_node_type (node), ==, json_node_get_node_type (copy));
+-  g_assert_cmpint (json_node_get_value_type (node), ==, json_node_get_value_type (copy));
++  g_assert_cmpstr (g_type_name (json_node_get_value_type (node)), ==, g_type_name (json_node_get_value_type (copy)));
+   g_assert_cmpstr (json_node_type_name (node), ==, json_node_type_name (copy));
+ 
+   json_node_free (copy);
+@@ -129,7 +129,7 @@ test_null (void)
+ 
+   g_assert_true (JSON_NODE_HOLDS_NULL (node));
+   g_assert_true (json_node_is_null (node));
+-  g_assert_cmpint (json_node_get_value_type (node), ==, G_TYPE_INVALID);
++  g_assert_cmpstr (g_type_name (json_node_get_value_type (node)), ==, g_type_name (G_TYPE_INVALID));
+   g_assert_cmpstr (json_node_type_name (node), ==, "NULL");
+ 
+   json_node_free (node);
+@@ -180,15 +180,15 @@ test_gvalue (void)
+   g_value_init (&value, G_TYPE_INT64);
+   g_value_set_int64 (&value, 42);
+ 
+-  g_assert_cmpint (G_VALUE_TYPE (&value), ==, G_TYPE_INT64);
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&value)), ==, g_type_name (G_TYPE_INT64));
+   g_assert_cmpint (g_value_get_int64 (&value), ==, 42);
+ 
+   json_node_set_value (node, &value);
+   json_node_get_value (node, &check);
+ 
+-  g_assert_cmpint (G_VALUE_TYPE (&value), ==, G_VALUE_TYPE (&check));
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&value)), ==, g_type_name (G_VALUE_TYPE (&check)));
+   g_assert_cmpint (g_value_get_int64 (&value), ==, g_value_get_int64 (&check));
+-  g_assert_cmpint (G_VALUE_TYPE (&check), ==, G_TYPE_INT64);
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&check)), ==, g_type_name (G_TYPE_INT64));
+   g_assert_cmpint (g_value_get_int64 (&check), ==, 42);
+ 
+   g_value_unset (&value);
+@@ -197,15 +197,15 @@ test_gvalue (void)
+   g_value_init (&value, G_TYPE_STRING);
+   g_value_set_string (&value, "Hello, World!");
+ 
+-  g_assert_cmpint (G_VALUE_TYPE (&value), ==, G_TYPE_STRING);
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&value)), ==, g_type_name (G_TYPE_STRING));
+   g_assert_cmpstr (g_value_get_string (&value), ==, "Hello, World!");
+ 
+   json_node_set_value (node, &value);
+   json_node_get_value (node, &check);
+ 
+-  g_assert_cmpint (G_VALUE_TYPE (&value), ==, G_VALUE_TYPE (&check));
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&value)), ==, g_type_name (G_VALUE_TYPE (&check)));
+   g_assert_cmpstr (g_value_get_string (&value), ==, g_value_get_string (&check));
+-  g_assert_cmpint (G_VALUE_TYPE (&check), ==, G_TYPE_STRING);
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&check)), ==, g_type_name (G_TYPE_STRING));
+   g_assert_cmpstr (g_value_get_string (&check), ==, "Hello, World!");
+ 
+   g_value_unset (&value);
+@@ -231,9 +231,9 @@ test_gvalue_autopromotion (void)
+ 
+   g_test_message ("Expecting an gint64, got a '%s'", g_type_name (G_VALUE_TYPE (&check)));
+ 
+-  g_assert_cmpint (G_VALUE_TYPE (&check), ==, G_TYPE_INT64);
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&check)), ==, g_type_name (G_TYPE_INT64));
+   g_assert_cmpint (g_value_get_int64 (&check), ==, 42);
+-  g_assert_cmpint (G_VALUE_TYPE (&value), !=, G_VALUE_TYPE (&check));
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&value)), !=, g_type_name (G_VALUE_TYPE (&check)));
+   g_assert_cmpint ((gint64) g_value_get_int (&value), ==, g_value_get_int64 (&check));
+ 
+   g_value_unset (&value);
+@@ -248,9 +248,9 @@ test_gvalue_autopromotion (void)
+ 
+   g_test_message ("Expecting a gdouble, got a '%s'", g_type_name (G_VALUE_TYPE (&check))); 
+ 
+-  g_assert_cmpint (G_VALUE_TYPE (&check), ==, G_TYPE_DOUBLE);
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&check)), ==, g_type_name (G_TYPE_DOUBLE));
+   g_assert_cmpfloat_with_epsilon (g_value_get_double (&check), 3.14159, 0.00001);
+-  g_assert_cmpint (G_VALUE_TYPE (&value), !=, G_VALUE_TYPE (&check));
++  g_assert_cmpstr (g_type_name (G_VALUE_TYPE (&value)), !=, g_type_name (G_VALUE_TYPE (&check)));
+   g_assert_cmpfloat_with_epsilon (g_value_get_float (&value),
+                                   g_value_get_double (&check),
+                                   DBL_EPSILON);
+diff --git a/json-glib/tests/parser.c b/json-glib/tests/parser.c
+index f924d52..8b62aa3 100644
+--- a/json-glib/tests/parser.c
++++ b/json-glib/tests/parser.c
+@@ -240,7 +240,7 @@ test_base_value (void)
+       g_test_message ("Checking root node type '%s'...",
+                       json_node_type_name (root));
+       g_assert_cmpint (JSON_NODE_TYPE (root), ==, test_base_values[i].type);
+-      g_assert_cmpint (json_node_get_value_type (root), ==, test_base_values[i].gtype);
++      g_assert_cmpstr (g_type_name (json_node_get_value_type (root)), ==, g_type_name (test_base_values[i].gtype));
+ 
+       if (test_base_values[i].verify_value)
+         test_base_values[i].verify_value (root);
+@@ -310,7 +310,7 @@ test_simple_array (void)
+       g_assert_nonnull (node);
+       g_assert_true (json_node_get_parent (node) == root);
+       g_assert_cmpint (JSON_NODE_TYPE (node), ==, test_simple_arrays[i].type);
+-      g_assert_cmpint (json_node_get_value_type (node), ==, test_simple_arrays[i].gtype);
++      g_assert_cmpstr (g_type_name (json_node_get_value_type (node)), ==, g_type_name (test_simple_arrays[i].gtype));
+     }
+ 
+   g_object_unref (parser);
+@@ -404,7 +404,7 @@ test_simple_object (void)
+       g_assert_nonnull (node);
+       g_assert_true (json_node_get_parent (node) == root);
+       g_assert_cmpint (JSON_NODE_TYPE (node), ==, test_simple_objects[i].type);
+-      g_assert_cmpint (json_node_get_value_type (node), ==, test_simple_objects[i].gtype);
++      g_assert_cmpstr (g_type_name (json_node_get_value_type (node)), ==, g_type_name (test_simple_objects[i].gtype));
+     }
+ 
+   g_object_unref (parser);
+@@ -734,7 +734,7 @@ test_parser_string_extensions (void)
+ 
+       JsonNode *root = json_parser_steal_root (parser);
+       g_assert_cmpint (JSON_NODE_TYPE (root), ==, JSON_NODE_VALUE);
+-      g_assert_cmpint (json_node_get_value_type (root), ==, G_TYPE_STRING);
++      g_assert_cmpstr (g_type_name (json_node_get_value_type (root)), ==, g_type_name (G_TYPE_STRING));
+       g_assert_cmpstr (json_node_get_string (root), ==, test_str_extensions[i].expected);
+       json_node_unref (root);
+     }
