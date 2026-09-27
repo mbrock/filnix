@@ -1,0 +1,21 @@
+diff --git a/src/lib/lttng-ust/lttng-ust-statedump.c b/src/lib/lttng-ust/lttng-ust-statedump.c
+index bd95c04..e2fb172 100644
+--- a/src/lib/lttng-ust/lttng-ust-statedump.c
++++ b/src/lib/lttng-ust/lttng-ust-statedump.c
+@@ -570,7 +570,16 @@ void lttng_ust_dl_update(void *ip)
+ 	 * done in the iteration over libraries, and sweeping is
+ 	 * performed by iter_end().
+ 	 */
++#ifdef __FILC__
++	/*
++	 * Fil-C provides no dl_iterate_phdr: program headers and raw
++	 * segment addresses are outside its memory model. Emit no base
++	 * address events; the table stays empty.
++	 */
++	(void) extract_bin_info_events;
++#else
+ 	dl_iterate_phdr(extract_bin_info_events, &data);
++#endif
+ 	if (data.first)
+ 		iter_begin(&data);
+ 	iter_end(&data, ip);

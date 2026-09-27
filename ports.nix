@@ -662,8 +662,32 @@ in
   (for pkgs.liburcu [
     # Use compiler atomics instead of the x86 inline assembly ones.
     (configure "--enable-compiler-atomic-builtins")
-    # The regression tests use membarrier(2), which the runtime rejects.
-    (skipCheck "membarrier")
+    # The x86 header still used inline-assembly barriers ("lock; addl"),
+    # which Fil-C rejects when they run, and the memb flavor probed
+    # membarrier(2), which Fil-C refuses by stopping the program. Use the
+    # generic builtin barriers and the existing no-membarrier fallback.
+    # With that, the unit tests (674) pass and run again.
+    (patch ./patches/liburcu-filc.patch)
+  ])
+
+  (for pkgs.lttng-ust [
+    # With liburcu's compiler-builtin atomics, uatomic_or on the tagged
+    # node->next pointer does not compile; set the flag with a CAS loop.
+    (patch ./patches/lttng-ust-rculfhash-removed-flag.patch)
+    # Fil-C has no dl_iterate_phdr, which the base-address statedump
+    # uses to list loaded objects; skip that statedump.
+    (patch ./patches/lttng-ust-no-dl-iterate-phdr.patch)
+    # liblttng-ust-common's constructor probed membarrier(2), which Fil-C
+    # refuses by stopping the program; use the existing smp_mb fallback.
+    (patch ./patches/lttng-ust-no-membarrier.patch)
+    # Fil-C has no __start_/__stop_ section symbols, and the weak
+    # references in <lttng/tracepoint.h> crashed every instrumented
+    # program at startup; register each tracepoint from a constructor.
+    (patch ./patches/lttng-ust-tracepoint-ctor-registration.patch)
+    # libnuma's numa_preferred() trips a bounds check in Fil-C's
+    # get_mempolicy wrapper (docs/filc-findings.md), which the ring buffer
+    # calls for every channel.
+    (configure "--disable-numa")
   ])
 
   (for pkgs.mbedtls [
