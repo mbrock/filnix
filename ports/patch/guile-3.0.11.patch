@@ -664,15 +664,16 @@
    errno = 0;
 --- a/libguile/gc.c
 +++ b/libguile/gc.c
-@@ -59,6 +59,7 @@
+@@ -59,6 +59,8 @@
  #endif
  
  #include "gc.h"
 +#include "loader.h"
++#include "atomics-internal.h"
  
  /* For GC_set_start_callback.  */
  #include <gc/gc_mark.h>
-@@ -211,6 +212,8 @@
+@@ -211,6 +213,8 @@
  	    "returned by this function for @var{obj}")
  #define FUNC_NAME s_scm_object_address
  {
@@ -681,7 +682,7 @@
    return scm_from_ulong (SCM_UNPACK (obj));
  }
  #undef FUNC_NAME
-@@ -442,6 +445,10 @@
+@@ -442,6 +446,10 @@
  
  
  
@@ -692,7 +693,7 @@
  void
  scm_storage_prehistory ()
  {
-@@ -464,6 +471,10 @@
+@@ -464,6 +472,10 @@
  
    GC_INIT ();
  
@@ -703,6 +704,34 @@
    size_t heap_size = GC_get_heap_size ();
    if (heap_size < DEFAULT_INITIAL_HEAP_SIZE)
      GC_expand_hp (DEFAULT_INITIAL_HEAP_SIZE - heap_size);
+@@ -538,10 +550,24 @@
+ {
+   scm_thread *t = SCM_I_CURRENT_THREAD;
+ 
+-  if (scm_is_false (SCM_CDR (after_gc_async_cell)))
++  /* With FUGC this runs on whichever thread notices a finished cycle,
++     while other threads run and may push asyncs onto T's list (libgc
++     runs it with the world stopped).  Claim the shared cell and push it
++     atomically.  */
++  if (scm_is_eq (scm_atomic_compare_and_swap_scm (SCM_CDRLOC (after_gc_async_cell),
++                                                  SCM_BOOL_F, SCM_EOL),
++                 SCM_BOOL_F))
+     {
+-      SCM_SETCDR (after_gc_async_cell, t->pending_asyncs);
+-      t->pending_asyncs = after_gc_async_cell;
++      SCM expected, asyncs = scm_atomic_ref_scm (&t->pending_asyncs);
++      do
++        {
++          expected = asyncs;
++          scm_atomic_set_scm (SCM_CDRLOC (after_gc_async_cell), expected);
++          asyncs = scm_atomic_compare_and_swap_scm (&t->pending_asyncs,
++                                                    expected,
++                                                    after_gc_async_cell);
++        }
++      while (!scm_is_eq (asyncs, expected));
+     }
+ 
+   return NULL;
 --- a/libguile/gsubr.c
 +++ b/libguile/gsubr.c
 @@ -240,6 +240,29 @@

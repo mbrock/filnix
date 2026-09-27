@@ -185,18 +185,11 @@ Tested so far (nixos-26.05 campaign blockers):
   aligns pointers relative to `(char *) 0`, which drops their
   capabilities. The test scripts also needed their `/bin/rm` and shebangs
   patched.
-- **guile_3_0** is marked broken. With the build fixes in `ports.nix`
-  (drop an already-applied patch, `--disable-jit`, and expose only the
-  programs of the native guile that compiles the Scheme modules, so that
-  its native libraries stay off the Fil-C link path), libguile compiles
-  and links against this libgc. But Guile stores SCM values in
-  `scm_t_bits` (`uintptr_t`) cell words, so every heap reference loses its
-  capability. The first symbol-table lookup during `scm_init_struct`
-  traps. A Guile port would make `scm_t_bits` a pointer type (like the
-  CPython and Perl ports) and move the VM stack out of mmap'd memory. Its
-  weak tables use mark procedures, which would need `zweak_map`. That
-  work, not libgc, is what the ~50 guile-* packages, guix, lilypond,
-  mailutils, shepherd and mcron now wait on.
+- **guile_3_0** builds and runs, with a Guile patch for the places where
+  it keeps pointers in `scm_t_bits` words, weak tables that hide their
+  referents from FUGC through a weak `zexact_ptrtable`, and continuations
+  that do not copy the C stack. See `docs/guile.md`. guile-json,
+  guile-lib, guile-fibers, gnu-shepherd and mailutils build on it.
 - **crystal, nim** were not attempted. Crystal needs LLVM and a Crystal
   bootstrap compiler. Nim's generated C and its own GC cast pointers to
   integers, and libgc is only an optional backend there.

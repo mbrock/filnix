@@ -42,6 +42,15 @@ let
     gnuTarGz
     ;
 
+  # The build platform's guile, to compile Scheme modules to .go files
+  # (the bytecode is the same). As an input it would propagate its
+  # native libunistring and libgc onto the Fil-C link path, so only its
+  # programs are exposed.
+  guileForBuild = pkgs.runCommand "guile-for-build" { } ''
+    mkdir -p $out/bin
+    ln -s ${pkgs.buildPackages.guile_3_0}/bin/* $out/bin/
+  '';
+
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -375,17 +384,9 @@ in
       (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
       # Guile's JIT emits machine code.
       (configure "--disable-jit")
-      # The build platform's guile compiles the Scheme modules. As an
-      # input it would propagate its native libunistring and libgc onto
-      # the Fil-C link path, so only its programs are exposed.
       (use (old: {
         depsBuildBuild = [ pkgs.stdenv.cc ];
-        nativeBuildInputs = old.nativeBuildInputs ++ [
-          (pkgs.runCommand "guile-for-build" { } ''
-            mkdir -p $out/bin
-            ln -s ${pkgs.guile_3_0}/bin/* $out/bin/
-          '')
-        ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [ guileForBuild ];
         # A smoke test of the installed interpreter. The test suite is
         # run by hand (docs/guile.md); like Nixpkgs, the build skips it.
         doInstallCheck = true;
@@ -402,6 +403,56 @@ in
             (unless (= 3 (call/cc (lambda (k) (+ 1 (k 3))))) (exit 1))
             (display "guile ok\n")'
           runHook postInstallCheck
+        '';
+      }))
+    ];
+
+    # Nixpkgs lists guile only as a host input, so configure finds no
+    # guile to compile the modules with. The build platform's guile
+    # cannot load Fibers' Fil-C extension, which configure checks for,
+    # so use the Fil-C guile itself: it runs on the build machine.
+    gnu-shepherd = for pkgs.gnu-shepherd [
+      (use (old: {
+        nativeBuildInputs = old.nativeBuildInputs ++ [
+          (pkgs.runCommand "filc-guile-for-build" { } ''
+            mkdir -p $out/bin
+            ln -s ${final.guile_3_0}/bin/* $out/bin/
+          '')
+        ];
+      }))
+    ];
+
+    mailutils = for pkgs.mailutils [
+      # mariadb-connector-c does not link for Fil-C yet (its linker
+      # version script is rejected), so build without the MySQL backend.
+      (removeConfigureFlag "--with-mysql")
+      # Configure finds GNU gss unusable for Fil-C.
+      (removeConfigureFlag "--with-gssapi")
+      (arg { libmysqlclient = pkgs.emptyDirectory; })
+      (use (old: {
+        # guile-config runs an unprefixed pkg-config; give it the host's,
+        # so that it reports the Fil-C guile.
+        nativeBuildInputs = old.nativeBuildInputs ++ [
+          guileForBuild
+          (pkgs.writeShellScriptBin "pkg-config" ''exec "$PKG_CONFIG" "$@"'')
+        ];
+        # The Guile binding tests load the Fil-C libmu_scm, so they need
+        # the Fil-C guile (it runs on the build machine).
+        preCheck = (old.preCheck or "") + ''
+          export PATH=${final.guile_3_0}/bin:$PATH
+        '';
+        # Out-of-bounds reads in test helpers, which Fil-C stops: a
+        # memmove from the wrong offset, a loop that tests the output
+        # pointer instead of the input, and argv[i][len - 1] on an empty
+        # argument.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace testsuite/cwdrepl.c \
+            --replace-fail 'size_t rest = n - start;' 'size_t rest = n - off;'
+          substituteInPlace libmailutils/tests/encode2047.c \
+            --replace-fail 'for (p = buf; *p;)' 'for (p = buf; *buf;)'
+          substituteInPlace libmailutils/tests/tesh.c \
+            --replace-fail "if (argv[i][len - 1] == ';')" \
+                           "if (len > 0 && argv[i][len - 1] == ';')"
         '';
       }))
     ];

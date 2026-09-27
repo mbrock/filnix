@@ -117,6 +117,8 @@ stack and work unchanged.
   so the depth was nonsense and Guile reported a stack overflow at
   startup. They use `zstack_pointer ()` (and thread bases are
   `zstack_top ()`, from `GC_get_stack_base`).
+- `queue_after_gc_hook` pushes its async cell with CAS (see the
+  `srfi-18` item under "Remaining gaps").
 - Guile bugs that Fil-C caught: `scm_c_make_struct` read one vararg
   past the last one; `bitvector-copy` read one word past the source;
   `guardian_apply` was registered with one optional argument but declared
@@ -155,6 +157,25 @@ stack and work unchanged.
   without a capability.
 - **Out-of-memory is a Fil-C panic**, not a Guile exception
   (`test-out-of-memory`, `test-stack-overflow` under `ulimit -v`).
+- **`srfi-18.test` hangs in about 3 of 16 runs** (native: 0 of 12).
+  Evidence from a hung run, with `FILC_DUMP_STACKS_ON_SIGNAL=10` and
+  `kill -USR1`: the main thread waits in `lock_mutex` → `block_self` →
+  `pthread_cond_wait`, called from `scm_timed_lock_mutex` directly from
+  the VM (a Scheme `lock-mutex`/`mutex-lock!`); the thread it waits for
+  is in a condition-variable wait too; the finalizer thread is idle in
+  `read`. One cause was found and fixed: libgc runs the GC start callback
+  with the world stopped, but the shim runs it on whichever thread
+  notices a finished cycle, while other threads keep running. Guile's
+  `queue_after_gc_hook` pushed a shared async cell onto the thread's
+  async list with plain stores, racing with `system-async-mark` from
+  other threads (lost asyncs, a cell on two lists). It now claims the
+  cell and pushes with CAS. That fixed a reduced reproducer
+  (`make-thread` + `thread-terminate!` in a loop hung 1 run in 8 before,
+  0 in 32 after), but not all `srfi-18.test` hangs. Condition waits in
+  Guile also return early whenever an async is pending, and FUGC
+  completes cycles far more often than libgc, so after-GC asyncs make
+  such spurious wakeups much more frequent. Code that treats one wakeup
+  as a signal (SRFI-18's `make-thread` handshake does) is exposed to that.
 - `object-address` and `pointer-address` enter the object into a table,
   which costs a lock and some memory. `pointer-address` keeps the object
   alive until it is freed.
@@ -173,24 +194,32 @@ the same bytecode) against native Guile 3.0.11 in the same harness:
 
 | | Fil-C | native |
 |---|---|---|
-| PASS | 40,164 | 40,216 |
+| PASS | 40,142 | 40,159 |
 | FAIL | 91 | 12 |
-| ERROR | 6 | 3 |
+| ERROR | 2 | 3 |
 
-Nearly all of the extra failures are artefacts of the uninstalled
-harness, not of Fil-C: 80 are "documented?" checks, which fail because
-the uninstalled build looks for `guile-procedures.txt` under its
-configure prefix, and `posix.test`'s `system*` errors were the `errno`
-bug above (fixed since). Real differences:
+Of the extra failures, 80 are "documented?" checks, an artefact of the
+uninstalled harness: the build looks for `guile-procedures.txt` under
+its configure prefix. With those removed, the lists of failing tests are
+the same for both, except:
 
-- `types.test` stops with a Fil-C trap (raw memory introspection, above).
-- `coverage.test` and `statprof.test` fail the same way for both.
+- `types.test` stops with a Fil-C trap (raw memory introspection,
+  above), so its remaining tests do not run.
+- `srfi-18.test` sometimes hangs (above).
+- `ports.test`'s canonicalization test fails for both (FAIL here, ERROR
+  natively).
 
-`test-suite/standalone`: 41 of 47 pass, including `test-ffi`
-(libffi calls and callbacks), `test-foreign-object-c`/`-scm`, the
-pthread and `scm_with_guile` tests and the SMOB race test. The rest are
-the gaps above (`test-smob-mark`, `test-unwind`, `test-out-of-memory`,
-`test-stack-overflow`), plus two that need `guile-snarf` and a locale.
+`coverage.test`, `statprof.test`, `popen.test` and parts of
+`posix.test` fail for both in this harness.
+
+`test-suite/standalone` (C programs and scripts, run by hand): 38 pass,
+including `test-ffi` (libffi calls and callbacks),
+`test-foreign-object-c`/`-scm`, `test-asmobs`, `test-extensions`, the
+pthread and `scm_with_guile` tests and `test-smob-mark-race`. One is
+skipped (`test-command-line-encoding`, needs a locale). Five fail:
+`test-smob-mark`, `test-unwind`, `test-out-of-memory` and
+`test-stack-overflow` are the gaps above, and `test-guile-snarf` needs
+`guile-snarf` on `PATH`.
 
 The package's `installCheckPhase` runs a smoke test of the installed
 interpreter (modules, `match`, `format`, bignums, GC, `call/cc`). Like
@@ -205,4 +234,33 @@ then `unpackPhase`, `patchPhase`, `configurePhase`, `make -C lib` and
 
 ## Consumers
 
-See the end of this file (updated as consumers are tried).
+Built with `nix build .#legacyPackages.x86_64-linux.pkgsFilc.<name>`
+against the Fil-C Guile:
+
+- **guile-json** builds unchanged (its modules are compiled by the build
+  platform's Guile). Its test suite, run by hand with the Fil-C `guile`:
+  183 of 183 pass (builder 68, parser 76, record 39).
+- **guile-lib** builds unchanged. Its unit tests with the Fil-C `guile`:
+  16 of 17 files pass. `os.process.scm` fails the same way with native
+  Guile (it runs `guile` from `PATH`).
+- **guile-fibers** builds unchanged, including its `fibers-epoll` C
+  extension.
+- **gnu-shepherd** (1.0.9) builds with `ports.nix` adding a `guile` for
+  configure. Configure checks that Fibers loads, and the build
+  platform's Guile cannot load Fibers' Fil-C extension, so the Fil-C
+  Guile itself compiles Shepherd's modules (it runs on the build
+  machine). Shepherd works: started as a user daemon with two
+  `make-forkexec-constructor` services, `herd status` lists them,
+  `herd stop ticker` kills its process, and `herd stop root` shuts down
+  cleanly.
+- **mailutils** (3.21) with Guile support: see `ports.nix`. It needs
+  the MySQL backend off (mariadb-connector-c does not link for Fil-C)
+  and GSSAPI off, an unprefixed `pkg-config` so that `guile-config`
+  reports the Fil-C Guile, and three fixes to out-of-bounds reads in its
+  test helpers that Fil-C stops (`cwdrepl.c`, `encode2047.c`,
+  `tesh.c`).
+
+Not tried yet: guix, lilypond, mcron and the other guile-* libraries.
+Most guile-* libraries are pure Scheme and should build like guile-json.
+Libraries with C parts that keep pointers in `scm_t_bits` storage will
+need the same kind of changes as libguile (see "Remaining gaps").
