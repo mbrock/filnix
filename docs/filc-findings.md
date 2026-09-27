@@ -89,6 +89,15 @@ that `fldenv` would put there go to MXCSR instead (`checks.fenv`).
 `sysdeps/x86/fpu/fenv_private.h` used the same instructions for the x87 hold
 and restore paths and is fixed too.
 
+## Asynchronous `pthread_cancel` does not stop a running thread
+
+glibc cancels an asynchronous-cancel thread by sending it SIGCANCEL, but the
+runtime reserves glibc's internal signals (`is_unsafe_signal_for_kill`), so
+`pthread_cancel` only takes effect at the next cancellation point. A thread
+spinning in computation is never cancelled, and joining it hangs. polkit's
+runaway-script killer relies on this to stop JavaScript rules that loop;
+its test hung and is excluded, and a looping rule would hang polkitd.
+
 ## A pointer at a misaligned offset in a constant crashed the compiler
 
 ```c
