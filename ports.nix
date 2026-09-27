@@ -735,6 +735,20 @@ in
     (patch ./patches/libcamera-no-dynamic.patch)
   ])
 
+  (for pkgs.polkit [
+    # polkit's hand-written get_type functions keep the GType in a
+    # volatile gsize, but GType is a pointer in Fil-C's GLib; use a GType
+    # with g_once_init_{enter,leave}_pointer (GLib 2.80).
+    (patch ./patches/polkit-pointer-gtype.patch)
+    # The runaway-script test needs asynchronous pthread_cancel, which
+    # Fil-C does not deliver (SIGCANCEL is reserved by the runtime); it
+    # hung forever. Under Fil-C a runaway rules script is not killed.
+    (patch ./patches/polkit-filc-no-runaway-test.patch)
+    # gtk-doc generates an unported GType scanner; GIR generation stays on.
+    (removeMesonFlag "-Dgtk_doc=true")
+    (addMesonFlag "-Dgtk_doc=false")
+  ])
+
   (for pkgs.libgudev [
     # The tests preload umockdev, whose Vala-generated code assumes integer
     # GTypes, and LD_PRELOAD interposition does not apply to Fil-C symbols.

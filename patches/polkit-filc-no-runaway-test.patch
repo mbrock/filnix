@@ -1,0 +1,23 @@
+diff --git a/test/polkitbackend/test-polkitbackendjsauthority.c b/test/polkitbackend/test-polkitbackendjsauthority.c
+index 9f25716..ab482b1 100644
+--- a/test/polkitbackend/test-polkitbackendjsauthority.c
++++ b/test/polkitbackend/test-polkitbackendjsauthority.c
+@@ -326,6 +326,10 @@ static const RulesTestCase rules_test_cases[] = {
+   },
+ 
+   /* runaway scripts */
++#ifndef __FILC__
++  /* The runaway killer stops the script thread with asynchronous
++   * pthread_cancel, which Fil-C does not support: SIGCANCEL is reserved
++   * by the runtime, so the script keeps running and the join hangs. */
+   {
+     "runaway_script",
+     "net.company.run_away_script",
+@@ -333,6 +337,7 @@ static const RulesTestCase rules_test_cases[] = {
+     NULL,
+     POLKIT_IMPLICIT_AUTHORIZATION_NOT_AUTHORIZED,
+   },
++#endif
+ 
+   {
+     /* highuid1 is not a member of group 'users', see test/data/etc/group */

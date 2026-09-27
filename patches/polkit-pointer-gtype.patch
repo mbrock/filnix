@@ -1,0 +1,125 @@
+diff --git a/src/polkit/polkitenumtypes.c.template b/src/polkit/polkitenumtypes.c.template
+index 24585d4..e891330 100644
+--- a/src/polkit/polkitenumtypes.c.template
++++ b/src/polkit/polkitenumtypes.c.template
+@@ -11,9 +11,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static volatile gsize g_define_type_id__volatile = 0;
++  static GType g_define_type_id__volatile = 0;
+ 
+-  if (g_once_init_enter ((gsize*) &g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -27,7 +27,7 @@ GType
+       };
+       GType g_define_type_id =
+         g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id);
+     }
+ 
+   return g_define_type_id__volatile;
+diff --git a/src/polkit/polkitidentity.c b/src/polkit/polkitidentity.c
+index e082967..33b03be 100644
+--- a/src/polkit/polkitidentity.c
++++ b/src/polkit/polkitidentity.c
+@@ -45,9 +45,9 @@ base_init (gpointer g_iface)
+ GType
+ polkit_identity_get_type (void)
+ {
+-  static volatile gsize g_define_type_id__volatile = 0;
++  static GType g_define_type_id__volatile = 0;
+ 
+-  if (g_once_init_enter ((gsize*) &g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const GTypeInfo info =
+       {
+@@ -67,7 +67,7 @@ polkit_identity_get_type (void)
+         g_type_register_static (G_TYPE_INTERFACE, "PolkitIdentity", &info, 0);
+ 
+       g_type_interface_add_prerequisite (iface_type, G_TYPE_OBJECT);
+-      g_once_init_leave (&g_define_type_id__volatile, iface_type);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, iface_type);
+     }
+ 
+   return g_define_type_id__volatile;
+diff --git a/src/polkit/polkitsubject.c b/src/polkit/polkitsubject.c
+index 4f72315..c8c0540 100644
+--- a/src/polkit/polkitsubject.c
++++ b/src/polkit/polkitsubject.c
+@@ -46,9 +46,9 @@ base_init (gpointer g_iface)
+ GType
+ polkit_subject_get_type (void)
+ {
+-  static volatile gsize g_define_type_id__volatile = 0;
++  static GType g_define_type_id__volatile = 0;
+ 
+-  if (g_once_init_enter ((gsize*) &g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const GTypeInfo info =
+       {
+@@ -68,7 +68,7 @@ polkit_subject_get_type (void)
+         g_type_register_static (G_TYPE_INTERFACE, "PolkitSubject", &info, 0);
+ 
+       g_type_interface_add_prerequisite (iface_type, G_TYPE_OBJECT);
+-      g_once_init_leave (&g_define_type_id__volatile, iface_type);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, iface_type);
+     }
+ 
+   return g_define_type_id__volatile;
+diff --git a/src/polkitagent/polkitagentenumtypes.c.template b/src/polkitagent/polkitagentenumtypes.c.template
+index a7197bd..7d22fa7 100644
+--- a/src/polkitagent/polkitagentenumtypes.c.template
++++ b/src/polkitagent/polkitagentenumtypes.c.template
+@@ -11,9 +11,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static volatile gsize g_define_type_id__volatile = 0;
++  static GType g_define_type_id__volatile = 0;
+ 
+-  if (g_once_init_enter ((gsize*) &g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -27,7 +27,7 @@ GType
+       };
+       GType g_define_type_id =
+         g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id);
+     }
+ 
+   return g_define_type_id__volatile;
+diff --git a/src/polkitbackend/polkitbackendactionlookup.c b/src/polkitbackend/polkitbackendactionlookup.c
+index b5e95cc..93a59a2 100644
+--- a/src/polkitbackend/polkitbackendactionlookup.c
++++ b/src/polkitbackend/polkitbackendactionlookup.c
+@@ -73,9 +73,9 @@ base_init (gpointer g_iface)
+ GType
+ polkit_backend_action_lookup_get_type (void)
+ {
+-  static volatile gsize g_define_type_id__volatile = 0;
++  static GType g_define_type_id__volatile = 0;
+ 
+-  if (g_once_init_enter ((gsize*) &g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       static const GTypeInfo info =
+       {
+@@ -95,7 +95,7 @@ polkit_backend_action_lookup_get_type (void)
+         g_type_register_static (G_TYPE_INTERFACE, "PolkitBackendActionLookup", &info, 0);
+ 
+       g_type_interface_add_prerequisite (iface_type, G_TYPE_OBJECT);
+-      g_once_init_leave (&g_define_type_id__volatile, iface_type);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, iface_type);
+     }
+ 
+   return g_define_type_id__volatile;
