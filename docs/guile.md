@@ -332,8 +332,8 @@ against the Fil-C Guile:
   a client adds files to the store and computes derivations. Building
   one failed while the Guile patch still lacked the FFI argument change
   above: `guix substitute` trapped in `prctl (PR_SET_NAME, ...)`. With it,
-  the `prctl` call works in a test program; rebuilding Guix with it and
-  building a derivation is the next step. Remaining blockers for real
+  the `prctl` call works in a test program. Work on Guix (and LilyPond)
+  stopped here by decision: neither was worth more time. Remaining blockers for real
   use: slirp4netns needs libseccomp, and the Fil-C runtime rejects the
   `seccomp` system call (`filc user error: unsupported syscall: 317`),
   so `guix shell --container` networking is out; builds with the build
