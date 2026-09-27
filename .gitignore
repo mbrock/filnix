@@ -4,3 +4,5 @@ __pycache__/
 .direnv
 
 node_modules/
+
+.amp/portals/*

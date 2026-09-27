@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Orb setup: single-user Nix with the filc binary cache, and the Fil-C
+# toolchain prefetched so threads start from cached builds.
+set -euo pipefail
+step() { printf '\n== %s (%s)\n' "$*" "$(date +%T)"; }
+
+if [ ! -x "$HOME/.nix-profile/bin/nix" ]; then
+  step "install Nix"
+  if ! command -v curl >/dev/null || ! command -v xz >/dev/null; then
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq curl xz-utils
+  fi
+  sudo install -d -o "$(id -u)" -g "$(id -g)" /nix
+  curl -fsSL https://nixos.org/nix/install | sh -s -- --no-daemon --yes
+fi
+# shellcheck disable=SC1091
+source "$HOME/.nix-profile/etc/profile.d/nix.sh"
+
+step "configure Nix"
+mkdir -p "$HOME/.config/nix"
+cat > "$HOME/.config/nix/nix.conf" <<'EOF'
+experimental-features = nix-command flakes
+substituters = https://cache.nixos.org https://filc.cachix.org
+trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+max-jobs = auto
+cores = 0
+http-connections = 64
+keep-outputs = true
+EOF
+
+marker="# filnix: Nix profile"
+if ! grep -Fqx "$marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<EOF
+
+$marker
+[ -e "\$HOME/.nix-profile/etc/profile.d/nix.sh" ] && . "\$HOME/.nix-profile/etc/profile.d/nix.sh"
+[ -f "\$HOME/.bashrc" ] && . "\$HOME/.bashrc"
+EOF
+fi
+
+step "prefetch the Fil-C toolchain"
+# From the binary cache; a cache miss would build LLVM, so don't block setup.
+timeout 900 nix build --no-link --max-jobs 0 .#filcc || echo "filcc not fully cached; it will build on first use"
+
+mkdir -p "$HOME/.config/amp"
+cat > "$HOME/.config/amp/AGENTS.md" <<'EOF'
+# filnix orb notes
+
+- Nix is single-user; `nix` is on PATH in login shells. Binary caches:
+  cache.nixos.org and filc.cachix.org (the campaign pushes Fil-C builds there).
+- Fil-C packages: `nix build .#legacyPackages.x86_64-linux.pkgsFilc.<attr>`.
+  Use `-L` to see build logs, and `nix log <drv>` after a failure.
+- The Fil-C compiler for quick experiments: `nix build .#filcc` then
+  `./result/bin/clang`.
+- There is no KVM here, so NixOS VM tests are slow or unavailable.
+EOF
+step "done"
