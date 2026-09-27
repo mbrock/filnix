@@ -367,12 +367,10 @@ in
   ])
 
   {
-    # libguile builds, but Guile keeps SCM values in scm_t_bits
-    # (uintptr_t) cell words, which drop their capabilities: the first
-    # symbol lookup at startup traps. Porting that is its own project
-    # (docs/boehm-on-fugc.md).
+    # Pointers that Guile keeps as scm_t_bits words, weak tables on
+    # FUGC, continuations without C stack copying: see docs/guile.md.
     guile_3_0 = for pkgs.guile_3_0 [
-      (broken "SCM values are stored as integers")
+      (patch ./ports/patch/guile-3.0.11.patch)
       # Nixpkgs' cross-build fix is already in 3.0.11.
       (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
       # Guile's JIT emits machine code.
@@ -388,6 +386,23 @@ in
             ln -s ${pkgs.guile_3_0}/bin/* $out/bin/
           '')
         ];
+        # A smoke test of the installed interpreter. The test suite is
+        # run by hand (docs/guile.md); like Nixpkgs, the build skips it.
+        doInstallCheck = true;
+        installCheckPhase = ''
+          runHook preInstallCheck
+          $out/bin/guile -c '
+            (use-modules (ice-9 match) (srfi srfi-1) (ice-9 format))
+            (define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
+            (unless (= (fib 20) 6765) (exit 1))
+            (unless (equal? (match (list 1 2 3) ((a . b) b)) (list 2 3)) (exit 1))
+            (gc)
+            (unless (= (fold + 0 (iota 100000)) 4999950000) (exit 1))
+            (unless (string=? (format #f "~a-~s" 1 "x") "1-\"x\"") (exit 1))
+            (unless (= 3 (call/cc (lambda (k) (+ 1 (k 3))))) (exit 1))
+            (display "guile ok\n")'
+          runHook postInstallCheck
+        '';
       }))
     ];
   }
