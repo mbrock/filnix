@@ -86,6 +86,8 @@ in
       (patch ./ports/patch/boost-filc.patch)
       (patch ./patches/boost-context-feature.patch)
       (patch ./patches/boost-gdb-scripts.patch)
+      (patch ./patches/boost-function-vtable-tag.patch)
+      (patch ./patches/boost-test-execution-monitor.patch)
       (use (old: {
         # error_code keeps its source_location pointer in a uintptr_t with
         # a flag bit, which drops the capability, and what() then trapped
@@ -119,6 +121,22 @@ in
           LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
           $CXX -std=c++17 -I. ${./tests/boost-error-code.cpp} -o error-code-check
           ./error-code-check
+          # Boost.Test, both as the compiled library and header-only. The
+          # module deliberately fails some cases, so compare its summary.
+          $CXX -std=c++17 -I. -DBOOST_TEST_DYN_LINK ${./tests/boost-test.cpp} \
+            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_unit_test_framework -o boost-test-check
+          sed 's|<boost/test/unit_test.hpp>|<boost/test/included/unit_test.hpp>|' \
+            ${./tests/boost-test.cpp} > boost-test-included.cpp
+          $CXX -std=c++17 -I. boost-test-included.cpp -o boost-test-included-check
+          for check in ./boost-test-check ./boost-test-included-check; do
+            status=0
+            LD_LIBRARY_PATH="$PWD/stage/lib" $check --report_level=short \
+              --color_output=no > boost-test.log 2>&1 || status=$?
+            cat boost-test.log
+            test "$status" = 201
+            sed -n '/^Test module/,$p' boost-test.log | sed '/^$/d' \
+              | diff -u ${./tests/boost-test.expected} -
+          done
           runHook postCheck
         '';
       })

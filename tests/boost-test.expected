@@ -1,0 +1,8 @@
+Test module "FilcBoostTest" has failed with:
+  4 test cases out of 6 passed
+  1 test case out of 6 failed
+  1 test case out of 6 timed-out
+  1 test case out of 6 aborted
+  7 assertions out of 10 passed
+  3 assertions out of 10 failed
+  1 expected failure
