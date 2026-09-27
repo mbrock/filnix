@@ -471,6 +471,13 @@ in
     ];
 
     guile-zlib = for pkgs.guile-zlib [ guileTestsOnFilc ];
+    guile-gcrypt = for pkgs.guile-gcrypt [
+      # Otherwise configure finds the build platform's libgcrypt-config
+      # and records that libgcrypt for the FFI.
+      (configure "--with-libgcrypt-prefix=${final.libgcrypt.dev}")
+      (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
+      guileTestsOnFilc
+    ];
     guile-lzlib = for pkgs.guile-lzlib [
       # configure finds liblz by running ldd on a test program, which
       # does not work for a Fil-C program.
@@ -1042,6 +1049,9 @@ in
 
   (for pkgs.libgcrypt [
     (configure "--disable-asm")
+    # --disable-asm leaves mpi/longlong.h's inline asm (for example
+    # bsrq in _gcry_mpi_get_nbits, used by RSA), which Fil-C traps on.
+    (addCFlag "-DNO_ASM")
     (configure "gcry_cv_gcc_amd64_platform_as_ok=no")
     (use { configurePlatforms = [ "host" ]; })
     (use {
