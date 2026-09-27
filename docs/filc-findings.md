@@ -65,6 +65,11 @@ the syscall as absent, as on kernels before 3.17: API level 1, filters
 loaded with `prctl`, and `EOPNOTSUPP` for TSYNC and user notification.
 `tests/libseccomp-prctl-filter.c` loads a filter in the build.
 
+libseccomp's tests call `seccomp` (syscall 317). Nix is built without
+seccomp filtering. Catch2 and doctest run their fatal-signal handlers on a
+`sigaltstack`; their ports and consumers set `CATCH_CONFIG_NO_POSIX_SIGNALS`
+and `DOCTEST_CONFIG_NO_POSIX_SIGNALS`.
+
 ## x86 inline assembly needs an explicit "cc" clobber
 
 Clang marks every x86 `asm` statement as clobbering the flags (`~{flags}`),

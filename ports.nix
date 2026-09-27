@@ -1560,6 +1560,19 @@ in
     (skipCheck "sigaltstack and debugtrap")
   ])
 
+  # Named explicitly: the pname is "catch2", which is Catch2 v2's attribute.
+  {
+    catch2_3 = for pkgs.catch2_3 [
+      # Catch2's fatal-signal handler runs on an alternate stack
+      # (sigaltstack), which Fil-C does not support; every test run aborted
+      # in FatalConditionHandler::engage_platform. Fil-C also refuses
+      # handlers for SIGSEGV and the like, so the handler could not work
+      # anyway. The option is written to catch_user_config.hpp, so test
+      # suites that link this Catch2 skip the handler too.
+      (addCMakeFlag "-DCATCH_CONFIG_NO_POSIX_SIGNALS=ON")
+    ];
+  }
+
   # Their suites use doctest, whose signal handling needs sigaltstack.
   (for pkgs.nlohmann_json [
     (addCMakeFlag "-DCMAKE_CXX_FLAGS=-DDOCTEST_CONFIG_NO_POSIX_SIGNALS")
