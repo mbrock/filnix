@@ -208,9 +208,12 @@ int run(void) { if (setjmp(jb)) return 1; longjmp(jb, 1); }
 ```
 
 Ghostscript's configure adds `-fno-builtin` to every compile;
-`patches/ghostscript-filc.patch` drops it. Fil-C's `<setjmp.h>` declaring
-`setjmp` with `__attribute__((returns_twice))`, or the pass adding the
-attribute to callers, would fix this for everyone.
+`patches/ghostscript-filc.patch` drops it. A proposed fork change,
+`patches/fil-c/filpizlonator-setjmp-common.patch` (not yet compiled or
+tested), marks `setjmp`, `_setjmp` and `sigsetjmp` and their calls
+`returns_twice` by name, as GCC does, with tests `setjmpnobuiltin` and
+`setjmpnobuiltinO0`. The Ghostscript workaround can go once filnix pins a
+fork revision with it.
 
 ## Fil-C's and the native compiler wrapper see each other's flags
 
@@ -223,8 +226,14 @@ Ghostscript's configure found the native zlib (`undefined reference to
 pizlonated_deflate`), and after removing it its native `mkromfs` linked
 Fil-C's `libz.so`. The port removes zlib and cups from
 `nativeBuildInputs` and hands the native zlib to the auxiliary tools
-alone. Giving the Fil-C wrappers their own salt (`..._gnufilc0`) would
-separate the roles properly, at the cost of rebuilding everything.
+alone.
+
+Fixed: `toolchain/wrappers.nix` now salts both Fil-C wrappers
+`x86_64_unknown_linux_gnufilc0` (the target prefix stays empty), and
+`checks.wrapper-roles` links `-lz` with both compilers while each
+platform's zlib is in scope. The Ghostscript port no longer needs its
+workaround. Nothing in filnix referred to the old salt; the change
+rebuilds everything built with Fil-C.
 
 ## Found by Fil-C: pointers round-tripped through file names in Ghostscript
 
@@ -249,4 +258,6 @@ int x;   /* clang -O2 -fcommon: assertion failure */
 Redis's `redismodule.h` declares every module API pointer
 `__attribute__((__common__))`, so `tls.c` and all test modules hit it.
 Defining `REDISMODULE_ATTR_COMMON` as `__attribute__((weak))` works around
-it. Lowering common symbols as weak definitions in the pass would too.
+it. The same proposed patch gives common symbols weak linkage, which the
+linker merges the same way (tests `commonsym`, `commonsymfcommon`, and
+`commonsymfail`, which checks that a common array keeps its bounds).

@@ -155,6 +155,7 @@
         pthread-pi = import ./tests/pthread-pi.nix { inherit pkgsFilc; };
         pthread-spin = import ./tests/pthread-spin.nix { inherit pkgsFilc; };
         fenv = import ./tests/fenv.nix { inherit pkgsFilc; };
+        wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
         packed-pointer = import ./tests/packed-pointer.nix { inherit pkgsFilc; };
         gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
         nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };

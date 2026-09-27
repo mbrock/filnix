@@ -62,6 +62,27 @@ let
       exec ${pkgs.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "''${new_args[@]}"
     '';
 
+  # The role salt of the wrappers' environment variables
+  # (NIX_CFLAGS_COMPILE_<salt>, NIX_LDFLAGS_<salt>,
+  # NIX_CC_WRAPPER_TARGET_HOST_<salt>, ...). Nixpkgs derives it from the
+  # target platform, and `pkgs` is the build platform's package set, so the
+  # Fil-C wrappers got the native wrappers' salt. Each then accepted the
+  # other's flags: libraries in nativeBuildInputs came first in Fil-C links,
+  # and Fil-C libraries reached depsBuildBuild compilers' links. Use the
+  # Fil-C platform's salt (flake.nix: crossSystem.config) and keep the empty
+  # target prefix. checks.wrapper-roles tests the separation.
+  filcSuffixSalt = "x86_64_unknown_linux_gnufilc0";
+  withFilcSuffixSalt =
+    wrapper:
+    wrapper.overrideAttrs (old: {
+      env = old.env // {
+        suffixSalt = filcSuffixSalt;
+      };
+      passthru = old.passthru // {
+        suffixSalt = filcSuffixSalt;
+      };
+    });
+
 in
 rec {
   filc-cc =
@@ -92,17 +113,19 @@ rec {
         ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/filc++
       '';
 
-  filc-bintools = pkgs.wrapBintoolsWith {
-    bintools = filc-binutils;
-    libc = filc-sysroot;
-    defaultHardeningFlags = [ ];
+  filc-bintools = withFilcSuffixSalt (
+    pkgs.wrapBintoolsWith {
+      bintools = filc-binutils;
+      libc = filc-sysroot;
+      defaultHardeningFlags = [ ];
 
-    extraBuildCommands = ''
-      echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
-      echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
-      echo "${filc-sysroot}/lib/ld-fil1-x86_64.so" > $out/nix-support/dynamic-linker
-    '';
-  };
+      extraBuildCommands = ''
+        echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
+        echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
+        echo "${filc-sysroot}/lib/ld-fil1-x86_64.so" > $out/nix-support/dynamic-linker
+      '';
+    }
+  );
 
   filcc =
     (pkgs.wrapCCWith {
@@ -126,8 +149,12 @@ rec {
       '';
     }).overrideAttrs
       (old: {
+        env = old.env // {
+          suffixSalt = filcSuffixSalt;
+        };
         passthru = (old.passthru or { }) // {
           inherit filc-glibc;
+          suffixSalt = filcSuffixSalt;
         };
         # Keep ABI-specific build-system integration outside the expensive compiler
         # and runtime derivations. nm itself continues to report real ELF symbols.
