@@ -104,7 +104,7 @@ def main():
     exclude.add_argument("--attempt")
     toolchains = sub.add_parser(
         "exclude-toolchains",
-        help="mark recorded rustc, GCC, LLVM, Node.js/V8 and Chromium builds for Fil-C out of scope",
+        help="mark recorded compilers, JS engines and shared-memory servers for Fil-C out of scope",
     )
     toolchains.add_argument("campaign")
     cancel = sub.add_parser("cancel")

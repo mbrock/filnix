@@ -28,6 +28,18 @@ V8_REASON = (
 V8_NAME = re.compile(
     rf"^(?!.*-source)(?:nodejs|nodejs-slim|electron-unwrapped|qtwebengine)-{FILC}-\d"
 )
+# Multi-process servers that share pointer-containing memory between processes
+# (PostgreSQL's shared buffers and catalogs, Apache and nginx scoreboards and
+# shared zones); Fil-C capabilities do not survive in memory another process
+# maps.
+SHARED_MEMORY_REASON = (
+    "Multi-process server sharing pointer-containing memory between processes "
+    "(PostgreSQL server, Apache httpd, nginx); outside the experiment's scope"
+)
+SHARED_MEMORY_NAME = re.compile(
+    rf"^(?!.*-source)(?:postgresql|apache-httpd|nginx|nginxQuic|freenginx|angie|angieQuic"
+    rf"|openresty|tengine)-{FILC}-\d"
+)
 RUSTC_NAME = re.compile(r"^rustc(?:-unwrapped)?-\d")
 
 
@@ -80,6 +92,10 @@ def exclusion(name, info):
         return REASON
     if toolchain_derivation(name, info):
         return TOOLCHAIN_REASON
-    if V8_NAME.match(name or ""):
-        return V8_REASON
+    for pattern, reason in OUT_OF_SCOPE:
+        if pattern.match(name or ""):
+            return reason
     return None
+
+
+OUT_OF_SCOPE = [(V8_NAME, V8_REASON), (SHARED_MEMORY_NAME, SHARED_MEMORY_REASON)]

@@ -19,8 +19,7 @@ from .scope import (
     RUSTC_NAME,
     TOOLCHAIN_NAME,
     TOOLCHAIN_REASON,
-    V8_NAME,
-    V8_REASON,
+    OUT_OF_SCOPE,
     kernel_metadata,
     toolchain_derivation,
 )
@@ -800,12 +799,17 @@ class Controller:
                 for drv, info in data.items()
                 if toolchain_derivation(info.get("name", ""), info)
             )
-        engines = [r["drv"] for r in rows if V8_NAME.match(r["name"])]
+        others = []
+        for r in rows:
+            for pattern, reason in OUT_OF_SCOPE:
+                if pattern.match(r["name"]):
+                    others.append((reason, r["drv"]))
+                    break
+        engines = [d for _, d in others]
         with self.db:
             self.db.executemany(
                 "UPDATE derivations SET exclusion=? WHERE drv=? AND exclusion IS NULL",
-                [(TOOLCHAIN_REASON, d) for d in named]
-                + [(V8_REASON, d) for d in engines],
+                [(TOOLCHAIN_REASON, d) for d in named] + others,
             )
             before = dict(
                 self.db.execute(

@@ -551,6 +551,12 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(exclusion("qtwebengine-" + f + "-6.9.2", {}), V8_REASON)
         self.assertIsNone(exclusion("nodejs-slim-24.21.0-source-" + f, {}))
         self.assertIsNone(exclusion("nodejs-24.21.0", {}))
+        from experiment.scope import SHARED_MEMORY_REASON
+
+        for name in ("postgresql-", "apache-httpd-", "nginx-", "openresty-"):
+            self.assertEqual(exclusion(name + f + "-1.0", {}), SHARED_MEMORY_REASON)
+        self.assertIsNone(exclusion("nginx-config-formatter-" + f + "-1.3.0", {}))
+        self.assertIsNone(exclusion("libpq-" + f + "-18.6", {}))
         self.assertTrue(
             toolchain_derivation(
                 "rustc-1.95.0",
