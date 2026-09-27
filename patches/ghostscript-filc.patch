@@ -1,0 +1,136 @@
+Subject: Build and run ghostscript under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+- find_jmp_buf() aligned the jmp_buf inside gsfix_jmp_buf by casting an
+  integer back to a pointer, which has no Fil-C capability; setjmp would
+  trap writing through it. Align with pointer arithmetic instead.
+- configure adds -fno-builtin. Clang then no longer knows that setjmp
+  returns twice, and FilPizlonator asserts
+  (`F.hasFnAttribute(Attribute::ReturnsTwice)`) on ttinterp.c. Drop the
+  flag; see docs/filc-findings.md.
+- The band list ("clist") names its scratch files after the address of
+  their IFILE or MEMFILE ("%p") and gets the pointer back with sscanf,
+  which has no capability, so rendering to a banded device trapped in
+  clist_rewind. Keep the encoded pointers in an exact pointer table and
+  recover them from it.
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -343,7 +343,7 @@
+     cflags_to_try="-Wall -Wstrict-prototypes -Wundef \
+ -Wmissing-declarations -Wmissing-prototypes -Wwrite-strings \
+ -fno-strict-aliasing -Werror=declaration-after-statement \
+--fno-builtin -fno-common -Werror=return-type -Wno-unused-local-typedefs $CFLAGS_LARGEFILE"
++-fno-common -Werror=return-type -Wno-unused-local-typedefs $CFLAGS_LARGEFILE"
+     optflags_to_try="$CC_OPT_FLAGS_TO_TRY"
+     dbgflags_to_try="$CC_DBG_FLAGS_TO_TRY"
+ else
+--- a/base/setjmp_.h
++++ b/base/setjmp_.h
+@@ -59,8 +59,8 @@
+ /* This could be moved into a function, but it's fairly harmless as a macro. */
+ #define find_jmp_buf(gsfjb) 				\
+   (*(jmp_buf *)(					\
+-   ((size_t)(gsfjb).stuff + gsfix_jmp_buf_align) 	\
+-   & ~(size_t)(gsfix_jmp_buf_align-1)			\
++   (gsfjb).stuff + gsfix_jmp_buf_align			\
++   - ((size_t)(gsfjb).stuff & (gsfix_jmp_buf_align-1))	\
+   ))
+ 
+ #endif /* setjmp_INCLUDED */
+--- a/base/gxclfile.c
++++ b/base/gxclfile.c
+@@ -219,6 +219,22 @@
+  * record of position within the file for the sake of thread safety
+  */
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++/* The pointer printed into a file name comes back from sscanf without its
++   Fil-C capability. Recover it from a table of the encoded pointers. */
++static zexact_ptrtable *encoded_ptrs;
++static void __attribute__((constructor)) init_encoded_ptrs(void)
++{
++    encoded_ptrs = zexact_ptrtable_new();
++}
++#  define ENCODE_PTR(p) ((void)zexact_ptrtable_encode(encoded_ptrs, (p)))
++#  define DECODE_PTR(p) ((p) = zexact_ptrtable_decode(encoded_ptrs, (size_t)(p)))
++#else
++#  define ENCODE_PTR(p) ((void)0)
++#  define DECODE_PTR(p) ((void)0)
++#endif
++
+ #define ENC_FILE_STR ("encoded_file_ptr_%p")
+ #define ENC_FILE_STRX ("encoded_file_ptr_0x%p")
+ 
+@@ -234,6 +250,7 @@
+ static void
+ file_to_fake_path(clist_file_ptr file, char fname[gp_file_name_sizeof])
+ {
++    ENCODE_PTR(file);
+     gs_snprintf(fname, gp_file_name_sizeof, ENC_FILE_STR, file);
+ }
+ 
+@@ -244,7 +261,11 @@
+ 
+     int r1 = sscanf(fname, ENC_FILE_STR, &i1);
+     int r2 = sscanf(fname, ENC_FILE_STRX, &i2);
+-    return r2 == 1 ? i2 : (r1 == 1 ? i1 : NULL);
++    clist_file_ptr f = r2 == 1 ? i2 : (r1 == 1 ? i1 : NULL);
++
++    if (f)
++        DECODE_PTR(f);
++    return f;
+ }
+ 
+ static IFILE *wrap_file(gs_memory_t *mem, gp_file *f, const char *fmode)
+--- a/base/gxclmem.c
++++ b/base/gxclmem.c
+@@ -23,6 +23,22 @@
+ 
+ #include "valgrind.h"
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++/* The pointer printed into a file name comes back from sscanf without its
++   Fil-C capability. Recover it from a table of the encoded pointers. */
++static zexact_ptrtable *encoded_ptrs;
++static void __attribute__((constructor)) init_encoded_ptrs(void)
++{
++    encoded_ptrs = zexact_ptrtable_new();
++}
++#  define ENCODE_PTR(p) ((void)zexact_ptrtable_encode(encoded_ptrs, (p)))
++#  define DECODE_PTR(p) ((p) = zexact_ptrtable_decode(encoded_ptrs, (size_t)(p)))
++#else
++#  define ENCODE_PTR(p) ((void)0)
++#  define DECODE_PTR(p) ((void)0)
++#endif
++
+ /*
+  * Based on: memfile.c        Version: 1.4 3/21/95 14:59:33 by Ray Johnston.
+  * Copyright assigned to Aladdin Enterprises.
+@@ -256,6 +272,7 @@
+             code = gs_note_error(gs_error_ioerror);
+             goto finish;
+         }
++        DECODE_PTR(base_f);
+         /* Reopen an existing file for 'read' */
+         if (base_f->is_open == false) {
+             /* File is not is use, just re-use it. */
+@@ -400,6 +417,7 @@
+ 
+     /* Return the address of this memfile as a string for use in future clist_fopen calls */
+     fname[0] = 0xff;        /* a flag that this is a memfile name */
++    ENCODE_PTR(f);
+     gs_snprintf(fname+1, gp_file_name_sizeof-1, "%p", f);
+ 
+ #ifdef DEBUG
+@@ -532,6 +550,7 @@
+ 
+     /* memfile file names begin with a flag byte == 0xff */
+     if (fname[0] == '\377' && (code = sscanf(fname+1, "%p", &f) == 1)) {
++        DECODE_PTR(f);
+         return memfile_fclose((clist_file_ptr)f, fname, true);
+     } else
+         return_error(gs_error_invalidfileaccess);

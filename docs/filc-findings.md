@@ -439,3 +439,60 @@ space (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`) is a safety panic in
 throws `std::bad_alloc`; smaller huge requests succeed lazily (64 TiB did).
 fmt's `util_test.format_system_error` probes `std::allocator` with
 `SIZE_MAX / 2` bytes and is excluded.
+
+## `-fno-builtin` with `setjmp` crashed the compiler
+
+With `-fno-builtin`, Clang no longer treats `setjmp` as a builtin, so the
+call is not marked `returns_twice`, and FilPizlonator asserts
+`F.hasFnAttribute(Attribute::ReturnsTwice)`:
+
+```c
+#include <setjmp.h>
+static jmp_buf jb;
+int run(void) { if (setjmp(jb)) return 1; longjmp(jb, 1); }
+/* clang -O2 -fno-builtin: assertion failure */
+```
+
+Ghostscript's configure adds `-fno-builtin` to every compile;
+`patches/ghostscript-filc.patch` drops it. Fil-C's `<setjmp.h>` declaring
+`setjmp` with `__attribute__((returns_twice))`, or the pass adding the
+attribute to callers, would fix this for everyone.
+
+## Fil-C's and the native compiler wrapper see each other's flags
+
+The Fil-C cc-wrapper and binutils wrapper are salted
+`x86_64_unknown_linux_gnu`, the build platform's salt. The native
+wrappers (`depsBuildBuild` compilers) have the same salt, so each accepts
+both roles' flags: libraries in `nativeBuildInputs` put their `-L` ahead
+of the Fil-C ones in Fil-C links, and Fil-C libraries reach native links.
+Ghostscript's configure found the native zlib (`undefined reference to
+pizlonated_deflate`), and after removing it its native `mkromfs` linked
+Fil-C's `libz.so`. The port removes zlib and cups from
+`nativeBuildInputs` and hands the native zlib to the auxiliary tools
+alone. Giving the Fil-C wrappers their own salt (`..._gnufilc0`) would
+separate the roles properly, at the cost of rebuilding everything.
+
+## Found by Fil-C: pointers round-tripped through file names in Ghostscript
+
+Ghostscript's band list names its scratch files after their `IFILE` or
+`MEMFILE` (`"encoded_file_ptr_%p"`, `"\377%p"`) and gets the object back
+with `sscanf("%p")`. The integer has no capability, so rendering to any
+banded device trapped in `clist_rewind`. The port records the encoded
+pointers in a `zexact_ptrtable` and decodes them from it. `find_jmp_buf`
+aligned a `jmp_buf` by casting an integer back to a pointer, and now uses
+pointer arithmetic.
+
+## `__attribute__((common))` crashed the compiler
+
+A common symbol makes FilPizlonator assert in `lockDownLinkage`
+(`G.getLinkage() != GlobalValue::CommonLinkage`), whether it comes from
+`-fcommon` or from the attribute:
+
+```c
+int x;   /* clang -O2 -fcommon: assertion failure */
+```
+
+Redis's `redismodule.h` declares every module API pointer
+`__attribute__((__common__))`, so `tls.c` and all test modules hit it.
+Defining `REDISMODULE_ATTR_COMMON` as `__attribute__((weak))` works around
+it. Lowering common symbols as weak definitions in the pass would too.
