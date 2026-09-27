@@ -252,4 +252,7 @@ portDSL.makeOverlay portList final prev
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;
   };
+
+  # jemalloc's API on Fil-C's own allocator (docs/jemalloc-on-fugc.md).
+  jemalloc = final.callPackage ./jemalloc { inherit (prev) jemalloc; };
 }
