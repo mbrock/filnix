@@ -411,6 +411,21 @@ So `if (syscall(...) < 0)` never sees the failure. Determinate Nix calls
 have become file descriptor 4294967295. The port truncates both results to
 `int`.
 
+## A contended failed pointer CAS writes back an address without its capability
+
+When `compare_exchange_strong` on a `std::atomic<T *>` fails because another
+thread has just installed a pointer, the value written back to `expected`
+sometimes has the winner's address but no capability. A plain load of the
+same atomic right afterwards has the capability.
+[tests/determinate-nix/filc-cas-expected.cc](../tests/determinate-nix/filc-cas-expected.cc)
+has 8 threads race to fill slots and counts `!zhasvalidcap(expected)` after
+failed CASes. It reports 3 to 65 such writebacks per run with both the
+batch toolchain (fa8c296) and the previous pin, and 0 after a load. The
+single-threaded case is fine. Determinate Nix's `ChunkedVector::ensureChunk`
+returns `expected` to the thread that lost the race, so its `ConcurrentAdd`
+test sometimes trapped writing through the chunk (about 1 run in 10). The
+port reloads after a failed CAS (patch 0006).
+
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 
 Not a Fil-C issue, but a bug it caught. libopenmpt 0.8.9's

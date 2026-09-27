@@ -32,6 +32,7 @@ in
   ../patches/determinate-nix/0003-Fil-C-truncate-syscall-results-to-int.patch
   ../patches/determinate-nix/0004-Fil-C-smaller-symbol-arena-no-bump-allocator-reserva.patch
   ../patches/determinate-nix/0005-Unmap-the-symbol-table-s-arena-when-the-table-is-des.patch
+  ../patches/determinate-nix/0006-Fil-C-reload-a-chunk-pointer-after-a-failed-CAS.patch
 ]).overrideScope
   (
     lib.composeExtensions nixFilcOverrides (
