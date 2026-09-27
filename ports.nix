@@ -71,7 +71,9 @@ let
         fi
       done
     '';
-    checkFlags = (old.checkFlags or [ ]) ++ [ "GUILE=${final.guile_3_0}/bin/guile" ];
+    checkFlags = (old.checkFlags or [ ]) ++ [
+      "GUILE=${final.guile_3_0}/bin/guile"
+    ];
   });
 
   fftwPort = [
@@ -719,7 +721,13 @@ in
         # the build platform's gs on PATH for PDF output.
         ghostscript = pkgs.buildPackages.ghostscript;
         tex = pkgs.buildPackages.texliveSmall.withPackages (
-          ps: with ps; [ epsf fontinst fontware lh metafont ]
+          ps: with ps; [
+            epsf
+            fontinst
+            fontware
+            lh
+            metafont
+          ]
         );
       })
       (use (old: {
@@ -727,7 +735,9 @@ in
         # libguile, and the build runs the Fil-C lilypond (it runs on
         # the build machine) to compile its Scheme files.
         nativeBuildInputs =
-          builtins.filter (d: !(pkgs.lib.hasPrefix "guile" (d.name or ""))) old.nativeBuildInputs
+          builtins.filter (
+            d: !(pkgs.lib.hasPrefix "guile" (d.name or ""))
+          ) old.nativeBuildInputs
           ++ [ guileForBuild ];
         buildInputs = old.buildInputs ++ [ final.guile_3_0 ];
         # configure sets CROSS=yes, which drops the rules that run the
@@ -800,9 +810,15 @@ in
         # variant without X. slirp4netns (for container networking) needs
         # libseccomp, and the Fil-C runtime does not support the seccomp
         # system call.
-        nativeBuildInputs = builtins.filter (
-          d: !(builtins.elem (d.pname or "") [ "graphviz" "slirp4netns" ])
-        ) old.nativeBuildInputs ++ [ pkgs.buildPackages.graphviz-nox ];
+        nativeBuildInputs =
+          builtins.filter (
+            d:
+            !(builtins.elem (d.pname or "") [
+              "graphviz"
+              "slirp4netns"
+            ])
+          ) old.nativeBuildInputs
+          ++ [ pkgs.buildPackages.graphviz-nox ];
         propagatedBuildInputs = builtins.filter (
           d: (d.pname or "") != "slirp4netns"
         ) old.propagatedBuildInputs;

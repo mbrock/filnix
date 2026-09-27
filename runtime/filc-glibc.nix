@@ -22,8 +22,7 @@ in
       # Honour LOCALE_ARCHIVE and NixOS' system archive, as Nixpkgs' glibc
       # does; its 2.42 writes the same archive format as 2.44.
       (pkgs.path + "/pkgs/development/libraries/glibc/nix-locale-archive.patch")
-    ]
-    ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isAarch64 ../patches/glibc-filc-aarch64-jmpbuf-frame.patch;
+    ];
 
     enableParallelBuilding = true;
 
