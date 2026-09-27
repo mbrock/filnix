@@ -1,0 +1,52 @@
+From f47c0f03151d8bd52a89f8c98b2cf71a5d37c07f Mon Sep 17 00:00:00 2001
+From: t <a@b>
+Date: Sun, 27 Sep 2026 18:39:55 +0000
+Subject: [PATCH 4/5] Fil-C: smaller symbol arena, no bump-allocator
+ reservation
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ src/libexpr/include/nix/expr/symbol-table.hh | 6 ++++++
+ src/libutil/bump-memory-resource.cc          | 7 +++++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/src/libexpr/include/nix/expr/symbol-table.hh b/src/libexpr/include/nix/expr/symbol-table.hh
+index 2315108..a1a209f 100644
+--- a/src/libexpr/include/nix/expr/symbol-table.hh
++++ b/src/libexpr/include/nix/expr/symbol-table.hh
+@@ -266,7 +266,13 @@ private:
+ 
+ public:
+     SymbolTable(const StaticSymbolTable & staticSymtab)
++#ifdef __FILC__
++        /* Fil-C materializes the capability shadow of the whole mapping,
++           so reserve less. All of Nixpkgs needs about 12 MiB. */
++        : arena(1 << 27)
++#else
+         : arena(1 << 30)
++#endif
+     {
+         // Reserve symbol ID 0 and ensure alignment of the first allocation.
+         arena.allocate(Symbol::alignment);
+diff --git a/src/libutil/bump-memory-resource.cc b/src/libutil/bump-memory-resource.cc
+index 938bd2b..eb028e1 100644
+--- a/src/libutil/bump-memory-resource.cc
++++ b/src/libutil/bump-memory-resource.cc
+@@ -48,6 +48,13 @@ static bool canOvercommit(std::size_t reserveSize)
+     if constexpr (sizeof(void *) < 8)
+         return false;
+ 
++#  ifdef __FILC__
++    /* Fil-C materializes (and zeroes) the capability shadow of the whole
++       mapping on the first pointer store, so a reservation costs its full
++       size in memory. Use the upstream resource. */
++    return false;
++#  endif
++
+ #  ifdef __linux__
+     static bool overcommitPossible = canOvercommitLinux();
+     if (!overcommitPossible)
+-- 
+2.55.0
+
