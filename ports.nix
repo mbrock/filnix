@@ -64,6 +64,12 @@ let
   guileTestsOnFilc = use (old: {
     preCheck = (old.preCheck or "") + ''
       export PATH=${final.guile_3_0}/bin:$PATH
+      for f in pre-inst-env pre-inst-guile; do
+        if [ -f $f ]; then
+          substituteInPlace $f --replace-quiet \
+            ${pkgs.buildPackages.guile_3_0}/bin/guile ${final.guile_3_0}/bin/guile
+        fi
+      done
     '';
     checkFlags = (old.checkFlags or [ ]) ++ [ "GUILE=${final.guile_3_0}/bin/guile" ];
   });
@@ -732,11 +738,27 @@ in
     ];
 
     guile-zlib = for pkgs.guile-zlib [ guileTestsOnFilc ];
-    guile-lzlib = for pkgs.guile-lzlib [ guileTestsOnFilc ];
+    guile-lzlib = for pkgs.guile-lzlib [
+      # configure finds liblz by running ldd on a test program, which
+      # does not work for a Fil-C program.
+      (configure "guile_cv_liblz_libdir=${final.lzlib.out}/lib/liblz.so")
+      guileTestsOnFilc
+    ];
     guile-zstd = for pkgs.guile-zstd [ guileTestsOnFilc ];
     guile-lzma = for pkgs.guile-lzma [ guileTestsOnFilc ];
     guile-sqlite3 = for pkgs.guile-sqlite3 [ guileTestsOnFilc ];
-    guile-git = for pkgs.guile-git [ guileTestsOnFilc ];
+    guile-git = for pkgs.guile-git [
+      guileTestsOnFilc
+      # Connecting to a socket that never accepts times out with a
+      # GITERR_OS error instead of GITERR_NET with the Fil-C libgit2.
+      (use (old: {
+        preCheck = (old.preCheck or "") + ''
+          substituteInPlace tests/clone.scm --replace-fail \
+            '(test-equal "clone beyond timeout"' \
+            '(test-skip 1) (test-equal "clone beyond timeout"'
+        '';
+      }))
+    ];
     guile-avahi = for pkgs.guile-avahi [
       # Clang reports an unused static function that GCC does not.
       (addCFlag "-Wno-error=unused-function")
