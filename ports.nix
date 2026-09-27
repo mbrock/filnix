@@ -1031,6 +1031,16 @@ in
     (patch ./patches/cryptsetup-safe-alloc-mlock.patch)
   ])
 
+  # mariadb-connector-c and libmysqlclient are aliases of the 3.3 series.
+  {
+    mariadb-connector-c_3_3 = for pkgs.mariadb-connector-c_3_3 [
+      # Its export map is an implicit linker script with VERSION blocks and
+      # unmangled symbol aliases; gold rejects it and only the driver's
+      # --version-script handling knows Fil-C's symbol names.
+      (patch ./patches/mariadb-connector-c-version-script.patch)
+    ];
+  }
+
   (for pkgs.p11-kit [
     (skipTests "1 failure")
   ])
