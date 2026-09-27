@@ -11,12 +11,7 @@ import json
 from .attempt import directory
 from .model import stamp
 from .evidence import attempt_evidence
-
-
-SCOPE = """WITH RECURSIVE scope(drv) AS (
-  SELECT drv FROM candidates WHERE campaign=? AND drv IS NOT NULL
-  UNION SELECT child FROM edges JOIN scope ON parent=scope.drv)
-"""
+from .blockers import ranking
 
 
 def attempt_file(state, aid, name):
@@ -82,14 +77,11 @@ def live_graph(db, state, campaign, focus=None, show_available=False, page=0):
             outputs = json.loads(r["outputs"])
             provided.update(outputs[k] for k in required if outputs.get(k))
         requested.update(json.loads(current["spec"]).get("derivations", []))
-    # Restrict blockers and reverse edges to this campaign, including its native tools.
-    scope = {r[0] for r in db.execute(SCOPE + "SELECT drv FROM scope", (campaign,))}
-    bad = {
-        r[0]
-        for r in db.execute("""WITH RECURSIVE bad(drv) AS (
-      SELECT drv FROM derivations WHERE failure IS NOT NULL OR exclusion IS NOT NULL
-      UNION SELECT parent FROM edges JOIN bad ON child=bad.drv) SELECT drv FROM bad""")
-    }
+    # Restrict blockers and reverse edges to this campaign, including its native
+    # tools. Both come from the shared per-campaign graph walk, which can be up
+    # to a minute old.
+    walk = ranking(db, campaign)
+    scope, bad = walk["scope"], walk["bad"]
     cache = {}
     labels_by_drv = {}
     for r in db.execute(

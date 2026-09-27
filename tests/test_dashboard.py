@@ -1,5 +1,6 @@
 """HTML representation, isolation and byte-reader contracts."""
 
+import time
 import unittest
 import uuid
 from urllib.parse import parse_qs, urlsplit
@@ -166,6 +167,28 @@ class DashboardTests(unittest.TestCase):
         summary = BeautifulSoup(self.get("/summary").text, "html.parser")
         self.assertIn("blocks 2", summary.select_one("#top-blockers").text)
         self.assertIn("only cause of 2", summary.select_one("#top-blockers").text)
+
+    def test_blocker_ranking_refreshes_in_the_background(self):
+        from experiment import blockers
+
+        self.graph()
+        self.sql("UPDATE candidates SET state='blocked' WHERE id IN (2,3)")
+        self.db.commit()
+        with patch.object(blockers, "SYNCHRONOUS", False), patch.object(
+            blockers, "TTL", 0
+        ):
+            self.assertEqual(blockers.ranking(self.db, self.cid)["rows"], [])
+            self.sql("UPDATE derivations SET failure='build' WHERE drv=?", (A,))
+            self.db.commit()
+            # A stale read returns the previous result and starts a refresh.
+            self.assertEqual(blockers.ranking(self.db, self.cid)["rows"], [])
+            for _ in range(200):
+                if self.cid not in blockers._refreshing:
+                    break
+                time.sleep(0.01)
+            rows = blockers._cache[self.cid][1]["rows"]
+            self.assertEqual([(r["drv"], r["blocks"]) for r in rows], [(A, 2)])
+            self.assertIn(B, blockers._cache[self.cid][1]["bad"])
 
     def test_blocked_package_links_failure_owner_and_unfiltered_plan(self):
         self.graph()

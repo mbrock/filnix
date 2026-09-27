@@ -1,22 +1,53 @@
-"""Rank failed derivations by the packages they keep from building."""
+"""Rank failed derivations by the packages they keep from building.
+
+The ranking walks the campaign's whole dependency graph (hundreds of
+thousands of edges, a few seconds), so one result per campaign is kept and
+refreshed in a background thread: requests get the previous result while a
+newer one is computed. The same walk yields the campaign's derivations
+(``scope``) and those that depend on a failure or exclusion (``bad``), which
+the dependency view needs on every refresh.
+"""
 
 from collections import defaultdict
+import sqlite3
+import threading
 import time
 
-# The ranking walks the campaign's whole dependency graph (hundreds of
-# thousands of edges), so keep one result per campaign for a short while.
 TTL = 60
+# Tests change the database between reads and need every read to see it.
+SYNCHRONOUS = False
 _cache = {}
+_refreshing = set()
+_lock = threading.Lock()
 
 
 def ranking(db, cid):
-    now = time.monotonic()
     hit = _cache.get(cid)
-    if hit and now - hit[0] < TTL:
-        return hit[1]
-    result = compute(db, cid)
-    _cache[cid] = (now, result)
-    return result
+    if hit is None or SYNCHRONOUS:
+        result = compute(db, cid)
+        _cache[cid] = (time.monotonic(), result)
+        return result
+    if time.monotonic() - hit[0] >= TTL:
+        with _lock:
+            start = cid not in _refreshing
+            _refreshing.add(cid)
+        if start:
+            path = db.execute("PRAGMA database_list").fetchone()[2]
+            threading.Thread(target=_refresh, args=(path, cid), daemon=True).start()
+    return hit[1]
+
+
+def _refresh(path, cid):
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+        try:
+            db.execute("PRAGMA query_only=ON")
+            _cache[cid] = (time.monotonic(), compute(db, cid))
+        finally:
+            db.close()
+    finally:
+        with _lock:
+            _refreshing.discard(cid)
 
 
 def compute(db, cid):
@@ -47,13 +78,25 @@ def compute(db, cid):
     ):
         packages[node(drv)].append((pid, label, state))
 
-    failures = [
-        (ids[drv], drv, name, failure)
-        for drv, name, failure in db.execute(
-            "SELECT drv,name,failure FROM derivations WHERE failure IS NOT NULL"
-        )
-        if drv in ids
-    ]
+    failures, excluded = [], []
+    for drv, name, failure, exclusion in db.execute(
+        "SELECT drv,name,failure,exclusion FROM derivations "
+        "WHERE failure IS NOT NULL OR exclusion IS NOT NULL"
+    ):
+        if drv in ids:
+            if failure is not None:
+                failures.append((ids[drv], drv, name, failure))
+            else:
+                excluded.append(ids[drv])
+
+    # Everything that depends on a failure or exclusion, including itself.
+    bad = [i for i, *_ in failures] + excluded
+    marked = set(bad)
+    while bad:
+        for p in parents.get(bad.pop(), ()):
+            if p not in marked:
+                marked.add(p)
+                bad.append(p)
 
     # Each failure's blocked packages, and each blocked package's failures.
     blocked, causes = {}, defaultdict(list)
@@ -106,4 +149,6 @@ def compute(db, cid):
         blocked=len(causes),
         multiple=sum(1 for cs in causes.values() if len(cs) > 1),
         computed=time.time(),
+        scope=frozenset(ids),
+        bad=frozenset(names[i] for i in marked),
     )
