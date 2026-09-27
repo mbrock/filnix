@@ -776,6 +776,33 @@ in
     }))
   ])
 
+  (for pkgs.libpq [
+    # Nixpkgs uses -flto with Clang to drop unused pg_config paths (and the
+    # dev-output references they carry). Fil-C has no LTO linker plugin, so
+    # garbage-collect sections at link time instead, as with GCC.
+    (use (old: {
+      env = old.env // {
+        CFLAGS = "-fdata-sections -ffunction-sections -Wl,--gc-sections";
+      };
+    }))
+    # Fil-C keeps each function's name and source file for its stack traces
+    # outside the debug sections. Inlined OpenSSL header functions thus name
+    # openssl-dev headers, which outputChecks forbids in $out.
+    (tool pkgs.removeReferencesTo)
+    (use (old: {
+      postInstall =
+        old.postInstall
+        + "\n"
+        + ''
+          remove-references-to ${
+            pkgs.lib.concatMapStringsSep " " (d: "-t ${pkgs.lib.getDev d}") (
+              builtins.filter (d: d ? dev) old.buildInputs
+            )
+          } $out/lib/*.so*
+        '';
+    }))
+  ])
+
   (for pkgs.liblc3 [
     # Meson's default b_lto would hand bitcode to the linker.
     (addMesonFlag "-Db_lto=false")
