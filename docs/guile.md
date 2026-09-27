@@ -52,15 +52,31 @@ has no capability, so `make-pointer` now derives one
 (`scm_i_pointer_from_address` in `loader.c`):
 
 - from the loaded ELF image that contains the address, if any;
-- else from a strong `zexact_ptrtable` of addresses handed out by
-  `pointer-address`. The object stays alive until it is freed, like C
-  memory whose address a program keeps. This is needed for, for example,
-  `test-foreign-object-scm`, which keeps a `malloc`ed address in an
-  unboxed field and frees it in a finalizer;
+- else from a sorted table of the objects whose addresses
+  `pointer-address` has handed out, looked up by range, so that
+  arithmetic on the address (FFI code passes `(+ start (pointer-address
+  p))`) still resolves. The objects stay alive until they are freed, like
+  C memory whose address a program keeps. This is needed for, for
+  example, `test-foreign-object-scm`, which keeps a `malloc`ed address in
+  an unboxed field and frees it in a finalizer;
 - else from the weak table below, which `object-address` records into.
 
 Otherwise the pointer has no capability and using it traps.
 `primitive-code-name` rebases its address onto the subr code arena.
+
+FFI libraries also build C structs in bytevectors: guile-zlib stores
+`(pointer-address buf)` into a `z_stream`'s `next_in` with
+`bytevector-uint-set!`, and zlib reads it as a pointer. So 64-bit native
+stores to raw memory from Scheme (`bytevector-u64-native-set!`,
+`bytevector-uint-set!` of size 8, and the VM's `u64-set!`/`s64-set!`)
+store an aligned value that `make-pointer` would resolve as a pointer,
+and the matching loads record a word that holds a pointer in that table
+and return its address (`scm_i_store_word64`/`scm_i_load_word64` in
+`loader.c`). Only values in the user-space address range are looked up.
+With this, guile-zlib's 141 tests pass. For the same reason, a 64-bit
+integer argument of a foreign call is passed through the same store
+(Guix calls `prctl (PR_SET_NAME, (pointer-address p), ...)` with the
+address as an `unsigned-long`).
 
 ### Weak references
 
@@ -273,7 +289,71 @@ against the Fil-C Guile:
   `encode2047.c`, `tesh.c`). The Guile module is compiled at `-O0`,
   which is why `SCM_NEWSMOB` had to convert in the caller.
 
-Not tried yet: guix, lilypond and the other guile-* libraries.
+- **LilyPond** (2.26.0) builds (`ports.nix`: `CROSS=no` so the build
+  runs the Fil-C `lilypond` and `help2man`, TeX from the build platform,
+  `guile` as a host library). It engraves correctly (score rendered to
+  SVG, PDF and MIDI). Of LilyPond's regression inputs, compiled to SVG
+  one by one, 2,093 succeed and 4 fail because they need image or
+  include files next to the output. 19 at first trapped on a
+  use-after-free in `System::do_break_substitution_and_fixup_refpoints`:
+  `handle_broken_dependencies ()` replaces the system's `all-elements`
+  Grob_array, and the function then reads the old one through a C++
+  reference while nothing keeps its SMOB alive, so the collector
+  finalizes (deletes) it. With libgc the object usually survives because
+  collections are rare and the stack is scanned conservatively. The port
+  keeps the SCM alive until the end of the function (`ports.nix`), and
+  all 19 pass. The wrapper currently puts the build platform's `gs` on
+  `PATH` for PDF output, because the Fil-C `ghostscript-with-X` fails
+  its configure (its `-lz` test links the build platform's zlib). Large
+  scores are slow: `accidental-styles.ly` takes 2.5 minutes, mostly in
+  the collector.
+- **Guix's Guile libraries** build and pass their tests under the Fil-C
+  `guile` (see `guileTestsOnFilc` in `ports.nix`): guile-gcrypt 79,
+  guile-zlib 141, guile-lzlib 12, guile-git 138 (one connect-timeout
+  test skipped: the Fil-C libgit2 reports `GITERR_OS` instead of
+  `GITERR_NET`), guile-avahi 7, guile-sqlite3, guile-zstd, guile-lzma,
+  guile-ssh, guile-gnutls, guile-semver. Fixes: configure found
+  libgcrypt and liblz through the build platform's tools (baking the
+  wrong library into the FFI bindings); pre-inst scripts had the build
+  platform's guile baked in; libgcrypt needed `-DNO_ASM` (its
+  `mpi/longlong.h` inline asm, used by RSA, traps under Fil-C even with
+  `--disable-asm`); and the 64-bit bytevector change above.
+- **Guix** builds with `ports.nix` changes: libgcrypt from the host
+  (configure otherwise records the build platform's in
+  `guix/config.scm`), `graphviz-nox` for the documentation figures (the
+  X variant of graphviz does not build natively at this pin), a UTF-8
+  locale for the documentation tools, no slirp4netns, and a wrapper load
+  path without the build platform's Guile libraries (their FFI bindings
+  point at native libraries, which made every hash fail with "Function
+  not implemented"). It works as far as tested: `guix hash` gives the
+  same hashes as `nix hash`, `guix show hello` and `guix package -A`
+  load all package modules (10 s and 14 s). The C++ `guix-daemon` runs
+  as root with a `/gnu/store` and `guixbuild` users (`--disable-chroot`);
+  a client adds files to the store and computes derivations. Building
+  one failed while the Guile patch still lacked the FFI argument change
+  above: `guix substitute` trapped in `prctl (PR_SET_NAME, ...)`. With it,
+  the `prctl` call works in a test program. Work on Guix (and LilyPond)
+  stopped here by decision: neither was worth more time. Remaining blockers for real
+  use: slirp4netns needs libseccomp, and the Fil-C runtime rejects the
+  `seccomp` system call (`filc user error: unsupported syscall: 317`),
+  so `guix shell --container` networking is out; builds with the build
+  daemon's chroot were not tried (this orb has no user namespaces set
+  up); `guix/config.scm` records the build platform's `git`, `gzip`,
+  `bzip2` and `xz` programs; and everything is slow, since the ~2,000
+  modules are compiled by the build platform's Guile but run on the
+  Fil-C one.
+
+Verification status of the consumer work (branch `orb/guile-consumers`,
+cherry-picked onto batch without rebuilding there): everything above
+was built and tested on the `orb/guile` base (Fil-C pin 84cf67d), in
+this order. The Guile libraries, LilyPond and Guix were built with the
+Guile patch before its last change (64-bit FFI integer arguments carry
+pointers); that change was verified only with a development build of
+libguile (the whole test suite, `foreign.test` 81/81, a `prctl` test),
+not by a Nix build. On batch, all of these packages evaluate but none
+has been built.
+
+Not tried yet: the other guile-* libraries.
 Most guile-* libraries are pure Scheme and should build like guile-json.
 Libraries with C parts that keep pointers in `scm_t_bits` storage will
 need the same kind of changes as libguile (see "Remaining gaps").

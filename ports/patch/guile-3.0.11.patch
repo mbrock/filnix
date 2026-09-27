@@ -120,6 +120,46 @@
      }
  
    return result;
+--- a/libguile/bytevectors.c
++++ b/libguile/bytevectors.c
+@@ -61,6 +61,7 @@
+ #include "version.h"
+ 
+ #include "bytevectors.h"
++#include "loader.h"
+ 
+ 
+ 
+@@ -998,6 +999,12 @@
+   mpz_t c_mpz;
+   int c_endianness, negative_p = 0;
+ 
++  if (c_size == 8 && scm_is_eq (endianness, scm_i_native_endianness))
++    {
++      uint64_t v = scm_i_load_word64 (c_bv);
++      return signed_p ? scm_from_int64 ((int64_t) v) : scm_from_uint64 (v);
++    }
++
+   if (signed_p)
+     {
+       if (scm_is_eq (endianness, sym_big))
+@@ -1033,6 +1040,16 @@
+   mpz_t c_mpz;
+   int c_endianness, c_sign, err = 0;
+ 
++  if (c_size == 8 && scm_is_eq (endianness, scm_i_native_endianness))
++    {
++      if (signed_p ? !scm_is_signed_integer (value, INT64_MIN, INT64_MAX)
++          : !scm_is_unsigned_integer (value, 0, UINT64_MAX))
++        return -1;
++      scm_i_store_word64 (c_bv, signed_p ? (uint64_t) scm_to_int64 (value)
++                          : scm_to_uint64 (value));
++      return 0;
++    }
++
+   c_endianness = scm_is_eq (endianness, sym_big) ? 1 : -1;
+ 
+   mpz_init (c_mpz);
 --- a/libguile/cache-internal.h
 +++ b/libguile/cache-internal.h
 @@ -33,8 +33,8 @@
@@ -636,7 +676,23 @@
    scm_putc ('>', port);
  }
  
-@@ -1140,8 +1143,11 @@
+@@ -984,11 +987,13 @@
+       else
+ 	*(int32_t *) loc = scm_to_int32 (x);
+       break;
++    /* An integer argument can be an address that Scheme got from
++       pointer-address; see scm_i_store_word64.  */
+     case FFI_TYPE_UINT64:
+-      *(uint64_t *) loc = scm_to_uint64 (x);
++      scm_i_store_word64 (loc, scm_to_uint64 (x));
+       break;
+     case FFI_TYPE_SINT64:
+-      *(int64_t *) loc = scm_to_int64 (x);
++      scm_i_store_word64 (loc, (uint64_t) scm_to_int64 (x));
+       break;
+     case FFI_TYPE_STRUCT:
+       SCM_VALIDATE_POINTER (1, x);
+@@ -1140,8 +1145,11 @@
  	 i++)
      {
        /* Suitably align the storage area for argument I.  */
@@ -650,7 +706,7 @@
        assert ((uintptr_t) args[i] % cif->arg_types[i]->alignment == 0);
        unpack (cif->arg_types[i], args[i], argv[cif->nargs - i - 1].as_scm, 0);
      }
-@@ -1150,8 +1156,9 @@
+@@ -1150,8 +1158,9 @@
       `armv5tel-*-linux-gnueabi', the return value has to be at least
       word-aligned, even if its type doesn't have any alignment requirement as is
       the case with `char'.  */
@@ -876,7 +932,7 @@
      }
  
    return ret;
-@@ -726,6 +727,69 @@
+@@ -726,6 +727,198 @@
    return result;
  }
  
@@ -888,12 +944,102 @@
 +   hands out.  Otherwise the result has no capability, and using it
 +   traps.  */
 +#ifdef __FILC__
-+static zexact_ptrtable *address_refs;
-+static scm_i_pthread_once_t address_refs_once = SCM_I_PTHREAD_ONCE_INIT;
-+static void
-+init_address_refs (void)
++/* Objects whose addresses pointer-address has handed out, sorted by
++   address.  A Scheme program may do arithmetic on such an address (FFI
++   code does, for example to point into the middle of a buffer), so the
++   lookup is by range.  The entries hold the objects strongly: C memory
++   whose address a program keeps as an integer stays allocated until it
++   is freed.  Freed objects are dropped when the table grows.  */
++struct address_range
 +{
-+  address_refs = zexact_ptrtable_new ();
++  uintptr_t lower, upper;
++  char *base;
++};
++static struct address_range *address_ranges;
++static size_t address_ranges_count, address_ranges_allocated;
++static scm_i_pthread_mutex_t address_ranges_lock =
++  SCM_I_PTHREAD_MUTEX_INITIALIZER;
++
++/* Index of the first range whose lower bound is greater than ADDR.  */
++static size_t
++address_range_upper_index (uintptr_t addr)
++{
++  size_t start = 0, end = address_ranges_count;
++  while (start < end)
++    {
++      size_t n = start + (end - start) / 2;
++      if (addr < address_ranges[n].lower)
++        end = n;
++      else
++        start = n + 1;
++    }
++  return start;
++}
++
++static void
++record_address_range (void *ptr)
++{
++  char *base = zgetlower (ptr);
++  uintptr_t lower = (uintptr_t) base, upper = (uintptr_t) zgetupper (ptr);
++  size_t n;
++
++  scm_i_pthread_mutex_lock (&address_ranges_lock);
++  n = address_range_upper_index (lower);
++  if (n > 0 && address_ranges[n - 1].lower == lower
++      && zhasvalidcap (address_ranges[n - 1].base))
++    {
++      scm_i_pthread_mutex_unlock (&address_ranges_lock);
++      return;
++    }
++  if (address_ranges_count == address_ranges_allocated)
++    {
++      size_t i, j;
++      /* Drop freed objects (and stale entries for reused addresses).  */
++      for (i = j = 0; i < address_ranges_count; i++)
++        if (zhasvalidcap (address_ranges[i].base))
++          address_ranges[j++] = address_ranges[i];
++      address_ranges_count = j;
++      if (address_ranges_count * 2 >= address_ranges_allocated)
++        {
++          size_t new_size = address_ranges_allocated ? 2 * address_ranges_allocated : 64;
++          struct address_range *new_ranges =
++            malloc (new_size * sizeof (*new_ranges));
++          memcpy (new_ranges, address_ranges,
++                  address_ranges_count * sizeof (*new_ranges));
++          free (address_ranges);
++          address_ranges = new_ranges;
++          address_ranges_allocated = new_size;
++        }
++      n = address_range_upper_index (lower);
++    }
++  if (n > 0 && address_ranges[n - 1].lower == lower)
++    n--;                        /* Replace a stale entry.  */
++  else
++    {
++      memmove (&address_ranges[n + 1], &address_ranges[n],
++               (address_ranges_count - n) * sizeof (*address_ranges));
++      address_ranges_count++;
++    }
++  address_ranges[n].lower = lower;
++  address_ranges[n].upper = upper;
++  address_ranges[n].base = base;
++  scm_i_pthread_mutex_unlock (&address_ranges_lock);
++}
++
++static void *
++lookup_address_range (uintptr_t addr)
++{
++  void *ret = NULL;
++  size_t n;
++
++  scm_i_pthread_mutex_lock (&address_ranges_lock);
++  n = address_range_upper_index (addr);
++  /* Allow the address one past the end, as C does.  */
++  if (n > 0 && addr <= address_ranges[n - 1].upper
++      && zhasvalidcap (address_ranges[n - 1].base))
++    ret = address_ranges[n - 1].base + (addr - address_ranges[n - 1].lower);
++  scm_i_pthread_mutex_unlock (&address_ranges_lock);
++  return ret;
 +}
 +#endif
 +
@@ -912,10 +1058,7 @@
 +  scm_i_pthread_mutex_unlock (&scm_i_misc_mutex);
 +
 +  if (!ret)
-+    {
-+      scm_i_pthread_once (&address_refs_once, init_address_refs);
-+      ret = zexact_ptrtable_decode (address_refs, addr);
-+    }
++    ret = lookup_address_range (addr);
 +  if (!zhasvalidcap (ret))
 +    ret = zexact_ptrtable_decode (scm_i_weak_refs, addr);
 +  return ret;
@@ -936,11 +1079,53 @@
 +    {
 +      if (!strong)
 +        return zexact_ptrtable_encode (scm_i_weak_refs, ptr);
-+      scm_i_pthread_once (&address_refs_once, init_address_refs);
-+      return zexact_ptrtable_encode (address_refs, ptr);
++      record_address_range (ptr);
 +    }
 +#endif
 +  return (uintptr_t) ptr;
++}
++
++/* 64-bit loads and stores of raw memory from Scheme (bytevector
++   accessors, the VM's u64/s64 memory ops).  FFI code keeps pointers in C
++   structs this way: it stores (pointer-address p) into a bytevector that
++   C then reads as a pointer, and reads back pointers that C wrote.
++   Under Fil-C an integer store would leave a word without a capability,
++   so an aligned store of an address that scm_i_pointer_from_address
++   knows is done as a pointer store, and an aligned load of a word that
++   holds a pointer records it, so that make-pointer can recover it.  */
++uint64_t
++scm_i_load_word64 (const char *p)
++{
++  uint64_t v;
++#ifdef __FILC__
++  if (((uintptr_t) p & 7) == 0)
++    {
++      void *ptr = *(void * const *) p;
++      if (zhasvalidcap (ptr))
++        return scm_i_pointer_to_address (ptr, 1);
++      return (uintptr_t) ptr;
++    }
++#endif
++  memcpy (&v, p, 8);
++  return v;
++}
++
++void
++scm_i_store_word64 (char *p, uint64_t v)
++{
++#ifdef __FILC__
++  /* Only values in the range of user-space addresses are candidates.  */
++  if (((uintptr_t) p & 7) == 0 && v >= 0x10000 && v < ((uint64_t) 1 << 47))
++    {
++      void *ptr = scm_i_pointer_from_address (v);
++      if (zhasvalidcap (ptr) && (uintptr_t) ptr == v)
++        {
++          *(void **) p = ptr;
++          return;
++        }
++    }
++#endif
++  memcpy (p, &v, 8);
 +}
 +
  static SCM
@@ -948,12 +1133,14 @@
  {
 --- a/libguile/loader.h
 +++ b/libguile/loader.h
-@@ -58,6 +58,9 @@
+@@ -58,6 +58,11 @@
  SCM_INTERNAL const uint8_t *
  scm_find_slot_map_unlocked (const uint32_t *ip);
  
 +SCM_INTERNAL void *scm_i_pointer_from_address (uintptr_t addr);
 +SCM_INTERNAL uintptr_t scm_i_pointer_to_address (void *ptr, int strong);
++SCM_INTERNAL uint64_t scm_i_load_word64 (const char *p);
++SCM_INTERNAL void scm_i_store_word64 (char *p, uint64_t v);
 +
  SCM_INTERNAL void scm_bootstrap_loader (void);
  SCM_INTERNAL void scm_init_loader (void);
@@ -1620,6 +1807,68 @@
  
  #define SP_REF_PTR(i)		(sp[i].as_ptr)
  #define SP_SET_PTR(i,o)		(sp[i].as_ptr = o)
+@@ -3050,6 +3054,25 @@
+     NEXT (1);                                                           \
+   } while (0)
+ 
++/* 64-bit words may hold pointers; see scm_i_load_word64.  */
++#define PTR_REF_WORD64(slot)                                            \
++  do {                                                                  \
++    uint8_t dst, a, b;                                                  \
++    UNPACK_8_8_8 (op, dst, a, b);                                       \
++    SP_SET_ ## slot (dst, scm_i_load_word64 ((char *) SP_REF_PTR (a)    \
++                                            + SP_REF_U64 (b)));         \
++    NEXT (1);                                                           \
++  } while (0)
++
++#define PTR_SET_WORD64(slot)                                            \
++  do {                                                                  \
++    uint8_t a, b, c;                                                    \
++    UNPACK_8_8_8 (op, a, b, c);                                         \
++    scm_i_store_word64 ((char *) SP_REF_PTR (a) + SP_REF_U64 (b),       \
++                        SP_REF_ ## slot (c));                           \
++    NEXT (1);                                                           \
++  } while (0)
++
+   /* u8-ref dst:8 ptr:8 idx:8
+    *
+    * Load the u8 at byte offset IDX from pointer PTR, and store it to
+@@ -3080,7 +3103,7 @@
+    * u64 DST.
+    */
+   VM_DEFINE_OP (137, u64_ref, "u64-ref", DOP1 (X8_S8_S8_S8))
+-    PTR_REF (uint64_t, U64);
++    PTR_REF_WORD64 (U64);
+ 
+   /* u8-set! ptr:8 idx:8 val:8
+    *
+@@ -3112,7 +3135,7 @@
+    * pointer PTR.
+    */
+   VM_DEFINE_OP (141, u64_set, "u64-set!", OP1 (X8_S8_S8_S8))
+-    PTR_SET (uint64_t, U64);
++    PTR_SET_WORD64 (U64);
+ 
+   /* s8-ref dst:8 ptr:8 idx:8
+    *
+@@ -3144,7 +3167,7 @@
+    * s64 DST.
+    */
+   VM_DEFINE_OP (145, s64_ref, "s64-ref", DOP1 (X8_S8_S8_S8))
+-    PTR_REF (int64_t, S64);
++    PTR_REF_WORD64 (S64);
+ 
+   /* s8-set! ptr:8 idx:8 val:8
+    *
+@@ -3176,7 +3199,7 @@
+    * pointer PTR.
+    */
+   VM_DEFINE_OP (149, s64_set, "s64-set!", OP1 (X8_S8_S8_S8))
+-    PTR_SET (int64_t, S64);
++    PTR_SET_WORD64 (S64);
+ 
+   /* f32-ref dst:8 ptr:8 idx:8
+    *
 --- a/libguile/vm.c
 +++ b/libguile/vm.c
 @@ -297,7 +297,9 @@

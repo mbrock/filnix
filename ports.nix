@@ -58,6 +58,22 @@ let
     ln -s ${final.guile_3_0}/bin/* $out/bin/
   '';
 
+  # Guile libraries whose tests load Fil-C code (their own extension or
+  # a C library through the FFI) must run them with the Fil-C guile;
+  # Nixpkgs' cross build would use the build platform's.
+  guileTestsOnFilc = use (old: {
+    preCheck = (old.preCheck or "") + ''
+      export PATH=${final.guile_3_0}/bin:$PATH
+      for f in pre-inst-env pre-inst-guile; do
+        if [ -f $f ]; then
+          substituteInPlace $f --replace-quiet \
+            ${pkgs.buildPackages.guile_3_0}/bin/guile ${final.guile_3_0}/bin/guile
+        fi
+      done
+    '';
+    checkFlags = (old.checkFlags or [ ]) ++ [ "GUILE=${final.guile_3_0}/bin/guile" ];
+  });
+
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -693,6 +709,120 @@ in
 
     # Pure Guile. As with gnu-shepherd, configure needs a guile, and its
     # tests run with the Fil-C one.
+    lilypond = for pkgs.lilypond [
+      # The default TeX is built from the host package set, since it is
+      # a derived value that splicing does not reach; it only runs at
+      # build time.
+      (arg {
+        # WIP: the Fil-C ghostscript-with-X fails configure (its -lz check
+        # links the build platform's zlib), so the lilypond wrapper puts
+        # the build platform's gs on PATH for PDF output.
+        ghostscript = pkgs.buildPackages.ghostscript;
+        tex = pkgs.buildPackages.texliveSmall.withPackages (
+          ps: with ps; [ epsf fontinst fontware lh metafont ]
+        );
+      })
+      (use (old: {
+        # Nixpkgs lists guile only as a build tool. LilyPond links
+        # libguile, and the build runs the Fil-C lilypond (it runs on
+        # the build machine) to compile its Scheme files.
+        nativeBuildInputs =
+          builtins.filter (d: !(pkgs.lib.hasPrefix "guile" (d.name or ""))) old.nativeBuildInputs
+          ++ [ guileForBuild ];
+        buildInputs = old.buildInputs ++ [ final.guile_3_0 ];
+        # configure sets CROSS=yes, which drops the rules that run the
+        # programs (help2man, lilypond itself) but not the targets that
+        # need them. Fil-C programs run on the build machine.
+        makeFlags = (old.makeFlags or [ ]) ++ [ "CROSS=no" ];
+        # handle_broken_dependencies () replaces the system's
+        # all-elements Grob_array, so the old one can be collected and
+        # deleted while this function still reads it through a reference
+        # (a use-after-free that Fil-C stops in 19 regression tests).
+        # Keep its SCM alive until the end.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace lily/system.cc \
+            --replace-fail \
+              'std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
+              'SCM all_elts_scm = get_object (this, "all-elements");
+          std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
+            --replace-fail \
+              'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");' \
+              'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");
+          scm_remember_upto_here_1 (all_elts_scm);'
+        '';
+      }))
+    ];
+
+    guile-zlib = for pkgs.guile-zlib [ guileTestsOnFilc ];
+    guile-gcrypt = for pkgs.guile-gcrypt [
+      # Otherwise configure finds the build platform's libgcrypt-config
+      # and records that libgcrypt for the FFI.
+      (configure "--with-libgcrypt-prefix=${final.libgcrypt.dev}")
+      (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
+      guileTestsOnFilc
+    ];
+    guile-lzlib = for pkgs.guile-lzlib [
+      # configure finds liblz by running ldd on a test program, which
+      # does not work for a Fil-C program.
+      (configure "guile_cv_liblz_libdir=${final.lzlib.out}/lib/liblz.so")
+      guileTestsOnFilc
+    ];
+    guile-zstd = for pkgs.guile-zstd [ guileTestsOnFilc ];
+    guile-lzma = for pkgs.guile-lzma [ guileTestsOnFilc ];
+    guile-sqlite3 = for pkgs.guile-sqlite3 [ guileTestsOnFilc ];
+    guile-git = for pkgs.guile-git [
+      guileTestsOnFilc
+      # Connecting to a socket that never accepts times out with a
+      # GITERR_OS error instead of GITERR_NET with the Fil-C libgit2.
+      (use (old: {
+        preCheck = (old.preCheck or "") + ''
+          substituteInPlace tests/clone.scm --replace-fail \
+            '(test-equal "clone beyond timeout"' \
+            '(test-skip 1) (test-equal "clone beyond timeout"'
+        '';
+      }))
+    ];
+    guile-avahi = for pkgs.guile-avahi [
+      # Clang reports an unused static function that GCC does not.
+      (addCFlag "-Wno-error=unused-function")
+      guileTestsOnFilc
+    ];
+
+    guix = for pkgs.guix [
+      # configure takes libgcrypt from the build platform's
+      # libgcrypt-config otherwise; the path also ends up in
+      # guix/config.scm for the FFI.
+      (configure "--with-libgcrypt-prefix=${final.libgcrypt.dev}")
+      (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
+      (use (old: {
+        # graphviz (for documentation figures) fails to build natively at
+        # this Nixpkgs pin (its X variant installs no vimdot), so use the
+        # variant without X. slirp4netns (for container networking) needs
+        # libseccomp, and the Fil-C runtime does not support the seccomp
+        # system call.
+        nativeBuildInputs = builtins.filter (
+          d: !(builtins.elem (d.pname or "") [ "graphviz" "slirp4netns" ])
+        ) old.nativeBuildInputs ++ [ pkgs.buildPackages.graphviz-nox ];
+        propagatedBuildInputs = builtins.filter (
+          d: (d.pname or "") != "slirp4netns"
+        ) old.propagatedBuildInputs;
+        # The build-time tools (guile, makeinfo for the translated
+        # manuals) need a UTF-8 locale; the native build gets it from
+        # glibcLocales' hook, which does not apply here.
+        LOCALE_ARCHIVE = "${pkgs.buildPackages.glibcLocales}/lib/locale/locale-archive";
+        LC_ALL = "C.UTF-8";
+        # The wrapper records $GUILE_LOAD_PATH, which also holds the build
+        # platform's Guile libraries (used to compile the modules); their
+        # FFI bindings point at native libraries, which a Fil-C process
+        # cannot load. Keep only the host's.
+        preInstall = (old.preInstall or "") + ''
+          hostOnly() { printf %s "$1" | tr : '\n' | grep -- -gnufilc0- | paste -sd: -; }
+          export GUILE_LOAD_PATH=$(hostOnly "$GUILE_LOAD_PATH")
+          export GUILE_LOAD_COMPILED_PATH=$(hostOnly "$GUILE_LOAD_COMPILED_PATH")
+        '';
+      }))
+    ];
+
     mcron = for pkgs.mcron [
       (use (old: {
         nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
@@ -1301,6 +1431,9 @@ in
 
   (for pkgs.libgcrypt [
     (configure "--disable-asm")
+    # --disable-asm leaves mpi/longlong.h's inline asm (for example
+    # bsrq in _gcry_mpi_get_nbits, used by RSA), which Fil-C traps on.
+    (addCFlag "-DNO_ASM")
     (configure "gcry_cv_gcc_amd64_platform_as_ok=no")
     (use { configurePlatforms = [ "host" ]; })
     (use {
