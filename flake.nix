@@ -114,6 +114,8 @@
           (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).core;
         pipewire-runtime =
           (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).runtime;
+        pipewire-full =
+          (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).full;
         cancellation = import ./tests/cancellation.nix { inherit pkgs filcc; };
         cancellation-native = import ./tests/cancellation-native.nix {
           inherit pkgs;

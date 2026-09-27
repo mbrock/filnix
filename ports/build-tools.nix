@@ -113,4 +113,10 @@ lib.optionalAttrs
     lib.mapAttrs (
       name: spec: (prev.${name}.override spec.overrideArgs).overrideAttrs spec.attrs
     ) ports
+    // {
+      # Graphviz (for docs, e.g. FLAC's) only emits target-neutral output,
+      # but here it would see the GLib twin, which is older than Pango
+      # requires; pangocairo then goes missing and the build fails on vimdot.
+      graphviz = prev.buildPackages.graphviz;
+    }
   )

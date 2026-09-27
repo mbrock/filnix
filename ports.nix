@@ -1201,6 +1201,14 @@ in
     (patch ./patches/alsa-link-warning.patch)
   ])
 
+  (for pkgs.spandsp [
+    # Nixpkgs passes CC=${targetPrefix}cc, which is just "cc" for Fil-C, and
+    # its depsBuildBuild puts the build GCC's cc first on PATH, so the
+    # library came out native (and PipeWire's mSBC codec failed to link).
+    (removeMakeFlag "CC=cc")
+    (addMakeFlag "CC=${prev.stdenv.cc}/bin/cc")
+  ])
+
   (for pkgs.pipewire [
     # The source fixes from the core profile (packages/pipewire-core.nix).
     (patch ./patches/pipewire-log-topics.patch)
@@ -1210,6 +1218,26 @@ in
     (patch ./patches/pipewire-pointer-arithmetic.patch)
     (patch ./patches/pipewire-pointer-properties.patch)
     (patch ./patches/pipewire-test-runtime.patch)
+    (use (old: {
+      # Valgrind's client requests are inline assembly on pointers, which
+      # Fil-C rejects at run time; every pwtest suite died on them.
+      env = (old.env or { }) // {
+        NIX_CFLAGS_COMPILE = "-DNVALGRIND";
+      };
+      # The Fil-C cc-wrapper shares the build GCC's role infix
+      # (x86_64_unknown_linux_gnu), so with a build compiler in
+      # depsBuildBuild it also reads the *_FOR_BUILD flags. The native GLib
+      # (for gdbus-codegen) then landed in RUNPATH ahead of the Fil-C GLib,
+      # and the modules using GLib failed to dlopen. Only the build GCC's
+      # compiler checks use these flags here.
+      preConfigure = (old.preConfigure or "") + ''
+        unset NIX_LDFLAGS_FOR_BUILD NIX_CFLAGS_COMPILE_FOR_BUILD
+      '';
+      preCheck = (old.preCheck or "") + ''
+        export FUGC_THREADS="$NIX_BUILD_CORES"
+        mesonCheckFlagsArray+=(--num-processes "$NIX_BUILD_CORES")
+      '';
+    }))
     # The GStreamer elements register GTypes through gsize once-inits.
     (removeMesonFlag "-Dgstreamer")
     (addMesonFlag "-Dgstreamer=disabled")
