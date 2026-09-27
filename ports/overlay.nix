@@ -104,7 +104,11 @@ let
             dep: !(pkgs.lib.hasInfix "libseccomp" (dep.name or ""))
           ) old.buildInputs;
           mesonFlags = map (
-            flag: if flag == "-Dseccomp-sandboxing=enabled" then "-Dseccomp-sandboxing=disabled" else flag
+            flag:
+            if flag == "-Dseccomp-sandboxing=enabled" then
+              "-Dseccomp-sandboxing=disabled"
+            else
+              flag
           ) old.mesonFlags;
         });
   };
@@ -222,18 +226,20 @@ portDSL.makeOverlay portList final prev
   nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
     pkgs.lib.composeExtensions nixFilcOverrides (
       nfinal: nprev: {
-        nix-expr = (nprev.nix-expr.override { enableGC = false; }).overrideAttrs (old: {
-          # The 64-bit Value layout packs tag bits into pointers held as
-          # integers, which drops their capabilities; use the plain one.
-          postPatch =
-            (old.postPatch or "")
-            + "\n"
-            + ''
-              substituteInPlace $(find . -path '*/nix/expr/value.hh') --replace-fail \
-                'useBitPackedValueStorage = (ptrSize == 8)' \
-                'useBitPackedValueStorage = false && (ptrSize == 8)'
-            '';
-        });
+        nix-expr =
+          (nprev.nix-expr.override { enableGC = false; }).overrideAttrs
+            (old: {
+              # The 64-bit Value layout packs tag bits into pointers held as
+              # integers, which drops their capabilities; use the plain one.
+              postPatch =
+                (old.postPatch or "")
+                + "\n"
+                + ''
+                  substituteInPlace $(find . -path '*/nix/expr/value.hh') --replace-fail \
+                    'useBitPackedValueStorage = (ptrSize == 8)' \
+                    'useBitPackedValueStorage = false && (ptrSize == 8)'
+                '';
+            });
         # nativeBuildInputs' perl splices to the build platform's perl, which
         # cannot load the Fil-C DBI; Fil-C programs run on the build machine.
         nix-perl-bindings = nprev.nix-perl-bindings.overrideAttrs (old: {

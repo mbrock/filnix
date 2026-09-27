@@ -1,6 +1,6 @@
 {
   "url": "https://github.com/mbrock/fil-c",
-  "coreRev": "7bd7d204617fff7fb41b10a4c3fcb8bd436db756",
+  "coreRev": "18b27e50b421f92fb85d539802347ae3e4805c95",
   "sourcePatterns": {
     "filc0-src": [
       "/LLVM-LICENSE.txt",

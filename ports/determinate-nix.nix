@@ -68,9 +68,9 @@ in
           }).overrideAttrs
             (old: {
               buildInputs = lib.remove final.emptyDirectory old.buildInputs;
-              mesonFlags = map (flag: if flag == "-Dsentry=enabled" then "-Dsentry=disabled" else flag) (
-                lib.filter (flag: !lib.hasPrefix "-Dcrashpad-handler=" flag) old.mesonFlags
-              );
+              mesonFlags =
+                map (flag: if flag == "-Dsentry=enabled" then "-Dsentry=disabled" else flag)
+                  (lib.filter (flag: !lib.hasPrefix "-Dcrashpad-handler=" flag) old.mesonFlags);
             });
         # This scope is not spliced, so the `enosys` wrapper (a seccomp
         # filter, which Fil-C cannot install) would be the Fil-C build.
@@ -98,29 +98,33 @@ in
             });
         # The functional tests again, with every evaluation multi-threaded
         # (and builtins.parallel available). Not part of nix-everything.
-        nix-functional-tests-parallel = nfinal.nix-functional-tests.overrideAttrs (old: {
-          pname = "nix-functional-tests-parallel";
-          # Expected differences with eval-cores > 1: the depth at which the
-          # evaluator reports stack overflow moves by one frame, and the
-          # debugger warns that it turns multi-threading off.
-          postPatch = old.postPatch + ''
-            rm lang/eval-fail-derivation-structuredAttrs-stack-overflow.* \
-              lang/eval-fail-toJSON-stack-overflow.*
-            rm repl/debugger-*.in
-          '';
-          _NIX_TEST_EXTRA_CONFIG = ''
-            ${old._NIX_TEST_EXTRA_CONFIG or ""}
-            eval-cores = 8
-            extra-experimental-features = parallel-eval
-          '';
-        });
+        nix-functional-tests-parallel =
+          nfinal.nix-functional-tests.overrideAttrs
+            (old: {
+              pname = "nix-functional-tests-parallel";
+              # Expected differences with eval-cores > 1: the depth at which the
+              # evaluator reports stack overflow moves by one frame, and the
+              # debugger warns that it turns multi-threading off.
+              postPatch = old.postPatch + ''
+                rm lang/eval-fail-derivation-structuredAttrs-stack-overflow.* \
+                  lang/eval-fail-toJSON-stack-overflow.*
+                rm repl/debugger-*.in
+              '';
+              _NIX_TEST_EXTRA_CONFIG = ''
+                ${old._NIX_TEST_EXTRA_CONFIG or ""}
+                eval-cores = 8
+                extra-experimental-features = parallel-eval
+              '';
+            });
         # And with lazy trees, as the fork's CI runs them.
         nix-functional-tests-lazy-trees = nfinal.nix-functional-tests.override {
           pname = "nix-functional-tests-lazy-trees";
           lazyTrees = true;
         };
         # Boehm GC is only referenced to collect its debug output.
-        nix-everything = nprev.nix-everything.override { boehmgc = final.emptyDirectory; };
+        nix-everything = nprev.nix-everything.override {
+          boehmgc = final.emptyDirectory;
+        };
       }
     )
   )
