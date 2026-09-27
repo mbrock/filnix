@@ -209,15 +209,36 @@ libopenmpt's own test suite hits it; Fil-C reported a 100 MB read from a
 128-byte object. `patches/libopenmpt-codecvt-partial.patch` fixes it and
 is worth sending upstream.
 
-## Open: an exception object freed during unwinding in Nix's tests
+## Throwing and catching inside a destructor during unwinding
 
-`nix-util-tests --gtest_filter=decompress.decompressInvalidInputThrowsCompressionError`
-stops in `landing_pad` with "cannot read pointer to free object": the
-personality routine reads the in-flight exception after it has been freed.
-The test decompresses invalid bzip2 data through libarchive, whose read
-callback throws and catches an `EndOfFile` internally before Nix throws the
-`CompressionError`. A standalone program following the same libarchive
-calls does not reproduce it. The other 688 tests pass; the test is excluded.
+An exception that is thrown and caught entirely inside a destructor, while
+another exception is unwinding through that destructor's frame, breaks the
+outer unwind. This is legal C++ and works natively:
+
+```c++
+struct Guard {
+  ~Guard() { try { throw std::runtime_error("inner"); } catch (std::exception &) {} }
+};
+void f() { Guard g; throw std::logic_error("outer"); }
+int main() { try { f(); } catch (std::exception &) {} }
+/* filc safety error: cannot read pointer to free object ... in landing_pad */
+```
+
+After the inner catch ends, the outer frame's `landing_pad` reads the inner
+exception, which is freed by then. So the runtime apparently keeps one
+"current exception" per thread, and the nested throw replaces it.
+
+Nix does this whenever an exception passes a `sourceToSink` or `sinkToSource`
+coroutine. Destroying the unfinished boost::context fiber resumes it with
+`forced_unwind`, which is thrown and caught inside the fiber. gdb shows
+exactly that sequence before Determinate Nix's
+`nix-store --store 'local?read-only=true' --add` crash (the SQLite
+"read-only database" error unwinding through `addToStoreFromDump`).
+Substitution failures in `binary-cache.sh` and
+`multiple-outputs-substitute-failure.sh`, the libutil
+`invalidDecompression` tests, and upstream Nix's excluded
+`decompressInvalidInputThrowsCompressionError` also end in `landing_pad`
+this way. The ports skip those tests.
 
 ## Found by Fil-C: pointer rebasing across buffers in FFmpeg's flashsv2
 
