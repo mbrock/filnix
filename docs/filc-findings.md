@@ -400,24 +400,49 @@ configure, whose SUSv2 `makecontext` probe also failed (it passes a
 that patches the `jmp_buf` stack pointer. The port selects pth's
 `makecontext`/`swapcontext` backend, which Fil-C supports.
 
-## Open: an exception object freed during unwinding in Nix's tests
+## Exceptions thrown during another unwind reuse its state
 
-`nix-util-tests --gtest_filter=decompress.decompressInvalidInputThrowsCompressionError`
-stops in `landing_pad` with "cannot read pointer to free object": the
-personality routine reads the in-flight exception after it has been freed.
-The test decompresses invalid bzip2 data through libarchive, whose read
-callback throws and catches an `EndOfFile` internally before Nix throws the
-`CompressionError`. A standalone program following the same libarchive
-calls does not reproduce it. The other 688 tests pass; the test is excluded.
+`nix-store --store 'local?read-only=true' --add FILE` (with
+`extra-experimental-features = read-only-local-store`) stopped in
+`landing_pad` with "cannot read pointer to free object" when SQLite's
+read-only error propagated, and so did a failing substitution
+(`substitution-goal.cc:228`) and nix-util-tests'
+`decompress.decompressInvalidInputThrowsCompressionError`. The functional
+tests `read-only-store`, `binary-cache` and
+`multiple-outputs-substitute-failure` were skipped for it and the gtest
+excluded.
 
-A simpler trigger: `nix-store --store 'local?read-only=true' --add FILE`
-(with `extra-experimental-features = read-only-local-store`) stops the same
-way in `opAdd` (`nix-store.cc:197`) when SQLite's read-only error propagates,
-and a failing substitution stops in `PathSubstitutionGoal::tryToRun`
-(`substitution-goal.cc:228`). The functional tests `read-only-store`,
-`binary-cache` and `multiple-outputs-substitute-failure` are skipped for it.
+The runtime keeps the unwind state (context, exception, the frame phase 1
+found, the forced-unwind callback) in `filc_thread` rather than in the
+exception, and the compiler's `resume` does not pass the exception back. So
+a second unwind that starts before the first finishes overwrites it:
 
-These only showed up once the functional tests ran the Fil-C `nix`: Nixpkgs
+- A destructor running as a cleanup throws and catches its own exception.
+  The outer `resume` then continued with the inner exception, which
+  `__cxa_end_catch` had already freed, and the next personality call
+  trapped. Natively the landing pad hands its own exception to
+  `_Unwind_Resume`.
+
+  ```cpp
+  struct Cleanup { ~Cleanup() { try { throw 42; } catch (int) {} } };
+  void f() { Cleanup c; throw std::runtime_error("outer"); } /* traps */
+  ```
+
+- Fibers. Nix's `sourceToSink` runs in a boost coroutine2 fiber. The
+  coroutine's exception is rethrown in the caller, whose cleanup destroys
+  the coroutine, which switches back to the fiber and unwinds it by
+  throwing `forced_unwind`. Both stacks' unwinds shared the one per-thread
+  state (`filc_resume_unwind` asserted `found_frame_for_unwind`).
+
+The runtime fix (`patches/fil-c/runtime-exception-unwind.patch`, fork
+branch `filnix`) saves the outer state when an inner raise finds its
+handler and restores it when the inner exception lands, if the frame
+running the outer cleanup is still live. `swapcontext` moves the state into
+the context it leaves and restores the target's. The reproducers are in
+`tests/fork-regressions/exception-unwind` and the fork's
+`filc/tests/nestedexceptioncleanup` and `fiberexceptionunwind`.
+
+The functional tests only failed once they ran the Fil-C `nix`: Nixpkgs
 puts `nix-cli.__spliced.hostHost or nix-cli` on the suite's PATH, the scope
 here has no `__spliced`, and the build platform's Nix was tested instead.
 That is also why the `plugins` test failed: a Fil-C plugin loaded into

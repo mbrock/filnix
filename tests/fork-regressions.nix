@@ -1,8 +1,10 @@
 # Compiler and runtime fixes in the mbrock/fil-c fork, each found by a port:
-# __sync pointer atomics (cffi), unions inside by-value records (fmt), and
+# __sync pointer atomics (cffi), unions inside by-value records (fmt),
 # function descriptors that bind locally, so RTLD_LOCAL isolates same-named
-# functions (SDL_compat). The runtime still raises FE_INEXACT in the program
-# (see docs/filc-findings.md), so fenv-*.c are not run yet.
+# functions (SDL_compat), and unwinds that survive a cleanup throwing and
+# catching its own exception, or a switch to a fiber that does (Nix). The
+# runtime still raises FE_INEXACT in the program (see docs/filc-findings.md),
+# so fenv-*.c are not run yet.
 { pkgsFilc }:
 pkgsFilc.stdenv.mkDerivation {
   name = "filc-fork-regressions-check";
@@ -19,6 +21,11 @@ pkgsFilc.stdenv.mkDerivation {
       $CC $opt $D/main.c -L. -la -Wl,-rpath,$PWD -o main
       ./main $PWD/libb.so | tee desc.log
       grep -q 'dlsym(which)()=2' desc.log
+      E=${./fork-regressions/exception-unwind}
+      $CXX $opt $E/nested-cleanup.cpp -o nested
+      ./nested | grep -qx 'outer caught outer after 6 inner catches'
+      $CXX $opt $E/fiber.cpp -o fiber
+      ./fiber | grep -qx 'main caught: from coroutine'
     done
   '';
   installPhase = "touch $out";

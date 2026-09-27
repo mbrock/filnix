@@ -196,21 +196,8 @@ portDSL.makeOverlay portList final prev
             # then build with store paths that only exist inside a sandbox.
             substituteInPlace common/vars.sh --replace-fail \
               '&& unshare --user true; then' '&& false; then'
-            # An exception thrown on these error paths is freed while the
-            # landing pad still reads it (docs/filc-findings.md).
-            for t in binary-cache multiple-outputs-substitute-failure read-only-store; do
-              sed -i '0,/^source common.sh$/s//&\nskipTest "Fil-C: exception freed during unwinding"/' $t.sh
-              grep -q 'Fil-C: exception freed' $t.sh
-            done
             popd >/dev/null
           '';
-      });
-      nix-util-tests = nprev.nix-util-tests.overrideAttrs (old: {
-        # The CompressionError from invalid bzip2 input is freed while the
-        # test's catch is still unwinding to it (docs/filc-findings.md).
-        excludedTestPatterns = old.excludedTestPatterns ++ [
-          "decompress.decompressInvalidInputThrowsCompressionError"
-        ];
       });
       # Fil-C's libc has no vfork.
       nix-util = nprev.nix-util.overrideAttrs (old: {
