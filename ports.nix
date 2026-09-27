@@ -165,6 +165,23 @@ in
     }))
   ])
 
+  (for pkgs.SDL_compat [
+    # Keep the symbol loader out of line: SDL12_compat.c compiles in 30 s,
+    # not 873 s (see the patch).
+    (patch ./patches/sdl12-symbol-loader.patch)
+    # sdl12-compat dlopens SDL2 by bare soname and relies on its RUNPATH,
+    # which Fil-C's loader ignores for dlopen (see docs/filc-findings.md).
+    # Name the libraries Nix selected, as the sdl2-compat port does for SDL3.
+    # (The testver check also needs sdl2-compat's -Bsymbolic-functions.)
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/SDL12_compat.c \
+          --replace-fail '"libSDL2-2.0.so.0"' '"${pkgs.lib.getLib final.sdl2-compat}/lib/libSDL2-2.0.so.0"' \
+          --replace-fail '"libX11.so.6"' '"${pkgs.lib.getLib final.libx11}/lib/libX11.so.6"'
+      '';
+    }))
+  ])
+
   (for pkgs.oniguruma [
     # Hash keys and values carry pointers; ordinary longs lose capabilities.
     (patch ./patches/oniguruma-pointer-data.patch)
