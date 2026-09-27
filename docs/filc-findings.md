@@ -571,7 +571,8 @@ space (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`) is a safety panic in
 `malloc` and `operator new` alike, where glibc returns null and libc++
 throws `std::bad_alloc`; smaller huge requests succeed lazily (64 TiB did).
 fmt's `util_test.format_system_error` probes `std::allocator` with
-`SIZE_MAX / 2` bytes and is excluded.
+`SIZE_MAX / 2` bytes and is excluded, as are two of Redis's corrupt-dump
+tests, which request 2^61 bytes and expect zmalloc to fail.
 
 ## `-fno-builtin` with `setjmp` crashed the compiler
 
@@ -640,3 +641,30 @@ Defining `REDISMODULE_ATTR_COMMON` as `__attribute__((weak))` works around
 it. The same proposed patch gives common symbols weak linkage, which the
 linker merges the same way (tests `commonsym`, `commonsymfcommon`, and
 `commonsymfail`, which checks that a common array keeps its bounds).
+
+## Cancellable syscalls without a runtime wrapper stop the program
+
+Fil-C's glibc sends cancellation points through `__syscall_cancel`
+(`patches/glibc-filc-cancellation.patch`). A call the Fil-C runtime does
+not wrap ends in inline `syscall` assembly, which the runtime refuses:
+
+```c
+sync_file_range(fd, 0, 1, SYNC_FILE_RANGE_WRITE);
+/* filc safety error: cannot handle inline asm ... syscall
+   (libc.so.6666) sync_file_range.c:29: sync_file_range */
+```
+
+Redis's port falls back to `fsync`. Other cancellable calls that bypass
+the runtime would stop the same way.
+
+## Found porting Redis: pointers kept as bytes
+
+Redis keeps client pointers inside rax keys (client tracking and blocked
+client timeouts), swaps sort elements as `long` (`pqsort.c`, geoPoints
+hold `sds` pointers), and packs its encoded reply buffers so a `robj *`
+sits at any offset. Each lost or misaligned the capability. The port
+(`patches/redis-filc.patch`) registers clients in a `zexact_ptrtable` and
+decodes key bytes through it, swaps as `void *`, and aligns the reply
+chunks. The module key-metadata API passes pointers as `uint64_t`, so
+modules that store pointers there cannot work under Fil-C; its tests are
+skipped.

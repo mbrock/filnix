@@ -2239,6 +2239,73 @@ in
 
   # ━━━ Web & Network Services ━━━
 
+  (for pkgs.redis [
+    # Aligned encoded reply buffers; no madvise on the heap after fork.
+    (patch ./patches/redis-filc.patch)
+    (use (old: {
+      makeFlags = old.makeFlags ++ [
+        # Redis's default -O3 turns on LTO, which Fil-C does not have.
+        "OPTIMIZATION=-O2"
+        # The test modules' Makefile hard-codes gcc.
+        "CC=cc"
+        "LD=cc"
+      ];
+      # The tests call pgrep; Nixpkgs' `ps` here is procps' ps alone.
+      nativeCheckInputs = old.nativeCheckInputs ++ [ pkgs.procps ];
+      checkPhase =
+        let
+          skips = [
+            # The jemalloc shim ignores malloc_conf, and has no per-size
+            # accounting or active defragmentation, so fragmentation always
+            # reads 1.00.
+            "--tags -defrag"
+            ''--skiptest "je_malloc_conf compile-time tuning is active"''
+            ''--skiptest "Reduce defrag CPU usage when module data can't be defragged"''
+            # Fil-C gives the program copies of argv, so rewriting them does
+            # not change /proc/<pid>/cmdline.
+            ''--skiptest "Process title set as expected"''
+            # Crash reports need SIGSEGV handlers, which Fil-C refuses.
+            "--skipunit unit/moduleapi/crash"
+            # The key metadata API passes pointers as uint64_t, which drops
+            # their capability; the test modules store strings that way.
+            "--skipunit unit/moduleapi/keymeta"
+            "--skipunit unit/moduleapi/ksn_notify_side_effect"
+            # They load payloads that request exabyte allocations and expect
+            # zmalloc to fail; Fil-C stops the program instead.
+            ''--skiptest "corrupt payload: fuzzer findings - OOM in dictExpand"''
+            ''--skiptest "corrupt payload: fuzzer findings - huge string"''
+            # Crash reports with stack traces: SIGSEGV handlers again, and
+            # the port builds without backtrace support.
+            "--skipunit integration/logging"
+          ];
+          last = ''--skiptest "Check MEMORY USAGE for embedded key strings with jemalloc"'';
+        in
+        assert pkgs.lib.hasInfix last old.checkPhase;
+        builtins.replaceStrings
+          [
+            "./runtest \\\n"
+            last
+          ]
+          [
+            "set -o pipefail\n./runtest \\\n"
+            (
+              pkgs.lib.concatMapStrings (s: s + " \\\n  ") skips
+              # The test runner redraws lines with carriage returns and
+              # colours them, which leaves the Nix log blank.
+              + last
+              + " 2>&1 | sed -u -e 's/\\r/\\n/g' -e 's/\\x1b\\[[0-9;]*m//g'"
+            )
+          ]
+          old.checkPhase;
+      postPatch = (old.postPatch or "") + ''
+        # Nixpkgs' system-jemalloc patch still builds deps/jemalloc, whose
+        # configure fails; Redis links the jemalloc shim instead.
+        sed -i 's/^\tDEPENDENCY_TARGETS+= jemalloc$//' src/Makefile
+        ! grep -q 'DEPENDENCY_TARGETS+= jemalloc' src/Makefile
+      '';
+    }))
+  ])
+
   (for pkgs.lighttpd [
     (patch ./patches/lighttpd-filc.patch)
     (arg { enableMagnet = true; })

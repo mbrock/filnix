@@ -98,19 +98,12 @@ object and using an object after `dallocx` or `sdallocx` trap.
 Of the packages in the nixos-26.05 campaign that were blocked on
 jemalloc:
 
-- **Redis 8.8.2** builds against the shim with three changes that belong
-  in a Redis port: `OPTIMIZATION=-O2` (no LTO under Fil-C), a
-  `REDISMODULE_ATTR_COMMON` that is not `__attribute__((common))` (which
-  crashes the compiler, see filc-findings.md), and not building the
-  vendored jemalloc that Nixpkgs' system-jemalloc patch still lists as a
-  dependency (`CC=cc` too, for its test modules). `INFO memory`,
-  `MEMORY STATS`, `MEMORY PURGE`, `MEMORY MALLOC-STATS` and
-  `MEMORY USAGE` work. 21 `unit/info` tests, and 141 from
-  `unit/memefficiency`, `unit/keyspace`, `unit/type/hash` and
-  `unit/type/list` run in parallel, pass before Redis itself traps: its reply buffers store pointers at unaligned
-  offsets (`networking.c`), and with jemalloc it `madvise`s heap pages
-  after fork (`dismissMemory`), which Fil-C refuses. Those need Redis
-  patches; the tests do not reach the allocator shim's limits.
+- **Redis 8.8.2** is ported (`ports.nix`, `patches/redis-filc.patch`) and
+  links the shim. `INFO memory`, `MEMORY STATS`, `MEMORY PURGE`,
+  `MEMORY MALLOC-STATS` and `MEMORY USAGE` work. Its test suite runs in the
+  check phase; the tests that depend on real jemalloc are skipped: those
+  tagged `defrag` (fragmentation always reads 1.00, and there is no active
+  defragmentation) and the check that `malloc_conf` tuning took effect.
 - **BIND 9.20** detects the shim (`Memory allocator: jemalloc`) and builds
   with `--disable-dnstap` (fstrm and protobuf are separate blockers). Its
   tests stop earlier, in liburcu's constructor, which calls the
