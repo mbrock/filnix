@@ -1,0 +1,158 @@
+From e04277d5869c19ba78b8f95fb2eb336750fd89c3 Mon Sep 17 00:00:00 2001
+From: Mikael Brockman <mikael@brockman.se>
+Date: Sun, 27 Sep 2026 14:55:03 +0000
+Subject: [PATCH] Bind function descriptors to a local alias of the
+ implementation
+
+A function's descriptor (pizlonatedFO_f) referenced its implementation
+pizlonatedFIP<n>_f, which has f's linkage and default visibility, so the
+dynamic linker resolved it in the global scope. When another DSO defined
+the same function, that DSO's code ran through this module's descriptor:
+dlsym(handle, "f") on an RTLD_LOCAL library returned the first-loaded
+library's f (sdl12-compat over sdl2-compat recursed forever).
+
+Reference the implementation through a private alias, which the
+assembler resolves section-relative. Direct calls, the pizlonatedFI
+alias and the getter keep their interposable symbols, so references
+through the dynamic symbol table still bind as native ones do.
+
+WIP: not yet built or tested (see filc/tests/descriptorlocal).
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e2af-4054-707b-8968-337622993848
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ filc/tests/descriptorlocal/liba.c             |  4 +++
+ filc/tests/descriptorlocal/libb.c             |  9 ++++++
+ filc/tests/descriptorlocal/main.c             | 28 +++++++++++++++++++
+ filc/tests/descriptorlocal/manifest           | 19 +++++++++++++
+ .../Instrumentation/FilPizlonator.cpp         | 20 +++++++++++--
+ 5 files changed, 78 insertions(+), 2 deletions(-)
+ create mode 100644 filc/tests/descriptorlocal/liba.c
+ create mode 100644 filc/tests/descriptorlocal/libb.c
+ create mode 100644 filc/tests/descriptorlocal/main.c
+ create mode 100644 filc/tests/descriptorlocal/manifest
+
+diff --git a/filc/tests/descriptorlocal/liba.c b/filc/tests/descriptorlocal/liba.c
+new file mode 100644
+index 00000000000..ed05d9ee679
+--- /dev/null
++++ b/filc/tests/descriptorlocal/liba.c
+@@ -0,0 +1,4 @@
++int which(void)
++{
++    return 1;
++}
+diff --git a/filc/tests/descriptorlocal/libb.c b/filc/tests/descriptorlocal/libb.c
+new file mode 100644
+index 00000000000..a7279e0bddf
+--- /dev/null
++++ b/filc/tests/descriptorlocal/libb.c
+@@ -0,0 +1,9 @@
++__attribute__((noinline)) int which(void)
++{
++    return 2;
++}
++
++int (*whichptr(void))(void)
++{
++    return which;
++}
+diff --git a/filc/tests/descriptorlocal/main.c b/filc/tests/descriptorlocal/main.c
+new file mode 100644
+index 00000000000..c4cdcd512b1
+--- /dev/null
++++ b/filc/tests/descriptorlocal/main.c
+@@ -0,0 +1,28 @@
++#include <dlfcn.h>
++#include <stdfil.h>
++
++/* liba.so (linked) and libb.so (dlopened RTLD_LOCAL) both define which().
++   A descriptor obtained from libb must run libb's which, as dlsym does
++   natively, while references that go through the dynamic symbol table keep
++   binding to the first definition in the global scope. */
++
++int which(void);
++
++int main()
++{
++    void* lib = dlopen("filc/test-output/descriptorlocal/libb.so", RTLD_NOW | RTLD_LOCAL);
++    ZASSERT(lib);
++
++    int (*libb_which)(void) = dlsym(lib, "which");
++    ZASSERT(libb_which);
++    ZASSERT(libb_which() == 2);
++
++    ZASSERT(which() == 1);
++
++    int (*(*whichptr)(void))(void) = dlsym(lib, "whichptr");
++    ZASSERT(whichptr);
++    ZASSERT(whichptr()() == 1);
++
++    zprintf("descriptorlocal ok\n");
++    return 0;
++}
+diff --git a/filc/tests/descriptorlocal/manifest b/filc/tests/descriptorlocal/manifest
+new file mode 100644
+index 00000000000..ab56a7d68ad
+--- /dev/null
++++ b/filc/tests/descriptorlocal/manifest
+@@ -0,0 +1,19 @@
++return:
++  success
++libraries:
++  liba:
++    isBundle: false
++    files:
++      - liba.c
++  libb.so:
++    isBundle: true
++    files:
++      - libb.c
++optFlags:
++  "-O2 -fPIC"
++extraLinkerArgs:
++  "-Lfilc/test-output/descriptorlocal -la"
++extraLDPath:
++  "filc/test-output/descriptorlocal"
++output-includes:
++  - "descriptorlocal ok"
+diff --git a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+index 38f3a807307..da1831c827f 100644
+--- a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
++++ b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+@@ -16643,6 +16643,22 @@ public:
+           GlobalAlias::create(ImplFuncTy, 0, F->getLinkage(), buf.str(), NewF, &M);
+         }
+ 
++        // The function object is this module's descriptor for F, so it must run this module's
++        // implementation. NewF usually has F's linkage and visibility, which makes its symbol
++        // interposable; referencing it would let another DSO that defines the same function
++        // supply the code, so dlsym(handle, "f") on an RTLD_LOCAL library or a -Bsymbolic
++        // library could run a different library's f. Reference NewF through a private alias,
++        // which the assembler resolves against the section. Direct calls keep using NewF's
++        // symbol, so they stay interposable as native calls are.
++        Constant* DescriptorImpl = NewF;
++        if (!NewF->hasLocalLinkage() && !NewF->hasAvailableExternallyLinkage()) {
++          GlobalAlias* LocalImpl = GlobalAlias::create(
++            ImplFuncTy, NewF->getAddressSpace(), GlobalValue::PrivateLinkage,
++            NewF->getName() + ".local", NewF, &M);
++          LocalImpl->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
++          DescriptorImpl = LocalImpl;
++        }
++
+         GlobalVariable* NewObjectG = new GlobalVariable(
+           M, FunctionObjectTy, true, GlobalValue::InternalLinkage, nullptr,
+           "pizlonatedFO_" + F->getName());
+@@ -16664,8 +16680,8 @@ public:
+                     IntPtrTy, static_cast<uintptr_t>(ObjectFlags) << ObjectAuxFlagsShift)) }),
+             ConstantStruct::get(
+               FunctionPayloadTy,
+-              { Signature == GenericSignature ? RawNull : NewF,
+-                Signature == GenericSignature ? NewF : calleeEntrypointThunk(
++              { Signature == GenericSignature ? RawNull : DescriptorImpl,
++                Signature == GenericSignature ? DescriptorImpl : calleeEntrypointThunk(
+                   Signature, AIs, NormalizedRetType),
+                 ConstantInt::get(Int64Ty, Signature) }) });
+         NewObjectG->setInitializer(NewObjC);
+-- 
+2.55.0
+
