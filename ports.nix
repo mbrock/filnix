@@ -647,9 +647,6 @@ in
   ])
 
   (for pkgs.bluez [
-    # The installed test scripts need dbus-python, whose dbus-glib assumes
-    # integer GTypes.
-    (arg { installTests = false; })
     # BlueZ builds against the copy of ELL's headers in its tarball.
     (patch ./patches/ell-no-debug-section.patch)
     (patch ./patches/bluez-no-debug-section.patch)
@@ -657,6 +654,18 @@ in
     # at a misaligned offset where Fil-C cannot keep a capability.
     (removeConfigureFlag "--enable-midi")
     (configure "--disable-midi")
+    (use (old: {
+      # The installed test scripts run on Fil-C Python with its dbus-python
+      # and PyGObject. The build Python's wrapPython would give them the
+      # build interpreter and search its own, empty, site-packages layout.
+      nativeBuildInputs = map (
+        p:
+        if pkgs.lib.hasPrefix "wrap-python-hook" (p.name or "") then
+          final.python3Packages.wrapPython
+        else
+          p
+      ) old.nativeBuildInputs;
+    }))
   ])
 
   (for pkgs.liburcu [
