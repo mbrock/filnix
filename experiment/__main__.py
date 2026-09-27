@@ -102,6 +102,11 @@ def main():
     )
     exclude.add_argument("campaign")
     exclude.add_argument("--attempt")
+    toolchains = sub.add_parser(
+        "exclude-toolchains",
+        help="mark recorded rustc, GCC and LLVM builds for Fil-C out of scope",
+    )
+    toolchains.add_argument("campaign")
     cancel = sub.add_parser("cancel")
     cancel.add_argument("attempt")
     args = p.parse_args()
@@ -154,6 +159,7 @@ def main():
         "retry-derivation",
         "schedule",
         "exclude-kernels",
+        "exclude-toolchains",
     ):
         request = {k: v for k, v in vars(args).items() if k not in ("state", "command")}
         request["op"] = args.command

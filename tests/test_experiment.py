@@ -531,6 +531,51 @@ class ExperimentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.controller.intent(self.controller.campaign(self.cid), "build", [A])
 
+    def test_toolchains_for_fil_c_are_out_of_scope(self):
+        from experiment.scope import toolchain_derivation
+
+        f = "x86_64-unknown-linux-gnufilc0"
+        self.assertTrue(toolchain_derivation(f + "-gcc-15.3.0"))
+        self.assertTrue(toolchain_derivation(f + "-gfortran-15.3.0"))
+        self.assertTrue(toolchain_derivation("llvm-" + f + "-21.1.8"))
+        self.assertTrue(toolchain_derivation("compiler-rt-libc-" + f + "-21.1.8"))
+        # Native compilers and Fil-C packages that merely mention them stay in.
+        self.assertFalse(toolchain_derivation("gcc-15.3.0"))
+        self.assertFalse(toolchain_derivation("llvm-21.1.8"))
+        self.assertFalse(toolchain_derivation("python3.12-llvmlite-" + f + "-0.44"))
+        self.assertFalse(toolchain_derivation(f + "-binutils-2.44"))
+        self.assertFalse(toolchain_derivation("rustc-1.95.0", {"env": {}}))
+        self.assertTrue(
+            toolchain_derivation(
+                "rustc-1.95.0",
+                {"structuredAttrs": {"configureFlags": ["--target=" + f]}},
+            )
+        )
+
+    def test_exclude_toolchains_reclassifies_blocked_dependents(self):
+        from experiment.scope import TOOLCHAIN_REASON
+
+        self.graph()
+        self.sql(
+            "UPDATE derivations SET name='llvm-x86_64-unknown-linux-gnufilc0-21.1.8',failure='build' WHERE drv=?",
+            (A,),
+        )
+        self.sql("UPDATE candidates SET state='blocked' WHERE id IN (2,3)")
+        self.db.commit()
+        report = self.controller.dispatch(
+            {"op": "exclude-toolchains", "campaign": self.cid}
+        )
+        self.assertEqual(report["derivations"], [A])
+        self.assertEqual(report["blocked"], -2)
+        self.assertEqual(
+            [r[0] for r in self.sql("SELECT state FROM candidates ORDER BY id")],
+            ["excluded"] * 3,
+        )
+        self.assertEqual(
+            self.sql("SELECT exclusion FROM derivations WHERE drv=?", (A,)).fetchone()[0],
+            TOOLCHAIN_REASON,
+        )
+
     def test_kernel_exclusion_keeps_outputs_and_checks_without_claiming_success(self):
         self.graph()
         self.sql(

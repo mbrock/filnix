@@ -1,6 +1,25 @@
 """Scope exclusions are policy decisions, separate from build failures."""
 
+import json
+import re
+
 REASON = "Linux kernel; outside the Fil-C userspace runtime"
+TOOLCHAIN_REASON = (
+    "Compiler toolchain (rustc, GCC, LLVM) built for or targeting Fil-C; "
+    "outside the experiment, since filcc is the Fil-C compiler"
+)
+INHERITED = "Depends on a derivation outside the experiment's scope"
+
+# GCC cross compilers name themselves after their target, and packages built
+# for Fil-C carry its triple as a suffix. rustc targeting Fil-C keeps its plain
+# name, so it is recognized by its configure flags (see toolchain_derivation).
+FILC = "x86_64-unknown-linux-gnufilc0"
+TOOLCHAIN_NAME = re.compile(
+    rf"^(?:{FILC}-(?:gcc|gfortran|gnat|gccgo|gdc)"
+    rf"|(?:llvm|clang|compiler-rt|compiler-rt-libc|lld|mlir|libclang|clang-tools|libllvm|polly|openmp)-{FILC}"
+    r")-\d"
+)
+RUSTC_NAME = re.compile(r"^rustc(?:-unwrapped)?-\d")
 
 
 def kernel_metadata(metadata, source_file=None):
@@ -32,3 +51,24 @@ def kernel_derivation(info):
     return "vmlinux" in flags and any(
         flag.startswith("KBUILD_BUILD_VERSION=") for flag in flags
     )
+
+
+def toolchain_derivation(name, info=None):
+    """Whether a derivation is a compiler that Fil-C cannot (and need not) build.
+
+    With ``info`` (a ``nix derivation show`` record), rustc counts only when it
+    targets Fil-C; without it, the name alone decides.
+    """
+    if TOOLCHAIN_NAME.match(name or ""):
+        return True
+    if RUSTC_NAME.match(name or ""):
+        return info is not None and f"--target={FILC}" in json.dumps(info)
+    return False
+
+
+def exclusion(name, info):
+    if kernel_derivation(info):
+        return REASON
+    if toolchain_derivation(name, info):
+        return TOOLCHAIN_REASON
+    return None

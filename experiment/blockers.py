@@ -84,7 +84,8 @@ def compute(db, cid):
         "WHERE failure IS NOT NULL OR exclusion IS NOT NULL"
     ):
         if drv in ids:
-            if failure is not None:
+            # An out-of-scope failure is not a blocker to fix.
+            if failure is not None and exclusion is None:
                 failures.append((ids[drv], drv, name, failure))
             else:
                 excluded.append(ids[drv])

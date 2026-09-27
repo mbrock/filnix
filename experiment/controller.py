@@ -14,7 +14,14 @@ from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
 from .outcomes import backfill, snapshot as build_outcomes
 from .scheduling import build_policy, reservations
-from .scope import REASON, kernel_metadata
+from .scope import (
+    REASON,
+    RUSTC_NAME,
+    TOOLCHAIN_NAME,
+    TOOLCHAIN_REASON,
+    kernel_metadata,
+    toolchain_derivation,
+)
 from .timing import ingest_times
 
 
@@ -768,6 +775,58 @@ class Controller:
             event(self.db, cid, "kernels-excluded", report)
         return report
 
+    def exclude_toolchains(self, cid):
+        """Mark recorded compiler toolchains out of scope (planning does this for new ones)."""
+        campaign = self.campaign(cid)
+        if campaign["mode"] != "paused":
+            raise ValueError("pause the campaign before reclassifying its scope")
+        rows = self.db.execute(
+            "SELECT drv,name FROM derivations WHERE exclusion IS NULL"
+        ).fetchall()
+        named = [r["drv"] for r in rows if TOOLCHAIN_NAME.match(r["name"])]
+        rustc = sorted(r["drv"] for r in rows if RUSTC_NAME.match(r["name"]))
+        # Only rustc targeting Fil-C is out of scope; inspect definitions.
+        for i in range(0, len(rustc), 64):
+            data = nix.normalize_graph(nix.query("derivation", "show", *rustc[i : i + 64]))
+            named.extend(
+                drv
+                for drv, info in data.items()
+                if toolchain_derivation(info.get("name", ""), info)
+            )
+        with self.db:
+            self.db.executemany(
+                "UPDATE derivations SET exclusion=? WHERE drv=? AND exclusion IS NULL",
+                [(TOOLCHAIN_REASON, d) for d in named],
+            )
+            before = dict(
+                self.db.execute(
+                    "SELECT state,count(*) FROM candidates WHERE campaign=? GROUP BY state",
+                    (cid,),
+                )
+            )
+            # Blocked candidates become queued again, then excluded if they
+            # depend on an exclusion.
+            self.db.execute(
+                "UPDATE candidates SET state='queued' WHERE campaign=? AND state='blocked'",
+                (cid,),
+            )
+            refresh_candidates(self.db, cid)
+            after = dict(
+                self.db.execute(
+                    "SELECT state,count(*) FROM candidates WHERE campaign=? GROUP BY state",
+                    (cid,),
+                )
+            )
+            report = dict(
+                reason=TOOLCHAIN_REASON,
+                runner_version=VERSION,
+                derivations=sorted(named),
+                excluded=after.get("excluded", 0) - before.get("excluded", 0),
+                blocked=after.get("blocked", 0) - before.get("blocked", 0),
+            )
+            event(self.db, cid, "toolchains-excluded", report)
+        return report
+
     def build_targets(self, campaign, targets):
         # Builds realize fixed drvs, never reevaluate the campaign flake. A batch
         # can contain roots planned at different explicit follow-up revisions.
@@ -819,6 +878,8 @@ class Controller:
         op, cid = request["op"], request.get("campaign")
         if op == "exclude-kernels":
             return self.exclude_kernels(cid, request.get("attempt"))
+        if op == "exclude-toolchains":
+            return self.exclude_toolchains(cid)
         if op == "schedule":
             campaign = self.campaign(cid)
             policy = json.loads(campaign["policy"])

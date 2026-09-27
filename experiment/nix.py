@@ -7,7 +7,7 @@ import re
 import subprocess
 
 from .model import encode, stamp
-from .scope import REASON, kernel_derivation
+from .scope import exclusion
 
 NIX = os.environ.get("FILNIX_NIX", "nix")
 DRV = re.compile(r"/nix/store/[a-z0-9]{32}-[^\s'\";]+\.drv")
@@ -111,18 +111,17 @@ def normalize_graph(data):
 def add_graph(db, data):
     for drv, info in normalize_graph(data).items():
         outputs = {k: v.get("path") for k, v in info["outputs"].items()}
+        name = info.get("name", info.get("env", {}).get("name", Path(drv).name[33:-4]))
         db.execute(
             "INSERT OR IGNORE INTO derivations(drv,name,outputs) VALUES(?,?,?)",
-            (
-                drv,
-                info.get(
-                    "name", info.get("env", {}).get("name", Path(drv).name[33:-4])
-                ),
-                encode(outputs),
-            ),
+            (drv, name, encode(outputs)),
         )
-        if kernel_derivation(info):
-            db.execute("UPDATE derivations SET exclusion=? WHERE drv=?", (REASON, drv))
+        reason = exclusion(name, info)
+        if reason:
+            db.execute(
+                "UPDATE derivations SET exclusion=? WHERE drv=? AND exclusion IS NULL",
+                (reason, drv),
+            )
         for child, required in info["inputDrvs"].items():
             db.execute(
                 "INSERT OR IGNORE INTO edges VALUES(?,?,?)",

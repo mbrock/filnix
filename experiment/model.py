@@ -10,7 +10,7 @@ import sqlite3
 import time
 import uuid
 
-from .scope import REASON, kernel_metadata
+from .scope import INHERITED, REASON, kernel_metadata
 
 
 def stamp():
@@ -237,7 +237,7 @@ def refresh_candidates(db, campaign):
     )
     db.execute(
         """WITH RECURSIVE bad(drv) AS (
-      SELECT drv FROM derivations WHERE failure IS NOT NULL
+      SELECT drv FROM derivations WHERE failure IS NOT NULL AND exclusion IS NULL
       UNION SELECT parent FROM edges JOIN bad ON child=bad.drv)
       UPDATE candidates SET state='blocked' WHERE campaign=? AND state='queued' AND drv IN bad""",
         (campaign,),
@@ -257,8 +257,5 @@ def refresh_candidates(db, campaign):
           UNION SELECT parent FROM edges JOIN outside ON child=outside.drv)
           UPDATE candidates SET state='excluded',error=?
           WHERE campaign=? AND state='queued' AND drv IN outside""",
-        (
-            "Requires a Linux kernel build; outside the Fil-C userspace experiment",
-            campaign,
-        ),
+        (INHERITED, campaign),
     )
