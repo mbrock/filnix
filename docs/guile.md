@@ -286,7 +286,42 @@ against the Fil-C Guile:
   `encode2047.c`, `tesh.c`). The Guile module is compiled at `-O0`,
   which is why `SCM_NEWSMOB` had to convert in the caller.
 
-Not tried yet: guix, lilypond and the other guile-* libraries.
+- **LilyPond** (2.26.0) builds (`ports.nix`: `CROSS=no` so the build
+  runs the Fil-C `lilypond` and `help2man`, TeX from the build platform,
+  `guile` as a host library). It engraves correctly (score rendered to
+  SVG, PDF and MIDI). Of LilyPond's 2,139 regression inputs,
+  compiled to SVG one by one: 2,074 succeed, 4 fail for want of image
+  files or the like, and 19 trap on the same use-after-free, a freed
+  `vector<Grob*>` read in `System::do_break_substitution_and_fixup_refpoints`
+  (`system.cc:191`). LilyPond relies on SMOB mark functions and libgc's
+  ordered finalization, neither of which the libgc shim provides
+  (`docs/boehm-on-fugc.md`), which is the likely cause; not investigated
+  further. The wrapper currently puts the build platform's `gs` on
+  `PATH` for PDF output, because the Fil-C `ghostscript-with-X` fails
+  its configure (its `-lz` test links the build platform's zlib). Large
+  scores are slow: `accidental-styles.ly` takes 2.5 minutes, mostly in
+  the collector.
+- **Guix's Guile libraries** build and pass their tests under the Fil-C
+  `guile` (see `guileTestsOnFilc` in `ports.nix`): guile-gcrypt 79,
+  guile-zlib 141, guile-lzlib 12, guile-git 138 (one connect-timeout
+  test skipped: the Fil-C libgit2 reports `GITERR_OS` instead of
+  `GITERR_NET`), guile-avahi 7, guile-sqlite3, guile-zstd, guile-lzma,
+  guile-ssh, guile-gnutls, guile-semver. Fixes: configure found
+  libgcrypt and liblz through the build platform's tools (baking the
+  wrong library into the FFI bindings); pre-inst scripts had the build
+  platform's guile baked in; libgcrypt needed `-DNO_ASM` (its
+  `mpi/longlong.h` inline asm, used by RSA, traps under Fil-C even with
+  `--disable-asm`); and the 64-bit bytevector change above.
+- **Guix** builds: `guix` and `guix-daemon` (the C++ daemon) run
+  (`guix --version`). Without its container networking helper
+  slirp4netns: it needs libseccomp, and the Fil-C runtime rejects the
+  `seccomp` system call (`filc user error: unsupported syscall: 317`).
+  Not yet tested: anything that talks to the daemon. The daemon needs
+  root, a store at the configured `/gnu/store` and build users, which
+  this orb does not provide, and `guix/config.scm` records the build
+  platform's `git`, `gzip`, `bzip2` and `xz` programs.
+
+Not tried yet: the other guile-* libraries.
 Most guile-* libraries are pure Scheme and should build like guile-json.
 Libraries with C parts that keep pointers in `scm_t_bits` storage will
 need the same kind of changes as libguile (see "Remaining gaps").
