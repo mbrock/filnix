@@ -394,6 +394,48 @@ in
     (skipCheck "locale tests fail")
   ])
 
+  (for pkgs.a2ps [
+    (use (old: {
+      # gnulib's old obstack.h aligns pointers relative to (char *) 0,
+      # which drops their capabilities; align relative to the chunk.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace lib/obstack.h --replace-fail \
+          '__BPTR_ALIGN (sizeof (ptrdiff_t) < sizeof (void *) ? (B) : (char *) 0,' \
+          '__BPTR_ALIGN ((B),'
+        substituteInPlace tests/backup.tst tests/styles.tst \
+          --replace-quiet /bin/rm rm
+      '';
+      doCheck = true;
+      preCheck = "patchShebangs contrib tests";
+    }))
+  ])
+
+  {
+    # libguile builds, but Guile keeps SCM values in scm_t_bits
+    # (uintptr_t) cell words, which drop their capabilities: the first
+    # symbol lookup at startup traps. Porting that is its own project
+    # (docs/boehm-on-fugc.md).
+    guile_3_0 = for pkgs.guile_3_0 [
+      (broken "SCM values are stored as integers")
+      # Nixpkgs' cross-build fix is already in 3.0.11.
+      (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
+      # Guile's JIT emits machine code.
+      (configure "--disable-jit")
+      # The build platform's guile compiles the Scheme modules. As an
+      # input it would propagate its native libunistring and libgc onto
+      # the Fil-C link path, so only its programs are exposed.
+      (use (old: {
+        depsBuildBuild = [ pkgs.stdenv.cc ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [
+          (pkgs.runCommand "guile-for-build" { } ''
+            mkdir -p $out/bin
+            ln -s ${pkgs.guile_3_0}/bin/* $out/bin/
+          '')
+        ];
+      }))
+    ];
+  }
+
   (for pkgs.gnugrep [
     (pin "3.11" "sha256-HbKu3eidDepCsW2VKPiUyNFdrk4ZC1muzHj1qVEnbqs=")
     # Nixpkgs' gnulib test fix targets 3.12.
