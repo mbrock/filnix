@@ -197,6 +197,9 @@ portDSL.makeOverlay portList final prev
   );
   nix = final.nixComponents.nix-everything;
 
+  # Boehm GC's API on Fil-C's own collector (docs/boehm-on-fugc.md).
+  boehmgc = final.callPackage ./boehmgc { inherit (prev) boehmgc; };
+
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;
   };

@@ -350,6 +350,28 @@ in
     (skipCheck "locale tests fail")
   ])
 
+  (for pkgs.a2ps [
+    (use (old: {
+      # gnulib's old obstack.h aligns pointers relative to (char *) 0,
+      # which drops their capabilities; align relative to the chunk.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace lib/obstack.h --replace-fail \
+          '__BPTR_ALIGN (sizeof (ptrdiff_t) < sizeof (void *) ? (B) : (char *) 0,' \
+          '__BPTR_ALIGN ((B),'
+      '';
+      doCheck = true;
+    }))
+  ])
+
+  {
+    guile_3_0 = for pkgs.guile_3_0 [
+      # Nixpkgs' cross-build fix is already in 3.0.11.
+      (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
+      # Guile's JIT emits machine code.
+      (configure "--disable-jit")
+    ];
+  }
+
   (for pkgs.gnugrep [
     (pin "3.11" "sha256-HbKu3eidDepCsW2VKPiUyNFdrk4ZC1muzHj1qVEnbqs=")
     # Nixpkgs' gnulib test fix targets 3.12.
