@@ -69,9 +69,9 @@ let
         dep: !(pkgs.lib.hasInfix "gfortran" (dep.name or ""))
       ) old.nativeBuildInputs;
       # Nixpkgs adds LLVM's OpenMP when the compiler is Clang.
-      buildInputs = builtins.filter (
-        dep: !(pkgs.lib.hasInfix "openmp" (dep.name or ""))
-      ) (old.buildInputs or [ ]);
+      buildInputs = builtins.filter (dep: !(pkgs.lib.hasInfix "openmp" (dep.name or ""))) (
+        old.buildInputs or [ ]
+      );
       configureFlags =
         builtins.filter (
           f:
@@ -104,6 +104,9 @@ in
       (patch ./patches/boost-gdb-scripts.patch)
       (patch ./patches/boost-function-vtable-tag.patch)
       (patch ./patches/boost-test-execution-monitor.patch)
+      # io_context's executor keeps its context pointer and flag bits in a
+      # uintptr_t; the first use_service through a strand trapped.
+      (patch ./patches/boost-asio-io-context-executor-pointer.patch)
       (use (old: {
         # error_code keeps its source_location pointer in a uintptr_t with
         # a flag bit, which drops the capability, and what() then trapped
@@ -135,6 +138,8 @@ in
           $CXX -std=c++17 -I. ${./tests/boost-continuation.cpp} \
             -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -pthread -o continuation-check
           LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
+          $CXX -std=c++17 -I. ${./tests/boost-asio.cpp} -pthread -o asio-check
+          ./asio-check
           $CXX -std=c++17 -I. ${./tests/boost-error-code.cpp} -o error-code-check
           ./error-code-check
           # Boost.Test, both as the compiled library and header-only. The
@@ -261,9 +266,7 @@ in
       protobuf_33 = for pkgs.protobuf_33 (
         protobufPort ./patches/protobuf-33.6-filc.patch ++ randomOrderingTest
       );
-      protobuf_21 = for pkgs.protobuf_21 (
-        protobufPort ./patches/protobuf-21.12-filc.patch
-      );
+      protobuf_21 = for pkgs.protobuf_21 (protobufPort ./patches/protobuf-21.12-filc.patch);
     }
   )
 
@@ -309,9 +312,7 @@ in
     # GTK 2 only serves the gtv demo player; SDL_mixer needs just the
     # library, so keep GTK 2 out of its closure.
     (use (old: {
-      buildInputs = builtins.filter (
-        dep: !(pkgs.lib.hasPrefix "gtk+" (dep.name or ""))
-      ) old.buildInputs;
+      buildInputs = builtins.filter (dep: !(pkgs.lib.hasPrefix "gtk+" (dep.name or ""))) old.buildInputs;
     }))
     (configure "--disable-gtk-player")
     # Nixpkgs links everything with -lX11, which GTK used to provide.
@@ -413,9 +414,7 @@ in
       # target_arch=="x64". Build for a target NSS does not know, which
       # selects the portable C code, and keep 64-bit words and __int128.
       buildPhase =
-        builtins.replaceStrings
-          [ "--target x64" ]
-          [ "--target filc -Dhave_int128_support=1" ]
+        builtins.replaceStrings [ "--target x64" ] [ "--target filc -Dhave_int128_support=1" ]
           old.buildPhase;
       # pk11_gtest and freebl_gtest initialize large std::vector test-vector
       # tables in one static constructor, which takes Fil-C's pipeline over
@@ -543,9 +542,7 @@ in
     (patch ./ports/patch/libedit-20240808-3.1.patch)
   ])
 
-  (for (pkgs.callPackage "${pkgs.path}/pkgs/development/libraries/libidn2"
-    { }
-  ) [ ])
+  (for (pkgs.callPackage "${pkgs.path}/pkgs/development/libraries/libidn2" { }) [ ])
 
   # Special case - libiconv comes from glibc in cross-compilation
   {
@@ -1062,10 +1059,7 @@ in
       # build interpreter and search its own, empty, site-packages layout.
       nativeBuildInputs = map (
         p:
-        if pkgs.lib.hasPrefix "wrap-python-hook" (p.name or "") then
-          final.python3Packages.wrapPython
-        else
-          p
+        if pkgs.lib.hasPrefix "wrap-python-hook" (p.name or "") then final.python3Packages.wrapPython else p
       ) old.nativeBuildInputs;
     }))
   ])
@@ -1466,12 +1460,10 @@ in
   (for pkgs.libepoxy [
     # Nixpkgs ties EGL to X11, but GTK's Wayland backend also needs EGL.
     (use (old: {
-      mesonFlags =
-        builtins.filter (f: !(pkgs.lib.hasPrefix "-Degl=" f)) old.mesonFlags
-        ++ [ "-Degl=yes" ];
-      propagatedBuildInputs = pkgs.lib.unique (
-        old.propagatedBuildInputs ++ [ final.libGL ]
-      );
+      mesonFlags = builtins.filter (f: !(pkgs.lib.hasPrefix "-Degl=" f)) old.mesonFlags ++ [
+        "-Degl=yes"
+      ];
+      propagatedBuildInputs = pkgs.lib.unique (old.propagatedBuildInputs ++ [ final.libGL ]);
       env = old.env // {
         NIX_CFLAGS_COMPILE =
           (old.env.NIX_CFLAGS_COMPILE or "")
@@ -1553,9 +1545,9 @@ in
     (use (old: {
       # librsvg is Rust; there is no Rust target for Fil-C. The icons are
       # pre-rendered below.
-      checkInputs = builtins.filter (
-        dep: !(pkgs.lib.hasInfix "librsvg" (dep.name or ""))
-      ) (old.checkInputs or [ ]);
+      checkInputs = builtins.filter (dep: !(pkgs.lib.hasInfix "librsvg" (dep.name or ""))) (
+        old.checkInputs or [ ]
+      );
       postPatch = (old.postPatch or "") + ''
         # The target has no Rust SVG loader. Keep symbolic icon recoloring by
         # embedding GTK's encoded PNG format, generated with native tools.
@@ -1647,9 +1639,7 @@ in
       (removeMesonFlag "-Dgi_cross_use_prebuilt_gi=true")
       (addMesonFlag "-Dgi_cross_use_prebuilt_gi=false")
       (use (old: {
-        nativeBuildInputs = builtins.filter (
-          input: input != null
-        ) old.nativeBuildInputs;
+        nativeBuildInputs = builtins.filter (input: input != null) old.nativeBuildInputs;
         # _giscanner is compiled with Fil-C and must be loaded by Fil-C Python.
         mesonFlags = old.mesonFlags ++ [
           "-Dpython=${
@@ -1922,9 +1912,7 @@ in
   (for pkgs.libapparmor [
     # Configure runs the target Python config tool when linking its extension.
     # Since 4.1 it also imports setuptools with that interpreter.
-    (configure "PYTHON=${
-      final.python3.withPackages (ps: [ ps.setuptools ])
-    }/bin/python3")
+    (configure "PYTHON=${final.python3.withPackages (ps: [ ps.setuptools ])}/bin/python3")
     (configure "PYTHON_CONFIG=${final.python3}/bin/python3-config")
   ])
 
@@ -2064,8 +2052,7 @@ in
         (configure "ac_cv_prog_cc_c23=no")
         # Disable ractor shareability deep checking - requires rb_objspace_reachable_objects_from
         # which isn't implemented in Fil-C. Return false = conservatively assume not shareable.
-        (astRewrite "ractor.c" "c"
-          "bool rb_ractor_shareable_p_continue($PARAM) { $$$BODY }"
+        (astRewrite "ractor.c" "c" "bool rb_ractor_shareable_p_continue($PARAM) { $$$BODY }"
           "bool rb_ractor_shareable_p_continue($PARAM) {
 #ifdef __FILC__
     return false;
@@ -2075,8 +2062,7 @@ in
 }"
         )
         # Also patch rb_ractor_make_shareable to skip traversal
-        (astRewrite "ractor.c" "c"
-          "VALUE rb_ractor_make_shareable(VALUE $OBJ) { $$$BODY }"
+        (astRewrite "ractor.c" "c" "VALUE rb_ractor_make_shareable(VALUE $OBJ) { $$$BODY }"
           "VALUE rb_ractor_make_shareable(VALUE $OBJ) {
 #ifdef __FILC__
     FL_SET_RAW($OBJ, RUBY_FL_SHAREABLE);
@@ -2147,9 +2133,7 @@ in
           // pkgs.lib.optionalAttrs (old.pname != "systemd-minimal-libs") {
             # This getent wrapper intentionally calls the target libc at runtime.
             # Keep rejecting every other accidental native build-tool reference.
-            disallowedReferences = builtins.filter (p: p != getent) (
-              old.disallowedReferences or [ ]
-            );
+            disallowedReferences = builtins.filter (p: p != getent) (old.disallowedReferences or [ ]);
           }
         ))
 
@@ -2395,9 +2379,7 @@ in
       };
     })
     (use (old: {
-      postPatch =
-        builtins.replaceStrings [ "Makefile" ] [ "GNUmakefile" ]
-          old.postPatch;
+      postPatch = builtins.replaceStrings [ "Makefile" ] [ "GNUmakefile" ] old.postPatch;
       makeFlags = old.makeFlags ++ [
         "READLINE=1"
         "LIBDIR=$(out)/share/trealla"
@@ -2540,8 +2522,7 @@ in
 
   (for pkgs.at-spi2-core [
     (src "2.60.5" "sha256-YFmnfVB0OP9sjW0GAl+Pn1d0+g+Oq+nJsFmxzEHhu8A=" (
-      v:
-      "https://download.gnome.org/sources/at-spi2-core/2.60/at-spi2-core-${v}.tar.xz"
+      v: "https://download.gnome.org/sources/at-spi2-core/2.60/at-spi2-core-${v}.tar.xz"
     ))
     (patch ./ports/patch/at-spi2-core-2.60.5.patch)
     (tool pkgs.python3)

@@ -340,7 +340,13 @@ whole representation is rarely needed.
 Examples: oneTBB's `queuing_rw_mutex` keeps a flag bit in queue pointers held
 in `std::atomic<uintptr_t>`, and PulseAudio's `pa_atomic_ptr_t` stored pointers
 as `uintptr_t`; both ports change only the atomic's type to a pointer and set
-the bit with pointer arithmetic. oneTBB's tbbmalloc is a different problem: it
+the bit with pointer arithmetic. Boost.Asio's `io_context::basic_executor_type`
+keeps `io_context* | runtime_bits` in a `uintptr_t target_`, so the first
+`use_service` through a strand traps;
+`patches/boost-asio-io-context-executor-pointer.patch` makes it a `char *`
+(applied only for Determinate Nix so far). Nix's own bit-packed `Value`
+takes the same fix in Determinate Nix, where parallel evaluation depends on
+that layout. oneTBB's tbbmalloc is a different problem: it
 carves objects out of raw `mmap` chunks, which have no per-object capabilities,
 so the port builds without it.
 
@@ -374,6 +380,36 @@ elements of two small vectors each take minutes, compared with 3 seconds
 for Nixpkgs' Clang, and time grows faster than linearly. NSS's
 `pk11_gtest` and `freebl_gtest` test-vector tables took over 20 minutes per
 file, so the NSS port leaves those two gtest binaries out.
+
+## `dlsym(RTLD_NEXT, ...)` is a safety error
+
+```c
+void *p = dlsym(RTLD_NEXT, "puts");
+/* filc safety error: cannot access pointer with null object
+   (ptr = 0xffffffffffffffff,<null>) in zsys_dlsym */
+```
+
+`zsys_dlsym` treats the handle as a pointer to a loaded object, so the
+`RTLD_NEXT` (and presumably `RTLD_DEFAULT`) pseudo-handles trap instead of
+being looked up. Determinate Nix interposes `__cxa_throw` this way (to abort
+on `std::logic_error`), so every thrown exception stopped the program; the
+port builds without the interposer (docs/determinate-nix.md).
+
+## `syscall()` returns -1 as 4294967295
+
+`syscall` is declared to return `long`, but a failing call returns the
+32-bit -1 zero-extended:
+
+```c
+long r = syscall(__NR_fchmodat2, AT_FDCWD, "/nonexistent", 0600, AT_SYMLINK_NOFOLLOW);
+/* r == 4294967295, errno == ENOENT; the same for openat2. getpid works. */
+```
+
+So `if (syscall(...) < 0)` never sees the failure. Determinate Nix calls
+`openat2` and `fchmodat2` this way; its `fchmodatTryNoFollow` test failed
+(no error for a missing file or a symlink), and a failed `openat2` would
+have become file descriptor 4294967295. The port truncates both results to
+`int`.
 
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 
@@ -447,6 +483,10 @@ puts `nix-cli.__spliced.hostHost or nix-cli` on the suite's PATH, the scope
 here has no `__spliced`, and the build platform's Nix was tested instead.
 That is also why the `plugins` test failed: a Fil-C plugin loaded into
 native Nix finds no `pizlonated_*` symbols. With the Fil-C `nix`, it passes.
+
+Determinate Nix hit the same bug (its read-only store command, the
+substitution tests and the libutil `invalidDecompression` tests); with
+fa8c296 pinned its port no longer skips them.
 
 ## Found by Fil-C: pointer rebasing across buffers in FFmpeg's flashsv2
 

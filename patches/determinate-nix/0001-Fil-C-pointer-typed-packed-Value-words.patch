@@ -1,0 +1,112 @@
+From ac2fb24389a30ae680bcfbdda85b9c19b990da1a Mon Sep 17 00:00:00 2001
+From: t <a@b>
+Date: Sun, 27 Sep 2026 17:14:28 +0000
+Subject: [PATCH 1/2] Fil-C: pointer-typed packed Value words
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ src/libexpr/include/nix/expr/value.hh | 72 ++++++++++++++++++++++++++-
+ 1 file changed, 71 insertions(+), 1 deletion(-)
+
+diff --git a/src/libexpr/include/nix/expr/value.hh b/src/libexpr/include/nix/expr/value.hh
+index aadb05f..af7ba26 100644
+--- a/src/libexpr/include/nix/expr/value.hh
++++ b/src/libexpr/include/nix/expr/value.hh
+@@ -571,6 +571,72 @@ namespace detail {
+ template<std::size_t ptrSize>
+ inline constexpr bool useBitPackedValueStorage = (ptrSize == 8) && (__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= 16);
+ 
++#ifdef __FILC__
++/**
++ * Fil-C keeps a pointer's capability only in pointer-typed storage, so
++ * a tagged word held as a `uint64_t` loses it. This word is a pointer
++ * that behaves like the integer: tag bits are set and cleared with
++ * pointer arithmetic, which keeps the capability, and integer payloads
++ * are stored as capability-less addresses.
++ */
++struct FilcPackedWord
++{
++    char * p = nullptr;
++
++    FilcPackedWord() = default;
++
++    FilcPackedWord(std::uint64_t v) noexcept
++        : p(reinterpret_cast<char *>(v))
++    {
++    }
++
++    std::uint64_t bits() const noexcept
++    {
++        return reinterpret_cast<std::uintptr_t>(p);
++    }
++
++    operator std::uint64_t() const noexcept
++    {
++        return bits();
++    }
++
++    template<typename E>
++        requires std::is_enum_v<E>
++    explicit operator E() const noexcept
++    {
++        return static_cast<E>(bits());
++    }
++
++    FilcPackedWord withBits(std::uint64_t b) const noexcept
++    {
++        FilcPackedWord r;
++        r.p = p + (b - bits());
++        return r;
++    }
++
++    template<typename I>
++        requires std::is_integral_v<I> || std::is_enum_v<I>
++    friend FilcPackedWord operator&(FilcPackedWord a, I m) noexcept
++    {
++        return a.withBits(a.bits() & std::uint64_t(m));
++    }
++
++    template<typename I>
++        requires std::is_integral_v<I> || std::is_enum_v<I>
++    friend FilcPackedWord operator|(FilcPackedWord a, I m) noexcept
++    {
++        return a.withBits(a.bits() | std::uint64_t(m));
++    }
++
++    template<typename I>
++        requires std::is_integral_v<I> || std::is_enum_v<I>
++    friend FilcPackedWord operator|(I m, FilcPackedWord a) noexcept
++    {
++        return a.withBits(a.bits() | std::uint64_t(m));
++    }
++};
++#endif
++
+ } // namespace detail
+ 
+ /**
+@@ -590,7 +656,11 @@ class alignas(16)
+     template<std::size_t size>
+     struct PackedPointerTypeStruct
+     {
++#ifdef __FILC__
++        using type = detail::FilcPackedWord;
++#else
+         using type = std::uint64_t;
++#endif
+     };
+ 
+     using PackedPointer = typename PackedPointerTypeStruct<ptrSize>::type;
+@@ -629,7 +699,7 @@ class alignas(16)
+     std::atomic<PackedPointer> p0{0};
+     PackedPointer p1{0};
+ 
+-    static constexpr PackedPointer discriminatorMask = (PackedPointer(1) << discriminatorBits) - 1;
++    static constexpr std::uint64_t discriminatorMask = (std::uint64_t(1) << discriminatorBits) - 1;
+ 
+     // FIXME: move/update
+     /**
+-- 
+2.55.0
+
