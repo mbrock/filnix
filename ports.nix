@@ -895,6 +895,16 @@ in
     }))
   ])
 
+  # pname is cyrus-sasl, so name the attribute explicitly.
+  {
+    cyrus_sasl = for pkgs.cyrus_sasl [
+      # Upstream backport: configure never defined HAVE_TIME_H, so time()
+      # and clock() were implicitly declared; Clang rejects that (GCC and
+      # nixpkgs only warn), and the implicit int return truncates time_t.
+      (patch ./patches/cyrus-sasl-time-h.patch)
+    ];
+  }
+
   (for pkgs.cryptsetup [
     (patch ./patches/cryptsetup-safe-alloc-mlock.patch)
   ])

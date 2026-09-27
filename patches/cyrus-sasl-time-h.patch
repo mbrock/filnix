@@ -1,0 +1,39 @@
+Subject: Fix <time.h> check
+Origin: https://github.com/cyrusimap/cyrus-sasl/commit/266f0acf7f5e029afbb3e263437039e50cd6c262
+Upstream-Status: Backport (not in 2.1.28)
+
+configure.ac never checks for time.h, so HAVE_TIME_H is never defined and
+lib/saslutil.c never includes <time.h>; plugins/cram.c lacks the include
+entirely. time() and clock() are then implicitly declared (returning int,
+truncating time_t). GCC only warns, and nixpkgs adds
+-Wno-error=implicit-function-declaration; Fil-C's Clang rejects them.
+Refreshed from the upstream commit for 2.1.28 line offsets.
+
+diff --git a/configure.ac b/configure.ac
+index 2d89fda..2e1e697 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1231,7 +1231,7 @@ AC_CHECK_HEADERS_ONCE([sys/time.h])
+ 
+ AC_HEADER_DIRENT
+ AC_HEADER_SYS_WAIT
+-AC_CHECK_HEADERS(crypt.h des.h dlfcn.h fcntl.h limits.h malloc.h paths.h strings.h sys/file.h sys/time.h syslog.h unistd.h inttypes.h sys/uio.h sys/param.h sysexits.h stdarg.h varargs.h krb5.h)
++AC_CHECK_HEADERS(crypt.h des.h dlfcn.h fcntl.h limits.h malloc.h paths.h strings.h sys/file.h sys/time.h syslog.h time.h unistd.h inttypes.h sys/uio.h sys/param.h sysexits.h stdarg.h varargs.h krb5.h)
+ 
+ IPv6_CHECK_SS_FAMILY()
+ IPv6_CHECK_SA_LEN()
+diff --git a/plugins/cram.c b/plugins/cram.c
+index d02e9ba..695aaa9 100644
+--- a/plugins/cram.c
++++ b/plugins/cram.c
+@@ -53,6 +53,10 @@
+ #endif
+ #include <fcntl.h>
+ 
++#ifdef HAVE_TIME_H
++#include <time.h>
++#endif
++
+ #include <sasl.h>
+ #include <saslplug.h>
+ #include <saslutil.h>
