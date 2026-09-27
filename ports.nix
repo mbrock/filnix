@@ -1936,17 +1936,6 @@ in
     (patch ./patches/json-glib-gtype.patch)
   ])
 
-  # Their tests link the compiled Boost.Test library, whose execution
-  # monitor installs fault-signal handlers and an alternate signal stack at
-  # startup; Fil-C rejects both (ENOSYS), so every test aborts. Both share
-  # the pname cairomm, so name them explicitly.
-  {
-    cairomm = for pkgs.cairomm [ (skipCheck "Boost.Test signal monitor") ];
-    cairomm_1_16 = for pkgs.cairomm_1_16 [
-      (skipCheck "Boost.Test signal monitor")
-    ];
-  }
-
   {
     glibmm = for pkgs.glibmm [ (patch ./patches/glibmm-gtype.patch) ];
     # glibmm 2.88 needs GLib 2.87; 2.80 is the newest series that accepts

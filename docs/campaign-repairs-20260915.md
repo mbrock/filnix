@@ -149,6 +149,11 @@ All test cases, assertions and C++ exception handling remain enabled; a runtime
 trap still fails the process instead of being recovered as a signal. The full
 `CoinTests` suite now passes (2.63 seconds).
 
+Later update: the Boost port now makes the execution monitor itself work
+under Fil-C (`patches/boost-test-execution-monitor.patch` and
+`patches/boost-function-vtable-tag.patch`), so Coin's local test entry point
+change was removed. `CoinTests` passes with the real monitor.
+
 ### TPM2-TSS
 
 The original check phase could not link because GNU ld `--wrap=write` (and

@@ -104,9 +104,8 @@ and a Gio memory stream.
   `zandptr`, and gains an identity `TypeTraits<GType>`: otherwise a pointer
   GType selects the container traits meant for GObject wrapper pointers.
   glibmm 2.88 and gtkmm 4.22 need GLib 2.87 and GTK 4.22, so `glibmm_2_68`
-  and `gtkmm4` are pinned to 2.80.1 and 4.14.0. cairomm's tests link the
-  compiled Boost.Test library, whose signal monitor Fil-C rejects, so they
-  are skipped. The `glibmm`, `glibmm_2_68`, `gtkmm3-runtime` and
+  and `gtkmm4` are pinned to 2.80.1 and 4.14.0. Both cairomm versions
+  pass their Boost.Test suites (see the Boost port). The `glibmm`, `glibmm_2_68`, `gtkmm3-runtime` and
   `gtkmm4-runtime` checks cover derived types, properties, signals, GValue,
   variants, `wrap()` and list models, the latter two on Broadway.
 - libepoxy enables EGL independently of X11 for GTK's Wayland backend.

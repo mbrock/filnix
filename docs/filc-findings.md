@@ -37,6 +37,19 @@ invokes `clang++` directly and is unaffected.
 action, so a self-sent SIGSEGV kills the process (Alien::Build's
 `test_alien.t`). This is deliberate (`is_unsafe_signal_for_handlers`).
 
+Boost.Test's execution monitor installs such handlers at startup. The Boost
+port leaves the refused signals uncaught and keeps the rest, so SIGALRM
+timeouts still fail the test. `abort()` stops the process directly rather
+than raising SIGABRT, so an aborting test case ends the run.
+
+## Pointer tag bits must not round-trip through integers
+
+Converting a pointer to an integer and back drops its capability. Optimized
+code sometimes survives because LLVM folds `inttoptr(ptrtoint(p) & mask)`
+into `llvm.ptrmask`, but `-O0` builds do not. Boost.Function stored a flag in
+bit 0 of its vtable pointer this way, so every call trapped at `-O0` (Boost.
+Test's runner in the boost check). Use `zorptr`/`zandptr` from `stdfil.h`.
+
 ## Unsupported: `sigaltstack`, `llvm.debugtrap`, `ptrace`, `seccomp`
 
 doctest's self-tests use the first two, strace needs `ptrace`, and
