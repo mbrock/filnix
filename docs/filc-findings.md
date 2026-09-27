@@ -225,6 +225,24 @@ nix.conf check turns into an error; the Nix port passes libc's full path
 instead. Adding the sysroot lib directory to the loader's trusted
 directories would fix NSS module loading in general.
 
+## Plugins could not call back into the executable (libtool `-dlopen self`)
+
+slapd's test083-argon2 failed with `symbol lookup error` when `argon2.so`
+called `lutil_passwd_add` in the slapd executable. The toolchain is not at
+fault: with `-rdynamic` or `-Wl,--export-dynamic`, a Fil-C executable lists
+`pizlonated_f`, `pizlonatedFI<n>_f` and `pizlonatedFIP<n>_f` in `.dynsym`, and
+a dlopened plugin resolves them. slapd was linked without that flag.
+
+OpenLDAP links slapd with libtool's `-dlopen self`. Libtool turns that into
+`--export-dynamic` only when configure found that "a program can dlopen
+itself", which is a run test. Fil-C is a cross target, so the test reports
+`cross`, and libtool falls back to a preloaded symbol table (`slapdS.o`),
+which does not export anything to plugins. `toolchain/libtool-dlopen-self-hook.sh`
+presets `lt_cv_dlopen_self=yes` for every Fil-C build, since Fil-C programs
+run on the build machine. OpenLDAP's full test suite then passes. Packages that
+use Meson's `export_dynamic` or pass `-export-dynamic` to libtool directly
+were not affected.
+
 ## `accept` and `recvfrom` reject a length pointer with a null address
 
 `accept(fd, NULL, &len)` stops the program ("cannot write pointer with null

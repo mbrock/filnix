@@ -192,6 +192,7 @@ rec {
             patcher = "${./libtool-symbols.py}";
           })
           ./autoconf-c23-hook.sh
+          ./libtool-dlopen-self-hook.sh
           (pkgs.replaceVars ./header-references-hook.sh {
             removeReferencesTo = "${pkgs.removeReferencesTo}/bin/remove-references-to";
           })
