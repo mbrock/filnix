@@ -120,7 +120,12 @@ static void wait_for_pause(struct scenario *s)
         fclose(file);
         char *end;
         long nr = strtol(line, &end, 10);
+#ifdef SYS_pause
         if (end != line && (nr == SYS_rt_sigsuspend || nr == SYS_pause))
+#else
+        /* Without SYS_pause, as on aarch64, pause waits in ppoll. */
+        if (end != line && (nr == SYS_rt_sigsuspend || nr == SYS_ppoll))
+#endif
             return;
         assert(!clock_gettime(CLOCK_MONOTONIC, &now));
         assert(now.tv_sec - started.tv_sec < 5);
