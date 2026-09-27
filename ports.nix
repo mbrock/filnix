@@ -1919,6 +1919,18 @@ in
   ])
 
   {
+    glibmm = for pkgs.glibmm [ (patch ./patches/glibmm-signal-types.patch) ];
+    # glibmm 2.88 needs GLib 2.87; 2.80 is the newest series that accepts
+    # the Fil-C GLib 2.80.
+    glibmm_2_68 = for pkgs.glibmm_2_68 [
+      (src "2.80.1" "sha256-8aDA7FFON3S/mTOW8X9yEGtAkSx9fMnRDaMboVUX4/U=" (
+        v: "mirror://gnome/sources/glibmm/2.80/glibmm-${v}.tar.xz"
+      ))
+      (patch ./patches/glibmm-signal-types.patch)
+    ];
+  }
+
+  {
     # Its pname is libdbusmenu-glib.
     libdbusmenu = for pkgs.libdbusmenu [
       (patch ./patches/libdbusmenu-gtype.patch)
