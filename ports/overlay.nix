@@ -38,14 +38,24 @@ portDSL.makeOverlay portList final prev
   # YouTube needs a JavaScript runtime; yt-dlp's default, Deno, is V8.
   # QuickJS is one of its supported runtimes. curl-cffi (curl-impersonate
   # needs Go) and secretstorage (cryptography needs Rust) are optional.
+  # pycryptodomex is optional too (yt-dlp has a pure-Python AES), and the
+  # build's native Python would dlopen its Fil-C ctypes library and fail.
   yt-dlp =
     (prev.yt-dlp.override {
+      # The top-level python3Packages argument splices to the build
+      # platform's default Python (3.13), whose hatchling the Fil-C
+      # Python 3.12 build cannot import. Use the ported set directly.
+      python3Packages = final.python3Packages;
       jsRuntime = final.quickjs;
       withSecretStorage = false;
     }).overridePythonAttrs
       (old: {
         dependencies = builtins.filter (
-          d: (d.pname or "") != "curl-cffi"
+          d:
+          !builtins.elem (d.pname or "") [
+            "curl-cffi"
+            "pycryptodomex"
+          ]
         ) old.dependencies;
       });
 

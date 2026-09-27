@@ -19,7 +19,7 @@ runCommand "qnode-0.1"
     mkdir -p $out/bin
     cat > $out/bin/qnode <<EOF
     #!${runtimeShell}
-    exec ${lib.getExe' quickjs "qjs"} --std --unhandled-rejection --stack-size 4000000 \
+    exec ${lib.getExe' quickjs "qjs"} --std \
       $out/lib/qnode/qnode.js "\$@"
     EOF
     chmod +x $out/bin/qnode

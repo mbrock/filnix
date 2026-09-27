@@ -1,0 +1,86 @@
+Subject: Carry the Fil-C QuickJS port forward to 2026-06-04
+Origin: Filnix, adapted from ports/patch/quickjs.patch (upstream Fil-C, 2024-02-14)
+Upstream-Status: Not submitted
+
+The same three changes as upstream Fil-C's port of the 2024-02-14 snapshot:
+no computed-goto dispatch; keep the autoinit realm pointer in a pointer (the
+realm is recovered by pointer arithmetic, so it keeps its capability); and
+use qsort_r instead of rqsort, whose exchange helpers copy pointers as
+integer words. The 2024 greedy-regexp fix is not needed: libregexp's
+matcher was rewritten and keeps positions in a pointer union.
+tests/quickjs-regexp.js runs in the port's install check.
+
+diff --git a/cutils.c b/cutils.c
+--- a/cutils.c
++++ b/cutils.c
+@@ -313,7 +313,18 @@ int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp)
+     return c;
+ }
+ 
+-#if 0
++#ifdef __PIZLONATOR_WAS_HERE__
++
++/* The generic exchange functions below copy pointers as integer words,
++   which drops their Fil-C capabilities. */
++void rqsort(void *base, size_t nmemb, size_t size,
++            int (*cmp)(const void *, const void *, void *),
++            void *arg)
++{
++    qsort_r(base, nmemb, size, cmp, arg);
++}
++
++#elif 0
+ 
+ #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+ 
+diff --git a/quickjs.c b/quickjs.c
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -49,7 +49,7 @@
+ 
+ #define OPTIMIZE         1
+ #define SHORT_OPCODES    1
+-#if defined(__EMSCRIPTEN__)
++#if defined(__EMSCRIPTEN__) || defined(__PIZLONATOR_WAS_HERE__)
+ #define DIRECT_DISPATCH  0
+ #else
+ #define DIRECT_DISPATCH  1
+@@ -955,7 +955,7 @@ typedef struct JSProperty {
+         struct {            /* JS_PROP_AUTOINIT */
+             /* in order to use only 2 pointers, we compress the realm
+                and the init function pointer */
+-            uintptr_t realm_and_id; /* realm and init_id (JS_AUTOINIT_ID_x)
++            void *realm_and_id; /* realm and init_id (JS_AUTOINIT_ID_x)
+                                        in the 2 low bits */
+             void *opaque;
+         } init;
+@@ -6075,12 +6075,13 @@ JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
+ 
+ static JSContext *js_autoinit_get_realm(JSProperty *pr)
+ {
+-    return (JSContext *)(pr->u.init.realm_and_id & ~3);
++    char *p = pr->u.init.realm_and_id;
++    return (JSContext *)(p - ((uintptr_t)p & 3));
+ }
+ 
+ static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr)
+ {
+-    return pr->u.init.realm_and_id & 3;
++    return (uintptr_t)pr->u.init.realm_and_id & 3;
+ }
+ 
+ static void js_autoinit_free(JSRuntime *rt, JSProperty *pr)
+@@ -10667,10 +10668,10 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
+     pr = add_property(ctx, p, prop, (flags & JS_PROP_C_W_E) | JS_PROP_AUTOINIT);
+     if (unlikely(!pr))
+         return -1;
+-    pr->u.init.realm_and_id = (uintptr_t)JS_DupContext(ctx);
+-    assert((pr->u.init.realm_and_id & 3) == 0);
++    pr->u.init.realm_and_id = JS_DupContext(ctx);
++    assert(((uintptr_t)pr->u.init.realm_and_id & 3) == 0);
+     assert(id <= 3);
+-    pr->u.init.realm_and_id |= id;
++    pr->u.init.realm_and_id = (char *)pr->u.init.realm_and_id + id;
+     pr->u.init.opaque = opaque;
+     return TRUE;
+ }

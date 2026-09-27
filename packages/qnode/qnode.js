@@ -1,7 +1,6 @@
 // qnode: run small Node.js CLI scripts on QuickJS.
 //
-// Usage: qjs --std --unhandled-rejection --stack-size 4000000 qnode.js SCRIPT [ARGS...]
-// (QuickJS's default 256 KiB JS stack is too small for many parsers.)
+// Usage: qjs --std qnode.js SCRIPT [ARGS...]
 //
 // Provides just enough of Node for self-contained CLIs: CommonJS require
 // with relative modules and JSON, the process object, console.error/warn,
@@ -210,7 +209,7 @@ const process = {
   pid: os.getpid ? os.getpid() : 0,
   version: "v18.0.0",
   // Node 18 is the floor most CLIs check; qnode is not Node, of course.
-  versions: { node: "18.0.0", quickjs: "2024-02-14" },
+  versions: { node: "18.0.0" },
   exitCode: undefined,
   cwd: () => os.getcwd()[0],
   chdir: (d) => os.chdir(d),

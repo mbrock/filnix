@@ -6,17 +6,19 @@ what was prototyped on the `orb/quickjs` branch.
 
 ## Summary
 
-- The first thing to fix was QuickJS itself: every greedy regexp (`/a+/`,
-  `/.*/`) trapped under Fil-C. Fixed in
-  `patches/quickjs-regexp-greedy-cptr.patch`; `tests/quickjs-regexp.js` now
-  runs as the port's check.
+- QuickJS itself needed work first. The ported 2024-02-14 snapshot trapped
+  on every greedy regexp (`/a+/`, `/.*/`), and it is far too slow for real
+  scripts. The port now uses Nixpkgs' 2026-06-04 release, with upstream
+  Fil-C's changes carried forward (`patches/quickjs-2026-filc.patch`) and a
+  4 MiB JS stack. `tests/quickjs-regexp.js` runs in its install check.
 - Most packages that use Node only as a build tool already get the native
   Node (`buildPackages`), which is fine. Some are dragged to the Fil-C Node
   anyway by broken splicing: `fetchPnpmDeps` was the clearest case. Running
   the fetcher natively removes the Fil-C Node from 17 excluded packages.
 - **yt-dlp** supports QuickJS upstream as its JavaScript runtime. The overlay
-  now selects `quickjs` instead of Deno (V8). It works, except for an
-  unrelated blocker (see the yt-dlp section).
+  now selects `quickjs` instead of Deno (V8). With Fil-C QuickJS it solved
+  YouTube's n-challenge and downloaded a video. The full package still waits
+  on an unrelated blocker (charset-normalizer; see the yt-dlp section).
 - **qnode** (`packages/qnode/qnode.js`, about 500 lines) is a small Node
   compatibility layer on `qjs`. It runs **bibtex-tidy**, **aasvg** and
   **uglify-js** with output identical to Node. bibtex-tidy and aasvg are
@@ -24,7 +26,7 @@ what was prototyped on the `orb/quickjs` branch.
 - Recommendation: use QuickJS where upstream supports it (yt-dlp). Use qnode
   for small bundled CLIs, one reviewed package at a time. Don't aim for general
   Node compatibility: the long tail is `Buffer`, streams, `child_process`,
-  `http`, bare-specifier ESM, and newer syntax that QuickJS 2024-02-14 lacks.
+  `http`, and bare-specifier ESM.
 
 ## How packages reach Node
 
@@ -87,7 +89,7 @@ them on qnode.
 | csso-cli | CommonJS with an ESM dependency (clap) | `fs.createReadStream`, streams | fails: streams |
 | sql-formatter | CommonJS bundle | `node:stream/consumers`, tty | fails: streams |
 | terser | `"exports"` points at ESM `main.js` | ESM with bare specifiers | fails: needs a module loader or a bundle |
-| js-beautify | CommonJS plus minimatch | class field named `set;` | fails: QuickJS 2024-02-14 parser bug |
+| js-beautify | CommonJS plus minimatch/glob | `fs.realpathSync.native` and more of fs | fails: fs gaps (QuickJS 2024-02-14 also could not parse a class field named `set;`) |
 | html-minifier | CommonJS | deeper util/stream use | fails |
 | tiddlywiki, cjdns-tools | servers / network tools | http, net, dgram | not a target |
 | Electron apps, language servers | large | the whole of Node | not a target |
@@ -97,11 +99,10 @@ anything built on Electron need real Node and stay out of scope.
 
 ## Prototypes
 
-### QuickJS regexp fix
+### QuickJS 2026-06-04
 
-`lre_exec_backtrack` returns the end of a `no_recurse` match as an
-`intptr_t`, and `REOP_simple_greedy_quant` casts it back to a pointer. Under
-Fil-C that integer has no capability, so the next character read traps:
+The previous port was upstream Fil-C's 2024-02-14 snapshot. Under Fil-C it
+trapped on every greedy quantifier:
 
 ```
 $ qjs -e '/a+/.exec("xaa")'
@@ -109,28 +110,57 @@ filc safety error: cannot access pointer with null object.
     (qjs) libregexp.c:2140:13: lre_exec_backtrack
 ```
 
-The patch rebuilds the pointer from the subject buffer:
-`cptr = s->cbuf + ((uintptr_t)res - (uintptr_t)s->cbuf)`. This affected
-*every* JS program that uses `+` or `*` in a regexp, so it is a prerequisite
-for everything else here. The port previously skipped all checks; it now runs
-`tests/quickjs-regexp.js`.
+`lre_exec_backtrack` returned the match position as an `intptr_t`, and the
+caller cast it back to a pointer, which has no capability under Fil-C. A
+one-line fix worked, but that snapshot also can't run yt-dlp's challenge
+solver in practice. yt-dlp asks for QuickJS ≥ 2025-04-26. The solver
+overflows the old version's 256 KiB stack even natively, and with a larger
+stack the native 2024 build still ran for minutes.
+
+The port now builds Nixpkgs' 2026-06-04 release. The new
+`patches/quickjs-2026-filc.patch` makes the same three changes as the
+upstream Fil-C patch: no computed-goto dispatch, the autoinit realm kept in a
+pointer, and `qsort_r` instead of `rqsort`. The regexp matcher was rewritten
+upstream and needs no fix. Fil-C frames are larger, so
+`JS_DEFAULT_STACK_SIZE` is 4 MiB instead of 1 MiB: the solver overflows
+1 MiB under Fil-C but not natively. On the captured solver input (3.2 MB of
+JS), native 2026-06-04 takes 7.6 s. Fil-C takes 60 s, with the same output.
 
 ### yt-dlp on QuickJS
 
 `ports/overlay.nix` overrides `yt-dlp` with `jsRuntime = final.quickjs`
-(Nixpkgs' documented knob). It also drops curl-cffi (curl-impersonate needs Go)
-and secretstorage (cryptography needs Rust); both are optional. With the
-`fetchPnpmDeps` fix, the closure contains no Fil-C Node, Deno, Rust or Go.
+(Nixpkgs' documented knob), and with the following changes:
 
-Remaining blocker, unrelated to JS: `requests` → `charset-normalizer`, whose
-pytest run traps under Fil-C in mypyc-compiled code. This is already a top
-campaign blocker. Building without `requests` (yt-dlp falls back to urllib)
-works; see the verification notes in the branch summary.
+- `python3Packages = final.python3Packages`. The top-level argument splices to
+  the build platform's default Python 3.13, whose hatchling the Fil-C
+  Python 3.12 build cannot import.
+- drops curl-cffi (curl-impersonate needs Go) and secretstorage (cryptography
+  needs Rust); both are optional.
+- drops pycryptodomex. yt-dlp has a pure-Python AES, and its build scripts
+  run the native Python, which would dlopen the Fil-C ctypes library and fail.
+
+With the `fetchPnpmDeps` fix, the closure contains no Fil-C Node, Deno, Rust or
+Go. Users still pass `--js-runtimes quickjs`, because upstream enables only
+Deno by default; Nixpkgs documents the same.
+
+Verification: `requests` → `charset-normalizer` currently fails (its pytest
+run traps in mypyc-compiled code; already a top campaign blocker), and the
+ffmpeg PATH helper hit an unrelated graphviz build failure. A variant without
+`requests` and without the PATH helpers (`makeWrapperArgs = [ ]`) builds. It
+then ran
+
+```
+yt-dlp --js-runtimes quickjs --extractor-args youtube:player_client=mweb \
+  -f 18 https://www.youtube.com/watch?v=jNQXAC9IVRw
+[youtube] [jsc:quickjs] Solving JS challenges using quickjs
+[download] Destination: zoo.mp4        (629172 bytes, ISO Media MP4)
+```
+
+That is about 50 s per run, most of it in the solver.
 
 ### qnode
 
-`qjs --std --unhandled-rejection --stack-size 4000000 qnode.js SCRIPT ARGS`
-provides:
+`qjs --std qnode.js SCRIPT ARGS` provides:
 
 - CommonJS `require` with `node_modules` lookup, `"exports"` (require/default
   conditions), JSON, `require.resolve` and `require.cache`
@@ -145,8 +175,8 @@ provides:
 - stubs for child_process, crypto, http, https, net, readline, stream, vm,
   worker_threads and zlib. They load, and throw only when called.
 
-The larger stack is needed: QuickJS's default 256 KiB JS stack overflows in
-clean-css and sql-formatter under Fil-C.
+On the 2024-02-14 QuickJS, clean-css and sql-formatter overflowed the
+256 KiB JS stack under Fil-C; the 4 MiB default covers them.
 
 `packages/qnode/npm-cli.nix` rehosts a natively built pure-JS npm package
 (`buildPackages.<pkg>`): it copies `lib/node_modules`, strips native Node
@@ -156,8 +186,8 @@ natively; only the runtime changes. `pkgsFilc.bibtex-tidy` and
 
 ## Recommendation
 
-1. Keep the QuickJS regexp fix. It is a real memory-safety trap in a ported
-   package, independent of Node.
+1. Keep the QuickJS 2026-06-04 port. The old snapshot had a real
+   memory-safety trap in every greedy regexp, independent of Node.
 2. Take the yt-dlp change; it becomes useful once charset-normalizer is fixed.
 3. Take the `fetchPnpmDeps` splicing fix. Decide how the campaign should count
    runtime-Node CLIs that now build against the native Node (see the caveat
@@ -170,6 +200,5 @@ natively; only the runtime changes. `pkgsFilc.bibtex-tidy` and
 5. For ESM CLIs with bare imports (ni, terser, marked-man), bundle to one
    CommonJS file natively with esbuild at build time, then run the bundle on
    qnode.
-6. A newer QuickJS (2025 releases, or quickjs-ng) would fix parser gaps such
-   as the `set;` class field. It is a separate port, and the regexp code there
-   was rewritten, so the Fil-C patch would need re-checking.
+6. Expect QuickJS on Fil-C to be roughly 8x slower than native QuickJS on
+   heavy scripts. That is fine for CLIs and yt-dlp, but not for servers.
