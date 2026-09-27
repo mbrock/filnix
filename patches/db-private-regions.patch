@@ -1,0 +1,304 @@
+Subject: Lay out DB_PRIVATE regions like shared ones
+Origin: Filnix
+Upstream-Status: Not submitted (Fil-C specific)
+
+Private environments (DB_PRIVATE, and the implicit environment behind a
+bare db_create(&db, NULL, 0) as used by cyrus-sasl's sasldb) use a heap
+layout: every region allocation is a separate malloc, region "offsets"
+(roff_t) are pointers cast to integers, mutex IDs are mutex addresses,
+and shared queues link separately malloc'd objects with relative offsets.
+Under Fil-C an integer cast back to a pointer has no capability, and an
+offset from one object cannot reach another, so every private
+environment trapped in __env_des_get (db_load, sasldb, ...).
+
+Give private environments the layout that shared (mapped) regions use:
+each region is one heap block of its maximum size, addressed by offsets
+from its base, with index mutex IDs. ENV_HEAP_REGIONS() marks the checks
+that select the heap layout; the other ENV_PRIVATE semantics (no files,
+process-only mutexes, teardown on close) are unchanged.
+
+ALIGNP_INC also round-tripped pointers through uintptr_t; add the
+alignment padding to the pointer instead so it keeps its capability.
+
+diff --git a/src/dbinc/db_int.in b/src/dbinc/db_int.in
+index eae85c9..cba331d 100644
+--- a/src/dbinc/db_int.in
++++ b/src/dbinc/db_int.in
+@@ -187,7 +187,8 @@ typedef SH_TAILQ_HEAD(__hash_head) DB_HASHTAB;
+ /* Increment a pointer to a specific boundary. */
+ #undef	ALIGNP_INC
+ #define	ALIGNP_INC(p, bound)						\
+-	(void *)(((uintptr_t)(p) + (bound) - 1) & ~(((uintptr_t)(bound)) - 1))
++	(void *)((u_int8_t *)(p) +					\
++	    ((-(uintptr_t)(p)) & (((uintptr_t)(bound)) - 1)))
+ 
+ /*
+  * DB_ALIGN8 adjusts structure alignments to make sure shared structures have
+diff --git a/src/dbinc/mutex_int.h b/src/dbinc/mutex_int.h
+index 0a78be2..43aa2e6 100644
+--- a/src/dbinc/mutex_int.h
++++ b/src/dbinc/mutex_int.h
+@@ -986,7 +986,7 @@ struct __db_mutex_t { /* SHARED */	/* Mutex. */
+ 
+ /* Macro to get a reference to a specific mutex. */
+ #define	MUTEXP_SET(env, indx)						\
+-	(F_ISSET(env, ENV_PRIVATE) ? (DB_MUTEX *) indx :		\
++	(ENV_HEAP_REGIONS(env) ? (DB_MUTEX *) indx :		\
+ 	(DB_MUTEX *)((u_int8_t *)env->mutex_handle->mutex_array +	\
+ 	    (indx) *							\
+ 	    ((DB_MUTEXREGION *)env->mutex_handle->reginfo.primary)->mutex_size))
+diff --git a/src/dbinc/region.h b/src/dbinc/region.h
+index acba84c..d64f951 100644
+--- a/src/dbinc/region.h
++++ b/src/dbinc/region.h
+@@ -293,16 +293,29 @@ struct __db_reginfo_t {		/* __env_region_attach IN parameters. */
+ 	u_int32_t   flags;
+ };
+ 
++/*
++ * ENV_HEAP_REGIONS --
++ *	Whether regions use the process-private heap layout, in which every
++ *	allocation is a separate malloc, offsets are pointers stored as
++ *	integers and mutex IDs are mutex addresses.
++ *
++ * Fil-C: an integer cast back to a pointer has no capability, and a shared
++ * queue offset from one malloc'd object cannot reach another.  Give private
++ * environments the shared-memory layout instead: each region is a single
++ * heap block, addressed by offsets from its base.
++ */
++#define	ENV_HEAP_REGIONS(env)	0
++
+ /*
+  * R_ADDR	Return a per-process address for a shared region offset.
+  * R_OFFSET	Return a shared region offset for a per-process address.
+  */
+ #define	R_ADDR(reginfop, offset)					\
+-	(F_ISSET((reginfop)->env, ENV_PRIVATE) ?			\
++	(ENV_HEAP_REGIONS((reginfop)->env) ?			\
+ 	    ROFF_TO_P(offset) :						\
+ 	    (void *)((u_int8_t *)((reginfop)->addr) + (offset)))
+ #define	R_OFFSET(reginfop, p)						\
+-	(F_ISSET((reginfop)->env, ENV_PRIVATE) ?			\
++	(ENV_HEAP_REGIONS((reginfop)->env) ?			\
+ 	    P_TO_ROFF(p) :						\
+ 	    (roff_t)((u_int8_t *)(p) - (u_int8_t *)(reginfop)->addr))
+ 
+diff --git a/src/env/env_alloc.c b/src/env/env_alloc.c
+index 612237b..0dee2fe 100644
+--- a/src/env/env_alloc.c
++++ b/src/env/env_alloc.c
+@@ -126,7 +126,7 @@ __env_alloc_init(infop, size)
+ 	env = infop->env;
+ 
+ 	/* No initialization needed for heap memory regions. */
+-	if (F_ISSET(env, ENV_PRIVATE))
++	if (ENV_HEAP_REGIONS(env))
+ 		return;
+ 
+ 	/*
+@@ -228,7 +228,7 @@ __env_alloc(infop, len, retp)
+ 	 *
+ 	 * { uintmax_t total-length } { user-memory } { guard-byte }
+ 	 */
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		/*
+ 		 * If we are shared then we must track the allocation
+ 		 * in the main environment region.
+@@ -399,7 +399,7 @@ __env_alloc_free(infop, ptr)
+ 	env = infop->env;
+ 
+ 	/* In a private region, we call free. */
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		/* Find the start of the memory chunk and its length. */
+ 		p = (u_int8_t *)((uintmax_t *)ptr - 1);
+ 		len = (size_t)*(uintmax_t *)p;
+@@ -502,7 +502,7 @@ __env_alloc_extend(infop, ptr, lenp)
+ 
+ 	env = infop->env;
+ 
+-	DB_ASSERT(env, !F_ISSET(env, ENV_PRIVATE));
++	DB_ASSERT(env, !ENV_HEAP_REGIONS(env));
+ 
+ #ifdef HAVE_MUTEX_SUPPORT
+ 	MUTEX_REQUIRED(env, infop->mtx_alloc);
+@@ -619,7 +619,7 @@ __env_region_extend(env, infop)
+ 	REGION *rp;
+ 	int ret;
+ 
+-	DB_ASSERT(env, !F_ISSET(env, ENV_PRIVATE));
++	DB_ASSERT(env, !ENV_HEAP_REGIONS(env));
+ 
+ 	ret = 0;
+ 	rp = infop->rp;
+@@ -663,7 +663,7 @@ __env_elem_size(env, p)
+ 	ALLOC_ELEMENT *elp;
+ 	uintmax_t size;
+ 
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		size = *((uintmax_t *)p - 1);
+ 		size -= sizeof(uintmax_t);
+ 	} else {
+@@ -719,7 +719,7 @@ __env_alloc_print(infop, flags)
+ 	env = infop->env;
+ 	head = infop->head;
+ 
+-	if (F_ISSET(env, ENV_PRIVATE))
++	if (ENV_HEAP_REGIONS(env))
+ 		return;
+ 
+ 	__db_msg(env,
+diff --git a/src/env/env_region.c b/src/env/env_region.c
+index 88c3eb6..4bb1679 100644
+--- a/src/env/env_region.c
++++ b/src/env/env_region.c
+@@ -1190,7 +1190,7 @@ __env_region_detach(env, infop, destroy)
+ 	 * we use them, and db_region_destroy is the last region-specific call
+ 	 * we make.
+ 	 */
+-	if (F_ISSET(env, ENV_PRIVATE) && infop->primary != NULL) {
++	if (ENV_HEAP_REGIONS(env) && infop->primary != NULL) {
+ 		for (mem = infop->mem; mem != NULL; mem = next) {
+ 			next = mem->next;
+ 			__env_alloc_free(infop, mem);
+@@ -1284,7 +1284,18 @@ __env_sys_attach(env, infop, rp)
+ 			return (EINVAL);
+ 		}
+ #endif
+-		if ((ret = __os_malloc(
++		/*
++		 * Without the heap layout, the region is a single block of
++		 * its maximum size, like a mapped region.
++		 */
++		if (!ENV_HEAP_REGIONS(env)) {
++#if !defined(HAVE_MMAP_EXTEND)
++			rp->size = rp->max;
++#endif
++			if ((ret = __os_malloc(
++			    env, rp->max, &infop->addr)) != 0)
++				return (ret);
++		} else if ((ret = __os_malloc(
+ 		    env, sizeof(REGENV), &infop->addr)) != 0)
+ 			return (ret);
+ 
+diff --git a/src/mutex/mut_alloc.c b/src/mutex/mut_alloc.c
+index 9c44ab6..fb5113b 100644
+--- a/src/mutex/mut_alloc.c
++++ b/src/mutex/mut_alloc.c
+@@ -109,7 +109,7 @@ nomem:			__db_errx(env, DB_STR("2034",
+ 		    mtxregion->stat.st_mutex_max)
+ 			cnt = mtxregion->stat.st_mutex_max -
+ 			    mtxregion->stat.st_mutex_cnt;
+-		if (F_ISSET(env, ENV_PRIVATE)) {
++		if (ENV_HEAP_REGIONS(env)) {
+ 			F_SET(&mtxmgr->reginfo, REGION_TRACKED);
+ 			while (__env_alloc(&mtxmgr->reginfo,
+ 			    (cnt * mtxregion->mutex_size) +
+@@ -136,7 +136,7 @@ nomem:			__db_errx(env, DB_STR("2034",
+ 		mtxregion->stat.st_mutex_cnt += cnt;
+ 		while (--cnt > 0) {
+ 			mutexp->flags = 0;
+-			if (F_ISSET(env, ENV_PRIVATE))
++			if (ENV_HEAP_REGIONS(env))
+ 				mutexp->mutex_next_link =
+ 				    (uintptr_t)(mutexp + 1);
+ 			else
+diff --git a/src/mutex/mut_region.c b/src/mutex/mut_region.c
+index 3fb5b71..83eeee4 100644
+--- a/src/mutex/mut_region.c
++++ b/src/mutex/mut_region.c
+@@ -205,7 +205,7 @@ __mutex_region_init(env, mtxmgr)
+ 	 * in each link.
+ 	 */
+ 	env->mutex_handle = mtxmgr;
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		mutexp = (DB_MUTEX *)mutex_array;
+ 		mutexp++;
+ 		mutexp = ALIGNP_INC(mutexp, mtxregion->stat.st_mutex_align);
+@@ -216,7 +216,7 @@ __mutex_region_init(env, mtxmgr)
+ 	}
+ 	for (mutex = 1; mutex < mtxregion->stat.st_mutex_cnt; ++mutex) {
+ 		mutexp->flags = 0;
+-		if (F_ISSET(env, ENV_PRIVATE))
++		if (ENV_HEAP_REGIONS(env))
+ 			mutexp->mutex_next_link = (db_mutex_t)(mutexp + 1);
+ 		else
+ 			mutexp->mutex_next_link = mutex + 1;
+@@ -440,7 +440,7 @@ __mutex_resource_return(env, infop)
+ 	 */
+ 	orig_handle = env->mutex_handle;
+ 	env->mutex_handle = mtxmgr;
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		mutexp = (DB_MUTEX *)mtxmgr->mutex_array + 1;
+ 		chunk = NULL;
+ 		size = __env_elem_size(env,
+@@ -449,14 +449,14 @@ __mutex_resource_return(env, infop)
+ 	} else
+ 		mutexp = MUTEXP_SET(env, 1);
+ 	for (i = 1; i <= mtxregion->stat.st_mutex_cnt; ++i) {
+-		if (F_ISSET(env, ENV_PRIVATE))
++		if (ENV_HEAP_REGIONS(env))
+ 			indx = (db_mutex_t)mutexp;
+ 		else
+ 			indx = i;
+ 		if (F_ISSET(mutexp, DB_MUTEX_ALLOCATED))
+ 			(void)__mutex_destroy(env, indx);
+ 		mutexp++;
+-		if (F_ISSET(env, ENV_PRIVATE) &&
++		if (ENV_HEAP_REGIONS(env) &&
+ 		    (size -= sizeof(*mutexp)) < sizeof(*mutexp)) {
+ 			mutexp = __env_get_chunk(&mtxmgr->reginfo,
+ 			    &chunk, &size);
+diff --git a/src/mutex/mut_stat.c b/src/mutex/mut_stat.c
+index 136cbb2..19a2eb8 100644
+--- a/src/mutex/mut_stat.c
++++ b/src/mutex/mut_stat.c
+@@ -169,7 +169,7 @@ __mutex_print_summary(env)
+ 	memset(counts, 0, sizeof(counts));
+ 	size = 0;
+ 
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		mutexp = (DB_MUTEX *)mtxmgr->mutex_array + 1;
+ 		chunk = NULL;
+ 		size = __env_elem_size(env,
+@@ -186,7 +186,7 @@ __mutex_print_summary(env)
+ 			counts[mutexp->alloc_id]++;
+ 
+ 		mutexp++;
+-		if (F_ISSET(env, ENV_PRIVATE) &&
++		if (ENV_HEAP_REGIONS(env) &&
+ 		    (size -= sizeof(*mutexp)) < sizeof(*mutexp)) {
+ 			mutexp =
+ 			    __env_get_chunk(&mtxmgr->reginfo, &chunk, &size);
+@@ -293,7 +293,7 @@ __mutex_print_all(env, flags)
+ 	__db_msg(env, "%s", DB_GLOBAL(db_line));
+ 	__db_msg(env, "mutex\twait/nowait, pct wait, holder, flags");
+ 	size = 0;
+-	if (F_ISSET(env, ENV_PRIVATE)) {
++	if (ENV_HEAP_REGIONS(env)) {
+ 		mutexp = (DB_MUTEX *)mtxmgr->mutex_array + 1;
+ 		chunk = NULL;
+ 		size = __env_elem_size(env,
+@@ -306,7 +306,7 @@ __mutex_print_all(env, flags)
+ 			__db_msgadd(env, mbp, "%5lu\t", (u_long)i);
+ 
+ 			__mutex_print_debug_stats(env, mbp,
+-			    F_ISSET(env, ENV_PRIVATE) ?
++			    ENV_HEAP_REGIONS(env) ?
+ 			    (db_mutex_t)mutexp : i, flags);
+ 
+ 			if (mutexp->alloc_id != 0)
+@@ -319,7 +319,7 @@ __mutex_print_all(env, flags)
+ 		}
+ 
+ 		mutexp++;
+-		if (F_ISSET(env, ENV_PRIVATE) &&
++		if (ENV_HEAP_REGIONS(env) &&
+ 		    (size -= sizeof(*mutexp)) < sizeof(*mutexp)) {
+ 			mutexp =
+ 			    __env_get_chunk(&mtxmgr->reginfo, &chunk, &size);
