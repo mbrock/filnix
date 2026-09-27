@@ -1,0 +1,37 @@
+From c3e3739eb34fa143018f89ae2bdfb61507edf84b Mon Sep 17 00:00:00 2001
+From: t <a@b>
+Date: Sun, 27 Sep 2026 19:27:07 +0000
+Subject: [PATCH] Rethrow copies of a failed value's exception
+
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ src/libexpr/include/nix/expr/eval-inline.hh | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/libexpr/include/nix/expr/eval-inline.hh b/src/libexpr/include/nix/expr/eval-inline.hh
+index 6d43911..7bcc85c 100644
+--- a/src/libexpr/include/nix/expr/eval-inline.hh
++++ b/src/libexpr/include/nix/expr/eval-inline.hh
+@@ -152,8 +152,17 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
+         p0_ = waitOnThunk(state, p0_);
+ 
+ done:
+-    if (InternalType(p0_ & 0xff) == tFailed)
+-        std::rethrow_exception((std::bit_cast<Failed *>(p1))->ex);
++    if (InternalType(p0_ & 0xff) == tFailed) {
++        /* The failure is shared by every thread (and every later forcing)
++           that reaches this value, but catch sites prepend traces to the
++           exception object. Throw a copy so that they never modify the
++           shared one. */
++        try {
++            std::rethrow_exception((std::bit_cast<Failed *>(p1))->ex);
++        } catch (BaseError & e) {
++            e.throwClone();
++        }
++    }
+ }
+ 
+ [[gnu::always_inline]]
+-- 
+2.55.0
+
