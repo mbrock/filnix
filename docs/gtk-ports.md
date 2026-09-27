@@ -50,6 +50,15 @@ target is Fil-C (`pkgsFilc.buildPackages`). Splicing selects that set for
 `nativeBuildInputs`, so ordinary `callPackage` consumers receive these tools,
 and the native package set stays unchanged.
 
+One side effect: every native package in that set that links GLib is rebuilt,
+so it no longer matches the same package in its own `buildPackages`. Qt 5
+noticed. Its qmake hook comes from `buildPackages`, so native Qt modules such
+as qtsvg (which Fil-C packages reach through `wrapQtAppsHook` → qtwayland →
+qtdeclarative) saw two qtbases, and qtbase's setup hook stopped with
+"detected mismatched Qt dependencies". Qt's generators emit no GType code, so
+that set now uses the ordinary native `qt5`/`libsForQt5`, which also comes
+from cache.nixos.org.
+
 GLib and gobject-introspection there are native twins of the ports, at the
 same versions (2.80.4 and 1.80.1). Newer generators emit APIs the target GLib
 lacks (gdbus-codegen 2.84+ calls `g_variant_builder_init_static`), and Meson
