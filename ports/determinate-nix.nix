@@ -29,6 +29,7 @@ in
 ((scope.overrideSource src).appendPatches [
   ../patches/determinate-nix/0001-Fil-C-pointer-typed-packed-Value-words.patch
   ../patches/determinate-nix/0002-Fil-C-no-__cxa_throw-interposer.patch
+  ../patches/determinate-nix/0003-Fil-C-truncate-syscall-results-to-int.patch
 ]).overrideScope
   (
     lib.composeExtensions nixFilcOverrides (
@@ -76,12 +77,36 @@ in
             });
         # This scope is not spliced, so the `enosys` wrapper (a seccomp
         # filter, which Fil-C cannot install) would be the Fil-C build.
-        nix-util-tests = nprev.nix-util-tests.override {
-          util-linux = final.buildPackages.util-linux;
-        };
+        nix-util-tests =
+          (nprev.nix-util-tests.override {
+            util-linux = final.buildPackages.util-linux;
+          }).overrideAttrs
+            (old: {
+              passthru = old.passthru // {
+                tests = lib.mapAttrs (
+                  _: run:
+                  run.overrideAttrs {
+                    # An exception thrown through libarchive's read callback
+                    # is freed while still unwinding (docs/filc-findings.md),
+                    # as in the upstream Nix port.
+                    GTEST_FILTER = "-CompressionDecompression/CompressionDecompressionTest.invalidDecompression/*";
+                  }
+                ) old.passthru.tests;
+              };
+            });
         nix-functional-tests = nprev.nix-functional-tests.override {
           util-linux = final.buildPackages.util-linux;
         };
+        # The functional tests again, with every evaluation multi-threaded
+        # (and builtins.parallel available). Not part of nix-everything.
+        nix-functional-tests-parallel = nfinal.nix-functional-tests.overrideAttrs (old: {
+          pname = "nix-functional-tests-parallel";
+          _NIX_TEST_EXTRA_CONFIG = ''
+            ${old._NIX_TEST_EXTRA_CONFIG or ""}
+            eval-cores = 8
+            extra-experimental-features = parallel-eval
+          '';
+        });
         # Boehm GC is only referenced to collect its debug output.
         nix-everything = nprev.nix-everything.override { boehmgc = final.emptyDirectory; };
       }

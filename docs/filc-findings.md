@@ -180,6 +180,22 @@ being looked up. Determinate Nix interposes `__cxa_throw` this way (to abort
 on `std::logic_error`), so every thrown exception stopped the program; the
 port builds without the interposer (docs/determinate-nix.md).
 
+## `syscall()` returns -1 as 4294967295
+
+`syscall` is declared to return `long`, but a failing call returns the
+32-bit -1 zero-extended:
+
+```c
+long r = syscall(__NR_fchmodat2, AT_FDCWD, "/nonexistent", 0600, AT_SYMLINK_NOFOLLOW);
+/* r == 4294967295, errno == ENOENT; the same for openat2. getpid works. */
+```
+
+So `if (syscall(...) < 0)` never sees the failure. Determinate Nix calls
+`openat2` and `fchmodat2` this way; its `fchmodatTryNoFollow` test failed
+(no error for a missing file or a symlink), and a failed `openat2` would
+have become file descriptor 4294967295. The port truncates both results to
+`int`.
+
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 
 Not a Fil-C issue, but a bug it caught. libopenmpt 0.8.9's
