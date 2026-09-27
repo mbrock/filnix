@@ -428,8 +428,17 @@ the first constructor:
 int main(void) { return fetestexcept(FE_ALL_EXCEPT); } /* 0x20; 0 natively */
 ```
 
-The runtime's own start-up code raises it before user code runs. fmt's
-`float_test.isnan` checks that the flags are clear and is excluded.
+The runtime's own code raises it in the program's thread: libpas's
+allocation slow paths use floating-point heuristics, and so does other
+runtime work that runs on the mutator (a single-size loop of `malloc(16)`
+raised it again after about 35,000 allocations). mbrock/fil-c 2d9aa14 clears
+the flags before the program starts and 702ca31 preserves them around
+`verse_heap_allocate`, which makes a single allocation clean, but start-up
+and later runtime work still raise it; a full fix means saving the flags
+at every runtime entry that may do floating-point math, or keeping the
+runtime's heuristics in integers. fmt's `float_test.isnan` checks that the
+flags are clear and is excluded, and `tests/fork-regressions/fenv-*.c` are
+not run yet.
 
 ## Unsupported: allocation failure
 
