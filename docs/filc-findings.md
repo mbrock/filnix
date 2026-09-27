@@ -252,8 +252,6 @@ does the same for sdl2-compat).
 
 ## Pointer tagging works; integer-typed storage loses capabilities
 
-## Pointer tagging works; integer-typed storage loses capabilities
-
 Setting tag bits in a pointer is fine under Fil-C. What drops a capability
 is keeping the pointer in an *integer-typed* location. Upstream's
 `gimso_semantics.md` and `invisicaps_by_example.md` give the rules; this
