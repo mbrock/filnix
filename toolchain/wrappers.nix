@@ -158,6 +158,7 @@ rec {
             python = "${pkgs.python3}/bin/python3";
             patcher = "${./libtool-symbols.py}";
           })
+          ./autoconf-c23-hook.sh
           (pkgs.replaceVars ./header-references-hook.sh {
             removeReferencesTo = "${pkgs.removeReferencesTo}/bin/remove-references-to";
           })
