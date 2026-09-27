@@ -170,6 +170,15 @@
           inherit pkgs pkgsFilc;
         };
         boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
+        protobuf = import ./tests/protobuf.nix { inherit pkgs pkgsFilc; };
+        protobuf_33 = import ./tests/protobuf.nix {
+          inherit pkgs pkgsFilc;
+          protobuf = pkgsFilc.protobuf_33;
+        };
+        protobuf_21 = import ./tests/protobuf.nix {
+          inherit pkgs pkgsFilc;
+          protobuf = pkgsFilc.protobuf_21;
+        };
         re2 = import ./tests/re2.nix { inherit pkgs pkgsFilc; };
         emacs-treesit = import ./tests/emacs-treesit.nix {
           inherit pkgs pkgsFilc;

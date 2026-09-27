@@ -161,6 +161,38 @@ in
     ];
   }
 
+  (
+    let
+      protobufPort = sourcePatch: [
+        # Tagged pointers in integer words, byte-wise swaps and inline
+        # assembly in the C++ runtime (see the patch headers).
+        (patch sourcePatch)
+        # The Fil-C driver rewrites version scripts itself and cannot parse
+        # `extern "C++" { ... }` blocks, so linking libprotobuf aborted.
+        # The maps only hide non-protobuf symbols; skip them.
+        (addCMakeFlag "-Dprotobuf_HAVE_LD_VERSION_SCRIPT=OFF")
+        (use (old: {
+          # Fil-C keeps a musttail call only when every pointer argument is
+          # the caller's own argument. The table-driven parser advances
+          # `ptr`, so field-to-field tail calls would add a frame per field;
+          # PROTOBUF_TAILCALL false makes each field return to the parse
+          # loop. Runs after Nixpkgs rewrites this #if for older versions.
+          postPatch = (old.postPatch or "") + ''
+            sed -i 's/^\(#if \w*(clang::musttail)\)/\1 \&\& !defined(__FILC__)/' \
+              src/google/protobuf/port_def.inc
+            grep -q '(clang::musttail) && !defined(__FILC__)' \
+              src/google/protobuf/port_def.inc
+          '';
+        }))
+      ];
+    in
+    {
+      protobuf_34 = for pkgs.protobuf_34 (protobufPort ./patches/protobuf-34.1-filc.patch);
+      protobuf_33 = for pkgs.protobuf_33 (protobufPort ./patches/protobuf-33.6-filc.patch);
+      protobuf_21 = for pkgs.protobuf_21 (protobufPort ./patches/protobuf-21.12-filc.patch);
+    }
+  )
+
   {
     QuadProgpp = for pkgs.QuadProgpp [
       (patch ./patches/quadprogpp-link-math.patch)

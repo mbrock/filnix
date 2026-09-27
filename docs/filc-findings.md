@@ -115,6 +115,24 @@ so protobuf, re2 and every other abseil user crashed the compiler.
 `patches/abseil-cpp-no-refactor-annotate.patch` drops the annotation; the
 pass could simply delete `llvm.global.annotations`, which codegen discards.
 
+## Version scripts with `extern "C++"` blocks abort the driver
+
+The Fil-C driver parses version scripts itself to rename symbols, fails on
+`extern "C++" { *google*; };` ("Failed to parse version script ... Expected
+;") and then hits `UNREACHABLE` in `Gnu.cpp`. protobuf's `libprotobuf.map`
+uses this form; the port turns the maps off with
+`-Dprotobuf_HAVE_LD_VERSION_SCRIPT=OFF`.
+
+## Byte-wise copies drop capabilities
+
+Swapping or copying an object that contains pointers byte by byte (for
+example `std::swap_ranges` over `char*`, as protobuf's `internal::memswap`
+and `MicroString::InternalSwap` do) keeps the addresses but not the
+capabilities, since only pointer-sized pointer stores write the shadow
+space. The next dereference traps with "cannot read pointer with null
+object". `memcpy`/`memmove` preserve capabilities, so the protobuf port swaps
+through a temporary with `memcpy`.
+
 ## Linker-generated `__start_`/`__stop_` section symbols are not visible
 
 Code that collects descriptors in a named section and walks it with
@@ -122,7 +140,10 @@ Code that collects descriptors in a named section and walks it with
 `pizlonated___start_SECTION`, which the linker does not define. ELL, BlueZ
 (`patches/bluez-no-debug-section.patch`) and weston's test runner use this
 pattern; the ports disable pattern-selected debug output or register the
-entries from constructors.
+entries from constructors. protobuf 33/34 use it for weak descriptor
+defaults (`pb_defaults`, only when `PROTOBUF_DESCRIPTOR_WEAK_MESSAGES_ALLOWED`),
+which the port turns off; `libprotobuf.so` otherwise fails to load with an
+undefined `pizlonated___stop_pb_defaults`.
 
 ## `dlopen` of a bare soname ignores the caller's RUNPATH
 
