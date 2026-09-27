@@ -1164,6 +1164,18 @@ in
     (skipTests "1 failure")
   ])
 
+  (for pkgs.libtirpc [
+    # The source still uses K&R function definitions, which C23 removed.
+    # Autoreconf'd configure asks for -std=gnu23 (GCC accepts them there
+    # anyway; Clang does not), so keep Clang's gnu17 default.
+    (configure "ac_cv_prog_cc_c23=no")
+  ])
+
+  (for pkgs.rpcbind [
+    # Same K&R definitions as libtirpc (rpcinfo.c).
+    (configure "ac_cv_prog_cc_c23=no")
+  ])
+
   (for pkgs.duktape [
     (patch ./patches/duktape-valstack-rebase.patch)
     (use {
