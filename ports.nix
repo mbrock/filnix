@@ -498,6 +498,26 @@ in
       guileTestsOnFilc
     ];
 
+    guix = for pkgs.guix [
+      # configure takes libgcrypt from the build platform's
+      # libgcrypt-config otherwise; the path also ends up in
+      # guix/config.scm for the FFI.
+      (configure "--with-libgcrypt-prefix=${final.libgcrypt.dev}")
+      (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
+      (use (old: {
+        # graphviz (for documentation figures) fails to build natively at
+        # this Nixpkgs pin. slirp4netns (for container networking) needs
+        # libseccomp, and the Fil-C runtime does not support the seccomp
+        # system call.
+        nativeBuildInputs = builtins.filter (
+          d: !(builtins.elem (d.pname or "") [ "graphviz" "slirp4netns" ])
+        ) old.nativeBuildInputs;
+        propagatedBuildInputs = builtins.filter (
+          d: (d.pname or "") != "slirp4netns"
+        ) old.propagatedBuildInputs;
+      }))
+    ];
+
     mcron = for pkgs.mcron [
       (use (old: {
         nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
