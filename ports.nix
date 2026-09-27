@@ -58,6 +58,16 @@ let
     ln -s ${final.guile_3_0}/bin/* $out/bin/
   '';
 
+  # Guile libraries whose tests load Fil-C code (their own extension or
+  # a C library through the FFI) must run them with the Fil-C guile;
+  # Nixpkgs' cross build would use the build platform's.
+  guileTestsOnFilc = use (old: {
+    preCheck = (old.preCheck or "") + ''
+      export PATH=${final.guile_3_0}/bin:$PATH
+    '';
+    checkFlags = (old.checkFlags or [ ]) ++ [ "GUILE=${final.guile_3_0}/bin/guile" ];
+  });
+
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -693,6 +703,46 @@ in
 
     # Pure Guile. As with gnu-shepherd, configure needs a guile, and its
     # tests run with the Fil-C one.
+    lilypond = for pkgs.lilypond [
+      # The default TeX is built from the host package set, since it is
+      # a derived value that splicing does not reach; it only runs at
+      # build time.
+      (arg {
+        # WIP: the Fil-C ghostscript-with-X fails configure (its -lz check
+        # links the build platform's zlib), so the lilypond wrapper puts
+        # the build platform's gs on PATH for PDF output.
+        ghostscript = pkgs.buildPackages.ghostscript;
+        tex = pkgs.buildPackages.texliveSmall.withPackages (
+          ps: with ps; [ epsf fontinst fontware lh metafont ]
+        );
+      })
+      (use (old: {
+        # Nixpkgs lists guile only as a build tool. LilyPond links
+        # libguile, and the build runs the Fil-C lilypond (it runs on
+        # the build machine) to compile its Scheme files.
+        nativeBuildInputs =
+          builtins.filter (d: !(pkgs.lib.hasPrefix "guile" (d.name or ""))) old.nativeBuildInputs
+          ++ [ guileForBuild ];
+        buildInputs = old.buildInputs ++ [ final.guile_3_0 ];
+        # configure sets CROSS=yes, which drops the rules that run the
+        # programs (help2man, lilypond itself) but not the targets that
+        # need them. Fil-C programs run on the build machine.
+        makeFlags = (old.makeFlags or [ ]) ++ [ "CROSS=no" ];
+      }))
+    ];
+
+    guile-zlib = for pkgs.guile-zlib [ guileTestsOnFilc ];
+    guile-lzlib = for pkgs.guile-lzlib [ guileTestsOnFilc ];
+    guile-zstd = for pkgs.guile-zstd [ guileTestsOnFilc ];
+    guile-lzma = for pkgs.guile-lzma [ guileTestsOnFilc ];
+    guile-sqlite3 = for pkgs.guile-sqlite3 [ guileTestsOnFilc ];
+    guile-git = for pkgs.guile-git [ guileTestsOnFilc ];
+    guile-avahi = for pkgs.guile-avahi [
+      # Clang reports an unused static function that GCC does not.
+      (addCFlag "-Wno-error=unused-function")
+      guileTestsOnFilc
+    ];
+
     mcron = for pkgs.mcron [
       (use (old: {
         nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
