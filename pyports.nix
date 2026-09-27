@@ -35,6 +35,41 @@ in
     }))
   ])
 
+  (for "psutil" [
+    # heap_info/heap_trim wrap glibc's mallinfo2/malloc_trim, which see
+    # none of Fil-C's GC heap; build them out as on musl.
+    (patch ./patches/psutil-filc-no-heap-info.patch)
+  ])
+
+  (for "execnet" [
+    # gevent needs greenlet, which switches CPython thread state fields that
+    # the Fil-C CPython port does not have. The gevent execmodel tests skip
+    # without it.
+    (arg { gevent = null; })
+  ])
+
+  (for "mypy" [
+    (use (old: {
+      # mypyc emits one huge C file by default; Fil-C's clang needed over
+      # 12 GB for it. Compile per module, as mypy does on Windows.
+      env = (old.env or { }) // {
+        MYPYC_MULTI_FILE = "1";
+      };
+    }))
+  ])
+
+  (for "uharfbuzz" [
+    # The bundled harfbuzz swaps qsort elements bytewise, which mismatches
+    # pointers and capabilities (fonttools' check input).
+    (patch ./patches/uharfbuzz-sort-swap-memcpy.patch)
+  ])
+
+  (for "skia-pathops" [
+    # Skia's arena stores destructor pointers unaligned (fonttools' check
+    # input).
+    (patch ./patches/skia-pathops-arena-footer-ptrtable.patch)
+  ])
+
   (for "pybind11" [
     (use {
       # The CMake check target runs pytest with the build platform's Python,

@@ -1,0 +1,17 @@
+diff --git a/psutil/arch/linux/init.h b/psutil/arch/linux/init.h
+index 9002d9e..3133f3d 100644
+--- a/psutil/arch/linux/init.h
++++ b/psutil/arch/linux/init.h
+@@ -26,8 +26,10 @@ PyObject *psutil_proc_cpu_affinity_get(PyObject *self, PyObject *args);
+ PyObject *psutil_proc_cpu_affinity_set(PyObject *self, PyObject *args);
+ #endif
+ 
+-// Does not exist on MUSL / Alpine Linux.
+-#if defined(__GLIBC__)
++// Does not exist on MUSL / Alpine Linux. Under Fil-C, malloc is the
++// garbage-collected Fil-C heap, not glibc's ptmalloc: mallinfo2() reports
++// nothing and malloc_trim() releases nothing, so do not claim support.
++#if defined(__GLIBC__) && !defined(__FILC__)
+ #define PSUTIL_HAS_HEAP_INFO
+ #define PSUTIL_HAS_HEAP_TRIM
+ PyObject *psutil_heap_trim(PyObject *self, PyObject *args);
