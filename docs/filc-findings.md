@@ -130,8 +130,12 @@ example `std::swap_ranges` over `char*`, as protobuf's `internal::memswap`
 and `MicroString::InternalSwap` do) keeps the addresses but not the
 capabilities, since only pointer-sized pointer stores write the shadow
 space. The next dereference traps with "cannot read pointer with null
-object". `memcpy`/`memmove` preserve capabilities, so the protobuf port swaps
-through a temporary with `memcpy`.
+object". `memcpy`/`memmove` preserve capabilities, but only when source and
+destination have the same alignment within a word: protobuf's generated
+`InternalSwap` calls `memswap<N>` on a field range that can start at a
+4-byte offset, so a plain `char tmp[N]` still lost the pointer of a
+`RepeatedField` after a swap. The port swaps through a buffer offset to the
+source's misalignment.
 
 ## Linker-generated `__start_`/`__stop_` section symbols are not visible
 

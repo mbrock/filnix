@@ -9,12 +9,16 @@ Upstream-Status: Not submitted
   uintptr_t local, which traps at -O0).
 - internal::memswap and MicroString::InternalSwap swapped objects holding
   pointers byte by byte, so protoc trapped after moving a message; swap
-  through memcpy, which keeps capabilities.
+  through memcpy, which keeps capabilities when source and destination are
+  equally misaligned (memswap often starts mid-word, so its buffer is
+  offset to match).
 - Inline assembly (.reloc, empty asm barriers with pointer operands, ror
   with a memory operand, btc, prefetch) is rejected at run time; use the
   portable fallbacks.
 - The weak descriptor defaults walk the pb_defaults section through the
-  linker's __start_/__stop_ symbols, which Fil-C does not provide.
+  linker's __start_/__stop_ symbols, which Fil-C does not provide; upb's
+  linker arrays (upb_ExtensionRegistry_AddAllLinkedExtensions) likewise
+  failed to link, so they are treated as unsupported.
 - upb, the C runtime built alongside, keeps pointers in integer words
   throughout (arena block allocators, upb_value hash entries, tagged
   message and array pointers) and is not ported: its code generators trap,
@@ -380,7 +384,7 @@ index b3b9cb1..84614e1 100644
    asm("prefetcht0 " #offset "(%0)" : : "r"(base));
  #else
 diff --git a/src/google/protobuf/repeated_ptr_field.h b/src/google/protobuf/repeated_ptr_field.h
-index ab43888..e68ce47 100644
+index ab43888..50c30b1 100644
 --- a/src/google/protobuf/repeated_ptr_field.h
 +++ b/src/google/protobuf/repeated_ptr_field.h
 @@ -25,6 +25,7 @@
@@ -391,14 +395,17 @@ index ab43888..e68ce47 100644
  #include <iterator>
  #include <limits>
  #include <string>
-@@ -77,9 +78,18 @@ class AllocatedRepeatedPtrFieldBackInsertIterator;
+@@ -77,9 +78,21 @@ class AllocatedRepeatedPtrFieldBackInsertIterator;
  // Swaps two non-overlapping blocks of memory of size `N`
  template <size_t N>
  inline void memswap(char* PROTOBUF_RESTRICT a, char* PROTOBUF_RESTRICT b) {
 +#ifdef __FILC__
 +  // Fil-C: a byte-wise swap drops the capabilities of the pointers in the
-+  // blocks (messages, repeated fields); memcpy keeps them.
-+  char tmp[N];
++  // blocks (messages, repeated fields); memcpy keeps them, provided source
++  // and destination are equally misaligned (`a` and `b` are the same field
++  // of two objects of one type, but may start mid-word).
++  alignas(8) char buf[N + 8];
++  char* tmp = buf + (reinterpret_cast<uintptr_t>(a) & 7);
 +  memcpy(tmp, a, N);
 +  memcpy(a, b, N);
 +  memcpy(b, tmp, N);
@@ -424,3 +431,18 @@ index e6c8278..8282324 100644
      // Use a small instruction since this is an uncommon code path.
      asm("btc %[bits], %[res3]" : [res3] "+r"(res3) : [bits] "i"(bits));
  #else
+diff --git a/upb/port/def.inc b/upb/port/def.inc
+index cd1eed6..1166a32 100644
+--- a/upb/port/def.inc
++++ b/upb/port/def.inc
+@@ -529,7 +529,9 @@ Error, UINTPTR_MAX is undefined
+ //     }
+ //   }
+ 
+-#if defined(__ELF__) || defined(__wasm__)
++// Fil-C: the linker's __start_/__stop_ section symbols are not visible, so
++// treat linker arrays as unsupported.
++#if (defined(__ELF__) || defined(__wasm__)) && !defined(__FILC__)
+ 
+ #define UPB_LINKARR_APPEND(name) \
+   __attribute__((section("linkarr_" #name))) UPB_NO_SANITIZE_ADDRESS

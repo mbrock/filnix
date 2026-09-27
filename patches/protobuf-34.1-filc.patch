@@ -9,7 +9,9 @@ Upstream-Status: Not submitted
   uintptr_t local, which traps at -O0).
 - internal::memswap and MicroString::InternalSwap swapped objects holding
   pointers byte by byte, so protoc trapped after moving a message; swap
-  through memcpy, which keeps capabilities.
+  through memcpy, which keeps capabilities when source and destination are
+  equally misaligned (memswap often starts mid-word, so its buffer is
+  offset to match).
 - Inline assembly (.reloc, empty asm barriers with pointer operands, ror
   with a memory operand, btc, prefetch) is rejected at run time; use the
   portable fallbacks.
@@ -370,8 +372,31 @@ index 14f5975..0884861 100644
  // Optimized implementation for clang where we can generate a relocation without
  // adding runtime instructions.
  template <typename T, T ptr>
+diff --git a/src/google/protobuf/port_def.inc b/src/google/protobuf/port_def.inc
+index 1b6b41f..d520308 100644
+--- a/src/google/protobuf/port_def.inc
++++ b/src/google/protobuf/port_def.inc
+@@ -573,7 +573,8 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
+ #endif
+ #if defined(__GNUC__) && defined(__clang__) && !defined(__APPLE__) && \
+     !defined(_MSC_VER) && !defined(_WIN32) && !defined(__wasm__) &&   \
+-    !defined(__EMSCRIPTEN__)
++    !defined(__EMSCRIPTEN__) && !defined(__FILC__)
++// (Fil-C: the linker's __start_/__stop_ section symbols are not visible.)
+ #define PROTOBUF_DESCRIPTOR_WEAK_MESSAGES_ALLOWED
+ #endif
+ 
+@@ -586,7 +587,7 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
+ #ifdef PROTOBUF_PREFETCH_WITH_OFFSET
+ #error PROTOBUF_PREFETCH_WITH_OFFSET was previously defined
+ #endif
+-#if defined(__x86_64__) && defined(__GNUC__)
++#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FILC__)
+ #define PROTOBUF_PREFETCH_WITH_OFFSET(base, offset) \
+   asm("prefetcht0 " #offset "(%0)" : : "r"(base));
+ #else
 diff --git a/src/google/protobuf/repeated_ptr_field.h b/src/google/protobuf/repeated_ptr_field.h
-index 74f4800..ea7c8aa 100644
+index 74f4800..eb8394b 100644
 --- a/src/google/protobuf/repeated_ptr_field.h
 +++ b/src/google/protobuf/repeated_ptr_field.h
 @@ -25,6 +25,7 @@
@@ -382,14 +407,17 @@ index 74f4800..ea7c8aa 100644
  #include <iterator>
  #include <limits>
  #include <string>
-@@ -82,9 +83,18 @@ class AllocatedRepeatedPtrFieldBackInsertIterator;
+@@ -82,9 +83,21 @@ class AllocatedRepeatedPtrFieldBackInsertIterator;
  // Swaps two non-overlapping blocks of memory of size `N`
  template <size_t N>
  inline void memswap(char* PROTOBUF_RESTRICT a, char* PROTOBUF_RESTRICT b) {
 +#ifdef __FILC__
 +  // Fil-C: a byte-wise swap drops the capabilities of the pointers in the
-+  // blocks (messages, repeated fields); memcpy keeps them.
-+  char tmp[N];
++  // blocks (messages, repeated fields); memcpy keeps them, provided source
++  // and destination are equally misaligned (`a` and `b` are the same field
++  // of two objects of one type, but may start mid-word).
++  alignas(8) char buf[N + 8];
++  char* tmp = buf + (reinterpret_cast<uintptr_t>(a) & 7);
 +  memcpy(tmp, a, N);
 +  memcpy(a, b, N);
 +  memcpy(b, tmp, N);
@@ -414,27 +442,4 @@ index e20df33..4491ecc 100644
 +    !defined(__FILC__)
      // Use a small instruction since this is an uncommon code path.
      asm("btc %[bits], %[res3]" : [res3] "+r"(res3) : [bits] "i"(bits));
- #else
-diff --git a/src/google/protobuf/port_def.inc b/src/google/protobuf/port_def.inc
-index 1b6b41f..d520308 100644
---- a/src/google/protobuf/port_def.inc
-+++ b/src/google/protobuf/port_def.inc
-@@ -573,7 +573,8 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
- #endif
- #if defined(__GNUC__) && defined(__clang__) && !defined(__APPLE__) && \
-     !defined(_MSC_VER) && !defined(_WIN32) && !defined(__wasm__) &&   \
--    !defined(__EMSCRIPTEN__)
-+    !defined(__EMSCRIPTEN__) && !defined(__FILC__)
-+// (Fil-C: the linker's __start_/__stop_ section symbols are not visible.)
- #define PROTOBUF_DESCRIPTOR_WEAK_MESSAGES_ALLOWED
- #endif
- 
-@@ -586,7 +587,7 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
- #ifdef PROTOBUF_PREFETCH_WITH_OFFSET
- #error PROTOBUF_PREFETCH_WITH_OFFSET was previously defined
- #endif
--#if defined(__x86_64__) && defined(__GNUC__)
-+#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FILC__)
- #define PROTOBUF_PREFETCH_WITH_OFFSET(base, offset) \
-   asm("prefetcht0 " #offset "(%0)" : : "r"(base));
  #else
