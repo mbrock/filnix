@@ -176,11 +176,34 @@ portDSL.makeOverlay portList final prev
           '';
       });
       nix-functional-tests = nprev.nix-functional-tests.overrideAttrs (old: {
-        # The test plugin cannot resolve Nix's symbols when dlopened.
-        mesonCheckFlags = (old.mesonCheckFlags or [ ]) ++ [
-          "--no-suite"
-          "plugins"
-        ];
+        # The suite runs whichever `nix` is on PATH. Nixpkgs asks for
+        # nix-cli.__spliced.hostHost, which this scope lacks, so it fell
+        # back to the build platform's (glibc) Nix: every functional test
+        # exercised native Nix, and the Fil-C test plugin could not load
+        # into it (undefined pizlonated_* symbols). Fil-C programs run on
+        # the build machine, so test the Fil-C Nix.
+        nativeBuildInputs = map (
+          p: if (p.pname or "") == "nix" then nfinal.nix-cli else p
+        ) old.nativeBuildInputs;
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            pushd "$(dirname "$(find -L . -path '*/common/vars.sh' -print -quit)")/.." >/dev/null
+            # The harness enables sandbox tests when `unshare --user` works,
+            # but this Nix cannot sandbox (no clone; see nix-util below).
+            # Those tests (remote builds, chroot and overlay stores, ...)
+            # then build with store paths that only exist inside a sandbox.
+            substituteInPlace common/vars.sh --replace-fail \
+              '&& unshare --user true; then' '&& false; then'
+            # An exception thrown on these error paths is freed while the
+            # landing pad still reads it (docs/filc-findings.md).
+            for t in binary-cache multiple-outputs-substitute-failure read-only-store; do
+              sed -i '0,/^source common.sh$/s//&\nskipTest "Fil-C: exception freed during unwinding"/' $t.sh
+              grep -q 'Fil-C: exception freed' $t.sh
+            done
+            popd >/dev/null
+          '';
       });
       nix-util-tests = nprev.nix-util-tests.overrideAttrs (old: {
         # The CompressionError from invalid bzip2 input is freed while the

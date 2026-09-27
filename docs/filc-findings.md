@@ -410,6 +410,19 @@ callback throws and catches an `EndOfFile` internally before Nix throws the
 `CompressionError`. A standalone program following the same libarchive
 calls does not reproduce it. The other 688 tests pass; the test is excluded.
 
+A simpler trigger: `nix-store --store 'local?read-only=true' --add FILE`
+(with `extra-experimental-features = read-only-local-store`) stops the same
+way in `opAdd` (`nix-store.cc:197`) when SQLite's read-only error propagates,
+and a failing substitution stops in `PathSubstitutionGoal::tryToRun`
+(`substitution-goal.cc:228`). The functional tests `read-only-store`,
+`binary-cache` and `multiple-outputs-substitute-failure` are skipped for it.
+
+These only showed up once the functional tests ran the Fil-C `nix`: Nixpkgs
+puts `nix-cli.__spliced.hostHost or nix-cli` on the suite's PATH, the scope
+here has no `__spliced`, and the build platform's Nix was tested instead.
+That is also why the `plugins` test failed: a Fil-C plugin loaded into
+native Nix finds no `pizlonated_*` symbols. With the Fil-C `nix`, it passes.
+
 ## Found by Fil-C: pointer rebasing across buffers in FFmpeg's flashsv2
 
 `libavcodec/flashsv2enc.c` copies its frame blocks to key blocks and rebases
