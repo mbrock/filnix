@@ -807,6 +807,22 @@ in
 
   # ━━━ Security ━━━
 
+  (for pkgs.libseccomp [
+    # seccomp_init probed the seccomp() syscall (317), which Fil-C refuses
+    # by stopping the program, so every test died (rc=133). Report the
+    # syscall as missing; filters still load through prctl(PR_SET_SECCOMP),
+    # which Fil-C passes through, but without TSYNC or user notification.
+    (patch ./patches/libseccomp-filc-no-seccomp-syscall.patch)
+    # The regression suite only simulates filters; load one for real.
+    (use (old: {
+      postCheck = (old.postCheck or "") + ''
+        $CC -Iinclude ${./tests/libseccomp-prctl-filter.c} \
+          -Lsrc/.libs -Wl,-rpath,"$PWD/src/.libs" -lseccomp -o prctl-filter
+        ./prctl-filter
+      '';
+    }))
+  ])
+
   (for pkgs.libsepol [
     (patch ./ports/patch/libsepol-3.9.patch)
   ])
