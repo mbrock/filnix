@@ -259,6 +259,28 @@ in
     (patch ./ports/patch/expat-2.7.1.patch)
   ])
 
+  (for pkgs.nspr [
+    # NSPR's x86_64 atomics are hand-written assembly (os_Linux_x86_64.s),
+    # which Fil-C cannot assemble or check. Use the __sync builtins, as
+    # NSPR already does on loongarch and or1k, and build no .s file.
+    (patch ./patches/nspr-filc-atomics.patch)
+    (addMakeFlag "PR_MD_ASFILES=")
+    # PR_Accept(fd, NULL, ...) passed a length pointer with a null address,
+    # which Linux ignores but Fil-C's accept rejects; pass no length.
+    (patch ./patches/nspr-null-peer-address.patch)
+    # Nixpkgs runs no tests; NSPR's own suite covers the atomics, threads
+    # and loopback I/O (about 100 programs, a few minutes).
+    (use {
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        make -C pr/tests
+        (cd pr/tests && ./runtests.sh "$PWD/../../dist")
+        runHook postCheck
+      '';
+    })
+  ])
+
   (for pkgs.libffi [
     (pin "3.8.0" "sha256-faPi2aFx6woDj1kuytP/K7JVDzSW2Hs7Ka0M9EMMDbQ=")
     (patch ./ports/patch/libffi-3.8.0.patch)
