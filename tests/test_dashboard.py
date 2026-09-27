@@ -148,6 +148,25 @@ class DashboardTests(unittest.TestCase):
         summary = BeautifulSoup(self.get("/summary").text, "html.parser")
         self.assertEqual(summary.select_one("#summary")["hx-trigger"], "none")
 
+    def test_blockers_rank_failures_by_blocked_packages(self):
+        self.graph()
+        self.sql("UPDATE derivations SET failure='compile-or-link' WHERE drv=?", (A,))
+        self.sql("UPDATE candidates SET state='failed' WHERE id=1")
+        self.sql("UPDATE candidates SET state='blocked' WHERE id IN (2,3)")
+        self.db.commit()
+        page = BeautifulSoup(self.get("/blockers").text, "html.parser")
+        rows = page.select("#blocker-list tbody tr")
+        self.assertEqual(len(rows), 1)
+        cells = [td.text.strip() for td in rows[0].select(":scope > td")]
+        self.assertEqual(cells[1:], ["2", "2"])
+        self.assertIn("Compilation or linking failed", cells[0])
+        self.assertIn("2 packages", page.select_one("#blockers p").text)
+        focus = rows[0].select_one("a")
+        self.assertEqual(parse_qs(urlsplit(focus["href"]).query)["focus"], [A])
+        summary = BeautifulSoup(self.get("/summary").text, "html.parser")
+        self.assertIn("blocks 2", summary.select_one("#top-blockers").text)
+        self.assertIn("only cause of 2", summary.select_one("#top-blockers").text)
+
     def test_blocked_package_links_failure_owner_and_unfiltered_plan(self):
         self.graph()
         plan = self.attempt("plan")

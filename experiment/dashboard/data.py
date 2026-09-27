@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from starlette.exceptions import HTTPException
 
 from ..batches import batches
+from ..blockers import ranking
 from ..catalog import catalog
 from ..graph import live_graph as live_graph
 from ..evidence import attempt_evidence, failure_evidence
@@ -116,6 +117,7 @@ def summary(db, cid):
         done=done,
         now=stamp(),
         revision=revision(db, cid),
+        blockers=ranking(db, cid)["rows"][:5],
     )
 
 
@@ -237,3 +239,16 @@ def latest_build(db, cid):
         ORDER BY kind='build' DESC,state!='finished' DESC,created DESC LIMIT 1""",
         (cid,),
     ).fetchone()
+
+
+def blockers(db, cid, view, size=50):
+    result = dict(ranking(db, cid))
+    rows = result["rows"]
+    result["total"] = len(rows)
+    result["page"] = view.page
+    result["size"] = size
+    result["rows"] = rows[view.page * size : (view.page + 1) * size]
+    result["most"] = max((r["blocks"] for r in rows), default=0)
+    for row in result["rows"]:
+        row["evidence"] = failure_evidence(db, row["drv"])
+    return result
