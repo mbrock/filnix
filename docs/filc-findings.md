@@ -173,6 +173,18 @@ libopenmpt's own test suite hits it; Fil-C reported a 100 MB read from a
 128-byte object. `patches/libopenmpt-codecvt-partial.patch` fixes it and
 is worth sending upstream.
 
+## Autoconf's `sigsetjmp` probe crashes the compiler
+
+`AC_CHECK_FUNCS([sigsetjmp])` compiles `char sigsetjmp(); ... sigsetjmp();`,
+and FilPizlonator stops with ``Assertion `F.getFunctionType() ==
+SigsetjmpTy' failed`` ("Unexpected setjmp signature: i8 (...)"). The probe
+then reports the function missing. Real `<setjmp.h>` callers are fine; a
+diagnostic instead of the assertion would be enough. Seen in pth's
+configure, whose SUSv2 `makecontext` probe also failed (it passes a
+`void (*)(void *)`, which Clang rejects), so pth picked a `setjmp` backend
+that patches the `jmp_buf` stack pointer. The port selects pth's
+`makecontext`/`swapcontext` backend, which Fil-C supports.
+
 ## Open: an exception object freed during unwinding in Nix's tests
 
 `nix-util-tests --gtest_filter=decompress.decompressInvalidInputThrowsCompressionError`
