@@ -171,3 +171,32 @@ similar.
   because it depends on ordered finalization. `disclaim_weakmap_test` fails
   because it stores a pointer in a `GC_word` with flag bits, which Fil-C
   rejects.
+
+## Consumers
+
+Tested so far (nixos-26.05 campaign blockers):
+
+- **w3m** builds. `w3m -dump` of a 3000-row table gives output identical
+  to native w3m. It runs 8.3 s against native's 0.56 s, but linking it
+  against a malloc-only libgc stub gives the same 8.2 s, so the time is
+  Fil-C w3m itself, not this library.
+- **a2ps** builds, and its test suite passes 23/23 (now enabled in
+  `ports.nix`). It needed a fix unrelated to GC: gnulib's old `obstack.h`
+  aligns pointers relative to `(char *) 0`, which drops their
+  capabilities. The test scripts also needed their `/bin/rm` and shebangs
+  patched.
+- **guile_3_0** is marked broken. With the build fixes in `ports.nix`
+  (drop an already-applied patch, `--disable-jit`, and expose only the
+  programs of the native guile that compiles the Scheme modules, so that
+  its native libraries stay off the Fil-C link path), libguile compiles
+  and links against this libgc. But Guile stores SCM values in
+  `scm_t_bits` (`uintptr_t`) cell words, so every heap reference loses its
+  capability. The first symbol-table lookup during `scm_init_struct`
+  traps. A Guile port would make `scm_t_bits` a pointer type (like the
+  CPython and Perl ports) and move the VM stack out of mmap'd memory. Its
+  weak tables use mark procedures, which would need `zweak_map`. That
+  work, not libgc, is what the ~50 guile-* packages, guix, lilypond,
+  mailutils, shepherd and mcron now wait on.
+- **crystal, nim** were not attempted. Crystal needs LLVM and a Crystal
+  bootstrap compiler. Nim's generated C and its own GC cast pointers to
+  integers, and libgc is only an optional backend there.

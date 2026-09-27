@@ -367,13 +367,16 @@ in
   ])
 
   {
+    # libguile builds, but Guile keeps SCM values in scm_t_bits
+    # (uintptr_t) cell words, which drop their capabilities: the first
+    # symbol lookup at startup traps. Porting that is its own project
+    # (docs/boehm-on-fugc.md).
     guile_3_0 = for pkgs.guile_3_0 [
+      (broken "SCM values are stored as integers")
       # Nixpkgs' cross-build fix is already in 3.0.11.
       (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
       # Guile's JIT emits machine code.
       (configure "--disable-jit")
-      # configure cannot link Fil-C's GMP; mini-gmp is plain C.
-      (configure "--enable-mini-gmp")
       # The build platform's guile compiles the Scheme modules. As an
       # input it would propagate its native libunistring and libgc onto
       # the Fil-C link path, so only its programs are exposed.
