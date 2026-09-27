@@ -113,4 +113,12 @@ lib.optionalAttrs
     lib.mapAttrs (
       name: spec: (prev.${name}.override spec.overrideArgs).overrideAttrs spec.attrs
     ) ports
+    // {
+      # Target-neutral, but built here it gets gts's propagated GLib 2.80.4
+      # next to Pango 1.57, whose pkg-config file needs GLib >= 2.82. Without
+      # pangocairo, vimdot is not built and postFixup fails, which broke
+      # every Fil-C package that uses graphviz for its docs (flac, then
+      # libsndfile, fluidsynth, SDL_mixer). Use the ordinary native build.
+      graphviz = final.buildPackages.graphviz;
+    }
   )

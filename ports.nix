@@ -165,6 +165,20 @@ in
     }))
   ])
 
+  (for pkgs.smpeg [
+    # GTK 2 only serves the gtv demo player, and Fil-C GTK 2 does not build
+    # (gtkbindings.c switches on GType, which is a pointer under Fil-C).
+    # SDL_mixer needs just the library.
+    (use (old: {
+      buildInputs = builtins.filter (
+        dep: !(pkgs.lib.hasPrefix "gtk+" (dep.name or ""))
+      ) old.buildInputs;
+    }))
+    (configure "--disable-gtk-player")
+    # Nixpkgs links everything with -lX11, which GTK used to provide.
+    (link final.libx11)
+  ])
+
   (for pkgs.oniguruma [
     # Hash keys and values carry pointers; ordinary longs lose capabilities.
     (patch ./patches/oniguruma-pointer-data.patch)
