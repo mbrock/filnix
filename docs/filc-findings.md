@@ -41,7 +41,9 @@ action, so a self-sent SIGSEGV kills the process (Alien::Build's
 
 doctest's self-tests use the first two, strace needs `ptrace`, and
 libseccomp's tests call `seccomp` (syscall 317). Nix is built without
-seccomp filtering.
+seccomp filtering. Catch2 and doctest run their fatal-signal handlers on a
+`sigaltstack`; their ports and consumers set `CATCH_CONFIG_NO_POSIX_SIGNALS`
+and `DOCTEST_CONFIG_NO_POSIX_SIGNALS`.
 
 ## x86 inline assembly needs an explicit "cc" clobber
 
