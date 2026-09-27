@@ -1,0 +1,32 @@
+Subject: Give format_arg_store at least two slots under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted (works around a Fil-C compiler bug)
+
+Fil-C's clang passes and returns a record that contains a union in
+registers typed from the union's IR type, so a pointer in the second
+eightbyte travels as an integer and loses its capability. A store for
+zero or one argument is 16 bytes and comes back from make_format_args as
+{ ptr, i64 }; a custom-type argument's formatter function pointer was
+then called without a capability (the wide-string xchar-test and
+enforce-checks-test, and spdlog logging one custom-type argument,
+which formats through make_format_args). A 32-byte store is returned in
+memory. basic_format_args only keeps a pointer to the array, so the
+compiled library is unaffected. See "Records containing unions are passed
+as integers" in docs/filc-findings.md.
+
+--- a/include/fmt/base.h
++++ b/include/fmt/base.h
+@@ -2398,9 +2398,12 @@
+           unsigned long long DESC>
+ struct format_arg_store {
+   // +1 to workaround a bug in gcc 7.5 that causes duplicated-branches warning.
++  // Fil-C: at least two slots, so the store is too big to be returned in
++  // registers, where Fil-C's clang passes it as integers and drops the
++  // capabilities of the pointers in its union.
+   using type =
+       conditional_t<NUM_NAMED_ARGS == 0,
+-                    arg_t<Context, NUM_ARGS>[max_of<size_t>(1, NUM_ARGS)],
++                    arg_t<Context, NUM_ARGS>[max_of<size_t>(2, NUM_ARGS)],
+                     named_arg_store<Context, NUM_ARGS, NUM_NAMED_ARGS, DESC>>;
+   type args;
+ };

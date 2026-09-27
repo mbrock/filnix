@@ -1290,6 +1290,21 @@ in
 
   # ━━━ Development Tools & Libraries ━━━
 
+  (for pkgs.fmt [
+    # Works around Fil-C's clang passing small records that contain unions
+    # as integers, which dropped the pointers in one-argument
+    # make_format_args stores (wide and custom-type formatting).
+    (patch ./patches/fmt-arg-store-in-memory.patch)
+    (use {
+      # float_test.isnan: the Fil-C runtime leaves FE_INEXACT set at start.
+      # util_test.format_system_error: allocating SIZE_MAX / 2 bytes is a
+      # Fil-C safety panic, not std::bad_alloc. See docs/filc-findings.md.
+      preCheck = ''
+        export GTEST_FILTER=-float_test.isnan:util_test.format_system_error
+      '';
+    })
+  ])
+
   (for pkgs.doctest [
     (addCFlag "-Wno-reserved-macro-identifier")
     (addCFlag "-Wl,-lm")

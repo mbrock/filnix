@@ -193,3 +193,52 @@ address lands in `keybuffer`, but the pointer is still derived from
 `keybuffer + (enc - encbuffer)`. FFmpeg 8.1 also stores its `av_log`
 callback in an `atomic_uintptr_t`, dropping the function pointer's
 capability.
+
+## Records containing unions are passed as integers
+
+Fil-C's clang sends every union argument and return value through memory,
+but a struct that *contains* a union still goes through the normal x86-64
+register classification. That picks each eightbyte's type from the union's
+IR type, so when the union's IR type is an integer and the pointer sits in
+another member, the pointer travels as `i64` and loses its capability:
+
+```c
+static int x;
+union U { long l; void *a[1]; };
+struct W { union U u; long tag; };
+struct W make(void) { struct W w; w.u.a[0] = &x; return w; } /* { i64, i64 } */
+/* make().u.a[0] has no capability; passing a W as an argument is the same */
+```
+
+Only records of at most 16 bytes are affected (larger ones go in memory).
+`std::variant<long, int *>` returned by value loses its pointer this way.
+fmt's one-argument `format_arg_store` comes back as `{ ptr, i64 }`, so a
+custom-type argument keeps its object pointer but loses its formatter
+function pointer: `fmt::vformat("{}", fmt::make_format_args(seconds(42)))`
+stops, as would spdlog, which logs through `make_format_args`, with one
+custom-type argument. fmt's own suite hit it through wide strings. Treating any record that
+contains a union the way the fork already treats a bare union, in
+`X86_64ABIInfo::classifyArgumentType` and `classifyReturnType`, would fix
+it. `patches/fmt-arg-store-in-memory.patch` makes fmt's store 32 bytes.
+
+## The runtime leaves FE_INEXACT set when `main` starts
+
+C requires the floating-point status flags to be clear at program startup.
+Under Fil-C, `fetestexcept(FE_ALL_EXCEPT)` already returns `FE_INEXACT` in
+the first constructor:
+
+```c
+int main(void) { return fetestexcept(FE_ALL_EXCEPT); } /* 0x20; 0 natively */
+```
+
+The runtime's own start-up code raises it before user code runs. fmt's
+`float_test.isnan` checks that the flags are clear and is excluded.
+
+## Unsupported: allocation failure
+
+Fil-C's allocator never returns null. A request larger than the address
+space (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`) is a safety panic in
+`malloc` and `operator new` alike, where glibc returns null and libc++
+throws `std::bad_alloc`; smaller huge requests succeed lazily (64 TiB did).
+fmt's `util_test.format_system_error` probes `std::allocator` with
+`SIZE_MAX / 2` bytes and is excluded.
