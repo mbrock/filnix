@@ -1,0 +1,48 @@
+diff --git a/lib/softoken/pkcs11c.c b/lib/softoken/pkcs11c.c
+index 7bcfe54..5a3a618 100644
+--- a/lib/softoken/pkcs11c.c
++++ b/lib/softoken/pkcs11c.c
+@@ -9120,6 +9120,16 @@ NSC_CancelFunction(CK_SESSION_HANDLE hSession)
+     return CKR_FUNCTION_NOT_PARALLEL;
+ }
+ 
++/*
++ * The saved hash state follows a 12-byte header. Pad it to pointer
++ * alignment: some contexts hold function pointers (SHA-256's compress and
++ * update), and Fil-C only carries a pointer's capability through memcpy
++ * when it stays aligned, so the restored pointers could not be called.
++ */
++#define SFTK_STATE_HEADER_LEN (sizeof(SFTKContextType) + sizeof(CK_MECHANISM_TYPE))
++#define SFTK_STATE_PAD                                    \
++    ((sizeof(void *) - SFTK_STATE_HEADER_LEN % sizeof(void *)) % sizeof(void *))
++
+ /* NSC_GetOperationState saves the state of the cryptographic
+  * operation in a session.
+  * NOTE: This code only works for digest functions for now. eventually need
+@@ -9146,7 +9156,7 @@ NSC_GetOperationState(CK_SESSION_HANDLE hSession,
+         return CKR_STATE_UNSAVEABLE;
+     }
+ 
+-    *pulOperationStateLen = context->cipherInfoLen + sizeof(CK_MECHANISM_TYPE) + sizeof(SFTKContextType);
++    *pulOperationStateLen = context->cipherInfoLen + sizeof(CK_MECHANISM_TYPE) + sizeof(SFTKContextType) + SFTK_STATE_PAD;
+     if (pOperationState == NULL) {
+         sftk_FreeSession(session);
+         return CKR_OK;
+@@ -9160,6 +9170,8 @@ NSC_GetOperationState(CK_SESSION_HANDLE hSession,
+     PORT_Memcpy(pOperationState, &context->currentMech,
+                 sizeof(CK_MECHANISM_TYPE));
+     pOperationState += sizeof(CK_MECHANISM_TYPE);
++    PORT_Memset(pOperationState, 0, SFTK_STATE_PAD);
++    pOperationState += SFTK_STATE_PAD;
+     PORT_Memcpy(pOperationState, context->cipherInfo, context->cipherInfoLen);
+     sftk_FreeSession(session);
+     return CKR_OK;
+@@ -9204,6 +9216,8 @@ NSC_SetOperationState(CK_SESSION_HANDLE hSession,
+         PORT_Memcpy(&mech.mechanism, pOperationState, sizeof(CK_MECHANISM_TYPE));
+         pOperationState += sizeof(CK_MECHANISM_TYPE);
+         sftk_Decrement(ulOperationStateLen, sizeof(CK_MECHANISM_TYPE));
++        pOperationState += SFTK_STATE_PAD;
++        sftk_Decrement(ulOperationStateLen, SFTK_STATE_PAD);
+         /* should be filled in... but not necessary for hash */
+         mech.pParameter = NULL;
+         mech.ulParameterLen = 0;
