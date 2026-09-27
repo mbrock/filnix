@@ -734,6 +734,22 @@ in
         # programs (help2man, lilypond itself) but not the targets that
         # need them. Fil-C programs run on the build machine.
         makeFlags = (old.makeFlags or [ ]) ++ [ "CROSS=no" ];
+        # handle_broken_dependencies () replaces the system's
+        # all-elements Grob_array, so the old one can be collected and
+        # deleted while this function still reads it through a reference
+        # (a use-after-free that Fil-C stops in 19 regression tests).
+        # Keep its SCM alive until the end.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace lily/system.cc \
+            --replace-fail \
+              'std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
+              'SCM all_elts_scm = all_elements ()->self_scm ();
+          std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
+            --replace-fail \
+              'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");' \
+              'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");
+          scm_remember_upto_here_1 (all_elts_scm);'
+        '';
       }))
     ];
 
