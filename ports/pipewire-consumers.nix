@@ -1,4 +1,4 @@
-# Application profiles using the shared Fil-C toolchain and PipeWire core.
+# PipeWire consumers ported against the full PipeWire package.
 {
   pkgs,
   prev,
@@ -16,11 +16,6 @@ let
     configure
     patch
     ;
-  pipewire = import ../packages/pipewire-core.nix {
-    native = pkgs;
-    p = final;
-  };
-
 in
 {
   sdl3 = for "sdl3" [
@@ -30,7 +25,6 @@ in
     (patch ../patches/sdl3-process-fork.patch)
     (patch ../patches/sdl3-testfile-buffer.patch)
     (arg {
-      inherit pipewire;
       # First pass: PipeWire/ALSA audio and X11 software rendering.
       # The GPU and alternate audio stacks have independent campaign blockers.
       drmSupport = false;
@@ -92,9 +86,6 @@ in
   ];
 
   cava = for "cava" [
-    (arg {
-      inherit pipewire;
-    })
     (configure "--disable-input-pulse")
     (use (old: {
       postPatch = (old.postPatch or "") + ''
@@ -116,7 +107,6 @@ in
     (patch ../patches/wireplumber-gtype.patch)
     (patch ../patches/wireplumber-pointer-properties.patch)
     (arg {
-      inherit pipewire;
       systemd = final.systemdLibs;
       enableDocs = false;
     })

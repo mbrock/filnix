@@ -1210,7 +1210,8 @@ in
   ])
 
   (for pkgs.pipewire [
-    # The source fixes from the core profile (packages/pipewire-core.nix).
+    # Linker-section registration, pointer capabilities and test runtime
+    # fixes; see docs/shared-library-unblocks.md.
     (patch ./patches/pipewire-log-topics.patch)
     (patch ./patches/pipewire-test-suites.patch)
     (patch ./patches/pipewire-pulse-modules.patch)
@@ -1235,6 +1236,16 @@ in
       '';
       preCheck = (old.preCheck or "") + ''
         export FUGC_THREADS="$NIX_BUILD_CORES"
+        # Two independently loaded modules share the pointer-string table
+        # (pipewire-pointer-properties.patch) under concurrent use.
+        for module in a b; do
+          $CC -shared -fPIC -I../spa/include \
+            ${./tests/pipewire-pointer-module.c} -Lspa -lspa-filc-pointers \
+            -Wl,-rpath,"$PWD/spa" -o "pointer-$module.so"
+        done
+        $CC -O2 ${./tests/pipewire-pointer-properties.c} -ldl -pthread \
+          -o pointer-check
+        timeout 30 ./pointer-check
         mesonCheckFlagsArray+=(--num-processes "$NIX_BUILD_CORES")
       '';
     }))
