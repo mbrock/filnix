@@ -128,7 +128,13 @@ behaviour outside Fil-C.
    diverted-store tail of `shell.sh` is dropped. The exception-lifetime
    skips from before batch pinned mbrock/fil-c fa8c296 are gone.
 
-The Fil-C-level findings (`RTLD_NEXT`, `syscall()`, Asio) are also in
+7. **Reload after a failed pointer CAS** (0006). Under contention, Fil-C's
+   failed `compare_exchange_strong` on a pointer can write back the winner's
+   address without its capability. `ChunkedVector::ensureChunk` returns that
+   value, so `ChunkedVector.ConcurrentAdd` sometimes trapped. The patch
+   reloads the pointer under `__FILC__`.
+
+The Fil-C-level findings (`RTLD_NEXT`, `syscall()`, Asio, pointer CAS) are also in
 [filc-findings.md](filc-findings.md).
 
 ## Bugs found in Determinate Nix
