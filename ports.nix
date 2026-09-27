@@ -358,8 +358,11 @@ in
         substituteInPlace lib/obstack.h --replace-fail \
           '__BPTR_ALIGN (sizeof (ptrdiff_t) < sizeof (void *) ? (B) : (char *) 0,' \
           '__BPTR_ALIGN ((B),'
+        substituteInPlace tests/backup.tst tests/styles.tst \
+          --replace-quiet /bin/rm rm
       '';
       doCheck = true;
+      preCheck = "patchShebangs contrib tests";
     }))
   ])
 
@@ -369,6 +372,20 @@ in
       (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
       # Guile's JIT emits machine code.
       (configure "--disable-jit")
+      # configure cannot link Fil-C's GMP; mini-gmp is plain C.
+      (configure "--enable-mini-gmp")
+      # The build platform's guile compiles the Scheme modules. As an
+      # input it would propagate its native libunistring and libgc onto
+      # the Fil-C link path, so only its programs are exposed.
+      (use (old: {
+        depsBuildBuild = [ pkgs.stdenv.cc ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [
+          (pkgs.runCommand "guile-for-build" { } ''
+            mkdir -p $out/bin
+            ln -s ${pkgs.guile_3_0}/bin/* $out/bin/
+          '')
+        ];
+      }))
     ];
   }
 
