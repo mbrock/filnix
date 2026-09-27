@@ -343,6 +343,16 @@ against the Fil-C Guile:
   modules are compiled by the build platform's Guile but run on the
   Fil-C one.
 
+Verification status of the consumer work (branch `orb/guile-consumers`,
+cherry-picked onto batch without rebuilding there): everything above
+was built and tested on the `orb/guile` base (Fil-C pin 84cf67d), in
+this order. The Guile libraries, LilyPond and Guix were built with the
+Guile patch before its last change (64-bit FFI integer arguments carry
+pointers); that change was verified only with a development build of
+libguile (the whole test suite, `foreign.test` 81/81, a `prctl` test),
+not by a Nix build. On batch, all of these packages evaluate but none
+has been built.
+
 Not tried yet: the other guile-* libraries.
 Most guile-* libraries are pure Scheme and should build like guile-json.
 Libraries with C parts that keep pointers in `scm_t_bits` storage will
