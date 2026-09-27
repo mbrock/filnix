@@ -25,6 +25,9 @@ pkgs.stdenvNoCC.mkDerivation {
     homepage = "https://github.com/pizlonator/fil-c/tree/deluge/projects/sarcasm";
     license = pkgs.lib.licenses.bsd2;
     mainProgram = "sarcasm";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
 }

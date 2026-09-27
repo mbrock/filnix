@@ -89,6 +89,9 @@ stdenv.mkDerivation {
     homepage = "https://www.erlang.org/";
     license = licenses.asl20;
     mainProgram = "erl_call";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
 }

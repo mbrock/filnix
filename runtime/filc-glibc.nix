@@ -21,7 +21,7 @@ in
       ../patches/glibc-filc-cancellation.patch
       # Honour LOCALE_ARCHIVE and NixOS' system archive, as Nixpkgs' glibc
       # does; its 2.42 writes the same archive format as 2.44.
-      "${pkgs.path}/pkgs/development/libraries/glibc/nix-locale-archive.patch"
+      (pkgs.path + "/pkgs/development/libraries/glibc/nix-locale-archive.patch")
     ];
 
     enableParallelBuilding = true;
@@ -35,7 +35,10 @@ in
       glibc.dev
     ];
 
-    postPatch = ''
+    # aarch64 has no inotify_init syscall; upstream's inotify_init.c now
+    # calls zsys_inotify_init, so this x86_64 workaround is kept only to
+    # leave the x86_64 build unchanged.
+    postPatch = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 ''
       # Add inotify_init to x86_64 syscalls.list so make-syscalls.sh generates
       # a pizlonated wrapper using zsys_inotify_init instead of using the
       # hand-written inotify_init.c which has INLINE_SYSCALL_CALL

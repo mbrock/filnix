@@ -27,7 +27,7 @@ let
     LLVM_ENABLE_ASSERTIONS = true;
     LLVM_ENABLE_WARNINGS = false;
     LLVM_ENABLE_ZSTD = false;
-    LLVM_TARGETS_TO_BUILD = "X86";
+    LLVM_TARGETS_TO_BUILD = lib.llvmTarget;
     LLVM_ENABLE_LIBXML2 = false;
     LLVM_ENABLE_LIBEDIT = false;
     LLVM_ENABLE_LIBPFM = false;

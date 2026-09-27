@@ -23,7 +23,7 @@ let
     "-DCOMPILER_RT_BUILD_XRAY=OFF"
     "-DCOMPILER_RT_BUILD_LIBFUZZER=OFF"
     "-DCOMPILER_RT_BUILD_PROFILE=OFF"
-    "-DCOMPILER_RT_DEFAULT_TARGET_TRIPLE=x86_64-linux-gnu"
+    "-DCOMPILER_RT_DEFAULT_TARGET_TRIPLE=${lib.filcArch}-linux-gnu"
   ];
 
 in
@@ -64,9 +64,9 @@ in
       mkdir -p $out/lib
 
       # Copy and rename outputs following upstream's naming convention
-      cp lib/linux/clang_rt.crtbegin-x86_64.o $out/lib/crtbegin.o
-      cp lib/linux/clang_rt.crtend-x86_64.o $out/lib/crtend.o
-      cp lib/linux/libclang_rt.builtins-x86_64.a $out/lib/libyolort.a
+      cp lib/linux/clang_rt.crtbegin-${lib.filcArch}.o $out/lib/crtbegin.o
+      cp lib/linux/clang_rt.crtend-${lib.filcArch}.o $out/lib/crtend.o
+      cp lib/linux/libclang_rt.builtins-${lib.filcArch}.a $out/lib/libyolort.a
 
       runHook postInstall
     '';

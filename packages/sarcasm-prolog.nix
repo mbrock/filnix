@@ -22,6 +22,9 @@ pkgs.writeShellApplication {
   meta = {
     description = "Experimental Prolog assembly frontend with Fil-C lowering";
     mainProgram = "sarcasm-prolog";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
 }

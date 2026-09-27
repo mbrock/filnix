@@ -43,6 +43,9 @@ stdenv.mkDerivation {
     homepage = "https://www.erlang.org/";
     license = licenses.asl20;
     mainProgram = "libei-ping-cnode";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
 }

@@ -11,6 +11,29 @@ let
   targetPlatform = pkgs.stdenv.targetPlatform.config;
   gcc-lib = "${gcc.cc}/lib/gcc/${targetPlatform}/${gcc.version}";
 
+  # The architecture Fil-C builds for; upstream's libpas/common.sh.
+  platform = pkgs.stdenv.hostPlatform;
+  filcArch =
+    if platform.isx86_64 then
+      "x86_64"
+    else if platform.isAarch64 then
+      "aarch64"
+    else
+      throw "Fil-C supports x86_64-linux and aarch64-linux, not ${platform.system}";
+  llvmTarget =
+    {
+      x86_64 = "X86";
+      aarch64 = "AArch64";
+    }
+    .${filcArch};
+  elfFormat =
+    {
+      x86_64 = "elf64-x86-64";
+      aarch64 = "elf64-littleaarch64";
+    }
+    .${filcArch};
+  dynamicLinker = "ld-fil1-${filcArch}.so";
+
   # glibc's aclocal.m4 insists on exactly this Autoconf release.
   autoconf272 = pkgs.autoconf.overrideAttrs (old: rec {
     version = "2.72";
@@ -37,7 +60,7 @@ let
     LLVM_ENABLE_ASSERTIONS = true;
     LLVM_ENABLE_WARNINGS = false;
     LLVM_ENABLE_ZSTD = false;
-    LLVM_TARGETS_TO_BUILD = "X86";
+    LLVM_TARGETS_TO_BUILD = llvmTarget;
     LLVM_ENABLE_LIBXML2 = false;
     LLVM_ENABLE_LIBEDIT = false;
     LLVM_ENABLE_LIBPFM = false;
@@ -169,6 +192,10 @@ in
     llvmMajor
     targetPlatform
     gcc-lib
+    filcArch
+    llvmTarget
+    elfFormat
+    dynamicLinker
     ;
   inherit
     autoconf272

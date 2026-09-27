@@ -247,7 +247,10 @@ let
     use (old: {
       meta = (old.meta or { }) // {
         broken = true;
-        badPlatforms = [ "x86_64-linux" ];
+        badPlatforms = [
+          "x86_64-linux"
+          "aarch64-linux"
+        ];
       };
     });
 
