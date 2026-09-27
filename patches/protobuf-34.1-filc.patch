@@ -1,0 +1,445 @@
+Subject: Port protobuf 34.1's C++ runtime to Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+- InternalMetadata, TaggedAllocationPolicyPtr and TaggedStringPtr kept or
+  returned tagged pointers as integers, which drops the capability; keep
+  pointer-typed words and tag with pointer arithmetic. ArenaAlign::Ceil
+  rounds with pointer arithmetic for the same reason (it went through a
+  uintptr_t local, which traps at -O0).
+- internal::memswap and MicroString::InternalSwap swapped objects holding
+  pointers byte by byte, so protoc trapped after moving a message; swap
+  through memcpy, which keeps capabilities when source and destination are
+  equally misaligned (memswap often starts mid-word, so its buffer is
+  offset to match).
+- Inline assembly (.reloc, empty asm barriers with pointer operands, ror
+  with a memory operand, btc, prefetch) is rejected at run time; use the
+  portable fallbacks.
+- The weak descriptor defaults walk the pb_defaults section through the
+  linker's __start_/__stop_ symbols, which Fil-C does not provide.
+- upb, the C runtime built alongside, keeps pointers in integer words
+  throughout (arena block allocators, upb_value hash entries, tagged
+  message and array pointers) and is not ported: its code generators trap,
+  so the upb tests are not built. The C++ runtime and protoc do not use it.
+
+PROTOBUF_TAILCALL and the version scripts are handled in ports.nix.
+Checked by checks.protobuf / checks.protobuf_33 (tests/protobuf.nix) and
+the upstream C++ suite.
+
+diff --git a/cmake/tests.cmake b/cmake/tests.cmake
+index 00a069b..d06c327 100644
+--- a/cmake/tests.cmake
++++ b/cmake/tests.cmake
+@@ -195,7 +195,10 @@ add_test(NAME lazily-build-dependencies-test
+   COMMAND lazily-build-dependencies-test ${protobuf_GTEST_ARGS}
+   WORKING_DIRECTORY ${protobuf_SOURCE_DIR})
+ 
+-if (protobuf_BUILD_LIBUPB)
++# Fil-C: upb (the C runtime) keeps pointers in integer words (arena block
++# allocators, upb_value hash entries, tagged message and array pointers) and
++# is not ported, so its generators trap. Skip the upb tests.
++if (FALSE)  # was: if (protobuf_BUILD_LIBUPB)
+   set(upb_test_proto_genfiles)
+   foreach(proto_file ${upb_test_protos_files} ${descriptor_proto_proto_srcs})
+     foreach(generator upb upbdefs upb_minitable)
+diff --git a/src/google/protobuf/arena_align.h b/src/google/protobuf/arena_align.h
+index 6aca167..af275d9 100644
+--- a/src/google/protobuf/arena_align.h
++++ b/src/google/protobuf/arena_align.h
+@@ -90,8 +90,10 @@ struct ArenaAlignDefault {
+ 
+   template <typename T>
+   static PROTOBUF_ALWAYS_INLINE T* Ceil(T* ptr) {
+-    uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
+-    return reinterpret_cast<T*>((intptr + align - 1) & ~(align - 1));
++    // Fil-C: round up with pointer arithmetic to keep the capability.
++    uintptr_t pad = (0 - reinterpret_cast<uintptr_t>(ptr)) & (align - 1);
++    return reinterpret_cast<T*>(
++        const_cast<char*>(reinterpret_cast<const char*>(ptr)) + pad);
+   }
+ 
+   template <typename T>
+@@ -135,8 +137,10 @@ struct ArenaAlign {
+ 
+   template <typename T>
+   T* Ceil(T* ptr) const {
+-    uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
+-    return reinterpret_cast<T*>((intptr + align - 1) & ~(align - 1));
++    // Fil-C: round up with pointer arithmetic to keep the capability.
++    uintptr_t pad = (0 - reinterpret_cast<uintptr_t>(ptr)) & (align - 1);
++    return reinterpret_cast<T*>(
++        const_cast<char*>(reinterpret_cast<const char*>(ptr)) + pad);
+   }
+ 
+   template <typename T>
+diff --git a/src/google/protobuf/arena_allocation_policy.h b/src/google/protobuf/arena_allocation_policy.h
+index 0e9132d..bc5fe68 100644
+--- a/src/google/protobuf/arena_allocation_policy.h
++++ b/src/google/protobuf/arena_allocation_policy.h
+@@ -38,23 +38,27 @@ struct AllocationPolicy {
+ };
+ 
+ // Tagged pointer to an AllocationPolicy.
++// Fil-C: kept in a pointer-typed word (tags added with pointer arithmetic) so
++// that the policy pointer keeps its capability.
+ class TaggedAllocationPolicyPtr {
+  public:
+-  constexpr TaggedAllocationPolicyPtr() : policy_(0) {}
++  constexpr TaggedAllocationPolicyPtr() : policy_(nullptr) {}
+ 
+   explicit TaggedAllocationPolicyPtr(AllocationPolicy* policy)
+-      : policy_(reinterpret_cast<uintptr_t>(policy)) {}
++      : policy_(reinterpret_cast<char*>(policy)) {}
+ 
+   void set_policy(AllocationPolicy* policy) {
+-    auto bits = policy_ & kTagsMask;
+-    policy_ = reinterpret_cast<uintptr_t>(policy) | bits;
++    auto bits = get_raw() & kTagsMask;
++    policy_ = reinterpret_cast<char*>(policy) + bits;
+   }
+ 
+   AllocationPolicy* get() {
+-    return reinterpret_cast<AllocationPolicy*>(policy_ & kPtrMask);
++    return reinterpret_cast<AllocationPolicy*>(policy_ -
++                                               (get_raw() & kTagsMask));
+   }
+   const AllocationPolicy* get() const {
+-    return reinterpret_cast<const AllocationPolicy*>(policy_ & kPtrMask);
++    return reinterpret_cast<const AllocationPolicy*>(policy_ -
++                                                     (get_raw() & kTagsMask));
+   }
+ 
+   AllocationPolicy& operator*() { return *get(); }
+@@ -70,7 +74,7 @@ class TaggedAllocationPolicyPtr {
+     set_mask<kUserOwnedInitialBlock>(v);
+   }
+ 
+-  uintptr_t get_raw() const { return policy_; }
++  uintptr_t get_raw() const { return reinterpret_cast<uintptr_t>(policy_); }
+ 
+  private:
+   enum : uintptr_t {
+@@ -82,17 +86,17 @@ class TaggedAllocationPolicyPtr {
+ 
+   template <uintptr_t kMask>
+   uintptr_t get_mask() const {
+-    return policy_ & kMask;
++    return get_raw() & kMask;
+   }
+   template <uintptr_t kMask>
+   void set_mask(bool v) {
+-    if (v) {
+-      policy_ |= kMask;
+-    } else {
+-      policy_ &= ~kMask;
++    if (v && !get_mask<kMask>()) {
++      policy_ += kMask;
++    } else if (!v && get_mask<kMask>()) {
++      policy_ -= kMask;
+     }
+   }
+-  uintptr_t policy_;
++  char* policy_;
+ };
+ 
+ }  // namespace internal
+diff --git a/src/google/protobuf/arenastring.h b/src/google/protobuf/arenastring.h
+index e9dbc4b..80d19ae 100644
+--- a/src/google/protobuf/arenastring.h
++++ b/src/google/protobuf/arenastring.h
+@@ -142,10 +142,11 @@ class PROTOBUF_EXPORT TaggedStringPtr {
+   // If the current string is a heap-allocated mutable value, returns a pointer
+   // to it.  Returns nullptr otherwise.
+   inline std::string* GetIfAllocated() const {
+-    auto allocated = as_int() ^ kAllocated;
+-    if (allocated & kMask) return nullptr;
++    if ((as_int() ^ kAllocated) & kMask) return nullptr;
+ 
+-    auto ptr = reinterpret_cast<std::string*>(allocated);
++    // Fil-C: untag with pointer arithmetic to keep the capability.
++    auto ptr = reinterpret_cast<std::string*>(static_cast<char*>(ptr_) -
++                                              kAllocated);
+     PROTOBUF_ASSUME(ptr != nullptr);
+     return ptr;
+   }
+@@ -161,7 +162,8 @@ class PROTOBUF_EXPORT TaggedStringPtr {
+ 
+   // Returns the contained string pointer.
+   inline std::string* Get() const {
+-    return reinterpret_cast<std::string*>(as_int() & ~kMask);
++    return reinterpret_cast<std::string*>(static_cast<char*>(ptr_) -
++                                          (as_int() & kMask));
+   }
+ 
+   // Returns true if the contained pointer is null, indicating some error.
+@@ -192,7 +194,7 @@ class PROTOBUF_EXPORT TaggedStringPtr {
+   inline std::string* TagAs(Type type, std::string* p) {
+     ABSL_DCHECK(p != nullptr);
+     assert_aligned(p);
+-    ptr_ = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(p) | type);
++    ptr_ = reinterpret_cast<char*>(p) + type;
+     return p;
+   }
+ 
+diff --git a/src/google/protobuf/generated_message_tctable_impl.h b/src/google/protobuf/generated_message_tctable_impl.h
+index d1e848a..622eb89 100644
+--- a/src/google/protobuf/generated_message_tctable_impl.h
++++ b/src/google/protobuf/generated_message_tctable_impl.h
+@@ -1182,7 +1182,7 @@ PROTOBUF_ALWAYS_INLINE const char* TcParser::ParseLoop(
+   // holding the value we want.
+   table += 1;
+   while (!ctx->Done(&ptr)) {
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+     // Note: this asm prevents the compiler (clang, specifically) from
+     // believing (thanks to CSE) that it needs to dedicate a register both
+     // to "table" and "&table->fast_entries".
+diff --git a/src/google/protobuf/metadata_lite.h b/src/google/protobuf/metadata_lite.h
+index df190d3..675b92d 100644
+--- a/src/google/protobuf/metadata_lite.h
++++ b/src/google/protobuf/metadata_lite.h
+@@ -44,9 +44,9 @@ namespace internal {
+ // allocation and bit 1 == 1 to indicate heap allocation.
+ class PROTOBUF_EXPORT InternalMetadata {
+  public:
+-  constexpr InternalMetadata() : ptr_(0) {}
++  constexpr InternalMetadata() : ptr_(nullptr) {}
+   explicit InternalMetadata(Arena* arena) {
+-    ptr_ = reinterpret_cast<intptr_t>(arena);
++    ptr_ = arena;
+   }
+ 
+   // Delete will delete the unknown fields only if they weren't allocated on an
+@@ -77,7 +77,7 @@ class PROTOBUF_EXPORT InternalMetadata {
+   }
+ 
+   PROTOBUF_NDEBUG_INLINE void* raw_arena_ptr() const {
+-    return reinterpret_cast<void*>(ptr_);
++    return ptr_;
+   }
+ 
+   template <typename T>
+@@ -132,7 +132,8 @@ class PROTOBUF_EXPORT InternalMetadata {
+   }
+ 
+  private:
+-  intptr_t ptr_;
++  // Fil-C: a pointer-typed word, so the capability survives the tag bit.
++  void* ptr_;
+ 
+   // Tagged pointer implementation.
+   static constexpr intptr_t kUnknownFieldsTagMask = 1;
+@@ -141,23 +142,23 @@ class PROTOBUF_EXPORT InternalMetadata {
+ 
+   // Accessors for pointer tag and pointer value.
+   PROTOBUF_ALWAYS_INLINE bool HasUnknownFieldsTag() const {
+-    return ptr_ & kUnknownFieldsTagMask;
++    return reinterpret_cast<intptr_t>(ptr_) & kUnknownFieldsTagMask;
+   }
+ 
+   template <typename U>
+   U* PtrValue() const {
+     if constexpr (std::is_same_v<U, Arena>) {
+       // No mask to remove.
+-      ABSL_DCHECK_EQ(ptr_ & kPtrTagMask, 0);
+-      return reinterpret_cast<U*>(ptr_);
++      ABSL_DCHECK_EQ(reinterpret_cast<intptr_t>(ptr_) & kPtrTagMask, 0);
++      return static_cast<U*>(ptr_);
+     } else {
+       static_assert(kPtrTagMask == 1);
+-      ABSL_DCHECK_EQ(ptr_ & kPtrTagMask, kPtrTagMask);
++      ABSL_DCHECK_EQ(reinterpret_cast<intptr_t>(ptr_) & kPtrTagMask, kPtrTagMask);
+       // We can remove the mask via -1, which is smaller asm and can be merged
+       // with other arithmetic operations.
+       // Eg PtrValue<Container>()->unknown_fields can merge the offset into the
+       // mask removal.
+-      return reinterpret_cast<U*>(ptr_ - kPtrTagMask);
++      return reinterpret_cast<U*>(static_cast<char*>(ptr_) - kPtrTagMask);
+     }
+   }
+ 
+@@ -176,7 +177,7 @@ class PROTOBUF_EXPORT InternalMetadata {
+     delete PtrValue<Container<T>>();
+     // TODO:  This store is load-bearing.  Since we are destructing
+     // the message at this point, see if we can eliminate it.
+-    ptr_ = 0;
++    ptr_ = nullptr;
+   }
+ 
+   template <typename T>
+@@ -185,8 +186,7 @@ class PROTOBUF_EXPORT InternalMetadata {
+     Container<T>* container = Arena::Create<Container<T>>(my_arena);
+     // Two-step assignment works around a bug in clang's static analyzer:
+     // https://bugs.llvm.org/show_bug.cgi?id=34198.
+-    ptr_ = reinterpret_cast<intptr_t>(container);
+-    ptr_ |= kUnknownFieldsTagMask;
++    ptr_ = reinterpret_cast<char*>(container) + kUnknownFieldsTagMask;
+     container->arena = my_arena;
+     return &(container->unknown_fields);
+   }
+diff --git a/src/google/protobuf/micro_string.h b/src/google/protobuf/micro_string.h
+index 4342e22..8279235 100644
+--- a/src/google/protobuf/micro_string.h
++++ b/src/google/protobuf/micro_string.h
+@@ -10,6 +10,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <cstring>
+ 
+ #include "absl/base/config.h"
+ #include "absl/log/absl_check.h"
+@@ -292,9 +293,18 @@ class PROTOBUF_EXPORT MicroString {
+ 
+   void InternalSwap(MicroString* other,
+                     size_t inline_capacity = kInlineCapacity) {
++#ifdef __FILC__
++    // Fil-C: a byte-wise swap drops the capability of `rep_`.
++    char tmp[kMaxInlineCapacity + 1];
++    ABSL_DCHECK_LE(inline_capacity, kMaxInlineCapacity);
++    memcpy(tmp, this, inline_capacity + 1);
++    memcpy(static_cast<void*>(this), other, inline_capacity + 1);
++    memcpy(static_cast<void*>(other), tmp, inline_capacity + 1);
++#else
+     std::swap_ranges(reinterpret_cast<char*>(this),
+                      reinterpret_cast<char*>(this) + inline_capacity + 1,
+                      reinterpret_cast<char*>(other));
++#endif
+   }
+ 
+  protected:
+diff --git a/src/google/protobuf/parse_context.h b/src/google/protobuf/parse_context.h
+index 417e147..1f919f8 100644
+--- a/src/google/protobuf/parse_context.h
++++ b/src/google/protobuf/parse_context.h
+@@ -876,14 +876,18 @@ inline const char* VarintParseSlow(const char* p, uint32_t res, uint64_t* out) {
+ template <typename V1Type>
+ PROTOBUF_FUTURE_ADD_EARLY_NODISCARD PROTOBUF_ALWAYS_INLINE V1Type
+ ValueBarrier(V1Type value1) {
++#ifndef __FILC__
+   asm("" : "+r"(value1));
++#endif
+   return value1;
+ }
+ 
+ template <typename V1Type, typename V2Type>
+ PROTOBUF_FUTURE_ADD_EARLY_NODISCARD PROTOBUF_ALWAYS_INLINE V1Type
+ ValueBarrier(V1Type value1, V2Type value2) {
++#ifndef __FILC__
+   asm("" : "+r"(value1) : "r"(value2));
++#endif
+   return value1;
+ }
+ 
+@@ -1104,7 +1108,7 @@ PROTOBUF_FUTURE_ADD_EARLY_NODISCARD
+ [[nodiscard]] PROTOBUF_ALWAYS_INLINE uint64_t
+ RotRight7AndReplaceLowByte(uint64_t res, const char byte) {
+   // TODO: remove the inline assembly
+-#if defined(__x86_64__) && defined(__GNUC__)
++#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FILC__)
+   // This will only use one register for `res`.
+   // `byte` comes as a reference to allow the compiler to generate code like:
+   //
+@@ -1146,7 +1150,7 @@ PROTOBUF_ALWAYS_INLINE const char* ReadTagInlined(const char* ptr,
+             return nullptr;
+           }
+           *out = static_cast<uint32_t>(RotateLeft(res, 28));
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+           // Note: this asm statement prevents the compiler from
+           // trying to share the "return ptr + constant" among all
+           // branches.
+diff --git a/src/google/protobuf/port.h b/src/google/protobuf/port.h
+index 14f5975..0884861 100644
+--- a/src/google/protobuf/port.h
++++ b/src/google/protobuf/port.h
+@@ -55,7 +55,7 @@ struct MessageTraitsImpl;
+ 
+ template <typename T>
+ PROTOBUF_ALWAYS_INLINE void StrongPointer(T* var) {
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+   asm("" : : "r"(var));
+ #else
+   auto volatile unused = var;
+@@ -64,7 +64,8 @@ PROTOBUF_ALWAYS_INLINE void StrongPointer(T* var) {
+ }
+ 
+ #if defined(__x86_64__) && defined(__linux__) && !defined(__APPLE__) && \
+-    !defined(__ANDROID__) && defined(__clang__) && __clang_major__ >= 19
++    !defined(__ANDROID__) && defined(__clang__) && __clang_major__ >= 19 && \
++    !defined(__FILC__)
+ // Optimized implementation for clang where we can generate a relocation without
+ // adding runtime instructions.
+ template <typename T, T ptr>
+diff --git a/src/google/protobuf/port_def.inc b/src/google/protobuf/port_def.inc
+index 1b6b41f..d520308 100644
+--- a/src/google/protobuf/port_def.inc
++++ b/src/google/protobuf/port_def.inc
+@@ -573,7 +573,8 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
+ #endif
+ #if defined(__GNUC__) && defined(__clang__) && !defined(__APPLE__) && \
+     !defined(_MSC_VER) && !defined(_WIN32) && !defined(__wasm__) &&   \
+-    !defined(__EMSCRIPTEN__)
++    !defined(__EMSCRIPTEN__) && !defined(__FILC__)
++// (Fil-C: the linker's __start_/__stop_ section symbols are not visible.)
+ #define PROTOBUF_DESCRIPTOR_WEAK_MESSAGES_ALLOWED
+ #endif
+ 
+@@ -586,7 +587,7 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
+ #ifdef PROTOBUF_PREFETCH_WITH_OFFSET
+ #error PROTOBUF_PREFETCH_WITH_OFFSET was previously defined
+ #endif
+-#if defined(__x86_64__) && defined(__GNUC__)
++#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FILC__)
+ #define PROTOBUF_PREFETCH_WITH_OFFSET(base, offset) \
+   asm("prefetcht0 " #offset "(%0)" : : "r"(base));
+ #else
+diff --git a/src/google/protobuf/repeated_ptr_field.h b/src/google/protobuf/repeated_ptr_field.h
+index 74f4800..eb8394b 100644
+--- a/src/google/protobuf/repeated_ptr_field.h
++++ b/src/google/protobuf/repeated_ptr_field.h
+@@ -25,6 +25,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstdlib>
++#include <cstring>
+ #include <iterator>
+ #include <limits>
+ #include <string>
+@@ -82,9 +83,21 @@ class AllocatedRepeatedPtrFieldBackInsertIterator;
+ // Swaps two non-overlapping blocks of memory of size `N`
+ template <size_t N>
+ inline void memswap(char* PROTOBUF_RESTRICT a, char* PROTOBUF_RESTRICT b) {
++#ifdef __FILC__
++  // Fil-C: a byte-wise swap drops the capabilities of the pointers in the
++  // blocks (messages, repeated fields); memcpy keeps them, provided source
++  // and destination are equally misaligned (`a` and `b` are the same field
++  // of two objects of one type, but may start mid-word).
++  alignas(8) char buf[N + 8];
++  char* tmp = buf + (reinterpret_cast<uintptr_t>(a) & 7);
++  memcpy(tmp, a, N);
++  memcpy(a, b, N);
++  memcpy(b, tmp, N);
++#else
+   // `PROTOBUF_RESTRICT` tells compiler that blocks do not overlapping which
+   // allows it to generate optimized code for swap_ranges.
+   std::swap_ranges(a, a + N, b);
++#endif
+ }
+ 
+ // A trait that tells offset of `T::resolver_`.
+diff --git a/src/google/protobuf/varint_shuffle.h b/src/google/protobuf/varint_shuffle.h
+index e20df33..4491ecc 100644
+--- a/src/google/protobuf/varint_shuffle.h
++++ b/src/google/protobuf/varint_shuffle.h
+@@ -132,7 +132,8 @@ ShiftMixParseVarint(const char* p, int64_t& res1) {
+   // from ptr[8].
+   if (kIs64BitVarint && (last() & 1) == 0) {
+     static constexpr int bits = 64 - 1;
+-#if defined(__GCC_ASM_FLAG_OUTPUTS__) && defined(__x86_64__)
++#if defined(__GCC_ASM_FLAG_OUTPUTS__) && defined(__x86_64__) && \
++    !defined(__FILC__)
+     // Use a small instruction since this is an uncommon code path.
+     asm("btc %[bits], %[res3]" : [res3] "+r"(res3) : [bits] "i"(bits));
+ #else

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package filnix.test;
+
+message Point {
+  int32 x = 1;
+  int32 y = 2;
+  string label = 3;
+}
+
+message Shape {
+  string name = 1;
+  repeated Point points = 2;
+  map<string, int64> tags = 3;
+  bytes blob = 4;
+  oneof kind {
+    double radius = 5;
+    Shape child = 6;
+  }
+}
+
+// Fields that alternate on the wire, so each is parsed by a separate call
+// of the table-driven parser rather than a repeated-field loop.
+message Alternating {
+  repeated int32 a = 1 [packed = false];
+  repeated string b = 2;
+}
