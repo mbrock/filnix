@@ -1,0 +1,19 @@
+diff --git a/src/lib/lttng-ust-common/lttng-ust-urcu.c b/src/lib/lttng-ust-common/lttng-ust-urcu.c
+index 8d2a23b..be87d07 100644
+--- a/src/lib/lttng-ust-common/lttng-ust-urcu.c
++++ b/src/lib/lttng-ust-common/lttng-ust-urcu.c
+@@ -75,8 +75,12 @@ void *mremap_wrapper(void *old_address __attribute__((unused)),
+ static
+ int lttng_ust_urcu_refcount;
+ 
+-/* If the headers do not support membarrier system call, fall back smp_mb. */
+-#ifdef __NR_membarrier
++/*
++ * If the headers do not support membarrier system call, fall back smp_mb.
++ * Fil-C does not support membarrier and stops the program when it is
++ * called, so use the fallback there too.
++ */
++#if defined(__NR_membarrier) && !defined(__FILC__)
+ # define membarrier(...)		syscall(__NR_membarrier, __VA_ARGS__)
+ #else
+ # define membarrier(...)		-ENOSYS

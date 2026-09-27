@@ -1,0 +1,32 @@
+diff --git a/src/lib/lttng-ust/rculfhash.c b/src/lib/lttng-ust/rculfhash.c
+index a03f442..4c51bab 100644
+--- a/src/lib/lttng-ust/rculfhash.c
++++ b/src/lib/lttng-ust/rculfhash.c
+@@ -904,7 +904,26 @@ int _lttng_ust_lfht_del(struct lttng_ust_lfht *ht, unsigned long size,
+ 	 * Knowing which wins the race will be known after the garbage
+ 	 * collection phase, stay tuned!
+ 	 */
+-	uatomic_or(&node->next, REMOVED_FLAG);
++	/*
++	 * Set the flag with a pointer-typed compare-and-swap loop rather
++	 * than uatomic_or: the compiler atomic builtins reject bitwise
++	 * operations on pointers, and under Fil-C an integer atomic on a
++	 * word that holds a pointer is not seen by later atomic pointer
++	 * loads such as rcu_dereference.
++	 */
++	{
++		struct lttng_ust_lfht_node *old_next, *ret_next;
++
++		old_next = CMM_LOAD_SHARED(node->next);
++		for (;;) {
++			ret_next = uatomic_cmpxchg(&node->next, old_next,
++				(struct lttng_ust_lfht_node *)
++					(((unsigned long) old_next) | REMOVED_FLAG));
++			if (ret_next == old_next)
++				break;
++			old_next = ret_next;
++		}
++	}
+ 	/* We performed the (logical) deletion. */
+ 
+ 	/*

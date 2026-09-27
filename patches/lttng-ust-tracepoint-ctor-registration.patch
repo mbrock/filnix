@@ -1,0 +1,97 @@
+diff --git a/include/lttng/tracepoint.h b/include/lttng/tracepoint.h
+index 9342c5c..1753710 100644
+--- a/include/lttng/tracepoint.h
++++ b/include/lttng/tracepoint.h
+@@ -540,10 +540,12 @@ extern "C" {
+  * registering only _one_ instance of the tracepoints per shared-ojbect
+  * (or for the whole main program).
+  */
++#ifndef __FILC__
+ extern struct lttng_ust_tracepoint * const __start_lttng_ust_tracepoints_ptrs[]
+ 	__attribute__((weak, visibility("hidden")));
+ extern struct lttng_ust_tracepoint * const __stop_lttng_ust_tracepoints_ptrs[]
+ 	__attribute__((weak, visibility("hidden")));
++#endif
+ 
+ /*
+  * When LTTNG_UST_TRACEPOINT_PROBE_DYNAMIC_LINKAGE is defined, we do not emit a
+@@ -596,11 +598,54 @@ extern struct lttng_ust_tracepoint * const __stop_lttng_ust_tracepoints_ptrs[]
+ 			LTTNG_UST__TRACEPOINT_UNDEFINED_REF(_provider), 	\
+ 			LTTNG_UST__TP_EXTRACT_STRING(_args),			\
+ 		};								\
++	LTTNG_UST__TRACEPOINT_PTR(_provider, _name)
++
++#ifdef __FILC__
++/*
++ * Fil-C does not provide the linker's __start_ and __stop_ section
++ * symbols (a weak reference to one is not null but crashes), so the
++ * tracepoints cannot be found by walking the lttng_ust_tracepoints_ptrs
++ * section. Each tracepoint instead registers its own pointer from a
++ * constructor that runs after lttng_ust__tracepoints__ptrs_init has
++ * looked up the registration functions, and unregisters it from a
++ * destructor that runs before lttng_ust__tracepoints__ptrs_destroy.
++ */
++#define LTTNG_UST__TRACEPOINT_PTR(_provider, _name)				\
++	static struct lttng_ust_tracepoint * const				\
++		lttng_ust_tracepoint_ptr_##_provider##___##_name =		\
++			&lttng_ust_tracepoint_##_provider##___##_name;		\
++	static void								\
++	lttng_ust_tracepoint_ptr_register_##_provider##___##_name(void)	\
++		lttng_ust_notrace						\
++		__attribute__((constructor(LTTNG_UST_CONSTRUCTOR_PRIO + 1)));	\
++	static void								\
++	lttng_ust_tracepoint_ptr_register_##_provider##___##_name(void)	\
++	{									\
++		if (lttng_ust_tracepoint_dlopen_ptr				\
++		    && lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_register) \
++			lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_register( \
++				&lttng_ust_tracepoint_ptr_##_provider##___##_name, 1); \
++	}									\
++	static void								\
++	lttng_ust_tracepoint_ptr_unregister_##_provider##___##_name(void)	\
++		lttng_ust_notrace						\
++		__attribute__((destructor(LTTNG_UST_CONSTRUCTOR_PRIO + 1)));	\
++	static void								\
++	lttng_ust_tracepoint_ptr_unregister_##_provider##___##_name(void)	\
++	{									\
++		if (lttng_ust_tracepoint_dlopen_ptr				\
++		    && lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_unregister) \
++			lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_unregister( \
++				&lttng_ust_tracepoint_ptr_##_provider##___##_name); \
++	}
++#else
++#define LTTNG_UST__TRACEPOINT_PTR(_provider, _name)				\
+ 	static struct lttng_ust_tracepoint *					\
+ 		lttng_ust_tracepoint_ptr_##_provider##___##_name			\
+ 		__attribute__((section("lttng_ust_tracepoints_ptrs"), used))		\
+ 		__lttng_ust_variable_attribute_no_sanitize_address =		\
+ 			&lttng_ust_tracepoint_##_provider##___##_name;
++#endif
+ 
+ static void
+ lttng_ust__tracepoints__ptrs_init(void)
+@@ -638,11 +683,13 @@ lttng_ust__tracepoints__ptrs_init(void)
+ 				dlsym(lttng_ust_tracepoint_dlopen_ptr->liblttngust_handle,
+ 					"lttng_ust_tp_get_destructors_state"));
+ 	lttng_ust_tracepoint__init_urcu_sym();
++#ifndef __FILC__
+ 	if (lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_register) {
+ 		lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_register(__start_lttng_ust_tracepoints_ptrs,
+ 				__stop_lttng_ust_tracepoints_ptrs -
+ 				__start_lttng_ust_tracepoints_ptrs);
+ 	}
++#endif
+ }
+ 
+ static void
+@@ -659,8 +706,10 @@ lttng_ust__tracepoints__ptrs_destroy(void)
+ 		lttng_ust_tracepoint_dlopen_ptr = &lttng_ust_tracepoint_dlopen;
+ 	if (!lttng_ust_tracepoint_destructors_syms_ptr)
+ 		lttng_ust_tracepoint_destructors_syms_ptr = &lttng_ust_tracepoint_destructors_syms;
++#ifndef __FILC__
+ 	if (lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_unregister)
+ 		lttng_ust_tracepoint_dlopen_ptr->lttng_ust_tracepoint_module_unregister(__start_lttng_ust_tracepoints_ptrs);
++#endif
+ 	if (lttng_ust_tracepoint_dlopen_ptr->liblttngust_handle
+ 			&& lttng_ust_tracepoint_destructors_syms_ptr->tracepoint_get_destructors_state
+ 			&& lttng_ust_tracepoint_destructors_syms_ptr->tracepoint_get_destructors_state()

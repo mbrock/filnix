@@ -134,6 +134,37 @@ Code that collects descriptors in a named section and walks it with
 pattern; the ports disable pattern-selected debug output or register the
 entries from constructors.
 
+Declared weak and hidden, as in `<lttng/tracepoint.h>`, the references link, but
+using one does not give a null pointer: the program jumps to a bad address
+and gets SIGSEGV. This happens for any undefined global declared both weak
+and hidden; plain weak references are null as expected:
+
+```c
+extern int x __attribute__((weak));                        /* &x == 0 */
+extern int y __attribute__((weak, visibility("hidden")));  /* &y: SIGSEGV */
+```
+
+Every lttng-ust-instrumented program crashed in its tracepoint constructor;
+`patches/lttng-ust-tracepoint-ctor-registration.patch` registers each
+tracepoint from its own constructor instead.
+
+## `get_mempolicy` checks one word too many of the node mask
+
+`zsys_get_mempolicy` checks `ceil(maxnode / 64)` words of the node mask, but
+the kernel copies `ALIGN(maxnode - 1, 64) / 8` bytes. libnuma passes its
+mask size plus one as `maxnode`, so `numa_preferred()` with a 1024-bit mask
+fails the check (136 bytes against a 128-byte mask). lttng-ust is built with
+`--disable-numa` until the runtime matches the kernel.
+
+## `membarrier` stops the program
+
+Like the syscalls in the unsupported list, `membarrier` (324) stops the
+program rather than failing with `ENOSYS`, so liburcu's memb flavor and
+lttng-ust's copy of it died in their constructors while probing it. Both
+already have a fallback for headers without `__NR_membarrier`; the ports
+use it under Fil-C (`patches/liburcu-filc.patch`,
+`patches/lttng-ust-no-membarrier.patch`).
+
 ## `dlopen` of a bare soname ignores the caller's RUNPATH
 
 `dlopen("libnss_dns.so.6662")` fails in a Fil-C program even though the
