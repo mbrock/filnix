@@ -1,0 +1,30 @@
+Subject: Make mypyc's CPyPtr a real pointer under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+mypyc emits code like `r = *(CPyPtr *)((CPyPtr)list + offsetof(PyListObject,
+ob_item)); *(PyObject **)r = item;` with CPyPtr being size_t. Fil-C drops the
+capability when a pointer is loaded from memory as an integer, so the store
+traps ("cannot write pointer with null object"), e.g. in charset-normalizer's
+compiled cd.mb_encoding_languages. Only Fil-C sees the new typedef.
+Regression check: python312Packages.charset-normalizer's test suite.
+
+--- a/mypyc/lib-rt/mypyc_util.h	2026-09-27 11:53:57.624702758 +0000
++++ b/mypyc/lib-rt/mypyc_util.h	2026-09-27 11:54:07.012759999 +0000
+@@ -120,7 +120,16 @@
+ // have the tag bit set.
+ typedef size_t CPyTagged;
+ 
++#ifdef __FILC__
++// Generated code loads pointer fields (such as PyListObject.ob_item) as
++// CPyPtr and then writes through them. Fil-C only keeps a pointer's
++// capability when it travels through memory as a pointer, so an integer
++// CPyPtr would lose it and the write would trap. A char pointer supports
++// the same offset arithmetic and casts.
++typedef char *CPyPtr;
++#else
+ typedef size_t CPyPtr;
++#endif
+ 
+ #define CPY_INT_BITS (CHAR_BIT * sizeof(CPyTagged))
+ 
