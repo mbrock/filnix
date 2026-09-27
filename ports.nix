@@ -1880,23 +1880,19 @@ in
   }
 
   (for pkgs.quickjs [
-    # bellard.org no longer serves the 2024-02-14 tarball. Upstream Fil-C's
-    # port is based on this commit of the GitHub mirror.
-    (use {
-      version = "2024-02-14";
-      src = pkgs.fetchFromGitHub {
-        owner = "bellard";
-        repo = "quickjs";
-        rev = "6e2e68fd0896957f92eb6c242a2e048c1ef3cae0";
-        hash = "sha256-ZHRRQ1uO3esbn7EUJ+zBizNeRMB54Ktn2Vo9zzmhKww=";
-      };
-      # This snapshot predates the doc/version.texi rule Nixpkgs uses to
-      # build the Info manual.
-      postBuild = "";
-      postInstall = "mkdir -p $info";
-    })
-    (patch ./ports/patch/quickjs.patch)
-    (skipCheck "some tests fail")
+    # Nixpkgs' 2026-06-04 release rather than upstream Fil-C's 2024-02-14
+    # snapshot: the old one crashed on greedy regexps under Fil-C and is far
+    # too slow for yt-dlp's challenge solver (it asks for >= 2025-04-26).
+    (patch ./patches/quickjs-2026-filc.patch)
+    # Fil-C frames are larger; the native 1 MiB JS stack limit overflows on
+    # yt-dlp's solver, which runs qjs without --stack-size.
+    (addCFlag "-DJS_DEFAULT_STACK_SIZE=4194304")
+    (use (old: {
+      # The install check reuses $out for a temporary file.
+      postInstallCheck = (old.postInstallCheck or "") + ''
+        ${builtins.placeholder "out"}/bin/qjs ${./tests/quickjs-regexp.js}
+      '';
+    }))
   ])
 
   (for pkgs.trealla [

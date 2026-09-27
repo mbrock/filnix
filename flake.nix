@@ -174,6 +174,7 @@
           inherit pkgs pkgsFilc;
         };
         boost-context = import ./tests/boost-context.nix { inherit pkgsFilc; };
+        qnode = import ./tests/qnode.nix { inherit pkgs pkgsFilc; };
         emacs-treesit = import ./tests/emacs-treesit.nix {
           inherit pkgs pkgsFilc;
         };
