@@ -1901,6 +1901,10 @@ in
     (addMesonFlag "-Dintrospection=enabled")
   ])
 
+  (for pkgs.dbus-glib [
+    (patch ./patches/dbus-glib-gtype.patch)
+  ])
+
   (for pkgs.dconf [
     (patch ./patches/dconf-filc-gtype.patch)
     # Vala is used only to generate API metadata here, not linked into dconf.

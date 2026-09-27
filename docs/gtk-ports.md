@@ -91,6 +91,11 @@ and a Gio memory stream.
 - Duktape's value-stack resize now rebases pointers from the new allocation,
   preserving offsets after realloc-triggered finalizers. A repeated large-call
   and GC check passes; downstream libproxy passes all six tests.
+- dbus-glib switches on `(uintptr_t)` GType values. Its `dbus-binding-tool`
+  needs no build-platform twin: its glue names GTypes by macro, and server
+  marshallers come from the Fil-C-targeted `glib-genmarshal`. The
+  `dbus-glib` check calls a Fil-C service with containers, variants and a
+  signal through that glue.
 - libepoxy enables EGL independently of X11 for GTK's Wayland backend.
 
 GTK enables Wayland and Broadway and disables X11. GTK4 also disables Vulkan,
