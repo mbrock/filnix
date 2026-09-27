@@ -32,7 +32,15 @@ nix build -L .#legacyPackages.x86_64-linux.pkgsFilc.determinateNixComponents.nix
   The skips are the suite's own (no daemon, no network, and so on), plus
   the tests that need this Nix to create namespaces, plus three that hit the
   Fil-C unwinding bug. These numbers are from `orb/determinate-nix`
-  (main's toolchain). BATCHRESULT
+  (main's toolchain). On `orb/determinate-nix-batch` (batch's toolchain with
+  mbrock/fil-c fa8c296, Asio fix in the global Boost), the results are:
+  - nix-util-tests: 791 pass. The decompression tests are no longer
+    skipped, and `ChunkedVector.ConcurrentAdd` is fixed by patch 0006.
+  - store 722, fetchers 31, flake 23 and expr 366 pass.
+  - Functional tests: 188 ok, 0 fail, 35 skipped, both normally and with
+    eval-cores = 8. That now includes `plugins`, `read-only-store`,
+    `binary-cache` and `multiple-outputs-substitute-failure`.
+  - race3.nix still traps (the Determinate Nix bug below).
 - **Parallel evaluation gives the same results as native Nix.** With
   eval-cores = 8 under Fil-C, the `.drv` paths match native upstream Nix
   2.35.2 in each of these:
