@@ -121,6 +121,15 @@ nix.conf check turns into an error; the Nix port passes libc's full path
 instead. Adding the sysroot lib directory to the loader's trusted
 directories would fix NSS module loading in general.
 
+## `accept` and `recvfrom` reject a length pointer with a null address
+
+`accept(fd, NULL, &len)` stops the program ("cannot write pointer with null
+object") in `handle_returned_addr`, which checks the address buffer for
+`*len` bytes whenever the length pointer is non-null. Linux ignores the
+length when the address is null, and NSPR's `PR_Accept(fd, NULL, ...)`
+relies on that; `recvfrom` shares the helper. The NSPR port passes no length
+when it wants no address (`patches/nspr-null-peer-address.patch`).
+
 ## Pointer tagging works; integer-typed storage loses capabilities
 
 Setting tag bits in a pointer is fine under Fil-C. What drops a capability
