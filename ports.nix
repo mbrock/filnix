@@ -1613,33 +1613,6 @@ in
     # Its pname is ghostscript-with-X, so name the attribute explicitly.
     ghostscript = for pkgs.ghostscript [
       (patch ./patches/ghostscript-filc.patch)
-      (use (
-        old:
-        let
-          nativeZlib = "-L${pkgs.zlib}/lib -Wl,-rpath,${pkgs.zlib}/lib";
-        in
-        {
-          # Fil-C's compiler wrapper shares its role salt with the native
-          # one, so each sees the other's -L flags. With zlib in
-          # nativeBuildInputs, -lz found the native zlib for Fil-C code.
-          # Give the native zlib only to the auxiliary tools, whose -L
-          # flags then come before Fil-C's. CUPSCONFIG already names
-          # Fil-C's cups-config.
-          nativeBuildInputs = builtins.filter (
-            dep:
-            !(builtins.elem (dep.pname or "") [
-              "zlib"
-              "cups"
-            ])
-          ) old.nativeBuildInputs;
-          CPPFLAGSAUX = "-I${pkgs.zlib.dev}/include";
-          LDFLAGSAUX = nativeZlib;
-          # The auxiliary tools link with just $(AUXEXTRALIBS).
-          preBuild = (old.preBuild or "") + ''
-            makeFlagsArray+=("AUXEXTRALIBS=${nativeZlib} -lz")
-          '';
-        }
-      ))
     ];
   }
 
