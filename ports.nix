@@ -700,12 +700,8 @@ in
     ];
 
     mailutils = for pkgs.mailutils [
-      # mariadb-connector-c does not link for Fil-C yet (its linker
-      # version script is rejected), so build without the MySQL backend.
-      (removeConfigureFlag "--with-mysql")
       # Configure finds GNU gss unusable for Fil-C.
       (removeConfigureFlag "--with-gssapi")
-      (arg { libmysqlclient = pkgs.emptyDirectory; })
       (use (old: {
         # guile-config runs an unprefixed pkg-config; give it the host's,
         # so that it reports the Fil-C guile.
