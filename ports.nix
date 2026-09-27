@@ -227,6 +227,19 @@ in
     }))
   ])
 
+  (for pkgs.smpeg [
+    # GTK 2 only serves the gtv demo player; SDL_mixer needs just the
+    # library, so keep GTK 2 out of its closure.
+    (use (old: {
+      buildInputs = builtins.filter (
+        dep: !(pkgs.lib.hasPrefix "gtk+" (dep.name or ""))
+      ) old.buildInputs;
+    }))
+    (configure "--disable-gtk-player")
+    # Nixpkgs links everything with -lX11, which GTK used to provide.
+    (link final.libx11)
+  ])
+
   (for pkgs.oniguruma [
     # Hash keys and values carry pointers; ordinary longs lose capabilities.
     (patch ./patches/oniguruma-pointer-data.patch)

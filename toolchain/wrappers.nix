@@ -88,6 +88,12 @@ rec {
   filc-cc =
     pkgs.runCommand "filc-cc"
       {
+        # Recipes list stdenv.cc.cc.lib to get GCC's runtime libraries
+        # (e.g. fluidsynth, for SDL_mixer). Fil-C's compiler has a single
+        # output; lib.getLib stdenv.cc.cc already falls back to it, so make
+        # .lib name the same derivation. The wrapper links libc++ itself.
+        passthru.lib = filc-cc;
+
         # passthru = {
         #   # Fil-C provides memory safety via bounds checking and GC, so some
         #   # hardening flags are redundant or may conflict:
