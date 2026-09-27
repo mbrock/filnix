@@ -2013,6 +2013,7 @@ in
       # Nixpkgs' 32-bit Vulkan fix targets newer releases; Vulkan is off here.
       (skipPatch "fix-32bit-VkImage-null.patch")
       (patch ./ports/patch/gtk-4.14.5.patch)
+      (patch ./patches/gtk4-broadway-node-alignment.patch)
       (link final.libdrm)
       (addMesonFlag "-Dintrospection=enabled")
       # Keep the UI toolkit independent of the optional GStreamer video
