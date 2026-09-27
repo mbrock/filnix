@@ -197,6 +197,59 @@ length when the address is null, and NSPR's `PR_Accept(fd, NULL, ...)`
 relies on that; `recvfrom` shares the helper. The NSPR port passes no length
 when it wants no address (`patches/nspr-null-peer-address.patch`).
 
+## Function descriptors bind to an interposable implementation symbol
+
+A Fil-C function `f` is exported as a small `pizlonated_f` that returns a
+descriptor, and the descriptor refers to the code through a default-visibility
+symbol, `pizlonatedFIP<n>_f`, with an `R_X86_64_64` relocation. The dynamic
+linker resolves that relocation in the global scope, so when two libraries
+define the same function, the one loaded first supplies the code for both
+descriptors. `RTLD_LOCAL` no longer isolates a library:
+
+```c
+/* liba.so: int which(void) { return 1; }   (linked into main)
+ * libb.so: int which(void) { return 2; }   (dlopened RTLD_LOCAL) */
+int (*f)(void) = dlsym(dlopen("libb.so", RTLD_LOCAL | RTLD_NOW), "which");
+f();  /* 1 under Fil-C, 2 natively */
+```
+
+sdl12-compat exposed this. It defines the SDL 1.2 API as passthroughs to
+functions it looks up with `dlsym` in an `RTLD_LOCAL` libSDL2 (sdl2-compat),
+which exports the same names. `dlsym(libSDL2, "SDL_strrchr")` returned a
+descriptor pointing back into sdl12-compat, which recursed until the stack
+overflowed. Linking the dlopened library with `-Wl,-Bsymbolic-functions`
+resolves its descriptors at link time (the sdl2-compat port does this), and
+libraries with a `local: *` version script, like SDL3, are not affected.
+Binding the descriptor to a local alias of the implementation would give
+native `dlsym` semantics.
+
+## A 55,000-line parser takes 50 minutes and 6.7 GB to compile
+
+PostgreSQL's Bison parser, `src/backend/parser/gram.c` (54,771 lines: about
+30,000 lines of tables, then `base_yyparse` with a 2,279-case action
+`switch`), took
+Fil-C's Clang 50 min 32 s (2,951 s user) and 6.7 GB peak RSS to compile. Clang
+20.1.8 without Fil-C took 1.55 s and 179 MB with the same flags (no `-O`, so
+`-O0`, plus `-ggdb` and `-fdata-sections -ffunction-sections`, as the Nixpkgs
+recipe produces). Stack samples with `eu-stack` during the compile were in
+`FilPizlonatorPass`: `Pizlonator::emitChecks` splitting blocks through
+`SplitBlockAndInsertIfElse` (then `BasicBlock::replaceSuccessorsPhiUsesWith`),
+`Pizlonator::optimizedAccessCheckOrigin` creating origin globals (each with a
+unique name from `ValueSymbolTable::makeUniqueName`), and
+`Pizlonator::getOrigin` uniquing constant structs. That points to costs
+that grow with function size, not total code size.
+
+Reproduce with the recipe's configure, `make -C src/backend
+generated-headers`, and the recipe's compile command for `gram.o`. Building
+`postgresql` for Fil-C also needs `jitSupport = false` (LLVM is out of scope)
+and a replacement for its `-flto` flag (see the libpq port).
+
+sdl12-compat hit a similar function-size cost: one startup function that
+inlines a symbol loader for each of about 340 SDL2 functions took
+873 s and 3.8 GB at `-O3`, and 30 s and 0.3 GB with the loader marked
+`noinline` (`patches/sdl12-symbol-loader.patch`; `sdl2-symbol-loader.patch`
+does the same for sdl2-compat).
+
 ## Pointer tagging works; integer-typed storage loses capabilities
 
 Setting tag bits in a pointer is fine under Fil-C. What drops a capability
