@@ -1,0 +1,58 @@
+Subject: Pass the libmariadb export map as a version script
+Origin: Filnix
+Upstream-Status: Not submitted (Fil-C specific)
+
+libmariadb.so gets its exports from mariadbclient.def, an implicit linker
+script: VERSION { ... } blocks plus "sym@libmariadbclient_18" = sym
+aliases, passed as a bare input file. Fil-C links with gold, which rejects
+VERSION in input files ("invalid use of VERSION in input file"), and the
+aliases name unmangled symbols, while Fil-C's are pizlonated_*
+("undefined symbol 'mysql_close' referenced in expression"). Fil-C's
+Clang driver maps version-script names to their pizlonated symbols, but
+only for -Wl,--version-script.
+
+Write an ordinary version script and pass it with -Wl,--version-script.
+The libmysqlclient_18, libmariadb_3 and libmariadb_3_3_5 version nodes
+stay; the libmariadbclient_18 aliases, which exist only for binaries
+linked against the old libmariadbclient.so.18, are dropped.
+
+diff --git a/cmake/export.cmake b/cmake/export.cmake
+index 5ae2b74..923b576 100644
+--- a/cmake/export.cmake
++++ b/cmake/export.cmake
+@@ -12,19 +12,13 @@ MACRO(CREATE_EXPORT_FILE op outfile version symbols alias_version)
+       SET(EXPORT_CONTENT ${EXPORT_CONTENT} "${exp_symbol}\n")
+     ENDFOREACH()
+   ELSE()
+-    SET(EXPORT_CONTENT "VERSION {\n${version} {\nglobal:\n")
++    # Fil-C: a plain version script for -Wl,--version-script (see
++    # libmariadb/CMakeLists.txt), without the alias_version symbols.
++    SET(EXPORT_CONTENT "${version} {\nglobal:\n")
+     FOREACH(exp_symbol ${symbols})
+       SET(EXPORT_CONTENT "${EXPORT_CONTENT} ${exp_symbol}\\;\n")
+     ENDFOREACH()
+     SET(EXPORT_CONTENT "${EXPORT_CONTENT}local:\n *\\;\n}\\;\n")
+-    IF ("${alias_version}" STRGREATER "")
+-      SET(EXPORT_CONTENT "${EXPORT_CONTENT}${alias_version} {\n}\\;\n}\\;\n")
+-      FOREACH(exp_symbol ${symbols})
+-        SET(EXPORT_CONTENT "${EXPORT_CONTENT}\"${exp_symbol}@${alias_version}\" = ${exp_symbol}\\;\n")
+-      ENDFOREACH()
+-    ELSE()
+-      SET(EXPORT_CONTENT "${EXPORT_CONTENT}}\\;\n")
+-    ENDIF()
+   ENDIF()
+   FILE(${op} ${CMAKE_CURRENT_BINARY_DIR}/${outfile} ${EXPORT_CONTENT})
+ ENDMACRO()
+diff --git a/libmariadb/CMakeLists.txt b/libmariadb/CMakeLists.txt
+index 43ed67b..a324737 100644
+--- a/libmariadb/CMakeLists.txt
++++ b/libmariadb/CMakeLists.txt
+@@ -464,7 +464,7 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Linux" OR
+   IF (NOT WITH_ASAN AND NOT WITH_TSAN AND NOT WITH_UBSAN AND NOT WITH_MSAN)
+     TARGET_LINK_LIBRARIES (libmariadb LINK_PRIVATE "-Wl,--no-undefined")
+   ENDIF()
+-  SET_TARGET_PROPERTIES(libmariadb PROPERTIES LINK_FLAGS "${CC_BINARY_DIR}/libmariadb/mariadbclient.def")
++  SET_TARGET_PROPERTIES(libmariadb PROPERTIES LINK_FLAGS "-Wl,--version-script=${CC_BINARY_DIR}/libmariadb/mariadbclient.def")
+ ENDIF()
+ 
+ SET_TARGET_PROPERTIES(mariadbclient PROPERTIES IMPORTED_INTERFACE_LINK_LIBRARIES "${SYSTEM_LIBS}")
