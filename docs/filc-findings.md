@@ -301,6 +301,37 @@ the bit with pointer arithmetic. oneTBB's tbbmalloc is a different problem: it
 carves objects out of raw `mmap` chunks, which have no per-object capabilities,
 so the port builds without it.
 
+NSPR's arena allocator (`PLArena`, used by all of NSS) keeps `base`, `limit`
+and `avail` as `PRUword` and hands out `(void *)a->avail`, so every arena
+allocation was a pointer without a capability. The fields are public, so
+`patches/nspr-arena-pointer-provenance.patch` keeps them and instead
+rebuilds each pointer from the arena header, which starts the block:
+`(char *)a + (a->avail - (PRUword)a)`.
+
+Copying memory keeps capabilities only for words that stay 8-byte aligned.
+`memcpy` of a struct holding a pointer to `buf + 12` and back loses the
+pointer's capability (at `buf + 8` it survives). NSS's softoken saves a
+digest's state behind a 12-byte header, and SHA-256's context holds
+function pointers, so every restored context (`PK11_CloneContext`, used
+for the TLS 1.3 transcript hash) trapped when called.
+`patches/nss-softoken-state-alignment.patch` pads the header to 16 bytes.
+
+Constant-time selection by XOR-masking two pointers cannot keep either
+capability. NSS swaps the real and fake RSA premaster keys this way
+(`ssl3_CSwapPK11SymKey`), which broke every TLS RSA key exchange;
+`patches/nss-ssl-cswap-symkey.patch` selects through a two-element array
+under Fil-C.
+
+## Huge static initializers compile very slowly
+
+A C++ global like `const std::vector<T> v = {{...}, ... }` with a few
+hundred elements builds one large constructor function, and Fil-C's
+pipeline spends most of its time in SROA (`PromoteMemToReg`) on it. 400
+elements of two small vectors each take minutes, compared with 3 seconds
+for Nixpkgs' Clang, and time grows faster than linearly. NSS's
+`pk11_gtest` and `freebl_gtest` test-vector tables took over 20 minutes per
+file, so the NSS port leaves those two gtest binaries out.
+
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 
 Not a Fil-C issue, but a bug it caught. libopenmpt 0.8.9's

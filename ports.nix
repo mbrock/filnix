@@ -326,6 +326,10 @@ in
     # PR_Accept(fd, NULL, ...) passed a length pointer with a null address,
     # which Linux ignores but Fil-C's accept rejects; pass no length.
     (patch ./patches/nspr-null-peer-address.patch)
+    # PLArena keeps its addresses as integers and PL_ARENA_ALLOCATE cast
+    # them back to pointers, which have no capability under Fil-C; NSS's
+    # first arena allocation trapped. Derive them from the arena header.
+    (patch ./patches/nspr-arena-pointer-provenance.patch)
     # Nixpkgs runs no tests; NSPR's own suite covers the atomics, threads
     # and loopback I/O (about 100 programs, a few minutes).
     (use {
@@ -337,6 +341,66 @@ in
         runHook postCheck
       '';
     })
+  ])
+
+  (for pkgs.nss [
+    # The same integer-to-pointer cast as NSPR's arenas, in NSS's
+    # arena-zeroing code.
+    (patch ./patches/nss-arena-pointer-provenance.patch)
+    # freebl's cpuid asm (cache line size for RSA) sets flags without a
+    # "cc" clobber, which Fil-C rejects when it runs.
+    (patch ./patches/nss-cpuid-cc-clobber.patch)
+    # Saved digest state put the context at offset 12, so SHA-256's
+    # function pointers lost their capabilities on the way through
+    # PK11_CloneContext and every TLS 1.3 handshake trapped. Pad the header.
+    (patch ./patches/nss-softoken-state-alignment.patch)
+    # The TLS RSA key exchange swaps the real and fake premaster keys with
+    # a constant-time XOR mask on the pointers, leaving bare integers.
+    (patch ./patches/nss-ssl-cswap-symkey.patch)
+    (use (old: {
+      # NSS keys its x86-64 assembly and intrinsics (AES-NI, PCLMUL, SHA-NI,
+      # AVX2 HACL*, the amd64 bignum and arcfour assembly) on
+      # target_arch=="x64". Build for a target NSS does not know, which
+      # selects the portable C code, and keep 64-bit words and __int128.
+      buildPhase =
+        builtins.replaceStrings [ "--target x64" ] [ "--target filc -Dhave_int128_support=1" ]
+          old.buildPhase;
+      # pk11_gtest and freebl_gtest initialize large std::vector test-vector
+      # tables in one static constructor, which takes Fil-C's pipeline over
+      # 20 minutes per file (SROA on the instrumented function). Skip them.
+      postPatch = old.postPatch + ''
+        sed -i -e '/gtests\/pk11_gtest\//d' -e '/gtests\/freebl_gtest\//d' nss.gyp
+        # selfserv listens on the preferred loopback address for
+        # "localhost" (::1 where IPv6 is up), but ssl.sh forced tstclnt to
+        # IPv4 and could never connect; let tstclnt pick the same address.
+        sed -i 's/tstclnt -4 /tstclnt /' tests/ssl/ssl.sh
+      '';
+      # Run a subset of NSS's QA suites against the build tree, before
+      # installPhase rearranges the output: ciphers, certutil and the cert
+      # database, SDR, CRMF, S/MIME, EC, and TLS coverage and client auth.
+      # tools.sh (pk12util's cipher matrix, ~800 checks) passed locally but
+      # takes over half an hour under Fil-C.
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        (
+          cd tests
+          export HOST=localhost DOMSUF=localdomain USE_IP=TRUE IP_ADDRESS=localhost
+          export DIST=$(dirname $out) OBJDIR=$(basename $out)
+          export OS_ARCH=Linux DLL_PREFIX=lib DLL_SUFFIX=so BUILT_OPT=1 USE_64=1
+          export TESTDIR=$TMPDIR/nss-tests NSS_CYCLES=standard
+          export NSS_TESTS="cipher lowhash cert dbtests sdr crmf smime ec ssl"
+          export NSS_SSL_TESTS=normal_normal NSS_SSL_RUN="cov auth"
+          ./all.sh > $TMPDIR/nss-tests.log 2>&1 || true
+        )
+        sed -n '/^Tests summary/,$p' $TMPDIR/nss-tests.log
+        if ! grep -q '^Failed: *0$' $TMPDIR/nss-tests.log; then
+          grep -E 'FAILED|Failed' $TMPDIR/nss-tests.log | head -100
+          exit 1
+        fi
+        runHook postCheck
+      '';
+    }))
   ])
 
   (for pkgs.libffi [
