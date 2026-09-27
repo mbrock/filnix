@@ -424,7 +424,12 @@ batch toolchain (fa8c296) and the previous pin, and 0 after a load. The
 single-threaded case is fine. Determinate Nix's `ChunkedVector::ensureChunk`
 returns `expected` to the thread that lost the race, so its `ConcurrentAdd`
 test sometimes trapped writing through the chunk (about 1 run in 10). The
-port reloads after a failed CAS (patch 0006).
+port reloaded after a failed CAS (patch 0006) until mbrock/fil-c 18b27e5
+fixed `filc_strong_cas_ptr_with_manual_tracking`. Its non-box path read the
+slot's `lower_or_box` and then the address. Another thread that installed
+a box in between left the new address paired with the stale (null) lower.
+The fix re-checks `lower_or_box` and retries. The reproducer is in the fork
+as `filc/tests/casexpectedcap`.
 
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 

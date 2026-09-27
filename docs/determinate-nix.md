@@ -35,7 +35,8 @@ nix build -L .#legacyPackages.x86_64-linux.pkgsFilc.determinateNixComponents.nix
   (main's toolchain). On `orb/determinate-nix-batch` (batch's toolchain with
   mbrock/fil-c fa8c296, Asio fix in the global Boost), the results are:
   - nix-util-tests: 791 pass. The decompression tests are no longer
-    skipped, and `ChunkedVector.ConcurrentAdd` is fixed by patch 0006.
+    skipped. `ChunkedVector.ConcurrentAdd` needed patch 0006 until batch
+    pinned mbrock/fil-c 18b27e5.
   - store 722, fetchers 31, flake 23 and expr 366 pass.
   - Functional tests: 188 ok, 0 fail, 35 skipped, both normally and with
     eval-cores = 8. That now includes `plugins`, `read-only-store`,
@@ -136,11 +137,11 @@ behaviour outside Fil-C.
    diverted-store tail of `shell.sh` is dropped. The exception-lifetime
    skips from before batch pinned mbrock/fil-c fa8c296 are gone.
 
-7. **Reload after a failed pointer CAS** (0006). Under contention, Fil-C's
-   failed `compare_exchange_strong` on a pointer can write back the winner's
-   address without its capability. `ChunkedVector::ensureChunk` returns that
-   value, so `ChunkedVector.ConcurrentAdd` sometimes trapped. The patch
-   reloads the pointer under `__FILC__`.
+7. **Failed pointer CAS without a capability** (fixed in the runtime).
+   Under contention, Fil-C's failed `compare_exchange_strong` on a pointer
+   could write back the winner's address without its capability, so
+   `ChunkedVector.ConcurrentAdd` sometimes trapped. Patch 0006 reloaded
+   the pointer until mbrock/fil-c 18b27e5 fixed the runtime.
 
 The Fil-C-level findings (`RTLD_NEXT`, `syscall()`, Asio, pointer CAS) are also in
 [filc-findings.md](filc-findings.md).
