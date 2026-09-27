@@ -30,6 +30,8 @@ in
   ../patches/determinate-nix/0001-Fil-C-pointer-typed-packed-Value-words.patch
   ../patches/determinate-nix/0002-Fil-C-no-__cxa_throw-interposer.patch
   ../patches/determinate-nix/0003-Fil-C-truncate-syscall-results-to-int.patch
+  ../patches/determinate-nix/0004-Fil-C-smaller-symbol-arena-no-bump-allocator-reserva.patch
+  ../patches/determinate-nix/0005-Unmap-the-symbol-table-s-arena-when-the-table-is-des.patch
 ]).overrideScope
   (
     lib.composeExtensions nixFilcOverrides (
@@ -107,6 +109,11 @@ in
             extra-experimental-features = parallel-eval
           '';
         });
+        # And with lazy trees, as the fork's CI runs them.
+        nix-functional-tests-lazy-trees = nfinal.nix-functional-tests.override {
+          pname = "nix-functional-tests-lazy-trees";
+          lazyTrees = true;
+        };
         # Boehm GC is only referenced to collect its debug output.
         nix-everything = nprev.nix-everything.override { boehmgc = final.emptyDirectory; };
       }
