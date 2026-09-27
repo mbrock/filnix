@@ -722,6 +722,12 @@ in
           substituteInPlace imap4d/list.c \
             --replace-fail "if (ref[refinfo.reflen-1] != pfx->delim" \
                            "if (refinfo.reflen > 0 && ref[refinfo.reflen-1] != pfx->delim"
+          # Its word-wrapping stream kept writing after a failed flush
+          # (EPIPE when mail --version is piped into sed, which quits
+          # after the first line), past the end of its line buffer.
+          substituteInPlace libmailutils/stream/wordwrap.c --replace-fail \
+            "	_wordwrap_flush_line (str, iptr[n]);" \
+            "	{ int rc = _wordwrap_flush_line (str, iptr[n]); if (rc) return rc; }"
           substituteInPlace testsuite/cwdrepl.c \
             --replace-fail 'size_t rest = n - start;' 'size_t rest = n - off;'
           substituteInPlace libmailutils/tests/encode2047.c \
