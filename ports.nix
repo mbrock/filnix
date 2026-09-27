@@ -125,29 +125,51 @@ in
     ];
   }
 
-  {
-    icu76 = for pkgs.icu76 [
-      (patch ./ports/patch/icu-76.1.patch)
-      (patch ./patches/icu-cross-data.patch)
-      (tool pkgs.autoreconfHook)
-      (tool pkgs.pkg-config)
-      (use {
-        # Nixpkgs unpacks into icu/source; the upstream tree has icu4c/source.
-        patchFlags = [ "-p3" ];
-        # ICU disables its upstream suite for cross builds; its "test" target
-        # is just a directory. Exercise the real target libraries explicitly.
-        doCheck = true;
-        checkPhase = ''
-          runHook preCheck
-          $CXX ${./tests/icu.cpp} -Icommon -Ii18n -Llib \
-            -Wl,-rpath,"$PWD/lib" -licui18n -licuuc -licudata -o icu-check
-          ./icu-check
-          LD_LIBRARY_PATH="$PWD/lib" ./bin/uconv -V
-          runHook postCheck
-        '';
-      })
-    ];
-  }
+  (
+    let
+      icuPort =
+        icu: patches:
+        for icu (
+          map patch patches
+          ++ [
+            (tool pkgs.autoreconfHook)
+            (tool pkgs.pkg-config)
+            (use {
+              # Nixpkgs unpacks into icu/source; the upstream tree has icu4c/source.
+              patchFlags = [ "-p3" ];
+              # ICU disables its upstream suite for cross builds; its "test" target
+              # is just a directory. Exercise the real target libraries explicitly.
+              doCheck = true;
+              checkPhase = ''
+                runHook preCheck
+                $CXX ${./tests/icu.cpp} -Icommon -Ii18n -Llib \
+                  -Wl,-rpath,"$PWD/lib" -licui18n -licuuc -licudata -o icu-check
+                ./icu-check
+                LD_LIBRARY_PATH="$PWD/lib" ./bin/uconv -V
+                runHook postCheck
+              '';
+            })
+          ]
+        );
+    in
+    {
+      icu76 = icuPort pkgs.icu76 [
+        ./ports/patch/icu-76.1.patch
+        ./patches/icu-cross-data.patch
+      ];
+      # The 78.3 refresh also applies cleanly to 77.1.
+      icu77 = icuPort pkgs.icu77 [
+        ./ports/patch/icu-78.3.patch
+        ./patches/icu-cross-data.patch
+      ];
+      # Node.js, Ladybird and onlyoffice pin ICU 78.
+      icu78 = icuPort pkgs.icu78 [
+        ./ports/patch/icu-78.3.patch
+        ./patches/icu-cross-data.patch
+        ./patches/icu-pointer-toc-alias-data.patch
+      ];
+    }
+  )
 
   {
     QuadProgpp = for pkgs.QuadProgpp [
@@ -163,6 +185,11 @@ in
         substituteInPlace tests/tests.c --replace-fail SIGABRT SIGTRAP
       '';
     }))
+  ])
+
+  (for pkgs.ada [
+    # CMake's env emulator must not replace ctest's target path lookup.
+    (patch ./patches/ada-cross-emulator-test.patch)
   ])
 
   (for pkgs.oniguruma [
