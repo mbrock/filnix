@@ -545,6 +545,12 @@ class ExperimentTests(unittest.TestCase):
         self.assertFalse(toolchain_derivation("python3.12-llvmlite-" + f + "-0.44"))
         self.assertFalse(toolchain_derivation(f + "-binutils-2.44"))
         self.assertFalse(toolchain_derivation("rustc-1.95.0", {"env": {}}))
+        from experiment.scope import V8_REASON, exclusion
+
+        self.assertEqual(exclusion("nodejs-slim-" + f + "-24.21.0", {}), V8_REASON)
+        self.assertEqual(exclusion("qtwebengine-" + f + "-6.9.2", {}), V8_REASON)
+        self.assertIsNone(exclusion("nodejs-slim-24.21.0-source-" + f, {}))
+        self.assertIsNone(exclusion("nodejs-24.21.0", {}))
         self.assertTrue(
             toolchain_derivation(
                 "rustc-1.95.0",

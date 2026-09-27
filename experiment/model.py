@@ -243,6 +243,8 @@ def refresh_candidates(db, campaign):
         (campaign,),
     )
 
+    # A package that needs an out-of-scope derivation cannot build whatever
+    # else fails, so exclusion takes precedence over being blocked.
     # Preserve observed outputs and checks; exclusion changes eligibility, not
     # the historical realization facts. Direct kernels include cached successes.
     db.execute(
@@ -256,6 +258,6 @@ def refresh_candidates(db, campaign):
           SELECT drv FROM derivations WHERE exclusion IS NOT NULL
           UNION SELECT parent FROM edges JOIN outside ON child=outside.drv)
           UPDATE candidates SET state='excluded',error=?
-          WHERE campaign=? AND state='queued' AND drv IN outside""",
+          WHERE campaign=? AND state IN ('queued','blocked') AND drv IN outside""",
         (INHERITED, campaign),
     )

@@ -19,6 +19,8 @@ from .scope import (
     RUSTC_NAME,
     TOOLCHAIN_NAME,
     TOOLCHAIN_REASON,
+    V8_NAME,
+    V8_REASON,
     kernel_metadata,
     toolchain_derivation,
 )
@@ -776,7 +778,7 @@ class Controller:
         return report
 
     def exclude_toolchains(self, cid):
-        """Mark recorded compiler toolchains out of scope (planning does this for new ones)."""
+        """Mark recorded compilers and JS engines out of scope (planning does this for new ones)."""
         campaign = self.campaign(cid)
         if campaign["mode"] != "paused":
             raise ValueError("pause the campaign before reclassifying its scope")
@@ -784,7 +786,12 @@ class Controller:
             "SELECT drv,name FROM derivations WHERE exclusion IS NULL"
         ).fetchall()
         named = [r["drv"] for r in rows if TOOLCHAIN_NAME.match(r["name"])]
-        rustc = sorted(r["drv"] for r in rows if RUSTC_NAME.match(r["name"]))
+        # Definitions that were garbage-collected cannot be inspected.
+        rustc = sorted(
+            r["drv"]
+            for r in rows
+            if RUSTC_NAME.match(r["name"]) and Path(r["drv"]).exists()
+        )
         # Only rustc targeting Fil-C is out of scope; inspect definitions.
         for i in range(0, len(rustc), 64):
             data = nix.normalize_graph(nix.query("derivation", "show", *rustc[i : i + 64]))
@@ -793,10 +800,12 @@ class Controller:
                 for drv, info in data.items()
                 if toolchain_derivation(info.get("name", ""), info)
             )
+        engines = [r["drv"] for r in rows if V8_NAME.match(r["name"])]
         with self.db:
             self.db.executemany(
                 "UPDATE derivations SET exclusion=? WHERE drv=? AND exclusion IS NULL",
-                [(TOOLCHAIN_REASON, d) for d in named],
+                [(TOOLCHAIN_REASON, d) for d in named]
+                + [(V8_REASON, d) for d in engines],
             )
             before = dict(
                 self.db.execute(
@@ -820,7 +829,7 @@ class Controller:
             report = dict(
                 reason=TOOLCHAIN_REASON,
                 runner_version=VERSION,
-                derivations=sorted(named),
+                derivations=sorted(named + engines),
                 excluded=after.get("excluded", 0) - before.get("excluded", 0),
                 blocked=after.get("blocked", 0) - before.get("blocked", 0),
             )

@@ -19,6 +19,15 @@ TOOLCHAIN_NAME = re.compile(
     rf"|(?:llvm|clang|compiler-rt|compiler-rt-libc|lld|mlir|libclang|clang-tools|libllvm|polly|openmp)-{FILC}"
     r")-\d"
 )
+# V8 (Node.js) and Chromium (Electron, QtWebEngine) rely on JIT compilation,
+# pointer compression and tagged pointers; porting them is out of scope.
+V8_REASON = (
+    "V8 or Chromium (Node.js, Electron, QtWebEngine); a JIT JavaScript engine "
+    "outside the experiment's scope"
+)
+V8_NAME = re.compile(
+    rf"^(?!.*-source)(?:nodejs|nodejs-slim|electron-unwrapped|qtwebengine)-{FILC}-\d"
+)
 RUSTC_NAME = re.compile(r"^rustc(?:-unwrapped)?-\d")
 
 
@@ -71,4 +80,6 @@ def exclusion(name, info):
         return REASON
     if toolchain_derivation(name, info):
         return TOOLCHAIN_REASON
+    if V8_NAME.match(name or ""):
+        return V8_REASON
     return None
