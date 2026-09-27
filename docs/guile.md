@@ -289,14 +289,17 @@ against the Fil-C Guile:
 - **LilyPond** (2.26.0) builds (`ports.nix`: `CROSS=no` so the build
   runs the Fil-C `lilypond` and `help2man`, TeX from the build platform,
   `guile` as a host library). It engraves correctly (score rendered to
-  SVG, PDF and MIDI). Of LilyPond's 2,139 regression inputs,
-  compiled to SVG one by one: 2,074 succeed, 4 fail for want of image
-  files or the like, and 19 trap on the same use-after-free, a freed
-  `vector<Grob*>` read in `System::do_break_substitution_and_fixup_refpoints`
-  (`system.cc:191`). LilyPond relies on SMOB mark functions and libgc's
-  ordered finalization, neither of which the libgc shim provides
-  (`docs/boehm-on-fugc.md`), which is the likely cause; not investigated
-  further. The wrapper currently puts the build platform's `gs` on
+  SVG, PDF and MIDI). Of LilyPond's regression inputs, compiled to SVG
+  one by one, 2,093 succeed and 4 fail because they need image or
+  include files next to the output. 19 at first trapped on a
+  use-after-free in `System::do_break_substitution_and_fixup_refpoints`:
+  `handle_broken_dependencies ()` replaces the system's `all-elements`
+  Grob_array, and the function then reads the old one through a C++
+  reference while nothing keeps its SMOB alive, so the collector
+  finalizes (deletes) it. With libgc the object usually survives because
+  collections are rare and the stack is scanned conservatively. The port
+  keeps the SCM alive until the end of the function (`ports.nix`), and
+  all 19 pass. The wrapper currently puts the build platform's `gs` on
   `PATH` for PDF output, because the Fil-C `ghostscript-with-X` fails
   its configure (its `-lz` test links the build platform's zlib). Large
   scores are slow: `accidental-styles.ly` takes 2.5 minutes, mostly in
