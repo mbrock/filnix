@@ -35,6 +35,15 @@ in
     }))
   ])
 
+  (for "mypy" [
+    # mypyc-generated C loads pointer fields as the integer type CPyPtr and
+    # writes through them, which loses the Fil-C capability and traps (e.g.
+    # charset-normalizer's compiled modules). These overrides also reach the
+    # build platform's mypy, which is the one that runs mypyc for Fil-C
+    # packages; the typedef change only applies when compiling with Fil-C.
+    (patch ./patches/mypyc-filc-pointer-cpyptr.patch)
+  ])
+
   (for "pybind11" [
     (use {
       # The CMake check target runs pytest with the build platform's Python,
