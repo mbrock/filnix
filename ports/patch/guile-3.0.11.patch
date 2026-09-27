@@ -1,0 +1,1956 @@
+--- a/libguile/atomics-internal.h
++++ b/libguile/atomics-internal.h
+@@ -45,43 +45,39 @@
+   atomic_uint_least32_t *a_loc = (atomic_uint_least32_t *) loc;
+   return atomic_compare_exchange_weak (a_loc, expected, desired);
+ }
++/* Pointers and SCM values are accessed with pointer-typed atomics, not
++   atomic_uintptr_t, so that Fil-C keeps their capabilities.  */
+ static inline void
+ scm_atomic_set_pointer (void **loc, void *val)
+ {
+-  atomic_uintptr_t *a_loc = (atomic_uintptr_t *) loc;
+-  atomic_store (a_loc, (uintptr_t) val);
++  __atomic_store_n (loc, val, __ATOMIC_SEQ_CST);
+ }
+ static inline void *
+ scm_atomic_ref_pointer (void **loc)
+ {
+-  atomic_uintptr_t *a_loc = (atomic_uintptr_t *) loc;
+-  return (void *) atomic_load (a_loc);
++  return __atomic_load_n (loc, __ATOMIC_SEQ_CST);
+ }
+ static inline void
+ scm_atomic_set_scm (SCM *loc, SCM val)
+ {
+-  atomic_uintptr_t *a_loc = (atomic_uintptr_t *) loc;
+-  atomic_store (a_loc, SCM_UNPACK (val));
++  __atomic_store_n (loc, val, __ATOMIC_SEQ_CST);
+ }
+ static inline SCM
+ scm_atomic_ref_scm (SCM *loc)
+ {
+-  atomic_uintptr_t *a_loc = (atomic_uintptr_t *) loc;
+-  return SCM_PACK (atomic_load (a_loc));
++  return __atomic_load_n (loc, __ATOMIC_SEQ_CST);
+ }
+ static inline SCM
+ scm_atomic_swap_scm (SCM *loc, SCM val)
+ {
+-  atomic_uintptr_t *a_loc = (atomic_uintptr_t *) loc;
+-  return SCM_PACK (atomic_exchange (a_loc, SCM_UNPACK (val)));
++  return __atomic_exchange_n (loc, val, __ATOMIC_SEQ_CST);
+ }
+ static inline SCM
+ scm_atomic_compare_and_swap_scm (SCM *loc, SCM expected, SCM desired)
+ {
+-  atomic_uintptr_t *a_loc = (atomic_uintptr_t *) loc;
+   SCM result = expected;
+-  atomic_compare_exchange_strong (a_loc, (uintptr_t *) &result,
+-                                  SCM_UNPACK (desired));
++  __atomic_compare_exchange_n (loc, &result, desired, 0,
++                               __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+   return result;
+ }
+ #else /* HAVE_STDATOMIC_H */
+--- a/libguile/bdw-gc.h
++++ b/libguile/bdw-gc.h
+@@ -61,5 +61,45 @@
+    ? GC_GENERAL_REGISTER_DISAPPEARING_LINK ((link), (obj))	\
+    : 0)
+ 
++/* Weak references.  Boehm keeps weak references in memory that it does
++   not trace (atomic objects or typed objects with a bitmap).  Fil-C's
++   collector traces every pointer-typed word precisely, and a pointer
++   stored as an integer loses its capability.  So under Fil-C a weak
++   slot holds an integer that has no capability (the collector ignores
++   it), obtained from a weak exact pointer table, and reading the slot
++   turns it back into a pointer through that table.  If the object has
++   died, the table gives NULL, as if its disappearing link had already
++   been cleared.  Without Fil-C both operations are the identity.  */
++#ifdef __FILC__
++#include <stdfil.h>
++#include "libguile/scm.h"
++
++SCM_INTERNAL zexact_ptrtable *scm_i_weak_refs;
++
++static inline SCM
++scm_i_weak_hide (SCM x)
++{
++  if (SCM_UNPACK (x) && SCM_HEAP_OBJECT_P (x))
++    return SCM_PACK ((scm_t_bits) zexact_ptrtable_encode (scm_i_weak_refs,
++                                                          SCM_UNPACK_POINTER (x)));
++  return x;
++}
++
++static inline SCM
++scm_i_weak_reveal (SCM x)
++{
++  if (SCM_UNPACK (x) && SCM_HEAP_OBJECT_P (x) && !zhasvalidcap (x))
++    {
++      void *p = zexact_ptrtable_decode (scm_i_weak_refs, SCM_UNPACK (x));
++      /* A dead object decodes to its address without a capability.  */
++      return zhasvalidcap (p) ? SCM_PACK_POINTER (p) : SCM_PACK (0);
++    }
++  return x;
++}
++#else
++#define scm_i_weak_hide(x) (x)
++#define scm_i_weak_reveal(x) (x)
++#endif
++
+ 
+ #endif /* SCM_BDW_GC_H */
+--- a/libguile/bitvectors.c
++++ b/libguile/bitvectors.c
+@@ -724,8 +724,14 @@
+       if (0 == bshift)
+         memcpy (v_bits, kv_bits + wshift, wlen*sizeof(uint32_t));
+       else
+-        for (size_t i = 0; i < wlen; ++i)
+-          v_bits[i] = (kv_bits[i + wshift] >> bshift) | (kv_bits[i + wshift + 1] << (32-bshift));
++        {
++          /* Don't read past the last word of BV.  */
++          size_t kv_wlen = (BITVECTOR_LENGTH (bv) + 31u) / 32u;
++          for (size_t i = 0; i < wlen; ++i)
++            v_bits[i] = (kv_bits[i + wshift] >> bshift)
++              | (i + wshift + 1 < kv_wlen
++                 ? kv_bits[i + wshift + 1] << (32-bshift) : 0);
++        }
+     }
+ 
+   return result;
+--- a/libguile/cache-internal.h
++++ b/libguile/cache-internal.h
+@@ -33,8 +33,8 @@
+    sorted vector.  */
+ struct scm_cache_entry
+ {
+-  scm_t_bits key;
+-  scm_t_bits value;
++  SCM key;    /* Pointer-typed, so that Fil-C keeps capabilities.  */
++  SCM value;
+ };
+ 
+ #define SCM_CACHE_SIZE 16
+@@ -79,10 +79,10 @@
+   scm_t_bits k_bits = SCM_UNPACK (k);
+   struct scm_cache_entry *entry = cache->entries;
+   /* Unrolled binary search, compiled to branchless cmp + cmov chain.  */
+-  if (entry[8].key <= k_bits) entry += 8;
+-  if (entry[4].key <= k_bits) entry += 4;
+-  if (entry[2].key <= k_bits) entry += 2;
+-  if (entry[1].key <= k_bits) entry += 1;
++  if (SCM_UNPACK (entry[8].key) <= k_bits) entry += 8;
++  if (SCM_UNPACK (entry[4].key) <= k_bits) entry += 4;
++  if (SCM_UNPACK (entry[2].key) <= k_bits) entry += 2;
++  if (SCM_UNPACK (entry[1].key) <= k_bits) entry += 1;
+   return entry;
+ }
+ 
+@@ -95,16 +95,16 @@
+   if (scm_cache_full_p (cache))
+     scm_cache_evict_1 (cache, evicted);
+   entry = scm_cache_lookup (cache, k);
+-  if (entry->key == SCM_UNPACK (k))
++  if (scm_is_eq (entry->key, k))
+     {
+-      entry->value = SCM_UNPACK (v);
++      entry->value = v;
+       return;
+     }
+   memmove (cache->entries,
+            cache->entries + 1,
+            (entry - cache->entries) * sizeof (*entry));
+-  entry->key = SCM_UNPACK (k);
+-  entry->value = SCM_UNPACK (v);
++  entry->key = k;
++  entry->value = v;
+ }
+ 
+ #endif /* SCM_CACHE_INTERNAL_H */
+--- a/libguile/continuations.c
++++ b/libguile/continuations.c
+@@ -191,7 +191,15 @@
+   SCM_STACKITEM * src;
+ 
+   SCM_FLUSH_REGISTER_WINDOWS;
++#ifdef __FILC__
++  /* Fil-C does not let a program read or rewrite its C stack.  Capture
++     only the VM state; the continuation can be reinstated as long as
++     the VM entry that captured it is still active, which covers
++     continuations captured and invoked within Scheme code.  */
++  stack_size = 0;
++#else
+   stack_size = scm_stack_size (thread->continuation_base);
++#endif
+   continuation = scm_gc_malloc (sizeof (scm_t_contregs)
+ 				+ (stack_size - 1) * sizeof (SCM_STACKITEM),
+ 				"continuation");
+@@ -204,6 +212,7 @@
+   continuation->offset = continuation->stack - src;
+   memcpy (continuation->stack, src, sizeof (SCM_STACKITEM) * stack_size);
+   memcpy (continuation->jmpbuf, thread->vm.registers, sizeof (jmp_buf));
++  continuation->registers = thread->vm.registers;
+   continuation->vm_cont = vm_cont;
+   capture_auxiliary_stack (thread, continuation);
+ 
+@@ -306,7 +315,11 @@
+   scm_dynstack_wind (&thread->dynstack, joint);
+ 
+   thread->vm.mra_after_abort = mra;
++#ifdef __FILC__
++  longjmp (*continuation->registers, 1);
++#else
+   longjmp (continuation->jmpbuf, 1);
++#endif
+ }
+ 
+ /* Call grow_stack until the stack space is large enough, then, as the current
+@@ -321,7 +334,9 @@
+   SCM_STACKITEM *dst = thread->continuation_base;
+   SCM_STACKITEM stack_top_element;
+ 
+-#if SCM_STACK_GROWS_UP
++#ifdef __FILC__
++  /* Nothing to copy (see scm_i_make_continuation).  */
++#elif SCM_STACK_GROWS_UP
+   if (dst + continuation->num_stack_items >= &stack_top_element)
+     grow_stack (cont, mra);
+ #else
+--- a/libguile/continuations.h
++++ b/libguile/continuations.h
+@@ -47,6 +47,7 @@
+ typedef struct 
+ {
+   jmp_buf jmpbuf;
++  jmp_buf *registers;       /* The VM entry's registers (Fil-C).  */
+ #if SCM_HAVE_AUXILIARY_STACK
+   void *auxiliary_stack;
+   unsigned long auxiliary_stack_size;
+--- a/libguile/dynstack.c
++++ b/libguile/dynstack.c
+@@ -43,30 +43,36 @@
+ 
+ 
+ 
++/* Entry words hold SCM values and C pointers.  Under Fil-C they keep
++   their capabilities only if they are stored and loaded as pointers, so
++   they are accessed through these.  */
++#define WORD(top, n) (((SCM *) (top))[n])
++#define PTR_WORD(top, n) (((void **) (top))[n])
++
+ #define PROMPT_WORDS 6
+-#define PROMPT_KEY(top) (SCM_PACK ((top)[0]))
+-#define PROMPT_FP(top) ((ptrdiff_t) ((top)[1]))
+-#define SET_PROMPT_FP(top, fp) do { top[1] = (scm_t_bits)(fp); } while (0)
+-#define PROMPT_SP(top) ((ptrdiff_t) ((top)[2]))
+-#define SET_PROMPT_SP(top, sp) do { top[2] = (scm_t_bits)(sp); } while (0)
+-#define PROMPT_VRA(top) ((uint32_t *) ((top)[3]))
+-#define PROMPT_MRA(top) ((uint8_t *) ((top)[4]))
+-#define PROMPT_JMPBUF(top) ((jmp_buf *) ((top)[5]))
++#define PROMPT_KEY(top) (WORD (top, 0))
++#define PROMPT_FP(top) ((ptrdiff_t) SCM_UNPACK (WORD (top, 1)))
++#define SET_PROMPT_FP(top, fp) do { WORD (top, 1) = SCM_PACK (fp); } while (0)
++#define PROMPT_SP(top) ((ptrdiff_t) SCM_UNPACK (WORD (top, 2)))
++#define SET_PROMPT_SP(top, sp) do { WORD (top, 2) = SCM_PACK (sp); } while (0)
++#define PROMPT_VRA(top) ((uint32_t *) PTR_WORD (top, 3))
++#define PROMPT_MRA(top) ((uint8_t *) PTR_WORD (top, 4))
++#define PROMPT_JMPBUF(top) ((jmp_buf *) PTR_WORD (top, 5))
+ 
+ #define WINDER_WORDS 2
+-#define WINDER_PROC(top) ((scm_t_guard) ((top)[0]))
+-#define WINDER_DATA(top) ((void *) ((top)[1]))
++#define WINDER_PROC(top) ((scm_t_guard) PTR_WORD (top, 0))
++#define WINDER_DATA(top) (PTR_WORD (top, 1))
+ 
+ #define DYNWIND_WORDS 2
+-#define DYNWIND_ENTER(top) (SCM_PACK ((top)[0]))
+-#define DYNWIND_LEAVE(top) (SCM_PACK ((top)[1]))
++#define DYNWIND_ENTER(top) (WORD (top, 0))
++#define DYNWIND_LEAVE(top) (WORD (top, 1))
+ 
+ #define WITH_FLUID_WORDS 2
+-#define WITH_FLUID_FLUID(top) (SCM_PACK ((top)[0]))
+-#define WITH_FLUID_VALUE_BOX(top) (SCM_PACK ((top)[1]))
++#define WITH_FLUID_FLUID(top) (WORD (top, 0))
++#define WITH_FLUID_VALUE_BOX(top) (WORD (top, 1))
+ 
+ #define DYNAMIC_STATE_WORDS 1
+-#define DYNAMIC_STATE_STATE_BOX(top) (SCM_PACK ((top)[0]))
++#define DYNAMIC_STATE_STATE_BOX(top) (WORD (top, 0))
+ 
+ 
+ 
+@@ -77,7 +83,7 @@
+   size_t i;
+ 
+   for (i = 0; i < n; i++)
+-    dst[i] = src[i];
++    WORD (dst, i) = WORD (src, i);
+ }
+ 
+ static void
+@@ -86,7 +92,7 @@
+   size_t i;
+ 
+   for (i = 0; i < n; i++)
+-    items[i] = 0;
++    WORD (items, i) = SCM_PACK (0);
+ }
+ 
+ /* Ensure space for N additional words.  */
+@@ -157,8 +163,8 @@
+ 
+   words = push_dynstack_entry (dynstack, SCM_DYNSTACK_TYPE_REWINDER, flags,
+                                WINDER_WORDS);
+-  words[0] = (scm_t_bits) proc;
+-  words[1] = (scm_t_bits) data;
++  PTR_WORD (words, 0) = (void *) proc;
++  PTR_WORD (words, 1) = data;
+ }
+ 
+ void
+@@ -170,8 +176,8 @@
+ 
+   words = push_dynstack_entry (dynstack, SCM_DYNSTACK_TYPE_UNWINDER, flags,
+                                WINDER_WORDS);
+-  words[0] = (scm_t_bits) proc;
+-  words[1] = (scm_t_bits) data;
++  PTR_WORD (words, 0) = (void *) proc;
++  PTR_WORD (words, 1) = data;
+ }
+ 
+ /* The fluid is stored on the stack, but the value has to be stored on the heap,
+@@ -191,8 +197,8 @@
+ 
+   words = push_dynstack_entry (dynstack, SCM_DYNSTACK_TYPE_WITH_FLUID, 0,
+                                WITH_FLUID_WORDS);
+-  words[0] = SCM_UNPACK (fluid);
+-  words[1] = SCM_UNPACK (value_box);
++  WORD (words, 0) = fluid;
++  WORD (words, 1) = value_box;
+ 
+   /* Go ahead and swap them.  */
+   scm_swap_fluid (fluid, value_box, dynamic_state);
+@@ -209,12 +215,12 @@
+ 
+   words = push_dynstack_entry (dynstack, SCM_DYNSTACK_TYPE_PROMPT, flags,
+                                PROMPT_WORDS);
+-  words[0] = SCM_UNPACK (key);
+-  words[1] = (scm_t_bits) fp_offset;
+-  words[2] = (scm_t_bits) sp_offset;
+-  words[3] = (scm_t_bits) vra;
+-  words[4] = (scm_t_bits) mra;
+-  words[5] = (scm_t_bits) registers;
++  WORD (words, 0) = key;
++  WORD (words, 1) = SCM_PACK (fp_offset);
++  WORD (words, 2) = SCM_PACK (sp_offset);
++  PTR_WORD (words, 3) = vra;
++  PTR_WORD (words, 4) = mra;
++  PTR_WORD (words, 5) = registers;
+ }
+ 
+ void
+@@ -224,8 +230,8 @@
+ 
+   words = push_dynstack_entry (dynstack, SCM_DYNSTACK_TYPE_DYNWIND, 0,
+                                DYNWIND_WORDS);
+-  words[0] = SCM_UNPACK (enter);
+-  words[1] = SCM_UNPACK (leave);
++  WORD (words, 0) = enter;
++  WORD (words, 1) = leave;
+ }
+ 
+ static inline scm_t_bits
+@@ -260,7 +266,7 @@
+   state_box = scm_make_variable (scm_set_current_dynamic_state (state));
+   words = push_dynstack_entry (dynstack, SCM_DYNSTACK_TYPE_DYNAMIC_STATE, 0,
+                                DYNAMIC_STATE_WORDS);
+-  words[0] = SCM_UNPACK (state_box);
++  WORD (words, 0) = state_box;
+ }
+ 
+ void
+--- a/libguile/expand.c
++++ b/libguile/expand.c
+@@ -1613,8 +1613,7 @@
+   }
+ 
+   return scm_c_make_struct (scm_exp_vtable_vtable, 0, 5,
+-                            SCM_UNPACK (layout), SCM_UNPACK (printer), SCM_UNPACK (name),
+-                            SCM_UNPACK (code), SCM_UNPACK (fields));
++                            layout, printer, name, code, fields);
+ }
+ 
+ void
+--- a/libguile/expand.h
++++ b/libguile/expand.h
+@@ -91,7 +91,7 @@
+     SCM_NUM_EXPANDED_VOID_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_VOID(src) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_VOID], 0, SCM_NUM_EXPANDED_VOID_FIELDS, SCM_UNPACK (src))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_VOID], 0, SCM_NUM_EXPANDED_VOID_FIELDS, src)
+ 
+ #define SCM_EXPANDED_CONST_TYPE_NAME "const"
+ #define SCM_EXPANDED_CONST_FIELD_NAMES          \
+@@ -103,7 +103,7 @@
+     SCM_NUM_EXPANDED_CONST_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_CONST(src, exp) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_CONST], 0, SCM_NUM_EXPANDED_CONST_FIELDS, SCM_UNPACK (src), SCM_UNPACK (exp))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_CONST], 0, SCM_NUM_EXPANDED_CONST_FIELDS, src, exp)
+ 
+ #define SCM_EXPANDED_PRIMITIVE_REF_TYPE_NAME "primitive-ref"
+ #define SCM_EXPANDED_PRIMITIVE_REF_FIELD_NAMES  \
+@@ -115,7 +115,7 @@
+     SCM_NUM_EXPANDED_PRIMITIVE_REF_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_PRIMITIVE_REF(src, name) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_PRIMITIVE_REF], 0, SCM_NUM_EXPANDED_PRIMITIVE_REF_FIELDS, SCM_UNPACK (src), SCM_UNPACK (name))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_PRIMITIVE_REF], 0, SCM_NUM_EXPANDED_PRIMITIVE_REF_FIELDS, src, name)
+ 
+ #define SCM_EXPANDED_LEXICAL_REF_TYPE_NAME "lexical-ref"
+ #define SCM_EXPANDED_LEXICAL_REF_FIELD_NAMES    \
+@@ -128,7 +128,7 @@
+     SCM_NUM_EXPANDED_LEXICAL_REF_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_LEXICAL_REF(src, name, gensym) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LEXICAL_REF], 0, SCM_NUM_EXPANDED_LEXICAL_REF_FIELDS, SCM_UNPACK (src), SCM_UNPACK (name), SCM_UNPACK (gensym))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LEXICAL_REF], 0, SCM_NUM_EXPANDED_LEXICAL_REF_FIELDS, src, name, gensym)
+ 
+ #define SCM_EXPANDED_LEXICAL_SET_TYPE_NAME "lexical-set"
+ #define SCM_EXPANDED_LEXICAL_SET_FIELD_NAMES    \
+@@ -142,7 +142,7 @@
+     SCM_NUM_EXPANDED_LEXICAL_SET_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_LEXICAL_SET(src, name, gensym, exp) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LEXICAL_SET], 0, SCM_NUM_EXPANDED_LEXICAL_SET_FIELDS, SCM_UNPACK (src), SCM_UNPACK (name), SCM_UNPACK (gensym), SCM_UNPACK (exp))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LEXICAL_SET], 0, SCM_NUM_EXPANDED_LEXICAL_SET_FIELDS, src, name, gensym, exp)
+ 
+ #define SCM_EXPANDED_MODULE_REF_TYPE_NAME "module-ref"
+ #define SCM_EXPANDED_MODULE_REF_FIELD_NAMES     \
+@@ -156,7 +156,7 @@
+     SCM_NUM_EXPANDED_MODULE_REF_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_MODULE_REF(src, mod, name, public) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_MODULE_REF], 0, SCM_NUM_EXPANDED_MODULE_REF_FIELDS, SCM_UNPACK (src), SCM_UNPACK (mod), SCM_UNPACK (name), SCM_UNPACK (public))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_MODULE_REF], 0, SCM_NUM_EXPANDED_MODULE_REF_FIELDS, src, mod, name, public)
+ 
+ #define SCM_EXPANDED_MODULE_SET_TYPE_NAME "module-set"
+ #define SCM_EXPANDED_MODULE_SET_FIELD_NAMES     \
+@@ -171,7 +171,7 @@
+     SCM_NUM_EXPANDED_MODULE_SET_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_MODULE_SET(src, mod, name, public, exp) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_MODULE_SET], 0, SCM_NUM_EXPANDED_MODULE_SET_FIELDS, SCM_UNPACK (src), SCM_UNPACK (mod), SCM_UNPACK (name), SCM_UNPACK (public), SCM_UNPACK (exp))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_MODULE_SET], 0, SCM_NUM_EXPANDED_MODULE_SET_FIELDS, src, mod, name, public, exp)
+ 
+ #define SCM_EXPANDED_TOPLEVEL_REF_TYPE_NAME "toplevel-ref"
+ #define SCM_EXPANDED_TOPLEVEL_REF_FIELD_NAMES   \
+@@ -184,7 +184,7 @@
+     SCM_NUM_EXPANDED_TOPLEVEL_REF_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_TOPLEVEL_REF(src, mod, name) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_TOPLEVEL_REF], 0, SCM_NUM_EXPANDED_TOPLEVEL_REF_FIELDS, SCM_UNPACK (src), SCM_UNPACK (mod), SCM_UNPACK (name))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_TOPLEVEL_REF], 0, SCM_NUM_EXPANDED_TOPLEVEL_REF_FIELDS, src, mod, name)
+ 
+ #define SCM_EXPANDED_TOPLEVEL_SET_TYPE_NAME "toplevel-set"
+ #define SCM_EXPANDED_TOPLEVEL_SET_FIELD_NAMES   \
+@@ -198,7 +198,7 @@
+     SCM_NUM_EXPANDED_TOPLEVEL_SET_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_TOPLEVEL_SET(src, mod, name, exp) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_TOPLEVEL_SET], 0, SCM_NUM_EXPANDED_TOPLEVEL_SET_FIELDS, SCM_UNPACK (src), SCM_UNPACK (mod), SCM_UNPACK (name), SCM_UNPACK (exp))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_TOPLEVEL_SET], 0, SCM_NUM_EXPANDED_TOPLEVEL_SET_FIELDS, src, mod, name, exp)
+ 
+ #define SCM_EXPANDED_TOPLEVEL_DEFINE_TYPE_NAME "toplevel-define"
+ #define SCM_EXPANDED_TOPLEVEL_DEFINE_FIELD_NAMES        \
+@@ -212,7 +212,7 @@
+     SCM_NUM_EXPANDED_TOPLEVEL_DEFINE_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_TOPLEVEL_DEFINE(src, mod, name, exp) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_TOPLEVEL_DEFINE], 0, SCM_NUM_EXPANDED_TOPLEVEL_DEFINE_FIELDS, SCM_UNPACK (src), SCM_UNPACK (mod), SCM_UNPACK (name), SCM_UNPACK (exp))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_TOPLEVEL_DEFINE], 0, SCM_NUM_EXPANDED_TOPLEVEL_DEFINE_FIELDS, src, mod, name, exp)
+ 
+ #define SCM_EXPANDED_CONDITIONAL_TYPE_NAME "conditional"
+ #define SCM_EXPANDED_CONDITIONAL_FIELD_NAMES    \
+@@ -226,7 +226,7 @@
+     SCM_NUM_EXPANDED_CONDITIONAL_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_CONDITIONAL(src, test, consequent, alternate) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_CONDITIONAL], 0, SCM_NUM_EXPANDED_CONDITIONAL_FIELDS, SCM_UNPACK (src), SCM_UNPACK (test), SCM_UNPACK (consequent), SCM_UNPACK (alternate))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_CONDITIONAL], 0, SCM_NUM_EXPANDED_CONDITIONAL_FIELDS, src, test, consequent, alternate)
+ 
+ #define SCM_EXPANDED_CALL_TYPE_NAME "call"
+ #define SCM_EXPANDED_CALL_FIELD_NAMES    \
+@@ -239,7 +239,7 @@
+     SCM_NUM_EXPANDED_CALL_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_CALL(src, proc, args) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_CALL], 0, SCM_NUM_EXPANDED_CALL_FIELDS, SCM_UNPACK (src), SCM_UNPACK (proc), SCM_UNPACK (args))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_CALL], 0, SCM_NUM_EXPANDED_CALL_FIELDS, src, proc, args)
+ 
+ #define SCM_EXPANDED_PRIMCALL_TYPE_NAME "primcall"
+ #define SCM_EXPANDED_PRIMCALL_FIELD_NAMES    \
+@@ -252,7 +252,7 @@
+     SCM_NUM_EXPANDED_PRIMCALL_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_PRIMCALL(src, name, args) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_PRIMCALL], 0, SCM_NUM_EXPANDED_PRIMCALL_FIELDS, SCM_UNPACK (src), SCM_UNPACK (name), SCM_UNPACK (args))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_PRIMCALL], 0, SCM_NUM_EXPANDED_PRIMCALL_FIELDS, src, name, args)
+ 
+ #define SCM_EXPANDED_SEQ_TYPE_NAME "seq"
+ #define SCM_EXPANDED_SEQ_FIELD_NAMES       \
+@@ -265,7 +265,7 @@
+     SCM_NUM_EXPANDED_SEQ_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_SEQ(src, head, tail)                          \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_SEQ], 0, SCM_NUM_EXPANDED_SEQ_FIELDS, SCM_UNPACK (src), SCM_UNPACK (head), SCM_UNPACK (tail))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_SEQ], 0, SCM_NUM_EXPANDED_SEQ_FIELDS, src, head, tail)
+ 
+ #define SCM_EXPANDED_LAMBDA_TYPE_NAME "lambda"
+ #define SCM_EXPANDED_LAMBDA_FIELD_NAMES         \
+@@ -278,7 +278,7 @@
+     SCM_NUM_EXPANDED_LAMBDA_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_LAMBDA(src, meta, body) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LAMBDA], 0, SCM_NUM_EXPANDED_LAMBDA_FIELDS, SCM_UNPACK (src), SCM_UNPACK (meta), SCM_UNPACK (body))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LAMBDA], 0, SCM_NUM_EXPANDED_LAMBDA_FIELDS, src, meta, body)
+ 
+ #define SCM_EXPANDED_LAMBDA_CASE_TYPE_NAME "lambda-case"
+ #define SCM_EXPANDED_LAMBDA_CASE_FIELD_NAMES    \
+@@ -297,7 +297,7 @@
+     SCM_NUM_EXPANDED_LAMBDA_CASE_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_LAMBDA_CASE(src, req, opt, rest, kw, inits, gensyms, body, alternate) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LAMBDA_CASE], 0, SCM_NUM_EXPANDED_LAMBDA_CASE_FIELDS, SCM_UNPACK (src), SCM_UNPACK (req), SCM_UNPACK (opt), SCM_UNPACK (rest), SCM_UNPACK (kw), SCM_UNPACK (inits), SCM_UNPACK (gensyms), SCM_UNPACK (body), SCM_UNPACK (alternate))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LAMBDA_CASE], 0, SCM_NUM_EXPANDED_LAMBDA_CASE_FIELDS, src, req, opt, rest, kw, inits, gensyms, body, alternate)
+ 
+ #define SCM_EXPANDED_LET_TYPE_NAME "let"
+ #define SCM_EXPANDED_LET_FIELD_NAMES            \
+@@ -312,7 +312,7 @@
+     SCM_NUM_EXPANDED_LET_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_LET(src, names, gensyms, vals, body) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LET], 0, SCM_NUM_EXPANDED_LET_FIELDS, SCM_UNPACK (src), SCM_UNPACK (names), SCM_UNPACK (gensyms), SCM_UNPACK (vals), SCM_UNPACK (body))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LET], 0, SCM_NUM_EXPANDED_LET_FIELDS, src, names, gensyms, vals, body)
+ 
+ #define SCM_EXPANDED_LETREC_TYPE_NAME "letrec"
+ #define SCM_EXPANDED_LETREC_FIELD_NAMES         \
+@@ -328,7 +328,7 @@
+     SCM_NUM_EXPANDED_LETREC_FIELDS,
+   };
+ #define SCM_MAKE_EXPANDED_LETREC(src, in_order_p, names, gensyms, vals, body) \
+-  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LETREC], 0, SCM_NUM_EXPANDED_LETREC_FIELDS, SCM_UNPACK (src), SCM_UNPACK (in_order_p), SCM_UNPACK (names), SCM_UNPACK (gensyms), SCM_UNPACK (vals), SCM_UNPACK (body))
++  scm_c_make_struct (exp_vtables[SCM_EXPANDED_LETREC], 0, SCM_NUM_EXPANDED_LETREC_FIELDS, src, in_order_p, names, gensyms, vals, body)
+ 
+ #endif /* BUILDING_LIBGUILE */
+ 
+--- a/libguile/fluids.c
++++ b/libguile/fluids.c
+@@ -125,8 +125,8 @@
+       struct scm_cache_entry *entry = &state->cache.entries[slot];
+       if (scm_is_pair (saved))
+         {
+-          entry->key = SCM_UNPACK (SCM_CAAR (saved));
+-          entry->value = SCM_UNPACK (SCM_CDAR (saved));
++          entry->key = SCM_CAAR (saved);
++          entry->value = SCM_CDAR (saved);
+           saved = scm_cdr (saved);
+         }
+       else
+@@ -310,7 +310,7 @@
+   entry = scm_cache_lookup (&dynamic_state->cache, fluid);
+   if (scm_is_eq (SCM_PACK (entry->key), fluid))
+     {
+-      entry->value = SCM_UNPACK (value);
++      entry->value = value;
+       return;
+     }
+ 
+--- a/libguile/foreign-object.c
++++ b/libguile/foreign-object.c
+@@ -183,18 +183,20 @@
+   scm_foreign_object_unsigned_set_x (obj, n, bits);
+ }
+ 
++/* These load and store the word as a pointer, after the checks, so that
++   it keeps its Fil-C capability.  */
+ void*
+ scm_foreign_object_ref (SCM obj, size_t n)
+ {
+-  scm_t_bits bits = scm_foreign_object_unsigned_ref (obj, n);
+-  return (void *) bits;
++  scm_foreign_object_unsigned_ref (obj, n);
++  return (void *) SCM_STRUCT_SLOT_REF (obj, n);
+ }
+ 
+ void
+ scm_foreign_object_set_x (SCM obj, size_t n, void *val)
+ {
+-  scm_t_bits bits = (scm_t_bits) val;
+-  scm_foreign_object_unsigned_set_x (obj, n, bits);
++  scm_foreign_object_unsigned_set_x (obj, n, (scm_t_bits) val);
++  SCM_STRUCT_SLOT_SET (obj, n, (SCM) val);
+ }
+   
+ static void
+--- a/libguile/foreign.c
++++ b/libguile/foreign.c
+@@ -56,6 +56,7 @@
+ #include "version.h"
+ 
+ #include "foreign.h"
++#include "loader.h"
+ 
+ 
+ 
+@@ -157,7 +158,8 @@
+       c_finalizer = SCM_POINTER_VALUE (finalizer);
+     }
+ 
+-  return scm_from_pointer ((void *) c_address, c_finalizer);
++  return scm_from_pointer (scm_i_pointer_from_address (c_address),
++                           c_finalizer);
+ }
+ #undef FUNC_NAME
+ 
+@@ -196,7 +198,8 @@
+ {
+   SCM_VALIDATE_POINTER (1, pointer);
+ 
+-  return scm_from_uintptr_t ((uintptr_t) SCM_POINTER_VALUE (pointer));
++  return scm_from_uintptr_t (scm_i_pointer_to_address
++                             (SCM_POINTER_VALUE (pointer), 1));
+ }
+ #undef FUNC_NAME
+ 
+@@ -347,7 +350,7 @@
+ scm_i_pointer_print (SCM pointer, SCM port, scm_print_state *pstate)
+ {
+   scm_puts ("#<pointer 0x", port);
+-  scm_uintprint (scm_to_uintptr_t (scm_pointer_address (pointer)), 16, port);
++  scm_uintprint ((uintptr_t) SCM_POINTER_VALUE (pointer), 16, port);
+   scm_putc ('>', port);
+ }
+ 
+@@ -1140,8 +1143,11 @@
+ 	 i++)
+     {
+       /* Suitably align the storage area for argument I.  */
+-      args[i] = (void *) ROUND_UP ((uintptr_t) data + off,
+-				   cif->arg_types[i]->alignment);
++      /* Derive the pointer from DATA, so that it keeps its Fil-C
++         capability.  */
++      args[i] = data + (ROUND_UP ((uintptr_t) data + off,
++                                  cif->arg_types[i]->alignment)
++                        - (uintptr_t) data);
+       assert ((uintptr_t) args[i] % cif->arg_types[i]->alignment == 0);
+       unpack (cif->arg_types[i], args[i], argv[cif->nargs - i - 1].as_scm, 0);
+     }
+@@ -1150,8 +1156,9 @@
+      `armv5tel-*-linux-gnueabi', the return value has to be at least
+      word-aligned, even if its type doesn't have any alignment requirement as is
+      the case with `char'.  */
+-  rvalue = (void *) ROUND_UP ((uintptr_t) data + off,
+-			      MAX (sizeof (void *), cif->rtype->alignment));
++  rvalue = data + (ROUND_UP ((uintptr_t) data + off,
++                             MAX (sizeof (void *), cif->rtype->alignment))
++                   - (uintptr_t) data);
+ 
+   /* off we go! */
+   errno = 0;
+--- a/libguile/gc.c
++++ b/libguile/gc.c
+@@ -59,6 +59,8 @@
+ #endif
+ 
+ #include "gc.h"
++#include "loader.h"
++#include "atomics-internal.h"
+ 
+ /* For GC_set_start_callback.  */
+ #include <gc/gc_mark.h>
+@@ -211,6 +213,8 @@
+ 	    "returned by this function for @var{obj}")
+ #define FUNC_NAME s_scm_object_address
+ {
++  if (SCM_HEAP_OBJECT_P (obj))
++    return scm_from_uintptr_t (scm_i_pointer_to_address (SCM2PTR (obj), 0));
+   return scm_from_ulong (SCM_UNPACK (obj));
+ }
+ #undef FUNC_NAME
+@@ -442,6 +446,10 @@
+ 
+ 
+ 
++#ifdef __FILC__
++zexact_ptrtable *scm_i_weak_refs;
++#endif
++
+ void
+ scm_storage_prehistory ()
+ {
+@@ -464,6 +472,10 @@
+ 
+   GC_INIT ();
+ 
++#ifdef __FILC__
++  scm_i_weak_refs = zexact_ptrtable_new_weak ();
++#endif
++
+   size_t heap_size = GC_get_heap_size ();
+   if (heap_size < DEFAULT_INITIAL_HEAP_SIZE)
+     GC_expand_hp (DEFAULT_INITIAL_HEAP_SIZE - heap_size);
+@@ -538,10 +550,24 @@
+ {
+   scm_thread *t = SCM_I_CURRENT_THREAD;
+ 
+-  if (scm_is_false (SCM_CDR (after_gc_async_cell)))
++  /* With FUGC this runs on whichever thread notices a finished cycle,
++     while other threads run and may push asyncs onto T's list (libgc
++     runs it with the world stopped).  Claim the shared cell and push it
++     atomically.  */
++  if (scm_is_eq (scm_atomic_compare_and_swap_scm (SCM_CDRLOC (after_gc_async_cell),
++                                                  SCM_BOOL_F, SCM_EOL),
++                 SCM_BOOL_F))
+     {
+-      SCM_SETCDR (after_gc_async_cell, t->pending_asyncs);
+-      t->pending_asyncs = after_gc_async_cell;
++      SCM expected, asyncs = scm_atomic_ref_scm (&t->pending_asyncs);
++      do
++        {
++          expected = asyncs;
++          scm_atomic_set_scm (SCM_CDRLOC (after_gc_async_cell), expected);
++          asyncs = scm_atomic_compare_and_swap_scm (&t->pending_asyncs,
++                                                    expected,
++                                                    after_gc_async_cell);
++        }
++      while (!scm_is_eq (asyncs, expected));
+     }
+ 
+   return NULL;
+--- a/libguile/gsubr.c
++++ b/libguile/gsubr.c
+@@ -240,6 +240,29 @@
+   return ret;
+ }
+ 
++/* Turn a code address that Scheme has as an integer back into a pointer
++   into the arena that holds it, or NULL.  Under Fil-C an integer has no
++   capability, so the pointer is derived from the arena itself.  */
++const uint32_t *
++scm_i_primitive_code_from_address (uintptr_t addr)
++{
++  const uint32_t *ret = NULL;
++  struct code_arena *arena;
++
++  scm_i_pthread_mutex_lock (&admin_mutex);
++  for (arena = code_arena; arena; arena = arena->next)
++    if ((uintptr_t) &arena->data[0] <= addr
++        && addr < (uintptr_t) &arena->data[arena->used])
++      {
++        ret = (const uint32_t *)
++          &arena->data[addr - (uintptr_t) &arena->data[0]];
++        break;
++      }
++  scm_i_pthread_mutex_unlock (&admin_mutex);
++
++  return ret;
++}
++
+ static uint32_t *
+ alloc_subr_code (uint32_t subr_idx, uint32_t code[], size_t code_size)
+ {
+@@ -366,7 +389,7 @@
+   return is_primitive_code (code);
+ }
+ 
+-static uintptr_t
++static const uint32_t *
+ primitive_call_ip (const uint32_t *code)
+ {
+   int direction = 0;
+@@ -391,7 +414,7 @@
+           break;
+         case scm_op_subr_call:
+         case scm_op_foreign_call:
+-          return (uintptr_t) code;
++          return code;
+         case scm_op_return_values:
+         case scm_op_handle_interrupts:
+           /* Going back isn't possible for instruction streams where we
+@@ -414,10 +437,10 @@
+ primitive_subr_idx (const uint32_t *code)
+ {
+   uint32_t word;
+-  uintptr_t call_ip = primitive_call_ip (code);
+-  if (call_ip == 0)
++  const uint32_t *call_ip = primitive_call_ip (code);
++  if (call_ip == NULL)
+     return NOT_A_SUBR_CALL;
+-  word = ((uint32_t *) call_ip)[0];
++  word = call_ip[0];
+   if ((word & 0xff) == scm_op_subr_call)
+     {
+       uint32_t idx = word >> 8;
+@@ -431,7 +454,7 @@
+ uintptr_t
+ scm_i_primitive_call_ip (SCM subr)
+ {
+-  return primitive_call_ip (SCM_PROGRAM_CODE (subr));
++  return (uintptr_t) primitive_call_ip (SCM_PROGRAM_CODE (subr));
+ }
+ 
+ SCM
+--- a/libguile/gsubr.h
++++ b/libguile/gsubr.h
+@@ -53,6 +53,7 @@
+ scm_i_alloc_primitive_code_with_instrumentation (size_t uint32_count,
+                                                  uint32_t **write_ptr);
+ SCM_INTERNAL int scm_i_primitive_code_p (const uint32_t *code);
++SCM_INTERNAL const uint32_t *scm_i_primitive_code_from_address (uintptr_t addr);
+ SCM_INTERNAL uintptr_t scm_i_primitive_call_ip (SCM subr);
+ SCM_INTERNAL SCM scm_i_primitive_name (const uint32_t *code);
+ 
+--- a/libguile/guardians.c
++++ b/libguile/guardians.c
+@@ -295,7 +295,7 @@
+  * error, and #t is returned if everything is fine.
+  */ 
+ static SCM
+-guardian_apply (SCM guardian, SCM obj, SCM throw_p)
++guardian_apply (SCM guardian, SCM obj)
+ {
+   if (!SCM_UNBNDP (obj))
+     {
+--- a/libguile/inline.h
++++ b/libguile/inline.h
+@@ -57,8 +57,16 @@
+ 
+ # if (defined __GNUC__) && (!(((defined __APPLE_CC__) && (__APPLE_CC__ > 5400)) && __STDC_VERSION__ >= 199901L))
+ #  if (defined __GNUC_STDC_INLINE__) || (__GNUC__ == 4 && __GNUC_MINOR__ == 2)
+-#   define SCM_C_EXTERN_INLINE					\
++#   ifdef __FILC__
++/* Many inline functions take SCM values as scm_t_bits.  Fil-C keeps a
++   pointer's capability across such a conversion only if it can see the
++   original pointer, which it can when the function is inlined.  */
++#    define SCM_C_EXTERN_INLINE					\
++           extern __inline__ __attribute__ ((__gnu_inline__, __always_inline__))
++#   else
++#    define SCM_C_EXTERN_INLINE					\
+            extern __inline__ __attribute__ ((__gnu_inline__))
++#   endif
+ #  else
+ #   define SCM_C_EXTERN_INLINE extern __inline__
+ #  endif
+--- a/libguile/intrinsics.c
++++ b/libguile/intrinsics.c
+@@ -210,7 +210,7 @@
+   /* If we find FLUID in the cache, then it is indeed a fluid.  */
+   entry = scm_cache_lookup (&thread->dynamic_state->cache, fluid);
+   if (SCM_LIKELY (scm_is_eq (SCM_PACK (entry->key), fluid)))
+-    entry->value = SCM_UNPACK (value);
++    entry->value = value;
+   else
+     scm_fluid_set_x (fluid, value);
+ }
+--- a/libguile/loader.c
++++ b/libguile/loader.c
+@@ -51,6 +51,7 @@
+ #include "version.h"
+ 
+ #include "loader.h"
++#include "bdw-gc.h"
+ 
+ #ifdef __MINGW32__
+ #include "posix-w32.h"
+@@ -225,7 +226,7 @@
+       ret = malloc (len + alignment - 1);
+       if (!ret)
+         abort ();
+-      ret = (char *) ALIGN ((uintptr_t) ret, (uintptr_t) alignment);
++      ret += ALIGN ((uintptr_t) ret, (uintptr_t) alignment) - (uintptr_t) ret;
+     }
+ 
+   return ret;
+@@ -726,6 +727,69 @@
+   return result;
+ }
+ 
++/* Scheme code sometimes turns an object's address, as an integer, back
++   into a pointer or an SCM (make-pointer, pointer->scm).  Under Fil-C
++   an integer has no capability, so derive the pointer from the ELF
++   image that contains the address, or from the tables in which
++   scm_i_pointer_to_address records the objects whose addresses it
++   hands out.  Otherwise the result has no capability, and using it
++   traps.  */
++#ifdef __FILC__
++static zexact_ptrtable *address_refs;
++static scm_i_pthread_once_t address_refs_once = SCM_I_PTHREAD_ONCE_INIT;
++static void
++init_address_refs (void)
++{
++  address_refs = zexact_ptrtable_new ();
++}
++#endif
++
++void *
++scm_i_pointer_from_address (uintptr_t addr)
++{
++#ifdef __FILC__
++  void *ret = NULL;
++
++  scm_i_pthread_mutex_lock (&scm_i_misc_mutex);
++  {
++    struct mapped_elf_image *img = find_mapped_elf_image_unlocked ((char *) addr);
++    if (img)
++      ret = img->start + (addr - (uintptr_t) img->start);
++  }
++  scm_i_pthread_mutex_unlock (&scm_i_misc_mutex);
++
++  if (!ret)
++    {
++      scm_i_pthread_once (&address_refs_once, init_address_refs);
++      ret = zexact_ptrtable_decode (address_refs, addr);
++    }
++  if (!zhasvalidcap (ret))
++    ret = zexact_ptrtable_decode (scm_i_weak_refs, addr);
++  return ret;
++#else
++  return (void *) addr;
++#endif
++}
++
++/* Record PTR so that scm_i_pointer_from_address can recover it.  If
++   STRONG, the object stays alive until it is freed, as C memory whose
++   address a program keeps as an integer would; this is for
++   pointer-address.  Otherwise it is recorded weakly (object-address).  */
++uintptr_t
++scm_i_pointer_to_address (void *ptr, int strong)
++{
++#ifdef __FILC__
++  if (zhasvalidcap (ptr))
++    {
++      if (!strong)
++        return zexact_ptrtable_encode (scm_i_weak_refs, ptr);
++      scm_i_pthread_once (&address_refs_once, init_address_refs);
++      return zexact_ptrtable_encode (address_refs, ptr);
++    }
++#endif
++  return (uintptr_t) ptr;
++}
++
+ static SCM
+ scm_find_mapped_elf_image (SCM ip)
+ {
+--- a/libguile/loader.h
++++ b/libguile/loader.h
+@@ -58,6 +58,9 @@
+ SCM_INTERNAL const uint8_t *
+ scm_find_slot_map_unlocked (const uint32_t *ip);
+ 
++SCM_INTERNAL void *scm_i_pointer_from_address (uintptr_t addr);
++SCM_INTERNAL uintptr_t scm_i_pointer_to_address (void *ptr, int strong);
++
+ SCM_INTERNAL void scm_bootstrap_loader (void);
+ SCM_INTERNAL void scm_init_loader (void);
+ 
+--- a/libguile/modules.h
++++ b/libguile/modules.h
+@@ -48,19 +48,19 @@
+ #define scm_module_index_import_obarray 8
+ 
+ #define SCM_MODULE_OBARRAY(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module) [scm_module_index_obarray])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_obarray)
+ #define SCM_MODULE_USES(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module) [scm_module_index_uses])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_uses)
+ #define SCM_MODULE_BINDER(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module) [scm_module_index_binder])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_binder)
+ #define SCM_MODULE_EVAL_CLOSURE(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module)[scm_module_index_eval_closure])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_eval_closure)
+ #define SCM_MODULE_TRANSFORMER(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module)[scm_module_index_transformer])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_transformer)
+ #define SCM_MODULE_DUPLICATE_HANDLERS(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module)[scm_module_index_duplicate_handlers])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_duplicate_handlers)
+ #define SCM_MODULE_IMPORT_OBARRAY(module) \
+-  SCM_PACK (SCM_STRUCT_DATA (module)[scm_module_index_import_obarray])
++  SCM_STRUCT_SLOT_REF (module, scm_module_index_import_obarray)
+ 
+ 
+ 
+--- a/libguile/options.c
++++ b/libguile/options.c
+@@ -120,7 +120,7 @@
+ 	  ls = scm_cons (SCM_PACK (options[i].name), ls);
+ 	  break;
+ 	case SCM_OPTION_SCM:
+-	  ls = scm_cons (SCM_PACK (options[i].val), ls);
++	  ls = scm_cons (options[i].scm_val, ls);
+ 	  ls = scm_cons (SCM_PACK (options[i].name), ls);
+ 	}
+     }
+@@ -148,7 +148,7 @@
+ 	  ls = scm_cons (scm_from_unsigned_integer (options[i].val), ls);
+ 	  break;
+ 	case SCM_OPTION_SCM:
+-	  ls = scm_cons (SCM_PACK (options[i].val), ls);
++	  ls = scm_cons (options[i].scm_val, ls);
+ 	}
+       ls = scm_cons (SCM_PACK (options[i].name), ls);
+       ans = scm_cons (ls, ans);
+@@ -182,17 +182,17 @@
+ 		       int dry_run)
+ {
+   unsigned int i;
+-  scm_t_bits *new_vals;
++  SCM *new_vals;
+ 
+-  new_vals = scm_gc_malloc (options_length (options) * sizeof (scm_t_bits),
++  new_vals = scm_gc_malloc (options_length (options) * sizeof (SCM),
+                             "new-options");
+ 
+   for (i = 0; options[i].name; ++i)
+     {
+       if (options[i].type == SCM_OPTION_BOOLEAN)
+-	new_vals[i] = 0;
++	new_vals[i] = SCM_PACK (0);
+       else
+-	new_vals[i] = options[i].val;
++	new_vals[i] = options[i].scm_val;
+     }
+ 
+   while (!SCM_NULL_OR_NIL_P (args))
+@@ -207,15 +207,15 @@
+ 	      switch (options[i].type)
+ 		{
+ 		case SCM_OPTION_BOOLEAN:
+-		  new_vals[i] = 1;
++		  new_vals[i] = SCM_PACK (1);
+ 		  break;
+ 		case SCM_OPTION_INTEGER:
+ 		  args = SCM_CDR (args);
+-		  new_vals[i] = scm_to_size_t (scm_car (args));
++		  new_vals[i] = SCM_PACK (scm_to_size_t (scm_car (args)));
+ 		  break;
+ 		case SCM_OPTION_SCM:
+ 		  args = SCM_CDR (args);
+-		  new_vals[i] = SCM_UNPACK (scm_car (args));
++		  new_vals[i] = scm_car (args);
+ 		  break;
+ 		}
+ 	      found = 1;
+@@ -232,7 +232,7 @@
+     return;
+   
+   for (i = 0; options[i].name; ++i)
+-    options[i].val = new_vals[i];
++    options[i].scm_val = new_vals[i];
+ }
+ 
+ 
+--- a/libguile/options.h
++++ b/libguile/options.h
+@@ -30,7 +30,9 @@
+ {
+   unsigned int type;
+   const char *name;
+-  scm_t_bits val;
++  /* SCM options use scm_val, so that under Fil-C the value is stored
++     as a pointer and keeps its capability.  */
++  union { scm_t_bits val; SCM scm_val; };
+   char *doc;
+ } scm_t_option;
+ 
+--- a/libguile/ports.c
++++ b/libguile/ports.c
+@@ -751,9 +751,9 @@
+ }
+ 
+ SCM
+-scm_c_make_port_with_encoding (scm_t_port_type *ptob, unsigned long mode_bits,
+-                               SCM encoding, SCM conversion_strategy,
+-                               scm_t_bits stream)
++scm_i_c_make_port_with_encoding (scm_t_port_type *ptob, unsigned long mode_bits,
++                                 SCM encoding, SCM conversion_strategy,
++                                 SCM stream)
+ {
+   SCM ret;
+   scm_t_port *pt;
+@@ -761,7 +761,7 @@
+   pt = scm_gc_typed_calloc (scm_t_port);
+ 
+   ret = scm_words (scm_tc7_port | mode_bits | SCM_OPN, 4);
+-  SCM_SET_CELL_WORD_1 (ret, stream);
++  SCM_SET_CELL_OBJECT_1 (ret, stream);
+   SCM_SET_CELL_WORD_2 (ret, (scm_t_bits) pt);
+   SCM_SET_CELL_WORD_3 (ret, (scm_t_bits) ptob);
+ 
+@@ -795,10 +795,10 @@
+ }
+ 
+ SCM
+-scm_c_make_port (scm_t_port_type *ptob,
+-                 unsigned long mode_bits, scm_t_bits stream)
++scm_i_c_make_port (scm_t_port_type *ptob,
++                   unsigned long mode_bits, SCM stream)
+ {
+-  return scm_c_make_port_with_encoding (ptob, mode_bits,
++  return scm_i_c_make_port_with_encoding (ptob, mode_bits,
+                                         scm_i_default_port_encoding (),
+                                         scm_i_default_port_conversion_strategy (),
+                                         stream);
+--- a/libguile/ports.h
++++ b/libguile/ports.h
+@@ -155,13 +155,26 @@
+ SCM_API SCM scm_port_mode (SCM port);
+ 
+ /* Low-level constructors.  */
+-SCM_API SCM scm_c_make_port_with_encoding (scm_t_port_type *ptob,
+-                                           unsigned long mode_bits,
+-                                           SCM encoding,
+-                                           SCM conversion_strategy,
+-                                           scm_t_bits stream);
+-SCM_API SCM scm_c_make_port (scm_t_port_type *ptob, unsigned long mode_bits,
+-                             scm_t_bits stream);
++SCM_API SCM scm_i_c_make_port_with_encoding (scm_t_port_type *ptob,
++                                             unsigned long mode_bits,
++                                             SCM encoding,
++                                             SCM conversion_strategy,
++                                             SCM stream);
++SCM_API SCM scm_i_c_make_port (scm_t_port_type *ptob, unsigned long mode_bits,
++                               SCM stream);
++
++/* The stream word usually holds a pointer.  Under Fil-C, a pointer
++   passed as an integer keeps its capability only if the conversion
++   back to a pointer is in the same expression, or at least visible to
++   the optimizer, where the caller made the integer.  So these are
++   macros that convert in the caller and pass the stream as SCM.  */
++#define scm_c_make_port_with_encoding(ptob, mode_bits, encoding,       \
++                                      conversion_strategy, stream)     \
++  (scm_i_c_make_port_with_encoding ((ptob), (mode_bits), (encoding),   \
++                                    (conversion_strategy),             \
++                                    SCM_PACK ((scm_t_bits) (stream))))
++#define scm_c_make_port(ptob, mode_bits, stream)                        \
++  (scm_i_c_make_port ((ptob), (mode_bits), SCM_PACK ((scm_t_bits) (stream))))
+ 
+ /* Predicates.  */
+ SCM_API SCM scm_port_p (SCM x);
+--- a/libguile/posix.c
++++ b/libguile/posix.c
+@@ -1431,7 +1431,11 @@
+   posix_spawn_file_actions_destroy (&actions);
+ 
+   if (res != 0)
+-    return -1;
++    {
++      /* posix_spawn returns the error; it need not set errno.  */
++      errno = res;
++      return -1;
++    }
+ 
+   return pid;
+ }
+--- a/libguile/print.c
++++ b/libguile/print.c
+@@ -1328,9 +1328,9 @@
+ #include "print.x"
+ 
+   scm_init_opts (scm_print_options, scm_print_opts);
+-  scm_print_opts[SCM_PRINT_HIGHLIGHT_PREFIX_I].val =
+-    SCM_UNPACK (scm_from_utf8_string ("{"));
+-  scm_print_opts[SCM_PRINT_HIGHLIGHT_SUFFIX_I].val =
+-    SCM_UNPACK (scm_from_utf8_string ("}"));
+-  scm_print_opts[SCM_PRINT_KEYWORD_STYLE_I].val = SCM_UNPACK (sym_reader);
++  scm_print_opts[SCM_PRINT_HIGHLIGHT_PREFIX_I].scm_val =
++    scm_from_utf8_string ("{");
++  scm_print_opts[SCM_PRINT_HIGHLIGHT_SUFFIX_I].scm_val =
++    scm_from_utf8_string ("}");
++  scm_print_opts[SCM_PRINT_KEYWORD_STYLE_I].scm_val = sym_reader;
+ }
+--- a/libguile/private-options.h
++++ b/libguile/private-options.h
+@@ -41,11 +41,11 @@
+ SCM_INTERNAL scm_t_option scm_print_opts[];
+ 
+ #define SCM_PRINT_HIGHLIGHT_PREFIX_I 0
+-#define SCM_PRINT_HIGHLIGHT_PREFIX  (SCM_PACK (scm_print_opts[0].val))
++#define SCM_PRINT_HIGHLIGHT_PREFIX  (scm_print_opts[0].scm_val)
+ #define SCM_PRINT_HIGHLIGHT_SUFFIX_I 1
+-#define SCM_PRINT_HIGHLIGHT_SUFFIX  (SCM_PACK (scm_print_opts[1].val))
++#define SCM_PRINT_HIGHLIGHT_SUFFIX  (scm_print_opts[1].scm_val)
+ #define SCM_PRINT_KEYWORD_STYLE_I   2
+-#define SCM_PRINT_KEYWORD_STYLE     (SCM_PACK (scm_print_opts[2].val))
++#define SCM_PRINT_KEYWORD_STYLE     (scm_print_opts[2].scm_val)
+ #define SCM_PRINT_ESCAPE_NEWLINES_P scm_print_opts[3].val
+ #define SCM_PRINT_R7RS_SYMBOLS_P    scm_print_opts[4].val
+ #define SCM_PRINT_BYTESTRINGS_P     scm_print_opts[5].val
+--- a/libguile/procs.c
++++ b/libguile/procs.c
+@@ -131,7 +131,7 @@
+     scm_c_make_struct (scm_applicable_struct_with_setter_vtable_vtable,
+                        0,
+                        1,
+-                       SCM_UNPACK (scm_from_latin1_symbol ("pwpw")));
++                       scm_from_latin1_symbol ("pwpw"));
+ 
+ #include "procs.x"
+ }
+--- a/libguile/programs.c
++++ b/libguile/programs.c
+@@ -187,9 +187,10 @@
+ 	    "")
+ #define FUNC_NAME s_scm_primitive_code_name
+ {
+-  const uint32_t * ptr = (const uint32_t *) scm_to_uintptr_t (code);
++  const uint32_t * ptr =
++    scm_i_primitive_code_from_address (scm_to_uintptr_t (code));
+ 
+-  if (scm_i_primitive_code_p (ptr))
++  if (ptr)
+     return scm_i_primitive_name (ptr);
+ 
+   return SCM_BOOL_F;
+--- a/libguile/smob.c
++++ b/libguile/smob.c
+@@ -419,7 +419,7 @@
+ /* Return a SMOB with typecode TC.  The SMOB type corresponding to TC may
+    provide a custom mark procedure and it will be honored.  */
+ SCM
+-scm_i_new_smob (scm_t_bits tc, scm_t_bits data)
++scm_i_new_smob (scm_t_bits tc, SCM data)
+ {
+   scm_t_bits smobnum = SCM_TC2SMOBNUM (tc);
+   SCM ret;
+@@ -433,7 +433,7 @@
+   else
+     ret = SCM_PACK_POINTER (GC_MALLOC (sizeof (scm_t_cell)));
+   
+-  SCM_SET_CELL_WORD_1 (ret, data);
++  SCM_SET_CELL_OBJECT_1 (ret, data);
+   SCM_SET_CELL_WORD_0 (ret, tc);
+ 
+   if (scm_smobs[smobnum].free)
+@@ -445,8 +445,7 @@
+ /* Return a SMOB with typecode TC.  The SMOB type corresponding to TC may
+    provide a custom mark procedure and it will be honored.  */
+ SCM
+-scm_i_new_double_smob (scm_t_bits tc, scm_t_bits data1,
+-                       scm_t_bits data2, scm_t_bits data3)
++scm_i_new_double_smob (scm_t_bits tc, SCM data1, SCM data2, SCM data3)
+ {
+   scm_t_bits smobnum = SCM_TC2SMOBNUM (tc);
+   SCM ret;
+@@ -458,9 +457,9 @@
+   else
+     ret = SCM_PACK_POINTER (GC_MALLOC (2 * sizeof (scm_t_cell)));
+   
+-  SCM_SET_CELL_WORD_3 (ret, data3);
+-  SCM_SET_CELL_WORD_2 (ret, data2);
+-  SCM_SET_CELL_WORD_1 (ret, data1);
++  SCM_SET_CELL_OBJECT_3 (ret, data3);
++  SCM_SET_CELL_OBJECT_2 (ret, data2);
++  SCM_SET_CELL_OBJECT_1 (ret, data1);
+   SCM_SET_CELL_WORD_0 (ret, tc);
+ 
+   if (scm_smobs[smobnum].free)
+--- a/libguile/smob.h
++++ b/libguile/smob.h
+@@ -121,9 +121,10 @@
+ 
+ 
+ 
+-SCM_API SCM scm_i_new_smob (scm_t_bits tc, scm_t_bits);
+-SCM_API SCM scm_i_new_double_smob (scm_t_bits tc, scm_t_bits,
+-                                   scm_t_bits, scm_t_bits);
++/* The data words are passed as SCM so that pointers keep their Fil-C
++   capabilities.  The inline functions below convert them.  */
++SCM_API SCM scm_i_new_smob (scm_t_bits tc, SCM);
++SCM_API SCM scm_i_new_double_smob (scm_t_bits tc, SCM, SCM, SCM);
+ 
+ 
+ SCM_INLINE SCM scm_new_smob (scm_t_bits tc, scm_t_bits);
+@@ -137,7 +138,7 @@
+   scm_t_bits smobnum = SCM_TC2SMOBNUM (tc);
+ 
+   if (SCM_UNLIKELY (scm_smobs[smobnum].mark || scm_smobs[smobnum].free))
+-    return scm_i_new_smob (tc, data);
++    return scm_i_new_smob (tc, SCM_PACK (data));
+   else
+     return scm_cell (tc, data);
+ }
+@@ -149,30 +150,38 @@
+   scm_t_bits smobnum = SCM_TC2SMOBNUM (tc);
+ 
+   if (SCM_UNLIKELY (scm_smobs[smobnum].mark || scm_smobs[smobnum].free))
+-    return scm_i_new_double_smob (tc, data1, data2, data3);
++    return scm_i_new_double_smob (tc, SCM_PACK (data1), SCM_PACK (data2),
++                                  SCM_PACK (data3));
+   else
+     return scm_double_cell (tc, data1, data2, data3);
+ }
+ #endif
+ 
++/* Under Fil-C a pointer passed as a scm_t_bits argument loses its
++   capability unless the optimizer inlines the callee, which it does not
++   at -O0.  So these macros convert the data to SCM in the caller's
++   expression and call scm_i_new_smob and scm_i_new_double_smob, which
++   take SCM.  */
++#define SCM_I_SMOB_WORD(data) (SCM_PACK ((scm_t_bits) (data)))
++
+ #define SCM_NEWSMOB(z, tc, data)                \
+-  z = scm_new_smob ((tc), (scm_t_bits)(data))
++  z = scm_i_new_smob ((tc), SCM_I_SMOB_WORD (data))
+ #define SCM_RETURN_NEWSMOB(tc, data)            \
+-  return scm_new_smob ((tc), (scm_t_bits)(data))
++  return scm_i_new_smob ((tc), SCM_I_SMOB_WORD (data))
+ 
+ #define SCM_NEWSMOB2(z, tc, data1, data2)               \
+-  z = scm_new_double_smob ((tc), (scm_t_bits)(data1),   \
+-                           (scm_t_bits)(data2), 0)
++  z = scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),     \
++                             SCM_I_SMOB_WORD (data2), SCM_PACK (0))
+ #define SCM_RETURN_NEWSMOB2(tc, data1, data2)                   \
+-  return scm_new_double_smob ((tc), (scm_t_bits)(data1),        \
+-                              (scm_t_bits)(data2), 0)
++  return scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),  \
++                                SCM_I_SMOB_WORD (data2), SCM_PACK (0))
+ 
+ #define SCM_NEWSMOB3(z, tc, data1, data2, data3)                        \
+-  z = scm_new_double_smob ((tc), (scm_t_bits)(data1),                   \
+-                           (scm_t_bits)(data2), (scm_t_bits)(data3))
++  z = scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),             \
++                             SCM_I_SMOB_WORD (data2), SCM_I_SMOB_WORD (data3))
+ #define SCM_RETURN_NEWSMOB3(tc, data1, data2, data3)                    \
+-  return scm_new_double_smob ((tc), (scm_t_bits)(data1),                \
+-                              (scm_t_bits)(data2), (scm_t_bits)(data3))
++  return scm_i_new_double_smob ((tc), SCM_I_SMOB_WORD (data1),          \
++                                SCM_I_SMOB_WORD (data2), SCM_I_SMOB_WORD (data3))
+ 
+ 
+ 
+--- a/libguile/stackchk.c
++++ b/libguile/stackchk.c
+@@ -43,11 +43,16 @@
+ long
+ scm_stack_size (SCM_STACKITEM *start)
+ {
+-  SCM_STACKITEM stack;
++#ifdef __FILC__
++  SCM_STACKITEM *stack = SCM_STACK_PTR (zstack_pointer ());
++#else
++  SCM_STACKITEM stack_item;
++  SCM_STACKITEM *stack = &stack_item;
++#endif
+ #if SCM_STACK_GROWS_UP
+-  return &stack - start;
++  return stack - start;
+ #else
+-  return start - &stack;
++  return start - stack;
+ #endif /* SCM_STACK_GROWS_UP */
+ }
+ 
+--- a/libguile/stackchk.h
++++ b/libguile/stackchk.h
+@@ -40,12 +40,24 @@
+ #  define SCM_STACK_OVERFLOW_P(s)\
+    ((SCM_I_CURRENT_THREAD->base - SCM_STACK_PTR (s)) > SCM_STACK_LIMIT)
+ # endif
++# ifdef __FILC__
++/* Fil-C allocates address-taken locals on the heap; ask for the stack
++   pointer instead.  */
++#  include <stdfil.h>
++#  define SCM_CHECK_STACK\
++    {\
++       if (SCM_STACK_OVERFLOW_P (zstack_pointer ())\
++           && scm_stack_checking_enabled_p)\
++	 scm_report_stack_overflow ();\
++    }
++# else
+ # define SCM_CHECK_STACK\
+     {\
+        SCM_STACKITEM stack;\
+        if (SCM_STACK_OVERFLOW_P (&stack) && scm_stack_checking_enabled_p)\
+ 	 scm_report_stack_overflow ();\
+     }
++# endif
+ #else
+ # define SCM_CHECK_STACK /**/
+ #endif
+--- a/libguile/struct.c
++++ b/libguile/struct.c
+@@ -259,7 +259,7 @@
+ 
+ 
+ static void
+-scm_struct_init (SCM handle, SCM layout, size_t n_inits, scm_t_bits *inits)
++scm_struct_init (SCM handle, SCM layout, size_t n_inits, SCM *inits)
+ {
+   size_t n, n_fields, inits_idx = 0;
+ 
+@@ -276,10 +276,11 @@
+         }
+       else
+         {
+-          SCM_STRUCT_DATA_SET (handle, n,
+-                               SCM_STRUCT_FIELD_IS_UNBOXED (handle, n)
+-                               ? scm_to_uintptr_t (SCM_PACK (inits[inits_idx]))
+-                               : inits[inits_idx]);
++          if (SCM_STRUCT_FIELD_IS_UNBOXED (handle, n))
++            SCM_STRUCT_DATA_SET (handle, n,
++                                 scm_to_uintptr_t (inits[inits_idx]));
++          else
++            SCM_STRUCT_SLOT_SET (handle, n, inits[inits_idx]);
+           inits_idx++;
+         }
+     }
+@@ -326,14 +327,14 @@
+ /* A struct is a sequence of words preceded by a pointer to the struct's
+    vtable.  The vtable reference is tagged with the struct tc3.  */
+ static SCM
+-scm_i_alloc_struct (scm_t_bits vtable_bits, int n_words)
++scm_i_alloc_struct (SCM vtable, int n_words)
+ {
+   SCM ret;
+ 
+-  ret = scm_words (vtable_bits | scm_tc3_struct, n_words + 1);
++  ret = scm_words (SCM_UNPACK (vtable) | scm_tc3_struct, n_words + 1);
+ 
+-  /* vtable_bits can be 0 when making a vtable vtable */
+-  if (vtable_bits && SCM_VTABLE_INSTANCE_FINALIZER (SCM_PACK (vtable_bits)))
++  /* vtable can be 0 when making a vtable vtable */
++  if (SCM_UNPACK (vtable) && SCM_VTABLE_INSTANCE_FINALIZER (vtable))
+     /* Register a finalizer for the newly created instance.  */
+     scm_i_set_finalizer (SCM2PTR (ret), struct_finalizer_trampoline, NULL);
+ 
+@@ -342,7 +343,7 @@
+ 
+ 
+ SCM
+-scm_c_make_structv (SCM vtable, size_t n_tail, size_t n_init, scm_t_bits *init)
++scm_c_make_structv (SCM vtable, size_t n_tail, size_t n_init, SCM *init)
+ #define FUNC_NAME "make-struct"
+ {
+   size_t basic_size;
+@@ -354,7 +355,7 @@
+ 
+   SCM_ASSERT (n_tail == 0, scm_from_size_t (n_tail), 2, FUNC_NAME);
+ 
+-  obj = scm_i_alloc_struct (SCM_UNPACK (vtable), basic_size);
++  obj = scm_i_alloc_struct (vtable, basic_size);
+   scm_struct_init (obj, SCM_VTABLE_LAYOUT (vtable), n_init, init);
+ 
+   /* If we're making a vtable, validate its layout and inherit
+@@ -370,21 +371,23 @@
+ #undef FUNC_NAME
+ 
+ SCM
+-scm_c_make_struct (SCM vtable, size_t n_tail, size_t n_init, scm_t_bits init, ...)
++scm_c_make_struct (SCM vtable, size_t n_tail, size_t n_init, SCM init, ...)
+ {
+   va_list foo;
+-  scm_t_bits *v;
++  SCM *v;
+   size_t i;
+ 
+   SCM_ASSERT (n_tail == 0, scm_from_size_t (n_tail), 2, "scm_c_make_struct");
+ 
+-  v = alloca (sizeof (scm_t_bits) * n_init);
++  v = alloca (sizeof (SCM) * n_init);
+ 
+   va_start (foo, init);
+   for (i = 0; i < n_init; i++)
+     {
+       v[i] = init;
+-      init = va_arg (foo, scm_t_bits);
++      /* Don't read past the last argument.  */
++      if (i + 1 < n_init)
++        init = va_arg (foo, SCM);
+     }
+   va_end (foo);
+ 
+@@ -411,7 +414,7 @@
+ 
+   SCM_ASSERT (SCM_VTABLE_SIZE (vtable) == c_nfields, nfields, 2, FUNC_NAME);
+ 
+-  ret = scm_i_alloc_struct (SCM_UNPACK (vtable), c_nfields);
++  ret = scm_i_alloc_struct (vtable, c_nfields);
+   scm_struct_init (ret, SCM_VTABLE_LAYOUT (vtable), 0, NULL);
+ 
+   return ret;
+@@ -471,7 +474,7 @@
+ {
+   size_t i, n_init;
+   long ilen;
+-  scm_t_bits *v;
++  SCM *v;
+ 
+   SCM_VALIDATE_VTABLE (1, vtable);
+   ilen = scm_ilength (init);
+@@ -483,12 +486,12 @@
+   /* best to use alloca, but init could be big, so hack to avoid a possible
+      stack overflow */
+   if (n_init < 64)
+-    v = alloca (n_init * sizeof(scm_t_bits));
++    v = alloca (n_init * sizeof(SCM));
+   else
+-    v = scm_gc_malloc (n_init * sizeof(scm_t_bits), "struct");
++    v = scm_gc_malloc (n_init * sizeof(SCM), "struct");
+ 
+   for (i = 0; i < n_init; i++, init = SCM_CDR (init))
+-    v[i] = SCM_UNPACK (SCM_CAR (init));
++    v[i] = SCM_CAR (init);
+ 
+   return scm_c_make_structv (vtable, 0, n_init, v);
+ }
+@@ -509,7 +512,7 @@
+ 
+   nfields = scm_i_symbol_length (layout) / 2;
+ 
+-  obj = scm_i_alloc_struct (0, nfields);
++  obj = scm_i_alloc_struct (SCM_PACK (0), nfields);
+   /* Make it so that the vtable of OBJ is itself.  */
+   SCM_SET_CELL_WORD_0 (obj, SCM_UNPACK (obj) | scm_tc3_struct);
+   /* Manually initialize fields.  */
+@@ -545,8 +548,7 @@
+     printer = SCM_BOOL_F;
+ 
+   return scm_c_make_struct (scm_standard_vtable_vtable, 0, 2,
+-                            SCM_UNPACK (scm_make_struct_layout (fields)),
+-                            SCM_UNPACK (printer));
++                            scm_make_struct_layout (fields), printer);
+ }
+ #undef FUNC_NAME
+ 
+@@ -820,7 +822,7 @@
+ 
+   scm_applicable_struct_vtable_vtable =
+     scm_c_make_struct (scm_standard_vtable_vtable, 0, 1,
+-                       SCM_UNPACK (scm_make_struct_layout (required_vtable_fields)));
++                       scm_make_struct_layout (required_vtable_fields));
+   name = scm_from_utf8_symbol ("<applicable-struct-vtable>");
+   SCM_SET_VTABLE_FLAGS (scm_applicable_struct_vtable_vtable,
+                         SCM_VTABLE_FLAG_APPLICABLE_VTABLE);
+@@ -829,7 +831,7 @@
+ 
+   scm_applicable_struct_with_setter_vtable_vtable =
+     scm_c_make_struct (scm_standard_vtable_vtable, 0, 1,
+-                       SCM_UNPACK (scm_make_struct_layout (required_vtable_fields)));
++                       scm_make_struct_layout (required_vtable_fields));
+   name = scm_from_utf8_symbol ("<applicable-struct-with-setter-vtable>");
+   scm_set_struct_vtable_name_x (scm_applicable_struct_with_setter_vtable_vtable, name);
+   SCM_SET_VTABLE_FLAGS (scm_applicable_struct_with_setter_vtable_vtable,
+--- a/libguile/struct.h
++++ b/libguile/struct.h
+@@ -114,8 +114,11 @@
+ #define SCM_STRUCT_SLOT_REF(X,I) 	(SCM_STRUCT_SLOTS (X)[(I)])
+ #define SCM_STRUCT_SLOT_SET(X,I,V) 	SCM_STRUCT_SLOTS (X)[(I)]=(V)
+ #define SCM_STRUCT_DATA(X) 		((scm_t_bits*)SCM_STRUCT_SLOTS (X))
+-#define SCM_STRUCT_DATA_REF(X,I) 	(SCM_STRUCT_DATA (X)[(I)])
+-#define SCM_STRUCT_DATA_SET(X,I,V) 	SCM_STRUCT_DATA (X)[(I)]=(V)
++/* Under Fil-C a word that holds a pointer keeps its capability only if
++   it is stored and loaded as a pointer, so data words are accessed as
++   SCM slots even when they hold raw bits.  */
++#define SCM_STRUCT_DATA_REF(X,I) 	(SCM_UNPACK (SCM_STRUCT_SLOTS (X)[(I)]))
++#define SCM_STRUCT_DATA_SET(X,I,V) 	(SCM_STRUCT_SLOTS (X)[(I)]=SCM_PACK (V))
+ 
+ #define SCM_VALIDATE_STRUCT(pos, v) \
+   SCM_MAKE_VALIDATE_MSG (pos, v, STRUCTP, "struct")
+@@ -129,8 +132,8 @@
+ #define SCM_VTABLE_LAYOUT(X)            (SCM_STRUCT_SLOT_REF ((X), scm_vtable_index_layout))
+ #define SCM_SET_VTABLE_LAYOUT(X,L)      (SCM_STRUCT_SLOT_SET ((X), scm_vtable_index_layout, L))
+ #define SCM_VTABLE_FLAGS(X)             (SCM_STRUCT_DATA_REF (X, scm_vtable_index_flags))
+-#define SCM_SET_VTABLE_FLAGS(X,F)       (SCM_STRUCT_DATA_REF (X, scm_vtable_index_flags) |= (F))
+-#define SCM_CLEAR_VTABLE_FLAGS(X,F)     (SCM_STRUCT_DATA_REF (X, scm_vtable_index_flags) &= (~(F)))
++#define SCM_SET_VTABLE_FLAGS(X,F)       (SCM_STRUCT_DATA_SET (X, scm_vtable_index_flags, SCM_VTABLE_FLAGS (X) | (F)))
++#define SCM_CLEAR_VTABLE_FLAGS(X,F)     (SCM_STRUCT_DATA_SET (X, scm_vtable_index_flags, SCM_VTABLE_FLAGS (X) & (~(F))))
+ #define SCM_VTABLE_FLAG_IS_SET(X,F)     (SCM_STRUCT_DATA_REF (X, scm_vtable_index_flags) & (F))
+ #define SCM_VTABLE_INSTANCE_FINALIZER(X) ((scm_t_struct_finalize)SCM_STRUCT_DATA_REF (X, scm_vtable_index_instance_finalize))
+ #define SCM_SET_VTABLE_INSTANCE_FINALIZER(X,P) (SCM_STRUCT_DATA_SET (X, scm_vtable_index_instance_finalize, (scm_t_bits)(P)))
+@@ -171,9 +174,9 @@
+ SCM_INTERNAL SCM scm_make_struct_simple (SCM vtable, SCM init);
+ SCM_API SCM scm_make_struct_no_tail (SCM vtable, SCM init);
+ SCM_API SCM scm_c_make_struct (SCM vtable, size_t n_tail, size_t n_inits,
+-                               scm_t_bits init, ...);
++                               SCM init, ...);
+ SCM_API SCM scm_c_make_structv (SCM vtable, size_t n_tail, size_t n_inits,
+-                                scm_t_bits init[]);
++                                SCM init[]);
+ SCM_API SCM scm_make_vtable (SCM fields, SCM printer);
+ SCM_INTERNAL SCM scm_i_make_vtable_vtable (SCM fields);
+ SCM_API SCM scm_struct_ref (SCM handle, SCM pos);
+--- a/libguile/vm-engine.c
++++ b/libguile/vm-engine.c
+@@ -242,8 +242,12 @@
+ #define FP_REF(i)		SCM_FRAME_LOCAL (VP->fp, i)
+ #define FP_SET(i,o)		SCM_FRAME_LOCAL (VP->fp, i) = o
+ 
++/* Fil-C: raw words in stack slots can be code or data pointers (for
++   example from load-label or word-ref).  They keep their capabilities
++   only if they are stored and loaded as pointers, so every slot access
++   goes through as_ptr and converts.  */
+ #define SP_REF_SLOT(i)		(sp[i])
+-#define SP_SET_SLOT(i,o)	(sp[i] = o)
++#define SP_SET_SLOT(i,o)	(sp[i].as_ptr = (o).as_ptr)
+ 
+ #define SP_REF(i)		(sp[i].as_scm)
+ #define SP_SET(i,o)		(sp[i].as_scm = o)
+@@ -251,11 +255,11 @@
+ #define SP_REF_F64(i)		(sp[i].as_f64)
+ #define SP_SET_F64(i,o)		(sp[i].as_f64 = o)
+ 
+-#define SP_REF_U64(i)		(sp[i].as_u64)
+-#define SP_SET_U64(i,o)		(sp[i].as_u64 = o)
++#define SP_REF_U64(i)		((uint64_t) (uintptr_t) sp[i].as_ptr)
++#define SP_SET_U64(i,o)		(sp[i].as_ptr = (void *) (uintptr_t) (o))
+ 
+-#define SP_REF_S64(i)		(sp[i].as_s64)
+-#define SP_SET_S64(i,o)		(sp[i].as_s64 = o)
++#define SP_REF_S64(i)		((int64_t) (intptr_t) sp[i].as_ptr)
++#define SP_SET_S64(i,o)		(sp[i].as_ptr = (void *) (intptr_t) (o))
+ 
+ #define SP_REF_PTR(i)		(sp[i].as_ptr)
+ #define SP_SET_PTR(i,o)		(sp[i].as_ptr = o)
+--- a/libguile/vm.c
++++ b/libguile/vm.c
+@@ -297,7 +297,9 @@
+ 
+   /* Arrange for FRAME to be 8-byte aligned, like any other cell.  */
+   frame = alloca (sizeof (*frame) + 8);
+-  frame = (scm_t_cell *) ROUND_UP ((uintptr_t) frame, 8UL);
++  frame = (scm_t_cell *) ((char *) frame
++                          + (ROUND_UP ((uintptr_t) frame, 8UL)
++                             - (uintptr_t) frame));
+ 
+   frame->word_0 = SCM_PACK (scm_tc7_frame | (SCM_VM_FRAME_KIND_VM << 8));
+   frame->word_1 = SCM_PACK_POINTER (&c_frame);
+@@ -634,6 +636,7 @@
+   vp->compare_result = SCM_F_COMPARE_NONE;
+   vp->engine = vm_default_engine;
+   vp->trace_level = 0;
++  vp->entries = NULL;
+ #define INIT_HOOK(h) vp->h##_hook = SCM_BOOL_F;
+   FOR_EACH_HOOK (INIT_HOOK)
+ #undef INIT_HOOK
+@@ -797,7 +800,6 @@
+   struct scm_vm *vp = data->vp;
+   union scm_vm_stack_element *old_top, *new_bottom;
+   size_t new_size;
+-  ptrdiff_t reloc;
+ 
+   old_top = vp->stack_top;
+   new_size = vp->stack_size;
+@@ -812,11 +814,13 @@
+   vp->stack_size = new_size;
+   vp->stack_top = vp->stack_bottom + new_size;
+   vp->stack_limit = vp->stack_bottom;
+-  reloc = vp->stack_top - old_top;
+ 
++  /* Recompute the pointers from the new stack rather than adding an
++     offset to the old ones: under Fil-C a pointer keeps the capability
++     of the object it was derived from, and the old stack is gone.  */
+   if (vp->fp)
+-    vp->fp += reloc;
+-  data->new_sp += reloc;
++    vp->fp = vp->stack_top - (old_top - vp->fp);
++  data->new_sp = vp->stack_top - (old_top - data->new_sp);
+ 
+   return new_bottom;
+ }
+@@ -1132,6 +1136,15 @@
+       ("%continuation-call",
+        "invoking continuation would cross continuation barrier: ~A",
+        scm_list_1 (cont));
++#ifdef __FILC__
++  /* The C stack is not captured under Fil-C (see continuations.c), so
++     the VM entry that captured the continuation must still be active.  */
++  if (!scm_i_vm_registers_live_p (vp, continuation->registers))
++    scm_misc_error
++      ("%continuation-call",
++       "cannot reinstate a continuation whose C stack has been unwound: ~A",
++       scm_list_1 (cont));
++#endif
+ 
+   n = frame_locals_count (thread) - 1;
+   argv = alloca (n * sizeof (*argv));
+@@ -1547,6 +1560,17 @@
+              scm_list_1 (proc), scm_list_1 (proc));
+ }
+ 
++int
++scm_i_vm_registers_live_p (struct scm_vm *vp, jmp_buf *registers)
++{
++  struct scm_vm_entry *entry;
++
++  for (entry = vp->entries; entry; entry = entry->prev)
++    if (&entry->registers == registers)
++      return 1;
++  return 0;
++}
++
+ SCM
+ scm_call_n (SCM proc, SCM *argv, size_t nargs)
+ {
+@@ -1597,14 +1621,16 @@
+   vp->fp = call_fp;
+ 
+   {
+-    jmp_buf registers;
++    struct scm_vm_entry entry;
+     int resume;
+     jmp_buf *prev_registers = thread->vm.registers;
+     SCM ret;
+ 
+-    resume = setjmp (registers);
++    entry.prev = thread->vm.entries;
++    resume = setjmp (entry.registers);
+ 
+-    thread->vm.registers = &registers;
++    thread->vm.registers = &entry.registers;
++    thread->vm.entries = &entry;
+ 
+     if (SCM_UNLIKELY (resume))
+       {
+@@ -1623,6 +1649,7 @@
+ 
+     ret = vm_engines[vp->engine](thread);
+     thread->vm.registers = prev_registers;
++    thread->vm.entries = entry.prev;
+ 
+     return ret;
+   }
+--- a/libguile/vm.h
++++ b/libguile/vm.h
+@@ -64,8 +64,19 @@
+   jmp_buf *registers;           /* registers captured at latest vm entry  */
+   uint8_t *mra_after_abort;     /* mra to resume after nonlocal exit, or NULL */
+   int trace_level;              /* traces enabled if trace_level > 0 */
++  struct scm_vm_entry *entries; /* active VM entries, innermost first */
+ };
+ 
++/* One per active scm_call_n.  Fil-C can only longjmp to a setjmp whose
++   frame is still on the stack, so continuations check this list.  */
++struct scm_vm_entry {
++  jmp_buf registers;
++  struct scm_vm_entry *prev;
++};
++
++SCM_INTERNAL int scm_i_vm_registers_live_p (struct scm_vm *vp,
++                                            jmp_buf *registers);
++
+ SCM_API SCM scm_call_with_vm (SCM proc, SCM args);
+ 
+ SCM_API SCM scm_call_with_stack_overflow_handler (SCM limit, SCM thunk,
+--- a/libguile/weak-set.c
++++ b/libguile/weak-set.c
+@@ -97,7 +97,7 @@
+ 
+ typedef struct {
+   unsigned long hash;
+-  scm_t_bits key;
++  SCM key;   /* Hidden with scm_i_weak_hide, except in copies.  */
+ } scm_t_weak_entry;
+ 
+ 
+@@ -112,7 +112,13 @@
+   struct weak_entry_data *e = data;
+ 
+   e->out->hash = e->in->hash;
+-  e->out->key = e->in->key;
++  e->out->key = scm_i_weak_reveal (e->in->key);
++  if (e->in->key && !e->out->key)
++    {
++      /* The object died but its link has not been cleared yet.  */
++      GC_unregister_disappearing_link ((void **) &e->in->key);
++      e->in->key = 0;
++    }
+ 
+   return NULL;
+ }
+@@ -183,7 +189,7 @@
+       
+       copy_weak_entry (from, &copy);
+       to->hash = copy.hash;
+-      to->key = copy.key;
++      to->key = scm_i_weak_hide (copy.key);
+ 
+       if (copy.key && SCM_HEAP_OBJECT_P (SCM_PACK (copy.key)))
+         GC_move_disappearing_link ((void **) &from->key, (void **) &to->key);
+@@ -417,11 +423,11 @@
+           
+       set->n_items++;
+       new_entries[new_k].hash = copy.hash;
+-      new_entries[new_k].key = copy.key;
++      new_entries[new_k].key = scm_i_weak_hide (copy.key);
+ 
+       if (SCM_HEAP_OBJECT_P (SCM_PACK (copy.key)))
+         SCM_I_REGISTER_DISAPPEARING_LINK ((void **) &new_entries[new_k].key,
+-                                          (void *) new_entries[new_k].key);
++                                          (void *) SCM2PTR (copy.key));
+     }
+ }
+ 
+@@ -579,7 +585,7 @@
+           
+   set->n_items++;
+   entries[k].hash = hash;
+-  entries[k].key = SCM_UNPACK (obj);
++  entries[k].key = scm_i_weak_hide (obj);
+ 
+   if (SCM_HEAP_OBJECT_P (obj))
+     SCM_I_REGISTER_DISAPPEARING_LINK ((void **) &entries[k].key,
+--- a/libguile/weak-table.c
++++ b/libguile/weak-table.c
+@@ -75,15 +75,16 @@
+ struct scm_weak_entry {
+   unsigned long hash;
+   scm_t_weak_entry *next;
+-  scm_t_bits key;
+-  scm_t_bits value;
++  /* The weak ones are hidden with scm_i_weak_hide.  */
++  SCM key;
++  SCM value;
+ };
+ 
+ 
+ struct weak_entry_data {
+   scm_t_weak_entry *entry;
+-  scm_t_bits key;
+-  scm_t_bits value;
++  SCM key;
++  SCM value;
+ };
+   
+ static void*
+@@ -91,14 +92,14 @@
+ {
+   struct weak_entry_data *e = data;
+ 
+-  e->key = e->entry->key;
+-  e->value = e->entry->value;
++  e->key = scm_i_weak_reveal (e->entry->key);
++  e->value = scm_i_weak_reveal (e->entry->value);
+ 
+   return NULL;
+ }
+ 
+ static void
+-read_weak_entry (scm_t_weak_entry *entry, scm_t_bits *key, scm_t_bits *value)
++read_weak_entry (scm_t_weak_entry *entry, SCM *key, SCM *value)
+ {
+   struct weak_entry_data data;
+ 
+@@ -109,6 +110,11 @@
+   *value = data.value;
+ }
+   
++#define WEAK_KEY_P(kind) \
++  ((kind) == SCM_WEAK_TABLE_KIND_KEY || (kind) == SCM_WEAK_TABLE_KIND_BOTH)
++#define WEAK_VALUE_P(kind) \
++  ((kind) == SCM_WEAK_TABLE_KIND_VALUE || (kind) == SCM_WEAK_TABLE_KIND_BOTH)
++
+ static void
+ register_disappearing_links (scm_t_weak_entry *entry,
+                              SCM k, SCM v,
+@@ -298,7 +304,7 @@
+ 
+       for (entry = *loc; entry; entry = *loc)
+         {
+-          scm_t_bits key, value;
++          SCM key, value;
+ 
+           read_weak_entry (entry, &key, &value);
+           if (!key || !value)
+@@ -333,7 +339,7 @@
+     {
+       if (entry->hash == hash)
+         {
+-          scm_t_bits key, value;
++          SCM key, value;
+ 
+           read_weak_entry (entry, &key, &value);
+           if (key && value && pred (SCM_PACK (key), SCM_PACK (value), closure))
+@@ -358,14 +364,15 @@
+     {
+       if (entry->hash == hash)
+         {
+-          scm_t_bits k, v;
++          SCM k, v;
+ 
+           read_weak_entry (entry, &k, &v);
+           if (k && v && pred (SCM_PACK (k), SCM_PACK (v), closure))
+             {
+               unregister_disappearing_links (entry, table->kind);
+               key = SCM_PACK (k);
+-              entry->value = SCM_UNPACK (value);
++              entry->value = WEAK_VALUE_P (table->kind)
++                ? scm_i_weak_hide (value) : value;
+               register_disappearing_links (entry, key, value, table->kind);
+               return;
+             }
+@@ -378,8 +385,8 @@
+ 
+   entry = allocate_entry (table->kind);
+   entry->hash = hash;
+-  entry->key = SCM_UNPACK (key);
+-  entry->value = SCM_UNPACK (value);
++  entry->key = WEAK_KEY_P (table->kind) ? scm_i_weak_hide (key) : key;
++  entry->value = WEAK_VALUE_P (table->kind) ? scm_i_weak_hide (value) : value;
+   register_disappearing_links (entry, key, value, table->kind);
+   add_entry (table, entry);
+ }
+@@ -397,7 +404,7 @@
+     {
+       if (entry->hash == hash)
+         {
+-          scm_t_bits k, v;
++          SCM k, v;
+ 
+           read_weak_entry (entry, &k, &v);
+           if (k && v && pred (SCM_PACK (k), SCM_PACK (v), closure))
+@@ -660,7 +667,7 @@
+       scm_t_weak_entry *entry;
+       for (entry = t->buckets[k]; entry; entry = entry->next)
+         {
+-          scm_t_bits key, value;
++          SCM key, value;
+           read_weak_entry (entry, &key, &value);
+       
+           if (key && value)
+--- a/libguile/weak-vector.c
++++ b/libguile/weak-vector.c
+@@ -35,6 +35,7 @@
+ #include "version.h"
+ 
+ #include "weak-vector.h"
++#include "bdw-gc.h"
+ 
+ 
+ 
+@@ -180,7 +181,7 @@
+ {
+   struct weak_vector_ref_data *d = data;
+ 
+-  return (void *) SCM_UNPACK (SCM_SIMPLE_VECTOR_REF (d->wv, d->k));
++  return SCM_UNPACK_POINTER (scm_i_weak_reveal (SCM_SIMPLE_VECTOR_REF (d->wv, d->k)));
+ }
+ 
+ SCM
+@@ -243,7 +244,7 @@
+   if (prev && SCM_HEAP_OBJECT_P (SCM_PACK_POINTER (prev)))
+     GC_unregister_disappearing_link ((void **) &elts[k]);
+   
+-  elts[k] = x;
++  elts[k] = scm_i_weak_hide (x);
+ 
+   if (SCM_HEAP_OBJECT_P (x))
+     SCM_I_REGISTER_DISAPPEARING_LINK ((void **) &elts[k],
