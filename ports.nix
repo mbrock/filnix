@@ -451,11 +451,14 @@ in
         preCheck = (old.preCheck or "") + ''
           export PATH=${final.guile_3_0}/bin:$PATH
         '';
-        # Out-of-bounds reads in test helpers, which Fil-C stops: a
-        # memmove from the wrong offset, a loop that tests the output
-        # pointer instead of the input, and argv[i][len - 1] on an empty
-        # argument.
+        # Out-of-bounds reads that Fil-C stops: imap4d's LIST reads
+        # ref[-1] for an empty reference; in test helpers, a memmove from
+        # the wrong offset, a loop that tests the output pointer instead
+        # of the input, and argv[i][len - 1] on an empty argument.
         postPatch = (old.postPatch or "") + ''
+          substituteInPlace imap4d/list.c \
+            --replace-fail "if (ref[refinfo.reflen-1] != pfx->delim" \
+                           "if (refinfo.reflen > 0 && ref[refinfo.reflen-1] != pfx->delim"
           substituteInPlace testsuite/cwdrepl.c \
             --replace-fail 'size_t rest = n - start;' 'size_t rest = n - off;'
           substituteInPlace libmailutils/tests/encode2047.c \

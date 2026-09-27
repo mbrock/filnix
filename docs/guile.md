@@ -259,12 +259,19 @@ against the Fil-C Guile:
 - **mcron** (1.2.1) builds with the Fil-C `guile` as its build-time
   guile, and its test suite, which runs in the build with that guile,
   passes: 74 pass, 1 skipped.
-- **mailutils** (3.21) with Guile support: see `ports.nix`. It needs
-  the MySQL backend off (mariadb-connector-c does not link for Fil-C)
-  and GSSAPI off, an unprefixed `pkg-config` so that `guile-config`
-  reports the Fil-C Guile, and three fixes to out-of-bounds reads in its
-  test helpers that Fil-C stops (`cwdrepl.c`, `encode2047.c`,
-  `tesh.c`).
+- **mailutils** (3.21) builds with Guile support, and its whole test
+  suite runs in the build and passes: 1,444 tests, 13 skipped. That
+  includes the 46 tests of its Guile module (`libmu_scm`: mailboxes,
+  messages, MIME), which load the Fil-C extension into the Fil-C
+  `guile`. This needed (see `ports.nix`): the MySQL backend off
+  (mariadb-connector-c does not link for Fil-C: its linker version
+  script is rejected) and GSSAPI off, an unprefixed `pkg-config` so that
+  `guile-config` reports the Fil-C Guile, the Fil-C `guile` on `PATH`
+  for the tests, and fixes for four out-of-bounds reads that Fil-C
+  stopped: `imap4d`'s LIST read `ref[-1]` for an empty reference (a
+  real bug in the server), and three in test helpers (`cwdrepl.c`,
+  `encode2047.c`, `tesh.c`). The Guile module is compiled at `-O0`,
+  which is why `SCM_NEWSMOB` had to convert in the caller.
 
 Not tried yet: guix, lilypond and the other guile-* libraries.
 Most guile-* libraries are pure Scheme and should build like guile-json.
