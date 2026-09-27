@@ -165,6 +165,7 @@
         perl-xs-pointers = import ./tests/perl-xs-pointers.nix { inherit pkgsFilc; };
         python-decimal = import ./tests/python-decimal.nix { inherit pkgsFilc; };
         cxx-coroutines = import ./tests/cxx-coroutines.nix { inherit pkgsFilc; };
+        pointer-tagging = import ./tests/pointer-tagging.nix { inherit pkgsFilc; };
         icu = import ./tests/icu.nix {
           inherit pkgs pkgsFilc;
         };
