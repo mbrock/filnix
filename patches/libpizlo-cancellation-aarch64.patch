@@ -1,0 +1,50 @@
+Subject: Cancellable pause, poll and epoll_wait without the legacy syscalls
+Origin: Filnix
+Upstream-Status: Experimental, not submitted
+
+aarch64 has only ppoll and epoll_pwait. Applies after
+libpizlo-cancellation.patch; fold into it when x86_64 is next rebuilt.
+
+diff -ru a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
+--- a/libpas/src/libpas/filc_runtime.c	2026-09-27 17:51:59.160839518 +0200
++++ b/libpas/src/libpas/filc_runtime.c	2026-09-27 17:52:12.517264330 +0200
+@@ -8687,7 +8687,13 @@
+ {
+     filc_check_write(canceled_ptr, sizeof(int));
+     filc_cancel_syscall_result result = filc_cancellable_syscall(
++#ifdef SYS_pause
+         thread, SYS_pause, 0, 0, 0, 0, 0, 0, true);
++#else
++        /* aarch64 has only ppoll; with no descriptors, timeout or mask it
++           waits for a signal, as musl implements pause. */
++        thread, SYS_ppoll, 0, 0, 0, 0, 8, 0, true);
++#endif
+     return filc_return_cancellable_syscall(result, canceled_ptr);
+ }
+ 
+@@ -8697,7 +8703,13 @@
+     filc_check_write(fds, filc_mul_size(sizeof(struct pollfd), nfds));
+     filc_check_write(canceled_ptr, sizeof(int));
+     filc_cancel_syscall_result result = filc_cancellable_syscall(
++#ifdef SYS_poll
+         thread, SYS_poll, (long)filc_ptr_ptr(fds), nfds, timeout, 0, 0, 0, true);
++#else
++        thread, SYS_ppoll, (long)filc_ptr_ptr(fds), nfds,
++        timeout >= 0 ? (long)&(struct timespec){ timeout / 1000, timeout % 1000 * 1000000 } : 0,
++        0, 8, 0, true);
++#endif
+     return filc_return_cancellable_syscall(result, canceled_ptr);
+ }
+ 
+@@ -14998,7 +15010,11 @@
+     check_fd(fd);
+     struct epoll_event* events = make_epoll_events(thread, maxevents);
+     filc_cancel_syscall_result result = filc_cancellable_syscall(
++#ifdef SYS_epoll_wait
+         thread, SYS_epoll_wait, fd, (long)events, maxevents, timeout, 0, 0, true);
++#else
++        thread, SYS_epoll_pwait, fd, (long)events, maxevents, timeout, 0, 8, true);
++#endif
+     int count = filc_return_cancellable_syscall(result, canceled_ptr);
+     return to_user_epoll_events(count, events, events_ptr);
+ }
