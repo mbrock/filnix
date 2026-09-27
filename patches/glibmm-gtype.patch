@@ -1,12 +1,18 @@
-Subject: Clear the static-scope flag from pointer-valued signal GTypes
+Subject: Handle pointer-valued GTypes in signal defs and container traits
 Origin: Filnix
 Upstream-Status: Not submitted
 
 generate_extra_defs strips G_SIGNAL_TYPE_STATIC_SCOPE from signal return
 and parameter types with integer AND. GType is a pointer under Fil-C GLib,
 so that does not compile, and an integer round trip would drop the type's
-capability. Clear the bit with stdfil's zandptr instead. Fil-C only; the
-rest of glibmm already builds against pointer GTypes.
+capability. Clear the bit with stdfil's zandptr instead.
+
+Container_Helpers::TypeTraits has a partial specialization for T*, meant
+for GObject wrapper pointers. A pointer GType matches it, so consumers
+converting GType arrays (gtkmm 4's Gdk::ContentFormats) fail on
+T::BaseObjectType. Add an identity TypeTraits<GType> for Fil-C.
+
+The patch is Fil-C only; the rest of glibmm builds against pointer GTypes.
 
 diff --git a/tools/extra_defs_gen/generate_extra_defs.cc b/tools/extra_defs_gen/generate_extra_defs.cc
 index 23300c8..1cdb66e 100644
@@ -54,3 +60,34 @@ index 23300c8..1cdb66e 100644
                is_a_pointer_func); // The type is mangled with a flag. Hacky.
            // bool bTypeHasStaticScope = (typeParamMangled & G_SIGNAL_TYPE_STATIC_SCOPE) ==
            // G_SIGNAL_TYPE_STATIC_SCOPE;
+diff --git a/glib/glibmm/containerhandle_shared.h b/glib/glibmm/containerhandle_shared.h
+index e8bfd7b..8887743 100644
+--- a/glib/glibmm/containerhandle_shared.h
++++ b/glib/glibmm/containerhandle_shared.h
+@@ -282,6 +282,26 @@ struct TypeTraits<bool>
+   static void release_c_type(CType) {}
+ };
+ 
++#ifdef __FILC__
++/** Specialization for GType.
++ * Fil-C GLib makes GType a pointer to an opaque struct, which would
++ * otherwise select the GObject pointer specialization above. GTypes are
++ * plain values, so convert them unchanged.
++ * @ingroup ContHelpers
++ */
++template <>
++struct TypeTraits<GType>
++{
++  using CppType = GType;
++  using CType = GType;
++  using CTypeNonConst = GType;
++
++  static CType to_c_type(CppType item) { return item; }
++  static CppType to_cpp_type(CType item) { return item; }
++  static void release_c_type(CType) {}
++};
++#endif
++
+ /** Specialization for Glib::VariantBase.
+  * @ingroup ContHelpers
+  */

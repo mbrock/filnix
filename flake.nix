@@ -188,7 +188,14 @@
         glibmm = (import ./tests/glibmm.nix { inherit pkgs pkgsFilc; }).glibmm;
         glibmm_2_68 =
           (import ./tests/glibmm.nix { inherit pkgs pkgsFilc; }).glibmm_2_68;
-        gtkmm3-runtime = import ./tests/gtkmm.nix { inherit pkgs pkgsFilc; };
+        gtkmm3-runtime = import ./tests/gtkmm.nix {
+          inherit pkgs pkgsFilc;
+          major = 3;
+        };
+        gtkmm4-runtime = import ./tests/gtkmm.nix {
+          inherit pkgs pkgsFilc;
+          major = 4;
+        };
         glib-networking = import ./tests/glib-networking.nix {
           inherit pkgs pkgsFilc;
         };

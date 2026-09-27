@@ -1918,22 +1918,52 @@ in
     (patch ./patches/json-glib-gtype.patch)
   ])
 
-  (for pkgs.cairomm [
-    # Its tests link the compiled Boost.Test library, whose execution
-    # monitor installs fault-signal handlers and an alternate signal stack
-    # at startup; Fil-C rejects both (ENOSYS), so every test aborts.
-    (skipCheck "Boost.Test signal monitor")
-  ])
+  # Their tests link the compiled Boost.Test library, whose execution
+  # monitor installs fault-signal handlers and an alternate signal stack at
+  # startup; Fil-C rejects both (ENOSYS), so every test aborts. Both share
+  # the pname cairomm, so name them explicitly.
+  {
+    cairomm = for pkgs.cairomm [ (skipCheck "Boost.Test signal monitor") ];
+    cairomm_1_16 = for pkgs.cairomm_1_16 [
+      (skipCheck "Boost.Test signal monitor")
+    ];
+  }
 
   {
-    glibmm = for pkgs.glibmm [ (patch ./patches/glibmm-signal-types.patch) ];
+    glibmm = for pkgs.glibmm [ (patch ./patches/glibmm-gtype.patch) ];
     # glibmm 2.88 needs GLib 2.87; 2.80 is the newest series that accepts
     # the Fil-C GLib 2.80.
     glibmm_2_68 = for pkgs.glibmm_2_68 [
       (src "2.80.1" "sha256-8aDA7FFON3S/mTOW8X9yEGtAkSx9fMnRDaMboVUX4/U=" (
         v: "mirror://gnome/sources/glibmm/2.80/glibmm-${v}.tar.xz"
       ))
-      (patch ./patches/glibmm-signal-types.patch)
+      (patch ./patches/glibmm-gtype.patch)
+    ];
+    # Match the Fil-C GTK 4.14; gtkmm 4.22 needs GTK 4.22.
+    gtkmm4 = for pkgs.gtkmm4 [
+      (src "4.14.0" "sha256-k1CgREt0TKPcaVhuvRtnB1IJIrbZ9PIyEDzmA6Jx7No=" (
+        v: "mirror://gnome/sources/gtkmm/4.14/gtkmm-${v}.tar.xz"
+      ))
+      (use {
+        # Fil-C GTK has no X11 backend; run the tests on Broadway instead
+        # of Xvfb.
+        nativeCheckInputs = [ ];
+        checkPhase = ''
+          runHook preCheck
+          export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+          mkdir -m 700 "$XDG_RUNTIME_DIR"
+          export GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 GTK_A11Y=none
+          ${final.gtk4.out}/bin/gtk4-broadwayd :5 &
+          broadway_pid=$!
+          for _ in $(seq 100); do
+            [ -S "$XDG_RUNTIME_DIR/broadway6.socket" ] && break
+            sleep 0.1
+          done
+          meson test --print-errorlogs
+          kill "$broadway_pid"
+          runHook postCheck
+        '';
+      })
     ];
   }
 
