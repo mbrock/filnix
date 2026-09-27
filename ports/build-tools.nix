@@ -113,4 +113,15 @@ lib.optionalAttrs
     lib.mapAttrs (
       name: spec: (prev.${name}.override spec.overrideArgs).overrideAttrs spec.attrs
     ) ports
+    // {
+      # The overrides above change every native package here that links
+      # GLib, including Qt 5, so this set's qtbase differed from the one in
+      # its own buildPackages. Qt's qmake hook is spliced from there, so a
+      # native Qt module (reached through wrapQtAppsHook, e.g. qtsvg) saw
+      # two qtbases and its setup hook failed with "detected mismatched Qt
+      # dependencies". moc, uic, rcc and qmake emit no GType code, so
+      # use the ordinary native Qt 5.
+      qt5 = final.buildPackages.qt5;
+      libsForQt5 = final.buildPackages.libsForQt5;
+    }
   )
