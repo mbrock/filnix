@@ -180,7 +180,10 @@ Determinate Nix.
 
 **Proposed fix**
 ([patches/determinate-nix/proposed-fix-rethrow-failed-value-copies.patch](../patches/determinate-nix/proposed-fix-rethrow-failed-value-copies.patch),
-not applied in the port): rethrow a copy.
+not applied in the port): never let anyone modify the stored exception.
+`force()` stores a clone (`throwClone`) in `Value::Failed`, because the
+failing thread's own catch sites keep decorating the exception in flight.
+Every later forcing then rethrows a fresh clone of the stored one:
 
 ```c++
 if (InternalType(p0_ & 0xff) == tFailed) {
@@ -192,7 +195,17 @@ if (InternalType(p0_ & 0xff) == tFailed) {
 }
 ```
 
-FIXCHECK
+Checked with native builds of the patched source:
+
+- race3.nix gives the same six-frame trace with eval-cores 1 and 8, with
+  no "duplicate frames".
+- pollute.nix no longer shows the unrelated 'add' frame.
+- A TSan build of the patched source reports no `addTrace` races for
+  race3.nix or race.nix (two runs each). Only the `trylevel` race below is
+  left.
+
+The functional suite has not been run against the patch. Expected error
+outputs that happen to include accumulated frames would need updating.
 
 ### 2. `EvalState::trylevel` is a plain `int` shared by all threads
 

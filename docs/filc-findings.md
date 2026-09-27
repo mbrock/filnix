@@ -240,6 +240,12 @@ Substitution failures in `binary-cache.sh` and
 `decompressInvalidInputThrowsCompressionError` also end in `landing_pad`
 this way. The ports skip those tests.
 
+Fixed in mbrock/fil-c fa8c296 (`patches/fil-c/runtime-exception-unwind.patch`
+on branch `orb/exception-unwind`), which saves and restores the outer unwind
+state and moves it with `swapcontext`. With a libpizlo built with that patch
+(`LD_LIBRARY_PATH`), the reproducer above and Determinate Nix's read-only
+store command both work, and so do the `invalidDecompression` tests.
+
 ## Found by Fil-C: pointer rebasing across buffers in FFmpeg's flashsv2
 
 `libavcodec/flashsv2enc.c` copies its frame blocks to key blocks and rebases

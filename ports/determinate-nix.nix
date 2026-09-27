@@ -88,9 +88,9 @@ in
                 tests = lib.mapAttrs (
                   _: run:
                   run.overrideAttrs {
-                    # An exception thrown through libarchive's read callback
-                    # is freed while still unwinding (docs/filc-findings.md),
-                    # as in the upstream Nix port.
+                    # Fil-C's unwinder loses the outer exception when a fiber
+                    # unwinds meanwhile (docs/filc-findings.md). Fixed in
+                    # mbrock/fil-c fa8c296; drop once the pin carries it.
                     GTEST_FILTER = "-CompressionDecompression/CompressionDecompressionTest.invalidDecompression/*";
                   }
                 ) old.passthru.tests;
@@ -116,7 +116,9 @@ in
                 # These throw and catch an exception in a destructor while
                 # another exception unwinds (boost::context's forced_unwind
                 # when a sourceToSink fiber is destroyed), which Fil-C's
-                # unwinder does not survive (docs/filc-findings.md).
+                # unwinder does not survive (docs/filc-findings.md). Fixed in
+                # mbrock/fil-c fa8c296 (verified with that libpizlo); drop
+                # these skips once the pin carries it.
                 for t in binary-cache multiple-outputs-substitute-failure read-only-store; do
                   substituteInPlace $t.sh --replace-fail 'source common.sh' \
                     'source common.sh; skipTest "Fil-C: exception thrown during unwinding"'
