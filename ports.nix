@@ -2254,10 +2254,11 @@ in
       nativeCheckInputs = old.nativeCheckInputs ++ [ pkgs.procps ];
       checkPhase =
         let
-          anchor = ''--skiptest "Check MEMORY USAGE'';
           skips = [
-            # The jemalloc shim ignores malloc_conf, and has no active
-            # defragmentation to make fragmentation measurable.
+            # The jemalloc shim ignores malloc_conf, and has no per-size
+            # accounting or active defragmentation, so fragmentation always
+            # reads 1.00.
+            "--tags -defrag"
             ''--skiptest "je_malloc_conf compile-time tuning is active"''
             ''--skiptest "Reduce defrag CPU usage when module data can't be defragged"''
             # Fil-C gives the program copies of argv, so rewriting them does
@@ -2277,11 +2278,25 @@ in
             # the port builds without backtrace support.
             "--skipunit integration/logging"
           ];
+          last = ''--skiptest "Check MEMORY USAGE for embedded key strings with jemalloc"'';
         in
-        assert pkgs.lib.hasInfix anchor old.checkPhase;
-        builtins.replaceStrings [ anchor ] [
-          (pkgs.lib.concatMapStrings (s: s + " \\\n  ") skips + anchor)
-        ] old.checkPhase;
+        assert pkgs.lib.hasInfix last old.checkPhase;
+        builtins.replaceStrings
+          [
+            "./runtest \\\n"
+            last
+          ]
+          [
+            "set -o pipefail\n./runtest \\\n"
+            (
+              pkgs.lib.concatMapStrings (s: s + " \\\n  ") skips
+              # The test runner redraws lines with carriage returns and
+              # colours them, which leaves the Nix log blank.
+              + last
+              + " 2>&1 | sed -u -e 's/\\r/\\n/g' -e 's/\\x1b\\[[0-9;]*m//g'"
+            )
+          ]
+          old.checkPhase;
       postPatch = (old.postPatch or "") + ''
         # Nixpkgs' system-jemalloc patch still builds deps/jemalloc, whose
         # configure fails; Redis links the jemalloc shim instead.
