@@ -27,7 +27,8 @@ let
   );
 in
 ((scope.overrideSource src).appendPatches [
-  ../patches/determinate-nix-filc-value-words.patch
+  ../patches/determinate-nix/0001-Fil-C-pointer-typed-packed-Value-words.patch
+  ../patches/determinate-nix/0002-Fil-C-no-__cxa_throw-interposer.patch
 ]).overrideScope
   (
     lib.composeExtensions nixFilcOverrides (
@@ -35,6 +36,22 @@ in
         # Unity builds compile each library as one translation unit, which
         # serializes the (slow) Fil-C compile.
         withUnityBuild = false;
+        # The fork's libgit2 (a 2.0 pre-release with in-memory config
+        # backends, which libfetchers needs), on top of the libgit2 port.
+        inherit
+          (import "${src}/packaging/dependencies.nix" {
+            inputs = { };
+            pkgs = final;
+            inherit (final) stdenv;
+          } nfinal)
+          libgit2
+          ;
+        # The fork's store layer uses Boost.Asio, whose io_context executor
+        # keeps its context pointer (plus flag bits) in a uintptr_t. Kept to
+        # this scope so the rest of pkgsFilc keeps its cached Boost.
+        boost = final.boost.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ../patches/boost-asio-io-context-executor-pointer.patch ];
+        });
         # Wasm support needs wasmtime (Rust with Cranelift's JIT), and crash
         # reporting sentry-native with crashpad; both are off.
         wasmtime = null;

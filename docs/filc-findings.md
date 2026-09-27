@@ -156,9 +156,29 @@ whole representation is rarely needed.
 Examples: oneTBB's `queuing_rw_mutex` keeps a flag bit in queue pointers held
 in `std::atomic<uintptr_t>`, and PulseAudio's `pa_atomic_ptr_t` stored pointers
 as `uintptr_t`; both ports change only the atomic's type to a pointer and set
-the bit with pointer arithmetic. oneTBB's tbbmalloc is a different problem: it
+the bit with pointer arithmetic. Boost.Asio's `io_context::basic_executor_type`
+keeps `io_context* | runtime_bits` in a `uintptr_t target_`, so the first
+`use_service` through a strand traps;
+`patches/boost-asio-io-context-executor-pointer.patch` makes it a `char *`
+(applied only for Determinate Nix so far). Nix's own bit-packed `Value`
+takes the same fix in Determinate Nix, where parallel evaluation depends on
+that layout. oneTBB's tbbmalloc is a different problem: it
 carves objects out of raw `mmap` chunks, which have no per-object capabilities,
 so the port builds without it.
+
+## `dlsym(RTLD_NEXT, ...)` is a safety error
+
+```c
+void *p = dlsym(RTLD_NEXT, "puts");
+/* filc safety error: cannot access pointer with null object
+   (ptr = 0xffffffffffffffff,<null>) in zsys_dlsym */
+```
+
+`zsys_dlsym` treats the handle as a pointer to a loaded object, so the
+`RTLD_NEXT` (and presumably `RTLD_DEFAULT`) pseudo-handles trap instead of
+being looked up. Determinate Nix interposes `__cxa_throw` this way (to abort
+on `std::logic_error`), so every thrown exception stopped the program; the
+port builds without the interposer (docs/determinate-nix.md).
 
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 

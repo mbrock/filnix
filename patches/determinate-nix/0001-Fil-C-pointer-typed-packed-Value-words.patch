@@ -1,7 +1,7 @@
 From ac2fb24389a30ae680bcfbdda85b9c19b990da1a Mon Sep 17 00:00:00 2001
 From: t <a@b>
 Date: Sun, 27 Sep 2026 17:14:28 +0000
-Subject: [PATCH] Fil-C: pointer-typed packed Value words
+Subject: [PATCH 1/2] Fil-C: pointer-typed packed Value words
 
 Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
 Co-authored-by: Mikael Brockman <mikael@brockman.se>
