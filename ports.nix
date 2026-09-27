@@ -506,15 +506,21 @@ in
       (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
       (use (old: {
         # graphviz (for documentation figures) fails to build natively at
-        # this Nixpkgs pin. slirp4netns (for container networking) needs
+        # this Nixpkgs pin (its X variant installs no vimdot), so use the
+        # variant without X. slirp4netns (for container networking) needs
         # libseccomp, and the Fil-C runtime does not support the seccomp
         # system call.
         nativeBuildInputs = builtins.filter (
           d: !(builtins.elem (d.pname or "") [ "graphviz" "slirp4netns" ])
-        ) old.nativeBuildInputs;
+        ) old.nativeBuildInputs ++ [ pkgs.buildPackages.graphviz-nox ];
         propagatedBuildInputs = builtins.filter (
           d: (d.pname or "") != "slirp4netns"
         ) old.propagatedBuildInputs;
+        # The build-time tools (guile, makeinfo for the translated
+        # manuals) need a UTF-8 locale; the native build gets it from
+        # glibcLocales' hook, which does not apply here.
+        LOCALE_ARCHIVE = "${pkgs.buildPackages.glibcLocales}/lib/locale/locale-archive";
+        LC_ALL = "C.UTF-8";
       }))
     ];
 

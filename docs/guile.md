@@ -52,15 +52,28 @@ has no capability, so `make-pointer` now derives one
 (`scm_i_pointer_from_address` in `loader.c`):
 
 - from the loaded ELF image that contains the address, if any;
-- else from a strong `zexact_ptrtable` of addresses handed out by
-  `pointer-address`. The object stays alive until it is freed, like C
-  memory whose address a program keeps. This is needed for, for example,
-  `test-foreign-object-scm`, which keeps a `malloc`ed address in an
-  unboxed field and frees it in a finalizer;
+- else from a sorted table of the objects whose addresses
+  `pointer-address` has handed out, looked up by range, so that
+  arithmetic on the address (FFI code passes `(+ start (pointer-address
+  p))`) still resolves. The objects stay alive until they are freed, like
+  C memory whose address a program keeps. This is needed for, for
+  example, `test-foreign-object-scm`, which keeps a `malloc`ed address in
+  an unboxed field and frees it in a finalizer;
 - else from the weak table below, which `object-address` records into.
 
 Otherwise the pointer has no capability and using it traps.
 `primitive-code-name` rebases its address onto the subr code arena.
+
+FFI libraries also build C structs in bytevectors: guile-zlib stores
+`(pointer-address buf)` into a `z_stream`'s `next_in` with
+`bytevector-uint-set!`, and zlib reads it as a pointer. So 64-bit native
+stores to raw memory from Scheme (`bytevector-u64-native-set!`,
+`bytevector-uint-set!` of size 8, and the VM's `u64-set!`/`s64-set!`)
+store an aligned value that `make-pointer` would resolve as a pointer,
+and the matching loads record a word that holds a pointer in that table
+and return its address (`scm_i_store_word64`/`scm_i_load_word64` in
+`loader.c`). Only values in the user-space address range are looked up.
+With this, guile-zlib's 141 tests pass.
 
 ### Weak references
 
