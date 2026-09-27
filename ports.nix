@@ -382,6 +382,27 @@ in
     };
   }
 
+  (for pkgs.pth [
+    # configure's makecontext probe passes a void (*)(void *) to
+    # makecontext, which Clang rejects, so pth fell back to setjmp/longjmp
+    # with a hand-patched jmp_buf stack pointer (sjljlx), which does not
+    # exist for this libc. Fil-C implements makecontext/swapcontext, so
+    # use pth's standard SUSv2 ucontext backend.
+    (configure "--with-mctx-mth=mcsc")
+    (configure "--with-mctx-dsp=sc")
+    (configure "--with-mctx-stk=mc")
+    (use {
+      doCheck = true;
+      # `make test` ignores test_std's exit status.
+      checkPhase = ''
+        runHook preCheck
+        make test_std
+        ./test_std
+        runHook postCheck
+      '';
+    })
+  ])
+
   # ━━━ Core Utilities ━━━
 
   (for pkgs.coreutils [
