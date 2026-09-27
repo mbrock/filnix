@@ -93,6 +93,30 @@ Projects that use CMake, Meson or Autotools work the same way. Add the tool to
 ~nativeBuildInputs~ come from ~pkgsFilc.buildPackages~ and run natively.
 Everything in ~buildInputs~ is compiled with Fil-C.
 
+** NixOS
+
+~nixosModules.filc~ swaps chosen NixOS services and programs for their Fil-C
+builds and leaves the rest of the system alone:
+
+#+begin_src nix
+{
+  imports = [ filnix.nixosModules.filc ];
+  filc.enable = true;                   # sshd, Bash, Tor, Unbound, lighttpd, Nix
+  filc.tools = [ "coreutils" "curl" ];  # Fil-C programs on PATH
+  services.openssh.enable = true;
+}
+#+end_src
+
+A demo VM runs the Fil-C sshd, Bash, Unbound, lighttpd and Nix:
+
+#+begin_src sh
+nix run github:mbrock/filnix#nixosConfigurations.filc-demo.config.system.build.vm
+ssh -p 2222 demo@localhost   # password "demo"
+#+end_src
+
+See [[file:docs/nixos.md][docs/nixos.md]]. ~pkgsFilc.nix~ is Nix itself built
+with Fil-C; it passes Nix's unit and functional tests.
+
 * How it works
 
 ** The toolchain
@@ -115,8 +139,11 @@ derivations:
 code, so ~pkgs.overrideCC stdenv filcc~ works as you would expect.
 
 The upstream sources come from one Fil-C monorepo revision, pinned in
-~lib/filc-upstream.json~. Only the relevant subtrees are hashed, so changes
-elsewhere in upstream do not rebuild the compiler.
+~lib/filc-upstream.json~: upstream's ~deluge~ branch plus a few fixes on the
+~filnix~ branch of [[https://github.com/mbrock/fil-c][mbrock/fil-c]] (C++20
+coroutines, SaRCAsm and runtime fixes). Only the relevant subtrees are hashed,
+so changes elsewhere in upstream do not rebuild the compiler. To work on the
+compiler without rebuilding it from scratch, see [[file:docs/llvm-dev.md][docs/llvm-dev.md]].
 
 ** pkgsFilc
 
@@ -173,19 +200,13 @@ from the compiler in ~ports/upstream.json~; see [[file:docs/upstream-updates.md]
 * Status
 
 A continuous build campaign tries to build all of nixpkgs with Fil-C. Its live
-dashboard is at [[https://nix.swa.sh/]].
-
-The current campaign (Fil-C ~b6dd634~, shared cancellation runtime) selects
-13,772 attributes. As of late September 2026:
-
-| Built (test evidence for 567 of these) | 3,765 |
-| Failed                                  | 1,811 |
-| Blocked by a failed dependency          | 6,883 |
-| Evaluation error                        | 1,143 |
+dashboard is at [[https://nix.swa.sh/]]. The current campaign builds the
+nixos-26.05 package set (14,647 attributes) with Fil-C ~eb534be~.
 
 Many blocked packages wait on the same few shared dependencies, so fixing one
-of those can unblock a large group at once. The dashboard links each result to
-its logs, test evidence and dependency graph.
+of those can unblock a large group at once. The dashboard's Blockers tab ranks
+failures by how many packages they block, and links each result to its logs,
+test evidence and dependency graph.
 
 * Binary cache
 
