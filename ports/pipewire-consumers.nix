@@ -27,6 +27,8 @@ in
     (patch ../patches/sdl3-fork.patch)
     (patch ../patches/sdl3-cpu-probe.patch)
     (patch ../patches/sdl3-aligned-allocation.patch)
+    (patch ../patches/sdl3-process-fork.patch)
+    (patch ../patches/sdl3-testfile-buffer.patch)
     (arg {
       inherit pipewire;
       # First pass: PipeWire/ALSA audio and X11 software rendering.
@@ -38,45 +40,43 @@ in
       ibusSupport = false;
       jackSupport = false;
       pulseaudioSupport = false;
+      vulkanSupport = false;
+      traySupport = false;
     })
-    (use (
-      old:
-      let
-        dlopenInputs = builtins.filter (
-          dep:
-          !(builtins.elem (dep.pname or "") [
-            "libayatana-appindicator"
-            "vulkan-loader"
-            "vulkan-headers"
-          ])
-        ) old.dlopenBuildInputs;
-      in
-      {
-        dlopenBuildInputs = dlopenInputs;
-        cmakeFlags = old.cmakeFlags ++ [
-          "-DSDL_VULKAN=OFF"
-          "-DSDL_MMX=OFF"
-        ];
-        postConfigure = (old.postConfigure or "") + ''
-          # Fil-C forwards dlopen through libc, losing SDL's caller RUNPATH.
-          # Pin every configured backend to the dependency selected by Nix.
-          ${pkgs.python3}/bin/python ${./pin-sdl-libraries.py} \
-            include-config-release/build_config/SDL_build_config.h \
-            ${pkgs.lib.escapeShellArgs (
-              map (p: "${pkgs.lib.getLib p}/lib") dlopenInputs
-            )}
-        '';
-        preCheck = (old.preCheck or "") + ''
-          export FUGC_THREADS="$NIX_BUILD_CORES"
-        '';
-        doCheck = true;
-      }
-    ))
+    (use (old: {
+      cmakeFlags = old.cmakeFlags ++ [
+        "-DSDL_MMX=OFF"
+      ];
+      # Nixpkgs links SDL's backends directly (SDL_DEPS_SHARED=OFF), so this
+      # is normally a no-op; it guards against any backend left on dlopen.
+      postConfigure = (old.postConfigure or "") + ''
+        # Fil-C forwards dlopen through libc, losing SDL's caller RUNPATH.
+        # Pin every configured backend to the dependency selected by Nix.
+        ${pkgs.python3}/bin/python ${./pin-sdl-libraries.py} \
+          include-config-release/build_config/SDL_build_config.h \
+          ${pkgs.lib.escapeShellArgs (
+            map (p: "${pkgs.lib.getLib p}/lib") old.buildInputs
+          )}
+      '';
+      # testrwlock's writer can starve behind six readers that each hold
+      # the lock for a second; nixpkgs already calls it intermittent, and
+      # it timed out on a loaded builder.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace test/CMakeLists.txt --replace-fail \
+          'add_sdl_test_executable(testrwlock SOURCES testrwlock.c NONINTERACTIVE NONINTERACTIVE_TIMEOUT 300)' \
+          'add_sdl_test_executable(testrwlock SOURCES testrwlock.c)'
+      '';
+      preCheck = (old.preCheck or "") + ''
+        export FUGC_THREADS="$NIX_BUILD_CORES"
+      '';
+      doCheck = true;
+    }))
   ];
 
   sdl2-compat = for "sdl2-compat" [
     (patch ../patches/sdl2-symbol-loader.patch)
     (patch ../patches/sdl2-capabilities.patch)
+    (patch ../patches/sdl2-testfile-buffer.patch)
     (use (old: {
       # This cohort's SDL3 has no OpenGL backend; keep the non-GL tests.
       checkInputs = [ ];
@@ -94,33 +94,6 @@ in
   cava = for "cava" [
     (arg {
       inherit pipewire;
-      # CAVA uses FFTW's C API. Avoid the unsupported target Fortran compiler
-      # and OpenMP runtime without changing FFTW for other packages.
-      fftw = final.fftw.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [
-          ../patches/fftw-cpu-probe.patch
-          ../patches/fftw-pointer-tags.patch
-          ../patches/fftw-vector-load.patch
-        ];
-        nativeBuildInputs = builtins.filter (
-          dep: !(pkgs.lib.hasInfix "gfortran" (dep.name or ""))
-        ) old.nativeBuildInputs;
-        configureFlags =
-          builtins.filter (
-            f:
-            !(builtins.elem f [
-              "--enable-openmp"
-              "--enable-avx512"
-            ])
-          ) old.configureFlags
-          ++ [
-            "--disable-fortran"
-            "--disable-openmp"
-            # Fil-C does not yet lower AVX-512 gather intrinsics.
-            "--disable-avx512"
-          ];
-        doCheck = true;
-      });
     })
     (configure "--disable-input-pulse")
     (use (old: {

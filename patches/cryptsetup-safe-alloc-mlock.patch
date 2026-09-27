@@ -1,0 +1,24 @@
+Subject: Leave safe allocations unlocked under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+cryptsetup 2.8 mlock()s every crypt_safe_alloc heap object and treats
+failure as non-fatal (as when over RLIMIT_MEMLOCK). The Fil-C runtime only
+permits mlock on mmapped memory and traps on malloc'd objects, which aborted
+luksFormat and the bitlk/fvault2/unit-utils-crypt tests. Take the existing
+unlocked path instead; crypt_safe_free already skips munlock for it.
+
+--- a/lib/utils_safe_memory.c
++++ b/lib/utils_safe_memory.c
+@@ -54,8 +54,11 @@ void *crypt_safe_alloc(size_t size)
+ 	alloc->size = size;
+ 
+ 	/* Ignore failure if it is over limit. */
++#ifndef __FILC__
++	/* Fil-C only locks mmapped memory and traps on heap objects. */
+ 	if (!mlock(alloc, size + OVERHEAD))
+ 		alloc->locked = true;
++#endif
+ 
+ 	/* coverity[leaked_storage] */
+ 	return &alloc->data;

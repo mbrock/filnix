@@ -11,13 +11,12 @@ nix build .#checks.x86_64-linux.zstd-sarcasm
 
 ## What was needed
 
-`patches/sarcasm-zstd.patch` teaches the pinned SaRCAsm to parse
-semicolon-separated statements emitted by zstd's preprocessor macros. It
-preserves quoted strings, `#` comments, annotation bodies, `lock;` prefixes,
-and original line numbers. The same change is on the `coro` branch of
-[mbrock/fil-c](https://github.com/mbrock/fil-c), with upstream-style tests.
-The pinned SaRCAsm already allows unaligned ordinary integer accesses while
-keeping pointer and atomic alignment checks.
+SaRCAsm at the pinned [mbrock/fil-c](https://github.com/mbrock/fil-c)
+revision parses semicolon-separated statements emitted by zstd's
+preprocessor macros. It preserves quoted strings, `#` comments, annotation
+bodies, `lock;` prefixes, and original line numbers. The pinned SaRCAsm
+already allows unaligned ordinary integer accesses while keeping pointer and
+atomic alignment checks.
 
 `patches/zstd-sarcasm.patch` ports the two loops:
 
@@ -26,10 +25,6 @@ keeping pointer and atomic alignment checks.
   SaRCAsm virtualizes. The decoder's arithmetic and loop structure remain.
 - Replace `%ah` stores with a shift and `%al` store, avoiding an unsupported
   high-byte register alias.
-
-The variant selects its own patched assembler with `--filc-resource-dir`.
-This keeps experimentation downstream of LLVM and avoids rebuilding the
-compiler/runtime or changing other packages' assembler.
 
 The upstream zstd patch's inline loop-alignment suppression remains in place.
 Re-enabling these layout hints is a separate compiler-inline-assembly issue,

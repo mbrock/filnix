@@ -1,7 +1,5 @@
-diff --git a/unwind_prot.c b/unwind_prot.c
-index fbf5c85f8f9b..d81afe3d02e1 100644
---- a/unwind_prot.c
-+++ b/unwind_prot.c
+--- unwind_prot.c
++++ unwind_prot.c
 @@ -48,7 +48,7 @@
  typedef struct {
    char *variable;

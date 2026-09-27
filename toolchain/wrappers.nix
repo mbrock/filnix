@@ -3,6 +3,7 @@
   filc,
   filc-sysroot,
   filc-binutils,
+  useCcache ? true,
 }:
 
 let
@@ -20,7 +21,9 @@ let
       # compiler wrapper, whose contents pin the runtime and SaRCAsm paths.
       export CCACHE_COMPILERCHECK=content
 
-      # Fil-C Clang driver has special version script handling.
+      ${
+        pkgs.lib.optionalString (!useCcache) "export CCACHE_DISABLE=1\n"
+      }# Fil-C Clang driver has special version script handling.
       #
       # This only works if we give the version script flag
       # to the Clang driver, not to the actual linker.
@@ -38,6 +41,9 @@ let
         if [[ "$arg" == "-Wl,--version-script="* ]]; then
           # Form 1: -Wl,--version-script=file
           new_args+=("--version-script=''${arg#-Wl,--version-script=}")
+        elif [[ "$arg" == "-Wl,-version-script="* ]]; then
+          # Form 1 with one dash, as in PulseAudio
+          new_args+=("--version-script=''${arg#-Wl,-version-script=}")
         elif [[ "$arg" == "-Wl,--version-script,"* ]]; then
           # Form 2: -Wl,--version-script,file
           new_args+=("--version-script=''${arg#-Wl,--version-script,}")
@@ -104,6 +110,14 @@ rec {
       libc = filc-sysroot;
       libcxx = filc-libcxx;
       bintools = filc-bintools;
+      # Let Nixpkgs apply its Clang-specific handling to Fil-C's Clang.
+      isClang = true;
+      # There is no GCC tree to use for libraries; callPackage would otherwise
+      # supply the top-level gccForLibs.
+      gccForLibs = null;
+      # The ccache wrapper rewrites version-script flags, which a response
+      # file would hide from it.
+      isCcache = true;
 
       extraBuildCommands = ''
         echo "-Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags

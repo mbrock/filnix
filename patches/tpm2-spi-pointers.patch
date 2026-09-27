@@ -6,7 +6,7 @@ This does not establish physical SPI device support by the runtime ioctl layer.
 
 --- a/src/tss2-tcti/tcti-spidev.c
 +++ b/src/tss2-tcti/tcti-spidev.c
-@@ -85,8 +85,15 @@ platform_spi_transfer (void *user_data, const void *data_out, void *data_in, size_t
+@@ -80,8 +80,15 @@ platform_spi_transfer(void *user_data, const void *data_out, void *data_in, size
      };
  
      tr.len = cnt;
@@ -16,15 +16,15 @@ This does not establish physical SPI device support by the runtime ioctl layer.
 +    memcpy(&tr.tx_buf, &data_out, sizeof(data_out));
 +    memcpy(&tr.rx_buf, &data_in, sizeof(data_in));
 +#else
-     tr.tx_buf = (unsigned long) data_out;
-     tr.rx_buf = (unsigned long) data_in;
+     tr.tx_buf = (unsigned long)data_out;
+     tr.rx_buf = (unsigned long)data_in;
 +#endif
- 	int ret = ioctl(platform_data->fd, SPI_IOC_MESSAGE(1), &tr);
+     int ret = ioctl(platform_data->fd, SPI_IOC_MESSAGE(1), &tr);
      if (ret < 0) {
          LOG_ERROR("SPI acquire failed: %s", strerror(errno));
 --- a/test/unit/tcti-spidev.c
 +++ b/test/unit/tcti-spidev.c
-@@ -110,9 +110,16 @@ int __wrap_ioctl(int fd, unsigned long request, struct spi_ioc_transfer *tr)
+@@ -114,9 +114,16 @@ __wrap_ioctl(int fd, unsigned long request, struct spi_ioc_transfer *tr) {
  
      size_t len = tr->len;
  
@@ -35,8 +35,8 @@ This does not establish physical SPI device support by the runtime ioctl layer.
 +    memcpy(&rx_buf, &tr->rx_buf, sizeof(rx_buf));
 +#else
      /* Use size_t to cast 64 bit number to pointer (needed for 32 bit systems) */
-     uint8_t *tx_buf = (uint8_t *)(size_t) tr->tx_buf;
-     uint8_t *rx_buf = (uint8_t *)(size_t) tr->rx_buf;
+     uint8_t *tx_buf = (uint8_t *)(size_t)tr->tx_buf;
+     uint8_t *rx_buf = (uint8_t *)(size_t)tr->rx_buf;
 +#endif
  
      static tpm_state_t tpm_state = TPM_DID_VID_HEAD;

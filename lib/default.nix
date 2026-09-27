@@ -11,6 +11,15 @@ let
   targetPlatform = pkgs.stdenv.targetPlatform.config;
   gcc-lib = "${gcc.cc}/lib/gcc/${targetPlatform}/${gcc.version}";
 
+  # glibc's aclocal.m4 insists on exactly this Autoconf release.
+  autoconf272 = pkgs.autoconf.overrideAttrs (old: rec {
+    version = "2.72";
+    src = pkgs.fetchurl {
+      url = "mirror://gnu/autoconf/autoconf-${version}.tar.xz";
+      hash = "sha256-uohcExlXjWyU1G6bDc60AUyq/iSQ5Deg28o/JwoiP1o=";
+    };
+  });
+
   # Standard ccache setup for all builds
   setupCcache = ''
     if [ -w "/nix/var/cache/ccache" ]; then
@@ -161,7 +170,12 @@ in
     targetPlatform
     gcc-lib
     ;
-  inherit setupCcache commonLLVMOptions cmakeFlags;
+  inherit
+    autoconf272
+    setupCcache
+    commonLLVMOptions
+    cmakeFlags
+    ;
   inherit mkFilcLLVMBuild mergeLayers addLibcMetadata;
 
   # Define a version of the host Clang that doesn't have any

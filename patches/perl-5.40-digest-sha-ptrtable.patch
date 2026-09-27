@@ -1,0 +1,20 @@
+Decode Digest::SHA objects through the XS pointer table
+
+sv_setref_pv stores Fil-C pointers as zptrtable-encoded integers, but
+getSHA converted them back with INT2PTR, so every Digest::SHA object
+method wrote through a null pointer (sha1_hex and friends, which take no
+object, worked).
+
+diff --git a/cpan/Digest-SHA/SHA.xs b/cpan/Digest-SHA/SHA.xs
+index d3a3baf..af91369 100644
+--- a/cpan/Digest-SHA/SHA.xs
++++ b/cpan/Digest-SHA/SHA.xs
+@@ -49,7 +49,7 @@ static SHA *getSHA(pTHX_ SV *self)
+ {
+ 	if (!sv_isobject(self) || !sv_derived_from(self, "Digest::SHA"))
+ 		return(NULL);
+-	return INT2PTR(SHA *, SvIV(SvRV(self)));
++	return zptrtable_decode(Perl_xsub_ptrtable, SvIV(SvRV(self)));
+ }
+ 
+ MODULE = Digest::SHA		PACKAGE = Digest::SHA

@@ -9,7 +9,7 @@ native SIGABRT. Other signal expectations and all test cases remain intact.
 
 --- a/test/pwtest.c
 +++ b/test/pwtest.c
-@@ -625,7 +625,13 @@
+@@ -638,7 +638,13 @@ static void remove_xdg_runtime_dir(const char *xdg_dir)
  		return;
  	}
  
@@ -25,21 +25,21 @@ native SIGABRT. Other signal expectations and all test cases remain intact.
  static void cleanup(struct pwtest_context *ctx)
 --- a/test/test-spa-utils.c
 +++ b/test/test-spa-utils.c
-@@ -2,6 +2,13 @@
- /* SPDX-FileCopyrightText: Copyright © 2018 Collabora Ltd. */
+@@ -3,6 +3,13 @@
  /*                         @author George Kiagiadakis <george.kiagiadakis@collabora.com> */
  /* SPDX-License-Identifier: MIT */
-+
+ 
 +/* Fil-C reports an explicit abort through its diagnostic trap. */
 +#ifdef __FILC__
 +#define EXPECTED_ABORT_SIGNAL SIGTRAP
 +#else
 +#define EXPECTED_ABORT_SIGNAL SIGABRT
 +#endif
- 
++
  #include <locale.h>
  #include <unistd.h>
-@@ -1018,10 +1025,10 @@
+ #include <sys/wait.h>
+@@ -1017,10 +1024,10 @@ PWTEST_SUITE(spa_utils)
  	pwtest_add(utils_streq, PWTEST_NOARG);
  	pwtest_add(utils_strendswith, PWTEST_NOARG);
  	pwtest_add(utils_strendswith_null_suffix,

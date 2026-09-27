@@ -185,8 +185,9 @@ def classify(record, source_file=None, source_tags=(), evidence=()):
         reasons = ["metadata evaluation failed; retained for review"]
     else:
         m = record["metadata"]
-        native = m.get("nativeBuildInputs") or []
-        inputs = (m.get("buildInputs") or []) + (m.get("propagatedBuildInputs") or [])
+        # Some inputs have no name (Nixpkgs 26.05 has a few).
+        native = [n for n in m.get("nativeBuildInputs") or [] if n]
+        inputs = [n for n in (m.get("buildInputs") or []) + (m.get("propagatedBuildInputs") or []) if n]
         hints = m.get("builderHints") or {}
         pname = m.get("pname") or record["attrPath"][0]
         for name in native:

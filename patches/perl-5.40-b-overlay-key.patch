@@ -1,0 +1,21 @@
+Key B::overlay lookups by the encoded op address
+
+B exposes ops to Perl as zptrtable-encoded addresses, so $$op is the
+encoded value. B::Deparse records its pessimisations in B::overlay under
+$$op, but get_overlay_object looked them up by the raw address and never
+found them: deparsing any "my (...) = @_" died with "unexpected
+OP_PADRANGE".
+
+diff --git a/ext/B/B.xs b/ext/B/B.xs
+index 96d4a25..8c696b1 100644
+--- a/ext/B/B.xs
++++ b/ext/B/B.xs
+@@ -124,7 +124,7 @@ get_overlay_object(pTHX_ const OP *o, const char * const name, U32 namelen)
+     sv = SvRV(sv);
+     if (SvTYPE(sv) != SVt_PVHV)
+ 	return NULL;
+-    key = newSViv(PTR2IV(o));
++    key = newSViv(zptrtable_encode(Perl_xsub_ptrtable, (void*)o));
+     he = hv_fetch_ent((HV*)sv, key, 0, 0);
+     SvREFCNT_dec(key);
+     if (!he)

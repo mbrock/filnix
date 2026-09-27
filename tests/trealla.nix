@@ -4,8 +4,7 @@
   trealla,
 }:
 pkgs.runCommand "filc-trealla-runtime-check" { } ''
-  mkdir source
-  tar -xf ${trealla.src} -C source --strip-components=1
+  cp -r --no-preserve=mode ${trealla.src} source
   cd source
   ln -s ${trealla}/bin/tpl tpl
   for test in clpz_regression dcg_consult dcg_corpus dcg_differential dcg_quads \

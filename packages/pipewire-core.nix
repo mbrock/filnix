@@ -6,7 +6,7 @@
 }:
 stdenv.mkDerivation {
   pname = "pipewire-core";
-  inherit (p.pipewire) version src;
+  inherit (native.pipewire) version src;
   patches = [
     ../patches/pipewire-log-topics.patch
     ../patches/pipewire-test-suites.patch
@@ -64,7 +64,7 @@ stdenv.mkDerivation {
     "-Dvideotestsrc=enabled"
     "-Dalsa=enabled"
     "-Dpipewire-alsa=enabled"
-    "-Dsystemd=enabled"
+    "-Dlibsystemd=enabled"
     "-Dlogind=enabled"
     "-Ddbus=enabled"
     "-Dsession-managers=[]"

@@ -1,0 +1,45 @@
+Do not enumerate BlueZ debug descriptors under Fil-C
+
+Fil-C does not provide the linker-generated __start_ and __stop_ symbols
+for the __debug section. Debug logging selected by pattern is unavailable.
+
+diff -ru bz-a/obexd/src/log.c bz-b/obexd/src/log.c
+--- a/obexd/src/log.c
++++ b/obexd/src/log.c
+@@ -54,8 +54,16 @@
+ 	va_end(ap);
+ }
+ 
++#ifdef __FILC__
++/* Fil-C provides no __start_ and __stop_ symbols for the __debug section,
++   so no debug descriptors can be enumerated or enabled by pattern. */
++static struct obex_debug_desc filc_no_debug_descs[1];
++#define __start___debug filc_no_debug_descs
++#define __stop___debug filc_no_debug_descs
++#else
+ extern struct obex_debug_desc __start___debug[];
+ extern struct obex_debug_desc __stop___debug[];
++#endif
+ 
+ static char **enabled = NULL;
+ 
+diff -ru bz-a/src/log.c bz-b/src/log.c
+--- a/src/log.c
++++ b/src/log.c
+@@ -118,8 +118,16 @@
+ 	va_end(ap);
+ }
+ 
++#ifdef __FILC__
++/* Fil-C provides no __start_ and __stop_ symbols for the __debug section,
++   so no debug descriptors can be enumerated or enabled by pattern. */
++static struct btd_debug_desc filc_no_debug_descs[1];
++#define __start___debug filc_no_debug_descs
++#define __stop___debug filc_no_debug_descs
++#else
+ extern struct btd_debug_desc __start___debug[];
+ extern struct btd_debug_desc __stop___debug[];
++#endif
+ 
+ static char **enabled = NULL;
+ 

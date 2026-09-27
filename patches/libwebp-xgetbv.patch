@@ -1,0 +1,21 @@
+Subject: Spell XGETBV as an instruction instead of raw opcode bytes
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/libwebp-1.4.0.patch
+
+Fil-C validates inline instructions and supports xgetbv with these register
+constraints; raw .byte directives cannot be validated. With libwebp 1.6 the
+lossless decoder's DSP init reaches this probe (VP8LNew -> x86CPUInfo),
+which libtiff's webp_lossless tiffcp test exercises.
+
+--- a/src/dsp/cpu.c
++++ b/src/dsp/cpu.c
+@@ -77,7 +77,7 @@ static WEBP_INLINE uint64_t xgetbv(void) {
+   uint32_t eax, edx;
+   // Use the raw opcode for xgetbv for compatibility with older toolchains.
+   __asm__ volatile (
+-    ".byte 0x0f, 0x01, 0xd0\n"
++    "xgetbv\n"
+     : "=a"(eax), "=d"(edx) : "c" (ecx));
+   return ((uint64_t)edx << 32) | eax;
+ }

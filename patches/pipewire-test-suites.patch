@@ -7,7 +7,7 @@ all test cases with constructor registration, without forged linker bounds.
 
 --- a/test/pwtest-implementation.h
 +++ b/test/pwtest-implementation.h
-@@ -109,9 +109,15 @@
+@@ -109,9 +109,15 @@ void _pwtest_add(struct pwtest_context *ctx,
  		 ...) SPA_SENTINEL;
  
  struct pwtest_suite_decl {
@@ -23,37 +23,9 @@ all test cases with constructor registration, without forged linker bounds.
 +#endif
  
  #endif /* PWTEST_IMPLEMENTATION_H */
---- a/test/pwtest.h
-+++ b/test/pwtest.h
-@@ -472,6 +472,17 @@
-  *
-  * Test suites are automatically discovered at build-time.
-  */
-+#ifdef __FILC__
-+#define PWTEST_SUITE(cname) \
-+	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite); \
-+	static struct pwtest_suite_decl _test_suite = { \
-+		.name = #cname, .setup = cname##__setup, \
-+	}; \
-+	static void __attribute__((constructor)) cname##__register(void) { \
-+		pwtest_register_suite(&_test_suite); \
-+	} \
-+	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite)
-+#else
- #define PWTEST_SUITE(cname) \
- 	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite); \
- 	__attribute__((used)) \
-@@ -483,6 +494,7 @@
- 	   .setup = cname##__setup, \
- 	}; \
- 	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite)
-+#endif
- 
- struct pwtest_spa_plugin {
- #define PWTEST_PLUGIN_MAX 32
 --- a/test/pwtest.c
 +++ b/test/pwtest.c
-@@ -534,8 +534,19 @@
+@@ -532,8 +532,19 @@ void _pwtest_add(struct pwtest_context *ctx, struct pwtest_suite *suite,
  	spa_list_append(&suite->tests, &t->link);
  }
  
@@ -73,7 +45,7 @@ all test cases with constructor registration, without forged linker bounds.
  
  static void add_suite(struct pwtest_context *ctx,
  		      const struct pwtest_suite_decl *decl)
-@@ -573,7 +584,11 @@
+@@ -571,7 +582,11 @@ static void find_suites(struct pwtest_context *ctx, const char *suite_filter)
  {
  	const struct pwtest_suite_decl *c;
  
@@ -85,3 +57,31 @@ all test cases with constructor registration, without forged linker bounds.
  		if (suite_filter == NULL || fnmatch(suite_filter, c->name, 0) == 0)
  			add_suite(ctx, c);
  	}
+--- a/test/pwtest.h
++++ b/test/pwtest.h
+@@ -472,6 +472,17 @@ enum pwtest_arg {
+  *
+  * Test suites are automatically discovered at build-time.
+  */
++#ifdef __FILC__
++#define PWTEST_SUITE(cname) \
++	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite); \
++	static struct pwtest_suite_decl _test_suite = { \
++		.name = #cname, .setup = cname##__setup, \
++	}; \
++	static void __attribute__((constructor)) cname##__register(void) { \
++		pwtest_register_suite(&_test_suite); \
++	} \
++	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite)
++#else
+ #define PWTEST_SUITE(cname) \
+ 	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite); \
+ 	__attribute__((used)) \
+@@ -483,6 +494,7 @@ enum pwtest_arg {
+ 	   .setup = cname##__setup, \
+ 	}; \
+ 	static enum pwtest_result (cname##__setup)(struct pwtest_context *ctx, struct pwtest_suite *suite)
++#endif
+ 
+ struct pwtest_spa_plugin {
+ #define PWTEST_PLUGIN_MAX 32

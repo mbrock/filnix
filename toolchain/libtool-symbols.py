@@ -35,7 +35,10 @@ for path in sorted(paths):
 
     if text != original:
         stat = path.stat()
+        # Some source trees ship configure read-only.
+        path.chmod(stat.st_mode | 0o200)
         path.write_text(text, errors="surrogateescape")
+        path.chmod(stat.st_mode)
         # Do not trigger make's automatic regeneration of configure.
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
         print(f"Fil-C: adapting libtool symbol probes in {path}")

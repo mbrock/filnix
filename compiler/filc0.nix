@@ -21,8 +21,30 @@ let
       ) opts
     );
 
+  # Shared with shells/filc-llvm.nix so out-of-Nix builds match this one.
+  cmakeOptions = {
+    CMAKE_BUILD_TYPE = "RelWithDebInfo";
+    LLVM_ENABLE_ASSERTIONS = true;
+    LLVM_ENABLE_WARNINGS = false;
+    LLVM_ENABLE_ZSTD = false;
+    LLVM_TARGETS_TO_BUILD = "X86";
+    LLVM_ENABLE_LIBXML2 = false;
+    LLVM_ENABLE_LIBEDIT = false;
+    LLVM_ENABLE_LIBPFM = false;
+    LLVM_ENABLE_ZLIB = false;
+    LLVM_ENABLE_CURL = false;
+    LLVM_ENABLE_HTTPLIB = false;
+    LLVM_STATIC_LINK_CXX_STDLIB = true;
+    CMAKE_EXE_LINKER_FLAGS = "-static-libgcc";
+    LLVM_USE_LINKER = "gold";
+    LLVM_ENABLE_PROJECTS = "clang";
+    LLVM_BINUTILS_INCDIR = "${pkgs.binutils-unwrapped.dev}/include";
+  };
+
 in
 {
+  inherit cmakeOptions;
+
   filc0 = pkgs.ccacheStdenv.mkDerivation {
     pname = "filc0";
     version = "git";
@@ -51,24 +73,8 @@ in
 
     configurePhase =
       let
-        allOptions = {
-          CMAKE_BUILD_TYPE = "RelWithDebInfo";
-          LLVM_ENABLE_ASSERTIONS = true;
-          LLVM_ENABLE_WARNINGS = false;
-          LLVM_ENABLE_ZSTD = false;
-          LLVM_TARGETS_TO_BUILD = "X86";
-          LLVM_ENABLE_LIBXML2 = false;
-          LLVM_ENABLE_LIBEDIT = false;
-          LLVM_ENABLE_LIBPFM = false;
-          LLVM_ENABLE_ZLIB = false;
-          LLVM_ENABLE_CURL = false;
-          LLVM_ENABLE_HTTPLIB = false;
-          LLVM_STATIC_LINK_CXX_STDLIB = true;
-          CMAKE_EXE_LINKER_FLAGS = "-static-libgcc";
+        allOptions = cmakeOptions // {
           CMAKE_INSTALL_PREFIX = "$TMPDIR/install";
-          LLVM_USE_LINKER = "gold";
-          LLVM_ENABLE_PROJECTS = "clang";
-          LLVM_BINUTILS_INCDIR = "${pkgs.binutils-unwrapped.dev}/include";
         };
       in
       ''

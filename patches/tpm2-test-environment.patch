@@ -8,10 +8,11 @@ freed storage. Keep all integration tests and their assertions enabled.
 
 --- a/test/integration/main-fapi.c
 +++ b/test/integration/main-fapi.c
-@@ -506,7 +506,12 @@
+@@ -524,8 +524,12 @@ init_fapi(char *profile, FAPI_CONTEXT **fapi_context) {
          ret = EXIT_ERROR;
          goto error;
      }
+-    /* config_env must not be freed after the putenv ! */
 -    putenv(config_env);
 +    /* setenv copies the string; config_env is freed below. */
 +    if (setenv("TSS2_FAPICONF", config_path, 1) != 0) {

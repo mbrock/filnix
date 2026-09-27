@@ -10,7 +10,16 @@ from tagflow import htmx as hx
 from tagflow import tag, text
 
 from .. import VERSION
-from .resources import ACTIVITY, BATCHES, EVENTS, GRAPH, LIVE_LOG, PACKAGES, View
+from .resources import (
+    ACTIVITY,
+    BATCHES,
+    BLOCKERS,
+    EVENTS,
+    GRAPH,
+    LIVE_LOG,
+    PACKAGES,
+    View,
+)
 
 FOCUS = [
     "focus-visible:outline-2",
@@ -231,6 +240,7 @@ def shell(title, campaign, campaigns, view, section, content):
                                 ("activity", "Activity", ACTIVITY),
                                 ("packages", "Packages", PACKAGES),
                                 ("batches", "Batches", BATCHES),
+                                ("blockers", "Blockers", BLOCKERS),
                                 ("dependencies", "Dependencies", GRAPH),
                             ]:
                                 v = View(transport=view.transport)

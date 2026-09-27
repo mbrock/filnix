@@ -42,14 +42,14 @@ checks the six pointer-access shapes and verifies equal normalized
 instruction effects after reversing the annotation spelling and ignoring
 source-line numbers. No instruction is removed or substituted.
 
-Pinned upstream requires natural alignment for these integer accesses;
-the prototype permits unaligned integers. Every Fil-C variant passes 16,384
-aligned table cases, null/freed/bounds failures, the decoder reference and
-19 decoder/node-walk failure modes. The prototype and C variants also pass
-unaligned table cases and all 10,240 decoder cases per test variant. Upstream
-passes the 768-case aligned intersection across three alias layouts, plus
-exact boundaries and 520 node walks; an unaligned table access is recorded
-as an expected alignment rejection. Native variants run valid-input gates.
+Pinned upstream, like the prototype, permits unaligned integers for these
+accesses (earlier upstream revisions required natural alignment). Every
+Fil-C variant passes 16,384 aligned and unaligned table cases,
+null/freed/bounds failures, the decoder reference and 19 decoder/node-walk
+failure modes. The prototype and C variants also pass all 10,240 decoder
+cases per test variant. Upstream passes the 768-case aligned decoder
+intersection across three alias layouts, plus exact boundaries and 520 node
+walks. Native variants run valid-input gates.
 
 All timed inputs are aligned, within bounds and free of address overflow.
 The prototype retains explicit offset-overflow guards; the C references

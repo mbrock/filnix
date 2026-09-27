@@ -48,3 +48,14 @@ Upstream-Status: Not submitted
 +#endif
  
  #include "simd-common.h"
+--- a/simd-support/simd-sse2.h
++++ b/simd-support/simd-sse2.h
+@@ -140,7 +140,7 @@
+ {
+      V var;
+      (void)aligned_like; /* UNUSED */
+-#  ifdef __GNUC__
++#  if defined(__GNUC__) && !defined(__FILC__)
+      /* We use inline asm because gcc-3.x generates slow code for
+ 	_mm_loadh_pi().  gcc-3.x insists upon having an existing variable for
+ 	VAL, which is however never used.  Thus, it generates code to move

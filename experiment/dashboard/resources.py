@@ -67,6 +67,7 @@ PACKAGE = Resource(BASE + "/packages/{pid:int}", ("transport",))
 BATCHES = Resource(BASE + "/batches", ("q", "kind", "outcome", "sort", "transport"))
 BATCH = Resource(BASE + "/batches/{aid}", ("transport",))
 BATCH_STATUS = Resource(BASE + "/batches/{aid}/status", ("transport",))
+BLOCKERS = Resource(BASE + "/blockers", ("page", "transport"))
 GRAPH = Resource(BASE + "/dependencies", ("focus", "available", "page", "transport"))
 GRAPH_REGION = Resource(
     BASE + "/dependencies/region", ("focus", "available", "page", "transport")

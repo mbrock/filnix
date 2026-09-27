@@ -1,0 +1,39 @@
+Subject: Report ring locking as unsupported under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+zix_ring_mlock locks the heap-allocated ring and its buffer. The Fil-C
+runtime only permits mlock on mmapped memory and traps on malloc'd
+objects. Take the existing unsupported path, which callers already
+handle.
+
+--- a/src/ring.c
++++ b/src/ring.c
+@@ -9,9 +9,9 @@
+ #include <zix/allocator.h>
+ #include <zix/status.h>
+ 
+-#if USE_VIRTUALLOCK
++#if USE_VIRTUALLOCK && !defined(__FILC__)
+ #  include <windows.h>
+-#elif USE_MLOCK
++#elif USE_MLOCK && !defined(__FILC__)
+ #  include <sys/mman.h>
+ #endif
+ 
+@@ -108,13 +108,13 @@
+ ZixStatus
+ zix_ring_mlock(ZixRing* const ring)
+ {
+-#if USE_VIRTUALLOCK
++#if USE_VIRTUALLOCK && !defined(__FILC__)
+   return (VirtualLock(ring, sizeof(ZixRing)) &&
+           VirtualLock(ring->buf, ring->size))
+            ? ZIX_STATUS_SUCCESS
+            : ZIX_STATUS_ERROR;
+ 
+-#elif USE_MLOCK
++#elif USE_MLOCK && !defined(__FILC__)
+   return zix_errno_status_if(mlock(ring, sizeof(ZixRing)) +
+                              mlock(ring->buf, ring->size));
+ 

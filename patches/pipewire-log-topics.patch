@@ -10,7 +10,7 @@ No heap storage, weak function calls, or constructor priorities are needed.
 
 --- a/spa/include/spa/support/log.h
 +++ b/spa/include/spa/support/log.h
-@@ -97,11 +97,26 @@
+@@ -97,11 +97,26 @@ struct spa_log_topic {
   *
   * \since 1.1.0
   */
@@ -37,7 +37,7 @@ No heap storage, weak function calls, or constructor priorities are needed.
  	/** End of topics array */
  	struct spa_log_topic * const * const topics_end;
  };
-@@ -337,10 +352,19 @@
+@@ -337,10 +352,19 @@ SPA_API_LOG void spa_log_logtv(struct spa_log *l, enum spa_log_level level,
   *
   * \since 1.1.0
   */
@@ -57,7 +57,7 @@ No heap storage, weak function calls, or constructor priorities are needed.
  
  /**
   * Define and magically register a \ref spa_log_topic
-@@ -366,10 +390,18 @@
+@@ -366,10 +390,18 @@ SPA_API_LOG void spa_log_logtv(struct spa_log *l, enum spa_log_level level,
   *
   * \since 1.1.0
   */
@@ -78,7 +78,7 @@ No heap storage, weak function calls, or constructor priorities are needed.
  
 --- a/src/pipewire/log.c
 +++ b/src/pipewire/log.c
-@@ -178,6 +178,13 @@
+@@ -179,6 +179,13 @@ void pw_log_topic_register_enum(const struct spa_log_topic_enum *e)
  	if (!e)
  		return;
  
@@ -92,7 +92,7 @@ No heap storage, weak function calls, or constructor priorities are needed.
  	for (t = e->topics; t < e->topics_end; ++t)
  		pw_log_topic_register(*t);
  }
-@@ -189,6 +196,13 @@
+@@ -190,6 +197,13 @@ void pw_log_topic_unregister_enum(const struct spa_log_topic_enum *e)
  	if (!e)
  		return;
  

@@ -14,7 +14,6 @@
   {
     yjitSupport = false;
     jitSupport = false;
-    cargo = null;
     rustPlatform = null;
     rustc = null;
     defaultGemConfig =

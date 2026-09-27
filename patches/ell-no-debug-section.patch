@@ -1,0 +1,50 @@
+Do not enumerate ELL debug descriptors under Fil-C
+
+Fil-C does not provide the linker-generated __start_ and __stop_ symbols
+for the __ell_debug section, so l_debug_enable cannot enumerate debug
+descriptors. Debug logging selected by pattern is unavailable.
+
+diff --git a/ell/log.c b/ell/log.c
+index a8c2617..1279526 100644
+--- a/ell/log.c
++++ b/ell/log.c
+@@ -428,6 +428,7 @@ LIB_EXPORT void l_debug_disable(void)
+ 	debug_pattern = NULL;
+ }
+ 
++#ifndef __FILC__
+ __attribute__((constructor)) static void register_debug_section()
+ {
+ 	extern struct l_debug_desc __start___ell_debug[];
+@@ -435,6 +436,7 @@ __attribute__((constructor)) static void register_debug_section()
+ 
+ 	l_debug_add_section(__start___ell_debug, __stop___ell_debug);
+ }
++#endif
+ 
+ __attribute__((destructor(65535))) static void free_debug_sections()
+ {
+diff --git a/ell/log.h b/ell/log.h
+index 7ddf663..61992f5 100644
+--- a/ell/log.h
++++ b/ell/log.h
+@@ -72,6 +72,11 @@ void l_debug_enable_full(const char *pattern,
+ void l_debug_add_section(struct l_debug_desc *start,
+ 					struct l_debug_desc *end);
+ 
++#ifdef __FILC__
++/* Fil-C does not provide the linker's __start_ and __stop_ section symbols,
++   so debug descriptors cannot be enumerated or enabled by pattern. */
++#define l_debug_enable(pattern) l_debug_enable_full(pattern, NULL, NULL)
++#else
+ #define l_debug_enable(pattern) do { \
+ _Pragma("GCC diagnostic push") \
+ _Pragma("GCC diagnostic ignored \"-Wredundant-decls\"") \
+@@ -80,6 +85,7 @@ _Pragma("GCC diagnostic ignored \"-Wredundant-decls\"") \
+ 	l_debug_enable_full(pattern, __start___ell_debug, __stop___ell_debug); \
+ _Pragma("GCC diagnostic pop") \
+ } while (0)
++#endif
+ 
+ void l_debug_disable(void);
+ 

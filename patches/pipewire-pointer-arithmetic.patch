@@ -8,7 +8,7 @@ actual array elements and aligned pointers use byte-pointer arithmetic.
 
 --- a/spa/include/spa/utils/defs.h
 +++ b/spa/include/spa/utils/defs.h
-@@ -199,7 +199,11 @@
+@@ -199,7 +199,11 @@ struct spa_fraction {
  /**
   * Return the address (buffer + offset) as pointer of \a type
   */
@@ -20,7 +20,7 @@ actual array elements and aligned pointers use byte-pointer arithmetic.
  #define SPA_PTROFF_ALIGN(ptr_,offset_,alignment_,type_) \
     SPA_PTR_ALIGN(SPA_PTROFF(ptr_,offset_,type_),alignment_,type_)
  
-@@ -209,7 +213,11 @@
+@@ -209,7 +213,11 @@ struct spa_fraction {
  #define SPA_MEMBER(b,o,t) SPA_PTROFF(b,o,t)
  #define SPA_MEMBER_ALIGN(b,o,a,t) SPA_PTROFF_ALIGN(b,o,a,t)
  
@@ -32,7 +32,7 @@ actual array elements and aligned pointers use byte-pointer arithmetic.
  
  #define SPA_PTRDIFF(p1,p2) ((intptr_t)(p1) - (intptr_t)(p2))
  
-@@ -309,7 +317,16 @@
+@@ -311,7 +319,16 @@ struct spa_fraction {
  
  #define SPA_PTR_ALIGNMENT(p,align)	((uintptr_t)(p) & ((align)-1))
  #define SPA_IS_ALIGNED(p,align)		(SPA_PTR_ALIGNMENT(p,align) == 0)

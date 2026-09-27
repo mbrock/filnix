@@ -3,7 +3,7 @@ pkgsFilc.stdenv.mkDerivation {
   name = "filc-meson-gtype-check";
   src = ./glib-enums;
   nativeBuildInputs = [
-    (import ../toolchain/meson-filc.nix { inherit pkgs; })
+    pkgsFilc.meson
     pkgs.ninja
     pkgs.pkg-config
     pkgsFilc.glib

@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from experiment import blockers
 from experiment import nix
 from experiment.controller import Controller
 from experiment.model import (
@@ -20,6 +21,10 @@ from experiment.model import (
     writer_lock,
 )
 from experiment.web import application
+
+
+# Every graph read must see the test's latest writes.
+blockers.SYNCHRONOUS = True
 
 A = "/nix/store/" + "a" * 32 + "-library.drv"
 B = "/nix/store/" + "b" * 32 + "-program.drv"

@@ -1,0 +1,2325 @@
+diff -urN orig/ext/gl/gstgldownloadelement.c gst-plugins-base-1.26.11/ext/gl/gstgldownloadelement.c
+--- a/ext/gl/gstgldownloadelement.c
++++ b/ext/gl/gstgldownloadelement.c
+@@ -451,9 +451,9 @@
+   static GType type = 0;
+   static const gchar *tags[] = { GST_META_TAG_MEMORY_STR, NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstNVMMParentMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+ 
+   return type;
+@@ -464,7 +464,7 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (gst_nvmm_parent_meta_api_get_type (),
+         "GstNVMMParentMeta",
+@@ -472,7 +472,7 @@
+         (GstMetaInitFunction) _gst_nvmm_parent_meta_init,
+         (GstMetaFreeFunction) _gst_nvmm_parent_meta_free,
+         _gst_nvmm_parent_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) meta);
+   }
+ 
+   return meta_info;
+diff -urN orig/ext/gl/gstgleffects.c gst-plugins-base-1.26.11/ext/gl/gstgleffects.c
+--- a/ext/gl/gstgleffects.c
++++ b/ext/gl/gstgleffects.c
+@@ -660,9 +660,9 @@
+ gboolean
+ gst_gl_effects_register_filters (GstPlugin * plugin, GstRank rank)
+ {
+-  static gsize registered = 0;
++  static gpointer registered = 0;
+ 
+-  if (g_once_init_enter (&registered)) {
++  if (g_once_init_enter_pointer (&registered)) {
+     GTypeInfo info = {
+       sizeof (GstGLEffectsClass),
+       NULL,
+@@ -702,7 +702,7 @@
+         g_free (name);
+       }
+     }
+-    g_once_init_leave (&registered, generic_type);
++    g_once_init_leave_pointer (&registered, generic_type);
+   }
+-  return registered;
++  return !!registered;
+ }
+diff -urN orig/ext/opus/gstopusenc.c gst-plugins-base-1.26.11/ext/opus/gstopusenc.c
+--- a/ext/opus/gstopusenc.c
++++ b/ext/opus/gstopusenc.c
+@@ -82,12 +82,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpusEncBandwidth", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+@@ -108,12 +108,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpusEncFrameSize", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+@@ -132,12 +132,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpusEncAudioType", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+@@ -155,12 +155,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstOpusEncBitrateType", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff -urN orig/ext/pango/gstbasetextoverlay.c gst-plugins-base-1.26.11/ext/pango/gstbasetextoverlay.c
+--- a/ext/pango/gstbasetextoverlay.c
++++ b/ext/pango/gstbasetextoverlay.c
+@@ -316,7 +316,7 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & type)) {
+     static const GTypeInfo info = {
+       sizeof (GstBaseTextOverlayClass),
+       (GBaseInitFunc) NULL,
+@@ -329,7 +329,7 @@
+       (GInstanceInitFunc) gst_base_text_overlay_init,
+     };
+ 
+-    g_once_init_leave ((gsize *) & type,
++    g_once_init_leave_pointer ((gpointer *) & type,
+         g_type_register_static (GST_TYPE_ELEMENT, "GstBaseTextOverlay", &info,
+             0));
+   }
+diff -urN orig/gst/encoding/gstencodebasebin.c gst-plugins-base-1.26.11/gst/encoding/gstencodebasebin.c
+--- a/gst/encoding/gstencodebasebin.c
++++ b/gst/encoding/gstencodebasebin.c
+@@ -211,12 +211,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstEncodeBinFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff -urN orig/gst/playback/gstdecodebin2.c gst-plugins-base-1.26.11/gst/playback/gstdecodebin2.c
+--- a/gst/playback/gstdecodebin2.c
++++ b/gst/playback/gstdecodebin2.c
+@@ -103,6 +103,8 @@
+ #include "gstrawcaps.h"
+ #include "gstplaybackutils.h"
+ 
++#include <stdfil.h>
++
+ /* generic templates */
+ static GstStaticPadTemplate decoder_bin_sink_template =
+ GST_STATIC_PAD_TEMPLATE ("sink",
+@@ -785,7 +787,7 @@
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstDecodeBinClass, autoplug_sort),
+       _gst_array_hasvalue_accumulator, NULL,
+       NULL, G_TYPE_VALUE_ARRAY, 3, GST_TYPE_PAD, GST_TYPE_CAPS,
+-      G_TYPE_VALUE_ARRAY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      zorptr (G_TYPE_VALUE_ARRAY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstDecodeBin::autoplug-select:
+@@ -845,7 +847,7 @@
+       g_signal_new ("autoplug-query", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstDecodeBinClass, autoplug_query),
+       _gst_boolean_or_accumulator, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_PAD,
+-      GST_TYPE_ELEMENT, GST_TYPE_QUERY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_ELEMENT, zorptr (GST_TYPE_QUERY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstDecodeBin::drained
+diff -urN orig/gst/playback/gstparsebin.c gst-plugins-base-1.26.11/gst/playback/gstparsebin.c
+--- a/gst/playback/gstparsebin.c
++++ b/gst/playback/gstparsebin.c
+@@ -105,6 +105,8 @@
+ #include "gstplaybackutils.h"
+ #include "gstrawcaps.h"
+ 
++#include <stdfil.h>
++
+ /* generic templates */
+ static GstStaticPadTemplate parse_bin_sink_template =
+ GST_STATIC_PAD_TEMPLATE ("sink",
+@@ -694,7 +696,7 @@
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstParseBinClass, autoplug_sort),
+       _gst_array_hasvalue_accumulator, NULL,
+       NULL, G_TYPE_VALUE_ARRAY, 3, GST_TYPE_PAD, GST_TYPE_CAPS,
+-      G_TYPE_VALUE_ARRAY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      zorptr (G_TYPE_VALUE_ARRAY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstParseBin::autoplug-select:
+@@ -754,7 +756,7 @@
+       g_signal_new ("autoplug-query", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstParseBinClass, autoplug_query),
+       _gst_boolean_or_accumulator, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_PAD,
+-      GST_TYPE_ELEMENT, GST_TYPE_QUERY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_ELEMENT, zorptr (GST_TYPE_QUERY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstParseBin::drained:
+diff -urN orig/gst/playback/gstplay-enum.c gst-plugins-base-1.26.11/gst/playback/gstplay-enum.c
+--- a/gst/playback/gstplay-enum.c
++++ b/gst/playback/gstplay-enum.c
+@@ -34,12 +34,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_enum_register_static ("GstAutoplugSelectResult", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+@@ -76,12 +76,12 @@
+   };
+   static GType id = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & id)) {
++  if (g_once_init_enter_pointer ((gpointer *) & id)) {
+     GType _id;
+ 
+     _id = g_flags_register_static ("GstPlayFlags", values);
+ 
+-    g_once_init_leave ((gsize *) & id, _id);
++    g_once_init_leave_pointer ((gpointer *) & id, _id);
+   }
+ 
+   return id;
+diff -urN orig/gst/playback/gsturidecodebin.c gst-plugins-base-1.26.11/gst/playback/gsturidecodebin.c
+--- a/gst/playback/gsturidecodebin.c
++++ b/gst/playback/gsturidecodebin.c
+@@ -44,6 +44,8 @@
+ #include "gstplaybackelements.h"
+ #include "gstplaybackutils.h"
+ 
++#include <stdfil.h>
++
+ #define GST_TYPE_URI_DECODE_BIN \
+   (gst_uri_decode_bin_get_type())
+ #define GST_URI_DECODE_BIN(obj) \
+@@ -641,7 +643,7 @@
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstURIDecodeBinClass, autoplug_sort),
+       _gst_array_hasvalue_accumulator, NULL,
+       NULL, G_TYPE_VALUE_ARRAY, 3, GST_TYPE_PAD, GST_TYPE_CAPS,
+-      G_TYPE_VALUE_ARRAY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      zorptr (G_TYPE_VALUE_ARRAY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstURIDecodeBin::autoplug-select:
+@@ -701,7 +703,7 @@
+       g_signal_new ("autoplug-query", G_TYPE_FROM_CLASS (klass),
+       G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstURIDecodeBinClass, autoplug_query),
+       _gst_boolean_or_accumulator, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_PAD,
+-      GST_TYPE_ELEMENT, GST_TYPE_QUERY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      GST_TYPE_ELEMENT, zorptr (GST_TYPE_QUERY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstURIDecodeBin::drained:
+diff -urN orig/gst-libs/gst/app/gstappsink.c gst-plugins-base-1.26.11/gst-libs/gst/app/gstappsink.c
+--- a/gst-libs/gst/app/gstappsink.c
++++ b/gst-libs/gst/app/gstappsink.c
+@@ -74,6 +74,8 @@
+ #include "gstappsink.h"
+ #include "gstapputils.h"
+ 
++#include <stdfil.h>
++
+ typedef enum
+ {
+   NOONE_WAITING = 0,
+@@ -391,7 +393,7 @@
+   gst_app_sink_signals[SIGNAL_PROPOSE_ALLOCATION] =
+       g_signal_new_class_handler ("propose-allocation",
+       G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, NULL, NULL, NULL, NULL,
+-      G_TYPE_BOOLEAN, 1, GST_TYPE_QUERY | G_SIGNAL_TYPE_STATIC_SCOPE);
++      G_TYPE_BOOLEAN, 1, zorptr (GST_TYPE_QUERY, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   /**
+    * GstAppSink::new-serialized-event:
+    * @appsink: the appsink element that emitted the signal
+diff -urN orig/gst-libs/gst/audio/audio.c gst-plugins-base-1.26.11/gst-libs/gst/audio/audio.c
+--- a/gst-libs/gst/audio/audio.c
++++ b/gst-libs/gst/audio/audio.c
+@@ -38,14 +38,14 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("audio", 0, "audio library");
++    cat_done = (gpointer) _gst_debug_category_new ("audio", 0, "audio library");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/audio/audio-channels.c gst-plugins-base-1.26.11/gst-libs/gst/audio/audio-channels.c
+--- a/gst-libs/gst/audio/audio-channels.c
++++ b/gst-libs/gst/audio/audio-channels.c
+@@ -37,15 +37,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("audio-channels", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("audio-channels", 0,
+         "audio-channels object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/audio/audio-converter.c gst-plugins-base-1.26.11/gst-libs/gst/audio/audio-converter.c
+--- a/gst-libs/gst/audio/audio-converter.c
++++ b/gst-libs/gst/audio/audio-converter.c
+@@ -51,15 +51,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("audio-converter", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("audio-converter", 0,
+         "audio-converter object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/audio/audio-info.c gst-plugins-base-1.26.11/gst-libs/gst/audio/audio-info.c
+--- a/gst-libs/gst/audio/audio-info.c
++++ b/gst-libs/gst/audio/audio-info.c
+@@ -32,15 +32,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("audio-info", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("audio-info", 0,
+         "audio-info object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/audio/gstaudiodecoder.c gst-plugins-base-1.26.11/gst-libs/gst/audio/gstaudiodecoder.c
+--- a/gst-libs/gst/audio/gstaudiodecoder.c
++++ b/gst-libs/gst/audio/gstaudiodecoder.c
+@@ -340,9 +340,9 @@
+ GType
+ gst_audio_decoder_get_type (void)
+ {
+-  static gsize audio_decoder_type = 0;
++  static gpointer audio_decoder_type = 0;
+ 
+-  if (g_once_init_enter (&audio_decoder_type)) {
++  if (g_once_init_enter_pointer (&audio_decoder_type)) {
+     GType _type;
+     static const GTypeInfo audio_decoder_info = {
+       sizeof (GstAudioDecoderClass),
+@@ -362,7 +362,7 @@
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstAudioDecoderPrivate));
+ 
+-    g_once_init_leave (&audio_decoder_type, _type);
++    g_once_init_leave_pointer (&audio_decoder_type, _type);
+   }
+   return audio_decoder_type;
+ }
+diff -urN orig/gst-libs/gst/audio/gstaudiometa.c gst-plugins-base-1.26.11/gst-libs/gst/audio/gstaudiometa.c
+--- a/gst-libs/gst/audio/gstaudiometa.c
++++ b/gst-libs/gst/audio/gstaudiometa.c
+@@ -182,9 +182,9 @@
+   static const gchar *tags[] =
+       { GST_META_TAG_AUDIO_STR, GST_META_TAG_AUDIO_CHANNELS_STR, NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstAudioDownmixMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -194,13 +194,13 @@
+ {
+   static const GstMetaInfo *audio_downmix_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & audio_downmix_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & audio_downmix_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_AUDIO_DOWNMIX_META_API_TYPE,
+         "GstAudioDownmixMeta", sizeof (GstAudioDownmixMeta),
+         gst_audio_downmix_meta_init, gst_audio_downmix_meta_free,
+         gst_audio_downmix_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & audio_downmix_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & audio_downmix_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return audio_downmix_meta_info;
+@@ -285,9 +285,9 @@
+   static const gchar *tags[] =
+       { GST_META_TAG_AUDIO_STR, GST_META_TAG_AUDIO_RATE_STR, NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstAudioClippingMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -297,13 +297,13 @@
+ {
+   static const GstMetaInfo *audio_clipping_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & audio_clipping_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & audio_clipping_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_AUDIO_CLIPPING_META_API_TYPE,
+         "GstAudioClippingMeta", sizeof (GstAudioClippingMeta),
+         gst_audio_clipping_meta_init, NULL,
+         gst_audio_clipping_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & audio_clipping_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & audio_clipping_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return audio_clipping_meta_info;
+@@ -575,9 +575,9 @@
+     GST_META_TAG_AUDIO_RATE_STR, NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstAudioMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -587,7 +587,7 @@
+ {
+   static const GstMetaInfo *audio_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & audio_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & audio_meta_info)) {
+     GstMetaInfo *info = gst_meta_info_new (GST_AUDIO_META_API_TYPE,
+         "GstAudioMeta", sizeof (GstAudioMeta));
+ 
+@@ -598,7 +598,7 @@
+     info->deserialize_func = gst_audio_meta_deserialize;
+     const GstMetaInfo *meta = gst_meta_info_register (info);
+ 
+-    g_once_init_leave ((GstMetaInfo **) & audio_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & audio_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return audio_meta_info;
+@@ -619,9 +619,9 @@
+   static GType type = 0;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstAudioLevelMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -671,14 +671,14 @@
+ {
+   static const GstMetaInfo *audio_level_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&audio_level_meta_info)) {
++  if (g_once_init_enter_pointer (&audio_level_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_AUDIO_LEVEL_META_API_TYPE,
+         "GstAudioLevelMeta",
+         sizeof (GstAudioLevelMeta),
+         gst_audio_level_meta_init,
+         (GstMetaFreeFunction) NULL,
+         gst_audio_level_meta_transform);
+-    g_once_init_leave (&audio_level_meta_info, meta);
++    g_once_init_leave_pointer (&audio_level_meta_info, meta);
+   }
+   return audio_level_meta_info;
+ }
+diff -urN orig/gst-libs/gst/audio/gstdsd.c gst-plugins-base-1.26.11/gst-libs/gst/audio/gstdsd.c
+--- a/gst-libs/gst/audio/gstdsd.c
++++ b/gst-libs/gst/audio/gstdsd.c
+@@ -29,14 +29,14 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("gst-dsd", 0, "GStreamer DSD");
++    cat_done = (gpointer) _gst_debug_category_new ("gst-dsd", 0, "GStreamer DSD");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -149,9 +149,9 @@
+     NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstDsdPlaneOffsetMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -161,7 +161,7 @@
+ {
+   static const GstMetaInfo *dsd_plane_offset_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & dsd_plane_offset_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & dsd_plane_offset_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_DSD_PLANE_OFFSET_META_API_TYPE,
+         "GstDsdPlaneOffsetMeta",
+@@ -169,7 +169,7 @@
+         gst_dsd_plane_offset_meta_init,
+         gst_dsd_plane_offset_meta_free,
+         gst_dsd_plane_offset_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & dsd_plane_offset_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & dsd_plane_offset_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return dsd_plane_offset_meta_info;
+diff -urN orig/gst-libs/gst/audio/streamvolume.c gst-plugins-base-1.26.11/gst-libs/gst/audio/streamvolume.c
+--- a/gst-libs/gst/audio/streamvolume.c
++++ b/gst-libs/gst/audio/streamvolume.c
+@@ -66,8 +66,8 @@
+ GType
+ gst_stream_volume_get_type (void)
+ {
+-  static gsize type = 0;
+-  if (g_once_init_enter (&type)) {
++  static gpointer type = 0;
++  if (g_once_init_enter_pointer (&type)) {
+     GType tmp;
+     static const GTypeInfo info = {
+       sizeof (GstStreamVolumeInterface),
+@@ -84,7 +84,7 @@
+         "GstStreamVolume", &info, 0);
+     g_type_interface_add_prerequisite (tmp, G_TYPE_OBJECT);
+ 
+-    g_once_init_leave (&type, tmp);
++    g_once_init_leave_pointer (&type, tmp);
+   }
+   return type;
+ }
+diff -urN orig/gst-libs/gst/gl/egl/gsteglimage.c gst-plugins-base-1.26.11/gst-libs/gst/gl/egl/gsteglimage.c
+--- a/gst-libs/gst/gl/egl/gsteglimage.c
++++ b/gst-libs/gst/gl/egl/gsteglimage.c
+@@ -213,14 +213,14 @@
+ static GstDebugCategory *
+ gst_egl_image_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "gleglimage", 0, "EGLImage wrapper");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/gl/egl/gstglcontext_egl.c gst-plugins-base-1.26.11/gst-libs/gst/gl/egl/gstglcontext_egl.c
+--- a/gst-libs/gst/gl/egl/gstglcontext_egl.c
++++ b/gst-libs/gst/gl/egl/gstglcontext_egl.c
+@@ -1369,10 +1369,10 @@
+ #if GST_GL_HAVE_OPENGL && !defined(GST_GL_LIBGL_MODULE_NAME)
+   if (!result && (gl_api & (GST_GL_API_OPENGL | GST_GL_API_OPENGL3))) {
+     static GModule *module_opengl = NULL;
+-    if (g_once_init_enter (&module_opengl)) {
++    if (g_once_init_enter_pointer (&module_opengl)) {
+       GModule *setup_module_opengl =
+           g_module_open ("libGL.dylib", G_MODULE_BIND_LAZY);
+-      g_once_init_leave (&module_opengl, setup_module_opengl);
++      g_once_init_leave_pointer (&module_opengl, setup_module_opengl);
+     }
+     if (module_opengl)
+       g_module_symbol (module_opengl, name, &result);
+@@ -1381,10 +1381,10 @@
+ #if GST_GL_HAVE_GLES2 && !defined(GST_GL_LIBGLESV2_MODULE_NAME)
+   if (!result && (gl_api & (GST_GL_API_GLES2))) {
+     static GModule *module_gles2 = NULL;
+-    if (g_once_init_enter (&module_gles2)) {
++    if (g_once_init_enter_pointer (&module_gles2)) {
+       GModule *setup_module_gles2 =
+           g_module_open ("libGLESv2.dylib", G_MODULE_BIND_LAZY);
+-      g_once_init_leave (&module_gles2, setup_module_gles2);
++      g_once_init_leave_pointer (&module_gles2, setup_module_gles2);
+     }
+     if (module_gles2)
+       g_module_symbol (module_gles2, name, &result);
+diff -urN orig/gst-libs/gst/gl/gl_mkenum.py gst-plugins-base-1.26.11/gst-libs/gst/gl/gl_mkenum.py
+--- a/gst-libs/gst/gl/gl_mkenum.py
++++ b/gst-libs/gst/gl/gl_mkenum.py
+@@ -22,11 +22,11 @@
+            '--fprod',
+            "\n/* enumerations from \"@basename@\" */",
+            '--vhead',
+-           "GType\n@enum_name@_get_type (void)\n{\n  static gsize static_g_define_type_id = 0;\n  if (g_once_init_enter (&static_g_define_type_id)) {\n    static const G@Type@Value values[] = {",
++           "GType\n@enum_name@_get_type (void)\n{\n  static gpointer static_g_define_type_id = 0;\n  if (g_once_init_enter_pointer (&static_g_define_type_id)) {\n    static const G@Type@Value values[] = {",
+            '--vprod',
+            "      { C_@TYPE@ (@VALUENAME@), \"@VALUENAME@\", \"@valuenick@\" },",
+            '--vtail',
+-           "      { 0, NULL, NULL }\n    };\n    GType g_define_type_id = g_@type@_register_static (\"@EnumName@\", values);\n    g_once_init_leave (&static_g_define_type_id, g_define_type_id);\n  }\n  return static_g_define_type_id;\n}\n"
++           "      { 0, NULL, NULL }\n    };\n    GType g_define_type_id = g_@type@_register_static (\"@EnumName@\", values);\n    g_once_init_leave_pointer (&static_g_define_type_id, g_define_type_id);\n  }\n  return static_g_define_type_id;\n}\n"
+ ]
+ 
+ cmd = []
+diff -urN orig/gst-libs/gst/gl/gstglsyncmeta.c gst-plugins-base-1.26.11/gst-libs/gst/gl/gstglsyncmeta.c
+--- a/gst-libs/gst/gl/gstglsyncmeta.c
++++ b/gst-libs/gst/gl/gstglsyncmeta.c
+@@ -362,9 +362,9 @@
+   static GType type = 0;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstGLSyncMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+ 
+   return type;
+@@ -375,13 +375,13 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter (&meta_info)) {
++  if (g_once_init_enter_pointer (&meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_GL_SYNC_META_API_TYPE, "GstGLSyncMeta",
+         sizeof (GstGLSyncMeta), (GstMetaInitFunction) _gst_gl_sync_meta_init,
+         (GstMetaFreeFunction) _gst_gl_sync_meta_free,
+         _gst_gl_sync_meta_transform);
+-    g_once_init_leave (&meta_info, meta);
++    g_once_init_leave_pointer (&meta_info, meta);
+   }
+ 
+   return meta_info;
+diff -urN orig/gst-libs/gst/pbutils/codec-utils.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/codec-utils.c
+--- a/gst-libs/gst/pbutils/codec-utils.c
++++ b/gst-libs/gst/pbutils/codec-utils.c
+@@ -50,15 +50,15 @@
+ static GstDebugCategory *
+ gst_pb_utils_codec_utils_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "codec-utils", 0,
+         "GstPbUtils codec helper functions");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/pbutils/encoding-profile.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/encoding-profile.c
+--- a/gst-libs/gst/pbutils/encoding-profile.c
++++ b/gst-libs/gst/pbutils/encoding-profile.c
+@@ -306,15 +306,15 @@
+ static GstDebugCategory *
+ gst_pb_utils_encoding_profile_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "encoding-profile", 0,
+         "GstPbUtils encoding profile");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -382,9 +382,9 @@
+ GType
+ gst_encoding_profile_get_type (void)
+ {
+-  static gsize g_define_type_id_init = 0;
++  static gpointer g_define_type_id_init = 0;
+ 
+-  if (g_once_init_enter (&g_define_type_id_init)) {
++  if (g_once_init_enter_pointer (&g_define_type_id_init)) {
+     GType g_define_type_id = g_type_register_static_simple (G_TYPE_OBJECT,
+         g_intern_static_string ("GstEncodingProfile"),
+         sizeof (GstEncodingProfileClass),
+@@ -407,7 +407,7 @@
+     /* Register gst-specific GValue functions */
+     gst_value_register (&gstvtable);
+ 
+-    g_once_init_leave (&g_define_type_id_init, g_define_type_id);
++    g_once_init_leave_pointer (&g_define_type_id_init, g_define_type_id);
+   }
+   return g_define_type_id_init;
+ }
+diff -urN orig/gst-libs/gst/pbutils/encoding-target.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/encoding-target.c
+--- a/gst-libs/gst/pbutils/encoding-target.c
++++ b/gst-libs/gst/pbutils/encoding-target.c
+@@ -94,15 +94,15 @@
+ static GstDebugCategory *
+ gst_pb_utils_encoding_target_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "encoding-target", 0,
+         "GstPbUtils encoding target");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/pbutils/gstaudiovisualizer.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/gstaudiovisualizer.c
+--- a/gst-libs/gst/pbutils/gstaudiovisualizer.c
++++ b/gst-libs/gst/pbutils/gstaudiovisualizer.c
+@@ -503,9 +503,9 @@
+ GType
+ gst_audio_visualizer_get_type (void)
+ {
+-  static gsize audio_visualizer_type = 0;
++  static gpointer audio_visualizer_type = 0;
+ 
+-  if (g_once_init_enter (&audio_visualizer_type)) {
++  if (g_once_init_enter_pointer (&audio_visualizer_type)) {
+     static const GTypeInfo audio_visualizer_info = {
+       sizeof (GstAudioVisualizerClass),
+       NULL,
+@@ -526,7 +526,7 @@
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstAudioVisualizerPrivate));
+ 
+-    g_once_init_leave (&audio_visualizer_type, _type);
++    g_once_init_leave_pointer (&audio_visualizer_type, _type);
+   }
+   return (GType) audio_visualizer_type;
+ }
+diff -urN orig/gst-libs/gst/pbutils/gstdiscoverer.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/gstdiscoverer.c
+--- a/gst-libs/gst/pbutils/gstdiscoverer.c
++++ b/gst-libs/gst/pbutils/gstdiscoverer.c
+@@ -56,6 +56,8 @@
+ /* For g_stat () */
+ #include <glib/gstdio.h>
+ 
++#include <stdfil.h>
++
+ GST_DEBUG_CATEGORY_STATIC (discoverer_debug);
+ #define GST_CAT_DEFAULT discoverer_debug
+ #define CACHE_DIRNAME "discoverer"
+@@ -308,7 +310,7 @@
+       g_signal_new ("discovered", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+       G_STRUCT_OFFSET (GstDiscovererClass, discovered), NULL, NULL, NULL,
+       G_TYPE_NONE, 2, GST_TYPE_DISCOVERER_INFO,
+-      G_TYPE_ERROR | G_SIGNAL_TYPE_STATIC_SCOPE);
++      zorptr (G_TYPE_ERROR, (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GstDiscoverer::source-setup:
+diff -urN orig/gst-libs/gst/pbutils/install-plugins.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/install-plugins.c
+--- a/gst-libs/gst/pbutils/install-plugins.c
++++ b/gst-libs/gst/pbutils/install-plugins.c
+@@ -278,15 +278,15 @@
+ static GstDebugCategory *
+ gst_pb_utils_install_plugins_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "install-plugins", 0,
+         "GstPbUtils plugins installation helper");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/pbutils/missing-plugins.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/missing-plugins.c
+--- a/gst-libs/gst/pbutils/missing-plugins.c
++++ b/gst-libs/gst/pbutils/missing-plugins.c
+@@ -72,15 +72,15 @@
+ static GstDebugCategory *
+ gst_pb_utils_missing_plugins_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "missing-plugins", 0,
+         "GstPbUtils missing plugins helper");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/pbutils/pbutils.c gst-plugins-base-1.26.11/gst-libs/gst/pbutils/pbutils.c
+--- a/gst-libs/gst/pbutils/pbutils.c
++++ b/gst-libs/gst/pbutils/pbutils.c
+@@ -67,14 +67,14 @@
+ static GstDebugCategory *
+ gst_pb_utils_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "pbutils", 0, "GStreamer Plugins Base utils");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/rtp/gstrtpbasedepayload.c gst-plugins-base-1.26.11/gst-libs/gst/rtp/gstrtpbasedepayload.c
+--- a/gst-libs/gst/rtp/gstrtpbasedepayload.c
++++ b/gst-libs/gst/rtp/gstrtpbasedepayload.c
+@@ -192,7 +192,7 @@
+ {
+   static GType rtp_base_depayload_type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & rtp_base_depayload_type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & rtp_base_depayload_type)) {
+     static const GTypeInfo rtp_base_depayload_info = {
+       sizeof (GstRTPBaseDepayloadClass),
+       NULL,
+@@ -213,7 +213,7 @@
+         g_type_add_instance_private (_type,
+         sizeof (GstRTPBaseDepayloadPrivate));
+ 
+-    g_once_init_leave ((gsize *) & rtp_base_depayload_type, _type);
++    g_once_init_leave_pointer ((gpointer *) & rtp_base_depayload_type, _type);
+   }
+   return rtp_base_depayload_type;
+ }
+diff -urN orig/gst-libs/gst/rtp/gstrtpbasepayload.c gst-plugins-base-1.26.11/gst-libs/gst/rtp/gstrtpbasepayload.c
+--- a/gst-libs/gst/rtp/gstrtpbasepayload.c
++++ b/gst-libs/gst/rtp/gstrtpbasepayload.c
+@@ -190,7 +190,7 @@
+ {
+   static GType rtpbasepayload_type = 0;
+ 
+-  if (g_once_init_enter ((gsize *) & rtpbasepayload_type)) {
++  if (g_once_init_enter_pointer ((gpointer *) & rtpbasepayload_type)) {
+     static const GTypeInfo rtpbasepayload_info = {
+       sizeof (GstRTPBasePayloadClass),
+       NULL,
+@@ -210,7 +210,7 @@
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstRTPBasePayloadPrivate));
+ 
+-    g_once_init_leave ((gsize *) & rtpbasepayload_type, _type);
++    g_once_init_leave_pointer ((gpointer *) & rtpbasepayload_type, _type);
+   }
+   return rtpbasepayload_type;
+ }
+diff -urN orig/gst-libs/gst/rtp/gstrtpmeta.c gst-plugins-base-1.26.11/gst-libs/gst/rtp/gstrtpmeta.c
+--- a/gst-libs/gst/rtp/gstrtpmeta.c
++++ b/gst-libs/gst/rtp/gstrtpmeta.c
+@@ -193,9 +193,9 @@
+   static GType type = 0;
+   static const gchar *tags[] = { NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstRTPSourceMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -216,14 +216,14 @@
+ {
+   static const GstMetaInfo *rtp_source_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&rtp_source_meta_info)) {
++  if (g_once_init_enter_pointer (&rtp_source_meta_info)) {
+     const GstMetaInfo *meta = gst_meta_register (GST_RTP_SOURCE_META_API_TYPE,
+         "GstRTPSourceMeta",
+         sizeof (GstRTPSourceMeta),
+         gst_rtp_source_meta_init,
+         (GstMetaFreeFunction) NULL,
+         gst_rtp_source_meta_transform);
+-    g_once_init_leave (&rtp_source_meta_info, meta);
++    g_once_init_leave_pointer (&rtp_source_meta_info, meta);
+   }
+   return rtp_source_meta_info;
+ }
+diff -urN orig/gst-libs/gst/rtsp/gstrtspextension.c gst-plugins-base-1.26.11/gst-libs/gst/rtsp/gstrtspextension.c
+--- a/gst-libs/gst/rtsp/gstrtspextension.c
++++ b/gst-libs/gst/rtsp/gstrtspextension.c
+@@ -49,7 +49,7 @@
+ GType
+ gst_rtsp_extension_get_type (void)
+ {
+-  static gsize gst_rtsp_extension_type = 0;
++  static gpointer gst_rtsp_extension_type = 0;
+   static const GTypeInfo gst_rtsp_extension_info = {
+     sizeof (GstRTSPExtensionInterface),
+     (GBaseInitFunc) gst_rtsp_extension_iface_init,
+@@ -62,10 +62,10 @@
+     NULL,
+   };
+ 
+-  if (g_once_init_enter (&gst_rtsp_extension_type)) {
++  if (g_once_init_enter_pointer (&gst_rtsp_extension_type)) {
+     GType tmp = g_type_register_static (G_TYPE_INTERFACE,
+         "GstRTSPExtension", &gst_rtsp_extension_info, 0);
+-    g_once_init_leave (&gst_rtsp_extension_type, tmp);
++    g_once_init_leave_pointer (&gst_rtsp_extension_type, tmp);
+   }
+   return (GType) gst_rtsp_extension_type;
+ }
+diff -urN orig/gst-libs/gst/tag/gstexiftag.c gst-plugins-base-1.26.11/gst-libs/gst/tag/gstexiftag.c
+--- a/gst-libs/gst/tag/gstexiftag.c
++++ b/gst-libs/gst/tag/gstexiftag.c
+@@ -902,8 +902,8 @@
+   value = gst_tag_list_get_value_index (taglist, exiftag->gst_tag, 0);
+ 
+   /* do some conversion if needed */
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_STRING:
++  switch ((uintptr_t) G_VALUE_TYPE (value)) {
++    case (uintptr_t) G_TYPE_STRING:
+       str = (gchar *) g_value_get_string (value);
+       break;
+     default:
+@@ -956,8 +956,8 @@
+   value = gst_tag_list_get_value_index (taglist, exiftag->gst_tag, 0);
+ 
+   /* do some conversion if needed */
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_STRING:
++  switch ((uintptr_t) G_VALUE_TYPE (value)) {
++    case (uintptr_t) G_TYPE_STRING:
+       data = (guint8 *) g_value_get_string (value);
+       size = strlen ((gchar *) data);   /* no need to +1, undefined doesn't require it */
+       break;
+@@ -1001,8 +1001,8 @@
+   value = gst_tag_list_get_value_index (taglist, exiftag->gst_tag, 0);
+ 
+   /* do some conversion if needed */
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_DOUBLE:
++  switch ((uintptr_t) G_VALUE_TYPE (value)) {
++    case (uintptr_t) G_TYPE_DOUBLE:
+       num = g_value_get_double (value);
+       gst_exif_writer_write_rational_tag_from_double (writer, exiftag->exif_tag,
+           num);
+@@ -1036,8 +1036,8 @@
+   value = gst_tag_list_get_value_index (taglist, exiftag->gst_tag, 0);
+ 
+   /* do some conversion if needed */
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_DOUBLE:
++  switch ((uintptr_t) G_VALUE_TYPE (value)) {
++    case (uintptr_t) G_TYPE_DOUBLE:
+       num = g_value_get_double (value);
+       gst_exif_writer_write_signed_rational_tag_from_double (writer,
+           exiftag->exif_tag, num);
+@@ -1071,11 +1071,11 @@
+   value = gst_tag_list_get_value_index (taglist, exiftag->gst_tag, 0);
+ 
+   /* do some conversion if needed */
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_INT:
++  switch ((uintptr_t) G_VALUE_TYPE (value)) {
++    case (uintptr_t) G_TYPE_INT:
+       num = g_value_get_int (value);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       num = (gint) g_value_get_double (value);
+       break;
+     default:
+@@ -1579,8 +1579,8 @@
+   GST_DEBUG ("Read fraction for tag %s: %d/%d", gst_tag, frac_n, frac_d);
+ 
+   type = gst_tag_get_type (gst_tag);
+-  switch (type) {
+-    case G_TYPE_DOUBLE:
++  switch ((uintptr_t) type) {
++    case (uintptr_t) G_TYPE_DOUBLE:
+       gst_util_fraction_to_double (frac_n, frac_d, &value);
+       value *= multiplier;
+       GST_DEBUG ("Adding %s tag: %lf", gst_tag, value);
+diff -urN orig/gst-libs/gst/tag/gsttagmux.c gst-plugins-base-1.26.11/gst-libs/gst/tag/gsttagmux.c
+--- a/gst-libs/gst/tag/gsttagmux.c
++++ b/gst-libs/gst/tag/gsttagmux.c
+@@ -90,9 +90,9 @@
+ GType
+ gst_tag_mux_get_type (void)
+ {
+-  static gsize tag_mux_type = 0;
++  static gpointer tag_mux_type = 0;
+ 
+-  if (g_once_init_enter (&tag_mux_type)) {
++  if (g_once_init_enter_pointer (&tag_mux_type)) {
+     const GInterfaceInfo interface_info = { NULL, NULL, NULL };
+     GType _type;
+ 
+@@ -106,7 +106,7 @@
+ 
+     g_type_add_interface_static (_type, GST_TYPE_TAG_SETTER, &interface_info);
+ 
+-    g_once_init_leave (&tag_mux_type, _type);
++    g_once_init_leave_pointer (&tag_mux_type, _type);
+   }
+   return tag_mux_type;
+ }
+diff -urN orig/gst-libs/gst/tag/gstvorbistag.c gst-plugins-base-1.26.11/gst-libs/gst/tag/gstvorbistag.c
+--- a/gst-libs/gst/tag/gstvorbistag.c
++++ b/gst-libs/gst/tag/gstvorbistag.c
+@@ -207,8 +207,8 @@
+   }
+ 
+   tag_type = gst_tag_get_type (gst_tag);
+-  switch (tag_type) {
+-    case G_TYPE_UINT:{
++  switch ((uintptr_t) tag_type) {
++    case (uintptr_t) G_TYPE_UINT:{
+       guint tmp;
+       gchar *check;
+       gboolean is_track_number_tag;
+@@ -237,7 +237,7 @@
+       }
+       break;
+     }
+-    case G_TYPE_STRING:{
++    case (uintptr_t) G_TYPE_STRING:{
+       gchar *valid = NULL;
+ 
+       /* specialcase for language code */
+@@ -267,7 +267,7 @@
+       g_free (valid);
+       break;
+     }
+-    case G_TYPE_DOUBLE:{
++    case (uintptr_t) G_TYPE_DOUBLE:{
+       gchar *c;
+ 
+       c = g_strdup (value);
+@@ -689,8 +689,8 @@
+     GType tag_type = gst_tag_get_type (tag);
+     gchar *result = NULL;
+ 
+-    switch (tag_type) {
+-      case G_TYPE_UINT:{
++    switch ((uintptr_t) tag_type) {
++      case (uintptr_t) G_TYPE_UINT:{
+         guint u;
+ 
+         if (!gst_tag_list_get_uint_index (list, tag, i, &u))
+@@ -698,7 +698,7 @@
+         result = g_strdup_printf ("%s=%u", vorbis_tag, u);
+         break;
+       }
+-      case G_TYPE_STRING:{
++      case (uintptr_t) G_TYPE_STRING:{
+         const gchar *str = NULL;
+ 
+         if (!gst_tag_list_peek_string_index (list, tag, i, &str))
+@@ -721,7 +721,7 @@
+         }
+         break;
+       }
+-      case G_TYPE_DOUBLE:{
++      case (uintptr_t) G_TYPE_DOUBLE:{
+         gdouble value;
+         gchar buf[G_ASCII_DTOSTR_BUF_SIZE];
+ 
+diff -urN orig/gst-libs/gst/tag/gstxmptag.c gst-plugins-base-1.26.11/gst-libs/gst/tag/gstxmptag.c
+--- a/gst-libs/gst/tag/gstxmptag.c
++++ b/gst-libs/gst/tag/gstxmptag.c
+@@ -50,14 +50,14 @@
+ static GstDebugCategory *
+ gst_tag_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "xmp-tags", 0, "XMP GstTag helper functions");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -1127,12 +1127,12 @@
+   tag_type = gst_tag_get_type (tag);
+ 
+   /* add gstreamer tag depending on type */
+-  switch (tag_type) {
+-    case G_TYPE_STRING:{
++  switch ((uintptr_t) tag_type) {
++    case (uintptr_t) G_TYPE_STRING:{
+       gst_tag_list_add (list, merge_mode, tag, v, NULL);
+       break;
+     }
+-    case G_TYPE_DOUBLE:{
++    case (uintptr_t) G_TYPE_DOUBLE:{
+       gdouble value = 0;
+       gint frac_n, frac_d;
+ 
+@@ -1532,14 +1532,14 @@
+ static char *
+ gst_value_serialize_xmp (const GValue * value)
+ {
+-  switch (G_VALUE_TYPE (value)) {
+-    case G_TYPE_STRING:
++  switch ((uintptr_t) G_VALUE_TYPE (value)) {
++    case (uintptr_t) G_TYPE_STRING:
+       return g_markup_escape_text (g_value_get_string (value), -1);
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       return g_strdup_printf ("%d", g_value_get_int (value));
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       return g_strdup_printf ("%u", g_value_get_uint (value));
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       return double_to_fraction_string (g_value_get_double (value));
+     default:
+       break;
+diff -urN orig/gst-libs/gst/tag/id3v2.c gst-plugins-base-1.26.11/gst-libs/gst/tag/id3v2.c
+--- a/gst-libs/gst/tag/id3v2.c
++++ b/gst-libs/gst/tag/id3v2.c
+@@ -38,14 +38,14 @@
+ GstDebugCategory *
+ id3v2_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat;
+ 
+-    cat = (gsize) _gst_debug_category_new ("id3v2", 0, "ID3v2 tag parsing");
++    cat = (gpointer) _gst_debug_category_new ("id3v2", 0, "ID3v2 tag parsing");
+ 
+-    g_once_init_leave (&cat_gonce, cat);
++    g_once_init_leave_pointer (&cat_gonce, cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/tag/id3v2frames.c gst-plugins-base-1.26.11/gst-libs/gst/tag/id3v2frames.c
+--- a/gst-libs/gst/tag/id3v2frames.c
++++ b/gst-libs/gst/tag/id3v2frames.c
+@@ -775,8 +775,8 @@
+   if (tag_str == NULL)
+     return FALSE;
+ 
+-  switch (tag_type) {
+-    case G_TYPE_UINT:
++  switch ((uintptr_t) tag_type) {
++    case (uintptr_t) G_TYPE_UINT:
+     {
+       gint current, total;
+ 
+@@ -808,7 +808,7 @@
+       }
+       break;
+     }
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+     {
+       guint64 tmp;
+ 
+@@ -821,7 +821,7 @@
+           GST_TAG_DURATION, tmp * 1000 * 1000, NULL);
+       break;
+     }
+-    case G_TYPE_STRING:{
++    case (uintptr_t) G_TYPE_STRING:{
+       const GValue *val;
+       guint i, num;
+ 
+diff -urN orig/gst-libs/gst/tag/lang.c gst-plugins-base-1.26.11/gst-libs/gst/tag/lang.c
+--- a/gst-libs/gst/tag/lang.c
++++ b/gst-libs/gst/tag/lang.c
+@@ -54,15 +54,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("tag-langcodes", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("tag-langcodes", 0,
+         "GstTag language codes and names");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -190,12 +190,12 @@
+ static GHashTable *
+ gst_tag_get_iso_639_ht (void)
+ {
+-  static gsize once_val = 0;
++  static gpointer once_val = 0;
+   int i;
+ 
+-  if (g_once_init_enter (&once_val)) {
++  if (g_once_init_enter_pointer (&once_val)) {
+     GHashTable *ht;
+-    gsize done_val;
++    gpointer done_val;
+ 
+     GST_MEMDUMP ("iso 639 language names (internal default/fallback)",
+         (guint8 *) iso_639_names, sizeof (iso_639_names));
+@@ -241,8 +241,8 @@
+     GST_INFO ("iso-codes disabled or not available");
+ #endif
+ 
+-    done_val = (gsize) ht;
+-    g_once_init_leave (&once_val, done_val);
++    done_val = (gpointer) ht;
++    g_once_init_leave_pointer (&once_val, done_val);
+   }
+ 
+   return (GHashTable *) once_val;
+diff -urN orig/gst-libs/gst/tag/licenses.c gst-plugins-base-1.26.11/gst-libs/gst/tag/licenses.c
+--- a/gst-libs/gst/tag/licenses.c
++++ b/gst-libs/gst/tag/licenses.c
+@@ -50,15 +50,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("tag-licenses", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("tag-licenses", 0,
+         "GstTag licenses");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -78,9 +78,9 @@
+ static GVariant *
+ gst_tag_get_license_translations_dictionary (void)
+ {
+-  static gsize var_gonce = 0;
++  static gpointer var_gonce = 0;
+ 
+-  if (g_once_init_enter (&var_gonce)) {
++  if (g_once_init_enter_pointer (&var_gonce)) {
+     const gchar *dict_path;
+     GVariant *var = NULL;
+     GError *err = NULL;
+@@ -103,7 +103,7 @@
+       var = g_variant_new_array (G_VARIANT_TYPE ("{sa{ss}}"), NULL, 0);
+     }
+ 
+-    g_once_init_leave (&var_gonce, (gsize) var);
++    g_once_init_leave_pointer (&var_gonce, var);
+   }
+ 
+   return (GVariant *) var_gonce;
+diff -urN orig/gst-libs/gst/tag/tags.c gst-plugins-base-1.26.11/gst-libs/gst/tag/tags.c
+--- a/gst-libs/gst/tag/tags.c
++++ b/gst-libs/gst/tag/tags.c
+@@ -48,14 +48,14 @@
+ static GstDebugCategory *
+ gst_tag_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "tag-tags", 0, "GstTag helper functions");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/tag/xmpwriter.c gst-plugins-base-1.26.11/gst-libs/gst/tag/xmpwriter.c
+--- a/gst-libs/gst/tag/xmpwriter.c
++++ b/gst-libs/gst/tag/xmpwriter.c
+@@ -53,9 +53,9 @@
+ GType
+ gst_tag_xmp_writer_get_type (void)
+ {
+-  static gsize xmp_config_type = 0;
++  static gpointer xmp_config_type = 0;
+ 
+-  if (g_once_init_enter (&xmp_config_type)) {
++  if (g_once_init_enter_pointer (&xmp_config_type)) {
+     GType _type;
+     static const GTypeInfo xmp_config_info = {
+       sizeof (GstTagXmpWriterInterface),        /* class_size */
+@@ -74,7 +74,7 @@
+     tag_xmp_writer_key = g_quark_from_static_string ("GST_TAG_XMP_WRITER");
+     g_type_interface_add_prerequisite (_type, GST_TYPE_ELEMENT);
+ 
+-    g_once_init_leave (&xmp_config_type, _type);
++    g_once_init_leave_pointer (&xmp_config_type, _type);
+   }
+ 
+   return xmp_config_type;
+diff -urN orig/gst-libs/gst/video/convertframe.c gst-plugins-base-1.26.11/gst-libs/gst/video/convertframe.c
+--- a/gst-libs/gst/video/convertframe.c
++++ b/gst-libs/gst/video/convertframe.c
+@@ -33,15 +33,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-frame-converter", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-frame-converter", 0,
+         "video-frame-converter object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/gstvideoaffinetransformationmeta.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideoaffinetransformationmeta.c
+--- a/gst-libs/gst/video/gstvideoaffinetransformationmeta.c
++++ b/gst-libs/gst/video/gstvideoaffinetransformationmeta.c
+@@ -42,10 +42,10 @@
+     GST_META_TAG_VIDEO_ORIENTATION_STR, NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstVideoAffineTransformationAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -94,7 +94,7 @@
+ {
+   static const GstMetaInfo *info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_VIDEO_AFFINE_TRANSFORMATION_META_API_TYPE,
+         "GstVideoAffineTransformationMeta",
+@@ -102,7 +102,7 @@
+         gst_video_affine_transformation_meta_init,
+         NULL,
+         gst_video_affine_transformation_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
+   }
+   return info;
+ }
+diff -urN orig/gst-libs/gst/video/gstvideoaggregator.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideoaggregator.c
+--- a/gst-libs/gst/video/gstvideoaggregator.c
++++ b/gst-libs/gst/video/gstvideoaggregator.c
+@@ -977,9 +977,9 @@
+ GType
+ gst_video_aggregator_get_type (void)
+ {
+-  static gsize static_g_define_type_id = 0;
++  static gpointer static_g_define_type_id = 0;
+ 
+-  if (g_once_init_enter (&static_g_define_type_id)) {
++  if (g_once_init_enter_pointer (&static_g_define_type_id)) {
+     GType g_define_type_id = g_type_register_static_simple (GST_TYPE_AGGREGATOR,
+         g_intern_static_string ("GstVideoAggregator"),
+         sizeof (GstVideoAggregatorClass),
+@@ -992,7 +992,7 @@
+         g_type_add_instance_private (g_define_type_id,
+         sizeof (GstVideoAggregatorPrivate));
+ 
+-    g_once_init_leave (&static_g_define_type_id, g_define_type_id);
++    g_once_init_leave_pointer (&static_g_define_type_id, g_define_type_id);
+   }
+   return static_g_define_type_id;
+ }
+diff -urN orig/gst-libs/gst/video/gstvideocodecalphameta.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideocodecalphameta.c
+--- a/gst-libs/gst/video/gstvideocodecalphameta.c
++++ b/gst-libs/gst/video/gstvideocodecalphameta.c
+@@ -52,10 +52,10 @@
+   static GType type = 0;
+   static const gchar *tags[] = { GST_META_TAG_VIDEO_STR, NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstVideoCodecAlphaMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -112,7 +112,7 @@
+ {
+   static const GstMetaInfo *info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_VIDEO_CODEC_ALPHA_META_API_TYPE,
+         "GstVideoCodecAlphaMeta",
+@@ -120,7 +120,7 @@
+         gst_video_codec_alpha_meta_init,
+         gst_video_codec_alpha_meta_free,
+         gst_video_codec_alpha_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
+   }
+ 
+   return info;
+diff -urN orig/gst-libs/gst/video/gstvideodecoder.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideodecoder.c
+--- a/gst-libs/gst/video/gstvideodecoder.c
++++ b/gst-libs/gst/video/gstvideodecoder.c
+@@ -554,9 +554,9 @@
+ GType
+ gst_video_decoder_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstVideoDecoderClass),
+@@ -576,7 +576,7 @@
+     private_offset =
+         g_type_add_instance_private (_type, sizeof (GstVideoDecoderPrivate));
+ 
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff -urN orig/gst-libs/gst/video/gstvideoencoder.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideoencoder.c
+--- a/gst-libs/gst/video/gstvideoencoder.c
++++ b/gst-libs/gst/video/gstvideoencoder.c
+@@ -303,9 +303,9 @@
+ GType
+ gst_video_encoder_get_type (void)
+ {
+-  static gsize type = 0;
++  static gpointer type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type;
+     static const GTypeInfo info = {
+       sizeof (GstVideoEncoderClass),
+@@ -330,7 +330,7 @@
+         g_type_add_instance_private (_type, sizeof (GstVideoEncoderPrivate));
+     g_type_add_interface_static (_type, GST_TYPE_PRESET,
+         &preset_interface_info);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+diff -urN orig/gst-libs/gst/video/gstvideometa.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideometa.c
+--- a/gst-libs/gst/video/gstvideometa.c
++++ b/gst-libs/gst/video/gstvideometa.c
+@@ -43,14 +43,14 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("videometa", 0, "videometa");
++    cat_done = (gpointer) _gst_debug_category_new ("videometa", 0, "videometa");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -196,12 +196,12 @@
+     GST_META_TAG_VIDEO_SIZE_STR, NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstVideoMetaAPI", tags);
+ 
+     gst_meta_api_type_set_params_aggregator (_type,
+         gst_video_meta_api_params_aggregator);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -318,7 +318,7 @@
+ {
+   static const GstMetaInfo *video_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & video_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & video_meta_info)) {
+     GstMetaInfo *info = gst_meta_info_new (GST_VIDEO_META_API_TYPE,
+         "GstVideoMeta",
+         sizeof (GstVideoMeta));
+@@ -327,7 +327,7 @@
+     info->serialize_func = video_meta_serialize;
+     info->deserialize_func = video_meta_deserialize;
+     const GstMetaInfo *meta = gst_meta_info_register (info);
+-    g_once_init_leave ((GstMetaInfo **) & video_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & video_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return video_meta_info;
+@@ -793,9 +793,9 @@
+     GST_META_TAG_VIDEO_ORIENTATION_STR, NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstVideoCropMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -814,13 +814,13 @@
+ {
+   static const GstMetaInfo *video_crop_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & video_crop_meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & video_crop_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_VIDEO_CROP_META_API_TYPE, "GstVideoCropMeta",
+         sizeof (GstVideoCropMeta),
+         (GstMetaInitFunction) gst_video_crop_meta_init,
+         (GstMetaFreeFunction) NULL, gst_video_crop_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & video_crop_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & video_crop_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return video_crop_meta_info;
+@@ -852,10 +852,10 @@
+   static const gchar *tags[] =
+       { GST_META_TAG_VIDEO_STR, GST_META_TAG_MEMORY_STR, NULL };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstVideoGLTextureUploadMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -932,7 +932,7 @@
+ {
+   static const GstMetaInfo *info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE,
+         "GstVideoGLTextureUploadMeta",
+@@ -940,7 +940,7 @@
+         gst_video_gl_texture_upload_meta_init,
+         gst_video_gl_texture_upload_meta_free,
+         gst_video_gl_texture_upload_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
++    g_once_init_leave_pointer ((GstMetaInfo **) & info, (GstMetaInfo *) meta);
+   }
+   return info;
+ }
+@@ -1022,11 +1022,11 @@
+     GST_META_TAG_VIDEO_SIZE_STR, NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstVideoRegionOfInterestMetaAPI", tags);
+     GST_INFO ("registering");
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -1111,7 +1111,7 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi =
+         gst_meta_register (GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE,
+         "GstVideoRegionOfInterestMeta",
+@@ -1119,7 +1119,7 @@
+         gst_video_region_of_interest_meta_init,
+         gst_video_region_of_interest_meta_free,
+         gst_video_region_of_interest_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+@@ -1276,11 +1276,11 @@
+ {
+   static GType type;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const gchar *tags[] = { NULL };
+     GType _type = gst_meta_api_type_register ("GstVideoTimeCodeMetaAPI", tags);
+     GST_INFO ("registering");
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -1334,7 +1334,7 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi =
+         gst_meta_register (GST_VIDEO_TIME_CODE_META_API_TYPE,
+         "GstVideoTimeCodeMeta",
+@@ -1342,7 +1342,7 @@
+         gst_video_time_code_meta_init,
+         gst_video_time_code_meta_free,
+         gst_video_time_code_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+diff -urN orig/gst-libs/gst/video/gstvideosink.c gst-plugins-base-1.26.11/gst-libs/gst/video/gstvideosink.c
+--- a/gst-libs/gst/video/gstvideosink.c
++++ b/gst-libs/gst/video/gstvideosink.c
+@@ -58,14 +58,14 @@
+ static GstDebugCategory *
+ gst_video_sink_ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
++  if (g_once_init_enter_pointer (&cat_gonce)) {
+     GstDebugCategory *cat = NULL;
+ 
+     GST_DEBUG_CATEGORY_INIT (cat, "videosink", 0, "GstVideoSink");
+ 
+-    g_once_init_leave (&cat_gonce, (gsize) cat);
++    g_once_init_leave_pointer (&cat_gonce, (gpointer) cat);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-anc.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-anc.c
+--- a/gst-libs/gst/video/video-anc.c
++++ b/gst-libs/gst/video/video-anc.c
+@@ -45,15 +45,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-anc", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-anc", 0,
+         "Ancillary data, VBI and CC utilities");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -928,11 +928,11 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const gchar *tags[] = { NULL };
+     GType _type = gst_meta_api_type_register ("GstVideoCaptionMetaAPI", tags);
+     GST_INFO ("registering");
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -983,14 +983,14 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_VIDEO_CAPTION_META_API_TYPE,
+         "GstVideoCaptionMeta",
+         sizeof (GstVideoCaptionMeta),
+         gst_video_caption_meta_init,
+         gst_video_caption_meta_free,
+         gst_video_caption_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+@@ -1131,11 +1131,11 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const gchar *tags[] = { NULL };
+     GType _type = gst_meta_api_type_register ("GstAncillaryMetaAPI", tags);
+     GST_INFO ("registering");
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -1197,14 +1197,14 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_ANCILLARY_META_API_TYPE,
+         "GstAncillaryMeta",
+         sizeof (GstAncillaryMeta),
+         gst_ancillary_meta_init,
+         gst_ancillary_meta_free,
+         gst_ancillary_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ 
+@@ -1242,7 +1242,7 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const gchar *tags[] = {
+       GST_META_TAG_VIDEO_SIZE_STR,
+       GST_META_TAG_VIDEO_ORIENTATION_STR,
+@@ -1250,7 +1250,7 @@
+       NULL
+     };
+     GType _type = gst_meta_api_type_register ("GstVideoAFDMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -1319,14 +1319,14 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_VIDEO_AFD_META_API_TYPE,
+         "GstVideoAFDMeta",
+         sizeof (GstVideoAFDMeta),
+         gst_video_afd_meta_init,
+         NULL,
+         gst_video_afd_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+@@ -1381,7 +1381,7 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const gchar *tags[] = {
+       GST_META_TAG_VIDEO_SIZE_STR,
+       GST_META_TAG_VIDEO_ORIENTATION_STR,
+@@ -1389,7 +1389,7 @@
+       NULL
+     };
+     GType _type = gst_meta_api_type_register ("GstVideoBarMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -1429,14 +1429,14 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi = gst_meta_register (GST_VIDEO_BAR_META_API_TYPE,
+         "GstVideoBarMeta",
+         sizeof (GstVideoBarMeta),
+         gst_video_bar_meta_init,
+         NULL,
+         gst_video_bar_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+diff -urN orig/gst-libs/gst/video/video-blend.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-blend.c
+--- a/gst-libs/gst/video/video-blend.c
++++ b/gst-libs/gst/video/video-blend.c
+@@ -39,15 +39,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-blending", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-blending", 0,
+         "video blending");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-chroma.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-chroma.c
+--- a/gst-libs/gst/video/video-chroma.c
++++ b/gst-libs/gst/video/video-chroma.c
+@@ -46,15 +46,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-chroma", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-chroma", 0,
+         "video-chroma object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-color.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-color.c
+--- a/gst-libs/gst/video/video-color.c
++++ b/gst-libs/gst/video/video-color.c
+@@ -34,15 +34,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-color", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-color", 0,
+         "video-color object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-converter.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-converter.c
+--- a/gst-libs/gst/video/video-converter.c
++++ b/gst-libs/gst/video/video-converter.c
+@@ -99,15 +99,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-converter", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-converter", 0,
+         "video-converter object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-frame.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-frame.c
+--- a/gst-libs/gst/video/video-frame.c
++++ b/gst-libs/gst/video/video-frame.c
+@@ -38,11 +38,11 @@
+ {
+   static GstDebugCategory *cat = NULL;
+ 
+-  if (g_once_init_enter (&cat)) {
++  if (g_once_init_enter_pointer (&cat)) {
+     GstDebugCategory *c = NULL;
+ 
+     GST_DEBUG_CATEGORY_GET (c, "GST_PERFORMANCE");
+-    g_once_init_leave (&cat, c);
++    g_once_init_leave_pointer (&cat, c);
+   }
+   return cat;
+ }
+diff -urN orig/gst-libs/gst/video/video-info.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-info.c
+--- a/gst-libs/gst/video/video-info.c
++++ b/gst-libs/gst/video/video-info.c
+@@ -40,15 +40,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-info", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-info", 0,
+         "video-info structure");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-info-dma.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-info-dma.c
+--- a/gst-libs/gst/video/video-info-dma.c
++++ b/gst-libs/gst/video/video-info-dma.c
+@@ -41,15 +41,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-info-dma-drm", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-info-dma-drm", 0,
+         "video-info-dma-drm structure");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-multiview.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-multiview.c
+--- a/gst-libs/gst/video/video-multiview.c
++++ b/gst-libs/gst/video/video-multiview.c
+@@ -30,9 +30,9 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_flagset_register (GST_TYPE_VIDEO_MULTIVIEW_FLAGS);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -411,9 +411,9 @@
+     NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type = gst_meta_api_type_register ("GstVideoMultiviewMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -441,7 +441,7 @@
+ {
+   static const GstMetaInfo *video_meta_info = NULL;
+ 
+-  if (g_once_init_enter (&video_meta_info)) {
++  if (g_once_init_enter_pointer (&video_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_VIDEO_MULTIVIEW_META_API_TYPE,
+         "GstVideoMultiviewMeta",
+@@ -449,7 +449,7 @@
+         (GstMetaInitFunction) gst_video_multiview_meta_init,
+         (GstMetaFreeFunction) gst_video_multiview_meta_free,
+         NULL);
+-    g_once_init_leave (&video_meta_info, meta);
++    g_once_init_leave_pointer (&video_meta_info, meta);
+   }
+ 
+   return video_meta_info;
+diff -urN orig/gst-libs/gst/video/video-overlay-composition.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-overlay-composition.c
+--- a/gst-libs/gst/video/video-overlay-composition.c
++++ b/gst-libs/gst/video/video-overlay-composition.c
+@@ -151,15 +151,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-composition", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-composition", 0,
+         "video overlay composition");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -289,10 +289,10 @@
+     GST_META_TAG_VIDEO_SIZE_STR, NULL
+   };
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     GType _type =
+         gst_meta_api_type_register ("GstVideoOverlayCompositionMetaAPI", tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -303,7 +303,7 @@
+ {
+   static const GstMetaInfo *video_overlay_composition_meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) &
++  if (g_once_init_enter_pointer ((GstMetaInfo **) &
+           video_overlay_composition_meta_info)) {
+     const GstMetaInfo *meta =
+         gst_meta_register (GST_VIDEO_OVERLAY_COMPOSITION_META_API_TYPE,
+@@ -313,7 +313,7 @@
+         (GstMetaFreeFunction) gst_video_overlay_composition_meta_free,
+         (GstMetaTransformFunction)
+         gst_video_overlay_composition_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & video_overlay_composition_meta_info,
++    g_once_init_leave_pointer ((GstMetaInfo **) & video_overlay_composition_meta_info,
+         (GstMetaInfo *) meta);
+   }
+   return video_overlay_composition_meta_info;
+diff -urN orig/gst-libs/gst/video/video-resampler.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-resampler.c
+--- a/gst-libs/gst/video/video-resampler.c
++++ b/gst-libs/gst/video/video-resampler.c
+@@ -32,15 +32,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-resampler", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-resampler", 0,
+         "video-resampler object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-scaler.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-scaler.c
+--- a/gst-libs/gst/video/video-scaler.c
++++ b/gst-libs/gst/video/video-scaler.c
+@@ -49,15 +49,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-scaler", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-scaler", 0,
+         "video-scaler object");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+diff -urN orig/gst-libs/gst/video/video-sei.c gst-plugins-base-1.26.11/gst-libs/gst/video/video-sei.c
+--- a/gst-libs/gst/video/video-sei.c
++++ b/gst-libs/gst/video/video-sei.c
+@@ -42,15 +42,15 @@
+ static GstDebugCategory *
+ ensure_debug_category (void)
+ {
+-  static gsize cat_gonce = 0;
++  static gpointer cat_gonce = 0;
+ 
+-  if (g_once_init_enter (&cat_gonce)) {
+-    gsize cat_done;
++  if (g_once_init_enter_pointer (&cat_gonce)) {
++    gpointer cat_done;
+ 
+-    cat_done = (gsize) _gst_debug_category_new ("video-sei", 0,
++    cat_done = (gpointer) _gst_debug_category_new ("video-sei", 0,
+         "H.264 / H.265 SEI messages utilities");
+ 
+-    g_once_init_leave (&cat_gonce, cat_done);
++    g_once_init_leave_pointer (&cat_gonce, cat_done);
+   }
+ 
+   return (GstDebugCategory *) cat_gonce;
+@@ -73,7 +73,7 @@
+ {
+   static GType type = 0;
+ 
+-  if (g_once_init_enter (&type)) {
++  if (g_once_init_enter_pointer (&type)) {
+     static const gchar *tags[] = {
+       GST_META_TAG_VIDEO_STR,
+       NULL
+@@ -81,7 +81,7 @@
+     GType _type =
+         gst_meta_api_type_register ("GstVideoSEIUserDataUnregisteredMetaAPI",
+         tags);
+-    g_once_init_leave (&type, _type);
++    g_once_init_leave_pointer (&type, _type);
+   }
+   return type;
+ }
+@@ -139,7 +139,7 @@
+ {
+   static const GstMetaInfo *meta_info = NULL;
+ 
+-  if (g_once_init_enter ((GstMetaInfo **) & meta_info)) {
++  if (g_once_init_enter_pointer ((GstMetaInfo **) & meta_info)) {
+     const GstMetaInfo *mi =
+         gst_meta_register (GST_VIDEO_SEI_USER_DATA_UNREGISTERED_META_API_TYPE,
+         "GstVideoSEIUserDataUnregisteredMeta",
+@@ -147,7 +147,7 @@
+         gst_video_sei_user_data_unregistered_meta_init,
+         gst_video_sei_user_data_unregistered_meta_free,
+         gst_video_sei_user_data_unregistered_meta_transform);
+-    g_once_init_leave ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
++    g_once_init_leave_pointer ((GstMetaInfo **) & meta_info, (GstMetaInfo *) mi);
+   }
+   return meta_info;
+ }
+diff -urN orig/tests/check/libs/profile.c gst-plugins-base-1.26.11/tests/check/libs/profile.c
+--- a/tests/check/libs/profile.c
++++ b/tests/check/libs/profile.c
+@@ -331,8 +331,8 @@
+   proforig =
+       (GstEncodingProfile *) gst_encoding_target_get_profiles (orig)->data;
+ 
+-  fail_unless_equals_int (G_TYPE_FROM_INSTANCE (profloaded),
+-      G_TYPE_FROM_INSTANCE (proforig));
++  fail_unless_equals_int ((gsize) G_TYPE_FROM_INSTANCE (profloaded),
++      (gsize) G_TYPE_FROM_INSTANCE (proforig));
+   GST_DEBUG ("Comparing loaded:%p to original:%p", profloaded, proforig);
+   fail_unless (gst_encoding_profile_is_equal (profloaded, proforig));
+ 

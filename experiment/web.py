@@ -16,6 +16,7 @@ from .logs import build_log
 from .history import history, attempt_detail
 from .catalog import catalog, source_link
 from .batches import batches
+from .blockers import ranking
 from .diagnostics import evaluation_summary
 
 
@@ -79,16 +80,8 @@ def snapshot(db, campaign=None, search="", state="", offset=0):
         )
     ]
     failures = [
-        dict(r)
-        for r in db.execute(
-            """WITH RECURSIVE impacted(root,drv) AS (
-      SELECT drv,drv FROM derivations WHERE failure IS NOT NULL
-      UNION SELECT impacted.root,edges.parent FROM impacted JOIN edges ON edges.child=impacted.drv)
-      SELECT d.drv,d.name,d.failure,count(DISTINCT c.id) AS affected FROM impacted i
-      JOIN derivations d ON d.drv=i.root JOIN candidates c ON c.drv=i.drv
-      WHERE c.campaign=? GROUP BY d.drv ORDER BY affected DESC LIMIT 10""",
-            (cid,),
-        )
+        dict(drv=r["drv"], name=r["name"], failure=r["failure"], affected=r["blocks"])
+        for r in ranking(db, cid)["rows"][:10]
     ]
     tests = db.execute(
         "SELECT count(DISTINCT t.drv) FROM tests t JOIN candidates c ON c.drv=t.drv JOIN attempts a ON a.id=t.attempt AND a.campaign=c.campaign WHERE c.campaign=? AND c.state='available'",

@@ -16,6 +16,23 @@ participate in its ABI and bootstrap. Directory location alone is not the
 boundary. New application patches can still require a newer compiler/runtime
 feature; test each updated port with the pinned toolchain before accepting it.
 
+## The mbrock/fil-c fork
+
+`lib/filc-upstream.json` names the repository as well as the revision. The
+core pin currently selects the `filnix` branch of
+[mbrock/fil-c](https://github.com/mbrock/fil-c): upstream `deluge` at
+`08d9c62bd2f8` plus commits not yet upstream:
+
+- C++20 coroutine lowering before FilPizlonator, and `musttail` calls
+  (`checks.cxx-coroutines`).
+- SaRCAsm splitting of `;`-separated x86_64 statements (`checks.zstd-sarcasm`).
+- The sign of user glibc's `FUTEX_UNLOCK_PI` result (`checks.pthread-pi`).
+- `pthread_spin_init` on x86_64, which user glibc never defined
+  (`checks.pthread-spin`).
+
+Rebase that branch onto a newer `deluge` rather than pinning upstream
+directly until these land there. The ports pin still reads upstream.
+
 ## September 14 cancellation baseline
 
 The core and ports pins now select

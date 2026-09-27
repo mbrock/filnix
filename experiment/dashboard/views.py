@@ -26,6 +26,7 @@ from .resources import (
     BATCH,
     BATCH_STATUS,
     BATCHES,
+    BLOCKERS,
     CSV,
     GRAPH,
     GRAPH_REGION,
@@ -105,6 +106,8 @@ def summary(value, view):
                 width = counts.get(key, 0) / max(value["total"], 1) * 1000
                 tag.rect(x=at, y=0, width=width, height=4, fill=color)
                 at += width
+        if value["blockers"]:
+            top_blockers(value["blockers"], cid, view)
         if value["active"]:
             with tag.div(["grid", "gap-x-4", "md:grid-cols-2", "mb-3"]):
                 for a in value["active"]:
@@ -151,6 +154,30 @@ def summary(value, view):
                                 text(
                                     (build["phase"] or "building").removesuffix("Phase")
                                 )
+
+
+def top_blockers(rows, cid, view):
+    with tag.section(["mb-3"], id="top-blockers", aria_label="Top blockers"):
+        with tag.div(["flex", "justify-between", "gap-2"]):
+            with tag.h2(HEADING):
+                text("Top blockers")
+            with link(BLOCKERS.url(view.with_(page=0), cid=cid)):
+                text("All blockers →")
+        for row in rows:
+            with tag.div([ROW, "flex", "gap-2", "justify-between", "py-1", "min-w-0"]):
+                with tag.span(["min-w-0", "truncate"]):
+                    with link(
+                        GRAPH.url(view.with_(focus=row["drv"], page=0), cid=cid),
+                        [FOCUS, "font-medium"],
+                    ):
+                        text(blocker_name(row))
+                    with tag.span([MUTED, "ml-2"]):
+                        text(failure_label(row["failure"]))
+                with tag.span(["shrink-0", "tabular-nums", "text-amber-800"]):
+                    text(f"blocks {row['blocks']:,}")
+                    if row["only"]:
+                        with tag.span(MUTED):
+                            text(f" · only cause of {row['only']:,}")
 
 
 def timeline(rows, cid, view, now):
@@ -951,3 +978,117 @@ def graph(result, campaign, view):
                     )
                 ):
                     text("More neighbors →")
+
+
+def blocker_name(row):
+    return build_name(row["name"] or row["drv"].rsplit("/", 1)[-1][33:-4])
+
+
+def blockers(result, campaign, view):
+    cid = campaign["id"]
+    with tag.section(id="blockers"):
+        with tag.div(["flex", "flex-wrap", "justify-between", "gap-2", "mb-1"]):
+            with tag.h1(HEADING):
+                text("Blockers")
+            with tag.span([MUTED, "text-xs"]):
+                text("Computed ")
+                timestamp(result["computed"], date=False)
+        with tag.p([MUTED, "mb-3"]):
+            text(
+                f"{result['total']:,} failed derivations block "
+                f"{result['blocked']:,} packages; "
+                f"{result['multiple']:,} of those have more than one failed "
+                "dependency. “Only cause” counts packages that this failure "
+                "alone blocks: fixing it would let them build or reach their "
+                "own failures."
+            )
+        if not result["rows"]:
+            empty("No failures block other packages.")
+            return
+        with tag.table(
+            ["w-full", "table-fixed", "border-collapse"],
+            id="blocker-list",
+            data_count=len(result["rows"]),
+        ):
+            with tag.thead(
+                ["sticky", "top-0", "bg-[#f7f7f2]", "border-b", "border-stone-400", "z-10"]
+            ):
+                with tag.tr():
+                    with tag.th([CELL, HEADING], scope="col"):
+                        text("Failure")
+                    with tag.th(
+                        [CELL, "text-right", "font-medium", "w-20", "sm:w-28"],
+                        scope="col",
+                    ):
+                        text("Blocks")
+                    with tag.th(
+                        [CELL, "text-right", "font-medium", "w-20", "sm:w-28"],
+                        scope="col",
+                    ):
+                        text("Only cause")
+            with tag.tbody():
+                for rank, row in enumerate(
+                    result["rows"], result["page"] * result["size"] + 1
+                ):
+                    blocker_row(row, rank, result["most"], cid, view)
+        with tag.div(["flex", "gap-4", "mt-3"]):
+            if result["page"]:
+                with link(BLOCKERS.url(view.with_(page=result["page"] - 1), cid=cid)):
+                    text("← Previous")
+            if (result["page"] + 1) * result["size"] < result["total"]:
+                with link(BLOCKERS.url(view.with_(page=result["page"] + 1), cid=cid)):
+                    text("More blockers →")
+
+
+def blocker_row(row, rank, most, cid, view):
+    with tag.tr(ROW, id="blocker-" + str(rank)):
+        with tag.td([CELL, "min-w-0"]):
+            with tag.div(["flex", "gap-2", "items-baseline", "min-w-0"]):
+                with tag.span([MUTED, "tabular-nums", "shrink-0", "w-8"]):
+                    text(f"{rank}.")
+                with link(
+                    GRAPH.url(view.with_(focus=row["drv"], page=0), cid=cid),
+                    [FOCUS, "font-medium", "break-words", "min-w-0"],
+                ):
+                    text(blocker_name(row))
+            with tag.div(["ml-10", "text-stone-600", "break-words"]):
+                with tag.span("text-red-800"):
+                    text(failure_label(row["failure"], row["evidence"]))
+                text(" · ")
+                evidence_link(row["evidence"], cid, view)
+                if row["package"] is not None:
+                    text(" · ")
+                    with link(PACKAGE.url(view, cid=cid, pid=row["package"])):
+                        text("Package")
+            # Width relative to the largest blocker (no inline styles under the CSP).
+            with tag.svg(
+                ["block", "ml-10", "mt-1", "h-1.5", "w-[calc(100%-2.5rem)]"],
+                viewBox="0 0 1000 4",
+                preserveAspectRatio="none",
+                aria_hidden="true",
+            ):
+                tag.rect(x=0, y=0, width=1000, height=4, fill="#e7e5e4")
+                tag.rect(
+                    x=0, y=0, width=round(row["blocks"] / max(most, 1) * 1000), height=4,
+                    fill="#ac965b",
+                )
+            if row["examples"]:
+                with tag.details(["ml-10", "mt-1"]):
+                    with tag.summary([FOCUS, "cursor-pointer", MUTED]):
+                        text("Blocked packages")
+                    with tag.p(["break-words"]):
+                        for index, example in enumerate(row["examples"]):
+                            if index:
+                                text(", ")
+                            with link(
+                                PACKAGE.url(view, cid=cid, pid=example["id"]),
+                                LINK if example["only"] else [LINK, "text-stone-600"],
+                            ):
+                                text(example["label"])
+                        if row["blocks"] > len(row["examples"]):
+                            with tag.span(MUTED):
+                                text(f" and {row['blocks'] - len(row['examples']):,} more")
+        with tag.td([CELL, "text-right", "tabular-nums", "font-medium"]):
+            text(f"{row['blocks']:,}")
+        with tag.td([CELL, "text-right", "tabular-nums"]):
+            text(f"{row['only']:,}" if row["only"] else "—")

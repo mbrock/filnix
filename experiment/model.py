@@ -100,6 +100,10 @@ CREATE TABLE IF NOT EXISTS replans (
  source TEXT NOT NULL, revision TEXT NOT NULL, request TEXT NOT NULL,
  created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS replans_request ON replans(request,candidate);
+CREATE INDEX IF NOT EXISTS attempts_campaign ON attempts(campaign,created);
+CREATE INDEX IF NOT EXISTS activities_drv ON activities(drv);
+CREATE INDEX IF NOT EXISTS tests_drv ON tests(drv);
+CREATE INDEX IF NOT EXISTS events_campaign ON events(campaign,seq);
 PRAGMA user_version=4;
 """
 

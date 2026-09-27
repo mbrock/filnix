@@ -27,6 +27,7 @@ from .resources import (
     BATCH,
     BATCH_STATUS,
     BATCHES,
+    BLOCKERS,
     CSV,
     EVENTS,
     GRAPH,
@@ -189,6 +190,13 @@ def create_app(state):
         return representation(
             request, lambda: views.batch_status(result, c, view, stamp())
         )
+
+    def blockers(request):
+        def prepare(db, cid, c, v):
+            result = data.blockers(db, cid, v)
+            return "Blockers", lambda: views.blockers(result, c, v)
+
+        return page(request, "blockers", prepare)
 
     def graph(request):
         def prepare(db, cid, c, v):
@@ -438,6 +446,7 @@ def create_app(state):
             BATCHES.route(batches),
             BATCH.route(batch),
             BATCH_STATUS.route(batch_status),
+            BLOCKERS.route(blockers),
             GRAPH.route(graph),
             GRAPH_REGION.route(graph_region),
             LOG.route(log),

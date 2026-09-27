@@ -8,7 +8,7 @@ Keep CPU feature detection and SIMD dispatch enabled.
 
 --- a/spa/plugins/support/cpu-x86.c
 +++ b/spa/plugins/support/cpu-x86.c
-@@ -114,7 +114,7 @@
+@@ -114,7 +114,7 @@ x86_init(struct impl *impl)
  	(XSTATE_SSE | XSTATE_YMM | XSTATE_OPMASK | XSTATE_ZMM | XSTATE_HI_ZMM)
  
  	if (has_osxsave)

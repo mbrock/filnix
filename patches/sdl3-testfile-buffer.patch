@@ -1,0 +1,19 @@
+Subject: Size testfile's read buffer for its largest request
+Origin: Filnix
+Upstream-Status: Not submitted
+
+testfile asks SDL_ReadIO for up to 1000 bytes into a 30-byte buffer and
+relies on end-of-file to return 0. glibc's fread passes the full count to
+read(2) when it bypasses its buffer, and Fil-C traps that unbounded write.
+
+--- a/test/testfile.c
++++ b/test/testfile.c
+@@ -68,7 +68,7 @@ iostrm_error_quit(unsigned line, SDL_IOStream *iostrm)
+ int main(int argc, char *argv[])
+ {
+     SDL_IOStream *iostrm = NULL;
+-    char test_buf[30];
++    char test_buf[1000];
+ 
+     /* Initialize test framework */
+     state = SDLTest_CommonCreateState(argv, 0);

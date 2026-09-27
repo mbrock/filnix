@@ -3,17 +3,17 @@
     "nixpkgs": {
       "flake": false,
       "locked": {
-        "lastModified": 1762633274,
-        "narHash": "sha256-Ygv7dtGtshVgYPWE9pNaCxA7s9V8OleD7UbFjuZr5ug=",
+        "lastModified": 1790156462,
+        "narHash": "sha256-1pGdUxoeOm3yriHKpLwrsl/K86Zbzvt0cqJjXG/VG90=",
         "owner": "lessrest",
         "repo": "filnixpkgs",
-        "rev": "400439b089773d3fc593b512250e283a33485de4",
+        "rev": "118d872d35b2ddbff87356e6dc407affe40032ad",
         "type": "github"
       },
       "original": {
         "owner": "lessrest",
         "repo": "filnixpkgs",
-        "rev": "400439b089773d3fc593b512250e283a33485de4",
+        "rev": "118d872d35b2ddbff87356e6dc407affe40032ad",
         "type": "github"
       }
     },

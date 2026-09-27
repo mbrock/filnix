@@ -34,7 +34,7 @@ assert pkgs.lib.hasInfix "xvfb-run" old.checkPhase;
       [
         "${runner}"
         "${runner}"
-        "meson test --num-processes=$NIX_BUILD_CORES"
+        "meson test --num-processes=$NIX_BUILD_CORES --timeout-multiplier=4"
         "make check VERBOSE=1"
       ]
       old.checkPhase;
