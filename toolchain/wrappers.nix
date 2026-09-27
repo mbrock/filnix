@@ -71,7 +71,7 @@ let
   # and Fil-C libraries reached depsBuildBuild compilers' links. Use the
   # Fil-C platform's salt (flake.nix: crossSystem.config) and keep the empty
   # target prefix. checks.wrapper-roles tests the separation.
-  filcSuffixSalt = "x86_64_unknown_linux_gnufilc0";
+  filcSuffixSalt = "${lib.filcArch}_unknown_linux_gnufilc0";
   withFilcSuffixSalt =
     wrapper:
     wrapper.overrideAttrs (old: {
