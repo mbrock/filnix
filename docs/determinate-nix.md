@@ -31,7 +31,8 @@ nix build -L .#legacyPackages.x86_64-linux.pkgsFilc.determinateNixComponents.nix
 
   The skips are the suite's own (no daemon, no network, and so on), plus
   the tests that need this Nix to create namespaces, plus three that hit the
-  Fil-C unwinding bug.
+  Fil-C unwinding bug. These numbers are from `orb/determinate-nix`
+  (main's toolchain). BATCHRESULT
 - **Parallel evaluation gives the same results as native Nix.** With
   eval-cores = 8 under Fil-C, the `.drv` paths match native upstream Nix
   2.35.2 in each of these:
@@ -61,7 +62,8 @@ the release tarball. The Fil-C overrides that the upstream Nix 2.34 port
 needs are now shared as `nixFilcOverrides` in
 [ports/overlay.nix](../ports/overlay.nix): no LTO, no sigaltstack handler,
 fork instead of vfork, no namespaces, seccomp off with `filter-syscalls`
-defaulting to false, libc's nss_dns by path, and the plugins suite skipped.
+defaulting to false, and libc's nss_dns by path. The functional tests run
+the Fil-C `nix` (including the plugins suite), with the sandbox tests off.
 The upstream `nix` derivation is unchanged by the refactoring (same
 `.drv`).
 
@@ -74,8 +76,6 @@ What Determinate Nix needs on top of that:
   sentry-native brings crashpad. mimalloc would replace Fil-C's allocator.
 - **No unity build.** Each library would otherwise be one translation unit,
   which serializes the slow Fil-C compile.
-- **Scope-local Boost with an Asio fix** (see below). The rest of pkgsFilc
-  keeps its cached Boost.
 - **`util-linux` from the build platform** for the `enosys` wrapper and the
   functional tests. The scope is not spliced, so these would otherwise be
   Fil-C builds (and `enosys` installs a seccomp filter).
@@ -117,12 +117,16 @@ behaviour outside Fil-C.
    at 117 MiB. Under Fil-C the bump allocator uses its upstream resource
    (the reservation is only an optimization), and the symbol arena is
    128 MiB. All of Nixpkgs needs about 12 MiB of symbols.
-5. **Boost.Asio's `io_context` executor** (patches/boost-asio-io-context-executor-pointer.patch).
-   It keeps `io_context* | bits` in a `uintptr_t`. The async `computeClosure`
-   (and the rest of the Asio store code) trapped in `use_service`.
-6. **Skipped test:** `CompressionDecompressionTest.invalidDecompression/*`
-   is the open exception-lifetime issue that the upstream port also skips
-   (docs/filc-findings.md).
+5. **Boost.Asio's `io_context` executor** (patches/boost-asio-io-context-executor-pointer.patch,
+   now in the global boost187 port with a check). It keeps
+   `io_context* | bits` in a `uintptr_t`. The async `computeClosure` (and
+   the rest of the Asio store code) trapped in `use_service`.
+6. **Test adjustments.** Unlike upstream, the fork refuses to build in a
+   diverted store without the sandbox, where upstream quietly turns the
+   sandbox off. So besides the shared switch that turns off sandbox tests,
+   `unprivilegedUserNamespacesSupported` reports false and the unguarded
+   diverted-store tail of `shell.sh` is dropped. The exception-lifetime
+   skips from before batch pinned mbrock/fil-c fa8c296 are gone.
 
 The Fil-C-level findings (`RTLD_NEXT`, `syscall()`, Asio) are also in
 [filc-findings.md](filc-findings.md).
@@ -130,6 +134,9 @@ The Fil-C-level findings (`RTLD_NEXT`, `syscall()`, Asio) are also in
 ## Bugs found in Determinate Nix
 
 ### 1. Parallel evaluation mutates one shared exception from several threads
+
+The standalone report for Determinate Systems is
+[determinate-nix-addtrace-race.md](determinate-nix-addtrace-race.md).
 
 **This is a real bug: a data race in the fork's parallel evaluator that
 becomes heap corruption.** When a thunk fails, `force()` stores
