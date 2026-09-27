@@ -2,8 +2,9 @@ Subject: Port protobuf 33.6's C++ runtime to Fil-C
 Origin: Filnix
 Upstream-Status: Not submitted
 
-- InternalMetadata, TaggedAllocationPolicyPtr and TaggedStringPtr kept or
-  returned tagged pointers as integers, which drops the capability; keep
+- InternalMetadata, TaggedAllocationPolicyPtr, TaggedStringPtr and the
+  RepeatedField SOO rep (elements/arena words) kept or returned tagged
+  pointers as integers, which drops the capability; keep
   pointer-typed words and tag with pointer arithmetic. ArenaAlign::Ceil
   rounds with pointer arithmetic for the same reason (it went through a
   uintptr_t local, which traps at -O0).
@@ -383,6 +384,81 @@ index b3b9cb1..84614e1 100644
  #define PROTOBUF_PREFETCH_WITH_OFFSET(base, offset) \
    asm("prefetcht0 " #offset "(%0)" : : "r"(base));
  #else
+diff --git a/src/google/protobuf/repeated_field.h b/src/google/protobuf/repeated_field.h
+index a4da71d..97b0af3 100644
+--- a/src/google/protobuf/repeated_field.h
++++ b/src/google/protobuf/repeated_field.h
+@@ -155,29 +155,33 @@ constexpr int SooCapacityElements() {
+   return std::min<int>(kSooCapacityBytes / sizeof(T), kSooSizeMask);
+ }
+ 
++// Fil-C: the tagged elements/arena words are pointer-typed and tagged with
++// pointer arithmetic; a uintptr_t word would drop the capability.
+ struct LongSooRep {
+   // Returns char* rather than void* so callers can do pointer arithmetic.
+   char* elements() const {
+-    auto ret = reinterpret_cast<char*>(elements_int & kSooPtrMask);
++    auto ret = elements_int - (reinterpret_cast<uintptr_t>(elements_int) &
++                               (kSooPtrAlignment - 1));
+     ABSL_DCHECK_NE(ret, nullptr);
+     return ret;
+   }
+ 
+-  uintptr_t elements_int;
++  char* elements_int;
+   int size;
+   int capacity;
+ };
+ struct ShortSooRep {
+   constexpr ShortSooRep() = default;
+   explicit ShortSooRep(Arena* arena)
+-      : arena_and_size(reinterpret_cast<uintptr_t>(arena)) {
++      : arena_and_size(reinterpret_cast<char*>(arena)) {
+     ABSL_DCHECK_EQ(size(), 0);
+   }
+ 
+-  int size() const { return arena_and_size & kSooSizeMask; }
+-  bool is_soo() const { return (arena_and_size & kNotSooBit) == 0; }
++  uintptr_t bits() const { return reinterpret_cast<uintptr_t>(arena_and_size); }
++  int size() const { return bits() & kSooSizeMask; }
++  bool is_soo() const { return (bits() & kNotSooBit) == 0; }
+ 
+-  uintptr_t arena_and_size = 0;
++  char* arena_and_size = nullptr;
+   union {
+     char data[kSooCapacityBytes];
+     // NOTE: in some language versions, we can't have a constexpr constructor
+@@ -201,7 +205,9 @@ struct SooRep {
+   }
+   Arena* soo_arena() const {
+     ABSL_DCHECK(is_soo());
+-    return reinterpret_cast<Arena*>(short_rep.arena_and_size & kSooPtrMask);
++    return reinterpret_cast<Arena*>(
++        short_rep.arena_and_size -
++        (short_rep.bits() & (kSooPtrAlignment - 1)));
+   }
+   int size(bool is_soo) const {
+     ABSL_DCHECK_EQ(is_soo, this->is_soo());
+@@ -218,8 +224,8 @@ struct SooRep {
+     ABSL_DCHECK_EQ(is_soo, this->is_soo());
+     if (is_soo) {
+       ABSL_DCHECK_LE(size, kSooSizeMask);
+-      short_rep.arena_and_size &= kSooPtrMask;
+-      short_rep.arena_and_size |= size;
++      short_rep.arena_and_size +=
++          size - static_cast<int>(short_rep.bits() & kSooSizeMask);
+     } else {
+       long_rep.size = size;
+     }
+@@ -233,7 +239,7 @@ struct SooRep {
+                    uintptr_t{0});
+     if (was_soo) long_rep.size = short_rep.size();
+     long_rep.capacity = capacity;
+-    long_rep.elements_int = reinterpret_cast<uintptr_t>(elements) | kNotSooBit;
++    long_rep.elements_int = static_cast<char*>(elements) + kNotSooBit;
+   }
+ 
+   union {
 diff --git a/src/google/protobuf/repeated_ptr_field.h b/src/google/protobuf/repeated_ptr_field.h
 index ab43888..50c30b1 100644
 --- a/src/google/protobuf/repeated_ptr_field.h

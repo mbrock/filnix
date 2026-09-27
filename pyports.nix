@@ -35,6 +35,26 @@ in
     }))
   ])
 
+  (for "protobuf7" [
+    (use (old: {
+      # The upb C extension (google._upb._message) keeps pointers in integer
+      # words (arena block allocators, hash entries) and traps at import
+      # under Fil-C. api_implementation probes it before it reads
+      # PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION, so that variable cannot avoid
+      # it. The build-time constant module makes the pure-Python backend the
+      # default without the probe (the variable can still select upb).
+      # Porting upb itself is a separate job.
+      postInstall = (old.postInstall or "") + ''
+        internal=$(echo $out/lib/python*/site-packages/google/protobuf/internal)
+        echo 'api_version = 0  # Fil-C: pure-Python backend' \
+          > "$internal/_api_implementation.py"
+      '';
+      pythonImportsCheck = pkgs.lib.remove "google._upb._message" (
+        old.pythonImportsCheck or [ ]
+      );
+    }))
+  ])
+
   (for "pybind11" [
     (use {
       # The CMake check target runs pytest with the build platform's Python,
