@@ -144,6 +144,9 @@
           inherit pkgs filcc;
           inherit (pkgsFilc) libffi;
         };
+        gtk2-runtime = import ./tests/gtk2-runtime.nix {
+          inherit pkgs pkgsFilc;
+        };
         gtk3-runtime = import ./tests/gtk-runtime.nix {
           inherit pkgs pkgsFilc;
           major = 3;

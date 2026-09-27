@@ -1,0 +1,1909 @@
+Subject: GTK 2: pointer-valued GTypes and clang errors
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C's GLib makes GType a pointer, so GTK 2.24.33 stopped compiling:
+- switches on fundamental GTypes (GtkArg, bindings, builder, settings,
+  tree data) switch on the address instead;
+- `TYPE | G_SIGNAL_TYPE_STATIC_SCOPE` and `type & ~G_SIGNAL_TYPE_STATIC_SCOPE`
+  use zorptr/zandptr, which keep the type's capability;
+- GAIL's type registration uses pointer-sized g_once_init;
+- GtkComboBoxText kept a column GType in a gint.
+The same changes as upstream's GTK 3 port (ports/patch/gtk-3.24.52.patch).
+Clang 20 also rejects GtkScale's GCompareDataFunc cast and K&R/extra-argument
+calls in tests/testmenubars.c, and the GType model in tests/testtreeview.c
+follows the GTK 3 port. Regression check: checks.gtk2-runtime.
+
+diff --git a/gtk/gtkbindings.c b/gtk/gtkbindings.c
+index 0519e58..68610f5 100644
+--- a/gtk/gtkbindings.c
++++ b/gtk/gtkbindings.c
+@@ -368,17 +368,17 @@ binding_compose_params (GtkObject       *object,
+ 
+       g_value_init (params, *types);
+ 
+-      switch (G_TYPE_FUNDAMENTAL (args->arg_type))
++      switch ((uintptr_t) G_TYPE_FUNDAMENTAL (args->arg_type))
+ 	{
+-	case G_TYPE_DOUBLE:
++	case (uintptr_t) G_TYPE_DOUBLE:
+ 	  g_value_init (&tmp_value, G_TYPE_DOUBLE);
+ 	  g_value_set_double (&tmp_value, args->d.double_data);
+ 	  break;
+-	case G_TYPE_LONG:
++	case (uintptr_t) G_TYPE_LONG:
+ 	  g_value_init (&tmp_value, G_TYPE_LONG);
+ 	  g_value_set_long (&tmp_value, args->d.long_data);
+ 	  break;
+-	case G_TYPE_STRING:
++	case (uintptr_t) G_TYPE_STRING:
+ 	  /* gtk_rc_parse_flags/enum() has fancier parsing for this; we can't call
+ 	   * that since we don't have a GParamSpec, so just do something simple
+ 	   */
+@@ -852,17 +852,17 @@ _gtk_binding_entry_add_signall (GtkBindingSet  *binding_set,
+ 	  binding_signal_free (signal);
+ 	  return;
+ 	}
+-      switch (G_TYPE_FUNDAMENTAL (tmp_arg->arg_type))
++      switch ((uintptr_t) G_TYPE_FUNDAMENTAL (tmp_arg->arg_type))
+ 	{
+-	case  G_TYPE_LONG:
++	case  (uintptr_t) G_TYPE_LONG:
+ 	  arg->arg_type = G_TYPE_LONG;
+ 	  arg->d.long_data = tmp_arg->d.long_data;
+ 	  break;
+-	case  G_TYPE_DOUBLE:
++	case  (uintptr_t) G_TYPE_DOUBLE:
+ 	  arg->arg_type = G_TYPE_DOUBLE;
+ 	  arg->d.double_data = tmp_arg->d.double_data;
+ 	  break;
+-	case  G_TYPE_STRING:
++	case  (uintptr_t) G_TYPE_STRING:
+           if (tmp_arg->arg_type != GTK_TYPE_IDENTIFIER)
+ 	    arg->arg_type = G_TYPE_STRING;
+ 	  else
+@@ -936,29 +936,29 @@ gtk_binding_entry_add_signal (GtkBindingSet  *binding_set,
+       slist = g_slist_prepend (slist, arg);
+ 
+       arg->arg_type = va_arg (args, GType);
+-      switch (G_TYPE_FUNDAMENTAL (arg->arg_type))
++      switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->arg_type))
+ 	{
+-	case G_TYPE_CHAR:
+-	case G_TYPE_UCHAR:
+-	case G_TYPE_INT:
+-	case G_TYPE_UINT:
+-	case G_TYPE_BOOLEAN:
+-	case G_TYPE_ENUM:
+-	case G_TYPE_FLAGS:
++	case (uintptr_t) G_TYPE_CHAR:
++	case (uintptr_t) G_TYPE_UCHAR:
++	case (uintptr_t) G_TYPE_INT:
++	case (uintptr_t) G_TYPE_UINT:
++	case (uintptr_t) G_TYPE_BOOLEAN:
++	case (uintptr_t) G_TYPE_ENUM:
++	case (uintptr_t) G_TYPE_FLAGS:
+ 	  arg->arg_type = G_TYPE_LONG;
+ 	  arg->d.long_data = va_arg (args, gint);
+ 	  break;
+-	case G_TYPE_LONG:
+-	case G_TYPE_ULONG:
++	case (uintptr_t) G_TYPE_LONG:
++	case (uintptr_t) G_TYPE_ULONG:
+ 	  arg->arg_type = G_TYPE_LONG;
+ 	  arg->d.long_data = va_arg (args, glong);
+ 	  break;
+-	case G_TYPE_FLOAT:
+-	case G_TYPE_DOUBLE:
++	case (uintptr_t) G_TYPE_FLOAT:
++	case (uintptr_t) G_TYPE_DOUBLE:
+ 	  arg->arg_type = G_TYPE_DOUBLE;
+ 	  arg->d.double_data = va_arg (args, gdouble);
+ 	  break;
+-	case G_TYPE_STRING:
++	case (uintptr_t) G_TYPE_STRING:
+ 	  if (arg->arg_type != GTK_TYPE_IDENTIFIER)
+ 	    arg->arg_type = G_TYPE_STRING;
+ 	  arg->d.string_data = va_arg (args, gchar*);
+diff --git a/gtk/gtkbuilder.c b/gtk/gtkbuilder.c
+index 0ef6087..58fcc04 100644
+--- a/gtk/gtkbuilder.c
++++ b/gtk/gtkbuilder.c
+@@ -1209,15 +1209,15 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+ 
+   g_value_init (value, type);
+ 
+-  switch (G_TYPE_FUNDAMENTAL (type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (type))
+     {
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       g_value_set_char (value, string[0]);
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       g_value_set_uchar (value, (guchar)string[0]);
+       break;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       {
+         gboolean b;
+ 
+@@ -1229,8 +1229,8 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+         g_value_set_boolean (value, b);
+         break;
+       }
+-    case G_TYPE_INT:
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_LONG:
+       {
+         long l;
+         gchar *endptr;
+@@ -1252,8 +1252,8 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+           g_value_set_long (value, l);
+         break;
+       }
+-    case G_TYPE_UINT:
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_ULONG:
+       {
+         gulong ul;
+         gchar *endptr;
+@@ -1275,7 +1275,7 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+           g_value_set_ulong (value, ul);
+         break;
+       }
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       {
+ 	gint enum_value;
+ 	if (!_gtk_builder_enum_from_string (type, string, &enum_value, error))
+@@ -1286,7 +1286,7 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+ 	g_value_set_enum (value, enum_value);
+ 	break;
+       }
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       {
+ 	guint flags_value;
+ 
+@@ -1298,8 +1298,8 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+ 	g_value_set_flags (value, flags_value);
+ 	break;
+       }
+-    case G_TYPE_FLOAT:
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         gdouble d;
+         gchar *endptr;
+@@ -1321,10 +1321,10 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+           g_value_set_double (value, d);
+         break;
+       }
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       g_value_set_string (value, string);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       if (G_VALUE_HOLDS (value, GDK_TYPE_COLOR))
+         {
+           GdkColor colour = { 0, };
+@@ -1358,7 +1358,7 @@ gtk_builder_value_from_string_type (GtkBuilder   *builder,
+           ret = FALSE;
+         }
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       if (G_VALUE_HOLDS (value, GDK_TYPE_PIXBUF))
+         {
+           gchar *filename;
+diff --git a/gtk/gtkclipboard-quartz.c b/gtk/gtkclipboard-quartz.c
+index 29b2665..1a19fa5 100644
+--- a/gtk/gtkclipboard-quartz.c
++++ b/gtk/gtkclipboard-quartz.c
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include <string.h>
+ 
+ #import <Cocoa/Cocoa.h>
+@@ -208,7 +209,7 @@ gtk_clipboard_class_init (GtkClipboardClass *class)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED,
+ 		  G_TYPE_NONE, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ static void
+diff --git a/gtk/gtkclipboard.c b/gtk/gtkclipboard.c
+index 9b17f6f..2f97d27 100644
+--- a/gtk/gtkclipboard.c
++++ b/gtk/gtkclipboard.c
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include <string.h>
+ 
+ #include "gtkclipboard.h"
+@@ -193,7 +194,7 @@ gtk_clipboard_class_init (GtkClipboardClass *class)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED,
+ 		  G_TYPE_NONE, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ static void
+diff --git a/gtk/gtkclist.c b/gtk/gtkclist.c
+index 3c45277..429dfc5 100644
+--- a/gtk/gtkclist.c
++++ b/gtk/gtkclist.c
+@@ -26,6 +26,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ 
+ #include <stdlib.h>
+ #include <string.h>
+@@ -629,7 +630,7 @@ gtk_clist_class_init (GtkCListClass *klass)
+ 		    GTK_TYPE_NONE, 3,
+ 		    GTK_TYPE_INT,
+ 		    GTK_TYPE_INT,
+-		    GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		    zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+   clist_signals[UNSELECT_ROW] =
+     gtk_signal_new (I_("unselect-row"),
+ 		    GTK_RUN_FIRST,
+diff --git a/gtk/gtkcomboboxtext.c b/gtk/gtkcomboboxtext.c
+index 9ffba68..1eefd57 100644
+--- a/gtk/gtkcomboboxtext.c
++++ b/gtk/gtkcomboboxtext.c
+@@ -359,7 +359,7 @@ gtk_combo_box_text_append_text (GtkComboBoxText *combo_box,
+   GtkListStore *store;
+   GtkTreeIter iter;
+   gint text_column;
+-  gint column_type;
++  GType column_type;
+ 
+   g_return_if_fail (GTK_IS_COMBO_BOX_TEXT (combo_box));
+   g_return_if_fail (text != NULL);
+@@ -398,7 +398,7 @@ gtk_combo_box_text_insert_text (GtkComboBoxText *combo_box,
+   GtkListStore *store;
+   GtkTreeIter iter;
+   gint text_column;
+-  gint column_type;
++  GType column_type;
+ 
+   g_return_if_fail (GTK_IS_COMBO_BOX_TEXT (combo_box));
+   g_return_if_fail (position >= 0);
+@@ -430,7 +430,7 @@ gtk_combo_box_text_prepend_text (GtkComboBoxText *combo_box,
+   GtkListStore *store;
+   GtkTreeIter iter;
+   gint text_column;
+-  gint column_type;
++  GType column_type;
+ 
+   g_return_if_fail (GTK_IS_COMBO_BOX_TEXT (combo_box));
+   g_return_if_fail (text != NULL);
+@@ -507,7 +507,7 @@ gtk_combo_box_text_get_active_text (GtkComboBoxText *combo_box)
+     {
+       GtkTreeModel *model;
+       gint text_column;
+-      gint column_type;
++      GType column_type;
+ 
+       model = gtk_combo_box_get_model (GTK_COMBO_BOX (combo_box));
+       g_return_val_if_fail (GTK_IS_LIST_STORE (model), NULL);
+diff --git a/gtk/gtkentry.c b/gtk/gtkentry.c
+index a566d8c..8e9fefd 100644
+--- a/gtk/gtkentry.c
++++ b/gtk/gtkentry.c
+@@ -29,6 +29,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ 
+ #include <math.h>
+ #include <string.h>
+@@ -1524,7 +1525,7 @@ gtk_entry_class_init (GtkEntryClass *class)
+                   _gtk_marshal_VOID__ENUM_BOXED,
+                   G_TYPE_NONE, 2,
+                   GTK_TYPE_ENTRY_ICON_POSITION,
+-                  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+   
+   /**
+    * GtkEntry::icon-release:
+@@ -1546,7 +1547,7 @@ gtk_entry_class_init (GtkEntryClass *class)
+                   _gtk_marshal_VOID__ENUM_BOXED,
+                   G_TYPE_NONE, 2,
+                   GTK_TYPE_ENTRY_ICON_POSITION,
+-                  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkEntry::preedit-changed:
+diff --git a/gtk/gtkobject.c b/gtk/gtkobject.c
+index d0e65ed..26b7e43 100644
+--- a/gtk/gtkobject.c
++++ b/gtk/gtkobject.c
+@@ -124,23 +124,23 @@ gtk_arg_set_from_value (GtkArg       *arg,
+ 			const GValue *value,
+ 			gboolean      copy_string)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (arg->type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->type))
+     {
+-    case G_TYPE_CHAR:           GTK_VALUE_CHAR (*arg) = g_value_get_char (value);       break;
+-    case G_TYPE_UCHAR:          GTK_VALUE_UCHAR (*arg) = g_value_get_uchar (value);     break;
+-    case G_TYPE_BOOLEAN:        GTK_VALUE_BOOL (*arg) = g_value_get_boolean (value);    break;
+-    case G_TYPE_INT:            GTK_VALUE_INT (*arg) = g_value_get_int (value);         break;
+-    case G_TYPE_UINT:           GTK_VALUE_UINT (*arg) = g_value_get_uint (value);       break;
+-    case G_TYPE_LONG:           GTK_VALUE_LONG (*arg) = g_value_get_long (value);       break;
+-    case G_TYPE_ULONG:          GTK_VALUE_ULONG (*arg) = g_value_get_ulong (value);     break;
+-    case G_TYPE_ENUM:           GTK_VALUE_ENUM (*arg) = g_value_get_enum (value);       break;
+-    case G_TYPE_FLAGS:          GTK_VALUE_FLAGS (*arg) = g_value_get_flags (value);     break;
+-    case G_TYPE_FLOAT:          GTK_VALUE_FLOAT (*arg) = g_value_get_float (value);     break;
+-    case G_TYPE_DOUBLE:         GTK_VALUE_DOUBLE (*arg) = g_value_get_double (value);   break;
+-    case G_TYPE_BOXED:          GTK_VALUE_BOXED (*arg) = g_value_get_boxed (value);     break;
+-    case G_TYPE_POINTER:        GTK_VALUE_POINTER (*arg) = g_value_get_pointer (value); break;
+-    case G_TYPE_OBJECT:         GTK_VALUE_POINTER (*arg) = g_value_get_object (value);  break;
+-    case G_TYPE_STRING:         if (copy_string)
++    case (uintptr_t) G_TYPE_CHAR:           GTK_VALUE_CHAR (*arg) = g_value_get_char (value);       break;
++    case (uintptr_t) G_TYPE_UCHAR:          GTK_VALUE_UCHAR (*arg) = g_value_get_uchar (value);     break;
++    case (uintptr_t) G_TYPE_BOOLEAN:        GTK_VALUE_BOOL (*arg) = g_value_get_boolean (value);    break;
++    case (uintptr_t) G_TYPE_INT:            GTK_VALUE_INT (*arg) = g_value_get_int (value);         break;
++    case (uintptr_t) G_TYPE_UINT:           GTK_VALUE_UINT (*arg) = g_value_get_uint (value);       break;
++    case (uintptr_t) G_TYPE_LONG:           GTK_VALUE_LONG (*arg) = g_value_get_long (value);       break;
++    case (uintptr_t) G_TYPE_ULONG:          GTK_VALUE_ULONG (*arg) = g_value_get_ulong (value);     break;
++    case (uintptr_t) G_TYPE_ENUM:           GTK_VALUE_ENUM (*arg) = g_value_get_enum (value);       break;
++    case (uintptr_t) G_TYPE_FLAGS:          GTK_VALUE_FLAGS (*arg) = g_value_get_flags (value);     break;
++    case (uintptr_t) G_TYPE_FLOAT:          GTK_VALUE_FLOAT (*arg) = g_value_get_float (value);     break;
++    case (uintptr_t) G_TYPE_DOUBLE:         GTK_VALUE_DOUBLE (*arg) = g_value_get_double (value);   break;
++    case (uintptr_t) G_TYPE_BOXED:          GTK_VALUE_BOXED (*arg) = g_value_get_boxed (value);     break;
++    case (uintptr_t) G_TYPE_POINTER:        GTK_VALUE_POINTER (*arg) = g_value_get_pointer (value); break;
++    case (uintptr_t) G_TYPE_OBJECT:         GTK_VALUE_POINTER (*arg) = g_value_get_object (value);  break;
++    case (uintptr_t) G_TYPE_STRING:         if (copy_string)
+       GTK_VALUE_STRING (*arg) = g_value_dup_string (value);
+     else
+       GTK_VALUE_STRING (*arg) = (char *) g_value_get_string (value);
+@@ -155,23 +155,23 @@ static inline gboolean
+ gtk_arg_to_value (GtkArg *arg,
+ 		  GValue *value)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (arg->type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->type))
+     {
+-    case G_TYPE_CHAR:           g_value_set_char (value, GTK_VALUE_CHAR (*arg));        break;
+-    case G_TYPE_UCHAR:          g_value_set_uchar (value, GTK_VALUE_UCHAR (*arg));      break;
+-    case G_TYPE_BOOLEAN:        g_value_set_boolean (value, GTK_VALUE_BOOL (*arg));     break;
+-    case G_TYPE_INT:            g_value_set_int (value, GTK_VALUE_INT (*arg));          break;
+-    case G_TYPE_UINT:           g_value_set_uint (value, GTK_VALUE_UINT (*arg));        break;
+-    case G_TYPE_LONG:           g_value_set_long (value, GTK_VALUE_LONG (*arg));        break;
+-    case G_TYPE_ULONG:          g_value_set_ulong (value, GTK_VALUE_ULONG (*arg));      break;
+-    case G_TYPE_ENUM:           g_value_set_enum (value, GTK_VALUE_ENUM (*arg));        break;
+-    case G_TYPE_FLAGS:          g_value_set_flags (value, GTK_VALUE_FLAGS (*arg));      break;
+-    case G_TYPE_FLOAT:          g_value_set_float (value, GTK_VALUE_FLOAT (*arg));      break;
+-    case G_TYPE_DOUBLE:         g_value_set_double (value, GTK_VALUE_DOUBLE (*arg));    break;
+-    case G_TYPE_STRING:         g_value_set_string (value, GTK_VALUE_STRING (*arg));    break;
+-    case G_TYPE_BOXED:          g_value_set_boxed (value, GTK_VALUE_BOXED (*arg));      break;
+-    case G_TYPE_POINTER:        g_value_set_pointer (value, GTK_VALUE_POINTER (*arg));  break;
+-    case G_TYPE_OBJECT:         g_value_set_object (value, GTK_VALUE_POINTER (*arg));   break;
++    case (uintptr_t) G_TYPE_CHAR:           g_value_set_char (value, GTK_VALUE_CHAR (*arg));        break;
++    case (uintptr_t) G_TYPE_UCHAR:          g_value_set_uchar (value, GTK_VALUE_UCHAR (*arg));      break;
++    case (uintptr_t) G_TYPE_BOOLEAN:        g_value_set_boolean (value, GTK_VALUE_BOOL (*arg));     break;
++    case (uintptr_t) G_TYPE_INT:            g_value_set_int (value, GTK_VALUE_INT (*arg));          break;
++    case (uintptr_t) G_TYPE_UINT:           g_value_set_uint (value, GTK_VALUE_UINT (*arg));        break;
++    case (uintptr_t) G_TYPE_LONG:           g_value_set_long (value, GTK_VALUE_LONG (*arg));        break;
++    case (uintptr_t) G_TYPE_ULONG:          g_value_set_ulong (value, GTK_VALUE_ULONG (*arg));      break;
++    case (uintptr_t) G_TYPE_ENUM:           g_value_set_enum (value, GTK_VALUE_ENUM (*arg));        break;
++    case (uintptr_t) G_TYPE_FLAGS:          g_value_set_flags (value, GTK_VALUE_FLAGS (*arg));      break;
++    case (uintptr_t) G_TYPE_FLOAT:          g_value_set_float (value, GTK_VALUE_FLOAT (*arg));      break;
++    case (uintptr_t) G_TYPE_DOUBLE:         g_value_set_double (value, GTK_VALUE_DOUBLE (*arg));    break;
++    case (uintptr_t) G_TYPE_STRING:         g_value_set_string (value, GTK_VALUE_STRING (*arg));    break;
++    case (uintptr_t) G_TYPE_BOXED:          g_value_set_boxed (value, GTK_VALUE_BOXED (*arg));      break;
++    case (uintptr_t) G_TYPE_POINTER:        g_value_set_pointer (value, GTK_VALUE_POINTER (*arg));  break;
++    case (uintptr_t) G_TYPE_OBJECT:         g_value_set_object (value, GTK_VALUE_POINTER (*arg));   break;
+     default:
+       return FALSE;
+     }
+@@ -265,45 +265,45 @@ gtk_object_add_arg_type (const gchar *arg_name,
+ 	}
+       oclass->set_property = gtk_arg_proxy_set_property;
+     }
+-  switch (G_TYPE_FUNDAMENTAL (arg_type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg_type))
+     {
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       pspec = g_param_spec_enum (pname, NULL, NULL, arg_type, 0, arg_flags);
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       pspec = g_param_spec_flags (pname, NULL, NULL, arg_type, 0, arg_flags);
+       break;
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       pspec = g_param_spec_char (pname, NULL, NULL, -128, 127, 0, arg_flags);
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       pspec = g_param_spec_uchar (pname, NULL, NULL, 0, 255, 0, arg_flags);
+       break;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       pspec = g_param_spec_boolean (pname, NULL, NULL, FALSE, arg_flags);
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       pspec = g_param_spec_int (pname, NULL, NULL, G_MININT, G_MAXINT, 0, arg_flags);
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       pspec = g_param_spec_uint (pname, NULL, NULL, 0, G_MAXUINT, 0, arg_flags);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       pspec = g_param_spec_float (pname, NULL, NULL, -G_MAXFLOAT, G_MAXFLOAT, 0, arg_flags);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       pspec = g_param_spec_double (pname, NULL, NULL, -G_MAXDOUBLE, G_MAXDOUBLE, 0, arg_flags);
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       pspec = g_param_spec_string (pname, NULL, NULL, NULL, arg_flags);
+       break;
+-    case G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_POINTER:
+       pspec = g_param_spec_pointer (pname, NULL, NULL, arg_flags);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       pspec = g_param_spec_object (pname, NULL, NULL, arg_type, arg_flags);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       if (!G_TYPE_IS_FUNDAMENTAL (arg_type))
+ 	{
+ 	  pspec = g_param_spec_boxed (pname, NULL, NULL, arg_type, arg_flags);
+diff --git a/gtk/gtkscale.c b/gtk/gtkscale.c
+index 4317523..a573b2f 100644
+--- a/gtk/gtkscale.c
++++ b/gtk/gtkscale.c
+@@ -1471,7 +1471,7 @@ gtk_scale_add_mark (GtkScale        *scale,
+   mark->position = position;
+  
+   priv->marks = g_slist_insert_sorted_with_data (priv->marks, mark,
+-                                                 (GCompareFunc) compare_marks,
++                                                 compare_marks,
+                                                  GINT_TO_POINTER (
+                                                    gtk_range_get_inverted (GTK_RANGE (scale)) 
+                                                    ));
+diff --git a/gtk/gtksettings.c b/gtk/gtksettings.c
+index 3fbbf00..8fb63d2 100644
+--- a/gtk/gtksettings.c
++++ b/gtk/gtksettings.c
+@@ -1542,21 +1542,21 @@ settings_install_property_parser (GtkSettingsClass   *class,
+ {
+   GSList *node, *next;
+ 
+-  switch (G_TYPE_FUNDAMENTAL (G_PARAM_SPEC_VALUE_TYPE (pspec)))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (G_PARAM_SPEC_VALUE_TYPE (pspec)))
+     {
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UINT:
+-    case G_TYPE_INT:
+-    case G_TYPE_ULONG:
+-    case G_TYPE_LONG:
+-    case G_TYPE_FLOAT:
+-    case G_TYPE_DOUBLE:
+-    case G_TYPE_STRING:
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_ENUM:
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       if (strcmp (g_param_spec_get_name (pspec), "color-hash") == 0)
+         {
+           break;
+diff --git a/gtk/gtksignal.c b/gtk/gtksignal.c
+index c855582..fe57350 100644
+--- a/gtk/gtksignal.c
++++ b/gtk/gtksignal.c
+@@ -20,6 +20,7 @@
+ #undef GTK_DISABLE_DEPRECATED
+ 
+ #include	<config.h>
++#include <stdfil.h>
+ #include	"gtksignal.h"
+ #include "gtkalias.h"
+ 
+@@ -183,23 +184,23 @@ static inline gboolean
+ gtk_arg_to_value (GtkArg *arg,
+ 		  GValue *value)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (arg->type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->type))
+     {
+-    case G_TYPE_CHAR:		g_value_set_char (value, GTK_VALUE_CHAR (*arg));	break;
+-    case G_TYPE_UCHAR:		g_value_set_uchar (value, GTK_VALUE_UCHAR (*arg));	break;
+-    case G_TYPE_BOOLEAN:	g_value_set_boolean (value, GTK_VALUE_BOOL (*arg));	break;
+-    case G_TYPE_INT:		g_value_set_int (value, GTK_VALUE_INT (*arg));		break;
+-    case G_TYPE_UINT:		g_value_set_uint (value, GTK_VALUE_UINT (*arg));	break;
+-    case G_TYPE_LONG:		g_value_set_long (value, GTK_VALUE_LONG (*arg));	break;
+-    case G_TYPE_ULONG:		g_value_set_ulong (value, GTK_VALUE_ULONG (*arg));	break;
+-    case G_TYPE_ENUM:		g_value_set_enum (value, GTK_VALUE_ENUM (*arg));	break;
+-    case G_TYPE_FLAGS:		g_value_set_flags (value, GTK_VALUE_FLAGS (*arg));	break;
+-    case G_TYPE_FLOAT:		g_value_set_float (value, GTK_VALUE_FLOAT (*arg));	break;
+-    case G_TYPE_DOUBLE:		g_value_set_double (value, GTK_VALUE_DOUBLE (*arg));	break;
+-    case G_TYPE_STRING:		g_value_set_string (value, GTK_VALUE_STRING (*arg));	break;
+-    case G_TYPE_BOXED:		g_value_set_boxed (value, GTK_VALUE_BOXED (*arg));	break;
+-    case G_TYPE_POINTER:	g_value_set_pointer (value, GTK_VALUE_POINTER (*arg));	break;
+-    case G_TYPE_OBJECT:		g_value_set_object (value, GTK_VALUE_POINTER (*arg));	break;
++    case (uintptr_t) G_TYPE_CHAR:		g_value_set_char (value, GTK_VALUE_CHAR (*arg));	break;
++    case (uintptr_t) G_TYPE_UCHAR:		g_value_set_uchar (value, GTK_VALUE_UCHAR (*arg));	break;
++    case (uintptr_t) G_TYPE_BOOLEAN:	g_value_set_boolean (value, GTK_VALUE_BOOL (*arg));	break;
++    case (uintptr_t) G_TYPE_INT:		g_value_set_int (value, GTK_VALUE_INT (*arg));		break;
++    case (uintptr_t) G_TYPE_UINT:		g_value_set_uint (value, GTK_VALUE_UINT (*arg));	break;
++    case (uintptr_t) G_TYPE_LONG:		g_value_set_long (value, GTK_VALUE_LONG (*arg));	break;
++    case (uintptr_t) G_TYPE_ULONG:		g_value_set_ulong (value, GTK_VALUE_ULONG (*arg));	break;
++    case (uintptr_t) G_TYPE_ENUM:		g_value_set_enum (value, GTK_VALUE_ENUM (*arg));	break;
++    case (uintptr_t) G_TYPE_FLAGS:		g_value_set_flags (value, GTK_VALUE_FLAGS (*arg));	break;
++    case (uintptr_t) G_TYPE_FLOAT:		g_value_set_float (value, GTK_VALUE_FLOAT (*arg));	break;
++    case (uintptr_t) G_TYPE_DOUBLE:		g_value_set_double (value, GTK_VALUE_DOUBLE (*arg));	break;
++    case (uintptr_t) G_TYPE_STRING:		g_value_set_string (value, GTK_VALUE_STRING (*arg));	break;
++    case (uintptr_t) G_TYPE_BOXED:		g_value_set_boxed (value, GTK_VALUE_BOXED (*arg));	break;
++    case (uintptr_t) G_TYPE_POINTER:	g_value_set_pointer (value, GTK_VALUE_POINTER (*arg));	break;
++    case (uintptr_t) G_TYPE_OBJECT:		g_value_set_object (value, GTK_VALUE_POINTER (*arg));	break;
+     default:
+       return FALSE;
+     }
+@@ -210,23 +211,23 @@ static inline gboolean
+ gtk_arg_static_to_value (GtkArg *arg,
+ 			 GValue *value)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (arg->type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->type))
+     {
+-    case G_TYPE_CHAR:		g_value_set_char (value, GTK_VALUE_CHAR (*arg));		break;
+-    case G_TYPE_UCHAR:		g_value_set_uchar (value, GTK_VALUE_UCHAR (*arg));		break;
+-    case G_TYPE_BOOLEAN:	g_value_set_boolean (value, GTK_VALUE_BOOL (*arg));		break;
+-    case G_TYPE_INT:		g_value_set_int (value, GTK_VALUE_INT (*arg));			break;
+-    case G_TYPE_UINT:		g_value_set_uint (value, GTK_VALUE_UINT (*arg));		break;
+-    case G_TYPE_LONG:		g_value_set_long (value, GTK_VALUE_LONG (*arg));		break;
+-    case G_TYPE_ULONG:		g_value_set_ulong (value, GTK_VALUE_ULONG (*arg));		break;
+-    case G_TYPE_ENUM:		g_value_set_enum (value, GTK_VALUE_ENUM (*arg));		break;
+-    case G_TYPE_FLAGS:		g_value_set_flags (value, GTK_VALUE_FLAGS (*arg));		break;
+-    case G_TYPE_FLOAT:		g_value_set_float (value, GTK_VALUE_FLOAT (*arg));		break;
+-    case G_TYPE_DOUBLE:		g_value_set_double (value, GTK_VALUE_DOUBLE (*arg));		break;
+-    case G_TYPE_STRING:		g_value_set_static_string (value, GTK_VALUE_STRING (*arg));	break;
+-    case G_TYPE_BOXED:		g_value_set_static_boxed (value, GTK_VALUE_BOXED (*arg));	break;
+-    case G_TYPE_POINTER:	g_value_set_pointer (value, GTK_VALUE_POINTER (*arg));		break;
+-    case G_TYPE_OBJECT:		g_value_set_object (value, GTK_VALUE_POINTER (*arg));		break;
++    case (uintptr_t) G_TYPE_CHAR:		g_value_set_char (value, GTK_VALUE_CHAR (*arg));		break;
++    case (uintptr_t) G_TYPE_UCHAR:		g_value_set_uchar (value, GTK_VALUE_UCHAR (*arg));		break;
++    case (uintptr_t) G_TYPE_BOOLEAN:	g_value_set_boolean (value, GTK_VALUE_BOOL (*arg));		break;
++    case (uintptr_t) G_TYPE_INT:		g_value_set_int (value, GTK_VALUE_INT (*arg));			break;
++    case (uintptr_t) G_TYPE_UINT:		g_value_set_uint (value, GTK_VALUE_UINT (*arg));		break;
++    case (uintptr_t) G_TYPE_LONG:		g_value_set_long (value, GTK_VALUE_LONG (*arg));		break;
++    case (uintptr_t) G_TYPE_ULONG:		g_value_set_ulong (value, GTK_VALUE_ULONG (*arg));		break;
++    case (uintptr_t) G_TYPE_ENUM:		g_value_set_enum (value, GTK_VALUE_ENUM (*arg));		break;
++    case (uintptr_t) G_TYPE_FLAGS:		g_value_set_flags (value, GTK_VALUE_FLAGS (*arg));		break;
++    case (uintptr_t) G_TYPE_FLOAT:		g_value_set_float (value, GTK_VALUE_FLOAT (*arg));		break;
++    case (uintptr_t) G_TYPE_DOUBLE:		g_value_set_double (value, GTK_VALUE_DOUBLE (*arg));		break;
++    case (uintptr_t) G_TYPE_STRING:		g_value_set_static_string (value, GTK_VALUE_STRING (*arg));	break;
++    case (uintptr_t) G_TYPE_BOXED:		g_value_set_static_boxed (value, GTK_VALUE_BOXED (*arg));	break;
++    case (uintptr_t) G_TYPE_POINTER:	g_value_set_pointer (value, GTK_VALUE_POINTER (*arg));		break;
++    case (uintptr_t) G_TYPE_OBJECT:		g_value_set_object (value, GTK_VALUE_POINTER (*arg));		break;
+     default:
+       return FALSE;
+     }
+@@ -238,23 +239,23 @@ gtk_arg_set_from_value (GtkArg  *arg,
+ 			GValue  *value,
+ 			gboolean copy_string)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (arg->type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->type))
+     {
+-    case G_TYPE_CHAR:		GTK_VALUE_CHAR (*arg) = g_value_get_char (value);	break;
+-    case G_TYPE_UCHAR:		GTK_VALUE_UCHAR (*arg) = g_value_get_uchar (value);	break;
+-    case G_TYPE_BOOLEAN:	GTK_VALUE_BOOL (*arg) = g_value_get_boolean (value);	break;
+-    case G_TYPE_INT:		GTK_VALUE_INT (*arg) = g_value_get_int (value);		break;
+-    case G_TYPE_UINT:		GTK_VALUE_UINT (*arg) = g_value_get_uint (value);	break;
+-    case G_TYPE_LONG:		GTK_VALUE_LONG (*arg) = g_value_get_long (value);	break;
+-    case G_TYPE_ULONG:		GTK_VALUE_ULONG (*arg) = g_value_get_ulong (value);	break;
+-    case G_TYPE_ENUM:		GTK_VALUE_ENUM (*arg) = g_value_get_enum (value);	break;
+-    case G_TYPE_FLAGS:		GTK_VALUE_FLAGS (*arg) = g_value_get_flags (value);	break;
+-    case G_TYPE_FLOAT:		GTK_VALUE_FLOAT (*arg) = g_value_get_float (value);	break;
+-    case G_TYPE_DOUBLE:		GTK_VALUE_DOUBLE (*arg) = g_value_get_double (value);	break;
+-    case G_TYPE_BOXED:		GTK_VALUE_BOXED (*arg) = g_value_get_boxed (value);	break;
+-    case G_TYPE_POINTER:	GTK_VALUE_POINTER (*arg) = g_value_get_pointer (value);	break;
+-    case G_TYPE_OBJECT:		GTK_VALUE_POINTER (*arg) = g_value_get_object (value);	break;
+-    case G_TYPE_STRING:		if (copy_string)
++    case (uintptr_t) G_TYPE_CHAR:		GTK_VALUE_CHAR (*arg) = g_value_get_char (value);	break;
++    case (uintptr_t) G_TYPE_UCHAR:		GTK_VALUE_UCHAR (*arg) = g_value_get_uchar (value);	break;
++    case (uintptr_t) G_TYPE_BOOLEAN:	GTK_VALUE_BOOL (*arg) = g_value_get_boolean (value);	break;
++    case (uintptr_t) G_TYPE_INT:		GTK_VALUE_INT (*arg) = g_value_get_int (value);		break;
++    case (uintptr_t) G_TYPE_UINT:		GTK_VALUE_UINT (*arg) = g_value_get_uint (value);	break;
++    case (uintptr_t) G_TYPE_LONG:		GTK_VALUE_LONG (*arg) = g_value_get_long (value);	break;
++    case (uintptr_t) G_TYPE_ULONG:		GTK_VALUE_ULONG (*arg) = g_value_get_ulong (value);	break;
++    case (uintptr_t) G_TYPE_ENUM:		GTK_VALUE_ENUM (*arg) = g_value_get_enum (value);	break;
++    case (uintptr_t) G_TYPE_FLAGS:		GTK_VALUE_FLAGS (*arg) = g_value_get_flags (value);	break;
++    case (uintptr_t) G_TYPE_FLOAT:		GTK_VALUE_FLOAT (*arg) = g_value_get_float (value);	break;
++    case (uintptr_t) G_TYPE_DOUBLE:		GTK_VALUE_DOUBLE (*arg) = g_value_get_double (value);	break;
++    case (uintptr_t) G_TYPE_BOXED:		GTK_VALUE_BOXED (*arg) = g_value_get_boxed (value);	break;
++    case (uintptr_t) G_TYPE_POINTER:	GTK_VALUE_POINTER (*arg) = g_value_get_pointer (value);	break;
++    case (uintptr_t) G_TYPE_OBJECT:		GTK_VALUE_POINTER (*arg) = g_value_get_object (value);	break;
++    case (uintptr_t) G_TYPE_STRING:		if (copy_string)
+       GTK_VALUE_STRING (*arg) = g_value_dup_string (value);
+     else
+       GTK_VALUE_STRING (*arg) = (char *) g_value_get_string (value);
+@@ -270,23 +271,23 @@ gtk_argloc_set_from_value (GtkArg  *arg,
+ 			   GValue  *value,
+ 			   gboolean copy_string)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (arg->type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (arg->type))
+     {
+-    case G_TYPE_CHAR:		*GTK_RETLOC_CHAR (*arg) = g_value_get_char (value);	  break;
+-    case G_TYPE_UCHAR:		*GTK_RETLOC_UCHAR (*arg) = g_value_get_uchar (value);	  break;
+-    case G_TYPE_BOOLEAN:	*GTK_RETLOC_BOOL (*arg) = g_value_get_boolean (value);	  break;
+-    case G_TYPE_INT:		*GTK_RETLOC_INT (*arg) = g_value_get_int (value);	  break;
+-    case G_TYPE_UINT:		*GTK_RETLOC_UINT (*arg) = g_value_get_uint (value);	  break;
+-    case G_TYPE_LONG:		*GTK_RETLOC_LONG (*arg) = g_value_get_long (value);	  break;
+-    case G_TYPE_ULONG:		*GTK_RETLOC_ULONG (*arg) = g_value_get_ulong (value);	  break;
+-    case G_TYPE_ENUM:		*GTK_RETLOC_ENUM (*arg) = g_value_get_enum (value);	  break;
+-    case G_TYPE_FLAGS:		*GTK_RETLOC_FLAGS (*arg) = g_value_get_flags (value);	  break;
+-    case G_TYPE_FLOAT:		*GTK_RETLOC_FLOAT (*arg) = g_value_get_float (value);	  break;
+-    case G_TYPE_DOUBLE:		*GTK_RETLOC_DOUBLE (*arg) = g_value_get_double (value);	  break;
+-    case G_TYPE_BOXED:		*GTK_RETLOC_BOXED (*arg) = g_value_get_boxed (value);	  break;
+-    case G_TYPE_POINTER:	*GTK_RETLOC_POINTER (*arg) = g_value_get_pointer (value); break;
+-    case G_TYPE_OBJECT:		*GTK_RETLOC_POINTER (*arg) = g_value_get_object (value);  break;
+-    case G_TYPE_STRING:		if (copy_string)
++    case (uintptr_t) G_TYPE_CHAR:		*GTK_RETLOC_CHAR (*arg) = g_value_get_char (value);	  break;
++    case (uintptr_t) G_TYPE_UCHAR:		*GTK_RETLOC_UCHAR (*arg) = g_value_get_uchar (value);	  break;
++    case (uintptr_t) G_TYPE_BOOLEAN:	*GTK_RETLOC_BOOL (*arg) = g_value_get_boolean (value);	  break;
++    case (uintptr_t) G_TYPE_INT:		*GTK_RETLOC_INT (*arg) = g_value_get_int (value);	  break;
++    case (uintptr_t) G_TYPE_UINT:		*GTK_RETLOC_UINT (*arg) = g_value_get_uint (value);	  break;
++    case (uintptr_t) G_TYPE_LONG:		*GTK_RETLOC_LONG (*arg) = g_value_get_long (value);	  break;
++    case (uintptr_t) G_TYPE_ULONG:		*GTK_RETLOC_ULONG (*arg) = g_value_get_ulong (value);	  break;
++    case (uintptr_t) G_TYPE_ENUM:		*GTK_RETLOC_ENUM (*arg) = g_value_get_enum (value);	  break;
++    case (uintptr_t) G_TYPE_FLAGS:		*GTK_RETLOC_FLAGS (*arg) = g_value_get_flags (value);	  break;
++    case (uintptr_t) G_TYPE_FLOAT:		*GTK_RETLOC_FLOAT (*arg) = g_value_get_float (value);	  break;
++    case (uintptr_t) G_TYPE_DOUBLE:		*GTK_RETLOC_DOUBLE (*arg) = g_value_get_double (value);	  break;
++    case (uintptr_t) G_TYPE_BOXED:		*GTK_RETLOC_BOXED (*arg) = g_value_get_boxed (value);	  break;
++    case (uintptr_t) G_TYPE_POINTER:	*GTK_RETLOC_POINTER (*arg) = g_value_get_pointer (value); break;
++    case (uintptr_t) G_TYPE_OBJECT:		*GTK_RETLOC_POINTER (*arg) = g_value_get_object (value);  break;
++    case (uintptr_t) G_TYPE_STRING:		if (copy_string)
+       *GTK_RETLOC_STRING (*arg) = g_value_dup_string (value);
+     else
+       *GTK_RETLOC_STRING (*arg) = (char *) g_value_get_string (value);
+@@ -323,11 +324,11 @@ gtk_signal_emitv (GtkObject *object,
+       GValue *value = params + 1 + i;
+       GtkArg *arg = args + i;
+       
+-      g_value_init (value, arg->type & ~G_SIGNAL_TYPE_STATIC_SCOPE);
++      g_value_init (value, (GType) zandptr(arg->type, ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+       if (!gtk_arg_static_to_value (arg, value))
+ 	{
+ 	  g_warning ("%s: failed to convert arg type `%s' to value type `%s'",
+-		     G_STRLOC, g_type_name (arg->type & ~G_SIGNAL_TYPE_STATIC_SCOPE),
++		     G_STRLOC, g_type_name ((GType) zandptr(arg->type, ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE)),
+ 		     g_type_name (G_VALUE_TYPE (value)));
+ 	  return;
+ 	}
+diff --git a/gtk/gtkstatusicon.c b/gtk/gtkstatusicon.c
+index 68561fa..277622a 100644
+--- a/gtk/gtkstatusicon.c
++++ b/gtk/gtkstatusicon.c
+@@ -28,6 +28,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include <string.h>
+ 
+ #include "gtkstatusicon.h"
+@@ -539,7 +540,7 @@ gtk_status_icon_class_init (GtkStatusIconClass *class)
+ 		  g_signal_accumulator_true_handled, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkStatusIcon::button-release-event:
+@@ -565,7 +566,7 @@ gtk_status_icon_class_init (GtkStatusIconClass *class)
+ 		  g_signal_accumulator_true_handled, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkStatusIcon::scroll-event:
+@@ -589,7 +590,7 @@ gtk_status_icon_class_init (GtkStatusIconClass *class)
+ 		  g_signal_accumulator_true_handled, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkStatusIcon::query-tooltip:
+diff --git a/gtk/gtktextbuffer.c b/gtk/gtktextbuffer.c
+index b1583d4..36dddfc 100644
+--- a/gtk/gtktextbuffer.c
++++ b/gtk/gtktextbuffer.c
+@@ -26,6 +26,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include <string.h>
+ #include <stdarg.h>
+ 
+@@ -292,8 +293,8 @@ gtk_text_buffer_class_init (GtkTextBufferClass *klass)
+                   _gtk_marshal_VOID__BOXED_STRING_INT,
+                   G_TYPE_NONE,
+                   3,
+-                  GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                  G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE,
++                  zorptr(GTK_TYPE_TEXT_ITER, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
++                  zorptr(G_TYPE_STRING, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+                   G_TYPE_INT);
+ 
+   /**
+@@ -321,7 +322,7 @@ gtk_text_buffer_class_init (GtkTextBufferClass *klass)
+                   _gtk_marshal_VOID__BOXED_OBJECT,
+                   G_TYPE_NONE,
+                   2,
+-                  GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
++                  zorptr(GTK_TYPE_TEXT_ITER, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+                   GDK_TYPE_PIXBUF);
+ 
+ 
+@@ -351,7 +352,7 @@ gtk_text_buffer_class_init (GtkTextBufferClass *klass)
+                   _gtk_marshal_VOID__BOXED_OBJECT,
+                   G_TYPE_NONE,
+                   2,
+-                  GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
++                  zorptr(GTK_TYPE_TEXT_ITER, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+                   GTK_TYPE_TEXT_CHILD_ANCHOR);
+   
+   /**
+@@ -381,8 +382,8 @@ gtk_text_buffer_class_init (GtkTextBufferClass *klass)
+                   _gtk_marshal_VOID__BOXED_BOXED,
+                   G_TYPE_NONE,
+                   2,
+-                  GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                  GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  zorptr(GTK_TYPE_TEXT_ITER, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
++                  zorptr(GTK_TYPE_TEXT_ITER, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkTextBuffer::changed:
+diff --git a/gtk/gtktexttag.c b/gtk/gtktexttag.c
+index 56af5a4..14e89c8 100644
+--- a/gtk/gtktexttag.c
++++ b/gtk/gtktexttag.c
+@@ -48,6 +48,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include "gtkmain.h"
+ #include "gtktexttag.h"
+ #include "gtktexttypes.h"
+@@ -695,7 +696,7 @@ gtk_text_tag_class_init (GtkTextTagClass *klass)
+                   G_TYPE_BOOLEAN,
+                   3,
+                   G_TYPE_OBJECT,
+-                  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE,
++                  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+                   GTK_TYPE_TEXT_ITER);
+ }
+ 
+diff --git a/gtk/gtktipsquery.c b/gtk/gtktipsquery.c
+index 4963de2..632288b 100644
+--- a/gtk/gtktipsquery.c
++++ b/gtk/gtktipsquery.c
+@@ -30,6 +30,7 @@
+ #undef GTK_DISABLE_DEPRECATED
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include "gtktipsquery.h"
+ #include "gtksignal.h"
+ #include "gtktooltips.h"
+@@ -176,7 +177,7 @@ gtk_tips_query_class_init (GtkTipsQueryClass *class)
+                   GTK_TYPE_WIDGET,
+                   G_TYPE_STRING,
+                   G_TYPE_STRING,
+-                  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ static void
+diff --git a/gtk/gtktreedatalist.c b/gtk/gtktreedatalist.c
+index 282c964..353de00 100644
+--- a/gtk/gtktreedatalist.c
++++ b/gtk/gtktreedatalist.c
+@@ -123,57 +123,57 @@ _gtk_tree_data_list_node_to_value (GtkTreeDataList *list,
+ {
+   g_value_init (value, type);
+ 
+-  switch (get_fundamental_type (type))
++  switch ((uintptr_t) get_fundamental_type (type))
+     {
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       g_value_set_boolean (value, (gboolean) list->data.v_int);
+       break;
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       g_value_set_char (value, (gchar) list->data.v_char);
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       g_value_set_uchar (value, (guchar) list->data.v_uchar);
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       g_value_set_int (value, (gint) list->data.v_int);
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       g_value_set_uint (value, (guint) list->data.v_uint);
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       g_value_set_long (value, list->data.v_long);
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       g_value_set_ulong (value, list->data.v_ulong);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       g_value_set_int64 (value, list->data.v_int64);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       g_value_set_uint64 (value, list->data.v_uint64);
+       break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       g_value_set_enum (value, list->data.v_int);
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       g_value_set_flags (value, list->data.v_uint);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       g_value_set_float (value, (gfloat) list->data.v_float);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       g_value_set_double (value, (gdouble) list->data.v_double);
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       g_value_set_string (value, (gchar *) list->data.v_pointer);
+       break;
+-    case G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_POINTER:
+       g_value_set_pointer (value, (gpointer) list->data.v_pointer);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       g_value_set_boxed (value, (gpointer) list->data.v_pointer);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       g_value_set_object (value, (GObject *) list->data.v_pointer);
+       break;
+     default:
+@@ -186,60 +186,60 @@ void
+ _gtk_tree_data_list_value_to_node (GtkTreeDataList *list,
+ 				   GValue          *value)
+ {
+-  switch (get_fundamental_type (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) get_fundamental_type (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       list->data.v_int = g_value_get_boolean (value);
+       break;
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       list->data.v_char = g_value_get_char (value);
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       list->data.v_uchar = g_value_get_uchar (value);
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       list->data.v_int = g_value_get_int (value);
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       list->data.v_uint = g_value_get_uint (value);
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       list->data.v_long = g_value_get_long (value);
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       list->data.v_ulong = g_value_get_ulong (value);
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       list->data.v_int64 = g_value_get_int64 (value);
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       list->data.v_uint64 = g_value_get_uint64 (value);
+       break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       list->data.v_int = g_value_get_enum (value);
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       list->data.v_uint = g_value_get_flags (value);
+       break;
+-    case G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_POINTER:
+       list->data.v_pointer = g_value_get_pointer (value);
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       list->data.v_float = g_value_get_float (value);
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       list->data.v_double = g_value_get_double (value);
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       g_free (list->data.v_pointer);
+       list->data.v_pointer = g_value_dup_string (value);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       if (list->data.v_pointer)
+ 	g_object_unref (list->data.v_pointer);
+       list->data.v_pointer = g_value_dup_object (value);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       if (list->data.v_pointer)
+ 	g_boxed_free (G_VALUE_TYPE (value), list->data.v_pointer);
+       list->data.v_pointer = g_value_dup_boxed (value);
+@@ -261,34 +261,34 @@ _gtk_tree_data_list_node_copy (GtkTreeDataList *list,
+   new_list = _gtk_tree_data_list_alloc ();
+   new_list->next = NULL;
+ 
+-  switch (get_fundamental_type (type))
++  switch ((uintptr_t) get_fundamental_type (type))
+     {
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
+-    case G_TYPE_LONG:
+-    case G_TYPE_ULONG:
+-    case G_TYPE_INT64:
+-    case G_TYPE_UINT64:
+-    case G_TYPE_ENUM:
+-    case G_TYPE_FLAGS:
+-    case G_TYPE_POINTER:
+-    case G_TYPE_FLOAT:
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       new_list->data = list->data;
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       new_list->data.v_pointer = g_strdup (list->data.v_pointer);
+       break;
+-    case G_TYPE_OBJECT:
+-    case G_TYPE_INTERFACE:
++    case (uintptr_t) G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_INTERFACE:
+       new_list->data.v_pointer = list->data.v_pointer;
+       if (new_list->data.v_pointer)
+ 	g_object_ref (new_list->data.v_pointer);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       if (list->data.v_pointer)
+ 	new_list->data.v_pointer = g_boxed_copy (type, list->data.v_pointer);
+       else
+@@ -318,9 +318,9 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+   gtk_tree_model_get_value (model, a, column, &a_value);
+   gtk_tree_model_get_value (model, b, column, &b_value);
+ 
+-  switch (get_fundamental_type (type))
++  switch ((uintptr_t) get_fundamental_type (type))
+     {
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       if (g_value_get_boolean (&a_value) < g_value_get_boolean (&b_value))
+ 	retval = -1;
+       else if (g_value_get_boolean (&a_value) == g_value_get_boolean (&b_value))
+@@ -328,7 +328,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       if (g_value_get_char (&a_value) < g_value_get_char (&b_value))
+ 	retval = -1;
+       else if (g_value_get_char (&a_value) == g_value_get_char (&b_value))
+@@ -336,7 +336,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       if (g_value_get_uchar (&a_value) < g_value_get_uchar (&b_value))
+ 	retval = -1;
+       else if (g_value_get_uchar (&a_value) == g_value_get_uchar (&b_value))
+@@ -344,7 +344,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       if (g_value_get_int (&a_value) < g_value_get_int (&b_value))
+ 	retval = -1;
+       else if (g_value_get_int (&a_value) == g_value_get_int (&b_value))
+@@ -352,7 +352,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       if (g_value_get_uint (&a_value) < g_value_get_uint (&b_value))
+ 	retval = -1;
+       else if (g_value_get_uint (&a_value) == g_value_get_uint (&b_value))
+@@ -360,7 +360,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       if (g_value_get_long (&a_value) < g_value_get_long (&b_value))
+ 	retval = -1;
+       else if (g_value_get_long (&a_value) == g_value_get_long (&b_value))
+@@ -368,7 +368,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       if (g_value_get_ulong (&a_value) < g_value_get_ulong (&b_value))
+ 	retval = -1;
+       else if (g_value_get_ulong (&a_value) == g_value_get_ulong (&b_value))
+@@ -376,7 +376,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       if (g_value_get_int64 (&a_value) < g_value_get_int64 (&b_value))
+ 	retval = -1;
+       else if (g_value_get_int64 (&a_value) == g_value_get_int64 (&b_value))
+@@ -384,7 +384,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       if (g_value_get_uint64 (&a_value) < g_value_get_uint64 (&b_value))
+ 	retval = -1;
+       else if (g_value_get_uint64 (&a_value) == g_value_get_uint64 (&b_value))
+@@ -392,7 +392,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_ENUM:
++    case (uintptr_t) G_TYPE_ENUM:
+       /* this is somewhat bogus. */
+       if (g_value_get_enum (&a_value) < g_value_get_enum (&b_value))
+ 	retval = -1;
+@@ -401,7 +401,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_FLAGS:
++    case (uintptr_t) G_TYPE_FLAGS:
+       /* this is even more bogus. */
+       if (g_value_get_flags (&a_value) < g_value_get_flags (&b_value))
+ 	retval = -1;
+@@ -410,7 +410,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       if (g_value_get_float (&a_value) < g_value_get_float (&b_value))
+ 	retval = -1;
+       else if (g_value_get_float (&a_value) == g_value_get_float (&b_value))
+@@ -418,7 +418,7 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       if (g_value_get_double (&a_value) < g_value_get_double (&b_value))
+ 	retval = -1;
+       else if (g_value_get_double (&a_value) == g_value_get_double (&b_value))
+@@ -426,16 +426,16 @@ _gtk_tree_data_list_compare_func (GtkTreeModel *model,
+       else
+ 	retval = 1;
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       stra = g_value_get_string (&a_value);
+       strb = g_value_get_string (&b_value);
+       if (stra == NULL) stra = "";
+       if (strb == NULL) strb = "";
+       retval = g_utf8_collate (stra, strb);
+       break;
+-    case G_TYPE_POINTER:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_OBJECT:
+     default:
+       g_warning ("Attempting to sort on invalid type %s\n", g_type_name (type));
+       retval = FALSE;
+diff --git a/gtk/gtktreemodel.c b/gtk/gtktreemodel.c
+index 6328098..beb6f84 100644
+--- a/gtk/gtktreemodel.c
++++ b/gtk/gtktreemodel.c
+@@ -18,6 +18,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <glib.h>
+@@ -137,12 +138,12 @@ gtk_tree_model_base_init (gpointer g_class)
+       GType row_deleted_params[1];
+       GType rows_reordered_params[3];
+ 
+-      row_inserted_params[0] = GTK_TYPE_TREE_PATH | G_SIGNAL_TYPE_STATIC_SCOPE;
++      row_inserted_params[0] = zorptr(GTK_TYPE_TREE_PATH, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE);
+       row_inserted_params[1] = GTK_TYPE_TREE_ITER;
+ 
+-      row_deleted_params[0] = GTK_TYPE_TREE_PATH | G_SIGNAL_TYPE_STATIC_SCOPE;
++      row_deleted_params[0] = zorptr(GTK_TYPE_TREE_PATH, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE);
+ 
+-      rows_reordered_params[0] = GTK_TYPE_TREE_PATH | G_SIGNAL_TYPE_STATIC_SCOPE;
++      rows_reordered_params[0] = zorptr(GTK_TYPE_TREE_PATH, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE);
+       rows_reordered_params[1] = GTK_TYPE_TREE_ITER;
+       rows_reordered_params[2] = G_TYPE_POINTER;
+ 
+@@ -162,7 +163,7 @@ gtk_tree_model_base_init (gpointer g_class)
+                       NULL, NULL,
+                       _gtk_marshal_VOID__BOXED_BOXED,
+                       G_TYPE_NONE, 2,
+-                      GTK_TYPE_TREE_PATH | G_SIGNAL_TYPE_STATIC_SCOPE,
++                      zorptr(GTK_TYPE_TREE_PATH, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+                       GTK_TYPE_TREE_ITER);
+ 
+       /* We need to get notification about structure changes
+@@ -219,7 +220,7 @@ gtk_tree_model_base_init (gpointer g_class)
+                       NULL, NULL,
+                       _gtk_marshal_VOID__BOXED_BOXED,
+                       G_TYPE_NONE, 2,
+-                      GTK_TYPE_TREE_PATH | G_SIGNAL_TYPE_STATIC_SCOPE,
++                      zorptr(GTK_TYPE_TREE_PATH, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+                       GTK_TYPE_TREE_ITER);
+ 
+       /**
+diff --git a/gtk/gtkwidget.c b/gtk/gtkwidget.c
+index 1d1f6bb..5aabeae 100644
+--- a/gtk/gtkwidget.c
++++ b/gtk/gtkwidget.c
+@@ -25,6 +25,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdfil.h>
+ #include <stdarg.h>
+ #include <string.h>
+ #include <locale.h>
+@@ -868,7 +869,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED,
+ 		  G_TYPE_NONE, 1,
+-		  GTK_TYPE_REQUISITION | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GTK_TYPE_REQUISITION, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::size-allocate:
+@@ -883,7 +884,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED,
+ 		  G_TYPE_NONE, 1,
+-		  GDK_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_RECTANGLE, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::state-changed:
+@@ -1110,7 +1111,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::event-after:
+@@ -1130,7 +1131,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED,
+ 		  G_TYPE_NONE, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::button-press-event:
+@@ -1157,7 +1158,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::button-release-event:
+@@ -1184,7 +1185,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::scroll-event:
+@@ -1212,7 +1213,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+   /**
+    * GtkWidget::motion-notify-event:
+    * @widget: the object which received the signal.
+@@ -1238,7 +1239,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::composited-changed:
+@@ -1303,7 +1304,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::destroy-event:
+@@ -1330,7 +1331,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::expose-event:
+@@ -1361,7 +1362,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::key-press-event:
+@@ -1386,7 +1387,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::key-release-event:
+@@ -1411,7 +1412,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::enter-notify-event:
+@@ -1438,7 +1439,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::leave-notify-event:
+@@ -1465,7 +1466,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::configure-event
+@@ -1491,7 +1492,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::focus-in-event
+@@ -1516,7 +1517,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::focus-out-event
+@@ -1541,7 +1542,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::map-event
+@@ -1566,7 +1567,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::unmap-event
+@@ -1591,7 +1592,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::property-notify-event
+@@ -1616,7 +1617,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::selection-clear-event
+@@ -1638,7 +1639,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::selection-request-event
+@@ -1661,7 +1662,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::selection-notify-event:
+@@ -1678,7 +1679,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::selection-received:
+@@ -1694,7 +1695,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED_UINT,
+ 		  G_TYPE_NONE, 2,
+-		  GTK_TYPE_SELECTION_DATA | G_SIGNAL_TYPE_STATIC_SCOPE,
++		  zorptr(GTK_TYPE_SELECTION_DATA, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+ 		  G_TYPE_UINT);
+ 
+   /**
+@@ -1712,7 +1713,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  NULL, NULL,
+ 		  _gtk_marshal_VOID__BOXED_UINT_UINT,
+ 		  G_TYPE_NONE, 3,
+-		  GTK_TYPE_SELECTION_DATA | G_SIGNAL_TYPE_STATIC_SCOPE,
++		  zorptr(GTK_TYPE_SELECTION_DATA, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+ 		  G_TYPE_UINT,
+ 		  G_TYPE_UINT);
+ 
+@@ -1738,7 +1739,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::proximity-out-event
+@@ -1762,7 +1763,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::drag-leave:
+@@ -2037,7 +2038,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_marshal_VOID__OBJECT_BOXED_UINT_UINT,
+ 		  G_TYPE_NONE, 4,
+ 		  GDK_TYPE_DRAG_CONTEXT,
+-		  GTK_TYPE_SELECTION_DATA | G_SIGNAL_TYPE_STATIC_SCOPE,
++		  zorptr(GTK_TYPE_SELECTION_DATA, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+ 		  G_TYPE_UINT,
+ 		  G_TYPE_UINT);
+ 
+@@ -2116,7 +2117,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  GDK_TYPE_DRAG_CONTEXT,
+ 		  G_TYPE_INT,
+ 		  G_TYPE_INT,
+-		  GTK_TYPE_SELECTION_DATA | G_SIGNAL_TYPE_STATIC_SCOPE,
++		  zorptr(GTK_TYPE_SELECTION_DATA, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE),
+ 		  G_TYPE_UINT,
+ 		  G_TYPE_UINT);
+   
+@@ -2143,7 +2144,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::client-event:
+@@ -2166,7 +2167,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::no-expose-event:
+@@ -2191,7 +2192,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::window-state-event:
+@@ -2217,7 +2218,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * GtkWidget::damage-event:
+@@ -2241,7 +2242,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+ /**
+    * GtkWidget::grab-broken-event:
+    * @widget: the object which received the signal
+@@ -2267,7 +2268,7 @@ gtk_widget_class_init (GtkWidgetClass *klass)
+ 		  _gtk_boolean_handled_accumulator, NULL,
+ 		  _gtk_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  zorptr(GDK_TYPE_EVENT, (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE));
+   /**
+    * GtkWidget::query-tooltip:
+    * @widget: the object which received the signal
+diff --git a/gtk/tests/object.c b/gtk/tests/object.c
+index ee11a79..e1e6f40 100644
+--- a/gtk/tests/object.c
++++ b/gtk/tests/object.c
+@@ -134,7 +134,14 @@ pspec_select_value (GParamSpec *pspec,
+   else if (G_IS_PARAM_SPEC_UNICHAR (pspec))
+     g_value_set_uint (value, SELECT_VALUE (dvalue, ((GParamSpecUnichar*) pspec)->default_value, FALSE, TRUE));
+   else if (G_IS_PARAM_SPEC_GTYPE (pspec))
+-    g_value_set_gtype (value, SELECT_VALUE ((int) dvalue, ((GParamSpecGType*) pspec)->is_a_type, 0, GTK_TYPE_WIDGET));
++    {
++      /* GTypes are pointers under Fil-C, so pick an endpoint rather than
++         interpolating between type IDs. */
++      int d = (int) dvalue;
++      g_value_set_gtype (value, d == 0 ? G_TYPE_INVALID :
++                                d == 1 || d <= -1 ? GTK_TYPE_WIDGET :
++                                ((GParamSpecGType*) pspec)->is_a_type);
++    }
+   else if (G_IS_PARAM_SPEC_STRING (pspec))
+     {
+       GParamSpecString *sspec = (GParamSpecString*) pspec;
+diff --git a/modules/other/gail/gailcellparent.c b/modules/other/gail/gailcellparent.c
+index 883b719..92bf0db 100644
+--- a/modules/other/gail/gailcellparent.c
++++ b/modules/other/gail/gailcellparent.c
+@@ -26,9 +26,9 @@
+ GType
+ gail_cell_parent_get_type (void)
+ {
+-  static volatile gsize g_define_type_id__volatile = 0;
++  static gpointer g_define_type_id__volatile = NULL;
+ 
+-  if (g_once_init_enter (&g_define_type_id__volatile))
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile))
+     {
+       GType g_define_type_id =
+         g_type_register_static_simple (G_TYPE_INTERFACE,
+@@ -39,10 +39,10 @@ gail_cell_parent_get_type (void)
+                                        NULL,
+                                        0);
+ 
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id);
+     }
+ 
+-  return g_define_type_id__volatile;
++  return (GType) g_define_type_id__volatile;
+ }
+ 
+ /**
+diff --git a/modules/other/gail/gailfactory.h b/modules/other/gail/gailfactory.h
+index d9d2221..6f64973 100644
+--- a/modules/other/gail/gailfactory.h
++++ b/modules/other/gail/gailfactory.h
+@@ -62,8 +62,8 @@ type_name##_factory_class_init (AtkObjectFactoryClass *klass) \
+ GType \
+ type_name##_factory_get_type (void) \
+ { \
+-  static volatile gsize g_define_type_id__volatile = 0; \
+-  if (g_once_init_enter (&g_define_type_id__volatile)) \
++  static gpointer g_define_type_id__volatile = NULL; \
++  if (g_once_init_enter_pointer (&g_define_type_id__volatile)) \
+     { \
+       GType g_define_type_id = \
+         g_type_register_static_simple (ATK_TYPE_OBJECT_FACTORY, \
+@@ -73,9 +73,9 @@ type_name##_factory_get_type (void) \
+                                        sizeof (AtkObjectFactory), \
+                                        (GInstanceInitFunc) NULL, \
+                                        (GTypeFlags) 0); \
+-      g_once_init_leave (&g_define_type_id__volatile, g_define_type_id); \
++      g_once_init_leave_pointer (&g_define_type_id__volatile, g_define_type_id); \
+     } \
+-  return g_define_type_id__volatile; \
++  return (GType) g_define_type_id__volatile; \
+ }
+ 
+ /* Implements a AtkObjectFactory creating accessibles of type
+diff --git a/modules/other/gail/tests/testtable.c b/modules/other/gail/tests/testtable.c
+index a62aca2..bf6a098 100644
+--- a/modules/other/gail/tests/testtable.c
++++ b/modules/other/gail/tests/testtable.c
+@@ -691,12 +691,12 @@ _property_change_handler (AtkObject         *obj,
+   {
+     GType old_type = G_VALUE_TYPE (&values->old_value);
+ 
+-    switch (old_type)
++    switch ((uintptr_t) old_type)
+     {
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       g_print("value was <%d>\n", g_value_get_int (&values->old_value));
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       name = g_value_get_string (&values->old_value);
+       if (name != NULL)
+         g_print ("value was <%s>\n", name);
+@@ -717,12 +717,12 @@ _property_change_handler (AtkObject         *obj,
+   {
+     GType new_type = G_VALUE_TYPE (&values->new_value);
+ 
+-    switch (new_type)
++    switch ((uintptr_t) new_type)
+     {
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       g_print("value is <%d>\n", g_value_get_int (&values->new_value));
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       name = g_value_get_string (&values->new_value);
+       if (name != NULL)
+         g_print ("value is <%s>\n", name);
+diff --git a/tests/testmenubars.c b/tests/testmenubars.c
+index 416a939..f1a0954 100644
+--- a/tests/testmenubars.c
++++ b/tests/testmenubars.c
+@@ -21,7 +21,7 @@
+ #include <gtk/gtk.h>
+ 
+ static GtkWidget *
+-create_menu (depth)
++create_menu (gint depth)
+ {
+     GtkWidget *menu;
+     GtkWidget *menuitem;
+@@ -70,19 +70,19 @@ create_menubar (GtkPackDirection pack_dir,
+   menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_HOME, NULL);
+   gtk_menu_shell_append (GTK_MENU_SHELL (menubar), menuitem);
+   gtk_label_set_angle (GTK_LABEL (GTK_BIN (menuitem)->child), angle);
+-  menu = create_menu (2, TRUE);
++  menu = create_menu (2);
+   gtk_menu_item_set_submenu (GTK_MENU_ITEM (menuitem), menu);
+ 
+   menuitem = gtk_menu_item_new_with_label ("foo");
+   gtk_menu_shell_append (GTK_MENU_SHELL (menubar), menuitem);
+   gtk_label_set_angle (GTK_LABEL (GTK_BIN (menuitem)->child), angle);
+-  menu = create_menu (2, TRUE);
++  menu = create_menu (2);
+   gtk_menu_item_set_submenu (GTK_MENU_ITEM (menuitem), menu);
+ 
+   menuitem = gtk_menu_item_new_with_label ("bar");
+   gtk_menu_shell_append (GTK_MENU_SHELL (menubar), menuitem);
+   gtk_label_set_angle (GTK_LABEL (GTK_BIN (menuitem)->child), angle);
+-  menu = create_menu (2, TRUE);
++  menu = create_menu (2);
+   gtk_menu_item_set_submenu (GTK_MENU_ITEM (menuitem), menu);
+ 
+   return menubar;
+diff --git a/tests/testtreeview.c b/tests/testtreeview.c
+index 9d2c2d1..02a7c85 100644
+--- a/tests/testtreeview.c
++++ b/tests/testtreeview.c
+@@ -599,7 +599,7 @@ typesystem_recurse (GType        type,
+   
+   gtk_tree_store_append (store, &iter, parent_iter);
+ 
+-  str = g_strdup_printf ("%ld", (glong)type);
++  str = g_strdup_printf ("%ld", (glong)(uintptr_t)type);
+   gtk_tree_store_set (store, &iter, 0, str, 1, g_type_name (type),
+                       2, our_pixbuf,
+                       3, 7.0, 4, (guint) 9000,
+@@ -649,7 +649,7 @@ create_tree_model (void)
+   i = 0;
+   while (i < G_TYPE_FUNDAMENTAL_MAX)
+     {
+-      typesystem_recurse (i, NULL, store);
++      typesystem_recurse ((GType) (uintptr_t) i, NULL, store);
+       
+       ++i;
+     }
+@@ -955,7 +955,7 @@ gtk_real_model_types_get_path (GtkTreeModel *tree_model,
+   g_return_val_if_fail (GTK_IS_TREE_MODEL_TYPES (tree_model), NULL);
+   g_return_val_if_fail (iter != NULL, NULL);
+ 
+-  type = GPOINTER_TO_INT (iter->user_data);
++  type = (GType) iter->user_data;
+   
+   retval = gtk_tree_path_new ();
+   
+@@ -983,7 +983,7 @@ gtk_real_model_types_get_path (GtkTreeModel *tree_model,
+     }
+ 
+   /* The fundamental type itself is the index on the toplevel */
+-  gtk_tree_path_prepend_index (retval, type);
++  gtk_tree_path_prepend_index (retval, (gint) (uintptr_t) type);
+ 
+   return retval;
+ }
+@@ -996,7 +996,7 @@ gtk_real_model_types_get_value (GtkTreeModel *tree_model,
+ {
+   GType type;
+ 
+-  type = GPOINTER_TO_INT (iter->user_data);
++  type = (GType) iter->user_data;
+ 
+   switch (column)
+     {
+@@ -1006,7 +1006,7 @@ gtk_real_model_types_get_value (GtkTreeModel *tree_model,
+         
+         g_value_init (value, G_TYPE_STRING);
+ 
+-        str = g_strdup_printf ("%ld", (long int) type);
++        str = g_strdup_printf ("%ld", (long int) (uintptr_t) type);
+         g_value_set_string (value, str);
+         g_free (str);
+       }
+@@ -1030,7 +1030,7 @@ gtk_real_model_types_iter_next (GtkTreeModel  *tree_model,
+   GType parent;
+   GType type;
+ 
+-  type = GPOINTER_TO_INT (iter->user_data);
++  type = (GType) iter->user_data;
+ 
+   parent = g_type_parent (type);
+   
+@@ -1038,12 +1038,12 @@ gtk_real_model_types_iter_next (GtkTreeModel  *tree_model,
+     {
+       /* find next _valid_ fundamental type */
+       do
+-	type++;
+-      while (!g_type_name (type) && type <= G_TYPE_FUNDAMENTAL_MAX);
+-      if (type <= G_TYPE_FUNDAMENTAL_MAX)
++	type = (GType) ((uintptr_t) type + 1);
++      while (!g_type_name (type) && (uintptr_t) type <= (uintptr_t) G_TYPE_FUNDAMENTAL_MAX);
++      if ((uintptr_t) type <= (uintptr_t) G_TYPE_FUNDAMENTAL_MAX)
+ 	{
+ 	  /* found one */
+-          iter->user_data = GINT_TO_POINTER (type);
++          iter->user_data = (gpointer) type;
+           return TRUE;
+         }
+       else
+@@ -1064,7 +1064,7 @@ gtk_real_model_types_iter_next (GtkTreeModel  *tree_model,
+       if (children[i] != G_TYPE_INVALID)
+         {
+           g_free (children);
+-          iter->user_data = GINT_TO_POINTER (children[i]);
++          iter->user_data = (gpointer) children[i];
+           return TRUE;
+         }
+       else
+@@ -1083,7 +1083,7 @@ gtk_real_model_types_iter_children (GtkTreeModel *tree_model,
+   GType type;
+   GType* children;
+   
+-  type = GPOINTER_TO_INT (parent->user_data);
++  type = (GType) parent->user_data;
+ 
+   children = g_type_children (type, NULL);
+ 
+@@ -1094,7 +1094,7 @@ gtk_real_model_types_iter_children (GtkTreeModel *tree_model,
+     }
+   else
+     {
+-      iter->user_data = GINT_TO_POINTER (children[0]);
++      iter->user_data = (gpointer) children[0];
+       g_free (children);
+       return TRUE;
+     }
+@@ -1107,7 +1107,7 @@ gtk_real_model_types_iter_has_child (GtkTreeModel *tree_model,
+   GType type;
+   GType* children;
+   
+-  type = GPOINTER_TO_INT (iter->user_data);
++  type = (GType) iter->user_data;
+   
+   children = g_type_children (type, NULL);
+ 
+@@ -1137,7 +1137,7 @@ gtk_real_model_types_iter_n_children (GtkTreeModel *tree_model,
+       GType* children;
+       guint n_children = 0;
+ 
+-      type = GPOINTER_TO_INT (iter->user_data);
++      type = (GType) iter->user_data;
+       
+       children = g_type_children (type, &n_children);
+       
+@@ -1166,7 +1166,7 @@ gtk_real_model_types_iter_nth_child (GtkTreeModel *tree_model,
+     }
+   else
+     {
+-      GType type = GPOINTER_TO_INT (parent->user_data);      
++      GType type = (GType) parent->user_data;      
+       guint n_children = 0;
+       GType* children = g_type_children (type, &n_children);
+ 
+@@ -1182,7 +1182,7 @@ gtk_real_model_types_iter_nth_child (GtkTreeModel *tree_model,
+         }
+       else
+         {
+-          iter->user_data = GINT_TO_POINTER (children[n]);
++          iter->user_data = (gpointer) children[n];
+           g_free (children);
+ 
+           return TRUE;
+@@ -1198,21 +1198,21 @@ gtk_real_model_types_iter_parent (GtkTreeModel *tree_model,
+   GType type;
+   GType parent;
+   
+-  type = GPOINTER_TO_INT (child->user_data);
++  type = (GType) child->user_data;
+   
+   parent = g_type_parent (type);
+   
+   if (parent == G_TYPE_INVALID)
+     {
+-      if (type > G_TYPE_FUNDAMENTAL_MAX)
++      if ((uintptr_t) type > (uintptr_t) G_TYPE_FUNDAMENTAL_MAX)
+         g_warning ("no parent for %ld %s\n",
+-                   (long int) type,
++                   (long int) (uintptr_t) type,
+                    g_type_name (type));
+       return FALSE;
+     }
+   else
+     {
+-      iter->user_data = GINT_TO_POINTER (parent);
++      iter->user_data = (gpointer) parent;
+       
+       return TRUE;
+     }
