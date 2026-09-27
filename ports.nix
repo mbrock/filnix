@@ -260,6 +260,23 @@ in
     (skipCheck "one test fails")
   ])
 
+  # db and db5 are aliases of db53; override it so all three get the port.
+  {
+    db53 = for pkgs.db53 [
+      # Private environments stored heap pointers in integer offsets and
+      # mutex IDs; give them the offset-based shared-region layout.
+      (patch ./patches/db-private-regions.patch)
+      # db_load without -h opens a private environment.
+      (use {
+        doInstallCheck = true;
+        installCheckPhase = ''
+          printf 'key\nvalue\n' | "$bin/bin/db_load" -T -t btree t.db
+          "$bin/bin/db_dump" -p t.db | grep -qx ' value'
+        '';
+      })
+    ];
+  }
+
   (for pkgs.nettle [
     (removeConfigureFlag "--enable-fat")
     (configure "--disable-assembler")
