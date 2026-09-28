@@ -2,6 +2,7 @@
 # Emacs only link the C runtime library, which the Makefile builds on its own.
 # Nixpkgs' passthru stays, so the grammar set and its builders are unchanged.
 {
+  lib,
   stdenv,
   tree-sitter,
 }:
@@ -12,9 +13,19 @@ stdenv.mkDerivation {
 
   makeFlags = [ "PREFIX=${placeholder "out"}" ];
 
-  meta = removeAttrs tree-sitter.meta [
-    "mainProgram"
-    "broken"
-    "badPlatforms"
-  ];
+  # Only the descriptive fields: the rest of the CLI's meta is computed from
+  # the Rust build (problems, availability) and does not apply here.
+  meta = lib.filterAttrs (
+    name: _:
+    lib.elem name [
+      "description"
+      "longDescription"
+      "homepage"
+      "changelog"
+      "license"
+      "maintainers"
+      "teams"
+      "platforms"
+    ]
+  ) tree-sitter.meta;
 }

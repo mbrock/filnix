@@ -81,6 +81,19 @@ in
     }))
   ])
 
+  (for "psutil" [
+    (use (old: {
+      disabledTests = (old.disabledTests or [ ]) ++ [
+        # glibc's mallinfo2 counts glibc's heap; Fil-C allocates elsewhere,
+        # so the numbers are all zero.
+        "test_heap_info"
+        # Gives the children 0.01 s to exit, which is too short for Fil-C
+        # processes; test_wait_procs_no_timeout passes.
+        "test_wait_procs"
+      ];
+    }))
+  ])
+
   (for "websockets" [
     (use (old: {
       disabledTests = (old.disabledTests or [ ]) ++ [
