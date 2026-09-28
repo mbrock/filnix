@@ -1,0 +1,117 @@
+Subject: Tag Boost.Function vtable pointers without an integer round trip
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/boost-filc.patch
+
+boost::function marks trivially copyable function objects by setting bit 0
+of its vtable pointer, converting the pointer to std::size_t and back. Under
+Fil-C that conversion drops the capability, so the first call through any
+boost::function traps ("cannot read pointer with null object"); Boost.Test's
+runner is one such caller. Set and clear the bit with stdfil's zorptr and
+zandptr under Fil-C, through two helpers; other targets keep the integer
+arithmetic. Covered by tests/boost-test.cpp in the boost check phase.
+
+diff --git a/boost/function/function_base.hpp b/boost/function/function_base.hpp
+index ca15b7b..e4ff907 100644
+--- a/boost/function/function_base.hpp
++++ b/boost/function/function_base.hpp
+@@ -23,6 +23,10 @@
+ #include <memory>
+ #include <new>
+ #include <type_traits>
++#include <cstddef>
++#ifdef __FILC__
++#include <stdfil.h>
++#endif
+ 
+ #if defined(BOOST_MSVC)
+ #   pragma warning( push )
+@@ -482,6 +486,33 @@ namespace boost {
+                         function_buffer& out_buffer,
+                         functor_manager_operation_type op);
+       };
++
++      // A function object's vtable pointer carries a "trivially copyable"
++      // flag in bit 0. Set and clear it with pointer operations: Fil-C
++      // drops a pointer's capability when it round-trips through an integer.
++      inline vtable_base* tag_vtable(const vtable_base* vtable, bool trivial)
++      {
++#ifdef __FILC__
++        void* p = const_cast<vtable_base*>(vtable);
++        return static_cast<vtable_base*>(trivial ? zorptr(p, 0x01) : p);
++#else
++        std::size_t value = reinterpret_cast<std::size_t>(vtable);
++        if (trivial)
++          value |= static_cast<std::size_t>(0x01);
++        return reinterpret_cast<vtable_base*>(value);
++#endif
++      }
++
++      inline vtable_base* untag_vtable(vtable_base* vtable)
++      {
++#ifdef __FILC__
++        return static_cast<vtable_base*>(
++                 zandptr(vtable, ~static_cast<unsigned long>(0x01)));
++#else
++        return reinterpret_cast<vtable_base*>(
++                 reinterpret_cast<std::size_t>(vtable) & ~static_cast<std::size_t>(0x01));
++#endif
++      }
+     } // end namespace function
+   } // end namespace detail
+ 
+@@ -567,8 +598,7 @@ public:
+ 
+ public: // should be protected, but GCC 2.95.3 will fail to allow access
+   detail::function::vtable_base* get_vtable() const {
+-    return reinterpret_cast<detail::function::vtable_base*>(
+-             reinterpret_cast<std::size_t>(vtable) & ~static_cast<std::size_t>(0x01));
++    return detail::function::untag_vtable(vtable);
+   }
+ 
+   bool has_trivial_copy_and_destroy() const {
+diff --git a/boost/function/function_template.hpp b/boost/function/function_template.hpp
+index ac4a5b2..fe129a8 100644
+--- a/boost/function/function_template.hpp
++++ b/boost/function/function_template.hpp
+@@ -725,7 +725,7 @@ namespace boost {
+ 
+     vtable_type* get_vtable() const {
+       return reinterpret_cast<vtable_type*>(
+-               reinterpret_cast<std::size_t>(vtable) & ~static_cast<std::size_t>(0x01));
++               boost::detail::function::untag_vtable(vtable));
+     }
+ 
+     struct clear_type {};
+@@ -938,12 +938,9 @@ namespace boost {
+         { { &manager_type::manage }, &invoker_type::invoke };
+ 
+       if (stored_vtable.assign_to(std::move(f), functor)) {
+-        std::size_t value = reinterpret_cast<std::size_t>(&stored_vtable.base);
+-        // coverity[pointless_expression]: suppress coverity warnings on apparant if(const).
+-        if (boost::detail::function::is_trivially_copyable<Functor>::value &&
+-            boost::detail::function::function_allows_small_object_optimization<Functor>::value)
+-          value |= static_cast<std::size_t>(0x01);
+-        vtable = reinterpret_cast<boost::detail::function::vtable_base *>(value);
++        vtable = boost::detail::function::tag_vtable(&stored_vtable.base,
++          boost::detail::function::is_trivially_copyable<Functor>::value &&
++          boost::detail::function::function_allows_small_object_optimization<Functor>::value);
+       } else
+         vtable = 0;
+     }
+@@ -971,12 +968,9 @@ namespace boost {
+         { { &manager_type::manage }, &invoker_type::invoke };
+ 
+       if (stored_vtable.assign_to_a(std::move(f), functor, a)) {
+-        std::size_t value = reinterpret_cast<std::size_t>(&stored_vtable.base);
+-        // coverity[pointless_expression]: suppress coverity warnings on apparant if(const).
+-        if (boost::detail::function::is_trivially_copyable<Functor>::value &&
+-            boost::detail::function::function_allows_small_object_optimization<Functor>::value)
+-          value |= static_cast<std::size_t>(0x01);
+-        vtable = reinterpret_cast<boost::detail::function::vtable_base *>(value);
++        vtable = boost::detail::function::tag_vtable(&stored_vtable.base,
++          boost::detail::function::is_trivially_copyable<Functor>::value &&
++          boost::detail::function::function_allows_small_object_optimization<Functor>::value);
+       } else
+         vtable = 0;
+     }

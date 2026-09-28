@@ -1,0 +1,44 @@
+Subject: Align Broadway node child pointers
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/gtk-4.14.5.patch
+
+broadwayd's decode_nodes allocates each render node with its child pointer
+array directly after a variable number of 32-bit data words. With an odd
+count the pointers start 4 bytes off 8-byte alignment. x86 tolerates the
+misaligned stores; Fil-C stops the daemon ("alignment requirement of 8
+bytes not met") as soon as a client presents a window. Round the offset up
+to the pointer alignment. Covered by the gtkmm4-runtime check.
+
+diff --git a/gdk/broadway/broadway-server.c b/gdk/broadway/broadway-server.c
+index 6f6d666..a9468fe 100644
+--- a/gdk/broadway/broadway-server.c
++++ b/gdk/broadway/broadway-server.c
+@@ -1785,6 +1785,7 @@ decode_nodes (BroadwayServer *server,
+   gint32 texture_offset;
+   guint32 hash;
+   guint32 transform_type;
++  gsize children_offset;
+ 
+   g_assert (*pos < len);
+ 
+@@ -1862,14 +1863,17 @@ decode_nodes (BroadwayServer *server,
+     g_assert_not_reached ();
+   }
+ 
+-  node = g_malloc (sizeof(BroadwayNode) + (size - 1) * sizeof(guint32) + n_children * sizeof (BroadwayNode *));
++  /* The child pointers follow the variable-length data; align them. */
++  children_offset = sizeof(BroadwayNode) + (size - 1) * sizeof(guint32);
++  children_offset = (children_offset + G_ALIGNOF (BroadwayNode *) - 1) & ~(gsize) (G_ALIGNOF (BroadwayNode *) - 1);
++  node = g_malloc (children_offset + n_children * sizeof (BroadwayNode *));
+   g_ref_count_init (&node->refcount);
+   node->type = type;
+   node->id = id;
+   node->output_id = id;
+   node->texture_id = 0;
+   node->n_children = n_children;
+-  node->children = (BroadwayNode **)((char *)node + sizeof(BroadwayNode) + (size - 1) * sizeof(guint32));
++  node->children = (BroadwayNode **)((char *)node + children_offset);
+   node->n_data = size;
+   for (i = 0; i < size; i++)
+     {

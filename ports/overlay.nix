@@ -5,6 +5,113 @@ pkgs: final: prev:
 let
   portDSL = import ./default.nix { inherit (pkgs) lib pkgs; };
   portList = import ../ports.nix { inherit pkgs prev final; };
+
+  # Fil-C overrides for a Nix component scope, shared by upstream Nix and
+  # Determinate Nix. Boehm GC scans the native stack and data segments, which
+  # Fil-C objects do not live in; Fil-C collects garbage itself. seccomp
+  # filters and the static busybox sandbox shell are unavailable too.
+  nixFilcOverrides = nfinal: nprev: {
+    # Fil-C has no LTO; Nix enables it for its release builds.
+    mesonComponentOverrides =
+      finalAttrs: prevAttrs:
+      let
+        base = nprev.mesonComponentOverrides finalAttrs prevAttrs;
+      in
+      base
+      // {
+        preConfigure = (base.preConfigure or prevAttrs.preConfigure or "") + ''
+          appendToVar mesonFlags "-Db_lto=false"
+        '';
+      };
+    # Fil-C has no sigaltstack, and it catches stack overflow itself.
+    nix-main = nprev.nix-main.overrideAttrs (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace $(find . -path '*/unix/stack.cc') --replace-fail \
+            '#if defined(SA_SIGINFO) && defined(SA_ONSTACK)' \
+            '#if defined(SA_SIGINFO) && defined(SA_ONSTACK) && !defined(__FILC__)'
+        '';
+    });
+    nix-functional-tests = nprev.nix-functional-tests.overrideAttrs (old: {
+      # The suite runs whichever `nix` is on PATH. Nixpkgs asks for
+      # nix-cli.__spliced.hostHost, which this scope lacks, so it fell
+      # back to the build platform's (glibc) Nix: every functional test
+      # exercised native Nix, and the Fil-C test plugin could not load
+      # into it (undefined pizlonated_* symbols). Fil-C programs run on
+      # the build machine, so test the Fil-C Nix.
+      nativeBuildInputs = map (
+        p: if (p.pname or "") == "nix" then nfinal.nix-cli else p
+      ) old.nativeBuildInputs;
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          pushd "$(dirname "$(find -L . -path '*/common/vars.sh' -print -quit)")/.." >/dev/null
+          # The harness enables sandbox tests when `unshare --user` works,
+          # but this Nix cannot sandbox (no clone; see nix-util below).
+          # Those tests (remote builds, chroot and overlay stores, ...)
+          # then build with store paths that only exist inside a sandbox.
+          substituteInPlace common/vars.sh --replace-fail \
+            '&& unshare --user true; then' '&& false; then'
+          popd >/dev/null
+        '';
+    });
+    # Fil-C's libc has no vfork.
+    nix-util = nprev.nix-util.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+                  substituteInPlace $(find . -path '*/unix/processes.cc') \
+                    --replace-fail 'allowVfork ? vfork() : fork()' 'fork()'
+                  # Nor clone, which the namespace probes use: report no user,
+                  # mount or PID namespaces.
+                  substituteInPlace $(find . -path '*/linux/linux-namespaces.cc') \
+                    --replace-fail 'bool userNamespacesSupported()
+        {' 'bool userNamespacesSupported()
+        {
+            return false;' \
+                    --replace-fail 'bool mountAndPidNamespacesSupported()
+        {' 'bool mountAndPidNamespacesSupported()
+        {
+            return false;'
+      '';
+    });
+    nix-store =
+      (nprev.nix-store.override {
+        withSandboxShell = false;
+        withAWS = false;
+      }).overrideAttrs
+        (old: {
+          # Without seccomp, builds refuse to start unless filter-syscalls
+          # is off, so make that the default.
+          postPatch =
+            (old.postPatch or "")
+            + "\n"
+            + ''
+              f=$(find . -path '*/nix/store/local-settings.hh')
+              sed -i '/Setting<bool> filterSyscalls{/,/"filter-syscalls"/ s/^\( *\)true,$/\1false,/' "$f"
+              grep -A2 'Setting<bool> filterSyscalls{' "$f" | grep -q false,
+            ''
+            # Fil-C's loader ignores RUNPATH when dlopening a bare soname,
+            # so name libc's nss_dns by path. NixOS's nix.conf check fails
+            # on the warning otherwise.
+            + ''
+              substituteInPlace globals.cc --replace-fail \
+                'dlopen(LIBNSS_DNS_SO,' \
+                'dlopen("${final.stdenv.cc.libc}/lib/" LIBNSS_DNS_SO,'
+            '';
+          buildInputs = builtins.filter (
+            dep: !(pkgs.lib.hasInfix "libseccomp" (dep.name or ""))
+          ) old.buildInputs;
+          mesonFlags = map (
+            flag:
+            if flag == "-Dseccomp-sandboxing=enabled" then
+              "-Dseccomp-sandboxing=disabled"
+            else
+              flag
+          ) old.mesonFlags;
+        });
+  };
 in
 portDSL.makeOverlay portList final prev
 // pkgs.lib.optionalAttrs prev.stdenv.hostPlatform.isFilc {
@@ -22,6 +129,55 @@ portDSL.makeOverlay portList final prev
   # Boost 1.87 is the ported release (Context uses ucontext); Nixpkgs'
   # default 1.89 builds its assembly fcontext and fails.
   boost = final.boost187;
+
+  # Node.js (V8) is out of scope. Small pure-JS CLIs run on QuickJS through
+  # the qnode shim instead; see docs/quickjs-for-node.md.
+  qnode = final.callPackage ../packages/qnode { };
+  bibtex-tidy = final.callPackage ../packages/qnode/npm-cli.nix { } {
+    package = final.buildPackages.bibtex-tidy;
+    bins.bibtex-tidy = "bibtex-tidy/bin/bibtex-tidy";
+  };
+  aasvg = final.callPackage ../packages/qnode/npm-cli.nix { } {
+    package = final.buildPackages.aasvg;
+    bins.aasvg = "aasvg/main.js";
+  };
+
+  # YouTube needs a JavaScript runtime; yt-dlp's default, Deno, is V8.
+  # QuickJS is one of its supported runtimes. curl-cffi (curl-impersonate
+  # needs Go) and secretstorage (cryptography needs Rust) are optional.
+  # pycryptodomex is optional too (yt-dlp has a pure-Python AES), and the
+  # build's native Python would dlopen its Fil-C ctypes library and fail.
+  yt-dlp =
+    (prev.yt-dlp.override {
+      # The top-level python3Packages argument splices to the build
+      # platform's default Python (3.13), whose hatchling the Fil-C
+      # Python 3.12 build cannot import. Use the ported set directly.
+      python3Packages = final.python3Packages;
+      jsRuntime = final.quickjs;
+      withSecretStorage = false;
+    }).overridePythonAttrs
+      (old: {
+        dependencies = builtins.filter (
+          d:
+          !builtins.elem (d.pname or "") [
+            "curl-cffi"
+            "pycryptodomex"
+          ]
+        ) old.dependencies;
+      });
+
+  # The pnpm dependency fetcher's output is platform-independent, but it
+  # overrides pnpm-fixup-state-db with pnpm's own Node.js, which loses
+  # splicing and pulls in the host (Fil-C) Node.js. Run it natively.
+  fetchPnpmDeps = prev.lib.makeOverridable (
+    args:
+    final.buildPackages.fetchPnpmDeps (
+      args
+      // prev.lib.optionalAttrs (args ? pnpm) {
+        pnpm = args.pnpm.__spliced.buildHost or args.pnpm;
+      }
+    )
+  );
 
   # overrideScope, so that the plugins build against this GStreamer.
   gst_all_1 = prev.gst_all_1.overrideScope (
@@ -66,138 +222,60 @@ portDSL.makeOverlay portList final prev
     }
   );
 
-  # Nix itself. Boehm GC scans the native stack and data segments, which
-  # Fil-C objects do not live in; Fil-C collects garbage itself. seccomp
-  # filters and the static busybox sandbox shell are unavailable too.
+  # Nix itself.
   nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
-    nfinal: nprev: {
-      # Fil-C has no LTO; Nix enables it for its release builds.
-      mesonComponentOverrides =
-        finalAttrs: prevAttrs:
-        let
-          base = nprev.mesonComponentOverrides finalAttrs prevAttrs;
-        in
-        base
-        // {
-          preConfigure = (base.preConfigure or prevAttrs.preConfigure or "") + ''
-            appendToVar mesonFlags "-Db_lto=false"
-          '';
-        };
-      nix-expr =
-        (nprev.nix-expr.override { enableGC = false; }).overrideAttrs
-          (old: {
-            # The 64-bit Value layout packs tag bits into pointers held as
-            # integers, which drops their capabilities; use the plain one.
-            postPatch =
-              (old.postPatch or "")
-              + "\n"
-              + ''
-                substituteInPlace $(find . -path '*/nix/expr/value.hh') --replace-fail \
-                  'useBitPackedValueStorage = (ptrSize == 8)' \
-                  'useBitPackedValueStorage = false && (ptrSize == 8)'
-              '';
-          });
-      # Fil-C has no sigaltstack, and it catches stack overflow itself.
-      nix-main = nprev.nix-main.overrideAttrs (old: {
-        postPatch =
-          (old.postPatch or "")
-          + "\n"
-          + ''
-            substituteInPlace $(find . -path '*/unix/stack.cc') --replace-fail \
-              '#if defined(SA_SIGINFO) && defined(SA_ONSTACK)' \
-              '#if defined(SA_SIGINFO) && defined(SA_ONSTACK) && !defined(__FILC__)'
-          '';
-      });
-      # nativeBuildInputs' perl splices to the build platform's perl, which
-      # cannot load the Fil-C DBI; Fil-C programs run on the build machine.
-      nix-perl-bindings = nprev.nix-perl-bindings.overrideAttrs (old: {
-        nativeBuildInputs = map (
-          p: if (p.pname or "") == "perl" then final.perl else p
-        ) old.nativeBuildInputs;
-        nativeCheckInputs = [ final.perlPackages.Test2Harness ];
-        # sv_setref_pv stores the wrapper through Fil-C's XS pointer table;
-        # the typemap read it back with a cast.
-        postPatch =
-          (old.postPatch or "")
-          + "\n"
-          + ''
-            substituteInPlace $(find . -path '*/lib/Nix/Store.xs') --replace-fail \
-              '$var = ($type)SvIV((SV*)SvRV( $arg ));' \
-              '$var = ($type) zptrtable_decode(Perl_xsub_ptrtable, SvIV((SV*)SvRV( $arg )));'
-          '';
-      });
-      nix-functional-tests = nprev.nix-functional-tests.overrideAttrs (old: {
-        # The test plugin cannot resolve Nix's symbols when dlopened.
-        mesonCheckFlags = (old.mesonCheckFlags or [ ]) ++ [
-          "--no-suite"
-          "plugins"
-        ];
-      });
-      nix-util-tests = nprev.nix-util-tests.overrideAttrs (old: {
-        # The CompressionError from invalid bzip2 input is freed while the
-        # test's catch is still unwinding to it (docs/filc-findings.md).
-        excludedTestPatterns = old.excludedTestPatterns ++ [
-          "decompress.decompressInvalidInputThrowsCompressionError"
-        ];
-      });
-      # Fil-C's libc has no vfork.
-      nix-util = nprev.nix-util.overrideAttrs (old: {
-        postPatch = (old.postPatch or "") + ''
-                    substituteInPlace $(find . -path '*/unix/processes.cc') \
-                      --replace-fail 'allowVfork ? vfork() : fork()' 'fork()'
-                    # Nor clone, which the namespace probes use: report no user,
-                    # mount or PID namespaces.
-                    substituteInPlace $(find . -path '*/linux/linux-namespaces.cc') \
-                      --replace-fail 'bool userNamespacesSupported()
-          {' 'bool userNamespacesSupported()
-          {
-              return false;' \
-                      --replace-fail 'bool mountAndPidNamespacesSupported()
-          {' 'bool mountAndPidNamespacesSupported()
-          {
-              return false;'
-        '';
-      });
-      nix-store =
-        (nprev.nix-store.override {
-          withSandboxShell = false;
-          withAWS = false;
-        }).overrideAttrs
-          (old: {
-            # Without seccomp, builds refuse to start unless filter-syscalls
-            # is off, so make that the default.
-            postPatch =
-              (old.postPatch or "")
-              + "\n"
-              + ''
-                f=$(find . -path '*/nix/store/local-settings.hh')
-                sed -i '/Setting<bool> filterSyscalls{/,/"filter-syscalls"/ s/^\( *\)true,$/\1false,/' "$f"
-                grep -A2 'Setting<bool> filterSyscalls{' "$f" | grep -q false,
-              ''
-              # Fil-C's loader ignores RUNPATH when dlopening a bare soname,
-              # so name libc's nss_dns by path. NixOS's nix.conf check fails
-              # on the warning otherwise.
-              + ''
-                substituteInPlace globals.cc --replace-fail \
-                  'dlopen(LIBNSS_DNS_SO,' \
-                  'dlopen("${final.stdenv.cc.libc}/lib/" LIBNSS_DNS_SO,'
-              '';
-            buildInputs = builtins.filter (
-              dep: !(pkgs.lib.hasInfix "libseccomp" (dep.name or ""))
-            ) old.buildInputs;
-            mesonFlags = map (
-              flag:
-              if flag == "-Dseccomp-sandboxing=enabled" then
-                "-Dseccomp-sandboxing=disabled"
-              else
-                flag
-            ) old.mesonFlags;
-          });
-    }
+    pkgs.lib.composeExtensions nixFilcOverrides (
+      nfinal: nprev: {
+        nix-expr =
+          (nprev.nix-expr.override { enableGC = false; }).overrideAttrs
+            (old: {
+              # The 64-bit Value layout packs tag bits into pointers held as
+              # integers, which drops their capabilities; use the plain one.
+              postPatch =
+                (old.postPatch or "")
+                + "\n"
+                + ''
+                  substituteInPlace $(find . -path '*/nix/expr/value.hh') --replace-fail \
+                    'useBitPackedValueStorage = (ptrSize == 8)' \
+                    'useBitPackedValueStorage = false && (ptrSize == 8)'
+                '';
+            });
+        # nativeBuildInputs' perl splices to the build platform's perl, which
+        # cannot load the Fil-C DBI; Fil-C programs run on the build machine.
+        nix-perl-bindings = nprev.nix-perl-bindings.overrideAttrs (old: {
+          nativeBuildInputs = map (
+            p: if (p.pname or "") == "perl" then final.perl else p
+          ) old.nativeBuildInputs;
+          nativeCheckInputs = [ final.perlPackages.Test2Harness ];
+          # sv_setref_pv stores the wrapper through Fil-C's XS pointer table;
+          # the typemap read it back with a cast.
+          postPatch =
+            (old.postPatch or "")
+            + "\n"
+            + ''
+              substituteInPlace $(find . -path '*/lib/Nix/Store.xs') --replace-fail \
+                '$var = ($type)SvIV((SV*)SvRV( $arg ));' \
+                '$var = ($type) zptrtable_decode(Perl_xsub_ptrtable, SvIV((SV*)SvRV( $arg )));'
+            '';
+        });
+      }
+    )
   );
   nix = final.nixComponents.nix-everything;
+
+  # Determinate Systems' fork; see ports/determinate-nix.nix.
+  determinateNixComponents = import ./determinate-nix.nix {
+    inherit pkgs final nixFilcOverrides;
+  };
+  determinate-nix = final.determinateNixComponents.nix-everything;
+
+  # Boehm GC's API on Fil-C's own collector (docs/boehm-on-fugc.md).
+  boehmgc = final.callPackage ./boehmgc { inherit (prev) boehmgc; };
 
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;
   };
+
+  # jemalloc's API on Fil-C's own allocator (docs/jemalloc-on-fugc.md).
+  jemalloc = final.callPackage ./jemalloc { inherit (prev) jemalloc; };
 }

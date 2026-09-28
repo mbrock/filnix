@@ -42,6 +42,40 @@ let
     gnuTarGz
     ;
 
+  # The build platform's guile, to compile Scheme modules to .go files
+  # (the bytecode is the same). As an input it would propagate its
+  # native libunistring and libgc onto the Fil-C link path, so only its
+  # programs are exposed.
+  guileForBuild = pkgs.runCommand "guile-for-build" { } ''
+    mkdir -p $out/bin
+    ln -s ${pkgs.buildPackages.guile_3_0}/bin/* $out/bin/
+  '';
+
+  # The Fil-C guile, for builds that must load Fil-C extensions or run
+  # tests with it at build time. It runs on the build machine.
+  filcGuileForBuild = pkgs.runCommand "filc-guile-for-build" { } ''
+    mkdir -p $out/bin
+    ln -s ${final.guile_3_0}/bin/* $out/bin/
+  '';
+
+  # Guile libraries whose tests load Fil-C code (their own extension or
+  # a C library through the FFI) must run them with the Fil-C guile;
+  # Nixpkgs' cross build would use the build platform's.
+  guileTestsOnFilc = use (old: {
+    preCheck = (old.preCheck or "") + ''
+      export PATH=${final.guile_3_0}/bin:$PATH
+      for f in pre-inst-env pre-inst-guile; do
+        if [ -f $f ]; then
+          substituteInPlace $f --replace-quiet \
+            ${pkgs.buildPackages.guile_3_0}/bin/guile ${final.guile_3_0}/bin/guile
+        fi
+      done
+    '';
+    checkFlags = (old.checkFlags or [ ]) ++ [
+      "GUILE=${final.guile_3_0}/bin/guile"
+    ];
+  });
+
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -86,6 +120,11 @@ in
       (patch ./ports/patch/boost-filc.patch)
       (patch ./patches/boost-context-feature.patch)
       (patch ./patches/boost-gdb-scripts.patch)
+      (patch ./patches/boost-function-vtable-tag.patch)
+      (patch ./patches/boost-test-execution-monitor.patch)
+      # io_context's executor keeps its context pointer and flag bits in a
+      # uintptr_t; the first use_service through a strand trapped.
+      (patch ./patches/boost-asio-io-context-executor-pointer.patch)
       (use (old: {
         # error_code keeps its source_location pointer in a uintptr_t with
         # a flag bit, which drops the capability, and what() then trapped
@@ -117,37 +156,139 @@ in
           $CXX -std=c++17 -I. ${./tests/boost-continuation.cpp} \
             -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -pthread -o continuation-check
           LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
+          $CXX -std=c++17 -I. ${./tests/boost-asio.cpp} -pthread -o asio-check
+          ./asio-check
           $CXX -std=c++17 -I. ${./tests/boost-error-code.cpp} -o error-code-check
           ./error-code-check
+          # Boost.Test, both as the compiled library and header-only. The
+          # module deliberately fails some cases, so compare its summary.
+          $CXX -std=c++17 -I. -DBOOST_TEST_DYN_LINK ${./tests/boost-test.cpp} \
+            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_unit_test_framework -o boost-test-check
+          sed 's|<boost/test/unit_test.hpp>|<boost/test/included/unit_test.hpp>|' \
+            ${./tests/boost-test.cpp} > boost-test-included.cpp
+          $CXX -std=c++17 -I. boost-test-included.cpp -o boost-test-included-check
+          for check in ./boost-test-check ./boost-test-included-check; do
+            status=0
+            LD_LIBRARY_PATH="$PWD/stage/lib" $check --report_level=short \
+              --color_output=no > boost-test.log 2>&1 || status=$?
+            cat boost-test.log
+            test "$status" = 201
+            sed -n '/^Test module/,$p' boost-test.log | sed '/^$/d' \
+              | diff -u ${./tests/boost-test.expected} -
+          done
           runHook postCheck
         '';
       })
     ];
   }
 
+  (
+    let
+      icuPort =
+        icu: patches:
+        for icu (
+          map patch patches
+          ++ [
+            (tool pkgs.autoreconfHook)
+            (tool pkgs.pkg-config)
+            (use {
+              # Nixpkgs unpacks into icu/source; the upstream tree has icu4c/source.
+              patchFlags = [ "-p3" ];
+              # ICU disables its upstream suite for cross builds; its "test" target
+              # is just a directory. Exercise the real target libraries explicitly.
+              doCheck = true;
+              checkPhase = ''
+                runHook preCheck
+                $CXX ${./tests/icu.cpp} -Icommon -Ii18n -Llib \
+                  -Wl,-rpath,"$PWD/lib" -licui18n -licuuc -licudata -o icu-check
+                ./icu-check
+                LD_LIBRARY_PATH="$PWD/lib" ./bin/uconv -V
+                runHook postCheck
+              '';
+            })
+          ]
+        );
+    in
+    {
+      icu76 = icuPort pkgs.icu76 [
+        ./ports/patch/icu-76.1.patch
+        ./patches/icu-cross-data.patch
+      ];
+      # The 78.3 refresh also applies cleanly to 77.1.
+      icu77 = icuPort pkgs.icu77 [
+        ./ports/patch/icu-78.3.patch
+        ./patches/icu-cross-data.patch
+      ];
+      # Node.js, Ladybird and onlyoffice pin ICU 78.
+      icu78 = icuPort pkgs.icu78 [
+        ./ports/patch/icu-78.3.patch
+        ./patches/icu-cross-data.patch
+        ./patches/icu-pointer-toc-alias-data.patch
+      ];
+    }
+  )
+
   {
-    icu76 = for pkgs.icu76 [
-      (patch ./ports/patch/icu-76.1.patch)
-      (patch ./patches/icu-cross-data.patch)
-      (tool pkgs.autoreconfHook)
-      (tool pkgs.pkg-config)
-      (use {
-        # Nixpkgs unpacks into icu/source; the upstream tree has icu4c/source.
-        patchFlags = [ "-p3" ];
-        # ICU disables its upstream suite for cross builds; its "test" target
-        # is just a directory. Exercise the real target libraries explicitly.
-        doCheck = true;
-        checkPhase = ''
-          runHook preCheck
-          $CXX ${./tests/icu.cpp} -Icommon -Ii18n -Llib \
-            -Wl,-rpath,"$PWD/lib" -licui18n -licuuc -licudata -o icu-check
-          ./icu-check
-          LD_LIBRARY_PATH="$PWD/lib" ./bin/uconv -V
-          runHook postCheck
-        '';
-      })
+    # `abseil-cpp` is an alias of this LTS branch, so both names get the port.
+    abseil-cpp_202601 = for pkgs.abseil-cpp_202601 [
+      # Upstream Fil-C's port: Status, Cord, Mutex and BitGenRef keep
+      # pointers in integer words, which drops their capabilities.
+      (patch ./ports/patch/abseil-cpp-20260107.1.patch)
+      # [[clang::annotate]] in the public headers crashed FilPizlonator in
+      # every consumer (protobuf, re2).
+      (patch ./patches/abseil-cpp-no-refactor-annotate.patch)
     ];
   }
+
+  (
+    let
+      protobufPort = sourcePatch: [
+        # Tagged pointers in integer words, byte-wise swaps and inline
+        # assembly in the C++ runtime (see the patch headers).
+        (patch sourcePatch)
+        # The Fil-C driver rewrites version scripts itself and cannot parse
+        # `extern "C++" { ... }` blocks, so linking libprotobuf aborted.
+        # The maps only hide non-protobuf symbols; skip them.
+        (addCMakeFlag "-Dprotobuf_HAVE_LD_VERSION_SCRIPT=OFF")
+        (use (old: {
+          # Fil-C keeps a musttail call only when every pointer argument is
+          # the caller's own argument. The table-driven parser advances
+          # `ptr`, so field-to-field tail calls would add a frame per field;
+          # PROTOBUF_TAILCALL false makes each field return to the parse
+          # loop. Runs after Nixpkgs rewrites this #if for older versions.
+          postPatch = (old.postPatch or "") + ''
+            sed -i 's/^\(#if \w*(clang::musttail)\)/\1 \&\& !defined(__FILC__)/' \
+              src/google/protobuf/port_def.inc
+            grep -q '(clang::musttail) && !defined(__FILC__)' \
+              src/google/protobuf/port_def.inc
+          '';
+        }))
+      ];
+      randomOrderingTest = [
+        (use (old: {
+          # Map salts its integer hash with the table address and rotates the
+          # key by its low 6 bits; Fil-C's allocator returns tables with the
+          # same low bits, so small maps iterate in a fixed order. Only this
+          # statistical check of order randomization fails (4609 others pass
+          # in 34.1); iteration order is unspecified either way.
+          preCheck = (old.preCheck or "") + ''
+            export GTEST_FILTER=-MapImplTest.RandomOrdering
+          '';
+        }))
+      ];
+    in
+    {
+      protobuf_34 = for pkgs.protobuf_34 (
+        protobufPort ./patches/protobuf-34.1-filc.patch ++ randomOrderingTest
+      );
+      protobuf_33 = for pkgs.protobuf_33 (
+        protobufPort ./patches/protobuf-33.6-filc.patch ++ randomOrderingTest
+      );
+      protobuf_21 = for pkgs.protobuf_21 (
+        protobufPort ./patches/protobuf-21.12-filc.patch
+      );
+    }
+  )
 
   {
     QuadProgpp = for pkgs.QuadProgpp [
@@ -163,6 +304,41 @@ in
         substituteInPlace tests/tests.c --replace-fail SIGABRT SIGTRAP
       '';
     }))
+  ])
+
+  (for pkgs.ada [
+    # CMake's env emulator must not replace ctest's target path lookup.
+    (patch ./patches/ada-cross-emulator-test.patch)
+  ])
+
+  (for pkgs.SDL_compat [
+    # Keep the symbol loader out of line: SDL12_compat.c compiles in 30 s,
+    # not 873 s (see the patch).
+    (patch ./patches/sdl12-symbol-loader.patch)
+    # sdl12-compat dlopens SDL2 by bare soname and relies on its RUNPATH,
+    # which Fil-C's loader ignores for dlopen (see docs/filc-findings.md).
+    # Name the libraries Nix selected, as the sdl2-compat port does for SDL3.
+    # (The testver check also needs sdl2-compat's -Bsymbolic-functions.)
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/SDL12_compat.c \
+          --replace-fail '"libSDL2-2.0.so.0"' '"${pkgs.lib.getLib final.sdl2-compat}/lib/libSDL2-2.0.so.0"' \
+          --replace-fail '"libX11.so.6"' '"${pkgs.lib.getLib final.libx11}/lib/libX11.so.6"'
+      '';
+    }))
+  ])
+
+  (for pkgs.smpeg [
+    # GTK 2 only serves the gtv demo player; SDL_mixer needs just the
+    # library, so keep GTK 2 out of its closure.
+    (use (old: {
+      buildInputs = builtins.filter (
+        dep: !(pkgs.lib.hasPrefix "gtk+" (dep.name or ""))
+      ) old.buildInputs;
+    }))
+    (configure "--disable-gtk-player")
+    # Nixpkgs links everything with -lX11, which GTK used to provide.
+    (link final.libx11)
   ])
 
   (for pkgs.oniguruma [
@@ -214,9 +390,107 @@ in
     (patch ./ports/patch/expat-2.7.1.patch)
   ])
 
+  (for pkgs.nspr [
+    # NSPR's x86_64 atomics are hand-written assembly (os_Linux_x86_64.s),
+    # which Fil-C cannot assemble or check. Use the __sync builtins, as
+    # NSPR already does on loongarch and or1k, and build no .s file.
+    (patch ./patches/nspr-filc-atomics.patch)
+    (addMakeFlag "PR_MD_ASFILES=")
+    # PR_Accept(fd, NULL, ...) passed a length pointer with a null address,
+    # which Linux ignores but Fil-C's accept rejects; pass no length.
+    (patch ./patches/nspr-null-peer-address.patch)
+    # PLArena keeps its addresses as integers and PL_ARENA_ALLOCATE cast
+    # them back to pointers, which have no capability under Fil-C; NSS's
+    # first arena allocation trapped. Derive them from the arena header.
+    (patch ./patches/nspr-arena-pointer-provenance.patch)
+    # Nixpkgs runs no tests; NSPR's own suite covers the atomics, threads
+    # and loopback I/O (about 100 programs, a few minutes).
+    (use {
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        make -C pr/tests
+        (cd pr/tests && ./runtests.sh "$PWD/../../dist")
+        runHook postCheck
+      '';
+    })
+  ])
+
+  (for pkgs.nss [
+    # The same integer-to-pointer cast as NSPR's arenas, in NSS's
+    # arena-zeroing code.
+    (patch ./patches/nss-arena-pointer-provenance.patch)
+    # freebl's cpuid asm (cache line size for RSA) sets flags without a
+    # "cc" clobber, which Fil-C rejects when it runs.
+    (patch ./patches/nss-cpuid-cc-clobber.patch)
+    # Saved digest state put the context at offset 12, so SHA-256's
+    # function pointers lost their capabilities on the way through
+    # PK11_CloneContext and every TLS 1.3 handshake trapped. Pad the header.
+    (patch ./patches/nss-softoken-state-alignment.patch)
+    # The TLS RSA key exchange swaps the real and fake premaster keys with
+    # a constant-time XOR mask on the pointers, leaving bare integers.
+    (patch ./patches/nss-ssl-cswap-symkey.patch)
+    (use (old: {
+      # NSS keys its x86-64 assembly and intrinsics (AES-NI, PCLMUL, SHA-NI,
+      # AVX2 HACL*, the amd64 bignum and arcfour assembly) on
+      # target_arch=="x64". Build for a target NSS does not know, which
+      # selects the portable C code, and keep 64-bit words and __int128.
+      buildPhase =
+        builtins.replaceStrings
+          [ "--target x64" ]
+          [ "--target filc -Dhave_int128_support=1" ]
+          old.buildPhase;
+      # pk11_gtest and freebl_gtest initialize large std::vector test-vector
+      # tables in one static constructor, which takes Fil-C's pipeline over
+      # 20 minutes per file (SROA on the instrumented function). Skip them.
+      postPatch = old.postPatch + ''
+        sed -i -e '/gtests\/pk11_gtest\//d' -e '/gtests\/freebl_gtest\//d' nss.gyp
+        # selfserv listens on the preferred loopback address for
+        # "localhost" (::1 where IPv6 is up), but ssl.sh forced tstclnt to
+        # IPv4 and could never connect; let tstclnt pick the same address.
+        sed -i 's/tstclnt -4 /tstclnt /' tests/ssl/ssl.sh
+        # dbtests requires the bigdb key dump to finish in under 5 seconds
+        # of wall time; under Fil-C on a loaded builder it flakes. Keep the
+        # check but allow a minute.
+        sed -i 's/test ''${TIMEARRAY\[0\]} -lt 5/test ''${TIMEARRAY[0]} -lt 60/' \
+          tests/dbtests/dbtests.sh
+        grep -q 'TIMEARRAY\[0\]} -lt 60' tests/dbtests/dbtests.sh
+      '';
+      # Run a subset of NSS's QA suites against the build tree, before
+      # installPhase rearranges the output: ciphers, certutil and the cert
+      # database, SDR, CRMF, S/MIME, EC, and TLS coverage and client auth.
+      # tools.sh (pk12util's cipher matrix, ~800 checks) passed locally but
+      # takes over half an hour under Fil-C.
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        (
+          cd tests
+          export HOST=localhost DOMSUF=localdomain USE_IP=TRUE IP_ADDRESS=localhost
+          export DIST=$(dirname $out) OBJDIR=$(basename $out)
+          export OS_ARCH=Linux DLL_PREFIX=lib DLL_SUFFIX=so BUILT_OPT=1 USE_64=1
+          export TESTDIR=$TMPDIR/nss-tests NSS_CYCLES=standard
+          export NSS_TESTS="cipher lowhash cert dbtests sdr crmf smime ec ssl"
+          export NSS_SSL_TESTS=normal_normal NSS_SSL_RUN="cov auth"
+          ./all.sh > $TMPDIR/nss-tests.log 2>&1 || true
+        )
+        sed -n '/^Tests summary/,$p' $TMPDIR/nss-tests.log
+        if ! grep -q '^Failed: *0$' $TMPDIR/nss-tests.log; then
+          grep -E 'FAILED|Failed' $TMPDIR/nss-tests.log | head -100
+          exit 1
+        fi
+        runHook postCheck
+      '';
+    }))
+  ])
+
   (for pkgs.libffi [
     (pin "3.8.0" "sha256-faPi2aFx6woDj1kuytP/K7JVDzSW2Hs7Ka0M9EMMDbQ=")
     (patch ./ports/patch/libffi-3.8.0.patch)
+    # Closure handlers may write to their by-value arguments, which the
+    # runtime passes in the read-only zargs() buffer (cffi's
+    # test_callback_large_struct).
+    (patch ./patches/libffi-closure-writable-args.patch)
     (tool pkgs.autoreconfHook)
     (configure "--disable-static")
     (configure "--disable-exec-static-tramp")
@@ -260,6 +534,23 @@ in
     (skipCheck "one test fails")
   ])
 
+  # db and db5 are aliases of db53; override it so all three get the port.
+  {
+    db53 = for pkgs.db53 [
+      # Private environments stored heap pointers in integer offsets and
+      # mutex IDs; give them the offset-based shared-region layout.
+      (patch ./patches/db-private-regions.patch)
+      # db_load without -h opens a private environment.
+      (use {
+        doInstallCheck = true;
+        installCheckPhase = ''
+          printf 'key\nvalue\n' | "$bin/bin/db_load" -T -t btree t.db
+          "$bin/bin/db_dump" -p t.db | grep -qx ' value'
+        '';
+      })
+    ];
+  }
+
   (for pkgs.nettle [
     (removeConfigureFlag "--enable-fat")
     (configure "--disable-assembler")
@@ -293,6 +584,27 @@ in
       overrideArgs = { };
     };
   }
+
+  (for pkgs.pth [
+    # configure's makecontext probe passes a void (*)(void *) to
+    # makecontext, which Clang rejects, so pth fell back to setjmp/longjmp
+    # with a hand-patched jmp_buf stack pointer (sjljlx), which does not
+    # exist for this libc. Fil-C implements makecontext/swapcontext, so
+    # use pth's standard SUSv2 ucontext backend.
+    (configure "--with-mctx-mth=mcsc")
+    (configure "--with-mctx-dsp=sc")
+    (configure "--with-mctx-stk=mc")
+    (use {
+      doCheck = true;
+      # `make test` ignores test_std's exit status.
+      checkPhase = ''
+        runHook preCheck
+        make test_std
+        ./test_std
+        runHook postCheck
+      '';
+    })
+  ])
 
   # ━━━ Core Utilities ━━━
 
@@ -349,6 +661,241 @@ in
   (for pkgs.gawk [
     (skipCheck "locale tests fail")
   ])
+
+  (for pkgs.a2ps [
+    (use (old: {
+      # gnulib's old obstack.h aligns pointers relative to (char *) 0,
+      # which drops their capabilities; align relative to the chunk.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace lib/obstack.h --replace-fail \
+          '__BPTR_ALIGN (sizeof (ptrdiff_t) < sizeof (void *) ? (B) : (char *) 0,' \
+          '__BPTR_ALIGN ((B),'
+        substituteInPlace tests/backup.tst tests/styles.tst \
+          --replace-quiet /bin/rm rm
+      '';
+      doCheck = true;
+      preCheck = "patchShebangs contrib tests";
+    }))
+  ])
+
+  {
+    # Pointers that Guile keeps as scm_t_bits words, weak tables on
+    # FUGC, continuations without C stack copying: see docs/guile.md.
+    guile_3_0 = for pkgs.guile_3_0 [
+      (patch ./ports/patch/guile-3.0.11.patch)
+      # Nixpkgs' cross-build fix is already in 3.0.11.
+      (skipPatch "c117f8edc471d3362043d88959d73c6a37e7e1e9")
+      # Guile's JIT emits machine code.
+      (configure "--disable-jit")
+      (use (old: {
+        depsBuildBuild = [ pkgs.stdenv.cc ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [ guileForBuild ];
+        # A smoke test of the installed interpreter. The test suite is
+        # run by hand (docs/guile.md); like Nixpkgs, the build skips it.
+        doInstallCheck = true;
+        installCheckPhase = ''
+          runHook preInstallCheck
+          $out/bin/guile -c '
+            (use-modules (ice-9 match) (srfi srfi-1) (ice-9 format))
+            (define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
+            (unless (= (fib 20) 6765) (exit 1))
+            (unless (equal? (match (list 1 2 3) ((a . b) b)) (list 2 3)) (exit 1))
+            (gc)
+            (unless (= (fold + 0 (iota 100000)) 4999950000) (exit 1))
+            (unless (string=? (format #f "~a-~s" 1 "x") "1-\"x\"") (exit 1))
+            (unless (= 3 (call/cc (lambda (k) (+ 1 (k 3))))) (exit 1))
+            (display "guile ok\n")'
+          runHook postInstallCheck
+        '';
+      }))
+    ];
+
+    # Nixpkgs lists guile only as a host input, so configure finds no
+    # guile to compile the modules with. The build platform's guile
+    # cannot load Fibers' Fil-C extension, which configure checks for,
+    # so use the Fil-C guile itself: it runs on the build machine.
+    gnu-shepherd = for pkgs.gnu-shepherd [
+      (use (old: {
+        nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
+      }))
+    ];
+
+    # Pure Guile. As with gnu-shepherd, configure needs a guile, and its
+    # tests run with the Fil-C one.
+    lilypond = for pkgs.lilypond [
+      # The default TeX is built from the host package set, since it is
+      # a derived value that splicing does not reach; it only runs at
+      # build time.
+      (arg {
+        # WIP: the Fil-C ghostscript-with-X fails configure (its -lz check
+        # links the build platform's zlib), so the lilypond wrapper puts
+        # the build platform's gs on PATH for PDF output.
+        ghostscript = pkgs.buildPackages.ghostscript;
+        tex = pkgs.buildPackages.texliveSmall.withPackages (
+          ps: with ps; [
+            epsf
+            fontinst
+            fontware
+            lh
+            metafont
+          ]
+        );
+      })
+      (use (old: {
+        # Nixpkgs lists guile only as a build tool. LilyPond links
+        # libguile, and the build runs the Fil-C lilypond (it runs on
+        # the build machine) to compile its Scheme files.
+        nativeBuildInputs =
+          builtins.filter (
+            d: !(pkgs.lib.hasPrefix "guile" (d.name or ""))
+          ) old.nativeBuildInputs
+          ++ [ guileForBuild ];
+        buildInputs = old.buildInputs ++ [ final.guile_3_0 ];
+        # configure sets CROSS=yes, which drops the rules that run the
+        # programs (help2man, lilypond itself) but not the targets that
+        # need them. Fil-C programs run on the build machine.
+        makeFlags = (old.makeFlags or [ ]) ++ [ "CROSS=no" ];
+        # handle_broken_dependencies () replaces the system's
+        # all-elements Grob_array, so the old one can be collected and
+        # deleted while this function still reads it through a reference
+        # (a use-after-free that Fil-C stops in 19 regression tests).
+        # Keep its SCM alive until the end.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace lily/system.cc \
+            --replace-fail \
+              'std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
+              'SCM all_elts_scm = get_object (this, "all-elements");
+          std::vector<Grob *> &all_elts = all_elements ()->array_reference ();' \
+            --replace-fail \
+              'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");' \
+              'debug_output (_f ("Element count %zu", count + all_elts.size ()) + "\n");
+          scm_remember_upto_here_1 (all_elts_scm);'
+        '';
+      }))
+    ];
+
+    guile-zlib = for pkgs.guile-zlib [ guileTestsOnFilc ];
+    guile-gcrypt = for pkgs.guile-gcrypt [
+      # Otherwise configure finds the build platform's libgcrypt-config
+      # and records that libgcrypt for the FFI.
+      (configure "--with-libgcrypt-prefix=${final.libgcrypt.dev}")
+      (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
+      guileTestsOnFilc
+    ];
+    guile-lzlib = for pkgs.guile-lzlib [
+      # configure finds liblz by running ldd on a test program, which
+      # does not work for a Fil-C program.
+      (configure "guile_cv_liblz_libdir=${final.lzlib.out}/lib/liblz.so")
+      guileTestsOnFilc
+    ];
+    guile-zstd = for pkgs.guile-zstd [ guileTestsOnFilc ];
+    guile-lzma = for pkgs.guile-lzma [ guileTestsOnFilc ];
+    guile-sqlite3 = for pkgs.guile-sqlite3 [ guileTestsOnFilc ];
+    guile-git = for pkgs.guile-git [
+      guileTestsOnFilc
+      # Connecting to a socket that never accepts times out with a
+      # GITERR_OS error instead of GITERR_NET with the Fil-C libgit2.
+      (use (old: {
+        preCheck = (old.preCheck or "") + ''
+          substituteInPlace tests/clone.scm --replace-fail \
+            '(test-equal "clone beyond timeout"' \
+            '(test-skip 1) (test-equal "clone beyond timeout"'
+        '';
+      }))
+    ];
+    guile-avahi = for pkgs.guile-avahi [
+      # Clang reports an unused static function that GCC does not.
+      (addCFlag "-Wno-error=unused-function")
+      guileTestsOnFilc
+    ];
+
+    guix = for pkgs.guix [
+      # configure takes libgcrypt from the build platform's
+      # libgcrypt-config otherwise; the path also ends up in
+      # guix/config.scm for the FFI.
+      (configure "--with-libgcrypt-prefix=${final.libgcrypt.dev}")
+      (configure "--with-libgcrypt-libdir=${pkgs.lib.getLib final.libgcrypt}/lib")
+      (use (old: {
+        # graphviz (for documentation figures) fails to build natively at
+        # this Nixpkgs pin (its X variant installs no vimdot), so use the
+        # variant without X. slirp4netns (for container networking) needs
+        # libseccomp, and the Fil-C runtime does not support the seccomp
+        # system call.
+        nativeBuildInputs =
+          builtins.filter (
+            d:
+            !(builtins.elem (d.pname or "") [
+              "graphviz"
+              "slirp4netns"
+            ])
+          ) old.nativeBuildInputs
+          ++ [ pkgs.buildPackages.graphviz-nox ];
+        propagatedBuildInputs = builtins.filter (
+          d: (d.pname or "") != "slirp4netns"
+        ) old.propagatedBuildInputs;
+        # The build-time tools (guile, makeinfo for the translated
+        # manuals) need a UTF-8 locale; the native build gets it from
+        # glibcLocales' hook, which does not apply here.
+        LOCALE_ARCHIVE = "${pkgs.buildPackages.glibcLocales}/lib/locale/locale-archive";
+        LC_ALL = "C.UTF-8";
+        # The wrapper records $GUILE_LOAD_PATH, which also holds the build
+        # platform's Guile libraries (used to compile the modules); their
+        # FFI bindings point at native libraries, which a Fil-C process
+        # cannot load. Keep only the host's.
+        preInstall = (old.preInstall or "") + ''
+          hostOnly() { printf %s "$1" | tr : '\n' | grep -- -gnufilc0- | paste -sd: -; }
+          export GUILE_LOAD_PATH=$(hostOnly "$GUILE_LOAD_PATH")
+          export GUILE_LOAD_COMPILED_PATH=$(hostOnly "$GUILE_LOAD_COMPILED_PATH")
+        '';
+      }))
+    ];
+
+    mcron = for pkgs.mcron [
+      (use (old: {
+        nativeBuildInputs = old.nativeBuildInputs ++ [ filcGuileForBuild ];
+      }))
+    ];
+
+    mailutils = for pkgs.mailutils [
+      # Configure finds GNU gss unusable for Fil-C.
+      (removeConfigureFlag "--with-gssapi")
+      (use (old: {
+        # guile-config runs an unprefixed pkg-config; give it the host's,
+        # so that it reports the Fil-C guile.
+        nativeBuildInputs = old.nativeBuildInputs ++ [
+          guileForBuild
+          (pkgs.writeShellScriptBin "pkg-config" ''exec "$PKG_CONFIG" "$@"'')
+        ];
+        # The Guile binding tests load the Fil-C libmu_scm, so they need
+        # the Fil-C guile (it runs on the build machine).
+        preCheck = (old.preCheck or "") + ''
+          export PATH=${final.guile_3_0}/bin:$PATH
+        '';
+        # Out-of-bounds reads that Fil-C stops: imap4d's LIST reads
+        # ref[-1] for an empty reference; in test helpers, a memmove from
+        # the wrong offset, a loop that tests the output pointer instead
+        # of the input, and argv[i][len - 1] on an empty argument.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace imap4d/list.c \
+            --replace-fail "if (ref[refinfo.reflen-1] != pfx->delim" \
+                           "if (refinfo.reflen > 0 && ref[refinfo.reflen-1] != pfx->delim"
+          # Its word-wrapping stream kept writing after a failed flush
+          # (EPIPE when mail --version is piped into sed, which quits
+          # after the first line), past the end of its line buffer.
+          substituteInPlace libmailutils/stream/wordwrap.c --replace-fail \
+            "	_wordwrap_flush_line (str, iptr[n]);" \
+            "	{ int rc = _wordwrap_flush_line (str, iptr[n]); if (rc) return rc; }"
+          substituteInPlace testsuite/cwdrepl.c \
+            --replace-fail 'size_t rest = n - start;' 'size_t rest = n - off;'
+          substituteInPlace libmailutils/tests/encode2047.c \
+            --replace-fail 'for (p = buf; *p;)' 'for (p = buf; *buf;)'
+          substituteInPlace libmailutils/tests/tesh.c \
+            --replace-fail "if (argv[i][len - 1] == ';')" \
+                           "if (len > 0 && argv[i][len - 1] == ';')"
+        '';
+      }))
+    ];
+  }
 
   (for pkgs.gnugrep [
     (pin "3.11" "sha256-HbKu3eidDepCsW2VKPiUyNFdrk4ZC1muzHj1qVEnbqs=")
@@ -605,6 +1152,20 @@ in
     (patch ./patches/libcamera-no-dynamic.patch)
   ])
 
+  (for pkgs.polkit [
+    # polkit's hand-written get_type functions keep the GType in a
+    # volatile gsize, but GType is a pointer in Fil-C's GLib; use a GType
+    # with g_once_init_{enter,leave}_pointer (GLib 2.80).
+    (patch ./patches/polkit-pointer-gtype.patch)
+    # The runaway-script test needs asynchronous pthread_cancel, which
+    # Fil-C does not deliver (SIGCANCEL is reserved by the runtime); it
+    # hung forever. Under Fil-C a runaway rules script is not killed.
+    (patch ./patches/polkit-filc-no-runaway-test.patch)
+    # gtk-doc generates an unported GType scanner; GIR generation stays on.
+    (removeMesonFlag "-Dgtk_doc=true")
+    (addMesonFlag "-Dgtk_doc=false")
+  ])
+
   (for pkgs.libgudev [
     # The tests preload umockdev, whose Vala-generated code assumes integer
     # GTypes, and LD_PRELOAD interposition does not apply to Fil-C symbols.
@@ -647,9 +1208,6 @@ in
   ])
 
   (for pkgs.bluez [
-    # The installed test scripts need dbus-python, whose dbus-glib assumes
-    # integer GTypes.
-    (arg { installTests = false; })
     # BlueZ builds against the copy of ELL's headers in its tarball.
     (patch ./patches/ell-no-debug-section.patch)
     (patch ./patches/bluez-no-debug-section.patch)
@@ -657,13 +1215,49 @@ in
     # at a misaligned offset where Fil-C cannot keep a capability.
     (removeConfigureFlag "--enable-midi")
     (configure "--disable-midi")
+    (use (old: {
+      # The installed test scripts run on Fil-C Python with its dbus-python
+      # and PyGObject. The build Python's wrapPython would give them the
+      # build interpreter and search its own, empty, site-packages layout.
+      nativeBuildInputs = map (
+        p:
+        if pkgs.lib.hasPrefix "wrap-python-hook" (p.name or "") then
+          final.python3Packages.wrapPython
+        else
+          p
+      ) old.nativeBuildInputs;
+    }))
   ])
 
   (for pkgs.liburcu [
     # Use compiler atomics instead of the x86 inline assembly ones.
     (configure "--enable-compiler-atomic-builtins")
-    # The regression tests use membarrier(2), which the runtime rejects.
-    (skipCheck "membarrier")
+    # The x86 header still used inline-assembly barriers ("lock; addl"),
+    # which Fil-C rejects when they run, and the memb flavor probed
+    # membarrier(2), which Fil-C refuses by stopping the program. Use the
+    # generic builtin barriers and the existing no-membarrier fallback.
+    # With that, the unit tests (674) pass and run again.
+    (patch ./patches/liburcu-filc.patch)
+  ])
+
+  (for pkgs.lttng-ust [
+    # With liburcu's compiler-builtin atomics, uatomic_or on the tagged
+    # node->next pointer does not compile; set the flag with a CAS loop.
+    (patch ./patches/lttng-ust-rculfhash-removed-flag.patch)
+    # Fil-C has no dl_iterate_phdr, which the base-address statedump
+    # uses to list loaded objects; skip that statedump.
+    (patch ./patches/lttng-ust-no-dl-iterate-phdr.patch)
+    # liblttng-ust-common's constructor probed membarrier(2), which Fil-C
+    # refuses by stopping the program; use the existing smp_mb fallback.
+    (patch ./patches/lttng-ust-no-membarrier.patch)
+    # Fil-C has no __start_/__stop_ section symbols, and the weak
+    # references in <lttng/tracepoint.h> crashed every instrumented
+    # program at startup; register each tracepoint from a constructor.
+    (patch ./patches/lttng-ust-tracepoint-ctor-registration.patch)
+    # libnuma's numa_preferred() trips a bounds check in Fil-C's
+    # get_mempolicy wrapper (docs/filc-findings.md), which the ring buffer
+    # calls for every channel.
+    (configure "--disable-numa")
   ])
 
   (for pkgs.mbedtls [
@@ -677,6 +1271,33 @@ in
           for option in MBEDTLS_AESNI_C MBEDTLS_PADLOCK_C MBEDTLS_HAVE_ASM; do
             ${pkgs.python3}/bin/python3 scripts/config.py unset $option
           done
+        '';
+    }))
+  ])
+
+  (for pkgs.libpq [
+    # Nixpkgs uses -flto with Clang to drop unused pg_config paths (and the
+    # dev-output references they carry). Fil-C has no LTO linker plugin, so
+    # garbage-collect sections at link time instead, as with GCC.
+    (use (old: {
+      env = old.env // {
+        CFLAGS = "-fdata-sections -ffunction-sections -Wl,--gc-sections";
+      };
+    }))
+    # Fil-C keeps each function's name and source file for its stack traces
+    # outside the debug sections. Inlined OpenSSL header functions thus name
+    # openssl-dev headers, which outputChecks forbids in $out.
+    (tool pkgs.removeReferencesTo)
+    (use (old: {
+      postInstall =
+        old.postInstall
+        + "\n"
+        + ''
+          remove-references-to ${
+            pkgs.lib.concatMapStringsSep " " (d: "-t ${pkgs.lib.getDev d}") (
+              builtins.filter (d: d ? dev) old.buildInputs
+            )
+          } $out/lib/*.so*
         '';
     }))
   ])
@@ -807,6 +1428,22 @@ in
 
   # ━━━ Security ━━━
 
+  (for pkgs.libseccomp [
+    # seccomp_init probed the seccomp() syscall (317), which Fil-C refuses
+    # by stopping the program, so every test died (rc=133). Report the
+    # syscall as missing; filters still load through prctl(PR_SET_SECCOMP),
+    # which Fil-C passes through, but without TSYNC or user notification.
+    (patch ./patches/libseccomp-filc-no-seccomp-syscall.patch)
+    # The regression suite only simulates filters; load one for real.
+    (use (old: {
+      postCheck = (old.postCheck or "") + ''
+        $CC -Iinclude ${./tests/libseccomp-prctl-filter.c} \
+          -Lsrc/.libs -Wl,-rpath,"$PWD/src/.libs" -lseccomp -o prctl-filter
+        ./prctl-filter
+      '';
+    }))
+  ])
+
   (for pkgs.libsepol [
     (patch ./ports/patch/libsepol-3.9.patch)
   ])
@@ -823,6 +1460,9 @@ in
 
   (for pkgs.libgcrypt [
     (configure "--disable-asm")
+    # --disable-asm leaves mpi/longlong.h's inline asm (for example
+    # bsrq in _gcry_mpi_get_nbits, used by RSA), which Fil-C traps on.
+    (addCFlag "-DNO_ASM")
     (configure "gcry_cv_gcc_amd64_platform_as_ok=no")
     (use { configurePlatforms = [ "host" ]; })
     (use {
@@ -895,12 +1535,44 @@ in
     }))
   ])
 
+  # pname is cyrus-sasl, so name the attribute explicitly.
+  {
+    cyrus_sasl = for pkgs.cyrus_sasl [
+      # Upstream backport: configure never defined HAVE_TIME_H, so time()
+      # and clock() were implicitly declared; Clang rejects that (GCC and
+      # nixpkgs only warn), and the implicit int return truncates time_t.
+      (patch ./patches/cyrus-sasl-time-h.patch)
+    ];
+  }
+
   (for pkgs.cryptsetup [
     (patch ./patches/cryptsetup-safe-alloc-mlock.patch)
   ])
 
+  # mariadb-connector-c and libmysqlclient are aliases of the 3.3 series.
+  {
+    mariadb-connector-c_3_3 = for pkgs.mariadb-connector-c_3_3 [
+      # Its export map is an implicit linker script with VERSION blocks and
+      # unmangled symbol aliases; gold rejects it and only the driver's
+      # --version-script handling knows Fil-C's symbol names.
+      (patch ./patches/mariadb-connector-c-version-script.patch)
+    ];
+  }
+
   (for pkgs.p11-kit [
     (skipTests "1 failure")
+  ])
+
+  (for pkgs.libtirpc [
+    # The source still uses K&R function definitions, which C23 removed.
+    # Autoreconf'd configure asks for -std=gnu23 (GCC accepts them there
+    # anyway; Clang does not), so keep Clang's gnu17 default.
+    (configure "ac_cv_prog_cc_c23=no")
+  ])
+
+  (for pkgs.rpcbind [
+    # Same K&R definitions as libtirpc (rpcinfo.c).
+    (configure "ac_cv_prog_cc_c23=no")
   ])
 
   (for pkgs.duktape [
@@ -958,7 +1630,9 @@ in
     (use (old: {
       mesonFlags =
         builtins.filter (f: !(pkgs.lib.hasPrefix "-Degl=" f)) old.mesonFlags
-        ++ [ "-Degl=yes" ];
+        ++ [
+          "-Degl=yes"
+        ];
       propagatedBuildInputs = pkgs.lib.unique (
         old.propagatedBuildInputs ++ [ final.libGL ]
       );
@@ -1199,10 +1873,26 @@ in
     # ALSA's .symver module assembly is not part of the Fil-C ABI.
     (configure "--without-versioned")
     (patch ./patches/alsa-link-warning.patch)
+    # snd_seq_ev_ext and snd_seq_ev_quote are packed, which puts their
+    # pointers at misaligned offsets. Fil-C cannot keep a capability there
+    # (a constant initializer used to crash the compiler, and the compiler
+    # workaround was unsound), so drop `packed` under Fil-C. That grows
+    # snd_seq_event_t from 28 to 32 bytes, so the ALSA sequencer (MIDI via
+    # /dev/snd/seq) no longer matches the kernel; PCM audio is unaffected.
+    (patch ./patches/alsa-seq-unpacked-pointers.patch)
+  ])
+
+  (for pkgs.spandsp [
+    # Nixpkgs passes CC=${targetPrefix}cc, which is just "cc" for Fil-C, and
+    # its depsBuildBuild puts the build GCC's cc first on PATH, so the
+    # library came out native (and PipeWire's mSBC codec failed to link).
+    (removeMakeFlag "CC=cc")
+    (addMakeFlag "CC=${prev.stdenv.cc}/bin/cc")
   ])
 
   (for pkgs.pipewire [
-    # The source fixes from the core profile (packages/pipewire-core.nix).
+    # Linker-section registration, pointer capabilities and test runtime
+    # fixes; see docs/shared-library-unblocks.md.
     (patch ./patches/pipewire-log-topics.patch)
     (patch ./patches/pipewire-test-suites.patch)
     (patch ./patches/pipewire-pulse-modules.patch)
@@ -1210,6 +1900,36 @@ in
     (patch ./patches/pipewire-pointer-arithmetic.patch)
     (patch ./patches/pipewire-pointer-properties.patch)
     (patch ./patches/pipewire-test-runtime.patch)
+    (use (old: {
+      # Valgrind's client requests are inline assembly on pointers, which
+      # Fil-C rejects at run time; every pwtest suite died on them.
+      env = (old.env or { }) // {
+        NIX_CFLAGS_COMPILE = "-DNVALGRIND";
+      };
+      # The Fil-C cc-wrapper shares the build GCC's role infix
+      # (x86_64_unknown_linux_gnu), so with a build compiler in
+      # depsBuildBuild it also reads the *_FOR_BUILD flags. The native GLib
+      # (for gdbus-codegen) then landed in RUNPATH ahead of the Fil-C GLib,
+      # and the modules using GLib failed to dlopen. Only the build GCC's
+      # compiler checks use these flags here.
+      preConfigure = (old.preConfigure or "") + ''
+        unset NIX_LDFLAGS_FOR_BUILD NIX_CFLAGS_COMPILE_FOR_BUILD
+      '';
+      preCheck = (old.preCheck or "") + ''
+        export FUGC_THREADS="$NIX_BUILD_CORES"
+        # Two independently loaded modules share the pointer-string table
+        # (pipewire-pointer-properties.patch) under concurrent use.
+        for module in a b; do
+          $CC -shared -fPIC -I../spa/include \
+            ${./tests/pipewire-pointer-module.c} -Lspa -lspa-filc-pointers \
+            -Wl,-rpath,"$PWD/spa" -o "pointer-$module.so"
+        done
+        $CC -O2 ${./tests/pipewire-pointer-properties.c} -ldl -pthread \
+          -o pointer-check
+        timeout 30 ./pointer-check
+        mesonCheckFlagsArray+=(--num-processes "$NIX_BUILD_CORES")
+      '';
+    }))
     # The GStreamer elements register GTypes through gsize once-inits.
     (removeMesonFlag "-Dgstreamer")
     (addMesonFlag "-Dgstreamer=disabled")
@@ -1280,6 +2000,13 @@ in
     (arg { gnutls = final.openssl; })
   ])
 
+  {
+    # Its pname is ghostscript-with-X, so name the attribute explicitly.
+    ghostscript = for pkgs.ghostscript [
+      (patch ./patches/ghostscript-filc.patch)
+    ];
+  }
+
   (for pkgs.dbus [
     (arg { systemdMinimal = final.systemdLibs; })
     (arg { libapparmor = final.hello; })
@@ -1290,6 +2017,21 @@ in
 
   # ━━━ Development Tools & Libraries ━━━
 
+  (for pkgs.fmt [
+    # Works around Fil-C's clang passing small records that contain unions
+    # as integers, which dropped the pointers in one-argument
+    # make_format_args stores (wide and custom-type formatting).
+    (patch ./patches/fmt-arg-store-in-memory.patch)
+    (use {
+      # float_test.isnan: the Fil-C runtime leaves FE_INEXACT set at start.
+      # util_test.format_system_error: allocating SIZE_MAX / 2 bytes is a
+      # Fil-C safety panic, not std::bad_alloc. See docs/filc-findings.md.
+      preCheck = ''
+        export GTEST_FILTER=-float_test.isnan:util_test.format_system_error
+      '';
+    })
+  ])
+
   (for pkgs.doctest [
     (addCFlag "-Wno-reserved-macro-identifier")
     (addCFlag "-Wl,-lm")
@@ -1298,6 +2040,19 @@ in
     # supports neither. The library is header-only.
     (skipCheck "sigaltstack and debugtrap")
   ])
+
+  # Named explicitly: the pname is "catch2", which is Catch2 v2's attribute.
+  {
+    catch2_3 = for pkgs.catch2_3 [
+      # Catch2's fatal-signal handler runs on an alternate stack
+      # (sigaltstack), which Fil-C does not support; every test run aborted
+      # in FatalConditionHandler::engage_platform. Fil-C also refuses
+      # handlers for SIGSEGV and the like, so the handler could not work
+      # anyway. The option is written to catch_user_config.hpp, so test
+      # suites that link this Catch2 skip the handler too.
+      (addCMakeFlag "-DCATCH_CONFIG_NO_POSIX_SIGNALS=ON")
+    ];
+  }
 
   # Their suites use doctest, whose signal handling needs sigaltstack.
   (for pkgs.nlohmann_json [
@@ -1655,6 +2410,73 @@ in
 
   # ━━━ Web & Network Services ━━━
 
+  (for pkgs.redis [
+    # Aligned encoded reply buffers; no madvise on the heap after fork.
+    (patch ./patches/redis-filc.patch)
+    (use (old: {
+      makeFlags = old.makeFlags ++ [
+        # Redis's default -O3 turns on LTO, which Fil-C does not have.
+        "OPTIMIZATION=-O2"
+        # The test modules' Makefile hard-codes gcc.
+        "CC=cc"
+        "LD=cc"
+      ];
+      # The tests call pgrep; Nixpkgs' `ps` here is procps' ps alone.
+      nativeCheckInputs = old.nativeCheckInputs ++ [ pkgs.procps ];
+      checkPhase =
+        let
+          skips = [
+            # The jemalloc shim ignores malloc_conf, and has no per-size
+            # accounting or active defragmentation, so fragmentation always
+            # reads 1.00.
+            "--tags -defrag"
+            ''--skiptest "je_malloc_conf compile-time tuning is active"''
+            ''--skiptest "Reduce defrag CPU usage when module data can't be defragged"''
+            # Fil-C gives the program copies of argv, so rewriting them does
+            # not change /proc/<pid>/cmdline.
+            ''--skiptest "Process title set as expected"''
+            # Crash reports need SIGSEGV handlers, which Fil-C refuses.
+            "--skipunit unit/moduleapi/crash"
+            # The key metadata API passes pointers as uint64_t, which drops
+            # their capability; the test modules store strings that way.
+            "--skipunit unit/moduleapi/keymeta"
+            "--skipunit unit/moduleapi/ksn_notify_side_effect"
+            # They load payloads that request exabyte allocations and expect
+            # zmalloc to fail; Fil-C stops the program instead.
+            ''--skiptest "corrupt payload: fuzzer findings - OOM in dictExpand"''
+            ''--skiptest "corrupt payload: fuzzer findings - huge string"''
+            # Crash reports with stack traces: SIGSEGV handlers again, and
+            # the port builds without backtrace support.
+            "--skipunit integration/logging"
+          ];
+          last = ''--skiptest "Check MEMORY USAGE for embedded key strings with jemalloc"'';
+        in
+        assert pkgs.lib.hasInfix last old.checkPhase;
+        builtins.replaceStrings
+          [
+            "./runtest \\\n"
+            last
+          ]
+          [
+            "set -o pipefail\n./runtest \\\n"
+            (
+              pkgs.lib.concatMapStrings (s: s + " \\\n  ") skips
+              # The test runner redraws lines with carriage returns and
+              # colours them, which leaves the Nix log blank.
+              + last
+              + " 2>&1 | sed -u -e 's/\\r/\\n/g' -e 's/\\x1b\\[[0-9;]*m//g'"
+            )
+          ]
+          old.checkPhase;
+      postPatch = (old.postPatch or "") + ''
+        # Nixpkgs' system-jemalloc patch still builds deps/jemalloc, whose
+        # configure fails; Redis links the jemalloc shim instead.
+        sed -i 's/^\tDEPENDENCY_TARGETS+= jemalloc$//' src/Makefile
+        ! grep -q 'DEPENDENCY_TARGETS+= jemalloc' src/Makefile
+      '';
+    }))
+  ])
+
   (for pkgs.lighttpd [
     (patch ./patches/lighttpd-filc.patch)
     (arg { enableMagnet = true; })
@@ -1716,23 +2538,19 @@ in
   }
 
   (for pkgs.quickjs [
-    # bellard.org no longer serves the 2024-02-14 tarball. Upstream Fil-C's
-    # port is based on this commit of the GitHub mirror.
-    (use {
-      version = "2024-02-14";
-      src = pkgs.fetchFromGitHub {
-        owner = "bellard";
-        repo = "quickjs";
-        rev = "6e2e68fd0896957f92eb6c242a2e048c1ef3cae0";
-        hash = "sha256-ZHRRQ1uO3esbn7EUJ+zBizNeRMB54Ktn2Vo9zzmhKww=";
-      };
-      # This snapshot predates the doc/version.texi rule Nixpkgs uses to
-      # build the Info manual.
-      postBuild = "";
-      postInstall = "mkdir -p $info";
-    })
-    (patch ./ports/patch/quickjs.patch)
-    (skipCheck "some tests fail")
+    # Nixpkgs' 2026-06-04 release rather than upstream Fil-C's 2024-02-14
+    # snapshot: the old one crashed on greedy regexps under Fil-C and is far
+    # too slow for yt-dlp's challenge solver (it asks for >= 2025-04-26).
+    (patch ./patches/quickjs-2026-filc.patch)
+    # Fil-C frames are larger; the native 1 MiB JS stack limit overflows on
+    # yt-dlp's solver, which runs qjs without --stack-size.
+    (addCFlag "-DJS_DEFAULT_STACK_SIZE=4194304")
+    (use (old: {
+      # The install check reuses $out for a temporary file.
+      postInstallCheck = (old.postInstallCheck or "") + ''
+        ${builtins.placeholder "out"}/bin/qjs ${./tests/quickjs-regexp.js}
+      '';
+    }))
   ])
 
   (for pkgs.trealla [
@@ -1901,6 +2719,59 @@ in
     (addMesonFlag "-Dintrospection=enabled")
   ])
 
+  (for pkgs.dbus-glib [
+    (patch ./patches/dbus-glib-gtype.patch)
+  ])
+
+  (for pkgs.json-glib [
+    (patch ./patches/json-glib-gtype.patch)
+  ])
+
+  {
+    glibmm = for pkgs.glibmm [ (patch ./patches/glibmm-gtype.patch) ];
+    # glibmm 2.88 needs GLib 2.87; 2.80 is the newest series that accepts
+    # the Fil-C GLib 2.80.
+    glibmm_2_68 = for pkgs.glibmm_2_68 [
+      (src "2.80.1" "sha256-8aDA7FFON3S/mTOW8X9yEGtAkSx9fMnRDaMboVUX4/U=" (
+        v: "mirror://gnome/sources/glibmm/2.80/glibmm-${v}.tar.xz"
+      ))
+      (patch ./patches/glibmm-gtype.patch)
+    ];
+    # Match the Fil-C GTK 4.14; gtkmm 4.22 needs GTK 4.22.
+    gtkmm4 = for pkgs.gtkmm4 [
+      (src "4.14.0" "sha256-k1CgREt0TKPcaVhuvRtnB1IJIrbZ9PIyEDzmA6Jx7No=" (
+        v: "mirror://gnome/sources/gtkmm/4.14/gtkmm-${v}.tar.xz"
+      ))
+      (use {
+        # Fil-C GTK has no X11 backend; run the tests on Broadway instead
+        # of Xvfb.
+        nativeCheckInputs = [ ];
+        checkPhase = ''
+          runHook preCheck
+          export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+          mkdir -m 700 "$XDG_RUNTIME_DIR"
+          export GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 GTK_A11Y=none
+          ${final.gtk4.out}/bin/gtk4-broadwayd :5 &
+          broadway_pid=$!
+          for _ in $(seq 100); do
+            [ -S "$XDG_RUNTIME_DIR/broadway6.socket" ] && break
+            sleep 0.1
+          done
+          meson test --print-errorlogs
+          kill "$broadway_pid"
+          runHook postCheck
+        '';
+      })
+    ];
+  }
+
+  {
+    # Its pname is libdbusmenu-glib.
+    libdbusmenu = for pkgs.libdbusmenu [
+      (patch ./patches/libdbusmenu-gtype.patch)
+    ];
+  }
+
   (for pkgs.dconf [
     (patch ./patches/dconf-filc-gtype.patch)
     # Vala is used only to generate API metadata here, not linked into dconf.
@@ -1917,6 +2788,13 @@ in
   ])
 
   {
+    # Named explicitly: the pname is "gtk+". GTK 2 has no upstream Fil-C port;
+    # this applies the GTK 3 port's pointer-GType changes to 2.24.33 (see
+    # docs/gtk-ports.md).
+    gtk2 = for pkgs.gtk2 [
+      (patch ./patches/gtk2-filc-gtype.patch)
+    ];
+
     gtk3 = for pkgs.gtk3 [
       (pin "3.24.52" "sha256-gJMfpHKne5oWT2dA48C0RPrGdwBUYy01p/+dZ55ee58=")
       (patch ./ports/patch/gtk-3.24.52.patch)
@@ -1940,6 +2818,7 @@ in
       # Nixpkgs' 32-bit Vulkan fix targets newer releases; Vulkan is off here.
       (skipPatch "fix-32bit-VkImage-null.patch")
       (patch ./ports/patch/gtk-4.14.5.patch)
+      (patch ./patches/gtk4-broadway-node-alignment.patch)
       (link final.libdrm)
       (addMesonFlag "-Dintrospection=enabled")
       # Keep the UI toolkit independent of the optional GStreamer video

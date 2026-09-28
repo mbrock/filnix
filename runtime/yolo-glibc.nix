@@ -84,7 +84,7 @@ rec {
 
         # Fil-C's glibc names its loader ld-fil1-x86_64.so itself. Patching
         # the loader with patchelf misbehaves with some older kernels.
-        cp ${yolo-glibc-impl}/lib/ld-fil1-x86_64.so .
+        cp ${yolo-glibc-impl}/lib/${lib.dynamicLinker} .
 
         # Copy and patch libc implementation
         cp ${yolo-glibc-impl}/lib/libc.so.6 libyolocimpl.so
@@ -103,13 +103,13 @@ rec {
 
         # Create linker scripts
         cat > libyolom.so <<'EOF'
-        OUTPUT_FORMAT(elf64-x86-64)
+        OUTPUT_FORMAT(${lib.elfFormat})
         GROUP(libyolomimpl.so)
         EOF
 
         cat > libyoloc.so <<'EOF'
-        OUTPUT_FORMAT(elf64-x86-64)
-        GROUP(libyolocimpl.so libyoloc_nonshared.a AS_NEEDED(ld-fil1-x86_64.so))
+        OUTPUT_FORMAT(${lib.elfFormat})
+        GROUP(libyolocimpl.so libyoloc_nonshared.a AS_NEEDED(${lib.dynamicLinker}))
         EOF
       '';
 }

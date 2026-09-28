@@ -18,7 +18,12 @@ in
     pname = "libpizlo";
     version = "git";
     src = sources.libpas-src;
-    patches = [ ../patches/libpizlo-cancellation.patch ];
+    patches = [
+      ../patches/libpizlo-cancellation.patch
+    ]
+    ++ pkgs.lib.optional (
+      !pkgs.stdenv.hostPlatform.isx86_64
+    ) ../patches/libpizlo-cancellation-aarch64.patch;
 
     nativeBuildInputs = [
       pkgs.gnumake
@@ -39,7 +44,7 @@ in
       export FILC_STDFIL_INCLUDE="$PWD/../filc/include"
       export FILC_INCLUDE_DIR="${filc.libyolo-impl}/include"
       export FILC_YOLO_LIB_DIR="${filc.libyolo}/lib"
-      export FILC_DYNAMIC_LINKER="${filc.libyolo}/lib/ld-fil1-x86_64.so"
+      export FILC_DYNAMIC_LINKER="${filc.libyolo}/lib/${lib.dynamicLinker}"
       PIZFIX_OUT="$PWD/pizfix"
       export FILC_LIB_DIR="$PIZFIX_OUT/lib"
       export FILC_LIB_TEST_DIR="$PIZFIX_OUT/lib_test"

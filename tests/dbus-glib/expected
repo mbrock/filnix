@@ -1,0 +1,5 @@
+scalars -7 4000000000 -1099511627776 2.50 true 200
+collections words=alpha,beta,gamma sum=42 props=count=gint:42,flag=gboolean:true,name=gchararray:filnix
+pair alpha 3
+table first=alpha count=3
+signal memory safety 13

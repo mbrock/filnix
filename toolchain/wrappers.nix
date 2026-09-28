@@ -62,11 +62,38 @@ let
       exec ${pkgs.ccache}/bin/ccache ${filc3xx}/bin/${flavor} "''${new_args[@]}"
     '';
 
+  # The role salt of the wrappers' environment variables
+  # (NIX_CFLAGS_COMPILE_<salt>, NIX_LDFLAGS_<salt>,
+  # NIX_CC_WRAPPER_TARGET_HOST_<salt>, ...). Nixpkgs derives it from the
+  # target platform, and `pkgs` is the build platform's package set, so the
+  # Fil-C wrappers got the native wrappers' salt. Each then accepted the
+  # other's flags: libraries in nativeBuildInputs came first in Fil-C links,
+  # and Fil-C libraries reached depsBuildBuild compilers' links. Use the
+  # Fil-C platform's salt (flake.nix: crossSystem.config) and keep the empty
+  # target prefix. checks.wrapper-roles tests the separation.
+  filcSuffixSalt = "${lib.filcArch}_unknown_linux_gnufilc0";
+  withFilcSuffixSalt =
+    wrapper:
+    wrapper.overrideAttrs (old: {
+      env = old.env // {
+        suffixSalt = filcSuffixSalt;
+      };
+      passthru = old.passthru // {
+        suffixSalt = filcSuffixSalt;
+      };
+    });
+
 in
 rec {
   filc-cc =
     pkgs.runCommand "filc-cc"
       {
+        # Recipes list stdenv.cc.cc.lib to get GCC's runtime libraries
+        # (e.g. fluidsynth, for SDL_mixer). Fil-C's compiler has a single
+        # output; lib.getLib stdenv.cc.cc already falls back to it, so make
+        # .lib name the same derivation. The wrapper links libc++ itself.
+        passthru.lib = filc-cc;
+
         # passthru = {
         #   # Fil-C provides memory safety via bounds checking and GC, so some
         #   # hardening flags are redundant or may conflict:
@@ -92,17 +119,40 @@ rec {
         ln -s ${filcache "clang++"}/bin/ccache-clang++ $out/bin/filc++
       '';
 
-  filc-bintools = pkgs.wrapBintoolsWith {
-    bintools = filc-binutils;
-    libc = filc-sysroot;
-    defaultHardeningFlags = [ ];
+  filc-bintools = withFilcSuffixSalt (
+    pkgs.wrapBintoolsWith {
+      bintools = filc-binutils;
+      libc = filc-sysroot;
+      defaultHardeningFlags = [ ];
 
-    extraBuildCommands = ''
-      echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
-      echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
-      echo "${filc-sysroot}/lib/ld-fil1-x86_64.so" > $out/nix-support/dynamic-linker
-    '';
-  };
+      extraBuildCommands = ''
+        echo "-L${filc-glibc}/lib" >> $out/nix-support/libc-ldflags
+        echo "-lpizlo -lyoloc -lyolom -lc++ -lc++abi" >> $out/nix-support/libc-ldflags
+        echo "${filc-sysroot}/lib/${lib.dynamicLinker}" > $out/nix-support/dynamic-linker
+        # libc-ldflags reach every link, also through the cc wrapper's -Wl
+        # flags, but a relocatable link (ld -r) makes an object and must not
+        # name the runtime's shared libraries.
+        cat > $out/nix-support/ld-wrapper-hook <<'EOF'
+        if (( relocatable )); then
+            filcStrip() {
+                local flag
+                filcKept=()
+                for flag in "$@"; do
+                    case "$flag" in
+                        -lpizlo | -lyoloc | -lyolom | -lc++ | -lc++abi) ;;
+                        *) filcKept+=("$flag") ;;
+                    esac
+                done
+            }
+            filcStrip ''${params+"''${params[@]}"}
+            params=(''${filcKept+"''${filcKept[@]}"})
+            filcStrip ''${extraAfter+"''${extraAfter[@]}"}
+            extraAfter=(''${filcKept+"''${filcKept[@]}"})
+        fi
+        EOF
+      '';
+    }
+  );
 
   filcc =
     (pkgs.wrapCCWith {
@@ -126,8 +176,12 @@ rec {
       '';
     }).overrideAttrs
       (old: {
+        env = old.env // {
+          suffixSalt = filcSuffixSalt;
+        };
         passthru = (old.passthru or { }) // {
           inherit filc-glibc;
+          suffixSalt = filcSuffixSalt;
         };
         # Keep ABI-specific build-system integration outside the expensive compiler
         # and runtime derivations. nm itself continues to report real ELF symbols.
@@ -136,6 +190,11 @@ rec {
             out = null; # substituted by the cc-wrapper builder
             python = "${pkgs.python3}/bin/python3";
             patcher = "${./libtool-symbols.py}";
+          })
+          ./autoconf-c23-hook.sh
+          ./libtool-dlopen-self-hook.sh
+          (pkgs.replaceVars ./header-references-hook.sh {
+            removeReferencesTo = "${pkgs.removeReferencesTo}/bin/remove-references-to";
           })
         ];
       });

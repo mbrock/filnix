@@ -1,0 +1,38 @@
+From b97c68ae7438acf072bf8717b566a49d114eaa52 Mon Sep 17 00:00:00 2001
+From: t <a@b>
+Date: Sun, 27 Sep 2026 18:15:54 +0000
+Subject: [PATCH 3/3] Fil-C: truncate syscall() results to int
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ src/libutil/unix/file-system-at.cc | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/libutil/unix/file-system-at.cc b/src/libutil/unix/file-system-at.cc
+index 18046ff..9303538 100644
+--- a/src/libutil/unix/file-system-at.cc
++++ b/src/libutil/unix/file-system-at.cc
+@@ -40,7 +40,9 @@ std::optional<AutoCloseFD> openat2(Descriptor dirFd, const char * path, uint64_t
+          * https://patchwork.sourceware.org/project/glibc/patch/20251029200519.3203914-1-adhemerval.zanella@linaro.org/
+          */
+         auto how = ::open_how{.flags = flags, .mode = mode, .resolve = resolve};
+-        auto res = ::syscall(__NR_openat2, dirFd, path, &how, sizeof(how));
++        /* Truncate to int: Fil-C's syscall() returns -1 zero-extended
++           to 4294967295, which is not < 0 as a long. */
++        auto res = static_cast<int>(::syscall(__NR_openat2, dirFd, path, &how, sizeof(how)));
+         /* Cache that the syscall is not supported. */
+         if (res < 0 && errno == ENOSYS) {
+             unsupported.test_and_set();
+@@ -66,7 +68,7 @@ void unix::fchmodatTryNoFollow(Descriptor dirFd, const CanonPath & path, mode_t
+     static std::atomic_flag fchmodat2Unsupported{};
+     if (!fchmodat2Unsupported.test()) {
+         /* Try with fchmodat2 first. */
+-        auto res = ::syscall(__NR_fchmodat2, dirFd, path.rel_c_str(), mode, AT_SYMLINK_NOFOLLOW);
++        auto res = static_cast<int>(::syscall(__NR_fchmodat2, dirFd, path.rel_c_str(), mode, AT_SYMLINK_NOFOLLOW));
+         /* Cache that the syscall is not supported. */
+         if (res < 0) {
+             if (errno == ENOSYS)
+-- 
+2.55.0
+

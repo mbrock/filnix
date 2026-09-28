@@ -3,10 +3,6 @@ let
   native = import f.inputs.nixpkgs { system = "x86_64-linux"; };
   p = f.legacyPackages.x86_64-linux.pkgsFilc;
   libc = f.packages.x86_64-linux.filcc.filc-glibc;
-  pipewire = import ../packages/pipewire-core.nix {
-    native = native;
-    p = p;
-  };
   client =
     major: dependency:
     p.stdenv.mkDerivation {
@@ -25,8 +21,9 @@ let
   sdl2Client = client 2 p.sdl2-compat;
 in
 {
-  inherit pipewire sdl3Client sdl2Client;
+  inherit sdl3Client sdl2Client;
   inherit (p)
+    pipewire
     sdl3
     sdl2-compat
     cava
@@ -38,7 +35,8 @@ in
   '';
   runtime = native.runCommand "pipewire-consumers-runtime-check" { } ''
     ${native.python3}/bin/python ${./pipewire-runtime.py} \
-      --pipewire ${pipewire} --libc ${libc} \
+      --pipewire ${p.pipewire} --libc ${libc} \
+      --wireplumber ${p.wireplumber}/bin/wireplumber \
       --client ${sdl3Client}/bin/client --client ${sdl2Client}/bin/client \
       --wpctl ${p.wireplumber}/bin/wpctl > "$out"
   '';

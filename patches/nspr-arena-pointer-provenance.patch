@@ -1,0 +1,76 @@
+diff -ru nspr-4.40/nspr/lib/ds/plarena.c nspr-c/nspr/lib/ds/plarena.c
+--- nspr-4.40/nspr/lib/ds/plarena.c	2026-08-05 04:57:49.000000000 +0000
++++ nspr-c/nspr/lib/ds/plarena.c	2026-09-27 15:06:34.457078995 +0000
+@@ -117,7 +117,7 @@
+         do {
+             if (nb <= a->limit - a->avail) {
+                 pool->current = a;
+-                rp = (char*)a->avail;
++                rp = (char*)PL_ARENA_PTR(a, a->avail);
+                 a->avail += nb;
+                 return rp;
+             }
+@@ -137,7 +137,7 @@
+             a->limit = (PRUword)a + sz;
+             a->base = a->avail = (PRUword)PL_ARENA_ALIGN(pool, a + 1);
+             PL_MAKE_MEM_NOACCESS((void*)a->avail, a->limit - a->avail);
+-            rp = (char*)a->avail;
++            rp = (char*)PL_ARENA_PTR(a, a->avail);
+             a->avail += nb;
+             PR_ASSERT(a->avail <= a->limit);
+             /* the newly allocated arena is linked after pool->current
+diff -ru nspr-4.40/nspr/lib/ds/plarena.h nspr-c/nspr/lib/ds/plarena.h
+--- nspr-4.40/nspr/lib/ds/plarena.h	2026-08-05 04:57:49.000000000 +0000
++++ nspr-c/nspr/lib/ds/plarena.h	2026-09-27 15:06:34.457078995 +0000
+@@ -154,19 +154,29 @@
+     (((PRUword)(n) + (pool)->mask) & ~(pool)->mask)
+ #endif
+ 
++/*
++ * The arena fields hold addresses as integers. PL_ARENA_PTR turns one back
++ * into a pointer derived from the arena header, which is the start of the
++ * block that holds it, rather than casting the integer; a pointer cast from
++ * an integer has no provenance, and memory-safe implementations such as
++ * Fil-C refuse to access memory through it.
++ */
++#define PL_ARENA_PTR(a, addr) \
++    ((void*)((char*)(a) + ((PRUword)(addr) - (PRUword)(a))))
++
+ #define PL_ARENA_ALLOCATE(p, pool, nb)                                           \
+     PR_BEGIN_MACRO                                                               \
+     PLArena* _a = (pool)->current;                                               \
+     PRUint32 _nb = PL_ARENA_ALIGN(pool, (PRUint32)(nb) + PL_ARENA_REDZONE_SIZE); \
+-    PRUword _p = _a->avail;                                                      \
++    void* _p = PL_ARENA_PTR(_a, _a->avail);                                      \
+     if (_nb < (PRUint32)nb) {                                                    \
+-        _p = 0;                                                                  \
++        _p = NULL;                                                               \
+     } else if (_nb > (_a->limit - _a->avail)) {                                  \
+-        _p = (PRUword)PL_ArenaAllocate(pool, _nb);                               \
++        _p = PL_ArenaAllocate(pool, _nb);                                        \
+     } else {                                                                     \
+         _a->avail += _nb;                                                        \
+     }                                                                            \
+-    p = (void*)_p;                                                               \
++    p = _p;                                                                      \
+     if (p) {                                                                     \
+         PL_MAKE_MEM_UNDEFINED(p, (PRUint32)nb);                                  \
+         PL_ArenaCountAllocation(pool, (PRUint32)nb);                             \
+@@ -196,14 +206,14 @@
+     }                                                                        \
+     PR_END_MACRO
+ 
+-#define PL_ARENA_MARK(pool) ((void*)(pool)->current->avail)
++#define PL_ARENA_MARK(pool) PL_ARENA_PTR((pool)->current, (pool)->current->avail)
+ #define PR_UPTRDIFF(p, q) ((PRUword)(p) - (PRUword)(q))
+ 
+ #define PL_CLEAR_UNUSED_PATTERN(a, pattern)                            \
+     PR_BEGIN_MACRO                                                     \
+     PR_ASSERT((a)->avail <= (a)->limit);                               \
+-    PL_MAKE_MEM_UNDEFINED((void*)(a)->avail, (a)->limit - (a)->avail); \
+-    memset((void*)(a)->avail, (pattern), (a)->limit - (a)->avail);     \
++    PL_MAKE_MEM_UNDEFINED(PL_ARENA_PTR(a, (a)->avail), (a)->limit - (a)->avail); \
++    memset(PL_ARENA_PTR(a, (a)->avail), (pattern), (a)->limit - (a)->avail); \
+     PR_END_MACRO
+ #ifdef DEBUG
+ #define PL_FREE_PATTERN 0xDA

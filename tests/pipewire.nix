@@ -3,16 +3,15 @@
   pkgsFilc,
   filcc,
 }:
-let
-  core = import ../packages/pipewire-core.nix {
-    native = pkgs;
-    p = pkgsFilc;
-  };
-in
 {
-  inherit core;
-  runtime = pkgs.runCommand "pipewire-shared-libc-runtime-check" { } ''
+  # Its build runs PipeWire's own test suites and the pointer-table check.
+  inherit (pkgsFilc) pipewire;
+  # The installed daemon with WirePlumber as its session manager: WirePlumber
+  # links pw-cat's stream to a virtual sink, and wpctl lists the sink.
+  runtime = pkgs.runCommand "pipewire-runtime-check" { } ''
     ${pkgs.python3}/bin/python ${./pipewire-runtime.py} \
-      --pipewire ${core} --libc ${filcc.filc-glibc} > "$out"
+      --pipewire ${pkgsFilc.pipewire} --libc ${filcc.filc-glibc} \
+      --wireplumber ${pkgsFilc.wireplumber}/bin/wireplumber --play \
+      --wpctl ${pkgsFilc.wireplumber}/bin/wpctl > "$out"
   '';
 }

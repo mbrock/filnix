@@ -1,0 +1,27 @@
+From 89654e1a744d1c6777a2ca51de032146be47c965 Mon Sep 17 00:00:00 2001
+From: t <a@b>
+Date: Sun, 27 Sep 2026 17:33:19 +0000
+Subject: [PATCH 2/2] Fil-C: no __cxa_throw interposer
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ nix-meson-build-support/common/cxa-throw/meson.build | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/nix-meson-build-support/common/cxa-throw/meson.build b/nix-meson-build-support/common/cxa-throw/meson.build
+index e994776..2b1981f 100644
+--- a/nix-meson-build-support/common/cxa-throw/meson.build
++++ b/nix-meson-build-support/common/cxa-throw/meson.build
+@@ -1,6 +1,7 @@
+ have_cxa_throw = false
+ 
+-if host_machine.system() == 'linux'
++# Fil-C's dlsym does not support RTLD_NEXT, which the interposer needs.
++if host_machine.system() == 'linux' and cxx.get_define('__FILC__') == ''
+   have_cxa_throw = true
+ 
+   if get_option('default_library') == 'static'
+-- 
+2.55.0
+

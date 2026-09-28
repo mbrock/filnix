@@ -1,0 +1,28 @@
+diff --git a/lib/ssl/ssl3con.c b/lib/ssl/ssl3con.c
+index eae27c0..cfb935c 100644
+--- a/lib/ssl/ssl3con.c
++++ b/lib/ssl/ssl3con.c
+@@ -10745,6 +10745,15 @@ ssl3_GenerateRSAPMS(sslSocket *ss, ssl3CipherSpec *spec,
+ static void
+ ssl3_CSwapPK11SymKey(PK11SymKey **x, PK11SymKey **y, PRBool c)
+ {
++#ifdef __FILC__
++    /* Fil-C cannot carry a capability through the XOR mask below: the
++     * swapped pointers would be bare integers. Select through a
++     * two-element array instead; both entries share a cache line. */
++    PK11SymKey *keys[2] = { *x, *y };
++    unsigned int i = (c != PR_FALSE);
++    *x = keys[i];
++    *y = keys[i ^ 1];
++#else
+     uintptr_t mask = (uintptr_t)c;
+     unsigned int i;
+     for (i = 1; i < sizeof(uintptr_t) * 8; i <<= 1) {
+@@ -10757,6 +10766,7 @@ ssl3_CSwapPK11SymKey(PK11SymKey **x, PK11SymKey **y, PRBool c)
+     y_ptr = y_ptr ^ tmp;
+     *x = (PK11SymKey *)x_ptr;
+     *y = (PK11SymKey *)y_ptr;
++#endif
+ }
+ 
+ /* Note: The Bleichenbacher attack on PKCS#1 necessitates that we NEVER

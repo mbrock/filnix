@@ -1,0 +1,447 @@
+Status: UNTESTED. The dev LLVM build on the orb was stopped at step
+1516/2958 before clang was built, so this diff has not been compiled.
+It applies to mbrock/fil-c 2d9aa147f871 (branch filnix) and is also pushed
+as mbrock/fil-c branch orb/toolchain-fixes (a2ed1cb67ad). Fetch that
+branch, or `sed -n '/^From /,$p' this.patch | git am` in a fil-c checkout.
+
+What is verified: both assertions reproduce with the pinned compiler
+(Fil-C 0.685) using the reproducers below; the new filc/tests were written
+against the run-tests manifest format but not run.
+
+Reproducer 1 (asserts `F.hasFnAttribute(Attribute::ReturnsTwice)`):
+
+    #include <setjmp.h>
+    static jmp_buf jb;
+    int run(void) { int r = setjmp(jb); if (r) return r; longjmp(jb, 3); }
+    int main(void) { return run() != 3; }
+    /* clang -O2 -fno-builtin */
+
+Reproducer 2 (asserts `G.getLinkage() != GlobalValue::CommonLinkage` in
+lockDownLinkage):
+
+    int x;
+    int main(void) { return x; }
+    /* clang -O2 -fcommon, or declare x __attribute__((common)) */
+
+Things to check when building it:
+- markSetjmpsReturnTwice() runs at the top of run(), before
+  lowerIndirectBr(); the earlier pipeline stages (inliner options in
+  BackendUtil.cpp's early-simplification callback) still see setjmp
+  without returns_twice under -fno-builtin.
+- Common -> WeakAny happens in lockDownLinkage(), before the comdat and
+  global-collection loops. A common symbol declared with different sizes
+  in different units becomes "first definition wins" instead of "largest
+  wins".
+
+From a2ed1cb67ad27aa6cdd9561469954c84513317c2 Mon Sep 17 00:00:00 2001
+From: Mikael Brockman <mikael@brockman.se>
+Date: Sun, 27 Sep 2026 14:55:03 +0000
+Subject: [PATCH] FilPizlonator: recognize setjmp by name; give common symbols
+ weak linkage
+
+- With -fno-builtin, clang does not mark setjmp returns_twice, and the
+  pass asserted F.hasFnAttribute(Attribute::ReturnsTwice). Mark setjmp,
+  _setjmp and sigsetjmp and their direct calls returns_twice before
+  anything else runs, as GCC recognizes them by name.
+- Common symbols (-fcommon, __attribute__((common))) asserted in
+  lockDownLinkage. Give them weak linkage, which the linker merges the
+  same way across translation units.
+
+Tests: setjmpnobuiltin, setjmpnobuiltinO0, commonsym, commonsymfcommon,
+commonsymfail.
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e2af-3777-75da-ae86-0eab7fccd7af
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ filc/tests/commonsym/commonsym.c              | 30 +++++++++++++
+ filc/tests/commonsym/manifest                 |  4 ++
+ filc/tests/commonsym/other.c                  | 26 +++++++++++
+ filc/tests/commonsymfail/commonsymfail.c      | 12 +++++
+ filc/tests/commonsymfail/manifest             |  4 ++
+ .../tests/commonsymfcommon/commonsymfcommon.c | 30 +++++++++++++
+ filc/tests/commonsymfcommon/manifest          |  6 +++
+ filc/tests/commonsymfcommon/other.c           | 26 +++++++++++
+ filc/tests/setjmpnobuiltin/manifest           |  6 +++
+ filc/tests/setjmpnobuiltin/setjmpnobuiltin.c  | 45 +++++++++++++++++++
+ filc/tests/setjmpnobuiltinO0/manifest         |  6 +++
+ .../setjmpnobuiltinO0/setjmpnobuiltinO0.c     | 45 +++++++++++++++++++
+ .../Instrumentation/FilPizlonator.cpp         | 25 ++++++++++-
+ 13 files changed, 263 insertions(+), 2 deletions(-)
+ create mode 100644 filc/tests/commonsym/commonsym.c
+ create mode 100644 filc/tests/commonsym/manifest
+ create mode 100644 filc/tests/commonsym/other.c
+ create mode 100644 filc/tests/commonsymfail/commonsymfail.c
+ create mode 100644 filc/tests/commonsymfail/manifest
+ create mode 100644 filc/tests/commonsymfcommon/commonsymfcommon.c
+ create mode 100644 filc/tests/commonsymfcommon/manifest
+ create mode 100644 filc/tests/commonsymfcommon/other.c
+ create mode 100644 filc/tests/setjmpnobuiltin/manifest
+ create mode 100644 filc/tests/setjmpnobuiltin/setjmpnobuiltin.c
+ create mode 100644 filc/tests/setjmpnobuiltinO0/manifest
+ create mode 100644 filc/tests/setjmpnobuiltinO0/setjmpnobuiltinO0.c
+
+diff --git a/filc/tests/commonsym/commonsym.c b/filc/tests/commonsym/commonsym.c
+new file mode 100644
+index 00000000000..2cd6a3f2652
+--- /dev/null
++++ b/filc/tests/commonsym/commonsym.c
+@@ -0,0 +1,30 @@
++/* Common symbols are merged across translation units, keep their bounds and
++   are scanned by the GC. */
++#include <stdfil.h>
++#include <stdio.h>
++#include <string.h>
++
++__attribute__((common)) int counter;
++__attribute__((common)) char name[32];
++__attribute__((common)) int* ptr;
++
++void bump(void);
++int* make(void);
++void check_from_other_unit(void);
++
++int main()
++{
++    ZASSERT(!counter);
++    ZASSERT(!name[0]);
++    ZASSERT(!ptr);
++    bump();
++    bump();
++    ZASSERT(counter == 2);
++    strcpy(name, "common");
++    ptr = make();
++    zgc_request_and_wait();
++    ZASSERT(ptr[99] == 42);
++    check_from_other_unit();
++    printf("common ok %d %s\n", counter, name);
++    return 0;
++}
+diff --git a/filc/tests/commonsym/manifest b/filc/tests/commonsym/manifest
+new file mode 100644
+index 00000000000..76f31967062
+--- /dev/null
++++ b/filc/tests/commonsym/manifest
+@@ -0,0 +1,4 @@
++return:
++  success
++output-includes:
++  - "common ok 2 common"
+diff --git a/filc/tests/commonsym/other.c b/filc/tests/commonsym/other.c
+new file mode 100644
+index 00000000000..e7e9b4ce1fd
+--- /dev/null
++++ b/filc/tests/commonsym/other.c
+@@ -0,0 +1,26 @@
++#include <stdfil.h>
++#include <stdlib.h>
++#include <string.h>
++
++__attribute__((common)) int counter;
++__attribute__((common)) char name[32];
++__attribute__((common)) int* ptr;
++
++void bump(void)
++{
++    counter++;
++}
++
++int* make(void)
++{
++    int* result = malloc(100 * sizeof(int));
++    result[99] = 42;
++    return result;
++}
++
++void check_from_other_unit(void)
++{
++    ZASSERT(counter == 2);
++    ZASSERT(!strcmp(name, "common"));
++    ZASSERT(ptr[99] == 42);
++}
+diff --git a/filc/tests/commonsymfail/commonsymfail.c b/filc/tests/commonsymfail/commonsymfail.c
+new file mode 100644
+index 00000000000..415ea8d2727
+--- /dev/null
++++ b/filc/tests/commonsymfail/commonsymfail.c
+@@ -0,0 +1,12 @@
++/* A common array keeps its own bounds. */
++#include <stdfil.h>
++
++__attribute__((common)) char name[32];
++__attribute__((common)) char after[32];
++
++int main()
++{
++    volatile int index = 40;
++    name[index] = 1;
++    return 0;
++}
+diff --git a/filc/tests/commonsymfail/manifest b/filc/tests/commonsymfail/manifest
+new file mode 100644
+index 00000000000..13c1054dc6f
+--- /dev/null
++++ b/filc/tests/commonsymfail/manifest
+@@ -0,0 +1,4 @@
++return:
++  failure
++output-includes:
++  - "filc safety error"
+diff --git a/filc/tests/commonsymfcommon/commonsymfcommon.c b/filc/tests/commonsymfcommon/commonsymfcommon.c
+new file mode 100644
+index 00000000000..c54fdfb47dd
+--- /dev/null
++++ b/filc/tests/commonsymfcommon/commonsymfcommon.c
+@@ -0,0 +1,30 @@
++/* Common symbols are merged across translation units, keep their bounds and
++   are scanned by the GC. */
++#include <stdfil.h>
++#include <stdio.h>
++#include <string.h>
++
++int counter;
++char name[32];
++int* ptr;
++
++void bump(void);
++int* make(void);
++void check_from_other_unit(void);
++
++int main()
++{
++    ZASSERT(!counter);
++    ZASSERT(!name[0]);
++    ZASSERT(!ptr);
++    bump();
++    bump();
++    ZASSERT(counter == 2);
++    strcpy(name, "common");
++    ptr = make();
++    zgc_request_and_wait();
++    ZASSERT(ptr[99] == 42);
++    check_from_other_unit();
++    printf("common ok %d %s\n", counter, name);
++    return 0;
++}
+diff --git a/filc/tests/commonsymfcommon/manifest b/filc/tests/commonsymfcommon/manifest
+new file mode 100644
+index 00000000000..44861325244
+--- /dev/null
++++ b/filc/tests/commonsymfcommon/manifest
+@@ -0,0 +1,6 @@
++return:
++  success
++optFlags:
++  "-O2 -fcommon"
++output-includes:
++  - "common ok 2 common"
+diff --git a/filc/tests/commonsymfcommon/other.c b/filc/tests/commonsymfcommon/other.c
+new file mode 100644
+index 00000000000..d83200d7cff
+--- /dev/null
++++ b/filc/tests/commonsymfcommon/other.c
+@@ -0,0 +1,26 @@
++#include <stdfil.h>
++#include <stdlib.h>
++#include <string.h>
++
++int counter;
++char name[32];
++int* ptr;
++
++void bump(void)
++{
++    counter++;
++}
++
++int* make(void)
++{
++    int* result = malloc(100 * sizeof(int));
++    result[99] = 42;
++    return result;
++}
++
++void check_from_other_unit(void)
++{
++    ZASSERT(counter == 2);
++    ZASSERT(!strcmp(name, "common"));
++    ZASSERT(ptr[99] == 42);
++}
+diff --git a/filc/tests/setjmpnobuiltin/manifest b/filc/tests/setjmpnobuiltin/manifest
+new file mode 100644
+index 00000000000..d0714a3c1ae
+--- /dev/null
++++ b/filc/tests/setjmpnobuiltin/manifest
+@@ -0,0 +1,6 @@
++return:
++  success
++optFlags:
++  "-O2 -fno-builtin"
++output-includes:
++  - "setjmp nobuiltin ok"
+diff --git a/filc/tests/setjmpnobuiltin/setjmpnobuiltin.c b/filc/tests/setjmpnobuiltin/setjmpnobuiltin.c
+new file mode 100644
+index 00000000000..94a8daa380b
+--- /dev/null
++++ b/filc/tests/setjmpnobuiltin/setjmpnobuiltin.c
+@@ -0,0 +1,45 @@
++/* With -fno-builtin, clang does not mark setjmp returns_twice; the pass must
++   recognize it by name. */
++#include <setjmp.h>
++#include <stdfil.h>
++#include <stdio.h>
++
++static jmp_buf jb;
++static sigjmp_buf sjb;
++
++static __attribute__((noinline)) void jump(int value)
++{
++    longjmp(jb, value);
++}
++
++static __attribute__((noinline)) void sigjump(int value)
++{
++    siglongjmp(sjb, value);
++}
++
++int main()
++{
++    volatile int count = 0;
++    int result = setjmp(jb);
++    if (result < 3) {
++        count++;
++        jump(result + 1);
++    }
++    ZASSERT(result == 3);
++    ZASSERT(count == 3);
++
++    volatile int reached = 0;
++    if (!sigsetjmp(sjb, 1)) {
++        reached = 1;
++        sigjump(7);
++    }
++    ZASSERT(reached == 1);
++
++    int value = _setjmp(jb);
++    if (!value)
++        _longjmp(jb, 5);
++    ZASSERT(value == 5);
++
++    printf("setjmp nobuiltin ok\n");
++    return 0;
++}
+diff --git a/filc/tests/setjmpnobuiltinO0/manifest b/filc/tests/setjmpnobuiltinO0/manifest
+new file mode 100644
+index 00000000000..07e1103ecea
+--- /dev/null
++++ b/filc/tests/setjmpnobuiltinO0/manifest
+@@ -0,0 +1,6 @@
++return:
++  success
++optFlags:
++  "-O0 -fno-builtin"
++output-includes:
++  - "setjmp nobuiltin ok"
+diff --git a/filc/tests/setjmpnobuiltinO0/setjmpnobuiltinO0.c b/filc/tests/setjmpnobuiltinO0/setjmpnobuiltinO0.c
+new file mode 100644
+index 00000000000..94a8daa380b
+--- /dev/null
++++ b/filc/tests/setjmpnobuiltinO0/setjmpnobuiltinO0.c
+@@ -0,0 +1,45 @@
++/* With -fno-builtin, clang does not mark setjmp returns_twice; the pass must
++   recognize it by name. */
++#include <setjmp.h>
++#include <stdfil.h>
++#include <stdio.h>
++
++static jmp_buf jb;
++static sigjmp_buf sjb;
++
++static __attribute__((noinline)) void jump(int value)
++{
++    longjmp(jb, value);
++}
++
++static __attribute__((noinline)) void sigjump(int value)
++{
++    siglongjmp(sjb, value);
++}
++
++int main()
++{
++    volatile int count = 0;
++    int result = setjmp(jb);
++    if (result < 3) {
++        count++;
++        jump(result + 1);
++    }
++    ZASSERT(result == 3);
++    ZASSERT(count == 3);
++
++    volatile int reached = 0;
++    if (!sigsetjmp(sjb, 1)) {
++        reached = 1;
++        sigjump(7);
++    }
++    ZASSERT(reached == 1);
++
++    int value = _setjmp(jb);
++    if (!value)
++        _longjmp(jb, 5);
++    ZASSERT(value == 5);
++
++    printf("setjmp nobuiltin ok\n");
++    return 0;
++}
+diff --git a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+index 38f3a807307..b37acd7a682 100644
+--- a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
++++ b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+@@ -14428,6 +14428,23 @@ class Pizlonator {
+             F->getName() == "sigsetjmp");
+   }
+ 
++  /* Clang only marks setjmp returns_twice when it recognizes it as a builtin, which
++     -fno-builtin turns off. GCC recognizes these functions by name regardless, and so do we: the
++     rest of the pass depends on the attribute. */
++  void markSetjmpsReturnTwice() {
++    for (Function& F : M.functions()) {
++      if (!isSetjmp(&F))
++        continue;
++      F.addFnAttr(Attribute::ReturnsTwice);
++      for (User* U : F.users()) {
++        if (CallBase* CB = dyn_cast<CallBase>(U)) {
++          if (CB->getCalledOperand() == &F)
++            CB->addFnAttr(Attribute::ReturnsTwice);
++        }
++      }
++    }
++  }
++
+   JmpBufKind getJmpBufKindForSetjmp(Function* F) {
+     if (F->getName() == "setjmp")
+       return JmpBufKind::setjmp;
+@@ -14651,8 +14668,11 @@ class Pizlonator {
+              G.getName() == "llvm.used" ||
+              G.getName() == "llvm.compiler.used");
+ 
+-      /* FIXME: Don't even know what this is? */
+-      assert(G.getLinkage() != GlobalValue::CommonLinkage);
++      /* Common symbols (-fcommon, __attribute__((common))) are zero-initialized tentative
++         definitions that the linker merges across translation units. Weak definitions merge the
++         same way, and the rest of the pass knows how to handle them. */
++      if (G.getLinkage() == GlobalValue::CommonLinkage)
++        G.setLinkage(GlobalValue::WeakAnyLinkage);
+ 
+       if (G.getLinkage() == GlobalValue::LinkOnceODRLinkage)
+         G.setLinkage(GlobalValue::LinkOnceAnyLinkage);
+@@ -16157,6 +16177,7 @@ public:
+ 
+     Dummy = makeDummy(Int32Ty);
+ 
++    markSetjmpsReturnTwice();
+     lowerIndirectBr();
+ 
+     if (verbose)
+-- 
+2.55.0
+

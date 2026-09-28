@@ -113,4 +113,24 @@ lib.optionalAttrs
     lib.mapAttrs (
       name: spec: (prev.${name}.override spec.overrideArgs).overrideAttrs spec.attrs
     ) ports
+    // {
+      # The overrides above change every native package here that links
+      # GLib, including Qt 5, so this set's qtbase differed from the one in
+      # its own buildPackages. Qt's qmake hook is spliced from there, so a
+      # native Qt module (reached through wrapQtAppsHook, e.g. qtsvg) saw
+      # two qtbases and its setup hook failed with "detected mismatched Qt
+      # dependencies". moc, uic, rcc and qmake emit no GType code, so
+      # use the ordinary native Qt 5.
+      qt5 = final.buildPackages.qt5;
+      libsForQt5 = final.buildPackages.libsForQt5;
+      # The same holds for Qt 6: a native qttools here linked the GLib twin's
+      # headers against GLib 2.88's libgio and failed on
+      # g_variant_builder_init_static.
+      qt6 = final.buildPackages.qt6;
+      qt6Packages = final.buildPackages.qt6Packages;
+      # Graphviz (for docs, e.g. FLAC's) only emits target-neutral output,
+      # but here it would see the GLib twin, which is older than Pango
+      # requires; pangocairo then goes missing and the build fails on vimdot.
+      graphviz = prev.buildPackages.graphviz;
+    }
   )

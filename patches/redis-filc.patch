@@ -1,0 +1,358 @@
+Subject: Run Redis under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+- Encoded reply buffers pack a 9-byte payloadHeader before each chunk, so
+  the robj pointer in a bulkStrRef payload sits at an arbitrary offset.
+  Fil-C loads pointers only from 8-byte-aligned addresses and trapped in
+  computeUnsharedReplyBytes and processEncodedBufferForWrite. Under Fil-C,
+  the header is unpacked (16 bytes), clientReplyBlock.buf is 8-aligned and
+  every payload is padded to 8 bytes (REPLY_PAYLOAD_SPACE); the walks over
+  encoded buffers step by the padded size.
+- The client tracking prefix table and the blocked-client timeout table use
+  client pointers as rax key bytes; a pointer read back from bytes has no
+  capability. Clients are registered in an exact pointer table when
+  created, and clientFromBytes() looks them up.
+- pqsort swapped aligned elements as longs, dropping the capabilities of
+  the pointers in them (GEORADIUS ... COUNT sorts geoPoints). Swap as
+  void * under Fil-C.
+- With jemalloc, dismissMemory() madvises heap pages after fork. Fil-C
+  refuses madvise on its heap; skip it, as Redis does for libc malloc.
+- Fil-C's glibc issues sync_file_range() as a raw cancellable syscall,
+  which the runtime refuses; use fsync() instead.
+- Build without backtrace support: the crash report signals every thread
+  with a raw tgkill syscall, which Fil-C refuses, so a crash report after
+  a failed assertion ended in a Fil-C panic instead.
+
+diff --git a/src/config.h b/src/config.h
+index beb6bc8..eb9effd 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -65,8 +65,11 @@
+ #define HAVE_SYSCTL_KERN_SOMAXCONN 1
+ #endif
+ 
+-/* Test for backtrace() */
+-#if defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__)) || \
++/* Test for backtrace(). Not under Fil-C: its stack traces signal every
++ * thread with a raw tgkill syscall, which Fil-C refuses, and Fil-C reports
++ * its own stack traces for memory safety errors. */
++#if defined(__FILC__)
++#elif defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__)) || \
+     defined(__FreeBSD__) || ((defined(__OpenBSD__) || defined(__NetBSD__) || defined(__sun)) && defined(USE_BACKTRACE))\
+  || defined(__DragonFly__) || (defined(__UCLIBC__) && defined(__UCLIBC_HAS_BACKTRACE__))
+ #define HAVE_BACKTRACE 1
+@@ -190,7 +193,9 @@
+ 
+ /* Define rdb_fsync_range to sync_file_range() on Linux, otherwise we use
+  * the plain fsync() call. */
+-#if (defined(__linux__) && defined(SYNC_FILE_RANGE_WAIT_BEFORE))
++/* Fil-C's glibc issues sync_file_range() as a raw cancellable syscall,
++ * which the Fil-C runtime refuses; use fsync() there. */
++#if (defined(__linux__) && defined(SYNC_FILE_RANGE_WAIT_BEFORE)) && !defined(__FILC__)
+ #define HAVE_SYNC_FILE_RANGE 1
+ #define rdb_fsync_range(fd,off,size) sync_file_range(fd,off,size,SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE)
+ #elif defined(__APPLE__)
+diff --git a/src/lazyfree.c b/src/lazyfree.c
+index f9cde4e..95ff18c 100644
+--- a/src/lazyfree.c
++++ b/src/lazyfree.c
+@@ -278,7 +278,7 @@ static void protectClientReplyObjects(void) {
+                         str_ref->obj = new_obj;
+                     }
+                 }
+-                ptr += header->payload_len;
++                ptr += REPLY_PAYLOAD_SPACE(header->payload_len);
+             }
+         }
+ 
+@@ -304,7 +304,7 @@ static void protectClientReplyObjects(void) {
+                                 str_ref->obj = new_obj;
+                             }
+                         }
+-                        ptr += header->payload_len;
++                        ptr += REPLY_PAYLOAD_SPACE(header->payload_len);
+                     }
+                 }
+             }
+diff --git a/src/logreqres.c b/src/logreqres.c
+index a769eb1..8255729 100644
+--- a/src/logreqres.c
++++ b/src/logreqres.c
+@@ -120,7 +120,7 @@ static size_t reqresAppendEncodedBuffer(client *c, char *buf, size_t len) {
+             /* Append trailing CRLF */
+             ret += reqresAppendBuffer(c, str_ref->crlf, 2);
+         }
+-        ptr += sizeof(payloadHeader) + header->payload_len;
++        ptr += sizeof(payloadHeader) + REPLY_PAYLOAD_SPACE(header->payload_len);
+     }
+ 
+     return ret;
+diff --git a/src/networking.c b/src/networking.c
+index 3bcd74e..18d91ed 100644
+--- a/src/networking.c
++++ b/src/networking.c
+@@ -121,6 +121,7 @@ int authRequired(client *c) {
+ 
+ client *createClient(connection *conn) {
+     client *c = zmalloc(sizeof(client));
++    registerClientPointer(c);
+ 
+     /* passing NULL as conn it is possible to create a non connected client.
+      * This is useful since all the commands needs to be executed
+@@ -369,14 +370,14 @@ int prepareClientToWrite(client *c) {
+  * -------------------------------------------------------------------------- */
+ 
+ static int tryAddPayload(client *c, char *buf, size_t *used, size_t size, uint8_t type, const void *payload, size_t len) {
+-    if (*used + sizeof(payloadHeader) + len > size) return 0;
++    if (*used + sizeof(payloadHeader) + REPLY_PAYLOAD_SPACE(len) > size) return 0;
+ 
+     /* Start a new payload chunk */
+     payloadHeader *header = (payloadHeader *)(buf + *used);
+     header->payload_type = type;
+     header->payload_len = len;
+     memcpy((char *)header + sizeof(payloadHeader), payload, len);
+-    *used += sizeof(payloadHeader) + len;
++    *used += sizeof(payloadHeader) + REPLY_PAYLOAD_SPACE(len);
+ 
+     /* Track referenced reply bytes for copy avoidance. */
+     if (type == BULK_STR_REF) {
+@@ -427,7 +428,7 @@ static void _addReplyPayloadToList(client *c, list *reply_list, const char *payl
+         /* Create a new node, make sure it is allocated to at
+          * least PROTO_REPLY_CHUNK_BYTES */
+         size_t usable_size;
+-        size_t required_size = encoded ? len + sizeof(payloadHeader) : len;
++        size_t required_size = encoded ? REPLY_PAYLOAD_SPACE(len) + sizeof(payloadHeader) : len;
+         size_t size = required_size < PROTO_REPLY_CHUNK_BYTES ? PROTO_REPLY_CHUNK_BYTES : required_size;
+         tail = zmalloc_usable(size + sizeof(clientReplyBlock), &usable_size);
+         /* take over the allocation's internal fragmentation */
+@@ -1979,7 +1980,7 @@ static size_t computeUnsharedReplyBytes(char *buf, size_t bufpos) {
+             if (str_ref->obj != NULL && str_ref->obj->refcount == 1)
+                 total += sdslen(str_ref->obj->ptr);
+         }
+-        ptr += header->payload_len;
++        ptr += REPLY_PAYLOAD_SPACE(header->payload_len);
+     }
+     return total;
+ }
+@@ -2130,7 +2131,7 @@ static void releaseBufReferences(client *c, char *buf, size_t bufpos) {
+             serverAssert(header->payload_type == PLAIN_REPLY);
+         }
+ 
+-        ptr += header->payload_len;
++        ptr += REPLY_PAYLOAD_SPACE(header->payload_len);
+     }
+ }
+ 
+@@ -2502,7 +2503,7 @@ static void processEncodedBufferForWrite(ReplyIOV *reply_iov, char *start_ptr, c
+         }
+ 
+         offset = 0;
+-        ptr += sizeof(payloadHeader) + head->payload_len;
++        ptr += sizeof(payloadHeader) + REPLY_PAYLOAD_SPACE(head->payload_len);
+     }
+ }
+ 
+@@ -2546,7 +2547,7 @@ static payloadHeader *processSentDataInEncodedBuffer(client *c, char *start_ptr,
+             *sentlen = 0;
+         }
+ 
+-        ptr += sizeof(payloadHeader) + head->payload_len;
++        ptr += sizeof(payloadHeader) + REPLY_PAYLOAD_SPACE(head->payload_len);
+     }
+ 
+     return (ptr == end_ptr) ? NULL : (payloadHeader *)ptr;
+diff --git a/src/object.c b/src/object.c
+index 697ed6e..d0e31e8 100644
+--- a/src/object.c
++++ b/src/object.c
+@@ -861,7 +861,7 @@ void dismissObject(robj *o, size_t size_hint) {
+ 
+     /* Currently we use zmadvise_dontneed only when we use jemalloc with Linux.
+      * so we avoid these pointless loops when they're not going to do anything. */
+-#if defined(USE_JEMALLOC) && defined(__linux__)
++#if defined(USE_JEMALLOC) && defined(__linux__) && !defined(__FILC__)
+     if (o->refcount != 1) return;
+     switch(o->type) {
+         case OBJ_STRING: dismissStringObject(o); break;
+diff --git a/src/pqsort.c b/src/pqsort.c
+index 6252717..db690b5 100644
+--- a/src/pqsort.c
++++ b/src/pqsort.c
+@@ -51,6 +51,15 @@ static inline void	 swapfunc (char *, char *, size_t, int);
+ /*
+  * Qsort routine from Bentley & McIlroy's "Engineering a Sort Function".
+  */
++
++/* The word used to swap aligned elements. Under Fil-C, copying a pointer
++ * through a long drops its capability, and the elements (such as geoPoint)
++ * hold pointers; void * keeps both pointers and integers intact. */
++#ifdef __FILC__
++typedef void *swapword;
++#else
++typedef long swapword;
++#endif
+ #define swapcode(TYPE, parmi, parmj, n) { 		\
+ 	size_t i = (n) / sizeof (TYPE); 		\
+ 	TYPE *pi = (TYPE *)(void *)(parmi); 		\
+@@ -70,16 +79,16 @@ swapfunc(char *a, char *b, size_t n, int swaptype)
+ {
+ 
+ 	if (swaptype <= 1)
+-		swapcode(long, a, b, n)
++		swapcode(swapword, a, b, n)
+ 	else
+ 		swapcode(char, a, b, n)
+ }
+ 
+ #define swap(a, b)						\
+ 	if (swaptype == 0) {					\
+-		long t = *(long *)(void *)(a);			\
+-		*(long *)(void *)(a) = *(long *)(void *)(b);	\
+-		*(long *)(void *)(b) = t;			\
++		swapword t = *(swapword *)(void *)(a);		\
++		*(swapword *)(void *)(a) = *(swapword *)(void *)(b);	\
++		*(swapword *)(void *)(b) = t;			\
+ 	} else							\
+ 		swapfunc(a, b, es, swaptype)
+ 
+diff --git a/src/server.c b/src/server.c
+index b1bafa0..3e0ebc7 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -84,6 +84,14 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
+ /* Global vars */
+ struct redisServer server; /* Server global state */
+ 
++#ifdef __FILC__
++zexact_ptrtable *clientPointerTable;
++__attribute__((constructor)) static void initClientPointerTable(void) {
++    /* Weak: a client stays reachable from server.clients while it exists. */
++    clientPointerTable = zexact_ptrtable_new_weak();
++}
++#endif
++
+ /* Snapshot of server.stat_total_client_process_input_buff_events used in
+  * beforeSleep() to detect event loop cycles where client input buffers
+  * were processed. */
+@@ -7557,7 +7565,7 @@ void dismissMemoryInChild(void) {
+ 
+     /* Currently we use zmadvise_dontneed only when we use jemalloc with Linux.
+      * so we avoid these pointless loops when they're not going to do anything. */
+-#if defined(USE_JEMALLOC) && defined(__linux__)
++#if defined(USE_JEMALLOC) && defined(__linux__) && !defined(__FILC__)
+     listIter li;
+     listNode *ln;
+ 
+diff --git a/src/server.h b/src/server.h
+index 2a6fa5f..baa228a 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -1129,10 +1129,24 @@ typedef enum {
+  * Each chunk contains header followed by payload
+  * The packed attribute is specified because buffer is accessed at arbitrary offsets,
+  * so no benefit in data structure padding and applying packed saves the space in the buffer  */
++#ifdef __FILC__
++/* Fil-C loads a pointer only from an 8-byte-aligned address, and bulkStrRef
++ * keeps a robj pointer in the buffer, so there every chunk starts aligned. */
++#define REPLY_PAYLOAD_ALIGN 8
++typedef struct payloadHeader {
++    size_t payload_len;   /* payload length in a reply buffer */
++    uint8_t payload_type; /* one of payloadType */
++} payloadHeader;
++#else
++#define REPLY_PAYLOAD_ALIGN 1
+ typedef struct __attribute__((__packed__)) payloadHeader {
+     size_t payload_len;   /* payload length in a reply buffer */
+     uint8_t payload_type; /* one of payloadType */
+ } payloadHeader;
++#endif
++/* Space a payload of `len` bytes takes in an encoded buffer, after its header. */
++#define REPLY_PAYLOAD_SPACE(len) \
++    (((size_t)(len) + REPLY_PAYLOAD_ALIGN - 1) & ~(size_t)(REPLY_PAYLOAD_ALIGN - 1))
+ static_assert(offsetof(payloadHeader, payload_len) == 0, "payload_len must be at offset 0 to avoid unaligned access");
+ 
+ /* To avoid copy of whole string in reply buffer
+@@ -1149,7 +1163,7 @@ typedef struct __attribute__((__packed__)) bulkStrRef {
+ typedef struct clientReplyBlock {
+     size_t size, used;
+     char buf_encoded;
+-    char buf[];
++    char buf[] __attribute__((aligned(REPLY_PAYLOAD_ALIGN)));
+ } clientReplyBlock;
+ 
+ /* Replication buffer blocks is the list of replBufBlock.
+@@ -3056,6 +3070,31 @@ typedef struct {
+  *----------------------------------------------------------------------------*/
+ 
+ extern struct redisServer server;
++
++/* Some tables use client pointers as parts of rax keys, that is, as bytes.
++ * Under Fil-C a pointer read back from bytes has no capability, so clients
++ * are registered in an exact pointer table when created, and pointers read
++ * from keys are looked up there; the table maps an address back to the same
++ * pointer. */
++#ifdef __FILC__
++#include <stdfil.h>
++extern zexact_ptrtable *clientPointerTable;
++static inline void registerClientPointer(client *c) {
++    zexact_ptrtable_encode(clientPointerTable, c);
++}
++static inline client *clientFromBytes(const unsigned char *p) {
++    client *c;
++    memcpy(&c, p, sizeof(c));
++    return zexact_ptrtable_decode(clientPointerTable, (size_t)c);
++}
++#else
++static inline void registerClientPointer(client *c) { UNUSED(c); }
++static inline client *clientFromBytes(const unsigned char *p) {
++    client *c;
++    memcpy(&c, p, sizeof(c));
++    return c;
++}
++#endif
+ extern struct sharedObjectsStruct shared;
+ extern dictType objectKeyPointerValueDictType;
+ extern dictType objectKeyNoValueDictType;
+diff --git a/src/timeout.c b/src/timeout.c
+index 1080198..5e41a16 100644
+--- a/src/timeout.c
++++ b/src/timeout.c
+@@ -87,7 +87,7 @@ void encodeTimeoutKey(unsigned char *buf, uint64_t timeout, client *c) {
+ void decodeTimeoutKey(unsigned char *buf, uint64_t *toptr, client **cptr) {
+     memcpy(toptr,buf,sizeof(*toptr));
+     *toptr = ntohu64(*toptr);
+-    memcpy(cptr,buf+8,sizeof(*cptr));
++    *cptr = clientFromBytes(buf+8);
+ }
+ 
+ /* Add the specified client id / timeout as a key in the radix tree we use
+diff --git a/src/tracking.c b/src/tracking.c
+index c235d58..26ac0b3 100644
+--- a/src/tracking.c
++++ b/src/tracking.c
+@@ -625,7 +625,7 @@ void trackingBroadcastInvalidationMessages(void) {
+             raxSeek(&ri2,"^",NULL,0);
+             while(raxNext(&ri2)) {
+                 client *c;
+-                memcpy(&c,ri2.key,sizeof(c));
++                c = clientFromBytes(ri2.key);
+                 if (c->flags & CLIENT_TRACKING_NOLOOP) {
+                     /* This client may have certain keys excluded. */
+                     sds adhoc = trackingBuildBroadcastReply(c,bs->keys);
+diff --git a/src/zmalloc.c b/src/zmalloc.c
+index 5b84ccb..62a6c5c 100644
+--- a/src/zmalloc.c
++++ b/src/zmalloc.c
+@@ -690,7 +690,10 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
+  * We do that in a fork child process to avoid CoW when the parent modifies
+  * these shared pages. */
+ void zmadvise_dontneed(void *ptr) {
+-#if defined(USE_JEMALLOC) && defined(__linux__)
++/* Fil-C refuses madvise on its garbage-collected heap, and this allocator
++ * does not hand out whole pages anyway. The callers in object.c and
++ * server.c skip their walks under Fil-C for the same reason. */
++#if defined(USE_JEMALLOC) && defined(__linux__) && !defined(__FILC__)
+     static size_t page_size = 0;
+     if (page_size == 0) page_size = sysconf(_SC_PAGESIZE);
+     size_t page_size_mask = page_size - 1;

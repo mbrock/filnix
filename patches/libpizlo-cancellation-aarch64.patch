@@ -1,0 +1,119 @@
+Subject: Cancellation gate and legacy-free syscalls for aarch64
+Origin: Filnix
+Upstream-Status: Experimental, not submitted
+
+Adds the aarch64 syscall gate and signal-handler PC redirect, and uses
+ppoll and epoll_pwait since aarch64 lacks pause, poll and epoll_wait.
+Applies after libpizlo-cancellation.patch; fold into it when x86_64 is
+next rebuilt.
+
+diff -ru a/libpas/src/libpas/filc_cancel_syscall.S b/libpas/src/libpas/filc_cancel_syscall.S
+--- a/libpas/src/libpas/filc_cancel_syscall.S	2026-09-27 17:51:59.156839391 +0200
++++ b/libpas/src/libpas/filc_cancel_syscall.S	2026-09-27 19:37:47.864619910 +0200
+@@ -39,4 +39,42 @@
+     .cfi_endproc
+     .size filc_cancel_syscall, .-filc_cancel_syscall
+     .section .note.GNU-stack,"",@progbits
++#elif defined(__aarch64__)
++    .text
++    .p2align 4
++    .globl filc_cancel_syscall
++    .hidden filc_cancel_syscall
++    .type filc_cancel_syscall,%function
++filc_cancel_syscall:
++    .cfi_startproc
++    .globl filc_cancel_syscall_begin
++    .hidden filc_cancel_syscall_begin
++filc_cancel_syscall_begin:
++    ldr w9, [x0]
++    mov w10, #25                  /* pending, enabled, not exiting */
++    and w9, w9, w10
++    cmp w9, #8
++    b.eq filc_cancel_syscall_abort
++    mov x8, x1                    /* syscall number */
++    mov x0, x2                    /* argument 1 */
++    mov x1, x3                    /* argument 2 */
++    mov x2, x4                    /* argument 3 */
++    mov x3, x5                    /* argument 4 */
++    mov x4, x6                    /* argument 5 */
++    mov x5, x7                    /* argument 6 */
++    svc #0
++    .globl filc_cancel_syscall_end
++    .hidden filc_cancel_syscall_end
++filc_cancel_syscall_end:
++    mov x1, #0                    /* result.canceled = false */
++    ret
++    .globl filc_cancel_syscall_abort
++    .hidden filc_cancel_syscall_abort
++filc_cancel_syscall_abort:
++    mov x0, #0                    /* no kernel result */
++    mov x1, #1                    /* result.canceled = true */
++    ret
++    .cfi_endproc
++    .size filc_cancel_syscall, .-filc_cancel_syscall
++    .section .note.GNU-stack,"",%progbits
+ #endif
+diff -ru a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
+--- a/libpas/src/libpas/filc_runtime.c	2026-09-27 17:51:59.160839518 +0200
++++ b/libpas/src/libpas/filc_runtime.c	2026-09-27 19:37:47.864619910 +0200
+@@ -484,12 +484,17 @@
+     filc_thread* thread = filc_get_my_thread();
+     if (!thread || !filc_cancel_pending(__atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE)))
+         return;
+-#if defined(__x86_64__)
++#if defined(__x86_64__) || defined(__aarch64__)
+     ucontext_t* uc = (ucontext_t*)context;
+-    uintptr_t pc = uc->uc_mcontext.gregs[REG_RIP];
++#if defined(__x86_64__)
++    uintptr_t* pc_slot = (uintptr_t*)&uc->uc_mcontext.gregs[REG_RIP];
++#else
++    uintptr_t* pc_slot = (uintptr_t*)&uc->uc_mcontext.pc;
++#endif
++    uintptr_t pc = *pc_slot;
+     sigaddset(&uc->uc_sigmask, signum);
+     if (pc >= (uintptr_t)filc_cancel_syscall_begin && pc < (uintptr_t)filc_cancel_syscall_end) {
+-        uc->uc_mcontext.gregs[REG_RIP] = (uintptr_t)filc_cancel_syscall_abort;
++        *pc_slot = (uintptr_t)filc_cancel_syscall_abort;
+         return;
+     }
+     /* Preserve a notification delivered inside an application signal handler.
+@@ -8687,7 +8692,13 @@
+ {
+     filc_check_write(canceled_ptr, sizeof(int));
+     filc_cancel_syscall_result result = filc_cancellable_syscall(
++#ifdef SYS_pause
+         thread, SYS_pause, 0, 0, 0, 0, 0, 0, true);
++#else
++        /* aarch64 has only ppoll; with no descriptors, timeout or mask it
++           waits for a signal, as musl implements pause. */
++        thread, SYS_ppoll, 0, 0, 0, 0, 8, 0, true);
++#endif
+     return filc_return_cancellable_syscall(result, canceled_ptr);
+ }
+ 
+@@ -8697,7 +8708,13 @@
+     filc_check_write(fds, filc_mul_size(sizeof(struct pollfd), nfds));
+     filc_check_write(canceled_ptr, sizeof(int));
+     filc_cancel_syscall_result result = filc_cancellable_syscall(
++#ifdef SYS_poll
+         thread, SYS_poll, (long)filc_ptr_ptr(fds), nfds, timeout, 0, 0, 0, true);
++#else
++        thread, SYS_ppoll, (long)filc_ptr_ptr(fds), nfds,
++        timeout >= 0 ? (long)&(struct timespec){ timeout / 1000, timeout % 1000 * 1000000 } : 0,
++        0, 8, 0, true);
++#endif
+     return filc_return_cancellable_syscall(result, canceled_ptr);
+ }
+ 
+@@ -14998,7 +15015,11 @@
+     check_fd(fd);
+     struct epoll_event* events = make_epoll_events(thread, maxevents);
+     filc_cancel_syscall_result result = filc_cancellable_syscall(
++#ifdef SYS_epoll_wait
+         thread, SYS_epoll_wait, fd, (long)events, maxevents, timeout, 0, 0, true);
++#else
++        thread, SYS_epoll_pwait, fd, (long)events, maxevents, timeout, 0, 8, true);
++#endif
+     int count = filc_return_cancellable_syscall(result, canceled_ptr);
+     return to_user_epoll_events(count, events, events_ptr);
+ }

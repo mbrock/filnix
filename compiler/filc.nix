@@ -78,7 +78,7 @@ let
           --add-flags "-Wno-unused-command-line-argument" \
           --add-flags "--gcc-toolchain=${gcc.cc}" \
           --add-flags "-resource-dir ${filc0-resource-dir}/lib/clang/${llvmMajor}" \
-          --add-flags "--filc-dynamic-linker=${crtLib}/ld-fil1-x86_64.so" \
+          --add-flags "--filc-dynamic-linker=${crtLib}/${lib.dynamicLinker}" \
           --add-flags "--filc-crt-path=${crtLib}" \
           --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
           --add-flags "--filc-os-include=${pkgs.linuxHeaders}/include" \
@@ -100,7 +100,7 @@ let
                 --add-flags "-Wno-unused-command-line-argument" \
                 --add-flags "--gcc-toolchain=${gcc.cc}" \
                 --add-flags "-resource-dir ${filc0-resource-dir}/lib/clang/${llvmMajor}" \
-                --add-flags "--filc-dynamic-linker=${crtLib}/ld-fil1-x86_64.so" \
+                --add-flags "--filc-dynamic-linker=${crtLib}/${lib.dynamicLinker}" \
                 --add-flags "--filc-crt-path=${crtLib}" \
                 --add-flags "--filc-stdfil-include=${filc-stdfil-headers}" \
                 --add-flags "--filc-os-include=${pkgs.linuxHeaders}/include" \

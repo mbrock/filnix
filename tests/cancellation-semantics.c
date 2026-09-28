@@ -23,6 +23,14 @@
 #include <time.h>
 #include <unistd.h>
 
+/* aarch64 has no legacy poll or epoll_wait; the runtime waits in these. */
+#ifndef SYS_poll
+#define SYS_poll SYS_ppoll
+#endif
+#ifndef SYS_epoll_wait
+#define SYS_epoll_wait SYS_epoll_pwait
+#endif
+
 enum scenario {
     READ_PENDING, READ_BLOCKED, READ_DISABLED, READ_NESTED, POLL_BLOCKED,
     CLOSE_PENDING, COND_PENDING, COND_BLOCKED, SEM_PENDING, SEM_BLOCKED,

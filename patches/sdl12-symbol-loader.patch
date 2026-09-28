@@ -1,0 +1,22 @@
+Subject: Keep repeated symbol lookup out of the giant startup function
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Same change as sdl2-symbol-loader.patch: LoadSDL20Symbol is otherwise
+inlined into the startup function once per SDL2 symbol. With Fil-C's
+Clang at -O3, SDL12_compat.c took 873 s and 3.8 GB; with this, 30 s and
+0.3 GB.
+
+--- a/src/SDL12_compat.c
++++ b/src/SDL12_compat.c
+@@ -1355,7 +1355,9 @@
+ #define DIRSEP "/"
+ #endif
+ 
+-static void *
++/* Inlining this for every SDL2 symbol makes Fil-C's instrumented startup
++ * function prohibitively expensive for LLVM's scalar replacement pass. */
++static __attribute__((noinline)) void *
+ LoadSDL20Symbol(const char *fn, int *okay)
+ {
+     void *retval = NULL;

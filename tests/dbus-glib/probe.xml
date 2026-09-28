@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<node name="/org/filnix/Probe">
+  <interface name="org.filnix.Probe">
+    <method name="Scalars">
+      <arg name="i" type="i" direction="in"/>
+      <arg name="u" type="u" direction="in"/>
+      <arg name="x" type="x" direction="in"/>
+      <arg name="d" type="d" direction="in"/>
+      <arg name="b" type="b" direction="in"/>
+      <arg name="y" type="y" direction="in"/>
+      <arg name="summary" type="s" direction="out"/>
+    </method>
+    <method name="Collections">
+      <arg name="words" type="as" direction="in"/>
+      <arg name="numbers" type="ai" direction="in"/>
+      <arg name="props" type="a{sv}" direction="in"/>
+      <arg name="summary" type="s" direction="out"/>
+      <arg name="pair" type="(su)" direction="out"/>
+      <arg name="table" type="a{ss}" direction="out"/>
+    </method>
+    <method name="Announce">
+      <arg name="text" type="s" direction="in"/>
+    </method>
+    <signal name="Announced">
+      <arg name="text" type="s"/>
+      <arg name="length" type="u"/>
+    </signal>
+  </interface>
+</node>

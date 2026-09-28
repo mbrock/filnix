@@ -275,6 +275,12 @@ change alone does not establish a successful full PipeWire build.
 
 ## PipeWire core experiment
 
+> **Retired.** The full `pkgsFilc.pipewire` now builds with these patches,
+> and the consumer cohort (SDL3, SDL2 compatibility, CAVA, WirePlumber) uses
+> it. The core profile and `tests/pipewire-core.nix` were removed; the
+> `pipewire` and `pipewire-runtime` flake checks replace them. The notes below
+> are kept as history.
+
 `tests/pipewire-core.nix` is a standalone diagnostic profile rather than a
 replacement for Nixpkgs' default PipeWire configuration. It keeps the core,
 ALSA, D-Bus, libsystemd/logind, audio conversion/mixing and basic video plugins.

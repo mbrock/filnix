@@ -1,0 +1,21 @@
+diff --git a/lib/util/secport.c b/lib/util/secport.c
+index c764cb1..ad2a9f2 100644
+--- a/lib/util/secport.c
++++ b/lib/util/secport.c
+@@ -548,10 +548,14 @@ port_ArenaZeroAfterMark(PLArenaPool *arena, void *mark)
+         }
+         for (; a; a = a->next) {
+             PR_ASSERT(a->base <= a->avail && a->avail <= a->limit);
++            /* Derive the pointer from the arena header, which starts the
++             * block, instead of casting the integer address (Fil-C refuses
++             * to access memory through a pointer made from an integer). */
++            void *base = (char *)a + (a->base - (PRUword)a);
+ #ifdef PL_MAKE_MEM_UNDEFINED
+-            PL_MAKE_MEM_UNDEFINED((void *)a->base, a->avail - a->base);
++            PL_MAKE_MEM_UNDEFINED(base, a->avail - a->base);
+ #endif
+-            memset((void *)a->base, 0, a->avail - a->base);
++            memset(base, 0, a->avail - a->base);
+         }
+     }
+ }

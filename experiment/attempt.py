@@ -112,9 +112,8 @@ def build(folder, spec):
         str(policy["wall_seconds"]),
         "--max-silent-time",
         str(policy["silent_seconds"]),
-        "--option",
-        "builders",
-        "",
+        # Builds may go to the daemon's remote builders (/etc/nix/machines);
+        # --max-jobs bounds only local jobs.
         *[t + "^*" for t in spec["targets"]],
     )
     # Store this independently of controller state, including interrupted launches.

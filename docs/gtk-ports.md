@@ -50,6 +50,15 @@ target is Fil-C (`pkgsFilc.buildPackages`). Splicing selects that set for
 `nativeBuildInputs`, so ordinary `callPackage` consumers receive these tools,
 and the native package set stays unchanged.
 
+One side effect: every native package in that set that links GLib is rebuilt,
+so it no longer matches the same package in its own `buildPackages`. Qt 5
+noticed. Its qmake hook comes from `buildPackages`, so native Qt modules such
+as qtsvg (which Fil-C packages reach through `wrapQtAppsHook` → qtwayland →
+qtdeclarative) saw two qtbases, and qtbase's setup hook stopped with
+"detected mismatched Qt dependencies". Qt's generators emit no GType code, so
+that set now uses the ordinary native `qt5`/`libsForQt5`, which also comes
+from cache.nixos.org.
+
 GLib and gobject-introspection there are native twins of the ports, at the
 same versions (2.80.4 and 1.80.1). Newer generators emit APIs the target GLib
 lacks (gdbus-codegen 2.84+ calls `g_variant_builder_init_static`), and Meson
@@ -91,6 +100,23 @@ and a Gio memory stream.
 - Duktape's value-stack resize now rebases pointers from the new allocation,
   preserving offsets after realloc-triggered finalizers. A repeated large-call
   and GC check passes; downstream libproxy passes all six tests.
+- dbus-glib switches on `(uintptr_t)` GType values. Its `dbus-binding-tool`
+  needs no build-platform twin: its glue names GTypes by macro, and server
+  marshallers come from the Fil-C-targeted `glib-genmarshal`. The
+  `dbus-glib` check calls a Fil-C service with containers, variants and a
+  signal through that glue.
+- json-glib switches on `(uintptr_t)` GType values and orders its boxed
+  transform list by comparing them, rather than subtracting GTypes into a
+  `gint`. Its tests compare type names; all 18 suites pass. libdbusmenu's
+  installed JSON loader needs the same switch cast.
+- glibmm clears `G_SIGNAL_TYPE_STATIC_SCOPE` in its defs generator with
+  `zandptr`, and gains an identity `TypeTraits<GType>`: otherwise a pointer
+  GType selects the container traits meant for GObject wrapper pointers.
+  glibmm 2.88 and gtkmm 4.22 need GLib 2.87 and GTK 4.22, so `glibmm_2_68`
+  and `gtkmm4` are pinned to 2.80.1 and 4.14.0. Both cairomm versions
+  pass their Boost.Test suites (see the Boost port). The `glibmm`, `glibmm_2_68`, `gtkmm3-runtime` and
+  `gtkmm4-runtime` checks cover derived types, properties, signals, GValue,
+  variants, `wrap()` and list models, the latter two on Broadway.
 - libepoxy enables EGL independently of X11 for GTK's Wayland backend.
 
 GTK enables Wayland and Broadway and disables X11. GTK4 also disables Vulkan,
@@ -101,6 +127,55 @@ currently reports no tests defined for the cross build.
 GTK's upstream suites remain disabled as in the Nixpkgs recipes. GTK4 4.14.5
 cannot satisfy applications requiring newer APIs; successful toolkit builds do
 not establish compatibility for every GNOME application.
+
+## GTK 2
+
+GTK 2.24.33 has no upstream Fil-C port. `patches/gtk2-filc-gtype.patch` makes
+the GTK 3 port's changes to the older sources and is applied after
+the Nixpkgs patches. Unlike GTK 3/4 here, GTK 2 keeps its X11 backend, since
+it has no other backend on Linux, and GAIL is still built as its
+accessibility module.
+
+With GType a pointer, the unpatched sources do not compile. The changes are:
+
+- **Fundamental-type switches.** GtkArg conversion (`gtkobject.c`,
+  `gtksignal.c`), key-binding argument copying and marshalling
+  (`gtkbindings.c`), GtkBuilder value parsing, GtkSettings, and tree-model
+  row storage (`gtktreedatalist.c`) switch on `(uintptr_t)` of the type, with
+  `(uintptr_t)` case labels. Fundamental types are small constants, so
+  this only compares addresses.
+- **Signal scope flags.** `TYPE | G_SIGNAL_TYPE_STATIC_SCOPE` becomes
+  `zorptr(TYPE, ...)`, and GtkArg's `type & ~G_SIGNAL_TYPE_STATIC_SCOPE`
+  becomes `zandptr`, so registered GTypes keep their capability. This covers
+  about 50 signals in GtkWidget, GtkTextBuffer, GtkTreeModel, GtkEntry and
+  others.
+- **Type registration.** GAIL's accessible factories (the
+  `GAIL_IMPLEMENT_FACTORY` macro) and `GailCellParent` use a pointer
+  `g_once_init_enter_pointer`/`_leave_pointer`, as the GTK 3 templates do.
+  GTK 2's own enum types come from pre-generated `gtktypebuiltins.c`, whose
+  `static GType etype` is already fine.
+- **GTypes in integers.** GtkComboBoxText held a model's column type in a
+  `gint`. No code stores a GType through `G*_TO_POINTER` or similar casts.
+- **Clang errors outside GType.** GtkScale passed its three-argument mark
+  comparator through a `GCompareFunc` cast. `tests/testmenubars.c` used a
+  K&R parameter and an extra argument, and `tests/testtreeview.c` walks
+  types numerically (fixed as in the GTK 3 port).
+
+`checks.gtk2-runtime` compiles `tests/gtk2-runtime.c` with Fil-C and runs it
+against a native Xvfb server with `GTK_MODULES=gail`. It exercises:
+
+- GtkBuilder type lookup and properties;
+- signal emission, including the flagged `insert-text` and `row-inserted`
+  signals;
+- a GtkBindingSet entry and an RC-file binding, activated by key;
+- list-store storage and sorting of string, int, double and boolean columns;
+- GtkComboBoxText, GtkSettings and GtkScale marks;
+- GAIL's accessible types;
+- Pango text measurement and a PNG round trip through GdkPixbuf;
+- showing and mapping a window, then running `gtk_main` until a timeout
+  quits it.
+
+The run produces no GLib warnings or criticals.
 
 ## Reproducing the checks
 
@@ -131,6 +206,7 @@ Focused downstream checks are exposed as flake checks:
 
 ```sh
 nix build .#checks.x86_64-linux.pygobject \
+  .#checks.x86_64-linux.gtk2-runtime \
   .#checks.x86_64-linux.gtk3-runtime \
   .#checks.x86_64-linux.gtk4-runtime \
   .#checks.x86_64-linux.glib-networking \

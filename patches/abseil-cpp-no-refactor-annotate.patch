@@ -1,0 +1,31 @@
+Subject: Omit the clang::annotate refactoring attribute under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/abseil-cpp-20260107.1.patch
+
+ABSL_REFACTOR_INLINE expands to [[clang::annotate("inline-me")]], used by
+ABSL_DEPRECATE_AND_INLINE and the deprecated MutexLock(Mutex*) constructors.
+Any translation unit that ODR-uses such a function (protobuf's arena.cc,
+re2's dfa.cc, ...) gets an `llvm.global.annotations` global with appending
+linkage, and FilPizlonator aborts in lockDownLinkage(). The annotation only
+feeds Google's internal go/cpp-inliner tool, so it is dropped for Fil-C.
+See docs/filc-findings.md; checked by tests/protobuf.nix (protobuf and re2
+consumers compile against the installed headers).
+
+diff --git a/absl/base/macros.h b/absl/base/macros.h
+index 446a445..844ced8 100644
+--- a/absl/base/macros.h
++++ b/absl/base/macros.h
+@@ -203,7 +203,11 @@ ABSL_NAMESPACE_END
+ // Note: go/cpp-inliner is Google-internal service for automated refactoring.
+ // While open-source users do not have access to this service, the macro is
+ // provided for compatibility.
+-#if ABSL_HAVE_CPP_ATTRIBUTE(clang::annotate)
++// Fil-C: clang::annotate on a function emits an `llvm.global.annotations`
++// global with appending linkage, which the FilPizlonator pass rejects
++// (assertion in lockDownLinkage). The annotation only feeds an external
++// refactoring tool, so drop it.
++#if ABSL_HAVE_CPP_ATTRIBUTE(clang::annotate) && !defined(__FILC__)
+ #define ABSL_REFACTOR_INLINE [[clang::annotate("inline-me")]]
+ #else
+ #define ABSL_REFACTOR_INLINE

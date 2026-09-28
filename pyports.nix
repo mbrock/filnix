@@ -35,10 +35,95 @@ in
     }))
   ])
 
+  (for "mypy" [
+    # mypyc-generated C loads pointer fields as the integer type CPyPtr and
+    # writes through them, which loses the Fil-C capability and traps (e.g.
+    # charset-normalizer's compiled modules). These overrides also reach the
+    # build platform's mypy, which is the one that runs mypyc for Fil-C
+    # packages; the typedef change only applies when compiling with Fil-C.
+    (patch ./patches/mypyc-filc-pointer-cpyptr.patch)
+  ])
+
+  (for "cffi" [
+    (patch ./patches/cffi-filc.patch)
+    (use (old: {
+      disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [
+        # The pure-Python ctypes backend passes every address through
+        # ctypes.cast() from an integer, so its pointers have no capability.
+        # test_ffi_backend.py::TestFFI runs the same tests on _cffi_backend.
+        "testing/cffi0/test_ctypes.py"
+        "testing/cffi0/test_function.py::TestFunction"
+        "testing/cffi0/test_ownlib.py::TestOwnLib"
+        "testing/cffi0/test_verify.py::test_ctypes_backend_forces_generic_engine"
+        "testing/cffi0/test_verify2.py::test_ctypes_backend_forces_generic_engine"
+        "testing/cffi0/test_vgen.py::test_ctypes_backend_forces_generic_engine"
+        "testing/cffi0/test_vgen2.py::test_ctypes_backend_forces_generic_engine"
+        # They cast integers to pointers and dereference them.
+        "src/c/test_c.py::test_cast_between_pointers"
+        "testing/cffi0/test_ffi_backend.py::TestFFI::test_cast_pointer_and_int"
+        "testing/cffi1/test_new_ffi_1.py::TestNewFFI1::test_cast_pointer_and_int"
+        # It calls a function pointer that went through intptr_t.
+        "testing/cffi1/test_recompiler.py::test_convert_api_mode_builtin_function_to_cdata"
+        # It indexes a from_buffer() pointer out of bounds ("hopefully
+        # does not crash").
+        "src/c/test_c.py::test_from_buffer_types"
+        # Fil-C zeroes every allocation, so should_clear_after_alloc=False
+        # never yields dirty memory.
+        "testing/cffi1/test_ffi_obj.py::test_ffi_new_allocator_1"
+        # They dlopen find_library('dl'). libdl has been part of libc since
+        # glibc 2.34 and the sandbox has no ldconfig cache, so -ldl only
+        # resolves to the empty libdl.a.
+        "testing/cffi0/test_ffi_backend.py::TestFFI::test_dlopen_handle"
+        "testing/cffi1/test_re_python.py::test_dlopen_handle"
+        # Fil-C exports pizlonated_* and pizlonated<N>ET* symbols.
+        "testing/cffi1/test_cffi_binary.py::test_no_unknown_exported_symbols"
+      ];
+    }))
+  ])
+
+  (for "websockets" [
+    (use (old: {
+      disabledTests = (old.disabledTests or [ ]) ++ [
+        # Timing-sensitive: expects the peer's close frame within a short
+        # timeout, which Fil-C's slower Python misses.
+        "test_writing_in_recv_events_fails"
+      ];
+    }))
+  ])
+
+  (for "protobuf7" [
+    (use (old: {
+      # The upb C extension (google._upb._message) keeps pointers in integer
+      # words (arena block allocators, hash entries) and traps at import
+      # under Fil-C. api_implementation probes it before it reads
+      # PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION, so that variable cannot avoid
+      # it. The build-time constant module makes the pure-Python backend the
+      # default without the probe (the variable can still select upb).
+      # Porting upb itself is a separate job.
+      postInstall = (old.postInstall or "") + ''
+        internal=$(echo $out/lib/python*/site-packages/google/protobuf/internal)
+        echo 'api_version = 0  # Fil-C: pure-Python backend' \
+          > "$internal/_api_implementation.py"
+      '';
+      pythonImportsCheck = pkgs.lib.remove "google._upb._message" (
+        old.pythonImportsCheck or [ ]
+      );
+    }))
+  ])
+
   (for "pybind11" [
     (use {
       # The CMake check target runs pytest with the build platform's Python,
       # which cannot import the Fil-C test extension modules.
+      doCheck = false;
+      doInstallCheck = false;
+    })
+  ])
+
+  (for "dbus-python" [
+    (use {
+      # Meson's tests run the build platform's Python, which cannot import
+      # the Fil-C _dbus_bindings or pyexpat modules.
       doCheck = false;
       doInstallCheck = false;
     })

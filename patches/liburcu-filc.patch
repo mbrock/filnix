@@ -1,0 +1,65 @@
+diff --git a/include/urcu/arch/x86.h b/include/urcu/arch/x86.h
+index 18f7a49..f7435dc 100644
+--- a/include/urcu/arch/x86.h
++++ b/include/urcu/arch/x86.h
+@@ -29,7 +29,15 @@ extern "C" {
+  * k1om (__MIC__) is the name for the Intel MIC family (Xeon Phi). It is an
+  * x86_64 variant but lacks fence instructions.
+  */
+-#if (defined(URCU_ARCH_AMD64) && !defined(URCU_ARCH_K1OM))
++#if defined(__FILC__)
++
++/*
++ * Fil-C rejects the barrier, pause and rdtsc inline assembly below (the
++ * lock prefix is not a safe mnemonic); use the builtin-based barriers and
++ * the clock_gettime cycle counter from <urcu/arch/generic.h>.
++ */
++
++#elif (defined(URCU_ARCH_AMD64) && !defined(URCU_ARCH_K1OM))
+ 
+ /* For backwards compat */
+ #define CONFIG_RCU_HAVE_FENCE 1
+@@ -76,6 +84,7 @@ extern "C" {
+ #endif
+ #endif
+ 
++#ifndef __FILC__
+ #define caa_cpu_relax()	__asm__ __volatile__ ("rep; nop" : : : "memory")
+ 
+ #define HAS_CAA_GET_CYCLES
+@@ -97,6 +106,7 @@ static inline caa_cycles_t caa_get_cycles(void)
+         rdtscll(ret);
+         return ret;
+ }
++#endif /* !__FILC__ */
+ 
+ /*
+  * On Linux, define the membarrier system call number if not yet available in
+diff --git a/src/urcu-bp.c b/src/urcu-bp.c
+index e23ca95..15fea68 100644
+--- a/src/urcu-bp.c
++++ b/src/urcu-bp.c
+@@ -86,7 +86,8 @@ static
+ int urcu_bp_refcount;
+ 
+ /* If the headers do not support membarrier system call, fall back smp_mb. */
+-#ifdef __NR_membarrier
++/* Fil-C stops the program on membarrier(2) instead of failing with ENOSYS. */
++#if defined(__NR_membarrier) && !defined(__FILC__)
+ # define membarrier(...)		syscall(__NR_membarrier, __VA_ARGS__)
+ #else
+ # define membarrier(...)		-ENOSYS
+diff --git a/src/urcu.c b/src/urcu.c
+index 654cf4e..5e6c643 100644
+--- a/src/urcu.c
++++ b/src/urcu.c
+@@ -56,7 +56,8 @@
+ #define RCU_QS_ACTIVE_ATTEMPTS 100
+ 
+ /* If the headers do not support membarrier system call, fall back on RCU_MB */
+-#ifdef __NR_membarrier
++/* Fil-C stops the program on membarrier(2) instead of failing with ENOSYS. */
++#if defined(__NR_membarrier) && !defined(__FILC__)
+ # define membarrier(...)		syscall(__NR_membarrier, __VA_ARGS__)
+ #else
+ # define membarrier(...)		-ENOSYS

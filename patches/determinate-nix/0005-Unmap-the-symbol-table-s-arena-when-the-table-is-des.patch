@@ -1,0 +1,48 @@
+From 0ce4ed519d63c40b9f7d64e16ba7561484be712b Mon Sep 17 00:00:00 2001
+From: t <a@b>
+Date: Sun, 27 Sep 2026 18:39:55 +0000
+Subject: [PATCH 5/5] Unmap the symbol table's arena when the table is
+ destroyed
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0e3d7-ab8a-71e7-a00f-992fc7832185
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ src/libexpr/include/nix/expr/symbol-table.hh | 5 +++++
+ src/libexpr/symbol-table.cc                  | 5 +++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/src/libexpr/include/nix/expr/symbol-table.hh b/src/libexpr/include/nix/expr/symbol-table.hh
+index a1a209f..742e0f9 100644
+--- a/src/libexpr/include/nix/expr/symbol-table.hh
++++ b/src/libexpr/include/nix/expr/symbol-table.hh
+@@ -36,6 +36,11 @@ struct ContiguousArena
+ 
+     ContiguousArena(size_t maxSize);
+ 
++    ~ContiguousArena();
++
++    ContiguousArena(const ContiguousArena &) = delete;
++    ContiguousArena & operator=(const ContiguousArena &) = delete;
++
+     size_t allocate(size_t bytes);
+ };
+ 
+diff --git a/src/libexpr/symbol-table.cc b/src/libexpr/symbol-table.cc
+index 052c725..af6a939 100644
+--- a/src/libexpr/symbol-table.cc
++++ b/src/libexpr/symbol-table.cc
+@@ -23,6 +23,11 @@ ContiguousArena::ContiguousArena(size_t maxSize)
+ {
+ }
+ 
++ContiguousArena::~ContiguousArena()
++{
++    munmap(const_cast<char *>(data), maxSize);
++}
++
+ size_t ContiguousArena::allocate(size_t bytes)
+ {
+     auto offset = size.fetch_add(bytes);
+-- 
+2.55.0
+

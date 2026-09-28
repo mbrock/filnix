@@ -23,7 +23,7 @@ addLibcMetadata
     pkgs.linuxHeaders
   ])
   {
-    dynamicLinker = "ld-fil1-x86_64.so";
+    inherit (lib) dynamicLinker;
     crts = [
       "crt1.o"
       "rcrt1.o"

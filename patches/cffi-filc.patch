@@ -1,0 +1,98 @@
+Subject: Make cffi's callbacks, embedding and test helper work under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+- ffi.callback() allocated its trampolines itself from write+execute
+  pages, which Fil-C refuses ("Cannot allocate write+execute memory").
+  Use libffi's ffi_closure_alloc(), as on Emscripten; the Fil-C libffi
+  port makes closures with zclosure_new().
+- _embedding.h locked start-up with __sync_bool_compare_and_swap on
+  pointers. Clang lowers that to an integer cmpxchg, so the pointer it
+  stores into PyCapsule_Type.tp_as_buffer loses its capability and
+  Py_InitializeEx() traps reading it. Use __atomic_compare_exchange_n.
+- The type-building recursion limit of 1000 levels overflowed the 8 MB
+  stack before it could raise (testing/cffi1/test_recompiler.py::
+  test_struct_with_func_with_struct_arg); each level takes about 20 KB.
+- _testfunc() returned C function addresses as Python ints, which the
+  tests cast back to function pointers and call. Return 'void *' cdata
+  so that the capability survives; src/c/test_c.py's test_call_function_*
+  then exercise libffi calls for real.
+
+diff --git a/src/c/_cffi_backend.c b/src/c/_cffi_backend.c
+--- a/src/c/_cffi_backend.c
++++ b/src/c/_cffi_backend.c
+@@ -117,7 +117,10 @@
+ # define CFFI_CHECK_FFI_PREP_CIF_VAR __builtin_available(macos 10.15, ios 13, watchos 6, tvos 13, *)
+ # define CFFI_CHECK_FFI_PREP_CIF_VAR_MAYBE 1
+ 
+-#elif defined(__EMSCRIPTEN__)
++#elif defined(__EMSCRIPTEN__) || defined(__FILC__)
++
++/* Fil-C cannot make write+execute memory; its libffi builds closures
++   with zclosure_new() inside ffi_closure_alloc(). */
+ 
+ # define CFFI_CHECK_FFI_CLOSURE_ALLOC 1
+ # define CFFI_CHECK_FFI_CLOSURE_ALLOC_MAYBE 1
+@@ -7815,6 +7818,10 @@ static _cffi_double_complex_t _testfunc25(double a, double b)
+ }
+ #endif
+ 
++#ifdef __FILC__
++static CTypeDescrObject *g_ct_voidp;   /* realize_c_type.c */
++#endif
++
+ static PyObject *b__testfunc(PyObject *self, PyObject *args)
+ {
+     /* for testing only */
+@@ -7855,7 +7862,14 @@ static PyObject *b__testfunc(PyObject *self, PyObject *args)
+         PyErr_SetNone(PyExc_ValueError);
+         return NULL;
+     }
++#ifdef __FILC__
++    /* The tests cast the result to function pointer types and call it.
++       An integer address carries no Fil-C capability, so return a
++       'void *' cdata instead; cast() keeps its capability. */
++    return new_simple_cdata((char *)f, g_ct_voidp);
++#else
+     return PyLong_FromVoidPtr(f);
++#endif
+ }
+ 
+ #if PY_MAJOR_VERSION < 3
+diff --git a/src/c/realize_c_type.c b/src/c/realize_c_type.c
+--- a/src/c/realize_c_type.c
++++ b/src/c/realize_c_type.c
+@@ -719,7 +719,13 @@ realize_c_type_or_func_lock_held(builder_c_t *builder,
+         return x;
+     }
+ 
++#ifdef __FILC__
++    /* Each level takes about 20 KB of stack under Fil-C, so 1000 levels
++       overflow the default 8 MB stack instead of raising. */
++    if (_realize_recursion_level >= 200) {
++#else
+     if (_realize_recursion_level >= 1000) {
++#endif
+         PyErr_Format(PyExc_RuntimeError,
+             "type-building recursion too deep or infinite.  "
+             "This is known to occur e.g. in ``struct s { void(*callable)"
+diff --git a/src/cffi/_embedding.h b/src/cffi/_embedding.h
+--- a/src/cffi/_embedding.h
++++ b/src/cffi/_embedding.h
+@@ -39,7 +39,16 @@ static _cffi_call_python_fnptr _cffi_call_python = &_cffi_start_and_call_python;
+ 
+ #ifndef _MSC_VER
+    /* --- Assuming a GCC not infinitely old --- */
++# ifdef __FILC__
++   /* Clang lowers __sync_bool_compare_and_swap() on pointers to an
++      integer cmpxchg, which drops the Fil-C capability of the new value. */
++#  define cffi_compare_and_swap(l,o,n)  __extension__ ({             \
++       __typeof__(*(l) + 0) _cffi_expected = (o);                      \
++       __atomic_compare_exchange_n(l, &_cffi_expected, n, 0,           \
++                                   __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); })
++# else
+ # define cffi_compare_and_swap(l,o,n)  __sync_bool_compare_and_swap(l,o,n)
++# endif
+ # define cffi_write_barrier()          __sync_synchronize()
+ # if !defined(__amd64__) && !defined(__x86_64__) &&   \
+      !defined(__i386__) && !defined(__i386)

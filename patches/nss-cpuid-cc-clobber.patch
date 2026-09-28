@@ -1,0 +1,14 @@
+diff --git a/lib/freebl/mpi/mpcpucache.c b/lib/freebl/mpi/mpcpucache.c
+index ddc21ec..eb649e0 100644
+--- a/lib/freebl/mpi/mpcpucache.c
++++ b/lib/freebl/mpi/mpcpucache.c
+@@ -45,7 +45,8 @@ freebl_cpuid(unsigned long op, unsigned long *eax,
+               "=b"(*ebx),
+               "=c"(*ecx),
+               "=d"(*edx)
+-            : "0"(op));
++            : "0"(op)
++            : "cc"); /* xor sets the flags */
+ }
+ 
+ #elif defined(_MSC_VER)

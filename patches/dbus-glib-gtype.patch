@@ -1,0 +1,785 @@
+Subject: Dispatch on pointer-valued GTypes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C GLib, so switch statements whose cases are
+G_TYPE_* constants do not compile. Switch on the (uintptr_t) value and cast
+each case label; only the integer value is compared, no GType is rebuilt
+from it. dbus_g_type_get_struct_size returns guint, so its precondition
+failure returns 0 rather than G_TYPE_INVALID. The changes are no-ops for
+the native integer GType ABI.
+
+diff --git a/dbus/dbus-binding-tool-glib.c b/dbus/dbus-binding-tool-glib.c
+index 3fa39da..d72fc1a 100644
+--- a/dbus/dbus-binding-tool-glib.c
++++ b/dbus/dbus-binding-tool-glib.c
+@@ -25,6 +25,7 @@
+  */
+ 
+ #include <config.h>
++#include <stdint.h>
+ #include "dbus/dbus-glib.h"
+ #include "dbus-gidl.h"
+ #include "dbus-gparser.h"
+@@ -68,31 +69,31 @@ static gboolean generate_client_glue (BaseInfo *base, DBusBindingToolCData *data
+ static const char *
+ dbus_g_type_get_marshal_name (GType gtype)
+ {
+-  switch (G_TYPE_FUNDAMENTAL (gtype))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (gtype))
+     {
+-    case G_TYPE_NONE:
++    case (uintptr_t) G_TYPE_NONE:
+       return "NONE";
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       return "BOOLEAN";
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       return "UCHAR";
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       return "INT";
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       return "UINT";
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       return "INT64";
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       return "UINT64";
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       return "DOUBLE";
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       return "STRING";
+-    case G_TYPE_POINTER:
++    case (uintptr_t) G_TYPE_POINTER:
+       return "POINTER";
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       return "BOXED";
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       return "OBJECT";
+     default:
+       return NULL;
+@@ -1052,7 +1053,7 @@ write_formal_parameters (InterfaceInfo *iface, MethodInfo *method, GIOChannel *c
+ }
+ 
+ #define MAP_FUNDAMENTAL(NAME) \
+-   case G_TYPE_ ## NAME: \
++   case (uintptr_t) G_TYPE_ ## NAME: \
+      return g_strdup ("G_TYPE_" #NAME);
+ #define MAP_KNOWN(NAME) \
+     if (gtype == NAME) \
+@@ -1061,7 +1062,7 @@ static char *
+ dbus_g_type_get_lookup_function (GType gtype)
+ {
+   char *type_lookup;
+-  switch (gtype)
++  switch ((uintptr_t) gtype)
+     {
+       MAP_FUNDAMENTAL(CHAR);
+       MAP_FUNDAMENTAL(UCHAR);
+diff --git a/dbus/dbus-gtype-specialized.c b/dbus/dbus-gtype-specialized.c
+index 5b3d166..cd9d564 100644
+--- a/dbus/dbus-gtype-specialized.c
++++ b/dbus/dbus-gtype-specialized.c
+@@ -1125,7 +1125,7 @@ guint
+ dbus_g_type_get_struct_size (GType gtype)
+ {
+   DBusGTypeSpecializedData *data;
+-  g_return_val_if_fail (dbus_g_type_is_struct (gtype), G_TYPE_INVALID);
++  g_return_val_if_fail (dbus_g_type_is_struct (gtype), 0);
+ 
+   data = lookup_specialization_data (gtype);
+   return data->num_types;
+diff --git a/dbus/dbus-gvalue-utils.c b/dbus/dbus-gvalue-utils.c
+index 59705f5..a0b11e0 100644
+--- a/dbus/dbus-gvalue-utils.c
++++ b/dbus/dbus-gvalue-utils.c
+@@ -24,6 +24,7 @@
+  */
+ 
+ #include <config.h>
++#include <stdint.h>
+ #include "dbus/dbus-glib.h"
+ #include "dbus-gtype-specialized-priv.h"
+ #include "dbus-gvalue-utils.h"
+@@ -36,25 +37,25 @@
+ static guint
+ fixed_type_get_size (GType type)
+ {
+-  switch (type)
++  switch ((uintptr_t) type)
+     {
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       return sizeof (gchar);
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       return sizeof (gboolean);
+-    case G_TYPE_LONG:
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       return sizeof (glong);
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
+       return sizeof (gint);
+-    case G_TYPE_INT64:
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       return sizeof (gint64);
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       return sizeof (gfloat);
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       return sizeof (gdouble);
+     default:
+       return 0;
+@@ -81,45 +82,45 @@ _dbus_gvalue_store (GValue          *value,
+   /* FIXME - can we use the GValue lcopy_value method
+    * to do this in a cleaner way?
+    */
+-  switch (g_type_fundamental (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       *((gchar *) storage) = g_value_get_schar (value);
+       return TRUE;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       *((guchar *) storage) = g_value_get_uchar (value);
+       return TRUE;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       *((gboolean *) storage) = g_value_get_boolean (value);
+       return TRUE;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       *((glong *) storage) = g_value_get_long (value);
+       return TRUE;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       *((gulong *) storage) = g_value_get_ulong (value);
+       return TRUE;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       *((gint *) storage) = g_value_get_int (value);
+       return TRUE;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       *((guint *) storage) = g_value_get_uint (value);
+       return TRUE;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       *((gint64 *) storage) = g_value_get_int64 (value);
+       return TRUE;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       *((guint64 *) storage) = g_value_get_uint64 (value);
+       return TRUE;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       *((gdouble *) storage) = g_value_get_double (value);
+       return TRUE;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       *((gchar **) storage) = (char*) g_value_get_string (value);
+       return TRUE;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       *((gpointer *) storage) = g_value_get_object (value);
+       return TRUE;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       *((gpointer *) storage) = g_value_get_boxed (value);
+       return TRUE;
+     default:
+@@ -132,45 +133,45 @@ _dbus_gvalue_set_from_pointer (GValue          *value,
+ 			      gconstpointer    storage)
+ {
+   /* FIXME - is there a better way to do this? */
+-  switch (g_type_fundamental (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       g_value_set_schar (value, *((gchar *) storage));
+       return TRUE;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       g_value_set_uchar (value, *((guchar *) storage));
+       return TRUE;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       g_value_set_boolean (value, *((gboolean *) storage));
+       return TRUE;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       g_value_set_long (value, *((glong *) storage));
+       return TRUE;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       g_value_set_ulong (value, *((gulong *) storage));
+       return TRUE;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       g_value_set_int (value, *((gint *) storage));
+       return TRUE;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       g_value_set_uint (value, *((guint *) storage));
+       return TRUE;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       g_value_set_int64 (value, *((gint64 *) storage));
+       return TRUE;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       g_value_set_uint64 (value, *((guint64 *) storage));
+       return TRUE;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       g_value_set_double (value, *((gdouble *) storage));
+       return TRUE;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       g_value_set_string (value, *((gchar **) storage));
+       return TRUE;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       g_value_set_object (value, *((gpointer *) storage));
+       return TRUE;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       g_value_set_boxed (value, *((gpointer *) storage));
+       return TRUE;
+     default:
+@@ -206,14 +207,14 @@ _dbus_gvalue_take (GValue          *value,
+ gboolean
+ _dbus_gtype_can_signal_error (GType gtype)
+ {
+-  switch (gtype)
++  switch ((uintptr_t) gtype)
+     {
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
+-    case G_TYPE_STRING:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_OBJECT:
+       return TRUE;
+     default:
+       return FALSE;
+@@ -229,24 +230,24 @@ _dbus_gvalue_signals_error (const GValue *value)
+    * reality people will probably just use boolean and
+    * boxed, and there the semantics are pretty standard.
+    */
+-  switch (G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       return (g_value_get_boolean (value) == FALSE);
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       return (g_value_get_int (value) < 0);
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       return (g_value_get_uint (value) == 0);
+       break;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       return (g_value_get_string (value) == NULL);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       return (g_value_get_boxed (value) == NULL);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       return (g_value_get_object (value) == NULL);
+       break;
+     default:
+@@ -259,16 +260,16 @@ _dbus_gvalue_signals_error (const GValue *value)
+ static gboolean
+ hash_func_from_gtype (GType gtype, GHashFunc *func)
+ {
+-  switch (gtype)
++  switch ((uintptr_t) gtype)
+     {
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
+       *func = NULL;
+       return TRUE;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       *func = g_str_hash;
+       return TRUE;
+     default:
+@@ -309,17 +310,17 @@ deprecated_value_array_type (void)
+ static gboolean
+ hash_simple_free_from_gtype (GType gtype, GDestroyNotify *func)
+ {
+-  switch (gtype)
++  switch ((uintptr_t) gtype)
+     {
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
+       *func = NULL;
+       return TRUE;
+-    case G_TYPE_DOUBLE:
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_STRING:
+       *func = g_free;
+       return TRUE;
+     default:
+@@ -415,17 +416,17 @@ gboolean
+ _dbus_gtype_is_valid_hash_value (GType gtype)
+ {
+   /* anything we can take into a GValue using gvalue_take_hash_value is fine */
+-  switch (g_type_fundamental (gtype))
++  switch ((uintptr_t) g_type_fundamental (gtype))
+     {
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
+-    case G_TYPE_DOUBLE:
+-    case G_TYPE_STRING:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_OBJECT:
+       return TRUE;
+     }
+ 
+@@ -447,15 +448,15 @@ _dbus_g_hash_equal_from_gtype (GType gtype)
+ {
+   g_assert (_dbus_gtype_is_valid_hash_key (gtype));
+ 
+-  switch (gtype)
++  switch ((uintptr_t) gtype)
+     {
+-    case G_TYPE_CHAR:
+-    case G_TYPE_UCHAR:
+-    case G_TYPE_BOOLEAN:
+-    case G_TYPE_INT:
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_INT:
++    case (uintptr_t) G_TYPE_UINT:
+       return NULL;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       return g_str_equal;
+     default:
+       if (gtype == DBUS_TYPE_G_OBJECT_PATH)
+@@ -514,24 +515,24 @@ static void gvalue_take_ptrarray_value (GValue *value, gpointer instance);
+ static void
+ gvalue_take_hash_value (GValue *value, gpointer instance)
+ {
+-  switch (g_type_fundamental (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       g_value_set_schar (value, (gchar) GPOINTER_TO_INT (instance));
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       g_value_set_uchar (value, (guchar) GPOINTER_TO_UINT (instance));
+       break;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       g_value_set_boolean (value, (gboolean) GPOINTER_TO_UINT (instance));
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       g_value_set_int (value, GPOINTER_TO_INT (instance));
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       g_value_set_uint (value, GPOINTER_TO_UINT (instance));
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       g_value_set_double (value, *(gdouble *) instance);
+       break;
+     default:
+@@ -545,24 +546,24 @@ static gpointer ptrarray_value_from_gvalue (const GValue *value);
+ static gpointer
+ hash_value_from_gvalue (GValue *value)
+ {
+-  switch (g_type_fundamental (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       return GINT_TO_POINTER ((int) g_value_get_schar (value));
+       break;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       return GUINT_TO_POINTER ((guint) g_value_get_uchar (value));
+       break;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       return GUINT_TO_POINTER ((guint) g_value_get_boolean (value));
+       break;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       return GINT_TO_POINTER (g_value_get_int (value));
+       break;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       return GUINT_TO_POINTER (g_value_get_uint (value));
+       break;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         gdouble *p = (gdouble *) g_malloc0 (sizeof (gdouble));
+         *p = g_value_get_double (value);
+@@ -888,49 +889,49 @@ array_iterator (GType garray_type,
+       GValue val = {0, };
+       g_value_init (&val, elt_gtype);
+ 
+-      switch (elt_gtype)
++      switch ((uintptr_t) elt_gtype)
+         {
+-          case G_TYPE_BOOLEAN:
++          case (uintptr_t) G_TYPE_BOOLEAN:
+             g_value_set_boolean (&val, !!g_array_index (array, gboolean, i));
+             break;
+ 
+-          case G_TYPE_FLOAT:
++          case (uintptr_t) G_TYPE_FLOAT:
+             g_value_set_float (&val, g_array_index (array, gfloat, i));
+             break;
+ 
+-          case G_TYPE_DOUBLE:
++          case (uintptr_t) G_TYPE_DOUBLE:
+             g_value_set_double (&val, g_array_index (array, gdouble, i));
+             break;
+ 
+-          case G_TYPE_CHAR:
++          case (uintptr_t) G_TYPE_CHAR:
+             g_value_set_schar (&val, g_array_index (array, gchar, i));
+             break;
+ 
+-          case G_TYPE_UCHAR:
++          case (uintptr_t) G_TYPE_UCHAR:
+             g_value_set_uchar (&val, g_array_index (array, guchar, i));
+             break;
+ 
+-          case G_TYPE_INT:
++          case (uintptr_t) G_TYPE_INT:
+             g_value_set_int (&val, g_array_index (array, gint, i));
+             break;
+ 
+-          case G_TYPE_UINT:
++          case (uintptr_t) G_TYPE_UINT:
+             g_value_set_uint (&val, g_array_index (array, guint, i));
+             break;
+ 
+-          case G_TYPE_LONG:
++          case (uintptr_t) G_TYPE_LONG:
+             g_value_set_long (&val, g_array_index (array, glong, i));
+             break;
+ 
+-          case G_TYPE_ULONG:
++          case (uintptr_t) G_TYPE_ULONG:
+             g_value_set_ulong (&val, g_array_index (array, gulong, i));
+             break;
+ 
+-          case G_TYPE_INT64:
++          case (uintptr_t) G_TYPE_INT64:
+             g_value_set_int64 (&val, g_array_index (array, gint64, i));
+             break;
+ 
+-          case G_TYPE_UINT64:
++          case (uintptr_t) G_TYPE_UINT64:
+             g_value_set_uint64 (&val, g_array_index (array, guint64, i));
+             break;
+ 
+@@ -965,59 +966,59 @@ array_append (DBusGTypeSpecializedAppendContext *ctx,
+   elt_gtype = dbus_g_type_get_collection_specialization (
+       G_VALUE_TYPE (ctx->val));
+ 
+-  switch (elt_gtype)
++  switch ((uintptr_t) elt_gtype)
+     {
+-      case G_TYPE_BOOLEAN:
++      case (uintptr_t) G_TYPE_BOOLEAN:
+         tmp.b = g_value_get_boolean (value);
+         g_array_append_val (array, tmp.b);
+         break;
+ 
+-      case G_TYPE_FLOAT:
++      case (uintptr_t) G_TYPE_FLOAT:
+         tmp.f = g_value_get_float (value);
+         g_array_append_val (array, tmp.f);
+         break;
+ 
+-      case G_TYPE_DOUBLE:
++      case (uintptr_t) G_TYPE_DOUBLE:
+         tmp.d = g_value_get_double (value);
+         g_array_append_val (array, tmp.d);
+         break;
+ 
+-      case G_TYPE_CHAR:
++      case (uintptr_t) G_TYPE_CHAR:
+         tmp.c = g_value_get_schar (value);
+         g_array_append_val (array, tmp.c);
+         break;
+ 
+-      case G_TYPE_UCHAR:
++      case (uintptr_t) G_TYPE_UCHAR:
+         tmp.uc = g_value_get_uchar (value);
+         g_array_append_val (array, tmp.uc);
+         break;
+ 
+-      case G_TYPE_INT:
++      case (uintptr_t) G_TYPE_INT:
+         tmp.i = g_value_get_int (value);
+         g_array_append_val (array, tmp.i);
+         break;
+ 
+-      case G_TYPE_UINT:
++      case (uintptr_t) G_TYPE_UINT:
+         tmp.u = g_value_get_uint (value);
+         g_array_append_val (array, tmp.u);
+         break;
+ 
+-      case G_TYPE_LONG:
++      case (uintptr_t) G_TYPE_LONG:
+         tmp.l = g_value_get_long (value);
+         g_array_append_val (array, tmp.l);
+         break;
+ 
+-      case G_TYPE_ULONG:
++      case (uintptr_t) G_TYPE_ULONG:
+         tmp.ul = g_value_get_ulong (value);
+         g_array_append_val (array, tmp.ul);
+         break;
+ 
+-      case G_TYPE_INT64:
++      case (uintptr_t) G_TYPE_INT64:
+         tmp.i64 = g_value_get_int64 (value);
+         g_array_append_val (array, tmp.i64);
+         break;
+ 
+-      case G_TYPE_UINT64:
++      case (uintptr_t) G_TYPE_UINT64:
+         tmp.u64 = g_value_get_uint64 (value);
+         g_array_append_val (array, tmp.u64);
+         break;
+@@ -1074,15 +1075,15 @@ ptrarray_constructor (GType type)
+ static void
+ gvalue_take_ptrarray_value (GValue *value, gpointer instance)
+ {
+-  switch (g_type_fundamental (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       g_value_take_string (value, instance);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       g_value_take_boxed (value, instance);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       g_value_take_object (value, instance);
+       break;
+     default:
+@@ -1108,15 +1109,15 @@ ptrarray_value_from_gvalue (const GValue *value)
+       value = &tmp;
+     }
+ 
+-  switch (g_type_fundamental (G_VALUE_TYPE (value)))
++  switch ((uintptr_t) g_type_fundamental (G_VALUE_TYPE (value)))
+     {
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       return (gpointer) g_value_get_string (value);
+       break;
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       return g_value_get_boxed (value);
+       break;
+-    case G_TYPE_OBJECT:
++    case (uintptr_t) G_TYPE_OBJECT:
+       return g_value_get_object (value);
+       break;
+     default:
+diff --git a/dbus/dbus-gvalue.c b/dbus/dbus-gvalue.c
+index d856490..14c2bf2 100644
+--- a/dbus/dbus-gvalue.c
++++ b/dbus/dbus-gvalue.c
+@@ -25,6 +25,7 @@
+  */
+ 
+ #include "config.h"
++#include <stdint.h>
+ #include "dbus-gtest.h"
+ #include "dbus-gvalue.h"
+ #include "dbus-gsignature.h"
+@@ -1379,9 +1380,9 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+ 
+   value_type = G_VALUE_TYPE (value);
+   
+-  switch (value_type)
++  switch ((uintptr_t) value_type)
+     {
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       {
+         char b = g_value_get_schar (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1390,7 +1391,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       {
+         unsigned char b = g_value_get_uchar (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1399,7 +1400,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       {
+         dbus_bool_t b = g_value_get_boolean (value);
+ 
+@@ -1411,7 +1412,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       {
+         dbus_int32_t v = g_value_get_int (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1420,7 +1421,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       {
+         dbus_uint32_t v = g_value_get_uint (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1429,7 +1430,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_LONG:
++    case (uintptr_t) G_TYPE_LONG:
+       {
+         dbus_int32_t v = g_value_get_long (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1438,7 +1439,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_ULONG:
++    case (uintptr_t) G_TYPE_ULONG:
+       {
+         dbus_uint32_t v = g_value_get_ulong (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1447,7 +1448,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       {
+         gint64 v = g_value_get_int64 (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1456,7 +1457,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       {
+         guint64 v = g_value_get_uint64 (value);
+         if (!dbus_message_iter_append_basic (iter,
+@@ -1465,7 +1466,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       {
+         double v = g_value_get_float (value);
+         
+@@ -1475,7 +1476,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         double v = g_value_get_double (value);
+         
+@@ -1485,7 +1486,7 @@ marshal_basic (DBusMessageIter *iter, const GValue *value)
+           oom ();
+       }
+       return TRUE;
+-    case G_TYPE_STRING:
++    case (uintptr_t) G_TYPE_STRING:
+       {
+         const char *v = g_value_get_string (value);
+ 	if (!v)

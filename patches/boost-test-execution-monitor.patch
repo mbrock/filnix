@@ -1,0 +1,48 @@
+Subject: Run Boost.Test's execution monitor under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+Applies-After: ports/patch/boost-filc.patch
+
+The monitor installs handlers for SIGILL, SIGFPE, SIGSEGV, SIGBUS, SIGPOLL,
+SIGABRT and SIGALRM and an alternate signal stack before any test runs.
+Fil-C keeps the default action for the four fault signals (sigaction fails
+with ENOSYS, since the runtime reports those faults itself) and does not
+support sigaltstack, so every Boost.Test program failed at startup with
+"system_error produced by: exp: Function not implemented".
+
+Under Fil-C, skip the alternate stack and leave signals whose handlers are
+refused uncaught; the remaining handlers stay, so timeouts (SIGALRM) are
+still reported as test failures. Covered by tests/boost-test.cpp in the
+boost check phase.
+
+diff --git a/boost/test/impl/execution_monitor.ipp b/boost/test/impl/execution_monitor.ipp
+index 848670b..feaea52 100644
+--- a/boost/test/impl/execution_monitor.ipp
++++ b/boost/test/impl/execution_monitor.ipp
+@@ -164,7 +164,7 @@ namespace { void _set_se_translator( void* ) {} }
+ // documentation of BOOST_TEST_DISABLE_ALT_STACK in execution_monitor.hpp
+ #  if !defined(__CYGWIN__) && !defined(__QNXNTO__) && !defined(__bgq__) && \
+    (!defined(__ANDROID__) || __ANDROID_API__ >= 8) && !defined(__wasm__) && \
+-   !defined(BOOST_TEST_DISABLE_ALT_STACK)
++   !defined(__FILC__) && !defined(BOOST_TEST_DISABLE_ALT_STACK)
+ #    define BOOST_TEST_USE_ALT_STACK
+ #  endif
+ 
+@@ -714,7 +714,17 @@ signal_action::signal_action( int sig, bool install, bool attach_dbg, char* alt_
+         m_new_action.sa_flags |= SA_ONSTACK;
+ #endif
+ 
++#ifdef __FILC__
++    // Fil-C keeps the default action for SIGSEGV, SIGBUS, SIGILL and SIGFPE,
++    // since it reports memory-safety and hardware faults itself; sigaction
++    // fails with ENOSYS. Leave those signals uncaught and monitor the rest.
++    if( ::sigaction( m_sig, &m_new_action, &m_old_action ) == -1 ) {
++        BOOST_TEST_SYS_ASSERT( errno == ENOSYS );
++        m_installed = false;
++    }
++#else
+     BOOST_TEST_SYS_ASSERT( ::sigaction( m_sig, &m_new_action, &m_old_action ) != -1 );
++#endif
+ }
+ 
+ //____________________________________________________________________________//

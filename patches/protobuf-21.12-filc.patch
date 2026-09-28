@@ -1,0 +1,273 @@
+Subject: Port protobuf 3.21's C++ runtime to Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+InternalMetadata and TaggedAllocationPolicyPtr kept tagged pointers in
+intptr_t/uintptr_t words, and TaggedStringPtr untagged through a uintptr_t
+return value. Integer-typed storage drops the capability, so protoc trapped
+("cannot read pointer with null object") on the first message with unknown
+fields. Keep them in pointer-typed words and tag with pointer arithmetic.
+Inline assembly (ror with a memory operand, flag outputs, bts on memory) is
+rejected by Fil-C at run time; use the portable fallbacks.
+
+PROTOBUF_TAILCALL and the version scripts are handled in ports.nix.
+Checked by checks.protobuf_21 (tests/protobuf.nix) and the upstream suite.
+
+diff --git a/src/google/protobuf/arena_impl.h b/src/google/protobuf/arena_impl.h
+index 7672768..28a2573 100644
+--- a/src/google/protobuf/arena_impl.h
++++ b/src/google/protobuf/arena_impl.h
+@@ -120,23 +120,27 @@ struct AllocationPolicy {
+ };
+ 
+ // Tagged pointer to an AllocationPolicy.
++// Fil-C: kept in a pointer-typed word (tags added with pointer arithmetic) so
++// that the policy pointer keeps its capability.
+ class TaggedAllocationPolicyPtr {
+  public:
+-  constexpr TaggedAllocationPolicyPtr() : policy_(0) {}
++  constexpr TaggedAllocationPolicyPtr() : policy_(nullptr) {}
+ 
+   explicit TaggedAllocationPolicyPtr(AllocationPolicy* policy)
+-      : policy_(reinterpret_cast<uintptr_t>(policy)) {}
++      : policy_(reinterpret_cast<char*>(policy)) {}
+ 
+   void set_policy(AllocationPolicy* policy) {
+-    auto bits = policy_ & kTagsMask;
+-    policy_ = reinterpret_cast<uintptr_t>(policy) | bits;
++    auto bits = get_raw() & kTagsMask;
++    policy_ = reinterpret_cast<char*>(policy) + bits;
+   }
+ 
+   AllocationPolicy* get() {
+-    return reinterpret_cast<AllocationPolicy*>(policy_ & kPtrMask);
++    return reinterpret_cast<AllocationPolicy*>(policy_ -
++                                               (get_raw() & kTagsMask));
+   }
+   const AllocationPolicy* get() const {
+-    return reinterpret_cast<const AllocationPolicy*>(policy_ & kPtrMask);
++    return reinterpret_cast<const AllocationPolicy*>(policy_ -
++                                                     (get_raw() & kTagsMask));
+   }
+ 
+   AllocationPolicy& operator*() { return *get(); }
+@@ -157,7 +161,7 @@ class TaggedAllocationPolicyPtr {
+   }
+   void set_should_record_allocs(bool v) { set_mask<kRecordAllocs>(v); }
+ 
+-  uintptr_t get_raw() const { return policy_; }
++  uintptr_t get_raw() const { return reinterpret_cast<uintptr_t>(policy_); }
+ 
+   inline void RecordAlloc(const std::type_info* allocated_type,
+                           size_t n) const {
+@@ -175,17 +179,17 @@ class TaggedAllocationPolicyPtr {
+ 
+   template <uintptr_t kMask>
+   uintptr_t get_mask() const {
+-    return policy_ & kMask;
++    return get_raw() & kMask;
+   }
+   template <uintptr_t kMask>
+   void set_mask(bool v) {
+-    if (v) {
+-      policy_ |= kMask;
+-    } else {
+-      policy_ &= ~kMask;
++    if (v && !get_mask<kMask>()) {
++      policy_ += kMask;
++    } else if (!v && get_mask<kMask>()) {
++      policy_ -= kMask;
+     }
+   }
+-  uintptr_t policy_;
++  char* policy_;
+ };
+ 
+ enum class AllocationClient { kDefault, kArray };
+diff --git a/src/google/protobuf/arenastring.h b/src/google/protobuf/arenastring.h
+index 6bc8395..cab0262 100644
+--- a/src/google/protobuf/arenastring.h
++++ b/src/google/protobuf/arenastring.h
+@@ -168,10 +168,11 @@ class TaggedStringPtr {
+   // If the current string is a heap-allocated mutable value, returns a pointer
+   // to it.  Returns nullptr otherwise.
+   inline std::string *GetIfAllocated() const {
+-    auto allocated = as_int() ^ kAllocated;
+-    if (allocated & kMask) return nullptr;
++    if ((as_int() ^ kAllocated) & kMask) return nullptr;
+ 
+-    auto ptr = reinterpret_cast<std::string*>(allocated);
++    // Fil-C: untag with pointer arithmetic to keep the capability.
++    auto ptr = reinterpret_cast<std::string*>(static_cast<char*>(ptr_) -
++                                              kAllocated);
+     PROTOBUF_ASSUME(ptr != nullptr);
+     return ptr;
+   }
+@@ -187,7 +188,8 @@ class TaggedStringPtr {
+ 
+   // Returns the contained string pointer.
+   inline std::string* Get() const {
+-    return reinterpret_cast<std::string*>(as_int() & ~kMask);
++    return reinterpret_cast<std::string*>(static_cast<char*>(ptr_) -
++                                          (as_int() & kMask));
+   }
+ 
+   // Returns true if the contained pointer is null, indicating some error.
+@@ -203,7 +205,7 @@ class TaggedStringPtr {
+   inline std::string* TagAs(Type type, std::string* p) {
+     GOOGLE_DCHECK(p != nullptr);
+     assert_aligned(p);
+-    ptr_ = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(p) | type);
++    ptr_ = reinterpret_cast<char*>(p) + type;
+     return p;
+   }
+ 
+diff --git a/src/google/protobuf/generated_message_tctable_lite.cc b/src/google/protobuf/generated_message_tctable_lite.cc
+index 9993811..984311b 100644
+--- a/src/google/protobuf/generated_message_tctable_lite.cc
++++ b/src/google/protobuf/generated_message_tctable_lite.cc
+@@ -592,7 +592,7 @@ shift_left_fill_with_ones(uint64_t byte, uint64_t ones) {
+ template <int n>
+ inline PROTOBUF_ALWAYS_INLINE bool shift_left_fill_with_ones_was_negative(
+     uint64_t byte, uint64_t ones, int64_t& res) {
+-#if defined(__GCC_ASM_FLAG_OUTPUTS__) && defined(__x86_64__)
++#if defined(__GCC_ASM_FLAG_OUTPUTS__) && defined(__x86_64__) && !defined(__FILC__)
+   // For the first two rounds (ptr[1] and ptr[2]), micro benchmarks show a
+   // substantial improvement from capturing the sign from the condition code
+   // register on x86-64.
+@@ -660,7 +660,7 @@ Parse64FallbackPair(const char* p, int64_t res1) {
+   // should not happen, but if does (say, due to a nonconforming serializer),
+   // deassert the continuation bit that came from ptr[8].
+   if (ptr[9] == 0) {
+-#if defined(__GCC_ASM_FLAG_OUTPUTS__) && defined(__x86_64__)
++#if defined(__GCC_ASM_FLAG_OUTPUTS__) && defined(__x86_64__) && !defined(__FILC__)
+     // Use a small instruction since this is an uncommon code path.
+     asm("btcq $63,%0" : "+r"(res3));
+ #else
+@@ -1268,7 +1268,7 @@ inline void SetHas(const TcParseTableBase* table, const FieldEntry& entry,
+     hasbits |= uint64_t{1} << has_idx;
+   } else {
+     auto* hasblocks = &TcParser::RefAt<uint32_t>(msg, table->has_bits_offset);
+-#if defined(__x86_64__) && defined(__GNUC__)
++#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FILC__)
+     asm("bts %1, %0\n" : "+m"(*hasblocks) : "r"(has_idx));
+ #else
+     auto& hasblock = hasblocks[has_idx / 32];
+diff --git a/src/google/protobuf/metadata_lite.h b/src/google/protobuf/metadata_lite.h
+index 0c31517..1e3a515 100644
+--- a/src/google/protobuf/metadata_lite.h
++++ b/src/google/protobuf/metadata_lite.h
+@@ -62,15 +62,14 @@ namespace internal {
+ // allocation and bit 1 == 1 to indicate heap allocation.
+ class PROTOBUF_EXPORT InternalMetadata {
+  public:
+-  constexpr InternalMetadata() : ptr_(0) {}
++  constexpr InternalMetadata() : ptr_(nullptr) {}
+   explicit InternalMetadata(Arena* arena, bool is_message_owned = false) {
+     SetArena(arena, is_message_owned);
+   }
+ 
+   void SetArena(Arena* arena, bool is_message_owned) {
+-    ptr_ = is_message_owned
+-               ? reinterpret_cast<intptr_t>(arena) | kMessageOwnedArenaTagMask
+-               : reinterpret_cast<intptr_t>(arena);
++    ptr_ = reinterpret_cast<char*>(arena) +
++           (is_message_owned ? kMessageOwnedArenaTagMask : 0);
+     GOOGLE_DCHECK(!is_message_owned || arena != nullptr);
+   }
+ 
+@@ -134,7 +133,7 @@ class PROTOBUF_EXPORT InternalMetadata {
+   }
+ 
+   PROTOBUF_NDEBUG_INLINE void* raw_arena_ptr() const {
+-    return reinterpret_cast<void*>(ptr_);
++    return ptr_;
+   }
+ 
+   template <typename T>
+@@ -188,7 +187,9 @@ class PROTOBUF_EXPORT InternalMetadata {
+   }
+ 
+  private:
+-  intptr_t ptr_;
++  // Fil-C: a pointer-typed word (tags added with pointer arithmetic), so the
++  // capability of the arena or container pointer survives.
++  char* ptr_;
+ 
+   // Tagged pointer implementation.
+   static constexpr intptr_t kUnknownFieldsTagMask = 1;
+@@ -199,15 +200,16 @@ class PROTOBUF_EXPORT InternalMetadata {
+ 
+   // Accessors for pointer tag and pointer value.
+   PROTOBUF_ALWAYS_INLINE bool HasUnknownFieldsTag() const {
+-    return ptr_ & kUnknownFieldsTagMask;
++    return reinterpret_cast<intptr_t>(ptr_) & kUnknownFieldsTagMask;
+   }
+   PROTOBUF_ALWAYS_INLINE bool HasMessageOwnedArenaTag() const {
+-    return ptr_ & kMessageOwnedArenaTagMask;
++    return reinterpret_cast<intptr_t>(ptr_) & kMessageOwnedArenaTagMask;
+   }
+ 
+   template <typename U>
+   U* PtrValue() const {
+-    return reinterpret_cast<U*>(ptr_ & kPtrValueMask);
++    return reinterpret_cast<U*>(ptr_ -
++                                (reinterpret_cast<intptr_t>(ptr_) & kPtrTagMask));
+   }
+ 
+   // If ptr_'s tag is kTagContainer, it points to an instance of this struct.
+@@ -226,12 +228,13 @@ class PROTOBUF_EXPORT InternalMetadata {
+       // Subtle: we want to preserve the message-owned arena flag, while at the
+       // same time replacing the pointer to Container<T> with a pointer to the
+       // arena.
+-      intptr_t message_owned_arena_tag = ptr_ & kMessageOwnedArenaTagMask;
+-      ptr_ = reinterpret_cast<intptr_t>(a) | message_owned_arena_tag;
++      intptr_t message_owned_arena_tag =
++          reinterpret_cast<intptr_t>(ptr_) & kMessageOwnedArenaTagMask;
++      ptr_ = reinterpret_cast<char*>(a) + message_owned_arena_tag;
+       return a;
+     } else {
+       delete PtrValue<Container<T>>();
+-      ptr_ = 0;
++      ptr_ = nullptr;
+       return nullptr;
+     }
+   }
+@@ -240,11 +243,10 @@ class PROTOBUF_EXPORT InternalMetadata {
+   PROTOBUF_NOINLINE T* mutable_unknown_fields_slow() {
+     Arena* my_arena = arena();
+     Container<T>* container = Arena::Create<Container<T>>(my_arena);
+-    intptr_t message_owned_arena_tag = ptr_ & kMessageOwnedArenaTagMask;
+-    // Two-step assignment works around a bug in clang's static analyzer:
+-    // https://bugs.llvm.org/show_bug.cgi?id=34198.
+-    ptr_ = reinterpret_cast<intptr_t>(container);
+-    ptr_ |= kUnknownFieldsTagMask | message_owned_arena_tag;
++    intptr_t message_owned_arena_tag =
++        reinterpret_cast<intptr_t>(ptr_) & kMessageOwnedArenaTagMask;
++    ptr_ = reinterpret_cast<char*>(container) +
++           (kUnknownFieldsTagMask | message_owned_arena_tag);
+     container->arena = my_arena;
+     return &(container->unknown_fields);
+   }
+diff --git a/src/google/protobuf/parse_context.h b/src/google/protobuf/parse_context.h
+index 7aea50c..204ab32 100644
+--- a/src/google/protobuf/parse_context.h
++++ b/src/google/protobuf/parse_context.h
+@@ -590,7 +590,7 @@ PROTOBUF_NODISCARD PROTOBUF_ALWAYS_INLINE constexpr T RotateLeft(
+ 
+ PROTOBUF_NODISCARD inline PROTOBUF_ALWAYS_INLINE uint64_t
+ RotRight7AndReplaceLowByte(uint64_t res, const char& byte) {
+-#if defined(__x86_64__) && defined(__GNUC__)
++#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FILC__)
+   // This will only use one register for `res`.
+   // `byte` comes as a reference to allow the compiler to generate code like:
+   //
+@@ -631,7 +631,7 @@ const char* ReadTagInlined(const char* ptr, uint32_t* out) {
+             return nullptr;
+           }
+           *out = static_cast<uint32_t>(RotateLeft(res, 28));
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !defined(__FILC__)
+           // Note: this asm statement prevents the compiler from
+           // trying to share the "return ptr + constant" among all
+           // branches.
