@@ -47,6 +47,9 @@ in
 
   filc0 = pkgs.ccacheStdenv.mkDerivation {
     pname = "filc0";
+    # The LLVM build tree needs well over 100 GB; keep it off small remote
+    # builders, which advertise no big-parallel.
+    requiredSystemFeatures = [ "big-parallel" ];
     version = "git";
     src = sources.filc0-src;
 
