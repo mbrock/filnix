@@ -2257,6 +2257,24 @@ in
       # (repr(12.3) == '12.300000000000001'). Fil-C uses SSE2 arithmetic.
       (removeConfigureFlag "ac_cv_x87_double_rounding=yes")
       (configure "ac_cv_x87_double_rounding=no")
+      # Fil-C's libc is libc.so.6666. CDLL("libc.so.6") loaded the runtime's
+      # inner libc instead, where no Fil-C function is found (finix's limine
+      # hook died on libc.syncfs), and find_library("c") found nothing.
+      (use (old: {
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace Lib/ctypes/__init__.py --replace-fail \
+              '        self._name = name' \
+              '        if name == "libc.so.6": name = "libc.so.6666"
+                    self._name = name'
+            substituteInPlace Lib/ctypes/util.py --replace-fail \
+              '            # See issue #9998' \
+              '            if name == "c": return "libc.so.6666"
+                        # See issue #9998'
+          '';
+      }))
       (arg {
         packageOverrides = import ./ports/pythonPorts-as-overlay.nix pkgs;
       })
