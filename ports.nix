@@ -449,6 +449,12 @@ in
         # "localhost" (::1 where IPv6 is up), but ssl.sh forced tstclnt to
         # IPv4 and could never connect; let tstclnt pick the same address.
         sed -i 's/tstclnt -4 /tstclnt /' tests/ssl/ssl.sh
+        # dbtests requires the bigdb key dump to finish in under 5 seconds
+        # of wall time; under Fil-C on a loaded builder it flakes. Keep the
+        # check but allow a minute.
+        sed -i 's/test ''${TIMEARRAY\[0\]} -lt 5/test ''${TIMEARRAY[0]} -lt 60/' \
+          tests/dbtests/dbtests.sh
+        grep -q 'TIMEARRAY\[0\]} -lt 60' tests/dbtests/dbtests.sh
       '';
       # Run a subset of NSS's QA suites against the build tree, before
       # installPhase rearranges the output: ciphers, certutil and the cert
