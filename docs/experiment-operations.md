@@ -327,6 +327,13 @@ disabled; the verified aggregate ceiling already includes actual builder PIDs.
 Systemd services do not make Nix's requested job thread count a hard CPU limit;
 the shared CPU set supplies the hard boundary.
 
+From runner 0.16, attempt builds no longer pass `builders = ""`, so the daemon
+may offload to the machines in `/etc/nix/machines` (currently igloo: six jobs,
+no `big-parallel`, root key `/root/.ssh/igloo_builder`). `--max-jobs` bounds
+only local jobs, and the CPU/memory limits above do not apply on the remote
+host. Igloo's daemon has `min-free`/`max-free` set (30/80 GiB) so it collects
+garbage itself. Planning still evaluates with `builders = ""` and no jobs.
+
 The explicit `nix.swa.sh` vhost proxies loopback port 8777. To change Caddy, stage
 the complete configuration, validate with
 `caddy validate --config CANDIDATE --adapter caddyfile --envfile /etc/caddy/dnsimple.env`,
