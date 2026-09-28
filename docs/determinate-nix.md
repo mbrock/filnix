@@ -36,7 +36,10 @@ nix build -L .#legacyPackages.x86_64-linux.pkgsFilc.determinateNixComponents.nix
   mbrock/fil-c fa8c296, Asio fix in the global Boost), the results are:
   - nix-util-tests: 791 pass. The decompression tests are no longer
     skipped. `ChunkedVector.ConcurrentAdd` needed patch 0006 until batch
-    pinned mbrock/fil-c 18b27e5.
+    pinned mbrock/fil-c 18b27e5. Without 0006 on 18b27e5 (5a1b255), the
+    unit tests pass (util 791, store 722, fetchers 31, flake 23, expr 366)
+    and `ChunkedVector.ConcurrentAdd` passed 30 of 30 runs, where the
+    previous runtime's build trapped 30 of 30.
   - store 722, fetchers 31, flake 23 and expr 366 pass.
   - Functional tests: 188 ok, 0 fail, 35 skipped, both normally and with
     eval-cores = 8. That now includes `plugins`, `read-only-store`,
