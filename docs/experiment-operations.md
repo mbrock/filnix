@@ -334,6 +334,12 @@ only local jobs, and the CPU/memory limits above do not apply on the remote
 host. Igloo's daemon has `min-free`/`max-free` set (30/80 GiB) so it collects
 garbage itself. Planning still evaluates with `builders = ""` and no jobs.
 
+Nix does not forward `--max-silent-time`/`--timeout` to remote builds (checked
+over both `ssh-ng://` and `ssh://`), so igloo's own nix.conf sets
+`max-silent-time = 900` and `timeout = 7200`. From 0.16.1 the attempt watchdog
+waits 300 s past the silence limit, so Nix fails only the silent derivation
+instead of the watchdog stopping the whole batch.
+
 The explicit `nix.swa.sh` vhost proxies loopback port 8777. To change Caddy, stage
 the complete configuration, validate with
 `caddy validate --config CANDIDATE --adapter caddyfile --envfile /etc/caddy/dnsimple.env`,

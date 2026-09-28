@@ -17,6 +17,9 @@ from .capture import BuildLogFilter
 from .model import atomic_json, encode, stamp
 from .timing import BuildTimes
 
+# Seconds the attempt watchdog waits beyond Nix's per-derivation silence limit.
+SILENCE_GRACE = 300
+
 
 def directory(state, aid):
     if str(uuid.UUID(aid)) != aid:
@@ -147,7 +150,10 @@ def build(folder, spec):
             now = time.monotonic()
             if not signalled and (
                 now - start > policy["wall_seconds"]
-                or now - last > policy["silent_seconds"]
+                # Nix enforces --max-silent-time per derivation and, with
+                # --keep-going, fails only the silent build. Wait past it so
+                # one hung build doesn't stop the whole batch.
+                or now - last > policy["silent_seconds"] + SILENCE_GRACE
             ):
                 stop(signal.SIGINT)
                 reason = "timeout"
