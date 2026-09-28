@@ -125,7 +125,7 @@ spinning in computation is never cancelled, and joining it hangs. polkit's
 runaway-script killer relies on this to stop JavaScript rules that loop;
 its test hung and is excluded, and a looping rule would hang polkitd.
 
-## A pointer at a misaligned offset in a constant crashed the compiler
+## A pointer at a misaligned offset in a constant crashes the compiler
 
 ```c
 struct ext { unsigned len; void *ptr; } __attribute__((packed));
@@ -133,11 +133,15 @@ static char buf[4];
 const struct ext e = { sizeof buf, buf };
 ```
 
-failed `Assertion '!(Offset % WordSize)'` in `computeConstantRelocations`
-(BlueZ's MIDI test, through ALSA's `snd_seq_ev_ext`). The fork falls back to
-the run-time initializer, which stores the pointer like any misaligned store
-(`checks.packed-pointer`). Loading `e.ptr` later still traps, as misaligned
-pointer loads do.
+fails `Assertion '!(Offset % WordSize)'` in `computeConstantRelocations`
+(BlueZ's MIDI test, through ALSA's `snd_seq_ev_ext`). The fork briefly fell
+back to a run-time initializer here; Filip Pizlo pointed out that this is
+unsound and introduces a GC crash, and it is reverted (mbrock/fil-c
+`d6cbb69`). The only right fix is at the source: don't pack structs that
+hold pointers. `patches/alsa-seq-unpacked-pointers.patch` drops `packed`
+from ALSA's `snd_seq_ev_ext` and `snd_seq_ev_quote` under Fil-C, which grows
+`snd_seq_event_t` from 28 to 32 bytes: the ALSA sequencer no longer matches
+the kernel's layout, while PCM audio is unaffected.
 
 ## `[[clang::annotate]]` on a function crashed the compiler
 

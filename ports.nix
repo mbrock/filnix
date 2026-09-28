@@ -1867,6 +1867,13 @@ in
     # ALSA's .symver module assembly is not part of the Fil-C ABI.
     (configure "--without-versioned")
     (patch ./patches/alsa-link-warning.patch)
+    # snd_seq_ev_ext and snd_seq_ev_quote are packed, which puts their
+    # pointers at misaligned offsets. Fil-C cannot keep a capability there
+    # (a constant initializer used to crash the compiler, and the compiler
+    # workaround was unsound), so drop `packed` under Fil-C. That grows
+    # snd_seq_event_t from 28 to 32 bytes, so the ALSA sequencer (MIDI via
+    # /dev/snd/seq) no longer matches the kernel; PCM audio is unaffected.
+    (patch ./patches/alsa-seq-unpacked-pointers.patch)
   ])
 
   (for pkgs.spandsp [

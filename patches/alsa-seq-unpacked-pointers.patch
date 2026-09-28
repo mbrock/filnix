@@ -1,0 +1,47 @@
+diff --git a/include/seq_event.h b/include/seq_event.h
+index c4054c9..9abd7b5 100644
+--- a/include/seq_event.h
++++ b/include/seq_event.h
+@@ -269,7 +269,12 @@ typedef struct snd_seq_ev_raw32 {
+ struct snd_seq_ev_ext {
+ 	unsigned int len;		/**< length of data */
+ 	void *ptr;			/**< pointer to data (note: can be 64-bit) */
++#ifdef __FILC__
++	/* Fil-C cannot keep a pointer at a misaligned offset. */
++};
++#else
+ } __attribute__((packed));
++#endif
+ /** external stored data */
+ typedef struct snd_seq_ev_ext snd_seq_ev_ext_t;
+ #ifdef DOC_HIDDEN
+diff --git a/include/sound/uapi/asequencer.h b/include/sound/uapi/asequencer.h
+index aa4d694..21e9ea0 100644
+--- a/include/sound/uapi/asequencer.h
++++ b/include/sound/uapi/asequencer.h
+@@ -210,7 +210,12 @@ struct snd_seq_ev_raw32 {
+ struct snd_seq_ev_ext {
+ 	unsigned int len;	/* length of data */
+ 	void *ptr;		/* pointer to data (note: maybe 64-bit) */
++#ifdef __FILC__
++	/* Fil-C cannot keep a pointer at a misaligned offset. */
++};
++#else
+ } __attribute__((packed));
++#endif
+ 
+ struct snd_seq_result {
+ 	int event;		/* processed event type */
+@@ -254,7 +259,12 @@ struct snd_seq_ev_quote {
+ 	struct snd_seq_addr origin;		/* original sender */
+ 	unsigned short value;		/* optional data */
+ 	struct snd_seq_event *event;		/* quoted event */
++#ifdef __FILC__
++	/* Fil-C cannot keep a pointer at a misaligned offset. */
++};
++#else
+ } __attribute__((packed));
++#endif
+ 
+ 	/* UMP info change notify */
+ struct snd_seq_ev_ump_notify {
