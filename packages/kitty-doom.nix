@@ -25,11 +25,14 @@ stdenv.mkDerivation {
   preBuild =
     let
       doom1-wad = fetchurl {
-        url = "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad";
+        urls = [
+          "https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad"
+          "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad"
+        ];
         hash = "sha256-HX1DvlAeZ9kn5BXguPPinDvzMHXoWXIYFvZSpSbKx3E=";
       };
       puredoom-h = fetchurl {
-        url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/master/PureDOOM.h";
+        url = "https://raw.githubusercontent.com/Daivuk/PureDOOM/a4d45e6a295c8e9f00286a97781433784dcbc683/PureDOOM.h";
         hash = "sha256-by34cA1mEBfLE/C88bfm6ms65eGdRzlCjhuDVNHc12c=";
       };
     in
