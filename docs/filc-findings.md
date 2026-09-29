@@ -68,7 +68,10 @@ loaded with `prctl`, and `EOPNOTSUPP` for TSYNC and user notification.
 libseccomp's tests call `seccomp` (syscall 317). Nix is built without
 seccomp filtering. Catch2 and doctest run their fatal-signal handlers on a
 `sigaltstack`; their ports and consumers set `CATCH_CONFIG_NO_POSIX_SIGNALS`
-and `DOCTEST_CONFIG_NO_POSIX_SIGNALS`.
+and `DOCTEST_CONFIG_NO_POSIX_SIGNALS`. The Catch2 v2 port defines it in the
+single header under `__FILC__`, which fixed all 81 of CLI11's tests.
+UnitTest++'s `CrashingTestsAreReportedAsFailures` calls a null function
+pointer and expects its SIGSEGV handler to report it; it is excluded.
 
 ## x86 inline assembly needs an explicit "cc" clobber
 
@@ -348,7 +351,13 @@ the bit with pointer arithmetic. Boost.Asio's `io_context::basic_executor_type`
 keeps `io_context* | runtime_bits` in a `uintptr_t target_`, so the first
 `use_service` through a strand traps;
 `patches/boost-asio-io-context-executor-pointer.patch` makes it a `char *`
-(applied only for Determinate Nix so far). Nix's own bit-packed `Value`
+(in the Boost 1.86 and 1.87 ports, and as
+`patches/asio-io-context-executor-pointer.patch` for standalone Asio).
+z3's region and stack allocators chain pages through a header word
+holding the previous page with a flag in bit 0, and the stack keeps its
+marks the same way, all as `size_t`; `test-z3 -a` trapped in
+`region::~region()`. `patches/z3-page-headers-pointers.patch` keeps them
+as `char *` and tags with pointer arithmetic. Nix's own bit-packed `Value`
 takes the same fix in Determinate Nix, where parallel evaluation depends on
 that layout. oneTBB's tbbmalloc is a different problem: it
 carves objects out of raw `mmap` chunks, which have no per-object capabilities,
