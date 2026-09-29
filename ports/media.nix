@@ -31,6 +31,9 @@ in
     (addMesonFlag "-Denable_asm=false")
     (use { doCheck = true; })
   ];
+  libdeflate = for pkgs.libdeflate [
+    (patch ../patches/libdeflate-xgetbv.patch)
+  ];
   mpg123 = for pkgs.mpg123 [
     # Keep the decoder API; select upstream's C implementation of its kernels.
     (configure "--with-cpu=generic")
