@@ -2951,13 +2951,27 @@ in
         "ticcutils"
         "timbl"
         "timblserver"
-        "ucto"
       ]
       ++ map (port [ autoconfArchive ]) [
         "frogdata"
         "uctodata"
       ]
     )
+    // {
+      ucto = for pkgs.ucto [
+        autoconfArchive
+        icuI18n
+        # configure asks a bare `pkg-config` (absent in a cross build)
+        # for uctodata's prefix, so the data directory was compiled in
+        # as /share/ucto/ and ucto (and frog) found no languages.
+        (use (old: {
+          postPatch = (old.postPatch or "") + ''
+            substituteInPlace configure.ac --replace-fail \
+              '`pkg-config --' '`$PKG_CONFIG --'
+          '';
+        }))
+      ];
+    }
   )
 
   (for pkgs.recode [
