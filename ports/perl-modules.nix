@@ -12,6 +12,14 @@ self: super: {
       '';
   });
 
+  FileShareDir = super.FileShareDir.overrideAttrs {
+    # Nixpkgs strips File::ShareDir::Install from Makefile.PL when cross
+    # compiling, assuming the build perl cannot load it. Here the Fil-C perl
+    # runs on the build machine, and without the share install its tests find
+    # no auto/File/ShareDir/test_file.txt.
+    postPatch = "";
+  };
+
   CompressBzip2 = super.CompressBzip2.overrideAttrs (old: {
     # Objects are made with sv_setref_iv(PTR2IV(...)) but read back through
     # T_PTROBJ, which decodes Fil-C's XS pointer table. Use the table both

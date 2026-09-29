@@ -1,0 +1,41 @@
+Keep custom op registrations through Fil-C's XS pointer table
+
+custom_op_register stored the XOP pointer in PL_custom_ops as an IV and
+custom_op_get_field cast it back with INT2PTR. Fil-C gives that pointer no
+capability, so looking up any registered custom op trapped. Devel::Peek
+registers one for Dump, so any script that compiles a call to Dump died
+("cannot read pointer with null object" in Perl_custom_op_get_field),
+e.g. the B-COW test suite. Encode the pointer through Perl_xsub_ptrtable,
+which also keeps the backcompat heap XOP alive.
+
+diff --git a/op.c b/op.c
+index 3fc23ec..4d91f46 100644
+--- a/op.c
++++ b/op.c
+@@ -15322,7 +15322,7 @@ custom_op_register_free(pTHX_ SV *sv, MAGIC *mg)
+     XOP *xop;
+ 
+     PERL_UNUSED_ARG(mg);
+-    xop = INT2PTR(XOP *, SvIV(sv));
++    xop = (XOP *)zptrtable_decode(Perl_xsub_ptrtable, SvIV(sv));
+     Safefree(xop->xop_name);
+     Safefree(xop->xop_desc);
+     Safefree(xop);
+@@ -15402,7 +15402,7 @@ Perl_custom_op_get_field(pTHX_ const OP *o, const xop_flags_enum field)
+         if (!he)
+             xop = (XOP *)&xop_null;
+         else
+-            xop = INT2PTR(XOP *, SvIV(HeVAL(he)));
++            xop = (XOP *)zptrtable_decode(Perl_xsub_ptrtable, SvIV(HeVAL(he)));
+     }
+ 
+     {
+@@ -15476,7 +15476,7 @@ Perl_custom_op_register(pTHX_ Perl_ppaddr_t ppaddr, const XOP *xop)
+     if (!PL_custom_ops)
+         PL_custom_ops = newHV();
+ 
+-    if (!hv_store_ent(PL_custom_ops, keysv, newSViv(PTR2IV(xop)), 0))
++    if (!hv_store_ent(PL_custom_ops, keysv, newSViv(zptrtable_encode(Perl_xsub_ptrtable, (void *)xop)), 0))
+         Perl_croak(aTHX_ "panic: can't register custom OP %s", xop->xop_name);
+ }
+ 
