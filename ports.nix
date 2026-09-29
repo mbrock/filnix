@@ -1302,6 +1302,16 @@ in
     }))
   ])
 
+  (for pkgs.libmpdclient [
+    # Nixpkgs lists the check library and pkg-config as native check
+    # inputs; meson looks the library up for the host at configure time.
+    (use (old: {
+      nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.pkg-config ];
+      nativeCheckInputs = [ ];
+      checkInputs = [ final.check ];
+    }))
+  ])
+
   (for pkgs.liblc3 [
     # Meson's default b_lto would hand bitcode to the linker.
     (addMesonFlag "-Db_lto=false")
@@ -1460,9 +1470,11 @@ in
 
   (for pkgs.libgcrypt [
     (configure "--disable-asm")
-    # --disable-asm leaves mpi/longlong.h's inline asm (for example
-    # bsrq in _gcry_mpi_get_nbits, used by RSA), which Fil-C traps on.
-    (addCFlag "-DNO_ASM")
+    # Upstream's port, rebased: --disable-asm alone leaves inline asm in
+    # mpi/longlong.h (bsrq in _gcry_mpi_get_nbits, used by RSA), OCB's
+    # ocb_get_l (rep;bsf, which gnupg's t-protect reached) and Keccak,
+    # all of which Fil-C traps on.
+    (patch ./ports/patch/libgcrypt-1.12.2.patch)
     (configure "gcry_cv_gcc_amd64_platform_as_ok=no")
     (use { configurePlatforms = [ "host" ]; })
     (use {
@@ -1472,6 +1484,10 @@ in
         make -j$NIX_BUILD_CORES
       '';
     })
+  ])
+
+  (for pkgs.gnupg [
+    (patch ./patches/gnupg-gpgscm-port-realloc.patch)
   ])
 
   (for pkgs.libsodium [
@@ -2771,6 +2787,36 @@ in
       (patch ./patches/libdbusmenu-gtype.patch)
     ];
   }
+
+  (for pkgs.libgsf [
+    (patch ./patches/libgsf-gtype-switch.patch)
+    # Every test is skipped without unzip on PATH.
+    (use (old: {
+      nativeCheckInputs = old.nativeCheckInputs ++ [ pkgs.unzip ];
+    }))
+  ])
+
+  (for pkgs.libhighscore [
+    # --doc-format appeared in gobject-introspection 1.83.2; the Fil-C GI is
+    # 1.80, pinned with GLib 2.80. It only selects the doc comment syntax
+    # recorded in the GIR.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/meson.build --replace-fail "'--doc-format=gi-docgen'," ""
+      '';
+      doCheck = true;
+    }))
+  ])
+
+  (for pkgs.libmbim [
+    (patch ./patches/libmbim-gtype.patch)
+  ])
+
+  (for pkgs.vala [
+    # The build valac has the same patch (ports/build-tools.nix), and its
+    # setup hook has the shipped C regenerated.
+    (patch ./patches/vala-pointer-once.patch)
+  ])
 
   (for pkgs.dconf [
     (patch ./patches/dconf-filc-gtype.patch)

@@ -1,10 +1,11 @@
 # Build-platform code generators whose output targets Fil-C.
 #
-# GLib's gdbus-codegen and glib-genmarshal, Meson's mkenums_simple and the
-# introspection scanner's gdump.c emit C for the package being built. Under
-# Fil-C that C must treat GType as a pointer. Like a compiler, these tools are
-# target-dependent, so patch them in the package set whose target is Fil-C
-# (pkgsBuildHost): splicing then selects them for Fil-C nativeBuildInputs.
+# GLib's gdbus-codegen and glib-genmarshal, Meson's mkenums_simple, valac,
+# gtkdoc-scangobj and the introspection scanner's gdump.c emit C for the
+# package being built. Under Fil-C that C must treat GType as a pointer.
+# Like a compiler, these tools are target-dependent, so patch them in the
+# package set whose target is Fil-C (pkgsBuildHost): splicing then selects
+# them for Fil-C nativeBuildInputs.
 # The native package set, whose target is not Fil-C, keeps its ordinary tools.
 #
 # GLib and gobject-introspection are native twins of the Fil-C ports, at the
@@ -105,6 +106,34 @@ let
     ];
 
     meson = for prev.meson [ (patch ../patches/meson-gtype.patch) ];
+
+    # gtkdoc-scangobj writes a GObject scanner program for the target.
+    gtk-doc = for prev.gtk-doc [ (patch ../patches/gtk-doc-scangobj-gtype.patch) ];
+
+    # valac emits GType registration code for the package being built.
+    vala = for prev.vala [
+      (patch ../patches/vala-pointer-once.patch)
+      # The patch updates the shipped C too; keep make from regenerating it
+      # with the valac not yet built.
+      (use (old: {
+        postPatch = (old.postPatch or "") + ''
+          touch codegen/codegen.vala.stamp
+        '';
+        # Release tarballs ship C that an older valac generated for gsize
+        # once storage. Consumers regenerate it with this valac: dropping
+        # the stamps (Automake's *_vala.stamp, Vala's own *.vala.stamp)
+        # makes make rerun valac.
+        postFixup = (old.postFixup or "") + ''
+          cat >> "$out/nix-support/setup-hook" <<'EOF'
+
+          _filcValaRegenerate() {
+            find . \( -name '*_vala.stamp' -o -name '*.vala.stamp' \) -delete
+          }
+          preConfigureHooks+=(_filcValaRegenerate)
+          EOF
+        '';
+      }))
+    ];
   };
 in
 lib.optionalAttrs

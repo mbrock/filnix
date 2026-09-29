@@ -1,0 +1,121 @@
+Subject: Treat GType as a pointer in the generated GObject scanner
+Origin: Filnix
+Upstream-Status: Fil-C target integration
+
+gtkdoc-scangobj emits a C program that is built for, and run on, the
+target. Under Fil-C GType is a pointer: its get_type_name switched on a
+GType and it cleared G_SIGNAL_TYPE_STATIC_SCOPE with integer AND, neither
+of which compiles. Switch on the pointer-width integer value (no pointer
+is rebuilt from it) and clear the flag with stdfil's zandptr, which keeps
+the capability. Native builds keep the integer AND.
+ports/build-tools.nix applies this to the gtk-doc whose target is Fil-C.
+
+diff --git a/gtkdoc/scangobj.py b/gtkdoc/scangobj.py
+index 0156734..143168a 100644
+--- a/gtkdoc/scangobj.py
++++ b/gtkdoc/scangobj.py
+@@ -46,6 +46,15 @@ COMMON_INCLUDES = """
+ # define G_GNUC_END_IGNORE_DEPRECATIONS
+ #endif
+ 
++/* GType is a pointer under Fil-C; clear the flag bit without dropping its
++   capability. */
++#ifdef __FILC__
++# include <stdfil.h>
++# define GTKDOC_UNMANGLE_TYPE(t) ((GType) zandptr ((t), ~(guintptr) G_SIGNAL_TYPE_STATIC_SCOPE))
++#else
++# define GTKDOC_UNMANGLE_TYPE(t) ((t) & ~G_SIGNAL_TYPE_STATIC_SCOPE)
++#endif
++
+ """
+ 
+ QUERY_CHILD_PROPS_PROTOTYPE = "extern GParamSpec** %s (gpointer class, guint *n_properties);"
+@@ -273,7 +282,7 @@ output_object_signal (FILE *fp,
+ 
+   /* Output the signal parameters. */
+   for (param = 0; param < query_info.n_params; param++) {
+-    type_name = get_type_name (query_info.param_types[param] & ~G_SIGNAL_TYPE_STATIC_SCOPE, &is_pointer);
++    type_name = get_type_name (GTKDOC_UNMANGLE_TYPE (query_info.param_types[param]), &is_pointer);
+ 
+     /* Most arguments to the callback are called "arg1", "arg2", etc.
+        GtkWidgets are called "widget", "widget2", ...
+@@ -328,7 +337,7 @@ output_object_signal (FILE *fp,
+   *pos = 0;
+ 
+   /* Output the return type and function name. */
+-  ret_type = get_type_name (query_info.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE, &is_pointer);
++  ret_type = get_type_name (GTKDOC_UNMANGLE_TYPE (query_info.return_type), &is_pointer);
+ 
+   fprintf (fp,
+            "<SIGNAL>\\n<NAME>%s::%s</NAME>\\n<RETURNS>%s%s</RETURNS>\\n<FLAGS>%s</FLAGS>\\n%s</SIGNAL>\\n\\n",
+@@ -347,52 +356,52 @@ get_type_name (GType type, gboolean * is_pointer)
+   *is_pointer = FALSE;
+   type_name = g_type_name (type);
+ 
+-  switch (type) {
+-  case G_TYPE_NONE:
+-  case G_TYPE_UCHAR:
+-  case G_TYPE_BOOLEAN:
+-  case G_TYPE_UINT:
+-  case G_TYPE_LONG:
+-  case G_TYPE_ULONG:
+-  case G_TYPE_POINTER:
++  switch ((guintptr) type) {
++  case (guintptr) G_TYPE_NONE:
++  case (guintptr) G_TYPE_UCHAR:
++  case (guintptr) G_TYPE_BOOLEAN:
++  case (guintptr) G_TYPE_UINT:
++  case (guintptr) G_TYPE_LONG:
++  case (guintptr) G_TYPE_ULONG:
++  case (guintptr) G_TYPE_POINTER:
+     /* These all have normal C type names so they are OK. */
+     return type_name;
+ 
+-  case G_TYPE_CHAR:
++  case (guintptr) G_TYPE_CHAR:
+     return "char";
+ 
+-  case G_TYPE_INT:
++  case (guintptr) G_TYPE_INT:
+     return "int";
+ 
+-  case G_TYPE_FLOAT:
++  case (guintptr) G_TYPE_FLOAT:
+     return "float";
+ 
+-  case G_TYPE_DOUBLE:
++  case (guintptr) G_TYPE_DOUBLE:
+     return "double";
+ 
+-  case G_TYPE_STRING:
++  case (guintptr) G_TYPE_STRING:
+     /* A GtkString is really a gchar*. */
+     *is_pointer = TRUE;
+     return "char";
+ 
+-  case G_TYPE_ENUM:
+-  case G_TYPE_FLAGS:
++  case (guintptr) G_TYPE_ENUM:
++  case (guintptr) G_TYPE_FLAGS:
+     /* We use a gint for both of these. Hopefully a subtype with a decent
+        name will be registered and used instead, as GTK+ does itself. */
+     return "int";
+ 
+-  case G_TYPE_BOXED:
++  case (guintptr) G_TYPE_BOXED:
+     /* The boxed type shouldn't be used itself, only subtypes. Though we
+        return 'gpointer' just in case. */
+     return "gpointer";
+ 
+-  case G_TYPE_PARAM:
++  case (guintptr) G_TYPE_PARAM:
+     /* A GParam is really a GParamSpec*. */
+     *is_pointer = TRUE;
+     return "GParamSpec";
+ 
+ #if GLIB_CHECK_VERSION (2, 25, 9)
+-  case G_TYPE_VARIANT:
++  case (guintptr) G_TYPE_VARIANT:
+     *is_pointer = TRUE;
+     return "GVariant";
+ #endif

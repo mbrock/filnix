@@ -1,0 +1,23 @@
+Subject: Rebase gpgscm's string port cursor from the new buffer
+Origin: Filnix
+Upstream-Status: Not submitted
+
+realloc_port_string moved the write cursor with curr -= start - str. That
+yields the right address, but under Fil-C the pointer keeps the capability
+of the old buffer, which is freed just after, so the next character
+written to a grown string port (gpgscm's t-child test) trapped as a use
+after free. Add the cursor's offset to the new buffer instead.
+
+diff --git a/tests/gpgscm/scheme.c b/tests/gpgscm/scheme.c
+index bde39fc..88ccb74 100644
+--- a/tests/gpgscm/scheme.c
++++ b/tests/gpgscm/scheme.c
+@@ -2078,7 +2078,7 @@ static int realloc_port_string(scheme *sc, port *p)
+     memcpy(str, start, old_size);
+     p->rep.string.start=str;
+     p->rep.string.past_the_end=str+new_size-1;
+-    p->rep.string.curr-=start-str;
++    p->rep.string.curr=str+(p->rep.string.curr-start);
+     sc->free(start);
+     return 1;
+   } else {

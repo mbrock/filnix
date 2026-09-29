@@ -1,0 +1,218 @@
+Subject: Switch on GType values as integers
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C, and C cannot switch on a pointer. Switch
+on the pointer-width integer value and cast the case labels likewise. No
+pointer is rebuilt from the integer, and the casts also build against
+integer GTypes.
+
+diff --git a/gsf/gsf-libxml.c b/gsf/gsf-libxml.c
+index 77c6345..103975c 100644
+--- a/gsf/gsf-libxml.c
++++ b/gsf/gsf-libxml.c
+@@ -212,44 +212,44 @@ gsf_xml_gvalue_from_str (GValue *res, GType t, char const *str)
+ 		t = G_TYPE_FUNDAMENTAL (t);
+ 	}
+ 
+-	switch (t) {
+-	case G_TYPE_CHAR:
++	switch ((guintptr) t) {
++	case (guintptr) G_TYPE_CHAR:
+ 		g_value_set_schar (res, (signed char)(str[0]));
+ 		break;
+-	case G_TYPE_UCHAR:
++	case (guintptr) G_TYPE_UCHAR:
+ 		g_value_set_uchar (res, (guchar)str[0]);
+ 		break;
+-	case G_TYPE_BOOLEAN:
++	case (guintptr) G_TYPE_BOOLEAN:
+ 		g_value_set_boolean (res,
+ 			g_ascii_tolower (str[0]) == 't' ||
+ 			g_ascii_tolower (str[0]) == 'y' ||
+ 			strtol (str, NULL, 0));
+ 		break;
+-	case G_TYPE_INT:
++	case (guintptr) G_TYPE_INT:
+ 		g_value_set_int (res, strtol (str, NULL, 0));
+ 		break;
+-	case G_TYPE_UINT:
++	case (guintptr) G_TYPE_UINT:
+ 		g_value_set_uint (res, strtoul (str, NULL, 0));
+ 		break;
+-	case G_TYPE_LONG:
++	case (guintptr) G_TYPE_LONG:
+ 		g_value_set_long (res, strtol (str, NULL, 0));
+ 		break;
+-	case G_TYPE_ULONG:
++	case (guintptr) G_TYPE_ULONG:
+ 		g_value_set_ulong (res, strtoul (str, NULL, 0));
+ 		break;
+-	case G_TYPE_ENUM:
++	case (guintptr) G_TYPE_ENUM:
+ 		g_value_set_enum (res, glade_enum_from_string (G_VALUE_TYPE (res), str));
+ 		break;
+-	case G_TYPE_FLAGS:
++	case (guintptr) G_TYPE_FLAGS:
+ 		g_value_set_flags (res, glade_flags_from_string (G_VALUE_TYPE (res), str));
+ 		break;
+-	case G_TYPE_FLOAT:
++	case (guintptr) G_TYPE_FLOAT:
+ 		g_value_set_float (res, g_strtod (str, NULL));
+ 		break;
+-	case G_TYPE_DOUBLE:
++	case (guintptr) G_TYPE_DOUBLE:
+ 		g_value_set_double (res, g_strtod (str, NULL));
+ 		break;
+-	case G_TYPE_STRING:
++	case (guintptr) G_TYPE_STRING:
+ 		g_value_set_string (res, str);
+ 		break;
+ 
+@@ -2064,8 +2064,8 @@ gsf_xml_out_add_gvalue (GsfXMLOut *xout, char const *id, GValue const *val)
+ 	g_return_if_fail (val != NULL);
+ 
+ 	t = G_VALUE_TYPE (val);
+-	switch (t) {
+-	case G_TYPE_CHAR: {
++	switch ((guintptr) t) {
++	case (guintptr) G_TYPE_CHAR: {
+ 		char c[2] = { 0, 0 };
+ 		c[0] = (char)g_value_get_schar (val);
+ 		/* FIXME: What if we are in 0x80-0xff? */
+@@ -2073,7 +2073,7 @@ gsf_xml_out_add_gvalue (GsfXMLOut *xout, char const *id, GValue const *val)
+ 		break;
+ 	}
+ 
+-	case G_TYPE_UCHAR: {
++	case (guintptr) G_TYPE_UCHAR: {
+ 		unsigned char c[2] = { 0, 0 };
+ 		c[0] = g_value_get_uchar (val);
+ 		/* FIXME: What if we are in 0x80-0xff? */
+@@ -2081,37 +2081,37 @@ gsf_xml_out_add_gvalue (GsfXMLOut *xout, char const *id, GValue const *val)
+ 		break;
+ 	}
+ 
+-	case G_TYPE_BOOLEAN:
++	case (guintptr) G_TYPE_BOOLEAN:
+ 		gsf_xml_out_add_cstr (xout, id,
+ 			g_value_get_boolean (val) ? "t" : "f");
+ 		break;
+-	case G_TYPE_INT:
++	case (guintptr) G_TYPE_INT:
+ 		gsf_xml_out_add_int (xout, id, g_value_get_int (val));
+ 		break;
+-	case G_TYPE_UINT:
++	case (guintptr) G_TYPE_UINT:
+ 		gsf_xml_out_add_uint (xout, id, g_value_get_uint (val));
+ 		break;
+-	case G_TYPE_LONG:
++	case (guintptr) G_TYPE_LONG:
+ 		gsf_xml_out_add_uint (xout, id, g_value_get_long (val));
+ 		break;
+-	case G_TYPE_ULONG:
++	case (guintptr) G_TYPE_ULONG:
+ 		gsf_xml_out_add_uint (xout, id, g_value_get_ulong (val));
+ 		break;
+-	case G_TYPE_ENUM:
++	case (guintptr) G_TYPE_ENUM:
+ 		gsf_xml_out_add_cstr (xout, id,
+ 			glade_string_from_enum (t, g_value_get_enum (val)));
+ 		break;
+-	case G_TYPE_FLAGS:
++	case (guintptr) G_TYPE_FLAGS:
+ 		gsf_xml_out_add_cstr (xout, id,
+ 			glade_string_from_flags (t, g_value_get_flags (val)));
+ 		break;
+-	case G_TYPE_FLOAT:
++	case (guintptr) G_TYPE_FLOAT:
+ 		gsf_xml_out_add_float (xout, id, g_value_get_float (val), -1);
+ 		break;
+-	case G_TYPE_DOUBLE:
++	case (guintptr) G_TYPE_DOUBLE:
+ 		gsf_xml_out_add_float (xout, id, g_value_get_double (val), -1);
+ 		break;
+-	case G_TYPE_STRING:
++	case (guintptr) G_TYPE_STRING:
+ 		gsf_xml_out_add_cstr (xout, id, g_value_get_string (val));
+ 		break;
+ 
+diff --git a/gsf/gsf-msole-utils.c b/gsf/gsf-msole-utils.c
+index 70ce00f..dbb84d5 100644
+--- a/gsf/gsf-msole-utils.c
++++ b/gsf/gsf-msole-utils.c
+@@ -1415,23 +1415,23 @@ gvalue_to_msole_vt (GValue const *value, GsfMSOleMetaDataPropMap const *map)
+ {
+ 	g_return_val_if_fail (value != NULL, VT_EMPTY);
+ 
+-	switch (G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (value))) {
+-	case G_TYPE_BOOLEAN:	return VT_BOOL;
+-	case G_TYPE_UCHAR:	return VT_UI1;
+-	case G_TYPE_FLOAT:	return VT_R4;
+-	case G_TYPE_DOUBLE:	return VT_R8;
+-	case G_TYPE_STRING: 	return VT_LPSTR;  /* Will be changed to VT_LPWSTR for Unicode codepage in msole_metadata_write_prop */
+-	case G_TYPE_INT:
++	switch ((guintptr) G_TYPE_FUNDAMENTAL (G_VALUE_TYPE (value))) {
++	case (guintptr) G_TYPE_BOOLEAN:	return VT_BOOL;
++	case (guintptr) G_TYPE_UCHAR:	return VT_UI1;
++	case (guintptr) G_TYPE_FLOAT:	return VT_R4;
++	case (guintptr) G_TYPE_DOUBLE:	return VT_R8;
++	case (guintptr) G_TYPE_STRING: 	return VT_LPSTR;  /* Will be changed to VT_LPWSTR for Unicode codepage in msole_metadata_write_prop */
++	case (guintptr) G_TYPE_INT:
+ 		return (NULL != map && map->prefered_type == VT_I2)
+ 			? VT_I2 : VT_I4;
+-	case G_TYPE_UINT:
++	case (guintptr) G_TYPE_UINT:
+ 		return (NULL != map && map->prefered_type == VT_UI2)
+ 			? VT_UI2 : VT_UI4;
+-	case G_TYPE_BOXED:
++	case (guintptr) G_TYPE_BOXED:
+ 		if (VAL_IS_GSF_TIMESTAMP (value))
+ 			return VT_FILETIME;
+ 		return VT_UNKNOWN;
+-	case G_TYPE_OBJECT:
++	case (guintptr) G_TYPE_OBJECT:
+ 		if (VAL_IS_GSF_DOCPROP_VECTOR (value)) {
+ 			GArray *vector = gsf_value_get_docprop_array (value);
+ 			unsigned i, n;
+diff --git a/gsf/gsf-opendoc-utils.c b/gsf/gsf-opendoc-utils.c
+index 8502b5e..2bf4db2 100644
+--- a/gsf/gsf-opendoc-utils.c
++++ b/gsf/gsf-opendoc-utils.c
+@@ -666,23 +666,23 @@ meta_write_props_user_defined (char const *prop_name, GValue const *val, GsfXMLO
+ 	}
+ 
+ 	t = G_VALUE_TYPE (val);
+-	switch (t) {
+-	case G_TYPE_CHAR:
+-	case G_TYPE_UCHAR:
+-	case G_TYPE_STRING:
+-	case G_TYPE_ENUM:
+-	case G_TYPE_FLAGS:
++	switch ((guintptr) t) {
++	case (guintptr) G_TYPE_CHAR:
++	case (guintptr) G_TYPE_UCHAR:
++	case (guintptr) G_TYPE_STRING:
++	case (guintptr) G_TYPE_ENUM:
++	case (guintptr) G_TYPE_FLAGS:
+ 		type_name = "string";
+ 		break;
+-	case G_TYPE_BOOLEAN:
++	case (guintptr) G_TYPE_BOOLEAN:
+ 		type_name = "boolean";
+ 		break;
+-	case G_TYPE_INT:
+-	case G_TYPE_UINT:
+-	case G_TYPE_LONG:
+-	case G_TYPE_ULONG:
+-	case G_TYPE_FLOAT:
+-	case G_TYPE_DOUBLE:
++	case (guintptr) G_TYPE_INT:
++	case (guintptr) G_TYPE_UINT:
++	case (guintptr) G_TYPE_LONG:
++	case (guintptr) G_TYPE_ULONG:
++	case (guintptr) G_TYPE_FLOAT:
++	case (guintptr) G_TYPE_DOUBLE:
+ 		type_name = "float";
+ 		break;
+ 

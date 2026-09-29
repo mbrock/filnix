@@ -1,0 +1,121 @@
+Subject: Generate pointer-valued once initialization at every GLib target
+Origin: Filnix
+Upstream-Status: Fil-C target integration
+
+GType is a pointer under Fil-C. Below --target-glib=2.80 valac stored
+type IDs and regex literals in gsize once variables and returned them as
+GType, which clang rejects (-Wint-conversion) and which would drop the
+pointer's capability anyway. Always use the GLib 2.80 path: GType storage
+with g_once_init_enter_pointer/g_once_init_leave_pointer. The target GLib
+is 2.80.4.
+
+The shipped C for the two codegen files is patched to match, so the build
+valac needs no bootstrap valac. ports/build-tools.nix applies this to the
+valac whose target is Fil-C; the Fil-C vala regenerates all its C with it.
+
+diff --git a/codegen/valaccodebasemodule.c b/codegen/valaccodebasemodule.c
+index 82cfcf2..733caec 100644
+--- a/codegen/valaccodebasemodule.c
++++ b/codegen/valaccodebasemodule.c
+@@ -24953,7 +24953,7 @@ vala_ccode_base_module_real_visit_regex_literal (ValaCodeVisitor* base,
+ 		_tmp37_ = fun;
+ 		vala_ccode_base_module_push_function (self, _tmp37_);
+ 		_tmp38_ = self->priv->_context;
+-		if (vala_code_context_require_glib_version (_tmp38_, 2, 80)) {
++		if (TRUE) {
+ 			ValaCCodeIdentifier* _tmp39_;
+ 			ValaCCodeIdentifier* _tmp40_;
+ 			ValaCCodeFunctionCall* _tmp41_;
+@@ -25050,7 +25050,7 @@ vala_ccode_base_module_real_visit_regex_literal (ValaCodeVisitor* base,
+ 		vala_ccode_function_add_assignment (_tmp78_, (ValaCCodeExpression*) _tmp80_, (ValaCCodeExpression*) _tmp81_);
+ 		_vala_ccode_node_unref0 (_tmp80_);
+ 		_tmp82_ = self->priv->_context;
+-		if (vala_code_context_require_glib_version (_tmp82_, 2, 80)) {
++		if (TRUE) {
+ 			ValaCCodeIdentifier* _tmp83_;
+ 			ValaCCodeIdentifier* _tmp84_;
+ 			ValaCCodeFunctionCall* _tmp85_;
+diff --git a/codegen/valaccodebasemodule.vala b/codegen/valaccodebasemodule.vala
+index 9737441..d58aebc 100644
+--- a/codegen/valaccodebasemodule.vala
++++ b/codegen/valaccodebasemodule.vala
+@@ -4509,7 +4509,7 @@ public abstract class Vala.CCodeBaseModule : CodeGenerator {
+ 			push_function (fun);
+ 
+ 			CCodeFunctionCall once_enter_call;
+-			if (context.require_glib_version (2, 80)) {
++			if (true) { // Fil-C: GType and GRegex* need pointer once storage
+ 				once_enter_call = new CCodeFunctionCall (new CCodeIdentifier ("g_once_init_enter_pointer"));
+ 				once_enter_call.add_argument (new CCodeConstant ("re"));
+ 			} else if (context.require_glib_version (2, 68)) {
+@@ -4529,7 +4529,7 @@ public abstract class Vala.CCodeBaseModule : CodeGenerator {
+ 			ccode.add_assignment (new CCodeIdentifier ("GRegex* val"), regex_new_call);
+ 
+ 			CCodeFunctionCall once_leave_call;
+-			if (context.require_glib_version (2, 80)) {
++			if (true) { // Fil-C: GType and GRegex* need pointer once storage
+ 				once_leave_call = new CCodeFunctionCall (new CCodeIdentifier ("g_once_init_leave_pointer"));
+ 				once_leave_call.add_argument (new CCodeConstant ("re"));
+ 				once_leave_call.add_argument (new CCodeConstant ("val"));
+diff --git a/codegen/valatyperegisterfunction.c b/codegen/valatyperegisterfunction.c
+index c68d5a7..edefadb 100644
+--- a/codegen/valatyperegisterfunction.c
++++ b/codegen/valatyperegisterfunction.c
+@@ -244,7 +244,7 @@ vala_typeregister_function_init_from_type (ValaTypeRegisterFunction* self,
+ 		ValaCCodeVariableDeclarator* _tmp26_;
+ 		ValaCCodeBlock* _tmp29_;
+ 		ValaCCodeDeclaration* _tmp30_;
+-		if (vala_code_context_require_glib_version (context, 2, 80)) {
++		if (TRUE) {
+ 			ValaCCodeDeclaration* _tmp17_;
+ 			_tmp17_ = vala_ccode_declaration_new ("GType");
+ 			_vala_ccode_node_unref0 (_cdecl_);
+@@ -1696,7 +1696,7 @@ vala_typeregister_function_init_from_type (ValaTypeRegisterFunction* self,
+ 		ValaCCodeIdentifier* _tmp570_;
+ 		ValaCCodeReturnStatement* _tmp571_;
+ 		ValaCCodeReturnStatement* _tmp572_;
+-		if (vala_code_context_require_glib_version (context, 2, 80)) {
++		if (TRUE) {
+ 			ValaCCodeIdentifier* _tmp516_;
+ 			ValaCCodeIdentifier* _tmp517_;
+ 			ValaCCodeFunctionCall* _tmp518_;
+@@ -1729,7 +1729,7 @@ vala_typeregister_function_init_from_type (ValaTypeRegisterFunction* self,
+ 		_vala_ccode_node_unref0 (_tmp529_);
+ 		_vala_ccode_node_unref0 (_tmp527_);
+ 		_g_free0 (_tmp525_);
+-		if (vala_code_context_require_glib_version (context, 2, 80)) {
++		if (TRUE) {
+ 			ValaCCodeIdentifier* _tmp530_;
+ 			ValaCCodeIdentifier* _tmp531_;
+ 			ValaCCodeFunctionCall* _tmp532_;
+diff --git a/codegen/valatyperegisterfunction.vala b/codegen/valatyperegisterfunction.vala
+index a40dc22..f13db84 100644
+--- a/codegen/valatyperegisterfunction.vala
++++ b/codegen/valatyperegisterfunction.vala
+@@ -55,7 +55,7 @@ public abstract class Vala.TypeRegisterFunction {
+ 		var type_once_block = new CCodeBlock ();
+ 		CCodeDeclaration cdecl;
+ 		if (!plugin) {
+-			if (context.require_glib_version (2, 80)) {
++			if (true) { // Fil-C: GType and GRegex* need pointer once storage
+ 				cdecl = new CCodeDeclaration ("GType");
+ 			} else {
+ 				cdecl = new CCodeDeclaration ("gsize");
+@@ -292,7 +292,7 @@ public abstract class Vala.TypeRegisterFunction {
+ 		if (!plugin) {
+ 			// the condition that guards the type initialisation
+ 			CCodeFunctionCall enter;
+-			if (context.require_glib_version (2, 80)) {
++			if (true) { // Fil-C: GType and GRegex* need pointer once storage
+ 				enter = new CCodeFunctionCall (new CCodeIdentifier ("g_once_init_enter_pointer"));
+ 			} else {
+ 				enter = new CCodeFunctionCall (new CCodeIdentifier ("g_once_init_enter"));
+@@ -300,7 +300,7 @@ public abstract class Vala.TypeRegisterFunction {
+ 			enter.add_argument (new CCodeUnaryExpression (CCodeUnaryOperator.ADDRESS_OF, new CCodeIdentifier (type_id_name + "__once")));
+ 
+ 			CCodeFunctionCall leave;
+-			if (context.require_glib_version (2, 80)) {
++			if (true) { // Fil-C: GType and GRegex* need pointer once storage
+ 				leave = new CCodeFunctionCall (new CCodeIdentifier ("g_once_init_leave_pointer"));
+ 			} else {
+ 				leave = new CCodeFunctionCall (new CCodeIdentifier ("g_once_init_leave"));
