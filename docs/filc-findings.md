@@ -762,7 +762,9 @@ GLib and GI into Fil-C builds (gdk-pixbuf for GTK 3, PyGObject for
 libgweather), so their `gdbus-codegen` could come first on PATH: GTK 3's
 generated D-Bus code switched on GTypes and failed to compile. The twins'
 setup hooks now put their generators (`gdbus-codegen`, `glib-genmarshal`,
-`glib-mkenums`, the `g-ir-*` tools) first on PATH in a post hook.
+`glib-mkenums`, the `g-ir-*` tools) and their `.pc` files first on PATH
+and `PKG_CONFIG_PATH_FOR_BUILD` in a post hook; Meson finds gdbus-codegen
+through the build `gio-2.0.pc`. `checks.generator-precedence` covers both.
 `tests/gtk-ports.nix` checks that native Pango, GTK 3, glibmm, cairo,
 sdl2-compat and PyGObject in that set match the native package set. Fil-C
 packages rebuild once: every user of the twins (their setup hooks

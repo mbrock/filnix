@@ -204,6 +204,9 @@
             gi-link-environment = import ./tests/gi-link-environment.nix {
               inherit pkgs pkgsFilc;
             };
+            generator-precedence = import ./tests/generator-precedence.nix {
+              inherit pkgs pkgsFilc;
+            };
             media-foundations = import ./tests/media-foundations.nix {
               inherit pkgs pkgsFilc;
             };
