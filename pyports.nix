@@ -42,6 +42,9 @@ in
     # build platform's mypy, which is the one that runs mypyc for Fil-C
     # packages; the typedef change only applies when compiling with Fil-C.
     (patch ./patches/mypyc-filc-pointer-cpyptr.patch)
+    # Python.h must come first: glibc 2.44 headers define _POSIX_C_SOURCE
+    # differently, and mypyc builds with -Werror.
+    (patch ./patches/mypy-function-wrapper-python-h-first.patch)
     (use (old: {
       # mypyc emits one huge C file by default; Fil-C's clang needed over
       # 12 GB for it. Compile per module, as mypy does on Windows.
