@@ -2844,6 +2844,38 @@ in
     ];
   }
 
+  (for pkgs.gsl [
+    (patch ./patches/gsl-movstat-aligned-state.patch)
+  ])
+
+  (for pkgs.xapian [
+    # With more than one descriptor, glibc's nftw opens subdirectories
+    # through __openat64_nocancel, a raw syscall that Fil-C's libc still
+    # lacks (docs/filc-findings.md). One descriptor avoids that path.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace tests/harness/unixcmds.cc --replace-fail \
+          'nftw(filename.c_str(), rm_rf_nftw_helper, 10, flags)' \
+          'nftw(filename.c_str(), rm_rf_nftw_helper, 1, flags)'
+      '';
+    }))
+  ])
+
+  (for pkgs.proj [
+    # The unit tests link GoogleTest, so they need the Fil-C build of it;
+    # Nixpkgs lists gtest as a native check input.
+    (use (old: {
+      nativeCheckInputs = builtins.filter (
+        p: (p.pname or "") != "gtest"
+      ) old.nativeCheckInputs;
+      checkInputs = (old.checkInputs or [ ]) ++ [ final.gtest ];
+    }))
+  ])
+
+  (for pkgs.geos [
+    (patch ./patches/geos-segmentview-pointer-tag.patch)
+  ])
+
   (for pkgs.potrace [
     # Its bsf/bsr helpers branch inside the asm (jnz), which Fil-C's
     # safe inline assembly does not accept. Use the portable versions.

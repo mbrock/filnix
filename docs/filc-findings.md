@@ -375,6 +375,15 @@ capability. NSS swaps the real and fake RSA premaster keys this way
 `patches/nss-ssl-cswap-symkey.patch` selects through a two-element array
 under Fil-C.
 
+netCDF kept NCZarr's chunk-cache nodes in an `ncexhash` map whose data is
+a `uintptr_t` (`patches/netcdf-exhash-pointer-data.patch` makes it
+`void *`), and aligned vlen data with `(void *)NC_read_align((uintptr_t)p,
+a)` (`patches/netcdf-vlen-align-pointer.patch` adds the delta to `p`).
+GEOS's `IndexedPointInAreaLocator::SegmentView` packs a 2-bit offset into
+a `std::size_t` copy of a coordinate pointer, which stopped every
+point-in-polygon test; `patches/geos-segmentview-pointer-tag.patch` keeps
+a `const char *` and tags it by pointer arithmetic.
+
 ## Huge static initializers compile very slowly
 
 A C++ global like `const std::vector<T> v = {{...}, ... }` with a few
@@ -398,6 +407,8 @@ void *p = dlsym(RTLD_NEXT, "puts");
 being looked up. Determinate Nix interposes `__cxa_throw` this way (to abort
 on `std::logic_error`), so every thrown exception stopped the program; the
 port builds without the interposer (docs/determinate-nix.md).
+rsync's `source-change-size-continues` test LD_PRELOADs a shim that
+wraps `read` this way; the port excludes that test.
 
 ## `syscall()` returns -1 as 4294967295
 
@@ -721,6 +732,12 @@ sync_file_range(fd, 0, 1, SYNC_FILE_RANGE_WRITE);
 Redis's port falls back to `fsync`. Other cancellable calls that bypass
 the runtime would stop the same way.
 
+Some internal `*_nocancel` helpers take the same path. glibc's `nftw`
+opens subdirectories with `__openat64_nocancel` when it may keep more
+than one descriptor open, so a recursive walk stops the program at the
+first subdirectory (Xapian's test harness `rm_rf`). With `nopenfd` 1 it
+avoids that call; the Xapian port and the PipeWire experiment pass 1.
+
 ## Found porting Redis: pointers kept as bytes
 
 Redis keeps client pointers inside rax keys (client tracking and blocked
@@ -732,3 +749,47 @@ decodes key bytes through it, swaps as `void *`, and aligns the reply
 chunks. The module key-metadata API passes pointers as `uint64_t`, so
 modules that store pointers there cannot work under Fil-C; its tests are
 skipped.
+
+## Pointers stored at unaligned addresses
+
+A pointer's capability lives in the shadow word of an 8-byte-aligned
+slot, so storing a pointer at an address that is not 8-byte aligned is a
+safety error ("alignment requirement of 8 bytes not met"), even where x86
+would allow it. Two ports hit this at run time:
+
+- parted's `GuidPartitionTableHeader_t` is packed and keeps a `Reserved2`
+  pointer after the 92-byte on-disk header, at offset 92, so every GPT
+  operation stopped. `patches/parted-gpt-aligned-reserved2.patch` pads the
+  in-memory struct and takes the on-disk size from the padding's offset.
+- GSL's moving-window Qn accumulator carves a `ringbuf` (which starts with
+  a pointer) out of its workspace after `5*n` ints, so it was misaligned
+  for odd windows, which is undefined behaviour in C as well.
+  `patches/gsl-movstat-aligned-state.patch` reorders the workspace and
+  rounds `deque_size`, which has the same problem for even windows.
+
+## Inline assembly with branches is refused
+
+Besides the `"cc"` clobber above, the safe inline assembly accepts only
+straight-line instructions. potrace's `bsf`/`bsr` helpers jump over a
+fallback `movl` (`jnz 0f`), and configure enables them on any x86
+compiler, so potrace and mkbitmap stopped on the first bitmap. The port
+selects the portable versions under `__FILC__`.
+
+## The libc include directory precedes packages' `-isystem` directories
+
+The wrapper adds Fil-C's glibc headers with `-isystem`, so they are
+searched before any `-isystem` directory a package adds. A native compiler
+searches libc after all of them. gnulib replacement headers break when a
+package adds its `lib/` with `-isystem`: recode 3.7.15 does this for its
+warning setup, got glibc's `fcntl.h` instead of gnulib's, and failed on
+`O_BINARY`. The port configures with `--disable-gcc-warnings`, which uses
+`-I`. Passing the libc directory with `-idirafter` in `compiler/filc.nix`
+would match native behaviour but changes every Fil-C derivation.
+
+## Found by Fil-C: fstrm's option parser reads past its table
+
+`check_or` in fstrm's bundled `libmy/argv.c` scans ahead from an option
+for `ARGV_OR` markers, testing entry `+2` before checking whether entry
+`+1` is `ARGV_LAST`. For the last option in the table (fstrm_replay's
+`-r`), that reads one element past the array.
+`patches/fstrm-argv-check-or-bounds.patch` tests the nearer entry first.
