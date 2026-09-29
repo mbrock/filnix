@@ -130,6 +130,16 @@ portDSL.makeOverlay portList final prev
   # default 1.89 builds its assembly fcontext and fails.
   boost = final.boost187;
 
+  # The ODBC driver builds its bundled Connector/C submodule, whose export
+  # map needs the same fix as mariadb-connector-c (see ports.nix).
+  unixodbcDrivers = prev.unixodbcDrivers // {
+    mariadb = prev.unixodbcDrivers.mariadb.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        patch -p1 -d libmariadb < ${../patches/mariadb-connector-c-version-script.patch}
+      '';
+    });
+  };
+
   # Node.js (V8) is out of scope. Small pure-JS CLIs run on QuickJS through
   # the qnode shim instead; see docs/quickjs-for-node.md.
   qnode = final.callPackage ../packages/qnode { };

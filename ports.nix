@@ -2844,6 +2844,43 @@ in
     ];
   }
 
+  (for pkgs.rsync [
+    # The test LD_PRELOADs a shim that finds the real read() with
+    # dlsym(RTLD_NEXT, ...), which Fil-C refuses (docs/filc-findings.md).
+    (use (old: {
+      preCheck = old.preCheck + ''
+        export RSYNC_EXCLUDE="$RSYNC_EXCLUDE,source-change-size-continues"
+      '';
+    }))
+  ])
+
+  (for pkgs.kronosnet [
+    # Cross builds skip configure's doxygen2man search and leave
+    # DOXYGEN2MAN empty, so no man pages are made and install-man3 fails.
+    (configure "DOXYGEN2MAN=${pkgs.buildPackages.libqb}/bin/doxygen2man")
+  ])
+
+  (for pkgs.ticcutils [
+    # AX_CHECK_ZLIB comes from autoconf-archive. Nixpkgs lists it in
+    # buildInputs, where a cross build's aclocal does not look.
+    (tool pkgs.buildPackages.autoconf-archive)
+  ])
+
+  (for pkgs.recode [
+    # The warning setup adds gnulib's lib/ with -isystem, which comes
+    # after the Fil-C libc's -isystem, so lib/fcntl.h (O_BINARY) was
+    # shadowed by libc's. Plain -I searches it first.
+    (configure "--disable-gcc-warnings")
+    # The tests build a Fil-C extension module (from Cython's C output)
+    # and import it, so they need the Fil-C Python rather than the
+    # build's.
+    (use (old: {
+      checkFlags = (old.checkFlags or [ ]) ++ [
+        "PYTHON=${final.python3.withPackages (ps: [ ps.setuptools ])}/bin/python3"
+      ];
+    }))
+  ])
+
   (for pkgs.rustc [
     (broken "oh sweet summer child")
   ])
