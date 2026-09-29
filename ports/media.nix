@@ -34,6 +34,11 @@ in
   libdeflate = for pkgs.libdeflate [
     (patch ../patches/libdeflate-xgetbv.patch)
   ];
+  timidity = for pkgs.timidity [
+    # The old ALSA 0.9 API needs symbol versions the Fil-C alsa-lib lacks.
+    (patch ../patches/timidity-alsa-new-api.patch)
+    (patch ../patches/timidity-ctl-event-pointers.patch)
+  ];
   mpg123 = for pkgs.mpg123 [
     # Keep the decoder API; select upstream's C implementation of its kernels.
     (configure "--with-cpu=generic")

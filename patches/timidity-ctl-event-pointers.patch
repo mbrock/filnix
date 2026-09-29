@@ -1,0 +1,84 @@
+Subject: Keep pointers in CtlEvent pointer members
+Origin: Filnix
+Upstream-Status: Not submitted
+
+CtlEvent values are longs, and CTLE_NOW_LOADING and CTLE_PROGRAM carry
+string pointers in them. Converting a pointer to an integer and back drops
+its Fil-C capability, so the dumb interface stopped the program when it
+printed the file name. Give v1 and v3 pointer union members and use them
+for those events in the playback code and the interfaces built here.
+
+--- a/timidity/controls.h
++++ b/timidity/controls.h
+@@ -123,7 +123,13 @@
+ 
+ typedef struct _CtlEvent {
+     int type;		/* See above */
+-    ptr_size_t v1, v2, v3, v4;/* Event value */
++    /* v1 and v3 also carry pointers (CTLE_NOW_LOADING, CTLE_PROGRAM).
++       Keep them in pointer members, since converting a pointer to an
++       integer and back loses its capability under Fil-C. */
++    union { ptr_size_t v1; void *p1; };
++    ptr_size_t v2;
++    union { ptr_size_t v3; void *p3; };
++    ptr_size_t v4;/* Event value */
+ } CtlEvent;
+ 
+ 
+--- a/timidity/playmidi.c
++++ b/timidity/playmidi.c
+@@ -8455,7 +8455,13 @@
+     else
+ 	file_from_stdin = 0;
+ 
+-    ctl_mode_event(CTLE_NOW_LOADING, 0, (long)fn, 0);
++    {
++	CtlEvent ce;
++	ce.type = CTLE_NOW_LOADING;
++	ce.p1 = fn;
++	ce.v2 = 0;
++	ctl->event(&ce);
++    }
+     ctl->cmsg(CMSG_INFO, VERB_VERBOSE, "MIDI file: %s", fn);
+     if((tf = open_midi_file(fn, 1, OF_VERBOSE)) == NULL)
+     {
+@@ -8754,7 +8760,7 @@
+     ce.type = CTLE_PROGRAM;
+     ce.v1 = ch;
+     ce.v2 = prog;
+-    ce.v3 = (ptr_size_t)channel_instrum_name(ch);
++    ce.p3 = channel_instrum_name(ch);
+     ce.v4 = (bank |
+ 	     (channel[ch].bank_lsb << 8) |
+ 	     (channel[ch].bank_msb << 16));
+--- a/interface/dumb_c.c
++++ b/interface/dumb_c.c
+@@ -235,7 +235,7 @@
+     switch(e->type)
+     {
+       case CTLE_NOW_LOADING:
+-	ctl_file_name((char *)e->v1);
++	ctl_file_name((char *)e->p1);
+ 	break;
+       case CTLE_PLAY_START:
+ 	ctl_total_time(e->v1);
+--- a/interface/ncurs_c.c
++++ b/interface/ncurs_c.c
+@@ -1054,7 +1054,7 @@
+     switch(e->type)
+     {
+       case CTLE_NOW_LOADING:
+-	ctl_file_name((char *)e->v1);
++	ctl_file_name((char *)e->p1);
+ 	break;
+       case CTLE_LOADING_DONE:
+ 	redraw_all();
+@@ -1107,7 +1107,7 @@
+ 		ctl_mute((int) e->v1, (int) e->v2);
+ 		break;
+       case CTLE_PROGRAM:
+-	ctl_program((int)e->v1, (int)e->v2, (char *)e->v3, (unsigned int)e->v4);
++	ctl_program((int)e->v1, (int)e->v2, (char *)e->p3, (unsigned int)e->v4);
+ 	break;
+       case CTLE_DRUMPART:
+ 	ctl_drumpart((int)e->v1, (int)e->v2);
