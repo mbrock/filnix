@@ -6,6 +6,8 @@ let
     patch
     addMesonFlag
     addMakeFlag
+    addCMakeFlag
+    addCFlag
     configure
     use
     ;
@@ -71,6 +73,10 @@ in
   ];
   sfml_2 = for pkgs.sfml_2 [
     (patch ../patches/sfml2-libcxx-char-traits.patch)
+    # The suite builds with the library and runs from the build.
+    (addCMakeFlag "-DSFML_BUILD_TEST_SUITE=ON")
+    # Catch's fatal-signal handlers need sigaltstack.
+    (addCFlag "-DCATCH_CONFIG_NO_POSIX_SIGNALS")
   ];
   mpg123 = for pkgs.mpg123 [
     # Keep the decoder API; select upstream's C implementation of its kernels.
