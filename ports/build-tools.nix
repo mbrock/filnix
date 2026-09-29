@@ -108,7 +108,9 @@ let
     meson = for prev.meson [ (patch ../patches/meson-gtype.patch) ];
 
     # gtkdoc-scangobj writes a GObject scanner program for the target.
-    gtk-doc = for prev.gtk-doc [ (patch ../patches/gtk-doc-scangobj-gtype.patch) ];
+    gtk-doc = for prev.gtk-doc [
+      (patch ../patches/gtk-doc-scangobj-gtype.patch)
+    ];
 
     # valac emits GType registration code for the package being built.
     vala = for prev.vala [

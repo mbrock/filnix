@@ -800,3 +800,18 @@ errno. The GnuPG family's configure probe (`GNUPG_CHECK_MLOCK`) mlocks a
 locked its secure memory and `GCRYCTL_INIT_SECMEM` failed (`t-secmem`,
 `t-sexp`). The secure memory pool itself is mmapped, which `mlock` accepts,
 so the libgcrypt port presets `gnupg_cv_have_broken_mlock=no`.
+
+## Found by Fil-C: two of Vala's own tests
+
+With the port's valac, Vala 0.56.19's test suite (1,435 programs built at
+`-O0`) passes except the D-Bus tests, which need a session config in the
+sandbox (they pass given one), and two that Fil-C stops:
+
+- `methods/varargs-delegate-without-target` calls `string foo (void *)`
+  through a `string (*)(void)` delegate, so the callee reads an argument
+  that was never passed ("argument size mismatch").
+- `objects/property-array`: `_vala_array_dup` adds a NULL terminator only
+  for reference-type elements, so copying an `array_null_terminated`
+  array of nullable structs (`Manam?[]`) drops the terminator and the next
+  `_vala_array_length` reads past the copy. A Vala codegen bug
+  (`generate_array_dup_wrapper`), worth reporting upstream; not patched.
