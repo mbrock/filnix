@@ -1,0 +1,661 @@
+capstone passes its handle around as csh, a size_t, and casts it back to
+struct cs_struct * in every API function, so under Fil-C every call after
+cs_open trapped. Register handles in an exact pointer table: csh keeps the
+pointer's address (so the API and FFI bindings are unchanged) and decoding
+recovers the capability. The three (csh)&handle calls on a stack copy now
+pass the real handle.
+
+cs_option takes pointer-valued options (CS_OPT_MEM, CS_OPT_SKIPDATA_SETUP,
+CS_OPT_MNEMONIC) as a size_t too; the caller's cast drops the capability
+before the library sees it. Add a Fil-C-only cs_option_ptr for those and use
+it in the tests.
+
+diff --git a/arch/AArch64/AArch64Disassembler.c b/arch/AArch64/AArch64Disassembler.c
+index ff6ee6d..21b4acd 100644
+--- a/arch/AArch64/AArch64Disassembler.c
++++ b/arch/AArch64/AArch64Disassembler.c
+@@ -359,7 +359,7 @@ static DecodeStatus _getInstruction(cs_struct *ud, MCInst *MI,
+ bool AArch64_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 		MCInst *instr, uint16_t *size, uint64_t address, void *info)
+ {
+-	DecodeStatus status = _getInstruction((cs_struct *)ud, instr,
++	DecodeStatus status = _getInstruction(CS_HANDLE(ud), instr,
+ 			code, code_len,
+ 			size,
+ 			address, (MCRegisterInfo *)info);
+diff --git a/arch/AArch64/AArch64InstPrinter.c b/arch/AArch64/AArch64InstPrinter.c
+index 517db25..4abd65b 100644
+--- a/arch/AArch64/AArch64InstPrinter.c
++++ b/arch/AArch64/AArch64InstPrinter.c
+@@ -2758,7 +2758,7 @@ static void printGPR64x8(MCInst *MI, unsigned OpNum, SStream *O)
+ 
+ void AArch64_post_printer(csh handle, cs_insn *flat_insn, char *insn_asm, MCInst *mci)
+ {
+-	if (((cs_struct *)handle)->detail != CS_OPT_ON)
++	if (CS_HANDLE(handle)->detail != CS_OPT_ON)
+ 		return;
+ 
+ 	if (mci->csh->detail) {
+diff --git a/arch/AArch64/AArch64Mapping.c b/arch/AArch64/AArch64Mapping.c
+index a987af6..212ef8d 100644
+--- a/arch/AArch64/AArch64Mapping.c
++++ b/arch/AArch64/AArch64Mapping.c
+@@ -423,7 +423,7 @@ void AArch64_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id)
+ 			memcpy(insn->detail->groups, insns[i].groups, sizeof(insns[i].groups));
+ 			insn->detail->groups_count = (uint8_t)count_positive8(insns[i].groups);
+ 
+-			insn->detail->arm64.update_flags = cs_reg_write((csh)&handle, insn, ARM64_REG_NZCV);
++			insn->detail->arm64.update_flags = cs_reg_write((csh)h, insn, ARM64_REG_NZCV);
+ #endif
+ 		}
+ 	}
+diff --git a/arch/ARM/ARMDisassembler.c b/arch/ARM/ARMDisassembler.c
+index 03b9fc1..5ebd1de 100644
+--- a/arch/ARM/ARMDisassembler.c
++++ b/arch/ARM/ARMDisassembler.c
+@@ -945,7 +945,7 @@ static DecodeStatus _Thumb_getInstruction(cs_struct *ud, MCInst *MI, const uint8
+ bool Thumb_getInstruction(csh ud, const uint8_t *code, size_t code_len, MCInst *instr,
+ 		uint16_t *size, uint64_t address, void *info)
+ {
+-	DecodeStatus status = _Thumb_getInstruction((cs_struct *)ud, instr, code, code_len, size, address);
++	DecodeStatus status = _Thumb_getInstruction(CS_HANDLE(ud), instr, code, code_len, size, address);
+ 
+ 	// TODO: fix table gen to eliminate these special cases
+ 	if (instr->Opcode == ARM_t__brkdiv0)
+@@ -958,7 +958,7 @@ bool Thumb_getInstruction(csh ud, const uint8_t *code, size_t code_len, MCInst *
+ bool ARM_getInstruction(csh ud, const uint8_t *code, size_t code_len, MCInst *instr,
+ 		uint16_t *size, uint64_t address, void *info)
+ {
+-	DecodeStatus status = _ARM_getInstruction((cs_struct *)ud, instr, code, code_len, size, address);
++	DecodeStatus status = _ARM_getInstruction(CS_HANDLE(ud), instr, code, code_len, size, address);
+ 
+ 	//return status == MCDisassembler_Success;
+ 	return status != MCDisassembler_Fail;
+diff --git a/arch/ARM/ARMInstPrinter.c b/arch/ARM/ARMInstPrinter.c
+index a7a7bef..5b5db3c 100644
+--- a/arch/ARM/ARMInstPrinter.c
++++ b/arch/ARM/ARMInstPrinter.c
+@@ -285,7 +285,7 @@ static const name_map insn_update_flgs[] = {
+ 
+ void ARM_post_printer(csh ud, cs_insn *insn, char *insn_asm, MCInst *mci)
+ {
+-	if (((cs_struct *)ud)->detail != CS_OPT_ON)
++	if (CS_HANDLE(ud)->detail != CS_OPT_ON)
+ 		return;
+ 
+ 	// check if this insn requests write-back
+diff --git a/arch/ARM/ARMMapping.c b/arch/ARM/ARMMapping.c
+index a8d8698..53e4e41 100644
+--- a/arch/ARM/ARMMapping.c
++++ b/arch/ARM/ARMMapping.c
+@@ -332,7 +332,7 @@ void ARM_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id)
+ 			memcpy(insn->detail->groups, insns[i].groups, sizeof(insns[i].groups));
+ 			insn->detail->groups_count = (uint8_t)count_positive8(insns[i].groups);
+ 
+-			insn->detail->arm.update_flags = cs_reg_write((csh)&handle, insn, ARM_REG_CPSR);
++			insn->detail->arm.update_flags = cs_reg_write((csh)h, insn, ARM_REG_CPSR);
+ 
+ 			if (insns[i].branch || insns[i].indirect_branch) {
+ 				// this insn also belongs to JUMP group. add JUMP group
+diff --git a/arch/BPF/BPFDisassembler.c b/arch/BPF/BPFDisassembler.c
+index cc137c0..443d809 100644
+--- a/arch/BPF/BPFDisassembler.c
++++ b/arch/BPF/BPFDisassembler.c
+@@ -443,7 +443,7 @@ bool BPF_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 	cs_struct *cs;
+ 	bpf_internal *bpf;
+ 
+-	cs = (cs_struct*)ud;
++	cs = CS_HANDLE(ud);
+ 	if (EBPF_MODE(cs))
+ 		bpf = fetch_ebpf(cs, code, code_len);
+ 	else
+diff --git a/arch/BPF/BPFMapping.h b/arch/BPF/BPFMapping.h
+index 1401ee8..d7cbeb4 100644
+--- a/arch/BPF/BPFMapping.h
++++ b/arch/BPF/BPFMapping.h
+@@ -8,7 +8,7 @@
+ 
+ #include "../../cs_priv.h"
+ 
+-#define EBPF_MODE(ud) (((cs_struct*)ud)->mode & CS_MODE_BPF_EXTENDED)
++#define EBPF_MODE(ud) ((CS_HANDLE(ud)->mode) & CS_MODE_BPF_EXTENDED)
+ 
+ const char *BPF_group_name(csh handle, unsigned int id);
+ const char *BPF_insn_name(csh handle, unsigned int id);
+diff --git a/arch/EVM/EVMDisassembler.c b/arch/EVM/EVMDisassembler.c
+index 23512db..5896132 100644
+--- a/arch/EVM/EVMDisassembler.c
++++ b/arch/EVM/EVMDisassembler.c
+@@ -7,6 +7,7 @@
+ 
+ #include "EVMDisassembler.h"
+ #include "EVMMapping.h"
++#include "../../cs_priv.h"
+ 
+ static const short opcodes[256] = {
+ 	EVM_INS_STOP,
+@@ -299,7 +300,7 @@ bool EVM_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 
+ 	if (MI->flat_insn->detail) {
+ 		memset(MI->flat_insn->detail, 0, offsetof(cs_detail, evm)+sizeof(cs_evm));
+-		EVM_get_insn_id((cs_struct *)ud, MI->flat_insn, opcode);
++		EVM_get_insn_id(CS_HANDLE(ud), MI->flat_insn, opcode);
+ 
+ 		if (MI->flat_insn->detail->evm.pop) {
+ 			MI->flat_insn->detail->groups[MI->flat_insn->detail->groups_count] = EVM_GRP_STACK_READ;
+diff --git a/arch/M680X/M680XDisassembler.c b/arch/M680X/M680XDisassembler.c
+index 2cb0958..ab0dd56 100644
+--- a/arch/M680X/M680XDisassembler.c
++++ b/arch/M680X/M680XDisassembler.c
+@@ -2153,7 +2153,7 @@ bool M680X_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ {
+ 	unsigned int insn_size = 0;
+ 	e_cpu_type cpu_type = M680X_CPU_TYPE_INVALID; // No default CPU type
+-	cs_struct *handle = (cs_struct *)ud;
++	cs_struct *handle = CS_HANDLE(ud);
+ 	m680x_info *info = (m680x_info *)handle->printer_info;
+ 
+ 	MCInst_clear(MI);
+diff --git a/arch/Mips/MipsDisassembler.c b/arch/Mips/MipsDisassembler.c
+index 2940823..ea0474b 100644
+--- a/arch/Mips/MipsDisassembler.c
++++ b/arch/Mips/MipsDisassembler.c
+@@ -505,7 +505,7 @@ static DecodeStatus MipsDisassembler_getInstruction(int mode, MCInst *instr,
+ bool Mips_getInstruction(csh ud, const uint8_t *code, size_t code_len, MCInst *instr,
+ 		uint16_t *size, uint64_t address, void *info)
+ {
+-	cs_struct *handle = (cs_struct *)(uintptr_t)ud;
++	cs_struct *handle = CS_HANDLE(ud);
+ 
+ 	DecodeStatus status = MipsDisassembler_getInstruction(handle->mode, instr,
+ 			code, code_len,
+diff --git a/arch/PowerPC/PPCInstPrinter.c b/arch/PowerPC/PPCInstPrinter.c
+index 1e654ba..aeae7f5 100644
+--- a/arch/PowerPC/PPCInstPrinter.c
++++ b/arch/PowerPC/PPCInstPrinter.c
+@@ -76,7 +76,7 @@ static void set_mem_access(MCInst *MI, bool status)
+ 
+ void PPC_post_printer(csh ud, cs_insn *insn, char *insn_asm, MCInst *mci)
+ {
+-	if (((cs_struct *)ud)->detail != CS_OPT_ON)
++	if (CS_HANDLE(ud)->detail != CS_OPT_ON)
+ 		return;
+ 
+ 	// check if this insn has branch hint
+diff --git a/arch/PowerPC/PPCMapping.c b/arch/PowerPC/PPCMapping.c
+index ce3532d..1d92560 100644
+--- a/arch/PowerPC/PPCMapping.c
++++ b/arch/PowerPC/PPCMapping.c
+@@ -347,7 +347,7 @@ void PPC_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id)
+ 				insn->detail->groups_count++;
+ 			}
+ 
+-			insn->detail->ppc.update_cr0 = cs_reg_write((csh)&handle, insn, PPC_REG_CR0);
++			insn->detail->ppc.update_cr0 = cs_reg_write((csh)h, insn, PPC_REG_CR0);
+ #endif
+ 		}
+ 	}
+diff --git a/arch/RISCV/RISCVDisassembler.c b/arch/RISCV/RISCVDisassembler.c
+index c396d69..71c4d54 100644
+--- a/arch/RISCV/RISCVDisassembler.c
++++ b/arch/RISCV/RISCVDisassembler.c
+@@ -392,7 +392,7 @@ bool RISCV_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 		          MCInst *instr, uint16_t *size, uint64_t address,
+ 		          void *info) 
+ {
+-  	cs_struct *handle = (cs_struct *)(uintptr_t)ud;
++  	cs_struct *handle = CS_HANDLE(ud);
+ 
+   	return MCDisassembler_Success == 
+ 	   	RISCVDisassembler_getInstruction(handle->mode, instr,
+diff --git a/arch/SH/SHDisassembler.c b/arch/SH/SHDisassembler.c
+index 34f3998..575b5a8 100644
+--- a/arch/SH/SHDisassembler.c
++++ b/arch/SH/SHDisassembler.c
+@@ -2174,7 +2174,7 @@ bool SH_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 	MCInst *MI, uint16_t *size, uint64_t address, void *inst_info)
+ {
+ 	
+-	cs_struct* handle = (cs_struct *)ud;
++	cs_struct* handle = CS_HANDLE(ud);
+ 	sh_info *info = (sh_info *)handle->printer_info;
+ 	cs_detail *detail = MI->flat_insn->detail;
+ 
+diff --git a/arch/Sparc/SparcInstPrinter.c b/arch/Sparc/SparcInstPrinter.c
+index e6878b5..3e90dd4 100644
+--- a/arch/Sparc/SparcInstPrinter.c
++++ b/arch/Sparc/SparcInstPrinter.c
+@@ -75,7 +75,7 @@ static void set_mem_access(MCInst *MI, bool status)
+ 
+ void Sparc_post_printer(csh ud, cs_insn *insn, char *insn_asm, MCInst *mci)
+ {
+-	if (((cs_struct *)ud)->detail != CS_OPT_ON)
++	if (CS_HANDLE(ud)->detail != CS_OPT_ON)
+ 		return;
+ 
+ 	// fix up some instructions
+diff --git a/arch/SystemZ/SystemZInstPrinter.c b/arch/SystemZ/SystemZInstPrinter.c
+index 0d992dc..6be743d 100644
+--- a/arch/SystemZ/SystemZInstPrinter.c
++++ b/arch/SystemZ/SystemZInstPrinter.c
+@@ -34,7 +34,7 @@ static const char *getRegisterName(unsigned RegNo);
+ void SystemZ_post_printer(csh ud, cs_insn *insn, char *insn_asm, MCInst *mci)
+ {
+ 	/*
+-	   if (((cs_struct *)ud)->detail != CS_OPT_ON)
++	   if (CS_HANDLE(ud)->detail != CS_OPT_ON)
+ 	   return;
+ 	 */
+ }
+diff --git a/arch/TriCore/TriCoreDisassembler.c b/arch/TriCore/TriCoreDisassembler.c
+index 40aad5e..74ac7d5 100644
+--- a/arch/TriCore/TriCoreDisassembler.c
++++ b/arch/TriCore/TriCoreDisassembler.c
+@@ -1578,7 +1578,7 @@ static bool getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 		return false;
+ 	}
+ 
+-	struct cs_struct *cs = (struct cs_struct *)ud;
++	struct cs_struct *cs = CS_HANDLE(ud);
+ 	if (MI->flat_insn->detail) {
+ 		memset(MI->flat_insn->detail, 0, sizeof(cs_detail));
+ 	}
+diff --git a/arch/WASM/WASMDisassembler.c b/arch/WASM/WASMDisassembler.c
+index a05ee0c..31ca757 100644
+--- a/arch/WASM/WASMDisassembler.c
++++ b/arch/WASM/WASMDisassembler.c
+@@ -650,7 +650,7 @@ bool WASM_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 
+ 	if (MI->flat_insn->detail) {
+ 		memset(MI->flat_insn->detail, 0, offsetof(cs_detail, wasm)+sizeof(cs_wasm));
+-		WASM_get_insn_id((cs_struct *)ud, MI->flat_insn, opcode);
++		WASM_get_insn_id(CS_HANDLE(ud), MI->flat_insn, opcode);
+ 	}
+ 
+ 	// setup groups
+diff --git a/arch/X86/X86Disassembler.c b/arch/X86/X86Disassembler.c
+index 8311671..52aa82d 100644
+--- a/arch/X86/X86Disassembler.c
++++ b/arch/X86/X86Disassembler.c
+@@ -940,7 +940,7 @@ void X86_init(MCRegisterInfo *MRI)
+ bool X86_getInstruction(csh ud, const uint8_t *code, size_t code_len,
+ 		MCInst *instr, uint16_t *size, uint64_t address, void *_info)
+ {
+-	cs_struct *handle = (cs_struct *)(uintptr_t)ud;
++	cs_struct *handle = CS_HANDLE(ud);
+ 	InternalInstruction insn = { 0 };
+ 	struct reader_info info;
+ 	int ret;
+diff --git a/arch/X86/X86Mapping.c b/arch/X86/X86Mapping.c
+index 1a46065..9223903 100644
+--- a/arch/X86/X86Mapping.c
++++ b/arch/X86/X86Mapping.c
+@@ -837,7 +837,7 @@ const uint8_t regsize_map_64 [] = {
+ const char *X86_reg_name(csh handle, unsigned int reg)
+ {
+ #ifndef CAPSTONE_DIET
+-	cs_struct *ud = (cs_struct *)handle;
++	cs_struct *ud = CS_HANDLE(handle);
+ 
+ 	if (reg >= ARR_SIZE(reg_name_maps))
+ 		return NULL;
+diff --git a/arch/XCore/XCoreInstPrinter.c b/arch/XCore/XCoreInstPrinter.c
+index fcd0205..bac1390 100644
+--- a/arch/XCore/XCoreInstPrinter.c
++++ b/arch/XCore/XCoreInstPrinter.c
+@@ -39,7 +39,7 @@ static const char *getRegisterName(unsigned RegNo);
+ void XCore_post_printer(csh ud, cs_insn *insn, char *insn_asm, MCInst *mci)
+ {
+ 	/*
+-	   if (((cs_struct *)ud)->detail != CS_OPT_ON)
++	   if (CS_HANDLE(ud)->detail != CS_OPT_ON)
+ 	   return;
+ 	 */
+ }
+diff --git a/cs.c b/cs.c
+index 59243fd..98366af 100644
+--- a/cs.c
++++ b/cs.c
+@@ -71,6 +71,15 @@
+ #include "arch/SH/SHModule.h"
+ #include "arch/TriCore/TriCoreModule.h"
+ 
++#ifdef __FILC__
++zexact_ptrtable *cs_handle_table;
++
++__attribute__((constructor)) static void cs_handle_table_init(void)
++{
++	cs_handle_table = zexact_ptrtable_new();
++}
++#endif
++
+ static const struct {
+ 	// constructor initialization
+ 	cs_err (*arch_init)(cs_struct *);
+@@ -418,7 +427,7 @@ cs_err CAPSTONE_API cs_errno(csh handle)
+ 	if (!handle)
+ 		return CS_ERR_CSH;
+ 
+-	ud = (struct cs_struct *)(uintptr_t)handle;
++	ud = CS_HANDLE(handle);
+ 
+ 	return ud->errnum;
+ }
+@@ -501,7 +510,7 @@ cs_err CAPSTONE_API cs_open(cs_arch arch, cs_mode mode, csh *handle)
+ 			return err;
+ 		}
+ 
+-		*handle = (uintptr_t)ud;
++		*handle = CS_CSH(ud);
+ 
+ 		return CS_ERR_OK;
+ 	} else {
+@@ -520,7 +529,7 @@ cs_err CAPSTONE_API cs_close(csh *handle)
+ 		// invalid handle
+ 		return CS_ERR_CSH;
+ 
+-	ud = (struct cs_struct *)(*handle);
++	ud = CS_HANDLE(*handle);
+ 
+ 	if (ud->printer_info)
+ 		cs_mem_free(ud->printer_info);
+@@ -698,16 +707,39 @@ static uint8_t skipdata_size(cs_struct *handle)
+ 	}
+ }
+ 
++#ifdef __FILC__
++// Options that take a pointer lose its capability when it is passed as a
++// size_t, so Fil-C callers pass those through cs_option_ptr instead.
++static cs_err cs_option_impl(csh ud, cs_opt_type type, size_t value, void *pvalue);
++
++CAPSTONE_EXPORT
++cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
++{
++	return cs_option_impl(ud, type, value, (void *)value);
++}
++
++CAPSTONE_EXPORT
++cs_err CAPSTONE_API cs_option_ptr(csh ud, cs_opt_type type, void *value)
++{
++	return cs_option_impl(ud, type, (size_t)value, value);
++}
++
++static cs_err cs_option_impl(csh ud, cs_opt_type type, size_t value, void *pvalue)
++#else
+ CAPSTONE_EXPORT
+ cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
++#endif
+ {
++#ifndef __FILC__
++	void *pvalue = (void *)value;
++#endif
+ 	struct cs_struct *handle;
+ 	cs_opt_mnem *opt;
+ 
+ 	// cs_option() can be called with NULL handle just for CS_OPT_MEM
+ 	// This is supposed to be executed before all other APIs (even cs_open())
+ 	if (type == CS_OPT_MEM) {
+-		cs_opt_mem *mem = (cs_opt_mem *)value;
++		cs_opt_mem *mem = (cs_opt_mem *)pvalue;
+ 
+ 		cs_mem_malloc = mem->malloc;
+ 		cs_mem_calloc = mem->calloc;
+@@ -718,7 +750,7 @@ cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
+ 		return CS_ERR_OK;
+ 	}
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 	if (!handle)
+ 		return CS_ERR_CSH;
+ 
+@@ -746,7 +778,7 @@ cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
+ 
+ 		case CS_OPT_SKIPDATA_SETUP:
+ 			if (value) {
+-				handle->skipdata_setup = *((cs_opt_skipdata *)value);
++				handle->skipdata_setup = *((cs_opt_skipdata *)pvalue);
+ 				if (handle->skipdata_setup.mnemonic == NULL) {
+ 					handle->skipdata_setup.mnemonic = SKIPDATA_MNEM;
+ 				}
+@@ -754,7 +786,7 @@ cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
+ 			return CS_ERR_OK;
+ 
+ 		case CS_OPT_MNEMONIC:
+-			opt = (cs_opt_mnem *)value;
++			opt = (cs_opt_mnem *)pvalue;
+ 			if (opt->id) {
+ 				if (opt->mnemonic) {
+ 					struct insn_mnem *tmp;
+@@ -874,7 +906,7 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
+ 	unsigned int cache_size = INSN_CACHE_SIZE;
+ 	size_t next_offset;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 	if (!handle) {
+ 		// FIXME: how to handle this case:
+ 		// handle->errnum = CS_ERR_HANDLE;
+@@ -1084,7 +1116,7 @@ CAPSTONE_EXPORT
+ cs_insn * CAPSTONE_API cs_malloc(csh ud)
+ {
+ 	cs_insn *insn;
+-	struct cs_struct *handle = (struct cs_struct *)(uintptr_t)ud;
++	struct cs_struct *handle = CS_HANDLE(ud);
+ 
+ 	insn = cs_mem_malloc(sizeof(cs_insn));
+ 	if (!insn) {
+@@ -1117,7 +1149,7 @@ bool CAPSTONE_API cs_disasm_iter(csh ud, const uint8_t **code, size_t *size,
+ 	MCInst mci;
+ 	bool r;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 	if (!handle) {
+ 		return false;
+ 	}
+@@ -1208,7 +1240,7 @@ bool CAPSTONE_API cs_disasm_iter(csh ud, const uint8_t **code, size_t *size,
+ CAPSTONE_EXPORT
+ const char * CAPSTONE_API cs_reg_name(csh ud, unsigned int reg)
+ {
+-	struct cs_struct *handle = (struct cs_struct *)(uintptr_t)ud;
++	struct cs_struct *handle = CS_HANDLE(ud);
+ 
+ 	if (!handle || handle->reg_name == NULL) {
+ 		return NULL;
+@@ -1220,7 +1252,7 @@ const char * CAPSTONE_API cs_reg_name(csh ud, unsigned int reg)
+ CAPSTONE_EXPORT
+ const char * CAPSTONE_API cs_insn_name(csh ud, unsigned int insn)
+ {
+-	struct cs_struct *handle = (struct cs_struct *)(uintptr_t)ud;
++	struct cs_struct *handle = CS_HANDLE(ud);
+ 
+ 	if (!handle || handle->insn_name == NULL) {
+ 		return NULL;
+@@ -1232,7 +1264,7 @@ const char * CAPSTONE_API cs_insn_name(csh ud, unsigned int insn)
+ CAPSTONE_EXPORT
+ const char * CAPSTONE_API cs_group_name(csh ud, unsigned int group)
+ {
+-	struct cs_struct *handle = (struct cs_struct *)(uintptr_t)ud;
++	struct cs_struct *handle = CS_HANDLE(ud);
+ 
+ 	if (!handle || handle->group_name == NULL) {
+ 		return NULL;
+@@ -1248,7 +1280,7 @@ bool CAPSTONE_API cs_insn_group(csh ud, const cs_insn *insn, unsigned int group_
+ 	if (!ud)
+ 		return false;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 
+ 	if (!handle->detail) {
+ 		handle->errnum = CS_ERR_DETAIL;
+@@ -1275,7 +1307,7 @@ bool CAPSTONE_API cs_reg_read(csh ud, const cs_insn *insn, unsigned int reg_id)
+ 	if (!ud)
+ 		return false;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 
+ 	if (!handle->detail) {
+ 		handle->errnum = CS_ERR_DETAIL;
+@@ -1302,7 +1334,7 @@ bool CAPSTONE_API cs_reg_write(csh ud, const cs_insn *insn, unsigned int reg_id)
+ 	if (!ud)
+ 		return false;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 
+ 	if (!handle->detail) {
+ 		handle->errnum = CS_ERR_DETAIL;
+@@ -1330,7 +1362,7 @@ int CAPSTONE_API cs_op_count(csh ud, const cs_insn *insn, unsigned int op_type)
+ 	if (!ud)
+ 		return -1;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 
+ 	if (!handle->detail) {
+ 		handle->errnum = CS_ERR_DETAIL;
+@@ -1449,7 +1481,7 @@ int CAPSTONE_API cs_op_index(csh ud, const cs_insn *insn, unsigned int op_type,
+ 	if (!ud)
+ 		return -1;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 
+ 	if (!handle->detail) {
+ 		handle->errnum = CS_ERR_DETAIL;
+@@ -1633,7 +1665,7 @@ cs_err CAPSTONE_API cs_regs_access(csh ud, const cs_insn *insn,
+ 	if (!ud)
+ 		return -1;
+ 
+-	handle = (struct cs_struct *)(uintptr_t)ud;
++	handle = CS_HANDLE(ud);
+ 
+ #ifdef CAPSTONE_DIET
+ 	// This API does not work in DIET mode
+diff --git a/cs_priv.h b/cs_priv.h
+index e473b71..40731c9 100644
+--- a/cs_priv.h
++++ b/cs_priv.h
+@@ -12,6 +12,19 @@
+ #include "MCInst.h"
+ #include "SStream.h"
+ 
++// A csh is an integer. Under Fil-C an integer carries no capability, so
++// handles are registered in an exact pointer table: the csh keeps the
++// pointer's address, and decoding it recovers the pointer.
++#ifdef __FILC__
++#include <stdfil.h>
++extern zexact_ptrtable *cs_handle_table;
++#define CS_HANDLE(h) ((struct cs_struct *)zexact_ptrtable_decode(cs_handle_table, (uintptr_t)(h)))
++#define CS_CSH(p) ((csh)zexact_ptrtable_encode(cs_handle_table, (p)))
++#else
++#define CS_HANDLE(h) ((struct cs_struct *)(uintptr_t)(h))
++#define CS_CSH(p) ((csh)(uintptr_t)(p))
++#endif
++
+ typedef void (*Printer_t)(MCInst *MI, SStream *OS, void *info);
+ 
+ // function to be called after Printer_t
+diff --git a/include/capstone/capstone.h b/include/capstone/capstone.h
+index f164ad8..52bcc87 100644
+--- a/include/capstone/capstone.h
++++ b/include/capstone/capstone.h
+@@ -581,6 +581,16 @@ cs_err CAPSTONE_API cs_close(csh *handle);
+ CAPSTONE_EXPORT
+ cs_err CAPSTONE_API cs_option(csh handle, cs_opt_type type, size_t value);
+ 
++#ifdef __FILC__
++/**
++ Fil-C only: cs_option() for the options whose value is a pointer
++ (CS_OPT_MEM, CS_OPT_SKIPDATA_SETUP, CS_OPT_MNEMONIC). A pointer cast to
++ size_t loses its capability under Fil-C and cannot be dereferenced.
++*/
++CAPSTONE_EXPORT
++cs_err CAPSTONE_API cs_option_ptr(csh handle, cs_opt_type type, void *value);
++#endif
++
+ /**
+  Report the last error number when some API function fail.
+  Like glibc's errno, cs_errno might not retain its old value once accessed.
+diff --git a/tests/test_customized_mnem.c b/tests/test_customized_mnem.c
+index 5d523de..d3dc7b1 100644
+--- a/tests/test_customized_mnem.c
++++ b/tests/test_customized_mnem.c
+@@ -10,6 +10,12 @@
+ #include <capstone/platform.h>
+ #include <capstone/capstone.h>
+ 
++#ifdef __FILC__
++#define cs_option_mnem(h, m) cs_option_ptr(h, CS_OPT_MNEMONIC, m)
++#else
++#define cs_option_mnem(h, m) cs_option(h, CS_OPT_MNEMONIC, (size_t)(m))
++#endif
++
+ #define X86_CODE32 "\x75\x01"
+ 
+ // Print out the input code in hexadecimal format
+@@ -65,14 +71,14 @@ static void test()
+ 
+ 	// Customized mnemonic JNE to JNZ using CS_OPT_MNEMONIC option
+ 	printf("\nNow customize engine to change mnemonic from 'JNE' to 'JNZ'\n");
+-	cs_option(handle, CS_OPT_MNEMONIC, (size_t)&my_mnem);
++	cs_option_mnem(handle, &my_mnem);
+ 
+ 	// 2. Now print out the instruction in newly customized setup.
+ 	print_insn(handle);
+ 
+ 	// Reset engine to use the default mnemonic of JNE
+ 	printf("\nReset engine to use the default mnemonic\n");
+-	cs_option(handle, CS_OPT_MNEMONIC, (size_t)&default_mnem);
++	cs_option_mnem(handle, &default_mnem);
+ 
+ 	// 3. Now print out the instruction in default setup.
+ 	print_insn(handle);
+diff --git a/tests/test_skipdata.c b/tests/test_skipdata.c
+index 8ab046f..4125f20 100644
+--- a/tests/test_skipdata.c
++++ b/tests/test_skipdata.c
+@@ -16,7 +16,7 @@ struct platform {
+ 	cs_opt_type opt_type;
+ 	cs_opt_value opt_value;
+ 	cs_opt_type opt_skipdata;
+-	size_t skipdata;
++	void *skipdata;
+ };
+ 
+ static void print_string_hex(unsigned char *str, size_t len)
+@@ -77,7 +77,7 @@ static void test()
+ 			CS_OPT_INVALID,
+ 			CS_OPT_OFF,
+ 			CS_OPT_SKIPDATA_SETUP,
+-			(size_t) &skipdata,
++			&skipdata,
+ 		},
+ #endif
+ #ifdef CAPSTONE_HAS_ARM
+@@ -97,7 +97,7 @@ static void test()
+ 			CS_OPT_INVALID,
+ 			CS_OPT_OFF,
+ 			CS_OPT_SKIPDATA_SETUP,
+-			(size_t) &skipdata_callback,
++			&skipdata_callback,
+ 		},
+ #endif
+ 	};
+@@ -123,7 +123,11 @@ static void test()
+ 
+ 		// turn on SKIPDATA mode
+ 		cs_option(handle, CS_OPT_SKIPDATA, CS_OPT_ON);
+-		cs_option(handle, platforms[i].opt_skipdata, platforms[i].skipdata);
++#ifdef __FILC__
++		cs_option_ptr(handle, platforms[i].opt_skipdata, platforms[i].skipdata);
++#else
++		cs_option(handle, platforms[i].opt_skipdata, (size_t)platforms[i].skipdata);
++#endif
+ 
+ 		count = cs_disasm(handle, platforms[i].code, platforms[i].size, address, 0, &insn);
+ 		if (count) {

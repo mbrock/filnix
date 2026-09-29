@@ -115,72 +115,85 @@ in
 
   # ━━━ Core Libraries ━━━
 
-  {
-    boost187 = for pkgs.boost187 [
-      (patch ./ports/patch/boost-filc.patch)
-      (patch ./patches/boost-context-feature.patch)
-      (patch ./patches/boost-gdb-scripts.patch)
-      (patch ./patches/boost-function-vtable-tag.patch)
-      (patch ./patches/boost-test-execution-monitor.patch)
-      # io_context's executor keeps its context pointer and flag bits in a
-      # uintptr_t; the first use_service through a strand trapped.
-      (patch ./patches/boost-asio-io-context-executor-pointer.patch)
-      (use (old: {
-        # error_code keeps its source_location pointer in a uintptr_t with
-        # a flag bit, which drops the capability, and what() then trapped
-        # (Boost.URL's parse errors in Nix). Keep no location instead.
-        postPatch =
-          (old.postPatch or "")
-          + "\n"
-          + ''
-            substituteInPlace boost/system/detail/error_code.hpp --replace-fail \
-              '( loc? reinterpret_cast<boost::uintptr_t>( loc ): 2 )' '2'
-          '';
-      }))
-      (arg {
-        # Match upstream pizlix: Context and Coroutine2 use ucontext.
-        # The older Coroutine v1 library requires fcontext and is omitted.
-        toolset = "clang";
-        extraB2Args = [
-          "context-impl=ucontext"
-          "--without-coroutine"
-        ];
-      })
-      (use {
-        doCheck = true;
-        checkPhase = ''
-          runHook preCheck
-          $CXX -std=c++17 -I. ${./tests/boost-context.cpp} \
-            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -lboost_json -pthread -o boost-check
-          LD_LIBRARY_PATH="$PWD/stage/lib" ./boost-check
-          $CXX -std=c++17 -I. ${./tests/boost-continuation.cpp} \
-            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -pthread -o continuation-check
-          LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
-          $CXX -std=c++17 -I. ${./tests/boost-asio.cpp} -pthread -o asio-check
-          ./asio-check
-          $CXX -std=c++17 -I. ${./tests/boost-error-code.cpp} -o error-code-check
-          ./error-code-check
-          # Boost.Test, both as the compiled library and header-only. The
-          # module deliberately fails some cases, so compare its summary.
-          $CXX -std=c++17 -I. -DBOOST_TEST_DYN_LINK ${./tests/boost-test.cpp} \
-            -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_unit_test_framework -o boost-test-check
-          sed 's|<boost/test/unit_test.hpp>|<boost/test/included/unit_test.hpp>|' \
-            ${./tests/boost-test.cpp} > boost-test-included.cpp
-          $CXX -std=c++17 -I. boost-test-included.cpp -o boost-test-included-check
-          for check in ./boost-test-check ./boost-test-included-check; do
-            status=0
-            LD_LIBRARY_PATH="$PWD/stage/lib" $check --report_level=short \
-              --color_output=no > boost-test.log 2>&1 || status=$?
-            cat boost-test.log
-            test "$status" = 201
-            sed -n '/^Test module/,$p' boost-test.log | sed '/^$/d' \
-              | diff -u ${./tests/boost-test.expected} -
-          done
-          runHook postCheck
-        '';
-      })
-    ];
-  }
+  (
+    let
+      boostPort =
+        boost:
+        for boost (
+          [ (patch ./ports/patch/boost-filc.patch) ]
+          # 1.86's B2 still accepts context-impl from the Context Jamfile.
+          ++ pkgs.lib.optional (pkgs.lib.versionAtLeast boost.version "1.87") (
+            patch ./patches/boost-context-feature.patch
+          )
+          ++ [
+            (patch ./patches/boost-gdb-scripts.patch)
+            (patch ./patches/boost-function-vtable-tag.patch)
+            (patch ./patches/boost-test-execution-monitor.patch)
+            # io_context's executor keeps its context pointer and flag bits in a
+            # uintptr_t; the first use_service through a strand trapped.
+            (patch ./patches/boost-asio-io-context-executor-pointer.patch)
+            (use (old: {
+              # error_code keeps its source_location pointer in a uintptr_t with
+              # a flag bit, which drops the capability, and what() then trapped
+              # (Boost.URL's parse errors in Nix). Keep no location instead.
+              postPatch =
+                (old.postPatch or "")
+                + "\n"
+                + ''
+                  substituteInPlace boost/system/detail/error_code.hpp --replace-fail \
+                    '( loc? reinterpret_cast<boost::uintptr_t>( loc ): 2 )' '2'
+                '';
+            }))
+            (arg {
+              # Match upstream pizlix: Context and Coroutine2 use ucontext.
+              # The older Coroutine v1 library requires fcontext and is omitted.
+              toolset = "clang";
+              extraB2Args = [
+                "context-impl=ucontext"
+                "--without-coroutine"
+              ];
+            })
+            (use {
+              doCheck = true;
+              checkPhase = ''
+                runHook preCheck
+                $CXX -std=c++17 -I. ${./tests/boost-context.cpp} \
+                  -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -lboost_json -pthread -o boost-check
+                LD_LIBRARY_PATH="$PWD/stage/lib" ./boost-check
+                $CXX -std=c++17 -I. ${./tests/boost-continuation.cpp} \
+                  -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_context -pthread -o continuation-check
+                LD_LIBRARY_PATH="$PWD/stage/lib" ./continuation-check
+                $CXX -std=c++17 -I. ${./tests/boost-asio.cpp} -pthread -o asio-check
+                ./asio-check
+                $CXX -std=c++17 -I. ${./tests/boost-error-code.cpp} -o error-code-check
+                ./error-code-check
+                # Boost.Test, both as the compiled library and header-only. The
+                # module deliberately fails some cases, so compare its summary.
+                $CXX -std=c++17 -I. -DBOOST_TEST_DYN_LINK ${./tests/boost-test.cpp} \
+                  -Lstage/lib -Wl,-rpath,"$PWD/stage/lib" -lboost_unit_test_framework -o boost-test-check
+                sed 's|<boost/test/unit_test.hpp>|<boost/test/included/unit_test.hpp>|' \
+                  ${./tests/boost-test.cpp} > boost-test-included.cpp
+                $CXX -std=c++17 -I. boost-test-included.cpp -o boost-test-included-check
+                for check in ./boost-test-check ./boost-test-included-check; do
+                  status=0
+                  LD_LIBRARY_PATH="$PWD/stage/lib" $check --report_level=short \
+                    --color_output=no > boost-test.log 2>&1 || status=$?
+                  cat boost-test.log
+                  test "$status" = 201
+                  sed -n '/^Test module/,$p' boost-test.log | sed '/^$/d' \
+                    | diff -u ${./tests/boost-test.expected} -
+                done
+                runHook postCheck
+              '';
+            })
+          ]
+        );
+    in
+    {
+      boost186 = boostPort pkgs.boost186;
+      boost187 = boostPort pkgs.boost187;
+    }
+  )
 
   (
     let
@@ -2017,19 +2030,64 @@ in
 
   # ━━━ Development Tools & Libraries ━━━
 
-  (for pkgs.fmt [
-    # Works around Fil-C's clang passing small records that contain unions
-    # as integers, which dropped the pointers in one-argument
-    # make_format_args stores (wide and custom-type formatting).
-    (patch ./patches/fmt-arg-store-in-memory.patch)
+  (
+    let
+      fmtPort =
+        fmt:
+        for fmt [
+          # Works around Fil-C's clang passing small records that contain unions
+          # as integers, which dropped the pointers in one-argument
+          # make_format_args stores (wide and custom-type formatting).
+          (patch ./patches/fmt-arg-store-in-memory.patch)
+          (use {
+            # float_test.isnan: the Fil-C runtime leaves FE_INEXACT set at start.
+            # util_test.format_system_error: allocating SIZE_MAX / 2 bytes is a
+            # Fil-C safety panic, not std::bad_alloc. See docs/filc-findings.md.
+            preCheck = ''
+              export GTEST_FILTER=-float_test.isnan:util_test.format_system_error
+            '';
+          })
+        ];
+    in
+    {
+      fmt = fmtPort pkgs.fmt;
+      fmt_11 = fmtPort pkgs.fmt_11;
+    }
+  )
+
+  (for pkgs.capstone [
+    # csh is a size_t holding the handle's address, which drops the
+    # capability; every call after cs_open trapped.
+    (patch ./patches/capstone-handle-ptrtable.patch)
+  ])
+
+  (for pkgs.glog [
+    (patch ./patches/glog-filc-refused-signals.patch)
     (use {
-      # float_test.isnan: the Fil-C runtime leaves FE_INEXACT set at start.
-      # util_test.format_system_error: allocating SIZE_MAX / 2 bytes is a
-      # Fil-C safety panic, not std::bad_alloc. See docs/filc-findings.md.
-      preCheck = ''
-        export GTEST_FILTER=-float_test.isnan:util_test.format_system_error
+      # Excluded besides Nixpkgs' "logging":
+      # - striplog*: they catch LOG(FATAL)'s abort() with a SIGABRT
+      #   handler, but Fil-C's abort() stops the process without raising
+      #   SIGABRT (docs/filc-findings.md).
+      # - stacktrace, symbolize: they take code addresses of labels and
+      #   functions and expect native frames; Fil-C has neither.
+      checkPhase = ''
+        runHook preCheck
+        ctest -E "^(logging|striplog.*|stacktrace|symbolize)$" --output-on-failure
+        runHook postCheck
       '';
     })
+  ])
+
+  (for pkgs.unittest-cpp [
+    (use (old: {
+      # CrashingTestsAreReportedAsFailures calls a null function pointer
+      # and expects the SIGSEGV handler to turn that into a failure. Under
+      # Fil-C the call is a safety panic, and SIGSEGV handlers are refused.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace tests/TestTest.cpp --replace-fail \
+          '#if defined(NDEBUG)' '#if defined(NDEBUG) && !defined(__FILC__)'
+      '';
+    }))
   ])
 
   (for pkgs.doctest [
@@ -2039,6 +2097,21 @@ in
     # (sigaltstack) and break into the debugger with llvm.debugtrap; Fil-C
     # supports neither. The library is header-only.
     (skipCheck "sigaltstack and debugtrap")
+  ])
+
+  (for pkgs.catch2 [
+    # As for Catch2 v3 below, but v2 is a single header: turn its
+    # fatal-signal handler (sigaltstack) off by default under Fil-C.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace single_include/catch2/catch.hpp --replace-fail \
+          '#define TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED' \
+          '#define TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED
+        #if defined(__FILC__) && !defined(CATCH_CONFIG_NO_POSIX_SIGNALS)
+        #define CATCH_CONFIG_NO_POSIX_SIGNALS
+        #endif'
+      '';
+    }))
   ])
 
   # Named explicitly: the pname is "catch2", which is Catch2 v2's attribute.
