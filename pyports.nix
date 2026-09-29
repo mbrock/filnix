@@ -49,6 +49,7 @@ in
   ])
 
   (for "mypy" [
+    (patch ./patches/mypy-function-wrapper-python-h-first.patch)
     (use (old: {
       # mypyc emits one huge C file by default; Fil-C's clang needed over
       # 12 GB for it. Compile per module, as mypy does on Windows.
