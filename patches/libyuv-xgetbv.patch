@@ -1,0 +1,20 @@
+Subject: Spell XGETBV as an instruction instead of raw opcode bytes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C validates inline instructions and cannot validate .byte directives,
+so InitCpuFlags stopped the program. Fil-C also wants EDX, which xgetbv
+writes, as an output rather than a clobber.
+
+--- a/source/cpu_id.cc
++++ b/source/cpu_id.cc
+@@ -135,7 +135,8 @@
+ #if defined(_MSC_FULL_VER) && (_MSC_FULL_VER >= 160040219)
+   xcr0 = (int)_xgetbv(0);  // VS2010 SP1 required.  NOLINT
+ #elif defined(__i386__) || defined(__x86_64__)
+-  asm(".byte 0x0f, 0x01, 0xd0" : "=a"(xcr0) : "c"(0) : "%edx");
++  int xcr0_high;
++  asm("xgetbv" : "=a"(xcr0), "=d"(xcr0_high) : "c"(0));
+ #endif  // defined(__i386__) || defined(__x86_64__)
+   return xcr0;
+ }

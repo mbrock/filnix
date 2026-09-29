@@ -385,6 +385,18 @@ for Nixpkgs' Clang, and time grows faster than linearly. NSS's
 `pk11_gtest` and `freebl_gtest` test-vector tables took over 20 minutes per
 file, so the NSS port leaves those two gtest binaries out.
 
+gtest's own registration hits the same cost: every `TEST`/`TEST_F` adds a
+`MakeAndRegisterTestInfo` call with `std::string` temporaries to the file's
+static constructor. The campaign killed libyuv twice after 15 silent
+minutes: its `convert_argb_test.cc` (TESTCOUNT tests) compiled at `-O3` for
+over 12 CPU minutes at 11 GB before we stopped it, where Nixpkgs' Clang
+takes under 90 s. `-ftime-trace` on a sixteenth of the tests put 11.4
+of 59 s in `_GLOBAL__sub_I_…`, and stack samples of larger slices were in
+SROA's `PromoteMemToReg` (`IDFCalculator`), in `EarlyCSE`, and in
+`MemCpyOpt`'s MemorySSA updates. A quarter of the file took 8 to 9.5
+minutes and 4.4 to 5.2 GB. At `-O0` the whole file takes 144 s and 5.1 GB,
+so the libyuv port compiles only its test code at `-O0`.
+
 ## `dlsym(RTLD_NEXT, ...)` is a safety error
 
 ```c

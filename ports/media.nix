@@ -34,6 +34,26 @@ in
     (addMesonFlag "-Denable_asm=false")
     (use { doCheck = true; })
   ];
+  libyuv = for pkgs.libyuv [
+    (patch ../patches/libyuv-xgetbv.patch)
+    (patch ../patches/libyuv-interpolate-planes.patch)
+    # The x86 row kernels are inline assembly with memory operands, which
+    # Fil-C refuses at run time. Use libyuv's portable C kernels.
+    (addCFlag "-DLIBYUV_DISABLE_X86")
+    # Each unit test file registers hundreds of gtest tests from one static
+    # constructor, and Fil-C's -O3 pipeline is superlinear on that function
+    # (SROA's PromoteMemToReg). convert_argb_test.cc ran for over 15
+    # minutes at 11 GB; at -O0 it takes about 2.5 minutes. Only the test
+    # code drops to -O0; the library keeps -O3.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace CMakeLists.txt --replace-fail \
+          'add_executable(libyuv_unittest ''${ly_unittest_sources})' \
+          'add_executable(libyuv_unittest ''${ly_unittest_sources})
+          target_compile_options(libyuv_unittest PRIVATE -O0)'
+      '';
+    }))
+  ];
   libdeflate = for pkgs.libdeflate [
     (patch ../patches/libdeflate-xgetbv.patch)
   ];
