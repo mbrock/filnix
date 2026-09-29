@@ -124,6 +124,7 @@ let
         if [ -d ${m.${o}}/bin ]; then ln -s ${m.${o}}/bin ''$${o}/bin; fi
       '') (m.outputs or [ "out" ])
     );
+  unspliced = p: p.__spliced.hostTarget or p;
   qtForFilcBuilds =
     native: filc:
     native
@@ -133,8 +134,27 @@ let
       ) native
     )
     // {
-      qmake = filc.qmake.__spliced.hostTarget or filc.qmake;
-      wrapQtAppsHook = filc.wrapQtAppsHook.__spliced.hostTarget or filc.wrapQtAppsHook;
+      # Also put the Fil-C qtbase's qmake, moc, uic and rcc on PATH: the
+      # hook only propagates qtbase to the host side, and Qt's own modules
+      # add qtbase.dev to nativeBuildInputs themselves.
+      qmake = prev.makeSetupHook {
+        name = "qmake-hook";
+        propagatedBuildInputs = [
+          (unspliced filc.qmake)
+          (unspliced filc.qtbase).dev
+        ];
+      } (prev.writeText "qmake-filc.sh" "");
+      # The Fil-C scope's own hook would bring a makeBinaryWrapper whose
+      # compiler is an LLVM cross toolchain for Fil-C; this set's
+      # makeBinaryWrapper already compiles wrappers with the Fil-C compiler.
+      wrapQtAppsHook = prev.makeSetupHook {
+        name = "wrap-qt5-apps-hook";
+        propagatedBuildInputs = [
+          (unspliced filc.qtbase).dev
+          prev.makeBinaryWrapper
+          (unspliced filc.qtwayland).dev
+        ];
+      } (prev.path + "/pkgs/development/libraries/qt-5/hooks/wrap-qt-apps-hook.sh");
     };
 in
 lib.optionalAttrs

@@ -175,6 +175,17 @@ lib.genAttrs modules (name: withQtToolsOnPath (withFilcQmake qprev.${name}))
     patches = (old.patches or [ ]) ++ [ ../patches/qt5-quickcontrols2-deferred-pointer.patch ];
   });
 
+  # QtScript is the 2009 JavaScriptCore: its JIT emits machine code and
+  # the module-level assembly of JITStubs.cpp crashes the compiler; its
+  # values are NaN-boxed integers and its collector scans the native stack
+  # conservatively, which cannot find Fil-C's pointers. Deprecated in Qt 5.5;
+  # QJSEngine (qtdeclarative) works.
+  qtscript = qprev.qtscript.overrideAttrs (old: {
+    meta = old.meta // {
+      broken = true;
+    };
+  });
+
   qtdeclarative = (withFilcQmake qprev.qtdeclarative).overrideAttrs (old: {
     # The V4 engine NaN-boxes heap pointers into quint64 values and passes
     # them around as integers (ReturnedValue), which drops their
