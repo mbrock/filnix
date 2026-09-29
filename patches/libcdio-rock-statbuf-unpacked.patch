@@ -1,0 +1,36 @@
+Subject: Do not pack iso_rock_statbuf_t under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+iso_rock_statbuf_t sits inside rock.h's and iso9660.h's pack(1) regions,
+which puts its psz_symlink pointer at offset 29. Fil-C cannot store a
+pointer at a misaligned address, so every ISO 9660 stat stopped the
+program. The struct is never read from disc, so give it natural layout
+under Fil-C. This changes the libiso9660 ABI for Fil-C consumers only.
+
+--- a/include/cdio/rock.h
++++ b/include/cdio/rock.h
+@@ -299,6 +299,13 @@
+   } t;
+ } GNUC_PACKED iso_rock_time_t;
+ 
++#ifdef __FILC__
++/* This struct is only kept in memory, and Fil-C cannot store a pointer
++   (psz_symlink) at a misaligned address. Lay it out naturally; the
++   enclosing packed regions (here and in iso9660.h) would put
++   psz_symlink at offset 29. */
++_Pragma("pack(push)") _Pragma("pack()")
++#endif
+ typedef struct iso_rock_statbuf_s {
+   bool_3way_t   b3_rock;              /**< has Rock Ridge extension.
+                                          If "yep", then the fields
+@@ -332,6 +339,9 @@
+   uint32_t        u_su_fields;        /**< System Use field attributes */
+ 
+ } iso_rock_statbuf_t;
++#ifdef __FILC__
++_Pragma("pack(pop)")
++#endif
+ 
+ PRAGMA_END_PACKED
+ 

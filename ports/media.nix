@@ -65,6 +65,13 @@ in
       nativeCheckInputs = [ pkgs.perl ];
     })
   ];
+  libcdio = for pkgs.libcdio [
+    (patch ../patches/libcdio-rock-statbuf-unpacked.patch)
+    (patch ../patches/libcdio-fuzzy-superblock-nul.patch)
+  ];
+  sfml_2 = for pkgs.sfml_2 [
+    (patch ../patches/sfml2-libcxx-char-traits.patch)
+  ];
   mpg123 = for pkgs.mpg123 [
     # Keep the decoder API; select upstream's C implementation of its kernels.
     (configure "--with-cpu=generic")
