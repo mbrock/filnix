@@ -38,6 +38,11 @@ pkgs.lib.mapAttrs (
   name: spec:
   if spec == { } then
     pyprev.${name} or null
+  else if
+    spec.filcOnly or false && !pyprev.python.stdenv.hostPlatform.isFilc
+  then
+    # These overrides also reach the build platform's Python.
+    pyprev.${name}
   else if spec ? __customPython then
     # Custom Python package (not in pyprev)
     spec.__customPython pyself
