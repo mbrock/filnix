@@ -2107,7 +2107,10 @@ in
           --replace-fail 'set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)' \
                          'set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)'
       '';
+      # The suite runs doxygen on each test input and compares the XML
+      # output with xmllint.
       doCheck = true;
+      nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ pkgs.libxml2.bin ];
     }))
   ])
 
