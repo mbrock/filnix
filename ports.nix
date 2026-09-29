@@ -2109,6 +2109,21 @@ in
   (for pkgs.z3 [
     # Page headers and stack marks are tagged pointers stored as size_t.
     (patch ./patches/z3-page-headers-pointers.patch)
+    (use (old: {
+      # Nixpkgs' import check runs the build platform's Python, which finds
+      # neither the Fil-C Python's site-packages nor a loadable libz3.
+      # Solve something through the bindings with the Fil-C Python instead.
+      pythonImportsCheck = [ ];
+      postInstallCheck = (old.postInstallCheck or "") + ''
+        PYTHONPATH=$python/${final.python3.sitePackages} ${final.python3}/bin/python3 -c '
+        import z3
+        x = z3.Int("x")
+        s = z3.Solver()
+        s.add(x > 2, x < 4)
+        assert s.check() == z3.sat and s.model()[x].as_long() == 3
+        print("z3 python ok")'
+      '';
+    }))
   ])
 
   (for pkgs.capstone [
