@@ -55,13 +55,19 @@ let
                 x.overridePythonAttrs { doCheck = false; }
               else
                 x;
+            # Rust has no Fil-C target, so a module that is (or requires) a
+            # Cargo build stays native, as all check modules were before.
+            cargo = p: (p.cargoDeps or null) != null;
+            fitsFilc = h: !pkgs.lib.any cargo ([ h ] ++ (h.requiredPythonModules or [ ]));
             toHost =
               x:
-              if x ? pythonModule && !builtins.isBool x.pythonModule then
+              let
+                h = x.__spliced.hostTarget or x;
+              in
+              if x ? pythonModule && !builtins.isBool x.pythonModule && fitsFilc h then
                 # Only the module is needed, not its own test suite, whose
-                # inputs would otherwise become Fil-C builds too (websockets
-                # -> werkzeug's tests -> cryptography, which needs Rust).
-                noCheck (x.__spliced.hostTarget or x)
+                # inputs would otherwise become Fil-C builds too.
+                noCheck h
               else
                 x;
           in
