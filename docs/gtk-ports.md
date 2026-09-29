@@ -64,7 +64,11 @@ native set's: its qmake hook comes from `buildPackages`, whose qtbase is
 not this set's even without the twins, so native Qt modules such as qtsvg
 (reached through `wrapQtAppsHook` → qtwayland → qtdeclarative) saw two
 qtbases and qtbase's setup hook stopped with "detected mismatched Qt
-dependencies". Qt's generators emit no GType code.
+dependencies". Qt's generators emit no GType code; the gobject-introspection
+wrapper and PyGObject get the same treatment. Native tools there still
+propagate the ordinary GLib and GI into Fil-C builds (gdk-pixbuf, PyGObject),
+so the twins' setup hooks put their generators first on PATH after all
+other hooks have run.
 
 GLib and gobject-introspection there are native twins of the ports, at the
 same versions (2.80.4 and 1.80.1). Newer generators emit APIs the target GLib

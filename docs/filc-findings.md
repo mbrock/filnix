@@ -757,10 +757,16 @@ propagates the Fil-C GI) is aliased to the native one inside that set, and
 PyGObject's `hostPlatform != targetPlatform` pkg-config workaround
 (NixOS/nixpkgs#378447, meant for cross builds) is undone there. Native
 PyGObject, and through it graphene, GTK 4, GStreamer, PipeWire and SDL,
-then match the native set too. The twins' own derivations are unchanged;
+then match the native set too. Such native tools propagate the ordinary
+GLib and GI into Fil-C builds (gdk-pixbuf for GTK 3, PyGObject for
+libgweather), so their `gdbus-codegen` could come first on PATH: GTK 3's
+generated D-Bus code switched on GTypes and failed to compile. The twins'
+setup hooks now put their generators (`gdbus-codegen`, `glib-genmarshal`,
+`glib-mkenums`, the `g-ir-*` tools) first on PATH in a post hook.
 `tests/gtk-ports.nix` checks that native Pango, GTK 3, glibmm, cairo,
 sdl2-compat and PyGObject in that set match the native package set. Fil-C
-packages whose build tools link GLib rebuild once: anything under
+packages rebuild once: every user of the twins (their setup hooks
+changed), and packages whose build tools link GLib: anything under
 fontconfig (DejaVu's fontforge), systemd (swtpm → json-glib), or the build
 Python's Pillow (libraqm), about a third of a 520-package sample.
 

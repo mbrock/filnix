@@ -81,6 +81,24 @@ let
             "-Dtests=false"
           ];
         })
+        (use (old: {
+          # Native build tools such as gdk-pixbuf propagate the ordinary
+          # GLib, whose newer, unpatched generators can precede these on
+          # PATH. Put the generators first once all hooks have run.
+          postFixup = (old.postFixup or "") + ''
+            mkdir -p $dev/libexec/filc-generators
+            for tool in gdbus-codegen glib-genmarshal glib-mkenums; do
+              ln -s $dev/bin/$tool $dev/libexec/filc-generators/$tool
+            done
+            cat >> $dev/nix-support/setup-hook <<EOF
+
+            _filcGlibGenerators() {
+              PATH="$dev/libexec/filc-generators:\$PATH"
+            }
+            postHooks+=(_filcGlibGenerators)
+            EOF
+          '';
+        }))
       ];
 
       gobject-introspection-unwrapped =
@@ -123,6 +141,14 @@ let
                   fi
                 }
                 addEnvHooks "$targetOffset" _filcTargetGirPath
+                EOF
+                # Native PyGObject propagates the ordinary GI, whose scanner
+                # can precede this one on PATH; see the GLib twin.
+                cat >> "$dev/nix-support/setup-hook" <<EOF
+                _filcGirTools() {
+                  PATH="$dev/bin:\$PATH"
+                }
+                postHooks+=(_filcGirTools)
                 EOF
               '';
             }))
