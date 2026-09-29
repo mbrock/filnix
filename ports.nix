@@ -76,6 +76,32 @@ let
     ];
   });
 
+  pulseaudioPort = [
+    # pa_atomic_ptr_t kept pointers in a uintptr_t, dropping their
+    # capabilities (pa_once's mutex came back null).
+    (patch ./patches/pulseaudio-atomic-ptr.patch)
+    (use (old: {
+      # PA_WARN_REFERENCE emits .gnu.warning sections as module asm, which
+      # FilPizlonator does not accept; drop the link-time warnings.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/pulsecore/macro.h --replace-fail \
+          '#if defined(__GNUC__) && defined(__ELF__)' '#if 0'
+        # Report no MMX/SSE, so the inline-asm mixing and volume routines
+        # stay unused.
+        substituteInPlace src/pulsecore/cpu-x86.c --replace-fail \
+          '/* get standard level */' 'return;'
+        # Fil-C's abort() raises SIGTRAP, and SIGBUS handlers are refused.
+        sed -i 's/\(test_replace_fail_[0-9]\), SIGABRT/\1, SIGTRAP/' \
+          src/tests/core-util-test.c
+        sed -i "/\[ 'sigbus-test', 'sigbus-test.c',/,+1d" src/tests/meson.build
+      '';
+      # The mix and remap benchmarks outlast their 120 s check timeout.
+      env = (old.env or { }) // {
+        CK_TIMEOUT_MULTIPLIER = "5";
+      };
+    }))
+  ];
+
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -1112,30 +1138,117 @@ in
     (patch ./patches/libopenmpt-codecvt-partial.patch)
   ])
 
-  (for pkgs.libpulseaudio [
-    # pa_atomic_ptr_t kept pointers in a uintptr_t, dropping their
-    # capabilities (pa_once's mutex came back null).
-    (patch ./patches/pulseaudio-atomic-ptr.patch)
+  (for pkgs.libpulseaudio pulseaudioPort)
+  # The daemon and modules, from the same source.
+  (for pkgs.pulseaudio pulseaudioPort)
+
+  # The C implementations instead of the perlasm AES, SHA, bignum and
+  # RC4 routines.
+  (for pkgs.libressl [
+    (addCMakeFlag "-DENABLE_ASM=OFF")
     (use (old: {
-      # PA_WARN_REFERENCE emits .gnu.warning sections as module asm, which
-      # FilPizlonator does not accept; drop the link-time warnings.
-      postPatch = (old.postPatch or "") + ''
-        substituteInPlace src/pulsecore/macro.h --replace-fail \
-          '#if defined(__GNUC__) && defined(__ELF__)' '#if 0'
-        # Report no MMX/SSE, so the inline-asm mixing and volume routines
-        # stay unused.
-        substituteInPlace src/pulsecore/cpu-x86.c --replace-fail \
-          '/* get standard level */' 'return;'
-        # Fil-C's abort() raises SIGTRAP, and SIGBUS handlers are refused.
-        sed -i 's/\(test_replace_fail_[0-9]\), SIGABRT/\1, SIGTRAP/' \
-          src/tests/core-util-test.c
-        sed -i "/\[ 'sigbus-test', 'sigbus-test.c',/,+1d" src/tests/meson.build
-      '';
-      # The mix and remap benchmarks outlast their 120 s check timeout.
-      env = (old.env or { }) // {
-        CK_TIMEOUT_MULTIPLIER = "5";
-      };
+      # explicit_bzero's test inspects a signal handler's sigaltstack.
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace tests/CMakeLists.txt --replace-fail \
+            'add_test(explicit_bzero explicit_bzero)' ""
+        '';
     }))
+  ])
+
+  (for pkgs.physfs [
+    (use (old: {
+      # The LZMA SDK's PIC cpuid saves %rbx in %rdi around cpuid, so the
+      # asm clobbers %ebx without saying so, which FilPizlonator rejects.
+      # Name %ebx as the output instead.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/physfs_lzmasdk.h --replace-fail \
+          '#if defined(MY_CPU_AMD64) && defined(__PIC__)' \
+          '#if defined(MY_CPU_AMD64) && defined(__PIC__) && !defined(__FILC__)'
+      '';
+    }))
+  ])
+
+  (for pkgs.btrfs-progs [
+    (use (old: {
+      # Only the table-driven CRC32C: the PCLMUL one is hand-written
+      # assembly, and the SSE4.2 one emits crc32 as .byte inline asm.
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace Makefile --replace-fail \
+            'CRYPTO_OBJECTS += crypto/crc32c-pcl-intel-asm_64.o' ""
+          substituteInPlace crypto/crc32c.c --replace-fail \
+            '#ifdef __x86_64__' '#if defined(__x86_64__) && !defined(__FILC__)'
+        '';
+      # The suites that need neither root nor a block device: the hash
+      # test vectors and speed test, and the string-table and array units.
+      doCheck = true;
+      checkTarget = "test-hash test-string-table test-array";
+    }))
+  ])
+
+  (for pkgs.isa-l [
+    (use (old: {
+      # Build as for an unknown CPU: the portable C "base" functions,
+      # without the yasm/nasm kernels and their multibinary dispatch.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace configure.ac --replace-fail \
+          '[x86_64], [CPU="x86_64"],' '[x86_64], [CPU=""],' \
+          --replace-fail '-D_FORTIFY_SOURCE=2 \' '\'
+      '';
+      # igzip's base hash-table reset calls wmemset, and Fil-C's glibc
+      # has no __wmemset_chk.
+      hardeningDisable = (old.hardeningDisable or [ ]) ++ [ "fortify" ];
+      # The unit tests for every function set.
+      doCheck = true;
+    }))
+  ])
+
+  # pname is crypto++.
+  {
+    cryptopp = for pkgs.cryptopp [
+      (use (old: {
+        # Plain C++ instead of the inline asm and SIMD intrinsics; e.g.
+        # SecureWipeBuffer's `rep stos` has the pointer as an asm output.
+        # Set in config_asm.h so programs using the headers agree.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace config_asm.h --replace-fail \
+            '// #define CRYPTOPP_DISABLE_ASM 1' \
+            '#if defined(__FILC__)
+          # define CRYPTOPP_DISABLE_ASM 1
+          #endif'
+          # Integer's x86-64 word arithmetic is inline asm regardless;
+          # multiply through unsigned __int128 as on other 64-bit targets.
+          substituteInPlace integer.cpp --replace-fail \
+            '((defined(__aarch64__) || defined(__x86_64__)) && defined(CRYPTOPP_WORD128_AVAILABLE))' \
+            '((defined(__aarch64__) || (defined(__x86_64__) && !defined(__FILC__))) && defined(CRYPTOPP_WORD128_AVAILABLE))'
+        '';
+      }))
+    ];
+  }
+
+  (for pkgs.rubberband [
+    (use (old: {
+      # RTENTRY__ annotates the real-time entry points with
+      # __attribute__((annotate)), which crashes FilPizlonator.
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace src/common/sysutils.h --replace-fail \
+            '#  define RTENTRY__ __attribute__((annotate("realtime")))' \
+            '#  define RTENTRY__'
+        '';
+      # Nixpkgs disables the Boost.Test suite for want of Boost.
+      buildInputs = (old.buildInputs or [ ]) ++ [ final.boost ];
+      doCheck = true;
+    }))
+    (removeMesonFlag "-Dtests=disabled")
+    (addMesonFlag "-Dtests=enabled")
   ])
 
   (for pkgs.libcamera [
@@ -1995,6 +2108,10 @@ in
   ])
 
   (for pkgs.valgrind [ (broken "not yet ported") ])
+  # objc_msgSend and the block trampolines are assembly, and Clang's
+  # GNUstep ABI registers classes and selectors through __start_/__stop_
+  # section symbols, which Fil-C does not provide (docs/filc-findings.md).
+  (for pkgs.gnustep-libobjc [ (broken "Objective-C runtime not ported") ])
 
   (for pkgs.cups [
     (arg { gnutls = final.openssl; })
