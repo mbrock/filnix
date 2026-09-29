@@ -2061,6 +2061,16 @@ in
     (removeConfigureFlag "--enable-boost-coroutine")
     # The same io_context executor fix as Boost.Asio's.
     (patch ./patches/asio-io-context-executor-pointer.patch)
+    (use (old: {
+      # FilPizlonator's frame-slot coloring needs well over an hour to
+      # compile this test at -O2 (10 s at -O0); see "Frame-slot coloring
+      # is cubic" in docs/filc-findings.md. Drop it until the fork has
+      # the linear coloring.
+      postPatch = (old.postPatch or "") + ''
+        sed -i '/^\tunit\/execution\/any_executor \\$/d' src/tests/Makefile.am
+        ! grep -q '^.unit/execution/any_executor ' src/tests/Makefile.am
+      '';
+    }))
   ])
 
   (for pkgs.clucene_core [
