@@ -162,13 +162,18 @@ __attribute__((annotate("realtime"))) void f(void) {}   /* assertion failure */
 ```
 
 Rubber Band 4.0 marks its real-time entry points this way (`RTENTRY__` in
-`src/common/sysutils.h`); the port defines it empty. Annotations on locals
-and fields are intrinsic calls and compile fine. This is not a regression
-from the common-symbol change below: upstream's assertion is the same.
-`patches/fil-c/filpizlonator-global-annotations.patch` erases
+`src/common/sysutils.h`); the port defines it empty. This is not a
+regression from the common-symbol change below: upstream's assertion is
+the same. Annotations on locals and fields, and `__builtin_annotation`,
+compile but stop the program when they run ("Unhandled intrinsic:
+llvm.var.annotation", `llvm.ptr.annotation`, `llvm.annotation`).
+
+`patches/fil-c/filpizlonator-annotations.patch` (fork branch
+`orb/toolchain-asm`, tested with the dev LLVM build) erases
 `llvm.global.annotations` and its now-unused `llvm.metadata` strings at the
-start of the pass (tests `annotateglobal`, `annotateglobalO0`,
-`annotateglobalfail`).
+start of the pass, and removes the three intrinsics as codegen does (tests
+`annotateglobal`, `annotateglobalO0`, `annotateglobalfail`). The Abseil and
+Rubber Band workarounds can go once filnix pins it.
 
 ## Version scripts with `extern "C++"` blocks abort the driver
 
@@ -761,8 +766,8 @@ __asm__(".previous");   /* UNREACHABLE executed at FilPizlonator.cpp:419 */
 
 PulseAudio's `PA_WARN_REFERENCE` emits `.section .gnu.warning.SYM`,
 `.asciz` and `.previous` this way. The libpulseaudio port already turned
-the macro off; the full `pulseaudio` build (daemon and modules) now shares
-that port.
+the macro off, but the full `pulseaudio` (daemon and modules) did not get
+it; the port now targets `pulseaudio`, which `libpulseaudio` overrides.
 
 ## Inline asm that saves a register it clobbers is rejected
 

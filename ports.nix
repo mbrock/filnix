@@ -76,32 +76,6 @@ let
     ];
   });
 
-  pulseaudioPort = [
-    # pa_atomic_ptr_t kept pointers in a uintptr_t, dropping their
-    # capabilities (pa_once's mutex came back null).
-    (patch ./patches/pulseaudio-atomic-ptr.patch)
-    (use (old: {
-      # PA_WARN_REFERENCE emits .gnu.warning sections as module asm, which
-      # FilPizlonator does not accept; drop the link-time warnings.
-      postPatch = (old.postPatch or "") + ''
-        substituteInPlace src/pulsecore/macro.h --replace-fail \
-          '#if defined(__GNUC__) && defined(__ELF__)' '#if 0'
-        # Report no MMX/SSE, so the inline-asm mixing and volume routines
-        # stay unused.
-        substituteInPlace src/pulsecore/cpu-x86.c --replace-fail \
-          '/* get standard level */' 'return;'
-        # Fil-C's abort() raises SIGTRAP, and SIGBUS handlers are refused.
-        sed -i 's/\(test_replace_fail_[0-9]\), SIGABRT/\1, SIGTRAP/' \
-          src/tests/core-util-test.c
-        sed -i "/\[ 'sigbus-test', 'sigbus-test.c',/,+1d" src/tests/meson.build
-      '';
-      # The mix and remap benchmarks outlast their 120 s check timeout.
-      env = (old.env or { }) // {
-        CK_TIMEOUT_MULTIPLIER = "5";
-      };
-    }))
-  ];
-
   fftwPort = [
     (use (old: {
       patches = (old.patches or [ ]) ++ [
@@ -1138,9 +1112,33 @@ in
     (patch ./patches/libopenmpt-codecvt-partial.patch)
   ])
 
-  (for pkgs.libpulseaudio pulseaudioPort)
-  # The daemon and modules, from the same source.
-  (for pkgs.pulseaudio pulseaudioPort)
+  # libpulseaudio is pulseaudio.override { libOnly = true; }, so this
+  # covers the library, the daemon and its modules.
+  (for pkgs.pulseaudio [
+    # pa_atomic_ptr_t kept pointers in a uintptr_t, dropping their
+    # capabilities (pa_once's mutex came back null).
+    (patch ./patches/pulseaudio-atomic-ptr.patch)
+    (use (old: {
+      # PA_WARN_REFERENCE emits .gnu.warning sections as module asm, which
+      # FilPizlonator does not accept; drop the link-time warnings.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/pulsecore/macro.h --replace-fail \
+          '#if defined(__GNUC__) && defined(__ELF__)' '#if 0'
+        # Report no MMX/SSE, so the inline-asm mixing and volume routines
+        # stay unused.
+        substituteInPlace src/pulsecore/cpu-x86.c --replace-fail \
+          '/* get standard level */' 'return;'
+        # Fil-C's abort() raises SIGTRAP, and SIGBUS handlers are refused.
+        sed -i 's/\(test_replace_fail_[0-9]\), SIGABRT/\1, SIGTRAP/' \
+          src/tests/core-util-test.c
+        sed -i "/\[ 'sigbus-test', 'sigbus-test.c',/,+1d" src/tests/meson.build
+      '';
+      # The mix and remap benchmarks outlast their 120 s check timeout.
+      env = (old.env or { }) // {
+        CK_TIMEOUT_MULTIPLIER = "5";
+      };
+    }))
+  ])
 
   # The C implementations instead of the perlasm AES, SHA, bignum and
   # RC4 routines.
