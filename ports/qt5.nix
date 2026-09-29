@@ -169,6 +169,11 @@ lib.genAttrs modules (name: withQtToolsOnPath (withFilcQmake qprev.${name}))
         '';
       });
 
+  qtmultimedia = (withQtToolsOnPath (withFilcQmake qprev.qtmultimedia)).overrideAttrs (old: {
+    # GType is a pointer in Fil-C's GLib, and C++ cannot switch on one.
+    patches = (old.patches or [ ]) ++ [ ../patches/qt5-multimedia-gtype.patch ];
+  });
+
   qtquickcontrols2 = (withQtToolsOnPath (withFilcQmake qprev.qtquickcontrols2)).overrideAttrs (old: {
     # QQuickDeferredPointer keeps an item pointer and two flag bits in a
     # quintptr; the first ComboBox trapped in setIndicator().

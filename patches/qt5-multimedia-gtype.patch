@@ -1,0 +1,52 @@
+diff -ruN a/src/gsttools/qgstutils.cpp b/src/gsttools/qgstutils.cpp
+--- a/src/gsttools/qgstutils.cpp	2026-09-29 19:56:27.566223727 +0000
++++ b/src/gsttools/qgstutils.cpp	2026-09-29 19:56:59.974520228 +0000
+@@ -79,33 +79,42 @@
+     val.g_type = 0;
+     gst_tag_list_copy_value(&val,list,tag);
+ 
++#ifdef __FILC__
++    // Fil-C's GLib makes GType a pointer, which a C++ switch cannot take;
++    // switch on the fundamental type ids that G_TYPE_MAKE_FUNDAMENTAL encodes.
++#  define QT_FILC_GTYPE_CASE(n) (quintptr(n) << G_TYPE_FUNDAMENTAL_SHIFT)
++    switch (quintptr(G_VALUE_TYPE(&val))) {
++        case QT_FILC_GTYPE_CASE(16): // G_TYPE_STRING
++#else
++#  define QT_FILC_GTYPE_CASE(n) G_TYPE_MAKE_FUNDAMENTAL(n)
+     switch( G_VALUE_TYPE(&val) ) {
+         case G_TYPE_STRING:
++#endif
+         {
+             const gchar *str_value = g_value_get_string(&val);
+             map->insert(QByteArray(tag), QString::fromUtf8(str_value));
+             break;
+         }
+-        case G_TYPE_INT:
++        case QT_FILC_GTYPE_CASE(6): // G_TYPE_INT
+             map->insert(QByteArray(tag), g_value_get_int(&val));
+             break;
+-        case G_TYPE_UINT:
++        case QT_FILC_GTYPE_CASE(7): // G_TYPE_UINT
+             map->insert(QByteArray(tag), g_value_get_uint(&val));
+             break;
+-        case G_TYPE_LONG:
++        case QT_FILC_GTYPE_CASE(8): // G_TYPE_LONG
+             map->insert(QByteArray(tag), qint64(g_value_get_long(&val)));
+             break;
+-        case G_TYPE_BOOLEAN:
++        case QT_FILC_GTYPE_CASE(5): // G_TYPE_BOOLEAN
+             map->insert(QByteArray(tag), g_value_get_boolean(&val));
+             break;
+-        case G_TYPE_CHAR:
++        case QT_FILC_GTYPE_CASE(3): // G_TYPE_CHAR
+ #if GLIB_CHECK_VERSION(2,32,0)
+             map->insert(QByteArray(tag), g_value_get_schar(&val));
+ #else
+             map->insert(QByteArray(tag), g_value_get_char(&val));
+ #endif
+             break;
+-        case G_TYPE_DOUBLE:
++        case QT_FILC_GTYPE_CASE(15): // G_TYPE_DOUBLE
+             map->insert(QByteArray(tag), g_value_get_double(&val));
+             break;
+         default:
