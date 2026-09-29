@@ -1,0 +1,114 @@
+Subject: Provide std::char_traits for SFML's Uint8/16/32 strings on libc++ 19+
+Origin: Filnix, after Dimitry Andric's FreeBSD port patch (PR 281540)
+Upstream-Status: Not applicable (SFML 3 uses std::u32string)
+
+libc++ 19 removed the std::char_traits base template, which SFML 2 relies
+on for std::basic_string<Uint8>, <Uint16> and <Uint32>. Define traits for
+those types in the public header, since consumers instantiate them too.
+Fil-C uses libc++, so String.cpp failed to compile.
+
+--- a/include/SFML/System/String.hpp
++++ b/include/SFML/System/String.hpp
+@@ -34,6 +34,102 @@
+ #include <locale>
+ #include <string>
+ 
++#if defined(_LIBCPP_VERSION) && _LIBCPP_VERSION >= 190000
++// libc++ 19 dropped std::char_traits for types other than the standard
++// character types, but SFML 2 uses std::basic_string<Uint8/16/32>.
++#include <algorithm>
++#include <cstdio>
++#include <cstring>
++
++namespace sf
++{
++namespace priv
++{
++template <class CharType, class IntType, IntType EofValue>
++struct CharTraitsBase
++{
++    typedef CharType             char_type;
++    typedef IntType              int_type;
++    typedef std::streamoff       off_type;
++    typedef std::fpos<std::mbstate_t> pos_type;
++    typedef std::mbstate_t       state_type;
++
++    static void assign(char_type& c1, const char_type& c2) noexcept { c1 = c2; }
++    static constexpr bool eq(char_type c1, char_type c2) noexcept { return c1 == c2; }
++    static constexpr bool lt(char_type c1, char_type c2) noexcept { return c1 < c2; }
++
++    static int compare(const char_type* s1, const char_type* s2, std::size_t n) noexcept
++    {
++        for (; n; --n, ++s1, ++s2)
++        {
++            if (lt(*s1, *s2))
++                return -1;
++            if (lt(*s2, *s1))
++                return 1;
++        }
++        return 0;
++    }
++
++    static std::size_t length(const char_type* s) noexcept
++    {
++        std::size_t i = 0;
++        while (!eq(s[i], char_type()))
++            ++i;
++        return i;
++    }
++
++    static const char_type* find(const char_type* s, std::size_t n, const char_type& a) noexcept
++    {
++        for (; n; --n, ++s)
++            if (eq(*s, a))
++                return s;
++        return nullptr;
++    }
++
++    static char_type* move(char_type* s1, const char_type* s2, std::size_t n) noexcept
++    {
++        return n ? static_cast<char_type*>(std::memmove(s1, s2, n * sizeof(char_type))) : s1;
++    }
++
++    static char_type* copy(char_type* s1, const char_type* s2, std::size_t n) noexcept
++    {
++        return n ? static_cast<char_type*>(std::memcpy(s1, s2, n * sizeof(char_type))) : s1;
++    }
++
++    static char_type* assign(char_type* s, std::size_t n, char_type a) noexcept
++    {
++        std::fill_n(s, n, a);
++        return s;
++    }
++
++    static constexpr int_type  not_eof(int_type c) noexcept { return eq_int_type(c, eof()) ? ~eof() : c; }
++    static constexpr char_type to_char_type(int_type c) noexcept { return char_type(c); }
++    static constexpr int_type  to_int_type(char_type c) noexcept { return int_type(c); }
++    static constexpr bool      eq_int_type(int_type c1, int_type c2) noexcept { return c1 == c2; }
++    static constexpr int_type  eof() noexcept { return EofValue; }
++};
++} // namespace priv
++} // namespace sf
++
++namespace std
++{
++template <>
++struct char_traits<unsigned char> : sf::priv::CharTraitsBase<unsigned char, unsigned int, static_cast<unsigned int>(EOF)>
++{
++};
++
++template <>
++struct char_traits<unsigned short> : sf::priv::CharTraitsBase<unsigned short, unsigned int, 0xFFFFFFFFu>
++{
++};
++
++template <>
++struct char_traits<unsigned int> : sf::priv::CharTraitsBase<unsigned int, unsigned long, 0xFFFFFFFFFFFFFFFFul>
++{
++};
++} // namespace std
++#endif
++
+ 
+ namespace sf
+ {
