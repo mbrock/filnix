@@ -1,0 +1,96 @@
+diff -ru m/src/corelib/text/qbytearray.cpp n/src/corelib/text/qbytearray.cpp
+--- a/src/corelib/text/qbytearray.cpp	2026-09-29 16:12:20.575194590 +0000
++++ b/src/corelib/text/qbytearray.cpp	2026-09-29 16:12:20.595194774 +0000
+@@ -4532,7 +4532,11 @@
+     } else {
+         if (data) {
+             d->size = size;
++#ifdef __FILC__
++            d->setRawDataPointer(data);
++#else
+             d->offset = data - reinterpret_cast<char *>(d);
++#endif
+         } else {
+             d->offset = sizeof(QByteArrayData);
+             d->size = 0;
+diff -ru m/src/corelib/text/qstring.cpp n/src/corelib/text/qstring.cpp
+--- a/src/corelib/text/qstring.cpp	2026-09-29 16:12:20.571194553 +0000
++++ b/src/corelib/text/qstring.cpp	2026-09-29 16:12:20.591194737 +0000
+@@ -9484,7 +9484,11 @@
+     } else {
+         if (unicode) {
+             d->size = size;
++#ifdef __FILC__
++            d->setRawDataPointer(unicode);
++#else
+             d->offset = reinterpret_cast<const char *>(unicode) - reinterpret_cast<char *>(d);
++#endif
+         } else {
+             d->offset = sizeof(QStringData);
+             d->size = 0;
+diff -ru m/src/corelib/tools/qarraydata.cpp n/src/corelib/tools/qarraydata.cpp
+--- a/src/corelib/tools/qarraydata.cpp	2026-09-29 16:12:20.563194480 +0000
++++ b/src/corelib/tools/qarraydata.cpp	2026-09-29 16:12:20.591194737 +0000
+@@ -210,6 +210,10 @@
+     // Padding is skipped when allocating a header for RawData.
+     if (!(options & RawData))
+         headerSize += (alignment - Q_ALIGNOF(QArrayData));
++#ifdef __FILC__
++    else
++        headerSize += sizeof(void *); // see QArrayData::setRawDataPointer
++#endif
+ 
+     if (headerSize > size_t(MaxAllocSize))
+         return nullptr;
+diff -ru m/src/corelib/tools/qarraydata.h n/src/corelib/tools/qarraydata.h
+--- a/src/corelib/tools/qarraydata.h	2026-09-29 16:12:20.559194443 +0000
++++ b/src/corelib/tools/qarraydata.h	2026-09-29 16:12:20.591194737 +0000
+@@ -54,8 +54,24 @@
+ 
+     qptrdiff offset; // in bytes from beginning of header
+ 
++#ifdef __FILC__
++    // Fil-C: a pointer computed from the header has the header's capability,
++    // so it cannot reach raw data elsewhere. Headers for raw data therefore
++    // keep the data pointer right after themselves, marked by this offset.
++    enum : qptrdiff { FilcRawDataOffset = 1 };
++    void setRawDataPointer(const void *p)
++    {
++        offset = FilcRawDataOffset;
++        *reinterpret_cast<const void **>(this + 1) = p;
++    }
++#endif
++
+     void *data()
+     {
++#ifdef __FILC__
++        if (Q_UNLIKELY(offset == FilcRawDataOffset))
++            return const_cast<void *>(*reinterpret_cast<const void *const *>(this + 1));
++#endif
+         Q_ASSERT(size == 0 || offset < 0 || size_t(offset) >= sizeof(QArrayData));
+         const quintptr self = reinterpret_cast<qintptr>(this);
+         return reinterpret_cast<void *>(self + offset);
+@@ -63,6 +79,10 @@
+ 
+     const void *data() const
+     {
++#ifdef __FILC__
++        if (Q_UNLIKELY(offset == FilcRawDataOffset))
++            return *reinterpret_cast<const void *const *>(this + 1);
++#endif
+         Q_ASSERT(size == 0 || offset < 0 || size_t(offset) >= sizeof(QArrayData));
+         const quintptr self = reinterpret_cast<qintptr>(this);
+         return reinterpret_cast<const void *>(self + offset);
+@@ -247,8 +267,12 @@
+         if (result) {
+             Q_ASSERT(!result->ref.isShared()); // No shared empty, please!
+ 
++#ifdef __FILC__
++            result->setRawDataPointer(data);
++#else
+             result->offset = reinterpret_cast<const char *>(data)
+                 - reinterpret_cast<const char *>(result);
++#endif
+             result->size = int(n);
+         }
+         return result;

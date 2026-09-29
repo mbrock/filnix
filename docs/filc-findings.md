@@ -732,3 +732,78 @@ decodes key bytes through it, swaps as `void *`, and aligns the reply
 chunks. The module key-metadata API passes pointers as `uint64_t`, so
 modules that store pointers there cannot work under Fil-C; its tests are
 skipped.
+
+## Module-level assembly crashes the compiler
+
+A top-level `asm("...")` with directives FilPizlonator does not parse
+(`.section`, `.globl`, labels, `.quad`, ...) is not a diagnostic but a
+crash: the pass prints `Invalid directive: .section` and `Error parsing
+module asm`, dumps the module and reaches `UNREACHABLE` at
+`FilPizlonator.cpp:419`:
+
+```c
+asm(".section .qtversion, \"aG\", @progbits, tag, comdat\n.previous");
+int main(void) { return 0; }   /* clang -c: UNREACHABLE, exit 134 */
+```
+
+An empty `asm("")` compiles. Qt 5's `<QtCore/qversiontagging.h>` emits a
+`.qtversion` section like this in every file that includes QtCore outside
+QtCore itself, so the first such file (QtDBus) crashed.
+`patches/qt5-no-version-tagging.patch` disables the tag under `__FILC__`;
+the header is installed, so Qt's users get the same.
+
+## `syscall()` stops the program for `waitid`, `clone`, `open` and `inotify_init1`
+
+Fil-C's `syscall()` passes some numbers through (`futex`, `gettid`) and
+refuses others with `filc user error: unsupported syscall: 247` and a
+trap, rather than failing with `ENOSYS`. Seen: `waitid` (247), `clone`
+(56), `open` (2) and `inotify_init1` (294); the libc wrappers of the same
+calls work. Qt's forkfd probes `waitid(P_PIDFD, ...)` and forks with
+`clone(CLONE_PIDFD)` through `syscall()`, so every `QProcess` start
+stopped; `patches/qt5-forkfd-fork.patch` makes it take its `fork()`
+fallback.
+
+## `rdrand`/`rdseed` intrinsics and non-canonical `cpuid` stop the program
+
+`_rdrand64_step` compiles, but reaching it stops the program with
+`filc safety error: Unhandled intrinsic: ... @llvm.x86.rdrand.64()`
+(`_rdseed64_step` too). CPUID is lowered only in the canonical form with
+all four outputs, `asm("cpuid" : "=a", "=b", "=c", "=d" : "a", "c")`;
+the PIC-friendly `xchg %rbx, %1; cpuid; xchg %rbx, %1` that Qt uses (and
+XGETBV spelled as `.byte 0x0f, 0x01, 0xd0`) is refused at run time
+("thwarted a futile attempt to violate memory safety"). Qt probes CPU
+features when QtCore starts; `patches/qt5-cpu-probe.patch` uses the
+canonical forms and masks out RDRAND/RDSEED so `QRandomGenerator` reads
+the kernel's generator.
+
+## Section attributes on data are ignored
+
+`__attribute__((section(".name")))` on a global array has no effect: the
+data lands in `.data.rel.ro` and the output has no such section.
+
+```c
+__attribute__((section(".qtmetadata"), used))
+static const unsigned char md[] = "QTMETADATA !...";
+/* readelf -S: no .qtmetadata; the bytes are in .data.rel.ro */
+```
+
+Qt 5 finds a plugin's metadata by its `.qtmetadata` section, so every
+plugin was "not a plugin" (no platform plugin, so no GUI program started).
+`patches/qt5-plugin-metadata.patch` searches the whole file for the
+`QTMETADATA` marker when the section is missing, as Qt does on non-ELF
+platforms. This is probably the same root as the missing
+`__start_`/`__stop_` symbols above.
+
+## Found porting Qt 5: pointers derived from another object's address
+
+Qt 5's `QArrayData` (behind `QByteArray`, `QString` and `QVector`) finds
+its elements at `this + offset`. `fromRawData` makes a small header whose
+offset reaches the caller's buffer, so the computed pointer carried the
+header's 24-byte capability and the first read of the buffer trapped
+(`ptr >= upper` in QCborStreamReader, reading plugin metadata).
+`patches/qt5-raw-data.patch` stores the raw pointer after such headers,
+marked by an offset of 1. `QMutexLocker`, `QReadLocker`/`QWriteLocker`
+(lock address plus a "locked" bit in a `quintptr`), `QMapNodeBase`
+(parent plus colour bit) and `QModelIndex` (internal pointer as
+`quintptr`) lost capabilities the usual way; `patches/qt5-pointer-fields.patch`
+makes them pointers and sets the bits with pointer arithmetic.

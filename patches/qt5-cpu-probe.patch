@@ -1,5 +1,5 @@
 --- a/src/corelib/tools/qsimd.cpp	2026-09-29 15:10:58.941509580 +0000
-+++ b/src/corelib/tools/qsimd.cpp	2026-09-29 15:10:59.005510165 +0000
++++ b/src/corelib/tools/qsimd.cpp	2026-09-29 15:49:30.546661196 +0000
 @@ -219,12 +219,19 @@
  # endif
  
@@ -83,3 +83,14 @@
      if (features & CpuFeatureRDRND && !checkRdrndWorks())
          features &= ~(CpuFeatureRDRND | CpuFeatureRDSEED);
  
+@@ -553,7 +583,9 @@
+         }
+     }
+ 
+-#ifdef RUNNING_ON_VALGRIND
++#if defined(RUNNING_ON_VALGRIND) && !defined(__FILC__)
++    // (Fil-C: the client request is inline assembly on a pointer, which
++    // stops the program.)
+     bool runningOnValgrind = RUNNING_ON_VALGRIND;
+ #else
+     bool runningOnValgrind = false;

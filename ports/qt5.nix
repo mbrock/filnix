@@ -36,7 +36,8 @@ qfinal: qprev: {
           ../patches/qt5-no-version-tagging.patch
           # QtCore's CPU feature probe saves %rbx around CPUID and spells
           # XGETBV as bytes; Fil-C only lowers the canonical forms. RDRAND
-          # has no lowering, so leave it to the kernel's generator.
+          # has no lowering, so leave it to the kernel's generator. Its Valgrind
+          # check is a client request (inline assembly), which stops too.
           ../patches/qt5-cpu-probe.patch
           # QProcess's forkfd probes waitid(P_PIDFD) and clone(CLONE_PIDFD)
           # through syscall(), which Fil-C refuses by stopping the program.
@@ -46,6 +47,13 @@ qfinal: qprev: {
           # with the colour bit, and QModelIndex its internal pointer. Integer
           # fields lose the capability, so these are pointers now.
           ../patches/qt5-pointer-fields.patch
+          # QByteArray/QString::fromRawData point their header at the data
+          # with an offset from the header, so data() had the header's
+          # bounds; raw-data headers keep the data pointer instead.
+          ../patches/qt5-raw-data.patch
+          # Fil-C ignores section attributes on data, so plugins have no
+          # .qtmetadata section; find the metadata in the whole file.
+          ../patches/qt5-plugin-metadata.patch
         ];
         # Nixpkgs configures a cross qtbase with the linux-generic-g++ device
         # spec and CROSS_COMPILE=${targetPrefix}. Fil-C's compiler has no
