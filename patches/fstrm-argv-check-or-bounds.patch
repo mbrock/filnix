@@ -1,0 +1,23 @@
+Subject: argv: stop the OR scan before reading past ARGV_LAST
+Origin: Filnix
+Upstream-Status: Not submitted
+
+check_or's upward scan starts at which_p + 2 and tested that entry
+before testing which_p + 1 for ARGV_LAST. For the last option in the
+table (fstrm_replay's -r), which_p + 1 is ARGV_LAST and which_p + 2 is
+one past the end of the array, so the scan read out of bounds. Found by
+Fil-C in test_fstrm_replay.sh. Test the nearer entry first.
+
+--- a/libmy/argv.c
++++ b/libmy/argv.c
+@@ -1880,8 +1880,8 @@
+   if (match_p == NULL) {
+     /* NOTE: we assume that which_p is not pointing now to ARGV_LAST */
+     for (arg_p = which_p + 2;
+-	 arg_p->ar_short_arg != ARGV_LAST
+-	 && (arg_p - 1)->ar_short_arg != ARGV_LAST;
++	 (arg_p - 1)->ar_short_arg != ARGV_LAST
++	 && arg_p->ar_short_arg != ARGV_LAST;
+ 	 arg_p += 2) {
+       if ((arg_p - 1)->ar_short_arg != ARGV_OR
+ 	  && (arg_p - 1)->ar_short_arg != ARGV_XOR) {

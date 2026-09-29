@@ -2844,6 +2844,30 @@ in
     ];
   }
 
+  (for pkgs.potrace [
+    # Its bsf/bsr helpers branch inside the asm (jnz), which Fil-C's
+    # safe inline assembly does not accept. Use the portable versions.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/bitops.h --replace-fail \
+          '#if defined(HAVE_I386)' '#if defined(HAVE_I386) && !defined(__FILC__)'
+      '';
+    }))
+  ])
+
+  (for pkgs.fstrm [
+    (patch ./patches/fstrm-argv-check-or-bounds.patch)
+  ])
+
+  (for pkgs.parted [
+    (patch ./patches/parted-gpt-aligned-reserved2.patch)
+  ])
+
+  (for pkgs.netcdf [
+    (patch ./patches/netcdf-vlen-align-pointer.patch)
+    (patch ./patches/netcdf-exhash-pointer-data.patch)
+  ])
+
   (for pkgs.rsync [
     # The test LD_PRELOADs a shim that finds the real read() with
     # dlsym(RTLD_NEXT, ...), which Fil-C refuses (docs/filc-findings.md).
@@ -2873,8 +2897,11 @@ in
     (configure "--disable-gcc-warnings")
     # The tests build a Fil-C extension module (from Cython's C output)
     # and import it, so they need the Fil-C Python rather than the
-    # build's.
+    # build's, without the build Python's module path and sysconfig name.
     (use (old: {
+      preCheck = (old.preCheck or "") + ''
+        unset PYTHONPATH _PYTHON_HOST_PLATFORM _PYTHON_SYSCONFIGDATA_NAME
+      '';
       checkFlags = (old.checkFlags or [ ]) ++ [
         "PYTHON=${final.python3.withPackages (ps: [ ps.setuptools ])}/bin/python3"
       ];

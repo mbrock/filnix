@@ -1,0 +1,42 @@
+Subject: gpt: keep the header's Reserved2 pointer aligned
+Origin: Filnix
+Upstream-Status: Not submitted (Fil-C specific)
+
+GuidPartitionTableHeader_t is packed, and its in-memory Reserved2
+pointer follows the 92-byte on-disk header, at a 4-byte-aligned offset.
+Fil-C keeps pointer capabilities per aligned 8-byte word, so storing
+Reserved2 is a safety error and every GPT operation stopped parted.
+
+Pad the struct before Reserved2 and take the on-disk size from the
+padding's offset rather than from sizeof minus the pointer. The disk
+format is unchanged.
+
+--- a/libparted/labels/gpt.c
++++ b/libparted/labels/gpt.c
+@@ -38,6 +38,7 @@
+ #include <unistd.h>
+ #include <uuid/uuid.h>
+ #include <stdbool.h>
++#include <stddef.h>
+ #include <errno.h>
+ #include <iconv.h>
+ #include <langinfo.h>
+@@ -242,6 +243,9 @@
+   uint32_t NumberOfPartitionEntries;
+   uint32_t SizeOfPartitionEntry;
+   uint32_t PartitionEntryArrayCRC32;
++  /* Not on disk: keeps Reserved2 8-byte aligned, as Fil-C requires
++     for pointers. The on-disk part ends here (pth_get_size_static). */
++  uint32_t Padding;
+   uint8_t *Reserved2;
+ };
+ 
+@@ -374,7 +378,7 @@
+ static inline uint32_t
+ pth_get_size_static (const PedDevice *dev)
+ {
+-  return sizeof (GuidPartitionTableHeader_t) - sizeof (uint8_t *);
++  return offsetof (GuidPartitionTableHeader_t, Padding);
+ }
+ 
+ static inline uint32_t
