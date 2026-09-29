@@ -793,3 +793,13 @@ for `ARGV_OR` markers, testing entry `+2` before checking whether entry
 `+1` is `ARGV_LAST`. For the last option in the table (fstrm_replay's
 `-r`), that reads one element past the array.
 `patches/fstrm-argv-check-or-bounds.patch` tests the nearer entry first.
+
+## gold does not resolve a library's symbols through its DT_NEEDED chain
+
+Fil-C links with gold. When an executable links a shared library that is
+missing one of its own dependencies, GNU ld still resolves the library's
+undefined symbols through the DT_NEEDED entries of the other libraries
+on the line. gold reports them as undefined instead. ticcutils links
+`icu-uc` and `icu-io` but calls ICU regex and transliterator functions
+from `icu-i18n`, which only `libicuio` depends on, so every program linking
+libticcutils failed. The port adds `icu-i18n` to its `PKG_CHECK_MODULES`.

@@ -2920,6 +2920,16 @@ in
     # AX_CHECK_ZLIB comes from autoconf-archive. Nixpkgs lists it in
     # buildInputs, where a cross build's aclocal does not look.
     (tool pkgs.buildPackages.autoconf-archive)
+    # The library uses ICU's regex and transliterator (icu-i18n) but
+    # links only icu-uc and icu-io. GNU ld finds i18n through icu-io's
+    # DT_NEEDED; Fil-C's gold does not, so every program linking
+    # libticcutils (its own tests, frog, timblserver) failed.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace configure.ac --replace-fail \
+          '[icu-uc >= 50 icu-io]' '[icu-uc >= 50 icu-io icu-i18n]'
+      '';
+    }))
   ])
 
   (for pkgs.recode [
