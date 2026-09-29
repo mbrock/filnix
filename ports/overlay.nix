@@ -229,7 +229,7 @@ portDSL.makeOverlay portList final prev
       # build machine's interpreter.
       bc-decaf = lprev.bc-decaf.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
-          ../patches/bc-decaf-filc-cpu-entropy.patch
+          ../patches/bc-decaf-filc-x86-asm.patch
         ];
         nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.python3 ];
         buildInputs = [ ];

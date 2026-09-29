@@ -2033,12 +2033,12 @@ in
   (
     let
       fmtPort =
-        fmt:
+        fmt: argStorePatch:
         for fmt [
           # Works around Fil-C's clang passing small records that contain unions
           # as integers, which dropped the pointers in one-argument
           # make_format_args stores (wide and custom-type formatting).
-          (patch ./patches/fmt-arg-store-in-memory.patch)
+          (patch argStorePatch)
           (use {
             # float_test.isnan: the Fil-C runtime leaves FE_INEXACT set at start.
             # util_test.format_system_error: allocating SIZE_MAX / 2 bytes is a
@@ -2050,10 +2050,47 @@ in
         ];
     in
     {
-      fmt = fmtPort pkgs.fmt;
-      fmt_11 = fmtPort pkgs.fmt_11;
+      fmt = fmtPort pkgs.fmt ./patches/fmt-arg-store-in-memory.patch;
+      fmt_11 = fmtPort pkgs.fmt_11 ./patches/fmt-11-arg-store-in-memory.patch;
     }
   )
+
+  (for pkgs.asio [
+    # Boost.Coroutine (v1) needs fcontext and is not in the Boost port;
+    # only the spawn examples use it.
+    (removeConfigureFlag "--enable-boost-coroutine")
+    # The same io_context executor fix as Boost.Asio's.
+    (patch ./patches/asio-io-context-executor-pointer.patch)
+  ])
+
+  (for pkgs.clucene_core [
+    # libc++ drops std::binary_function in C++17; the patch Nixpkgs uses
+    # for Darwin removes it from the (installed) headers.
+    (patch (
+      pkgs.fetchpatch {
+        url = "https://869170.bugs.gentoo.org/attachment.cgi?id=858825";
+        hash = "sha256-TbAfBKdXh+1HepZc8J6OhK1XGwhwBCMvO8QBDsad998=";
+      }
+    ))
+    (use {
+      # Nixpkgs skips the suite because cl_test is not built by default.
+      doCheck = true;
+      preCheck = "make cl_test";
+    })
+  ])
+
+  (for pkgs.doxygen [
+    (use (old: {
+      # Release builds turn on IPO, which has CMake archive with llvm-ar
+      # (missing, and Fil-C has no LTO anyway), as Nixpkgs does on Darwin.
+      postPatch = old.postPatch + ''
+        substituteInPlace CMakeLists.txt \
+          --replace-fail 'set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)' \
+                         'set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)'
+      '';
+      doCheck = true;
+    }))
+  ])
 
   (for pkgs.capstone [
     # csh is a size_t holding the handle's address, which drops the
