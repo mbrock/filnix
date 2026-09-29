@@ -1,0 +1,39 @@
+Subject: Skip the bundled zstd's loop-alignment directives under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C cannot validate inline `.p2align` assembly and stops the program
+there. The directives only tune code alignment; ports/patch/zstd-1.5.7.patch
+makes the same change in zstd itself.
+
+--- a/C/zstd/zstd_decompress_block.c
++++ b/C/zstd/zstd_decompress_block.c
+@@ -1138,7 +1138,7 @@
+                 BIT_DStream_endOfBuffer < BIT_DStream_completed &&
+                 BIT_DStream_completed < BIT_DStream_overflow);
+ 
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+         /* Align the decompression loop to 32 + 16 bytes.
+          *
+          * zstd compiled with gcc-9 on an Intel i9-9900k shows 10% decompression
+--- a/C/zstd/zstd_lazy.c
++++ b/C/zstd/zstd_lazy.c
+@@ -934,7 +934,7 @@
+     }
+ 
+     /* Match Loop */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+      */
+@@ -1232,7 +1232,7 @@
+     ip += (ip == prefixStart);
+ 
+     /* Match Loop */
+-#if defined(__GNUC__) && defined(__x86_64__)
++#if defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+      */

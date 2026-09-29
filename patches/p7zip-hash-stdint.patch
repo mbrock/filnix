@@ -1,0 +1,30 @@
+Subject: Take uint32_t and uint64_t from <stdint.h>
+Origin: Filnix
+Upstream-Status: Not submitted
+
+hash.h defines uint64_t as UInt64 (unsigned long long) unless a BSD macro
+says it exists. libc++'s <string.h> wrapper already brings in the
+standard uint64_t (unsigned long), so the C++ hash registrations failed
+with a typedef redefinition.
+
+--- a/C/hashes/hash.h
++++ b/C/hashes/hash.h
+@@ -42,17 +42,7 @@
+ 
+ #include "../7zTypes.h"
+ 
+-#ifndef _UINT32_T_DECLARED
+-typedef UInt32 uint32_t;
+-#define _UINT32_T_DECLARED
+-#endif
+-
+-#ifndef _UINT64_T_DECLARED
+-typedef UInt64 uint64_t;
+-#define _UINT64_T_DECLARED
+-#endif
+-
+-//#include <stdint.h>
++#include <stdint.h>
+ 
+ #ifndef min
+ #define min(a,b) (((a)>(b))?(b):(a))
