@@ -112,6 +112,14 @@ let
           ) old.mesonFlags;
         });
   };
+
+  # A program from the Fil-C sysroot's glibc.
+  libcTool =
+    name:
+    final.runCommand name { meta.mainProgram = name; } ''
+      mkdir -p $out/bin
+      ln -s ${final.stdenv.cc.libc}/bin/${name} $out/bin/${name}
+    '';
 in
 portDSL.makeOverlay portList final prev
 // pkgs.lib.optionalAttrs prev.stdenv.hostPlatform.isFilc {
@@ -271,6 +279,20 @@ portDSL.makeOverlay portList final prev
 
   # Boehm GC's API on Fil-C's own collector (docs/boehm-on-fugc.md).
   boehmgc = final.callPackage ./boehmgc { inherit (prev) boehmgc; };
+
+  # unixtools takes glibc's getent and getconf only when libc is "glibc", and
+  # NetBSD's otherwise, which do not evaluate here. The Fil-C sysroot has
+  # glibc's.
+  getent = libcTool "getent";
+  getconf = libcTool "getconf";
+  unixtools = prev.unixtools // {
+    inherit (final) getent getconf;
+  };
+
+  # The emacs30 port has no GUI; the -nox variants come from Nixpkgs' Emacs
+  # scope and would miss the port (and bring native compilation along).
+  emacs-nox = final.emacs30;
+  emacs30-nox = final.emacs30;
 
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;

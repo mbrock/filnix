@@ -40,16 +40,22 @@ stdenv.mkDerivation rec {
   dontAddStaticConfigureFlags = true;
   configureScript = "./config";
 
-  # The older port uses runtime forwarders into ordinary assembly.
-  configureFlags = lib.optional (!withSafeAssembly) "-yolo-assembler" ++ [
-    "shared"
-    "zlib"
-    "--prefix=${placeholder "out"}"
-    "--openssldir=etc/ssl"
-    "--libdir=lib"
-    "--with-zlib-lib=${zlib}/lib"
-    "--with-zlib-include=${zlib}/include"
-  ];
+  # The older port uses runtime forwarders into ordinary assembly. They cover
+  # the x86_64 assembly only, so aarch64 builds the C implementations.
+  configureFlags =
+    lib.optional (
+      !withSafeAssembly && !stdenv.hostPlatform.isAarch64
+    ) "-yolo-assembler"
+    ++ lib.optional stdenv.hostPlatform.isAarch64 "no-asm"
+    ++ [
+      "shared"
+      "zlib"
+      "--prefix=${placeholder "out"}"
+      "--openssldir=etc/ssl"
+      "--libdir=lib"
+      "--with-zlib-lib=${zlib}/lib"
+      "--with-zlib-include=${zlib}/include"
+    ];
 
   # makeFlags = [
   #   "MANDIR=$(man)/share/man"

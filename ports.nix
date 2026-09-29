@@ -636,6 +636,42 @@ in
       enableAppletSymlinks = false;
       enableMinimal = false;
     })
+    # The Makefile calls plain `cc` (filcc has no target prefix), and the
+    # build platform's compiler, there for HOSTCC, comes first on PATH: the
+    # result was a native busybox. Name the Fil-C compiler explicitly.
+    (use (old: {
+      makeFlags = (old.makeFlags or [ ]) ++ [
+        "CC=${final.stdenv.cc}/bin/cc"
+        # Partial links (-r) of built-in.o: the Fil-C driver adds its own
+        # main even there, which then clashes in the final link.
+        "LD=${final.stdenv.cc.bintools}/bin/ld"
+      ];
+    }))
+    # Fil-C's libc has no vfork; busybox vforks only to exec or exit.
+    (addCFlag "-Dvfork=fork")
+    # Under clang, busybox writes its const global pointers through an asm
+    # statement that launders the pointer, which Fil-C refuses. Make those
+    # globals plain variables (busybox's documented switch) and take the
+    # ordinary assignment path.
+    (addCFlag "-DBB_GLOBAL_CONST=")
+    (use (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace include/libbb.h libbb/const_hack.c --replace-fail \
+            '#if defined(__clang_major__) && __clang_major__ >= 9' \
+            '#if defined(__clang_major__) && __clang_major__ >= 9 && !defined(__FILC__)'
+          # printf %s passes the string to printf as a long long when the sizes
+          # match, which drops its capability; take the char * path instead.
+          substituteInPlace coreutils/printf.c --replace-fail \
+            'if (sizeof(argument) == sizeof(llv)) {' 'if (0) {'
+        '';
+    }))
+    # nixpkgs' separate debug info adds -Wa,--compress-debug-sections, which
+    # Fil-C's assembler rejects, and busybox skips the preConfigure hook
+    # removeCFlag relies on.
+    (use { separateDebugInfo = false; })
   ])
 
   (for pkgs.diffutils [
@@ -2203,7 +2239,10 @@ in
       (patch ./ports/patch/Python-3.12.5.patch)
       (patch ./patches/python-filc-triplet-detection.patch)
       (patch ./patches/python-faulthandler.patch)
-      (removeCFlag "-Wa,--compress-debug-sections")
+      # nixpkgs' separate debug info adds -Wa,--compress-debug-sections, which
+      # Fil-C's assembler rejects, and busybox skips the preConfigure hook
+      # removeCFlag relies on.
+      (use { separateDebugInfo = false; })
       (arg { enableLTO = false; })
       (configure "--without-pymalloc")
       (configure "--without-freelists")
@@ -2218,6 +2257,24 @@ in
       # (repr(12.3) == '12.300000000000001'). Fil-C uses SSE2 arithmetic.
       (removeConfigureFlag "ac_cv_x87_double_rounding=yes")
       (configure "ac_cv_x87_double_rounding=no")
+      # Fil-C's libc is libc.so.6666. CDLL("libc.so.6") loaded the runtime's
+      # inner libc instead, where no Fil-C function is found (finix's limine
+      # hook died on libc.syncfs), and find_library("c") found nothing.
+      (use (old: {
+        postPatch =
+          (old.postPatch or "")
+          + "\n"
+          + ''
+            substituteInPlace Lib/ctypes/__init__.py --replace-fail \
+              '        self._name = name' \
+              '        if name == "libc.so.6": name = "libc.so.6666"
+                    self._name = name'
+            substituteInPlace Lib/ctypes/util.py --replace-fail \
+              '            # See issue #9998' \
+              '            if name == "c": return "libc.so.6666"
+                        # See issue #9998'
+          '';
+      }))
       (arg {
         packageOverrides = import ./ports/pythonPorts-as-overlay.nix pkgs;
       })
@@ -2394,6 +2451,37 @@ in
       preInstallCheck = (old.preInstallCheck or "") + ''
         ulimit -s 65536
       '';
+    }))
+  ])
+
+  # callPackage splices python3Packages by name, and the build platform's is
+  # 3.13, so setuptools came from 3.13 while the build ran the ported 3.12.
+  # The 3.12 set splices against its own build-platform 3.12.
+  (for pkgs.nixos-rebuild-ng [
+    (arg { python3Packages = final.python312.pkgs; })
+    # A test uses Generator's one-argument form, which needs Python 3.13.
+    (use (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace tests/test_tmpdir.py \
+            --replace-fail 'typing.Generator[None]' 'typing.Generator[None, None, None]'
+        '';
+    }))
+  ])
+
+  # Fil-C's libc has no vfork. At shutdown PID 1 vforks a child to reboot and
+  # stays suspended until the child is gone; fork and wait for it instead.
+  (for pkgs.finit [
+    (use (old: {
+      postPatch =
+        (old.postPatch or "")
+        + "\n"
+        + ''
+          substituteInPlace src/sig.c --replace-fail 'if (vfork()) {' \
+            'if (({ pid_t p = fork(); if (p > 0) waitpid(p, NULL, 0); p; })) {'
+        '';
     }))
   ])
 

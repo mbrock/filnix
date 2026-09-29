@@ -36,25 +36,43 @@
           projeny = pkgs.callPackage ./packages/projeny.nix { };
           runfilc = import ./tools/runfilc.nix { inherit pkgs filcc; };
 
-          pkgsFilc = import nixpkgs {
-            localSystem = system;
-            crossSystem.config = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-unknown-linux-gnufilc0";
-            config.replaceCrossStdenv =
-              { buildPackages, baseStdenv }:
-              baseStdenv.override {
-                cc = filcc;
-              };
-            crossOverlays = [
-              (final: prev: {
-                gnufilc0 = filcc;
-              })
-              (import ./ports/overlay.nix pkgs)
-            ];
+          # The Fil-C package set. blockRustGo marks Rust and Go packages
+          # broken (lib/block-rust-go.nix); crossOverlays apply after the ports.
+          mkPkgsFilc =
+            {
+              blockRustGo ? false,
+              crossOverlays ? [ ],
+            }:
+            import nixpkgs {
+              localSystem = system;
+              crossSystem.config = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-unknown-linux-gnufilc0";
+              config.replaceCrossStdenv =
+                { buildPackages, baseStdenv }:
+                let
+                  stdenv = baseStdenv.override {
+                    cc = filcc;
+                  };
+                in
+                if blockRustGo then
+                  import ./lib/block-rust-go.nix {
+                    inherit (buildPackages) lib stdenvAdapters;
+                  } stdenv
+                else
+                  stdenv;
+              crossOverlays = [
+                (final: prev: {
+                  gnufilc0 = filcc;
+                })
+                (import ./ports/overlay.nix pkgs)
+              ]
+              ++ crossOverlays;
 
-            overlays = [
-              (import ./ports/build-tools.nix)
-            ];
-          };
+              overlays = [
+                (import ./ports/build-tools.nix)
+              ];
+            };
+
+          pkgsFilc = mkPkgsFilc { };
 
           filc-shell-stuff = import ./shells/world.nix {
             inherit
@@ -113,7 +131,10 @@
           ) pkgsFilc.rubyPackages;
         in
         {
-          lib.${system}.queryPackage = import ./scripts/query-package.nix pkgs;
+          lib.${system} = {
+            queryPackage = import ./scripts/query-package.nix pkgs;
+            inherit mkPkgsFilc;
+          };
 
           checks.${system} = {
             pipewire =
@@ -242,6 +263,12 @@
             filc = import ./nixos/filc.nix { filnix = self; };
             default = filc;
           };
+          # A finix system whose whole userland is Fil-C; see finix/userland.nix.
+          finixModules = rec {
+            filc-userland = import ./finix/userland.nix { filnix = self; };
+            default = filc-userland;
+          };
+
           nixosConfigurations =
             let
               machine =
@@ -392,5 +419,6 @@
       "overlays"
       "nixosModules"
       "nixosConfigurations"
+      "finixModules"
     ]) (perSystem "x86_64-linux");
 }
