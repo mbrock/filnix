@@ -404,6 +404,14 @@ let
       ruby = ported.ruby_3_3;
       rubyPackages = final.rubyPackages_3_3;
 
+      # Nixpkgs only defines glibc locales for isGnu hosts, so for Fil-C
+      # glibcLocales was null and packages that export LC_ALL=en_US.UTF-8 got
+      # no LOCALE_ARCHIVE (typeguard's sphinx-build died in setlocale). The
+      # archive is data: the native build works for both the build tools and
+      # Fil-C's glibc, which reads it via LOCALE_ARCHIVE too.
+      glibcLocales = final.buildPackages.glibcLocales;
+      glibcLocalesUtf8 = final.buildPackages.glibcLocalesUtf8;
+
       # pkg-config alias
       pkg-config = prev.pkg-config.override {
         pkg-config = final.pkgconf-unwrapped;

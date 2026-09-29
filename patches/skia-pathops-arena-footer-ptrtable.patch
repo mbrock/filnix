@@ -1,0 +1,57 @@
+Keep SkArenaAlloc footer actions usable under Fil-C
+
+SkArenaAlloc stores each footer's destructor action (a function pointer)
+with memcpy at whatever byte offset the footer lands on. Fil-C tracks
+pointer capabilities only in pointer-aligned memory, so the action read
+back in ~SkArenaAlloc had no capability and calling it trapped ("cannot
+access pointer with null object"), e.g. in pathops.simplify from
+fonttools' removeOverlaps tests. Store the action as a zptrtable index.
+
+--- a/src/cpp/skia-builder/skia/src/base/SkArenaAlloc.cpp
++++ b/src/cpp/skia-builder/skia/src/base/SkArenaAlloc.cpp
+@@ -13,6 +13,18 @@
+ #include <cassert>
+ #include <cstddef>
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++
++// Footers sit at arbitrary byte offsets, and Fil-C keeps a pointer's
++// capability only in pointer-aligned memory, so a footer's action read back
++// with memcpy has none. Store the action as a zptrtable index instead.
++static zptrtable* footer_actions() {
++    static zptrtable* table = zptrtable_new();
++    return table;
++}
++#endif
++
+ static char* end_chain(char*) { return nullptr; }
+ 
+ SkArenaAlloc::SkArenaAlloc(char* block, size_t size, size_t firstHeapAllocation)
+@@ -37,7 +49,12 @@
+ 
+ void SkArenaAlloc::installFooter(FooterAction* action, uint32_t padding) {
+     assert(SkTFitsIn<uint8_t>(padding));
++#ifdef __FILC__
++    static_assert(sizeof(size_t) == sizeof(action));
++    this->installRaw(zptrtable_encode(footer_actions(), (void*)action));
++#else
+     this->installRaw(action);
++#endif
+     this->installRaw((uint8_t)padding);
+     fDtorCursor = fCursor;
+ }
+@@ -54,7 +71,13 @@
+         FooterAction* action;
+         uint8_t       padding;
+ 
++#ifdef __FILC__
++        size_t encoded;
++        memcpy(&encoded, footerEnd - sizeof( Footer), sizeof(encoded));
++        action = (FooterAction*)zptrtable_decode(footer_actions(), encoded);
++#else
+         memcpy(&action,  footerEnd - sizeof( Footer), sizeof( action));
++#endif
+         memcpy(&padding, footerEnd - sizeof(padding), sizeof(padding));
+ 
+         footerEnd = action(footerEnd) - (ptrdiff_t)padding;

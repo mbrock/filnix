@@ -1,0 +1,33 @@
+Swap sort elements with memcpy in the bundled harfbuzz
+
+hb_qsort's sort_r_swap exchanged elements one byte at a time. Under Fil-C,
+a pointer keeps its capability only when copied as a whole word or by
+memcpy; bytewise swaps leave each moved address paired with the other
+element's capability. The face builder sorts (tag, {hb_blob_t *, order})
+pairs this way, so hb.subset() / Face.blob trapped in compare_entries
+("cannot read pointer with ptr < lower") in uharfbuzz's test_subset.
+
+--- a/harfbuzz/src/hb-algs.hh
++++ b/harfbuzz/src/hb-algs.hh
+@@ -1308,8 +1308,19 @@
+ static inline void sort_r_swap(char *__restrict a, char *__restrict b,
+                                size_t w)
+ {
+-  char tmp, *end = a+w;
+-  for(; a < end; a++, b++) { SORT_R_SWAP(*a, *b, tmp); }
++  /* Swap through memcpy rather than byte by byte: under Fil-C, pointers
++     in the elements keep their capabilities only through word or memcpy
++     copies, and a bytewise swap leaves each address with the other
++     element's capability. */
++  alignas (16) char tmp[64];
++  while (w)
++  {
++    size_t n = w < sizeof (tmp) ? w : sizeof (tmp);
++    memcpy (tmp, a, n);
++    memcpy (a, b, n);
++    memcpy (b, tmp, n);
++    a += n; b += n; w -= n;
++  }
+ }
+ 
+ /* swap a, b iff a>b */

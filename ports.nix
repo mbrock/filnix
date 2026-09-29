@@ -2241,8 +2241,7 @@ in
       (patch ./patches/python-filc-triplet-detection.patch)
       (patch ./patches/python-faulthandler.patch)
       # nixpkgs' separate debug info adds -Wa,--compress-debug-sections, which
-      # Fil-C's assembler rejects, and busybox skips the preConfigure hook
-      # removeCFlag relies on.
+      # Fil-C's assembler rejects.
       (use { separateDebugInfo = false; })
       (arg { enableLTO = false; })
       (configure "--without-pymalloc")

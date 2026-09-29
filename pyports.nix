@@ -42,6 +42,13 @@ in
     # build platform's mypy, which is the one that runs mypyc for Fil-C
     # packages; the typedef change only applies when compiling with Fil-C.
     (patch ./patches/mypyc-filc-pointer-cpyptr.patch)
+    (use (old: {
+      # mypyc emits one huge C file by default; Fil-C's clang needed over
+      # 12 GB for it. Compile per module, as mypy does on Windows.
+      env = (old.env or { }) // {
+        MYPYC_MULTI_FILE = "1";
+      };
+    }))
   ])
 
   (for "cffi" [
@@ -82,6 +89,9 @@ in
   ])
 
   (for "psutil" [
+    # heap_info/heap_trim wrap glibc's mallinfo2/malloc_trim, which see
+    # none of Fil-C's GC heap; build them out as on musl.
+    (patch ./patches/psutil-filc-no-heap-info.patch)
     (use (old: {
       disabledTests = (old.disabledTests or [ ]) ++ [
         # glibc's mallinfo2 counts glibc's heap; Fil-C allocates elsewhere,
@@ -122,6 +132,25 @@ in
         old.pythonImportsCheck or [ ]
       );
     }))
+  ])
+
+  (for "execnet" [
+    # gevent needs greenlet, which switches CPython thread state fields that
+    # the Fil-C CPython port does not have. The gevent execmodel tests skip
+    # without it.
+    (arg { gevent = null; })
+  ])
+
+  (for "uharfbuzz" [
+    # The bundled harfbuzz swaps qsort elements bytewise, which mismatches
+    # pointers and capabilities (fonttools' check input).
+    (patch ./patches/uharfbuzz-sort-swap-memcpy.patch)
+  ])
+
+  (for "skia-pathops" [
+    # Skia's arena stores destructor pointers unaligned (fonttools' check
+    # input).
+    (patch ./patches/skia-pathops-arena-footer-ptrtable.patch)
   ])
 
   (for "pybind11" [
