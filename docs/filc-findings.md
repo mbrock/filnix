@@ -790,3 +790,13 @@ libgcrypt's OCB mode counts trailing zeros with
 mnemonic for safe inline asm: rep"); gnupg's `t-protect` hit it. Upstream
 Fil-C's libgcrypt port guards this, Keccak's and `longlong.h`'s asm with
 `ASM_DISABLED`; `ports/patch/libgcrypt-1.12.2.patch` is that port rebased.
+
+## `mlock` on non-mmapped memory is a safety error
+
+`mlock` of a `malloc` block stops the program ("cannot perform this
+operation on something that was not mmapped") instead of failing with an
+errno. The GnuPG family's configure probe (`GNUPG_CHECK_MLOCK`) mlocks a
+`malloc`ed page, so it concluded mlock was broken; libgcrypt then never
+locked its secure memory and `GCRYCTL_INIT_SECMEM` failed (`t-secmem`,
+`t-sexp`). The secure memory pool itself is mmapped, which `mlock` accepts,
+so the libgcrypt port presets `gnupg_cv_have_broken_mlock=no`.

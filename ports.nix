@@ -1475,6 +1475,11 @@ in
     # ocb_get_l (rep;bsf, which gnupg's t-protect reached) and Keccak,
     # all of which Fil-C traps on.
     (patch ./ports/patch/libgcrypt-1.12.2.patch)
+    # configure's probe mlocks malloc'ed memory, which Fil-C stops as a
+    # safety error, so it concluded mlock is broken and secure memory was
+    # never locked (GCRYCTL_INIT_SECMEM failed; t-secmem, t-sexp). The
+    # secure memory pool itself is mmapped, which mlock accepts.
+    (configure "gnupg_cv_have_broken_mlock=no")
     (configure "gcry_cv_gcc_amd64_platform_as_ok=no")
     (use { configurePlatforms = [ "host" ]; })
     (use {
@@ -1482,6 +1487,13 @@ in
         sed -i '/HAVE_GCC_ASM_VOLATILE_MEMORY/d' config.h
         touch config.status
         make -j$NIX_BUILD_CORES
+      '';
+      # The default check phase runs only after the default build phase
+      # (foundMakefile), so the tests were skipped.
+      checkPhase = ''
+        runHook preCheck
+        make -j$NIX_BUILD_CORES check
+        runHook postCheck
       '';
     })
   ])

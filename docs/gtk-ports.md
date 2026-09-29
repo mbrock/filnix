@@ -135,6 +135,11 @@ GTK's upstream suites remain disabled as in the Nixpkgs recipes. GTK4 4.14.5
 cannot satisfy applications requiring newer APIs; successful toolkit builds do
 not establish compatibility for every GNOME application.
 
+Without GTK3's X11 backend, libwnck cannot build: it is an X11 window
+management library and includes `gdk/gdkx.h` unconditionally. It needs
+`x11Support` in the Fil-C GTK3, which would rebuild every GTK3 consumer and
+bring in `gdk/x11`, which the upstream GTK3 port does not cover.
+
 ## GTK 2
 
 GTK 2.24.33 has no upstream Fil-C port. `patches/gtk2-filc-gtype.patch` makes
