@@ -49,10 +49,19 @@ let
           let
             attrs =
               if builtins.isFunction fnOrAttrs then fnOrAttrs finalAttrs else fnOrAttrs;
+            noCheck =
+              x:
+              if x ? overridePythonAttrs then
+                x.overridePythonAttrs { doCheck = false; }
+              else
+                x;
             toHost =
               x:
               if x ? pythonModule && !builtins.isBool x.pythonModule then
-                x.__spliced.hostTarget or x
+                # Only the module is needed, not its own test suite, whose
+                # inputs would otherwise become Fil-C builds too (websockets
+                # -> werkzeug's tests -> cryptography, which needs Rust).
+                noCheck (x.__spliced.hostTarget or x)
               else
                 x;
           in
