@@ -1,0 +1,22 @@
+--- a/src/corelib/thread/qsemaphore.cpp	2026-09-29 16:26:39.863057313 +0000
++++ b/src/corelib/thread/qsemaphore.cpp	2026-09-29 16:26:39.875057423 +0000
+@@ -126,7 +126,9 @@
+     unspecified, but it's likely single-token threads will get woken up first.
+  */
+ 
+-#if defined(FUTEX_OP) && QT_POINTER_SIZE > 4
++// Fil-C's futex supports FUTEX_WAIT and FUTEX_WAKE but stops the program on
++// FUTEX_WAKE_OP ("unsupported futex op: 133"), so use the single-word scheme.
++#if defined(FUTEX_OP) && QT_POINTER_SIZE > 4 && !defined(__FILC__)
+ static Q_CONSTEXPR bool futexHasWaiterCount = true;
+ #else
+ static Q_CONSTEXPR bool futexHasWaiterCount = false;
+@@ -361,7 +363,7 @@
+             newValue &= (futexNeedsWakeAllBit - 1);
+         } while (!u.testAndSetRelease(prevValue, newValue, prevValue));
+         if (futexNeedsWake(prevValue)) {
+-#ifdef FUTEX_OP
++#if defined(FUTEX_OP) && !defined(__FILC__)
+             if (futexHasWaiterCount) {
+                 /*
+                    On 64-bit systems, the single-token waiters wait on the low half

@@ -1,0 +1,15 @@
+--- a/src/corelib/thread/qthread_unix.cpp	2026-09-29 16:25:43.010537087 +0000
++++ b/src/corelib/thread/qthread_unix.cpp	2026-09-29 16:25:43.042537380 +0000
+@@ -268,7 +268,12 @@
+ static void setCurrentThreadName(const char *name)
+ {
+ #  if defined(Q_OS_LINUX) && !defined(QT_LINUXBASE)
++#    ifdef __FILC__
++    // Fil-C: an integer carries no capability, so pass the name as a pointer.
++    prctl(PR_SET_NAME, name, 0, 0, 0);
++#    else
+     prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0);
++#    endif
+ #  elif defined(Q_OS_MAC)
+     pthread_setname_np(name);
+ #  elif defined(Q_OS_QNX)

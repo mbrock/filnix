@@ -57,6 +57,12 @@ static int core() {
     vec.append(QStringLiteral("item %1").arg(i));
   }
   CHECK(hash.value("777") == 777 && map.first() == "999" && vec[5] == "item 5");
+  for (int i = 0; i < 1000; i += 2)
+    map.remove(-i);
+  int sum = 0;
+  for (auto it = map.cbegin(); it != map.cend(); ++it)
+    sum += it.value().toInt();
+  CHECK(map.size() == 500 && sum == 250000);
   QStringList words = QString("the quick brown fox").split(' ');
   std::sort(words.begin(), words.end());
   CHECK(words.join(',') == "brown,fox,quick,the");
@@ -207,6 +213,22 @@ static int gui() {
   CHECK(label->text() == "typed" && list->count() == 1);
   QPixmap shot = window.grab();
   CHECK(shot.width() == 320 && !shot.toImage().isNull());
+
+  QStandardItemModel tree;
+  auto *root = new QStandardItem("root");
+  root->appendRow(new QStandardItem("child"));
+  tree.appendRow(root);
+  QModelIndex child = tree.index(0, 0, tree.index(0, 0));
+  CHECK(child.data().toString() == "child" && child.parent().data().toString() == "root");
+  QSortFilterProxyModel proxy;
+  proxy.setSourceModel(&tree);
+  proxy.setRecursiveFilteringEnabled(true);
+  proxy.setFilterFixedString("child");
+  QModelIndex proxyChild = proxy.index(0, 0, proxy.index(0, 0));
+  CHECK(proxyChild.data().toString() == "child");
+  QTreeView treeView;
+  treeView.setModel(&proxy);
+  treeView.expandAll();
 
   QStandardItemModel model(3, 2);
   QTableView view;

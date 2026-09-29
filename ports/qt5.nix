@@ -54,6 +54,11 @@ qfinal: qprev: {
           # Fil-C ignores section attributes on data, so plugins have no
           # .qtmetadata section; find the metadata in the whole file.
           ../patches/qt5-plugin-metadata.patch
+          # QThread names threads with prctl(PR_SET_NAME, (unsigned long)name);
+          # the integer has no capability, so the runtime's prctl trapped.
+          ../patches/qt5-thread-name.patch
+          # QSemaphore wakes with FUTEX_WAKE_OP, which Fil-C's futex refuses.
+          ../patches/qt5-semaphore-futex.patch
         ];
         # Nixpkgs configures a cross qtbase with the linux-generic-g++ device
         # spec and CROSS_COMPILE=${targetPrefix}. Fil-C's compiler has no
