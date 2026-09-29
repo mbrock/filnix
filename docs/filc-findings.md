@@ -824,3 +824,32 @@ without `FUTEX_PRIVATE_FLAG`), but `FUTEX_WAKE_OP` stops the program with
 to wake single- and multi-token waiters at once, so the first contended
 `release()` (a blocking queued call into Qt's D-Bus thread) died;
 `patches/qt5-semaphore-futex.patch` uses Qt's single-word scheme.
+
+## Found porting Qt 5: the QML engine's NaN-boxed values
+
+QtQml's V4 engine keeps every JavaScript value in a `quint64`: doubles
+XORed with a mask, integers and booleans tagged in the high bits, and heap
+pointers in the low 48 bits, copied in and out with `memcpy`. Values also
+travel as `ReturnedValue`, a `typedef quint64`, through every runtime call.
+The integer carries no capability, so the first heap object read through a
+value trapped. `patches/qt5-declarative-v4-pointers.patch` makes
+`ReturnedValue` (and the value's storage) a union whose first member is a
+`char *` under `__FILC__`: copies are pointer copies, the tag tests read the
+bits, and `m()`/`setM()` use the pointer member. Plain integer stores (tags)
+leave the slot's previous capability behind, which is harmless because the
+tag tests reject them before any dereference. The same patch makes
+`QJSValue::d`, `PropertyKey`, `QFlagPointer`/`QBiPointer`,
+`QQmlNotifierEndpoint::senderPtr`, sparse-array node parents and
+`QQuickItem`'s JS-wrapper factory (which returned the wrapper as `quint64`
+through `qt_metacall`) pointer-typed, and derives the GC's chunk and
+persistent-value page addresses with pointer arithmetic rather than
+masking integers.
+
+Two more pieces of the engine needed changes. `EngineBase` is
+`#pragma pack(1)` (for the JIT, which is off), which put pointers after a
+`qint32` at offsets that are 4 mod 8 ("alignment contradiction" in
+`ExecutionEngine`'s constructor); it is unpacked under Fil-C. And the
+bytecode dumper, one ~540-line function with a case per instruction
+(`QV4_SHOW_BYTECODE` only), did not finish compiling in 25 minutes at
+4 GB, with or without computed gotos; it is left out. The interpreter
+itself compiles in a few minutes once it dispatches with a `switch`.
