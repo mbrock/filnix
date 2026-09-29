@@ -388,7 +388,7 @@ file, so the NSS port leaves those two gtest binaries out.
 gtest's own registration hits the same cost: every `TEST`/`TEST_F` adds a
 `MakeAndRegisterTestInfo` call with `std::string` temporaries to the file's
 static constructor. The campaign killed libyuv twice after 15 silent
-minutes: its `convert_argb_test.cc` (TESTCOUNT tests) compiled at `-O3` for
+minutes: its `convert_argb_test.cc` (1,748 tests) compiled at `-O3` for
 over 12 CPU minutes at 11 GB before we stopped it, where Nixpkgs' Clang
 takes under 90 s. `-ftime-trace` on a sixteenth of the tests put 11.4
 of 59 s in `_GLOBAL__sub_I_…`, and stack samples of larger slices were in
@@ -534,6 +534,13 @@ address lands in `keybuffer`, but the pointer is still derived from
 `keybuffer + (enc - encbuffer)`. FFmpeg 8.1 also stores its `av_log`
 callback in an `atomic_uintptr_t`, dropping the function pointer's
 capability.
+
+libyuv's `InterpolatePlane` and `InterpolatePlane_16` do the same: they pass
+`src1 - src0` as the row stride, so the kernels read the second plane as
+`src0 + stride` (`TestARGBInterpolate`).
+`patches/libyuv-interpolate-planes.patch` blends through both pointers
+under Fil-C. The port also defines `LIBYUV_DISABLE_X86`: libyuv's x86 row
+kernels are inline assembly with memory operands, which Fil-C refuses.
 
 ## `__sync_*` builtins on pointers drop the capability
 
