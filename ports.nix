@@ -2106,6 +2106,11 @@ in
     (addCFlag "-Wno-register")
   ])
 
+  (for pkgs.z3 [
+    # Page headers and stack marks are tagged pointers stored as size_t.
+    (patch ./patches/z3-page-headers-pointers.patch)
+  ])
+
   (for pkgs.capstone [
     # csh is a size_t holding the handle's address, which drops the
     # capability; every call after cs_open trapped.
