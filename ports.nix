@@ -2932,6 +2932,26 @@ in
     }))
   ])
 
+  # The rest of the LanguageMachines stack has the same autoconf-archive
+  # input (AX_CXX_COMPILE_STDCXX_17 and friends).
+  (builtins.listToAttrs (
+    map
+      (name: {
+        inherit name;
+        value = for pkgs.${name} [ (tool pkgs.buildPackages.autoconf-archive) ];
+      })
+      [
+        "frog"
+        "frogdata"
+        "libfolia"
+        "mbt"
+        "timbl"
+        "timblserver"
+        "ucto"
+        "uctodata"
+      ]
+  ))
+
   (for pkgs.recode [
     # The warning setup adds gnulib's lib/ with -isystem, which comes
     # after the Fil-C libc's -isystem, so lib/fcntl.h (O_BINARY) was
