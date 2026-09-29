@@ -2072,10 +2072,19 @@ in
         hash = "sha256-TbAfBKdXh+1HepZc8J6OhK1XGwhwBCMvO8QBDsad998=";
       }
     ))
+    # Nixpkgs skips the suite: cl_test is not built by default, and building
+    # it needs C++14, a missing <unistd.h>, and then fails on the contribs
+    # tests' include paths. Index and search through the installed headers.
     (use {
-      # Nixpkgs skips the suite because cl_test is not built by default.
-      doCheck = true;
-      preCheck = "make cl_test";
+      doInstallCheck = true;
+      installCheckPhase = ''
+        runHook preInstallCheck
+        $CXX ${./tests/clucene-core.cpp} -I$out/include -I$out/lib \
+          -L$out/lib -Wl,-rpath,$out/lib -lclucene-core -lclucene-shared \
+          -o clucene-check
+        ./clucene-check
+        runHook postInstallCheck
+      '';
     })
   ])
 
