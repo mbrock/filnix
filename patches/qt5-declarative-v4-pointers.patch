@@ -752,3 +752,49 @@ diff -ruN a/src/qml/qml/qqmlnotifier_p.h b/src/qml/qml/qqmlnotifier_p.h
      else
          senderPtr = sender;
  }
+diff -ruN a/src/quick/items/qquickitem.cpp b/src/quick/items/qquickitem.cpp
+--- a/src/quick/items/qquickitem.cpp	2026-09-29 15:58:09.031404453 +0000
++++ b/src/quick/items/qquickitem.cpp	2026-09-29 17:58:52.917685345 +0000
+@@ -9054,7 +9054,11 @@
+     QObjectWrapper::markObjects(that, markStack);
+ }
+ 
++#ifdef __FILC__
++QV4::ReturnedValue QQuickItemPrivate::_q_createJSWrapper(QV4::ExecutionEngine *engine)
++#else
+ quint64 QQuickItemPrivate::_q_createJSWrapper(QV4::ExecutionEngine *engine)
++#endif
+ {
+     return (engine->memoryManager->allocate<QQuickItemWrapper>(q_func()))->asReturnedValue();
+ }
+diff -ruN a/src/quick/items/qquickitem.h b/src/quick/items/qquickitem.h
+--- a/src/quick/items/qquickitem.h	2026-09-29 15:58:09.031404453 +0000
++++ b/src/quick/items/qquickitem.h	2026-09-29 17:58:52.913685308 +0000
+@@ -456,7 +456,12 @@
+ 
+ private:
+     Q_PRIVATE_SLOT(d_func(), void _q_resourceObjectDeleted(QObject *))
++#ifdef __FILC__
++    // Fil-C: returned as a ReturnedValue, which keeps the wrapper's capability.
++    Q_PRIVATE_SLOT(d_func(), QV4::ReturnedValue _q_createJSWrapper(QV4::ExecutionEngine *))
++#else
+     Q_PRIVATE_SLOT(d_func(), quint64 _q_createJSWrapper(QV4::ExecutionEngine *))
++#endif
+ 
+     friend class QQuickEventPoint;
+     friend class QQuickWindow;
+diff -ruN a/src/quick/items/qquickitem_p.h b/src/quick/items/qquickitem_p.h
+--- a/src/quick/items/qquickitem_p.h	2026-09-29 15:58:09.031404453 +0000
++++ b/src/quick/items/qquickitem_p.h	2026-09-29 17:58:52.913685308 +0000
+@@ -315,7 +315,11 @@
+     static void transform_clear(QQmlListProperty<QQuickTransform> *list);
+ 
+     void _q_resourceObjectDeleted(QObject *);
++#ifdef __FILC__
++    QV4::ReturnedValue _q_createJSWrapper(QV4::ExecutionEngine *engine);
++#else
+     quint64 _q_createJSWrapper(QV4::ExecutionEngine *engine);
++#endif
+ 
+     enum ChangeType {
+         Geometry = 0x01,
