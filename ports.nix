@@ -2092,6 +2092,11 @@ in
     }))
   ])
 
+  (for pkgs.ntk [
+    # FLTK-era sources use `register`, an error in Clang's default C++17.
+    (addCFlag "-Wno-register")
+  ])
+
   (for pkgs.capstone [
     # csh is a size_t holding the handle's address, which drops the
     # capability; every call after cs_open trapped.

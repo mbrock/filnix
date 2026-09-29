@@ -732,3 +732,61 @@ decodes key bytes through it, swaps as `void *`, and aligns the reply
 chunks. The module key-metadata API passes pointers as `uint64_t`, so
 modules that store pointers there cannot work under Fil-C; its tests are
 skipped.
+
+## `abort()` ignores a SIGABRT handler
+
+POSIX `abort()` raises SIGABRT, so an installed handler runs first (and
+the process still terminates if it returns). Fil-C's `abort()` stops the
+program with `filc user error: abort(3) called.` without raising, while
+`raise(SIGABRT)` does run the handler:
+
+```c
+signal(SIGABRT, handler);  /* allowed: sigaction returns 0 */
+abort();                   /* handler never runs; SIGTRAP-style panic */
+```
+
+glog's `striplog*` tests catch `LOG(FATAL)`'s abort this way to exit
+normally, so CTest sees an exception where it expects a failure, and the
+port excludes them. The fix belongs in the fork's glibc `abort.c`: raise
+SIGABRT (under the usual rules) before stopping. That is a libc change,
+so it rebuilds everything built with Fil-C; not done here.
+
+The refused signals (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP) make
+`sigaction` fail with `ENOSYS`. glog's `InstallFailureSignalHandler`
+CHECKed every `sigaction`, so any program calling it aborted at startup;
+`patches/glog-filc-refused-signals.patch` skips the refused ones.
+
+## `__builtin_readcyclecounter` is not lowered
+
+Clang reports `__has_builtin(__builtin_readcyclecounter)`, but calling it
+stops the program (`Unhandled intrinsic: llvm.readcyclecounter`), while an
+inline `rdtsc` with `"=a"`/`"=d"` outputs works:
+
+```c
+int main(void) { return (int)__builtin_readcyclecounter() & 0; }
+```
+
+Lowering the intrinsic to the same `rdtsc` should be straightforward in
+FilPizlonator. bc-decaf's RNG and benchmark prefer the builtin; its port
+uses the asm path.
+
+Inline asm is otherwise narrower than Clang accepts: bc-decaf's PIC
+`cpuid` saves `%rbx` by hand (`mov %%rbx, %[r]; cpuid; xchg`), which is
+rejected ("cpuid output ebx not covered by output constraint or
+clobber") though the plain `"=b"` form works, and its x86_64 field
+arithmetic passes memory operands (`"*m"`), which Fil-C never supports.
+The port uses the plain `cpuid` and decaf's portable `arch_ref64`
+arithmetic (`patches/bc-decaf-filc-x86-asm.patch`).
+
+## Found porting capstone: integer handles and pointer options
+
+capstone's handle type `csh` is a `size_t` holding the `cs_struct`
+address, so every call after `cs_open` trapped (all 24 tests).
+`patches/capstone-handle-ptrtable.patch` registers handles in a
+`zexact_ptrtable` and decodes them wherever the library turns a `csh` back
+into a pointer; handle values stay the addresses, so the API and FFI
+bindings are unchanged. `cs_option` also takes pointer-valued options
+(`CS_OPT_MEM`, `CS_OPT_SKIPDATA_SETUP`, `CS_OPT_MNEMONIC`) as `size_t`,
+and the caller's cast drops the capability before the library sees it.
+The patch adds a Fil-C-only `cs_option_ptr(csh, cs_opt_type, void *)`;
+consumers that set those three options must call it instead.
