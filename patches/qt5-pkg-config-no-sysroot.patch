@@ -1,0 +1,27 @@
+diff -ru a/configure.pri b/configure.pri
+--- a/configure.pri	2026-09-29 14:01:25.878399395 +0000
++++ b/configure.pri	2026-09-29 14:01:25.886399469 +0000
+@@ -366,7 +366,9 @@
+         }
+     }
+ 
+-    $$qtConfEvaluate("features.cross_compile") {
++    # Nixpkgs: the wrapped pkg-config already reads the host platform's
++    # .pc files; a sysroot would only prefix their store paths with it.
++    false {
+         # cross compiling, check that pkg-config is set up sanely
+         sysroot = $$config.input.sysroot
+ 
+diff -ru a/mkspecs/features/qt_functions.prf b/mkspecs/features/qt_functions.prf
+--- a/mkspecs/features/qt_functions.prf	2026-09-29 14:01:25.878399395 +0000
++++ b/mkspecs/features/qt_functions.prf	2026-09-29 14:01:45.946583047 +0000
+@@ -265,7 +265,8 @@
+             export(PKG_CONFIG)
+         } else {
+             PKG_CONFIG = pkg-config
+-            !cross_compile {
++            # Nixpkgs: see configure.pri.
++            true {
+                 export(PKG_CONFIG)
+             } else {
+                 # Cross compiling, ensure that pkg-config is set up sanely.
