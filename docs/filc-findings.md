@@ -819,7 +819,9 @@ void f(void) {
 Asio's `unit/execution/any_executor.cpp` compiles in 10 s at `-O0`, but
 at `-O2` (after inlining) it ran for over an hour at 5.7 GB in the asio
 check, and gdb samples were all in `computeFrameIndexMap`'s coloring
-loop. The 50-minute parser above may be the same. The always-live
+loop; the port drops that one test. Doxygen's flex-generated
+`scanner.cpp` takes about 30 minutes. The 50-minute parser above may be
+the same. The always-live
 explicit locals from the GC-roots fix make the graph denser still.
 `patches/fil-c/filpizlonator-frame-coloring-linear.patch` (not compiled
 yet) collects the neighbors' indices once per value and takes the lowest
