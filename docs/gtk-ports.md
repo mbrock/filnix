@@ -69,7 +69,14 @@ target-neutral parts of the port patches, selected by file with `filterdiff`:
 - the scanner's `gdump.c` does the same, builds dumpers with debug
   information, and links them in the build environment;
 - Meson's built-in enum template emits pointer-valued once initialization
-  (`patches/meson-gtype.patch`).
+  (`patches/meson-gtype.patch`);
+- valac always emits pointer-valued once initialization, and its setup hook
+  has release tarballs' pregenerated C regenerated
+  (`patches/vala-pointer-once.patch`);
+- gtkdoc-scangobj's scanner switches on `(guintptr)` GTypes and clears the
+  static-scope bit with `zandptr` (`patches/gtk-doc-scangobj-gtype.patch`).
+  Ports that disabled gtk-doc for want of this (polkit, Graphene) could
+  enable it again.
 
 The scanner compiles each dumper with the Fil-C compiler and runs it directly,
 resolving its libraries with an absolute `ldd`. The Fil-C GI port above still

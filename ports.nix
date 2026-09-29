@@ -2788,6 +2788,10 @@ in
     ];
   }
 
+  (for pkgs.cogl [
+    (patch ./patches/cogl-gtype.patch)
+  ])
+
   (for pkgs.libgsf [
     (patch ./patches/libgsf-gtype-switch.patch)
     # Every test is skipped without unzip on PATH.
@@ -2816,6 +2820,7 @@ in
     # The build valac has the same patch (ports/build-tools.nix), and its
     # setup hook has the shipped C regenerated.
     (patch ./patches/vala-pointer-once.patch)
+    (patch ./patches/vala-gen-introspect-gtype.patch)
   ])
 
   (for pkgs.dconf [

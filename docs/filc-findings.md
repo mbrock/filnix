@@ -732,3 +732,61 @@ decodes key bytes through it, swaps as `void *`, and aligns the reply
 chunks. The module key-metadata API passes pointers as `uint64_t`, so
 modules that store pointers there cannot work under Fil-C; its tests are
 skipped.
+
+## GType in integer storage cannot be fixed in GLib's headers
+
+GType is a pointer under Fil-C's GLib, and the common pre-2.80 idiom keeps
+it in `gsize` once storage:
+
+```c
+static gsize id = 0;
+if (g_once_init_enter (&id)) {
+  GType t = g_type_register_static (...);
+  g_once_init_leave (&id, t);
+}
+return id;
+```
+
+clang rejects the store and the `return` (`-Wint-conversion` is an error),
+and a cast would not help: an integer load never carries a capability, so
+the returned GType would trap on first use. GLib's macros cannot repair
+this, since the storage and the `return` belong to the caller; each
+generator or hand-written `get_type` has to store a GType and use
+`g_once_init_enter_pointer`/`g_once_init_leave_pointer` (or
+`G_DEFINE_*_TYPE`, which the GLib port keeps pointer-valued at every API
+ceiling). The same goes for `switch` on a GType (switch on its
+`(guintptr)` value) and for clearing `G_SIGNAL_TYPE_STATIC_SCOPE` (use
+`zandptr`).
+
+Generators that write such C for the package being built are patched in
+`ports/build-tools.nix`, so every consumer benefits:
+
+- valac used the gsize path below `--target-glib=2.80`, for type
+  registration and for regex literals (`patches/vala-pointer-once.patch`).
+  Autotools release tarballs ship C that an older valac generated, so the
+  build valac's setup hook deletes `*_vala.stamp`/`*.vala.stamp` before
+  configure and make regenerates it. libgee's 1,318 test cases pass.
+- gtkdoc-scangobj's scanner program switched on GTypes and masked the
+  static-scope bit with `&` (`patches/gtk-doc-scangobj-gtype.patch`).
+
+Packages with their own copies take per-package patches: libmbim (boxed
+types and mkenums templates), Cogl (`get_gtype` macros and templates),
+libgsf and vala-gen-introspect (switches).
+
+## Found by Fil-C: gpgscm rebased a string port cursor across buffers
+
+GnuPG's test interpreter (`tests/gpgscm/scheme.c`, from TinyScheme) grows
+a string port with `curr -= start - str`. The address lands in the new
+buffer, but the pointer still derives from the old one, freed on the next
+line, so the next write trapped (`t-child.scm`), as in FFmpeg's flashsv2
+above. `patches/gnupg-gpgscm-port-realloc.patch` writes
+`str + (curr - start)`.
+
+## `rep; bsf` is rejected in inline assembly
+
+libgcrypt's OCB mode counts trailing zeros with
+`asm ("rep;bsfl %k[low], %k[ntz]" ...)` (the `tzcnt` encoding) even with
+`--disable-asm`, and FilPizlonator stops the program on it ("unsupported
+mnemonic for safe inline asm: rep"); gnupg's `t-protect` hit it. Upstream
+Fil-C's libgcrypt port guards this, Keccak's and `longlong.h`'s asm with
+`ASM_DISABLED`; `ports/patch/libgcrypt-1.12.2.patch` is that port rebased.
