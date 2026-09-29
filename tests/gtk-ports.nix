@@ -41,13 +41,17 @@ assert build.gobject-introspection-unwrapped.version == gi.version;
 assert !(hasPatch "glib-filc-generators.patch" pkgs.glib);
 assert !(hasPatch "meson-gtype.patch" pkgs.meson);
 # The twins are only tools: native libraries in the Fil-C build set link the
-# ordinary GLib, so they match the native set (and cache.nixos.org).
+# ordinary GLib and GI, so they match the native set (and cache.nixos.org).
 assert builtins.all (name: build.${name}.drvPath == pkgs.${name}.drvPath) [
   "pango"
   "gtk3"
   "glibmm"
   "cairo"
+  "sdl2-compat"
 ];
+assert
+  build.python3Packages.pygobject3.drvPath
+  == pkgs.python3Packages.pygobject3.drvPath;
 assert usesTool build.glib ports.gtk3;
 assert usesTool build.meson ports.gtk4;
 assert containsDrv python gi.buildInputs;

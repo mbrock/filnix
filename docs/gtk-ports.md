@@ -45,19 +45,26 @@ path. All 60 introspection tests pass.
 
 Consumers run build-platform generators, as in any Nixpkgs cross build, but
 those generators are made for their Fil-C target. `ports/build-tools.nix`
-overrides GLib, gobject-introspection and Meson only in the package set whose
-target is Fil-C (`pkgsFilc.buildPackages`). Splicing selects that set for
-`nativeBuildInputs`, so ordinary `callPackage` consumers receive these tools,
-and the native package set stays unchanged.
+patches Meson in the package set whose target is Fil-C
+(`pkgsFilc.buildPackages`) and builds GLib and gobject-introspection twins
+from it. The twins are named only in the Fil-C set's view of that set
+(`pkgsFilc.pkgsBuildHost`, which `buildPackages` and splicing read), so
+ordinary `callPackage` consumers receive these tools in
+`nativeBuildInputs`, while native packages inside the set still link the
+ordinary GLib and match the native package set.
 
-One side effect: every native package in that set that links GLib is rebuilt,
-so it no longer matches the same package in its own `buildPackages`. Qt 5
-noticed. Its qmake hook comes from `buildPackages`, so native Qt modules such
-as qtsvg (which Fil-C packages reach through `wrapQtAppsHook` → qtwayland →
-qtdeclarative) saw two qtbases, and qtbase's setup hook stopped with
-"detected mismatched Qt dependencies". Qt's generators emit no GType code, so
-that set now uses the ordinary native `qt5`/`libsForQt5`, which also comes
-from cache.nixos.org.
+The twins used to replace `glib` for the whole set. Every native library
+there that links GLib was then rebuilt against GLib 2.80.4, off
+cache.nixos.org: Pango 1.57 wants GLib 2.82, so `pangocairo` and
+`gtk+-3.0` had no usable pkg-config (libdecor, i3), glibmm-based libxml++
+tests exited 127, and gjs's debugger tests failed. Fil-C packages reached
+them through tools such as `sdl2-config` (SDL → PipeWire → FFADO →
+libxml++) and fontforge (DejaVu → fontconfig). Qt is still aliased to the
+native set's: its qmake hook comes from `buildPackages`, whose qtbase is
+not this set's even without the twins, so native Qt modules such as qtsvg
+(reached through `wrapQtAppsHook` → qtwayland → qtdeclarative) saw two
+qtbases and qtbase's setup hook stopped with "detected mismatched Qt
+dependencies". Qt's generators emit no GType code.
 
 GLib and gobject-introspection there are native twins of the ports, at the
 same versions (2.80.4 and 1.80.1). Newer generators emit APIs the target GLib

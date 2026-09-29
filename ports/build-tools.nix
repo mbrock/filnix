@@ -130,9 +130,10 @@ let
     in
     {
       inherit glib gobject-introspection-unwrapped;
-      gobject-introspection = bh.gobject-introspection.override {
-        inherit gobject-introspection-unwrapped;
-      };
+      # The Fil-C-targeted wrapper, which the set itself no longer names.
+      gobject-introspection = bh.callPackage (
+        bh.path + "/pkgs/development/libraries/gobject-introspection/wrapper.nix"
+      ) { inherit gobject-introspection-unwrapped; };
     };
 in
 if prev.stdenv.targetPlatform.isFilc && !prev.stdenv.hostPlatform.isFilc then
@@ -154,6 +155,19 @@ if prev.stdenv.targetPlatform.isFilc && !prev.stdenv.hostPlatform.isFilc then
     libsForQt5 = final.buildPackages.libsForQt5;
     qt6 = final.buildPackages.qt6;
     qt6Packages = final.buildPackages.qt6Packages;
+    # Likewise the gobject-introspection wrapper: with a Fil-C target it
+    # wraps the scanner for cross use and propagates the Fil-C GI, so native
+    # libraries here that link GI (PyGObject, and through it graphene, GTK 4,
+    # GStreamer, PipeWire, SDL) left the cache. Fil-C packages get the
+    # twin's wrapper from `twins` below.
+    gobject-introspection = final.buildPackages.gobject-introspection;
+    # PyGObject adds Python's pkg-config path when host != target, meaning
+    # when cross-compiled (NixOS/nixpkgs#378447); here that holds natively.
+    pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+      (_: pyprev: {
+        pygobject3 = pyprev.pygobject3.overrideAttrs { preConfigure = ""; };
+      })
+    ];
   }
 else if
   prev.stdenv.hostPlatform.isFilc && !prev.stdenv.buildPlatform.isFilc

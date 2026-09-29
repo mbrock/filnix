@@ -52,6 +52,22 @@ in
     (patch ./patches/mypyc-filc-pointer-cpyptr.patch)
   ])
 
+  (for "django" [
+    (use (old: {
+      # The XML deserializer's complexity check times one parse of a
+      # one-character field against a 1000-character one and requires the
+      # ratio to stay under 2. Both take microseconds, so on a loaded builder
+      # the ratio is noise (3.4 in a campaign). The varying-depth check,
+      # averaged over four ratios of larger inputs, still runs.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace tests/serializers/test_deserialization.py \
+          --replace-fail \
+            'assertFactor("constant depth, varying length", [(100, 1), (100, 1000)], 2)' \
+            ""
+      '';
+    }))
+  ])
+
   (for "cffi" [
     (patch ./patches/cffi-filc.patch)
     (use (old: {

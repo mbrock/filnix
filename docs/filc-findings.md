@@ -732,3 +732,41 @@ decodes key bytes through it, swaps as `void *`, and aligns the reply
 chunks. The module key-metadata API passes pointers as `uint64_t`, so
 modules that store pointers there cannot work under Fil-C; its tests are
 skipped.
+
+## Target-dependent tool twins leaked into native libraries
+
+Not a Fil-C bug but a packaging one. `ports/build-tools.nix` builds GLib
+2.80.4 and gobject-introspection 1.80.1 twins whose generators emit
+pointer-GType C for Fil-C. They replaced `glib` for the whole package set
+whose target is Fil-C (`pkgsFilc.buildPackages`), so every native library
+there that links GLib was rebuilt against 2.80.4 and fell off
+cache.nixos.org. Where it needed more, it broke: Pango 1.57's pkg-config
+file wants GLib 2.82, so `pangocairo`/`gtk+-3.0` lookups failed (libdecor,
+i3, pangomm), glibmm-based libxml++ tests exited 127, gjs's debugger tests
+failed. Fil-C packages reached these through build tools, e.g.
+`sdl2-config` (native SDL → PipeWire → FFADO → libxml++) or fontforge
+(DejaVu → fontconfig), so one campaign had them blocking hundreds of
+packages. The Graphviz alias worked around one instance.
+
+Fixed: the twins are named only in the Fil-C set's `pkgsBuildHost`
+attribute, which splicing and `buildPackages` read; native packages inside
+that set keep the ordinary GLib. The twins' own derivations are unchanged,
+and `tests/gtk-ports.nix` checks that native Pango, GTK 3, glibmm and cairo
+there match the native package set. Fil-C packages whose build tools link
+GLib (anything under fontconfig, for DejaVu's fontforge) rebuild once.
+
+The Python ports' `packageOverrides` reach the build Python in the same
+way. The PyGObject pin, which matches the Fil-C GI, is now applied only
+when Python's host is Fil-C (`filcOnly` in `pyports.nix`). Natively,
+3.48.2 failed to compile its regress test library (`_GI_TEST_EXTERN`);
+the build Python now has Nixpkgs' PyGObject.
+
+Still open: the build Python for Fil-C (`python3.pythonOnBuildForHost`)
+is not the cached native Python 3.12 either. CPython's passthru forwards
+every scalar override argument to its build-platform splices, so the Fil-C
+port's `enableLTO = false` drops `--with-lto` there too, and the whole
+native Python 3.12 package set is rebuilt (Django's timing-ratio test then
+failed on a loaded builder; `pyports.nix` now drops that one noisy ratio).
+Expressing the LTO change without an override argument would put that set
+back on cache.nixos.org, but changes the Fil-C Python derivation and so
+every Fil-C Python package.
