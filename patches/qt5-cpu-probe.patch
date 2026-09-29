@@ -1,0 +1,85 @@
+--- a/src/corelib/tools/qsimd.cpp	2026-09-29 15:10:58.941509580 +0000
++++ b/src/corelib/tools/qsimd.cpp	2026-09-29 15:10:59.005510165 +0000
+@@ -219,12 +219,19 @@
+ # endif
+ 
+     int result;
++#  ifdef __FILC__
++    // Fil-C lowers only the canonical CPUID form (all four outputs).
++    uint b, c, d;
++    Q_UNUSED(tmp1);
++    asm volatile ("cpuid" : "=a" (result), "=b" (b), "=c" (c), "=d" (d) : "a" (0), "c" (0));
++#  else
+     asm ("xchg " PICreg", %1\n"
+          "cpuid\n"
+          "xchg " PICreg", %1\n"
+         : "=&a" (result), "=&r" (tmp1)
+         : "0" (0)
+         : "ecx", "edx");
++#  endif
+     return result;
+ #elif defined(Q_OS_WIN)
+     // Use the __cpuid function; if the CPUID instruction isn't supported, it will return 0
+@@ -243,12 +250,17 @@
+ static void cpuidFeatures01(uint &ecx, uint &edx)
+ {
+ #if defined(Q_CC_GNU) && !defined(Q_CC_EMSCRIPTEN)
++#  ifdef __FILC__
++    uint a, b;
++    asm volatile ("cpuid" : "=a" (a), "=b" (b), "=c" (ecx), "=d" (edx) : "a" (1), "c" (0));
++#  else
+     qregisterint tmp1;
+     asm ("xchg " PICreg", %2\n"
+          "cpuid\n"
+          "xchg " PICreg", %2\n"
+         : "=&c" (ecx), "=&d" (edx), "=&r" (tmp1)
+         : "a" (1));
++#  endif
+ #elif defined(Q_OS_WIN)
+     int info[4];
+     __cpuid(info, 1);
+@@ -275,11 +287,19 @@
+     qregisteruint rbx; // in case it's 64-bit
+     qregisteruint rcx = 0;
+     qregisteruint rdx = 0;
++#  ifdef __FILC__
++    uint a, b, c, d;
++    asm volatile ("cpuid" : "=a" (a), "=b" (b), "=c" (c), "=d" (d) : "a" (7), "c" (0));
++    rbx = b;
++    rcx = c;
++    rdx = d;
++#  else
+     asm ("xchg " PICreg", %0\n"
+          "cpuid\n"
+          "xchg " PICreg", %0\n"
+         : "=&r" (rbx), "+&c" (rcx), "+&d" (rdx)
+         : "a" (7));
++#  endif
+     ebx = rbx;
+     ecx = rcx;
+     edx = rdx;
+@@ -309,7 +329,12 @@
+ static void xgetbv(uint in, uint &eax, uint &edx)
+ {
+ #if (defined(Q_CC_GNU) && !defined(Q_CC_EMSCRIPTEN)) || defined(Q_CC_GHS)
++#  ifdef __FILC__
++    // Fil-C lowers xgetbv spelled as an instruction, not as raw bytes.
++    asm ("xgetbv"
++#  else
+     asm (".byte 0x0F, 0x01, 0xD0" // xgetbv instruction
++#  endif
+         : "=a" (eax), "=d" (edx)
+         : "c" (in));
+ #elif defined(Q_OS_WIN)
+@@ -381,6 +406,11 @@
+         features &= ~AllAVX512;
+     }
+ 
++#ifdef __FILC__
++    // Fil-C has no lowering for the RDRAND and RDSEED intrinsics; they stop
++    // the program. QRandomGenerator then reads the kernel's generator.
++    features &= ~(CpuFeatureRDRND | CpuFeatureRDSEED);
++#endif
+     if (features & CpuFeatureRDRND && !checkRdrndWorks())
+         features &= ~(CpuFeatureRDRND | CpuFeatureRDSEED);
+ 

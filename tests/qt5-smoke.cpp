@@ -36,6 +36,8 @@ private:
   int m_value = 0;
 };
 
+static int square(int x) { return x * x; }
+
 static int core() {
   Counter a, b;
   QObject::connect(&a, &Counter::valueChanged, &b, &Counter::setValue);
@@ -83,7 +85,7 @@ static int core() {
   // Threads, queued connections and the event loop.
   QList<int> in;
   for (int i = 0; i < 200; ++i) in << i;
-  QList<int> out = QtConcurrent::blockingMapped(in, [](int x) { return x * x; });
+  QList<int> out = QtConcurrent::blockingMapped(in, square);
   CHECK(out[199] == 199 * 199);
   QThread worker;
   Counter remote;

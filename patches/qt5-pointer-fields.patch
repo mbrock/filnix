@@ -1,0 +1,231 @@
+diff -ru i/src/corelib/itemmodels/qabstractitemmodel.h j/src/corelib/itemmodels/qabstractitemmodel.h
+--- a/src/corelib/itemmodels/qabstractitemmodel.h	2026-09-29 15:34:55.846658381 +0000
++++ b/src/corelib/itemmodels/qabstractitemmodel.h	2026-09-29 15:34:56.082660543 +0000
+@@ -57,12 +57,12 @@
+ {
+     friend class QAbstractItemModel;
+ public:
+-    Q_DECL_CONSTEXPR inline QModelIndex() noexcept : r(-1), c(-1), i(0), m(nullptr) {}
++    Q_DECL_CONSTEXPR inline QModelIndex() noexcept : r(-1), c(-1), i(nullptr), m(nullptr) {}
+     // compiler-generated copy/move ctors/assignment operators are fine!
+     Q_DECL_CONSTEXPR inline int row() const noexcept { return r; }
+     Q_DECL_CONSTEXPR inline int column() const noexcept { return c; }
+-    Q_DECL_CONSTEXPR inline quintptr internalId() const noexcept { return i; }
+-    inline void *internalPointer() const noexcept { return reinterpret_cast<void*>(i); }
++    inline quintptr internalId() const noexcept { return reinterpret_cast<quintptr>(i); }
++    inline void *internalPointer() const noexcept { return i; }
+     inline QModelIndex parent() const;
+     inline QModelIndex sibling(int row, int column) const;
+     inline QModelIndex siblingAtColumn(int column) const;
+@@ -78,20 +78,22 @@
+         { return (other.r == r) && (other.i == i) && (other.c == c) && (other.m == m); }
+     Q_DECL_CONSTEXPR inline bool operator!=(const QModelIndex &other) const noexcept
+         { return !(*this == other); }
+-    Q_DECL_CONSTEXPR inline bool operator<(const QModelIndex &other) const noexcept
++    inline bool operator<(const QModelIndex &other) const noexcept
+         {
+             return  r <  other.r
+                 || (r == other.r && (c <  other.c
+-                                 || (c == other.c && (i <  other.i
++                                 || (c == other.c && (internalId() <  other.internalId()
+                                                   || (i == other.i && std::less<const QAbstractItemModel *>()(m, other.m))))));
+         }
+ private:
+     inline QModelIndex(int arow, int acolumn, void *ptr, const QAbstractItemModel *amodel) noexcept
+-        : r(arow), c(acolumn), i(reinterpret_cast<quintptr>(ptr)), m(amodel) {}
+-    Q_DECL_CONSTEXPR inline QModelIndex(int arow, int acolumn, quintptr id, const QAbstractItemModel *amodel) noexcept
+-        : r(arow), c(acolumn), i(id), m(amodel) {}
++        : r(arow), c(acolumn), i(ptr), m(amodel) {}
++    inline QModelIndex(int arow, int acolumn, quintptr id, const QAbstractItemModel *amodel) noexcept
++        : r(arow), c(acolumn), i(reinterpret_cast<void *>(id)), m(amodel) {}
+     int r, c;
+-    quintptr i;
++    // Fil-C: a pointer rather than quintptr, so that internalPointer() keeps
++    // its capability. internalId() is its address.
++    void *i;
+     const QAbstractItemModel *m;
+ };
+ Q_DECLARE_TYPEINFO(QModelIndex, Q_MOVABLE_TYPE);
+diff -ru i/src/corelib/thread/qmutex.h j/src/corelib/thread/qmutex.h
+--- a/src/corelib/thread/qmutex.h	2026-09-29 15:34:55.834658271 +0000
++++ b/src/corelib/thread/qmutex.h	2026-09-29 15:34:56.082660543 +0000
+@@ -251,11 +251,11 @@
+     {
+         Q_ASSERT_X((reinterpret_cast<quintptr>(m) & quintptr(1u)) == quintptr(0),
+                    "QMutexLocker", "QMutex pointer is misaligned");
+-        val = quintptr(m);
++        val = reinterpret_cast<char *>(m);
+         if (Q_LIKELY(m)) {
+             // call QMutex::lock() instead of QBasicMutex::lock()
+             static_cast<QMutex *>(m)->lock();
+-            val |= 1;
++            val += 1;
+         }
+     }
+     explicit QMutexLocker(QRecursiveMutex *m) QT_MUTEX_LOCK_NOEXCEPT
+@@ -268,8 +268,8 @@
+ 
+     inline void unlock() noexcept
+     {
+-        if ((val & quintptr(1u)) == quintptr(1u)) {
+-            val &= ~quintptr(1u);
++        if ((quintptr(val) & quintptr(1u)) == quintptr(1u)) {
++            val -= 1;
+             mutex()->unlock();
+         }
+     }
+@@ -277,9 +277,9 @@
+     inline void relock() QT_MUTEX_LOCK_NOEXCEPT
+     {
+         if (val) {
+-            if ((val & quintptr(1u)) == quintptr(0u)) {
++            if ((quintptr(val) & quintptr(1u)) == quintptr(0u)) {
+                 mutex()->lock();
+-                val |= quintptr(1u);
++                val += 1;
+             }
+         }
+     }
+@@ -291,7 +291,7 @@
+ 
+     inline QMutex *mutex() const
+     {
+-        return reinterpret_cast<QMutex *>(val & ~quintptr(1u));
++        return reinterpret_cast<QMutex *>(val - (quintptr(val) & quintptr(1u)));
+     }
+ 
+ #if defined(Q_CC_MSVC)
+@@ -301,7 +301,9 @@
+ private:
+     Q_DISABLE_COPY(QMutexLocker)
+ 
+-    quintptr val;
++    // Fil-C: a pointer, so that it keeps the mutex's capability; the low bit
++    // (locked) is set and cleared with pointer arithmetic.
++    char *val;
+ };
+ 
+ #else // !QT_CONFIG(thread) && !Q_CLANG_QDOC
+diff -ru i/src/corelib/thread/qreadwritelock.h j/src/corelib/thread/qreadwritelock.h
+--- a/src/corelib/thread/qreadwritelock.h	2026-09-29 15:34:55.826658198 +0000
++++ b/src/corelib/thread/qreadwritelock.h	2026-09-29 15:34:56.082660543 +0000
+@@ -92,8 +92,8 @@
+     inline void unlock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(1u)) {
+-                q_val &= ~quintptr(1u);
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(1u)) {
++                q_val -= 1;
+                 readWriteLock()->unlock();
+             }
+         }
+@@ -102,25 +102,27 @@
+     inline void relock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(0u)) {
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(0u)) {
+                 readWriteLock()->lockForRead();
+-                q_val |= quintptr(1u);
++                q_val += 1;
+             }
+         }
+     }
+ 
+     inline QReadWriteLock *readWriteLock() const
+-    { return reinterpret_cast<QReadWriteLock *>(q_val & ~quintptr(1u)); }
++    { return reinterpret_cast<QReadWriteLock *>(q_val - (quintptr(q_val) & quintptr(1u))); }
+ 
+ private:
+     Q_DISABLE_COPY(QReadLocker)
+-    quintptr q_val;
++    // Fil-C: a pointer, so that it keeps the lock's capability; the low bit
++    // (locked) is set and cleared with pointer arithmetic.
++    char *q_val;
+ };
+ 
+ inline QReadLocker::QReadLocker(QReadWriteLock *areadWriteLock)
+-    : q_val(reinterpret_cast<quintptr>(areadWriteLock))
++    : q_val(reinterpret_cast<char *>(areadWriteLock))
+ {
+-    Q_ASSERT_X((q_val & quintptr(1u)) == quintptr(0),
++    Q_ASSERT_X((quintptr(q_val) & quintptr(1u)) == quintptr(0),
+                "QReadLocker", "QReadWriteLock pointer is misaligned");
+     relock();
+ }
+@@ -136,8 +138,8 @@
+     inline void unlock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(1u)) {
+-                q_val &= ~quintptr(1u);
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(1u)) {
++                q_val -= 1;
+                 readWriteLock()->unlock();
+             }
+         }
+@@ -146,26 +148,28 @@
+     inline void relock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(0u)) {
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(0u)) {
+                 readWriteLock()->lockForWrite();
+-                q_val |= quintptr(1u);
++                q_val += 1;
+             }
+         }
+     }
+ 
+     inline QReadWriteLock *readWriteLock() const
+-    { return reinterpret_cast<QReadWriteLock *>(q_val & ~quintptr(1u)); }
++    { return reinterpret_cast<QReadWriteLock *>(q_val - (quintptr(q_val) & quintptr(1u))); }
+ 
+ 
+ private:
+     Q_DISABLE_COPY(QWriteLocker)
+-    quintptr q_val;
++    // Fil-C: a pointer, so that it keeps the lock's capability; the low bit
++    // (locked) is set and cleared with pointer arithmetic.
++    char *q_val;
+ };
+ 
+ inline QWriteLocker::QWriteLocker(QReadWriteLock *areadWriteLock)
+-    : q_val(reinterpret_cast<quintptr>(areadWriteLock))
++    : q_val(reinterpret_cast<char *>(areadWriteLock))
+ {
+-    Q_ASSERT_X((q_val & quintptr(1u)) == quintptr(0),
++    Q_ASSERT_X((quintptr(q_val) & quintptr(1u)) == quintptr(0),
+                "QWriteLocker", "QReadWriteLock pointer is misaligned");
+     relock();
+ }
+diff -ru i/src/corelib/tools/qmap.h j/src/corelib/tools/qmap.h
+--- a/src/corelib/tools/qmap.h	2026-09-29 15:34:55.842658345 +0000
++++ b/src/corelib/tools/qmap.h	2026-09-29 15:34:56.082660543 +0000
+@@ -78,7 +78,9 @@
+ 
+ struct Q_CORE_EXPORT QMapNodeBase
+ {
+-    quintptr p;
++    // Fil-C: the parent pointer, with the colour in bit 0. A pointer rather
++    // than quintptr, so that it keeps the parent's capability.
++    char *p;
+     QMapNodeBase *left;
+     QMapNodeBase *right;
+ 
+@@ -90,10 +92,10 @@
+     const QMapNodeBase *previousNode() const;
+     QMapNodeBase *previousNode() { return const_cast<QMapNodeBase *>(const_cast<const QMapNodeBase *>(this)->previousNode()); }
+ 
+-    Color color() const { return Color(p & 1); }
+-    void setColor(Color c) { if (c == Black) p |= Black; else p &= ~Black; }
+-    QMapNodeBase *parent() const { return reinterpret_cast<QMapNodeBase *>(p & ~Mask); }
+-    void setParent(QMapNodeBase *pp) { p = (p & Mask) | quintptr(pp); }
++    Color color() const { return Color(quintptr(p) & 1); }
++    void setColor(Color c) { p += quintptr(c == Black) - (quintptr(p) & 1); }
++    QMapNodeBase *parent() const { return reinterpret_cast<QMapNodeBase *>(p - (quintptr(p) & Mask)); }
++    void setParent(QMapNodeBase *pp) { p = reinterpret_cast<char *>(pp) + (quintptr(p) & Mask); }
+ 
+     template <typename T>
+     static typename std::enable_if<QTypeInfo<T>::isComplex>::type

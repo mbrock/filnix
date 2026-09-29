@@ -4,6 +4,9 @@
 qfinal: qprev: {
   qtbase =
     (qprev.qtbase.override {
+      # The GTK 3 port has no X11 backend, and Qt's GTK 3 platform theme
+      # (native file dialogs and styling) includes <gdk/gdkx.h>.
+      withGtk3 = false;
       # The xcb platform plugin needs libxkbcommon-x11, which the shared
       # libxkbcommon port leaves out (-Denable-x11=false). Its X11 tests
       # (which need Xvfb) find their cases through __start_/__stop_ section
@@ -31,6 +34,18 @@ qfinal: qprev: {
           # .qtversion section as module-level assembly, which crashes the
           # Fil-C compiler. The header is installed, so this covers users too.
           ../patches/qt5-no-version-tagging.patch
+          # QtCore's CPU feature probe saves %rbx around CPUID and spells
+          # XGETBV as bytes; Fil-C only lowers the canonical forms. RDRAND
+          # has no lowering, so leave it to the kernel's generator.
+          ../patches/qt5-cpu-probe.patch
+          # QProcess's forkfd probes waitid(P_PIDFD) and clone(CLONE_PIDFD)
+          # through syscall(), which Fil-C refuses by stopping the program.
+          ../patches/qt5-forkfd-fork.patch
+          # QMutexLocker, QReadLocker and QWriteLocker keep their lock's
+          # address in a quintptr with a "locked" bit, QMap nodes their parent
+          # with the colour bit, and QModelIndex its internal pointer. Integer
+          # fields lose the capability, so these are pointers now.
+          ../patches/qt5-pointer-fields.patch
         ];
         # Nixpkgs configures a cross qtbase with the linux-generic-g++ device
         # spec and CROSS_COMPILE=${targetPrefix}. Fil-C's compiler has no
@@ -55,4 +70,21 @@ qfinal: qprev: {
           EOF
         '';
       });
+
+  qtdeclarative = qprev.qtdeclarative.overrideAttrs (old: {
+    # The V4 JIT writes machine code at run time; use the interpreter.
+    qmakeFlags = (old.qmakeFlags or [ ]) ++ [
+      "--"
+      "-no-feature-qml-jit"
+    ];
+  });
+
+  qttools = qprev.qttools.overrideAttrs (old: {
+    # libclang and libllvm are only for qdoc, which Qt then leaves out;
+    # they would be a Fil-C build of LLVM.
+    buildInputs = [ ];
+    patches = builtins.filter (
+      p: !pkgs.lib.hasInfix "libclang-main-header" (toString p)
+    ) old.patches;
+  });
 }
