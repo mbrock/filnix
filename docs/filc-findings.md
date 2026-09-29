@@ -851,5 +851,6 @@ Two more pieces of the engine needed changes. `EngineBase` is
 `ExecutionEngine`'s constructor); it is unpacked under Fil-C. And the
 bytecode dumper, one ~540-line function with a case per instruction
 (`QV4_SHOW_BYTECODE` only), did not finish compiling in 25 minutes at
-4 GB, with or without computed gotos; it is left out. The interpreter
-itself compiles in a few minutes once it dispatches with a `switch`.
+4 GB, with or without computed gotos; it is left out. The patch also
+makes the interpreter dispatch with a `switch` instead of computed gotos;
+it then compiles in minutes (the computed-goto version was not timed).
