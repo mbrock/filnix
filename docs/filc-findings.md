@@ -732,3 +732,84 @@ decodes key bytes through it, swaps as `void *`, and aligns the reply
 chunks. The module key-metadata API passes pointers as `uint64_t`, so
 modules that store pointers there cannot work under Fil-C; its tests are
 skipped.
+
+## Inline assembly spelled as `.byte` or alignment directives is refused
+
+FilPizlonator validates each inline instruction, so raw opcode bytes and
+assembler directives stop the program when the code runs:
+
+```c
+__asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=d"(d), "=a"(a) : "c"(0)); /* xgetbv */
+__asm__(".p2align 5");
+```
+
+libdeflate's CPU detection used the first form, so every compression,
+decompression and checksum call trapped (6 of its 8 tests). Spelling it
+`xgetbv` works (`patches/libdeflate-xgetbv.patch`, as for FLAC). p7zip
+bundles an older zstd whose loop-alignment `.p2align` directives stopped
+7-Zip on any zstd archive; `patches/p7zip-zstd-p2align.patch` skips them
+under `__FILC__`, as `ports/patch/zstd-1.5.7.patch` does for zstd itself.
+
+## ALSA's 0.9 API needs symbol versions
+
+`ALSA_PCM_OLD_HW_PARAMS_API` makes `<alsa/pcm_old.h>` bind
+`snd_pcm_hw_params_get_rate_min` and friends to `@ALSA_0.9` with `.symver`.
+The Fil-C alsa-lib is built `--without-versioned`, so those references do
+not resolve and the link fails (TiMidity++). Porting the caller to the
+1.0 API fixes it (`patches/timidity-alsa-new-api.patch`). The unversioned
+library exports only the 1.0 functions under the plain names, so a
+caller that loses its `.symver` would silently call the wrong ABI.
+
+Opening an ALSA PCM device through the default configuration also stops the
+program: `snd_config_hooks` loads its hook libraries with `snd_dlopen`, which
+calls `dladdr1` for the library's own path, and Fil-C reports `dladdr1 not
+yet supported`. TiMidity++ with `-Os` hits it; file output (`-Ow`) works.
+
+## Found by Fil-C: pointers in TiMidity++'s `long` event values
+
+TiMidity++'s `CtlEvent` carries values as `long`, and `CTLE_NOW_LOADING`
+and `CTLE_PROGRAM` store string pointers there. Even `-Ow` (write a WAV)
+trapped in the dumb interface when it printed the file name.
+`patches/timidity-ctl-event-pointers.patch` adds pointer union members for
+those two fields and uses them in the playback code and the interfaces
+Nixpkgs builds (dumb, ncurses). The other interfaces still read pointers
+from the integers.
+
+## Found by Fil-C: small bugs in mhash's and libcdio's tests and code
+
+- mhash's `hmac_test` and `keygen_test` `memset` a buffer right after
+  freeing it (`patches/mhash-test-use-after-free.patch`).
+- libcdio's `iso9660_ifs_fuzzy_read_superblock` runs `strstr` over a
+  2352-byte frame buffer that a raw read fills completely, so it reads past
+  the end (`check_fuzzyiso.sh`; `patches/libcdio-fuzzy-superblock-nul.patch`).
+- libcdio keeps `iso_rock_statbuf_t`, an in-memory struct with a
+  `char *psz_symlink`, inside `#pragma pack(1)` regions, which puts the
+  pointer at offset 29. Every ISO 9660 stat trapped on the misaligned
+  pointer store. `patches/libcdio-rock-statbuf-unpacked.patch` lays that
+  struct out naturally under Fil-C.
+
+## Fil-C C++ uses libc++
+
+Nixpkgs builds Linux C++ against libstdc++, so packages that rely on
+libstdc++ behaviour fail only here. libc++ 19 removed the
+`std::char_traits` base template, and SFML 2.6 uses
+`std::basic_string<Uint8/16/32>` in its public `sf::String` API.
+`patches/sfml2-libcxx-char-traits.patch` defines traits for those types in
+`String.hpp`, after the FreeBSD port. libc++'s `<string.h>` also brings in
+`uint64_t`, which broke p7zip's own `typedef UInt64 uint64_t`
+(`patches/p7zip-hash-stdint.patch`).
+
+## Cross-compilation defaults that break Fil-C builds
+
+The Fil-C package set is a cross build with an empty target prefix, so
+some Nixpkgs recipes misbehave:
+
+- p7zip's recipe replaces `CC=gcc` with `CC=${targetPrefix}gcc` when
+  cross-compiling, leaving `gcc`, which does not exist (`Error 127`). The
+  port passes `CC=clang CXX=clang++`.
+- Autoconf's `AC_FUNC_MALLOC` cannot run its probe, assumes `malloc(0)`
+  returns NULL and renames `malloc` to `rpl_malloc`, which mhash does not
+  define. The port sets `ac_cv_func_malloc_0_nonnull=yes`.
+- minizip builds from `zlib.src`, and the Fil-C zlib is pinned to 1.3, which
+  lacks the `ints.h` that Nixpkgs' patch installs. minizip now builds from
+  Nixpkgs' own zlib source.
