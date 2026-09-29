@@ -106,6 +106,36 @@ let
 
     meson = for prev.meson [ (patch ../patches/meson-gtype.patch) ];
   };
+
+  # Qt 5 as seen from Fil-C nativeBuildInputs (see qt5 below). The native
+  # modules' setup hooks register their qtbase, and the Fil-C qtbase's hook
+  # then fails with "detected mismatched Qt dependencies"; with qttools
+  # (lrelease) or wrapQtAppsHook in nativeBuildInputs, every Fil-C Qt 5
+  # program did. Give Fil-C builds only the modules' programs, and the
+  # Fil-C scope's own qmake and wrapQtAppsHook hooks, which bring the Fil-C
+  # qtbase (its qmake, moc, uic and rcc run on the build machine). The
+  # native scope itself is unchanged, so native Qt packages still build
+  # against the native Qt.
+  qtToolsOnly =
+    m:
+    prev.runCommand "${m.name}-programs" { outputs = m.outputs or [ "out" ]; } (
+      lib.concatMapStrings (o: ''
+        mkdir -p ''$${o}
+        if [ -d ${m.${o}}/bin ]; then ln -s ${m.${o}}/bin ''$${o}/bin; fi
+      '') (m.outputs or [ "out" ])
+    );
+  qtForFilcBuilds =
+    native: filc:
+    native
+    // lib.mapAttrs (_: qtToolsOnly) (
+      lib.filterAttrs (
+        name: v: lib.hasPrefix "qt" name && lib.isDerivation v
+      ) native
+    )
+    // {
+      qmake = filc.qmake.__spliced.hostTarget or filc.qmake;
+      wrapQtAppsHook = filc.wrapQtAppsHook.__spliced.hostTarget or filc.wrapQtAppsHook;
+    };
 in
 lib.optionalAttrs
   (prev.stdenv.targetPlatform.isFilc && !prev.stdenv.hostPlatform.isFilc)
@@ -121,8 +151,8 @@ lib.optionalAttrs
       # two qtbases and its setup hook failed with "detected mismatched Qt
       # dependencies". moc, uic, rcc and qmake emit no GType code, so
       # use the ordinary native Qt 5.
-      qt5 = final.buildPackages.qt5;
-      libsForQt5 = final.buildPackages.libsForQt5;
+      qt5 = qtForFilcBuilds final.buildPackages.qt5 final.targetPackages.qt5;
+      libsForQt5 = qtForFilcBuilds final.buildPackages.libsForQt5 final.targetPackages.libsForQt5;
       # The same holds for Qt 6: a native qttools here linked the GLib twin's
       # headers against GLib 2.88's libgio and failed on
       # g_variant_builder_init_static.
