@@ -807,3 +807,20 @@ marked by an offset of 1. `QMutexLocker`, `QReadLocker`/`QWriteLocker`
 (parent plus colour bit) and `QModelIndex` (internal pointer as
 `quintptr`) lost capabilities the usual way; `patches/qt5-pointer-fields.patch`
 makes them pointers and sets the bits with pointer arithmetic.
+
+## `prctl` string arguments must be passed as pointers
+
+`prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0)`, the usual spelling,
+passes the name as an integer; it has no capability, so the runtime's
+`zsys_prctl` traps reading it ("cannot read pointer with null object").
+Passing `name` itself through the varargs works. Every `QThread` names
+itself this way (`patches/qt5-thread-name.patch`).
+
+## `futex(FUTEX_WAKE_OP)` stops the program
+
+`syscall(SYS_futex, ...)` handles `FUTEX_WAIT` and `FUTEX_WAKE` (with or
+without `FUTEX_PRIVATE_FLAG`), but `FUTEX_WAKE_OP` stops the program with
+`unsupported futex op: 133`. Qt 5's `QSemaphore` uses it on 64-bit Linux
+to wake single- and multi-token waiters at once, so the first contended
+`release()` (a blocking queued call into Qt's D-Bus thread) died;
+`patches/qt5-semaphore-futex.patch` uses Qt's single-word scheme.

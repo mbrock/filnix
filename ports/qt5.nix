@@ -85,6 +85,12 @@ qfinal: qprev: {
       });
 
   qtdeclarative = qprev.qtdeclarative.overrideAttrs (old: {
+    # The V4 engine NaN-boxes heap pointers into quint64 values and passes
+    # them around as integers (ReturnedValue), which drops their
+    # capabilities; keep them pointer-typed. Also QJSValue, PropertyKey,
+    # QFlagPointer/QBiPointer, QQmlNotifierEndpoint and sparse-array nodes,
+    # which keep pointers with flag bits in integers.
+    patches = old.patches ++ [ ../patches/qt5-declarative-v4-pointers.patch ];
     # The V4 JIT writes machine code at run time; use the interpreter.
     qmakeFlags = (old.qmakeFlags or [ ]) ++ [
       "--"
