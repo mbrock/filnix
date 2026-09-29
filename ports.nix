@@ -2867,7 +2867,10 @@ in
     (use (old: {
       nativeCheckInputs = builtins.filter (
         p: (p.pname or "") != "gtest"
-      ) old.nativeCheckInputs;
+      ) old.nativeCheckInputs
+      # test_projinfo.sh runs sqlite3, which a native build finds
+      # through the sqlite build input.
+      ++ [ pkgs.buildPackages.sqlite ];
       checkInputs = (old.checkInputs or [ ]) ++ [ final.gtest ];
     }))
   ])
@@ -2916,41 +2919,46 @@ in
     (configure "DOXYGEN2MAN=${pkgs.buildPackages.libqb}/bin/doxygen2man")
   ])
 
-  (for pkgs.ticcutils [
-    # AX_CHECK_ZLIB comes from autoconf-archive. Nixpkgs lists it in
-    # buildInputs, where a cross build's aclocal does not look.
-    (tool pkgs.buildPackages.autoconf-archive)
-    # The library uses ICU's regex and transliterator (icu-i18n) but
-    # links only icu-uc and icu-io. GNU ld finds i18n through icu-io's
-    # DT_NEEDED; Fil-C's gold does not, so every program linking
-    # libticcutils (its own tests, frog, timblserver) failed.
-    (use (old: {
-      postPatch = (old.postPatch or "") + ''
-        substituteInPlace configure.ac --replace-fail \
-          '[icu-uc >= 50 icu-io]' '[icu-uc >= 50 icu-io icu-i18n]'
-      '';
-    }))
-  ])
-
-  # The rest of the LanguageMachines stack has the same autoconf-archive
-  # input (AX_CXX_COMPILE_STDCXX_17 and friends).
-  (builtins.listToAttrs (
-    map
-      (name: {
+  # The LanguageMachines stack (ticcutils, timbl, frog, ...).
+  (
+    let
+      # AX_CHECK_ZLIB, AX_CXX_COMPILE_STDCXX_17 and friends come from
+      # autoconf-archive. Nixpkgs lists it in buildInputs, where a cross
+      # build's aclocal does not look.
+      autoconfArchive = tool pkgs.buildPackages.autoconf-archive;
+      # The libraries use ICU's regex and transliterator (icu-i18n) but
+      # link only icu-uc and icu-io. GNU ld finds i18n through icu-io's
+      # DT_NEEDED; Fil-C's gold does not, so programs linking them failed.
+      icuI18n = use (old: {
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace configure.ac --replace-fail \
+            '[icu-uc >= 50 icu-io]' '[icu-uc >= 50 icu-io icu-i18n]'
+        '';
+      });
+      port = steps: name: {
         inherit name;
-        value = for pkgs.${name} [ (tool pkgs.buildPackages.autoconf-archive) ];
-      })
-      [
+        value = for pkgs.${name} steps;
+      };
+    in
+    builtins.listToAttrs (
+      map (port [
+        autoconfArchive
+        icuI18n
+      ]) [
         "frog"
-        "frogdata"
         "libfolia"
         "mbt"
+        "ticcutils"
         "timbl"
         "timblserver"
         "ucto"
+      ]
+      ++ map (port [ autoconfArchive ]) [
+        "frogdata"
         "uctodata"
       ]
-  ))
+    )
+  )
 
   (for pkgs.recode [
     # The warning setup adds gnulib's lib/ with -isystem, which comes

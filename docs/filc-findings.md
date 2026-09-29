@@ -802,4 +802,5 @@ undefined symbols through the DT_NEEDED entries of the other libraries
 on the line. gold reports them as undefined instead. ticcutils links
 `icu-uc` and `icu-io` but calls ICU regex and transliterator functions
 from `icu-i18n`, which only `libicuio` depends on, so every program linking
-libticcutils failed. The port adds `icu-i18n` to its `PKG_CHECK_MODULES`.
+libticcutils failed; libfolia has the same gap. The LanguageMachines ports
+add `icu-i18n` to their `PKG_CHECK_MODULES`.
