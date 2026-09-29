@@ -1,7 +1,16 @@
 diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.h
 --- a/src/qml/common/qv4staticvalue_p.h	2026-09-29 15:58:08.975403940 +0000
-+++ b/src/qml/common/qv4staticvalue_p.h	2026-09-29 16:51:19.932599735 +0000
-@@ -67,7 +67,42 @@
++++ b/src/qml/common/qv4staticvalue_p.h	2026-09-29 17:28:48.781176650 +0000
+@@ -52,6 +52,8 @@
+ 
+ #include <QtCore/private/qnumeric_p.h>
+ #include <cstring>
++#include <cstdint>
++#include <type_traits>
+ 
+ #ifdef QT_NO_DEBUG
+ #define QV4_NEARLY_ALWAYS_INLINE Q_ALWAYS_INLINE
+@@ -67,7 +69,47 @@
  // the type has to be a primitive type (no struct or union), so that the compiler
  // will return it in a register on all platforms.
  // It will be returned in rax on x64, [eax,edx] on x86 and [r0,r1] on arm
@@ -30,10 +39,15 @@ diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.
 +    T *toPointer() const { return reinterpret_cast<T *>(ptr); }
 +    friend constexpr bool operator==(ReturnedValue a, ReturnedValue b) { return a.bits == b.bits; }
 +    friend constexpr bool operator!=(ReturnedValue a, ReturnedValue b) { return a.bits != b.bits; }
-+    friend constexpr bool operator==(ReturnedValue a, quint64 b) { return a.bits == b; }
-+    friend constexpr bool operator!=(ReturnedValue a, quint64 b) { return a.bits != b; }
-+    friend constexpr bool operator==(quint64 a, ReturnedValue b) { return a == b.bits; }
-+    friend constexpr bool operator!=(quint64 a, ReturnedValue b) { return a != b.bits; }
++    // (Templates, so that they beat the built-in comparisons after conversion.)
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator==(ReturnedValue a, T b) { return a.bits == quint64(b); }
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator!=(ReturnedValue a, T b) { return a.bits != quint64(b); }
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator==(T a, ReturnedValue b) { return quint64(a) == b.bits; }
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator!=(T a, ReturnedValue b) { return quint64(a) != b.bits; }
 +    ReturnedValue &operator^=(quint64 m) { bits ^= m; return *this; }
 +    ReturnedValue &operator|=(quint64 m) { bits |= m; return *this; }
 +    ReturnedValue &operator&=(quint64 m) { bits &= m; return *this; }
@@ -44,7 +58,7 @@ diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.
  
  struct Double {
      quint64 d;
-@@ -120,6 +155,9 @@
+@@ -120,6 +162,9 @@
  {
      StaticValue() = default;
      constexpr StaticValue(quint64 val) : _val(val) {}
@@ -54,7 +68,7 @@ diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.
  
      StaticValue &operator=(ReturnedValue v)
      {
-@@ -189,11 +227,11 @@
+@@ -189,11 +234,11 @@
            63) are zero. No need to shift.
      */
  
@@ -70,7 +84,7 @@ diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.
  
  #if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
      static inline int valueOffset() { return 0; }
-@@ -547,7 +585,7 @@
+@@ -547,7 +592,7 @@
      constexpr operator ReturnedValue() const {
          return val;
      }
@@ -79,6 +93,45 @@ diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.
  private:
      explicit Encode(void *);
  };
+diff -ruN a/src/qml/compiler/qv4instr_moth.cpp b/src/qml/compiler/qv4instr_moth.cpp
+--- a/src/qml/compiler/qv4instr_moth.cpp	2026-09-29 15:58:08.975403940 +0000
++++ b/src/qml/compiler/qv4instr_moth.cpp	2026-09-29 17:20:23.280551075 +0000
+@@ -144,6 +144,13 @@
+ 
+ void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*startLine*/, const QVector<CompiledData::CodeOffsetToLine> &lineNumberMapping)
+ {
++#ifdef __FILC__
++    // Fil-C: this one ~540-line function (a case per instruction, each
++    // inlining QDebug output) took the compiler over 20 minutes and 4 GB.
++    // It only serves QV4_SHOW_BYTECODE, so leave it out.
++    Q_UNUSED(code); Q_UNUSED(len); Q_UNUSED(nLocals); Q_UNUSED(nFormals); Q_UNUSED(lineNumberMapping);
++    qDebug("QV4_SHOW_BYTECODE: bytecode dumps are not available in this build");
++#else
+     MOTH_JUMP_TABLE;
+ 
+     auto findLine = [](const CompiledData::CodeOffsetToLine &entry, uint offset) {
+@@ -678,6 +685,7 @@
+             d << dumpRegister(func, nFormals) << dumpRegister(thisObject, nFormals) << dumpArguments(argc, argv, nFormals);
+         MOTH_END_INSTR(TailCall)
+     }
++#endif
+ }
+ 
+ }
+diff -ruN a/src/qml/compiler/qv4instr_moth_p.h b/src/qml/compiler/qv4instr_moth_p.h
+--- a/src/qml/compiler/qv4instr_moth_p.h	2026-09-29 15:58:08.975403940 +0000
++++ b/src/qml/compiler/qv4instr_moth_p.h	2026-09-29 17:16:12.714258354 +0000
+@@ -343,6 +343,10 @@
+ # elif defined(Q_OS_WASM) && !defined(__asmjs)
+ // Upstream llvm does not support computed goto for the wasm target, unlike the 'fastcomp' llvm fork
+ // shipped with the emscripten SDK. Disable computed goto usage for non-fastcomp llvm on Wasm.
++# elif defined(__FILC__)
++// Fil-C: the interpreter's and bytecode dumper's hundreds of indirect gotos
++// with hundreds of targets each took the compiler over 20 minutes and 4 GB
++// for qv4instr_moth.cpp; dispatch with a switch instead.
+ #else
+ #  define MOTH_COMPUTED_GOTO
+ #endif
 diff -ruN a/src/qml/jsapi/qjsvalue.cpp b/src/qml/jsapi/qjsvalue.cpp
 --- a/src/qml/jsapi/qjsvalue.cpp	2026-09-29 15:58:08.983404014 +0000
 +++ b/src/qml/jsapi/qjsvalue.cpp	2026-09-29 16:15:15.936799019 +0000
@@ -204,6 +257,30 @@ diff -ruN a/src/qml/jsapi/qjsvalue_p.h b/src/qml/jsapi/qjsvalue_p.h
 +            jsval.d = reinterpret_cast<char *>(v);
              delete variant;
          }
+ 
+diff -ruN a/src/qml/jsruntime/qv4enginebase_p.h b/src/qml/jsruntime/qv4enginebase_p.h
+--- a/src/qml/jsruntime/qv4enginebase_p.h	2026-09-29 15:58:08.983404014 +0000
++++ b/src/qml/jsruntime/qv4enginebase_p.h	2026-09-29 17:39:35.499094524 +0000
+@@ -61,7 +61,10 @@
+ 
+ // Base class for the execution engine
+ 
+-#if defined(Q_CC_MSVC) || defined(Q_CC_GNU)
++// (Fil-C: not packed. Packing put callDepth, a qint32, before pointers,
++// which then sat at offsets that are 4 mod 8, where Fil-C cannot keep a
++// capability. The packed layout is only for the JIT, which is disabled.)
++#if (defined(Q_CC_MSVC) || defined(Q_CC_GNU)) && !defined(__FILC__)
+ #pragma pack(push, 1)
+ #endif
+ struct Q_QML_EXPORT EngineBase {
+@@ -137,7 +140,7 @@
+     Heap::InternalClass *classes[NClasses];
+     Heap::InternalClass *internalClasses(InternalClassType icType) { return classes[icType]; }
+ };
+-#if defined(Q_CC_MSVC) || defined(Q_CC_GNU)
++#if (defined(Q_CC_MSVC) || defined(Q_CC_GNU)) && !defined(__FILC__)
+ #pragma pack(pop)
+ #endif
  
 diff -ruN a/src/qml/jsruntime/qv4persistent.cpp b/src/qml/jsruntime/qv4persistent.cpp
 --- a/src/qml/jsruntime/qv4persistent.cpp	2026-09-29 15:58:08.983404014 +0000
