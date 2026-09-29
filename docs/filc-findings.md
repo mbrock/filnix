@@ -799,3 +799,28 @@ bindings are unchanged. `cs_option` also takes pointer-valued options
 and the caller's cast drops the capability before the library sees it.
 The patch adds a Fil-C-only `cs_option_ptr(csh, cs_opt_type, void *)`;
 consumers that set those three options must call it instead.
+
+## Frame-slot coloring is cubic in simultaneously live pointers
+
+FilPizlonator assigns frame "lowers" slots by greedy coloring of an
+interference graph, and for each value it tried index after index,
+checking every neighbor with a hash lookup each time. With many pointers
+live at once this dominates compile time:
+
+```c
+void f(void) {
+  void *p0 = malloc(1); /* ... */ void *p1999 = malloc(2000);
+  sink(p0); /* ... */ sink(p1999);
+}
+/* clang -O1 -c: 500 pointers 1.0 s, 1000 4.3 s, 2000 41 s;
+   -O0 with 2000: minutes and 2.8 GB */
+```
+
+Asio's `unit/execution/any_executor.cpp` compiles in 10 s at `-O0`, but
+at `-O2` (after inlining) it ran for over an hour at 5.7 GB in the asio
+check, and gdb samples were all in `computeFrameIndexMap`'s coloring
+loop. The 50-minute parser above may be the same. The always-live
+explicit locals from the GC-roots fix make the graph denser still.
+`patches/fil-c/filpizlonator-frame-coloring-linear.patch` (not compiled
+yet) collects the neighbors' indices once per value and takes the lowest
+free one: the same assignment, in time linear in the edges.
