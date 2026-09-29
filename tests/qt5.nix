@@ -47,6 +47,12 @@ pkgs.stdenv.mkDerivation {
     SOURCES = qt5-quick.cpp
     TARGET = qt5-quick
     EOF
+    export QMAKEPATH=${
+      pkgs.lib.concatMapStringsSep ":" (m: "${m.dev}") [
+        qt5.qtsvg
+        qt5.qtdeclarative
+      ]
+    }
     mkdir smoke quick
     (cd smoke && qmake ../smoke.pro)
     ${pkgs.lib.optionalString withQuick "(cd quick && qmake ../quick.pro)"}
