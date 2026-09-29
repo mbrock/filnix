@@ -17,6 +17,18 @@ let
         d: if (d.name or "") == "qmake-hook" then qmakeHook else d
       ) (old.nativeBuildInputs or [ ]);
     });
+  # Qt modules' build tools (qtdeclarative's qmlcachegen and
+  # qmltyperegistrar, native programs in its dev output) are looked up on
+  # PATH, where a cross build has only the build platform's Qt.
+  withQtToolsOnPath =
+    drv:
+    drv.overrideAttrs (old: {
+      preConfigure = ''
+        for p in "''${pkgsHostTarget[@]}"; do
+          if [ -d "$p/mkspecs" ] && [ -d "$p/bin" ]; then addToSearchPath PATH "$p/bin"; fi
+        done
+      '' + (old.preConfigure or "");
+    });
   modules = [
     "qt3d"
     "qtcharts"
@@ -52,7 +64,12 @@ let
     "qtxmlpatterns"
   ];
 in
-lib.genAttrs modules (name: withFilcQmake qprev.${name})
+lib.genAttrs modules (name: withQtToolsOnPath (withFilcQmake qprev.${name}))
+// {
+  # qtdeclarative depends on it; keep it unchanged so qtdeclarative
+  # (a long build) is not rebuilt for this.
+  qtsvg = withFilcQmake qprev.qtsvg;
+}
 // {
   # qtbase's setup hook collects mkspecs for QMAKEPATH only from
   # nativeBuildInputs, which in a cross build are the build platform's; a
@@ -166,7 +183,7 @@ lib.genAttrs modules (name: withFilcQmake qprev.${name})
     ];
   });
 
-  qttools = (withFilcQmake qprev.qttools).overrideAttrs (old: {
+  qttools = (withQtToolsOnPath (withFilcQmake qprev.qttools)).overrideAttrs (old: {
     # libclang and libllvm are only for qdoc, which Qt then leaves out;
     # they would be a Fil-C build of LLVM.
     buildInputs = [ ];
