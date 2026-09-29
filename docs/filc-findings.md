@@ -750,10 +750,19 @@ packages. The Graphviz alias worked around one instance.
 
 Fixed: the twins are named only in the Fil-C set's `pkgsBuildHost`
 attribute, which splicing and `buildPackages` read; native packages inside
-that set keep the ordinary GLib. The twins' own derivations are unchanged,
-and `tests/gtk-ports.nix` checks that native Pango, GTK 3, glibmm and cairo
-there match the native package set. Fil-C packages whose build tools link
-GLib (anything under fontconfig, for DejaVu's fontforge) rebuild once.
+that set keep the ordinary GLib. Two Nixpkgs packages depend on the target
+platform themselves and needed the same treatment as Qt already had: the
+gobject-introspection wrapper (with a Fil-C target it wraps the scanner and
+propagates the Fil-C GI) is aliased to the native one inside that set, and
+PyGObject's `hostPlatform != targetPlatform` pkg-config workaround
+(NixOS/nixpkgs#378447, meant for cross builds) is undone there. Native
+PyGObject, and through it graphene, GTK 4, GStreamer, PipeWire and SDL,
+then match the native set too. The twins' own derivations are unchanged;
+`tests/gtk-ports.nix` checks that native Pango, GTK 3, glibmm, cairo,
+sdl2-compat and PyGObject in that set match the native package set. Fil-C
+packages whose build tools link GLib rebuild once: anything under
+fontconfig (DejaVu's fontforge), systemd (swtpm → json-glib), or the build
+Python's Pillow (libraqm), about a third of a 520-package sample.
 
 The Python ports' `packageOverrides` reach the build Python in the same
 way. The PyGObject pin, which matches the Fil-C GI, is now applied only
