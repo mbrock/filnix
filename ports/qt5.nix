@@ -1,5 +1,9 @@
 # Qt 5.15 for Fil-C, as an override of the qt5 scope (libsForQt5 is
-# built from final.qt5, so its packages see these modules too).
+# built from final.qt5, so its packages see these modules too). How Fil-C
+# builds see the build platform's Qt is in build-tools.nix. Check with
+#   nix build --impure --expr 'import ./tests/qt5.nix { }'
+# which runs widgets, networking, SQL, XML, SVG, QML/JavaScript, Qt Quick
+# and Quick Controls 2 programs on the offscreen platform and under Xvfb.
 { pkgs, final }:
 qfinal: qprev:
 let
@@ -66,8 +70,8 @@ let
 in
 lib.genAttrs modules (name: withQtToolsOnPath (withFilcQmake qprev.${name}))
 // {
-  # qtdeclarative depends on it; keep it unchanged so qtdeclarative
-  # (a long build) is not rebuilt for this.
+  # Needs no other module's tools (and qtdeclarative, a long build,
+  # depends on it).
   qtsvg = withFilcQmake qprev.qtsvg;
 }
 // {
@@ -168,6 +172,21 @@ lib.genAttrs modules (name: withQtToolsOnPath (withFilcQmake qprev.${name}))
           EOF
         '';
       });
+
+  qtlocation = (withQtToolsOnPath (withFilcQmake qprev.qtlocation)).overrideAttrs (old: {
+    # The bundled Mapbox GL uses Boost 1.65, which needs std::unary_function;
+    # libc++ removed it in C++17 unless asked to keep it (Nixpkgs builds
+    # Qt with GCC and libstdc++).
+    env = (old.env or { }) // {
+      NIX_CFLAGS_COMPILE = toString [
+        (old.env.NIX_CFLAGS_COMPILE or "")
+        "-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION"
+        # Clang, unlike GCC, rejects its narrowing conversions.
+        "-Wno-c++11-narrowing"
+        "-Wno-c++11-narrowing-const-reference"
+      ];
+    };
+  });
 
   qtmultimedia = (withQtToolsOnPath (withFilcQmake qprev.qtmultimedia)).overrideAttrs (old: {
     # GType is a pointer in Fil-C's GLib, and C++ cannot switch on one.
