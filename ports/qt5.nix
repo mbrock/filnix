@@ -54,6 +54,22 @@ let
 in
 lib.genAttrs modules (name: withFilcQmake qprev.${name})
 // {
+  # qtbase's setup hook collects mkspecs for QMAKEPATH only from
+  # nativeBuildInputs, which in a cross build are the build platform's; a
+  # module's Qt dependencies (qtdeclarative for qtquickcontrols2, say) are
+  # buildInputs, so qmake did not see them ("Some of the required modules
+  # (qtHaveModule(quick)) are not available. Skipped."). Collect them too.
+  qmake = qprev.qmake.overrideAttrs (old: {
+    buildCommand = old.buildCommand + ''
+      cat >> $out/nix-support/setup-hook <<'EOF'
+      filcQmakeHostPathHook() {
+          if declare -F qmakePathHook >/dev/null; then qmakePathHook "$1"; fi
+      }
+      addEnvHooks "$targetOffset" filcQmakeHostPathHook
+      EOF
+    '';
+  });
+
   qtbase =
     (qprev.qtbase.override {
       # The GTK 3 port has no X11 backend, and Qt's GTK 3 platform theme

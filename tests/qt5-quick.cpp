@@ -127,11 +127,42 @@ static int quick() {
   return 0;
 }
 
+static int controls() {
+  QQmlEngine engine;
+  QQmlComponent component(&engine);
+  component.setData(R"(
+    import QtQuick 2.15
+    import QtQuick.Controls 2.15
+    import QtQuick.Layouts 1.15
+    ApplicationWindow {
+      width: 200; height: 120
+      property alias clicked: button.clickCount
+      property alias sliderValue: slider.value
+      ColumnLayout {
+        Button { id: button; property int clickCount: 0; text: "Press"; onClicked: clickCount++ }
+        Slider { id: slider; from: 0; to: 10; value: 3 }
+        TextField { text: "hello" }
+        ComboBox { model: ["a", "b", "c"] }
+      }
+      Component.onCompleted: { button.clicked(); slider.increase() }
+    }
+  )", QUrl("qrc:/controls.qml"));
+  if (component.isError()) {
+    for (const auto &e : component.errors()) fprintf(stderr, "%s\n", qPrintable(e.toString()));
+    return 1;
+  }
+  QScopedPointer<QObject> window(component.create());
+  CHECK(window);
+  CHECK(window->property("clicked").toInt() == 1);
+  CHECK(window->property("sliderValue").toDouble() == 4.0);
+  return 0;
+}
+
 int main(int argc, char **argv) {
   QGuiApplication app(argc, argv);
   fprintf(stderr, "platform: %s\n", qPrintable(QGuiApplication::platformName()));
-  int (*const parts[])() = {svg, js, quick};
-  const char *names[] = {"svg", "js", "quick"};
+  int (*const parts[])() = {svg, js, quick, controls};
+  const char *names[] = {"svg", "js", "quick", "controls"};
   for (size_t i = 0; i < sizeof parts / sizeof *parts; ++i) {
     if (parts[i]()) return 1;
     fprintf(stderr, "ok %s\n", names[i]);

@@ -30,6 +30,7 @@ pkgs.stdenv.mkDerivation {
   ++ pkgs.lib.optionals withQuick [
     qt5.qtsvg
     qt5.qtdeclarative
+    qt5.qtquickcontrols2
   ];
   configurePhase = ''
     runHook preConfigure
@@ -68,7 +69,7 @@ pkgs.stdenv.mkDerivation {
   ''
   + pkgs.lib.optionalString withQuick ''
     QT_PLUGIN_PATH+=:${qt5.qtsvg.bin}/${qtPluginPrefix}:${qt5.qtdeclarative.bin}/${qtPluginPrefix}
-    export QML2_IMPORT_PATH=${qt5.qtdeclarative.bin}/${qtQmlPrefix}
+    export QML2_IMPORT_PATH=${qt5.qtdeclarative.bin}/${qtQmlPrefix}:${qt5.qtquickcontrols2.bin}/${qtQmlPrefix}
   ''
   + ''
     export QT_QUICK_BACKEND=software
