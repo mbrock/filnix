@@ -1,7 +1,59 @@
 # Qt 5.15 for Fil-C, as an override of the qt5 scope (libsForQt5 is
 # built from final.qt5, so its packages see these modules too).
 { pkgs, final }:
-qfinal: qprev: {
+qfinal: qprev:
+let
+  inherit (pkgs) lib;
+  # qtModule puts the scope's qmake hook in nativeBuildInputs, where
+  # splicing picks the build platform's: that hook propagates the native
+  # qtbase, and the module's setup hooks then fail with "detected
+  # mismatched Qt dependencies". Use this scope's own hook, which adds
+  # the Fil-C qtbase (whose qmake and moc are build-platform programs).
+  qmakeHook = qfinal.qmake.__spliced.hostTarget or qfinal.qmake;
+  withFilcQmake =
+    drv:
+    drv.overrideAttrs (old: {
+      nativeBuildInputs = map (
+        d: if (d.name or "") == "qmake-hook" then qmakeHook else d
+      ) (old.nativeBuildInputs or [ ]);
+    });
+  modules = [
+    "qt3d"
+    "qtcharts"
+    "qtconnectivity"
+    "qtdatavis3d"
+    "qtgamepad"
+    "qtgraphicaleffects"
+    "qtimageformats"
+    "qtlocation"
+    "qtlottie"
+    "qtmultimedia"
+    "qtnetworkauth"
+    "qtpositioning"
+    "qtpurchasing"
+    "qtquick3d"
+    "qtquickcontrols"
+    "qtquickcontrols2"
+    "qtremoteobjects"
+    "qtscript"
+    "qtscxml"
+    "qtsensors"
+    "qtserialbus"
+    "qtserialport"
+    "qtspeech"
+    "qtsvg"
+    "qtsystems"
+    "qtvirtualkeyboard"
+    "qtwayland"
+    "qtwebchannel"
+    "qtwebglplugin"
+    "qtwebsockets"
+    "qtx11extras"
+    "qtxmlpatterns"
+  ];
+in
+lib.genAttrs modules (name: withFilcQmake qprev.${name})
+// {
   qtbase =
     (qprev.qtbase.override {
       # The GTK 3 port has no X11 backend, and Qt's GTK 3 platform theme
@@ -84,7 +136,7 @@ qfinal: qprev: {
         '';
       });
 
-  qtdeclarative = qprev.qtdeclarative.overrideAttrs (old: {
+  qtdeclarative = (withFilcQmake qprev.qtdeclarative).overrideAttrs (old: {
     # The V4 engine NaN-boxes heap pointers into quint64 values and passes
     # them around as integers (ReturnedValue), which drops their
     # capabilities; keep them pointer-typed. Also QJSValue, PropertyKey,
@@ -98,7 +150,7 @@ qfinal: qprev: {
     ];
   });
 
-  qttools = qprev.qttools.overrideAttrs (old: {
+  qttools = (withFilcQmake qprev.qttools).overrideAttrs (old: {
     # libclang and libllvm are only for qdoc, which Qt then leaves out;
     # they would be a Fil-C build of LLVM.
     buildInputs = [ ];
