@@ -169,6 +169,12 @@ lib.genAttrs modules (name: withQtToolsOnPath (withFilcQmake qprev.${name}))
         '';
       });
 
+  qtquickcontrols2 = (withQtToolsOnPath (withFilcQmake qprev.qtquickcontrols2)).overrideAttrs (old: {
+    # QQuickDeferredPointer keeps an item pointer and two flag bits in a
+    # quintptr; the first ComboBox trapped in setIndicator().
+    patches = (old.patches or [ ]) ++ [ ../patches/qt5-quickcontrols2-deferred-pointer.patch ];
+  });
+
   qtdeclarative = (withFilcQmake qprev.qtdeclarative).overrideAttrs (old: {
     # The V4 engine NaN-boxes heap pointers into quint64 values and passes
     # them around as integers (ReturnedValue), which drops their

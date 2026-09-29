@@ -140,7 +140,7 @@ static int controls() {
       property alias sliderValue: slider.value
       ColumnLayout {
         Button { id: button; property int clickCount: 0; text: "Press"; onClicked: clickCount++ }
-        Slider { id: slider; from: 0; to: 10; value: 3 }
+        Slider { id: slider; from: 0; to: 10; value: 3; stepSize: 1 }
         TextField { text: "hello" }
         ComboBox { model: ["a", "b", "c"] }
       }

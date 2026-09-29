@@ -1,0 +1,65 @@
+diff -ruN a/src/quicktemplates2/qquickdeferredpointer_p_p.h b/src/quicktemplates2/qquickdeferredpointer_p_p.h
+--- a/src/quicktemplates2/qquickdeferredpointer_p_p.h	2026-09-29 19:26:10.861604546 +0000
++++ b/src/quicktemplates2/qquickdeferredpointer_p_p.h	2026-09-29 19:26:10.997605791 +0000
+@@ -79,7 +79,19 @@
+     inline QQuickDeferredPointer<T> &operator=(const QQuickDeferredPointer &o);
+ 
+ private:
+-    quintptr ptr_value = 0;
++    // Fil-C: a pointer rather than quintptr, so that it keeps the item's
++    // capability; the flag bits are set and cleared with pointer arithmetic.
++    struct Bits {
++        char *p = nullptr;
++        Bits() = default;
++        Bits(const void *v, quintptr flags = 0)
++            : p(static_cast<char *>(const_cast<void *>(v)) + flags) {}
++        operator quintptr() const { return quintptr(p); }
++        Bits &operator|=(quintptr b) { p += (quintptr(p) | b) - quintptr(p); return *this; }
++        Bits &operator&=(quintptr b) { p += (quintptr(p) & b) - quintptr(p); return *this; }
++        T *pointer(quintptr mask) const { return reinterpret_cast<T *>(p - (quintptr(p) & mask)); }
++    };
++    Bits ptr_value;
+ 
+     static const quintptr WasExecutedBit = 0x1;
+     static const quintptr IsExecutingBit = 0x2;
+@@ -93,7 +105,7 @@
+ 
+ template<typename T>
+ QQuickDeferredPointer<T>::QQuickDeferredPointer(T *v)
+-: ptr_value(quintptr(v))
++: ptr_value(v)
+ {
+     Q_ASSERT((ptr_value & FlagsMask) == 0);
+ }
+@@ -152,19 +164,19 @@
+ template<typename T>
+ T *QQuickDeferredPointer<T>::data() const
+ {
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer(FlagsMask);
+ }
+ 
+ template<typename T>
+ T *QQuickDeferredPointer<T>::operator*() const
+ {
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer(FlagsMask);
+ }
+ 
+ template<typename T>
+ T *QQuickDeferredPointer<T>::operator->() const
+ {
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer(FlagsMask);
+ }
+ 
+ template<typename T>
+@@ -172,7 +184,7 @@
+ {
+     Q_ASSERT((quintptr(o) & FlagsMask) == 0);
+ 
+-    ptr_value = quintptr(o) | (ptr_value & FlagsMask);
++    ptr_value = Bits(o, ptr_value & FlagsMask);
+     return *this;
+ }
+ 
