@@ -256,6 +256,9 @@ portDSL.makeOverlay portList final prev
     }
   );
 
+  # See ports/qt5.nix.
+  qt5 = prev.qt5.overrideScope (import ./qt5.nix { inherit pkgs final; });
+
   # Nix itself.
   nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
     pkgs.lib.composeExtensions nixFilcOverrides (

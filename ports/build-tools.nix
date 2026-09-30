@@ -33,6 +33,44 @@ let
     in
     (pkg.override spec.overrideArgs).overrideAttrs spec.attrs;
 
+  # Native Qt programs must not propagate their native qtbase into Fil-C
+  # builds. Only the Fil-C view below uses these program-only modules and
+  # target hooks; native packages keep their ordinary Qt scope.
+  qtToolsOnly =
+    m:
+    prev.runCommand "${m.name}-programs" { outputs = m.outputs or [ "out" ]; } (
+      lib.concatMapStrings (o: ''
+        mkdir -p ''$${o}
+        if [ -d ${m.${o}}/bin ]; then ln -s ${m.${o}}/bin ''$${o}/bin; fi
+      '') (m.outputs or [ "out" ])
+    );
+  unspliced = p: p.__spliced.hostTarget or p;
+  qtForFilcBuilds =
+    native: filc:
+    native
+    // lib.mapAttrs (_: qtToolsOnly) (
+      lib.filterAttrs (
+        name: v: lib.hasPrefix "qt" name && lib.isDerivation v
+      ) native
+    )
+    // {
+      qmake = prev.makeSetupHook {
+        name = "qmake-hook";
+        propagatedBuildInputs = [
+          (unspliced filc.qmake)
+          (unspliced filc.qtbase).dev
+        ];
+      } (prev.writeText "qmake-filc.sh" "");
+      wrapQtAppsHook = prev.makeSetupHook {
+        name = "wrap-qt5-apps-hook";
+        propagatedBuildInputs = [
+          (unspliced filc.qtbase).dev
+          prev.makeBinaryWrapper
+          (unspliced filc.qtwayland).dev
+        ];
+      } (prev.path + "/pkgs/development/libraries/qt-5/hooks/wrap-qt-apps-hook.sh");
+    };
+
   twins =
     bh:
     let
@@ -229,7 +267,13 @@ else if
   prev.stdenv.hostPlatform.isFilc && !prev.stdenv.buildPlatform.isFilc
 then
   {
-    pkgsBuildHost = prev.pkgsBuildHost // twins prev.pkgsBuildHost;
+    pkgsBuildHost =
+      prev.pkgsBuildHost
+      // twins prev.pkgsBuildHost
+      // {
+        qt5 = qtForFilcBuilds prev.pkgsBuildHost.qt5 prev.qt5;
+        libsForQt5 = qtForFilcBuilds prev.pkgsBuildHost.libsForQt5 prev.libsForQt5;
+      };
   }
 else
   { }

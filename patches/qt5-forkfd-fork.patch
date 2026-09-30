@@ -1,0 +1,14 @@
+--- a/src/3rdparty/forkfd/forkfd_linux.c	2026-09-29 15:12:42.658458637 +0000
++++ b/src/3rdparty/forkfd/forkfd_linux.c	2026-09-29 15:12:42.722459223 +0000
+@@ -123,6 +123,11 @@
+      * sys_clone() mess above...
+      */
+ 
++#ifdef __FILC__
++    /* Fil-C's syscall() refuses waitid and clone (the program stops), so
++     * use forkfd's fork() fallback. */
++    return -1;
++#endif
+     sys_waitid(P_PIDFD, INT_MAX, NULL, WEXITED|WNOHANG, NULL);
+     return errno == EBADF ? 1 : -1;
+ }

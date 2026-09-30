@@ -1,0 +1,28 @@
+--- a/src/corelib/plugin/qlibrary.cpp	2026-09-29 16:09:15.225498969 +0000
++++ b/src/corelib/plugin/qlibrary.cpp	2026-09-29 16:10:22.334112886 +0000
+@@ -272,6 +272,9 @@
+     pattern[0] = 'Q'; // Ensure the pattern "QTMETADATA" is not found in this library should QPluginLoader ever encounter it.
+     const ulong plen = qstrlen(pattern);
+ #if defined (Q_OF_ELF) && defined(Q_CC_GNU)
++#  ifdef __FILC__
++    const qsizetype fileLength = fdlen;
++#  endif
+     int r = QElfParser().parse(filedata, fdlen, library, lib, &pos, &fdlen);
+     if (r == QElfParser::Corrupt || r == QElfParser::NotElf) {
+             if (lib && qt_debug_component()) {
+@@ -286,6 +289,15 @@
+             pos += rel;
+         hasMetaData = true;
+     }
++#  ifdef __FILC__
++    // Fil-C ignores section attributes on data, so the metadata is not in a
++    // .qtmetadata section; look for it in the whole file.
++    else if (r == QElfParser::NoQtSection) {
++        fdlen = fileLength;
++        pos = qt_find_pattern(filedata, fdlen, pattern, plen);
++        hasMetaData = pos >= 0;
++    }
++#  endif
+ #elif defined (Q_OF_MACH_O)
+     {
+         QString errorString;

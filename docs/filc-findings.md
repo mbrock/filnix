@@ -1224,3 +1224,124 @@ categories into `__objc_*` sections and passes their
 `__start_`/`__stop_` bounds to `__objc_load`; under Fil-C those become
 undefined `pizlonated___start___objc_selectors` and so on (see the
 `__start_`/`__stop_` finding above). The port marks it broken.
+## Module-level assembly crashes the compiler
+
+A top-level `asm("...")` with directives FilPizlonator does not parse
+(`.section`, `.globl`, labels, `.quad`, ...) is not a diagnostic but a
+crash: the pass prints `Invalid directive: .section` and `Error parsing
+module asm`, dumps the module and reaches `UNREACHABLE` at
+`FilPizlonator.cpp:419`:
+
+```c
+asm(".section .qtversion, \"aG\", @progbits, tag, comdat\n.previous");
+int main(void) { return 0; }   /* clang -c: UNREACHABLE, exit 134 */
+```
+
+An empty `asm("")` compiles. Qt 5's `<QtCore/qversiontagging.h>` emits a
+`.qtversion` section like this in every file that includes QtCore outside
+QtCore itself, so the first such file (QtDBus) crashed.
+`patches/qt5-no-version-tagging.patch` disables the tag under `__FILC__`;
+the header is installed, so Qt's users get the same.
+
+## `syscall()` stops the program for `waitid`, `clone`, `open` and `inotify_init1`
+
+Fil-C's `syscall()` passes some numbers through (`futex`, `gettid`) and
+refuses others with `filc user error: unsupported syscall: 247` and a
+trap, rather than failing with `ENOSYS`. Seen: `waitid` (247), `clone`
+(56), `open` (2) and `inotify_init1` (294); the libc wrappers of the same
+calls work. Qt's forkfd probes `waitid(P_PIDFD, ...)` and forks with
+`clone(CLONE_PIDFD)` through `syscall()`, so every `QProcess` start
+stopped; `patches/qt5-forkfd-fork.patch` makes it take its `fork()`
+fallback.
+
+## `rdrand`/`rdseed` intrinsics and non-canonical `cpuid` stop the program
+
+`_rdrand64_step` compiles, but reaching it stops the program with
+`filc safety error: Unhandled intrinsic: ... @llvm.x86.rdrand.64()`
+(`_rdseed64_step` too). CPUID is lowered only in the canonical form with
+all four outputs, `asm("cpuid" : "=a", "=b", "=c", "=d" : "a", "c")`;
+the PIC-friendly `xchg %rbx, %1; cpuid; xchg %rbx, %1` that Qt uses (and
+XGETBV spelled as `.byte 0x0f, 0x01, 0xd0`) is refused at run time
+("thwarted a futile attempt to violate memory safety"). Qt probes CPU
+features when QtCore starts; `patches/qt5-cpu-probe.patch` uses the
+canonical forms and masks out RDRAND/RDSEED so `QRandomGenerator` reads
+the kernel's generator.
+
+## Section attributes on data are ignored
+
+`__attribute__((section(".name")))` on a global array has no effect: the
+data lands in `.data.rel.ro` and the output has no such section.
+
+```c
+__attribute__((section(".qtmetadata"), used))
+static const unsigned char md[] = "QTMETADATA !...";
+/* readelf -S: no .qtmetadata; the bytes are in .data.rel.ro */
+```
+
+Qt 5 finds a plugin's metadata by its `.qtmetadata` section, so every
+plugin was "not a plugin" (no platform plugin, so no GUI program started).
+`patches/qt5-plugin-metadata.patch` searches the whole file for the
+`QTMETADATA` marker when the section is missing, as Qt does on non-ELF
+platforms. This is probably the same root as the missing
+`__start_`/`__stop_` symbols above.
+
+## Found porting Qt 5: pointers derived from another object's address
+
+Qt 5's `QArrayData` (behind `QByteArray`, `QString` and `QVector`) finds
+its elements at `this + offset`. `fromRawData` makes a small header whose
+offset reaches the caller's buffer, so the computed pointer carried the
+header's 24-byte capability and the first read of the buffer trapped
+(`ptr >= upper` in QCborStreamReader, reading plugin metadata).
+`patches/qt5-raw-data.patch` stores the raw pointer after such headers,
+marked by an offset of 1. `QMutexLocker`, `QReadLocker`/`QWriteLocker`
+(lock address plus a "locked" bit in a `quintptr`), `QMapNodeBase`
+(parent plus colour bit) and `QModelIndex` (internal pointer as
+`quintptr`) lost capabilities the usual way; `patches/qt5-pointer-fields.patch`
+makes them pointers and sets the bits with pointer arithmetic.
+
+## `prctl` string arguments must be passed as pointers
+
+`prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0)`, the usual spelling,
+passes the name as an integer; it has no capability, so the runtime's
+`zsys_prctl` traps reading it ("cannot read pointer with null object").
+Passing `name` itself through the varargs works. Every `QThread` names
+itself this way (`patches/qt5-thread-name.patch`).
+
+## `futex(FUTEX_WAKE_OP)` stops the program
+
+`syscall(SYS_futex, ...)` handles `FUTEX_WAIT` and `FUTEX_WAKE` (with or
+without `FUTEX_PRIVATE_FLAG`), but `FUTEX_WAKE_OP` stops the program with
+`unsupported futex op: 133`. Qt 5's `QSemaphore` uses it on 64-bit Linux
+to wake single- and multi-token waiters at once, so the first contended
+`release()` (a blocking queued call into Qt's D-Bus thread) died;
+`patches/qt5-semaphore-futex.patch` uses Qt's single-word scheme.
+
+## Found porting Qt 5: the QML engine's NaN-boxed values
+
+QtQml's V4 engine keeps every JavaScript value in a `quint64`: doubles
+XORed with a mask, integers and booleans tagged in the high bits, and heap
+pointers in the low 48 bits, copied in and out with `memcpy`. Values also
+travel as `ReturnedValue`, a `typedef quint64`, through every runtime call.
+The integer carries no capability, so the first heap object read through a
+value trapped. `patches/qt5-declarative-v4-pointers.patch` makes
+`ReturnedValue` (and the value's storage) a union whose first member is a
+`char *` under `__FILC__`: copies are pointer copies, the tag tests read the
+bits, and `m()`/`setM()` use the pointer member. Plain integer stores (tags)
+leave the slot's previous capability behind, which is harmless because the
+tag tests reject them before any dereference. The same patch makes
+`QJSValue::d`, `PropertyKey`, `QFlagPointer`/`QBiPointer`,
+`QQmlNotifierEndpoint::senderPtr`, sparse-array node parents and
+`QQuickItem`'s JS-wrapper factory (which returned the wrapper as `quint64`
+through `qt_metacall`) pointer-typed, and derives the GC's chunk and
+persistent-value page addresses with pointer arithmetic rather than
+masking integers.
+
+Two more pieces of the engine needed changes. `EngineBase` is
+`#pragma pack(1)` (for the JIT, which is off), which put pointers after a
+`qint32` at offsets that are 4 mod 8 ("alignment contradiction" in
+`ExecutionEngine`'s constructor); it is unpacked under Fil-C. And the
+bytecode dumper, one ~540-line function with a case per instruction
+(`QV4_SHOW_BYTECODE` only), did not finish compiling in 25 minutes at
+4 GB, with or without computed gotos; it is left out. The patch also
+makes the interpreter dispatch with a `switch` instead of computed gotos;
+it then compiles in minutes (the computed-goto version was not timed).

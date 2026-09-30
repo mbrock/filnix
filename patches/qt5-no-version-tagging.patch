@@ -1,0 +1,14 @@
+diff -ru c/src/corelib/global/qversiontagging.h d/src/corelib/global/qversiontagging.h
+--- a/src/corelib/global/qversiontagging.h	2026-09-29 14:50:52.202467414 +0000
++++ b/src/corelib/global/qversiontagging.h	2026-09-29 14:50:52.218467560 +0000
+@@ -60,8 +60,9 @@
+  * There will only be one copy of the section in the output library or application.
+  */
+ 
+-#if defined(QT_BUILD_CORE_LIB) || defined(QT_BOOTSTRAPPED) || defined(QT_NO_VERSION_TAGGING) || defined(QT_STATIC)
++#if defined(QT_BUILD_CORE_LIB) || defined(QT_BOOTSTRAPPED) || defined(QT_NO_VERSION_TAGGING) || defined(QT_STATIC) || defined(__FILC__)
+ // don't make tags in QtCore, bootstrapped systems or if the user asked not to
++// (Fil-C: the tag is module-level assembly, which Fil-C cannot compile)
+ #elif defined(Q_CC_GNU) && !defined(Q_OS_ANDROID)
+ #  if defined(Q_PROCESSOR_X86) && (defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD_KERNEL))
+ #    if defined(Q_PROCESSOR_X86_64) && QT_POINTER_SIZE == 8     // x86-64 64-bit

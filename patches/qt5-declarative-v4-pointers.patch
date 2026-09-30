@@ -1,0 +1,800 @@
+diff -ruN a/src/qml/common/qv4staticvalue_p.h b/src/qml/common/qv4staticvalue_p.h
+--- a/src/qml/common/qv4staticvalue_p.h	2026-09-29 15:58:08.975403940 +0000
++++ b/src/qml/common/qv4staticvalue_p.h	2026-09-29 17:28:48.781176650 +0000
+@@ -52,6 +52,8 @@
+ 
+ #include <QtCore/private/qnumeric_p.h>
+ #include <cstring>
++#include <cstdint>
++#include <type_traits>
+ 
+ #ifdef QT_NO_DEBUG
+ #define QV4_NEARLY_ALWAYS_INLINE Q_ALWAYS_INLINE
+@@ -67,7 +69,47 @@
+ // the type has to be a primitive type (no struct or union), so that the compiler
+ // will return it in a register on all platforms.
+ // It will be returned in rax on x64, [eax,edx] on x86 and [r0,r1] on arm
++#ifdef __FILC__
++// Fil-C: a pointer that is converted to an integer loses its capability, so a
++// value that may hold a heap pointer has to stay pointer-typed wherever it is
++// stored, passed or returned. The union's first member is the pointer, so
++// copies are pointer copies; integer reads and writes use the bits.
++struct ReturnedValue
++{
++    union {
++        char *ptr;
++        quint64 bits;
++    };
++    ReturnedValue() = default;
++    constexpr ReturnedValue(quint64 v) : bits(v) {}
++    constexpr operator quint64() const { return bits; }
++    template<typename T>
++    static ReturnedValue fromPointer(T *p)
++    {
++        ReturnedValue r;
++        r.ptr = reinterpret_cast<char *>(p);
++        return r;
++    }
++    template<typename T>
++    T *toPointer() const { return reinterpret_cast<T *>(ptr); }
++    friend constexpr bool operator==(ReturnedValue a, ReturnedValue b) { return a.bits == b.bits; }
++    friend constexpr bool operator!=(ReturnedValue a, ReturnedValue b) { return a.bits != b.bits; }
++    // (Templates, so that they beat the built-in comparisons after conversion.)
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator==(ReturnedValue a, T b) { return a.bits == quint64(b); }
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator!=(ReturnedValue a, T b) { return a.bits != quint64(b); }
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator==(T a, ReturnedValue b) { return quint64(a) == b.bits; }
++    template<typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
++    friend constexpr bool operator!=(T a, ReturnedValue b) { return quint64(a) != b.bits; }
++    ReturnedValue &operator^=(quint64 m) { bits ^= m; return *this; }
++    ReturnedValue &operator|=(quint64 m) { bits |= m; return *this; }
++    ReturnedValue &operator&=(quint64 m) { bits &= m; return *this; }
++};
++#else
+ typedef quint64 ReturnedValue;
++#endif
+ 
+ struct Double {
+     quint64 d;
+@@ -120,6 +162,9 @@
+ {
+     StaticValue() = default;
+     constexpr StaticValue(quint64 val) : _val(val) {}
++#ifdef __FILC__
++    constexpr StaticValue(ReturnedValue val) : _val(val) {}
++#endif
+ 
+     StaticValue &operator=(ReturnedValue v)
+     {
+@@ -189,11 +234,11 @@
+           63) are zero. No need to shift.
+     */
+ 
+-    quint64 _val;
++    ReturnedValue _val;
+ 
+-    QV4_NEARLY_ALWAYS_INLINE Q_DECL_RELAXED_CONSTEXPR quint64 &rawValueRef() { return _val; }
+-    QV4_NEARLY_ALWAYS_INLINE Q_DECL_RELAXED_CONSTEXPR quint64 rawValue() const { return _val; }
+-    QV4_NEARLY_ALWAYS_INLINE Q_DECL_RELAXED_CONSTEXPR void setRawValue(quint64 raw) { _val = raw; }
++    QV4_NEARLY_ALWAYS_INLINE Q_DECL_RELAXED_CONSTEXPR ReturnedValue &rawValueRef() { return _val; }
++    QV4_NEARLY_ALWAYS_INLINE Q_DECL_RELAXED_CONSTEXPR ReturnedValue rawValue() const { return _val; }
++    QV4_NEARLY_ALWAYS_INLINE Q_DECL_RELAXED_CONSTEXPR void setRawValue(ReturnedValue raw) { _val = raw; }
+ 
+ #if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+     static inline int valueOffset() { return 0; }
+@@ -547,7 +592,7 @@
+     constexpr operator ReturnedValue() const {
+         return val;
+     }
+-    quint64 val;
++    ReturnedValue val;
+ private:
+     explicit Encode(void *);
+ };
+diff -ruN a/src/qml/compiler/qv4instr_moth.cpp b/src/qml/compiler/qv4instr_moth.cpp
+--- a/src/qml/compiler/qv4instr_moth.cpp	2026-09-29 15:58:08.975403940 +0000
++++ b/src/qml/compiler/qv4instr_moth.cpp	2026-09-29 17:20:23.280551075 +0000
+@@ -144,6 +144,13 @@
+ 
+ void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*startLine*/, const QVector<CompiledData::CodeOffsetToLine> &lineNumberMapping)
+ {
++#ifdef __FILC__
++    // Fil-C: this one ~540-line function (a case per instruction, each
++    // inlining QDebug output) took the compiler over 20 minutes and 4 GB.
++    // It only serves QV4_SHOW_BYTECODE, so leave it out.
++    Q_UNUSED(code); Q_UNUSED(len); Q_UNUSED(nLocals); Q_UNUSED(nFormals); Q_UNUSED(lineNumberMapping);
++    qDebug("QV4_SHOW_BYTECODE: bytecode dumps are not available in this build");
++#else
+     MOTH_JUMP_TABLE;
+ 
+     auto findLine = [](const CompiledData::CodeOffsetToLine &entry, uint offset) {
+@@ -678,6 +685,7 @@
+             d << dumpRegister(func, nFormals) << dumpRegister(thisObject, nFormals) << dumpArguments(argc, argv, nFormals);
+         MOTH_END_INSTR(TailCall)
+     }
++#endif
+ }
+ 
+ }
+diff -ruN a/src/qml/compiler/qv4instr_moth_p.h b/src/qml/compiler/qv4instr_moth_p.h
+--- a/src/qml/compiler/qv4instr_moth_p.h	2026-09-29 15:58:08.975403940 +0000
++++ b/src/qml/compiler/qv4instr_moth_p.h	2026-09-29 17:16:12.714258354 +0000
+@@ -343,6 +343,10 @@
+ # elif defined(Q_OS_WASM) && !defined(__asmjs)
+ // Upstream llvm does not support computed goto for the wasm target, unlike the 'fastcomp' llvm fork
+ // shipped with the emscripten SDK. Disable computed goto usage for non-fastcomp llvm on Wasm.
++# elif defined(__FILC__)
++// Fil-C: the interpreter's and bytecode dumper's hundreds of indirect gotos
++// with hundreds of targets each took the compiler over 20 minutes and 4 GB
++// for qv4instr_moth.cpp; dispatch with a switch instead.
+ #else
+ #  define MOTH_COMPUTED_GOTO
+ #endif
+diff -ruN a/src/qml/jsapi/qjsvalue.cpp b/src/qml/jsapi/qjsvalue.cpp
+--- a/src/qml/jsapi/qjsvalue.cpp	2026-09-29 15:58:08.983404014 +0000
++++ b/src/qml/jsapi/qjsvalue.cpp	2026-09-29 16:15:15.936799019 +0000
+@@ -199,7 +199,11 @@
+ /*!
+   \internal
+ */
++#ifdef __FILC__
++QJSValue::QJSValue(ExecutionEngine *e, const QV4::ReturnedValue &val)
++#else
+ QJSValue::QJSValue(ExecutionEngine *e, quint64 val)
++#endif
+ {
+     QJSValuePrivate::setValue(this, e, val);
+ }
+@@ -978,7 +982,7 @@
+         return *this;
+ 
+     QJSValuePrivate::free(this);
+-    d = 0;
++    d = nullptr;
+ 
+     QV4::Value *v = QJSValuePrivate::getValue(&other);
+     if (v) {
+diff -ruN a/src/qml/jsapi/qjsvalue.h b/src/qml/jsapi/qjsvalue.h
+--- a/src/qml/jsapi/qjsvalue.h	2026-09-29 15:58:08.983404014 +0000
++++ b/src/qml/jsapi/qjsvalue.h	2026-09-29 16:15:15.936799019 +0000
+@@ -57,6 +57,9 @@
+ typedef QList<QJSValue> QJSValueList;
+ namespace QV4 {
+     struct ExecutionEngine;
++#ifdef __FILC__
++    struct ReturnedValue;
++#endif
+ }
+ 
+ class Q_QML_EXPORT QJSValue
+@@ -84,7 +87,7 @@
+     QJSValue(const QJSValue &other);
+ 
+ #ifdef Q_COMPILER_RVALUE_REFS
+-    inline QJSValue(QJSValue && other) : d(other.d) { other.d = 0; }
++    inline QJSValue(QJSValue && other) : d(other.d) { other.d = nullptr; }
+     inline QJSValue &operator=(QJSValue &&other)
+     { qSwap(d, other.d); return *this; }
+ #endif
+@@ -152,13 +155,20 @@
+     QT_DEPRECATED QJSEngine *engine() const;
+ #endif
+ 
++#ifdef __FILC__
++    // Fil-C: a ReturnedValue keeps a heap pointer's capability; quint64 does not.
++    QJSValue(QV4::ExecutionEngine *e, const QV4::ReturnedValue &val);
++#else
+     QJSValue(QV4::ExecutionEngine *e, quint64 val);
++#endif
+ private:
+     friend class QJSValuePrivate;
+     // force compile error, prevent QJSValue(bool) to be called
+     QJSValue(void *) Q_DECL_EQ_DELETE;
+ 
+-    mutable quintptr d;
++    // Fil-C: a pointer (a QV4::Value *, or a QVariant * with bit 0 set), so
++    // that it keeps its capability.
++    mutable char *d;
+ };
+ 
+ QT_END_NAMESPACE
+diff -ruN a/src/qml/jsapi/qjsvalue_p.h b/src/qml/jsapi/qjsvalue_p.h
+--- a/src/qml/jsapi/qjsvalue_p.h	2026-09-29 15:58:08.983404014 +0000
++++ b/src/qml/jsapi/qjsvalue_p.h	2026-09-29 16:03:08.066140106 +0000
+@@ -69,38 +69,38 @@
+ public:
+     static inline QV4::Value *getValue(const QJSValue *jsval)
+     {
+-        if (jsval->d & 3)
++        if (quintptr(jsval->d) & 3)
+             return nullptr;
+         return reinterpret_cast<QV4::Value *>(jsval->d);
+     }
+ 
+     static inline QVariant *getVariant(const QJSValue *jsval)
+     {
+-        if (jsval->d & 1)
+-            return reinterpret_cast<QVariant *>(jsval->d & ~3);
++        if (quintptr(jsval->d) & 1)
++            return reinterpret_cast<QVariant *>(jsval->d - 1);
+         return nullptr;
+     }
+ 
+     static inline void setRawValue(QJSValue *jsval, QV4::Value *v)
+     {
+-        jsval->d = reinterpret_cast<quintptr>(v);
++        jsval->d = reinterpret_cast<char *>(v);
+     }
+ 
+     static inline void setVariant(QJSValue *jsval, const QVariant &v) {
+         QVariant *val = new QVariant(v);
+-        jsval->d = reinterpret_cast<quintptr>(val) | 1;
++        jsval->d = reinterpret_cast<char *>(val) + 1;
+     }
+ 
+     static inline void setValue(QJSValue *jsval, QV4::ExecutionEngine *engine, const QV4::Value &v) {
+         QV4::Value *value = engine->memoryManager->m_persistentValues->allocate();
+         *value = v;
+-        jsval->d = reinterpret_cast<quintptr>(value);
++        jsval->d = reinterpret_cast<char *>(value);
+     }
+ 
+     static inline void setValue(QJSValue *jsval, QV4::ExecutionEngine *engine, QV4::ReturnedValue v) {
+         QV4::Value *value = engine->memoryManager->m_persistentValues->allocate();
+         *value = v;
+-        jsval->d = reinterpret_cast<quintptr>(value);
++        jsval->d = reinterpret_cast<char *>(value);
+     }
+ 
+     static QV4::ReturnedValue convertedToValue(QV4::ExecutionEngine *e, const QJSValue &jsval)
+@@ -110,7 +110,7 @@
+             QVariant *variant = getVariant(&jsval);
+             v = e->memoryManager->m_persistentValues->allocate();
+             *v = variant ? e->fromVariant(*variant) : QV4::Encode::undefined();
+-            jsval.d = reinterpret_cast<quintptr>(v);
++            jsval.d = reinterpret_cast<char *>(v);
+             delete variant;
+         }
+ 
+diff -ruN a/src/qml/jsruntime/qv4enginebase_p.h b/src/qml/jsruntime/qv4enginebase_p.h
+--- a/src/qml/jsruntime/qv4enginebase_p.h	2026-09-29 15:58:08.983404014 +0000
++++ b/src/qml/jsruntime/qv4enginebase_p.h	2026-09-29 17:39:35.499094524 +0000
+@@ -61,7 +61,10 @@
+ 
+ // Base class for the execution engine
+ 
+-#if defined(Q_CC_MSVC) || defined(Q_CC_GNU)
++// (Fil-C: not packed. Packing put callDepth, a qint32, before pointers,
++// which then sat at offsets that are 4 mod 8, where Fil-C cannot keep a
++// capability. The packed layout is only for the JIT, which is disabled.)
++#if (defined(Q_CC_MSVC) || defined(Q_CC_GNU)) && !defined(__FILC__)
+ #pragma pack(push, 1)
+ #endif
+ struct Q_QML_EXPORT EngineBase {
+@@ -137,7 +140,7 @@
+     Heap::InternalClass *classes[NClasses];
+     Heap::InternalClass *internalClasses(InternalClassType icType) { return classes[icType]; }
+ };
+-#if defined(Q_CC_MSVC) || defined(Q_CC_GNU)
++#if (defined(Q_CC_MSVC) || defined(Q_CC_GNU)) && !defined(__FILC__)
+ #pragma pack(pop)
+ #endif
+ 
+diff -ruN a/src/qml/jsruntime/qv4persistent.cpp b/src/qml/jsruntime/qv4persistent.cpp
+--- a/src/qml/jsruntime/qv4persistent.cpp	2026-09-29 15:58:08.983404014 +0000
++++ b/src/qml/jsruntime/qv4persistent.cpp	2026-09-29 16:15:41.821035874 +0000
+@@ -65,7 +65,9 @@
+ };
+ 
+ Page *getPage(Value *val) {
+-   return reinterpret_cast<Page *>(reinterpret_cast<quintptr>(val) & ~((quintptr)(WTF::pageSize() - 1)));
++   // (Fil-C: pointer arithmetic, so that the result keeps the page's capability.)
++   return reinterpret_cast<Page *>(reinterpret_cast<char *>(val)
++                                   - (reinterpret_cast<quintptr>(val) & (quintptr)(WTF::pageSize() - 1)));
+ }
+ 
+ QML_NEARLY_ALWAYS_INLINE void insertInFront(PersistentValueStorage *storage, Page *p)
+diff -ruN a/src/qml/jsruntime/qv4propertykey_p.h b/src/qml/jsruntime/qv4propertykey_p.h
+--- a/src/qml/jsruntime/qv4propertykey_p.h	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/jsruntime/qv4propertykey_p.h	2026-09-29 16:31:37.613781862 +0000
+@@ -51,6 +51,7 @@
+ //
+ 
+ #include <private/qv4global_p.h>
++#include <private/qv4staticvalue_p.h>
+ #include <QtCore/qhashfunctions.h>
+ 
+ QT_BEGIN_NAMESPACE
+@@ -72,7 +73,9 @@
+     // * If the key is a Symbol it simply points to the referenced symbol object
+     // * if the key is an array index (a uint < UINT_MAX), it's encoded as an
+     // integer value
+-    quint64 val;
++    // (Fil-C: a ReturnedValue, so that the string or symbol pointer keeps its
++    // capability.)
++    ReturnedValue val;
+ 
+     // Important: Always keep this in sync with the definitions for Integers and heap objects in Value
+     static const quint64 ArrayIndexMask = 0x3800000000000ull;
+@@ -131,8 +134,8 @@
+ 
+     Q_QML_EXPORT QString toQString() const;
+     Heap::StringOrSymbol *toStringOrSymbol(ExecutionEngine *e);
+-    quint64 id() const { return val; }
+-    static PropertyKey fromId(quint64 id) {
++    ReturnedValue id() const { return val; }
++    static PropertyKey fromId(ReturnedValue id) {
+         PropertyKey key; key.val = id; return key;
+     }
+ 
+@@ -148,7 +151,7 @@
+     bool operator <(const PropertyKey &other) const { return val < other.val; }
+     inline friend uint qHash(const PropertyKey &key, uint seed) noexcept
+     {
+-        return QT_PREPEND_NAMESPACE(qHash)(key.val, seed);
++        return QT_PREPEND_NAMESPACE(qHash)(quint64(key.val), seed);
+     }
+ };
+ 
+diff -ruN a/src/qml/jsruntime/qv4sparsearray.cpp b/src/qml/jsruntime/qv4sparsearray.cpp
+--- a/src/qml/jsruntime/qv4sparsearray.cpp	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/jsruntime/qv4sparsearray.cpp	2026-09-29 16:03:17.802229177 +0000
+@@ -362,7 +362,7 @@
+     SparseArrayNode *node = static_cast<SparseArrayNode *>(qMapAllocate(sizeof(SparseArrayNode), Q_ALIGNOF(SparseArrayNode)));
+     Q_CHECK_PTR(node);
+ 
+-    node->p = (quintptr)parent;
++    node->p = reinterpret_cast<char *>(parent);
+     node->left = nullptr;
+     node->right = nullptr;
+     node->size_left = sl;
+diff -ruN a/src/qml/jsruntime/qv4sparsearray_p.h b/src/qml/jsruntime/qv4sparsearray_p.h
+--- a/src/qml/jsruntime/qv4sparsearray_p.h	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/jsruntime/qv4sparsearray_p.h	2026-09-29 16:03:08.066140106 +0000
+@@ -70,7 +70,9 @@
+ 
+ struct SparseArrayNode
+ {
+-    quintptr p;
++    // Fil-C: the parent pointer with the colour in bit 0, kept as a pointer
++    // so that it keeps its capability.
++    char *p;
+     SparseArrayNode *left;
+     SparseArrayNode *right;
+     uint size_left;
+@@ -84,10 +86,10 @@
+     const SparseArrayNode *previousNode() const;
+     SparseArrayNode *previousNode() { return const_cast<SparseArrayNode *>(const_cast<const SparseArrayNode *>(this)->previousNode()); }
+ 
+-    Color color() const { return Color(p & 1); }
+-    void setColor(Color c) { if (c == Black) p |= Black; else p &= ~Black; }
+-    SparseArrayNode *parent() const { return reinterpret_cast<SparseArrayNode *>(p & ~Mask); }
+-    void setParent(SparseArrayNode *pp) { p = (p & Mask) | quintptr(pp); }
++    Color color() const { return Color(quintptr(p) & 1); }
++    void setColor(Color c) { p += quintptr(c == Black) - (quintptr(p) & 1); }
++    SparseArrayNode *parent() const { return reinterpret_cast<SparseArrayNode *>(p - (quintptr(p) & Mask)); }
++    void setParent(SparseArrayNode *pp) { p = reinterpret_cast<char *>(pp) + (quintptr(p) & Mask); }
+ 
+     uint key() const {
+         uint k = size_left;
+diff -ruN a/src/qml/jsruntime/qv4value_p.h b/src/qml/jsruntime/qv4value_p.h
+--- a/src/qml/jsruntime/qv4value_p.h	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/jsruntime/qv4value_p.h	2026-09-29 16:32:22.534192872 +0000
+@@ -77,6 +77,9 @@
+ 
+     Value() = default;
+     constexpr Value(quint64 val) : StaticValue(val) {}
++#ifdef __FILC__
++    constexpr Value(ReturnedValue val) : StaticValue(val) {}
++#endif
+ 
+     static constexpr Value fromStaticValue(StaticValue staticValue)
+     {
+@@ -86,7 +89,11 @@
+ #if QT_POINTER_SIZE == 8
+     QML_NEARLY_ALWAYS_INLINE HeapBasePtr m() const
+     {
++#ifdef __FILC__
++        return _val.toPointer<Heap::Base>();
++#else
+         HeapBasePtr b;
++#endif
+ #ifdef __ia64
+ // Restore bits 49-47 to bits 63-61, undoing the workaround explained in
+ // setM below.
+@@ -95,14 +102,20 @@
+         _tmp = _val & (7L << 47); // 0x3800000000000
+         _tmp = (_tmp << 14) | (_val ^ _tmp);
+         memcpy(&b, &_tmp, 8);
+-#else
++#elif !defined(__FILC__)
+         memcpy(&b, &_val, 8);
+ #endif
++#ifndef __FILC__
+         return b;
++#endif
+     }
+     QML_NEARLY_ALWAYS_INLINE void setM(HeapBasePtr b)
+     {
++#ifdef __FILC__
++        _val = ReturnedValue::fromPointer(b);
++#else
+         memcpy(&_val, &b, 8);
++#endif
+ #ifdef __ia64
+ // On ia64, bits 63-61 in a 64-bit pointer are used to store the virtual region
+ // number.  Since this implementation is not 64-bit clean, we move bits 63-61
+diff -ruN a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
+--- a/src/qml/memory/qv4mm.cpp	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/memory/qv4mm.cpp	2026-09-29 16:15:41.821035874 +0000
+@@ -127,7 +127,9 @@
+             size = SegmentSize;
+ 
+         pageReservation = PageReservation::reserve(size, OSAllocator::JSGCHeapPages);
+-        base = reinterpret_cast<Chunk *>((reinterpret_cast<quintptr>(pageReservation.base()) + Chunk::ChunkSize - 1) & ~(Chunk::ChunkSize - 1));
++        // (Fil-C: pointer arithmetic, so that base keeps the reservation's capability.)
++        base = reinterpret_cast<Chunk *>(static_cast<char *>(pageReservation.base())
++                                         + ((Chunk::ChunkSize - (reinterpret_cast<quintptr>(pageReservation.base()) & (Chunk::ChunkSize - 1))) & (Chunk::ChunkSize - 1)));
+         nChunks = NumChunks;
+         availableBytes = size - (reinterpret_cast<quintptr>(base) - reinterpret_cast<quintptr>(pageReservation.base()));
+         if (availableBytes < SegmentSize)
+diff -ruN a/src/qml/memory/qv4mmdefs_p.h b/src/qml/memory/qv4mmdefs_p.h
+--- a/src/qml/memory/qv4mmdefs_p.h	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/memory/qv4mmdefs_p.h	2026-09-29 16:15:41.821035874 +0000
+@@ -210,7 +210,9 @@
+     T *as() { return static_cast<T *>(reinterpret_cast<Heap::Base *>(this)); }
+ 
+     Chunk *chunk() const {
+-        return reinterpret_cast<Chunk *>(reinterpret_cast<quintptr>(this) >> Chunk::ChunkShift << Chunk::ChunkShift);
++        // (Fil-C: pointer arithmetic, so that the result keeps the chunk's capability.)
++        return reinterpret_cast<Chunk *>(const_cast<char *>(reinterpret_cast<const char *>(this))
++                                         - (reinterpret_cast<quintptr>(this) & (Chunk::ChunkSize - 1)));
+     }
+ 
+     bool isGray() const {
+diff -ruN a/src/qml/qml/ftw/qflagpointer_p.h b/src/qml/qml/ftw/qflagpointer_p.h
+--- a/src/qml/qml/ftw/qflagpointer_p.h	2026-09-29 15:58:08.987404051 +0000
++++ b/src/qml/qml/ftw/qflagpointer_p.h	2026-09-29 16:04:08.754695285 +0000
+@@ -66,6 +66,20 @@
+ };
+ }
+ 
++// Fil-C: the tagged pointer is kept in a pointer, so that it keeps its
++// capability; the flag bits are set and cleared with pointer arithmetic.
++struct QFlagPointerBits {
++    char *p = nullptr;
++    QFlagPointerBits() = default;
++    QFlagPointerBits(const void *v, quintptr flags = 0)
++        : p(static_cast<char *>(const_cast<void *>(v)) + flags) {}
++    operator quintptr() const { return quintptr(p); }
++    QFlagPointerBits &operator|=(quintptr b) { p += (quintptr(p) | b) - quintptr(p); return *this; }
++    QFlagPointerBits &operator&=(quintptr b) { p += (quintptr(p) & b) - quintptr(p); return *this; }
++    template<typename T> T *pointer(quintptr mask) const
++    { return reinterpret_cast<T *>(p - (quintptr(p) & mask)); }
++};
++
+ template<typename T>
+ class QFlagPointer {
+ public:
+@@ -96,7 +110,7 @@
+     inline explicit operator bool() const;
+ 
+ private:
+-    quintptr ptr_value = 0;
++    QFlagPointerBits ptr_value;
+ 
+     static const quintptr FlagBit = 0x1;
+     static const quintptr Flag2Bit = 0x2;
+@@ -128,7 +142,7 @@
+     inline T2 *asT2() const;
+ 
+ private:
+-    quintptr ptr_value = 0;
++    QFlagPointerBits ptr_value;
+ 
+     static const quintptr FlagBit = 0x1;
+     static const quintptr Flag2Bit = 0x2;
+@@ -142,7 +156,7 @@
+ 
+ template<typename T>
+ QFlagPointer<T>::QFlagPointer(T *v)
+-: ptr_value(quintptr(v))
++: ptr_value(v)
+ {
+     Q_STATIC_ASSERT_X(Q_ALIGNOF(T) >= 4, "Type T does not have sufficient alignment");
+     Q_ASSERT((ptr_value & FlagsMask) == 0);
+@@ -222,26 +236,26 @@
+ {
+     Q_ASSERT((quintptr(o) & FlagsMask) == 0);
+ 
+-    ptr_value = quintptr(o) | (ptr_value & FlagsMask);
++    ptr_value = QFlagPointerBits(o, ptr_value & FlagsMask);
+     return *this;
+ }
+ 
+ template<typename T>
+ T *QFlagPointer<T>::operator->() const
+ {
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer<T>(FlagsMask);
+ }
+ 
+ template<typename T>
+ T *QFlagPointer<T>::operator*() const
+ {
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer<T>(FlagsMask);
+ }
+ 
+ template<typename T>
+ T *QFlagPointer<T>::data() const
+ {
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer<T>(FlagsMask);
+ }
+ 
+ template<typename T>
+@@ -257,7 +271,7 @@
+ 
+ template<typename T, typename T2>
+ QBiPointer<T, T2>::QBiPointer(T *v)
+-: ptr_value(quintptr(v))
++: ptr_value(v)
+ {
+     Q_STATIC_ASSERT_X(QtPrivate::QFlagPointerAlignment<T>::Value >= 4,
+                       "Type T does not have sufficient alignment");
+@@ -266,7 +280,7 @@
+ 
+ template<typename T, typename T2>
+ QBiPointer<T, T2>::QBiPointer(T2 *v)
+-: ptr_value(quintptr(v) | Flag2Bit)
++: ptr_value(v, Flag2Bit)
+ {
+     Q_STATIC_ASSERT_X(QtPrivate::QFlagPointerAlignment<T2>::Value >= 4,
+                       "Type T2 does not have sufficient alignment");
+@@ -334,7 +348,7 @@
+ {
+     Q_ASSERT((quintptr(o) & FlagsMask) == 0);
+ 
+-    ptr_value = quintptr(o) | (ptr_value & FlagBit);
++    ptr_value = QFlagPointerBits(o, ptr_value & FlagBit);
+     return *this;
+ }
+ 
+@@ -343,7 +357,7 @@
+ {
+     Q_ASSERT((quintptr(o) & FlagsMask) == 0);
+ 
+-    ptr_value = quintptr(o) | (ptr_value & FlagBit) | Flag2Bit;
++    ptr_value = QFlagPointerBits(o, (ptr_value & FlagBit) | Flag2Bit);
+     return *this;
+ }
+ 
+@@ -351,14 +365,14 @@
+ T *QBiPointer<T, T2>::asT1() const
+ {
+     Q_ASSERT(isT1());
+-    return (T *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer<T>(FlagsMask);
+ }
+ 
+ template<typename T, typename T2>
+ T2 *QBiPointer<T, T2>::asT2() const
+ {
+     Q_ASSERT(isT2());
+-    return (T2 *)(ptr_value & ~FlagsMask);
++    return ptr_value.pointer<T2>(FlagsMask);
+ }
+ 
+ QT_END_NAMESPACE
+diff -ruN a/src/qml/qml/qqmlnotifier.cpp b/src/qml/qml/qqmlnotifier.cpp
+--- a/src/qml/qml/qqmlnotifier.cpp	2026-09-29 15:58:08.995404124 +0000
++++ b/src/qml/qml/qqmlnotifier.cpp	2026-09-29 16:14:27.832358838 +0000
+@@ -60,13 +60,13 @@
+ namespace {
+     struct NotifyListTraversalData {
+         NotifyListTraversalData(QQmlNotifierEndpoint *ep = nullptr)
+-            : originalSenderPtr(0)
++            : originalSenderPtr(nullptr)
+             , disconnectWatch(nullptr)
+             , endpoint(ep)
+         {}
+ 
+-        qintptr originalSenderPtr;
+-        qintptr *disconnectWatch;
++        char *originalSenderPtr;
++        char **disconnectWatch;
+         QQmlNotifierEndpoint *endpoint;
+     };
+ }
+@@ -93,7 +93,7 @@
+             data.endpoint->startNotifying(&data.originalSenderPtr);
+             data.disconnectWatch = &data.originalSenderPtr;
+         } else {
+-            data.disconnectWatch = (qintptr *)(data.endpoint->senderPtr & ~0x1);
++            data.disconnectWatch = reinterpret_cast<char **>(data.endpoint->senderPtr - 1);
+         }
+     }
+ 
+@@ -133,7 +133,7 @@
+                qPrintable(engineName));
+     }
+ 
+-    setSender(qintptr(source));
++    setSender(reinterpret_cast<char *>(source));
+     this->sourceSignal = sourceSignal;
+     QQmlPropertyPrivate::flushSignal(source, sourceSignal);
+     QQmlData *ddata = QQmlData::get(source, true);
+diff -ruN a/src/qml/qml/qqmlnotifier_p.h b/src/qml/qml/qqmlnotifier_p.h
+--- a/src/qml/qml/qqmlnotifier_p.h	2026-09-29 15:58:08.995404124 +0000
++++ b/src/qml/qml/qqmlnotifier_p.h	2026-09-29 16:14:27.832358838 +0000
+@@ -105,15 +105,15 @@
+     inline void disconnect();
+ 
+     inline bool isNotifying() const;
+-    inline void startNotifying(qintptr *originalSenderPtr);
+-    inline void stopNotifying(qintptr *originalSenderPtr);
++    inline void startNotifying(char **originalSenderPtr);
++    inline void stopNotifying(char **originalSenderPtr);
+ 
+     inline void cancelNotify();
+ 
+     inline int signalIndex() const { return sourceSignal; }
+ 
+-    inline qintptr sender() const;
+-    inline void setSender(qintptr sender);
++    inline char *sender() const;
++    inline void setSender(char *sender);
+ 
+     inline QObject *senderAsObject() const;
+     inline QQmlNotifier *senderAsNotifier() const;
+@@ -125,7 +125,9 @@
+     // Contains either the QObject*, or the QQmlNotifier* that this
+     // endpoint is connected to.  While the endpoint is notifying, the
+     // senderPtr points to another qintptr that contains this value.
+-    qintptr senderPtr;
++    // (Fil-C: pointers rather than qintptr, so that they keep their
++    // capabilities; bit 0 is set and cleared with pointer arithmetic.)
++    char *senderPtr;
+ 
+     Callback callback:4;
+     int needsConnectNotify:1;
+@@ -159,7 +161,7 @@
+ }
+ 
+ QQmlNotifierEndpoint::QQmlNotifierEndpoint(Callback callback)
+-: next(nullptr), prev(nullptr), senderPtr(0), callback(callback), needsConnectNotify(false), sourceSignal(-1)
++: next(nullptr), prev(nullptr), senderPtr(nullptr), callback(callback), needsConnectNotify(false), sourceSignal(-1)
+ {
+ }
+ 
+@@ -196,7 +198,7 @@
+     if (next) { next->prev = &next; }
+     notifier->endpoints = this;
+     prev = &notifier->endpoints;
+-    setSender(qintptr(notifier));
++    setSender(reinterpret_cast<char *>(notifier));
+ }
+ 
+ void QQmlNotifierEndpoint::disconnect()
+@@ -214,7 +216,7 @@
+             priv->disconnectNotify(QMetaObjectPrivate::signal(obj->metaObject(), sourceSignal));
+     }
+ 
+-    setSender(0x0);
++    setSender(nullptr);
+     next = nullptr;
+     prev = nullptr;
+     sourceSignal = -1;
+@@ -229,26 +231,26 @@
+ */
+ bool QQmlNotifierEndpoint::isNotifying() const
+ {
+-    return senderPtr & 0x1;
++    return quintptr(senderPtr) & 0x1;
+ }
+ 
+-void QQmlNotifierEndpoint::startNotifying(qintptr *originalSenderPtr)
++void QQmlNotifierEndpoint::startNotifying(char **originalSenderPtr)
+ {
+-    Q_ASSERT(*originalSenderPtr == 0);
++    Q_ASSERT(*originalSenderPtr == nullptr);
+     // Set the endpoint to notifying:
+     // - Save the original senderPtr,
+     *originalSenderPtr = senderPtr;
+     // - Take a pointer of it,
+     // - And assign that to the senderPtr, including a flag to signify "notifying".
+-    senderPtr = qintptr(originalSenderPtr) | 0x1;
++    senderPtr = reinterpret_cast<char *>(originalSenderPtr) + 1;
+ }
+ 
+-void QQmlNotifierEndpoint::stopNotifying(qintptr *originalSenderPtr)
++void QQmlNotifierEndpoint::stopNotifying(char **originalSenderPtr)
+ {
+     // End of notifying, restore values
+-    Q_ASSERT((senderPtr & ~0x1) == qintptr(originalSenderPtr));
++    Q_ASSERT(senderPtr - 1 == reinterpret_cast<char *>(originalSenderPtr));
+     senderPtr = *originalSenderPtr;
+-    *originalSenderPtr = 0;
++    *originalSenderPtr = nullptr;
+ }
+ 
+ /*!
+@@ -257,23 +259,23 @@
+ void QQmlNotifierEndpoint::cancelNotify()
+ {
+     if (isNotifying()) {
+-        auto *ptr = (qintptr *)(senderPtr & ~0x1);
++        auto *ptr = reinterpret_cast<char **>(senderPtr - 1);
+         Q_ASSERT(ptr);
+         senderPtr = *ptr;
+-        *ptr = 0;
++        *ptr = nullptr;
+     }
+ }
+ 
+-qintptr QQmlNotifierEndpoint::sender() const
++char *QQmlNotifierEndpoint::sender() const
+ {
+-    return isNotifying() ? *(qintptr *)(senderPtr & ~0x1) : senderPtr;
++    return isNotifying() ? *reinterpret_cast<char **>(senderPtr - 1) : senderPtr;
+ }
+ 
+-void QQmlNotifierEndpoint::setSender(qintptr sender)
++void QQmlNotifierEndpoint::setSender(char *sender)
+ {
+     // If we're just notifying, we write through to the originalSenderPtr
+     if (isNotifying())
+-        *(qintptr *)(senderPtr & ~0x1) = sender;
++        *reinterpret_cast<char **>(senderPtr - 1) = sender;
+     else
+         senderPtr = sender;
+ }
+diff -ruN a/src/quick/items/qquickitem.cpp b/src/quick/items/qquickitem.cpp
+--- a/src/quick/items/qquickitem.cpp	2026-09-29 15:58:09.031404453 +0000
++++ b/src/quick/items/qquickitem.cpp	2026-09-29 17:58:52.917685345 +0000
+@@ -9054,7 +9054,11 @@
+     QObjectWrapper::markObjects(that, markStack);
+ }
+ 
++#ifdef __FILC__
++QV4::ReturnedValue QQuickItemPrivate::_q_createJSWrapper(QV4::ExecutionEngine *engine)
++#else
+ quint64 QQuickItemPrivate::_q_createJSWrapper(QV4::ExecutionEngine *engine)
++#endif
+ {
+     return (engine->memoryManager->allocate<QQuickItemWrapper>(q_func()))->asReturnedValue();
+ }
+diff -ruN a/src/quick/items/qquickitem.h b/src/quick/items/qquickitem.h
+--- a/src/quick/items/qquickitem.h	2026-09-29 15:58:09.031404453 +0000
++++ b/src/quick/items/qquickitem.h	2026-09-29 17:58:52.913685308 +0000
+@@ -456,7 +456,12 @@
+ 
+ private:
+     Q_PRIVATE_SLOT(d_func(), void _q_resourceObjectDeleted(QObject *))
++#ifdef __FILC__
++    // Fil-C: returned as a ReturnedValue, which keeps the wrapper's capability.
++    Q_PRIVATE_SLOT(d_func(), QV4::ReturnedValue _q_createJSWrapper(QV4::ExecutionEngine *))
++#else
+     Q_PRIVATE_SLOT(d_func(), quint64 _q_createJSWrapper(QV4::ExecutionEngine *))
++#endif
+ 
+     friend class QQuickEventPoint;
+     friend class QQuickWindow;
+diff -ruN a/src/quick/items/qquickitem_p.h b/src/quick/items/qquickitem_p.h
+--- a/src/quick/items/qquickitem_p.h	2026-09-29 15:58:09.031404453 +0000
++++ b/src/quick/items/qquickitem_p.h	2026-09-29 17:58:52.913685308 +0000
+@@ -315,7 +315,11 @@
+     static void transform_clear(QQmlListProperty<QQuickTransform> *list);
+ 
+     void _q_resourceObjectDeleted(QObject *);
++#ifdef __FILC__
++    QV4::ReturnedValue _q_createJSWrapper(QV4::ExecutionEngine *engine);
++#else
+     quint64 _q_createJSWrapper(QV4::ExecutionEngine *engine);
++#endif
+ 
+     enum ChangeType {
+         Geometry = 0x01,
