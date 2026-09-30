@@ -1,0 +1,266 @@
+Status: compiled and tested with the dev LLVM build (filc-llvm shell,
+build-filnix at this commit) against the pinned Fil-C runtime. It
+applies to mbrock/fil-c d6cbb697f74 (branch filnix) and is also pushed
+as mbrock/fil-c branch orb/toolchain-asm (69a5692e9a4). Fetch that
+branch, or `sed -n '/^From /,$p' this.patch | git am` in a fil-c
+checkout.
+
+Verified with the dev clang:
+- annotateglobal (-O2) and annotateglobalO0 print "annotate ok 42";
+  annotateglobalfail stops with "filc safety error" (ptr >= upper).
+  Run by hand (compile, run, check output), not through run-tests.
+- Rubber Band's src/RubberBandLiveShifter.cpp compiles; the pinned
+  compiler asserts on it.
+- An Abseil-style [[clang::annotate]] constructor works at -O0 and -O2.
+- commonsym still passes.
+
+Reproducers with the pinned compiler (Fil-C 0.685, d6cbb69):
+
+    __attribute__((annotate("realtime"))) void f(void) {}
+    /* clang -c: Assertion `G.getLinkage() != GlobalValue::AppendingLinkage
+       || ...` failed in lockDownLinkage */
+
+    int main(void) { int x __attribute__((annotate("a"))) = 1; return x - 1; }
+    /* compiles; running it stops with "Unhandled intrinsic:
+       llvm.var.annotation" (llvm.ptr.annotation for annotated fields,
+       llvm.annotation for __builtin_annotation) */
+
+From 69a5692e9a4c5ca637bdd66b05e2dd7de2f3f5b0 Mon Sep 17 00:00:00 2001
+From: Mikael Brockman <mikael@brockman.se>
+Date: Tue, 29 Sep 2026 15:17:33 +0000
+Subject: [PATCH] FilPizlonator: accept __attribute__((annotate)) and
+ __builtin_annotation
+
+__attribute__((annotate)) on a function or global makes Clang emit
+llvm.global.annotations, an appending global in the llvm.metadata
+section, and lockDownLinkage asserted that the only appending globals
+are the ctor, dtor and used lists:
+
+    __attribute__((annotate("realtime"))) void f(void) {}
+
+Only tools read the annotations; codegen never emits llvm.metadata.
+Erase the global at the start of the pass, together with the
+llvm.metadata strings it referenced once nothing else uses them.
+
+Annotations on locals and fields, and __builtin_annotation, compiled
+but stopped the program with "Unhandled intrinsic" for
+llvm.var.annotation, llvm.ptr.annotation and llvm.annotation. Remove
+them with the other irrelevant intrinsics, as codegen does: the first
+is dropped and the other two return their first operand.
+
+Tests: annotateglobal, annotateglobalO0, annotateglobalfail.
+
+Co-authored-by: Amp <amp@ampcode.com>
+Amp-Thread-ID: https://ampcode.com/threads/T-01a0ed6a-05c1-75a8-bead-f72fc3f40e56
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ filc/tests/annotateglobal/annotateglobal.c    | 37 +++++++++++++++++++
+ filc/tests/annotateglobal/manifest            |  4 ++
+ .../tests/annotateglobalO0/annotateglobalO0.c | 37 +++++++++++++++++++
+ filc/tests/annotateglobalO0/manifest          |  6 +++
+ .../annotateglobalfail/annotateglobalfail.c   | 10 +++++
+ filc/tests/annotateglobalfail/manifest        |  4 ++
+ .../Instrumentation/FilPizlonator.cpp         | 29 +++++++++++++++
+ 7 files changed, 127 insertions(+)
+ create mode 100644 filc/tests/annotateglobal/annotateglobal.c
+ create mode 100644 filc/tests/annotateglobal/manifest
+ create mode 100644 filc/tests/annotateglobalO0/annotateglobalO0.c
+ create mode 100644 filc/tests/annotateglobalO0/manifest
+ create mode 100644 filc/tests/annotateglobalfail/annotateglobalfail.c
+ create mode 100644 filc/tests/annotateglobalfail/manifest
+
+diff --git a/filc/tests/annotateglobal/annotateglobal.c b/filc/tests/annotateglobal/annotateglobal.c
+new file mode 100644
+index 00000000000..874ba78d6f9
+--- /dev/null
++++ b/filc/tests/annotateglobal/annotateglobal.c
+@@ -0,0 +1,37 @@
++/* __attribute__((annotate)) on functions and globals (llvm.global.annotations), locals
++   (llvm.var.annotation) and fields (llvm.ptr.annotation), and __builtin_annotation
++   (llvm.annotation) compile, and the annotated things behave as usual. */
++#include <stdfil.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++struct box {
++    int* __attribute__((annotate("field"))) ptr;
++};
++
++__attribute__((annotate("realtime"))) int twice(int x)
++{
++    return 2 * x;
++}
++
++__attribute__((annotate("counter"))) int counter;
++__attribute__((annotate("table"), annotate("second"))) int* table[4];
++
++int main()
++{
++    int local __attribute__((annotate("local"))) = twice(21);
++    for (int i = 0; i < 4; i++) {
++        table[i] = malloc(100 * sizeof(int));
++        table[i][99] = i;
++    }
++    struct box* b = malloc(sizeof(struct box));
++    b->ptr = malloc(100 * sizeof(int));
++    b->ptr[99] = 7;
++    zgc_request_and_wait();
++    for (int i = 0; i < 4; i++)
++        ZASSERT(table[i][99] == i);
++    ZASSERT(b->ptr[99] == 7);
++    counter = __builtin_annotation(local, "builtin");
++    printf("annotate ok %d\n", counter);
++    return 0;
++}
+diff --git a/filc/tests/annotateglobal/manifest b/filc/tests/annotateglobal/manifest
+new file mode 100644
+index 00000000000..be96fa4e47a
+--- /dev/null
++++ b/filc/tests/annotateglobal/manifest
+@@ -0,0 +1,4 @@
++return:
++  success
++output-includes:
++  - "annotate ok 42"
+diff --git a/filc/tests/annotateglobalO0/annotateglobalO0.c b/filc/tests/annotateglobalO0/annotateglobalO0.c
+new file mode 100644
+index 00000000000..874ba78d6f9
+--- /dev/null
++++ b/filc/tests/annotateglobalO0/annotateglobalO0.c
+@@ -0,0 +1,37 @@
++/* __attribute__((annotate)) on functions and globals (llvm.global.annotations), locals
++   (llvm.var.annotation) and fields (llvm.ptr.annotation), and __builtin_annotation
++   (llvm.annotation) compile, and the annotated things behave as usual. */
++#include <stdfil.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++struct box {
++    int* __attribute__((annotate("field"))) ptr;
++};
++
++__attribute__((annotate("realtime"))) int twice(int x)
++{
++    return 2 * x;
++}
++
++__attribute__((annotate("counter"))) int counter;
++__attribute__((annotate("table"), annotate("second"))) int* table[4];
++
++int main()
++{
++    int local __attribute__((annotate("local"))) = twice(21);
++    for (int i = 0; i < 4; i++) {
++        table[i] = malloc(100 * sizeof(int));
++        table[i][99] = i;
++    }
++    struct box* b = malloc(sizeof(struct box));
++    b->ptr = malloc(100 * sizeof(int));
++    b->ptr[99] = 7;
++    zgc_request_and_wait();
++    for (int i = 0; i < 4; i++)
++        ZASSERT(table[i][99] == i);
++    ZASSERT(b->ptr[99] == 7);
++    counter = __builtin_annotation(local, "builtin");
++    printf("annotate ok %d\n", counter);
++    return 0;
++}
+diff --git a/filc/tests/annotateglobalO0/manifest b/filc/tests/annotateglobalO0/manifest
+new file mode 100644
+index 00000000000..7eecd31110a
+--- /dev/null
++++ b/filc/tests/annotateglobalO0/manifest
+@@ -0,0 +1,6 @@
++return:
++  success
++optFlags:
++  "-O0"
++output-includes:
++  - "annotate ok 42"
+diff --git a/filc/tests/annotateglobalfail/annotateglobalfail.c b/filc/tests/annotateglobalfail/annotateglobalfail.c
+new file mode 100644
+index 00000000000..9f31cf5df58
+--- /dev/null
++++ b/filc/tests/annotateglobalfail/annotateglobalfail.c
+@@ -0,0 +1,10 @@
++/* An annotated global keeps its bounds. */
++__attribute__((annotate("table"))) char table[32];
++__attribute__((annotate("after"))) char after[32];
++
++int main()
++{
++    volatile int index = 40;
++    table[index] = 1;
++    return 0;
++}
+diff --git a/filc/tests/annotateglobalfail/manifest b/filc/tests/annotateglobalfail/manifest
+new file mode 100644
+index 00000000000..13c1054dc6f
+--- /dev/null
++++ b/filc/tests/annotateglobalfail/manifest
+@@ -0,0 +1,4 @@
++return:
++  failure
++output-includes:
++  - "filc safety error"
+diff --git a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+index 23e751ef671..1cf04f6601a 100644
+--- a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
++++ b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+@@ -14441,6 +14441,31 @@ class Pizlonator {
+     }
+   }
+ 
++  /* __attribute__((annotate)) on functions and globals is collected in llvm.global.annotations,
++     an appending global in the llvm.metadata section. Only tools read it; codegen never emits
++     that section. Drop it, and the strings it points to, rather than instrument it. */
++  void removeGlobalAnnotations() {
++    GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
++    if (!Annotations)
++      return;
++    SmallPtrSet<GlobalValue*, 8> Seen;
++    std::vector<GlobalValue*> Referenced;
++    for (Use& Entry : Annotations->getInitializer()->operands()) {
++      for (Use& Field : cast<Constant>(Entry)->operands()) {
++        GlobalValue* G = dyn_cast<GlobalValue>(Field->stripPointerCasts());
++        if (G && Seen.insert(G).second)
++          Referenced.push_back(G);
++      }
++    }
++    Annotations->eraseFromParent();
++    for (GlobalValue* G : Referenced) {
++      G->removeDeadConstantUsers();
++      GlobalVariable* V = dyn_cast<GlobalVariable>(G);
++      if (V && V->getSection() == "llvm.metadata" && V->use_empty())
++        V->eraseFromParent();
++    }
++  }
++
+   JmpBufKind getJmpBufKindForSetjmp(Function* F) {
+     if (F->getName() == "setjmp")
+       return JmpBufKind::setjmp;
+@@ -15692,10 +15717,13 @@ class Pizlonator {
+           case Intrinsic::experimental_noalias_scope_decl:
+           case Intrinsic::invariant_start:
+           case Intrinsic::invariant_end:
++          case Intrinsic::var_annotation:
+             ShouldErase = true;
+             break;
+           case Intrinsic::launder_invariant_group:
+           case Intrinsic::strip_invariant_group:
++          case Intrinsic::ptr_annotation:
++          case Intrinsic::annotation:
+             CI->replaceAllUsesWith(CI->getArgOperand(0));
+             ShouldErase = true;
+             break;
+@@ -16174,6 +16202,7 @@ public:
+     Dummy = makeDummy(Int32Ty);
+ 
+     markSetjmpsReturnTwice();
++    removeGlobalAnnotations();
+     lowerIndirectBr();
+ 
+     if (verbose)
+-- 
+2.55.0
+

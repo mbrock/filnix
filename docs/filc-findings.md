@@ -158,6 +158,26 @@ so protobuf, re2 and every other abseil user crashed the compiler.
 `patches/abseil-cpp-no-refactor-annotate.patch` drops the annotation; the
 pass could simply delete `llvm.global.annotations`, which codegen discards.
 
+Any annotated function or global does it, used or not:
+
+```c
+__attribute__((annotate("realtime"))) void f(void) {}   /* assertion failure */
+```
+
+Rubber Band 4.0 marks its real-time entry points this way (`RTENTRY__` in
+`src/common/sysutils.h`); the port defines it empty. This is not a
+regression from the common-symbol change below: upstream's assertion is
+the same. Annotations on locals and fields, and `__builtin_annotation`,
+compile but stop the program when they run ("Unhandled intrinsic:
+llvm.var.annotation", `llvm.ptr.annotation`, `llvm.annotation`).
+
+`patches/fil-c/filpizlonator-annotations.patch` (fork branch
+`orb/toolchain-asm`, tested with the dev LLVM build) erases
+`llvm.global.annotations` and its now-unused `llvm.metadata` strings at the
+start of the pass, and removes the three intrinsics as codegen does (tests
+`annotateglobal`, `annotateglobalO0`, `annotateglobalfail`). The Abseil and
+Rubber Band workarounds can go once filnix pins it.
+
 ## Version scripts with `extern "C++"` blocks abort the driver
 
 The Fil-C driver parses version scripts itself to rename symbols, fails on
@@ -1133,3 +1153,74 @@ explicit locals from the GC-roots fix make the graph denser still.
 `patches/fil-c/filpizlonator-frame-coloring-linear.patch` (not compiled
 yet) collects the neighbors' indices once per value and takes the lowest
 free one: the same assignment, in time linear in the edges.
+## Module-level asm other than symbol directives crashes the compiler
+
+FilPizlonator parses file-scope `asm` itself and accepts only its symbol
+directives (`.symver`, `.filc_weak`, `.filc_alias`, ...). Anything else
+hits `llvm_unreachable("Error parsing module asm")` after printing the
+whole module, rather than a diagnostic:
+
+```c
+__asm__(".previous");   /* UNREACHABLE executed at FilPizlonator.cpp:419 */
+```
+
+PulseAudio's `PA_WARN_REFERENCE` emits `.section .gnu.warning.SYM`,
+`.asciz` and `.previous` this way. The libpulseaudio port already turned
+the macro off, but the full `pulseaudio` (daemon and modules) did not get
+it; the port now targets `pulseaudio`, which `libpulseaudio` overrides.
+
+## Inline asm that saves a register it clobbers is rejected
+
+FilPizlonator checks x86 inline asm against its constraints, so asm that
+saves and restores a register by hand is refused when it runs. The LZMA
+SDK's PIC cpuid (in PhysicsFS) does this with `%rbx`:
+
+```c
+__asm__ __volatile__("mov %%rbx, %%rdi; cpuid; xchg %%rbx, %%rdi"
+                     : "=a"(a), "=D"(b), "=c"(c), "=d"(d) : "0"(0));
+/* cpuid output ebx not covered by output constraint or clobber */
+```
+
+`"cpuid" : "=a", "=b", "=c", "=d"` works under Fil-C even with `-fPIC`; the
+physfs port selects that variant.
+
+## Inline asm with a pointer output is rejected
+
+Crypto++'s `SecureWipeBuffer` clears memory with `rep stos` and passes the
+destination as a `"+D"(p)` in-out operand, which is "inline assembly with
+pointer return type". `CRYPTOPP_DISABLE_ASM` removes it, but not the
+x86-64 `mulq`/`adcq` word arithmetic in `integer.cpp`, which also uses an
+`"g"` operand (unsupported constraint `imr`). The port defines
+`CRYPTOPP_DISABLE_ASM` in `config_asm.h` for `__FILC__`, so programs using
+the headers agree, and multiplies through `unsigned __int128` instead.
+
+## Hand-written assembly: take the portable C path
+
+The sarcasm assembler accepts only annotated functions, so packages with
+perlasm or yasm kernels need their C fallbacks: LibreSSL
+`-DENABLE_ASM=OFF`; isa-l configured as an unknown CPU (`CPU=""`), which
+builds the `*_base` C functions without multibinary dispatch; btrfs-progs
+without `crc32c-pcl-intel-asm_64.S` and without the SSE4.2 CRC32C, which
+is `.byte`-encoded inline asm. btrfs-progs also passes
+`-Wa,--compress-debug-sections` when assembling, which sarcasm refuses.
+
+## Fil-C's glibc has no `__wmemset_chk`
+
+The user glibc drops `memcpy_chk`, `memmove_chk`, `mempcpy_chk`,
+`memset_chk` and `wmemset_chk` from `debug/Makefile`'s routines, as
+upstream Fil-C does. The compiler turns fortified `memcpy` and friends into
+its own checked copies, but glibc's `wchar2.h` wrapper calls `__wmemset_chk`, so any fortified
+`wmemset` fails to link (`undefined reference to 'pizlonated___wmemset_chk'`).
+isa-l's igzip hit it (its configure adds `-D_FORTIFY_SOURCE=2`); the port
+builds it unfortified. Adding `wmemset_chk` back to the routines, whose C
+file is still there, would fix it, and would rebuild everything.
+
+## The GNUstep Objective-C runtime is out of reach
+
+gnustep-libobjc (libobjc2) needs `objc_msgSend` and the block trampolines
+in assembly, and generates `eh_trampoline.S` by compiling C++ to assembly.
+Beyond that, Clang's GNUstep 2.x ABI emits classes, selectors and
+categories into `__objc_*` sections and passes their
+`__start_`/`__stop_` bounds to `__objc_load`; under Fil-C those become
+undefined `pizlonated___start___objc_selectors` and so on (see the
+`__start_`/`__stop_` finding above). The port marks it broken.
