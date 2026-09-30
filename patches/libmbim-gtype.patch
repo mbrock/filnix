@@ -1,0 +1,158 @@
+Subject: Keep GType once storage pointer-valued
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C. The boxed and enum get_type functions kept
+the type in gsize once storage and returned it as GType, which clang
+rejects and which would drop the capability. The boxed types use
+G_DEFINE_BOXED_TYPE, whose GLib helpers are pointer-valued at every API
+ceiling. The mkenums templates use pointer once initialization; libmbim's
+GLib 2.56 ceiling hides it, so, as in Meson's enum template, the calls are
+parenthesized and wrapped to silence availability warnings.
+
+diff --git a/build-aux/templates/mbim-enum-types.c.template b/build-aux/templates/mbim-enum-types.c.template
+index 0fa59a6..6d24625 100644
+--- a/build-aux/templates/mbim-enum-types.c.template
++++ b/build-aux/templates/mbim-enum-types.c.template
+@@ -18,20 +18,22 @@ static const G@Type@Value @enum_name@_values[] = {
+ 
+ /* Define type-specific symbols */
+ 
++G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+ GType
+ @enum_name@_get_type (void)
+ {
+-    static gsize g_define_type_id_initialized = 0;
++    static GType g_define_type_id_initialized = 0;
+ 
+-    if (g_once_init_enter (&g_define_type_id_initialized)) {
++    if ((g_once_init_enter_pointer) (&g_define_type_id_initialized)) {
+         GType g_define_type_id =
+             g_@type@_register_static (g_intern_static_string ("@EnumName@"),
+                                       @enum_name@_values);
+-        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
++        (g_once_init_leave_pointer) (&g_define_type_id_initialized, g_define_type_id);
+     }
+ 
+     return g_define_type_id_initialized;
+ }
++G_GNUC_END_IGNORE_DEPRECATIONS
+ 
+ /* Enum-specific method to get the value as a string.
+  * We get the nick of the GEnumValue. Note that this will be
+diff --git a/build-aux/templates/mbim-error-types.c.template b/build-aux/templates/mbim-error-types.c.template
+index 9f9589d..884d645 100644
+--- a/build-aux/templates/mbim-error-types.c.template
++++ b/build-aux/templates/mbim-error-types.c.template
+@@ -17,20 +17,22 @@ static const G@Type@Value @enum_name@_values[] = {
+ 
+ /* @enum_name@_quark() implemented in mbim-errors-quarks.c */
+ 
++G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+ GType
+ @enum_name@_get_type (void)
+ {
+-    static gsize g_define_type_id_initialized = 0;
++    static GType g_define_type_id_initialized = 0;
+ 
+-    if (g_once_init_enter (&g_define_type_id_initialized)) {
++    if ((g_once_init_enter_pointer) (&g_define_type_id_initialized)) {
+         GType g_define_type_id =
+             g_@type@_register_static (g_intern_static_string ("@EnumName@"),
+                                       @enum_name@_values);
+-        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
++        (g_once_init_leave_pointer) (&g_define_type_id_initialized, g_define_type_id);
+     }
+ 
+     return g_define_type_id_initialized;
+ }
++G_GNUC_END_IGNORE_DEPRECATIONS
+ 
+ /* Enum-specific method to get the value as a string.
+  * We get the nick of the GEnumValue. Note that this will be
+diff --git a/build-aux/templates/mbim-flag-types.c.template b/build-aux/templates/mbim-flag-types.c.template
+index d2877b7..6553a35 100644
+--- a/build-aux/templates/mbim-flag-types.c.template
++++ b/build-aux/templates/mbim-flag-types.c.template
+@@ -18,20 +18,22 @@ static const G@Type@Value @enum_name@_values[] = {
+ 
+ /* Define type-specific symbols */
+ 
++G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+ GType
+ @enum_name@_get_type (void)
+ {
+-    static gsize g_define_type_id_initialized = 0;
++    static GType g_define_type_id_initialized = 0;
+ 
+-    if (g_once_init_enter (&g_define_type_id_initialized)) {
++    if ((g_once_init_enter_pointer) (&g_define_type_id_initialized)) {
+         GType g_define_type_id =
+             g_@type@_register_static (g_intern_static_string ("@EnumName@"),
+                                       @enum_name@_values);
+-        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
++        (g_once_init_leave_pointer) (&g_define_type_id_initialized, g_define_type_id);
+     }
+ 
+     return g_define_type_id_initialized;
+ }
++G_GNUC_END_IGNORE_DEPRECATIONS
+ 
+ /* Flags-specific method to build a string with the given mask.
+  * We get a comma separated list of the nicks of the GFlagsValues.
+diff --git a/src/libmbim-glib/mbim-message.c b/src/libmbim-glib/mbim-message.c
+index 96566ff..0eec409 100644
+--- a/src/libmbim-glib/mbim-message.c
++++ b/src/libmbim-glib/mbim-message.c
+@@ -99,22 +99,7 @@ set_error_from_status (GError          **error,
+ 
+ /*****************************************************************************/
+ 
+-GType
+-mbim_message_get_type (void)
+-{
+-    static gsize g_define_type_id_initialized = 0;
+-
+-    if (g_once_init_enter (&g_define_type_id_initialized)) {
+-        GType g_define_type_id =
+-            g_boxed_type_register_static (g_intern_static_string ("MbimMessage"),
+-                                          (GBoxedCopyFunc) mbim_message_ref,
+-                                          (GBoxedFreeFunc) mbim_message_unref);
+-
+-        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
+-    }
+-
+-    return g_define_type_id_initialized;
+-}
++G_DEFINE_BOXED_TYPE (MbimMessage, mbim_message, mbim_message_ref, mbim_message_unref)
+ 
+ /*****************************************************************************/
+ 
+diff --git a/src/libmbim-glib/mbim-tlv.c b/src/libmbim-glib/mbim-tlv.c
+index 38bd622..f88f72f 100644
+--- a/src/libmbim-glib/mbim-tlv.c
++++ b/src/libmbim-glib/mbim-tlv.c
+@@ -21,22 +21,7 @@
+ 
+ /*****************************************************************************/
+ 
+-GType
+-mbim_tlv_get_type (void)
+-{
+-    static gsize g_define_type_id_initialized = 0;
+-
+-    if (g_once_init_enter (&g_define_type_id_initialized)) {
+-        GType g_define_type_id =
+-            g_boxed_type_register_static (g_intern_static_string ("MbimTlv"),
+-                                          (GBoxedCopyFunc) mbim_tlv_ref,
+-                                          (GBoxedFreeFunc) mbim_tlv_unref);
+-
+-        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
+-    }
+-
+-    return g_define_type_id_initialized;
+-}
++G_DEFINE_BOXED_TYPE (MbimTlv, mbim_tlv, mbim_tlv_ref, mbim_tlv_unref)
+ 
+ /*****************************************************************************/
+ 

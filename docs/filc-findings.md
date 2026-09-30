@@ -787,3 +787,86 @@ failed on a loaded builder; `pyports.nix` now drops that one noisy ratio).
 Expressing the LTO change without an override argument would put that set
 back on cache.nixos.org, but changes the Fil-C Python derivation and so
 every Fil-C Python package.
+
+## GType in integer storage cannot be fixed in GLib's headers
+
+GType is a pointer under Fil-C's GLib, and the common pre-2.80 idiom keeps
+it in `gsize` once storage:
+
+```c
+static gsize id = 0;
+if (g_once_init_enter (&id)) {
+  GType t = g_type_register_static (...);
+  g_once_init_leave (&id, t);
+}
+return id;
+```
+
+clang rejects the store and the `return` (`-Wint-conversion` is an error),
+and a cast would not help: an integer load never carries a capability, so
+the returned GType would trap on first use. GLib's macros cannot repair
+this, since the storage and the `return` belong to the caller; each
+generator or hand-written `get_type` has to store a GType and use
+`g_once_init_enter_pointer`/`g_once_init_leave_pointer` (or
+`G_DEFINE_*_TYPE`, which the GLib port keeps pointer-valued at every API
+ceiling). The same goes for `switch` on a GType (switch on its
+`(guintptr)` value) and for clearing `G_SIGNAL_TYPE_STATIC_SCOPE` (use
+`zandptr`).
+
+Generators that write such C for the package being built are patched in
+`ports/build-tools.nix`, so every consumer benefits:
+
+- valac used the gsize path below `--target-glib=2.80`, for type
+  registration and for regex literals (`patches/vala-pointer-once.patch`).
+  Autotools release tarballs ship C that an older valac generated, so the
+  build valac's setup hook deletes `*_vala.stamp`/`*.vala.stamp` before
+  configure and make regenerates it. libgee's 1,318 test cases pass.
+- gtkdoc-scangobj's scanner program switched on GTypes and masked the
+  static-scope bit with `&` (`patches/gtk-doc-scangobj-gtype.patch`).
+
+Packages with their own copies take per-package patches: libmbim (boxed
+types and mkenums templates), Cogl (`get_gtype` macros and templates),
+libgsf and vala-gen-introspect (switches).
+
+## Found by Fil-C: gpgscm rebased a string port cursor across buffers
+
+GnuPG's test interpreter (`tests/gpgscm/scheme.c`, from TinyScheme) grows
+a string port with `curr -= start - str`. The address lands in the new
+buffer, but the pointer still derives from the old one, freed on the next
+line, so the next write trapped (`t-child.scm`), as in FFmpeg's flashsv2
+above. `patches/gnupg-gpgscm-port-realloc.patch` writes
+`str + (curr - start)`.
+
+## `rep; bsf` is rejected in inline assembly
+
+libgcrypt's OCB mode counts trailing zeros with
+`asm ("rep;bsfl %k[low], %k[ntz]" ...)` (the `tzcnt` encoding) even with
+`--disable-asm`, and FilPizlonator stops the program on it ("unsupported
+mnemonic for safe inline asm: rep"); gnupg's `t-protect` hit it. Upstream
+Fil-C's libgcrypt port guards this, Keccak's and `longlong.h`'s asm with
+`ASM_DISABLED`; `ports/patch/libgcrypt-1.12.2.patch` is that port rebased.
+
+## `mlock` on non-mmapped memory is a safety error
+
+`mlock` of a `malloc` block stops the program ("cannot perform this
+operation on something that was not mmapped") instead of failing with an
+errno. The GnuPG family's configure probe (`GNUPG_CHECK_MLOCK`) mlocks a
+`malloc`ed page, so it concluded mlock was broken; libgcrypt then never
+locked its secure memory and `GCRYCTL_INIT_SECMEM` failed (`t-secmem`,
+`t-sexp`). The secure memory pool itself is mmapped, which `mlock` accepts,
+so the libgcrypt port presets `gnupg_cv_have_broken_mlock=no`.
+
+## Found by Fil-C: two of Vala's own tests
+
+With the port's valac, Vala 0.56.19's test suite (1,435 programs built at
+`-O0`) passes except the D-Bus tests, which need a session config in the
+sandbox (they pass given one), and two that Fil-C stops:
+
+- `methods/varargs-delegate-without-target` calls `string foo (void *)`
+  through a `string (*)(void)` delegate, so the callee reads an argument
+  that was never passed ("argument size mismatch").
+- `objects/property-array`: `_vala_array_dup` adds a NULL terminator only
+  for reference-type elements, so copying an `array_null_terminated`
+  array of nullable structs (`Manam?[]`) drops the terminator and the next
+  `_vala_array_length` reads past the copy. A Vala codegen bug
+  (`generate_array_dup_wrapper`), worth reporting upstream; not patched.

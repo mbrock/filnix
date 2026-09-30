@@ -1,0 +1,68 @@
+Subject: Switch on GType values as integers in vala-gen-introspect
+Origin: Filnix
+Upstream-Status: Not submitted
+
+GType is a pointer under Fil-C, and C cannot switch on a pointer. Switch
+on the pointer-width integer value and cast the case labels likewise; no
+pointer is rebuilt from the integer.
+
+diff --git a/gobject-introspection/scanner.c b/gobject-introspection/scanner.c
+index 58133f9..37e92dc 100644
+--- a/gobject-introspection/scanner.c
++++ b/gobject-introspection/scanner.c
+@@ -103,17 +103,17 @@ create_node_from_gtype (GType type_id)
+   node = (GIdlNodeType *) g_idl_node_new (G_IDL_NODE_TYPE);
+ 
+   fundamental = g_type_fundamental (type_id);
+-  switch (fundamental)
++  switch ((guintptr) fundamental)
+     {
+-    case G_TYPE_STRING:
++    case (guintptr) G_TYPE_STRING:
+       node->unparsed = g_strdup ("char*");
+       break;
+-    case G_TYPE_INTERFACE:
+-    case G_TYPE_BOXED:
+-    case G_TYPE_OBJECT:
++    case (guintptr) G_TYPE_INTERFACE:
++    case (guintptr) G_TYPE_BOXED:
++    case (guintptr) G_TYPE_OBJECT:
+       node->unparsed = g_strdup_printf ("%s*", g_type_name (type_id));
+       break;
+-    case G_TYPE_PARAM:
++    case (guintptr) G_TYPE_PARAM:
+       node->unparsed = g_strdup ("GParamSpec*");
+       break;
+     default:
+@@ -542,25 +542,25 @@ g_igenerator_process_module_symbol (GIGenerator *igenerator,
+ 		  strlen (symbol_name) - strlen ("_get_type")),
+ 		 "_", "");
+ 
+-  switch (type_fundamental)
++  switch ((guintptr) type_fundamental)
+     {
+-    case G_TYPE_OBJECT:
++    case (guintptr) G_TYPE_OBJECT:
+       g_igenerator_create_object (igenerator, symbol_name, type_id,
+ 				  lower_case_prefix);
+       break;
+-    case G_TYPE_INTERFACE:
++    case (guintptr) G_TYPE_INTERFACE:
+       g_igenerator_create_interface (igenerator, symbol_name, type_id,
+ 				     lower_case_prefix);
+       break;
+-    case G_TYPE_BOXED:
++    case (guintptr) G_TYPE_BOXED:
+       g_igenerator_create_boxed (igenerator, symbol_name, type_id,
+ 				 lower_case_prefix);
+       break;
+-    case G_TYPE_ENUM:
++    case (guintptr) G_TYPE_ENUM:
+       g_igenerator_create_enum (igenerator, symbol_name, type_id,
+ 				lower_case_prefix);
+       break;
+-    case G_TYPE_FLAGS:
++    case (guintptr) G_TYPE_FLAGS:
+       g_igenerator_create_flags (igenerator, symbol_name, type_id,
+ 				 lower_case_prefix);
+       break;
