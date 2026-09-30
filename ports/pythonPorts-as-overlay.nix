@@ -38,6 +38,11 @@ let
   # importing a glibc build of zopfli). Take Python modules among the check
   # inputs from the host set; other check tools and all build tools stay
   # native. An overrideAttrs that adds check inputs later bypasses this.
+  #
+  # Only for the packages listed here: made global, every check module's
+  # runtime closure became a tested Fil-C build (httpcore importing a native
+  # rpds, faust-cchardet's C++ against Fil-C's internal headers, ...).
+  hostCheckPackages = [ "fonttools" ];
   hostCheckModules =
     stdenv:
     stdenv
@@ -72,9 +77,15 @@ let
                 x;
           in
           attrs
-          // pkgs.lib.optionalAttrs (attrs ? nativeInstallCheckInputs) {
-            nativeInstallCheckInputs = map toHost attrs.nativeInstallCheckInputs;
-          }
+          //
+            pkgs.lib.optionalAttrs
+              (
+                attrs ? nativeInstallCheckInputs
+                && builtins.elem (attrs.pname or "") hostCheckPackages
+              )
+              {
+                nativeInstallCheckInputs = map toHost attrs.nativeInstallCheckInputs;
+              }
         );
     };
 in

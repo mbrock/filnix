@@ -54,6 +54,17 @@ in
     }))
   ])
 
+  (for "charset-normalizer" [
+    (use (old: {
+      # Its optional mypyc extensions trap under Fil-C while decoding the
+      # GB18030 signature (test_empty_but_with_bom_or_sig). The same test
+      # passes with the upstream pure-Python implementation.
+      env = (old.env or { }) // {
+        CHARSET_NORMALIZER_USE_MYPYC = "0";
+      };
+    }))
+  ])
+
   (for "cffi" [
     (patch ./patches/cffi-filc.patch)
     (use (old: {
