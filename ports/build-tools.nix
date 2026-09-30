@@ -275,8 +275,8 @@ then
       prev.pkgsBuildHost
       // twins prev.pkgsBuildHost
       // {
-        qt5 = qtForFilcBuilds prev.pkgsBuildHost.qt5 prev.qt5;
-        libsForQt5 = qtForFilcBuilds prev.pkgsBuildHost.libsForQt5 prev.libsForQt5;
+        qt5 = qtForFilcBuilds prev.pkgsBuildHost.qt5 final.qt5;
+        libsForQt5 = qtForFilcBuilds prev.pkgsBuildHost.libsForQt5 final.libsForQt5;
       };
   }
 else

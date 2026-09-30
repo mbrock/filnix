@@ -100,6 +100,9 @@ assert lib.hasPrefix "${ports.stdenv.cc}/bin/"
   ports.makeBinaryWrapper.drvAttrs.cc;
 assert containsDrv ports.makeBinaryWrapper
   build.qt5.wrapQtAppsHook.propagatedBuildInputs;
+assert containsDrv ports.qt5.qtbase.dev
+  build.qt5.wrapQtAppsHook.propagatedBuildInputs;
+assert containsDrv ports.qt5.qtbase.dev build.qt5.qmake.propagatedBuildInputs;
 # Keep the pinned Nixpkgs release and its security fixes when adding the port.
 assert ports.gnutls.version == pkgs.gnutls.version;
 assert builtins.all (
