@@ -4,13 +4,23 @@
 #include <exception>
 #include <stdexcept>
 #include <string>
+#ifdef __FILC__
+#include <stdfil.h>
+#endif
 
 static int inner_catches;
 
 // Throw and catch inside a destructor, itself nested one level deeper.
 struct Inner {
     ~Inner() {
-        try { throw std::string("inner-inner"); } catch (const std::string&) { inner_catches++; }
+        try { throw std::string("inner-inner"); } catch (const std::string&) {
+#ifdef __FILC__
+            // Both outer unwind states must remain rooted while the inner
+            // handler forces collection.
+            zgc_request_and_wait();
+#endif
+            inner_catches++;
+        }
     }
 };
 

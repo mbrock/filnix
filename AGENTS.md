@@ -100,6 +100,11 @@ The upstream fil-c build process has these stages:
 
 This flake replicates these stages as Nix derivations.
 
+### Compiler and Runtime Review
+
+- Before adopting changes to Fil-C compiler semantics, capability tracking, GC, or glibc/runtime behavior, develop the proposed approach and consult Oracle about soundness and alternatives. Give it the relevant code and invariants while leaving room for independent analysis.
+- Resolve review findings and run targeted regressions before updating the toolchain pin. Passing package tests alone does not establish memory safety. This review requirement does not apply to ordinary package-local build fixes.
+
 ### Key Files in This Repo
 
 - **flake.nix**: Main Nix flake exposing fil-c packages

@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <exception>
 #include <stdexcept>
+#ifdef __FILC__
+#include <stdfil.h>
+#endif
 
 static ucontext_t main_ctx, co_ctx;
 static char co_stack[256 * 1024];
@@ -23,6 +26,10 @@ static void co_main() {
         if (unwinding_co)
             throw forced_unwind();
     } catch (forced_unwind const&) {
+#ifdef __FILC__
+        // The main stack is suspended mid-unwind; its exception must survive.
+        zgc_request_and_wait();
+#endif
         std::puts("coroutine unwound");
     }
     swapcontext(&co_ctx, &main_ctx);
