@@ -1,0 +1,70 @@
+Subject: Interpolate two planes without rebasing one onto the other
+Origin: Filnix
+Upstream-Status: Not submitted
+
+InterpolatePlane and InterpolatePlane_16 pass src1 - src0 as the row
+stride, so the kernels reach the second plane through a pointer derived
+from the first. The planes are separate allocations, so Fil-C stops the
+read (TestARGBInterpolate). Under Fil-C, blend the rows through their own
+pointers with the same arithmetic as InterpolateRow_C.
+
+--- a/source/planar_functions.cc
++++ b/source/planar_functions.cc
+@@ -4453,6 +4453,31 @@
+   return 0;
+ }
+ 
++#if defined(__FILC__)
++// The row kernels take the second row as src_ptr + src_stride, and the
++// plane interpolators pass src1 - src0 as that stride. The two planes are
++// separate allocations, so the rebased pointer has src0's bounds and Fil-C
++// stops the read. Blend the rows through their own pointers instead; the
++// arithmetic matches InterpolateRow_C (fraction 0 and 128 included).
++static void InterpolateRowPair_C(uint8_t* dst, const uint8_t* src0,
++                                 const uint8_t* src1, int width,
++                                 int fraction) {
++  int x;
++  for (x = 0; x < width; ++x) {
++    dst[x] = (uint8_t)((src0[x] * (256 - fraction) + src1[x] * fraction + 128) >> 8);
++  }
++}
++
++static void InterpolateRowPair_16_C(uint16_t* dst, const uint16_t* src0,
++                                    const uint16_t* src1, int width,
++                                    int fraction) {
++  int x;
++  for (x = 0; x < width; ++x) {
++    dst[x] = (uint16_t)((src0[x] * (256 - fraction) + src1[x] * fraction + 128) >> 8);
++  }
++}
++#endif
++
+ // Interpolate 2 planes by specified amount (0 to 255).
+ LIBYUV_API
+ int InterpolatePlane(const uint8_t* src0,
+@@ -4535,7 +4560,12 @@
+ #endif
+ 
+   for (y = 0; y < height; ++y) {
++#if defined(__FILC__)
++    (void)InterpolateRow;
++    InterpolateRowPair_C(dst, src0, src1, width, interpolation);
++#else
+     InterpolateRow(dst, src0, src1 - src0, width, interpolation);
++#endif
+     src0 += src_stride0;
+     src1 += src_stride1;
+     dst += dst_stride;
+@@ -4620,7 +4650,12 @@
+ #endif
+ 
+   for (y = 0; y < height; ++y) {
++#if defined(__FILC__)
++    (void)InterpolateRow_16;
++    InterpolateRowPair_16_C(dst, src0, src1, width, interpolation);
++#else
+     InterpolateRow_16(dst, src0, src1 - src0, width, interpolation);
++#endif
+     src0 += src_stride0;
+     src1 += src_stride1;
+     dst += dst_stride;

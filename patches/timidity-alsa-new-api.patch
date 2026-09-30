@@ -1,0 +1,97 @@
+Subject: Use the ALSA 1.0 hw_params API
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The ALSA 0.9 API selected by ALSA_PCM_OLD_HW_PARAMS_API binds to
+ALSA_0.9 symbol versions with .symver directives. The Fil-C alsa-lib is
+built without symbol versioning, so those references cannot be resolved.
+Call the current API instead, which returns values through pointers.
+
+--- a/timidity/alsa_a.c
++++ b/timidity/alsa_a.c
+@@ -42,8 +42,6 @@
+ 
+ /*ALSA header file*/
+ #if HAVE_ALSA_ASOUNDLIB_H
+-#define ALSA_PCM_OLD_HW_PARAMS_API
+-#define ALSA_PCM_OLD_SW_PARAMS_API
+ #include <alsa/asoundlib.h>
+ #else
+ #include <sys/asoundlib.h>
+@@ -289,8 +287,9 @@
+ {
+   int orig_rate = dpm.rate;
+   int ret_val = 0;
+-  int tmp, frags, r, pfds;
+-  int rate;
++  int tmp, frags, pfds;
++  unsigned int rate;
++  snd_pcm_uframes_t frames;
+   snd_pcm_hw_params_t *pinfo;
+   snd_pcm_sw_params_t *swpinfo;
+ 
+@@ -370,17 +369,16 @@
+   }
+ 
+   /*check rate*/
+-  r = snd_pcm_hw_params_get_rate_min(pinfo, NULL);
+-  if (r >= 0 && r > dpm.rate) {
+-    dpm.rate = r;
++  if (snd_pcm_hw_params_get_rate_min(pinfo, &rate, NULL) >= 0 && rate > dpm.rate) {
++    dpm.rate = rate;
+     ret_val = 1;
+   }
+-  r = snd_pcm_hw_params_get_rate_max(pinfo, NULL);
+-  if (r >= 0 && r < dpm.rate) {
+-    dpm.rate = r;
++  if (snd_pcm_hw_params_get_rate_max(pinfo, &rate, NULL) >= 0 && rate < dpm.rate) {
++    dpm.rate = rate;
+     ret_val = 1;
+   }
+-  if ((rate = snd_pcm_hw_params_set_rate_near(handle, pinfo, dpm.rate, 0)) < 0) {
++  rate = dpm.rate;
++  if (snd_pcm_hw_params_set_rate_near(handle, pinfo, &rate, NULL) < 0) {
+     ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
+ 	      "ALSA pcm '%s' can't set rate %d",
+ 	      alsa_device_name(), dpm.rate);
+@@ -437,7 +435,8 @@
+   ctl->cmsg(CMSG_INFO, VERB_VERBOSE,
+ 	    "Requested buffer size %d, fragment size %d",
+ 	    total_bytes, frag_size);
+-  if ((tmp = snd_pcm_hw_params_set_buffer_size_near(handle, pinfo, total_bytes >> sample_shift)) < 0) {
++  frames = total_bytes >> sample_shift;
++  if ((tmp = snd_pcm_hw_params_set_buffer_size_near(handle, pinfo, &frames)) < 0) {
+     ctl->cmsg(CMSG_WARNING, VERB_NORMAL,
+ 	      "ALSA pcm '%s' can't set buffer size %d",
+ 	      alsa_device_name(), total_bytes);
+@@ -445,7 +444,8 @@
+     return -1;
+   }
+ 
+-  if ((tmp = snd_pcm_hw_params_set_period_size_near(handle, pinfo, frag_size >> sample_shift, 0)) < 0) {
++  frames = frag_size >> sample_shift;
++  if ((tmp = snd_pcm_hw_params_set_period_size_near(handle, pinfo, &frames, NULL)) < 0) {
+     ctl->cmsg(CMSG_WARNING, VERB_NORMAL,
+ 	      "ALSA pcm '%s' can't set period size %d",
+ 	      alsa_device_name(), frag_size);
+@@ -463,14 +463,15 @@
+     return -1;
+   }
+ 
+-  total_bytes = snd_pcm_hw_params_get_buffer_size(pinfo) << sample_shift;
+-  frag_size = snd_pcm_hw_params_get_period_size(pinfo, NULL) << sample_shift;
++  snd_pcm_hw_params_get_buffer_size(pinfo, &frames);
++  total_bytes = frames << sample_shift;
++  snd_pcm_hw_params_get_period_size(pinfo, &frames, NULL);
++  frag_size = frames << sample_shift;
+   ctl->cmsg(CMSG_INFO, VERB_VERBOSE,
+ 	    "ALSA pcm '%s' set buffer size %d, period size %d bytes",
+ 	    alsa_device_name(), total_bytes, frag_size);
+-  tmp = snd_pcm_hw_params_get_rate(pinfo, NULL);
+-  if (tmp > 0 && tmp != dpm.rate) {
+-    dpm.rate = tmp;
++  if (snd_pcm_hw_params_get_rate(pinfo, &rate, NULL) >= 0 && rate > 0 && rate != dpm.rate) {
++    dpm.rate = rate;
+     ret_val = 1;
+   }
+   if (orig_rate != dpm.rate) {

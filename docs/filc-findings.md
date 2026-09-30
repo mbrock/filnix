@@ -385,6 +385,18 @@ for Nixpkgs' Clang, and time grows faster than linearly. NSS's
 `pk11_gtest` and `freebl_gtest` test-vector tables took over 20 minutes per
 file, so the NSS port leaves those two gtest binaries out.
 
+gtest's own registration hits the same cost: every `TEST`/`TEST_F` adds a
+`MakeAndRegisterTestInfo` call with `std::string` temporaries to the file's
+static constructor. The campaign killed libyuv twice after 15 silent
+minutes: its `convert_argb_test.cc` (1,748 tests) compiled at `-O3` for
+over 12 CPU minutes at 11 GB before we stopped it, where Nixpkgs' Clang
+takes under 90 s. `-ftime-trace` on a sixteenth of the tests put 11.4
+of 59 s in `_GLOBAL__sub_I_…`, and stack samples of larger slices were in
+SROA's `PromoteMemToReg` (`IDFCalculator`), in `EarlyCSE`, and in
+`MemCpyOpt`'s MemorySSA updates. A quarter of the file took 8 to 9.5
+minutes and 4.4 to 5.2 GB. At `-O0` the whole file takes 144 s and 5.1 GB,
+so the libyuv port compiles only its test code at `-O0`.
+
 ## `dlsym(RTLD_NEXT, ...)` is a safety error
 
 ```c
@@ -522,6 +534,13 @@ address lands in `keybuffer`, but the pointer is still derived from
 `keybuffer + (enc - encbuffer)`. FFmpeg 8.1 also stores its `av_log`
 callback in an `atomic_uintptr_t`, dropping the function pointer's
 capability.
+
+libyuv's `InterpolatePlane` and `InterpolatePlane_16` do the same: they pass
+`src1 - src0` as the row stride, so the kernels read the second plane as
+`src0 + stride` (`TestARGBInterpolate`).
+`patches/libyuv-interpolate-planes.patch` blends through both pointers
+under Fil-C. The port also defines `LIBYUV_DISABLE_X86`: libyuv's x86 row
+kernels are inline assembly with memory operands, which Fil-C refuses.
 
 ## `__sync_*` builtins on pointers drop the capability
 
@@ -870,3 +889,83 @@ sandbox (they pass given one), and two that Fil-C stops:
   array of nullable structs (`Manam?[]`) drops the terminator and the next
   `_vala_array_length` reads past the copy. A Vala codegen bug
   (`generate_array_dup_wrapper`), worth reporting upstream; not patched.
+## Inline assembly spelled as `.byte` or alignment directives is refused
+
+FilPizlonator validates each inline instruction, so raw opcode bytes and
+assembler directives stop the program when the code runs:
+
+```c
+__asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=d"(d), "=a"(a) : "c"(0)); /* xgetbv */
+__asm__(".p2align 5");
+```
+
+libdeflate's CPU detection used the first form, so every compression,
+decompression and checksum call trapped (6 of its 8 tests). Spelling it
+`xgetbv` works (`patches/libdeflate-xgetbv.patch`, as for FLAC). p7zip
+bundles an older zstd whose loop-alignment `.p2align` directives stopped
+7-Zip on any zstd archive; `patches/p7zip-zstd-p2align.patch` skips them
+under `__FILC__`, as `ports/patch/zstd-1.5.7.patch` does for zstd itself.
+
+## ALSA's 0.9 API needs symbol versions
+
+`ALSA_PCM_OLD_HW_PARAMS_API` makes `<alsa/pcm_old.h>` bind
+`snd_pcm_hw_params_get_rate_min` and friends to `@ALSA_0.9` with `.symver`.
+The Fil-C alsa-lib is built `--without-versioned`, so those references do
+not resolve and the link fails (TiMidity++). Porting the caller to the
+1.0 API fixes it (`patches/timidity-alsa-new-api.patch`). The unversioned
+library exports only the 1.0 functions under the plain names, so a
+caller that loses its `.symver` would silently call the wrong ABI.
+
+Opening an ALSA PCM device through the default configuration also stops the
+program: `snd_config_hooks` loads its hook libraries with `snd_dlopen`, which
+calls `dladdr1` for the library's own path, and Fil-C reports `dladdr1 not
+yet supported`. TiMidity++ with `-Os` hits it; file output (`-Ow`) works.
+
+## Found by Fil-C: pointers in TiMidity++'s `long` event values
+
+TiMidity++'s `CtlEvent` carries values as `long`, and `CTLE_NOW_LOADING`
+and `CTLE_PROGRAM` store string pointers there. Even `-Ow` (write a WAV)
+trapped in the dumb interface when it printed the file name.
+`patches/timidity-ctl-event-pointers.patch` adds pointer union members for
+those two fields and uses them in the playback code and the interfaces
+Nixpkgs builds (dumb, ncurses). The other interfaces still read pointers
+from the integers.
+
+## Found by Fil-C: small bugs in mhash's and libcdio's tests and code
+
+- mhash's `hmac_test` and `keygen_test` `memset` a buffer right after
+  freeing it (`patches/mhash-test-use-after-free.patch`).
+- libcdio's `iso9660_ifs_fuzzy_read_superblock` runs `strstr` over a
+  2352-byte frame buffer that a raw read fills completely, so it reads past
+  the end (`check_fuzzyiso.sh`; `patches/libcdio-fuzzy-superblock-nul.patch`).
+- libcdio keeps `iso_rock_statbuf_t`, an in-memory struct with a
+  `char *psz_symlink`, inside `#pragma pack(1)` regions, which puts the
+  pointer at offset 29. Every ISO 9660 stat trapped on the misaligned
+  pointer store. `patches/libcdio-rock-statbuf-unpacked.patch` lays that
+  struct out naturally under Fil-C.
+
+## Fil-C C++ uses libc++
+
+Nixpkgs builds Linux C++ against libstdc++, so packages that rely on
+libstdc++ behaviour fail only here. libc++ 19 removed the
+`std::char_traits` base template, and SFML 2.6 uses
+`std::basic_string<Uint8/16/32>` in its public `sf::String` API.
+`patches/sfml2-libcxx-char-traits.patch` defines traits for those types in
+`String.hpp`, after the FreeBSD port. libc++'s `<string.h>` also brings in
+`uint64_t`, which broke p7zip's own `typedef UInt64 uint64_t`
+(`patches/p7zip-hash-stdint.patch`).
+
+## Cross-compilation defaults that break Fil-C builds
+
+The Fil-C package set is a cross build with an empty target prefix, so
+some Nixpkgs recipes misbehave:
+
+- p7zip's recipe replaces `CC=gcc` with `CC=${targetPrefix}gcc` when
+  cross-compiling, leaving `gcc`, which does not exist (`Error 127`). The
+  port passes `CC=clang CXX=clang++`.
+- Autoconf's `AC_FUNC_MALLOC` cannot run its probe, assumes `malloc(0)`
+  returns NULL and renames `malloc` to `rpl_malloc`, which mhash does not
+  define. The port sets `ac_cv_func_malloc_0_nonnull=yes`.
+- minizip builds from `zlib.src`, and the Fil-C zlib is pinned to 1.3, which
+  lacks the `ints.h` that Nixpkgs' patch installs. minizip now builds from
+  Nixpkgs' own zlib source.

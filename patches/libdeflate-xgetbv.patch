@@ -1,0 +1,19 @@
+Subject: Spell XGETBV as an instruction instead of raw opcode bytes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C validates inline instructions and supports xgetbv with these register
+constraints. Raw .byte directives cannot be validated, so every call that
+dispatched to an optimized implementation stopped the program.
+
+--- a/lib/x86/cpu_features.c
++++ b/lib/x86/cpu_features.c
+@@ -65,7 +65,7 @@
+ 	 * This must be 'volatile' to prevent this code from being moved out
+ 	 * from under the check for OSXSAVE.
+ 	 */
+-	__asm__ volatile(".byte 0x0f, 0x01, 0xd0" :
++	__asm__ volatile("xgetbv" :
+ 			 "=d" (d), "=a" (a) : "c" (index));
+ 
+ 	return ((u64)d << 32) | a;

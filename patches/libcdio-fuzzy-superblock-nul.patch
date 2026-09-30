@@ -1,0 +1,22 @@
+Subject: NUL-terminate the frame that the fuzzy superblock search scans
+Origin: Filnix
+Upstream-Status: Not submitted
+
+iso9660_ifs_fuzzy_read_superblock looks for "CD001" with strstr in a
+frame buffer that is exactly CDIO_CD_FRAMESIZE_RAW bytes. A raw 2352-byte
+read fills it completely, so strstr ran past the end. Fil-C stopped
+isofuzzy there (check_fuzzyiso.sh). Keep one more zero byte after the
+frame.
+
+--- a/lib/iso9660/iso9660_fs.c
++++ b/lib/iso9660/iso9660_fs.c
+@@ -579,7 +579,8 @@
+ 
+       for (k=0; k < 3; k++) {
+ 	char *p, *q;
+-	char frame[CDIO_CD_FRAMESIZE_RAW] = {'\0',};
++	/* One extra NUL so that strstr below stays inside the frame. */
++	char frame[CDIO_CD_FRAMESIZE_RAW + 1] = {'\0',};
+ 	p_iso->i_framesize = framesizes[k];
+ 	p_iso->i_datastart = (ISO_BLOCKSIZE == framesizes[k]) ?
+ 			      0 : CDIO_CD_SYNC_SIZE;

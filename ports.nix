@@ -351,6 +351,17 @@ in
     (patch ./ports/patch/zlib-1.3.patch)
   ])
 
+  # Nixpkgs builds minizip from zlib's source with a patch that installs
+  # ints.h, which the pinned 1.3 lacks. minizip needs no Fil-C changes and
+  # uses only zlib's public API, so build it from Nixpkgs' newer zlib
+  # source (which also has the CVE-2023-45853 fix).
+  (for pkgs.minizip [
+    (use {
+      inherit (pkgs.zlib) src version;
+      sourceRoot = "zlib-${pkgs.zlib.version}/contrib/minizip";
+    })
+  ])
+
   (for pkgs.zlib-ng [
     (pin "2.2.4" "sha256-pzNDwwk+XNxQ2Td5l8OBW4eP0RC/ZRHCx3WfKvuQ9aM=")
   ])
