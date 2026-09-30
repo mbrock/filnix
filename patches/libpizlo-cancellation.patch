@@ -550,7 +550,7 @@ index d9d4973a87fe..511cf7ed6bbd 100644
  filc_ptr filc_native_zthread_self(filc_thread* my_thread)
  {
      static const bool verbose = false;
-@@ -14377,10 +14597,154 @@ int filc_native_zmath_fetestexcept(filc_thread* my_thread, int excepts)
+@@ -14377,8 +14597,154 @@ int filc_native_zmath_fetestexcept(filc_thread* my_thread, int excepts)
      return fetestexcept(excepts);
  }
  
@@ -705,8 +705,6 @@ index d9d4973a87fe..511cf7ed6bbd 100644
  #endif /* PAS_ENABLE_FILC */
  
  #endif /* LIBPAS_ENABLED */
--
--
 diff --git a/libpas/src/libpas/filc_runtime.h b/libpas/src/libpas/filc_runtime.h
 index 98b7e44ecfbc..94844bd72607 100644
 --- a/libpas/src/libpas/filc_runtime.h
