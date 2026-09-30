@@ -89,39 +89,42 @@ let
         );
     };
 in
-# Return a packageOverrides function. The Fil-C python passes packageOverrides
-# on to its pythonOnBuildForHost, so leave that (native) set alone.
+# Python also forwards packageOverrides to its build-platform interpreter.
+# Splice test inputs only for Fil-C; individual ports can opt out on native.
 pyself: pyprev:
 let
   inherit (pyprev.python.stdenv) hostPlatform buildPlatform;
 in
-pkgs.lib.optionalAttrs (hostPlatform.config != buildPlatform.config) (
-  {
-    buildPythonPackage = pyprev.buildPythonPackage.override {
-      stdenv = hostCheckModules pyprev.python.stdenv;
-    };
-    buildPythonApplication = pyprev.buildPythonApplication.override {
-      stdenv = hostCheckModules pyprev.python.stdenv;
-    };
-  }
-  // pkgs.lib.mapAttrs (
-    name: spec:
-    if spec == { } then
-      pyprev.${name} or null
-    else if spec ? __customPython then
-      # Custom Python package (not in pyprev)
-      spec.__customPython pyself
-    else if spec ? attrs && builtins.isFunction spec.attrs then
-      # Normal port - apply overrides
-      let
-        base =
-          if spec.overrideArgs != { } then
-            pyprev.${name}.override spec.overrideArgs
-          else
-            pyprev.${name};
-      in
-      base.overrideAttrs spec.attrs
-    else
-      pyprev.${name}
-  ) portSpecs
-)
+pkgs.lib.optionalAttrs (hostPlatform.config != buildPlatform.config) {
+  buildPythonPackage = pyprev.buildPythonPackage.override {
+    stdenv = hostCheckModules pyprev.python.stdenv;
+  };
+  buildPythonApplication = pyprev.buildPythonApplication.override {
+    stdenv = hostCheckModules pyprev.python.stdenv;
+  };
+}
+// pkgs.lib.mapAttrs (
+  name: spec:
+  if spec == { } then
+    pyprev.${name} or null
+  else if
+    spec.filcOnly or false && !pyprev.python.stdenv.hostPlatform.isFilc
+  then
+    # These overrides also reach the build platform's Python.
+    pyprev.${name}
+  else if spec ? __customPython then
+    # Custom Python package (not in pyprev)
+    spec.__customPython pyself
+  else if spec ? attrs && builtins.isFunction spec.attrs then
+    # Normal port - apply overrides
+    let
+      base =
+        if spec.overrideArgs != { } then
+          pyprev.${name}.override spec.overrideArgs
+        else
+          pyprev.${name};
+    in
+    base.overrideAttrs spec.attrs
+  else
+    pyprev.${name}
+) portSpecs

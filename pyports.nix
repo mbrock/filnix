@@ -17,13 +17,21 @@ let
 in
 # This will be converted to a packageOverrides function
 [
-  (for "pygobject3" [
-    (src "3.48.2" "sha256-B5SutKm+MaCSrCBiG19U7CgPkYWUPTKLEFza5imK0ac=" (
-      v: "https://download.gnome.org/sources/pygobject/3.48/pygobject-${v}.tar.xz"
-    ))
-    (patch ./ports/patch/pygobject-3.48.2.patch)
-    (patch ./patches/pygobject-metaclass-init.patch)
-  ])
+  # The pin matches the Fil-C GLib and gobject-introspection. The build
+  # Python's PyGObject links the ordinary native GLib and GI, which 3.48.2's
+  # tests do not build against, so it stays the Nixpkgs one.
+  (
+    (for "pygobject3" [
+      (src "3.48.2" "sha256-B5SutKm+MaCSrCBiG19U7CgPkYWUPTKLEFza5imK0ac=" (
+        v: "https://download.gnome.org/sources/pygobject/3.48/pygobject-${v}.tar.xz"
+      ))
+      (patch ./ports/patch/pygobject-3.48.2.patch)
+      (patch ./patches/pygobject-metaclass-init.patch)
+    ])
+    // {
+      filcOnly = true;
+    }
+  )
 
   (for "pycparser" [
     (use (old: {
@@ -62,6 +70,22 @@ in
       env = (old.env or { }) // {
         CHARSET_NORMALIZER_USE_MYPYC = "0";
       };
+    }))
+  ])
+
+  (for "django" [
+    (use (old: {
+      # The XML deserializer's complexity check times one parse of a
+      # one-character field against a 1000-character one and requires the
+      # ratio to stay under 2. Both take microseconds, so on a loaded builder
+      # the ratio is noise (3.4 in a campaign). The varying-depth check,
+      # averaged over four ratios of larger inputs, still runs.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace tests/serializers/test_deserialization.py \
+          --replace-fail \
+            'assertFactor("constant depth, varying length", [(100, 1), (100, 1000)], 2)' \
+            ""
+      '';
     }))
   ])
 
