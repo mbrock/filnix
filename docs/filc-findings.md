@@ -119,6 +119,25 @@ that `fldenv` would put there go to MXCSR instead (`checks.fenv`).
 `sysdeps/x86/fpu/fenv_private.h` used the same instructions for the x87 hold
 and restore paths and is fixed too.
 
+## ARM64 binary128 arithmetic does not fully honour `<fenv.h>`
+
+The Fil-C 0.686 pin (`1779594990ad`) is adopted with this known numerical
+limitation. On ARM64, `checks.fenv` fails at the long-double directed-rounding
+assertion: `1.0L / 3.0L` gives the same result for upward and downward rounding.
+The unchanged gate also fails on the previous ARM pin (`d6cbb697`); focused
+probes reproduce the issue at O0 and O2 while double directed rounding works.
+Generated code calls compiler-rt's `__divtf3`, whose unchanged implementation
+explicitly rounds to nearest, ties to even. Native GCC distinguishes the modes.
+
+Compiler-rt multiplication also hardcodes nearest rounding, and addition's
+mode handling does not cover all exceptional paths. Later assertions in the
+fenv gate and binary128 arithmetic exception flags are not established to pass.
+The ARM gate remains failing, not skipped or weakened. Oracle reviewed the
+baseline comparison and supported adoption with an explicit exception; a
+complete builtins-level rounding and exception repair needs separate semantic
+review. Workloads requiring directed binary128 rounding or reliable arithmetic
+exception flags must not assume this pin provides them.
+
 ## Asynchronous `pthread_cancel` does not stop a running thread
 
 glibc cancels an asynchronous-cancel thread by sending it SIGCANCEL, but the
