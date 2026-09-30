@@ -95,6 +95,11 @@ assert ports.python3Packages.pygobject3.version == "3.48.2";
 assert
   (pkgs.callPackage ({ gobject-introspection }: gobject-introspection) { })
   .drvPath == pkgs.gobject-introspection.drvPath;
+# Runtime wrappers must not bootstrap an ordinary LLVM cross compiler.
+assert lib.hasPrefix "${ports.stdenv.cc}/bin/"
+  ports.makeBinaryWrapper.drvAttrs.cc;
+assert containsDrv ports.makeBinaryWrapper
+  build.qt5.wrapQtAppsHook.propagatedBuildInputs;
 # Keep the pinned Nixpkgs release and its security fixes when adding the port.
 assert ports.gnutls.version == pkgs.gnutls.version;
 assert builtins.all (

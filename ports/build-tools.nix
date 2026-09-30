@@ -65,7 +65,7 @@ let
         name = "wrap-qt5-apps-hook";
         propagatedBuildInputs = [
           (unspliced filc.qtbase).dev
-          prev.makeBinaryWrapper
+          final.makeBinaryWrapper
           (unspliced filc.qtwayland).dev
         ];
       } (prev.path + "/pkgs/development/libraries/qt-5/hooks/wrap-qt-apps-hook.sh");
@@ -267,6 +267,10 @@ else if
   prev.stdenv.hostPlatform.isFilc && !prev.stdenv.buildPlatform.isFilc
 then
   {
+    # The default targetPackages.stdenv.cc bootstraps an ordinary LLVM cross
+    # compiler for gnufilc0. Runtime wrappers are Fil-C programs too: compile
+    # them with this set's existing Fil-C compiler, not a new cross toolchain.
+    makeBinaryWrapper = prev.makeBinaryWrapper.override { cc = prev.stdenv.cc; };
     pkgsBuildHost =
       prev.pkgsBuildHost
       // twins prev.pkgsBuildHost
