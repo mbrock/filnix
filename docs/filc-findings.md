@@ -68,7 +68,10 @@ loaded with `prctl`, and `EOPNOTSUPP` for TSYNC and user notification.
 libseccomp's tests call `seccomp` (syscall 317). Nix is built without
 seccomp filtering. Catch2 and doctest run their fatal-signal handlers on a
 `sigaltstack`; their ports and consumers set `CATCH_CONFIG_NO_POSIX_SIGNALS`
-and `DOCTEST_CONFIG_NO_POSIX_SIGNALS`.
+and `DOCTEST_CONFIG_NO_POSIX_SIGNALS`. The Catch2 v2 port defines it in the
+single header under `__FILC__`, which fixed all 81 of CLI11's tests.
+UnitTest++'s `CrashingTestsAreReportedAsFailures` calls a null function
+pointer and expects its SIGSEGV handler to report it; it is excluded.
 
 ## x86 inline assembly needs an explicit "cc" clobber
 
@@ -348,7 +351,13 @@ the bit with pointer arithmetic. Boost.Asio's `io_context::basic_executor_type`
 keeps `io_context* | runtime_bits` in a `uintptr_t target_`, so the first
 `use_service` through a strand traps;
 `patches/boost-asio-io-context-executor-pointer.patch` makes it a `char *`
-(applied only for Determinate Nix so far). Nix's own bit-packed `Value`
+(in the Boost 1.86 and 1.87 ports, and as
+`patches/asio-io-context-executor-pointer.patch` for standalone Asio).
+z3's region and stack allocators chain pages through a header word
+holding the previous page with a flag in bit 0, and the stack keeps its
+marks the same way, all as `size_t`; `test-z3 -a` trapped in
+`region::~region()`. `patches/z3-page-headers-pointers.patch` keeps them
+as `char *` and tags with pointer arithmetic. Nix's own bit-packed `Value`
 takes the same fix in Determinate Nix, where parallel evaluation depends on
 that layout. oneTBB's tbbmalloc is a different problem: it
 carves objects out of raw `mmap` chunks, which have no per-object capabilities,
@@ -1040,3 +1049,87 @@ on the line. gold reports them as undefined instead. ticcutils links
 from `icu-i18n`, which only `libicuio` depends on, so every program linking
 libticcutils failed; libfolia has the same gap. The LanguageMachines ports
 add `icu-i18n` to their `PKG_CHECK_MODULES`.
+## `abort()` ignores a SIGABRT handler
+
+POSIX `abort()` raises SIGABRT, so an installed handler runs first (and
+the process still terminates if it returns). Fil-C's `abort()` stops the
+program with `filc user error: abort(3) called.` without raising, while
+`raise(SIGABRT)` does run the handler:
+
+```c
+signal(SIGABRT, handler);  /* allowed: sigaction returns 0 */
+abort();                   /* handler never runs; SIGTRAP-style panic */
+```
+
+glog's `striplog*` tests catch `LOG(FATAL)`'s abort this way to exit
+normally, so CTest sees an exception where it expects a failure, and the
+port excludes them. The fix belongs in the fork's glibc `abort.c`: raise
+SIGABRT (under the usual rules) before stopping. That is a libc change,
+so it rebuilds everything built with Fil-C; not done here.
+
+The refused signals (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP) make
+`sigaction` fail with `ENOSYS`. glog's `InstallFailureSignalHandler`
+CHECKed every `sigaction`, so any program calling it aborted at startup;
+`patches/glog-filc-refused-signals.patch` skips the refused ones.
+
+## `__builtin_readcyclecounter` is not lowered
+
+Clang reports `__has_builtin(__builtin_readcyclecounter)`, but calling it
+stops the program (`Unhandled intrinsic: llvm.readcyclecounter`), while an
+inline `rdtsc` with `"=a"`/`"=d"` outputs works:
+
+```c
+int main(void) { return (int)__builtin_readcyclecounter() & 0; }
+```
+
+Lowering the intrinsic to the same `rdtsc` should be straightforward in
+FilPizlonator. bc-decaf's RNG and benchmark prefer the builtin; its port
+uses the asm path.
+
+Inline asm is otherwise narrower than Clang accepts: bc-decaf's PIC
+`cpuid` saves `%rbx` by hand (`mov %%rbx, %[r]; cpuid; xchg`), which is
+rejected ("cpuid output ebx not covered by output constraint or
+clobber") though the plain `"=b"` form works, and its x86_64 field
+arithmetic passes memory operands (`"*m"`), which Fil-C never supports.
+The port uses the plain `cpuid` and decaf's portable `arch_ref64`
+arithmetic (`patches/bc-decaf-filc-x86-asm.patch`).
+
+## Found porting capstone: integer handles and pointer options
+
+capstone's handle type `csh` is a `size_t` holding the `cs_struct`
+address, so every call after `cs_open` trapped (all 24 tests).
+`patches/capstone-handle-ptrtable.patch` registers handles in a
+`zexact_ptrtable` and decodes them wherever the library turns a `csh` back
+into a pointer; handle values stay the addresses, so the API and FFI
+bindings are unchanged. `cs_option` also takes pointer-valued options
+(`CS_OPT_MEM`, `CS_OPT_SKIPDATA_SETUP`, `CS_OPT_MNEMONIC`) as `size_t`,
+and the caller's cast drops the capability before the library sees it.
+The patch adds a Fil-C-only `cs_option_ptr(csh, cs_opt_type, void *)`;
+consumers that set those three options must call it instead.
+
+## Frame-slot coloring is cubic in simultaneously live pointers
+
+FilPizlonator assigns frame "lowers" slots by greedy coloring of an
+interference graph, and for each value it tried index after index,
+checking every neighbor with a hash lookup each time. With many pointers
+live at once this dominates compile time:
+
+```c
+void f(void) {
+  void *p0 = malloc(1); /* ... */ void *p1999 = malloc(2000);
+  sink(p0); /* ... */ sink(p1999);
+}
+/* clang -O1 -c: 500 pointers 1.0 s, 1000 4.3 s, 2000 41 s;
+   -O0 with 2000: minutes and 2.8 GB */
+```
+
+Asio's `unit/execution/any_executor.cpp` compiles in 10 s at `-O0`, but
+at `-O2` (after inlining) it ran for over an hour at 5.7 GB in the asio
+check, and gdb samples were all in `computeFrameIndexMap`'s coloring
+loop; the port drops that one test. Doxygen's flex-generated
+`scanner.cpp` takes about 30 minutes. The 50-minute parser above may be
+the same. The always-live
+explicit locals from the GC-roots fix make the graph denser still.
+`patches/fil-c/filpizlonator-frame-coloring-linear.patch` (not compiled
+yet) collects the neighbors' indices once per value and takes the lowest
+free one: the same assignment, in time linear in the edges.

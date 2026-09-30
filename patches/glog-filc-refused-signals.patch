@@ -1,0 +1,32 @@
+InstallFailureSignalHandler CHECKs every sigaction, but Fil-C refuses
+handlers for SIGSEGV, SIGILL, SIGFPE and SIGBUS with ENOSYS, so any program
+that installed the handler aborted at startup (the dcheck and signalhandler
+tests). Skip the refused signals and keep SIGABRT and SIGTERM.
+
+diff --git a/src/signalhandler.cc b/src/signalhandler.cc
+index c5bae59..614a414 100644
+--- a/src/signalhandler.cc
++++ b/src/signalhandler.cc
+@@ -32,6 +32,7 @@
+ // Implementation of InstallFailureSignalHandler().
+ 
+ #include <algorithm>
++#include <cerrno>
+ #include <csignal>
+ #include <cstring>
+ #include <ctime>
+@@ -382,6 +383,14 @@ void InstallFailureSignalHandler() {
+   sig_action.sa_sigaction = &FailureSignalHandler;
+ 
+   for (auto kFailureSignal : kFailureSignals) {
++#ifdef __FILC__
++    // Fil-C refuses handlers for SIGSEGV, SIGILL, SIGFPE and SIGBUS with
++    // ENOSYS; its safety panics already report where those happen.
++    if (sigaction(kFailureSignal.number, &sig_action, nullptr) == -1 &&
++        errno == ENOSYS) {
++      continue;
++    }
++#endif
+     CHECK_ERR(sigaction(kFailureSignal.number, &sig_action, nullptr));
+   }
+   kFailureSignalHandlerInstalled = true;

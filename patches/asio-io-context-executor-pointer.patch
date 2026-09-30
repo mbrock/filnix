@@ -1,0 +1,44 @@
+diff --git a/include/asio/io_context.hpp b/include/asio/io_context.hpp
+index 5e54361..f3b9924 100644
+--- a/include/asio/io_context.hpp
++++ b/include/asio/io_context.hpp
+@@ -949,7 +949,7 @@ private:
+   // Constructor used by io_context::get_executor().
+   explicit basic_executor_type(io_context& i) noexcept
+     : Allocator(),
+-      target_(reinterpret_cast<uintptr_t>(&i))
++      target_(reinterpret_cast<char*>(&i))
+   {
+     if (Bits & outstanding_work_tracked)
+       context_ptr()->impl_.work_started();
+@@ -959,7 +959,7 @@ private:
+   basic_executor_type(io_context* i,
+       const Allocator& a, uintptr_t bits) noexcept
+     : Allocator(a),
+-      target_(reinterpret_cast<uintptr_t>(i) | bits)
++      target_(reinterpret_cast<char*>(i) + bits)
+   {
+     if (Bits & outstanding_work_tracked)
+       if (context_ptr())
+@@ -968,16 +968,17 @@ private:
+ 
+   io_context* context_ptr() const noexcept
+   {
+-    return reinterpret_cast<io_context*>(target_ & ~runtime_bits);
++    return reinterpret_cast<io_context*>(target_ - bits());
+   }
+ 
+   uintptr_t bits() const noexcept
+   {
+-    return target_ & runtime_bits;
++    return reinterpret_cast<uintptr_t>(target_) & runtime_bits;
+   }
+ 
+-  // The underlying io_context and runtime bits.
+-  uintptr_t target_;
++  // The underlying io_context and runtime bits. A pointer rather than an
++  // integer, so that it keeps its capability under Fil-C.
++  char* target_;
+ };
+ 
+ /// Base class for all io_context services.

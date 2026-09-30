@@ -240,6 +240,22 @@ portDSL.makeOverlay portList final prev
     }
   );
 
+  linphonePackages = prev.linphonePackages.overrideScope (
+    lfinal: lprev: {
+      # Python generates sources at build time. As a build input it was
+      # the Fil-C Python, which CMake's FindPython3 does not accept as the
+      # build machine's interpreter.
+      bc-decaf = lprev.bc-decaf.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [
+          ../patches/bc-decaf-filc-x86-asm.patch
+        ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.python3 ];
+        buildInputs = [ ];
+        doCheck = true;
+      });
+    }
+  );
+
   # Nix itself.
   nixComponents = prev.nixVersions.nixComponents_2_34.overrideScope (
     pkgs.lib.composeExtensions nixFilcOverrides (

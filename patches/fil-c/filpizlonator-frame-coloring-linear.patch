@@ -1,0 +1,87 @@
+Status: UNTESTED. Not compiled: the LLVM build tree does not fit on the
+orb. Applies to mbrock/fil-c d6cbb697f74c (lib/filc-upstream.json coreRev)
+with `patch -p1` in a fil-c checkout.
+
+What is verified: the slowdown reproduces with the pinned compiler, and
+gdb samples of a slow compile are all in the loop this patch replaces
+(unordered_map<ValuePtr, FrameEntry> lookups called from
+Pizlonator::computeFrameIndexMap).
+
+Reproducer: one function with N pointers live at once.
+
+    #include <stdlib.h>
+    void sink(void *);
+    void f(void) {
+      void *p0 = malloc(1); ... void *pN = malloc(N+1);
+      sink(p0); ... sink(pN);
+    }
+
+    clang -O1 -c: N=500 1.0 s, N=1000 4.3 s, N=2000 41 s
+    clang -O0 -c, N=2000: over 5 minutes and 2.8 GB
+
+Asio 1.36's unit/execution/any_executor.cpp compiles in 10 s at -O0 and
+took over an hour at -O2 in the asio check (5.7 GB RSS).
+
+The greedy frame-slot coloring tried each index against every
+neighbor with a hash lookup each time, O(V * colors * degree), cubic
+for dense interference. Collect the indices of already-placed neighbors
+once per value and take the lowest free one: O(E) overall, with the
+same assignment (the same lowest free index in the same order).
+
+--- a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp	2026-09-29 16:57:34.821186148 +0000
++++ b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp	2026-09-29 16:57:48.733265274 +0000
+@@ -3090,29 +3090,34 @@
+       }
+     }
+ 
++    // Greedy coloring: take the lowest index that no already-placed neighbor
++    // uses. Collecting the neighbors' indices once keeps this linear in the
++    // number of edges; trying each index against every neighbor was cubic
++    // for large functions with many simultaneously live pointers.
++    std::vector<bool> UsedIndices;
+     for (ValuePtr IP : Order) {
+       const std::unordered_set<ValuePtr>& Adjacency = Interference[IP];
+-      for (size_t FrameIndex = NumSpecialFrameObjects; ; FrameIndex++) {
+-        bool Ok = true;
+-        for (ValuePtr AIP : Adjacency) {
+-          if (FrameIndexMap.count(AIP) && FrameIndexMap[AIP].Index == FrameIndex) {
+-            Ok = false;
+-            break;
+-          }
+-        }
+-        if (Ok) {
+-          FrameEntryKind FEK;
+-          PointerKind PK = pointerKindDirect(IP.V);
+-          assert(PK == PointerKind::Escaping || PK == PointerKind::LocalNaked);
+-          if (PK == PointerKind::LocalNaked)
+-            FEK = FrameEntryKind::LowerFromStackAux;
+-          else
+-            FEK = FrameEntryKind::Lower;
+-          FrameIndexMap[IP] = FrameEntry(FEK, FrameIndex);
+-          FrameSize = std::max(FrameSize, FrameIndex + 1);
+-          break;
+-        }
++      UsedIndices.assign(Adjacency.size() + 1, false);
++      for (ValuePtr AIP : Adjacency) {
++        auto Iter = FrameIndexMap.find(AIP);
++        if (Iter == FrameIndexMap.end())
++          continue;
++        size_t Offset = Iter->second.Index - NumSpecialFrameObjects;
++        if (Iter->second.Index >= NumSpecialFrameObjects && Offset < UsedIndices.size())
++          UsedIndices[Offset] = true;
+       }
++      size_t FrameIndex = NumSpecialFrameObjects;
++      while (UsedIndices[FrameIndex - NumSpecialFrameObjects])
++        FrameIndex++;
++      FrameEntryKind FEK;
++      PointerKind PK = pointerKindDirect(IP.V);
++      assert(PK == PointerKind::Escaping || PK == PointerKind::LocalNaked);
++      if (PK == PointerKind::LocalNaked)
++        FEK = FrameEntryKind::LowerFromStackAux;
++      else
++        FEK = FrameEntryKind::Lower;
++      FrameIndexMap[IP] = FrameEntry(FEK, FrameIndex);
++      FrameSize = std::max(FrameSize, FrameIndex + 1);
+     }
+ 
+     for (BasicBlock* BB : Blocks) {
