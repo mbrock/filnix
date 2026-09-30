@@ -1,0 +1,32 @@
+Subject: Align vlen instance pointers without an integer round trip
+Origin: Filnix
+Upstream-Status: Not submitted
+
+reclaim_datar and copy_datar aligned the vlen data pointer by casting it
+to uintptr_t, rounding, and casting back. The result is an integer
+turned into a pointer, which has no capability under Fil-C, so the first
+access (ncgen's tst_ncgen4 on ref_tst_vlen_data2) was a safety error.
+Add the alignment delta to the original pointer instead.
+
+--- a/libdispatch/dinstance_intern.c
++++ b/libdispatch/dinstance_intern.c
+@@ -166,7 +166,7 @@
+         /* Remaining case: basetype is itself variable size => recurse */
+         if((stat = NC_type_alignment_internal(file,basetypeid,basetype,&alignment))) goto done;;
+         vinstance.memory = (char*)vlen->p; /* use char* so we can do pointer arithmetic */
+-        vinstance.memory = (void*)NC_read_align((uintptr_t)vinstance.memory,alignment);
++        vinstance.memory += NC_read_align((uintptr_t)vinstance.memory,alignment) - (uintptr_t)vinstance.memory;
+         for(i=0;i<vlen->len;i++) {
+             if((stat=reclaim_datar(file,basetype,vinstance))) goto done; /* reclaim one basetype instance */
+ 	    vinstance.memory += basetype->size; /* move to next base instance */
+@@ -404,8 +404,8 @@
+         vsrc.memory = (char*)srcvlens->p; /* use char* so we can do pointer arithmetic */
+         if((vdst.memory = (char*)malloc(copycount))==NULL) {stat = NC_ENOMEM; goto done;}
+         dstvlens->p = vdst.memory; /* don't lose it */
+-        vsrc.memory = (void*)NC_read_align((uintptr_t)vsrc.memory,alignment);
+-	vdst.memory = (void*)NC_read_align((uintptr_t)vdst.memory,alignment);
++        vsrc.memory += NC_read_align((uintptr_t)vsrc.memory,alignment) - (uintptr_t)vsrc.memory;
++	vdst.memory += NC_read_align((uintptr_t)vdst.memory,alignment) - (uintptr_t)vdst.memory;
+         for(i=0;i<srcvlens->len;i++) {
+             if((stat=copy_datar(file,basetype,vsrc,vdst))) goto done;
+ 	    vsrc.memory += basetype->size;

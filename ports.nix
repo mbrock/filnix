@@ -3006,6 +3006,155 @@ in
     ];
   }
 
+  (for pkgs.gsl [
+    (patch ./patches/gsl-movstat-aligned-state.patch)
+  ])
+
+  (for pkgs.xapian [
+    # With more than one descriptor, glibc's nftw opens subdirectories
+    # through __openat64_nocancel, a raw syscall that Fil-C's libc still
+    # lacks (docs/filc-findings.md). One descriptor avoids that path.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace tests/harness/unixcmds.cc --replace-fail \
+          'nftw(filename.c_str(), rm_rf_nftw_helper, 10, flags)' \
+          'nftw(filename.c_str(), rm_rf_nftw_helper, 1, flags)'
+      '';
+    }))
+  ])
+
+  (for pkgs.proj [
+    # The unit tests link GoogleTest, so they need the Fil-C build of it;
+    # Nixpkgs lists gtest as a native check input.
+    (use (old: {
+      nativeCheckInputs =
+        builtins.filter (p: (p.pname or "") != "gtest") old.nativeCheckInputs
+        # test_projinfo.sh runs sqlite3, which a native build finds
+        # through the sqlite build input.
+        ++ [ pkgs.buildPackages.sqlite ];
+      checkInputs = (old.checkInputs or [ ]) ++ [ final.gtest ];
+    }))
+  ])
+
+  (for pkgs.geos [
+    (patch ./patches/geos-segmentview-pointer-tag.patch)
+  ])
+
+  (for pkgs.potrace [
+    # Its bsf/bsr helpers branch inside the asm (jnz), which Fil-C's
+    # safe inline assembly does not accept. Use the portable versions.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/bitops.h --replace-fail \
+          '#if defined(HAVE_I386)' '#if defined(HAVE_I386) && !defined(__FILC__)'
+      '';
+    }))
+  ])
+
+  (for pkgs.fstrm [
+    (patch ./patches/fstrm-argv-check-or-bounds.patch)
+  ])
+
+  (for pkgs.parted [
+    (patch ./patches/parted-gpt-aligned-reserved2.patch)
+  ])
+
+  (for pkgs.netcdf [
+    (patch ./patches/netcdf-vlen-align-pointer.patch)
+    (patch ./patches/netcdf-exhash-pointer-data.patch)
+  ])
+
+  (for pkgs.rsync [
+    # The test LD_PRELOADs a shim that finds the real read() with
+    # dlsym(RTLD_NEXT, ...), which Fil-C refuses (docs/filc-findings.md).
+    (use (old: {
+      preCheck = old.preCheck + ''
+        export RSYNC_EXCLUDE="$RSYNC_EXCLUDE,source-change-size-continues"
+      '';
+    }))
+  ])
+
+  (for pkgs.kronosnet [
+    # Cross builds skip configure's doxygen2man search and leave
+    # DOXYGEN2MAN empty, so no man pages are made and install-man3 fails.
+    (configure "DOXYGEN2MAN=${pkgs.buildPackages.libqb}/bin/doxygen2man")
+  ])
+
+  # The LanguageMachines stack (ticcutils, timbl, frog, ...).
+  (
+    let
+      # AX_CHECK_ZLIB, AX_CXX_COMPILE_STDCXX_17 and friends come from
+      # autoconf-archive. Nixpkgs lists it in buildInputs, where a cross
+      # build's aclocal does not look.
+      autoconfArchive = tool pkgs.buildPackages.autoconf-archive;
+      # The libraries use ICU's regex and transliterator (icu-i18n) but
+      # link only icu-uc and icu-io. GNU ld finds i18n through icu-io's
+      # DT_NEEDED; Fil-C's gold does not, so programs linking them failed.
+      icuI18n = use (old: {
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace configure.ac --replace-fail \
+            '[icu-uc >= 50 icu-io]' '[icu-uc >= 50 icu-io icu-i18n]'
+        '';
+      });
+      port = steps: name: {
+        inherit name;
+        value = for pkgs.${name} steps;
+      };
+    in
+    builtins.listToAttrs (
+      map
+        (port [
+          autoconfArchive
+          icuI18n
+        ])
+        [
+          "frog"
+          "libfolia"
+          "mbt"
+          "ticcutils"
+          "timbl"
+          "timblserver"
+        ]
+      ++ map (port [ autoconfArchive ]) [
+        "frogdata"
+        "uctodata"
+      ]
+    )
+    // {
+      ucto = for pkgs.ucto [
+        autoconfArchive
+        icuI18n
+        # configure asks a bare `pkg-config` (absent in a cross build)
+        # for uctodata's prefix, so the data directory was compiled in
+        # as /share/ucto/ and ucto (and frog) found no languages.
+        (use (old: {
+          postPatch = (old.postPatch or "") + ''
+            substituteInPlace configure.ac --replace-fail \
+              '`pkg-config --' '`$PKG_CONFIG --'
+          '';
+        }))
+      ];
+    }
+  )
+
+  (for pkgs.recode [
+    # The warning setup adds gnulib's lib/ with -isystem, which comes
+    # after the Fil-C libc's -isystem, so lib/fcntl.h (O_BINARY) was
+    # shadowed by libc's. Plain -I searches it first.
+    (configure "--disable-gcc-warnings")
+    # The tests build a Fil-C extension module (from Cython's C output)
+    # and import it, so they need the Fil-C Python rather than the
+    # build's, without the build Python's module path and sysconfig name.
+    (use (old: {
+      preCheck = (old.preCheck or "") + ''
+        unset PYTHONPATH _PYTHON_HOST_PLATFORM _PYTHON_SYSCONFIGDATA_NAME
+      '';
+      checkFlags = (old.checkFlags or [ ]) ++ [
+        "PYTHON=${final.python3.withPackages (ps: [ ps.setuptools ])}/bin/python3"
+      ];
+    }))
+  ])
+
   (for pkgs.rustc [
     (broken "oh sweet summer child")
   ])

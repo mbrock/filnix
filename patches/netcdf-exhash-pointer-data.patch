@@ -1,0 +1,249 @@
+Subject: Store ncexhash data as void* instead of uintptr_t
+Origin: Filnix
+Upstream-Status: Not submitted
+
+NCxcache, NCZarr's chunk cache, keeps node pointers in an ncexhash map
+whose data field is a uintptr_t. Under Fil-C an integer carries no
+capability, so every pointer read back from the map was unusable and
+ncxcachelookup stopped the program (most nczarr_test cases). Make the
+data void*; the unit test still stores small integers through casts.
+
+--- a/include/ncexhash.h
++++ b/include/ncexhash.h
+@@ -33,7 +33,7 @@
+ 
+ typedef struct NCexentry {
+     ncexhashkey_t hashkey; /* Hash id */
+-    uintptr_t data;
++    void* data;
+ } NCexentry;
+ 
+ typedef struct NCexleaf {
+@@ -72,16 +72,16 @@
+ /* Hash key based API */
+ 
+ /* Lookup by Hash Key */
+-EXTERNL int ncexhashget(NCexhashmap*, ncexhashkey_t hkey, uintptr_t*);
++EXTERNL int ncexhashget(NCexhashmap*, ncexhashkey_t hkey, void**);
+ 
+ /* Insert by Hash Key */
+-EXTERNL int ncexhashput(NCexhashmap*, ncexhashkey_t hkey, uintptr_t data);
++EXTERNL int ncexhashput(NCexhashmap*, ncexhashkey_t hkey, void* data);
+ 
+ /* Remove by Hash Key */
+-EXTERNL int ncexhashremove(NCexhashmap*, ncexhashkey_t hkey, uintptr_t* datap);
++EXTERNL int ncexhashremove(NCexhashmap*, ncexhashkey_t hkey, void** datap);
+ 
+ /** Change the data for the specified key; takes hashkey. */
+-EXTERNL int ncexhashsetdata(NCexhashmap*, ncexhashkey_t hkey, uintptr_t newdata, uintptr_t* olddatap);
++EXTERNL int ncexhashsetdata(NCexhashmap*, ncexhashkey_t hkey, void* newdata, void** olddatap);
+ 
+ /** Get map parameters */
+ EXTERNL int ncexhashinqmap(NCexhashmap* map, int* leaflenp, int* depthp, int* nactivep, int* uidp, int* walkingp);
+@@ -95,7 +95,7 @@
+ @return NC_ERANGE if iteration is finished
+ @return NC_EINVAL for all other errors
+ */
+-EXTERNL int ncexhashiterate(NCexhashmap* map, ncexhashkey_t* keyp, uintptr_t* datap);
++EXTERNL int ncexhashiterate(NCexhashmap* map, ncexhashkey_t* keyp, void** datap);
+ 
+ /* Debugging */
+ EXTERNL void ncexhashprint(NCexhashmap*);
+--- a/libdispatch/ncexhash.c
++++ b/libdispatch/ncexhash.c
+@@ -189,7 +189,7 @@
+ 
+ /* Lookup by Hash Key */
+ int
+-ncexhashget(NCexhashmap* map, ncexhashkey_t hkey, uintptr_t* datap)
++ncexhashget(NCexhashmap* map, ncexhashkey_t hkey, void** datap)
+ {
+     int stat = NC_NOERR;
+     NCexleaf* leaf;
+@@ -207,7 +207,7 @@
+ 
+ /* Insert by Hash Key */
+ int
+-ncexhashput(NCexhashmap* map, ncexhashkey_t hkey, uintptr_t data)
++ncexhashput(NCexhashmap* map, ncexhashkey_t hkey, void* data)
+ {
+     int stat = NC_NOERR;
+     NCexleaf* leaf;
+@@ -532,7 +532,7 @@
+ #else
+     leaf->entries[index].hashkey = (ncexhashkey_t)0xffffffffffffffff;
+ #endif
+-    leaf->entries[index].data = 0;
++    leaf->entries[index].data = NULL;
+     leaf->active++;
+     map->nactive++;
+ }
+@@ -613,7 +613,7 @@
+  */
+ 
+ int
+-ncexhashremove(NCexhashmap* map, ncexhashkey_t hkey, uintptr_t* datap)
++ncexhashremove(NCexhashmap* map, ncexhashkey_t hkey, void** datap)
+ {
+      int stat = NC_NOERR;
+      NCexleaf* leaf;
+@@ -645,7 +645,7 @@
+  */
+ 
+ int
+-ncexhashsetdata(NCexhashmap* map, ncexhashkey_t hkey, uintptr_t newdata, uintptr_t* olddatap)
++ncexhashsetdata(NCexhashmap* map, ncexhashkey_t hkey, void* newdata, void** olddatap)
+ {
+     int stat = NC_NOERR;
+     NCexleaf* leaf = NULL;
+@@ -701,7 +701,7 @@
+ @return NC_EINVAL for all other errors
+ */
+ int
+-ncexhashiterate(NCexhashmap* map, ncexhashkey_t* keyp, uintptr_t* datap)
++ncexhashiterate(NCexhashmap* map, ncexhashkey_t* keyp, void** datap)
+ {
+     int stat = NC_NOERR;
+ 
+@@ -767,7 +767,7 @@
+ 	    fprintf(stderr,"%s|0x%llx,%llu)",
+ 		    s,
+ 	  	    (unsigned long long)hkey,
+-		    (unsigned long long)leaf->entries[index].data);
++		    (unsigned long long)(uintptr_t)leaf->entries[index].data);
+ 	}
+ 	fprintf(stderr,"]\n");
+     }
+@@ -804,7 +804,7 @@
+ 	bits = MSB(hkey,leaf->depth);
+ 	s = ncexbinstr(bits,leaf->depth);
+ 	fprintf(stderr,"%s|0x%llx,%llu)",
+-        s, (unsigned long long)hkey, (unsigned long long)leaf->entries[index].data);
++        s, (unsigned long long)hkey, (unsigned long long)(uintptr_t)leaf->entries[index].data);
+     }
+     fprintf(stderr,"]\n");
+ }
+@@ -813,7 +813,7 @@
+ ncexhashprintentry(NCexhashmap* map, NCexentry* entry)
+ {
+ 
+-    fprintf(stderr,"{0x%llx,%llu)",(unsigned long long)entry->hashkey,(unsigned long long)entry->data);
++    fprintf(stderr,"{0x%llx,%llu)",(unsigned long long)entry->hashkey,(unsigned long long)(uintptr_t)entry->data);
+ }
+ 
+ char*
+--- a/libdispatch/ncxcache.c
++++ b/libdispatch/ncxcache.c
+@@ -89,7 +89,7 @@
+ ncxcachelookup(NCxcache* NCxcache, ncexhashkey_t hkey, void** op)
+ {
+     int stat = NC_NOERR;
+-    uintptr_t inode = 0;
++    void* inode = NULL;
+     NCxnode* node = NULL;
+ 
+     if(NCxcache == NULL) return THROW(NC_EINVAL);
+@@ -108,7 +108,7 @@
+ ncxcachetouch(NCxcache* cache, ncexhashkey_t hkey)
+ {
+     int stat = NC_NOERR;
+-    uintptr_t inode = 0;
++    void* inode = NULL;
+     NCxnode* node = NULL;
+ 
+     if(cache == NULL) return THROW(NC_EINVAL);
+@@ -132,7 +132,7 @@
+ ncxcacheinsert(NCxcache* cache, const ncexhashkey_t hkey, void* o)
+ {
+     int stat = NC_NOERR;
+-    uintptr_t inode = 0;
++    void* inode = NULL;
+     NCxnode* node = NULL;
+ 
+     if(cache == NULL) return THROW(NC_EINVAL);
+@@ -143,7 +143,7 @@
+     node = (NCxnode*)o;
+ #endif
+     node->content = o; /* Cheat and make content point to the node part*/
+-    inode = (uintptr_t)node;
++    inode = node;
+     stat = ncexhashput(cache->map,hkey,inode);
+     if(stat)
+ 	goto done;
+@@ -165,7 +165,7 @@
+ ncxcacheremove(NCxcache* cache, ncexhashkey_t hkey, void** op)
+ {
+     int stat = NC_NOERR;
+-    uintptr_t inode = 0;
++    void* inode = NULL;
+     NCxnode* node = NULL;
+ 
+     if(cache == NULL) return THROW(NC_EINVAL);
+--- a/unit_test/tst_exhash.c
++++ b/unit_test/tst_exhash.c
+@@ -81,6 +81,7 @@
+     unsigned key;
+     unsigned* np;
+     uintptr_t data;
++    void* pd = NULL;
+     ncexhashkey_t hashkey;
+     Nanotime inserttime[2];
+     Nanotime readtime[2];
+@@ -103,7 +104,7 @@
+ #ifdef VERBOSE
+         fprintf(stderr,"insert[%08llx|%s->%u]:\n",hashkey,ncexbinstr(hashkey,NCEXHASHKEYBITS),key);
+ #endif
+-	CHECK(ncexhashput(map,hashkey,(uintptr_t)key));
++	CHECK(ncexhashput(map,hashkey,(void*)(uintptr_t)key));
+     }
+ #ifdef VERBOSE
+     fprintf(stderr,"insert.after:");ncexhashprint(map);    
+@@ -117,8 +118,10 @@
+ 
+     for(key=0;key<*np;key++) {
+ 	uintptr_t data = 0;
++	void* pdata = NULL;
+ 	ncexhashkey_t hashkey = hkeyfor(key);
+-	CHECK(ncexhashget(map,hashkey,&data));
++	CHECK(ncexhashget(map,hashkey,&pdata));
++	data = (uintptr_t)pdata;
+ #ifdef VERBOSE
+         fprintf(stderr,"read[%08llx|%s->%u]:\n",hashkey,ncexbinstr(hashkey,NCEXHASHKEYBITS),(unsigned)data);
+ #endif
+@@ -140,7 +143,8 @@
+ 	fprintf(stderr,"iterating: %u\n",*np);
+ 	if((found = (unsigned char*)calloc(1,*np))==NULL) CHECK(NC_ENOMEM);
+         for(;;) {
+-	    if((stat = ncexhashiterate(map, &hashkey, &data)) == NC_EINVAL) CHECK(stat);
++	    if((stat = ncexhashiterate(map, &hashkey, &pd)) == NC_EINVAL) CHECK(stat);
++	    data = (uintptr_t)pd;
+ 	    if(stat == NC_ERANGE) break;
+ 	    assert(data >= 0 && data < *np);
+ 	    if(found[data] != 0)
+@@ -162,13 +166,15 @@
+         for(key=0;key<*np;key++) {
+ 	    ncexhashkey_t hashkey = hkeyfor(key);
+ 	    uintptr_t newdata = (uintptr_t)(key+(*np));
+-	    stat = ncexhashsetdata(map, hashkey, newdata, &data);
++	    stat = ncexhashsetdata(map, hashkey, (void*)newdata, &pd);
++	    data = (uintptr_t)pd;
+ 	    assert(stat == NC_NOERR);
+ 	    assert(data == key);
+         }
+         for(;;) {
+ 	    ncexhashkey_t rehash;
+-	    if((stat = ncexhashiterate(map, &hashkey, &data)) == NC_EINVAL) CHECK(stat);
++	    if((stat = ncexhashiterate(map, &hashkey, &pd)) == NC_EINVAL) CHECK(stat);
++	    data = (uintptr_t)pd;
+ 	    if(stat == NC_ERANGE) break;
+ 	    rehash = hkeyfor((unsigned int)data - (*np));
+ 	    assert(hashkey == rehash);
+@@ -196,7 +202,7 @@
+ 
+         for(key=0;key<*np;key++) {
+ 	    ncexhashkey_t hashkey = hkeyfor(key);
+-	    switch (stat = ncexhashremove(map, hashkey, &data)) {
++	    switch (stat = ncexhashremove(map, hashkey, &pd)) {
+ 	    case NC_NOERR:
+ 	        break;
+ 	    case NC_ENOTFOUND:

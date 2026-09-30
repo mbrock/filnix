@@ -1,0 +1,40 @@
+Subject: movstat: keep ring buffer and deque headers pointer-aligned
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The moving-window accumulators carve their state out of one block.
+qnacc put its ringbuf, which starts with a pointer, after 5*n ints, so
+for odd n the struct was only 4-byte aligned (undefined behaviour that
+x86 tolerates). Fil-C requires pointers to be 8-byte aligned and
+stopped gsl_filter_impulse in filter/test. Put the ring buffer before
+the int workspace; the total size is unchanged.
+
+mmacc places its second deque after the first one's n+1 ints, with the
+same problem when n is even. Round deque_size up to a pointer multiple.
+
+--- a/movstat/deque.c
++++ b/movstat/deque.c
+@@ -49,6 +49,9 @@
+   size += sizeof(deque);
+   size += n * sizeof(deque_type_t); /* array */
+ 
++  /* keep a following deque's pointer member aligned */
++  size = (size + sizeof(void *) - 1) / sizeof(void *) * sizeof(void *);
++
+   return size;
+ }
+ 
+--- a/movstat/qnacc.c
++++ b/movstat/qnacc.c
+@@ -61,8 +61,9 @@
+ 
+   state->window = (qnacc_type_t *) ((unsigned char *) vstate + sizeof(qnacc_state_t));
+   state->work = (qnacc_type_t *) ((unsigned char *) state->window + n * sizeof(qnacc_type_t));
+-  state->work_int = (int *) ((unsigned char *) state->work + 3 * n * sizeof(qnacc_type_t));
+-  state->rbuf = (ringbuf *) ((unsigned char *) state->work_int + 5 * n * sizeof(int));
++  /* the ring buffer holds a pointer: place it before the int workspace so it stays aligned */
++  state->rbuf = (ringbuf *) ((unsigned char *) state->work + 3 * n * sizeof(qnacc_type_t));
++  state->work_int = (int *) ((unsigned char *) state->rbuf + ringbuf_size(n));
+ 
+   ringbuf_init(n, state->rbuf);
+ 
