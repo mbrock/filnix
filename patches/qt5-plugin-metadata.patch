@@ -1,5 +1,5 @@
---- a/src/corelib/plugin/qlibrary.cpp	2026-09-29 16:09:15.225498969 +0000
-+++ b/src/corelib/plugin/qlibrary.cpp	2026-09-29 16:10:22.334112886 +0000
+--- a/src/corelib/plugin/qlibrary.cpp	2026-09-30 11:46:24.594014579 +0000
++++ b/src/corelib/plugin/qlibrary.cpp	2026-09-30 11:47:31.102622844 +0000
 @@ -272,6 +272,9 @@
      pattern[0] = 'Q'; // Ensure the pattern "QTMETADATA" is not found in this library should QPluginLoader ever encounter it.
      const ulong plen = qstrlen(pattern);
@@ -10,7 +10,7 @@
      int r = QElfParser().parse(filedata, fdlen, library, lib, &pos, &fdlen);
      if (r == QElfParser::Corrupt || r == QElfParser::NotElf) {
              if (lib && qt_debug_component()) {
-@@ -286,6 +289,15 @@
+@@ -286,6 +289,17 @@
              pos += rel;
          hasMetaData = true;
      }
@@ -21,8 +21,54 @@
 +        fdlen = fileLength;
 +        pos = qt_find_pattern(filedata, fdlen, pattern, plen);
 +        hasMetaData = pos >= 0;
++        if (hasMetaData)
++            fdlen = fileLength - pos;
 +    }
 +#  endif
  #elif defined (Q_OF_MACH_O)
      {
          QString errorString;
+--- a/src/corelib/plugin/qfactoryloader.cpp	2026-09-30 11:46:24.594014579 +0000
++++ b/src/corelib/plugin/qfactoryloader.cpp	2026-09-30 11:47:31.106622881 +0000
+@@ -129,19 +129,37 @@
+ QT_WARNING_DISABLE_DEPRECATED
+ QJsonDocument qJsonFromRawLibraryMetaData(const char *raw, qsizetype sectionSize, QString *errMsg)
+ {
++    // The whole-file search can find a marker at EOF or in unrelated data.
++    // Do not read even the format byte until the full signature is present.
++    char signature[] = "qTMETADATA ";
++    signature[0] = 'Q'; // Do not embed the searchable marker in QtCore itself.
++    if (sectionSize < metaDataSignatureLength()
++            || memcmp(raw, signature, sizeof(signature) - 1) != 0
++            || (raw[metaDataSignatureLength() - 1] != ' '
++                && raw[metaDataSignatureLength() - 1] != '!')) {
++        *errMsg = QStringLiteral("Invalid metadata signature");
++        return QJsonDocument();
++    }
+     raw += metaDataSignatureLength();
+     sectionSize -= metaDataSignatureLength();
+ 
++    const qsizetype minimumHeader = raw[-1] == ' ' ? 12 : 4;
++    if (sectionSize < minimumHeader) {
++        *errMsg = QStringLiteral("Truncated metadata header");
++        return QJsonDocument();
++    }
++
+ #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+     if (Q_UNLIKELY(raw[-1] == ' ')) {
+         // the size of the embedded JSON object can be found 8 bytes into the data (see qjson_p.h)
+         uint size = qFromLittleEndian<uint>(raw + 8);
+-        // but the maximum size of binary JSON is 128 MB
+-        size = qMin(size, 128U * 1024 * 1024);
++        // Reject a declared size outside the available data (or JSON limit).
++        if (size > 128U * 1024 * 1024 || qsizetype(size) + 8 > sectionSize) {
++            *errMsg = QStringLiteral("Invalid metadata length");
++            return QJsonDocument();
++        }
+         // and it doesn't include the size of the header (8 bytes)
+         size += 8;
+-        // finally, it can't be bigger than the file or section size
+-        size = qMin(sectionSize, qsizetype(size));
+ 
+         QByteArray json(raw, size);
+         return QJsonDocument::fromBinaryData(json);

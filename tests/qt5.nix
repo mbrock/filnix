@@ -36,6 +36,8 @@ pkgs.stdenv.mkDerivation {
     runHook preConfigure
     cp ${./qt5-smoke.cpp} qt5-smoke.cpp
     cp ${./qt5-quick.cpp} qt5-quick.cpp
+    cp ${./qt5-contracts.cpp} qt5-contracts.cpp
+    cp ${./qt5-contract-plugin.cpp} qt5-contract-plugin.cpp
     cat > smoke.pro <<'EOF'
     QT += widgets network sql xml concurrent testlib
     CONFIG += console
@@ -48,19 +50,39 @@ pkgs.stdenv.mkDerivation {
     SOURCES = qt5-quick.cpp
     TARGET = qt5-quick
     EOF
+    cat > contracts.pro <<'EOF'
+    QT = core ${pkgs.lib.optionalString withQuick "qml qml-private"}
+    CONFIG += console c++17
+    DEFINES += ${pkgs.lib.optionalString withQuick "WITH_QML"}
+    SOURCES = qt5-contracts.cpp
+    TARGET = qt5-contracts
+    EOF
+    cat > plugin.pro <<'EOF'
+    QT = core
+    TEMPLATE = lib
+    CONFIG += plugin
+    SOURCES = qt5-contract-plugin.cpp
+    TARGET = qt5-contract-plugin
+    EOF
     export QMAKEPATH=${
-      pkgs.lib.concatMapStringsSep ":" (m: "${m.dev}") [
-        qt5.qtsvg
-        qt5.qtdeclarative
-      ]
+      pkgs.lib.concatMapStringsSep ":" (m: "${m.dev}") (
+        pkgs.lib.optionals withQuick [
+          qt5.qtsvg
+          qt5.qtdeclarative
+        ]
+      )
     }
-    mkdir smoke quick
+    mkdir smoke quick contracts plugin
     (cd smoke && qmake ../smoke.pro)
+    (cd contracts && qmake ../contracts.pro)
+    (cd plugin && qmake ../plugin.pro)
     ${pkgs.lib.optionalString withQuick "(cd quick && qmake ../quick.pro)"}
     runHook postConfigure
   '';
   buildPhase = ''
     make -C smoke -j$NIX_BUILD_CORES
+    make -C contracts -j$NIX_BUILD_CORES
+    make -C plugin -j$NIX_BUILD_CORES
     ${pkgs.lib.optionalString withQuick "make -C quick -j$NIX_BUILD_CORES"}
   '';
   doCheck = true;
@@ -77,6 +99,12 @@ pkgs.stdenv.mkDerivation {
       pkgs.makeFontsConf { fontDirectories = [ pkgs.pkgsBuildBuild.dejavu_fonts ]; }
     }
     export HOME=$TMPDIR
+    ${pkgs.pkgsBuildBuild.binutils}/bin/readelf -SW plugin/libqt5-contract-plugin.so > plugin-sections.txt
+    if grep -q '\.qtmetadata' plugin-sections.txt; then
+      echo 'The metadata test requires a sectionless Fil-C plugin' >&2
+      exit 1
+    fi
+    ./contracts/qt5-contracts "$PWD/plugin/libqt5-contract-plugin.so"
     for platform in offscreen xcb; do
       for program in smoke/qt5-smoke ${pkgs.lib.optionalString withQuick "quick/qt5-quick"}; do
         echo "== $program on $platform"
@@ -90,6 +118,7 @@ pkgs.stdenv.mkDerivation {
   '';
   installPhase = ''
     mkdir -p $out/bin
-    cp smoke/qt5-smoke ${pkgs.lib.optionalString withQuick "quick/qt5-quick"} $out/bin/
+    cp smoke/qt5-smoke contracts/qt5-contracts plugin/libqt5-contract-plugin.so \
+      ${pkgs.lib.optionalString withQuick "quick/qt5-quick"} $out/bin/
   '';
 }

@@ -1345,3 +1345,55 @@ bytecode dumper, one ~540-line function with a case per instruction
 4 GB, with or without computed gotos; it is left out. The patch also
 makes the interpreter dispatch with a `switch` instead of computed gotos;
 it then compiles in minutes (the computed-goto version was not timed).
+
+## Qt 5 follow-up: metadata bounds and raw-data reset
+
+The sectionless-plugin fallback must pass `fileLength - pos`, not the
+whole file length, when the parser starts at `filedata + pos`. The marker
+alone is not a header: `qJsonFromRawLibraryMetaData` must first check the
+complete 12-byte signature, then the 4-byte CBOR header or the 12 bytes
+needed to read the legacy binary-JSON length. Declared JSON sizes beyond
+the remaining data or the 128 MB limit are rejected rather than clamped.
+`patches/qt5-plugin-metadata.patch` now does these checks. The backward
+search still chooses the last marker; a malformed later decoy rejects the
+file, rather than silently trusting earlier metadata.
+
+An important regression-test detail: put EOF at a page boundary. Otherwise
+`mmap`'s zero-filled page slack can hide a header overread. Against the
+original Qt port, a real sectionless plugin with an appended marker-only
+decoy at page-aligned EOF stops with `filc safety error: cannot read
+pointer with ptr >= upper` in `qJsonFromRawLibraryMetaData`. The corrected
+port rejects that file normally. Tests also cover every truncated CBOR
+and legacy header length, invalid signatures, oversized lengths, and
+valid CBOR and legacy metadata ending exactly at EOF (21 rejection cases
+and two positive controls, besides loading a real plugin).
+
+The raw-data pointer stored after `QArrayData` also occupies the bytes
+that become inline empty contents when `setRawData(nullptr, 0)` resets
+the offset. Zero those bytes before exposing them as empty contents;
+otherwise `constData()[0]` is the low byte of the old pointer, not a
+terminator. `patches/qt5-raw-data.patch` fixes both `QByteArray` and
+`QString`, without changing Qt's null/empty distinction: resetting an
+unshared raw header keeps it non-null and empty; the shared/owned path
+uses `fromRawData(nullptr, 0)` and becomes null. `fromRawData(nonNull, 0)`
+itself returns Qt's shared non-null empty storage, not the caller's
+pointer. Tests use aligned and offset external pointers with deliberately
+nonzero low bytes, repeated reset/reuse, append, detach and shared copies.
+
+`tests/qt5-contracts.cpp`, run by `tests/qt5.nix`, also checks the existing
+QV4 port without changing its representation: signed/unsigned integer
+boundaries, safe-integer limits, subnormal/max doubles, infinities, NaN
+and negative zero; managed/immediate transitions; 1,500 C++ `QJSValue`
+roots across persistent-storage pages and repeated GC; object identity,
+Symbols versus string keys, and sparse indexes up to 4294967294 versus
+the non-index key 4294967295. It checks copy/move construction and
+assignment of `QJSValue` and `QV4::PersistentValue` (the latter's rvalues
+use its copy API), plus compile-time 8-byte and trivial-copy assertions
+for `ReturnedValue`, `StaticValue`, `Value` and `PropertyKey`, and an
+8-byte assertion for the non-trivial `QJSValue`.
+
+Run the full check with `nix build -L --impure --expr 'import
+./tests/qt5.nix { }'`; `{ withQuick = false; }` runs only the qtbase
+contracts and widgets/network/SQL/XML checks, without building QtQml.
+These fixes rebuild the Qt5 dependency subtree, not the compiler or the
+whole Fil-C package set.

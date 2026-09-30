@@ -1,7 +1,6 @@
-diff -ru m/src/corelib/text/qbytearray.cpp n/src/corelib/text/qbytearray.cpp
---- a/src/corelib/text/qbytearray.cpp	2026-09-29 16:12:20.575194590 +0000
-+++ b/src/corelib/text/qbytearray.cpp	2026-09-29 16:12:20.595194774 +0000
-@@ -4532,7 +4532,11 @@
+--- a/src/corelib/text/qbytearray.cpp	2026-09-30 11:46:24.594014579 +0000
++++ b/src/corelib/text/qbytearray.cpp	2026-09-30 11:47:31.114622955 +0000
+@@ -4532,8 +4532,16 @@
      } else {
          if (data) {
              d->size = size;
@@ -11,12 +10,16 @@ diff -ru m/src/corelib/text/qbytearray.cpp n/src/corelib/text/qbytearray.cpp
              d->offset = data - reinterpret_cast<char *>(d);
 +#endif
          } else {
++#ifdef __FILC__
++            // The external pointer slot becomes the inline empty contents.
++            memset(d + 1, 0, sizeof(void *));
++#endif
              d->offset = sizeof(QByteArrayData);
              d->size = 0;
-diff -ru m/src/corelib/text/qstring.cpp n/src/corelib/text/qstring.cpp
---- a/src/corelib/text/qstring.cpp	2026-09-29 16:12:20.571194553 +0000
-+++ b/src/corelib/text/qstring.cpp	2026-09-29 16:12:20.591194737 +0000
-@@ -9484,7 +9484,11 @@
+         }
+--- a/src/corelib/text/qstring.cpp	2026-09-30 11:46:24.594014579 +0000
++++ b/src/corelib/text/qstring.cpp	2026-09-30 11:47:31.126623065 +0000
+@@ -9484,8 +9484,16 @@
      } else {
          if (unicode) {
              d->size = size;
@@ -26,11 +29,15 @@ diff -ru m/src/corelib/text/qstring.cpp n/src/corelib/text/qstring.cpp
              d->offset = reinterpret_cast<const char *>(unicode) - reinterpret_cast<char *>(d);
 +#endif
          } else {
++#ifdef __FILC__
++            // The external pointer slot becomes the inline empty contents.
++            memset(d + 1, 0, sizeof(void *));
++#endif
              d->offset = sizeof(QStringData);
              d->size = 0;
-diff -ru m/src/corelib/tools/qarraydata.cpp n/src/corelib/tools/qarraydata.cpp
---- a/src/corelib/tools/qarraydata.cpp	2026-09-29 16:12:20.563194480 +0000
-+++ b/src/corelib/tools/qarraydata.cpp	2026-09-29 16:12:20.591194737 +0000
+         }
+--- a/src/corelib/tools/qarraydata.cpp	2026-09-30 11:46:24.598014615 +0000
++++ b/src/corelib/tools/qarraydata.cpp	2026-09-30 11:46:24.974018054 +0000
 @@ -210,6 +210,10 @@
      // Padding is skipped when allocating a header for RawData.
      if (!(options & RawData))
@@ -42,9 +49,8 @@ diff -ru m/src/corelib/tools/qarraydata.cpp n/src/corelib/tools/qarraydata.cpp
  
      if (headerSize > size_t(MaxAllocSize))
          return nullptr;
-diff -ru m/src/corelib/tools/qarraydata.h n/src/corelib/tools/qarraydata.h
---- a/src/corelib/tools/qarraydata.h	2026-09-29 16:12:20.559194443 +0000
-+++ b/src/corelib/tools/qarraydata.h	2026-09-29 16:12:20.591194737 +0000
+--- a/src/corelib/tools/qarraydata.h	2026-09-30 11:46:24.598014615 +0000
++++ b/src/corelib/tools/qarraydata.h	2026-09-30 11:46:24.974018054 +0000
 @@ -54,8 +54,24 @@
  
      qptrdiff offset; // in bytes from beginning of header
