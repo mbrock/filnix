@@ -2,30 +2,41 @@
 # __sync pointer atomics (cffi), unions inside by-value records (fmt),
 # function descriptors that bind locally, so RTLD_LOCAL isolates same-named
 # functions (SDL_compat), and unwinds that survive a cleanup throwing and
-# catching its own exception, or a switch to a fiber that does (Nix). The
-# runtime still raises FE_INEXACT in the program (see docs/filc-findings.md),
-# so fenv-*.c are not run yet.
+# catching its own exception, or a switch to a fiber that does (Nix).
 { pkgsFilc }:
 pkgsFilc.stdenv.mkDerivation {
   name = "filc-fork-regressions-check";
   dontUnpack = true;
   buildPhase = ''
+    export FUGC_THREADS=2
     for opt in -O0 -O2; do
       $CC $opt ${./fork-regressions/sync-pointer-atomics.c} -o sync
       ./sync | grep -qx '42 7 7 42 (nil)'
       $CXX -std=c++17 $opt ${./fork-regressions/union-record-abi.cpp} -o union
       ./union | grep -qx '42 42 42'
+      $CXX -std=c++17 $opt ${./fork-regressions/cas-expected-cap.cpp} -pthread -o cas
+      for iteration in $(seq 1 5); do
+        timeout 120 ./cas
+      done
       D=${./fork-regressions/descriptors}
       $CC $opt -shared -fPIC $D/a.c -o liba.so
-      $CC $opt -shared -fPIC $D/b.c -o libb.so
+      # Clang may fold same-TU calls at -O2 unless interposition is explicit.
+      $CC $opt -fsemantic-interposition -shared -fPIC $D/b.c -o libb.so
       $CC $opt $D/main.c -L. -la -Wl,-rpath,$PWD -o main
       ./main $PWD/libb.so | tee desc.log
-      grep -q 'dlsym(which)()=2' desc.log
+      grep -qx 'which()=1 dlsym(which)()=2 callwhich()=1 whichptr()()=1' desc.log
+      $CC $opt -fsemantic-interposition -shared -fPIC -Wl,-Bsymbolic $D/b.c -o libb.so
+      ./main $PWD/libb.so | tee desc-symbolic.log
+      grep -qx 'which()=1 dlsym(which)()=2 callwhich()=2 whichptr()()=2' desc-symbolic.log
       E=${./fork-regressions/exception-unwind}
       $CXX $opt $E/nested-cleanup.cpp -o nested
-      ./nested | grep -qx 'outer caught outer after 6 inner catches'
+      ./nested > nested.log
+      printf 'outer caught outer after 6 inner catches\nagain outer\n' > nested.expected
+      cmp nested.expected nested.log
       $CXX $opt $E/fiber.cpp -o fiber
-      ./fiber | grep -qx 'main caught: from coroutine'
+      ./fiber > fiber.log
+      printf 'coroutine unwound\nmain caught: from coroutine\n' > fiber.expected
+      cmp fiber.expected fiber.log
     done
   '';
   installPhase = "touch $out";
