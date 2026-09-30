@@ -145,7 +145,7 @@ index 92e0a8bbd394..cb819b1fdfce 100644
 +    uintptr_t val;
      memcpy(&val, p, sizeof(val));
 -    return val;
-+    return zptrtable_decode(_PyCode_PtrTable, val);
++    return (PyObject *) zptrtable_decode(_PyCode_PtrTable, val);
  }
  
  /* See Objects/exception_handling_notes.txt for details.

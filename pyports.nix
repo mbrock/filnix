@@ -73,6 +73,29 @@ in
     }))
   ])
 
+  (for "httpcore" [
+    (use (old: {
+      # Test the client under Fil-C Python, but run the real HTTP/TLS test
+      # server as a native tool. Its Swagger dependency imports Rust rpds,
+      # which the Fil-C interpreter cannot load.
+      nativeInstallCheckInputs = builtins.filter (
+        p: (p.pname or "") != "pytest-httpbin"
+      ) old.nativeInstallCheckInputs;
+      postPatch = (old.postPatch or "") + ''
+        test ! -e tests/conftest.py
+        cp ${./tests/httpcore-httpbin.py} tests/conftest.py
+      '';
+      preCheck = (old.preCheck or "") + ''
+        export HTTPBIN_PYTHON=${
+          pkgs.buildPackages.python3.withPackages (ps: [
+            ps.pytest-httpbin
+            ps.pytest
+          ])
+        }/bin/python3
+      '';
+    }))
+  ])
+
   (for "django" [
     (use (old: {
       # The XML deserializer's complexity check times one parse of a
@@ -81,10 +104,7 @@ in
       # the ratio is noise (3.4 in a campaign). The varying-depth check,
       # averaged over four ratios of larger inputs, still runs.
       postPatch = (old.postPatch or "") + ''
-        substituteInPlace tests/serializers/test_deserialization.py \
-          --replace-fail \
-            'assertFactor("constant depth, varying length", [(100, 1), (100, 1000)], 2)' \
-            ""
+        substituteInPlace tests/serializers/test_deserialization.py --replace-fail 'assertFactor("constant depth, varying length", [(100, 1), (100, 1000)], 2)' ""
       '';
     }))
   ])
