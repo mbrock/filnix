@@ -1416,3 +1416,62 @@ Run the full check with `nix build -L --impure --expr 'import
 contracts and widgets/network/SQL/XML checks, without building QtQml.
 These fixes rebuild the Qt5 dependency subtree, not the compiler or the
 whole Fil-C package set.
+
+## Qt 6: QtBase and QtSvg
+
+The initial Qt 6 port targets the pinned Qt 6.11.2 QtBase and QtSvg, not
+QtQml/QtQuick. `ports/qt6.nix` supplies native Qt host tools explicitly:
+Nix considers Fil-C executables runnable on the build machine, but Qt's
+CMake configuration still treats this as a cross build. GTK platform-theme
+integration is disabled because the existing Fil-C GTK 3 port lacks its
+X11 headers; Qt's own XCB platform remains enabled.
+
+Version tagging is disabled to avoid `.symver` assembly. Linker version
+scripts are disabled separately: the driver's small configure probe accepts
+simple wildcards, but aborts parsing Qt's `_ZT[VTIS]S*` character-class glob.
+QProcess uses `fork()`, with the Qt 5 forkfd patch also preventing the raw
+`waitid` syscall probe. QtSvg's Nixpkgs image-format dependencies are omitted:
+its source links only QtCore, QtGui and zlib, already provided by QtBase.
+The unused Jasper dependency otherwise pulls in libheif and a Rust compiler
+which cannot target `x86_64-unknown-linux-gnufilc0`.
+
+Several Qt 5 adaptations carry over: canonical CPU-probe assembly,
+pointer-typed model indexes and lockers, and the single-word semaphore
+implementation. Qt 6 additionally needs capability-preserving
+`QTaggedPointer`, property-binding data and observer back-links, and the
+atomic tagged pointer used for a thread's binding status or pending-object
+list. QObject's tagged orphaned-connection/signal-vector list also needs
+pointer storage; its original integer representation trapped when a
+QTextStream disconnected from its device. QVariant's packed, shifted
+metatype pointer becomes a real pointer with separate boolean flags. This
+changes QVariant's layout; target applications must use the patched headers
+and Fil-C Qt libraries together, not native Qt libraries.
+
+Other runtime traps were new in Qt 6. Reading `getauxval(AT_RANDOM)` loses
+the random-data pointer's capability, including during hash-seed global
+initialization; Qt's existing OS-random fallback is used instead.
+`QThread::currentThreadId()` reads the TCB pointer through inline assembly;
+the portable `pthread_self()` implementation is used instead. And
+`qstricmp()`'s SSE4.1 fast path reads 16 bytes whenever it stays within a
+mapped page, even past a string allocation's end. UTF-16 `qustrlen()` also
+reads an aligned SIMD block around a short string, outside its allocation.
+Like the address-sanitizer build, Fil-C uses the scalar paths for both.
+
+The AVX2 source-over painter uses `_mm256_lddqu_si256`, whose LLVM intrinsic
+`llvm.x86.avx.ldu.dq.256` is unhandled by Fil-C. Replacing it with the ordinary
+unaligned `_mm256_loadu_si256` retains the blend implementations without
+requiring compiler changes or disabling AVX2.
+
+ELF-note plugin metadata is replaced with Qt's regular payload and bounded
+whole-file marker search, since Fil-C ignores data section attributes. The
+fallback checks that the four-byte header fits after the marker before
+passing the remaining file span to the metadata parser.
+
+Run `nix build -L --impure --expr 'import ./tests/qt6.nix { }'`. The check
+covers pointers, QVariant detach/emplace, lockers, semaphore contention,
+property bindings and grouped notifications, short string comparisons,
+external raw buffers, unaligned partial-alpha image blending, SVG pixels,
+real plugin load/unload, and truncated metadata at page-aligned EOF. It also
+reuses the Qt 5 core/network/SQL/XML/widgets fixture on both offscreen and
+XCB platforms, retaining an X11 screenshot under the check output's
+`share/qt6-smoke/` directory.

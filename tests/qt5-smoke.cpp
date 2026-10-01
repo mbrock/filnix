@@ -70,7 +70,9 @@ static int core() {
   QRegularExpression re("(\\d+)-(\\w+)");
   auto m = re.match("id 123-abc end");
   CHECK(m.hasMatch() && m.captured(1) == "123" && m.captured(2) == "abc");
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   CHECK(QRegExp("a*b").exactMatch("aaab"));
+#endif
 
   QJsonObject obj{{"name", "fil-c"}, {"n", 3}, {"list", QJsonArray{1, 2, 3}}};
   QByteArray json = QJsonDocument(obj).toJson(QJsonDocument::Compact);
@@ -183,7 +185,11 @@ static int gui() {
   CHECK(image.save(&png, "PNG"));
   QImage loaded;
   CHECK(loaded.loadFromData(png.data(), "PNG") && loaded.pixel(5, 5) == qRgb(255, 0, 0));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  CHECK(!QFontDatabase::families().isEmpty());
+#else
   CHECK(!QFontDatabase().families().isEmpty());
+#endif
 
   QWidget window;
   auto *layout = new QVBoxLayout(&window);
@@ -213,6 +219,9 @@ static int gui() {
   CHECK(label->text() == "typed" && list->count() == 1);
   QPixmap shot = window.grab();
   CHECK(shot.width() == 320 && !shot.toImage().isNull());
+  const QString screenshot = qEnvironmentVariable("FILNIX_QT_SCREENSHOT");
+  if (!screenshot.isEmpty())
+    CHECK(shot.save(screenshot));
 
   QStandardItemModel tree;
   auto *root = new QStandardItem("root");

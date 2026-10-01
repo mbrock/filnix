@@ -1,0 +1,758 @@
+--- a/src/corelib/global/qsimd.cpp
++++ b/src/corelib/global/qsimd.cpp
+@@ -287,12 +287,17 @@
+ # endif
+ 
+     int result;
++#ifdef __FILC__
++    uint b, c, d;
++    asm volatile ("cpuid" : "=a" (result), "=b" (b), "=c" (c), "=d" (d) : "a" (0), "c" (0));
++#else
+     asm ("xchg " PICreg", %1\n"
+          "cpuid\n"
+          "xchg " PICreg", %1\n"
+         : "=&a" (result), "=&r" (tmp1)
+         : "0" (0)
+         : "ecx", "edx");
++#endif
+     return result;
+ #elif defined(Q_OS_WIN)
+     // Use the __cpuid function; if the CPUID instruction isn't supported, it will return 0
+@@ -312,12 +317,17 @@
+ static void cpuidFeatures01(uint &ecx, uint &edx)
+ {
+ #if defined(Q_CC_GNU) && !defined(Q_CC_EMSCRIPTEN)
++#ifdef __FILC__
++    uint a, b;
++    asm volatile ("cpuid" : "=a" (a), "=b" (b), "=c" (ecx), "=d" (edx) : "a" (1), "c" (0));
++#else
+     qregisterint tmp1;
+     asm ("xchg " PICreg", %2\n"
+          "cpuid\n"
+          "xchg " PICreg", %2\n"
+         : "=&c" (ecx), "=&d" (edx), "=&r" (tmp1)
+         : "a" (1));
++#endif
+ #elif defined(Q_OS_WIN)
+     int info[4];
+     __cpuid(info, 1);
+@@ -342,6 +352,10 @@
+ static void cpuidFeatures07_00(uint &ebx, uint &ecx, uint &edx)
+ {
+ #if defined(Q_CC_GNU) && !defined(Q_CC_EMSCRIPTEN)
++#ifdef __FILC__
++    uint a;
++    asm volatile ("cpuid" : "=a" (a), "=b" (ebx), "=c" (ecx), "=d" (edx) : "a" (7), "c" (0));
++#else
+     qregisteruint rbx; // in case it's 64-bit
+     qregisteruint rcx = 0;
+     qregisteruint rdx = 0;
+@@ -353,6 +367,7 @@
+     ebx = rbx;
+     ecx = rcx;
+     edx = rdx;
++#endif
+ #elif defined(Q_OS_WIN)
+     int info[4];
+     __cpuidex(info, 7, 0);
+@@ -380,7 +395,11 @@
+ static void xgetbv(uint in, uint &eax, uint &edx)
+ {
+ #if (defined(Q_CC_GNU) && !defined(Q_CC_EMSCRIPTEN)) || defined(Q_CC_GHS)
++#ifdef __FILC__
++    asm ("xgetbv"
++#else
+     asm (".byte 0x0F, 0x01, 0xD0" // xgetbv instruction
++#endif
+         : "=a" (eax), "=d" (edx)
+         : "c" (in));
+ #elif defined(Q_OS_WIN)
+@@ -656,7 +675,7 @@
+         }
+     }
+ 
+-#ifdef RUNNING_ON_VALGRIND
++#if defined(RUNNING_ON_VALGRIND) && !defined(__FILC__)
+     bool runningOnValgrind = RUNNING_ON_VALGRIND;
+ #else
+     bool runningOnValgrind = false;
+--- a/src/corelib/global/qrandom.cpp
++++ b/src/corelib/global/qrandom.cpp
+@@ -255,7 +255,7 @@
+ 
+ #if QT_CONFIG(getauxval)
+     // works on Linux -- all modern libc have getauxval
+-#  ifdef AT_RANDOM
++#  if defined(AT_RANDOM) && !defined(__FILC__)
+     // ELF's auxv AT_RANDOM has 16 random bytes
+     // (other ELF-based systems don't seem to have AT_RANDOM)
+     ulong auxvSeed = getauxval(AT_RANDOM);
+@@ -1298,7 +1298,7 @@
+  */
+ QRandomGenerator::InitialRandomData qt_initial_random_value() noexcept
+ {
+-#if QT_CONFIG(getauxval) && defined(AT_RANDOM)
++#if QT_CONFIG(getauxval) && defined(AT_RANDOM) && !defined(__FILC__)
+     auto at_random_ptr = reinterpret_cast<size_t *>(getauxval(AT_RANDOM));
+     if (at_random_ptr)
+         return qFromUnaligned<QRandomGenerator::InitialRandomData>(at_random_ptr);
+--- a/src/corelib/io/qprocess_unix.cpp
++++ b/src/corelib/io/qprocess_unix.cpp
+@@ -349,11 +349,17 @@
+     template <typename Lambda> int doFork(Lambda &&childLambda)
+     {
+         pid_t pid;
++#ifdef __FILC__
++        // Fil-C has no vfork; QT_FEATURE_forkfd_pidfd=OFF also disables
++        // the vforkfd path in usingVfork().
++        pid = fork();
++#else
+         if (isUsingVfork) {
+             QT_IGNORE_DEPRECATIONS(pid = vfork();)
+         } else {
+             pid = fork();
+         }
++#endif
+         if (pid == 0)
+             _exit(childLambda());
+         return pid;
+--- a/src/corelib/itemmodels/qabstractitemmodel.h
++++ b/src/corelib/itemmodels/qabstractitemmodel.h
+@@ -130,7 +130,7 @@
+     // compiler-generated copy/move ctors/assignment operators are fine!
+     constexpr inline int row() const noexcept { return r; }
+     constexpr inline int column() const noexcept { return c; }
+-    constexpr inline quintptr internalId() const noexcept { return i; }
++    inline quintptr internalId() const noexcept { return reinterpret_cast<quintptr>(i); }
+     inline void *internalPointer() const noexcept { return reinterpret_cast<void*>(i); }
+     inline const void *constInternalPointer() const noexcept { return reinterpret_cast<const void *>(i); }
+     inline QModelIndex parent() const;
+@@ -163,11 +163,11 @@
+     Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(QModelIndex)
+ private:
+     inline QModelIndex(int arow, int acolumn, const void *ptr, const QAbstractItemModel *amodel) noexcept
+-        : r(arow), c(acolumn), i(reinterpret_cast<quintptr>(ptr)), m(amodel) {}
+-    constexpr inline QModelIndex(int arow, int acolumn, quintptr id, const QAbstractItemModel *amodel) noexcept
+-        : r(arow), c(acolumn), i(id), m(amodel) {}
++        : r(arow), c(acolumn), i(const_cast<void *>(ptr)), m(amodel) {}
++    inline QModelIndex(int arow, int acolumn, quintptr id, const QAbstractItemModel *amodel) noexcept
++        : r(arow), c(acolumn), i(reinterpret_cast<void *>(id)), m(amodel) {}
+     int r, c;
+-    quintptr i;
++    void *i;
+     Qt::totally_ordered_wrapper<const QAbstractItemModel *> m;
+ };
+ Q_DECLARE_TYPEINFO(QModelIndex, Q_RELOCATABLE_TYPE);
+--- a/src/corelib/kernel/qobject_p_p.h
++++ b/src/corelib/kernel/qobject_p_p.h
+@@ -38,23 +38,23 @@
+ 
+ struct QObjectPrivate::TaggedSignalVector
+ {
+-    quintptr c;
++    char *c;
+ 
+     TaggedSignalVector() = default;
+     TaggedSignalVector(std::nullptr_t) noexcept : c(0) {}
+-    TaggedSignalVector(Connection *v) noexcept : c(reinterpret_cast<quintptr>(v)) { Q_ASSERT(v && (reinterpret_cast<quintptr>(v) & 0x1) == 0);   }
+-    TaggedSignalVector(SignalVector *v) noexcept : c(reinterpret_cast<quintptr>(v) | quintptr(1u)) { Q_ASSERT(v); }
++    TaggedSignalVector(Connection *v) noexcept : c(reinterpret_cast<char *>(v)) { Q_ASSERT(v && (reinterpret_cast<quintptr>(v) & 0x1) == 0);   }
++    TaggedSignalVector(SignalVector *v) noexcept : c(reinterpret_cast<char *>(v) + 1) { Q_ASSERT(v); }
+     explicit operator SignalVector *() const noexcept
+     {
+-        if (c & 0x1)
+-            return reinterpret_cast<SignalVector *>(c & ~quintptr(1u));
++        if (quintptr(c) & 0x1)
++            return reinterpret_cast<SignalVector *>(c - 1);
+         return nullptr;
+     }
+     explicit operator Connection *() const noexcept
+     {
+         return reinterpret_cast<Connection *>(c);
+     }
+-    operator uintptr_t() const noexcept { return c; }
++    operator uintptr_t() const noexcept { return reinterpret_cast<uintptr_t>(c); }
+ };
+ 
+ struct QObjectPrivate::ConnectionOrSignalVector
+--- a/src/corelib/kernel/qproperty.cpp
++++ b/src/corelib/kernel/qproperty.cpp
+@@ -48,13 +48,13 @@
+         b->firstObserver.ptr = observer;
+     } else {
+         auto &d = ptr->d_ref();
+-        Q_ASSERT(!(d & QPropertyBindingData::BindingBit));
++        Q_ASSERT(!(quintptr(d) & QPropertyBindingData::BindingBit));
+         auto firstObserver = reinterpret_cast<QPropertyObserver*>(d);
+         observer->prev = reinterpret_cast<QPropertyObserver**>(&d);
+         observer->next = firstObserver;
+         if (observer->next)
+             observer->next->prev = &observer->next;
+-        d = reinterpret_cast<quintptr>(observer);
++        d = reinterpret_cast<char *>(observer);
+     }
+ }
+ 
+@@ -103,9 +103,9 @@
+         *delayed = QPropertyProxyBindingData { bindingData->d_ptr, bindingData, propertyData };
+         ++data->used;
+         // preserve the binding bit for faster access
+-        quintptr bindingBit = bindingData->d_ptr & QPropertyBindingData::BindingBit;
+-        bindingData->d_ptr = reinterpret_cast<quintptr>(delayed) | QPropertyBindingData::DelayedNotificationBit | bindingBit;
+-        Q_ASSERT(bindingData->d_ptr > 3);
++        quintptr bindingBit = quintptr(bindingData->d_ptr) & QPropertyBindingData::BindingBit;
++        bindingData->d_ptr = reinterpret_cast<char *>(delayed) + QPropertyBindingData::DelayedNotificationBit + bindingBit;
++        Q_ASSERT(quintptr(bindingData->d_ptr) > 3);
+         if (!bindingBit) {
+             if (auto observer = reinterpret_cast<QPropertyObserver *>(delayed->d_ptr))
+                 observer->prev = reinterpret_cast<QPropertyObserver **>(&delayed->d_ptr);
+@@ -131,7 +131,7 @@
+             return;
+ 
+         bindingData->d_ptr = delayed->d_ptr;
+-        Q_ASSERT(!(bindingData->d_ptr & QPropertyBindingData::DelayedNotificationBit));
++        Q_ASSERT(!(quintptr(bindingData->d_ptr) & QPropertyBindingData::DelayedNotificationBit));
+         if (!bindingData->hasBinding()) {
+             if (auto observer = reinterpret_cast<QPropertyObserver *>(bindingData->d_ptr))
+                 observer->prev = reinterpret_cast<QPropertyObserver **>(&bindingData->d_ptr);
+@@ -154,13 +154,13 @@
+      */
+     void notify(qsizetype index) {
+         auto *delayed = delayedProperties + index;
+-        if (delayed->d_ptr  & QPropertyBindingData::BindingBit)
++        if (quintptr(delayed->d_ptr) & QPropertyBindingData::BindingBit)
+             return; // already handled
+         if (!delayed->originalBindingData)
+             return;
+         delayed->originalBindingData = nullptr;
+ 
+-        QPropertyObserverPointer observer  { reinterpret_cast<QPropertyObserver *>(delayed->d_ptr & ~QPropertyBindingData::DelayedNotificationBit) };
++        QPropertyObserverPointer observer  { reinterpret_cast<QPropertyObserver *>(delayed->d_ptr - (quintptr(delayed->d_ptr) & QPropertyBindingData::DelayedNotificationBit)) };
+         delayed->d_ptr = 0;
+ 
+         if (observer)
+@@ -572,8 +572,7 @@
+ 
+     if (newBinding) {
+         newBinding.data()->addRef();
+-        data = reinterpret_cast<quintptr>(newBinding.data());
+-        data |= BindingBit;
++        data = reinterpret_cast<char *>(newBinding.data()) + BindingBit;
+         auto newBindingRaw = static_cast<QPropertyBindingPrivate *>(newBinding.data());
+         newBindingRaw->setProperty(propertyDataPtr);
+         if (observer)
+@@ -595,7 +594,7 @@
+     return QUntypedPropertyBinding(static_cast<QPropertyBindingPrivate *>(oldBinding.data()));
+ }
+ 
+-QPropertyBindingData::QPropertyBindingData(QPropertyBindingData &&other) : d_ptr(std::exchange(other.d_ptr, 0))
++QPropertyBindingData::QPropertyBindingData(QPropertyBindingData &&other) : d_ptr(std::exchange(other.d_ptr, nullptr))
+ {
+     QPropertyBindingDataPointer::fixupAfterMove(this);
+ }
+--- a/src/corelib/kernel/qproperty_p.h
++++ b/src/corelib/kernel/qproperty_p.h
+@@ -83,7 +83,7 @@
+     {
+         auto &d = ptr->d_ref();
+         observer->prev = reinterpret_cast<QPropertyObserver**>(&d);
+-        d = reinterpret_cast<quintptr>(observer);
++        d = reinterpret_cast<char *>(observer);
+     }
+     static void fixupAfterMove(QtPrivate::QPropertyBindingData *ptr);
+     Q_ALWAYS_INLINE void addObserver(QPropertyObserver *observer);
+@@ -452,7 +452,7 @@
+         return;
+     }
+     auto &d = ptr->d_ref();
+-    d = reinterpret_cast<quintptr>(observer);
++    d = reinterpret_cast<char *>(observer);
+ }
+ 
+ inline void QPropertyBindingDataPointer::fixupAfterMove(QtPrivate::QPropertyBindingData *ptr)
+@@ -466,7 +466,7 @@
+     // If QPropertyBindingData has been moved, and it has an observer
+     // we have to adjust the firstObserver's prev pointer to point to
+     // the moved to QPropertyBindingData's d_ptr
+-    if (d & QtPrivate::QPropertyBindingData::BindingBit)
++    if (quintptr(d) & QtPrivate::QPropertyBindingData::BindingBit)
+         return; // nothing to do if the observer is stored in the binding
+     if (auto observer = reinterpret_cast<QPropertyObserver *>(d))
+         observer->prev = reinterpret_cast<QPropertyObserver **>(&d);
+--- a/src/corelib/kernel/qpropertyprivate.h
++++ b/src/corelib/kernel/qpropertyprivate.h
+@@ -140,7 +140,7 @@
+ struct QPropertyProxyBindingData
+ {
+     // acts as QPropertyBindingData::d_ptr
+-    quintptr d_ptr;
++    char *d_ptr;
+     /*
+         The two members below store the original binding data and property
+         data pointer of the property which gets proxied.
+@@ -233,7 +233,7 @@
+ {
+     // Mutable because the address of the observer of the currently evaluating binding is stored here, for
+     // notification later when the value changes.
+-    mutable quintptr d_ptr = 0;
++    mutable char *d_ptr = nullptr;
+     friend struct QT_PREPEND_NAMESPACE(QPropertyBindingDataPointer);
+     friend class QT_PREPEND_NAMESPACE(QQmlPropertyBinding);
+     friend struct QT_PREPEND_NAMESPACE(QPropertyDelayedNotifications);
+@@ -253,8 +253,8 @@
+     // Is d_ptr pointing to QPropertyProxyBindingData (1) or to an actual binding/list of notifiers?
+     static inline constexpr quintptr DelayedNotificationBit = 0x2;
+ 
+-    bool hasBinding() const { return d_ptr & BindingBit; }
+-    bool isNotificationDelayed() const { return d_ptr & DelayedNotificationBit; }
++    bool hasBinding() const { return quintptr(d_ptr) & BindingBit; }
++    bool isNotificationDelayed() const { return quintptr(d_ptr) & DelayedNotificationBit; }
+ 
+     QUntypedPropertyBinding setBinding(const QUntypedPropertyBinding &newBinding,
+                                        QUntypedPropertyData *propertyDataPtr,
+@@ -263,8 +263,8 @@
+ 
+     QPropertyBindingPrivate *binding() const
+     {
+-        quintptr dd = d();
+-        if (dd & BindingBit)
++        char *dd = d();
++        if (quintptr(dd) & BindingBit)
+             return reinterpret_cast<QPropertyBindingPrivate*>(dd - BindingBit);
+         return nullptr;
+ 
+@@ -299,18 +299,18 @@
+         - only the tag value is accessed (e.g. hasBinding) or
+         - inside a constructor.
+      */
+-    quintptr &d_ref() const
++    char *&d_ref() const
+     {
+-        quintptr &d = d_ptr;
++        char *&d = d_ptr;
+         if (isNotificationDelayed())
+             return proxyData()->d_ptr;
+         return d;
+     }
+-    quintptr d() const { return d_ref(); }
++    char *d() const { return d_ref(); }
+     QPropertyProxyBindingData *proxyData() const
+     {
+         Q_ASSERT(isNotificationDelayed());
+-        return reinterpret_cast<QPropertyProxyBindingData *>(d_ptr & ~(BindingBit|DelayedNotificationBit));
++        return reinterpret_cast<QPropertyProxyBindingData *>(d_ptr - (quintptr(d_ptr) & (BindingBit|DelayedNotificationBit)));
+     }
+     void registerWithCurrentlyEvaluatingBinding_helper(BindingEvaluationState *currentBinding) const;
+     void removeBinding_helper();
+@@ -329,18 +329,18 @@
+     constexpr QTagPreservingPointerToPointer() = default;
+ 
+     QTagPreservingPointerToPointer(T **ptr)
+-        : d(reinterpret_cast<quintptr*>(ptr))
++        : d(reinterpret_cast<char **>(ptr))
+     {}
+ 
+     QTagPreservingPointerToPointer<T, Tag> &operator=(T **ptr)
+     {
+-        d = reinterpret_cast<quintptr *>(ptr);
++        d = reinterpret_cast<char **>(ptr);
+         return *this;
+     }
+ 
+     QTagPreservingPointerToPointer<T, Tag> &operator=(QTaggedPointer<T, Tag> *ptr)
+     {
+-        d = reinterpret_cast<quintptr *>(ptr);
++        d = reinterpret_cast<char **>(ptr);
+         return *this;
+     }
+ 
+@@ -351,12 +351,12 @@
+ 
+     void setPointer(T *ptr)
+     {
+-        *d = reinterpret_cast<quintptr>(ptr) | (*d & QTaggedPointer<T, Tag>::tagMask());
++        *d = reinterpret_cast<char *>(ptr) + (quintptr(*d) & QTaggedPointer<T, Tag>::tagMask());
+     }
+ 
+     T *get() const
+     {
+-        return reinterpret_cast<T*>(*d & QTaggedPointer<T, Tag>::pointerMask());
++        return reinterpret_cast<T*>(*d - (quintptr(*d) & QTaggedPointer<T, Tag>::tagMask()));
+     }
+ 
+     explicit operator bool() const
+@@ -365,7 +365,7 @@
+     }
+ 
+ private:
+-    quintptr *d = nullptr;
++    char **d = nullptr;
+ };
+ 
+ namespace detail {
+--- a/src/corelib/kernel/qvariant.cpp
++++ b/src/corelib/kernel/qvariant.cpp
+@@ -617,7 +617,7 @@
+     };
+     if (Private::canUseInternalSpace(type.iface())) { // (1)
+         clear();
+-        d.packedType = quintptr(type.iface()) >> 2;
++        d.packedType = type.iface();
+         return d.data.data;
+     } else if (d.is_shared && isDetached() && typeFits()) { // (2)
+         QtMetaTypePrivate::destruct(d.typeInterface(), d.data.shared->data());
+@@ -625,7 +625,7 @@
+         const auto ps = d.data.shared;
+         const auto align = type.alignOf();
+         ps->offset =  PrivateShared::computeOffset(ps, align);
+-        d.packedType = quintptr(type.iface()) >> 2;
++        d.packedType = type.iface();
+         return ps->data();
+     }
+     // (3)
+--- a/src/corelib/kernel/qvariant.h
++++ b/src/corelib/kernel/qvariant.h
+@@ -116,9 +116,9 @@
+             PrivateShared *shared;
+             double _forAlignment; // we want an 8byte alignment on 32bit systems as well
+         } data;
+-        quintptr is_shared : 1;
+-        quintptr is_null : 1;
+-        quintptr packedType : sizeof(QMetaType) * 8 - 2;
++        bool is_shared;
++        bool is_null;
++        const QtPrivate::QMetaTypeInterface *packedType;
+ 
+         constexpr Private() noexcept : is_shared(false), is_null(true), packedType(0) {}
+         explicit Private(const QtPrivate::QMetaTypeInterface *iface) noexcept;
+@@ -136,7 +136,7 @@
+ 
+         inline const QtPrivate::QMetaTypeInterface *typeInterface() const
+         {
+-            return reinterpret_cast<const QtPrivate::QMetaTypeInterface *>(packedType << 2);
++            return packedType;
+         }
+ 
+         inline QMetaType type() const
+--- a/src/corelib/kernel/qvariant_p.h
++++ b/src/corelib/kernel/qvariant_p.h
+@@ -75,7 +75,7 @@
+ }
+ 
+ inline QVariant::Private::Private(const QtPrivate::QMetaTypeInterface *iface) noexcept
+-    : is_shared(false), is_null(false), packedType(quintptr(iface) >> 2)
++    : is_shared(false), is_null(false), packedType(iface)
+ {
+     Q_ASSERT((quintptr(iface) & 0x3) == 0);
+ }
+@@ -93,7 +93,7 @@
+ 
+     const QtPrivate::QMetaTypeInterface *iface = QtPrivate::qMetaTypeInterfaceForType<T>();
+     Q_ASSERT((quintptr(iface) & 0x3) == 0);
+-    packedType = quintptr(iface) >> 2;
++    packedType = iface;
+ 
+     if constexpr (CanUseInternalSpace<T>) {
+         static_assert(isNothrowQVariantConstructible == isNothrowConstructible);
+--- a/src/corelib/plugin/qlibrary.cpp
++++ b/src/corelib/plugin/qlibrary.cpp
+@@ -175,7 +175,10 @@
+       More importantly, the pattern string may exist in the debug information due
+       to it being used in the plugin in the first place.
+     */
+-#if defined(Q_OF_ELF)
++#if defined(__FILC__)
++    // Fil-C ignores data section attributes. Use the bounded whole-file
++    // search below, paired with qplugin.h's RegularPayload.
++#elif defined(Q_OF_ELF)
+     return QElfParser::parse({s, s_len}, errMsg);
+ #elif defined(Q_OF_MACH_O)
+     return QMachOParser::parse(s, s_len, errMsg);
+@@ -195,7 +198,8 @@
+         return qMakeStaticByteArrayMatcher(pattern);
+     }();
+     qsizetype i = matcher.indexIn({s, s_len});
+-    if (i < 0) {
++    if (i < 0 || s_len - i - qsizetype(sizeof(QPluginMetaData::MagicString))
++                    < qsizetype(sizeof(QPluginMetaData::Header))) {
+         *errMsg = QLibrary::tr("'%1' is not a Qt plugin").arg(*errMsg);
+         return QLibraryScanResult{};
+     }
+--- a/src/corelib/plugin/qplugin.h
++++ b/src/corelib/plugin/qplugin.h
+@@ -166,7 +166,7 @@
+ #if defined(QT_STATICPLUGIN)
+ #  define QT_PLUGIN_METADATAV2_SECTION
+     using Payload = StaticPayload;
+-#elif defined(Q_OF_ELF)
++#elif defined(Q_OF_ELF) && !defined(__FILC__)
+ #  ifdef Q_CC_CLANG
+ #    define QT_PLUGIN_METADATAV2_SECTION                                                            \
+             __attribute__((section(".note.qt.metadata"), used, aligned(alignof(void *)),            \
+--- a/src/corelib/text/qbytearray.cpp
++++ b/src/corelib/text/qbytearray.cpp
+@@ -277,7 +277,7 @@
+         return int(Incomplete);
+     };
+ 
+-#if defined(__SSE4_1__) && !(defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer))
++#if defined(__SSE4_1__) && !defined(__FILC__) && !(defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer))
+     enum { PageSize = 4096, PageMask = PageSize - 1 };
+     const __m128i zero = _mm_setzero_si128();
+     forever {
+--- a/src/corelib/text/qstring.cpp
++++ b/src/corelib/text/qstring.cpp
+@@ -657,7 +657,7 @@
+ Q_NEVER_INLINE
+ qsizetype QtPrivate::qustrlen(const char16_t *str) noexcept
+ {
+-#if defined(__SSE2__) && !(defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)) && !(defined(__SANITIZE_THREAD__) || __has_feature(thread_sanitizer))
++#if defined(__SSE2__) && !defined(__FILC__) && !(defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)) && !(defined(__SANITIZE_THREAD__) || __has_feature(thread_sanitizer))
+     return qustrlen_sse2(str);
+ #endif
+ 
+--- a/src/corelib/thread/qthread.h
++++ b/src/corelib/thread/qthread.h
+@@ -164,7 +164,11 @@
+     Qt::HANDLE tid; // typedef to void*
+     static_assert(sizeof(tid) == sizeof(void*));
+     // See https://akkadia.org/drepper/tls.pdf for x86 ABI
+-#if defined(Q_PROCESSOR_X86_32) && ((defined(Q_OS_LINUX) && defined(__GLIBC__)) || defined(Q_OS_FREEBSD)) // x86 32-bit always uses GS
++#if defined(__FILC__)
++    // Fil-C cannot return a TCB pointer from inline assembly.
++#undef QT_HAS_FAST_CURRENT_THREAD_ID
++    tid = currentThreadIdImpl();
++#elif defined(Q_PROCESSOR_X86_32) && ((defined(Q_OS_LINUX) && defined(__GLIBC__)) || defined(Q_OS_FREEBSD)) // x86 32-bit always uses GS
+     __asm__("mov %%gs:%c1, %0" : "=r" (tid) : "i" (2 * sizeof(void*)) : );
+ #elif defined(Q_PROCESSOR_X86_64) && defined(Q_OS_DARWIN)
+     // 64bit macOS uses GS, see https://github.com/apple/darwin-xnu/blob/master/libsyscall/os/tsd.h
+--- a/src/corelib/thread/qthread_p.h
++++ b/src/corelib/thread/qthread_p.h
+@@ -121,12 +121,12 @@
+     void setStatusAndClearList(QBindingStatus *status) noexcept;
+ 
+ 
+-    static bool isBindingStatus(quintptr data) noexcept
++    static bool isBindingStatus(char *data) noexcept
+     {
+         return !isNull(data) && !isList(data);
+     }
+-    static bool isList(quintptr data) noexcept { return data & 1; }
+-    static bool isNull(quintptr data) noexcept { return data == 0; }
++    static bool isList(char *data) noexcept { return quintptr(data) & 1; }
++    static bool isNull(char *data) noexcept { return data == nullptr; }
+ 
+     // thread-safe:
+     QBindingStatus *bindingStatus() const noexcept
+@@ -146,25 +146,25 @@
+     }
+ 
+ private:
+-    static List *decodeList(quintptr ptr) noexcept
++    static List *decodeList(char *ptr) noexcept
+     {
+         if (isList(ptr))
+-            return reinterpret_cast<List *>(ptr & ~1);
++            return reinterpret_cast<List *>(ptr - 1);
+         else
+             return nullptr;
+     }
+ 
+-    static quintptr encodeBindingStatus(QBindingStatus *status) noexcept
++    static char *encodeBindingStatus(QBindingStatus *status) noexcept
+     {
+-        return quintptr(status);
++        return reinterpret_cast<char *>(status);
+     }
+ 
+-    static quintptr encodeList(List *list) noexcept
++    static char *encodeList(List *list) noexcept
+     {
+-        return quintptr(list) | 1;
++        return reinterpret_cast<char *>(list) + 1;
+     }
+ 
+-    std::atomic<quintptr> data;
++    std::atomic<char *> data;
+ };
+ 
+ } // namespace QtPrivate
+--- a/src/corelib/thread/qreadwritelock.h
++++ b/src/corelib/thread/qreadwritelock.h
+@@ -247,8 +247,8 @@
+     inline void unlock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(1u)) {
+-                q_val &= ~quintptr(1u);
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(1u)) {
++                q_val -= 1;
+                 readWriteLock()->unlock();
+             }
+         }
+@@ -257,25 +257,27 @@
+     inline void relock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(0u)) {
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(0u)) {
+                 readWriteLock()->lockForRead();
+-                q_val |= quintptr(1u);
++                q_val += 1;
+             }
+         }
+     }
+ 
+     inline QReadWriteLock *readWriteLock() const
+-    { return reinterpret_cast<QReadWriteLock *>(q_val & ~quintptr(1u)); }
++    { return reinterpret_cast<QReadWriteLock *>(q_val - (quintptr(q_val) & quintptr(1u))); }
+ 
+ private:
+     Q_DISABLE_COPY(QReadLocker)
+-    quintptr q_val;
++    // Fil-C: a pointer, so that it keeps the lock's capability; the low bit
++    // (locked) is set and cleared with pointer arithmetic.
++    char *q_val;
+ };
+ 
+ inline QReadLocker::QReadLocker(QReadWriteLock *areadWriteLock)
+-    : q_val(reinterpret_cast<quintptr>(areadWriteLock))
++    : q_val(reinterpret_cast<char *>(areadWriteLock))
+ {
+-    Q_ASSERT_X((q_val & quintptr(1u)) == quintptr(0),
++    Q_ASSERT_X((quintptr(q_val) & quintptr(1u)) == quintptr(0),
+                "QReadLocker", "QReadWriteLock pointer is misaligned");
+     relock();
+ }
+@@ -292,8 +294,8 @@
+     inline void unlock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(1u)) {
+-                q_val &= ~quintptr(1u);
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(1u)) {
++                q_val -= 1;
+                 readWriteLock()->unlock();
+             }
+         }
+@@ -302,26 +304,28 @@
+     inline void relock()
+     {
+         if (q_val) {
+-            if ((q_val & quintptr(1u)) == quintptr(0u)) {
++            if ((quintptr(q_val) & quintptr(1u)) == quintptr(0u)) {
+                 readWriteLock()->lockForWrite();
+-                q_val |= quintptr(1u);
++                q_val += 1;
+             }
+         }
+     }
+ 
+     inline QReadWriteLock *readWriteLock() const
+-    { return reinterpret_cast<QReadWriteLock *>(q_val & ~quintptr(1u)); }
++    { return reinterpret_cast<QReadWriteLock *>(q_val - (quintptr(q_val) & quintptr(1u))); }
+ 
+ 
+ private:
+     Q_DISABLE_COPY(QWriteLocker)
+-    quintptr q_val;
++    // Fil-C: a pointer, so that it keeps the lock's capability; the low bit
++    // (locked) is set and cleared with pointer arithmetic.
++    char *q_val;
+ };
+ 
+ inline QWriteLocker::QWriteLocker(QReadWriteLock *areadWriteLock)
+-    : q_val(reinterpret_cast<quintptr>(areadWriteLock))
++    : q_val(reinterpret_cast<char *>(areadWriteLock))
+ {
+-    Q_ASSERT_X((q_val & quintptr(1u)) == quintptr(0),
++    Q_ASSERT_X((quintptr(q_val) & quintptr(1u)) == quintptr(0),
+                "QWriteLocker", "QReadWriteLock pointer is misaligned");
+     relock();
+ }
+--- a/src/corelib/thread/qsemaphore.cpp
++++ b/src/corelib/thread/qsemaphore.cpp
+@@ -100,7 +100,7 @@
+     unspecified, but it's likely single-token threads will get woken up first.
+  */
+ 
+-#if defined(FUTEX_OP) && QT_POINTER_SIZE > 4
++#if defined(FUTEX_OP) && QT_POINTER_SIZE > 4 && !defined(__FILC__)
+ static constexpr bool futexHasWaiterCount = true;
+ #else
+ static constexpr bool futexHasWaiterCount = false;
+--- a/src/corelib/tools/qtaggedpointer.h
++++ b/src/corelib/tools/qtaggedpointer.h
+@@ -48,7 +48,7 @@
+     Q_NODISCARD_CTOR constexpr QTaggedPointer(std::nullptr_t) noexcept : QTaggedPointer() {}
+ 
+     Q_NODISCARD_CTOR explicit QTaggedPointer(T *pointer, Tag tag = Tag()) noexcept
+-        : d(quintptr(pointer) | quintptr(tag))
++        : d(const_cast<char *>(reinterpret_cast<const char *>(pointer)) + quintptr(tag))
+     {
+         static_assert(sizeof(Type*) == sizeof(QTaggedPointer));
+ 
+@@ -85,7 +85,7 @@
+     QTaggedPointer &operator=(U *other) noexcept
+     {
+         T *otherT = other;
+-        d = reinterpret_cast<quintptr>(otherT) | (d & tagMask());
++        d = const_cast<char *>(reinterpret_cast<const char *>(otherT)) + (quintptr(d) & tagMask());
+         return *this;
+     }
+ 
+@@ -93,7 +93,7 @@
+               std::enable_if_t<std::is_null_pointer_v<U>, bool> = false>
+     QTaggedPointer &operator=(U) noexcept
+     {
+-        d = reinterpret_cast<quintptr>(static_cast<T *>(nullptr)) | (d & tagMask());
++        d = reinterpret_cast<char *>(quintptr(d) & tagMask());
+         return *this;
+     }
+ #endif
+@@ -110,17 +110,17 @@
+                 "QTaggedPointer<T, Tag>::setTag",
+                 "Tag is larger than allowed by number of available tag bits");
+ 
+-        d = (d & pointerMask()) | static_cast<quintptr>(tag);
++        d = d - (quintptr(d) & tagMask()) + static_cast<quintptr>(tag);
+     }
+ 
+     Tag tag() const noexcept
+     {
+-        return TagType(typename QtPrivate::TagInfo<T>::TagType(d & tagMask()));
++        return TagType(typename QtPrivate::TagInfo<T>::TagType(quintptr(d) & tagMask()));
+     }
+ 
+     T* data() const noexcept
+     {
+-        return reinterpret_cast<T*>(d & pointerMask());
++        return reinterpret_cast<T*>(d - (quintptr(d) & tagMask()));
+     }
+ 
+     bool isNull() const noexcept
+@@ -174,7 +174,8 @@
+     }
+ 
+ protected:
+-    quintptr d;
++    // Preserve the capability while changing only the low tag bits.
++    char *d;
+ };
+ 
+ template <typename T, typename Tag>
+--- a/src/gui/painting/qdrawhelper_avx2.cpp
++++ b/src/gui/painting/qdrawhelper_avx2.cpp
+@@ -10,6 +10,12 @@
+ 
+ #if defined(QT_COMPILER_SUPPORTS_AVX2)
+ 
++#ifdef __FILC__
++// LDDQU's LLVM intrinsic is unsupported; an ordinary unaligned load has
++// the same value semantics and keeps the AVX2 blend implementations usable.
++#define _mm256_lddqu_si256 _mm256_loadu_si256
++#endif
++
+ QT_BEGIN_NAMESPACE
+ 
+ enum {
