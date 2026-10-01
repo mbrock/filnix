@@ -2104,6 +2104,78 @@ in
     (addMakeFlag "CC=${prev.stdenv.cc}/bin/cc")
   ])
 
+  (for pkgs.ffado [
+    (use (old: {
+      # Fil-C uses glibc, although nixpkgs' isGnu is false for gnufilc0.
+      # The unnecessary standalone argp overrides glibc's implementation
+      # and traps in hol_entry_short_iterate when printing --help.
+      buildInputs = builtins.filter (
+        dep: (dep.pname or "") != "argp-standalone"
+      ) old.buildInputs;
+      env = (old.env or { }) // {
+        NIX_LDFLAGS = pkgs.lib.replaceStrings [ "-largp" ] [ "" ] (
+          old.env.NIX_LDFLAGS or ""
+        );
+      };
+      postPatch = (old.postPatch or "") + ''
+        # Fil-C programs can run on the build platform, so nixpkgs skips
+        # its cross substitutions, but pkg-config is still target-prefixed.
+        # Keep the working C/C++ probes and select the target's wrapper.
+        substituteInPlace SConstruct admin/pkgconfig.py \
+          --replace-fail 'pkg-config' "$PKG_CONFIG"
+        # SCons 4.9 added extra_libs before call; the old positional calls
+        # now try to link libraries named after each character of lrint().
+        substituteInPlace SConstruct \
+          --replace-fail '"c", "lrint(3.2);"' '"c", call="lrint(3.2);"' \
+          --replace-fail '"c", "lrintf(3.2);"' '"c", call="lrintf(3.2);"'
+        # This is a build tool, not a target library. Use its native binary
+        # without putting native D-Bus libraries on the Fil-C link path.
+        substituteInPlace SConstruct admin/dbus.py \
+          --replace-fail 'dbusxx-xml2cpp' \
+            '${pkgs.buildPackages.dbus_cplusplus}/bin/dbusxx-xml2cpp'
+        # Clang rejects these as C++11 user-defined literal suffixes.
+        substituteInPlace src/libstreaming/digidesign/DigidesignTransmitStreamProcessor.cpp \
+          --replace-fail '"PRIu64"' '" PRIu64 "'
+        # glibc's explicit-scheduling pthread_create path has an unsupported
+        # inline syscall. Only the debug logger uses ordinary scheduling;
+        # leave the audio threads' real-time behavior unchanged.
+        substituteInPlace config_debug.h.in \
+          --replace-fail 'DEBUG_MESSAGE_BUFFER_REALTIME        1' \
+            'DEBUG_MESSAGE_BUFFER_REALTIME        0'
+      '';
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        # SCons creates the SONAME symlink only during installation.
+        ln -s libffado.so src/libffado.so.2
+        export LD_LIBRARY_PATH="$PWD/src:''${LD_LIBRARY_PATH-}"
+        grep -Fx '#define HAVE_LRINT 1' config.h
+        grep -Fx '#define HAVE_LRINTF 1' config.h
+        # Hardware-free checks. The utility and buffer tests always exit
+        # zero even on assertion failures, so inspect their results too.
+        src/test-unittests-util > util.log 2>&1
+        cat util.log
+        grep -Fx 'passed: 5' util.log
+        grep -Fx 'failed: 0' util.log
+        tests/test-devicestringparser
+        tests/test-timestampedbuffer -v 0
+        tests/test-timestampedbuffer -v 0 -s 999 -c 2000
+        tests/test-bufferops > bufferops.log 2>&1
+        cat bufferops.log
+        test "$(grep -c 'Checking results' bufferops.log)" = 3
+        if grep -F 'bad result' bufferops.log; then exit 1; fi
+        # Device discovery, streaming and cycle-time ioctls require a
+        # FireWire controller/interface; build their tests, don't run them.
+        runHook postCheck
+      '';
+      postInstallCheck = (old.postInstallCheck or "") + ''
+        # Exercise installed tools and their argument parser, not hardware.
+        "$bin/bin/ffado-test" --help
+        "$bin/bin/ffado-dbus-server" --help
+      '';
+    }))
+  ])
+
   (for pkgs.pipewire [
     # Linker-section registration, pointer capabilities and test runtime
     # fixes; see docs/shared-library-unblocks.md.
