@@ -210,10 +210,41 @@ in
     }))
   ])
 
+  {
+    greenlet = {
+      pname = "greenlet";
+      filcOnly = true;
+      __customPython =
+        pyself:
+        (pyself.callPackage (
+          pkgs.path + "/pkgs/development/python-modules/greenlet"
+        ) { }).overridePythonAttrs
+          (old: {
+            patches = (old.patches or [ ]) ++ [ ./patches/greenlet-filc.patch ];
+            doCheck = true;
+            dontRemoveTests = true;
+            nativeCheckInputs = [
+              (pyself.psutil.overridePythonAttrs { doCheck = false; })
+              # Pure Python; its native package avoids the
+              # objgraph -> graphviz -> Python test dependency cycle.
+              (pkgs.python312Packages.objgraph.overridePythonAttrs { doCheck = false; })
+              pyself.unittestCheckHook
+            ];
+            postCheck = (old.postCheck or "") + ''
+              mkdir -p "$TMPDIR/greenlet-regression"
+              $CC -shared -fPIC -O2 -I${pyself.python}/include/python${pyself.python.pythonVersion} \
+                ${./tests/greenlet-filc.c} \
+                -o "$TMPDIR/greenlet-regression/_greenlet_filc_roots.so"
+              PYTHONPATH="$out/${pyself.python.sitePackages}:$TMPDIR/greenlet-regression:$PYTHONPATH" \
+                ${pyself.python.interpreter} ${./tests/greenlet-filc.py}
+            '';
+          });
+    };
+  }
+
   (for "execnet" [
-    # gevent needs greenlet, which switches CPython thread state fields that
-    # the Fil-C CPython port does not have. The gevent execmodel tests skip
-    # without it.
+    # greenlet now has a Fil-C context backend, but gevent itself has not
+    # been verified. Its optional execmodel tests still skip without it.
     (arg { gevent = null; })
   ])
 

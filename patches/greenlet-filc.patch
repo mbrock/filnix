@@ -1,0 +1,282 @@
+--- a/src/greenlet/TGreenlet.hpp
++++ b/src/greenlet/TGreenlet.hpp
+@@ -12,6 +12,13 @@
+ #include "greenlet_cpython_compat.hpp"
+ #include "greenlet_allocator.hpp"
+ 
++#ifdef __FILC__
++extern "C" {
++#include <pizlonated_runtime.h>
++}
++#include <signal.h>
++#endif
++
+ using greenlet::refs::OwnedObject;
+ using greenlet::refs::OwnedGreenlet;
+ using greenlet::refs::OwnedMainGreenlet;
+@@ -142,10 +149,14 @@
+ #endif
+ #if GREENLET_PY311
+         _PyInterpreterFrame* current_frame;
++#ifdef __FILC__
++        _PyInterpreterFrame* datastack_top_frame;
++#else
+         _PyStackChunk* datastack_chunk;
+         PyObject** datastack_top;
+         PyObject** datastack_limit;
+ #endif
++#endif
+         // The PyInterpreterFrame list on 3.12+ contains some entries that are
+         // on the C stack, which can't be directly accessed while a greenlet is
+         // suspended. In order to keep greenlet gr_frame introspection working,
+@@ -353,6 +364,12 @@
+         ExceptionState exception_state;
+         SwitchingArgs switch_args;
+         StackState stack_state;
++#ifdef __FILC__
++        zfiber_context* fiber_context = nullptr;
++        intptr_t fiber_stack_saved = 0;
++        // Keep signal masks thread-local, as in the native greenlet backend.
++        sigset_t fiber_sigmask;
++#endif
+         PythonState python_state;
+         Greenlet(PyGreenlet* p, const StackState& initial_state);
+     public:
+@@ -386,7 +403,12 @@
+ 
+         inline intptr_t stack_saved() const noexcept
+         {
++#ifdef __FILC__
++            // Bytes retained on the suspended native stack, not a heap copy.
++            return this->active() ? this->fiber_stack_saved : 0;
++#else
+             return this->stack_state.stack_saved();
++#endif
+         }
+ 
+         // This is used by the macro SLP_SAVE_STATE to compute the
+@@ -725,6 +747,13 @@
+         // This accepts raw pointers and the ownership of them at the
+         // same time. The caller should use ``inner_bootstrap(origin.relinquish_ownership())``.
+         void inner_bootstrap(PyGreenlet* origin_greenlet, PyObject* run);
++#ifdef __FILC__
++        struct FiberStart {
++            UserGreenlet* greenlet;
++            PyObject* run;
++        };
++        static void fiber_entry();
++#endif
+     };
+ 
+     class BrokenGreenlet : public UserGreenlet
+--- a/src/greenlet/TPythonState.cpp
++++ b/src/greenlet/TPythonState.cpp
+@@ -32,10 +32,14 @@
+ #endif
+ #if GREENLET_PY311
+     ,current_frame(nullptr)
++#ifdef __FILC__
++    ,datastack_top_frame(nullptr)
++#else
+     ,datastack_chunk(nullptr)
+     ,datastack_top(nullptr)
+     ,datastack_limit(nullptr)
+ #endif
++#endif
+ {
+ #if GREENLET_USE_CFRAME
+     /*
+@@ -156,9 +160,13 @@
+   #elif GREENLET_USE_CFRAME
+     this->current_frame = tstate->cframe->current_frame;
+   #endif
++#ifdef __FILC__
++    this->datastack_top_frame = tstate->datastack_top_frame;
++#else
+     this->datastack_chunk = tstate->datastack_chunk;
+     this->datastack_top = tstate->datastack_top;
+     this->datastack_limit = tstate->datastack_limit;
++#endif
+ 
+     PyFrameObject *frame = PyThreadState_GetFrame((PyThreadState *)tstate);
+     Py_XDECREF(frame);  // PyThreadState_GetFrame gives us a new
+@@ -186,7 +194,7 @@
+ #endif // GREENLET_PY311
+ }
+ 
+-#if GREENLET_PY312
++#if GREENLET_PY312 && !defined(__FILC__)
+ void GREENLET_NOINLINE(PythonState::unexpose_frames)()
+ {
+     if (!this->top_frame()) {
+@@ -247,9 +255,13 @@
+   #elif GREENLET_USE_CFRAME
+     tstate->cframe->current_frame = this->current_frame;
+   #endif
++#ifdef __FILC__
++    tstate->datastack_top_frame = this->datastack_top_frame;
++#else
+     tstate->datastack_chunk = this->datastack_chunk;
+     tstate->datastack_top = this->datastack_top;
+     tstate->datastack_limit = this->datastack_limit;
++#endif
+ #if GREENLET_PY314 && defined(Py_GIL_DISABLED)
+     if (this->top_frame()) {
+         this->_top_frame->f_frame->stackpointer = this->stackpointer;
+@@ -354,7 +366,13 @@
+ 
+ void PythonState::did_finish(PyThreadState* tstate) noexcept
+ {
+-#if GREENLET_PY311
++#ifdef __FILC__
++    // Fil-C allocates interpreter frames individually in the GC heap.
++    if (tstate) {
++        tstate->datastack_top_frame = nullptr;
++    }
++    this->datastack_top_frame = nullptr;
++#elif GREENLET_PY311
+     // See https://github.com/gevent/gevent/issues/1924 and
+     // https://github.com/python-greenlet/greenlet/issues/328. In
+     // short, Python 3.11 allocates memory for frames as a sort of
+--- a/src/greenlet/TGreenlet.cpp
++++ b/src/greenlet/TGreenlet.cpp
+@@ -130,6 +130,9 @@
+ Greenlet::g_switchstack_success() noexcept
+ {
+     PyThreadState* tstate = PyThreadState_GET();
++#ifdef __FILC__
++    this->fiber_stack_saved = 0;
++#endif
+     // restore the saved state
+     this->python_state >> tstate;
+     this->exception_state >> tstate;
+@@ -180,7 +183,21 @@
+         err = -1;
+     }
+     else {
++#ifdef __FILC__
++        Greenlet* current = this->thread_state()->borrow_current();
++        if (!current->fiber_context) {
++            current->fiber_context = zfiber_context_new();
++        }
++        current->fiber_stack_saved = reinterpret_cast<uintptr_t>(zstack_top())
++            - reinterpret_cast<uintptr_t>(zstack_pointer());
++        // Native greenlet switches do not restore a greenlet-local signal mask.
++        pthread_sigmask(SIG_SETMASK, nullptr, &this->fiber_sigmask);
++        zfiber_context_bind_sigset(this->fiber_context, &this->fiber_sigmask);
++        zfiber_context_swapcontext(current->fiber_context, this->fiber_context);
++        err = 0;
++#else
+         err = slp_switch();
++#endif
+     }
+ 
+     if (err < 0) { /* error */
+@@ -611,7 +628,7 @@
+     return this->stack_state.active() && !this->python_state.top_frame();
+ }
+ 
+-#if GREENLET_PY312
++#if GREENLET_PY312 && !defined(__FILC__)
+ void GREENLET_NOINLINE(Greenlet::expose_frames)()
+ {
+     if (!this->python_state.top_frame()) {
+--- a/src/greenlet/TUserGreenlet.cpp
++++ b/src/greenlet/TUserGreenlet.cpp
+@@ -263,6 +263,32 @@
+     // greenlet switch: No arbitrary calls to Python, including
+     // decref'ing
+ 
++#ifdef __FILC__
++    ThreadState& thread_state = GET_THREAD_STATE().state();
++    this->stack_state = StackState(mark, thread_state.borrow_current()->stack_state);
++    this->python_state.set_initial_state(PyThreadState_GET());
++    this->exception_state.clear();
++    this->_main_greenlet = thread_state.get_main_greenlet();
++    FiberStart* start = static_cast<FiberStart*>(zgc_alloc(sizeof(FiberStart)));
++    start->greenlet = this;
++    start->run = run.borrow();
++    this->fiber_context = zfiber_context_new();
++    zfiber_context_getcontext(this->fiber_context);
++    // Match the ordinary pthread stack size. Fil-C checks this stack's bounds.
++    zfiber_context_makecontext(this->fiber_context, 8 * 1024 * 1024,
++        reinterpret_cast<void (*)()>(zclosure_new(reinterpret_cast<void*>(fiber_entry), start)));
++    switchstack_result_t err = this->g_switchstack();
++    if (err.status < 0) {
++        this->fiber_context = nullptr;
++        start->run = nullptr;
++        this->stack_state = StackState();
++        this->_main_greenlet.CLEAR();
++    }
++    else {
++        run.relinquish_ownership();
++    }
++    return err;
++#else
+ #if GREENLET_USE_CFRAME
+     /* OK, we need it, we're about to switch greenlets, save the state. */
+     /*
+@@ -372,8 +398,34 @@
+     run.relinquish_ownership();
+ 
+     return err;
++#endif // __FILC__
+ }
+ 
++#ifdef __FILC__
++void UserGreenlet::fiber_entry()
++{
++    FiberStart* start = static_cast<FiberStart*>(zcallee_closure_data());
++    UserGreenlet* self = start->greenlet;
++    PyObject* run = start->run;
++    start->greenlet = nullptr;
++    start->run = nullptr;
++    switching_thread_state = nullptr;
++    OwnedGreenlet origin = self->g_switchstack_success();
++    // Unlike the copying backend, this frame lives on the new stack.
++    _PyCFrame trace_info;
++    self->python_state.set_new_cframe(trace_info);
++    PyThreadState_GET()->cframe = &trace_info;
++    try {
++        self->inner_bootstrap(origin.relinquish_ownership(), run);
++    }
++    catch (const std::exception& e) {
++        std::string message = "greenlet: Unhandled C++ exception: ";
++        message += e.what();
++        Py_FatalError(message.c_str());
++    }
++    Py_FatalError("greenlet: inner_bootstrap returned with no exception.");
++}
++#endif
+ 
+ void
+ UserGreenlet::inner_bootstrap(PyGreenlet* origin_greenlet, PyObject* run)
+--- a/src/greenlet/greenlet_slp_switch.hpp
++++ b/src/greenlet/greenlet_slp_switch.hpp
+@@ -62,6 +62,7 @@
+ 
+ #define SLP_RESTORE_STATE() slp_restore_state_trampoline()
+ 
++#ifndef __FILC__
+ #define SLP_EVAL
+ extern "C" {
+ #define slp_switch GREENLET_NOINLINE(slp_switch)
+@@ -99,5 +100,6 @@
+ extern int slp_switch(void);
+ };
+ #endif
++#endif // !__FILC__: managed contexts do not copy or modify the native stack.
+ 
+ #endif
+--- a/src/greenlet/tests/__init__.py
++++ b/src/greenlet/tests/__init__.py
+@@ -194,6 +194,9 @@
+             0xc0000409,
+             0xc0000005,
+         )
++        if "gnufilc0" in (sysconfig.get_config_var("HOST_GNU_TYPE") or ""):
++            # Fil-C's panic/abort uses a trap, not libc's native abort.
++            expected_exit += (-signal.SIGTRAP,)
+         return expected_exit
+ 
+     def get_process_uss(self):
