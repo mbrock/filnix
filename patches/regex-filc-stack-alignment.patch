@@ -1,0 +1,135 @@
+--- a/src/_regex.c
++++ b/src/_regex.c
+@@ -2303,6 +2303,19 @@
+     stack->count = 0;
+ }
+ 
++/* Fil-C keeps pointer capabilities only in pointer-aligned memory. Pad every
++ * entry, including byte opcodes and integer blocks, so memcpy can preserve
++ * pointers in subsequent entries. Counts and saved stack positions stay in
++ * bytes; only the storage occupied by each entry changes.
++ */
++Py_LOCAL_INLINE(size_t) ByteStack_entry_size(size_t count) {
++#ifdef __FILC__
++    return (count + sizeof(void*) - 1) & ~(sizeof(void*) - 1);
++#else
++    return count;
++#endif
++}
++
+ /* Pushes a byte onto a stack of bytes. */
+ Py_LOCAL_INLINE(BOOL) ByteStack_push(RE_State* state, ByteStack* stack, BYTE
+   item) {
+@@ -2330,7 +2343,8 @@
+         stack->storage = new_storage;
+     }
+ 
+-    stack->storage[stack->count++] = item;
++    stack->storage[stack->count] = item;
++    stack->count += ByteStack_entry_size(1);
+ 
+     return TRUE;
+ }
+@@ -2340,7 +2354,7 @@
+   void* block, size_t count) {
+     size_t new_count;
+ 
+-    new_count = stack->count + count;
++    new_count = stack->count + ByteStack_entry_size(count);
+ 
+     if (new_count > stack->capacity) {
+         size_t new_capacity;
+@@ -2378,10 +2392,11 @@
+ /* Pops a byte off a stack of bytes. */
+ Py_LOCAL_INLINE(BOOL) ByteStack_pop(RE_State* state, ByteStack* stack, BYTE*
+   item) {
+-    if (stack->count < 1)
++    if (stack->count < ByteStack_entry_size(1))
+         return FALSE;
+ 
+-    *item = stack->storage[--stack->count];
++    stack->count -= ByteStack_entry_size(1);
++    *item = stack->storage[stack->count];
+ 
+     return TRUE;
+ }
+@@ -2389,10 +2404,10 @@
+ /* Pops a block off a stack of bytes. */
+ Py_LOCAL_INLINE(BOOL) ByteStack_pop_block(RE_State* state, ByteStack* stack,
+   void* block, size_t count) {
+-    if (count > stack->count)
++    if (ByteStack_entry_size(count) > stack->count)
+         return FALSE;
+ 
+-    stack->count -= count;
++    stack->count -= ByteStack_entry_size(count);
+     Py_MEMCPY(block, stack->storage + stack->count, count);
+ 
+     return TRUE;
+@@ -2400,10 +2415,10 @@
+ 
+ /* Drops a byte off a stack of bytes. */
+ Py_LOCAL_INLINE(BOOL) ByteStack_drop(RE_State* state, ByteStack* stack) {
+-    if (stack->count < 1)
++    if (stack->count < ByteStack_entry_size(1))
+         return FALSE;
+ 
+-    --stack->count;
++    stack->count -= ByteStack_entry_size(1);
+ 
+     return TRUE;
+ }
+@@ -2411,10 +2426,10 @@
+ /* Drops a block off a stack of bytes. */
+ Py_LOCAL_INLINE(BOOL) ByteStack_drop_block(RE_State* state, ByteStack* stack,
+   size_t count) {
+-    if (count > stack->count)
++    if (ByteStack_entry_size(count) > stack->count)
+         return FALSE;
+ 
+-    stack->count -= count;
++    stack->count -= ByteStack_entry_size(count);
+ 
+     return TRUE;
+ }
+@@ -2422,10 +2437,11 @@
+ /* Gets the top block off a stack of bytes. */
+ Py_LOCAL_INLINE(BOOL) ByteStack_top_block(RE_State* state, ByteStack* stack,
+   void* block, size_t count) {
+-    if (count > stack->count)
++    if (ByteStack_entry_size(count) > stack->count)
+         return FALSE;
+ 
+-    Py_MEMCPY(block, stack->storage + stack->count - count, count);
++    Py_MEMCPY(block, stack->storage + stack->count - ByteStack_entry_size(count),
++      count);
+ 
+     return TRUE;
+ }
+--- a/regex/tests/test_regex.py
++++ b/regex/tests/test_regex.py
+@@ -541,6 +541,24 @@
+         self.assertEqual(regex.match("a.*b", "a\n\nb", regex.DOTALL)[0],
+           "a\n\nb")
+ 
++    def test_backtracking_stack_alignment(self):
++        # Mix byte opcodes, integer fields and pointer-bearing records. Greedy
++        # repeats must give back an 'a', while lazy repeats must grow to it.
++        # The long input grows the stack; the next match reuses cached storage.
++        for pattern, tail in [(r"(?:x|y)(a*)ab", "b"),
++          (r"(?:x|y)(a*?)ab", "b"),
++          (r"(?:x|y)((?:a|ab)*)ac", "c")]:
++            compiled = regex.compile(pattern)
++            for count in (3, 4096, 4):
++                text = "x" + "a" * count + tail
++                with self.subTest(pattern=pattern, count=count):
++                    match = compiled.fullmatch(text)
++                    self.assertIsNotNone(match)
++                    self.assertEqual(match.span(), (0, count + 2))
++                    self.assertEqual(match.span(1), (1, count))
++                    self.assertEqual(match.group(1), "a" * (count - 1))
++                    self.assertIsNone(compiled.fullmatch(text[:-1] + "d"))
++
+     def test_non_consuming(self):
+         self.assertEqual(regex.match(r"(a(?=\s[^a]))", "a b")[1], 'a')
+         self.assertEqual(regex.match(r"(a(?=\s[^a]*))", "a b")[1], 'a')

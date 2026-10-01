@@ -223,6 +223,17 @@ in
     (patch ./patches/uharfbuzz-sort-swap-memcpy.patch)
   ])
 
+  (
+    (for "regex" [
+      # Its byte stack mixes pointer-bearing records with byte opcodes. Align
+      # every entry under Fil-C so copied pointers retain their capabilities.
+      (patch ./patches/regex-filc-stack-alignment.patch)
+    ])
+    // {
+      filcOnly = true;
+    }
+  )
+
   (for "skia-pathops" [
     # Skia's arena stores destructor pointers unaligned (fonttools' check
     # input).
