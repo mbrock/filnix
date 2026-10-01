@@ -20,6 +20,7 @@ from experiment.model import (
     stamp,
     writer_lock,
 )
+from experiment.scope import INHERITED, TOOLCHAIN_REASON
 from experiment.web import application
 
 
@@ -1188,7 +1189,6 @@ class ExperimentTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.queue_replan(ids)
         for state in (
-            "unplanned",
             "available",
             "excluded",
             "running",
@@ -1197,7 +1197,7 @@ class ExperimentTests(unittest.TestCase):
         ):
             with self.db:
                 self.sql("UPDATE candidates SET state=? WHERE id=2", (state,))
-            with self.assertRaisesRegex(ValueError, "inactive evaluation failure"):
+            with self.assertRaisesRegex(ValueError, "inactive revision-replan"):
                 self.queue_replan([1, 2])
         self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
         self.queue_replan([1])
@@ -1215,10 +1215,97 @@ class ExperimentTests(unittest.TestCase):
     def test_replan_queue_refuses_active_evaluation_and_mutable_source(self):
         self.evaluation_errors()
         self.controller.plan(self.cid, [1])
-        with self.assertRaisesRegex(ValueError, "inactive evaluation failure"):
+        with self.assertRaisesRegex(ValueError, "inactive revision-replan"):
             self.queue_replan([1])
         with self.assertRaisesRegex(ValueError, "frozen committed flake"):
             self.controller.queue_replan(self.cid, [2], "/home/worktree", "f" * 40)
+
+    def test_replan_queue_preserves_failed_blocked_and_inherited_observations(self):
+        self.graph()
+        self.sql("UPDATE derivations SET failure='compile' WHERE drv=?", (A,))
+        refresh_candidates(self.db, self.cid)
+        self.sql(
+            "UPDATE candidates SET state='excluded',error=? WHERE id=3", (INHERITED,)
+        )
+        self.db.commit()
+        old = [dict(r) for r in self.sql("SELECT * FROM candidates ORDER BY id")]
+        self.queue_replan([1, 2, 3])
+        self.assertEqual(
+            [dict(r) for r in self.sql("SELECT * FROM candidates ORDER BY id")], old
+        )
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        spec = json.loads(self.controller.active_attempts()[0]["spec"])
+        self.assertEqual(
+            [r["state"] for r in spec["previous_candidates"]],
+            ["failed", "blocked", "excluded"],
+        )
+        self.assertEqual(spec["previous_candidates"][2]["error"], INHERITED)
+        self.assertEqual(spec["revision"], "f" * 40)
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+        self.assertEqual(
+            self.sql("SELECT failure FROM derivations WHERE drv=?", (A,)).fetchone()[0],
+            "compile",
+        )
+
+    def test_inherited_exclusion_replans_but_direct_scope_exclusion_is_preserved(self):
+        self.graph()
+        self.sql("UPDATE derivations SET exclusion=? WHERE drv=?", (TOOLCHAIN_REASON, A))
+        refresh_candidates(self.db, self.cid)
+        self.db.commit()
+        with self.assertRaisesRegex(ValueError, "already planned"):
+            self.controller.plan(self.cid, [2])
+        with self.assertRaisesRegex(ValueError, "inactive revision-replan"):
+            self.queue_replan([2, 1])
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+        self.queue_replan([2])
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        attempt = self.controller.active_attempts()[0]
+        self.assertEqual(
+            json.loads(attempt["spec"])["previous_candidates"][0]["error"], INHERITED
+        )
+        fresh = "/nix/store/" + "f" * 32 + "-ported-program.drv"
+        self.plan_record(attempt["id"], 2, fresh)
+        self.finish(attempt["id"])
+        self.controller.reconcile()
+        self.assertEqual(
+            tuple(self.sql("SELECT state,drv FROM candidates WHERE id=2").fetchone()),
+            ("queued", fresh),
+        )
+        self.assertEqual(
+            [r[0] for r in self.sql("SELECT state FROM candidates WHERE id IN (1,3)")],
+            ["excluded", "excluded"],
+        )
+        self.assertEqual(
+            self.sql("SELECT exclusion FROM derivations WHERE drv=?", (A,)).fetchone()[0],
+            TOOLCHAIN_REASON,
+        )
+
+    def test_replan_queue_refuses_derivations_owned_by_active_builds(self):
+        self.graph()
+        self.scheduling(plan_ahead=128)
+        self.attempt("build")
+        with self.db:
+            self.sql("UPDATE candidates SET state='inconclusive' WHERE id=1")
+        with self.assertRaisesRegex(ValueError, "inactive revision-replan"):
+            self.queue_replan([1])
+        self.assertEqual(self.sql("SELECT count(*) FROM replans").fetchone()[0], 0)
+
+    def test_replan_queue_freezes_new_revision_for_unplanned_candidates(self):
+        self.queue_replan([1])
+        with patch.object(self.controller, "admission_reason", return_value=""), patch(
+            "experiment.controller.Path.is_file", return_value=True
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        spec = json.loads(self.controller.active_attempts()[0]["spec"])
+        self.assertEqual(spec["revision"], "f" * 40)
+        self.assertEqual(spec["previous_candidates"][0]["state"], "unplanned")
+        self.assertEqual(self.controller.campaign(self.cid)["revision"], "abc")
 
     def test_replan_queue_respects_resource_and_ready_buffer_limits(self):
         self.graph()

@@ -215,7 +215,9 @@ ordinary build queue; the campaign's mode and resource limits still control
 admission. No other failed evaluation is reset. A queued, failed, blocked, or inconclusive
 recipe can be replaced; its old recipe and result remain in the new attempt's
 spec. The selected candidate is detached from that recipe while planning, so a
-restart cannot accidentally requeue the old build. Successful, excluded,
+restart cannot accidentally requeue the old build. An inherited scope exclusion
+can also be re-evaluated at an explicit revision: its new dependency graph must
+still pass the ordinary scope checks. Direct scope exclusions, successful inputs,
 and active inputs (including dependencies of active builds) are refused.
 The original manifest, campaign source, attempt records,
 and raw logs stay unchanged. The planner lane must be free, as for ordinary `plan`.
@@ -227,15 +229,17 @@ The package catalog prefers the evaluated version while preserving the frozen
 inventory metadata. This is an explicit per-package follow-up, not a campaign-wide
 source update or an automatic downstream retry.
 
-For a larger cohort of **failed evaluations**, enqueue the complete selection:
+For a larger cohort of **revision follow-ups**, enqueue the complete selection:
 
 ```sh
 filnix-experiment queue-replan CAMPAIGN ID [ID ...] --repo /path/to/filnix --revision COMMIT
 ```
 
-Version 0.12.4 persists these requests in schema 4's `replans` table. Only inactive
-evaluation failures without recipes are accepted, up to 8,192 distinct IDs per
-request. Validation is atomic; repeating a still-pending ID at the same source
+Requests persist in the `replans` table. Inactive unplanned inputs, evaluation
+failures, failed/blocked/inconclusive recipes, and inherited scope exclusions are
+accepted, up to 8,192 distinct IDs per request. Successful, running, already queued,
+and directly excluded inputs are refused, as are dependencies of active builds.
+Validation is atomic; repeating a still-pending ID at the same source
 and revision does not duplicate it. `status` includes `pending_replans` per campaign.
 The `replan-queued` event retains the full selection, request UUID and frozen source.
 
@@ -248,8 +252,9 @@ provenance. Intent creation and queue consumption commit together. New evaluatio
 failures are recorded once and require another explicit request to try again.
 
 An explicit `plan --revision` can supersede a queued request for the same ID; its
-attempt records both the pending request and the actual revision. Exclusions or
-other intervening outcomes are skipped with a `replan-skipped` event. The queue
+attempt records both the pending request and the actual revision. Direct scope
+exclusions, active build ownership, or other intervening outcomes are skipped
+with a `replan-skipped` event. The queue
 does not change the campaign's original source, enable a paused campaign, or reset
 any other failures. Existing build workers keep running during the controller upgrade.
 

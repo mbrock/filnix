@@ -16,6 +16,7 @@ from .model import atomic_json, closure, encode, event, refresh_candidates, stam
 from .outcomes import backfill, snapshot as build_outcomes
 from .scheduling import BuildGraph, build_policy, reservations
 from .scope import (
+    INHERITED,
     REASON,
     RUSTC_NAME,
     TOOLCHAIN_NAME,
@@ -37,6 +38,16 @@ def validate_source(source, revision):
         or not (Path(source) / "flake.lock").is_file()
     ):
         raise ValueError("revision planning requires a frozen committed flake")
+
+
+def replan_eligible(row):
+    if not row:
+        return False
+    if not row["drv"]:
+        return row["state"] in ("unplanned", "evaluation-error")
+    return row["state"] in ("failed", "blocked", "inconclusive") or (
+        row["state"] == "excluded" and row["error"] == INHERITED
+    )
 
 
 class Units:
@@ -216,7 +227,9 @@ class Controller:
             row = self.db.execute(
                 "SELECT * FROM candidates WHERE id=? AND campaign=?", (int(i), cid)
             ).fetchone()
-            if not row or row["state"] == "excluded":
+            if not row or (
+                row["state"] == "excluded" and not (extra and replan_eligible(row))
+            ):
                 raise ValueError("candidate absent or already planned")
             if (
                 not extra
@@ -233,6 +246,7 @@ class Controller:
                     "failed",
                     "blocked",
                     "inconclusive",
+                    "excluded",
                 ):
                     raise ValueError("candidate absent or already planned")
                 if row["drv"] in active_drvs:
@@ -262,25 +276,32 @@ class Controller:
             or len(set(ids)) != len(ids)
         ):
             raise ValueError("queue-replan requires 1–8192 distinct candidate IDs")
+        attempts = self.active_attempts()
         active = {
             target["id"]
-            for attempt in self.active_attempts()
+            for attempt in attempts
             if attempt["kind"] == "plan"
             for target in json.loads(attempt["targets"])
+        }
+        active_drvs = {
+            drv
+            for attempt in attempts
+            if attempt["kind"] == "build"
+            for drv in json.loads(attempt["spec"]).get("derivations", [])
         }
         pending = []
         for i in ids:
             row = self.db.execute(
-                "SELECT state,drv FROM candidates WHERE id=? AND campaign=?", (i, cid)
+                "SELECT state,drv,error FROM candidates WHERE id=? AND campaign=?",
+                (i, cid),
             ).fetchone()
             if (
-                not row
-                or row["state"] != "evaluation-error"
-                or row["drv"]
+                not replan_eligible(row)
                 or i in active
+                or row["drv"] in active_drvs
             ):
                 raise ValueError(
-                    f"candidate {i} must be an inactive evaluation failure"
+                    f"candidate {i} must be an inactive revision-replan candidate"
                 )
             queued = self.db.execute(
                 "SELECT source,revision FROM replans WHERE candidate=?", (i,)
@@ -727,15 +748,21 @@ class Controller:
             return
         # Requests retain their old observations until admitted. An explicit
         # exclusion or other intervening result takes precedence over the queue.
+        active_drvs = {
+            drv
+            for attempt in builds
+            for drv in json.loads(attempt["spec"]).get("derivations", [])
+        }
         with self.db:
             skipped = [
                 dict(r)
                 for r in self.db.execute(
-                    """SELECT candidate,request,state FROM replans
+                    """SELECT candidate,request,state,drv,error FROM replans
                        JOIN candidates ON candidates.id=replans.candidate
-                       WHERE campaign=? AND (state!='evaluation-error' OR drv IS NOT NULL)""",
+                       WHERE campaign=?""",
                     (campaign["id"],),
                 )
+                if not replan_eligible(r) or r["drv"] in active_drvs
             ]
             if skipped:
                 self.db.executemany(
