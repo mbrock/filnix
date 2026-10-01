@@ -7,6 +7,7 @@ import re
 import shutil
 import socket
 import subprocess
+import time
 import uuid
 
 from . import VERSION, nix
@@ -1159,14 +1160,21 @@ class Controller:
             os.chmod(path, 0o600)
             server.listen(8)
             server.settimeout(1)
+            reconcile_at = 0
             while True:
-                self.tick()
+                if time.monotonic() >= reconcile_at:
+                    self.tick()
+                    # Full-inventory annotation bursts must not reconcile the
+                    # entire build graph for every result or starve admission.
+                    reconcile_at = time.monotonic() + 5
                 try:
                     client, _ = server.accept()
                 except socket.timeout:
+                    reconcile_at = 0
                     continue
                 with client:
                     client.settimeout(5)
+                    annotation = False
                     try:
                         raw = b""
                         while b"\n" not in raw and len(raw) < 65536:
@@ -1174,7 +1182,9 @@ class Controller:
                             if not block:
                                 break
                             raw += block
-                        response = {"ok": self.dispatch(json.loads(raw))}
+                        request = json.loads(raw)
+                        annotation = request.get("op") == "classification-import"
+                        response = {"ok": self.dispatch(request)}
                     except (
                         ValueError,
                         KeyError,
@@ -1188,3 +1198,5 @@ class Controller:
                         # The command may already have committed. A departed
                         # annotation/admin client must not stop the controller.
                         pass
+                    if not annotation:
+                        reconcile_at = 0

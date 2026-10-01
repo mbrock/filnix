@@ -104,6 +104,9 @@ Only the controller writes schema 6's `classifications` table. Changed recipes,
 evaluation errors, failed derivations or evidence attempts invalidate affected
 annotations; results arriving after such a change are discarded. Input graph
 context is a bounded classification-time snapshot, not current blocker truth.
+The controller accepts annotation bursts for at most five seconds between full
+reconciliations, rather than reconciling the build graph for every annotation.
+Idle sockets and ordinary administrative commands resume the normal tick loop.
 Diagnostics use finished logs scoped to the exact derivation. Patch classification
 requires a readable immutable recipe path of at most 16 KB; missing/larger patches
 are omitted, not judged absent. Full Nix override source classification remains

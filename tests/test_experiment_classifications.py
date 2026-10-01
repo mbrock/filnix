@@ -3,6 +3,7 @@
 import io
 from contextlib import closing
 from pathlib import Path
+import socket
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -142,7 +143,7 @@ class ClassificationTests(unittest.TestCase):
     def test_disconnected_annotation_client_does_not_stop_controller_after_commit(self):
         server, client = MagicMock(), MagicMock()
         server.__enter__.return_value = server
-        server.accept.return_value = (client, None)
+        server.accept.side_effect = [(client, None), socket.timeout]
         client.recv.return_value = (
             encode(
                 {
@@ -165,6 +166,58 @@ class ClassificationTests(unittest.TestCase):
                 self.controller.serve()
             self.assertEqual(tick.call_count, 2)
         self.assertEqual(len(c.annotations(self.db, self.cid, 1)), 1)
+
+    def test_annotation_burst_reconciles_at_deadline_not_after_every_result(self):
+        server = MagicMock()
+        server.__enter__.return_value = server
+        clients = [MagicMock(), MagicMock(), MagicMock()]
+        server.accept.side_effect = [(client, None) for client in clients]
+        for candidate, client in enumerate(clients, start=1):
+            client.recv.return_value = (
+                encode(
+                    {
+                        "op": "classification-import",
+                        "campaign": self.cid,
+                        "item": self.item(candidate),
+                    }
+                )
+                + "\n"
+            ).encode()
+        with (
+            patch("experiment.controller.socket.socket", return_value=server),
+            patch("experiment.controller.os.chmod"),
+            patch("experiment.controller.time.monotonic", side_effect=[0, 0, 1, 5]),
+            patch.object(
+                self.controller, "tick", side_effect=[None, RuntimeError("next tick")]
+            ) as tick,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "next tick"):
+                self.controller.serve()
+        self.assertEqual(tick.call_count, 2)
+        self.assertEqual(server.accept.call_count, 2)
+        self.assertEqual(len(c.annotations(self.db, self.cid, 1)), 1)
+        self.assertEqual(len(c.annotations(self.db, self.cid, 2)), 1)
+        self.assertEqual(c.annotations(self.db, self.cid, 3), [])
+
+    def test_admin_command_reconciles_before_next_request_despite_burst_window(self):
+        server, client = MagicMock(), MagicMock()
+        server.__enter__.return_value = server
+        server.accept.return_value = (client, None)
+        client.recv.return_value = b'{"op":"status"}\n'
+        with (
+            patch("experiment.controller.socket.socket", return_value=server),
+            patch("experiment.controller.os.chmod"),
+            patch("experiment.controller.time.monotonic", side_effect=[0, 0, 1]),
+            patch.object(self.controller, "dispatch", return_value="status"),
+            patch.object(
+                self.controller, "tick", side_effect=[None, RuntimeError("next tick")]
+            ) as tick,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "next tick"):
+                self.controller.serve()
+        self.assertEqual(tick.call_count, 2)
+        self.assertEqual(server.accept.call_count, 1)
+        client.sendall.assert_called_once_with(b'{"ok":"status"}\n')
 
     def test_malformed_or_misattributed_results_are_rejected(self):
         for value in (True, float("nan"), float("inf"), -0.1, 1.01, "0.9"):
