@@ -1,0 +1,17 @@
+diff --git a/src/inc/Slot.h b/src/inc/Slot.h
+--- a/src/inc/Slot.h
++++ b/src/inc/Slot.h
+@@ -24,7 +24,12 @@ struct SlotJustify
+     SlotJustify & operator = (const SlotJustify &);
+ 
+ public:
+-    static size_t size_of(size_t levels) { return sizeof(SlotJustify) + ((levels > 1 ? levels : 1)*NUMJUSTPARAMS - 1)*sizeof(int16); }
++    static size_t size_of(size_t levels)
++    {
++        const size_t size = sizeof(SlotJustify) + ((levels > 1 ? levels : 1)*NUMJUSTPARAMS - 1)*sizeof(int16);
++        // Every pool entry contains a pointer, not just the first one.
++        return (size + alignof(SlotJustify) - 1) & ~(alignof(SlotJustify) - 1);
++    }
+ 
+     void LoadSlot(const Slot *s, const Segment *seg);
+ 

@@ -231,6 +231,9 @@
             media-foundations = import ./tests/media-foundations.nix {
               inherit pkgs pkgsFilc;
             };
+            graphite2-runtime = import ./tests/graphite2.nix {
+              inherit pkgs pkgsFilc;
+            };
             glib-atomic = import ./tests/glib-atomic.nix { inherit pkgs pkgsFilc; };
             glib-gtype = import ./tests/glib-gtype.nix { inherit pkgs pkgsFilc; };
             glib-enums = import ./tests/glib-enums.nix { inherit pkgs pkgsFilc; };

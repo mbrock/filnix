@@ -1,0 +1,22 @@
+diff --git a/python/graphite2/__init__.py b/python/graphite2/__init__.py
+--- a/python/graphite2/__init__.py
++++ b/python/graphite2/__init__.py
+@@ -46,9 +46,17 @@ def __idx_error(result, func, args):
+     return result
+ 
+ 
++# A plain c_void_p result becomes a Python integer, losing its capability.
++# Keep the ctypes storage (and its pointer) when passing handles back to C.
++class _Pointer(c_void_p):
++    @staticmethod
++    def _check_retval_(value):
++        return value if value else None
++
++
+ def fn(name, res, *params, **kwds):
+     f = getattr(gr2, name)
+-    f.restype = res
++    f.restype = _Pointer if res is c_void_p else res
+     f.argtypes = params
+     errcheck = kwds.get('errcheck')
+     if errcheck: f.errcheck = errcheck

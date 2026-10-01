@@ -1,0 +1,63 @@
+diff --git a/src/inc/Code.h b/src/inc/Code.h
+--- a/src/inc/Code.h
++++ b/src/inc/Code.h
+@@ -81,7 +81,7 @@ public:
+     bool          immutable() const throw()         { return !(_delete || _modify); }
+     bool          deletes() const throw()           { return _delete; }
+     size_t        maxRef() const throw()            { return _max_ref; }
+-    void          externalProgramMoved(ptrdiff_t) throw();
++    void          externalProgramMoved(const byte *, byte *) throw();
+ 
+     int32 run(Machine &m, slotref * & map) const;
+ 
+@@ -135,12 +135,12 @@ inline Machine::Code & Machine::Code::operator=(const Machine::Code &rhs) throw() {
+     return *this;
+ }
+ 
+-inline void Machine::Code::externalProgramMoved(ptrdiff_t dist) throw()
++inline void Machine::Code::externalProgramMoved(const byte *old_base, byte *new_base) throw()
+ {
+     if (_code && !_own)
+     {
+-        _code += dist / signed(sizeof(instr));
+-        _data += dist;
++        _code = reinterpret_cast<instr *>(new_base + (reinterpret_cast<const byte *>(_code) - old_base));
++        _data = new_base + (_data - old_base);
+     }
+ }
+ 
+diff --git a/src/Pass.cpp b/src/Pass.cpp
+--- a/src/Pass.cpp
++++ b/src/Pass.cpp
+@@ -249,7 +249,10 @@ bool Pass::readPass(const byte * const pass_start, size_t n, size_t subtable_base,
+             return face.error(e);
+     }
+ 
+-    byte * const moved_progs = prog_pool_free > m_progs ? static_cast<byte *>(realloc(m_progs, prog_pool_free - m_progs)) : 0;
++    // Rebase interior pointers onto the new allocation, while the old pool
++    // is still alive. Adding an address delta preserves its stale capability.
++    const size_t used = prog_pool_free - m_progs;
++    byte * const moved_progs = used ? gralloc<byte>(used) : 0;
+     if (e.test(!moved_progs, E_OUTOFMEM))
+     {
+         free(m_progs);
+@@ -257,14 +260,13 @@ bool Pass::readPass(const byte * const pass_start, size_t n, size_t subtable_base,
+         return face.error(e);
+     }
+ 
+-    if (moved_progs != m_progs)
++    memcpy(moved_progs, m_progs, used);
++    for (Code * c = m_codes, * const ce = c + m_numRules*2; c != ce; ++c)
+     {
+-        for (Code * c = m_codes, * const ce = c + m_numRules*2; c != ce; ++c)
+-        {
+-            c->externalProgramMoved(moved_progs - m_progs);
+-        }
+-        m_progs = moved_progs;
++        c->externalProgramMoved(m_progs, moved_progs);
+     }
++    free(m_progs);
++    m_progs = moved_progs;
+ 
+     // Load the rule entries map
+     face.error_context((face.error_context() & 0xFFFF00) + EC_APASS);

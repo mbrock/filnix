@@ -3303,6 +3303,31 @@ in
     (patch ./patches/gsl-movstat-aligned-state.patch)
   ])
 
+  (for pkgs.graphite2 [
+    (patch ./patches/graphite2-program-pool-capabilities.patch)
+    (patch ./patches/graphite2-justify-alignment.patch)
+    (patch ./patches/graphite2-python-pointer-results.patch)
+    (use (old: {
+      # Let the Fil-C driver supply its runtime, not upstream's explicit
+      # GCC runtime. The C linker language and no-libstdc++ test remain.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/CMakeLists.txt \
+          --replace-fail '-nodefaultlibs ' "" \
+          --replace-fail 'target_link_libraries(graphite2 c gcc)' 'target_link_libraries(graphite2 c)'
+      '';
+      # The text comparison tests load graphite2 through ctypes.
+      nativeBuildInputs =
+        builtins.filter (
+          p: !(pkgs.lib.hasPrefix "python3" (p.pname or p.name or ""))
+        ) old.nativeBuildInputs
+        ++ [
+          (final.python3.withPackages (ps: [ ps.fonttools ]))
+        ];
+      # Compare JSON traces as well as printed shaping goldens.
+      cmakeFlags = old.cmakeFlags ++ [ "-DGRAPHITE2_NTRACING=OFF" ];
+    }))
+  ])
+
   (for pkgs.xapian [
     # With more than one descriptor, glibc's nftw opens subdirectories
     # through __openat64_nocancel, a raw syscall that Fil-C's libc still
