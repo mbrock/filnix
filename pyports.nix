@@ -73,6 +73,24 @@ in
     }))
   ])
 
+  (
+    (for "backports-zstd" [
+      (use (old: {
+        # setup.py unconditionally enables LTO for compilation and linking.
+        # Fil-C has no LLVMgold.so; use ordinary objects for this optional
+        # optimization rather than rebuilding the compiler or interpreter.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace setup.py \
+            --replace-fail '"-g0", "-flto"' '"-g0"'
+          cp ${./tests/python-backports-zstd.py} tests/test_filc_boundaries.py
+        '';
+      }))
+    ])
+    // {
+      filcOnly = true;
+    }
+  )
+
   (for "httpcore" [
     (use (old: {
       # Test the client under Fil-C Python, but run the real HTTP/TLS test
