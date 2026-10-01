@@ -1,0 +1,952 @@
+diff -ruN original/src/qml/common/qv4staticvalue_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/common/qv4staticvalue_p.h
+--- original/src/qml/common/qv4staticvalue_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/common/qv4staticvalue_p.h	2026-10-01 15:52:00.173777259 +0000
+@@ -36,7 +36,44 @@
+ // the type has to be a primitive type (no struct or union), so that the compiler
+ // will return it in a register on all platforms.
+ // It will be returned in rax on x64, [eax,edx] on x86 and [r0,r1] on arm
++#ifdef __FILC__
++// Managed values must remain pointer-typed through storage, copies and calls.
++// Immediate tags keep Qt's numeric encoding; only managed values use ptr.
++struct ReturnedValue
++{
++    union {
++        char *ptr;
++        quint64 bits;
++    };
++    ReturnedValue() = default;
++    constexpr ReturnedValue(quint64 v) : bits(v) {}
++    constexpr operator quint64() const { return bits; }
++    template<typename T>
++    static ReturnedValue fromPointer(T *p)
++    {
++        ReturnedValue r;
++        r.ptr = reinterpret_cast<char *>(p);
++        return r;
++    }
++    template<typename T>
++    T *toPointer() const { return reinterpret_cast<T *>(ptr); }
++    friend constexpr bool operator==(ReturnedValue a, ReturnedValue b) { return a.bits == b.bits; }
++    friend constexpr bool operator!=(ReturnedValue a, ReturnedValue b) { return a.bits != b.bits; }
++    template<typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
++    friend constexpr bool operator==(ReturnedValue a, T b) { return a.bits == quint64(b); }
++    template<typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
++    friend constexpr bool operator!=(ReturnedValue a, T b) { return a.bits != quint64(b); }
++    template<typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
++    friend constexpr bool operator==(T a, ReturnedValue b) { return quint64(a) == b.bits; }
++    template<typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
++    friend constexpr bool operator!=(T a, ReturnedValue b) { return quint64(a) != b.bits; }
++    ReturnedValue &operator^=(quint64 mask) { bits ^= mask; return *this; }
++    ReturnedValue &operator|=(quint64 mask) { bits |= mask; return *this; }
++    ReturnedValue &operator&=(quint64 mask) { bits &= mask; return *this; }
++};
++#else
+ typedef quint64 ReturnedValue;
++#endif
+ 
+ namespace Heap {
+ struct Base;
+@@ -48,6 +85,9 @@
+ 
+     StaticValue() = default;
+     constexpr StaticValue(quint64 val) : _val(val) {}
++#ifdef __FILC__
++    constexpr StaticValue(ReturnedValue val) : _val(val) {}
++#endif
+ 
+     StaticValue &operator=(ReturnedValue v)
+     {
+@@ -124,11 +164,11 @@
+         +--------------------> Double sign, also used for special doubles
+     */
+ 
+-    quint64 _val;
++    ReturnedValue _val;
+ 
+-    QV4_NEARLY_ALWAYS_INLINE constexpr quint64 &rawValueRef() { return _val; }
+-    QV4_NEARLY_ALWAYS_INLINE constexpr quint64 rawValue() const { return _val; }
+-    QV4_NEARLY_ALWAYS_INLINE constexpr void setRawValue(quint64 raw) { _val = raw; }
++    QV4_NEARLY_ALWAYS_INLINE constexpr ReturnedValue &rawValueRef() { return _val; }
++    QV4_NEARLY_ALWAYS_INLINE constexpr ReturnedValue rawValue() const { return _val; }
++    QV4_NEARLY_ALWAYS_INLINE constexpr void setRawValue(ReturnedValue raw) { _val = raw; }
+ 
+ #if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+     static inline int valueOffset() { return 0; }
+@@ -569,6 +609,9 @@
+     {
+         Q_ASSERT(!(_val & ManagedMask));
+ 
++#ifdef __FILC__
++        return _val.toPointer<Heap::Base>();
++#else
+         // Re-assemble the pointer from its fragments.
+         const quint64 tmp = retrievePointerBits<Top1Shift, Top1Mask>(
+                             retrievePointerBits<Upper3Shift, Upper3Mask>(
+@@ -577,9 +620,14 @@
+         HeapBasePtr b;
+         memcpy(&b, &tmp, 8);
+         return b;
++#endif
+     }
+     QML_NEARLY_ALWAYS_INLINE void setM(HeapBasePtr b)
+     {
++#ifdef __FILC__
++        Q_ASSERT(!(quintptr(b) & Lower5Mask));
++        _val = ReturnedValue::fromPointer(b);
++#else
+         quint64 tmp;
+         memcpy(&tmp, &b, 8);
+ 
+@@ -597,6 +645,7 @@
+                storePointerBits<Lower5Shift, Lower5Mask>(tmp)));
+ 
+         QT_WARNING_POP
++#endif
+     }
+ #elif QT_POINTER_SIZE == 4
+     QML_NEARLY_ALWAYS_INLINE HeapBasePtr m() const
+@@ -669,7 +718,7 @@
+     constexpr operator ReturnedValue() const {
+         return val;
+     }
+-    quint64 val;
++    ReturnedValue val;
+ private:
+     explicit Encode(void *);
+ };
+diff -ruN original/src/qml/compiler/qv4instr_moth_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/compiler/qv4instr_moth_p.h
+--- original/src/qml/compiler/qv4instr_moth_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/compiler/qv4instr_moth_p.h	2026-10-01 15:53:35.314948314 +0000
+@@ -306,6 +306,8 @@
+ #if defined(Q_OS_WASM) && !defined(__asmjs)
+ // Upstream llvm does not support computed goto for the wasm target, unlike the 'fastcomp' llvm fork
+ // shipped with the emscripten SDK. Disable computed goto usage for non-fastcomp llvm on Wasm.
++#elif defined(__FILC__)
++// Avoid a quadratic indirect-goto instrumentation graph; use switch dispatch.
+ #else
+ #  define MOTH_COMPUTED_GOTO
+ #endif
+diff -ruN original/src/qml/jsapi/qjsvalue.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/jsapi/qjsvalue.cpp
+--- original/src/qml/jsapi/qjsvalue.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsapi/qjsvalue.cpp	2026-10-01 16:20:12.010601751 +0000
+@@ -964,7 +964,7 @@
+ QJSValue::QJSValue(QJSManagedValue &&value)
+ {
+     if (!value.d) {
+-        d = QV4::Encode::undefined();
++        d = QJSValuePrivate::encodeUndefined();
+     } else if (value.d->isManaged()) {
+         // If it's managed, we can adopt the persistent value.
+         QJSValuePrivate::adoptPersistentValue(this, value.d);
+diff -ruN original/src/qml/jsapi/qjsvalue.h qtdeclarative-everywhere-src-6.11.2/src/qml/jsapi/qjsvalue.h
+--- original/src/qml/jsapi/qjsvalue.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsapi/qjsvalue.h	2026-10-01 15:53:35.298948117 +0000
+@@ -137,7 +137,7 @@
+     // force compile error, prevent QJSValue(bool) to be called
+     QJSValue(void *) = delete;
+ 
+-    quint64 d;
++    char *d;
+ };
+ 
+ #ifndef QT_NO_DATASTREAM
+diff -ruN original/src/qml/jsapi/qjsvalue_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/jsapi/qjsvalue_p.h
+--- original/src/qml/jsapi/qjsvalue_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsapi/qjsvalue_p.h	2026-10-01 15:53:35.302948166 +0000
+@@ -54,7 +54,7 @@
+     static_assert(quint64(Kind::QV4ValuePtr) <= s_tagMask);
+     static_assert(quint64(Kind::QStringPtr)  <= s_tagMask);
+ 
+-    static Kind tag(quint64 raw) { return Kind(raw & s_tagMask); }
++    static Kind tag(char *raw) { return Kind(quintptr(raw) & s_tagMask); }
+ 
+ #if QT_POINTER_SIZE == 4
+     static void *pointer(quint64 raw)
+@@ -74,76 +74,76 @@
+     static_assert(alignof(QV4::Value) >= s_minAlignment);
+     static_assert(alignof(QString)    >= s_minAlignment);
+ 
+-    static void *pointer(quint64 raw)
++    static void *pointer(char *raw)
+     {
+         Q_ASSERT(quint64(tag(raw)) & s_pointerBit);
+-        return reinterpret_cast<void *>(raw & ~s_tagMask);
++        return raw - (quintptr(raw) & s_tagMask);
+     }
+ 
+-    static quint64 encodePointer(void *pointer, Kind tag)
++    static char *encodePointer(void *pointer, Kind tag)
+     {
+         Q_ASSERT(quint64(tag) & s_pointerBit);
+-        return quintptr(pointer) | quint64(tag);
++        return static_cast<char *>(pointer) + quint64(tag);
+     }
+ #endif
+ 
+-    static quint64 encodeUndefined()
++    static char *encodeUndefined()
+     {
+-        return quint64(Kind::Undefined);
++        return nullptr;
+     }
+ 
+-    static quint64 encodeNull()
++    static char *encodeNull()
+     {
+-        return quint64(Kind::Null);
++        return reinterpret_cast<char *>(quint64(Kind::Null));
+     }
+ 
+-    static int intValue(quint64 v)
++    static int intValue(char *v)
+     {
+         Q_ASSERT(tag(v) == Kind::IntValue);
+-        return v >> 32;
++        return quintptr(v) >> 32;
+     }
+ 
+-    static quint64 encode(int intValue)
++    static char *encode(int intValue)
+     {
+-        return (quint64(intValue) << 32) | quint64(Kind::IntValue);
++        return reinterpret_cast<char *>((quint64(intValue) << 32) | quint64(Kind::IntValue));
+     }
+ 
+-    static quint64 encode(uint uintValue)
++    static char *encode(uint uintValue)
+     {
+         return (uintValue < uint(std::numeric_limits<int>::max()))
+                 ? encode(int(uintValue))
+                 : encode(double(uintValue));
+     }
+ 
+-    static bool boolValue(quint64 v)
++    static bool boolValue(char *v)
+     {
+         Q_ASSERT(tag(v) == Kind::BoolValue);
+-        return v >> 32;
++        return quintptr(v) >> 32;
+     }
+ 
+-    static quint64 encode(bool boolValue)
++    static char *encode(bool boolValue)
+     {
+-        return (quint64(boolValue) << 32) | quint64(Kind::BoolValue);
++        return reinterpret_cast<char *>((quint64(boolValue) << 32) | quint64(Kind::BoolValue));
+     }
+ 
+-    static double *doublePtr(quint64 v)
++    static double *doublePtr(char *v)
+     {
+         Q_ASSERT(tag(v) == Kind::DoublePtr);
+         return static_cast<double *>(pointer(v));
+     }
+ 
+-    static quint64 encode(double doubleValue)
++    static char *encode(double doubleValue)
+     {
+         return encodePointer(new double(doubleValue), Kind::DoublePtr);
+     }
+ 
+-    static QV4::Value *qv4ValuePtr(quint64 v)
++    static QV4::Value *qv4ValuePtr(char *v)
+     {
+         Q_ASSERT(tag(v) == Kind::QV4ValuePtr);
+         return static_cast<QV4::Value *>(pointer(v));
+     }
+ 
+-    static quint64 encode(const QV4::Value &qv4Value)
++    static char *encode(const QV4::Value &qv4Value)
+     {
+         switch (qv4Value.type()) {
+         case QV4::StaticValue::Boolean_Type:
+@@ -179,18 +179,18 @@
+         return encodeUndefined();
+     }
+ 
+-    static QString *qStringPtr(quint64 v)
++    static QString *qStringPtr(char *v)
+     {
+         Q_ASSERT(tag(v) == Kind::QStringPtr);
+         return static_cast<QString *>(pointer(v));
+     }
+ 
+-    static quint64 encode(QString stringValue)
++    static char *encode(QString stringValue)
+     {
+         return encodePointer(new QString(std::move(stringValue)), Kind::QStringPtr);
+     }
+ 
+-    static quint64 encode(QLatin1String stringValue)
++    static char *encode(QLatin1String stringValue)
+     {
+         return encodePointer(new QString(std::move(stringValue)), Kind::QStringPtr);
+     }
+diff -ruN original/src/qml/jsruntime/qv4engine.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4engine.cpp
+--- original/src/qml/jsruntime/qv4engine.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4engine.cpp	2026-10-01 17:51:32.826063624 +0000
+@@ -334,7 +334,13 @@
+         ok = false;
+         s_maxCallDepth = qEnvironmentVariableIntValue("QV4_MAX_CALL_DEPTH", &ok);
+         if (!ok || s_maxCallDepth <= 0)
++#ifdef __FILC__
++            // Native stack-bound discovery gives the wrong range under Fil-C.
++            // Count calls with margin for the instrumented interpreter's frames.
++            s_maxCallDepth = 256;
++#else
+             s_maxCallDepth = -1;
++#endif
+     }
+ 
+     ok = false;
+diff -ruN original/src/qml/jsruntime/qv4lookup.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4lookup.cpp
+--- original/src/qml/jsruntime/qv4lookup.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4lookup.cpp	2026-10-01 16:06:42.912642683 +0000
+@@ -501,7 +501,7 @@
+ ReturnedValue Lookup::getterValueType(Lookup *lookup, ExecutionEngine *engine, const Value &object)
+ {
+     const auto revertLookup = [lookup, engine, &object]() {
+-        lookup->qgadgetLookup.metaObject = quintptr(0);
++        lookup->qgadgetLookup.metaObject = nullptr;
+         lookup->call = Call::GetterGeneric;
+         return Lookup::getterGeneric(lookup, engine, object);
+     };
+diff -ruN original/src/qml/jsruntime/qv4lookup_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4lookup_p.h
+--- original/src/qml/jsruntime/qv4lookup_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4lookup_p.h	2026-10-01 16:06:42.896642486 +0000
+@@ -163,8 +163,8 @@
+             //     We invalidate this data every time the lookup is invoked and thereby force a
+             //     re-initialization next time.
+ 
+-            quintptr metaObject; // a (const QMetaObject* | 1) or nullptr
+-            quintptr metaType;   // a (const QtPrivate::QMetaTypeInterface* | 1) or nullptr
++            const char *metaObject; // a tagged const QMetaObject* or nullptr
++            const char *metaType;   // a tagged const QtPrivate::QMetaTypeInterface* or nullptr
+ 
+             // If it was negative it would be invalid. So 31 bits are enough
+             uint coreIndex: 31;
+@@ -176,7 +176,7 @@
+         } qobjectFallbackLookup;
+         struct {
+             HeapObjectWrapper<Heap::InternalClass, 9> ic;
+-            quintptr metaObject; // a (const QMetaObject* & 1) or nullptr
++            const char *metaObject; // a tagged const QMetaObject* or nullptr
+             const QtPrivate::QMetaTypeInterface *metaType; // cannot use QMetaType; class must be trivial
+             quint16 coreIndex;
+             bool isFunction;
+diff -ruN original/src/qml/jsruntime/qv4persistent.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4persistent.cpp
+--- original/src/qml/jsruntime/qv4persistent.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4persistent.cpp	2026-10-01 16:20:46.619027737 +0000
+@@ -30,7 +30,8 @@
+ };
+ 
+ Page *getPage(const Value *val) {
+-   return reinterpret_cast<Page *>(reinterpret_cast<quintptr>(val) & ~((quintptr)(WTF::pageSize() - 1)));
++   return reinterpret_cast<Page *>(reinterpret_cast<char *>(const_cast<Value *>(val))
++           - (quintptr(val) & (WTF::pageSize() - 1)));
+ }
+ 
+ QML_NEARLY_ALWAYS_INLINE void insertInFront(PersistentValueStorage *storage, Page *p)
+diff -ruN original/src/qml/jsruntime/qv4propertykey_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4propertykey_p.h
+--- original/src/qml/jsruntime/qv4propertykey_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4propertykey_p.h	2026-10-01 15:53:35.302948166 +0000
+@@ -104,8 +104,8 @@
+ 
+     Q_QML_EXPORT QString toQString() const;
+     Heap::StringOrSymbol *toStringOrSymbol(ExecutionEngine *e);
+-    quint64 id() const { return val._val; }
+-    static PropertyKey fromId(quint64 id) {
++    ReturnedValue id() const { return val._val; }
++    static PropertyKey fromId(ReturnedValue id) {
+         PropertyKey key; key.val._val = id; return key;
+     }
+ 
+@@ -119,7 +119,7 @@
+     bool operator ==(const PropertyKey &other) const { return val._val == other.val._val; }
+     bool operator !=(const PropertyKey &other) const { return val._val != other.val._val; }
+     bool operator <(const PropertyKey &other) const { return val._val < other.val._val; }
+-    friend size_t qHash(const PropertyKey &key, size_t seed = 0) { return qHash(key.val._val, seed); }
++    friend size_t qHash(const PropertyKey &key, size_t seed = 0) { return qHash(quint64(key.val._val), seed); }
+ };
+ 
+ }
+diff -ruN original/src/qml/jsruntime/qv4qobjectwrapper.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4qobjectwrapper.cpp
+--- original/src/qml/jsruntime/qv4qobjectwrapper.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4qobjectwrapper.cpp	2026-10-01 16:06:42.904642585 +0000
+@@ -1132,8 +1132,8 @@
+             lookup->qobjectMethodLookup.method.set(engine, method->d());
+             lookup->call = Lookup::Call::GetterQObjectMethodFallback;
+         } else {
+-            lookup->qobjectFallbackLookup.metaObject = quintptr(qobj->metaObject()) + 1;
+-            lookup->qobjectFallbackLookup.metaType = quintptr(property->propType().iface()) + 1;
++            lookup->qobjectFallbackLookup.metaObject = reinterpret_cast<const char *>(qobj->metaObject()) + 1;
++            lookup->qobjectFallbackLookup.metaType = reinterpret_cast<const char *>(property->propType().iface()) + 1;
+             lookup->qobjectFallbackLookup.coreIndex = property->coreIndex();
+             lookup->qobjectFallbackLookup.notifyIndex = property->notifyIndex();
+             lookup->qobjectFallbackLookup.isConstantOrResettable = property->isConstant() ? 1 : 0;
+diff -ruN original/src/qml/jsruntime/qv4sparsearray.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4sparsearray.cpp
+--- original/src/qml/jsruntime/qv4sparsearray.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4sparsearray.cpp	2026-10-01 15:56:41.497239983 +0000
+@@ -323,7 +323,7 @@
+     SparseArrayNode *node = static_cast<SparseArrayNode *>(qMapAllocate(sizeof(SparseArrayNode), alignof(SparseArrayNode)));
+     Q_CHECK_PTR(node);
+ 
+-    node->p = (quintptr)parent;
++    node->p = reinterpret_cast<char *>(parent);
+     node->left = nullptr;
+     node->right = nullptr;
+     node->size_left = sl;
+diff -ruN original/src/qml/jsruntime/qv4sparsearray_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4sparsearray_p.h
+--- original/src/qml/jsruntime/qv4sparsearray_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/jsruntime/qv4sparsearray_p.h	2026-10-01 15:53:35.314948314 +0000
+@@ -35,7 +35,7 @@
+ 
+ struct SparseArrayNode
+ {
+-    quintptr p;
++    char *p;
+     SparseArrayNode *left;
+     SparseArrayNode *right;
+     uint size_left;
+@@ -49,10 +49,10 @@
+     const SparseArrayNode *previousNode() const;
+     SparseArrayNode *previousNode() { return const_cast<SparseArrayNode *>(const_cast<const SparseArrayNode *>(this)->previousNode()); }
+ 
+-    Color color() const { return Color(p & 1); }
+-    void setColor(Color c) { if (c == Black) p |= Black; else p &= ~Black; }
+-    SparseArrayNode *parent() const { return reinterpret_cast<SparseArrayNode *>(p & ~Mask); }
+-    void setParent(SparseArrayNode *pp) { p = (p & Mask) | quintptr(pp); }
++    Color color() const { return Color(quintptr(p) & 1); }
++    void setColor(Color c) { p += quintptr(c == Black) - (quintptr(p) & 1); }
++    SparseArrayNode *parent() const { return reinterpret_cast<SparseArrayNode *>(p - (quintptr(p) & Mask)); }
++    void setParent(SparseArrayNode *pp) { p = reinterpret_cast<char *>(pp) + (quintptr(p) & Mask); }
+ 
+     uint key() const {
+         uint k = size_left;
+diff -ruN original/src/qml/memory/qv4mm.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/memory/qv4mm.cpp
+--- original/src/qml/memory/qv4mm.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/memory/qv4mm.cpp	2026-10-01 15:53:35.306948216 +0000
+@@ -92,7 +92,8 @@
+             size = SegmentSize;
+ 
+         pageReservation = PageReservation::reserve(size, OSAllocator::JSGCHeapPages);
+-        base = reinterpret_cast<Chunk *>((reinterpret_cast<quintptr>(pageReservation.base()) + Chunk::ChunkSize - 1) & ~(Chunk::ChunkSize - 1));
++        base = reinterpret_cast<Chunk *>(static_cast<char *>(pageReservation.base())
++                + ((Chunk::ChunkSize - quintptr(pageReservation.base())) & (Chunk::ChunkSize - 1)));
+         nChunks = NumChunks;
+         availableBytes = size - (reinterpret_cast<quintptr>(base) - reinterpret_cast<quintptr>(pageReservation.base()));
+         if (availableBytes < SegmentSize)
+diff -ruN original/src/qml/memory/qv4mmdefs_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/memory/qv4mmdefs_p.h
+--- original/src/qml/memory/qv4mmdefs_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/memory/qv4mmdefs_p.h	2026-10-01 15:53:35.310948265 +0000
+@@ -174,7 +174,8 @@
+     T *as() { return static_cast<T *>(reinterpret_cast<Heap::Base *>(this)); }
+ 
+     Chunk *chunk() const {
+-        return reinterpret_cast<Chunk *>(reinterpret_cast<quintptr>(this) >> Chunk::ChunkShift << Chunk::ChunkShift);
++        return reinterpret_cast<Chunk *>(reinterpret_cast<char *>(const_cast<HeapItem *>(this))
++                - (quintptr(this) & (Chunk::ChunkSize - 1)));
+     }
+ 
+     bool isBlack() const {
+diff -ruN original/src/qml/memory/qv4writebarrier_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/memory/qv4writebarrier_p.h
+--- original/src/qml/memory/qv4writebarrier_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/memory/qv4writebarrier_p.h	2026-10-01 16:04:03.074675263 +0000
+@@ -17,12 +17,12 @@
+ 
+ #include <private/qv4global_p.h>
+ #include <private/qv4enginebase_p.h>
++#include <private/qv4staticvalue_p.h>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+ namespace QV4 {
+ struct EngineBase;
+-typedef quint64 ReturnedValue;
+ 
+ struct WriteBarrier {
+ 
+@@ -61,11 +61,9 @@
+     // they are also trivial; if triviality is not required, use Pointer instead
+     struct HeapObjectWrapperBase
+     {
+-        // enum class avoids accidental construction via brace-init
+-        enum class PointerWrapper : quintptr {};
+-        PointerWrapper wrapped;
++        void *wrapped;
+ 
+-        void clear() { wrapped = PointerWrapper(quintptr(0)); }
++        void clear() { wrapped = nullptr; }
+     };
+ 
+     template<typename HeapType>
+@@ -82,7 +80,7 @@
+                 if (heapObject)
+                     heapObject->mark(ms);
+             });
+-            wrapped = static_cast<HeapObjectWrapperBase::PointerWrapper>(quintptr(heapObject));
++            wrapped = heapObject;
+         }
+     };
+ 
+diff -ruN original/src/qml/qml/ftw/qbipointer_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/qml/ftw/qbipointer_p.h
+--- original/src/qml/qml/ftw/qbipointer_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/ftw/qbipointer_p.h	2026-10-01 16:06:42.888642388 +0000
+@@ -92,11 +92,11 @@
+ 
+     friend size_t qHash(const QBiPointer<T, T2> &ptr, size_t seed = 0)
+     {
+-        return qHash(ptr.isNull() ? quintptr(0) : ptr.ptr_value, seed);
++        return qHash(ptr.isNull() ? quintptr(0) : quintptr(ptr.ptr_value), seed);
+     }
+ 
+ private:
+-    quintptr ptr_value = 0;
++    char *ptr_value = nullptr;
+ 
+     static const quintptr FlagBit = 0x1;
+     static const quintptr Flag2Bit = 0x2;
+@@ -108,7 +108,7 @@
+ 
+ template<typename T, typename T2>
+ QBiPointer<T, T2>::QBiPointer(T *v)
+-: ptr_value(quintptr(v))
++: ptr_value(const_cast<char *>(reinterpret_cast<const char *>(v)))
+ {
+     Q_STATIC_ASSERT_X(QtPrivate::QFlagPointerAlignment<T>::Value >= 4,
+                       "Type T does not have sufficient alignment");
+@@ -117,7 +117,7 @@
+ 
+ template<typename T, typename T2>
+ QBiPointer<T, T2>::QBiPointer(T2 *v)
+-: ptr_value(quintptr(v) | Flag2Bit)
++: ptr_value(const_cast<char *>(reinterpret_cast<const char *>(v)) + Flag2Bit)
+ {
+     Q_STATIC_ASSERT_X(QtPrivate::QFlagPointerAlignment<T2>::Value >= 4,
+                       "Type T2 does not have sufficient alignment");
+@@ -127,37 +127,37 @@
+ template<typename T, typename T2>
+ bool QBiPointer<T, T2>::isNull() const
+ {
+-    return 0 == (ptr_value & (~FlagsMask));
++    return 0 == (quintptr(ptr_value) & (~FlagsMask));
+ }
+ 
+ template<typename T, typename T2>
+ bool QBiPointer<T, T2>::isT1() const
+ {
+-    return !(ptr_value & Flag2Bit);
++    return !(quintptr(ptr_value) & Flag2Bit);
+ }
+ 
+ template<typename T, typename T2>
+ bool QBiPointer<T, T2>::isT2() const
+ {
+-    return ptr_value & Flag2Bit;
++    return quintptr(ptr_value) & Flag2Bit;
+ }
+ 
+ template<typename T, typename T2>
+ bool QBiPointer<T, T2>::flag() const
+ {
+-    return ptr_value & FlagBit;
++    return quintptr(ptr_value) & FlagBit;
+ }
+ 
+ template<typename T, typename T2>
+ void QBiPointer<T, T2>::setFlag()
+ {
+-    ptr_value |= FlagBit;
++    ptr_value += FlagBit - (quintptr(ptr_value) & FlagBit);
+ }
+ 
+ template<typename T, typename T2>
+ void QBiPointer<T, T2>::clearFlag()
+ {
+-    ptr_value &= ~FlagBit;
++    ptr_value -= quintptr(ptr_value) & FlagBit;
+ }
+ 
+ template<typename T, typename T2>
+@@ -172,7 +172,7 @@
+ {
+     Q_ASSERT((quintptr(o) & FlagsMask) == 0);
+ 
+-    ptr_value = quintptr(o) | (ptr_value & FlagBit);
++    ptr_value = const_cast<char *>(reinterpret_cast<const char *>(o)) + (quintptr(ptr_value) & FlagBit);
+     return *this;
+ }
+ 
+@@ -181,7 +181,7 @@
+ {
+     Q_ASSERT((quintptr(o) & FlagsMask) == 0);
+ 
+-    ptr_value = quintptr(o) | (ptr_value & FlagBit) | Flag2Bit;
++    ptr_value = const_cast<char *>(reinterpret_cast<const char *>(o)) + (quintptr(ptr_value) & FlagBit) + Flag2Bit;
+     return *this;
+ }
+ 
+@@ -189,14 +189,14 @@
+ T *QBiPointer<T, T2>::asT1() const
+ {
+     Q_ASSERT(isT1());
+-    return (T *)(ptr_value & ~FlagsMask);
++    return reinterpret_cast<T *>(ptr_value - (quintptr(ptr_value) & FlagsMask));
+ }
+ 
+ template<typename T, typename T2>
+ T2 *QBiPointer<T, T2>::asT2() const
+ {
+     Q_ASSERT(isT2());
+-    return (T2 *)(ptr_value & ~FlagsMask);
++    return reinterpret_cast<T2 *>(ptr_value - (quintptr(ptr_value) & FlagsMask));
+ }
+ 
+ QT_END_NAMESPACE
+diff -ruN original/src/qml/qml/qqml.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqml.cpp
+--- original/src/qml/qml/qqml.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqml.cpp	2026-10-01 16:06:42.912642683 +0000
+@@ -1752,8 +1752,8 @@
+ 
+         lookup->releasePropertyCache();
+         // & 1 to tell the gc that this is not heap allocated; see markObjects in qv4lookup_p.h
+-        lookup->qobjectFallbackLookup.metaObject = quintptr(metaObject) + 1;
+-        lookup->qobjectFallbackLookup.metaType = quintptr(property.metaType().iface()) + 1;
++        lookup->qobjectFallbackLookup.metaObject = reinterpret_cast<const char *>(metaObject) + 1;
++        lookup->qobjectFallbackLookup.metaType = reinterpret_cast<const char *>(property.metaType().iface()) + 1;
+         lookup->qobjectFallbackLookup.coreIndex = coreIndex;
+         lookup->qobjectFallbackLookup.notifyIndex =
+                 QMetaObjectPrivate::signalIndex(property.notifySignal());
+@@ -1811,7 +1811,7 @@
+     const QByteArray name = compilationUnit->runtimeStrings[lookup->nameIndex]->toQString().toUtf8();
+     const int coreIndex = metaObject->indexOfProperty(name.constData());
+     QMetaType lookupType = metaObject->property(coreIndex).metaType();
+-    lookup->qgadgetLookup.metaObject = quintptr(metaObject) + 1;
++    lookup->qgadgetLookup.metaObject = reinterpret_cast<const char *>(metaObject) + 1;
+     lookup->qgadgetLookup.coreIndex = coreIndex;
+     lookup->qgadgetLookup.metaType = lookupType.iface();
+ }
+@@ -3184,7 +3184,7 @@
+     const int absoluteMethodIndex = relativeMethodIndex + metaObject->methodOffset();
+ 
+     const QMetaMethod method = metaObject->method(absoluteMethodIndex);
+-    lookup->qgadgetLookup.metaObject = quintptr(metaObject) + 1;
++    lookup->qgadgetLookup.metaObject = reinterpret_cast<const char *>(metaObject) + 1;
+     lookup->qgadgetLookup.coreIndex = absoluteMethodIndex;
+     lookup->qgadgetLookup.metaType = method.returnMetaType().iface();
+     lookup->qgadgetLookup.isFunction = true;
+diff -ruN original/src/qml/qml/qqmlnotifier.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlnotifier.cpp
+--- original/src/qml/qml/qqmlnotifier.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlnotifier.cpp	2026-10-01 16:20:46.619027737 +0000
+@@ -36,8 +36,8 @@
+             , endpoint(ep)
+         {}
+ 
+-        qintptr originalSenderPtr;
+-        qintptr *disconnectWatch;
++        char *originalSenderPtr;
++        char **disconnectWatch;
+         QQmlNotifierEndpoint *endpoint;
+     };
+ }
+@@ -64,7 +64,7 @@
+             data.endpoint->startNotifying(&data.originalSenderPtr);
+             data.disconnectWatch = &data.originalSenderPtr;
+         } else {
+-            data.disconnectWatch = (qintptr *)(data.endpoint->senderPtr & ~0x1);
++            data.disconnectWatch = reinterpret_cast<char **>(data.endpoint->senderPtr - 1);
+         }
+     }
+ 
+@@ -104,7 +104,7 @@
+                qPrintable(engineName));
+     }
+ 
+-    setSender(qintptr(source));
++    setSender(reinterpret_cast<char *>(source));
+     this->sourceSignal = sourceSignal;
+     QQmlPropertyPrivate::flushSignal(source, sourceSignal);
+     QQmlData *ddata = QQmlData::get(source, true);
+diff -ruN original/src/qml/qml/qqmlnotifier_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlnotifier_p.h
+--- original/src/qml/qml/qqmlnotifier_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlnotifier_p.h	2026-10-01 16:20:46.623027786 +0000
+@@ -74,15 +74,15 @@
+     inline void disconnect();
+ 
+     inline bool isNotifying() const;
+-    inline void startNotifying(qintptr *originalSenderPtr);
+-    inline void stopNotifying(qintptr *originalSenderPtr);
++    inline void startNotifying(char **originalSenderPtr);
++    inline void stopNotifying(char **originalSenderPtr);
+ 
+     inline void cancelNotify();
+ 
+     inline int signalIndex() const { return sourceSignal; }
+ 
+-    inline qintptr sender() const;
+-    inline void setSender(qintptr sender);
++    inline char *sender() const;
++    inline void setSender(char *sender);
+ 
+     inline QObject *senderAsObject() const;
+     inline QQmlNotifier *senderAsNotifier() const;
+@@ -93,8 +93,8 @@
+ 
+     // Contains either the QObject*, or the QQmlNotifier* that this
+     // endpoint is connected to.  While the endpoint is notifying, the
+-    // senderPtr points to another qintptr that contains this value.
+-    qintptr senderPtr;
++    // senderPtr points to another pointer that contains this value.
++    char *senderPtr;
+ 
+     Callback callback:4;
+     int needsConnectNotify:1;
+@@ -165,7 +165,7 @@
+     if (next) { next->prev = &next; }
+     notifier->endpoints = this;
+     prev = &notifier->endpoints;
+-    setSender(qintptr(notifier));
++    setSender(reinterpret_cast<char *>(notifier));
+ }
+ 
+ void QQmlNotifierEndpoint::disconnect()
+@@ -201,10 +201,10 @@
+ */
+ bool QQmlNotifierEndpoint::isNotifying() const
+ {
+-    return senderPtr & 0x1;
++    return quintptr(senderPtr) & 0x1;
+ }
+ 
+-void QQmlNotifierEndpoint::startNotifying(qintptr *originalSenderPtr)
++void QQmlNotifierEndpoint::startNotifying(char **originalSenderPtr)
+ {
+     Q_ASSERT(*originalSenderPtr == 0);
+     // Set the endpoint to notifying:
+@@ -212,13 +212,13 @@
+     *originalSenderPtr = senderPtr;
+     // - Take a pointer of it,
+     // - And assign that to the senderPtr, including a flag to signify "notifying".
+-    senderPtr = qintptr(originalSenderPtr) | 0x1;
++    senderPtr = reinterpret_cast<char *>(originalSenderPtr) + 1;
+ }
+ 
+-void QQmlNotifierEndpoint::stopNotifying(qintptr *originalSenderPtr)
++void QQmlNotifierEndpoint::stopNotifying(char **originalSenderPtr)
+ {
+     // End of notifying, restore values
+-    Q_ASSERT((senderPtr & ~0x1) == qintptr(originalSenderPtr));
++    Q_ASSERT(senderPtr - 1 == reinterpret_cast<char *>(originalSenderPtr));
+     senderPtr = *originalSenderPtr;
+     *originalSenderPtr = 0;
+ }
+@@ -229,23 +229,23 @@
+ void QQmlNotifierEndpoint::cancelNotify()
+ {
+     if (isNotifying()) {
+-        auto *ptr = (qintptr *)(senderPtr & ~0x1);
++        auto *ptr = reinterpret_cast<char **>(senderPtr - 1);
+         Q_ASSERT(ptr);
+         senderPtr = *ptr;
+         *ptr = 0;
+     }
+ }
+ 
+-qintptr QQmlNotifierEndpoint::sender() const
++char *QQmlNotifierEndpoint::sender() const
+ {
+-    return isNotifying() ? *(qintptr *)(senderPtr & ~0x1) : senderPtr;
++    return isNotifying() ? *reinterpret_cast<char **>(senderPtr - 1) : senderPtr;
+ }
+ 
+-void QQmlNotifierEndpoint::setSender(qintptr sender)
++void QQmlNotifierEndpoint::setSender(char *sender)
+ {
+     // If we're just notifying, we write through to the originalSenderPtr
+     if (isNotifying())
+-        *(qintptr *)(senderPtr & ~0x1) = sender;
++        *reinterpret_cast<char **>(senderPtr - 1) = sender;
+     else
+         senderPtr = sender;
+ }
+diff -ruN original/src/qml/qml/qqmlpropertybinding.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlpropertybinding.cpp
+--- original/src/qml/qml/qqmlpropertybinding.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlpropertybinding.cpp	2026-10-01 16:24:41.713921506 +0000
+@@ -248,7 +248,7 @@
+         bindingDataPointer = QPropertyBindingDataPointer {bindingData};
+ 
+         // reattach the binding (without causing a new notification)
+-        if (Q_UNLIKELY(bindingData->d() & QtPrivate::QPropertyBindingData::BindingBit)) {
++        if (Q_UNLIKELY(bindingData->hasBinding())) {
+             qCWarning(lcQQPropertyBinding) << "Resetting " << prop.name() << "due to the binding becoming undefined  caused a new binding to be installed\n"
+                        << "The old binding binding will be abandoned";
+             deref();
+@@ -256,7 +256,7 @@
+         }
+         // reset might have changed observers (?), so refresh firstObserver
+         firstObserver = bindingDataPointer.firstObserver();
+-        bindingData->d_ref() = reinterpret_cast<quintptr>(this) | QtPrivate::QPropertyBindingData::BindingBit;
++        bindingData->d_ref() = reinterpret_cast<char *>(this) + QtPrivate::QPropertyBindingData::BindingBit;
+         if (firstObserver)
+             prependObserver(firstObserver);
+     } else {
+diff -ruN original/src/qml/qml/qqmlpropertycache_p.h qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlpropertycache_p.h
+--- original/src/qml/qml/qqmlpropertycache_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlpropertycache_p.h	2026-10-01 16:06:42.892642437 +0000
+@@ -49,16 +49,16 @@
+     Q_NODISCARD_CTOR QQmlMetaObjectPointer() = default;
+ 
+     Q_NODISCARD_CTOR QQmlMetaObjectPointer(const QMetaObject *staticMetaObject)
+-        : d(quintptr(staticMetaObject))
++        : d(const_cast<char *>(reinterpret_cast<const char *>(staticMetaObject)))
+     {
+-        Q_ASSERT((d.loadRelaxed() & Shared) == 0);
++        Q_ASSERT((quintptr(d.loadRelaxed()) & Shared) == 0);
+     }
+ 
+     ~QQmlMetaObjectPointer()
+     {
+         const auto dd = d.loadAcquire();
+-        if (dd & Shared)
+-            reinterpret_cast<SharedHolder *>(dd ^ Shared)->release();
++        if (quintptr(dd) & Shared)
++            reinterpret_cast<SharedHolder *>(dd - Shared)->release();
+     }
+ 
+ private:
+@@ -68,8 +68,8 @@
+     {
+         // other has to survive until this ctor is done. So d cannot disappear before.
+         const auto od = other.d.loadRelaxed();
+-        if (od & Shared)
+-            reinterpret_cast<SharedHolder *>(od ^ Shared)->addref();
++        if (quintptr(od) & Shared)
++            reinterpret_cast<SharedHolder *>(od - Shared)->addref();
+     }
+ 
+     QQmlMetaObjectPointer(QQmlMetaObjectPointer &&other) = delete;
+@@ -80,15 +80,15 @@
+     void setSharedOnce(QMetaObject *shared) const
+     {
+         SharedHolder *holder = new SharedHolder(shared);
+-        if (!d.testAndSetRelease(0, quintptr(holder) | Shared))
++        if (!d.testAndSetRelease(nullptr, reinterpret_cast<char *>(holder) + Shared))
+             holder->release();
+     }
+ 
+     const QMetaObject *metaObject() const
+     {
+         const auto dd = d.loadAcquire();
+-        if (dd & Shared)
+-            return reinterpret_cast<SharedHolder *>(dd ^ Shared)->metaObject;
++        if (quintptr(dd) & Shared)
++            return reinterpret_cast<SharedHolder *>(dd - Shared)->metaObject;
+         return reinterpret_cast<const QMetaObject *>(dd);
+     }
+ 
+@@ -97,7 +97,7 @@
+         // This works because static metaobjects need to be set in the ctor and once a shared
+         // metaobject has been set, it cannot be removed anymore.
+         const auto dd = d.loadRelaxed();
+-        return !dd || (dd & Shared);
++        return !dd || (quintptr(dd) & Shared);
+     }
+ 
+     bool isNull() const
+@@ -119,7 +119,7 @@
+         QMetaObject *metaObject;
+     };
+ 
+-    mutable QBasicAtomicInteger<quintptr> d = 0;
++    mutable QBasicAtomicPointer<char> d = nullptr;
+ };
+ 
+ // TODO should be moved somewhere else?
+diff -ruN original/src/qml/qml/qqmlvaluetypewrapper.cpp qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlvaluetypewrapper.cpp
+--- original/src/qml/qml/qqmlvaluetypewrapper.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qml/qml/qqmlvaluetypewrapper.cpp	2026-10-01 16:30:24.734143714 +0000
+@@ -646,7 +646,7 @@
+ 
+     lookup->qgadgetLookup.ic.set(engine, r->internalClass());
+     // & 1 to tell the gc that this is not heap allocated; see markObjects in qv4lookup_p.h
+-    lookup->qgadgetLookup.metaObject = quintptr(r->d()->metaObject()) + 1;
++    lookup->qgadgetLookup.metaObject = reinterpret_cast<const char *>(r->d()->metaObject()) + 1;
+     lookup->qgadgetLookup.metaType = result.propType().iface();
+     lookup->qgadgetLookup.coreIndex = result.coreIndex();
+     lookup->qgadgetLookup.isFunction = result.isFunction();
+diff -ruN original/src/qmlmodels/qqmlobjectmodel.cpp qtdeclarative-everywhere-src-6.11.2/src/qmlmodels/qqmlobjectmodel.cpp
+--- original/src/qmlmodels/qqmlobjectmodel.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qmlmodels/qqmlobjectmodel.cpp	2026-10-01 16:38:44.328293082 +0000
+@@ -166,7 +166,7 @@
+             QV4::QObjectWrapper::markWrapper(child.item(), markStack);
+     }
+ 
+-    quint64 _q_createJSWrapper(QQmlV4ExecutionEnginePtr engine);
++    void *_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine);
+ 
+ private:
+     void setIndex(int child, int index)
+@@ -212,10 +212,9 @@
+ 
+ DEFINE_OBJECT_VTABLE(QV4::QQmlObjectModelWrapper);
+ 
+-quint64 QQmlObjectModelPrivate::_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine)
++void *QQmlObjectModelPrivate::_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine)
+ {
+-    return (engine->memoryManager->allocate<QV4::QQmlObjectModelWrapper>(
+-                    q_func()))->asReturnedValue();
++    return engine->memoryManager->allocate<QV4::QQmlObjectModelWrapper>(q_func());
+ }
+ 
+ 
+diff -ruN original/src/qmlmodels/qqmlobjectmodel_p.h qtdeclarative-everywhere-src-6.11.2/src/qmlmodels/qqmlobjectmodel_p.h
+--- original/src/qmlmodels/qqmlobjectmodel_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/qmlmodels/qqmlobjectmodel_p.h	2026-10-01 15:56:41.517240229 +0000
+@@ -127,7 +127,7 @@
+     void childrenChanged();
+ 
+ private:
+-    Q_PRIVATE_SLOT(d_func(), quint64 _q_createJSWrapper(QQmlV4ExecutionEnginePtr))
++    Q_PRIVATE_SLOT(d_func(), void * _q_createJSWrapper(QQmlV4ExecutionEnginePtr))
+     Q_DISABLE_COPY(QQmlObjectModel)
+ };
+ 
+diff -ruN original/src/quick/items/qquickitem.cpp qtdeclarative-everywhere-src-6.11.2/src/quick/items/qquickitem.cpp
+--- original/src/quick/items/qquickitem.cpp	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/quick/items/qquickitem.cpp	2026-10-01 16:38:44.344293279 +0000
+@@ -10367,9 +10367,9 @@
+     QObjectWrapper::markObjects(that, markStack);
+ }
+ 
+-quint64 QQuickItemPrivate::_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine)
++void *QQuickItemPrivate::_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine)
+ {
+-    return (engine->memoryManager->allocate<QQuickItemWrapper>(q_func()))->asReturnedValue();
++    return engine->memoryManager->allocate<QQuickItemWrapper>(q_func());
+ }
+ 
+ QDebug operator<<(QDebug debug, const QQuickItemPrivate::ChangeListener &listener)
+diff -ruN original/src/quick/items/qquickitem.h qtdeclarative-everywhere-src-6.11.2/src/quick/items/qquickitem.h
+--- original/src/quick/items/qquickitem.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/quick/items/qquickitem.h	2026-10-01 15:56:41.501240032 +0000
+@@ -476,7 +476,7 @@
+ 
+ private:
+     Q_PRIVATE_SLOT(d_func(), void _q_resourceObjectDeleted(QObject *))
+-    Q_PRIVATE_SLOT(d_func(), quint64 _q_createJSWrapper(QQmlV4ExecutionEnginePtr))
++    Q_PRIVATE_SLOT(d_func(), void * _q_createJSWrapper(QQmlV4ExecutionEnginePtr))
+ 
+     friend class QQuickWindowPrivate;
+     friend class QQuickDeliveryAgentPrivate;
+diff -ruN original/src/quick/items/qquickitem_p.h qtdeclarative-everywhere-src-6.11.2/src/quick/items/qquickitem_p.h
+--- original/src/quick/items/qquickitem_p.h	2026-08-11 19:34:46.000000000 +0000
++++ qtdeclarative-everywhere-src-6.11.2/src/quick/items/qquickitem_p.h	2026-10-01 15:56:41.501240032 +0000
+@@ -308,7 +308,7 @@
+     static void transform_clear(QQmlListProperty<QQuickTransform> *list);
+ 
+     void _q_resourceObjectDeleted(QObject *);
+-    quint64 _q_createJSWrapper(QQmlV4ExecutionEnginePtr engine);
++    void *_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine);
+ 
+     enum ChangeType {
+         Geometry = 0x01,

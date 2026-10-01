@@ -1,0 +1,19 @@
+--- a/src/corelib/tools/qcontainertools_impl.h
++++ b/src/corelib/tools/qcontainertools_impl.h
+@@ -107,10 +107,15 @@
+ template <typename T>
+ void q_rotate(T *first, T *mid, T *last)
+ {
++#ifndef __FILC__
+     if constexpr (QTypeInfo<T>::isRelocatable) {
+         const auto cast = [](T *p) { return reinterpret_cast<uchar*>(p); };
+         std::rotate(cast(first), cast(mid), cast(last));
+-    } else {
++    } else
++#endif
++    {
++        // Byte-wise swaps do not move aligned capabilities with their payload.
++        // Rotate objects, preserving each pointer's value and metadata together.
+         std::rotate(first, mid, last);
+     }
+ }

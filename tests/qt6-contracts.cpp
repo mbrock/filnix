@@ -15,6 +15,7 @@
 
 struct alignas(16) Item { int value; };
 struct Large { std::array<int, 16> values; };
+struct Entry { Item *key; Item *value; int tag; };
 Q_DECLARE_METATYPE(Large)
 
 int main(int argc, char **argv) {
@@ -35,6 +36,25 @@ int main(int argc, char **argv) {
   CHECK(tagged->value == 17 && tagged.tag() == 7);
   QTaggedPointer<const Item> constant(&b, 5);
   CHECK(constant->value == 93 && constant.tag() == 5);
+
+  // Relocatable objects must be rotated as objects, not individual bytes.
+  // Sorted QML internal-class transitions exercise this same insertion path.
+  Item c{41}, d{-29};
+  QVarLengthArray<Entry, 1> entries;
+  entries.append(Entry{&a, &b, 1});
+  entries.append(Entry{&b, &c, 2});
+  entries.append(Entry{&c, &a, 3});
+  entries.insert(entries.cbegin() + 1, Entry{&c, &d, 4});
+  CHECK(entries[0].tag == 1 && entries[0].value->value == 93);
+  CHECK(entries[1].tag == 4 && entries[1].key->value == 41 && entries[1].value->value == -29);
+  CHECK(entries[2].tag == 2 && entries[2].value->value == 41);
+  CHECK(entries[3].tag == 3 && entries[3].value->value == 17);
+  entries.insert(entries.cbegin(), Entry{&d, &c, 5});
+  entries.remove(2, 1);
+  CHECK(entries.size() == 4 && entries[0].key->value == -29 && entries[0].value->value == 41);
+  CHECK(entries[1].tag == 1 && entries[1].value->value == 93);
+  CHECK(entries[2].tag == 2 && entries[2].value->value == 41);
+  CHECK(entries[3].tag == 3 && entries[3].value->value == 17);
 
   QVariant small = QVariant::fromValue(&a);
   CHECK(small.value<Item *>()->value == 17);
@@ -175,5 +195,5 @@ int main(int argc, char **argv) {
     QPluginLoader rejected(file.fileName());
     CHECK(rejected.metaData().isEmpty() && !rejected.errorString().isEmpty());
   }
-  fprintf(stderr, "ok Qt6 pointer, variant, lock, semaphore, property, string, raw-data, SVG and plugin contracts\n");
+  fprintf(stderr, "ok Qt6 pointer, container rotation, variant, lock, semaphore, property, string, raw-data, SVG and plugin contracts\n");
 }

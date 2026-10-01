@@ -19,6 +19,23 @@ qfinal: qprev: {
   # an unrelated libheif/Rust/cross-GCC toolchain.
   qtsvg = qprev.qtsvg.overrideAttrs { buildInputs = [ ]; };
 
+  qtshadertools = qprev.qtshadertools.overrideAttrs (old: {
+    cmakeFlags = old.cmakeFlags ++ [
+      "-DQt6ShaderToolsTools_DIR=${pkgs.qt6.qtshadertools}/lib/cmake/Qt6ShaderToolsTools"
+    ];
+  });
+
+  qtdeclarative = qprev.qtdeclarative.overrideAttrs (old: {
+    patches = old.patches ++ [ ../patches/qt6-declarative-filc.patch ];
+    cmakeFlags = old.cmakeFlags ++ [
+      "-DQT_FEATURE_qml_jit=OFF"
+      "-DQt6QmlTools_DIR=${pkgs.qt6.qtdeclarative}/lib/cmake/Qt6QmlTools"
+      "-DQt6QuickTools_DIR=${pkgs.qt6.qtdeclarative}/lib/cmake/Qt6QuickTools"
+      "-DQt6ShaderToolsTools_DIR=${pkgs.qt6.qtshadertools}/lib/cmake/Qt6ShaderToolsTools"
+      "-DQT_FEATURE_quick=ON"
+    ];
+  });
+
   qtbase =
     (qprev.qtbase.override {
       # The Fil-C GTK 3 port has no X11 backend (gdk/gdkx.h).
@@ -45,6 +62,7 @@ qfinal: qprev: {
       (old: {
         patches = old.patches ++ [
           ../patches/qt6-base-filc.patch
+          ../patches/qt6-container-rotate-filc.patch
           # forkfd_wait() probes raw waitid even with FFD_USE_FORK.
           ../patches/qt5-forkfd-fork.patch
         ];

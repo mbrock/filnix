@@ -1475,3 +1475,61 @@ real plugin load/unload, and truncated metadata at page-aligned EOF. It also
 reuses the Qt 5 core/network/SQL/XML/widgets fixture on both offscreen and
 XCB platforms, retaining an X11 screenshot under the check output's
 `share/qt6-smoke/` directory.
+
+### QtDeclarative, QML, Quick and Quick Controls 2
+
+QtDeclarative uses the interpreter with `QT_FEATURE_qml_jit=OFF`. Its native
+QmlTools and QuickTools packages are supplied separately from the target
+libraries. ShaderTools likewise needs the native `Qt6ShaderToolsTools`
+package: `QT_HOST_PATH` pointing only to native QtBase cannot find `qsb`.
+The package directory ends in `Qt6ShaderToolsTools`, not `Qt6ShaderTools`.
+Quick is explicitly required, preventing an apparently successful build
+that silently omits it when its tool dependency is unavailable.
+
+The Qt 5 contract methodology applies, but the Qt 6 layouts differ. QV4's
+eight-byte values and returned values use a trivial pointer-first union,
+with the existing numeric/tag encoding retained for immediate values.
+Managed values and property-key IDs preserve capabilities through copies
+and function returns. Qt 6 QJSValue stores tagged pointers to doubles,
+QString objects or persistent QV4 values, rather than Qt 5's representation;
+these pointers are tagged and decoded with pointer arithmetic. The new
+write-barrier heap wrappers also require pointer storage.
+
+GC chunk alignment, persistent-page recovery, sparse-array parent/color
+links, QBiPointer, notifier sender/back-links, atomic shared metaobjects,
+and QObject/gadget lookup metadata use capability-preserving pointer
+arithmetic. QuickItem and ObjectModel's meta-call wrapper factories return
+a heap pointer instead of an integer. Qt 6's EngineBase is already
+pointer-aligned and needs no Qt 5-style packing change. Moth uses switch
+dispatch instead of computed goto. No compiler or runtime semantic change
+is required by these adaptations.
+
+Engine initialization exposed a QtBase container problem: `q_rotate()`
+casts relocatable objects to bytes before rotating them. The resulting
+byte swaps separate pointer payloads from aligned capabilities, corrupting
+QML's sorted internal-class transitions. A 24-byte pointer-containing entry
+reproduces the trap independently of QML; typed `std::rotate()` preserves
+both payload and capability. The Fil-C branch uses typed rotation at the
+shared helper, not a special-case transition container. QtBase and its
+Qt6 consumers must therefore be rebuilt, although this fix changes no ABI.
+
+Qt 6's native stack-bound discovery also returns an address range that
+does not contain the actual native frame. Even evaluating a flat script
+then reports stack overflow. Fil-C uses Qt's existing counted-call guard
+with a conservative default of 256; `QV4_MAX_CALL_DEPTH` remains available.
+The documented native default of 1234 can overflow Fil-C's larger
+instrumented interpreter frames; 512 passed the deep-recursion probe, and
+256 leaves additional margin. The regression requires a JavaScript
+RangeError and successful evaluation after unwinding, and also checks an
+explicit smaller limit. This is not a removal of recursion protection.
+
+The extended `tests/qt6.nix` checks JS numeric boundaries, NaN and signed
+zero, immediate/managed transitions, persistent handles across pages,
+copy/move semantics, identity, Symbol/string/sparse keys, and repeated GC.
+Its Quick fixture exercises QObject notifications, bindings, gadget
+properties, ObjectModel, Repeater and timers. Controls 2 receives real
+mouse/key events for a button, slider, text field and ComboBox, including
+interaction after GC. Both fixtures run offscreen and under Xvfb/XCB;
+asymmetric software-rendered pixels are checked and normal/popup Controls
+screenshots are retained. This coverage is for the software backend, not
+GPU rendering or every QtDeclarative module.
