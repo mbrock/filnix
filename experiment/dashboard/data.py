@@ -269,7 +269,7 @@ def build_forest(db, active, scope, now):
 def selected(row, state):
     return {
         "all": True,
-        "available": row["state"] == "available",
+        "built": row["state"] == "available",
         "tested": row["state"] == "available" and bool(row["checks"]),
         "failed": row["state"] == "failed",
         "failures": row["state"] in ("failed", "evaluation-error", "inconclusive"),
@@ -279,7 +279,18 @@ def selected(row, state):
     }[state]
 
 
-def packages(db, cid, view):
+def paginate(result, page, size):
+    rows = result["rows"]
+    page = min(page, max(0, (len(rows) - 1) // size))
+    result.update(
+        total=len(rows),
+        page=page,
+        size=size,
+        rows=rows[page * size : (page + 1) * size],
+    )
+
+
+def packages(db, cid, view, *, paged=True):
     result = catalog(db, cid)
     result["rows"] = [r for r in result["rows"] if selected(r, view.state)]
     facets, rows = {}, []
@@ -299,6 +310,8 @@ def packages(db, cid, view):
     result["revision"] = revision(db, cid)
     result["sampled"] = int(stamp())
     result["done"] = finished(db, cid)
+    if paged:
+        paginate(result, view.page, 100)
     return result
 
 
@@ -321,6 +334,7 @@ def ledger(db, cid, view, *, recent=False):
             key=lambda r: (
                 r["duration"] if r["duration"] is not None else -1,
                 r["created"],
+                r["id"],
             ),
             reverse=True,
         )
@@ -328,6 +342,8 @@ def ledger(db, cid, view, *, recent=False):
         rows.sort(key=lambda r: (r["created"], r["id"]), reverse=view.sort != "oldest")
     result["rows"] = rows
     result["done"] = finished(db, cid)
+    if not recent:
+        paginate(result, view.page, 50)
     return result
 
 
@@ -336,7 +352,27 @@ def batch(db, cid, aid):
         "SELECT 1 FROM attempts WHERE campaign=? AND id=?", (cid, aid)
     ).fetchone():
         raise HTTPException(404, "Batch not found in this campaign")
-    return attempt_detail(db, cid, aid)
+    result = attempt_detail(db, cid, aid)
+    # Match attempt_detail's chosen activity when a drv occurs more than once.
+    times = {
+        r["drv"]: dict(r)
+        for r in db.execute(
+            """SELECT a.drv,b.started,b.finished FROM activities a
+            LEFT JOIN build_times b ON b.attempt=a.attempt AND b.activity=a.activity
+            WHERE a.attempt=? AND a.kind='build' ORDER BY a.stopped DESC,a.rowid DESC""",
+            (aid,),
+        )
+    }
+    for activity in result["activities"]:
+        activity.update(times[activity["drv"]])
+    for target in result["targets"]:
+        if "id" in target:
+            row = db.execute(
+                "SELECT drv FROM candidates WHERE campaign=? AND id=?",
+                (cid, target["id"]),
+            ).fetchone()
+            target["drv"] = row[0] if row else None
+    return result
 
 
 def package(db, cid, pid):
@@ -396,7 +432,7 @@ def log(db, state, cid, aid, view, direction="tail", cursor=0):
 def latest_build(db, cid):
     return db.execute(
         """SELECT id FROM attempts WHERE campaign=?
-        ORDER BY kind='build' DESC,state!='finished' DESC,created DESC LIMIT 1""",
+        ORDER BY state!='finished' DESC,kind='build' DESC,created DESC,id DESC LIMIT 1""",
         (cid,),
     ).fetchone()
 

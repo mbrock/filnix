@@ -84,7 +84,7 @@ await until("document.querySelector('#log-reader')");
 await until("!document.querySelector('#log-search') && document.querySelector('[data-offset]')");
 assert.match(await evaluate("document.querySelector('#log-tools').innerText"),/Finished · errors/);
 await screenshot('batch-failure-log-mobile');
-await go(url(cid,'/batches'),"document.querySelector('#batch-"+finished+"')");
+await go(url(cid,'/batches?q='+finished),"document.querySelector('#batch-"+finished+"')");
 assert.ok(await evaluate("document.querySelector('#batch-"+finished+" [data-status=finished-errors]')"));
 await screenshot('batch-list-mobile');
 await call('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});

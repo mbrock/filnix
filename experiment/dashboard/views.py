@@ -35,6 +35,7 @@ from .resources import (
     LOG,
     PACKAGE,
     PACKAGES,
+    PACKAGE_STATES,
     SUMMARY,
     UPDATES,
 )
@@ -281,10 +282,15 @@ def build_monitor(value, view):
                     "No active build requests. "
                     + ("Planning the next roots." if planners else "The queue is idle.")
                 )
-        with tag.p([MUTED, "text-xs", "mt-1"]):
-            text(
-                "Partial dependency view · shared dependencies shown once per request · stopped ≠ succeeded"
-            )
+        with tag.div(["flex", "gap-3", MUTED, "text-xs", "mt-1"]):
+            with tag.span():
+                text("stopped ≠ succeeded")
+            with tag.details():
+                with tag.summary([FOCUS, "cursor-pointer"]):
+                    text("View notes")
+                text(
+                    "Partial dependency view; shared dependencies shown once per request."
+                )
 
 
 def top_blockers(rows, cid, view):
@@ -318,6 +324,18 @@ def timeline(rows, cid, view, now):
     start = min(r["created"] for r in rows)
     end = max((r["finished"] or now) for r in rows)
     span = max(end - start, 1)
+    with tag.div(
+        ["flex", "flex-wrap", "gap-3", "text-xs", MUTED], id="timeline-legend"
+    ):
+        text("Request time · Build / Plan · this page")
+        for label, color, glyph in [
+            ("Running", "text-sky-800", "▶"),
+            ("Finished", "text-emerald-800", "✓"),
+            ("Errors / interrupted", "text-red-800", "!"),
+            ("Outcome unknown", "text-stone-500", "?"),
+        ]:
+            with tag.span(color):
+                text(glyph + " " + label)
     with tag.div(
         ["grid", "grid-cols-[3rem_1fr]", "gap-x-2", "gap-y-1", "items-center", "my-3"],
         id="timeline",
@@ -370,13 +388,28 @@ def timeline(rows, cid, view, now):
                             width=round(width, 2),
                             height=7,
                             fill=color,
+                            stroke="#292524",
+                            stroke_width=0.5,
+                            stroke_dasharray="2 2"
+                            if row["outcome"] == "active"
+                            else None,
                         ):
                             with tag.title():
                                 text(
                                     ", ".join(row["roots"][:4])
                                     + " · "
                                     + duration(row["duration"])
+                                    + " · "
+                                    + row["status"]
                                 )
+                        with tag.text(
+                            x=round(x, 2), y=lane * 9 + 6, font_size=7, fill="#111"
+                        ):
+                            text(
+                                {"active": "▶", "complete": "✓", "error": "!"}.get(
+                                    row["outcome"], "?"
+                                )
+                            )
         with tag.div():
             pass
         with tag.div(["flex", "justify-between", MUTED, "text-xs"]):
@@ -398,6 +431,7 @@ def updates(cid, view, seen, current, target, done=False):
                 outcome=view.outcome,
                 sort=view.sort,
                 q=view.q,
+                page=view.page,
             ),
             trigger=view.trigger,
             done=done,
@@ -419,9 +453,7 @@ def batch_rows(rows, cid, view):
             with tag.tr():
                 with tag.th([CELL, HEADING], scope="col"):
                     text("Batch")
-                with tag.th(
-                    [CELL, "text-right", "font-medium", "w-20", "sm:w-24"], scope="col"
-                ):
+                with tag.th([CELL, "text-right", "font-medium", "w-36"], scope="col"):
                     text("Result")
                 with tag.th(
                     [CELL, "text-right", "font-medium", "w-16", "sm:w-20"], scope="col"
@@ -433,22 +465,26 @@ def batch_rows(rows, cid, view):
                     with tag.td(CELL):
                         with link(
                             BATCH.url(view, cid=cid, aid=r["id"]),
-                            [FOCUS, "line-clamp-2", "break-words"],
+                            [FOCUS, "truncate", "block"],
                         ):
-                            text(", ".join(r["roots"]) or r["id"][:8])
+                            text(
+                                build_name(r["roots"][0]) if r["roots"] else r["id"][:8]
+                            )
+                            if len(r["roots"]) > 1:
+                                text(f" +{len(r['roots']) - 1}")
                         with tag.div(
                             [MUTED, "text-xs", "flex", "flex-wrap", "gap-x-2"]
                         ):
                             text("Build" if r["kind"] == "build" else "Plan")
+                            with tag.span("font-mono"):
+                                text(r["id"][:8])
                             timestamp(r["created"])
                             if r["tested"]:
                                 text(f"{r['tested']} tested")
                     with tag.td([CELL, "text-right"]):
                         with link(LOG.url(view, cid=cid, aid=r["id"]), FOCUS):
                             status(r["status"])
-                    with tag.td(
-                        [CELL, "text-right", "tabular-nums", "whitespace-nowrap"]
-                    ):
+                    with tag.td([CELL, "text-right", "font-mono", "whitespace-nowrap"]):
                         text(duration(r["duration"]))
 
 
@@ -503,7 +539,13 @@ def activity_feed(ledger, campaign, view):
                             BATCH.url(view, cid=cid, aid=row["id"]),
                             [LINK, "truncate", "min-w-0", "flex-1"],
                         ):
-                            text(", ".join(build_name(r) for r in row["roots"]))
+                            text(
+                                build_name(row["roots"][0])
+                                if row["roots"]
+                                else row["id"][:8]
+                            )
+                            if len(row["roots"]) > 1:
+                                text(f" +{len(row['roots']) - 1}")
                         with tag.span(["text-xs", "shrink-0"]):
                             status(row["status"])
                         with link(
@@ -522,7 +564,7 @@ def activity_feed(ledger, campaign, view):
             timeline(ledger["rows"][:40], cid, view, ledger["now"])
             batch_rows(ledger["rows"][:40], cid, view)
             with link(BATCHES.url(view, cid=cid), [LINK, "inline-block", "mt-2"]):
-                text("Full request ledger →")
+                text("All batches →")
 
 
 def snapshot_notice(result, cid, view, target):
@@ -543,29 +585,23 @@ def packages(result, campaign, view):
             ["flex", "flex-wrap", "gap-2", "items-center", "min-w-0"],
             action=PACKAGES.url(cid=cid),
             method="get",
+            data_auto_submit="true",
         ):
             hx.navigate(
                 PACKAGES.url(cid=cid), region="#workspace", indicator="#loading"
             )
             select(
                 "state",
-                [
-                    ("available", "Built"),
-                    ("tested", "Tested"),
-                    ("failed", "Build failures"),
-                    ("failures", "All failures"),
-                    ("evaluation-error", "Evaluation errors"),
-                    ("blocked", "Blocked"),
-                    ("tried", "All tried"),
-                    ("all", "Entire inventory"),
-                ],
+                PACKAGE_STATES,
                 view.state,
                 "Package results",
             )
             facets = [
                 (
                     facet,
-                    facet.partition(":")[0].capitalize()
+                    {"package": "Pkg", "diagnostic": "Diag", "patch": "Patch"}[
+                        facet.partition(":")[0]
+                    ]
                     + " · "
                     + facet.partition(":")[2]
                     + f" ({count:,})",
@@ -576,50 +612,38 @@ def packages(result, campaign, view):
                 facets.append((view.facet, view.facet.replace(":", " · ", 1) + " (0)"))
             select(
                 "facet",
-                [("", "All semantic suggestions"), *facets],
+                [("", "All facets"), *facets],
                 view.facet,
-                "Tentative semantic facet",
+                "Semantic / diagnostic facet",
             )
             tag.input(type="hidden", name="transport", value=view.transport)
             with tag.button(BUTTON, type="submit"):
                 text("Show")
-        with tag.details("relative"):
-            with tag.summary(
-                [FOCUS, "cursor-pointer", "px-2", "py-1"], aria_label="Package options"
-            ):
-                text("•••")
-            with tag.div(
-                [
-                    "absolute",
-                    "right-0",
-                    "z-20",
-                    "bg-white",
-                    "border",
-                    "border-stone-300",
-                    "p-2",
-                    "whitespace-nowrap",
-                ]
-            ):
-                with tag.div():
-                    with link(CSV.url(view, cid=cid), LINK, navigate=False):
-                        text("CSV ↓")
+        with link(CSV.url(view, cid=cid), LINK, navigate=False):
+            text("CSV ↓")
         with tag.span([MUTED, "tabular-nums"]):
-            text(f"{len(result['rows']):,}")
-    with tag.p([MUTED, "mb-2"], id="semantic-facet-note"):
-        text("Tentative semantic suggestions ≥80%; browsing only, not build results. ")
-        if not result["facets"]:
+            text(f"{result['total']:,} packages")
+    with tag.details([MUTED, "text-xs", "mb-2"], id="semantic-facet-note"):
+        with tag.summary([FOCUS, "cursor-pointer"]):
+            text("Notes")
+        with tag.p():
             text(
-                "Unknown / not classified: no suggestions at this threshold in these results. "
+                "Tentative semantic suggestions ≥80%; browsing only, not build results. "
             )
-        text("Inspect package details for all probabilities and source evidence.")
+            if not result["facets"]:
+                text(
+                    "Unknown / not classified: no suggestions at this threshold in these results. "
+                )
+            text("Inspect package details for all probabilities and source evidence.")
     snapshot_notice(result, cid, view, "packages")
+    pagination(result, PACKAGES, cid, view)
     if not result["rows"]:
         empty("No packages in this result set yet.")
         return
     with tag.table(
         ["w-full", "table-fixed", "border-collapse"],
         id="package-list",
-        data_count=len(result["rows"]),
+        data_count=result["total"],
     ):
         with tag.thead(
             ["sticky", "top-0", "bg-[#f7f7f2]", "border-b", "border-stone-400", "z-10"]
@@ -627,39 +651,56 @@ def packages(result, campaign, view):
             with tag.tr():
                 with tag.th([CELL, HEADING], scope="col"):
                     text("Package")
-                with tag.th(
-                    [CELL, "text-right", "font-medium", "w-20", "sm:w-24"], scope="col"
-                ):
-                    text("Result")
+                with tag.th([CELL, HEADING], scope="col"):
+                    text("Version")
+                with tag.th([CELL, "text-right", "font-medium"], scope="col"):
+                    text("Status")
         with tag.tbody():
             for row in result["rows"]:
                 with tag.tr(ROW, id="package-" + str(row["id"])):
                     with tag.td(CELL):
                         with link(
                             PACKAGE.url(view, cid=cid, pid=row["id"]),
-                            [FOCUS, "font-medium", "break-words"],
+                            [FOCUS, "font-medium", "truncate", "block"],
+                            title=row["label"],
                         ):
                             text(row["label"])
-                        with tag.span([MUTED, "ml-2", "break-words"]):
-                            text(row["version"])
-                        if row["description"]:
-                            with tag.div(["text-stone-600", "break-words"]):
-                                text(row["description"])
+                    with tag.td([CELL, "font-mono", "truncate"], title=row["version"]):
+                        text(row["version"] or "—")
                     with tag.td([CELL, "text-right"]):
                         with tag.span(title=row["reason"] or None):
                             status(row["state"], bool(row["checks"]))
+    pagination(result, PACKAGES, cid, view)
+
+
+def pagination(result, resource, cid, view):
+    page, size, total = result["page"], result["size"], result["total"]
+    with tag.nav(
+        ["flex", "flex-wrap", "gap-3", "text-xs", "py-1"], aria_label="Result pages"
+    ):
+        with tag.span([MUTED, "font-mono"]):
+            text(
+                f"{page * size + 1 if total else 0:,}–{min((page + 1) * size, total):,} / {total:,}"
+            )
+        if page:
+            with link(resource.url(view.with_(page=page - 1), cid=cid)):
+                text("← Previous")
+        if (page + 1) * size < total:
+            with link(resource.url(view.with_(page=page + 1), cid=cid)):
+                text("Next →")
 
 
 def batches(result, campaign, view):
     cid = campaign["id"]
     with tag.div(["flex", "justify-between", "gap-2", "mb-2"]):
         with tag.h1(HEADING):
-            text(f"{len(result['rows']):,} batches")
+            text(f"{result['total']:,} batches")
 
     with tag.form(
         ["flex", "flex-wrap", "gap-2", "mb-3"],
         method="get",
         action=BATCHES.url(cid=cid),
+        data_auto_submit="true",
     ):
         hx.navigate(BATCHES.url(cid=cid), region="#workspace", indicator="#loading")
         tag.input(
@@ -680,7 +721,7 @@ def batches(result, campaign, view):
             "outcome",
             [
                 ("", "All results"),
-                ("error", "Finished with errors"),
+                ("error", "Errors / interrupted"),
                 ("active", "Running"),
                 ("complete", "Finished normally"),
             ],
@@ -699,13 +740,15 @@ def batches(result, campaign, view):
         )
         tag.input(type="hidden", name="transport", value=view.transport)
         with tag.button(BUTTON, type="submit"):
-            text("Apply")
+            text("Search")
     snapshot_notice(result, cid, view, "batches")
+    pagination(result, BATCHES, cid, view)
     timeline(result["rows"], cid, view, result["now"])
     if result["rows"]:
         batch_rows(result["rows"], cid, view)
     else:
         empty("No batches match these filters.")
+    pagination(result, BATCHES, cid, view)
 
 
 def batch_status(result, campaign, view, now):
@@ -730,7 +773,7 @@ def batch_status(result, campaign, view, now):
                 "bg-[#f7f7f2]",
                 "border-b",
                 "border-stone-300",
-                "py-2",
+                "py-1",
             ],
             id="batch-heading",
         ):
@@ -739,7 +782,9 @@ def batch_status(result, campaign, view, now):
                     ("Build" if result["kind"] == "build" else "Plan") + " · " + aid[:8]
                 )
             status(result["status"])
-            with tag.span("tabular-nums"):
+            with tag.span(
+                "font-mono", title="Request elapsed time, not individual build time"
+            ):
                 text(
                     duration(
                         (result["finished"] - result["created"])
@@ -751,6 +796,8 @@ def batch_status(result, campaign, view, now):
                 )
             with link(LOG.url(view, cid=cid, aid=aid), BUTTON):
                 text("Batch log")
+            with link(BLOCKERS.url(view.with_(page=0), cid=cid)):
+                text("Blockers")
             if result["state"] != "finished":
                 with tag.span(MUTED):
                     text(f"{result['activity_counts'].get('building', 0)} building")
@@ -771,19 +818,40 @@ def batch_status(result, campaign, view, now):
                 ]
             ):
                 text(result["error"])
-        with tag.details("mb-3"):
+        with tag.details("mb-3", open=len(result["targets"]) <= 12):
             with tag.summary([FOCUS, HEADING, "cursor-pointer"]):
                 text(f"Requested packages · {len(result['targets'])}")
-            with tag.ul(["columns-1", "sm:columns-2", "lg:columns-3"]):
-                for root in result["targets"]:
-                    with tag.li(["break-inside-avoid", "py-0.5"]):
-                        url = (
-                            PACKAGE.url(view, cid=cid, pid=root["id"])
-                            if "id" in root
-                            else GRAPH.url(view.with_(focus=root["drv"]), cid=cid)
-                        )
-                        with link(url):
-                            text(root["label"])
+            with tag.table(["w-full", "table-fixed"], id="batch-targets"):
+                with tag.thead():
+                    with tag.tr(ROW):
+                        for label in ("Package", "Derivation"):
+                            with tag.th([CELL, HEADING], scope="col"):
+                                text(label)
+                with tag.tbody():
+                    for root in result["targets"]:
+                        with tag.tr(ROW):
+                            with tag.td(CELL):
+                                url = (
+                                    PACKAGE.url(view, cid=cid, pid=root["id"])
+                                    if "id" in root
+                                    else GRAPH.url(
+                                        view.with_(focus=root["drv"], page=0), cid=cid
+                                    )
+                                )
+                                with link(url):
+                                    text(root["label"])
+                            with tag.td([CELL, "font-mono", "truncate"]):
+                                if root.get("drv"):
+                                    with link(
+                                        GRAPH.url(
+                                            view.with_(focus=root["drv"], page=0),
+                                            cid=cid,
+                                        ),
+                                        title=root["drv"],
+                                    ):
+                                        text(root["drv"])
+                                else:
+                                    text("Not evaluated")
         if result["activities"]:
             with tag.h2([HEADING, "mb-1"]):
                 text(f"Builds in this batch · {len(result['activities'])}")
@@ -804,23 +872,61 @@ def batch_status(result, campaign, view, now):
                     text(
                         "This batch has ended. Some individual results were not confirmed; their logs are still available."
                     )
-            with tag.div(["grid", "sm:grid-cols-2", "gap-x-5"]):
-                for a in result["activities"]:
-                    with tag.div(
-                        [ROW, "flex", "justify-between", "gap-2", "py-1", "min-w-0"],
-                        data_build_status=a["status"],
-                    ):
-                        with link(
-                            LOG.url(view.with_(drv=a["drv"]), cid=cid, aid=aid),
-                            [LINK, "truncate"],
-                        ):
-                            text(build_name(a["name"]))
-                        with tag.span("shrink-0", title=a["phase"] or None):
-                            status(
-                                "build-result-unknown"
-                                if a["status"] == "unknown"
-                                else a["status"]
-                            )
+            with tag.div("overflow-x-auto"):
+                with tag.table(["w-full"], id="batch-builds"):
+                    with tag.thead():
+                        with tag.tr(ROW):
+                            for label in (
+                                "Build",
+                                "Status",
+                                "Phase",
+                                "Build time",
+                                "Dependencies",
+                            ):
+                                with tag.th([CELL, HEADING], scope="col"):
+                                    text(label)
+                    with tag.tbody():
+                        for a in result["activities"]:
+                            with tag.tr(ROW, data_build_status=a["status"]):
+                                with tag.td(CELL):
+                                    with link(
+                                        LOG.url(
+                                            view.with_(drv=a["drv"]), cid=cid, aid=aid
+                                        ),
+                                        title=a["drv"],
+                                    ):
+                                        text(build_name(a["name"]))
+                                with tag.td([CELL, "whitespace-nowrap"]):
+                                    status(
+                                        "build-result-unknown"
+                                        if a["status"] == "unknown"
+                                        else a["status"]
+                                    )
+                                with tag.td(CELL):
+                                    text((a["phase"] or "—").removesuffix("Phase"))
+                                with tag.td([CELL, "font-mono", "whitespace-nowrap"]):
+                                    end = (
+                                        a["finished"]
+                                        if a["finished"] is not None
+                                        else now
+                                        if a["status"] == "building"
+                                        else None
+                                    )
+                                    text(
+                                        duration(
+                                            end - a["started"]
+                                            if end is not None
+                                            and a["started"] is not None
+                                            else None
+                                        )
+                                    )
+                                with tag.td(CELL):
+                                    with link(
+                                        GRAPH.url(
+                                            view.with_(focus=a["drv"], page=0), cid=cid
+                                        )
+                                    ):
+                                        text("Inputs / consumers")
 
 
 def evidence_link(evidence, cid, view, label="Failure log"):
@@ -1076,28 +1182,18 @@ def package(result, campaign, view):
                             )
 
 
-def graph_node(node, cid, view, focus=False):
+def graph_node(node, cid, view):
     with tag.div(
         [
-            "border",
-            "border-stone-300",
-            "px-2",
-            "py-1.5",
-            "bg-white",
+            "border-b",
+            "border-stone-400",
+            "py-1",
             "min-w-0",
-            ["border-sky-700", "bg-sky-50"] if focus else [],
         ],
-        id=("focus-node" if focus else None),
+        id="focus-node",
     ):
-        if focus:
-            with tag.h2(["font-medium", "break-words"]):
-                text(build_name(node["name"]))
-        else:
-            with link(
-                GRAPH.url(view.with_(focus=node["drv"], page=0), cid=cid),
-                [LINK, "break-words"],
-            ):
-                text(build_name(node["name"]))
+        with tag.h2(["font-medium", "break-words"]):
+            text(build_name(node["name"]))
         with tag.div(["flex", "gap-2", "flex-wrap"]):
             with tag.span(
                 title="Required outputs are available; inferred from a consumer reaching its build phase."
@@ -1109,17 +1205,7 @@ def graph_node(node, cid, view, focus=False):
                 status("ready" if node["state"] == "available" else node["state"])
             with tag.span(MUTED):
                 text((node["phase"] or "").removesuffix("Phase"))
-            if node.get("evidence") and not focus:
-                with link(
-                    LOG.url(
-                        view.with_(drv=node["evidence"]["drv"]),
-                        cid=node["evidence"]["campaign"],
-                        aid=node["evidence"]["id"],
-                    ),
-                    LINK,
-                ):
-                    text("Log")
-        if focus and node["failure"]:
+        if node["failure"]:
             with tag.p(["text-red-800", "break-words", "mt-1"]):
                 text(
                     (
@@ -1129,31 +1215,85 @@ def graph_node(node, cid, view, focus=False):
                     )
                     + failure_label(node["failure"], node.get("evidence"))[:1000]
                 )
-        if focus:
-            if node.get("evidence"):
-                with tag.p("mt-1"):
-                    evidence_link(
-                        node["evidence"],
-                        cid,
-                        view,
-                        "Failure log"
-                        if node["state"] == "failed"
-                        else "Previous build log"
-                        if node["state"] in ("queued", "blocked")
-                        and node["evidence"]["state"] == "finished"
-                        else "Build log",
+        with tag.p(["font-mono", "text-xs", "break-all", "mt-1"]):
+            text(node["drv"])
+        if node.get("evidence"):
+            evidence = node["evidence"]
+            with tag.p("mt-1"):
+                evidence_link(
+                    evidence,
+                    cid,
+                    view,
+                    "Failure log"
+                    if node["state"] == "failed"
+                    else "Previous build log"
+                    if node["state"] in ("queued", "blocked")
+                    and evidence["state"] == "finished"
+                    else "Build log",
+                )
+            with tag.p([MUTED, "text-xs"]):
+                text("Request time · ")
+                with tag.span("font-mono"):
+                    text(
+                        duration(
+                            evidence["finished"] - evidence["created"]
+                            if evidence["finished"] is not None
+                            else None
+                        )
                     )
-            if node["state"] == "failed":
-                with tag.p([MUTED, "mt-1"]):
-                    text("Not queued; an explicit retry is required.")
-            elif node["state"] == "blocked":
-                with tag.p([MUTED, "mt-1"]):
-                    text("Waiting for failed dependencies; not queued for a build.")
-            for alias in node["labels"]:
-                with link(
-                    PACKAGE.url(view, cid=cid, pid=alias["id"]), [LINK, "block", "mt-1"]
-                ):
-                    text(alias["label"])
+        if node["state"] == "failed":
+            with tag.p([MUTED, "mt-1"]):
+                text("Not queued; an explicit retry is required.")
+        elif node["state"] == "blocked":
+            with tag.p([MUTED, "mt-1"]):
+                text("Waiting for failed dependencies; not queued for a build.")
+        for alias in node["labels"]:
+            with link(
+                PACKAGE.url(view, cid=cid, pid=alias["id"]),
+                [LINK, "inline-block", "mr-2"],
+            ):
+                text(alias["label"])
+
+
+def graph_table(nodes, cid, view):
+    with tag.table(["w-full", "table-fixed", "neighbor-table"]):
+        with tag.thead():
+            with tag.tr(ROW):
+                for label in ("Derivation / role / outputs", "Status / phase"):
+                    with tag.th([CELL, HEADING], scope="col"):
+                        text(label)
+        with tag.tbody():
+            for node in nodes:
+                with tag.tr(ROW):
+                    with tag.td(CELL):
+                        with link(
+                            GRAPH.url(view.with_(focus=node["drv"], page=0), cid=cid),
+                            title=node["drv"],
+                        ):
+                            text(build_name(node["name"]))
+                        with tag.div([MUTED, "text-xs"]):
+                            text(" / ".join(node.get("roles", [])) or node["origin"])
+                            text(" · " + ", ".join(node["required_outputs"]))
+                    with tag.td(CELL):
+                        status(
+                            "ready" if node["state"] == "available" else node["state"]
+                        )
+                        with tag.div([MUTED, "text-xs"]):
+                            text((node["phase"] or "").removesuffix("Phase"))
+                            if node.get("evidence"):
+                                evidence = node["evidence"]
+                                with link(
+                                    LOG.url(
+                                        view.with_(drv=evidence["drv"]),
+                                        cid=evidence["campaign"],
+                                        aid=evidence["id"],
+                                    )
+                                ):
+                                    text("Log")
+            if not nodes:
+                with tag.tr():
+                    with tag.td([CELL, MUTED], colspan=2):
+                        text("None in this view")
 
 
 def graph(result, campaign, view):
@@ -1170,13 +1310,16 @@ def graph(result, campaign, view):
         if not result["focus"]:
             empty("The dependency graph appears after the first planning batch.")
             return
-        with tag.div(["grid", "md:grid-cols-3", "gap-3", "items-start"]):
-            with tag.section(["order-2", "md:order-1", "min-w-0"]):
+        graph_node(result["focus"], cid, view)
+        with tag.div(["flex", "gap-3", "py-1", "text-xs"]):
+            text(f"{result['selected_dependents']:,} selected dependents")
+            with link(BLOCKERS.url(view.with_(page=0), cid=cid)):
+                text("Blockers")
+        with tag.div(["grid", "md:grid-cols-2", "gap-3", "items-start"]):
+            with tag.section("min-w-0"):
                 with tag.h2([HEADING, "mb-1"]):
                     text(f"Inputs · {result['totals']['inputs']}")
-                with tag.div(["space-y-1"]):
-                    for node in result["inputs"]:
-                        graph_node(node, cid, view)
+                graph_table(result["inputs"], cid, view)
                 if result["totals"]["hidden_available"]:
                     with link(
                         GRAPH.url(
@@ -1196,18 +1339,10 @@ def graph(result, campaign, view):
                         [LINK, "block", "mt-2"],
                     ):
                         text("Hide ready inputs")
-            with tag.section(["order-1", "md:order-2", "min-w-0"]):
-                with tag.h2([HEADING, "mb-1"]):
-                    text("Current package")
-                graph_node(result["focus"], cid, view, True)
-                with tag.p([MUTED, "mt-2"]):
-                    text(f"{result['selected_dependents']:,} selected dependents")
-            with tag.section(["order-3", "min-w-0"]):
+            with tag.section("min-w-0"):
                 with tag.h2([HEADING, "mb-1"]):
                     text(f"Consumers · {result['totals']['consumers']}")
-                with tag.div("space-y-1"):
-                    for node in result["consumers"]:
-                        graph_node(node, cid, view)
+                graph_table(result["consumers"], cid, view)
         with tag.div(["flex", "gap-4", "mt-3"]):
             if result["page"]:
                 with link(
@@ -1246,13 +1381,15 @@ def blockers(result, campaign, view):
                 timestamp(result["computed"], date=False)
         with tag.p([MUTED, "mb-3"]):
             text(
-                f"{result['total']:,} failed derivations block "
-                f"{result['blocked']:,} packages; "
-                f"{result['multiple']:,} of those have more than one failed "
-                "dependency. “Only cause” counts packages that this failure "
-                "alone blocks: fixing it would let them build or reach their "
-                "own failures."
+                f"{result['total']:,} failures · {result['blocked']:,} packages blocked · {result['multiple']:,} with multiple blockers"
             )
+        with tag.details([MUTED, "text-xs", "mb-2"]):
+            with tag.summary([FOCUS, "cursor-pointer"]):
+                text("Notes")
+            with tag.p():
+                text(
+                    "Only cause = sole blocker. Counts packages that this failure alone blocks: fixing it would let them build or reach their own failures."
+                )
         if not result["rows"]:
             empty("No failures block other packages.")
             return
@@ -1262,7 +1399,14 @@ def blockers(result, campaign, view):
             data_count=len(result["rows"]),
         ):
             with tag.thead(
-                ["sticky", "top-0", "bg-[#f7f7f2]", "border-b", "border-stone-400", "z-10"]
+                [
+                    "sticky",
+                    "top-0",
+                    "bg-[#f7f7f2]",
+                    "border-b",
+                    "border-stone-400",
+                    "z-10",
+                ]
             ):
                 with tag.tr():
                     with tag.th([CELL, HEADING], scope="col"):
@@ -1320,7 +1464,10 @@ def blocker_row(row, rank, most, cid, view):
             ):
                 tag.rect(x=0, y=0, width=1000, height=4, fill="#e7e5e4")
                 tag.rect(
-                    x=0, y=0, width=round(row["blocks"] / max(most, 1) * 1000), height=4,
+                    x=0,
+                    y=0,
+                    width=round(row["blocks"] / max(most, 1) * 1000),
+                    height=4,
                     fill="#ac965b",
                 )
             if row["examples"]:
@@ -1338,7 +1485,9 @@ def blocker_row(row, rank, most, cid, view):
                                 text(example["label"])
                         if row["blocks"] > len(row["examples"]):
                             with tag.span(MUTED):
-                                text(f" and {row['blocks'] - len(row['examples']):,} more")
+                                text(
+                                    f" and {row['blocks'] - len(row['examples']):,} more"
+                                )
         with tag.td([CELL, "text-right", "tabular-nums", "font-medium"]):
             text(f"{row['blocks']:,}")
         with tag.td([CELL, "text-right", "tabular-nums"]):

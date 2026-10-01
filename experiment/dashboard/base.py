@@ -10,12 +10,14 @@ from tagflow import htmx as hx
 from tagflow import tag, text
 
 from .. import VERSION
+from ..model import stamp
 from .resources import (
     ACTIVITY,
     BATCHES,
     BLOCKERS,
     EVENTS,
     GRAPH,
+    HEARTBEAT,
     LIVE_LOG,
     PACKAGES,
     View,
@@ -34,9 +36,8 @@ BUTTON = [
     "items-center",
     "border",
     "border-stone-300",
-    "rounded-sm",
     "px-2",
-    "py-1",
+    "py-0.5",
     "hover:bg-stone-100",
 ]
 FIELD = [
@@ -44,19 +45,17 @@ FIELD = [
     "min-w-0",
     "border",
     "border-stone-300",
-    "rounded-sm",
     "bg-white",
     "px-2",
-    "py-1",
-    "text-base",
-    "sm:text-sm",
+    "py-0.5",
+    "text-sm",
 ]
 ROW = ["border-b", "border-stone-200"]
-CELL = ["px-2", "py-1.5", "align-top"]
+CELL = ["px-2", "py-0.5", "align-top"]
 HEADING = ["font-semibold", "text-left"]
 STATES = {
     "ready": ("Ready", ["text-stone-500"]),
-    "built": ("Built", ["text-stone-400"]),
+    "built": ("Built", ["text-stone-600"]),
     "awaiting-result": ("Awaiting result", MUTED),
     "build-result-unknown": ("Result not recorded", MUTED),
     "starting": ("Starting", ["text-sky-800"]),
@@ -67,7 +66,7 @@ STATES = {
     "timed-out": ("Timed out", ["text-amber-800"]),
     "resource-limit": ("Resource limit", ["text-amber-800"]),
     "result-unknown": ("Finished · outcome unknown", MUTED),
-    "available": ("Built", ["text-stone-400"]),
+    "available": ("Built", ["text-stone-600"]),
     "tested": ("Tested", ["text-emerald-800", "font-medium"]),
     "failed": ("Failed", ["text-red-800"]),
     "error": ("With errors", ["text-red-800"]),
@@ -118,7 +117,9 @@ def timestamp(value, date=True):
         return
     instant = datetime.fromtimestamp(value, timezone.utc)
     with tag.time(
-        datetime=instant.isoformat(), title=instant.strftime("%Y-%m-%d %H:%M:%S UTC")
+        "font-mono",
+        datetime=instant.isoformat(),
+        title=instant.strftime("%Y-%m-%d %H:%M:%S UTC"),
     ):
         text(instant.strftime("%d %b %H:%M" if date else "%H:%M:%S"))
 
@@ -133,6 +134,34 @@ def bytes_(value):
 def asset(name):
     p = Path(__file__).parent / "static" / name
     return "/assets/" + name + "?v=" + sha256(p.read_bytes()).hexdigest()[:12]
+
+
+def heartbeat(campaign, view):
+    age = (
+        max(0, stamp() - campaign["heartbeat"])
+        if campaign["heartbeat"] is not None
+        else None
+    )
+    stale = campaign["mode"] == "running" and (age is None or age >= 30)
+    with tag.span(
+        ["text-xs", "text-amber-800" if stale else MUTED],
+        id="controller-heartbeat",
+        role="status",
+    ):
+        hx.refresh(HEARTBEAT.url(view, cid=campaign["id"]), trigger="every 5s")
+        text("Controller " + campaign["mode"] + " · ")
+        text(
+            "stale · "
+            if stale
+            else "fresh · "
+            if campaign["mode"] == "running"
+            else "last · "
+        )
+        with tag.span("font-mono", title="Last controller heartbeat"):
+            text(duration(age) + " ago" if age is not None else "never reported")
+        if campaign["heartbeat"] is not None:
+            text(" · ")
+            timestamp(campaign["heartbeat"], date=False)
 
 
 def shell(title, campaign, campaigns, view, section, content):
@@ -171,13 +200,22 @@ def shell(title, campaign, campaigns, view, section, content):
                         hx.connect(EVENTS.url(cid=cid), close_on="campaign-complete")
                 with tag.header(["border-b", "border-stone-300"]):
                     with tag.div(["max-w-[96rem]", "mx-auto", "px-3", "sm:px-5"]):
-                        with tag.div(["flex", "items-center", "gap-3", "py-2"]):
+                        with tag.div(
+                            [
+                                "flex",
+                                "flex-wrap",
+                                "items-center",
+                                "gap-x-3",
+                                "gap-y-1",
+                                "py-1",
+                            ]
+                        ):
                             with link(
                                 ACTIVITY.url(view, cid=cid),
                                 [
                                     FOCUS,
                                     "font-bold",
-                                    "text-lg",
+                                    "text-xl",
                                     "tracking-tight",
                                     "shrink-0",
                                 ],
@@ -219,12 +257,12 @@ def shell(title, campaign, campaigns, view, section, content):
                                                 text(" · running")
                                     with tag.p([MUTED, "mt-2", "text-xs"]):
                                         text("Source " + campaign["revision"][:12])
-                            with tag.span([MUTED, "hidden", "sm:inline"]):
-                                text(campaign["mode"])
                             with link(
                                 LIVE_LOG.url(view, cid=cid), [BUTTON, "shrink-0"]
                             ):
-                                text("Live log")
+                                text("Current batch log")
+                        with tag.div("pb-2"):
+                            heartbeat(campaign, view)
                         with tag.nav(
                             [
                                 "flex",
@@ -320,5 +358,5 @@ def select(name, choices, current, label):
 
 
 def empty(message):
-    with tag.p([MUTED, "py-6"]):
+    with tag.p([MUTED, "py-1"]):
         text(message)

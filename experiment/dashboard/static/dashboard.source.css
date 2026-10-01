@@ -1,0 +1,32 @@
+@import "tailwindcss" source(none);
+@source "../*.py";
+
+@theme {
+  --font-sans: system-ui, Arial, "DejaVu Sans", sans-serif;
+  --font-mono: ui-monospace, "DejaVu Sans Mono", monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-xl: 16px;
+}
+
+@layer base {
+  time, .tabular-nums { font-family: var(--font-mono); }
+  .font-mono, code, pre { font-variant-ligatures: none; }
+  select { max-width: 100%; }
+}
+
+@layer components {
+  #batch-heading h1, #campaign-menu p { font-family: var(--font-mono); }
+  #package-list th:nth-child(2) { width: 7rem; }
+  #package-list th:last-child { width: 9rem; }
+  #package-list td { white-space: nowrap; }
+  #controller-heartbeat { display: inline-block; min-height: 1rem; }
+  .neighbor-table th:last-child { width: 9rem; }
+  .neighbor-table td:first-child a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 40rem) {
+    #package-list th:nth-child(2) { width: 4.5rem; }
+    #package-list th:last-child { width: 7rem; }
+    #package-list td:last-child { white-space: normal; }
+  }
+}

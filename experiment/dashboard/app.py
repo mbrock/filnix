@@ -32,11 +32,13 @@ from .resources import (
     EVENTS,
     GRAPH,
     GRAPH_REGION,
+    HEARTBEAT,
     LIVE_LOG,
     LOG,
     LOG_STATUS,
     PACKAGE,
     PACKAGES,
+    PACKAGE_STATES,
     SUMMARY,
     UPDATES,
     View,
@@ -157,10 +159,26 @@ def create_app(state):
             result = data.summary(db, cid)
         return representation(request, lambda: views.summary(result, view))
 
+    def heartbeat(request):
+        view, cid = options(request), request.path_params["cid"]
+        with data.read(state) as db:
+            campaign = data.campaign(db, cid)
+        return representation(request, lambda: base.heartbeat(campaign, view))
+
     def packages(request):
+        if request.query_params.get("state") == "available":
+            return RedirectResponse(
+                request.url.path
+                + "?"
+                + request.url.include_query_params(state="built").query,
+                status_code=308,
+            )
+
         def prepare(db, cid, c, v):
             result = data.packages(db, cid, v)
-            return "Packages", lambda: views.packages(result, c, v)
+            return "Packages · " + dict(PACKAGE_STATES)[
+                v.state
+            ], lambda: views.packages(result, c, v)
 
         return page(request, "packages", prepare)
 
@@ -258,15 +276,23 @@ def create_app(state):
             )
             aid = request.path_params.get("aid") or (latest[0] if latest else None)
             if not aid:
+
+                def waiting():
+                    with tag.section(id="log-reader"):
+                        hx.refresh(LIVE_LOG.url(view, cid=cid), trigger=view.trigger)
+                        with tag.h1(base.HEADING):
+                            text("Current batch log")
+                        base.empty("No batch has been requested in " + c["name"] + ".")
+
                 return representation(
                     request,
                     lambda: base.shell(
-                        "Build log",
+                        "Current batch log",
                         c,
                         choices,
                         view,
                         "activity",
-                        lambda: base.empty("Waiting for the first batch."),
+                        waiting,
                     ),
                     page=True,
                 )
@@ -294,7 +320,18 @@ def create_app(state):
         return representation(
             request,
             lambda: base.shell(
-                "Build output · " + aid[:8], c, choices, view, "batches", content
+                (
+                    "Current batch log"
+                    if "aid" not in request.path_params
+                    else "Batch log"
+                )
+                + " · "
+                + aid[:8],
+                c,
+                choices,
+                view,
+                "batches",
+                content,
             ),
             page=True,
             headers=headers,
@@ -332,7 +369,7 @@ def create_app(state):
         view, cid = options(request), request.path_params["cid"]
         with data.read(state) as db:
             data.campaign(db, cid)
-            rows = data.packages(db, cid, view)["rows"]
+            rows = data.packages(db, cid, view, paged=False)["rows"]
         stream = io.StringIO()
         writer = csv.writer(stream)
         writer.writerow(
@@ -448,6 +485,7 @@ def create_app(state):
             ACTIVITY.route(activity),
             ACTIVITY_FEED.route(activity_feed),
             SUMMARY.route(summary),
+            HEARTBEAT.route(heartbeat),
             EVENTS.route(events),
             PACKAGES.route(packages),
             PACKAGE.route(package),

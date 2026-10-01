@@ -8,10 +8,22 @@ from starlette.exceptions import HTTPException
 from starlette.routing import Route
 
 
+PACKAGE_STATES = (
+    ("built", "Built"),
+    ("tested", "Tested"),
+    ("failed", "Failed"),
+    ("failures", "Failures"),
+    ("evaluation-error", "Evaluation error"),
+    ("blocked", "Blocked"),
+    ("tried", "Tried"),
+    ("all", "All"),
+)
+
+
 @dataclass(frozen=True)
 class View:
     watch: int = 1
-    state: str = "available"
+    state: str = "built"
     facet: str = ""
     q: str = ""
     kind: str = ""
@@ -51,6 +63,8 @@ class Resource:
         )
         query = {key: getattr(view, key) for key in self.carries} if view else {}
         query.update(params)
+        if query.get("state") == "available":
+            query["state"] = "built"
         query = {k: v for k, v in query.items() if v is not None and v != ""}
         return path + ("?" + urlencode(query) if query else "")
 
@@ -63,9 +77,11 @@ ACTIVITY = Resource(BASE, ("watch", "transport"))
 ACTIVITY_FEED = Resource(BASE + "/activity", ("watch", "transport"))
 SUMMARY = Resource(BASE + "/summary", ("transport",))
 EVENTS = Resource(BASE + "/events")
-PACKAGES = Resource(BASE + "/packages", ("state", "facet", "transport"))
+PACKAGES = Resource(BASE + "/packages", ("state", "facet", "page", "transport"))
 PACKAGE = Resource(BASE + "/packages/{pid:int}", ("transport",))
-BATCHES = Resource(BASE + "/batches", ("q", "kind", "outcome", "sort", "transport"))
+BATCHES = Resource(
+    BASE + "/batches", ("q", "kind", "outcome", "sort", "page", "transport")
+)
 BATCH = Resource(BASE + "/batches/{aid}", ("transport",))
 BATCH_STATUS = Resource(BASE + "/batches/{aid}/status", ("transport",))
 BLOCKERS = Resource(BASE + "/blockers", ("page", "transport"))
@@ -79,6 +95,7 @@ LOG = Resource(
 LOG_STATUS = Resource(BASE + "/batches/{aid}/log/status", LOG.carries)
 LIVE_LOG = Resource(BASE + "/log", ("drv", "follow", "wrap", "size", "q", "transport"))
 UPDATES = Resource(BASE + "/updates", ("transport",))
+HEARTBEAT = Resource(BASE + "/heartbeat", ("transport",))
 CSV = Resource(BASE + "/packages.csv", ("state", "facet"))
 
 
@@ -97,21 +114,14 @@ def options(request):
     values = {
         key: p.get(key, getattr(View(), key)) for key in View.__dataclass_fields__
     }
+    if values["state"] == "available":
+        values["state"] = "built"
     for key in ("follow", "wrap", "available", "watch"):
         values[key] = integer(values[key], 0, 1)
     values["page"] = integer(values["page"], 0, 1000000)
     values["size"] = integer(values["size"], 12, 16)
     choices = {
-        "state": (
-            "available",
-            "tested",
-            "failed",
-            "failures",
-            "blocked",
-            "tried",
-            "all",
-            "evaluation-error",
-        ),
+        "state": tuple(value for value, _ in PACKAGE_STATES),
         "kind": ("", "build", "plan"),
         "outcome": ("", "active", "error", "complete"),
         "sort": ("recent", "oldest", "longest"),

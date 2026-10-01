@@ -99,7 +99,9 @@ class DashboardTests(unittest.TestCase):
         self.db.commit()
         annotations = {
             1: [
-                self.annotation(probabilities={"shared": 0.8, "also": 0.92, "below": 0.799}),
+                self.annotation(
+                    probabilities={"shared": 0.8, "also": 0.92, "below": 0.799}
+                ),
                 self.annotation(provider="two"),
             ],
             2: [self.annotation("diagnostic"), self.annotation("patch")],
@@ -117,9 +119,15 @@ class DashboardTests(unittest.TestCase):
             }
             self.assertEqual(
                 set(choices),
-                {"", "package:shared", "package:also", "diagnostic:shared", "patch:shared"},
+                {
+                    "",
+                    "package:shared",
+                    "package:also",
+                    "diagnostic:shared",
+                    "patch:shared",
+                },
             )
-            self.assertEqual(choices["package:shared"], "Package · shared (1)")
+            self.assertEqual(choices["package:shared"], "Pkg · shared (1)")
             for facet, expected in [
                 ("package:shared", "package-1"),
                 ("package:also", "package-1"),
@@ -476,8 +484,9 @@ class DashboardTests(unittest.TestCase):
         self.graph()
         self.sql("UPDATE candidates SET state='blocked' WHERE id IN (2,3)")
         self.db.commit()
-        with patch.object(blockers, "SYNCHRONOUS", False), patch.object(
-            blockers, "TTL", 0
+        with (
+            patch.object(blockers, "SYNCHRONOUS", False),
+            patch.object(blockers, "TTL", 0),
         ):
             self.assertEqual(blockers.ranking(self.db, self.cid)["rows"], [])
             self.sql("UPDATE derivations SET failure='build' WHERE drv=?", (A,))
@@ -508,9 +517,10 @@ class DashboardTests(unittest.TestCase):
             ready.wait(timeout=5)
             return blockers.ranking(None, self.cid)
 
-        with patch.object(blockers, "SYNCHRONOUS", False), patch.object(
-            blockers, "compute", side_effect=compute
-        ) as walk:
+        with (
+            patch.object(blockers, "SYNCHRONOUS", False),
+            patch.object(blockers, "compute", side_effect=compute) as walk,
+        ):
             with ThreadPoolExecutor(max_workers=8) as pool:
                 values = list(pool.map(lambda _: read(), range(8)))
             self.assertEqual(walk.call_count, 1)
@@ -529,7 +539,9 @@ class DashboardTests(unittest.TestCase):
         self.sql(
             "UPDATE attempts SET spec=? WHERE id=?",
             (
-                json.dumps(dict(build_location="remote", admission_available=[A] * 10000)),
+                json.dumps(
+                    dict(build_location="remote", admission_available=[A] * 10000)
+                ),
                 aid,
             ),
         )
@@ -910,6 +922,257 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn("Stopped", page.text)
         self.assertNotIn("await confirmation", page.text)
         self.assertIn("Finished · errors", self.get("/batches").text)
+
+    def test_canonical_package_vocabulary_and_legacy_redirect(self):
+        self.sql("UPDATE candidates SET state='available' WHERE id=1")
+        self.db.commit()
+        old = self.get(
+            "/packages?state=available&page=2&facet=package:Library&transport=poll",
+            follow_redirects=False,
+        )
+        self.assertEqual(old.status_code, 308)
+        self.assertEqual(urlsplit(old.headers["location"]).scheme, "")
+        self.assertEqual(urlsplit(old.headers["location"]).netloc, "")
+        self.assertEqual(
+            urlsplit(old.headers["location"]).path, self.prefix + "/packages"
+        )
+        self.assertEqual(
+            parse_qs(urlsplit(old.headers["location"]).query),
+            {
+                "state": ["built"],
+                "page": ["2"],
+                "facet": ["package:Library"],
+                "transport": ["poll"],
+            },
+        )
+        page = BeautifulSoup(self.get("/packages?state=built").text, "html.parser")
+        self.assertEqual(page.title.text, "Packages · Built · filnix")
+        self.assertEqual(
+            page.select_one("select[name=state] option[selected]").text, "Built"
+        )
+        self.assertEqual(
+            [r["id"] for r in page.select("#package-list tbody tr")], ["package-1"]
+        )
+        activity = BeautifulSoup(self.get("").text, "html.parser")
+        self.assertTrue(
+            any("state=built" in a["href"] for a in activity.select("#summary a"))
+        )
+        self.assertNotIn("state=available", activity.decode())
+
+    def test_package_paging_facets_and_full_csv(self):
+        from experiment.model import encode
+
+        for i in range(205):
+            self.sql(
+                "INSERT INTO candidates(id,campaign,attr,label,selection,state) VALUES(?,?,?,?,?,'available')",
+                (
+                    i + 10,
+                    self.cid,
+                    encode([f"p{i:03d}"]),
+                    f"p{i:03d}",
+                    encode(
+                        {
+                            "metadata": {
+                                "description": "Long synopsis. " * 1000,
+                                "version": "1.2.3",
+                            }
+                        }
+                    ),
+                ),
+            )
+        self.db.commit()
+        annotations = {i + 10: [self.annotation()] for i in range(205)}
+        with patch("experiment.catalog.classification_index", return_value=annotations):
+            first = self.get(
+                "/packages?state=built&facet=package:shared&transport=poll"
+            )
+            self.assertLess(len(first.content), 300000)
+            page = BeautifulSoup(first.text, "html.parser")
+            self.assertEqual(
+                [r["id"] for r in page.select("#package-list tbody tr")],
+                [f"package-{i}" for i in range(10, 110)],
+            )
+            self.assertEqual(page.select_one("#package-list")["data-count"], "205")
+            self.assertIn("Pkg · shared (205)", page.text)
+            self.assertNotIn("Long synopsis.", page.select_one("#package-list").text)
+            next_page = next(
+                a
+                for a in page.select('nav[aria-label="Result pages"] a')
+                if a.text == "Next →"
+            )
+            self.assertEqual(
+                parse_qs(urlsplit(next_page["href"]).query),
+                {
+                    "state": ["built"],
+                    "facet": ["package:shared"],
+                    "page": ["1"],
+                    "transport": ["poll"],
+                },
+            )
+            second = BeautifulSoup(
+                self.client.get(next_page["href"]).text, "html.parser"
+            )
+            self.assertEqual(
+                [r["id"] for r in second.select("#package-list tbody tr")],
+                [f"package-{i}" for i in range(110, 210)],
+            )
+            final = BeautifulSoup(
+                self.get("/packages?state=built&facet=package:shared&page=999").text,
+                "html.parser",
+            )
+            self.assertEqual(
+                [r["id"] for r in final.select("#package-list tbody tr")],
+                [f"package-{i}" for i in range(210, 215)],
+            )
+            csv_link = next(a for a in second.select("a") if a.text == "CSV ↓")
+            exported = list(
+                csv.reader(io.StringIO(self.client.get(csv_link["href"]).text))
+            )
+            self.assertEqual(len(exported), 206)
+            self.assertEqual(exported[-1][0:2], ["p204", "1.2.3"])
+            self.assertIn("Long synopsis.", exported[-1][2])
+            self.assertIsNone(page.select_one("#semantic-facet-note").get("open"))
+
+    def test_batch_paging_filters_membership_and_legend(self):
+        self.graph()
+        for i in range(103):
+            self.sql(
+                "INSERT INTO attempts(id,campaign,kind,state,targets,created,finished,spec,result) VALUES(?,?,?,'finished',?,?,?,'{}',?)",
+                (
+                    f"batch-{i:03d}",
+                    self.cid,
+                    "plan" if i % 2 else "build",
+                    '[{"id":1,"attr":["a"]},{"id":2,"attr":["b"]}]'
+                    if i % 2
+                    else '["' + A + '","' + B + '"]',
+                    i * 10,
+                    i * 10 + 5,
+                    '{"reason":"build-error"}'
+                    if i % 3 == 0
+                    else '{"reason":"completed"}',
+                ),
+            )
+        self.db.commit()
+        first = self.get("/batches?sort=oldest&transport=poll")
+        page = BeautifulSoup(first.text, "html.parser")
+        self.assertLess(len(first.content), 300000)
+        self.assertEqual(
+            [r["id"] for r in page.select("#content tbody tr")],
+            [f"batch-batch-{i:03d}" for i in range(50)],
+        )
+        self.assertEqual(page.select_one("#content tbody td a").text, "a +1")
+        self.assertIn("Build / Plan", page.select_one("#timeline-legend").text)
+        self.assertIn("Outcome unknown", page.select_one("#timeline-legend").text)
+        second = BeautifulSoup(
+            self.get("/batches?sort=oldest&page=1").text, "html.parser"
+        )
+        self.assertEqual(
+            [r["id"] for r in second.select("#content tbody tr")],
+            [f"batch-batch-{i:03d}" for i in range(50, 100)],
+        )
+        filtered = BeautifulSoup(
+            self.get("/batches?kind=build&outcome=error&sort=oldest").text,
+            "html.parser",
+        )
+        self.assertEqual(len(filtered.select("#content tbody tr")), 18)
+        self.assertEqual(
+            filtered.select("#content tbody tr")[0]["id"], "batch-batch-000"
+        )
+        self.assertEqual(
+            filtered.select("#content tbody tr")[-1]["id"], "batch-batch-102"
+        )
+        self.assertIsNotNone(filtered.select_one("form[data-auto-submit]"))
+
+    @patch("experiment.dashboard.base.stamp", return_value=1000)
+    def test_heartbeat_is_always_visible_with_stale_boundary(self, _clock):
+        for heartbeat, mode, expected in [
+            (971, "running", "fresh · 29s ago"),
+            (970, "running", "stale · 30s ago"),
+            (None, "running", "stale · never reported"),
+            (900, "paused", "last · 1m 40s ago"),
+        ]:
+            self.sql(
+                "UPDATE campaigns SET heartbeat=?,mode=? WHERE id=?",
+                (heartbeat, mode, self.cid),
+            )
+            self.db.commit()
+            page = BeautifulSoup(self.get("/packages?state=all").text, "html.parser")
+            indicator = page.select_one("#controller-heartbeat")
+            self.assertIn(expected, indicator.text)
+            self.assertFalse(indicator.get("hidden"))
+            self.assertEqual(indicator["hx-trigger"], "every 5s")
+            self.assertIn(
+                expected, BeautifulSoup(self.get("/heartbeat").text, "html.parser").text
+            )
+
+    def test_current_log_names_batch_and_prefers_active_plan_to_finished_build(self):
+        empty = BeautifulSoup(self.get("/log").text, "html.parser")
+        self.assertIn(
+            "No batch has been requested", empty.select_one("#log-reader").text
+        )
+        self.assertEqual(empty.title.text, "Current batch log · filnix")
+        self.graph()
+        build = self.attempt("build")
+        self.sql(
+            "UPDATE attempts SET state='finished',finished=created WHERE id=?", (build,)
+        )
+        plan = self.attempt("plan")
+        self.db.commit()
+        page = BeautifulSoup(
+            self.get("/log?follow=0&size=14&wrap=0&transport=poll").text, "html.parser"
+        )
+        self.assertEqual(page.select_one("#log-reader")["data-attempt"], plan)
+        self.assertIn(plan[:8], page.select_one("#log-empty").text)
+        self.assertEqual(page.select_one("#log-toggle").text, "Follow")
+        self.assertIsNone(page.select_one("#log-tools details"))
+        for name, value in [("size", "14"), ("wrap", "0")]:
+            self.assertEqual(
+                page.select_one(f"select[name={name}] option[selected]")["value"], value
+            )
+        self.assertIn("Current batch log", page.select_one("header").text)
+
+    def test_batch_build_time_does_not_use_request_time_or_stopped_as_success(self):
+        self.graph()
+        aid = self.attempt("build")
+        self.sql("UPDATE attempts SET created=10 WHERE id=?", (aid,))
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,phase,stopped) VALUES(?,'1',?,'build','checkPhase',1)",
+            (aid, A),
+        )
+        self.sql("INSERT INTO build_times VALUES(?,'1',100,117)", (aid,))
+        self.db.commit()
+        with patch("experiment.dashboard.app.stamp", return_value=143):
+            page = BeautifulSoup(self.get("/batches/" + aid).text, "html.parser")
+        cells = page.select_one("#batch-builds tbody tr").select("td")
+        self.assertEqual(
+            [c.text for c in cells[1:4]], ["Awaiting result", "check", "17s"]
+        )
+        self.assertIn("2m 13s", page.select_one("#batch-heading").text)
+        self.assertIn(A, page.select_one("#batch-targets").text)
+        graph = BeautifulSoup(
+            self.get("/dependencies", params={"focus": B, "available": 1}).text,
+            "html.parser",
+        )
+        self.assertEqual(len(graph.select(".neighbor-table")), 2)
+        self.assertIn(B, graph.select_one("#focus-node").text)
+        # A newer stopped record must not donate its time to a running activity.
+        for activity, stopped, phase, started, finished in [
+            ("2", 0, "buildPhase", 130, None),
+            ("3", 1, "unpackPhase", 60, 70),
+        ]:
+            self.sql(
+                "INSERT INTO activities(attempt,activity,drv,kind,phase,stopped) VALUES(?,?,?,'build',?,?)",
+                (aid, activity, A, phase, stopped),
+            )
+            self.sql(
+                "INSERT INTO build_times VALUES(?,?,?,?)",
+                (aid, activity, started, finished),
+            )
+        self.db.commit()
+        with patch("experiment.dashboard.app.stamp", return_value=143):
+            restarted = BeautifulSoup(self.get("/batches/" + aid).text, "html.parser")
+        cells = restarted.select_one("#batch-builds tbody tr").select("td")
+        self.assertEqual([c.text for c in cells[1:4]], ["Building", "build", "13s"])
 
 
 if __name__ == "__main__":

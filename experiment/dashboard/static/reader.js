@@ -26,6 +26,11 @@
     const form = event.target.closest?.("#log-tools form");
     if (form) form.dataset.editing = "1";
   });
+  document.addEventListener("change", (event) => {
+    if (event.target.matches?.('form[data-auto-submit] select')) {
+      event.target.form.requestSubmit();
+    }
+  });
   htmx.registerExtension("reader-disclosures", {
     // This hot-path morph hook is an extension callback, not a DOM event.
     htmx_before_morph_attr(element, detail) {
@@ -87,6 +92,7 @@
     const toggle = event.target.closest?.("#log-toggle");
     const reader = toggle?.closest("#log-reader");
     if (reader?.dataset.follow === "1" && !reader.dataset.pausing &&
+        reader.querySelector('[data-offset]') &&
         !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       event.stopImmediatePropagation();

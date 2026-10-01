@@ -8,7 +8,6 @@ from tagflow import htmx as hx
 from .base import (
     BUTTON,
     FIELD,
-    FOCUS,
     LINK,
     MUTED,
     build_name,
@@ -205,7 +204,11 @@ def reader(result, campaign, view, *, live=False, chunk_only=False, count=0):
                                 "No build output was recorded for this package in this batch. "
                             )
                         elif not result["captured"]:
-                            text("This batch has no captured diagnostic output. ")
+                            text(
+                                "Batch "
+                                + aid[:8]
+                                + " has no captured diagnostic output. "
+                            )
                         else:
                             text("No output in this window. ")
                         with link(
@@ -229,10 +232,12 @@ def tools(result, campaign, view, *, live=False):
         with tag.div(["flex", "items-center", "justify-between", "gap-2", "mb-2"]):
             with link(BATCH.url(view, cid=cid, aid=aid), LINK):
                 text(
-                    ("Build" if result["attempt"]["kind"] == "build" else "Plan")
+                    "Batch log · "
+                    + ("Build" if result["attempt"]["kind"] == "build" else "Plan")
                     + " · "
-                    + aid[:8]
                 )
+                with tag.span("font-mono"):
+                    text(aid[:8])
             with tag.span([MUTED, "text-xs"]):
                 status(
                     batch_status(
@@ -270,8 +275,9 @@ def tools(result, campaign, view, *, live=False):
                     for drv, name in sources.items():
                         with tag.option(value=drv, selected=drv == view.drv):
                             text(build_name(name or drv.rsplit("/", 1)[-1][33:-4]))
-                for key in ("follow", "wrap", "size", "transport"):
+                for key in ("follow", "wrap", "size", "q", "transport"):
                     tag.input(type="hidden", name=key, value=getattr(view, key))
+                tag.input(type="hidden", name="live", value=int(live))
                 with tag.button(BUTTON, type="submit"):
                     text("Show")
             toggle = LOG.url(
@@ -289,64 +295,47 @@ def tools(result, campaign, view, *, live=False):
             ):
                 hx.preview(toggle, region="#log-reader")
                 attr("hx-replace-url", "true")
-                text("Pause" if view.follow else "Resume")
-            with tag.details("relative"):
-                with tag.summary(
-                    [FOCUS, "cursor-pointer", "px-2", "py-1"], aria_label="Log options"
-                ):
-                    text("•••")
-                with tag.div(
-                    [
-                        "absolute",
-                        "right-0",
-                        "z-20",
-                        "w-64",
-                        "border",
-                        "border-stone-300",
-                        "bg-white",
-                        "p-2",
-                        "shadow-sm",
-                    ]
-                ):
-                    with tag.form(
-                        "space-y-2", method="get", action=LOG.url(cid=cid, aid=aid)
-                    ):
-                        hx.navigate(
-                            LOG.url(cid=cid, aid=aid),
-                            region="#workspace",
-                            indicator="#loading",
-                        )
-                        tag.input(
-                            FIELD,
-                            type="search",
-                            name="q",
-                            value=view.q,
-                            placeholder="Find in this window",
-                            aria_label="Find in this log window",
-                        )
-                        select(
-                            "size",
-                            [(12, "12 px"), (14, "14 px"), (16, "16 px")],
-                            view.size,
-                            "Log font size",
-                        )
-                        select(
-                            "wrap",
-                            [(1, "Wrap lines"), (0, "Keep long lines")],
-                            view.wrap,
-                            "Line wrapping",
-                        )
-                        for key in ("drv", "transport"):
-                            tag.input(type="hidden", name=key, value=getattr(view, key))
-                        tag.input(type="hidden", name="follow", value=0)
-                        tag.input(type="hidden", name="direction", value="before")
-                        tag.input(type="hidden", name="cursor", value=result["end"])
-                        with tag.button(BUTTON, type="submit"):
-                            text("Apply")
-                    with tag.a(
-                        [LINK, "block", "mt-2"], href="/api/log/download?attempt=" + aid
-                    ):
-                        text("Download raw log ↓")
+                text("Pause" if view.follow else "Follow")
+        with tag.form(
+            ["flex", "flex-wrap", "items-center", "gap-2", "mb-2"],
+            method="get",
+            action=LOG.url(cid=cid, aid=aid),
+            data_auto_submit="true",
+        ):
+            hx.navigate(
+                LOG.url(cid=cid, aid=aid), region="#workspace", indicator="#loading"
+            )
+            select(
+                "size",
+                [(12, "Size 12 px"), (14, "Size 14 px"), (16, "Size 16 px")],
+                view.size,
+                "Log font size",
+            )
+            select(
+                "wrap", [(1, "Wrap on"), (0, "Wrap off")], view.wrap, "Line wrapping"
+            )
+            tag.input(
+                FIELD,
+                type="search",
+                name="q",
+                value=view.q,
+                placeholder="Find in window",
+                aria_label="Find in this log window",
+            )
+            for key in ("drv", "transport", "follow"):
+                tag.input(type="hidden", name=key, value=getattr(view, key))
+            tag.input(type="hidden", name="live", value=int(live))
+            tag.input(
+                type="hidden",
+                name="direction",
+                value="tail" if view.follow else "before",
+            )
+            if not view.follow:
+                tag.input(type="hidden", name="cursor", value=result["end"])
+            with tag.button(BUTTON, type="submit"):
+                text("Find")
+            with tag.a(LINK, href="/api/log/download?attempt=" + aid):
+                text("Download raw log ↓")
         with tag.div(["flex", "justify-between", "gap-2", MUTED, "text-xs", "mb-1"]):
             if result["before"]:
                 with link(

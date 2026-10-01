@@ -79,10 +79,12 @@ assert.equal(await evaluate("document.querySelector('#summary').getAttribute('hx
 await evaluate("document.querySelector('#activity-toggle').click()");
 await until("document.querySelector('#activity-feed').dataset.watch === '1'");
 
-await go(url(old,"/packages"), "document.querySelectorAll('#package-list tbody tr').length > 3000");
+await go(url(old,"/packages"), "document.querySelectorAll('#package-list tbody tr').length === 100");
+assert.ok(await evaluate("Number(document.querySelector('#package-list').dataset.count) > 3000"));
 const fonts=await evaluate("[...document.querySelector('#package-list tbody tr').querySelectorAll('a,span,div')].map(e=>({size:getComputedStyle(e).fontSize,family:getComputedStyle(e).fontFamily}))");
 assert.ok(fonts.every(f=>f.size==='14px' && !f.family.includes('mono')));
-assert.ok(await evaluate("document.querySelector('#package-list tbody').getBoundingClientRect().top < 205"));
+assert.ok(await evaluate("getComputedStyle(document.querySelector('#package-list tbody td:nth-child(2)')).fontFamily.includes('mono')"));
+assert.ok(await evaluate("document.querySelector('#package-list tbody').getBoundingClientRect().top < 320"));
 await screenshot("packages-mobile");
 await evaluate("scrollTo(0,2500)"); await wait(150);
 const before=await evaluate("scrollY");
@@ -96,7 +98,7 @@ await wait(600);
 const back=await evaluate("scrollY");
 assert.ok(Math.abs(before-back)<30,`Back restores scroll: ${before} -> ${back}`);
 await evaluate("history.forward()");await until("!document.querySelector('#package-list') && document.querySelector('#content h1')");
-await go(url(old,"/batches?sort=longest&kind=build"), "document.querySelectorAll('tbody tr').length > 100");
+await go(url(old,"/batches?sort=longest&kind=build"), "document.querySelectorAll('tbody tr').length === 50");
 assert.equal(await evaluate("document.querySelector('select[name=sort]').value"),'longest');
 await screenshot("batches-mobile");
 await go(url(cid,"/dependencies"), "document.querySelector('#dependency-region')");
@@ -107,11 +109,11 @@ console.log('log',await evaluate("({attempt:document.querySelector('#log-reader'
 assert.equal(await evaluate("document.documentElement.scrollWidth"),390);
 assert.deepEqual(await evaluate("[...new Set([...document.querySelectorAll('#log-scroll pre')].map(e=>getComputedStyle(e).fontSize))]"),['12px']);
 await screenshot("log-mobile");
-await evaluate("document.querySelector('#log-tools details').open=true");
+await evaluate("document.querySelector('#log-tools input[name=q]').value='pending edit'; document.querySelector('#log-tools input[name=q]').dispatchEvent(new Event('input',{bubbles:true}))");
 await wait(4500);
-assert.equal(await evaluate("document.querySelector('#log-tools details').open"),true,'Log options remain open across refreshes');
+assert.equal(await evaluate("document.querySelector('#log-tools input[name=q]').value"),'pending edit','Reader settings edits survive refreshes');
 await screenshot("log-options-mobile");
-await evaluate("document.querySelector('#log-tools details').open=false");
+await evaluate("document.querySelector('#log-tools input[name=q]').value=''; delete document.querySelector('#log-tools input[name=q]').form.dataset.editing");
 
 // Fail one cursor request and hold the next beyond its polling interval.
 let cursorRequests = 0, delayedFinished = false, interruptionVisible = false;
@@ -152,7 +154,8 @@ await evaluate("document.querySelector('#log-scroll').scrollTop-=250");
 await until("document.querySelector('#log-reader').dataset.follow==='0' && !document.querySelector('#log-reader').dataset.pausing");
 await screenshot("log-paused-mobile");
 await call("Emulation.setDeviceMetricsOverride", {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-await go(url(cid,"/packages?state=all"), "document.querySelectorAll('#package-list tbody tr').length === 13772");
+await go(url(cid,"/packages?state=all"), "document.querySelectorAll('#package-list tbody tr').length === 100");
+assert.ok(await evaluate("Number(document.querySelector('#package-list').dataset.count) >= 13772"));
 await screenshot("inventory-desktop");
 assert.ok(await evaluate("document.documentElement.scrollWidth <= 1440"));
 await go(url(cid,"/log"), "document.querySelectorAll('[data-offset]').length > 0");
