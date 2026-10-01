@@ -2623,6 +2623,7 @@ in
         (patch ./patches/perl-5.40-b-overlay-key.patch)
         (patch ./patches/perl-5.40-digest-sha-ptrtable.patch)
         (patch ./patches/perl-5.40-custom-op-ptrtable.patch)
+        (patch ./patches/perl-5.40-mro-ptrtable.patch)
         (use (old: {
           # postPatch replaces the bundled Compress-Raw-Zlib with a newer
           # release, discarding the port's typemap change.

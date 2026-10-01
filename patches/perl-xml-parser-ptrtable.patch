@@ -1,0 +1,47 @@
+Keep XML::Parser external parser and encoding handles in the XS pointer table
+
+The Fil-C T_PTR typemap encodes/decodes Perl_xsub_ptrtable handles. The
+externalEntityRef handler overwrote Parser with raw addresses, so nested
+parses and parent-parser release decoded invalid handles. Encinfo objects
+are stored with sv_setref_pv (also encoded), but read with raw casts.
+
+--- a/Expat/Expat.xs
++++ b/Expat/Expat.xs
+@@ -1012,7 +1012,7 @@
+ 
+ 	XML_SetBase(entpar, XML_GetBase(parser));
+ 
+-	sv_setiv(*pval, (IV) entpar);
++	sv_setiv(*pval, zptrtable_encode(Perl_xsub_ptrtable, entpar));
+ 
+ 	cbv->p = entpar;
+ 
+@@ -1044,7 +1044,7 @@
+ 
+       Extparse_Cleanup:
+ 	cbv->p = parser;
+-	sv_setiv(*pval, (IV) parser);
++	sv_setiv(*pval, zptrtable_encode(Perl_xsub_ptrtable, parser));
+ 	XML_ParserFree(entpar);
+ 	     
+ 	if (cbv->extfin_sv) {
+@@ -1167,7 +1167,7 @@
+   if (! sv_derived_from(*encinfptr, "XML::Parser::Encinfo"))
+     croak("Entry in XML::Parser::Expat::Encoding_Table not an Encinfo object");
+ 
+-  enc = (Encinfo *) SvIV((SV*)SvRV(*encinfptr));
++  enc = (Encinfo *) zptrtable_decode(Perl_xsub_ptrtable, SvIV((SV*)SvRV(*encinfptr)));
+   Copy(enc->firstmap, info->map, 256, int);
+   info->release = NULL;
+   if (enc->prefixes_size) {
+--- a/Expat/typemap
++++ b/Expat/typemap
+@@ -10,7 +10,7 @@
+ T_ENCOBJ
+ 	if (sv_derived_from($arg, \"XML::Parser::Encinfo\")) {
+ 	    IV tmp = SvIV((SV*)SvRV($arg));
+-	    $var = ($type) tmp;
++	    $var = ($type) zptrtable_decode(Perl_xsub_ptrtable, tmp);
+ 	}
+ 	else
+ 	    croak(\"$var is not of type XML::Parser::Encinfo\")

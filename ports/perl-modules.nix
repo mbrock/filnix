@@ -76,4 +76,27 @@ self: super: {
       ../patches/perl-xml-libxml-ptrtable.patch
     ];
   });
+
+  XMLParser = super.XMLParser.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [
+      ../patches/perl-xml-parser-ptrtable.patch
+    ];
+    postPatch =
+      (old.postPatch or "")
+      + "\n"
+      + ''
+        cp ${../patches/perl-xml-parser-capabilities.t} t/ptrtable-handles.t
+      '';
+  });
+
+  Moo = super.Moo.overrideAttrs (old: {
+    # Exercise Perl's MRO registry independently of Moo as well as retaining
+    # the upstream non-moo-extends-c3.t regression.
+    postPatch =
+      (old.postPatch or "")
+      + "\n"
+      + ''
+        cp ${../patches/perl-mro-capabilities.t} t/ptrtable-mro.t
+      '';
+  });
 }

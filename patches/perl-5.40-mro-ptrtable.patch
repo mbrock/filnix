@@ -1,0 +1,26 @@
+Preserve registered MRO algorithm capabilities through Perl_xsub_ptrtable
+
+mro_register stores a struct mro_alg pointer in PL_registered_mros as a UV.
+mro_get_from_name must recover its capability, not cast the UV to a pointer.
+This repairs the C3 trap exposed by Moo t/non-moo-extends-c3.t.
+
+--- a/mro_core.c
++++ b/mro_core.c
+@@ -124,7 +124,7 @@
+         return NULL;
+     assert(SvTYPE(*data) == SVt_IV);
+     assert(SvIOK(*data));
+-    return INT2PTR(const struct mro_alg *, SvUVX(*data));
++    return (const struct mro_alg *)zptrtable_decode(Perl_xsub_ptrtable, SvUVX(*data));
+ }
+ 
+ /*
+@@ -137,7 +137,7 @@
+ 
+ void
+ Perl_mro_register(pTHX_ const struct mro_alg *mro) {
+-    SV *wrapper = newSVuv(PTR2UV(mro));
++    SV *wrapper = newSVuv(zptrtable_encode(Perl_xsub_ptrtable, (void *)mro));
+ 
+     PERL_ARGS_ASSERT_MRO_REGISTER;
+ 
