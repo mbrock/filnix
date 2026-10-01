@@ -1533,3 +1533,29 @@ interaction after GC. Both fixtures run offscreen and under Xvfb/XCB;
 asymmetric software-rendered pixels are checked and normal/popup Controls
 screenshots are retained. This coverage is for the software backend, not
 GPU rendering or every QtDeclarative module.
+
+### Qt 6 short AES hashes
+
+The integrated Igloo run exposed `aeshash128_lt16()` reading a full vector
+from an eight-byte global QStringView source. Its cacheline-based mask or
+shuffle avoids hardware page faults, not object-bound violations. Machines
+with AVX512VL can hide this bug by choosing bounded masked loads instead.
+
+The Fil-C branch copies only the valid bytes into a zero-filled 16-byte
+buffer, then performs the same AES load and scrambling. Latin-1 expansion
+copies half the logical UTF-16 byte length before widening. AES remains
+enabled, native code is unchanged, and this is not a toolchain change.
+
+`tests/qt6-hash.cpp` selects VAES256 and AES128 by masking only the advanced
+dispatch features in its own process. It checks exact-sized globals and
+heap objects, byte lengths 0..15, Latin-1/UTF-16 lengths 0..7, both cacheline
+halves, unaligned views, and full-block boundaries. Fixed short-hash values
+come from unmodified native Qt 6.11.2 with a nonzero explicit seed and zero
+secondary seed; these reject fallback or changed hash semantics. A CPU
+without AES/SSE4.2 reports an explicit hardware-test skip.
+
+Focused validation reproduces the original eight-byte-global trap (exit
+133) and passes both hardware paths with the patched QtCore hash translation
+unit, as well as unmodified native Qt. The complete clean Qt6 regression
+remains a separate validation step. QtBase and its Nix-dependent Qt6
+consumers must rebuild, but there is no header/ABI or Qt5/toolchain change.

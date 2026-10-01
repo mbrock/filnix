@@ -29,12 +29,13 @@ pkgs.stdenv.mkDerivation {
     cp ${./qt5-contract-plugin.cpp} qt5-contract-plugin.cpp
     cp ${./qt6-qml.cpp} qt6-qml.cpp
     cp ${./qt6-quick.cpp} qt6-quick.cpp
+    cp ${./qt6-hash.cpp} qt6-hash.cpp
     cat > CMakeLists.txt <<'EOF'
     cmake_minimum_required(VERSION 3.16)
     project(qt6-smoke LANGUAGES CXX)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_AUTOMOC ON)
-    find_package(Qt6 REQUIRED COMPONENTS Widgets Network Sql Xml Concurrent Test Svg Qml QmlPrivate Quick QuickControls2)
+    find_package(Qt6 REQUIRED COMPONENTS CorePrivate Widgets Network Sql Xml Concurrent Test Svg Qml QmlPrivate Quick QuickControls2)
     add_executable(qt6-smoke qt5-smoke.cpp)
     target_link_libraries(qt6-smoke PRIVATE Qt6::Widgets Qt6::Network Qt6::Sql Qt6::Xml Qt6::Concurrent Qt6::Test)
     add_executable(qt6-contracts qt6-contracts.cpp)
@@ -45,7 +46,9 @@ pkgs.stdenv.mkDerivation {
     target_link_libraries(qt6-qml PRIVATE Qt6::QmlPrivate)
     add_executable(qt6-quick qt6-quick.cpp)
     target_link_libraries(qt6-quick PRIVATE Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test)
-    install(TARGETS qt6-smoke qt6-contracts qt6-contract-plugin qt6-qml qt6-quick DESTINATION bin)
+    add_executable(qt6-hash qt6-hash.cpp)
+    target_link_libraries(qt6-hash PRIVATE Qt6::CorePrivate)
+    install(TARGETS qt6-smoke qt6-contracts qt6-contract-plugin qt6-qml qt6-quick qt6-hash DESTINATION bin)
     EOF
   '';
   cmakeFlags = [
@@ -64,6 +67,7 @@ pkgs.stdenv.mkDerivation {
       pkgs.makeFontsConf { fontDirectories = [ pkgs.pkgsBuildBuild.dejavu_fonts ]; }
     }
     export HOME=$TMPDIR
+    QT_HASH_SEED=0 ./qt6-hash
     ./qt6-contracts "$PWD/libqt6-contract-plugin.so"
     ./qt6-qml
     QT_QPA_PLATFORM=offscreen ./qt6-smoke

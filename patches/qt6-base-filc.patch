@@ -756,3 +756,27 @@
  QT_BEGIN_NAMESPACE
  
  enum {
+--- a/src/corelib/tools/qhash.cpp
++++ b/src/corelib/tools/qhash.cpp
+@@ -514,6 +514,13 @@
+ aeshash128_lt16(__m128i state0, const __m128i *src, const __m128i *srcend, size_t len)
+ {
+     if (len) {
++#ifdef __FILC__
++        // Cacheline-safe loads can still cross the source object's bounds.
++        // Stage only valid bytes, keeping the same zero-padded AES input.
++        alignas(16) uchar buffer[16] = {};
++        memcpy(buffer, src, ZX == None ? len : len / 2);
++        __m128i data = loadu128<ZX>(buffer);
++#else
+         // We're going to load 16 bytes and mask zero the part we don't care
+         // (the hash of a short string is different from the hash of a longer
+         // including NULLs at the end because the length is in the key)
+@@ -535,6 +542,7 @@
+             data = _mm_shuffle_epi8(data, control);
+         }
+ 
++#endif
+         hash16bytes(state0, data);
+     }
+     return mm_cvtsi128_sz(state0);
