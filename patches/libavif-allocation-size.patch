@@ -1,0 +1,33 @@
+Reject objects larger than PTRDIFF_MAX before calling the allocator. Such
+objects cannot support C pointer differences; Fil-C traps on these impossible
+requests rather than returning NULL. Preserve libavif's allocation-failure
+contract and its existing extreme-size test, adding a boundary check.
+
+--- a/src/mem.c
++++ b/src/mem.c
+@@ -4,11 +4,15 @@
+ #include "avif/avif.h"
+ 
+ #include <assert.h>
++#include <stdint.h>
+ #include <stdlib.h>
+ 
+ void * avifAlloc(size_t size)
+ {
+     assert(size != 0); // Implementation-defined. See https://en.cppreference.com/w/cpp/memory/c/malloc
++    if (size > PTRDIFF_MAX) {
++        return NULL;
++    }
+     return malloc(size);
+ }
+ 
+--- a/tests/gtest/avifallocationtest.cc
++++ b/tests/gtest/avifallocationtest.cc
+@@ -203,6 +203,7 @@
+   void* p1 = avifAlloc(1);
+   EXPECT_NE(p1, nullptr);
+   avifFree(p1);
+ 
++  EXPECT_EQ(avifAlloc(static_cast<size_t>(PTRDIFF_MAX) + 1), nullptr);
+   EXPECT_EQ(avifAlloc(std::numeric_limits<size_t>::max()), nullptr);
+ }

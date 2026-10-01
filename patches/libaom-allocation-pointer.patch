@@ -1,0 +1,44 @@
+Store the aligned allocator's owning address as a pointer, not an integer.
+Reloading a size_t preserves the address bits but loses the Fil-C capability
+needed by free(). All users of aom_malloc/calloc/memalign share this header.
+
+--- a/aom_mem/include/aom_mem_intrnl.h
++++ b/aom_mem/include/aom_mem_intrnl.h
+@@ -15,7 +15,7 @@
+ 
+ #include "config/aom_config.h"
+ 
+-#define ADDRESS_STORAGE_SIZE sizeof(size_t)
++#define ADDRESS_STORAGE_SIZE sizeof(void *)
+ 
+ #ifndef DEFAULT_ALIGNMENT
+ #if defined(VXWORKS)
+--- a/aom_mem/aom_mem.c
++++ b/aom_mem/aom_mem.c
+@@ -37,19 +37,19 @@
+   return 1;
+ }
+ 
+-static size_t *GetMallocAddressLocation(void *const mem) {
+-  return ((size_t *)mem) - 1;
++static void **GetMallocAddressLocation(void *const mem) {
++  return ((void **)mem) - 1;
+ }
+ 
+ static void SetActualMallocAddress(void *const mem,
+-                                   const void *const malloc_addr) {
+-  size_t *const malloc_addr_location = GetMallocAddressLocation(mem);
+-  *malloc_addr_location = (size_t)malloc_addr;
++                                   void *const malloc_addr) {
++  void **const malloc_addr_location = GetMallocAddressLocation(mem);
++  *malloc_addr_location = malloc_addr;
+ }
+ 
+ static void *GetActualMallocAddress(void *const mem) {
+-  const size_t *const malloc_addr_location = GetMallocAddressLocation(mem);
+-  return (void *)(*malloc_addr_location);
++  void *const *const malloc_addr_location = GetMallocAddressLocation(mem);
++  return *malloc_addr_location;
+ }
+ 
+ void *aom_memalign(size_t align, size_t size) {

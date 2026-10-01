@@ -1107,7 +1107,22 @@ in
     (removeCMakeFlag "-DSVT_AV1_LTO=ON")
     (addCMakeFlag "-DCOMPILE_C_ONLY=ON")
   ])
-  (for pkgs.libaom [ (addCMakeFlag "-DAOM_TARGET_CPU=generic") ])
+  (for pkgs.libavif [
+    # Honor allocation-failure returns for sizes that cannot be C objects.
+    (patch ./patches/libavif-allocation-size.patch)
+  ])
+  (for pkgs.libaom [
+    (addCMakeFlag "-DAOM_TARGET_CPU=generic")
+    # Keep the owning malloc pointer's capability in the aligned header.
+    (patch ./patches/libaom-allocation-pointer.patch)
+    (use (old: {
+      passthru = (old.passthru or { }) // {
+        tests = (old.passthru.tests or { }) // {
+          allocation-encoder = import ./tests/libaom.nix { pkgs = final; };
+        };
+      };
+    }))
+  ])
 
   (for pkgs.onetbb [
     # tbbmalloc carves objects out of raw mmap chunks, so its pointers carry
