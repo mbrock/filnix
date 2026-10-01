@@ -26,9 +26,11 @@
     const form = event.target.closest?.("#log-tools form");
     if (form) form.dataset.editing = "1";
   });
-  document.addEventListener("htmx:before:morph:attr", (event) => {
-    // Open diagnostic sections belong to the reader, not to refreshed data.
-    if (event.target.tagName === "DETAILS" && event.detail.attrName === "open") event.preventDefault();
+  htmx.registerExtension("reader-disclosures", {
+    // This hot-path morph hook is an extension callback, not a DOM event.
+    htmx_before_morph_attr(element, detail) {
+      if (element.tagName === "DETAILS" && detail.attrName === "open") return false;
+    },
   });
   document.addEventListener("htmx:before:swap", (event) => {
     const ctx = event.detail.ctx, source = ctx?.sourceElement;

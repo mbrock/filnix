@@ -125,7 +125,7 @@ class SchedulingTests(unittest.TestCase):
         for attempt in self.controller.active_attempts():
             card = soup.find(id="active-" + attempt["id"])
             self.assertIsNotNone(card)
-            self.assertIn("1 roots", card.get_text())
+            self.assertEqual(card["data-roots"], "1")
             self.assertTrue(
                 any(
                     a["href"].split("?", 1)[0].endswith(attempt["id"] + "/log")

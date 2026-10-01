@@ -126,7 +126,12 @@ def create_app(state):
         def prepare(db, cid, c, v):
             summary, ledger = (
                 data.summary(db, cid),
-                data.ledger(db, cid, v.with_(sort="recent", kind="", outcome="", q="")),
+                data.ledger(
+                    db,
+                    cid,
+                    v.with_(sort="recent", kind="", outcome="", q=""),
+                    recent=True,
+                ),
             )
             return c["name"], lambda: views.activity(summary, ledger, v)
 
@@ -137,7 +142,10 @@ def create_app(state):
         with data.read(state) as db:
             campaign = data.campaign(db, cid)
             ledger = data.ledger(
-                db, cid, view.with_(sort="recent", kind="", outcome="", q="")
+                db,
+                cid,
+                view.with_(sort="recent", kind="", outcome="", q=""),
+                recent=True,
             )
         return representation(
             request, lambda: views.activity_feed(ledger, campaign, view)

@@ -86,6 +86,41 @@ class BatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             batches(self.db, "missing-campaign")
 
+    def test_recent_window_retains_completed_builds_across_planning_burst(self):
+        self.assertEqual(batches(self.db, self.cid, recent=True)["rows"], [])
+        for n in range(9):
+            self.attempt(f"build-{n}")
+            self.db.execute(
+                "UPDATE attempts SET created=? WHERE id=?", (100 + n, f"build-{n}")
+            )
+        for n in range(45):
+            self.attempt(f"plan-{n}", kind="plan", targets=[])
+            self.db.execute(
+                "UPDATE attempts SET created=? WHERE id=?", (200 + n, f"plan-{n}")
+            )
+        self.attempt("running", state="running", end=None, reason=None)
+        self.db.execute("UPDATE attempts SET created=400 WHERE id='running'")
+        self.attempt("outsider", campaign=self.other)
+        self.db.execute("UPDATE attempts SET created=500 WHERE id='outsider'")
+        self.db.execute(
+            "INSERT INTO activities(attempt,activity,drv,kind) VALUES('build-8','1',?,'build')",
+            (self.dep,),
+        )
+        self.db.execute(
+            "INSERT INTO tests VALUES('build-8',?,'checkPhase','observed')", (self.dep,)
+        )
+        result = batches(self.db, self.cid, recent=True)
+        rows = {r["id"]: r for r in result["rows"]}
+        self.assertEqual(result["total"], 55)
+        self.assertEqual(
+            set(rows),
+            {"running"}
+            | {f"plan-{n}" for n in range(6, 45)}
+            | {f"build-{n}" for n in range(1, 9)},
+        )
+        self.assertEqual((rows["build-8"]["builds"], rows["build-8"]["tested"]), (1, 1))
+        self.assertEqual(len(batches(self.db, self.cid)["rows"]), 55)
+
     def test_aliases_transitive_names_checks_and_attempt_outcome(self):
         self.attempt("failed", reason="build-failed")
         self.attempt("outsider", campaign=self.other)

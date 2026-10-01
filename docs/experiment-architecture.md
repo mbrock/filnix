@@ -251,6 +251,27 @@ containment was verified during the native calibration batch.
 
 ## What watching the experiment looks like
 
+The 0.18 Activity overview uses a compact build monitor instead of expanded
+request cards and the full planning ledger. Each active request shows bounded
+dependency paths to observed builds, their phases and activity times, with log
+and dependency links. Placement labels describe request routing, not measured
+builder utilization; request age is separate from build activity time. Stopped
+activities remain explicitly unconfirmed and are available in disclosures.
+Planning is a single line, recent finished build requests are summarized, and
+the latest 40 requests have an expandable timeline/ledger; the full history
+remains on the request-ledger page. The overview reads at most those 40 requests
+plus eight finished builds, so planning bursts do not hide build results or make
+refreshes scale with the full campaign history. Reader-opened disclosures
+survive live HTML morphs without freezing their contents.
+
+The monitor is deliberately partial: at most 24 observed activities per request,
+eight nodes per path, 32 parents per node and 256 indexed reverse-edge reads per
+refresh. Shared nodes are shown once per request. If no bounded path to a root
+is found, the activity is shown separately, never attached by a fabricated edge.
+HTML reads perform no Nix/store work or campaign mutation. Immutable request
+placement is cached for up to 128 attempts, with synchronized cold reads: SQLite
+otherwise parses each multi-megabyte admission spec on every overview refresh.
+
 The overview should put useful activity first: current builds and phases, recent
 successes with test evidence, and shared blockers. Show fixed input count,
 evaluation progress, pending/running/available/blocked/error counts, and separate

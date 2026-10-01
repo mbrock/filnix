@@ -7,9 +7,27 @@ from .history import batch_status, campaign_row, OUTCOME
 from .model import stamp
 
 
-def batches(db, campaign):
+def batches(db, campaign, *, recent=False):
     campaign_row(db, campaign)
     now = stamp()
+    where, params = "campaign=?", (campaign,)
+    if recent:
+        # The live overview needs a small history window and eight completed
+        # builds even when many planning requests finished between builds.
+        ids = [
+            r[0]
+            for r in db.execute(
+                """WITH latest AS (SELECT id FROM attempts WHERE campaign=?
+                    ORDER BY created DESC,id DESC LIMIT 40),
+                completed AS (SELECT id FROM attempts WHERE campaign=?
+                    AND kind='build' AND state='finished'
+                    ORDER BY created DESC,id DESC LIMIT 8)
+                SELECT id FROM latest UNION SELECT id FROM completed""",
+                (campaign, campaign),
+            )
+        ]
+        where += " AND id IN (" + ",".join("?" for _ in ids) + ")"
+        params += tuple(ids)
     aliases = defaultdict(list)
     for row in db.execute(
         "SELECT drv,label FROM candidates WHERE campaign=? AND drv IS NOT NULL ORDER BY label",
@@ -18,26 +36,28 @@ def batches(db, campaign):
         aliases[row["drv"]].append(row["label"])
     observed = defaultdict(dict)
     for row in db.execute(
-        """SELECT DISTINCT a.attempt,a.drv,coalesce(d.name,a.drv) AS name
-        FROM activities a JOIN attempts t ON t.id=a.attempt
+        f"""SELECT DISTINCT a.attempt,a.drv,coalesce(d.name,a.drv) AS name
+        FROM activities a
         LEFT JOIN derivations d ON d.drv=a.drv
-        WHERE t.campaign=? AND a.kind='build' AND a.drv IS NOT NULL""",
-        (campaign,),
+        WHERE a.attempt IN (SELECT id FROM attempts WHERE {where})
+        AND a.kind='build' AND a.drv IS NOT NULL""",
+        params,
     ):
         observed[row["attempt"]][row["drv"]] = row["name"]
     tested = dict(
         db.execute(
-            """SELECT t.attempt,count(DISTINCT t.drv) FROM tests t
-            JOIN attempts a ON a.id=t.attempt WHERE a.campaign=? GROUP BY t.attempt""",
-            (campaign,),
+            f"""SELECT t.attempt,count(DISTINCT t.drv) FROM tests t
+            WHERE t.attempt IN (SELECT id FROM attempts WHERE {where})
+            GROUP BY t.attempt""",
+            params,
         )
     )
     rows = []
     for row in db.execute(
         f"""SELECT id,kind,state,created,finished,targets,{OUTCOME} AS outcome,
         json_extract(result,'$.reason') AS reason FROM attempts
-        WHERE campaign=? ORDER BY created,id""",
-        (campaign,),
+        WHERE {where} ORDER BY created,id""",
+        params,
     ):
         r = dict(row)
         roots = []
@@ -69,4 +89,11 @@ def batches(db, campaign):
     cursor = db.execute(
         "SELECT coalesce(max(seq),0) FROM events WHERE campaign=?", (campaign,)
     ).fetchone()[0]
-    return dict(campaign=campaign, now=now, cursor=cursor, rows=rows)
+    total = (
+        db.execute(
+            "SELECT count(*) FROM attempts WHERE campaign=?", (campaign,)
+        ).fetchone()[0]
+        if recent
+        else len(rows)
+    )
+    return dict(campaign=campaign, now=now, cursor=cursor, rows=rows, total=total)

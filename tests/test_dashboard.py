@@ -214,6 +214,46 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(walk.call_count, 1)
             self.assertTrue(all(value is result for value in values))
 
+    def test_placement_spec_is_parsed_once_across_readers_and_cache_is_bounded(self):
+        import json
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        from experiment.dashboard import data
+
+        self.graph()
+        aid = self.attempt("build")
+        self.sql("UPDATE attempts SET state='finished' WHERE id=?", (aid,))
+        legacy = self.attempt("build")
+        self.sql(
+            "UPDATE attempts SET spec=? WHERE id=?",
+            (
+                json.dumps(dict(build_location="remote", admission_available=[A] * 10000)),
+                aid,
+            ),
+        )
+        self.db.commit()
+        ready, queries = threading.Barrier(8), []
+
+        def read(_):
+            with data.read(self.state) as db:
+                db.set_trace_callback(queries.append)
+                ready.wait(timeout=5)
+                return data.build_location(db, aid)
+
+        with patch.object(data, "_locations", {str(i): "local" for i in range(128)}):
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                values = list(pool.map(read, range(8)))
+            self.assertEqual(values, ["remote"] * 8)
+            self.assertEqual(sum("json_extract(spec" in q for q in queries), 1)
+            self.assertEqual(len(data._locations), 128)
+            self.assertNotIn("0", data._locations)
+            self.db.set_trace_callback(queries.append)
+            self.assertEqual(data.build_location(self.db, legacy), "mixed")
+            self.assertEqual(len(data._locations), 128)
+            data.summary(self.db, self.cid)
+            data.summary(self.db, self.cid)
+            self.assertEqual(sum("json_extract(spec" in q for q in queries), 2)
+
     def test_blocked_package_links_failure_owner_and_unfiltered_plan(self):
         self.graph()
         plan = self.attempt("plan")
@@ -401,6 +441,89 @@ class DashboardTests(unittest.TestCase):
         feed = BeautifulSoup(self.get("/activity").text, "html.parser")
         self.assertIsNotNone(feed.select_one('[data-batch="' + aid + '"]'))
 
+    def test_monitor_connects_activity_to_root_with_observed_time_not_request_time(
+        self,
+    ):
+        self.graph()
+        aid = self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,phase) VALUES(?,'1',?,'build','checkPhase')",
+            (aid, A),
+        )
+        self.sql("INSERT INTO build_times VALUES(?,'1',100,NULL)", (aid,))
+        self.sql("UPDATE attempts SET created=10 WHERE id=?", (aid,))
+        self.db.commit()
+        with patch("experiment.dashboard.data.stamp", return_value=143):
+            page = BeautifulSoup(self.get("").text, "html.parser")
+        card = page.find(id="active-" + aid)
+        root = card.find(attrs={"data-drv": B})
+        dependency = card.find(attrs={"data-drv": A})
+        self.assertEqual(root["data-state"], "waiting")
+        self.assertEqual(dependency["data-state"], "building")
+        self.assertEqual(dependency.find_parent("ul").previous_sibling, root)
+        self.assertIn("check", dependency.text)
+        self.assertIn("43s", dependency.text)
+        self.assertIn("request 2m 13s", card.text)
+        self.assertIn(
+            A, parse_qs(urlsplit(dependency.find_all("a")[-1]["href"]).query)["drv"]
+        )
+        self.assertIsNone(page.select_one("#request-history").get("open"))
+
+    def test_monitor_stopped_activity_is_not_success_and_cycles_do_not_repeat_it(self):
+        self.graph()
+        aid = self.controller.build_targets(self.controller.campaign(self.cid), [B])
+        self.sql("INSERT INTO edges VALUES(?,?,?)", (A, B, '["out"]'))
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind,phase,stopped) VALUES(?,'1',?,'build','checkPhase',1)",
+            (aid, A),
+        )
+        self.sql("INSERT INTO build_times VALUES(?,'1',100,117)", (aid,))
+        self.sql("UPDATE derivations SET available=1 WHERE drv=?", (A,))
+        self.db.commit()
+        page = BeautifulSoup(self.get("").text, "html.parser")
+        rows = page.select('#build-monitor [data-drv="' + A + '"]')
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["data-state"], "awaiting-result")
+        self.assertIn("17s", rows[0].text)
+        self.assertIn("Awaiting result", rows[0].text)
+        self.assertNotIn("Built", rows[0].text)
+        self.assertNotIn("Tested", rows[0].text)
+
+    def test_monitor_budget_keeps_unconnected_activity_without_inventing_an_edge(self):
+        from experiment.dashboard.data import build_forest
+
+        self.graph()
+        aid = self.attempt("build")
+        # Two broad layers exceed the bounded reverse-edge query budget.
+        drvs = [f"/nix/store/{i:032d}-wide.drv" for i in range(300)]
+        for drv in drvs:
+            self.sql(
+                "INSERT INTO derivations(drv,name,outputs) VALUES(?,?,'{}')",
+                (drv, "wide"),
+            )
+        for i, drv in enumerate(drvs):
+            child = B if i < 32 else drvs[(i - 32) // 9]
+            self.sql("INSERT INTO edges VALUES(?,?,?)", (drv, child, '["out"]'))
+        self.sql(
+            "INSERT INTO activities(attempt,activity,drv,kind) VALUES(?,'1',?,'build')",
+            (aid, B),
+        )
+        queries = []
+        self.db.set_trace_callback(queries.append)
+        try:
+            groups = build_forest(
+                self.db,
+                [dict(id=aid, kind="build", targets=[dict(drv=A, label="root")])],
+                set(drvs) | {A, B},
+                1000,
+            )
+        finally:
+            self.db.set_trace_callback(None)
+        self.assertEqual(groups[0]["tree"], {})
+        self.assertEqual([n["drv"] for n in groups[0]["detached"]], [B])
+        self.assertTrue(groups[0]["partial"])
+        self.assertEqual(sum("SELECT parent FROM edges" in q for q in queries), 256)
+
     def test_detail_refresh_and_campaign_scoped_test_evidence(self):
         self.graph()
         aid = self.attempt("build")
@@ -459,9 +582,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("Awaiting result", soup.get_text())
         self.assertNotIn("Stopped", soup.get_text())
         self.assertNotIn("Tested", soup.get_text())
-        self.assertIn(
-            "awaiting result", soup.select_one("#batch-build-summary").text
-        )
+        self.assertIn("awaiting result", soup.select_one("#batch-build-summary").text)
 
     def test_batch_completion_and_results_are_distinct(self):
         self.graph()

@@ -87,7 +87,7 @@ def summary(value, view):
             elif c["mode"] != "running":
                 text(c["mode"].capitalize())
         with tag.svg(
-            ["w-full", "h-1.5", "mb-3"],
+            ["w-full", "h-1.5", "mb-2"],
             viewBox="0 0 1000 4",
             preserveAspectRatio="none",
             role="img",
@@ -106,54 +106,183 @@ def summary(value, view):
                 width = counts.get(key, 0) / max(value["total"], 1) * 1000
                 tag.rect(x=at, y=0, width=width, height=4, fill=color)
                 at += width
+        build_monitor(value, view)
         if value["blockers"]:
             top_blockers(value["blockers"], cid, view)
-        if value["active"]:
-            with tag.div(["grid", "gap-x-4", "md:grid-cols-2", "mb-3"]):
-                for a in value["active"]:
-                    with tag.div([ROW, "py-1.5", "min-w-0"], id="active-" + a["id"]):
-                        with tag.div(["flex", "gap-2", "justify-between"]):
-                            with link(BATCH.url(view, cid=cid, aid=a["id"])):
-                                text("Building" if a["kind"] == "build" else "Planning")
-                                text(f" · {len(a['targets'])} roots")
-                            with link(
-                                LOG.url(view, cid=cid, aid=a["id"]),
-                                [LINK, "tabular-nums"],
-                            ):
-                                text(duration(value["now"] - a["created"]))
-                        with tag.p([MUTED, "truncate"]):
-                            text(", ".join(t["label"] for t in a["targets"]))
-            if value["builds"]:
+
+
+def monitor_node(node, cid, aid, view):
+    with tag.div(
+        ["flex", "flex-wrap", "items-baseline", "gap-x-3", "min-w-0", "py-0.5"],
+        data_drv=node["drv"],
+        data_state=node["state"],
+    ):
+        symbols = {
+            "building": "●",
+            "awaiting-result": "◇",
+            "available": "✓",
+            "failed": "!",
+            "excluded": "−",
+        }
+        with tag.span([MUTED, "w-3", "shrink-0"], aria_hidden="true"):
+            text(symbols.get(node["state"], "○"))
+        with link(
+            GRAPH.url(view.with_(focus=node["drv"], page=0), cid=cid),
+            [
+                FOCUS,
+                "min-w-0",
+                "flex-1",
+                "basis-1/2",
+                "sm:basis-auto",
+                "truncate",
+                "font-medium",
+            ],
+            title=build_name(node["name"]),
+        ):
+            text(build_name(node["name"]))
+        with tag.span(
+            ["text-xs", "shrink-0", "sm:w-36", "sm:text-right"],
+            data_status=node["state"],
+        ):
+            if node["state"] == "building":
+                with tag.span("text-sky-800"):
+                    text((node["phase"] or "building").removesuffix("Phase"))
+            elif node["state"] == "waiting":
+                with tag.span(MUTED):
+                    text("waiting / resolving")
+            else:
+                status(node["state"])
+        if node["elapsed"] is not None:
+            with tag.span(
+                [
+                    MUTED,
+                    "text-xs",
+                    "tabular-nums",
+                    "shrink-0",
+                    "sm:w-16",
+                    "sm:text-right",
+                ],
+                title="Observed build activity time",
+            ):
+                text(duration(node["elapsed"]))
+        with link(
+            LOG.url(view.with_(drv=node["drv"]), cid=cid, aid=aid),
+            [LINK, "text-xs", "shrink-0"],
+        ):
+            text("log")
+
+
+def monitor_tree(tree, nodes, cid, aid, view):
+    with tag.ul(["border-l", "border-stone-300", "ml-1.5", "pl-3"]):
+        for drv, children in tree.items():
+            with tag.li():
+                monitor_node(nodes[drv], cid, aid, view)
+                if children:
+                    monitor_tree(children, nodes, cid, aid, view)
+
+
+def build_monitor(value, view):
+    cid = value["campaign"]["id"]
+    with tag.section(
+        ["mb-3"], id="build-monitor", aria_label="Live build dependency forest"
+    ):
+        with tag.div(["flex", "justify-between", "gap-2", "items-baseline", "mb-1"]):
+            with tag.h1(HEADING):
+                text("Build monitor")
+            with link(GRAPH.url(view, cid=cid), [LINK, "text-xs"]):
+                text("Explore dependencies →")
+        for group in value["monitor"]:
+            a, tree = group["request"], group["tree"]
+            single = len(a["targets"]) == 1
+            with tag.div(
+                [ROW, "py-1"], id="active-" + a["id"], data_roots=len(a["targets"])
+            ):
                 with tag.div(
-                    ["grid", "sm:grid-cols-2", "lg:grid-cols-3", "gap-x-4", "mb-3"]
+                    ["flex", "items-baseline", "gap-2", "min-w-0", "text-xs", MUTED]
                 ):
-                    for build in value["builds"]:
-                        with link(
-                            LOG.url(
-                                view.with_(drv=build["drv"]),
-                                cid=cid,
-                                aid=build["attempt"],
-                            ),
-                            [
-                                FOCUS,
-                                "flex",
-                                "gap-2",
-                                "justify-between",
-                                "min-w-0",
-                                "py-0.5",
-                            ],
+                    with link(
+                        BATCH.url(view, cid=cid, aid=a["id"]),
+                        [LINK, "truncate", "min-w-0"],
+                    ):
+                        text(f"{len(a['targets'])} root{'s' if not single else ''}")
+                        if not single:
+                            text(
+                                " · "
+                                + ", ".join(t["label"] for t in a["targets"][:3])
+                                + "…"
+                            )
+                    with tag.span(
+                        "shrink-0",
+                        title="Request placement, not measured builder utilization",
+                    ):
+                        text(a["location"] + " request")
+                    with tag.span(
+                        ["ml-auto", "tabular-nums", "shrink-0"],
+                        title="Time since request admission, not build time",
+                    ):
+                        text("request " + duration(value["now"] - a["created"]))
+                    with link(LOG.url(view, cid=cid, aid=a["id"]), [LINK, "shrink-0"]):
+                        text("log")
+                if single:
+                    drv = a["targets"][0]["drv"]
+                    monitor_node(group["nodes"][drv], cid, a["id"], view)
+                    if tree.get(drv):
+                        monitor_tree(tree[drv], group["nodes"], cid, a["id"], view)
+                elif tree:
+                    monitor_tree(tree, group["nodes"], cid, a["id"], view)
+                if group["detached"]:
+                    with tag.div([MUTED, "text-xs", "mt-1"]):
+                        text(
+                            "Other observed activity · dependency path outside this view"
+                        )
+                    for node in group["detached"]:
+                        monitor_node(node, cid, a["id"], view)
+                if group["settling"]:
+                    with tag.details(id="settling-" + a["id"]):
+                        with tag.summary([FOCUS, MUTED, "text-xs", "cursor-pointer"]):
+                            text(
+                                f"{len(group['settling'])} recent stopped activities · awaiting results"
+                            )
+                        for node in group["settling"]:
+                            monitor_node(node, cid, a["id"], view)
+                if not single and group["hidden_roots"]:
+                    with tag.details(id="pending-" + a["id"]):
+                        with tag.summary([FOCUS, MUTED, "text-xs", "cursor-pointer"]):
+                            text(f"{len(group['hidden_roots'])} other requested roots")
+                        with tag.div(
+                            ["flex", "flex-wrap", "gap-x-3", "text-xs", "py-1"]
                         ):
-                            with tag.span(["truncate", "text-sky-800"]):
-                                text(
-                                    build_name(
-                                        build["name"]
-                                        or build["drv"].rsplit("/", 1)[-1][33:-4]
+                            for node in group["hidden_roots"]:
+                                with link(
+                                    GRAPH.url(
+                                        view.with_(focus=node["drv"], page=0), cid=cid
                                     )
-                                )
-                            with tag.span([MUTED, "shrink-0", "text-xs"]):
-                                text(
-                                    (build["phase"] or "building").removesuffix("Phase")
-                                )
+                                ):
+                                    text(build_name(node["name"]))
+        planners = [a for a in value["active"] if a["kind"] == "plan"]
+        for a in planners:
+            with tag.div(
+                [ROW, "flex", "gap-3", "py-1", "text-xs", MUTED], id="active-" + a["id"]
+            ):
+                with link(BATCH.url(view, cid=cid, aid=a["id"]), LINK):
+                    text(f"Planning · {len(a['targets'])} roots")
+                with tag.span(["truncate", "min-w-0", "flex-1"]):
+                    text(", ".join(t["label"] for t in a["targets"][:3]))
+                with link(
+                    LOG.url(view, cid=cid, aid=a["id"]),
+                    [LINK, "shrink-0", "tabular-nums"],
+                ):
+                    text(duration(value["now"] - a["created"]))
+        if not value["monitor"]:
+            with tag.p([MUTED, "py-2"]):
+                text(
+                    "No active build requests. "
+                    + ("Planning the next roots." if planners else "The queue is idle.")
+                )
+        with tag.p([MUTED, "text-xs", "mt-1"]):
+            text(
+                "Partial dependency view · shared dependencies shown once per request · stopped ≠ succeeded"
+            )
 
 
 def top_blockers(rows, cid, view):
@@ -335,10 +464,9 @@ def activity_feed(ledger, campaign, view):
             trigger=view.trigger,
             done=ledger["done"] or not view.watch,
         )
-        timeline(ledger["rows"], cid, view, ledger["now"])
         with tag.div(["flex", "justify-between", "items-center", "gap-2", "mb-1"]):
-            with tag.h1(HEADING):
-                text("Recent batches")
+            with tag.h2(HEADING):
+                text("Recent build requests")
             with tag.div(["flex", "gap-2", "items-center", MUTED, "text-xs"]):
                 with tag.span():
                     text(
@@ -357,12 +485,41 @@ def activity_feed(ledger, campaign, view):
                         hx.preview(url, region="#activity-feed")
                         attr("hx-replace-url", "true")
                         text("Pause" if view.watch else "Follow")
-        if ledger["rows"]:
+        recent = [
+            r
+            for r in ledger["rows"]
+            if r["kind"] == "build" and r["state"] == "finished"
+        ][:8]
+        if recent:
+            with tag.div(["grid", "md:grid-cols-2", "gap-x-5"], id="recent-builds"):
+                for row in recent:
+                    with tag.div(
+                        [ROW, "flex", "gap-3", "py-1", "items-baseline", "min-w-0"]
+                    ):
+                        with link(
+                            BATCH.url(view, cid=cid, aid=row["id"]),
+                            [LINK, "truncate", "min-w-0", "flex-1"],
+                        ):
+                            text(", ".join(build_name(r) for r in row["roots"]))
+                        with tag.span(["text-xs", "shrink-0"]):
+                            status(row["status"])
+                        with link(
+                            LOG.url(view, cid=cid, aid=row["id"]),
+                            [LINK, "text-xs", "tabular-nums", "shrink-0"],
+                        ):
+                            text(duration(row["duration"]))
+        else:
+            with tag.p([MUTED, "py-1"]):
+                text("No finished build requests yet.")
+        with tag.details(["mt-2", "mb-3"], id="request-history"):
+            with tag.summary([FOCUS, MUTED, "cursor-pointer", "text-xs"]):
+                text(
+                    f"Request history · latest {min(40, len(ledger['rows'])):,} of {ledger['total']:,} requests"
+                )
+            timeline(ledger["rows"][:40], cid, view, ledger["now"])
             batch_rows(ledger["rows"][:40], cid, view)
             with link(BATCHES.url(view, cid=cid), [LINK, "inline-block", "mt-2"]):
-                text(f"All {len(ledger['rows']):,} batches →")
-        else:
-            empty("Waiting for the first planning batch.")
+                text("Full request ledger →")
 
 
 def snapshot_notice(result, cid, view, target):
