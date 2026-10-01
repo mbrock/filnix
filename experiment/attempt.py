@@ -117,6 +117,7 @@ def build(folder, spec):
         str(policy["silent_seconds"]),
         # Builds may go to the daemon's remote builders (/etc/nix/machines);
         # --max-jobs bounds only local jobs.
+        *(["--builders", ""] if spec.get("build_location") == "local" else []),
         *[t + "^*" for t in spec["targets"]],
     )
     # Store this independently of controller state, including interrupted launches.

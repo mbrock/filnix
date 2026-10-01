@@ -1,19 +1,19 @@
 # Operating the Filnix experiment
 
 The dashboard is **https://nix.swa.sh/**. It is read-only. The active campaign is
-**Fil-C eb534be · nixos-26.05 · Nix on Fil-C** (`eb1a3583-16e3-4a53-a5a5-468ffec1e7bc`),
-started on 2026-09-26 at source `90453acba6dc11a9af2c9b2b2cd0a6df0bb4a2dc` on the
-`next` branch. It builds the 14,647 attributes of the
+**Fil-C 0.686 · integrated ports · main c940a48** (`390c9340-6650-4458-99df-b113b3a6d3ce`),
+started on 2026-09-30 at source `c940a48134a332211d80b09791b592c762267bd4` on
+`main`. It builds the 14,647 attributes of the
 [26.05 inventory](../experiments/package-inventory-2605/README.md) with the
-mbrock/fil-c `filnix` compiler (including the -O0 stack aux root fix). It was
-imported from a bare clone under `/var/lib/filnix-experiment/imports/next-2605`,
-since the experiment account cannot read home directories. The earlier
+Fil-C 0.686 toolchain and integrated package repairs from an immutable source.
+The earlier
 campaigns, including **Fil-C b6dd634 · shared cancellation**
 (`3eaf2f72-7c12-4bf2-9934-9646ea9dab4d`, fully published), are paused with their
 history preserved.
 
-The active campaign uses 32 roots per batch, a 256-derivation ready buffer and
-two build lanes: four jobs in total with seven requested cores per job. The
+The active campaign uses the 0.17 rolling queue, a 256-derivation ready buffer,
+four local single-root requests with seven requested cores each, and up to six
+remote single-root requests on igloo. Requests refill independently. The
 30-CPU workload slice retains a 20% memory reserve for the host. Both binary
 cache publishers discover the active campaign; outstanding uploads from the
 first campaign retain their receipts and continue to drain.
@@ -202,6 +202,48 @@ scheduling is a future policy change.
 
 ## Keeping builds supplied
 
+### Rolling queue (0.17)
+
+The live campaign uses `scheduling=rolling`. Enable it on an existing campaign:
+
+```sh
+sudo /opt/filnix-experiment/bin/filnix-experiment schedule CAMPAIGN --scheduling rolling --plan-ahead 256
+```
+
+There is no batch-completion barrier. Each automatic build attempt contains one
+root and its own logs, policy, results and restart-safe intent. On completion,
+its slot is refilled while other roots continue. Nix still schedules the root's
+dependency graph; the controller does not schedule individual build phases.
+
+Local requests use `--builders "" --max-jobs 1`. Their combined job and requested
+CPU budgets cannot exceed the campaign's frozen limits (four jobs, 28 requested
+threads on this host). Remote-only requests use `--max-jobs 0`; their count is
+bounded by configured capacity from Nix's builders setting (six on igloo).
+Nix's remote slot locks enforce machine capacity across clients. Local job limits
+are per client, not a daemon-wide semaphore, so separate placement prevents a
+large mixed-client pool from falling back to too many local builds.
+
+Remote admission checks the systems and required/mandatory features of every
+unrealized dependency. Unknown metadata and local-only features use local slots.
+Metadata is backfilled in bounded chunks from existing derivations, without
+reevaluating recipes. An explicit remote capability rejection routes that root
+locally once; real build failures and inconclusive resource outcomes do not loop.
+
+Required outputs are checked in the store before scheduling. Missing paths for
+single-output fixed-output derivations are resolved with `nix-store --query
+--outputs`, without realization. Verified cached dependencies can be shared
+immediately, even while their original attempt is still running. This observation
+does not itself claim a build or a passed check; terminal reconciliation retains
+provenance and test evidence. Still-unrealized shared dependencies remain reserved.
+
+`batch_size` and `build_lanes` remain legacy/manual-batch settings, not rolling
+queue limits. Existing batch workers drain with their original immutable limits.
+Switching back with `--scheduling batched` lets rolling workers drain; legacy
+admission resumes within the remaining budget. Pause, resource gates, cancellation and recovery retain their
+existing behavior. No campaign restart, recipe change or rebuild is required.
+
+### Legacy batching
+
 New campaigns imported with runner 0.12.5 use CPUs `1-15,17-31` and four
 build jobs with seven requested cores each. With two build lanes, each client
 gets two jobs. That reserves 28 of the 30 workload CPUs for builds and leaves
@@ -211,7 +253,7 @@ Existing campaigns retain their frozen policy and need not be rewritten.
 
 
 Version 0.6 permits one planner and one Nix build client in the same campaign.
-The main campaign uses **32 roots per build batch** and a **128-derivation ready
+The first campaign used **32 roots per build batch** and a **128-derivation ready
 buffer**. The planner evaluates at most 32 inputs per attempt and stops admitting
 work when the buffer is full. Evaluation failures, cached outputs, aliases, and
 known blockers do not consume ready slots. The last planning chunk is bounded by
@@ -258,9 +300,10 @@ and 4 GiB. No running attempt or daemon needs restarting to enable this policy.
 Before admitting another batch, the controller walks required dependency outputs,
 stopping at outputs previously observed available. A new batch cannot overlap
 another active batch's potentially unrealized derivations or their output paths.
-Already available tools and libraries can be shared. Dependencies are reserved
-until their owning attempt reconciles, even if some finish early. Unknown outputs
-are treated conservatively. Selection scans up to the lookahead window (at most
+Already available tools and libraries can be shared. Before 0.17, dependencies
+stayed reserved until their owning batch reconciled, even if they finished early;
+0.17 releases store-verified required outputs promptly in either scheduling mode.
+Unresolved outputs remain conservative. Selection scans up to the lookahead window (at most
 256 queued roots), skips overlapping work, and retains skipped roots in the queue.
 If that entire window shares unfinished dependencies, it waits. This is a bounded
 scheduler, not a guarantee of full utilization.
@@ -313,7 +356,7 @@ The controller, web server, SSH and Caddy are outside it.
 | CPUs                        | `1-15,17-31`; one complete physical core reserved                        |
 | MemoryHigh / MemoryMax      | 70% / 80%; observed maximum 107,296,374,784 bytes                         |
 | Swap                        | 2 GiB                                                                     |
-| Nix admission               | New campaign policy: four jobs, seven requested cores per job; up to two clients |
+| Nix admission               | Four local jobs, seven requested cores each; rolling queue also supplies up to six remote requests |
 | Build wall / silence budget | 7,200 / 900 seconds                                                       |
 | Evaluator                   | Two CPUs, 4 GiB address space, 90 seconds per candidate                   |
 | Attempt service             | 8 GiB client/evaluator memory, 1,024 tasks, three-hour backstop           |

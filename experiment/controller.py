@@ -13,7 +13,7 @@ from . import VERSION, nix
 from .attempt import directory
 from .model import atomic_json, closure, encode, event, refresh_candidates, stamp
 from .outcomes import backfill, snapshot as build_outcomes
-from .scheduling import build_policy, reservations
+from .scheduling import BuildGraph, build_policy, reservations
 from .scope import (
     REASON,
     RUSTC_NAME,
@@ -76,6 +76,8 @@ class Controller:
         self.units = units or Units(state)
         (self.state / "attempts").mkdir(exist_ok=True)
         (self.state / "roots").mkdir(exist_ok=True)
+        self.machines, self.machines_observed = [], 0
+        self.inspected = set()
         backfill(self.db)
 
     def campaign(self, cid):
@@ -111,14 +113,29 @@ class Controller:
             raise ValueError("an attempt is already active; planning ahead is disabled")
         if kind == "build":
             self.check_scope(targets)
-            effective = build_policy(policy, builds)
+            observation = extra.pop("observation", None)
+            location = extra.get("build_location", "local")
+            effective = build_policy(policy, builds, location, self.machines)
             if not effective:
                 raise ValueError("build lanes or requested CPU budget occupied")
-            if policy.get("build_lanes", 1) > 1 or builds:
-                graph, held, available = reservations(self.db, self.state, builds)
-                needed = graph.needed(targets, available, held)
+            if policy.get("scheduling") == "rolling":
+                extra["build_location"] = location
+            if (
+                observation is not None
+                or policy.get("build_lanes", 1) > 1
+                or builds
+                or policy.get("scheduling") == "rolling"
+            ):
+                graph, held, available = observation or reservations(
+                    self.db, self.state, builds
+                )
+                needed = graph.needed(targets, available)
                 if needed & held or graph.paths(needed) & graph.paths(held):
                     raise ValueError("build dependencies are owned by another attempt")
+                if location == "remote" and not graph.remote_eligible(
+                    needed, self.machines
+                ):
+                    raise ValueError("build dependencies require a local builder")
                 extra["admission_available"] = sorted(available)
             policy = effective
         if kind == "plan":
@@ -490,6 +507,23 @@ class Controller:
                 "UPDATE candidates SET state='inconclusive',error=? WHERE campaign=? AND drv=? AND state='queued'",
                 (result["reason"], attempt["campaign"], drv),
             )
+        # A capability mismatch is not a package failure. Route this root locally
+        # once; ordinary builder failures, cancellations and timeouts never retry.
+        if (
+            spec.get("build_location") == "remote"
+            and result["reason"] == "build-error"
+            and b"Unable to start any build" in raw
+            and not failures
+        ):
+            for drv in json.loads(attempt["targets"]):
+                self.db.execute(
+                    "UPDATE derivations SET metadata=json_set(coalesce(metadata,'{}'),'$.local_only',json('true')) WHERE drv=?",
+                    (drv,),
+                )
+                self.db.execute(
+                    "UPDATE candidates SET state='queued',error=NULL WHERE campaign=? AND drv=? AND state='inconclusive'",
+                    (attempt["campaign"], drv),
+                )
         result["build_outcomes"] = build_outcomes(self.db, attempt["id"])
         result["build_outcomes_source"] = "batch-completion"
 
@@ -575,15 +609,53 @@ class Controller:
             reason = "retained log budget reached; archive attempts before continuing"
         return reason
 
+    def prepare_graph(self, targets, rolling):
+        """Backfill live scheduling metadata; never rebuild or reevaluate recipes."""
+        graph, _, available = reservations(
+            self.db,
+            self.state,
+            [r for r in self.active_attempts() if r["kind"] == "build"],
+        )
+        needed = graph.needed(targets, available)
+        # Probe required closures, not all ancestors of already cached outputs.
+        # Partial multi-output realizations must prune their ancestors as well.
+        available.update(nix.valid(graph.paths(needed)))
+        needed = graph.needed(targets, available)
+        rows = self.db.execute(
+            """SELECT drv FROM derivations WHERE drv IN (SELECT value FROM json_each(?))
+              AND ((? AND metadata IS NULL)
+                OR EXISTS(SELECT 1 FROM json_each(outputs) WHERE value IS NULL))
+              ORDER BY EXISTS(SELECT 1 FROM json_each(outputs) WHERE value IS NULL) DESC""",
+            (encode(sorted(needed)), rolling),
+        )
+        drvs = [
+            r[0] for r in rows if r[0] not in self.inspected and Path(r[0]).is_file()
+        ][:64]
+        if drvs:
+            data = nix.query("derivation", "show", *drvs)
+            with self.db:
+                nix.add_graph(self.db, data)
+            self.inspected.update(drvs)
+            graph = BuildGraph(self.db)
+            available.update(nix.valid(graph.paths(needed)))
+        return available
+
     def admit(self, campaign):
         policy = json.loads(campaign["policy"])
+        rolling = policy.get("scheduling") == "rolling"
+        if rolling and stamp() - self.machines_observed >= 60:
+            self.machines = nix.build_machines()
+            self.machines_observed = stamp()
         active = self.active_attempts()
         if any(r["campaign"] != campaign["id"] for r in active):
             return
         ahead = policy.get("plan_ahead", 0)
         lanes = {r["kind"] for r in active}
         builds = [r for r in active if r["kind"] == "build"]
-        can_build = build_policy(policy, builds) is not None
+        can_build = build_policy(policy, builds) is not None or (
+            rolling
+            and build_policy(policy, builds, "remote", self.machines) is not None
+        )
         if active and (not ahead or (not can_build and "plan" in lanes)):
             return
         reason = self.admission_reason(policy)
@@ -603,17 +675,45 @@ class Controller:
                 )
             ]
             targets = []
-            graph, held, available = reservations(self.db, self.state, builds)
+            observed = self.prepare_graph(
+                candidates + [d for r in builds for d in json.loads(r["targets"])],
+                rolling,
+            )
+            graph, held, available = reservations(self.db, self.state, builds, observed)
             held_paths = graph.paths(held)
             for drv in candidates:
-                needed = graph.needed([drv], available, held) if builds else set()
+                needed = graph.needed([drv], available)
                 if needed & held or graph.paths(needed) & held_paths:
+                    continue
+                if rolling:
+                    remote = build_policy(policy, builds, "remote", self.machines)
+                    local = build_policy(policy, builds)
+                    if remote and graph.remote_eligible(needed, self.machines):
+                        location = "remote"
+                    elif local:
+                        location = "local"
+                    else:
+                        continue
+                    aid = self.build_targets(
+                        campaign,
+                        [drv],
+                        build_location=location,
+                        observation=(graph, held, available),
+                    )
+                    builds.append(
+                        self.db.execute(
+                            "SELECT * FROM attempts WHERE id=?", (aid,)
+                        ).fetchone()
+                    )
+                    held.update(needed)
+                    held_paths.update(graph.paths(needed))
+                    lanes.add("build")
                     continue
                 targets.append(drv)
                 if len(targets) >= policy["batch_size"]:
                     break
             if targets:
-                self.build_targets(campaign, targets)
+                self.build_targets(campaign, targets, observation=(graph, held, available))
                 lanes.add("build")
         if "plan" in lanes or ("build" in lanes and not ahead):
             return
@@ -840,7 +940,7 @@ class Controller:
             event(self.db, cid, "toolchains-excluded", report)
         return report
 
-    def build_targets(self, campaign, targets):
+    def build_targets(self, campaign, targets, **extra):
         # Builds realize fixed drvs, never reevaluate the campaign flake. A batch
         # can contain roots planned at different explicit follow-up revisions.
         recipe_sources = {}
@@ -875,6 +975,7 @@ class Controller:
             output_paths=sorted(outputs),
             derivations=sorted(drvs),
             recipe_sources=recipe_sources,
+            **extra,
         )
 
     def tick(self):
@@ -900,6 +1001,7 @@ class Controller:
                 "batch_size": policy["batch_size"],
                 "plan_ahead": policy.get("plan_ahead", 0),
                 "build_lanes": policy.get("build_lanes", 1),
+                "scheduling": policy.get("scheduling", "batched"),
             }
             after = dict(before)
             for key, low, high in (
@@ -914,6 +1016,13 @@ class Controller:
                             f"{key} must be an integer from {low} to {high}"
                         )
                     after[key] = value
+            scheduling = request.get("scheduling")
+            if scheduling is not None:
+                if scheduling not in ("batched", "rolling"):
+                    raise ValueError("scheduling must be batched or rolling")
+                after["scheduling"] = scheduling
+            if after["scheduling"] == "rolling" and not after["plan_ahead"]:
+                raise ValueError("rolling scheduling requires nonzero plan_ahead")
             if after != before:
                 # Historical attempt specs stay immutable, including their policy.
                 # Only admission settings change; limits, recipes, pins and checks do not.

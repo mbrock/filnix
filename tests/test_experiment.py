@@ -63,6 +63,9 @@ class ExperimentTests(unittest.TestCase):
         )
         self.units = Units()
         self.controller = Controller(self.db, self.state, self.units)
+        validity = patch("experiment.nix.valid", return_value=set())
+        self.valid = validity.start()
+        self.addCleanup(validity.stop)
 
     def tearDown(self):
         self.db.close()
@@ -353,10 +356,22 @@ class ExperimentTests(unittest.TestCase):
             ).fetchone()[0]
         )
         self.assertEqual(
-            record["before"], {"batch_size": 8, "plan_ahead": 0, "build_lanes": 1}
+            record["before"],
+            {
+                "batch_size": 8,
+                "plan_ahead": 0,
+                "build_lanes": 1,
+                "scheduling": "batched",
+            },
         )
         self.assertEqual(
-            record["after"], {"batch_size": 32, "plan_ahead": 128, "build_lanes": 1}
+            record["after"],
+            {
+                "batch_size": 32,
+                "plan_ahead": 128,
+                "build_lanes": 1,
+                "scheduling": "batched",
+            },
         )
         self.assertEqual(self.controller.campaign(self.cid)["mode"], "paused")
         with self.assertRaises(ValueError):
@@ -706,10 +721,11 @@ class ExperimentTests(unittest.TestCase):
         self.graph()
         self.db.commit()
         self.db.execute("ALTER TABLE derivations DROP COLUMN exclusion")
+        self.db.execute("ALTER TABLE derivations DROP COLUMN metadata")
         self.db.execute("PRAGMA user_version=1")
         self.db.close()
         self.db = connect(self.state)
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 4)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 5)
         self.assertEqual(self.sql("SELECT count(*) FROM derivations").fetchone()[0], 3)
         self.assertIsNone(
             self.sql("SELECT exclusion FROM derivations LIMIT 1").fetchone()[0]
@@ -835,7 +851,7 @@ class ExperimentTests(unittest.TestCase):
         graph = BuildGraph(self.db)
         self.assertEqual(graph.needed([B], {OUTPUT}), {B})
         self.assertEqual(graph.needed([B], set()), {A, B, C})
-        self.assertEqual(graph.needed([B], {OUTPUT}, held={A}), {A, B, C})
+        self.assertEqual(graph.needed([B], {A[:-4]}), {A, B, C})
 
     def plan_record(self, aid, target, drv):
         graph_file = f"graph-{target}.json"

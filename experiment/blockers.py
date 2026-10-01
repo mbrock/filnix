@@ -23,10 +23,19 @@ _lock = threading.Lock()
 
 def ranking(db, cid):
     hit = _cache.get(cid)
-    if hit is None or SYNCHRONOUS:
+    if SYNCHRONOUS:
         result = compute(db, cid)
         _cache[cid] = (time.monotonic(), result)
         return result
+    if hit is None:
+        # A restart can receive many simultaneous live-page refreshes. Share
+        # the first graph walk instead of multiplying its memory and CPU cost.
+        with _lock:
+            hit = _cache.get(cid)
+            if hit is None:
+                result = compute(db, cid)
+                _cache[cid] = (time.monotonic(), result)
+                return result
     if time.monotonic() - hit[0] >= TTL:
         with _lock:
             start = cid not in _refreshing

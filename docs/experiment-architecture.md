@@ -99,10 +99,16 @@ four local builds and request six threads per build. A batch may contain several
 candidate roots; Nix schedules their shared dependencies. Avoid multiplying
 concurrency by launching a separate unrestricted Nix client for every candidate.
 
-The scheduler can overlap one bounded planner with up to two build clients.
-Two clients normally split the four-job allowance; admission reserves requested
-threads from every immutable active spec against the workload CPU set. Batches
-may share cached inputs, but cannot own overlapping unrealized dependencies.
+The scheduler overlaps one bounded planner with build clients. Legacy batching
+uses up to two clients; rolling scheduling uses single-root local and remote
+requests, refilling each slot as a root completes. Local requests each reserve
+one job and disable offload; their aggregate limits include immutable draining
+batch specs. Remote-only requests reserve no local jobs and are bounded by Nix's
+configured remote capacity. Eligibility includes every unrealized dependency's
+system/features. Nix retains dependency scheduling and remote machine slot locks.
+Store-verified required outputs release reservations promptly. Missing fixed-output
+paths are resolved without realization. Cached inputs can be shared, but clients
+cannot own overlapping unrealized dependencies.
 Each completion reconciles only its roots and preserves prior dependency evidence.
 The first campaign was tuned from eight-root serial batches to 32-root batches
 and a 128-derivation ready buffer after observing idle capacity at batch tails.

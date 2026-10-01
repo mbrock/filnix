@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS candidates_drv ON candidates(drv);
 CREATE TABLE IF NOT EXISTS derivations (
  drv TEXT PRIMARY KEY, name TEXT NOT NULL, outputs TEXT NOT NULL,
  available INTEGER NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT 'unknown',
- failure TEXT, evidence_attempt TEXT, exclusion TEXT);
+ failure TEXT, evidence_attempt TEXT, exclusion TEXT, metadata TEXT);
 CREATE TABLE IF NOT EXISTS edges (
  parent TEXT NOT NULL, child TEXT NOT NULL, outputs TEXT NOT NULL,
  PRIMARY KEY(parent,child));
@@ -104,7 +104,7 @@ CREATE INDEX IF NOT EXISTS attempts_campaign ON attempts(campaign,created);
 CREATE INDEX IF NOT EXISTS activities_drv ON activities(drv);
 CREATE INDEX IF NOT EXISTS tests_drv ON tests(drv);
 CREATE INDEX IF NOT EXISTS events_campaign ON events(campaign,seq);
-PRAGMA user_version=4;
+PRAGMA user_version=5;
 """
 
 
@@ -121,7 +121,7 @@ def connect(state, readonly=False):
         db.execute("PRAGMA query_only=ON")
     else:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4):
+        if version not in (0, 1, 2, 3, 4, 5):
             raise ValueError(f"unsupported database version {version}")
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=FULL")
@@ -129,6 +129,10 @@ def connect(state, readonly=False):
         if version == 1:
             db.executescript(
                 "BEGIN IMMEDIATE; ALTER TABLE derivations ADD COLUMN exclusion TEXT; PRAGMA user_version=2; COMMIT;"
+            )
+        if version and version < 5:
+            db.executescript(
+                "BEGIN IMMEDIATE; ALTER TABLE derivations ADD COLUMN metadata TEXT; PRAGMA user_version=5; COMMIT;"
             )
         db.executescript(SCHEMA)
     return db

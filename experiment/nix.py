@@ -17,6 +17,7 @@ DEFAULT_POLICY = dict(
     batch_size=8,
     build_lanes=1,  # Two bounded clients require explicit opt-in and lookahead.
     plan_ahead=0,  # Explicit opt-in; old campaigns retain serial admission.
+    scheduling="batched",
     wall_seconds=7200,
     silent_seconds=900,
     log_bytes=128 * 1024**2,
@@ -110,11 +111,54 @@ def normalize_graph(data):
 
 def add_graph(db, data):
     for drv, info in normalize_graph(data).items():
+        old = db.execute(
+            "SELECT outputs,metadata FROM derivations WHERE drv=?", (drv,)
+        ).fetchone()
         outputs = {k: v.get("path") for k, v in info["outputs"].items()}
+        # Nix's JSON omits paths for some fixed-output derivations. The store
+        # query resolves these without building, downloading or reevaluating.
+        if outputs == {"out": None}:
+            known = json.loads(old["outputs"]).get("out") if old else None
+            if known:
+                outputs["out"] = known
+            elif Path(drv).is_file():
+                try:
+                    paths = subprocess.check_output(
+                        [
+                            str(Path(NIX).with_name("nix-store")),
+                            "--query",
+                            "--outputs",
+                            drv,
+                        ],
+                        text=True,
+                        stderr=subprocess.PIPE,
+                        timeout=30,
+                    ).splitlines()
+                except subprocess.CalledProcessError:
+                    paths = []  # Unresolved CA outputs stay conservative.
+                if len(paths) == 1:
+                    outputs["out"] = paths[0]
+        attrs = info.get("structuredAttrs") or info.get("env", {})
+        if "__json" in attrs:
+            attrs = json.loads(attrs["__json"])
+        features = attrs.get("requiredSystemFeatures", [])
+        if isinstance(features, str):
+            features = features.split()
+        if attrs.get("__contentAddressed") in (True, "1"):
+            features = [*features, "ca-derivations"]
+        metadata = dict(system=info.get("system"), features=sorted(set(features)))
         name = info.get("name", info.get("env", {}).get("name", Path(drv).name[33:-4]))
         db.execute(
             "INSERT OR IGNORE INTO derivations(drv,name,outputs) VALUES(?,?,?)",
             (drv, name, encode(outputs)),
+        )
+        # Fill missing paths/metadata without rewriting availability, failures,
+        # provenance or a recorded remote-to-local fallback.
+        merged = dict(json.loads(old["outputs"])) if old else dict(outputs)
+        merged.update({k: v for k, v in outputs.items() if v})
+        db.execute(
+            "UPDATE derivations SET outputs=?,metadata=coalesce(metadata,?) WHERE drv=?",
+            (encode(merged), encode(metadata), drv),
         )
         reason = exclusion(name, info)
         if reason:
@@ -127,6 +171,32 @@ def add_graph(db, data):
                 "INSERT OR IGNORE INTO edges VALUES(?,?,?)",
                 (drv, child, encode(required)),
             )
+
+
+def build_machines():
+    """Read Nix's configured capacity and features, never SSH credentials."""
+    config = query("config", "show", "--json")
+    value = config["builders"]["value"]
+    if value.startswith("@"):
+        value = Path(value[1:]).read_text()
+    machines = {}
+    for line in value.replace(";", "\n").splitlines():
+        fields = line.split("#", 1)[0].split()
+        if not fields:
+            continue
+
+        def field(i, default):
+            return fields[i] if len(fields) > i and fields[i] != "-" else default
+
+        uri = fields[0]
+        machines[uri] = dict(
+            uri=uri,
+            systems=field(1, config["system"]["value"]).split(","),
+            max_jobs=int(field(3, "1")),
+            supported=field(5, "").split(",") if field(5, "") else [],
+            mandatory=field(6, "").split(",") if field(6, "") else [],
+        )
+    return list(machines.values())
 
 
 def observe(db, aid, raw):

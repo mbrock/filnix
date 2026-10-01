@@ -96,6 +96,11 @@ def main():
         help="queued derivations to prepare (0–256; 0 disables overlap)",
     )
     schedule.add_argument("--build-lanes", type=int, help="bounded build clients (1–2)")
+    schedule.add_argument(
+        "--scheduling",
+        choices=("batched", "rolling"),
+        help="rolling refills single-root local and remote requests independently",
+    )
     exclude = sub.add_parser(
         "exclude-kernels",
         help="exclude kernel recipes and optionally reconcile their cancelled batch",

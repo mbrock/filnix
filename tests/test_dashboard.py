@@ -190,6 +190,30 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual([(r["drv"], r["blocks"]) for r in rows], [(A, 2)])
             self.assertIn(B, blockers._cache[self.cid][1]["bad"])
 
+    def test_cold_blocker_ranking_is_shared_by_concurrent_readers(self):
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        from experiment import blockers
+
+        ready = threading.Barrier(8)
+        result = {"rows": []}
+
+        def compute(db, cid):
+            time.sleep(0.1)
+            return result
+
+        def read():
+            ready.wait(timeout=5)
+            return blockers.ranking(None, self.cid)
+
+        with patch.object(blockers, "SYNCHRONOUS", False), patch.object(
+            blockers, "compute", side_effect=compute
+        ) as walk:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                values = list(pool.map(lambda _: read(), range(8)))
+            self.assertEqual(walk.call_count, 1)
+            self.assertTrue(all(value is result for value in values))
+
     def test_blocked_package_links_failure_owner_and_unfiltered_plan(self):
         self.graph()
         plan = self.attempt("plan")

@@ -6,23 +6,45 @@ from . import nix
 from .attempt import directory
 
 
-def build_policy(policy, active):
+def build_policy(policy, active, location="local", machines=()):
     """Reserve requested threads, including immutable limits of older workers.
 
     Nix's cores setting is a hint, so the workload cgroup remains the hard limit.
     Normally two clients split four jobs; a draining legacy client may leave room
     for only one smaller job. Never infer free slots from momentary CPU activity.
     """
-    lanes = policy.get("build_lanes", 1) if policy.get("plan_ahead", 0) else 1
+    rolling = policy.get("scheduling") == "rolling"
+    if rolling and location == "remote":
+        occupied = sum(
+            json.loads(r["spec"]).get("build_location") == "remote" for r in active
+        )
+        if occupied >= sum(m["max_jobs"] for m in machines):
+            return None
+        return dict(policy, max_jobs=0)
+    if rolling:
+        active = [
+            r for r in active if json.loads(r["spec"]).get("build_location") != "remote"
+        ]
+    lanes = (
+        policy["max_jobs"]
+        if rolling
+        else policy.get("build_lanes", 1)
+        if policy.get("plan_ahead", 0)
+        else 1
+    )
     if len(active) >= lanes:
         return None
-    jobs, cores = max(1, policy["max_jobs"] // lanes), policy["cores"]
+    jobs, cores = 1 if rolling else max(1, policy["max_jobs"] // lanes), policy["cores"]
     remaining = len(nix.cpu_set(policy["cpus"]))
+    remaining_jobs = policy["max_jobs"]
     for row in active:
         limits = json.loads(row["spec"])["policy"]
         if limits["max_jobs"] <= 0 or limits["cores"] <= 0:
             return None
         remaining -= limits["max_jobs"] * limits["cores"]
+        remaining_jobs -= limits["max_jobs"]
+    if rolling and (remaining_jobs < 1 or remaining < cores):
+        return None
     if remaining < 1 or cores < 1:
         return None
     jobs = min(jobs, max(1, remaining // cores))
@@ -46,19 +68,20 @@ class BuildGraph:
     def paths(self, drvs):
         return {p for d in drvs for p in self.outputs(d).values() if p}
 
-    def needed(self, targets, available, held=()):
+    def needed(self, targets, available):
         """Stop at available required outputs, not at the full derivation closure.
 
-        A held derivation is included even if a later observer saw its outputs:
-        ownership lasts until reconciliation. Unknown output requirements retain
-        the dependency conservatively. Iteration also handles deep graphs/cycles.
+        Store-verified outputs release dependency reservations immediately.
+        Unknown output requirements retain the dependency conservatively.
+        Iteration also handles deep graphs/cycles and unions output requirements
+        when different branches need different outputs of the same derivation.
         """
         needed = set()
         todo = [(d, list(self.outputs(d))) for d in targets]
         while todo:
             drv, required = todo.pop()
             paths = {self.outputs(drv).get(k) for k in required}
-            if drv not in held and paths and None not in paths and paths <= available:
+            if paths and None not in paths and paths <= available:
                 continue
             if drv in needed:
                 continue
@@ -72,10 +95,26 @@ class BuildGraph:
                 todo.append((row["child"], required))
         return needed
 
+    def remote_eligible(self, drvs, machines):
+        for drv in drvs:
+            row = self.db.execute(
+                "SELECT metadata FROM derivations WHERE drv=?", (drv,)
+            ).fetchone()
+            info = json.loads(row[0]) if row and row[0] else {}
+            required = set(info.get("features", []))
+            if info.get("local_only") or not any(
+                info.get("system") in m["systems"]
+                and required <= set(m["supported"])
+                and set(m["mandatory"]) <= required
+                for m in machines
+            ):
+                return False
+        return True
 
-def reservations(db, state, active):
+
+def reservations(db, state, active, observed=()):
     graph = BuildGraph(db)
-    held, available = set(), set()
+    held, available = set(), set(observed)
     for row in db.execute("SELECT outputs FROM derivations WHERE available=1"):
         available.update(p for p in json.loads(row[0]).values() if p)
     for row in active:
@@ -88,4 +127,10 @@ def reservations(db, state, active):
         )
         available.update(before)
         held.update(graph.needed(spec["targets"], set(before)))
+    # Only realized outputs, not activity-stop events, release ownership. This
+    # changes scheduling observations, not persisted build or check evidence.
+    available.update(nix.valid(graph.paths(held)))
+    held = set().union(
+        *(graph.needed(json.loads(row["spec"])["targets"], available) for row in active)
+    )
     return graph, held, available

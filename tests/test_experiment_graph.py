@@ -3,6 +3,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from experiment.controller import Controller
 from experiment.graph import live_graph
@@ -56,6 +57,9 @@ class LiveGraphTests(unittest.TestCase):
             )
         self.db.commit()
         self.ctl = Controller(self.db, self.state)
+        validity = patch("experiment.nix.valid", return_value=set())
+        validity.start()
+        self.addCleanup(validity.stop)
 
     def tearDown(self):
         self.db.close()
