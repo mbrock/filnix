@@ -616,6 +616,10 @@ class Controller:
                     "attempt-finished",
                     {"id": row["id"], "reason": result["reason"]},
                 )
+                self.db.execute(
+                    "UPDATE campaigns SET heartbeat=? WHERE id=? AND mode='running'",
+                    (stamp(), row["campaign"]),
+                )
 
     def admission_reason(self, policy):
         resources = nix.resources(policy)
@@ -703,13 +707,16 @@ class Controller:
             )
             graph, held, available = reservations(self.db, self.state, builds, observed)
             held_paths = graph.paths(held)
+            if rolling:
+                remote = build_policy(policy, builds, "remote", self.machines)
+                local = build_policy(policy, builds)
             for drv in candidates:
+                if rolling and not (remote or local):
+                    break
                 needed = graph.needed([drv], available)
                 if needed & held or graph.paths(needed) & held_paths:
                     continue
                 if rolling:
-                    remote = build_policy(policy, builds, "remote", self.machines)
-                    local = build_policy(policy, builds)
                     if remote and graph.remote_eligible(needed, self.machines):
                         location = "remote"
                     elif local:
@@ -730,6 +737,10 @@ class Controller:
                     held.update(needed)
                     held_paths.update(graph.paths(needed))
                     lanes.add("build")
+                    # Capacity changes only after admission, not for every
+                    # candidate. Specs include large store observations.
+                    remote = build_policy(policy, builds, "remote", self.machines)
+                    local = build_policy(policy, builds)
                     continue
                 targets.append(drv)
                 if len(targets) >= policy["batch_size"]:

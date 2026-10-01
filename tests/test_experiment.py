@@ -515,6 +515,56 @@ class ExperimentTests(unittest.TestCase):
             64,
         )
 
+    def test_rolling_capacity_is_rechecked_only_after_admission(self):
+        from experiment.scheduling import build_policy
+
+        policy = dict(
+            nix.DEFAULT_POLICY,
+            scheduling="rolling",
+            plan_ahead=128,
+            max_jobs=1,
+            cores=1,
+            cpus="0",
+        )
+        self.sql("UPDATE campaigns SET policy=? WHERE id=?", (encode(policy), self.cid))
+        self.controller.machines = [
+            dict(systems=["x86_64-linux"], supported=[], mandatory=[], max_jobs=1)
+        ]
+        self.controller.machines_observed = stamp()
+        drvs = []
+        with self.db:
+            self.sql("DELETE FROM candidates")
+            for i in range(128):
+                drv = f"/nix/store/{i:032x}-package.drv"
+                drvs.append(drv)
+                self.sql(
+                    "INSERT INTO derivations(drv,name,outputs,metadata) VALUES(?,?,?,?)",
+                    (
+                        drv,
+                        str(i),
+                        encode({"out": f"/nix/store/{i:032x}-output"}),
+                        encode({"system": "x86_64-linux"}) if i >= 2 else "{}",
+                    ),
+                )
+                self.sql(
+                    "INSERT INTO candidates(campaign,attr,label,selection,state,drv) VALUES(?,?,?,?,'queued',?)",
+                    (self.cid, encode([str(i)]), f"{i:03}", "{}", drv),
+                )
+        with (
+            patch.object(self.controller, "admission_reason", return_value=""),
+            patch("experiment.controller.build_policy", wraps=build_policy) as capacity,
+        ):
+            self.controller.admit(self.controller.campaign(self.cid))
+        builds = self.controller.active_attempts()
+        self.assertEqual(
+            [json.loads(r["targets"]) for r in builds], [[drvs[0]], [drvs[2]]]
+        )
+        self.assertEqual(
+            [json.loads(r["spec"])["build_location"] for r in builds],
+            ["local", "remote"],
+        )
+        self.assertLessEqual(capacity.call_count, 9)
+
     def test_kernel_builder_is_excluded_even_as_a_renamed_dependency(self):
         self.graph()
         nix.add_graph(
@@ -1493,6 +1543,30 @@ class ExperimentTests(unittest.TestCase):
         self.assertTrue(self.request("/healthz")[0].startswith("503"))
         self.controller.tick()
         self.assertTrue(self.request("/healthz")[0].startswith("200"))
+
+    def test_reconciliation_reports_committed_progress_between_completions(self):
+        self.scheduling(plan_ahead=128)
+        first = self.attempt("build")
+        second = self.attempt("plan")
+        self.finish(first)
+        self.finish(second)
+        self.sql("UPDATE campaigns SET mode='running' WHERE id=?", (self.cid,))
+        self.db.commit()
+        now = [1000]
+        observed = []
+
+        def complete(attempt, result):
+            observed.append(self.controller.campaign(self.cid)["heartbeat"])
+            now[0] += 20
+
+        with (
+            patch("experiment.controller.stamp", side_effect=lambda: now[0]),
+            patch.object(self.controller, "finish_build", side_effect=complete),
+            patch.object(self.controller, "finish_plan", side_effect=complete),
+        ):
+            self.controller.reconcile()
+        self.assertEqual(observed, [None, 1020])
+        self.assertEqual(self.controller.campaign(self.cid)["heartbeat"], 1040)
 
 
 if __name__ == "__main__":

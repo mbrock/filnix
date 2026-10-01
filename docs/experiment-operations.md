@@ -12,11 +12,11 @@ campaigns, including **Fil-C b6dd634 · shared cancellation**
 history preserved.
 
 The active campaign uses the 0.17 rolling queue, a 256-derivation ready buffer,
-four local single-root requests with seven requested cores each, and up to six
-remote single-root requests on igloo. Requests refill independently. The
-30-CPU workload slice retains a 20% memory reserve for the host. Both binary
-cache publishers discover the active campaign; outstanding uploads from the
-first campaign retain their receipts and continue to drain.
+four local single-root requests with seven requested cores each, and up to eight
+remote single-root requests (six on igloo, two on chapel). Requests refill
+independently. The 30-CPU workload slice retains a 20% memory reserve for the
+host. Both binary cache publishers discover the active campaign; outstanding
+uploads from the first campaign retain their receipts and continue to drain.
 
 ## Dashboard layout
 
@@ -281,10 +281,11 @@ dependency graph; the controller does not schedule individual build phases.
 Local requests use `--builders "" --max-jobs 1`. Their combined job and requested
 CPU budgets cannot exceed the campaign's frozen limits (four jobs, 28 requested
 threads on this host). Remote-only requests use `--max-jobs 0`; their count is
-bounded by configured capacity from Nix's builders setting (six on igloo).
-Nix's remote slot locks enforce machine capacity across clients. Local job limits
-are per client, not a daemon-wide semaphore, so separate placement prevents a
-large mixed-client pool from falling back to too many local builds.
+bounded by configured capacity from Nix's builders setting (six on igloo, two
+on chapel). Nix's remote slot locks enforce machine capacity across clients.
+Local job limits are per client, not a daemon-wide semaphore, so separate
+placement prevents a large mixed-client pool from falling back to too many
+local builds.
 
 Remote admission checks the systems and required/mandatory features of every
 unrealized dependency. Unknown metadata and local-only features use local slots.
@@ -298,6 +299,14 @@ single-output fixed-output derivations are resolved with `nix-store --query
 immediately, even while their original attempt is still running. This observation
 does not itself claim a build or a passed check; terminal reconciliation retains
 provenance and test evidence. Still-unrealized shared dependencies remain reserved.
+
+The dashboard marks a running controller stale after 30 seconds without a
+heartbeat. Heartbeats advance at the end of a tick and after each committed
+attempt completion during reconciliation. There is no independent heartbeat
+thread: a blocked controller must still become stale. Rolling admission checks
+capacity once, then only after launching a root, and stops scanning when both
+local and remote slots are full. This avoids repeatedly decoding multi-megabyte
+attempt specifications across the entire ready buffer.
 
 `batch_size` and `build_lanes` remain legacy/manual-batch settings, not rolling
 queue limits. Existing batch workers drain with their original immutable limits.
@@ -419,7 +428,7 @@ The controller, web server, SSH and Caddy are outside it.
 | CPUs                        | `1-15,17-31`; one complete physical core reserved                        |
 | MemoryHigh / MemoryMax      | 70% / 80%; observed maximum 107,296,374,784 bytes                         |
 | Swap                        | 2 GiB                                                                     |
-| Nix admission               | Four local jobs, seven requested cores each; rolling queue also supplies up to six remote requests |
+| Nix admission               | Four local jobs, seven requested cores each; rolling queue also supplies up to eight remote requests |
 | Build wall / silence budget | 7,200 / 900 seconds                                                       |
 | Evaluator                   | Two CPUs, 4 GiB address space, 90 seconds per candidate                   |
 | Attempt service             | 8 GiB client/evaluator memory, 1,024 tasks, three-hour backstop           |
@@ -434,17 +443,30 @@ Systemd services do not make Nix's requested job thread count a hard CPU limit;
 the shared CPU set supplies the hard boundary.
 
 From runner 0.16, attempt builds no longer pass `builders = ""`, so the daemon
-may offload to the machines in `/etc/nix/machines` (currently igloo: six jobs,
-no `big-parallel`, root key `/root/.ssh/igloo_builder`). `--max-jobs` bounds
-only local jobs, and the CPU/memory limits above do not apply on the remote
-host. Igloo's daemon has `min-free`/`max-free` set (30/80 GiB) so it collects
-garbage itself. Planning still evaluates with `builders = ""` and no jobs.
+may offload to the machines in `/etc/nix/machines` (igloo: six jobs; chapel:
+two jobs; neither advertises `big-parallel`; both use `/root/.ssh/igloo_builder`).
+`--max-jobs` bounds only local jobs, and the CPU/memory limits above do not apply
+on the remote host. Igloo's daemon has `min-free`/`max-free` set (30/80 GiB) so
+it collects garbage itself. Planning still evaluates with `builders = ""` and
+no jobs.
 
 Nix does not forward `--max-silent-time`/`--timeout` to remote builds (checked
-over both `ssh-ng://` and `ssh://`), so igloo's own nix.conf sets
+over both `ssh-ng://` and `ssh://`), so both remote hosts set
 `max-silent-time = 900` and `timeout = 7200`. From 0.16.1 the attempt watchdog
 waits 300 s past the silence limit, so Nix fails only the silent derivation
 instead of the watchdog stopping the whole batch.
+
+Chapel is an office i7-10700K (8 cores/16 threads, 32 GiB RAM). Its persistent
+daemon drop-in at `/etc/systemd/system.control/nix-daemon.service.d/filnix-builder.conf`
+reserves one physical core (`AllowedCPUs=1-7 9-15`), sets `MemoryHigh=20G`,
+`MemoryMax=24G` and `MemorySwapMax=2G`, and loads `/etc/nix/filnix-builder.conf`
+through `NIX_CONFIG`. The SSH account's `~/.config/nix/nix.conf` also includes
+that file: SSH-side defaults otherwise override the daemon's requested core
+count. It sets two jobs, seven cores, 30/60 GiB disk GC thresholds, the remote
+timeouts above, and the Fil-C Cachix substituter/key. Existing caches remain.
+These are host-local overrides, not a NixOS system upgrade. The controller
+refreshes builder capacity every 60 seconds, so adding Chapel required no
+controller restart. Built outputs return to swa and use its existing publishers.
 
 The explicit `nix.swa.sh` vhost proxies loopback port 8777. To change Caddy, stage
 the complete configuration, validate with
