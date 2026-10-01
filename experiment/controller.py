@@ -990,6 +990,10 @@ class Controller:
 
     def dispatch(self, request):
         op, cid = request["op"], request.get("campaign")
+        if op == "classification-import":
+            from .classifications import persist
+
+            return persist(self.db, cid, request["item"])
         if op == "exclude-kernels":
             return self.exclude_kernels(cid, request.get("attempt"))
         if op == "exclude-toolchains":
@@ -1178,4 +1182,9 @@ class Controller:
                         subprocess.SubprocessError,
                     ) as e:
                         response = {"error": str(e)}
-                    client.sendall((encode(response) + "\n").encode())
+                    try:
+                        client.sendall((encode(response) + "\n").encode())
+                    except (BrokenPipeError, ConnectionResetError):
+                        # The command may already have committed. A departed
+                        # annotation/admin client must not stop the controller.
+                        pass

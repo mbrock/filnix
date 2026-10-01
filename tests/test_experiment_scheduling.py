@@ -333,7 +333,7 @@ class SchedulingTests(unittest.TestCase):
         self.assertEqual(
             [tuple(r) for r in self.sql("SELECT id,spec,state FROM attempts")], before
         )
-        self.assertEqual(self.sql("PRAGMA user_version").fetchone()[0], 5)
+        self.assertEqual(self.sql("PRAGMA user_version").fetchone()[0], 6)
 
     def test_worker_disables_offload_only_for_local_rolling_requests(self):
         folder = self.state / "worker"

@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException
 from ..batches import batches
 from ..blockers import ranking
 from ..catalog import catalog
+from ..classifications import annotations
 from ..graph import live_graph as live_graph
 from ..evidence import attempt_evidence, failure_evidence
 from ..history import COLUMNS, attempt_detail, item
@@ -281,6 +282,20 @@ def selected(row, state):
 def packages(db, cid, view):
     result = catalog(db, cid)
     result["rows"] = [r for r in result["rows"] if selected(r, view.state)]
+    facets, rows = {}, []
+    for row in result["rows"]:
+        suggested = {
+            annotation["kind"] + ":" + label
+            for annotation in row["classifications"]
+            for label, probability in annotation["probabilities"].items()
+            if probability >= 0.8
+        }
+        for facet in suggested:
+            facets[facet] = facets.get(facet, 0) + 1
+        if not view.facet or view.facet in suggested:
+            rows.append(row)
+    result["facets"] = dict(sorted(facets.items()))
+    result["rows"] = rows
     result["revision"] = revision(db, cid)
     result["sampled"] = int(stamp())
     result["done"] = finished(db, cid)
@@ -330,6 +345,7 @@ def package(db, cid, pid):
     ).fetchone():
         raise HTTPException(404, "Package not found in this campaign")
     result = detail(db, pid)
+    result["annotations"] = annotations(db, cid, pid)
     result["done"] = finished(db, cid)
     result["sampled"] = stamp()
     build = db.execute(

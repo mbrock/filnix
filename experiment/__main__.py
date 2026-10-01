@@ -1,6 +1,7 @@
 """Local administration; mutations use the controller socket or an exclusive lock."""
 
 import argparse
+from contextlib import closing
 import io
 import json
 import os
@@ -61,6 +62,22 @@ def main():
     sub.add_parser("status")
     backup = sub.add_parser("backup")
     backup.add_argument("destination")
+    classify = sub.add_parser(
+        "classify", help="annotate evidence without changing scheduling"
+    )
+    classify.add_argument(
+        "campaign", nargs="?", help="defaults to newest running campaign"
+    )
+    classify.add_argument("--provider", choices=("jev", "openai"), default="jev")
+    classify.add_argument(
+        "--limit", type=int, default=100, help="maximum new API requests"
+    )
+    classify.add_argument(
+        "--package",
+        action="append",
+        default=[],
+        help="restrict to exact package label; repeatable",
+    )
     for op in (
         "plan",
         "queue-replan",
@@ -125,6 +142,21 @@ def main():
         config = Config()
         config.bind = [f"127.0.0.1:{args.port}"]
         asyncio.run(serve(create_app(state), config))
+        return
+    if args.command == "classify":
+        from .classifications import run
+
+        campaign = args.campaign
+        if not campaign:
+            with closing(connect(state, readonly=True)) as db:
+                row = db.execute(
+                    "SELECT id FROM campaigns WHERE mode='running' ORDER BY created DESC LIMIT 1"
+                ).fetchone()
+            if not row:
+                print("No running campaign to classify")
+                return
+            campaign = row[0]
+        print(run(state, campaign, args.provider, args.limit, args.package))
         return
     if args.command == "status":
         with connect(state, readonly=True) as db:

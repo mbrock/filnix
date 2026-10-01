@@ -310,7 +310,7 @@ def shell(title, campaign, campaigns, view, section, content):
 
 
 def select(name, choices, current, label):
-    with tag.label(["inline-flex", "items-center", "gap-2"]):
+    with tag.label(["inline-flex", "items-center", "gap-2", "min-w-0", "max-w-full"]):
         with tag.span("sr-only"):
             text(label)
         with tag.select(FIELD, name=name, aria_label=label):

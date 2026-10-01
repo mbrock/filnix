@@ -1,5 +1,7 @@
 """Campaign, package, batch and dependency representations."""
 
+import json
+
 from tagflow import attr, tag, text
 from tagflow import htmx as hx
 
@@ -391,6 +393,7 @@ def updates(cid, view, seen, current, target, done=False):
                 seen=seen,
                 target=target,
                 state=view.state,
+                facet=view.facet,
                 kind=view.kind,
                 outcome=view.outcome,
                 sort=view.sort,
@@ -533,9 +536,11 @@ def snapshot_notice(result, cid, view, target):
 
 def packages(result, campaign, view):
     cid = campaign["id"]
-    with tag.div(["flex", "items-center", "justify-between", "gap-2", "mb-2"]):
+    with tag.div(
+        ["flex", "flex-wrap", "items-center", "justify-between", "gap-2", "mb-2"]
+    ):
         with tag.form(
-            ["flex", "gap-2", "items-center"],
+            ["flex", "flex-wrap", "gap-2", "items-center", "min-w-0"],
             action=PACKAGES.url(cid=cid),
             method="get",
         ):
@@ -556,6 +561,24 @@ def packages(result, campaign, view):
                 ],
                 view.state,
                 "Package results",
+            )
+            facets = [
+                (
+                    facet,
+                    facet.partition(":")[0].capitalize()
+                    + " · "
+                    + facet.partition(":")[2]
+                    + f" ({count:,})",
+                )
+                for facet, count in result["facets"].items()
+            ]
+            if view.facet and view.facet not in result["facets"]:
+                facets.append((view.facet, view.facet.replace(":", " · ", 1) + " (0)"))
+            select(
+                "facet",
+                [("", "All semantic suggestions"), *facets],
+                view.facet,
+                "Tentative semantic facet",
             )
             tag.input(type="hidden", name="transport", value=view.transport)
             with tag.button(BUTTON, type="submit"):
@@ -582,6 +605,13 @@ def packages(result, campaign, view):
                         text("CSV ↓")
         with tag.span([MUTED, "tabular-nums"]):
             text(f"{len(result['rows']):,}")
+    with tag.p([MUTED, "mb-2"], id="semantic-facet-note"):
+        text("Tentative semantic suggestions ≥80%; browsing only, not build results. ")
+        if not result["facets"]:
+            text(
+                "Unknown / not classified: no suggestions at this threshold in these results. "
+            )
+        text("Inspect package details for all probabilities and source evidence.")
     snapshot_notice(result, cid, view, "packages")
     if not result["rows"]:
         empty("No packages in this result set yet.")
@@ -833,6 +863,69 @@ def failure_label(failure, evidence=None):
     }.get(failure, failure)
 
 
+def semantic_annotations(annotations, cid, view):
+    with tag.section(id="semantic-annotations", aria_label="Semantic classification"):
+        with tag.h2([HEADING, "mt-4", "mb-1"]):
+            text("Tentative semantic suggestions")
+        with tag.p([MUTED, "mb-2"]):
+            text(
+                "Cached interpretations, not facts. These do not change build results, checks, blockers or scheduling. Facets use ≥80%; all probabilities are shown below."
+            )
+        if not annotations:
+            empty("Unknown / not classified. No current cached annotations.")
+        for annotation in annotations:
+            with tag.article(
+                [ROW, "py-2", "break-words"], data_kind=annotation["kind"]
+            ):
+                with tag.h3("font-medium"):
+                    text(
+                        annotation["kind"].capitalize() + " · " + annotation["subject"]
+                    )
+                with tag.p(MUTED):
+                    text(annotation["provider"] + " / " + annotation["model"] + " · ")
+                    timestamp(annotation["created"])
+                with tag.ul():
+                    for label, probability in annotation["probabilities"].items():
+                        with tag.li("py-0.5"):
+                            if probability >= 0.8:
+                                with link(
+                                    PACKAGES.url(
+                                        view.with_(
+                                            state="all",
+                                            facet=annotation["kind"] + ":" + label,
+                                        ),
+                                        cid=cid,
+                                    )
+                                ):
+                                    text(label)
+                            else:
+                                text(label)
+                            text(
+                                f" · {probability:.2%} {annotation.get('probability_source', 'probability')}"
+                            )
+                with tag.details("mt-2"):
+                    with tag.summary([FOCUS, "cursor-pointer"]):
+                        text("Source evidence · " + annotation["subject"])
+                    with tag.p([MUTED, "break-all"]):
+                        text(
+                            "Question version: "
+                            + str(annotation["question_version"])
+                            + " · Evidence hash: "
+                            + annotation["evidence_hash"]
+                        )
+                    with tag.pre(
+                        ["whitespace-pre-wrap", "break-all", "font-mono", "text-xs"]
+                    ):
+                        text(
+                            json.dumps(
+                                annotation["evidence"],
+                                ensure_ascii=False,
+                                indent=2,
+                                sort_keys=True,
+                            )
+                        )
+
+
 def package(result, campaign, view):
     with tag.section(id="package-detail", data_sampled=result["sampled"]):
         hx.refresh(
@@ -912,6 +1005,7 @@ def package(result, campaign, view):
                     ["whitespace-pre-wrap", "break-all", "font-mono", "text-xs"]
                 ):
                     text(result["error"])
+        semantic_annotations(result["annotations"], cid, view)
         if result["blockers"]:
             with tag.h2([HEADING, "mt-4", "mb-1"]):
                 text("Blocking dependencies")

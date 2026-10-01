@@ -21,6 +21,7 @@ install -m 0755 "$deploy_dir/filnix-attempt-unit" /usr/local/libexec/filnix-atte
 visudo -cf "$deploy_dir/sudoers"
 install -m 0440 "$deploy_dir/sudoers" /etc/sudoers.d/filnix-experiment
 install -m 0644 "$deploy_dir/filnix-controller.service" "$deploy_dir/filnix-web.service" "$deploy_dir/filnix-attempt@.service" "$deploy_dir/filnix-workload.slice" /etc/systemd/system/
+install -m 0644 "$deploy_dir/filnix-classify.service" "$deploy_dir/filnix-classify.timer" /etc/systemd/system/
 systemctl daemon-reload
 echo 'Installed. Campaigns must be imported before starting the controller and web services.'
 echo 'The daemon resource drop-in and Caddy vhost are separate host configuration steps.'

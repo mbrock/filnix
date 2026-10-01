@@ -52,6 +52,36 @@ works across them. The notice offers an explicit refresh; progress does not
 continually reorder the list. Package rows show name, version, description and
 result, with Built muted and Tested emphasized. Timings belong to the batch page.
 
+### Persisted semantic browsing
+
+Catalog reads call `classification_index(db, campaign)` once in bulk and add
+`classifications` to each row, including the compatibility `/api/packages` JSON.
+This index contains all provider scores/provenance but omits full source documents
+to avoid loading every source document when browsing the inventory. Package detail reads
+`annotations(db, campaign, candidate_id)`, including that package's exact evidence.
+These return only current cached annotations; freshness and pre-migration empty
+reads belong to the classification backend. HTML GETs perform no classification/model calls or writes.
+No interpretation changes factual states, checks, blockers, roles, platforms,
+scheduling or required outputs.
+
+Inventory's optional `facet=kind:label` intersects its existing state filter.
+Package, diagnostic and patch labels occupy separate namespaces; colons in labels
+are retained. A probability of at least 0.8 from any provider suggests a facet for
+browsing only. Counts are distinct packages within the state-filtered inventory,
+not provider votes. No facet leaves the ordinary lists/default unchanged. The
+GET form, held snapshot refresh/update links and CSV URL retain the selected
+facet; CSV's columns remain unchanged. Unknown/bookmarked facets yield an empty
+result rather than silently clearing the selection. Navigation still uses full
+HTML responses, normal URLs and browser history without UI JSON fetching.
+
+Detail labels these interpretations tentative and distinguishes package,
+diagnostic and patch sources. Every provider/model comparison stays visible,
+including probabilities below the browsing threshold. Each annotation has its
+timestamp, question version, evidence hash and an expandable escaped rendering
+of the actual named JSON source input. Threshold-qualified labels link back to
+the inventory facet. Missing cached annotations explicitly say unknown / not
+classified; a missing suggestion never implies a negative factual result.
+
 The Tagflow boundary hashes the exact rendered HTML. The application exposes
 that validator as a weak ETag because gzip can change the wire representation,
 and uses `Cache-Control: public, no-cache`. Matching conditional requests return 304.

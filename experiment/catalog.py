@@ -4,6 +4,7 @@ import json
 import re
 from urllib.parse import quote
 
+from .classifications import classification_index
 from .model import stamp
 from .diagnostics import evaluation_summary
 
@@ -66,6 +67,7 @@ def catalog(db, campaign):
         (campaign,),
     ):
         checks.setdefault(r["drv"], set()).add(r["phase"])
+    classifications = classification_index(db, campaign)
     rows = []
     for r in db.execute(
         """SELECT c.id,c.label,c.state,c.drv,c.selection,c.recipe,c.error,d.failure
@@ -99,6 +101,7 @@ def catalog(db, campaign):
         error = p.pop("error") or p.pop("failure") or ""
         p.pop("failure", None)
         p.update(
+            classifications=classifications.get(p["id"], []),
             description=meta.get("description") or "",
             version=recipe.get("version") or meta.get("version") or "",
             source=selection.get("sourceFile") or "",

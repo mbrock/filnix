@@ -71,6 +71,61 @@ package details. The planner's 4 GiB address-space limit produces a heap-expansi
 warning even for successful evaluation of `1`; that warning alone does not prove
 an out-of-memory failure. Inspect the terminal error before changing limits.
 
+## Semantic classification
+
+Packages now have tentative, overlapping browsing facets for package purpose,
+diagnostic mechanisms and readable patches. Select a semantic facet alongside
+the ordinary result filter. Counts deduplicate providers per package; aliases
+remain separate inventory attributes. Detail shows every provider, all scores,
+the exact input evidence, timestamp, question version and evidence hash.
+Missing evidence stays unknown. These suggestions do not change checks, build
+results, dependency blocking, admission or retries.
+
+`filnix-experiment classify [CAMPAIGN] --provider jev --limit 100` runs a bounded
+read-only worker and submits annotations through the controller socket. Without
+a campaign it selects the newest running campaign. Repeat `--package LABEL` to
+restrict an experiment to exact package labels; `--provider openai` compares
+GPT-6 Luna. Jev uses independent Noul probabilities. OpenAI Responses uses
+strict JSON with `reasoning.effort=none`, reads only the final answer, and its
+scores are explicitly **self-reported estimates**, not calibrated Decisions
+probabilities. All label fields are required, bounded numbers in a closed schema
+(`text.format.type=json_schema`, `strict=true`, `additionalProperties=false`).
+Incomplete, refused and ambiguous final answers are rejected. This is a
+judgment-only workflow with code-supplied evidence: per OpenAI's
+[structured-output guidance](https://developers.openai.com/api/docs/guides/structured-outputs),
+strict response formatting fits better than a dummy function call. Function
+tools would be appropriate for a separate evidence-retrieval agent, not for
+granting this classifier campaign mutation capabilities.
+An authenticated Decisions API probe on 2026-10-01 returned 403,
+“Decision API is not enabled for this user”; no working Decisions integration
+is claimed.
+
+Only the controller writes schema 6's `classifications` table. Changed recipes,
+evaluation errors, failed derivations or evidence attempts invalidate affected
+annotations; results arriving after such a change are discarded. Input graph
+context is a bounded classification-time snapshot, not current blocker truth.
+Diagnostics use finished logs scoped to the exact derivation. Patch classification
+requires a readable immutable recipe path of at most 16 KB; missing/larger patches
+are omitted, not judged absent. Full Nix override source classification remains
+an experiment rather than an automated repair or scheduler policy.
+
+`filnix-classify.timer` starts one hour after activation, then one hour after the
+previous batch finishes, at most 100 new Jev requests per invocation. Each batch
+has a two-hour service deadline; model calls and controller delivery have their
+own shorter timeouts. Enable it explicitly after deploying and provisioning
+credentials. Both provider keys live in root-owned mode-0600
+`/etc/filnix-experiment/classification.env`, read
+by systemd for this worker only, never by the web service or from the Nix store.
+Raw request/response cache files are private under the state's mode-0700
+`classifications/` directory; request hashes include model, rubric and evidence.
+Changing rubric definitions, output instructions, reasoning effort or token caps
+requires bumping `QUESTION_VERSION` before reclassification: the current cache
+and stored-annotation reuse keys do not independently version those settings.
+Successful cached responses replay without another API charge. Failed or
+interrupted request reservations are not retried automatically: inspect the
+private cache before explicitly removing a failed reservation to retry it.
+API work never runs on a dashboard GET or controller tick.
+
 ## Binary caches
 
 Successful campaign outputs and their reference closures are published in the

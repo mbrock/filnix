@@ -1,5 +1,7 @@
 """HTML representation, isolation and byte-reader contracts."""
 
+import csv
+import io
 import time
 import unittest
 import uuid
@@ -59,6 +61,9 @@ class DashboardTests(unittest.TestCase):
     def test_bad_reading_options(self):
         for query in [
             "state=bogus",
+            "facet=build:shared",
+            "facet=package:",
+            "facet=package:" + "x" * 1024,
             "size=13",
             "follow=2",
             "cursor=-1",
@@ -72,6 +77,303 @@ class DashboardTests(unittest.TestCase):
             )
             with self.subTest(query=query):
                 self.assertEqual(self.get(endpoint + query).status_code, 400)
+
+    def annotation(self, kind="package", provider="one", probabilities=None):
+        return dict(
+            kind=kind,
+            subject="pkgs/source.nix <script>source</script>",
+            provider=provider,
+            model="test-model <script>model</script>",
+            question_version="v1",
+            evidence_hash="abc123",
+            evidence={"description": "actual source <script>evidence</script>"},
+            probabilities=probabilities or {"shared": 0.8, "below": 0.799},
+            created=1800000000,
+        )
+
+    def test_semantic_facets_intersect_state_without_merging_namespaces_or_providers(
+        self,
+    ):
+        self.sql("UPDATE candidates SET state='available' WHERE id=1")
+        self.sql("UPDATE candidates SET state='failed' WHERE id=2")
+        self.db.commit()
+        annotations = {
+            1: [
+                self.annotation(probabilities={"shared": 0.8, "also": 0.92, "below": 0.799}),
+                self.annotation(provider="two"),
+            ],
+            2: [self.annotation("diagnostic"), self.annotation("patch")],
+            3: [self.annotation(probabilities={"shared": 0.799})],
+        }
+        with patch(
+            "experiment.catalog.classification_index", return_value=annotations
+        ) as bulk:
+            page = BeautifulSoup(self.get("/packages?state=all").text, "html.parser")
+            self.assertEqual(bulk.call_count, 1)
+            self.assertEqual(bulk.call_args.args[1], self.cid)
+            self.assertEqual(len(page.select("#package-list tbody tr")), 3)
+            choices = {
+                o["value"]: o.text for o in page.select('select[name="facet"] option')
+            }
+            self.assertEqual(
+                set(choices),
+                {"", "package:shared", "package:also", "diagnostic:shared", "patch:shared"},
+            )
+            self.assertEqual(choices["package:shared"], "Package · shared (1)")
+            for facet, expected in [
+                ("package:shared", "package-1"),
+                ("package:also", "package-1"),
+                ("diagnostic:shared", "package-2"),
+                ("patch:shared", "package-2"),
+            ]:
+                filtered = BeautifulSoup(
+                    self.get("/packages", params=dict(state="all", facet=facet)).text,
+                    "html.parser",
+                )
+                self.assertEqual(
+                    [r["id"] for r in filtered.select("#package-list tbody tr")],
+                    [expected],
+                )
+            default = BeautifulSoup(self.get("/packages").text, "html.parser")
+            self.assertEqual(
+                [r["id"] for r in default.select("#package-list tbody tr")],
+                ["package-1"],
+            )
+            empty = BeautifulSoup(
+                self.get("/packages?facet=diagnostic:shared").text, "html.parser"
+            )
+            self.assertIsNone(empty.select_one("#package-list"))
+            self.assertEqual(
+                empty.select_one('select[name="facet"] option[selected]')["value"],
+                "diagnostic:shared",
+            )
+
+    def test_semantic_facet_urls_refresh_csv_and_api_remain_additive(self):
+        label = 'C++: <script>label</script> & "quoted"'
+        facet = "package:" + label
+        annotations = {1: [self.annotation(probabilities={label: 0.8})]}
+        with patch("experiment.catalog.classification_index", return_value=annotations):
+            response = self.get(
+                "/packages", params=dict(state="all", facet=facet, transport="poll")
+            )
+            self.assertNotIn("<script>label</script>", response.text)
+            page = BeautifulSoup(response.text, "html.parser")
+            self.assertEqual(
+                page.select_one('select[name="facet"] option[selected]')["value"], facet
+            )
+            refresh = page.select_one("#updates a")
+            self.assertEqual(
+                parse_qs(urlsplit(refresh["href"]).query)["facet"], [facet]
+            )
+            self.assertEqual(
+                parse_qs(urlsplit(page.select_one("#updates")["hx-get"]).query)[
+                    "facet"
+                ],
+                [facet],
+            )
+            self.assertIsNone(page.select_one("#package-list").get("hx-trigger"))
+            csv_link = next(a for a in page.select("a") if a.text == "CSV ↓")
+            self.assertEqual(
+                parse_qs(urlsplit(csv_link["href"]).query),
+                {"state": ["all"], "facet": [facet]},
+            )
+            exported = list(
+                csv.reader(io.StringIO(self.client.get(csv_link["href"]).text))
+            )
+            self.assertEqual(
+                exported[0],
+                ["package", "version", "description", "result", "source", "diagnostic"],
+            )
+            self.assertEqual([r[0] for r in exported[1:]], ["a"])
+            api = self.client.get(
+                "/api/packages", params=dict(campaign=self.cid)
+            ).json()
+            self.assertEqual(len(api["rows"]), 3)
+            self.assertEqual(
+                next(r for r in api["rows"] if r["id"] == 1)["classifications"],
+                annotations[1],
+            )
+
+    def test_semantic_detail_preserves_comparisons_and_escapes_full_evidence(self):
+        annotations = [
+            self.annotation(),
+            self.annotation(provider="two"),
+            self.annotation("diagnostic"),
+            self.annotation("patch"),
+        ]
+        with patch(
+            "experiment.dashboard.data.annotations", return_value=annotations
+        ) as cached:
+            response = self.get("/packages/1")
+            self.assertEqual(cached.call_args.args[1:], (self.cid, 1))
+        page = BeautifulSoup(response.text, "html.parser")
+        section = page.select_one("#semantic-annotations")
+        self.assertEqual(
+            [a["data-kind"] for a in section.select("article")],
+            ["package", "package", "diagnostic", "patch"],
+        )
+        self.assertIn("two / test-model", section.text)
+        self.assertEqual(len(section.select("time[datetime]")), 4)
+        self.assertIn("80.00% probability", section.text)
+        self.assertIn("79.90% probability", section.text)
+        self.assertIn(
+            "actual source <script>evidence</script>", section.select_one("pre").text
+        )
+        self.assertIn("v1", section.text)
+        self.assertIn("abc123", section.text)
+        self.assertFalse(section.select("script"))
+        for a in section.select("a"):
+            self.assertEqual(a.text, "shared")
+            self.assertEqual(parse_qs(urlsplit(a["href"]).query)["state"], ["all"])
+        self.assertEqual(
+            page.select_one("#package-detail [data-status]")["data-status"], "unplanned"
+        )
+
+    def test_semantic_reads_are_campaign_scoped_and_do_not_write(self):
+        from experiment.dashboard import data
+        from experiment import web
+
+        other = import_campaign(
+            self.db,
+            "Other",
+            {"attrPaths": [["outside"]]},
+            "/source",
+            "abc",
+            nix.DEFAULT_POLICY,
+            "test",
+        )
+        other_pid = self.sql(
+            "SELECT id FROM candidates WHERE campaign=?", (other,)
+        ).fetchone()[0]
+        self.db.commit()
+        before = list(self.db.iterdump())
+        queries = []
+        connect = data.connect
+
+        def readonly(state, *, readonly):
+            self.assertTrue(readonly)
+            db = connect(state, readonly=readonly)
+            db.set_trace_callback(queries.append)
+            return db
+
+        def index(db, cid):
+            return {1: [self.annotation()]} if cid == self.cid else {}
+
+        with (
+            patch.object(data, "connect", side_effect=readonly),
+            patch.object(web, "connect", side_effect=readonly),
+            patch("experiment.catalog.classification_index", side_effect=index),
+            patch.object(data, "annotations", return_value=[]) as cached,
+        ):
+            self.assertEqual(self.get("/packages?state=all").status_code, 200)
+            outside = BeautifulSoup(
+                self.client.get(
+                    f"/campaigns/{other}/packages?state=all&facet=package:shared"
+                ).text,
+                "html.parser",
+            )
+            self.assertIsNone(outside.select_one("#package-list"))
+            self.assertEqual(
+                self.client.get(f"/campaigns/{other}/packages/1").status_code, 404
+            )
+            self.assertEqual(cached.call_count, 0)
+            self.assertEqual(
+                self.client.get(f"/campaigns/{other}/packages/{other_pid}").status_code,
+                200,
+            )
+            self.assertEqual(cached.call_args.args[1:], (other, other_pid))
+            self.assertEqual(
+                self.get("/packages.csv?state=all&facet=package:shared").status_code,
+                200,
+            )
+            self.assertEqual(
+                self.client.get(
+                    "/api/packages", params=dict(campaign=self.cid)
+                ).status_code,
+                200,
+            )
+        self.assertEqual(list(self.db.iterdump()), before)
+        self.assertFalse(
+            any(
+                q.lstrip()
+                .upper()
+                .startswith(
+                    ("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "REPLACE")
+                )
+                for q in queries
+            )
+        )
+
+    def test_unclassified_inventory_and_detail_remain_unknown(self):
+        self.sql("DROP TABLE classifications")
+        self.db.commit()
+        page = BeautifulSoup(self.get("/packages?state=all").text, "html.parser")
+        self.assertEqual(len(page.select("#package-list tbody tr")), 3)
+        self.assertIn(
+            "Unknown / not classified", page.select_one("#semantic-facet-note").text
+        )
+        detail = BeautifulSoup(self.get("/packages/1").text, "html.parser")
+        self.assertIn(
+            "No current cached annotations",
+            detail.select_one("#semantic-annotations").text,
+        )
+        api = self.client.get("/api/packages", params=dict(campaign=self.cid)).json()
+        self.assertEqual([r["classifications"] for r in api["rows"]], [[], [], []])
+
+    def test_persisted_annotations_are_read_without_model_calls_or_writes(self):
+        from experiment import classifications
+        from experiment.model import encode, identity
+
+        source = dict(
+            self.sql(
+                "SELECT selection,recipe,drv FROM candidates WHERE id=1"
+            ).fetchone()
+        )
+        annotation = self.annotation(probabilities={"Library": 0.81})
+        for provider in ("jev", "openai"):
+            self.sql(
+                """INSERT INTO classifications(campaign,candidate,kind,subject,provider,
+                model,question_version,source_hash,evidence_hash,evidence,probabilities,usage,created)
+                VALUES(?,1,'package',?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    self.cid,
+                    annotation["subject"],
+                    provider,
+                    annotation["model"],
+                    "v1",
+                    identity(source),
+                    identity(annotation["evidence"]),
+                    encode(annotation["evidence"]),
+                    encode(annotation["probabilities"]),
+                    "{}",
+                    annotation["created"],
+                ),
+            )
+        self.db.commit()
+        before = list(self.db.iterdump())
+        with (
+            patch.object(
+                classifications, "ask", side_effect=AssertionError("GET called a model")
+            ),
+            patch.object(
+                classifications,
+                "persist",
+                side_effect=AssertionError("GET persisted annotations"),
+            ),
+        ):
+            inventory = BeautifulSoup(
+                self.get("/packages?state=all&facet=package:Library").text,
+                "html.parser",
+            )
+            self.assertEqual(
+                [r["id"] for r in inventory.select("#package-list tbody tr")],
+                ["package-1"],
+            )
+            detail = BeautifulSoup(self.get("/packages/1").text, "html.parser")
+            self.assertEqual(len(detail.select("#semantic-annotations article")), 2)
+            self.assertIn("81.00% model probability", detail.text)
+            self.assertIn("81.00% self-reported estimate", detail.text)
+        self.assertEqual(list(self.db.iterdump()), before)
 
     def test_campaign_ownership_and_legacy_permalinks(self):
         self.graph()

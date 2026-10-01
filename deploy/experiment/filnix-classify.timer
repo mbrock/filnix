@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Filnix evidence classifications hourly
+
+[Timer]
+OnActiveSec=1h
+OnUnitInactiveSec=1h
+Unit=filnix-classify.service
+
+[Install]
+WantedBy=timers.target

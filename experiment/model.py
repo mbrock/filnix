@@ -100,11 +100,19 @@ CREATE TABLE IF NOT EXISTS replans (
  source TEXT NOT NULL, revision TEXT NOT NULL, request TEXT NOT NULL,
  created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS replans_request ON replans(request,candidate);
+CREATE TABLE IF NOT EXISTS classifications (
+ campaign TEXT NOT NULL REFERENCES campaigns(id),
+ candidate INTEGER NOT NULL REFERENCES candidates(id), kind TEXT NOT NULL,
+ subject TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+ question_version TEXT NOT NULL, source_hash TEXT NOT NULL,
+ evidence_hash TEXT NOT NULL, evidence TEXT NOT NULL, probabilities TEXT NOT NULL,
+ usage TEXT NOT NULL, created REAL NOT NULL,
+ PRIMARY KEY(campaign,candidate,kind,subject,provider,model,question_version));
 CREATE INDEX IF NOT EXISTS attempts_campaign ON attempts(campaign,created);
 CREATE INDEX IF NOT EXISTS activities_drv ON activities(drv);
 CREATE INDEX IF NOT EXISTS tests_drv ON tests(drv);
 CREATE INDEX IF NOT EXISTS events_campaign ON events(campaign,seq);
-PRAGMA user_version=5;
+PRAGMA user_version=6;
 """
 
 
@@ -121,7 +129,7 @@ def connect(state, readonly=False):
         db.execute("PRAGMA query_only=ON")
     else:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4, 5):
+        if version not in (0, 1, 2, 3, 4, 5, 6):
             raise ValueError(f"unsupported database version {version}")
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=FULL")

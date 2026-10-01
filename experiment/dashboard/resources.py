@@ -12,6 +12,7 @@ from starlette.routing import Route
 class View:
     watch: int = 1
     state: str = "available"
+    facet: str = ""
     q: str = ""
     kind: str = ""
     outcome: str = ""
@@ -62,7 +63,7 @@ ACTIVITY = Resource(BASE, ("watch", "transport"))
 ACTIVITY_FEED = Resource(BASE + "/activity", ("watch", "transport"))
 SUMMARY = Resource(BASE + "/summary", ("transport",))
 EVENTS = Resource(BASE + "/events")
-PACKAGES = Resource(BASE + "/packages", ("state", "transport"))
+PACKAGES = Resource(BASE + "/packages", ("state", "facet", "transport"))
 PACKAGE = Resource(BASE + "/packages/{pid:int}", ("transport",))
 BATCHES = Resource(BASE + "/batches", ("q", "kind", "outcome", "sort", "transport"))
 BATCH = Resource(BASE + "/batches/{aid}", ("transport",))
@@ -78,7 +79,7 @@ LOG = Resource(
 LOG_STATUS = Resource(BASE + "/batches/{aid}/log/status", LOG.carries)
 LIVE_LOG = Resource(BASE + "/log", ("drv", "follow", "wrap", "size", "q", "transport"))
 UPDATES = Resource(BASE + "/updates", ("transport",))
-CSV = Resource(BASE + "/packages.csv", ("state",))
+CSV = Resource(BASE + "/packages.csv", ("state", "facet"))
 
 
 def integer(value, minimum=0, maximum=10**12):
@@ -119,10 +120,16 @@ def options(request):
     }
     if any(values[key] not in allowed for key, allowed in choices.items()):
         raise HTTPException(400, "Invalid reading options")
+    if values["facet"] and (
+        values["facet"].partition(":")[0] not in ("package", "diagnostic", "patch")
+        or not values["facet"].partition(":")[2]
+    ):
+        raise HTTPException(400, "Invalid semantic facet")
     if (
         len(values["q"]) > 200
         or len(values["drv"]) > 1024
         or len(values["focus"]) > 1024
+        or len(values["facet"]) > 1024
     ):
         raise HTTPException(400, "Reading option is too long")
     return View(**values)

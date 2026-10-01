@@ -1,0 +1,22 @@
+[Unit]
+Description=Bounded evidence classifications for the current Filnix campaign
+After=filnix-controller.service network-online.target
+ConditionPathExists=/etc/filnix-experiment/classification.env
+
+[Service]
+Type=oneshot
+User=filnix-experiment
+Group=filnix-observe
+UMask=0077
+WorkingDirectory=/var/lib/filnix-experiment
+EnvironmentFile=/etc/filnix-experiment/classification.env
+ExecStart=/opt/filnix-experiment/bin/filnix-experiment classify --limit 100
+TimeoutStartSec=2h
+MemoryMax=512M
+CPUWeight=10
+IOWeight=10
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/filnix-experiment
+PrivateTmp=true
+NoNewPrivileges=true
