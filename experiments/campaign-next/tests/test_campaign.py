@@ -1,25 +1,32 @@
-"""Real C++ API builds in a disposable store; never use the campaign database."""
+"""End-to-end tests for the DuckDB-backed campaign prototype."""
 
 import json
 import os
 from pathlib import Path
 import shutil
 import signal
+import selectors
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import urllib.error
+import urllib.parse
+import urllib.request
+
+import duckdb
 
 BINARY = Path(sys.argv.pop(1)).resolve()
+FIXTURES = Path(__file__).with_name("fixtures.nix")
 
 
-def invoke(*args, check=True, **kwargs):
+def invoke(*args, check=True, timeout=25, **kwargs):
     return subprocess.run(
         [str(BINARY), *map(str, args)],
         capture_output=True,
         check=check,
-        timeout=20,
+        timeout=timeout,
         **kwargs,
     )
 
@@ -36,10 +43,13 @@ class CampaignTests(unittest.TestCase):
             os.environ,
             NIX_CONF_DIR=str(self.root),
             NIX_USER_CONF_FILES="",
-            NIX_CONFIG="sandbox = false\nbuild-users-group =\nsubstituters =\n"
-            "builders =\nmax-jobs = 1\ncores = 1\n",
+            NIX_STATE_DIR=str(self.root / "nix-state"),
+            NIX_CONFIG=(
+                "sandbox = false\nbuild-users-group =\nsubstituters =\n"
+                "build-hook =\nbuilders =\nmax-jobs = 1\ncores = 1\n"
+            ),
         )
-        self.journal = self.root / "run.jsonl"
+        self.db = self.root / "campaign.duckdb"
 
     def drv(self, name):
         return subprocess.check_output(
@@ -47,7 +57,7 @@ class CampaignTests(unittest.TestCase):
                 "nix-instantiate",
                 "--store",
                 self.store,
-                str(Path(__file__).with_name("fixtures.nix")),
+                str(FIXTURES),
                 "-A",
                 name,
                 "--argstr",
@@ -61,199 +71,348 @@ class CampaignTests(unittest.TestCase):
             text=True,
         ).strip()
 
-    def record(self, drv, journal=None):
+    def record(self, drv, *args, check=False):
         return invoke(
             "record",
             drv,
-            journal or self.journal,
+            self.db,
             "--store",
             self.store,
-            check=False,
+            *args,
+            check=check,
             env=self.env,
         )
 
-    def inspect(self, path=None):
-        return json.loads(invoke("inspect", path or self.journal).stdout)
-
-    def events(self, path=None):
-        return [
-            json.loads(line)
-            for line in (path or self.journal).read_bytes().splitlines()
-        ]
-
-    def output(self, events):
-        return [
-            bytes.fromhex(e["payload"]["fields"][0]["string_hex"])
-            for e in events
-            if e["kind"] == "nix.result" and e["payload"]["build_output"]
-        ]
-
-    def test_real_build_cached_reuse_and_lossless_replay(self):
-        drv = self.drv("good")
-        result = self.record(drv)
-        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
-        events = self.events()
-        summary = self.inspect()
-        live = json.loads(result.stdout)
-        summary.pop("torn_tail_bytes")
-        self.assertEqual(summary, live)
-        self.assertEqual(summary["outcome"], "built")
-        self.assertEqual([e["seq"] for e in events], list(range(1, len(events) + 1)))
-        self.assertEqual(events[0]["kind"], "run.requested")
-        self.assertEqual(events[-1]["kind"], "run.finished")
-        self.assertIn(b"stdout-before", self.output(events))
-        self.assertIn(b"stderr-after", self.output(events))
-        self.assertIn(b"binary:\xff", self.output(events))
-        times = [e["elapsed_ns"] for e in events]
-        self.assertEqual(times, sorted(times))
-        observed = {
-            line: e
-            for e in events
-            if e["kind"] == "nix.result" and e["payload"]["build_output"]
-            for line in [bytes.fromhex(e["payload"]["fields"][0]["string_hex"])]
-        }
-        gap = (
-            observed[b"stderr-after"]["payload"]["capture"]["mono_ns"]
-            - observed[b"stdout-before"]["payload"]["capture"]["mono_ns"]
+    def state(self, run=None, base=None):
+        query = {} if run is None else {"run": run}
+        return json.loads(
+            urllib.request.urlopen(
+                f"{base or ''}/api/state?{urllib.parse.urlencode(query)}", timeout=2
+            ).read()
         )
-        self.assertGreater(gap, 60_000_000)
-        for output in summary["outputs"]:
-            self.assertTrue(output["valid"])
-            self.assertEqual(
-                (Path(output["path"]) / "result").read_text(), "artifact\n"
-            )
-        prefix = self.root / "incomplete.jsonl"
-        prefix.write_bytes(
-            b"".join(json.dumps(e).encode() + b"\n" for e in events[:-1])
-        )
-        self.assertEqual(self.inspect(prefix)["outcome"], "incomplete")
-        replay = invoke("replay", self.journal, "--speed", "0", "--json")
-        self.assertEqual(
-            [json.loads(line) for line in replay.stdout.splitlines()], events
-        )
-        plain = invoke("replay", self.journal, "--speed", "10")
-        self.assertIn(b"binary:\xff", plain.stdout)
-        second = self.root / "cached.jsonl"
-        self.assertEqual(self.record(drv, second).returncode, 0)
-        self.assertEqual(self.inspect(second)["outcome"], "already-valid")
-        self.assertEqual(self.output(self.events(second)), [])
-        original = self.journal.read_bytes()
-        self.assertNotEqual(self.record(drv).returncode, 0)
-        self.assertEqual(self.journal.read_bytes(), original)
 
-    def test_dependency_failure_is_a_result_not_successful_activity_stop(self):
-        result = self.record(self.drv("blocked"))
-        self.assertEqual(result.returncode, 1, result.stderr.decode(errors="replace"))
-        self.assertEqual(self.inspect()["outcome"], "failed")
-        events = self.events()
-        self.assertIn(b"dependency-failed", self.output(events))
-        self.assertNotIn(b"consumer-must-not-run", self.output(events))
-        outcomes = [e for e in events if e["kind"] == "nix.build-result"]
-        self.assertEqual(len(outcomes), 1)
-        self.assertFalse(outcomes[0]["payload"]["success"])
-        self.assertTrue(any(e["kind"] == "nix.activity-stopped" for e in events))
-
-    def test_worker_api_error_is_not_a_package_failure(self):
-        drv = self.drv("good")
-        Path(drv).unlink()
-        result = self.record(drv)
-        self.assertEqual(result.returncode, 2, result.stderr.decode(errors="replace"))
-        self.assertEqual(self.inspect()["outcome"], "worker-error")
-        events = self.events()
-        self.assertTrue(any(e["kind"] == "worker.error" for e in events))
-        self.assertFalse(any(e["kind"] == "nix.build-result" for e in events))
-        self.assertEqual(events[-1]["kind"], "run.finished")
-
-    def test_cancellation_drains_and_records_terminal_result(self):
+    def serve(self, database=None, mode="serve", drv=None):
         proc = subprocess.Popen(
             [
                 str(BINARY),
-                "record",
-                self.drv("slow"),
-                str(self.journal),
-                "--store",
-                self.store,
+                mode,
+                *([str(drv)] if drv else []),
+                str(database or self.db),
+                *(["--store", self.store] if mode == "watch" else []),
+                "--port",
+                "0",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.env,
         )
-        try:
-            deadline = time.monotonic() + 10
-            marker = b"ready-for-cancellation".hex().encode()
+        deadline = time.monotonic() + 6
+        messages = b""
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stderr, selectors.EVENT_READ)
             while time.monotonic() < deadline:
-                if self.journal.exists() and marker in self.journal.read_bytes():
-                    break
-                if proc.poll() is not None:
-                    self.fail(
-                        f"worker finished before cancellation: {proc.communicate()}"
-                    )
-                time.sleep(0.02)
-            else:
-                self.fail("did not observe the running builder")
-            proc.send_signal(signal.SIGINT)
-            out, err = proc.communicate(timeout=8)
-            self.assertNotEqual(proc.returncode, 0, err)
-            self.assertEqual(json.loads(out)["outcome"], "cancelled")
-            self.assertEqual(self.inspect()["outcome"], "cancelled")
-            self.assertEqual(self.events()[-1]["kind"], "run.finished")
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.communicate()
+                if selector.select(timeout=0.1):
+                    line = proc.stderr.readline()
+                    messages += line
+                    if line:
+                        import re
 
-    def test_journal_prefix_corruption_and_replay_clock(self):
-        events = [
-            {
-                "version": 1,
-                "run": "recorded",
-                "seq": 1,
-                "wall_ns": 100,
-                "elapsed_ns": 0,
-                "kind": "run.requested",
-                "payload": {"drv": "example.drv"},
-            },
-            {
-                "version": 1,
-                "run": "recorded",
-                "seq": 2,
-                "wall_ns": 101,
-                "elapsed_ns": 300_000_000,
-                "kind": "nix.activity-stopped",
-                "payload": {"id": 7},
-            },
-        ]
-        original = b"".join(json.dumps(e).encode() + b"\n" for e in events)
-        self.journal.write_bytes(original + b'{"partial":')
-        summary = self.inspect()
-        self.assertEqual(summary["outcome"], "incomplete")
-        self.assertFalse(summary["complete"])
-        self.assertEqual(summary["torn_tail_bytes"], 11)
-        start = time.monotonic()
-        replay = invoke("replay", self.journal, "--speed", "1", "--json")
-        self.assertGreater(time.monotonic() - start, 0.25)
-        self.assertEqual(
-            [json.loads(line) for line in replay.stdout.splitlines()], events
+                        match = re.search(
+                            rb"Listening on http://127\.0\.0\.1:(\d+)", line
+                        )
+                        if match:
+                            return proc, f"http://127.0.0.1:{match.group(1).decode()}"
+                if proc.poll() is not None:
+                    self.fail(f"viewer exited: {messages!r}, {proc.communicate()}")
+        proc.kill()
+        proc.communicate()
+        self.fail(f"viewer did not announce its listening address: {messages!r}")
+
+    def stop(self, proc, sig=signal.SIGTERM):
+        if proc.poll() is None:
+            proc.send_signal(sig)
+        return proc.communicate(timeout=8)
+
+    def rows(self, table):
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            return db.execute(f"select * from {table} order by all").fetchall()
+
+    def test_build_replay_cached_run_http_and_parquet_roundtrip(self):
+        drv = self.drv("good")
+        result = self.record(drv)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        summary = json.loads(result.stdout)
+        run = summary["run"]
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            events = db.execute(
+                "select run,seq,wall_ns,elapsed_ns,kind,payload from events "
+                "where run=? order by seq",
+                [run],
+            ).fetchall()
+            self.assertTrue(db.execute("select count(*) from recipes").fetchone()[0])
+        self.assertEqual([r[1] for r in events], list(range(1, len(events) + 1)))
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            output = [
+                row[0]
+                for row in db.execute(
+                    "select bytes from logs where run=? order by seq", [run]
+                ).fetchall()
+            ]
+        self.assertIn(b"stdout-before", output)
+        self.assertIn(b"stderr-after", output)
+        self.assertIn(b"binary:\xff", output)
+        self.assertIn(b"<script>alert(1)</script>", output)
+        self.assertEqual(summary["outcome"], "built")
+        self.assertEqual(summary, json.loads(invoke("inspect", self.db).stdout))
+        for entry in summary["outputs"]:
+            self.assertTrue(entry["valid"])
+            self.assertEqual((Path(entry["path"]) / "result").read_text(), "artifact\n")
+        captured = {
+            bytes.fromhex(json.loads(row[5])["fields"][0]["string_hex"]): json.loads(
+                row[5]
+            )["capture"]["mono_ns"]
+            for row in events
+            if row[4] == "nix.result" and json.loads(row[5])["build_output"]
+        }
+        self.assertGreater(
+            captured[b"stderr-after"] - captured[b"stdout-before"], 60_000_000
         )
-        start = time.monotonic()
-        invoke("replay", self.journal, "--speed", "10", "--json")
-        self.assertLess(time.monotonic() - start, 0.25)
+        replay = invoke("replay", self.db, "--run", run, "--speed", "0", "--json")
+        envelopes = [json.loads(line) for line in replay.stdout.splitlines()]
+        self.assertEqual([e["seq"] for e in envelopes], list(range(1, len(events) + 1)))
+        self.assertEqual(
+            [e["offset"] for e in envelopes], sorted(e["offset"] for e in envelopes)
+        )
+        self.assertEqual(
+            [
+                (
+                    e["run"],
+                    e["seq"],
+                    e["wall_ns"],
+                    e["elapsed_ns"],
+                    e["kind"],
+                    e["payload"],
+                )
+                for e in envelopes
+            ],
+            [(r[0], r[1], r[2], r[3], r[4], json.loads(r[5])) for r in events],
+        )
+        self.assertIn(b"binary:\xff", invoke("replay", self.db, "--speed", "0").stdout)
         for speed in ("nan", "inf", "-1", "1garbage"):
             self.assertEqual(
-                invoke(
-                    "replay", self.journal, "--speed", speed, check=False
-                ).returncode,
-                2,
+                invoke("replay", self.db, "--speed", speed, check=False).returncode, 2
             )
-        self.journal.write_bytes(original + b"not-json\n")
-        self.assertEqual(invoke("inspect", self.journal, check=False).returncode, 2)
-        for field, value in (("seq", 3), ("run", "different"), ("elapsed_ns", -1)):
-            with self.subTest(field=field):
-                changed = [events[0], dict(events[1], **{field: value})]
-                self.journal.write_text("".join(json.dumps(e) + "\n" for e in changed))
-                self.assertEqual(
-                    invoke("inspect", self.journal, check=False).returncode, 2
+
+        # A meaningful gap distinguishes both unpaced and speed-ignored bugs.
+        timeline = [row[3] for row in events]
+        self.assertEqual(timeline, sorted(timeline))
+        duration = (timeline[-1] - timeline[0]) / 1e9
+        self.assertGreater(duration, 0.5)
+        t0 = time.monotonic()
+        invoke("replay", self.db, "--run", run, "--speed", "1", "--json")
+        realtime = time.monotonic() - t0
+        self.assertGreaterEqual(realtime, duration - 0.04)
+        t0 = time.monotonic()
+        invoke("replay", self.db, "--run", run, "--speed", "10", "--json")
+        self.assertLess(time.monotonic() - t0, realtime * 0.75)
+
+        viewer, base = self.serve()
+        try:
+            page = urllib.request.urlopen(base + "/", timeout=2).read()
+            self.assertIn(b"&lt;script&gt;alert(1)&lt;/script&gt;", page)
+            self.assertNotIn(b"<script>alert(1)</script>", page)
+            self.assertIn(b"binary:\xef\xbf\xbd", page)
+            for query in ("after=-1", "run=%1g", "run=%00"):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(base + "/api/logs?" + query, timeout=2)
+                self.assertEqual(error.exception.code, 400)
+        finally:
+            self.stop(viewer)
+
+        second = self.record(drv)
+        self.assertEqual(second.returncode, 0, second.stderr.decode(errors="replace"))
+        run2 = json.loads(second.stdout)["run"]
+        self.assertNotEqual(run, run2)
+        self.assertEqual(json.loads(second.stdout)["outcome"], "already-valid")
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            self.assertEqual(
+                db.execute("select count(distinct run) from runs").fetchone()[0], 2
+            )
+            offsets = db.execute(
+                'select "offset" from events order by "offset"'
+            ).fetchall()
+            self.assertEqual(offsets, [(n,) for n in range(1, len(offsets) + 1)])
+
+        target = self.root / "export"
+        exported = invoke("export", self.db, target)
+        self.assertEqual(
+            exported.returncode, 0, exported.stderr.decode(errors="replace")
+        )
+        manifest = json.loads((target / "manifest.json").read_text())
+        self.assertEqual(manifest["schema_version"], 1)
+        self.assertIsInstance(manifest["watermark"], int)
+        self.assertEqual(manifest["watermark"], offsets[-1][0])
+        self.assertEqual(
+            set(manifest["tables"]),
+            {"events", "runs", "recipes", "edges", "activities", "logs"},
+        )
+        for table in manifest["tables"]:
+            with duckdb.connect() as parquet:
+                from_parquet = parquet.execute(
+                    f"select * from read_parquet('{target / (table + '.parquet')}')"
+                ).fetchall()
+            self.assertEqual(
+                sorted(from_parquet, key=repr), sorted(self.rows(table), key=repr)
+            )
+        before = sorted(p.name for p in target.iterdir())
+        refused = invoke("export", self.db, target, check=False)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertEqual(sorted(p.name for p in target.iterdir()), before)
+
+    def test_graph_http_cursor_offline_and_schema_rejection(self):
+        result = self.record(self.drv("graph"))
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        run = json.loads(result.stdout)["run"]
+        proc, base = self.serve()
+        self.addCleanup(lambda: self.stop(proc))
+        state = self.state(run, base)
+        self.assertFalse(state["live"])
+        self.assertGreaterEqual(len(state["sessions"]), 1)
+        edges = state["edges"]
+        self.assertTrue(all(isinstance(e["outputs"], list) for e in edges))
+        self.assertTrue(all(isinstance(e["dynamic"], bool) for e in edges))
+        shared = self.drv("shared")
+        self.assertEqual(
+            {e["parent_drv"] for e in edges if e["child_drv"] == shared},
+            {self.drv("left"), self.drv("right")},
+        )
+        first = json.loads(
+            urllib.request.urlopen(
+                f"{base}/api/logs?run={run}&after=0", timeout=2
+            ).read()
+        )
+        self.assertLessEqual(len(first), 256)
+        if first:
+            cursor = first[-1]["seq"]
+            next_rows = json.loads(
+                urllib.request.urlopen(
+                    f"{base}/api/logs?run={run}&after={cursor}", timeout=2
+                ).read()
+            )
+            self.assertTrue(all(row["seq"] > cursor for row in next_rows))
+            activity = next((row["activity"] for row in first if row["activity"]), None)
+            self.assertIsNotNone(activity)
+            fragment = urllib.request.urlopen(
+                f"{base}/logs?run={run}&activity={activity}&after=0", timeout=2
+            ).read()
+            self.assertIn(b"hx-swap-oob", fragment)
+            self.assertIn(b"/logs?", fragment)
+        self.assertEqual(
+            urllib.request.urlopen(f"{base}/state?run={run}", timeout=2).status, 200
+        )
+        page = urllib.request.urlopen(base + "/", timeout=2).read()
+        self.assertIn(b"dependency-graph", page)
+        self.assertIn(b"reference", page)
+        self.assertEqual(
+            urllib.request.urlopen(base + "/htmx.js", timeout=2).status, 200
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(
+                urllib.request.Request(base + "/api/state", method="POST"), timeout=2
+            )
+        self.assertEqual(error.exception.code, 405)
+        self.stop(proc)
+
+        missing = invoke(
+            "serve", self.root / "missing.duckdb", "--port", "0", check=False
+        )
+        self.assertNotEqual(missing.returncode, 0)
+        wrong = self.root / "unsupported.duckdb"
+        with duckdb.connect(str(wrong)) as db:
+            db.execute("create table unrelated(x int)")
+        self.assertNotEqual(
+            invoke("serve", wrong, "--port", "0", check=False).returncode, 0
+        )
+
+    def test_failure_worker_error_and_watch_cancel_live_http(self):
+        failed = self.record(self.drv("blocked"))
+        self.assertEqual(failed.returncode, 1, failed.stderr.decode(errors="replace"))
+        run = json.loads(failed.stdout)["run"]
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            results = db.execute(
+                "select payload from events where run=? and kind='nix.build-result'",
+                [run],
+            ).fetchall()
+            self.assertTrue(results)
+            self.assertTrue(all(not json.loads(row[0])["success"] for row in results))
+            output = [
+                row[0]
+                for row in db.execute(
+                    "select bytes from logs where run=?", [run]
+                ).fetchall()
+            ]
+            self.assertIn(b"dependency-failed", output)
+            self.assertNotIn(b"consumer-must-not-run", output)
+        drv = self.drv("good")
+        Path(drv).unlink()
+        api_error = self.record(drv)
+        self.assertEqual(
+            api_error.returncode, 2, api_error.stderr.decode(errors="replace")
+        )
+
+        proc, base = self.serve(mode="watch", drv=self.drv("slow"))
+        try:
+            state = None
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                state = self.state(base=base)
+                if state["live"] and state["activities"]:
+                    break
+                time.sleep(0.05)
+            self.assertTrue(state["live"])
+            self.assertTrue(state["activities"])
+            out, err = self.stop(proc, signal.SIGINT)
+            self.assertNotEqual(proc.returncode, 0, err)
+            self.assertIn(b'"outcome":"cancelled"', out.replace(b" ", b""))
+            with duckdb.connect(str(self.db), read_only=True) as db:
+                self.assertGreater(
+                    db.execute("select count(*) from events").fetchone()[0], 0
                 )
+        finally:
+            if proc.poll() is None:
+                self.stop(proc, signal.SIGKILL)
+
+    def test_abrupt_observer_recovery_and_read_only_methods(self):
+        proc, base = self.serve(mode="watch", drv=self.drv("slow"))
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            live = self.state(base=base)
+            if live["live"] and live["activities"]:
+                break
+            time.sleep(0.05)
+        else:
+            proc.kill()
+            proc.wait(timeout=5)
+            self.fail("watch did not expose its active build")
+        request = urllib.request.Request(base + "/api/state", method="HEAD")
+        self.assertEqual(urllib.request.urlopen(request, timeout=2).status, 200)
+        proc.kill()  # Deliberately skip shutdown/finalization to exercise WAL recovery.
+        proc.communicate(timeout=5)
+        state = invoke("inspect", self.db)
+        self.assertEqual(state.returncode, 0, state.stderr.decode(errors="replace"))
+        summary = json.loads(state.stdout)
+        self.assertFalse(summary["complete"])
+        self.assertEqual(summary["outcome"], "incomplete")
+        viewer, base = self.serve()
+        try:
+            offline = self.state(base=base)
+            self.assertFalse(offline["live"])
+            self.assertFalse(offline["session"]["complete"])
+            fragment = urllib.request.urlopen(base + "/state", timeout=2).read()
+            self.assertIn(b"Incomplete recording", fragment)
+            self.assertNotIn(b"Live recording", fragment)
+        finally:
+            self.stop(viewer)
 
 
 if __name__ == "__main__":

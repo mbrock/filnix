@@ -1,9 +1,10 @@
 # Campaign, again
 
-A greenfield, event-first experiment alongside the existing Python campaign.
+A greenfield C++/NXT experiment alongside the existing Python campaign.
 Nothing here replaces its coordinator, database, dashboard, or systemd services.
-The first slice is intentionally small: **build one derivation through the Nix
-C++ API, supervise it with NXT, record what happens, and replay the recording.**
+This slice builds a derivation through the Nix C++ API, records its observations
+in DuckDB, presents a live dependency-graph viewer, and exports Parquet archives.
+There is no Python application or web server; Python drives integration tests.
 
 ## Try it
 
@@ -12,191 +13,208 @@ From the Filnix repository root:
 ```sh
 nix build path:./experiments/campaign-next --out-link result-campaign-next
 nix flake check path:./experiments/campaign-next
+
+result-campaign-next/bin/filnix-campaign watch /nix/store/…-example.drv campaign.duckdb --port 8080
 ```
 
-The package's checks run real builds in disposable local stores. They do not
-connect to the host daemon or touch the existing campaign. Python is used for
-these tests, not for the implementation.
+`watch` really requests a build. It defaults to the daemon store; `--store URI`
+selects another store. Nix's configured jobs, cores, substituters, and remote
+builders are respected rather than replaced with a second scheduler. The viewer
+listens on IPv4 loopback only. Use an SSH tunnel to view it from another machine.
+There are no HTTP build, cancel, or filesystem-mutation endpoints.
 
-For a derivation already present in your chosen store:
+After the build finishes, the viewer stays up until SIGINT/SIGTERM. A signal
+during the build requests cancellation, drains the recording, and shuts down.
+The final summary is JSON on stdout; stderr carries startup/error diagnostics,
+not a second copy of every build log. Exit status follows the build worker:
+0 success, 1 package failure, 2 worker/API/recorder error, or 128 + signal.
+
+The other commands are:
 
 ```sh
-result-campaign-next/bin/filnix-campaign record /nix/store/…-example.drv run.jsonl
-result-campaign-next/bin/filnix-campaign inspect run.jsonl
-result-campaign-next/bin/filnix-campaign replay run.jsonl --speed 10
-result-campaign-next/bin/filnix-campaign replay run.jsonl --speed 0 --json
+filnix-campaign record DRV campaign.duckdb [--store URI]
+filnix-campaign serve campaign.duckdb [--port 8080]
+filnix-campaign inspect campaign.duckdb [--run ID]
+filnix-campaign replay campaign.duckdb [--run ID] [--speed 10] [--json]
+filnix-campaign export campaign.duckdb archive-directory
 ```
 
-`record` defaults to the daemon store; `--store URI` selects another store. It
-really requests a build, so use the isolated tests if you only want to explore.
-It never overwrites an existing journal. Observations are displayed on stderr;
-the final projection is JSON on stdout. SIGINT/SIGTERM requests cancellation.
-Exit codes follow the worker's result (0 for success, 1 for a build failure,
-2 for an API/worker error, or 128 + signal for signal termination).
+`record` has no HTTP server. Multiple recordings can share one database over
+successive invocations; each has a fresh random identity. Inspect/replay select
+the latest run unless given an ID. Replay defaults to 1×; speed 0 is unpaced.
+Export includes all recorded runs, not just the latest one, and refuses an
+existing destination. **Stop the database-owning server before invoking these
+offline commands.** This is a single-process DuckDB owner, not a multi-process
+database service. Offline commands do not append campaign events, but opening
+the database permits DuckDB to recover its WAL and checkpoint normally.
 
-Replay defaults to 1×. `--speed 10` accelerates it, `--speed 0` removes delays,
-and `--json` emits the recorded envelopes rather than rendering their messages.
-Inspect needs only the journal, not Nix or a running recorder.
-
-For local development:
+For development:
 
 ```sh
 nix develop path:./experiments/campaign-next
 meson setup .amp/in/campaign-next-build experiments/campaign-next
 meson compile -C .amp/in/campaign-next-build
 meson test -C .amp/in/campaign-next-build --print-errorlogs
+CAMPAIGN_STATIC_DIR="$PWD/experiments/campaign-next/static" \
+  .amp/in/campaign-next-build/filnix-campaign serve campaign.duckdb
 ```
 
-The subflake pins NXT and Nix's C++ libraries independently of the main Filnix
-toolchain. This is currently native C++23 on x86_64 Linux, not a Fil-C build.
-It links upstream Nix 2.34.8; it does not install or replace the host daemon.
-Daemon compatibility is a separate integration milestone: the tests exercise
-the linked library's local store, not the existing Determinate daemon.
+The subflake pins NXT's blocking pool and upstream Nix 2.34.8 independently of
+the main toolchain. This is native C++23 on x86_64 Linux, not a Fil-C build. It
+does not install or replace the host daemon. Checks run real builds in disposable
+local stores with remote hooks disabled **in test configuration**, not in the
+worker. Compatibility with the existing Determinate daemon and actual remote
+builders remains a separate integration milestone.
 
-## The shape of it
+## Execution and ownership
 
-The existing campaign combines durable SQLite state, event history, attempt
-workers, and dashboard queries. This experiment starts from a different
-direction: the recording is the durable object; a description of current state
-is something computed from it. We can change that description without changing
-or rerunning the experiment that produced the observations.
+Nix's public `buildPathsWithResults()` is blocking, and its logger, configuration,
+and interrupt machinery are process-global. A dedicated `filnix-nix-worker`
+process owns those globals. It reads derivations, observes logger callbacks,
+asks Nix to build the root's outputs, and verifies returned output paths. Nix
+owns the dependency scheduler and its local/remote builders. The supervisor
+does not recreate Nix's worker implementation or parse ordinary CLI log output.
 
-NXT contributes the ownership and concurrency model. NixB supplies the precedent
-for using Nix's actual C++ objects rather than reverse-engineering CLI output.
-NixB's current build UI simulates builds; this slice exercises the real build
-API. It does not reuse NixB's old synchronous coroutine logger bridge.
-
-There are two executables for a reason. Nix's public `buildPathsWithResults()`
-is blocking, and its configuration, logger, and interrupt machinery have
-process-global state. Calling that API on NXT's cooperative deck would block
-every other task on the deck. Instead, `filnix-nix-worker` owns Nix and performs
-the blocking operation. `filnix-campaign` owns its lifetime and recording.
+The supervisor runs a single cooperative NXT deck. Pipe reads, pidfd waits,
+cancellation timers, and HTTP connections are asynchronous tasks on that deck.
+DuckDB is the other blocking component: a `blocking_pool{1, 16}` gives it one
+persistent OS thread. Database construction, every query/write, and destruction
+occur there. Only owned, materialized results cross back to the deck. This is
+one serial database owner, not multiple decks or coroutine migration; DuckDB
+can still use its own internal query threads.
 
 ```text
-NXT supervisor                    Nix worker
-  durable run.requested             initNix / openStore
-  spawn --------------------------> readDerivation
-  capture task <--- private fd 3 --- Logger callbacks
-  monitor task                      buildPathsWithResults
-    periodic journal sync           verify returned output paths
-    cancellation                    emit typed build result
-  drain pipe / reap <-------------- exit
-  durable run.finished
-             |
-             v
-       append-only journal -------> projection / inspect / timed replay
+Nix worker                 NXT supervisor                  DuckDB owner thread
+  readDerivation             durable run.requested ----------> transaction
+  discover static graph      spawn worker
+  buildPathsWithResults      capture task <--- private fd 3
+  Logger callbacks --------> bounded capture batches --------> events + projections
+                             HTTP requests ------------------> materialized queries
+                             monitor/cancellation task
+  final typed result         drain pipe, reap worker
+                             durable run.finished ------------> transaction
+                             stop/drain HTTP
+                             destroy connection on worker; close/join pool
 ```
 
-Capture and monitoring are scoped together with NXT's `when_all`. The supervisor
-reads the event pipe asynchronously and uses a pidfd to wait for the worker.
-It drains the pipe before recording process completion. Cancellation is first
-journaled, then delivered to the worker; a two-second grace period precedes
-SIGKILL. Exceptional recorder failure also terminates and reaps the worker.
-A parent-death signal prevents an abandoned worker client if the supervisor
-dies. This is process supervision, not systemd integration.
+The worker serializes callbacks under a mutex. Its private descriptor carries
+JSON transport records; stdout/stderr cannot corrupt that protocol. The pipe
+provides bounded backpressure. Capture commits the complete observations from
+each pipe read as a transaction before reading more. HTTP admits eight clients,
+leaving enough blocking-pool capacity for capture and cancellation calls. That
+keeps producers below the admission limit: one-worker FIFO then preserves their
+assigned event order. This bound is part of the ordering contract, not a promise
+that a saturated blocking pool has fair admission.
 
-The worker uses a dedicated protocol descriptor, not diagnostic stdout/stderr.
-Its logger serializes callbacks under a mutex and writes them to that pipe.
-The pipe is a bounded backpressure boundary: a slow recorder eventually slows
-the worker instead of accumulating an unbounded queue. The worker reads the
-root derivation, asks Nix to build all outputs, then checks that the returned
-outputs are valid in the store. A stopped activity is *not* a success signal.
-Built, substituted, already-valid, and failed are distinguished using the actual
-build result. Nix remains responsible for scheduling the root's dependencies.
-The prototype requests one local job and one core and disables the remote build
-hook in the worker's configuration. A daemon may impose its own configuration
-and trust rules; these are not host-wide settings changes.
+Commit waits are stop-shielded: cancellation cannot discard an acknowledgement
+for a write that may already have committed. Intent commits before spawning;
+cancellation commits before signalling Nix; completion commits after the event
+pipe has drained and the worker has been reaped. A two-second cancellation grace
+period precedes SIGKILL. Exceptions terminate/reap the worker, and a parent-death
+signal helps prevent an abandoned worker client. Killing a client is not a
+transactional guarantee that an already-dispatched remote build stopped.
 
-## The recording is the model
+## The dataset
 
-Each invocation gets a fresh random run identity and an exclusively created
-JSONL file. Every envelope has:
+Schema version 1 has six data tables and a schema metadata table:
 
-| Field | Meaning |
+| Table | Role and identity |
 | --- | --- |
-| `version` | Envelope version, currently 1 |
-| `run` | Run identity |
-| `seq` | Contiguous recorder-assigned sequence, starting at 1 |
-| `wall_ns` | Recorder wall-clock timestamp |
-| `elapsed_ns` | Recorder monotonic time since journal creation |
-| `kind` | Event kind |
-| `payload` | Kind-specific data |
+| `events` | Append-only observations; global `offset`, unique `(run, seq)` |
+| `runs` | Request metadata and the latest committed root summary; `run` |
+| `recipes` | Recorded derivation name/system; `(run, drv)` |
+| `edges` | Static input derivations, requested outputs, dynamic-input flag; `(run, parent_drv, child_drv)` |
+| `activities` | Nix IDs/parents, type, phase, host, observed start/stop; `(run, id)` |
+| `logs` | Captured output bytes and their observation/sequence identity; `offset` |
 
-The event vocabulary currently includes request, worker startup, root recipe
-metadata, Nix messages/errors, activity start/stop, every Nix activity-result
-type, the final Nix build result, cancellation, recorder errors, and process
-completion. Worker observations also retain callback-capture wall and monotonic
-timestamps inside `payload.capture`. String fields supplied by the logger are
-hex-encoded because builder output need not be UTF-8. Activity IDs, parents,
-types, and typed fields survive intact; they are not inferred from log text.
-The final result includes Nix's own serialized result plus verified output paths.
+The event history is the observation record. The other tables are read
+projections updated in the **same transaction**, not independent sources of
+campaign decisions. The in-memory root projection is published only after
+COMMIT. A failed transaction consumes neither offsets nor projection state.
+This version does not yet expose a projection-rebuild command or migrations.
 
-This gives one ordered history **per run**, not yet a globally ordered campaign
-history. A future scheduler needs its own durable admission and dispatch events,
-with attempts linked to those decisions. Local sequence numbers or Nix activity
-IDs must not be mistaken for global identities.
+Every replay envelope has version, run, contiguous run-local sequence, global
+offset, recorder wall-clock nanoseconds, recorder monotonic elapsed nanoseconds,
+kind, and a kind-specific JSON payload. Worker observations also preserve
+callback-capture wall and monotonic timestamps in `payload.capture`. Global
+offset orders committed observations, not simultaneous real-world events on
+different machines. Nix activity IDs are scoped to a run, never global keys.
 
-The same projection code consumes live events and offline recordings. Its small
-summary counts activities/output lines and describes the root outcome. Without
-`run.finished`, the outcome remains incomplete even if some promising build
-observations were captured. Cancellation is recorded as a request; if the worker
-actually finished successfully before it took effect, the verified success wins.
-Missing completion is uncertainty, not permission to silently declare failure
-or to retry an attempt.
+Event payloads retain all typed logger fields, including unknown result types.
+The Nix boundary normalizes the pinned `actBuild` field contract into derivation
+and machine, while the projection recognizes `resSetPhase`. Logger strings are
+hex in the transport/events because arbitrary builder bytes need not be UTF-8;
+native log/text/phase columns are BLOBs. The HTML view replaces invalid display
+bytes and escapes untrusted content without altering the stored bytes.
 
-The intent is synced before spawning; completion is synced before reporting.
-Intermediate data is flushed at 64 KiB or roughly one second. The journal's
-parent directory is synced on creation. A crash can therefore lose the most
-recent intermediate observations; this is **not** per-event durable delivery.
-Readers validate envelope versions, identities, sequence numbers, and monotonic
-ordering. A partial last line is reported and ignored; a malformed complete
-line is an error. Records are bounded at 8 MiB.
+A stopped activity is not a successful derivation. Only the root's typed build
+result, verified output paths, and normal worker completion establish its final
+outcome. Built, substituted, already-valid, failed, cancelled, worker error, and
+recorder error remain distinct. A missing terminal event means **incomplete**,
+not failed or safely retryable. The viewer labels a run live only while its own
+supervisor is observing it; an offline incomplete recording is not called live.
+Cancellation is a request; verified success wins if the build finished first.
 
-Replay uses the recorded monotonic observation timeline, anchored to a single
-start time so time spent displaying a message does not accumulate drift. It
-does not reproduce build side effects. Reading a journal can rebuild this
-projection without consulting a writable database. There is no application
-SQLite database here; Nix's own local store still uses its normal internals.
+DuckDB handles transaction/WAL crash recovery. There is no ad-hoc JSONL sync
+policy or application SQLite database. A crash may still lose uncommitted or
+undelivered observations. Database write failures can prevent recording even
+the error/completion events, leaving an honestly incomplete prefix. Runs are
+never silently resumed or retried after such a failure.
 
-## What this cannot tell us yet
+## Viewer and archive
 
-Nix has already merged builder stdout and stderr and converted output into
-logger observations. We preserve the bytes exposed by those callbacks, not
-the original stream labels, write boundaries, terminal control behavior, or
-producer timestamps. Callback times and recorder times are observation times;
-transport and buffering can delay them. Timed playback is therefore playback
-of **what this observer saw**, not a claim about exact builder emission timing.
-Recording separate raw stdout/stderr would need a different capture point in
-Nix or a controlled builder wrapper.
+The NXT HTTP server renders HTML in C++. HTMX polls the state each second;
+the dependency graph and session sidebar refresh without replacing the log
+pane. Output polls use an exclusive run-local sequence cursor, optionally
+filtered to a selected activity. Responses append complete log rows rather
+than retransmitting the accumulated output. Initial logs show the latest 200
+records, polling returns at most 256, and the browser retains at most 2,000.
+Scrolling away from the bottom suspends follow-scroll. The initial session
+sidebar is bounded to 100 and activity queries to 2,000; graph rendering is
+bounded to 500 nodes/40 levels with explicit omission notices.
 
-The NXT pipe/timer/process operations are asynchronous, but journal writes,
-syncs, JSON encoding, and terminal rendering are still synchronous. That is
-acceptable for this single-attempt slice, not a finished high-throughput event
-writer. Output rendering can also backpressure recording. Any redesign of the
-writer must retain bounded admission, explicit commit acknowledgements, and
-ordering between durable intent and execution.
+Static derivation edges and Nix activity parents are different relationships.
+The graph uses recorded input derivations, overlays observed phase/host/time,
+and represents shared dependencies with explicit references. Unreadable input
+recipes and dynamic inputs stay unknown. It does not invent wait counts or
+per-dependency successes. Graph metadata is currently queried per run; very
+large graphs and unusually large log records still need byte-budgeted paging.
+`/api/state` and `/api/logs` expose the same owned JSON observations. This is
+incremental polling, not SSE or a streaming HTTP response API.
 
-There is no campaign planner, evaluation service, dependency graph projection,
-multi-builder pool, lease/restart recovery, systemd unit, dashboard, SQLite read
-projection, or Parquet export yet. The journal is not authenticated or encrypted
-and can contain secrets printed by builds. Do not publish it indiscriminately.
+Export runs all six `COPY … FORMAT PARQUET, COMPRESSION ZSTD` operations in one
+snapshot transaction. Binary data stays binary, raw events stay available for
+new analyses, and `manifest.json` records schema version and the global
+watermark. The manifest is written last; a directory without it is not a
+published archive. Failed exports clean up only their newly-created destination.
+This is not an fsync-hardened, atomically renamed archive-publication protocol.
 
-## Where to take it next
+Timed replay uses the recorded recorder-observation timeline anchored to one
+clock, so rendering time does not accumulate drift. It does not rerun builds.
+Nix has already merged builder stdout/stderr into logger observations: neither
+the original stream labels/write boundaries nor exact producer emission times
+are recoverable here. Callback and recorder timestamps measure observation,
+including any transport/backpressure delay. Separate raw stream recording needs
+a different Nix capture boundary or a controlled builder wrapper.
 
-The next useful slice is several independent roots in a bounded NXT pool,
-recording campaign admission/dispatch decisions and keeping package failures
-as ordinary outcomes rather than pool-fatal exceptions. That makes scheduling
-and lifecycle ownership concrete before choosing a service architecture.
+## Still deliberately absent
 
-Then separate the journal writer from producers and add a disposable read
-projection. SQLite could still be an excellent projection format, without being
-the place where unrelated pieces mutate campaign truth. A dashboard can read
-that projection or periodic snapshots; HTMX need not participate in the build
-control path. Immutable closed journal segments can feed Parquet/DuckDB without
-turning an export into a second authority.
+There is no multi-root campaign planner, evaluation service, admission/lease
+recovery, new Nix builder, systemd integration, authentication, deployment, or
+online export API. In particular, the existing campaign's batch model has not
+been copied here. These are next design decisions, not implied by having a
+working single-root observer. Recordings can contain secrets printed by builds;
+do not publish databases, logs, or archives indiscriminately.
 
-Those steps should be tested against interrupted dispatch, failed recording,
-restarts, and slow readers, not just happy-path package builds. For now, the
-integration tests cover real output/artifacts, cached reuse, blocked dependents,
-arbitrary output bytes, cancellation, projection equality, lossless JSON replay,
-1×/10× timing, torn tails, sequence corruption, and refusal to overwrite history.
+Checks cover transaction rollback across all projections, exact large activity
+IDs and arbitrary bytes, unknown events, real artifacts, cached repeats, shared
+dependencies, failed prerequisites, API errors, cancellation/draining, abrupt
+observer death and WAL recovery, replay pacing, HTTP cursor semantics, HTML
+escaping/OOB row structure, schema rejection, and native/Parquet equality.
+
+An additional ASan/UBSan build passes the dataset test, but its leak-enabled
+integration suite is not clean: LeakSanitizer reports allocations in Nix's
+build-goal machinery, including successful builds. A minimal Nix-only
+`buildPathsWithResults` client, without NXT, DuckDB, or the campaign logger,
+also reproduces goal leaks. This experiment does not suppress those reports
+or patch the Nix dependency.

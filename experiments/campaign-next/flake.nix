@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:lessrest/filnixpkgs/e63c68034d742160a48ca80640442337e6356cf4";
     nixpkgs.flake = false;
-    nxtui.url = "github:mbrock/nxtui/4d706802815db437749fe0c39a1c1a93941b7afa";
+    nxtui.url = "github:mbrock/nxtui/50e7caffc371960e8473f12b138dcbc925fbdcd2";
     nxtui.flake = false;
   };
 
@@ -38,6 +38,7 @@
             ./meson.build
             ./src
             ./tests
+            ./static
           ];
         };
         nativeBuildInputs = [
@@ -48,11 +49,15 @@
         buildInputs = [
           nxt
           pkgs.boost
+          pkgs.brotli.dev
+          pkgs.zstd.dev
+          pkgs.zlib.dev
           nix.dev
           pkgs.nlohmann_json
+          pkgs.duckdb.dev
         ];
         nativeCheckInputs = [
-          pkgs.python3
+          (pkgs.python3.withPackages (ps: [ ps.duckdb ]))
           nix
           pkgs.bash
           pkgs.coreutils
@@ -70,7 +75,7 @@
       devShells.${system}.default = pkgs.mkShell {
         inputsFrom = [ campaign ];
         packages = [
-          pkgs.python3
+          (pkgs.python3.withPackages (ps: [ ps.duckdb ]))
           nix
           pkgs.clang-tools
           pkgs.nixfmt
