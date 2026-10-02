@@ -79,7 +79,7 @@ def plan(folder, spec):
                 recipe = json.loads(r.stdout)
                 graph = nix.graph([recipe["drv"]])
                 nix.normalize_graph(graph)
-                graph_file = f"graph-{target['id']}.json"
+                graph_file = f"graph-{target['id']}.json.gz"
                 atomic_json(folder / graph_file, graph)
                 row.update(recipe=recipe, graph=graph_file)
             except (ValueError, subprocess.SubprocessError, OSError) as e:

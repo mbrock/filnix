@@ -1,0 +1,21 @@
+[Unit]
+Description=Remove consumed Filnix planner graphs after a one-day grace period
+
+[Service]
+Type=oneshot
+User=filnix-experiment
+Group=filnix-observe
+UMask=0027
+WorkingDirectory=/var/lib/filnix-experiment
+ExecStart=/opt/filnix-experiment/bin/filnix-experiment prune-plans --apply
+TimeoutStartSec=1h
+MemoryMax=512M
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+IOWeight=10
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/filnix-experiment
+PrivateTmp=true
+NoNewPrivileges=true

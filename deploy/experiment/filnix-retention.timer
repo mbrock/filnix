@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly cleanup of consumed Filnix planner graphs
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=10m
+Unit=filnix-retention.service
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,6 @@
 """Single writer, explicit admission, durable intent before independent execution."""
 
+import gzip
 import json
 import os
 from pathlib import Path
@@ -409,7 +410,13 @@ class Controller:
                 recipe["source"] = spec["source"]
                 recipe["revision"] = spec.get("revision")
                 recipe["plan_attempt"] = attempt["id"]
-                nix.add_graph(self.db, json.loads((folder / row["graph"]).read_text()))
+                graph = folder / row["graph"]
+                with (
+                    gzip.open(graph, "rt", encoding="utf-8")
+                    if graph.suffix == ".gz"
+                    else graph.open()
+                ) as f:
+                    nix.add_graph(self.db, json.load(f))
                 self.root(recipe["drv"])
                 held = self.db.execute(
                     "SELECT error FROM candidates WHERE campaign=? AND drv=? AND state='inconclusive' LIMIT 1",

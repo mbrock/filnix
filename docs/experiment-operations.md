@@ -517,11 +517,35 @@ collect). Source, planned derivations, and observed successful outputs are roote
 
 Use `backup`, which invokes SQLite's online backup API, and archive attempt
 directories along with it. Do not copy just a live WAL database file. Automatic
-admission stops at the log/disk budgets; this release does not automatically
-discard evidence. Archive only finished attempts, preserve manifests, raw logs,
-and exit records, and stop the controller when restoring state. Output
-availability is the last observation, not a promise that a manually removed
-root or subsequently collected output still exists.
+admission stops at the log/disk budgets. Archive only finished attempts, preserve
+manifests, raw logs, and exit records, and stop the controller when restoring
+state. Output availability is the last observation, not a promise that a manually
+removed root or subsequently collected output still exists.
+
+Planner graphs are **scratch recovery inputs**, not the historical log archive.
+New workers write gzip-compressed `graph-ID.json.gz`; the controller also accepts
+older plain JSON graphs. Rows are published only after the graph file is closed,
+fsynced, and atomically renamed. Graphs must remain intact while an attempt is
+intended/running: reconciliation imports them before committing the attempt's
+terminal state. The database retains scheduling facts, recipes and source
+provenance; rooted Nix derivations retain the underlying recipe definitions.
+
+`filnix-experiment prune-plans` reports a dry run. `prune-plans --apply` deletes
+only `graph-ID.json`, `.json.gz`, and graph temporary files from planner attempts
+whose **committed** finished timestamp is at least 24 hours old. It uses a separate
+read-only DB connection and never deletes manifests, `plan.jsonl`, raw logs,
+start/exit records, build-attempt files, DB rows, or GC roots. A finished
+interrupted planner is eligible too: its completed rows were reconciled and its
+unfinished targets recorded as errors. Cleanup is idempotent; restored state
+must include scratch graphs for any attempts that are nonterminal in that backup.
+
+The installation helper installs `filnix-retention.service` and its hourly timer;
+enable it explicitly with `sudo systemctl enable --now filnix-retention.timer`.
+It runs at low CPU/I/O priority, independently of the controller, with a one-day
+grace period. Inspect totals with `journalctl -u filnix-retention.service`.
+This bounds the lifetime of the largest duplicated files without discarding
+build/failure evidence. Raw logs still have the 20 GiB admission guard; database,
+Nix roots and binary-cache growth remain separate retention concerns.
 
 Root build failures are distinguished from dependency failures using a fixture
 from the installed Nix 2.32.1 / Determinate 3.12 logger. Compile and link errors

@@ -904,8 +904,8 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(graph.needed([B], set()), {A, B, C})
         self.assertEqual(graph.needed([B], {A[:-4]}), {A, B, C})
 
-    def plan_record(self, aid, target, drv):
-        graph_file = f"graph-{target}.json"
+    def plan_record(self, aid, target, drv, compressed=False):
+        graph_file = f"graph-{target}.json" + (".gz" if compressed else "")
         atomic_json(
             self.folder(aid) / graph_file,
             {drv: {"outputs": {"out": {"path": OUTPUT}}, "inputDrvs": {}}},
@@ -921,6 +921,30 @@ class ExperimentTests(unittest.TestCase):
                 )
                 + "\n"
             )
+
+    def test_plan_completion_reads_legacy_and_compressed_graphs(self):
+        aid = self.controller.plan(self.cid, [1, 2])
+        self.plan_record(aid, 1, A)
+        self.plan_record(aid, 2, B, compressed=True)
+        self.finish(aid)
+        self.controller.reconcile()
+        self.assertEqual(
+            self.sql("SELECT state FROM attempts WHERE id=?", (aid,)).fetchone()[0],
+            "finished",
+        )
+        self.assertEqual(
+            [
+                tuple(r)
+                for r in self.sql(
+                    "SELECT id,drv,state FROM candidates WHERE id IN (1,2) ORDER BY id"
+                )
+            ],
+            [(1, A, "queued"), (2, B, "queued")],
+        )
+        self.assertEqual(
+            [r[0] for r in self.sql("SELECT drv FROM derivations ORDER BY drv")],
+            [A, B],
+        )
 
     def test_plan_completion_reuses_facts_and_preserves_live_aliases(self):
         self.graph()

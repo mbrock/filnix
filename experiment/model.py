@@ -2,6 +2,7 @@
 
 import contextlib
 import fcntl
+import gzip
 import hashlib
 import json
 import os
@@ -28,9 +29,14 @@ def identity(value):
 def atomic_json(path, value):
     path = Path(path)
     tmp = path.with_suffix(".tmp")
-    with tmp.open("w") as f:
+    with (
+        gzip.open(tmp, "wt", encoding="utf-8", compresslevel=3)
+        if path.suffix == ".gz"
+        else tmp.open("w")
+    ) as f:
         json.dump(value, f, sort_keys=True)
-        f.flush()
+    # Close first so compressed files include their footer before syncing.
+    with tmp.open("rb") as f:
         os.fsync(f.fileno())
     os.replace(tmp, path)
     fd = os.open(path.parent, os.O_DIRECTORY)

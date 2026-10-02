@@ -62,6 +62,12 @@ def main():
     sub.add_parser("status")
     backup = sub.add_parser("backup")
     backup.add_argument("destination")
+    prune = sub.add_parser(
+        "prune-plans", help="inspect consumed planner graphs older than one day"
+    )
+    prune.add_argument(
+        "--apply", action="store_true", help="delete the listed scratch graphs"
+    )
     classify = sub.add_parser(
         "classify", help="annotate evidence without changing scheduling"
     )
@@ -235,6 +241,11 @@ def main():
         if "error" in response:
             p.error(response["error"])
         print(response["ok"])
+        return
+    if args.command == "prune-plans":
+        from .retention import prune_plans
+
+        print(json.dumps(prune_plans(state, apply=args.apply)))
         return
     with writer_lock(state), connect(state) as db:
         if args.command == "controller":
