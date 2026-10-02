@@ -1,6 +1,7 @@
 """Suggestions must not change build facts, leak between campaigns or outlive evidence."""
 
 import io
+import json
 from contextlib import closing
 from pathlib import Path
 import socket
@@ -67,7 +68,7 @@ class ClassificationTests(unittest.TestCase):
             "subject": row["label"],
             "provider": provider,
             "model": c.MODELS[provider],
-            "question_version": c.QUESTION_VERSION,
+            "question_version": c.QUESTION_VERSIONS[kind],
             "source_hash": identity(c.source_fields(row, kind)),
             "evidence_hash": identity(evidence),
             "evidence": evidence,
@@ -78,6 +79,69 @@ class ClassificationTests(unittest.TestCase):
         return self.controller.dispatch(
             {"op": "classification-import", "campaign": self.cid, "item": item}
         )
+
+    def test_showcase_choice_distribution_and_request(self):
+        probabilities = dict(
+            zip(c.DEFINITIONS["showcase"], (0.07, 0.61, 0.25, 0.05, 0.02))
+        )
+        answer = {
+            "type": "choice",
+            "choice": "Workhorse",
+            "probabilities": probabilities,
+            "confidence": 0.42,
+        }
+        response = {"model": c.MODELS["jev"], "answers": {"tier": answer}}
+        with (
+            patch.dict("os.environ", {"TYPESAFE_API_KEY": "test"}),
+            patch(
+                "urllib.request.urlopen",
+                return_value=io.BytesIO(encode(response).encode()),
+            ) as request,
+        ):
+            self.assertEqual(
+                c.ask("jev", "showcase", {"target": "curl"})[0], probabilities
+            )
+        payload = json.loads(request.call_args.args[0].data)
+        self.assertEqual(payload["questions"]["tier"]["type"], "choice")
+        self.assertEqual(
+            payload["questions"]["tier"]["criteria"], c.DEFINITIONS["showcase"]
+        )
+        for values in (
+            dict.fromkeys(probabilities, 0.3),
+            {**probabilities, "Other": 0},
+        ):
+            with self.assertRaises(ValueError):
+                c.validate_probabilities(values, "showcase")
+
+    def test_showcase_only_cached_replay_and_metadata_freshness(self):
+        item = self.item(kind="showcase")
+        probabilities = dict.fromkeys(c.DEFINITIONS["showcase"], 0.0)
+        probabilities["Specialist"] = 1.0
+        with (
+            patch.object(c, "ask", return_value=(probabilities, {}, {})) as ask,
+            patch.object(
+                c,
+                "submit",
+                side_effect=lambda state, cid, item: c.persist(self.db, cid, item),
+            ),
+        ):
+            c.run(self.state, self.cid, kinds=("showcase",), labels=("alpha",))
+            c.run(self.state, self.cid, kinds=("showcase",), labels=("alpha",))
+            self.assertEqual(ask.call_count, 1)
+            self.assertEqual(ask.call_args.args[:2], ("jev", "showcase"))
+            self.assertNotIn("drv", ask.call_args.args[2])
+        self.db.execute(
+            "UPDATE candidates SET drv=?,recipe='{}',state='failed' WHERE id=1", (B,)
+        )
+        self.db.commit()
+        self.assertEqual(len(c.annotations(self.db, self.cid, 1)), 1)
+        self.db.execute(
+            "UPDATE candidates SET selection=? WHERE id=1",
+            (encode({"metadata": {"description": "changed scope"}}),),
+        )
+        self.db.commit()
+        self.assertEqual(c.annotations(self.db, self.cid, 1), [])
+        self.assertEqual(self.save(item), "stale evidence discarded")
 
     def test_providers_and_aliases_are_preserved_without_changing_facts(self):
         tables = (

@@ -70,6 +70,12 @@ def main():
     )
     classify.add_argument("--provider", choices=("jev", "openai"), default="jev")
     classify.add_argument(
+        "--kind",
+        action="append",
+        choices=("package", "diagnostic", "patch", "showcase"),
+        help="restrict to classification kind; repeatable; defaults to existing evidence facets",
+    )
+    classify.add_argument(
         "--limit", type=int, default=100, help="maximum new API requests"
     )
     classify.add_argument(
@@ -156,7 +162,16 @@ def main():
                 print("No running campaign to classify")
                 return
             campaign = row[0]
-        print(run(state, campaign, args.provider, args.limit, args.package))
+        print(
+            run(
+                state,
+                campaign,
+                args.provider,
+                args.limit,
+                args.package,
+                args.kind or ("package", "diagnostic", "patch"),
+            )
+        )
         return
     if args.command == "status":
         with connect(state, readonly=True) as db:

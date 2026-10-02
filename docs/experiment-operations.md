@@ -122,12 +122,36 @@ by systemd for this worker only, never by the web service or from the Nix store.
 Raw request/response cache files are private under the state's mode-0700
 `classifications/` directory; request hashes include model, rubric and evidence.
 Changing rubric definitions, output instructions, reasoning effort or token caps
-requires bumping `QUESTION_VERSION` before reclassification: the current cache
-and stored-annotation reuse keys do not independently version those settings.
+requires bumping the kind's `QUESTION_VERSIONS` entry before reclassification:
+the current cache and stored-annotation reuse keys do not independently version
+those settings.
 Successful cached responses replay without another API charge. Failed or
 interrupted request reservations are not retried automatically: inspect the
 private cache before explicitly removing a failed reservation to retry it.
 API work never runs on a dashboard GET or controller tick.
+
+### Software showcase
+
+`/campaigns/CAMPAIGN/showcase` browses Jev judgments only, with search, build-result
+and semantic-facet filters. Flagship, Workhorse, Specialist and Supporting describe
+the package's own breadth and software scope, not quality, safety or port readiness.
+Unknown is an explicit model answer; Not classified means no current Jev tier.
+Tier counts reflect search, state and facet before tier selection; aliases remain
+separate campaign candidates. The highest-probability option determines the tier,
+with the complete distribution and original evidence retained in package details.
+
+Use `filnix-experiment classify CAMPAIGN --kind showcase --provider jev --limit 1000`
+for each bounded batch of a full inventory sweep. Repeat until coverage is complete,
+then inspect failed reservations rather than automatically retrying ambiguous calls.
+`--kind` is repeatable. Omitting it preserves the existing package/diagnostic/patch
+worker behavior and hourly timer. Showcase uses one Jev Choice question per package,
+with its own `showcase-1` rubric/cache version; it does not re-charge existing facets.
+Its evidence is identity and inventory metadata, intentionally excluding campaign
+results and graph neighbors. Recipe replans do not invalidate a scope judgment;
+changed inventory metadata does. Luna remains optional in the existing annotation
+pipeline and package details, not a Showcase comparison UI or an automatic paid sweep.
+Deploy both controller and web before running the new kind; an older controller
+cannot import it. Coordinate classifier stop/replay for any controller restart.
 
 ## Binary caches
 

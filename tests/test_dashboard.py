@@ -91,6 +91,128 @@ class DashboardTests(unittest.TestCase):
             created=1800000000,
         )
 
+    def test_showcase_jev_only_tiers_filters_and_missing_are_distinct(self):
+        from experiment.classifications import DEFINITIONS, MODELS, QUESTION_VERSIONS
+
+        def tier(label, provider="jev"):
+            probabilities = dict.fromkeys(DEFINITIONS["showcase"], 0.0)
+            probabilities.update({label: 0.61, "Supporting": 0.39})
+            item = self.annotation("showcase", provider, probabilities)
+            item.update(
+                model=MODELS[provider], question_version=QUESTION_VERSIONS["showcase"]
+            )
+            return item
+
+        self.sql("UPDATE candidates SET state='failed' WHERE id=1")
+        self.sql("UPDATE candidates SET state='available' WHERE id IN (2,3)")
+        self.db.commit()
+        annotations = {
+            1: [
+                tier("Flagship"),
+                tier("Specialist", "openai"),
+                self.annotation(provider="jev"),
+            ],
+            2: [tier("Unknown")],
+            3: [tier("Workhorse", "openai"), self.annotation(provider="openai")],
+        }
+        with (
+            patch("experiment.catalog.classification_index", return_value=annotations),
+            patch(
+                "experiment.classifications.ask",
+                side_effect=AssertionError("GET must not call AI"),
+            ),
+        ):
+            page = BeautifulSoup(self.get("/showcase").text, "html.parser")
+            rows = page.select("#showcase-list tbody tr")
+            self.assertEqual(
+                [r["data-tier"] for r in rows], ["Flagship", "Unknown", "unclassified"]
+            )
+            self.assertIn("Failed", rows[0].text)
+            self.assertIn(
+                "2 / 3 classified", page.select_one("#showcase-coverage").text
+            )
+            self.assertFalse(page.select('select[name="provider"]'))
+            self.assertNotIn("Luna", page.select_one("#showcase").text)
+            for query, expected in (
+                ("tier=Unknown", ["2"]),
+                ("tier=unclassified", ["3"]),
+                ("tier=Flagship&state=built", []),
+                ("facet=package:shared", ["1"]),
+                ("q=alias", ["3"]),
+            ):
+                filtered = BeautifulSoup(
+                    self.get("/showcase?" + query).text, "html.parser"
+                )
+                self.assertEqual(
+                    [
+                        r["data-package"]
+                        for r in filtered.select("#showcase-list tbody tr")
+                    ],
+                    expected,
+                )
+            scoped = BeautifulSoup(
+                self.get(
+                    "/showcase?tier=Flagship&facet=package:shared&q=a&transport=poll"
+                ).text,
+                "html.parser",
+            )
+            refresh = scoped.select_one("#updates a")["href"]
+            self.assertEqual(parse_qs(urlsplit(refresh).query)["tier"], ["Flagship"])
+            self.assertEqual(parse_qs(urlsplit(refresh).query)["q"], ["a"])
+            self.assertIn("No packages match", self.get("/showcase?q=missing").text)
+        self.assertEqual(self.get("/showcase?tier=bogus").status_code, 400)
+
+    def test_showcase_pagination_preserves_filters_and_clamps(self):
+        from experiment.classifications import DEFINITIONS, MODELS, QUESTION_VERSIONS
+        from experiment.model import encode
+
+        probabilities = dict.fromkeys(DEFINITIONS["showcase"], 0.0)
+        probabilities["Flagship"] = 1.0
+        tier = self.annotation("showcase", "jev", probabilities)
+        tier.update(model=MODELS["jev"], question_version=QUESTION_VERSIONS["showcase"])
+        annotations = {}
+        for i in range(101):
+            self.sql(
+                "INSERT INTO candidates(id,campaign,attr,label,selection,state) VALUES(?,?,?,?,?,'available')",
+                (i + 10, self.cid, encode([f"p{i:03d}"]), f"p{i:03d}", "{}"),
+            )
+            annotations[i + 10] = [
+                tier,
+                self.annotation(provider="jev", probabilities={"Library": 0.8}),
+            ]
+        self.db.commit()
+        query = "state=built&tier=Flagship&facet=package:Library&q=p&transport=poll"
+        with patch("experiment.catalog.classification_index", return_value=annotations):
+            first = BeautifulSoup(self.get("/showcase?" + query).text, "html.parser")
+            self.assertEqual(len(first.select("#showcase-list tbody tr")), 100)
+            self.assertIn(
+                "101 / 101 classified", first.select_one("#showcase-coverage").text
+            )
+            next_link = next(
+                a["href"]
+                for a in first.select('nav[aria-label="Result pages"] a')
+                if a.text == "Next →"
+            )
+            self.assertEqual(
+                parse_qs(urlsplit(next_link).query),
+                {
+                    "state": ["built"],
+                    "tier": ["Flagship"],
+                    "facet": ["package:Library"],
+                    "q": ["p"],
+                    "transport": ["poll"],
+                    "page": ["1"],
+                },
+            )
+            for page in (1, 999):
+                last = BeautifulSoup(
+                    self.get("/showcase?" + query + f"&page={page}").text, "html.parser"
+                )
+                self.assertEqual(
+                    [r["data-package"] for r in last.select("#showcase-list tbody tr")],
+                    ["110"],
+                )
+
     def test_semantic_facets_intersect_state_without_merging_namespaces_or_providers(
         self,
     ):

@@ -39,6 +39,7 @@ from .resources import (
     PACKAGE,
     PACKAGES,
     PACKAGE_STATES,
+    SHOWCASE,
     SUMMARY,
     UPDATES,
     View,
@@ -115,6 +116,8 @@ def create_app(state):
 
     def page(request, section, prepare):
         view, cid = options(request), request.path_params["cid"]
+        if section == "showcase" and "state" not in request.query_params:
+            view = view.with_(state="all")
         with data.read(state) as db:
             campaign, choices = data.campaign(db, cid), data.campaigns(db)
             title, content = prepare(db, cid, campaign, view)
@@ -189,6 +192,13 @@ def create_app(state):
 
         return page(request, "packages", prepare)
 
+    def showcase(request):
+        def prepare(db, cid, c, v):
+            result = data.showcase(db, cid, v)
+            return "Showcase", lambda: views.showcase(result, c, v)
+
+        return page(request, "showcase", prepare)
+
     def batches(request):
         def prepare(db, cid, c, v):
             result = data.ledger(db, cid, v)
@@ -248,7 +258,7 @@ def create_app(state):
         view, cid = options(request), request.path_params["cid"]
         seen = integer(request.query_params.get("seen", "0"))
         target = request.query_params.get("target", "activity")
-        if target not in ("activity", "packages", "batches"):
+        if target not in ("activity", "packages", "batches", "showcase"):
             raise HTTPException(400, "Unknown update resource")
         with data.read(state) as db:
             data.campaign(db, cid)
@@ -489,6 +499,7 @@ def create_app(state):
             EVENTS.route(events),
             PACKAGES.route(packages),
             PACKAGE.route(package),
+            SHOWCASE.route(showcase),
             BATCHES.route(batches),
             BATCH.route(batch),
             BATCH_STATUS.route(batch_status),

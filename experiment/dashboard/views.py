@@ -5,6 +5,7 @@ import json
 from tagflow import attr, tag, text
 from tagflow import htmx as hx
 
+from ..classifications import DEFINITIONS
 from .base import (
     BUTTON,
     CELL,
@@ -36,6 +37,7 @@ from .resources import (
     PACKAGE,
     PACKAGES,
     PACKAGE_STATES,
+    SHOWCASE,
     SUMMARY,
     UPDATES,
 )
@@ -427,6 +429,7 @@ def updates(cid, view, seen, current, target, done=False):
                 target=target,
                 state=view.state,
                 facet=view.facet,
+                tier=view.tier,
                 kind=view.kind,
                 outcome=view.outcome,
                 sort=view.sort,
@@ -437,7 +440,9 @@ def updates(cid, view, seen, current, target, done=False):
             done=done,
         )
         resource = (
-            PACKAGES
+            SHOWCASE
+            if target == "showcase"
+            else PACKAGES
             if target == "packages"
             else BATCHES
             if target == "batches"
@@ -599,9 +604,12 @@ def packages(result, campaign, view):
             facets = [
                 (
                     facet,
-                    {"package": "Pkg", "diagnostic": "Diag", "patch": "Patch"}[
-                        facet.partition(":")[0]
-                    ]
+                    {
+                        "package": "Pkg",
+                        "diagnostic": "Diag",
+                        "patch": "Patch",
+                        "showcase": "Tier",
+                    }[facet.partition(":")[0]]
                     + " · "
                     + facet.partition(":")[2]
                     + f" ({count:,})",
@@ -671,6 +679,149 @@ def packages(result, campaign, view):
                         with tag.span(title=row["reason"] or None):
                             status(row["state"], bool(row["checks"]))
     pagination(result, PACKAGES, cid, view)
+
+
+def showcase(result, campaign, view):
+    cid = campaign["id"]
+    with tag.section(id="showcase"):
+        with tag.h1([HEADING, "text-xl", "mb-1"]):
+            text("Software showcase")
+        with tag.p([MUTED, "mb-3"]):
+            text(
+                "Explore the campaign by software scope. Jev’s editorial tiers are not quality, safety or build-readiness verdicts."
+            )
+        with tag.div(
+            [
+                "grid",
+                "grid-cols-2",
+                "sm:grid-cols-4",
+                "lg:grid-cols-7",
+                "gap-2",
+                "mb-3",
+            ],
+            id="showcase-tiers",
+        ):
+            for tier, count in [("", result["scope"]), *result["tiers"].items()]:
+                with link(
+                    SHOWCASE.url(view.with_(tier=tier, page=0), cid=cid),
+                    [
+                        FOCUS,
+                        "border",
+                        "px-3",
+                        "py-2",
+                        "min-w-0",
+                        "border-stone-900" if view.tier == tier else "border-stone-300",
+                    ],
+                    aria_current="true" if view.tier == tier else None,
+                    data_tier=tier,
+                ):
+                    with tag.div("font-medium"):
+                        text(
+                            "All tiers"
+                            if not tier
+                            else "Not classified"
+                            if tier == "unclassified"
+                            else tier
+                        )
+                    with tag.div([MUTED, "tabular-nums"]):
+                        text(f"{count:,}")
+        with tag.form(
+            ["flex", "flex-wrap", "gap-2", "mb-2"],
+            method="get",
+            action=SHOWCASE.url(cid=cid),
+            data_auto_submit="true",
+        ):
+            hx.navigate(
+                SHOWCASE.url(cid=cid), region="#workspace", indicator="#loading"
+            )
+            tag.input(
+                [FIELD, "w-full", "sm:w-64"],
+                type="search",
+                name="q",
+                value=view.q,
+                placeholder="Search packages",
+                aria_label="Search package names and descriptions",
+            )
+            select("state", PACKAGE_STATES, view.state, "Build results")
+            facets = [
+                (f, f.replace(":", " · ", 1) + f" ({n:,})")
+                for f, n in result["facets"].items()
+            ]
+            if view.facet and view.facet not in result["facets"]:
+                facets.append((view.facet, view.facet.replace(":", " · ", 1) + " (0)"))
+            select(
+                "facet",
+                [("", "All Jev facets"), *facets],
+                view.facet,
+                "Jev semantic facet",
+            )
+            tag.input(type="hidden", name="tier", value=view.tier)
+            tag.input(type="hidden", name="transport", value=view.transport)
+            with tag.button(BUTTON, type="submit"):
+                text("Show")
+        with tag.p([MUTED, "text-xs", "mb-2"], id="showcase-coverage"):
+            text(
+                f"{result['classified']:,} / {result['scope']:,} classified in this search · {result['tiers']['unclassified']:,} not classified. Counts respect search, build result and facet, before tier selection."
+            )
+        with tag.details([MUTED, "text-xs", "mb-3"]):
+            with tag.summary([FOCUS, "cursor-pointer"]):
+                text("How tiers work")
+            for tier, definition in DEFINITIONS["showcase"].items():
+                with tag.p("mt-1"):
+                    with tag.strong():
+                        text(tier + ": ")
+                    text(definition)
+            with tag.p("mt-1"):
+                text(
+                    "Highest-probability tier wins; probabilities are not verification. Unknown is a model answer; Not classified means no current Jev tier. Semantic facets use ≥80%. These judgments never change scheduling."
+                )
+        snapshot_notice(result, cid, view, "showcase")
+        pagination(result, SHOWCASE, cid, view)
+        if not result["rows"]:
+            empty("No packages match these filters.")
+            return
+        with tag.table(
+            ["w-full", "table-fixed", "border-collapse"], id="showcase-list"
+        ):
+            with tag.thead(["border-b", "border-stone-400"]):
+                with tag.tr():
+                    for label in ("Package", "Jev tier", "Build result"):
+                        with tag.th(
+                            [CELL, HEADING, "w-1/2" if label == "Package" else "w-1/4"],
+                            scope="col",
+                        ):
+                            text(label)
+            with tag.tbody():
+                for row in result["rows"]:
+                    with tag.tr(ROW, data_package=row["id"], data_tier=row["tier"]):
+                        with tag.td([CELL, "w-1/2"]):
+                            with link(
+                                PACKAGE.url(view, cid=cid, pid=row["id"]),
+                                [LINK, "font-medium", "break-words"],
+                            ):
+                                text(row["label"])
+                            with tag.p([MUTED, "text-xs", "break-words"]):
+                                text(row["description"])
+                        with tag.td(CELL):
+                            annotation = row["showcase"]
+                            if annotation:
+                                text(row["tier"])
+                                with tag.details([MUTED, "text-xs"]):
+                                    with tag.summary([FOCUS, "cursor-pointer"]):
+                                        text(
+                                            f"{annotation['probabilities'][row['tier']]:.0%} probability"
+                                        )
+                                    for tier, probability in annotation[
+                                        "probabilities"
+                                    ].items():
+                                        with tag.div():
+                                            text(f"{tier}: {probability:.1%}")
+                            else:
+                                with tag.span(MUTED):
+                                    text("Not classified")
+                        with tag.td(CELL):
+                            status(row["state"], bool(row["checks"]))
+        pagination(result, SHOWCASE, cid, view)
 
 
 def pagination(result, resource, cid, view):

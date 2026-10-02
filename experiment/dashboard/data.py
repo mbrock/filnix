@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException
 from ..batches import batches
 from ..blockers import ranking
 from ..catalog import catalog
-from ..classifications import annotations
+from ..classifications import annotations, DEFINITIONS, MODELS, QUESTION_VERSIONS
 from ..graph import live_graph as live_graph
 from ..evidence import attempt_evidence, failure_evidence
 from ..history import COLUMNS, attempt_detail, item
@@ -312,6 +312,61 @@ def packages(db, cid, view, *, paged=True):
     result["done"] = finished(db, cid)
     if paged:
         paginate(result, view.page, 100)
+    return result
+
+
+def showcase(db, cid, view):
+    result = packages(db, cid, view.with_(facet=""), paged=False)
+    facets, counts, rows = (
+        {},
+        dict.fromkeys((*DEFINITIONS["showcase"], "unclassified"), 0),
+        [],
+    )
+    for row in result["rows"]:
+        jev = [a for a in row["classifications"] if a["provider"] == "jev"]
+        suggested = {
+            a["kind"] + ":" + label
+            for a in jev
+            if a["kind"] != "showcase"
+            for label, p in a["probabilities"].items()
+            if p >= 0.8
+        }
+        for facet in suggested:
+            facets[facet] = facets.get(facet, 0) + 1
+        tier = next(
+            (
+                a
+                for a in jev
+                if a["kind"] == "showcase"
+                and a["model"] == MODELS["jev"]
+                and a["question_version"] == QUESTION_VERSIONS["showcase"]
+            ),
+            None,
+        )
+        row["showcase"] = tier
+        # Canonical rubric order makes an exact tie stable, regardless of JSON key order.
+        row["tier"] = (
+            max(DEFINITIONS["showcase"], key=tier["probabilities"].get)
+            if tier
+            else "unclassified"
+        )
+        if view.facet and view.facet not in suggested:
+            continue
+        if view.q.lower() not in (row["label"] + " " + row["description"]).lower():
+            continue
+        counts[row["tier"]] += 1
+        if not view.tier or view.tier == row["tier"]:
+            rows.append(row)
+    order = list(counts)
+    rows.sort(key=lambda r: (order.index(r["tier"]), r["label"]))
+    result.update(
+        rows=rows,
+        tiers=counts,
+        facets=dict(sorted(facets.items())),
+        classified=sum(counts.values()) - counts["unclassified"],
+        scope=sum(counts.values()),
+    )
+    paginate(result, view.page, 100)
     return result
 
 

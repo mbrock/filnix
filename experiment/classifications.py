@@ -20,6 +20,13 @@ from .model import atomic_json, connect, encode, event, identity, stamp
 QUESTION_VERSION = "facets-1"
 MODELS = {"jev": "jev-1.13.0", "openai": "gpt-6-luna"}
 DEFINITIONS = {
+    "showcase": {
+        "Flagship": "A recognizable, substantial standalone application, service, language platform or major framework that can headline a software showcase. A thin binding or plugin for one is not itself Flagship.",
+        "Workhorse": "A substantial general-purpose tool or reusable library with a broad everyday role, but not a major application or platform. Invisible infrastructure can be Workhorse.",
+        "Specialist": "A substantive application, tool or library serving a narrow domain, protocol or workflow rather than a broad everyday role.",
+        "Supporting": "A small helper, thin wrapper or binding, plugin, compatibility shim, test fixture or data-only package supporting other software rather than a substantial independent implementation.",
+        "Unknown": "The supplied identity and description do not establish the package's own scope well enough to select a tier.",
+    },
     "package": {
         "Application": "An end-user command, interactive application or service; a compiler or build generator alone does not count.",
         "Library": "A reusable programmatic API, module or toolkit; many graph consumers alone do not establish an API.",
@@ -57,6 +64,15 @@ DEFINITIONS = {
         "Platform integration": "Visible changes integrate profiles, paths, desktop/display, CPU or system services.",
     },
 }
+QUESTION_VERSIONS = {kind: QUESTION_VERSION for kind in DEFINITIONS}
+QUESTION_VERSIONS["showcase"] = "showcase-1"
+SHOWCASE_SCOPE = (
+    "Choose one editorial showcase tier for the named package itself using its "
+    "supplied identity and metadata. Judge breadth and software scope, not quality, "
+    "popularity, memory safety, build success or port readiness. Do not inherit a "
+    "parent project's prominence for a small binding or plugin. Do not invent "
+    "adoption figures or missing functionality; use Unknown when scope is unclear."
+)
 SCOPE = (
     "Judge only the named target using supplied evidence. Labels may overlap. "
     "Neighbor properties are not target properties. Native/host inputs do not prove "
@@ -67,6 +83,8 @@ SCOPE = (
 
 
 def source_fields(row, kind):
+    if kind == "showcase":
+        return {"selection": row["selection"]}
     if kind == "package":
         return {k: row[k] for k in ("selection", "recipe", "drv")}
     if kind == "diagnostic":
@@ -135,7 +153,7 @@ def persist(db, campaign, item):
     if not row or provider not in MODELS or kind not in DEFINITIONS:
         raise ValueError("classification target does not belong to campaign")
     if (
-        item["question_version"] != QUESTION_VERSION
+        item["question_version"] != QUESTION_VERSIONS[kind]
         or item["model"] != MODELS[provider]
     ):
         raise ValueError("unsupported classification model or rubric")
@@ -191,6 +209,8 @@ def validate_probabilities(values, kind):
         for p in values.values()
     ):
         raise ValueError("invalid classification probability")
+    if kind == "showcase" and not math.isclose(sum(values.values()), 1, abs_tol=1e-6):
+        raise ValueError("showcase probabilities must sum to one")
 
 
 def diagnostic_excerpt(db, state, drv, aid):
@@ -241,8 +261,16 @@ def diagnostic_excerpt(db, state, drv, aid):
     }
 
 
-def work(db, state, campaign, row, skip=()):
+def work(db, state, campaign, row, skip=(), kinds=("package", "diagnostic", "patch")):
     selection, recipe = json.loads(row["selection"]), json.loads(row["recipe"] or "{}")
+    if "showcase" in kinds and ("showcase", row["label"]) not in skip:
+        yield "showcase", row["label"], {
+            "target": row["label"],
+            "metadata": selection.get("metadata") or {},
+            "notice": "Package scope only; campaign outcomes are deliberately omitted.",
+        }
+    if not set(kinds) - {"showcase"}:
+        return
     package = {
         "target": row["label"],
         "drv": row["drv"],
@@ -271,10 +299,10 @@ def work(db, state, campaign, row, skip=()):
         package["graph_notice"] = (
             "Bounded build-input neighborhood observed at classification time, not runtime linkage or current blockers."
         )
-    if ("package", row["label"]) not in skip:
+    if "package" in kinds and ("package", row["label"]) not in skip:
         yield "package", row["label"], package
     diagnostic_subject = row["drv"] or row["label"]
-    if (row["error"] or row["failure"]) and (
+    if "diagnostic" in kinds and (row["error"] or row["failure"]) and (
         "diagnostic",
         diagnostic_subject,
     ) not in skip:
@@ -290,7 +318,8 @@ def work(db, state, campaign, row, skip=()):
         yield "diagnostic", diagnostic_subject, diagnostic
     for path in recipe.get("patches", []):
         if (
-            not isinstance(path, str)
+            "patch" not in kinds
+            or not isinstance(path, str)
             or not path.startswith("/nix/store/")
             or ("patch", path) in skip
         ):
@@ -312,6 +341,7 @@ def work(db, state, campaign, row, skip=()):
 
 def ask(provider, kind, evidence):
     definitions = DEFINITIONS[kind]
+    scope = SHOWCASE_SCOPE if kind == "showcase" else SCOPE
     if provider == "jev":
         payload = {
             "model": MODELS[provider],
@@ -328,6 +358,14 @@ def ask(provider, kind, evidence):
                 for label, definition in definitions.items()
             },
         }
+        if kind == "showcase":
+            payload["questions"] = {
+                "tier": {
+                    "type": "choice",
+                    "instructions": scope,
+                    "criteria": definitions,
+                }
+            }
         endpoint, key_name = "https://api.typesafe.ai/v1/systemone", "TYPESAFE_API_KEY"
     else:
         schema = {
@@ -347,9 +385,13 @@ def ask(provider, kind, evidence):
             "input": [
                 {
                     "role": "system",
-                    "content": SCOPE
+                    "content": scope
                     + "\nEmit exactly one final_answer JSON object. Do not emit intermediate commentary, draft JSON, repeated JSON, or prose."
-                    + "\nReturn your probability estimates for each independently applicable label:\n"
+                    + (
+                        "\nReturn a probability distribution over these mutually exclusive tiers, summing to one:\n"
+                        if kind == "showcase"
+                        else "\nReturn your probability estimates for each independently applicable label:\n"
+                    )
                     + encode(definitions),
                 },
                 {"role": "user", "content": encode(evidence)},
@@ -381,12 +423,23 @@ def ask(provider, kind, evidence):
         ) from None
     if provider == "jev":
         if raw.get("model") != MODELS[provider] or set(raw.get("answers", {})) != set(
-            definitions
+            payload["questions"]
         ):
             raise ValueError("unexpected Jev model or answer schema")
-        probabilities = {
-            label: answer["noul"] for label, answer in raw["answers"].items()
-        }
+        if kind == "showcase":
+            answer = raw["answers"]["tier"]
+            probabilities = answer["probabilities"]
+            validate_probabilities(probabilities, kind)
+            if (
+                answer.get("type") != "choice"
+                or answer.get("choice") not in probabilities
+                or probabilities[answer["choice"]] != max(probabilities.values())
+            ):
+                raise ValueError("unexpected Jev tier choice")
+        else:
+            probabilities = {
+                label: answer["noul"] for label, answer in raw["answers"].items()
+            }
     else:
         if raw.get("status") != "completed":
             raise ValueError("OpenAI response did not complete")
@@ -429,10 +482,19 @@ def submit(state, campaign, item):
     return response["ok"]
 
 
-def run(state, campaign, provider="jev", limit=100, labels=()):
+def run(
+    state,
+    campaign,
+    provider="jev",
+    limit=100,
+    labels=(),
+    kinds=("package", "diagnostic", "patch"),
+):
     """Bounded batch; network never runs inside the controller or a DB transaction."""
     if provider not in MODELS or not 1 <= limit <= 1000:
         raise ValueError("invalid classifier provider or request budget")
+    if not kinds or set(kinds) - DEFINITIONS.keys():
+        raise ValueError("invalid classification kinds")
     cache = Path(state) / "classifications"
     cache.mkdir(mode=0o700, exist_ok=True)
     with closing(connect(state, readonly=True)) as db:
@@ -452,10 +514,10 @@ def run(state, campaign, provider="jev", limit=100, labels=()):
             for a in existing.get(row["id"], [])
             if a["provider"] == provider
             and a["model"] == MODELS[provider]
-            and a["question_version"] == QUESTION_VERSION
+            and a["question_version"] == QUESTION_VERSIONS[a["kind"]]
         }
         with closing(connect(state, readonly=True)) as db:
-            for kind, subject, evidence in work(db, state, campaign, row, skip):
+            for kind, subject, evidence in work(db, state, campaign, row, skip, kinds):
                 source_hash = identity(source_fields(row, kind))
                 if len(encode(evidence).encode()) > 48000:
                     print(
@@ -470,7 +532,7 @@ def run(state, campaign, provider="jev", limit=100, labels=()):
                     {
                         "provider": provider,
                         "model": MODELS[provider],
-                        "question_version": QUESTION_VERSION,
+                        "question_version": QUESTION_VERSIONS[kind],
                         "kind": kind,
                         "evidence": evidence,
                     }
@@ -514,7 +576,7 @@ def run(state, campaign, provider="jev", limit=100, labels=()):
                     "subject": subject,
                     "provider": provider,
                     "model": MODELS[provider],
-                    "question_version": QUESTION_VERSION,
+                    "question_version": QUESTION_VERSIONS[kind],
                     "source_hash": source_hash,
                     "evidence_hash": identity(evidence),
                     "evidence": evidence,

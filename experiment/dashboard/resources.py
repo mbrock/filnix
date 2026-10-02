@@ -7,6 +7,7 @@ from urllib.parse import quote, urlencode
 from starlette.exceptions import HTTPException
 from starlette.routing import Route
 
+from ..classifications import DEFINITIONS
 
 PACKAGE_STATES = (
     ("built", "Built"),
@@ -25,6 +26,7 @@ class View:
     watch: int = 1
     state: str = "built"
     facet: str = ""
+    tier: str = ""
     q: str = ""
     kind: str = ""
     outcome: str = ""
@@ -79,6 +81,9 @@ SUMMARY = Resource(BASE + "/summary", ("transport",))
 EVENTS = Resource(BASE + "/events")
 PACKAGES = Resource(BASE + "/packages", ("state", "facet", "page", "transport"))
 PACKAGE = Resource(BASE + "/packages/{pid:int}", ("transport",))
+SHOWCASE = Resource(
+    BASE + "/showcase", ("state", "facet", "tier", "q", "page", "transport")
+)
 BATCHES = Resource(
     BASE + "/batches", ("q", "kind", "outcome", "sort", "page", "transport")
 )
@@ -126,12 +131,13 @@ def options(request):
         "outcome": ("", "active", "error", "complete"),
         "sort": ("recent", "oldest", "longest"),
         "transport": ("sse", "poll"),
+        "tier": ("", "unclassified", *DEFINITIONS["showcase"]),
         "size": (12, 14, 16),
     }
     if any(values[key] not in allowed for key, allowed in choices.items()):
         raise HTTPException(400, "Invalid reading options")
     if values["facet"] and (
-        values["facet"].partition(":")[0] not in ("package", "diagnostic", "patch")
+        values["facet"].partition(":")[0] not in DEFINITIONS
         or not values["facet"].partition(":")[2]
     ):
         raise HTTPException(400, "Invalid semantic facet")

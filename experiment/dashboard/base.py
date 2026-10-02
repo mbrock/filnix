@@ -20,6 +20,7 @@ from .resources import (
     HEARTBEAT,
     LIVE_LOG,
     PACKAGES,
+    SHOWCASE,
     View,
 )
 
@@ -277,11 +278,16 @@ def shell(title, campaign, campaigns, view, section, content):
                             for key, label, resource in [
                                 ("activity", "Activity", ACTIVITY),
                                 ("packages", "Packages", PACKAGES),
+                                ("showcase", "Showcase", SHOWCASE),
                                 ("batches", "Batches", BATCHES),
                                 ("blockers", "Blockers", BLOCKERS),
                                 ("dependencies", "Dependencies", GRAPH),
                             ]:
-                                v = View(transport=view.transport)
+                                v = (
+                                    View(transport=view.transport, state="all")
+                                    if key == "showcase"
+                                    else View(transport=view.transport)
+                                )
                                 classes = [
                                     FOCUS,
                                     "py-1.5",
