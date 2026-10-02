@@ -148,6 +148,12 @@ class LocalBackend:
             shutil.copyfile(path, tmp)
             os.replace(tmp, dest)
 
+    def copy_immutable(self, source, key, digest):
+        path = self.root / source
+        if _file_hash(path) != digest:
+            raise ValueError("source object checksum mismatch")
+        self.put_immutable(key, path)
+
     def publish(self, key, data, expected_etag):
         old, etag = self.get(key)
         if etag != expected_etag:
@@ -209,8 +215,44 @@ class S3Backend:
             ):
                 raise ValueError(f"immutable object collision: {key}") from e
 
+    def copy_immutable(self, source, key, digest):
+        original = self.client.head_object(Bucket=self.bucket, Key=source)
+        if original.get("Metadata", {}).get("sha256") != digest:
+            raise ValueError("source object checksum mismatch")
+        try:
+            existing = self.client.head_object(Bucket=self.bucket, Key=key)
+        except Exception as e:
+            if getattr(e, "response", {}).get("Error", {}).get("Code") not in (
+                "404",
+                "NoSuchKey",
+            ):
+                raise
+        else:
+            if (
+                existing.get("Metadata", {}).get("sha256") != digest
+                or existing["ContentLength"] != original["ContentLength"]
+            ):
+                raise ValueError("immutable share object collision")
+            return
+        self.client.copy_object(
+            Bucket=self.bucket,
+            Key=key,
+            CopySource={"Bucket": self.bucket, "Key": source},
+            CopySourceIfMatch=original["ETag"],
+            MetadataDirective="REPLACE",
+            Metadata={"sha256": digest},
+            ContentType="application/vnd.apache.parquet",
+            CacheControl="max-age=31536000, immutable",
+        )
+
     def publish(self, key, data, expected_etag):
-        args = {"Bucket": self.bucket, "Key": key, "Body": data}
+        args = {
+            "Bucket": self.bucket,
+            "Key": key,
+            "Body": data,
+            "ContentType": "application/json",
+            "CacheControl": "no-cache",
+        }
         if expected_etag is None:
             args["IfNoneMatch"] = "*"
         else:

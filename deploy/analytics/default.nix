@@ -24,5 +24,10 @@ pkgs.runCommand "filnix-analytics-0.1.0" { passthru = { inherit python; }; }
     export PYTHONPATH=$out/lib
     exec ${python}/bin/python -P -m experiment.analytics "\$@"
     EOF
-    chmod +x $out/bin/filnix-analytics
+    cat > $out/bin/filnix-analytics-share <<EOF
+    #!${pkgs.runtimeShell}
+    export PYTHONPATH=$out/lib
+    exec ${python}/bin/python -P -m experiment.analytics_share "\$@"
+    EOF
+    chmod +x $out/bin/filnix-analytics $out/bin/filnix-analytics-share
   ''

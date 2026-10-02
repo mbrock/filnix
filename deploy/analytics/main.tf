@@ -17,6 +17,17 @@ variable "region" {
   default     = "eu-central-1"
 }
 
+variable "share_prefix" {
+  description = "Optional unlisted anonymous-read prefix. Keep its value in private tfvars, not Git."
+  type        = string
+  default     = null
+  sensitive   = true
+  validation {
+    condition     = var.share_prefix == null ? true : can(regex("^share/[a-z2-7]{16}/v1$", var.share_prefix))
+    error_message = "Use share/<16 lowercase base32 characters>/v1, with no wildcards."
+  }
+}
+
 provider "aws" {
   region              = var.region
   profile             = "filnix-bootstrap-tools"
@@ -42,9 +53,9 @@ resource "aws_s3_bucket" "campaign" {
 resource "aws_s3_bucket_public_access_block" "campaign" {
   bucket                  = aws_s3_bucket.campaign.id
   block_public_acls       = true
-  block_public_policy     = true
+  block_public_policy     = var.share_prefix == null
   ignore_public_acls      = true
-  restrict_public_buckets = true
+  restrict_public_buckets = var.share_prefix == null
 }
 
 resource "aws_s3_bucket_ownership_controls" "campaign" {
@@ -83,16 +94,22 @@ resource "aws_s3_bucket_lifecycle_configuration" "campaign" {
 }
 
 resource "aws_s3_bucket_policy" "tls" {
-  bucket = aws_s3_bucket.campaign.id
+  bucket     = aws_s3_bucket.campaign.id
+  depends_on = [aws_s3_bucket_public_access_block.campaign]
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
+    Statement = concat([{
       Effect    = "Deny"
       Principal = "*"
       Action    = "s3:*"
       Resource  = [aws_s3_bucket.campaign.arn, "${aws_s3_bucket.campaign.arn}/*"]
       Condition = { Bool = { "aws:SecureTransport" = "false" } }
-    }]
+      }], var.share_prefix == null ? [] : [{
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "s3:GetObject"
+      Resource  = "${aws_s3_bucket.campaign.arn}/${var.share_prefix}/*"
+    }])
   })
 }
 

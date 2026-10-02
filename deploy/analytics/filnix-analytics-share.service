@@ -1,8 +1,8 @@
 [Unit]
-Description=Publish read-only Filnix campaign observations and logs to private S3
+Description=Mirror committed Filnix analytics to the unlisted share prefix
 Wants=network-online.target
 After=network-online.target
-OnSuccess=filnix-analytics-share.service
+ConditionPathExists=/etc/filnix-analytics/share.json
 
 [Service]
 Type=oneshot
@@ -11,19 +11,16 @@ Group=filnix-observe
 UMask=0077
 WorkingDirectory=/var/lib/filnix-analytics
 LoadCredential=aws:/etc/filnix-analytics/aws-credentials
+LoadCredential=share:/etc/filnix-analytics/share.json
 Environment=AWS_SHARED_CREDENTIALS_FILE=%d/aws
 Environment=AWS_EC2_METADATA_DISABLED=true
-ExecStart=/opt/filnix-analytics/bin/filnix-analytics --config /etc/filnix-analytics/config.json
+ExecStart=/opt/filnix-analytics/bin/filnix-analytics-share --config %d/share
 TimeoutStartSec=2h
-MemoryMax=3G
+MemoryMax=1G
 CPUQuota=200%
 Nice=19
-IOSchedulingClass=idle
-CPUWeight=10
-IOWeight=10
 ProtectSystem=strict
 ProtectHome=true
-ReadOnlyPaths=/var/lib/filnix-experiment
 ReadWritePaths=/var/lib/filnix-analytics
 PrivateTmp=true
 NoNewPrivileges=true

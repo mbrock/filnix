@@ -29,6 +29,6 @@ if not p.exists():
 PY
 ln -sfn "$1" /opt/filnix-analytics
 ln -sfn /opt/filnix-analytics /nix/var/nix/gcroots/filnix-analytics-application
-install -m 0644 "$deploy_dir/filnix-analytics.service" "$deploy_dir/filnix-analytics.timer" /etc/systemd/system/
+install -m 0644 "$deploy_dir/filnix-analytics.service" "$deploy_dir/filnix-analytics.timer" "$deploy_dir/filnix-analytics-share.service" /etc/systemd/system/
 systemctl daemon-reload
 echo 'Installed. Run filnix-analytics.service, verify the first dataset, then enable filnix-analytics.timer.'

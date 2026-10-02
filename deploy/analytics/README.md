@@ -12,10 +12,11 @@ The deployed AWS foundation is in account `241036177239`:
 - Dataset: `s3://filnix-campaign-9346da1ee45ae659f7c14b4971/campaign/v1/`.
 - Publisher: `filnix-campaign-publisher`, with access to this bucket only, and no
   object deletion or bucket administration permission.
-- Public access blocked, ACLs disabled, encryption, versioning, TLS-only policy,
+- Canonical prefix private; an optional unlisted share prefix allows anonymous
+  downloads only. ACLs disabled, encryption, versioning, TLS-only policy,
   seven-day incomplete-upload cleanup, and infrastructure destruction protection.
 
-No Athena, Glue, EC2, customer-managed KMS key, public routing, source-log deletion,
+No Athena, Glue, EC2, customer-managed KMS key, source-log deletion,
 or offline storage tier is needed.
 
 ## Bootstrap without exchanging access keys
@@ -55,7 +56,7 @@ tofu plan
 
 Run these from `deploy/analytics`. Inspect the account, resources and costs before
 applying; no existing bucket or IAM user should be silently adopted. The bucket
-has encryption, versioning, public-access blocks, TLS-only access, automatic
+has encryption, versioning, scoped access controls, TLS-only access, automatic
 abortion of seven-day-old incomplete uploads, and destruction protection.
 Objects do not expire or move into an offline retrieval tier. Publisher access
 does not include object deletion, bucket administration or any other bucket.
@@ -202,25 +203,76 @@ refresh costs and parity are validated; switching it is a separate step.
 
 ## Public sharing and scaling
 
-Parquet does not require a private bucket. The current archive is private
-because it includes unfiltered attempt specs, operational policies, free-form
-evidence and exact logs. A read-only audit of all twelve tables and 13.8 GiB of
+Parquet does not require a private bucket. The canonical archive includes
+unfiltered attempt specs, operational policies, free-form evidence and exact
+logs. A read-only audit of all twelve tables and 13.8 GiB of
 captured logs on 2026-10-02 found no confirmed credentials in its tested pattern
 families; three log matches were compiler/test text. This is reassuring, not a
 guarantee about unknown credential formats or future output.
 
-The recommended public surface is a separate, versioned research projection:
-package identity/version, build outcomes/times, dependency edges, test outcomes
-and classification probabilities, with reviewed diagnostic/log derivatives.
-Operational specs/policies and unrestricted evidence stay in the private
-archive. Store paths and package names are useful research identifiers, not
-automatically secrets. Keep public field selection explicit and review each
-release before enabling anonymous reads; no public-access changes were made by
-the audit.
+The operator has chosen an **unlisted full-data share**, including exact logs,
+rather than a redacted research projection. This is intentional publication,
+not authentication: anyone with the URL can copy the data and redistribute it.
+Future exported logs/evidence are shared automatically too. Store paths and
+package names are useful research identifiers, not automatically secrets.
+
+The canonical `campaign/v1` prefix remains private. Anonymous access grants only
+`s3:GetObject` under `share/<code>/v1/`; there is no anonymous bucket listing,
+write permission or account-wide public-access change. The code has sixteen
+lowercase base32 characters (80 random bits). No link is committed to Git or
+printed by the service. A known link exposes its complete manifest inventory,
+necessarily, so readers can discover/query the dataset files. Do not post it
+publicly if you want to avoid discovery by crawlers. This cannot prevent
+scraping or download costs once the URL is shared.
+
+The private locator configuration is root-owned mode 0600 at
+`/etc/filnix-analytics/share.json`, passed through systemd `LoadCredential`.
+The private infrastructure variable file is
+`~/.local/state/filnix-analytics/share.tfvars.json`. Include that file with
+`tofu plan -var-file=...` when maintaining infrastructure; omitting it defaults
+to disabling anonymous sharing. Terraform state/plans also contain the prefix
+and must stay private. Removing the anonymous policy revokes origin access,
+but cannot retract downloaded or cached copies.
+
+`filnix-analytics-share.service` runs after successful private exports. It pins
+the committed source chain, copies only newly referenced immutable objects
+**server-side within S3**, and publishes a flattened inventory plus generated
+DuckDB SQL. Eight copy workers and batches of at most 64 tasks bound concurrency;
+there is no log download or recompression. Its final conditional `index.json`
+update references immutable manifest/SQL objects only after copies succeed.
+Partial copies are verified/reused after failure; the previous index stays valid.
+No-change runs skip copies entirely. Sharing duplicates compressed storage and
+incurs S3 copy/request charges; it does not double local staging disk.
+
+The index URL is saved locally in `.amp/in/artifacts/analytics-share-link.txt`
+(mode 0600, ignored by Git). Copy that URL to another machine and set
+`FILNIX_DATASET_URL` to it. With Python's `duckdb` package installed, no AWS
+credentials are required:
+
+```python
+import json, os, urllib.request
+from urllib.parse import urlsplit
+import duckdb
+
+url = os.environ['FILNIX_DATASET_URL']
+index = json.load(urllib.request.urlopen(url))
+parsed = urlsplit(url)
+origin = f'{parsed.scheme}://{parsed.netloc}'
+sql = urllib.request.urlopen(origin + '/' + index['sql']).read().decode()
+db = duckdb.connect()
+db.execute('INSTALL httpfs; LOAD httpfs;')
+db.execute(sql)
+db.sql('SELECT state, count(*) FROM candidates GROUP BY state').show()
+```
+
+Pin the index once per analysis for a coherent dataset. Its `archived_log_bytes`
+is cumulative; the underlying manifest's `log_bytes` retains the source
+generation's delta count. The public inventory removes reader-side manifest
+chain traversal, but is not Parquet compaction and retains temporal observations.
 
 Direct HTTPS/S3 Parquet queries already work; a CDN is optional, not required.
-If public traffic warrants CloudFront later, use long cache lifetimes for
-immutable objects and a short lifetime for the current manifest pointer. A CDN
+Shared Parquet objects have year-long immutable cache headers; the current
+index requires revalidation. If traffic warrants CloudFront later, a CDN
 does not sanitize data or eliminate query-side metadata work.
 
 Current scaling limits are local full-table hashing, many small per-attempt
