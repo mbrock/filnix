@@ -52,6 +52,11 @@ Fil-C prevents:
 
 This Nix flake packages the Fil-C compiler toolchain for reproducible, hermetic builds.
 
+### Continuous Integration Delivery
+
+- Treat `main` as the continuously integrated work branch, not a production release gate. Commit and push verified, scoped work to `origin` at coherent milestones without waiting for a separate user request.
+- Keep commits limited to the work you own. This standing permission does not authorize force-pushing, publishing someone else's unreviewed changes, or triggering deployments and releases.
+
 ### Relationship to Upstream
 
 **Upstream fil-c** (pizlonator/fil-c):

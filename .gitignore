@@ -6,3 +6,7 @@ __pycache__/
 node_modules/
 
 .amp/portals/*
+
+deploy/analytics/.terraform/
+deploy/analytics/*.tfstate*
+deploy/analytics/*.tfplan

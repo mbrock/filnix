@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh private campaign analytics after each completed publication
+
+[Timer]
+OnBootSec=5m
+OnUnitInactiveSec=15m
+RandomizedDelaySec=1m
+Unit=filnix-analytics.service
+
+[Install]
+WantedBy=timers.target
