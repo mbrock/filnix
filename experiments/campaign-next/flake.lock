@@ -1,0 +1,46 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790508902,
+        "narHash": "sha256-hbngtJs49PqmFpw7QQZRNiSEwd9Q5qtUKKshZHTfGJs=",
+        "owner": "lessrest",
+        "repo": "filnixpkgs",
+        "rev": "e63c68034d742160a48ca80640442337e6356cf4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lessrest",
+        "repo": "filnixpkgs",
+        "rev": "e63c68034d742160a48ca80640442337e6356cf4",
+        "type": "github"
+      }
+    },
+    "nxtui": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790960890,
+        "narHash": "sha256-DdBkkWBOca6vTbbD7YhrePRxYCD5BUeNsYiX7IdGu6o=",
+        "owner": "mbrock",
+        "repo": "nxtui",
+        "rev": "4d706802815db437749fe0c39a1c1a93941b7afa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mbrock",
+        "repo": "nxtui",
+        "rev": "4d706802815db437749fe0c39a1c1a93941b7afa",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "nxtui": "nxtui"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
