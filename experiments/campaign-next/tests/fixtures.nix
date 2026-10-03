@@ -51,7 +51,7 @@ rec {
     mkdir -p "$out"
     printf 'graph\n' > "$out/result"
   '' { inherit left right; };
-  slow = fixture "campaign-slow" ''
+  slow = fixture "campaign-slow-x86_64-unknown-linux-gnufilc0-2026.10.03" ''
     printf 'ready-for-cancellation\n'
     sleep 3
     mkdir -p "$out"
