@@ -56,6 +56,44 @@ culprit. `Find` searches the loaded console window, explicitly counted as
 `N matches · N loaded`; it is not advertised as whole-archive search. Expanded
 static input windows are labeled snapshots, not claimed to be continuously live.
 
+## Scroll-layout correction
+
+The subsequent live inspection found **82/82 settled, 80 successful, one
+failed, one timed out, zero unattempted**. At a 1440 × 900 viewport the shell
+reported 900px height but its auto-sized grid row grew to 3,234px. The rail's
+3,099px client height equalled its content height: `overflow: auto` could not
+scroll it. Wheel input confirmed zero rail movement. The previous visual
+checks did not exercise this interaction.
+
+- **Sizing:** content-sized desktop grid → a viewport-bounded row with explicit
+  `minmax(0,1fr)` tracks and zero minimum heights through the grid/flex chain.
+  No wheel interception or page-level scrolling on desktop. **Doctrine 5, 7, 12.**
+- **Rail:** unbounded list → fixed chrome plus a remaining-height scrolling
+  list. Full names, two-line rows, filters, paging and URLs stay unchanged.
+  **Doctrine 3, 4, 5; M3.**
+- **Main:** graph above an oversized console → two equal bounded tracks. The
+  upper track contains session facts and the graph; the lower contains the
+  console. Graph/console headers stay outside their scrolling contents.
+  In very short windows, facts scroll within a 25dvh maximum rather than
+  pushing the graph or output out of view. **Doctrine 3, 5, 6; M3.**
+- **Refresh:** reset horizontal positions and repeated fragment jumps → retain
+  both axes, graph-region keyboard focus, selected-node label and native-result
+  disclosure through state polls and Pause's state clone. Fragment selection
+  scrolls on navigation, not every refresh. **Doctrine 5, 7, 12.**
+- **Rail response order:** stale page-zero poll can replace page 50 → page
+  intent is set before its request; only responses matching the current page,
+  filter and Find text may swap. Filter/page changes start at the top; ordinary
+  polling keeps the scroll offset. **Doctrine 4, 5, 7, 12.**
+- **Narrow:** rail chrome nearly consumes its 20vh allowance → a 230–320px
+  rail with usable rows, then normal document flow. Graph is capped at 32dvh;
+  console has at least 260px. No nested desktop-height shell on phones.
+  **Doctrine 3, 5, 12; M3.**
+
+Named, focusable scroll regions support PageUp/PageDown/Home/End without
+inventing controls. Stable scrollbar gutters reserve space without altering
+the type scale or adding padding decoration. Raw messages and long paths
+remain horizontally scrollable; visible edge clipping is not truncation.
+
 ## Component contracts
 
 ### Rail and campaign
@@ -177,8 +215,11 @@ No HTTP writes or filesystem/build endpoints are introduced.
 | Rail / graph rows | 3px / 2px vertical, 6px horizontal; graph indent 12px/level |
 | Controls / log cells | 2px / 1px vertical, 6px horizontal |
 | Corners / shadows / motion | 0 / none / none |
-| Graph / narrow graph | Max 27vh / 12vh with independent scrolling |
-| Narrow rail / console | Max 20vh / 40vh, independently scrollable |
+| Desktop main tracks | Equal halves, each `minmax(0,1fr)` |
+| Desktop session facts | Intrinsic height, max 25dvh; scroll if needed |
+| Desktop rail / graph / console | Remaining track height; independent scrolling |
+| Narrow graph | Max 32dvh |
+| Narrow rail / console | `clamp(230px,34dvh,320px)` / `max(260px,50dvh)` |
 
 Grayscale preserves every state word, selected-row rule, counts, phase and
 reason. Color is never the only state encoding.
@@ -210,3 +251,23 @@ immutable earlier campaign snapshot (52/82 settled), not the live production
 database. Review screenshots and the browser verification script are retained
 in the local `.amp/in/artifacts/` directory. No deployment or service restart
 is part of these checks.
+
+The scroll correction adds `tests/test_observatory.py`, an optional read-only
+Playwright check against a representative served recording. It exercises six
+desktop sizes from 1440 × 360 to 2560 × 1440 (including 801px just above the
+narrow breakpoint): actual wheel and keyboard rail/graph scrolling, visible
+console bounds, both-axis retention across refresh and Pause, rail pagination,
+deliberately delayed stale rail responses, deep-link scrolling without periodic
+snap-back, and short-window facts with an
+open native result. A 390 × 844 touch context performs an actual touch-pan via
+Chromium CDP. Built, failed and timed-out screenshots are inspected separately.
+The fixture is a private copy of the closed pre-deployment backup, not a second
+connection to the service's live database. No builds are started.
+
+```sh
+uv run --with playwright python experiments/campaign-next/tests/test_observatory.py \
+  http://127.0.0.1:8112/ --screenshots .amp/in/artifacts
+```
+
+Use `--chromium` to specify a Chromium executable on another machine. Browser
+dependencies are not added to the native package or its normal Meson tests.
