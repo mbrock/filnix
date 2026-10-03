@@ -15,6 +15,7 @@ executable('filnix-nix-worker', 'src/nix-worker.cc',
   dependencies : [nix, json], install : true)
 
 install_data('static/htmx.js', 'static/HTMX-LICENSE',
+  'static/observatory.css', 'static/observatory.js',
   install_dir : get_option('datadir') / 'filnix-campaign')
 
 dataset_test = executable('dataset-test',

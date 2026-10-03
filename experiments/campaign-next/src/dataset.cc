@@ -222,9 +222,23 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
 
 json Dataset::view(std::string run, std::string activity) {
   run = select_run(std::move(run));
-  auto sessions = rows("SELECT run,drv,name,system,start_wall_ns,"
-                       "summary FROM runs ORDER BY start_wall_ns DESC,"
-                       "last_offset DESC LIMIT 100");
+  auto filter = " WHERE run=" + quote(run);
+  auto request = rows("SELECT payload FROM events" + filter + " AND seq=1");
+  json cohort = nullptr;
+  std::string session_filter;
+  if (!request.empty() && request[0].at("payload").contains("cohort")) {
+    cohort = request[0].at("payload").at("cohort");
+    session_filter = " WHERE json_extract_string(e.payload,'$.cohort.id')=" +
+                     quote(cohort.at("id").get<std::string>());
+  }
+  auto sessions =
+      rows("SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
+           "r.summary,json_object('index',json_extract(e.payload,'$.index'),"
+           "'cohort',json_object('id',json_extract(e.payload,'$.cohort.id'))) "
+           "AS request FROM runs r LEFT JOIN "
+           "events e ON e.run=r.run AND e.seq=1 " +
+           session_filter +
+           " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT 256");
   json session = nullptr;
   for (auto &item : sessions) {
     auto state = item.at("summary");
@@ -245,7 +259,6 @@ json Dataset::view(std::string run, std::string activity) {
       session.update(state);
     }
   }
-  auto filter = " WHERE run=" + quote(run);
   auto activities =
       rows("SELECT id::VARCHAR AS id,parent::VARCHAR AS parent,"
            "type,lower(hex(text)) AS text_hex,drv,machine,lower(hex(phase)) AS "
@@ -263,10 +276,27 @@ json Dataset::view(std::string run, std::string activity) {
   auto output = logs(run, activity, 0, true);
   auto time = rows("SELECT coalesce(max(elapsed_ns),0) AS elapsed FROM events" +
                    filter);
-  json cohort = nullptr;
-  auto request = rows("SELECT payload FROM events" + filter + " AND seq=1");
-  if (!request.empty() && request[0].at("payload").contains("cohort")) {
-    cohort = request[0].at("payload").at("cohort");
+  auto phases = rows(
+      "SELECT seq,elapsed_ns,json_extract_string(payload,'$.id') AS activity,"
+      "json_extract_string(payload,'$.fields[0].string_hex') AS phase_hex "
+      "FROM events" +
+      filter +
+      " AND kind='nix.result' AND "
+      "json_extract_string(payload,'$.type')='104' AND "
+      "json_extract_string(payload,'$.fields[0].string_hex') IS NOT NULL "
+      "ORDER BY seq DESC LIMIT "
+      "256");
+  std::reverse(phases.begin(), phases.end());
+  for (auto &phase : phases) {
+    auto bytes = unhex(phase.at("phase_hex").get<std::string>());
+    phase["phase"] = json::parse(
+        json(bytes).dump(-1, ' ', false, json::error_handler_t::replace));
+  }
+  auto failures = rows(
+      "SELECT kind,payload FROM events" + filter +
+      " AND kind IN ('nix.build-result','worker.error','run.recorder-error',"
+      "'run.limit-reached','run.cancel-requested') ORDER BY seq DESC LIMIT 8");
+  if (!cohort.is_null()) {
     auto members =
         " FROM runs r JOIN events e ON e.run=r.run AND e.seq=1 WHERE "
         "json_extract_string(e.payload,'$.cohort.id')=" +
@@ -312,6 +342,8 @@ json Dataset::view(std::string run, std::string activity) {
       {"edges", rows("SELECT parent_drv,child_drv,outputs,dynamic FROM edges" +
                      filter + " ORDER BY parent_drv,child_drv")},
       {"activities", activities},
+      {"phases", phases},
+      {"failure_events", failures},
       {"logs", output},
       {"cursor", output.empty() ? json(0) : output.back().at("seq")},
       {"elapsed_now_ns", time[0].at("elapsed")},
