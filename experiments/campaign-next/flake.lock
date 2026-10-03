@@ -20,17 +20,17 @@
     "nxtui": {
       "flake": false,
       "locked": {
-        "lastModified": 1790967674,
-        "narHash": "sha256-Tq+uuGL6Z7rNPsluPAdXJe0wwLvbZJZdsxoTzoLwXMI=",
+        "lastModified": 1791067318,
+        "narHash": "sha256-4nBXUtdqMwQiZ76+ORI6QKf/RIr8K12sxzW3g6ns/Uk=",
         "owner": "mbrock",
         "repo": "nxtui",
-        "rev": "50e7caffc371960e8473f12b138dcbc925fbdcd2",
+        "rev": "f810d9a27a6e74cbde721a8d36d718b2602efa01",
         "type": "github"
       },
       "original": {
         "owner": "mbrock",
         "repo": "nxtui",
-        "rev": "50e7caffc371960e8473f12b138dcbc925fbdcd2",
+        "rev": "f810d9a27a6e74cbde721a8d36d718b2602efa01",
         "type": "github"
       }
     },

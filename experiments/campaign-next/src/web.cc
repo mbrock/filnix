@@ -1,7 +1,9 @@
 #include "web.hh"
+#include "html.hh"
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <iomanip>
 #include <map>
 #include <set>
@@ -9,31 +11,7 @@
 
 namespace campaign {
 namespace {
-std::string escape(std::string_view value) {
-  std::string out;
-  for (char c : value) {
-    switch (c) {
-    case '&':
-      out += "&amp;";
-      break;
-    case '<':
-      out += "&lt;";
-      break;
-    case '>':
-      out += "&gt;";
-      break;
-    case '"':
-      out += "&quot;";
-      break;
-    case '\'':
-      out += "&#39;";
-      break;
-    default:
-      out += c;
-    }
-  }
-  return out;
-}
+using html::escape;
 std::string text(const json &j, const char *key, std::string fallback = {}) {
   return j.contains(key) && j.at(key).is_string() &&
                  !j.at(key).get<std::string>().empty()
@@ -68,11 +46,7 @@ std::string query(const std::string &run, const std::string &activity = {}) {
   return "run=" + url(run) +
          (activity.empty() ? "" : "&activity=" + url(activity));
 }
-std::string decoded(const std::string &hex_bytes) {
-  auto s =
-      json::parse(json(unhex(hex_bytes))
-                      .dump(-1, ' ', false, json::error_handler_t::replace))
-          .get<std::string>();
+std::string display_text(std::string_view s) {
   std::string out;
   for (unsigned char c : s) {
     if (c < 32 && c != '\n' && c != '\r' && c != '\t')
@@ -81,6 +55,199 @@ std::string decoded(const std::string &hex_bytes) {
       out += c;
   }
   return out;
+}
+
+struct SGR {
+  std::string foreground, background;
+  bool bold = false, dim = false, italic = false, underline = false,
+       strike = false, inverse = false;
+
+  static std::string indexed(unsigned n) {
+    if (n < 16)
+      return "var(--ansi-" + std::to_string(n) + ")";
+    if (n >= 232) {
+      auto v = std::to_string(8 + (n - 232) * 10);
+      return "rgb(" + v + "," + v + "," + v + ")";
+    }
+    n -= 16;
+    auto cube = [](unsigned c) { return c ? 55 + c * 40 : 0; };
+    return "rgb(" + std::to_string(cube(n / 36)) + "," +
+           std::to_string(cube(n / 6 % 6)) + "," + std::to_string(cube(n % 6)) +
+           ")";
+  }
+  static std::vector<unsigned> numbers(std::string_view s, char separator) {
+    std::vector<unsigned> values;
+    do {
+      auto end = s.find(separator);
+      auto part = s.substr(0, end);
+      unsigned n = 0;
+      if (!part.empty()) {
+        auto r = std::from_chars(part.data(), part.data() + part.size(), n);
+        if (r.ec != std::errc{} || r.ptr != part.data() + part.size())
+          return {};
+      }
+      values.push_back(n);
+      if (end == std::string_view::npos)
+        break;
+      s.remove_prefix(end + 1);
+    } while (true);
+    return values;
+  }
+  bool color(const std::vector<unsigned> &p, std::size_t &i, bool colon) {
+    auto &dest = p[i] == 38 ? foreground : background;
+    if (i + 2 >= p.size())
+      return false;
+    auto mode = p[++i];
+    if (mode == 5 && p[i + 1] <= 255) {
+      dest = indexed(p[++i]);
+      return true;
+    }
+    if (mode != 2)
+      return false;
+    // Colon truecolor optionally carries a color-space field (empty or 0).
+    if (colon && p.size() == 6) {
+      if (p[++i] != 0)
+        return false;
+    }
+    if (i + 3 >= p.size())
+      return false;
+    auto r = p[++i], g = p[++i], b = p[++i];
+    if (r > 255 || g > 255 || b > 255)
+      return false;
+    dest = "rgb(" + std::to_string(r) + "," + std::to_string(g) + "," +
+           std::to_string(b) + ")";
+    return true;
+  }
+  bool apply(std::string_view params) {
+    if (params.find(':') != std::string_view::npos) {
+      // A colon parameter is one group, even when mixed with semicolons.
+      while (true) {
+        auto colon = params.find(':');
+        if (colon == std::string_view::npos)
+          return apply(params);
+        auto begin = params.rfind(';', colon);
+        if (begin != std::string_view::npos && !apply(params.substr(0, begin)))
+          return false;
+        begin = begin == std::string_view::npos ? 0 : begin + 1;
+        auto end = params.find(';', colon);
+        auto group = params.substr(
+            begin, end == std::string_view::npos ? end : end - begin);
+        auto p = numbers(group, ':');
+        std::size_t i = 0;
+        if (p.empty() || (p[0] != 38 && p[0] != 48) || !color(p, i, true) ||
+            i + 1 != p.size())
+          return false;
+        if (end == std::string_view::npos)
+          return true;
+        params.remove_prefix(end + 1);
+      }
+    }
+    auto p = numbers(params, ';');
+    if (p.empty())
+      return false;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+      auto n = p[i];
+      if (n == 0)
+        *this = {};
+      else if (n == 1)
+        bold = true;
+      else if (n == 2)
+        dim = true;
+      else if (n == 3)
+        italic = true;
+      else if (n == 4)
+        underline = true;
+      else if (n == 7)
+        inverse = true;
+      else if (n == 9)
+        strike = true;
+      else if (n == 22)
+        bold = dim = false;
+      else if (n == 23)
+        italic = false;
+      else if (n == 24)
+        underline = false;
+      else if (n == 27)
+        inverse = false;
+      else if (n == 29)
+        strike = false;
+      else if (n >= 30 && n <= 37)
+        foreground = indexed(n - 30);
+      else if (n >= 40 && n <= 47)
+        background = indexed(n - 40);
+      else if (n >= 90 && n <= 97)
+        foreground = indexed(n - 90 + 8);
+      else if (n >= 100 && n <= 107)
+        background = indexed(n - 100 + 8);
+      else if (n == 39)
+        foreground.clear();
+      else if (n == 49)
+        background.clear();
+      else if (n == 38 || n == 48) {
+        if (!color(p, i, false))
+          return false;
+      } else
+        return false; // Unsupported SGR stays visible, not silently lost.
+    }
+    return true;
+  }
+  std::string css() const {
+    auto fg = foreground, bg = background;
+    if (inverse) {
+      fg = background.empty() ? "var(--paper)" : background;
+      bg = foreground.empty() ? "var(--ink)" : foreground;
+    }
+    std::string out;
+    if (!fg.empty())
+      out += "color:" + fg + ";";
+    if (!bg.empty())
+      out += "background-color:" + bg + ";";
+    if (bold)
+      out += "font-weight:700;";
+    if (dim)
+      out += "opacity:.7;";
+    if (italic)
+      out += "font-style:italic;";
+    if (underline || strike)
+      out += "text-decoration:" + std::string(underline ? "underline " : "") +
+             (strike ? "line-through" : "") + ";";
+    return out;
+  }
+};
+
+std::string terminal(const std::string &hex_bytes) {
+  auto s =
+      json::parse(json(unhex(hex_bytes))
+                      .dump(-1, ' ', false, json::error_handler_t::replace))
+          .get<std::string>();
+  html::Writer out;
+  SGR style;
+  auto emit = [&](std::string_view bytes) {
+    if (bytes.empty())
+      return;
+    auto css = style.css();
+    if (css.empty())
+      out.text(display_text(bytes));
+    else
+      out.tag("span", {{"style", css}}, [&] { out.text(display_text(bytes)); });
+  };
+  std::size_t start = 0;
+  for (std::size_t i = 0; i + 1 < s.size(); ++i) {
+    if (s[i] != '\x1b' || s[i + 1] != '[')
+      continue;
+    auto end = s.find_first_not_of("0123456789;:", i + 2);
+    if (end == std::string::npos || s[end] != 'm')
+      continue;
+    auto next = style;
+    if (!next.apply(std::string_view(s).substr(i + 2, end - i - 2)))
+      continue;
+    emit(std::string_view(s).substr(start, i - start));
+    style = std::move(next);
+    start = end + 1;
+    i = end;
+  }
+  emit(std::string_view(s).substr(start));
+  return std::move(out).str();
 }
 const json *session(const json &view, const std::string &run) {
   if (view.contains("session") && view.at("session").is_object())
@@ -258,21 +425,8 @@ std::string failure(const json &view, const std::string &state) {
   std::string phase = "phase unavailable";
   for (const auto &p : view.value("phases", json::array()))
     phase = "last phase · " + text(p, "phase") + " · #" + text(p, "activity");
-  // Nix's errorMsg contains terminal SGR decoration. The native result
-  // disclosure and event archive retain it; a report reason is plain text.
-  for (std::size_t i = 0; i + 1 < reason.size();) {
-    if (reason[i] == '\x1b' && reason[i + 1] == '[') {
-      auto end = reason.find_first_not_of("0123456789;", i + 2);
-      if (end != std::string::npos && reason[end] == 'm') {
-        reason.erase(i, end - i + 1);
-        continue;
-      }
-    }
-    ++i;
-  }
-  reason = decoded(hex(reason));
   return "<div class=\"failure\">" + escape(phase) + " · " + badge(state) +
-         " · " + escape(reason.empty() ? "no recorded reason" : reason) +
+         " · " + terminal(hex(reason.empty() ? "no recorded reason" : reason)) +
          "</div>";
 }
 
@@ -285,16 +439,19 @@ std::string log_row(const json &r) {
          escape(activity) + "\" title=\"Copy activity id\"" +
          (activity.empty() ? " disabled" : "") + ">" +
          (activity.empty() ? "—" : "#" + escape(activity)) + "</button><pre>" +
-         escape(decoded(text(r, "bytes_hex"))) + "</pre></div>";
+         terminal(text(r, "bytes_hex")) + "</pre></div>";
 }
-std::string sidebar(const json &v, const std::string &run) {
+bool watching(const json &v) {
+  return v.value("watch", v.value("live", false));
+}
+std::string controls(const json &v, const std::string &run, bool overview) {
   std::string out =
-      "<aside class=\"sidebar\"><p class=\"brand\">FILNIX / "
-      "CAMPAIGN<small>BUILD OBSERVATORY</small></p><h2>SESSIONS</h2><form "
-      "id=\"rail-controls\" hx-get=\"./sessions\" "
-      "hx-target=\"#session-results\" hx-trigger=\"change, submit, every "
-      "3s\"><input type=\"hidden\" name=\"run\" value=\"" +
-      escape(run) +
+      "<form id=\"rail-controls\" hx-get=\"./sessions\" "
+      "hx-target=\"#session-results\" hx-trigger=\"change, submit" +
+      std::string(watching(v) ? ", every 3s" : "") +
+      "\"><input type=\"hidden\" name=\"overview\" value=\"" +
+      (overview ? "1" : "0") +
+      "\"><input type=\"hidden\" name=\"run\" value=\"" + escape(run) +
       "\"><input type=\"hidden\" id=\"rail-after\" name=\"after\" "
       "value=\"0\"><label>Filter <select name=\"filter\" "
       "id=\"session-filter\">";
@@ -304,10 +461,40 @@ std::string sidebar(const json &v, const std::string &run) {
     out += "<option>" + std::string(s) + "</option>";
   out += "</select></label><label>Find <input name=\"find\" "
          "id=\"session-find\" type=\"search\" "
-         "placeholder=\"Name\"></label></form><div id=\"session-results\" "
+         "placeholder=\"Name\"></label></form>";
+  return out;
+}
+std::string sidebar(const json &v, const std::string &run) {
+  return "<aside class=\"sidebar\"><p class=\"brand\"><a href=\"./\">FILNIX / "
+         "CAMPAIGN</a><small>BUILD OBSERVATORY</small></p><h2>SESSIONS</h2>" +
+         controls(v, run, false) +
+         "<div id=\"session-results\" "
          "tabindex=\"0\" role=\"region\" aria-label=\"Sessions\">" +
          web_sessions(v, run, "all", "", 0) + "</div></aside>";
-  return out;
+}
+std::string campaign_line(const json &v, bool name = true) {
+  if (!v.contains("cohort") || !v.at("cohort").is_object())
+    return {};
+  const auto &c = v.at("cohort");
+  auto roots_label = " · " + std::to_string(c.at("roots").size()) + " roots";
+  std::string out =
+      "<div class=\"campaign-line\">" +
+      (name ? "<b>" + escape(text(c, "name")) + "</b>" : "") +
+      (name ? (text(c, "name").ends_with(roots_label) ? "" : roots_label)
+            : std::to_string(c.at("roots").size()) + " roots") +
+      " · " + std::to_string(number(c, "completed")) + "/" +
+      std::to_string(c.at("roots").size()) + " roots settled";
+  for (const auto &[key, f, caption] :
+       std::vector<std::tuple<std::string, std::string, std::string>>{
+           {"succeeded", "successful", "successful"},
+           {"failed", "failed", "failed/interrupted"},
+           {"timed_out", "timed-out", "timed out"},
+           {"unattempted", "unattempted", "unattempted"}})
+    out += " · <button data-filter=\"" + f + "\">" +
+           std::to_string(number(c, key.c_str())) + " " + caption + "</button>";
+  if (!text(c, "stop_reason").empty())
+    out += " · admission stopped: " + escape(text(c, "stop_reason"));
+  return out + " · <a href=\"./?follow=1\">Follow latest</a></div>";
 }
 std::string phase_options(const json &v) {
   std::string out = "<option value=\"\">—</option>";
@@ -323,7 +510,7 @@ std::string phase_options(const json &v) {
 
 std::string web_sessions(const json &v, const std::string &run,
                          const std::string &filter, const std::string &find,
-                         std::uint64_t after) {
+                         std::uint64_t after, bool overview) {
   std::vector<json> matches;
   std::set<std::uint64_t> attempted;
   auto cohort = v.value("cohort", json(nullptr));
@@ -343,7 +530,9 @@ std::string web_sessions(const json &v, const std::string &run,
     if (pass && lower(label(s)).find(lower(find)) != std::string::npos)
       matches.push_back(s);
   }
-  if (filter == "unattempted" && cohort.is_object()) {
+  if ((filter == "unattempted" ||
+       (overview && (filter.empty() || filter == "all"))) &&
+      cohort.is_object()) {
     for (std::size_t i = 0; i < cohort.at("roots").size(); ++i)
       if (!attempted.contains(i) &&
           lower(label(cohort.at("roots")[i])).find(lower(find)) !=
@@ -351,28 +540,66 @@ std::string web_sessions(const json &v, const std::string &run,
         matches.push_back(cohort.at("roots")[i]);
   }
   after = std::min<std::uint64_t>(after, matches.size());
-  std::string out = "<p class=\"rail-count\" data-after=\"" +
-                    std::to_string(after) + "\">" +
-                    std::to_string(matches.size()) +
-                    " sessions</p><ul class=\"session-list\">";
+  std::string out =
+      "<p class=\"rail-count\" data-after=\"" + std::to_string(after) + "\">" +
+      std::to_string(matches.size()) +
+      (overview && cohort.is_object() ? " roots</p>" : " sessions</p>");
   auto end = std::min<std::uint64_t>(matches.size(), after + 50);
-  for (auto i = after; i < end; ++i) {
-    const auto &s = matches[i];
-    auto id = text(s, "run");
-    auto tag = id.empty() ? "div" : "a";
-    out += "<li><" + std::string(tag) + " class=\"session-link" +
-           (id == run ? " selected" : "") + "\"";
-    if (!id.empty())
-      out += " href=\"./?" + escape(query(id)) +
-             "&amp;filter=" + escape(url(filter)) +
-             "&amp;find=" + escape(url(find)) + "\"";
-    out += "><span class=\"session-title\">" + escape(label(s)) +
-           "</span><span class=\"session-sub\">" +
-           badge(id.empty() ? "unattempted" : status(v, s)) + " · " +
-           std::to_string(number(s, "events")) + " ev</span></" + tag +
-           "></li>";
+  if (overview) {
+    html::Writer h;
+    h.tag("table", {{"class", "campaign-table"}}, [&] {
+      h.tag("thead", [&] {
+        h.tag("tr", [&] {
+          for (auto name : {"Package", "State", "Events", "Output lines"})
+            h.tag("th", {{"scope", "col"}}, [&] { h.text(name); });
+        });
+      });
+      h.tag("tbody", [&] {
+        for (auto i = after; i < end; ++i) {
+          const auto &s = matches[i];
+          auto id = text(s, "run"),
+               st = id.empty() ? "unattempted" : status(v, s);
+          h.tag("tr", [&] {
+            h.tag("td", [&] {
+              if (id.empty())
+                h.text(label(s));
+              else {
+                auto href = "./?" + query(id) + "&filter=" + url(filter) +
+                            "&find=" + url(find);
+                h.tag("a", {{"href", href}}, [&] { h.text(label(s)); });
+              }
+            });
+            h.tag("td", [&] {
+              h.tag("span", {{"class", "status"}, {"data-status", st}},
+                    [&] { h.text(st); });
+            });
+            for (auto key : {"events", "output_lines"})
+              h.tag("td", [&] { h.text(std::to_string(number(s, key))); });
+          });
+        }
+      });
+    });
+    out += std::move(h).str();
+  } else {
+    out += "<ul class=\"session-list\">";
+    for (auto i = after; i < end; ++i) {
+      const auto &s = matches[i];
+      auto id = text(s, "run");
+      auto tag = id.empty() ? "div" : "a";
+      out += "<li><" + std::string(tag) + " class=\"session-link" +
+             (id == run ? " selected" : "") + "\"";
+      if (!id.empty())
+        out += " href=\"./?" + escape(query(id)) +
+               "&amp;filter=" + escape(url(filter)) +
+               "&amp;find=" + escape(url(find)) + "\"";
+      out += "><span class=\"session-title\">" + escape(label(s)) +
+             "</span><span class=\"session-sub\">" +
+             badge(id.empty() ? "unattempted" : status(v, s)) + " · " +
+             std::to_string(number(s, "events")) + " ev</span></" + tag +
+             "></li>";
+    }
+    out += "</ul>";
   }
-  out += "</ul>";
   if (matches.empty())
     out += "<p class=\"empty\">No sessions · " +
            escape(filter.empty() ? "all" : filter) + "</p>";
@@ -381,6 +608,7 @@ std::string web_sessions(const json &v, const std::string &run,
            "&amp;filter=" + escape(url(filter)) +
            "&amp;find=" + escape(url(find)) +
            "&amp;after=" + std::to_string(offset) +
+           "&amp;overview=" + (overview ? "1" : "0") +
            "\" hx-target=\"#session-results\">" + caption + "</button>";
   };
   out += "<div class=\"paging\">";
@@ -430,10 +658,12 @@ std::string web_state(const json &v, const std::string &run,
                       const std::string &activity) {
   auto s = session(v, run);
   auto id = s ? text(*s, "run") : run;
-  std::string out = "<section id=\"state\" data-run=\"" + escape(id) +
-                    "\" data-live=\"" + (v.value("live", false) ? "1" : "0") +
-                    "\" hx-get=\"./state?" + escape(query(run, activity)) +
-                    "\" hx-trigger=\"every 2s\" hx-swap=\"outerHTML\">";
+  std::string out =
+      "<section id=\"state\" data-run=\"" + escape(id) + "\" data-live=\"" +
+      (v.value("live", false) ? "1" : "0") + "\" data-watch=\"" +
+      (watching(v) ? "1" : "0") + "\" hx-get=\"./state?" +
+      escape(query(run, activity)) + "\" hx-trigger=\"refresh" +
+      (watching(v) ? ", every 2s" : "") + "\" hx-swap=\"outerHTML\">";
   if (!s)
     return out + "<h1>No recorded session</h1></section>";
   auto st = status(v, *s);
@@ -445,27 +675,7 @@ std::string web_state(const json &v, const std::string &run,
          " <span class=\"record-mode\">" +
          (v.value("live", false) ? "Live · recording" : "Recorded") +
          "</span></div></header>";
-  if (v.contains("cohort") && v.at("cohort").is_object()) {
-    const auto &c = v.at("cohort");
-    auto roots_label = " · " + std::to_string(c.at("roots").size()) + " roots";
-    out += "<div class=\"campaign-line\"><b>" + escape(text(c, "name")) +
-           "</b>" +
-           (text(c, "name").ends_with(roots_label) ? "" : roots_label) + " · " +
-           std::to_string(number(c, "completed")) + "/" +
-           std::to_string(c.at("roots").size()) + " roots settled";
-    for (const auto &[key, f, caption] :
-         std::vector<std::tuple<std::string, std::string, std::string>>{
-             {"succeeded", "successful", "successful"},
-             {"failed", "failed", "failed/interrupted"},
-             {"timed_out", "timed-out", "timed out"},
-             {"unattempted", "unattempted", "unattempted"}})
-      out += " · <button data-filter=\"" + f + "\">" +
-             std::to_string(number(c, key.c_str())) + " " + caption +
-             "</button>";
-    if (!text(c, "stop_reason").empty())
-      out += " · admission stopped: " + escape(text(c, "stop_reason"));
-    out += " · <a href=\"./\">Follow latest</a></div>";
-  }
+  out += campaign_line(v);
   out += "<dl class=\"facts\"><div class=\"drv-fact\"><dt>DERIVATION <button "
          "data-copy=\"" +
          escape(text(*s, "drv")) + "\">Copy drv</button></dt><dd>" +
@@ -528,9 +738,23 @@ std::string web_logs(const json &records, const std::string &run,
          escape(activity) + "\"></div>";
 }
 
+std::string web_overview(const json &v) {
+  auto c = v.value("cohort", json(nullptr));
+  return "<section id=\"overview-summary\" data-watch=\"" +
+         std::string(watching(v) ? "1" : "0") +
+         "\" hx-get=\"./overview\" hx-trigger=\"refresh" +
+         (watching(v) ? ", every 2s" : "") +
+         "\" hx-swap=\"outerHTML\"><header class=\"summary-head\"><h1>" +
+         escape(c.is_object() ? text(c, "name") : "Build observatory") +
+         "</h1><span class=\"record-mode\">" +
+         (watching(v) ? "Live · recording" : "Recorded") + "</span></header>" +
+         campaign_line(v, false) + "</section>";
+}
+
 std::string web_page(const json &v, const std::string &run,
-                     const std::string &activity) {
-  auto s = session(v, run);
+                     const std::string &activity, bool follow) {
+  bool overview = run.empty() && !follow;
+  auto s = overview ? nullptr : session(v, run);
   auto id = s ? text(*s, "run") : run;
   std::string out =
       "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta "
@@ -539,13 +763,25 @@ std::string web_page(const json &v, const std::string &run,
       escape(s ? label(*s) : "Build observatory") +
       " · Filnix</title><script src=\"./htmx.js\" defer></script><script "
       "src=\"./observatory.js\" defer></script><link rel=\"stylesheet\" "
-      "href=\"./observatory.css\"></head><body><div class=\"shell\">" +
-      sidebar(v, id) + "<main class=\"main\"><div class=\"content\">" +
-      web_state(v, run, activity);
+      "href=\"./observatory.css\"></head><body>";
+  if (overview)
+    return out +
+           "<main class=\"overview\"><p class=\"brand\">FILNIX / "
+           "CAMPAIGN<small>BUILD OBSERVATORY</small></p>" +
+           web_overview(v) + controls(v, "", true) +
+           "<div id=\"session-results\" tabindex=\"0\" "
+           "role=\"region\" aria-label=\"Campaign roots\">" +
+           web_sessions(v, "", "all", "", 0, true) +
+           "</div></main></body></html>";
+  out += "<div class=\"shell\">" + sidebar(v, id) +
+         "<main class=\"main\"><div class=\"content\">" +
+         web_state(v, run, activity);
   out += "<section class=\"log-panel\"><header class=\"panel-head\"><h2>Build "
          "output</h2><span id=\"log-mode\">" +
          std::string(v.value("live", false) ? "Live" : "Captured") +
-         "</span><button id=\"log-follow\">Pause</button><button "
+         "</span><button id=\"log-follow\">" +
+         (v.value("live", false) ? "Pause" : "Follow") +
+         "</button><button "
          "id=\"log-end\">End</button><label>Find <input id=\"log-find\" "
          "type=\"search\" aria-label=\"Find in loaded output\"></label><span "
          "id=\"find-count\"></span><label>Phase <select "

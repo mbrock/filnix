@@ -180,8 +180,19 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual(pinned["cohort"]["succeeded"], 1)
             page = urllib.request.urlopen(base + "/", timeout=2).read()
             self.assertIn(b'src="./htmx.js"', page)
-            self.assertIn(b'hx-get="./state?', page)
+            self.assertIn(b'class="campaign-table"', page)
+            self.assertNotIn(b'class="graph-panel"', page)
+            self.assertNotIn(b'class="log-panel"', page)
+            self.assertNotIn(b"every ", page)
             self.assertIn(b"2/2 roots settled", page)
+            failed_roots = urllib.request.urlopen(
+                base + "/sessions?overview=1&filter=failed", timeout=2
+            ).read()
+            self.assertIn(b"campaign-bad", failed_roots)
+            self.assertNotIn(b"campaign-good", failed_roots)
+            follow = urllib.request.urlopen(base + "/?follow=1", timeout=2).read()
+            self.assertIn(b'class="graph-panel"', follow)
+            self.assertIn(good_run.encode(), follow)
             watermark = state["watermark"]
         finally:
             self.stop(proc)
@@ -245,6 +256,8 @@ class CampaignTests(unittest.TestCase):
             ]
         self.assertIn(b"stdout-before", output)
         self.assertIn(b"stderr-after", output)
+        colored = b"\x1b[32;1mcolored:\x1b[0m <text>&"
+        self.assertIn(colored, output)
         self.assertIn(b"binary:\xff", output)
         self.assertIn(b"<script>alert(1)</script>", output)
         self.assertEqual(summary["outcome"], "built")
@@ -282,7 +295,9 @@ class CampaignTests(unittest.TestCase):
             ],
             [(r[0], r[1], r[2], r[3], r[4], json.loads(r[5])) for r in events],
         )
-        self.assertIn(b"binary:\xff", invoke("replay", self.db, "--speed", "0").stdout)
+        raw_replay = invoke("replay", self.db, "--speed", "0").stdout
+        self.assertIn(b"binary:\xff", raw_replay)
+        self.assertIn(colored, raw_replay)
         for speed in ("nan", "inf", "-1", "1garbage"):
             self.assertEqual(
                 invoke("replay", self.db, "--speed", speed, check=False).returncode, 2
@@ -303,10 +318,20 @@ class CampaignTests(unittest.TestCase):
 
         viewer, base = self.serve()
         try:
-            page = urllib.request.urlopen(base + "/", timeout=2).read()
+            page = urllib.request.urlopen(base + "/?run=" + run, timeout=2).read()
             self.assertIn(b"&lt;script&gt;alert(1)&lt;/script&gt;", page)
             self.assertNotIn(b"<script>alert(1)</script>", page)
             self.assertIn(b"binary:\xef\xbf\xbd", page)
+            rendered = b'<pre><span style="color:var(--ansi-2);font-weight:700;">colored:</span> &lt;text&gt;&amp;</pre>'
+            self.assertIn(rendered, page)
+            streamed = urllib.request.urlopen(
+                base + "/logs?run=" + run + "&after=0", timeout=2
+            ).read()
+            self.assertIn(rendered, streamed)
+            raw_logs = json.load(
+                urllib.request.urlopen(base + "/api/logs?run=" + run, timeout=2)
+            )
+            self.assertIn(colored.hex(), [row["bytes_hex"] for row in raw_logs])
             for query in ("after=-1", "run=%1g", "run=%00"):
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     urllib.request.urlopen(base + "/api/logs?" + query, timeout=2)
@@ -399,7 +424,7 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(
             urllib.request.urlopen(f"{base}/state?run={run}", timeout=2).status, 200
         )
-        page = urllib.request.urlopen(base + "/", timeout=2).read()
+        page = urllib.request.urlopen(base + "/?run=" + run, timeout=2).read()
         self.assertIn(b"graph-panel", page)
         self.assertIn(b"1 static inputs", page)
         self.assertNotIn(b'data-name="campaign-shared"', page)

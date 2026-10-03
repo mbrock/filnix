@@ -14,7 +14,7 @@ public:
   void append(const json &batch);
   json summary(std::string run = "");
   json events(std::string run, std::uint64_t after);
-  json view(std::string run, std::string activity);
+  json view(std::string run, std::string activity, bool detail = true);
   json logs(std::string run, std::string activity, std::uint64_t after,
             bool tail = false);
   json export_to(const std::string &directory);

@@ -1,4 +1,5 @@
 #include "dataset.hh"
+#include "html.hh"
 #include "web.hh"
 
 #include <iostream>
@@ -12,6 +13,17 @@ void check(bool condition, const char *message) {
 
 int main() {
   try {
+    campaign::html::Writer document;
+    document.tag("p", {{"data-name", "a\"<&"}}, [&] {
+      document.text("start<");
+      document.tag("span", [&] { document.text("child>"); });
+      document.text("end&");
+    });
+    check(std::move(document).str() == "<p "
+                                       "data-name=\"a&quot;&lt;&amp;\">start&"
+                                       "lt;<span>child&gt;</span>end&amp;</p>",
+          "block HTML construction preserves siblings and escapes "
+          "text/attributes");
     campaign::Dataset data{":memory:", true};
     auto event = [](unsigned seq, std::string kind, json payload) {
       return json{
@@ -100,6 +112,83 @@ int main() {
           "escape captured HTML");
     check(fragment.find("#" + std::to_string(activity)) != std::string::npos,
           "full unsigned activity id is visible and copyable");
+    unsigned seq = 8;
+    for (const auto &[raw, rendered] :
+         std::vector<std::pair<std::string, std::string>>{
+             {"\x1b[31;1merror:\x1b[0m Cannot build "
+              "'\x1b[35;1m<drv>&\x1b[0m'.\n"
+              "       Reason: \x1b[31;1m1 dependency failed\x1b[0m.\n"
+              "       Output paths:\n         \x1b[35;1m/store/result\x1b[0m",
+              "<span "
+              "style=\"color:var(--ansi-1);font-weight:700;\">error:</span> "
+              "Cannot build &#39;"
+              "<span "
+              "style=\"color:var(--ansi-5);font-weight:700;\">&lt;drv&gt;&amp;<"
+              "/span>&#39;.\n"
+              "       Reason: <span "
+              "style=\"color:var(--ansi-1);font-weight:700;\">1 dependency "
+              "failed</span>.\n"
+              "       Output paths:\n         <span "
+              "style=\"color:var(--ansi-5);font-weight:700;\">/store/result</"
+              "span>"},
+             {"\x1b[38;2;10;20;30mRGB\x1b[39m + "
+              "\x1b[38:2::80:90:100mcolon\x1b[m\tcafé",
+              "<span style=\"color:rgb(10,20,30);\">RGB</span> + "
+              "<span style=\"color:rgb(80,90,100);\">colon</span>\tcafé"},
+             {"\x1b[1;38;5;196;48:5:232mindexed\x1b[22;39m bg\x1b[49m plain "
+              "\x1b[3;4;9mstyled\x1b[23;24;29m normal",
+              "<span "
+              "style=\"color:rgb(255,0,0);background-color:rgb(8,8,8);font-"
+              "weight:700;\">indexed</span>"
+              "<span style=\"background-color:rgb(8,8,8);\"> bg</span> plain "
+              "<span style=\"font-style:italic;text-decoration:underline "
+              "line-through;\">styled</span> normal"},
+             {"\x1b[91;104mbright\x1b[0m \x1b[7mreverse\x1b[27m default",
+              "<span "
+              "style=\"color:var(--ansi-9);background-color:var(--ansi-12);\">"
+              "bright</span> "
+              "<span "
+              "style=\"color:var(--paper);background-color:var(--ink);\">"
+              "reverse</span> default"},
+             {"bad \x1b[38;2;256;0;0mRGB; \x1b[999mSGR; \x1b[31;999mcompound",
+              "bad �[38;2;256;0;0mRGB; �[999mSGR; �[31;999mcompound"},
+             {"literal [31;1m; \x1b[2J; \x1b[?31m; unfinished \x1b[31;",
+              "literal [31;1m; �[2J; �[?31m; unfinished �[31;"}}) {
+      auto decorated = line;
+      decorated["fields"][0]["string_hex"] = campaign::hex(raw);
+      data.append(json::array({event(seq, "nix.result", decorated)}));
+      auto colored_logs =
+          data.logs("test'run", std::to_string(activity), seq - 1);
+      check(colored_logs.size() == 1 &&
+                campaign::unhex(
+                    colored_logs[0]["bytes_hex"].get<std::string>()) == raw &&
+                data.events("test'run", seq - 1)[0]["payload"] == decorated,
+            "terminal decoration stays byte-exact in logs and events");
+      auto expected = "<pre>" + rendered + "</pre>";
+      check(campaign::web_logs(colored_logs, "test'run",
+                               std::to_string(activity), seq - 1)
+                    .find(expected) != std::string::npos,
+            "render SGR styles, resets and colors without interpreting HTML or "
+            "unknown controls");
+      check(campaign::web_page(data.view("test'run", ""), "test'run", "")
+                    .find(expected) != std::string::npos,
+            "initial output and streamed output use the same SGR rendering");
+      ++seq;
+    }
+    auto light = data.view("test'run", "", false);
+    check(light["sessions"] == data.view("test'run", "")["sessions"] &&
+              light["logs"].empty() && light["phases"].empty() &&
+              light["activities"].empty(),
+          "overview materializes summaries, not session details");
+    auto overview = campaign::web_page(light, "", "");
+    check(overview.find("campaign-table") != std::string::npos &&
+              overview.find("graph-panel") == std::string::npos &&
+              overview.find("log-panel") == std::string::npos &&
+              overview.find("every ") == std::string::npos,
+          "front page is an idle overview, not an implicit session");
+    check(campaign::web_page(data.view("test'run", ""), "", "", true)
+                  .find("graph-panel") != std::string::npos,
+          "following latest is an explicit opt-in");
     auto large = view;
     large["recipes"] = json::array();
     large["edges"] = json::array();
@@ -170,7 +259,7 @@ int main() {
                 html.find("failure &lt;detail&gt;") != std::string::npos,
             "failure modes have an escaped pinned reason");
       check(html.find("[31;1m") == std::string::npos,
-            "strip reason SGR before sanitizing control bytes");
+            "render reason SGR without exposing escape clutter");
     }
     auto rail = view;
     rail["live_run"] = "elsewhere";
