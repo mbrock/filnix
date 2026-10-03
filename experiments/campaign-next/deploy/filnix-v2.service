@@ -1,0 +1,25 @@
+[Unit]
+Description=Bounded native Filnix world campaign and public read-only viewer
+After=nix-daemon.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=mbrock
+Group=mbrock
+UMask=0077
+WorkingDirectory=/var/lib/filnix-v2
+ExecStart=/opt/filnix-v2/bin/filnix-campaign cohort /var/lib/filnix-v2/manifest.json /var/lib/filnix-v2/campaign.duckdb --port 8778 --budget 7200 --root-timeout 900
+Environment="NIX_CONFIG=max-jobs = 2\ncores = 4\nbuilders =\nmax-silent-time = 300"
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+MemoryMax=4G
+TasksMax=512
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/filnix-v2
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

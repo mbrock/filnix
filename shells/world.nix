@@ -41,59 +41,12 @@ let
       ln -s ${shutdown-bin}/bin/shutdown $out/bin/reboot
     '';
 
-  world-pkgs = with ports; [
-    bash
-    coreutils
-    gnumake
-    gnum4
-    bison
-    gawk
-    gnused
-    gnugrep
-    lesspipe
-    flex
-    bc
-    ed
-    which
-    file
-    diffutils
-    gnutar
-    bzip2
-    zstd
-    xz
-    tmux
-    nano
-    nethack
-    ncurses
-    figlet
-    clolcat
-    ncurses
-    sqlite
-    lua
-    perl
-    tcl
+  # ghostty-terminfo is on TERMINFO_DIRS; ncurses 6.6 also ships the entry,
+  # so it cannot be in the same buildEnv.
+  world-pkgs = map (name: ports.${name}) (import ./world-packages.nix) ++ [
     filcc
     runfilc
-    openssl
-    curl
-    openssh
-    git
-    pkgconf
-    autoconf
-    automake
-    libtool
-    # ghostty-terminfo is on TERMINFO_DIRS; ncurses 6.6 also ships the entry,
-    # so it cannot be in the same buildEnv.
-    util-linux
-    #    wasm3
-    kittydoom
-    procps
-    inetutils
-    elfutils
-    strace
     shutdown-tools
-    lighttpd
-    trealla # prolog
   ];
 
 in

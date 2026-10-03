@@ -91,16 +91,17 @@ class CampaignTests(unittest.TestCase):
             ).read()
         )
 
-    def serve(self, database=None, mode="serve", drv=None):
+    def serve(self, database=None, mode="serve", drv=None, args=()):
         proc = subprocess.Popen(
             [
                 str(BINARY),
                 mode,
                 *([str(drv)] if drv else []),
                 str(database or self.db),
-                *(["--store", self.store] if mode == "watch" else []),
+                *(["--store", self.store] if mode in ("watch", "cohort") else []),
                 "--port",
                 "0",
+                *args,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -136,6 +137,90 @@ class CampaignTests(unittest.TestCase):
     def rows(self, table):
         with duckdb.connect(str(self.db), read_only=True) as db:
             return db.execute(f"select * from {table} order by all").fetchall()
+
+    def cohort(self, roots, budget=10, root_timeout=5):
+        manifest = self.root / "manifest.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "id": "test-cohort",
+                    "name": "Test landmark world",
+                    "roots": [{"name": name, "drv": self.drv(name)} for name in roots],
+                }
+            )
+        )
+        return manifest, self.serve(
+            mode="cohort",
+            drv=manifest,
+            args=("--budget", str(budget), "--root-timeout", str(root_timeout)),
+        )
+
+    def settled_cohort(self, base):
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            state = self.state(base=base)
+            if state["cohort"] and state["cohort"]["stop_reason"]:
+                return state
+            time.sleep(0.05)
+        self.fail("cohort did not publish its terminal admission event")
+
+    def test_cohort_continues_failure_and_restart_never_retries(self):
+        manifest, (proc, base) = self.cohort(["bad", "good"])
+        try:
+            state = self.settled_cohort(base)
+            self.assertEqual(state["cohort"]["completed"], 2)
+            self.assertEqual(state["cohort"]["succeeded"], 1)
+            self.assertEqual(state["cohort"]["failed"], 1)
+            self.assertEqual(state["cohort"]["unattempted"], 0)
+            self.assertEqual(state["cohort"]["stop_reason"], "all-roots-attempted")
+            good_run = state["session"]["run"]
+            bad_run = next(s["run"] for s in state["sessions"] if s["run"] != good_run)
+            pinned = self.state(bad_run, base)
+            self.assertEqual(pinned["session"]["outcome"], "failed")
+            self.assertEqual(pinned["cohort"]["succeeded"], 1)
+            page = urllib.request.urlopen(base + "/", timeout=2).read()
+            self.assertIn(b'src="./htmx.js"', page)
+            self.assertIn(b'hx-get="./state?', page)
+            self.assertIn(b"2/2 roots settled", page)
+            watermark = state["watermark"]
+        finally:
+            self.stop(proc)
+        restarted, base = self.serve(mode="cohort", drv=manifest)
+        try:
+            state = self.settled_cohort(base)
+            self.assertEqual(state["watermark"], watermark)
+            self.assertEqual(len(state["sessions"]), 2)
+            self.assertFalse(state["live"])
+        finally:
+            self.stop(restarted)
+
+    def test_cohort_root_timeout_continues_but_total_budget_stops_admission(self):
+        _, (proc, base) = self.cohort(["slow", "good"], root_timeout=1)
+        try:
+            state = self.settled_cohort(base)
+            self.assertEqual(state["cohort"]["timed_out"], 1)
+            self.assertEqual(state["cohort"]["succeeded"], 1)
+            self.assertEqual(state["cohort"]["completed"], 2)
+            self.assertEqual(state["cohort"]["stop_reason"], "all-roots-attempted")
+        finally:
+            self.stop(proc)
+        self.db = self.root / "budget.duckdb"
+        _, (proc, base) = self.cohort(["slow", "shared"], budget=1)
+        try:
+            state = self.settled_cohort(base)
+            self.assertEqual(state["cohort"]["completed"], 1)
+            self.assertEqual(state["cohort"]["timed_out"], 1)
+            self.assertEqual(state["cohort"]["unattempted"], 1)
+            self.assertEqual(state["cohort"]["stop_reason"], "budget-exhausted")
+            self.assertFalse(state["live"])
+            self.assertEqual(len(state["sessions"]), 1)
+        finally:
+            self.stop(proc)
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            events = db.execute("select seq,kind from events order by seq").fetchall()
+        self.assertEqual([e[0] for e in events], list(range(1, len(events) + 1)))
+        self.assertEqual(events[-2][1], "run.finished")
+        self.assertEqual(events[-1][1], "cohort.finished")
 
     def test_build_replay_cached_run_http_and_parquet_roundtrip(self):
         drv = self.drv("good")

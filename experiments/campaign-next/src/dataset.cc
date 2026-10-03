@@ -118,8 +118,9 @@ void Dataset::append(const json &batch) {
       if (kind == "run.requested") {
         exec("INSERT INTO runs VALUES (" + r + "," +
              quote(p.at("drv").get<std::string>()) + "," +
-             quote(p.at("store").get<std::string>()) + ",'',''," + wall + "," +
-             off + ", '{}'::JSON)");
+             quote(p.at("store").get<std::string>()) + "," +
+             quote(p.value("name", "")) + ",''," + wall + "," + off +
+             ", '{}'::JSON)");
       } else if (kind == "recipe.resolved") {
         exec("UPDATE runs SET name=" + quote(p.at("name").get<std::string>()) +
              ",system=" + quote(p.at("system").get<std::string>()) +
@@ -262,8 +263,48 @@ json Dataset::view(std::string run, std::string activity) {
   auto output = logs(run, activity, 0, true);
   auto time = rows("SELECT coalesce(max(elapsed_ns),0) AS elapsed FROM events" +
                    filter);
+  json cohort = nullptr;
+  auto request = rows("SELECT payload FROM events" + filter + " AND seq=1");
+  if (!request.empty() && request[0].at("payload").contains("cohort")) {
+    cohort = request[0].at("payload").at("cohort");
+    auto members =
+        " FROM runs r JOIN events e ON e.run=r.run AND e.seq=1 WHERE "
+        "json_extract_string(e.payload,'$.cohort.id')=" +
+        quote(cohort.at("id").get<std::string>());
+    auto summaries = rows("SELECT r.summary" + members);
+    unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0;
+    for (const auto &item : summaries) {
+      const auto &state = item.at("summary");
+      if (!state.at("complete").get<bool>())
+        continue;
+      ++completed;
+      auto outcome = state.at("outcome").get<std::string>();
+      if (outcome == "built" || outcome == "already-valid" ||
+          outcome == "substituted" || outcome == "resolves-to-already-valid")
+        ++succeeded;
+      else if (outcome == "timed-out")
+        ++timed_out;
+      else
+        ++failed;
+    }
+    auto finished = rows("SELECT f.payload FROM events f JOIN events e ON "
+                         "e.run=f.run AND e.seq=1 "
+                         "WHERE f.kind='cohort.finished' AND "
+                         "json_extract_string(e.payload,'$.cohort.id')=" +
+                         quote(cohort.at("id").get<std::string>()) +
+                         " ORDER BY f.\"offset\" DESC LIMIT 1");
+    cohort["attempted"] = summaries.size();
+    cohort["completed"] = completed;
+    cohort["succeeded"] = succeeded;
+    cohort["failed"] = failed;
+    cohort["timed_out"] = timed_out;
+    cohort["unattempted"] = cohort.at("roots").size() - summaries.size();
+    cohort["stop_reason"] =
+        finished.empty() ? json("") : finished[0].at("payload").at("reason");
+  }
   return {
       {"watermark", watermark_},
+      {"cohort", cohort},
       {"sessions", sessions},
       {"session", session},
       {"recipes",

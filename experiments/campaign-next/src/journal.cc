@@ -15,6 +15,8 @@ void Projection::apply(const json &event) {
     ++output_lines_;
   else if (kind == "run.cancel-requested")
     cancelled_ = true;
+  else if (kind == "run.limit-reached")
+    timed_out_ = true;
   else if (kind == "run.recorder-error")
     recorder_error_ = true;
   else if (kind == "worker.error")
@@ -38,6 +40,8 @@ json Projection::summary() const {
       outcome = "recorder-error";
     else if (has_result_ && result_success_ && exited_ && exit_code_ == 0)
       outcome = result_outcome_;
+    else if (timed_out_)
+      outcome = "timed-out";
     else if (cancelled_)
       outcome = "cancelled";
     else if (has_result_ && !result_success_)

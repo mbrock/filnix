@@ -33,6 +33,7 @@ The other commands are:
 
 ```sh
 filnix-campaign record DRV campaign.duckdb [--store URI]
+filnix-campaign cohort manifest.json campaign.duckdb --budget 7200 --root-timeout 900
 filnix-campaign serve campaign.duckdb [--port 8080]
 filnix-campaign inspect campaign.duckdb [--run ID]
 filnix-campaign replay campaign.duckdb [--run ID] [--speed 10] [--json]
@@ -63,8 +64,64 @@ The subflake pins NXT's blocking pool and upstream Nix 2.34.8 independently of
 the main toolchain. This is native C++23 on x86_64 Linux, not a Fil-C build. It
 does not install or replace the host daemon. Checks run real builds in disposable
 local stores with remote hooks disabled **in test configuration**, not in the
-worker. Compatibility with the existing Determinate daemon and actual remote
-builders remains a separate integration milestone.
+worker. A cached Fil-C Bash request has also been verified against SWA's actual
+Determinate daemon. Remote building remains a separate integration milestone.
+
+## Bounded world campaign and deployment
+
+`shells/world-packages.nix` is the ordered, reusable root set for both the world
+shell/VM and this campaign. It includes 82 roots: Linux userland, foundational
+libraries, GTK/Wayland, language runtimes, and applications. Emacs is headless;
+GTK uses the existing Wayland/Broadway port configuration. Custom Qt ports are
+not selected. FFmpeg and GTKmm are last to avoid delaying the core landmarks.
+
+`cohort` accepts an immutable JSON manifest with `id`, `name`, and a `roots`
+array of `{name, drv}` objects. It admits one root request at a time; Nix still
+schedules that root's complete dependency graph. Package failures and per-root
+timeouts do not prevent subsequent roots. An overall monotonic deadline stops
+admission and interrupts the active worker. Defaults are two hours overall and
+15 minutes per root, with the normal two-second termination grace. These are
+client-observation/build budgets, not a guarantee that a daemon build shared
+with another client has stopped. Recorder errors stop admission rather than
+pretending the root was observed correctly.
+
+Intent events retain the manifest, source revision, root index and budgets.
+`run.limit-reached` distinguishes deadlines from operator cancellation;
+`cohort.finished` durably records why admission ended. The viewer shows settled,
+successful, failed/interrupted, timed-out, and unattempted roots. Success includes
+already-valid and substituted results, **not just new compilations**. The default
+page follows the latest root; explicit `?run=…` links stay pinned. All links and
+polls work under a stripped reverse-proxy prefix such as `/v2/`.
+
+After admission ends, the viewer stays up. Restarting `cohort` against any
+nonempty recording serves it without resuming or retrying builds, including
+after a crash. Starting a new campaign requires a new database; there is no
+batch scheduler, durable work queue, or automatic lease recovery.
+
+Evaluate a frozen source into a store manifest without realising its packages:
+
+```sh
+revision=$(git rev-parse HEAD)
+manifest=$(nix eval --impure --raw --expr \
+  "import ./experiments/campaign-next/world.nix { source = \"git+file:$PWD?rev=$revision\"; revision = \"$revision\"; }")
+nix-store --query --references "$manifest"
+```
+
+The manifest retains GC references to the source and root derivations, not a
+build dependency on their outputs. Give it a persistent GC root before launch.
+`deploy/filnix-v2.service` documents the SWA deployment: an independently
+installed package at `/opt/filnix-v2`, state under `/var/lib/filnix-v2`, an
+immutable `manifest.json` symlink there, and loopback port 8778. Root both the
+package and manifest under `/nix/var/nix/gcroots/`. The service uses the existing
+trusted Nix user `mbrock` to make its per-client configuration effective:
+two local jobs, four cores per job, no remote builders, and five minutes of
+silence allowed. It does not change the daemon's shared configuration. Its 4 GiB
+memory limit bounds the observer, not daemon-owned compiler processes.
+
+Add `deploy/v2.Caddyfile` inside the existing `nix.swa.sh` site, preserving the
+cache and legacy fallback. Validate Caddy and the unit before reloading/enabling.
+The public viewer exposes only read endpoints, but build output is public too:
+only use intentionally public source/package builds and no secret-bearing jobs.
 
 ## Execution and ownership
 
@@ -199,18 +256,19 @@ a different Nix capture boundary or a controlled builder wrapper.
 
 ## Still deliberately absent
 
-There is no multi-root campaign planner, evaluation service, admission/lease
-recovery, new Nix builder, systemd integration, authentication, deployment, or
-online export API. In particular, the existing campaign's batch model has not
-been copied here. These are next design decisions, not implied by having a
-working single-root observer. Recordings can contain secrets printed by builds;
-do not publish databases, logs, or archives indiscriminately.
+There is no general campaign planner, evaluation service, admission/lease
+recovery, new Nix builder, authentication, or online export API. The bounded
+manifest runner deliberately does not copy the existing campaign's batch model.
+Recordings can contain secrets printed by builds; do not publish databases,
+logs, or archives indiscriminately.
 
 Checks cover transaction rollback across all projections, exact large activity
 IDs and arbitrary bytes, unknown events, real artifacts, cached repeats, shared
 dependencies, failed prerequisites, API errors, cancellation/draining, abrupt
 observer death and WAL recovery, replay pacing, HTTP cursor semantics, HTML
-escaping/OOB row structure, schema rejection, and native/Parquet equality.
+escaping/OOB row structure, schema rejection, and native/Parquet equality. Cohort
+tests distinguish failure continuation, per-root timeout continuation, overall
+budget cutoff, pinned views, durable stop events, and restart without retries.
 
 An additional ASan/UBSan build passes the dataset test, but its leak-enabled
 integration suite is not clean: LeakSanitizer reports allocations in Nix's

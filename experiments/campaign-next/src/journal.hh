@@ -83,6 +83,7 @@ private:
   json outputs_ = json::array();
   std::uint64_t events_ = 0, activities_ = 0, output_lines_ = 0;
   bool complete_ = false, cancelled_ = false, recorder_error_ = false;
+  bool timed_out_ = false;
   bool result_success_ = false, has_result_ = false, worker_error_ = false;
   bool exited_ = false;
   int exit_code_ = -1;
