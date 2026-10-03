@@ -347,3 +347,20 @@ errors; overview, empty/failed filter, SGR, built, timed-out, short-window and
 mobile captures were inspected. This does not establish that the reported
 unresponsive-page failure is reproduced or fixed. FLAC's recorded build timeout
 is unchanged; no production database connection, retry or deployment was made.
+
+## Deployment — 2026-10-04, Europe/Riga
+
+After operator approval, the verified package was installed at `/opt/filnix-v2`
+and `filnix-v2.service` restarted. The old package remains GC-rooted; a closed
+database/WAL backup was taken under
+`/var/lib/filnix-v2/before-overview-sgr-20261003T232839Z` before the switch.
+The service confirms `Existing recording: serving only, no automatic retries`.
+The complete read-only browser suite passed through `https://nix.swa.sh/v2/`,
+including prefix-relative links, overview filters/paging, styled Find, all six
+desktop sizes and Chromium touch checks. Public overview, SGR failure output
+and narrow overview captures were inspected. No JavaScript errors or service
+restarts occurred; the settled views issued no periodic data requests.
+After verification the watermark remained **299484**, with **82/82 settled,
+80 successful, one failed, one timed out, zero unattempted**. No new campaign
+events or builds were created. The original unresponsive-page report is still
+not reproduced; the real recorded package failures are not reclassified.
