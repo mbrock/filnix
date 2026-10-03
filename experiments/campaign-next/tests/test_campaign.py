@@ -391,16 +391,25 @@ class CampaignTests(unittest.TestCase):
                 f"{base}/logs?run={run}&activity={activity}&after=0", timeout=2
             ).read()
             self.assertIn(b"hx-swap-oob", fragment)
-            self.assertIn(b"/logs?", fragment)
+            self.assertIn(b'data-after="', fragment)
+            tail = urllib.request.urlopen(
+                f"{base}/logs?run={run}&after={cursor}&tail=1", timeout=2
+            ).read()
+            self.assertIn(b'class="log-row"', tail)
         self.assertEqual(
             urllib.request.urlopen(f"{base}/state?run={run}", timeout=2).status, 200
         )
         page = urllib.request.urlopen(base + "/", timeout=2).read()
-        self.assertIn(b"dependency-graph", page)
-        self.assertIn(b"reference", page)
-        self.assertEqual(
-            urllib.request.urlopen(base + "/htmx.js", timeout=2).status, 200
-        )
+        self.assertIn(b"graph-panel", page)
+        self.assertIn(b"1 static inputs", page)
+        self.assertNotIn(b'data-name="campaign-shared"', page)
+        graph = urllib.request.urlopen(f"{base}/graph?run={run}", timeout=2).read()
+        self.assertIn(b"reference", graph)
+        self.assertIn(b'data-name="campaign-shared"', graph)
+        for asset in ("htmx.js", "observatory.css", "observatory.js"):
+            self.assertEqual(
+                urllib.request.urlopen(base + "/" + asset, timeout=2).status, 200
+            )
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(
                 urllib.request.Request(base + "/api/state", method="POST"), timeout=2
@@ -438,6 +447,22 @@ class CampaignTests(unittest.TestCase):
             ]
             self.assertIn(b"dependency-failed", output)
             self.assertNotIn(b"consumer-must-not-run", output)
+        viewer, base = self.serve()
+        try:
+            failed_state = self.state(run, base)
+            self.assertEqual(failed_state["phases"][-1]["phase"], "buildPhase")
+            page = urllib.request.urlopen(f"{base}/?run={run}", timeout=2).read()
+            self.assertIn(b'class="failure"', page)
+            self.assertIn(b"builder failed with exit code 13", page)
+            self.assertIn(b"dependency-failed", page)
+            self.assertIn(b'data-status="failed"', page)
+            last_seq = failed_state["logs"][-1]["seq"]
+            tail = urllib.request.urlopen(
+                f"{base}/logs?run={run}&after={last_seq}&tail=1", timeout=2
+            ).read()
+            self.assertIn(b"dependency-failed", tail)
+        finally:
+            self.stop(viewer)
         drv = self.drv("good")
         Path(drv).unlink()
         api_error = self.record(drv)
@@ -494,8 +519,8 @@ class CampaignTests(unittest.TestCase):
             self.assertFalse(offline["live"])
             self.assertFalse(offline["session"]["complete"])
             fragment = urllib.request.urlopen(base + "/state", timeout=2).read()
-            self.assertIn(b"Incomplete recording", fragment)
-            self.assertNotIn(b"Live recording", fragment)
+            self.assertIn(b'data-status="incomplete"', fragment)
+            self.assertNotIn(b"Live ", fragment)
         finally:
             self.stop(viewer)
 

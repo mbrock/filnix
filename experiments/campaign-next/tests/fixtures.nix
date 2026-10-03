@@ -19,8 +19,10 @@ let
 in
 rec {
   good = fixture "campaign-good" ''
+    printf '@nix {"action":"setPhase","phase":"configurePhase"}\n'
     printf 'stdout-before\n'
     sleep 0.6
+    printf '@nix {"action":"setPhase","phase":"buildPhase"}\n'
     printf 'stderr-after\n' >&2
     printf 'binary:\377\n'
     printf '<script>alert(1)</script>\n'
@@ -28,6 +30,7 @@ rec {
     printf 'artifact\n' > "$out/result"
   '' { };
   bad = fixture "campaign-bad" ''
+    printf '@nix {"action":"setPhase","phase":"buildPhase"}\n'
     printf 'dependency-failed\n' >&2
     exit 13
   '' { };

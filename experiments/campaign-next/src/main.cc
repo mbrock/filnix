@@ -108,7 +108,7 @@ struct Application {
   // never wait for admission, so one-worker FIFO preserves assigned seqs.
   nxtrt::blocking_pool workers{1, 16};
   std::unique_ptr<campaign::Dataset> data;
-  std::string htmx;
+  std::map<std::string, std::string> assets;
   std::string live_run;
   std::int64_t live_start = 0;
 };
@@ -331,10 +331,15 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
     co_return response{405, {{"Allow", "GET, HEAD"}}, "Read-only viewer\n"};
   auto question = req.target.find('?');
   auto path = req.target.substr(0, question);
-  if (path == "/htmx.js")
-    co_return response{200, {{"Content-Type", "text/javascript"}}, app.htmx};
-  if (path != "/" && path != "/state" && path != "/logs" &&
-      path != "/api/state" && path != "/api/logs")
+  if (app.assets.contains(path))
+    co_return response{
+        200,
+        {{"Content-Type",
+          path.ends_with(".css") ? "text/css" : "text/javascript"},
+         {"X-Content-Type-Options", "nosniff"}},
+        app.assets.at(path)};
+  if (path != "/" && path != "/state" && path != "/logs" && path != "/graph" &&
+      path != "/sessions" && path != "/api/state" && path != "/api/logs")
     co_return response{404, {}, "Not found\n"};
   std::map<std::string, std::string> params;
   std::uint64_t after = 0;
@@ -362,12 +367,16 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
   } catch (const std::exception &) {
     co_return response{400, {}, "Invalid query\n"};
   }
-  auto run = params["run"], activity = params["activity"];
+  auto requested_run = params["run"], activity = params["activity"];
+  auto run = requested_run.empty() ? app.live_run : requested_run;
   bool is_logs = path == "/logs" || path == "/api/logs";
-  auto result = co_await app.workers.run([&app, run, activity, after, is_logs] {
-    return is_logs ? app.data->logs(run, activity, after)
-                   : app.data->view(run, activity);
-  });
+  auto result = co_await app.workers.run(
+      [&app, run, activity, after, is_logs, tail = params["tail"] == "1"] {
+        return is_logs ? app.data->logs(run, activity, after, tail)
+                       : app.data->view(run, activity);
+      });
+  if (!is_logs)
+    result["live_run"] = app.live_run;
   if (!is_logs && result.at("session").is_object()) {
     bool live = result["session"]["run"] == app.live_run &&
                 !result["session"]["complete"].get<bool>();
@@ -377,9 +386,16 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
   }
   bool api = path.starts_with("/api/");
   auto body = api       ? result.dump()
-              : is_logs ? campaign::web_logs(result, run, activity, after)
-              : path == "/state" ? campaign::web_state(result, run, activity)
-                                 : campaign::web_page(result, run, activity);
+              : is_logs ? campaign::web_logs(result, run, activity,
+                                             params["tail"] == "1" ? 0 : after)
+              : path == "/state"
+                  ? campaign::web_state(result, requested_run, activity)
+              : path == "/graph"
+                  ? campaign::web_graph(result, run, after, params["node"])
+              : path == "/sessions"
+                  ? campaign::web_sessions(result, run, params["filter"],
+                                           params["find"], after)
+                  : campaign::web_page(result, requested_run, activity);
   co_return response{
       200,
       {{"Content-Type", api ? "application/json" : "text/html; charset=utf-8"},
@@ -514,15 +530,20 @@ nxtrt::task<int> execute(Application &app, const Options &options) {
                                  .parent_path()
                                  .parent_path() /
                              "share/filnix-campaign";
-    std::ifstream file{base / "htmx.js", std::ios::binary};
-    app.htmx.assign(std::istreambuf_iterator<char>{file}, {});
+    for (const auto *name : {"htmx.js", "observatory.css", "observatory.js"}) {
+      std::ifstream file{base / name, std::ios::binary};
+      app.assets[std::string("/") + name].assign(
+          std::istreambuf_iterator<char>{file}, {});
+    }
   });
   if (options.command == "record")
     co_return co_await record(app, options.drv, options.store);
   if (options.command == "watch" || options.command == "serve" ||
       options.command == "cohort") {
-    if (app.htmx.empty())
-      throw std::runtime_error("missing HTMX asset; set CAMPAIGN_STATIC_DIR");
+    for (const auto &[name, bytes] : app.assets)
+      if (bytes.empty())
+        throw std::runtime_error("missing viewer asset " + name +
+                                 "; set CAMPAIGN_STATIC_DIR");
     auto listener = nxtrt::net::listen_tcp_loopback(options.port);
     std::cerr << "Listening on http://127.0.0.1:"
               << ntohs(nxtrt::net::socket_address(listener.get()).sin_port)
