@@ -1,0 +1,212 @@
+# Build Observatory instrument pass — 2026-10-03
+
+## Evidence and boundaries
+
+The public site was inspected before implementation: observing `libinput` and
+built `libdrm`, including `Show all output` and the bottom of the graph. The
+campaign had advanced from the supplied 56 settled roots to **65/82 settled,
+65 successful, zero failures/timeouts, 16 unattempted**, with one observing root.
+Initial DOM counts were 3,913 and 3,916: 500 graph rows, 19 repeated omission
+notices, no buttons, inputs, or selects. `Show all output` actually cleared the
+activity selection using `./?run=…`; it did not add an activity parameter.
+
+The read-only public recheck during verification found **81/82 settled,
+80 successful, one timed out, zero failures, zero unattempted**, with FFmpeg
+still observing. Emacs was the timed-out root: its header said `Time limit
+reached`, its graph said `timed-out`, there was no pinned reason strip or
+console control, and output remained below the static tree. This is an
+observed nonzero timeout case, not an inferred failure design.
+
+This is the same one-page C++/NXT observer. No build scheduling, compiler,
+runtime, event schema, Parquet export, service or campaign admission behavior
+changes. No production database migration. The running campaign must not be
+restarted merely to install presentation changes: restarting a nonempty cohort
+serves its recording and does **not** resume its remaining roots.
+
+Doctrine references below are the supplied numbered principles, checked against
+[Office](https://usgraphics.com/) and
+[DX-102-11](https://usgraphics.com/static/products/TX-02/datasheet/TX-02-datasheet.a43c0c7f8d8c.pdf).
+`M1`, `M2`, `M3` mean Mikael Brockman's operator amendments: labels ≠ prose,
+few font sizes, and minimal padding. They are not USGC quotations. System mono
+fonts are used; no Berkeley Mono font files or license are assumed.
+
+## Decisions: before → after
+
+- **1. Rail:** Ellipsized name → full mono name wrapping above `built · 2216 ev`. Dense ruled list; 50-row replacement windows, `Previous 50`, `Show next 50`. `Filter` and name-only `Find`; state filters remain available at zero. Selected row and run links remain. **Doctrine 3, 4, 5, 7; M3.**
+- **2. Campaign:** Passive arithmetic → clickable `N successful`, `N failed/interrupted`, `N timed out`, `N unattempted`. Single horizontally scrollable line retains roots, settled fraction, zero failure modes and admission-stop reason. `Follow latest` remains `./`. A root count already present in the recorded campaign name is not printed twice. **Doctrine 2, 4, 8; M1.**
+- **3. Graph:** Recursive bootstrap closure → root, recorded phase jumps, exact `N static inputs` disclosure, useful direct children and additional currently active builds. Collapsed closure has no mounted descendants. `outputs · out` disappears; other requested sets remain, e.g. `outputs · out, dev`. Actual repeated vertices alone get `reference ·`. **Doctrine 2, 3, 4, 7, 10.**
+- **4. Limit:** One notice per subtree → one `Remaining dependencies omitted (500-node limit).` per capped window. `Show next 500` and `Previous 500` replace that window; they do not accumulate DOM. **Doctrine 4, 7, 8.**
+- **5. Output:** Footer below tree → visible peer pane with independent scrolling. `Build output`, `Live` / `Captured`, full IDs, `Find`, `Pause` / `Follow`, `End`, `Phase`, `All output`. Raw text, elapsed times and horizontal message scrolling remain. **Doctrine 2, 3, 5, 7, 13; M1.**
+- **6. Eyebrow:** `SESSION OBSERVATION · DEPENDENCY GRAPH` → removed. Package title and campaign line already identify the context. **Doctrine 4, 12; M1.**
+- **7. Facts:** Sole ellipsized drv → full horizontally scrollable mono drv plus `Copy drv`. `SYSTEM`, `EVENTS`, `OUTPUT LINES` remain. **Doctrine 2, 4, 8.**
+- **8. Vocabulary:** Title-case badge variants → the same lower-case session status in rail, header and root. `Native result · <outcome>` exposes the unmodified underlying disposition rather than silently conflating it. **Doctrine 2, 4, 8.**
+- **9. Failure:** No pinned reason; output below tree → recorded last phase/activity, root status and actual reason pinned above the graph; initial output tail is on screen. Real failed, interrupted and timed-out recordings are tested. **Doctrine 2, 4, 8, 12.**
+- **10. Links:** Opaque keys → retained unchanged, with `Selected · <name>` for nonroot graph selection. A missing node loads its containing graph window; package title does not change. **Doctrine 4, 8, 10.**
+- **11. DOM:** 500 graph rows always mounted → lazy graph windows and 50-row rail windows. Console starts with 200 rows and retains at most 256. Inputs, filter and open static snapshot survive state polls. **Doctrine 7.**
+- **12. Type:** Many sizes / fluid display scale → 10 / 12 / 20 px only. Names, drvs, times, IDs, phase rows and messages remain mono. **Doctrine 5, 6; M2.**
+- **13. Geometry:** Rounded / padded rows → square corners, hairlines, small horizontal-biased padding, no shadows, motion, blur or new decoration. `Live · recording` / `Recorded` replaces recording prose. **Doctrine 1, 3, 6, 9, 12; M3.**
+- **14. Gloss:** Long activity-overlay sentence → `Static inputs · activity overlaid`. The meaning is retained, not a paragraph in the header. **Doctrine 4, 8; M1.**
+
+**Deliberate limits / refusals:** no new tabs, card summaries, permanent hiding
+of bootstrap, imaginary builder/dependency outcomes, or fake pagination. A
+stopped Nix activity is `ended`, not proof that its derivation succeeded. A root
+result does not reliably identify a failing dependency/phase: the failure strip
+says `last phase · <phase> · #<activity>`, or `phase unavailable`, not a guessed
+culprit. `Find` searches the loaded console window, explicitly counted as
+`N matches · N loaded`; it is not advertised as whole-archive search. Expanded
+static input windows are labeled snapshots, not claimed to be continuously live.
+
+## Component contracts
+
+### Rail and campaign
+
+`Filter` options: `all`, `observing`, `built`, `already-valid`, `incomplete`,
+`failed`, `interrupted`, `timed-out`, `successful`, `unattempted`.
+`successful` matches built and valid-output recordings. `failed` includes
+interrupted roots, matching the campaign's `failed/interrupted` arithmetic;
+`interrupted` is also individually selectable. `Find` matches names only,
+case-insensitively. Empty result: `No sessions · <filter>`.
+
+The selected cohort is the rail's scope, not every historic campaign mixed
+together. Its manifest is bounded to 256 roots. Standalone recording views
+retain the latest 256 recordings. Pagination mounts at most 50 rows and keeps
+the page through polling; changing Find/filter starts at the first page.
+Unattempted rows come from manifest indices without a recorded attempt and say
+`unattempted · 0 ev`. They have no invented run ID or session link. An empty
+database says `No recorded session` and `No captured output`.
+
+Campaign controls change the rail only; inspecting the current session is not
+lost when the filter is empty. `Follow latest` clears the selected run/activity,
+selects the active recording when there is one, otherwise the latest recording,
+and initializes its output at the end. The full campaign arithmetic remains
+available through horizontal scrolling on narrow screens.
+
+### Facts and statuses
+
+Title is the full recorded package name. Facts are `DERIVATION`, `SYSTEM`,
+`EVENTS`, `OUTPUT LINES`; drv is never represented only by an ellipsis.
+Clipboard copying reports `Copied` or `Copy unavailable` in the console status.
+
+Canonical root/rail/header words: `observing`, `built`, `already-valid`,
+`incomplete`, `failed`, `timed-out`, `interrupted`.
+Observing uses the process's active run identity even while another run is
+selected. Nonactive unfinished recordings remain incomplete.
+Cancelled maps to interrupted; worker/recorder errors map to failed. Substituted
+and resolves-to-already-valid map to the valid-output category, while the
+visible `Native result` disclosure retains their exact dispositions and Nix
+result JSON. No claim that substitution compiled a package.
+
+### Graph
+
+The root shows canonical root status, then observed phase, machine, activity
+running/ended state and activity duration. Root phase buttons show elapsed time
+and the recorded phase, and select that activity's output from the phase event.
+The latest 256 phase observations are available through `Phase`; they update
+with the state without resetting the operator's selection.
+
+Direct bootstrap names `bash-*`, `hex0-*`, `hex1-*`, `hex2-*`, `kaem-*`,
+`stage0-*` and `.tar.gz` / `.tar.xz` sources are static by default. Other direct
+inputs and currently active reachable derivations stay visible. The disclosure
+counts unique reachable inputs not shown in that foreground, not repeated tree
+references. Expansion renders recorded relationships and activity overlays;
+already-visible nodes appear as references there.
+
+Foreground output labels use the root's direct edge, even when the same input
+was first visited through a transitive edge requesting different outputs.
+
+Traversal stops revisiting shared vertices and cycles, not at an arbitrary
+depth. A window has at most 500 relationship rows, including references, and
+shows `Snapshot · <watermark> · <start>–<end> / <rows> rows`. A drv fragment
+can fetch a later window directly. Unknown dynamic edges and missing recipe
+metadata stay labeled as such. There are no success labels inferred for inputs.
+
+### Console and failure
+
+Columns are 12ch time, 23ch activity, then unwrapped message. Time and activity
+are sticky when scrolling horizontally; even unsigned 64-bit activity IDs fit
+and copy exactly. No activity is `—`, with copying disabled. UTF-8 replacement
+and nonprinting control-byte replacement are display-only: BLOBs and events
+remain byte-exact, HTML is escaped, and Find inserts text/mark nodes, not HTML.
+
+The initial window is the last 200 observations for the requested activity, or
+all activities. Streaming appends exclusive-cursor pages of at most 256 rows
+and trims the old window. `Pause` stops log requests and pins the current run;
+graph/state recording continues. Scrolling away from the end or using Find
+also pauses. `Follow` refreshes the tail and follows new output. `End` refreshes
+the tail without changing the pause state. Settled exhausted logs stop polling.
+`Phase` / phase buttons pause and fetch the first page after that exact phase
+event, with its activity ID; `All output` clears the activity restriction.
+
+Failed, interrupted and timed-out roots put a reason at the top of the graph,
+with their output tail already visible. Missing phase/reason is explicitly
+`phase unavailable` / `no recorded reason`. Terminal SGR decoration is removed
+only from the report reason; the native result keeps it. Errors remain text,
+not a toast, modal or invented per-node verdict. Zero campaign failure counts
+are not suppressed.
+
+### URL table
+
+| URL / state | Meaning |
+| --- | --- |
+| `./` | Follow current/latest session and its output tail |
+| `?run=<id>` | Pin a recording; its package remains the title |
+| `&activity=<unsigned decimal id>` | Restrict output to that Nix activity |
+| `#drv-<lowercase hex of full drv bytes>` | Existing stable node key; lazy-load containing window if necessary |
+| `&filter=<word>&find=<name>` | Inspectable rail state, retained in session links |
+| `./sessions?run=…&filter=…&find=…&after=N` | 50-row replacement window; native rendered HTML |
+| `./graph?run=…&after=N` / `&node=<full drv>` | 500-row replacement window or window containing a node |
+| `./logs?run=…&activity=…&after=<seq>` | Exclusive log cursor, native escaped HTML / OOB compatibility |
+| `./logs?…&tail=1` | Latest 200 rows, independent of the previous cursor |
+| `./api/state`, `./api/logs` | Existing owned JSON APIs; log tail is also supported |
+
+All URLs and assets remain prefix-relative for Caddy's `/v2/` strip-prefix.
+No HTTP writes or filesystem/build endpoints are introduced.
+
+## Tokens
+
+| Token | Value |
+| --- | --- |
+| Caption / body / display | 10 / 12 / 20 px; body line height 1.5 |
+| Mono | `ui-monospace, SFMono-Regular, Consolas, monospace` |
+| Paper / ink / rule | `#f5f5ef` / `#26332e` / `#cbd2c8` |
+| observing | Word + amber `#875814` |
+| built, already-valid | Words + muted green `#315b46` |
+| failed, interrupted | Words + red `#962e29` |
+| incomplete, timed-out | Words + amber `#875814` |
+| unattempted | Word + muted `#596a62` |
+| Rail / graph rows | 3px / 2px vertical, 6px horizontal; graph indent 12px/level |
+| Controls / log cells | 2px / 1px vertical, 6px horizontal |
+| Corners / shadows / motion | 0 / none / none |
+| Graph / narrow graph | Max 27vh / 12vh with independent scrolling |
+| Narrow rail / console | Max 20vh / 40vh, independently scrollable |
+
+Grayscale preserves every state word, selected-row rule, counts, phase and
+reason. Color is never the only state encoding.
+
+## Executed verification
+
+The packaged Nix build and both Meson targets pass, including six native
+integration groups. Targeted renderer/data regressions cover the 500-row
+boundary and deep-link window, exact unsigned activity IDs, real phase
+cursors, unsupported phase records remaining raw, direct/transitive output-set
+differences, canonical failure states, escaped reasons and terminal SGR removal.
+Unsupported phase fields, SGR-decorated reasons and differing output sets each
+failed before their fixes.
+
+Chromium browser checks exercised filters and unattempted entries, 50-row rail
+paging through polls, static expansion through polls, next-500 replacement,
+drv fragments, clipboard copies, sticky IDs during horizontal log scrolling,
+loaded-window Find, phase jumps, Pause stopping requests, End restoring the
+tail and Follow resuming. Real failing and timed-out local-store fixtures and
+an archived interrupted session were inspected, including grayscale. Browser
+checks reported no JavaScript errors. Narrow checks used a 390 × 844 Chromium
+touch context at 2× resolution and confirmed coarse-pointer media and no
+page-wide overflow; this is not a Safari/device claim.
+
+The representative archived fontconfig view mounted **1,199 DOM nodes,
+10 graph nodes and 200 log rows**. Its 10,974-row relationship graph advanced
+from 0–500 to 500–1000 without accumulating rows. This fixture is a copy of an
+immutable earlier campaign snapshot (52/82 settled), not the live production
+database. Review screenshots and the browser verification script are retained
+in the local `.amp/in/artifacts/` directory. No deployment or service restart
+is part of these checks.

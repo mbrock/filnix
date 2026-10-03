@@ -220,15 +220,30 @@ never silently resumed or retried after such a failure.
 
 ## Viewer and archive
 
-The NXT HTTP server renders HTML in C++. HTMX polls the state each second;
-the dependency graph and session sidebar refresh without replacing the log
-pane. Output polls use an exclusive run-local sequence cursor, optionally
-filtered to a selected activity. Responses append complete log rows rather
-than retransmitting the accumulated output. Initial logs show the latest 200
-records, polling returns at most 256, and the browser retains at most 2,000.
-Scrolling away from the bottom suspends follow-scroll. The initial session
-sidebar is bounded to 100 and activity queries to 2,000; graph rendering is
-bounded to 500 nodes/40 levels with explicit omission notices.
+The NXT HTTP server renders HTML in C++. HTMX polls state every two seconds
+and the session rail every three, without replacing the log pane. The rail
+shows full names, name-only Find, state filters and 50-row replacement windows.
+It is scoped to the selected cohort (at most 256 roots); standalone views
+retain the latest 256 recordings. Campaign counts apply the corresponding
+rail filter, including manifest roots not yet attempted.
+
+The graph foreground shows the root, recorded phases, useful direct inputs
+and active reachable builds. Static closure is an exact collapsed count with
+no descendant DOM until expanded. Expansion uses 500-row replacement windows,
+one omission notice and real previous/next controls. Shared vertices and cycles
+are references, not recursively revisited. Drv fragments load their containing
+window and retain the human package title.
+
+Output is a visible peer pane. Polls use an exclusive run-local sequence
+cursor, optionally filtered to an exact activity ID. Initial logs show the
+latest 200 records, polling returns at most 256, and the browser retains at
+most 256. Find searches this loaded window and reports its size. Pause stops
+log requests and pins the current recording; scrolling away or using Find
+also pauses. Follow refreshes the tail and follows new output; End refreshes
+the tail without changing pause state. Phase jumps use recorded event cursors.
+Settled exhausted logs stop polling. Full activity IDs and times stay visible
+while messages scroll horizontally. [DESIGN.md](DESIGN.md) contains the exact
+labels, component contracts, URL state, limits and visual tokens.
 
 Static derivation edges and Nix activity parents are different relationships.
 The graph uses recorded input derivations, overlays observed phase/host/time,
