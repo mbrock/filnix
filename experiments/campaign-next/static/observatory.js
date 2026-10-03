@@ -5,17 +5,46 @@ document.addEventListener('DOMContentLoaded', () => {
   const cursor = byId('log-cursor');
   const rows = byId('log-rows');
   const box = byId('log-scroll');
-  let following = true, pending = null, epoch = 0, graphScroll = 0, exhausted = false;
+  let following = true, pending = null, epoch = 0, exhausted = false;
+  let stateView;
   const message = value => { byId('console-state').textContent = value; };
+  function saveStateView() {
+    const selected = byId('selected-node');
+    return {
+      scroll: ['.session-summary', '.campaign-line', '.drv-fact dd', '.native-result pre', '#graph-scroll'].map(selector => {
+        const element = document.querySelector(selector);
+        return {selector, top: element?.scrollTop || 0, left: element?.scrollLeft || 0, focused: element === document.activeElement};
+      }),
+      nativeOpen: document.querySelector('.native-result')?.open || false,
+      selected: selected ? {text: selected.textContent, hidden: selected.hidden} : null
+    };
+  }
+  function restoreStateView(view) {
+    const native = document.querySelector('.native-result');
+    if (native) native.open = view.nativeOpen;
+    if (view.selected && byId('selected-node')) {
+      byId('selected-node').textContent = view.selected.text;
+      byId('selected-node').hidden = view.selected.hidden;
+    }
+    for (const saved of view.scroll) {
+      const element = document.querySelector(saved.selector);
+      if (!element) continue;
+      if (saved.focused) element.focus({preventScroll: true});
+      element.scrollTop = saved.top;
+      element.scrollLeft = saved.left;
+    }
+  }
   const pin = () => {
     const u = new URL(location.href);
     u.searchParams.set('run', initialRun);
     history.replaceState(null, '', u);
     // Reprocess a fresh element: do not leave an old implicit-latest timer.
+    const view = saveStateView();
     const old = byId('state'), replacement = old.cloneNode(true);
     replacement.setAttribute('hx-get', './state?' + new URLSearchParams({run: initialRun, activity: cursor.dataset.activity}));
     old.replaceWith(replacement);
     htmx.process(replacement);
+    restoreStateView(view);
   };
   function setFollow(value) {
     following = value;
@@ -109,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   function railState() {
     byId('rail-after').value = '0';
+    byId('session-results').scrollTop = 0;
     const u = new URL(location.href);
     u.searchParams.set('filter', byId('session-filter').value);
     u.searchParams.set('find', byId('session-find').value);
@@ -134,18 +164,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const copy = e.target.closest('[data-copy]');
     if (copy) { try { await navigator.clipboard.writeText(copy.dataset.copy); message('Copied'); } catch { message('Copy unavailable'); } }
   });
-  document.addEventListener('htmx:before:swap', () => { graphScroll = byId('graph-scroll')?.scrollTop || 0; });
+  document.addEventListener('htmx:before:request', e => {
+    const action = new URL(e.detail.ctx.request.action, location.href);
+    if (action.pathname.endsWith('/sessions') && e.detail.ctx.sourceElement.matches('button')) {
+      byId('rail-after').value = action.searchParams.get('after') || '0';
+      byId('session-results').scrollTop = 0;
+    }
+  });
+  document.addEventListener('htmx:before:swap', e => {
+    const action = new URL(e.detail.ctx.request.action, location.href);
+    if (action.pathname.endsWith('/sessions')) {
+      const q = action.searchParams;
+      if (q.get('after') !== byId('rail-after').value ||
+          q.get('filter') !== byId('session-filter').value ||
+          q.get('find') !== byId('session-find').value) e.preventDefault();
+      return;
+    }
+    if (!action.pathname.endsWith('/state')) return;
+    stateView = saveStateView();
+  });
   document.addEventListener('htmx:after:swap', e => {
     if (!new URL(location.href).searchParams.has('run') && byId('state').dataset.run !== initialRun) { location.reload(); return; }
+    const action = new URL(e.detail.ctx.request.action, location.href);
+    if (action.pathname.endsWith('/state')) restoreStateView(stateView);
     const graph = byId('graph-scroll');
     if (graph) {
-      graph.scrollTop = graphScroll;
-      const action = new URL(e.detail.ctx.request.action, location.href);
       if (action.pathname.endsWith('/graph')) graph.scrollTop += byId('static-rows').getBoundingClientRect().top - graph.getBoundingClientRect().top;
       const summary = document.querySelector('[data-static] summary');
       if (summary) summary.textContent = graph.dataset.staticCount + ' static inputs';
     }
-    byId('rail-after').value = document.querySelector('.rail-count').dataset.after;
+    if (action.pathname.endsWith('/sessions')) byId('rail-after').value = document.querySelector('.rail-count').dataset.after;
     const phase = byId('log-phase'), choice = phase.value;
     if (document.activeElement !== phase && byId('phase-options')) {
       phase.replaceChildren(byId('phase-options').content.cloneNode(true));
@@ -153,7 +201,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     byId('log-mode').textContent = byId('state').dataset.live === '1' ? 'Live' : 'Captured';
     if (following) box.scrollTop = box.scrollHeight;
-    if (location.hash) selectNode();
   });
   window.addEventListener('hashchange', selectNode);
   const poll = async () => { if (following && (!exhausted || byId('state').dataset.live === '1')) await load(); setTimeout(poll,1000); };

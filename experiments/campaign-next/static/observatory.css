@@ -24,13 +24,14 @@ h1, h2, p, pre { margin: 0; }
 h1 { font: 600 20px/1.25 var(--mono); overflow-wrap: anywhere; }
 h2 { font-size: 12px; }
 pre { font: inherit; }
-.shell { display: grid; grid-template-columns: 290px minmax(0,1fr); height: 100dvh; }
-.sidebar { border-right: 1px solid var(--line); background: #eeefe8; min-width: 0; display: flex; flex-direction: column; padding: 8px; }
+.shell { display: grid; grid-template-columns: 290px minmax(0,1fr); grid-template-rows: minmax(0,1fr); height: 100dvh; overflow: hidden; }
+.sidebar { border-right: 1px solid var(--line); background: #eeefe8; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 8px; }
+.sidebar > :not(#session-results) { flex: none; }
 .brand { font: 700 12px/1.5 var(--mono); margin-bottom: 10px; }
 .brand small { display: block; font-size: 10px; color: var(--muted); letter-spacing: .08em; }
 #rail-controls { display: grid; gap: 4px; margin: 4px 0; }
 #rail-controls label { display: grid; grid-template-columns: 36px minmax(0,1fr); }
-#session-results { overflow: auto; min-height: 0; overscroll-behavior: contain; }
+#session-results { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .rail-count, .snapshot { font: 10px/1.5 var(--mono); color: var(--muted); padding: 2px 6px; }
 .session-list { list-style: none; padding: 0; margin: 0; }
 .session-link { display: block; border-top: 1px solid var(--line); padding: 3px 6px; color: var(--ink); }
@@ -43,9 +44,10 @@ pre { font: inherit; }
 .status[data-status="built"], .status[data-status="already-valid"] { color: var(--green); }
 .status[data-status="failed"], .status[data-status="interrupted"] { color: var(--red); }
 .status[data-status="timed-out"], .status[data-status="incomplete"] { color: var(--amber); }
-.main { min-width: 0; overflow: auto; padding: 8px 12px; }
-.content { min-width: 0; height: 100%; display: flex; flex-direction: column; gap: 6px; }
-#state { min-width: 0; flex: 0 0 auto; }
+.main { min-width: 0; min-height: 0; overflow: hidden; padding: 8px 12px; }
+.content { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0,1fr) minmax(0,1fr); gap: 6px; }
+#state { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0,1fr); gap: 6px; }
+.session-summary { min-width: 0; min-height: 0; max-height: 25dvh; overflow: auto; overscroll-behavior: contain; }
 .summary-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 .summary-head > div { flex: 0 0 auto; }
 .record-mode { border: 1px solid var(--line); padding: 2px 6px; }
@@ -59,10 +61,10 @@ pre { font: inherit; }
 .native-result { border-top: 1px solid var(--line); }
 .native-result pre { max-height: 22vh; overflow: auto; font-family: var(--mono); }
 summary { cursor: pointer; padding: 2px 6px; }
-.graph-panel { border: 1px solid var(--line); margin-top: 4px; }
-.panel-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.graph-panel { border: 1px solid var(--line); min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.panel-head { flex: none; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 3px 6px; border-bottom: 1px solid var(--line); }
 .panel-head > span { color: var(--muted); }
-.graph-scroll { max-height: 27vh; overflow: auto; min-height: 90px; overscroll-behavior: contain; padding: 2px 6px; }
+.graph-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 2px 6px; }
 .graph-node { padding: 2px 6px; padding-left: calc(6px + var(--depth)*12px); font-family: var(--mono); width: max-content; min-width: 100%; border-left: 1px solid var(--line); }
 .graph-node:target { background: #dfe8df; }
 .graph-node > span, .graph-node > a.node-output { margin-left: 8px; }
@@ -72,10 +74,10 @@ summary { cursor: pointer; padding: 2px 6px; }
 .failure { color: var(--red); border-bottom: 1px solid var(--line); padding: 2px 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
 #selected-node { padding: 2px 6px; font-family: var(--mono); border-bottom: 1px solid var(--line); }
 .paging { display: flex; flex-wrap: wrap; gap: 6px; padding: 3px 6px; }
-.log-panel { min-width: 0; min-height: 180px; flex: 1 0 180px; border: 1px solid var(--line); background: #fffefa; display: flex; flex-direction: column; }
+.log-panel { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); background: #fffefa; display: flex; flex-direction: column; }
 .log-panel input { width: 16ch; }
 .log-panel select { max-width: 38ch; }
-.log-scroll { flex: 1; min-height: 130px; overflow: auto; overscroll-behavior: contain; }
+.log-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .log-rows { width: max-content; min-width: 100%; font-family: var(--mono); }
 .log-row { display: grid; grid-template-columns: 12ch 23ch auto; border-bottom: 1px solid #e6e9e0; }
 .log-row time, .log-activity { position: sticky; background: #fffefa; white-space: nowrap; z-index: 1; padding: 1px 6px; text-align: left; }
@@ -86,16 +88,19 @@ summary { cursor: pointer; padding: 2px 6px; }
 #log-cursor { display: none; }
 mark { background: #eee0a2; color: var(--ink); }
 @media (max-width: 800px) {
-  .shell { grid-template-columns: minmax(0,1fr); height: auto; }
-  .sidebar { max-height: 20vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  .shell { display: block; height: auto; overflow: visible; }
+  .sidebar { height: clamp(230px,34dvh,320px); border-right: 0; border-bottom: 1px solid var(--line); }
   .brand { margin-bottom: 2px; }
   #rail-controls { grid-template-columns: 1fr 1fr; }
   .main { overflow: visible; padding: 6px; }
-  .content { height: auto; }
+  .content { display: flex; flex-direction: column; height: auto; }
+  #state { display: block; }
+  .session-summary { max-height: none; overflow: visible; }
   .summary-head { display: block; }
   .summary-head > div { margin-top: 3px; }
   .facts { grid-template-columns: minmax(0,1fr) auto; }
   .drv-fact { grid-column: 1/-1; }
-  .graph-scroll { max-height: 12vh; }
-  .log-panel { flex: none; height: 40vh; }
+  .graph-panel { margin-top: 6px; }
+  .graph-scroll { flex: none; max-height: 32dvh; }
+  .log-panel { flex: none; height: max(260px,50dvh); }
 }

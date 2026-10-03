@@ -304,7 +304,8 @@ std::string sidebar(const json &v, const std::string &run) {
     out += "<option>" + std::string(s) + "</option>";
   out += "</select></label><label>Find <input name=\"find\" "
          "id=\"session-find\" type=\"search\" "
-         "placeholder=\"Name\"></label></form><div id=\"session-results\">" +
+         "placeholder=\"Name\"></label></form><div id=\"session-results\" "
+         "tabindex=\"0\" role=\"region\" aria-label=\"Sessions\">" +
          web_sessions(v, run, "all", "", 0) + "</div></aside>";
   return out;
 }
@@ -438,8 +439,10 @@ std::string web_state(const json &v, const std::string &run,
   auto st = status(v, *s);
   Graph g(v, *s);
   auto count = g.reachable.size() - g.primary.size();
-  out += "<header class=\"summary-head\"><h1>" + escape(label(*s)) +
-         "</h1><div>" + badge(st) + " <span class=\"record-mode\">" +
+  out += "<div class=\"session-summary\" tabindex=\"0\" role=\"region\" "
+         "aria-label=\"Session facts\"><header class=\"summary-head\"><h1>" +
+         escape(label(*s)) + "</h1><div>" + badge(st) +
+         " <span class=\"record-mode\">" +
          (v.value("live", false) ? "Live · recording" : "Recorded") +
          "</span></div></header>";
   if (v.contains("cohort") && v.at("cohort").is_object()) {
@@ -479,10 +482,11 @@ std::string web_state(const json &v, const std::string &run,
     if (text(e, "kind") == "nix.build-result")
       out += "<pre>" + escape(e.at("payload").dump(2)) + "</pre>";
   out += "</details><template id=\"phase-options\">" + phase_options(v) +
-         "</template><section class=\"graph-panel\"><header "
+         "</template></div><section class=\"graph-panel\"><header "
          "class=\"panel-head\"><h2>Dependency graph</h2><span>Static inputs · "
          "activity overlaid</span></header><p id=\"selected-node\" "
          "hidden></p><div id=\"graph-scroll\" class=\"graph-scroll\" "
+         "tabindex=\"0\" role=\"region\" aria-label=\"Dependency graph\" "
          "data-static-count=\"" +
          std::to_string(count) + "\">" + failure(v, st);
   out += g.node({g.root, "", 0, false, false}, true);
@@ -547,11 +551,13 @@ std::string web_page(const json &v, const std::string &run,
          "id=\"find-count\"></span><label>Phase <select "
          "id=\"log-phase\">" +
          phase_options(v);
-  out += "</select></label><a href=\"./?" + escape(query(id)) +
-         "\">All output</a><span id=\"console-state\" "
-         "role=\"status\"></span></header><div class=\"log-scroll\" "
-         "id=\"log-scroll\"><div class=\"log-rows\" id=\"log-rows\" "
-         "role=\"log\" aria-label=\"Build output\">";
+  out +=
+      "</select></label><a href=\"./?" + escape(query(id)) +
+      "\">All output</a><span id=\"console-state\" "
+      "role=\"status\"></span></header><div class=\"log-scroll\" "
+      "id=\"log-scroll\" tabindex=\"0\" role=\"region\" "
+      "aria-label=\"Output console\"><div class=\"log-rows\" id=\"log-rows\" "
+      "role=\"log\" aria-label=\"Build output\">";
   for (auto &r : v.at("logs"))
     out += log_row(r);
   if (v.at("logs").empty())
