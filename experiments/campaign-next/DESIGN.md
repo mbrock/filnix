@@ -33,7 +33,7 @@ fonts are used; no Berkeley Mono font files or license are assumed.
 ## Decisions: before → after
 
 - **1. Rail:** Ellipsized name → full mono name wrapping above `built · 2216 ev`. Dense ruled list; 50-row replacement windows, `Previous 50`, `Show next 50`. `Filter` and name-only `Find`; state filters remain available at zero. Selected row and run links remain. **Doctrine 3, 4, 5, 7; M3.**
-- **2. Campaign:** Passive arithmetic → clickable `N successful`, `N failed/interrupted`, `N timed out`, `N unattempted`. Single horizontally scrollable line retains roots, settled fraction, zero failure modes and admission-stop reason. `Follow latest` remains `./`. A root count already present in the recorded campaign name is not printed twice. **Doctrine 2, 4, 8; M1.**
+- **2. Campaign:** Passive arithmetic → clickable `N successful`, `N failed/interrupted`, `N timed out`, `N unattempted`. Single horizontally scrollable line retains roots, settled fraction, zero failure modes and admission-stop reason. `Follow latest` explicitly uses `./?follow=1`; `./` opens the overview. A root count already present in the recorded campaign line's name is not printed twice. **Doctrine 2, 4, 8; M1.**
 - **3. Graph:** Recursive bootstrap closure → root, recorded phase jumps, exact `N static inputs` disclosure, useful direct children and additional currently active builds. Collapsed closure has no mounted descendants. `outputs · out` disappears; other requested sets remain, e.g. `outputs · out, dev`. Actual repeated vertices alone get `reference ·`. **Doctrine 2, 3, 4, 7, 10.**
 - **4. Limit:** One notice per subtree → one `Remaining dependencies omitted (500-node limit).` per capped window. `Show next 500` and `Previous 500` replace that window; they do not accumulate DOM. **Doctrine 4, 7, 8.**
 - **5. Output:** Footer below tree → visible peer pane with independent scrolling. `Build output`, `Live` / `Captured`, full IDs, `Find`, `Pause` / `Follow`, `End`, `Phase`, `All output`. Raw text, elapsed times and horizontal message scrolling remain. **Doctrine 2, 3, 5, 7, 13; M1.**
@@ -78,7 +78,7 @@ checks did not exercise this interaction.
   pushing the graph or output out of view. **Doctrine 3, 5, 6; M3.**
 - **Refresh:** reset horizontal positions and repeated fragment jumps → retain
   both axes, graph-region keyboard focus, selected-node label and native-result
-  disclosure through state polls and Pause's state clone. Fragment selection
+  disclosure through state polls; Pause no longer clones state. Fragment selection
   scrolls on navigation, not every refresh. **Doctrine 5, 7, 12.**
 - **Rail response order:** stale page-zero poll can replace page 50 → page
   intent is set before its request; only responses matching the current page,
@@ -94,7 +94,55 @@ inventing controls. Stable scrollbar gutters reserve space without altering
 the type scale or adding padding decoration. Raw messages and long paths
 remain horizontally scrollable; visible edge clipping is not truncation.
 
+## Native overview, terminal styling and idle work
+
+The next public inspection confirmed the same completed 82-root campaign and
+raw ESC bytes in the log API, including the reported FLAC dependency timeout.
+The user's screenshot shows Chrome's Page Unresponsive dialog, but a 12-second
+Chromium observation of the public FFmpeg view did not reproduce a long task
+or JavaScript error. That page did repeatedly replace settled state/list HTML.
+Reducing that unnecessary work is justified independently; it is not a proven
+explanation of the reported freeze or a claim about the user's machine.
+
+- **Entry:** silently selected latest FFmpeg session → campaign overview with
+  `Package`, `State`, `Events`, `Output lines`, `Filter`, `Find` and clickable
+  arithmetic. One flat table, not summary cards or a duplicate rail. Names wrap
+  without clipping; states remain single words. Unattempted roots are included
+  in `all`. `Follow latest` opts into details; the brand returns to the overview.
+  **Doctrine 2, 3, 4, 10, 12; M1, M3.**
+- **Read cost:** front-page/rail reads materialized a selected graph and output
+  → summary-only queries. Fifty replacement rows, no collapsed graph or console
+  mounted on the overview. **Doctrine 7.**
+- **Idle:** settled pages polled and replaced state/list HTML → no periodic data
+  requests when admission/observation has ended. Live polling remains, including
+  gaps between roots; hidden pages suppress requests. **Doctrine 7, 12.**
+- **Output:** replacement glyph plus `[31;1m` clutter → escaped, styled SGR spans
+  using a paper-readable ANSI palette, indexed256 and truecolor. Failure reasons
+  and initial/incremental output share the renderer. Unsupported controls stay
+  visibly sanitized; original bytes stay in the record. **Doctrine 2, 4, 5, 8.**
+- **Find/append:** repeated message reconstruction → highlights preserve SGR
+  spans and cross-span matches, cached unchanged searches, one fragment append
+  and bounded rows. Pause updates intent without cloning the graph and rejects
+  stale implicit-latest responses. **Doctrine 5, 7, 12.**
+- **Construction:** hand-built markup gains a small block-scoped C++ writer
+  used by the overview and SGR output, sharing escaped text/attributes with the
+  existing renderer. No AST or ambient coroutine state; not a complete Tagflow
+  port or a new web framework. NXT is pinned to current main at verification,
+  with its new structured task-group API. **Doctrine 6, 7, 12.**
+
 ## Component contracts
+
+### Overview
+
+`./` shows the campaign name, `Recorded` or `Live · recording`, its arithmetic,
+the list controls and the four-column table. There is no selected package,
+derivation fact row, dependency graph or console. The table/list region scrolls
+independently of this fixed chrome and has at most 50 rows; headers are sticky.
+Counts, Find and pagination operate on this same table. `No sessions · <filter>`
+is the empty filtered result. With no campaign, the heading is `Build observatory`
+and the table contains available standalone recordings; an empty database has
+zero rows, not an invented session. A root without an attempt has `unattempted`,
+zero events/output and no link. No tabs, cards or explanatory subtitle are added.
 
 ### Rail and campaign
 
@@ -163,22 +211,31 @@ metadata stay labeled as such. There are no success labels inferred for inputs.
 Columns are 12ch time, 23ch activity, then unwrapped message. Time and activity
 are sticky when scrolling horizontally; even unsigned 64-bit activity IDs fit
 and copy exactly. No activity is `—`, with copying disabled. UTF-8 replacement
-and nonprinting control-byte replacement are display-only: BLOBs and events
-remain byte-exact, HTML is escaped, and Find inserts text/mark nodes, not HTML.
+and nonprinting control-byte replacement are display-only. Recognized terminal
+SGR renders ANSI16, indexed256 and truecolor, bold/dim/italic/underline/strike,
+inverse and resets as escaped spans. Semicolon/colon parameters and the empty
+reset are supported. Styling starts fresh per observation: no terminal cursor
+emulation or cross-record state reconstruction is claimed. Incomplete and
+unsupported controls remain visibly sanitized. BLOBs, JSON APIs, replay and
+Parquet stay byte-exact. Find inserts text/mark nodes without destroying spans,
+counts matches crossing styles once, and inherits the original foreground.
+**Doctrine 4, 5, 8; M1.**
 
 The initial window is the last 200 observations for the requested activity, or
 all activities. Streaming appends exclusive-cursor pages of at most 256 rows
 and trims the old window. `Pause` stops log requests and pins the current run;
 graph/state recording continues. Scrolling away from the end or using Find
 also pauses. `Follow` refreshes the tail and follows new output. `End` refreshes
-the tail without changing the pause state. Settled exhausted logs stop polling.
+the tail without changing the pause state. Settled pages do not poll logs or
+state/list HTML. Active campaigns retain state/list updates; hidden pages pause
+requests. Stopped admission does not turn an incomplete recording into live.
 `Phase` / phase buttons pause and fetch the first page after that exact phase
 event, with its activity ID; `All output` clears the activity restriction.
 
 Failed, interrupted and timed-out roots put a reason at the top of the graph,
 with their output tail already visible. Missing phase/reason is explicitly
-`phase unavailable` / `no recorded reason`. Terminal SGR decoration is removed
-only from the report reason; the native result keeps it. Errors remain text,
+`phase unavailable` / `no recorded reason`. Terminal SGR is styled in the report
+reason and output pane; the native result retains the JSON representation. Errors remain text,
 not a toast, modal or invented per-node verdict. Zero campaign failure counts
 are not suppressed.
 
@@ -186,12 +243,15 @@ are not suppressed.
 
 | URL / state | Meaning |
 | --- | --- |
-| `./` | Follow current/latest session and its output tail |
+| `./` | Campaign overview, no implicitly selected session |
+| `./?follow=1` | Follow current/latest session and its output tail |
 | `?run=<id>` | Pin a recording; its package remains the title |
 | `&activity=<unsigned decimal id>` | Restrict output to that Nix activity |
 | `#drv-<lowercase hex of full drv bytes>` | Existing stable node key; lazy-load containing window if necessary |
 | `&filter=<word>&find=<name>` | Inspectable rail state, retained in session links |
+| `./overview` | Native campaign-summary fragment; polled only while admitting/observing |
 | `./sessions?run=…&filter=…&find=…&after=N` | 50-row replacement window; native rendered HTML |
+| `./sessions?overview=1&filter=…&find=…&after=N` | Same window as the four-column overview table |
 | `./graph?run=…&after=N` / `&node=<full drv>` | 500-row replacement window or window containing a node |
 | `./logs?run=…&activity=…&after=<seq>` | Exclusive log cursor, native escaped HTML / OOB compatibility |
 | `./logs?…&tail=1` | Latest 200 rows, independent of the previous cursor |
@@ -230,7 +290,7 @@ The packaged Nix build and both Meson targets pass, including six native
 integration groups. Targeted renderer/data regressions cover the 500-row
 boundary and deep-link window, exact unsigned activity IDs, real phase
 cursors, unsupported phase records remaining raw, direct/transitive output-set
-differences, canonical failure states, escaped reasons and terminal SGR removal.
+differences, canonical failure states, escaped reasons and terminal SGR styling.
 Unsupported phase fields, SGR-decorated reasons and differing output sets each
 failed before their fixes.
 
@@ -271,3 +331,19 @@ uv run --with playwright python experiments/campaign-next/tests/test_observatory
 
 Use `--chromium` to specify a Chromium executable on another machine. Browser
 dependencies are not added to the native package or its normal Meson tests.
+
+The overview/SGR pass was also checked against the installed Nix package on a
+private copy of that closed backup. Both native Meson targets and the packaged
+check phase pass with NXT main pinned at
+[`f810d9a`](https://github.com/mbrock/nxtui/commit/f810d9a27a6e74cbde721a8d36d718b2602efa01).
+The browser suite measures **402 overview DOM nodes**, verifies no background
+state/list/log requests during 6.5-second settled overview and failed-session
+intervals, and confirms the existing output nodes are not replaced while idle.
+It exercises overview wheel scrolling/sticky headers, next/previous 50-row
+windows, count filtering, an empty Find result, actual SGR foreground/bold
+styles, and Find crossing a styled/plain-text boundary without losing color.
+The same six desktop sizes and Chromium touch checks pass without JavaScript
+errors; overview, empty/failed filter, SGR, built, timed-out, short-window and
+mobile captures were inspected. This does not establish that the reported
+unresponsive-page failure is reproduced or fixed. FLAC's recorded build timeout
+is unchanged; no production database connection, retry or deployment was made.

@@ -1,11 +1,62 @@
 /* HTMX owns state/rail/graph HTML. This console owns its bounded log window. */
 document.addEventListener('DOMContentLoaded', () => {
   const byId = id => document.getElementById(id);
+  function railState() {
+    byId('rail-after').value = '0';
+    byId('session-results').scrollTop = 0;
+    const u = new URL(location.href);
+    u.searchParams.set('filter', byId('session-filter').value);
+    u.searchParams.set('find', byId('session-find').value);
+    history.replaceState(null, '', u);
+  }
+  const params = new URL(location.href).searchParams;
+  byId('session-filter').value = params.get('filter') || 'all';
+  byId('session-find').value = params.get('find') || '';
+  if (params.has('filter') || params.has('find')) htmx.trigger(byId('rail-controls'), 'change');
+  byId('rail-controls').addEventListener('change', railState);
+  byId('session-filter').addEventListener('input', railState);
+  byId('session-find').addEventListener('input', () => { railState(); htmx.trigger(byId('rail-controls'), 'change'); });
+  document.addEventListener('click', e => {
+    const filter = e.target.closest('[data-filter]');
+    if (filter) { byId('session-filter').value = filter.dataset.filter; railState(); htmx.trigger(byId('rail-controls'), 'change'); }
+  });
+  document.addEventListener('htmx:before:request', e => {
+    if (document.hidden) { e.preventDefault(); return; }
+    const action = new URL(e.detail.ctx.request.action, location.href);
+    if (action.pathname.endsWith('/sessions') && e.detail.ctx.sourceElement.matches('button')) {
+      byId('rail-after').value = action.searchParams.get('after') || '0';
+      byId('session-results').scrollTop = 0;
+    }
+  });
+  document.addEventListener('htmx:before:swap', e => {
+    const action = new URL(e.detail.ctx.request.action, location.href);
+    if (action.pathname.endsWith('/sessions')) {
+      const q = action.searchParams;
+      if (q.get('after') !== byId('rail-after').value ||
+          q.get('filter') !== byId('session-filter').value ||
+          q.get('find') !== byId('session-find').value) e.preventDefault();
+    }
+  });
+  document.addEventListener('htmx:after:swap', e => {
+    const action = new URL(e.detail.ctx.request.action, location.href);
+    if (action.pathname.endsWith('/sessions')) byId('rail-after').value = document.querySelector('.rail-count').dataset.after;
+    const summary = byId('overview-summary') || byId('state');
+    const form = byId('rail-controls');
+    if (summary?.dataset.watch === '0' && form.getAttribute('hx-trigger').includes('every')) {
+      form.setAttribute('hx-trigger', 'change, submit');
+      htmx.process(form, true);
+      htmx.trigger(form, 'change'); // One final settled list, then no idle polling.
+    }
+  });
+  // The overview has no selected session, graph, console or log polling.
+  if (byId('overview-summary')) return;
   const initialRun = byId('state').dataset.run;
   const cursor = byId('log-cursor');
   const rows = byId('log-rows');
   const box = byId('log-scroll');
-  let following = true, pending = null, epoch = 0, exhausted = false;
+  let following = byId('state').dataset.live === '1', pending = null, epoch = 0;
+  let timer, wasLive = following;
+  const searched = new WeakMap();
   let stateView;
   const message = value => { byId('console-state').textContent = value; };
   function saveStateView() {
@@ -37,39 +88,57 @@ document.addEventListener('DOMContentLoaded', () => {
   const pin = () => {
     const u = new URL(location.href);
     u.searchParams.set('run', initialRun);
+    u.searchParams.delete('follow');
     history.replaceState(null, '', u);
-    // Reprocess a fresh element: do not leave an old implicit-latest timer.
-    const view = saveStateView();
-    const old = byId('state'), replacement = old.cloneNode(true);
-    replacement.setAttribute('hx-get', './state?' + new URLSearchParams({run: initialRun, activity: cursor.dataset.activity}));
-    old.replaceWith(replacement);
-    htmx.process(replacement);
-    restoreStateView(view);
+    byId('state').setAttribute('hx-get', './state?' + new URLSearchParams({run: initialRun, activity: cursor.dataset.activity}));
   };
   function setFollow(value) {
     following = value;
-    exhausted = false;
     byId('log-follow').textContent = value ? 'Pause' : 'Follow';
     if (!value) { epoch++; pending?.abort(); pin(); }
+    schedule();
   }
   function find() {
-    const term = byId('log-find').value.toLowerCase();
+    const term = byId('log-find').value;
+    const pattern = term ? new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu') : null;
     let matches = 0;
-    for (const row of rows.querySelectorAll('.log-row')) {
+    const lines = rows.querySelectorAll('.log-row');
+    for (const row of lines) {
       const pre = row.querySelector('pre');
-      const text = pre.textContent;
-      pre.replaceChildren();
-      let pos = 0, next;
-      while (term && (next = text.toLowerCase().indexOf(term, pos)) >= 0) {
-        pre.append(document.createTextNode(text.slice(pos, next)));
-        const mark = document.createElement('mark');
-        mark.textContent = text.slice(next, next + term.length);
-        pre.append(mark); pos = next + term.length; matches++;
+      const saved = searched.get(row);
+      if (saved?.term === term) { matches += saved.matches; continue; }
+      // Remove only our highlights. Keep the server's SGR spans and styles.
+      if (saved?.term) {
+        for (const mark of pre.querySelectorAll('mark')) mark.replaceWith(document.createTextNode(mark.textContent));
+        pre.normalize();
       }
-      pre.append(document.createTextNode(text.slice(pos)));
-      row.hidden = !!term && !text.toLowerCase().includes(term);
+      const ranges = pattern ? [...pre.textContent.matchAll(pattern)].map(m => [m.index, m.index + m[0].length]) : [];
+      if (ranges.length) {
+        const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        let offset = 0;
+        for (const node of nodes) {
+          const text = node.nodeValue, end = offset + text.length;
+          const fragment = document.createDocumentFragment();
+          let pos = 0, changed = false;
+          for (const [start, stop] of ranges) {
+            if (start >= end || stop <= offset) continue;
+            const from = Math.max(start - offset, 0), to = Math.min(stop - offset, text.length);
+            fragment.append(document.createTextNode(text.slice(pos, from)));
+            const mark = document.createElement('mark');
+            mark.textContent = text.slice(from, to); fragment.append(mark);
+            pos = to; changed = true;
+          }
+          if (changed) { fragment.append(document.createTextNode(text.slice(pos))); node.replaceWith(fragment); }
+          offset = end;
+        }
+      }
+      row.hidden = !!term && !ranges.length;
+      searched.set(row, {term, matches: ranges.length});
+      matches += ranges.length;
     }
-    byId('find-count').textContent = (term ? matches + ' matches · ' : '') + rows.querySelectorAll('.log-row').length + ' loaded';
+    byId('find-count').textContent = (term ? matches + ' matches · ' : '') + lines.length + ' loaded';
   }
   async function load({tail = false, after = cursor.dataset.after, activity = cursor.dataset.activity, replace = false} = {}) {
     if (pending) return;
@@ -82,14 +151,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (generation !== epoch) return;
-      exhausted = doc.querySelectorAll('.log-row').length === 0;
       if (replace) rows.replaceChildren();
-      for (const row of doc.querySelectorAll('.log-row')) rows.append(row);
+      const added = doc.querySelectorAll('.log-row');
+      const fragment = document.createDocumentFragment();
+      for (const row of added) fragment.append(row);
+      rows.append(fragment);
       const next = doc.getElementById('log-cursor');
       cursor.dataset.after = next.dataset.after;
       cursor.dataset.activity = activity;
-      while (rows.querySelectorAll('.log-row').length > 256) rows.firstElementChild.remove();
-      if (rows.querySelector('.log-row')) rows.querySelector('.log-empty')?.remove();
+      if (added.length) rows.querySelector('.log-empty')?.remove();
+      while (rows.children.length > 256) rows.firstElementChild.remove();
       if (!rows.children.length) { const p = document.createElement('p'); p.className = 'log-empty'; p.textContent = 'No captured output'; rows.append(p); }
       find();
       if (following || tail) box.scrollTop = box.scrollHeight;
@@ -136,51 +207,22 @@ document.addEventListener('DOMContentLoaded', () => {
       byId('graph-scroll').scrollLeft += node.querySelector('.node-name').getBoundingClientRect().left - byId('graph-scroll').getBoundingClientRect().left;
     }
   }
-  function railState() {
-    byId('rail-after').value = '0';
-    byId('session-results').scrollTop = 0;
-    const u = new URL(location.href);
-    u.searchParams.set('filter', byId('session-filter').value);
-    u.searchParams.set('find', byId('session-find').value);
-    history.replaceState(null, '', u);
-  }
-  const params = new URL(location.href).searchParams;
-  byId('session-filter').value = params.get('filter') || 'all';
-  byId('session-find').value = params.get('find') || '';
-  if (params.has('filter') || params.has('find')) htmx.trigger(byId('rail-controls'), 'change');
-  byId('rail-controls').addEventListener('change', railState);
-  byId('session-filter').addEventListener('input', railState);
-  byId('session-find').addEventListener('input', () => { railState(); htmx.trigger(byId('rail-controls'), 'change'); });
-  byId('log-find').addEventListener('input', () => { if (following) setFollow(false); find(); });
+  byId('log-find').addEventListener('input', () => { setFollow(false); find(); });
   byId('log-follow').addEventListener('click', () => { if (following) setFollow(false); else { setFollow(true); end(); } });
   byId('log-end').addEventListener('click', end);
   box.addEventListener('scroll', () => { if (following && box.scrollHeight-box.scrollTop-box.clientHeight > 40) setFollow(false); });
   byId('log-phase').addEventListener('change', e => { const o = e.target.selectedOptions[0]; if (o.value) jumpPhase(o.value,o.dataset.activity); });
   document.addEventListener('click', async e => {
-    const filter = e.target.closest('[data-filter]');
-    if (filter) { byId('session-filter').value = filter.dataset.filter; railState(); htmx.trigger(byId('rail-controls'), 'change'); }
     const phase = e.target.closest('[data-phase-seq]');
     if (phase) jumpPhase(phase.dataset.phaseSeq,phase.dataset.phaseActivity);
     const copy = e.target.closest('[data-copy]');
     if (copy) { try { await navigator.clipboard.writeText(copy.dataset.copy); message('Copied'); } catch { message('Copy unavailable'); } }
   });
-  document.addEventListener('htmx:before:request', e => {
-    const action = new URL(e.detail.ctx.request.action, location.href);
-    if (action.pathname.endsWith('/sessions') && e.detail.ctx.sourceElement.matches('button')) {
-      byId('rail-after').value = action.searchParams.get('after') || '0';
-      byId('session-results').scrollTop = 0;
-    }
-  });
   document.addEventListener('htmx:before:swap', e => {
     const action = new URL(e.detail.ctx.request.action, location.href);
-    if (action.pathname.endsWith('/sessions')) {
-      const q = action.searchParams;
-      if (q.get('after') !== byId('rail-after').value ||
-          q.get('filter') !== byId('session-filter').value ||
-          q.get('find') !== byId('session-find').value) e.preventDefault();
-      return;
-    }
     if (!action.pathname.endsWith('/state')) return;
+    const pinned = new URL(location.href).searchParams.get('run');
+    if (pinned && action.searchParams.get('run') !== pinned) { e.preventDefault(); return; }
     stateView = saveStateView();
   });
   document.addEventListener('htmx:after:swap', e => {
@@ -193,18 +235,27 @@ document.addEventListener('DOMContentLoaded', () => {
       const summary = document.querySelector('[data-static] summary');
       if (summary) summary.textContent = graph.dataset.staticCount + ' static inputs';
     }
-    if (action.pathname.endsWith('/sessions')) byId('rail-after').value = document.querySelector('.rail-count').dataset.after;
+    if (!action.pathname.endsWith('/state')) return;
     const phase = byId('log-phase'), choice = phase.value;
     if (document.activeElement !== phase && byId('phase-options')) {
       phase.replaceChildren(byId('phase-options').content.cloneNode(true));
       phase.value = choice;
     }
     byId('log-mode').textContent = byId('state').dataset.live === '1' ? 'Live' : 'Captured';
+    const live = byId('state').dataset.live === '1';
+    if (following && wasLive && !live) load(); // Drain the final committed tail.
+    wasLive = live;
+    schedule();
     if (following) box.scrollTop = box.scrollHeight;
   });
   window.addEventListener('hashchange', selectNode);
-  const poll = async () => { if (following && (!exhausted || byId('state').dataset.live === '1')) await load(); setTimeout(poll,1000); };
-  setTimeout(poll,1000);
+  function schedule() {
+    clearTimeout(timer);
+    if (following && !document.hidden && byId('state').dataset.live === '1')
+      timer = setTimeout(async () => { await load(); schedule(); }, 1000);
+  }
+  document.addEventListener('visibilitychange', schedule);
+  schedule();
   box.scrollTop = box.scrollHeight;
   find(); selectNode();
 });

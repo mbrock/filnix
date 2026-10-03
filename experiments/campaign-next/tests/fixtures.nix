@@ -24,6 +24,7 @@ rec {
     sleep 0.6
     printf '@nix {"action":"setPhase","phase":"buildPhase"}\n'
     printf 'stderr-after\n' >&2
+    printf '\033[32;1mcolored:\033[0m <text>&\n'
     printf 'binary:\377\n'
     printf '<script>alert(1)</script>\n'
     mkdir -p "$out"

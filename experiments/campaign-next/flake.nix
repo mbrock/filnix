@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:lessrest/filnixpkgs/e63c68034d742160a48ca80640442337e6356cf4";
     nixpkgs.flake = false;
-    nxtui.url = "github:mbrock/nxtui/50e7caffc371960e8473f12b138dcbc925fbdcd2";
+    nxtui.url = "github:mbrock/nxtui/f810d9a27a6e74cbde721a8d36d718b2602efa01";
     nxtui.flake = false;
   };
 

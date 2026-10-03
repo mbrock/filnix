@@ -90,8 +90,9 @@ Intent events retain the manifest, source revision, root index and budgets.
 `cohort.finished` durably records why admission ended. The viewer shows settled,
 successful, failed/interrupted, timed-out, and unattempted roots. Success includes
 already-valid and substituted results, **not just new compilations**. The default
-page follows the latest root; explicit `?run=…` links stay pinned. All links and
-polls work under a stripped reverse-proxy prefix such as `/v2/`.
+page is a campaign overview; `?follow=1` explicitly follows the latest root,
+and `?run=…` links stay pinned. All links and polls work under a stripped
+reverse-proxy prefix such as `/v2/`.
 
 After admission ends, the viewer stays up. Restarting `cohort` against any
 nonempty recording serves it without resuming or retrying builds, including
@@ -220,12 +221,18 @@ never silently resumed or retried after such a failure.
 
 ## Viewer and archive
 
-The NXT HTTP server renders HTML in C++. HTMX polls state every two seconds
-and the session rail every three, without replacing the log pane. The rail
-shows full names, name-only Find, state filters and 50-row replacement windows.
-It is scoped to the selected cohort (at most 256 roots); standalone views
-retain the latest 256 recordings. Campaign counts apply the corresponding
-rail filter, including manifest roots not yet attempted.
+The NXT HTTP server renders HTML in C++. The front page is a campaign overview:
+campaign arithmetic and a dense Package / State / Events / Output lines table,
+with full names, Find, filters and 50-row replacement windows. Unattempted roots
+remain visible without invented session links. Overview/rail reads materialize
+summaries only, not a selected graph or log. A session link opens the graph and
+console; `Follow latest` explicitly opts into the current/latest session.
+
+While recording/admitting, HTMX polls summary/state every two seconds and the
+list every three, without replacing the log pane. Settled recordings have no
+periodic state/list/log requests; hidden pages suppress background requests.
+The rail is scoped to the selected cohort (at most 256 roots); standalone views
+retain the latest 256 recordings. Campaign counts apply the matching list filter.
 
 The graph foreground shows the root, recorded phases, useful direct inputs
 and active reachable builds. Static closure is an exact collapsed count with
@@ -241,9 +248,21 @@ most 256. Find searches this loaded window and reports its size. Pause stops
 log requests and pins the current recording; scrolling away or using Find
 also pauses. Follow refreshes the tail and follows new output; End refreshes
 the tail without changing pause state. Phase jumps use recorded event cursors.
-Settled exhausted logs stop polling. Full activity IDs and times stay visible
-while messages scroll horizontally. [DESIGN.md](DESIGN.md) contains the exact
-labels, component contracts, URL state, limits and visual tokens.
+Full activity IDs and times stay visible while messages scroll horizontally.
+SGR renders escaped spans for ANSI16, indexed256 and truecolor, with bold, dim,
+italic, underline, strike and inverse/reset support. Styling is per observation,
+not a terminal emulator or reconstruction of style across record boundaries.
+Unsupported controls stay visibly sanitized. Raw events, APIs, replay and
+Parquet retain the original bytes. Find preserves styled spans, including
+matches crossing them, and caches unchanged rows rather than rewriting every
+message during empty searches. Batch appends keep the console bounded.
+
+`src/html.hh` supplies a small Tagflow-like block writer for the overview table
+and styled output: owned response bytes, callback-scoped children and escaped
+text/attributes, without an AST, ambient coroutine state or raw-HTML interface.
+The existing renderer shares its escaping; this is a foundation, not a complete
+Tagflow port. [DESIGN.md](DESIGN.md) contains exact labels, component contracts,
+URL state, limits and visual tokens.
 
 Static derivation edges and Nix activity parents are different relationships.
 The graph uses recorded input derivations, overlays observed phase/host/time,

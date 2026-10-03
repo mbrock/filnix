@@ -220,7 +220,7 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
   return rows(sql);
 }
 
-json Dataset::view(std::string run, std::string activity) {
+json Dataset::view(std::string run, std::string activity, bool detail) {
   run = select_run(std::move(run));
   auto filter = " WHERE run=" + quote(run);
   auto request = rows("SELECT payload FROM events" + filter + " AND seq=1");
@@ -259,43 +259,51 @@ json Dataset::view(std::string run, std::string activity) {
       session.update(state);
     }
   }
-  auto activities =
-      rows("SELECT id::VARCHAR AS id,parent::VARCHAR AS parent,"
-           "type,lower(hex(text)) AS text_hex,drv,machine,lower(hex(phase)) AS "
-           "phase_hex,status,start_elapsed_ns,stop_elapsed_ns FROM activities" +
-           filter + " ORDER BY start_elapsed_ns,id LIMIT 2000");
-  for (auto &item : activities) {
-    for (auto key : {"text", "phase"}) {
-      // Render valid UTF-8; byte-exact strings remain in BLOB columns.
-      auto bytes = unhex(item.at(std::string(key) + "_hex").get<std::string>());
-      json value = bytes;
-      item[key] = json::parse(
-          value.dump(-1, ' ', false, json::error_handler_t::replace));
+  json activities = json::array(), output = json::array(),
+       time = json::array({{{"elapsed", 0}}}), phases = json::array(),
+       failures = json::array();
+  // Overview/rail reads do not query or materialize a selected graph or log.
+  if (detail) {
+    activities = rows(
+        "SELECT id::VARCHAR AS id,parent::VARCHAR AS parent,"
+        "type,lower(hex(text)) AS text_hex,drv,machine,lower(hex(phase)) AS "
+        "phase_hex,status,start_elapsed_ns,stop_elapsed_ns FROM activities" +
+        filter + " ORDER BY start_elapsed_ns,id LIMIT 2000");
+    for (auto &item : activities) {
+      for (auto key : {"text", "phase"}) {
+        // Render valid UTF-8; byte-exact strings remain in BLOB columns.
+        auto bytes =
+            unhex(item.at(std::string(key) + "_hex").get<std::string>());
+        json value = bytes;
+        item[key] = json::parse(
+            value.dump(-1, ' ', false, json::error_handler_t::replace));
+      }
     }
+    output = logs(run, activity, 0, true);
+    time = rows("SELECT coalesce(max(elapsed_ns),0) AS elapsed FROM events" +
+                filter);
+    phases = rows(
+        "SELECT seq,elapsed_ns,json_extract_string(payload,'$.id') AS activity,"
+        "json_extract_string(payload,'$.fields[0].string_hex') AS phase_hex "
+        "FROM events" +
+        filter +
+        " AND kind='nix.result' AND "
+        "json_extract_string(payload,'$.type')='104' AND "
+        "json_extract_string(payload,'$.fields[0].string_hex') IS NOT NULL "
+        "ORDER BY seq DESC LIMIT "
+        "256");
+    std::reverse(phases.begin(), phases.end());
+    for (auto &phase : phases) {
+      auto bytes = unhex(phase.at("phase_hex").get<std::string>());
+      phase["phase"] = json::parse(
+          json(bytes).dump(-1, ' ', false, json::error_handler_t::replace));
+    }
+    failures = rows(
+        "SELECT kind,payload FROM events" + filter +
+        " AND kind IN ('nix.build-result','worker.error','run.recorder-error',"
+        "'run.limit-reached','run.cancel-requested') ORDER BY seq DESC LIMIT "
+        "8");
   }
-  auto output = logs(run, activity, 0, true);
-  auto time = rows("SELECT coalesce(max(elapsed_ns),0) AS elapsed FROM events" +
-                   filter);
-  auto phases = rows(
-      "SELECT seq,elapsed_ns,json_extract_string(payload,'$.id') AS activity,"
-      "json_extract_string(payload,'$.fields[0].string_hex') AS phase_hex "
-      "FROM events" +
-      filter +
-      " AND kind='nix.result' AND "
-      "json_extract_string(payload,'$.type')='104' AND "
-      "json_extract_string(payload,'$.fields[0].string_hex') IS NOT NULL "
-      "ORDER BY seq DESC LIMIT "
-      "256");
-  std::reverse(phases.begin(), phases.end());
-  for (auto &phase : phases) {
-    auto bytes = unhex(phase.at("phase_hex").get<std::string>());
-    phase["phase"] = json::parse(
-        json(bytes).dump(-1, ' ', false, json::error_handler_t::replace));
-  }
-  auto failures = rows(
-      "SELECT kind,payload FROM events" + filter +
-      " AND kind IN ('nix.build-result','worker.error','run.recorder-error',"
-      "'run.limit-reached','run.cancel-requested') ORDER BY seq DESC LIMIT 8");
   if (!cohort.is_null()) {
     auto members =
         " FROM runs r JOIN events e ON e.run=r.run AND e.seq=1 WHERE "
@@ -332,22 +340,25 @@ json Dataset::view(std::string run, std::string activity) {
     cohort["stop_reason"] =
         finished.empty() ? json("") : finished[0].at("payload").at("reason");
   }
-  return {
-      {"watermark", watermark_},
-      {"cohort", cohort},
-      {"sessions", sessions},
-      {"session", session},
-      {"recipes",
-       rows("SELECT drv,name,system FROM recipes" + filter + " ORDER BY drv")},
-      {"edges", rows("SELECT parent_drv,child_drv,outputs,dynamic FROM edges" +
-                     filter + " ORDER BY parent_drv,child_drv")},
-      {"activities", activities},
-      {"phases", phases},
-      {"failure_events", failures},
-      {"logs", output},
-      {"cursor", output.empty() ? json(0) : output.back().at("seq")},
-      {"elapsed_now_ns", time[0].at("elapsed")},
-      {"live", false}};
+  return {{"watermark", watermark_},
+          {"cohort", cohort},
+          {"sessions", sessions},
+          {"session", session},
+          {"recipes", detail ? rows("SELECT drv,name,system FROM recipes" +
+                                    filter + " ORDER BY drv")
+                             : json::array()},
+          {"edges",
+           detail
+               ? rows("SELECT parent_drv,child_drv,outputs,dynamic FROM edges" +
+                      filter + " ORDER BY parent_drv,child_drv")
+               : json::array()},
+          {"activities", activities},
+          {"phases", phases},
+          {"failure_events", failures},
+          {"logs", output},
+          {"cursor", output.empty() ? json(0) : output.back().at("seq")},
+          {"elapsed_now_ns", time[0].at("elapsed")},
+          {"live", false}};
 }
 
 json Dataset::export_to(const std::string &directory) {

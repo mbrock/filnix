@@ -1,7 +1,8 @@
 """Read-only browser regressions against a served, representative recording.
 
-Requires a campaign with at least 50 sessions, a built session with captured
-output and more than 500 static inputs. No builds or database writes are issued.
+Requires a completed campaign with more than 50 sessions, a built session with
+captured output and more than 500 static inputs, and one failed session with
+SGR-decorated Nix errors. No builds or database writes are issued.
 Run with: uv run --with playwright python tests/test_observatory.py URL
 Use --screenshots DIRECTORY to retain review captures.
 """
@@ -22,6 +23,12 @@ def scroll(page, selector, delta):
 
 def position(page, selector):
     return page.locator(selector).evaluate("e => [e.scrollLeft, e.scrollTop]")
+
+
+def refresh(page):
+    with page.expect_response(lambda r: "/state?" in r.url):
+        page.evaluate("htmx.trigger(document.querySelector('#state'), 'refresh')")
+    page.wait_for_timeout(150)
 
 
 def geometry(page):
@@ -53,9 +60,118 @@ def main():
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
+        data_requests = []
+        page.on(
+            "request",
+            lambda r: (
+                data_requests.append(r.url)
+                if any(
+                    "/" + path + "?" in r.url or r.url.endswith("/" + path)
+                    for path in ("state", "sessions", "logs", "overview")
+                )
+                else None
+            ),
+        )
         page.goto(base)
+        assert page.locator(".campaign-table tbody tr").count() == 50
+        assert page.locator("#state, #log-rows, #graph-scroll").count() == 0
+        assert "ffmpeg" not in page.title()
+        report["overview_dom"] = page.evaluate("document.querySelectorAll('*').length")
+        assert report["overview_dom"] < 1000
+        cdp = context.new_cdp_session(page)
+        cdp.send("Performance.enable")
+        before = dict(
+            (m["name"], m["value"])
+            for m in cdp.send("Performance.getMetrics")["metrics"]
+        )
+        data_requests.clear()
+        page.wait_for_timeout(6500)
+        after = dict(
+            (m["name"], m["value"])
+            for m in cdp.send("Performance.getMetrics")["metrics"]
+        )
+        assert not data_requests, data_requests
+        report["overview_idle_task_ms"] = 1000 * (
+            after["TaskDuration"] - before["TaskDuration"]
+        )
+        if args.screenshots:
+            page.screenshot(path=str(args.screenshots / "observatory-overview.png"))
         state = page.evaluate("fetch('./api/state').then(r=>r.json())")
-        assert len(state["sessions"]) >= 50, "Use a representative campaign"
+        assert len(state["sessions"]) > 50, "Use a representative campaign"
+        scroll(page, "#session-results", 700)
+        assert position(page, "#session-results")[1] > 100
+        assert page.locator(".campaign-table th").first.evaluate(
+            "e=>Math.abs(e.getBoundingClientRect().top-document.querySelector('#session-results').getBoundingClientRect().top) < 1"
+        )
+        page.locator("#session-results").focus()
+        page.locator("#session-results").press("End")
+        page.get_by_role("button", name="Show next 50", exact=True).click()
+        page.wait_for_function(
+            "document.querySelector('.rail-count').dataset.after === '50'"
+        )
+        assert page.locator(".campaign-table tbody tr").count() == min(
+            len(state["sessions"]) - 50, 50
+        )
+        assert position(page, "#session-results")[1] == 0
+        page.locator("#session-results").press("End")
+        page.get_by_role("button", name="Previous 50", exact=True).click()
+        page.wait_for_function(
+            "document.querySelector('.rail-count').dataset.after === '0'"
+        )
+        failed = next(s for s in state["sessions"] if s["outcome"] == "failed")
+        page.locator('[data-filter="failed"]').click()
+        page.wait_for_function(
+            "document.querySelectorAll('.campaign-table tbody tr').length === 1"
+        )
+        assert (
+            page.locator(".campaign-table tbody").inner_text().find(failed["name"]) >= 0
+        )
+        if args.screenshots:
+            page.screenshot(
+                path=str(args.screenshots / "observatory-overview-failed.png")
+            )
+        page.locator("#session-find").fill("no-such-package")
+        page.wait_for_function(
+            "document.querySelectorAll('.campaign-table tbody tr').length === 0"
+        )
+        assert page.locator(".empty").text_content() == "No sessions · failed"
+        if args.screenshots:
+            page.screenshot(
+                path=str(args.screenshots / "observatory-overview-empty.png")
+            )
+        page.goto(base + "?run=" + failed["run"])
+        red = (
+            page.locator("#log-rows pre")
+            .filter(has_text="Cannot build")
+            .locator("span")
+            .filter(has_text="error:")
+            .first
+        )
+        assert red.evaluate("e=>getComputedStyle(e).color") == "rgb(150, 46, 41)"
+        assert red.evaluate("e=>getComputedStyle(e).fontWeight") == "700"
+        page.evaluate(
+            "window.originalLog = document.querySelector('#log-rows').firstElementChild"
+        )
+        data_requests.clear()
+        page.wait_for_timeout(6500)
+        assert not data_requests, data_requests
+        assert page.evaluate(
+            "window.originalLog === document.querySelector('#log-rows').firstElementChild"
+        )
+        assert "�[31;1m" not in page.locator("#log-rows").text_content()
+        page.locator("#log-find").fill("error: Cannot")
+        assert page.locator("#find-count").text_content().startswith("1 matches")
+        assert (
+            red.locator("mark").evaluate("e=>getComputedStyle(e).color")
+            == "rgb(150, 46, 41)"
+        )
+        page.locator("#log-find").fill("")
+        assert page.locator("#log-rows mark").count() == 0
+        assert red.evaluate("e=>getComputedStyle(e).color") == "rgb(150, 46, 41)"
+        page.get_by_role("button", name="End", exact=True).click()
+        page.wait_for_timeout(250)
+        if args.screenshots:
+            page.screenshot(path=str(args.screenshots / "observatory-sgr.png"))
         built = next(s for s in state["sessions"] if s["outcome"] == "built")
         for width, height in [
             (1440, 900),
@@ -108,7 +224,10 @@ def main():
         page.locator(".drv-fact dd").evaluate("e=>e.scrollLeft=100")
         campaign = position(page, ".campaign-line")
         drv = position(page, ".drv-fact dd")
-        # Pause clones state; polling replaces it. Neither may reset its panes.
+        # Pause must not rebuild state; an actual refresh retains its panes.
+        with page.expect_response(lambda r: "/logs?" in r.url):
+            page.get_by_role("button", name="Follow", exact=True).click()
+        page.wait_for_timeout(150)
         page.get_by_role("button", name="Pause", exact=True).click()
         assert position(page, "#graph-scroll") == graph
         activity = page.locator(".log-activity").first
@@ -118,7 +237,7 @@ def main():
         output = position(page, "#log-scroll")
         assert output[0] > 0
         assert abs(activity.bounding_box()["x"] - activity_x) < 1
-        page.wait_for_timeout(3500)
+        refresh(page)
         assert position(page, "#graph-scroll") == graph
         assert position(page, "#log-scroll") == output
         assert position(page, "#session-results") == rail
@@ -161,7 +280,7 @@ def main():
         scroll(page, "#graph-scroll", 300)
         graph = position(page, "#graph-scroll")
         page.locator("#graph-scroll").focus()
-        page.wait_for_timeout(3500)
+        refresh(page)
         assert position(page, "#graph-scroll") == graph, (
             "Poll must not re-jump the URL fragment"
         )
@@ -172,7 +291,7 @@ def main():
         scroll(page, ".session-summary", 80)
         summary = position(page, ".session-summary")
         assert summary[1] > 0
-        page.wait_for_timeout(2500)
+        refresh(page)
         assert page.locator(".native-result").evaluate("e=>e.open")
         assert position(page, ".session-summary") == summary
         assert geometry(page)["#log-scroll"]["height"] >= 60
@@ -202,6 +321,16 @@ def main():
         )
         phone = mobile.new_page()
         phone.on("pageerror", lambda e: errors.append(str(e)))
+        phone.goto(base)
+        assert phone.evaluate("matchMedia('(pointer: coarse)').matches")
+        assert phone.evaluate("document.scrollingElement.scrollWidth <= innerWidth")
+        assert phone.locator(".campaign-table tbody tr").count() == 50
+        if args.screenshots:
+            phone.screenshot(
+                path=str(args.screenshots / "observatory-overview-mobile.png")
+            )
+        phone.locator(".campaign-line").evaluate("e=>e.scrollLeft=300")
+        assert position(phone, ".campaign-line")[0] > 100
         phone.goto(base + "?run=" + built["run"])
         assert phone.evaluate("matchMedia('(pointer: coarse)').matches")
         assert phone.evaluate("document.scrollingElement.scrollWidth <= innerWidth")

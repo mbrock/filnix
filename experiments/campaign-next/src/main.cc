@@ -100,7 +100,7 @@ nxtrt::piped_child spawn_worker(const std::string &drv,
     throw failure;
   }
   return {
-      .pid = pid, .pidfd = nxt::unique_fd{pidfd}, .output = std::move(reader)};
+      .pid = pid, .handle = nxt::unique_fd{pidfd}, .output = std::move(reader)};
 }
 
 struct Application {
@@ -111,6 +111,7 @@ struct Application {
   std::map<std::string, std::string> assets;
   std::string live_run;
   std::int64_t live_start = 0;
+  bool admitting = false;
 };
 
 struct Session {
@@ -228,11 +229,7 @@ nxtrt::task<int> record(Application &app, std::string drv, std::string store,
   std::exception_ptr failure;
   try {
     session.child = spawn_worker(drv, store);
-    // These lambdas are factories, NOT capturing coroutine lambdas.
-    co_await nxtrt::when_all(std::tuple{
-        [&session] { return capture(session); },
-        [&session, deadline] { return monitor(session, deadline); },
-    });
+    co_await nxtrt::when_all(capture(session), monitor(session, deadline));
   } catch (...) {
     failure = std::current_exception();
   }
@@ -328,7 +325,7 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
                                           nxtrt::http::request req) {
   using nxtrt::http::response;
   if (req.method != "GET" && req.method != "HEAD")
-    co_return response{405, {{"Allow", "GET, HEAD"}}, "Read-only viewer\n"};
+    co_return response{405, {{"Allow", "GET, HEAD"}}, "Read-only viewer\n", {}};
   auto question = req.target.find('?');
   auto path = req.target.substr(0, question);
   if (app.assets.contains(path))
@@ -337,10 +334,12 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
         {{"Content-Type",
           path.ends_with(".css") ? "text/css" : "text/javascript"},
          {"X-Content-Type-Options", "nosniff"}},
-        app.assets.at(path)};
-  if (path != "/" && path != "/state" && path != "/logs" && path != "/graph" &&
-      path != "/sessions" && path != "/api/state" && path != "/api/logs")
-    co_return response{404, {}, "Not found\n"};
+        app.assets.at(path),
+        {}};
+  if (path != "/" && path != "/overview" && path != "/state" &&
+      path != "/logs" && path != "/graph" && path != "/sessions" &&
+      path != "/api/state" && path != "/api/logs")
+    co_return response{404, {}, "Not found\n", {}};
   std::map<std::string, std::string> params;
   std::uint64_t after = 0;
   try {
@@ -365,18 +364,24 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
         throw std::runtime_error("invalid cursor");
     }
   } catch (const std::exception &) {
-    co_return response{400, {}, "Invalid query\n"};
+    co_return response{400, {}, "Invalid query\n", {}};
   }
   auto requested_run = params["run"], activity = params["activity"];
   auto run = requested_run.empty() ? app.live_run : requested_run;
   bool is_logs = path == "/logs" || path == "/api/logs";
-  auto result = co_await app.workers.run(
-      [&app, run, activity, after, is_logs, tail = params["tail"] == "1"] {
+  bool detail =
+      path == "/api/state" || path == "/state" || path == "/graph" ||
+      (path == "/" && (!requested_run.empty() || params["follow"] == "1"));
+  auto result =
+      co_await app.workers.run([&app, run, activity, after, is_logs, detail,
+                                tail = params["tail"] == "1"] {
         return is_logs ? app.data->logs(run, activity, after, tail)
-                       : app.data->view(run, activity);
+                       : app.data->view(run, activity, detail);
       });
-  if (!is_logs)
+  if (!is_logs) {
     result["live_run"] = app.live_run;
+    result["watch"] = app.admitting || !app.live_run.empty();
+  }
   if (!is_logs && result.at("session").is_object()) {
     bool live = result["session"]["run"] == app.live_run &&
                 !result["session"]["complete"].get<bool>();
@@ -394,14 +399,20 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
                   ? campaign::web_graph(result, run, after, params["node"])
               : path == "/sessions"
                   ? campaign::web_sessions(result, run, params["filter"],
-                                           params["find"], after)
-                  : campaign::web_page(result, requested_run, activity);
+                                           params["find"], after,
+                                           params["overview"] == "1")
+              : path == "/overview"
+                  ? campaign::web_overview(result)
+                  : campaign::web_page(result, requested_run, activity,
+                                       params["follow"] == "1" &&
+                                           requested_run.empty());
   co_return response{
       200,
       {{"Content-Type", api ? "application/json" : "text/html; charset=utf-8"},
        {"Cache-Control", "no-store"},
        {"X-Content-Type-Options", "nosniff"}},
-      std::move(body)};
+      std::move(body),
+      {}};
 }
 
 struct Options {
@@ -412,22 +423,15 @@ struct Options {
   bool raw = false;
 };
 
-nxtrt::task<int> server_body(nxtrt::firm &scope, Application &app,
-                             const Options &options, int listener) {
-  scope.fork([&app, listener] {
-    nxtrt::http::server_options opts;
-    opts.max_connections = 8;
-    return nxtrt::http::serve(
-        listener,
-        [&app](nxtrt::http::request req) {
-          return handle(app, std::move(req));
-        },
-        opts);
-  });
+nxtrt::task<int> server_body(Application &app, const Options &options) {
   int code = 0;
-  if (options.command == "watch")
+  if (options.command == "watch") {
+    app.admitting = true;
     code = co_await record(app, options.drv, options.store);
+    app.admitting = false;
+  }
   if (options.command == "cohort") {
+    app.admitting = true;
     auto manifest = co_await app.workers.run([&app, path = options.drv] {
       // A service restart serves its existing recording; it never retries
       // builds.
@@ -503,19 +507,16 @@ nxtrt::task<int> server_body(nxtrt::firm &scope, Application &app,
               app.data->append(json::array({std::move(event)}));
             }));
       }
+      app.admitting = false;
       std::cerr << "Cohort admission finished; viewer remains available\n";
     } else {
+      app.admitting = false;
       std::cerr << "Existing recording: serving only, no automatic retries\n";
     }
   }
   while (!requested_signal)
     co_await nxtrt::op::timeout::after(100ms);
   co_return code;
-}
-
-nxtrt::task<void> stop_server(nxtrt::firm &scope) {
-  scope.stop();
-  co_await scope.join();
 }
 
 nxtrt::task<int> execute(Application &app, const Options &options) {
@@ -548,10 +549,24 @@ nxtrt::task<int> execute(Application &app, const Options &options) {
     std::cerr << "Listening on http://127.0.0.1:"
               << ntohs(nxtrt::net::socket_address(listener.get()).sin_port)
               << std::endl;
-    co_return co_await nxtrt::with_firm([&](nxtrt::firm &scope) {
-      return nxtrt::finally(server_body(scope, app, options, listener.get()),
-                            [&scope] { return stop_server(scope); });
-    });
+    nxtrt::http::server_options opts;
+    opts.max_connections = 8;
+    // Both tasks are owned until settled. Shutdown drains HTTP handlers
+    // before the caller destroys the DuckDB connection/pool.
+    auto [body, http] = co_await nxtrt::settle(
+        std::tuple{server_body(app, options),
+                   nxtrt::http::serve(
+                       listener.get(),
+                       [&app](nxtrt::http::request req) {
+                         return handle(app, std::move(req));
+                       },
+                       opts)},
+        nxtrt::first_completion_group{});
+    if (!http)
+      std::rethrow_exception(http.error());
+    if (!body)
+      std::rethrow_exception(body.error());
+    co_return *body;
   }
   if (options.command == "replay") {
     // Validate selection even when no events match.
