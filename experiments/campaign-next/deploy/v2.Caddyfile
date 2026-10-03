@@ -1,0 +1,6 @@
+# Add inside the existing nix.swa.sh site, before its fallback handle.
+# Keep the cache and legacy dashboard handlers unchanged.
+redir /v2 /v2/ 308
+handle_path /v2/* {
+    reverse_proxy 127.0.0.1:8778
+}

@@ -194,12 +194,15 @@ nxtrt::task<void> capture(Session &session) {
     std::rethrow_exception(failure);
 }
 
-nxtrt::task<void> monitor(Session &session) {
+nxtrt::task<void> monitor(Session &session, std::int64_t deadline) {
   std::optional<std::chrono::steady_clock::time_point> stopping;
   while (!session.done) {
-    if (requested_signal && !stopping) {
-      json payload = {{"signal", requested_signal}};
-      co_await session.append("run.cancel-requested", std::move(payload));
+    if (!stopping && (requested_signal ||
+                      (deadline && campaign::monotonic_ns() >= deadline))) {
+      json payload = {{"signal", requested_signal ? requested_signal : SIGINT}};
+      co_await session.append(requested_signal ? "run.cancel-requested"
+                                               : "run.limit-reached",
+                              std::move(payload));
       co_await nxtrt::subprocess::signal_child(session.child, SIGINT);
       stopping = std::chrono::steady_clock::now();
     }
@@ -209,13 +212,16 @@ nxtrt::task<void> monitor(Session &session) {
   }
 }
 
-nxtrt::task<int> record(Application &app, std::string drv, std::string store) {
+nxtrt::task<int> record(Application &app, std::string drv, std::string store,
+                        json request = json::object(),
+                        std::int64_t deadline = 0) {
   std::array<char, 16> random;
   if (::getrandom(random.data(), random.size(), 0) !=
       static_cast<ssize_t>(random.size()))
     throw campaign::system_error("getrandom");
   Session session{app, campaign::hex({random.data(), random.size()})};
-  json request = {{"drv", drv}, {"store", store}};
+  request["drv"] = drv;
+  request["store"] = store;
   co_await session.append("run.requested", std::move(request));
   app.live_run = session.run;
   app.live_start = session.start;
@@ -225,7 +231,7 @@ nxtrt::task<int> record(Application &app, std::string drv, std::string store) {
     // These lambdas are factories, NOT capturing coroutine lambdas.
     co_await nxtrt::when_all(std::tuple{
         [&session] { return capture(session); },
-        [&session] { return monitor(session); },
+        [&session, deadline] { return monitor(session, deadline); },
     });
   } catch (...) {
     failure = std::current_exception();
@@ -368,8 +374,6 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
     result["live"] = live;
     if (live)
       result["elapsed_now_ns"] = campaign::monotonic_ns() - app.live_start;
-    if (run.empty())
-      run = result["session"]["run"];
   }
   bool api = path.starts_with("/api/");
   auto body = api       ? result.dump()
@@ -388,6 +392,7 @@ struct Options {
   std::string command, path, drv, store = "daemon", run, directory;
   std::uint16_t port = 8080;
   double speed = 1;
+  unsigned budget = 7200, root_timeout = 900;
   bool raw = false;
 };
 
@@ -406,6 +411,87 @@ nxtrt::task<int> server_body(nxtrt::firm &scope, Application &app,
   int code = 0;
   if (options.command == "watch")
     code = co_await record(app, options.drv, options.store);
+  if (options.command == "cohort") {
+    auto manifest = co_await app.workers.run([&app, path = options.drv] {
+      // A service restart serves its existing recording; it never retries
+      // builds.
+      if (!app.data->view("", "").at("sessions").empty())
+        return json(nullptr);
+      std::ifstream file{path};
+      auto value = json::parse(file);
+      if (!value.at("id").is_string() ||
+          value.at("id").get<std::string>().empty() ||
+          !value.at("name").is_string() || !value.at("roots").is_array() ||
+          value.at("roots").empty() || value.at("roots").size() > 256)
+        throw std::runtime_error("invalid cohort manifest");
+      for (const auto &root : value.at("roots")) {
+        if (!root.at("name").is_string() || !root.at("drv").is_string() ||
+            !root.at("drv").get<std::string>().ends_with(".drv"))
+          throw std::runtime_error("invalid cohort root");
+      }
+      return value;
+    });
+    if (!manifest.is_null()) {
+      auto end = campaign::monotonic_ns() +
+                 std::int64_t(options.budget) * 1'000'000'000;
+      bool recorder_error = false;
+      for (std::size_t index = 0; index < manifest.at("roots").size();
+           ++index) {
+        if (requested_signal || campaign::monotonic_ns() >= end)
+          break;
+        const auto &root = manifest.at("roots")[index];
+        json request = {{"name", root.at("name")},
+                        {"cohort", manifest},
+                        {"index", index},
+                        {"budget_seconds", options.budget},
+                        {"root_timeout_seconds", options.root_timeout}};
+        auto deadline = std::min(end, campaign::monotonic_ns() +
+                                          std::int64_t(options.root_timeout) *
+                                              1'000'000'000);
+        std::exception_ptr failure;
+        try {
+          auto result = co_await record(app, root.at("drv"), options.store,
+                                        std::move(request), deadline);
+          if (result)
+            code = result;
+        } catch (...) {
+          failure = std::current_exception();
+        }
+        if (failure) {
+          app.live_run.clear();
+          recorder_error = true;
+          code = 2;
+          std::cerr << "Cohort recording stopped; serving committed "
+                       "observations only\n";
+          break;
+        }
+      }
+      // Cohort admission ends after its last root settles. Keep this durable
+      // even when the overall deadline falls between two roots.
+      if (app.live_start && !recorder_error) {
+        std::string reason = requested_signal ? "cancelled"
+                             : campaign::monotonic_ns() >= end
+                                 ? "budget-exhausted"
+                                 : "all-roots-attempted";
+        co_await nxtrt::shield(app.workers.run(
+            [&app, reason,
+             elapsed = campaign::monotonic_ns() - app.live_start] {
+              auto last = app.data->summary();
+              json event = {{"version", 1},
+                            {"run", last.at("run")},
+                            {"seq", last.at("events").get<std::uint64_t>() + 1},
+                            {"wall_ns", campaign::wall_ns()},
+                            {"elapsed_ns", elapsed},
+                            {"kind", "cohort.finished"},
+                            {"payload", {{"reason", reason}}}};
+              app.data->append(json::array({std::move(event)}));
+            }));
+      }
+      std::cerr << "Cohort admission finished; viewer remains available\n";
+    } else {
+      std::cerr << "Existing recording: serving only, no automatic retries\n";
+    }
+  }
   while (!requested_signal)
     co_await nxtrt::op::timeout::after(100ms);
   co_return code;
@@ -417,22 +503,24 @@ nxtrt::task<void> stop_server(nxtrt::firm &scope) {
 }
 
 nxtrt::task<int> execute(Application &app, const Options &options) {
-  co_await app.workers.run(
-      [&app, path = options.path,
-       writable = options.command == "record" || options.command == "watch"] {
-        app.data = std::make_unique<campaign::Dataset>(path, writable);
-        auto assets = std::getenv("CAMPAIGN_STATIC_DIR");
-        auto base = assets ? std::filesystem::path(assets)
-                           : std::filesystem::read_symlink("/proc/self/exe")
-                                     .parent_path()
-                                     .parent_path() /
-                                 "share/filnix-campaign";
-        std::ifstream file{base / "htmx.js", std::ios::binary};
-        app.htmx.assign(std::istreambuf_iterator<char>{file}, {});
-      });
+  co_await app.workers.run([&app, path = options.path,
+                            writable = options.command == "record" ||
+                                       options.command == "watch" ||
+                                       options.command == "cohort"] {
+    app.data = std::make_unique<campaign::Dataset>(path, writable);
+    auto assets = std::getenv("CAMPAIGN_STATIC_DIR");
+    auto base = assets ? std::filesystem::path(assets)
+                       : std::filesystem::read_symlink("/proc/self/exe")
+                                 .parent_path()
+                                 .parent_path() /
+                             "share/filnix-campaign";
+    std::ifstream file{base / "htmx.js", std::ios::binary};
+    app.htmx.assign(std::istreambuf_iterator<char>{file}, {});
+  });
   if (options.command == "record")
     co_return co_await record(app, options.drv, options.store);
-  if (options.command == "watch" || options.command == "serve") {
+  if (options.command == "watch" || options.command == "serve" ||
+      options.command == "cohort") {
     if (app.htmx.empty())
       throw std::runtime_error("missing HTMX asset; set CAMPAIGN_STATIC_DIR");
     auto listener = nxtrt::net::listen_tcp_loopback(options.port);
@@ -472,13 +560,17 @@ int main(int argc, char **argv) {
     if (argc < 3)
       throw std::runtime_error(
           "usage: filnix-campaign record|watch DRV DATABASE "
-          "[--store URI] [--port N]; serve|inspect|replay DATABASE "
+          "[--store URI] [--port N]; cohort MANIFEST DATABASE "
+          "[--store URI] [--port N] [--budget SECONDS] [--root-timeout "
+          "SECONDS]; "
+          "serve|inspect|replay DATABASE "
           "[--run ID] [--port N] [--speed N] [--json]; export DATABASE "
           "DIRECTORY");
     Options options;
     options.command = argv[1];
     int i = 2;
-    if (options.command == "record" || options.command == "watch") {
+    if (options.command == "record" || options.command == "watch" ||
+        options.command == "cohort") {
       if (argc < 4)
         throw std::runtime_error("build requires DRV and DATABASE");
       options.drv = argv[i++];
@@ -501,13 +593,15 @@ int main(int argc, char **argv) {
         throw std::runtime_error("missing option value");
       std::string value = argv[i];
       if (flag == "--store" &&
-          (options.command == "record" || options.command == "watch"))
+          (options.command == "record" || options.command == "watch" ||
+           options.command == "cohort"))
         options.store = value;
       else if (flag == "--run" &&
                (options.command == "inspect" || options.command == "replay"))
         options.run = value;
       else if (flag == "--port" &&
-               (options.command == "serve" || options.command == "watch")) {
+               (options.command == "serve" || options.command == "watch" ||
+                options.command == "cohort")) {
         unsigned n;
         auto result =
             std::from_chars(value.data(), value.data() + value.size(), n);
@@ -515,6 +609,15 @@ int main(int argc, char **argv) {
             result.ptr != value.data() + value.size() || n > 65535)
           throw std::runtime_error("invalid port");
         options.port = n;
+      } else if ((flag == "--budget" || flag == "--root-timeout") &&
+                 options.command == "cohort") {
+        unsigned n;
+        auto result =
+            std::from_chars(value.data(), value.data() + value.size(), n);
+        if (result.ec != std::errc{} ||
+            result.ptr != value.data() + value.size() || !n || n > 86400)
+          throw std::runtime_error("budget must be 1–86400 seconds");
+        (flag == "--budget" ? options.budget : options.root_timeout) = n;
       } else if (flag == "--speed" && options.command == "replay") {
         std::size_t consumed;
         options.speed = std::stod(value, &consumed);

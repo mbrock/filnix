@@ -140,6 +140,8 @@ std::string status_line(const json &view, const json *session) {
     return "Failed";
   if (outcome == "cancelled")
     return "Cancelled";
+  if (outcome == "timed-out")
+    return "Time limit reached";
   if (outcome == "worker-error")
     return "Worker error";
   if (outcome == "recorder-error")
@@ -150,7 +152,7 @@ std::string status_line(const json &view, const json *session) {
 }
 
 std::string activity_link(const std::string &run, const std::string &id) {
-  return "/?" + query(run, id);
+  return "./?" + query(run, id);
 }
 
 std::string anchor_id(const std::string &drv) {
@@ -295,8 +297,9 @@ std::string state_content(const json &view, const std::string &run,
                           const std::string &activity) {
   auto session = selected_session(view, run);
   std::string out =
-      "<section class=\"summary-state\" id=\"state\" hx-get=\"/state?" +
-      escape(query(run, activity)) +
+      "<section class=\"summary-state\" id=\"state\" data-run=\"" +
+      escape(session ? string(*session, "run", run) : run) +
+      "\" hx-get=\"./state?" + escape(query(run, activity)) +
       "\" hx-trigger=\"every 1s\" hx-swap=\"outerHTML\">";
   out += "<div class=\"summary-head\"><div><p class=\"eyebrow\">SESSION "
          "OBSERVATION · DEPENDENCY GRAPH</p>";
@@ -307,6 +310,20 @@ std::string state_content(const json &view, const std::string &run,
          "</h1></div>";
   out += "<p class=\"state-pill\" role=\"status\">" +
          escape(status_line(view, session)) + "</p></div>";
+  if (view.contains("cohort") && view.at("cohort").is_object()) {
+    const auto &cohort = view.at("cohort");
+    out += "<p class=\"cohort-progress\"><b>" + escape(string(cohort, "name")) +
+           "</b> · " + std::to_string(number(cohort, "completed")) + "/" +
+           std::to_string(cohort.at("roots").size()) + " roots settled · " +
+           std::to_string(number(cohort, "succeeded")) + " successful · " +
+           std::to_string(number(cohort, "failed")) + " failed/interrupted · " +
+           std::to_string(number(cohort, "timed_out")) + " timed out · " +
+           std::to_string(number(cohort, "unattempted")) + " unattempted";
+    auto reason = string(cohort, "stop_reason");
+    if (!reason.empty())
+      out += " · admission stopped: " + escape(reason);
+    out += " · <a href=\"./\">Follow latest</a></p>";
+  }
   if (!session) {
     out += "<div class=\"empty\"><h2>No build session to show</h2><p>When a "
            "recording is available, its activity and captured output will "
@@ -329,7 +346,7 @@ std::string state_content(const json &view, const std::string &run,
                           : std::string{};
   out += "<div class=\"graph-heading\"><div><h2>Dependency "
          "graph</h2><p>Recorded static inputs · activity observations "
-         "overlaid</p></div><a href=\"/?run=" +
+         "overlaid</p></div><a href=\"./?run=" +
          escape(url_component(run_id)) + "\">Show all output</a></div>";
   std::map<std::string, const json *> recipes;
   std::map<std::string, std::vector<const json *>> edges;
@@ -434,7 +451,7 @@ std::string log_row(const json &record) {
 
 std::string cursor(std::uint64_t seq, const std::string &run,
                    const std::string &activity) {
-  std::string href = "/logs?" + query(run, activity);
+  std::string href = "./logs?" + query(run, activity);
   href += (href.find('?') == std::string::npos ? "?" : "&");
   href += "after=" + std::to_string(seq);
   return "<div class=\"log-cursor\" id=\"log-cursor\" hx-get=\"" +
@@ -463,7 +480,7 @@ std::string sidebar(const json &view, const std::string &selected_run,
         outcome = "observing";
       out += "<li><a class=\"session-link" +
              std::string(id == selected_run ? " selected" : "") +
-             "\" href=\"/?run=" + escape(url_component(id)) +
+             "\" href=\"./?run=" + escape(url_component(id)) +
              "\"><span class=\"session-title\">" + escape(title) +
              "</span><span class=\"session-sub\"><span>" + escape(outcome) +
              "</span><span>" + std::to_string(number(item, "events")) +
@@ -512,7 +529,7 @@ std::string web_page(const json &view, const std::string &run,
       "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta "
       "name=\"viewport\" content=\"width=device-width, "
       "initial-scale=1\"><title>Build observatory</title><script "
-      "src=\"/htmx.js\" defer></script><style>";
+      "src=\"./htmx.js\" defer></script><style>";
   out += R"CSS(
 :root{color-scheme:light;--paper:#f5f5ef;--panel:#fffefa;--ink:#26332e;--muted:#758078;--line:#dce1d9;--green:#315b46;--green-soft:#e8efe9;--amber:#ad7529;--slate:#596a72;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink)}a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}a:focus-visible{outline:3px solid #d69a43;outline-offset:3px}.shell{min-height:100vh;display:grid;grid-template-columns:250px minmax(0,1fr)}.sidebar{background:#eeefe8;border-right:1px solid var(--line);padding:25px 16px;min-width:0}.brand{font:700 16px/1.2 ui-monospace,SFMono-Regular,monospace;letter-spacing:-.04em;color:var(--green);margin:0 8px 28px}.brand small{display:block;color:var(--muted);font:500 10px/1.4 ui-monospace,monospace;letter-spacing:.12em;margin-top:6px}.side-label,.eyebrow{font:700 10px/1.3 ui-monospace,SFMono-Regular,monospace;letter-spacing:.12em;color:var(--muted)}.side-label{margin:0 8px 10px}.session-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}.session-link{display:block;padding:10px 9px;border-radius:5px;color:var(--ink);min-width:0}.session-link:hover,.session-link.selected{background:var(--green-soft);text-decoration:none}.session-title{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.session-sub{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font:11px/1.5 ui-monospace,monospace;margin-top:3px}.main{min-width:0;padding:32px clamp(16px,4vw,54px) 44px}.content{max-width:1120px;margin:0 auto}.summary-state{min-width:0}.summary-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding-bottom:20px;border-bottom:1px solid var(--line)}.eyebrow{margin:0 0 7px}h1{font-size:clamp(21px,3vw,30px);line-height:1.2;letter-spacing:-.035em;margin:0;overflow-wrap:anywhere}.state-pill{margin:1px 0 0;padding:6px 10px;border:1px solid #d3dbd4;border-radius:3px;color:var(--green);background:#edf2ed;font-size:12px;max-width:52%;text-align:right}.facts{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;margin:19px 0 26px}.facts div{min-width:0}.facts dt{font:700 10px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.facts dd{margin:5px 0 0;font:12px/1.45 ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.activity-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--line)}h2{font-size:14px;margin:0;font-weight:700}.activity-head a{font-size:12px}.activities{list-style:none;margin:0;padding:0}.activities li{border-bottom:1px solid var(--line)}.activity-row{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:11px;padding:11px 8px;color:var(--ink);min-width:0}.activity-row:hover,.activity-row.selected{background:var(--green-soft);text-decoration:none}.activity-id,.activity-meta,.activity-copy small{font:11px/1.4 ui-monospace,monospace;color:var(--muted)}.activity-copy{min-width:0}.activity-copy strong{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}.activity-copy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}.activity-meta{text-align:right;display:grid;gap:2px}.activity-status{color:var(--amber)}.empty,.empty-inline{color:var(--muted)}.empty{margin-top:28px;padding:25px;background:var(--panel);border:1px solid var(--line)}.empty h2{margin-bottom:6px}.empty p{margin:0}.empty-inline{padding:14px 8px}.log-panel{margin-top:30px;background:var(--panel);border:1px solid var(--line);min-width:0}.log-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}.log-head p{font:11px ui-monospace,monospace;color:var(--muted);margin:0}.log-rows{max-height:52vh;min-height:150px;overflow:auto;overscroll-behavior:contain}.log-row{display:grid;grid-template-columns:62px 48px minmax(0,1fr);gap:9px;padding:6px 12px;border-bottom:1px solid #edf0ea;align-items:start}.log-row time,.log-activity{font:10px/1.6 ui-monospace,monospace;color:var(--muted);white-space:nowrap}.log-activity{color:var(--slate)}.log-row pre{font:12px/1.5 ui-monospace,SFMono-Regular,monospace;margin:0;white-space:pre;overflow-wrap:normal;min-width:0}.log-rows{overflow-x:auto}.log-empty{padding:18px;color:var(--muted);font-size:12px}.log-cursor{height:1px}@media(max-width:700px){.shell{grid-template-columns:minmax(0,1fr)}.sidebar{padding:15px 16px;border-right:0;border-bottom:1px solid var(--line)}.brand{margin:0 0 13px}.session-list{display:flex;overflow-x:auto;padding-bottom:3px}.session-list li{flex:0 0 min(230px,70vw)}.session-link{padding:8px}.main{padding:22px 14px 32px}.facts{grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px}.summary-head{display:block}.state-pill{display:inline-block;text-align:left;max-width:100%;margin-top:12px}.activity-row{grid-template-columns:38px minmax(0,1fr) auto;gap:7px;padding:10px 4px}.activity-meta{font-size:10px}.log-panel{margin-left:-5px;margin-right:-5px}.log-row{grid-template-columns:55px 38px minmax(0,1fr);gap:6px;padding:6px 8px}.log-rows{max-height:45vh}}@media(max-width:390px){.activity-row{grid-template-columns:34px minmax(0,1fr) auto;gap:5px}.activity-status{max-width:78px;overflow:hidden;text-overflow:ellipsis}.facts{grid-template-columns:1fr 1fr}.log-head{padding:10px}.log-row{grid-template-columns:48px 34px minmax(0,1fr);gap:5px}}
 )CSS";
@@ -551,6 +568,12 @@ std::string web_page(const json &view, const std::string &run,
   out += cursor(after, selected_run, activity);
   out += R"HTML(</section></div></main></div><script>
 document.addEventListener('DOMContentLoaded', function () {
+  const initialRun = document.getElementById('state').dataset.run;
+  if (!new URL(location.href).searchParams.has('run')) {
+    new MutationObserver(function () {
+      if (document.getElementById('state').dataset.run !== initialRun) location.reload();
+    }).observe(document.querySelector('.content'), {childList: true});
+  }
   const box = document.getElementById('log-rows');
   let follow = true;
   box.scrollTop = box.scrollHeight;
