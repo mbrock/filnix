@@ -85,6 +85,25 @@ std::string span(std::int64_t ns) {
     return std::to_string(s / 60) + "m " + two(s % 60) + "s";
   return std::to_string(s / 3600) + "h " + two(s / 60 % 60) + "m";
 }
+// Elapsed time as a clock: 0:50, 12:03, 1:02:03.
+std::string clock(std::int64_t ns) {
+  auto s = std::max<std::int64_t>(0, ns) / 1000000000;
+  auto two = [](std::int64_t v) {
+    return (v < 10 ? "0" : "") + std::to_string(v);
+  };
+  if (s >= 3600)
+    return std::to_string(s / 3600) + ":" + two(s / 60 % 60) + ":" + two(s % 60);
+  return std::to_string(s / 60) + ":" + two(s % 60);
+}
+// Phase durations keep a decimal below ten seconds, where it matters.
+std::string brief(std::int64_t ns) {
+  if (ns >= 0 && ns < 10000000000) {
+    std::ostringstream s;
+    s << std::fixed << std::setprecision(1) << double(ns) / 1e9 << "s";
+    return s.str();
+  }
+  return span(ns);
+}
 std::string thousands(std::uint64_t n) {
   auto s = std::to_string(n);
   for (auto i = std::ptrdiff_t(s.size()) - 3; i > 0; i -= 3)
@@ -531,6 +550,8 @@ struct Graph {
     auto full = name(r.drv);
     // Build-platform tools carry no host triple; they recede behind Fil-C
     // packages, which are what the campaign is about.
+    // Build-platform tools carry no host triple; they are greyed so that a
+    // tool and its Fil-C counterpart with the same name stay distinct.
     auto kind = std::string("graph-node") +
                 (parse_name(full).platform.empty() ? " native" : "") +
                 (failed.contains(r.drv) ? " failed" : "");
@@ -552,13 +573,14 @@ struct Graph {
                      : view.value("elapsed_now_ns", std::int64_t(0));
       auto state = text(item, "status"), machine = text(item, "machine");
       std::string where =
-          machine.empty() || machine == "local" ? "" : " · " + machine;
-      std::string note = state == "running" ? (view.value("live", false)
-                                                   ? " · running"
-                                                   : " · last seen running")
-                                            : "";
-      out += "<span class=\"node-activity\">" +
-             escape(text(item, "phase", "activity")) + where + note + " · " +
+          machine.empty() || machine == "local" ? "" : " on " + machine;
+      // Built in this session; a live build names its current phase.
+      std::string what =
+          state != "running" ? "built"
+          : view.value("live", false)
+              ? text(item, "phase", "building")
+              : "last seen in " + text(item, "phase", "build");
+      out += "<span class=\"node-activity\">" + escape(what + where) + " " +
              escape(span(std::max<std::int64_t>(1, end - start))) +
              "</span><a class=\"node-output\" href=\"./?" +
              escape(query(run, text(item, "id"))) + "\">log</a>";
@@ -649,12 +671,10 @@ std::string phase_ledger(const json &v, const json &s) {
   // A root that never ran its own builder has no phases; say nothing.
   if (phases.empty())
     return {};
-  std::string out = "<section class=\"phase-ledger\"><h2>Phases</h2><p "
-                    "class=\"snapshot\">" +
-                    escape(text(*activity, "machine", "local")) + " · #" +
-                    escape(text(*activity, "id")) + "</p>";
-  out += "<table><thead><tr><th>Phase</th><th>Duration</th><th>Started</th>"
-         "</tr></thead><tbody>";
+  auto machine = text(*activity, "machine", "local");
+  std::string out = "<section class=\"phase-ledger\"><h2>Phases" +
+                    (machine == "local" ? "" : " · " + escape(machine)) +
+                    "</h2><table><tbody>";
   std::int64_t total = 0;
   {
     auto first = phases.front()->at("elapsed_ns").get<std::int64_t>();
@@ -673,7 +693,7 @@ std::string phase_ledger(const json &v, const json &s) {
     if (running)
       end = v.at("elapsed_now_ns");
     auto duration = end.is_number() && end.get<std::int64_t>() >= start
-                        ? seconds(end.get<std::int64_t>() - start) +
+                        ? brief(end.get<std::int64_t>() - start) +
                               (running ? " · running" : "")
                         : "— · end unobserved";
     std::string share = "0";
@@ -686,29 +706,29 @@ std::string phase_ledger(const json &v, const json &s) {
            std::to_string(number(p, "seq")) + "\" data-phase-activity=\"" +
            escape(text(p, "activity")) + "\">" + escape(text(p, "phase")) +
            "</button></td><td>" + duration +
-           "<span class=\"phase-bar\" style=\"--share:" + share +
-           "\"></span></td><td>" + seconds(start) + "</td></tr>";
+           "</td><td><span class=\"phase-bar\" style=\"--share:" + share +
+           "\"></span></td></tr>";
   }
   return out + "</tbody></table></section>";
 }
 
+// The source label is repeated per row; the client shows it only when it
+// changes, so a single-derivation log reads as plain output.
 std::string log_row(const json &r) {
-  auto activity = text(r, "activity");
-  // Name the derivation producing the line; the numeric id stays copyable.
-  auto who = parse_name(text(r, "activity_name")).name;
-  if (who.empty() && !activity.empty())
-    who = "#" + activity.substr(activity.size() > 6 ? activity.size() - 6 : 0);
-  if (who.size() > 18)
-    who = who.substr(0, 17) + "…";
+  auto source = parse_name(text(r, "activity_name")).name;
+  auto elapsed = r.value("elapsed_ns", std::int64_t(0));
   return "<div class=\"log-row\" data-seq=\"" +
-         std::to_string(number(r, "seq")) + "\"><time>" +
-         seconds(r.value("elapsed_ns", std::int64_t(0))) +
-         "</time><button class=\"log-activity\" data-copy=\"" +
-         escape(activity) + "\" title=\"" +
-         escape(text(r, "activity_name", "Activity")) + " · copy id #" +
-         escape(activity) + "\"" + (activity.empty() ? " disabled" : "") +
-         ">" + (activity.empty() ? "—" : escape(who)) + "</button><pre>" +
+         std::to_string(number(r, "seq")) + "\" data-source=\"" +
+         escape(source) + "\"><span class=\"log-source\">" +
+         escape(source.empty() ? "nix" : source) + "</span><time title=\"" +
+         seconds(elapsed) + "\">" + clock(elapsed) + "</time><pre>" +
          terminal(text(r, "bytes_hex")) + "</pre></div>";
+}
+std::string earlier(const json &records, std::size_t window) {
+  auto first = records.empty() ? 0 : number(records[0], "seq");
+  bool more = window && records.size() >= window && first > 1;
+  return "<button id=\"log-earlier\" data-first=\"" + std::to_string(first) +
+         "\"" + (more ? "" : " hidden") + ">Load earlier output</button>";
 }
 bool watching(const json &v) {
   return v.value("watch", v.value("live", false));
@@ -761,55 +781,6 @@ std::string campaign_line(const json &v) {
   return bar + "</div>" + chips + "</div>";
 }
 
-// Roots that need a reader's attention, each with its first recorded cause.
-std::string attention(const json &v) {
-  auto cohort = v.value("cohort", json(nullptr));
-  html::Writer h;
-  std::size_t count = 0;
-  auto items = [&](bool render) {
-    for (const auto &s : v.at("sessions")) {
-      auto request = s.value("request", json(nullptr));
-      if (cohort.is_object() &&
-          (!request.is_object() || !request.contains("cohort") ||
-           request.at("cohort").at("id") != cohort.at("id")))
-        continue;
-      auto st = status(v, s);
-      if (st == "built" || st == "already-valid")
-        continue;
-      if (!render) {
-        ++count;
-        continue;
-      }
-      h.tag("li", {{"data-status", st}}, [&] {
-        h.tag("a", {{"href", "./?" + query(text(s, "run"))}}, [&] {
-          h.tag("span", {{"class", "attention-name"}},
-                [&] { package(h, label(s)); });
-          h.tag("span", {{"class", "status"}, {"data-status", st}},
-                [&] { h.text(caption(st)); });
-          std::string why = cause_line(s);
-          auto phase = display_text(unhex(text(s, "phase_hex")));
-          if (why.empty() && st == "timed-out")
-            why = "root time limit reached";
-          if (st == "observing" || st == "timed-out" || st == "incomplete")
-            if (!phase.empty())
-              why += (why.empty() ? "in " : " in ") + phase;
-          if (why.empty())
-            why = text(s, "native_status", "no recorded reason");
-          h.tag("span", {{"class", "attention-why"}}, [&] { h.text(why); });
-          h.tag("span", {{"class", "duration"}}, [&] {
-            h.text(span(std::int64_t(number(s, "duration_ns"))));
-          });
-        });
-      });
-    }
-  };
-  items(false);
-  if (!count)
-    return {};
-  h.tag("h2", [&] { h.text("Needs attention"); });
-  h.tag("ul", [&] { items(true); });
-  return "<section class=\"attention\">" + std::move(h).str() + "</section>";
-}
 } // namespace
 
 std::string web_sessions(const json &v, const std::string &run,
@@ -842,12 +813,28 @@ std::string web_sessions(const json &v, const std::string &run,
               std::string::npos)
         matches.push_back(cohort.at("roots")[i]);
   }
+  // Problems first, then work in progress, builds, cached and unattempted
+  // roots; recording order (latest first) within each group.
+  auto rank = [&](const json &s) {
+    auto st = text(s, "run").empty() ? "unattempted" : status(v, s);
+    for (int i = 0; auto group : {"failed", "interrupted", "timed-out",
+                                  "incomplete", "observing", "built",
+                                  "already-valid"}) {
+      if (st == group)
+        return i;
+      ++i;
+    }
+    return 7;
+  };
+  std::stable_sort(matches.begin(), matches.end(),
+                   [&](const json &a, const json &b) { return rank(a) < rank(b); });
+  constexpr std::uint64_t window = 100;
   after = std::min<std::uint64_t>(after, matches.size());
   std::string out = "<p class=\"rail-count\" data-after=\"" +
                     std::to_string(after) + "\">" +
                     std::to_string(matches.size()) +
                     (cohort.is_object() ? " roots</p>" : " sessions</p>");
-  auto end = std::min<std::uint64_t>(matches.size(), after + 50);
+  auto end = std::min<std::uint64_t>(matches.size(), after + window);
   {
     html::Writer h;
     h.tag("table", {{"class", "campaign-table"}}, [&] {
@@ -882,20 +869,17 @@ std::string web_sessions(const json &v, const std::string &run,
             h.tag("td", {{"class", "duration"}}, [&] {
               h.text(id.empty() ? "" : span(std::int64_t(number(s, "duration_ns"))));
             });
+            // Only problems and live work carry a detail; success needs none.
             h.tag("td", {{"class", "session-observation"}}, [&] {
               auto phase = display_text(unhex(text(s, "phase_hex")));
-              auto lines = number(s, "output_lines");
               if (st == "failed" || st == "interrupted")
-                h.text(cause_line(s).empty() ? text(s, "native_status", "—")
+                h.text(cause_line(s).empty() ? text(s, "native_status")
                                              : cause_line(s));
               else if (st == "timed-out")
-                h.text("time limit" + (phase.empty() ? "" : " in " + phase));
+                h.text("time limit reached" +
+                       (phase.empty() ? "" : " in " + phase));
               else if (st == "observing" || st == "incomplete")
-                h.text(phase.empty() ? "—" : phase);
-              else if (st == "built")
-                h.text(thousands(lines) + " log lines");
-              else if (st == "already-valid")
-                h.text("outputs already present");
+                h.text(phase);
             });
           });
         }
@@ -915,9 +899,9 @@ std::string web_sessions(const json &v, const std::string &run,
   };
   out += "<div class=\"paging\">";
   if (after)
-    out += page(after >= 50 ? after - 50 : 0, "Previous 50");
+    out += page(after >= window ? after - window : 0, "Previous 100");
   if (end < matches.size())
-    out += page(end, "Show next 50");
+    out += page(end, "Show next 100");
   return out + "</div>";
 }
 
@@ -981,10 +965,8 @@ std::string web_state(const json &v, const std::string &run,
          " <span class=\"record-mode\" data-live=\"" +
          (v.value("live", false) ? "1\">Live" : "0\">Recorded") +
          "</span></div></header>" + failure(v, *s, st) +
-         "<button id=\"inspection-toggle\" aria-expanded=\"true\" "
-         "aria-controls=\"inspection-scroll\">Hide details</button>"
-         "<div id=\"inspection-scroll\" "
-         "tabindex=\"0\" role=\"region\" aria-label=\"Session inspector\">";
+         "<div id=\"inspection-scroll\" role=\"region\" "
+         "aria-label=\"Session inspector\">";
   out += "<dl class=\"facts\"><div class=\"drv-fact\"><dt>DERIVATION <button "
          "data-copy=\"" +
          escape(text(*s, "drv")) +
@@ -1003,8 +985,8 @@ std::string web_state(const json &v, const std::string &run,
            std::to_string(v.at("reported_errors").size()) + "</summary>";
     for (const auto &e : v.at("reported_errors"))
       out += "<button data-phase-seq=\"" + std::to_string(number(e, "seq")) +
-             "\" data-phase-activity=\"\">Output · " +
-             seconds(e.at("elapsed_ns").get<std::int64_t>()) +
+             "\" data-phase-activity=\"\">Show in log · " +
+             clock(e.at("elapsed_ns").get<std::int64_t>()) +
              "</button><pre>" + terminal(text(e, "bytes_hex")) + "</pre>";
     out += "</details>";
   }
@@ -1038,7 +1020,8 @@ std::string web_state(const json &v, const std::string &run,
     out += "<p class=\"empty\">No native result recorded</p>";
   out += "</details>" + phase_ledger(v, *s) +
          "<section class=\"graph-panel\"><header "
-         "class=\"panel-head\"><h2>Dependencies</h2></header><p "
+         "class=\"panel-head\"><h2>Dependencies</h2><span>grey: build-platform "
+         "tools</span></header><p "
          "id=\"selected-node\" "
          "hidden></p><div id=\"graph-scroll\" class=\"graph-scroll\" "
          "tabindex=\"0\" role=\"region\" aria-label=\"Dependency graph\" "
@@ -1057,7 +1040,14 @@ std::string web_state(const json &v, const std::string &run,
 }
 
 std::string web_logs(const json &records, const std::string &run,
-                     const std::string &activity, std::uint64_t after) {
+                     const std::string &activity, std::uint64_t after,
+                     std::uint64_t before) {
+  if (before) {
+    std::string out;
+    for (auto &r : records)
+      out += log_row(r);
+    return out + earlier(records, log_earlier_rows);
+  }
   std::string out;
   auto next = after;
   for (auto &r : records)
@@ -1067,6 +1057,8 @@ std::string web_logs(const json &records, const std::string &run,
     }
   if (!out.empty())
     out = "<div hx-swap-oob=\"beforeend:#log-rows\">" + out + "</div>";
+  // A tail response replaces the window, so it carries its own "earlier" state.
+  out += earlier(records, after ? 0 : log_tail_rows);
   return out + "<div id=\"log-cursor\" data-after=\"" + std::to_string(next) +
          "\" data-run=\"" + escape(run) + "\" data-activity=\"" +
          escape(activity) + "\"></div>";
@@ -1104,7 +1096,7 @@ std::string web_overview(const json &v) {
          "\" hx-swap=\"outerHTML\"><header class=\"summary-head\"><h1>" +
          escape(name) + "</h1><span class=\"record-mode\" data-live=\"" +
          (watching(v) ? "1\">Live" : "0\">Recorded") + "</span></header>" +
-         stopped + campaign_line(v) + attention(v) + "</section>";
+         stopped + campaign_line(v) + "</section>";
 }
 
 std::string web_page(const json &v, const std::string &run,
@@ -1132,24 +1124,35 @@ std::string web_page(const json &v, const std::string &run,
          "id=\"sessions-back\" "
          "href=\"./\">← All roots</a></nav><div class=\"detail-layout\">" +
          web_state(v, run, activity);
+  // A phase or dependency link narrows the console to one derivation's
+  // activity; say whose, and offer the way back.
+  std::string scope;
+  if (!activity.empty())
+    for (const auto &a : v.at("activities"))
+      if (text(a, "id") == activity) {
+        scope = text(a, "drv");
+        for (const auto &r : v.at("recipes"))
+          if (text(r, "drv") == scope)
+            scope = label(r);
+      }
   out += "<section class=\"log-panel\"><header class=\"panel-head\"><h2>Build "
          "output</h2><span id=\"log-mode\">" +
          std::string(v.value("live", false) ? "Live" : "Captured") +
          "</span><button id=\"log-follow\">" +
          (v.value("live", false) ? "Pause" : "Follow") +
-         "</button><button "
-         "id=\"log-end\">End</button></header><div "
-         "class=\"console-tools\"><label>Find <input id=\"log-find\" "
-         "type=\"search\" aria-label=\"Find in loaded output\"></label>"
-         "<label><input type=\"checkbox\" id=\"log-wrap\" checked>Wrap</label>";
-  out +=
-      "<a href=\"./?" + escape(query(id)) +
-      "\">All output</a></div><div class=\"log-columns\" aria-hidden=\"true\">"
-      "<span>Time</span><span>Source</span><span>Message</span></div><div "
-      "class=\"log-scroll\" "
-      "id=\"log-scroll\" tabindex=\"0\" role=\"region\" "
-      "aria-label=\"Output console\"><div class=\"log-rows\" id=\"log-rows\" "
-      "role=\"log\" aria-label=\"Build output\">";
+         "</button><button id=\"log-end\">End</button><label "
+         "class=\"log-find\">Find <input id=\"log-find\" type=\"search\" "
+         "aria-label=\"Find in loaded output\"></label><label><input "
+         "type=\"checkbox\" id=\"log-wrap\" checked>Wrap</label></header>";
+  if (!activity.empty())
+    out += "<p class=\"log-scope\">Only " +
+           escape(scope.empty() ? "one activity" : parse_name(scope).name) +
+           " · <a href=\"./?" + escape(query(id)) + "\">Show all output</a></p>";
+  out += "<div class=\"log-scroll\" id=\"log-scroll\" role=\"region\" "
+         "aria-label=\"Output console\">" +
+         earlier(v.at("logs"), log_tail_rows) +
+         "<div class=\"log-rows\" id=\"log-rows\" role=\"log\" "
+         "aria-label=\"Build output\">";
   for (auto &r : v.at("logs"))
     out += log_row(r);
   if (v.at("logs").empty())

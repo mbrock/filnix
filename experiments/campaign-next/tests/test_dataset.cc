@@ -110,8 +110,23 @@ int main() {
     check(fragment.find("&lt;script&gt;") != std::string::npos &&
               fragment.find("<script>") == std::string::npos,
           "escape captured HTML");
-    check(fragment.find("#" + std::to_string(activity)) != std::string::npos,
-          "full unsigned activity id is visible and copyable");
+    check(fragment.find("data-source=\"") != std::string::npos &&
+              fragment.find("<time title=\"") != std::string::npos &&
+              fragment.find("#" + std::to_string(activity)) == std::string::npos,
+          "rows carry a source label and clock time, not opaque activity ids");
+    {
+      json many = json::array();
+      for (unsigned i = 0; i < campaign::log_earlier_rows; ++i)
+        many.push_back({{"seq", 2000 + i}, {"elapsed_ns", 0}, {"bytes_hex", ""}});
+      auto page = campaign::web_logs(many, "test'run", "", 0, 3000);
+      check(page.find("data-first=\"2000\">") != std::string::npos &&
+                page.find("hx-swap-oob") == std::string::npos,
+            "a full earlier page offers the next one before its first row");
+      many.erase(many.begin());
+      check(campaign::web_logs(many, "test'run", "", 0, 3000)
+                    .find("data-first=\"2001\" hidden") != std::string::npos,
+            "a short earlier page reaches the beginning");
+    }
     unsigned seq = 8;
     for (const auto &[raw, rendered] :
          std::vector<std::pair<std::string, std::string>>{
@@ -270,11 +285,11 @@ int main() {
               measured.find("unpackPhase</button>", unpack + 1) ==
                   std::string::npos &&
               measured.find("otherPhase") == std::string::npos &&
-              measured.find("unpackPhase</button></td><td>0.467s") !=
+              measured.find("unpackPhase</button></td><td>0.5s") !=
                   std::string::npos &&
-              measured.find("patchPhase</button></td><td>5.058s") !=
+              measured.find("patchPhase</button></td><td>5.1s") !=
                   std::string::npos &&
-              measured.find("buildPhase</button></td><td>15.125s") !=
+              measured.find("buildPhase</button></td><td>15s") !=
                   std::string::npos,
           "phase duration ignores interleaved activities and duplicate phase "
           "reports, ending at activity stop");
@@ -286,7 +301,7 @@ int main() {
           "an abandoned activity has no invented terminal phase duration");
     ledger["live"] = true;
     check(
-        campaign::web_state(ledger, "test'run", "").find("20.250s · running") !=
+        campaign::web_state(ledger, "test'run", "").find("20s · running") !=
             std::string::npos,
         "a live phase uses elapsed observer time and is explicitly running");
     auto light = data.view("test'run", "", false);

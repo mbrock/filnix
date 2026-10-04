@@ -15,8 +15,10 @@ public:
   json summary(std::string run = "");
   json events(std::string run, std::uint64_t after);
   json view(std::string run, std::string activity, bool detail = true);
+  // Forward from `after`; or the latest `tail_rows`; or the rows before
+  // `before`, newest last. Windows are bounded; callers page explicitly.
   json logs(std::string run, std::string activity, std::uint64_t after,
-            bool tail = false);
+            bool tail = false, std::uint64_t before = 0);
   json export_to(const std::string &directory);
 
 private:

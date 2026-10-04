@@ -57,18 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const back = new URL('./', location.href);
   for (const key of ['filter', 'find']) if (params.has(key)) back.searchParams.set(key, params.get(key));
   byId('sessions-back').href = back;
-  function setInspector(open) {
-    const toggle = byId('inspection-toggle');
-    if (!toggle) return;
-    toggle.setAttribute('aria-expanded', String(open));
-    toggle.textContent = open ? 'Hide details' : 'Session details';
-    byId('inspection-scroll').hidden = !open;
-  }
-  if (matchMedia('(max-width: 800px)').matches) setInspector(false);
   const initialRun = byId('state').dataset.run;
   const cursor = byId('log-cursor');
   const rows = byId('log-rows');
-  const box = byId('log-scroll');
+  // The console is part of the page; the document is its scroller.
+  const page = document.scrollingElement;
+  const atBottom = () => page.scrollHeight - page.scrollTop - innerHeight <= 40;
+  const toBottom = () => { page.scrollTop = page.scrollHeight; };
   let following = byId('state').dataset.live === '1', pending = null, epoch = 0;
   let timer, wasLive = following;
   const searched = new WeakMap();
@@ -77,17 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function saveStateView() {
     const selected = byId('selected-node');
     return {
-      scroll: ['#inspection-scroll', '#graph-scroll'].map(selector => {
+      scroll: ['#state', '#graph-scroll'].map(selector => {
         const element = document.querySelector(selector);
         return {selector, top: element?.scrollTop || 0, left: element?.scrollLeft || 0, focused: element === document.activeElement};
       }),
-      inspectorOpen: !byId('inspection-scroll')?.hidden,
       disclosures: ['.native-result', '.output-paths', '.reported-errors', '[data-static]'].map(selector => ({selector, open: document.querySelector(selector)?.open || false})),
       selected: selected ? {text: selected.textContent, hidden: selected.hidden} : null
     };
   }
   function restoreStateView(view) {
-    setInspector(view.inspectorOpen);
     for (const saved of view.disclosures) {
       const element = document.querySelector(saved.selector);
       if (element) element.open = saved.open;
@@ -159,6 +152,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     byId('find-count').textContent = (term ? matches + ' matches · ' : '') + lines.length + ' loaded';
   }
+  // Show a row's source only where it changes from the row above.
+  function sources() {
+    let previous = null;
+    for (const row of rows.querySelectorAll('.log-row')) {
+      row.classList.toggle('same', row.dataset.source === previous);
+      previous = row.dataset.source;
+    }
+  }
+  function earlierState(doc) {
+    const marker = doc.getElementById('log-earlier'), button = byId('log-earlier');
+    if (!marker) return;
+    button.dataset.first = marker.dataset.first;
+    button.hidden = marker.hidden;
+  }
+  async function loadEarlier() {
+    const button = byId('log-earlier');
+    if (pending || button.hidden) return;
+    pending = new AbortController();
+    const generation = epoch;
+    button.disabled = true;
+    try {
+      const q = new URLSearchParams({run: initialRun, activity: cursor.dataset.activity, before: button.dataset.first});
+      const response = await fetch('./logs?' + q, {signal: pending.signal});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (generation !== epoch) return;
+      const fragment = document.createDocumentFragment();
+      for (const row of doc.querySelectorAll('.log-row')) fragment.append(row);
+      // Keep the reader's place: the row that was first stays where it was.
+      const anchor = rows.querySelector('.log-row'), top = anchor?.getBoundingClientRect().top;
+      rows.prepend(fragment);
+      earlierState(doc);
+      sources(); find(); message('');
+      if (anchor) page.scrollTop += anchor.getBoundingClientRect().top - top;
+    } catch (e) { if (e.name !== 'AbortError') message('Output unavailable · ' + e.message); }
+    finally { pending = null; button.disabled = false; }
+  }
   async function load({tail = false, after = cursor.dataset.after, activity = cursor.dataset.activity, replace = false} = {}) {
     if (pending) return;
     const generation = epoch;
@@ -170,7 +200,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (generation !== epoch) return;
-      if (replace) rows.replaceChildren();
+      const stick = following && atBottom();
+      if (replace) { rows.replaceChildren(); earlierState(doc); }
       const added = doc.querySelectorAll('.log-row');
       const fragment = document.createDocumentFragment();
       for (const row of added) fragment.append(row);
@@ -179,10 +210,15 @@ document.addEventListener('DOMContentLoaded', () => {
       cursor.dataset.after = next.dataset.after;
       cursor.dataset.activity = activity;
       if (added.length) rows.querySelector('.log-empty')?.remove();
-      while (rows.children.length > 256) rows.firstElementChild.remove();
+      // A long live follow keeps a bounded window; earlier output stays loadable.
+      if (rows.children.length > 20000) {
+        while (rows.children.length > 20000) rows.firstElementChild.remove();
+        byId('log-earlier').dataset.first = rows.firstElementChild.dataset.seq;
+        byId('log-earlier').hidden = false;
+      }
       if (!rows.children.length) { const p = document.createElement('p'); p.className = 'log-empty'; p.textContent = 'No captured output'; rows.append(p); }
-      find();
-      if (following || tail) box.scrollTop = box.scrollHeight;
+      sources(); find();
+      if (stick || tail) toBottom();
       message('');
     } catch (e) { if (e.name !== 'AbortError') message('Output unavailable · ' + e.message); }
     finally { pending = null; }
@@ -195,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (command !== epoch) return;
     const u = new URL(location.href); u.searchParams.set('activity', activity); history.replaceState(null, '', u);
     await load({after: String(BigInt(seq)-1n), activity, replace: true});
-    box.scrollTop = 0;
+    rows.firstElementChild?.scrollIntoView({block: 'start'});
   }
   async function end() {
     const command = ++epoch;
@@ -206,7 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
   async function selectNode() {
     const hash = location.hash.slice(1);
     if (!hash.startsWith('drv-')) return;
-    setInspector(true);
     let node = byId(hash);
     if (!node) {
       const details = document.querySelector('[data-static]');
@@ -223,21 +258,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (node) {
       byId('selected-node').textContent = 'Selected · ' + node.dataset.name;
       byId('selected-node').hidden = node.classList.contains('root-anchor');
-      const inspector = byId('inspection-scroll');
-      inspector.scrollTop += node.getBoundingClientRect().top - inspector.getBoundingClientRect().top;
+      node.scrollIntoView({block: 'center'});
       const name = node.querySelector('.node-name'), graph = byId('graph-scroll');
       if (name) graph.scrollLeft += name.getBoundingClientRect().left - graph.getBoundingClientRect().left;
     }
   }
   byId('log-find').addEventListener('input', () => { setFollow(false); find(); });
   byId('log-follow').addEventListener('click', () => { if (following) setFollow(false); else { setFollow(true); end(); } });
+  byId('log-earlier').addEventListener('click', loadEarlier);
   byId('log-end').addEventListener('click', end);
   byId('log-wrap').addEventListener('change', e => {
     byId('log-scroll').closest('.log-panel').classList.toggle('nowrap', !e.target.checked);
   });
-  box.addEventListener('scroll', () => { if (following && box.scrollHeight-box.scrollTop-box.clientHeight > 40) setFollow(false); });
   document.addEventListener('click', async e => {
-    if (e.target.closest('#inspection-toggle')) setInspector(byId('inspection-scroll').hidden);
     const phase = e.target.closest('[data-phase-seq]');
     if (phase) jumpPhase(phase.dataset.phaseSeq,phase.dataset.phaseActivity);
     const copy = e.target.closest('[data-copy]');
@@ -256,10 +289,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (action.pathname.endsWith('/state')) restoreStateView(stateView);
     const graph = byId('graph-scroll');
     if (graph) {
-      if (action.pathname.endsWith('/graph')) {
-        const inspector = byId('inspection-scroll');
-        inspector.scrollTop += byId('static-rows').getBoundingClientRect().top - inspector.getBoundingClientRect().top;
-      }
       const summary = document.querySelector('[data-static] summary');
       if (summary) summary.textContent = graph.dataset.staticCount + ' static inputs';
     }
@@ -269,7 +298,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (following && wasLive && !live) load(); // Drain the final committed tail.
     wasLive = live;
     schedule();
-    if (following) box.scrollTop = box.scrollHeight;
   });
   window.addEventListener('hashchange', selectNode);
   function schedule() {
@@ -279,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.addEventListener('visibilitychange', schedule);
   schedule();
+  sources();
   find();
-  box.scrollTop = box.scrollHeight;
   selectNode();
 });

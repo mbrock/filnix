@@ -575,3 +575,44 @@ The service reports `Existing recording: serving only, no automatic retries`.
 The full read-only browser suite passes through **https://nix.swa.sh/v2/**
 with no JavaScript errors. The public API still reports watermark **299484**,
 **82/82 settled, 80 successful, one failed, one timed out, zero unattempted**.
+
+## Density and flow pass
+
+Operator review of the deployed legibility pass on a phone: the outcome bar's
+greens and red/amber were hard to tell apart; the index wasted space (an inner
+scrolling pane, three-line rows, "outputs already present" on 61 rows, and a
+"Needs attention" list repeating rows); the console showed only 200 lines,
+`All output` did nothing on an unfiltered page, every line repeated its source,
+times had millisecond precision, details hid behind a toggle, and opaque
+activity ids, a `Started` column and unexplained bold names added noise. This
+pass supersedes the **Dedicated detail** contract and the pane geometry of
+earlier passes.
+
+- **Bar colours:** failed red, timed out yellow with stripes, building violet,
+  built blue, already valid grey. They differ in lightness as well as hue.
+  Every nonzero segment is at least 10px wide.
+- **Index:** the document scrolls; there is no inner pane and no separate
+  attention list. Rows sort failed, interrupted, timed out, incomplete,
+  observing, built, already valid, then unattempted, in recording order within
+  each group. Windows hold 100 rows. Detail text appears only for problems and
+  live work. On phones a row is one line, plus a second only for a cause.
+- **Session:** inspector content is always shown. On desktop it is a sticky
+  column beside a console that flows with the page and keeps its toolbar
+  pinned; on phones everything stacks in one scroll.
+- **Console:** the initial window is the latest 500 rows. `Load earlier output`
+  fetches 1000 rows before the first loaded one (`/logs?before=SEQ`), keeping
+  the reader's place. A long live follow trims at 20,000 rows and re-offers
+  earlier output. Source names show only where they change. Times are an
+  elapsed clock (`10:56`), with seconds in the title. Copyable activity ids
+  are gone. `Show all output` appears only when the console is narrowed to one
+  activity, which it names.
+- **Phases:** name, duration and a proportional bar; `Started`, the machine
+  (unless remote) and the activity id are gone. Durations keep one decimal
+  below ten seconds.
+- **Dependencies:** uniform weight; build-platform tools are grey, with a
+  legend, so a tool and its Fil-C namesake stay distinct. Activity notes say
+  `built 13s`, or the current phase while live.
+
+`meson test` and the rewritten browser suite pass against a copy of the
+deployed recording, including the earlier-output anchor, sticky console
+header, four desktop sizes and phone layouts.

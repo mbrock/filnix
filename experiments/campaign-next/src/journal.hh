@@ -15,6 +15,8 @@ namespace campaign {
 
 using json = nlohmann::json;
 inline constexpr std::size_t max_record_bytes = 8 * 1024 * 1024;
+// Console windows: the initial tail, and each "earlier output" page.
+inline constexpr std::size_t log_tail_rows = 500, log_earlier_rows = 1000;
 
 inline std::runtime_error system_error(std::string_view operation) {
   return std::runtime_error(std::string(operation) + ": " +

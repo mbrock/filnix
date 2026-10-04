@@ -222,10 +222,10 @@ never silently resumed or retried after such a failure.
 ## Viewer and archive
 
 The NXT HTTP server renders HTML in C++. The front page is a campaign overview:
-a proportional outcome bar with filter chips, a "Needs attention" list naming
-each unsuccessful root's first recorded error and duration, and a Package /
-Version / Status / Duration / Detail table with Find, filters and 50-row
-replacement windows. Names drop the repeated host triple (shown once above). Unattempted roots
+a proportional outcome bar with filter chips and one page-scrolling Package /
+Version / Status / Duration / Detail table, problems first, with Find, filters
+and 100-row windows. Unsuccessful roots name their first recorded error. Names
+drop the repeated host triple (shown once above). Unattempted roots
 remain visible without invented session links. Overview/rail reads materialize
 summaries only, not a selected graph or log. A session link opens the graph and
 console; `Follow latest` explicitly opts into the current/latest session.

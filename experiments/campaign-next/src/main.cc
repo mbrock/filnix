@@ -341,7 +341,7 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
       path != "/api/state" && path != "/api/logs")
     co_return response{404, {}, "Not found\n", {}};
   std::map<std::string, std::string> params;
-  std::uint64_t after = 0;
+  std::uint64_t after = 0, before = 0;
   try {
     if (question != std::string::npos) {
       auto query = std::string_view(req.target).substr(question + 1);
@@ -357,12 +357,14 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
         query.remove_prefix(end + 1);
       }
     }
-    if (params.contains("after")) {
-      auto &v = params.at("after");
-      auto result = std::from_chars(v.data(), v.data() + v.size(), after);
-      if (result.ec != std::errc{} || result.ptr != v.data() + v.size())
-        throw std::runtime_error("invalid cursor");
-    }
+    for (auto [key, target] :
+         {std::pair{"after", &after}, std::pair{"before", &before}})
+      if (params.contains(key)) {
+        auto &v = params.at(key);
+        auto result = std::from_chars(v.data(), v.data() + v.size(), *target);
+        if (result.ec != std::errc{} || result.ptr != v.data() + v.size())
+          throw std::runtime_error("invalid cursor");
+      }
   } catch (const std::exception &) {
     co_return response{400, {}, "Invalid query\n", {}};
   }
@@ -373,9 +375,9 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
       path == "/api/state" || path == "/state" || path == "/graph" ||
       (path == "/" && (!requested_run.empty() || params["follow"] == "1"));
   auto result =
-      co_await app.workers.run([&app, run, activity, after, is_logs, detail,
-                                tail = params["tail"] == "1"] {
-        return is_logs ? app.data->logs(run, activity, after, tail)
+      co_await app.workers.run([&app, run, activity, after, before, is_logs,
+                                detail, tail = params["tail"] == "1"] {
+        return is_logs ? app.data->logs(run, activity, after, tail, before)
                        : app.data->view(run, activity, detail);
       });
   if (!is_logs) {
@@ -392,7 +394,8 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
   bool api = path.starts_with("/api/");
   auto body = api       ? result.dump()
               : is_logs ? campaign::web_logs(result, run, activity,
-                                             params["tail"] == "1" ? 0 : after)
+                                             params["tail"] == "1" ? 0 : after,
+                                             before)
               : path == "/state"
                   ? campaign::web_state(result, requested_run, activity)
               : path == "/graph"

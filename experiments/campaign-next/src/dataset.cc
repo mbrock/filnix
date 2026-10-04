@@ -204,7 +204,7 @@ json Dataset::events(std::string run, std::uint64_t after) {
 }
 
 json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
-                   bool tail) {
+                   bool tail, std::uint64_t before) {
   run = select_run(std::move(run));
   auto filter = "run=" + quote(run);
   if (!activity.empty())
@@ -216,9 +216,13 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
              "a.id=l.activity),'') AS activity_name,lower(hex(l.bytes)) AS "
              "bytes_hex FROM logs l WHERE l." +
              filter;
-  if (tail)
-    sql = "SELECT * FROM (" + sql +
-          " ORDER BY l.seq DESC LIMIT 200) t ORDER BY seq";
+  if (before)
+    sql = "SELECT * FROM (" + sql + " AND l.seq<" + std::to_string(before) +
+          " ORDER BY l.seq DESC LIMIT " + std::to_string(log_earlier_rows) +
+          ") t ORDER BY seq";
+  else if (tail)
+    sql = "SELECT * FROM (" + sql + " ORDER BY l.seq DESC LIMIT " +
+          std::to_string(log_tail_rows) + ") t ORDER BY seq";
   else
     sql += " AND l.seq>" + std::to_string(after) + " ORDER BY seq LIMIT 256";
   return rows(sql);
