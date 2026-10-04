@@ -488,6 +488,31 @@ the previous false-positive geometric checks cannot accept that failure.
 
 This is Chromium touch emulation, not a real iPhone/Safari claim. Original
 package failures and the unresponsive-page report are not reclassified or
-claimed fixed. No production database access, new campaign, retry, or public
-service switch is part of this pass. The verified package is ready for an
-explicitly authorized deployment; the preceding public version remains live.
+claimed fixed. Pre-deployment checks did not access the production database,
+start a campaign, retry a build or switch the public service.
+
+### Session inspector deployment — 2026-10-04
+
+After explicit operator approval, `/opt/filnix-v2` and its package GC root were
+switched to
+`/nix/store/k5ikqhz3hhaglz93alqjcl07z8dmb6xs-filnix-campaign-next-0.1.0`,
+and `filnix-v2.service` restarted. Before the switch, the service was stopped
+and its closed database and manifest backed up to
+`/var/lib/filnix-v2/before-session-inspector-20261004T042135Z`.
+The previous package remains protected by
+`/nix/var/nix/gcroots/filnix-v2-before-session-inspector-20261004T042135Z`.
+Service configuration, budgets and manifest were not changed.
+
+The service reports `Existing recording: serving only, no automatic retries`.
+The full read-only browser suite passes through **https://nix.swa.sh/v2/**,
+including five desktop sizes, Chromium touch navigation/scrolling, styled
+Find, Wrap, phase jumps, clipboard copying, static windows, stable fragments,
+refresh retention and settled-page idle suppression. No JavaScript errors
+were reported. Public desktop, mobile index and mobile failure captures were
+inspected under `.amp/in/artifacts/instrument-public/`.
+
+The public API before and after deployment has the same cohort and watermark
+**299484**, with **82/82 settled, 80 successful, one failed, one timed out and
+zero unattempted**. Admission and live recording remain false; no campaign
+events, builds or retries were created. The new version is deployed, not merely
+available in a private preview.
