@@ -616,3 +616,14 @@ earlier passes.
 `meson test` and the rewritten browser suite pass against a copy of the
 deployed recording, including the earlier-output anchor, sticky console
 header, four desktop sizes and phone layouts.
+
+### Deployment — 2026-10-04
+
+`/opt/filnix-v2` and its package GC root now point to
+`/nix/store/2v0yqkx3f6l8y1apd8vf9q30yll2n5gy-filnix-campaign-next-0.1.0`. The
+closed database and manifest were backed up to
+`/var/lib/filnix-v2/before-density-20261004T055136Z`; the previous package is
+rooted as `/nix/var/nix/gcroots/filnix-v2-before-density-20261004T055136Z`.
+The rewritten browser suite passes through **https://nix.swa.sh/v2/** with no
+JavaScript errors, and the public API still reports watermark **299484** with
+**82/82 settled, 80 successful, one failed, one timed out, zero unattempted**.
