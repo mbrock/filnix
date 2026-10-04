@@ -208,15 +208,19 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
   run = select_run(std::move(run));
   auto filter = "run=" + quote(run);
   if (!activity.empty())
-    filter += " AND activity::VARCHAR=" + quote(activity);
-  auto sql = "SELECT seq,elapsed_ns,coalesce(activity::VARCHAR,'') AS activity,"
-             "lower(hex(bytes)) AS bytes_hex FROM logs WHERE " +
+    filter += " AND l.activity::VARCHAR=" + quote(activity);
+  // The activity's derivation name labels rows; ids remain copyable.
+  auto sql = "SELECT l.seq,l.elapsed_ns,coalesce(l.activity::VARCHAR,'') AS "
+             "activity,coalesce((SELECT r.name FROM activities a JOIN recipes r "
+             "ON r.run=a.run AND r.drv=a.drv WHERE a.run=l.run AND "
+             "a.id=l.activity),'') AS activity_name,lower(hex(l.bytes)) AS "
+             "bytes_hex FROM logs l WHERE l." +
              filter;
   if (tail)
     sql = "SELECT * FROM (" + sql +
-          " ORDER BY seq DESC LIMIT 200) t ORDER BY seq";
+          " ORDER BY l.seq DESC LIMIT 200) t ORDER BY seq";
   else
-    sql += " AND seq>" + std::to_string(after) + " ORDER BY seq LIMIT 256";
+    sql += " AND l.seq>" + std::to_string(after) + " ORDER BY seq LIMIT 256";
   return rows(sql);
 }
 
@@ -231,9 +235,18 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
     session_filter = " WHERE json_extract_string(e.payload,'$.cohort.id')=" +
                      quote(cohort.at("id").get<std::string>());
   }
+  // Elapsed time at the latest event, and the first top-level error: what a
+  // reader needs to rank a root without opening it. Both are cheap lookups.
+  const std::string progress =
+      "(SELECT x.elapsed_ns FROM events x WHERE x.\"offset\"=r.last_offset) "
+      "AS duration_ns,(SELECT json_extract_string(c.payload,'$.text_hex') FROM "
+      "events c WHERE c.run=r.run AND c.kind='nix.message' AND "
+      "json_extract(c.payload,'$.level')=0 ORDER BY c.seq LIMIT 1) AS cause_hex";
   auto sessions = rows(
       "SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
-      "r.summary,(SELECT lower(hex(a.phase)) FROM activities a WHERE "
+      "r.summary," +
+      progress +
+      ",(SELECT lower(hex(a.phase)) FROM activities a WHERE "
       "a.run=r.run AND a.drv=r.drv ORDER BY a.start_elapsed_ns DESC LIMIT 1) "
       "AS phase_hex,(SELECT json_extract_string(f.payload,'$.result.status') "
       "FROM events f WHERE f.run=r.run AND f.kind='nix.build-result' "
@@ -254,9 +267,9 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
   }
   // A selected older run may lie outside the bounded sidebar.
   if (session.is_null() && !run.empty()) {
-    auto found = rows("SELECT run,drv,name,system,start_wall_ns,summary "
-                      "FROM runs WHERE run=" +
-                      quote(run));
+    auto found = rows("SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
+                      "r.summary," +
+                      progress + " FROM runs r WHERE r.run=" + quote(run));
     if (!found.empty()) {
       session = found[0];
       auto state = session.at("summary");
@@ -321,7 +334,8 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
         "json_extract_string(e.payload,'$.cohort.id')=" +
         quote(cohort.at("id").get<std::string>());
     auto summaries = rows("SELECT r.summary" + members);
-    unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0;
+    unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0,
+             built = 0;
     for (const auto &item : summaries) {
       const auto &state = item.at("summary");
       if (!state.at("complete").get<bool>())
@@ -329,8 +343,10 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
       ++completed;
       auto outcome = state.at("outcome").get<std::string>();
       if (outcome == "built" || outcome == "already-valid" ||
-          outcome == "substituted" || outcome == "resolves-to-already-valid")
+          outcome == "substituted" || outcome == "resolves-to-already-valid") {
         ++succeeded;
+        built += outcome == "built";
+      }
       else if (outcome == "timed-out")
         ++timed_out;
       else
@@ -345,6 +361,8 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
     cohort["attempted"] = summaries.size();
     cohort["completed"] = completed;
     cohort["succeeded"] = succeeded;
+    cohort["built"] = built;
+    cohort["already_valid"] = succeeded - built;
     cohort["failed"] = failed;
     cohort["timed_out"] = timed_out;
     cohort["unattempted"] = cohort.at("roots").size() - summaries.size();

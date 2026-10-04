@@ -56,6 +56,140 @@ std::string display_text(std::string_view s) {
   }
   return out;
 }
+std::string plain(std::string_view s) {
+  std::string out;
+  for (std::size_t i = 0; i < s.size(); ++i) {
+    if (s[i] == '\x1b' && i + 1 < s.size() && s[i + 1] == '[') {
+      auto end = s.find_first_not_of("0123456789;:", i + 2);
+      if (end != std::string_view::npos && s[end] == 'm') {
+        i = end;
+        continue;
+      }
+    }
+    out += s[i];
+  }
+  return out;
+}
+std::string span(std::int64_t ns) {
+  if (ns <= 0)
+    return "—";
+  auto s = ns / 1000000000;
+  auto two = [](std::int64_t v) {
+    return (v < 10 ? "0" : "") + std::to_string(v);
+  };
+  if (s < 1)
+    return "<1s";
+  if (s < 60)
+    return std::to_string(s) + "s";
+  if (s < 3600)
+    return std::to_string(s / 60) + "m " + two(s % 60) + "s";
+  return std::to_string(s / 3600) + "h " + two(s / 60 % 60) + "m";
+}
+std::string thousands(std::uint64_t n) {
+  auto s = std::to_string(n);
+  for (auto i = std::ptrdiff_t(s.size()) - 3; i > 0; i -= 3)
+    s.insert(std::size_t(i), ",");
+  return s;
+}
+
+// "ffmpeg-headless-x86_64-unknown-linux-gnufilc0-8.1.2" reads as
+// ffmpeg-headless 8.1.2; the host platform is shown once, not per row.
+struct Name {
+  std::string name, version, platform;
+};
+Name parse_name(std::string full) {
+  Name n;
+  if (auto pos = full.find("-unknown-linux-"); pos != std::string::npos && pos) {
+    auto begin = full.rfind('-', pos - 1);
+    auto end = full.find('-', pos + 15);
+    bool last = end == std::string::npos;
+    if (begin != std::string::npos) {
+      n.platform = full.substr(begin + 1, last ? end : end - begin - 1);
+      full.erase(begin, last ? end : end - begin);
+    } else if (!last) { // A wrapper named for its target: "x86_64-…-gnufilc0-pkg-config".
+      n.platform = full.substr(0, end);
+      full.erase(0, end + 1);
+    }
+  }
+  // Fetched files (patches, scripts, tarballs) keep their whole name.
+  for (auto file : {".patch", ".diff", ".sh", ".tar", ".zip", "?"})
+    if (full.find(file) != std::string::npos) {
+      n.name = full;
+      return n;
+    }
+  for (std::size_t i = 0; i + 1 < full.size(); ++i)
+    if (full[i] == '-' && std::isdigit(static_cast<unsigned char>(full[i + 1]))) {
+      n.version = full.substr(i + 1);
+      full.resize(i);
+      break;
+    }
+  n.name = full;
+  return n;
+}
+std::string drv_name(const std::string &drv) {
+  auto base = drv.substr(drv.rfind('/') + 1);
+  if (auto dash = base.find('-'); dash != std::string::npos)
+    base.erase(0, dash + 1);
+  if (base.ends_with(".drv"))
+    base.resize(base.size() - 4);
+  return base;
+}
+void package(html::Writer &h, const std::string &full) {
+  auto n = parse_name(full);
+  h.tag("span", {{"class", "pkg"}}, [&] { h.text(n.name); });
+  if (!n.version.empty())
+    h.tag("span", {{"class", "version"}}, [&] { h.text(n.version); });
+}
+std::string package(const std::string &full) {
+  html::Writer h;
+  package(h, full);
+  return std::move(h).str();
+}
+
+// One top-level Nix error, reduced to the derivation and what happened to it.
+struct Cause {
+  std::string drv, what;
+  std::uint64_t seq = 0;
+  bool origin = false;
+};
+Cause read_cause(const std::string &message) {
+  auto t = plain(message);
+  Cause c;
+  if (auto a = t.find("/nix/store/"); a != std::string::npos)
+    if (auto b = t.find(".drv", a); b != std::string::npos)
+      c.drv = t.substr(a, b + 4 - a);
+  auto line = [&](std::size_t from) {
+    auto end = t.find('\n', from);
+    return t.substr(from, end == std::string::npos ? end : end - from);
+  };
+  if (auto p = t.find("timed out after"); p != std::string::npos)
+    c.what = line(p), c.origin = true;
+  else if (p = t.find("failed with exit code"); p != std::string::npos)
+    c.what = line(p), c.origin = true;
+  else if (p = t.find("Reason:"); p != std::string::npos)
+    c.what = line(p + 7);
+  else {
+    c.what = line(0);
+    if (c.what.starts_with("error:"))
+      c.what.erase(0, 6);
+  }
+  auto first = c.what.find_first_not_of(" ");
+  c.what.erase(0, first == std::string::npos ? c.what.size() : first);
+  while (!c.what.empty() && std::string_view(" .;").find(c.what.back()) !=
+                                std::string_view::npos)
+    c.what.pop_back();
+  return c;
+}
+std::string cause_line(const json &s) {
+  auto hex_text = text(s, "cause_hex");
+  if (hex_text.empty())
+    return {};
+  auto c = read_cause(unhex(hex_text));
+  if (c.drv.empty())
+    return c.what;
+  auto n = parse_name(drv_name(c.drv));
+  return n.name + (n.version.empty() ? "" : " " + n.version) + " " + c.what;
+}
 
 struct SGR {
   std::string foreground, background;
@@ -274,9 +408,18 @@ std::string status(const json &view, const json &s) {
     return "failed";
   return result;
 }
+std::string caption(const std::string &s) {
+  if (s == "already-valid")
+    return "already valid";
+  if (s == "timed-out")
+    return "timed out";
+  if (s == "unattempted")
+    return "not attempted";
+  return s;
+}
 std::string badge(const std::string &s) {
   return "<span class=\"status\" data-status=\"" + escape(s) + "\">" +
-         escape(s) + "</span>";
+         escape(caption(s)) + "</span>";
 }
 std::string lower(std::string s) {
   for (auto &c : s)
@@ -285,6 +428,30 @@ std::string lower(std::string s) {
 }
 std::string label(const json &s) {
   return text(s, "name", text(s, "drv", "Unknown derivation"));
+}
+
+// The recorded top-level errors in order, ending with the selected root:
+// the derivation that broke first, then each one that could not build.
+std::vector<Cause> causes(const json &v, const json &s) {
+  std::vector<Cause> out;
+  auto errors = v.value("reported_errors", json::array());
+  for (auto it = errors.rbegin(); it != errors.rend(); ++it) {
+    auto c = read_cause(unhex(text(*it, "bytes_hex")));
+    c.seq = number(*it, "seq");
+    if (!c.drv.empty())
+      out.push_back(std::move(c));
+  }
+  auto root = text(s, "drv");
+  if (!out.empty() && out.back().drv != root)
+    for (const auto &e : v.value("failure_events", json::array()))
+      if (e.at("payload").contains("result")) {
+        auto c = read_cause(
+            text(e.at("payload").at("result"), "errorMsg", "build failed"));
+        c.drv = root;
+        out.push_back(std::move(c));
+        break;
+      }
+  return out;
 }
 
 struct Graph {
@@ -298,10 +465,12 @@ struct Graph {
   std::map<std::string, const json *> recipes, activities;
   std::map<std::string, std::vector<const json *>> edges;
   std::map<std::string, std::string> direct_outputs;
-  std::set<std::string> primary, reachable;
+  std::set<std::string> primary, reachable, failed;
   std::vector<Row> rows;
   Graph(const json &v, const json &s)
       : view(v), run(text(s, "run")), root(text(s, "drv")) {
+    for (const auto &c : causes(v, s))
+      failed.insert(c.drv);
     for (const auto &r : v.at("recipes"))
       recipes[text(r, "drv")] = &r;
     for (const auto &a : v.at("activities"))
@@ -359,14 +528,21 @@ struct Graph {
   std::string node(const Row &r, bool initial = false) const {
     auto anchor = "drv-" + hex(r.drv);
     bool reference = r.reference || (!initial && primary.contains(r.drv));
-    std::string out = "<div class=\"graph-node\" data-name=\"" +
-                      escape(name(r.drv)) + "\"" +
+    auto full = name(r.drv);
+    // Build-platform tools carry no host triple; they recede behind Fil-C
+    // packages, which are what the campaign is about.
+    auto kind = std::string("graph-node") +
+                (parse_name(full).platform.empty() ? " native" : "") +
+                (failed.contains(r.drv) ? " failed" : "");
+    std::string out = "<div class=\"" + kind + "\" data-name=\"" +
+                      escape(full) + "\" title=\"" + escape(full) + "\"" +
                       (reference ? "" : " id=\"" + anchor + "\"") +
                       " style=\"--depth:" + std::to_string(r.depth) + "\">";
     out += "<a href=\"#" + anchor + "\" class=\"node-name\">" +
-           (reference ? "reference · " : "") + escape(name(r.drv)) + "</a>";
+           (reference ? "<span class=\"ref\">reference</span>" : "") + package(full) +
+           "</a>";
     if (r.drv == root)
-      out += " · root · " + badge(status(view, *session(view, run)));
+      out += " " + badge(status(view, *session(view, run)));
     auto a = activities.find(r.drv);
     if (a != activities.end()) {
       auto &item = *a->second;
@@ -374,17 +550,18 @@ struct Graph {
       auto end = item.at("stop_elapsed_ns").is_number()
                      ? item.at("stop_elapsed_ns").get<std::int64_t>()
                      : view.value("elapsed_now_ns", std::int64_t(0));
-      auto state = text(item, "status");
-      if (state == "awaiting-result")
-        state = "ended";
-      else if (state == "running" && !view.value("live", false))
-        state = "last seen running";
+      auto state = text(item, "status"), machine = text(item, "machine");
+      std::string where =
+          machine.empty() || machine == "local" ? "" : " · " + machine;
+      std::string note = state == "running" ? (view.value("live", false)
+                                                   ? " · running"
+                                                   : " · last seen running")
+                                            : "";
       out += "<span class=\"node-activity\">" +
-             escape(text(item, "phase", "activity")) + " · " +
-             escape(text(item, "machine", "local")) + " · " + escape(state) +
-             " · " + seconds(std::max<std::int64_t>(0, end - start)) +
+             escape(text(item, "phase", "activity")) + where + note + " · " +
+             escape(span(std::max<std::int64_t>(1, end - start))) +
              "</span><a class=\"node-output\" href=\"./?" +
-             escape(query(run, text(item, "id"))) + "\">Output</a>";
+             escape(query(run, text(item, "id"))) + "\">log</a>";
     }
     const auto &outputs =
         initial && r.drv != root && direct_outputs.contains(r.drv)
@@ -400,9 +577,28 @@ struct Graph {
   }
 };
 
-std::string failure(const json &view, const std::string &state) {
+std::string failure(const json &view, const json &s, const std::string &state) {
   if (state != "failed" && state != "timed-out" && state != "interrupted")
     return {};
+  auto chain = causes(view, s);
+  std::string out = "<section class=\"failure\" data-status=\"" +
+                    escape(state) + "\"><h2>" +
+                    (state == "failed" ? "Why it failed" : "Why it stopped") +
+                    "</h2>";
+  if (chain.size() > 1 || (chain.size() == 1 && chain[0].drv != text(s, "drv"))) {
+    out += "<ol class=\"cause-chain\">";
+    for (const auto &c : chain) {
+      out += std::string("<li class=\"cause") + (c.origin ? " origin" : "") +
+             "\" title=\"" + escape(c.drv) + "\">" +
+             package(c.drv == text(s, "drv") ? label(s) : drv_name(c.drv)) +
+             "<span class=\"cause-what\">" + escape(c.what) + "</span>";
+      if (c.seq)
+        out += "<button data-phase-seq=\"" + std::to_string(c.seq) +
+               "\" data-phase-activity=\"\">Show in log</button>";
+      out += "</li>";
+    }
+    return out + "</ol></section>";
+  }
   std::string reason;
   for (const auto &e : view.value("failure_events", json::array())) {
     const auto &p = e.at("payload");
@@ -426,9 +622,17 @@ std::string failure(const json &view, const std::string &state) {
     reason.resize(paths);
   if (auto why = reason.find("Reason:"); why != std::string::npos)
     reason.erase(0, why + 7);
-  return "<div class=\"failure\">" +
-         terminal(hex(reason.empty() ? "no recorded reason" : reason)) +
-         "</div>";
+  out += "<p class=\"cause-what\">" +
+         terminal(hex(reason.empty() ? "no recorded reason" : reason)) + "</p>";
+  auto phase = display_text(unhex(text(s, "phase_hex")));
+  std::string context;
+  if (!phase.empty())
+    context += "during " + phase;
+  if (auto d = std::int64_t(number(s, "duration_ns")); d > 0)
+    context += (context.empty() ? "after " : " · after ") + span(d);
+  if (!context.empty())
+    out += "<p class=\"cause-context\">" + escape(context) + "</p>";
+  return out + "</section>";
 }
 
 std::string phase_ledger(const json &v, const json &s) {
@@ -442,15 +646,23 @@ std::string phase_ledger(const json &v, const json &s) {
       if (text(p, "activity") == text(*activity, "id") &&
           (phases.empty() || text(*phases.back(), "phase") != text(p, "phase")))
         phases.push_back(&p);
-  std::string out = "<section class=\"phase-ledger\"><h2>Phase ledger</h2>";
-  if (activity)
-    out += "<p class=\"snapshot\">" +
-           escape(text(*activity, "machine", "local")) + " · #" +
-           escape(text(*activity, "id")) + "</p>";
+  // A root that never ran its own builder has no phases; say nothing.
   if (phases.empty())
-    return out + "<p class=\"empty\">No recorded phases</p></section>";
+    return {};
+  std::string out = "<section class=\"phase-ledger\"><h2>Phases</h2><p "
+                    "class=\"snapshot\">" +
+                    escape(text(*activity, "machine", "local")) + " · #" +
+                    escape(text(*activity, "id")) + "</p>";
   out += "<table><thead><tr><th>Phase</th><th>Duration</th><th>Started</th>"
          "</tr></thead><tbody>";
+  std::int64_t total = 0;
+  {
+    auto first = phases.front()->at("elapsed_ns").get<std::int64_t>();
+    auto stop = activity->at("stop_elapsed_ns");
+    total = (stop.is_number() ? stop.get<std::int64_t>()
+                              : v.value("elapsed_now_ns", first)) -
+            first;
+  }
   for (std::size_t i = 0; i < phases.size(); ++i) {
     const auto &p = *phases[i];
     auto start = p.at("elapsed_ns").get<std::int64_t>();
@@ -464,24 +676,38 @@ std::string phase_ledger(const json &v, const json &s) {
                         ? seconds(end.get<std::int64_t>() - start) +
                               (running ? " · running" : "")
                         : "— · end unobserved";
+    std::string share = "0";
+    if (total > 0 && end.is_number() && end.get<std::int64_t>() >= start)
+      share = std::to_string(
+          std::clamp<std::int64_t>((end.get<std::int64_t>() - start) * 1000 /
+                                       total,
+                                   0, 1000));
     out += "<tr><td><button data-phase-seq=\"" +
            std::to_string(number(p, "seq")) + "\" data-phase-activity=\"" +
            escape(text(p, "activity")) + "\">" + escape(text(p, "phase")) +
-           "</button></td><td>" + duration + "</td><td>" + seconds(start) +
-           "</td></tr>";
+           "</button></td><td>" + duration +
+           "<span class=\"phase-bar\" style=\"--share:" + share +
+           "\"></span></td><td>" + seconds(start) + "</td></tr>";
   }
   return out + "</tbody></table></section>";
 }
 
 std::string log_row(const json &r) {
   auto activity = text(r, "activity");
+  // Name the derivation producing the line; the numeric id stays copyable.
+  auto who = parse_name(text(r, "activity_name")).name;
+  if (who.empty() && !activity.empty())
+    who = "#" + activity.substr(activity.size() > 6 ? activity.size() - 6 : 0);
+  if (who.size() > 18)
+    who = who.substr(0, 17) + "…";
   return "<div class=\"log-row\" data-seq=\"" +
          std::to_string(number(r, "seq")) + "\"><time>" +
          seconds(r.value("elapsed_ns", std::int64_t(0))) +
          "</time><button class=\"log-activity\" data-copy=\"" +
-         escape(activity) + "\" title=\"Copy activity id\"" +
-         (activity.empty() ? " disabled" : "") + ">" +
-         (activity.empty() ? "—" : "#" + escape(activity)) + "</button><pre>" +
+         escape(activity) + "\" title=\"" +
+         escape(text(r, "activity_name", "Activity")) + " · copy id #" +
+         escape(activity) + "\"" + (activity.empty() ? " disabled" : "") +
+         ">" + (activity.empty() ? "—" : escape(who)) + "</button><pre>" +
          terminal(text(r, "bytes_hex")) + "</pre></div>";
 }
 bool watching(const json &v) {
@@ -495,34 +721,94 @@ std::string controls(const json &v) {
       "\"><input type=\"hidden\" id=\"rail-after\" name=\"after\" "
       "value=\"0\"><label>Filter <select name=\"filter\" "
       "id=\"session-filter\">";
-  for (auto s :
+  for (std::string s :
        {"all", "observing", "built", "already-valid", "incomplete", "failed",
         "interrupted", "timed-out", "successful", "unattempted"})
-    out += "<option>" + std::string(s) + "</option>";
+    out += "<option value=\"" + s + "\">" + caption(s) + "</option>";
   out += "</select></label><label>Find <input name=\"find\" "
          "id=\"session-find\" type=\"search\" "
-         "placeholder=\"Name\"></label></form>";
+         "placeholder=\"Package name\"></label></form>";
   return out;
 }
+// Counts as a proportional bar plus filter chips, in severity order.
 std::string campaign_line(const json &v) {
   if (!v.contains("cohort") || !v.at("cohort").is_object())
     return {};
   const auto &c = v.at("cohort");
-  std::string out = "<div class=\"campaign-line\">" +
-                    std::to_string(c.at("roots").size()) + " roots" + " · " +
-                    std::to_string(number(c, "completed")) + "/" +
-                    std::to_string(c.at("roots").size()) + " roots settled";
-  for (const auto &[key, f, caption] :
-       std::vector<std::tuple<std::string, std::string, std::string>>{
-           {"succeeded", "successful", "successful"},
-           {"failed", "failed", "failed/interrupted"},
-           {"timed_out", "timed-out", "timed out"},
-           {"unattempted", "unattempted", "unattempted"}})
-    out += " · <button data-filter=\"" + f + "\">" +
-           std::to_string(number(c, key.c_str())) + " " + caption + "</button>";
-  if (!text(c, "stop_reason").empty())
-    out += " · admission stopped: " + escape(text(c, "stop_reason"));
-  return out + " · <a href=\"./?follow=1\">Follow latest</a></div>";
+  auto total = c.at("roots").size();
+  auto running = number(c, "attempted") - number(c, "completed");
+  std::vector<std::tuple<std::string, std::uint64_t, std::string>> parts{
+      {"failed", number(c, "failed"), "failed"},
+      {"timed-out", number(c, "timed_out"), "timed out"},
+      {"observing", running, "building"},
+      {"built", number(c, "built"), "built"},
+      {"already-valid", number(c, "already_valid"), "already valid"},
+      {"unattempted", number(c, "unattempted"), "not attempted"}};
+  std::string bar = "<div class=\"tally-bar\" role=\"img\" aria-label=\"" +
+                    std::to_string(number(c, "completed")) + " of " +
+                    std::to_string(total) + " roots settled\">";
+  std::string chips = "<div class=\"campaign-line\">";
+  for (const auto &[filter, n, label] : parts) {
+    if (n)
+      bar += "<span data-status=\"" + filter + "\" style=\"flex:" +
+             std::to_string(n) + "\" title=\"" + std::to_string(n) + " " +
+             label + "\"></span>";
+    if (n || filter == "failed" || filter == "built")
+      chips += "<button class=\"chip\" data-filter=\"" + filter +
+               "\" data-status=\"" + filter + "\"><b>" + std::to_string(n) +
+               "</b> " + label + "</button>";
+  }
+  return bar + "</div>" + chips + "</div>";
+}
+
+// Roots that need a reader's attention, each with its first recorded cause.
+std::string attention(const json &v) {
+  auto cohort = v.value("cohort", json(nullptr));
+  html::Writer h;
+  std::size_t count = 0;
+  auto items = [&](bool render) {
+    for (const auto &s : v.at("sessions")) {
+      auto request = s.value("request", json(nullptr));
+      if (cohort.is_object() &&
+          (!request.is_object() || !request.contains("cohort") ||
+           request.at("cohort").at("id") != cohort.at("id")))
+        continue;
+      auto st = status(v, s);
+      if (st == "built" || st == "already-valid")
+        continue;
+      if (!render) {
+        ++count;
+        continue;
+      }
+      h.tag("li", {{"data-status", st}}, [&] {
+        h.tag("a", {{"href", "./?" + query(text(s, "run"))}}, [&] {
+          h.tag("span", {{"class", "attention-name"}},
+                [&] { package(h, label(s)); });
+          h.tag("span", {{"class", "status"}, {"data-status", st}},
+                [&] { h.text(caption(st)); });
+          std::string why = cause_line(s);
+          auto phase = display_text(unhex(text(s, "phase_hex")));
+          if (why.empty() && st == "timed-out")
+            why = "root time limit reached";
+          if (st == "observing" || st == "timed-out" || st == "incomplete")
+            if (!phase.empty())
+              why += (why.empty() ? "in " : " in ") + phase;
+          if (why.empty())
+            why = text(s, "native_status", "no recorded reason");
+          h.tag("span", {{"class", "attention-why"}}, [&] { h.text(why); });
+          h.tag("span", {{"class", "duration"}}, [&] {
+            h.text(span(std::int64_t(number(s, "duration_ns"))));
+          });
+        });
+      });
+    }
+  };
+  items(false);
+  if (!count)
+    return {};
+  h.tag("h2", [&] { h.text("Needs attention"); });
+  h.tag("ul", [&] { items(true); });
+  return "<section class=\"attention\">" + std::move(h).str() + "</section>";
 }
 } // namespace
 
@@ -568,7 +854,7 @@ std::string web_sessions(const json &v, const std::string &run,
       h.tag("thead", [&] {
         h.tag("tr", [&] {
           for (auto name :
-               {"Package", "State", "Events", "Output lines", "Phase / result"})
+               {"Package", "Version", "Status", "Duration", "Detail"})
             h.tag("th", {{"scope", "col"}}, [&] { h.text(name); });
         });
       });
@@ -577,30 +863,39 @@ std::string web_sessions(const json &v, const std::string &run,
           const auto &s = matches[i];
           auto id = text(s, "run"),
                st = id.empty() ? "unattempted" : status(v, s);
-          h.tag("tr", [&] {
-            h.tag("td", [&] {
+          auto n = parse_name(label(s));
+          h.tag("tr", {{"data-status", st}}, [&] {
+            h.tag("td", {{"class", "pkg-cell"}, {"title", label(s)}}, [&] {
               if (id.empty())
-                h.text(label(s));
+                h.text(n.name);
               else {
                 auto href = "./?" + query(id) + "&filter=" + url(filter) +
                             "&find=" + url(find);
-                h.tag("a", {{"href", href}}, [&] { h.text(label(s)); });
+                h.tag("a", {{"href", href}}, [&] { h.text(n.name); });
               }
             });
+            h.tag("td", {{"class", "version"}}, [&] { h.text(n.version); });
             h.tag("td", [&] {
               h.tag("span", {{"class", "status"}, {"data-status", st}},
-                    [&] { h.text(st); });
+                    [&] { h.text(caption(st)); });
             });
-            for (auto key : {"events", "output_lines"})
-              h.tag("td", [&] { h.text(std::to_string(number(s, key))); });
+            h.tag("td", {{"class", "duration"}}, [&] {
+              h.text(id.empty() ? "" : span(std::int64_t(number(s, "duration_ns"))));
+            });
             h.tag("td", {{"class", "session-observation"}}, [&] {
-              auto native = text(s, "native_status");
-              if (st == "failed" && !native.empty())
-                h.text(native);
-              else if (!text(s, "phase_hex").empty())
-                h.text(display_text(unhex(text(s, "phase_hex"))));
-              else
-                h.text("—");
+              auto phase = display_text(unhex(text(s, "phase_hex")));
+              auto lines = number(s, "output_lines");
+              if (st == "failed" || st == "interrupted")
+                h.text(cause_line(s).empty() ? text(s, "native_status", "—")
+                                             : cause_line(s));
+              else if (st == "timed-out")
+                h.text("time limit" + (phase.empty() ? "" : " in " + phase));
+              else if (st == "observing" || st == "incomplete")
+                h.text(phase.empty() ? "—" : phase);
+              else if (st == "built")
+                h.text(thousands(lines) + " log lines");
+              else if (st == "already-valid")
+                h.text("outputs already present");
             });
           });
         }
@@ -676,10 +971,16 @@ std::string web_state(const json &v, const std::string &run,
   auto st = status(v, *s);
   Graph g(v, *s);
   auto count = g.reachable.size() - g.primary.size();
-  out += "<header class=\"summary-head\"><h1>" + escape(label(*s)) +
-         "</h1><div>" + badge(st) + " <span class=\"record-mode\">" +
-         (v.value("live", false) ? "Live · recording" : "Recorded") +
-         "</span></div></header>" + failure(v, st) +
+  auto platform = parse_name(label(*s)).platform;
+  out += "<header class=\"summary-head\"><h1 title=\"" + escape(label(*s)) +
+         "\">" + package(label(*s)) + "</h1><div class=\"head-meta\">" +
+         badge(st) +
+         (platform.empty() ? ""
+                           : " <span class=\"platform\">" + escape(platform) +
+                                 "</span>") +
+         " <span class=\"record-mode\" data-live=\"" +
+         (v.value("live", false) ? "1\">Live" : "0\">Recorded") +
+         "</span></div></header>" + failure(v, *s, st) +
          "<button id=\"inspection-toggle\" aria-expanded=\"true\" "
          "aria-controls=\"inspection-scroll\">Hide details</button>"
          "<div id=\"inspection-scroll\" "
@@ -693,8 +994,8 @@ std::string web_state(const json &v, const std::string &run,
   for (auto &[caption, value] :
        std::vector<std::pair<std::string, std::string>>{
            {"SYSTEM", text(*s, "system", "—")},
-           {"EVENTS", std::to_string(number(*s, "events"))},
-           {"OUTPUT LINES", std::to_string(number(*s, "output_lines"))}})
+           {"DURATION", span(std::int64_t(number(*s, "duration_ns")))},
+           {"LOG LINES", thousands(number(*s, "output_lines"))}})
     out += "<div><dt>" + caption + "</dt><dd>" + escape(value) + "</dd></div>";
   out += "</dl>";
   if (!v.value("reported_errors", json::array()).empty()) {
@@ -779,14 +1080,31 @@ std::string web_overview(const json &v) {
     if (name.ends_with(suffix))
       name.resize(name.size() - suffix.size());
   }
+  std::string stopped;
+  if (c.is_object()) {
+    std::string platform;
+    for (const auto &s : v.at("sessions"))
+      if (platform.empty())
+        platform = parse_name(label(s)).platform;
+    stopped = "<p class=\"campaign-meta\">" +
+              std::to_string(number(c, "completed")) + " of " +
+              std::to_string(c.at("roots").size()) + " roots settled";
+    if (!platform.empty())
+      stopped += " · " + escape(platform);
+    if (auto why = text(c, "stop_reason"); !why.empty()) {
+      std::replace(why.begin(), why.end(), '-', ' ');
+      stopped += " · admission stopped: " + escape(why);
+    }
+    stopped += " · <a href=\"./?follow=1\">Follow latest</a></p>";
+  }
   return "<section id=\"overview-summary\" data-watch=\"" +
          std::string(watching(v) ? "1" : "0") +
          "\" hx-get=\"./overview\" hx-trigger=\"refresh" +
          (watching(v) ? ", every 2s" : "") +
          "\" hx-swap=\"outerHTML\"><header class=\"summary-head\"><h1>" +
-         escape(name) + "</h1><span class=\"record-mode\">" +
-         (watching(v) ? "Live · recording" : "Recorded") + "</span></header>" +
-         campaign_line(v) + "</section>";
+         escape(name) + "</h1><span class=\"record-mode\" data-live=\"" +
+         (watching(v) ? "1\">Live" : "0\">Recorded") + "</span></header>" +
+         stopped + campaign_line(v) + attention(v) + "</section>";
 }
 
 std::string web_page(const json &v, const std::string &run,
@@ -804,15 +1122,15 @@ std::string web_page(const json &v, const std::string &run,
       "href=\"./observatory.css\"></head><body>";
   if (overview)
     return out +
-           "<main class=\"overview\"><p class=\"brand\">FILNIX / "
-           "CAMPAIGN</p>" +
+           "<main class=\"overview\"><p class=\"brand\">Filnix <span>/</span> "
+           "campaign</p>" +
            web_overview(v) + controls(v) +
            "<div id=\"session-results\" tabindex=\"0\" "
            "role=\"region\" aria-label=\"Campaign roots\">" +
            web_sessions(v, "", "all", "", 0) + "</div></main></body></html>";
   out += "<main class=\"detail-shell\"><nav class=\"detail-nav\"><a "
          "id=\"sessions-back\" "
-         "href=\"./\">Sessions</a></nav><div class=\"detail-layout\">" +
+         "href=\"./\">← All roots</a></nav><div class=\"detail-layout\">" +
          web_state(v, run, activity);
   out += "<section class=\"log-panel\"><header class=\"panel-head\"><h2>Build "
          "output</h2><span id=\"log-mode\">" +
@@ -827,7 +1145,7 @@ std::string web_page(const json &v, const std::string &run,
   out +=
       "<a href=\"./?" + escape(query(id)) +
       "\">All output</a></div><div class=\"log-columns\" aria-hidden=\"true\">"
-      "<span>Time</span><span>Activity</span><span>Message</span></div><div "
+      "<span>Time</span><span>Source</span><span>Message</span></div><div "
       "class=\"log-scroll\" "
       "id=\"log-scroll\" tabindex=\"0\" role=\"region\" "
       "aria-label=\"Output console\"><div class=\"log-rows\" id=\"log-rows\" "

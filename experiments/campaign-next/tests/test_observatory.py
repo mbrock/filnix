@@ -81,10 +81,10 @@ def main():
         assert page.locator("#state, #log-rows, .sidebar").count() == 0
         assert page.locator(".campaign-table th").all_text_contents() == [
             "Package",
-            "State",
-            "Events",
-            "Output lines",
-            "Phase / result",
+            "Version",
+            "Status",
+            "Duration",
+            "Detail",
         ]
         assert "ffmpeg" not in page.title()
         report["overview_dom"] = page.evaluate("document.querySelectorAll('*').length")
@@ -135,8 +135,13 @@ def main():
         page.wait_for_function(
             "document.querySelectorAll('.campaign-table tbody tr').length === 1"
         )
-        assert failed["name"] in page.locator(".campaign-table tbody").inner_text()
-        assert page.locator(".session-observation").text_content() == "DependencyFailed"
+        assert (
+            page.locator(".campaign-table tbody .pkg-cell").get_attribute("title")
+            == failed["name"]
+        )
+        # The failed root names the dependency that broke first.
+        assert "timed out" in page.locator(".session-observation").text_content()
+        assert page.locator(".attention li").count() >= 2
         capture(page, "observatory-index-failed")
         page.locator("#session-find").fill("no-such-package")
         page.wait_for_function(
@@ -148,6 +153,12 @@ def main():
         assert page.locator(".campaign-table, .sidebar, .campaign-line").count() == 0
         assert "filter=failed" in page.locator("#sessions-back").get_attribute("href")
         assert "1 dependency failed" in page.locator(".failure").text_content()
+        assert page.locator(".failure .cause.origin").count() == 1
+        with page.expect_response(lambda r: "/logs?" in r.url):
+            page.locator(".failure .cause.origin button").click()
+        page.wait_for_function(
+            "document.querySelector('#log-rows').textContent.includes('timed out after')"
+        )
         page.locator(".output-paths summary").click()
         assert "reported" in page.locator(".output-paths summary").text_content()
         assert "/nix/store/" in page.locator(".output-paths pre").text_content()
@@ -300,8 +311,14 @@ def main():
         assert page.locator(".native-result").evaluate("e=>e.open")
         timeout = next(s for s in state["sessions"] if s["outcome"] == "timed-out")
         page.goto(base + "?run=" + timeout["run"])
-        assert page.locator(".summary-head .status").text_content() == "timed-out"
-        assert page.locator(".failure").text_content() == "root time limit reached"
+        assert (
+            page.locator(".summary-head .status").get_attribute("data-status")
+            == "timed-out"
+        )
+        assert (
+            page.locator(".failure > .cause-what").text_content()
+            == "root time limit reached"
+        )
         capture(page, "observatory-inspector-timeout")
 
         mobile = browser.new_context(

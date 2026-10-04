@@ -516,3 +516,47 @@ The public API before and after deployment has the same cohort and watermark
 zero unattempted**. Admission and live recording remain false; no campaign
 events, builds or retries were created. The new version is deployed, not merely
 available in a private preview.
+
+## Legibility pass
+
+The previous index gave every root equal weight: 82 identical monospace rows,
+names dominated by `-x86_64-unknown-linux-gnufilc0-`, internal counters
+(`Events`) and a `Phase / result` column that read `fixupPhase` for every
+success. The failed root's actual culprit was only discoverable at the bottom
+of its console. This pass changes presentation and two read projections; NXT,
+recording, scheduling and raw events are unchanged. It supersedes the
+**One index**, **Campaign once** and **Phase ledger** contracts above where
+they conflict.
+
+- **Outcome first:** campaign arithmetic → a proportional bar (failed, timed
+  out, building, built, already valid, not attempted) with the same counts as
+  clickable filter chips. `Follow latest`, settled count, platform and stop
+  reason form one quiet line.
+- **Needs attention:** every non-successful cohort root is listed above the
+  table with its status, first top-level Nix error (e.g. `flac 1.5.0 timed out
+  after 300 seconds of silence`) and elapsed time. Timed-out roots name the
+  phase they were in.
+- **Table:** `Package`, `Version`, `Status`, `Duration`, `Detail`. Names are
+  parsed into package and version with the host triple removed; the full name
+  remains the cell's `title`. Detail is the first error for failures, the phase
+  for timeouts and live roots, and log volume for builds.
+- **Projections:** session rows gain `duration_ns` (elapsed time of the run's
+  last event, a primary-key lookup) and `cause_hex` (the first level-0
+  `nix.message`). Cohorts gain `built` / `already_valid`. Log rows gain
+  `activity_name`, the derivation name behind the activity.
+- **Failure card:** the inspector's reason line → `Why it failed`, the recorded
+  top-level errors in order from the derivation that broke first to the
+  selected root, each with a `Show in log` jump to its sequence number. Nodes
+  in that chain are highlighted in the dependency list. Timeouts and
+  interruptions keep their single reason plus phase and elapsed time. These are
+  Nix's own reports, not an inferred culprit.
+- **Quieter inspector:** `Events` → `Duration`; an empty phase ledger is
+  omitted; phases show a proportional bar; build-platform tools recede behind
+  Fil-C packages in the dependency list. The console's `Activity` column shows
+  the derivation name, with the numeric id kept for copying.
+- **Visual system:** proportional type for UI and monospace only for
+  paths, versions and logs; a type scale; status pills; fewer rules; a dark
+  scheme via `prefers-color-scheme`.
+
+`meson test` and the read-only browser suite (`tests/test_observatory.py`)
+pass against a copy of the deployed recording.

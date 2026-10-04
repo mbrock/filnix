@@ -184,7 +184,7 @@ class CampaignTests(unittest.TestCase):
             self.assertNotIn(b'class="graph-panel"', page)
             self.assertNotIn(b'class="log-panel"', page)
             self.assertNotIn(b"every ", page)
-            self.assertIn(b"2/2 roots settled", page)
+            self.assertIn(b"2 of 2 roots settled", page)
             failed_roots = urllib.request.urlopen(
                 base + "/sessions?overview=1&filter=failed", timeout=2
             ).read()

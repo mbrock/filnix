@@ -207,6 +207,47 @@ int main() {
               failure_view["session"]["outputs"].empty(),
           "reported paths/errors are not claimed to be realized outputs or a "
           "proven culprit");
+    check(failure_view["session"]["cause_hex"] ==
+                  campaign::hex("dependency <error>") &&
+              failure_view["session"]["duration_ns"].is_number(),
+          "roots carry their first top-level error and elapsed time");
+
+    auto chained = failure_view;
+    chained["session"]["name"] =
+        "ffmpeg-headless-x86_64-unknown-linux-gnufilc0-8.1.2";
+    chained["sessions"] = json::array({chained["session"]});
+    chained["reported_errors"] = json::array(
+        {{{"seq", 9},
+          {"elapsed_ns", 2},
+          {"bytes_hex",
+           campaign::hex("\x1b[31;1merror:\x1b[0m Cannot build "
+                         "'/nix/store/b-libopenmpt-x86_64-unknown-linux-"
+                         "gnufilc0-0.8.9.drv'.\n       Reason: 1 dependency "
+                         "failed.\n       Output paths:\n  /nix/store/c")}},
+         {{"seq", 7},
+          {"elapsed_ns", 1},
+          {"bytes_hex",
+           campaign::hex("error: building of '/nix/store/a-flac-x86_64-"
+                         "unknown-linux-gnufilc0-1.5.0.drv' timed out after "
+                         "300 seconds of silence")}}});
+    auto chain = campaign::web_page(chained, "test'run", "");
+    auto origin = chain.find("<li class=\"cause origin\"");
+    auto middle = chain.find("libopenmpt</span><span class=\"version\">0.8.9");
+    auto last = chain.find("ffmpeg-headless</span><span class=\"version\">"
+                           "8.1.2</span><span class=\"cause-what\">1 "
+                           "dependency failed");
+    check(origin != std::string::npos &&
+              chain.find("timed out after 300 seconds of silence") > origin &&
+              middle > origin && middle != std::string::npos &&
+              last > middle && last != std::string::npos &&
+              chain.find("data-phase-seq=\"7\"") != std::string::npos,
+          "failure card orders the chain from origin to the selected root");
+    auto row = campaign::web_sessions(chained, "", "all", "", 0);
+    check(row.find(">ffmpeg-headless</a>") != std::string::npos &&
+              row.find("<td class=\"version\">8.1.2</td>") !=
+                  std::string::npos &&
+              row.find("unknown-linux-gnufilc0</a>") == std::string::npos,
+          "rows name the package and version, not the platform triple");
 
     auto ledger = view;
     ledger["activities"][0]["stop_elapsed_ns"] = INT64_C(425125000000);
@@ -295,14 +336,14 @@ int main() {
     }
     auto page = campaign::web_page(large, "test'run", "");
     check(page.find("501 static inputs") != std::string::npos &&
-              page.find("bash-0</a>") == std::string::npos &&
-              page.find("lib-gnufilc0-4.2</a>") != std::string::npos,
+              page.find("data-name=\"bash-0\"") == std::string::npos &&
+              page.find("lib-gnufilc0</span><span class=\"version\">4.2</span></a>") != std::string::npos,
           "default graph renders signal, not collapsed DOM");
     check(page.find("outputs · out, dev") != std::string::npos &&
               page.find("outputs · out</span>") == std::string::npos,
           "only nondefault output sets are shown");
     check(
-        page.find("z-gnufilc0-9.8</a><span>outputs · dev</span>") !=
+        page.find("9.8</span></a><span>outputs · dev</span>") !=
             std::string::npos,
         "foreground uses root's edge outputs, not an earlier transitive edge");
     auto window = campaign::web_graph(large, "test'run", 0, "");
@@ -311,13 +352,13 @@ int main() {
     check(pos != std::string::npos &&
               window.find(marker, pos + 1) == std::string::npos,
           "one truncation notice per window");
-    check(window.find("bash-499</a>") == std::string::npos &&
+    check(window.find("data-name=\"bash-499\"") == std::string::npos &&
               window.find("Show next 500") != std::string::npos,
           "first graph window ends at its exact row boundary");
     auto next = campaign::web_graph(large, "test'run", 500, "");
-    check(next.find("bash-499</a>") != std::string::npos &&
-              next.find("bash-500</a>") != std::string::npos &&
-              next.find("bash-498</a>") == std::string::npos,
+    check(next.find("data-name=\"bash-499\"") != std::string::npos &&
+              next.find("data-name=\"bash-500\"") != std::string::npos &&
+              next.find("data-name=\"bash-498\"") == std::string::npos,
           "next graph window replaces, not repeats, the first");
     check(campaign::web_graph(large, "test'run", 0, "/bash500.drv") == next,
           "deep links request the window containing the canonical node");
