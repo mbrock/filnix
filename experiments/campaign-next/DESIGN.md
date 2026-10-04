@@ -560,3 +560,18 @@ they conflict.
 
 `meson test` and the read-only browser suite (`tests/test_observatory.py`)
 pass against a copy of the deployed recording.
+
+### Deployment — 2026-10-04
+
+`/opt/filnix-v2` and `/nix/var/nix/gcroots/filnix-v2-package` now point to
+`/nix/store/0lnbz96zp2dx57w3p0lf4s7k05xh8js1-filnix-campaign-next-0.1.0`, built
+from this pass. The service was stopped, and its closed database and manifest
+were backed up to `/var/lib/filnix-v2/before-legibility-20261004T050129Z`. The
+previous package remains rooted as
+`/nix/var/nix/gcroots/filnix-v2-before-legibility-20261004T050129Z`. Service
+configuration, budgets and manifest are unchanged.
+
+The service reports `Existing recording: serving only, no automatic retries`.
+The full read-only browser suite passes through **https://nix.swa.sh/v2/**
+with no JavaScript errors. The public API still reports watermark **299484**,
+**82/82 settled, 80 successful, one failed, one timed out, zero unattempted**.
