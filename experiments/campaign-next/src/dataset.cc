@@ -231,14 +231,19 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
     session_filter = " WHERE json_extract_string(e.payload,'$.cohort.id')=" +
                      quote(cohort.at("id").get<std::string>());
   }
-  auto sessions =
-      rows("SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
-           "r.summary,json_object('index',json_extract(e.payload,'$.index'),"
-           "'cohort',json_object('id',json_extract(e.payload,'$.cohort.id'))) "
-           "AS request FROM runs r LEFT JOIN "
-           "events e ON e.run=r.run AND e.seq=1 " +
-           session_filter +
-           " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT 256");
+  auto sessions = rows(
+      "SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
+      "r.summary,(SELECT lower(hex(a.phase)) FROM activities a WHERE "
+      "a.run=r.run AND a.drv=r.drv ORDER BY a.start_elapsed_ns DESC LIMIT 1) "
+      "AS phase_hex,(SELECT json_extract_string(f.payload,'$.result.status') "
+      "FROM events f WHERE f.run=r.run AND f.kind='nix.build-result' "
+      "ORDER BY f.seq DESC LIMIT 1) AS native_status,"
+      "json_object('index',json_extract(e.payload,'$.index'),"
+      "'cohort',json_object('id',json_extract(e.payload,'$.cohort.id'))) "
+      "AS request FROM runs r LEFT JOIN "
+      "events e ON e.run=r.run AND e.seq=1 " +
+      session_filter +
+      " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT 256");
   json session = nullptr;
   for (auto &item : sessions) {
     auto state = item.at("summary");
@@ -261,7 +266,7 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
   }
   json activities = json::array(), output = json::array(),
        time = json::array({{{"elapsed", 0}}}), phases = json::array(),
-       failures = json::array();
+       failures = json::array(), errors = json::array();
   // Overview/rail reads do not query or materialize a selected graph or log.
   if (detail) {
     activities = rows(
@@ -303,6 +308,12 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
         " AND kind IN ('nix.build-result','worker.error','run.recorder-error',"
         "'run.limit-reached','run.cancel-requested') ORDER BY seq DESC LIMIT "
         "8");
+    errors =
+        rows("SELECT seq,elapsed_ns,json_extract_string(payload,'$.text_hex') "
+             "AS bytes_hex FROM events" +
+             filter +
+             " AND kind IN ('nix.error','nix.message') AND "
+             "json_extract(payload,'$.level')=0 ORDER BY seq DESC LIMIT 4");
   }
   if (!cohort.is_null()) {
     auto members =
@@ -355,6 +366,7 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
           {"activities", activities},
           {"phases", phases},
           {"failure_events", failures},
+          {"reported_errors", errors},
           {"logs", output},
           {"cursor", output.empty() ? json(0) : output.back().at("seq")},
           {"elapsed_now_ns", time[0].at("elapsed")},

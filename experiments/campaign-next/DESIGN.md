@@ -130,7 +130,11 @@ explanation of the reported freeze or a claim about the user's machine.
   port or a new web framework. NXT is pinned to current main at verification,
   with its new structured task-group API. **Doctrine 6, 7, 12.**
 
-## Component contracts
+## Component contracts before session/table separation
+
+These describe the previous instrument. The current contracts are in
+**Session/table separation** below; earlier evidence and deployments remain
+historical records, not claims about the new layout.
 
 ### Overview
 
@@ -260,7 +264,7 @@ are not suppressed.
 All URLs and assets remain prefix-relative for Caddy's `/v2/` strip-prefix.
 No HTTP writes or filesystem/build endpoints are introduced.
 
-## Tokens
+## Tokens before session/table separation
 
 | Token | Value |
 | --- | --- |
@@ -364,3 +368,126 @@ After verification the watermark remained **299484**, with **82/82 settled,
 80 successful, one failed, one timed out, zero unattempted**. No new campaign
 events or builds were created. The original unresponsive-page report is still
 not reproduced; the real recorded package failures are not reclassified.
+
+## Session/table separation — 2026-10-04
+
+The public recheck still showed the complete 82-root recording: 80 successful,
+one failed and one timed out. The index had 50 rendered rows; selected sessions
+still mounted a second session rail. This pass changes presentation and read
+projections only. NXT, recording, scheduling, campaign limits and raw events are
+unchanged. The preceding component contracts are superseded as follows.
+
+### Decisions and current contracts
+
+- **One index:** overview plus detail rail → one five-column session table at
+  `./`: `Package`, `State`, `Events`, `Output lines`, `Phase / result`. Fifty-row
+  replacement windows, name-only `Find`, state `Filter` and clickable campaign
+  counts stay. The last root phase is a typed observation; failed rows show
+  their exact native disposition (e.g. `DependencyFailed`) when available.
+  Missing summary is `—`. Unattempted roots remain unlinked, with zero counts.
+  **Doctrine 2, 3, 4, 7, 10; M1, M3.**
+- **Campaign once:** repeated name/counts in detail → campaign arithmetic only
+  on the index. The heading omits a redundant ` · N roots` suffix when the
+  recorded name already includes it. Counts retain zero failure modes and
+  `Follow latest`. Narrow arithmetic wraps at controls rather than clipping
+  `1 timed out`; no count is shortened. **Doctrine 4, 5, 8, 10; M1.**
+- **Dedicated detail:** rail plus vertically stacked graph/output → one package
+  title/status, `Sessions` backlink, a 35% inspector beside a 65% full-height
+  console. Both fit bounded grid/flex tracks, not content-sized overflow.
+  `Hide details` / `Session details` controls the inspector with
+  `aria-expanded` and `aria-controls`. Drv, native result, error reports and
+  output paths are inspectable without repeating the campaign list.
+  **Doctrine 2, 3, 5, 6, 12; M1, M3.**
+- **Phase ledger, not pretend graph:** flat phase buttons in `Dependency graph`
+  → separate `Phase ledger` with `Phase`, `Duration`, `Started`. It uses the
+  latest root activity, coalesces consecutive identical phases, and measures
+  time to the next distinct phase in that same activity, or its observed stop.
+  Other derivations' phase events cannot shorten it. Live final duration adds
+  ` · running`; an absent terminal observation is `— · end unobserved`.
+  `local` or the recorded machine and exact activity ID remain visible.
+  Phase-name buttons select that activity's output at the phase cursor.
+  The source is the bounded latest 256 phase observations, not an invented
+  complete timing trace. **Doctrine 2, 4, 8, 12; M1.**
+- **Dependencies remain dependencies:** a separately labeled `Dependencies`
+  section retains direct inputs, live activity overlays, actual references,
+  nondefault output sets, static-input count, lazy 500-row windows and one
+  omission notice. No root package heading is repeated there. Bootstrap stays
+  reachable; collapsed children are not mounted. **Doctrine 2, 4, 7, 10.**
+- **Console geometry:** competing Find/count/Phase controls and unstable message
+  widths → two small tool rows and a read-only loaded/match count in the footer.
+  Labels are `Build output`, `Live` / `Captured`, `Pause` / `Follow`, `End`,
+  `Find`, `Wrap`, `All output`. Desktop columns are fixed time (10ch + 12px),
+  full ID (22ch + 12px), remaining-width message. Default `Wrap` preserves all
+  text; disabling it gives each raw message horizontal scrolling without moving
+  metadata. The Phase dropdown is removed; ledger buttons are the phase control.
+  SGR styles, copyable IDs, bounded 200/256-row windows, exclusive cursors and
+  idle suppression stay. **Doctrine 3, 4, 5, 7; M1, M2, M3.**
+- **Phone navigation:** table/rail/details stacked in one document → index
+  alone, then a dedicated session route. Below 801px, each table row uses a
+  full-width package line followed by aligned state/counts and a phase/result
+  line. Details initially collapse, leaving output immediately visible; opening
+  them caps the inspector at 40dvh. Metadata sits above each full-width message,
+  rather than squeezing it into a thin third column. Touch scrolling uses the
+  same native scroll regions; no wheel interception. **Doctrine 3, 5, 12; M3.**
+- **Failure truth:** long repeated root error → a concise pinned Nix reason,
+  visible even with mobile details closed. `Reported errors · N` contains the
+  latest four severity-zero logger observations with exact `Output · <time>`
+  jump controls. `Output paths · reported` distinguishes paths mentioned in a
+  failed result from realized outputs. Empty paths say `No output paths recorded`;
+  missing phases say `No recorded phases`. `Native result · <disposition>`
+  retains raw result JSON. We refuse to label a proven failing dependency or
+  phase without causal evidence; a logger error remains a report, not a verdict.
+  **Doctrine 2, 4, 8, 12; M1.**
+- **Navigation stability:** `?run=`, `&activity=` and `#drv-` remain stable.
+  Selected dependencies show `Selected · <name>` without changing the package
+  page title. Root fragments target the full drv fact. Inspector scrolling,
+  keyboard focus, selected-node text, opened reports, static windows and the
+  expansion control survive refresh; refreshing does not re-jump the fragment.
+  `Sessions` carries `filter` / `find` back to the index. `./sessions` now always
+  renders the same table; old `overview=1` parameters are harmless, not a second
+  list format. **Doctrine 4, 5, 7, 12.**
+
+### Current tokens
+
+Caption/body/display remain **10/12/20px**, mono for names, drvs, times, IDs and
+output. Paper/ink/rules and textual status/color pairs are unchanged from the
+table above. Index/graph rows use 2px vertical, 6px horizontal padding; log cells
+use 1px/6px; controls 2px/6px. All corners remain square, with no shadows,
+decorative motion, cards or new tabs. **Doctrine 3, 5, 6, 9; M2, M3.**
+
+Verification and delivery for this pass are recorded separately below; the
+earlier deployment entry does not mean this version has been deployed.
+
+### Executed checks and delivery
+
+Both Meson targets pass (including the six campaign integration groups), as
+does the packaged Nix build/check phase. New asymmetric regressions cover
+interleaved activities, duplicate phase notifications, exact observed end vs
+unobserved end vs running duration, typed error severity, and reported rather
+than realized paths.
+
+The installed package was served on port **8125** on runner **swa**, using a
+private copy of the closed pre-deployment backup. The read-only Chromium suite
+passes at 1440×900, 1440×360, 2560×1440, 1024×600 and 801×600, and in a
+390×844 touch context at 2× resolution. It requires actual wheel movement in
+the inspector, pane bounds, native keyboard scroll/paging, touch index scroll,
+unclipped IDs/messages, styled Find, Wrap, phase jumps, End, Follow/Pause,
+clipboard copying, stale-response rejection, lazy next-500 replacement,
+fragments, refresh retention and zero idle polling. No JavaScript errors were
+reported. Default DOM counts: **450 index**, **971 GTKmm detail**, with no
+mounted collapsed static descendants. Built, failed, timed-out, index,
+filtered/empty index, mobile detail and expanded mobile captures were inspected
+under `.amp/in/artifacts/instrument-release/`.
+
+The checks caught an intrinsic-size `<details>` wrapper that escaped its track:
+the 1440×360 inspector was 873px tall despite its 319px parent. Explicit flex
+children plus the accessible expansion button corrected it to **223px client
+height / 873px scroll height**, with wheel and keyboard access to all content.
+The suite now asserts inspector bottom bounds and real scroll movement so that
+the previous false-positive geometric checks cannot accept that failure.
+
+This is Chromium touch emulation, not a real iPhone/Safari claim. Original
+package failures and the unresponsive-page report are not reclassified or
+claimed fixed. No production database access, new campaign, retry, or public
+service switch is part of this pass. The verified package is ready for an
+explicitly authorized deployment; the preceding public version remains live.

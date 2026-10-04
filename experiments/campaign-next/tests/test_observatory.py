@@ -1,10 +1,8 @@
-"""Read-only browser regressions against a served, representative recording.
+"""Read-only Chromium checks against a representative, completed recording.
 
-Requires a completed campaign with more than 50 sessions, a built session with
-captured output and more than 500 static inputs, and one failed session with
-SGR-decorated Nix errors. No builds or database writes are issued.
-Run with: uv run --with playwright python tests/test_observatory.py URL
-Use --screenshots DIRECTORY to retain review captures.
+Requires >50 sessions, a built session with output and >500 static inputs,
+and a failed session with SGR-decorated Nix errors. No builds are requested.
+Run: uv run --with playwright python tests/test_observatory.py URL
 """
 
 import argparse
@@ -33,7 +31,7 @@ def refresh(page):
 
 def geometry(page):
     return page.evaluate("""() => Object.fromEntries(
-      ['.sidebar','#session-results','.main','#state','#graph-scroll','.log-panel','#log-scroll'].map(s=>{
+      ['#state','#inspection-scroll','.log-panel','#log-scroll'].map(s=>{
         const e=document.querySelector(s), r=e.getBoundingClientRect();
         return [s,{top:r.top,bottom:r.bottom,height:r.height,client:e.clientHeight,scroll:e.scrollHeight}];
       }))""")
@@ -46,9 +44,16 @@ def main():
     parser.add_argument("--screenshots", type=Path)
     args = parser.parse_args()
     base = args.url.rstrip("/") + "/"
-    report = {}
+    report, errors, data_requests = {}, [], []
     if args.screenshots:
         args.screenshots.mkdir(parents=True, exist_ok=True)
+
+    def capture(page, name):
+        if args.screenshots:
+            page.evaluate(
+                "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))"
+            )
+            page.screenshot(path=str(args.screenshots / (name + ".png")))
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -57,10 +62,9 @@ def main():
         context = browser.new_context(
             viewport={"width": 1440, "height": 900}, device_scale_factor=2
         )
+        context.grant_permissions(["clipboard-read", "clipboard-write"])
         page = context.new_page()
-        errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
-        data_requests = []
         page.on(
             "request",
             lambda r: (
@@ -74,30 +78,25 @@ def main():
         )
         page.goto(base)
         assert page.locator(".campaign-table tbody tr").count() == 50
-        assert page.locator("#state, #log-rows, #graph-scroll").count() == 0
+        assert page.locator("#state, #log-rows, .sidebar").count() == 0
+        assert page.locator(".campaign-table th").all_text_contents() == [
+            "Package",
+            "State",
+            "Events",
+            "Output lines",
+            "Phase / result",
+        ]
         assert "ffmpeg" not in page.title()
         report["overview_dom"] = page.evaluate("document.querySelectorAll('*').length")
         assert report["overview_dom"] < 1000
-        cdp = context.new_cdp_session(page)
-        cdp.send("Performance.enable")
-        before = dict(
-            (m["name"], m["value"])
-            for m in cdp.send("Performance.getMetrics")["metrics"]
-        )
         data_requests.clear()
         page.wait_for_timeout(6500)
-        after = dict(
-            (m["name"], m["value"])
-            for m in cdp.send("Performance.getMetrics")["metrics"]
-        )
         assert not data_requests, data_requests
-        report["overview_idle_task_ms"] = 1000 * (
-            after["TaskDuration"] - before["TaskDuration"]
-        )
-        if args.screenshots:
-            page.screenshot(path=str(args.screenshots / "observatory-overview.png"))
+        capture(page, "observatory-index")
         state = page.evaluate("fetch('./api/state').then(r=>r.json())")
-        assert len(state["sessions"]) > 50, "Use a representative campaign"
+        assert len(state["sessions"]) > 50
+        built = next(s for s in state["sessions"] if s["outcome"] == "built")
+        failed = next(s for s in state["sessions"] if s["outcome"] == "failed")
         scroll(page, "#session-results", 700)
         assert position(page, "#session-results")[1] > 100
         assert page.locator(".campaign-table th").first.evaluate(
@@ -113,33 +112,51 @@ def main():
             len(state["sessions"]) - 50, 50
         )
         assert position(page, "#session-results")[1] == 0
-        page.locator("#session-results").press("End")
-        page.get_by_role("button", name="Previous 50", exact=True).click()
-        page.wait_for_function(
-            "document.querySelector('.rail-count').dataset.after === '0'"
-        )
-        failed = next(s for s in state["sessions"] if s["outcome"] == "failed")
+        # A delayed page-zero response must not override a newer page intent.
+        page.evaluate("""() => {
+          const original = window.fetch;
+          window.staleReleased = false;
+          window.fetch = async (...args) => {
+            const response = await original(...args);
+            const u = new URL(args[0], location.href);
+            if (u.pathname.endsWith('/sessions') && u.searchParams.get('after') === '0') {
+              await new Promise(r=>setTimeout(r,1200)); window.staleReleased = true;
+            }
+            return response;
+          };
+          const form = document.querySelector('#rail-controls');
+          document.querySelector('#rail-after').value = '0';
+          htmx.trigger(form, 'change');
+        }""")
+        page.locator("#rail-after").evaluate("e=>e.value='50'")
+        page.wait_for_function("window.staleReleased")
+        assert page.locator(".rail-count").get_attribute("data-after") == "50"
         page.locator('[data-filter="failed"]').click()
         page.wait_for_function(
             "document.querySelectorAll('.campaign-table tbody tr').length === 1"
         )
-        assert (
-            page.locator(".campaign-table tbody").inner_text().find(failed["name"]) >= 0
-        )
-        if args.screenshots:
-            page.screenshot(
-                path=str(args.screenshots / "observatory-overview-failed.png")
-            )
+        assert failed["name"] in page.locator(".campaign-table tbody").inner_text()
+        assert page.locator(".session-observation").text_content() == "DependencyFailed"
+        capture(page, "observatory-index-failed")
         page.locator("#session-find").fill("no-such-package")
         page.wait_for_function(
             "document.querySelectorAll('.campaign-table tbody tr').length === 0"
         )
         assert page.locator(".empty").text_content() == "No sessions · failed"
-        if args.screenshots:
-            page.screenshot(
-                path=str(args.screenshots / "observatory-overview-empty.png")
-            )
-        page.goto(base + "?run=" + failed["run"])
+        capture(page, "observatory-index-empty")
+        page.goto(base + "?run=" + failed["run"] + "&filter=failed")
+        assert page.locator(".campaign-table, .sidebar, .campaign-line").count() == 0
+        assert "filter=failed" in page.locator("#sessions-back").get_attribute("href")
+        assert "1 dependency failed" in page.locator(".failure").text_content()
+        page.locator(".output-paths summary").click()
+        assert "reported" in page.locator(".output-paths summary").text_content()
+        assert "/nix/store/" in page.locator(".output-paths pre").text_content()
+        page.locator(".output-paths summary").click()
+        page.locator(".reported-errors summary").click()
+        assert "flac" in page.locator(".reported-errors").text_content()
+        page.locator(".reported-errors summary").click()
+        page.get_by_role("button", name="Copy drv", exact=True).click()
+        assert page.evaluate("navigator.clipboard.readText()") == failed["drv"]
         red = (
             page.locator("#log-rows pre")
             .filter(has_text="Cannot build")
@@ -150,13 +167,13 @@ def main():
         assert red.evaluate("e=>getComputedStyle(e).color") == "rgb(150, 46, 41)"
         assert red.evaluate("e=>getComputedStyle(e).fontWeight") == "700"
         page.evaluate(
-            "window.originalLog = document.querySelector('#log-rows').firstElementChild"
+            "window.originalLog=document.querySelector('#log-rows').firstElementChild"
         )
         data_requests.clear()
         page.wait_for_timeout(6500)
         assert not data_requests, data_requests
         assert page.evaluate(
-            "window.originalLog === document.querySelector('#log-rows').firstElementChild"
+            "window.originalLog===document.querySelector('#log-rows').firstElementChild"
         )
         assert "�[31;1m" not in page.locator("#log-rows").text_content()
         page.locator("#log-find").fill("error: Cannot")
@@ -168,14 +185,15 @@ def main():
         page.locator("#log-find").fill("")
         assert page.locator("#log-rows mark").count() == 0
         assert red.evaluate("e=>getComputedStyle(e).color") == "rgb(150, 46, 41)"
-        page.get_by_role("button", name="End", exact=True).click()
-        page.wait_for_timeout(250)
-        if args.screenshots:
-            page.screenshot(path=str(args.screenshots / "observatory-sgr.png"))
-        built = next(s for s in state["sessions"] if s["outcome"] == "built")
+        with page.expect_response(lambda r: "/logs?" in r.url):
+            page.get_by_role("button", name="End", exact=True).click()
+        page.wait_for_function(
+            "(() => {const e=document.querySelector('#log-scroll'); return e.scrollHeight-e.scrollTop-e.clientHeight<=1})()"
+        )
+        capture(page, "observatory-inspector-failed")
+
         for width, height in [
             (1440, 900),
-            (1440, 600),
             (1440, 360),
             (2560, 1440),
             (1024, 600),
@@ -183,136 +201,109 @@ def main():
         ]:
             page.set_viewport_size({"width": width, "height": height})
             page.goto(base + "?run=" + built["run"])
-            page.wait_for_timeout(200)
             g = geometry(page)
             assert page.evaluate(
                 "document.scrollingElement.scrollHeight <= innerHeight + 1"
             )
             assert page.evaluate("document.scrollingElement.scrollWidth <= innerWidth")
-            assert g["#session-results"]["scroll"] > g["#session-results"]["client"]
-            assert g["#graph-scroll"]["height"] >= 30, g
-            assert g["#log-scroll"]["height"] >= 60, g
+            assert g["#inspection-scroll"]["height"] >= 60, g
+            assert g["#inspection-scroll"]["bottom"] <= g["#state"]["bottom"] + 1, g
+            assert g["#log-scroll"]["height"] >= 150, g
             assert g[".log-panel"]["bottom"] <= height, g
-            scroll(page, "#session-results", 500)
-            assert position(page, "#session-results")[1] > 100
+            assert page.locator("#static-rows .graph-node").count() == 0
+            assert page.locator(".log-row").count() == 200
+            assert page.locator(".log-row pre").evaluate_all(
+                "es=>es.every(e=>e.scrollWidth<=e.clientWidth+1)"
+            )
+            assert page.locator(".log-activity").evaluate_all(
+                "es=>es.every(e=>e.scrollWidth<=e.clientWidth+1)"
+            )
+            # Metadata widths and message starts do not depend on their text.
+            starts = page.locator(".log-row pre").evaluate_all(
+                "es=>es.slice(0,20).map(e=>e.getBoundingClientRect().left)"
+            )
+            assert max(starts) - min(starts) < 1
+            scroll(page, "#inspection-scroll", 200)
+            if g["#inspection-scroll"]["scroll"] > g["#inspection-scroll"]["client"]:
+                assert position(page, "#inspection-scroll")[1] > 0
             assert page.evaluate("document.scrollingElement.scrollTop") == 0
             scroll(page, "#log-scroll", -300)
-            page.wait_for_function(
-                "document.querySelector('#log-follow').textContent === 'Follow'"
-            )
-            assert page.locator(".log-row").count() >= 200
+            assert page.locator("#log-follow").text_content() == "Follow"
             report[f"{width}x{height}"] = g
 
-        # Narrow enough that long graph rows actually overflow horizontally.
-        page.set_viewport_size({"width": 1024, "height": 900})
+        page.set_viewport_size({"width": 1440, "height": 900})
         page.goto(base + "?run=" + built["run"])
+        report["detail_dom"] = page.evaluate("document.querySelectorAll('*').length")
+        assert report["detail_dom"] < 2000
+        assert page.locator(".phase-ledger tbody tr").count() > 0
+        capture(page, "observatory-inspector-built")
+        phase = page.locator(".phase-ledger button").first
+        activity = phase.get_attribute("data-phase-activity")
+        with page.expect_response(lambda r: "/logs?" in r.url):
+            phase.click()
+        page.wait_for_function(
+            "document.querySelector('#log-cursor').dataset.activity === '"
+            + activity
+            + "'"
+        )
+        assert "activity=" + activity in page.url
+        assert page.locator("#log-follow").text_content() == "Follow"
+        page.get_by_role("link", name="All output", exact=True).click()
+        assert "activity=" not in page.url
+        with page.expect_response(lambda r: "/logs?" in r.url):
+            page.get_by_role("button", name="Follow", exact=True).click()
+        page.get_by_role("button", name="Pause", exact=True).click()
+        page.locator("#log-wrap").uncheck()
+        assert page.locator(".log-row pre").evaluate_all(
+            "es=>es.some(e=>e.scrollWidth>e.clientWidth)"
+        )
+        page.locator("#log-wrap").check()
+        assert page.locator(".log-row pre").evaluate_all(
+            "es=>es.every(e=>e.scrollWidth<=e.clientWidth+1)"
+        )
         page.locator("[data-static] summary").click()
         page.wait_for_function(
             "document.querySelectorAll('#static-rows .graph-node').length === 500"
         )
-        scroll(page, "#graph-scroll", 500)
-        page.locator("#graph-scroll").evaluate("e => {e.scrollLeft=160; e.focus()}")
-        graph = position(page, "#graph-scroll")
-        assert graph[1] > 100 and graph[0] > 0
-        page.locator("#graph-scroll").press("PageDown")
-        page.wait_for_timeout(250)
-        assert position(page, "#graph-scroll")[1] > graph[1]
-        graph = position(page, "#graph-scroll")
-        scroll(page, "#session-results", 500)
-        rail = position(page, "#session-results")
-        page.locator(".campaign-line").evaluate("e=>e.scrollLeft=160")
-        page.locator(".drv-fact dd").evaluate("e=>e.scrollLeft=100")
-        campaign = position(page, ".campaign-line")
-        drv = position(page, ".drv-fact dd")
-        # Pause must not rebuild state; an actual refresh retains its panes.
-        with page.expect_response(lambda r: "/logs?" in r.url):
-            page.get_by_role("button", name="Follow", exact=True).click()
-        page.wait_for_timeout(150)
-        page.get_by_role("button", name="Pause", exact=True).click()
-        assert position(page, "#graph-scroll") == graph
-        activity = page.locator(".log-activity").first
-        activity_x = activity.bounding_box()["x"]
-        scroll(page, "#log-scroll", -300)
-        page.locator("#log-scroll").evaluate("e=>e.scrollLeft=160")
-        output = position(page, "#log-scroll")
-        assert output[0] > 0
-        assert abs(activity.bounding_box()["x"] - activity_x) < 1
+        assert page.locator(".graph-truncated").count() == 1
+        inspector = position(page, "#inspection-scroll")
+        scroll(page, "#inspection-scroll", 200)
+        assert position(page, "#inspection-scroll")[1] > inspector[1]
+        inspector = position(page, "#inspection-scroll")
+        page.locator("#inspection-scroll").focus()
         refresh(page)
-        assert position(page, "#graph-scroll") == graph
-        assert position(page, "#log-scroll") == output
-        assert position(page, "#session-results") == rail
-        assert position(page, ".campaign-line") == campaign
-        assert position(page, ".drv-fact dd") == drv
+        assert position(page, "#inspection-scroll") == inspector
         assert page.locator("[data-static]").evaluate("e=>e.open")
-        page.locator("#session-results").focus()
-        page.locator("#session-results").press("End")
-        page.wait_for_timeout(250)
-        # Delay a real page-zero response until after the operator selects page
-        # 50. Independent polling/button requests used to swap out of order.
-        page.evaluate("""() => {
-          const original = window.fetch;
-          window.staleRailReleased = false;
-          window.fetch = async (...args) => {
-            const response = await original(...args);
-            const u = new URL(args[0], location.href);
-            if (u.pathname.endsWith('/sessions') && u.searchParams.get('after') === '0') {
-              await new Promise(r=>setTimeout(r,1200));
-              window.staleRailReleased = true;
-            }
-            return response;
-          };
-          htmx.trigger(document.querySelector('#rail-controls'), 'change');
-        }""")
-        page.get_by_role("button", name="Show next 50", exact=True).click()
-        page.wait_for_function(
-            "document.querySelector('.rail-count').dataset.after === '50'"
+        assert page.locator("#inspection-scroll").evaluate(
+            "e=>e===document.activeElement"
         )
-        page.wait_for_function("window.staleRailReleased")
-        page.wait_for_timeout(3500)
-        assert page.locator(".rail-count").get_attribute("data-after") == "50"
-
+        page.locator("#inspection-scroll").press("End")
+        page.get_by_role("button", name="Show next 500", exact=True).click()
+        page.wait_for_function(
+            "document.querySelector('#static-rows .snapshot').textContent.includes('500–1000')"
+        )
+        assert page.locator("#static-rows .graph-node").count() == 500
         node = page.locator("#static-rows .graph-node[id]").nth(40)
-        fragment = node.get_attribute("id")
+        fragment, name = node.get_attribute("id"), node.get_attribute("data-name")
         page.goto(base + "?run=" + built["run"] + "#" + fragment)
         page.wait_for_function(
             "document.querySelector('#selected-node').textContent.startsWith('Selected · ')"
         )
-        scroll(page, "#graph-scroll", 300)
-        graph = position(page, "#graph-scroll")
-        page.locator("#graph-scroll").focus()
+        assert page.locator("#selected-node").text_content() == "Selected · " + name
+        assert built["name"] in page.title()
+        inspector = position(page, "#inspection-scroll")
         refresh(page)
-        assert position(page, "#graph-scroll") == graph, (
-            "Poll must not re-jump the URL fragment"
-        )
-        assert page.locator("#graph-scroll").evaluate("e=>e===document.activeElement")
-
-        page.set_viewport_size({"width": 1440, "height": 360})
+        assert position(page, "#inspection-scroll") == inspector
+        page.goto(base + "?run=" + built["run"])
         page.locator(".native-result summary").click()
-        scroll(page, ".session-summary", 80)
-        summary = position(page, ".session-summary")
-        assert summary[1] > 0
         refresh(page)
         assert page.locator(".native-result").evaluate("e=>e.open")
-        assert position(page, ".session-summary") == summary
-        assert geometry(page)["#log-scroll"]["height"] >= 60
-        if args.screenshots:
-            page.screenshot(path=str(args.screenshots / "observatory-scroll-short.png"))
+        timeout = next(s for s in state["sessions"] if s["outcome"] == "timed-out")
+        page.goto(base + "?run=" + timeout["run"])
+        assert page.locator(".summary-head .status").text_content() == "timed-out"
+        assert page.locator(".failure").text_content() == "root time limit reached"
+        capture(page, "observatory-inspector-timeout")
 
-        page.set_viewport_size({"width": 1440, "height": 900})
-        for outcome in ["built", "failed", "timed-out"]:
-            session = next(
-                (s for s in state["sessions"] if s["outcome"] == outcome), None
-            )
-            if not session:
-                continue
-            page.goto(base + "?run=" + session["run"])
-            page.wait_for_timeout(300)
-            assert page.locator(".summary-head .status").text_content() == outcome
-            assert geometry(page)[".log-panel"]["bottom"] <= 900
-            if args.screenshots:
-                page.screenshot(
-                    path=str(args.screenshots / f"observatory-scroll-{outcome}.png")
-                )
         mobile = browser.new_context(
             viewport={"width": 390, "height": 844},
             device_scale_factor=2,
@@ -325,17 +316,12 @@ def main():
         assert phone.evaluate("matchMedia('(pointer: coarse)').matches")
         assert phone.evaluate("document.scrollingElement.scrollWidth <= innerWidth")
         assert phone.locator(".campaign-table tbody tr").count() == 50
-        if args.screenshots:
-            phone.screenshot(
-                path=str(args.screenshots / "observatory-overview-mobile.png")
-            )
-        phone.locator(".campaign-line").evaluate("e=>e.scrollLeft=300")
-        assert position(phone, ".campaign-line")[0] > 100
-        phone.goto(base + "?run=" + built["run"])
-        assert phone.evaluate("matchMedia('(pointer: coarse)').matches")
-        assert phone.evaluate("document.scrollingElement.scrollWidth <= innerWidth")
-        assert geometry(phone)["#session-results"]["height"] >= 100
-        # Touch-pan through CDP; wheel is not evidence of touch scrolling.
+        assert phone.locator("#state, .log-panel").count() == 0
+        assert phone.locator(".campaign-line button").evaluate_all(
+            "es=>es.every(e=>e.getBoundingClientRect().right<=innerWidth)"
+        )
+        capture(phone, "observatory-index-mobile")
+        # A real touch-pan through CDP, not desktop wheel emulation.
         rect = phone.locator("#session-results").bounding_box()
         cdp = mobile.new_cdp_session(phone)
         for kind, y in [
@@ -352,17 +338,42 @@ def main():
             )
             phone.wait_for_timeout(100)
         assert position(phone, "#session-results")[1] > 30
-        phone.locator("#log-scroll").scroll_into_view_if_needed()
-        assert geometry(phone)["#log-scroll"]["height"] >= 200
-        if args.screenshots:
-            phone.screenshot(
-                path=str(args.screenshots / "observatory-scroll-mobile.png"),
-                full_page=True,
-            )
+        phone.goto(base + "?run=" + built["run"])
+        assert phone.locator(".campaign-table, .sidebar").count() == 0
+        assert (
+            phone.locator("#inspection-toggle").get_attribute("aria-expanded")
+            == "false"
+        )
+        assert geometry(phone)["#log-scroll"]["height"] > 500
+        assert phone.locator(".log-row pre").evaluate_all(
+            "es=>es.every(e=>e.scrollWidth<=e.clientWidth+1)"
+        )
+        capture(phone, "observatory-inspector-mobile")
+        phone.locator("#inspection-toggle").tap()
+        assert geometry(phone)["#log-scroll"]["height"] > 300
+        assert phone.evaluate("document.scrollingElement.scrollWidth <= innerWidth")
+        capture(phone, "observatory-inspector-mobile-open")
+        refresh(phone)
+        assert (
+            phone.locator("#inspection-toggle").get_attribute("aria-expanded") == "true"
+        )
+        phone.locator("#inspection-toggle").tap()
+        refresh(phone)
+        assert (
+            phone.locator("#inspection-toggle").get_attribute("aria-expanded")
+            == "false"
+        )
+        phone.goto(base + "?run=" + failed["run"])
+        assert "failed" in phone.locator("#state .summary-head").text_content()
+        assert phone.locator(".failure").is_visible()
+        phone.wait_for_function(
+            "(() => {const e=document.querySelector('#log-scroll'); return e.scrollHeight-e.scrollTop-e.clientHeight<=1})()"
+        )
+        capture(phone, "observatory-inspector-mobile-failed")
         assert not errors, errors
         report["errors"] = errors
         if args.screenshots:
-            (args.screenshots / "observatory-scroll-check.json").write_text(
+            (args.screenshots / "observatory-instrument-check.json").write_text(
                 json.dumps(report, indent=2)
             )
         print(json.dumps(report, indent=2))

@@ -16,7 +16,7 @@ std::string web_logs(const json &records, const std::string &run,
                      const std::string &activity, std::uint64_t after);
 std::string web_sessions(const json &view, const std::string &run,
                          const std::string &filter, const std::string &find,
-                         std::uint64_t after, bool overview = false);
+                         std::uint64_t after);
 std::string web_graph(const json &view, const std::string &run,
                       std::uint64_t after, const std::string &node);
 

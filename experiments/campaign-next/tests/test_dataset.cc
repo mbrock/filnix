@@ -175,6 +175,79 @@ int main() {
             "initial output and streamed output use the same SGR rendering");
       ++seq;
     }
+    data.append(json::array(
+        {event(
+             seq++, "nix.message",
+             {{"level", 0}, {"text_hex", campaign::hex("dependency <error>")}}),
+         event(seq++, "nix.message",
+               {{"level", 1}, {"text_hex", campaign::hex("warning only")}}),
+         event(
+             seq++, "nix.build-result",
+             {{"success", false},
+              {"outcome", "failed"},
+              {"outputs", json::array()},
+              {"result",
+               {{"status", "DependencyFailed"},
+                {"errorMsg", "Cannot build /root.drv. Reason: 1 dependency "
+                             "failed.\nOutput paths:\n/store/not-realized"}}}}),
+         event(seq++, "run.finished", {{"exited", true}, {"exit_code", 1}})}));
+    auto failure_view = data.view("test'run", "");
+    check(
+        failure_view["reported_errors"].size() == 1 &&
+            campaign::unhex(failure_view["reported_errors"][0]["bytes_hex"]
+                                .get<std::string>()) == "dependency <error>" &&
+            failure_view["session"]["native_status"] == "DependencyFailed" &&
+            failure_view["session"]["phase_hex"] == campaign::hex("buildPhase"),
+        "index summaries and error reports use typed observations, not parsed "
+        "log guesses");
+    auto failure_page = campaign::web_page(failure_view, "test'run", "");
+    check(failure_page.find("Output paths · reported") != std::string::npos &&
+              failure_page.find("dependency &lt;error&gt;") !=
+                  std::string::npos &&
+              failure_view["session"]["outputs"].empty(),
+          "reported paths/errors are not claimed to be realized outputs or a "
+          "proven culprit");
+
+    auto ledger = view;
+    ledger["activities"][0]["stop_elapsed_ns"] = INT64_C(425125000000);
+    ledger["activities"].push_back({{"id", "42"}, {"drv", "/dependency.drv"}});
+    auto phase = [&](unsigned seq, const char *id, const char *name,
+                     std::int64_t ns) {
+      return json{
+          {"seq", seq}, {"activity", id}, {"phase", name}, {"elapsed_ns", ns}};
+    };
+    auto id = std::to_string(activity);
+    ledger["phases"] = json::array(
+        {phase(21, id.c_str(), "unpackPhase", INT64_C(404475000000)),
+         phase(22, "42", "otherPhase", INT64_C(404500000000)),
+         phase(23, id.c_str(), "unpackPhase", INT64_C(404600000000)),
+         phase(24, id.c_str(), "patchPhase", INT64_C(404942000000)),
+         phase(25, id.c_str(), "buildPhase", INT64_C(410000000000))});
+    auto measured = campaign::web_state(ledger, "test'run", "");
+    auto unpack = measured.find("unpackPhase</button>");
+    check(unpack != std::string::npos &&
+              measured.find("unpackPhase</button>", unpack + 1) ==
+                  std::string::npos &&
+              measured.find("otherPhase") == std::string::npos &&
+              measured.find("unpackPhase</button></td><td>0.467s") !=
+                  std::string::npos &&
+              measured.find("patchPhase</button></td><td>5.058s") !=
+                  std::string::npos &&
+              measured.find("buildPhase</button></td><td>15.125s") !=
+                  std::string::npos,
+          "phase duration ignores interleaved activities and duplicate phase "
+          "reports, ending at activity stop");
+    ledger["activities"][0]["stop_elapsed_ns"] = nullptr;
+    ledger["activities"][0]["status"] = "running";
+    ledger["elapsed_now_ns"] = INT64_C(430250000000);
+    check(campaign::web_state(ledger, "test'run", "")
+                  .find("— · end unobserved") != std::string::npos,
+          "an abandoned activity has no invented terminal phase duration");
+    ledger["live"] = true;
+    check(
+        campaign::web_state(ledger, "test'run", "").find("20.250s · running") !=
+            std::string::npos,
+        "a live phase uses elapsed observer time and is explicitly running");
     auto light = data.view("test'run", "", false);
     check(light["sessions"] == data.view("test'run", "")["sessions"] &&
               light["logs"].empty() && light["phases"].empty() &&
@@ -189,6 +262,11 @@ int main() {
     check(campaign::web_page(data.view("test'run", ""), "", "", true)
                   .find("graph-panel") != std::string::npos,
           "following latest is an explicit opt-in");
+    check(failure_page.find("session-results") == std::string::npos &&
+              failure_page.find("campaign-line") == std::string::npos &&
+              failure_page.find("log-phase") == std::string::npos,
+          "details contain one inspector/console, not a duplicate campaign "
+          "list or phase dropdown");
     auto large = view;
     large["recipes"] = json::array();
     large["edges"] = json::array();

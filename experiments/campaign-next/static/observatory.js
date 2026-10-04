@@ -1,55 +1,70 @@
-/* HTMX owns state/rail/graph HTML. This console owns its bounded log window. */
+/* HTMX owns index/inspector/graph HTML. The console owns its bounded log window. */
 document.addEventListener('DOMContentLoaded', () => {
   const byId = id => document.getElementById(id);
-  function railState() {
-    byId('rail-after').value = '0';
-    byId('session-results').scrollTop = 0;
-    const u = new URL(location.href);
-    u.searchParams.set('filter', byId('session-filter').value);
-    u.searchParams.set('find', byId('session-find').value);
-    history.replaceState(null, '', u);
-  }
   const params = new URL(location.href).searchParams;
-  byId('session-filter').value = params.get('filter') || 'all';
-  byId('session-find').value = params.get('find') || '';
-  if (params.has('filter') || params.has('find')) htmx.trigger(byId('rail-controls'), 'change');
-  byId('rail-controls').addEventListener('change', railState);
-  byId('session-filter').addEventListener('input', railState);
-  byId('session-find').addEventListener('input', () => { railState(); htmx.trigger(byId('rail-controls'), 'change'); });
-  document.addEventListener('click', e => {
-    const filter = e.target.closest('[data-filter]');
-    if (filter) { byId('session-filter').value = filter.dataset.filter; railState(); htmx.trigger(byId('rail-controls'), 'change'); }
-  });
   document.addEventListener('htmx:before:request', e => {
-    if (document.hidden) { e.preventDefault(); return; }
-    const action = new URL(e.detail.ctx.request.action, location.href);
-    if (action.pathname.endsWith('/sessions') && e.detail.ctx.sourceElement.matches('button')) {
-      byId('rail-after').value = action.searchParams.get('after') || '0';
+    if (document.hidden) e.preventDefault();
+  });
+  if (byId('overview-summary')) {
+    function railState() {
+      byId('rail-after').value = '0';
       byId('session-results').scrollTop = 0;
+      const u = new URL(location.href);
+      u.searchParams.set('filter', byId('session-filter').value);
+      u.searchParams.set('find', byId('session-find').value);
+      history.replaceState(null, '', u);
     }
-  });
-  document.addEventListener('htmx:before:swap', e => {
-    const action = new URL(e.detail.ctx.request.action, location.href);
-    if (action.pathname.endsWith('/sessions')) {
-      const q = action.searchParams;
-      if (q.get('after') !== byId('rail-after').value ||
-          q.get('filter') !== byId('session-filter').value ||
-          q.get('find') !== byId('session-find').value) e.preventDefault();
-    }
-  });
-  document.addEventListener('htmx:after:swap', e => {
-    const action = new URL(e.detail.ctx.request.action, location.href);
-    if (action.pathname.endsWith('/sessions')) byId('rail-after').value = document.querySelector('.rail-count').dataset.after;
-    const summary = byId('overview-summary') || byId('state');
-    const form = byId('rail-controls');
-    if (summary?.dataset.watch === '0' && form.getAttribute('hx-trigger').includes('every')) {
-      form.setAttribute('hx-trigger', 'change, submit');
-      htmx.process(form, true);
-      htmx.trigger(form, 'change'); // One final settled list, then no idle polling.
-    }
-  });
-  // The overview has no selected session, graph, console or log polling.
-  if (byId('overview-summary')) return;
+    byId('session-filter').value = params.get('filter') || 'all';
+    byId('session-find').value = params.get('find') || '';
+    if (params.has('filter') || params.has('find')) htmx.trigger(byId('rail-controls'), 'change');
+    byId('rail-controls').addEventListener('change', railState);
+    byId('session-filter').addEventListener('input', railState);
+    byId('session-find').addEventListener('input', () => { railState(); htmx.trigger(byId('rail-controls'), 'change'); });
+    document.addEventListener('click', e => {
+      const filter = e.target.closest('[data-filter]');
+      if (filter) { byId('session-filter').value = filter.dataset.filter; railState(); htmx.trigger(byId('rail-controls'), 'change'); }
+    });
+    document.addEventListener('htmx:before:request', e => {
+      const action = new URL(e.detail.ctx.request.action, location.href);
+      if (action.pathname.endsWith('/sessions') && e.detail.ctx.sourceElement.matches('button')) {
+        byId('rail-after').value = action.searchParams.get('after') || '0';
+        byId('session-results').scrollTop = 0;
+      }
+    });
+    document.addEventListener('htmx:before:swap', e => {
+      const action = new URL(e.detail.ctx.request.action, location.href);
+      if (action.pathname.endsWith('/sessions')) {
+        const q = action.searchParams;
+        if (q.get('after') !== byId('rail-after').value ||
+            q.get('filter') !== byId('session-filter').value ||
+            q.get('find') !== byId('session-find').value) e.preventDefault();
+      }
+    });
+    document.addEventListener('htmx:after:swap', e => {
+      const action = new URL(e.detail.ctx.request.action, location.href);
+      if (action.pathname.endsWith('/sessions')) byId('rail-after').value = document.querySelector('.rail-count').dataset.after;
+      const summary = byId('overview-summary');
+      const form = byId('rail-controls');
+      if (summary?.dataset.watch === '0' && form.getAttribute('hx-trigger').includes('every')) {
+        form.setAttribute('hx-trigger', 'change, submit');
+        htmx.process(form, true);
+        htmx.trigger(form, 'change'); // One final settled list, then no idle polling.
+      }
+    });
+    // The overview has no selected session, graph, console or log polling.
+    return;
+  }
+  const back = new URL('./', location.href);
+  for (const key of ['filter', 'find']) if (params.has(key)) back.searchParams.set(key, params.get(key));
+  byId('sessions-back').href = back;
+  function setInspector(open) {
+    const toggle = byId('inspection-toggle');
+    if (!toggle) return;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.textContent = open ? 'Hide details' : 'Session details';
+    byId('inspection-scroll').hidden = !open;
+  }
+  if (matchMedia('(max-width: 800px)').matches) setInspector(false);
   const initialRun = byId('state').dataset.run;
   const cursor = byId('log-cursor');
   const rows = byId('log-rows');
@@ -62,17 +77,21 @@ document.addEventListener('DOMContentLoaded', () => {
   function saveStateView() {
     const selected = byId('selected-node');
     return {
-      scroll: ['.session-summary', '.campaign-line', '.drv-fact dd', '.native-result pre', '#graph-scroll'].map(selector => {
+      scroll: ['#inspection-scroll', '#graph-scroll'].map(selector => {
         const element = document.querySelector(selector);
         return {selector, top: element?.scrollTop || 0, left: element?.scrollLeft || 0, focused: element === document.activeElement};
       }),
-      nativeOpen: document.querySelector('.native-result')?.open || false,
+      inspectorOpen: !byId('inspection-scroll')?.hidden,
+      disclosures: ['.native-result', '.output-paths', '.reported-errors', '[data-static]'].map(selector => ({selector, open: document.querySelector(selector)?.open || false})),
       selected: selected ? {text: selected.textContent, hidden: selected.hidden} : null
     };
   }
   function restoreStateView(view) {
-    const native = document.querySelector('.native-result');
-    if (native) native.open = view.nativeOpen;
+    setInspector(view.inspectorOpen);
+    for (const saved of view.disclosures) {
+      const element = document.querySelector(saved.selector);
+      if (element) element.open = saved.open;
+    }
     if (view.selected && byId('selected-node')) {
       byId('selected-node').textContent = view.selected.text;
       byId('selected-node').hidden = view.selected.hidden;
@@ -187,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function selectNode() {
     const hash = location.hash.slice(1);
     if (!hash.startsWith('drv-')) return;
+    setInspector(true);
     let node = byId(hash);
     if (!node) {
       const details = document.querySelector('[data-static]');
@@ -202,17 +222,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (node) {
       byId('selected-node').textContent = 'Selected · ' + node.dataset.name;
-      byId('selected-node').hidden = node.id === document.querySelector('.graph-node')?.id;
-      byId('graph-scroll').scrollTop += node.getBoundingClientRect().top - byId('graph-scroll').getBoundingClientRect().top;
-      byId('graph-scroll').scrollLeft += node.querySelector('.node-name').getBoundingClientRect().left - byId('graph-scroll').getBoundingClientRect().left;
+      byId('selected-node').hidden = node.classList.contains('root-anchor');
+      const inspector = byId('inspection-scroll');
+      inspector.scrollTop += node.getBoundingClientRect().top - inspector.getBoundingClientRect().top;
+      const name = node.querySelector('.node-name'), graph = byId('graph-scroll');
+      if (name) graph.scrollLeft += name.getBoundingClientRect().left - graph.getBoundingClientRect().left;
     }
   }
   byId('log-find').addEventListener('input', () => { setFollow(false); find(); });
   byId('log-follow').addEventListener('click', () => { if (following) setFollow(false); else { setFollow(true); end(); } });
   byId('log-end').addEventListener('click', end);
+  byId('log-wrap').addEventListener('change', e => {
+    byId('log-scroll').closest('.log-panel').classList.toggle('nowrap', !e.target.checked);
+  });
   box.addEventListener('scroll', () => { if (following && box.scrollHeight-box.scrollTop-box.clientHeight > 40) setFollow(false); });
-  byId('log-phase').addEventListener('change', e => { const o = e.target.selectedOptions[0]; if (o.value) jumpPhase(o.value,o.dataset.activity); });
   document.addEventListener('click', async e => {
+    if (e.target.closest('#inspection-toggle')) setInspector(byId('inspection-scroll').hidden);
     const phase = e.target.closest('[data-phase-seq]');
     if (phase) jumpPhase(phase.dataset.phaseSeq,phase.dataset.phaseActivity);
     const copy = e.target.closest('[data-copy]');
@@ -231,16 +256,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (action.pathname.endsWith('/state')) restoreStateView(stateView);
     const graph = byId('graph-scroll');
     if (graph) {
-      if (action.pathname.endsWith('/graph')) graph.scrollTop += byId('static-rows').getBoundingClientRect().top - graph.getBoundingClientRect().top;
+      if (action.pathname.endsWith('/graph')) {
+        const inspector = byId('inspection-scroll');
+        inspector.scrollTop += byId('static-rows').getBoundingClientRect().top - inspector.getBoundingClientRect().top;
+      }
       const summary = document.querySelector('[data-static] summary');
       if (summary) summary.textContent = graph.dataset.staticCount + ' static inputs';
     }
     if (!action.pathname.endsWith('/state')) return;
-    const phase = byId('log-phase'), choice = phase.value;
-    if (document.activeElement !== phase && byId('phase-options')) {
-      phase.replaceChildren(byId('phase-options').content.cloneNode(true));
-      phase.value = choice;
-    }
     byId('log-mode').textContent = byId('state').dataset.live === '1' ? 'Live' : 'Captured';
     const live = byId('state').dataset.live === '1';
     if (following && wasLive && !live) load(); // Drain the final committed tail.
@@ -256,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.addEventListener('visibilitychange', schedule);
   schedule();
+  find();
   box.scrollTop = box.scrollHeight;
-  find(); selectNode();
+  selectNode();
 });

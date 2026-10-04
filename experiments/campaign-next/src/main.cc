@@ -399,8 +399,7 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
                   ? campaign::web_graph(result, run, after, params["node"])
               : path == "/sessions"
                   ? campaign::web_sessions(result, run, params["filter"],
-                                           params["find"], after,
-                                           params["overview"] == "1")
+                                           params["find"], after)
               : path == "/overview"
                   ? campaign::web_overview(result)
                   : campaign::web_page(result, requested_run, activity,

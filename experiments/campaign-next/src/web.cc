@@ -422,12 +422,55 @@ std::string failure(const json &view, const std::string &state) {
     if (p.contains("result"))
       reason = text(p.at("result"), "errorMsg", p.at("result").dump());
   }
-  std::string phase = "phase unavailable";
-  for (const auto &p : view.value("phases", json::array()))
-    phase = "last phase · " + text(p, "phase") + " · #" + text(p, "activity");
-  return "<div class=\"failure\">" + escape(phase) + " · " + badge(state) +
-         " · " + terminal(hex(reason.empty() ? "no recorded reason" : reason)) +
+  if (auto paths = reason.find("Output paths:"); paths != std::string::npos)
+    reason.resize(paths);
+  if (auto why = reason.find("Reason:"); why != std::string::npos)
+    reason.erase(0, why + 7);
+  return "<div class=\"failure\">" +
+         terminal(hex(reason.empty() ? "no recorded reason" : reason)) +
          "</div>";
+}
+
+std::string phase_ledger(const json &v, const json &s) {
+  const json *activity = nullptr;
+  for (const auto &a : v.at("activities"))
+    if (text(a, "drv") == text(s, "drv"))
+      activity = &a;
+  std::vector<const json *> phases;
+  if (activity)
+    for (const auto &p : v.at("phases"))
+      if (text(p, "activity") == text(*activity, "id") &&
+          (phases.empty() || text(*phases.back(), "phase") != text(p, "phase")))
+        phases.push_back(&p);
+  std::string out = "<section class=\"phase-ledger\"><h2>Phase ledger</h2>";
+  if (activity)
+    out += "<p class=\"snapshot\">" +
+           escape(text(*activity, "machine", "local")) + " · #" +
+           escape(text(*activity, "id")) + "</p>";
+  if (phases.empty())
+    return out + "<p class=\"empty\">No recorded phases</p></section>";
+  out += "<table><thead><tr><th>Phase</th><th>Duration</th><th>Started</th>"
+         "</tr></thead><tbody>";
+  for (std::size_t i = 0; i < phases.size(); ++i) {
+    const auto &p = *phases[i];
+    auto start = p.at("elapsed_ns").get<std::int64_t>();
+    auto end = i + 1 < phases.size() ? phases[i + 1]->at("elapsed_ns")
+                                     : activity->at("stop_elapsed_ns");
+    bool running = end.is_null() && v.value("live", false) &&
+                   text(*activity, "status") == "running";
+    if (running)
+      end = v.at("elapsed_now_ns");
+    auto duration = end.is_number() && end.get<std::int64_t>() >= start
+                        ? seconds(end.get<std::int64_t>() - start) +
+                              (running ? " · running" : "")
+                        : "— · end unobserved";
+    out += "<tr><td><button data-phase-seq=\"" +
+           std::to_string(number(p, "seq")) + "\" data-phase-activity=\"" +
+           escape(text(p, "activity")) + "\">" + escape(text(p, "phase")) +
+           "</button></td><td>" + duration + "</td><td>" + seconds(start) +
+           "</td></tr>";
+  }
+  return out + "</tbody></table></section>";
 }
 
 std::string log_row(const json &r) {
@@ -444,14 +487,11 @@ std::string log_row(const json &r) {
 bool watching(const json &v) {
   return v.value("watch", v.value("live", false));
 }
-std::string controls(const json &v, const std::string &run, bool overview) {
+std::string controls(const json &v) {
   std::string out =
       "<form id=\"rail-controls\" hx-get=\"./sessions\" "
       "hx-target=\"#session-results\" hx-trigger=\"change, submit" +
       std::string(watching(v) ? ", every 3s" : "") +
-      "\"><input type=\"hidden\" name=\"overview\" value=\"" +
-      (overview ? "1" : "0") +
-      "\"><input type=\"hidden\" name=\"run\" value=\"" + escape(run) +
       "\"><input type=\"hidden\" id=\"rail-after\" name=\"after\" "
       "value=\"0\"><label>Filter <select name=\"filter\" "
       "id=\"session-filter\">";
@@ -464,26 +504,14 @@ std::string controls(const json &v, const std::string &run, bool overview) {
          "placeholder=\"Name\"></label></form>";
   return out;
 }
-std::string sidebar(const json &v, const std::string &run) {
-  return "<aside class=\"sidebar\"><p class=\"brand\"><a href=\"./\">FILNIX / "
-         "CAMPAIGN</a><small>BUILD OBSERVATORY</small></p><h2>SESSIONS</h2>" +
-         controls(v, run, false) +
-         "<div id=\"session-results\" "
-         "tabindex=\"0\" role=\"region\" aria-label=\"Sessions\">" +
-         web_sessions(v, run, "all", "", 0) + "</div></aside>";
-}
-std::string campaign_line(const json &v, bool name = true) {
+std::string campaign_line(const json &v) {
   if (!v.contains("cohort") || !v.at("cohort").is_object())
     return {};
   const auto &c = v.at("cohort");
-  auto roots_label = " · " + std::to_string(c.at("roots").size()) + " roots";
-  std::string out =
-      "<div class=\"campaign-line\">" +
-      (name ? "<b>" + escape(text(c, "name")) + "</b>" : "") +
-      (name ? (text(c, "name").ends_with(roots_label) ? "" : roots_label)
-            : std::to_string(c.at("roots").size()) + " roots") +
-      " · " + std::to_string(number(c, "completed")) + "/" +
-      std::to_string(c.at("roots").size()) + " roots settled";
+  std::string out = "<div class=\"campaign-line\">" +
+                    std::to_string(c.at("roots").size()) + " roots" + " · " +
+                    std::to_string(number(c, "completed")) + "/" +
+                    std::to_string(c.at("roots").size()) + " roots settled";
   for (const auto &[key, f, caption] :
        std::vector<std::tuple<std::string, std::string, std::string>>{
            {"succeeded", "successful", "successful"},
@@ -496,21 +524,11 @@ std::string campaign_line(const json &v, bool name = true) {
     out += " · admission stopped: " + escape(text(c, "stop_reason"));
   return out + " · <a href=\"./?follow=1\">Follow latest</a></div>";
 }
-std::string phase_options(const json &v) {
-  std::string out = "<option value=\"\">—</option>";
-  for (const auto &p : v.value("phases", json::array()))
-    out += "<option value=\"" + std::to_string(number(p, "seq")) +
-           "\" data-activity=\"" + escape(text(p, "activity")) + "\">" +
-           escape(text(p, "phase")) + " · " +
-           seconds(p.value("elapsed_ns", std::int64_t(0))) + " · #" +
-           escape(text(p, "activity")) + "</option>";
-  return out;
-}
 } // namespace
 
 std::string web_sessions(const json &v, const std::string &run,
                          const std::string &filter, const std::string &find,
-                         std::uint64_t after, bool overview) {
+                         std::uint64_t after) {
   std::vector<json> matches;
   std::set<std::uint64_t> attempted;
   auto cohort = v.value("cohort", json(nullptr));
@@ -530,8 +548,7 @@ std::string web_sessions(const json &v, const std::string &run,
     if (pass && lower(label(s)).find(lower(find)) != std::string::npos)
       matches.push_back(s);
   }
-  if ((filter == "unattempted" ||
-       (overview && (filter.empty() || filter == "all"))) &&
+  if ((filter == "unattempted" || filter.empty() || filter == "all") &&
       cohort.is_object()) {
     for (std::size_t i = 0; i < cohort.at("roots").size(); ++i)
       if (!attempted.contains(i) &&
@@ -540,17 +557,18 @@ std::string web_sessions(const json &v, const std::string &run,
         matches.push_back(cohort.at("roots")[i]);
   }
   after = std::min<std::uint64_t>(after, matches.size());
-  std::string out =
-      "<p class=\"rail-count\" data-after=\"" + std::to_string(after) + "\">" +
-      std::to_string(matches.size()) +
-      (overview && cohort.is_object() ? " roots</p>" : " sessions</p>");
+  std::string out = "<p class=\"rail-count\" data-after=\"" +
+                    std::to_string(after) + "\">" +
+                    std::to_string(matches.size()) +
+                    (cohort.is_object() ? " roots</p>" : " sessions</p>");
   auto end = std::min<std::uint64_t>(matches.size(), after + 50);
-  if (overview) {
+  {
     html::Writer h;
     h.tag("table", {{"class", "campaign-table"}}, [&] {
       h.tag("thead", [&] {
         h.tag("tr", [&] {
-          for (auto name : {"Package", "State", "Events", "Output lines"})
+          for (auto name :
+               {"Package", "State", "Events", "Output lines", "Phase / result"})
             h.tag("th", {{"scope", "col"}}, [&] { h.text(name); });
         });
       });
@@ -575,30 +593,20 @@ std::string web_sessions(const json &v, const std::string &run,
             });
             for (auto key : {"events", "output_lines"})
               h.tag("td", [&] { h.text(std::to_string(number(s, key))); });
+            h.tag("td", {{"class", "session-observation"}}, [&] {
+              auto native = text(s, "native_status");
+              if (st == "failed" && !native.empty())
+                h.text(native);
+              else if (!text(s, "phase_hex").empty())
+                h.text(display_text(unhex(text(s, "phase_hex"))));
+              else
+                h.text("—");
+            });
           });
         }
       });
     });
     out += std::move(h).str();
-  } else {
-    out += "<ul class=\"session-list\">";
-    for (auto i = after; i < end; ++i) {
-      const auto &s = matches[i];
-      auto id = text(s, "run");
-      auto tag = id.empty() ? "div" : "a";
-      out += "<li><" + std::string(tag) + " class=\"session-link" +
-             (id == run ? " selected" : "") + "\"";
-      if (!id.empty())
-        out += " href=\"./?" + escape(query(id)) +
-               "&amp;filter=" + escape(url(filter)) +
-               "&amp;find=" + escape(url(find)) + "\"";
-      out += "><span class=\"session-title\">" + escape(label(s)) +
-             "</span><span class=\"session-sub\">" +
-             badge(id.empty() ? "unattempted" : status(v, s)) + " · " +
-             std::to_string(number(s, "events")) + " ev</span></" + tag +
-             "></li>";
-    }
-    out += "</ul>";
   }
   if (matches.empty())
     out += "<p class=\"empty\">No sessions · " +
@@ -608,7 +616,6 @@ std::string web_sessions(const json &v, const std::string &run,
            "&amp;filter=" + escape(url(filter)) +
            "&amp;find=" + escape(url(find)) +
            "&amp;after=" + std::to_string(offset) +
-           "&amp;overview=" + (overview ? "1" : "0") +
            "\" hx-target=\"#session-results\">" + caption + "</button>";
   };
   out += "<div class=\"paging\">";
@@ -669,16 +676,19 @@ std::string web_state(const json &v, const std::string &run,
   auto st = status(v, *s);
   Graph g(v, *s);
   auto count = g.reachable.size() - g.primary.size();
-  out += "<div class=\"session-summary\" tabindex=\"0\" role=\"region\" "
-         "aria-label=\"Session facts\"><header class=\"summary-head\"><h1>" +
-         escape(label(*s)) + "</h1><div>" + badge(st) +
-         " <span class=\"record-mode\">" +
+  out += "<header class=\"summary-head\"><h1>" + escape(label(*s)) +
+         "</h1><div>" + badge(st) + " <span class=\"record-mode\">" +
          (v.value("live", false) ? "Live · recording" : "Recorded") +
-         "</span></div></header>";
-  out += campaign_line(v);
+         "</span></div></header>" + failure(v, st) +
+         "<button id=\"inspection-toggle\" aria-expanded=\"true\" "
+         "aria-controls=\"inspection-scroll\">Hide details</button>"
+         "<div id=\"inspection-scroll\" "
+         "tabindex=\"0\" role=\"region\" aria-label=\"Session inspector\">";
   out += "<dl class=\"facts\"><div class=\"drv-fact\"><dt>DERIVATION <button "
          "data-copy=\"" +
-         escape(text(*s, "drv")) + "\">Copy drv</button></dt><dd>" +
+         escape(text(*s, "drv")) +
+         "\">Copy drv</button></dt><dd class=\"root-anchor\" id=\"drv-" +
+         hex(g.root) + "\" data-name=\"" + escape(label(*s)) + "\">" +
          escape(text(*s, "drv", "—")) + "</dd></div>";
   for (auto &[caption, value] :
        std::vector<std::pair<std::string, std::string>>{
@@ -686,30 +696,53 @@ std::string web_state(const json &v, const std::string &run,
            {"EVENTS", std::to_string(number(*s, "events"))},
            {"OUTPUT LINES", std::to_string(number(*s, "output_lines"))}})
     out += "<div><dt>" + caption + "</dt><dd>" + escape(value) + "</dd></div>";
-  out += "</dl><details class=\"native-result\"><summary>Native result · " +
+  out += "</dl>";
+  if (!v.value("reported_errors", json::array()).empty()) {
+    out += "<details class=\"reported-errors\"><summary>Reported errors · " +
+           std::to_string(v.at("reported_errors").size()) + "</summary>";
+    for (const auto &e : v.at("reported_errors"))
+      out += "<button data-phase-seq=\"" + std::to_string(number(e, "seq")) +
+             "\" data-phase-activity=\"\">Output · " +
+             seconds(e.at("elapsed_ns").get<std::int64_t>()) +
+             "</button><pre>" + terminal(text(e, "bytes_hex")) + "</pre>";
+    out += "</details>";
+  }
+  std::string paths;
+  for (const auto &o : s->value("outputs", json::array()))
+    paths += text(o, "path") + "\n";
+  bool reported = false;
+  if (paths.empty())
+    for (const auto &e : v.value("failure_events", json::array()))
+      if (e.at("payload").contains("result")) {
+        auto reason = text(e.at("payload").at("result"), "errorMsg");
+        if (auto pos = reason.find("Output paths:"); pos != std::string::npos) {
+          paths = reason.substr(pos + 13);
+          reported = true;
+          break;
+        }
+      }
+  out += "<details class=\"output-paths\"><summary>Output paths" +
+         std::string(reported ? " · reported" : "") + "</summary><pre>" +
+         terminal(hex(paths.empty() ? "No output paths recorded" : paths)) +
+         "</pre></details><details class=\"native-result\"><summary>Native "
+         "result · " +
          escape(text(*s, "outcome", "incomplete")) + "</summary>";
+  bool has_result = false;
   for (auto &e : v.value("failure_events", json::array()))
-    if (text(e, "kind") == "nix.build-result")
+    if (text(e, "kind") == "nix.build-result") {
       out += "<pre>" + escape(e.at("payload").dump(2)) + "</pre>";
-  out += "</details><template id=\"phase-options\">" + phase_options(v) +
-         "</template></div><section class=\"graph-panel\"><header "
-         "class=\"panel-head\"><h2>Dependency graph</h2><span>Static inputs · "
-         "activity overlaid</span></header><p id=\"selected-node\" "
+      has_result = true;
+    }
+  if (!has_result)
+    out += "<p class=\"empty\">No native result recorded</p>";
+  out += "</details>" + phase_ledger(v, *s) +
+         "<section class=\"graph-panel\"><header "
+         "class=\"panel-head\"><h2>Dependencies</h2></header><p "
+         "id=\"selected-node\" "
          "hidden></p><div id=\"graph-scroll\" class=\"graph-scroll\" "
          "tabindex=\"0\" role=\"region\" aria-label=\"Dependency graph\" "
          "data-static-count=\"" +
-         std::to_string(count) + "\">" + failure(v, st);
-  out += g.node({g.root, "", 0, false, false}, true);
-  auto root_activity = g.activities.find(g.root);
-  if (root_activity != g.activities.end()) {
-    for (const auto &p : v.value("phases", json::array()))
-      if (text(p, "activity") == text(*root_activity->second, "id"))
-        out += "<button class=\"phase-row\" data-phase-seq=\"" +
-               std::to_string(number(p, "seq")) + "\" data-phase-activity=\"" +
-               escape(text(p, "activity")) + "\">" +
-               seconds(p.value("elapsed_ns", std::int64_t(0))) + " · " +
-               escape(text(p, "phase")) + "</button>";
-  }
+         std::to_string(count) + "\">";
   if (count)
     out += "<details data-static id=\"static-inputs-" + escape(id) +
            "\" hx-preserve><summary hx-get=\"./graph?" + escape(query(id)) +
@@ -719,7 +752,7 @@ std::string web_state(const json &v, const std::string &run,
   for (const auto &r : g.rows)
     if (g.primary.contains(r.drv) && !r.reference)
       out += g.node({r.drv, r.outputs, 1, false, r.dynamic}, true);
-  return out + "</div></section></section>";
+  return out + "</div></section></div></section>";
 }
 
 std::string web_logs(const json &records, const std::string &run,
@@ -740,15 +773,20 @@ std::string web_logs(const json &records, const std::string &run,
 
 std::string web_overview(const json &v) {
   auto c = v.value("cohort", json(nullptr));
+  auto name = c.is_object() ? text(c, "name") : "Build observatory";
+  if (c.is_object()) {
+    auto suffix = " · " + std::to_string(c.at("roots").size()) + " roots";
+    if (name.ends_with(suffix))
+      name.resize(name.size() - suffix.size());
+  }
   return "<section id=\"overview-summary\" data-watch=\"" +
          std::string(watching(v) ? "1" : "0") +
          "\" hx-get=\"./overview\" hx-trigger=\"refresh" +
          (watching(v) ? ", every 2s" : "") +
          "\" hx-swap=\"outerHTML\"><header class=\"summary-head\"><h1>" +
-         escape(c.is_object() ? text(c, "name") : "Build observatory") +
-         "</h1><span class=\"record-mode\">" +
+         escape(name) + "</h1><span class=\"record-mode\">" +
          (watching(v) ? "Live · recording" : "Recorded") + "</span></header>" +
-         campaign_line(v, false) + "</section>";
+         campaign_line(v) + "</section>";
 }
 
 std::string web_page(const json &v, const std::string &run,
@@ -767,14 +805,14 @@ std::string web_page(const json &v, const std::string &run,
   if (overview)
     return out +
            "<main class=\"overview\"><p class=\"brand\">FILNIX / "
-           "CAMPAIGN<small>BUILD OBSERVATORY</small></p>" +
-           web_overview(v) + controls(v, "", true) +
+           "CAMPAIGN</p>" +
+           web_overview(v) + controls(v) +
            "<div id=\"session-results\" tabindex=\"0\" "
            "role=\"region\" aria-label=\"Campaign roots\">" +
-           web_sessions(v, "", "all", "", 0, true) +
-           "</div></main></body></html>";
-  out += "<div class=\"shell\">" + sidebar(v, id) +
-         "<main class=\"main\"><div class=\"content\">" +
+           web_sessions(v, "", "all", "", 0) + "</div></main></body></html>";
+  out += "<main class=\"detail-shell\"><nav class=\"detail-nav\"><a "
+         "id=\"sessions-back\" "
+         "href=\"./\">Sessions</a></nav><div class=\"detail-layout\">" +
          web_state(v, run, activity);
   out += "<section class=\"log-panel\"><header class=\"panel-head\"><h2>Build "
          "output</h2><span id=\"log-mode\">" +
@@ -782,15 +820,15 @@ std::string web_page(const json &v, const std::string &run,
          "</span><button id=\"log-follow\">" +
          (v.value("live", false) ? "Pause" : "Follow") +
          "</button><button "
-         "id=\"log-end\">End</button><label>Find <input id=\"log-find\" "
-         "type=\"search\" aria-label=\"Find in loaded output\"></label><span "
-         "id=\"find-count\"></span><label>Phase <select "
-         "id=\"log-phase\">" +
-         phase_options(v);
+         "id=\"log-end\">End</button></header><div "
+         "class=\"console-tools\"><label>Find <input id=\"log-find\" "
+         "type=\"search\" aria-label=\"Find in loaded output\"></label>"
+         "<label><input type=\"checkbox\" id=\"log-wrap\" checked>Wrap</label>";
   out +=
-      "</select></label><a href=\"./?" + escape(query(id)) +
-      "\">All output</a><span id=\"console-state\" "
-      "role=\"status\"></span></header><div class=\"log-scroll\" "
+      "<a href=\"./?" + escape(query(id)) +
+      "\">All output</a></div><div class=\"log-columns\" aria-hidden=\"true\">"
+      "<span>Time</span><span>Activity</span><span>Message</span></div><div "
+      "class=\"log-scroll\" "
       "id=\"log-scroll\" tabindex=\"0\" role=\"region\" "
       "aria-label=\"Output console\"><div class=\"log-rows\" id=\"log-rows\" "
       "role=\"log\" aria-label=\"Build output\">";
@@ -798,9 +836,12 @@ std::string web_page(const json &v, const std::string &run,
     out += log_row(r);
   if (v.at("logs").empty())
     out += "<p class=\"log-empty\">No captured output</p>";
-  return out + "</div></div><div id=\"log-cursor\" data-after=\"" +
+  return out +
+         "</div></div><footer class=\"console-footer\"><span id=\"find-count\">"
+         "</span> <span id=\"console-state\" role=\"status\"></span></footer>"
+         "<div id=\"log-cursor\" data-after=\"" +
          std::to_string(number(v, "cursor")) + "\" data-run=\"" + escape(id) +
          "\" data-activity=\"" + escape(activity) +
-         "\"></div></section></div></main></div></body></html>";
+         "\"></div></section></div></main></body></html>";
 }
 } // namespace campaign
