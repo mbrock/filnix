@@ -88,7 +88,7 @@ nix build --no-link .#checks.x86_64-linux.fork-regressions.tests.descriptors
 
 The known ARM64 binary128 directed-rounding limitation remains visible in
 `fenv` and `staging-fenv`; this is not established to be a 0.686 regression.
-Native ARM64 rebuilding/testing is required before claiming ARM64 validation.
+ARM64 validation is limited to the native gates and representative ports below.
 
 ### Verification of the split
 
@@ -124,20 +124,32 @@ comparison above. All 18 pinned sparse sources were built and all 10
 source/import policy tests passed, including component coherence and compiler
 assignment checks for both architectures. On native ARM64, all 18 source
 hashes were independently verified and all 10 policy tests passed, including
-native Projeny coverage. The complete release toolchain and its QuickJS/zlib
-ports built; coroutines, GC roots, link hygiene, wrapper roles and the unsafe-call
-boundary passed. The release fork checks passed pointer atomics, union-record
-ABI and all ten CAS runs, but failed descriptors, nested cleanup and fiber
-unwinding. The passing ARM64 CAS runs differ from x86's observed bad writeback;
-they do not establish that the residual CAS issue is fixed on every platform.
+native Projeny coverage. Both complete ARM64 toolchains built without
+`FILC_DEV_LLVM`; both LLVM and installed QuickJS binaries were verified as
+AArch64 ELF executables. Both variants passed coroutines, GC roots, link
+hygiene, wrapper roles, QuickJS's upstream/SAB/worker/qjsc/regexp checks and
+zlib's static/shared/64-bit tests. The official unsafe-call boundary passed.
+
+Staging passed all six native fork cases, their aggregate, and cancellation
+(112 scenario results, each with 20 passes). Release passed pointer atomics,
+union-record ABI and all ten CAS runs, but failed descriptors, nested cleanup
+and fiber unwinding. The passing ARM64 CAS runs differ from x86's observed
+bad writeback; they do not establish universal race freedom or that the
+residual CAS issue is fixed on every platform.
 
 The SaRCAsm integration harness now selects an architecture-specific assembly
 fixture rather than attempting to compile x86 instructions on ARM64. The native
-release check passed the unchanged load/identity assertions and required the
-deliberate OOB load to trap with `asm_load` in the diagnostic. Both x86 variants
-still pass. Native release fenv fails the binary128 directed-rounding assertion;
-that failure remains strict. Staging LLVM has built on ARM64, but its complete
-toolchain, runtime gates and ports are still in progress.
+checks passed in both variants, preserving the unchanged load/identity
+assertions and requiring the deliberate OOB load to trap with `asm_load` in
+the diagnostic. Both x86 variants still pass. Both native fenv gates fail at
+`fenv.c:27`, `lquotient(FE_UPWARD) > lquotient(FE_DOWNWARD)`; those failures
+remain strict, and subsequent fenv assertions were not reached.
+
+No requested native target remains pending. The x86-only
+`staging-cancellation-native` harness was not run or counted as ARM64 coverage;
+the broader 213-case runtime comparison was performed on x86, not rerun on
+ARM64. These results validate the requested builds and gates, not all ports or
+the soundness of the experimental compiler.
 
 A full `nix flake check --no-build
 --all-systems` remains blocked by a missing `dank-bashrc.drv`, reproduced at
