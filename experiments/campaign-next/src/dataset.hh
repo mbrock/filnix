@@ -14,6 +14,7 @@ public:
   void append(const json &batch);
   json summary(std::string run = "");
   json events(std::string run, std::uint64_t after);
+  json publication_outputs();
   json view(std::string run, std::string activity, bool detail = true);
   // Forward from `after`; or the latest `tail_rows`; or the rows before
   // `before`, newest last. Windows are bounded; callers page explicitly.

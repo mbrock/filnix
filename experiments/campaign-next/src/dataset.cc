@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <set>
 
 namespace campaign {
 namespace {
@@ -79,6 +80,22 @@ void Dataset::exec(const std::string &sql) {
   auto result = connection_.Query(sql);
   if (result->HasError())
     throw std::runtime_error(result->GetError());
+}
+
+json Dataset::publication_outputs() {
+  std::set<std::string> paths;
+  for (const auto &row : rows("SELECT summary FROM runs")) {
+    const auto &state = row.at("summary");
+    auto outcome = state.value("outcome", "incomplete");
+    if (!state.value("complete", false) ||
+        (outcome != "built" && outcome != "already-valid" &&
+         outcome != "substituted" && outcome != "resolves-to-already-valid"))
+      continue;
+    for (const auto &output : state.at("outputs"))
+      if (output.value("valid", false))
+        paths.insert(output.at("path").get<std::string>());
+  }
+  return {{"watermark", watermark_}, {"paths", paths}};
 }
 
 json Dataset::rows(const std::string &sql) {
@@ -210,12 +227,13 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
   if (!activity.empty())
     filter += " AND l.activity::VARCHAR=" + quote(activity);
   // The activity's derivation name labels rows; ids remain copyable.
-  auto sql = "SELECT l.seq,l.elapsed_ns,coalesce(l.activity::VARCHAR,'') AS "
-             "activity,coalesce((SELECT r.name FROM activities a JOIN recipes r "
-             "ON r.run=a.run AND r.drv=a.drv WHERE a.run=l.run AND "
-             "a.id=l.activity),'') AS activity_name,lower(hex(l.bytes)) AS "
-             "bytes_hex FROM logs l WHERE l." +
-             filter;
+  auto sql =
+      "SELECT l.seq,l.elapsed_ns,coalesce(l.activity::VARCHAR,'') AS "
+      "activity,coalesce((SELECT r.name FROM activities a JOIN recipes r "
+      "ON r.run=a.run AND r.drv=a.drv WHERE a.run=l.run AND "
+      "a.id=l.activity),'') AS activity_name,lower(hex(l.bytes)) AS "
+      "bytes_hex FROM logs l WHERE l." +
+      filter;
   if (before)
     sql = "SELECT * FROM (" + sql + " AND l.seq<" + std::to_string(before) +
           " ORDER BY l.seq DESC LIMIT " + std::to_string(log_earlier_rows) +
@@ -245,7 +263,8 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
       "(SELECT x.elapsed_ns FROM events x WHERE x.\"offset\"=r.last_offset) "
       "AS duration_ns,(SELECT json_extract_string(c.payload,'$.text_hex') FROM "
       "events c WHERE c.run=r.run AND c.kind='nix.message' AND "
-      "json_extract(c.payload,'$.level')=0 ORDER BY c.seq LIMIT 1) AS cause_hex";
+      "json_extract(c.payload,'$.level')=0 ORDER BY c.seq LIMIT 1) AS "
+      "cause_hex";
   auto sessions = rows(
       "SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
       "r.summary," +
@@ -260,7 +279,8 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
       "AS request FROM runs r LEFT JOIN "
       "events e ON e.run=r.run AND e.seq=1 " +
       session_filter +
-      " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT 256");
+      " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT " +
+      std::string(cohort.is_null() ? "256" : "1024"));
   json session = nullptr;
   for (auto &item : sessions) {
     auto state = item.at("summary");
@@ -338,8 +358,7 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
         "json_extract_string(e.payload,'$.cohort.id')=" +
         quote(cohort.at("id").get<std::string>());
     auto summaries = rows("SELECT r.summary" + members);
-    unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0,
-             built = 0;
+    unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0, built = 0;
     for (const auto &item : summaries) {
       const auto &state = item.at("summary");
       if (!state.at("complete").get<bool>())
@@ -350,8 +369,7 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
           outcome == "substituted" || outcome == "resolves-to-already-valid") {
         ++succeeded;
         built += outcome == "built";
-      }
-      else if (outcome == "timed-out")
+      } else if (outcome == "timed-out")
         ++timed_out;
       else
         ++failed;

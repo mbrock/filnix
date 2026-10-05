@@ -12,8 +12,23 @@ import shutil
 import sqlite3
 import subprocess
 import time
+import urllib.request
 
 STORE_PATH = re.compile(r"/nix/store/[0-9a-z]{32}-[^/\s]+\Z")
+
+
+def discover_native(url):
+    # Query the owning process; DuckDB cannot be opened by another reader
+    # while the campaign is recording. This feed includes verified root
+    # outputs only; copying them publishes their complete reference closures.
+    with urllib.request.urlopen(url, timeout=30) as response:
+        paths = json.load(response)["paths"]
+    if not isinstance(paths, list) or any(
+        not isinstance(p, str) or not STORE_PATH.fullmatch(p) or p.endswith(".drv")
+        for p in paths
+    ):
+        raise ValueError("invalid output path in native campaign observations")
+    return sorted(set(paths))
 
 
 def discover(database, campaign):
@@ -160,7 +175,9 @@ def main():
             if not previous:
                 with db:
                     db.execute("INSERT INTO destination VALUES(?)", (identity,))
-            paths = discover(Path(config["experiment"]) / "experiment.sqlite", config["campaign"])
+            paths = (discover_native(config["native_outputs_url"])
+                     if "native_outputs_url" in config else
+                     discover(Path(config["experiment"]) / "experiment.sqlite", config["campaign"]))
             enqueue(db, sorted(set(paths) | set(args.extra_root)), time.time())
             for _ in range(args.batches):
                 if not publish(db, config[args.target], args.target, args.batch_size):

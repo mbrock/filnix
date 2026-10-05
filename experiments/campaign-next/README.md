@@ -1,8 +1,9 @@
 # Campaign, again
 
-A greenfield C++/NXT experiment alongside the existing Python campaign.
-Nothing here replaces its coordinator, database, dashboard, or systemd services.
-This slice builds a derivation through the Nix C++ API, records its observations
+A C++/NXT campaign runner and the canonical viewer at <https://nix.swa.sh/>.
+The former Python coordinator and dashboard are retired on SWA; their data
+remains available for historical analysis. This application builds through
+the Nix C++ API, records its observations
 in DuckDB, presents a live dependency-graph viewer, and exports Parquet archives.
 There is no Python application or web server; Python drives integration tests.
 
@@ -75,6 +76,12 @@ libraries, GTK/Wayland, language runtimes, and applications. Emacs is headless;
 GTK uses the existing Wayland/Broadway port configuration. Custom Qt ports are
 not selected. FFmpeg and GTKmm are last to avoid delaying the core landmarks.
 
+`world.nix` with `scope = "ports"` expands this to the union of the world roots
+and all active `ports.nix` declarations. Evaluations that fail are retained in
+the manifest's `excluded` array. The initial full port manifest has 300 admitted
+roots and 12 exclusions. The runner accepts up to 1024 roots, retaining all
+cohort summaries while the table renders 100 rows per page.
+
 `cohort` accepts an immutable JSON manifest with `id`, `name`, and a `roots`
 array of `{name, drv}` objects. It admits one root request at a time; Nix still
 schedules that root's complete dependency graph. Package failures and per-root
@@ -115,14 +122,24 @@ installed package at `/opt/filnix-v2`, state under `/var/lib/filnix-v2`, an
 immutable `manifest.json` symlink there, and loopback port 8778. Root both the
 package and manifest under `/nix/var/nix/gcroots/`. The service uses the existing
 trusted Nix user `mbrock` to make its per-client configuration effective:
-two local jobs, four cores per job, no remote builders, and five minutes of
-silence allowed. It does not change the daemon's shared configuration. Its 4 GiB
+two local jobs, four cores per job, the configured remote builders, and thirty
+minutes of silence allowed. The deployed port campaign has a 72-hour overall
+budget and two hours per root. It does not change the daemon's shared configuration. Its 4 GiB
 memory limit bounds the observer, not daemon-owned compiler processes.
 
-Add `deploy/v2.Caddyfile` inside the existing `nix.swa.sh` site, preserving the
-cache and legacy fallback. Validate Caddy and the unit before reloading/enabling.
+`deploy/nix.swa.sh.Caddyfile` routes the root to this viewer, preserves the public
+cache, and redirects `/v2/` URLs to the root while retaining their queries.
+Merge it with existing site-specific routes rather than replacing the entire
+host configuration. Validate Caddy and the unit before reloading/enabling.
 The public viewer exposes only read endpoints, but build output is public too:
 only use intentionally public source/package builds and no secret-bearing jobs.
+
+`/healthz` checks HTTP service availability. `/api/outputs` exposes deduplicated,
+verified output paths from complete successful root recordings at a committed
+watermark. The independent cache timers query it over loopback; they never open
+the live DuckDB file. Publication includes root reference closures. Successful
+dependencies of a failed root are not separately discovered by this feed.
+See [port campaign operations](../../docs/port-campaign-operations.md).
 
 ## Execution and ownership
 
@@ -233,7 +250,7 @@ console; `Follow latest` explicitly opts into the current/latest session.
 While recording/admitting, HTMX polls summary/state every two seconds and the
 list every three, without replacing the log pane. Settled recordings have no
 periodic state/list/log requests; hidden pages suppress background requests.
-The rail is scoped to the selected cohort (at most 256 roots); standalone views
+The rail is scoped to the selected cohort (at most 1024 roots); standalone views
 retain the latest 256 recordings. Campaign counts apply the matching list filter.
 
 The graph foreground shows the root, recorded phases, useful direct inputs

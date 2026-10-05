@@ -173,6 +173,13 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual(state["cohort"]["failed"], 1)
             self.assertEqual(state["cohort"]["unattempted"], 0)
             self.assertEqual(state["cohort"]["stop_reason"], "all-roots-attempted")
+            published = json.load(urllib.request.urlopen(base + "/api/outputs", timeout=2))
+            verified = sorted({o["path"] for s in state["sessions"]
+                               if s["complete"] and s["outcome"] == "built"
+                               for o in s["outputs"] if o["valid"]})
+            self.assertTrue(verified)
+            self.assertEqual(published["paths"], verified)
+            self.assertEqual(published["watermark"], state["watermark"])
             good_run = state["session"]["run"]
             bad_run = next(s["run"] for s in state["sessions"] if s["run"] != good_run)
             pinned = self.state(bad_run, base)
@@ -201,6 +208,7 @@ class CampaignTests(unittest.TestCase):
             state = self.settled_cohort(base)
             self.assertEqual(state["watermark"], watermark)
             self.assertEqual(len(state["sessions"]), 2)
+            self.assertEqual(json.load(urllib.request.urlopen(base + "/api/outputs"))["paths"], verified)
             self.assertFalse(state["live"])
         finally:
             self.stop(restarted)

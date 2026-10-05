@@ -1,4 +1,9 @@
+# Canonical public viewer, with compatibility redirects for old session links.
 nix.swa.sh {
+    redir /v2 / 308
+    handle_path /v2/* {
+        redir {uri} 308
+    }
     redir /cache /cache/
     handle_path /cache/* {
         root * /var/www/filnix-cache

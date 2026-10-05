@@ -35,7 +35,16 @@ publisher, initially on activation and again one minute after each run finishes.
 Each run discovers outputs from the configured campaign and submits at most
 eight batches of 64 roots. Pending backfill continues on subsequent runs.
 
-Discovery reads the campaign database without writing it. It includes realized
+The canonical native campaign is selected with
+`"native_outputs_url": "http://127.0.0.1:8778/api/outputs"` in
+`/etc/filnix-cache/config.json`. The publisher queries the single database owner
+over HTTP rather than opening the live DuckDB file. This feed includes only
+verified outputs of complete successful root requests, with their full reference
+closures copied by Nix/Cachix. It does not independently discover successful
+dependencies of failed roots. Destination receipts, credentials, signing keys,
+retry behavior, and timers are shared with the previous publisher deployment.
+
+Legacy SQLite discovery reads the campaign database without writing it. It includes realized
 selected packages and realized dependencies actually observed in that campaign,
 including successful dependencies from a batch with errors. Merely starting a
 build or entering a check phase does not qualify an output. Aliases and repeated
@@ -52,6 +61,10 @@ This covers subsequent builds recorded by this campaign automatically. It does
 not watch the entire host store or automatically publish unrelated ad hoc
 builds. The existing `push-baseline` and `push-pkg` commands remain available
 for explicit Cachix publication outside the campaign.
+
+For either cache, `filnix-publish-cache TARGET --extra-root /nix/store/OUTPUT`
+explicitly adds an ad hoc output to the same durable queue. Run it with the
+publisher's service identity; Cachix also needs its systemd-loaded credential.
 
 Each target keeps its own durable SQLite receipts under `/var/lib/filnix-cache`.
 Only a successful upload records publication. Upload failures and timeouts
@@ -148,7 +161,11 @@ retry isolation, timeouts, and the disk reserve.
 
 ## Moving to a new campaign
 
-After importing a new campaign, change only `campaign` in
+Native campaigns keep the same output-feed URL when their recording is rolled
+over. No publisher configuration change is needed; receipts from previous
+campaigns remain and outstanding uploads drain normally.
+
+For the archived SQLite runner, after importing a new campaign, change only `campaign` in
 `/etc/filnix-cache/config.json` to its ID using an atomic file replacement.
 The destination settings and receipt databases stay unchanged: receipts are
 keyed by store path and cache destination, and pending uploads from the old

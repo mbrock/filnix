@@ -328,6 +328,18 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
     co_return response{405, {{"Allow", "GET, HEAD"}}, "Read-only viewer\n", {}};
   auto question = req.target.find('?');
   auto path = req.target.substr(0, question);
+  if (path == "/healthz")
+    co_return response{200, {{"Content-Type", "text/plain"}}, "ok\n", {}};
+  if (path == "/api/outputs") {
+    auto result = co_await app.workers.run(
+        [&app] { return app.data->publication_outputs(); });
+    co_return response{200,
+                       {{"Content-Type", "application/json"},
+                        {"Cache-Control", "no-store"},
+                        {"X-Content-Type-Options", "nosniff"}},
+                       result.dump(),
+                       {}};
+  }
   if (app.assets.contains(path))
     co_return response{
         200,
@@ -392,22 +404,21 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
       result["elapsed_now_ns"] = campaign::monotonic_ns() - app.live_start;
   }
   bool api = path.starts_with("/api/");
-  auto body = api       ? result.dump()
-              : is_logs ? campaign::web_logs(result, run, activity,
-                                             params["tail"] == "1" ? 0 : after,
-                                             before)
-              : path == "/state"
-                  ? campaign::web_state(result, requested_run, activity)
-              : path == "/graph"
-                  ? campaign::web_graph(result, run, after, params["node"])
-              : path == "/sessions"
-                  ? campaign::web_sessions(result, run, params["filter"],
-                                           params["find"], after)
-              : path == "/overview"
-                  ? campaign::web_overview(result)
-                  : campaign::web_page(result, requested_run, activity,
-                                       params["follow"] == "1" &&
-                                           requested_run.empty());
+  auto body =
+      api                ? result.dump()
+      : is_logs          ? campaign::web_logs(result, run, activity,
+                                     params["tail"] == "1" ? 0 : after, before)
+      : path == "/state" ? campaign::web_state(result, requested_run, activity)
+      : path == "/graph"
+          ? campaign::web_graph(result, run, after, params["node"])
+      : path == "/sessions"
+          ? campaign::web_sessions(result, run, params["filter"],
+                                   params["find"], after)
+      : path == "/overview"
+          ? campaign::web_overview(result)
+          : campaign::web_page(result, requested_run, activity,
+                               params["follow"] == "1" &&
+                                   requested_run.empty());
   co_return response{
       200,
       {{"Content-Type", api ? "application/json" : "text/html; charset=utf-8"},
@@ -444,7 +455,7 @@ nxtrt::task<int> server_body(Application &app, const Options &options) {
       if (!value.at("id").is_string() ||
           value.at("id").get<std::string>().empty() ||
           !value.at("name").is_string() || !value.at("roots").is_array() ||
-          value.at("roots").empty() || value.at("roots").size() > 256)
+          value.at("roots").empty() || value.at("roots").size() > 1024)
         throw std::runtime_error("invalid cohort manifest");
       for (const auto &root : value.at("roots")) {
         if (!root.at("name").is_string() || !root.at("drv").is_string() ||

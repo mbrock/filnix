@@ -5,6 +5,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+import io
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
@@ -18,6 +19,17 @@ def output(letter):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_native_discovery_validates_and_deduplicates_verified_feed(self):
+        response = io.BytesIO(json.dumps(dict(watermark=42,paths=[output('b'),output('a'),output('a')])).encode())
+        with patch.object(publisher.urllib.request,'urlopen',return_value=response):
+            self.assertEqual(publisher.discover_native('http://127.0.0.1:8778/api/outputs'),
+                             [output('a'),output('b')])
+        for paths in ([output('a')+'.drv'],['/tmp/unrelated'],[None],'not-a-list'):
+            with patch.object(publisher.urllib.request,'urlopen',
+                              return_value=io.BytesIO(json.dumps(dict(paths=paths)).encode())):
+                with self.assertRaisesRegex(ValueError,'invalid output path'):
+                    publisher.discover_native('http://127.0.0.1:8778/api/outputs')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -130,6 +142,16 @@ class PublicationTests(unittest.TestCase):
                           lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
             publisher.main()
         self.assertEqual(sorted(pushed),[output('a'),output('t')])
+        # Switch observation sources while retaining destination receipts.
+        config.write_text(json.dumps(dict(native_outputs_url='http://127.0.0.1:8778/api/outputs',
+                                          state=str(self.directory/'state'),
+                                          cachix=dict(cache='filc'))))
+        with patch('sys.argv',argv), \
+             patch.object(publisher,'discover_native',return_value=[output('a'),output('b')]), \
+             patch.object(publisher,'publish',
+                          lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
+            publisher.main()
+        self.assertEqual(sorted(pushed),[output('a'),output('b'),output('t')])
         with patch('sys.argv',argv[:-1]+['/nix/store/x.drv']), \
              self.assertRaises(SystemExit):
             publisher.main()

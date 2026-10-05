@@ -1,3 +1,10 @@
+# Archived Python campaign operations
+
+The canonical dashboard now uses the native runner. See
+[port campaign operations](port-campaign-operations.md). The Python controller,
+viewer, classification and retention units are retired; the instructions below
+describe the preserved historical campaigns.
+
 # Operating the Filnix experiment
 
 The dashboard is **https://nix.swa.sh/**. It is read-only. The active campaign is

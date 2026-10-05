@@ -112,12 +112,14 @@ int main() {
           "escape captured HTML");
     check(fragment.find("data-source=\"") != std::string::npos &&
               fragment.find("<time title=\"") != std::string::npos &&
-              fragment.find("#" + std::to_string(activity)) == std::string::npos,
+              fragment.find("#" + std::to_string(activity)) ==
+                  std::string::npos,
           "rows carry a source label and clock time, not opaque activity ids");
     {
       json many = json::array();
       for (unsigned i = 0; i < campaign::log_earlier_rows; ++i)
-        many.push_back({{"seq", 2000 + i}, {"elapsed_ns", 0}, {"bytes_hex", ""}});
+        many.push_back(
+            {{"seq", 2000 + i}, {"elapsed_ns", 0}, {"bytes_hex", ""}});
       auto page = campaign::web_logs(many, "test'run", "", 0, 3000);
       check(page.find("data-first=\"2000\">") != std::string::npos &&
                 page.find("hx-swap-oob") == std::string::npos,
@@ -253,8 +255,8 @@ int main() {
                            "dependency failed");
     check(origin != std::string::npos &&
               chain.find("timed out after 300 seconds of silence") > origin &&
-              middle > origin && middle != std::string::npos &&
-              last > middle && last != std::string::npos &&
+              middle > origin && middle != std::string::npos && last > middle &&
+              last != std::string::npos &&
               chain.find("data-phase-seq=\"7\"") != std::string::npos,
           "failure card orders the chain from origin to the selected root");
     auto row = campaign::web_sessions(chained, "", "all", "", 0);
@@ -300,10 +302,9 @@ int main() {
                   .find("— · end unobserved") != std::string::npos,
           "an abandoned activity has no invented terminal phase duration");
     ledger["live"] = true;
-    check(
-        campaign::web_state(ledger, "test'run", "").find("20s · running") !=
-            std::string::npos,
-        "a live phase uses elapsed observer time and is explicitly running");
+    check(campaign::web_state(ledger, "test'run", "").find("20s · running") !=
+              std::string::npos,
+          "a live phase uses elapsed observer time and is explicitly running");
     auto light = data.view("test'run", "", false);
     check(light["sessions"] == data.view("test'run", "")["sessions"] &&
               light["logs"].empty() && light["phases"].empty() &&
@@ -350,10 +351,13 @@ int main() {
       parent = drv;
     }
     auto page = campaign::web_page(large, "test'run", "");
-    check(page.find("501 static inputs") != std::string::npos &&
-              page.find("data-name=\"bash-0\"") == std::string::npos &&
-              page.find("lib-gnufilc0</span><span class=\"version\">4.2</span></a>") != std::string::npos,
-          "default graph renders signal, not collapsed DOM");
+    check(
+        page.find("501 static inputs") != std::string::npos &&
+            page.find("data-name=\"bash-0\"") == std::string::npos &&
+            page.find(
+                "lib-gnufilc0</span><span class=\"version\">4.2</span></a>") !=
+                std::string::npos,
+        "default graph renders signal, not collapsed DOM");
     check(page.find("outputs · out, dev") != std::string::npos &&
               page.find("outputs · out</span>") == std::string::npos,
           "only nondefault output sets are shown");
@@ -409,6 +413,51 @@ int main() {
     check(campaign::web_sessions(rail, "test'run", "observing", "elsewhere", 0)
                   .find("No sessions") != std::string::npos,
           "Find matches names, not opaque ids");
+    {
+      campaign::Dataset ports{":memory:", true};
+      json roots = json::array();
+      for (unsigned i = 0; i < 300; ++i)
+        roots.push_back({{"name", "port-" + std::to_string(i)},
+                         {"drv", "/store/port.drv"}});
+      json cohort = {
+          {"id", "all-ports"}, {"name", "All ports"}, {"roots", roots}};
+      for (unsigned i = 0; i < 300; ++i) {
+        auto e = [&](unsigned n, std::string kind, json payload) {
+          auto item = event(n, kind, payload);
+          item["run"] = "port-" + std::to_string(i);
+          return item;
+        };
+        ports.append(json::array(
+            {e(1, "run.requested",
+               {{"drv", "/store/port.drv"},
+                {"store", "test"},
+                {"index", i},
+                {"cohort", cohort}}),
+             e(2, "nix.build-result",
+               {{"success", i != 298},
+                {"outcome", i == 298 ? "failed" : "built"},
+                {"outputs",
+                 json::array(
+                     {{{"path", "/store/verified"}, {"valid", true}},
+                      {{"path", "/store/absent"}, {"valid", false}}})}})}));
+        if (i == 0)
+          check(ports.publication_outputs().at("paths").empty(),
+                "worker result alone must not qualify for publication");
+        if (i != 299)
+          ports.append(json::array(
+              {e(3, "run.finished",
+                 {{"exited", true}, {"exit_code", i == 298 ? 1 : 0}})}));
+      }
+      check(
+          ports.publication_outputs().at("paths") ==
+              json::array({"/store/verified"}),
+          "publication deduplicates only complete successful verified outputs");
+      auto all = ports.view("", "", false);
+      check(all.at("sessions").size() == 300 &&
+                all.at("cohort").at("succeeded") == 298,
+            "full port cohorts retain summaries beyond the standalone "
+            "256-session limit");
+    }
     std::cout << "transaction rollback, binary output, cursor, unknown events "
                  "and HTMX structure passed\n";
   } catch (const std::exception &e) {
