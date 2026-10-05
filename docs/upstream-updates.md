@@ -200,8 +200,9 @@ ports/extract-patch.sh gettext-0.22.5 "$HOME/fil-c"
 ```
 
 Use `nix develop -c make -C ports -j4` to regenerate all projects at the pin. Review the
-resulting diffs and update package versions/hashes in `ports.nix` or
-`ports/patches.nix` when necessary. The pin is the default for future extraction;
+resulting diffs and update the active declarations in `ports.nix` or their
+package files under `ports/` when necessary. `ports/patches.nix` is a historical
+inventory and does not affect builds. The pin is the default for future extraction;
 it does not claim that every existing, curated patch was extracted at that
 revision, nor does changing it automatically upgrade all ports.
 
@@ -235,7 +236,8 @@ ports/extract-patch.sh boost-filc "$HOME/fil-c"
 The generated patch is an input, not a port declaration. Wire it into the actual
 package attribute in `ports.nix`, check source-version compatibility and patch
 order, and test the result. Merely adding a `ports/patches.nix` inventory entry
-does not change a derivation.
+does not change a derivation. Use the [version audit](port-version-audit.md) to
+compare the active declarations with Nixpkgs and the selected upstream tree.
 
 ## Projeny ports
 

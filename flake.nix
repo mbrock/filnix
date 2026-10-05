@@ -150,6 +150,9 @@
           };
 
           checks.${system} = {
+            port-version-refresh = import ./tests/port-version-refresh.nix {
+              inherit pkgs pkgsFilc;
+            };
             pipewire =
               (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).pipewire;
             pipewire-runtime =

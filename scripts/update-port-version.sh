@@ -17,9 +17,9 @@ INFO=$("$SCRIPT_DIR/query-package.sh" --full "$PKG" 2>/dev/null)
 OLD_VERSION=$(echo "$INFO" | jq -r '.version')
 
 # Get src URLs
-URLS=$(echo "$INFO" | jq -r '.src.urls[]')
+FIRST_URL=$(echo "$INFO" | jq -r '.src.urls[0] // empty')
 
-if [ -z "$URLS" ]; then
+if [ -z "$FIRST_URL" ]; then
     echo "Error: No URLs found in package src" >&2
     exit 1
 fi
@@ -27,21 +27,18 @@ fi
 # If version is the same, use existing hash
 if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
     SRI_HASH=$(echo "$INFO" | jq -r '.src.hash')
-    NEW_URL=$(echo "$URLS" | head -n1)
+    NEW_URL="$FIRST_URL"
 else
     # Replace version in first URL
-    NEW_URL=$(echo "$URLS" | head -n1 | sed "s/$OLD_VERSION/$NEW_VERSION/g")
+    NEW_URL="${FIRST_URL//"$OLD_VERSION"/"$NEW_VERSION"}"
+    if [ "$NEW_URL" = "$FIRST_URL" ]; then
+        echo "Error: Source URL does not contain version $OLD_VERSION; provide a custom source URL" >&2
+        exit 1
+    fi
 
     # Prefetch the new URL
-    PREFETCH_OUTPUT=$(nix store prefetch-file "$NEW_URL" 2>&1 || true)
-    echo "$PREFETCH_OUTPUT" >&2
-
-    if SRI_HASH=$(echo "$PREFETCH_OUTPUT" | grep -oP "sha256-[A-Za-z0-9+/=]+"); then
-        : # Success
-    else
-        # Prefetch failed, use placeholder hash
-        SRI_HASH="sha256-$(echo $RANDOM | sha256sum | cut -c1-52)==="
-    fi
+    PREFETCH_OUTPUT=$(nix store prefetch-file --json "$NEW_URL")
+    SRI_HASH=$(echo "$PREFETCH_OUTPUT" | jq -er '.hash')
 fi
 
 cat <<EOF

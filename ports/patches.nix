@@ -1,3 +1,6 @@
+# Historical import inventory; not consumed by the active overlay.
+# Actual versions live in ports.nix and ports/*.nix. Use
+# python3 scripts/audit-port-versions.py to inspect evaluated declarations.
 {
   attr = {
     version = "2.5.2";

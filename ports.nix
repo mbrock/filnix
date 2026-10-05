@@ -360,14 +360,12 @@ in
   ])
 
   (for pkgs.zlib [
-    (pin "1.3" "sha256-/wukwpIBPbwnUws6geH5qBPNOd4Byl4Pi/NVcC76WT4=")
-    (patch ./ports/patch/zlib-1.3.patch)
+    (patch ./ports/patch/zlib-1.3.2.patch)
   ])
 
   # Nixpkgs builds minizip from zlib's source with a patch that installs
-  # ints.h, which the pinned 1.3 lacks. minizip needs no Fil-C changes and
-  # uses only zlib's public API, so build it from Nixpkgs' newer zlib
-  # source (which also has the CVE-2023-45853 fix).
+  # ints.h. minizip needs no Fil-C changes and uses only zlib's public API,
+  # so use Nixpkgs' source for both packages.
   (for pkgs.minizip [
     (use {
       inherit (pkgs.zlib) src version;
@@ -400,8 +398,7 @@ in
   ])
 
   (for pkgs.libevent [
-    (pin "2.1.12" "sha256-kubeG+nsF2Qo/SNnZ35hzv/C7hyxGQNQN6J9NGsEA7s=")
-    (patch ./ports/patch/libevent-2.1.12.patch)
+    (patch ./ports/patch/libevent-2.1.13.patch)
   ])
 
   # (for pkgs.attr [
@@ -509,7 +506,6 @@ in
   ])
 
   (for pkgs.libffi [
-    (pin "3.8.0" "sha256-faPi2aFx6woDj1kuytP/K7JVDzSW2Hs7Ka0M9EMMDbQ=")
     (patch ./ports/patch/libffi-3.8.0.patch)
     # Closure handlers may write to their by-value arguments, which the
     # runtime passes in the read-only zargs() buffer (cffi's
@@ -547,14 +543,12 @@ in
   ])
 
   (for pkgs.libuv [
-    (pin "1.51.0" "sha256-J+Vc9wg5E7+2gmynjN6d52R83tZI018kFj8tMbufUc0=")
-    (patch ./ports/patch/libuv-1.51.0.patch)
+    (patch ./ports/patch/libuv-1.52.1.patch)
     (skipTests "one test failed")
   ])
 
   (for pkgs.libxcrypt [
-    (pin "4.4.36" "sha256-5eH0yu4KAd4q7ibjE4gH1tPKK45nKHlm0f79ZeH9iUM=")
-    (patch ./ports/patch/libxcrypt-4.4.36.patch)
+    (patch ./ports/patch/libxcrypt-4.5.2.patch)
     (skipCheck "one test fails")
   ])
 
@@ -580,9 +574,7 @@ in
     (configure "--disable-assembler")
   ])
 
-  (for pkgs.pcre2 [
-    (pin "10.44" "sha256-008C4RPPcZOh6/J3DTrFJwiNSF1OBH7RDl0hfG713pY=")
-  ])
+  (for pkgs.pcre2 [ ])
 
   (for pkgs.libarchive [
     (pin "3.7.4" "sha256-z3/IW59mPAbcK3A2t+5U0CcSFn4EsHvcxMJ1U6vy1v8=")
@@ -699,11 +691,7 @@ in
   ])
 
   (for pkgs.diffutils [
-    (pin "3.10" "sha256-kOXpPMck5OvhLt6A3xY0Bjx6hVaSaFkZv+YLVWyb0J4=")
-    # Nixpkgs' gnulib test fixes target 3.12.
-    (skipPatch "gnulib-float-h-tests-port-to-C23-PowerPC-GCC.patch")
-    (skipPatch "musl-llvm.patch")
-    (patch ./ports/patch/diffutils-3.10.patch)
+    (patch ./ports/patch/diffutils-3.12.patch)
     (tool pkgs.perl)
     (use { postPatch = "patchShebangs man/help2man"; })
     (skipTests "too slow")
@@ -958,41 +946,33 @@ in
   }
 
   (for pkgs.gnugrep [
-    (pin "3.11" "sha256-HbKu3eidDepCsW2VKPiUyNFdrk4ZC1muzHj1qVEnbqs=")
-    # Nixpkgs' gnulib test fix targets 3.12.
-    (skipPatch "gnulib-float-h-tests-port-to-C23-PowerPC-GCC.patch")
-    (patch ./ports/patch/grep-3.11.patch)
+    (patch ./ports/patch/grep-3.12.patch)
     (skipCheck "too slow")
   ])
 
   (for pkgs.gnumake [
-    (pin "4.4.1" "sha256-3Rb7HWe/q3mnL16DkHNcSePo5wtJRaFasfgd23hlj7M=")
     (patch ./ports/patch/make-4.4.1.patch)
     (arg { guileSupport = false; })
   ])
 
   (for pkgs.gnused [
-    (pin "4.9" "sha256-biJrcy4c1zlGStaGK9Ghq6QteYKSLaelNRljHSSXUYE=")
-    (patch ./ports/patch/sed-4.9.patch)
+    (patch ./ports/patch/sed-4.10.patch)
     (skipCheck "too slow")
   ])
 
   (for pkgs.gnutar [
-    (pin "1.35" "sha256-TWL/NzQux67XSFNTI5MMfPlKz3HDWRiCsmp+pQ8+3BY=")
     (patch ./ports/patch/tar-1.35.patch)
     (skipPatch "acl-2.4.0-name-conflicts.patch") # also part of the port
     (arg { aclSupport = false; })
   ])
 
   (for pkgs.gnum4 [
-    (pin "1.4.19" "sha256-swapHA/ZO8QoDPwumMt6s5gf91oYe+oyk4EfRSyJqMg=")
-    (patch ./ports/patch/m4-1.4.19.patch)
+    (patch ./ports/patch/m4-1.4.21.patch)
   ])
 
   # ━━━ Build Tools ━━━
 
   (for pkgs.bison [
-    (pin "3.8.2" "sha256-BsnhO99+sk1M62tZIFpPZ8LH5yExGWREMP6C+9FKCrs=")
     (patch ./ports/patch/bison-3.8.2.patch)
     (skipTests "too slow")
   ])
@@ -1528,11 +1508,10 @@ in
   # ━━━ Compression ━━━
 
   (for pkgs.xz [
-    (pin "5.6.2" "sha256-qds7s9ZOJIoPrpY/j7a6hRomuhgi5QTcDv0YqAxibK8=")
-    (patch ./ports/patch/xz-5.6.2.patch)
+    (patch ./ports/patch/xz-5.8.4.patch)
     (skipCheck "too slow")
-    (tool pkgs.automake116x)
-    (tool pkgs.autoconf)
+    # The port changes Makefile.am; regenerate with Nixpkgs' Autotools.
+    (tool pkgs.autoreconfHook)
   ])
 
   (for pkgs.zstd [
@@ -1581,17 +1560,7 @@ in
   ])
 
   (for pkgs.openssh [
-    (use rec {
-      # our `pin` function doesn't work for this package, so we use a custom source.
-      # i guess the version number of the package isn't verbatim in the url.
-      version = "10.3p1";
-      name = "openssh-${version}";
-      src = pkgs.fetchurl {
-        url = "mirror://openbsd/OpenSSH/portable/openssh-${version}.tar.gz";
-        hash = "sha256-VmgqNruS3PS08Bb9jsjnQFm3mo3iXBXWcNcx59GORfQ=";
-      };
-    })
-    (patch ./ports/patch/openssh-10.3p1.patch)
+    (patch ./ports/patch/openssh-10.5p1.patch)
     (skipCheck "let's see")
     # preCheck preloads libredirect, whose dlsym(RTLD_NEXT, ...) interposition
     # cannot work under Fil-C; referencing it would still build it.
@@ -1649,7 +1618,6 @@ in
   ])
 
   (for pkgs.keyutils [
-    (pin "1.6.3" "sha256-ph1XBhNq5MBb1I+GGGvP29iN2L1RB+Phlckkz8Gzm7Q=")
     (patch ./ports/patch/keyutils-1.6.3.patch)
     (skipPatch "after_eq")
   ])
@@ -1739,12 +1707,10 @@ in
   ])
 
   (for pkgs.libkrb5 [
-    (pin "1.21.3" "sha256-t6TNXq1n+wi5gLIavRUP9yF+heoyDJ7QxtrdMEhArTU=")
-    # The port is rooted above sourceRoot (src/); Nixpkgs' CVE patches are
-    # -p1 relative to it and also apply to 1.21.3.
+    # The upstream patch is rooted above Nixpkgs' sourceRoot (src/).
     (use (old: {
       prePatch = (old.prePatch or "") + ''
-        patch -p2 < ${./ports/patch/krb5-1.21.3.patch}
+        patch -p2 < ${./ports/patch/krb5-1.22.2.patch}
       '';
     }))
   ])
