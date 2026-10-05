@@ -124,8 +124,21 @@ comparison above. All 18 pinned sparse sources were built and all 10
 source/import policy tests passed, including component coherence and compiler
 assignment checks for both architectures. On native ARM64, all 18 source
 hashes were independently verified and all 10 policy tests passed, including
-native Projeny coverage. ARM64 toolchain builds and runtime gates are still
-in progress; these policy results do not establish native runtime validation.
+native Projeny coverage. The complete release toolchain and its QuickJS/zlib
+ports built; coroutines, GC roots, link hygiene, wrapper roles and the unsafe-call
+boundary passed. The release fork checks passed pointer atomics, union-record
+ABI and all ten CAS runs, but failed descriptors, nested cleanup and fiber
+unwinding. The passing ARM64 CAS runs differ from x86's observed bad writeback;
+they do not establish that the residual CAS issue is fixed on every platform.
+
+The SaRCAsm integration harness now selects an architecture-specific assembly
+fixture rather than attempting to compile x86 instructions on ARM64. The native
+release check passed the unchanged load/identity assertions and required the
+deliberate OOB load to trap with `asm_load` in the diagnostic. Both x86 variants
+still pass. Native release fenv fails the binary128 directed-rounding assertion;
+that failure remains strict. Staging LLVM has built on ARM64, but its complete
+toolchain, runtime gates and ports are still in progress.
+
 A full `nix flake check --no-build
 --all-systems` remains blocked by a missing `dank-bashrc.drv`, reproduced at
 the original Filnix main revision; targeted checks bypass that unrelated issue.

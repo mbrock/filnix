@@ -1,7 +1,14 @@
 { pkgs, filcc }:
+let
+  assembly =
+    if pkgs.stdenv.hostPlatform.isAarch64 then
+      ./sarcasm-aarch64.s
+    else
+      ./sarcasm.s;
+in
 pkgs.runCommand "filc-sarcasm-check" { } ''
   # Exercise driver discovery with no SaRCAsm or minilute on ambient PATH.
-  ${filcc}/bin/clang -g -O2 ${./sarcasm.c} ${./sarcasm.s} -o check
+  ${filcc}/bin/clang -g -O2 ${./sarcasm.c} ${assembly} -o check
   ./check
   if ./check oob > failure.log 2>&1; then
     echo "out-of-bounds assembly load unexpectedly succeeded" >&2
