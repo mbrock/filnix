@@ -18,7 +18,7 @@ valid outputs and substitutions where available. This is a build of the latest
 package definitions, not a forced rebuild of unchanged outputs. Roots run in
 world order followed by the remaining declarations. The service allows two
 local jobs with four cores, respects configured remote builders, admits work
-for at most 72 hours, and allows two hours per root and 30 minutes of silence.
+for at most 24 hours, and allows two hours per root and 30 minutes of silence.
 A failed or timed-out root does not stop later roots. An exhausted overall
 budget leaves remaining roots visibly unattempted.
 

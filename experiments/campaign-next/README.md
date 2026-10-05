@@ -66,7 +66,7 @@ the main toolchain. This is native C++23 on x86_64 Linux, not a Fil-C build. It
 does not install or replace the host daemon. Checks run real builds in disposable
 local stores with remote hooks disabled **in test configuration**, not in the
 worker. A cached Fil-C Bash request has also been verified against SWA's actual
-Determinate daemon. Remote building remains a separate integration milestone.
+Determinate daemon. A daemon-store smoke request also built successfully on the configured igloo remote builder before the full port campaign launch.
 
 ## Bounded world campaign and deployment
 
@@ -123,7 +123,7 @@ immutable `manifest.json` symlink there, and loopback port 8778. Root both the
 package and manifest under `/nix/var/nix/gcroots/`. The service uses the existing
 trusted Nix user `mbrock` to make its per-client configuration effective:
 two local jobs, four cores per job, the configured remote builders, and thirty
-minutes of silence allowed. The deployed port campaign has a 72-hour overall
+minutes of silence allowed. The deployed port campaign has a 24-hour overall
 budget and two hours per root. It does not change the daemon's shared configuration. Its 4 GiB
 memory limit bounds the observer, not daemon-owned compiler processes.
 

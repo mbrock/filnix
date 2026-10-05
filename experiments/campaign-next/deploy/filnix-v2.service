@@ -8,7 +8,7 @@ User=mbrock
 Group=mbrock
 UMask=0077
 WorkingDirectory=/var/lib/filnix-v2
-ExecStart=/opt/filnix-v2/bin/filnix-campaign cohort /var/lib/filnix-v2/manifest.json /var/lib/filnix-v2/campaign.duckdb --port 8778 --budget 259200 --root-timeout 7200
+ExecStart=/opt/filnix-v2/bin/filnix-campaign cohort /var/lib/filnix-v2/manifest.json /var/lib/filnix-v2/campaign.duckdb --port 8778 --budget 86400 --root-timeout 7200
 Environment="NIX_CONFIG=max-jobs = 2\ncores = 4\nmax-silent-time = 1800"
 Restart=on-failure
 RestartSec=10
