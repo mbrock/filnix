@@ -2,11 +2,11 @@
   pkgs,
   filc,
   filc-glibc,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
 }:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) mkFilcLLVMBuild;
 
 in

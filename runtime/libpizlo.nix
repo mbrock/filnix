@@ -2,11 +2,11 @@
   pkgs,
   filc,
   compiler-rt,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
 }:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) setupCcache base-clang;
 
 in
@@ -18,12 +18,12 @@ in
     pname = "libpizlo";
     version = "git";
     src = sources.libpas-src;
-    patches = [
-      ../patches/libpizlo-cancellation.patch
-    ]
-    ++ pkgs.lib.optional (
-      !pkgs.stdenv.hostPlatform.isx86_64
-    ) ../patches/libpizlo-cancellation-aarch64.patch;
+    patches = pkgs.lib.optionals (sources.variant == "staging") (
+      [ ../patches/libpizlo-cancellation.patch ]
+      ++ pkgs.lib.optional (
+        !pkgs.stdenv.hostPlatform.isx86_64
+      ) ../patches/libpizlo-cancellation-aarch64.patch
+    );
 
     nativeBuildInputs = [
       pkgs.gnumake

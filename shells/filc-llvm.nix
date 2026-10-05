@@ -1,13 +1,15 @@
 # Shell for hacking on the Fil-C LLVM/Clang (FilPizlonator, clang CodeGen)
 # outside Nix with incremental ninja builds. See docs/llvm-dev.md.
-{ pkgs }:
+{
+  pkgs,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
+}:
 
 let
   lib = import ../lib { inherit pkgs; };
-  filc0 = import ../compiler/filc0.nix { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
+  filc0 = import ../compiler/filc0.nix { inherit pkgs sources; };
   filcc-dev = import ../toolchain.nix {
-    inherit pkgs;
+    inherit pkgs sources;
     devLlvm = true;
   };
 
@@ -40,7 +42,7 @@ let
     # usage: filc-llvm-worktree <existing fil-c clone> <new worktree dir> <branch>
     # Creates a sparse worktree at the revision filnix pins (${sources.coreRev}).
     set -eu
-    git -C "$1" fetch origin ${sources.coreRev}
+    git -C "$1" fetch ${pkgs.lib.escapeShellArg sources.filc0-src.url} ${sources.coreRev}
     git -C "$1" worktree add --no-checkout -b "$3" "$2" ${sources.coreRev}
     git -C "$2" sparse-checkout set --no-cone \
       /LLVM-LICENSE.txt /llvm/ /clang/ /cmake/ /third-party/ \

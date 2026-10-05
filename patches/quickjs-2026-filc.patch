@@ -10,6 +10,16 @@ integer words. The 2024 greedy-regexp fix is not needed: libregexp's
 matcher was rewritten and keeps positions in a pointer union.
 tests/quickjs-regexp.js runs in the port's install check.
 
+Workers also need to recover SAB backing pointers from their existing live
+pointer table, not from serialized integers. JS_ReadObject2 borrows that
+table and matches serialized addresses without reconstructing capabilities.
+The constructor still takes a reference before the message releases its
+queue reference; serialization bytes and JS object-reference semantics are
+unchanged. Byte-only SAB reads fail explicitly under Fil-C; native builds
+retain the legacy API. Free the writer's pointer table on failed writes or
+when no caller requests it. Worker sharing and reader lifetime regressions
+run alongside the upstream make test suite.
+
 diff --git a/cutils.c b/cutils.c
 --- a/cutils.c
 +++ b/cutils.c
@@ -84,3 +94,123 @@ diff --git a/quickjs.c b/quickjs.c
      pr->u.init.opaque = opaque;
      return TRUE;
  }
+@@ -38218,6 +38219,8 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
+     *psize = s->dbuf.size;
+     if (psab_tab)
+         *psab_tab = s->sab_tab;
++    else
++        js_free(ctx, s->sab_tab);
+     if (psab_tab_len)
+         *psab_tab_len = s->sab_tab_len;
+     return s->dbuf.buf;
+@@ -38226,6 +38229,7 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
+     js_free(ctx, s->atom_to_idx);
+     js_free(ctx, s->idx_to_atom);
+     dbuf_free(&s->dbuf);
++    js_free(ctx, s->sab_tab);
+     *psize = 0;
+     if (psab_tab)
+         *psab_tab = NULL;
+@@ -38251,6 +38255,9 @@ typedef struct BCReaderState {
+     BOOL allow_bytecode : 8;
+     BOOL is_rom_data : 8;
+     BOOL allow_reference : 8;
++    /* Borrowed live backing stores, not pointers reconstructed from bytes. */
++    uint8_t *const *sab_tab;
++    size_t sab_tab_len;
+     /* object references */
+     JSObject **objects;
+     int objects_count;
+@@ -39115,6 +39122,7 @@ static JSValue JS_ReadSharedArrayBuffer(BCReaderState *s)
+     uint8_t *data_ptr;
+     JSValue obj;
+     uint64_t u64;
++    size_t i;
+ 
+     if (bc_get_leb128(s, &byte_length))
+         return JS_EXCEPTION;
+@@ -39128,7 +39136,21 @@ static JSValue JS_ReadSharedArrayBuffer(BCReaderState *s)
+     }
+     if (bc_get_u64(s, &u64))
+         return JS_EXCEPTION;
+-    data_ptr = (uint8_t *)(uintptr_t)u64;
++    if (s->sab_tab) {
++        for(i = 0; i < s->sab_tab_len; i++) {
++            if ((uintptr_t)s->sab_tab[i] == u64)
++                break;
++        }
++        if (i == s->sab_tab_len)
++            return JS_ThrowTypeError(ctx, "unknown shared array buffer");
++        data_ptr = s->sab_tab[i];
++    } else {
++#ifdef __PIZLONATOR_WAS_HERE__
++        return JS_ThrowTypeError(ctx, "shared array buffer requires pointer table");
++#else
++        data_ptr = (uint8_t *)(uintptr_t)u64;
++#endif
++    }
+     /* the SharedArrayBuffer is cloned */
+     obj = js_array_buffer_constructor3(ctx, JS_UNDEFINED,
+                                        byte_length, pmax_byte_length,
+@@ -39357,8 +39379,8 @@ static void bc_reader_free(BCReaderState *s)
+     js_free(s->ctx, s->objects);
+ }
+ 
+-JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len,
+-                       int flags)
++JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
++                       int flags, uint8_t *const *sab_tab, size_t sab_tab_len)
+ {
+     BCReaderState ss, *s = &ss;
+     JSValue obj;
+@@ -39375,6 +39397,8 @@ JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
+     s->is_rom_data = ((flags & JS_READ_OBJ_ROM_DATA) != 0);
+     s->allow_sab = ((flags & JS_READ_OBJ_SAB) != 0);
+     s->allow_reference = ((flags & JS_READ_OBJ_REFERENCE) != 0);
++    s->sab_tab = sab_tab;
++    s->sab_tab_len = sab_tab_len;
+     if (s->allow_bytecode)
+         s->first_atom = JS_ATOM_END;
+     else
+@@ -39388,6 +39412,12 @@ JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
+     return obj;
+ }
+ 
++JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len,
++                       int flags)
++{
++    return JS_ReadObject2(ctx, buf, buf_len, flags, NULL, 0);
++}
++
+ /*******************************************************************/
+ /* runtime functions & objects */
+ 
+diff --git a/quickjs.h b/quickjs.h
+--- a/quickjs.h
++++ b/quickjs.h
+@@ -994,6 +994,10 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
+ #define JS_READ_OBJ_REFERENCE (1 << 3) /* allow object references */
+ JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len,
+                       int flags);
++/* sab_tab is borrowed from JS_WriteObject2 and must contain live backing
++   stores for the duration of this call. Required for SABs under Fil-C. */
++JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
++                       int flags, uint8_t *const *sab_tab, size_t sab_tab_len);
+ /* instantiate and evaluate a bytecode function. Only used when
+    reading a script or module with JS_ReadObject() */
+ JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj);
+diff --git a/quickjs-libc.c b/quickjs-libc.c
+--- a/quickjs-libc.c
++++ b/quickjs-libc.c
+@@ -2376,8 +2376,9 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
+ 
+         pthread_mutex_unlock(&ps->mutex);
+ 
+-        data_obj = JS_ReadObject(ctx, msg->data, msg->data_len,
+-                                 JS_READ_OBJ_SAB | JS_READ_OBJ_REFERENCE);
++        data_obj = JS_ReadObject2(ctx, msg->data, msg->data_len,
++                                  JS_READ_OBJ_SAB | JS_READ_OBJ_REFERENCE,
++                                  msg->sab_tab, msg->sab_tab_len);
+ 
+         js_free_message(msg);
+ 

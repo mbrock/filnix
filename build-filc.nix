@@ -2,25 +2,26 @@
 {
   pkgs,
   filc0,
+  sources ? import ./lib/sources.nix { inherit pkgs; },
 }:
 
 let
-  sources = import ./lib/sources.nix { inherit pkgs; };
-
   # Build yolo-glibc (no compiler needed)
-  yolo = import ./runtime/yolo-glibc.nix { inherit pkgs; };
+  yolo = import ./runtime/yolo-glibc.nix { inherit pkgs sources; };
 
   # Build compiler-rt (CRT files and builtins, uses host compiler)
   compiler-rt =
-    (import ./runtime/compiler-rt.nix { inherit pkgs; }).compiler-rt;
+    (import ./runtime/compiler-rt.nix { inherit pkgs sources; }).compiler-rt;
 
   # Build yolounwind (stub unwind library, uses host compiler)
-  yolounwind = (import ./runtime/yolounwind.nix { inherit pkgs; }).yolounwind;
+  yolounwind =
+    (import ./runtime/yolounwind.nix { inherit pkgs sources; }).yolounwind;
 
   # Base filc compiler (overridable)
   filc = pkgs.lib.makeOverridable (import ./compiler/filc.nix) {
     inherit
       pkgs
+      sources
       filc0
       yolo
       compiler-rt
@@ -31,20 +32,25 @@ let
   # Build libpizlo
   libpizlo =
     (import ./runtime/libpizlo.nix {
-      inherit pkgs filc compiler-rt;
+      inherit
+        pkgs
+        sources
+        filc
+        compiler-rt
+        ;
     }).libpizlo;
 
   # Build filc-glibc
   filc-glibc =
     (import ./runtime/filc-glibc.nix {
-      inherit pkgs libpizlo;
+      inherit pkgs sources libpizlo;
       filc = filc.override { inherit libpizlo; };
     }).filc-glibc;
 
   # Build libcxx
   filc-libcxx =
     (import ./compiler/libcxx.nix {
-      inherit pkgs filc-glibc;
+      inherit pkgs sources filc-glibc;
       filc = filc.override {
         inherit libpizlo;
         filc-libc = filc-glibc;
@@ -61,6 +67,7 @@ in
 # Use passthru to expose metadata without making them build dependencies
 filc-complete.overrideAttrs (old: {
   passthru = (old.passthru or { }) // {
+    inherit sources;
     # Expose build components as attributes (metadata only!)
     inherit (yolo) yolo-glibc yolo-glibc-impl;
     inherit libpizlo filc-libcxx filc0;

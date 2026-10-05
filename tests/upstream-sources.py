@@ -42,6 +42,7 @@ class UpstreamTests(unittest.TestCase):
         for directory in ("lib", "scripts", "ports"):
             (self.filnix / directory).mkdir(parents=True)
         for name in ("lib/filc-upstream.json", "lib/filc-hashes.json", "lib/sources.nix",
+                     "lib/filc-staging.json", "lib/filc-staging-hashes.json",
                      "scripts/update-filc-source-hashes.py", "scripts/update-ports-pin.py", "ports/extract-patch.sh",
                      "ports/upstream.json", "ports/Makefile", "ports/extract-projeny.py",
                      "ports/patch-sources.json"):
@@ -165,26 +166,132 @@ class UpstreamTests(unittest.TestCase):
         self.git("commit", "-qm", "Fixture change")
         return self.git("rev-parse", "HEAD")
 
-    def update(self, rev):
+    def update(self, rev, variant="release"):
         run("python3", str(self.filnix / "scripts/update-filc-source-hashes.py"),
-            "--repo", str(self.repo), "--rev", rev)
-        return json.loads((self.filnix / "lib/filc-hashes.json").read_text())["hashes"]
+            "--repo", str(self.repo), "--rev", rev, "--variant", variant)
+        name = "filc-hashes.json" if variant == "release" else "filc-staging-hashes.json"
+        return json.loads((self.filnix / "lib" / name).read_text())["hashes"]
 
     def nix(self, expression):
         return json.loads(run("nix", "eval", "--impure", "--json", "--expr", expression).stdout)
 
-    def source_paths(self):
+    def source_paths(self, variant="release"):
         # Exercise real fetchgit and downstream output identity. The .drv files
         # may change with the fetch URL/revision even when outputs are reusable.
         return self.nix(f'''
           let
-            pkgs = import (builtins.getFlake "path:{ROOT}").inputs.nixpkgs {{ system = "x86_64-linux"; }};
-            sources = import {self.filnix}/lib/sources.nix {{ inherit pkgs; }};
+            pkgs = import (builtins.getFlake "git+file://{ROOT}").inputs.nixpkgs {{ system = "x86_64-linux"; }};
+            sources = import {self.filnix}/lib/sources.nix {{ inherit pkgs; variant = "{variant}"; }};
           in builtins.mapAttrs (name: _: {{
             source = sources.${{name}}.outPath;
             consumer = (pkgs.runCommand "source-consumer" {{ src = sources.${{name}}; }} "true").outPath;
           }}) sources.sourcePatterns
         ''')
+
+    def test_staging_pin_is_independent(self):
+        config = json.loads((self.filnix / "lib/filc-upstream.json").read_text())
+        config["sourcePatterns"] = {"filc0-src": ["/llvm/"], "libpas-src": ["/libpas/"]}
+        write_json(self.filnix / "lib/filc-upstream.json", config)
+        write(self.repo / "llvm/code.cpp", "release compiler\n")
+        write(self.repo / "libpas/runtime.c", "shared runtime\n")
+        first = self.commit()
+        self.update(first)
+        self.update(first, "staging")
+        before = self.source_paths()
+        self.assertEqual(before, self.source_paths("staging"))
+        release_files = [(self.filnix / "lib" / name).read_bytes()
+                         for name in ("filc-upstream.json", "filc-hashes.json")]
+
+        write(self.repo / "llvm/code.cpp", "experimental compiler\n")
+        second = self.commit()
+        self.update(second, "staging")
+        after = self.source_paths("staging")
+        self.assertNotEqual(before["filc0-src"], after["filc0-src"])
+        self.assertEqual(before["libpas-src"], after["libpas-src"])
+        self.assertEqual(before, self.source_paths())
+        self.assertEqual(release_files, [(self.filnix / "lib" / name).read_bytes()
+                                        for name in ("filc-upstream.json", "filc-hashes.json")])
+        staging_files = [(self.filnix / "lib" / name).read_bytes()
+                         for name in ("filc-staging.json", "filc-staging-hashes.json")]
+        self.update(second)
+        self.assertEqual(after, self.source_paths())
+        self.assertEqual(staging_files, [(self.filnix / "lib" / name).read_bytes()
+                                        for name in ("filc-staging.json", "filc-staging-hashes.json")])
+
+        # A mismatched staging pin/hash pair must fail, not use release hashes.
+        staging = json.loads((self.filnix / "lib/filc-staging.json").read_text())
+        staging["coreRev"] = first
+        write_json(self.filnix / "lib/filc-staging.json", staging)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.source_paths("staging")
+        self.assertEqual(after, self.source_paths())
+
+    def test_toolchain_variants(self):
+        # Check both compiler assignments and every bootstrap source, not just
+        # passthru labels: accidentally importing default sources must fail.
+        for system in ("x86_64-linux", "aarch64-linux"):
+            data = self.nix(f'''
+              let
+                f = builtins.getFlake "git+file://{ROOT}";
+                pkgs = import f.inputs.nixpkgs {{ system = "{system}"; }};
+                inspect = cc: let c = cc.components; s = cc.sources; in {{
+                  inherit (s) variant coreRev;
+                  matches = [
+                    (c.filc0.src.outPath == s.filc0-src.outPath)
+                    (c.libpizlo.src.outPath == s.libpas-src.outPath)
+                    (c.filc-libcxx.src.outPath == s.libcxx-src.outPath)
+                    (c.compiler-rt.src.outPath == s.compiler-rt-src.outPath)
+                    (c.yolounwind.src.outPath == s.yolounwind-src.outPath)
+                    (c.yolo-glibc-impl.src == "${{s.yolo-glibc-src}}/projects/yolo-glibc-2.44")
+                    (c.filc-glibc.src == "${{s.user-glibc-src}}/projects/user-glibc-2.44")
+                    (let asm = import {ROOT}/packages/sarcasm.nix {{ inherit pkgs; sources = s; }};
+                     in pkgs.lib.hasInfix (builtins.unsafeDiscardStringContext "--filc-resource-dir=${{asm}}") c.buildCommand)
+                  ];
+                  runtimePatches = map builtins.baseNameOf c.libpizlo.patches;
+                  libcPatches = map builtins.baseNameOf c.filc-glibc.patches;
+                  libcPostPatch = c.filc-glibc.postPatch;
+                }};
+                release = f.packages.{system}.filcc;
+                staging = f.packages.{system}.filcc-staging;
+                p = f.legacyPackages.{system};
+                assembler = import {ROOT}/packages/sarcasm.nix {{
+                  inherit pkgs; sources = staging.sources;
+                }};
+              in {{
+                release = inspect release;
+                staging = inspect staging;
+                assignments = [
+                  (p.pkgsFilc.stdenv.cc.drvPath == release.drvPath)
+                  (p.pkgsFilc.gnufilc0.drvPath == release.drvPath)
+                  (p.pkgsFilcStaging.stdenv.cc.drvPath == staging.drvPath)
+                  (p.pkgsFilcStaging.gnufilc0.drvPath == staging.drvPath)
+                  (f.packages.{system}.default.drvPath == release.drvPath)
+                  ((f.lib.{system}.mkPkgsFilc {{ staging = true; blockRustGo = true; }}).stdenv.cc.drvPath == staging.drvPath)
+                  (assembler.src.outPath == staging.sources.sarcasm-src.outPath)
+                  (assembler.minilute.src.outPath == staging.sources.minilute-src.outPath)
+                  ((import {ROOT}/ports/zstd-sarcasm.nix {{ inherit pkgs; zstd = p.pkgsFilc.zstd; }}).assembler.src.outPath == release.sources.sarcasm-src.outPath)
+                  ((import {ROOT}/ports/zstd-sarcasm.nix {{ inherit pkgs; zstd = p.pkgsFilcStaging.zstd; }}).assembler.src.outPath == staging.sources.sarcasm-src.outPath)
+                ];
+              }}
+            ''')
+            self.assertTrue(all(data["assignments"]), data)
+            for variant in ("release", "staging"):
+                self.assertTrue(all(data[variant]["matches"]), data)
+                self.assertEqual(data[variant]["variant"], variant)
+            release_pin = json.loads((ROOT / "lib/filc-upstream.json").read_text())
+            staging_pin = json.loads((ROOT / "lib/filc-staging.json").read_text())
+            self.assertEqual(data["release"]["coreRev"], release_pin["coreRev"])
+            self.assertEqual(data["staging"]["coreRev"], staging_pin["coreRev"])
+            self.assertNotEqual(data["release"]["coreRev"], data["staging"]["coreRev"])
+            self.assertEqual(data["release"]["runtimePatches"], [])
+            self.assertEqual(data["release"]["libcPatches"], ["nix-locale-archive.patch"])
+            self.assertEqual(data["release"]["libcPostPatch"], "")
+            expected = ["libpizlo-cancellation.patch"]
+            if system == "aarch64-linux":
+                expected += ["libpizlo-cancellation-aarch64.patch"]
+            self.assertEqual(data["staging"]["runtimePatches"], expected)
+            self.assertEqual(data["staging"]["libcPatches"],
+                             ["glibc-filc-cancellation.patch", "nix-locale-archive.patch"])
 
     def test_component_hashes_and_store_identity(self):
         config = json.loads((self.filnix / "lib/filc-upstream.json").read_text())
@@ -349,8 +456,8 @@ class UpstreamTests(unittest.TestCase):
     def test_ports_pin_does_not_change_toolchain(self):
         # Evaluate the real toolchain before/after changing only ports provenance.
         checkout = self.base / "checkout"
-        shutil.copytree(ROOT, checkout, ignore=shutil.ignore_patterns(".git", ".direnv", "result*", "__pycache__"))
-        expression = f'''let pkgs = import (builtins.getFlake "path:{ROOT}").inputs.nixpkgs {{ system = "x86_64-linux"; }};
+        shutil.copytree(ROOT, checkout, ignore=shutil.ignore_patterns(".git", ".amp", ".direnv", "result*", "__pycache__"))
+        expression = f'''let pkgs = import (builtins.getFlake "git+file://{ROOT}").inputs.nixpkgs {{ system = "x86_64-linux"; }};
           in (import {checkout}/toolchain.nix {{ inherit pkgs; }}).drvPath'''
         before = self.nix(expression)
         write_json(checkout / "ports/upstream.json", {"portsRev": "0" * 40})

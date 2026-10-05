@@ -9,7 +9,12 @@ This flake builds the Fil-C toolchain with Nix and plugs it into nixpkgs as a
 cross-compilation target. You get ~pkgsFilc~: a package set in which
 everything, including libc, is compiled with Fil-C.
 
-Only ~x86_64-linux~ is supported.
+The ordinary ~filcc~ compiler and ~pkgsFilc~ package set track official Fil-C
+releases, currently [[https://github.com/pizlonator/fil-c/releases/tag/v0.686][0.686]]. Compiler/runtime experiments are opt-in through
+~filcc-staging~ and ~pkgsFilcStaging~, on the same Filnix ~main~ branch.
+
+The flake exports ~x86_64-linux~ and ~aarch64-linux~ outputs. ARM64 remains
+experimental; see [[file:docs/upstream-updates.md][the toolchain notes]] for validation limits.
 
 * Quick start
 
@@ -54,6 +59,28 @@ It provides ~cc~, ~c++~, ~clang~, ~clang++~, ~ld~ and the other binutils, so
 it will shadow any compiler already on your ~PATH~. Binaries it produces load
 Fil-C's own dynamic linker and libc from the Nix store, so they run on any
 x86_64 Linux machine that has those store paths.
+
+** Experimental staging toolchain
+
+Use staging explicitly for compiler experiments and package-build campaigns:
+
+#+begin_src sh
+nix run github:mbrock/filnix#filcc-staging -- hello.c -o hello
+nix run github:mbrock/filnix#filc++-staging -- hello.cc -o hello
+nix build github:mbrock/filnix#pkgsFilcStaging.sqlite
+#+end_src
+
+In a consuming flake, select ~filnix.legacyPackages.x86_64-linux.pkgsFilcStaging~
+instead of ~pkgsFilc~. Campaigns using ~lib.${system}.mkPkgsFilc~ can pass
+~staging = true;~ alongside their existing options. Compiler, runtime, libc,
+libc++ and assembler all come from that variant; do not mix libraries from
+the two package sets. Ordinary packages, demos and NixOS modules stay on the
+release toolchain, with no automatic fallback to staging.
+
+Staging preserves our fork's union/varargs experiments and residual runtime
+fixes, including the local cancellation patches. It is not a supported release
+or a memory-safety guarantee. The current snapshot even predates 0.686's tighter
+~zunsafe_*~ opt-in. See [[file:docs/upstream-updates.md][the release/fork comparison and update workflow]].
 
 ** Using it in your own project
 
@@ -138,12 +165,13 @@ derivations:
 ~filcc~ is an ordinary nixpkgs C compiler that happens to emit memory-safe
 code, so ~pkgs.overrideCC stdenv filcc~ works as you would expect.
 
-The upstream sources come from one Fil-C monorepo revision, pinned in
-~lib/filc-upstream.json~: upstream's ~deluge~ branch plus a few fixes on the
-~filnix~ branch of [[https://github.com/mbrock/fil-c][mbrock/fil-c]] (C++20
-coroutines, SaRCAsm and runtime fixes). Only the relevant subtrees are hashed,
-so changes elsewhere in upstream do not rebuild the compiler. To work on the
-compiler without rebuilding it from scratch, see [[file:docs/llvm-dev.md][docs/llvm-dev.md]].
+Each toolchain uses one Fil-C monorepo revision. ~lib/filc-upstream.json~ pins
+the exact official release commit; ~lib/filc-staging.json~ independently pins
+our [[https://github.com/mbrock/fil-c][fork]]. The same derivations build both. The official toolchain retains Nix
+path, wrapper and locale integration, but not our unmerged compiler/runtime
+semantic changes. Only the relevant subtrees are hashed, so changes elsewhere
+in upstream do not rebuild the compiler. To work on the compiler without
+rebuilding it from scratch, see [[file:docs/llvm-dev.md][docs/llvm-dev.md]].
 
 ** pkgsFilc
 

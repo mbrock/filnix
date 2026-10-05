@@ -7,11 +7,11 @@
   libpizlo ? null,
   filc-libc ? null,
   filc-libcxx ? null,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
 }:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib)
     gcc
     llvmMajor
@@ -19,7 +19,7 @@ let
 
   inherit (yolo) yolo-glibc yolo-glibc-impl;
 
-  sarcasm = import ../packages/sarcasm.nix { inherit pkgs; };
+  sarcasm = import ../packages/sarcasm.nix { inherit pkgs sources; };
 
   filc-stdfil-headers =
     if libpizlo == null then

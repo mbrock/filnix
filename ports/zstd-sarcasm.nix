@@ -1,7 +1,10 @@
 { pkgs, zstd }:
 let
   # The pinned SaRCAsm splits semicolon-separated statements.
-  assembler = import ../packages/sarcasm.nix { inherit pkgs; };
+  assembler = import ../packages/sarcasm.nix {
+    inherit pkgs;
+    sources = zstd.stdenv.cc.sources;
+  };
 in
 zstd.overrideAttrs (old: {
   pname = "zstd-sarcasm";

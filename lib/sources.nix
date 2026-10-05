@@ -1,11 +1,28 @@
-{ pkgs }:
+{
+  pkgs,
+  variant ? "release",
+}:
 
 let
   inherit (pkgs) fetchgit;
-  upstream = builtins.fromJSON (builtins.readFile ./filc-upstream.json);
-  hashData = builtins.fromJSON (builtins.readFile ./filc-hashes.json);
+  release = builtins.fromJSON (builtins.readFile ./filc-upstream.json);
+  upstream =
+    if variant == "release" then
+      release
+    else if variant == "staging" then
+      builtins.fromJSON (builtins.readFile ./filc-staging.json)
+    else
+      throw "Unknown Fil-C source variant: ${variant}";
+  hashData = builtins.fromJSON (
+    builtins.readFile (
+      if variant == "release" then
+        ./filc-hashes.json
+      else
+        ./filc-staging-hashes.json
+    )
+  );
   coreRev = upstream.coreRev;
-  sourcePatterns = upstream.sourcePatterns;
+  sourcePatterns = release.sourcePatterns;
   filcHashes =
     assert hashData.coreRev == coreRev;
     hashData.hashes;
@@ -24,7 +41,12 @@ let
     };
 in
 {
-  inherit coreRev sourcePatterns filcHashes;
+  inherit
+    variant
+    coreRev
+    sourcePatterns
+    filcHashes
+    ;
 
   minilute-src = mkFilcSrc "minilute-src";
   sarcasm-src = mkFilcSrc "sarcasm-src";

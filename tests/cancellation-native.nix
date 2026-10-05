@@ -1,6 +1,11 @@
-{ pkgs }:
+{
+  pkgs,
+  sources ? import ../lib/sources.nix {
+    inherit pkgs;
+    variant = "staging";
+  },
+}:
 let
-  sources = import ../lib/sources.nix { inherit pkgs; };
   source = pkgs.applyPatches {
     name = "filc-cancellation-native-source";
     src = sources.libpas-src;

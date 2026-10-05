@@ -1,7 +1,7 @@
-{ pkgs }:
-let
-  sources = import ../lib/sources.nix { inherit pkgs; };
-in
+{
+  pkgs,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
+}:
 pkgs.stdenv.mkDerivation {
   pname = "minilute";
   version = "0-unstable-${builtins.substring 0 12 sources.coreRev}";

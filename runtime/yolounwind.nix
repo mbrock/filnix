@@ -3,11 +3,13 @@
 # This provides stub implementations of unwind symbols needed by
 # yolo-glibc and compiler-rt's GCC personality function.
 # All functions just trap - the yolo runtime doesn't actually unwind.
-{ pkgs }:
+{
+  pkgs,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
+}:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) setupCcache llvm;
 
 in

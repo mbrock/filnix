@@ -1,10 +1,10 @@
 {
   pkgs,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
 }:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
 
   inherit (lib) setupCcache;
   stdlib = pkgs.lib;

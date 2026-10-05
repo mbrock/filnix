@@ -2,11 +2,11 @@
   pkgs,
   filc,
   libpizlo,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
 }:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
 
 in
 
@@ -17,12 +17,15 @@ in
     version = "2.44";
     src = "${sources.user-glibc-src}/projects/user-glibc-2.44";
     outputs = [ "out" ];
-    patches = [
-      ../patches/glibc-filc-cancellation.patch
-      # Honour LOCALE_ARCHIVE and NixOS' system archive, as Nixpkgs' glibc
-      # does; its 2.42 writes the same archive format as 2.44.
-      (pkgs.path + "/pkgs/development/libraries/glibc/nix-locale-archive.patch")
-    ];
+    patches =
+      pkgs.lib.optional (
+        sources.variant == "staging"
+      ) ../patches/glibc-filc-cancellation.patch
+      ++ [
+        # Honour LOCALE_ARCHIVE and NixOS' system archive, as Nixpkgs' glibc
+        # does; its 2.42 writes the same archive format as 2.44.
+        (pkgs.path + "/pkgs/development/libraries/glibc/nix-locale-archive.patch")
+      ];
 
     enableParallelBuilding = true;
 
@@ -37,17 +40,20 @@ in
 
     # aarch64 has no inotify_init syscall; upstream's inotify_init.c now
     # calls zsys_inotify_init, so this x86_64 workaround is kept only to
-    # leave the x86_64 build unchanged.
-    postPatch = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 ''
-      # Add inotify_init to x86_64 syscalls.list so make-syscalls.sh generates
-      # a pizlonated wrapper using zsys_inotify_init instead of using the
-      # hand-written inotify_init.c which has INLINE_SYSCALL_CALL
-      echo 'inotify_init	-	inotify_init	i:	__inotify_init	inotify_init' \
-        >> sysdeps/unix/sysv/linux/x86_64/syscalls.list
+    # leave the staging build unchanged. Official uses upstream's wrapper.
+    postPatch =
+      pkgs.lib.optionalString
+        (sources.variant == "staging" && pkgs.stdenv.hostPlatform.isx86_64)
+        ''
+          # Add inotify_init to x86_64 syscalls.list so make-syscalls.sh generates
+          # a pizlonated wrapper using zsys_inotify_init instead of using the
+          # hand-written inotify_init.c which has INLINE_SYSCALL_CALL
+          echo 'inotify_init	-	inotify_init	i:	__inotify_init	inotify_init' \
+            >> sysdeps/unix/sysv/linux/x86_64/syscalls.list
 
-      # Remove the .c file so syscalls.list takes precedence
-      rm -f sysdeps/unix/sysv/linux/inotify_init.c
-    '';
+          # Remove the .c file so syscalls.list takes precedence
+          rm -f sysdeps/unix/sysv/linux/inotify_init.c
+        '';
 
     preConfigure = ''
       # Fil-C compiler flags from build script

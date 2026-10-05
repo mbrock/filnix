@@ -63,6 +63,16 @@ def main():
         help="update the core revision after all source hashes have been computed",
     )
     parser.add_argument(
+        "--variant",
+        choices=("release", "staging"),
+        default="release",
+        help="which independent toolchain pin to update (default: release)",
+    )
+    parser.add_argument(
+        "--release",
+        help="official release version corresponding to --rev (release variant only)",
+    )
+    parser.add_argument(
         "--pull",
         action="store_true",
         help="run git pull --ff-only in the local clone before hashing",
@@ -70,15 +80,24 @@ def main():
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
-    upstream_path = root / "lib" / "filc-upstream.json"
-    hashes_path = root / "lib" / "filc-hashes.json"
+    release = load_json(root / "lib" / "filc-upstream.json")
+    if args.variant == "staging":
+        if args.release:
+            parser.error("--release is only valid for the release variant")
+        upstream_path = root / "lib" / "filc-staging.json"
+        hashes_path = root / "lib" / "filc-staging-hashes.json"
+    else:
+        upstream_path = root / "lib" / "filc-upstream.json"
+        hashes_path = root / "lib" / "filc-hashes.json"
 
     upstream = load_json(upstream_path)
     if args.rev:
         upstream["coreRev"] = args.rev
+    if args.release:
+        upstream["release"] = args.release
 
     rev = upstream["coreRev"]
-    sparse_checkouts = upstream["sourcePatterns"]
+    sparse_checkouts = release["sourcePatterns"]
     repo = repo_root(Path(args.repo).expanduser())
 
     if args.pull:
@@ -89,7 +108,7 @@ def main():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ):
-        run(["git", "-C", str(repo), "fetch", "--tags", "origin", rev])
+        run(["git", "-C", str(repo), "fetch", "--tags", upstream["url"], rev])
 
     rev = output(["git", "-C", str(repo), "rev-parse", "--verify", f"{rev}^{{commit}}"])
     upstream["coreRev"] = rev

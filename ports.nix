@@ -3039,6 +3039,15 @@ in
     # yt-dlp's solver, which runs qjs without --stack-size.
     (addCFlag "-DJS_DEFAULT_STACK_SIZE=4194304")
     (use (old: {
+      doCheck = true;
+      checkTarget = "test";
+      postCheck = (old.postCheck or "") + ''
+        $CC -UNDEBUG -I. ${./tests/quickjs-sab.c} libquickjs.a \
+          -lm -lpthread -ldl -o quickjs-sab-test
+        ./quickjs-sab-test
+        cp ${./tests/quickjs-worker-sab.js} tests/quickjs-worker-sab.js
+        ./qjs tests/quickjs-worker-sab.js
+      '';
       # The install check reuses $out for a temporary file.
       postInstallCheck = (old.postInstallCheck or "") + ''
         ${builtins.placeholder "out"}/bin/qjs ${./tests/quickjs-regexp.js}

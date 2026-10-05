@@ -5,11 +5,13 @@
 #   - libyolort.a (builtins library, renamed from libclang_rt.builtins)
 #
 # These are used by the yolo runtime and replace GCC's crt files.
-{ pkgs }:
+{
+  pkgs,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
+}:
 
 let
   lib = import ../lib { inherit pkgs; };
-  sources = import ../lib/sources.nix { inherit pkgs; };
   inherit (lib) setupCcache;
 
   # CMake flags following upstream build_compiler_rt.sh

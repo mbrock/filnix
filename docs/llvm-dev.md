@@ -27,11 +27,22 @@ keys on the wrapper, which stays the same when the dev clang changes. The
 runtime libraries were compiled by the pinned clang, which is fine for pass
 and CodeGen changes that keep the ABI.
 
-When a change works, commit it on the worktree branch and push it to a fork.
-Then set `url` in `lib/filc-upstream.json` to the fork and pin the commit:
+`filc-llvm` starts from the official release. For fork experiments, use
+`nix develop .#filc-llvm-staging` instead, including for the worktree creation
+command. It uses the staging revision and pinned staging runtime. Worktree
+creation fetches from the selected pin's repository, not an assumed `origin`.
+Choose a separate worktree/build directory when working on both variants.
+
+When a change works, commit it on the worktree branch and push it to the fork.
+Update only the staging pin; do not replace the ordinary release pin:
 
 ```sh
-python3 scripts/update-filc-source-hashes.py --repo ~/fil-c --rev <commit>
+python3 scripts/update-filc-source-hashes.py --variant staging \
+  --repo ~/fil-c --rev <commit>
 ```
 
 Sources whose files did not change keep their hashes and are not rebuilt.
+Staging changes to compiler semantics, capability tracking, GC or runtime still
+need soundness review and targeted regressions. A successful package build alone
+is not that review. ABI-changing experiments must rebuild their runtime and
+libraries; the development compiler substitution deliberately does not do so.

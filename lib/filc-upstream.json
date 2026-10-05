@@ -1,6 +1,7 @@
 {
-  "url": "https://github.com/mbrock/fil-c",
-  "coreRev": "1779594990ad75bb9887aef894933b9c73fb8f41",
+  "url": "https://github.com/pizlonator/fil-c",
+  "release": "0.686",
+  "coreRev": "163fae598eaf249b74065b0156f3a7e7ba8c0e5a",
   "sourcePatterns": {
     "filc0-src": [
       "/LLVM-LICENSE.txt",

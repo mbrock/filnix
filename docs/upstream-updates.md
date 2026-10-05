@@ -1,10 +1,17 @@
 # Updating Fil-C sources and ports
 
-Filnix tracks two revisions of the same upstream monorepo:
+Filnix maintains two toolchain variants on `main`, plus an independent
+application-patch extraction pin:
 
-- `lib/filc-upstream.json`: `coreRev` selects the compiler, runtime, libc,
-  libc++, compiler-rt, yolounwind and the SaRCAsm/minilute sources. `lib/filc-hashes.json` records
-  their content hashes at that revision.
+- **Release:** `lib/filc-upstream.json` selects an exact official release
+  commit from `pizlonator/fil-c`; `lib/filc-hashes.json` records its sparse
+  source hashes. This is `filcc`, `packages.default`, `pkgsFilc`, the ordinary
+  apps/demos and the default NixOS modules.
+- **Staging:** `lib/filc-staging.json` selects an experimental fork commit;
+  `lib/filc-staging-hashes.json` records its hashes. This is `filcc-staging`
+  and `legacyPackages.${system}.pkgsFilcStaging`. Campaigns can call
+  `lib.${system}.mkPkgsFilc { staging = true; ... }` without a Filnix branch.
+  It is opt-in, may be unsound, and is not a supported release.
 - `ports/upstream.json`: `portsRev` selects the Git history and tree used to
   extract application patches. Nix builds consume the checked-in patches and
   package archives. The native Projeny package uses the same revision and its
@@ -14,28 +21,122 @@ A ports update therefore does not change the compiler's derivation. The glibc
 forks under upstream's `projects/` directory belong to the **core** pin: they
 participate in its ABI and bootstrap. Directory location alone is not the
 boundary. New application patches can still require a newer compiler/runtime
-feature; test each updated port with the pinned toolchain before accepting it.
+feature; test each updated port with the chosen toolchain before accepting it.
+Both toolchains share `sourcePatterns`, port declarations and Nix integration,
+but each bootstrap consistently uses its selected compiler, runtime, libc,
+libc++, compiler-rt, yolounwind and SaRCAsm/minilute. Do not mix their libraries
+or silently fall back from release to staging.
 
-## The mbrock/fil-c fork
+## Fil-C 0.686 and the remaining fork delta
 
-`lib/filc-upstream.json` names the repository as well as the revision. The
-core pin currently selects the `filnix` branch of
-[mbrock/fil-c](https://github.com/mbrock/fil-c): upstream `deluge` at
-`08d9c62bd2f8` plus commits not yet upstream:
+The release pin is [v0.686](https://github.com/pizlonator/fil-c/releases/tag/v0.686),
+[163fae598eaf](https://github.com/pizlonator/fil-c/commit/163fae598eaf249b74065b0156f3a7e7ba8c0e5a),
+published October 4, 2026. It includes many of our contributions: coroutine and
+limited musttail support, setjmp with `-fno-builtin`, common linkage, union-record
+capability handling, FP-state preservation/fenv, PI mutex and spinlock fixes,
+mount/prctl compatibility and SaRCAsm improvements. It also fixes ARM64 ordering,
+GC roots and fork-related deadlocks.
 
-- C++20 coroutine lowering before FilPizlonator, and `musttail` calls
-  (`checks.cxx-coroutines`).
-- SaRCAsm splitting of `;`-separated x86_64 statements (`checks.zstd-sarcasm`).
-- The sign of user glibc's `FUTEX_UNLOCK_PI` result (`checks.pthread-pi`).
-- `pthread_spin_init` on x86_64, which user glibc never defined
-  (`checks.pthread-spin`).
+Staging preserves the latest reviewed comparison experiment,
+[`simplify-union-storage` at e4427dbc5b77](https://github.com/mbrock/fil-c/commit/e4427dbc5b7715b8fc079fc60c412a755f9680b9).
+It replaces the older Filnix `fix-quickjs-union-abi` pin, not the official release.
+Its merged upstream base is
+[e33a8e2c5376](https://github.com/pizlonator/fil-c/commit/e33a8e2c5376f476ad9ea72c0ca02265504f18bb),
+before the release's final commits. The experiment remains a
+[draft comparison PR](https://github.com/pizlonator/fil-c/pull/332), not a
+merge-ready claim of soundness.
 
-Rebase that branch onto a newer `deluge` rather than pinning upstream
-directly until these land there. The ports pin still reads upstream.
+Residual work absent from v0.686, established by source comparison:
 
-## September 14 cancellation baseline
+| Area | Staging change | Regression |
+| --- | --- | --- |
+| Function descriptors | Local implementation alias prevents wrong-module calls through `dlsym`/`RTLD_LOCAL` | `fork-regressions.tests.descriptors` |
+| Exception unwinding | Save nested cleanup and per-fiber unwind state | `fork-regressions.tests.nested-cleanup`, `.fiber-unwind` |
+| Pointer CAS | Revalidate shadow state after the primary load, with an ARM64 load-load fence | `fork-regressions.tests.cas-expected-cap` |
+| ARM64 glibc | Obtain saved jump-buffer frame identity through `zget_jmp_buf_frame` | staging cancellation C++ cleanup |
+| Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |
+| Unions/varargs | Complete aggregate-varargs transport, conservative alignment rejection, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites and QuickJS |
 
-The core and ports pins now select
+Filip's release independently lowers pointer-bearing unions to pointer storage.
+The experiment now follows that general direction rather than its earlier
+ABI-only carriers, but retains different initializer/layout handling and
+SROA/InstCombine guards. Neither implementation should be mixed with a different
+variant's by-value aggregate ABI without validation.
+
+**Staging is not “0.686 plus fixes.”** In particular, it predates release commit
+[45adc761aeee](https://github.com/pizlonator/fil-c/commit/45adc761aeee), which requires
+`-yolo-assembler` to recognize `zunsafe_call` and related intrinsics. Preserving
+this experimental snapshot does not give it the official release's tightened
+unsafe-call boundary.
+
+The release toolchain does not apply the local cancellation patches or the old
+x86 inotify implementation substitution. It retains the Nix locale-archive
+patch, installed locale, store paths and wrappers. Thus “release-backed” means
+official compiler/runtime semantics with Nix packaging, not unmodified build
+inputs. Selecting official also withdraws residual behavior previously provided
+on Filnix main; packages needing it must explicitly use staging.
+
+Fork regressions are separate derivations so one official failure does not hide
+the remaining results. The aggregate checks remain strict; known upstream
+failures are not converted into passing checks. For example:
+
+```sh
+nix build --no-link --keep-going .#checks.x86_64-linux.fork-regressions
+nix build --no-link .#checks.x86_64-linux.staging-fork-regressions
+nix build --no-link .#checks.x86_64-linux.fork-regressions.tests.descriptors
+```
+
+The known ARM64 binary128 directed-rounding limitation remains visible in
+`fenv` and `staging-fenv`; this is not established to be a 0.686 regression.
+Native ARM64 rebuilding/testing is required before claiming ARM64 validation.
+
+### Verification of the split
+
+Both complete x86-64 toolchains were rebuilt without `FILC_DEV_LLVM`. All nine
+staging gates passed: cancellation, native cancellation, the six-case fork
+aggregate, coroutines, fenv, GC roots, link hygiene, wrapper roles and SaRCAsm.
+Release passed coroutines, fenv, GC roots, link hygiene, wrapper roles, SaRCAsm,
+UTF-8 locale, PI mutexes and spinlocks. Its unsafe-call boundary check passed
+at O0/O2, distinguishing ordinary external calls from explicitly opted-in
+intrinsics. The release fork aggregate failed in four independent cases:
+descriptors, nested cleanup, fiber unwinding and CAS capability writeback.
+The pointer-atomic and union-record cases passed in both variants.
+
+The same 71 selected fork runtime cases were compiled and run at O0/O2/O3
+with each rebuilt toolchain. Staging passed **213/213**; release passed
+**205/213**. The differences were `byvalvaarg7` (overaligned aggregate varargs,
+all three levels), `unionnullinit` (C++ member-pointer null initialization,
+all three levels), and `unionshadowstate` (copy/zeroing capability semantics,
+O2/O3). These are fork comparison tests, not a claim that the official
+upstream suite fails or that staging has proved memory safety.
+
+QuickJS, Expat and SQLite built from both package sets. The package-local
+QuickJS worker/SAB repair from `fix-quickjs-worker-sab` is retained independently
+of either compiler pin. Both QuickJS builds passed the upstream suite, SAB
+reader/refcount/aliasing tests, worker sharing and regexp checks; the installed
+worker test also passed five repeated runs per variant. Expat passed
+incremental parsing, entity expansion and mismatched-tag error checks; SQLite
+passed transaction rollback, row ordering and database-integrity smoke checks.
+
+The earlier experiment's 84 Clang/LLVM tests used a development compiler with
+existing runtime libraries. That evidence is separate from the fresh runtime
+comparison above. All 18 pinned sparse sources were built and all 10
+source/import policy tests passed, including component coherence and compiler
+assignment checks for both architectures. On native ARM64, all 18 source
+hashes were independently verified and all 10 policy tests passed, including
+native Projeny coverage. ARM64 toolchain builds and runtime gates are still
+in progress; these policy results do not establish native runtime validation.
+A full `nix flake check --no-build
+--all-systems` remains blocked by a missing `dank-bashrc.drv`, reproduced at
+the original Filnix main revision; targeted checks bypass that unrelated issue.
+
+The older Filnix branches are historical checkpoints. Their toolchain choices
+are now represented by these pins on `main`; keeping them does not require
+switching branches. No fork or remote branch deletion is needed.
+
+## Historical September 14 cancellation baseline
+
+At this checkpoint, the core and ports pins selected
 `b6dd63481f796f8bff8502165c7dfc61091dbbd6`. Both glibc source components move
 from 2.40 to 2.44. The native Projeny build and all seven source/import tests pass.
 All projects present at the new pin were passed through the patch importer;
@@ -182,9 +283,9 @@ Ruby) build with this core. Runtime checks cover parser generation, macro
 expansion, matching, archive and lossless image roundtrips, OpenSSL async AES,
 and Ruby Fiddle calls/closures, BigDecimal, io/console and 100 finalizers.
 
-## SaRCAsm and the current core
+## Historical SaRCAsm integration checkpoint
 
-The complete core now uses `4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`,
+At this checkpoint, the core used `4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`,
 matching the ports pin. SaRCAsm and minilute have separate sparse source
 components at the core revision: they implement the compiler/runtime ABI,
 while changes to their sources do not invalidate LLVM's source component.
@@ -233,15 +334,26 @@ roundtrip, AES-GCM and asynchronous AES-CBC checks. The default OpenSSL
 Libffi reports 1,742 expected passes, no failures and two unsupported tests;
 its C++ exception checks and the libtool symbol check also pass.
 
-## Update the core
+## Update a toolchain pin
 
 Use the local clone to compute all source hashes before recording the new pin:
 
 ```sh
-scripts/update-filc-source-hashes.py --repo "$HOME/fil-c" --rev FULL_COMMIT_ID
+# Ordinary updates follow official releases, not deluge HEAD or our fork.
+git -C "$HOME/fil-c" fetch origin tag v0.686
+scripts/update-filc-source-hashes.py --repo "$HOME/fil-c" \
+  --rev v0.686 --release 0.686
+
+# Experiment updates leave the official pin and its hashes untouched.
+scripts/update-filc-source-hashes.py --repo "$HOME/fil-c" \
+  --variant staging --rev FULL_FORK_COMMIT_ID
 ```
 
-Without `--rev`, this recomputes hashes at the existing core revision. The
+Review compiler/runtime soundness and run targeted regressions before adopting
+either pin. Keep the staging URL pointed at the fork, and publish a fork commit
+before pinning it for others. A package-build success is not a safety audit.
+
+Without `--rev`, this recomputes hashes at the selected variant's existing revision. The
 script uses temporary detached worktrees and removes them afterwards; it does
 not change the clone's checked-out branch or files. `--pull` explicitly opts
 into pulling the clone first. A hashing failure leaves the existing pin and

@@ -1,5 +1,6 @@
 {
   pkgs,
+  sources ? import ./lib/sources.nix { inherit pkgs; },
   # When true, the final compiler wrapper runs the clang binary from an
   # out-of-Nix LLVM build directory named by $FILC_DEV_LLVM at run time.
   # Runtime libraries (libpizlo, glibc, libc++) still come from the pinned
@@ -8,8 +9,8 @@
 }:
 let
   lib = import ./lib { inherit pkgs; };
-  filc0 = (import ./compiler/filc0.nix { inherit pkgs; }).filc0;
-  filc-pinned = import ./build-filc.nix { inherit pkgs filc0; };
+  filc0 = (import ./compiler/filc0.nix { inherit pkgs sources; }).filc0;
+  filc-pinned = import ./build-filc.nix { inherit pkgs sources filc0; };
 
   filc0-dev = pkgs.runCommand "filc0-dev" { } ''
     mkdir -p $out/bin
@@ -40,4 +41,9 @@ let
     useCcache = !devLlvm;
   };
 in
-toolchain.filcc
+toolchain.filcc.overrideAttrs (old: {
+  passthru = (old.passthru or { }) // {
+    inherit sources;
+    components = filc-pinned;
+  };
+})

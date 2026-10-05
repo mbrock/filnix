@@ -24,6 +24,14 @@
           pkgs = import nixpkgs { inherit system; };
 
           filcc = import ./toolchain.nix { inherit pkgs; };
+          stagingSources = import ./lib/sources.nix {
+            inherit pkgs;
+            variant = "staging";
+          };
+          filcc-staging = import ./toolchain.nix {
+            inherit pkgs;
+            sources = stagingSources;
+          };
           sarcasm = import ./packages/sarcasm.nix { inherit pkgs; };
           sarcasm-prolog = import ./packages/sarcasm-prolog.nix {
             inherit pkgs filcc;
@@ -40,9 +48,13 @@
           # broken (lib/block-rust-go.nix); crossOverlays apply after the ports.
           mkPkgsFilc =
             {
+              staging ? false,
               blockRustGo ? false,
               crossOverlays ? [ ],
             }:
+            let
+              cc = if staging then filcc-staging else filcc;
+            in
             import nixpkgs {
               localSystem = system;
               crossSystem.config = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-unknown-linux-gnufilc0";
@@ -50,7 +62,7 @@
                 { buildPackages, baseStdenv }:
                 let
                   stdenv = baseStdenv.override {
-                    cc = filcc;
+                    inherit cc;
                   };
                 in
                 if blockRustGo then
@@ -61,7 +73,7 @@
                   stdenv;
               crossOverlays = [
                 (final: prev: {
-                  gnufilc0 = filcc;
+                  gnufilc0 = cc;
                 })
                 (import ./ports/overlay.nix pkgs)
               ]
@@ -73,6 +85,7 @@
             };
 
           pkgsFilc = mkPkgsFilc { };
+          pkgsFilcStaging = mkPkgsFilc { staging = true; };
 
           filc-shell-stuff = import ./shells/world.nix {
             inherit
@@ -141,9 +154,38 @@
               (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).pipewire;
             pipewire-runtime =
               (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).runtime;
-            cancellation = import ./tests/cancellation.nix { inherit pkgs filcc; };
-            cancellation-native = import ./tests/cancellation-native.nix {
+            staging-cancellation = import ./tests/cancellation.nix {
               inherit pkgs;
+              filcc = filcc-staging;
+            };
+            staging-cancellation-native = import ./tests/cancellation-native.nix {
+              inherit pkgs;
+              sources = stagingSources;
+            };
+            staging-fork-regressions = import ./tests/fork-regressions.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
+            staging-cxx-coroutines = import ./tests/cxx-coroutines.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
+            staging-fenv = import ./tests/fenv.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
+            staging-gc-local-arrays = import ./tests/gc-local-arrays.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
+            staging-link-hygiene = import ./tests/link-hygiene.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
+            staging-wrapper-roles = import ./tests/wrapper-roles.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
+            staging-sarcasm = import ./tests/sarcasm.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
+            unsafe-call-boundary = import ./tests/unsafe-call-boundary.nix {
+              inherit pkgs filcc;
             };
             sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
               inherit pkgs filcc sarcasm-prolog;
@@ -294,14 +336,16 @@
 
           # Export the full cross-compiled package sets
           legacyPackages.${system} = {
-            inherit pkgsFilc;
+            inherit pkgsFilc pkgsFilcStaging;
           };
 
           packages.${system} = {
+            default = filcc;
             baseline = baseline.baseline;
             baseline-shell = baseline.shell;
             inherit
               filcc
+              filcc-staging
               projeny
               sarcasm
               sarcasm-prolog
@@ -380,10 +424,18 @@
               type = "app";
               program = "${filcc}/bin/clang";
             };
+            filcc-staging = {
+              type = "app";
+              program = "${filcc-staging}/bin/clang";
+            };
 
             "filc++" = {
               type = "app";
               program = "${filcc}/bin/clang++";
+            };
+            "filc++-staging" = {
+              type = "app";
+              program = "${filcc-staging}/bin/clang++";
             };
           };
 
@@ -418,6 +470,10 @@
 
             # Incremental Fil-C LLVM hacking; see docs/llvm-dev.md
             filc-llvm = import ./shells/filc-llvm.nix { inherit pkgs; };
+            filc-llvm-staging = import ./shells/filc-llvm.nix {
+              inherit pkgs;
+              sources = stagingSources;
+            };
           };
         };
     in

@@ -1,7 +1,9 @@
-{ pkgs }:
+{
+  pkgs,
+  sources ? import ../lib/sources.nix { inherit pkgs; },
+}:
 let
-  sources = import ../lib/sources.nix { inherit pkgs; };
-  minilute = import ./minilute.nix { inherit pkgs; };
+  minilute = import ./minilute.nix { inherit pkgs sources; };
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "sarcasm";
