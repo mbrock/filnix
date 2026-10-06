@@ -647,10 +647,13 @@ in
   }
 
   (for pkgs.busybox [
-    (use {
+    (arg {
       enableStatic = false;
       enableAppletSymlinks = false;
       enableMinimal = false;
+      # These assembly implementations lack SaRCAsm capability signatures.
+      # Use BusyBox's portable C SHA implementations.
+      extraConfig = "CONFIG_SHA1_HWACCEL n\nCONFIG_SHA256_HWACCEL n";
     })
     # The Makefile calls plain `cc` (filcc has no target prefix), and the
     # build platform's compiler, there for HOSTCC, comes first on PATH: the
@@ -2932,6 +2935,11 @@ in
         # configure fails; Redis links the jemalloc shim instead.
         sed -i 's/^\tDEPENDENCY_TARGETS+= jemalloc$//' src/Makefile
         ! grep -q 'DEPENDENCY_TARGETS+= jemalloc' src/Makefile
+        # runtest invokes make itself, outside stdenv's makeFlags. Bind Fil-C
+        # descriptors to each module's entrypoint even when the built-in
+        # vectorset also exports RedisModule_OnLoad.
+        substituteInPlace tests/modules/Makefile --replace-fail \
+          'SHOBJ_LDFLAGS ?= -shared' 'SHOBJ_LDFLAGS ?= -shared -Wl,-Bsymbolic'
       '';
     }))
   ])
