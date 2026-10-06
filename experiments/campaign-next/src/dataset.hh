@@ -15,6 +15,7 @@ public:
   json summary(std::string run = "");
   json events(std::string run, std::uint64_t after);
   json publication_outputs();
+  json resources();
   json view(std::string run, std::string activity, bool detail = true);
   // Forward from `after`; or the latest `tail_rows`; or the rows before
   // `before`, newest last. Windows are bounded; callers page explicitly.
@@ -23,10 +24,12 @@ public:
   json export_to(const std::string &directory);
 
 private:
+  duckdb::DBConfig config_;
   duckdb::DuckDB database_;
   duckdb::Connection connection_;
   std::map<std::string, Projection> projections_;
   std::uint64_t watermark_ = 0;
+  unsigned schema_version_ = 2;
   void exec(const std::string &sql);
   json rows(const std::string &sql);
   std::string select_run(std::string run);

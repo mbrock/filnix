@@ -756,11 +756,13 @@ std::string campaign_line(const json &v) {
     return {};
   const auto &c = v.at("cohort");
   auto total = c.at("roots").size();
-  auto running = number(c, "attempted") - number(c, "completed");
+  auto incomplete = number(c, "attempted") - number(c, "completed");
+  auto running = watching(v) ? incomplete : 0;
   std::vector<std::tuple<std::string, std::uint64_t, std::string>> parts{
       {"failed", number(c, "failed"), "failed"},
       {"timed-out", number(c, "timed_out"), "timed out"},
       {"observing", running, "building"},
+      {"incomplete", incomplete - running, "incomplete"},
       {"built", number(c, "built"), "built"},
       {"already-valid", number(c, "already_valid"), "already valid"},
       {"unattempted", number(c, "unattempted"), "not attempted"}};

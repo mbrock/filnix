@@ -61,6 +61,21 @@ int main() {
     check(view.at("activities").empty() && view.at("logs").empty() &&
               data.events("test'run", 1).empty(),
           "rollback must cover every table");
+    // Journal uniqueness is enforced by the writer, without large ART indexes.
+    failed = false;
+    try {
+      data.append(json::array({
+          event(2, "nix.message", {{"level", 0}, {"text_hex", "626164"}}),
+          event(2, "nix.future-record", json::object())}));
+    } catch (const std::exception &) {
+      failed = true;
+    }
+    view = data.view("test'run", "");
+    check(failed && view.at("watermark") == 1 &&
+              view.at("session").at("cause_hex").is_null() &&
+              view.at("session").at("duration_ns") == 100 &&
+              view.at("logs").empty() && data.events("test'run", 1).empty(),
+          "duplicate sequence rolls back journal, logs and overview cache");
     data.append(json::array(
         {event(2, "nix.activity-started", start),
          event(3, "nix.result",

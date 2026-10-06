@@ -87,14 +87,14 @@ class CampaignTests(unittest.TestCase):
         query = {} if run is None else {"run": run}
         return json.loads(
             urllib.request.urlopen(
-                f"{base or ''}/api/state?{urllib.parse.urlencode(query)}", timeout=2
+                f"{base or ''}/api/state?{urllib.parse.urlencode(query)}", timeout=5
             ).read()
         )
 
-    def serve(self, database=None, mode="serve", drv=None, args=()):
+    def serve(self, database=None, mode="serve", drv=None, args=(), binary=None):
         proc = subprocess.Popen(
             [
-                str(BINARY),
+                str(binary or BINARY),
                 mode,
                 *([str(drv)] if drv else []),
                 str(database or self.db),
@@ -367,7 +367,7 @@ class CampaignTests(unittest.TestCase):
             exported.returncode, 0, exported.stderr.decode(errors="replace")
         )
         manifest = json.loads((target / "manifest.json").read_text())
-        self.assertEqual(manifest["schema_version"], 1)
+        self.assertEqual(manifest["schema_version"], 2)
         self.assertIsInstance(manifest["watermark"], int)
         self.assertEqual(manifest["watermark"], offsets[-1][0])
         self.assertEqual(
@@ -524,6 +524,134 @@ class CampaignTests(unittest.TestCase):
         finally:
             if proc.poll() is None:
                 self.stop(proc, signal.SIGKILL)
+
+    def test_recorder_error_stops_cohort_and_survives_restart(self):
+        # A broken worker protocol is an observer failure, not a build failure
+        # eligible for continuation. Keep its committed error visible on reopen.
+        bindir = self.root / "broken-worker"
+        bindir.mkdir()
+        binary = bindir / BINARY.name
+        shutil.copy2(BINARY, binary)
+        worker = bindir / "filnix-nix-worker"
+        worker.write_text("#!" + shutil.which("bash") + "\nprintf 'broken protocol\\n' >&3\n")
+        worker.chmod(0o755)
+        manifest = self.root / "broken.json"
+        manifest.write_text(json.dumps({"id":"broken", "name":"Broken recorder", "roots":[
+            {"name":"first", "drv":"/store/first.drv"},
+            {"name":"later", "drv":"/store/later.drv"}]}))
+        proc, base = self.serve(mode="cohort", drv=manifest, binary=binary)
+        try:
+            state = self.settled_cohort(base)
+            self.assertEqual(state["session"]["outcome"], "recorder-error")
+            self.assertEqual(state["cohort"]["stop_reason"], "recorder-error")
+            self.assertEqual(state["cohort"]["attempted"], 1)
+            self.assertEqual(state["cohort"]["unattempted"], 1)
+        finally:
+            self.stop(proc)
+        proc, base = self.serve(mode="cohort", drv=manifest, binary=binary)
+        try:
+            state = self.state(base=base)
+            self.assertEqual(state["cohort"]["stop_reason"], "recorder-error")
+            self.assertEqual(state["cohort"]["attempted"], 1)
+            self.assertFalse(state["watch"])
+        finally:
+            self.stop(proc)
+
+    def test_cohort_rejects_invalid_root_identity(self):
+        manifest = self.root / "invalid.json"
+        root = {"name": "test", "drv": "/store/test.drv"}
+        for roots in ([dict(root, name="")], [dict(root, drv="relative.drv")], [root, root]):
+            manifest.write_text(json.dumps({"id":"invalid", "name":"invalid", "roots":roots}))
+            result = invoke("cohort", manifest, self.db, "--port", "0", check=False, env=self.env)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(b"invalid cohort root", result.stderr)
+            with duckdb.connect(str(self.db), read_only=True) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM runs").fetchone()[0], 0)
+
+    def test_large_journal_budget_and_v1_compatibility(self):
+        # Generate a large closed recording quickly, then exercise the real
+        # viewer. Repeated output/progress is deliberately much larger than
+        # the 300-row overview; the overview must not materialize that journal.
+        self.assertEqual(self.record(self.drv("good")).returncode, 0)
+        count = int(os.environ.get("CAMPAIGN_MEMORY_TEST_ROWS", "2000000"))
+        roots = [{"name": f"root-{i}", "drv": f"/store/root-{i}.drv"}
+                 for i in range(300)]
+        cohort = {"id": "memory-test", "name": "Large journal", "roots": roots}
+        with duckdb.connect(str(self.db), read_only=True) as db:
+            schema = db.execute("SELECT sql FROM duckdb_tables() WHERE NOT temporary").fetchall()
+            original = db.execute("SELECT * FROM runs LIMIT 1").fetchone()
+        # Start a fresh recording, as the real campaign does. Never rewrite
+        # timestamps in an existing journal or depend on its old statistics.
+        self.db = self.root / "large.duckdb"
+        with duckdb.connect(str(self.db), config={"memory_limit": "1 GiB", "threads": 2}) as db:
+            for (sql,) in schema:
+                db.execute(sql)
+            db.execute("INSERT INTO campaign_meta VALUES (2)")
+            self.assertFalse(db.execute("SELECT index_name FROM duckdb_indexes() WHERE "
+                                        "table_name IN ('events','logs')").fetchall())
+            self.assertFalse(db.execute("SELECT constraint_type FROM duckdb_constraints() WHERE "
+                                        "table_name IN ('events','logs') AND constraint_type "
+                                        "IN ('PRIMARY KEY','UNIQUE')").fetchall())
+            summary = json.loads(original[-1])
+            summary.update(complete=False, outcome="incomplete")
+            for i, root in enumerate(roots):
+                run = f"run-{i}"
+                db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?::JSON)",
+                           [run, root["drv"], "local", root["name"], "x86_64-linux",
+                            i, count + i + 1, json.dumps(dict(summary, run=run))])
+                db.execute("INSERT INTO events VALUES (?,?,1,0,0,'run.requested',?::JSON)",
+                           [count+i+1, run, json.dumps(dict(root, store="local", cohort=cohort, index=i))])
+            db.execute("""INSERT INTO events SELECT i+1,'run-'||(i%300)::VARCHAR,
+                i//300+2,i,i,'nix.result',CASE WHEN i%13=0 THEN
+                json_object('id',i%300,'type',101,'build_output',true,'fields',
+                    json_array(json_object('string_hex',hex('build output '||i::VARCHAR||repeat('x',200)))))
+                ELSE json_object('id',i%300,'type',105,'fields',
+                    json_array(json_object('integer',i))) END FROM range(?) t(i)""", [count])
+            db.execute("""INSERT INTO logs SELECT e."offset",run,seq,
+                (e."offset"-1)%300,elapsed_ns,
+                from_hex(json_extract_string(payload,'$.fields[0].string_hex')),kind
+                FROM events e WHERE (e."offset"-1)%13=0 AND kind='nix.result'""")
+            db.execute("""INSERT INTO events VALUES
+                (?, 'run-299', ?,0,?,'nix.message',?::JSON),
+                (?, 'run-299', ?,0,?,'nix.build-result',?::JSON)""",
+                [count+301,count+2,count+1,json.dumps({"level":0,"text_hex":"626f6f6d"}),
+                 count+302,count+3,count+2,json.dumps({"result":{"status":"failed"}})])
+        # Both current recordings and indexed v1 archives must stay bounded.
+        for version in (2, 1):
+            if version == 1:
+                with duckdb.connect(str(self.db)) as db:
+                    db.execute("UPDATE campaign_meta SET schema_version=1")
+                    db.execute('ALTER TABLE events ADD PRIMARY KEY ("offset")')
+                    db.execute('CREATE UNIQUE INDEX legacy_sequence ON events(run,seq)')
+                    db.execute('ALTER TABLE logs ADD PRIMARY KEY ("offset")')
+                    db.execute('CREATE INDEX log_cursor ON logs(run,seq)')
+            proc, base = self.serve()
+            try:
+                for _ in range(5):
+                    # /sessions exercises the lightweight view without graphs/logs.
+                    urllib.request.urlopen(base + "/sessions?run=run-299", timeout=5).read()
+                state = self.state("run-299", base)
+                unpinned = self.state(base=base)
+                self.assertEqual(unpinned["session"]["run"], "run-299")
+                self.assertEqual(unpinned["cohort"]["id"], "memory-test")
+                self.assertEqual(len(state["sessions"]), 300)
+                self.assertEqual(state["session"]["cause_hex"], "626f6f6d")
+                self.assertEqual(state["session"]["native_status"], "failed")
+                self.assertEqual(state["session"]["duration_ns"], count+2)
+                self.assertEqual(state["cohort"]["incomplete"], 300)
+                self.assertEqual(state["cohort"]["stop_reason"], "recording-interrupted")
+                overview = urllib.request.urlopen(base + "/overview", timeout=5).read()
+                self.assertIn(b"300</b> incomplete", overview)
+                self.assertNotIn(b"300</b> building", overview)
+                resources = json.load(urllib.request.urlopen(base + "/api/resources", timeout=2))
+                self.assertEqual(resources["settings"][0], {"memory_limit":"1.0 GiB", "threads":2})
+                high_water = next(int(line.split()[1]) * 1024 for line in
+                                  Path(f"/proc/{proc.pid}/status").read_text().splitlines()
+                                  if line.startswith("VmHWM:"))
+                self.assertLess(high_water, 1600 * 1024**2)
+                print(f"schema={version} events={count+302} peak_rss={high_water}", flush=True)
+            finally:
+                self.stop(proc)
 
     def test_abrupt_observer_recovery_and_read_only_methods(self):
         proc, base = self.serve(mode="watch", drv=self.drv("slow"))

@@ -36,10 +36,19 @@ std::string open_path(const std::string &path, bool writable) {
   return path;
 }
 
+duckdb::DBConfig *configure(duckdb::DBConfig &config) {
+  // Host RAM is not the service's cgroup allowance. Leave room inside the
+  // 4 GiB service for the worker, JSON, HTTP and DuckDB's unmanaged memory.
+  config.SetOptionByName("memory_limit", duckdb::Value("1 GiB"));
+  config.SetOptionByName("threads", duckdb::Value(2));
+  return &config;
+}
+
 } // namespace
 
 Dataset::Dataset(const std::string &path, bool writable)
-    : database_(open_path(path, writable)), connection_(database_) {
+    : database_(open_path(path, writable), configure(config_)),
+      connection_(database_) {
   // The application owns this database in one process. Offline commands
   // never append; opening normally also permits DuckDB's WAL recovery.
   auto tables = rows("SELECT table_name FROM information_schema.tables "
@@ -48,10 +57,11 @@ Dataset::Dataset(const std::string &path, bool writable)
     exec(R"SQL(
 BEGIN;
 CREATE TABLE campaign_meta(schema_version INTEGER);
-INSERT INTO campaign_meta VALUES (1);
-CREATE TABLE events("offset" UBIGINT PRIMARY KEY, run VARCHAR, seq UBIGINT,
-    wall_ns BIGINT, elapsed_ns BIGINT, kind VARCHAR, payload JSON,
-    UNIQUE(run, seq));
+INSERT INTO campaign_meta VALUES (2);
+-- The single writer validates contiguous run seqs and assigns offsets in
+-- the transaction. Large ART indexes do not help our ordered window scans.
+CREATE TABLE events("offset" UBIGINT NOT NULL, run VARCHAR, seq UBIGINT,
+    wall_ns BIGINT, elapsed_ns BIGINT, kind VARCHAR, payload JSON);
 CREATE TABLE runs(run VARCHAR PRIMARY KEY, drv VARCHAR, store VARCHAR,
     name VARCHAR, system VARCHAR, start_wall_ns BIGINT, last_offset UBIGINT,
     summary JSON);
@@ -62,24 +72,58 @@ CREATE TABLE edges(run VARCHAR, parent_drv VARCHAR, child_drv VARCHAR,
 CREATE TABLE activities(run VARCHAR, id UBIGINT, parent UBIGINT, type INTEGER,
     text BLOB, drv VARCHAR, machine VARCHAR, phase BLOB, status VARCHAR,
     start_elapsed_ns BIGINT, stop_elapsed_ns BIGINT, PRIMARY KEY(run, id));
-CREATE TABLE logs("offset" UBIGINT PRIMARY KEY, run VARCHAR, seq UBIGINT,
+CREATE TABLE logs("offset" UBIGINT NOT NULL, run VARCHAR, seq UBIGINT,
     activity UBIGINT, elapsed_ns BIGINT, bytes BLOB, kind VARCHAR);
-CREATE INDEX log_cursor ON logs(run, seq);
 COMMIT;
 )SQL");
   }
   auto version = rows("SELECT schema_version FROM campaign_meta");
-  if (version.size() != 1 || version[0].at("schema_version") != 1)
+  if (version.size() != 1 || (version[0].at("schema_version") != 1 &&
+                              version[0].at("schema_version") != 2))
     throw std::runtime_error("unsupported campaign schema version");
+  schema_version_ = version[0].at("schema_version");
   watermark_ =
       rows("SELECT coalesce(max(\"offset\"),0) AS watermark FROM events")[0].at(
           "watermark");
+  // Rebuild the small overview cache once, also for v1 archives. Keep raw
+  // journals authoritative and avoid rewriting a multi-gigabyte recording.
+  // Duration scans only fixed-width columns; JSON is read only for the few
+  // metadata event kinds. No dashboard request joins against the journal.
+  exec(R"SQL(
+CREATE TEMP TABLE run_info AS
+SELECT r.run, d.duration_ns, m.request, m.cause_hex, m.native_status, m.finished
+FROM runs r LEFT JOIN
+ (SELECT run, arg_max(elapsed_ns, seq) AS duration_ns FROM events GROUP BY run) d
+ ON d.run=r.run LEFT JOIN
+ (SELECT run,
+   arg_min(payload,seq) FILTER (WHERE kind='run.requested') AS request,
+   arg_min(json_extract_string(payload,'$.text_hex'),seq)
+     FILTER (WHERE kind='nix.message' AND json_extract(payload,'$.level')=0)
+     AS cause_hex,
+   arg_max_null(json_extract_string(payload,'$.result.status'),seq)
+     FILTER (WHERE kind='nix.build-result') AS native_status,
+   arg_max(payload,seq) FILTER (WHERE kind='cohort.finished') AS finished
+  FROM events WHERE kind IN
+    ('run.requested','nix.message','nix.build-result','cohort.finished')
+  GROUP BY run) m ON m.run=r.run;
+CREATE UNIQUE INDEX run_info_identity ON run_info(run);
+)SQL");
 }
 
 void Dataset::exec(const std::string &sql) {
   auto result = connection_.Query(sql);
   if (result->HasError())
     throw std::runtime_error(result->GetError());
+}
+
+json Dataset::resources() {
+  return {
+      {"settings",
+       rows("SELECT current_setting('memory_limit') AS memory_limit, "
+            "current_setting('threads') AS threads")},
+      {"memory", rows("SELECT tag,memory_usage_bytes,temporary_storage_bytes "
+                      "FROM duckdb_memory() WHERE memory_usage_bytes>0 OR "
+                      "temporary_storage_bytes>0")}};
 }
 
 json Dataset::publication_outputs() {
@@ -138,6 +182,8 @@ void Dataset::append(const json &batch) {
              quote(p.at("store").get<std::string>()) + "," +
              quote(p.value("name", "")) + ",''," + wall + "," + off +
              ", '{}'::JSON)");
+        exec("INSERT INTO run_info VALUES (" + r + "," + elapsed + "," +
+             quote(p.dump()) + "::JSON,NULL,NULL,NULL)");
       } else if (kind == "recipe.resolved") {
         exec("UPDATE runs SET name=" + quote(p.at("name").get<std::string>()) +
              ",system=" + quote(p.at("system").get<std::string>()) +
@@ -170,6 +216,20 @@ void Dataset::append(const json &batch) {
              blob(p.at("fields")[0].at("string_hex")) + " WHERE run=" + r +
              " AND id=" + id(p, "id"));
       }
+      if (kind == "nix.message" && p.value("level", -1) == 0)
+        exec("UPDATE run_info SET cause_hex=" +
+             quote(p.at("text_hex").get<std::string>()) + " WHERE run=" + r +
+             " AND cause_hex IS NULL");
+      if (kind == "nix.build-result") {
+        auto status =
+            p.value("result", json::object()).value("status", json(nullptr));
+        exec("UPDATE run_info SET native_status=" +
+             (status.is_null() ? "NULL" : quote(status.get<std::string>())) +
+             " WHERE run=" + r);
+      }
+      if (kind == "cohort.finished")
+        exec("UPDATE run_info SET finished=" + quote(p.dump()) +
+             "::JSON WHERE run=" + r);
       std::string bytes;
       bool output = false;
       if (p.contains("text_hex") &&
@@ -189,6 +249,8 @@ void Dataset::append(const json &batch) {
     exec("UPDATE runs SET summary=" + quote(projection.summary().dump()) +
          "::JSON,last_offset=" + std::to_string(offset) +
          " WHERE run=" + quote(run));
+    exec("UPDATE run_info SET duration_ns=" +
+         batch.back().at("elapsed_ns").dump() + " WHERE run=" + quote(run));
     exec("COMMIT");
   } catch (...) {
     exec("ROLLBACK");
@@ -249,35 +311,26 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
 json Dataset::view(std::string run, std::string activity, bool detail) {
   run = select_run(std::move(run));
   auto filter = " WHERE run=" + quote(run);
-  auto request = rows("SELECT payload FROM events" + filter + " AND seq=1");
+  auto request = rows("SELECT request AS payload FROM run_info" + filter);
   json cohort = nullptr;
   std::string session_filter;
   if (!request.empty() && request[0].at("payload").contains("cohort")) {
     cohort = request[0].at("payload").at("cohort");
-    session_filter = " WHERE json_extract_string(e.payload,'$.cohort.id')=" +
+    session_filter = " WHERE json_extract_string(e.request,'$.cohort.id')=" +
                      quote(cohort.at("id").get<std::string>());
   }
-  // Elapsed time at the latest event, and the first top-level error: what a
-  // reader needs to rank a root without opening it. Both are cheap lookups.
-  const std::string progress =
-      "(SELECT x.elapsed_ns FROM events x WHERE x.\"offset\"=r.last_offset) "
-      "AS duration_ns,(SELECT json_extract_string(c.payload,'$.text_hex') FROM "
-      "events c WHERE c.run=r.run AND c.kind='nix.message' AND "
-      "json_extract(c.payload,'$.level')=0 ORDER BY c.seq LIMIT 1) AS "
-      "cause_hex";
+  const std::string progress = "e.duration_ns,e.cause_hex";
   auto sessions = rows(
       "SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
       "r.summary," +
       progress +
       ",(SELECT lower(hex(a.phase)) FROM activities a WHERE "
       "a.run=r.run AND a.drv=r.drv ORDER BY a.start_elapsed_ns DESC LIMIT 1) "
-      "AS phase_hex,(SELECT json_extract_string(f.payload,'$.result.status') "
-      "FROM events f WHERE f.run=r.run AND f.kind='nix.build-result' "
-      "ORDER BY f.seq DESC LIMIT 1) AS native_status,"
-      "json_object('index',json_extract(e.payload,'$.index'),"
-      "'cohort',json_object('id',json_extract(e.payload,'$.cohort.id'))) "
+      "AS phase_hex,e.native_status,"
+      "json_object('index',json_extract(e.request,'$.index'),"
+      "'cohort',json_object('id',json_extract(e.request,'$.cohort.id'))) "
       "AS request FROM runs r LEFT JOIN "
-      "events e ON e.run=r.run AND e.seq=1 " +
+      "run_info e ON e.run=r.run " +
       session_filter +
       " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT " +
       std::string(cohort.is_null() ? "256" : "1024"));
@@ -291,9 +344,12 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
   }
   // A selected older run may lie outside the bounded sidebar.
   if (session.is_null() && !run.empty()) {
-    auto found = rows("SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
-                      "r.summary," +
-                      progress + " FROM runs r WHERE r.run=" + quote(run));
+    auto found =
+        rows("SELECT r.run,r.drv,r.name,r.system,r.start_wall_ns,"
+             "r.summary," +
+             progress +
+             " FROM runs r LEFT JOIN run_info e ON e.run=r.run WHERE r.run=" +
+             quote(run));
     if (!found.empty()) {
       session = found[0];
       auto state = session.at("summary");
@@ -322,7 +378,7 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
       }
     }
     output = logs(run, activity, 0, true);
-    time = rows("SELECT coalesce(max(elapsed_ns),0) AS elapsed FROM events" +
+    time = rows("SELECT coalesce(max(duration_ns),0) AS elapsed FROM run_info" +
                 filter);
     phases = rows(
         "SELECT seq,elapsed_ns,json_extract_string(payload,'$.id') AS activity,"
@@ -353,18 +409,19 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
              "json_extract(payload,'$.level')=0 ORDER BY seq DESC LIMIT 4");
   }
   if (!cohort.is_null()) {
-    auto members =
-        " FROM runs r JOIN events e ON e.run=r.run AND e.seq=1 WHERE "
-        "json_extract_string(e.payload,'$.cohort.id')=" +
-        quote(cohort.at("id").get<std::string>());
+    auto members = " FROM runs r JOIN run_info e ON e.run=r.run WHERE "
+                   "json_extract_string(e.request,'$.cohort.id')=" +
+                   quote(cohort.at("id").get<std::string>());
     auto summaries = rows("SELECT r.summary" + members);
     unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0, built = 0;
+    bool recorder_error = false;
     for (const auto &item : summaries) {
       const auto &state = item.at("summary");
       if (!state.at("complete").get<bool>())
         continue;
       ++completed;
       auto outcome = state.at("outcome").get<std::string>();
+      recorder_error |= outcome == "recorder-error";
       if (outcome == "built" || outcome == "already-valid" ||
           outcome == "substituted" || outcome == "resolves-to-already-valid") {
         ++succeeded;
@@ -374,14 +431,12 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
       else
         ++failed;
     }
-    auto finished = rows("SELECT f.payload FROM events f JOIN events e ON "
-                         "e.run=f.run AND e.seq=1 "
-                         "WHERE f.kind='cohort.finished' AND "
-                         "json_extract_string(e.payload,'$.cohort.id')=" +
-                         quote(cohort.at("id").get<std::string>()) +
-                         " ORDER BY f.\"offset\" DESC LIMIT 1");
+    auto finished =
+        rows("SELECT e.finished AS payload" + members +
+             " AND e.finished IS NOT NULL ORDER BY r.last_offset DESC LIMIT 1");
     cohort["attempted"] = summaries.size();
     cohort["completed"] = completed;
+    cohort["incomplete"] = summaries.size() - completed;
     cohort["succeeded"] = succeeded;
     cohort["built"] = built;
     cohort["already_valid"] = succeeded - built;
@@ -389,7 +444,8 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
     cohort["timed_out"] = timed_out;
     cohort["unattempted"] = cohort.at("roots").size() - summaries.size();
     cohort["stop_reason"] =
-        finished.empty() ? json("") : finished[0].at("payload").at("reason");
+        finished.empty() ? json(recorder_error ? "recorder-error" : "")
+                         : finished[0].at("payload").at("reason");
   }
   return {{"watermark", watermark_},
           {"cohort", cohort},
@@ -419,8 +475,9 @@ json Dataset::export_to(const std::string &directory) {
     throw std::runtime_error("export destination already exists");
   const std::vector<std::string> tables{"events", "runs",       "recipes",
                                         "edges",  "activities", "logs"};
-  json manifest = {
-      {"schema_version", 1}, {"watermark", watermark_}, {"tables", tables}};
+  json manifest = {{"schema_version", schema_version_},
+                   {"watermark", watermark_},
+                   {"tables", tables}};
   try {
     exec("BEGIN");
     for (const auto &table : tables)

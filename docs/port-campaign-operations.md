@@ -83,6 +83,8 @@ before this campaign. See [binary caches](binary-caches.md).
 ```sh
 curl -fsS https://nix.swa.sh/healthz
 curl -fsS http://127.0.0.1:8778/api/outputs
+curl -fsS http://127.0.0.1:8778/api/resources
+systemctl show filnix-v2 -p MemoryCurrent -p MemoryPeak
 systemctl status filnix-v2
 journalctl -u filnix-v2 -f
 sudo /opt/filnix-cache/bin/filnix-publish-cache local --status
@@ -94,6 +96,14 @@ session; the dashboard supports filters and 100-row pages for all 300 roots.
 An output receipt means upload completion, not continuous remote verification
 or test success. Compare cache NAR hashes/sizes/references and restore into a
 fresh store when testing actual cache availability.
+
+The runner sets DuckDB's budget to 1 GiB and its threads to two before opening
+any database. Its 4 GiB service allowance also covers the worker and allocations
+outside DuckDB's budget. New recordings use schema 2 without large raw-journal
+indexes. Schema 1 recordings remain readable, using a temporary overview cache
+rebuilt at startup. An inactive cohort with incomplete recordings reports
+`recording-interrupted` and does not retry. A restart into the same recording
+can update the viewer but cannot finish the stopped campaign.
 
 The rollout passed the native dataset and real-build integration checks,
 including successful-root publication and restart behavior. The dataset test

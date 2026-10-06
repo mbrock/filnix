@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <set>
 #include <spawn.h>
 #include <sstream>
 #include <sys/random.h>
@@ -330,9 +331,11 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
   auto path = req.target.substr(0, question);
   if (path == "/healthz")
     co_return response{200, {{"Content-Type", "text/plain"}}, "ok\n", {}};
-  if (path == "/api/outputs") {
-    auto result = co_await app.workers.run(
-        [&app] { return app.data->publication_outputs(); });
+  if (path == "/api/outputs" || path == "/api/resources") {
+    auto result = co_await app.workers.run([&app, path] {
+      return path == "/api/resources" ? app.data->resources()
+                                      : app.data->publication_outputs();
+    });
     co_return response{200,
                        {{"Content-Type", "application/json"},
                         {"Cache-Control", "no-store"},
@@ -395,6 +398,11 @@ nxtrt::task<nxtrt::http::response> handle(Application &app,
   if (!is_logs) {
     result["live_run"] = app.live_run;
     result["watch"] = app.admitting || !app.live_run.empty();
+    auto &cohort = result["cohort"];
+    if (!result["watch"].get<bool>() && cohort.is_object() &&
+        cohort.value("incomplete", 0u) &&
+        cohort.value("stop_reason", "").empty())
+      cohort["stop_reason"] = "recording-interrupted";
   }
   if (!is_logs && result.at("session").is_object()) {
     bool live = result["session"]["run"] == app.live_run &&
@@ -448,7 +456,7 @@ nxtrt::task<int> server_body(Application &app, const Options &options) {
     auto manifest = co_await app.workers.run([&app, path = options.drv] {
       // A service restart serves its existing recording; it never retries
       // builds.
-      if (!app.data->view("", "").at("sessions").empty())
+      if (!app.data->view("", "", false).at("sessions").empty())
         return json(nullptr);
       std::ifstream file{path};
       auto value = json::parse(file);
@@ -457,9 +465,14 @@ nxtrt::task<int> server_body(Application &app, const Options &options) {
           !value.at("name").is_string() || !value.at("roots").is_array() ||
           value.at("roots").empty() || value.at("roots").size() > 1024)
         throw std::runtime_error("invalid cohort manifest");
+      std::set<std::string> names;
       for (const auto &root : value.at("roots")) {
         if (!root.at("name").is_string() || !root.at("drv").is_string() ||
-            !root.at("drv").get<std::string>().ends_with(".drv"))
+            root.at("name").get<std::string>().empty() ||
+            !std::filesystem::path(root.at("drv").get<std::string>())
+                 .is_absolute() ||
+            !root.at("drv").get<std::string>().ends_with(".drv") ||
+            !names.insert(root.at("name").get<std::string>()).second)
           throw std::runtime_error("invalid cohort root");
       }
       return value;

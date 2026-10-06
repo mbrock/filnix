@@ -191,7 +191,7 @@ transactional guarantee that an already-dispatched remote build stopped.
 
 ## The dataset
 
-Schema version 1 has six data tables and a schema metadata table:
+Schema version 2 has six data tables and a schema metadata table:
 
 | Table | Role and identity |
 | --- | --- |
@@ -206,7 +206,26 @@ The event history is the observation record. The other tables are read
 projections updated in the **same transaction**, not independent sources of
 campaign decisions. The in-memory root projection is published only after
 COMMIT. A failed transaction consumes neither offsets nor projection state.
-This version does not yet expose a projection-rebuild command or migrations.
+The single writer enforces contiguous run sequences and assigns global offsets
+inside the transaction. Version 2 omits the large ART primary/unique indexes on
+`events` and `logs`, including the ineffective composite log cursor index; the
+small entity tables keep their uniqueness constraints. Version 1 recordings
+remain readable without an in-place migration. Archives retain their original
+schema version. There is no general projection-rebuild command.
+
+DuckDB is configured before opening with a **1 GiB memory budget and two threads**.
+Host RAM cannot be used to size a service with a 4 GiB cgroup limit. DuckDB's
+budget is not a process RSS ceiling: JSON, worker memory and some database
+allocations need additional headroom. `/api/resources` reports the actual settings
+and memory categories; monitor process/cgroup peaks as well.
+
+A temporary `run_info` table caches duration, request, first top-level error,
+latest native result status and cohort completion. It is rebuilt once from the
+journal when opening, including after WAL recovery, and updated in the same
+append transaction. Overview and cohort-count queries join only the small
+per-run tables. Reopening scans fixed-width timing columns and filtered metadata
+events once; ordinary dashboard polling does not join the full journal. The
+cache is disposable and does not alter the six-table archive format.
 
 Every replay envelope has version, run, contiguous run-local sequence, global
 offset, recorder wall-clock nanoseconds, recorder monotonic elapsed nanoseconds,
@@ -322,6 +341,20 @@ observer death and WAL recovery, replay pacing, HTTP cursor semantics, HTML
 escaping/OOB row structure, schema rejection, and native/Parquet equality. Cohort
 tests distinguish failure continuation, per-root timeout continuation, overall
 budget cutoff, pinned views, durable stop events, and restart without retries.
+A two-million-event/300-root fixture exercises overview/detail polling, database
+settings, process peak RSS and v1 compatibility. For campaign-scale validation:
+
+```sh
+CAMPAIGN_STATIC_DIR="$PWD/experiments/campaign-next/static" \
+CAMPAIGN_MEMORY_TEST_ROWS=13200000 nix develop path:./experiments/campaign-next \
+  --command python3 experiments/campaign-next/tests/test_campaign.py \
+  .amp/in/campaign-next-build/filnix-campaign \
+  CampaignTests.test_large_journal_budget_and_v1_compatibility
+```
+
+Inactive incomplete roots are displayed as incomplete. A cohort with unfinished
+recordings and no durable terminal event reports `recording-interrupted`; this
+is viewer state, not a fabricated journal event or permission to retry builds.
 
 An additional ASan/UBSan build passes the dataset test, but its leak-enabled
 integration suite is not clean: LeakSanitizer reports allocations in Nix's
