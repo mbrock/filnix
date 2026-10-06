@@ -1,25 +1,58 @@
 # Fil-C cancellation implementation checkpoint
 
-This implements a **bounded set of deferred cancellation points** on Fil-C
-`b6dd63481f796f8bff8502165c7dfc61091dbbd6`, with both glibc forks updated to 2.44.
-It is an experimental Filnix patch, not a complete POSIX cancellation
-implementation. In particular, arbitrary asynchronous cancellation and
-cancellation that unwinds out of an application signal handler remain open.
+The patches implement a **bounded set of deferred cancellation points** and
+are currently enabled only by the experimental **staging** toolchain
+(`e4427dbc5b7715b8fc079fc60c412a755f9680b9`). The ordinary Fil-C 0.686 release
+(`163fae598eaf249b74065b0156f3a7e7ba8c0e5a`) does **not** apply them.
+`runtime/libpizlo.nix` and `runtime/filc-glibc.nix` are the authoritative switches.
+Staging has additional compiler changes; selecting it is not equivalent to
+adding cancellation to the release. See [upstream updates](upstream-updates.md).
 
-The [comparison report](pthread-cancellation.md) and
+This is an experimental implementation, not complete POSIX cancellation.
+Arbitrary asynchronous cancellation and unwinding out of an application signal
+handler remain open. The [comparison report](pthread-cancellation.md) and
 [design proposal](pthread-cancellation-design.md) explain the compatibility
-choices. The implementation is in two maintained patches:
+choices. Three patches supply the implementation:
 
-- `patches/libpizlo-cancellation.patch`: native thread state, signal handling,
-  typed syscall gates, result conversion and cleanup frame identities.
-- `patches/glibc-filc-cancellation.patch`: pthread state and cleanup semantics,
-  the selected public cancellation points and cancellable NPTL futex waits.
+| Patch | Responsibility |
+| --- | --- |
+| `patches/libpizlo-cancellation.patch` | Atomic native thread state, private notification, x86-64 syscall gate, checked typed wrappers, result conversion and cleanup frame identities. |
+| `patches/glibc-filc-cancellation.patch` | Public pthread state/cleanup behavior, selected cancellation points, cancellable NPTL waits and Fil-C forced unwind; removes the native-libgcc preflight. |
+| `patches/libpizlo-cancellation-aarch64.patch` | Applied after the runtime patch on ARM64: `svc` gate, signal-context PC redirect and replacements for absent legacy Linux syscalls. |
 
-These patches are outside `ports/patch/`; refreshing upstream application ports
-cannot overwrite them. Apply them to the core source pin, regenerate against a
-clean upstream checkout when rebasing, and rerun the gates below. Runtime headers
-installed by libpizlo are used by later compiler stages, so a new runtime entry
-point cannot silently compile against unpatched headers.
+The patches live outside `ports/patch/`; application patch refreshes do not
+replace them. Runtime headers installed by libpizlo feed later compiler stages.
+Rebasing requires coherent headers, ABI and signal-number review. Changes to
+these semantics or adoption into the release require the compiler/runtime
+soundness review specified by `AGENTS.md`, plus targeted regressions. Package
+build success is not a memory-safety argument.
+
+## Cancellation semantics and campaign failures
+
+`pthread_cancel` requests cancellation; it does not establish that the target
+has stopped. Deferred cancellation acts at cancellation points while enabled.
+Disabling cancellation retains the pending request. Cleanup handlers run in
+reverse registration order, followed by thread-specific-data destructors; a
+join observes `PTHREAD_CANCELED` after cancellation terminates the thread.
+Asynchronous cancellation permits delivery outside cancellation points, with
+severe restrictions on what operations can safely be interrupted. See the
+[POSIX thread-cancellation rules](https://pubs.opengroup.org/onlinepubs/9799919799/functions/V2_chap02.html#tag_16_09_05).
+
+The latest release campaign failed at `libgcc_s.so.6661 must be installed for
+pthread_cancel to work`: PipeWire's loop cancellation test and LTTng-UST's
+shutdown path both reached that preflight. Eight roots depend on the failing
+PipeWire and two on LTTng-UST. Installing native libgcc or deleting only the
+preflight does not implement Fil-C cancellation. Correct delivery must preserve
+capabilities, runtime thread state, syscall side effects and cleanup ordering.
+The patches address those boundaries in staging; the campaign remains a release
+campaign and has not silently adopted them.
+
+Campaign cancellation itself is a separate mechanism: the native observer
+records its stop/limit request, signals the isolated Nix worker, drains its event
+pipe and reaps it before recording completion, escalating to SIGKILL after two
+seconds. A worker being stopped is not proof that a previously dispatched remote
+builder stopped, and the viewer never retries interrupted roots automatically.
+This does not depend on the Fil-C pthread patches.
 
 ## State and syscall boundary
 
@@ -33,8 +66,8 @@ prevents repeated cancellation; it does not silently override subsequent valid
 state/type setter calls. A regression test changes the type while disabled in
 cleanup and verifies the returned old values.
 
-A native x86-64 assembly helper owns the final pending check and actual syscall
-instruction. Its end label immediately follows `syscall`. The private signal
+A native architecture-specific assembly helper (x86-64, with the ARM64 follow-on) owns the final pending check and actual syscall
+instruction. Its end label immediately follows `syscall`/`svc`. The private signal
 handler redirects a PC inside this window to a normal return carrying a separate
 cancellation outcome. It never enters Fil-C cleanup or forced unwinding itself.
 A notification outside the window is blocked in that interrupted context and
@@ -96,7 +129,9 @@ It does not add general legacy-cleanup support to arbitrary application
 
 ## Executed checks
 
-On this x86-64 server, the shared candidate passed:
+The historical x86-64 implementation checkpoint used core
+`b6dd63481f796f8bff8502165c7dfc61091dbbd6` with both glibc forks at 2.44.
+It passed:
 
 - **200 native gate scenarios**: pending, blocked, disabled and exiting reads;
   nested signal handling; partial writes; completed-read result handling;
@@ -118,12 +153,19 @@ The final Nix check outputs are
 These are test counts, not independent proofs of all schedules or APIs.
 
 ```sh
-nix build -L .#checks.x86_64-linux.cancellation-native \
-  .#checks.x86_64-linux.cancellation --cores 30 --max-jobs 2
-nix build -L .#checks.x86_64-linux.pipewire-runtime --cores 12 --max-jobs 2
+nix build -L .#checks.x86_64-linux.staging-cancellation-native \
+  .#checks.x86_64-linux.staging-cancellation --cores 4 --max-jobs 2
 ```
 
-The six existing differential cases also ran on the candidate. The nested
+On October 6, 2026, both current staging checks were rebuilt, rather than merely
+accepted from cache, and passed. The native check executes 200 behavioral runs
+and 13 ptrace instruction positions. The integrated check executes pause tests
+and all 28 semantic scenarios through C and C++ at O0 and O2; each semantic
+executable itself repeats its scenario 20 times. This verifies the staging
+candidate, not the ordinary release, a rebase of the patches onto 0.686, ARM64,
+or end-to-end success for today's PipeWire/LTTng package versions.
+
+The six existing differential cases also ran on the historical candidate. The nested
 handler finishes before cleanup; cleanup completes before the rescue write;
 pending semaphore/close operations preserve the token/descriptor; disabled read
 and poll remain blocked until normal input arrives. The unpatched 2.44 Filnix
