@@ -529,7 +529,12 @@ in
     libjpeg_turbo = (
       for pkgs.libjpeg_turbo [
         (patch ./ports/patch/libjpeg-turbo-3.0.1.patch)
-        (addCMakeFlag "-DCMAKE_ASM_NASM_COMPILER=")
+        # The x86-64 SIMD extensions are NASM assembly; build the Arm Neon
+        # intrinsics instead, translated to SSE by the SIMDe headers.
+        (patch ./patches/libjpeg-turbo-simde-neon.patch)
+        (addCMakeFlag "-DSIMDE_NEON=1")
+        (addCMakeFlag "-DREQUIRE_SIMD=1")
+        (addCFlag "-isystem ${pkgs.buildPackages.simde}/include")
         (addCMakeFlag "-DCMAKE_SKIP_INSTALL_RPATH=ON")
         (arg { nasm = pkgs.hello; })
       ]
@@ -2236,7 +2241,6 @@ in
 
   (for pkgs.libtiff [
     (patch ./ports/patch/tiff-4.6.0.patch)
-    (arg { libdeflate = final.hello; })
   ])
 
   (for pkgs.libwebp [
