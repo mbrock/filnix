@@ -56,7 +56,7 @@ Residual work absent from v0.686, established by source comparison:
 | ARM64 glibc | Obtain saved jump-buffer frame identity through `zget_jmp_buf_frame` | staging cancellation C++ cleanup |
 | Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |
 | Unions/varargs | Complete aggregate-varargs transport, conservative alignment rejection, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites and QuickJS |
-| SaRCAsm | Reject a stack-pointer carrier passed as a call argument; expand `.rept`/`.endr` (`patches/sarcasm-*.patch`, applied by `packages/sarcasm.nix`; proposed upstream from `mbrock/fil-c` branch `sarcasm-callarg-carrier-and-rept`) | `staging-sarcasm-fixes` |
+| SaRCAsm | Reject a stack-pointer carrier passed as a call argument; expand `.rept`/`.endr` (`patches/sarcasm-*.patch`, applied by `packages/sarcasm.nix`; proposed upstream from `mbrock/fil-c` branches `sarcasm-callarg-carrier` and `sarcasm-rept`) | `staging-sarcasm-fixes` |
 
 Filip's release independently lowers pointer-bearing unions to pointer storage.
 The experiment now follows that general direction rather than its earlier

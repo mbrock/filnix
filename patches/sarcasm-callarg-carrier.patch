@@ -1,6 +1,6 @@
 Subject: Reject a stack-pointer carrier passed as a call argument
-Origin: Filnix, https://github.com/mbrock/fil-c/commit/d9e63abada170ad56d9e22016a58fc1427e2f257
-Upstream-Status: Pending; proposed for pizlonator/fil-c from branch mbrock:sarcasm-callarg-carrier-and-rept
+Origin: Filnix, https://github.com/mbrock/fil-c/commit/350355f7c28f17298e43641e37d17602b13cfd2c
+Upstream-Status: Pending; proposed for pizlonator/fil-c from branch mbrock:sarcasm-callarg-carrier
 
 A register holding a stack-pointer save (`movq %rsp, %reg` or a
 frame-interior `leaq K(%rsp), %reg` that becomes a carrier) has no value in

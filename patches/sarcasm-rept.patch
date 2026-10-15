@@ -1,6 +1,6 @@
 Subject: Expand .rept/.endr blocks
-Origin: Filnix, https://github.com/mbrock/fil-c/commit/c9b1b17f8148b3a78cce65f3e6771c22f9e8d033
-Upstream-Status: Pending; proposed for pizlonator/fil-c from branch mbrock:sarcasm-callarg-carrier-and-rept
+Origin: Filnix, https://github.com/mbrock/fil-c/commit/d6cfc13cc4ebc78240c19e34faa3aa4f4954284a
+Upstream-Status: Pending; proposed for pizlonator/fil-c from branch mbrock:sarcasm-rept
 
 `.rept` was treated like any other structural directive, which ends the
 current data block. In
