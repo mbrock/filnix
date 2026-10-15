@@ -1,0 +1,8 @@
+# Stack buffers that SaRCAsm must treat as raw byte ranges, because the code
+# walks a pointer through them.
+#
+# function  base  offset  size
+#   base/offset locate the buffer start: `r15 -288` is r15 - 288, `rsp 0` is
+#   the rsp value at the `mov REG, rsp` that takes its address.
+jsimd_idct_float_sse2            r15  -288  256
+jsimd_huff_encode_one_block_sse2 rsp  0     136

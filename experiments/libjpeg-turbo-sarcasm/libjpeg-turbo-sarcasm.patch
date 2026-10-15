@@ -1,0 +1,284 @@
+diff --git a/simd/x86_64/jchuff-sse2.asm b/simd/x86_64/jchuff-sse2.asm
+index 4e572a0..2dc3ba2 100644
+--- a/simd/x86_64/jchuff-sse2.asm
++++ b/simd/x86_64/jchuff-sse2.asm
+@@ -143,35 +143,39 @@ times 1 << 15 db 16
+     cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer - 7], 0    ; buffer[-7] = 0;
+     sbb         bufferp, 6              ; buffer -= (6 + (temp[0] < 0xFF ? 1 : 0));
+-    mov         byte [buffer], temph    ; buffer[0] = temp[1];
+-    cmp         temph, 0xFF             ; Set CF if temp[1] < 0xFF
++    shr         tempq, 8                ; temp >>= 8;
++    mov         byte [buffer], tempb    ; buffer[0] = temp[0];
++    cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[1] < 0xFF ? 1 : 0));
+-    shr         tempq, 16               ; temp >>= 16;
++    shr         tempq, 8                ; temp >>= 8;
+     mov         byte [buffer], tempb    ; buffer[0] = temp[0];
+     cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[0] < 0xFF ? 1 : 0));
+-    mov         byte [buffer], temph    ; buffer[0] = temp[1];
+-    cmp         temph, 0xFF             ; Set CF if temp[1] < 0xFF
++    shr         tempq, 8                ; temp >>= 8;
++    mov         byte [buffer], tempb    ; buffer[0] = temp[0];
++    cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[1] < 0xFF ? 1 : 0));
+-    shr         tempq, 16               ; temp >>= 16;
++    shr         tempq, 8                ; temp >>= 8;
+     mov         byte [buffer], tempb    ; buffer[0] = temp[0];
+     cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[0] < 0xFF ? 1 : 0));
+-    mov         byte [buffer], temph    ; buffer[0] = temp[1];
+-    cmp         temph, 0xFF             ; Set CF if temp[1] < 0xFF
++    shr         tempq, 8                ; temp >>= 8;
++    mov         byte [buffer], tempb    ; buffer[0] = temp[0];
++    cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[1] < 0xFF ? 1 : 0));
+-    shr         tempd, 16               ; temp >>= 16;
++    shr         tempq, 8                ; temp >>= 8;
+     mov         byte [buffer], tempb    ; buffer[0] = temp[0];
+     cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[0] < 0xFF ? 1 : 0));
+-    mov         byte [buffer], temph    ; buffer[0] = temp[1];
+-    cmp         temph, 0xFF             ; Set CF if temp[1] < 0xFF
++    shr         tempq, 8                ; temp >>= 8;
++    mov         byte [buffer], tempb    ; buffer[0] = temp[0];
++    cmp         tempb, 0xFF             ; Set CF if temp[0] < 0xFF
+     mov         byte [buffer + 1], 0    ; buffer[1] = 0;
+     sbb         bufferp, -2             ; buffer -= (-2 + (temp[1] < 0xFF ? 1 : 0));
+     jmp         %1                      ; return;
+diff --git a/simd/x86_64/jdmrgext-avx2.asm b/simd/x86_64/jdmrgext-avx2.asm
+index 7ad80e1..d604b90 100644
+--- a/simd/x86_64/jdmrgext-avx2.asm
++++ b/simd/x86_64/jdmrgext-avx2.asm
+@@ -572,6 +572,12 @@ EXTN(jsimd_h2v2_merged_upsample_avx2):
+     mov         rbp, rsp
+     COLLECT_ARGS 4
+     push        rbx
++%ifdef __FILC__
++    push        r14
++%define MRGBUF r14
++%else
++%define MRGBUF rsp
++%endif
+ 
+     mov         eax, r10d
+ 
+@@ -583,11 +589,16 @@ EXTN(jsimd_h2v2_merged_upsample_avx2):
+     mov         rdi, r13
+     lea         rsi, [rsi + rcx * SIZEOF_JSAMPROW]
+ 
++%ifdef __FILC__
++    ; SaRCAsm loses pointers stored into an escaping frame; use a GC buffer.
++    FILC_ALLOCA SIZEOF_JSAMPARRAY * 4, 8, r14
++%else
+     sub         rsp, SIZEOF_JSAMPARRAY * 4
+-    mov         JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
+-    mov         JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
+-    mov         JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
+-    mov         rbx, rsp
++%endif
++    mov         JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
++    mov         JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
++    mov         JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
++    mov         rbx, MRGBUF
+ 
+     push        rdi
+     push        rcx
+@@ -610,17 +621,17 @@ EXTN(jsimd_h2v2_merged_upsample_avx2):
+     pop         rax
+     pop         rcx
+     pop         rdi
+-    mov         rsip, JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY]
+-    mov         rbxp, JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY]
+-    mov         rdxp, JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY]
++    mov         rsip, JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY]
++    mov         rbxp, JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY]
++    mov         rdxp, JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY]
+ 
+     add         rdi, byte SIZEOF_JSAMPROW  ; outptr1
+     add         rsi, byte SIZEOF_JSAMPROW  ; inptr01
+ 
+-    mov         JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
+-    mov         JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
+-    mov         JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
+-    mov         rbx, rsp
++    mov         JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
++    mov         JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
++    mov         JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
++    mov         rbx, MRGBUF
+ 
+     push        rdi
+     push        rcx
+@@ -643,10 +654,14 @@ EXTN(jsimd_h2v2_merged_upsample_avx2):
+     pop         rax
+     pop         rcx
+     pop         rdi
+-    mov         rsip, JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY]
+-    mov         rbxp, JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY]
+-    mov         rdxp, JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY]
++    mov         rsip, JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY]
++    mov         rbxp, JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY]
++    mov         rdxp, JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY]
++%ifndef __FILC__
+     add         rsp, SIZEOF_JSAMPARRAY * 4
++%else
++    pop         r14
++%endif
+ 
+     pop         rbx
+     UNCOLLECT_ARGS 4
+diff --git a/simd/x86_64/jdmrgext-sse2.asm b/simd/x86_64/jdmrgext-sse2.asm
+index 4e19964..3b3e909 100644
+--- a/simd/x86_64/jdmrgext-sse2.asm
++++ b/simd/x86_64/jdmrgext-sse2.asm
+@@ -501,6 +501,12 @@ EXTN(jsimd_h2v2_merged_upsample_sse2):
+     mov         rbp, rsp
+     COLLECT_ARGS 4
+     push        rbx
++%ifdef __FILC__
++    push        r14
++%define MRGBUF r14
++%else
++%define MRGBUF rsp
++%endif
+ 
+     mov         eax, r10d
+ 
+@@ -512,11 +518,16 @@ EXTN(jsimd_h2v2_merged_upsample_sse2):
+     mov         rdi, r13
+     lea         rsi, [rsi + rcx * SIZEOF_JSAMPROW]
+ 
++%ifdef __FILC__
++    ; SaRCAsm loses pointers stored into an escaping frame; use a GC buffer.
++    FILC_ALLOCA SIZEOF_JSAMPARRAY * 4, 8, r14
++%else
+     sub         rsp, SIZEOF_JSAMPARRAY * 4
+-    mov         JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
+-    mov         JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
+-    mov         JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
+-    mov         rbx, rsp
++%endif
++    mov         JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
++    mov         JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
++    mov         JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
++    mov         rbx, MRGBUF
+ 
+     push        rdi
+     push        rcx
+@@ -539,17 +550,17 @@ EXTN(jsimd_h2v2_merged_upsample_sse2):
+     pop         rax
+     pop         rcx
+     pop         rdi
+-    mov         rsip, JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY]
+-    mov         rbxp, JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY]
+-    mov         rdxp, JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY]
++    mov         rsip, JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY]
++    mov         rbxp, JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY]
++    mov         rdxp, JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY]
+ 
+     add         rdi, byte SIZEOF_JSAMPROW  ; outptr1
+     add         rsi, byte SIZEOF_JSAMPROW  ; inptr01
+ 
+-    mov         JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
+-    mov         JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
+-    mov         JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
+-    mov         rbx, rsp
++    mov         JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY], rsip  ; intpr00
++    mov         JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY], rbxp  ; intpr1
++    mov         JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY], rdxp  ; intpr2
++    mov         rbx, MRGBUF
+ 
+     push        rdi
+     push        rcx
+@@ -572,10 +583,14 @@ EXTN(jsimd_h2v2_merged_upsample_sse2):
+     pop         rax
+     pop         rcx
+     pop         rdi
+-    mov         rsip, JSAMPARRAY [rsp + 0 * SIZEOF_JSAMPARRAY]
+-    mov         rbxp, JSAMPARRAY [rsp + 1 * SIZEOF_JSAMPARRAY]
+-    mov         rdxp, JSAMPARRAY [rsp + 2 * SIZEOF_JSAMPARRAY]
++    mov         rsip, JSAMPARRAY [MRGBUF + 0 * SIZEOF_JSAMPARRAY]
++    mov         rbxp, JSAMPARRAY [MRGBUF + 1 * SIZEOF_JSAMPARRAY]
++    mov         rdxp, JSAMPARRAY [MRGBUF + 2 * SIZEOF_JSAMPARRAY]
++%ifndef __FILC__
+     add         rsp, SIZEOF_JSAMPARRAY * 4
++%else
++    pop         r14
++%endif
+ 
+     pop         rbx
+     UNCOLLECT_ARGS 4
+diff --git a/simd/x86_64/jsimd.c b/simd/x86_64/jsimd.c
+index 8cfd38b..1107b48 100644
+--- a/simd/x86_64/jsimd.c
++++ b/simd/x86_64/jsimd.c
+@@ -992,8 +992,11 @@ jsimd_can_idct_float(void)
+   if (sizeof(FLOAT_MULT_TYPE) != 4)
+     return 0;
+ 
++#ifndef __FILC__
++  /* SaRCAsm cannot model the walking pointer into the stack workspace. */
+   if ((simd_support & JSIMD_SSE2) && IS_ALIGNED_SSE(jconst_idct_float_sse2))
+     return 1;
++#endif
+ 
+   return 0;
+ }
+@@ -1028,8 +1031,10 @@ jsimd_idct_float(j_decompress_ptr cinfo, jpeg_component_info *compptr,
+                  JCOEFPTR coef_block, JSAMPARRAY output_buf,
+                  JDIMENSION output_col)
+ {
++#ifndef __FILC__
+   jsimd_idct_float_sse2(compptr->dct_table, coef_block, output_buf,
+                         output_col);
++#endif
+ }
+ 
+ GLOBAL(int)
+@@ -1042,9 +1047,12 @@ jsimd_can_huff_encode_one_block(void)
+   if (sizeof(JCOEF) != 2)
+     return 0;
+ 
++#ifndef __FILC__
++  /* SaRCAsm cannot model the walking pointer into the stack block. */
+   if ((simd_support & JSIMD_SSE2) && simd_huffman &&
+       IS_ALIGNED_SSE(jconst_huff_encode_one_block))
+     return 1;
++#endif
+ 
+   return 0;
+ }
+@@ -1054,8 +1062,12 @@ jsimd_huff_encode_one_block(void *state, JOCTET *buffer, JCOEFPTR block,
+                             int last_dc_val, c_derived_tbl *dctbl,
+                             c_derived_tbl *actbl)
+ {
++#ifndef __FILC__
+   return jsimd_huff_encode_one_block_sse2(state, buffer, block, last_dc_val,
+                                           dctbl, actbl);
++#else
++  return buffer;
++#endif
+ }
+ 
+ GLOBAL(int)
+diff --git a/src/jpeg_nbits.c b/src/jpeg_nbits.c
+index 752a163..c0d5446 100644
+--- a/src/jpeg_nbits.c
++++ b/src/jpeg_nbits.c
+@@ -17,7 +17,8 @@
+  * encoders can reuse jpeg_nbits_table from the SSE2 baseline Huffman encoder.
+  */
+ #if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || \
+-     (defined(_M_X64) && !defined(_M_ARM64EC))) && defined(WITH_SIMD)
++     (defined(_M_X64) && !defined(_M_ARM64EC))) && defined(WITH_SIMD) && \
++    !defined(__FILC__)
+ #undef INCLUDE_JPEG_NBITS_TABLE
+ #endif
+ 

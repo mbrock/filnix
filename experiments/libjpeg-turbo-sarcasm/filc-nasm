@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# A `nasm` stand-in for CMake: preprocess with NASM, convert to GNU as Intel
+# syntax with SaRCAsm annotations, and assemble with Fil-C clang (SaRCAsm).
+#
+# Needs REAL_NASM, FILC_CC (Fil-C clang) and SARCASM (the sarcasm package);
+# run.sh sets them.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+
+case "${1:-}" in
+  -v|--version|-hf|-h) exec "$REAL_NASM" "$@" ;;
+esac
+
+pre=() out= src=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -o*) out=${1#-o}; shift ;;
+    -f) shift 2 ;;
+    -f*|-g*|-F*) shift ;;
+    -MD|-MT|-MF|-MQ) pre+=("$1" "$2"); shift 2 ;;
+    -D*|-I*) pre+=("$1"); shift ;;
+    -*) echo "filc-nasm: unsupported option $1" >&2; exit 2 ;;
+    *) src=$1; shift ;;
+  esac
+done
+[ -n "$src" ] && [ -n "$out" ] || { echo "filc-nasm: need SOURCE and -o OBJECT" >&2; exit 2; }
+
+# Kernels SaRCAsm cannot yet model (see README); jsimd.c does not call them
+# under Fil-C.
+case "$(basename "$src" .asm)" in
+  jidctflt-sse2|jchuff-sse2)
+    printf '' | "$FILC_CC" -x c -c - -o "$out"
+    exit 0 ;;
+esac
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/filc-nasm.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+base=$(basename "$src" .asm)
+"$REAL_NASM" -E -D__FILC__ "${pre[@]}" "$src" -o "$tmp/$base.pre"
+python3 -I "$here/nasm2gas.py" "$tmp/$base.pre" "$here/sigs.txt" > "$tmp/$base.s"
+if [ -n "${FILC_NASM_KEEP:-}" ]; then cp "$tmp/$base.s" "$FILC_NASM_KEEP/"; fi
+"$FILC_CC" --filc-resource-dir="$SARCASM" -c "$tmp/$base.s" -o "$out"
