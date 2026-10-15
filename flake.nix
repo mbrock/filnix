@@ -187,6 +187,10 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            staging-sarcasm-fixes = import ./tests/sarcasm-fixes.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             unsafe-call-boundary = import ./tests/unsafe-call-boundary.nix {
               inherit pkgs filcc;
             };

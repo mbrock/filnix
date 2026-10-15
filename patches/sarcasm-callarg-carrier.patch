@@ -1,0 +1,93 @@
+Subject: Reject a stack-pointer carrier passed as a call argument
+Origin: Filnix, https://github.com/mbrock/fil-c/commit/d9e63abada170ad56d9e22016a58fc1427e2f257
+Upstream-Status: Pending; proposed for pizlonator/fil-c from branch mbrock:sarcasm-callarg-carrier-and-rept
+
+A register holding a stack-pointer save (`movq %rsp, %reg` or a
+frame-interior `leaq K(%rsp), %reg` that becomes a carrier) has no value in
+the output: the rewrite drops the save. Every read of such a carrier is
+rejected, except that an annotated call's argument registers were not
+counted as reads. The call only poisoned the caller-saved carrier, so the
+callee silently received whatever the register held before the dropped
+save. For example,
+
+    movq %rdi, 0(%rsp)   #! store ptr
+    movq %rsi, 8(%rsp)   #! store ptr
+    leaq 0(%rsp), %rdi
+    call use_rows        #! void(ptr)
+
+passed use_rows the incoming %rdi (with its capability) instead of the
+frame address, and the frame stores were dead. This is memory-safe but
+miscompiles the program.
+
+The frame analysis now marks a call whose signature's argument registers
+include a live carrier, and the rewrite rejects it. The rejection waits for
+the rewrite because only the final analysis knows whether a D9 frame
+promotion turned the lea into region traffic, whose address a callee may
+legally receive (sarcasm-frame-escape-push-alias-att and its relatives pass
+such a lea at a shifted depth).
+
+diff --git a/sarcasm/x86_64_frame.luau b/sarcasm/x86_64_frame.luau
+index cf29af9ef398..81cf510f25a5 100644
+--- a/sarcasm/x86_64_frame.luau
++++ b/sarcasm/x86_64_frame.luau
+@@ -696,6 +696,7 @@ function x86_64_frame.analyzeFrame(body, sigDesc, regions)
+ 		st.x86_saveStore = nil
+ 		st.x86_carrierLoad = nil
+ 		st.x86_leaSave = nil
++		st.x86_carrierCallArg = nil
+ 		st.x86_spSave = nil
+ 		st.x86_dropRestore = nil
+ 		st.x86_midSp = nil
+@@ -2315,6 +2316,8 @@ function x86_64_frame.analyzeFrame(body, sigDesc, regions)
+ 				end
+ 			end
+ 		end
++		-- Recomputed on every transfer, so it reflects the converged state.
++		st.x86_carrierCallArg = nil
+ 		for name, e in pairs(smap) do
+ 			if not e.redefined and not e.slot and not e.roff and not e.conflict then
+ 				-- Count this instruction's modeled uses of the save register. Allowed
+@@ -2350,6 +2353,24 @@ function x86_64_frame.analyzeFrame(body, sigDesc, regions)
+ 				for _, u in c.uses do
+ 					if u.kind == "reg" and u.rc == "gpr" and u.num == e.num then nUses += 1 end
+ 				end
++				-- An annotated hardware call reads its yolo argument registers
++				-- (the lift models them as uses only later, through callInfo), so
++				-- a carrier in one hands the callee the phantom value — the
++				-- dropped save. Without this, the call's poisoning below marked
++				-- the carrier redefined and the callee silently received whatever
++				-- the register held before the dropped save. The rejection is
++				-- deferred to the rewrite (see x86_carrierCallArg there): only the
++				-- final analysis knows whether a D9 frame promotion turned the
++				-- lea into region traffic, whose value the callee may legally
++				-- receive (sarcasm-frame-escape-push-alias-att).
++				if bb == "call" and st.localCall == nil and st.annotation then
++					local cs = sig.parseSignature(st.annotation, st)
++					for k = 1, cs.argWords do
++						if x86.CC.yoloArg(k, cs.argTypes) == e.num then
++							st.x86_carrierCallArg = { name = name, form = e.form }
++						end
++					end
++				end
+ 				-- A stack access through a stack+offset alias carrier (mov %rsp,
+ 				-- %reg / lea K(%rsp), %reg, then disp(%reg)): the register's
+ 				-- value is absolute (entry_rsp - depth on every path), so the
+@@ -7210,6 +7231,18 @@ function x86_64_frame.rewrite(st, ctx)
+ 	-- inside the synthesized Fil-C frame (the frame-link restore would read garbage and
+ 	-- `ret` would pop a wild address). Reject it — frame setup must be the canonical
+ 	-- push %rbp / mov %rsp,%rbp / sub $imm,%rsp form the prologue analysis recognizes.
++	-- A stack-pointer carrier passed as a call argument (marked by the final
++	-- analysis; see the use check in analyzeFrame): the save that defined it
++	-- is dropped, so the callee would receive a stale register value.
++	local cca = st.x86_carrierCallArg
++	if cca then
++		err.at(st, "passing %" .. cca.name .. " to a call while it holds the"
++			.. " prologue `" .. (cca.form or "movq %rsp") .. ", %" .. cca.name
++			.. "` save cannot be proven safe (the save is dropped by the rewrite —"
++			.. " the register's stack value does not exist in the output; allocate"
++			.. " memory the callee may see with .alloca): " .. (st.raw or m))
++	end
++
+ 	if b == "enter" or b == "enterq" then
+ 		err.at(st, "`enter` is not supported (cannot prove safety; use the canonical"
+ 			.. " push %rbp / mov %rsp,%rbp / sub $imm,%rsp frame setup): " .. (st.raw or m))

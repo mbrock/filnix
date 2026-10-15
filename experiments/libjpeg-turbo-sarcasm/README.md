@@ -88,6 +88,13 @@ read-only same-file data would remove most of this overhead.
 
 ## SaRCAsm issues found
 
+The first two are fixed by `patches/sarcasm-rept.patch` and
+`patches/sarcasm-callarg-carrier.patch`, which the staging toolchain
+applies (check: `staging-sarcasm-fixes`). With the second fix the
+reproducer is rejected at compile time instead of miscompiled. The
+experiment still uses the release toolchain, where `.rept` is expanded by
+`nasm2gas.py` and the merged upsampler uses `.alloca`.
+
 1. **`.rept` in data is silently dropped.** A `.rept` block in `.rodata`
    produced an 8-byte zero object, and the labels inside it were left
    undefined, so the failure surfaced only at link time. Other
