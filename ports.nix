@@ -44,8 +44,9 @@ let
 
   # Mozilla's root store from NSS 3.131.1, which removes the emSign roots
   # behind the October 2026 eMudhra key compromise (emSign ECC Root CA - G3,
-  # emSign Root CA - C1 and emSign ECC Root CA - C3). Both cacert and the
-  # NSS port's built-in roots (libnssckbi) are generated from it.
+  # emSign Root CA - C1 and emSign ECC Root CA - C3). Used for cacert; the
+  # NSS port's libnssckbi is p11-kit's trust module, which reads the host's
+  # trust store at runtime instead of compiled-in roots.
   nssCertdata = pkgs.fetchurl {
     urls = [
       "https://hg-edge.mozilla.org/projects/nss/raw-file/NSS_3_131_1_RTM/lib/ckfw/builtins/certdata.txt"
