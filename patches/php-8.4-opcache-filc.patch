@@ -1,0 +1,44 @@
+Subject: Keep opcache's shared memory usable under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C tracks pointer capabilities per process. Opcache stores compiled scripts,
+pointers included, in one MAP_SHARED segment that FPM and CGI workers share, so
+a worker that read an entry another worker had cached trapped on a pointer
+without a capability. Map the segment privately instead: each worker inherits
+what the parent cached before forking (interned strings, preloading) and
+caches the rest itself. opcache_reset() and opcache_invalidate() then affect
+only the calling process; timestamp validation still sees changed files in
+every process. Single-process SAPIs (CLI, the built-in server) are unaffected.
+
+To get huge pages below 4 GiB, opcache maps a region, unmaps it and maps it
+again with MAP_FIXED at the old address. Fil-C refuses to reuse the pointer to
+the unmapped region, so every SAPI with opcache enabled died at startup. Take
+the ordinary MAP_HUGETLB and plain mappings instead.
+
+--- a/ext/opcache/shared_alloc_mmap.c
++++ b/ext/opcache/shared_alloc_mmap.c
+@@ -44,6 +44,14 @@
+ #if defined(MAP_ANON) && !defined(MAP_ANONYMOUS)
+ # define MAP_ANONYMOUS MAP_ANON
+ #endif
++#ifdef __FILC__
++/* Fil-C keeps pointer capabilities per process, so a pointer one process
++ * stores in a shared mapping has none in another: an FPM worker trapped
++ * reading the hash entry of a script another worker had cached. Map the
++ * cache privately; forked workers still start from what the parent cached. */
++# undef MAP_SHARED
++# define MAP_SHARED MAP_PRIVATE
++#endif
+ #if defined(MAP_ALIGNED_SUPER)
+ # include <sys/types.h>
+ # include <sys/sysctl.h>
+@@ -241,7 +249,7 @@
+ 	 * (boot time config only, but enabled by default on most arches).
+ 	 */
+ 	if (requested_size >= huge_page_size && requested_size % huge_page_size == 0) {
+-# if defined(__x86_64__) && defined(MAP_32BIT)
++# if defined(__x86_64__) && defined(MAP_32BIT) && !defined(__FILC__)
+ 		/* to got HUGE PAGES in low 32-bit address we have to reserve address
+ 		   space and then remap it using MAP_HUGETLB */
+ 

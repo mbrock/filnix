@@ -138,6 +138,79 @@ portDSL.makeOverlay portList final prev
   # default 1.89 builds its assembly fcontext and fails.
   boost = final.boost187;
 
+  # Nixpkgs builds PHP with llvmPackages.stdenv whenever the compiler is
+  # Clang, which for Fil-C means a second compiler-rt and libc++ (and a
+  # cross GCC) built from source. The Fil-C stdenv is already Clang.
+  php84 =
+    (
+      (final.callPackage "${prev.path}/pkgs/development/interpreters/php" {
+        llvmPackages = prev.llvmPackages // {
+          inherit (final) stdenv;
+        };
+      }).php84.override
+        {
+          # Bundled extensions build from the unpatched PHP source.
+          packageOverrides = _: pprev: {
+            extensions = pprev.extensions // {
+              dom = pprev.extensions.dom.overrideAttrs (old: {
+                patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-dom-filc.patch ];
+              });
+              pcntl = pprev.extensions.pcntl.overrideAttrs (old: {
+                # Pins CPUs 0 and 1, but build sandboxes may exclude CPU 0.
+                postPatch = (old.postPatch or "") + ''
+                  rm ext/pcntl/tests/pcntl_cpuaffinity.phpt
+                '';
+              });
+              # The format probes run programs, so the cross build assumed
+              # libgd had none of them; it has all of them.
+              gd = pprev.extensions.gd.overrideAttrs (old: {
+                configureFlags =
+                  old.configureFlags
+                  ++ map (f: "php_cv_lib_gd_gdImageCreateFrom${f}=yes") [
+                    "Png"
+                    "Avif"
+                    "Webp"
+                    "Jpeg"
+                    "Xpm"
+                    "Bmp"
+                    "Tga"
+                  ];
+              });
+              # Nixpkgs pins ICU 73; use the ported default ICU.
+              intl = pprev.extensions.intl.overrideAttrs { buildInputs = [ final.icu ]; };
+              opcache = pprev.extensions.opcache.overrideAttrs (old: {
+                patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-opcache-filc.patch ];
+                # The JIT emits machine code, which Fil-C cannot run.
+                configureFlags = old.configureFlags ++ [ "--disable-opcache-jit" ];
+              });
+            };
+          };
+        }
+    ).overrideAttrs
+      (old: {
+        patches = old.patches ++ [ ../patches/php-8.4-filc.patch ];
+        # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
+        separateDebugInfo = false;
+        configureFlags = old.configureFlags ++ [
+          # Fibers switch stacks with ucontext, like Boost.Context here,
+          # instead of the fcontext assembly.
+          "--disable-fiber-asm"
+          # Overflow-checked arithmetic in C instead of x86 `asm goto`,
+          # whose callbr crashes FilPizlonatorPass.
+          "php_cv_have__asm_goto=no"
+          # Fil-C cannot run generated machine code; PCRE warned at the
+          # first preg_* call when mapping executable memory failed.
+          "--without-pcre-jit"
+          # phpdbg's watchpoints would use userfaultfd, which Fil-C does not
+          # support; phpdbg died at startup.
+          "ac_cv_have_decl_UFFDIO_WRITEPROTECT_MODE_WP=no"
+          # The probe runs a program, so the cross build disabled the stack
+          # limit check; deep recursion then hit Fil-C's stack overflow trap
+          # instead of throwing "Maximum call stack size reached".
+          "php_cv_have_stack_limit=yes"
+        ];
+      });
+
   # The ODBC driver builds its bundled Connector/C submodule, whose export
   # map needs the same fix as mariadb-connector-c (see ports.nix).
   unixodbcDrivers = prev.unixodbcDrivers // {
