@@ -10,12 +10,15 @@ Exits 1 naming the roots whose closures are incomplete.
     scripts/ci-cache-check.py [--flake .] ATTR...
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import subprocess
-import sys
+import urllib.error
+import urllib.request
 
 CACHES = ("https://filc.cachix.org", "https://cache.nixos.org")
+STORE = "/nix/store/"
 
 
 def nix(*args):
@@ -28,23 +31,33 @@ def outputs(flake, attr):
     return json.loads(nix("eval", "--json", f"{flake}#{attr}", "--apply", expr))
 
 
+def narinfo(cache, path):
+    """Return the path's references if the cache has it, else None.
+
+    Reads the narinfo over HTTP rather than with nix path-info: newer Nix
+    fails a whole path-info query when one path is missing, and every Nix
+    remembers a missing narinfo for an hour."""
+    name = path.removeprefix(STORE)
+    try:
+        request = urllib.request.Request(f"{cache}/{name.split('-', 1)[0]}.narinfo",
+                                         headers={"User-Agent": "filnix-ci-cache-check"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            text = response.read().decode()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    for line in text.splitlines():
+        if line.startswith("References:"):
+            return [STORE + ref for ref in line.split()[1:]]
+    return []
+
+
 def lookup(cache, paths):
     """Return {path: references} for the paths the cache has."""
-    if not paths:
-        return {}
-    result = subprocess.run(
-        # Nix remembers a missing narinfo for an hour; a rerun after the
-        # campaign publishes must ask again.
-        ["nix", "--extra-experimental-features", "nix-command", "path-info", "--json",
-         "--option", "narinfo-cache-negative-ttl", "0", "--store", cache, *sorted(paths)],
-        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        info = json.loads(result.stdout or "{}")
-    except json.JSONDecodeError:
-        raise SystemExit(f"{cache}: {result.stderr.strip()}")
-    if isinstance(info, list):  # Nix before 2.19
-        info = {item["path"]: item for item in info if item.get("valid", True)}
-    return {path: item["references"] for path, item in info.items() if item}
+    with ThreadPoolExecutor(32) as pool:
+        results = dict(zip(paths, pool.map(lambda path: narinfo(cache, path), paths)))
+    return {path: refs for path, refs in results.items() if refs is not None}
 
 
 def closure(roots, known):
