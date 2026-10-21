@@ -369,6 +369,8 @@
             inherit (sarcasm) minilute;
             inherit (pkgsFilc) openssl-sarcasm;
             php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+            # Experimental: opcache's JIT, compiled through C (docs/php.md).
+            php-jit = pkgsFilc.php84-jit;
             php74-dist = import ./packages/php-dist {
               inherit pkgs pkgsFilc;
               php = pkgsFilc.php74.withExtensions (

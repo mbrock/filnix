@@ -1,0 +1,1865 @@
+Subject: Run opcache's JIT under Fil-C by compiling its IR as C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C cannot run machine code written into memory, so opcache's DynASM
+backend cannot work. This adds a second backend (ext/opcache/jit/zend_jit_c.c)
+used when building with Fil-C: each IR function the JIT produces is printed as
+C, compiled by the Fil-C compiler into a shared object and loaded with dlopen.
+The compiler instruments the generated code like any other C, so a JIT bug
+gives wrong results or a Fil-C panic, never memory corruption.
+
+Fil-C pointers carry an invisible capability that integers lack, and the JIT
+treats addresses as integers:
+
+- IR address values are char * in the generated C; additions keep the
+  capability of the pointer operand, chosen at run time when both may be one.
+- Every pointer the JIT embeds as a constant is registered when it becomes an
+  integer (ir_CONST_ADDR, ZEND_ADDR_CONST_ZVAL); generated code reads it back
+  from a table the loader fills, and Z_ZV looks it up again.
+- The VM's fixed registers (execute_data, opline) become C locals; code that
+  the IR reaches by jumping receives them as arguments.
+
+Function JIT works as designed. In the tracing JIT a failed guard copies its
+snapshot's values into an emulated register buffer and calls a C version of
+the CALL VM's exit stub around zend_jit_trace_exit(). Generated code cannot be
+patched, so side traces are compiled but never linked, and exits fall back to
+the interpreter; traces also compile synchronously, which makes tracing slower
+than the interpreter on short scripts.
+
+The JIT buffer stays ordinary memory (no mprotect), and opcache no longer
+picks a mapping hint near PHP's text.
+
+Environment: PHP_JIT_CC (compiler; the default ZEND_JIT_C_CC is meant to be
+replaced by an absolute path), PHP_JIT_CFLAGS (-O1), PHP_JIT_C_DIR (/tmp),
+PHP_JIT_C_KEEP, PHP_JIT_C_VERBOSE.
+
+diff --git a/ext/opcache/jit/zend_jit.c b/ext/opcache/jit/zend_jit.c
+index fa729dfa..f56fcdf3 100644
+--- a/ext/opcache/jit/zend_jit.c
++++ b/ext/opcache/jit/zend_jit.c
+@@ -695,6 +695,12 @@ static bool zend_may_be_dynamic_property(zend_class_entry *ce, zend_string *memb
+ 
+ #include "jit/zend_jit_ir.c"
+ 
++#ifdef ZEND_JIT_C_BACKEND
++/* The JIT buffer holds no machine code with the C backend; leave it writable
++ * data instead of making it executable. */
++# undef HAVE_MPROTECT
++#endif
++
+ #if defined(__clang__)
+ # pragma clang diagnostic pop
+ #endif
+diff --git a/ext/opcache/jit/zend_jit_c.c b/ext/opcache/jit/zend_jit_c.c
+new file mode 100644
+index 00000000..802483ae
+--- /dev/null
++++ b/ext/opcache/jit/zend_jit_c.c
+@@ -0,0 +1,1569 @@
++/*
++ * Fil-C C backend for the opcache JIT.
++ *
++ * Fil-C cannot run machine code written into memory, so instead of emitting
++ * machine code with DynASM this backend prints each IR function as C,
++ * compiles it with the Fil-C compiler into a shared object and loads it with
++ * dlopen.  The compiler instruments the generated code like any other C, so a
++ * JIT bug yields wrong results or a Fil-C panic, never memory corruption.
++ *
++ * Fil-C pointers carry an invisible capability that integers do not, so the
++ * backend has to keep pointers typed as pointers:
++ *
++ * - IR_ADDR values are "char *" in the generated C.  Arithmetic keeps the
++ *   capability of the operand that is a pointer (see zjc_analyze).
++ * - The JIT bakes runtime addresses into the IR as integer constants.  The
++ *   pointers they came from are recorded in a process-wide registry
++ *   (zjc_register), and the generated code reads them from an exported table
++ *   "zjc_K" that the loader fills with the real pointers.  An address that
++ *   constant folding derived from a registered pointer (base + offset) is
++ *   rebuilt from that base, found through its Fil-C bounds.
++ * - Fixed registers (ZREG_FP, ZREG_IP) become C locals.  Code that the IR
++ *   reaches by jumping (stubs, guards' targets) receives them as arguments.
++ *
++ * The generated C reads pointers from that table rather than embedding them,
++ * so it is usually identical across processes and a caching compiler wrapper
++ * (ccache) can reuse its objects.
++ *
++ * Environment: PHP_JIT_CC (compiler), PHP_JIT_CFLAGS (default -O1),
++ * PHP_JIT_C_DIR (parent of the per-process work directory, default /tmp),
++ * PHP_JIT_C_KEEP (keep generated files), PHP_JIT_C_VERBOSE.
++ */
++
++#include <dlfcn.h>
++/* The Fil-C compiler for generated code; PHP_JIT_CC overrides it.  Packagers
++ * replace this with an absolute path. */
++#define ZEND_JIT_C_CC "clang"
++#include <stdio.h>
++#include <stdlib.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <stdfil.h>
++
++/* ---- Registry of pointers that the JIT embedded as constants ---- */
++
++static void    **zjc_reg_ptrs;
++static uint32_t  zjc_reg_count;
++static uint32_t  zjc_reg_cap;
++static int32_t  *zjc_reg_hash;   /* open addressing, -1 = empty */
++static uint32_t  zjc_reg_hash_size;
++
++static uint32_t zjc_hash_addr(uintptr_t a)
++{
++	a ^= a >> 33;
++	a *= 0xff51afd7ed558ccdULL;
++	a ^= a >> 33;
++	return (uint32_t)a;
++}
++
++static int32_t zjc_reg_find(uintptr_t addr)
++{
++	uint32_t mask, i;
++
++	if (!zjc_reg_hash_size) {
++		return -1;
++	}
++	mask = zjc_reg_hash_size - 1;
++	for (i = zjc_hash_addr(addr) & mask; zjc_reg_hash[i] >= 0; i = (i + 1) & mask) {
++		if ((uintptr_t)zjc_reg_ptrs[zjc_reg_hash[i]] == addr) {
++			return zjc_reg_hash[i];
++		}
++	}
++	return -1;
++}
++
++static void zjc_reg_rehash(void)
++{
++	uint32_t size = zjc_reg_hash_size ? zjc_reg_hash_size * 2 : 1024;
++	uint32_t i, mask = size - 1;
++
++	free(zjc_reg_hash);
++	zjc_reg_hash = malloc(size * sizeof(int32_t));
++	memset(zjc_reg_hash, 0xff, size * sizeof(int32_t));
++	zjc_reg_hash_size = size;
++	for (i = 0; i < zjc_reg_count; i++) {
++		uint32_t h = zjc_hash_addr((uintptr_t)zjc_reg_ptrs[i]) & mask;
++		while (zjc_reg_hash[h] >= 0) {
++			h = (h + 1) & mask;
++		}
++		zjc_reg_hash[h] = i;
++	}
++}
++
++/* Remember a pointer the JIT is about to embed as an integer constant, and
++ * return that integer.  Pointers without a capability (integers cast to
++ * pointers) are not recorded; zjc_emit_addr reconstructs them from a
++ * registered base when it can. */
++uintptr_t zjc_register(const void *p)
++{
++	uintptr_t addr = (uintptr_t)p;
++
++	if (!p || !zhasvalidcap((void*)p) || zjc_reg_find(addr) >= 0) {
++		return addr;
++	}
++	if (zjc_reg_count == zjc_reg_cap) {
++		zjc_reg_cap = zjc_reg_cap ? zjc_reg_cap * 2 : 1024;
++		zjc_reg_ptrs = realloc(zjc_reg_ptrs, zjc_reg_cap * sizeof(void*));
++	}
++	zjc_reg_ptrs[zjc_reg_count++] = (void*)p;
++	if (zjc_reg_count * 2 > zjc_reg_hash_size) {
++		zjc_reg_rehash();
++	} else {
++		uint32_t mask = zjc_reg_hash_size - 1;
++		uint32_t h = zjc_hash_addr(addr) & mask;
++		while (zjc_reg_hash[h] >= 0) {
++			h = (h + 1) & mask;
++		}
++		zjc_reg_hash[h] = zjc_reg_count - 1;
++	}
++	return addr;
++}
++
++/* Find a registered pointer whose object contains addr.  Linear, but only
++ * used for addresses that constant folding derived from registered ones. */
++static int32_t zjc_reg_find_base(uintptr_t addr)
++{
++	uint32_t i;
++
++	for (i = zjc_reg_count; i > 0; i--) {
++		void *p = zjc_reg_ptrs[i - 1];
++		uintptr_t lower = (uintptr_t)zgetlower(p);
++		uintptr_t upper = (uintptr_t)zgetupper(p);
++
++		if (addr >= lower && addr <= upper && upper > lower) {
++			return i - 1;
++		}
++	}
++	return -1;
++}
++
++/* ---- Tracing JIT exits ---- */
++
++/* Exit "addresses" of the tracing JIT (zend_jit_trace_get_exit_addr). */
++#define ZJC_EXIT_BASE ((uintptr_t)0x7e5a00000000ULL)
++
++struct _zend_jit_registers_buf;
++int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, struct _zend_jit_registers_buf *regs);
++void *zend_jit_snapshot_handler(ir_ctx *ctx, ir_ref snapshot_ref, ir_insn *snapshot, void *addr);
++
++/* zend_jit_trace_exit_stub for the CALL VM, in C.  A failed guard in
++ * generated code fills a register buffer with the values its snapshot names
++ * and calls this.  zend_jit_trace_exit() writes them back into the VM frame;
++ * then execution resumes in the interpreter, running the original handler of
++ * the opline where the trace left off (the current one may enter the trace
++ * again). */
++static int32_t zjc_trace_exit(char *fp, uint32_t exit_num, struct _zend_jit_registers_buf *regs)
++{
++	zend_execute_data *execute_data;
++	zend_jit_op_array_trace_extension *jit_extension;
++	int ret = zend_jit_trace_exit(exit_num, regs);
++	zend_op_trace_info *info;
++
++	if (ret < 0) {
++		return -1; /* ZEND_VM_RETURN */
++	}
++	execute_data = EG(current_execute_data);
++	if (ret == 0) {
++		if (EG(exception)) {
++			return 1; /* ZEND_VM_ENTER: the VM handles the exception */
++		}
++		/* Natively, 0 means "resume at EX(opline)": if that opline enters a
++		 * trace, the trace's exit jump has been patched to a side trace by now.
++		 * Exits in generated C cannot be patched, so re-entering would fail
++		 * the same guard again and again.  Interpret the opline instead, as
++		 * zend_jit_trace_exit() itself does for exits at a trace's start. */
++		jit_extension = (zend_jit_op_array_trace_extension*)ZEND_FUNC_INFO(&EX(func)->op_array);
++		info = ZEND_OP_TRACE_INFO(EX(opline), jit_extension->offset);
++		if (EX(opline)->handler == info->orig_handler) {
++			return 1;
++		}
++	}
++	jit_extension = (zend_jit_op_array_trace_extension*)ZEND_FUNC_INFO(&EX(func)->op_array);
++	ret = ((zend_vm_opcode_handler_t)ZEND_OP_TRACE_INFO(EX(opline), jit_extension->offset)->orig_handler)(execute_data);
++	return ret < 0 ? -1 : 1;
++}
++
++/* The pointer behind an address the JIT handled as an integer. */
++void *zjc_lookup(uintptr_t addr)
++{
++	int32_t i = zjc_reg_find(addr);
++
++	if (i >= 0) {
++		return zjc_reg_ptrs[i];
++	}
++	i = zjc_reg_find_base(addr);
++	if (i >= 0) {
++		return (char*)zjc_reg_ptrs[i] + (addr - (uintptr_t)zjc_reg_ptrs[i]);
++	}
++	return (void*)addr;
++}
++
++/* ---- Per-compilation state ---- */
++
++typedef struct _zjc_unit {
++	ir_ctx    *ctx;
++	FILE      *f;
++	uint32_t  *k_reg;          /* zjc_K slot -> registry index */
++	uint32_t   k_count;
++	uint32_t   k_cap;
++	ir_bitset  intlike;        /* ADDR values that hold plain integers */
++	bool       skip_prologue;  /* reached by IJMP/guards: FP/IP come in as arguments */
++	bool       failed;
++} zjc_unit;
++
++static uint32_t zjc_k_slot(zjc_unit *u, uint32_t reg_idx)
++{
++	uint32_t i;
++
++	for (i = 0; i < u->k_count; i++) {
++		if (u->k_reg[i] == reg_idx) {
++			return i;
++		}
++	}
++	if (u->k_count == u->k_cap) {
++		u->k_cap = u->k_cap ? u->k_cap * 2 : 64;
++		u->k_reg = realloc(u->k_reg, u->k_cap * sizeof(uint32_t));
++	}
++	u->k_reg[u->k_count] = reg_idx;
++	return u->k_count++;
++}
++
++/* An address constant is "pointer-like" when it names a registered object or
++ * lies inside one; anything else (offsets, masks, tags) is an integer. */
++static bool zjc_addr_const_is_ptr(uintptr_t addr)
++{
++	if (addr < 0x10000) {
++		return 0;
++	}
++	return zjc_reg_find(addr) >= 0 || zjc_reg_find_base(addr) >= 0;
++}
++
++static void zjc_emit_addr(zjc_unit *u, uintptr_t addr)
++{
++	FILE *f = u->f;
++	int32_t idx;
++
++	if (addr == 0) {
++		fprintf(f, "((char*)0)");
++		return;
++	}
++	if (addr >= 0x10000) {
++		idx = zjc_reg_find(addr);
++		if (idx >= 0) {
++			fprintf(f, "zjc_K[%u]", zjc_k_slot(u, idx));
++			return;
++		}
++		idx = zjc_reg_find_base(addr);
++		if (idx >= 0) {
++			fprintf(f, "(zjc_K[%u] + %" PRIdPTR ")", zjc_k_slot(u, idx),
++				(intptr_t)(addr - (uintptr_t)zjc_reg_ptrs[idx]));
++			return;
++		}
++	}
++	/* A plain integer: no capability.  Fine for offsets and tags; a real
++	 * address here would panic on use rather than access memory. */
++	fprintf(f, "((char*)(uintptr_t)0x%" PRIxPTR "ULL)", addr);
++}
++
++static const char *zjc_tname(ir_type type)
++{
++	return type == IR_ADDR ? "char*" : ir_type_cname[type];
++}
++
++static bool zjc_is_intlike(zjc_unit *u, ir_ref ref)
++{
++	ir_insn *insn = &u->ctx->ir_base[ref];
++
++	if (IR_IS_CONST_REF(ref)) {
++		if (insn->type != IR_ADDR) {
++			return 1;
++		}
++		if (insn->op == IR_FUNC_ADDR) {
++			return 0;
++		}
++		return !zjc_addr_const_is_ptr(insn->val.addr);
++	}
++	if (insn->type != IR_ADDR) {
++		return 1;
++	}
++	return ir_bitset_in(u->intlike, ref);
++}
++
++/* Decide which ADDR values are integers rather than pointers, so that
++ * pointer arithmetic keeps the capability of the pointer operand. */
++static void zjc_analyze(zjc_unit *u)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_ref i, n;
++	ir_insn *insn;
++	int pass;
++
++	u->intlike = ir_bitset_malloc(ctx->insns_count);
++	for (pass = 0; pass < 2; pass++) {
++		for (i = 1, insn = ctx->ir_base + 1; i < ctx->insns_count;) {
++			bool il = 0;
++
++			if (insn->type == IR_ADDR) {
++				switch (insn->op) {
++					case IR_MUL: case IR_DIV: case IR_MOD:
++					case IR_SHL: case IR_SHR: case IR_SAR:
++					case IR_ROL: case IR_ROR: case IR_NEG: case IR_NOT:
++					case IR_SEXT: case IR_ZEXT: case IR_TRUNC: case IR_BITCAST:
++					case IR_FP2INT: case IR_BSWAP:
++					case IR_CTPOP: case IR_CTLZ: case IR_CTTZ:
++						il = 1;
++						break;
++					case IR_ADD:
++					case IR_AND: case IR_OR: case IR_XOR:
++					case IR_MIN: case IR_MAX:
++						il = zjc_is_intlike(u, insn->op1) && zjc_is_intlike(u, insn->op2);
++						break;
++					case IR_SUB:
++						il = zjc_is_intlike(u, insn->op1) || !zjc_is_intlike(u, insn->op2);
++						break;
++					case IR_COPY:
++					case IR_PI:
++						il = zjc_is_intlike(u, insn->op1);
++						break;
++					case IR_COND:
++						il = zjc_is_intlike(u, insn->op2) && zjc_is_intlike(u, insn->op3);
++						break;
++					case IR_PHI:
++						if (pass > 0) {
++							ir_ref j;
++
++							il = 1;
++							for (j = 2; j <= insn->inputs_count; j++) {
++								ir_ref in = ir_insn_op(insn, j);
++								if (in && !zjc_is_intlike(u, in)) {
++									il = 0;
++									break;
++								}
++							}
++						}
++						break;
++					default:
++						il = 0;
++						break;
++				}
++				if (il) {
++					ir_bitset_incl(u->intlike, i);
++				} else {
++					ir_bitset_excl(u->intlike, i);
++				}
++			}
++			n = ir_insn_len(insn);
++			i += n;
++			insn += n;
++		}
++	}
++}
++
++/* ---- Value printing ---- */
++
++static void zjc_emit_const(zjc_unit *u, ir_ref ref)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_insn *insn = &ctx->ir_base[ref];
++	FILE *f = u->f;
++
++	switch (insn->op) {
++		case IR_FUNC:
++			fprintf(f, "%s", ir_get_str(ctx, insn->val.name));
++			return;
++		case IR_SYM:
++			fprintf(f, "((char*)&%s)", ir_get_str(ctx, insn->val.name));
++			return;
++		case IR_STR:
++			fprintf(f, "((char*)");
++			ir_print_const(ctx, insn, f, true);
++			fprintf(f, ")");
++			return;
++		case IR_LABEL:
++			fprintf(f, "&&bb%d", insn->val.u32_hi);
++			return;
++		case IR_FUNC_ADDR:
++			zjc_emit_addr(u, insn->val.addr);
++			return;
++		default:
++			break;
++	}
++	switch (insn->type) {
++		case IR_BOOL:
++			fprintf(f, "%s", insn->val.b ? "true" : "false");
++			break;
++		case IR_U8:  fprintf(f, "((uint8_t)%uU)", insn->val.u8); break;
++		case IR_U16: fprintf(f, "((uint16_t)%uU)", insn->val.u16); break;
++		case IR_U32: fprintf(f, "((uint32_t)%uU)", insn->val.u32); break;
++		case IR_U64: fprintf(f, "((uint64_t)%" PRIu64 "ULL)", insn->val.u64); break;
++		case IR_CHAR: fprintf(f, "((char)%d)", (int)insn->val.c); break;
++		case IR_I8:  fprintf(f, "((int8_t)%d)", insn->val.i8); break;
++		case IR_I16: fprintf(f, "((int16_t)%d)", insn->val.i16); break;
++		case IR_I32:
++			if (insn->val.i32 == INT32_MIN) {
++				fprintf(f, "((int32_t)(-2147483647-1))");
++			} else {
++				fprintf(f, "((int32_t)%d)", insn->val.i32);
++			}
++			break;
++		case IR_I64:
++			if (insn->val.i64 == INT64_MIN) {
++				fprintf(f, "((int64_t)(-9223372036854775807LL-1))");
++			} else {
++				fprintf(f, "((int64_t)%" PRIi64 "LL)", insn->val.i64);
++			}
++			break;
++		case IR_DOUBLE:
++			if (isnan(insn->val.d)) {
++				fprintf(f, "__builtin_nan(\"\")");
++			} else if (isinf(insn->val.d)) {
++				fprintf(f, "%s__builtin_inf()", insn->val.d < 0 ? "-" : "");
++			} else {
++				fprintf(f, "%a", insn->val.d);
++			}
++			break;
++		case IR_FLOAT:
++			if (isnan(insn->val.f)) {
++				fprintf(f, "__builtin_nanf(\"\")");
++			} else if (isinf(insn->val.f)) {
++				fprintf(f, "%s__builtin_inff()", insn->val.f < 0 ? "-" : "");
++			} else {
++				fprintf(f, "%af", (double)insn->val.f);
++			}
++			break;
++		case IR_ADDR:
++			zjc_emit_addr(u, insn->val.addr);
++			break;
++		default:
++			IR_ASSERT(0);
++			u->failed = 1;
++	}
++}
++
++static void zjc_ref(zjc_unit *u, ir_ref ref)
++{
++	ir_ctx *ctx = u->ctx;
++
++	if (IR_IS_CONST_REF(ref)) {
++		zjc_emit_const(u, ref);
++	} else {
++		ir_insn *insn = &ctx->ir_base[ref];
++
++		if (insn->op == IR_VLOAD || insn->op == IR_VLOAD_v) {
++			fprintf(u->f, "%s", ir_get_str(ctx, ctx->ir_base[insn->op2].op2));
++			return;
++		}
++		fprintf(u->f, "d_%d", ctx->vregs[ref]);
++	}
++}
++
++/* Print a value converted to an unsigned integer of its own width. */
++static void zjc_ref_uint(zjc_unit *u, ir_ref ref)
++{
++	ir_type type = u->ctx->ir_base[ref].type;
++
++	if (type == IR_ADDR) {
++		fprintf(u->f, "((uintptr_t)");
++		zjc_ref(u, ref);
++		fprintf(u->f, ")");
++	} else {
++		zjc_ref(u, ref);
++	}
++}
++
++static void zjc_def(zjc_unit *u, ir_ref def)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_use_list *use_list = &ctx->use_lists[def];
++
++	if (use_list->count == 1) {
++		ir_insn *use = &ctx->ir_base[ctx->use_edges[use_list->refs]];
++
++		if (use->op == IR_VSTORE || use->op == IR_VSTORE_v) {
++			fprintf(u->f, "\t%s = ", ir_get_str(ctx, ctx->ir_base[use->op2].op2));
++			return;
++		}
++	}
++	fprintf(u->f, "\td_%d = ", ctx->vregs[def]);
++}
++
++static bool zjc_has_def(zjc_unit *u, ir_ref def)
++{
++	return u->ctx->vregs[def] != 0;
++}
++
++static const char *zjc_int_cast(ir_type type, bool is_signed)
++{
++	switch (ir_type_size[type]) {
++		case 1: return is_signed ? "(int8_t)" : "(uint8_t)";
++		case 2: return is_signed ? "(int16_t)" : "(uint16_t)";
++		case 4: return is_signed ? "(int32_t)" : "(uint32_t)";
++		default: return is_signed ? "(int64_t)" : "(uint64_t)";
++	}
++}
++
++/* Code that never returns normally (a looping trace that leaves only through
++ * guards) has no IR return type; for the CALL VM it is still a handler that
++ * returns an int. */
++static ir_type zjc_ret_type(ir_ctx *ctx)
++{
++	return ctx->ret_type == (ir_type)-1 ? IR_I32 : ctx->ret_type;
++}
++
++/* ---- Instructions ---- */
++
++static void zjc_binary(zjc_unit *u, ir_ref def, ir_insn *insn, const char *op)
++{
++	FILE *f = u->f;
++	ir_type t1 = u->ctx->ir_base[insn->op1].type;
++
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	if (insn->type == IR_ADDR) {
++		bool p1 = !zjc_is_intlike(u, insn->op1);
++		bool p2 = !zjc_is_intlike(u, insn->op2);
++
++		if (insn->op == IR_ADD && p1 && p2) {
++			/* Both may be pointers (a property offset loaded from a cache
++			 * slot looks like one): use whichever has a capability. */
++			fprintf(f, "ZJC_ADD(");
++			zjc_ref(u, insn->op1);
++			fprintf(f, ", ");
++			zjc_ref(u, insn->op2);
++			fprintf(f, ")");
++		} else if (insn->op == IR_ADD && (p1 || p2)) {
++			ir_ref base = p1 ? insn->op1 : insn->op2;
++			ir_ref other = p1 ? insn->op2 : insn->op1;
++
++			zjc_ref(u, base);
++			fprintf(f, " + (intptr_t)");
++			zjc_ref(u, other);
++		} else if (insn->op == IR_SUB && p1 && !p2) {
++			zjc_ref(u, insn->op1);
++			fprintf(f, " - (intptr_t)");
++			zjc_ref(u, insn->op2);
++		} else if ((insn->op == IR_AND || insn->op == IR_OR || insn->op == IR_XOR) && (p1 || p2)) {
++			/* Bit operations on a pointer: compute the new address as an
++			 * integer and rebase it on the pointer to keep its capability. */
++			fprintf(f, "ZJC_REBASE(");
++			if (p1 && p2) {
++				fprintf(f, "ZJC_CAP(");
++				zjc_ref(u, insn->op1);
++				fprintf(f, ", ");
++				zjc_ref(u, insn->op2);
++				fprintf(f, ")");
++			} else {
++				zjc_ref(u, p1 ? insn->op1 : insn->op2);
++			}
++			fprintf(f, ", ");
++			zjc_ref_uint(u, insn->op1);
++			fprintf(f, " %s ", op);
++			zjc_ref_uint(u, insn->op2);
++			fprintf(f, ")");
++		} else {
++			fprintf(f, "(char*)(");
++			zjc_ref_uint(u, insn->op1);
++			fprintf(f, " %s ", op);
++			zjc_ref_uint(u, insn->op2);
++			fprintf(f, ")");
++		}
++	} else if (t1 == IR_ADDR) {
++		/* comparison of addresses (signed for LT/GT/LE/GE, as IR defines them) */
++		if (insn->op == IR_LT || insn->op == IR_GT || insn->op == IR_LE || insn->op == IR_GE) {
++			fprintf(f, "(intptr_t)");
++		}
++		zjc_ref_uint(u, insn->op1);
++		fprintf(f, " %s ", op);
++		if (insn->op == IR_LT || insn->op == IR_GT || insn->op == IR_LE || insn->op == IR_GE) {
++			fprintf(f, "(intptr_t)");
++		}
++		zjc_ref_uint(u, insn->op2);
++	} else {
++		zjc_ref(u, insn->op1);
++		fprintf(f, " %s ", op);
++		zjc_ref(u, insn->op2);
++	}
++	fprintf(f, ";\n");
++}
++
++static void zjc_binary_cast(zjc_unit *u, ir_ref def, ir_insn *insn, const char *op, bool is_signed)
++{
++	FILE *f = u->f;
++	ir_type t1 = u->ctx->ir_base[insn->op1].type;
++	const char *cast = zjc_int_cast(t1, is_signed);
++
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	if (insn->type == IR_ADDR) {
++		fprintf(f, "(char*)(uintptr_t)(");
++	} else {
++		fprintf(f, "(");
++	}
++	fprintf(f, "%s", cast);
++	zjc_ref_uint(u, insn->op1);
++	fprintf(f, " %s %s", op, cast);
++	zjc_ref_uint(u, insn->op2);
++	fprintf(f, ");\n");
++}
++
++static void zjc_ucmp(zjc_unit *u, ir_ref def, ir_insn *insn, const char *op, const char *fop)
++{
++	FILE *f = u->f;
++	ir_type t1 = u->ctx->ir_base[insn->op1].type;
++
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	if (IR_IS_TYPE_FP(t1)) {
++		fprintf(f, "!(");
++		zjc_ref(u, insn->op1);
++		fprintf(f, " %s ", fop);
++		zjc_ref(u, insn->op2);
++		fprintf(f, ")");
++	} else {
++		const char *cast = zjc_int_cast(t1, 0);
++
++		fprintf(f, "%s", cast);
++		zjc_ref_uint(u, insn->op1);
++		fprintf(f, " %s %s", op, cast);
++		zjc_ref_uint(u, insn->op2);
++	}
++	fprintf(f, ";\n");
++}
++
++static void zjc_unary(zjc_unit *u, ir_ref def, ir_insn *insn, const char *op)
++{
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	if (insn->type == IR_ADDR) {
++		fprintf(u->f, "(char*)(%s", op);
++		zjc_ref_uint(u, insn->op1);
++		fprintf(u->f, ")");
++	} else {
++		fprintf(u->f, "%s", op);
++		zjc_ref(u, insn->op1);
++	}
++	fprintf(u->f, ";\n");
++}
++
++/* SEXT, ZEXT, TRUNC, BITCAST between integers (including ADDR). */
++static void zjc_int_conv(zjc_unit *u, ir_ref def, ir_insn *insn, bool src_signed)
++{
++	FILE *f = u->f;
++	ir_type src = u->ctx->ir_base[insn->op1].type;
++
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	if (insn->type == IR_ADDR && src == IR_ADDR) {
++		zjc_ref(u, insn->op1);
++	} else if (insn->type == IR_ADDR) {
++		fprintf(f, "(char*)(uintptr_t)%s", zjc_int_cast(src, src_signed));
++		zjc_ref(u, insn->op1);
++	} else {
++		fprintf(f, "(%s)%s", ir_type_cname[insn->type], zjc_int_cast(src, src_signed));
++		zjc_ref_uint(u, insn->op1);
++	}
++	fprintf(f, ";\n");
++}
++
++static void zjc_bitcast(zjc_unit *u, ir_ref def, ir_insn *insn)
++{
++	FILE *f = u->f;
++	ir_type dst = insn->type;
++	ir_type src = u->ctx->ir_base[insn->op1].type;
++
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	if (IR_IS_TYPE_INT(dst) && IR_IS_TYPE_INT(src)) {
++		zjc_int_conv(u, def, insn, IR_IS_TYPE_SIGNED(src));
++		return;
++	}
++	/* between FP and integer of the same size */
++	fprintf(f, "\t{ union { %s from; %s to; } _u; _u.from = ",
++		src == IR_ADDR ? "uintptr_t" : ir_type_cname[src],
++		dst == IR_ADDR ? "uintptr_t" : ir_type_cname[dst]);
++	zjc_ref_uint(u, insn->op1);
++	fprintf(f, ";");
++	zjc_def(u, def);
++	fprintf(f, "%s_u.to; }\n", dst == IR_ADDR ? "(char*)" : "");
++}
++
++static void zjc_fp_conv(zjc_unit *u, ir_ref def, ir_insn *insn)
++{
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	fprintf(u->f, "(%s)", insn->type == IR_ADDR ? "char*)(uintptr_t" : ir_type_cname[insn->type]);
++	zjc_ref_uint(u, insn->op1);
++	fprintf(u->f, ";\n");
++}
++
++static void zjc_overflow_math(zjc_unit *u, ir_ref def, ir_insn *insn, const char *func)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_use_list *use_list = &ctx->use_lists[def];
++	ir_ref n, *p, overflow = IR_UNUSED;
++
++	for (n = use_list->count, p = &ctx->use_edges[use_list->refs]; n > 0; p++, n--) {
++		if (ctx->ir_base[*p].op == IR_OVERFLOW) {
++			overflow = *p;
++			break;
++		}
++	}
++	fprintf(u->f, "\t{ %s _r; bool _o = __builtin_%s_overflow(", zjc_tname(insn->type), func);
++	zjc_ref(u, insn->op1);
++	fprintf(u->f, ", ");
++	zjc_ref(u, insn->op2);
++	fprintf(u->f, ", &_r);");
++	if (zjc_has_def(u, def)) {
++		zjc_def(u, def);
++		fprintf(u->f, "_r;");
++	}
++	if (overflow && zjc_has_def(u, overflow)) {
++		zjc_def(u, overflow);
++		fprintf(u->f, "_o;");
++	}
++	fprintf(u->f, " (void)_o; }\n");
++}
++
++/* Print "(RET (*)(T1, T2, ...))" for a call's argument types. */
++static void zjc_fn_type(zjc_unit *u, ir_type ret, ir_insn *insn, int first_arg)
++{
++	ir_ctx *ctx = u->ctx;
++	int j, n = insn->inputs_count;
++
++	fprintf(u->f, "(%s (*)(", ret == IR_VOID ? "void" : zjc_tname(ret));
++	if (n < first_arg) {
++		fprintf(u->f, "char*, char*"); /* the fixed registers, see zjc_call_expr */
++	}
++	for (j = first_arg; j <= n; j++) {
++		ir_ref arg = ir_insn_op(insn, j);
++		ir_type t;
++
++		if (!IR_IS_CONST_REF(arg) && ctx->ir_base[arg].op == IR_ARGVAL) {
++			arg = ctx->ir_base[arg].op1;
++		}
++		t = ctx->ir_base[arg].type;
++		fprintf(u->f, "%s%s", j == first_arg ? "" : ", ", zjc_tname(t));
++	}
++	fprintf(u->f, "))");
++}
++
++static void zjc_call_expr(zjc_unit *u, ir_insn *insn)
++{
++	ir_ctx *ctx = u->ctx;
++	int j, n = insn->inputs_count;
++	ir_ref callee = insn->op2;
++
++	if (IR_IS_CONST_REF(callee) && ctx->ir_base[callee].op == IR_FUNC) {
++		fprintf(u->f, "%s", ir_get_str(ctx, ctx->ir_base[callee].val.name));
++	} else {
++		if (!IR_IS_CONST_REF(callee) && ctx->ir_base[callee].op == IR_PROTO) {
++			callee = ctx->ir_base[callee].op1;
++		}
++		fprintf(u->f, "(");
++		zjc_fn_type(u, insn->type, insn, 3);
++		fprintf(u->f, "(void*)");
++		zjc_ref(u, callee);
++		fprintf(u->f, ")");
++	}
++	fprintf(u->f, "(");
++	if (n < 3) {
++		/* An argument-less call may target a stub, which natively reads the
++		 * fixed registers; stubs take them as arguments here.  Fil-C ignores
++		 * arguments a callee does not declare. */
++		fprintf(u->f, "zjc_fp, zjc_ip");
++	}
++	for (j = 3; j <= n; j++) {
++		ir_ref arg = ir_insn_op(insn, j);
++
++		if (!IR_IS_CONST_REF(arg) && ctx->ir_base[arg].op == IR_ARGVAL) {
++			arg = ctx->ir_base[arg].op1;
++		}
++		if (j != 3) {
++			fprintf(u->f, ", ");
++		}
++		zjc_ref(u, arg);
++	}
++	fprintf(u->f, ")");
++}
++
++static void zjc_call(zjc_unit *u, ir_ref def, ir_insn *insn)
++{
++	if (insn->type != IR_VOID && zjc_has_def(u, def)) {
++		zjc_def(u, def);
++	} else {
++		fprintf(u->f, "\t");
++	}
++	zjc_call_expr(u, insn);
++	fprintf(u->f, ";\n");
++}
++
++/* Return from the generated function with the value of expression "body". */
++static void zjc_return_call_begin(zjc_unit *u, ir_type call_type)
++{
++	ir_type ret = zjc_ret_type(u->ctx);
++
++	if (ret == IR_VOID || call_type == IR_VOID) {
++		fprintf(u->f, "\t{ ");
++	} else {
++		fprintf(u->f, "\treturn (%s)", zjc_tname(ret));
++	}
++}
++
++static void zjc_return_call_end(zjc_unit *u, ir_type call_type)
++{
++	ir_type ret = zjc_ret_type(u->ctx);
++
++	if (ret == IR_VOID) {
++		fprintf(u->f, "; return; }\n");
++	} else if (call_type == IR_VOID) {
++		fprintf(u->f, "; return (%s)0; }\n", zjc_tname(ret));
++	} else {
++		fprintf(u->f, ";\n");
++	}
++}
++
++static void zjc_tailcall(zjc_unit *u, ir_insn *insn)
++{
++	zjc_return_call_begin(u, insn->type);
++	zjc_call_expr(u, insn);
++	zjc_return_call_end(u, insn->type);
++}
++
++/* A failed guard of a trace: hand the snapshot's values to zjc_trace_exit
++ * in an emulated register buffer.  Each value gets a buffer slot, recorded
++ * in ctx->regs where zend_jit_snapshot_handler expects a register, so
++ * zend_jit_trace_exit() finds it there. */
++static void zjc_emit_exit(zjc_unit *u, ir_insn *jmp, uintptr_t addr)
++{
++	ir_ctx *ctx = u->ctx;
++	FILE *f = u->f;
++	ir_ref snap_ref = jmp->op1;
++	ir_insn *snap = &ctx->ir_base[snap_ref];
++	int gpr = 0, fpr = 0;
++	ir_ref i;
++
++	zjc_register((void*)zjc_trace_exit);
++	fprintf(f, "	{ zjc_regs _r; _r.gpr[%d] = zjc_ip;", ZREG_RX);
++	if (snap->op == IR_SNAPSHOT) {
++		int8_t *regs = ctx->regs[snap_ref];
++
++		for (i = 2; i <= snap->inputs_count; i++) {
++			ir_ref ref = ir_insn_op(snap, i);
++
++			regs[i] = IR_REG_NONE;
++			if (ref > 0) {
++				ir_type t = ctx->ir_base[ref].type;
++
++				if (IR_IS_TYPE_FP(t)) {
++					if (fpr >= 16) {
++						u->failed = 1;
++						return;
++					}
++					regs[i] = ZREG_FIRST_FPR + fpr;
++					fprintf(f, " _r.fpr[%d] = ", fpr++);
++					zjc_ref(u, ref);
++				} else {
++					if (gpr >= ZREG_FP) {
++						u->failed = 1;
++						return;
++					}
++					regs[i] = gpr;
++					fprintf(f, " _r.gpr[%d] = %s", gpr++, t == IR_ADDR ? "" : "(char*)(uintptr_t)");
++					zjc_ref(u, ref);
++				}
++				fprintf(f, ";");
++			}
++		}
++		addr = (uintptr_t)zend_jit_snapshot_handler(ctx, snap_ref, snap, (void*)addr);
++	}
++	fprintf(f, "\n\t  return (int32_t)((int32_t (*)(char*, uint32_t, zjc_regs*))(void*)zjc_K[%u])(zjc_fp, %u, &_r); }\n",
++		zjc_k_slot(u, zjc_reg_find((uintptr_t)zjc_trace_exit)), (uint32_t)(addr - ZJC_EXIT_BASE));
++}
++
++/* A jump to code outside this function (a stub or a handler): call it with
++ * the fixed registers, which it expects in its prologue-less frame, and
++ * return what it returns.  Jumps to trace exits deoptimize instead. */
++static void zjc_jump_to(zjc_unit *u, ir_insn *jmp, ir_ref target)
++{
++	ir_type ret = zjc_ret_type(u->ctx);
++	ir_insn *t = &u->ctx->ir_base[target];
++
++	if (IR_IS_CONST_REF(target) && t->type == IR_ADDR
++	 && t->val.addr >= ZJC_EXIT_BASE && t->val.addr < ZJC_EXIT_BASE + ZEND_JIT_TRACE_MAX_EXITS) {
++		zjc_emit_exit(u, jmp, t->val.addr);
++		return;
++	}
++
++	zjc_return_call_begin(u, ret);
++	fprintf(u->f, "((%s (*)(char*, char*))(void*)", ret == IR_VOID ? "void" : zjc_tname(ret));
++	zjc_ref(u, target);
++	fprintf(u->f, ")(zjc_fp, zjc_ip)");
++	zjc_return_call_end(u, ret);
++}
++
++static void zjc_load(zjc_unit *u, ir_ref def, ir_insn *insn)
++{
++	if (zjc_has_def(u, def)) {
++		zjc_def(u, def);
++	} else {
++		fprintf(u->f, "\t(void)");
++	}
++	fprintf(u->f, "*(%s%s*)(", insn->op == IR_LOAD_v ? "volatile " : "", zjc_tname(insn->type));
++	zjc_ref(u, insn->op2);
++	fprintf(u->f, ");\n");
++}
++
++static void zjc_store(zjc_unit *u, ir_insn *insn)
++{
++	ir_type type = u->ctx->ir_base[insn->op3].type;
++
++	fprintf(u->f, "\t*(%s%s*)(", insn->op == IR_STORE_v ? "volatile " : "", zjc_tname(type));
++	zjc_ref(u, insn->op2);
++	fprintf(u->f, ") = ");
++	zjc_ref(u, insn->op3);
++	fprintf(u->f, ";\n");
++}
++
++static const char *zjc_reg_name(zjc_unit *u, int8_t reg)
++{
++	switch (reg) {
++		case ZREG_FP: return "zjc_fp";
++		case ZREG_IP: return "zjc_ip";
++		case IR_REG_SP: return "zjc_sp";
++		default:
++			u->failed = 1;
++			return "zjc_bad_reg";
++	}
++}
++
++static void zjc_rload(zjc_unit *u, ir_ref def, ir_insn *insn)
++{
++	const char *reg = zjc_reg_name(u, insn->op2);
++
++	if (!zjc_has_def(u, def)) {
++		return;
++	}
++	zjc_def(u, def);
++	if (insn->type == IR_ADDR) {
++		fprintf(u->f, "%s;\n", reg);
++	} else {
++		fprintf(u->f, "(%s)(uintptr_t)%s;\n", ir_type_cname[insn->type], reg);
++	}
++}
++
++static void zjc_rstore(zjc_unit *u, ir_insn *insn)
++{
++	const char *reg = zjc_reg_name(u, insn->op3);
++
++	fprintf(u->f, "\t%s = ", reg);
++	if (u->ctx->ir_base[insn->op2].type == IR_ADDR) {
++		zjc_ref(u, insn->op2);
++	} else {
++		fprintf(u->f, "(char*)(uintptr_t)");
++		zjc_ref(u, insn->op2);
++	}
++	fprintf(u->f, ";\n");
++}
++
++static int zjc_dessa_move(ir_ctx *ctx, uint8_t type, ir_ref from, ir_ref to, void *data)
++{
++	zjc_unit *u = data;
++
++	if (to) {
++		fprintf(u->f, "\td_%d = ", ctx->vregs[to]);
++	} else {
++		fprintf(u->f, "\ttmp_%d = ", type);
++	}
++	if (from) {
++		zjc_ref(u, from);
++	} else {
++		fprintf(u->f, "tmp_%d", type);
++	}
++	fprintf(u->f, ";\n");
++	return 1;
++}
++
++static int zjc_add_tmp_type(ir_ctx *ctx, uint8_t type, ir_ref from, ir_ref to, void *data)
++{
++	if (from == 0) {
++		ir_bitset_incl((ir_bitset)data, type);
++	}
++	return 1;
++}
++
++static void zjc_if(zjc_unit *u, uint32_t b, ir_insn *insn, uint32_t next_block)
++{
++	uint32_t true_block = 0, false_block = 0;
++
++	ir_get_true_false_blocks(u->ctx, b, &true_block, &false_block);
++	fprintf(u->f, "\tif (");
++	zjc_ref(u, insn->op2);
++	fprintf(u->f, ") goto bb%d;", true_block);
++	if (false_block != next_block) {
++		fprintf(u->f, " else goto bb%d;", false_block);
++	}
++	fprintf(u->f, "\n");
++}
++
++static void zjc_switch(zjc_unit *u, uint32_t b, ir_insn *insn)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_block *bb = &ctx->cfg_blocks[b];
++	uint32_t n, *p;
++
++	fprintf(u->f, "\tswitch (");
++	zjc_ref_uint(u, insn->op2);
++	fprintf(u->f, ") {\n");
++	for (n = bb->successors_count, p = &ctx->cfg_edges[bb->successors]; n != 0; p++, n--) {
++		ir_insn *use_insn = &ctx->ir_base[ctx->cfg_blocks[*p].start];
++
++		if (use_insn->op == IR_CASE_VAL) {
++			fprintf(u->f, "\t\tcase ");
++			zjc_ref_uint(u, use_insn->op2);
++			fprintf(u->f, ": goto bb%d;\n", ir_skip_empty_target_blocks(ctx, *p));
++		} else {
++			fprintf(u->f, "\t\tdefault: goto bb%d;\n", ir_skip_empty_target_blocks(ctx, *p));
++		}
++	}
++	fprintf(u->f, "\t}\n");
++}
++
++/* Emit one IR function as C.  The body is "static RET <name>_body(params,
++ * int zjc_entry)"; exported wrappers <name>_e<k> enter it at the START (k=0)
++ * or at the k-th ENTRY block.  Returns the number of entries or 0. */
++static int zjc_emit_func(zjc_unit *u, const char *name, const char *comment)
++{
++	ir_ctx *ctx = u->ctx;
++	FILE *f = u->f;
++	ir_ref i, n, *p;
++	ir_insn *insn;
++	ir_use_list *use_list;
++	ir_bitset vars, tmp_types;
++	uint32_t _b, b, target, prev = 0, entries = 0;
++	ir_block *bb;
++	ir_type ret = zjc_ret_type(ctx);
++	char params[512], args[512];
++	size_t pl = 0, al = 0;
++
++	zjc_analyze(u);
++	if (!ctx->prev_ref) {
++		ir_build_prev_refs(ctx);
++	}
++
++	/* Parameters */
++	params[0] = args[0] = 0;
++	use_list = &ctx->use_lists[1];
++	for (n = use_list->count, p = &ctx->use_edges[use_list->refs]; n > 0; p++, n--) {
++		insn = &ctx->ir_base[*p];
++		if (insn->op == IR_PARAM) {
++			pl += snprintf(params + pl, sizeof(params) - pl, "%s%s p_%d",
++				pl ? ", " : "", zjc_tname(insn->type), insn->op3);
++			al += snprintf(args + al, sizeof(args) - al, "%sp_%d", al ? ", " : "", insn->op3);
++		}
++	}
++	if (!pl) {
++		/* Prologue-less code (stubs) gets the fixed registers from its jumper. */
++		u->skip_prologue = 1;
++		pl = snprintf(params, sizeof(params), "char *zjc_fp_in, char *zjc_ip_in");
++		al = snprintf(args, sizeof(args), "zjc_fp_in, zjc_ip_in");
++	}
++
++	fprintf(f, "\n/* %s */\nstatic %s %s_body(%s, int zjc_entry)\n{\n",
++		comment ? comment : name, ret == IR_VOID ? "void" : zjc_tname(ret), name, params);
++	if (u->skip_prologue) {
++		fprintf(f, "\tchar *zjc_fp = zjc_fp_in, *zjc_ip = zjc_ip_in;\n");
++	} else {
++		fprintf(f, "\tchar *zjc_fp = 0, *zjc_ip = 0;\n");
++	}
++	fprintf(f, "\tchar zjc_sp_area[1024] __attribute__((aligned(16))); char *zjc_sp = zjc_sp_area;\n");
++	fprintf(f, "\t(void)zjc_fp; (void)zjc_ip; (void)zjc_sp;\n");
++
++	/* Local declarations */
++	tmp_types = ir_bitset_malloc(IR_LAST_TYPE);
++	vars = ir_bitset_malloc(ctx->vregs_count + 1);
++	for (b = 1, bb = ctx->cfg_blocks + b; b <= ctx->cfg_blocks_count; b++, bb++) {
++		if (ctx->prev_ref[bb->end] == bb->start
++		 && bb->successors_count == 1
++		 && (ctx->ir_base[bb->end].op == IR_END || ctx->ir_base[bb->end].op == IR_LOOP_END)
++		 && !(bb->flags & (IR_BB_START|IR_BB_ENTRY|IR_BB_DESSA_MOVES))) {
++			bb->flags |= IR_BB_EMPTY;
++		}
++		if (bb->flags & IR_BB_DESSA_MOVES) {
++			ir_gen_dessa_moves(ctx, b, zjc_add_tmp_type, tmp_types);
++		}
++		for (i = bb->start, insn = ctx->ir_base + i; i <= bb->end;) {
++			if (ctx->vregs[i] && !ir_bitset_in(vars, ctx->vregs[i])) {
++				ir_bitset_incl(vars, ctx->vregs[i]);
++				if (insn->op == IR_PARAM) {
++					fprintf(f, "\t%s d_%d = p_%d;\n", zjc_tname(insn->type), ctx->vregs[i], insn->op3);
++				} else if (insn->op == IR_VAR) {
++					fprintf(f, "\t%s %s;\n", zjc_tname(insn->type), ir_get_str(ctx, insn->op2));
++				} else if (insn->type != IR_VOID) {
++					fprintf(f, "\t%s d_%d;\n", zjc_tname(insn->type), ctx->vregs[i]);
++				}
++			}
++			n = ir_insn_len(insn);
++			i += n;
++			insn += n;
++		}
++	}
++	ir_mem_free(vars);
++	IR_BITSET_FOREACH(tmp_types, ir_bitset_len(IR_LAST_TYPE), i) {
++		fprintf(f, "\t%s tmp_%d;\n", zjc_tname(i), i);
++	} IR_BITSET_FOREACH_END();
++	ir_mem_free(tmp_types);
++
++	/* Entry dispatch */
++	fprintf(f, "\tswitch (zjc_entry) {\n");
++	for (b = 1, bb = ctx->cfg_blocks + b; b <= ctx->cfg_blocks_count; b++, bb++) {
++		if (bb->flags & IR_BB_ENTRY) {
++			entries++;
++			fprintf(f, "\t\tcase %u:\n", entries);
++			if (ctx->binding && !u->skip_prologue) {
++				/* The interpreter enters here mid-function (OSR), so values
++				 * computed earlier were never assigned.  As the native backend
++				 * does (ir_emit_osr_entry_loads), reload the ones bound to VM
++				 * frame slots from the frame.  Values that are not live here
++				 * are reassigned before use, so loading them is harmless. */
++				ir_ref r;
++				ir_insn *ri;
++
++				for (r = 1, ri = ctx->ir_base + 1; r < ctx->insns_count;) {
++					if (ctx->vregs[r] && ri->type != IR_VOID && ri->op != IR_PARAM && ri->op != IR_VAR) {
++						ir_ref off = ir_binding_find(ctx, r);
++
++						if (off < 0) {
++							fprintf(f, "\t\t\td_%d = *(%s*)(p_1 + %d);\n", ctx->vregs[r], zjc_tname(ri->type), -off);
++						}
++					}
++					n = ir_insn_len(ri);
++					r += n;
++					ri += n;
++				}
++			}
++			fprintf(f, "\t\t\tgoto bb%d;\n", b);
++		}
++	}
++	fprintf(f, "\t\tdefault: goto bb1;\n\t}\n");
++
++	if (entries) {
++		ctx->entries_count = entries;
++		ctx->entries = ir_mem_malloc(entries * sizeof(uint32_t));
++		entries = 0;
++		for (b = 1, bb = ctx->cfg_blocks + b; b <= ctx->cfg_blocks_count; b++, bb++) {
++			if (bb->flags & IR_BB_ENTRY) {
++				ctx->entries[entries++] = bb->start;
++			}
++		}
++	}
++
++	for (_b = 1; _b <= ctx->cfg_blocks_count; _b++) {
++		b = ctx->cfg_schedule ? ctx->cfg_schedule[_b] : _b;
++		bb = &ctx->cfg_blocks[b];
++		if ((bb->flags & (IR_BB_START|IR_BB_ENTRY|IR_BB_EMPTY)) == IR_BB_EMPTY) {
++			continue;
++		}
++		fprintf(f, "bb%d: ;\n", b);
++		prev = b;
++		for (i = bb->start, insn = ctx->ir_base + i; i <= bb->end;) {
++			switch (insn->op) {
++				case IR_START: case IR_BEGIN: case IR_IF_TRUE: case IR_IF_FALSE:
++				case IR_CASE_VAL: case IR_CASE_DEFAULT: case IR_MERGE: case IR_LOOP_BEGIN:
++				case IR_UNREACHABLE: case IR_PARAM: case IR_VAR: case IR_PHI: case IR_PI:
++				case IR_VLOAD: case IR_VLOAD_v: case IR_ARGVAL: case IR_ENTRY:
++				case IR_SNAPSHOT: case IR_OVERFLOW:
++					break;
++				case IR_EQ:  zjc_binary(u, i, insn, "=="); break;
++				case IR_NE:  zjc_binary(u, i, insn, "!="); break;
++				/* IR's LT/GE/LE/GT are signed, whatever the operands' declared
++				 * types (the JIT compares I32 results against U32 zeros). */
++				case IR_LT:
++				case IR_GE:
++				case IR_LE:
++				case IR_GT: {
++					const char *op = insn->op == IR_LT ? "<" : insn->op == IR_GE ? ">=" : insn->op == IR_LE ? "<=" : ">";
++
++					if (IR_IS_TYPE_FP(ctx->ir_base[insn->op1].type)) {
++						zjc_binary(u, i, insn, op);
++					} else {
++						zjc_binary_cast(u, i, insn, op, 1);
++					}
++					break;
++				}
++				case IR_ULT: zjc_ucmp(u, i, insn, "<", ">="); break;
++				case IR_UGE: zjc_ucmp(u, i, insn, ">=", "<"); break;
++				case IR_ULE: zjc_ucmp(u, i, insn, "<=", ">"); break;
++				case IR_UGT: zjc_ucmp(u, i, insn, ">", "<="); break;
++				case IR_ADD: zjc_binary(u, i, insn, "+"); break;
++				case IR_SUB: zjc_binary(u, i, insn, "-"); break;
++				case IR_MUL: zjc_binary(u, i, insn, "*"); break;
++				case IR_DIV:
++					if (IR_IS_TYPE_FP(insn->type)) zjc_binary(u, i, insn, "/");
++					else zjc_binary_cast(u, i, insn, "/", IR_IS_TYPE_SIGNED(insn->type));
++					break;
++				case IR_MOD:
++					zjc_binary_cast(u, i, insn, "%", IR_IS_TYPE_SIGNED(insn->type));
++					break;
++				case IR_NEG: zjc_unary(u, i, insn, "-"); break;
++				case IR_NOT: zjc_unary(u, i, insn, insn->type == IR_BOOL ? "!" : "~"); break;
++				case IR_OR:  zjc_binary(u, i, insn, insn->type == IR_BOOL ? "||" : "|"); break;
++				case IR_AND: zjc_binary(u, i, insn, insn->type == IR_BOOL ? "&&" : "&"); break;
++				case IR_XOR: zjc_binary(u, i, insn, "^"); break;
++				case IR_SHL: zjc_binary_cast(u, i, insn, "<<", 0); break;
++				case IR_SHR: zjc_binary_cast(u, i, insn, ">>", 0); break;
++				case IR_SAR: zjc_binary_cast(u, i, insn, ">>", 1); break;
++				case IR_MIN:
++				case IR_MAX:
++					if (zjc_has_def(u, i)) {
++						const char *op = insn->op == IR_MIN ? "<" : ">";
++
++						zjc_def(u, i);
++						if (insn->type == IR_ADDR) fprintf(f, "(char*)");
++						fprintf(f, "(");
++						zjc_ref_uint(u, insn->op1);
++						fprintf(f, " %s ", op);
++						zjc_ref_uint(u, insn->op2);
++						fprintf(f, " ? ");
++						zjc_ref_uint(u, insn->op1);
++						fprintf(f, " : ");
++						zjc_ref_uint(u, insn->op2);
++						fprintf(f, ");\n");
++					}
++					break;
++				case IR_COND:
++					if (zjc_has_def(u, i)) {
++						zjc_def(u, i);
++						zjc_ref(u, insn->op1);
++						fprintf(f, " ? ");
++						zjc_ref(u, insn->op2);
++						fprintf(f, " : ");
++						zjc_ref(u, insn->op3);
++						fprintf(f, ";\n");
++					}
++					break;
++				case IR_ABS:
++					if (zjc_has_def(u, i)) {
++						zjc_def(u, i);
++						if (IR_IS_TYPE_FP(insn->type)) {
++							fprintf(f, "__builtin_fabs%s(", insn->type == IR_FLOAT ? "f" : "");
++							zjc_ref(u, insn->op1);
++							fprintf(f, ");\n");
++						} else {
++							zjc_ref(u, insn->op1);
++							fprintf(f, " < 0 ? -");
++							zjc_ref(u, insn->op1);
++							fprintf(f, " : ");
++							zjc_ref(u, insn->op1);
++							fprintf(f, ";\n");
++						}
++					}
++					break;
++				case IR_BSWAP:
++				case IR_CTPOP:
++				case IR_CTLZ:
++				case IR_CTTZ:
++					if (zjc_has_def(u, i)) {
++						const char *fn = insn->op == IR_BSWAP
++							? (ir_type_size[insn->type] == 8 ? "bswap64" : "bswap32")
++							: insn->op == IR_CTPOP ? "popcount" : insn->op == IR_CTLZ ? "clz" : "ctz";
++
++						zjc_def(u, i);
++						fprintf(f, "(%s)__builtin_%s%s(", zjc_tname(insn->type), fn,
++							(insn->op != IR_BSWAP && ir_type_size[insn->type] == 8) ? "ll" : "");
++						zjc_ref_uint(u, insn->op1);
++						fprintf(f, ");\n");
++					}
++					break;
++				case IR_SEXT:  zjc_int_conv(u, i, insn, 1); break;
++				case IR_ZEXT:  zjc_int_conv(u, i, insn, 0); break;
++				case IR_TRUNC: zjc_int_conv(u, i, insn, 0); break;
++				case IR_BITCAST:
++				case IR_PROTO:
++					if (insn->op == IR_PROTO || insn->type == u->ctx->ir_base[insn->op1].type) {
++						if (zjc_has_def(u, i)) {
++							zjc_def(u, i);
++							zjc_ref(u, insn->op1);
++							fprintf(f, ";\n");
++						}
++					} else {
++						zjc_bitcast(u, i, insn);
++					}
++					break;
++				case IR_INT2FP:
++				case IR_FP2INT:
++				case IR_FP2FP:
++					zjc_fp_conv(u, i, insn);
++					break;
++				case IR_ADD_OV: zjc_overflow_math(u, i, insn, "add"); break;
++				case IR_SUB_OV: zjc_overflow_math(u, i, insn, "sub"); break;
++				case IR_MUL_OV: zjc_overflow_math(u, i, insn, "mul"); break;
++				case IR_COPY:
++					if (zjc_has_def(u, i)) {
++						zjc_def(u, i);
++						zjc_ref(u, insn->op1);
++						fprintf(f, ";\n");
++					}
++					break;
++				case IR_RETURN:
++					if (ret == IR_VOID) {
++						fprintf(f, "\treturn;\n");
++					} else if (!insn->op2) {
++						fprintf(f, "\treturn 0;\n");
++					} else {
++						fprintf(f, "\treturn ");
++						zjc_ref(u, insn->op2);
++						fprintf(f, ";\n");
++					}
++					break;
++				case IR_END:
++				case IR_LOOP_END:
++					if (bb->flags & IR_BB_DESSA_MOVES) {
++						ir_gen_dessa_moves(ctx, b, zjc_dessa_move, u);
++					}
++					target = ir_skip_empty_target_blocks(ctx, ctx->cfg_edges[bb->successors]);
++					fprintf(f, "\tgoto bb%d;\n", target);
++					break;
++				case IR_IF:
++					zjc_if(u, b, insn, ir_next_block(ctx, _b));
++					break;
++				case IR_SWITCH:
++					zjc_switch(u, b, insn);
++					break;
++				case IR_CALL:
++					zjc_call(u, i, insn);
++					break;
++				case IR_TAILCALL:
++					zjc_tailcall(u, insn);
++					break;
++				case IR_IJMP:
++					zjc_jump_to(u, insn, insn->op2);
++					break;
++				case IR_GUARD:
++				case IR_GUARD_NOT:
++					fprintf(f, "\tif (%s(", insn->op == IR_GUARD ? "!" : "");
++					zjc_ref(u, insn->op2);
++					fprintf(f, ")) {\n\t");
++					zjc_jump_to(u, insn, insn->op3);
++					fprintf(f, "\t}\n");
++					break;
++				case IR_LOAD:
++				case IR_LOAD_v:
++					zjc_load(u, i, insn);
++					break;
++				case IR_STORE:
++				case IR_STORE_v:
++					zjc_store(u, insn);
++					break;
++				case IR_VADDR:
++					if (zjc_has_def(u, i)) {
++						zjc_def(u, i);
++						fprintf(f, "(char*)&%s;\n", ir_get_str(ctx, ctx->ir_base[insn->op1].op2));
++					}
++					break;
++				case IR_VSTORE:
++				case IR_VSTORE_v:
++					if (IR_IS_CONST_REF(insn->op3) || ctx->use_lists[insn->op3].count != 1) {
++						fprintf(f, "\t%s = ", ir_get_str(ctx, ctx->ir_base[insn->op2].op2));
++						zjc_ref(u, insn->op3);
++						fprintf(f, ";\n");
++					}
++					break;
++				case IR_ALLOCA:
++					if (zjc_has_def(u, i)) {
++						zjc_def(u, i);
++						fprintf(f, "(char*)__builtin_alloca(");
++						zjc_ref_uint(u, insn->op2);
++						fprintf(f, ");\n");
++					}
++					break;
++				case IR_AFREE:
++				case IR_BLOCK_BEGIN:
++				case IR_BLOCK_END:
++					/* Stack memory is reclaimed when the function returns. */
++					if (insn->op == IR_BLOCK_BEGIN && zjc_has_def(u, i)) {
++						zjc_def(u, i);
++						fprintf(f, "0;\n");
++					}
++					break;
++				case IR_RLOAD:
++					zjc_rload(u, i, insn);
++					break;
++				case IR_RSTORE:
++					zjc_rstore(u, insn);
++					break;
++				case IR_TRAP:
++					fprintf(f, "\t__builtin_trap();\n");
++					break;
++				default:
++					if (getenv("PHP_JIT_C_VERBOSE")) {
++						fprintf(stderr, "zend_jit_c: unsupported IR_%s in %s\n", ir_op_name[insn->op], comment ? comment : name);
++					}
++					u->failed = 1;
++					break;
++			}
++			if (u->failed) {
++				return 0;
++			}
++			n = ir_insn_len(insn);
++			i += n;
++			insn += n;
++		}
++	}
++	fprintf(f, "\t__builtin_unreachable();\n}\n");
++
++	/* Exported entry points */
++	for (b = 0; b <= ctx->entries_count; b++) {
++		fprintf(f, "%s %s_e%u(%s) { %s%s_body(%s, %u); }\n",
++			ret == IR_VOID ? "void" : zjc_tname(ret), name, b, params,
++			ret == IR_VOID ? "" : "return ", name, args, b);
++	}
++	return ctx->entries_count + 1;
++}
++
++/* ---- Compile, load, link ---- */
++
++static uint32_t zjc_counter;
++static void   **zjc_last_entries;
++static char     zjc_dir[256];
++static pid_t    zjc_dir_pid;
++
++/* Each process (including forked FPM workers) writes into its own directory. */
++static const char *zjc_get_dir(void)
++{
++	if (zjc_dir_pid != getpid()) {
++		zjc_dir_pid = getpid();
++		const char *d = getenv("PHP_JIT_C_DIR");
++
++		if (!d || !*d) {
++			d = "/tmp";
++		}
++		mkdir(d, 0700);
++		snprintf(zjc_dir, sizeof(zjc_dir), "%s/php-jit-c.%d", d, (int)getpid());
++		mkdir(zjc_dir, 0700);
++	}
++	return zjc_dir;
++}
++
++/* Compile ctx (already scheduled) to C, build and load it.  Returns the
++ * function's main entry, and in *entries (when non-NULL and the function has
++ * ENTRY blocks) a malloc'ed array of the other entries' addresses. */
++static void *zjc_compile(ir_ctx *ctx, const char *comment, void ***entries)
++{
++	zjc_unit u;
++	char name[64], cpath[512], sopath[512], cmd[2048];
++	const char *dir = zjc_get_dir();
++	const char *cc = getenv("PHP_JIT_CC");
++	const char *cflags = getenv("PHP_JIT_CFLAGS");
++	FILE *f;
++	int nentries;
++	void *h, *entry;
++	char **K;
++	uint32_t i;
++	char *body = NULL;
++	size_t body_len = 0;
++
++	if (!cc || !*cc) {
++		cc = ZEND_JIT_C_CC;
++	}
++	if (!cflags) {
++		cflags = "-O1";
++	}
++
++	memset(&u, 0, sizeof(u));
++	u.ctx = ctx;
++	if (!ctx->regs) {
++		ctx->regs = ir_mem_malloc(sizeof(ir_regs) * ctx->insns_count);
++		memset(ctx->regs, IR_REG_NONE, sizeof(ir_regs) * ctx->insns_count);
++	}
++	u.f = open_memstream(&body, &body_len);
++	snprintf(name, sizeof(name), "zjc_f%u", zjc_counter);
++	nentries = zjc_emit_func(&u, name, comment);
++	fclose(u.f);
++	if (u.intlike) {
++		ir_mem_free(u.intlike);
++	}
++	if (!nentries || u.failed) {
++		free(body);
++		free(u.k_reg);
++		return NULL;
++	}
++
++	snprintf(cpath, sizeof(cpath), "%s/f%u.c", dir, zjc_counter);
++	snprintf(sopath, sizeof(sopath), "%s/f%u.so", dir, zjc_counter);
++	zjc_counter++;
++	f = fopen(cpath, "w");
++	if (!f) {
++		free(body);
++		free(u.k_reg);
++		return NULL;
++	}
++	fprintf(f, "#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n");
++	fprintf(f, "#include <stdfil.h>\n");
++	fprintf(f, "#define ZJC_REBASE(p, v) ((p) + ((intptr_t)(uintptr_t)(v) - (intptr_t)(uintptr_t)(p)))\n");
++	fprintf(f, "#define ZJC_CAP(a, b) (zhasvalidcap(a) ? (a) : (b))\n");
++	fprintf(f, "#define ZJC_ADD(a, b) (zhasvalidcap(a) ? (a) + (intptr_t)(b) : (b) + (intptr_t)(a))\n");
++	fprintf(f, "typedef struct { char *gpr[16]; double fpr[16]; } zjc_regs;\n");
++	fprintf(f, "char *zjc_K[%u];\n", u.k_count ? u.k_count : 1);
++	fwrite(body, 1, body_len, f);
++	fclose(f);
++	free(body);
++
++	/* Compile and link separately: a caching wrapper such as ccache only
++	 * caches the compile step, and the generated C is identical across
++	 * processes, so a warm cache skips the expensive part. */
++	/* Relative names keep the per-process directory out of the cache key. */
++	snprintf(cmd, sizeof(cmd), "cd %s && %s %s -c -fPIC -w -o f%u.o f%u.c 2>f%u.c.err && %s -shared -o f%u.so f%u.o 2>>f%u.c.err",
++		dir, cc, cflags, zjc_counter - 1, zjc_counter - 1, zjc_counter - 1, cc, zjc_counter - 1, zjc_counter - 1, zjc_counter - 1);
++	if (system(cmd) != 0) {
++		fprintf(stderr, "zend_jit_c: compiling %s failed (see %s.err)\n", cpath, cpath);
++		free(u.k_reg);
++		return NULL;
++	}
++	h = dlopen(sopath, RTLD_NOW | RTLD_LOCAL);
++	if (!h) {
++		fprintf(stderr, "zend_jit_c: dlopen %s: %s\n", sopath, dlerror());
++		free(u.k_reg);
++		return NULL;
++	}
++	if (!getenv("PHP_JIT_C_KEEP")) {
++		/* The loaded object stays mapped after its file is removed. */
++		snprintf(cmd, sizeof(cmd), "%.*s.o", (int)strlen(cpath) - 2, cpath);
++		unlink(cmd);
++		snprintf(cmd, sizeof(cmd), "%s.err", cpath);
++		unlink(cmd);
++		unlink(cpath);
++		unlink(sopath);
++	}
++	K = dlsym(h, "zjc_K");
++	for (i = 0; i < u.k_count; i++) {
++		K[i] = zjc_reg_ptrs[u.k_reg[i]];
++	}
++	free(u.k_reg);
++
++	snprintf(cmd, sizeof(cmd), "%s_e0", name);
++	entry = dlsym(h, cmd);
++	if (entries) {
++		*entries = NULL;
++		if (nentries > 1) {
++			*entries = malloc((nentries - 1) * sizeof(void*));
++			for (i = 1; i < (uint32_t)nentries; i++) {
++				snprintf(cmd, sizeof(cmd), "%s_e%u", name, i);
++				(*entries)[i - 1] = dlsym(h, cmd);
++			}
++		}
++	}
++	return entry;
++}
+diff --git a/ext/opcache/jit/zend_jit_internal.h b/ext/opcache/jit/zend_jit_internal.h
+index f320c51c..55f983ff 100644
+--- a/ext/opcache/jit/zend_jit_internal.h
++++ b/ext/opcache/jit/zend_jit_internal.h
+@@ -34,8 +34,18 @@ typedef uintptr_t zend_jit_addr;
+ #define _ZEND_ADDR_REG_MASK         0x3f /* no more than 64 registers */
+ #define _ZEND_ADDR_OFFSET_SHIFT        8
+ 
+-#define ZEND_ADDR_CONST_ZVAL(zv) \
++#ifdef __FILC__
++/* Fil-C: an integer has no capability, so the zval pointer that a constant
++ * address encodes is kept in the C backend's pointer registry and recovered
++ * from there (zend_jit_c.c). */
++uintptr_t zjc_register(const void *p);
++void *zjc_lookup(uintptr_t addr);
++# define ZEND_ADDR_CONST_ZVAL(zv) \
++	(((zend_jit_addr)zjc_register(zv)) | IS_CONST_ZVAL)
++#else
++# define ZEND_ADDR_CONST_ZVAL(zv) \
+ 	(((zend_jit_addr)(uintptr_t)(zv)) | IS_CONST_ZVAL)
++#endif
+ #define ZEND_ADDR_MEM_ZVAL(reg, offset) \
+ 	((((zend_jit_addr)(uintptr_t)(offset)) << _ZEND_ADDR_OFFSET_SHIFT) | \
+ 	(((zend_jit_addr)(uintptr_t)(reg)) << _ZEND_ADDR_REG_SHIFT) | \
+@@ -45,7 +55,11 @@ typedef uintptr_t zend_jit_addr;
+ 	IS_REG)
+ 
+ #define Z_MODE(addr)     (((addr) & _ZEND_ADDR_MODE_MASK))
+-#define Z_ZV(addr)       ((zval*)(addr))
++#ifdef __FILC__
++# define Z_ZV(addr)      ((zval*)zjc_lookup(addr))
++#else
++# define Z_ZV(addr)      ((zval*)(addr))
++#endif
+ #define Z_OFFSET(addr)   ((uint32_t)((addr)>>_ZEND_ADDR_OFFSET_SHIFT))
+ #define Z_REG(addr)      ((zend_reg)(((addr)>>_ZEND_ADDR_REG_SHIFT) & _ZEND_ADDR_REG_MASK))
+ 
+diff --git a/ext/opcache/jit/zend_jit_ir.c b/ext/opcache/jit/zend_jit_ir.c
+index 80743471..ed063571 100644
+--- a/ext/opcache/jit/zend_jit_ir.c
++++ b/ext/opcache/jit/zend_jit_ir.c
+@@ -68,14 +68,25 @@
+ #define _ir_CTX                 (&jit->ctx)
+ 
+ #undef  ir_CONST_ADDR
+-#define ir_CONST_ADDR(_addr)    jit_CONST_ADDR(jit, (uintptr_t)(_addr))
+-#define ir_CONST_FUNC(_addr)    jit_CONST_FUNC(jit, (uintptr_t)(_addr), 0)
+-#define ir_CONST_FC_FUNC(_addr) jit_CONST_FUNC(jit, (uintptr_t)(_addr), IR_FASTCALL_FUNC)
++#ifdef __FILC__
++/* Fil-C: emit C instead of machine code (zend_jit_c.c).  Every pointer that
++ * becomes an IR constant is registered so the generated code can get it back
++ * with its capability. */
++# define ZEND_JIT_C_BACKEND 1
++# include "jit/ir/ir_private.h"
++# include "jit/zend_jit_c.c"
++# define ZJC_REG(_addr)         zjc_register((const void*)(_addr))
++#else
++# define ZJC_REG(_addr)         ((uintptr_t)(_addr))
++#endif
++#define ir_CONST_ADDR(_addr)    jit_CONST_ADDR(jit, ZJC_REG(_addr))
++#define ir_CONST_FUNC(_addr)    jit_CONST_FUNC(jit, ZJC_REG(_addr), 0)
++#define ir_CONST_FC_FUNC(_addr) jit_CONST_FUNC(jit, ZJC_REG(_addr), IR_FASTCALL_FUNC)
+ #define ir_CAST_FC_FUNC(_addr)  ir_fold2(_ir_CTX, IR_OPT(IR_PROTO, IR_ADDR), (_addr), \
+ 	ir_proto_0(_ir_CTX, IR_FASTCALL_FUNC, IR_I32))
+ 
+ #define ir_CONST_FUNC_PROTO(_addr, _proto) \
+-	jit_CONST_FUNC_PROTO(jit, (uintptr_t)(_addr), (_proto))
++	jit_CONST_FUNC_PROTO(jit, ZJC_REG(_addr), (_proto))
+ 
+ #undef  ir_ADD_OFFSET
+ #define ir_ADD_OFFSET(_addr, _offset) \
+@@ -304,7 +315,10 @@ typedef struct _zend_jit_ctx {
+ typedef int8_t zend_reg;
+ 
+ typedef struct _zend_jit_registers_buf {
+-#if defined(IR_TARGET_X64)
++#if defined(IR_TARGET_X64) && defined(__FILC__)
++	char    *gpr[16]; /* pointers keep their Fil-C capability; integers are stored as pointers without one */
++	double   fpr[16];
++#elif defined(IR_TARGET_X64)
+ 	uint64_t gpr[16]; /* general purpose integer register */
+ 	double   fpr[16]; /* floating point registers */
+ #elif defined(IR_TARGET_X86)
+@@ -566,7 +580,7 @@ static ir_ref jit_EG_exception(zend_jit_ctx *jit)
+ 	ir_ref ref = jit->eg_exception_addr;
+ 
+ 	if (UNEXPECTED(!ref)) {
+-		ref = ir_unique_const_addr(&jit->ctx, (uintptr_t)&EG(exception));
++		ref = ir_unique_const_addr(&jit->ctx, ZJC_REG(&EG(exception)));
+ 		jit->eg_exception_addr = ref;
+ 	}
+ 	return ref;
+@@ -578,7 +592,7 @@ static ir_ref jit_STUB_ADDR(zend_jit_ctx *jit, jit_stub_id id)
+ 	ir_ref ref = jit->stub_addr[id];
+ 
+ 	if (UNEXPECTED(!ref)) {
+-		ref = ir_unique_const_addr(&jit->ctx, (uintptr_t)zend_jit_stub_handlers[id]);
++		ref = ir_unique_const_addr(&jit->ctx, ZJC_REG(zend_jit_stub_handlers[id]));
+ 		jit->stub_addr[id] = ref;
+ 	}
+ 	return ref;
+@@ -590,7 +604,7 @@ static ir_ref jit_STUB_FUNC_ADDR(zend_jit_ctx *jit, jit_stub_id id, uint16_t fla
+ 	ir_insn *insn;
+ 
+ 	if (UNEXPECTED(!ref)) {
+-		ref = ir_unique_const_addr(&jit->ctx, (uintptr_t)zend_jit_stub_handlers[id]);
++		ref = ir_unique_const_addr(&jit->ctx, ZJC_REG(zend_jit_stub_handlers[id]));
+ 		insn = &jit->ctx.ir_base[ref];
+ 		insn->optx = IR_OPT(IR_FUNC_ADDR, IR_ADDR);
+ #if defined(IR_TARGET_X86)
+@@ -2880,6 +2894,13 @@ static void *zend_jit_ir_compile(ir_ctx *ctx, size_t *size, const char *name)
+ 		ir_save(ctx, IR_SAVE_CFG, stderr);
+ 	}
+ 
++#ifdef ZEND_JIT_C_BACKEND
++	ir_assign_virtual_registers(ctx);
++	ir_compute_dessa_moves(ctx);
++	*size = 0;
++	return zjc_compile(ctx, name, &zjc_last_entries);
++#endif
++
+ 	ir_match(ctx);
+ #if !defined(IR_TARGET_AARCH64)
+ 	ctx->flags &= ~IR_USE_FRAME_POINTER; /* don't use FRAME_POINTER even with ALLOCA, TODO: cleanup this ??? */
+@@ -2946,6 +2967,15 @@ static void zend_jit_setup_stubs(void)
+ 		}
+ 
+ 		entry = zend_jit_ir_compile(&jit.ctx, &size, zend_jit_stubs[i].name);
++#ifdef ZEND_JIT_C_BACKEND
++		/* Stubs the C backend cannot express yet (the tracing JIT's register-
++		 * saving exit) are left out; code that needs them is not compiled. */
++		if (!entry) {
++			zend_jit_free_ctx(&jit);
++			zend_jit_stub_handlers[i] = NULL;
++			continue;
++		}
++#endif
+ 		if (!entry) {
+ 			zend_jit_free_ctx(&jit);
+ 			zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Could not enable JIT: could not compile stub");
+@@ -16619,7 +16649,11 @@ static void *zend_jit_finish(zend_jit_ctx *jit)
+ 				int i = jit->ctx.entries_count;
+ 				do {
+ 					ir_insn *insn = &jit->ctx.ir_base[jit->ctx.entries[--i]];
++#ifdef ZEND_JIT_C_BACKEND
++					op_array->opcodes[insn->op2].handler = zjc_last_entries[i];
++#else
+ 					op_array->opcodes[insn->op2].handler = (char*)entry + insn->op3;
++#endif
+ 				} while (i != 0);
+ 			}
+ 		} else {
+@@ -17236,6 +17270,11 @@ static int zend_jit_trace_return(zend_jit_ctx *jit, bool original_handler, const
+ 
+ static int zend_jit_link_side_trace(const void *code, size_t size, uint32_t jmp_table_size, uint32_t exit_num, const void *addr)
+ {
++#ifdef ZEND_JIT_C_BACKEND
++	/* Generated code cannot be patched.  The exit keeps deoptimizing to the
++	 * interpreter, which is correct but leaves the side trace unused. */
++	return 1;
++#endif
+ 	return ir_patch(code, size, jmp_table_size, zend_jit_trace_get_exit_addr(exit_num), addr);
+ }
+ 
+diff --git a/ext/opcache/jit/zend_jit_trace.c b/ext/opcache/jit/zend_jit_trace.c
+index 9f73dee9..6a91f4f0 100644
+--- a/ext/opcache/jit/zend_jit_trace.c
++++ b/ext/opcache/jit/zend_jit_trace.c
+@@ -84,6 +84,27 @@ static void zend_jit_trace_startup(bool reattached)
+ 	}
+ }
+ 
++#ifdef ZEND_JIT_C_BACKEND
++/* There is no exit-point machine code: an exit "address" is a number in a
++ * reserved range that the C emitter turns into a call (zjc_emit_exit). */
++static const void *zend_jit_trace_get_exit_addr(uint32_t n)
++{
++	if (UNEXPECTED(n >= ZEND_JIT_TRACE_MAX_EXITS)) {
++		return NULL;
++	}
++	return (const void*)(ZJC_EXIT_BASE + n);
++}
++
++static uint32_t zend_jit_exit_point_by_addr(const void *addr)
++{
++	uintptr_t a = (uintptr_t)addr;
++
++	if (a >= ZJC_EXIT_BASE && a < ZJC_EXIT_BASE + ZEND_JIT_TRACE_MAX_EXITS) {
++		return (uint32_t)(a - ZJC_EXIT_BASE);
++	}
++	return (uint32_t)-1;
++}
++#else
+ static const void *zend_jit_trace_allocate_exit_point(uint32_t n)
+ {
+ 	const void *group = NULL;
+@@ -129,6 +150,7 @@ static uint32_t zend_jit_exit_point_by_addr(const void *addr)
+ 	}
+ 	return (uint32_t)-1;
+ }
++#endif
+ 
+ static uint32_t zend_jit_trace_get_exit_point(const zend_op *to_opline, uint32_t flags)
+ {
+@@ -8669,7 +8691,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf
+ 			}
+ 		} else if (STACK_REG(stack, i) != ZREG_NONE) {
+ 			if (STACK_TYPE(stack, i) == IS_LONG) {
+-				zend_long val = regs->gpr[STACK_REG(stack, i)];
++				zend_long val = (zend_long)(uintptr_t)regs->gpr[STACK_REG(stack, i)];
+ 				ZVAL_LONG(EX_VAR_NUM(i), val);
+ 			} else if (STACK_TYPE(stack, i) == IS_DOUBLE) {
+ 				double val = regs->fpr[STACK_REG(stack, i) - ZREG_FIRST_FPR];
+diff --git a/ext/opcache/shared_alloc_mmap.c b/ext/opcache/shared_alloc_mmap.c
+index 0e50b6fb..665912e4 100644
+--- a/ext/opcache/shared_alloc_mmap.c
++++ b/ext/opcache/shared_alloc_mmap.c
+@@ -59,7 +59,7 @@
+ # define MAP_HUGETLB MAP_ALIGNED_SUPER
+ #endif
+ 
+-#if defined(HAVE_JIT) && (defined(__linux__) || defined(__FreeBSD__)) && (defined(__x86_64__) || defined (__aarch64__)) && !defined(__SANITIZE_ADDRESS__)
++#if defined(HAVE_JIT) && (defined(__linux__) || defined(__FreeBSD__)) && (defined(__x86_64__) || defined (__aarch64__)) && !defined(__SANITIZE_ADDRESS__) && !defined(__FILC__)
+ static void *find_prefered_mmap_base(size_t requested_size)
+ {
+ 	size_t huge_page_size = 2 * 1024 * 1024;
+@@ -208,7 +208,9 @@ static int create_segments(size_t requested_size, zend_shared_segment ***shared_
+ #ifdef PROT_MAX
+ 	flags |= PROT_MAX(PROT_READ | PROT_WRITE | PROT_EXEC);
+ #endif
+-#if defined(HAVE_JIT) && (defined(__linux__) || defined(__FreeBSD__)) && (defined(__x86_64__) || defined (__aarch64__)) && !defined(__SANITIZE_ADDRESS__)
++/* Fil-C: the JIT emits C, not code that needs to sit near PHP's text, and an
++ * integer hint address has no capability. */
++#if defined(HAVE_JIT) && (defined(__linux__) || defined(__FreeBSD__)) && (defined(__x86_64__) || defined (__aarch64__)) && !defined(__SANITIZE_ADDRESS__) && !defined(__FILC__)
+ 	void *hint;
+ 	if (JIT_G(enabled) && JIT_G(buffer_size)
+ 			&& zend_jit_check_support() == SUCCESS) {

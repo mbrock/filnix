@@ -121,9 +121,15 @@ let
       ln -s ${final.stdenv.cc.libc}/bin/${name} $out/bin/${name}
     '';
 
-  # Fil-C PHP 8.4 or 8.5 at a given release; see php84 below.
+  # Fil-C PHP 8.4 or 8.5 at a given release; see php84 below. jit (8.4
+  # only) builds opcache with the JIT, whose code it compiles as C with
+  # Fil-C (docs/php.md).
   mkFilcPhp =
-    { version, hash }:
+    {
+      version,
+      hash,
+      jit ? false,
+    }:
     let
       # PHP 8.5 builds Lexbor and OPcache into PHP itself rather than as
       # shared extensions, so their patches and flags move to the core.
@@ -321,11 +327,31 @@ let
                       intl = pprev.extensions.intl.overrideAttrs { buildInputs = [ final.icu ]; };
                     }
                     // final.lib.optionalAttrs (!is85) {
-                      opcache = pprev.extensions.opcache.overrideAttrs (old: {
-                        patches = (old.patches or [ ]) ++ opcachePatches;
-                        # The JIT emits machine code, which Fil-C cannot run.
-                        configureFlags = old.configureFlags ++ [ "--disable-opcache-jit" ];
-                      });
+                      opcache = pprev.extensions.opcache.overrideAttrs (
+                        old:
+                        {
+                          patches =
+                            (old.patches or [ ])
+                            ++ opcachePatches
+                            ++ final.lib.optional jit ../patches/php-8.4-opcache-jit-c-filc.patch;
+                        }
+                        // (
+                          if jit then
+                            {
+                              # The JIT compiles its code with Fil-C at run time.
+                              postPatch = (old.postPatch or "") + ''
+                                substituteInPlace ext/opcache/jit/zend_jit_c.c \
+                                  --replace-fail '#define ZEND_JIT_C_CC "clang"' \
+                                    '#define ZEND_JIT_C_CC "${final.gnufilc0}/bin/clang"'
+                              '';
+                            }
+                          else
+                            {
+                              # The native JIT emits machine code, which Fil-C cannot run.
+                              configureFlags = old.configureFlags ++ [ "--disable-opcache-jit" ];
+                            }
+                        )
+                      );
                     }
                     // {
                       # Bundled extensions outside the default set.
@@ -732,6 +758,12 @@ portDSL.makeOverlay portList final prev
   php84 = mkFilcPhp {
     version = "8.4.27";
     hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
+  };
+  # Opt-in: opcache with the JIT, compiled through C (docs/php.md).
+  php84-jit = mkFilcPhp {
+    version = "8.4.27";
+    hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
+    jit = true;
   };
   php84_25 =
     (mkFilcPhp {

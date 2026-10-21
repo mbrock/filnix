@@ -98,8 +98,9 @@ no handler for it, and PID 1 ignores signals it does not handle, so
   `USE_TRACKED_ALLOC=0` uses untracked malloc, about a third faster, without
   `memory_limit`; `USE_ZEND_ALLOC=1` restores Zend's allocator and gives up
   that protection. See `patches/php-8.4-alloc-filc.patch`.
-- No JIT. Fil-C cannot run generated machine code, so opcache's JIT and
-  PCRE's JIT are off.
+- No JIT by default. Fil-C cannot run generated machine code, so opcache's
+  native JIT and PCRE's JIT are off. An experimental build compiles
+  opcache's JIT through C instead; see [Opcache JIT through C](#opcache-jit-through-c).
 - Opcache maps its shared memory privately, because capabilities do not
   cross processes. Each FPM worker therefore has its own cache. Workers share
   what the master compiled before forking, and `opcache_reset()` affects only
@@ -122,6 +123,72 @@ tests under instrumentation.
 described in [php-extensions.md](php-extensions.md).
 
 Not yet ported: memprof, enchant and swoole.
+
+## Opcache JIT through C
+
+`pkgsFilc.php84-jit` (also `.#php-jit`) is PHP 8.4 whose opcache has the
+JIT enabled. It is experimental and not the default: everything else,
+including `php-dist` and `php-docker`, uses `pkgsFilc.php`.
+
+```sh
+nix build .#php-jit
+result/bin/php -d opcache.enable_cli=1 -d opcache.jit=function \
+  -d opcache.jit_buffer_size=32M script.php
+```
+
+Opcache's JIT builds each hot PHP function into an IR and normally turns
+that into machine code, which Fil-C cannot run. This build prints the IR as
+C instead, compiles it with the Fil-C compiler, and loads the result with
+`dlopen` (`patches/php-8.4-opcache-jit-c-filc.patch`). The generated code is
+instrumented like any other Fil-C code, so a JIT bug gives a wrong result or
+a Fil-C panic, not memory corruption. Emacs' Comphack backend does the same
+for Emacs Lisp.
+
+The JIT turns pointers into integers, which lose their Fil-C capability.
+The backend records every pointer the JIT embeds as a constant and the
+generated code reads it back from a table the loader fills in; address
+values are `char *` in the C, and the fixed VM registers are C variables.
+A guard that fails in a trace writes the snapshot's values into a buffer
+laid out like the native exit's register dump and calls the usual
+`zend_jit_trace_exit()`.
+
+What works and what does not:
+
+- Opcache's JIT test suite (475 tests) passes with `opcache.jit=function`,
+  `opcache.jit=tracing`, and hot-function triggering
+  (`opcache.jit=1235`), and the Nix build runs the extension's 866 tests.
+- Every compile runs the Fil-C compiler, about 0.1 to 1 second per
+  function, synchronously in the request that made the function hot.
+  `opcache.jit=function` compiles every function of a script when it is
+  loaded, which suits small CPU-bound scripts and not applications with
+  thousands of functions; `opcache.jit=1235` compiles only functions
+  called often. `PHP_JIT_CC="ccache …"` reuses compiled objects across
+  processes.
+- Tracing works but is slower than the interpreter: generated code cannot
+  be patched, so side traces are never linked and their exits always fall
+  back to the interpreter.
+- Each process compiles its own code; FPM workers do not share it.
+
+On `Zend/bench.php`, function mode ran the CPU-bound benchmarks 4 to 60
+times faster than the interpreter (mandel 0.198 s to 0.005 s, fibo(30)
+0.367 s to 0.096 s), not counting compile time.
+
+DokuWiki (the Nixpkgs copy, served with `php -S`) works with
+`opcache.jit=1235`: page views, raw export, index, search, the editor,
+recent changes, the CSS and JS bundles and the RSS feed produce the same
+output as the interpreter, and the error log stays empty. The first
+requests are slow because they compile what becomes hot (the first page took
+about 9 minutes on a loaded machine, and the CSS bundle about 2.5 minutes).
+After a few requests nothing new compiles, and rendering all ten pages with an
+empty page cache takes about 2.1 s, the same as the interpreter. The JIT
+does not speed up this kind of string- and I/O-bound code.
+`opcache.jit=function` is impractical for DokuWiki because it compiles
+every function of each included file on first load.
+
+Environment variables: `PHP_JIT_CC` (compiler, default the Fil-C clang the
+package was built with), `PHP_JIT_CFLAGS` (default `-O1`), `PHP_JIT_C_DIR`
+(parent of the per-process work directory, default `/tmp`),
+`PHP_JIT_C_KEEP=1` (keep the generated C), `PHP_JIT_C_VERBOSE=1`.
 
 ## Vulnerable PHP under Fil-C
 
