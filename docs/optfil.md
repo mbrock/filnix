@@ -87,7 +87,9 @@ that have the tree, like upstream's.
 [php-dist](php.md) is relocatable instead: it starts each program with a
 small launcher that runs it through the bundled loader, and sets variables
 for the paths that glibc and PHP otherwise take from `/nix`. That fits one
-application, not a compiler whose output has to run on its own.
+application, not a compiler whose output has to run on its own. [filroot](filroot.md)
+is a relocatable variant of this tree that finds itself through a file
+descriptor instead.
 
 ### What is not Fil-C
 

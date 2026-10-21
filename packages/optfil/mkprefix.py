@@ -1,6 +1,7 @@
 """Turn a Nix closure into a tree that runs from a fixed prefix.
 
 usage: mkprefix.py OUT PREFIX CLOSURE [--merge PATH...] [--alias PATH...]
+                   [--relative-links]
 
 CLOSURE lists store paths, one per line (closureInfo's store-paths). OUT
 becomes the tree that is to be installed at PREFIX:
@@ -11,13 +12,18 @@ becomes the tree that is to be installed at PREFIX:
 - Each --alias path is not copied, but references to it also become PREFIX:
   the merged paths provide the files under it that are needed.
 - Every other path is copied to OUT/s/HASH-NAME, and references to it
-  become PREFIX/s/HASH-NAME.
+  become PREFIX/s/HASH-NAME. When PREFIX/s/ is longer than /nix/store/, the
+  hash is shortened by the difference.
 
 References are rewritten in the bytes of every file, so they also change
 inside ELF interpreters and RUNPATHs, scripts and compiled-in strings. A
-replacement must not change the length of the bytes: PREFIX/s/ has as many
-characters as /nix/store/, and PREFIX is padded with slashes to the length
-of the store path it replaces, which names the same directory.
+replacement must not change the length of the bytes: PREFIX/s/HASH-NAME has
+as many characters as /nix/store/HASH-NAME, and PREFIX is padded with
+slashes to the length of the store path it replaces, which names the same
+directory.
+
+Symlinks to store paths point to PREFIX, or with --relative-links to the
+same file inside OUT by a relative path.
 """
 
 import argparse
@@ -42,12 +48,15 @@ def main():
     ap.add_argument("closure")
     ap.add_argument("--merge", nargs="*", default=[])
     ap.add_argument("--alias", nargs="*", default=[])
+    ap.add_argument("--relative-links", action="store_true")
     args = ap.parse_args()
 
     prefix = args.prefix.rstrip("/")
     store_dir = prefix + "/s/"
-    if len(store_dir) != len(STORE):
-        sys.exit(f"{store_dir} must be as long as {STORE}")
+    # Characters to drop from each hash; 20 of 32 keep collisions unlikely.
+    cut = len(store_dir) - len(STORE)
+    if not 0 <= cut <= 12:
+        sys.exit(f"{store_dir} must be at most 12 characters longer than {STORE}")
 
     closure = open(args.closure).read().split()
     flat = args.merge + args.alias
@@ -57,23 +66,31 @@ def main():
 
     # hash -> (store path, replacement); flat replacements get padded.
     targets = {}
+    names = {}  # store path -> its directory in OUT/s
     for path in closure:
         base = os.path.basename(path)
-        repl = prefix if path in flat else store_dir + base
+        names[path] = base[: 32 - cut] + base[32:]
+        repl = prefix if path in flat else store_dir + names[path]
         targets[base[:32].encode()] = (path.encode(), repl.encode())
+    if len(set(names.values())) != len(names):
+        sys.exit("shortened store path names collide")
 
-    def relink(target):
+    def relink(target, dest):
         if not target.startswith(STORE):
             return target
         path, repl = targets[target[len(STORE) : len(STORE) + 32].encode()]
-        return repl.decode() + target[len(path) :]  # unpadded
+        new = repl.decode() + target[len(path) :]  # unpadded
+        if not args.relative_links:
+            return new
+        inside = os.path.join(args.out, os.path.relpath(new, prefix))
+        return os.path.relpath(inside, os.path.dirname(dest))
 
     copier = Copier(relink)
     for path in args.merge:
         copier.copy(path, args.out)
     for path in closure:
         if path not in flat:
-            copier.copy(path, os.path.join(args.out, "s", os.path.basename(path)))
+            copier.copy(path, os.path.join(args.out, "s", names[path]))
 
     unknown = {}
     for dest in copier.files:
@@ -117,13 +134,13 @@ class Copier:
 
     def file(self, src, dest, origin):
         if os.path.lexists(dest):
-            if not same(src, dest, self.relink):
+            if not same(src, dest, lambda t: self.relink(t, dest)):
                 self.conflict(dest, origin)
             return
         self.owner[dest] = origin
         st = os.lstat(src)
         if stat.S_ISLNK(st.st_mode):
-            os.symlink(self.relink(os.readlink(src)), dest)
+            os.symlink(self.relink(os.readlink(src), dest), dest)
             return
         # Files with the same bytes stay the same after rewriting, so they
         # can share one inode.

@@ -147,7 +147,15 @@ let
     pkgs.runCommand "${name}-tree"
       {
         nativeBuildInputs = [ pkgs.python3 ];
-        passthru = { inherit toolchain packages; };
+        passthru = {
+          inherit
+            toolchain
+            packages
+            merged
+            aliased
+            closure
+            ;
+        };
       }
       ''
         mkdir -p $out

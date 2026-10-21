@@ -85,6 +85,14 @@
             };
 
           pkgsFilc = mkPkgsFilc { };
+          optfil = import ./packages/optfil {
+            inherit
+              pkgs
+              pkgsFilc
+              filcc
+              sarcasm
+              ;
+          };
           pkgsFilcStaging = mkPkgsFilc { staging = true; };
 
           filc-shell-stuff = import ./shells/world.nix {
@@ -361,14 +369,8 @@
             inherit (sarcasm) minilute;
             inherit (pkgsFilc) openssl-sarcasm;
             php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
-            optfil = import ./packages/optfil {
-              inherit
-                pkgs
-                pkgsFilc
-                filcc
-                sarcasm
-                ;
-            };
+            inherit optfil;
+            filroot = import ./packages/filroot { inherit pkgs optfil; };
             php-docker = import ./packages/php-dist/docker.nix {
               inherit pkgs;
               dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };

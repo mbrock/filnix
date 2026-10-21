@@ -159,6 +159,10 @@ and headers, and some forty memory-safe programs and libraries. It compiles
 and runs programs on any x86-64 Linux without Nix. See
 [docs/optfil.md](docs/optfil.md).
 
+`nix build .#filroot` makes the same tree relocatable: it works wherever it
+is unpacked, also read-only, and programs built with it run through its
+launchers. See [docs/filroot.md](docs/filroot.md).
+
 ## How it works
 
 ### The toolchain
