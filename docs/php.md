@@ -75,7 +75,7 @@ no handler for it, and PID 1 ignores signals it does not handle, so
   runs silently to completion on Zend's allocator and stops with a Fil-C
   panic on the system allocator. The default is PHP's *tracked* system
   allocator, the one its ASan CI uses, so `memory_limit` and
-  `memory_get_usage()` still work (`memory_get_peak_usage()` reports 0).
+  `memory_get_usage()` and `memory_get_peak_usage()` still work.
   It is about twice as slow as Zend's on allocation-heavy code.
   `USE_TRACKED_ALLOC=0` uses untracked malloc, about a third faster, without
   `memory_limit`; `USE_ZEND_ALLOC=1` restores Zend's allocator and gives up
@@ -104,7 +104,7 @@ Not yet ported: memprof, enchant and swoole.
 
 The port is also in upstream Fil-C's Projeny format, on branch
 [`php-8.4`](https://github.com/mbrock/fil-c/tree/php-8.4) of mbrock/fil-c
-(`projects/php.projeny` and `build_php.sh`). It is built against glibc only:
+(`projects/php.projeny` and `build_php.sh`). It has the same allocator default. It is built against glibc only:
 Fil-C's `ucontext`, which PHP fibers need, exists only in its glibc. That
 build passes 15027 core tests of about 16000. It fails `pcntl_unshare_01`
 and `02`, because the Fil-C runtime panics creating a thread after

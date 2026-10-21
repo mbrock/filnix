@@ -13,10 +13,43 @@ allocator.
 
 tracked_free_all() frees by addresses kept as integers, which have no
 capability under Fil-C; leave leftover request memory to the collector.
+The tracked allocator never recorded peaks, so memory_get_peak_usage()
+reported 0; record them.
 
 --- a/Zend/zend_alloc.c
 +++ b/Zend/zend_alloc.c
-@@ -3026,6 +3026,13 @@
+@@ -2965,6 +2965,17 @@
+ #endif
+ }
+ 
++#if defined(__FILC__) && ZEND_MM_STAT
++/* PHP's tracked allocator never recorded peaks, so memory_get_peak_usage()
++ * reported 0; it is the default here, and monitoring code reads it. */
++# define TRACKED_PEAK(heap) do { \
++		if ((heap)->size > (heap)->peak) (heap)->peak = (heap)->size; \
++		if ((heap)->real_size > (heap)->real_peak) (heap)->real_peak = (heap)->real_size; \
++	} while (0)
++#else
++# define TRACKED_PEAK(heap) do { } while (0)
++#endif
++
+ static void *tracked_malloc(size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
+ 	zend_mm_heap *heap = AG(mm_heap);
+@@ -2980,6 +2991,7 @@
+ 	heap->size += size;
+ 	heap->real_size = heap->size;
+ #endif
++	TRACKED_PEAK(heap);
+ 	return ptr;
+ }
+ 
+@@ -3022,10 +3034,18 @@
+ 	heap->size += new_size - old_size;
+ 	heap->real_size = heap->size;
+ #endif
++	TRACKED_PEAK(heap);
+ 	return ptr;
  }
  
  static void tracked_free_all(zend_mm_heap *heap) {
@@ -30,7 +63,7 @@ capability under Fil-C; leave leftover request memory to the collector.
  	HashTable *tracked_allocs = heap->tracked_allocs;
  	zend_ulong h;
  	ZEND_HASH_FOREACH_NUM_KEY(tracked_allocs, h) {
-@@ -3041,8 +3048,20 @@
+@@ -3041,8 +3061,20 @@
  
  #if ZEND_MM_CUSTOM
  	tmp = getenv("USE_ZEND_ALLOC");
