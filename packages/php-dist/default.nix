@@ -13,15 +13,17 @@ let
   php = pkgsFilc.php.withExtensions (
     { enabled, all }:
     enabled
-    # APCu (from apc_001 on) and shmop (tests/002.phpt) fail their tests
-    # under Fil-C and are left out until ported.
     ++ (with all; [
+      apcu
       bz2
+      shmop
       sysvmsg
       sysvshm
       xsl
       igbinary
+      msgpack
       redis
+      yaml
     ])
   );
   name = "php-${php.version}-filc-x86_64-linux";
@@ -109,7 +111,7 @@ pkgs.runCommand "${name}.tar.xz"
     sed -e 's/^group = nobody/;group = nobody/' \
       $unwrapped/etc/php-fpm.d/www.conf.default > $root/etc/php-fpm.d/www.conf
 
-    install -m644 ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt $root/etc/ssl/cert.pem
+    install -m644 ${pkgsFilc.cacert}/etc/ssl/certs/ca-bundle.crt $root/etc/ssl/cert.pem
     # Without a configuration file, openssl_pkey_new() and friends fail.
     install -m644 ${pkgsFilc.openssl.out}/etc/ssl/openssl.cnf $root/etc/ssl/
     install -m644 ${./README.md} $root/README.md

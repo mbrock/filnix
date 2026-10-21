@@ -361,6 +361,10 @@
             inherit (sarcasm) minilute;
             inherit (pkgsFilc) openssl-sarcasm;
             php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+            php-docker = import ./packages/php-dist/docker.nix {
+              inherit pkgs;
+              dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+            };
             inherit
               libei
               libei_27
