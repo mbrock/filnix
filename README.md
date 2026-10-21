@@ -151,6 +151,14 @@ with Fil-C; it passes Nix's unit and functional tests.
 Linux without Nix, and `.#php-docker` an OCI image of it. See
 [docs/php.md](docs/php.md).
 
+### /opt/fil without Nix
+
+`nix build .#optfil` makes a tarball of `/opt/fil` in the layout of upstream's
+binary distribution: `filcc` and `fil++` with the Fil-C runtime, glibc, libc++
+and headers, and some forty memory-safe programs and libraries. It compiles
+and runs programs on any x86-64 Linux without Nix. See
+[docs/optfil.md](docs/optfil.md).
+
 ## How it works
 
 ### The toolchain
