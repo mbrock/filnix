@@ -120,6 +120,498 @@ let
       mkdir -p $out/bin
       ln -s ${final.stdenv.cc.libc}/bin/${name} $out/bin/${name}
     '';
+
+  # Fil-C PHP 8.4 at a given release; see php84 below.
+  mkFilcPhp84 =
+    { version, hash }:
+    let
+      php =
+        (
+          (final.callPackage "${prev.path}/pkgs/development/interpreters/php" {
+            llvmPackages = prev.llvmPackages // {
+              inherit (final) stdenv;
+            };
+          }).php84.override
+            {
+              inherit version hash;
+              # Bundled extensions build from the unpatched PHP source.
+              packageOverrides =
+                _: pprev:
+                let
+                  # Most PECL extensions build without their tests in Nixpkgs, and
+                  # tests run with no other extension loaded (run-tests drops
+                  # extension= lines from the ini), so tests that need session,
+                  # json, ... skip. Load the default extensions and the
+                  # extension's own dependencies ahead of it, and print the diff
+                  # of each failure.
+                  withTests =
+                    ext:
+                    ext.overrideAttrs (old: {
+                      doCheck = true;
+                      checkPhase = ''
+                        runHook preCheck
+                        sed -i "s|^PHP_TEST_SHARED_EXTENSIONS = |&$(
+                          sed -n 's/^\(zend_\)\?extension=/-d &/p' ${
+                            php.withExtensions (
+                              { enabled, ... }: enabled ++ old.peclDeps or [ ] ++ old.internalDeps or [ ]
+                            )
+                          }/lib/php.ini | tr '\n' ' '
+                        )|" Makefile
+                        export NO_INTERACTION=1 SKIP_ONLINE_TESTS=1 SKIP_SLOW_TESTS=1 SKIP_PERF_SENSITIVE=1
+                        # run-tests matches EXPECTF sections with PCRE, which has no
+                        # JIT here, so lines with many %s exhausted the default
+                        # backtrack limit and passing tests failed. run-tests
+                        # itself runs with -n, its parallel workers with no
+                        # options; the tests run with -n and see neither.
+                        settings="PHP_TEST_SETTINGS=-d open_basedir= -d output_buffering=0 -d memory_limit=-1 -d pcre.backtrack_limit=100000000"
+                        mkdir -p "$TMPDIR/run-tests-ini"
+                        echo pcre.backtrack_limit=100000000 > "$TMPDIR/run-tests-ini/pcre.ini"
+                        export PHP_INI_SCAN_DIR="$TMPDIR/run-tests-ini"
+                        USE_ZEND_ALLOC=1 \
+                          make "$settings" test TESTS="-j''${phpTestJobs:-$NIX_BUILD_CORES} -q --show-diff"
+                        # Zend's allocator carves request memory out of 2 MiB
+                        # chunks, so Fil-C bounds a PHP value by its chunk, and
+                        # overflows and use after free between values go
+                        # unnoticed. PHP defaults to the system allocator here
+                        # (php-8.4-alloc-filc.patch), which gives each allocation
+                        # its own bounds; run the tests on both. SKIP_ASAN
+                        # skips the tests that need Zend's allocator, as in
+                        # upstream's ASan runs, and zendAllocOnlyTests lists those
+                        # that need it without saying so, like memory_limit tests.
+                        rm -f ${toString (old.zendAllocOnlyTests or [ ])}
+                        USE_ZEND_ALLOC=0 SKIP_ASAN=1 \
+                          make "$settings" test TESTS="-j''${phpTestJobs:-$NIX_BUILD_CORES} -q --show-diff"
+                        runHook postCheck
+                      '';
+                    });
+
+                  # Drop tests that fail the same way without Fil-C or that need
+                  # what the build sandbox lacks. Paths are relative to where
+                  # postPatch runs: the PHP source for bundled extensions.
+                  withoutTests =
+                    files: ext:
+                    ext.overrideAttrs (old: {
+                      postPatch = (old.postPatch or "") + ''
+                        rm ${toString files}
+                      '';
+                    });
+
+                  # config.m4 looks up plain pkg-config, which a cross build
+                  # only has under its target prefix.
+                  withPkgConfig =
+                    ext:
+                    ext.overrideAttrs (old: {
+                      preConfigure = (old.preConfigure or "") + ''
+                        configureFlagsArray+=("ac_cv_path_PKG_CONFIG=$(command -v $PKG_CONFIG)")
+                      '';
+                    });
+
+                  # Memcached servers on ports 11211 and 11212 for the tests.
+                  withMemcached =
+                    ext:
+                    ext.overrideAttrs (old: {
+                      # The tests share the servers.
+                      phpTestJobs = 1;
+                      preCheck = (old.preCheck or "") + ''
+                        for port in 11211 11212; do
+                          ${final.buildPackages.memcached}/bin/memcached -d -p $port -U 0 -u "$(id -un)"
+                        done
+                      '';
+                    });
+                in
+                {
+                  extensions =
+                    pprev.extensions
+                    // final.lib.genAttrs [
+                      "bz2"
+                      "dba"
+                      "snmp"
+                      "sysvmsg"
+                      "sysvshm"
+                      "tidy"
+                      "xsl"
+                      "zend_test"
+                      "amqp"
+                      "ast"
+                      "decimal"
+                      "ds"
+                      "event"
+                      "excimer"
+                      "gnupg"
+                      "igbinary"
+                      "imap"
+                      "inotify"
+                      "mailparse"
+                      "maxminddb"
+                      "memcache"
+                      "memcached"
+                      "meminfo"
+                      "msgpack"
+                      "pcov"
+                      "phalcon"
+                      "pinba"
+                      "protobuf"
+                      "pspell"
+                      "rdkafka"
+                      "redis"
+                      "snuffleupagus"
+                      "spx"
+                      "ssh2"
+                      "systemd"
+                      "uuid"
+                      "uv"
+                      "vld"
+                      "wikidiff2"
+                      "yaml"
+                      "zstd"
+                    ] (name: withTests pprev.extensions.${name})
+                    // {
+                      dom = pprev.extensions.dom.overrideAttrs (old: {
+                        patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-dom-filc.patch ];
+                      });
+                      filter = pprev.extensions.filter.overrideAttrs (
+                        old:
+                        final.lib.optionalAttrs (final.lib.versionAtLeast version "8.4.27") {
+                          # These new OOM tests spawn CGI with -n, which omits
+                          # Nixpkgs' shared filter module. Keep testing the OOM,
+                          # not an undefined filter_input() function.
+                          postPatch = (old.postPatch or "") + ''
+                            substituteInPlace ext/filter/tests/oom_filter_{default_encoded,input,input_array}.phpt \
+                              --replace-fail "'-n'," "'-n', '-d', 'extension=$PWD/ext/filter/modules/filter.so',"
+                          '';
+                        }
+                      );
+                      pcntl = pprev.extensions.pcntl.overrideAttrs (old: {
+                        # Pins CPUs 0 and 1, but build sandboxes may exclude CPU 0.
+                        postPatch = (old.postPatch or "") + ''
+                          rm ext/pcntl/tests/pcntl_cpuaffinity.phpt
+                        '';
+                      });
+                      # The format probes run programs, so the cross build assumed
+                      # libgd had none of them; it has all of them.
+                      gd = pprev.extensions.gd.overrideAttrs (old: {
+                        configureFlags =
+                          old.configureFlags
+                          ++ map (f: "php_cv_lib_gd_gdImageCreateFrom${f}=yes") [
+                            "Png"
+                            "Avif"
+                            "Webp"
+                            "Jpeg"
+                            "Xpm"
+                            "Bmp"
+                            "Tga"
+                          ];
+                      });
+                      # Nixpkgs pins ICU 73; use the ported default ICU.
+                      intl = pprev.extensions.intl.overrideAttrs { buildInputs = [ final.icu ]; };
+                      opcache = pprev.extensions.opcache.overrideAttrs (old: {
+                        patches =
+                          (old.patches or [ ])
+                          ++ [ ../patches/php-8.4-opcache-filc.patch ]
+                          ++ final.lib.optional (final.lib.versionAtLeast version "8.4.27") ../patches/php-8.4-opcache-ce-cache-filc.patch;
+                        # The JIT emits machine code, which Fil-C cannot run.
+                        configureFlags = old.configureFlags ++ [ "--disable-opcache-jit" ];
+                      });
+
+                      # Bundled extensions outside the default set.
+                      shmop = withTests (
+                        pprev.extensions.shmop.overrideAttrs (old: {
+                          patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-shmop-filc.patch ];
+                        })
+                      );
+                      ffi = withTests (
+                        pprev.extensions.ffi.overrideAttrs (old: {
+                          postPatch = (old.postPatch or "") + ''
+                            # Frees a malloc() result rebuilt from its address as an
+                            # integer, which has no capability; Fil-C stops it.
+                            rm ext/ffi/tests/gh14626.phpt
+                            # Tests that skip without libc.so.6; Fil-C's is .6666.
+                            sed -i 's/libc\.so\.6\b/libc.so.6666/g' ext/ffi/tests/*.phpt
+                          '';
+                        })
+                      );
+
+                      # PECL extensions.
+                      apcu = withTests (
+                        pprev.extensions.apcu.overrideAttrs (old: {
+                          patches = (old.patches or [ ]) ++ [ ../patches/php-apcu-filc.patch ];
+                        })
+                      );
+                      # The version probe runs a program.
+                      amqp = withTests (
+                        pprev.extensions.amqp.overrideAttrs (old: {
+                          configureFlags = (old.configureFlags or [ ]) ++ [
+                            "ac_cv_librabbitmq_version=${final.rabbitmq-c.version}"
+                          ];
+                        })
+                      );
+                      # The tests share one GnuPG home directory.
+                      gnupg = withTests (pprev.extensions.gnupg.overrideAttrs { phpTestJobs = 1; });
+                      # The removed test predates PHP 8.2's dynamic property
+                      # deprecation.
+                      meminfo =
+                        withoutTests [ "tests/bug-github-76_children_items_not_linked_php7.phpt" ]
+                          (
+                            withTests (
+                              pprev.extensions.meminfo.overrideAttrs (old: {
+                                patches = (old.patches or [ ]) ++ [ ../patches/php-meminfo-undef.patch ];
+                              })
+                            )
+                          );
+                      # Unix socket tests want /var/run/memcached; 056 wants a
+                      # connection timeout where the sandbox has no route.
+                      memcache = withMemcached (
+                        withoutTests [ "tests/035.phpt" "tests/053.phpt" "tests/056.phpt" ] (
+                          withTests pprev.extensions.memcache
+                        )
+                      );
+                      # Fail the same way on x86-64 PHP without Fil-C.
+                      memcached = withMemcached (
+                        withPkgConfig (
+                          withoutTests (map (t: "tests/${t}.phpt") [
+                            "experimental/extreme_floats"
+                            "experimental/getdelayed_cbthrows"
+                            "experimental/get_udp"
+                            "experimental/session_gc"
+                            "experimental/setmulti_badserialize"
+                            "experimental/stats_badserver"
+                            "experimental/stats"
+                            "fetchall_badunserialize"
+                            "fetch_badunserialize"
+                            "getdelayed_badunserialize"
+                            "getmulti_badunserialize"
+                            # Their SKIPIF includes a file the release lacks.
+                            "experimental/serializer/serializer_php_bad_serialize"
+                            "experimental/serializer/serializer_php_bad_unserialize"
+                            "experimental/serializer_igbinary"
+                            "experimental/serializer_json"
+                          ]) (withTests pprev.extensions.memcached)
+                        )
+                      );
+                      grpc = withPkgConfig (withTests pprev.extensions.grpc);
+                      zstd = withPkgConfig (withTests pprev.extensions.zstd);
+                      # The inotify probe runs a program; the header is enough.
+                      inotify = withTests (
+                        pprev.extensions.inotify.overrideAttrs (old: {
+                          postPatch = (old.postPatch or "") + ''
+                            sed -i 's/^  \])$/  ],[:])/' config.m4
+                          '';
+                        })
+                      );
+                      # Tests written before PHP 8.4's deprecation notices.
+                      igbinary = withoutTests [
+                        "tests/igbinary_009b_php8.phpt"
+                        "tests/__serialize_020.phpt"
+                      ] (withTests pprev.extensions.igbinary);
+                      msgpack =
+                        withoutTests
+                          [
+                            # Nixpkgs builds msgpack without session support.
+                            "tests/015.phpt"
+                            "tests/015b.phpt"
+                            "tests/015e.phpt"
+                            "tests/027.phpt"
+                            "tests/028.phpt"
+                            "tests/029.phpt"
+                            "tests/issue132.phpt"
+                            # Wants 400 unserializations a second, a native speed.
+                            "tests/035.phpt"
+                          ]
+                          (
+                            withTests (
+                              pprev.extensions.msgpack.overrideAttrs (old: {
+                                patches = (old.patches or [ ]) ++ [
+                                  ../patches/php-msgpack-map-item-double-free.patch
+                                  ../patches/php-msgpack-enum-refcount.patch
+                                ];
+                              })
+                            )
+                          );
+                      # Judy keeps every node address in a Word_t (JudyMalloc
+                      # returns one), so the pointers it hands back have no
+                      # capability and the first allocation memprof records
+                      # traps in JudyLIns. Porting needs Judy retyped throughout.
+                      memprof = pprev.extensions.memprof.overrideAttrs (old: {
+                        meta = old.meta // {
+                          broken = true;
+                        };
+                      });
+                      # Busy-waits on the wall clock and expects that much CPU
+                      # time; it passes alone but not beside other test jobs.
+                      luasandbox = withoutTests [ "tests/timer.phpt" ] (
+                        withTests (
+                          pprev.extensions.luasandbox.overrideAttrs {
+                            zendAllocOnlyTests = [ "tests/oom-init.phpt" ];
+                          }
+                        )
+                      );
+                      opentelemetry = withTests (
+                        pprev.extensions.opentelemetry.overrideAttrs (old: {
+                          patches = (old.patches or [ ]) ++ [
+                            ../patches/php-opentelemetry-hook-args-refcount.patch
+                          ];
+                        })
+                      );
+                      # Fail the same way on x86-64 PHP without Fil-C.
+                      mongodb = withoutTests [ "tests/manager/manager-ctor-server.phpt" ] (
+                        withTests pprev.extensions.mongodb
+                      );
+                      uv = withoutTests [ "tests/005-uv_listen_cb-not-destroyed.phpt" ] (
+                        withTests pprev.extensions.uv
+                      );
+                      vld = withoutTests [
+                        "tests/catch-php70.phpt"
+                        "tests/foreach-jumps-php70.phpt"
+                        "tests/issue00019-php70.phpt"
+                        "tests/issue00020-01-php70-64bit.phpt"
+                        "tests/issue00020-02-php70-64bit.phpt"
+                        "tests/issue00021-php70.phpt"
+                      ] (withTests pprev.extensions.vld);
+                      # Opens compress.zlib://ext/xsl/tests/..., relative to the
+                      # PHP source root rather than the extension.
+                      xsl = withoutTests [ "ext/xsl/tests/xslt009.phpt" ] (
+                        withTests pprev.extensions.xsl
+                      );
+                      # phpredis tests itself with a PHP script against servers
+                      # on ports 6379 to 6382 rather than with run-tests.
+                      redis = pprev.extensions.redis.overrideAttrs {
+                        doCheck = true;
+                        checkPhase = ''
+                          runHook preCheck
+                          for port in 6379 6380 6381 6382; do
+                            ${final.buildPackages.redis}/bin/redis-server --port $port \
+                              --save "" --appendonly no --daemonize yes
+                          done
+                          for _ in $(seq 100); do
+                            ${final.buildPackages.redis}/bin/redis-cli -p 6382 ping && break
+                            sleep 0.1
+                          done
+                          # These race a background PHP holding a session lock
+                          # against fixed waits sized for native start-up; on
+                          # busy builders different ones missed their windows.
+                          for t in lockReleasedOnClose lockWaitTime lock_ttlLockExpire \
+                            lock_ttlMaxExecutionTime lockHoldCheckBeforeWrite_otherProcessHasLock \
+                            correctLockRetryCount defaultLockRetryCount; do
+                            substituteInPlace tests/RedisTest.php \
+                              --replace-fail "function testSession_$t(" "function skipSession_$t("
+                          done
+                          # Session tests run these in child processes.
+                          export TEST_PHP_EXECUTABLE=${php}/bin/php
+                          export TEST_PHP_ARGS="-d extension=$PWD/modules/redis.so"
+                          # Also on the system allocator; see withTests.
+                          for alloc in 1 0; do
+                            for class in Redis RedisArray; do
+                              USE_ZEND_ALLOC=$alloc ${php}/bin/php -d extension=$PWD/modules/redis.so \
+                                tests/TestRedis.php --class $class --nocolors
+                            done
+                          done
+                          for port in 6379 6380 6381 6382; do
+                            ${final.buildPackages.redis}/bin/redis-cli -p $port shutdown nosave
+                          done
+                          runHook postCheck
+                        '';
+                      };
+                      # The text tests need fonts and a fontconfig configuration,
+                      # which the build sandbox lacks. The removed test fails the
+                      # same way without Fil-C.
+                      imagick = withoutTests [ "tests/024-ispixelsimilar.phpt" ] (
+                        withTests (
+                          pprev.extensions.imagick.overrideAttrs (old: {
+                            preCheck = (old.preCheck or "") + ''
+                              export FONTCONFIG_FILE=${
+                                final.buildPackages.makeFontsConf {
+                                  fontDirectories = [ final.buildPackages.dejavu_fonts ];
+                                }
+                              } XDG_CACHE_HOME=$TMPDIR/cache
+                            '';
+                          })
+                        )
+                      );
+                      # Xdebug has its own copy of run-tests. Its debugger tests
+                      # start PHP themselves, so load the extensions from an ini
+                      # directory that every PHP started here reads.
+                      xdebug = pprev.extensions.xdebug.overrideAttrs (old: {
+                        patches = (old.patches or [ ]) ++ [
+                          ../patches/php-xdebug-out-of-bounds.patch
+                        ];
+                        doCheck = true;
+                        checkPhase = ''
+                          runHook preCheck
+                          mkdir ini
+                          grep -E '^(zend_)?extension=' ${
+                            php.withExtensions ({ enabled, ... }: enabled)
+                          }/lib/php.ini > ini/extensions.ini
+                          echo "zend_extension=$PWD/modules/xdebug.so" >> ini/extensions.ini
+                          # For run-tests' workers; see withTests.
+                          echo pcre.backtrack_limit=100000000 > ini/pcre.ini
+                          export PHP_INI_SCAN_DIR=$PWD/ini TEST_PHP_EXECUTABLE=${php}/bin/php \
+                            NO_INTERACTION=1 OPCACHE=no SKIP_SLOW_TESTS=1 SKIP_UNPARALLEL_TESTS=1 SKIP_ONLINE_TESTS=1
+                          run() {
+                            $TEST_PHP_EXECUTABLE -n -d pcre.backtrack_limit=100000000 \
+                              run-xdebug-tests.php -j$NIX_BUILD_CORES -q --show-diff \
+                              -d xdebug.mode=develop,debug,coverage,trace,profile "$@"
+                          }
+                          USE_ZEND_ALLOC=1 run tests
+                          # Also on the system allocator; see withTests. Leave out
+                          # the debugger tests there: some give the debugged PHP a
+                          # second to connect, and on a busy builder one connected
+                          # after the client had given up and both waited forever.
+                          USE_ZEND_ALLOC=0 run $(ls -d tests/*/ | grep -v '^tests/debugger/$')
+                          runHook postCheck
+                        '';
+                      });
+                      snuffleupagus = withTests (
+                        pprev.extensions.snuffleupagus.overrideAttrs (old: {
+                          patches = (old.patches or [ ]) ++ [
+                            ../patches/php-snuffleupagus-scanner-unsigned.patch
+                          ];
+                        })
+                      );
+                      # config.m4 never substitutes SPX_SHARED_LIBADD, so spx.so
+                      # was not linked with zlib and only loaded after another
+                      # module had brought it in.
+                      # spx_custom_metadata fails the same way without Fil-C.
+                      spx = withoutTests [ "tests/spx_custom_metadata.phpt" ] (
+                        withTests (
+                          pprev.extensions.spx.overrideAttrs (old: {
+                            buildInputs = (old.buildInputs or [ ]) ++ [ final.zlib ];
+                            makeFlags = (old.makeFlags or [ ]) ++ [ "SPX_SHARED_LIBADD=-lz" ];
+                          })
+                        )
+                      );
+                    };
+                };
+            }
+        ).overrideAttrs
+          (old: {
+            patches = old.patches ++ [
+              ../patches/php-8.4-filc.patch
+              # Default to the system allocator so Fil-C bounds each PHP value.
+              ../patches/php-8.4-alloc-filc.patch
+            ];
+            # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
+            separateDebugInfo = false;
+            configureFlags = old.configureFlags ++ [
+              # Fibers switch stacks with ucontext, like Boost.Context here,
+              # instead of the fcontext assembly.
+              "--disable-fiber-asm"
+              # Overflow-checked arithmetic in C instead of x86 `asm goto`,
+              # whose callbr crashes FilPizlonatorPass.
+              "php_cv_have__asm_goto=no"
+              # Fil-C cannot run generated machine code; PCRE warned at the
+              # first preg_* call when mapping executable memory failed.
+              "--without-pcre-jit"
+              # phpdbg's watchpoints would use userfaultfd, which Fil-C does not
+              # support; phpdbg died at startup.
+              "ac_cv_have_decl_UFFDIO_WRITEPROTECT_MODE_WP=no"
+              # The probe runs a program, so the cross build disabled the stack
+              # limit check; deep recursion then hit Fil-C's stack overflow trap
+              # instead of throwing "Maximum call stack size reached".
+              "php_cv_have_stack_limit=yes"
+            ];
+          });
+    in
+    php;
 in
 portDSL.makeOverlay portList final prev
 // pkgs.lib.optionalAttrs prev.stdenv.hostPlatform.isFilc {
@@ -141,475 +633,18 @@ portDSL.makeOverlay portList final prev
   # Nixpkgs builds PHP with llvmPackages.stdenv whenever the compiler is
   # Clang, which for Fil-C means a second compiler-rt and libc++ (and a
   # cross GCC) built from source. The Fil-C stdenv is already Clang.
-  php84 =
-    (
-      (final.callPackage "${prev.path}/pkgs/development/interpreters/php" {
-        llvmPackages = prev.llvmPackages // {
-          inherit (final) stdenv;
-        };
-      }).php84.override
-        {
-          # Bundled extensions build from the unpatched PHP source.
-          packageOverrides =
-            _: pprev:
-            let
-              # Most PECL extensions build without their tests in Nixpkgs, and
-              # tests run with no other extension loaded (run-tests drops
-              # extension= lines from the ini), so tests that need session,
-              # json, ... skip. Load the default extensions and the
-              # extension's own dependencies ahead of it, and print the diff
-              # of each failure.
-              withTests =
-                ext:
-                ext.overrideAttrs (old: {
-                  doCheck = true;
-                  checkPhase = ''
-                    runHook preCheck
-                    sed -i "s|^PHP_TEST_SHARED_EXTENSIONS = |&$(
-                      sed -n 's/^\(zend_\)\?extension=/-d &/p' ${
-                        final.php84.withExtensions (
-                          { enabled, ... }: enabled ++ old.peclDeps or [ ] ++ old.internalDeps or [ ]
-                        )
-                      }/lib/php.ini | tr '\n' ' '
-                    )|" Makefile
-                    export NO_INTERACTION=1 SKIP_ONLINE_TESTS=1 SKIP_SLOW_TESTS=1 SKIP_PERF_SENSITIVE=1
-                    # run-tests matches EXPECTF sections with PCRE, which has no
-                    # JIT here, so lines with many %s exhausted the default
-                    # backtrack limit and passing tests failed. run-tests
-                    # itself runs with -n, its parallel workers with no
-                    # options; the tests run with -n and see neither.
-                    settings="PHP_TEST_SETTINGS=-d open_basedir= -d output_buffering=0 -d memory_limit=-1 -d pcre.backtrack_limit=100000000"
-                    mkdir -p "$TMPDIR/run-tests-ini"
-                    echo pcre.backtrack_limit=100000000 > "$TMPDIR/run-tests-ini/pcre.ini"
-                    export PHP_INI_SCAN_DIR="$TMPDIR/run-tests-ini"
-                    USE_ZEND_ALLOC=1 \
-                      make "$settings" test TESTS="-j''${phpTestJobs:-$NIX_BUILD_CORES} -q --show-diff"
-                    # Zend's allocator carves request memory out of 2 MiB
-                    # chunks, so Fil-C bounds a PHP value by its chunk, and
-                    # overflows and use after free between values go
-                    # unnoticed. PHP defaults to the system allocator here
-                    # (php-8.4-alloc-filc.patch), which gives each allocation
-                    # its own bounds; run the tests on both. SKIP_ASAN
-                    # skips the tests that need Zend's allocator, as in
-                    # upstream's ASan runs, and zendAllocOnlyTests lists those
-                    # that need it without saying so, like memory_limit tests.
-                    rm -f ${toString (old.zendAllocOnlyTests or [ ])}
-                    USE_ZEND_ALLOC=0 SKIP_ASAN=1 \
-                      make "$settings" test TESTS="-j''${phpTestJobs:-$NIX_BUILD_CORES} -q --show-diff"
-                    runHook postCheck
-                  '';
-                });
-
-              # Drop tests that fail the same way without Fil-C or that need
-              # what the build sandbox lacks. Paths are relative to where
-              # postPatch runs: the PHP source for bundled extensions.
-              withoutTests =
-                files: ext:
-                ext.overrideAttrs (old: {
-                  postPatch = (old.postPatch or "") + ''
-                    rm ${toString files}
-                  '';
-                });
-
-              # config.m4 looks up plain pkg-config, which a cross build
-              # only has under its target prefix.
-              withPkgConfig =
-                ext:
-                ext.overrideAttrs (old: {
-                  preConfigure = (old.preConfigure or "") + ''
-                    configureFlagsArray+=("ac_cv_path_PKG_CONFIG=$(command -v $PKG_CONFIG)")
-                  '';
-                });
-
-              # Memcached servers on ports 11211 and 11212 for the tests.
-              withMemcached =
-                ext:
-                ext.overrideAttrs (old: {
-                  # The tests share the servers.
-                  phpTestJobs = 1;
-                  preCheck = (old.preCheck or "") + ''
-                    for port in 11211 11212; do
-                      ${final.buildPackages.memcached}/bin/memcached -d -p $port -U 0 -u "$(id -un)"
-                    done
-                  '';
-                });
-            in
-            {
-              extensions =
-                pprev.extensions
-                // final.lib.genAttrs [
-                  "bz2"
-                  "dba"
-                  "snmp"
-                  "sysvmsg"
-                  "sysvshm"
-                  "tidy"
-                  "xsl"
-                  "zend_test"
-                  "amqp"
-                  "ast"
-                  "decimal"
-                  "ds"
-                  "event"
-                  "excimer"
-                  "gnupg"
-                  "igbinary"
-                  "imap"
-                  "inotify"
-                  "mailparse"
-                  "maxminddb"
-                  "memcache"
-                  "memcached"
-                  "meminfo"
-                  "msgpack"
-                  "pcov"
-                  "phalcon"
-                  "pinba"
-                  "protobuf"
-                  "pspell"
-                  "rdkafka"
-                  "redis"
-                  "snuffleupagus"
-                  "spx"
-                  "ssh2"
-                  "systemd"
-                  "uuid"
-                  "uv"
-                  "vld"
-                  "wikidiff2"
-                  "yaml"
-                  "zstd"
-                ] (name: withTests pprev.extensions.${name})
-                // {
-                  dom = pprev.extensions.dom.overrideAttrs (old: {
-                    patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-dom-filc.patch ];
-                  });
-                  pcntl = pprev.extensions.pcntl.overrideAttrs (old: {
-                    # Pins CPUs 0 and 1, but build sandboxes may exclude CPU 0.
-                    postPatch = (old.postPatch or "") + ''
-                      rm ext/pcntl/tests/pcntl_cpuaffinity.phpt
-                    '';
-                  });
-                  # The format probes run programs, so the cross build assumed
-                  # libgd had none of them; it has all of them.
-                  gd = pprev.extensions.gd.overrideAttrs (old: {
-                    configureFlags =
-                      old.configureFlags
-                      ++ map (f: "php_cv_lib_gd_gdImageCreateFrom${f}=yes") [
-                        "Png"
-                        "Avif"
-                        "Webp"
-                        "Jpeg"
-                        "Xpm"
-                        "Bmp"
-                        "Tga"
-                      ];
-                  });
-                  # Nixpkgs pins ICU 73; use the ported default ICU.
-                  intl = pprev.extensions.intl.overrideAttrs { buildInputs = [ final.icu ]; };
-                  opcache = pprev.extensions.opcache.overrideAttrs (old: {
-                    patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-opcache-filc.patch ];
-                    # The JIT emits machine code, which Fil-C cannot run.
-                    configureFlags = old.configureFlags ++ [ "--disable-opcache-jit" ];
-                  });
-
-                  # Bundled extensions outside the default set.
-                  shmop = withTests (
-                    pprev.extensions.shmop.overrideAttrs (old: {
-                      patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-shmop-filc.patch ];
-                    })
-                  );
-                  ffi = withTests (
-                    pprev.extensions.ffi.overrideAttrs (old: {
-                      postPatch = (old.postPatch or "") + ''
-                        # Frees a malloc() result rebuilt from its address as an
-                        # integer, which has no capability; Fil-C stops it.
-                        rm ext/ffi/tests/gh14626.phpt
-                        # Tests that skip without libc.so.6; Fil-C's is .6666.
-                        sed -i 's/libc\.so\.6\b/libc.so.6666/g' ext/ffi/tests/*.phpt
-                      '';
-                    })
-                  );
-
-                  # PECL extensions.
-                  apcu = withTests (
-                    pprev.extensions.apcu.overrideAttrs (old: {
-                      patches = (old.patches or [ ]) ++ [ ../patches/php-apcu-filc.patch ];
-                    })
-                  );
-                  # The version probe runs a program.
-                  amqp = withTests (
-                    pprev.extensions.amqp.overrideAttrs (old: {
-                      configureFlags = (old.configureFlags or [ ]) ++ [
-                        "ac_cv_librabbitmq_version=${final.rabbitmq-c.version}"
-                      ];
-                    })
-                  );
-                  # The tests share one GnuPG home directory.
-                  gnupg = withTests (pprev.extensions.gnupg.overrideAttrs { phpTestJobs = 1; });
-                  # The removed test predates PHP 8.2's dynamic property
-                  # deprecation.
-                  meminfo =
-                    withoutTests [ "tests/bug-github-76_children_items_not_linked_php7.phpt" ]
-                      (
-                        withTests (
-                          pprev.extensions.meminfo.overrideAttrs (old: {
-                            patches = (old.patches or [ ]) ++ [ ../patches/php-meminfo-undef.patch ];
-                          })
-                        )
-                      );
-                  # Unix socket tests want /var/run/memcached; 056 wants a
-                  # connection timeout where the sandbox has no route.
-                  memcache = withMemcached (
-                    withoutTests [ "tests/035.phpt" "tests/053.phpt" "tests/056.phpt" ] (
-                      withTests pprev.extensions.memcache
-                    )
-                  );
-                  # Fail the same way on x86-64 PHP without Fil-C.
-                  memcached = withMemcached (
-                    withPkgConfig (
-                      withoutTests (map (t: "tests/${t}.phpt") [
-                        "experimental/extreme_floats"
-                        "experimental/getdelayed_cbthrows"
-                        "experimental/get_udp"
-                        "experimental/session_gc"
-                        "experimental/setmulti_badserialize"
-                        "experimental/stats_badserver"
-                        "experimental/stats"
-                        "fetchall_badunserialize"
-                        "fetch_badunserialize"
-                        "getdelayed_badunserialize"
-                        "getmulti_badunserialize"
-                        # Their SKIPIF includes a file the release lacks.
-                        "experimental/serializer/serializer_php_bad_serialize"
-                        "experimental/serializer/serializer_php_bad_unserialize"
-                        "experimental/serializer_igbinary"
-                        "experimental/serializer_json"
-                      ]) (withTests pprev.extensions.memcached)
-                    )
-                  );
-                  grpc = withPkgConfig (withTests pprev.extensions.grpc);
-                  zstd = withPkgConfig (withTests pprev.extensions.zstd);
-                  # The inotify probe runs a program; the header is enough.
-                  inotify = withTests (
-                    pprev.extensions.inotify.overrideAttrs (old: {
-                      postPatch = (old.postPatch or "") + ''
-                        sed -i 's/^  \])$/  ],[:])/' config.m4
-                      '';
-                    })
-                  );
-                  # Tests written before PHP 8.4's deprecation notices.
-                  igbinary = withoutTests [
-                    "tests/igbinary_009b_php8.phpt"
-                    "tests/__serialize_020.phpt"
-                  ] (withTests pprev.extensions.igbinary);
-                  msgpack =
-                    withoutTests
-                      [
-                        # Nixpkgs builds msgpack without session support.
-                        "tests/015.phpt"
-                        "tests/015b.phpt"
-                        "tests/015e.phpt"
-                        "tests/027.phpt"
-                        "tests/028.phpt"
-                        "tests/029.phpt"
-                        "tests/issue132.phpt"
-                        # Wants 400 unserializations a second, a native speed.
-                        "tests/035.phpt"
-                      ]
-                      (
-                        withTests (
-                          pprev.extensions.msgpack.overrideAttrs (old: {
-                            patches = (old.patches or [ ]) ++ [
-                              ../patches/php-msgpack-map-item-double-free.patch
-                              ../patches/php-msgpack-enum-refcount.patch
-                            ];
-                          })
-                        )
-                      );
-                  # Judy keeps every node address in a Word_t (JudyMalloc
-                  # returns one), so the pointers it hands back have no
-                  # capability and the first allocation memprof records
-                  # traps in JudyLIns. Porting needs Judy retyped throughout.
-                  memprof = pprev.extensions.memprof.overrideAttrs (old: {
-                    meta = old.meta // {
-                      broken = true;
-                    };
-                  });
-                  # Busy-waits on the wall clock and expects that much CPU
-                  # time; it passes alone but not beside other test jobs.
-                  luasandbox = withoutTests [ "tests/timer.phpt" ] (
-                    withTests (
-                      pprev.extensions.luasandbox.overrideAttrs {
-                        zendAllocOnlyTests = [ "tests/oom-init.phpt" ];
-                      }
-                    )
-                  );
-                  opentelemetry = withTests (
-                    pprev.extensions.opentelemetry.overrideAttrs (old: {
-                      patches = (old.patches or [ ]) ++ [
-                        ../patches/php-opentelemetry-hook-args-refcount.patch
-                      ];
-                    })
-                  );
-                  # Fail the same way on x86-64 PHP without Fil-C.
-                  mongodb = withoutTests [ "tests/manager/manager-ctor-server.phpt" ] (
-                    withTests pprev.extensions.mongodb
-                  );
-                  uv = withoutTests [ "tests/005-uv_listen_cb-not-destroyed.phpt" ] (
-                    withTests pprev.extensions.uv
-                  );
-                  vld = withoutTests [
-                    "tests/catch-php70.phpt"
-                    "tests/foreach-jumps-php70.phpt"
-                    "tests/issue00019-php70.phpt"
-                    "tests/issue00020-01-php70-64bit.phpt"
-                    "tests/issue00020-02-php70-64bit.phpt"
-                    "tests/issue00021-php70.phpt"
-                  ] (withTests pprev.extensions.vld);
-                  # Opens compress.zlib://ext/xsl/tests/..., relative to the
-                  # PHP source root rather than the extension.
-                  xsl = withoutTests [ "ext/xsl/tests/xslt009.phpt" ] (
-                    withTests pprev.extensions.xsl
-                  );
-                  # phpredis tests itself with a PHP script against servers
-                  # on ports 6379 to 6382 rather than with run-tests.
-                  redis = pprev.extensions.redis.overrideAttrs {
-                    doCheck = true;
-                    checkPhase = ''
-                      runHook preCheck
-                      for port in 6379 6380 6381 6382; do
-                        ${final.buildPackages.redis}/bin/redis-server --port $port \
-                          --save "" --appendonly no --daemonize yes
-                      done
-                      for _ in $(seq 100); do
-                        ${final.buildPackages.redis}/bin/redis-cli -p 6382 ping && break
-                        sleep 0.1
-                      done
-                      # These race a background PHP holding a session lock
-                      # against fixed waits sized for native start-up; on
-                      # busy builders different ones missed their windows.
-                      for t in lockReleasedOnClose lockWaitTime lock_ttlLockExpire \
-                        lock_ttlMaxExecutionTime lockHoldCheckBeforeWrite_otherProcessHasLock \
-                        correctLockRetryCount defaultLockRetryCount; do
-                        substituteInPlace tests/RedisTest.php \
-                          --replace-fail "function testSession_$t(" "function skipSession_$t("
-                      done
-                      # Session tests run these in child processes.
-                      export TEST_PHP_EXECUTABLE=${final.php84}/bin/php
-                      export TEST_PHP_ARGS="-d extension=$PWD/modules/redis.so"
-                      # Also on the system allocator; see withTests.
-                      for alloc in 1 0; do
-                        for class in Redis RedisArray; do
-                          USE_ZEND_ALLOC=$alloc ${final.php84}/bin/php -d extension=$PWD/modules/redis.so \
-                            tests/TestRedis.php --class $class --nocolors
-                        done
-                      done
-                      for port in 6379 6380 6381 6382; do
-                        ${final.buildPackages.redis}/bin/redis-cli -p $port shutdown nosave
-                      done
-                      runHook postCheck
-                    '';
-                  };
-                  # The text tests need fonts and a fontconfig configuration,
-                  # which the build sandbox lacks. The removed test fails the
-                  # same way without Fil-C.
-                  imagick = withoutTests [ "tests/024-ispixelsimilar.phpt" ] (
-                    withTests (
-                      pprev.extensions.imagick.overrideAttrs (old: {
-                        preCheck = (old.preCheck or "") + ''
-                          export FONTCONFIG_FILE=${
-                            final.buildPackages.makeFontsConf {
-                              fontDirectories = [ final.buildPackages.dejavu_fonts ];
-                            }
-                          } XDG_CACHE_HOME=$TMPDIR/cache
-                        '';
-                      })
-                    )
-                  );
-                  # Xdebug has its own copy of run-tests. Its debugger tests
-                  # start PHP themselves, so load the extensions from an ini
-                  # directory that every PHP started here reads.
-                  xdebug = pprev.extensions.xdebug.overrideAttrs (old: {
-                    patches = (old.patches or [ ]) ++ [
-                      ../patches/php-xdebug-out-of-bounds.patch
-                    ];
-                    doCheck = true;
-                    checkPhase = ''
-                      runHook preCheck
-                      mkdir ini
-                      grep -E '^(zend_)?extension=' ${
-                        final.php84.withExtensions ({ enabled, ... }: enabled)
-                      }/lib/php.ini > ini/extensions.ini
-                      echo "zend_extension=$PWD/modules/xdebug.so" >> ini/extensions.ini
-                      # For run-tests' workers; see withTests.
-                      echo pcre.backtrack_limit=100000000 > ini/pcre.ini
-                      export PHP_INI_SCAN_DIR=$PWD/ini TEST_PHP_EXECUTABLE=${final.php84}/bin/php \
-                        NO_INTERACTION=1 OPCACHE=no SKIP_SLOW_TESTS=1 SKIP_UNPARALLEL_TESTS=1 SKIP_ONLINE_TESTS=1
-                      run() {
-                        $TEST_PHP_EXECUTABLE -n -d pcre.backtrack_limit=100000000 \
-                          run-xdebug-tests.php -j$NIX_BUILD_CORES -q --show-diff \
-                          -d xdebug.mode=develop,debug,coverage,trace,profile "$@"
-                      }
-                      USE_ZEND_ALLOC=1 run tests
-                      # Also on the system allocator; see withTests. Leave out
-                      # the debugger tests there: some give the debugged PHP a
-                      # second to connect, and on a busy builder one connected
-                      # after the client had given up and both waited forever.
-                      USE_ZEND_ALLOC=0 run $(ls -d tests/*/ | grep -v '^tests/debugger/$')
-                      runHook postCheck
-                    '';
-                  });
-                  snuffleupagus = withTests (
-                    pprev.extensions.snuffleupagus.overrideAttrs (old: {
-                      patches = (old.patches or [ ]) ++ [
-                        ../patches/php-snuffleupagus-scanner-unsigned.patch
-                      ];
-                    })
-                  );
-                  # config.m4 never substitutes SPX_SHARED_LIBADD, so spx.so
-                  # was not linked with zlib and only loaded after another
-                  # module had brought it in.
-                  # spx_custom_metadata fails the same way without Fil-C.
-                  spx = withoutTests [ "tests/spx_custom_metadata.phpt" ] (
-                    withTests (
-                      pprev.extensions.spx.overrideAttrs (old: {
-                        buildInputs = (old.buildInputs or [ ]) ++ [ final.zlib ];
-                        makeFlags = (old.makeFlags or [ ]) ++ [ "SPX_SHARED_LIBADD=-lz" ];
-                      })
-                    )
-                  );
-                };
-            };
-        }
-    ).overrideAttrs
-      (old: {
-        patches = old.patches ++ [
-          ../patches/php-8.4-filc.patch
-          # Default to the system allocator so Fil-C bounds each PHP value.
-          ../patches/php-8.4-alloc-filc.patch
-        ];
-        # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
-        separateDebugInfo = false;
-        configureFlags = old.configureFlags ++ [
-          # Fibers switch stacks with ucontext, like Boost.Context here,
-          # instead of the fcontext assembly.
-          "--disable-fiber-asm"
-          # Overflow-checked arithmetic in C instead of x86 `asm goto`,
-          # whose callbr crashes FilPizlonatorPass.
-          "php_cv_have__asm_goto=no"
-          # Fil-C cannot run generated machine code; PCRE warned at the
-          # first preg_* call when mapping executable memory failed.
-          "--without-pcre-jit"
-          # phpdbg's watchpoints would use userfaultfd, which Fil-C does not
-          # support; phpdbg died at startup.
-          "ac_cv_have_decl_UFFDIO_WRITEPROTECT_MODE_WP=no"
-          # The probe runs a program, so the cross build disabled the stack
-          # limit check; deep recursion then hit Fil-C's stack overflow trap
-          # instead of throwing "Maximum call stack size reached".
-          "php_cv_have_stack_limit=yes"
-        ];
-      });
+  #
+  # php84 follows PHP's releases; php84_25 keeps 8.4.25, the release the
+  # unserialize() var_destroy use-after-free reproduction ran against
+  # (docs/php.md), for comparing exploits and fixes.
+  php84 = mkFilcPhp84 {
+    version = "8.4.27";
+    hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
+  };
+  php84_25 = mkFilcPhp84 {
+    version = "8.4.25";
+    hash = "sha256-lSzMF4Uma5WPSh3PxYDgjqu7efRCItHv8ZK82Y2R9uM=";
+  };
 
   # PHP 7.4, from fossar/nix-phps, which keeps Nixpkgs' PHP builder working
   # for releases Nixpkgs has dropped. See docs/php.md.

@@ -1,0 +1,57 @@
+Subject: Preserve capabilities for deferred OPcache class-cache keys
+Origin: Filnix
+Upstream-Status: Not submitted
+
+PHP 8.4.27 defers publishing class-cache slots until map_ptr_last covers
+them. The pending table keys are string addresses, cast back to pointers
+at commit. Fil-C drops capabilities on pointer-to-integer conversions.
+Register and recover those addresses through a weak exact pointer table,
+as in the existing DOM and weak-reference ports. The OPcache interned
+string arena owns these permanent strings; the table does not retain them.
+Keep the upstream begin/commit/discard ordering and bailout handling.
+
+--- a/ext/opcache/zend_persist.c
++++ b/ext/opcache/zend_persist.c
+@@ -30,6 +30,18 @@
+ #include "zend_interfaces.h"
+ #include "zend_attributes.h"
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++
++/* The permanent interned-string arena owns the pending class names. */
++static zexact_ptrtable *pending_ce_cache_names;
++
++__attribute__((constructor)) static void pending_ce_cache_names_init(void)
++{
++	pending_ce_cache_names = zexact_ptrtable_new_weak();
++}
++#endif
++
+ #ifdef HAVE_JIT
+ # include "Optimizer/zend_func_info.h"
+ # include "jit/zend_jit.h"
+@@ -339,7 +351,11 @@
+ 	ZEND_ASSERT(ZCSG(map_ptr_last) == CG(map_ptr_last));
+ 
+ 	ZEND_HASH_FOREACH_NUM_KEY_VAL(ZCG(pending_ce_cache), zend_ulong h, zval *zv) {
++#ifdef __FILC__
++		zend_string *type_name = zexact_ptrtable_decode(pending_ce_cache_names, h);
++#else
+ 		zend_string *type_name = (zend_string*)(uintptr_t)h;
++#endif
+ 
+ 		ZEND_ASSERT(!ZSTR_HAS_CE_CACHE(type_name));
+ 		GC_SET_REFCOUNT(type_name, (uint32_t)Z_LVAL_P(zv));
+@@ -376,7 +392,11 @@
+ 	if ((GC_FLAGS(type_name) & GC_IMMUTABLE)
+ 	 && (GC_FLAGS(type_name) & IS_STR_PERMANENT)) {
+ 		ZEND_ASSERT(ZCG(pending_ce_cache) && "Must be called inside a persist window");
++#ifdef __FILC__
++		slot = zend_hash_index_lookup(ZCG(pending_ce_cache), zexact_ptrtable_encode(pending_ce_cache_names, type_name));
++#else
+ 		slot = zend_hash_index_lookup(ZCG(pending_ce_cache), (zend_ulong)(uintptr_t)type_name);
++#endif
+ 		if (Z_TYPE_P(slot) != IS_NULL) {
+ 			/* Already allocated earlier in this window */
+ 			return;

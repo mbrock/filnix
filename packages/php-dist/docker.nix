@@ -3,8 +3,8 @@
 # by default. FPM listens on port 9000 and logs to the container's stderr.
 #
 #   nix build .#php-docker && docker load < result
-#   docker run --rm -it filnix-php:8.4.25
-#   docker run --rm -p 9000:9000 filnix-php:8.4.25 php-fpm
+#   docker run --rm -it filnix-php:8.4.27
+#   docker run --rm -p 9000:9000 filnix-php:8.4.27 php-fpm
 {
   pkgs,
   dist,

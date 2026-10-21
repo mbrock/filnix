@@ -7,9 +7,16 @@ to get it:
 
 ```sh
 nix build .#pkgsFilc.php     # the Nix package, with Nixpkgs' default extensions
-nix build .#php-dist         # php-8.4.25-filc-x86_64-linux.tar.xz, runs without Nix
+nix build .#php-dist         # php-8.4.27-filc-x86_64-linux.tar.xz, runs without Nix
 nix build .#php-docker       # an OCI image of the same tree
 ```
+
+`pkgsFilc.php` follows PHP's 8.4 releases, now 8.4.27.
+`pkgsFilc.php84_25` keeps 8.4.25, the release the use-after-free
+reproduction below ran against, for comparing exploits and their fixes;
+it keeps its existing Fil-C patches and allocator default. The reproducer
+still traps on 8.4.27 with the default allocator, and still completes on
+Zend's allocator: the version update does not fix that particular UAF.
 
 `pkgsFilc.php.withExtensions` and `pkgsFilc.php.buildEnv` work as in
 Nixpkgs; see [php-extensions.md](php-extensions.md) for which extensions are
@@ -44,7 +51,7 @@ Without Nix, pull it from the GitHub container registry, where CI publishes
 each cached revision of `main`:
 
 ```sh
-docker pull ghcr.io/mbrock/filnix-php:8.4.25    # or :latest
+docker pull ghcr.io/mbrock/filnix-php:8.4.27    # or :latest
 ```
 
 The same CI run keeps the tarball as a workflow artifact; see
@@ -52,11 +59,11 @@ The same CI run keeps the tarball as a workflow artifact; see
 
 ```sh
 nix build .#php-docker && docker load < result
-docker run --rm -it filnix-php:8.4.25                       # php -a
+docker run --rm -it filnix-php:8.4.27                       # php -a
 docker run --rm -p 8000:8000 -v $PWD:/var/www/html \
-  filnix-php:8.4.25 php -S 0.0.0.0:8000                     # built-in server
+  filnix-php:8.4.27 php -S 0.0.0.0:8000                     # built-in server
 docker run --rm -p 9000:9000 -v $PWD:/var/www/html \
-  filnix-php:8.4.25 php-fpm                                 # FastCGI on 9000
+  filnix-php:8.4.27 php-fpm                                 # FastCGI on 9000
 ```
 
 The layout follows the official `php` images: programs in `/usr/local/bin`,
@@ -98,9 +105,14 @@ no handler for it, and PID 1 ignores signals it does not handle, so
 
 ## Test results
 
-The Nix build runs PHP's test suite. Every bundled extension's suite passes
-(pcntl skips a CPU-pinning test), and the core run passes 13084 of 13087; the
-failures are ZipArchive encryption, since Nixpkgs builds libzip without it.
+The Nix build runs the bundled extensions' suites (pcntl skips a
+CPU-pinning test). On 8.4.27, filter passes 118 tests and OPcache 864, with
+no unexpected failures. The separate core/standard-library sweep passes
+13345 tests, with four expected failures and three failures in ZipArchive
+encryption, since Nixpkgs builds libzip without it; 816 tests skip.
+The sweep uses a directory containing the shared modules as `extension_dir`
+so subprocess tests can find them, and `--set-timeout 300` for the new OOM
+tests under instrumentation.
 `USE_ZEND_ALLOC=0` runs, which give each PHP value its own bounds, are
 described in [php-extensions.md](php-extensions.md).
 
@@ -183,16 +195,34 @@ crashes in PCRE's JIT, and two libgd image-scaling tests. Tests of PCRE's
 JIT skip, and `SKIP_ASAN` skips the tests PHP marks as needing Zend's
 allocator, as in its ASan CI.
 
+## PHP 8.5 investigation
+
+[PHP 8.5.12](https://www.php.net/releases/8_5_12.php) is the current 8.5
+security release (21 October 2026), but is not yet a supported Fil-C port.
+The inherited `pkgsFilc.php85` definition does not include the 8.4 port's
+patches; its presence is not a support claim.
+
+Source-level checks found that the core, allocator, shmop and OPcache
+patches apply to 8.5.12. The Lexbor patches apply after changing their paths
+from `ext/dom/lexbor/lexbor` to `ext/lexbor/lexbor`. Both Lexbor and OPcache
+are now built into PHP itself, so their patches and `--disable-opcache-jit`
+must move into the core derivation rather than shared-extension overrides.
+The module ABI changes from 20240924 to 20250925; PECL extensions need a
+fresh compatibility/build/test pass. These patch checks are not a build or
+runtime verification. Add 8.5 as a separate opt-in port before considering
+a change to the default; this update keeps `php` on 8.4.
+
 ## Upstream
 
 The port is also in upstream Fil-C's Projeny format, on branch
 [`php-8.4`](https://github.com/mbrock/fil-c/tree/php-8.4) of mbrock/fil-c
 (`projects/php.projeny` and `build_php.sh`). It has the same allocator default. It is built against glibc only:
-Fil-C's `ucontext`, which PHP fibers need, exists only in its glibc. That
-build passes 15027 core tests of about 16000. It fails `pcntl_unshare_01`
-and `02`, because the Fil-C runtime panics creating a thread after
-`unshare(CLONE_NEWPID)`, and opcache's `gh9164`, which depends on shared
-opcache memory.
+Fil-C's `ucontext`, which PHP fibers need, exists only in its glibc.
+The 8.4.27 build and smoke test pass; its OPcache suite passes 868 tests
+with the existing `gh9164` failure, which depends on shared opcache memory.
+The last full core run, on 8.4.25, passed 15027 tests; `pcntl_unshare_02`
+failed because the Fil-C runtime panics creating a thread after
+`unshare(CLONE_NEWPID)`.
 
 `ports/extract-projeny.py` imports it, like upstream's other `URL:`
 descriptors:
