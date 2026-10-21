@@ -13,7 +13,8 @@ nix build .#php-docker       # an OCI image of the same tree
 
 `pkgsFilc.php.withExtensions` and `pkgsFilc.php.buildEnv` work as in
 Nixpkgs; see [php-extensions.md](php-extensions.md) for which extensions are
-ported and how they are tested.
+ported and how they are tested. PHP 7.4, which no longer gets security
+fixes, builds too; see [PHP 7.4](#php-74).
 
 ## The tarball
 
@@ -104,6 +105,83 @@ failures are ZipArchive encryption, since Nixpkgs builds libzip without it.
 described in [php-extensions.md](php-extensions.md).
 
 Not yet ported: memprof, enchant and swoole.
+
+## PHP 7.4
+
+PHP 7.4 reached its end of life in November 2022 and gets no security
+fixes; the fixes for current PHP CVEs exist only for PHP 8. Fil-C does not
+fix those bugs, but it stops the memory-corruption ones from being
+exploited: an out-of-bounds access or use after free in PHP 7.4 or a
+library it loads panics instead of handing an attacker memory. For example,
+the `var_destroy` use after free in `unserialize()` (see
+[above](#differences-from-other-php-builds)) is present in 7.4.33:
+ordinary 7.4 runs the reproduction to completion, reading freed memory, and
+this build stops with a Fil-C panic (exit 133) at the freed read.
+
+It does nothing for logic bugs. SQL injection, path traversal,
+authentication bypasses, type juggling, object injection through
+`unserialize()` gadget chains made of ordinary PHP code, and any CVE that
+is not a memory error work exactly as in ordinary PHP 7.4. Treat it as a
+mitigation while moving to PHP 8, not as a supported PHP.
+
+```sh
+nix build .#pkgsFilc.php74   # Nix package with the PHP 7.4 default extensions
+nix build .#php74-dist       # php-7.4.33-filc-x86_64-linux.tar.xz, as php-dist
+```
+
+The package comes from [fossar/nix-phps](https://github.com/fossar/nix-phps),
+which keeps Nixpkgs' PHP builder working for PHP 7.4 (pinned in the
+`php74` block of `ports/overlay.nix`). Like nix-phps, it builds against
+libxml2 2.12 and ICU 64; OpenSSL is the default OpenSSL 3. `php74-dist`
+adds bz2, shmop, sysvmsg and sysvshm to the defaults and passes
+`packages/php-dist/test/run.sh` (with `smoke74.php`) on `debian:12`,
+`debian:13`, `ubuntu:22.04` and `alpine:3`.
+
+It differs from PHP 8.4 on Fil-C in these ways:
+
+- The allocator default is the same (`patches/php-7.4-alloc-filc.patch`),
+  but PHP 7.4's tracked allocator kept no sizes, so it had no
+  `memory_limit` and reported no memory usage. The patch gives it PHP 8's
+  size tracking, so `memory_limit`, `memory_get_usage()` and
+  `memory_get_peak_usage()` work as they do on 8.4.
+- PHP 7.4 keeps type declarations in an integer that holds a tagged pointer
+  to the class name or class entry; under Fil-C it is a pointer
+  (`patches/php-7.4-filc.patch`).
+- Opcache works as on 8.4 (private shared memory, no JIT).
+- No PECL extensions are ported for 7.4, and there is no xsl: nix-phps
+  builds PHP 7.4 against libxml2 2.12, and libxslt 1.1.45 needs 2.15.
+- phpdbg watchpoints do not work: they `mprotect()` pages of PHP's heap,
+  which Fil-C refuses, and phpdbg cannot install its SIGBUS handler.
+  phpdbg otherwise works.
+
+Every default extension's own test suite passes during the build. PHP's
+whole test suite, run from the 7.4.33 source tree with all the default
+extensions loaded (`run-tests.php -j24` with `SKIP_SLOW_TESTS`,
+`SKIP_ONLINE_TESTS` and `SKIP_PERF_SENSITIVE`):
+
+| PHP 7.4.33 | Passed | Failed |
+| --- | --- | --- |
+| x86-64, no Fil-C (nix-phps) | 13157 | 85 |
+| Fil-C, tracked system allocator (default; `SKIP_ASAN=1`) | 13135 | 85 |
+| Fil-C, Zend's allocator (`USE_ZEND_ALLOC=1`) | 13142 | 91 |
+
+The ordinary build's 85 failures come from PHP 7.4's age against current
+libraries (OpenSSL 3, libgd, libxml2, curl) and from tests that want a
+terminal or the network; the same tests fail on Fil-C. Fil-C fails four
+tests that pass without it: `pcntl_unshare_01`, because
+`unshare(CLONE_NEWUSER)` needs a single-threaded process and the Fil-C
+runtime runs its own threads, phpdbg's `info_001` (the SIGBUS handler
+above), and `bug61371` and `bug61371-unix`, which expect
+`memory_get_usage(true)` to stay level and see the first sockets' few
+bytes of lazily created state once allocations are counted exactly.
+On Zend's allocator the `bug61371` tests pass, and phpdbg's seven
+watchpoint tests, which skip on the system allocator, fail, as does
+opcache's `log_verbosity_bug`, which expects mapping 1 GB of shared memory
+to fail; the private mapping succeeds.
+It passes three that fail without it: `bug78272`, whose forked child
+crashes in PCRE's JIT, and two libgd image-scaling tests. Tests of PCRE's
+JIT skip, and `SKIP_ASAN` skips the tests PHP marks as needing Zend's
+allocator, as in its ASan CI.
 
 ## Upstream
 

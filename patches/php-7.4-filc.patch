@@ -1,0 +1,221 @@
+Subject: Keep PHP 7.4's pointers and capabilities intact under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The PHP 7.4 counterpart of php-8.4-filc.patch, without the fiber and WeakMap
+parts, which 7.4 does not have.
+
+Fil-C traps on inline assembly it cannot prove safe. Take Zend's existing
+portable paths for string comparison (memcmp) and zend_safe_address, and
+spell xgetbv as the instruction Fil-C lowers instead of raw opcode bytes.
+
+Fil-C also drops a pointer's capability when the pointer becomes an integer.
+PHP 7.4's zend_type is a uintptr_t holding either a type code or a class
+name or class entry pointer tagged in its low bits, and PHP trapped at
+startup registering the first internal function with a class type. Make it
+a char pointer under Fil-C, tagged with pointer arithmetic, as PHP 8's
+zend_type keeps its pointer in a pointer. Typed-property references tag
+their source list through the integer member of a union; make that member a
+pointer too.
+
+Fil-C checks that a function is called with the arguments it takes. php -m
+called print_extension_info(), which takes two, through a one-argument
+function pointer; give it one, as PHP 8 does.
+
+zend_str_tolower_dup_ex(), zend_string_tolower_ex(), php_string_toupper()
+and php_string_tolower() reached into the new copy as source pointer plus
+(copy - source), which keeps the capability of the source. Offset the copy
+instead.
+
+--- a/Zend/zend_cpuinfo.c
++++ b/Zend/zend_cpuinfo.c
+@@ -81,7 +81,7 @@ static unsigned get_xcr0_eax() {
+ 	// directly because older assemblers do not include support for xgetbv and
+ 	// there is no easy way to conditionally compile based on the assembler used.
+ 	unsigned eax, edx;
+-	__asm__(".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
++	__asm__("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0));
+ 	return eax;
+ # elif defined(ZEND_WIN32) && defined(_XCR_XFEATURE_ENABLED_MASK)
+ 	return _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+--- a/Zend/zend_multiply.h
++++ b/Zend/zend_multiply.h
+@@ -180,7 +180,7 @@ static zend_always_inline size_t zend_safe_address(size_t nmemb, size_t size, si
+ 	return res;
+ }
+ 
+-#elif defined(__GNUC__) && defined(__x86_64__)
++#elif defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+ 
+ static zend_always_inline size_t zend_safe_address(size_t nmemb, size_t size, size_t offset, int *overflow)
+ {
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -2675,7 +2675,7 @@ ZEND_API char* ZEND_FASTCALL zend_str_tolower_dup_ex(const char *source, size_t
+ 			if (p != (const unsigned char*)source) {
+ 				memcpy(res, source, p - (const unsigned char*)source);
+ 			}
+-			r = (unsigned char*)p + (res - source);
++			r = (unsigned char*)res + (p - (const unsigned char*)source);
+ 			while (p < end) {
+ 				*r = zend_tolower_ascii(*p);
+ 				p++;
+@@ -2703,7 +2703,7 @@ ZEND_API zend_string* ZEND_FASTCALL zend_string_tolower_ex(zend_string *str, int
+ 			if (p != (unsigned char*)ZSTR_VAL(str)) {
+ 				memcpy(ZSTR_VAL(res), ZSTR_VAL(str), p - (unsigned char*)ZSTR_VAL(str));
+ 			}
+-			r = p + (ZSTR_VAL(res) - ZSTR_VAL(str));
++			r = (unsigned char*)ZSTR_VAL(res) + (p - (unsigned char*)ZSTR_VAL(str));
+ 			while (p < end) {
+ 				*r = zend_tolower_ascii(*p);
+ 				p++;
+--- a/Zend/zend_string.c
++++ b/Zend/zend_string.c
+@@ -392,7 +392,7 @@ ZEND_API zend_bool ZEND_FASTCALL I_WRAP_SONAME_FNNAME_ZU(NONE,zend_string_equal_
+ }
+ #endif
+ 
+-#elif defined(__GNUC__) && defined(__x86_64__) && !defined(__ILP32__)
++#elif defined(__GNUC__) && defined(__x86_64__) && !defined(__ILP32__) && !defined(__FILC__)
+ ZEND_API zend_bool ZEND_FASTCALL zend_string_equal_val(zend_string *s1, zend_string *s2)
+ {
+ 	char *ptr = ZSTR_VAL(s1);
+--- a/Zend/zend_string.h
++++ b/Zend/zend_string.h
+@@ -301,7 +301,7 @@ static zend_always_inline void zend_string_release_ex(zend_string *s, int persis
+ 	}
+ }
+ 
+-#if defined(__GNUC__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__ILP32__)))
++#if defined(__GNUC__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__ILP32__))) && !defined(__FILC__)
+ BEGIN_EXTERN_C()
+ ZEND_API zend_bool ZEND_FASTCALL zend_string_equal_val(zend_string *s1, zend_string *s2);
+ END_EXTERN_C()
+--- a/Zend/zend_types.h
++++ b/Zend/zend_types.h
+@@ -121,6 +121,54 @@ typedef void (*copy_ctor_func_t)(zval *pElement);
+  * construction.
+  */
+ 
++#ifdef __FILC__
++/* A zend_type holds a type code or a tagged pointer to a class name or class
++ * entry. Fil-C drops a pointer's capability when it becomes an integer, so
++ * hold it as a pointer and tag with pointer arithmetic, like PHP 8's
++ * zend_type.ptr. Type codes are pointers without a capability. */
++typedef char *zend_type;
++
++#define ZEND_TYPE_BITS(t) ((uintptr_t) (t))
++
++#define ZEND_TYPE_IS_SET(t) \
++	(ZEND_TYPE_BITS(t) > Z_L(0x3))
++
++#define ZEND_TYPE_IS_CODE(t) \
++	((ZEND_TYPE_BITS(t) > Z_L(0x3)) && (ZEND_TYPE_BITS(t) <= Z_L(0x3ff)))
++
++#define ZEND_TYPE_IS_CLASS(t) \
++	(ZEND_TYPE_BITS(t) > Z_L(0x3ff))
++
++#define ZEND_TYPE_IS_CE(t) \
++	((ZEND_TYPE_BITS(t) & Z_L(0x2)) != 0)
++
++#define ZEND_TYPE_IS_NAME(t) \
++	(ZEND_TYPE_IS_CLASS(t) && !ZEND_TYPE_IS_CE(t))
++
++#define ZEND_TYPE_NAME(t) \
++	((zend_string*)((t) - (ZEND_TYPE_BITS(t) & Z_L(0x3))))
++
++#define ZEND_TYPE_CE(t) \
++	((zend_class_entry*)((t) - (ZEND_TYPE_BITS(t) & Z_L(0x3))))
++
++#define ZEND_TYPE_CODE(t) \
++	(ZEND_TYPE_BITS(t) >> Z_L(2))
++
++#define ZEND_TYPE_ALLOW_NULL(t) \
++	((ZEND_TYPE_BITS(t) & Z_L(0x1)) != 0)
++
++#define ZEND_TYPE_WITHOUT_NULL(t) \
++	((t) - (ZEND_TYPE_BITS(t) & Z_L(0x1)))
++
++#define ZEND_TYPE_ENCODE(code, allow_null) \
++	((zend_type) (((uintptr_t) (code) << Z_L(2)) | ((allow_null) ? Z_L(0x1) : Z_L(0x0))))
++
++#define ZEND_TYPE_ENCODE_CE(ce, allow_null) \
++	((char *)(ce) + ((allow_null) ? Z_L(0x3) : Z_L(0x2)))
++
++#define ZEND_TYPE_ENCODE_CLASS(class_name, allow_null) \
++	((char *)(class_name) + ((allow_null) ? Z_L(0x1) : Z_L(0x0)))
++#else
+ typedef uintptr_t zend_type;
+ 
+ #define ZEND_TYPE_IS_SET(t) \
+@@ -162,6 +210,8 @@ typedef uintptr_t zend_type;
+ #define ZEND_TYPE_ENCODE_CLASS(class_name, allow_null) \
+ 	(((uintptr_t)(class_name)) | ((allow_null) ? Z_L(0x1) : Z_L(0x0)))
+ 
++#endif
++
+ #define ZEND_TYPE_ENCODE_CLASS_CONST_0(class_name) \
+ 	((zend_type) class_name)
+ #define ZEND_TYPE_ENCODE_CLASS_CONST_1(class_name) \
+@@ -388,6 +438,19 @@ typedef struct {
+ 	struct _zend_property_info *ptr[1];
+ } zend_property_info_list;
+ 
++#ifdef __FILC__
++/* Fil-C drops a pointer's capability when the pointer becomes an integer, so
++ * tag the list pointer with pointer arithmetic instead. */
++typedef union {
++	struct _zend_property_info *ptr;
++	char *list;
++} zend_property_info_source_list;
++
++#define ZEND_PROPERTY_INFO_SOURCE_FROM_LIST(list) ((char *) (list) + 0x1)
++#define ZEND_PROPERTY_INFO_SOURCE_TO_LIST(list) \
++	((zend_property_info_list *) ((list) - ((uintptr_t) (list) & 0x1)))
++#define ZEND_PROPERTY_INFO_SOURCE_IS_LIST(list) ((uintptr_t) (list) & 0x1)
++#else
+ typedef union {
+ 	struct _zend_property_info *ptr;
+ 	uintptr_t list;
+@@ -396,6 +459,7 @@ typedef union {
+ #define ZEND_PROPERTY_INFO_SOURCE_FROM_LIST(list) (0x1 | (uintptr_t) (list))
+ #define ZEND_PROPERTY_INFO_SOURCE_TO_LIST(list) ((zend_property_info_list *) ((list) & ~0x1))
+ #define ZEND_PROPERTY_INFO_SOURCE_IS_LIST(list) ((list) & 0x1)
++#endif
+ 
+ struct _zend_reference {
+ 	zend_refcounted_h              gc;
+--- a/ext/standard/string.c
++++ b/ext/standard/string.c
+@@ -1423,7 +1423,7 @@ PHPAPI zend_string *php_string_toupper(zend_string *s)
+ 			if (c != (unsigned char*)ZSTR_VAL(s)) {
+ 				memcpy(ZSTR_VAL(res), ZSTR_VAL(s), c - (unsigned char*)ZSTR_VAL(s));
+ 			}
+-			r = c + (ZSTR_VAL(res) - ZSTR_VAL(s));
++			r = (unsigned char*)ZSTR_VAL(res) + (c - (unsigned char*)ZSTR_VAL(s));
+ 			while (c < e) {
+ 				*r = toupper(*c);
+ 				r++;
+@@ -1488,7 +1488,7 @@ PHPAPI zend_string *php_string_tolower(zend_string *s)
+ 			if (c != (unsigned char*)ZSTR_VAL(s)) {
+ 				memcpy(ZSTR_VAL(res), ZSTR_VAL(s), c - (unsigned char*)ZSTR_VAL(s));
+ 			}
+-			r = c + (ZSTR_VAL(res) - ZSTR_VAL(s));
++			r = (unsigned char*)ZSTR_VAL(res) + (c - (unsigned char*)ZSTR_VAL(s));
+ 			while (c < e) {
+ 				*r = tolower(*c);
+ 				r++;
+--- a/sapi/cli/php_cli.c
++++ b/sapi/cli/php_cli.c
+@@ -200,10 +200,9 @@ static void print_modules(void) /* {{{ */
+ }
+ /* }}} */
+ 
+-static int print_extension_info(zend_extension *ext, void *arg) /* {{{ */
++static void print_extension_info(zend_extension *ext) /* {{{ */
+ {
+ 	php_printf("%s\n", ext->name);
+-	return ZEND_HASH_APPLY_KEEP;
+ }
+ /* }}} */
+ 

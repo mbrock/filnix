@@ -369,6 +369,19 @@
             inherit (sarcasm) minilute;
             inherit (pkgsFilc) openssl-sarcasm;
             php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+            php74-dist = import ./packages/php-dist {
+              inherit pkgs pkgsFilc;
+              php = pkgsFilc.php74.withExtensions (
+                { enabled, all }:
+                enabled
+                ++ (with all; [
+                  bz2
+                  shmop
+                  sysvmsg
+                  sysvshm
+                ])
+              );
+            };
             inherit optfil;
             filroot = import ./packages/filroot { inherit pkgs optfil; };
             php-docker = import ./packages/php-dist/docker.nix {

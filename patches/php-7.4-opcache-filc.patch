@@ -1,0 +1,64 @@
+Subject: Keep opcache's shared memory usable under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The PHP 7.4 counterpart of php-8.4-opcache-filc.patch. Fil-C tracks pointer
+capabilities per process. Opcache stores compiled scripts, pointers
+included, in one MAP_SHARED segment that FPM and CGI workers share, so a
+worker that read an entry another worker had cached would trap on a pointer
+without a capability. Map the segment privately instead: each worker
+inherits what the parent cached before forking and caches the rest itself.
+opcache_reset() and opcache_invalidate() then affect only the calling
+process.
+
+Loading a cached script copies its arena out of shared memory and moved
+each pointer into the copy by the distance between the two, which keeps the
+shared memory's capability, so loading any cached script that declared a
+class trapped. Offset into the copy instead. Take memcpy over the SSE2
+assembly copy loop, which Fil-C cannot check.
+
+--- a/ext/opcache/shared_alloc_mmap.c
++++ b/ext/opcache/shared_alloc_mmap.c
+@@ -32,6 +32,14 @@
+ #if defined(MAP_ANON) && !defined(MAP_ANONYMOUS)
+ # define MAP_ANONYMOUS MAP_ANON
+ #endif
++#ifdef __FILC__
++/* Fil-C keeps pointer capabilities per process, so a pointer one process
++ * stores in a shared mapping has none in another: an FPM worker would trap
++ * reading the hash entry of a script another worker had cached. Map the
++ * cache privately; forked workers still start from what the parent cached. */
++# undef MAP_SHARED
++# define MAP_SHARED MAP_PRIVATE
++#endif
+ #if defined(MAP_ALIGNED_SUPER)
+ # define MAP_HUGETLB MAP_ALIGNED_SUPER
+ #endif
+--- a/ext/opcache/zend_accelerator_util_funcs.c
++++ b/ext/opcache/zend_accelerator_util_funcs.c
+@@ -38,8 +38,16 @@
+ 	((void*)(ptr) >= ZCG(current_persistent_script)->arena_mem && \
+ 	 (void*)(ptr) < (void*)((char*)ZCG(current_persistent_script)->arena_mem + ZCG(current_persistent_script)->arena_size))
+ 
++#ifdef __FILC__
++/* Offset into the copy rather than moving the pointer into the shared arena
++ * by the distance between the two, which keeps the shared arena's
++ * capability. */
++#define ARENA_REALLOC(ptr) \
++	(void*)((char*)ZCG(arena_mem) + ((char*)(ptr) - (char*)ZCG(current_persistent_script)->arena_mem))
++#else
+ #define ARENA_REALLOC(ptr) \
+ 	(void*)(((char*)(ptr)) + ((char*)ZCG(arena_mem) - (char*)ZCG(current_persistent_script)->arena_mem))
++#endif
+ 
+ typedef int (*id_function_t)(void *, void *);
+ typedef void (*unique_copy_ctor_func_t)(void *pElement);
+@@ -580,7 +588,7 @@ static void zend_accel_class_hash_copy_from_shm(HashTable *target, HashTable *so
+ 	return;
+ }
+ 
+-#if __has_feature(memory_sanitizer)
++#if __has_feature(memory_sanitizer) || defined(__FILC__)
+ # define fast_memcpy memcpy
+ #elif defined(__AVX__)
+ # include <nmmintrin.h>

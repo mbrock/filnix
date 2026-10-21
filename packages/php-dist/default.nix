@@ -4,13 +4,12 @@
 # programs and extensions need, so nothing is loaded from /nix or the host.
 # A Fil-C program's interpreter must be an absolute path, so each bin/ entry
 # is a small static launcher that starts libexec/ through lib/ld-fil1-*.so.
+#
+# php is PHP with the extensions to load; the default is PHP 8.4.
 {
   pkgs,
   pkgsFilc,
-}:
-
-let
-  php = pkgsFilc.php.withExtensions (
+  php ? pkgsFilc.php.withExtensions (
     { enabled, all }:
     enabled
     # Commonly enabled extensions ported to Fil-C (docs/php-extensions.md).
@@ -41,7 +40,10 @@ let
       yaml
       zstd
     ])
-  );
+  ),
+}:
+
+let
   name = "php-${php.version}-filc-x86_64-linux";
 
   launcher = pkgs.pkgsStatic.runCommandCC "php-dist-launcher" { } ''
@@ -130,7 +132,12 @@ pkgs.runCommand "${name}.tar.xz"
     install -m644 ${pkgsFilc.cacert}/etc/ssl/certs/ca-bundle.crt $root/etc/ssl/cert.pem
     # Without a configuration file, openssl_pkey_new() and friends fail.
     install -m644 ${pkgsFilc.openssl.out}/etc/ssl/openssl.cnf $root/etc/ssl/
-    install -m644 ${./README.md} $root/README.md
+    ${
+      if pkgs.lib.versions.majorMinor php.version == "8.4" then
+        "install -m644 ${./README.md} $root/README.md"
+      else
+        "sed 's/^PHP 8\\.4 compiled/PHP ${pkgs.lib.versions.majorMinor php.version} compiled/' ${./README.md} > $root/README.md"
+    }
 
     chmod -R u+w,go-w $root
     tar --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner \

@@ -6,5 +6,7 @@ packages.x86_64-linux.baseline
 legacyPackages.x86_64-linux.pkgsFilc.php
 packages.x86_64-linux.php-dist
 packages.x86_64-linux.php-docker
+legacyPackages.x86_64-linux.pkgsFilc.php74
+packages.x86_64-linux.php74-dist
 packages.x86_64-linux.optfil
 packages.x86_64-linux.filroot

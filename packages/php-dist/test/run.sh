@@ -4,6 +4,8 @@
 #
 #   nix build .#php-dist
 #   packages/php-dist/test/run.sh result debian:13 ubuntu:22.04 alpine:3
+#
+# The same works for php74-dist, which runs smoke74.php instead of smoke.php.
 set -eu
 tarball=$1
 shift

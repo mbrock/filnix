@@ -11,7 +11,9 @@ test ! -e /nix || { echo "FAIL /nix exists"; exit 1; }
 ls /lib*/ld-fil1* 2>/dev/null && { echo "FAIL host has a Fil-C loader"; exit 1; }
 
 "$php" -v
-"$php" "$t/smoke.php"
+smoke=smoke.php
+"$php" -r 'exit(PHP_MAJOR_VERSION < 8 ? 0 : 1);' && smoke=smoke74.php
+"$php" "$t/$smoke"
 
 www=$(mktemp -d)
 cp "$t/www/index.php" "$t/www/static.txt" "$www/"

@@ -611,6 +611,68 @@ portDSL.makeOverlay portList final prev
         ];
       });
 
+  # PHP 7.4, from fossar/nix-phps, which keeps Nixpkgs' PHP builder working
+  # for releases Nixpkgs has dropped. See docs/php.md.
+  php74 =
+    let
+      nixPhps = builtins.fetchTarball {
+        url = "https://github.com/fossar/nix-phps/archive/9fb06f7d8beb2ec686fc20b9bf7fe7ce25a429a6.tar.gz";
+        sha256 = "1p5bvrs9psm4a26bp420902b1i8qa3wz8s8avmrcizrr3d4h0qza";
+      };
+      phps = import "${nixPhps}/pkgs/phps.nix" prev.path final prev;
+      # Bundled extensions build from the unpatched PHP source.
+      filcOverrides = _: pprev: {
+        extensions = pprev.extensions // {
+          # The probes run programs, so the cross build assumed an iconv
+          # without errno that honours //IGNORE; glibc's sets errno and
+          # fails on //IGNORE.
+          iconv = pprev.extensions.iconv.overrideAttrs (old: {
+            postPatch = (old.postPatch or "") + ''
+              sed -i 's/\(ICONV_SUPPORTS_ERRNO\|ICONV_BROKEN_IGNORE\)\],0/\1],1/' \
+                ext/iconv/config.m4
+            '';
+          });
+          opcache = pprev.extensions.opcache.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ ../patches/php-7.4-opcache-filc.patch ];
+            # The shared memory probes run programs, so the cross build
+            # found none and opcache could not start. Anonymous mmap works.
+            env = (old.env or { }) // {
+              NIX_CFLAGS_COMPILE =
+                (old.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SHM_MMAP_ANON=1";
+            };
+            # Expects mapping 1 GB of shared memory to fail; the private
+            # mapping that replaces it succeeds.
+            postPatch = (old.postPatch or "") + ''
+              rm ext/opcache/tests/log_verbosity_bug.phpt
+            '';
+          });
+        };
+      };
+    in
+    (phps.php74.override {
+      # Replaces nix-phps' own overrides, so apply those first.
+      packageOverrides = final.lib.composeExtensions (import "${nixPhps}/pkgs/package-overrides.nix" prev) filcOverrides;
+    }).overrideAttrs
+      (old: {
+        patches = old.patches ++ [
+          ../patches/php-7.4-filc.patch
+          # Default to the system allocator so Fil-C bounds each PHP value.
+          ../patches/php-7.4-alloc-filc.patch
+        ];
+        # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
+        separateDebugInfo = false;
+        configureFlags = old.configureFlags ++ [
+          # Overflow-checked arithmetic in C instead of x86 `asm goto`.
+          "ac_cv__asm_goto=no"
+          # Fil-C cannot run generated machine code.
+          "--without-pcre-jit"
+          # Probes that run programs, which the cross build cannot.
+          "ac_cv_func_getaddrinfo=yes"
+          "ac_cv_func_fnmatch_works=yes"
+          "php_cv_sizeof_intmax_t=8"
+        ];
+      });
+
   # The ODBC driver builds its bundled Connector/C submodule, whose export
   # map needs the same fix as mariadb-connector-c (see ports.nix).
   unixodbcDrivers = prev.unixodbcDrivers // {
