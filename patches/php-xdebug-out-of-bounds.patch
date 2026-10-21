@@ -1,0 +1,70 @@
+Subject: Fix out-of-bounds accesses in Xdebug
+Origin: Filnix; the op array guards match upstream master
+Upstream-Status: Partial backport
+
+For a call to an internal function the stack frame keeps the
+zend_internal_function as its op_array. The coverage filter check on calls
+and the line breakpoint check then read reserved[] and line_start/line_end
+past the end of the smaller internal function. Only look at the op arrays
+of user functions, as upstream now does.
+
+read_systemd_private_tmp_directory() filled all of its 8 KiB buffer when
+/proc/self/mountinfo was that long, and then ran strlen() off its end.
+Leave room for the terminator.
+
+The DBGp feature_set max_depth command allocated max_depth runtime pages
+where the rest of Xdebug, like the initial allocation, uses one per level
+from 0 to max_depth; context_get then wrote one page past the end, into an
+empty allocation for max_depth 0. Allocate max_depth + 1.
+
+Fil-C stopped each of these out-of-bounds accesses; natively they touched
+whatever followed.
+
+--- a/src/base/base.c
++++ b/src/base/base.c
+@@ -711,7 +711,9 @@
+ 	xdebug_filter_run(tmp);
+ 
+ 	/* Count code coverage line for call */
+-	xdebug_coverage_count_line_if_branch_check_active(op_array, tmp->filename, tmp->lineno);
++	if (type == XDEBUG_USER_DEFINED) {
++		xdebug_coverage_count_line_if_branch_check_active(op_array, tmp->filename, tmp->lineno);
++	}
+ 
+ 	return tmp;
+ }
+@@ -1238,7 +1240,7 @@
+ 	}
+ 
+ 	/* Read contents and split in lines */
+-	bytes_read = fread(buffer, 1, sizeof(buffer), mountinfo_fd);
++	bytes_read = fread(buffer, 1, sizeof(buffer) - 1, mountinfo_fd);
+ 	if (!bytes_read) {
+ 		fclose(mountinfo_fd);
+ 		return retval;
+--- a/src/debugger/debugger.c
++++ b/src/debugger/debugger.c
+@@ -712,6 +712,10 @@
+ 		return;
+ 	}
+ 
++	if (fse->user_defined != XDEBUG_USER_DEFINED) {
++		return;
++	}
++
+ 	/* loop over all line breakpoints until one hits, and if so, turn on 'has_line_breakpoints' */
+ 	for (le = XDEBUG_LLIST_HEAD(XG_DBG(context).line_breakpoints); le != NULL; le = XDEBUG_LLIST_NEXT(le)) {
+ 		xdebug_brk_info *extra_brk_info = XDEBUG_LLIST_VALP(le);
+--- a/src/debugger/handler_dbgp.c
++++ b/src/debugger/handler_dbgp.c
+@@ -1648,8 +1648,8 @@
+ 
+ 			/* Reallocating page structure */
+ 			xdfree(options->runtime);
+-			options->runtime = (xdebug_var_runtime_page*) xdmalloc(options->max_depth * sizeof(xdebug_var_runtime_page));
+-			for (i = 0; i < options->max_depth; i++) {
++			options->runtime = (xdebug_var_runtime_page*) xdmalloc((options->max_depth + 1) * sizeof(xdebug_var_runtime_page));
++			for (i = 0; i <= options->max_depth; i++) {
+ 				options->runtime[i].page = 0;
+ 				options->runtime[i].current_element_nr = 0;
+ 			}

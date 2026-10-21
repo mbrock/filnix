@@ -1,0 +1,32 @@
+Subject: Do not destroy a dropped map entry again when unserialization fails
+Origin: Filnix
+Upstream-Status: Not submitted
+
+MSGPACK_UNSERIALIZE_FINISH_MAP_ITEM() destroys a key and value that are not
+inserted anywhere (the metadata entries of php_only maps, values for keys
+that cannot be used), but an array or object value stays in var_hash. When
+the input then turns out to be invalid, msgpack_unserialize_var_destroy()
+destroys every var_hash entry and freed that value a second time: a use
+after free reachable from msgpack_unserialize() on untrusted data, for
+example "\x82\xc0\x91\x01\xc0". This is what tests/034.phpt, marked XFAIL
+upstream, hit as "zend_mm_heap corrupted". Clear such entries.
+
+--- a/msgpack_unpack.c
++++ b/msgpack_unpack.c
+@@ -55,7 +55,15 @@
+ #define MSGPACK_UNSERIALIZE_FINISH_MAP_ITEM(_unpack, _key, _val) \
+     zval_ptr_dtor(_key);                                         \
+     zval_ptr_dtor(_val);                                         \
+-    MSGPACK_UNSERIALIZE_FINISH_ITEM(_unpack, _key, _val);
++    MSGPACK_UNSERIALIZE_FINISH_ITEM(_unpack, _key, _val);        \
++    /* Arrays and objects stay in var_hash, which destroys its  \
++     * entries again when unserialization fails. */             \
++    if (!MSGPACK_IS_STACK_VALUE(_key)) {                         \
++        ZVAL_UNDEF(_key);                                        \
++    }                                                            \
++    if (!MSGPACK_IS_STACK_VALUE(_val)) {                         \
++        ZVAL_UNDEF(_val);                                        \
++    }
+ 
+ #define UNSET_MAGIC_METHODS(_ce)                                 \
+     __get = _ce->__get;                                          \

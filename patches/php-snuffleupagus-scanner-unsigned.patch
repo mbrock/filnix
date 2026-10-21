@@ -1,0 +1,242 @@
+Subject: Index the config scanner's bitmaps with unsigned bytes
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The scanner's YYCTYPE is char, which is signed on x86-64, so a configuration
+byte of 0x80 or above indexed yybm_* below the start of the table. Fil-C
+stopped the out-of-bounds read while parsing a configuration with UTF-8 in a
+string. Cast the index to unsigned char in the shipped generated scanner
+(re2c 4, which Nixpkgs has, is not used to regenerate it).
+
+--- a/sp_config_scanner.cached.c
++++ b/sp_config_scanner.cached.c
+@@ -340,7 +340,7 @@
+ /* *********************************** */
+ yyc_init:
+ 	yych = *data;
+-	if (yybm_init[0+yych] & 8) {
++	if (yybm_init[0+(unsigned char)yych] & 8) {
+ 		goto yy4;
+ 	}
+ 	if (yych <= '#') {
+@@ -372,7 +372,7 @@
+ 	{ cs_log_error("parser error on line %zu", lineno); goto out; }
+ yy4:
+ 	yych = *++data;
+-	if (yybm_init[0+yych] & 8) {
++	if (yybm_init[0+(unsigned char)yych] & 8) {
+ 		goto yy4;
+ 	}
+ 	{ goto yyc_init; }
+@@ -385,7 +385,7 @@
+ 	goto yy3;
+ yy7:
+ 	yych = *++data;
+-	if (yybm_init[0+yych] & 16) {
++	if (yybm_init[0+(unsigned char)yych] & 16) {
+ 		goto yy7;
+ 	}
+ 	{ goto yyc_init; }
+@@ -577,7 +577,7 @@
+ 	goto yy48;
+ yy41:
+ 	yych = *++data;
+-	if (yybm_init[0+yych] & 32) {
++	if (yybm_init[0+(unsigned char)yych] & 32) {
+ 		goto yy41;
+ 	}
+ 	if (yych == '\t') {
+@@ -599,7 +599,7 @@
+ 	goto yy11;
+ yy44:
+ 	yych = *++data;
+-	if (yybm_init[0+yych] & 64) {
++	if (yybm_init[0+(unsigned char)yych] & 64) {
+ 		goto yy44;
+ 	}
+ 	if (yych <= '\r') goto yy11;
+@@ -674,7 +674,7 @@
+ 	goto yy11;
+ yy54:
+ 	yych = *++data;
+-	if (yybm_init[0+yych] & 64) {
++	if (yybm_init[0+(unsigned char)yych] & 64) {
+ 		goto yy44;
+ 	}
+ 	if (yych <= '\r') goto yy11;
+@@ -769,7 +769,7 @@
+     }
+ yy64:
+ 	yych = *++data;
+-	if (yybm_init[0+yych] & 128) {
++	if (yybm_init[0+(unsigned char)yych] & 128) {
+ 		goto yy54;
+ 	}
+ 	if (yych <= '\r') {
+@@ -900,7 +900,7 @@
+ yy75:
+ 	yyaccept = 1;
+ 	yych = *(YYMARKER = ++data);
+-	if (yybm_init[0+yych] & 64) {
++	if (yybm_init[0+(unsigned char)yych] & 64) {
+ 		goto yy44;
+ 	}
+ 	if (yych <= '\r') goto yy63;
+@@ -1119,7 +1119,7 @@
+ /* *********************************** */
+ yyc_cond:
+ 	yych = *data;
+-	if (yybm_cond[0+yych] & 8) {
++	if (yybm_cond[0+(unsigned char)yych] & 8) {
+ 		goto yy95;
+ 	}
+ 	if (yych <= '\'') {
+@@ -1157,7 +1157,7 @@
+ 	{ cs_log_error("syntax error in condition on line %zu", lineno); goto out; }
+ yy95:
+ 	yych = *++data;
+-	if (yybm_cond[0+yych] & 8) {
++	if (yybm_cond[0+(unsigned char)yych] & 8) {
+ 		goto yy95;
+ 	}
+ 	{ goto yyc_cond; }
+@@ -1178,7 +1178,7 @@
+ 	{ sy_op_push(*t1); goto yyc_cond; }
+ yy100:
+ 	yych = *++data;
+-	if (yybm_cond[0+yych] & 16) {
++	if (yybm_cond[0+(unsigned char)yych] & 16) {
+ 		goto yy100;
+ 	}
+ 	t1 = yyt1;
+@@ -1187,7 +1187,7 @@
+ yy101:
+ 	yyaccept = 0;
+ 	yych = *(YYMARKER = ++data);
+-	if (yybm_cond[0+yych] & 32) {
++	if (yybm_cond[0+(unsigned char)yych] & 32) {
+ 		goto yy101;
+ 	}
+ 	if (yych == '(') goto yy103;
+@@ -1222,7 +1222,7 @@
+ 	}
+ yy105:
+ 	yych = *++data;
+-	if (yybm_cond[0+yych] & 64) {
++	if (yybm_cond[0+(unsigned char)yych] & 64) {
+ 		goto yy105;
+ 	}
+ 	if (yych <= '\r') goto yy104;
+@@ -1251,13 +1251,13 @@
+ 	goto yy104;
+ yy109:
+ 	yych = *++data;
+-	if (yybm_cond[0+yych] & 64) {
++	if (yybm_cond[0+(unsigned char)yych] & 64) {
+ 		goto yy105;
+ 	}
+ 	if (yych <= '\r') goto yy104;
+ 	if (yych >= '#') goto yy109;
+ 	yych = *++data;
+-	if (yybm_cond[0+yych] & 128) {
++	if (yybm_cond[0+(unsigned char)yych] & 128) {
+ 		goto yy109;
+ 	}
+ 	if (yych <= '\r') {
+@@ -1279,7 +1279,7 @@
+ 	}
+ 	yyaccept = 1;
+ 	yych = *(YYMARKER = ++data);
+-	if (yybm_cond[0+yych] & 64) {
++	if (yybm_cond[0+(unsigned char)yych] & 64) {
+ 		goto yy105;
+ 	}
+ 	if (yych <= '\r') goto yy107;
+@@ -1288,7 +1288,7 @@
+ /* *********************************** */
+ yyc_cond_op:
+ 	yych = *data;
+-	if (yybm_cond_op[0+yych] & 128) {
++	if (yybm_cond_op[0+(unsigned char)yych] & 128) {
+ 		goto yy113;
+ 	}
+ 	if (yych <= ')') {
+@@ -1330,7 +1330,7 @@
+ 	{ cs_log_error("syntax error in condition on line %zu", lineno); goto out; }
+ yy113:
+ 	yych = *++data;
+-	if (yybm_cond_op[0+yych] & 128) {
++	if (yybm_cond_op[0+(unsigned char)yych] & 128) {
+ 		goto yy113;
+ 	}
+ 	{ goto yyc_cond_op; }
+@@ -1406,7 +1406,7 @@
+ /* *********************************** */
+ yyc_rule:
+ 	yych = *data;
+-	if (yybm_rule[0+yych] & 8) {
++	if (yybm_rule[0+(unsigned char)yych] & 8) {
+ 		goto yy127;
+ 	}
+ 	if (yych <= '\r') {
+@@ -1426,7 +1426,7 @@
+ 	{ goto end_of_rule; }
+ yy127:
+ 	yych = *++data;
+-	if (yybm_rule[0+yych] & 8) {
++	if (yybm_rule[0+(unsigned char)yych] & 8) {
+ 		goto yy127;
+ 	}
+ 	{  goto yyc_rule; }
+@@ -1486,7 +1486,7 @@
+     }
+ yy132:
+ 	yych = *++data;
+-	if (yybm_rule[0+yych] & 16) {
++	if (yybm_rule[0+(unsigned char)yych] & 16) {
+ 		goto yy132;
+ 	}
+ 	if (yych == '\r') goto yy134;
+@@ -1539,7 +1539,7 @@
+ yy137:
+ 	yyaccept = 1;
+ 	yych = *(YYMARKER = ++data);
+-	if (yybm_rule[0+yych] & 32) {
++	if (yybm_rule[0+(unsigned char)yych] & 32) {
+ 		goto yy137;
+ 	}
+ 	if (yych == '(') {
+@@ -1616,7 +1616,7 @@
+ 	}
+ yy140:
+ 	yych = *++data;
+-	if (yybm_rule[0+yych] & 64) {
++	if (yybm_rule[0+(unsigned char)yych] & 64) {
+ 		goto yy140;
+ 	}
+ 	if (yych <= '\r') goto yy133;
+@@ -1657,13 +1657,13 @@
+ 	goto yy133;
+ yy144:
+ 	yych = *++data;
+-	if (yybm_rule[0+yych] & 64) {
++	if (yybm_rule[0+(unsigned char)yych] & 64) {
+ 		goto yy140;
+ 	}
+ 	if (yych <= '\r') goto yy133;
+ 	if (yych >= '#') goto yy144;
+ 	yych = *++data;
+-	if (yybm_rule[0+yych] & 128) {
++	if (yybm_rule[0+(unsigned char)yych] & 128) {
+ 		goto yy144;
+ 	}
+ 	if (yych <= '\r') {
+@@ -1686,7 +1686,7 @@
+ 	}
+ 	yyaccept = 2;
+ 	yych = *(YYMARKER = ++data);
+-	if (yybm_rule[0+yych] & 64) {
++	if (yybm_rule[0+(unsigned char)yych] & 64) {
+ 		goto yy140;
+ 	}
+ 	if (yych <= '\r') goto yy138;

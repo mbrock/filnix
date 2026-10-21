@@ -1,0 +1,54 @@
+Subject: Keep capabilities when APCu turns shared-memory offsets into pointers
+Origin: Filnix
+Upstream-Status: Not submitted
+
+APCu stores cache entries as offsets from the start of the entry or of the
+cache header, and converts them back by adding the base through uintptr_t.
+Fil-C drops a pointer's capability when it becomes an integer, so the first
+read of a fetched string or array trapped. Do the arithmetic on char
+pointers, which keeps the base's capability; offsets stay plain integers.
+
+--- a/apc_cache.c
++++ b/apc_cache.c
+@@ -344,7 +344,7 @@ PHP_APCU_API apc_cache_t* apc_cache_create(apc_sma_t* sma, apc_serializer_t* ser
+ 	cache->header->stime = time(NULL);
+ 
+ 	/* set cache options */
+-	cache->slots = (uintptr_t *)((uintptr_t)cache->header + sizeof(apc_cache_header_t));
++	cache->slots = (uintptr_t *)((char *)cache->header + sizeof(apc_cache_header_t));
+ 	cache->sma = sma;
+ 	cache->serializer = serializer;
+ 	cache->nslots = nslots;
+--- a/apc_cache.h
++++ b/apc_cache.h
+@@ -305,8 +305,8 @@ static inline void apc_cache_runlock(apc_cache_t *cache) {
+ /* ENTRYAT and ENTRYOF are used to convert between offsets and pointers to cache entries.
+  * Both expect the presence of cache->header that points to the cache header in the
+  * shared memory segment. */
+-#define ENTRYAT(offset) ((apc_cache_entry_t *)((uintptr_t)cache->header + (uintptr_t)offset))
+-#define ENTRYOF(entry) (((uintptr_t)entry) - (uintptr_t)cache->header)
++#define ENTRYAT(offset) ((apc_cache_entry_t *)((char *)cache->header + (uintptr_t)offset))
++#define ENTRYOF(entry) ((uintptr_t)((char *)entry - (char *)cache->header))
+ 
+ #endif
+ 
+--- a/apc_persist.c
++++ b/apc_persist.c
+@@ -81,7 +81,7 @@ static inline void *apc_persist_compute_offset(void *ptr, apc_persist_context_t
+ 	/* The pointer must point to the shm area of the entry to be persisted */
+ 	assert(((uintptr_t)ptr >= (uintptr_t)ctxt->alloc) && ((uintptr_t)ptr < ((uintptr_t)ctxt->alloc + (uintptr_t)ctxt->size)));
+ 
+-	return ((void *)((uintptr_t)ptr - (uintptr_t)ctxt->alloc));
++	return (void *)((char *)ptr - (char *)ctxt->alloc);
+ }
+ 
+ /* Used to reduce hash collisions when using pointers in hash tables. (#175) */
+@@ -562,7 +562,7 @@ static inline void *apc_unpersist_compute_pointer(void *off, apc_unpersist_conte
+ 	/* The offset must be smaller than the size of the entry (in shm) to be unpersisted */
+ 	assert((uintptr_t)off < (uintptr_t)((apc_cache_entry_t *)ctxt->alloc)->mem_size);
+ 
+-	return (void *)((uintptr_t)ctxt->alloc + (uintptr_t)off);
++	return ctxt->alloc + (uintptr_t)off;
+ }
+ 
+ static inline void apc_unpersist_zval(apc_unpersist_context_t *ctxt, zval *zv) {

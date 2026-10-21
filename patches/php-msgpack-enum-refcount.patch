@@ -1,0 +1,19 @@
+Subject: Take a reference to the enum case an unserialized enum refers to
+Origin: Filnix
+Upstream-Status: Not submitted
+
+zend_enum_get_case() returns the case object borrowed from the class
+constant. Storing it without a reference drops the case below its owners,
+so the constant table later releases a freed object.
+
+--- a/msgpack_unpack.c
++++ b/msgpack_unpack.c
+@@ -693,7 +693,7 @@
+ #else
+                     ce = msgpack_unserialize_class(container, Z_STR_P(key), 0);
+                     zend_object *enum_instance = zend_enum_get_case(ce, Z_STR_P(val));
+-                    ZVAL_OBJ(*container, enum_instance);
++                    ZVAL_OBJ_COPY(*container, enum_instance);
+ #endif
+                     MSGPACK_UNSERIALIZE_FINISH_MAP_ITEM(unpack, key, val);
+                     return 0;

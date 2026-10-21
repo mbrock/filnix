@@ -1,0 +1,24 @@
+Subject: Do not shmdt() a segment that shmop_open() never attached
+Origin: Filnix
+Upstream-Status: Not submitted
+
+When shmop_open() fails before or at shmat(), it releases the Shmop object
+with addr still NULL or (char *) -1, and the free handler passed that to
+shmdt(). Glibc returns EINVAL; Fil-C's shmdt wrapper rejects the pointer and
+stops the process, so every shmop_open() error killed PHP.
+
+--- a/ext/shmop/shmop.c
++++ b/ext/shmop/shmop.c
+@@ -99,7 +99,11 @@ static void shmop_free_obj(zend_object *object)
+ {
+ 	php_shmop *shmop = shmop_from_obj(object);
+ 
+-	shmdt(shmop->addr);
++	/* shmop_open() releases the object when it fails before or at shmat(),
++	 * leaving addr NULL or (char *) -1. */
++	if (shmop->addr && shmop->addr != (char *) -1) {
++		shmdt(shmop->addr);
++	}
+ 
+ 	zend_object_std_dtor(&shmop->std);
+ }

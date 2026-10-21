@@ -1,0 +1,48 @@
+Subject: Take references to the values copied into hook parameters
+Origin: Filnix; upstream later rewrote this code to do the same
+Upstream-Status: Inappropriate [fixed differently upstream]
+
+The attribute arguments of WithSpan and the parameters marked SpanAttribute
+are added to hash tables that destroy their values, without a reference.
+Destroying the hook parameters then released values still owned by the
+attribute or the call frame, and attr_free() at shutdown released them
+again: a use after free that Zend's allocator hid.
+
+--- a/otel_observer.c
++++ b/otel_observer.c
+@@ -219,10 +219,14 @@
+                         if (attribute->argc) {
+                             zend_string *key = Z_STR(attribute->args[0].value);
+                             zend_hash_del(attributes, key);
+-                            zend_hash_add(attributes, key, p);
++                            if (zend_hash_add(attributes, key, p) != NULL) {
++                                Z_TRY_ADDREF_P(p);
++                            }
+                         } else {
+                             zend_hash_del(attributes, arg_name);
+-                            zend_hash_add(attributes, arg_name, p);
++                            if (zend_hash_add(attributes, arg_name, p) != NULL) {
++                                Z_TRY_ADDREF_P(p);
++                            }
+                         }
+                     }
+                 }
+@@ -350,12 +354,16 @@
+             }
+         } else {
+             if (arg.name != NULL) {
+-                zend_hash_add(ht, arg.name, &arg.value);
++                if (zend_hash_add(ht, arg.name, &arg.value) != NULL) {
++                    Z_TRY_ADDREF(arg.value);
++                }
+             } else {
+                 key = zend_string_init(with_span_attribute_args_keys[i],
+                                        strlen(with_span_attribute_args_keys[i]),
+                                        0);
+-                zend_hash_add(ht, key, &arg.value);
++                if (zend_hash_add(ht, key, &arg.value) != NULL) {
++                    Z_TRY_ADDREF(arg.value);
++                }
+                 zend_string_release(key);
+             }
+         }

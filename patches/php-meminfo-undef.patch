@@ -1,0 +1,25 @@
+Subject: Skip undefined compiled variables when dumping a frame
+Origin: Filnix
+Upstream-Status: Not submitted
+
+A function's symbol table holds IS_INDIRECT slots for its compiled
+variables, and those that are unset or not yet assigned are IS_UNDEF.
+meminfo_zval_dump() passed that type to zend_get_type_by_const(), which
+has no case for it and reaches ZEND_UNREACHABLE(): undefined behaviour in
+a release build, and a stop under Fil-C, so meminfo_dump() died in any
+frame with such a variable.
+
+--- a/meminfo.c
++++ b/meminfo.c
+@@ -311,6 +311,11 @@
+         zv = Z_INDIRECT_P(zv);
+     }
+ 
++    /* A compiled variable that was never assigned or was unset. */
++    if (Z_TYPE_P(zv) == IS_UNDEF) {
++        return;
++    }
++
+     if (Z_ISREF_P(zv)) {
+         ZVAL_DEREF(zv);
+     }
