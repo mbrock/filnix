@@ -29,7 +29,9 @@ $expected = ['bcmath', 'bz2', 'calendar', 'ctype', 'curl', 'date', 'dom',
     'session', 'SimpleXML', 'soap', 'sockets', 'sodium', 'SPL',
     'sqlite3', 'standard', 'sysvmsg', 'sysvsem', 'sysvshm', 'tokenizer', 'xml',
     'xmlreader', 'xmlwriter', 'xsl', 'Zend OPcache', 'zip', 'zlib', 'igbinary',
-    'redis'];
+    'redis', 'apcu', 'ast', 'decimal', 'ds', 'event', 'imagick', 'mailparse',
+    'maxminddb', 'memcached', 'mongodb', 'msgpack', 'protobuf', 'tidy', 'uuid',
+    'yaml', 'zstd'];
 check('extensions loaded', fn() => array_values(array_diff($expected, get_loaded_extensions(), get_loaded_extensions(true))) ?: true);
 check('no /nix', fn() => !file_exists('/nix') ?: 'found /nix');
 // Zend's allocator counts real usage in 2 MiB chunks; the tracked system
@@ -201,6 +203,35 @@ check('sysv shm/sem/msg', function () {
     return $v === ['x' => 1] && $m === 'm';
 });
 check('igbinary', fn() => igbinary_unserialize(igbinary_serialize(['a' => new ArrayObject([1])]))['a'][0] === 1);
+check('imagick formats', fn() => array_diff(['JPEG', 'PNG', 'TIFF', 'WEBP', 'GIF', 'JP2', 'EXR'], Imagick::queryFormats())
+    ?: true);
+check('imagick tiff roundtrip', function () use ($tmp) {
+    $im = new Imagick();
+    $im->newPseudoImage(320, 200, 'gradient:red-blue');
+    $im->setImageFormat('tiff');
+    $im->setImageCompression(Imagick::COMPRESSION_ZIP);
+    $im->writeImage("$tmp/g.tif");
+    $im->thumbnailImage(64, 0);
+    $im->setImageFormat('jpeg');
+    $back = new Imagick("$tmp/g.tif");
+    $px = $back->getImagePixelColor(0, 0)->getColor();
+    return [$back->getImageWidth(), $px['r'], $px['b'], strlen($im->getImageBlob()) > 100]
+        === [320, 255, 0, true] ?: [$back->getImageWidth(), $px];
+});
+check('tidy', fn() => str_contains(tidy_repair_string('<p>a<b>b', ['show-body-only' => true]), '<b>b</b>'));
+check('ds/decimal', fn() => (new Ds\Seq([3, 1, 2]))->sorted()->toArray() === [1, 2, 3]
+    && (string)(new Decimal\Decimal('0.1'))->add('0.2') === '0.3');
+check('zstd', fn() => zstd_uncompress(zstd_compress(str_repeat('fil-c ', 100))) === str_repeat('fil-c ', 100));
+check('uuid', fn() => uuid_is_valid(uuid_create(UUID_TYPE_RANDOM)));
+check('mailparse', function () {
+    $m = mailparse_msg_create();
+    mailparse_msg_parse($m, "Subject: hi\r\nFrom: a@b.c\r\n\r\nbody\r\n");
+    return mailparse_msg_get_part_data($m)['headers']['subject'] === 'hi';
+});
+check('ast', fn() => ast\parse_code('<?php 1 + 2;', 110)->kind === ast\AST_STMT_LIST);
+check('mongodb bson', fn() => MongoDB\BSON\Document::fromPHP(['a' => 1])->toPHP(['root' => 'array']) === ['a' => 1]);
+check('memcached/event/protobuf/maxminddb classes', fn() => class_exists('Memcached') && class_exists('EventBase')
+    && class_exists('Google\Protobuf\Internal\Message') && class_exists('MaxMind\Db\Reader') ?: false);
 check('redis class', fn() => (new ReflectionClass('Redis'))->hasMethod('connect'));
 check('curl https setup', fn() => (curl_version()['features'] & CURL_VERSION_SSL) !== 0 && str_contains(curl_version()['ssl_version'], 'OpenSSL'));
 check('opcache loaded', fn() => function_exists('opcache_get_status'));

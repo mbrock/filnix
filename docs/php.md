@@ -23,8 +23,13 @@ extensions load. Unpack it anywhere on x86-64 Linux; it needs nothing from
 Nix or the host's C library. Its [README](../packages/php-dist/README.md) is
 the user documentation and ships inside the tarball.
 
-It loads Nixpkgs' default extensions plus apcu, bz2, shmop, sysvmsg, sysvshm,
-xsl, igbinary, msgpack, redis and yaml (`packages/php-dist/default.nix`).
+It loads Nixpkgs' default extensions plus apcu, ast, bz2, decimal, ds,
+event, igbinary, imagick, mailparse, maxminddb, memcached, mongodb, msgpack,
+protobuf, redis, shmop, sysvmsg, sysvshm, tidy, uuid, xsl, yaml and zstd
+(`packages/php-dist/default.nix`). Imagick brings ImageMagick with its
+image libraries: libjpeg-turbo, libtiff, libpng, libwebp, OpenJPEG, OpenEXR,
+LibRaw and lcms2, all built with Fil-C. Debuggers and profilers (xdebug,
+pcov, spx) are ported but not loaded, since they slow every request.
 The CA bundle is the Fil-C package set's `cacert`.
 
 `packages/php-dist/test/run.sh TARBALL IMAGE...` unpacks it in containers

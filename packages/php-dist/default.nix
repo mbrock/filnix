@@ -13,17 +13,33 @@ let
   php = pkgsFilc.php.withExtensions (
     { enabled, all }:
     enabled
+    # Commonly enabled extensions ported to Fil-C (docs/php-extensions.md).
+    # Debuggers and profilers (xdebug, pcov, spx) slow every request when
+    # loaded and are left out.
     ++ (with all; [
       apcu
+      ast
       bz2
+      decimal
+      ds
+      event
+      igbinary
+      imagick
+      mailparse
+      maxminddb
+      memcached
+      mongodb
+      msgpack
+      protobuf
+      redis
       shmop
       sysvmsg
       sysvshm
+      tidy
+      uuid
       xsl
-      igbinary
-      msgpack
-      redis
       yaml
+      zstd
     ])
   );
   name = "php-${php.version}-filc-x86_64-linux";
