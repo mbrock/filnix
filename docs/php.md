@@ -24,8 +24,9 @@ NIXPKGS_ALLOW_INSECURE=1 nix build --impure .#pkgsFilc.php84_25
 
 `pkgsFilc.php.withExtensions` and `pkgsFilc.php.buildEnv` work as in
 Nixpkgs; see [php-extensions.md](php-extensions.md) for which extensions are
-ported and how they are tested. PHP 7.4, which no longer gets regular
-security fixes, builds too; see [PHP 7.4](#php-74).
+ported and how they are tested. PHP 8.5 is an opt-in package,
+`pkgsFilc.php85`; see [PHP 8.5](#php-85). PHP 7.4, which no longer gets
+regular security fixes, builds too; see [PHP 7.4](#php-74).
 
 ## The tarball
 
@@ -300,22 +301,72 @@ now see no progress data, and `bug45392` gets an extra blank line before
 the fatal error, which the backport now prints itself. The `var_destroy`
 reproduction still stops with a Fil-C panic.
 
-## PHP 8.5 investigation
+## PHP 8.5
 
-[PHP 8.5.12](https://www.php.net/releases/8_5_12.php) is the current 8.5
-security release (21 October 2026), but is not yet a supported Fil-C port.
-The inherited `pkgsFilc.php85` definition does not include the 8.4 port's
-patches; its presence is not a support claim.
+`pkgsFilc.php85` is PHP 8.5.12, the current 8.5 security release, which
+fixes CVE-2026-109618 and CVE-2026-109619. It is opt-in: `pkgsFilc.php`
+stays on 8.4, and `php-dist` and `php-docker` are 8.4 builds.
 
-Source-level checks found that the core, allocator, shmop and OPcache
-patches apply to 8.5.12. The Lexbor patches apply after changing their paths
-from `ext/dom/lexbor/lexbor` to `ext/lexbor/lexbor`. Both Lexbor and OPcache
-are now built into PHP itself, so their patches and `--disable-opcache-jit`
-must move into the core derivation rather than shared-extension overrides.
-The module ABI changes from 20240924 to 20250925; PECL extensions need a
-fresh compatibility/build/test pass. These patch checks are not a build or
-runtime verification. Add 8.5 as a separate opt-in port before considering
-a change to the default; this update keeps `php` on 8.4.
+```sh
+nix build .#pkgsFilc.php85
+nix build --impure --expr '(builtins.getFlake (toString ./.)).legacyPackages.x86_64-linux.pkgsFilc.php85.withExtensions ({ all, enabled }: enabled ++ [ all.apcu all.redis ])'
+```
+
+It has the 8.4 port's patches and allocator default (`mkFilcPhp` in
+`ports/overlay.nix`), and the differences from other PHP builds above apply
+to it too. PHP 8.5 builds Lexbor and OPcache into PHP itself, so their
+patches and `--disable-opcache-jit` are applied to the PHP build, not to
+shared extensions; `php-8.5-dom-filc.patch` is the Lexbor patch at its new
+path. Two changes are specific to 8.5:
+
+- `--disable-huge-code-pages`: OPcache, now always built, finds PHP's
+  machine code with `dl_iterate_phdr()` to copy it into huge pages. Fil-C's
+  libc lacks the function, so PHP did not link.
+- `php-8.5-deepbind-filc.patch`: PHP 8.5 stopped loading extensions with
+  `RTLD_DEEPBIND`. Fil-C exports functions that libraries built with
+  `-fvisibility=hidden` keep internal natively, so libsodium's BLAKE2b then
+  called libargon2's `blake2b_update()`, which PHP links, with libsodium's
+  state. `sodium_crypto_generichash()`, the KDF, key exchange and Argon2i
+  returned the hash of the empty string whatever their input. The patch
+  restores 8.4's loading under Fil-C. The visibility gap itself is in the
+  toolchain and is not fixed here.
+
+The `unserialize()` use-after-free reproduction above stops with a Fil-C
+panic on 8.5.12 with the default allocator and completes on Zend's.
+
+### Tests
+
+The PHP build runs the suites of the extensions built into it: OPcache
+passes 895 tests and URI 327, with one expected failure and 43 skipped.
+Every shared extension runs its own suite as on 8.4, the PECL ones on both
+allocators ([php-extensions.md](php-extensions.md#how-they-are-tested)).
+The default extensions' suites pass (Nixpkgs leaves a few, such as curl's,
+off), as do bz2, dba, ffi, shmop, snmp, sysvmsg, sysvshm, tidy, xsl and
+zend_test.
+
+These PECL extensions build and pass on 8.5, with the same test removals
+as on 8.4 and those below: amqp, apcu, ast, decimal, ds, event, excimer,
+gnupg, grpc, imagick, imap, inotify, luasandbox, mailparse, maxminddb,
+memcached, meminfo, mongodb, msgpack, opentelemetry, pcov, pinba, rdkafka,
+redis, snuffleupagus, spx, uuid, uv, vld, wikidiff2, xdebug, yaml and zstd.
+protobuf and systemd build and ship no tests; pspell and ssh2 build and
+skip all of theirs, as on 8.4.
+
+Tests removed on 8.5 only, none of them Fil-C failures:
+
+- decimal (7) and yaml (3) were written before PHP 8.5's warning for NAN
+  coerced to a string and its deprecation of null array offsets.
+- zstd's `streams_3` reads two copies of `PHP_BINARY` under a 128 MB
+  `memory_limit`. Fil-C's PHP 8.5 binary is 82 MB (8.4's is 65 MB; an
+  ordinary build's 16 MB).
+- meminfo's `dump-memory_leak` runs on Zend's allocator only: on PHP 8.5's
+  tracked allocator `memory_get_usage()` ends 426 bytes lower after the
+  dump, natively too.
+
+igbinary 3.2.14, memcache 8.2 and phalcon 5.10.0 do not build on PHP 8.5,
+natively either: they include `ext/standard/php_smart_string.h`, which 8.5
+removed, and Nixpkgs marks them broken. They need newer releases. The
+extensions not ported to 8.4 are not ported to 8.5 either.
 
 ## Upstream
 

@@ -121,17 +121,25 @@ let
       ln -s ${final.stdenv.cc.libc}/bin/${name} $out/bin/${name}
     '';
 
-  # Fil-C PHP 8.4 at a given release; see php84 below.
-  mkFilcPhp84 =
+  # Fil-C PHP 8.4 or 8.5 at a given release; see php84 below.
+  mkFilcPhp =
     { version, hash }:
     let
+      # PHP 8.5 builds Lexbor and OPcache into PHP itself rather than as
+      # shared extensions, so their patches and flags move to the core.
+      is85 = final.lib.versionAtLeast version "8.5";
+      opcachePatches = [
+        ../patches/php-8.4-opcache-filc.patch
+      ]
+      ++ final.lib.optional (final.lib.versionAtLeast version "8.4.27") ../patches/php-8.4-opcache-ce-cache-filc.patch;
       php =
         (
           (final.callPackage "${prev.path}/pkgs/development/interpreters/php" {
             llvmPackages = prev.llvmPackages // {
               inherit (final) stdenv;
             };
-          }).php84.override
+          })
+          ."php${final.lib.versions.major version}${final.lib.versions.minor version}".override
             {
               inherit version hash;
               # Bundled extensions build from the unpatched PHP source.
@@ -267,7 +275,14 @@ let
                     ] (name: withTests pprev.extensions.${name})
                     // {
                       dom = pprev.extensions.dom.overrideAttrs (old: {
-                        patches = (old.patches or [ ]) ++ [ ../patches/php-8.4-dom-filc.patch ];
+                        patches = (old.patches or [ ]) ++ [
+                          (
+                            if is85 then
+                              ../patches/php-8.5-dom-filc.patch
+                            else
+                              ../patches/php-8.4-dom-filc.patch
+                          )
+                        ];
                       });
                       filter = pprev.extensions.filter.overrideAttrs (
                         old:
@@ -304,15 +319,15 @@ let
                       });
                       # Nixpkgs pins ICU 73; use the ported default ICU.
                       intl = pprev.extensions.intl.overrideAttrs { buildInputs = [ final.icu ]; };
+                    }
+                    // final.lib.optionalAttrs (!is85) {
                       opcache = pprev.extensions.opcache.overrideAttrs (old: {
-                        patches =
-                          (old.patches or [ ])
-                          ++ [ ../patches/php-8.4-opcache-filc.patch ]
-                          ++ final.lib.optional (final.lib.versionAtLeast version "8.4.27") ../patches/php-8.4-opcache-ce-cache-filc.patch;
+                        patches = (old.patches or [ ]) ++ opcachePatches;
                         # The JIT emits machine code, which Fil-C cannot run.
                         configureFlags = old.configureFlags ++ [ "--disable-opcache-jit" ];
                       });
-
+                    }
+                    // {
                       # Bundled extensions outside the default set.
                       shmop = withTests (
                         pprev.extensions.shmop.overrideAttrs (old: {
@@ -353,9 +368,17 @@ let
                         withoutTests [ "tests/bug-github-76_children_items_not_linked_php7.phpt" ]
                           (
                             withTests (
-                              pprev.extensions.meminfo.overrideAttrs (old: {
-                                patches = (old.patches or [ ]) ++ [ ../patches/php-meminfo-undef.patch ];
-                              })
+                              pprev.extensions.meminfo.overrideAttrs (
+                                old:
+                                {
+                                  patches = (old.patches or [ ]) ++ [ ../patches/php-meminfo-undef.patch ];
+                                }
+                                # On PHP 8.5's tracked allocator memory_get_usage()
+                                # ends 426 bytes lower after the dump, natively too.
+                                // final.lib.optionalAttrs is85 {
+                                  zendAllocOnlyTests = [ "tests/dump-memory_leak.phpt" ];
+                                }
+                              )
                             )
                           );
                       # Unix socket tests want /var/run/memcached; 056 wants a
@@ -389,7 +412,17 @@ let
                         )
                       );
                       grpc = withPkgConfig (withTests pprev.extensions.grpc);
-                      zstd = withPkgConfig (withTests pprev.extensions.zstd);
+                      zstd = withPkgConfig (
+                        withTests (
+                          # Holds two copies of PHP_BINARY under a 128 MB limit;
+                          # Fil-C's PHP 8.5, with OPcache and Lexbor built in, is
+                          # 82 MB.
+                          if is85 then
+                            withoutTests [ "tests/streams_3.phpt" ] pprev.extensions.zstd
+                          else
+                            pprev.extensions.zstd
+                        )
+                      );
                       # The inotify probe runs a program; the header is enough.
                       inotify = withTests (
                         pprev.extensions.inotify.overrideAttrs (old: {
@@ -579,37 +612,89 @@ let
                           })
                         )
                       );
+                    }
+                    // final.lib.optionalAttrs is85 {
+                      # Tests written before PHP 8.5's warning for NAN coerced
+                      # to a string and deprecation of null array offsets.
+                      decimal = withoutTests (map (t: "tests/php7/${t}.phpt") [
+                        "cast"
+                        "methods/add"
+                        "methods/div"
+                        "methods/ln"
+                        "methods/log10"
+                        "methods/mul"
+                        "methods/sub"
+                      ]) (withTests pprev.extensions.decimal);
+                      yaml = withoutTests [
+                        "tests/bug_64019.phpt"
+                        "tests/bug_79866.phpt"
+                        "tests/yaml_parse_spec_null.phpt"
+                      ] (withTests pprev.extensions.yaml);
                     };
                 };
             }
         ).overrideAttrs
-          (old: {
-            patches = old.patches ++ [
-              ../patches/php-8.4-filc.patch
-              # Default to the system allocator so Fil-C bounds each PHP value.
-              ../patches/php-8.4-alloc-filc.patch
-            ];
-            # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
-            separateDebugInfo = false;
-            configureFlags = old.configureFlags ++ [
-              # Fibers switch stacks with ucontext, like Boost.Context here,
-              # instead of the fcontext assembly.
-              "--disable-fiber-asm"
-              # Overflow-checked arithmetic in C instead of x86 `asm goto`,
-              # whose callbr crashes FilPizlonatorPass.
-              "php_cv_have__asm_goto=no"
-              # Fil-C cannot run generated machine code; PCRE warned at the
-              # first preg_* call when mapping executable memory failed.
-              "--without-pcre-jit"
-              # phpdbg's watchpoints would use userfaultfd, which Fil-C does not
-              # support; phpdbg died at startup.
-              "ac_cv_have_decl_UFFDIO_WRITEPROTECT_MODE_WP=no"
-              # The probe runs a program, so the cross build disabled the stack
-              # limit check; deep recursion then hit Fil-C's stack overflow trap
-              # instead of throwing "Maximum call stack size reached".
-              "php_cv_have_stack_limit=yes"
-            ];
-          });
+          (
+            old:
+            {
+              patches =
+                old.patches
+                ++ [
+                  ../patches/php-8.4-filc.patch
+                  # Default to the system allocator so Fil-C bounds each PHP value.
+                  ../patches/php-8.4-alloc-filc.patch
+                ]
+                ++ final.lib.optionals is85 (
+                  [
+                    ../patches/php-8.5-dom-filc.patch
+                    # Extensions' libraries bound to PHP's own libraries' symbols.
+                    ../patches/php-8.5-deepbind-filc.patch
+                  ]
+                  ++ opcachePatches
+                );
+              # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
+              separateDebugInfo = false;
+              configureFlags =
+                old.configureFlags
+                ++ [
+                  # Fibers switch stacks with ucontext, like Boost.Context here,
+                  # instead of the fcontext assembly.
+                  "--disable-fiber-asm"
+                  # Overflow-checked arithmetic in C instead of x86 `asm goto`,
+                  # whose callbr crashes FilPizlonatorPass.
+                  "php_cv_have__asm_goto=no"
+                  # Fil-C cannot run generated machine code; PCRE warned at the
+                  # first preg_* call when mapping executable memory failed.
+                  "--without-pcre-jit"
+                  # phpdbg's watchpoints would use userfaultfd, which Fil-C does not
+                  # support; phpdbg died at startup.
+                  "ac_cv_have_decl_UFFDIO_WRITEPROTECT_MODE_WP=no"
+                  # The probe runs a program, so the cross build disabled the stack
+                  # limit check; deep recursion then hit Fil-C's stack overflow trap
+                  # instead of throwing "Maximum call stack size reached".
+                  "php_cv_have_stack_limit=yes"
+                ]
+                ++ final.lib.optionals is85 [
+                  # OPcache, built in from 8.5 on; see its extension above.
+                  "--disable-opcache-jit"
+                  # Copies PHP's machine code into huge pages, found through
+                  # dl_iterate_phdr, which Fil-C's libc lacks; PHP did not link.
+                  "--disable-huge-code-pages"
+                ];
+            }
+            // final.lib.optionalAttrs is85 {
+              # The built-in extensions' suites, which the shared ones run in
+              # their own builds: OPcache and URI (which parses with Lexbor).
+              doCheck = true;
+              checkPhase = ''
+                runHook preCheck
+                NO_INTERACTION=1 SKIP_ONLINE_TESTS=1 SKIP_SLOW_TESTS=1 SKIP_PERF_SENSITIVE=1 \
+                  make "PHP_TEST_SETTINGS=-d pcre.backtrack_limit=100000000" test \
+                  TESTS="-j$NIX_BUILD_CORES -q --show-diff ext/opcache/tests ext/uri/tests"
+                runHook postCheck
+              '';
+            }
+          );
     in
     php;
 in
@@ -630,6 +715,12 @@ portDSL.makeOverlay portList final prev
   # default 1.89 builds its assembly fcontext and fails.
   boost = final.boost187;
 
+  # PHP 8.5, opt-in; php stays on 8.4 (see below and docs/php.md).
+  php85 = mkFilcPhp {
+    version = "8.5.12";
+    hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";
+  };
+
   # Nixpkgs builds PHP with llvmPackages.stdenv whenever the compiler is
   # Clang, which for Fil-C means a second compiler-rt and libc++ (and a
   # cross GCC) built from source. The Fil-C stdenv is already Clang.
@@ -638,12 +729,12 @@ portDSL.makeOverlay portList final prev
   # fixes for CVE-2026-109618 and CVE-2026-109619, for comparing exploits
   # and fixes (docs/php.md). It is marked insecure so nothing uses it by
   # accident.
-  php84 = mkFilcPhp84 {
+  php84 = mkFilcPhp {
     version = "8.4.27";
     hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
   };
   php84_25 =
-    (mkFilcPhp84 {
+    (mkFilcPhp {
       version = "8.4.25";
       hash = "sha256-lSzMF4Uma5WPSh3PxYDgjqu7efRCItHv8ZK82Y2R9uM=";
     }).overrideAttrs

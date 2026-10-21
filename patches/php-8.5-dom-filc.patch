@@ -1,0 +1,380 @@
+Subject: Keep capabilities for node and name IDs held as integers in ext/dom
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C drops a pointer's capability when it is converted to an integer, so code
+that later turns that integer back into a pointer traps on the access.
+
+Lexbor gives tag, attribute, namespace and prefix names IDs that are small
+integers for its built-in names and the address of the name's data otherwise,
+and casts IDs above the built-in range back to pointers on lookup.
+Dom\HTMLDocument trapped reading parsed element and attribute names. Convert
+every such address through a weak exact pointer table, which keeps the numeric
+value (so comparisons against the built-in range still hold) and recovers the
+capability on lookup.
+
+The C14N and schema-validation namespace fixups key a HashTable by node
+address and turn the keys back into nodes; register those nodes the same way.
+
+This is php-8.4-dom-filc.patch at PHP 8.5's paths: Lexbor moved to
+ext/lexbor and is built into PHP itself, so the patch applies to both PHP
+and the dom extension.
+
+--- a/ext/lexbor/lexbor/core/hash.c
++++ b/ext/lexbor/lexbor/core/hash.c
+@@ -10,6 +10,31 @@
+ 
+ #include "lexbor/core/str.h"
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++
++/* Weak: the hash tables and static data keep the entries alive. */
++static zexact_ptrtable *lexbor_hash_entry_ids;
++
++__attribute__((constructor)) static void
++lexbor_hash_entry_ids_init(void)
++{
++    lexbor_hash_entry_ids = zexact_ptrtable_new_weak();
++}
++
++uintptr_t
++lexbor_hash_entry_id(const void *entry)
++{
++    return zexact_ptrtable_encode(lexbor_hash_entry_ids, (void *) entry);
++}
++
++void *
++lexbor_hash_entry_by_id(uintptr_t id)
++{
++    return zexact_ptrtable_decode(lexbor_hash_entry_ids, id);
++}
++#endif
++
+ #ifndef LEXBOR_DISABLE_INTERNAL_EXTERN
+     LXB_EXTERN const lxb_char_t lexbor_str_res_map_lowercase[256];
+     LXB_EXTERN const lxb_char_t lexbor_str_res_map_uppercase[256];
+--- a/ext/lexbor/lexbor/core/hash.h
++++ b/ext/lexbor/lexbor/core/hash.h
+@@ -210,6 +210,31 @@
+     return lexbor_dobject_allocated(hash->entries);
+ }
+ 
++/*
++ * Tag, attribute and namespace IDs above the static ranges are the address of
++ * their data, static or hashed. Fil-C drops a pointer's capability when it
++ * becomes an integer, so it records each such pointer and looks it up again.
++ */
++#ifdef __FILC__
++LXB_API uintptr_t
++lexbor_hash_entry_id(const void *entry);
++
++LXB_API void *
++lexbor_hash_entry_by_id(uintptr_t id);
++#else
++lxb_inline uintptr_t
++lexbor_hash_entry_id(const void *entry)
++{
++    return (uintptr_t) entry;
++}
++
++lxb_inline void *
++lexbor_hash_entry_by_id(uintptr_t id)
++{
++    return (void *) id;
++}
++#endif
++
+ 
+ #ifdef __cplusplus
+ } /* extern "C" */
+--- a/ext/lexbor/lexbor/dom/interfaces/attr.c
++++ b/ext/lexbor/lexbor/dom/interfaces/attr.c
+@@ -75,7 +75,7 @@
+                 goto failed;
+             }
+ 
+-            new->qualified_name = (lxb_dom_attr_id_t) data;
++            new->qualified_name = lexbor_hash_entry_id(data);
+         }
+     }
+ 
+@@ -146,7 +146,7 @@
+             return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+         }
+ 
+-        attr->qualified_name = (lxb_dom_attr_id_t) data;
++        attr->qualified_name = lexbor_hash_entry_id(data);
+     }
+ 
+     return LXB_STATUS_OK;
+@@ -186,7 +186,7 @@
+         return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+     }
+ 
+-    attr->node.local_name = (lxb_dom_attr_id_t) data;
++    attr->node.local_name = lexbor_hash_entry_id(data);
+ 
+     /* qualified name */
+     data = lxb_dom_attr_qualified_name_append(doc->attrs, name, name_length);
+@@ -194,11 +194,10 @@
+         return LXB_STATUS_ERROR;
+     }
+ 
+-    attr->qualified_name = (lxb_dom_attr_id_t) data;
++    attr->qualified_name = lexbor_hash_entry_id(data);
+ 
+     /* prefix */
+-    attr->node.prefix = (lxb_ns_prefix_id_t) lxb_ns_prefix_append(doc->ns, name,
+-                                                                  length);
++    attr->node.prefix = lexbor_hash_entry_id(lxb_ns_prefix_append(doc->ns, name, length));
+     if (attr->node.prefix == 0) {
+         return LXB_STATUS_ERROR;
+     }
+@@ -384,7 +383,7 @@
+         return NULL;
+     }
+ 
+-    data->attr_id = (uintptr_t) data;
++    data->attr_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -404,7 +403,7 @@
+         return NULL;
+     }
+ 
+-    data->attr_id = (uintptr_t) data;
++    data->attr_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -423,7 +422,7 @@
+             return NULL;
+         }
+ 
+-        return (const lxb_dom_attr_data_t *) attr_id;
++        return lexbor_hash_entry_by_id(attr_id);
+     }
+ 
+     return &lxb_dom_attr_res_data_default[attr_id];
+--- a/ext/lexbor/lexbor/dom/interfaces/document_type.c
++++ b/ext/lexbor/lexbor/dom/interfaces/document_type.c
+@@ -73,7 +73,7 @@
+             return lxb_dom_document_type_interface_destroy(new);
+         }
+ 
+-        new->name = (lxb_dom_attr_id_t) data;
++        new->name = lexbor_hash_entry_id(data);
+     }
+ 
+     if (lexbor_str_copy(&new->public_id,
+--- a/ext/lexbor/lexbor/dom/interfaces/element.c
++++ b/ext/lexbor/lexbor/dom/interfaces/element.c
+@@ -149,7 +149,7 @@
+         return LXB_STATUS_ERROR;
+     }
+ 
+-    element->qualified_name = (lxb_tag_id_t) tag_data;
++    element->qualified_name = lexbor_hash_entry_id(tag_data);
+ 
+     return LXB_STATUS_OK;
+ }
+@@ -687,7 +687,7 @@
+         return lxb_dom_element_upper_update(element, len);
+     }
+ 
+-    data = (lxb_tag_data_t *) element->upper_name;
++    data = lexbor_hash_entry_by_id(element->upper_name);
+ 
+     if (len != NULL) {
+         *len = data->entry.length;
+@@ -725,7 +725,7 @@
+         *len = length;
+     }
+ 
+-    element->upper_name = (lxb_tag_id_t) data;
++    element->upper_name = lexbor_hash_entry_id(data);
+ 
+     return lexbor_hash_entry_str(&data->entry);
+ }
+--- a/ext/lexbor/lexbor/dom/interfaces/node.c
++++ b/ext/lexbor/lexbor/dom/interfaces/node.c
+@@ -187,7 +187,7 @@
+                 return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+             }
+ 
+-            dst->local_name = (lxb_dom_attr_id_t) data;
++            dst->local_name = lexbor_hash_entry_id(data);
+         }
+     }
+     else {
+@@ -208,7 +208,7 @@
+                 return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+             }
+ 
+-            dst->local_name = (lxb_dom_attr_id_t) tag;
++            dst->local_name = lexbor_hash_entry_id(tag);
+         }
+     }
+ 
+@@ -229,7 +229,7 @@
+             return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+         }
+ 
+-        dst->ns = (lxb_ns_id_t) ns;
++        dst->ns = lexbor_hash_entry_id(ns);
+     }
+ 
+     if (src->prefix < LXB_NS__LAST_ENTRY) {
+@@ -249,7 +249,7 @@
+             return LXB_STATUS_ERROR;
+         }
+ 
+-        dst->prefix = (lxb_ns_prefix_id_t) prefix;
++        dst->prefix = lexbor_hash_entry_id(prefix);
+     }
+ 
+     return LXB_STATUS_OK;
+--- a/ext/lexbor/lexbor/ns/ns.c
++++ b/ext/lexbor/lexbor/ns/ns.c
+@@ -35,7 +35,7 @@
+         return NULL;
+     }
+ 
+-    data->ns_id = (lxb_ns_id_t) data;
++    data->ns_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -69,7 +69,7 @@
+             return NULL;
+         }
+ 
+-        return (const lxb_ns_data_t *) ns_id;
++        return lexbor_hash_entry_by_id(ns_id);
+     }
+ 
+     return &lxb_ns_res_data[ns_id];
+@@ -116,7 +116,7 @@
+         return NULL;
+     }
+ 
+-    data->prefix_id = (lxb_ns_prefix_id_t) data;
++    data->prefix_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -129,7 +129,7 @@
+             return NULL;
+         }
+ 
+-        return (const lxb_ns_prefix_data_t *) prefix_id;
++        return lexbor_hash_entry_by_id(prefix_id);
+     }
+ 
+     return &lxb_ns_prefix_res_data[prefix_id];
+--- a/ext/lexbor/lexbor/tag/tag.c
++++ b/ext/lexbor/lexbor/tag/tag.c
+@@ -28,7 +28,7 @@
+     }
+ 
+     if (tag_id == LXB_TAG__UNDEF) {
+-        data->tag_id = (lxb_tag_id_t) data;
++        data->tag_id = lexbor_hash_entry_id(data);
+     }
+     else {
+         data->tag_id = tag_id;
+@@ -54,7 +54,7 @@
+         return NULL;
+     }
+ 
+-    data->tag_id = (lxb_tag_id_t) data;
++    data->tag_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -67,7 +67,7 @@
+             return NULL;
+         }
+ 
+-        return (const lxb_tag_data_t *) tag_id;
++        return lexbor_hash_entry_by_id(tag_id);
+     }
+ 
+     return &lxb_tag_res_data_default[tag_id];
+--- a/ext/dom/namespace_compat.c
++++ b/ext/dom/namespace_compat.c
+@@ -25,6 +25,41 @@
+ #include "private_data.h"
+ #include "internal_helpers.h"
+ 
++/* The links table below is keyed by node address and turns its keys back into
++ * nodes. Fil-C drops a pointer's capability when it becomes an integer, so it
++ * records each node and looks it up again. */
++#ifdef __FILC__
++#include <stdfil.h>
++
++static zexact_ptrtable *dom_ns_decl_nodes;
++
++__attribute__((constructor)) static void dom_ns_decl_nodes_init(void)
++{
++	/* Weak: the document keeps its nodes alive. */
++	dom_ns_decl_nodes = zexact_ptrtable_new_weak();
++}
++
++static zend_ulong dom_ns_decl_node_key(xmlNodePtr node)
++{
++	return zexact_ptrtable_encode(dom_ns_decl_nodes, node);
++}
++
++static xmlNodePtr dom_ns_decl_node_from_key(zend_ulong key)
++{
++	return zexact_ptrtable_decode(dom_ns_decl_nodes, key);
++}
++#else
++static zend_ulong dom_ns_decl_node_key(xmlNodePtr node)
++{
++	return (zend_ulong) node;
++}
++
++static xmlNodePtr dom_ns_decl_node_from_key(zend_ulong key)
++{
++	return (xmlNodePtr) key;
++}
++#endif
++
+ /* The actual value of these doesn't matter as long as they serve as a unique ID.
+  * They need to be pointers because the `_private` field is a pointer, however we can choose the contents ourselves.
+  * We need keep these at least 4-byte aligned because the pointer may be tagged (although for now 2 byte alignment works too).
+@@ -508,7 +543,7 @@
+ 		return NULL;
+ 	}
+ 
+-	zval *zv = zend_hash_index_lookup(links, (zend_ulong) node);
++	zval *zv = zend_hash_index_lookup(links, dom_ns_decl_node_key(node));
+ 	if (Z_ISNULL_P(zv)) {
+ 		ZVAL_LONG(zv, 1);
+ 	} else {
+@@ -582,7 +617,7 @@
+ 		if (node->ns && !node->ns->prefix) {
+ 			/* Workaround for the behaviour where the xmlSearchNs() call inside c14n.c
+ 			 * can return the current namespace. */
+-			zend_hash_index_add_new_ptr(links, (zend_ulong) node | 1, node->ns);
++			zend_hash_index_add_new_ptr(links, dom_ns_decl_node_key(node) | 1, node->ns);
+ 			node->ns = xmlSearchNs(node->doc, node, NULL);
+ 		} else if (node->ns) {
+ 			dom_add_synthetic_ns_decl(links, node, node->ns);
+@@ -612,10 +647,10 @@
+ {
+ 	ZEND_HASH_MAP_FOREACH_NUM_KEY_VAL(links, zend_ulong h, zval *data) {
+ 		if (h & 1) {
+-			xmlNodePtr node = (xmlNodePtr) (h ^ 1);
++			xmlNodePtr node = dom_ns_decl_node_from_key(h ^ 1);
+ 			node->ns = Z_PTR_P(data);
+ 		} else {
+-			xmlNodePtr node = (xmlNodePtr) h;
++			xmlNodePtr node = dom_ns_decl_node_from_key(h);
+ 			while (Z_LVAL_P(data)-- > 0) {
+ 				xmlNsPtr ns = node->nsDef;
+ 				node->nsDef = ns->next;

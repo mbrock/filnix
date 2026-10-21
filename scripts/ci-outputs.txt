@@ -8,5 +8,6 @@ packages.x86_64-linux.php-dist
 packages.x86_64-linux.php-docker
 legacyPackages.x86_64-linux.pkgsFilc.php74
 packages.x86_64-linux.php74-dist
+legacyPackages.x86_64-linux.pkgsFilc.php85
 packages.x86_64-linux.optfil
 packages.x86_64-linux.filroot

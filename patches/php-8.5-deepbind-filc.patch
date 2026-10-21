@@ -1,0 +1,33 @@
+Subject: Load extensions with RTLD_DEEPBIND under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+PHP 8.5 stopped passing RTLD_DEEPBIND to dlopen() where dlmopen() exists.
+Fil-C exports the functions that libraries built with -fvisibility=hidden
+keep internal natively, so an extension's library then binds them to the
+first library in the global scope that has the same name. The sodium
+extension's one-shot BLAKE2b (sodium_crypto_generichash(), the KDF, key
+exchange and Argon2i) called libargon2's blake2b_update(), which PHP links,
+with libsodium's state, and hashed the empty string whatever its input.
+Restore PHP 8.4's behaviour.
+
+--- a/Zend/zend_API.c
++++ b/Zend/zend_API.c
+@@ -41,7 +41,17 @@
+ /* these variables are true statics/globals, and have to be mutex'ed on every access */
+ ZEND_API HashTable module_registry;
+ 
++#ifdef __FILC__
++/* Fil-C exports functions a library built with -fvisibility=hidden meant to
++ * keep internal, so without RTLD_DEEPBIND an extension's library can bind
++ * them to another library's functions of the same name: libsodium's BLAKE2b
++ * called libargon2's blake2b_update, which PHP itself loads, and hashed
++ * nothing. Keep binding each library to its own symbols first, as PHP did
++ * before 8.5. */
++ZEND_API bool zend_dl_use_deepbind = true;
++#else
+ ZEND_API bool zend_dl_use_deepbind = false;
++#endif
+ 
+ static zend_module_entry **module_request_startup_handlers;
+ static zend_module_entry **module_request_shutdown_handlers;
