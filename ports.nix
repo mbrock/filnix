@@ -42,6 +42,18 @@ let
     gnuTarGz
     ;
 
+  # Mozilla's root store from NSS 3.131.1, which removes the emSign roots
+  # behind the October 2026 eMudhra key compromise (emSign ECC Root CA - G3,
+  # emSign Root CA - C1 and emSign ECC Root CA - C3). Both cacert and the
+  # NSS port's built-in roots (libnssckbi) are generated from it.
+  nssCertdata = pkgs.fetchurl {
+    urls = [
+      "https://hg-edge.mozilla.org/projects/nss/raw-file/NSS_3_131_1_RTM/lib/ckfw/builtins/certdata.txt"
+      "https://raw.githubusercontent.com/nss-dev/nss/refs/tags/NSS_3_131_1_RTM/lib/ckfw/builtins/certdata.txt"
+    ];
+    hash = "sha256-PsK00kDcEsdH6vRQBh24SvdXxIO72jAvninOtdcL5RA=";
+  };
+
   # The build platform's guile, to compile Scheme modules to .go files
   # (the bytecode is the same). As an input it would propagate its
   # native libunistring and libgc onto the Fil-C link path, so only its
@@ -436,6 +448,15 @@ in
       '';
     })
   ])
+
+  {
+    cacert = for pkgs.cacert [
+      (use {
+        version = "3.131.1";
+        src = nssCertdata;
+      })
+    ];
+  }
 
   (for pkgs.nss [
     # The same integer-to-pointer cast as NSPR's arenas, in NSS's

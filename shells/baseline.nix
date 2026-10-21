@@ -106,7 +106,7 @@ let
   shell = pkgs.writeShellScriptBin "filc-baseline-shell" ''
     export PATH=${environment}/bin
     export SHELL=${ports.bash}/bin/bash
-    export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+    export SSL_CERT_FILE=${ports.cacert}/etc/ssl/certs/ca-bundle.crt
     export CC=clang CXX=clang++ PKG_CONFIG=pkgconf
     exec ${ports.bash}/bin/bash --noprofile --rcfile ${pkgs.writeText "filc-baseline-bashrc" ''
       PS1='[filc-baseline] \w \$ '
