@@ -1,0 +1,94 @@
+# CI never compiles Fil-C: LLVM and the package set are far too large for a
+# hosted runner. The campaign on nix.swa.sh builds each revision and publishes
+# it to filc.cachix.org; this workflow requires that it has. It checks that
+# the toolchain, the baseline set and PHP are cached with their whole
+# closures, uses the cached compiler, and only substitutes the PHP tarball and
+# image (--max-jobs 0 forbids local builds). From main it publishes the image
+# to ghcr.io and keeps the tarball as a workflow artifact.
+#
+# A red run after a push usually means the campaign has not reached this
+# revision yet; the daily run or a manual rerun picks it up.
+name: Binary cache
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *"
+
+concurrency:
+  group: cache-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+    max-jobs = 0
+    builders =
+
+jobs:
+  cache:
+    name: Toolchain and baseline are cached
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Closures are in the public caches
+        run: |
+          python3 scripts/ci-cache-check.py \
+            packages.x86_64-linux.filcc \
+            packages.x86_64-linux.baseline \
+            legacyPackages.x86_64-linux.pkgsFilc.php \
+            packages.x86_64-linux.php-dist \
+            packages.x86_64-linux.php-docker
+      - name: The cached compiler stops an out-of-bounds write
+        run: |
+          cc=$(nix build --no-link --print-out-paths .#filcc)/bin/clang
+          printf '%s\n' '#include <stdio.h>' \
+            'int main(int argc, char **argv) { int a[4]; a[argc + 4] = 1; printf("%d\n", a[argc + 4]); }' > oob.c
+          "$cc" -o oob oob.c
+          if ./oob 2> panic.txt; then echo "out-of-bounds write was not caught"; exit 1; fi
+          grep 'filc panic' panic.txt
+
+  php:
+    name: PHP tarball and image
+    needs: cache
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Substitute
+        run: |
+          nix build .#php-dist --out-link php-dist
+          nix build .#php-docker --out-link php-docker
+          echo "TARBALL=$(basename "$(readlink php-dist)" | cut -d- -f2-)" >> "$GITHUB_ENV"
+          echo "TAG=$(nix eval --raw .#php-docker.imageTag)" >> "$GITHUB_ENV"
+      - name: The tarball runs without Nix
+        run: packages/php-dist/test/run.sh php-dist debian:13 alpine:3
+      - name: The image serves PHP
+        run: |
+          podman load < php-docker
+          podman run --rm "filnix-php:$TAG" php -r 'echo PHP_VERSION, "\n"; exit(extension_loaded("Zend OPcache") ? 0 : 1);'
+      - run: cp -L php-dist "$TARBALL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TARBALL }}
+          path: ${{ env.TARBALL }}
+          compression-level: 0
+      - name: Publish the image to ghcr.io
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/filnix-php
+          for tag in "$TAG" latest; do
+            skopeo copy --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+              docker-archive:php-docker "docker://$image:$tag"
+          done

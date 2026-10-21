@@ -34,6 +34,16 @@ opcache, as root and unprivileged. It passes on `debian:12`, `debian:13`,
 
 ## The container image
 
+Without Nix, pull it from the GitHub container registry, where CI publishes
+each cached revision of `main`:
+
+```sh
+docker pull ghcr.io/mbrock/filnix-php:8.4.25    # or :latest
+```
+
+The same CI run keeps the tarball as a workflow artifact; see
+[binary-caches.md](binary-caches.md#continuous-integration). With Nix:
+
 ```sh
 nix build .#php-docker && docker load < result
 docker run --rm -it filnix-php:8.4.25                       # php -a

@@ -86,6 +86,32 @@ network operations outside the build loop follows the
 [Nix post-build hook guidance](https://nix.dev/guides/recipes/post-build-hook.html).
 No change to the Nix daemon or shared compiler derivations is necessary.
 
+## Continuous integration
+
+Campaign manifests (`experiments/campaign-next/world.nix`) start with the
+`baseline`, `pkgsFilc.php`, `php-dist` and `php-docker` outputs, so a campaign
+of a revision publishes the toolchain, the baseline set and PHP before the
+package roots.
+
+GitHub Actions (`.github/workflows/cache.yml`) never compiles Fil-C. It
+requires the campaign to have published the revision it tests:
+
+- `scripts/ci-cache-check.py` walks the closures of those outputs and
+  `filcc` through narinfo lookups on Cachix and cache.nixos.org, and fails
+  naming any path neither has. It downloads nothing and runs locally too:
+  `scripts/ci-cache-check.py packages.x86_64-linux.baseline`.
+- It substitutes the cached `filcc` and checks that it stops an
+  out-of-bounds write.
+- With `max-jobs = 0`, it substitutes the PHP tarball and image, tests the
+  tarball in Debian and Alpine containers, and uploads it as a workflow
+  artifact. On `main` it pushes the image to
+  `ghcr.io/mbrock/filnix-php` with its version tag and `latest`.
+
+The campaign does not follow `main` on its own: a revision is cached once a
+campaign has been rolled over to it (see
+[port campaign operations](port-campaign-operations.md)). Until then the
+workflow fails at the cache check; it reruns daily and can be rerun by hand.
+
 ## Status and recovery
 
 ```sh
