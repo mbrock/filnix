@@ -634,17 +634,27 @@ portDSL.makeOverlay portList final prev
   # Clang, which for Fil-C means a second compiler-rt and libc++ (and a
   # cross GCC) built from source. The Fil-C stdenv is already Clang.
   #
-  # php84 follows PHP's releases; php84_25 keeps 8.4.25, the release the
-  # unserialize() var_destroy use-after-free reproduction ran against
-  # (docs/php.md), for comparing exploits and fixes.
+  # php84 follows PHP's releases; php84_25 keeps 8.4.25, which lacks the
+  # fixes for CVE-2026-109618 and CVE-2026-109619, for comparing exploits
+  # and fixes (docs/php.md). It is marked insecure so nothing uses it by
+  # accident.
   php84 = mkFilcPhp84 {
     version = "8.4.27";
     hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
   };
-  php84_25 = mkFilcPhp84 {
-    version = "8.4.25";
-    hash = "sha256-lSzMF4Uma5WPSh3PxYDgjqu7efRCItHv8ZK82Y2R9uM=";
-  };
+  php84_25 =
+    (mkFilcPhp84 {
+      version = "8.4.25";
+      hash = "sha256-lSzMF4Uma5WPSh3PxYDgjqu7efRCItHv8ZK82Y2R9uM=";
+    }).overrideAttrs
+      (old: {
+        meta = old.meta // {
+          knownVulnerabilities = [
+            "CVE-2026-109618"
+            "CVE-2026-109619"
+          ];
+        };
+      });
 
   # PHP 7.4, from fossar/nix-phps, which keeps Nixpkgs' PHP builder working
   # for releases Nixpkgs has dropped. See docs/php.md.
@@ -666,6 +676,11 @@ portDSL.makeOverlay portList final prev
               sed -i 's/\(ICONV_SUPPORTS_ERRNO\|ICONV_BROKEN_IGNORE\)\],0/\1],1/' \
                 ext/iconv/config.m4
             '';
+          });
+          session = pprev.extensions.session.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [
+              ../patches/php-7.4-session-cve-2026-109619.patch
+            ];
           });
           opcache = pprev.extensions.opcache.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [ ../patches/php-7.4-opcache-filc.patch ];
@@ -690,6 +705,8 @@ portDSL.makeOverlay portList final prev
     }).overrideAttrs
       (old: {
         patches = old.patches ++ [
+          # PHP's own backport for its end-of-life branch; see docs/php.md.
+          ../patches/php-7.4-cve-2026-109618-109619.patch
           ../patches/php-7.4-filc.patch
           # Default to the system allocator so Fil-C bounds each PHP value.
           ../patches/php-7.4-alloc-filc.patch

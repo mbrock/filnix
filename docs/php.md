@@ -11,17 +11,21 @@ nix build .#php-dist         # php-8.4.27-filc-x86_64-linux.tar.xz, runs without
 nix build .#php-docker       # an OCI image of the same tree
 ```
 
-`pkgsFilc.php` follows PHP's 8.4 releases, now 8.4.27.
-`pkgsFilc.php84_25` keeps 8.4.25, the release the use-after-free
-reproduction below ran against, for comparing exploits and their fixes;
-it keeps its existing Fil-C patches and allocator default. The reproducer
-still traps on 8.4.27 with the default allocator, and still completes on
-Zend's allocator: the version update does not fix that particular UAF.
+`pkgsFilc.php` follows PHP's 8.4 releases, now 8.4.27, which fixes
+CVE-2026-109618 and CVE-2026-109619. `pkgsFilc.php84_25` keeps the
+vulnerable 8.4.25 with the same Fil-C patches, for reproducing those bugs
+and comparing them with their fixes (see
+[Vulnerable PHP under Fil-C](#vulnerable-php-under-fil-c)). It is marked
+insecure, so Nix refuses it unless asked:
+
+```sh
+NIXPKGS_ALLOW_INSECURE=1 nix build --impure .#pkgsFilc.php84_25
+```
 
 `pkgsFilc.php.withExtensions` and `pkgsFilc.php.buildEnv` work as in
 Nixpkgs; see [php-extensions.md](php-extensions.md) for which extensions are
-ported and how they are tested. PHP 7.4, which no longer gets security
-fixes, builds too; see [PHP 7.4](#php-74).
+ported and how they are tested. PHP 7.4, which no longer gets regular
+security fixes, builds too; see [PHP 7.4](#php-74).
 
 ## The tarball
 
@@ -118,14 +122,108 @@ described in [php-extensions.md](php-extensions.md).
 
 Not yet ported: memprof, enchant and swoole.
 
+## Vulnerable PHP under Fil-C
+
+PHP 8.4.27 (with 8.3.36, 8.2.35 and 8.5.12) fixed two memory-safety CVEs
+in request handling:
+
+- **CVE-2026-109618.** An out-of-memory error unwound the request with
+  `longjmp` and could leave objects half built. Request shutdown then
+  freed or used them. The fix makes allocation failures soft and checks
+  for them.
+- **CVE-2026-109619.** Request-owned globals survived an aborted request
+  and were used again before the next request started. The case found was
+  the session upload-progress handler, which runs during multipart
+  parsing. The fix resets them early and clears them at shutdown.
+
+We ran the regression tests PHP added with these fixes (the OOM,
+multipart, session and next-request tests: 235 in all) against Fil-C
+8.4.25, before the fixes, and Fil-C 8.4.27, both on the default system
+allocator ([thread](https://ampcode.com/threads/T-01a15f5c-79eb-70bb-b41f-3eff4075aa4b)).
+On 8.4.25, Fil-C stopped two of them at an invalid access, where native
+PHP keeps going:
+
+- `ext/xml/tests/oom_xml_parse_into_struct.phpt` (CVE-2026-109618). The
+  OOM leaves an XML parser half built, and request shutdown frees it:
+
+  ```text
+  filc safety error: cannot read pointer with null object.
+      pointer: (nil),<null>
+      expected 8 bytes.
+  semantic origin:
+      (php) Zend/zend_alloc.c:3006:16: tracked_free
+  ...
+      (php) ext/xml/xml.c:327:4: xml_parser_free_ltags
+      (php) ext/xml/xml.c:341:2: xml_parser_free_obj
+      (php) Zend/zend_execute_API.c:423:2: zend_shutdown_executor_values
+      (php) main/main.c:1952:2: php_request_shutdown
+  filc panic: thwarted a futile attempt to violate memory safety.
+  ```
+
+  Native PHP 8.4.26 passes this test without noticing.
+- `ext/session/tests/user_session_module/session_create_id_create_sid_throws.phpt`
+  (the CVE-2026-109619 session fixes). A `create_sid` handler that throws
+  leaves the session half set up, and validation reads through it:
+
+  ```text
+  filc safety error: cannot read pointer with null object.
+      pointer: 0x4,<null>
+      expected 4 bytes.
+  semantic origin:
+      (session.so) mod_user.c:264:3: ps_validate_sid_user
+  ...
+      (session.so) session.c:2515:9: zif_session_create_id
+  filc panic: thwarted a futile attempt to violate memory safety.
+  ```
+
+  Native 8.4.26 fails the test's expected output but does not crash.
+
+On 8.4.27 none of the 235 tests panics. Its eight failures come from the
+test setup: CGI subprocesses without some extensions, no network for curl,
+and multipart memory limits tuned to Zend's allocator.
+
+So Fil-C turned bugs in the class these CVEs belong to into a stopped
+process before PHP knew about them, and it did so without knowing what the
+bugs were. That is the case for running PHP on Fil-C. But the evidence
+has limits:
+
+- These are PHP's regression tests, not exploits. Exploiting
+  CVE-2026-109619 across requests takes heap grooming to reach a dangling
+  reference. We showed the corrupted state it starts from (on 8.4.25,
+  `rfc1867_no_user_code.phpt` runs user code from the upload-progress
+  handler before the request has started) but not a groomed dereference.
+- The startup OOM route to CVE-2026-109618 needs mod_php or FrankenPHP,
+  which have no Fil-C build. It was not tested.
+- A trap is still a crash, and an attacker who can trigger one at will can
+  take workers down. Logic bugs in the same code are unaffected.
+
+So run patched releases. `php84_25` is marked insecure for that reason
+and exists only to reproduce the bugs and compare them with their fixes.
+
+The `var_destroy` use after free in `unserialize()`
+([php-src#21824](https://github.com/php/php-src/issues/21824), fix in
+[#21828](https://github.com/php/php-src/pull/21828)) is a separate bug
+that is not fixed in 8.4.27. Fil-C 8.4.27 still traps on it with the
+default allocator, and it still runs to completion on Zend's allocator
+(see [above](#differences-from-other-php-builds)).
+
 ## PHP 7.4
 
-PHP 7.4 reached its end of life in November 2022 and gets no security
-fixes; the fixes for current PHP CVEs exist only for PHP 8. Fil-C does not
-fix those bugs, but it stops the memory-corruption ones from being
-exploited: an out-of-bounds access or use after free in PHP 7.4 or a
-library it loads panics instead of handing an attacker memory. For example,
-the `var_destroy` use after free in `unserialize()` (see
+PHP 7.4 reached its end of life in November 2022 and gets no regular
+security fixes. For CVE-2026-109618 and CVE-2026-109619 PHP published a
+minimal mitigation on branch `PHP-7.4-CVE-2026-109618-109619`, which this
+build applies (`patches/php-7.4-cve-2026-109618-109619.patch` and, for the
+session extension, `php-7.4-session-cve-2026-109619.patch`). It is cruder
+than the 8.4 fix: running past `memory_limit`, running out of memory, or
+overflowing an allocation size prints the fatal error and exits the
+process immediately, without shutdown functions or the rest of request
+shutdown (an FPM worker that does so exits, and the master starts another),
+and `session.upload_progress` does nothing.
+
+Other PHP 7.4 bugs stay unfixed. Fil-C does not fix them, but it stops the
+memory-corruption ones from being exploited: an out-of-bounds access or
+use after free in PHP 7.4 or a library it loads panics instead of handing
+an attacker memory. For example, the `var_destroy` use after free in `unserialize()` (see
 [above](#differences-from-other-php-builds)) is present in 7.4.33:
 ordinary 7.4 runs the reproduction to completion, reading freed memory, and
 this build stops with a Fil-C panic (exit 133) at the freed read.
@@ -194,6 +292,13 @@ It passes three that fail without it: `bug78272`, whose forked child
 crashes in PCRE's JIT, and two libgd image-scaling tests. Tests of PCRE's
 JIT skip, and `SKIP_ASAN` skips the tests PHP marks as needing Zend's
 allocator, as in its ASan CI.
+
+These counts predate the CVE backport. With it, the default Fil-C run
+passes 13126 and fails 94: the same failures plus nine the backport causes
+on purpose. Eight are the `rfc1867*` session upload-progress tests, which
+now see no progress data, and `bug45392` gets an extra blank line before
+the fatal error, which the backport now prints itself. The `var_destroy`
+reproduction still stops with a Fil-C panic.
 
 ## PHP 8.5 investigation
 
