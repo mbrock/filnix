@@ -1,0 +1,23 @@
+Subject: Accept GD_BICUBIC and GD_BICUBIC_FIXED as interpolation methods
+Origin: upstream, https://github.com/libgd/libgd/commit/39abd7238cea2ba8baa4bcac1d6fc01c6cb8afab
+Upstream-Status: Backport
+
+gdImageSetInterpolationMethod() rejected the bicubic methods, so PHP's
+imagesetinterpolation(IMG_BICUBIC) failed and imagescale() with it returned
+false (ext/gd tests bug79676, bug73272, imageinterpolation_basic,
+imagescale_preserve_ratio, which fail the same way without Fil-C).
+
+--- a/src/gd_interpolation.c
++++ b/src/gd_interpolation.c
+@@ -2264,6 +2264,11 @@ BGD_DECLARE(int) gdImageSetInterpolationMethod(gdImagePtr im, gdInterpolationMet
+ 		case GD_BESSEL:
+ 			im->interpolation = filter_bessel;
+ 			break;
++		case GD_BICUBIC_FIXED:
++		case GD_BICUBIC:
++			/* no interpolation as gdImageScale calls a dedicated function */
++			im->interpolation = NULL;
++			break;
+ 		case GD_BLACKMAN:
+ 			im->interpolation = filter_blackman;
+ 			break;

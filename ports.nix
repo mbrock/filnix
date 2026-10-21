@@ -2248,6 +2248,79 @@ in
     (patch ./patches/libwebp-xgetbv.patch)
   ])
 
+  (for pkgs.openexr [
+    (patch ./patches/openexr-chunk-table-pointer.patch)
+    (patch ./patches/openexr-frame-buffer-pointers.patch)
+    # Inline assembly with memory operands (the DWA AVX path, fnstcw and
+    # fldcw for FPU exceptions) is beyond Fil-C, as are the AVX2 gathers in
+    # the vendored OpenJPH.
+    (addCMakeFlag "-DOPENEXR_IMF_HAVE_GCC_INLINE_ASM_AVX=OFF")
+    (addCMakeFlag "-DIEX_HAVE_CONTROL_REGISTER_SUPPORT=OFF")
+    (addCMakeFlag "-DIEX_HAVE_SIGCONTEXT_CONTROL_REGISTER_SUPPORT=OFF")
+    (addCMakeFlag "-DOJPH_DISABLE_SIMD=ON")
+    (use (old: {
+      # Compares OpenEXRCore's CPU detection with the C++ library's, which
+      # without the inline assembly no longer reports AVX.
+      disabledTests = (old.disabledTests or [ ]) ++ [ "OpenEXRCore.testCPUIdent" ];
+    }))
+  ])
+
+  (for pkgs.gd [
+    (patch ./patches/gd-rotate-interpolated.patch)
+    (patch ./patches/gd-bicubic-interpolation.patch)
+  ])
+
+  (for pkgs.libraqm [
+    (patch ./patches/libraqm-align-text-info.patch)
+  ])
+
+  (for pkgs.libmemcached [
+    (patch ./patches/libmemcached-clang.patch)
+  ])
+
+  (for pkgs.rdkafka [
+    (use (old: {
+      # The CRC32C path detects SSE 4.2 with inline cpuid, which Fil-C
+      # cannot run; every client died in rd_kafka_new(). Use the software
+      # CRC32C.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace packaging/cmake/config.h.in --replace-fail \
+          '#cmakedefine01 WITH_CRC32C_HW' '#define WITH_CRC32C_HW 0'
+      '';
+    }))
+  ])
+
+  {
+    uwimap = for pkgs.uwimap [
+      # Fil-C's libc has no vfork; c-client only uses it to spawn rsh/ssh.
+      (addCFlag "-Dvfork=fork")
+    ];
+  }
+
+  (for pkgs.libraw [
+    (use (old: {
+      # The pkg-config files name GCC's C++ runtime; Fil-C's is libc++.
+      # Magick++ failed to link against -lstdc++.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace libraw.pc.in libraw_r.pc.in --replace-fail -lstdc++ -lc++
+      '';
+    }))
+  ])
+
+  (for pkgs.imagemagick [
+    (arg {
+      # librsvg is Rust, which has no Fil-C target.
+      librsvgSupport = false;
+      # libheif's x265 encoder builds its 10/12-bit variants with GCC.
+      libheifSupport = false;
+      # libjxl's Highway picks SIMD targets with xgetbv spelled as raw
+      # opcode bytes, which Fil-C refuses; past that it would dispatch to
+      # AVX2 and AVX-512 intrinsics, which Fil-C does not all lower (the
+      # AVX2 gathers in OpenEXR's OpenJPH did not).
+      libjxlSupport = false;
+    })
+  ])
+
   (for pkgs.libevdev [
     (pin "1.11.0" "sha256-Y/TqFImFihCQgOC0C9Q+TgkDoeEuqIjVgduMSVdHwtA=")
     (patch ./ports/patch/libevdev-1.11.0.patch)

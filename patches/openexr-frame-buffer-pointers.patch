@@ -1,0 +1,203 @@
+Subject: Keep frame buffer addresses as pointers
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The frame buffer code and its tests offset base pointers through intptr_t
+and cast the sums back. Under Fil-C a pointer made from an integer has no
+capability, so the first pixel access trapped. Do the same arithmetic on
+char pointers.
+
+--- a/src/lib/OpenEXR/ImfCompositeDeepScanLine.cpp
++++ b/src/lib/OpenEXR/ImfCompositeDeepScanLine.cpp
+@@ -383,7 +383,7 @@
+ 
+             float value = output_pixel
+                 [_Data->_bufferMap[channel_number]]; // value to write
+-            intptr_t base = reinterpret_cast<intptr_t> (it.slice ().base);
++            char* base = (char*) (it.slice ().base);
+ 
+             // cast to half float if necessary
+             if (it.slice ().type == OPENEXR_IMF_INTERNAL_NAMESPACE::FLOAT)
+--- a/src/lib/OpenEXR/ImfFrameBuffer.cpp
++++ b/src/lib/OpenEXR/ImfFrameBuffer.cpp
+@@ -57,7 +57,7 @@
+     bool                        xTileCoords,
+     bool                        yTileCoords)
+ {
+-    intptr_t base = reinterpret_cast<intptr_t> (const_cast<void*> (ptr));
++    char* base = (char*) (const_cast<void*> (ptr));
+     if (xStride == 0)
+     {
+         switch (type)
+--- a/src/lib/OpenEXR/ImfOutputFile.cpp
++++ b/src/lib/OpenEXR/ImfOutputFile.cpp
+@@ -506,12 +506,11 @@
+                     // If necessary, convert the pixel data to Xdr format.
+                     // Then store the pixel data in _ofd->lineBuffer.
+                     //
+-                    // slice.base may be 'negative' but
+-                    // pointer arithmetic is not allowed to overflow, so
+-                    // perform computation with the non-pointer 'intptr_t' instead
++                    // slice.base may be 'negative'; the arithmetic stays
++                    // on a pointer so that it keeps what it points to.
+                     //
+-                    intptr_t base = reinterpret_cast<intptr_t> (slice.base);
+-                    intptr_t linePtr =
++                    char* base = (char*) (slice.base);
++                    char* linePtr =
+                         base + divp (y, slice.ySampling) * slice.yStride;
+ 
+                     const char* readPtr = reinterpret_cast<const char*> (
+--- a/src/lib/OpenEXR/ImfRgbaFile.cpp
++++ b/src/lib/OpenEXR/ImfRgbaFile.cpp
+@@ -321,7 +321,7 @@
+                  << "\".");
+     }
+ 
+-    intptr_t base = reinterpret_cast<intptr_t> (_fbBase);
++    char* base = (char*) (_fbBase);
+     if (_writeY && !_writeC)
+     {
+         //
+@@ -372,7 +372,7 @@
+             // frame buffer into _tmpBuf.
+             //
+ 
+-            intptr_t base = reinterpret_cast<intptr_t> (_fbBase);
++            char* base = (char*) (_fbBase);
+ 
+             for (int j = 0; j < _width; ++j)
+             {
+@@ -1005,7 +1005,7 @@
+ 
+     fixSaturation (_yw, _width, _buf2, _tmpBuf);
+ 
+-    intptr_t base = reinterpret_cast<intptr_t> (_fbBase);
++    char* base = (char*) (_fbBase);
+     for (int i = 0; i < _width; ++i)
+     {
+         Rgba* ptr = reinterpret_cast<Rgba*> (
+@@ -1360,11 +1360,11 @@
+             const Slice* s =
+                 _inputPart->frameBuffer ().findSlice (_channelNamePrefix + "Y");
+             Box2i    dataWindow = _inputPart->header ().dataWindow ();
+-            intptr_t base       = reinterpret_cast<intptr_t> (s->base);
++            char* base       = (char*) (s->base);
+ 
+             for (int scanLine = scanLine1; scanLine <= scanLine2; scanLine++)
+             {
+-                intptr_t rowBase = base + scanLine * s->yStride;
++                char* rowBase = base + scanLine * s->yStride;
+                 for (int x = dataWindow.min.x; x <= dataWindow.max.x; ++x)
+                 {
+                     Rgba* pixel =
+--- a/src/lib/OpenEXR/ImfTiledOutputFile.cpp
++++ b/src/lib/OpenEXR/ImfTiledOutputFile.cpp
+@@ -740,7 +740,7 @@
+                     // The frame buffer contains data for this channel.
+                     //
+ 
+-                    intptr_t    base = reinterpret_cast<intptr_t> (slice.base);
++                    char*    base = (char*) (slice.base);
+                     const char* readPtr = reinterpret_cast<const char*> (
+                         base + (y - yOffset) * slice.yStride +
+                         (tileRange.min.x - xOffset) * slice.xStride);
+--- a/src/lib/OpenEXR/ImfTiledRgbaFile.cpp
++++ b/src/lib/OpenEXR/ImfTiledRgbaFile.cpp
+@@ -186,7 +186,7 @@
+     Box2i dw    = _outputFile.dataWindowForTile (dx, dy, lx, ly);
+     int   width = dw.max.x - dw.min.x + 1;
+ 
+-    intptr_t base = reinterpret_cast<intptr_t> (_fbBase);
++    char* base = (char*) (_fbBase);
+     for (int y = dw.min.y, y1 = 0; y <= dw.max.y; ++y, ++y1)
+     {
+         for (int x = dw.min.x, x1 = 0; x <= dw.max.x; ++x, ++x1)
+@@ -675,7 +675,7 @@
+ 
+     Box2i    dw    = _inputFile.dataWindowForTile (dx, dy, lx, ly);
+     int      width = dw.max.x - dw.min.x + 1;
+-    intptr_t base  = reinterpret_cast<intptr_t> (_fbBase);
++    char* base  = (char*) (_fbBase);
+ 
+     for (int y = dw.min.y, y1 = 0; y <= dw.max.y; ++y, ++y1)
+     {
+--- a/src/lib/OpenEXRUtil/ImfCheckFile.cpp
++++ b/src/lib/OpenEXRUtil/ImfCheckFile.cpp
+@@ -105,7 +105,7 @@
+             }
+ 
+             Array<Rgba> pixels (w);
+-            intptr_t    base = reinterpret_cast<intptr_t> (&pixels[0]);
++            char*    base = (char*) (&pixels[0]);
+             in.setFrameBuffer (
+                 reinterpret_cast<Rgba*> (base - dx * sizeof (Rgba)), 1, 0);
+ 
+@@ -169,9 +169,9 @@
+         vector<float>        floatChannels (w);
+         vector<unsigned int> uintChannels (w);
+ 
+-        intptr_t halfData  = reinterpret_cast<intptr_t> (halfChannels.data ());
+-        intptr_t floatData = reinterpret_cast<intptr_t> (floatChannels.data ());
+-        intptr_t uintData  = reinterpret_cast<intptr_t> (uintChannels.data ());
++        char* halfData  = (char*) (halfChannels.data ());
++        char* floatData = (char*) (floatChannels.data ());
++        char* uintData  = (char*) (uintChannels.data ());
+ 
+         int                channelIndex = 0;
+         const ChannelList& channelList  = in.header ().channels ();
+--- a/src/test/OpenEXRTest/testCompositeDeepScanLine.cpp
++++ b/src/test/OpenEXRTest/testCompositeDeepScanLine.cpp
+@@ -313,7 +313,7 @@
+             if (!dontbotherloadingdepth ||
+                 (_channels[i] != "Z" && _channels[i] != "ZBack"))
+             {
+-                intptr_t base = reinterpret_cast<intptr_t> (&data[i]);
++                char* base = (char*) (&data[i]);
+                 framebuf.insert (
+                     _channels[i].c_str (),
+                     Slice (
+--- a/src/test/OpenEXRTest/testLargeDataWindowOffsets.cpp
++++ b/src/test/OpenEXRTest/testLargeDataWindowOffsets.cpp
+@@ -65,7 +65,7 @@
+                 //
+                 // extract value read back from file
+                 //
+-                intptr_t base = reinterpret_cast<intptr_t> (i.slice ().base);
++                char* base = (char*) (i.slice ().base);
+                 char*    ptr  = reinterpret_cast<char*> (
+                     base + i.slice ().yStride * intptr_t (y) +
+                     i.slice ().xStride * intptr_t (x));
+@@ -86,8 +86,8 @@
+ 
+                 if (p != asWritten.end ())
+                 {
+-                    intptr_t base =
+-                        reinterpret_cast<intptr_t> (p.slice ().base);
++                    char* base =
++                        (char*) (p.slice ().base);
+                     char* ptr = reinterpret_cast<char*> (
+                         base + p.slice ().yStride * intptr_t (y) +
+                         p.slice ().xStride * intptr_t (x));
+--- a/src/test/OpenEXRTest/testOptimizedInterleavePatterns.cpp
++++ b/src/test/OpenEXRTest/testOptimizedInterleavePatterns.cpp
+@@ -212,7 +212,7 @@
+                 //
+                 // extract value read back from file
+                 //
+-                intptr_t base = reinterpret_cast<intptr_t> (i.slice ().base);
++                char* base = (char*) (i.slice ().base);
+                 char*    ptr  = reinterpret_cast<char*> (
+                     base + i.slice ().yStride * intptr_t (y) +
+                     i.slice ().xStride * intptr_t (x));
+@@ -233,8 +233,8 @@
+                 if (p != asWritten.end ())
+                 {
+ 
+-                    intptr_t base =
+-                        reinterpret_cast<intptr_t> (p.slice ().base);
++                    char* base =
++                        (char*) (p.slice ().base);
+                     char* ptr = reinterpret_cast<char*> (
+                         base + p.slice ().yStride * intptr_t (y) +
+                         p.slice ().xStride * intptr_t (x));

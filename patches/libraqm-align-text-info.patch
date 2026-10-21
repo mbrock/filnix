@@ -1,0 +1,35 @@
+Subject: Align the text_info array that follows the UTF-32 text
+Origin: Filnix
+Upstream-Status: Not submitted
+
+_raqm_alloc_text() places the text_info array, whose entries hold pointers,
+right after len 32-bit code points in one allocation, so for odd lengths the
+array is only 4-byte aligned. x86 tolerates that; Fil-C requires pointers to
+be stored at 8-byte aligned addresses and stopped raqm_set_text() for
+odd-length text. Pad the code points to text_info's alignment.
+
+--- a/src/raqm.c
++++ b/src/raqm.c
+@@ -296,8 +296,11 @@
+                  bool    need_utf8,
+                  bool    need_utf16)
+ {
+-  /* Allocate contiguous memory block for texts and text_info */
+-  size_t mem_size = (sizeof (uint32_t) + sizeof (_raqm_text_info)) * len;
++  /* Allocate contiguous memory block for texts and text_info. text_info
++   * holds pointers, so it starts at a multiple of its alignment. */
++  size_t text_size = sizeof (uint32_t) * len;
++  text_size += (_Alignof (_raqm_text_info) - text_size % _Alignof (_raqm_text_info)) % _Alignof (_raqm_text_info);
++  size_t mem_size = text_size + sizeof (_raqm_text_info) * len;
+   if (need_utf8)
+     mem_size += sizeof (char) * len;
+   else if (need_utf16)
+@@ -316,7 +319,7 @@
+     rq->text = new_mem;
+   }
+ 
+-  rq->text_info = (_raqm_text_info*)(rq->text + len);
++  rq->text_info = (_raqm_text_info*)((char*)rq->text + text_size);
+   rq->text_utf8 = need_utf8 ? (char*)(rq->text_info + len) : NULL;
+   rq->text_utf16 = need_utf16 ? (uint16_t*)(rq->text_info + len) : NULL;
+ 

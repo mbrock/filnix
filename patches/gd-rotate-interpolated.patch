@@ -1,0 +1,58 @@
+Subject: Rotate the truecolor copy of a palette image, and free the right image
+Origin: upstream, https://github.com/libgd/libgd/commit/6cc1e39e9fddd15ae74adb1a09fcd5740f44923e
+Origin: upstream, https://github.com/libgd/libgd/commit/a656f5cc5592757996e9e96b0821a0966bfaa3b3
+Upstream-Status: Backport
+
+gdImageRotateInterpolated() converts a palette image to a truecolor clone but
+then rotated the palette original, whose tpixels is NULL: PHP's imagerotate()
+on a palette image read through a null pointer (bug65148.phpt), which Fil-C
+stops. The 180-degree case also freed the caller's image instead of the clone.
+
+--- a/src/gd_interpolation.c
++++ b/src/gd_interpolation.c
+@@ -1847,15 +1847,8 @@ BGD_DECLARE(gdImagePtr) gdImageRotateInterpolated(const gdImagePtr src, const fl
+ 	/* 0 && 90 degrees multiple rotation, 0 rotation simply clones the return image and convert it
+ 	   to truecolor, as we must return truecolor image. */
+ 	switch (angle_rounded) {
+-		case    0: {
+-			gdImagePtr dst = gdImageClone(src);
+-
+-			if (dst == NULL) {
+-				return NULL;
+-			}
+-			if (src_cloned) gdImageDestroy(src_tc);
+-			return dst;
+-		}
++		case    0:
++			return src_cloned ? src_tc : gdImageClone(src);
+ 
+ 		case -27000:
+ 		case   9000:
+@@ -1864,7 +1857,7 @@ BGD_DECLARE(gdImagePtr) gdImageRotateInterpolated(const gdImagePtr src, const fl
+ 
+ 		case -18000:
+ 		case  18000:
+-			if (src_cloned) gdImageDestroy(src);
++			if (src_cloned) gdImageDestroy(src_tc);
+ 			return gdImageRotate180(src, 0);
+ 
+ 		case  -9000:
+@@ -1880,16 +1873,15 @@ BGD_DECLARE(gdImagePtr) gdImageRotateInterpolated(const gdImagePtr src, const fl
+ 
+ 	switch (src->interpolation_id) {
+ 		case GD_NEAREST_NEIGHBOUR: {
+-			gdImagePtr res = gdImageRotateNearestNeighbour(src, angle, bgcolor);
++			gdImagePtr res = gdImageRotateNearestNeighbour(src_tc, angle, bgcolor);
+ 			if (src_cloned) gdImageDestroy(src_tc);
+ 			return res;
+-			break;
+ 		}
+ 
+ 		case GD_BILINEAR_FIXED:
+ 		case GD_BICUBIC_FIXED:
+ 		default: {
+-			gdImagePtr res = gdImageRotateGeneric(src, angle, bgcolor);
++			gdImagePtr res = gdImageRotateGeneric(src_tc, angle, bgcolor);
+ 			if (src_cloned) gdImageDestroy(src_tc);
+ 			return res;
+ 		}
