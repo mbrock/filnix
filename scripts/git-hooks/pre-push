@@ -22,6 +22,11 @@ while read -r _local_ref sha _remote_ref remote_sha; do
   work=$(mktemp -d)
   git worktree add -q --detach "$work/tree" "$sha"
   (
+    # Git exports repository-local variables to hooks. They would override
+    # the clean worktree below and even the source tests' fixture repositories,
+    # changing the caller's config and commits instead of the fixtures'.
+    mapfile -t git_local_env < <(git rev-parse --local-env-vars)
+    unset "${git_local_env[@]}"
     cd "$work/tree"
     echo "pre-push: checking ${sha:0:12} ($(echo "$changed" | grep -c . || true) files changed)"
     if grep -q '^\.github/workflows/' <<<"$changed"; then
