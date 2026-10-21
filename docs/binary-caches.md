@@ -114,8 +114,8 @@ pushes, pull requests and daily:
 
 `scripts/release` tags `origin/main` as `vYYYY.MM.DD` once it is cached, and
 `.github/workflows/release.yml` publishes a GitHub release with the PHP
-tarball, the image as a docker-archive, the `/opt/fil` tarball and their
-SHA-256 sums, and pushes the image as `PHPVERSION-TAG`.
+tarball, the image as a docker-archive, the `/opt/fil` and filroot tarballs
+and their SHA-256 sums, and pushes the image as `PHPVERSION-TAG`.
 
 ## Status and recovery
 

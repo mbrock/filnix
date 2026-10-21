@@ -1,8 +1,9 @@
 # Publishes a GitHub release for a v* tag (scripts/release makes one): the
 # PHP tarball, the PHP container image as a docker-archive, the /opt/fil
-# tarball and their SHA-256 sums, and pushes the image to ghcr.io under the
-# PHP version and the release tag. Like cache.yml it builds nothing: every
-# output must already be in the public caches.
+# tarball, the relocatable filroot tarball and their SHA-256 sums, and
+# pushes the image to ghcr.io under the PHP version and the release tag.
+# Like cache.yml it builds nothing: every output must already be in the
+# public caches.
 name: Release
 
 on:
@@ -43,11 +44,13 @@ jobs:
           nix build .#php-dist --out-link php-dist
           nix build .#php-docker --out-link php-docker
           nix build .#optfil --out-link optfil
+          nix build .#filroot --out-link filroot
           echo "PHP_VERSION=$(nix eval --raw .#php-docker.imageTag)" >> "$GITHUB_ENV"
       - name: The tarballs run without Nix
         run: |
           packages/php-dist/test/run.sh php-dist debian:13 alpine:3
           packages/optfil/test/run.sh optfil debian:13 alpine:3
+          packages/filroot/test/run.sh filroot debian:13 alpine:3
       - name: The image serves PHP
         run: |
           podman load < php-docker
@@ -57,6 +60,7 @@ jobs:
           mkdir assets
           cp -L php-dist "assets/$(basename "$(readlink php-dist)" | cut -d- -f2-)"
           cp -L optfil "assets/$(basename "$(readlink optfil)" | cut -d- -f2-)"
+          cp -L filroot "assets/$(basename "$(readlink filroot)" | cut -d- -f2-)"
           cp -L php-docker "assets/filnix-php-$PHP_VERSION-docker.tar.gz"
           (cd assets && sha256sum -- * > SHA256SUMS)
           cat assets/SHA256SUMS
@@ -80,6 +84,9 @@ jobs:
             php-cgi and phpdbg, relocatable, for any x86-64 Linux. See its README.
           - \`optfil-*.tar.xz\`: the Fil-C toolchain and userland for \`/opt/fil\`
             (\`sudo tar -C /opt -xJf optfil-*.tar.xz\`).
+          - \`filroot-*.tar.xz\`: the same toolchain and userland, relocatable:
+            unpack anywhere and put its \`bin\` on PATH. Programs built with it
+            run from its own shell or through \`fil-run\`; see docs/filroot.md.
           - \`filnix-php-$PHP_VERSION-docker.tar.gz\`: the container image
             (\`docker load < filnix-php-$PHP_VERSION-docker.tar.gz\`), also
             \`docker pull $IMAGE:$PHP_VERSION-$RELEASE\`.
