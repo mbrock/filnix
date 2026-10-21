@@ -1,0 +1,53 @@
+Subject: Default PHP to the system allocator under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Zend's allocator hands out request memory from 2 MiB chunks, so Fil-C
+bounds a PHP value only by its chunk and reuses freed values' memory
+inside it. Use after free and overflows between values then go unnoticed:
+the var_destroy use after free in php_var_unserialize() is caught with
+USE_ZEND_ALLOC=0 and silently succeeds on Zend's allocator. Make the
+tracked system allocator, which PHP's ASan CI uses, the default; it keeps
+memory_limit and memory accounting. USE_ZEND_ALLOC=1 restores Zend's
+allocator.
+
+tracked_free_all() frees by addresses kept as integers, which have no
+capability under Fil-C; leave leftover request memory to the collector.
+
+--- a/Zend/zend_alloc.c
++++ b/Zend/zend_alloc.c
+@@ -3026,6 +3026,13 @@
+ }
+ 
+ static void tracked_free_all(zend_mm_heap *heap) {
++#ifdef __FILC__
++	/* The keys are addresses, and an integer cast back to a pointer has no
++	 * capability, so free() would trap. Fil-C's collector reclaims the
++	 * request's leftover allocations once nothing refers to them. */
++	(void) heap;
++	return;
++#endif
+ 	HashTable *tracked_allocs = heap->tracked_allocs;
+ 	zend_ulong h;
+ 	ZEND_HASH_FOREACH_NUM_KEY(tracked_allocs, h) {
+@@ -3041,8 +3048,20 @@
+ 
+ #if ZEND_MM_CUSTOM
+ 	tmp = getenv("USE_ZEND_ALLOC");
++#ifdef __FILC__
++	/* Zend's allocator carves request memory out of 2 MiB chunks, so Fil-C
++	 * bounds every PHP value only by its chunk and a freed value's memory is
++	 * reused inside it: use after free and overflows between values go
++	 * undetected. Default to the system allocator, which gives each value
++	 * its own capability, tracked so that memory_limit and
++	 * memory_get_usage() still work. USE_ZEND_ALLOC=1 selects Zend's
++	 * allocator and USE_TRACKED_ALLOC=0 untracked malloc. */
++	if (!tmp || !ZEND_ATOL(tmp)) {
++		bool tracked = !(tmp = getenv("USE_TRACKED_ALLOC")) || ZEND_ATOL(tmp);
++#else
+ 	if (tmp && !ZEND_ATOL(tmp)) {
+ 		bool tracked = (tmp = getenv("USE_TRACKED_ALLOC")) && ZEND_ATOL(tmp);
++#endif
+ 		zend_mm_heap *mm_heap = alloc_globals->mm_heap = malloc(sizeof(zend_mm_heap));
+ 		memset(mm_heap, 0, sizeof(zend_mm_heap));
+ 		mm_heap->use_custom_heap = ZEND_MM_CUSTOM_HEAP_STD;

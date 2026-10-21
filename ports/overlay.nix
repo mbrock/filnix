@@ -182,12 +182,14 @@ portDSL.makeOverlay portList final prev
                     mkdir -p "$TMPDIR/run-tests-ini"
                     echo pcre.backtrack_limit=100000000 > "$TMPDIR/run-tests-ini/pcre.ini"
                     export PHP_INI_SCAN_DIR="$TMPDIR/run-tests-ini"
-                    make "$settings" test TESTS="-j''${phpTestJobs:-$NIX_BUILD_CORES} -q --show-diff"
+                    USE_ZEND_ALLOC=1 \
+                      make "$settings" test TESTS="-j''${phpTestJobs:-$NIX_BUILD_CORES} -q --show-diff"
                     # Zend's allocator carves request memory out of 2 MiB
                     # chunks, so Fil-C bounds a PHP value by its chunk, and
                     # overflows and use after free between values go
-                    # unnoticed. Run the tests again on the system allocator,
-                    # which gives each allocation its own bounds; SKIP_ASAN
+                    # unnoticed. PHP defaults to the system allocator here
+                    # (php-8.4-alloc-filc.patch), which gives each allocation
+                    # its own bounds; run the tests on both. SKIP_ASAN
                     # skips the tests that need Zend's allocator, as in
                     # upstream's ASan runs, and zendAllocOnlyTests lists those
                     # that need it without saying so, like memory_limit tests.
@@ -549,7 +551,7 @@ portDSL.makeOverlay portList final prev
                           run-xdebug-tests.php -j$NIX_BUILD_CORES -q --show-diff \
                           -d xdebug.mode=develop,debug,coverage,trace,profile "$@"
                       }
-                      run tests
+                      USE_ZEND_ALLOC=1 run tests
                       # Also on the system allocator; see withTests. Leave out
                       # the debugger tests there: some give the debugged PHP a
                       # second to connect, and on a busy builder one connected
@@ -582,7 +584,11 @@ portDSL.makeOverlay portList final prev
         }
     ).overrideAttrs
       (old: {
-        patches = old.patches ++ [ ../patches/php-8.4-filc.patch ];
+        patches = old.patches ++ [
+          ../patches/php-8.4-filc.patch
+          # Default to the system allocator so Fil-C bounds each PHP value.
+          ../patches/php-8.4-alloc-filc.patch
+        ];
         # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
         separateDebugInfo = false;
         configureFlags = old.configureFlags ++ [

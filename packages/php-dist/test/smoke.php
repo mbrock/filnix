@@ -32,6 +32,10 @@ $expected = ['bcmath', 'bz2', 'calendar', 'ctype', 'curl', 'date', 'dom',
     'redis'];
 check('extensions loaded', fn() => array_values(array_diff($expected, get_loaded_extensions(), get_loaded_extensions(true))) ?: true);
 check('no /nix', fn() => !file_exists('/nix') ?: 'found /nix');
+// Zend's allocator counts real usage in 2 MiB chunks; the tracked system
+// allocator, which gives Fil-C each value's own bounds, counts bytes.
+check('values come from malloc, not Zend chunks', fn() => getenv('USE_ZEND_ALLOC') !== false
+    || memory_get_usage(true) % (2 << 20) !== 0 ?: memory_get_usage(true));
 check('PHP_BINARY is the launcher', fn() => str_ends_with(PHP_BINARY, '/bin/php') && is_executable(PHP_BINARY) ?: PHP_BINARY);
 check('PHP_BINARY reruns php', function () {
     $out = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('echo extension_loaded("intl") ? "yes" : "no";'));

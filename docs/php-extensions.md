@@ -11,11 +11,13 @@ library fixes are in `ports.nix`.
 `withTests` runs each extension's own test suite during the build, with the
 default extensions and the extension's dependencies loaded, twice:
 
-- on Zend's allocator, as PHP normally runs, and
-- with `USE_ZEND_ALLOC=0`. Zend's allocator hands out request memory from
-  2 MiB chunks, so Fil-C bounds a PHP value only by its chunk. On the system
-  allocator every allocation has its own bounds, and overflows or use after
-  free between values trap. Most of the real bugs below only showed up here.
+- on Zend's allocator (`USE_ZEND_ALLOC=1`), as PHP normally runs, and
+- on the system allocator, which this PHP uses by default
+  ([php.md](php.md#differences-from-other-php-builds)). Zend's allocator
+  hands out request memory from 2 MiB chunks, so Fil-C bounds a PHP value
+  only by its chunk. On the system allocator every allocation has its own
+  bounds, and overflows or use after free between values trap. Most of the
+  real bugs below only showed up here.
 
 Test failures were compared with the same harness on x86-64 PHP without
 Fil-C; tests that fail there too are removed with `withoutTests`.

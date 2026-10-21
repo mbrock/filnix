@@ -44,6 +44,11 @@ using their own character sets and locales.
 - Each FPM worker has a private opcache. Workers share what the master
   cached before forking; `opcache_reset()` affects only the calling worker.
 - Code runs 1.5 to 4 times slower than ordinary PHP and uses more memory.
+- PHP allocates each value with malloc instead of from Zend's 2 MiB chunks,
+  so that Fil-C catches use after free and overflows between values. This
+  costs about half the speed of allocation-heavy code; `memory_limit` still
+  works. `USE_TRACKED_ALLOC=0` is faster but ignores `memory_limit`;
+  `USE_ZEND_ALLOC=1` uses Zend's allocator and loses that protection.
 - Only the C and C.UTF-8 locales are available.
 - Native code loaded at run time must be built with Fil-C too, so `dl()`
   and PECL extensions from elsewhere do not work.

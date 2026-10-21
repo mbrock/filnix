@@ -66,6 +66,20 @@ no handler for it, and PID 1 ignores signals it does not handle, so
 
 ## Differences from other PHP builds
 
+- PHP uses the system allocator by default, not Zend's. Zend's allocator
+  hands out request memory from 2 MiB chunks, so Fil-C would bound a PHP
+  value only by its chunk, and a freed value's memory is reused within it:
+  use after free and overflows between values would go unnoticed. The
+  `var_destroy` use after free in `unserialize()` (see
+  [the reproduction](https://ampcode.com/threads/T-01a15e04-a3b6-7208-bdf5-680581ab02f5))
+  runs silently to completion on Zend's allocator and stops with a Fil-C
+  panic on the system allocator. The default is PHP's *tracked* system
+  allocator, the one its ASan CI uses, so `memory_limit` and
+  `memory_get_usage()` still work (`memory_get_peak_usage()` reports 0).
+  It is about twice as slow as Zend's on allocation-heavy code.
+  `USE_TRACKED_ALLOC=0` uses untracked malloc, about a third faster, without
+  `memory_limit`; `USE_ZEND_ALLOC=1` restores Zend's allocator and gives up
+  that protection. See `patches/php-8.4-alloc-filc.patch`.
 - No JIT. Fil-C cannot run generated machine code, so opcache's JIT and
   PCRE's JIT are off.
 - Opcache maps its shared memory privately, because capabilities do not
