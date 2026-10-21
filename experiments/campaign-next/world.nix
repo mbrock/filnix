@@ -25,10 +25,37 @@ let
       pkgs.lib.unique (world ++ portNames)
     else
       throw "Unknown campaign scope: ${scope}";
-  evaluated = map (name: {
-    inherit name;
-    result = builtins.tryEval packages.${name}.drvPath;
-  }) names;
+  # Flake outputs built ahead of the package roots, so that publication puts
+  # them in the caches: the baseline set (with filcc) that CI requires, and
+  # PHP with its relocatable tarball and container image.
+  outputs = flake.packages.x86_64-linux;
+  leading = [
+    {
+      name = "baseline";
+      value = outputs.baseline;
+    }
+    {
+      name = "php";
+      value = packages.php;
+    }
+    {
+      name = "php-dist";
+      value = outputs.php-dist;
+    }
+    {
+      name = "php-docker";
+      value = outputs.php-docker;
+    }
+  ];
+  evaluated =
+    map (item: {
+      inherit (item) name;
+      result = builtins.tryEval item.value.drvPath;
+    }) leading
+    ++ map (name: {
+      inherit name;
+      result = builtins.tryEval packages.${name}.drvPath;
+    }) (pkgs.lib.subtractLists (map (item: item.name) leading) names);
   admitted = builtins.filter (item: item.result.success) evaluated;
   manifest = {
     id = "${scope}-${revision}";
