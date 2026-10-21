@@ -25,28 +25,27 @@ let
       pkgs.lib.unique (world ++ portNames)
     else
       throw "Unknown campaign scope: ${scope}";
-  # Flake outputs built ahead of the package roots, so that publication puts
-  # them in the caches: the baseline set (with filcc) that CI requires, and
-  # PHP with its relocatable tarball and container image.
-  outputs = flake.packages.x86_64-linux;
-  leading = [
-    {
-      name = "baseline";
-      value = outputs.baseline;
-    }
-    {
-      name = "php";
-      value = packages.php;
-    }
-    {
-      name = "php-dist";
-      value = outputs.php-dist;
-    }
-    {
-      name = "php-docker";
-      value = outputs.php-docker;
-    }
-  ];
+  # Flake outputs CI requires in the caches (scripts/ci-outputs.txt), built
+  # ahead of the package roots so that publication puts them there first.
+  leading =
+    map
+      (
+        attr:
+        let
+          path = pkgs.lib.splitString "." attr;
+        in
+        {
+          name = pkgs.lib.last path;
+          value = pkgs.lib.getAttrFromPath path flake;
+        }
+      )
+      (
+        builtins.filter (line: line != "" && !pkgs.lib.hasPrefix "#" line) (
+          pkgs.lib.splitString "\n" (
+            builtins.readFile "${flake.outPath}/scripts/ci-outputs.txt"
+          )
+        )
+      );
   evaluated =
     map (item: {
       inherit (item) name;

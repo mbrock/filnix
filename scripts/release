@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Tag origin/main as vYYYY.MM.DD (or .N for later releases that day) and push
+# the tag; .github/workflows/release.yml then publishes the release. The
+# commit's CI outputs must be in the public caches (scripts/ship).
+#
+#   scripts/release [TAG]
+set -euo pipefail
+# shellcheck source=scripts/git-hooks/lib.sh
+. "$(dirname "$0")/git-hooks/lib.sh"
+cd "$filnix_root"
+
+git fetch -q --tags origin
+sha=$(git rev-parse origin/main)
+tag=${1:-}
+if [ -z "$tag" ]; then
+  tag=v$(date -u +%Y.%m.%d)
+  n=1
+  while git rev-parse -q --verify "refs/tags/$tag" >/dev/null; do
+    n=$((n + 1))
+    tag=v$(date -u +%Y.%m.%d).$n
+  done
+fi
+case "$tag" in v*) ;; *) echo "release: tags must start with v" >&2; exit 2 ;; esac
+
+work=$(mktemp -d)
+trap 'git worktree remove --force "$work/tree" 2>/dev/null; rm -rf "$work"' EXIT
+git worktree add -q --detach "$work/tree" "$sha"
+(cd "$work/tree" && python3 scripts/ci-cache-check.py) || {
+  echo "release: ${sha:0:12} is not fully cached; run scripts/ship first" >&2
+  exit 1
+}
+git tag -a "$tag" -m "Filnix $tag" "$sha"
+git push origin "refs/tags/$tag"
+echo "release: pushed $tag at ${sha:0:12}; https://github.com/mbrock/filnix/actions/workflows/release.yml"

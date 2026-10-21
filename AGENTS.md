@@ -56,6 +56,8 @@ This Nix flake packages the Fil-C compiler toolchain for reproducible, hermetic 
 
 - Treat `main` as the continuously integrated work branch, not a production release gate. Commit and push verified, scoped work to `origin` at coherent milestones without waiting for a separate user request.
 - Keep commits limited to the work you own. This standing permission does not authorize force-pushing, publishing someone else's unreviewed changes, or triggering deployments and releases.
+- Push with `scripts/ship`. It rebases onto `origin/main`, and on swa builds the outputs in `scripts/ci-outputs.txt`, publishes them to both binary caches and waits until CI will find them, then pushes. Elsewhere, or with `--no-publish`, it only pushes, and CI stays red until a campaign publishes the revision. It works without `nix develop` and installs the hooks in `scripts/git-hooks`: pre-commit runs treefmt; pre-push checks each pushed commit in a clean worktree (the CI outputs evaluate, workflows lint, Python compiles, importer tests pass when ports change) and reports cache coverage.
+- Releases (`scripts/release`, which tags `origin/main` and triggers `.github/workflows/release.yml`) publish to GitHub and ghcr.io; cut one only when the user asks.
 
 ### Relationship to Upstream
 

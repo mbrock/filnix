@@ -407,6 +407,20 @@
               text = builtins.readFile ./scripts/push-baseline.sh;
             };
 
+            # What scripts/git-hooks and scripts/ship run, so that they work
+            # without nix develop.
+            devtools = pkgs.buildEnv {
+              name = "filnix-devtools";
+              paths = with pkgs; [
+                treefmt
+                nixfmt
+                actionlint
+                shellcheck
+                python3
+                git
+              ];
+            };
+
             push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
               ${pkgs.cachix}/bin/cachix push filc ${filcc}
             '';

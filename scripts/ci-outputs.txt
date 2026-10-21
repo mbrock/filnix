@@ -1,0 +1,9 @@
+# Flake outputs CI requires in the public caches, built ahead of the package
+# roots by campaigns (experiments/campaign-next/world.nix), checked by
+# scripts/ci-cache-check.py and published by scripts/ship.
+packages.x86_64-linux.filcc
+packages.x86_64-linux.baseline
+legacyPackages.x86_64-linux.pkgsFilc.php
+packages.x86_64-linux.php-dist
+packages.x86_64-linux.php-docker
+packages.x86_64-linux.optfil

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Verifies each pushed commit as committed, in a temporary worktree, not the
+# working tree: the CI outputs evaluate, changed workflows lint, changed
+# Python compiles, and importer changes pass tests/upstream-sources.py.
+# Reports whether the CI outputs are in the public caches; with
+# FILNIX_REQUIRE_CACHE=1 (as scripts/ship sets after publishing) that is
+# required too. Skip with git push --no-verify.
+set -euo pipefail
+# shellcheck source=scripts/git-hooks/lib.sh
+. "$(dirname "$0")/lib.sh"
+
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r _local_ref sha _remote_ref remote_sha; do
+  [ "$sha" = "$zero" ] && continue # deleting a ref
+  if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    base=$(git merge-base "$sha" origin/main 2>/dev/null || echo "$sha^")
+  else
+    base=$remote_sha
+  fi
+  changed=$(git diff --name-only "$base" "$sha")
+  work=$(mktemp -d)
+  git worktree add -q --detach "$work/tree" "$sha"
+  (
+    cd "$work/tree"
+    echo "pre-push: checking ${sha:0:12} ($(echo "$changed" | grep -c . || true) files changed)"
+    if grep -q '^\.github/workflows/' <<<"$changed"; then
+      actionlint
+    fi
+    mapfile -t python < <(grep '\.py$' <<<"$changed" | while read -r f; do [ -f "$f" ] && echo "$f"; done)
+    if [ ${#python[@]} -gt 0 ]; then
+      python3 -m py_compile "${python[@]}"
+    fi
+    if grep -q -E '^(ports/|scripts/update-ports-pin\.py|tests/upstream-sources\.py|packages/projeny\.nix)' <<<"$changed"; then
+      projeny=$(nix build --no-link --print-out-paths .#projeny)
+      PATH="$projeny/bin:$PATH" python3 tests/upstream-sources.py
+    fi
+    # Evaluates every CI output; exit 1 means only that some are not cached.
+    set +e
+    python3 scripts/ci-cache-check.py
+    check=$?
+    set -e
+    if [ $check = 1 ]; then
+      echo "pre-push: CI will fail until these are published; scripts/ship publishes them" >&2
+      [ "${FILNIX_REQUIRE_CACHE:-0}" = 1 ] && exit 1
+    elif [ $check != 0 ]; then
+      exit $check
+    fi
+  ) || status=$?
+  git worktree remove --force "$work/tree"
+  rm -rf "$work"
+  [ $status = 0 ] || break
+done
+exit $status

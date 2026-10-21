@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Push committed work to origin/main so that CI passes:
+#
+#   scripts/ship               rebase, publish the CI outputs, push
+#   scripts/ship --no-publish  rebase and push; the campaign publishes later
+#
+# CI (.github/workflows/cache.yml) never builds Fil-C; it requires the
+# outputs in scripts/ci-outputs.txt to be in the public caches. On the host
+# that runs the cache publisher (swa), this builds them at the rebased
+# commit, queues them with filnix-publish-cache for both caches, and waits
+# until scripts/ci-cache-check.py passes before pushing. The pre-push hook
+# then verifies the commits (see scripts/git-hooks/pre-push).
+#
+# Only commits are shipped: uncommitted changes to tracked files stop it.
+set -euo pipefail
+# shellcheck source=scripts/git-hooks/lib.sh
+. "$(dirname "$0")/git-hooks/lib.sh"
+cd "$filnix_root"
+
+publish=1
+case "${1:-}" in
+  --no-publish) publish=0 ;;
+  "") ;;
+  *)
+    sed -n '2,/^set /p' "$0" | sed '$d; s/^# \{0,1\}//'
+    exit 2
+    ;;
+esac
+
+git config core.hooksPath scripts/git-hooks
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "ship: commit or stash changes to tracked files first; only commits are shipped" >&2
+  exit 1
+fi
+git fetch -q origin
+git rebase -q origin/main
+sha=$(git rev-parse HEAD)
+if [ "$sha" = "$(git rev-parse origin/main)" ]; then
+  echo "ship: nothing to push"
+  exit 0
+fi
+
+publisher=/opt/filnix-cache/bin/filnix-publish-cache
+if [ $publish = 1 ] && { [ ! -x $publisher ] || ! sudo -n true 2>/dev/null; }; then
+  echo "ship: no cache publisher here; pushing without publishing (CI fails until a campaign publishes ${sha:0:12})" >&2
+  publish=0
+fi
+
+if [ $publish = 1 ]; then
+  gcroots=$(mktemp -d)
+  trap 'rm -rf "$gcroots"' EXIT
+  roots=()
+  i=0
+  while read -r attr; do
+    case "$attr" in "" | "#"*) continue ;; esac
+    echo "ship: building $attr"
+    i=$((i + 1))
+    # Out-links keep the outputs alive until they are published.
+    while read -r path; do roots+=(--extra-root "$path"); done < <(
+      nix build --out-link "$gcroots/$i" --print-out-paths "git+file://$filnix_root?rev=$sha#$attr^*"
+    )
+  done < scripts/ci-outputs.txt
+  for target in local cachix; do
+    credential=()
+    [ $target = cachix ] && credential=(-p LoadCredential=cachix.dhall:/etc/filnix-cache/cachix.dhall)
+    # The publisher's timer may hold its lock; queued roots are durable, so
+    # one successful run is enough and the timer finishes the upload.
+    for attempt in $(seq 1 40); do
+      if sudo systemd-run --quiet --wait --pipe --collect -p User=filnix-cache -p Group=filnix-observe \
+        "${credential[@]}" $publisher $target --batches 32 "${roots[@]}"; then
+        break
+      fi
+      [ "$attempt" = 40 ] && { echo "ship: could not queue roots for $target" >&2; exit 1; }
+      sleep 15
+    done
+  done
+  echo "ship: waiting for the caches"
+  deadline=$((SECONDS + 3 * 3600))
+  until python3 scripts/ci-cache-check.py >/dev/null; do
+    [ $SECONDS -lt $deadline ] || { echo "ship: still not cached after 3 hours" >&2; exit 1; }
+    sleep 30
+  done
+  export FILNIX_REQUIRE_CACHE=1
+fi
+
+git push origin HEAD:main

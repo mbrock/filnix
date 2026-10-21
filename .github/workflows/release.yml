@@ -1,0 +1,91 @@
+# Publishes a GitHub release for a v* tag (scripts/release makes one): the
+# PHP tarball, the PHP container image as a docker-archive, the /opt/fil
+# tarball and their SHA-256 sums, and pushes the image to ghcr.io under the
+# PHP version and the release tag. Like cache.yml it builds nothing: every
+# output must already be in the public caches.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v* tag to (re)publish
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+    max-jobs = 0
+    builders =
+  RELEASE: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE }}
+      - uses: cachix/install-nix-action@v31
+      - name: Outputs are in the public caches
+        run: python3 scripts/ci-cache-check.py
+      - name: Substitute
+        run: |
+          nix build .#php-dist --out-link php-dist
+          nix build .#php-docker --out-link php-docker
+          nix build .#optfil --out-link optfil
+          echo "PHP_VERSION=$(nix eval --raw .#php-docker.imageTag)" >> "$GITHUB_ENV"
+      - name: The tarballs run without Nix
+        run: |
+          packages/php-dist/test/run.sh php-dist debian:13 alpine:3
+          packages/optfil/test/run.sh optfil debian:13 alpine:3
+      - name: The image serves PHP
+        run: |
+          podman load < php-docker
+          podman run --rm "filnix-php:$PHP_VERSION" php -r 'echo PHP_VERSION, "\n"; exit(extension_loaded("Zend OPcache") ? 0 : 1);'
+      - name: Assets
+        run: |
+          mkdir assets
+          cp -L php-dist "assets/$(basename "$(readlink php-dist)" | cut -d- -f2-)"
+          cp -L optfil "assets/$(basename "$(readlink optfil)" | cut -d- -f2-)"
+          cp -L php-docker "assets/filnix-php-$PHP_VERSION-docker.tar.gz"
+          (cd assets && sha256sum -- * > SHA256SUMS)
+          cat assets/SHA256SUMS
+      - name: Push the image to ghcr.io
+        run: |
+          image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/filnix-php
+          for tag in "$PHP_VERSION" "$PHP_VERSION-$RELEASE"; do
+            skopeo copy --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+              docker-archive:php-docker "docker://$image:$tag"
+          done
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > notes.md <<EOF
+          Built by the Filnix campaign from $(git rev-parse --short=12 HEAD) and
+          substituted from https://filc.cachix.org; nothing here was compiled on CI.
+
+          - \`php-*-filc-x86_64-linux.tar.xz\`: PHP $PHP_VERSION with php-fpm,
+            php-cgi and phpdbg, relocatable, for any x86-64 Linux. See its README.
+          - \`optfil-*.tar.xz\`: the Fil-C toolchain and userland for \`/opt/fil\`
+            (\`sudo tar -C /opt -xJf optfil-*.tar.xz\`).
+          - \`filnix-php-$PHP_VERSION-docker.tar.gz\`: the container image
+            (\`docker load < filnix-php-$PHP_VERSION-docker.tar.gz\`), also
+            \`docker pull $IMAGE:$PHP_VERSION-$RELEASE\`.
+          EOF
+          if gh release view "$RELEASE" >/dev/null 2>&1; then
+            gh release upload "$RELEASE" assets/* --clobber
+          else
+            gh release create "$RELEASE" assets/* --title "Filnix $RELEASE" --notes-file notes.md --verify-tag
+          fi

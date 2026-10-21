@@ -88,29 +88,34 @@ No change to the Nix daemon or shared compiler derivations is necessary.
 
 ## Continuous integration
 
-Campaign manifests (`experiments/campaign-next/world.nix`) start with the
-`baseline`, `pkgsFilc.php`, `php-dist` and `php-docker` outputs, so a campaign
-of a revision publishes the toolchain, the baseline set and PHP before the
-package roots.
+`scripts/ci-outputs.txt` lists the flake outputs CI requires: `filcc`, the
+baseline set, `pkgsFilc.php`, `php-dist`, `php-docker` and `optfil`. Two
+things publish them:
 
-GitHub Actions (`.github/workflows/cache.yml`) never compiles Fil-C. It
-requires the campaign to have published the revision it tests:
+- `scripts/ship`, which agents and people use to push to `main`. On swa it
+  builds them at the commit being pushed, queues them with
+  `filnix-publish-cache TARGET --extra-root` for both caches, waits until
+  `scripts/ci-cache-check.py` passes, and then pushes.
+- Campaign manifests (`experiments/campaign-next/world.nix`), which start with
+  these outputs ahead of the package roots.
 
-- `scripts/ci-cache-check.py` walks the closures of those outputs and
-  `filcc` through narinfo lookups on Cachix and cache.nixos.org, and fails
-  naming any path neither has. It downloads nothing and runs locally too:
-  `scripts/ci-cache-check.py packages.x86_64-linux.baseline`.
+GitHub Actions never compiles Fil-C. `.github/workflows/cache.yml` runs on
+pushes, pull requests and daily:
+
+- `scripts/ci-cache-check.py` walks the closures of those outputs through
+  narinfo lookups on Cachix and cache.nixos.org, and fails naming any path
+  neither has. It downloads nothing and runs locally too.
 - It substitutes the cached `filcc` and checks that it stops an
   out-of-bounds write.
-- With `max-jobs = 0`, it substitutes the PHP tarball and image, tests the
-  tarball in Debian and Alpine containers, and uploads it as a workflow
-  artifact. On `main` it pushes the image to
+- With `max-jobs = 0`, it substitutes the tarballs and image, tests both
+  tarballs in Debian and Alpine containers, and uploads the PHP tarball as
+  a workflow artifact. On `main` it pushes the image to
   `ghcr.io/mbrock/filnix-php` with its version tag and `latest`.
 
-The campaign does not follow `main` on its own: a revision is cached once a
-campaign has been rolled over to it (see
-[port campaign operations](port-campaign-operations.md)). Until then the
-workflow fails at the cache check; it reruns daily and can be rerun by hand.
+`scripts/release` tags `origin/main` as `vYYYY.MM.DD` once it is cached, and
+`.github/workflows/release.yml` publishes a GitHub release with the PHP
+tarball, the image as a docker-archive, the `/opt/fil` tarball and their
+SHA-256 sums, and pushes the image as `PHPVERSION-TAG`.
 
 ## Status and recovery
 

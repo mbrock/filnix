@@ -5,15 +5,18 @@ CI cannot build the Fil-C toolchain, so it requires the campaign to have
 published it: for each attribute, evaluate its output paths and walk their
 references through narinfo lookups on filc.cachix.org, falling back to
 cache.nixos.org for ordinary dependencies. Nothing is downloaded or built.
-Exits 1 naming the roots whose closures are incomplete.
+Exits 1 naming the roots whose closures are incomplete, 2 if one does
+not evaluate.
 
-    scripts/ci-cache-check.py [--flake .] ATTR...
+    scripts/ci-cache-check.py [--flake .] [ATTR...]
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+from pathlib import Path
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 
@@ -28,7 +31,12 @@ def nix(*args):
 
 def outputs(flake, attr):
     expr = "p: map (o: p.${o}.outPath) (p.outputs or [ \"out\" ])"
-    return json.loads(nix("eval", "--json", f"{flake}#{attr}", "--apply", expr))
+    try:
+        return json.loads(nix("eval", "--json", f"{flake}#{attr}", "--apply", expr))
+    except subprocess.CalledProcessError:
+        # Distinct from 1 (not cached): the flake itself is broken.
+        print(f"{attr}: evaluation failed", file=sys.stderr)
+        sys.exit(2)
 
 
 def narinfo(cache, path):
@@ -89,8 +97,12 @@ def descendants(roots, known):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--flake", default=".")
-    parser.add_argument("attrs", nargs="+")
+    parser.add_argument("attrs", nargs="*",
+                        help="flake attributes; default: those in scripts/ci-outputs.txt")
     args = parser.parse_args()
+    if not args.attrs:
+        listing = Path(__file__).with_name("ci-outputs.txt").read_text().splitlines()
+        args.attrs = [line for line in listing if line and not line.startswith("#")]
     known, missing, rows, failed = {}, set(), [], []
     for attr in args.attrs:
         roots = outputs(args.flake, attr)

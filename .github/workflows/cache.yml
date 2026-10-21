@@ -1,13 +1,14 @@
 # CI never compiles Fil-C: LLVM and the package set are far too large for a
-# hosted runner. The campaign on nix.swa.sh builds each revision and publishes
-# it to filc.cachix.org; this workflow requires that it has. It checks that
-# the toolchain, the baseline set and PHP are cached with their whole
-# closures, uses the cached compiler, and only substitutes the PHP tarball and
-# image (--max-jobs 0 forbids local builds). From main it publishes the image
-# to ghcr.io and keeps the tarball as a workflow artifact.
+# hosted runner. It requires the outputs in scripts/ci-outputs.txt (the
+# toolchain, the baseline set, PHP and the tarballs) to be in the public
+# caches with their whole closures, which scripts/ship or a campaign on
+# nix.swa.sh puts there. It then uses the cached compiler and substitutes
+# the PHP and /opt/fil tarballs and the image (max-jobs = 0 forbids local
+# builds). From main it publishes the image to ghcr.io and keeps the PHP
+# tarball as a workflow artifact; releases are release.yml.
 #
-# A red run after a push usually means the campaign has not reached this
-# revision yet; the daily run or a manual rerun picks it up.
+# A red run after a push means that revision was not published; rerun after
+# scripts/ship or the campaign has published it.
 name: Binary cache
 
 on:
@@ -40,13 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - name: Closures are in the public caches
-        run: |
-          python3 scripts/ci-cache-check.py \
-            packages.x86_64-linux.filcc \
-            packages.x86_64-linux.baseline \
-            legacyPackages.x86_64-linux.pkgsFilc.php \
-            packages.x86_64-linux.php-dist \
-            packages.x86_64-linux.php-docker
+        run: python3 scripts/ci-cache-check.py
       - name: The cached compiler stops an out-of-bounds write
         run: |
           cc=$(nix build --no-link --print-out-paths .#filcc)/bin/clang
@@ -57,7 +52,7 @@ jobs:
           grep 'filc panic' panic.txt
 
   php:
-    name: PHP tarball and image
+    name: Tarballs and image
     needs: cache
     runs-on: ubuntu-24.04
     permissions:
@@ -70,10 +65,13 @@ jobs:
         run: |
           nix build .#php-dist --out-link php-dist
           nix build .#php-docker --out-link php-docker
+          nix build .#optfil --out-link optfil
           echo "TARBALL=$(basename "$(readlink php-dist)" | cut -d- -f2-)" >> "$GITHUB_ENV"
           echo "TAG=$(nix eval --raw .#php-docker.imageTag)" >> "$GITHUB_ENV"
       - name: The tarball runs without Nix
-        run: packages/php-dist/test/run.sh php-dist debian:13 alpine:3
+        run: |
+          packages/php-dist/test/run.sh php-dist debian:13 alpine:3
+          packages/optfil/test/run.sh optfil debian:13 alpine:3
       - name: The image serves PHP
         run: |
           podman load < php-docker
