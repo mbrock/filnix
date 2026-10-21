@@ -3209,8 +3209,8 @@ in
         src = pkgs.fetchFromGitHub {
           owner = "mbrock";
           repo = "emacs";
-          rev = "a55126f6150b43ffc2fbc0682dcd594d5a98f96d";
-          hash = "sha256-LWnniS61uEE55tfMV8HTQdKzs+IPwr5dwoSxyfApTss=";
+          rev = "5b417a5303636d4b3fbed28d9ff6b41e148caa9b";
+          hash = "sha256-E/weXr9KaUMSZiVHMphPsfhvlX9RgeUpQSuH52JwQUY=";
         };
       })
       # Nixpkgs' patches target 30.2; the fork is based on 30.1.
