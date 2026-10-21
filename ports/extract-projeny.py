@@ -12,6 +12,19 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
+def download(projeny, directory, urls):
+    """Fetch the first mirror whose download matches its hash, as Projeny's
+    setup does, and return the archive's file name."""
+    for url, digest in urls:
+        name = url.split('#', 1)[0].split('?', 1)[0].rstrip('/').rsplit('/', 1)[-1]
+        if not name or name.startswith('.'):
+            raise ValueError(f'Unsupported URL: {url!r}')
+        if subprocess.run([projeny, 'download', url, digest], cwd=directory).returncode == 0:
+            return name
+        print(f'{url}: download failed, trying the next mirror', file=sys.stderr)
+    raise SystemExit('No URL: mirror yielded the archive')
+
+
 def extract(descriptor, repo, output, rev):
     script = Path(__file__).with_name('extract-patch.sh').resolve()
     repo, output = Path(repo).resolve(), Path(output).resolve()
@@ -24,14 +37,21 @@ def extract(descriptor, repo, output, rev):
     def blob(name):
         return subprocess.check_output(['git', '-C', str(repo), 'show', f'{rev}:projects/{name}'])
     data = blob(descriptor)
-    fields = {}
+    fields, urls = {}, []
     for line in data.decode().splitlines():
-        if line.startswith('diff --git '):
-            break
+        if not line:
+            break  # Headers end at the first blank line.
+        if line.startswith('URL: '):
+            url, _, digest = line[5:].partition(' ')
+            urls.append((url, digest))
         for key in ('Archive', 'Origname', 'Name'):
             if line.startswith(key + ': '):
                 fields[key] = line[len(key) + 2:]
-    for key in ('Archive', 'Origname', 'Name'):
+    # A project names a tarball checked in beside it, or mirrors to download
+    # it from, each with the blake3 hash Projeny verifies.
+    if bool(urls) == ('Archive' in fields):
+        raise ValueError(f'{descriptor} needs exactly one of Archive: or URL:')
+    for key in ('Origname', 'Name') + (() if urls else ('Archive',)):
         value = fields.get(key, '')
         if not value or '/' in value or value.startswith('.'):
             raise ValueError(f'Unsupported {key}: {value!r}')
@@ -45,7 +65,10 @@ def extract(descriptor, repo, output, rev):
     with tempfile.TemporaryDirectory(prefix='filnix-projeny-') as tmp:
         root = Path(tmp)
         (root / descriptor).write_bytes(data)
-        (root / fields['Archive']).write_bytes(blob(fields['Archive']))
+        if urls:
+            fields['Archive'] = download(projeny, root, urls)
+        else:
+            (root / fields['Archive']).write_bytes(blob(fields['Archive']))
         original = root / 'original'
         original.mkdir()
         run('tar', 'xf', str(root / fields['Archive']), '-C', str(original))

@@ -14,8 +14,12 @@ application-patch extraction pin:
   It is opt-in, may be unsound, and is not a supported release.
 - `ports/upstream.json`: `portsRev` selects the Git history and tree used to
   extract application patches. Nix builds consume the checked-in patches and
-  package archives. The native Projeny package uses the same revision and its
-  separate `projenyHash`, fetching only `projects/projeny/`.
+  package archives. The native Projeny package is built from `projenyRev`
+  with its separate `projenyHash`, fetching only `projects/projeny/`.
+  `scripts/update-ports-pin.py` sets both revisions to the same commit;
+  `projenyRev` may run ahead alone when the importer needs a newer tool, as
+  it does for `URL:` descriptors (Projeny downloads and verifies the release
+  archive instead of reading one checked in beside the descriptor).
 
 A ports update therefore does not change the compiler's derivation. The glibc
 forks under upstream's `projects/` directory belong to the **core** pin: they
@@ -262,7 +266,9 @@ tree, uses Projeny to reconstruct the port in a temporary directory, and compare
 with the original release through the same filters as other ports. Generated
 Autotools files are omitted, so the libffi derivation runs autoreconf. Neither
 a developer's Projeny worktree nor its status files participate in extraction.
-Errors preserve the previous patch. Binary changes are rejected explicitly:
+Descriptors with `URL: <url> <blake3>` headers (dash, curl, git, php) instead
+of `Archive:` need network access: `projeny download` fetches each mirror in
+order until one matches its hash. Errors preserve the previous patch. Binary changes are rejected explicitly:
 Projeny's binary encoding is not Git's, and Nix's ordinary patch phase cannot
 apply binary diffs. Such a future port should consume materialized source.
 

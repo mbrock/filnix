@@ -64,6 +64,7 @@ class UpstreamTests(unittest.TestCase):
         after = json.loads(pin.read_text())
         self.assertEqual(before["projenyHash"], after["projenyHash"])
         self.assertEqual(after["portsRev"], second)
+        self.assertEqual(after["projenyRev"], second)
         write(self.repo / "projects/projeny/Makefile", "all:\n\tfalse\n")
         third = self.commit()
         self.assertEqual(update(third).returncode, 0)
@@ -157,6 +158,30 @@ class UpstreamTests(unittest.TestCase):
         shutil.rmtree(original)
         run(str(extractor), "example.projeny", str(self.repo), str(output), self.commit())
         self.assertIn("+projeny port", (output / "example-1.0.patch").read_text())
+
+    @unittest.skipUnless(shutil.which(os.environ.get("PROJENY", "projeny")), "requires packaged Projeny")
+    def test_projeny_url_import(self):
+        # Upstream's dash, curl, git and php descriptors name download mirrors
+        # instead of a checked-in archive; a dead mirror falls through to the next.
+        projeny = shutil.which(os.environ.get("PROJENY", "projeny"))
+        mirror = self.base / "mirror"
+        write(mirror / "example-1.0/source.c", "original\n")
+        run("tar", "czf", "example-1.0.tar.gz", "example-1.0", cwd=mirror)
+        digest = run(projeny, "hash", str(mirror / "example-1.0.tar.gz")).stdout.strip()
+        projects = self.repo / "projects"
+        descriptor = projects / "example.projeny"
+        write(descriptor, f"URL: file://{mirror}/missing/example-1.0.tar.gz {digest}\n"
+                          f"URL: file://{mirror}/example-1.0.tar.gz {digest}\n"
+                          "Origname: example-1.0\nName: example\n\n    Archive: is prose here.\n")
+        run(projeny, "setup", str(descriptor))
+        write(projects / "example/source.c", "ported\n")
+        run(projeny, "commit", str(descriptor))
+        shutil.rmtree(projects / "example")
+        for snapshot in projects.glob(".example-1.0.tar.gz*"):
+            snapshot.unlink()
+        output = self.base / "patches"
+        run(str(self.filnix / "ports/extract-patch.sh"), "example.projeny", str(self.repo), str(output), self.commit())
+        self.assertIn("+ported", (output / "example-1.0.patch").read_text())
 
     def git(self, *args):
         return run("git", "-C", str(self.repo), *args).stdout.strip()

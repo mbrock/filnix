@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix='filnix-ports-pin-') as tmp:
         raise SystemExit('Selected revision does not contain Projeny')
     hash_value = subprocess.check_output(['nix', 'hash', 'path', str(source)], text=True).strip()
 pin = Path(__file__).resolve().parents[1] / 'ports/upstream.json'
-new = dict(portsRev=rev, projenyHash=hash_value)
+new = dict(portsRev=rev, projenyRev=rev, projenyHash=hash_value)
 with tempfile.NamedTemporaryFile(mode='w', dir=pin.parent, delete=False) as out:
     json.dump(new, out, indent=2)
     out.write('\n')

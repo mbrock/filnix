@@ -9,6 +9,7 @@
   bzip2,
   xz,
   zstd,
+  curl,
   git,
   patch,
   python3,
@@ -18,17 +19,19 @@ let
 in
 stdenv.mkDerivation {
   pname = "projeny";
-  version = "0-unstable-${builtins.substring 0 12 upstream.portsRev}";
+  version = "0-unstable-${builtins.substring 0 12 upstream.projenyRev}";
   src = fetchgit {
     name = "projeny-src";
     url = "https://github.com/pizlonator/fil-c";
-    rev = upstream.portsRev;
+    rev = upstream.projenyRev;
     sparseCheckout = [ "/projects/projeny/" ];
     nonConeMode = true;
     hash = upstream.projenyHash;
   };
   sourceRoot = "projeny-src/projects/projeny";
   nativeBuildInputs = [ makeWrapper ];
+  # URL: headers are downloaded with libcurl.
+  buildInputs = [ curl ];
   nativeCheckInputs = [
     git
     patch
@@ -40,7 +43,14 @@ stdenv.mkDerivation {
     python3
   ];
   enableParallelBuilding = true;
-  preCheck = "patchShebangs tests";
+  # The test harness keeps command output in a shell variable named `out`;
+  # exported, as Nix exports it, a large diff overflowed every child's
+  # environment (E2BIG).
+  preCheck = ''
+    patchShebangs tests
+    export -n out
+  '';
+  postCheck = "export out";
   doCheck = true;
   checkTarget = "test";
   installPhase = ''
