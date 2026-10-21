@@ -14,9 +14,15 @@ and recover key objects from a weak exact pointer table, which keeps the
 integer values. Typed-property references tag their source list through the
 integer member of a union; make that member a pointer.
 
-Fil-C runs a ucontext fiber on a native stack its runtime allocates, so
-Zend's stack limit for a fiber is measured from the fiber's first frame
-instead of from the memory PHP allocated for it.
+Fil-C runs a ucontext fiber on a native stack its runtime allocates, so the
+fiber trampoline records where that stack starts, and zend_fiber_stack_base()
+and zend_fiber_stack_limit() measure from there instead of from the memory PHP
+allocated. Fiber and zend_test's custom fibers both use these.
+
+zend_str_tolower_dup_ex() and zend_str_toupper_dup_ex() reached into the new
+copy as source pointer plus (copy - source), which keeps the capability of
+the source; with the system allocator (USE_ZEND_ALLOC=0) strip_tags() with
+allowed tags trapped. Offset the copy instead.
 
 --- a/main/debug_gdb_scripts.c
 +++ b/main/debug_gdb_scripts.c
@@ -43,22 +49,53 @@ instead of from the memory PHP allocated for it.
  	return _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
 --- a/Zend/zend_fibers.c
 +++ b/Zend/zend_fibers.c
-@@ -600,8 +600,15 @@
- 		EG(error_reporting) = error_reporting;
+@@ -84,6 +84,13 @@ struct _zend_fiber_stack {
+ 	void *pointer;
+ 	size_t size;
  
- #ifdef ZEND_CHECK_STACK_LIMIT
-+# ifdef __FILC__
-+		/* Fil-C runs the fiber on a native stack of the requested size that
-+		 * its runtime allocates, not on stack->pointer; measure from here. */
-+		EG(stack_base) = __builtin_frame_address(0);
-+		EG(stack_limit) = (int8_t*)EG(stack_base) - fiber->context.stack->size + EG(reserved_stack_size);
-+# else
- 		EG(stack_base) = zend_fiber_stack_base(fiber->context.stack);
- 		EG(stack_limit) = zend_fiber_stack_limit(fiber->context.stack);
-+# endif
++#ifdef __FILC__
++	/* Fil-C runs a ucontext on a native stack of the requested size that its
++	 * runtime allocates, not on pointer. The trampoline records where that
++	 * stack starts. */
++	void *filc_base;
++#endif
++
+ #ifdef HAVE_VALGRIND
+ 	unsigned int valgrind_stack_id;
+ #endif
+@@ -348,13 +355,21 @@ ZEND_API void* zend_fiber_stack_limit(zend_fiber_stack *stack)
+ 	reserve = reserve * 2;
  #endif
  
- 		fiber->fci.retval = &fiber->result;
++#ifdef __FILC__
++	return (int8_t*)stack->filc_base - stack->size + reserve;
++#else
+ 	/* stack->pointer is the end of the stack */
+ 	return (int8_t*)stack->pointer + reserve;
++#endif
+ }
+ 
+ ZEND_API void* zend_fiber_stack_base(zend_fiber_stack *stack)
+ {
++#ifdef __FILC__
++	return stack->filc_base;
++#else
+ 	return (void*)((uintptr_t)stack->pointer + stack->size);
++#endif
+ }
+ #endif
+ 
+@@ -389,6 +404,10 @@ static ZEND_NORETURN void zend_fiber_trampoline(boost_context_data data)
+ 
+ 	zend_fiber_context *context = EG(current_fiber_context);
+ 
++#ifdef __FILC__
++	context->stack->filc_base = __builtin_frame_address(0);
++#endif
++
+ 	context->function(&transfer);
+ 	context->status = ZEND_FIBER_STATUS_DEAD;
+ 
 --- a/Zend/zend_multiply.h
 +++ b/Zend/zend_multiply.h
 @@ -195,7 +195,7 @@
@@ -192,3 +229,23 @@ instead of from the memory PHP allocated for it.
  
  HashTable *zend_weakmap_get_gc(zend_object *object, zval **table, int *n);
  HashTable *zend_weakmap_get_key_entry_gc(zend_object *object, zval **table, int *n);
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -3035,7 +3035,7 @@ ZEND_API char* ZEND_FASTCALL zend_str_tolower_dup_ex(const char *source, size_t
+ 			if (p != (const unsigned char*)source) {
+ 				memcpy(res, source, p - (const unsigned char*)source);
+ 			}
+-			r = (unsigned char*)p + (res - source);
++			r = (unsigned char*)res + (p - (const unsigned char*)source);
+ 			zend_str_tolower_impl((char *)r, (const char*)p, end - p);
+ 			res[length] = '\0';
+ 			return res;
+@@ -3059,7 +3059,7 @@ ZEND_API char* ZEND_FASTCALL zend_str_toupper_dup_ex(const char *source, size_t
+ 			if (p != (const unsigned char*)source) {
+ 				memcpy(res, source, p - (const unsigned char*)source);
+ 			}
+-			r = (unsigned char*)p + (res - source);
++			r = (unsigned char*)res + (p - (const unsigned char*)source);
+ 			zend_str_toupper_impl((char *)r, (const char*)p, end - p);
+ 			res[length] = '\0';
+ 			return res;
