@@ -58,6 +58,8 @@ pkgs.dockerTools.buildLayeredImage {
     WorkingDir = "/var/www/html";
     Env = [ "PATH=/usr/local/bin:/opt/php/bin" ];
     ExposedPorts."9000/tcp" = { };
+    # Links the image to the repository when published to ghcr.io.
+    Labels."org.opencontainers.image.source" = "https://github.com/mbrock/filnix";
     StopSignal = "SIGQUIT";
   };
 }
