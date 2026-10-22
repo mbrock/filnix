@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PHP on Fil-C: memory-safe PHP · Filnix</title>
+<meta property="og:title" content="PHP on Fil-C: memory-safe PHP">
+<meta property="og:description" content="PHP 8.4 — and 8.5, and even 7.4 — compiled with Fil-C, with its extensions and the libraries under them. A memory error in the interpreter or an extension stops the worker instead of corrupting its memory. Docker, tarball, Nix and NixOS.">
+<meta property="og:image" content="https://mbrock.github.io/filnix/php-on-filc/poster.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+<style>
+:root { --cap: #2f6fb3; --byte: #d98a1c; --bad: #9a3248; --good: #3d7a3d; }
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
+.sub { color: var(--muted); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono-font); color: var(--muted); text-align: start; }
+.card { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
+.card svg { display: block; width: 100%; height: auto; }
+.card .cap { margin-top: 6px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+table { border-collapse: collapse; font-size: 0.92em; width: 100%; margin: 1rem 0; text-align: start; }
+td, th { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: start; }
+th { color: var(--muted); font-weight: 600; }
+.note { background: #f4f1ea; border-radius: 8px; padding: 12px 16px; margin: 1.2rem 0; text-align: start; }
+.bad { color: var(--bad); } .good { color: var(--good); }
+</style>
+</head>
+<body>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door selected" href="../index.html#explainers">Explainers</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">PHP on Fil-C</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/filnix/releases">Releases</a></span>
+</div></div>
+<main class="page-frame reading explainer">
+
+<p class="meta">PHP 8.4.27 · Fil-C 0.686 · also 8.5.12 and 7.4.33 · October 2026</p>
+<h1>PHP on Fil&#8209;C: memory&#8209;safe PHP</h1>
+<p class="sub">PHP 8.4, its bundled extensions, the common PECL ones, and every C library under them — all compiled with Fil-C. An out-of-bounds access or a use after free in the interpreter or an extension stops the worker with a panic instead of corrupting its memory. Your PHP code doesn't change. This page is the short version; the <a href="../docs/php.html">full notes</a> are in the docs.</p>
+
+<h2>Try it</h2>
+<p><b>Docker</b> — no Nix needed. The layout follows the official <code>php</code> images, so it slots in wherever <code>php:fpm</code> does:</p>
+<pre><code>docker run --rm -p 9000:9000 -v $PWD:/var/www/html \
+  ghcr.io/mbrock/filnix-php:8.4.27 php-fpm          <span style="color:#667078"># FastCGI on 9000</span>
+docker run --rm -it ghcr.io/mbrock/filnix-php:8.4.27   <span style="color:#667078"># php -a</span></code></pre>
+<p><b>Tarball</b> — <code>php-8.4.27-filc-x86_64-linux.tar.xz</code> from the <a href="https://github.com/mbrock/filnix/releases">releases</a>. It carries <code>php</code>, <code>php-fpm</code>, <code>php-cgi</code> and <code>phpdbg</code>, its own glibc and runtime, and every library its extensions load; unpack it anywhere on x86-64 Linux. Tested on Debian 12/13, Ubuntu 22.04 and Alpine 3, as root and unprivileged.</p>
+<p><b>Nix</b> — the package is one attribute of the Fil-C package set, and <code>withExtensions</code> works as in Nixpkgs:</p>
+<pre><code>nix build github:mbrock/filnix#pkgsFilc.php       <span style="color:#667078"># PHP 8.4, default extensions</span>
+nix build github:mbrock/filnix#php-dist           <span style="color:#667078"># the tarball above</span>
+nix build github:mbrock/filnix#php-docker         <span style="color:#667078"># the image above</span></code></pre>
+<p>The default extension set loads Nixpkgs' defaults plus apcu, redis, memcached, mongodb, imagick (with a Fil-C ImageMagick and its image libraries), protobuf, yaml, zstd and more — about fifty PECL extensions are ported and run their own test suites in the build; the <a href="../docs/php-extensions.html">extension list</a> has the details. The interpreter's own suites pass too: on 8.4.27 the core and standard-library sweep passes 13,345 tests with no unexpected failures, and OPcache passes 864.</p>
+
+<h2>On NixOS</h2>
+<p>Filnix ships a NixOS module, <code>nixosModules.filc</code>, that swaps chosen services for their Fil-C builds and leaves the rest of the system — systemd, glibc, everything else — on the ordinary NixOS builds. For PHP-FPM it is three lines on top of the pool configuration you already have:</p>
+<pre><code><span style="color:#667078"># flake.nix</span>
+inputs.filnix.url = "github:mbrock/filnix";
+<span style="color:#667078"># pass filnix.nixosModules.filc into your nixosSystem modules, then:</span>
+
+<span style="color:#667078"># configuration.nix</span>
+imports = [ filnix.nixosModules.filc ];
+
+filc.phpfpm.enable = true;   <span style="color:#667078"># pools now run pkgsFilc.php</span>
+
+services.phpfpm.pools.www = {
+  <span style="color:#667078"># user, group, listen, settings… exactly as usual</span>
+};</code></pre>
+<p>The switch sets <code>services.phpfpm.phpPackage</code> to <code>pkgsFilc.php</code>. A pool that names its own <code>phpPackage</code> keeps it, which is also how you give one pool extra extensions — set its <code>phpPackage</code> to a <code>pkgsFilc.php.withExtensions …</code> build. The same module has switches for the web server in front of it (<code>filc.nginx.enable</code>, <code>filc.lighttpd.enable</code>) and several other daemons; <code>filc.enable = true</code> turns them all on. The Fil-C packages come from filnix's own pinned Nixpkgs and its binary cache, so a rebuild mostly downloads. The <a href="../docs/nixos.html">NixOS notes</a> list every switch, and Nixpkgs' own php-fpm VM test runs against this module, with a check afterwards that the running pool really is the Fil-C build.</p>
+
+<h2>How it differs from ordinary PHP</h2>
+<p>Three differences matter, and the first is the interesting one.</p>
+<p><b>Each PHP value gets its own bounds.</b> Ordinary PHP allocates request memory from Zend's allocator out of 2&nbsp;MiB chunks. Fil-C checks accesses against the object a pointer refers to — and with Zend's allocator that object is the whole 2&nbsp;MiB chunk, so an overflow from one PHP value into its neighbour, or a read of a value freed within the same request, looks perfectly legal. This build therefore defaults to the system allocator (PHP's <i>tracked</i> variant, the one its own AddressSanitizer CI uses, so <code>memory_limit</code> and <code>memory_get_usage()</code> still work). Every value is then its own object, and Fil-C can actually see the bug:</p>
+<div class="card">
+<svg viewBox="0 0 760 250" font-family="Public Sans, sans-serif" font-size="14" role="img" aria-label="With Zend's allocator all PHP values share one 2 MiB chunk, so Fil-C bounds them only by the chunk. With the system allocator each value is its own bounded object.">
+  <text x="20" y="30" font-weight="700" fill="#9a3248">Zend allocator (ordinary PHP): one 2 MiB chunk</text>
+  <rect x="20" y="44" width="720" height="52" fill="#9a3248" opacity="0.08" stroke="#9a3248" stroke-width="2"/>
+  <g id="chunk"></g>
+  <text x="380" y="124" text-anchor="middle" fill="#9a3248">a freed value can be read, a neighbour overwritten — all “in bounds”</text>
+  <text x="20" y="164" font-weight="700" fill="#3d7a3d">System allocator (this build's default): one object per value</text>
+  <g id="objs"></g>
+  <text x="380" y="242" text-anchor="middle" fill="#3d7a3d">the same accesses trap, at the first bad byte</text>
+</svg>
+<script>
+(function(){
+var c=document.getElementById('chunk'),o=document.getElementById('objs'),s='',i,w=[86,54,120,64,96,72,110,58];
+var x=28;for(i=0;i<w.length;i++){s+='<rect x="'+x+'" y="54" width="'+(w[i]-6)+'" height="32" fill="#fff" stroke="#9a948a"/><text x="'+(x+(w[i]-6)/2)+'" y="75" text-anchor="middle" font-size="12" fill="#667078">value</text>';x+=w[i];}c.innerHTML=s;
+s='';x=28;for(i=0;i<w.length;i++){s+='<rect x="'+x+'" y="178" width="'+(w[i]-6)+'" height="32" fill="#3d7a3d" opacity="0.10" stroke="#3d7a3d" stroke-width="2"/><text x="'+(x+(w[i]-6)/2)+'" y="199" text-anchor="middle" font-size="12" fill="#3d4449">value</text>';x+=w[i];}o.innerHTML=s;
+})();
+</script>
+<div class="cap">Why the allocator choice is the whole ballgame: Fil-C can only bound what is actually a separate object.</div>
+</div>
+<p>That is not hypothetical. The <code>var_destroy</code> use after free in <code>unserialize()</code> (<a href="https://github.com/php/php-src/issues/21824">php-src#21824</a>, not yet fixed in a release) runs silently to completion on this build with <code>USE_ZEND_ALLOC=1</code> — and stops with a Fil-C panic on the default allocator. The default costs about 2× on allocation-heavy code versus Zend's; <code>USE_TRACKED_ALLOC=0</code> (plain malloc) is about a third faster but gives up <code>memory_limit</code>.</p>
+<p><b>No native JIT.</b> Fil-C cannot run generated machine code, so opcache's JIT and PCRE's JIT are off. There is an experimental build (<code>#php-jit</code>) whose opcache JIT emits C instead, compiles it with the Fil-C compiler and <code>dlopen</code>s the result: CPU-bound benchmarks run 4–60× faster than the interpreter, but each hot function costs a compiler invocation, so it suits small CPU-bound scripts, not applications.</p>
+<p><b>Opcache is per-worker.</b> Capabilities don't cross processes, so opcache maps its memory privately. FPM workers share what the master compiled before forking, but each has its own cache after that, and <code>opcache_reset()</code> affects only the worker that calls it.</p>
+<p>And the everyday caveats: native extensions must be Fil-C builds (binary PECL downloads won't load), and PHP runs <b>1.5–4× slower</b> and uses more memory than an ordinary build.</p>
+
+<h2>Does it actually catch real bugs?</h2>
+<p>PHP 8.4.27 fixed two request-handling memory bugs, CVE-2026-109618 (an OOM unwinding a request mid-construction) and CVE-2026-109619 (request globals surviving into the next request). That gave a clean experiment: run the 235 regression tests PHP shipped with the fixes against the <i>vulnerable</i> version — Fil-C PHP 8.4.25, which filnix keeps for exactly this, marked insecure — and see whether Fil-C notices anything on its own. It stopped two of them dead, at the corrupted accesses the CVEs start from, where native PHP runs on:</p>
+<pre><code>filc safety error: cannot read pointer with null object.
+    pointer: 0x4,&lt;null&gt;
+semantic origin:
+    (session.so) mod_user.c:264:3: ps_validate_sid_user
+    ...
+    (session.so) session.c:2515:9: zif_session_create_id
+filc panic: thwarted a futile attempt to violate memory safety.</code></pre>
+<p>On 8.4.27 none of the 235 panics. The honest limits: these are PHP's regression tests, not groomed exploits; one route to CVE-2026-109618 needs mod_php or FrankenPHP, which have no Fil-C build, so it wasn't tested; and a trap is still a crash — an attacker who can trigger one can kill workers. Run patched releases; Fil-C is the net, not the fix. The point is that the net was already there before anyone knew the bugs were.</p>
+
+<h2>Which PHP?</h2>
+<table>
+<tr><th>Build</th><th>Command</th><th>What it is</th></tr>
+<tr><td><b>8.4.27</b> (default)</td><td><code>#pkgsFilc.php</code></td><td>The current 8.4 security release. Also what the tarball and Docker image ship.</td></tr>
+<tr><td><b>8.5.12</b></td><td><code>#pkgsFilc.php85</code></td><td>Opt-in current 8.5, with the same patches and allocator default — and the build all the recent speed work targets (a Fil-C HYBRID VM, patched PCRE2, no quadratic string building).</td></tr>
+<tr><td><b>7.4.33</b></td><td><code>#pkgsFilc.php74</code>, <code>#php74-dist</code></td><td>End-of-life since 2022, with PHP's minimal mitigation for the two CVEs above. A mitigation while you migrate to PHP 8, not a supported PHP: the <code>unserialize()</code> UAF panics here, but SQL injection and the rest work exactly as in ordinary 7.4.</td></tr>
+<tr><td>8.4.25</td><td><code>#pkgsFilc.php84_25</code></td><td>The deliberately vulnerable build used above. Marked insecure; exists to reproduce bugs, not to run.</td></tr>
+</table>
+
+<div class="note">
+<p><b>A research artifact.</b> These are not php.net builds and come with no support or warranty. Fil-C turns memory corruption into a crash; it does not help with logic bugs, injection, or anything your PHP code does on purpose. Keep upgrading PHP — and if a killed worker is better than a compromised one, and 1.5–4× the CPU is affordable, this may be worth evaluating. The <a href="../docs/php.html">full notes</a> cover the JIT-through-C experiment, the 8.5 and 7.4 builds, upstream's own Projeny port, and every test count; the build recipe is in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
+</div>
+
+</main>
+</body>
+</html>
