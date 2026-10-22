@@ -1593,3 +1593,58 @@ Focused validation reproduces the original eight-byte-global trap (exit
 unit, as well as unmodified native Qt. The complete clean Qt6 regression
 remains a separate validation step. QtBase and its Nix-dependent Qt6
 consumers must rebuild, but there is no header/ABI or Qt5/toolchain change.
+
+## Every pointer load pays a dependent capability lookup
+
+Loading a pointer from memory also loads its capability, through a chain of
+dependent loads: the object's aux pointer from its header (`lower - 8`), the
+aux slot at the same offset, a test of the slot's box bit (set for words
+written atomically), and, for boxed words, a load from the box. Only the
+first load can start early, and nothing can use the pointer until the chain
+finishes. Measured with staging Fil-C (`2e92032`) on swa, with
+`instructions:u` and `cycles:u`:
+
+| Per iteration | native | Fil-C, pointer load | Fil-C, same field read as an integer |
+| --- | --- | --- | --- |
+| Pointer chase, 1,024 nodes (L1) | 2.5 insns, 4.1 cycles | 25.1 insns, 17 cycles | 18.1 insns, 9–13 cycles |
+| Pointer chase, 1 M nodes (DRAM) | 2.8 insns, 850–935 cycles | 34 insns, 843–935 cycles, 2.2 L1 misses | 27 insns, 846–882 cycles, 1.2 L1 misses |
+| Independent pointer loads (L1) | 7 insns, 1.6 cycles | 28 insns, 6.4 cycles | |
+| Hash probe (PHP `Bucket` layout, identity compare) | 32 insns, 10 cycles | 135–137 insns, 30–37 cycles | 125–127 insns, 24–35 cycles |
+
+So the capability adds about 7 instructions and 5–8 cycles of latency per
+dependent pointer load while the data is in L1. With DRAM-bound data, the
+extra miss on the aux line overlaps the miss on the object, so the cycle
+cost vanishes into memory latency. The integer column keeps Fil-C's bounds
+check and frame bookkeeping, so the difference is the capability alone.
+
+How often it happens: in the PHP 8.5 VM's hot code, 1 instruction in 20 to
+1 in 80 is a box-tag test (`execute_ex` 2,393 of 49,752; `DO_FCALL` 40 of
+2,120; `INIT_METHOD_CALL` 26 of 1,397; `FETCH_OBJ_IS` 33 of 1,501;
+`zend_hash_find` 5 of 314). By sample, the tag test and the stall that
+lands on it take 12–21% of the hot call-path handlers' cycles on WordPress
+and MediaWiki, 24–39% of `zend_hash_find` and `_zend_hash_find_known_hash`,
+and 33% of `zend_array_destroy`. That makes it the largest identifiable
+Fil-C overhead in those functions, larger than bounds checks (7–16%) and
+frame root stores (2–22%).
+
+Part of it is avoidable in the compiler. A pointer loaded only to compare
+it (`p->key == k`, `!p->key`) or convert it to an integer still loads its
+capability, because the aux slot is read with `load atomic ... monotonic`,
+which LLVM cannot delete even when the result is dead. In
+`zend_hash_find` that dead load accounts for most of the 29% of samples on
+the tag test. Reading `Bucket.key` as a `may_alias` integer in
+`zend_hash.c` removes it (7% fewer instructions in a probe-loop
+microbenchmark), but `zend_hash_find` is only 1–2% of app cycles, and in the
+app benchmark the patched PHP ran the same instructions (+0.01% to +0.1%)
+with cycle differences inside the noise, so the patch was not kept. The
+general fix is in the compiler: drop the capability load when only the
+address is used.
+
+The rest is the representation. A cheaper scheme would need the capability
+reachable from the pointer's address without first reading the object
+header, for example aux memory at a fixed offset from every object or a
+shadow region at a fixed offset from the heap, and a way to know a word is
+not atomically boxed without testing its slot. Both are core InvisiCap
+design questions; this is the evidence, not a proposal to change the
+runtime. Benchmarks: `a.c` and `k.c` in
+[this thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f).
