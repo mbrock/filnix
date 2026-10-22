@@ -397,6 +397,16 @@ path. Two changes are specific to 8.5:
   returned the hash of the empty string whatever their input. The patch
   restores 8.4's loading under Fil-C. The visibility gap itself is in the
   toolchain and is not fixed here.
+- `php-8.5-realloc-filc.patch`: Fil-C's `realloc()` always moves the
+  object, and `zend_string_extend()` asks for the exact new length, so each
+  `$s .= ...` on the system allocator copied the whole string and building
+  a string took quadratic time. `__zend_realloc()` now grows past 1 KiB by
+  half again and reuses the capacity `zgetupper()` reports. Zend/bench.php's
+  `strcat` went from 11 s to 0.02 s, the whole of bench.php from 9.9 s to
+  1.1 s, and in the PHP application benchmark (staging, three rounds) best
+  user cycles fell 7% on WordPress and 5% on MediaWiki, with DokuWiki
+  unchanged ([thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f)).
+  8.4 does not have this patch yet.
 
 The `unserialize()` use-after-free reproduction above stops with a Fil-C
 panic on 8.5.12 with the default allocator and completes on Zend's.

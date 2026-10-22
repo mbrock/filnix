@@ -74,6 +74,20 @@ variant's by-value aggregate ABI without validation.
 this experimental snapshot does not give it the official release's tightened
 unsafe-call boundary.
 
+**Cancellation cost.** `filc_cancellable_syscall` in
+`patches/libpizlo-cancellation.patch` calls
+`rt_sigprocmask(SIG_UNBLOCK, SIGRTMIN)` before every cancellation-point
+syscall (`read`, `write`, `sendto`, `close`, ...), even though the signal is
+almost always already unblocked; release Fil-C makes no such call. An
+unbuffered `fprintf` thus costs an extra syscall per write. PHP 8.5 serving
+DokuWiki made about 137 extra calls per request (3047 against release's 311
+over 20 requests), roughly 40–60 µs of a 13 ms request. Proposed fix, not
+built: a per-thread flag recording that the signal is known unblocked,
+cleared wherever it gets blocked (the cancellation handler's `uc_sigmask`,
+`zthread_cancel_set`, the user `sigprocmask` path), so the gate skips the
+syscall
+([thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f)).
+
 The release toolchain does not apply the local cancellation patches or the old
 x86 inotify implementation substitution. It retains the Nix locale-archive
 patch, installed locale, store paths and wrappers. Thus “release-backed” means
