@@ -1,0 +1,51 @@
+Subject: Reuse realloc capacity when PHP grows strings under Fil-C
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C's realloc() always allocates a new object, copies and frees the
+old one, and zend_string_extend() asks for the exact new length, so
+`$s .= ...` copied the whole string on every append: building an n-byte
+string took O(n^2), and Zend/bench.php's strcat took 11 s instead of
+0.02 s. On the system allocator (php-8.4-alloc-filc.patch), grow past
+1 KiB by half again and reuse that capacity, which zgetupper() reports,
+as Zend's allocator and glibc's in-place realloc do. The capability then
+also spans the slack, which realloc() zeroed, or after a shrink to no
+less than half the capacity, the old contents.
+
+--- a/Zend/zend_alloc.c
++++ b/Zend/zend_alloc.c
+@@ -64,6 +64,9 @@
+ #include "zend_string.h"
+ #include "zend_exceptions.h"
+ #include <signal.h>
++#ifdef __FILC__
++# include <stdfil.h>
++#endif
+ 
+ #ifdef HAVE_UNISTD_H
+ # include <unistd.h>
+@@ -3996,6 +3999,24 @@ ZEND_API void * __zend_calloc(size_t nmemb, size_t len ZEND_FILE_LINE_DC ZEND_FI
+ 
+ ZEND_API void * __zend_realloc(void *p, size_t len ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
++#ifdef __FILC__
++	/* Fil-C's realloc() always moves the object, so growing a string one
++	 * append at a time (zend_string_extend() asks for the exact length)
++	 * copied the whole string each time: building an n-byte string took
++	 * O(n^2). Grow by half again past 1 KiB and reuse the slack, as Zend's
++	 * allocator and glibc's in-place realloc do. The capability then spans
++	 * the slack, which is zeroed, or after a shrink to no less than half the
++	 * capacity, the old contents. */
++	if (p && len) {
++		size_t cap = (char *) zgetupper(p) - (char *) p;
++		if (len <= cap && len >= cap / 2) {
++			return p;
++		}
++		if (len > cap && len > 1024 && len < cap + cap / 2) {
++			len = cap + cap / 2;
++		}
++	}
++#endif
+ 	p = realloc(p, len);
+ 	if (EXPECTED(p || !len)) {
+ 		return p;

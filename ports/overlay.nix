@@ -675,6 +675,8 @@ let
                     ../patches/php-8.5-dom-filc.patch
                     # Extensions' libraries bound to PHP's own libraries' symbols.
                     ../patches/php-8.5-deepbind-filc.patch
+                    # Linear rather than quadratic string appends on the system allocator.
+                    ../patches/php-8.5-realloc-filc.patch
                   ]
                   ++ opcachePatches
                 );
