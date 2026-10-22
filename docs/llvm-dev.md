@@ -42,6 +42,12 @@ python3 scripts/update-filc-source-hashes.py --variant staging \
 ```
 
 Sources whose files did not change keep their hashes and are not rebuilt.
+A pin change that touches `filc0-src` rebuilds clang from scratch in Nix:
+its build tree (RelWithDebInfo with assertions) peaks around 165 GB, because
+the debug-info binaries are installed twice. Build such a pin on a machine
+with well over that much free space (swa, not igloo), and cover all the
+checks in one `nix build` so filc0 is built once. Pins that change only
+`libpas-src` or other runtime sources reuse the built filc0.
 Staging changes to compiler semantics, capability tracking, GC or runtime still
 need soundness review and targeted regressions. A successful package build alone
 is not that review. ABI-changing experiments must rebuild their runtime and

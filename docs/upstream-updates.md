@@ -50,11 +50,12 @@ before the release's final commits. The experiment remains a
 [draft comparison PR](https://github.com/pizlonator/fil-c/pull/332), not a
 merge-ready claim of soundness.
 
-The staging pin, [51e7f8c62606](https://github.com/mbrock/fil-c/commit/51e7f8c626067ab213c984821457f03dc6769a67)
-(branch `staging-php-perf`), adds four follow-ups on top of that experiment:
+The staging pin, [2632ac0dd891](https://github.com/mbrock/fil-c/commit/2632ac0dd891)
+(branch `staging-php-perf`), adds these follow-ups on top of that experiment:
 near-linear `-O0` frame slot coloring (92c381beeb23), a narrower union
-alignment rejection (2e92032bd923), and two FilPizlonator optimizations for
-PHP's interpreter, described below. The union change: The
+alignment rejection (2e92032bd923), two FilPizlonator optimizations for PHP's
+interpreter (described below), and the libpas changes described under "PHP
+allocator and GC work". The union change: the
 experiment rejected every pointer-bearing union with declared alignment below
 a word, which broke systemd's packed `HashmapBase` storage union
 (`src/basic/hashmap.c`). Release and `deluge` compile it, and upstream's
