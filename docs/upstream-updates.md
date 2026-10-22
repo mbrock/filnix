@@ -100,6 +100,8 @@ Residual work absent from v0.686, established by source comparison:
 | ARM64 glibc | Obtain saved jump-buffer frame identity through `zget_jmp_buf_frame` | staging cancellation C++ cleanup |
 | Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |
 | Unions/varargs | Complete aggregate-varargs transport, rejection of pointer words misaligned relative to a word-aligned start, misaligned-pointer initializer errors, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites (including `unionpackedstorage`, `unionpackedstoragefail`, `initmisalignedptrfail`), QuickJS and systemd |
+| Small memmove/memset | Payload copies and fills of 16 bytes or more under the poll-check limit call libc instead of a byte loop with a compiler fence per byte; capability (aux) handling is unchanged | `fork-regressions.tests.payload-memops` |
+| Scavenger and GC | After each FUGC cycle, the scavenger does not take pages emptied since that cycle began, for at most `FUGC_SCAVENGE_HOLD_MS` (default 10000; 0 disables) | `fork-regressions.tests.scavenge-hold` |
 | SaRCAsm | Reject a stack-pointer carrier passed as a call argument; expand `.rept`/`.endr` (`patches/sarcasm-*.patch`, applied by `packages/sarcasm.nix`; proposed upstream from `mbrock/fil-c` branches `sarcasm-callarg-carrier` and `sarcasm-rept`) | `staging-sarcasm-fixes` |
 
 Filip's release independently lowers pointer-bearing unions to pointer storage.
@@ -151,6 +153,27 @@ small/medium/large size classes, exact capacity and one past it, retained and
 moving shrinks, aligned-realloc fallback, free after growth, and stale-alias
 behavior matching the chosen contract
 ([thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f)).
+
+**PHP allocator and GC work.** Profiling PHP 8.5 serving WordPress,
+MediaWiki and DokuWiki found two runtime costs that staging removes
+([thread](https://ampcode.com/threads/T-01a163a2-9344-7035-a481-66314fe5f55a)).
+First, FUGC collects about every 200 ms, but the scavenger returned pages
+empty for 300 ms, so the pages a sweep freed went back to the OS and were
+faulted back in, zeroed, during the next cycle: kernel page faults, zeroing
+and `madvise` were 8–17% of cycles. FUGC now caps the scavenger's age limit
+at the start of its last cycle for `FUGC_SCAVENGE_HOLD_MS` (10 s). Pages
+that stay empty through a whole cycle, or after the hold lapses because the
+program went idle, are still returned. The hold is best effort, read without
+a lock, and forced scavenges ignore it. Kernel cycles per pass fell from 6.7
+to 2.8 G on WordPress and from 4.5 to 2.0 G on MediaWiki; peak RSS was the
+same on WordPress and 5–15% higher on MediaWiki. Second, `filc_memmove` and
+`filc_memset` ran every copy under 10000 bytes through a byte loop with a
+compiler fence per byte. WordPress makes 3.5 M such copies (mean 61 B) and
+1.2 M fills (mean 37 B) per pass over its requests. From 16 bytes on, the
+payload now goes through libc, cutting user instructions by 4–5%. The byte
+loops never made payload words atomic, so racing readers see nothing they
+could not see before. Memset already skipped capability clearing for
+objects without aux, about 80% of the bytes PHP fills.
 
 **Cancellation cost.** The staging cancellation patches added signal-mask
 syscalls that release Fil-C does not make, from two sources:

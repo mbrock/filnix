@@ -2,7 +2,9 @@
 # __sync pointer atomics (cffi), unions inside by-value records (fmt),
 # function descriptors that bind locally, so RTLD_LOCAL isolates same-named
 # functions (SDL_compat), and unwinds that survive a cleanup throwing and
-# catching its own exception, or a switch to a fiber that does (Nix).
+# catching its own exception, or a switch to a fiber that does (Nix); and
+# PHP 8.5 allocator work: small payload memmove/memset through libc, and
+# FUGC keeping freshly swept pages from the scavenger until they are reused.
 { pkgsFilc }:
 let
   cases = {
@@ -38,6 +40,15 @@ let
       ./nested > nested.log
       printf 'outer caught outer after 6 inner catches\nagain outer\n' > nested.expected
       cmp nested.expected nested.log
+    '';
+    payload-memops = ''
+      $CC $opt ${./fork-regressions/payload-memops.c} -pthread -o memops
+      timeout 300 ./memops | grep -qx 'payload memops ok'
+    '';
+    scavenge-hold = ''
+      $CC $opt ${./fork-regressions/scavenge-hold.c} -o hold
+      FUGC_SCAVENGE_HOLD_MS=3000 timeout 120 ./hold | tee hold.log
+      grep -qx 'scavenge hold ok' hold.log
     '';
     fiber-unwind = ''
       E=${./fork-regressions/exception-unwind}
