@@ -1,0 +1,146 @@
+diff --git a/lib/dns/include/dns/qp.h b/lib/dns/include/dns/qp.h
+index 4bfb61b..7a569b8 100644
+--- a/lib/dns/include/dns/qp.h
++++ b/lib/dns/include/dns/qp.h
+@@ -93,7 +93,12 @@
+  * How many bytes a qp-trie might allocate as part of an insert. Needed for
+  * overmem checks.
+  */
++#if defined(__FILC__)
++/* Fil-C qp-trie nodes are 16 bytes (qp_p.h). */
++#define QP_SAFETY_MARGIN ((1ul << 12ul) * 16)
++#else
+ #define QP_SAFETY_MARGIN ((1ul << 12ul) * 12)
++#endif
+ 
+ /*%
+  * A `dns_qp_t` supports single-threaded read/write access.
+diff --git a/lib/dns/qp_p.h b/lib/dns/qp_p.h
+index f8bbd2f..2a4fbbc 100644
+--- a/lib/dns/qp_p.h
++++ b/lib/dns/qp_p.h
+@@ -64,7 +64,15 @@
+  * See the section on "packed reader nodes" for details.
+  */
+ struct dns_qpnode {
+-#if WORDS_BIGENDIAN
++#if defined(__FILC__)
++	/*
++	 * Fil-C keeps a pointer's capability only in a pointer-typed,
++	 * 8-byte-aligned slot, so the 64-bit word is a pointer here; branch
++	 * index words are stored in it as integers without a capability.
++	 */
++	void *big;
++	uint32_t small;
++#elif WORDS_BIGENDIAN
+ 	uint32_t bighi, biglo, small;
+ #else
+ 	uint32_t biglo, bighi, small;
+@@ -560,9 +568,13 @@ struct dns_qpmulti {
+  */
+ static inline uint64_t
+ node64(dns_qpnode_t *n) {
++#if defined(__FILC__)
++	return (uintptr_t)n->big;
++#else
+ 	uint64_t lo = n->biglo;
+ 	uint64_t hi = n->bighi;
+ 	return lo | (hi << 32);
++#endif
+ }
+ 
+ /*
+@@ -578,11 +590,15 @@ node32(dns_qpnode_t *n) {
+  */
+ static inline dns_qpnode_t
+ make_node(uint64_t big, uint32_t small) {
++#if defined(__FILC__)
++	return (dns_qpnode_t){ .big = (void *)(uintptr_t)big, .small = small };
++#else
+ 	return (dns_qpnode_t){
+ 		.biglo = (uint32_t)(big),
+ 		.bighi = (uint32_t)(big >> 32),
+ 		.small = small,
+ 	};
++#endif
+ }
+ 
+ /*
+@@ -591,7 +607,11 @@ make_node(uint64_t big, uint32_t small) {
+  */
+ static inline void *
+ node_pointer(dns_qpnode_t *n) {
++#if defined(__FILC__)
++	return (char *)n->big - ((uintptr_t)n->big & TAG_MASK);
++#else
+ 	return (void *)(uintptr_t)(node64(n) & ~TAG_MASK);
++#endif
+ }
+ 
+ /*
+@@ -599,7 +619,7 @@ node_pointer(dns_qpnode_t *n) {
+  */
+ static inline uint32_t
+ node_tag(dns_qpnode_t *n) {
+-	return n->biglo & TAG_MASK;
++	return node64(n) & TAG_MASK;
+ }
+ 
+ /*
+@@ -607,7 +627,7 @@ node_tag(dns_qpnode_t *n) {
+  */
+ static inline bool
+ is_branch(dns_qpnode_t *n) {
+-	return n->biglo & BRANCH_TAG;
++	return node64(n) & BRANCH_TAG;
+ }
+ 
+ /* leaf nodes *********************************************************/
+@@ -633,7 +653,11 @@ leaf_ival(dns_qpnode_t *n) {
+  */
+ static inline dns_qpnode_t
+ make_leaf(const void *pval, uint32_t ival) {
++#if defined(__FILC__)
++	dns_qpnode_t leaf = { .big = (void *)pval, .small = ival };
++#else
+ 	dns_qpnode_t leaf = make_node((uintptr_t)pval, ival);
++#endif
+ 	REQUIRE(node_tag(&leaf) == LEAF_TAG);
+ 	return leaf;
+ }
+@@ -729,11 +753,19 @@ get_root(dns_qpreadable_t qpr) {
+  *	`branch_twigs_size() == 1 && branch_twigs_ref() == root_ref`
+  * just enough to treat the root node as a vector of one twig.
+  */
++#if defined(__FILC__)
++#define MOVABLE_ROOT(qp)                                                     \
++	(&(dns_qpnode_t){                                                    \
++		.big = (void *)(uintptr_t)(BRANCH_TAG | (1 << SHIFT_NOBYTE)), \
++		.small = qp->root_ref,                                       \
++	})
++#else
+ #define MOVABLE_ROOT(qp)                                   \
+ 	(&(dns_qpnode_t){                                  \
+ 		.biglo = BRANCH_TAG | (1 << SHIFT_NOBYTE), \
+ 		.small = qp->root_ref,                     \
+ 	})
++#endif
+ 
+ /***********************************************************************
+  *
+@@ -845,8 +877,15 @@ zero_twigs(dns_qpnode_t *twigs, dns_qpweight_t size) {
+ static inline void
+ make_reader(dns_qpnode_t *reader, dns_qpmulti_t *multi) {
+ 	dns_qp_t *qp = &multi->writer;
++#if defined(__FILC__)
++	reader[0] = (dns_qpnode_t){ .big = (char *)multi + READER_TAG,
++				    .small = QPREADER_MAGIC };
++	reader[1] = (dns_qpnode_t){ .big = (char *)qp->base + READER_TAG,
++				    .small = qp->root_ref };
++#else
+ 	reader[0] = make_node(READER_TAG | (uintptr_t)multi, QPREADER_MAGIC);
+ 	reader[1] = make_node(READER_TAG | (uintptr_t)qp->base, qp->root_ref);
++#endif
+ }
+ 
+ static inline bool

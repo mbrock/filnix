@@ -35,6 +35,162 @@ index 18f7a49..f7435dc 100644
  
  /*
   * On Linux, define the membarrier system call number if not yet available in
+diff --git a/src/rculfhash.c b/src/rculfhash.c
+index 9d7fd08..3574a2b 100644
+--- a/src/rculfhash.c
++++ b/src/rculfhash.c
+@@ -459,7 +459,8 @@ unsigned long bit_reverse_ulong(unsigned long v)
+  * Returns 0 if no bit is set, else returns the position of the most
+  * significant bit (from 1 to 32 on 32-bit, from 1 to 64 on 64-bit).
+  */
+-#if defined(URCU_ARCH_X86)
++/* Fil-C rejects the bsr inline assembly; use the generic versions. */
++#if defined(URCU_ARCH_X86) && !defined(__FILC__)
+ static inline
+ unsigned int fls_u32(uint32_t x)
+ {
+@@ -475,7 +476,7 @@ unsigned int fls_u32(uint32_t x)
+ #define HAS_FLS_U32
+ #endif
+ 
+-#if defined(URCU_ARCH_AMD64)
++#if defined(URCU_ARCH_AMD64) && !defined(__FILC__)
+ static inline
+ unsigned int fls_u64(uint64_t x)
+ {
+@@ -847,10 +848,28 @@ void check_resize(struct cds_lfht *ht, unsigned long size, uint32_t chain_len)
+ 	}
+ }
+ 
++/*
++ * Fil-C loses a pointer's capability when the flag arithmetic is done on
++ * integers, for instance when the compiler selects between two flagged
++ * values before converting back; zandptr/zorptr keep it.
++ */
++#ifdef __FILC__
++#include <stdfil.h>
++#define node_and_bits(node, mask) \
++	((struct cds_lfht_node *) zandptr(node, mask))
++#define node_or_bits(node, bits) \
++	((struct cds_lfht_node *) zorptr(node, bits))
++#else
++#define node_and_bits(node, mask) \
++	((struct cds_lfht_node *) (((unsigned long) (node)) & (mask)))
++#define node_or_bits(node, bits) \
++	((struct cds_lfht_node *) (((unsigned long) (node)) | (bits)))
++#endif
++
+ static
+ struct cds_lfht_node *clear_flag(struct cds_lfht_node *node)
+ {
+-	return (struct cds_lfht_node *) (((unsigned long) node) & ~FLAGS_MASK);
++	return node_and_bits(node, ~FLAGS_MASK);
+ }
+ 
+ static
+@@ -868,7 +887,7 @@ int is_bucket(struct cds_lfht_node *node)
+ static
+ struct cds_lfht_node *flag_bucket(struct cds_lfht_node *node)
+ {
+-	return (struct cds_lfht_node *) (((unsigned long) node) | BUCKET_FLAG);
++	return node_or_bits(node, BUCKET_FLAG);
+ }
+ 
+ static
+@@ -880,19 +899,19 @@ int is_removal_owner(struct cds_lfht_node *node)
+ static
+ struct cds_lfht_node *flag_removed(struct cds_lfht_node *node)
+ {
+-	return (struct cds_lfht_node *) (((unsigned long) node) | REMOVED_FLAG);
++	return node_or_bits(node, REMOVED_FLAG);
+ }
+ 
+ static
+ struct cds_lfht_node *flag_removal_owner(struct cds_lfht_node *node)
+ {
+-	return (struct cds_lfht_node *) (((unsigned long) node) | REMOVAL_OWNER_FLAG);
++	return node_or_bits(node, REMOVAL_OWNER_FLAG);
+ }
+ 
+ static
+ struct cds_lfht_node *flag_removed_or_removal_owner(struct cds_lfht_node *node)
+ {
+-	return (struct cds_lfht_node *) (((unsigned long) node) | REMOVED_FLAG | REMOVAL_OWNER_FLAG);
++	return node_or_bits(node, REMOVED_FLAG | REMOVAL_OWNER_FLAG);
+ }
+ 
+ static
+@@ -907,6 +926,27 @@ int is_end(struct cds_lfht_node *node)
+ 	return clear_flag(node) == (struct cds_lfht_node *) END_VALUE;
+ }
+ 
++/*
++ * Set REMOVED_FLAG with a pointer-typed compare-and-swap loop rather than
++ * an integer uatomic_or: under Fil-C, atomic pointer loads of the word
++ * (uatomic_load, rcu_dereference) do not see an integer atomic's update,
++ * so the flag appeared unset.
++ */
++static
++void set_removed_flag(struct cds_lfht_node **next)
++{
++	struct cds_lfht_node *old_next, *ret_next;
++
++	old_next = uatomic_load(next);
++	for (;;) {
++		ret_next = uatomic_cmpxchg(next, old_next,
++			flag_removed(old_next));
++		if (ret_next == old_next)
++			break;
++		old_next = ret_next;
++	}
++}
++
+ static
+ unsigned long _uatomic_xchg_monotonic_increase(unsigned long *ptr,
+ 		unsigned long v)
+@@ -1203,7 +1243,6 @@ int _cds_lfht_del(struct cds_lfht *ht, unsigned long size,
+ 		struct cds_lfht_node *node)
+ {
+ 	struct cds_lfht_node *bucket, *next;
+-	uintptr_t *node_next;
+ 
+ 	if (!node)	/* Return -ENOENT if asked to delete NULL node */
+ 		return -ENOENT;
+@@ -1231,12 +1270,8 @@ int _cds_lfht_del(struct cds_lfht *ht, unsigned long size,
+ 	 * be more than one concurrent thread setting this flag.
+ 	 * Knowing which wins the race will be known after the garbage
+ 	 * collection phase, stay tuned!
+-	 *
+-	 * NOTE: The node_next variable is present to avoid breaking
+-	 * strict-aliasing rules.
+ 	 */
+-	node_next = (uintptr_t*)&node->next;
+-	uatomic_or_mo(node_next, REMOVED_FLAG, CMM_RELEASE);
++	set_removed_flag(&node->next);
+ 
+ 	/* We performed the (logical) deletion. */
+ 
+@@ -1476,18 +1511,12 @@ void remove_table_partition(struct cds_lfht *ht, unsigned long i,
+ 	for (j = size + start; j < size + start + len; j++) {
+ 		struct cds_lfht_node *fini_bucket = bucket_at(ht, j);
+ 		struct cds_lfht_node *parent_bucket = bucket_at(ht, j - size);
+-		uintptr_t *fini_bucket_next;
+ 
+ 		urcu_posix_assert(j >= size && j < (size << 1));
+ 		dbg_printf("remove entry: order %lu index %lu hash %lu\n",
+ 			   i, j, j);
+-		/* Set the REMOVED_FLAG to freeze the ->next for gc.
+-		 *
+-		 * NOTE: The fini_bucket_next variable is present to
+-		 * avoid breaking strict-aliasing rules.
+-		 */
+-		fini_bucket_next = (uintptr_t*)&fini_bucket->next;
+-		uatomic_or(fini_bucket_next, REMOVED_FLAG);
++		/* Set the REMOVED_FLAG to freeze the ->next for gc. */
++		set_removed_flag(&fini_bucket->next);
+ 		_cds_lfht_gc_bucket(parent_bucket, fini_bucket);
+ 	}
+ 	ht->flavor->read_unlock();
 diff --git a/src/urcu-bp.c b/src/urcu-bp.c
 index e23ca95..15fea68 100644
 --- a/src/urcu-bp.c

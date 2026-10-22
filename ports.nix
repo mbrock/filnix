@@ -1432,8 +1432,21 @@ in
     # which Fil-C rejects when they run, and the memb flavor probed
     # membarrier(2), which Fil-C refuses by stopping the program. Use the
     # generic builtin barriers and the existing no-membarrier fallback.
-    # With that, the unit tests (674) pass and run again.
+    # With that, the unit tests (674) pass and run again. rculfhash (BIND's
+    # dns tests) also needed the generic fls instead of bsr assembly, its
+    # node flags set and cleared with zorptr/zandptr rather than integer
+    # math, which dropped the next pointers' capabilities, and REMOVED_FLAG
+    # set by pointer CAS, since an integer atomic or was not seen by
+    # atomic pointer loads.
     (patch ./patches/liburcu-filc.patch)
+    (use (old: {
+      postCheck = (old.postCheck or "") + ''
+        $CC -Iinclude ${./tests/liburcu-lfht.c} -Lsrc/.libs \
+          -Wl,-rpath,"$PWD/src/.libs" -lurcu -lurcu-cds -pthread \
+          -o lfht-test
+        ./lfht-test
+      '';
+    }))
   ])
 
   (for pkgs.lttng-ust [
@@ -1619,6 +1632,20 @@ in
 
   (for pkgs.unbound [
     (configure "ac_cv_type_pthread_spinlock_t=no")
+  ])
+
+  (for pkgs.bind [
+    # A qp-trie node kept its leaf and reader pointers split across two
+    # uint32_t halves of a 12-byte node, so every lookup read a pointer
+    # without a capability. Under Fil-C the word is a void * (16-byte
+    # nodes), tagged with pointer arithmetic.
+    (patch ./patches/bind-qp-node-pointer.patch)
+    # Three unit tests mock a library function by defining it in the test
+    # executable (doh_test's isc__nm_tcp_freebind, query_test's
+    # ns_client_error). Fil-C binds calls between a library's own
+    # translation units locally, so the mocks never run
+    # (docs/filc-findings.md); leave those tests out.
+    (patch ./patches/bind-tests-interposed-mocks.patch)
   ])
 
   # ━━━ Security ━━━

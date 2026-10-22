@@ -1,0 +1,44 @@
+diff --git a/tests/isc/doh_test.c b/tests/isc/doh_test.c
+index 99355ec..e7fb943 100644
+--- a/tests/isc/doh_test.c
++++ b/tests/isc/doh_test.c
+@@ -2092,7 +2092,15 @@ ISC_LOOP_TEST_IMPL(proxytls_doh_recv_send_GET_TLS_quota) {
+ 
+ ISC_TEST_LIST_START
+ 
++/*
++ * Fil-C: the mock replaces isc__nm_tcp_freebind by defining it in this
++ * executable, but libisc's tcp.c calls its own copy directly (Fil-C binds
++ * calls between a library's translation units locally), so the bind
++ * succeeds and the leaked listener fails teardown.
++ */
++#ifndef __FILC__
+ ISC_TEST_ENTRY_CUSTOM(mock_doh_uv_tcp_bind, setup_test, teardown_test)
++#endif
+ ISC_TEST_ENTRY(doh_parse_GET_query_string)
+ ISC_TEST_ENTRY(doh_base64url_to_base64)
+ ISC_TEST_ENTRY(doh_base64_to_base64url)
+diff --git a/tests/ns/query_test.c b/tests/ns/query_test.c
+index 3dcb1dd..866d5f6 100644
+--- a/tests/ns/query_test.c
++++ b/tests/ns/query_test.c
+@@ -1476,9 +1476,19 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync_e2e) {
+ 
+ ISC_TEST_LIST_START
+ ISC_TEST_ENTRY_CUSTOM(ns__query_sfcache, setup_server, teardown_server)
++/*
++ * Fil-C: netmgr_wrap.c replaces ns_client_error by defining it in this
++ * executable, but libns's query.c calls its own copy directly (Fil-C binds
++ * calls between a library's translation units locally), so error
++ * responses are really sent and teardown finds leaked netmgr references.
++ */
++#ifndef __FILC__
+ ISC_TEST_ENTRY_CUSTOM(ns__query_start, setup_server, teardown_server)
++#endif
+ ISC_TEST_ENTRY_CUSTOM(ns__query_hookasync, setup_server, teardown_server)
++#ifndef __FILC__
+ ISC_TEST_ENTRY_CUSTOM(ns__query_hookasync_e2e, setup_server, teardown_server)
++#endif
+ ISC_TEST_LIST_END
+ 
+ ISC_TEST_MAIN

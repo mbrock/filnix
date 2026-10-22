@@ -324,6 +324,31 @@ libraries with a `local: *` version script, like SDL3, are not affected.
 Binding the descriptor to a local alias of the implementation would give
 native `dlsym` semantics.
 
+## Calls between a library's translation units cannot be interposed
+
+The converse also differs from native ELF. Each caller of an external `f`
+emits a `weak hidden` fast-call stub `pizlonatedFI<n>_f`, and the defining
+translation unit emits a strong `pizlonatedFI<n>_f` alias of its
+implementation. When both are linked into one shared library, the hidden
+reference makes the definition hidden, so the call binds inside the
+library and an executable (or `LD_PRELOAD`) definition of `f` never
+replaces it:
+
+```c
+/* libx.so = lib1.c: int f(int x) { return x + 1; }
+ *           lib2.c: int g(int x) { return f(x); }
+ * main.c (-Wl,--export-dynamic): int f(int x) { return x + 100; } */
+g(0);  /* 1 under Fil-C at -O0 and -O2, 100 natively */
+```
+
+BIND's unit tests mock this way. `doh_test` compiles `netmgr/socket.c`
+into the test so its `isc__nm_tcp_freebind` calls a mocked `uv_tcp_bind`,
+but libisc's `tcp.c` kept calling its own copy, so the listen succeeded and
+teardown found the leaked reference. `query_test` defines a no-op
+`ns_client_error`, but libns's `query.c` sent real error responses. The
+BIND port leaves those three tests out
+(`patches/bind-tests-interposed-mocks.patch`).
+
 ## A 55,000-line parser takes 50 minutes and 6.7 GB to compile
 
 PostgreSQL's Bison parser, `src/backend/parser/gram.c` (54,771 lines: about
@@ -427,6 +452,15 @@ netCDF kept NCZarr's chunk-cache nodes in an `ncexhash` map whose data is
 a `uintptr_t` (`patches/netcdf-exhash-pointer-data.patch` makes it
 `void *`), and aligned vlen data with `(void *)NC_read_align((uintptr_t)p,
 a)` (`patches/netcdf-vlen-align-pointer.patch` adds the delta to `p`).
+The one-expression form is not always enough at -O2. liburcu's rculfhash
+tags `next` pointers with `(struct cds_lfht_node *)((unsigned long) node |
+FLAG)` helpers. In `_cds_lfht_gc_bucket`, which picks
+`flag_bucket(clear_flag(next))` or `clear_flag(next)` for the unlinking
+CAS, `clear_flag(next)` had no capability although `next` had one
+(checked with `zhasvalidcap`), so every `cds_lfht_del` trapped;
+`patches/liburcu-filc.patch` uses `zandptr`/`zorptr`. BIND's qp-trie
+split each leaf pointer into two `uint32_t` halves of a 12-byte node;
+`patches/bind-qp-node-pointer.patch` makes the word a `void *`.
 GEOS's `IndexedPointInAreaLocator::SegmentView` packs a 2-bit offset into
 a `std::size_t` copy of a coordinate pointer, which stopped every
 point-in-polygon test; `patches/geos-segmentview-pointer-tag.patch` keeps
