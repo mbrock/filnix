@@ -8,6 +8,10 @@
 #   filc.enable = true;                      # every switch below
 #   filc.nix.enable = false;                 # ...except this one
 #   filc.tools = [ "coreutils" "curl" ];     # programs on PATH
+#
+# A service switch sets the service's package option to its Fil-C build.
+# `filc.units` lists the systemd units that therefore run Fil-C programs;
+# the NixOS tests in tests/nixos check each of them maps the Fil-C runtime.
 { filnix }:
 {
   config,
@@ -19,12 +23,67 @@ let
   cfg = config.filc;
   fp = cfg.packages;
   inherit (lib)
+    mkDefault
     mkEnableOption
     mkIf
     mkMerge
     mkOption
     types
     ;
+
+  # Each service: what the switch describes, the systemd units whose main
+  # process becomes a Fil-C program, and the configuration that does it.
+  # To add one, find the service's package option and its units.
+  services = with config.services; {
+    openssh = {
+      what = "the OpenSSH daemon (services.openssh)";
+      units = lib.optional (openssh.enable && !openssh.startWhenNeeded) "sshd";
+      config = {
+        services.openssh.package = fp.openssh;
+        # A Fil-C program can't dlopen the system's native PAM modules, so
+        # sshd checks passwords and keys itself (no logind session).
+        services.openssh.settings.UsePAM = mkDefault false;
+      };
+    };
+    tor = {
+      what = "Tor (services.tor)";
+      units = lib.optional tor.enable "tor";
+      config.services.tor.package = fp.tor;
+    };
+    unbound = {
+      what = "the Unbound resolver (services.unbound)";
+      units = lib.optional unbound.enable "unbound";
+      # The service is Type=notify, so it needs the systemd-enabled build.
+      config.services.unbound.package = fp.unbound-with-systemd;
+    };
+    lighttpd = {
+      what = "lighttpd (services.lighttpd)";
+      units = lib.optional lighttpd.enable "lighttpd";
+      config.services.lighttpd.package = fp.lighttpd;
+    };
+    redis = {
+      what = "Redis (services.redis)";
+      units = lib.mapAttrsToList (n: _: if n == "" then "redis" else "redis-${n}") (
+        lib.filterAttrs (_: s: s.enable) redis.servers
+      );
+      config.services.redis.package = fp.redis;
+    };
+    phpfpm = {
+      what = "PHP-FPM (services.phpfpm), for pools without their own phpPackage";
+      units = map (n: "phpfpm-${n}") (lib.attrNames phpfpm.pools);
+      config.services.phpfpm.phpPackage = fp.php;
+    };
+    nginx = {
+      what = "nginx (services.nginx)";
+      units = lib.optional nginx.enable "nginx";
+      config.services.nginx.package = fp.nginx;
+    };
+    bind = {
+      what = "the BIND DNS server (services.bind)";
+      units = lib.optional bind.enable "bind";
+      config.services.bind.package = fp.bind;
+    };
+  };
 
   # A switch that follows filc.enable unless set explicitly.
   switch =
@@ -37,7 +96,7 @@ let
     };
 in
 {
-  options.filc = {
+  options.filc = lib.mapAttrs (_: s: { enable = switch s.what; }) services // {
     enable = mkEnableOption "the Fil-C builds of every service and program below";
 
     packages = mkOption {
@@ -47,11 +106,7 @@ in
       description = "The Fil-C package set that replacements come from.";
     };
 
-    openssh.enable = switch "the OpenSSH daemon (services.openssh)";
     shell.enable = switch "Bash as the login shell of root and normal users";
-    tor.enable = switch "Tor (services.tor)";
-    unbound.enable = switch "the Unbound resolver (services.unbound)";
-    lighttpd.enable = switch "lighttpd (services.lighttpd)";
 
     nix.enable = switch ''
       Nix itself (the daemon and the CLI). Fil-C has no namespaces or
@@ -70,42 +125,43 @@ in
         native programs of the same name.
       '';
     };
+
+    units = mkOption {
+      type = types.listOf types.str;
+      readOnly = true;
+      description = ''
+        The enabled systemd services whose main process the switches made a
+        Fil-C program.
+      '';
+    };
   };
 
-  config = mkMerge [
-    (mkIf cfg.openssh.enable {
-      services.openssh.package = fp.openssh;
-      # A Fil-C program can't dlopen the system's native PAM modules, so
-      # sshd checks passwords and keys itself (no logind session).
-      services.openssh.settings.UsePAM = lib.mkDefault false;
-    })
+  config = mkMerge (
+    lib.mapAttrsToList (name: s: mkIf cfg.${name}.enable s.config) services
+    ++ [
+      {
+        filc.units = lib.concatLists (
+          lib.mapAttrsToList (
+            name: s: lib.optionals cfg.${name}.enable s.units
+          ) services
+          ++ [ (lib.optional (cfg.nix.enable && config.nix.enable) "nix-daemon") ]
+        );
+      }
 
-    (mkIf cfg.shell.enable {
-      users.defaultUserShell = fp.bashInteractive;
-      users.users.root.shell = fp.bashInteractive;
-      environment.shells = [ fp.bashInteractive ];
-    })
+      (mkIf cfg.shell.enable {
+        users.defaultUserShell = fp.bashInteractive;
+        users.users.root.shell = fp.bashInteractive;
+        environment.shells = [ fp.bashInteractive ];
+      })
 
-    (mkIf cfg.tor.enable {
-      services.tor.package = fp.tor;
-    })
+      (mkIf cfg.nix.enable {
+        nix.package = fp.nix;
+        nix.settings.sandbox = false;
+      })
 
-    (mkIf cfg.unbound.enable {
-      # The service is Type=notify, so it needs the systemd-enabled build.
-      services.unbound.package = fp.unbound-with-systemd;
-    })
-
-    (mkIf cfg.lighttpd.enable {
-      services.lighttpd.package = fp.lighttpd;
-    })
-
-    (mkIf cfg.nix.enable {
-      nix.package = fp.nix;
-      nix.settings.sandbox = false;
-    })
-
-    {
-      environment.systemPackages = map (name: lib.hiPrio fp.${name}) cfg.tools;
-    }
-  ];
+      {
+        environment.systemPackages = map (name: lib.hiPrio fp.${name}) cfg.tools;
+      }
+    ]
+  );
 }

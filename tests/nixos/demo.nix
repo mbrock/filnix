@@ -1,15 +1,13 @@
 # Boot the Fil-C demo machine and use its Fil-C services.
-{ pkgs, filcModule }:
+{ pkgs, ... }:
 let
   keys = import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs;
 in
-pkgs.testers.runNixOSTest {
-  name = "nixos-filc";
+{
+  name = "demo";
   nodes.machine = {
-    imports = [
-      filcModule
-      ../nixos/demo.nix
-    ];
+    imports = [ ../../nixos/demo.nix ];
+    filc.nix.enable = true;
     users.users.root.openssh.authorizedKeys.keys = [ keys.snakeOilPublicKey ];
     virtualisation.memorySize = 4096;
     # The VM has no network.
@@ -21,12 +19,7 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("lighttpd.service")
     machine.wait_for_unit("unbound.service")
     machine.wait_for_unit("nix-daemon.socket")
-
-    with subtest("the services run Fil-C builds"):
-        for unit, exe in [("sshd", "sshd"), ("lighttpd", "lighttpd"), ("unbound", "unbound")]:
-            pid = machine.succeed(f"systemctl show -p MainPID --value {unit}").strip()
-            machine.succeed(f"grep -q libpizlo /proc/{pid}/maps")
-        print(machine.succeed("filc-status"))
+    print(machine.succeed("filc-status"))
 
     with subtest("ssh into the Fil-C sshd and its Fil-C login shell"):
         machine.succeed("install -m 600 ${keys.snakeOilPrivateKey} /tmp/key")

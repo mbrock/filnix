@@ -4,7 +4,13 @@
 #
 # and log in as root (no password) on the console, or `ssh -p 2222 demo@localhost`
 # with password "demo".
-{ modulesPath, pkgs, ... }:
+{
+  config,
+  lib,
+  modulesPath,
+  pkgs,
+  ...
+}:
 {
   imports = [ "${modulesPath}/virtualisation/qemu-vm.nix" ];
 
@@ -73,7 +79,7 @@
         if grep -qa libpizlo "$2"; then k=Fil-C; else k=native; fi
         printf '%-7s %-9s %s\n' "$k" "$1" "$2"
       }
-      for u in sshd unbound lighttpd nix-daemon; do
+      for u in ${lib.escapeShellArgs config.filc.units}; do
         pid=$(systemctl show -p MainPID --value $u)
         [ "$pid" -gt 0 ] && show "$u" "$(readlink -f /proc/$pid/exe)"
       done

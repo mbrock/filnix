@@ -43,13 +43,20 @@ In a configuration:
 | `filc.tor.enable` | `services.tor.package` |
 | `filc.unbound.enable` | `services.unbound.package` |
 | `filc.lighttpd.enable` | `services.lighttpd.package` |
+| `filc.redis.enable` | `services.redis.package` |
+| `filc.phpfpm.enable` | `services.phpfpm.phpPackage`, for pools without their own `phpPackage` |
+| `filc.nginx.enable` | `services.nginx.package` |
+| `filc.bind.enable` | `services.bind.package` |
 | `filc.nix.enable` | `nix.package` (daemon and CLI), with the build sandbox off: Fil-C has no namespaces or seccomp |
 | `filc.tools` | attributes of `filc.packages` on PATH, ahead of native programs of the same name |
 | `filc.packages` | the package set replacements come from (default: this flake's `pkgsFilc`) |
+| `filc.units` | (read-only) the running services the switches made Fil-C programs |
 
-The switches only choose packages; enable the services as usual. The same
-pattern extends to any NixOS service with a `package` option: set it to the
-attribute from `config.filc.packages`.
+The switches only choose packages; enable the services as usual. A switch sets
+the package at normal priority, so a configuration that also sets the package
+itself gets a conflict rather than a silent choice. To add a service, give it
+an entry in the `services` table of `nixos/filc.nix`: its package option and
+the systemd units whose main process it becomes.
 
 ## Example machines
 
@@ -72,11 +79,39 @@ attribute from `config.filc.packages`.
   nix build .#nixosConfigurations.ec2-filc.config.system.build.amazonImage
   ```
 
-`checks.nixos-filc` ([tests/nixos-filc.nix](../tests/nixos-filc.nix)) boots the
-demo machine, checks that the service processes map the Fil-C runtime, logs in
-through the Fil-C sshd to the Fil-C shell, fetches a page from lighttpd, and has
-the Fil-C Nix evaluate and build a derivation. It needs a builder with the `kvm`
-system feature.
+## VM tests
+
+`nixosTests` ([tests/nixos](../tests/nixos/default.nix)) runs NixOS VM tests
+with the module on every node: mostly Nixpkgs' own tests of each service
+(openssh, lighttpd, nginx, php-fpm, unbound, tor, bind), unchanged, plus
+`demo`, which boots the demo machine, logs in through the Fil-C sshd to the
+Fil-C shell and has the Fil-C Nix build a derivation, and a Redis test.
+
+After a test's own script passes, every unit in `filc.units` that is still
+running must map the Fil-C runtime, so a test can't pass with a native build,
+and the log ends with a table of which services were Fil-C builds:
+
+```
+Fil-C server       lighttpd         /nix/store/…-lighttpd-x86_64-unknown-linux-gnufilc0-1.4.85/bin/lighttpd
+```
+
+```sh
+nix build .#nixosTests.lighttpd -L           # needs the kvm system feature
+nix build .#nixosTests.lighttpd.driver       # or run the driver yourself:
+mkdir out && ./result/bin/nixos-test-driver -o out
+nix run .#nixosTests.lighttpd.driverInteractive   # Python REPL with the VMs
+```
+
+Without KVM, running the driver directly falls back to QEMU's emulation. It
+works but is slow: the lighttpd test takes about five minutes in an orb.
+
+A test builds only once all its Fil-C packages do: `bind` waits on the BIND
+port, and `nginx` and `php-fpm` on the openssl that Fil-C nginx links.
+
+To add a test, add Nixpkgs' test file (or a test module of our own) to the
+list in `tests/nixos/default.nix`. When the Nixpkgs test chooses a variant of
+the package, force the same variant of the Fil-C build on those nodes, as the
+openssh, unbound and nginx entries do.
 
 Use the binary cache to skip most of the build:
 

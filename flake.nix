@@ -245,10 +245,6 @@
             wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
             gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
             nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };
-            nixos-filc = import ./tests/nixos-filc.nix {
-              inherit pkgs;
-              filcModule = self.nixosModules.filc;
-            };
             perl-xs-pointers = import ./tests/perl-xs-pointers.nix { inherit pkgsFilc; };
             python-decimal = import ./tests/python-decimal.nix { inherit pkgsFilc; };
             python-protobuf = import ./tests/python-protobuf.nix {
@@ -352,6 +348,11 @@
           # Export the full cross-compiled package sets
           legacyPackages.${system} = {
             inherit pkgsFilc pkgsFilcStaging;
+            # NixOS VM tests of Fil-C services; see tests/nixos/default.nix.
+            nixosTests = import ./tests/nixos {
+              inherit pkgs pkgsFilc;
+              filcModule = self.nixosModules.filc;
+            };
           };
 
           packages.${system} = {
