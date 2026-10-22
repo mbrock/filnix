@@ -790,18 +790,26 @@ def cmd_profile(a):
                     for _ in range(a.warmup):
                         for u in s.urls:
                             s.request(u)
-                    rec = subprocess.Popen(["perf", "record", "-e", "cycles", "-c", str(a.period),
-                                            "-p", str(s.proc.pid), "-o", data],
-                                           stderr=open(data + ".log", "w"))
-                    time.sleep(1)
-                    for _ in range(a.passes):
-                        for u in s.urls:
-                            s.request(u)
-                    rec.send_signal(signal.SIGINT)
-                    rec.wait()
+                    # perf record -p sometimes wrote only its header for
+                    # Fil-C MediaWiki (threads coming and going while it
+                    # attaches); record again when it got no samples.
+                    for attempt in range(3):
+                        rec = subprocess.Popen(["perf", "record", "-e", "cycles", "-c", str(a.period),
+                                                "-p", str(s.proc.pid), "-o", data],
+                                               stderr=open(data + ".log", "a"))
+                        time.sleep(1)
+                        for _ in range(a.passes):
+                            for u in s.urls:
+                                s.request(u)
+                        rec.send_signal(signal.SIGINT)
+                        rec.wait()
+                        if breakdown(data, out, app, name, a.period, a.passes):
+                            break
+                        print(f"no samples for {app} {name}, recording again", flush=True)
                 finally:
                     s.stop()
-            breakdown(data, out, app, name, a.period, 1 if app == "bench.php" else a.passes)
+                continue
+            breakdown(data, out, app, name, a.period, 1)
     cmd_profile_report(argparse.Namespace(dir=out))
 
 
@@ -825,10 +833,12 @@ def breakdown(data, out, app, name, period, passes):
                      "cat": categorize(dso, sym)})
     json.dump({"app": app, "variant": name, "period": period, "passes": passes, "symbols": syms},
               open(os.path.join(out, f"{app}-{name}.profile.json"), "w"))
+    return sum(s["samples"] for s in syms)
 
 
 def cmd_profile_report(a):
     profs = [json.load(open(os.path.join(a.dir, f))) for f in sorted(os.listdir(a.dir)) if f.endswith(".profile.json")]
+    profs = [p for p in profs if p["symbols"]]
     md = [f"# PHP profile {os.path.basename(os.path.abspath(a.dir))}", "",
           "Self cycles (user and kernel) by category, from `perf record -e cycles -c PERIOD` on the "
           "warm server over the whole request mix. Gcycles are absolute, so categories compare "
