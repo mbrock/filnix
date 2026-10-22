@@ -28,7 +28,7 @@ STATE = ENV.get("PHP_BENCH_STATE") or os.path.join(
     ENV.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "php-bench"
 )
 PORTS = {"dokuwiki": 18301, "mediawiki": 18302, "wordpress": 18303}
-FIXTURE_VERSION = "1"
+FIXTURE_VERSION = "2"
 
 # Production-like settings, the same for every variant. The JIT is off so
 # that native and Fil-C both run the interpreter; native-jit turns it on.
@@ -149,6 +149,11 @@ def article(i, n_pages, style):
             out.append(f"<!-- wp:heading --><h2>{title}</h2><!-- /wp:heading -->")
             out += body
             out.append("<!-- wp:list --><ul>" + "".join(f"<li>{it}</li>" for it in items) + "</ul><!-- /wp:list -->")
+    # A term that only three DokuWiki pages contain, so the search request
+    # highlights a few hits instead of backtracking through every page's
+    # filler text (every page contains "lorem").
+    if style == "doku" and i in (4, 11, 23):
+        out.insert(0, f"This page mentions the zephyrine survey from section {i % 6 + 1}.\n")
     if style == "mw":
         out.insert(0, f"{{{{Infobox|name=Article {i}|value={i * 3}}}}}\n")
         out.append(f"[[Category:Group {i % 4}]]")
@@ -354,7 +359,7 @@ def app_config(app):
             "/doku.php?id=wiki:p12",
             "/doku.php?id=wiki:syntax&do=export_xhtml",
             "/doku.php?id=start&do=index",
-            "/doku.php?id=start&do=search&q=lorem",
+            "/doku.php?id=start&do=search&q=zephyrine",
             "/doku.php?id=wiki:p7&do=edit",
             "/doku.php?id=start&do=recent",
             "/lib/exe/css.php",
@@ -973,6 +978,8 @@ def cmd_profile_report(a):
 
 
 def main():
+    # Turn SIGTERM into an exception so servers are stopped on the way out.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("setup")
@@ -1006,8 +1013,9 @@ def main():
     s.add_argument("dir")
     a = p.parse_args()
     if a.cmd in ("run", "quiet", "profile") and any(x != "bench.php" for x in a.apps):
-        if not os.path.exists(os.path.join(STATE, "VERSION")):
-            sys.exit(f"no fixtures in {STATE}; run php-bench setup first")
+        vf = os.path.join(STATE, "VERSION")
+        if not os.path.exists(vf) or open(vf).read().strip() != FIXTURE_VERSION:
+            sys.exit(f"no current fixtures in {STATE}; run php-bench setup")
     {"setup": cmd_setup, "run": cmd_run, "quiet": cmd_run, "profile": cmd_profile, "report": cmd_report,
      "profile-report": cmd_profile_report}[a.cmd](a)
 
