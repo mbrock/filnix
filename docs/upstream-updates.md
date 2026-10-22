@@ -114,6 +114,44 @@ variant's by-value aggregate ABI without validation.
 this experimental snapshot does not give it the official release's tightened
 unsafe-call boundary.
 
+**Parked: in-place realloc growth.** Fil-C's `realloc()` always allocates a
+new object, copies and frees the old one, so programs that grow a buffer one
+append at a time take quadratic time (PHP 8.5 works around this in
+`patches/php-8.5-realloc-filc.patch`). A general fix is drafted on
+`mbrock/fil-c` branch
+[`libpas-realloc-inplace`](https://github.com/mbrock/fil-c/commit/e049edb11367),
+not built or tested. Design, after Oracle review: a growing realloc allocates
+the larger of the new size and 1.5× the old, zeroes the whole slot capacity
+(data and aux) before the object is published, and flags it
+`FILC_OBJECT_FLAG_GROWABLE`; `filc_object_aux_size()` sizes every aux
+creation by slot capacity for such objects; a later grow that fits only CASes
+`upper`, refusing `upper == lower`; shrinks to at least half keep `upper`, so
+it never decreases until free, whose store to `upper` becomes atomic.
+
+The first draft was unsound twice: growth could CAS `upper` up from `lower`
+while `free()` was running and resurrect a freed object, which compiled code
+would then read (it omits the free check when both bounds checks are
+present); and zeroing large slack registered the live object as an
+allocation root, which the collector marks without scanning, so its aux and
+children could be reclaimed. Lazily zeroing slack would also let weakly
+ordered CPUs read a reused slot's old bytes.
+
+It is parked because of its semantics: an object grown in place keeps its
+identity, so pointers from before the realloc stay valid and see the grown
+object (and a retained-`upper` shrink keeps the tail reachable). That is
+memory-safe but gives up the use-after-realloc detection every Fil-C realloc
+has today. Default-on or opt-in is the user's decision. Before adoption it
+needs: deterministic free/grow interleavings (no growth from `upper ==
+lower`); a GC test with a growable object whose aux holds the only reference
+to a child and an atomic box, grown across collection; coverage of eager,
+lazy and small-memmove aux creation, grown to the last word of capacity;
+pointer stores into newly exposed words during concurrent marking; dirty
+reused slots, checking that exposed bytes and capabilities are zero;
+small/medium/large size classes, exact capacity and one past it, retained and
+moving shrinks, aligned-realloc fallback, free after growth, and stale-alias
+behavior matching the chosen contract
+([thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f)).
+
 **Cancellation cost.** The staging cancellation patches added signal-mask
 syscalls that release Fil-C does not make, from two sources:
 
