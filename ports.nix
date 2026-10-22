@@ -1650,6 +1650,13 @@ in
     # without a capability. Under Fil-C the word is a void * (16-byte
     # nodes), tagged with pointer arithmetic.
     (patch ./patches/bind-qp-node-pointer.patch)
+    # Under Fil-C a local whose address escapes is a zeroed heap
+    # allocation, and so is the temporary behind a large compound-literal
+    # assignment. Each query made about 60 KB of them (QP-trie chains and
+    # iterators, search contexts, the client and netmgr requests), which
+    # drove the collector. Initialize in place, allocate only what a call
+    # needs, and reuse one zone search context per thread.
+    (patch ./patches/bind-filc-heap-temporaries.patch)
     # Three unit tests mock a library function by defining it in the test
     # executable (doh_test's isc__nm_tcp_freebind, query_test's
     # ns_client_error). Fil-C binds calls between a library's own

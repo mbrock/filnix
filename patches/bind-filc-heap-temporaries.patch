@@ -1,0 +1,770 @@
+diff --git a/lib/dns/qp.c b/lib/dns/qp.c
+index 3f64f44..7fe3c4b 100644
+--- a/lib/dns/qp.c
++++ b/lib/dns/qp.c
+@@ -1862,10 +1862,14 @@ dns_qpchain_init(dns_qpreadable_t qpr, dns_qpchain_t *chain) {
+ 	REQUIRE(QP_VALID(qp));
+ 	REQUIRE(chain != NULL);
+ 
+-	*chain = (dns_qpchain_t){
+-		.magic = QPCHAIN_MAGIC,
+-		.qp = qp,
+-	};
++	/*
++	 * Set the header field by field: under Fil-C, assigning a compound
++	 * literal builds the whole 2 KiB struct in a heap temporary and
++	 * copies it. Links past 'len' are never read.
++	 */
++	chain->magic = QPCHAIN_MAGIC;
++	chain->qp = qp;
++	chain->len = 0;
+ }
+ 
+ unsigned int
+@@ -1898,10 +1902,14 @@ dns_qpiter_init(dns_qpreadable_t qpr, dns_qpiter_t *qpi) {
+ 	dns_qpreader_t *qp = dns_qpreader(qpr);
+ 	REQUIRE(QP_VALID(qp));
+ 	REQUIRE(qpi != NULL);
+-	*qpi = (dns_qpiter_t){
+-		.qp = qp,
+-		.magic = QPITER_MAGIC,
+-	};
++	/*
++	 * As in dns_qpchain_init(): no 4 KiB compound literal. Entries above
++	 * 'sp' are never read, and a null stack[0] marks a fresh iterator.
++	 */
++	qpi->magic = QPITER_MAGIC;
++	qpi->qp = qp;
++	qpi->sp = 0;
++	qpi->stack[0] = NULL;
+ }
+ 
+ /*
+@@ -2259,41 +2267,39 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
+ 	}
+ }
+ 
+-isc_result_t
+-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+-	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
+-	      void **pval_r, uint32_t *ival_r) {
+-	dns_qpreader_t *qp = dns_qpreader(qpr);
++/*
++ * dns_qp_lookup() with a caller's chain. Without an iterator the
++ * traversal is not recorded: it would only be read to reposition one.
++ */
++static isc_result_t
++qp_lookup(dns_qpreader_t *qp, const dns_name_t *name, dns_name_t *foundname,
++	  dns_qpiter_t *iter, dns_qpchain_t *chain, void **pval_r,
++	  uint32_t *ival_r) {
+ 	dns_qpkey_t search, found;
+ 	size_t searchlen, foundlen;
+ 	size_t offset = 0;
+ 	dns_qpnode_t *n = NULL;
+ 	dns_qpshift_t bit = SHIFT_NOBYTE;
+-	dns_qpchain_t oc;
+-	dns_qpiter_t it;
+ 	bool matched = false;
+-	bool setiter = true;
++	bool setiter = iter != NULL;
+ 
+ 	REQUIRE(QP_VALID(qp));
+ 	REQUIRE(foundname == NULL || ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
+ 
+ 	searchlen = dns_qpkey_fromname(search, name);
+ 
+-	if (chain == NULL) {
+-		chain = &oc;
+-	}
+-	if (iter == NULL) {
+-		iter = &it;
+-		setiter = false;
+-	}
+ 	dns_qpchain_init(qp, chain);
+-	dns_qpiter_init(qp, iter);
++	if (setiter) {
++		dns_qpiter_init(qp, iter);
++	}
+ 
+ 	n = get_root(qp);
+ 	if (n == NULL) {
+ 		return ISC_R_NOTFOUND;
+ 	}
+-	iter->stack[0] = n;
++	if (setiter) {
++		iter->stack[0] = n;
++	}
+ 
+ 	/*
+ 	 * Like `dns_qp_insert()`, we must find a leaf. However, we don't make a
+@@ -2347,7 +2353,9 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+ 			n = anyleaf(qp, twigs);
+ 		}
+ 
+-		iter->stack[++iter->sp] = n;
++		if (setiter) {
++			iter->stack[++iter->sp] = n;
++		}
+ 	}
+ 
+ 	if (setiter) {
+@@ -2408,4 +2416,30 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+ 	return ISC_R_NOTFOUND;
+ }
+ 
++/*
++ * Under Fil-C a local whose address escapes is allocated on the heap when
++ * its function is entered, so keep the 2 KiB fallback chain out of
++ * dns_qp_lookup() and allocate it only for callers that pass none.
++ */
++static isc_result_t __attribute__((noinline))
++qp_lookup_ownchain(dns_qpreader_t *qp, const dns_name_t *name,
++		   dns_name_t *foundname, dns_qpiter_t *iter, void **pval_r,
++		   uint32_t *ival_r) {
++	dns_qpchain_t chain;
++	return qp_lookup(qp, name, foundname, iter, &chain, pval_r, ival_r);
++}
++
++isc_result_t
++dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
++	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
++	      void **pval_r, uint32_t *ival_r) {
++	dns_qpreader_t *qp = dns_qpreader(qpr);
++
++	if (chain == NULL) {
++		return qp_lookup_ownchain(qp, name, foundname, iter, pval_r,
++					  ival_r);
++	}
++	return qp_lookup(qp, name, foundname, iter, chain, pval_r, ival_r);
++}
++
+ /**********************************************************************/
+diff --git a/lib/dns/qpcache.c b/lib/dns/qpcache.c
+index b567fc6..9d78754 100644
+--- a/lib/dns/qpcache.c
++++ b/lib/dns/qpcache.c
+@@ -324,7 +324,6 @@ typedef struct {
+ 	qpcache_t *qpdb;
+ 	unsigned int options;
+ 	dns_qpchain_t chain;
+-	dns_qpiter_t iter;
+ 	qpcnode_t *zonecut;
+ 	dns_slabheader_t *zonecut_header;
+ 	dns_slabheader_t *zonecut_sigheader;
+@@ -1662,9 +1661,9 @@ static void
+ qpc_search_init(qpc_search_t *search, qpcache_t *db, unsigned int options,
+ 		isc_stdtime_t now) {
+ 	/*
+-	 * qpc_search_t contains two structures with large buffers (dns_qpiter_t
+-	 * and dns_qpchain_t). Those two structures will be initialized later by
+-	 * dns_qp_lookup anyway.
++	 * qpc_search_t contains a structure with a large buffer
++	 * (dns_qpchain_t). It will be initialized later by dns_qp_lookup
++	 * anyway.
+ 	 * To avoid the overhead of zero initialization, we avoid designated
+ 	 * initializers and initialize all "small" fields manually.
+ 	 */
+@@ -1672,7 +1671,6 @@ qpc_search_init(qpc_search_t *search, qpcache_t *db, unsigned int options,
+ 	search->options = options;
+ 	/*
+ 	 * qpch->in - Init by dns_qp_lookup
+-	 * qpiter - Init by dns_qp_lookup
+ 	 */
+ 	search->now = now ? now : isc_stdtime_now();
+ 	search->zonecut = NULL;
+diff --git a/lib/dns/qpzone.c b/lib/dns/qpzone.c
+index 2c45f94..f3a6f1d 100644
+--- a/lib/dns/qpzone.c
++++ b/lib/dns/qpzone.c
+@@ -3427,15 +3427,14 @@ qpz_search_setbase(qpz_search_t *search, qpznode_t *origin) {
+ }
+ 
+ static isc_result_t
+-find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+-     dns_rdatatype_t type, unsigned int options,
+-     isc_stdtime_t now ISC_ATTR_UNUSED, dns_dbnode_t **nodep,
+-     dns_name_t *foundname, dns_rdataset_t *rdataset,
+-     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
++find_search(qpz_search_t *search, dns_db_t *db, const dns_name_t *name,
++	    dns_dbversion_t *version, dns_rdatatype_t type,
++	    unsigned int options, dns_dbnode_t **nodep, dns_name_t *foundname,
++	    dns_rdataset_t *rdataset,
++	    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+ 	isc_result_t result;
+ 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+ 	qpznode_t *node = NULL;
+-	qpz_search_t search;
+ 	bool cname_ok = true, close_version = false;
+ 	bool maybe_zonecut = false, at_zonecut = false;
+ 	bool wild = false, empty_node = false;
+@@ -3461,28 +3460,42 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+ 		close_version = true;
+ 	}
+ 
+-	search = (qpz_search_t){
+-		.qpdb = (qpzonedb_t *)db,
+-		.version = version,
+-		.serial = ((qpz_version_t *)version)->serial,
+-		.options = options,
+-	};
+-	dns_fixedname_init(&search.zonecut_name);
++	/*
++	 * As in qpc_search_init(), set the small fields one by one rather
++	 * than zeroing the large chain and iterator, which dns_qp_lookup()
++	 * initializes. Under Fil-C a compound literal of this size is also
++	 * built in a heap temporary and then copied.
++	 */
++	search->qpdb = (qpzonedb_t *)db;
++	search->version = version;
++	memset(&search->qpr, 0, sizeof(search->qpr));
++	memset(&search->nqpr, 0, sizeof(search->nqpr));
++	search->serial = ((qpz_version_t *)version)->serial;
++	search->options = options;
++	search->chain_base = 0;
++	search->copy_name = false;
++	search->need_cleanup = false;
++	search->wild = false;
++	search->zonecut = NULL;
++	search->zonecut_header = NULL;
++	search->zonecut_sigheader = NULL;
++	search->now = 0;
++	dns_fixedname_init(&search->zonecut_name);
+ 
+ 	if ((options & DNS_DBFIND_FORCENSEC3) != 0) {
+-		dns_qpmulti_query(qpdb->nsec3, &search.qpr);
++		dns_qpmulti_query(qpdb->nsec3, &search->qpr);
+ 		nsec3 = true;
+ 	} else {
+-		dns_qpmulti_query(qpdb->tree, &search.qpr);
+-		dns_qpmulti_query(qpdb->nsec, &search.nqpr);
++		dns_qpmulti_query(qpdb->tree, &search->qpr);
++		dns_qpmulti_query(qpdb->nsec, &search->nqpr);
+ 	}
+ 
+ 	/*
+ 	 * Search down from the root of the tree.
+ 	 */
+-	result = dns_qp_lookup(&search.qpr, name, NULL, &search.iter,
+-			       &search.chain, (void **)&node, NULL);
+-	if (!qpz_search_setbase(&search,
++	result = dns_qp_lookup(&search->qpr, name, NULL, &search->iter,
++			       &search->chain, (void **)&node, NULL);
++	if (!qpz_search_setbase(search,
+ 				nsec3 ? qpdb->nsec3_origin : qpdb->origin))
+ 	{
+ 		/* The name is not in the zone. */
+@@ -3498,18 +3511,18 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+ 	 * We're only interested in nodes above QNAME, so if the result
+ 	 * was success, then we skip the last item in the chain.
+ 	 */
+-	unsigned int clen = dns_qpchain_length(&search.chain);
++	unsigned int clen = dns_qpchain_length(&search->chain);
+ 	if (result == ISC_R_SUCCESS) {
+ 		clen--;
+ 	}
+-	for (unsigned int i = search.chain_base;
+-	     i < clen && search.zonecut == NULL; i++)
++	for (unsigned int i = search->chain_base;
++	     i < clen && search->zonecut == NULL; i++)
+ 	{
+ 		qpznode_t *n = NULL;
+ 		isc_result_t tresult;
+ 
+-		dns_qpchain_node(&search.chain, i, NULL, (void **)&n, NULL);
+-		tresult = check_zonecut(n, &search DNS__DB_FLARG_PASS);
++		dns_qpchain_node(&search->chain, i, NULL, (void **)&n, NULL);
++		tresult = check_zonecut(n, search DNS__DB_FLARG_PASS);
+ 		if (tresult != DNS_R_CONTINUE) {
+ 			result = tresult;
+ 			node = n;
+@@ -3521,21 +3534,21 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+ 
+ 	if (result == DNS_R_PARTIALMATCH) {
+ 	partial_match:
+-		if (search.zonecut != NULL) {
++		if (search->zonecut != NULL) {
+ 			result = setup_delegation(
+-				&search, nodep, foundname, rdataset,
++				search, nodep, foundname, rdataset,
+ 				sigrdataset DNS__DB_FLARG_PASS);
+ 			goto tree_exit;
+ 		}
+ 
+-		if (search.wild) {
++		if (search->wild) {
+ 			/*
+ 			 * At least one of the levels in the search chain
+ 			 * potentially has a wildcard.  For each such level,
+ 			 * we must see if there's a matching wildcard active
+ 			 * in the current version.
+ 			 */
+-			result = find_wildcard(&search, &node, name);
++			result = find_wildcard(search, &node, name);
+ 			if (result == ISC_R_SUCCESS) {
+ 				dns_name_copy(name, foundname);
+ 				wild = true;
+@@ -3551,21 +3564,21 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+ 			 * The NSEC3 tree won't have empty nodes,
+ 			 * so it isn't necessary to check for them.
+ 			 */
+-			dns_qpiter_t iter = search.iter;
+-			active = activeempty(&search, &iter, name);
++			dns_qpiter_t iter = search->iter;
++			active = activeempty(search, &iter, name);
+ 		}
+ 
+ 		/*
+ 		 * If we're here, then the name does not exist, is not
+ 		 * beneath a zonecut, and there's no matching wildcard.
+ 		 */
+-		if ((search.version->secure && !search.version->havensec3) ||
++		if ((search->version->secure && !search->version->havensec3) ||
+ 		    nsec3)
+ 		{
+ 			result = find_closest_nsec(
+-				&search, nodep, foundname, rdataset,
++				search, nodep, foundname, rdataset,
+ 				sigrdataset, nsec3,
+-				search.version->secure DNS__DB_FLARG_PASS);
++				search->version->secure DNS__DB_FLARG_PASS);
+ 			if (result == ISC_R_SUCCESS) {
+ 				result = active ? DNS_R_EMPTYNAME
+ 						: DNS_R_NXDOMAIN;
+@@ -3584,10 +3597,10 @@ found:
+ 	 * have matched a wildcard.
+ 	 */
+ 
+-	nlock = &search.qpdb->buckets[node->locknum].lock;
++	nlock = &search->qpdb->buckets[node->locknum].lock;
+ 	NODE_RDLOCK(nlock, &nlocktype);
+ 
+-	if (search.zonecut != NULL) {
++	if (search->zonecut != NULL) {
+ 		/*
+ 		 * If we're beneath a zone cut, we don't want to look for
+ 		 * CNAMEs because they're not legitimate zone glue.
+@@ -3604,9 +3617,9 @@ found:
+ 		 * Stub zones don't have anything "above" the delegation so
+ 		 * we always return a referral.
+ 		 */
+-		if (node->delegating && ((node != search.qpdb->origin &&
++		if (node->delegating && ((node != search->qpdb->origin &&
+ 					  !dns_rdatatype_atparent(type)) ||
+-					 IS_STUB(search.qpdb)))
++					 IS_STUB(search->qpdb)))
+ 		{
+ 			maybe_zonecut = true;
+ 		}
+@@ -3635,7 +3648,7 @@ found:
+ 		 * Look for an active, extant rdataset.
+ 		 */
+ 		do {
+-			if (header->serial <= search.serial && !IGNORE(header))
++			if (header->serial <= search->serial && !IGNORE(header))
+ 			{
+ 				if (NONEXISTENT(header)) {
+ 					header = NULL;
+@@ -3661,12 +3674,12 @@ found:
+ 				 * ensure that search->zonecut_header will
+ 				 * still be valid later.
+ 				 */
+-				qpznode_acquire(search.qpdb,
++				qpznode_acquire(search->qpdb,
+ 						node DNS__DB_FLARG_PASS);
+-				search.zonecut = node;
+-				search.zonecut_header = header;
+-				search.zonecut_sigheader = NULL;
+-				search.need_cleanup = true;
++				search->zonecut = node;
++				search->zonecut_header = header;
++				search->zonecut_sigheader = NULL;
++				search->need_cleanup = true;
+ 				maybe_zonecut = false;
+ 				at_zonecut = true;
+ 				/*
+@@ -3675,7 +3688,7 @@ found:
+ 				 * cut or not.  It is needed for RFC3007
+ 				 * validated updates.
+ 				 */
+-				if ((search.options & DNS_DBFIND_GLUEOK) == 0 &&
++				if ((search->options & DNS_DBFIND_GLUEOK) == 0 &&
+ 				    type != dns_rdatatype_nsec &&
+ 				    type != dns_rdatatype_key)
+ 				{
+@@ -3697,7 +3710,7 @@ found:
+ 			 * we are using behave as if it isn't here.
+ 			 */
+ 			if (header->type == dns_rdatatype_nsec3 &&
+-			    !matchparams(header, &search))
++			    !matchparams(header, search))
+ 			{
+ 				NODE_UNLOCK(nlock, &nlocktype);
+ 				goto partial_match;
+@@ -3732,7 +3745,7 @@ found:
+ 					}
+ 				}
+ 				/*
+-				 * If we've got all we need, end the search.
++				 * If we've got all we need, end the search->
+ 				 */
+ 				if (!maybe_zonecut && foundsig != NULL) {
+ 					break;
+@@ -3744,13 +3757,13 @@ found:
+ 				 */
+ 				foundsig = header;
+ 				/*
+-				 * If we've got all we need, end the search.
++				 * If we've got all we need, end the search->
+ 				 */
+ 				if (!maybe_zonecut && found != NULL) {
+ 					break;
+ 				}
+ 			} else if (header->type == dns_rdatatype_nsec &&
+-				   !search.version->havensec3)
++				   !search->version->havensec3)
+ 			{
+ 				/*
+ 				 * Remember a NSEC rdataset even if we're
+@@ -3760,7 +3773,7 @@ found:
+ 				nsecheader = header;
+ 			} else if (header->type ==
+ 					   DNS_SIGTYPE(dns_rdatatype_nsec) &&
+-				   !search.version->havensec3)
++				   !search->version->havensec3)
+ 			{
+ 				/*
+ 				 * If we need the NSEC rdataset, we'll also
+@@ -3797,7 +3810,7 @@ found:
+ 	 * If we didn't find what we were looking for...
+ 	 */
+ 	if (found == NULL) {
+-		if (search.zonecut != NULL) {
++		if (search->zonecut != NULL) {
+ 			/*
+ 			 * We were trying to find glue at a node beneath a
+ 			 * zone cut, but didn't.
+@@ -3806,7 +3819,7 @@ found:
+ 			 */
+ 			NODE_UNLOCK(nlock, &nlocktype);
+ 			result = setup_delegation(
+-				&search, nodep, foundname, rdataset,
++				search, nodep, foundname, rdataset,
+ 				sigrdataset DNS__DB_FLARG_PASS);
+ 			goto tree_exit;
+ 		}
+@@ -3814,7 +3827,7 @@ found:
+ 		 * The desired type doesn't exist.
+ 		 */
+ 		result = DNS_R_NXRRSET;
+-		if (search.version->secure && !search.version->havensec3 &&
++		if (search->version->secure && !search->version->havensec3 &&
+ 		    (nsecheader == NULL || nsecsig == NULL))
+ 		{
+ 			/*
+@@ -3828,23 +3841,23 @@ found:
+ 
+ 			NODE_UNLOCK(nlock, &nlocktype);
+ 			result = find_closest_nsec(
+-				&search, nodep, foundname, rdataset,
++				search, nodep, foundname, rdataset,
+ 				sigrdataset, false,
+-				search.version->secure DNS__DB_FLARG_PASS);
++				search->version->secure DNS__DB_FLARG_PASS);
+ 			if (result == ISC_R_SUCCESS) {
+ 				result = DNS_R_EMPTYWILD;
+ 			}
+ 			goto tree_exit;
+ 		}
+ 		if (nodep != NULL) {
+-			qpznode_acquire(search.qpdb, node DNS__DB_FLARG_PASS);
++			qpznode_acquire(search->qpdb, node DNS__DB_FLARG_PASS);
+ 			*nodep = node;
+ 		}
+-		if (search.version->secure && !search.version->havensec3) {
+-			bindrdataset(search.qpdb, node, nsecheader, 0,
++		if (search->version->secure && !search->version->havensec3) {
++			bindrdataset(search->qpdb, node, nsecheader, 0,
+ 				     rdataset DNS__DB_FLARG_PASS);
+ 			if (nsecsig != NULL) {
+-				bindrdataset(search.qpdb, node, nsecsig, 0,
++				bindrdataset(search->qpdb, node, nsecsig, 0,
+ 					     sigrdataset DNS__DB_FLARG_PASS);
+ 			}
+ 		}
+@@ -3866,13 +3879,13 @@ found:
+ 		 * that result to the caller.
+ 		 */
+ 		result = DNS_R_CNAME;
+-	} else if (search.zonecut != NULL) {
++	} else if (search->zonecut != NULL) {
+ 		/*
+ 		 * If we're beneath a zone cut, we must indicate that the
+ 		 * result is glue, unless we're actually at the zone cut
+ 		 * and the type is NSEC or KEY.
+ 		 */
+-		if (search.zonecut == node) {
++		if (search->zonecut == node) {
+ 			/*
+ 			 * It is not clear if KEY should still be
+ 			 * allowed at the parent side of the zone
+@@ -3901,18 +3914,18 @@ found:
+ 
+ 	if (nodep != NULL) {
+ 		if (!at_zonecut) {
+-			qpznode_acquire(search.qpdb, node DNS__DB_FLARG_PASS);
++			qpznode_acquire(search->qpdb, node DNS__DB_FLARG_PASS);
+ 		} else {
+-			search.need_cleanup = false;
++			search->need_cleanup = false;
+ 		}
+ 		*nodep = node;
+ 	}
+ 
+ 	if (type != dns_rdatatype_any) {
+-		bindrdataset(search.qpdb, node, found, 0,
++		bindrdataset(search->qpdb, node, found, 0,
+ 			     rdataset DNS__DB_FLARG_PASS);
+ 		if (foundsig != NULL) {
+-			bindrdataset(search.qpdb, node, foundsig, 0,
++			bindrdataset(search->qpdb, node, foundsig, 0,
+ 				     sigrdataset DNS__DB_FLARG_PASS);
+ 		}
+ 	}
+@@ -3926,23 +3939,23 @@ node_exit:
+ 
+ tree_exit:
+ 	if (nsec3) {
+-		dns_qpread_destroy(qpdb->nsec3, &search.qpr);
++		dns_qpread_destroy(qpdb->nsec3, &search->qpr);
+ 	} else {
+-		dns_qpread_destroy(qpdb->tree, &search.qpr);
+-		dns_qpread_destroy(qpdb->nsec, &search.nqpr);
++		dns_qpread_destroy(qpdb->tree, &search->qpr);
++		dns_qpread_destroy(qpdb->nsec, &search->nqpr);
+ 	}
+ 
+ 	/*
+ 	 * If we found a zonecut but aren't going to use it, we have to
+ 	 * let go of it.
+ 	 */
+-	if (search.need_cleanup) {
+-		node = search.zonecut;
++	if (search->need_cleanup) {
++		node = search->zonecut;
+ 		INSIST(node != NULL);
+-		nlock = &search.qpdb->buckets[node->locknum].lock;
++		nlock = &search->qpdb->buckets[node->locknum].lock;
+ 
+ 		NODE_RDLOCK(nlock, &nlocktype);
+-		qpznode_release(search.qpdb, node, 0,
++		qpznode_release(search->qpdb, node, 0,
+ 				&nlocktype DNS__DB_FLARG_PASS);
+ 		NODE_UNLOCK(nlock, &nlocktype);
+ 	}
+@@ -3954,6 +3967,47 @@ tree_exit:
+ 	return result;
+ }
+ 
++/*
++ * A search context holds a 2 KiB QP chain and a 4 KiB QP iterator. Under
++ * Fil-C a local whose address escapes is a zeroed heap allocation, so each
++ * thread reuses one context for its outermost find() instead of allocating
++ * one per query. A nested find() on the same thread, if any, gets its own.
++ */
++static thread_local qpz_search_t find_search_cache;
++static thread_local bool find_search_busy = false;
++
++static isc_result_t __attribute__((noinline))
++find_nested(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
++	    dns_rdatatype_t type, unsigned int options, dns_dbnode_t **nodep,
++	    dns_name_t *foundname, dns_rdataset_t *rdataset,
++	    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
++	qpz_search_t search;
++	return find_search(&search, db, name, version, type, options, nodep,
++			   foundname, rdataset,
++			   sigrdataset DNS__DB_FLARG_PASS);
++}
++
++static isc_result_t
++find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
++     dns_rdatatype_t type, unsigned int options,
++     isc_stdtime_t now ISC_ATTR_UNUSED, dns_dbnode_t **nodep,
++     dns_name_t *foundname, dns_rdataset_t *rdataset,
++     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
++	isc_result_t result;
++
++	if (find_search_busy) {
++		return find_nested(db, name, version, type, options, nodep,
++				   foundname, rdataset,
++				   sigrdataset DNS__DB_FLARG_PASS);
++	}
++	find_search_busy = true;
++	result = find_search(&find_search_cache, db, name, version, type,
++			     options, nodep, foundname, rdataset,
++			     sigrdataset DNS__DB_FLARG_PASS);
++	find_search_busy = false;
++	return result;
++}
++
+ static isc_result_t
+ allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode, dns_dbversion_t *dbversion,
+ 	     unsigned int options, isc_stdtime_t now ISC_ATTR_UNUSED,
+diff --git a/lib/dns/rdataset.c b/lib/dns/rdataset.c
+index 57e7175..5cb4678 100644
+--- a/lib/dns/rdataset.c
++++ b/lib/dns/rdataset.c
+@@ -213,7 +213,6 @@ dns_rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
+ 	(rdataset->methods->current)(rdataset, rdata);
+ }
+ 
+-#define MAX_SHUFFLE    32
+ #define WANT_FIXED(r)  (((r)->attributes & DNS_RDATASETATTR_FIXEDORDER) != 0)
+ #define WANT_RANDOM(r) (((r)->attributes & DNS_RDATASETATTR_RANDOMIZE) != 0)
+ #define WANT_CYCLIC(r) (((r)->attributes & DNS_RDATASETATTR_CYCLIC) != 0)
+@@ -251,10 +250,13 @@ towiresorted(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
+ 	bool question = false;
+ 	bool shuffle = false, sort = false;
+ 	bool want_random, want_cyclic;
+-	dns_rdata_t in_fixed[MAX_SHUFFLE];
+-	dns_rdata_t *in = in_fixed;
+-	struct towire_sort out_fixed[MAX_SHUFFLE];
+-	struct towire_sort *out = out_fixed;
++	/*
++	 * No fixed-size arrays for the common case: under Fil-C they would
++	 * be heap allocations on every call, even for the usual rdataset
++	 * that is neither sorted nor shuffled.
++	 */
++	dns_rdata_t *in = NULL;
++	struct towire_sort *out = NULL;
+ 	dns_fixedname_t fixed;
+ 	dns_name_t *name = NULL;
+ 	uint16_t offset;
+@@ -311,13 +313,8 @@ towiresorted(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
+ 	}
+ 
+ 	if (shuffle || sort) {
+-		if (count > MAX_SHUFFLE) {
+-			in = isc_mem_cget(cctx->mctx, count, sizeof(*in));
+-			out = isc_mem_cget(cctx->mctx, count, sizeof(*out));
+-			if (in == NULL || out == NULL) {
+-				shuffle = sort = false;
+-			}
+-		}
++		in = isc_mem_cget(cctx->mctx, count, sizeof(*in));
++		out = isc_mem_cget(cctx->mctx, count, sizeof(*out));
+ 	}
+ 
+ 	if (shuffle || sort) {
+@@ -468,10 +465,10 @@ rollback:
+ 	*target = savedbuffer;
+ 
+ cleanup:
+-	if (out != NULL && out != out_fixed) {
++	if (out != NULL) {
+ 		isc_mem_cput(cctx->mctx, out, count, sizeof(*out));
+ 	}
+-	if (in != NULL && in != in_fixed) {
++	if (in != NULL) {
+ 		isc_mem_cput(cctx->mctx, in, count, sizeof(*in));
+ 	}
+ 	return result;
+diff --git a/lib/isc/netmgr/netmgr.c b/lib/isc/netmgr/netmgr.c
+index 3882ca6..dab80b6 100644
+--- a/lib/isc/netmgr/netmgr.c
++++ b/lib/isc/netmgr/netmgr.c
+@@ -1577,12 +1577,16 @@ isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG) {
+ 	isc__networker_t *worker = sock->worker;
+ 
+ 	isc__nm_uvreq_t *req = isc_mempool_get(worker->uvreq_pool);
+-	*req = (isc__nm_uvreq_t){
+-		.connect_tries = 3,
+-		.link = ISC_LINK_INITIALIZER,
+-		.active_link = ISC_LINK_INITIALIZER,
+-		.magic = UVREQ_MAGIC,
+-	};
++	/*
++	 * memset() and assignments rather than a compound literal, which
++	 * under Fil-C is a heap temporary copied into 'req' on every read
++	 * and send.
++	 */
++	memset(req, 0, sizeof(*req));
++	req->connect_tries = 3;
++	ISC_LINK_INIT(req, link);
++	ISC_LINK_INIT(req, active_link);
++	req->magic = UVREQ_MAGIC;
+ 	uv_handle_set_data(&req->uv_req.handle, req);
+ 
+ 	isc___nmsocket_attach(sock, &req->sock FLARG_PASS);
+diff --git a/lib/ns/client.c b/lib/ns/client.c
+index b5389a8..ce288e5 100644
+--- a/lib/ns/client.c
++++ b/lib/ns/client.c
+@@ -2550,6 +2550,36 @@ ns__client_tcpconn(isc_nmhandle_t *handle, isc_result_t result, void *arg) {
+ 	return ISC_R_SUCCESS;
+ }
+ 
++/*
++ * Retain the manager, message, EDE context and query of an existing client,
++ * but zero everything else except the send buffer, which every response is
++ * rendered into before it is read. Zero around them in place: a compound
++ * literal of the whole client is, under Fil-C, a 7 KiB heap temporary for
++ * every query, copied with its capabilities.
++ */
++static void
++client_reuse(ns_client_t *client) {
++	ns_clientmgr_t *manager = client->manager;
++	dns_message_t *message = client->message;
++	size_t edectx_end = offsetof(ns_client_t, edectx) +
++			    sizeof(client->edectx);
++	size_t query_end = offsetof(ns_client_t, query) + sizeof(client->query);
++
++	STATIC_ASSERT(offsetof(ns_client_t, edectx) <
++				      offsetof(ns_client_t, query) &&
++			      offsetof(ns_client_t, query) <
++				      offsetof(ns_client_t, sendbuf),
++		      "client_reuse() expects edectx, query, sendbuf in order");
++
++	memset(client, 0, offsetof(ns_client_t, edectx));
++	memset((char *)client + edectx_end, 0,
++	       offsetof(ns_client_t, query) - edectx_end);
++	memset((char *)client + query_end, 0,
++	       offsetof(ns_client_t, sendbuf) - query_end);
++	client->manager = manager;
++	client->message = message;
++}
++
+ void
+ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
+ 	/*
+@@ -2562,7 +2592,11 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
+ 		REQUIRE(client != NULL);
+ 		REQUIRE(mgr->tid == isc_tid());
+ 
+-		*client = (ns_client_t){ .magic = 0 };
++		/*
++		 * memset() rather than a compound literal, which under
++		 * Fil-C is built in a heap temporary and then copied.
++		 */
++		memset(client, 0, sizeof(*client));
+ 
+ 		ns_clientmgr_attach(mgr, &client->manager);
+ 
+@@ -2583,17 +2617,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
+ 		REQUIRE(NS_CLIENT_VALID(client));
+ 		REQUIRE(client->manager->tid == isc_tid());
+ 
+-		/*
+-		 * Retain these values from the existing client, but
+-		 * zero every thing else.
+-		 */
+-		*client = (ns_client_t){
+-			.magic = 0,
+-			.manager = client->manager,
+-			.message = client->message,
+-			.edectx = client->edectx,
+-			.query = client->query,
+-		};
++		client_reuse(client);
+ 
+ 		dns_ede_reset(&client->edectx);
+ 	}
