@@ -386,6 +386,8 @@
             };
             inherit optfil;
             filroot = import ./packages/filroot { inherit pkgs optfil; };
+            # The GitHub Pages site: pages/ and the rendered docs/.
+            site = import ./packages/site { inherit pkgs; };
             php-docker = import ./packages/php-dist/docker.nix {
               inherit pkgs;
               dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };

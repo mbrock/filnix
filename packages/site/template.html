@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$pagetitle$$if(index)$$else$ · filnix docs$endif$</title>
+<link rel="stylesheet" href="style.css">
+<style>
+$highlighting-css$
+</style>
+</head>
+<body>
+<header class="top">
+  <a href="../">filnix</a> <span>/</span> <a href="index.html">docs</a>
+  <span class="grow"></span>
+  <a href="https://github.com/mbrock/filnix/blob/main/docs/$source$">source</a>
+</header>
+<div class="layout$if(toc)$ with-toc$endif$">
+$if(toc)$
+<nav class="toc">
+<div class="toc-title">Contents</div>
+$toc$
+</nav>
+$endif$
+<main>
+<h1 class="title">$title$</h1>
+$body$
+</main>
+</div>
+$if(mermaid)$
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+</script>
+$endif$
+</body>
+</html>

@@ -1,4 +1,5 @@
-# Publishes pages/ (static explainers, no build step) to GitHub Pages.
+# Publishes the site built by .#site (packages/site): pages/ as is and docs/
+# rendered with pandoc, which substitutes from cache.nixos.org.
 # Pages must be enabled in the repository settings with "GitHub Actions" as
 # the source.
 name: Pages
@@ -8,6 +9,8 @@ on:
     branches: [main]
     paths:
       - "pages/**"
+      - "docs/**"
+      - "packages/site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -28,9 +31,14 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build the site
+        run: |
+          nix build -L .#site
+          cp -rL result _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: pages
+          path: _site
       - id: deploy
         uses: actions/deploy-pages@v4
