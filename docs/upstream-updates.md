@@ -117,6 +117,17 @@ unrestricted version's ceiling on WordPress was 9 to 8.3 GC cycles per pass
 and 1.7% fewer instructions (MediaWiki 1.7%, DokuWiki flat), too little to
 justify a Fil-C-aware `nocapture` analysis or PHP source patches.
 
+Also tried and not pinned: loop-invariant check loads (branch
+`loop-check-hoist`, 01a7fe034c9a). In a loop whose only returning calls are
+slow pollchecks, DeleteRedundantPollchecks loaded the upper bound and the
+free/readonly flags that FilPizlonator marks as check loads once in the
+preheader, when the object's lower was proven nonnull there, and again after
+each slow pollcheck, where a signal handler or another thread's free can take
+effect; checks still trapped at the same access. It works (PHP's
+`zend_init_cvs` loop keeps both in registers; regressions `loopcheckhoist`
+and `loopcheckhoistfree`), but php-bench instructions did not move: +0.1%
+on DokuWiki and MediaWiki, 0.0% on WordPress, +0.2% on `Zend/bench.php`.
+
 Residual work absent from v0.686, established by source comparison:
 
 | Area | Staging change | Regression |
