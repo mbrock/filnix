@@ -45,7 +45,6 @@ In a configuration:
 | `filc.lighttpd.enable` | `services.lighttpd.package` |
 | `filc.redis.enable` | `services.redis.package` |
 | `filc.phpfpm.enable` | `services.phpfpm.phpPackage`, for pools without their own `phpPackage` |
-| `filc.nginx.enable` | `services.nginx.package` |
 | `filc.bind.enable` | `services.bind.package` |
 | `filc.nix.enable` | `nix.package` (daemon and CLI), with the build sandbox off: Fil-C has no namespaces or seccomp |
 | `filc.tools` | attributes of `filc.packages` on PATH, ahead of native programs of the same name |
@@ -57,6 +56,10 @@ the package at normal priority, so a configuration that also sets the package
 itself gets a conflict rather than a silent choice. To add a service, give it
 an entry in the `services` table of `nixos/filc.nix`: its package option and
 the systemd units whose main process it becomes.
+
+There is no nginx switch. nginx's processes share pointer-containing memory
+(shared zones), which Fil-C capabilities don't survive, so the php-fpm test
+runs Fil-C PHP-FPM behind native nginx. Use lighttpd for a Fil-C web server.
 
 ## Example machines
 
@@ -83,7 +86,7 @@ the systemd units whose main process it becomes.
 
 `nixosTests` ([tests/nixos](../tests/nixos/default.nix)) runs NixOS VM tests
 with the module on every node: mostly Nixpkgs' own tests of each service
-(openssh, lighttpd, nginx, php-fpm, unbound, tor, bind), unchanged, plus
+(openssh, lighttpd, php-fpm, unbound, tor, bind), unchanged, plus
 `demo`, which boots the demo machine, logs in through the Fil-C sshd to the
 Fil-C shell and has the Fil-C Nix build a derivation, and a Redis test.
 
@@ -105,13 +108,12 @@ nix run .#nixosTests.lighttpd.driverInteractive   # Python REPL with the VMs
 Without KVM, running the driver directly falls back to QEMU's emulation. It
 works but is slow: the lighttpd test takes about five minutes in an orb.
 
-A test builds only once all its Fil-C packages do: `bind` waits on the BIND
-port, and `nginx` and `php-fpm` on the openssl that Fil-C nginx links.
+A test builds only once all its Fil-C packages do.
 
 To add a test, add Nixpkgs' test file (or a test module of our own) to the
 list in `tests/nixos/default.nix`. When the Nixpkgs test chooses a variant of
 the package, force the same variant of the Fil-C build on those nodes, as the
-openssh, unbound and nginx entries do.
+openssh and unbound entries do.
 
 Use the binary cache to skip most of the build:
 

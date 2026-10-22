@@ -99,19 +99,11 @@ lib.mapAttrs (_: withFilc) {
     imports = [ "${upstream}/unbound.nix" ];
     defaults.services.unbound.package = lib.mkForce pkgsFilc.unbound-full;
   };
-  nginx = {
-    imports = [ "${upstream}/nginx.nix" ];
-    # Its specialisations switch to mainline to see nginx restart.
-    nodes.webserver.specialisation =
-      lib.genAttrs [ "reloadRestartSystem" "reloadWithErrorsSystem" ]
-        (_: {
-          configuration.services.nginx.package = lib.mkForce pkgsFilc.nginxMainline;
-        });
-  };
-
   redis = ./redis.nix;
 
-  # Nixpkgs runs this with PHP and APCu; Fil-C nginx serves it.
+  # Nixpkgs runs this with PHP and APCu behind nginx. Only PHP-FPM is
+  # Fil-C; nginx shares pointers between processes in shared memory, which
+  # Fil-C capabilities don't survive, so the module has no nginx switch.
   php-fpm = {
     imports = [ "${upstream}/php/fpm.nix" ];
     _module.args.php = pkgsFilc.php.buildEnv {

@@ -73,11 +73,6 @@ let
       units = map (n: "phpfpm-${n}") (lib.attrNames phpfpm.pools);
       config.services.phpfpm.phpPackage = fp.php;
     };
-    nginx = {
-      what = "nginx (services.nginx)";
-      units = lib.optional nginx.enable "nginx";
-      config.services.nginx.package = fp.nginx;
-    };
     bind = {
       what = "the BIND DNS server (services.bind)";
       units = lib.optional bind.enable "bind";
