@@ -384,7 +384,7 @@ It has the 8.4 port's patches and allocator default (`mkFilcPhp` in
 to it too. PHP 8.5 builds Lexbor and OPcache into PHP itself, so their
 patches and `--disable-opcache-jit` are applied to the PHP build, not to
 shared extensions; `php-8.5-dom-filc.patch` is the Lexbor patch at its new
-path. Two changes are specific to 8.5:
+path. These changes are specific to 8.5:
 
 - `--disable-huge-code-pages`: OPcache, now always built, finds PHP's
   machine code with `dl_iterate_phdr()` to copy it into huge pages. Fil-C's
@@ -407,6 +407,28 @@ path. Two changes are specific to 8.5:
   user cycles fell 7% on WordPress and 5% on MediaWiki, with DokuWiki
   unchanged ([thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f)).
   8.4 does not have this patch yet.
+- `pcre2-10.48-filc-match.patch`, on the PCRE2 that PHP 8.5 links (other
+  packages keep the shared `pcre2`): PCRE's JIT cannot run under Fil-C, and
+  its interpreter spent half its time in Fil-C's capability-aware
+  `memmove()`, copying the tail of a backtracking frame (pointers and the
+  ovector) at every backtracking point. `pcre2_match()` also allocated its
+  match block and callout block on the heap at every call, because their
+  addresses escape. Under Fil-C the patch copies frames field by field and
+  keeps those blocks with the match data. This PCRE2 is built without its
+  JIT and runs its own test suite.
+
+  Measured by replaying every `pcre2_match()` call of a warm pass of the PHP
+  application benchmark (DokuWiki: 2,545 calls; WordPress: 331,164 calls
+  over 206 patterns), checked against native results. In user cycles
+  against native PCRE2 without its JIT, DokuWiki's calls went from 8.9× to
+  4.5× and WordPress's from 7.9× to 5.3× on a busy machine, or about 3.7×
+  on a quiet one. In the application benchmark (staging, three rounds,
+  busy machine) DokuWiki went from 9.4× to 7.8× native cycles, and its
+  search request from 15.2× to 10.6×. WordPress went from 8.5× to 8.1×.
+  PCRE is now 17% of Fil-C's cycles on DokuWiki and 3.5% on WordPress
+  ([thread](https://ampcode.com/threads/T-01a163ac-9b72-7219-821f-9a8993781dc3)).
+  91% of DokuWiki's PCRE time is the search request's highlighter, which
+  backtracks over every page because the fixtures are all lorem ipsum.
 
 The `unserialize()` use-after-free reproduction above stops with a Fil-C
 panic on 8.5.12 with the default allocator and completes on Zend's.

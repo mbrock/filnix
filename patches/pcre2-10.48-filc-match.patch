@@ -1,0 +1,165 @@
+diff --git a/src/pcre2_intmodedep.h b/src/pcre2_intmodedep.h
+index 269c418..6ba0059 100644
+--- a/src/pcre2_intmodedep.h
++++ b/src/pcre2_intmodedep.h
+@@ -712,6 +712,9 @@ typedef struct pcre2_real_match_data {
+   uint16_t         oveccount;        /* Number of pairs */
+   uint32_t         options;          /* Options passed in to the match call */
+   int              rc;               /* The return code from the match */
++#ifdef __FILC__
++  void            *filc_locals;      /* pcre2_match()'s match block, reused */
++#endif
+   PCRE2_SIZE       ovector[131072];  /* Must be last in the structure */
+ } pcre2_real_match_data;
+ 
+diff --git a/src/pcre2_match.c b/src/pcre2_match.c
+index 966576e..96bfa71 100644
+--- a/src/pcre2_match.c
++++ b/src/pcre2_match.c
+@@ -731,6 +731,9 @@ BOOL utf = FALSE;  /* Required for convenience even when no Unicode support */
+ copied when a new frame is created. */
+ 
+ frame_copy_size = frame_size - offsetof(heapframe, eptr);
++#ifdef __FILC__
++PCRE2_SIZE ovector_words = (frame_size - offsetof(heapframe, ovector)) / sizeof(PCRE2_SIZE);
++#endif
+ 
+ /* Set up the first frame and the end of the frames vector. */
+ 
+@@ -837,9 +840,21 @@ fprintf(stderr, "\n");
+ "recursion" depth (i.e. the new frame's index) and then make the new frame
+ current. */
+ 
++#ifdef __FILC__
++N->eptr = F->eptr;
++N->start_match = F->start_match;
++N->mark = F->mark;
++N->recurse_last_used = F->recurse_last_used;
++N->current_recurse = F->current_recurse;
++N->capture_last = F->capture_last;
++N->last_group_offset = F->last_group_offset;
++N->offset_top = F->offset_top;
++for (PCRE2_SIZE k = 0; k < ovector_words; k++) N->ovector[k] = F->ovector[k];
++#else
+ memcpy((char *)N + offsetof(heapframe, eptr),
+        (char *)F + offsetof(heapframe, eptr),
+        frame_copy_size);
++#endif
+ 
+ N->rdepth = Frdepth + 1;
+ F = N;
+@@ -6995,7 +7010,7 @@ PCRE2_UCHAR first_cu2 = 0;
+ PCRE2_UCHAR req_cu = 0;
+ PCRE2_UCHAR req_cu2 = 0;
+ 
+-PCRE2_UCHAR null_str[1] = { 0xcd };
++static const PCRE2_UCHAR null_str[1] = { 0xcd };
+ PCRE2_SPTR original_subject = subject;
+ PCRE2_SPTR bumpalong_limit;
+ PCRE2_SPTR end_subject;
+@@ -7022,9 +7037,18 @@ PCRE2_SIZE heapframes_size;
+ /* We need to have mb as a pointer to a match block, because the IS_NEWLINE
+ macro is used below, and it expects NLBLOCK to be defined as a pointer. */
+ 
++#ifdef __FILC__
++/* Fil-C allocates locals whose address escapes in its GC heap, on every call.
++Keep the match block and callout block with the match data instead. */
++struct filc_match_locals { match_block mb; pcre2_callout_block cb; } *locals;
++match_block *mb;
++pcre2_callout_block *cbp;
++#else
+ pcre2_callout_block cb;
++pcre2_callout_block *cbp = &cb;
+ match_block actual_match_block;
+ match_block *mb = &actual_match_block;
++#endif
+ 
+ /* Recognize NULL, length 0 as an empty string. */
+ 
+@@ -7033,6 +7057,18 @@ if (subject == NULL && length == 0) subject = null_str;
+ /* Plausibility checks */
+ 
+ if (match_data == NULL) return PCRE2_ERROR_NULL;
++#ifdef __FILC__
++locals = match_data->filc_locals;
++if (locals == NULL)
++  {
++  locals = match_data->memctl.malloc(sizeof(*locals),
++    match_data->memctl.memory_data);
++  if (locals == NULL) return match_data->rc = PCRE2_ERROR_NOMEMORY;
++  match_data->filc_locals = locals;
++  }
++mb = &locals->mb;
++cbp = &locals->cb;
++#endif
+ if (code == NULL || subject == NULL)
+   return match_data->rc = PCRE2_ERROR_NULL;
+ if ((options & ~PUBLIC_MATCH_OPTIONS) != 0)
+@@ -7380,11 +7416,11 @@ bumpalong_limit = (mcontext->offset_limit == PCRE2_UNSET)?
+ /* Initialize and set up the fixed fields in the callout block, with a pointer
+ in the match block. */
+ 
+-mb->cb = &cb;
+-cb.version = 2;
+-cb.subject = subject;
+-cb.subject_length = (PCRE2_SIZE)(end_subject - subject);
+-cb.callout_flags = 0;
++mb->cb = cbp;
++cbp->version = 2;
++cbp->subject = subject;
++cbp->subject_length = (PCRE2_SIZE)(end_subject - subject);
++cbp->callout_flags = 0;
+ 
+ /* Fill in the remaining fields in the match block, except for moptions, which
+ gets set later. */
+@@ -7933,8 +7969,8 @@ for(;;)
+   /* OK, we can now run the match. If "hitend" is set afterwards, remember the
+   first starting point for which a partial match was found. */
+ 
+-  cb.start_match = (PCRE2_SIZE)(start_match - subject);
+-  cb.callout_flags |= PCRE2_CALLOUT_STARTMATCH;
++  cbp->start_match = (PCRE2_SIZE)(start_match - subject);
++  cbp->callout_flags |= PCRE2_CALLOUT_STARTMATCH;
+ 
+   mb->start_used_ptr = start_match;
+   mb->last_used_ptr = start_match;
+diff --git a/src/pcre2_match_data.c b/src/pcre2_match_data.c
+index fade67a..9c7de26 100644
+--- a/src/pcre2_match_data.c
++++ b/src/pcre2_match_data.c
+@@ -64,6 +64,9 @@ yield->oveccount = oveccount;
+ yield->flags = 0;
+ yield->heapframes = NULL;
+ yield->heapframes_size = 0;
++#ifdef __FILC__
++yield->filc_locals = NULL;
++#endif
+ return yield;
+ }
+ 
+@@ -104,6 +107,11 @@ if (match_data != NULL)
+   if ((match_data->flags & PCRE2_MD_COPIED_SUBJECT) != 0)
+     match_data->memctl.free((void *)match_data->subject,
+       match_data->memctl.memory_data);
++#ifdef __FILC__
++  if (match_data->filc_locals != NULL)
++    match_data->memctl.free(match_data->filc_locals,
++      match_data->memctl.memory_data);
++#endif
+   match_data->memctl.free(match_data, match_data->memctl.memory_data);
+   }
+ }
+diff --git a/src/pcre2_substitute.c b/src/pcre2_substitute.c
+index d512f69..a8efd8c 100644
+--- a/src/pcre2_substitute.c
++++ b/src/pcre2_substitute.c
+@@ -911,6 +911,9 @@ else if (use_existing_match)
+     + 2*pairs*sizeof(PCRE2_SIZE));
+   internal_match_data->heapframes = NULL;
+   internal_match_data->heapframes_size = 0;
++#ifdef __FILC__
++  internal_match_data->filc_locals = NULL;
++#endif
+   /* Ensure that the subject is not freed when internal_match_data is */
+   internal_match_data->flags &= ~PCRE2_MD_COPIED_SUBJECT;
+   match_data = internal_match_data;
