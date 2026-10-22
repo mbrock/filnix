@@ -44,7 +44,7 @@ In a configuration:
 | `filc.unbound.enable` | `services.unbound.package` |
 | `filc.lighttpd.enable` | `services.lighttpd.package` |
 | `filc.redis.enable` | `services.redis.package` |
-| `filc.phpfpm.enable` | `services.phpfpm.phpPackage`, for pools without their own `phpPackage` |
+| `filc.phpfpm.enable` | `services.phpfpm.phpPackage`, and the PHP of MediaWiki, DokuWiki and Nextcloud; see below |
 | `filc.bind.enable` | `services.bind.package` |
 | `filc.nix.enable` | `nix.package` (daemon and CLI), with the build sandbox off: Fil-C has no namespaces or seccomp |
 | `filc.tools` | attributes of `filc.packages` on PATH, ahead of native programs of the same name |
@@ -61,6 +61,14 @@ There is no nginx switch. nginx's processes share pointer-containing memory
 (shared zones), which Fil-C capabilities don't survive, so the php-fpm test
 runs Fil-C PHP-FPM behind native nginx. Use lighttpd for a Fil-C web server,
 as the `php-lighttpd` test does.
+
+`filc.phpfpm` sets `services.phpfpm.phpPackage`, which pools use unless they
+choose their own PHP. Some web app modules do: MediaWiki, DokuWiki and
+Nextcloud have a PHP option of their own, which the switch sets too. Others
+hard-code a PHP (privatebin, dolibarr, icingaweb2, …). Their pools keep it,
+evaluation warns about each one, and it is left out of `filc.units`, so a
+pool on native PHP is never counted as Fil-C. To move such a pool, set its
+`services.phpfpm.pools.<name>.phpPackage` with `mkForce`.
 
 ## Example machines
 
@@ -92,6 +100,13 @@ with the module on every node: mostly Nixpkgs' own tests of each service
 Fil-C shell and has the Fil-C Nix build a derivation, a Redis test, and
 `php-lighttpd`, which serves PHP pages through Fil-C lighttpd and Fil-C
 PHP-FPM over FastCGI.
+Nixpkgs' tests of WordPress (five releases behind httpd, nginx and Caddy),
+MediaWiki (MySQL, PostgreSQL, SQLite, nginx and no web server), DokuWiki and
+Nextcloud (35, 35 with MySQL and memcached, and 34 with PostgreSQL and
+Redis, whose notify_push app Nixpkgs ships only up to 34) run the apps on
+Fil-C PHP. These VMs get more memory than the default 1 GB, which a Fil-C
+pool exhausts: a php-fpm worker grows to about 150-250 MB, and Nextcloud
+starts 12 of them (2 GB for WordPress and DokuWiki, 4 GB for Nextcloud).
 
 After a test's own script passes, every unit in `filc.units` that is still
 running must map the Fil-C runtime, so a test can't pass with a native build,

@@ -69,9 +69,25 @@ let
       config.services.redis.package = fp.redis;
     };
     phpfpm = {
-      what = "PHP-FPM (services.phpfpm), for pools without their own phpPackage";
-      units = map (n: "phpfpm-${n}") (lib.attrNames phpfpm.pools);
-      config.services.phpfpm.phpPackage = fp.php;
+      what = "PHP for PHP-FPM pools (services.phpfpm) and the web apps that choose their own";
+      # Only pools that really run Fil-C PHP; the rest get a warning below.
+      units = map (n: "phpfpm-${n}") (lib.attrNames filcPools);
+      config = {
+        services.phpfpm.phpPackage = fp.php;
+        # Web apps whose pool uses the app's own phpPackage option. Each
+        # gets Fil-C PHP 8.4 with the extensions its default adds.
+        services.mediawiki.phpPackage = fp.php.buildEnv {
+          extensions = { all, enabled }: enabled ++ [ all.apcu ];
+        };
+        services.nextcloud.phpPackage = fp.php;
+        # services.dokuwiki.sites.*.phpPackage is set in options below.
+        warnings = lib.mapAttrsToList (
+          n: p:
+          "filc.phpfpm: the PHP-FPM pool ${n} runs ${p.phpPackage.name}, not a Fil-C build: "
+          + "its module chooses its own PHP. Set services.phpfpm.pools.${n}.phpPackage "
+          + "(with mkForce) to a PHP from filc.packages, or set filc.phpfpm.enable = false."
+        ) (lib.filterAttrs (n: _: !filcPools ? ${n}) phpfpm.pools);
+      };
     };
     bind = {
       what = "the BIND DNS server (services.bind)";
@@ -79,6 +95,10 @@ let
       config.services.bind.package = fp.bind;
     };
   };
+
+  filcPools = lib.filterAttrs (
+    _: p: p.phpPackage.stdenv.hostPlatform.isFilc or false
+  ) config.services.phpfpm.pools;
 
   # A switch that follows filc.enable unless set explicitly.
   switch =
@@ -91,6 +111,15 @@ let
     };
 in
 {
+  # DokuWiki chooses PHP per site.
+  options.services.dokuwiki.sites = mkOption {
+    type = types.attrsOf (
+      types.submodule {
+        config.phpPackage = mkIf cfg.phpfpm.enable fp.php;
+      }
+    );
+  };
+
   options.filc = lib.mapAttrs (_: s: { enable = switch s.what; }) services // {
     enable = mkEnableOption "the Fil-C builds of every service and program below";
 

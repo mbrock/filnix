@@ -49,19 +49,36 @@ let
             print("Fil-C %-12s %-16s %s" % p, flush=True)
   '';
 
-  # Run `test` with the Fil-C module on every node, then check its units.
+  # A Fil-C php-fpm worker grows to about 150-250 MB, and these apps run
+  # several (Nextcloud starts 12): in the default 1 GB the VM runs out of
+  # memory and panics.
+  phpApp =
+    memorySize: test:
+    let
+      memory.defaults.virtualisation = { inherit memorySize; };
+    in
+    if test ? extend then
+      test.extend { modules = [ memory ]; }
+    else
+      {
+        imports = [
+          test
+          memory
+        ];
+      };
+
+  # Run `test` (a test module, or a test Nixpkgs already built with runTest)
+  # with the Fil-C module on every node, then check its units.
   withFilc =
     test:
     let
-      base = pkgs.testers.runNixOSTest {
-        imports = [ test ];
-        defaults = filcDefaults;
-      };
+      base = if test ? extend then test else pkgs.testers.runNixOSTest test;
       script = base.config.testScript;
     in
     base.extend {
       modules = [
         {
+          defaults = filcDefaults;
           name = lib.mkForce "filc-${base.config.name}";
           testScript = lib.mkForce (
             { nodes, ... }@args:
@@ -111,4 +128,37 @@ lib.mapAttrs (_: withFilc) {
       extensions = { enabled, all }: enabled ++ [ all.apcu ];
     };
   };
+
+  # PHP web apps. filc.phpfpm gives their pools Fil-C PHP, whether they use
+  # services.phpfpm.phpPackage (WordPress) or a PHP option of their own.
+  wordpress = phpApp 2048 "${upstream}/wordpress.nix";
+  dokuwiki = phpApp 2048 "${upstream}/dokuwiki.nix";
 }
+# mediawiki-mysql, -postgresql, -sqlite, -nohttpd and -nginx.
+// lib.mapAttrs' (n: t: lib.nameValuePair "mediawiki-${n}" (withFilc t)) (
+  import "${upstream}/mediawiki.nix" {
+    inherit lib;
+    runTest = t: t;
+  }
+)
+# Nextcloud's own tests: nextcloud-basic, with Redis and PostgreSQL, and with
+# MySQL and memcached. The Redis one is on 34 because Nixpkgs' notify_push
+# app supports Nextcloud only up to 34, so its 35 test fails on any PHP.
+//
+  lib.mapAttrs'
+    (
+      n: t:
+      lib.nameValuePair "nextcloud-${lib.removeSuffix "34" (lib.removeSuffix "35" n)}" (
+        withFilc (phpApp 4096 t)
+      )
+    )
+    (
+      lib.getAttrs
+        [ "basic35" "with-postgresql-and-redis34" "with-mysql-and-memcached35" ]
+        (
+          import "${upstream}/nextcloud" {
+            inherit pkgs;
+            inherit (pkgs.stdenv.hostPlatform) system;
+          }
+        )
+    )
