@@ -9,7 +9,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 
 mkdir -p "$out/docs"
 cp -r "$src/pages/." "$out/"
-cp "$here/style.css" "$out/docs/"
+# pages/style.css (copied above) is shared by the docs and the pages.
 cp "$src"/docs/*.txt "$out/docs/"
 
 for md in "$src"/docs/*.md; do

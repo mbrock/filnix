@@ -4,30 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Frame slot coloring at -O0: from cubic to near-linear · Fil-C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
 <style>
 :root {
-  --bg: #fbfaf7; --fg: #1d1c1a; --mute: #6b675f; --line: #dedad2; --card: #fff;
-  --alloca: #d98a1c; --val: #2f6fb3; --bad: #c2412d; --good: #2e8b57; --imp: #9a948a;
-  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --bg: var(--paper); --fg: var(--ink); --mute: var(--muted); --line: var(--rule); --card: #fff;
+  --alloca: #d98a1c; --val: #2f6fb3; --bad: #b8322f; --good: #3d7a3d; --imp: #9a948a;
+  --mono: var(--mono-font);
 }
-* { box-sizing: border-box; }
-html { background: var(--bg); color: var(--fg); }
-body { margin: 0; font: 17px/1.6 Charter, "Iowan Old Style", Georgia, serif; }
-main { max-width: 860px; margin: 0 auto; padding: 0 22px 120px; }
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
 .wide { width: min(1180px, calc(100vw - 44px)); position: relative; left: 50%; transform: translateX(-50%); }
-h1 { font-size: 2.3em; line-height: 1.15; margin: 1.6em 0 0.3em; letter-spacing: -0.01em; }
-h2 { font-size: 1.45em; margin: 2.4em 0 0.5em; padding-top: 0.6em; border-top: 1px solid var(--line); }
-h3 { font-size: 1.1em; margin: 1.6em 0 0.3em; }
-p, li { max-width: 72ch; }
-a { color: var(--val); }
-code, pre, .mono { font-family: var(--mono); font-size: 0.84em; }
-code { background: #f0ede6; padding: 0.05em 0.3em; border-radius: 3px; }
-pre { background: #22211f; color: #ece8df; padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
-pre .k { color: #f2b45a; } pre .c { color: #8f8a80; } pre .del { color: #f08a7a; } pre .add { color: #9fd49a; }
-.sub { color: var(--mute); font-size: 1.05em; margin: 0 0 1.4em; }
-.meta { font: 13px/1.5 var(--mono); color: var(--mute); }
+pre .k { color: var(--accent); } pre .c { color: var(--muted); } pre .del { color: #a8282f; } pre .add { color: #2e7a3a; }
+.video { margin: 1.6rem 0 2rem; }
+.video video { display: block; width: 100%; max-width: 560px; margin: 0 auto; border: 1px solid var(--rule); border-radius: 4px; background: #fff; }
+.video figcaption { margin-top: 0.5rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.sub { color: var(--mute); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono); color: var(--mute); text-align: start; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin: 18px 0; }
-.ui { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.ui { font: 13px/1.4 var(--display-font); }
 button, select, input[type=range] { font: inherit; }
 button { border: 1px solid var(--line); background: #f6f4ef; border-radius: 6px; padding: 5px 11px; cursor: pointer; }
 button:hover { background: #eeeae2; }
@@ -74,8 +71,8 @@ td:first-child, th:first-child { text-align: left; }
 .slot.mark { background: #f9dcd6; }
 .counters { display: flex; gap: 22px; margin: 8px 0 2px; }
 .counters div span { display: block; font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; }
-.narr { min-height: 2.8em; font: 13.5px/1.45 system-ui, sans-serif; color: #3b3832; background: #f6f4ef; border-radius: 6px; padding: 6px 10px; margin-top: 8px; }
-.legend { font: 12px system-ui, sans-serif; color: var(--mute); display: flex; gap: 14px; flex-wrap: wrap; }
+.narr { min-height: 2.8em; font: 13.5px/1.45 var(--display-font); color: #3b3832; background: #f6f4ef; border-radius: 6px; padding: 6px 10px; margin-top: 8px; }
+.legend { font: 12px var(--display-font); color: var(--mute); display: flex; gap: 14px; flex-wrap: wrap; }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
 
 /* prefix */
@@ -85,11 +82,29 @@ td:first-child, th:first-child { text-align: left; }
 </style>
 </head>
 <body>
-<main>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door selected" href="../index.html#explainers">Explainers</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Frame slot coloring at -O0</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/fil-c/commit/54d4f1b4b13b2907eed5e97e27aea8635ca9403b">54d4f1b</a></span>
+</div></div>
+<main class="page-frame reading explainer">
 
-<p class="meta" style="margin-top:3em">Fil-C · FilPizlonator · <code>computeFrameIndexMap</code> · <a href="https://github.com/mbrock/fil-c/commit/54d4f1b4b13b2907eed5e97e27aea8635ca9403b">commit 54d4f1b</a> on <a href="https://github.com/mbrock/fil-c/tree/frame-coloring-o0">mbrock/fil-c frame-coloring-o0</a>, based on pizlonator/fil-c deluge 9d1ed206</p>
+<p class="meta">Fil-C · FilPizlonator · <code>computeFrameIndexMap</code> · <a href="https://github.com/mbrock/fil-c/commit/54d4f1b4b13b2907eed5e97e27aea8635ca9403b">commit 54d4f1b</a> on <a href="https://github.com/mbrock/fil-c/tree/frame-coloring-o0">mbrock/fil-c frame-coloring-o0</a>, based on pizlonator/fil-c deluge 9d1ed206</p>
 <h1>Frame slot coloring at <code style="font-size:0.9em">-O0</code>: from cubic to near&#8209;linear</h1>
 <p class="sub">At <code>-O0</code>, FilPizlonator spent 48 seconds on one 160-block function. This change brings that down to 0.66 seconds, and the stack frames it produces are exactly the same.</p>
+<figure class="video">
+<video controls playsinline preload="metadata" poster="poster.png" src="explainer.mp4"></video>
+<figcaption>The idea in under a minute. Made with Manim (<a href="video/scene.py">source</a>); the page below has the details.</figcaption>
+</figure>
+
 
 <div class="card race ui" id="race">
   <div class="row" style="margin-bottom:6px"><strong class="grow">Compiling a 160-block generated function at <code>-O0</code> (replayed at 10× speed)</strong><button id="raceBtn">Replay</button></div>
@@ -475,7 +490,7 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
       g += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#1d1c1a">${n.name}</text>`;
       if (c !== undefined) g += `<text x="${x}" y="${y - 17}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#6b675f">${c}</text>`;
     }
-    g += `<text x="6" y="14" font-family="system-ui" font-size="11" fill="#6b675f">conflicts recorded: ${st.edges.size}</text></svg>`;
+    g += `<text x="6" y="14" font-family="Public Sans, sans-serif" font-size="11" fill="#6b675f">conflicts recorded: ${st.edges.size}</text></svg>`;
     $("#graph").innerHTML = g;
 
     // slots
@@ -518,7 +533,7 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
   let raf = 0;
   function draw(cursor, mode) {
     // mode "live": cursor walks up; live allocas = those above cursor. mode "color": cursor walks down; colored allocas = above.
-    let s = `<text x="18" y="${Y(0) - 24}" font-family="system-ui" font-size="12" fill="#6b675f">entry block</text>`;
+    let s = `<text x="18" y="${Y(0) - 24}" font-family="Public Sans, sans-serif" font-size="12" fill="#6b675f">entry block</text>`;
     s += `<rect x="14" y="${Y(0) - 18}" width="300" height="${Y(K + 2) - Y(0) - 2}" fill="none" stroke="#cfc9be" rx="6"/>`;
     rows.forEach((r, k) => {
       const y = Y(k);
@@ -531,10 +546,10 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
     });
     const cy = Y(cursor) - 17;
     s += `<line x1="10" x2="330" y1="${cy}" y2="${cy}" stroke="${mode === "live" ? "var(--val)" : "var(--good)"}" stroke-width="2.5"/>`;
-    s += `<text x="336" y="${cy + 4}" font-family="system-ui" font-size="12" fill="${mode === "live" ? "var(--val)" : "var(--good)"}">${mode === "live" ? "▲ liveness walk" : "▼ placement"}</text>`;
+    s += `<text x="336" y="${cy + 4}" font-family="Public Sans, sans-serif" font-size="12" fill="${mode === "live" ? "var(--val)" : "var(--good)"}">${mode === "live" ? "▲ liveness walk" : "▼ placement"}</text>`;
     // right: RootAlwaysLive vector
     const n = Math.min(cursor, K);
-    s += `<text x="470" y="40" font-family="system-ui" font-size="12" fill="#6b675f">always-live locals, in order</text>`;
+    s += `<text x="470" y="40" font-family="Public Sans, sans-serif" font-size="12" fill="#6b675f">always-live locals, in order</text>`;
     for (let k = 0; k < K; k++) {
       const on = k < n;
       s += `<rect x="${470 + k * 44}" y="52" width="38" height="30" rx="4" fill="${on ? (mode === "live" ? "#f3c27a" : slotColor(k)) : "#fff"}" stroke="#d9a75f"/>`;
@@ -542,9 +557,9 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
     }
     s += `<path d="M ${470} 92 h ${n * 44 - 6}" stroke="${mode === "live" ? "var(--val)" : "var(--good)"}" stroke-width="3"/>`;
     s += `<text x="470" y="112" font-family="ui-monospace,monospace" font-size="12" fill="#1d1c1a">${mode === "live" ? `live here: the first ${n}` : `placed so far: the first ${n}`}</text>`;
-    s += `<text x="470" y="150" font-family="system-ui" font-size="13" fill="#3b3832">${mode === "live" ? "a counter is enough; no conflicts recorded" : "every pointer here avoids their slots"}</text>`;
+    s += `<text x="470" y="150" font-family="Public Sans, sans-serif" font-size="13" fill="#3b3832">${mode === "live" ? "a counter is enough; no conflicts recorded" : "every pointer here avoids their slots"}</text>`;
     if (mode === "color") {
-      s += `<text x="470" y="178" font-family="system-ui" font-size="12" fill="#6b675f">taken set</text>`;
+      s += `<text x="470" y="178" font-family="Public Sans, sans-serif" font-size="12" fill="#6b675f">taken set</text>`;
       for (let k = 0; k < K; k++) s += `<rect x="${470 + k * 24}" y="186" width="20" height="20" rx="3" fill="${k < n ? slotColor(k) : "#fff"}" stroke="#ccc"/><text x="${480 + k * 24}" y="200" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace">${k}</text>`;
       s += `<text x="470" y="226" font-family="ui-monospace,monospace" font-size="12">first free slot = ${n}</text>`;
     }
@@ -583,8 +598,8 @@ function logChart(el, series, { xlab, ylab, xs, ymin, ymax, yfmt = v => v }) {
     s += `<line x1="${L}" x2="${W - Rm}" y1="${y}" y2="${y}" stroke="#ece8e0"/><text x="${L - 8}" y="${y + 4}" text-anchor="end" font-size="11" font-family="ui-monospace,monospace" fill="#6b675f">${yfmt(v)}</text>`;
   }
   for (const x of series.ticks) { const X = lx(x); s += `<line x1="${X}" x2="${X}" y1="${T}" y2="${H - B}" stroke="#f2efe9"/><text x="${X}" y="${H - B + 16}" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#6b675f">${x}</text>`; }
-  s += `<text x="${(L + W) / 2}" y="${H - 6}" text-anchor="middle" font-size="12" font-family="system-ui" fill="#6b675f">${xlab}</text>`;
-  s += `<text x="14" y="${(T + H - B) / 2}" transform="rotate(-90 14 ${(T + H - B) / 2})" text-anchor="middle" font-size="12" font-family="system-ui" fill="#6b675f">${ylab}</text>`;
+  s += `<text x="${(L + W) / 2}" y="${H - 6}" text-anchor="middle" font-size="12" font-family="Public Sans, sans-serif" fill="#6b675f">${xlab}</text>`;
+  s += `<text x="14" y="${(T + H - B) / 2}" transform="rotate(-90 14 ${(T + H - B) / 2})" text-anchor="middle" font-size="12" font-family="Public Sans, sans-serif" fill="#6b675f">${ylab}</text>`;
   for (const sr of series.lines) {
     const pts = sr.pts.map(([x, y]) => `${lx(x)},${ly(y)}`).join(" ");
     s += `<polyline points="${pts}" fill="none" stroke="${sr.color}" stroke-width="2.4" ${sr.dash ? 'stroke-dasharray="5 4"' : ""}/>`;

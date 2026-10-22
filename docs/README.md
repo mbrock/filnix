@@ -1,4 +1,4 @@
-# filnix documentation
+# Documentation
 
 Notes on building software with [Fil-C](https://github.com/pizlonator/fil-c)
 through Nix: how to use the results, how the toolchain is maintained, what

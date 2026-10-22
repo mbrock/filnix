@@ -1,0 +1,217 @@
+/* The Filnix wiki: the docs, the explainers and the landing page share this
+   stylesheet. It follows the luv workshop wiki (luv.swa.sh): Public Sans,
+   a library band with doors, a black status bar, and a justified measure. */
+
+:root {
+  color-scheme: light;
+  --paper: white;
+  --ink: black;
+  --muted: #667078;
+  --rule: #ded8ce;
+  --status-bg: black;
+  --status-ink: ivory;
+  --accent: #9a3248;
+  --code-bg: #f4f1ea;
+  --display-font: "Public Sans", helvetica, arial, sans-serif;
+  --mono-font: ui-monospace, "SF Mono", menlo, consolas, "DejaVu Sans Mono", monospace;
+  --gutter: clamp(1rem, 4vw, 3rem);
+  --measure: 68ch;
+  --workspace-max: 100rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  color: var(--ink);
+  background: var(--paper);
+  font: 17px/1.45 var(--display-font);
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+
+body { margin: 0; min-height: 100vh; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* The library band: eyebrow, site name, and the doors. */
+
+.library {
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 94%, var(--accent));
+}
+
+.library-frame {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.5fr) minmax(0, 1.5fr);
+  gap: 1rem;
+  align-items: center;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.1rem;
+  color: var(--muted);
+  font: 700 0.72rem/1 var(--display-font);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+}
+
+.library h1 {
+  margin: 0;
+  font: 700 1.25rem/1.1 var(--display-font);
+  letter-spacing: -0.02em;
+}
+
+.library h1 a { color: inherit; }
+
+.doors { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.15rem; }
+
+.door {
+  display: block;
+  padding: 0.4rem 0.65rem;
+  color: inherit;
+  font: 700 0.9rem/1.2 var(--display-font);
+  border-bottom: 2px solid transparent;
+}
+
+.door:hover, .door:focus-visible {
+  border-bottom-color: color-mix(in srgb, var(--accent) 60%, var(--rule));
+  text-decoration: none;
+  outline: none;
+}
+
+.door.selected { border-bottom-color: var(--accent); }
+
+/* The status bar: black, monospace, bold. */
+
+.status {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font: 700 0.9rem/1.5 var(--mono-font);
+  color: var(--status-ink);
+  background: var(--status-bg);
+}
+
+.status a { color: inherit; }
+
+.status-frame {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.crumbs, .status-right { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs .crumb-sep { margin: 0 0.45em; opacity: 0.55; }
+.crumbs a.crumb { opacity: 0.75; }
+.crumbs a.crumb:hover { opacity: 1; }
+
+/* The main column. */
+
+.page-frame {
+  width: 100%;
+  max-width: var(--workspace-max);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+main.page-frame { padding-top: clamp(1.5rem, 4vw, 3.25rem); padding-bottom: 3rem; }
+main.reading { max-width: calc(var(--measure) + 2 * var(--gutter)); }
+
+main.with-toc {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, var(--measure));
+  gap: 3rem;
+  justify-content: center;
+}
+
+.toc {
+  position: sticky;
+  top: 2.4rem;
+  align-self: start;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  padding-top: 0.6rem;
+  font: 500 0.82rem/1.4 var(--display-font);
+}
+
+.toc-title {
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font: 700 0.72rem/1 var(--display-font);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc ul ul { padding-left: 0.8rem; }
+.toc li { margin: 0.3rem 0; }
+.toc a { color: var(--ink); opacity: 0.8; }
+.toc a:hover { color: var(--accent); opacity: 1; text-decoration: none; }
+
+/* Headings and prose. */
+
+h1, h2, h3, h4 { font-family: var(--display-font); line-height: 1.16; font-weight: 800; }
+h1 { font-size: 2.2rem; letter-spacing: -0.06em; margin: 0.5rem 0 1.5rem; }
+h2 { font-size: 1.3rem; letter-spacing: -0.04em; margin: 2.6rem 0 0.75rem; }
+h3 { font-size: 1.1rem; letter-spacing: -0.02em; margin: 2rem 0 0.5rem; font-weight: 700; }
+h4 { font-size: 1rem; margin: 1.6rem 0 0.4rem; font-weight: 700; }
+
+/* Pandoc promotes each doc's "# Title" to the page title, so its "##"
+   sections are h1 inside the article, "###" h2, and so on. */
+.doc h1:not(.title) { font-size: 1.3rem; letter-spacing: -0.04em; margin: 2.6rem 0 0.75rem; }
+.doc h2 { font-size: 1.1rem; letter-spacing: -0.02em; margin: 2rem 0 0.5rem; font-weight: 700; }
+.doc h3, .doc h4 { font-size: 1rem; margin: 1.6rem 0 0.4rem; font-weight: 700; letter-spacing: 0; }
+
+p { margin: 0 0 1.1rem; text-align: justify; text-align-last: start; hyphens: auto; }
+
+code, pre { font-family: var(--mono-font); font-size: 0.85em; }
+code { color: color-mix(in srgb, var(--ink) 80%, var(--accent)); }
+pre { background: var(--code-bg); padding: 0.8rem 1rem; overflow-x: auto; line-height: 1.4; }
+pre code { color: inherit; }
+pre.mermaid { background: none; text-align: center; }
+
+blockquote { margin: 1rem 0; padding: 0.1rem 0 0.1rem 1rem; border-left: 3px solid var(--rule); color: #3d4449; }
+table { border-collapse: collapse; margin: 1rem 0; font-size: 0.92em; display: block; overflow-x: auto; }
+th, td { text-align: left; vertical-align: top; padding: 0.3rem 0.8rem 0.3rem 0; border-bottom: 1px solid var(--rule); }
+th { font-weight: normal; color: var(--muted); }
+ul, ol { padding-left: 1.4rem; }
+li { margin: 0.25rem 0; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
+img, video { max-width: 100%; height: auto; }
+
+/* Cards, as on the luv wiki's page catalogue. */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.9rem; margin: 1rem 0 2rem; }
+
+.card-link {
+  display: block;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: inherit;
+}
+
+.card-link:hover { border-color: var(--accent); text-decoration: none; }
+.card-link img { display: block; width: 100%; margin-bottom: 0.7rem; border-radius: 3px; border: 1px solid var(--rule); }
+.card-link strong { display: block; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+.card-link span { display: block; margin-top: 0.35rem; color: var(--accent); font-size: 0.88rem; line-height: 1.35; }
+
+.site-footer { border-top: 1px solid var(--rule); color: var(--muted); font: 500 0.82rem/1.4 var(--display-font); }
+.site-footer .page-frame { padding-top: 1rem; padding-bottom: 3rem; }
+
+@media (max-width: 900px) {
+  .library-frame { grid-template-columns: 1fr; }
+  .doors { justify-content: flex-start; }
+  main.with-toc { display: block; }
+  .toc { display: none; }
+  p { text-align: left; }
+}

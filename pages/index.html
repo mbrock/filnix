@@ -3,25 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>filnix</title>
-<style>
-body { margin: 0; background: #fbfaf7; color: #1d1c1a; font: 17px/1.6 Charter, "Iowan Old Style", Georgia, serif; }
-main { max-width: 720px; margin: 0 auto; padding: 60px 22px; }
-a { color: #2f6fb3; }
-li { margin: 0.6em 0; }
-.meta { color: #6b675f; font-size: 0.9em; }
-</style>
+<title>Filnix wiki</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main>
-<h1>filnix</h1>
-<p>Nix packaging for <a href="https://github.com/pizlonator/fil-c">Fil-C</a>, the memory-safe implementation of C and C++. The source is at <a href="https://github.com/mbrock/filnix">github.com/mbrock/filnix</a>.</p>
-<h2>Documentation</h2>
-<p><a href="docs/">The docs</a>: using the tarballs, NixOS and PHP builds; maintaining the toolchain; notes on individual ports; thread cancellation; and the port campaigns.</p>
-<h2>Explainers</h2>
-<ul>
-<li><a href="frame-coloring-o0/">Frame slot coloring at -O0: from cubic to near-linear</a><br><span class="meta">A FilPizlonator change that takes a 160-block function from 48 s to 0.66 s at -O0 without changing any frame layout. It includes an interactive model of the old and new algorithms.</span></li>
-</ul>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="docs/">Docs</a>
+    <a class="door" href="#explainers">Explainers</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><span class="crumb current">Home</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/filnix">mbrock/filnix</a></span>
+</div></div>
+<main class="page-frame reading">
+<h1>Memory-safe Nix packages</h1>
+<p>Filnix builds Nixpkgs packages with <a href="https://github.com/pizlonator/fil-c">Fil-C</a>, the memory-safe implementation of C and C++. A memory error in a Fil-C program stops it with a panic instead of corrupting memory. This wiki collects how to use the results, how the toolchain is maintained, what individual ports needed, and how the port campaigns run.</p>
+
+<h2>Docs</h2>
+<div class="cards">
+  <a class="card-link" href="docs/index.html#using-filnix"><strong>Using filnix</strong><span>/opt/fil, a relocatable root, NixOS services, PHP</span></a>
+  <a class="card-link" href="docs/index.html#compiler-and-toolchain"><strong>Compiler and toolchain</strong><span>Dev shell, pins, findings to report upstream</span></a>
+  <a class="card-link" href="docs/index.html#notes-on-ports"><strong>Notes on ports</strong><span>Boehm GC and jemalloc on FUGC, Guile, GTK, Ruby</span></a>
+  <a class="card-link" href="docs/index.html#thread-cancellation"><strong>Thread cancellation</strong><span>What Fil-C's glibc needs to get right</span></a>
+  <a class="card-link" href="docs/index.html#port-campaigns"><strong>Port campaigns</strong><span>Runner, caches, audits and repairs</span></a>
+</div>
+
+<h2 id="explainers">Explainers</h2>
+<div class="cards">
+  <a class="card-link" href="frame-coloring-o0/"><img src="frame-coloring-o0/poster.png" alt=""><strong>Frame slot coloring at -O0: from cubic to near-linear</strong><span>48 s to 0.66 s for one function, with identical frames. Video and interactive model.</span></a>
+</div>
 </main>
 </body>
 </html>
