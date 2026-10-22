@@ -677,6 +677,10 @@ let
                     ../patches/php-8.5-deepbind-filc.patch
                     # Linear rather than quadratic string appends on the system allocator.
                     ../patches/php-8.5-realloc-filc.patch
+                    # A computed-goto (HYBRID) VM without global registers,
+                    # inlining only a small hot set of handlers; JIT builds
+                    # keep the CALL VM. See docs/php.md.
+                    ../patches/php-8.5-hybrid-vm-filc.patch
                   ]
                   ++ opcachePatches
                 );
@@ -711,6 +715,10 @@ let
                 ];
             }
             // final.lib.optionalAttrs is85 {
+              # Regenerate the VM from the patched generator.
+              postPatch = (old.postPatch or "") + ''
+                (cd Zend && ${final.buildPackages.php.unwrapped}/bin/php -n zend_vm_gen.php)
+              '';
               # The built-in extensions' suites, which the shared ones run in
               # their own builds: OPcache and URI (which parses with Lexbor).
               doCheck = true;

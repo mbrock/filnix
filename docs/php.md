@@ -445,6 +445,78 @@ natively either: they include `ext/standard/php_smart_string.h`, which 8.5
 removed, and Nixpkgs marks them broken. They need newer releases. The
 extensions not ported to 8.4 are not ported to 8.5 either.
 
+### Interpreter dispatch
+
+PHP picks one of three VM kinds. CALL calls each opcode handler through a
+function pointer from a loop. HYBRID jumps between handlers inside one big
+`execute_ex` with computed `goto`. TAILCALL, new in 8.5, has handlers
+tail-call each other. Upstream uses HYBRID only with GCC's global register
+variables and TAILCALL only with `preserve_none`, and Fil-C's clang has
+neither. That made Fil-C's 8.5 build fall back to CALL, which costs a call,
+a Fil-C frame push and pop, and a return per opcode.
+
+TAILCALL stays out of reach. Fil-C keeps a `musttail` call as a tail call
+only when the pointers it passes are the caller's own incoming arguments.
+PHP's handlers pass a new `opline`, so their tail calls become ordinary
+calls. An unmerged upstream ABI change (branch
+`fil/callee_arg_roots_abi_change`) would lift that restriction, but it was
+not evaluated.
+
+`php-8.5-hybrid-vm-filc.patch` adds a Fil-C HYBRID mode to
+`zend_vm_gen.php`, and the build regenerates `zend_vm_execute.h` with a
+native PHP. The mode differs from upstream HYBRID in three ways:
+
+- No global registers. `execute_data` and `opline` are locals of
+  `execute_ex`, and out-of-line handlers keep CALL's protocol: they take
+  `(execute_data, opline)` and return the next opline.
+- Only a hot set is inlined into `execute_ex`: arithmetic, comparisons,
+  increments and decrements, `QM_ASSIGN`, the jumps, `FETCH_DIM_R_INDEX`,
+  bitwise ops, `TYPE_CHECK`, `ISSET_ISEMPTY_CV` and `NOP`, which is 136
+  specialized handlers. Every other handler stays out of line and is
+  reached through the same computed `goto` table. Inlining all of them made
+  `execute_ex` slower than CALL: FilPizlonator re-records pointer roots at
+  the dispatch loop's header, and the huge function spills.
+- The JIT red zone is reserved only with global registers.
+
+The mode is chosen with `defined(__FILC__) && !defined(HAVE_JIT)`.
+`php85-jit` is configured with the JIT, so it keeps CALL, which its C
+backend relies on. PHP 8.4 is unchanged.
+
+Gains over CALL, measured as minimum cycles on a loaded machine with
+interleaved runs. `Zend/bench.php` totals leave out `strcat`, which is
+dominated by string allocation:
+
+| | release | staging |
+|---|---|---|
+| bench.php total | −11.4% | −16.1% |
+| mandel / mandel2 | −10.5% / −12.9% | −14.5% / −18.1% |
+| fibo(30) | −14.7% | −18% |
+| simple | −37% | −39% |
+| micro: `for` loop | −35% | −34% |
+| micro: arithmetic | −26% | −23% |
+| micro: user function call | −18% | −20% |
+| micro: array reads | −15% | −11% |
+| micro: internal function call | −1% | −6% |
+
+In the PHP application benchmark (five interleaved rounds), HYBRID ran
+2.3% fewer user instructions on DokuWiki and 3.3% fewer on MediaWiki and
+WordPress. Cycle deltas there were within the noise of a loaded machine.
+
+Compiling `zend_execute.c` takes 139 s and 1.7 GB instead of 115 s and
+1.2 GB. The binary is 0.7 MB larger.
+
+On release, the store binaries pass the same 6145 `Zend/tests` and OPcache
+tests under both VMs, with 2 expected failures and 185 skipped. A local
+staging build with `zend_test` also gives identical results under both VMs.
+These problems occur under both VMs, so the VM choice does not cause them:
+
+- `gh10370_2`, `_3` and `_4` (`copy_file_range`) fail.
+- `revalidate_path_01` is flaky, because `posix_spawn` sometimes fails with
+  `ENOENT` when it starts the CLI server.
+- `stack_limit_009` hangs, recursing in C through `zend_test`.
+- With `-j12`, `run-tests.php` sometimes hangs at its last tests, leaving
+  defunct workers.
+
 ## Upstream
 
 The port is also in upstream Fil-C's Projeny format, on branch
