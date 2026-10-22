@@ -50,6 +50,20 @@ before the release's final commits. The experiment remains a
 [draft comparison PR](https://github.com/pizlonator/fil-c/pull/332), not a
 merge-ready claim of soundness.
 
+The staging pin, [2e92032bd923](https://github.com/mbrock/fil-c/commit/2e92032bd9236946183d1b7eb60663785a6bfdd9),
+adds two follow-ups on top of that experiment: near-linear `-O0` frame slot
+coloring (92c381beeb23) and a narrower union alignment rejection. The
+experiment rejected every pointer-bearing union with declared alignment below
+a word, which broke systemd's packed `HashmapBase` storage union
+(`src/basic/hashmap.c`). Release and `deluge` compile it, and upstream's
+systemd 256.4 port leaves that file unmodified. Staging now checks pointer
+offsets and strides relative to a word-aligned start and relies on the runtime
+alignment check of each pointer access, as release does. Global and TLS
+initializers store pointer leaves without access checks, so a pointer at a
+non-word offset in an initializer is now a compile error. In release it
+triggers a compiler assertion (globals) or an unchecked capability write
+across two aux words (TLS).
+
 Residual work absent from v0.686, established by source comparison:
 
 | Area | Staging change | Regression |
@@ -59,7 +73,7 @@ Residual work absent from v0.686, established by source comparison:
 | Pointer CAS | Revalidate shadow state after the primary load, with an ARM64 load-load fence | `fork-regressions.tests.cas-expected-cap` |
 | ARM64 glibc | Obtain saved jump-buffer frame identity through `zget_jmp_buf_frame` | staging cancellation C++ cleanup |
 | Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |
-| Unions/varargs | Complete aggregate-varargs transport, conservative alignment rejection, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites and QuickJS |
+| Unions/varargs | Complete aggregate-varargs transport, rejection of pointer words misaligned relative to a word-aligned start, misaligned-pointer initializer errors, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites (including `unionpackedstorage`, `unionpackedstoragefail`, `initmisalignedptrfail`), QuickJS and systemd |
 | SaRCAsm | Reject a stack-pointer carrier passed as a call argument; expand `.rept`/`.endr` (`patches/sarcasm-*.patch`, applied by `packages/sarcasm.nix`; proposed upstream from `mbrock/fil-c` branches `sarcasm-callarg-carrier` and `sarcasm-rept`) | `staging-sarcasm-fixes` |
 
 Filip's release independently lowers pointer-bearing unions to pointer storage.
