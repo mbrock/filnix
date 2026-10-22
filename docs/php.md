@@ -461,13 +461,14 @@ path. These changes are specific to 8.5:
   over 206 patterns), checked against native results. In user cycles
   against native PCRE2 without its JIT, DokuWiki's calls went from 8.9× to
   4.5× and WordPress's from 7.9× to 5.3× on a busy machine, or about 3.7×
-  on a quiet one. In the application benchmark (staging, three rounds,
-  busy machine) DokuWiki went from 9.4× to 7.8× native cycles, and its
-  search request from 15.2× to 10.6×. WordPress went from 8.5× to 8.1×.
-  PCRE is now 17% of Fil-C's cycles on DokuWiki and 3.5% on WordPress
+  on a quiet one. In the application benchmark (release toolchain,
+  fixture version 2, five interleaved rounds, against the same build with
+  Nixpkgs' PCRE2), instructions and best user cycles fell 0.9% and 3.3% on
+  DokuWiki, 1.3% and 3.1% on MediaWiki, and 3.8% and 5.8% on WordPress,
+  where cycles were lower in every round
   ([thread](https://ampcode.com/threads/T-01a163ac-9b72-7219-821f-9a8993781dc3)).
-  91% of DokuWiki's PCRE time is the search request's highlighter, which
-  backtracks over every page because the fixtures are all lorem ipsum.
+  DokuWiki's PCRE time is now small; with the first fixtures, whose pages
+  were all lorem ipsum, its search highlighter backtracked over every page.
 
 The `unserialize()` use-after-free reproduction above stops with a Fil-C
 panic on 8.5.12 with the default allocator and completes on Zend's.
