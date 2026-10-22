@@ -539,6 +539,7 @@ def get(port, url, timeout=600):
 
 class Server:
     def __init__(self, app, var, logdir):
+        lock()
         self.app = app
         self.name, php, env, ini = variant(var)
         root, appenv, router, self.urls = app_config(app)
@@ -654,9 +655,16 @@ def zend_bench(var, out):
             "loadavg": open("/proc/loadavg").read().split()[:3]}
 
 
+_LOCK = None
+
+
 def lock():
     """One measurement at a time on this machine: runs share the fixtures'
-    ports, and concurrent runs would disturb each other's counts."""
+    ports, and concurrent runs would disturb each other's counts. Held until
+    the process exits; Server takes it too, for scripts that import this."""
+    global _LOCK
+    if _LOCK:
+        return _LOCK
     import fcntl
     os.makedirs(STATE, exist_ok=True)
     f = open(os.path.join(STATE, "lock"), "w")
@@ -665,6 +673,7 @@ def lock():
     except BlockingIOError:
         print(f"waiting for another php-bench run ({STATE}/lock)", flush=True)
         fcntl.flock(f, fcntl.LOCK_EX)
+    _LOCK = f
     return f
 
 
