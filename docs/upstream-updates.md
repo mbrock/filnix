@@ -50,9 +50,11 @@ before the release's final commits. The experiment remains a
 [draft comparison PR](https://github.com/pizlonator/fil-c/pull/332), not a
 merge-ready claim of soundness.
 
-The staging pin, [2e92032bd923](https://github.com/mbrock/fil-c/commit/2e92032bd9236946183d1b7eb60663785a6bfdd9),
-adds two follow-ups on top of that experiment: near-linear `-O0` frame slot
-coloring (92c381beeb23) and a narrower union alignment rejection. The
+The staging pin, [51e7f8c62606](https://github.com/mbrock/fil-c/commit/51e7f8c626067ab213c984821457f03dc6769a67)
+(branch `staging-php-perf`), adds four follow-ups on top of that experiment:
+near-linear `-O0` frame slot coloring (92c381beeb23), a narrower union
+alignment rejection (2e92032bd923), and two FilPizlonator optimizations for
+PHP's interpreter, described below. The union change: The
 experiment rejected every pointer-bearing union with declared alignment below
 a word, which broke systemd's packed `HashmapBase` storage union
 (`src/basic/hashmap.c`). Release and `deluge` compile it, and upstream's
@@ -63,6 +65,30 @@ initializers store pointer leaves without access checks, so a pointer at a
 non-word offset in an initializer is now a compile error. In release it
 triggers a compiler assertion (globals) or an unchecked capability write
 across two aux words (TLS).
+
+The two optimizations, each reviewed with Oracle for soundness:
+
+- **Frame alias scope** (5dd226b7fbcb). A function's Fil-C frame escapes into
+  the thread's frame list, so every store recording a pointer's lower made
+  alias analysis assume it might alias any load, and object header loads
+  were not CSEd across them (PHP's ADD handler loaded an upper bound 14
+  times). Loads and stores of the frame now get their own alias scope that
+  other loads and stores are `noalias` with; calls stay untagged, so the GC
+  and runtime still observe frames at every call. The tagging runs once,
+  right after lowering; `-filc-frame-alias-scope=0` turns it off. PHP 8.5:
+  0.2–7.5% fewer instructions in micro-benchmarks. It applies cleanly to
+  `deluge` and is meant for upstream.
+- **Getter cache** (10590066910c on `php-runtime-hotspots`). A use of a
+  global defined in another module, such as PHP's `EG()`, called that
+  module's getter every time. Permanent global objects are now cached in a
+  module-private slot with acquire/release ordering; TLS and heap-backed
+  results stay uncached. It assumes modules holding cached globals are not
+  `dlclose`d. PHP 8.5: −2.4% instructions on `Zend/bench.php`.
+
+Their regressions are `framealiasscope`, `framealiasthreads`,
+`framealiasnonlocal`, `framealiasaddress` and `getter_cache_tls` in the
+fork's `filc/tests`. The fork's 3936 single-file tests give the same results
+with the frame scope on and off.
 
 Residual work absent from v0.686, established by source comparison:
 
