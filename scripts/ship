@@ -8,7 +8,10 @@
 # outputs in scripts/ci-outputs.txt to be in the public caches. On the host
 # that runs the cache publisher (swa), this builds them at the rebased
 # commit, queues them with filnix-publish-cache for both caches, and waits
-# until scripts/ci-cache-check.py passes before pushing. The pre-push hook
+# until scripts/ci-cache-check.py passes before pushing. On other hosts that
+# can ssh to the publisher host (FILNIX_PUBLISH_HOST, default swa.sh) and sudo
+# there, such as igloo, it builds locally, copies the outputs there and queues
+# them with that host's publisher. The pre-push hook
 # then verifies the commits (see scripts/git-hooks/pre-push).
 #
 # Only commits are shipped: uncommitted changes to tracked files stop it.
@@ -41,9 +44,16 @@ if [ "$sha" = "$(git rev-parse origin/main)" ]; then
 fi
 
 publisher=/opt/filnix-cache/bin/filnix-publish-cache
+# Elsewhere (igloo), build here and publish through the publisher host.
+publish_host=${FILNIX_PUBLISH_HOST:-swa.sh}
+on=()
 if [ $publish = 1 ] && { [ ! -x $publisher ] || ! sudo -n true 2>/dev/null; }; then
-  echo "ship: no cache publisher here; pushing without publishing (CI fails until a campaign publishes ${sha:0:12})" >&2
-  publish=0
+  if ssh -o BatchMode=yes -o ConnectTimeout=10 "$publish_host" "test -x $publisher && sudo -n true" 2>/dev/null; then
+    on=(ssh -o BatchMode=yes "$publish_host")
+  else
+    echo "ship: no cache publisher here or on $publish_host; pushing without publishing (CI fails until a campaign publishes ${sha:0:12})" >&2
+    publish=0
+  fi
 fi
 
 if [ $publish = 1 ]; then
@@ -60,13 +70,24 @@ if [ $publish = 1 ]; then
       nix build --out-link "$gcroots/$i" --print-out-paths "git+file://$filnix_root?rev=$sha#$attr^*"
     )
   done < scripts/ci-outputs.txt
+  if [ ${#on[@]} -gt 0 ]; then
+    paths=()
+    for ((j = 1; j < ${#roots[@]}; j += 2)); do paths+=("${roots[j]}"); done
+    echo "ship: copying the outputs to $publish_host"
+    # Built here, so unsigned; the publisher signs them for its caches.
+    nix copy --no-check-sigs --to "ssh-ng://$publish_host" "${paths[@]}"
+    # Root them there until the caches have them, as the out-links do here.
+    remote_roots=$("${on[@]}" mktemp -d)
+    trap 'rm -rf "$gcroots"; "${on[@]}" rm -rf "$remote_roots"' EXIT
+    "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/out" "${paths[@]}" >/dev/null
+  fi
   for target in local cachix; do
     credential=()
     [ $target = cachix ] && credential=(-p LoadCredential=cachix.dhall:/etc/filnix-cache/cachix.dhall)
     # The publisher's timer may hold its lock; queued roots are durable, so
     # one successful run is enough and the timer finishes the upload.
     for attempt in $(seq 1 40); do
-      if sudo systemd-run --quiet --wait --pipe --collect -p User=filnix-cache -p Group=filnix-observe \
+      if "${on[@]}" sudo systemd-run --quiet --wait --pipe --collect -p User=filnix-cache -p Group=filnix-observe \
         "${credential[@]}" $publisher $target --batches 32 "${roots[@]}"; then
         break
       fi
