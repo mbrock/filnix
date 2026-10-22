@@ -4,7 +4,8 @@
 # functions (SDL_compat), and unwinds that survive a cleanup throwing and
 # catching its own exception, or a switch to a fiber that does (Nix); and
 # PHP 8.5 allocator work: small payload memmove/memset through libc, and
-# FUGC keeping freshly swept pages from the scavenger until they are reused.
+# FUGC keeping freshly swept pages from the scavenger until they are reused,
+# and a glibc memcmp that does not heap-allocate on every call.
 { pkgsFilc }:
 let
   cases = {
@@ -44,6 +45,11 @@ let
     payload-memops = ''
       $CC $opt ${./fork-regressions/payload-memops.c} -pthread -o memops
       timeout 300 ./memops | grep -qx 'payload memops ok'
+    '';
+    memcmp-noalloc = ''
+      $CC $opt ${./fork-regressions/memcmp-noalloc.c} -o memcmp
+      timeout 300 ./memcmp | tee memcmp.log
+      grep -qx 'memcmp noalloc ok' memcmp.log
     '';
     scavenge-hold = ''
       $CC $opt ${./fork-regressions/scavenge-hold.c} -o hold

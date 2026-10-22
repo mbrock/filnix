@@ -102,6 +102,7 @@ Residual work absent from v0.686, established by source comparison:
 | Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |
 | Unions/varargs | Complete aggregate-varargs transport, rejection of pointer words misaligned relative to a word-aligned start, misaligned-pointer initializer errors, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites (including `unionpackedstorage`, `unionpackedstoragefail`, `initmisalignedptrfail`), QuickJS and systemd |
 | Small memmove/memset | Payload copies and fills of 16 bytes or more under the poll-check limit call libc instead of a byte loop with a compiler fence per byte; capability (aux) handling is unchanged | `fork-regressions.tests.payload-memops` |
+| glibc memcmp | `memcmp_bytes` finds the first differing byte from `ctz(a ^ b)` instead of taking its arguments' addresses, which put eight heap allocations in every `memcmp` and `bcmp` call (proposed upstream from `mbrock/fil-c` branch `glibc-memcmp-noalloc`) | `fork-regressions.tests.memcmp-noalloc` |
 | Scavenger and GC | After each FUGC cycle, the scavenger does not take pages emptied since that cycle began, until the next cycle replaces the hold or `FUGC_SCAVENGE_HOLD_MS` passes (default 10000; 0 disables). Pages are held for one cycle, not 10 s each | `fork-regressions.tests.scavenge-hold` |
 | SaRCAsm | Reject a stack-pointer carrier passed as a call argument; expand `.rept`/`.endr` (`patches/sarcasm-*.patch`, applied by `packages/sarcasm.nix`; proposed upstream from `mbrock/fil-c` branches `sarcasm-callarg-carrier` and `sarcasm-rept`) | `staging-sarcasm-fixes` |
 
@@ -177,6 +178,19 @@ payload now goes through libc, cutting user instructions by 4–5%. The byte
 loops never made payload words atomic, so racing readers see nothing they
 could not see before. Memset already skipped capability clearing for
 objects without aux, about 80% of the bytes PHP fills.
+
+**memcmp allocations.** Generic glibc `memcmp` inlines `memcmp_bytes`,
+which took the addresses of its two word arguments. Fil-C keeps
+address-taken locals on the heap, so every `memcmp` and `bcmp` call made
+eight 32-byte allocations before its first branch. PHP 8.5 serving WordPress
+made 21 M of them per pass over its requests (678 MB, about a third of all
+it allocated), mostly from `zend_hash_find`, `zend_is_identical` and string
+functions, and they set how often FUGC collected. With the fix, GC cycles
+per pass fell from 8 to 6 on WordPress and from 5.7 to 4.3 on MediaWiki;
+user instructions fell 3.7% and 4.0%, user cycles about 5% on both; DokuWiki
+was unchanged. Oracle found the change exact for every caller (all pass
+differing words), with no bounds or constant-time guarantee affected:
+generic `memcmp` never was constant time.
 
 **Cancellation cost.** The staging cancellation patches added signal-mask
 syscalls that release Fil-C does not make, from two sources:
