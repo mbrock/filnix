@@ -42,7 +42,9 @@ table { border-collapse: collapse; font: 14px var(--mono); }
 td, th { padding: 4px 12px; text-align: right; border-bottom: 1px solid var(--line); }
 th { color: var(--mute); font-weight: 500; }
 td:first-child, th:first-child { text-align: left; }
-.callout { border-left: 3px solid var(--alloca); padding: 4px 0 4px 14px; margin: 18px 0; }
+.terms { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 14px 0 0; padding: 12px 16px; background: #f4f1ea; border-radius: 8px; font-size: 0.93em; }
+.terms dt { font-weight: 600; }
+.terms dd { margin: 0; }
 
 /* race */
 .race .lane { display: grid; grid-template-columns: 170px 1fr 90px; gap: 12px; align-items: center; margin: 8px 0; }
@@ -87,56 +89,71 @@ td:first-child, th:first-child { text-align: left; }
 
 <p class="meta" style="margin-top:3em">Fil-C · FilPizlonator · <code>computeFrameIndexMap</code> · <a href="https://github.com/mbrock/fil-c/commit/54d4f1b4b13b2907eed5e97e27aea8635ca9403b">commit 54d4f1b</a> on <a href="https://github.com/mbrock/fil-c/tree/frame-coloring-o0">mbrock/fil-c frame-coloring-o0</a>, based on pizlonator/fil-c deluge 9d1ed206</p>
 <h1>Frame slot coloring at <code style="font-size:0.9em">-O0</code>: from cubic to near&#8209;linear</h1>
-<p class="sub">At <code>-O0</code>, a 160-block function took 48 seconds in FilPizlonator. After this change it takes 0.66 seconds, and every frame layout comes out exactly the same.</p>
+<p class="sub">At <code>-O0</code>, FilPizlonator spent 48 seconds on one 160-block function. This change brings that down to 0.66 seconds, and the stack frames it produces are exactly the same.</p>
 
 <div class="card race ui" id="race">
   <div class="row" style="margin-bottom:6px"><strong class="grow">Compiling a 160-block generated function at <code>-O0</code> (replayed at 10× speed)</strong><button id="raceBtn">Replay</button></div>
   <div class="lane"><span>before</span><div class="bar"><div class="fill" id="raceOld" style="background:var(--bad)"></div></div><span class="t bad" id="raceOldT">0.0 s</span></div>
   <div class="lane"><span>after</span><div class="bar"><div class="fill" id="raceNew" style="background:var(--good)"></div></div><span class="t good" id="raceNewT">0.0 s</span></div>
-  <div class="meta">filcc, <code>-O0 -shared -fPIC</code>. The times are wall clock on a loaded 64-core machine. Results are under <a href="#results">results</a>.</div>
+  <div class="meta">filcc, <code>-O0 -shared -fPIC</code>, wall clock on a loaded 64-core machine. All numbers are under <a href="#results">results</a>.</div>
 </div>
 
-<h2>Where it showed up</h2>
-<p>The work behind this was an experiment in retargeting PHP's opcache JIT to Fil-C. The JIT's IR is printed as C, compiled with Fil-C's clang, and loaded with <code>dlopen</code>, the same approach as Emacs' native-compilation backend on Fil-C. JIT traces become long, branchy functions: guard, guard, overflow-checked add, call a helper, repeat. At <code>-O1</code> such a function compiled in well under a second. At <code>-O0</code> the time grew steeply with function size: 0.8&nbsp;s for 40 blocks, 4.7&nbsp;s for 80, 48&nbsp;s for 160, and 597&nbsp;s with 2.8&nbsp;GB of memory for 300.</p>
-<p><code>-ftime-report</code> put <b>99.6%</b> of cc1's time in <code>FilPizlonatorPass</code> (8.81 of 8.96&nbsp;s at 80 blocks). <code>perf</code> put most of that in <code>computeFrameIndexMap</code> and its <code>FrameEntry</code> hash lookups. The abstract interpreter and the check scheduling were not the cause.</p>
+<h2>The problem</h2>
+<p>A JIT that prints its traces as C produces long, branchy functions: check a type, check another, add with an overflow check, call a helper, repeat. We hit this compiling PHP's opcache JIT output with Fil-C, much as Emacs' native compiler works on Fil-C. At <code>-O1</code> such a function compiles in well under a second. At <code>-O0</code>, doubling its size made the compile roughly ten times slower: 0.8&nbsp;s at 40 blocks, 4.7&nbsp;s at 80, 48&nbsp;s at 160, and 597&nbsp;s and 2.8&nbsp;GB at 300.</p>
+<p>The profile was lopsided. At 80 blocks, 99.6% of the compile was in FilPizlonator, and most of that was in one function, <code>computeFrameIndexMap</code>.</p>
 
-<h2>What <code>computeFrameIndexMap</code> does</h2>
-<p>Every instrumented function pushes a <code>filc_frame</code>, and that frame ends in a <code>lowers[]</code> array. Whenever the function holds a pointer that FUGC must see while it scans the stack, the pointer's capability (its <i>lower</i>) sits in a slot of that array. Naked local allocas, the ones without a header, mirror their stack aux into a slot as well.</p>
-<p>The pass gives every pointer-bearing value a slot index. Two values can share a slot if they are never live at the same time. So the pass computes liveness, builds an <b>interference graph</b>, and colors it greedily: it visits values in a fixed order (arguments, then instructions in block order) and gives each the lowest slot that no already-colored neighbor holds. This is register allocation with an unlimited register file, where the goal is a small frame.</p>
-
-<h2>Why <code>-O0</code> blows up</h2>
-<p>A static alloca that is small enough and doesn't escape becomes <code>LocalNaked</code>. If it has no lifetime markers, it also goes into <code>AlwaysLive</code>. Optimized builds give most locals <code>llvm.lifetime.start/end</code>, which bound their live ranges. Clang emits no lifetime markers at <code>-O0</code>, so <b>every local is AlwaysLive</b>. The old code made them live like this:</p>
-<pre><span class="c">// Make sure that AlwaysLive allocas are always live. This is very hacky, but is obviously
-// correct.</span>
-<span class="k">for</span> (BasicBlock* BB : Blocks)
-  <span class="k">for</span> (Instruction&amp; I : *BB)
-    <span class="k">if</span> (AllocaInst* AI = dyn_cast&lt;AllocaInst&gt;(&amp;I))
-      <span class="k">if</span> (AlwaysLive.count(AI))
-        <span class="k">for</span> (<span class="k">auto</span>&amp; Pair : LiveAtTail)
-          Pair.second.insert(&amp;I);   <span class="c">// into every block's live set</span></pre>
-<p>That really is correct. The cost shows up in the next two steps:</p>
+<h2>What that function does</h2>
+<p>Every Fil-C function has a frame with an array of <b>slots</b> (<code>lowers[]</code>). The function keeps the capability of each pointer it holds in a slot, so the garbage collector can find it. Two pointers can share a slot if they are never live at the same time. <code>computeFrameIndexMap</code> picks a slot for each pointer in three steps:</p>
 <ol>
-<li><b>Building the graph.</b> The backward walk adds an edge from each defined value to everything live. With <span class="pill a">A</span> always-live allocas and <span class="pill v">P</span> pointer values, the allocas form a clique and each of them is adjacent to every value: about A·(A/2 + P) edges, each stored twice in an <code>unordered_set</code>.</li>
-<li><b>Coloring it.</b> For each candidate slot, the old picker scanned the value's <i>whole</i> adjacency list, looking for a colored neighbor that holds that slot. A pointer value starts at slot 0 and collides with an alloca at each of the first A slots. Every collision costs a scan through an adjacency list of at least A entries, so the total is about P·A²/2 neighbor checks.</li>
+<li>Walk the function backward to find where each pointer is live.</li>
+<li>Record a <b>conflict</b> between every two pointers that are live at the same time.</li>
+<li>Go through the pointers in program order. <b>Place</b> each one in the lowest slot that none of its already-placed conflicts holds.</li>
 </ol>
-<p>The 160-block test function has A&nbsp;=&nbsp;803 and P&nbsp;=&nbsp;4,647, which works out to about 4 million edges and about <b>1.5 billion</b> hash lookups to place the values. Doubling the function multiplies the time by roughly 8 to 12.</p>
+<p>This is greedy graph coloring, with slots as the colors. The rest of the page uses these words:</p>
+<dl class="terms">
+<dt>local</dt><dd>A small stack variable (<code>alloca</code>) that doesn't escape. It keeps its pointer in a slot too.</dd>
+<dt>always-live local</dt><dd>A local with no lifetime markers, which the pass treats as live throughout the function. In the code: <code>AlwaysLive</code>.</dd>
+<dt>conflict</dt><dd>Two pointers live at once, which therefore need different slots. In the code: an interference edge.</dd>
+<dt>place</dt><dd>Choose the slot for one pointer. In the code: color.</dd>
+</dl>
+
+<h2>Why <code>-O0</code> makes it cubic</h2>
+<p>Lifetime markers (<code>llvm.lifetime.start</code> and <code>.end</code>) tell the pass where a local is in use. Clang emits none at <code>-O0</code>, so <b>every local is always-live</b>. The old code handled always-live locals in the simplest correct way: it added each one to the live set of every block. As a result, each always-live local conflicts with every other local and with every pointer in the function.</p>
+<p>Say there are <span class="pill a">L</span> always-live locals and <span class="pill v">P</span> pointer values:</p>
+<ul>
+<li><b>Recording</b> takes about L·(L/2 + P) conflicts, each stored twice in a hash set.</li>
+<li><b>Placing</b> a pointer tries slot 0, then 1, then 2, and so on, and the locals hold the first L slots. For each slot it tries, the old code scanned the pointer's whole conflict list, which has at least L entries. That comes to about P·L²/2 checks.</li>
+</ul>
+<p>The 160-block function has L&nbsp;=&nbsp;803 and P&nbsp;=&nbsp;4,647. That is about 4 million conflicts and 1.5 billion checks.</p>
+
+<h2>The idea: these conflicts follow a pattern, so don't record them</h2>
+<p>All locals are declared at the top of the function, in its entry block. An always-live local is live everywhere below its own declaration. So at any point in the function, the live always-live locals are simply <b>the first <i>k</i> of them</b> in declaration order, where <i>k</i> is how many were declared above that point. Past the entry block, that means all of them.</p>
+<p>Placement visits the entry block first, in the same order. When it reaches a pointer, the always-live locals it has already placed are exactly the ones that were live where that pointer was defined. So every pointer just has to avoid the slots of all always-live locals placed so far. Those slots form one shared, growing <b>taken set</b>, which replaces millions of recorded conflicts.</p>
+
+<div class="card ui prefix" id="prefixCard">
+  <div class="row"><strong class="grow" id="prefixTitle">Liveness walks up, placement walks down, and both see the same first k locals</strong><button id="prefixBtn">Replay</button></div>
+  <svg id="prefixSvg" viewBox="0 0 760 320"></svg>
+  <div class="narr" id="prefixNarr"></div>
+</div>
+
+<p>Nothing ever leaves the taken set, so it can remember its first free slot. The search for a slot starts there.</p>
 
 <h2>Step through it</h2>
-<p>Below is a small program in the shape the PHP trace emits. It has three blocks, two locals per block, and three pointer values per block, all in one block so it fits on screen. The page runs a JavaScript model of both versions of the function on it. Under <code>-O0</code>, watch the amber allocas pick up edges to everything. Under <code>-O2</code>, lifetime markers keep the graph small, and both versions do about the same work.</p>
+<p>The widget below is a small program shaped like a JIT trace. It runs JavaScript models of the old and new code side by side. With <i>-O0</i> and <i>before</i>, the locals (amber) gain conflicts with everything. Switch to <i>after</i> and the same placements come out with almost no conflicts recorded. With <i>-O2</i>, lifetime markers keep the conflicts few, and the two versions do similar work.</p>
 
 <div class="card ui wide" id="stepperCard">
   <div class="row" style="margin-bottom:8px">
     <span>Program</span>
-    <button data-preset="o0" class="on">-O0 (no lifetime markers)</button>
-    <button data-preset="o2">-O2 (lifetime markers)</button>
-    <button data-preset="mixed">corner case: late lifetime start</button>
+    <button data-preset="o0" class="on">-O0: no lifetime markers</button>
+    <button data-preset="o2">-O2: lifetime markers</button>
+    <button data-preset="mixed">edge case: late start</button>
     <span style="width:14px"></span>
-    <span>Algorithm</span>
+    <span>Code</span>
     <button data-algo="old" class="on">before</button>
     <button data-algo="new">after</button>
   </div>
   <div class="row" style="margin-bottom:10px">
-    <button id="play">▶ Play</button><button id="step">Step</button><button id="toColor">Skip to coloring</button><button id="finish">Finish</button><button id="reset">Reset</button>
+    <button id="play">▶ Play</button><button id="step">Step</button><button id="toColor">Skip to placement</button><button id="finish">Finish</button><button id="reset">Reset</button>
     <label class="row" style="gap:6px">speed <input type="range" id="speed" min="1" max="60" value="12"></label>
     <span class="grow"></span>
     <span id="phase" class="meta"></span>
@@ -145,17 +162,17 @@ td:first-child, th:first-child { text-align: left; }
     <div>
       <div class="listing" id="listing"></div>
       <div class="legend" style="margin-top:8px">
-        <span><span class="sw" style="background:var(--alloca)"></span>alloca live</span>
-        <span><span class="sw" style="background:repeating-linear-gradient(45deg,#e9c48f 0 2px,transparent 2px 4px)"></span>alloca live, implied by the prefix (after)</span>
-        <span><span class="sw" style="background:var(--val)"></span>value live</span>
-        <span>red edges: recorded at a late lifetime start</span>
-        <span>dashed: avoided through Taken (after), no edge stored</span>
+        <span><span class="sw" style="background:var(--alloca)"></span>local live</span>
+        <span><span class="sw" style="background:repeating-linear-gradient(45deg,#e9c48f 0 2px,transparent 2px 4px)"></span>local live, known from the pattern (after)</span>
+        <span><span class="sw" style="background:var(--val)"></span>pointer live</span>
+        <span>red line: conflict recorded for a late start</span>
+        <span>dashed line: avoided through the taken set, not recorded</span>
       </div>
     </div>
     <div>
       <div class="graph" id="graph"></div>
-      <div class="counters"><div><span>hash-set inserts</span><b class="big" id="cIns">0</b></div><div><span>neighbor and slot checks</span><b class="big" id="cChk">0</b></div></div>
-      <div class="meta">lowers[] slots</div>
+      <div class="counters"><div><span>conflict inserts</span><b class="big" id="cIns">0</b></div><div><span>checks</span><b class="big" id="cChk">0</b></div></div>
+      <div class="meta">frame slots</div>
       <div class="strip" id="strip"></div>
       <div class="narr" id="narr"></div>
     </div>
@@ -163,24 +180,8 @@ td:first-child, th:first-child { text-align: left; }
   <div id="compare" class="meta" style="margin-top:10px"></div>
 </div>
 
-<h2>The observation</h2>
-<p>Static allocas live in the root block. An always-live naked alloca there is live everywhere <i>except above its own definition</i>. Take the always-live root allocas in root-block order and call them <code>RootAlwaysLive</code>. At any program point, the live ones are exactly those defined above that point, which is always a <b>prefix</b> of the list.</p>
-<p>The coloring visits the root block first, in the same order. So when it reaches a value, the root allocas it has already colored are the ones live where that value is defined. Inside the root block that is a prefix, and everywhere else it is all of them. The new code therefore doesn't record those edges at all. It keeps one growing set of slots taken by colored root allocas, and every value avoids that set.</p>
-
-<div class="card ui prefix" id="prefixCard">
-  <div class="row"><strong class="grow" id="prefixTitle">Liveness walks backward; coloring walks forward</strong><button id="prefixBtn">Replay</button></div>
-  <svg id="prefixSvg" viewBox="0 0 760 320"></svg>
-  <div class="narr" id="prefixNarr"></div>
-</div>
-
-<p>Values defined later never free a slot in that set, so the set only grows. It tracks its first missing index, and the slot search starts there:</p>
-<pre><span class="c">// A growing set of frame indices that knows its lowest missing index.</span>
-<span class="k">struct</span> FrameIndexSet {
-  std::vector&lt;<span class="k">bool</span>&gt; Contains;
-  size_t FirstMissing { 0 };
-  <span class="k">void</span> add(size_t Index) { <span class="c">/* set the bit; advance FirstMissing past set bits */</span> }
-};</pre>
-<p>Picking a slot also changes. Instead of rescanning the adjacency list for every candidate, the picker makes one pass that stamps each colored neighbor's slot with an epoch number. Then it scans upward from <code>max(Begin, Taken.FirstMissing)</code> for the first slot that is neither taken nor stamped. One pick costs O(degree + distance to the answer) instead of O(answer × degree).</p>
+<h2>Placing faster</h2>
+<p>The new code also changes how one slot is chosen. The old code rescanned the conflict list for every slot it tried. The new code walks the list once and marks each conflict's slot. Then it takes the first slot, starting at the first free one, that is neither taken nor marked. A placement now costs the length of the list plus the distance to the answer, rather than their product.</p>
 <pre><span class="del">-  for (size_t FrameIndex = NumSpecialFrameObjects; ; FrameIndex++) {
 -    bool Ok = true;
 -    for (ValuePtr AIP : Adjacency)
@@ -188,42 +189,37 @@ td:first-child, th:first-child { text-align: left; }
 -    if (Ok) { ... break; }
 -  }</span>
 <span class="add">+  Pick++;
-+  for (auto&amp; Neighbor : Adjacency)                         // once per pick
-+    if (colored) NeighborPick[its index] = Pick;
++  for (auto&amp; Neighbor : Adjacency)                         // once per placement
++    if (placed) NeighborPick[its slot] = Pick;
 +  for (size_t Index = std::max(Begin, Taken.FirstMissing); ; Index++)
 +    if (!Taken.contains(Index) &amp;&amp; NeighborPick[Index] != Pick)
 +      return Index;</span></pre>
 
-<h2>Two corner cases</h2>
-<h3>A lifetime start after later allocas</h3>
-<p>A root alloca <code>m</code> <i>with</i> lifetime markers can come before an always-live alloca <code>a</code> in root order while its <code>lifetime.start</code> comes after <code>a</code>. At that start, <code>m</code> is defined where <code>a</code> is live, so the two interfere. But <code>m</code> is colored first, and when <code>a</code> is colored afterwards, nothing tells it to avoid <code>m</code>. For a lifetime start, the walk therefore records real edges to the live root allocas that come after the alloca in root order, the range <code>[NumRootAlwaysLiveBefore[m], NumLiveRootAlwaysLive)</code>. Choose <i>corner case</i> above to watch those edges appear in red. The test corpus hit this path in 1,430 functions.</p>
-<h3>Explicit locals and stack aux slots</h3>
-<p><code>LocalExplicit</code> allocas get stack aux slots above <code>FrameSize</code>. An always-live one must interfere with <i>every</i> other explicit local. Otherwise they all share one slot, and the collector only sees whichever stack aux was initialized last. The old code wrote that rule as all-pairs edges. The new code keeps two sets of slots instead: the slots of every explicit local colored so far, and the slots of the always-live explicit locals colored so far. An always-live local avoids the first set. Any other local avoids the second set plus its ordinary liveness neighbors. The rule is symmetric, so this forbids the same slots as the all-pairs edges at every step.</p>
+<h2>Two edge cases</h2>
+<h3>A local that starts late</h3>
+<p>A local <i>with</i> lifetime markers isn't always-live. Suppose it is declared before an always-live local <code>a</code>, but its <code>lifetime.start</code> comes after <code>a</code>. Then the two conflict. The marked local is placed first, though, so when <code>a</code> is placed it can't know to avoid it. In this one case the new code records the conflicts explicitly. Choose <i>late start</i> above to see them in red. It happened in 1,430 functions of the test corpus.</p>
+<h3>Locals whose address is taken</h3>
+<p>These locals (<code>LocalExplicit</code>) get their slots in a separate area after the frame. An always-live one must not share a slot with any other, or the collector only sees whichever was written last. The old code recorded that as a conflict between every pair. The new code uses the same trick with two sets: the slots of all such locals placed so far, and the slots of the always-live ones among them. An always-live local avoids the first set. Any other local avoids the second set, plus its ordinary conflicts.</p>
 
-<h2>Why the layout is identical</h2>
-<p>The new code doesn't approximate the old graph. It claims a stronger invariant: <b>before each coloring decision, old and new forbid exactly the same set of slots.</b> The decision for each node is the lowest slot outside that set, so by induction on the coloring order, every slot assignment is identical. The proof of that invariant is the prefix argument plus the lifetime-start exception. Debug builds also check the prefix directly: <code>assert(Iter-&gt;second + 1 == NumLiveRootAlwaysLive)</code> fires if a root alloca's definition is ever reached other than at the end of the live prefix.</p>
-<p>The fix was also checked empirically. A temporary compiler carried the original function as <code>computeFrameIndexMapReference</code>. It ran both versions on every function and compared <code>FrameIndexMap</code> (entry kind and index), <code>FrameSize</code>, <code>NumStackAuxes</code>, and the setjmp and vararg slots, aborting on any difference. It ran over:</p>
+<h2>Why the frames are identical</h2>
+<p>The claim is this: <b>before each placement, the old and new code rule out exactly the same slots.</b> Both then take the lowest slot that remains, so by induction over the placement order, every pointer ends up in the same slot. The pattern above, plus the late-start case, is what makes the claim true. A debug assertion checks the pattern in every compile.</p>
 <ul>
-<li>every C and C++ file in <code>filc/tests</code>, at <code>-O0</code>, at <code>-O2</code>, and at <code>-O1 -mllvm -opt-bisect-limit=0</code> (lifetime markers but no optimization);</li>
-<li>generated traces of 10, 40 and 80 blocks in all three modes;</li>
-<li>directed cases: entry values before allocas, more than 64 slots, multiword objects, local arrays, lifetime markers in scopes and loops, goto and unreachable blocks, setjmp, varargs, and memcpy.</li>
+<li><b>Compared directly.</b> A test compiler ran both versions on every function. It compared every slot, the frame size, the size of the separate area, and the setjmp and varargs slots. The inputs were <code>filc/tests</code> at <code>-O0</code>, at <code>-O2</code>, and at <code>-O1</code> with optimization passes disabled, plus generated traces and handwritten edge cases. Result: 44,006 functions, 0 differences, frames up to 487 slots.</li>
+<li><b>Reviewed.</b> An independent review checked the argument and found no counterexample. It also caught two problems in a first draft, both since fixed: <code>BitVector</code> returns an <code>int</code> index, and copying a set for every pointer brought back quadratic work.</li>
+<li><b>On upstream.</b> The commit applies cleanly to <code>deluge</code> at <code>9d1ed206</code>. With assertions on, 7,836 files from <code>filc/tests</code> built at <code>-O0</code> and <code>-O2</code> without tripping the assertion. The only crashes were the <code>badasm</code> tests, which are meant to fail.</li>
 </ul>
-<p>The result was <b>44,006 functions identical and 0 different</b>, with frames of up to 487 slots. A separate reviewer checked the induction and looked for counterexamples in normal pipelines (repeated lifetime starts, unreachable and non-entry blocks, multi-pointer values, ignored entries, zero-slot allocas, values outside <code>Order</code>) and found none. That review also caught two problems in a first draft that used <code>llvm::BitVector</code>, which are fixed in the final version. Its <code>find_first_unset_in</code> returns an <code>int</code> over unsigned sizes, and copying the vector for each node brought back quadratic work.</p>
-<p>That comparison ran in the fork. The commit then cherry-picked cleanly onto upstream <code>deluge</code> at <code>9d1ed206</code>. Upstream's only change near this code gives each <code>setjmp</code> call its own frame slot, and those slots are appended after the coloring. With assertions enabled, the rebased compiler built 7,836 translation units from <code>filc/tests</code> at <code>-O0</code> and <code>-O2</code>. None hit the prefix assertion. The only crashes were the <code>badasm</code> tests, which are meant to fail.</p>
 
 <h2 id="results">Results</h2>
 <div class="card ui chart"><div id="timeChart"></div>
 <div class="legend"><span><span class="sw" style="background:var(--bad)"></span>before, -O0</span><span><span class="sw" style="background:var(--good)"></span>after, -O0</span><span><span class="sw" style="background:var(--val)"></span>after, -O1</span><span><span class="sw" style="background:#e07b39"></span>upstream deluge, unfixed, -O0</span><span><span class="sw" style="background:#7a4fb3"></span>upstream deluge + fix, -O0</span></div></div>
 <table id="timeTable"></table>
-<p class="meta">The input is generated JIT-trace-shaped C (<a href="gen.py">gen.py</a>). The left three columns were measured in the fork with Nix-built filcc, <code>-shared -fPIC -w</code>, wall clock on a busy host. The right three use the same commit cherry-picked onto upstream <code>deluge</code> at <code>9d1ed206</code>, with and without the change. That compiler is a RelWithDebInfo dev build with assertions enabled, running <code>-c -w</code> on an idle host. The unfixed 300- and 600-block runs were skipped. With the fix, <code>-O0</code> is within about 2× of <code>-O1</code>, where it used to be 65× slower or worse.</p>
-
-<h3>Model explorer</h3>
-<p>This is the same JavaScript model run on bigger programs shaped like the trace: 5 allocas and 29 pointer values per block, the per-block counts in the real test's <code>-O0</code> IR. It counts hash-set inserts plus neighbor and slot checks, and confirms the two colorings are identical.</p>
+<p class="meta">The input is generated trace-shaped C (<a href="gen.py">gen.py</a>). Fork columns: Nix-built filcc, <code>-shared -fPIC -w</code>, on a busy host. Upstream columns: the same commit applied to <code>deluge</code> 9d1ed206, run with and without the fix in a dev build with assertions, <code>-c -w</code>, on an idle host. The slow unfixed runs at 300 and 600 blocks were skipped.</p>
+<p>The JavaScript model from the widget, run on larger trace-shaped programs (5 locals and 29 pointers per block, as in the real <code>-O0</code> code), shows the same shape. It counts the work each version does and checks that the placements match.</p>
 <div class="card ui chart"><div id="modelChart"></div><div id="modelNote" class="meta"></div></div>
 
 <h2>What's left</h2>
-<p>After the fix, both <code>-O0</code> and <code>-O1</code> still grow a bit faster than linearly, but no single hot spot dominates the profile. At 600 blocks FilPizlonator is about 31% of compile time, and <code>scheduleChecks</code> (its set-based canonical-pointer liveness) is about 16%. The change leaves that code alone because touching it could change where checks are placed. One unrelated fix rides along: <code>removeRedundantChecksUsingForwardAI</code> now takes <code>CanonicalPtrLiveAtTail</code> by <code>const&amp;</code>. It used to take it by value, which copied every block's live set twice per function.</p>
-<p class="meta">The change is a single commit to <code>llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp</code> (+137 −61), on top of <code>pizlonator/fil-c</code> deluge. This page was written for review and is not part of the patch.</p>
+<p>With the fix, <code>-O0</code> is within about 2× of <code>-O1</code> and grows only slightly faster than linearly. No single hot spot remains. The largest, at 600 blocks, is check scheduling (<code>scheduleChecks</code>, about 16%). It is left alone because changing it could move checks. The commit also makes one small unrelated change: it passes <code>CanonicalPtrLiveAtTail</code> by reference instead of copying it.</p>
+<p class="meta">One commit, <code>llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp</code> (+137 −61), on <code>pizlonator/fil-c</code> deluge. This page was written for review and is not part of the patch.</p>
 
 </main>
 <script>
@@ -397,21 +393,21 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
     sim = simulate(prog, algo, true);
     const other = simulate(prog, algo === "old" ? "new" : "old", false);
     const o = algo === "old" ? sim : other, n = algo === "old" ? other : sim;
-    $("#compare").innerHTML = `Whole program: before <b>${o.ins}</b> inserts + <b>${o.chk}</b> checks · after <b>${n.ins}</b> inserts + <b>${n.chk}</b> checks · slot assignments ${sameColors(o.color, n.color) ? '<b class="good">identical ✓</b>' : '<b class="bad">differ ✗</b>'}`;
+    $("#compare").innerHTML = `Whole program: before <b>${o.ins}</b> inserts + <b>${o.chk}</b> checks · after <b>${n.ins}</b> inserts + <b>${n.chk}</b> checks · placements ${sameColors(o.color, n.color) ? '<b class="good">identical ✓</b>' : '<b class="bad">differ ✗</b>'}`;
     idx = 0;
-    st = { edges: new Map(), color: new Map(), at: null, phase: "", visit: null, tryEv: null, takenSet: new Set(), narr: "Press Play. The liveness walk runs bottom-up and adds interference edges.", ins: 0, chk: 0, liveRows: new Map() };
+    st = { edges: new Map(), color: new Map(), at: null, phase: "", visit: null, tryEv: null, takenSet: new Set(), narr: "Press Play. The liveness walk goes up from the bottom and records conflicts.", ins: 0, chk: 0, liveRows: new Map() };
     render();
   }
 
   function apply(e) {
     if (e.ins !== undefined) { st.ins = e.ins; st.chk = e.chk; }
     switch (e.t) {
-      case "phase": st.phase = e.name; st.at = null; if (e.name === "coloring") st.narr = "The coloring visits values top-down and gives each the lowest slot its colored neighbors don't hold."; break;
-      case "at": st.at = e.i; st.liveRows.set(e.i, e); st.narr = `Backward walk at <code>${prog[e.i].text}</code>: ${e.exp.length + e.imp.length} live here.`; break;
-      case "edge": st.edges.set(Math.min(e.a, e.b) + "|" + Math.max(e.a, e.b), e.kind); if (e.kind === "lifetime") st.narr = `<code>lifetime.start(%${prog[e.a].name})</code> is below <code>%${prog[e.b].name}</code>, which is colored later, so the edge ${prog[e.a].name}–${prog[e.b].name} is recorded explicitly.`; break;
-      case "visit": st.visit = e.v; st.tryEv = null; st.at = e.v; st.narr = `Coloring %${prog[e.v].name}.`; break;
-      case "try": st.tryEv = e; st.narr = e.hit === null ? `Slot ${e.slot}: scanned all ${e.scanned} neighbors of %${prog[e.v].name}, no conflict.` : `Slot ${e.slot}: scanned ${e.scanned} of ${neighborsOf(e.v)} neighbors of %${prog[e.v].name} before hitting %${prog[e.hit].name}, which holds slot ${e.slot}.`; break;
-      case "pick": st.tryEv = e; st.narr = `%${prog[e.v].name}: stamped ${e.marked.length} neighbor slot${e.marked.length === 1 ? "" : "s"} in one pass, then scanned up from FirstMissing = ${e.start} to slot ${e.slot}.`; break;
+      case "phase": st.phase = e.name; st.at = null; if (e.name === "coloring") st.narr = "Placement goes down from the top. Each pointer gets the lowest slot that none of its placed conflicts holds."; break;
+      case "at": st.at = e.i; st.liveRows.set(e.i, e); st.narr = `Walking up at <code>${prog[e.i].text}</code>: ${e.exp.length + e.imp.length} live here.`; break;
+      case "edge": st.edges.set(Math.min(e.a, e.b) + "|" + Math.max(e.a, e.b), e.kind); if (e.kind === "lifetime") st.narr = `%${prog[e.a].name} starts late, below %${prog[e.b].name}, which is placed after it. So their conflict is recorded.`; break;
+      case "visit": st.visit = e.v; st.tryEv = null; st.at = e.v; st.narr = `Placing %${prog[e.v].name}.`; break;
+      case "try": st.tryEv = e; st.narr = e.hit === null ? `Slot ${e.slot}: checked all ${e.scanned} conflicts of %${prog[e.v].name}, none holds it. Placed.` : `Slot ${e.slot}: checked ${e.scanned} of ${neighborsOf(e.v)} conflicts of %${prog[e.v].name} before finding %${prog[e.hit].name} there. Try the next slot.`; break;
+      case "pick": st.tryEv = e; st.narr = `%${prog[e.v].name}: marked ${e.marked.length} conflict slot${e.marked.length === 1 ? "" : "s"} in one pass, then searched up from the first free slot, ${e.start}, to slot ${e.slot}.`; break;
       case "assign": st.color.set(e.v, e.slot); if (e.taken) st.takenSet.add(e.slot); break;
       case "done": st.visit = null; st.tryEv = null; st.at = null; st.narr = "Done."; stop(); break;
     }
@@ -479,7 +475,7 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
       g += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#1d1c1a">${n.name}</text>`;
       if (c !== undefined) g += `<text x="${x}" y="${y - 17}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#6b675f">${c}</text>`;
     }
-    g += `<text x="6" y="14" font-family="system-ui" font-size="11" fill="#6b675f">interference graph: ${st.edges.size} edges</text></svg>`;
+    g += `<text x="6" y="14" font-family="system-ui" font-size="11" fill="#6b675f">conflicts recorded: ${st.edges.size}</text></svg>`;
     $("#graph").innerHTML = g;
 
     // slots
@@ -496,7 +492,7 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
     $("#strip").innerHTML = s;
     $("#cIns").textContent = fmt(st.ins); $("#cChk").textContent = fmt(st.chk);
     $("#narr").innerHTML = st.narr;
-    $("#phase").textContent = st.phase ? `phase: ${st.phase} · event ${idx}/${sim.ev.length}` : `${sim.ev.length} events`;
+    $("#phase").textContent = st.phase ? `${st.phase === "coloring" ? "placement" : st.phase} · step ${idx}/${sim.ev.length}` : `${sim.ev.length} steps`;
   }
 
   $$("[data-preset]").forEach(b => b.onclick = () => { stop(); preset = b.dataset.preset; $$("[data-preset]").forEach(x => x.classList.toggle("on", x === b)); load(); });
@@ -522,7 +518,7 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
   let raf = 0;
   function draw(cursor, mode) {
     // mode "live": cursor walks up; live allocas = those above cursor. mode "color": cursor walks down; colored allocas = above.
-    let s = `<text x="18" y="${Y(0) - 24}" font-family="system-ui" font-size="12" fill="#6b675f">root block</text>`;
+    let s = `<text x="18" y="${Y(0) - 24}" font-family="system-ui" font-size="12" fill="#6b675f">entry block</text>`;
     s += `<rect x="14" y="${Y(0) - 18}" width="300" height="${Y(K + 2) - Y(0) - 2}" fill="none" stroke="#cfc9be" rx="6"/>`;
     rows.forEach((r, k) => {
       const y = Y(k);
@@ -535,22 +531,22 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
     });
     const cy = Y(cursor) - 17;
     s += `<line x1="10" x2="330" y1="${cy}" y2="${cy}" stroke="${mode === "live" ? "var(--val)" : "var(--good)"}" stroke-width="2.5"/>`;
-    s += `<text x="336" y="${cy + 4}" font-family="system-ui" font-size="12" fill="${mode === "live" ? "var(--val)" : "var(--good)"}">${mode === "live" ? "▲ liveness walk" : "▼ coloring"}</text>`;
+    s += `<text x="336" y="${cy + 4}" font-family="system-ui" font-size="12" fill="${mode === "live" ? "var(--val)" : "var(--good)"}">${mode === "live" ? "▲ liveness walk" : "▼ placement"}</text>`;
     // right: RootAlwaysLive vector
     const n = Math.min(cursor, K);
-    s += `<text x="470" y="40" font-family="system-ui" font-size="12" fill="#6b675f">RootAlwaysLive</text>`;
+    s += `<text x="470" y="40" font-family="system-ui" font-size="12" fill="#6b675f">always-live locals, in order</text>`;
     for (let k = 0; k < K; k++) {
       const on = k < n;
       s += `<rect x="${470 + k * 44}" y="52" width="38" height="30" rx="4" fill="${on ? (mode === "live" ? "#f3c27a" : slotColor(k)) : "#fff"}" stroke="#d9a75f"/>`;
       s += `<text x="${489 + k * 44}" y="72" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12">a${k}</text>`;
     }
     s += `<path d="M ${470} 92 h ${n * 44 - 6}" stroke="${mode === "live" ? "var(--val)" : "var(--good)"}" stroke-width="3"/>`;
-    s += `<text x="470" y="112" font-family="ui-monospace,monospace" font-size="12" fill="#1d1c1a">${mode === "live" ? `NumLiveRootAlwaysLive = ${n}` : `colored so far = ${n}`}</text>`;
-    s += `<text x="470" y="150" font-family="system-ui" font-size="13" fill="#3b3832">${mode === "live" ? "live here: a prefix, [0, " + n + ")" : "already colored: the same prefix"}</text>`;
+    s += `<text x="470" y="112" font-family="ui-monospace,monospace" font-size="12" fill="#1d1c1a">${mode === "live" ? `live here: the first ${n}` : `placed so far: the first ${n}`}</text>`;
+    s += `<text x="470" y="150" font-family="system-ui" font-size="13" fill="#3b3832">${mode === "live" ? "a counter is enough; no conflicts recorded" : "every pointer here avoids their slots"}</text>`;
     if (mode === "color") {
-      s += `<text x="470" y="178" font-family="system-ui" font-size="12" fill="#6b675f">Taken slots</text>`;
+      s += `<text x="470" y="178" font-family="system-ui" font-size="12" fill="#6b675f">taken set</text>`;
       for (let k = 0; k < K; k++) s += `<rect x="${470 + k * 24}" y="186" width="20" height="20" rx="3" fill="${k < n ? slotColor(k) : "#fff"}" stroke="#ccc"/><text x="${480 + k * 24}" y="200" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace">${k}</text>`;
-      s += `<text x="470" y="226" font-family="ui-monospace,monospace" font-size="12">FirstMissing = ${n}</text>`;
+      s += `<text x="470" y="226" font-family="ui-monospace,monospace" font-size="12">first free slot = ${n}</text>`;
     }
     svg.innerHTML = s;
   }
@@ -562,8 +558,8 @@ const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get
     for (let c = 0; c <= total; c++) seq.push(["color", c]);
     let k = 0, last = 0;
     const narr = {
-      live: "Walking backward (bottom-up), an always-live root alloca stops being live at its own definition. What remains live is always a prefix of RootAlwaysLive, so a counter describes it and no live set or edges are needed.",
-      color: "Coloring walks forward over the root block first. When it reaches any value, the colored root allocas are exactly the prefix that was live at that value's definition, so the value avoids their slots (Taken) instead of storing edges to them."
+      live: "Walking up, an always-live local stops being live at its own declaration. What is still live is always the first k of them, so one counter describes it.",
+      color: "Walking down, placement reaches the locals in the same order. At any pointer, the locals placed so far are the same first k that were live there, so the pointer avoids the taken set instead of a recorded conflict with each local."
     };
     function f(ts) {
       if (ts - last > 650) { last = ts; const [m, c] = seq[k++]; draw(c, m); $("#prefixNarr").textContent = narr[m]; }
@@ -636,10 +632,10 @@ const TIMES = {
   logChart($("#modelChart"), { ticks: Ns, lines: [
     { name: "before", pts: oldPts, color: "var(--bad)" },
     { name: "after", pts: newPts, color: "var(--good)" },
-  ] }, { xlab: "blocks (5 allocas, 29 pointer values each)", ylab: "inserts + checks", xs: [1.8, 36], ymin: 100, ymax: 1e8, yfmt: v => fmt(v) });
+  ] }, { xlab: "blocks (5 locals, 29 pointers each)", ylab: "inserts + checks", xs: [1.8, 36], ymin: 100, ymax: 1e8, yfmt: v => fmt(v) });
   const lo = oldPts[oldPts.length - 1][1], ln = newPts[newPts.length - 1][1];
   const slope = a => (Math.log(a[a.length - 1][1]) - Math.log(a[a.length - 3][1])) / (Math.log(a[a.length - 1][0]) - Math.log(a[a.length - 3][0]));
-  $("#modelNote").innerHTML = `At 32 blocks: before ${fmt(lo)} operations, after ${fmt(ln)} (${Math.round(lo / ln)}× fewer). Log-log slope over the last points: before ≈ ${slope(oldPts).toFixed(2)}, after ≈ ${slope(newPts).toFixed(2)}. Colorings identical in <b class="${same === Ns.length ? "good" : "bad"}">${same}/${Ns.length}</b> programs.`;
+  $("#modelNote").innerHTML = `At 32 blocks: before ${fmt(lo)} operations, after ${fmt(ln)} (${Math.round(lo / ln)}× fewer). Log-log slope over the last points: before ≈ ${slope(oldPts).toFixed(2)}, after ≈ ${slope(newPts).toFixed(2)}. Placements identical in <b class="${same === Ns.length ? "good" : "bad"}">${same}/${Ns.length}</b> programs.`;
 })();
 </script>
 </body>
