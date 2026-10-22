@@ -402,6 +402,36 @@
               inherit pkgs;
               dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
             };
+            # Release alternates on the staging toolchain: unreleased compiler
+            # and runtime changes, faster but less reviewed (docs/php.md).
+            php85-staging-dist = import ./packages/php-dist {
+              inherit pkgs;
+              pkgsFilc = pkgsFilcStaging;
+              base = pkgsFilcStaging.php85;
+              suffix = "-staging";
+            };
+            php85-staging-docker = import ./packages/php-dist/docker.nix {
+              inherit pkgs;
+              dist = import ./packages/php-dist {
+                inherit pkgs;
+                pkgsFilc = pkgsFilcStaging;
+                base = pkgsFilcStaging.php85;
+                suffix = "-staging";
+              };
+            };
+            bind-staging-dist = import ./packages/bind-dist {
+              inherit pkgs;
+              pkgsFilc = pkgsFilcStaging;
+              suffix = "-staging";
+            };
+            bind-staging-docker = import ./packages/bind-dist/docker.nix {
+              inherit pkgs;
+              dist = import ./packages/bind-dist {
+                inherit pkgs;
+                pkgsFilc = pkgsFilcStaging;
+                suffix = "-staging";
+              };
+            };
             inherit
               libei
               libei_27

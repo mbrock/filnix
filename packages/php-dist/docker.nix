@@ -11,7 +11,7 @@
 }:
 
 let
-  version = dist.passthru.php.version;
+  version = dist.passthru.php.version + dist.passthru.suffix;
   root =
     pkgs.runCommand "php-docker-root" { nativeBuildInputs = [ pkgs.xz ]; }
       ''

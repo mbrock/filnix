@@ -7,10 +7,12 @@
   pkgs,
   pkgsFilc,
   bind ? pkgsFilc.bind,
+  # Marks an alternate build in the tarball and image names.
+  suffix ? "",
 }:
 
 let
-  name = "bind-${bind.version}-filc-x86_64-linux";
+  name = "bind-${bind.version}${suffix}-filc-x86_64-linux";
 
   launcher = pkgs.pkgsStatic.runCommandCC "bind-dist-launcher" { } ''
     $CC -O2 -static -Wall -Werror -o $out ${./launcher.c}
@@ -23,7 +25,7 @@ pkgs.runCommand "${name}.tar.xz"
       pkgs.python3
       pkgs.xz
     ];
-    passthru = { inherit bind launcher; };
+    passthru = { inherit bind launcher suffix; };
   }
   ''
     root=$PWD/${name}

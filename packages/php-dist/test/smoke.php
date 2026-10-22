@@ -28,10 +28,15 @@ $expected = ['bcmath', 'bz2', 'calendar', 'ctype', 'curl', 'date', 'dom',
     'pdo_sqlite', 'pgsql', 'Phar', 'posix', 'random', 'readline', 'Reflection',
     'session', 'SimpleXML', 'soap', 'sockets', 'sodium', 'SPL',
     'sqlite3', 'standard', 'sysvmsg', 'sysvsem', 'sysvshm', 'tokenizer', 'xml',
-    'xmlreader', 'xmlwriter', 'xsl', 'Zend OPcache', 'zip', 'zlib', 'igbinary',
+    'xmlreader', 'xmlwriter', 'xsl', 'Zend OPcache', 'zip', 'zlib',
     'redis', 'apcu', 'ast', 'decimal', 'ds', 'event', 'imagick', 'mailparse',
     'maxminddb', 'memcached', 'mongodb', 'msgpack', 'protobuf', 'tidy', 'uuid',
     'yaml', 'zstd'];
+// igbinary 3.2.14 does not build on PHP 8.5.
+$igbinary = PHP_VERSION_ID < 80500;
+if ($igbinary) {
+    $expected[] = 'igbinary';
+}
 check('extensions loaded', fn() => array_values(array_diff($expected, get_loaded_extensions(), get_loaded_extensions(true))) ?: true);
 check('no /nix', fn() => !file_exists('/nix') ?: 'found /nix');
 // Zend's allocator counts real usage in 2 MiB chunks; the tracked system
@@ -202,7 +207,7 @@ check('sysv shm/sem/msg', function () {
     $q = msg_get_queue($key); msg_send($q, 1, 'm'); msg_receive($q, 1, $t, 64, $m); msg_remove_queue($q);
     return $v === ['x' => 1] && $m === 'm';
 });
-check('igbinary', fn() => igbinary_unserialize(igbinary_serialize(['a' => new ArrayObject([1])]))['a'][0] === 1);
+$igbinary && check('igbinary', fn() => igbinary_unserialize(igbinary_serialize(['a' => new ArrayObject([1])]))['a'][0] === 1);
 check('imagick formats', fn() => array_diff(['JPEG', 'PNG', 'TIFF', 'WEBP', 'GIF', 'JP2', 'EXR'], Imagick::queryFormats())
     ?: true);
 check('imagick tiff roundtrip', function () use ($tmp) {

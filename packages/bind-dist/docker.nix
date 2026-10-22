@@ -14,7 +14,7 @@
 }:
 
 let
-  version = dist.passthru.bind.version;
+  version = dist.passthru.bind.version + dist.passthru.suffix;
   sbin = [
     "named"
     "rndc"

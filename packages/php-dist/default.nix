@@ -5,11 +5,15 @@
 # A Fil-C program's interpreter must be an absolute path, so each bin/ entry
 # is a small static launcher that starts libexec/ through lib/ld-fil1-*.so.
 #
-# php is PHP with the extensions to load; the default is PHP 8.4.
+# php is PHP with the extensions to load; the default is PHP 8.4 (base) with
+# the extensions below. suffix marks an alternate build in the tarball and
+# image names, as in php-8.5.12-staging-filc-x86_64-linux.
 {
   pkgs,
   pkgsFilc,
-  php ? pkgsFilc.php.withExtensions (
+  base ? pkgsFilc.php,
+  suffix ? "",
+  php ? base.withExtensions (
     { enabled, all }:
     enabled
     # Commonly enabled extensions ported to Fil-C (docs/php-extensions.md).
@@ -22,7 +26,10 @@
       decimal
       ds
       event
-      igbinary
+    ])
+    # igbinary 3.2.14 does not build on PHP 8.5 (docs/php.md).
+    ++ pkgs.lib.optional (pkgs.lib.versionOlder base.version "8.5") all.igbinary
+    ++ (with all; [
       imagick
       mailparse
       maxminddb
@@ -44,7 +51,7 @@
 }:
 
 let
-  name = "php-${php.version}-filc-x86_64-linux";
+  name = "php-${php.version}${suffix}-filc-x86_64-linux";
 
   launcher = pkgs.pkgsStatic.runCommandCC "php-dist-launcher" { } ''
     $CC -O2 -static -Wall -Werror -o $out ${./launcher.c}
@@ -57,7 +64,7 @@ pkgs.runCommand "${name}.tar.xz"
       pkgs.python3
       pkgs.xz
     ];
-    passthru = { inherit php launcher; };
+    passthru = { inherit php launcher suffix; };
   }
   ''
     root=$PWD/${name}
