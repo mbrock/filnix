@@ -88,18 +88,33 @@ variant's by-value aggregate ABI without validation.
 this experimental snapshot does not give it the official release's tightened
 unsafe-call boundary.
 
-**Cancellation cost.** `filc_cancellable_syscall` in
-`patches/libpizlo-cancellation.patch` calls
-`rt_sigprocmask(SIG_UNBLOCK, SIGRTMIN)` before every cancellation-point
-syscall (`read`, `write`, `sendto`, `close`, ...), even though the signal is
-almost always already unblocked; release Fil-C makes no such call. An
-unbuffered `fprintf` thus costs an extra syscall per write. PHP 8.5 serving
-DokuWiki made about 137 extra calls per request (3047 against release's 311
-over 20 requests), roughly 40–60 µs of a 13 ms request. Proposed fix, not
-built: a per-thread flag recording that the signal is known unblocked,
-cleared wherever it gets blocked (the cancellation handler's `uc_sigmask`,
-`zthread_cancel_set`, the user `sigprocmask` path), so the gate skips the
-syscall
+**Cancellation cost.** The staging cancellation patches added signal-mask
+syscalls that release Fil-C does not make, from two sources:
+
+- `zthread_cancel_set` blocked the private cancellation signal, updated the
+  state and unblocked it again on every call. glibc's
+  `__libc_cleanup_push_defer`, which stdio's lock path reaches on every locked
+  call, calls it to force deferred cancellation, so each `fprintf` cost two
+  `rt_sigprocmask` calls: 20,000 `fprintf`s to an `open_memstream` made
+  41,319, at 1.35 µs per call against 0.53 µs with
+  `__fsetlocking(FSETLOCKING_BYCALLER)`. `zthread_cancel_set` now returns
+  without touching the mask when cancellation is enabled and the call changes
+  nothing (260 calls, 0.53 µs). Disabled and exiting calls keep the slow path:
+  `siglongjmp` and signal-handler returns restore native masks without
+  consulting cancellation state, and the redundant block repairs them
+  (`tests/cancellation-longjmp-mask.c`, in `staging-cancellation`).
+- `filc_cancellable_syscall` calls `rt_sigprocmask(SIG_UNBLOCK, SIGRTMIN)`
+  before every cancellation-point syscall (`read`, `write`, `sendto`,
+  `close`, ...), even though the signal is almost always already unblocked.
+  Not fixed. Proposed: a per-thread flag recording that the signal is known
+  unblocked, cleared wherever it gets blocked (the cancellation handler's
+  `uc_sigmask`, `zthread_cancel_set`, the user `sigprocmask` path, and the
+  native mask restorations in `siglongjmp` and handler return).
+
+PHP 8.5 serving DokuWiki made 3063 `rt_sigprocmask` calls over 20 requests
+on staging, 1929 with the first fix, and 311 on release: about 57 per
+request saved, and the remaining ~80 per request come from the second
+source, together roughly 40–60 µs of a 13 ms request
 ([thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f)).
 
 The release toolchain does not apply the local cancellation patches or the old

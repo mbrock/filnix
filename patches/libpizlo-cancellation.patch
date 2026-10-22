@@ -494,7 +494,7 @@ index d9d4973a87fe..511cf7ed6bbd 100644
  int filc_native_zsys_futex_unlock_pi(filc_thread* my_thread, filc_ptr addr_ptr, int priv)
  {
      filc_check_write(addr_ptr, sizeof(int));
-@@ -13439,6 +13610,55 @@ void filc_native_zsys_abort(filc_thread* my_thread)
+@@ -13439,6 +13610,68 @@ void filc_native_zsys_abort(filc_thread* my_thread)
      PAS_ASSERT(!"Should not get here");
  }
  
@@ -508,6 +508,19 @@ index d9d4973a87fe..511cf7ed6bbd 100644
 +    FILC_CHECK(!(mask & ~(FILC_CANCEL_DISABLED | FILC_CANCEL_ASYNC | FILC_CANCEL_EXITING)),
 +               NULL, "invalid cancellation state mask");
 +    FILC_CHECK(!(bits & ~mask), NULL, "invalid cancellation state bits");
++    /* glibc's stdio pushes a deferred cleanup, and so calls this, on every
++       locked call. When cancellation is enabled and the call changes nothing,
++       skip the two sigprocmask calls: a stale blocked mask is harmless there,
++       because every cancellation gate checks the state and unblocks the signal
++       itself. Only this thread changes its settings (others only add
++       PENDING), so the equality test cannot lose a change. Disabled or
++       exiting calls keep the slow path: siglongjmp and handler returns
++       restore native masks without consulting cancellation state, and the
++       block below is what repairs them. */
++    unsigned current = __atomic_load_n(&thread->cancel_state, __ATOMIC_ACQUIRE);
++    if (!(current & (FILC_CANCEL_DISABLED | FILC_CANCEL_EXITING))
++        && ((current & ~mask) | bits) == current)
++        return current;
 +    /* Block before publishing DISABLED so a sender that observed the old
 +       enabled state cannot interrupt a subsequent disabled poll/read. */
 +    filc_cancel_set_signal_mask(true);

@@ -14,6 +14,8 @@
       $CC $opt -Werror ${./cancellation-semantics.c} -pthread -o semantics
       $CC $opt -Werror -DWITH_CXX_CLEANUP -c ${./cancellation-semantics.c} -o semantics.o
       $CXX $opt -Werror ${./pthread-cancel-cxx.cc} semantics.o -pthread -o semantics-cxx
+      $CC $opt -Werror ${./cancellation-longjmp-mask.c} -pthread -o longjmp-mask
+      timeout 60 ./longjmp-mask
       for executable in semantics semantics-cxx; do
         for scenario in $(seq 0 27); do
           timeout 60 ./$executable "$scenario"
