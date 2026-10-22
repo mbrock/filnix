@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame slot coloring at -O0: from cubic to near-linear · Fil-C</title>
+<style>
+:root {
+  --bg: #fbfaf7; --fg: #1d1c1a; --mute: #6b675f; --line: #dedad2; --card: #fff;
+  --alloca: #d98a1c; --val: #2f6fb3; --bad: #c2412d; --good: #2e8b57; --imp: #9a948a;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); color: var(--fg); }
+body { margin: 0; font: 17px/1.6 Charter, "Iowan Old Style", Georgia, serif; }
+main { max-width: 860px; margin: 0 auto; padding: 0 22px 120px; }
+.wide { width: min(1180px, calc(100vw - 44px)); position: relative; left: 50%; transform: translateX(-50%); }
+h1 { font-size: 2.3em; line-height: 1.15; margin: 1.6em 0 0.3em; letter-spacing: -0.01em; }
+h2 { font-size: 1.45em; margin: 2.4em 0 0.5em; padding-top: 0.6em; border-top: 1px solid var(--line); }
+h3 { font-size: 1.1em; margin: 1.6em 0 0.3em; }
+p, li { max-width: 72ch; }
+a { color: var(--val); }
+code, pre, .mono { font-family: var(--mono); font-size: 0.84em; }
+code { background: #f0ede6; padding: 0.05em 0.3em; border-radius: 3px; }
+pre { background: #22211f; color: #ece8df; padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
+pre .k { color: #f2b45a; } pre .c { color: #8f8a80; } pre .del { color: #f08a7a; } pre .add { color: #9fd49a; }
+.sub { color: var(--mute); font-size: 1.05em; margin: 0 0 1.4em; }
+.meta { font: 13px/1.5 var(--mono); color: var(--mute); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin: 18px 0; }
+.ui { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button, select, input[type=range] { font: inherit; }
+button { border: 1px solid var(--line); background: #f6f4ef; border-radius: 6px; padding: 5px 11px; cursor: pointer; }
+button:hover { background: #eeeae2; }
+button.on { background: var(--fg); color: #fff; border-color: var(--fg); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font: 12px var(--mono); }
+.pill.a { background: #f8e6cb; color: #8a520a; } .pill.v { background: #d9e6f5; color: #1f4d80; }
+.big { font: 600 28px/1.1 var(--mono); }
+.bad { color: var(--bad); } .good { color: var(--good); }
+table { border-collapse: collapse; font: 14px var(--mono); }
+td, th { padding: 4px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+th { color: var(--mute); font-weight: 500; }
+td:first-child, th:first-child { text-align: left; }
+.callout { border-left: 3px solid var(--alloca); padding: 4px 0 4px 14px; margin: 18px 0; }
+
+/* race */
+.race .lane { display: grid; grid-template-columns: 170px 1fr 90px; gap: 12px; align-items: center; margin: 8px 0; }
+.race .bar { height: 22px; background: #efebe3; border-radius: 4px; overflow: hidden; }
+.race .fill { height: 100%; width: 0; }
+.race .t { font: 600 15px var(--mono); text-align: right; }
+
+/* stepper */
+.stepper { display: grid; grid-template-columns: minmax(330px, 1.05fr) minmax(300px, 1fr); gap: 14px; }
+.listing { font: 12px/18px var(--mono); position: relative; }
+.listing .ln { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.listing .ln.cur { background: #fff1c9; }
+.listing .cells { display: flex; gap: 1px; }
+.listing .cell { width: 9px; height: 14px; margin-top: 2px; border-radius: 2px; background: transparent; }
+.listing .cell.l { background: var(--val); opacity: 0.75; }
+.listing .cell.la { background: var(--alloca); opacity: 0.8; }
+.listing .cell.li { background: repeating-linear-gradient(45deg, #e9c48f 0 2px, transparent 2px 4px); }
+.listing .cell.d { outline: 1.5px solid var(--fg); }
+.listing .hdr { color: var(--mute); }
+.graph svg { width: 100%; height: auto; display: block; }
+.strip { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 8px; }
+.slot { min-width: 34px; border: 1px solid var(--line); border-radius: 4px; padding: 2px 3px; text-align: center; font: 11px/1.35 var(--mono); background: #fff; }
+.slot .ix { color: var(--mute); font-size: 10px; display: block; border-bottom: 1px solid var(--line); margin-bottom: 1px; }
+.slot.try { outline: 2px solid var(--bad); }
+.slot.ok { outline: 2px solid var(--good); }
+.slot.taken { background: repeating-linear-gradient(45deg, #f6e3c4 0 3px, #fff 3px 6px); }
+.slot.mark { background: #f9dcd6; }
+.counters { display: flex; gap: 22px; margin: 8px 0 2px; }
+.counters div span { display: block; font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; }
+.narr { min-height: 2.8em; font: 13.5px/1.45 system-ui, sans-serif; color: #3b3832; background: #f6f4ef; border-radius: 6px; padding: 6px 10px; margin-top: 8px; }
+.legend { font: 12px system-ui, sans-serif; color: var(--mute); display: flex; gap: 14px; flex-wrap: wrap; }
+.sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+
+/* prefix */
+.prefix svg { width: 100%; height: auto; }
+.chart svg { width: 100%; height: auto; }
+@media (max-width: 860px) { .stepper { grid-template-columns: 1fr; } .race .lane { grid-template-columns: 110px 1fr 70px; } }
+</style>
+</head>
+<body>
+<main>
+
+<p class="meta" style="margin-top:3em">Fil-C · FilPizlonator · <code>computeFrameIndexMap</code> · <a href="https://github.com/mbrock/fil-c/commit/54d4f1b4b13b2907eed5e97e27aea8635ca9403b">commit 54d4f1b</a> on <a href="https://github.com/mbrock/fil-c/tree/frame-coloring-o0">mbrock/fil-c frame-coloring-o0</a>, based on pizlonator/fil-c deluge 9d1ed206</p>
+<h1>Frame slot coloring at <code style="font-size:0.9em">-O0</code>: from cubic to near&#8209;linear</h1>
+<p class="sub">At <code>-O0</code>, a 160-block function took 48 seconds in FilPizlonator. After this change it takes 0.66 seconds, and every frame layout comes out exactly the same.</p>
+
+<div class="card race ui" id="race">
+  <div class="row" style="margin-bottom:6px"><strong class="grow">Compiling a 160-block generated function at <code>-O0</code> (replayed at 10× speed)</strong><button id="raceBtn">Replay</button></div>
+  <div class="lane"><span>before</span><div class="bar"><div class="fill" id="raceOld" style="background:var(--bad)"></div></div><span class="t bad" id="raceOldT">0.0 s</span></div>
+  <div class="lane"><span>after</span><div class="bar"><div class="fill" id="raceNew" style="background:var(--good)"></div></div><span class="t good" id="raceNewT">0.0 s</span></div>
+  <div class="meta">filcc, <code>-O0 -shared -fPIC</code>. The times are wall clock on a loaded 64-core machine. Results are under <a href="#results">results</a>.</div>
+</div>
+
+<h2>Where it showed up</h2>
+<p>The work behind this was an experiment in retargeting PHP's opcache JIT to Fil-C. The JIT's IR is printed as C, compiled with Fil-C's clang, and loaded with <code>dlopen</code>, the same approach as Emacs' native-compilation backend on Fil-C. JIT traces become long, branchy functions: guard, guard, overflow-checked add, call a helper, repeat. At <code>-O1</code> such a function compiled in well under a second. At <code>-O0</code> the time grew steeply with function size: 0.8&nbsp;s for 40 blocks, 4.7&nbsp;s for 80, 48&nbsp;s for 160, and 597&nbsp;s with 2.8&nbsp;GB of memory for 300.</p>
+<p><code>-ftime-report</code> put <b>99.6%</b> of cc1's time in <code>FilPizlonatorPass</code> (8.81 of 8.96&nbsp;s at 80 blocks). <code>perf</code> put most of that in <code>computeFrameIndexMap</code> and its <code>FrameEntry</code> hash lookups. The abstract interpreter and the check scheduling were not the cause.</p>
+
+<h2>What <code>computeFrameIndexMap</code> does</h2>
+<p>Every instrumented function pushes a <code>filc_frame</code>, and that frame ends in a <code>lowers[]</code> array. Whenever the function holds a pointer that FUGC must see while it scans the stack, the pointer's capability (its <i>lower</i>) sits in a slot of that array. Naked local allocas, the ones without a header, mirror their stack aux into a slot as well.</p>
+<p>The pass gives every pointer-bearing value a slot index. Two values can share a slot if they are never live at the same time. So the pass computes liveness, builds an <b>interference graph</b>, and colors it greedily: it visits values in a fixed order (arguments, then instructions in block order) and gives each the lowest slot that no already-colored neighbor holds. This is register allocation with an unlimited register file, where the goal is a small frame.</p>
+
+<h2>Why <code>-O0</code> blows up</h2>
+<p>A static alloca that is small enough and doesn't escape becomes <code>LocalNaked</code>. If it has no lifetime markers, it also goes into <code>AlwaysLive</code>. Optimized builds give most locals <code>llvm.lifetime.start/end</code>, which bound their live ranges. Clang emits no lifetime markers at <code>-O0</code>, so <b>every local is AlwaysLive</b>. The old code made them live like this:</p>
+<pre><span class="c">// Make sure that AlwaysLive allocas are always live. This is very hacky, but is obviously
+// correct.</span>
+<span class="k">for</span> (BasicBlock* BB : Blocks)
+  <span class="k">for</span> (Instruction&amp; I : *BB)
+    <span class="k">if</span> (AllocaInst* AI = dyn_cast&lt;AllocaInst&gt;(&amp;I))
+      <span class="k">if</span> (AlwaysLive.count(AI))
+        <span class="k">for</span> (<span class="k">auto</span>&amp; Pair : LiveAtTail)
+          Pair.second.insert(&amp;I);   <span class="c">// into every block's live set</span></pre>
+<p>That really is correct. The cost shows up in the next two steps:</p>
+<ol>
+<li><b>Building the graph.</b> The backward walk adds an edge from each defined value to everything live. With <span class="pill a">A</span> always-live allocas and <span class="pill v">P</span> pointer values, the allocas form a clique and each of them is adjacent to every value: about A·(A/2 + P) edges, each stored twice in an <code>unordered_set</code>.</li>
+<li><b>Coloring it.</b> For each candidate slot, the old picker scanned the value's <i>whole</i> adjacency list, looking for a colored neighbor that holds that slot. A pointer value starts at slot 0 and collides with an alloca at each of the first A slots. Every collision costs a scan through an adjacency list of at least A entries, so the total is about P·A²/2 neighbor checks.</li>
+</ol>
+<p>The 160-block test function has A&nbsp;=&nbsp;803 and P&nbsp;=&nbsp;4,647, which works out to about 4 million edges and about <b>1.5 billion</b> hash lookups to place the values. Doubling the function multiplies the time by roughly 8 to 12.</p>
+
+<h2>Step through it</h2>
+<p>Below is a small program in the shape the PHP trace emits. It has three blocks, two locals per block, and three pointer values per block, all in one block so it fits on screen. The page runs a JavaScript model of both versions of the function on it. Under <code>-O0</code>, watch the amber allocas pick up edges to everything. Under <code>-O2</code>, lifetime markers keep the graph small, and both versions do about the same work.</p>
+
+<div class="card ui wide" id="stepperCard">
+  <div class="row" style="margin-bottom:8px">
+    <span>Program</span>
+    <button data-preset="o0" class="on">-O0 (no lifetime markers)</button>
+    <button data-preset="o2">-O2 (lifetime markers)</button>
+    <button data-preset="mixed">corner case: late lifetime start</button>
+    <span style="width:14px"></span>
+    <span>Algorithm</span>
+    <button data-algo="old" class="on">before</button>
+    <button data-algo="new">after</button>
+  </div>
+  <div class="row" style="margin-bottom:10px">
+    <button id="play">▶ Play</button><button id="step">Step</button><button id="toColor">Skip to coloring</button><button id="finish">Finish</button><button id="reset">Reset</button>
+    <label class="row" style="gap:6px">speed <input type="range" id="speed" min="1" max="60" value="12"></label>
+    <span class="grow"></span>
+    <span id="phase" class="meta"></span>
+  </div>
+  <div class="stepper">
+    <div>
+      <div class="listing" id="listing"></div>
+      <div class="legend" style="margin-top:8px">
+        <span><span class="sw" style="background:var(--alloca)"></span>alloca live</span>
+        <span><span class="sw" style="background:repeating-linear-gradient(45deg,#e9c48f 0 2px,transparent 2px 4px)"></span>alloca live, implied by the prefix (after)</span>
+        <span><span class="sw" style="background:var(--val)"></span>value live</span>
+        <span>red edges: recorded at a late lifetime start</span>
+        <span>dashed: avoided through Taken (after), no edge stored</span>
+      </div>
+    </div>
+    <div>
+      <div class="graph" id="graph"></div>
+      <div class="counters"><div><span>hash-set inserts</span><b class="big" id="cIns">0</b></div><div><span>neighbor and slot checks</span><b class="big" id="cChk">0</b></div></div>
+      <div class="meta">lowers[] slots</div>
+      <div class="strip" id="strip"></div>
+      <div class="narr" id="narr"></div>
+    </div>
+  </div>
+  <div id="compare" class="meta" style="margin-top:10px"></div>
+</div>
+
+<h2>The observation</h2>
+<p>Static allocas live in the root block. An always-live naked alloca there is live everywhere <i>except above its own definition</i>. Take the always-live root allocas in root-block order and call them <code>RootAlwaysLive</code>. At any program point, the live ones are exactly those defined above that point, which is always a <b>prefix</b> of the list.</p>
+<p>The coloring visits the root block first, in the same order. So when it reaches a value, the root allocas it has already colored are the ones live where that value is defined. Inside the root block that is a prefix, and everywhere else it is all of them. The new code therefore doesn't record those edges at all. It keeps one growing set of slots taken by colored root allocas, and every value avoids that set.</p>
+
+<div class="card ui prefix" id="prefixCard">
+  <div class="row"><strong class="grow" id="prefixTitle">Liveness walks backward; coloring walks forward</strong><button id="prefixBtn">Replay</button></div>
+  <svg id="prefixSvg" viewBox="0 0 760 320"></svg>
+  <div class="narr" id="prefixNarr"></div>
+</div>
+
+<p>Values defined later never free a slot in that set, so the set only grows. It tracks its first missing index, and the slot search starts there:</p>
+<pre><span class="c">// A growing set of frame indices that knows its lowest missing index.</span>
+<span class="k">struct</span> FrameIndexSet {
+  std::vector&lt;<span class="k">bool</span>&gt; Contains;
+  size_t FirstMissing { 0 };
+  <span class="k">void</span> add(size_t Index) { <span class="c">/* set the bit; advance FirstMissing past set bits */</span> }
+};</pre>
+<p>Picking a slot also changes. Instead of rescanning the adjacency list for every candidate, the picker makes one pass that stamps each colored neighbor's slot with an epoch number. Then it scans upward from <code>max(Begin, Taken.FirstMissing)</code> for the first slot that is neither taken nor stamped. One pick costs O(degree + distance to the answer) instead of O(answer × degree).</p>
+<pre><span class="del">-  for (size_t FrameIndex = NumSpecialFrameObjects; ; FrameIndex++) {
+-    bool Ok = true;
+-    for (ValuePtr AIP : Adjacency)
+-      if (FrameIndexMap.count(AIP) &amp;&amp; FrameIndexMap[AIP].Index == FrameIndex) { Ok = false; break; }
+-    if (Ok) { ... break; }
+-  }</span>
+<span class="add">+  Pick++;
++  for (auto&amp; Neighbor : Adjacency)                         // once per pick
++    if (colored) NeighborPick[its index] = Pick;
++  for (size_t Index = std::max(Begin, Taken.FirstMissing); ; Index++)
++    if (!Taken.contains(Index) &amp;&amp; NeighborPick[Index] != Pick)
++      return Index;</span></pre>
+
+<h2>Two corner cases</h2>
+<h3>A lifetime start after later allocas</h3>
+<p>A root alloca <code>m</code> <i>with</i> lifetime markers can come before an always-live alloca <code>a</code> in root order while its <code>lifetime.start</code> comes after <code>a</code>. At that start, <code>m</code> is defined where <code>a</code> is live, so the two interfere. But <code>m</code> is colored first, and when <code>a</code> is colored afterwards, nothing tells it to avoid <code>m</code>. For a lifetime start, the walk therefore records real edges to the live root allocas that come after the alloca in root order, the range <code>[NumRootAlwaysLiveBefore[m], NumLiveRootAlwaysLive)</code>. Choose <i>corner case</i> above to watch those edges appear in red. The test corpus hit this path in 1,430 functions.</p>
+<h3>Explicit locals and stack aux slots</h3>
+<p><code>LocalExplicit</code> allocas get stack aux slots above <code>FrameSize</code>. An always-live one must interfere with <i>every</i> other explicit local. Otherwise they all share one slot, and the collector only sees whichever stack aux was initialized last. The old code wrote that rule as all-pairs edges. The new code keeps two sets of slots instead: the slots of every explicit local colored so far, and the slots of the always-live explicit locals colored so far. An always-live local avoids the first set. Any other local avoids the second set plus its ordinary liveness neighbors. The rule is symmetric, so this forbids the same slots as the all-pairs edges at every step.</p>
+
+<h2>Why the layout is identical</h2>
+<p>The new code doesn't approximate the old graph. It claims a stronger invariant: <b>before each coloring decision, old and new forbid exactly the same set of slots.</b> The decision for each node is the lowest slot outside that set, so by induction on the coloring order, every slot assignment is identical. The proof of that invariant is the prefix argument plus the lifetime-start exception. Debug builds also check the prefix directly: <code>assert(Iter-&gt;second + 1 == NumLiveRootAlwaysLive)</code> fires if a root alloca's definition is ever reached other than at the end of the live prefix.</p>
+<p>The fix was also checked empirically. A temporary compiler carried the original function as <code>computeFrameIndexMapReference</code>. It ran both versions on every function and compared <code>FrameIndexMap</code> (entry kind and index), <code>FrameSize</code>, <code>NumStackAuxes</code>, and the setjmp and vararg slots, aborting on any difference. It ran over:</p>
+<ul>
+<li>every C and C++ file in <code>filc/tests</code>, at <code>-O0</code>, at <code>-O2</code>, and at <code>-O1 -mllvm -opt-bisect-limit=0</code> (lifetime markers but no optimization);</li>
+<li>generated traces of 10, 40 and 80 blocks in all three modes;</li>
+<li>directed cases: entry values before allocas, more than 64 slots, multiword objects, local arrays, lifetime markers in scopes and loops, goto and unreachable blocks, setjmp, varargs, and memcpy.</li>
+</ul>
+<p>The result was <b>44,006 functions identical and 0 different</b>, with frames of up to 487 slots. A separate reviewer checked the induction and looked for counterexamples in normal pipelines (repeated lifetime starts, unreachable and non-entry blocks, multi-pointer values, ignored entries, zero-slot allocas, values outside <code>Order</code>) and found none. That review also caught two problems in a first draft that used <code>llvm::BitVector</code>, which are fixed in the final version. Its <code>find_first_unset_in</code> returns an <code>int</code> over unsigned sizes, and copying the vector for each node brought back quadratic work.</p>
+<p>That comparison ran in the fork. The commit then cherry-picked cleanly onto upstream <code>deluge</code> at <code>9d1ed206</code>. Upstream's only change near this code gives each <code>setjmp</code> call its own frame slot, and those slots are appended after the coloring. With assertions enabled, the rebased compiler built 7,836 translation units from <code>filc/tests</code> at <code>-O0</code> and <code>-O2</code>. None hit the prefix assertion. The only crashes were the <code>badasm</code> tests, which are meant to fail.</p>
+
+<h2 id="results">Results</h2>
+<div class="card ui chart"><div id="timeChart"></div>
+<div class="legend"><span><span class="sw" style="background:var(--bad)"></span>before, -O0</span><span><span class="sw" style="background:var(--good)"></span>after, -O0</span><span><span class="sw" style="background:var(--val)"></span>after, -O1</span><span><span class="sw" style="background:#e07b39"></span>upstream deluge, unfixed, -O0</span><span><span class="sw" style="background:#7a4fb3"></span>upstream deluge + fix, -O0</span></div></div>
+<table id="timeTable"></table>
+<p class="meta">The input is generated JIT-trace-shaped C (<a href="gen.py">gen.py</a>). The left three columns were measured in the fork with Nix-built filcc, <code>-shared -fPIC -w</code>, wall clock on a busy host. The right three use the same commit cherry-picked onto upstream <code>deluge</code> at <code>9d1ed206</code>, with and without the change. That compiler is a RelWithDebInfo dev build with assertions enabled, running <code>-c -w</code> on an idle host. The unfixed 300- and 600-block runs were skipped. With the fix, <code>-O0</code> is within about 2× of <code>-O1</code>, where it used to be 65× slower or worse.</p>
+
+<h3>Model explorer</h3>
+<p>This is the same JavaScript model run on bigger programs shaped like the trace: 5 allocas and 29 pointer values per block, the per-block counts in the real test's <code>-O0</code> IR. It counts hash-set inserts plus neighbor and slot checks, and confirms the two colorings are identical.</p>
+<div class="card ui chart"><div id="modelChart"></div><div id="modelNote" class="meta"></div></div>
+
+<h2>What's left</h2>
+<p>After the fix, both <code>-O0</code> and <code>-O1</code> still grow a bit faster than linearly, but no single hot spot dominates the profile. At 600 blocks FilPizlonator is about 31% of compile time, and <code>scheduleChecks</code> (its set-based canonical-pointer liveness) is about 16%. The change leaves that code alone because touching it could change where checks are placed. One unrelated fix rides along: <code>removeRedundantChecksUsingForwardAI</code> now takes <code>CanonicalPtrLiveAtTail</code> by <code>const&amp;</code>. It used to take it by value, which copied every block's live set twice per function.</p>
+<p class="meta">The change is a single commit to <code>llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp</code> (+137 −61), on top of <code>pizlonator/fil-c</code> deluge. This page was written for review and is not part of the patch.</p>
+
+</main>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const fmt = n => { const f = (v, u) => (Number.isInteger(v) ? String(v) : v.toFixed(v < 10 ? 2 : 1)) + u; return n >= 1e9 ? f(n / 1e9, "G") : n >= 1e6 ? f(n / 1e6, "M") : n >= 1e4 ? f(n / 1e3, "k") : String(n); };
+const slotColor = s => `hsl(${(s * 137.508) % 360} 62% 58%)`;
+
+/* ---------------- race ---------------- */
+(function race() {
+  const OLD = 48.0, NEW = 0.66, SPEED = 10;
+  let t0 = 0, raf = 0;
+  function frame(ts) {
+    if (!t0) t0 = ts;
+    const t = (ts - t0) / 1000 * SPEED;
+    const o = Math.min(t / OLD, 1), n = Math.min(t / NEW, 1);
+    $("#raceOld").style.width = (o * 100) + "%"; $("#raceNew").style.width = (n * 100) + "%";
+    $("#raceOldT").textContent = Math.min(t, OLD).toFixed(1) + " s";
+    $("#raceNewT").textContent = Math.min(t, NEW).toFixed(2) + " s";
+    if (o < 1) raf = requestAnimationFrame(frame);
+  }
+  function start() { cancelAnimationFrame(raf); t0 = 0; raf = requestAnimationFrame(frame); }
+  $("#raceBtn").onclick = start;
+  new IntersectionObserver((es, ob) => { if (es[0].isIntersecting) { start(); ob.disconnect(); } }).observe($("#race"));
+})();
+
+/* ---------------- program model ---------------- */
+// Instructions: alloca (naked local; al = AlwaysLive), val (escaping pointer value; ops = value operands),
+// use (no result), lstart/lend (lifetime markers on alloca ai). Everything is in the root block.
+function makeProg(preset, nBlocks = 3, perAlloca = 2, perVal = 3) {
+  const I = [];
+  const add = o => { o.id = I.length; o.ops = o.ops || []; I.push(o); return o.id; };
+  if (preset === "mixed") {
+    const m = add({ kind: "alloca", name: "m", al: false, text: "%m = alloca ptr" });
+    add({ kind: "alloca", name: "a", al: true, text: "%a = alloca ptr" });
+    add({ kind: "alloca", name: "b", al: true, text: "%b = alloca ptr" });
+    const p = add({ kind: "val", name: "p", text: "%p = load ptr, ptr %a" });
+    add({ kind: "use", ops: [p], text: "call @use(ptr %p)" });
+    add({ kind: "lstart", ai: m, text: "lifetime.start(%m)" });
+    const q = add({ kind: "val", name: "q", text: "%q = load ptr, ptr %m" });
+    const r = add({ kind: "val", name: "r", text: "%r = load ptr, ptr %b" });
+    add({ kind: "use", ops: [q, r], text: "call @use(ptr %q, ptr %r)" });
+    add({ kind: "lend", ai: m, text: "lifetime.end(%m)" });
+    const s = add({ kind: "val", name: "s", text: "%s = load ptr, ptr %b" });
+    add({ kind: "use", ops: [s], text: "call @use(ptr %s)" });
+    return I;
+  }
+  const marked = preset === "o2";
+  const small = nBlocks <= 6;
+  const an = (b, j) => small ? "xyzw"[j] + b : `a${b}_${j}`;
+  const vn = (b, j) => small ? "prqtuv"[j] + b : `v${b}_${j}`;
+  const allocas = [];
+  for (let b = 0; b < nBlocks; b++) {
+    allocas[b] = [];
+    for (let j = 0; j < perAlloca; j++)
+      allocas[b][j] = add({ kind: "alloca", name: an(b, j), al: !marked, text: `%${an(b, j)} = alloca ptr` });
+  }
+  for (let b = 0; b < nBlocks; b++) {
+    if (marked) for (const a of allocas[b]) add({ kind: "lstart", ai: a, text: `lifetime.start(%${I[a].name})` });
+    const vs = [];
+    for (let j = 0; j < perVal; j++) {
+      const name = vn(b, j);
+      if (j < 2) vs.push(add({ kind: "val", name, text: `%${name} = load ptr, ptr %${I[allocas[b][j % perAlloca]].name}` }));
+      else vs.push(add({ kind: "val", name, ops: [vs[j - 2]], text: `%${name} = gep ptr %${I[vs[j - 2]].name}, 8` }));
+    }
+    const last = vs.slice(-2);
+    add({ kind: "use", ops: last, text: `call @use(${last.map(v => "ptr %" + I[v].name).join(", ")})` });
+    if (marked) for (const a of allocas[b]) add({ kind: "lend", ai: a, text: `lifetime.end(%${I[a].name})` });
+  }
+  return I;
+}
+
+/* ---------------- the two algorithms ---------------- */
+// Mirrors computeFrameIndexMap before and after the change, for one root block of single-pointer values.
+function simulate(I, algo, rec) {
+  const ev = rec ? [] : null;
+  let ins = 0, chk = 0;
+  const isNode = i => I[i].kind === "alloca" || I[i].kind === "val";
+  const adj = new Map();
+  const nbrs = v => adj.get(v) || EMPTY;
+  const addEdge = (a, b, kind) => {
+    ins += 2;
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    const fresh = !adj.get(a).has(b);
+    adj.get(a).add(b); adj.get(b).add(a);
+    if (rec && fresh) ev.push({ t: "edge", a, b, kind, ins, chk });
+  };
+
+  // RootAlwaysLive (after) or LiveAtTail injection (before).
+  const R = [], RIdx = new Map(), Before = new Map(), liveTail = new Set();
+  for (const x of I) if (x.kind === "alloca") {
+    Before.set(x.id, R.length);
+    if (x.al) { if (algo === "new") { RIdx.set(x.id, R.length); R.push(x.id); } else liveTail.add(x.id); }
+  }
+
+  if (rec) ev.push({ t: "phase", name: "liveness" });
+  const live = new Set(liveTail);
+  let numLive = R.length;
+  for (let i = I.length - 1; i >= 0; i--) {
+    const x = I[i];
+    if (rec) ev.push({ t: "at", i, exp: [...live], imp: R.slice(0, numLive), ins, chk });
+    let def = null;
+    if (x.kind === "lstart") { live.delete(x.ai); def = x.ai; }
+    else if (x.kind !== "lend") {
+      live.delete(i);
+      if (isNode(i)) def = i;
+      if (RIdx.has(i)) {
+        if (RIdx.get(i) + 1 !== numLive) throw new Error("prefix violated");
+        numLive = RIdx.get(i);
+      }
+    }
+    if (def !== null) {
+      for (const lv of live) addEdge(def, lv, "live");
+      if (algo === "new" && x.kind === "lstart") {
+        const nb = Before.has(def) ? Before.get(def) : R.length;
+        for (let k = nb; k < numLive; k++) addEdge(def, R[k], "lifetime");
+      }
+    }
+    if (x.kind === "lend") live.add(x.ai);
+    else for (const op of x.ops) if (I[op].kind === "val") live.add(op);
+  }
+
+  if (rec) ev.push({ t: "phase", name: "coloring" });
+  const order = I.filter(x => isNode(x.id)).map(x => x.id);
+  const color = new Map();
+  if (algo === "old") {
+    for (const v of order) {
+      if (rec) ev.push({ t: "visit", v, ins, chk });
+      // unordered_set iteration order: arbitrary but fixed per set.
+      const nb = [...nbrs(v)].sort((p, q) => hash(v, p) - hash(v, q));
+      for (let slot = 0; ; slot++) {
+        let hit = null, scanned = 0;
+        for (const n of nb) { chk++; scanned++; if (color.get(n) === slot) { hit = n; break; } }
+        if (rec) ev.push({ t: "try", v, slot, hit, scanned, ins, chk });
+        if (hit === null) { color.set(v, slot); break; }
+      }
+      if (rec) ev.push({ t: "assign", v, slot: color.get(v), ins, chk });
+    }
+  } else {
+    const taken = [], mark = [];
+    let first = 0, epoch = 0;
+    for (const v of order) {
+      if (rec) ev.push({ t: "visit", v, ins, chk });
+      epoch++;
+      const marked = [];
+      for (const n of nbrs(v)) { chk++; if (color.has(n)) { mark[color.get(n)] = epoch; marked.push(color.get(n)); } }
+      const start = first;
+      let slot = start;
+      for (; ; slot++) { chk++; if (!taken[slot] && mark[slot] !== epoch) break; }
+      if (rec) ev.push({ t: "pick", v, start, slot, marked, ins, chk });
+      color.set(v, slot);
+      if (RIdx.has(v)) { taken[slot] = true; while (taken[first]) first++; }
+      if (rec) ev.push({ t: "assign", v, slot, taken: RIdx.has(v), first, ins, chk });
+    }
+  }
+  if (rec) ev.push({ t: "done", ins, chk });
+  return { color, ins, chk, ev };
+}
+const EMPTY = new Set();
+function hash(a, b) { let h = (a * 2654435761 ^ b * 40503) >>> 0; h ^= h >>> 15; h = Math.imul(h, 2246822519) >>> 0; return h ^ (h >>> 13); }
+const sameColors = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
+
+/* ---------------- stepper ---------------- */
+(function stepper() {
+  let preset = "o0", algo = "old", prog, sim, idx, st, timer = null;
+
+  function load() {
+    prog = makeProg(preset);
+    sim = simulate(prog, algo, true);
+    const other = simulate(prog, algo === "old" ? "new" : "old", false);
+    const o = algo === "old" ? sim : other, n = algo === "old" ? other : sim;
+    $("#compare").innerHTML = `Whole program: before <b>${o.ins}</b> inserts + <b>${o.chk}</b> checks · after <b>${n.ins}</b> inserts + <b>${n.chk}</b> checks · slot assignments ${sameColors(o.color, n.color) ? '<b class="good">identical ✓</b>' : '<b class="bad">differ ✗</b>'}`;
+    idx = 0;
+    st = { edges: new Map(), color: new Map(), at: null, phase: "", visit: null, tryEv: null, takenSet: new Set(), narr: "Press Play. The liveness walk runs bottom-up and adds interference edges.", ins: 0, chk: 0, liveRows: new Map() };
+    render();
+  }
+
+  function apply(e) {
+    if (e.ins !== undefined) { st.ins = e.ins; st.chk = e.chk; }
+    switch (e.t) {
+      case "phase": st.phase = e.name; st.at = null; if (e.name === "coloring") st.narr = "The coloring visits values top-down and gives each the lowest slot its colored neighbors don't hold."; break;
+      case "at": st.at = e.i; st.liveRows.set(e.i, e); st.narr = `Backward walk at <code>${prog[e.i].text}</code>: ${e.exp.length + e.imp.length} live here.`; break;
+      case "edge": st.edges.set(Math.min(e.a, e.b) + "|" + Math.max(e.a, e.b), e.kind); if (e.kind === "lifetime") st.narr = `<code>lifetime.start(%${prog[e.a].name})</code> is below <code>%${prog[e.b].name}</code>, which is colored later, so the edge ${prog[e.a].name}–${prog[e.b].name} is recorded explicitly.`; break;
+      case "visit": st.visit = e.v; st.tryEv = null; st.at = e.v; st.narr = `Coloring %${prog[e.v].name}.`; break;
+      case "try": st.tryEv = e; st.narr = e.hit === null ? `Slot ${e.slot}: scanned all ${e.scanned} neighbors of %${prog[e.v].name}, no conflict.` : `Slot ${e.slot}: scanned ${e.scanned} of ${neighborsOf(e.v)} neighbors of %${prog[e.v].name} before hitting %${prog[e.hit].name}, which holds slot ${e.slot}.`; break;
+      case "pick": st.tryEv = e; st.narr = `%${prog[e.v].name}: stamped ${e.marked.length} neighbor slot${e.marked.length === 1 ? "" : "s"} in one pass, then scanned up from FirstMissing = ${e.start} to slot ${e.slot}.`; break;
+      case "assign": st.color.set(e.v, e.slot); if (e.taken) st.takenSet.add(e.slot); break;
+      case "done": st.visit = null; st.tryEv = null; st.at = null; st.narr = "Done."; stop(); break;
+    }
+  }
+  const neighborsOf = v => [...st.edges.keys()].filter(k => { const [a, b] = k.split("|").map(Number); return a === v || b === v; }).length;
+
+  function stepOnce() { if (idx < sim.ev.length) apply(sim.ev[idx++]); }
+  function stop() { clearInterval(timer); timer = null; $("#play").textContent = "▶ Play"; }
+  function play() {
+    if (timer) return stop();
+    if (idx >= sim.ev.length) load();
+    $("#play").textContent = "❚❚ Pause";
+    timer = setInterval(() => { const k = Math.max(1, Math.round(($("#speed").value ** 1.6) / 30)); for (let j = 0; j < k; j++) stepOnce(); render(); }, 70);
+  }
+
+  function render() {
+    const nodes = prog.filter(x => x.kind === "alloca" || x.kind === "val");
+    // listing with live cells (one column per node)
+    let h = `<div class="ln hdr"><span>instruction</span><span class="cells">${nodes.map(n => `<span class="cell" title="${n.name}" style="font-size:8px;text-align:center;color:${n.kind === "alloca" ? "var(--alloca)" : "var(--val)"}">${n.name[0]}</span>`).join("")}</span></div>`;
+    for (const x of prog) {
+      const row = st.liveRows.get(x.id);
+      const cells = nodes.map(n => {
+        let c = "cell";
+        if (row) {
+          if (row.exp.includes(n.id)) c += n.kind === "alloca" ? " la" : " l";
+          else if (row.imp.includes(n.id)) c += " li";
+        }
+        if (n.id === x.id || (x.kind === "lstart" && x.ai === n.id)) c += " d";
+        return `<span class="${c}"></span>`;
+      }).join("");
+      const style = x.kind === "alloca" ? "color:#8a520a" : x.kind.startsWith("l") ? "color:#7a756c" : "";
+      h += `<div class="ln${st.at === x.id ? " cur" : ""}"><span style="${style}">${x.text}</span><span class="cells">${cells}</span></div>`;
+    }
+    $("#listing").innerHTML = h;
+
+    // graph
+    const W = 420, H = 300, cx = W / 2, cy = H / 2 + 4, rad = 122;
+    const pos = new Map();
+    nodes.forEach((n, k) => { const a = -Math.PI / 2 + 2 * Math.PI * k / nodes.length; pos.set(n.id, [cx + rad * Math.cos(a) * 1.35, cy + rad * Math.sin(a)]); });
+    let g = `<svg viewBox="0 0 ${W} ${H}">`;
+    const tryHit = st.tryEv && st.tryEv.t === "try" ? st.tryEv.hit : null;
+    for (const [k, kind] of st.edges) {
+      const [a, b] = k.split("|").map(Number);
+      const [x1, y1] = pos.get(a), [x2, y2] = pos.get(b);
+      const hot = st.visit !== null && (a === st.visit || b === st.visit);
+      const hitE = tryHit !== null && hot && (a === tryHit || b === tryHit);
+      const col = kind === "lifetime" ? "var(--bad)" : hitE ? "var(--bad)" : hot ? "#333" : "#c9c3b8";
+      g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${kind === "lifetime" || hitE ? 2.2 : hot ? 1.3 : 0.8}" opacity="${hot || kind === "lifetime" ? 1 : 0.75}"/>`;
+    }
+    // After: the value being colored also avoids every colored always-live root alloca, without edges.
+    if (algo === "new" && st.visit !== null && st.phase === "coloring") {
+      const [x1, y1] = pos.get(st.visit);
+      for (const n of nodes) if (n.kind === "alloca" && n.al && n.id !== st.visit && st.color.has(n.id)) {
+        const [x2, y2] = pos.get(n.id);
+        g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--alloca)" stroke-width="1.4" stroke-dasharray="4 4" opacity="0.8"/>`;
+      }
+    }
+    for (const n of nodes) {
+      const [x, y] = pos.get(n.id);
+      const c = st.color.get(n.id);
+      const fill = c === undefined ? "#fff" : slotColor(c);
+      const ring = n.kind === "alloca" ? "var(--alloca)" : "var(--val)";
+      const cur = st.visit === n.id;
+      g += `<circle cx="${x}" cy="${y}" r="${cur ? 15 : 12}" fill="${fill}" stroke="${ring}" stroke-width="${cur ? 4 : 2.5}"/>`;
+      g += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#1d1c1a">${n.name}</text>`;
+      if (c !== undefined) g += `<text x="${x}" y="${y - 17}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#6b675f">${c}</text>`;
+    }
+    g += `<text x="6" y="14" font-family="system-ui" font-size="11" fill="#6b675f">interference graph: ${st.edges.size} edges</text></svg>`;
+    $("#graph").innerHTML = g;
+
+    // slots
+    const maxSlot = Math.max(2, ...st.color.values(), st.tryEv ? st.tryEv.slot : 0) + 1;
+    let s = "";
+    for (let k = 0; k <= Math.min(maxSlot, nodes.length); k++) {
+      const holders = nodes.filter(n => st.color.get(n.id) === k).map(n => n.name);
+      let cls = "slot";
+      if (algo === "new" && st.takenSet.has(k)) cls += " taken";
+      if (st.tryEv && st.tryEv.t === "pick" && st.tryEv.marked.includes(k)) cls += " mark";
+      if (st.tryEv && st.tryEv.slot === k) cls += (st.tryEv.t === "try" && st.tryEv.hit !== null) ? " try" : " ok";
+      s += `<div class="${cls}"><span class="ix" style="color:${slotColor(k)}">● ${k}</span>${holders.join(" ") || "&nbsp;"}</div>`;
+    }
+    $("#strip").innerHTML = s;
+    $("#cIns").textContent = fmt(st.ins); $("#cChk").textContent = fmt(st.chk);
+    $("#narr").innerHTML = st.narr;
+    $("#phase").textContent = st.phase ? `phase: ${st.phase} · event ${idx}/${sim.ev.length}` : `${sim.ev.length} events`;
+  }
+
+  $$("[data-preset]").forEach(b => b.onclick = () => { stop(); preset = b.dataset.preset; $$("[data-preset]").forEach(x => x.classList.toggle("on", x === b)); load(); });
+  $$("[data-algo]").forEach(b => b.onclick = () => { stop(); algo = b.dataset.algo; $$("[data-algo]").forEach(x => x.classList.toggle("on", x === b)); load(); });
+  $("#play").onclick = play;
+  $("#step").onclick = () => { stop(); stepOnce(); render(); };
+  $("#reset").onclick = () => { stop(); load(); };
+  $("#finish").onclick = () => { stop(); while (idx < sim.ev.length) stepOnce(); render(); };
+  $("#toColor").onclick = () => { stop(); while (idx < sim.ev.length && !(sim.ev[idx].t === "phase" && sim.ev[idx].name === "coloring")) stepOnce(); if (idx < sim.ev.length) stepOnce(); render(); };
+  load();
+})();
+
+/* ---------------- prefix animation ---------------- */
+(function prefix() {
+  const svg = $("#prefixSvg"), K = 6;
+  const rows = [];
+  for (let k = 0; k < K; k++) rows.push({ t: `%a${k} = alloca`, a: k });
+  rows.push({ t: "%p = load ptr, ptr %a1", a: -1 });
+  rows.push({ t: "br %bb1", a: -1 });
+  rows.push({ t: "…later blocks…", a: -1, later: true });
+  rows.push({ t: "%q = load ptr, ptr %a4", a: -1 });
+  const Y = k => 44 + k * 26;
+  let raf = 0;
+  function draw(cursor, mode) {
+    // mode "live": cursor walks up; live allocas = those above cursor. mode "color": cursor walks down; colored allocas = above.
+    let s = `<text x="18" y="${Y(0) - 24}" font-family="system-ui" font-size="12" fill="#6b675f">root block</text>`;
+    s += `<rect x="14" y="${Y(0) - 18}" width="300" height="${Y(K + 2) - Y(0) - 2}" fill="none" stroke="#cfc9be" rx="6"/>`;
+    rows.forEach((r, k) => {
+      const y = Y(k);
+      const above = k < cursor;
+      const isA = r.a >= 0;
+      const on = isA && above;
+      const fill = on ? (mode === "live" ? "#f3c27a" : slotColor(r.a)) : "transparent";
+      if (isA) s += `<rect x="20" y="${y - 13}" width="140" height="19" rx="4" fill="${fill}" opacity="0.85"/>`;
+      s += `<text x="26" y="${y}" font-family="ui-monospace,monospace" font-size="12" fill="${r.later ? "#9a948a" : isA ? "#8a520a" : "#1d1c1a"}">${r.t}</text>`;
+    });
+    const cy = Y(cursor) - 17;
+    s += `<line x1="10" x2="330" y1="${cy}" y2="${cy}" stroke="${mode === "live" ? "var(--val)" : "var(--good)"}" stroke-width="2.5"/>`;
+    s += `<text x="336" y="${cy + 4}" font-family="system-ui" font-size="12" fill="${mode === "live" ? "var(--val)" : "var(--good)"}">${mode === "live" ? "▲ liveness walk" : "▼ coloring"}</text>`;
+    // right: RootAlwaysLive vector
+    const n = Math.min(cursor, K);
+    s += `<text x="470" y="40" font-family="system-ui" font-size="12" fill="#6b675f">RootAlwaysLive</text>`;
+    for (let k = 0; k < K; k++) {
+      const on = k < n;
+      s += `<rect x="${470 + k * 44}" y="52" width="38" height="30" rx="4" fill="${on ? (mode === "live" ? "#f3c27a" : slotColor(k)) : "#fff"}" stroke="#d9a75f"/>`;
+      s += `<text x="${489 + k * 44}" y="72" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12">a${k}</text>`;
+    }
+    s += `<path d="M ${470} 92 h ${n * 44 - 6}" stroke="${mode === "live" ? "var(--val)" : "var(--good)"}" stroke-width="3"/>`;
+    s += `<text x="470" y="112" font-family="ui-monospace,monospace" font-size="12" fill="#1d1c1a">${mode === "live" ? `NumLiveRootAlwaysLive = ${n}` : `colored so far = ${n}`}</text>`;
+    s += `<text x="470" y="150" font-family="system-ui" font-size="13" fill="#3b3832">${mode === "live" ? "live here: a prefix, [0, " + n + ")" : "already colored: the same prefix"}</text>`;
+    if (mode === "color") {
+      s += `<text x="470" y="178" font-family="system-ui" font-size="12" fill="#6b675f">Taken slots</text>`;
+      for (let k = 0; k < K; k++) s += `<rect x="${470 + k * 24}" y="186" width="20" height="20" rx="3" fill="${k < n ? slotColor(k) : "#fff"}" stroke="#ccc"/><text x="${480 + k * 24}" y="200" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace">${k}</text>`;
+      s += `<text x="470" y="226" font-family="ui-monospace,monospace" font-size="12">FirstMissing = ${n}</text>`;
+    }
+    svg.innerHTML = s;
+  }
+  function run() {
+    cancelAnimationFrame(raf);
+    const total = rows.length;
+    const seq = [];
+    for (let c = total; c >= 0; c--) seq.push(["live", c]);
+    for (let c = 0; c <= total; c++) seq.push(["color", c]);
+    let k = 0, last = 0;
+    const narr = {
+      live: "Walking backward (bottom-up), an always-live root alloca stops being live at its own definition. What remains live is always a prefix of RootAlwaysLive, so a counter describes it and no live set or edges are needed.",
+      color: "Coloring walks forward over the root block first. When it reaches any value, the colored root allocas are exactly the prefix that was live at that value's definition, so the value avoids their slots (Taken) instead of storing edges to them."
+    };
+    function f(ts) {
+      if (ts - last > 650) { last = ts; const [m, c] = seq[k++]; draw(c, m); $("#prefixNarr").textContent = narr[m]; }
+      if (k < seq.length) raf = requestAnimationFrame(f);
+    }
+    raf = requestAnimationFrame(f);
+  }
+  $("#prefixBtn").onclick = run;
+  draw(rows.length, "live");
+  new IntersectionObserver((es, ob) => { if (es[0].isIntersecting) { run(); ob.disconnect(); } }).observe($("#prefixCard"));
+})();
+
+/* ---------------- charts ---------------- */
+function logChart(el, series, { xlab, ylab, xs, ymin, ymax, yfmt = v => v }) {
+  const W = 760, H = 330, L = 64, Rm = 20, T = 16, B = 44;
+  const lx = v => L + (Math.log(v) - Math.log(xs[0])) / (Math.log(xs[1]) - Math.log(xs[0])) * (W - L - Rm);
+  const ly = v => T + (1 - (Math.log(v) - Math.log(ymin)) / (Math.log(ymax) - Math.log(ymin))) * (H - T - B);
+  let s = `<svg viewBox="0 0 ${W} ${H}">`;
+  for (let e = Math.ceil(Math.log10(ymin)); e <= Math.floor(Math.log10(ymax)); e++) {
+    const v = 10 ** e, y = ly(v);
+    s += `<line x1="${L}" x2="${W - Rm}" y1="${y}" y2="${y}" stroke="#ece8e0"/><text x="${L - 8}" y="${y + 4}" text-anchor="end" font-size="11" font-family="ui-monospace,monospace" fill="#6b675f">${yfmt(v)}</text>`;
+  }
+  for (const x of series.ticks) { const X = lx(x); s += `<line x1="${X}" x2="${X}" y1="${T}" y2="${H - B}" stroke="#f2efe9"/><text x="${X}" y="${H - B + 16}" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#6b675f">${x}</text>`; }
+  s += `<text x="${(L + W) / 2}" y="${H - 6}" text-anchor="middle" font-size="12" font-family="system-ui" fill="#6b675f">${xlab}</text>`;
+  s += `<text x="14" y="${(T + H - B) / 2}" transform="rotate(-90 14 ${(T + H - B) / 2})" text-anchor="middle" font-size="12" font-family="system-ui" fill="#6b675f">${ylab}</text>`;
+  for (const sr of series.lines) {
+    const pts = sr.pts.map(([x, y]) => `${lx(x)},${ly(y)}`).join(" ");
+    s += `<polyline points="${pts}" fill="none" stroke="${sr.color}" stroke-width="2.4" ${sr.dash ? 'stroke-dasharray="5 4"' : ""}/>`;
+    for (const [x, y] of sr.pts) s += `<circle cx="${lx(x)}" cy="${ly(y)}" r="3.6" fill="${sr.color}"><title>${sr.name}: ${x} → ${yfmt(y)}</title></circle>`;
+    if (sr.label) { const [x, y] = sr.pts[sr.pts.length - 1]; s += `<text x="${lx(x) - 6}" y="${ly(y) - 9}" text-anchor="end" font-size="11" font-family="ui-monospace,monospace" fill="${sr.color}">${sr.label}</text>`; }
+  }
+  el.innerHTML = s + "</svg>";
+}
+
+const TIMES = {
+  old: [[40, 0.81], [80, 4.71], [160, 48], [300, 597.3]],
+  newO0: [[40, 0.19], [80, 0.31], [160, 0.66], [300, 1.37], [600, 3.09]],
+  newO1: [[40, 0.20], [80, 0.33], [160, 0.63], [300, 1.25], [600, 3.15]],
+  upstream: [[40, 1.23], [80, 8.46], [160, 77.5]],
+  rebased: [[40, 0.18], [80, 0.35], [160, 0.76], [300, 1.63], [600, 3.79]],
+  rebasedO1: [[40, 0.12], [80, 0.19], [160, 0.36], [300, 0.72], [600, 1.77]]
+};
+(function timeChart() {
+  const lines = [
+    { name: "before -O0", pts: TIMES.old, color: "var(--bad)", label: "597 s, 2.8 GB" },
+    { name: "after -O0", pts: TIMES.newO0, color: "var(--good)" },
+    { name: "after -O1", pts: TIMES.newO1, color: "var(--val)", dash: true },
+    { name: "deluge 9d1ed206 -O0", pts: TIMES.upstream, color: "#e07b39", dash: true },
+    { name: "deluge + fix -O0", pts: TIMES.rebased, color: "#7a4fb3", dash: true },
+  ];
+  logChart($("#timeChart"), { ticks: [40, 80, 160, 300, 600], lines }, { xlab: "basic blocks in the generated function", ylab: "compile time", xs: [32, 700], ymin: 0.1, ymax: 1000, yfmt: v => v + " s" });
+  const all = [40, 80, 160, 300, 600];
+  const get = (a, n) => { const p = a && a.find(q => q[0] === n); return p ? p[1].toFixed(2) + " s" : "—"; };
+  let t = `<tr><th></th><th colspan="3">fork, filcc, -shared</th><th colspan="3">upstream deluge, dev build, -c</th></tr>`;
+  t += `<tr><th>blocks</th><th>before -O0</th><th>after -O0</th><th>after -O1</th><th>unfixed -O0</th><th>fixed -O0</th><th>fixed -O1</th></tr>`;
+  for (const n of all) t += `<tr><td>${n}</td><td class="bad">${get(TIMES.old, n)}</td><td class="good">${get(TIMES.newO0, n)}</td><td>${get(TIMES.newO1, n)}</td><td class="bad">${get(TIMES.upstream, n)}</td><td class="good">${get(TIMES.rebased, n)}</td><td>${get(TIMES.rebasedO1, n)}</td></tr>`;
+  $("#timeTable").innerHTML = t;
+})();
+
+(function modelChart() {
+  const Ns = [2, 4, 8, 12, 16, 24, 32];
+  const oldPts = [], newPts = [];
+  let same = 0;
+  for (const n of Ns) {
+    const p = makeProg("o0", n, 5, 29);
+    const o = simulate(p, "old", false), w = simulate(p, "new", false);
+    oldPts.push([n, o.ins + o.chk]); newPts.push([n, w.ins + w.chk]);
+    if (sameColors(o.color, w.color)) same++;
+  }
+  logChart($("#modelChart"), { ticks: Ns, lines: [
+    { name: "before", pts: oldPts, color: "var(--bad)" },
+    { name: "after", pts: newPts, color: "var(--good)" },
+  ] }, { xlab: "blocks (5 allocas, 29 pointer values each)", ylab: "inserts + checks", xs: [1.8, 36], ymin: 100, ymax: 1e8, yfmt: v => fmt(v) });
+  const lo = oldPts[oldPts.length - 1][1], ln = newPts[newPts.length - 1][1];
+  const slope = a => (Math.log(a[a.length - 1][1]) - Math.log(a[a.length - 3][1])) / (Math.log(a[a.length - 1][0]) - Math.log(a[a.length - 3][0]));
+  $("#modelNote").innerHTML = `At 32 blocks: before ${fmt(lo)} operations, after ${fmt(ln)} (${Math.round(lo / ln)}× fewer). Log-log slope over the last points: before ≈ ${slope(oldPts).toFixed(2)}, after ≈ ${slope(newPts).toFixed(2)}. Colorings identical in <b class="${same === Ns.length ? "good" : "bad"}">${same}/${Ns.length}</b> programs.`;
+})();
+</script>
+</body>
+</html>
