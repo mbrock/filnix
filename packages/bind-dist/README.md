@@ -36,7 +36,7 @@ The programs use the same paths as Debian's and ISC's builds:
 ## Differences from other BIND builds
 
 - `named` is much slower and uses more memory than a native build: about
-  10 times the CPU per query and 4 times the resident memory in our
+  5 to 6 times the CPU per query and 4 times the resident memory in our
   `dnsperf` measurements.
 - qp-trie nodes are 16 bytes rather than 12, so zones and caches take
   somewhat more memory.

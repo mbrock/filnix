@@ -20,7 +20,7 @@ AMB = "#d98a1c"  # the neighbouring secret
 BLU = "#2f6fb3"  # the pointer
 GRN = "#3d7a3d"  # Fil-C
 
-SLOWDOWN = os.environ.get("FILBIND_SLOWDOWN", "10")
+SLOWDOWN = os.environ.get("FILBIND_SLOWDOWN", "5–6")
 
 config.background_color = PAPER
 config.pixel_width = 1920

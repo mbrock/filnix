@@ -23,7 +23,7 @@ cat > "$work/fonts.conf" <<EOF
 EOF
 
 cd "$work"
-export FILBIND_SLOWDOWN=${FILBIND_SLOWDOWN:-10}
+export FILBIND_SLOWDOWN=${FILBIND_SLOWDOWN:-5–6}
 export PUBLIC_SANS=$sans/share/fonts/opentype FONTCONFIG_FILE=$work/fonts.conf
 nix shell --inputs-from "$root" nixpkgs#manim nixpkgs#texliveSmall nixpkgs#ffmpeg -c bash -euo pipefail -c '
   manim render --progress_bar none --fps 30 --media_dir "$1" -o fil-bind.mp4 "$2/scene.py" Explainer

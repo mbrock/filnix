@@ -86,19 +86,20 @@ td.n { font-family: var(--mono-font); white-space: nowrap; text-align: right; }
 <p>BIND's unit tests then pass, except three that replace a library function by defining it in the test program, which Fil-C's linking does not allow (<a href="../docs/filc-findings.html">findings</a>). A signed zone served by one <code>named</code> and validated by another, AXFR, TSIG-signed updates and <code>rndc</code> all work, in plain Debian and Alpine containers as root and as an unprivileged user.</p>
 
 <h2>What it costs</h2>
-<p id="bench">Fil-C's checks and garbage collector cost a lot in a server that does little but move small packets through pointer-heavy data structures. We measured with <code>dnsperf</code> against a 20,000-name zone, on an 8-core cloud VM with the load generator on the same machine, comparing Nixpkgs' native BIND 9.20.29 with Fil-BIND:</p>
+<p id="bench">Fil-C's checks and garbage collector cost a lot in a server that does little but move small packets through pointer-heavy data structures. We measured with <code>dnsperf</code> against a 20,000-name zone, on an 8-core cloud VM with the load generator on the same machine, comparing Nixpkgs' native BIND 9.20.29 with Fil-BIND; each number is the average of two 15-second runs:</p>
 <table>
 <tr><th></th><th>native</th><th>Fil-BIND</th><th></th></tr>
-<tr><td>Authoritative, 1 thread</td><td class="n">161,000 qps</td><td class="n">16,700 qps</td><td class="n">9.6× slower</td></tr>
-<tr><td>Cached resolver answers, 1 thread</td><td class="n">166,000 qps</td><td class="n">17,600 qps</td><td class="n">9.4× slower</td></tr>
-<tr><td>Authoritative, 4 threads</td><td class="n">416,000 qps</td><td class="n">31,800 qps</td><td class="n">13× slower</td></tr>
-<tr><td>Cached resolver answers, 4 threads</td><td class="n">337,000 qps</td><td class="n">36,600 qps</td><td class="n">9.2× slower</td></tr>
-<tr><td>Resident memory, resolver</td><td class="n">41 MB</td><td class="n">162 MB</td><td class="n">≈4×</td></tr>
+<tr><td>Authoritative, 1 thread</td><td class="n">167,000 qps</td><td class="n">31,500 qps</td><td class="n">5.3× slower</td></tr>
+<tr><td>Cached resolver answers, 1 thread</td><td class="n">160,000 qps</td><td class="n">28,600 qps</td><td class="n">5.6× slower</td></tr>
+<tr><td>Authoritative, 4 threads</td><td class="n">409,000 qps</td><td class="n">64,400 qps</td><td class="n">6.4× slower</td></tr>
+<tr><td>Cached resolver answers, 4 threads</td><td class="n">382,000 qps</td><td class="n">74,000 qps</td><td class="n">5.2× slower</td></tr>
+<tr><td>Resident memory, resolver</td><td class="n">39 MB</td><td class="n">167 MB</td><td class="n">≈4×</td></tr>
 </table>
-<p>So roughly ten times the CPU per query, and four times the memory. Seventeen thousand queries a second per core is far below what BIND can do, but well above what many internal, small-office or legacy servers ever see. We have not tuned anything yet.</p>
+<p>So roughly five to six times the CPU per query, and four times the memory. Thirty thousand queries a second on one thread is far below what BIND can do, but well above what many internal, small-office or legacy servers ever see.</p>
+<p>The first build was about ten times slower. Profiling showed the garbage collector's marking taking half of <code>named</code>'s CPU: under Fil-C, a local variable whose address escapes becomes a zeroed heap allocation, and each query made about 60&nbsp;KB of them, mostly QP-trie lookup chains and iterators, search contexts and client state. Building those structs in place, and allocating them only when a caller needs them, cut that to about 15&nbsp;KB and roughly doubled throughput (<a href="https://github.com/mbrock/filnix/blob/main/patches/bind-filc-heap-temporaries.patch">patch</a>). Much of what remains is in the Fil-C runtime itself: copying and zeroing small structs that hold pointers, and setting up their capability metadata.</p>
 
 <div class="note">
-<p><b>A research artifact.</b> This is not an ISC build and comes with no support or warranty. Fil-C turns memory corruption into a crash; it does not stop assertion failures, resource exhaustion or cache poisoning, so keep following ISC's advisories and upgrading. If you run an old BIND setup where a crash is better than a compromise and ten times the CPU is affordable, it may be worth evaluating. The build recipe is in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
+<p><b>A research artifact.</b> This is not an ISC build and comes with no support or warranty. Fil-C turns memory corruption into a crash; it does not stop assertion failures, resource exhaustion or cache poisoning, so keep following ISC's advisories and upgrading. If you run an old BIND setup where a crash is better than a compromise and five times the CPU is affordable, it may be worth evaluating. The build recipe is in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
 </div>
 
 </main>
