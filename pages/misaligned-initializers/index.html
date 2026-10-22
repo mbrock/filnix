@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Misaligned pointers in global and thread-local initializers · Fil-C</title>
+<meta property="og:title" content="Misaligned pointers in Fil-C global and thread-local initializers">
+<meta property="og:description" content="A packed initializer with a pointer at byte 1 aborts clang for a global and silently corrupts shadow capabilities for a thread-local. The fix turns both into a compile error.">
+<meta property="og:image" content="https://mbrock.github.io/filnix/misaligned-initializers/poster.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+<style>
+:root { --cap: #2f6fb3; --byte: #d98a1c; --bad: #9a3248; --good: #3d7a3d; }
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
+.sub { color: var(--muted); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono-font); color: var(--muted); text-align: start; }
+.video { margin: 1.6rem 0 2rem; }
+.video video { display: block; width: 100%; max-width: 560px; margin: 0 auto; border: 1px solid var(--rule); border-radius: 4px; background: #fff; }
+.video figcaption { margin-top: 0.5rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.terms { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 14px 0; padding: 12px 16px; background: #f4f1ea; border-radius: 8px; font-size: 0.93em; text-align: start; }
+.terms dt { font-weight: 600; }
+.terms dd { margin: 0; }
+.card { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
+.card svg { display: block; width: 100%; height: auto; }
+.card .cap { margin-top: 6px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+table { border-collapse: collapse; font-size: 0.92em; width: 100%; margin: 1rem 0; text-align: start; }
+td, th { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: start; }
+th { color: var(--muted); font-weight: 600; }
+pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--muted); }
+.bad { color: var(--bad); } .good { color: var(--good); }
+</style>
+</head>
+<body>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door selected" href="../index.html#explainers">Explainers</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Misaligned pointers in initializers</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/fil-c/commit/b987d40b6303a4ea549ecefe8092339052cfb98b">b987d40</a></span>
+</div></div>
+<main class="page-frame reading explainer">
+
+<p class="meta">Fil-C · FilPizlonator · global and thread-local initializers · <a href="https://github.com/mbrock/fil-c/commit/b987d40b6303a4ea549ecefe8092339052cfb98b">commit b987d40</a> on <a href="https://github.com/mbrock/fil-c/tree/init-misaligned-pointers">mbrock/fil-c init-misaligned-pointers</a>, based on pizlonator/fil-c deluge 9d1ed206</p>
+<h1>Misaligned pointers in global and thread&#8209;local initializers</h1>
+<p class="sub">A packed initializer can put a pointer at byte 1. Fil-C 0.686 aborts clang on it for a global. For a thread-local it compiles, then writes the capability across two shadow words, and the program later segfaults with no Fil-C error. The fix turns both into a compile error.</p>
+<figure class="video">
+<video controls playsinline preload="metadata" poster="poster.png" src="explainer.mp4"></video>
+<figcaption>The bug and the fix in under a minute. Made with Manim (<a href="video/scene.py">source</a>); the page below has the details.</figcaption>
+</figure>
+
+<h2>The program</h2>
+<p>Nothing exotic: a packed struct with a <code>char</code> and then a pointer, initialized with an address.</p>
+<pre><code>int anchor = 5;
+struct __attribute__((packed)) P { char c; int *p; };
+_Thread_local struct P t = { 1, &amp;anchor };   <span class="c">/* or a plain global */</span></code></pre>
+<p>In C this is fine: <code>t.p</code> sits at byte 1, and x86-64 can load it there. Packed records that hold pointers turn up in real code, for example systemd's <code>HashmapBase</code>, network headers and serialized formats. Most of them never put a non-null pointer at an odd offset in a static initializer, which is presumably why this has not come up.</p>
+
+<h2>Why Fil-C can't represent it</h2>
+<p>Fil-C gives every pointer an invisible capability. In memory, an object's bytes are split into 8-byte <b>words</b>, and each word has a <b>shadow word</b> next to it that holds the capability of the pointer stored in that word, or null. A pointer access loads or stores the word and its shadow word together. These words are used below:</p>
+<dl class="terms">
+<dt>word</dt><dd>An 8-byte, 8-aligned piece of an object.</dd>
+<dt>shadow word</dt><dd>The word's partner in the object's aux allocation, holding a capability or null. In the code: <code>AuxP</code>, the lower.</dd>
+<dt>capability</dt><dd>What the runtime trusts to say which object a pointer may touch. A shadow word must hold either null or a real capability.</dd>
+<dt>initializer</dt><dd>The constant value of a global or thread-local, stored before the program can see the object.</dd>
+</dl>
+<p>A pointer at byte 1 covers bytes 1 through 8: the end of word 0 and the start of word 1. No single shadow word belongs to it. That is fine at run time, because every pointer load and store checks that its address is 8-aligned first. <code>t.p</code> in the program above traps with <i>alignment requirement of 8 bytes not met</i>, which is the normal Fil-C answer. Initializers are different: the compiler writes them itself, without those checks.</p>
+
+<div class="card">
+<svg viewBox="0 0 760 250" font-family="Public Sans, sans-serif" font-size="14">
+  <text x="20" y="62" fill="#667078">object</text>
+  <text x="20" y="182" fill="#667078">shadow</text>
+  <g id="cells"></g>
+  <text x="248" y="28" fill="#667078" text-anchor="middle">word 0</text>
+  <text x="568" y="28" fill="#667078" text-anchor="middle">word 1</text>
+  <rect x="90" y="40" width="40" height="34" fill="#d98a1c" opacity="0.85"/>
+  <rect x="130" y="40" width="320" height="34" fill="#2f6fb3" opacity="0.85"/>
+  <text x="290" y="62" fill="#fff" text-anchor="middle" font-weight="700">int *p, bytes 1–8</text>
+  <rect x="130" y="160" width="320" height="34" fill="#9a3248" opacity="0.6"/>
+  <text x="290" y="182" fill="#fff" text-anchor="middle" font-weight="700">capability written at shadow + 1</text>
+  <path d="M290 78 L290 154" stroke="#9a3248" stroke-width="3" marker-end="url(#ah)"/>
+  <defs><marker id="ah" markerWidth="10" markerHeight="10" refX="6" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#9a3248"/></marker></defs>
+  <rect x="88" y="36" width="324" height="42" fill="none" stroke="#111" stroke-width="3"/>
+  <rect x="408" y="36" width="324" height="42" fill="none" stroke="#111" stroke-width="3"/>
+  <rect x="88" y="156" width="324" height="42" fill="none" stroke="#111" stroke-width="3"/>
+  <rect x="408" y="156" width="324" height="42" fill="none" stroke="#111" stroke-width="3"/>
+  <text x="248" y="228" fill="#9a3248" text-anchor="middle">shadow word 0: capability shifted by a byte, garbage</text>
+  <text x="568" y="228" fill="#9a3248" text-anchor="middle">shadow word 1: its top byte</text>
+</svg>
+<script>
+(function(){var g=document.getElementById('cells'),s='';for(var r=0;r<2;r++)for(var i=0;i<16;i++)s+='<rect x="'+(90+i*40+(i>7?0:0))+'" y="'+(r?160:40)+'" width="40" height="34" fill="none" stroke="#9a948a"/>';g.innerHTML=s;})();
+</script>
+<div class="cap">The thread-local <code>t</code>: what release 0.686 stores when it initializes the pointer at byte 1.</div>
+</div>
+
+<h2>What Fil-C 0.686 does</h2>
+<h3>A global: clang aborts</h3>
+<p>FilPizlonator turns a global's pointers into a list of relocations, one per pointer, that the runtime applies when the global is first used. Each relocation fills one whole shadow word, so <code>computeConstantRelocations</code> asserts that its offset is a multiple of 8. For <code>g</code> at byte 1 it isn't:</p>
+<pre><code><span class="bad">clang-20: FilPizlonator.cpp:6806: bool computeConstantRelocations(...):
+  Assertion `!(Offset % WordSize)' failed.
+clang-20: error: clang frontend command failed with exit code 134</span></code></pre>
+<p>This one fails safe, but as a compiler crash rather than a diagnostic. The runtime's <code>filc_execute_constant_relocations</code> asserts the same thing. If relocations can't be built at all, for example for an unusual constant expression, the pass falls back to <code>storeValueRecurseAfterCheck</code>, the unchecked store described next.</p>
+
+<h3>A thread-local: an unchecked store</h3>
+<p>A thread-local has no relocations. Its getter allocates the object on first use in each thread and stores the initializer with <code>storeValueRecurseAfterCheck</code>. As the name says, that function assumes its caller has already checked the access, so it checks nothing. For <code>t</code> the result is this IR:</p>
+<pre><code>%filc_InnerAuxP_struct = getelementptr i8, ptr %filc_aux_ptr, i64 1
+<span class="bad">store ptr %filc_ptr_lower, ptr %filc_InnerAuxP_struct, align 8</span>
+%filc_InnerP_struct = getelementptr i8, ptr %filc_thread_local_allocate, i64 17
+store ptr %filc_ptr_ptr, ptr %filc_InnerP_struct, align 8</code></pre>
+<p>The capability goes to shadow&nbsp;+&nbsp;1, with an <code>align 8</code> that isn't true. Shadow word 0 now holds the capability shifted left by a byte: a non-null value that is not a capability. Shadow word 1 holds its top byte.</p>
+<p><a href="tls-shadow.c"><code>tls-shadow.c</code></a> shows the effect. It initializes <code>t</code> and then does an ordinary, 8-aligned pointer load of word 0, where the initializer never stored a pointer, and asks whether the result has a valid capability:</p>
+<pre><code>void *volatile *word = (void *volatile *)&amp;t;
+void *w = *word;
+printf("word0 has valid cap: %d\n", (int)zhasvalidcap(w));</code></pre>
+<table>
+<tr><th>Build</th><th>Result</th></tr>
+<tr><td>Without <code>packed</code> (control)</td><td>prints <code>word0: 0x1,&lt;null&gt;</code> and <code>0</code>, exits 0</td></tr>
+<tr><td>Packed, Fil-C 0.686</td><td class="bad">Segmentation fault, no Fil-C diagnostic</td></tr>
+<tr><td>Packed, with the fix</td><td class="good">compile error, below</td></tr>
+</table>
+<p>The load itself is legal: it is aligned, in bounds, and of a live object. It returns the garbage from shadow word 0 as the pointer's capability, and the runtime dereferences it. We have only shown a crash. We have not shown that this garbage can be turned into a working capability, or what the garbage collector does when it scans <code>t</code>. But Fil-C's guarantee rests on shadow words holding only null or real capabilities, and here the compiler breaks that by itself, with no help from the program.</p>
+<p>The same applies to a null pointer at byte 1 in a thread-local, which writes zeros across two shadow words, and to arrays of packed records or unions whose stride is not a multiple of 8. <code>union __attribute__((packed)) { int *p; char b[9]; } a[2]</code> puts the second pointer at byte 9.</p>
+
+<h2>The fix</h2>
+<p>An initializer that would store a pointer at a non-word offset is now a compile error, for globals and thread-locals:</p>
+<pre><code><span class="good">error: Fil-C cannot initialize 't': a pointer in its initializer is not word-aligned</span></code></pre>
+<p>A new helper, <code>hasMisalignedPtrs</code>, walks the initializer's type: struct fields at their offsets, array and vector elements at their strides. Element offsets repeat modulo 8 after at most eight elements, so a large array costs at most eight visits. Three places use it:</p>
+<pre><code><span class="c">// computeConstantRelocations: no assertion; fall back to the checked path below</span>
+<span class="del">-      assert(!(Offset % WordSize));</span>
+<span class="add">+      if (Offset % WordSize)
++        return false;</span>
+<span class="c">// global initializer, the fallback after relocations fail</span>
+<span class="add">+      } else if (hasMisalignedPtrs(G->getInitializer()->getType())) {
++        reportMisalignedInitializer(G);</span>
+       } else {
+         ... storeValueRecurseAfterCheck(...)
+<span class="c">// thread-local initializer</span>
+<span class="add">+        } else if (hasMisalignedPtrs(G->getValueType())) {
++          reportMisalignedInitializer(G);</span>
+         } else {
+           ... storeValueRecurseAfterCheck(...)</code></pre>
+<p>The error goes through <code>LLVMContext::emitError</code>, so clang prints it as an ordinary diagnostic and exits with status 1. What does not change:</p>
+<ul>
+<li>Initializers whose pointers sit at multiples of 8, including packed records such as <code>{ int *p; char tail[3]; }</code> and a single 9-byte packed union.</li>
+<li>All-zero initializers, which skip the store entirely.</li>
+<li>A null pointer at byte 1 of an ordinary global: it needs no relocation, so it never reaches the check. (A thread-local with the same initializer is rejected, because it does go through the unchecked store.)</li>
+<li>Run-time loads and stores of misaligned pointers. They were already checked, and they still trap.</li>
+</ul>
+<p>An alternative was to make these initializers work, by storing only the bytes and leaving the shadow words null, which is what a byte copy into a misaligned place does at run time. That would silently turn <code>&amp;anchor</code> into a pointer without a capability. An error seemed better: C code that needs this layout is rare, and the fix there is to align the pointer.</p>
+
+<h2>Tests</h2>
+<ul>
+<li><code>filc/tests/initmisalignedptrfail</code> (<code>compileFailure</code>): a packed global, a packed thread-local, a thread-local with a null pointer at byte 1, and global and thread-local arrays of a 9-byte packed union. The test requires the new message for each and forbids <code>Assertion</code>.</li>
+<li><code>filc/tests/initpackedptr</code> (<code>success</code>): packed globals and thread-locals with pointers at word offsets, a single 9-byte packed union, and a null pointer at byte 1 of a global still initialize and work.</li>
+</ul>
+<p>With a development compiler built from the commit on <code>deluge</code> 9d1ed206, both tests pass at <code>-O0</code>, <code>-O2</code> and <code>-O3</code>, and the three reproducers each give the new error. Of the 7,006 C and C++ files under <code>filc/tests</code>, compiled at <code>-O2</code>, 6,831 compile; none hit the new error or an assertion, and the other 175 fail for unrelated reasons such as missing per-test flags, ARM-only headers and the intentionally broken <code>badasm</code> tests.</p>
+
+<p class="meta">One commit on <code>pizlonator/fil-c</code> deluge: <code>llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp</code> and two test directories. The reproducers are <a href="global.c">global.c</a>, <a href="tls.c">tls.c</a> and <a href="tls-shadow.c">tls-shadow.c</a>. Filnix's staging toolchain has carried the same check since <a href="https://github.com/mbrock/fil-c/commit/2e92032bd9236946183d1b7eb60663785a6bfdd9">2e92032</a>. This page was written for review and is not part of the patch.</p>
+
+</main>
+</body>
+</html>
