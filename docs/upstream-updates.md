@@ -102,6 +102,21 @@ Their regressions are `framealiasscope`, `framealiasthreads`,
 fork's single-file tests give the same results with each optimization on and
 off (3936 tests for the frame scope, 5308 for derived-lower sharing).
 
+Tried and dropped: keeping address-taken locals on the stack when their
+address only reaches `nocapture` call arguments (branch
+`copy-locals-for-calls`, ba5e4ca03f85, off by default). Each such call got a
+lazily allocated heap copy, copied in before the call and back out after, and
+constant-size memsets into locals became stores. Oracle found two blockers.
+The memset expansion left capabilities in place that the runtime memset
+clears: on partial words, unaligned destinations and under-aligned allocas,
+and a non-constant fill byte could be laundered back into a capability. And
+LLVM's inferred `nocapture` is false under Fil-C's `zargs()`, which exposes
+the argument packet, so a callee could see the copy where it expects the
+original. Both change behavior without breaking memory safety. The
+unrestricted version's ceiling on WordPress was 9 to 8.3 GC cycles per pass
+and 1.7% fewer instructions (MediaWiki 1.7%, DokuWiki flat), too little to
+justify a Fil-C-aware `nocapture` analysis or PHP source patches.
+
 Residual work absent from v0.686, established by source comparison:
 
 | Area | Staging change | Regression |
