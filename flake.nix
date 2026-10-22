@@ -374,6 +374,8 @@
             php-jit = pkgsFilc.php84-jit;
             # Native against Fil-C PHP 8.5 on real applications (bench/php).
             php-bench = import ./bench/php { inherit pkgs pkgsFilc pkgsFilcStaging; };
+            # PHP 8.5 with the same JIT, on the staging toolchain.
+            php85-jit = pkgsFilcStaging.php85-jit;
             php74-dist = import ./packages/php-dist {
               inherit pkgs pkgsFilc;
               php = pkgsFilc.php74.withExtensions (

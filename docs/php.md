@@ -190,6 +190,45 @@ package was built with), `PHP_JIT_CFLAGS` (default `-O1`), `PHP_JIT_C_DIR`
 (parent of the per-process work directory, default `/tmp`),
 `PHP_JIT_C_KEEP=1` (keep the generated C), `PHP_JIT_C_VERBOSE=1`.
 
+### PHP 8.5 and the persistent cache
+
+`.#php85-jit` (`pkgsFilcStaging.php85-jit`) is PHP 8.5 with the same JIT,
+built with the staging toolchain, whose compiler the JIT also runs. 8.5's CALL VM passes
+`opline` to handlers and returns the next one tagged with
+`ZEND_VM_ENTER_BIT`, and the backend follows that
+(`patches/php-8.5-opcache-jit-c-filc.patch`). Plain `php85` uses a HYBRID
+VM, which the JIT cannot use; it is selected only without the JIT. In a
+development build the JIT suite passes 488/488 in function, tracing and 1235
+modes; the Nix build runs the OPcache suite (with the JIT off, its default)
+and a small script with it on.
+
+Compiled code can be shared between processes. `PHP_JIT_C_CACHE` names
+colon-separated directories of compiled objects; new ones go to the first.
+The generated C refers to every pointer through the `zjc_K` table that the
+loader fills, so its text determines the code. The key hashes that text with
+PHP's `zend_system_id`, the compiler and its flags, so it covers the PHP
+build, the source and the JIT settings. To keep the text the same across
+processes, addresses derived from embedded pointers are written relative to
+pointers of the same function, opline comparisons use whole pointers, and
+jump tables' bucket addresses are loaded rather than embedded. A second
+process then hits on every function of the JIT suite and of DokuWiki.
+
+A hit skips clang, but the JIT still builds the IR and prints the C. On 25
+DokuWiki files (304 functions, `opcache.jit=function`) that was 0.9 s with
+everything cached against 983 s cold (of which clang 973 s) and 0.03 s
+without the JIT, about 3 ms per function. The emitter turns off stdio
+locking on its private streams: Fil-C's libc made two `sigprocmask` calls
+per locked `fprintf`, which more than doubled that.
+
+`PHP_JIT_C_CACHE_ONLY=1` leaves functions that miss to the interpreter
+instead of compiling them, so a server with a prefilled cache never compiles.
+`PHP_JIT_C_MAX_SIZE` (default 512 KiB of C) leaves larger functions
+interpreted: one 650-line PHP function made 1.8 to 3.3 MB of C, and the
+1.8 MB version took 3 minutes and 7 GB to compile at `-O0`.
+`PHP_JIT_C_STATS=1` prints counts and times at exit and `PHP_JIT_C_LOG=file`
+logs one line per function. The settings are read once,
+so FPM workers use the master's even with `clear_env`.
+
 ## Vulnerable PHP under Fil-C
 
 PHP 8.4.27 (with 8.3.36, 8.2.35 and 8.5.12) fixed two memory-safety CVEs

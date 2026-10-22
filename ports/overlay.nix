@@ -121,9 +121,9 @@ let
       ln -s ${final.stdenv.cc.libc}/bin/${name} $out/bin/${name}
     '';
 
-  # Fil-C PHP 8.4 or 8.5 at a given release; see php84 below. jit (8.4
-  # only) builds opcache with the JIT, whose code it compiles as C with
-  # Fil-C (docs/php.md).
+  # Fil-C PHP 8.4 or 8.5 at a given release; see php84 below. jit builds
+  # opcache with the JIT, whose code it compiles as C with Fil-C
+  # (docs/php.md).
   mkFilcPhp =
     {
       version,
@@ -706,6 +706,7 @@ let
                     ../patches/php-8.5-hybrid-vm-filc.patch
                   ]
                   ++ opcachePatches
+                  ++ final.lib.optional jit ../patches/php-8.5-opcache-jit-c-filc.patch
                 );
               # Adds -Wa,--compress-debug-sections, which SaRCAsm rejects.
               separateDebugInfo = false;
@@ -729,9 +730,11 @@ let
                   # instead of throwing "Maximum call stack size reached".
                   "php_cv_have_stack_limit=yes"
                 ]
-                ++ final.lib.optionals is85 [
+                ++ final.lib.optionals (is85 && !jit) [
                   # OPcache, built in from 8.5 on; see its extension above.
                   "--disable-opcache-jit"
+                ]
+                ++ final.lib.optionals is85 [
                   # Copies PHP's machine code into huge pages, found through
                   # dl_iterate_phdr, which Fil-C's libc lacks; PHP did not link.
                   "--disable-huge-code-pages"
@@ -739,9 +742,17 @@ let
             }
             // final.lib.optionalAttrs is85 {
               # Regenerate the VM from the patched generator.
-              postPatch = (old.postPatch or "") + ''
-                (cd Zend && ${final.buildPackages.php.unwrapped}/bin/php -n zend_vm_gen.php)
-              '';
+              postPatch =
+                (old.postPatch or "")
+                + ''
+                  (cd Zend && ${final.buildPackages.php.unwrapped}/bin/php -n zend_vm_gen.php)
+                ''
+                # The JIT compiles its code with Fil-C at run time.
+                + final.lib.optionalString jit ''
+                  substituteInPlace ext/opcache/jit/zend_jit_c.c \
+                    --replace-fail '#define ZEND_JIT_C_CC "clang"' \
+                      '#define ZEND_JIT_C_CC "${final.gnufilc0}/bin/clang"'
+                '';
               # The built-in extensions' suites, which the shared ones run in
               # their own builds: OPcache and URI (which parses with Lexbor).
               doCheck = true;
@@ -750,6 +761,17 @@ let
                 NO_INTERACTION=1 SKIP_ONLINE_TESTS=1 SKIP_SLOW_TESTS=1 SKIP_PERF_SENSITIVE=1 \
                   make "PHP_TEST_SETTINGS=-d pcre.backtrack_limit=100000000" test \
                   TESTS="-j$NIX_BUILD_CORES -q --show-diff ext/opcache/tests ext/uri/tests"
+              ''
+              # The suites leave the JIT off; check that it compiles and runs code.
+              + final.lib.optionalString jit ''
+                jit_out=$(PHP_JIT_C_DIR=$TMPDIR PHP_JIT_C_STATS=1 sapi/cli/php -n -d opcache.enable_cli=1 -d opcache.jit=function \
+                  -d opcache.jit_buffer_size=16M \
+                  -r 'function fib($n) { return $n < 2 ? $n : fib($n - 1) + fib($n - 2); } echo fib(20), "\n";' 2>&1)
+                echo "$jit_out"
+                echo "$jit_out" | grep -qx 6765
+                echo "$jit_out" | grep -Eq ' [1-9][0-9]* compiled'
+              ''
+              + ''
                 runHook postCheck
               '';
             }
@@ -778,6 +800,14 @@ portDSL.makeOverlay portList final prev
   php85 = mkFilcPhp {
     version = "8.5.12";
     hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";
+  };
+  # Opt-in: PHP 8.5 with opcache's JIT compiled through C (docs/php.md).
+  # Build it from pkgsFilcStaging, whose compiler fixes slow -O0 compiles of
+  # JIT-shaped code; the JIT runs this package set's clang.
+  php85-jit = mkFilcPhp {
+    version = "8.5.12";
+    hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";
+    jit = true;
   };
 
   # Nixpkgs builds PHP with llvmPackages.stdenv whenever the compiler is
