@@ -117,7 +117,7 @@ variant's by-value aggregate ABI without validation.
 this experimental snapshot does not give it the official release's tightened
 unsafe-call boundary.
 
-**Parked: in-place realloc growth.** Fil-C's `realloc()` always allocates a
+**Declined: in-place realloc growth.** Fil-C's `realloc()` always allocates a
 new object, copies and frees the old one, so programs that grow a buffer one
 append at a time take quadratic time (PHP 8.5 works around this in
 `patches/php-8.5-realloc-filc.patch`). A general fix is drafted on
@@ -139,12 +139,12 @@ allocation root, which the collector marks without scanning, so its aux and
 children could be reclaimed. Lazily zeroing slack would also let weakly
 ordered CPUs read a reused slot's old bytes.
 
-It is parked because of its semantics: an object grown in place keeps its
+It was declined because of its semantics: an object grown in place keeps its
 identity, so pointers from before the realloc stay valid and see the grown
 object (and a retained-`upper` shrink keeps the tail reachable). That is
 memory-safe but gives up the use-after-realloc detection every Fil-C realloc
-has today. Default-on or opt-in is the user's decision. Before adoption it
-needs: deterministic free/grow interleavings (no growth from `upper ==
+has today, and PHP, which motivated it, is already fixed by its own patch.
+The branch stays as a design record. If it is ever revisited, it needs: deterministic free/grow interleavings (no growth from `upper ==
 lower`); a GC test with a growable object whose aux holds the only reference
 to a child and an atomic box, grown across collection; coverage of eager,
 lazy and small-memmove aux creation, grown to the last word of capacity;
