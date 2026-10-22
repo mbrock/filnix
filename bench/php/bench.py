@@ -480,6 +480,39 @@ class Counters:
         return tot
 
 
+def busy_now(seconds=2.0):
+    """Share of the machine's CPUs busy over the next few seconds."""
+    t0, i0 = cpu_busy()
+    time.sleep(seconds)
+    t1, i1 = cpu_busy()
+    return 1 - (i1 - i0) / (t1 - t0) if t1 > t0 else 0.0
+
+
+def wait_quiet(a, what):
+    """With --max-busy, hold each measurement until the machine is quiet;
+    give up after --wait minutes."""
+    if a.max_busy is None:
+        return None
+    deadline = time.time() + a.wait * 60
+    while True:
+        b = busy_now()
+        if b <= a.max_busy:
+            return b
+        if time.time() > deadline:
+            sys.exit(f"machine {b:.0%} busy (above --max-busy {a.max_busy:.0%}) "
+                     f"for {a.wait} min before {what}; stopping")
+        print(f"machine {b:.0%} busy, waiting before {what}", flush=True)
+        time.sleep(30)
+
+
+def others_busy(total, idle, own_cpu_s):
+    """The machine's busy share less this measurement's own CPU time
+    (the server and, under Fil-C, its GC threads)."""
+    if not total:
+        return None
+    return max(0.0, 1 - idle / total - own_cpu_s * os.sysconf("SC_CLK_TCK") / total)
+
+
 def cpu_busy():
     f = open("/proc/stat").readline().split()[1:]
     vals = list(map(int, f))
@@ -584,6 +617,7 @@ def session(app, var, a, out):
             "probe_start": s.probe_info, "loadavg_start": load0,
             "loadavg_end": open("/proc/loadavg").read().split()[:3],
             "machine_busy": 1 - idle / total if total else None,
+            "others_busy": others_busy(total, idle, sum(x["task_clock_ns"] for x in res.values()) * a.reps / 1e9),
             "time": datetime.datetime.now().isoformat(timespec="seconds"),
         }
     finally:
@@ -592,6 +626,7 @@ def session(app, var, a, out):
 
 def zend_bench(var, out):
     name, php, env, ini = variant(var)
+    busy0 = cpu_busy()
     with tempfile.NamedTemporaryFile(suffix=".csv") as f:
         t = time.perf_counter()
         p = run(["perf", "stat", "-x,", "-o", f.name, "-e",
@@ -605,7 +640,11 @@ def zend_bench(var, out):
             if len(parts) > 2 and parts[0] and parts[0][0].isdigit():
                 ctr[parts[2].replace(":", "_").replace("-", "_")] = float(parts[0])
     sections = dict(re.findall(r"^(\S+)\s+([\d.]+)$", p.stdout, re.M))
+    busy1 = cpu_busy()
+    total, idle = busy1[0] - busy0[0], busy1[1] - busy0[1]
     return {"app": "bench.php", "variant": name, "wall_s": wall, "counters": ctr,
+            "machine_busy": 1 - idle / total if total else None,
+            "others_busy": others_busy(total, idle, ctr.get("task_clock", 0) / 1e3),
             "sections": {k: float(v) for k, v in sections.items()},
             "loadavg": open("/proc/loadavg").read().split()[:3]}
 
@@ -626,9 +665,12 @@ def lock():
 
 def cmd_run(a):
     _lock = lock()
+    if a.cmd == "quiet":
+        a.variants = ["native", "filc", "filc-staging"] + a.extra
     out = a.out or os.path.join(STATE, "results", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(os.path.join(out, "logs"), exist_ok=True)
     meta = {"argv": sys.argv, "variants": {v: variant(v)[1:] for v in a.variants},
+            "max_busy": a.max_busy, "rounds": a.rounds, "reps": a.reps,
             "ini": INI, "cpus": CPUS, "host": os.uname().nodename, "nproc": os.cpu_count(),
             "cpu": next(l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name"))}
     json.dump(meta, open(os.path.join(out, "meta.json"), "w"), indent=1)
@@ -638,8 +680,12 @@ def cmd_run(a):
         order = a.variants if r % 2 == 0 else a.variants[::-1]
         for app in a.apps:
             for var in order:
+                busy_before = wait_quiet(a, f"round {r} {app} {var}")
                 rec = zend_bench(var, out) if app == "bench.php" else session(app, var, a, out)
                 rec["round"] = r
+                rec["busy_before"] = busy_before
+                # Flag a measurement the machine's load disturbed anyway.
+                rec["noisy"] = a.max_busy is not None and (rec.get("others_busy") or 0) > a.max_busy
                 results.write(json.dumps(rec) + "\n")
                 results.flush()
                 print(f"round {r} {app} {var}: {summary_line(rec)}", flush=True)
@@ -651,7 +697,7 @@ def summary_line(rec):
         return f"{rec['counters'].get('cycles_u', 0) / 1e9:.2f} Gcycles:u, {rec['sections'].get('Total', 0):.3f} s"
     u = rec["urls"].values()
     return (f"{sum(x['cycles_u'] for x in u) / 1e9:.3f} Gcycles:u/pass, "
-            f"{sum(x['wall_s'] for x in u) * 1000:.0f} ms/pass, busy {rec['machine_busy']:.0%}")
+            f"{sum(x['wall_s'] for x in u) * 1000:.0f} ms/pass, others busy {rec['others_busy']:.0%}")
 
 
 # ---------------------------------------------------------------- report
@@ -668,9 +714,14 @@ def cmd_report(a):
               "thread of the server (Fil-C's GC threads included); wall is the "
               "median request latency.")
     md.append("")
-    busy = [r["machine_busy"] for r in recs if r.get("machine_busy") is not None]
+    noisy = sum(1 for r in recs if r.get("noisy"))
+    if noisy:
+        md.append(f"**{noisy} of {len(recs)} measurements ran while the machine was busier "
+                  "than --max-busy; their cycle counts are suspect.**")
+        md.append("")
+    busy = [r.get("others_busy", r["machine_busy"]) for r in recs if r.get("machine_busy") is not None]
     loads = [float(r.get("loadavg_start", r.get("loadavg", [0]))[0]) for r in recs]
-    md.append(f"Machine: busy {min(busy):.0%}–{max(busy):.0%} of all CPUs during measurement, "
+    md.append(f"Machine: other work kept {min(busy):.0%}–{max(busy):.0%} of all CPUs busy during measurement, "
               f"load average {min(loads):.1f}–{max(loads):.1f}." if busy else "")
     md.append("")
     md.append("## Per application (sum over the request mix)")
@@ -926,15 +977,25 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("setup")
     s.add_argument("--apps", nargs="+", default=list(PORTS))
-    for name in ("run", "profile"):
+    for name in ("run", "quiet", "profile"):
         s = sub.add_parser(name)
+        if name == "quiet":
+            s.description = ("Consolidated run for a quiet machine: every application, "
+                             "native, filc and filc-staging plus the EXTRA variants, 10 rounds, "
+                             "each measurement held until the machine is under --max-busy.")
+            s.add_argument("extra", nargs="*", metavar="EXTRA", help="NAME=/path/to/bin/php[,INI_DIR]")
         s.add_argument("--apps", nargs="+", default=list(PORTS) + ["bench.php"])
-        s.add_argument("--variants", nargs="+", default=["native", "filc", "filc-staging"],
-                       help=f"from {', '.join(VARIANTS)} or NAME=/path/to/bin/php")
+        if name != "quiet":
+            s.add_argument("--variants", nargs="+", default=["native", "filc", "filc-staging"],
+                           help=f"from {', '.join(VARIANTS)} or NAME=/path/to/bin/php[,INI_DIR]")
         s.add_argument("--warmup", type=int, default=3, help="passes over the mix before measuring")
         s.add_argument("--out")
-        if name == "run":
-            s.add_argument("--rounds", type=int, default=5)
+        if name in ("run", "quiet"):
+            s.add_argument("--max-busy", type=float, default=0.15 if name == "quiet" else None,
+                           help="hold each measurement until at most this share of the CPUs is busy, "
+                                "and flag measurements that ran busier")
+            s.add_argument("--wait", type=float, default=30, help="minutes to wait for a quiet machine")
+            s.add_argument("--rounds", type=int, default=10 if name == "quiet" else 5)
             s.add_argument("--reps", type=int, default=5, help="requests per URL per round")
         else:
             s.add_argument("--passes", type=int, default=5)
@@ -944,10 +1005,10 @@ def main():
     s = sub.add_parser("profile-report")
     s.add_argument("dir")
     a = p.parse_args()
-    if a.cmd in ("run", "profile") and any(x != "bench.php" for x in a.apps):
+    if a.cmd in ("run", "quiet", "profile") and any(x != "bench.php" for x in a.apps):
         if not os.path.exists(os.path.join(STATE, "VERSION")):
             sys.exit(f"no fixtures in {STATE}; run php-bench setup first")
-    {"setup": cmd_setup, "run": cmd_run, "profile": cmd_profile, "report": cmd_report,
+    {"setup": cmd_setup, "run": cmd_run, "quiet": cmd_run, "profile": cmd_profile, "report": cmd_report,
      "profile-report": cmd_profile_report}[a.cmd](a)
 
 

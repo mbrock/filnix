@@ -81,7 +81,20 @@ swa is shared with build-heavy jobs, so:
   default `0-7,16-23`. On the 7950X3D those are the CCD with the 96 MB
   V-cache L3; the other CCD's 32 MB L3 would change cycle counts;
 - each record holds the load average and the share of the machine that
-  was busy during it.
+  other work kept busy during it (its own CPU time subtracted).
+
+For a consolidated cycle comparison in a quiet window:
+
+```sh
+php-bench quiet mine=/path/to/bin/php other=/path/to/bin/php
+```
+
+runs every application with native, filc, filc-staging and the extra
+variants for 10 rounds. Before each measurement it waits until other work
+keeps at most `--max-busy` (default 15%) of the CPUs busy, gives up after
+`--wait` minutes (default 30), and flags measurements that other work
+disturbed anyway; the report counts them. `run --max-busy` does the same
+for an ordinary run.
 
 ## Profile categories
 
