@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>memcmp without the eight heap allocations · Fil-C</title>
+<meta property="og:title" content="Stop glibc's generic memcmp from heap-allocating on every call">
+<meta property="og:description" content="memcmp_bytes took &a and &b, so Fil-C put eight locals on the GC heap in the prologue of every memcmp and bcmp call — a third of all allocation in PHP serving WordPress. One ctz removes them.">
+<meta property="og:image" content="https://mbrock.github.io/filnix/glibc-memcmp-noalloc/poster.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+<style>
+:root { --cap: #2f6fb3; --byte: #d98a1c; --bad: #9a3248; --good: #3d7a3d; }
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
+.sub { color: var(--muted); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono-font); color: var(--muted); text-align: start; }
+.terms { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 14px 0; padding: 12px 16px; background: #f4f1ea; border-radius: 8px; font-size: 0.93em; text-align: start; }
+.terms dt { font-weight: 600; }
+.terms dd { margin: 0; }
+.card { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
+.card svg { display: block; width: 100%; height: auto; }
+.card .cap { margin-top: 6px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+table { border-collapse: collapse; font-size: 0.92em; width: 100%; margin: 1rem 0; text-align: start; }
+td, th { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: start; }
+th { color: var(--muted); font-weight: 600; }
+pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--muted); }
+.bad { color: var(--bad); } .good { color: var(--good); }
+.demo { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 18px 0; text-align: start; }
+.demo label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 2px; }
+.demo input { font: 15px/1.4 var(--mono-font); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 4px; width: 12rem; }
+.demo .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.demo pre { margin: 12px 0 0; white-space: pre-wrap; }
+.demo .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+.bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.9rem; text-align: start; }
+.bar .name { width: 7.5rem; flex: none; }
+.bar .track { flex: 1; background: #f4f1ea; height: 14px; border-radius: 2px; overflow: hidden; }
+.bar .fill { height: 100%; }
+.bar .val { width: 9rem; flex: none; font-family: var(--mono-font); font-size: 0.82rem; }
+</style>
+</head>
+<body>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door selected" href="../index.html#explainers">Explainers</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">glibc memcmp without allocations</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/fil-c/commit/a5d5dbcd90bdaeb391ba64f2ff6f3ce14cab676e">a5d5dbc</a></span>
+</div></div>
+<main class="page-frame reading explainer">
+
+<p class="meta">Fil-C · glibc · <code>string/memcmp.c</code> · <a href="https://github.com/mbrock/fil-c/commit/a5d5dbcd90bdaeb391ba64f2ff6f3ce14cab676e">commit a5d5dbc</a> (+ test <a href="https://github.com/mbrock/fil-c/commit/4eef9025221f211405e95c02ad854741713f1050">4eef902</a>) on <a href="https://github.com/mbrock/fil-c/tree/glibc-memcmp-noalloc">mbrock/fil-c glibc-memcmp-noalloc</a>, based on pizlonator/fil-c deluge 9d1ed206</p>
+<h1><code>memcmp</code> without the eight heap allocations</h1>
+<p class="sub">glibc's generic <code>memcmp</code> finds its answer by taking the addresses of two local words and walking their bytes. Under Fil-C an address-taken local lives on the GC heap — so every <code>memcmp</code> and <code>bcmp</code> call allocated eight objects before comparing a single byte. In PHP serving WordPress that was a third of all allocation. The fix finds the same byte with one <code>ctz</code>.</p>
+
+<h2>The culprit: three lines of perfectly normal C</h2>
+<p>glibc's generic <code>string/memcmp.c</code> compares word at a time. When two words differ, a small helper has to say which byte differs first, and by how much — that difference is <code>memcmp</code>'s return value. The helper re-reads the two words it was just handed, through pointers to its own parameters:</p>
+<pre><code>static int
+memcmp_bytes (op_t a, op_t b)
+{
+  long int srcp1 = (long int) <span class="bad">&amp;a</span>;
+  long int srcp2 = (long int) <span class="bad">&amp;b</span>;
+  op_t a0, b0;
+
+  do
+    {
+      a0 = ((byte *) srcp1)[0];
+      b0 = ((byte *) srcp2)[0];
+      srcp1 += 1;
+      srcp2 += 1;
+    }
+  while (a0 == b0);
+  return a0 - b0;
+}</code></pre>
+<p>In ordinary C this costs nothing: <code>a</code> and <code>b</code> sit in registers or a stack slot, and the loop runs at most eight times. Nothing about it is wrong. It is only expensive once you know what Fil-C does with <code>&amp;a</code>.</p>
+
+<h2>Why <code>&amp;a</code> is expensive under Fil-C</h2>
+<dl class="terms">
+<dt>address-taken local</dt><dd>A local variable whose address escapes, even just to <code>(byte *)&amp;a</code>. Fil-C cannot keep it on the native stack: anything a pointer can reach must be a GC-managed object with bounds and shadow capabilities.</dd>
+<dt>escape to the heap</dt><dd>The compiler moves such a local into a fresh heap allocation, made when the function is entered — before the first branch decides whether the local is ever used.</dd>
+<dt><code>op_t</code></dt><dd>glibc's word type for the string functions: <code>unsigned long</code> on both Fil-C targets, x86-64 and aarch64.</dd>
+</dl>
+<p><code>memcmp_bytes</code> is <code>static</code> and small, so it is inlined into <code>memcmp</code> — four times, once per call site in the unrolled comparison loops. Each inlined copy brings its own <code>a</code> and <code>b</code>. Four copies × two address-taken parameters = <b>eight escaped locals</b>, and the compiler hoists all eight allocations into <code>memcmp</code>'s prologue. Every call pays for all of them, including calls that return on the first word and never reach any copy of <code>memcmp_bytes</code> at all. The same function backs <code>bcmp</code>, so it pays too.</p>
+
+<div class="card">
+<svg viewBox="0 0 760 300" font-family="Public Sans, sans-serif" font-size="14" role="img" aria-label="One memcmp call allocating eight 32-byte heap objects in its prologue">
+  <rect x="20" y="118" width="150" height="64" fill="#f4f1ea" stroke="#111" stroke-width="2"/>
+  <text x="95" y="144" text-anchor="middle" font-weight="700">one memcmp()</text>
+  <text x="95" y="164" text-anchor="middle" fill="#667078">or bcmp() call</text>
+  <text x="95" y="206" text-anchor="middle" fill="#667078" font-size="12">prologue, before</text>
+  <text x="95" y="222" text-anchor="middle" fill="#667078" font-size="12">the first branch</text>
+  <g id="allocs"></g>
+  <text x="470" y="282" text-anchor="middle" fill="#9a3248" font-weight="700">8 allocations × 32 bytes, on every call — used or not</text>
+  <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#9a3248"/></marker></defs>
+</svg>
+<script>
+(function(){var g=document.getElementById('allocs'),s='';
+for(var i=0;i<8;i++){var x=320+(i%4)*110,y=i<4?52:168;
+s+='<path d="M172 150 C 240 '+(y+22)+', 250 '+(y+22)+', '+(x-4)+' '+(y+22)+'" fill="none" stroke="#9a3248" stroke-width="2" marker-end="url(#ah)"/>';
+s+='<rect x="'+x+'" y="'+y+'" width="96" height="44" fill="#9a3248" opacity="0.14" stroke="#9a3248"/>';
+s+='<text x="'+(x+48)+'" y="'+(y+20)+'" text-anchor="middle" font-size="12" font-family="ui-monospace, monospace">&amp;'+(i%2?'b':'a')+' copy '+(1+(i>>1))+'</text>';
+s+='<text x="'+(x+48)+'" y="'+(y+37)+'" text-anchor="middle" font-size="12" fill="#667078">32 B heap</text>';}
+g.innerHTML=s;})();
+</script>
+<div class="cap">What one call did before the fix: <code>memcmp_bytes</code> inlined four times, two escaped parameters per copy, all allocated up front.</div>
+</div>
+
+<h2>What that costs in practice</h2>
+<p><code>memcmp</code> is not a rare function. In PHP 8.5 it sits under hash lookups, <code>===</code>, string comparison, <code>str_starts_with</code> and <code>str_replace</code>. Serving WordPress, one pass over the benchmark's requests made about <b>21 million</b> of these prologue allocations — 678&nbsp;MB allocated, roughly <b>a third of everything the process allocated</b> — for locals that almost never get read. They also set the pace of garbage collection: allocation volume is what asks FUGC for cycles, so a third of the GC pressure came from a three-line helper's addressing mode.</p>
+<div class="card">
+<div class="bar"><span class="name">memcmp prologue</span><span class="track"><span class="fill" style="display:block;width:33%;background:#9a3248"></span></span><span class="val">≈21M allocs · 678 MB</span></div>
+<div class="bar"><span class="name">everything else</span><span class="track"><span class="fill" style="display:block;width:67%;background:#2f6fb3"></span></span><span class="val">the actual workload</span></div>
+<div class="cap">Share of allocation per WordPress request pass, PHP 8.5 on Fil-C, before the fix.</div>
+</div>
+
+<h2>The fix: the words are already in registers</h2>
+<p><code>memcmp_bytes</code> is handed both words by value. It never needed their addresses — it needed their bytes, in memory order. On a little-endian machine, memory order <i>is</i> lowest-byte-first, so the first differing byte is the lowest-order byte in which the words differ. That is what <code>ctz(a ^ b)</code> — count trailing zeros — finds: XOR marks every differing bit, and the lowest set bit sits in the first differing byte.</p>
+<pre><code><span class="del">-  long int srcp1 = (long int) &amp;a;
+-  long int srcp2 = (long int) &amp;b;
+-  op_t a0, b0;
+-
+-  do
+-    {
+-      a0 = ((byte *) srcp1)[0];
+-      b0 = ((byte *) srcp2)[0];
+-      srcp1 += 1;
+-      srcp2 += 1;
+-    }
+-  while (a0 == b0);
+-  return a0 - b0;</span>
+<span class="add">+  /* Fil-C: taking the addresses of A and B made the compiler move them to
++     the heap, and since this function is inlined into memcmp, every memcmp
++     call made eight heap allocations. On little-endian machines the first
++     differing byte in memory is the lowest-order differing byte, so find it
++     by arithmetic. Callers only pass words that differ.  */
++  unsigned int shift = __builtin_ctzl (a ^ b) &amp; ~7u;
++  return (int) ((a &gt;&gt; shift) &amp; 0xff) - (int) ((b &gt;&gt; shift) &amp; 0xff);</span></code></pre>
+<p>Seven lines in, thirteen out, in one function. No address is taken, nothing escapes, and <code>memcmp</code> goes back to allocating nothing at all.</p>
+
+<div class="demo">
+<p style="text-align:start;margin-top:0"><b>Try it.</b> Two 8-byte words, little-endian. Edit either string and watch <code>ctz(a ^ b)</code> land on the first differing byte — the same byte the old pointer loop would have stopped at, and the same difference it returned.</p>
+<div class="row">
+<div><label for="wa">word a (8 chars)</label><input id="wa" value="memcmp!!" maxlength="8" spellcheck="false"></div>
+<div><label for="wb">word b (8 chars)</label><input id="wb" value="memcpy!!" maxlength="8" spellcheck="false"></div>
+</div>
+<pre id="demo-out"></pre>
+<p class="hint">Bytes are shown in memory order, byte 0 on the left — which, little-endian, is the low end of the register. That coincidence is the whole trick.</p>
+</div>
+<script>
+(function(){
+var wa=document.getElementById('wa'),wb=document.getElementById('wb'),out=document.getElementById('demo-out');
+function bytes(s){s=(s+'\0\0\0\0\0\0\0\0').slice(0,8);var r=[];for(var i=0;i<8;i++)r.push(s.charCodeAt(i)&255);return r;}
+function hex(n){return ('0'+n.toString(16)).slice(-2);}
+function word(bs){var s='0x';for(var i=7;i>=0;i--)s+=hex(bs[i]);return s;}
+function run(){
+var a=bytes(wa.value),b=bytes(wb.value),x=[],i,d=-1;
+for(i=0;i<8;i++){x.push(a[i]^b[i]);if(d<0&&a[i]!==b[i])d=i;}
+var lines=[];
+lines.push('a bytes   '+a.map(hex).join(' ')+'   '+word(a));
+lines.push('b bytes   '+b.map(hex).join(' ')+'   '+word(b));
+lines.push('a ^ b     '+x.map(hex).join(' ')+'   '+word(x));
+if(d<0){lines.push('');lines.push('words are equal — memcmp_bytes is never called with these.');lines.push('(That is also why ctz(0) cannot happen: see below.)');}
+else{
+var bit=8*d+ (Math.floor(Math.log2(x[d]&-x[d]))); var shift=bit&~7;
+lines.push('          '+a.map(function(_,i){return i===d?'^^':'  ';}).join(' '));
+lines.push('');
+lines.push('ctz(a ^ b) = '+bit+'   →   shift = ctz & ~7 = '+shift+'   →   byte '+(shift/8));
+lines.push('(a >> '+shift+') & 0xff = 0x'+hex(a[d])+' = '+a[d]+'    (b >> '+shift+') & 0xff = 0x'+hex(b[d])+' = '+b[d]);
+lines.push('memcmp returns '+a[d]+' - '+b[d]+' = '+(a[d]-b[d])+'   — same as the old byte loop');}
+out.textContent=lines.join('\n');}
+wa.addEventListener('input',run);wb.addEventListener('input',run);run();
+})();
+</script>
+
+<h2>Why the arithmetic version is exact</h2>
+<ul>
+<li><b><code>ctz(0)</code> never happens.</b> <code>__builtin_ctzl(0)</code> is undefined, but every caller of <code>memcmp_bytes</code> in <code>memcmp.c</code> reaches it only after establishing that the two words differ — that is what the word-at-a-time loops test. So <code>a ^ b ≠ 0</code> on entry, always.</li>
+<li><b>Little-endian is given.</b> The identity “first byte in memory = lowest-order byte” is exactly little-endianness. Both Fil-C targets, x86-64 and aarch64, are little-endian, and this file already lives behind the generic implementation's byte-order handling. On a big-endian target the same idea would use <code>clz</code>; there is no such Fil-C target.</li>
+<li><b>The result is the same integer.</b> The old loop returned <code>a0 - b0</code> for the first differing byte pair; the new code extracts that same pair by shifting. Sign and magnitude are unchanged, not just the sign.</li>
+<li><b>Reads are unchanged.</b> <code>memcmp</code> reads exactly the same words at the same addresses as before. The helper now computes on values already loaded instead of re-reading them through pointers — so if anything it reads <i>less</i>. There is no new out-of-bounds exposure; the test below deliberately ends ranges flush with object bounds.</li>
+<li><b>Timing.</b> Generic <code>memcmp</code> was never constant-time (it exits at the first difference), and this change preserves that shape. Callers that need constant time already use their own, e.g. OpenSSL's <code>CRYPTO_memcmp</code>.</li>
+</ul>
+
+<h2>Test</h2>
+<p><code>filc/tests/memcmpnoalloc</code> checks both halves of the claim — <i>same answers</i> and <i>no allocation</i>:</p>
+<ul>
+<li><b>Same answers:</b> <code>memcmp</code> and <code>bcmp</code> are checked against a byte-loop reference at every source/destination alignment pair (8×8), lengths 0–72 and every mismatch position, on heap buffers of sizes 80–88 and on globals — with ranges ending exactly at the object's upper bound, so any over-read would trap instead of silently passing.</li>
+<li><b>No allocation:</b> after a full collection, two million calls (varied offsets, lengths, plus full 4&nbsp;KB <code>bcmp</code>s) must request <b>zero</b> GC cycles, measured with <code>zgc_requested_cycle()</code>.</li>
+</ul>
+<table>
+<tr><th>Build</th><th>GC cycles requested by 2M calls</th><th>Result</th></tr>
+<tr><td>Current glibc</td><td class="bad">≈ 2,500</td><td class="bad">fail</td></tr>
+<tr><td>With the fix</td><td class="good">0</td><td class="good">pass, at -O0 and -O2</td></tr>
+</table>
+
+<h2>Effect</h2>
+<p>On PHP 8.5 with the fixed <code>memcmp</code>/<code>bcmp</code> preloaded, on a quiet machine (per request pass over each fixture):</p>
+<table>
+<tr><th>Fixture</th><th>GC cycles / pass</th><th>User instructions</th><th>Cycles</th></tr>
+<tr><td>WordPress</td><td>8 → 6</td><td>−3.7%</td><td>−5.8%</td></tr>
+<tr><td>MediaWiki</td><td>5.7 → 4.3</td><td>−4.0%</td><td>−4%</td></tr>
+<tr><td>DokuWiki</td><td colspan="3">unchanged (it allocates elsewhere)</td></tr>
+</table>
+<p>Filnix's staging toolchain has carried this since 22 October: the PHP 8.5 world built and tested with it, 1,222 PHP tests, 0 failures.</p>
+
+<p class="meta">Two commits for <code>pizlonator/fil-c</code> deluge: <a href="https://github.com/mbrock/fil-c/commit/a5d5dbcd90bdaeb391ba64f2ff6f3ce14cab676e">a5d5dbc</a> changes only <code>projects/user-glibc-2.44/string/memcmp.c</code> (+7/−13); <a href="https://github.com/mbrock/fil-c/commit/4eef9025221f211405e95c02ad854741713f1050">4eef902</a> adds <code>filc/tests/memcmpnoalloc</code>. This page was written for review and is not part of the patch.</p>
+
+</main>
+</body>
+</html>
