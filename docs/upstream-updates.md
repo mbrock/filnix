@@ -50,12 +50,12 @@ before the release's final commits. The experiment remains a
 [draft comparison PR](https://github.com/pizlonator/fil-c/pull/332), not a
 merge-ready claim of soundness.
 
-The staging pin, [2632ac0dd891](https://github.com/mbrock/fil-c/commit/2632ac0dd891)
-(branch `staging-php-perf`), adds these follow-ups on top of that experiment:
+The staging pin, [0b4ff52d6315](https://github.com/mbrock/fil-c/commit/0b4ff52d6315)
+(branch `staging-pin-next`), adds these follow-ups on top of that experiment:
 near-linear `-O0` frame slot coloring (92c381beeb23), a narrower union
-alignment rejection (2e92032bd923), two FilPizlonator optimizations for PHP's
-interpreter (described below), and the libpas changes described under "PHP
-allocator and GC work". The union change: the
+alignment rejection (2e92032bd923), three FilPizlonator optimizations for PHP's
+interpreter (described below), the libpas changes described under "PHP
+allocator and GC work", and the glibc `memcmp` fix in the table below. The union change: the
 experiment rejected every pointer-bearing union with declared alignment below
 a word, which broke systemd's packed `HashmapBase` storage union
 (`src/basic/hashmap.c`). Release and `deluge` compile it, and upstream's
@@ -67,7 +67,7 @@ non-word offset in an initializer is now a compile error. In release it
 triggers a compiler assertion (globals) or an unchecked capability write
 across two aux words (TLS).
 
-The two optimizations, each reviewed with Oracle for soundness:
+The three optimizations, each reviewed with Oracle for soundness:
 
 - **Frame alias scope** (5dd226b7fbcb). A function's Fil-C frame escapes into
   the thread's frame list, so every store recording a pointer's lower made
@@ -85,11 +85,22 @@ The two optimizations, each reviewed with Oracle for soundness:
   module-private slot with acquire/release ordering; TLS and heap-backed
   results stay uncached. It assumes modules holding cached globals are not
   `dlclose`d. PHP 8.5: −2.4% instructions on `Zend/bench.php`.
+- **Derived-lower sharing** (5a6a2131648c on `lower-root-fold`). A pointer
+  made from another by a GEP or cast, or a phi or select whose inputs all
+  derive from one pointer, has that pointer's lower, so it no longer gets a
+  frame slot of its own; its liveness keeps the base pointer's slot live.
+  Before, a pointer walking an array stored the same lower into two frame
+  slots on every iteration (PHP's `zend_init_cvs` loop: 17 to 13
+  instructions per CV). Roots dominate what they root and unreachable blocks
+  are skipped; `-filc-share-derived-lowers=0` turns it off. php-bench
+  (fixtures v2): 2.1–2.7% fewer instructions on DokuWiki, MediaWiki and
+  WordPress, 3.4% on `Zend/bench.php`.
 
 Their regressions are `framealiasscope`, `framealiasthreads`,
-`framealiasnonlocal`, `framealiasaddress` and `getter_cache_tls` in the
-fork's `filc/tests`. The fork's 3936 single-file tests give the same results
-with the frame scope on and off.
+`framealiasnonlocal`, `framealiasaddress`, `getter_cache_tls`,
+`sharedlowers` and `sharedlowersunreachable` in the fork's `filc/tests`. The
+fork's single-file tests give the same results with each optimization on and
+off (3936 tests for the frame scope, 5308 for derived-lower sharing).
 
 Residual work absent from v0.686, established by source comparison:
 

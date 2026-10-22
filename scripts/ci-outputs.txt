@@ -17,3 +17,4 @@ packages.x86_64-linux.php85-staging-dist
 packages.x86_64-linux.php85-staging-docker
 packages.x86_64-linux.bind-staging-dist
 packages.x86_64-linux.bind-staging-docker
+packages.x86_64-linux.filcc-staging
