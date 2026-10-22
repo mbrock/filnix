@@ -101,7 +101,7 @@ Residual work absent from v0.686, established by source comparison:
 | Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |
 | Unions/varargs | Complete aggregate-varargs transport, rejection of pointer words misaligned relative to a word-aligned start, misaligned-pointer initializer errors, null-padding initialization and optimizer shadow-state guards | fork's union/varargs/copy/memset suites (including `unionpackedstorage`, `unionpackedstoragefail`, `initmisalignedptrfail`), QuickJS and systemd |
 | Small memmove/memset | Payload copies and fills of 16 bytes or more under the poll-check limit call libc instead of a byte loop with a compiler fence per byte; capability (aux) handling is unchanged | `fork-regressions.tests.payload-memops` |
-| Scavenger and GC | After each FUGC cycle, the scavenger does not take pages emptied since that cycle began, for at most `FUGC_SCAVENGE_HOLD_MS` (default 10000; 0 disables) | `fork-regressions.tests.scavenge-hold` |
+| Scavenger and GC | After each FUGC cycle, the scavenger does not take pages emptied since that cycle began, until the next cycle replaces the hold or `FUGC_SCAVENGE_HOLD_MS` passes (default 10000; 0 disables). Pages are held for one cycle, not 10 s each | `fork-regressions.tests.scavenge-hold` |
 | SaRCAsm | Reject a stack-pointer carrier passed as a call argument; expand `.rept`/`.endr` (`patches/sarcasm-*.patch`, applied by `packages/sarcasm.nix`; proposed upstream from `mbrock/fil-c` branches `sarcasm-callarg-carrier` and `sarcasm-rept`) | `staging-sarcasm-fixes` |
 
 Filip's release independently lowers pointer-bearing unions to pointer storage.
@@ -161,7 +161,9 @@ First, FUGC collects about every 200 ms, but the scavenger returned pages
 empty for 300 ms, so the pages a sweep freed went back to the OS and were
 faulted back in, zeroed, during the next cycle: kernel page faults, zeroing
 and `madvise` were 8–17% of cycles. FUGC now caps the scavenger's age limit
-at the start of its last cycle for `FUGC_SCAVENGE_HOLD_MS` (10 s). Pages
+at the start of its last cycle, so a sweep's pages are held only until the
+next cycle; the hold lapses after `FUGC_SCAVENGE_HOLD_MS` (10 s) if no
+cycle follows. It is not a 10 s hold per page. Pages
 that stay empty through a whole cycle, or after the hold lapses because the
 program went idle, are still returned. The hold is best effort, read without
 a lock, and forced scavenges ignore it. Kernel cycles per pass fell from 6.7
