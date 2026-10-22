@@ -72,10 +72,14 @@ VARIANTS = {
 
 
 def variant(name):
-    """NAME from VARIANTS, or NAME=/path/to/php for another build."""
+    """NAME from VARIANTS, or NAME=/path/to/php for another build.
+    NAME=/path/to/php,/ini/dir loads the extensions configured in that
+    directory, for an unwrapped PHP: php-with-extensions/lib from a build
+    with the same PHP release and configuration."""
     if "=" in name:
         name, php = name.split("=", 1)
-        return name, php, {}, {}
+        php, _, scan = php.partition(",")
+        return name, php, {"PHP_INI_SCAN_DIR": scan} if scan else {}, {}
     var, env, ini = VARIANTS[name]
     return name, os.path.join(ENV[var], "bin", "php"), env, ini
 
@@ -312,7 +316,7 @@ def setup_wordpress(php):
 PROBE = """<?php
 header('Content-Type: application/json');
 $s = function_exists('opcache_get_status') ? opcache_get_status(false) : false;
-echo json_encode(['php' => PHP_VERSION, 'sapi' => PHP_SAPI,
+echo json_encode(['php' => PHP_VERSION, 'sapi' => PHP_SAPI, 'pid' => getmypid(),
   'opcache' => $s ? $s['opcache_enabled'] : false,
   'hits' => $s ? $s['opcache_statistics']['hits'] : 0,
   'misses' => $s ? $s['opcache_statistics']['misses'] : 0,
@@ -500,6 +504,10 @@ class Server:
         self.app = app
         self.name, php, env, ini = variant(var)
         root, appenv, router, self.urls = app_config(app)
+        os.makedirs(os.path.join(STATE, "probe"), exist_ok=True)
+        open(os.path.join(STATE, "probe", "probe.php"), "w").write(PROBE)
+        if not router:
+            open(os.path.join(root, "__bench_probe.php"), "w").write(PROBE)
         self.port = PORTS[app]
         os.makedirs(logdir, exist_ok=True)
         self.log = os.path.join(logdir, f"{app}-{self.name}.log")
@@ -516,6 +524,12 @@ class Server:
                 st, body = get(self.port, "/__bench_probe.php", timeout=5)
                 if st == 200:
                     self.probe_info = json.loads(body)
+                    # The ports are fixed (the fixtures' URLs contain them);
+                    # make sure this is our server, not someone else's.
+                    if self.probe_info.get("pid") != self.proc.pid:
+                        self.stop()
+                        raise RuntimeError(f"port {self.port} is served by pid "
+                                           f"{self.probe_info.get('pid')}, not ours")
                     break
             except (OSError, http.client.HTTPException):
                 pass
@@ -596,7 +610,22 @@ def zend_bench(var, out):
             "loadavg": open("/proc/loadavg").read().split()[:3]}
 
 
+def lock():
+    """One measurement at a time on this machine: runs share the fixtures'
+    ports, and concurrent runs would disturb each other's counts."""
+    import fcntl
+    os.makedirs(STATE, exist_ok=True)
+    f = open(os.path.join(STATE, "lock"), "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print(f"waiting for another php-bench run ({STATE}/lock)", flush=True)
+        fcntl.flock(f, fcntl.LOCK_EX)
+    return f
+
+
 def cmd_run(a):
+    _lock = lock()
     out = a.out or os.path.join(STATE, "results", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(os.path.join(out, "logs"), exist_ok=True)
     meta = {"argv": sys.argv, "variants": {v: variant(v)[1:] for v in a.variants},
@@ -773,6 +802,7 @@ def categorize(dso, sym):
 
 
 def cmd_profile(a):
+    _lock = lock()
     out = a.out or os.path.join(STATE, "results", "profile-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(os.path.join(out, "logs"), exist_ok=True)
     for app in a.apps:

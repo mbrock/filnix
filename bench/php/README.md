@@ -34,6 +34,11 @@ build, such as one from a branch under test:
 php-bench run --variants native filc-staging mine=$(nix build --print-out-paths .#...)/bin/php
 ```
 
+An unwrapped PHP (`php-…/bin/php` rather than `php-with-extensions-…`)
+loads no shared extensions; `NAME=/path/to/bin/php,/path/to/ini-dir` points
+it at a wrapped build's `lib` directory with the same PHP release and
+configuration, such as `$PHP_BENCH_FILC/lib`.
+
 Results go to `~/.cache/php-bench/results/<timestamp>/` (or `--out`): `results.jsonl`
 with every measurement, `summary.md`, and the servers' logs. `profile`
 leaves `*.perf.data` for `perf report` alongside `profile.md`.
