@@ -59,7 +59,8 @@ the systemd units whose main process it becomes.
 
 There is no nginx switch. nginx's processes share pointer-containing memory
 (shared zones), which Fil-C capabilities don't survive, so the php-fpm test
-runs Fil-C PHP-FPM behind native nginx. Use lighttpd for a Fil-C web server.
+runs Fil-C PHP-FPM behind native nginx. Use lighttpd for a Fil-C web server,
+as the `php-lighttpd` test does.
 
 ## Example machines
 
@@ -88,7 +89,9 @@ runs Fil-C PHP-FPM behind native nginx. Use lighttpd for a Fil-C web server.
 with the module on every node: mostly Nixpkgs' own tests of each service
 (openssh, lighttpd, php-fpm, unbound, tor, bind), unchanged, plus
 `demo`, which boots the demo machine, logs in through the Fil-C sshd to the
-Fil-C shell and has the Fil-C Nix build a derivation, and a Redis test.
+Fil-C shell and has the Fil-C Nix build a derivation, a Redis test, and
+`php-lighttpd`, which serves PHP pages through Fil-C lighttpd and Fil-C
+PHP-FPM over FastCGI.
 
 After a test's own script passes, every unit in `filc.units` that is still
 running must map the Fil-C runtime, so a test can't pass with a native build,

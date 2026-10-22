@@ -100,6 +100,7 @@ lib.mapAttrs (_: withFilc) {
     defaults.services.unbound.package = lib.mkForce pkgsFilc.unbound-full;
   };
   redis = ./redis.nix;
+  php-lighttpd = ./php-lighttpd.nix;
 
   # Nixpkgs runs this with PHP and APCu behind nginx. Only PHP-FPM is
   # Fil-C; nginx shares pointers between processes in shared memory, which
