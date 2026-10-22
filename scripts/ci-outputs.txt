@@ -11,3 +11,5 @@ packages.x86_64-linux.php74-dist
 legacyPackages.x86_64-linux.pkgsFilc.php85
 packages.x86_64-linux.optfil
 packages.x86_64-linux.filroot
+packages.x86_64-linux.bind-dist
+packages.x86_64-linux.bind-docker

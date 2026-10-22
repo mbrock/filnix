@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fil-BIND: BIND 9 in memory-safe C · Filnix</title>
+<meta property="og:title" content="Fil-BIND: BIND 9 in memory-safe C">
+<meta property="og:description" content="BIND 9.20.30 compiled with Fil-C. A research build: memory corruption becomes a crash.">
+<meta property="og:image" content="https://mbrock.github.io/filnix/fil-bind/poster.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+<style>
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
+.sub { color: var(--muted); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono-font); color: var(--muted); text-align: start; }
+.video { margin: 1.6rem 0 2rem; }
+.video video { display: block; width: 100%; border: 1px solid var(--rule); border-radius: 4px; background: #fff; }
+.video figcaption { margin-top: 0.5rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+table { border-collapse: collapse; font-size: 0.92em; width: 100%; margin: 1rem 0; text-align: start; }
+td, th { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: start; }
+th { color: var(--muted); font-weight: 600; }
+td.n { font-family: var(--mono-font); white-space: nowrap; text-align: right; }
+.cve { font-family: var(--mono-font); white-space: nowrap; }
+.note { background: #f4f1ea; border-radius: 8px; padding: 12px 16px; margin: 1.2rem 0; text-align: start; }
+</style>
+</head>
+<body>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door selected" href="../index.html#explainers">Explainers</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Fil-BIND</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/filnix/releases">Releases</a></span>
+</div></div>
+<main class="page-frame reading explainer">
+
+<p class="meta">BIND 9.20.30 · Fil-C 0.686 · October 2026</p>
+<h1>Fil-BIND: BIND&nbsp;9 in memory&#8209;safe&nbsp;C</h1>
+<p class="sub">BIND 9.20.30 and every library it uses, compiled with Fil-C. An out-of-bounds access or a use after free stops <code>named</code> instead of corrupting its memory. It is a research build: interesting to evaluate, not a promise.</p>
+<figure class="video">
+<video controls playsinline preload="metadata" poster="poster.png" src="fil-bind.mp4"></video>
+<figcaption>The idea in 40 seconds. Made with Manim (<a href="video/scene.py">source</a>).</figcaption>
+</figure>
+
+<h2>Try it</h2>
+<p>The container image is laid out like ISC's <code>internetsystemsconsortium/bind9</code>: configuration in <code>/etc/bind</code>, the working directory <code>/var/cache/bind</code>, and <code>named</code> running as the <code>bind</code> user with the same entrypoint. A configuration that works there should work here.</p>
+<pre><code>docker run --rm -p 53:53/udp -p 53:53/tcp \
+  -v $PWD/named.conf:/etc/bind/named.conf ghcr.io/mbrock/filnix-bind:9.20.30</code></pre>
+<p>The <a href="https://github.com/mbrock/filnix/releases">release</a> also has a relocatable tarball, <code>bind-9.20.30-filc-x86_64-linux.tar.xz</code>, that runs on any x86-64 Linux, glibc or musl, without Nix: it carries its own runtime and libraries. With Nix, <code>nix build github:mbrock/filnix#bind-dist</code>, or <code>#legacyPackages.x86_64-linux.pkgsFilc.bind</code> for the package itself.</p>
+
+<h2>Why now</h2>
+<p>ISC has published 37 BIND 9.20 advisories since March 2026, at a rate it attributes to vulnerability hunting with language models. The 21 October release, 9.20.30, fixes <a href="https://kb.isc.org/docs/cve-2026-94300">CVE-2026-94300</a>: replayed GSS-TSIG messages corrupt memory, with “potential remote code execution”.</p>
+<p>Most of the 37 are not memory errors, and Fil-C does nothing about them. Eleven are assertion failures, where <code>named</code> already stops itself, twelve are CPU or memory exhaustion, and eight are logic errors such as cache poisoning. Six are memory-safety bugs, the kind Fil-C is built to catch:</p>
+<table>
+<tr><th>Advisory</th><th>Fixed in</th><th>Bug</th><th>What we expect under Fil-C</th></tr>
+<tr><td class="cve"><a href="https://kb.isc.org/docs/cve-2026-94300">CVE-2026-94300</a></td><td>9.20.30</td><td>Replayed GSS-TSIG messages corrupt memory; potential RCE</td><td>The corrupting access stops the process</td></tr>
+<tr><td class="cve"><a href="https://kb.isc.org/docs/cve-2026-3593">CVE-2026-3593</a></td><td>9.20.23</td><td>Heap use after free in DNS-over-HTTPS</td><td>The freed object cannot be read or written</td></tr>
+<tr><td class="cve"><a href="https://kb.isc.org/docs/cve-2026-5947">CVE-2026-5947</a></td><td>9.20.23</td><td>SIG(0) validation reads a discarded message</td><td>Stops every time, instead of sometimes reading reused memory</td></tr>
+<tr><td class="cve"><a href="https://kb.isc.org/docs/cve-2026-19662">CVE-2026-19662</a></td><td>9.20.29</td><td>Use after free of a cached NOQNAME proof</td><td>Already a crash; now a defined one</td></tr>
+<tr><td class="cve"><a href="https://kb.isc.org/docs/cve-2026-19666">CVE-2026-19666</a></td><td>9.20.29</td><td>Use after free in the DNS64 path</td><td>Already a crash; now a defined one</td></tr>
+<tr><td class="cve"><a href="https://kb.isc.org/docs/cve-2026-3591">CVE-2026-3591</a></td><td>9.20.21</td><td>Stack use after return lets an ACL mismatch</td><td>Unclear: Fil-C keeps escaped locals alive, so the stale read may succeed</td></tr>
+</table>
+<p>These are expectations from how Fil-C works, not reproductions: we have not replayed these exploits against Fil-BIND, and the build is 9.20.30, which has all of them fixed anyway. The point is the class of bug. When the next one is found, in BIND or in OpenSSL, libuv or nghttp2 underneath it, the likely worst case is a crash: a denial of service rather than a takeover.</p>
+
+<h2>How Fil-C stops these</h2>
+<p><a href="https://fil-c.org/">Fil-C</a> gives every pointer an invisible capability that records the object it points into. Each load and store is checked against it, so a write past the end of a buffer stops the program instead of landing in the neighbouring object. <code>free</code> marks the object freed, so a later access through any old pointer also stops, and a garbage collector keeps the memory from being reused while such pointers exist. OpenSSL, libuv, liburcu, nghttp2, libxml2 and the C library are compiled the same way, so the code underneath <code>named</code> is checked too.</p>
+<p>BIND recycles some objects itself: its memory pools kept free lists of message names, rdatasets and network sockets, and a recycled object stays valid, so a use after returning it would go unseen. Fil-BIND turns those free lists off, as BIND's own AddressSanitizer builds do.</p>
+
+<h2>What it took</h2>
+<p>BIND itself compiled unchanged. Running it needed three things:</p>
+<ul>
+<li><b>liburcu's lock-free hash table</b>, which BIND uses for its dispatch, bad-cache and zone tables, trapped on every table: a <code>bsr</code> inline-assembly helper, tagged <code>next</code> pointers whose flag arithmetic dropped their capabilities, and a flag set by an integer atomic that later pointer loads did not see (<a href="https://github.com/mbrock/filnix/blob/main/patches/liburcu-filc.patch">patch</a>).</li>
+<li><b>BIND's qp-trie</b> kept each leaf pointer as two 32-bit halves of a 12-byte node, which loses the capability. Under Fil-C the node holds a real pointer and grows to 16 bytes (<a href="https://github.com/mbrock/filnix/blob/main/patches/bind-qp-node-pointer.patch">patch</a>).</li>
+<li><b>The memory pools</b>, above (<a href="https://github.com/mbrock/filnix/blob/main/patches/bind-mempool-no-freelist.patch">patch</a>).</li>
+</ul>
+<p>BIND's unit tests then pass, except three that replace a library function by defining it in the test program, which Fil-C's linking does not allow (<a href="../docs/filc-findings.html">findings</a>). A signed zone served by one <code>named</code> and validated by another, AXFR, TSIG-signed updates and <code>rndc</code> all work, in plain Debian and Alpine containers as root and as an unprivileged user.</p>
+
+<h2>What it costs</h2>
+<p id="bench">Fil-C's checks and garbage collector cost a lot in a server that does little but move small packets through pointer-heavy data structures. We measured with <code>dnsperf</code> against a 20,000-name zone, on an 8-core cloud VM with the load generator on the same machine, comparing Nixpkgs' native BIND 9.20.29 with Fil-BIND:</p>
+<table>
+<tr><th></th><th>native</th><th>Fil-BIND</th><th></th></tr>
+<tr><td>Authoritative, 1 thread</td><td class="n">161,000 qps</td><td class="n">16,700 qps</td><td class="n">9.6× slower</td></tr>
+<tr><td>Cached resolver answers, 1 thread</td><td class="n">166,000 qps</td><td class="n">17,600 qps</td><td class="n">9.4× slower</td></tr>
+<tr><td>Authoritative, 4 threads</td><td class="n">416,000 qps</td><td class="n">31,800 qps</td><td class="n">13× slower</td></tr>
+<tr><td>Cached resolver answers, 4 threads</td><td class="n">337,000 qps</td><td class="n">36,600 qps</td><td class="n">9.2× slower</td></tr>
+<tr><td>Resident memory, resolver</td><td class="n">41 MB</td><td class="n">162 MB</td><td class="n">≈4×</td></tr>
+</table>
+<p>So roughly ten times the CPU per query, and four times the memory. Seventeen thousand queries a second per core is far below what BIND can do, but well above what many internal, small-office or legacy servers ever see. We have not tuned anything yet.</p>
+
+<div class="note">
+<p><b>A research artifact.</b> This is not an ISC build and comes with no support or warranty. Fil-C turns memory corruption into a crash; it does not stop assertion failures, resource exhaustion or cache poisoning, so keep following ISC's advisories and upgrading. If you run an old BIND setup where a crash is better than a compromise and ten times the CPU is affordable, it may be worth evaluating. The build recipe is in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
+</div>
+
+</main>
+</body>
+</html>

@@ -393,6 +393,11 @@
               inherit pkgs;
               dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
             };
+            bind-dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
+            bind-docker = import ./packages/bind-dist/docker.nix {
+              inherit pkgs;
+              dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
+            };
             inherit
               libei
               libei_27

@@ -1635,6 +1635,16 @@ in
   ])
 
   (for pkgs.bind [
+    # Fixes CVE-2026-19630, -94300, -96888 and -97313 (2026-10-21).
+    (pin "9.20.30" "sha256-nhRDpApyowJyy8MZbQIKay4mk3ERyD5Z4QHoLh47T+8=")
+    # Read named.conf, rndc.conf and rndc.key from /etc/bind, as Debian
+    # and ISC's image do, rather than the store; bind-dist relies on it.
+    (configure "--sysconfdir=/etc/bind")
+    # isc_mempool kept free lists of message names, rdatasets and netmgr
+    # sockets and requests, so a use after isc_mempool_put reached a live
+    # recycled object that Fil-C cannot flag. Free each one, as BIND does
+    # under ASan.
+    (patch ./patches/bind-mempool-no-freelist.patch)
     # A qp-trie node kept its leaf and reader pointers split across two
     # uint32_t halves of a 12-byte node, so every lookup read a pointer
     # without a capability. Under Fil-C the word is a void * (16-byte

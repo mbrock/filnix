@@ -1,0 +1,43 @@
+diff --git a/lib/isc/mem.c b/lib/isc/mem.c
+index 4774e57..988cb15 100644
+--- a/lib/isc/mem.c
++++ b/lib/isc/mem.c
+@@ -1146,7 +1146,11 @@ isc__mempool_get(isc_mempool_t *restrict mpctx FLARG) {
+ 
+ 	if (mpctx->items == NULL) {
+ 		isc_mem_t *mctx = mpctx->mctx;
+-#if !__SANITIZE_ADDRESS__
++/*
++		 * Under Fil-C, as under ASan, keep no free list: a pooled object
++		 * that is reused stays valid, so a use after put would go unseen.
++		 */
++#if !__SANITIZE_ADDRESS__ && !defined(__FILC__)
+ 		const size_t fillcount = mpctx->fillcount;
+ #else
+ 		const size_t fillcount = 1;
+@@ -1186,7 +1190,7 @@ isc__mempool_put(isc_mempool_t *restrict mpctx, void *mem FLARG) {
+ 
+ 	isc_mem_t *mctx = mpctx->mctx;
+ 	const size_t freecount = mpctx->freecount;
+-#if !__SANITIZE_ADDRESS__
++#if !__SANITIZE_ADDRESS__ && !defined(__FILC__)
+ 	const size_t freemax = mpctx->freemax;
+ #else
+ 	const size_t freemax = 0;
+diff --git a/tests/isc/mem_test.c b/tests/isc/mem_test.c
+index 2c26922..ed45ddf 100644
+--- a/tests/isc/mem_test.c
++++ b/tests/isc/mem_test.c
+@@ -78,10 +78,10 @@ ISC_RUN_TEST_IMPL(isc_mem_get) {
+ 		items1[i] = NULL;
+ 	}
+ 
+-#if !__SANITIZE_ADDRESS__
++#if !__SANITIZE_ADDRESS__ && !defined(__FILC__)
+ 	rval = isc_mempool_getfreecount(mp1);
+ 	assert_int_equal(rval, 10);
+-#endif /* !__SANITIZE_ADDRESS__ */
++#endif
+ 
+ 	rval = isc_mempool_getallocated(mp1);
+ 	assert_int_equal(rval, 19);
