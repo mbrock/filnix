@@ -162,6 +162,21 @@ Two things publish them:
   the wider distribution list ahead of the package roots. See the
   [operations workflow](port-campaign-operations.md).
 
+`scripts/ci-outputs.txt` also includes the release and staging `aarch64-linux`
+toolchains. The x86 campaign only admits x86 roots; build ARM64 roots on Squire
+and copy their complete closures to swa for publication with `--extra-root` to
+both targets. Calling `scripts/ci-cache-check.py` without attributes (as
+required by the release workflow) checks ARM64 closure availability from an x86
+runner without executing ARM64 binaries.
+
+swa's `/etc/nix/machines` also routes `aarch64-linux` builds to Squire
+(`89.58.38.197`), with one concurrent derivation and the `big-parallel`,
+`benchmark` and `nixos-test` features. The daemon uses
+`/root/.ssh/squire_builder`; its public key on Squire is restricted to
+`nix-daemon --stdio`. ARM64 is excluded from swa's local `extra-platforms`
+so these builds use the native remote builder. Existing x86 builders remain
+configured. For large compiler builds, use `--cores 10` to leave headroom.
+
 GitHub Actions never compiles Fil-C. `.github/workflows/cache.yml` runs on
 pushes, pull requests and daily:
 

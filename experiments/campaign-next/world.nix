@@ -42,11 +42,20 @@ let
         }
       )
       (
-        builtins.filter (line: line != "" && !pkgs.lib.hasPrefix "#" line) (
-          pkgs.lib.splitString "\n" (
-            builtins.readFile "${flake.outPath}/scripts/ci-outputs.txt"
+        # This campaign runs on x86_64. ARM64 CI roots are built on Squire
+        # and copied to the publisher separately.
+        builtins.filter
+          (
+            line:
+            line != ""
+            && !pkgs.lib.hasPrefix "#" line
+            && !builtins.elem "aarch64-linux" (pkgs.lib.splitString "." line)
           )
-        )
+          (
+            pkgs.lib.splitString "\n" (
+              builtins.readFile "${flake.outPath}/scripts/ci-outputs.txt"
+            )
+          )
       );
   evaluated =
     map (item: {

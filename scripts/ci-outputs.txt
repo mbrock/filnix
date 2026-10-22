@@ -34,3 +34,6 @@ packages.x86_64-linux.nixos-ami
 nixosConfigurations.base.config.system.build.toplevel
 # https://filc.less.rest pulls this at each release (nixos/demo-wiki.nix).
 nixosConfigurations.demo-wiki.config.system.build.toplevel
+# ARM64 toolchains are built on Squire and published through swa too.
+packages.aarch64-linux.filcc
+packages.aarch64-linux.filcc-staging
