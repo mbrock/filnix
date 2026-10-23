@@ -173,7 +173,7 @@ catches planted rooting bugs.
 
 ### M4. C frontend subset
 
-**Status: in progress.** M4a and M4b are done, see [docs/m4.md](docs/m4.md).
+**Status: in progress.** M4a, M4b and M4c are done, see [docs/m4.md](docs/m4.md).
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
 settled the ABI questions first:
@@ -235,7 +235,7 @@ settled the ABI questions first:
   `break`/`continue`), calls between functions in the file. Emits a Fil-C
   module checked by `valid_module`. Accept: interpreter and native results
   agree on a set of C functions called from a clang harness.
-- **M4c. The rest of the ABI the C subset needs.** External-call thunks,
+- **M4c. The rest of the ABI the C subset needs.** *Done.* External-call thunks,
   globals and string literals, function addresses and indirect calls,
   `main`. Each gets interpreter semantics too. Accept: whole programs that
   use `printf` give the same output as filcc.

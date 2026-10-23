@@ -153,9 +153,12 @@ test(rejects_l_as_p) :-
 test(rejects_pointer_multiply) :-
     rejects("export function p $f(p %a) {\n@s\n\t%b =p mul %a, 2\n\tret %b\n}\n",
             "instruction mul cannot have class p").
-test(rejects_data_with_p) :-
-    rejects("data $d = { l 1 }\nexport function p $f() {\n@s\n\t%q =p alloc8 8\n\tret %q\n}\n",
-            "data definitions are not supported with class p").
+test(rejects_l_symbol_in_filc_data) :-
+    rejects("data $d = { l $d }\nexport function p $f() {\n@s\n\t%q =p alloc8 8\n\tret %q\n}\n",
+            "use p $d for a pointer").
+test(rejects_symbol_operand_in_filc) :-
+    rejects("data $d = { w 1 }\nexport function w $f() {\n@s\n\t%q =p add $d, 4\n\t%v =w loadw %q\n\tret %v\n}\n",
+            "use %t =p copy $d").
 
 % Which offsets can a 1-byte read of a 16-byte allocation take without
 % trapping? Exactly 0..15.

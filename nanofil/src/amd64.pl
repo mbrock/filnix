@@ -52,8 +52,9 @@ item(func(Name, Lk, Ret, Params, Blocks)) -->
     params(Params, 0, Ctx),
     blocks(Blocks, Ctx),
     [size(Name)].
-item(data(Name, Lk, Align, Items)) -->
-    [section(data), balign(Align)],
+item(data(Name, Lk0, Align, Items)) -->
+    { Lk0 = ro(Lk) -> Sec = rodata ; Lk = Lk0, Sec = data },
+    [section(Sec), balign(Align)],
     global(Lk, Name),
     [label(Name)],
     data_items(Items).

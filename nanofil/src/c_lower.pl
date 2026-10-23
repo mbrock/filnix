@@ -31,8 +31,39 @@
 % c_module(+Items, -Module): Items from c_parse.
 c_module(Items, module(Fs)) :-
     empty_env(E0),
-    foldl(top, Items, Fss, E0, _),
-    append(Fss, Fs).
+    foldl(top, Items, Fss, E0, E1),
+    append(Fss, Fs0),
+    with_deferred(Fs0, E1, Fs).
+
+/* A static inline function is lowered only if something refers to it,
+   as clang emits it only then; headers are full of ones nanofil cannot
+   lower. Lowering one can refer to more, so this iterates. */
+with_deferred(Fs0, E0, Fs) :-
+    global_data(E0, Ds),
+    append(Fs0, Ds, All),
+    findall(S, ( item_ref(All, S), E0 = e(_, _, D, _), get_assoc(deferred(S), D, _),
+                 \+ memberchk(func(S, _, _, _, _), Fs0) ), Ss0),
+    sort(Ss0, Ss),
+    (   Ss == [] -> Fs = All
+    ;   foldl(lower_deferred, Ss, New, E0, E1),
+        append(Fs0, New, Fs1),
+        with_deferred(Fs1, E1, Fs)
+    ).
+
+item_ref(Items, S) :-
+    member(I, Items),
+    (   I = func(_, _, _, _, Bs), member(blk(_, _, Is, _), Bs), member(In, Is),
+        (   In = ins(_, _, _, As), member(glo(S), As)
+        ;   In = call(_, glo(S), _)
+        )
+    ;   I = data(_, _, _, DIs), member(item(p, sym(S, _)), DIs)
+    ).
+
+lower_deferred(S, F, E0, E) :-
+    E0 = e(_, _, D, _), get_assoc(deferred(S), D, df(L, Name, T, ST, Body, Sc)),
+    env_restore(Sc, E0, E1),
+    function(L, Name, T, ST, Body, E1, E2, F),
+    env_scope(E0, Sc0, _), env_restore(Sc0, E2, E).
 
 %% Top level
 
@@ -40,10 +71,19 @@ top(static_assert(L, X, _), [], E, E) :- !, static_assert(L, X, E).
 top(decl(L, Ss, Is), [], E0, E) :- !,
     catch(decl_types(Ss, Is, Ds, E0, E1), not_constant, sema_error(L, 'array size is not a constant', [])),
     foldl(global_decl(L), Ds, E1, E).
-top(fundef(L, Ss, dcl(Name, ST, Asm), Body), [F], E0, E) :-
+top(fundef(L, Ss, dcl(Name, ST, Asm), Body), Fs, E0, E) :-
     decl_types(Ss, [init(dcl(Name, ST, Asm), none)], [d(_, T, St, _, _)], E0, E1),
-    global_decl(L, d(Name, T, St, Asm, none), E1, E),
-    function(L, Name, T, ST, Body, E, F).
+    global_decl(L, d(Name, T, St, Asm, none), E1, E2),
+    (   memberchk(fspec(inline), Ss)
+    ->  Fs = [],
+        (   St == static
+        ->  ord(E2, Name, fn(_, Sym, _)), env_scope(E2, Sc, _),
+            E2 = e(O, Tg, D0, X), put_assoc(deferred(Sym), D0, df(L, Name, T, ST, Body, Sc), D),
+            E = e(O, Tg, D, X)
+        ;   E = E2      % extern or C99 inline: the definition is elsewhere
+        )
+    ;   Fs = [F], function(L, Name, T, ST, Body, E2, E, F)
+    ).
 
 static_assert(L, X, E) :-
     (   catch(const_value(X, E, V, _), not_constant, fail) -> true
@@ -57,12 +97,51 @@ global_decl(L, d(N, T, St, Asm, I), E0, E) :-
     ->  ( St == static -> Lk = local ; Lk = export ),
         (   I \== none -> sema_error(L, 'function ~w has an initializer', [N]) ; true ),
         put_ord(N, fn(T, Sym, Lk), E0, E)
-    ;   put_ord(N, gvar(T, Sym, St, I), E0, E)
+    ;   complete_array(T, I, T1, L),
+        put_ord(N, gvar(T1, Sym, St, I), E0, E1),
+        (   St == extern, I == none -> E = E1
+        ;   ( St == static -> Lk = local ; Lk = export ),
+            define_global(Sym, T1, Lk, I, L, E1, E)
+        )
     ).
+
+/* Definitions of globals live in the environment's Defs under
+   gdef(Symbol), string literals under lit(N); both survive block scopes.
+   A tentative definition (no initializer) does not replace one with an
+   initializer. */
+define_global(Sym, T, Lk, I, L, e(O, Tg, D0, X), e(O, Tg, D, X)) :-
+    (   get_assoc(gdef(Sym), D0, g(_, _, I0, _)), I0 \== none
+    ->  (   I == none -> D = D0 ; sema_error(L, '~w is initialized twice', [Sym]) )
+    ;   put_assoc(gdef(Sym), D0, g(T, Lk, I, L), D)
+    ).
+
+new_literal(Bs, Sym, e(O, Tg, D0, X), e(O, Tg, D, X1)) :-
+    format(atom(Sym), 'str.~w', [X]),
+    put_assoc(lit(Sym), D0, Bs, D),
+    X1 is X + 1.
+
+% The data items for every global definition and string literal.
+global_data(E0, Ds) :-
+    E0 = e(_, _, D0, _),
+    assoc_to_list(D0, KVs),
+    findall(Sym-G, member(gdef(Sym)-G, KVs), Gs),
+    foldl(global_item, Gs, GDs, E0, E1),
+    E1 = e(_, _, D1, _),
+    assoc_to_list(D1, KVs1),
+    findall(data(Sym, ro(local), 1, Items),
+            ( member(lit(Sym)-Bs, KVs1), append(Bs, [0], Bs1),
+              findall(item(b, c(B)), member(B, Bs1), Items) ),
+            LDs),
+    append(GDs, LDs, Ds).
+
+global_item(Sym-g(T, Lk, I, L), data(Sym, Lk, A, Items), E0, E) :-
+    catch(size_align(T, E0, _, A0), bad(W), sema_error(L, '~w has an unsupported type (~w)', [Sym, W])),
+    A is min(A0, 16),
+    static_items(T, I, L, E0, E, Items).
 
 %% Functions
 
-function(L, Name, func(RT, PTs, Var), ST, Body, E0, func(Sym, Lk, RK, Params, Blocks)) :-
+function(L, Name, func(RT, PTs, Var), ST, Body, E0, E, func(Sym, Lk, RK, Params, Blocks)) :-
     ord(E0, Name, fn(_, Sym, Lk)),
     (   Var == variadic -> sema_error(L, 'defining variadic function ~w is not supported', [Name]) ; true ),
     (   PTs == unspecified -> PTs1 = [] ; PTs1 = PTs ),
@@ -74,7 +153,8 @@ function(L, Name, func(RT, PTs, Var), ST, Body, E0, func(Sym, Lk, RK, Params, Bl
     phrase(( params(Names, PTs1, X, Params),
              stmt(Body, X),
              fall_off(RT) ), S0, S),
-    S = st(_, none, [], Bs, _, _, _, As),
+    S = st(Ef, none, [], Bs, _, _, _, As),
+    env_scope(E0, Sc, _), env_restore(Sc, Ef, E),
     reverse(Bs, [blk(start, [], Is0, J0)|Rest]),
     reverse(As, AIs),
     append(AIs, Is0, Is),
@@ -87,12 +167,11 @@ ret_class(L, T, _) :- sema_error(L, 'returning ~w is not supported yet', [T]).
 
 float_type(T) :- memberchk(T, [float, double, ldouble]).
 
-% The parameter names, from the function's own declarator.
-param_names(func(base, unspecified), []) :- !.
-param_names(func(base, params(Ps, _)), Ns) :- !,
+% The parameter names, from the function's own declarator: the outermost
+% func, since declarator types are built outermost first.
+param_names(func(_, unspecified), []) :- !.
+param_names(func(_, params(Ps, _)), Ns) :-
     findall(N, member(param(_, dcl(N, _, _)), Ps), Ns).
-param_names(func(T, _), Ns) :- !, param_names(T, Ns).
-param_names(ptr(T, _), Ns) :- param_names(T, Ns).
 
 params([], [], _, []) --> [].
 params([N|Ns], [T|Ts], X, [par(K, P)|Ps]) -->
@@ -256,7 +335,13 @@ local_decls([], _) --> [].
 local_decls([d(N, T, St, Asm, I)|Ds], X) --> { arg(5, X, L) },
     (   { T = func(_, _, _) ; St == extern }
     ->  env(E0), { global_decl(L, d(N, T, St, Asm, I), E0, E) }, set_env(E)
-    ;   { St == static } -> { sema_error(L, 'static local ~w is not supported yet', [N]) }
+    ;   { St == static }
+    ->  env(E0),
+        { arg(1, X, Fn), E0 = e(_, _, _, K), format(atom(Sym), '~w.~w.~w', [Fn, N, K]),
+          E0 = e(O, Tg, D, K), K1 is K + 1, complete_array(T, I, T1, L),
+          put_ord(N, gvar(T1, Sym, static, I), e(O, Tg, D, K1), E1),
+          define_global(Sym, T1, local, I, L, E1, E) },
+        set_env(E)
     ;   { complete_array(T, I, T1, L) },
         env(E), { bad_check(T1, E, L, N) },
         local_slot(T1, A),
@@ -270,6 +355,7 @@ bad_check(T, E, L, N) :-
           sema_error(L, '~w has a type nanofil does not support (~w)', [N, W])).
 
 % An array of unknown size takes its size from the initializer.
+complete_array(array(ET, none), none, array(ET, none), _) :- !.
 complete_array(array(ET, none), I, array(ET, N), L) :- !,
     (   I = str(Bs), length(Bs, N0) -> N is N0 + 1
     ;   I = list(Es) -> list_extent(Es, 0, 0, N)
@@ -407,13 +493,15 @@ designated(field(F), Slots, I, _, X) :-
 % array decay or loading.
 obj(id(N), X, R) --> !, env(E),
     (   { ord(E, N, var(A, T)) } -> { R = lv(A, T) }
-    ;   { ord(E, N, fn(T, Sym, _)) } -> { R = fd(Sym, T) }
+    ;   { ord(E, N, fn(T, Sym, _)) } -> { R = fd(glo(Sym), T) }
     ;   { ord(E, N, enumconst(V, T)) } -> { R = v(c(V), T) }
-    ;   { ord(E, N, gvar(_, _, _, _)) } -> { arg(5, X, L), sema_error(L, 'global variable ~w is not supported yet', [N]) }
+    ;   { ord(E, N, gvar(T, Sym, _, _)) } -> ins(p, copy, [glo(Sym)], A), { R = lv(A, T) }
+    ;   { memberchk(N, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']) }
+    ->  { arg(1, X, Fn), atom_codes(Fn, Bs) }, obj(str(Bs), X, R)
     ;   { arg(5, X, L), sema_error(L, 'undeclared identifier ~w', [N]) }
     ).
 obj(un(deref, P), X, R) --> !, rval(P, X, v(V, T)),
-    (   { T = ptr(func(_, _, _)) } -> { arg(5, X, L), sema_error(L, 'calls through function pointers are not supported yet', []) }
+    (   { T = ptr(FT), FT = func(_, _, _) } -> callee_temp(V, C), { R = fd(C, FT) }
     ;   { T = ptr(OT) } -> { R = lv(V, OT) }
     ;   { arg(5, X, L), sema_error(L, 'dereferencing a non-pointer', []) }
     ).
@@ -426,7 +514,13 @@ obj(arrow(S, F), X, lv(P, T)) --> !, rval(S, X, v(A, PT)),
     (   { PT = ptr(ST) } -> member_lv(A, ST, F, X, P, T)
     ;   { arg(5, X, L), sema_error(L, '-> on a non-pointer', []) }
     ).
-obj(str(_), X, _) --> !, { arg(5, X, L), sema_error(L, 'string literals are not supported yet', []) }.
+obj(str(Bs), _, lv(A, array(char, N))) --> !,
+    env(E0), { new_literal(Bs, Sym, E0, E), length(Bs, N0), N is N0 + 1 }, set_env(E),
+    ins(p, copy, [glo(Sym)], A).
+
+% A callee must be a temporary.
+callee_temp(t(T), t(T)) --> !.
+callee_temp(V, C) --> ins(p, copy, [V], C).
 obj(E, X, R) --> rvalue(E, X, R).
 
 member_lv(A, ST, F, X, P, T) --> env(E), { arg(5, X, L) },
@@ -440,7 +534,8 @@ rval(E, X, R) --> obj(E, X, R0), decay(R0, X, R).
 decay(v(V, T), _, v(V, T)) --> [].
 decay(lv(A, array(T, _)), _, v(A, ptr(T))) --> !.
 decay(lv(A, T), X, v(V, T)) --> load_typed(T, A, X, V).
-decay(fd(_, _), X, _) --> { arg(5, X, L), sema_error(L, 'function pointers are not supported yet', []) }.
+decay(fd(glo(S), T), _, v(A, ptr(T))) --> !, ins(p, copy, [glo(S)], A).
+decay(fd(C, T), _, v(C, ptr(T))) --> [].
 
 % The type of an expression, for sizeof: lower it, keep only the type.
 type_of(E, X, T, S, S) :- phrase(obj(E, X, R), S, _), arg(2, R, T).
@@ -484,8 +579,8 @@ rvalue(cast(TN, CE), X, R) --> !, env(E), { type_name_type(TN, T, E, _) },
 rvalue(comma(A, B), X, R) --> !, rval(A, X, _), rval(B, X, R).
 rvalue(un(addr, A), X, v(P, ptr(T))) --> !, obj(A, X, R0),
     (   { R0 = lv(P, T) } -> []
-    ;   { arg(5, X, L), ( R0 = fd(_, _) -> sema_error(L, 'function pointers are not supported yet', [])
-                         ; sema_error(L, '& of a non-lvalue', []) ) }
+    ;   { R0 = fd(_, _) } -> decay(R0, X, v(P, ptr(T)))
+    ;   { arg(5, X, L), sema_error(L, '& of a non-lvalue', []) }
     ).
 rvalue(un(Op, A), X, R) --> { memberchk(Op, [preinc, predec, postinc, postdec]) }, !, incdec(Op, A, X, R).
 rvalue(un(Op, A), X, R) --> !, rval(A, X, V), unary(Op, V, X, R).
@@ -680,17 +775,21 @@ incdec(Op, A, X, R) --> { arg(5, X, L) },
 %% Calls
 
 fcall(F, As, X, R) --> { arg(5, X, L) },
-    obj(F, X, FD),
-    (   { FD = fd(Sym, func(RT, PTs, _)) } -> []
-    ;   { sema_error(L, 'calls through function pointers are not supported yet', []) }
+    obj(F, X, FD0),
+    (   { FD0 = fd(_, _) } -> { FD = FD0 }
+    ;   decay(FD0, X, v(FV, T)),
+        (   { T = ptr(FT), FT = func(_, _, _) } -> callee_temp(FV, C), { FD = fd(C, FT) }
+        ;   { sema_error(L, 'called object is not a function', []) }
+        )
     ),
+    { FD = fd(Callee, func(RT, PTs, _)), ( Callee = glo(Sym) -> true ; Sym = 'function pointer' ) },
     ( { PTs == unspecified } -> { Ps = [] } ; { Ps = PTs } ),
     { length(Ps, NP), length(As, NA),
       ( NA < NP -> sema_error(L, 'too few arguments to ~w', [Sym]) ; true ),
       ( NA > NP, PTs \== unspecified, FD = fd(_, func(_, _, fixed)) -> sema_error(L, 'too many arguments to ~w', [Sym]) ; true ) },
     call_args(As, Ps, X, Args),
-    (   { RT == void } -> emit(call(void, glo(Sym), Args)), { R = v(c(0), void) }
-    ;   { class_of(RT, K) } -> fresh(D), emit(call(to(D, K), glo(Sym), Args)),
+    (   { RT == void } -> emit(call(void, Callee, Args)), { R = v(c(0), void) }
+    ;   { class_of(RT, K) } -> fresh(D), emit(call(to(D, K), Callee, Args)),
         normalize(RT, D, V), { R = v(V, RT) }
     ;   { sema_error(L, 'calls returning ~w are not supported yet', [RT]) }
     ).
@@ -713,4 +812,135 @@ normalize(T, V0, V) -->
     (   { int_info(T, S, G), S < 4 } -> { narrow_ext(S, G, Op) }, ins(w, ext(Op), [V0], V)
     ;   { T == bool } -> ins(w, ext(ub), [V0], V)
     ;   { V = V0 }
+    ).
+
+%% Static initializers
+
+/* static_items(+T, +Init, +Loc, +E0, -E, -Items): the data items of a
+   global of type T. Entries e(Offset, Bytes, Item) are collected, a later
+   one replacing an earlier one at the same offset, then the gaps are
+   zero-filled. A pointer is item(p, sym(S, Off)); string literals in
+   initializers become data of their own. */
+static_items(T, I, L, E0, E, Items) :-
+    size_align(T, E0, Size, _),
+    (   I == none -> E = E0, Es = []
+    ;   sinit(0, T, I, L, E0-[], E-Es0), reverse(Es0, Es)
+    ),
+    empty_assoc(A0),
+    foldl(put_entry, Es, A0, A),
+    assoc_to_values(A, Sorted),
+    fill_items(Sorted, 0, Size, L, Items).
+
+put_entry(e(O, N, It), A0, A) :- put_assoc(O, A0, e(O, N, It), A).
+
+fill_items([], P, Size, _, Z) :- ( P < Size -> N is Size - P, Z = [zero(N)] ; Z = [] ).
+fill_items([e(O, N, It)|Es], P, Size, L, Items) :-
+    (   O < P -> sema_error(L, 'overlapping initializers', []) ; true ),
+    (   O > P -> G is O - P, Items = [zero(G), It|Is] ; Items = [It|Is] ),
+    P1 is O + N,
+    fill_items(Es, P1, Size, L, Is).
+
+entry(O, T, V, e(O, N, item(W, c(U)))) :-
+    int_info(T, N, _), memberchk(N-W, [1-b, 2-h, 4-w, 8-l]), wrap(V, T, U).
+
+sinit(O, T, list(Es), L, S0, S) :- !,
+    (   aggregate(T) -> sagg(O, T, Es, Rest, L, S0, S),
+        ( Rest == [] -> true ; sema_error(L, 'excess initializers', []) )
+    ;   Es = [entry([], V)|_] -> sinit(O, T, V, L, S0, S)
+    ;   S = S0
+    ).
+sinit(O, array(ET, N), str(Bs), L, E-A0, E-A) :- char_type_(ET), !,
+    length(Bs, NB),
+    (   NB > N -> sema_error(L, 'string initializer is too long', []) ; true ),
+    findall(En, ( nth0(K, Bs, B), OK is O + K, entry(OK, ET, B, En) ), Ens),
+    reverse(Ens, R), append(R, A0, A).
+sinit(O, T, X, L, E-A0, E-[En|A0]) :- int_type(T), !,
+    (   catch(const_value(X, E, V, _), not_constant, fail) -> true
+    ;   sema_error(L, 'initializer is not a constant', [])
+    ),
+    entry(O, T, V, En).
+sinit(O, ptr(_), X, L, E0-A0, E-[En|A0]) :- !,
+    aconst(X, L, E0, E, R),
+    (   R = sym(S, Off, _) -> En = e(O, 8, item(p, sym(S, Off)))
+    ;   En = e(O, 8, item(l, c(0)))
+    ).
+sinit(_, T, _, L, _, _) :- sema_error(L, 'cannot statically initialize a ~w', [T]).
+
+sagg(O, T, Es0, Es, L, E0-A0, S) :-
+    aggregate_slots(T, E0, Slots), sslots(Slots, 0, O, Es0, Es, L, E0-A0, S).
+
+sslots(_, _, _, [], [], _, S, S) :- !.
+sslots(Slots, _, O, [entry([D|Ds], V)|Es0], Es, L, S0, S) :- !,
+    S0 = E0-_,
+    designated(D, Slots, I1, E0, x(_, _, _, _, L)),
+    nth0(I1, Slots, slot(_, SO, T)), O1 is O + SO,
+    (   Ds == [] -> sone(O1, T, V, Es0, Es1, L, S0, S1)
+    ;   sagg(O1, T, [entry(Ds, V)], [], L, S0, S1), Es1 = Es0
+    ),
+    I2 is I1 + 1,
+    sslots(Slots, I2, O, Es1, Es, L, S1, S).
+sslots(Slots, I, O, Es0, Es, L, S0, S) :-
+    (   nth0(I, Slots, slot(_, SO, T))
+    ->  Es0 = [entry([], V)|Es1], O1 is O + SO,
+        sone(O1, T, V, Es1, Es2, L, S0, S1),
+        I1 is I + 1,
+        sslots(Slots, I1, O, Es2, Es, L, S1, S)
+    ;   Es = Es0, S = S0
+    ).
+
+sone(O, T, V, Es0, Es, L, S0, S) :-
+    (   ( V = list(_) ; \+ aggregate(T) ; T = array(ET, _), V = str(_), char_type_(ET) )
+    ->  sinit(O, T, V, L, S0, S), Es = Es0
+    ;   sagg(O, T, [entry([], V)|Es0], Es, L, S0, S)
+    ).
+
+/* aconst(+X, +Loc, +E0, -E, -R): an address constant, sym(Symbol, Offset,
+   PointerType), or null. */
+aconst(str(Bs), _, E0, E, sym(S, 0, ptr(char))) :- !, new_literal(Bs, S, E0, E).
+aconst(id(N), L, E, E, R) :- ord(E, N, gvar(array(ET, _), S, _, _)), !, R = sym(S, 0, ptr(ET)), _ = L.
+aconst(id(N), _, E, E, sym(S, 0, ptr(T))) :- ord(E, N, fn(T, S, _)), !.
+aconst(un(addr, X), L, E0, E, R) :- !,
+    (   X = id(N), ord(E0, N, fn(T, S, _)) -> E = E0, R = sym(S, 0, ptr(T))
+    ;   lconst(X, L, E0, E, sym(S, O, T)), R = sym(S, O, ptr(T))
+    ).
+aconst(cast(TN, X), L, E0, E, R) :- !,
+    type_name_type(TN, T, E0, _),
+    (   T = ptr(_) -> aconst(X, L, E0, E, R0), ( R0 = sym(S, O, _) -> R = sym(S, O, T) ; R = R0 )
+    ;   sema_error(L, 'initializer is not a constant', [])
+    ).
+aconst(bin(Op, P, I), L, E0, E, R) :- memberchk(Op, [add, sub]),
+    catch(const_value(I, E0, K, _), not_constant, fail), !,
+    aconst(P, L, E0, E, R0), offset_const(Op, R0, K, E, L, R).
+aconst(bin(add, I, P), L, E0, E, R) :-
+    catch(const_value(I, E0, K, _), not_constant, fail), !,
+    aconst(P, L, E0, E, R0), offset_const(add, R0, K, E, L, R).
+aconst(X, L, E, E, null) :-
+    (   catch(const_value(X, E, 0, _), not_constant, fail) -> true
+    ;   sema_error(L, 'initializer is not an address constant', [])
+    ).
+
+offset_const(Op, sym(S, O, ptr(ET)), K, E, L, sym(S, O1, ptr(ET))) :- !,
+    catch(size_align(ET, E, Sz, _), bad(W), sema_error(L, 'pointer arithmetic on ~w (~w)', [ET, W])),
+    ( Op == add -> O1 is O + K * Sz ; O1 is O - K * Sz ).
+offset_const(_, _, _, _, L, _) :- sema_error(L, 'initializer is not an address constant', []).
+
+lconst(id(N), L, E, E, sym(S, 0, T)) :- !,
+    ( ord(E, N, gvar(T, S, _, _)) -> true ; sema_error(L, '~w is not a global', [N]) ).
+lconst(str(Bs), _, E0, E, sym(S, 0, array(char, N))) :- !,
+    new_literal(Bs, S, E0, E), length(Bs, N0), N is N0 + 1.
+lconst(index(A, I), L, E0, E, R) :- !, lconst(un(deref, bin(add, A, I)), L, E0, E, R).
+lconst(un(deref, P), L, E0, E, sym(S, O, T)) :- !,
+    aconst(P, L, E0, E, R0),
+    ( R0 = sym(S, O, ptr(T)) -> true ; sema_error(L, 'initializer is not an address constant', []) ).
+lconst(member(X, F), L, E0, E, sym(S, O1, T)) :- !,
+    lconst(X, L, E0, E, sym(S, O, ST)), member_off(ST, F, E, L, T, MO), O1 is O + MO.
+lconst(arrow(P, F), L, E0, E, sym(S, O1, T)) :- !,
+    aconst(P, L, E0, E, R0),
+    ( R0 = sym(S, O, ptr(ST)) -> true ; sema_error(L, 'initializer is not an address constant', []) ),
+    member_off(ST, F, E, L, T, MO), O1 is O + MO.
+lconst(_, L, _, _, _) :- sema_error(L, 'initializer is not an address constant', []).
+
+member_off(ST, F, E, L, T, O) :-
+    (   ( ST = struct(_) ; ST = union(_) ), find_member(ST, F, E, T, O) -> true
+    ;   sema_error(L, 'no member named ~w', [F])
     ).

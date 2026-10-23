@@ -81,11 +81,15 @@ items_([]) --> [].
 items_(_) --> [tok(T, L)], { fail_at(L, 'unexpected ~w at top level', [T]) }.
 
 item(F) --> linkage(Lk), function(Lk, F).
-item(D) --> linkage(Lk), data(Lk, D).
+item(D) --> linkage(Lk0), section(Lk0, Lk), data(Lk, D).
 item(_) --> [tok(id(type), L)], { fail_at(L, 'aggregate types are not supported', []) }.
 
 linkage(export) --> [tok(id(export), _)], !, nls.
 linkage(local) --> [].
+
+section(Lk, ro(Lk)) --> [tok(id(section), _), tok(str(['.', r, o, d, a, t, a]), _)], !, nls.
+section(_, _) --> [tok(id(section), L)], !, { fail_at(L, 'only section \".rodata\" is supported', []) }.
+section(Lk, Lk) --> [].
 
 function(Lk, func(Name, Lk, Ret, Params, Blocks)) -->
     [tok(id(function), L)],
@@ -155,8 +159,11 @@ def_rhs(D, K, ins(D, K, Op, Args), L) -->
       ) },
     args(Args).
 
-call_rest(glo(F), Args) -->
-    expect(glo(F), 'direct callee'), expect(lp, '('), call_args(Args), expect(rp, ')').
+call_rest(Callee, Args) -->
+    (   [tok(glo(F), _)] -> { Callee = glo(F) }
+    ;   expect(tmp(T), 'callee'), { Callee = t(T) }
+    ),
+    expect(lp, '('), call_args(Args), expect(rp, ')').
 
 call_args([]), [tok(rp, L)] --> [tok(rp, L)], !.
 call_args([A|As]) --> call_arg(A), call_args_(As).
@@ -220,14 +227,14 @@ data_items_(Is) --> nls, [tok(comma, _)], !, nls, data_item(I0), { append(I0, Re
 data_items_([]) --> [].
 
 data_item([zero(N)]) --> [tok(id(z), _)], !, expect(int(N), 'size').
-data_item(Is) --> [tok(id(W), L)], { memberchk(W, [b, h, w, l]) }, !,
+data_item(Is) --> [tok(id(W), L)], { memberchk(W, [b, h, w, l, p]) }, !,
     data_vals(W, L, Is).
 
 data_vals(W, L, [I|Is]) --> data_val(W, L, I), !, ( data_vals(W, L, Is) -> [] ; { Is = [] } ).
 
 data_val(W, _, item(W, c(N))) --> [tok(int(N), _)], !.
 data_val(b, _, item(b, str(Cs))) --> [tok(str(Cs), _)], !.
-data_val(l, _, item(l, sym(S, Off))) --> [tok(glo(S), _)], !,
+data_val(W, _, item(W, sym(S, Off))) --> { memberchk(W, [l, p]) }, [tok(glo(S), _)], !,
     (   [tok(plus, _)] -> expect(int(Off), 'offset') ; { Off = 0 } ).
 data_val(W, L, _) --> [tok(T, _)], { T \== comma, T \== rb, T \== nl,
     fail_at(L, 'unsupported ~w data item ~w', [W, T]) }.

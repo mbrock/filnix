@@ -14,7 +14,8 @@
     Insts:
       ins(t(D), K, Op, Args)              value-producing instruction
       store(Width, Value, Addr)           Width in b, h, w, l, p
-      call(Res, glo(F), [arg(K, Value)])  Res = to(t(D), K) | void
+      call(Res, Callee, [arg(K, Value)])  Res = to(t(D), K) | void;
+                                          Callee glo(F), or (filc) a p temp
     Jump: jmp(L) | jnz(V, L1, L2) | ret(V) | ret | hlt
 
     Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
@@ -27,8 +28,11 @@
     Values: t(Name) | c(Integer) | glo(Name)
 
     data(Name, Linkage, Align, Items)
+      Linkage  export | local | ro(export) | ro(local), ro for read-only
+               data (QBE text: section ".rodata")
       Items: [item(W, c(N)) | item(b, str(Chars)) | item(l, sym(Name, Off))
-              | zero(N)]
+              | item(p, sym(Name, Off)) | zero(N)]
+      item(p, ...) is a pointer with the capability of Name (filc only).
 
     Temps are ground names; logic variables never appear in IR terms.
 
@@ -39,8 +43,10 @@
       filc   any use of class p. Addresses are p values (flight pointers
              with a capability), alloc yields p, loads and stores take a p
              address, p arithmetic is add/sub of an l offset, and ptoi/itop
-             convert. Data definitions are not supported yet, and calls may
-             name functions outside the module. See docs/m3.md.
+             convert. Calls may name functions outside the module, or go
+             through a p value. A symbol is used only as %t =p copy $s,
+             which yields a pointer to the data or function object; $s
+             may be defined outside the module. See docs/m3.md, m4.md.
 */
 :- module(ir, [class_bits/2, modulus/2, half/2, op_arity/2, valid_module/1,
                func_named/3, width_bytes/2, op_arg_classes/4, module_mode/2,
@@ -83,26 +89,33 @@ func_named(module(Items), Name, F) :-
     F = func(Name, _, _, _, _),
     memberchk(F, Items).
 
-/* module_mode(+M, -Mode): filc when anything in M has class p or uses a
-   pointer-only op, plain otherwise. */
+/* module_mode(+M, -Mode): filc when anything in M has class p, uses a
+   pointer-only op, or calls a function M does not define (which only the
+   Fil-C ABI can reach); plain otherwise. */
 module_mode(module(Items), Mode) :-
-    (   member(func(_, _, Ret, Params, Blocks), Items),
-        (   Ret == p
-        ;   member(par(p, _), Params)
-        ;   member(blk(_, Phis, Insts, _), Blocks),
-            (   member(phi(_, p, _), Phis)
-            ;   member(I, Insts), pointer_inst(I)
-            )
-        )
+    (   member(I, Items), pointer_item(I) -> Mode = filc
+    ;   member(func(_, _, _, _, Bs), Items), member(blk(_, _, Is, _), Bs),
+        member(call(_, glo(F), _), Is), \+ memberchk(func(F, _, _, _, _), Items)
     ->  Mode = filc
     ;   Mode = plain
     ).
+
+pointer_item(func(_, _, Ret, Params, Blocks)) :-
+    (   Ret == p
+    ;   member(par(p, _), Params)
+    ;   member(blk(_, Phis, Insts, _), Blocks),
+        (   member(phi(_, p, _), Phis)
+        ;   member(I, Insts), pointer_inst(I)
+        )
+    ), !.
+pointer_item(data(_, Lk, _, Items)) :- ( Lk = ro(_) ; memberchk(item(p, _), Items) ), !.
 
 pointer_inst(ins(_, p, _, _)).
 pointer_inst(ins(_, _, ptoi, _)).
 pointer_inst(store(p, _, _)).
 pointer_inst(call(to(_, p), _, _)).
 pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
+pointer_inst(call(_, t(_), _)).
 
 /* valid_module(+M): M is a well-formed module. Throws
    nanofil_error(Message) describing the first problem found, so callers
@@ -128,10 +141,16 @@ valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
     ->  err(Name, 'jump to the entry block @~w', [Entry])
     ;   true
     ).
-valid_item(_, plain, data(_, _, _, _)).
-valid_item(_, filc, data(Name, _, _, _)) :-
-    format(atom(Msg), 'data $~w: data definitions are not supported with class p yet', [Name]),
-    throw(nanofil_error(Msg)).
+valid_item(_, Mode, data(Name, _, Align, Items)) :-
+    (   memberchk(Align, [1, 2, 4, 8, 16]) -> true
+    ;   err(Name, 'unsupported data alignment ~w', [Align])
+    ),
+    (   Mode == plain, memberchk(item(p, _), Items)
+    ->  err(Name, 'pointer data items need a Fil-C module', [])
+    ;   Mode == filc, memberchk(item(l, sym(S, _)), Items)
+    ->  err(Name, 'use p $~w for a pointer in a Fil-C module', [S])
+    ;   true
+    ).
 
 defs(Params, Blocks, Defs) :-
     findall(N-K, member(par(K, t(N)), Params), D0),
@@ -177,6 +196,7 @@ valid_phi(Ctx, L, Preds, phi(_, K, Pairs)) :-
 pairs_keys_values_([], [], []).
 pairs_keys_values_([K-V|Ps], [K|Ks], [V|Vs]) :- pairs_keys_values_(Ps, Ks, Vs).
 
+valid_inst(ctx(_, _, _, _, _, _, filc), ins(_, p, copy, [glo(_)])) :- !.
 valid_inst(Ctx, ins(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
     (   op_arity(Op, N), length(Args, N) -> true
@@ -205,6 +225,12 @@ valid_inst(Ctx, call(Res, glo(F), Args)) :-
         call_result_ok(Fn, F, Res, CRet)
     ;   Mode == filc -> true
     ;   err(Fn, 'call to unknown function $~w', [F])
+    ),
+    forall(member(arg(K, V), Args), use(Ctx, K, V)).
+valid_inst(Ctx, call(_, Callee, Args)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, Mode),
+    (   Mode == filc, Callee = t(_) -> use(Ctx, p, Callee)
+    ;   err(Fn, 'bad callee ~w', [Callee])
     ),
     forall(member(arg(K, V), Args), use(Ctx, K, V)).
 
@@ -252,6 +278,8 @@ use_(t(N), ctx(_, Fn, _, _, Defs, _, _), K) :-
     ;   err(Fn, 'undefined temporary %~w', [N])
     ).
 use_(c(N), _, _) :- integer(N).
+use_(glo(G), ctx(_, Fn, _, _, _, _, filc), _) :- !,
+    err(Fn, '$~w used as an operand; use %t =p copy $~w', [G, G]).
 use_(glo(G), ctx(M, Fn, _, _, _, _, Mode), K) :-
     addr_class(Mode, AK),
     (   K == AK -> true ; err(Fn, '$~w used as ~w', [G, K]) ),

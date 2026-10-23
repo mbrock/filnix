@@ -35,7 +35,7 @@
 
 run(M, Fn, Args, Fuel, Outcome) :-
     module_mode(M, Mode),
-    initial_memory(M, G, Mem0),
+    initial_memory(Mode, M, G, Mem0),
     func_named(M, Fn, func(_, _, _, Params, _)),
     maplist(arg_in_range, Params, Args),
     call_fn(M, G, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
@@ -127,6 +127,64 @@ step(call(Res, glo(F), Args), Ctx, Env0, S0, R) :-
     maplist(read_arg(Ctx, Env0), Args, Xs),
     call_fn(M, G, Mode, F, Xs, S0, Out, S),
     call_result(Out, Res, Env0, S, R).
+step(call(Res, t(N), Args), Ctx, Env0, S0, R) :-
+    Ctx = c(M, G, _, _, Mode),
+    read(p, t(N), Ctx, Env0, ptr(A, Cap)),
+    maplist(read_arg(Ctx, Env0), Args, Xs),
+    (   Cap = fn(F), get_assoc(F, G, ptr(A0, _)), A == A0
+    ->  func_named(M, F, func(_, _, Ret, Params, _)),
+        indirect(Ret, Params, Res, Args, Xs, Ys, Conv),
+        (   Conv = trap(Why) -> R = stop(trap(Why), S0)
+        ;   call_fn(M, G, Mode, F, Ys, S0, Out0, S),
+            convert_return(Conv, Out0, Out),
+            call_result(Out, Res, Env0, S, R)
+        )
+    ;   Cap = ext(F)
+    ->  format(atom(Msg), 'cannot interpret a call to external $~w', [F]),
+        throw(nanofil_error(Msg))
+    ;   R = stop(trap(not_a_function), S0)
+    ).
+
+/* indirect(+CalleeRet, +Params, +Res, +Args, +Xs, -Ys, -Conv): a call
+   through a function pointer. When the classes the call site passes and
+   expects give the callee's signature (w and l are the same word), it is
+   a direct call. Otherwise it goes through the callee's generic entry:
+   each argument is one 8-byte word with its lower beside it, so a p
+   argument read as an integer is its address and an integer read as p
+   has no capability. Too few arguments, or a void callee whose result is
+   used, fail the generic entry's size checks. Conv says how to read the
+   result: same, int(K), ptr or trap(Why). */
+indirect(Ret, Params, Res, Args, Xs, Ys, Conv) :-
+    length(Params, NP), length(Args, NA),
+    (   Res = to(_, RK) -> true ; RK = void ),
+    findall(K, member(par(K, _), Params), PKs),
+    findall(K, member(arg(K, _), Args), AKs),
+    (   NA < NP -> Conv = trap(argument_size)
+    ;   RK \== void, Ret == void -> Conv = trap(return_size)
+    ;   length(Xs1, NP), append(Xs1, _, Xs),
+        length(AKs1, NP), append(AKs1, _, AKs),
+        maplist(generic_word, AKs1, PKs, Xs1, Ys),
+        (   word_class(RK) == word_class(Ret) -> Conv = same
+        ;   RK == p -> Conv = ptr
+        ;   Conv = int(RK)
+        )
+    ).
+
+word_class(p, p) :- !.
+word_class(void, void) :- !.
+word_class(_, int).
+
+generic_word(K, K, X, X) :- !.
+generic_word(p, _, ptr(A, _), A) :- !.
+generic_word(_, p, X, ptr(X, none)) :- !.
+generic_word(_, _, X, X).
+
+convert_return(same, Out, Out).
+convert_return(int(_), ret(ptr(A, _)), ret(A)) :- !.
+convert_return(int(_), Out, Out).
+convert_return(ptr, ret(X), ret(ptr(X, none))) :- integer(X), !.
+convert_return(ptr, ret(X), ret(ptr(X, none))) :- \+ X = ptr(_, _), !.
+convert_return(ptr, Out, Out).
 
 read_in(Ctx, Env, K, V, X) :- read(K, V, Ctx, Env, X).
 read_arg(Ctx, Env, arg(K, V), X) :- read(K, V, Ctx, Env, X).
@@ -168,8 +226,10 @@ read_(c(N), K, _, _, X) :-
     modulus(K, Mod),
     A is N mod Mod,
     (   K == p -> X = ptr(A, none) ; X = A ).
-read_(glo(N), _, c(_, G, _, _, _), _, X) :-
-    get_assoc(N, G, X).
+read_(glo(N), _, c(_, G, _, _, Mode), _, X) :-
+    (   get_assoc(N, G, X0) -> X = X0
+    ;   Mode == filc -> X = ptr(0, ext(N))
+    ).
 
 %% Operations. eval(Op, Class, Mode, Args, S0, val(X) | ub(Why) | trap(Why), S)
 
@@ -341,14 +401,23 @@ store(filc, W, Mem0, ptr(A, Cap), X, Res, Mem) :-
     ).
 
 /* checked(+Mem, +A, +Cap, +Size, +Kind, +Align, -Res): Fil-C's access
-   check. Every allocation is writable in the interpreter; readonly
-   objects only come from clang-built code. */
-checked(mem(_, Rs, _, _), A, Cap, Size, _, Align, Res) :-
+   check. Cap is none, obj(Base) for a writable object, ro(Base) for
+   read-only data, fn(F) for a function object (zero size, so every
+   access fails the bounds check) or ext(Name) for a symbol defined
+   outside the module, which the interpreter cannot follow. */
+checked(mem(_, Rs, _, _), A, Cap, Size, Kind, Align, Res) :-
     must_be(integer, A),
     (   Cap == none -> Res = trap(null_capability)
-    ;   Cap = obj(Base), memberchk(Base-End, Rs),
+    ;   Cap = fn(_) -> Res = trap(out_of_bounds)
+    ;   Cap = ext(N)
+    ->  format(atom(Msg), 'cannot interpret an access to external $~w', [N]),
+        throw(nanofil_error(Msg))
+    ;   ( Cap = obj(Base) ; Cap = ro(Base) ), memberchk(Base-End, Rs),
         (   A >= Base, A + Size =< End
-        ->  (   A mod Align =:= 0 -> Res = ok ; Res = trap(misaligned) )
+        ->  (   Kind == write, Cap = ro(_) -> Res = trap(readonly)
+            ;   A mod Align =:= 0 -> Res = ok
+            ;   Res = trap(misaligned)
+            )
         ;   Res = trap(out_of_bounds)
         )
     ).
@@ -399,9 +468,12 @@ alloc(Mode, mem(B, Rs, Next, Aux), Align0, Size, Base, mem(B, [Base-End|Rs], Nex
 stack_base(4294967296).
 data_base(65536).
 
-/* initial_memory(+M, -Globals, -Mem): lay out every data definition, each
-   in its own region, and fill in its bytes. */
-initial_memory(module(Items), G, mem(Bytes, Rs, Stack, Aux)) :-
+/* initial_memory(+Mode, +M, -Globals, -Mem): lay out every data
+   definition, each in its own region, and fill in its bytes. Globals maps
+   a name to its address, or in filc mode to a pointer value: data objects
+   are 16-aligned with their size rounded up to 8, as Fil-C's are, and
+   each function gets an address and a fn capability. */
+initial_memory(plain, module(Items), G, mem(Bytes, Rs, Stack, Aux)) :-
     empty_assoc(Aux),
     data_base(D0),
     empty_assoc(G0),
@@ -409,6 +481,45 @@ initial_memory(module(Items), G, mem(Bytes, Rs, Stack, Aux)) :-
     empty_assoc(B0),
     foldl(fill(G), Items, B0, Bytes),
     stack_base(Stack).
+initial_memory(filc, module(Items), G, mem(Bytes, Rs, Stack, Aux)) :-
+    data_base(D0),
+    empty_assoc(G0),
+    foldl(filc_layout, Items, D0-G0-[], _-G-Rs),
+    empty_assoc(B0), empty_assoc(A0),
+    foldl(filc_fill(G), Items, B0-A0, Bytes-Aux),
+    stack_base(Stack).
+
+filc_layout(data(Name, Lk, _, Items), A0-G0-Rs0, A-G-[Base-End|Rs0]) :-
+    Base is (A0 + 15) // 16 * 16,
+    foldl(item_size, Items, 0, Size),
+    End is Base + (Size + 7) // 8 * 8,
+    ( Lk = ro(_) -> Cap = ro(Base) ; Cap = obj(Base) ),
+    put_assoc(Name, G0, ptr(Base, Cap), G),
+    A is End + 16.
+filc_layout(func(Name, _, _, _, _), A0-G0-Rs, A-G-Rs) :-
+    Base is (A0 + 15) // 16 * 16,
+    put_assoc(Name, G0, ptr(Base, fn(Name)), G),
+    A is Base + 16.
+
+filc_fill(G, data(Name, _, _, Items), B0-A0, B-A) :- !,
+    get_assoc(Name, G, ptr(Base, _)),
+    foldl(filc_item(G), Items, Base-B0-A0, _-B-A).
+filc_fill(_, func(_, _, _, _, _), S, S).
+
+filc_item(G, item(p, sym(S, Off)), At-B0-A0, At1-B-A) :- !,
+    (   At mod 8 =:= 0 -> true
+    ;   throw(nanofil_error('pointer data item is not 8-aligned'))
+    ),
+    (   get_assoc(S, G, ptr(SA, Cap)) -> true ; SA = 0, Cap = ext(S) ),
+    U is (SA + Off) mod 18446744073709551616,
+    le_bytes(8, U, Bs),
+    bytes_out(Bs, At, B0, B),
+    put_assoc(At, A0, Cap, A),
+    At1 is At + 8.
+filc_item(G, I, At-B0-A, At1-B-A) :-
+    item_bytes(G, I, Bs),
+    bytes_out(Bs, At, B0, B),
+    length(Bs, N), At1 is At + N.
 
 layout([], _, G, G, Rs, Rs).
 layout([I|Is], A0, G0, G, Rs0, Rs) :-

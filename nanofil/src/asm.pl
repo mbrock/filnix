@@ -7,8 +7,9 @@
       ins(Op, Suffix, Operands)   Op, then Suffix unless none, operands in
                                   AT&T order (sources first)
       a directive                 section(text | data | rodata |
-                                  data_rel_ro | note_gnu_stack),
-                                  p2align(N), balign(N), globl(S),
+                                  bss | data_rel_ro | note_gnu_stack),
+                                  p2align(N), balign(N), globl(S), weak(S),
+                                  hidden(S),
                                   type(S, function | object), size(S)
                                   (.-S), size(S, N), set(S, E), quad(E),
                                   long(N), int(N), short(N), byte(Ns),
@@ -79,6 +80,8 @@ directive(section(S)) --> { section_name(S, N) }, seq(N).
 directive(p2align(N)) --> ".p2align ", w(N).
 directive(balign(N)) --> ".balign ", w(N).
 directive(globl(S)) --> ".globl ", w(S).
+directive(weak(S)) --> ".weak ", w(S).
+directive(hidden(S)) --> ".hidden ", w(S).
 directive(type(S, T)) --> ".type ", w(S), ", @", w(T).
 directive(size(S)) --> ".size ", w(S), ", .-", w(S).
 directive(size(S, N)) --> ".size ", w(S), ", ", w(N).
@@ -98,6 +101,7 @@ commas([N|Ns]) --> ", ", w(N), commas(Ns).
 section_name(text, ".text").
 section_name(data, ".data").
 section_name(rodata, ".section .rodata").
+section_name(bss, ".bss").
 section_name(data_rel_ro, ".section .data.rel.ro,\"aw\",@progbits").
 section_name(note_gnu_stack, ".section .note.GNU-stack,\"\",@progbits").
 

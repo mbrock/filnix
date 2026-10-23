@@ -25,6 +25,7 @@ item(data(Name, Lk, Align, Items)) -->
 
 linkage(export) --> "export ".
 linkage(local) --> [].
+linkage(ro(Lk)) --> linkage(Lk), "section \".rodata\" ".
 
 ret(void) --> [].
 ret(K) --> atom(K), " ".
@@ -82,8 +83,8 @@ data_items([I|Is]) --> data_item(I), ", ", data_items(Is).
 data_item(zero(N)) --> "z ", num(N).
 data_item(item(W, c(N))) --> atom(W), " ", num(N).
 data_item(item(b, str(Cs))) --> "b \"", seq(Cs), "\"".
-data_item(item(l, sym(S, 0))) --> !, "l $", atom(S).
-data_item(item(l, sym(S, Off))) --> "l $", atom(S), " + ", num(Off).
+data_item(item(W, sym(S, 0))) --> !, atom(W), " $", atom(S).
+data_item(item(W, sym(S, Off))) --> atom(W), " $", atom(S), " + ", num(Off).
 
 atom(A) --> { atom_chars(A, Cs) }, seq(Cs).
 num(N) --> { number_chars(N, Cs) }, seq(Cs).
