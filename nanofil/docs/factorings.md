@@ -127,24 +127,50 @@ thread_field(cc_inline_buffer, 128).
 A pin change then touches one place. This one is more about clarity than
 length.
 
-### 5. Move cfg_tabled.pl out of src
+### 5. Not done: cfg_tabled.pl stays in src
 
-Its 293 lines have one user, `tests/bench-cfg.pl`. They answered a
-design question, and [m5.md](m5.md) records the answer, so
-`experiments/` or git history is enough.
+This page first proposed moving it out as a finished experiment. It is
+not one: [m5.md](m5.md) keeps it as the declarative specification that
+the Nix check holds cfg.pl's functional analyses to, which is the kind
+of executable reference this page argues for.
 
-## Order
+## What happened
 
-1. Factoring 3: local to `c_lower.pl` and the clearest win.
-2. Factoring 2: it may also fix the `||` and `?:` case.
-3. Factoring 1, once the IR owner agrees.
-4. Factoring 4.
-5. Factoring 5, whenever convenient.
+All of this landed in October 2026, in this order. Each step left the
+output of every test and corpus input byte-identical (cc-ir for 1 to 3,
+the assembly for 4) apart from the fixes named below, and passed the
+Nix check on both hosts.
 
-Together they should remove about 400 to 600 lines. Each one is a
-refactor: `tests/unit.pl`, the difftests and progtest should pass
-unchanged, except for a new regression test if factoring 2 confirms the
-`||` bug.
+- **3, initializers** ([`d7d228e`](https://github.com/mbrock/filnix/commit/d7d228e)).
+  `init_leaves/4` relates a type and initializer to `zero`, `val` and
+  `expr` leaves; locals store them, statics fold them into chunks, and
+  `complete_array/6` takes an unknown length from the same walk. It
+  fixed a designator naming a union member other than the first, and
+  `int y = {}` in a local.
+- **2, constants** ([`b17ca37`](https://github.com/mbrock/filnix/commit/b17ca37)).
+  `#if` goes through c_lex, c_parse's `conditional` and `const_eval/4`
+  with `Env = pp`; values are integers or `ub`, and `&&`, `||` and `?:`
+  do not propagate `ub` from the operand they do not evaluate. It fixed
+  `int a[1 || 1/0]` and `#if L'\xff'`. Forty `#if` edge cases agree with
+  `clang -E`.
+- **1, operators** ([`6eccbae`](https://github.com/mbrock/filnix/commit/6eccbae)).
+  `op_text//1` in ir.pl spells every op for the parser and the printer;
+  run backwards it enumerates the 56 ops. It turned up a Trealla bug
+  (AGENTS.md): parsing an `atom_chars/2` list by backtracking picked the
+  wrong op after the interpreter had run, so the parser generates names
+  and compares them.
+- **4, ABI facts** ([`2d16335`](https://github.com/mbrock/filnix/commit/2d16335)).
+  `abi_symbol/3`, `struct_field/3`, `object_flag/2` and
+  `aux_pointer_mask/1`, with the function and variadic objects sharing
+  their getter and object data.
+
+The four changed `src/` by about −80 lines, not the 400 to 600 estimated
+above: the merged code describes its terms in comments, and naming the
+ABI adds lines. What they removed is repetition: five lists of
+operators, two constant evaluators with different laziness, two
+initializer walks, and about 25 inline spellings of the ABI. Two
+findings are open: c_lex reads `0b101` as a float, and `#if` errors at
+the end of the line have no location.
 
 ## Where this goes
 
