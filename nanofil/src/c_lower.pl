@@ -748,9 +748,9 @@ stmt_(return(Expr), Ctx) -->
     rval(Expr, Ctx, Value0),
     (   { RetType == void } -> term(ret)
     ;   { su(RetType) }
-    ->  assign_convert(Value0, RetType, Loc, v(Addr, _)),
+    ->  assign_convert(Expr, Value0, RetType, Loc, v(Addr, _)),
         return_struct(RetType, Addr, Loc)
-    ;   assign_convert(Value0, RetType, Loc, v(Value, _)),
+    ;   assign_convert(Expr, Value0, RetType, Loc, v(Value, _)),
         term(ret(Value))
     ).
 stmt_(goto(Name), _) -->
@@ -1107,7 +1107,7 @@ store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
     offset(Addr, Off, P),
     rval(Expr, Ctx, Value0),
     { ctx_loc(Ctx, Loc) },
-    assign_convert(Value0, Type, Loc, v(Value, _)),
+    assign_convert(Expr, Value0, Type, Loc, v(Value, _)),
     store_typed(Type, Value, P).
 
 % zero_object(+Addr, +Type)//: clear the whole object, since allocs are
@@ -1428,7 +1428,7 @@ rvalue(call(id('__builtin_alloca'), [Size]), Ctx, v(Addr, ptr(void))) -->
     { \+ lookup_ordinary(Env, '__builtin_alloca', _) }, !,
     rval(Size, Ctx, V0),
     { ctx_loc(Ctx, Loc) },
-    assign_convert(V0, ulong, Loc, v(N, _)),
+    assign_convert(Size, V0, ulong, Loc, v(N, _)),
     ins(p, alloc(16), [N], Addr).
 rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     env(Env),
@@ -1437,7 +1437,7 @@ rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
     { ctx_loc(Ctx, Loc) },
-    assign_convert(VA, long, Loc, R).
+    assign_convert(A, VA, long, Loc, R).
 rvalue(call(id(Name), Args), Ctx, R) -->
     { overflow_builtin(Name, Op, Fixed) },
     env(Env),
@@ -1680,15 +1680,17 @@ convert_checked(Value0, To, Ctx, R) -->
     ;   { sema_error(Loc, 'cannot convert ~w to ~w', [From, To]) }
     ).
 
-% assign_convert(+Value0, +To, +Loc, -R)//: R is Value0 converted to To
-% as by assignment (also arguments and returns).
-assign_convert(Value0, To, Loc, R) -->
-    { Value0 = v(Addr, From) },
-    (   { su(To) }
-    ->  (   { From == To } -> { R = v(Addr, To) }
-        ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
-        )
-    ;   { scalar_conversion(From, To) } -> convert(Value0, To, R)
+% assign_convert(+Expr, +Value0, +To, +Loc, -R)//: R is Value0, the
+% value of Expr (or none, for a computed value), converted to To as by
+% assignment (also arguments, returns and initializers).
+assign_convert(Expr, Value0, To, Loc, R) -->
+    env(Env),
+    { Value0 = v(Addr, From),
+      (   Expr \== none, null_pointer_constant(Expr, Env, From) -> Null = null
+      ;   Null = value
+      ) },
+    (   { assignable(From, Null, To) }
+    ->  (   { su(To) } -> { R = v(Addr, To) } ; convert(Value0, To, R) )
     ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
     ).
 
@@ -1894,13 +1896,13 @@ assignment(Op, A, B, Ctx, R) -->
     {   LV = lv(P, Type) -> true
     ;   sema_error(Loc, 'assignment to a non-lvalue', [])
     },
-    (   { Op == '=' } -> rval(B, Ctx, Value0)
-    ;   { compound_op(Op, BinOp) },
+    (   { Op == '=' } -> rval(B, Ctx, Value0), { Source = B }
+    ;   { compound_op(Op, BinOp), Source = none },
         load_typed(Type, P, Ctx, Cur),
         rval(B, Ctx, VB),
         binary(BinOp, v(Cur, Type), VB, Ctx, Value0)
     ),
-    assign_convert(Value0, Type, Loc, R),
+    assign_convert(Source, Value0, Type, Loc, R),
     { R = v(V, _) },
     store_typed(Type, V, P).
 
@@ -1994,7 +1996,7 @@ call_args([Arg|Args], [ParamType|ParamTypes], Ctx, IRArgs) -->
     !,
     { ctx_loc(Ctx, Loc) },
     rval(Arg, Ctx, Value0),
-    assign_convert(Value0, ParamType, Loc, v(Src, _)),
+    assign_convert(Arg, Value0, ParamType, Loc, v(Src, _)),
     env(Env),
     { arg_words(ParamType, Env, Loc, Ebs) },
     load_words(Ebs, Src, Words),
@@ -2007,7 +2009,7 @@ call_args([Arg|Args], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
     { ctx_loc(Ctx, Loc) },
     rval(Arg, Ctx, Value0),
     (   { ParamTypes0 = [ParamType|ParamTypes] }
-    ->  assign_convert(Value0, ParamType, Loc, v(V, Type))
+    ->  assign_convert(Arg, Value0, ParamType, Loc, v(V, Type))
     ;   { ParamTypes = [], Value0 = v(_, Type0) },
         (   { arithmetic_type(Type0) }
         ->  { default_promotion(Type0, Type) },

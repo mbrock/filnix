@@ -43,7 +43,7 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
-                    unary_operand/3]).
+                    unary_operand/3, assignable/3, null_pointer_constant/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -1008,6 +1008,22 @@ null_pointer_constant(E, Env, T) :-
 null_pointer_constant(cast(_, X), Env, ptr(void)) :-
     expression_type(X, Env, TX0), value_type(TX0, TX),
     null_pointer_constant(X, Env, TX).
+
+/* assignable(+From, +Null, +To): a value of type From may be assigned
+   to an object of type To (C11 6.5.16.1p1), and so passed for a
+   parameter of type To, returned from a function returning To, or
+   initialize a To; Null is null if the value is a null pointer
+   constant, else value. Integers and pointers do not mix, but for a
+   null pointer constant or a pointer tested as a bool, and function
+   pointers must be compatible. Clang only warns about the other
+   pointer pairs (incompatible object types, lost qualifiers, object
+   and function pointers), and they are accepted. */
+assignable(From, _, To) :- arithmetic_type(From), arithmetic_type(To), !.
+assignable(T, _, U) :- T == U, !.
+assignable(ptr(_), _, bool) :- !.
+assignable(_, null, ptr(_)) :- !.
+assignable(ptr(A), _, ptr(B)) :-
+    ( A = func(_, _, _), B = func(_, _, _) -> compatible_type(A, B) ; true ).
 
 /* arms_type(+TA, +NA, +TB, +NB, -T): arms of value types TA and TB,
    null or value as each is a null pointer constant or not, give ?: the

@@ -140,3 +140,14 @@ int oobp(int i) { struct pt p = {1, 2}; int *q = &p.x; return q[i]; }
 // run: $oobp 1
 // run: $oobp 4
 // run: $oobp 4294967295
+/* Any integer constant expression of value 0 is a null pointer constant
+   in assignment, arguments, returns and initializers (C11 6.3.2.3p3). */
+static int is_null(int *p) { return p == 0; }
+static int *null_ret(void) { return 1 - 1; }
+long null_constants(long x) {
+    int *p = (char)0, *q;
+    q = (long)0;
+    void (*fp)(void) = 1 ? 0 : 0;
+    return is_null(p) + is_null(q) * 2 + is_null(null_ret()) * 4 + (fp == 0) * 8 + is_null(1 - 1) * 16 + x * 0;
+}
+// run: $null_constants 0
