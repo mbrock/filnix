@@ -44,10 +44,10 @@ export function l $sum(p %list) {
 	storel 29, %right_seed
 	jmp @loop
 @loop
-	%p =p phi @start %list_start, @body %next_back
-	%left =p phi @start %left_seed, @body %left_back
-	%right =p phi @start %right_seed, @body %right_back
-	%s =l phi @start 0, @body %s1
+	%p =p phi @start %list_start, @finish %next_back
+	%left =p phi @start %left_seed, @finish %left_back
+	%right =p phi @start %right_seed, @finish %right_back
+	%s =l phi @start 0, @finish %s1
 	%a =l ptoi %p
 	%z =w ceql %a, 0
 	jnz %z, @done, @body
@@ -56,12 +56,31 @@ export function l $sum(p %list) {
 	%current =p copy %current_copy
 	%vp =p add %current, 8
 	%v =l loadl %vp
-	%s1 =l add %s, %v
 	%next =p loadp %current
 	%next_live =p copy %next
-	%left_copy =p copy %right
-	%right_copy =p copy %left
+	%anchor_seed =p alloc8 8
+	storel 37, %anchor_seed
+	jmp @inner
+@inner
+	# Invariants of this inner loop, including a fresh object rooted only
+	# here and aliases of the outer swap phis. All three should disappear.
+	%anchor =p phi @body %anchor_seed, @spin %anchor
+	%left_hold =p phi @body %left, @spin %left_hold
+	%right_hold =p phi @body %right, @spin %right_hold
+	%j =w phi @body 0, @spin %j1
+	%again =w csltw %j, 1
+	jnz %again, @spin, @finish
+@spin
 	call $c_gc(l %v)
+	%j1 =w add %j, 1
+	jmp @inner
+@finish
+	%av =l loadl %anchor
+	%ad =l sub %av, 37
+	%checked =l add %v, %ad
+	%s1 =l add %s, %checked
+	%left_copy =p copy %right_hold
+	%right_copy =p copy %left_hold
 	%next_back =p copy %next_live
 	%left_back =p copy %left_copy
 	%right_back =p copy %right_copy

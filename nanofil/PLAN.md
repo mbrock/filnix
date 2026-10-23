@@ -272,14 +272,14 @@ gets a rejection test.
 
 ### M5. Middle end and translation validation
 
-**Status: in progress.** M5a and the copy-elimination step are done, see
-[docs/m5.md](docs/m5.md):
+**Status: in progress.** M5a, copy elimination and trivial-phi elimination
+are done, see [docs/m5.md](docs/m5.md):
 CFG, dominators, frontiers and liveness; `ALoc`/`AEsc` escape
 classification; `promote` (mem2reg with pruned SSA phis), then conservative
-SSA copy elimination, behind `-O` in the driver. Bounded symbolic queries
-check before/after integer returns on small functions, including branches,
-loops and concrete-address memory. Every existing suite runs again with
-`-O` in the Nix check, and each difftest run is validated against the
+SSA copy and trivial-phi elimination, behind `-O` in the driver. Bounded
+symbolic queries check before/after integer returns on small functions,
+including branches, loops and concrete-address memory. Every existing
+suite runs again with `-O` in the Nix check; each difftest compares with the
 unoptimized module. The open question is answered: analyses are pure
 functions over assocs (cfg.pl). Tabled liveness is no faster than an
 assoc worklist once the cost of asserting facts is counted, tabled

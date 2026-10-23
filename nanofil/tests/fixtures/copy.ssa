@@ -153,3 +153,80 @@ export function l $global() {
 	ret %v
 }
 # run: $global
+
+# a first aliases z, then z becomes x; b must be revisited after both.
+# Block order is not dominance order, and the loop has self inputs.
+export function l $invariant(l %x, w %n) {
+@start
+	%seed =l copy %x
+	jmp @head
+@body
+	%a =l phi @head %z
+	%back =l copy %a
+	%i1 =w add %i, 1
+	jmp @head
+@head
+	%b =l phi @start %seed, @body %back
+	%z =l phi @start %seed, @body %z
+	%i =w phi @start 0, @body %i1
+	%c =w csltw %i, %n
+	jnz %c, @body, @done
+@done
+	%r =l sub %b, %z
+	%out =l add %r, %x
+	ret %out
+}
+# run: $invariant 23 0
+# run: $invariant 31 5
+# run: $invariant 18446744073709551615 3
+
+# Equal bit patterns normalize at the phi's width before comparison.
+export function l $phi_constants(w %which) {
+@start
+	jnz %which, @left, @right
+@left
+	jmp @join
+@right
+	jmp @join
+@join
+	%w =w phi @left -1, @right 4294967295
+	%l =l phi @left 4294967297, @right 4294967297
+	%u =l extuw %w
+	%r =l sub %l, %u
+	ret %r
+}
+# run: $phi_constants 0
+# run: $phi_constants 1
+
+# A w phi of l temps narrows: it cannot simply alias the input.
+export function l $phi_narrow(l %x, w %which) {
+@start
+	jnz %which, @left, @right
+@left
+	jmp @join
+@right
+	jmp @join
+@join
+	%w =w phi @left %x, @right %x
+	%u =l extuw %w
+	ret %u
+}
+# run: $phi_narrow 4294967303 0
+# run: $phi_narrow 18446744073709551615 1
+
+# All incoming edges count, even dead ones. Dead uses of a removed phi
+# still need rewriting; the all-self dead phi must not be eliminated.
+export function l $phi_dead_edges(l %x) {
+@start
+	jmp @join
+@dead
+	%self =l phi @dead %self
+	%use =l add %same, 1
+	jnz 0, @dead, @join
+@join
+	%same =l phi @start %x, @dead %x
+	%different =l phi @start %x, @dead %use
+	%r =l add %same, %different
+	ret %r
+}
+# run: $phi_dead_edges 19

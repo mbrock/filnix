@@ -264,6 +264,26 @@ test(copy_eliminates_aliases) :-
     memberchk(ins(_, l, copy, [glo(cell)]), Global),
     func_named(M0, redefined, Redefined), func_named(M, redefined, Redefined).
 
+% Removing phis is part of the optimization contract, not merely producing
+% equivalent output. Keep narrowing, genuine loop recurrences and dead
+% definitions; remove chains regardless of block/name order.
+test(copy_eliminates_trivial_phis) :-
+    mod_file('../tests/fixtures/copy.ssa', M0),
+    copy_module(M0, M), once(valid_module(M)),
+    forall(member(Name-Names, [invariant-[i], phi_constants-[], phi_narrow-[w],
+                              phi_dead_edges-[different, self], swap-[a, b, i]]),
+           ( phi_names(M, Name, Names),
+             func_named(M, Name, F), F = func(_, _, _, _, Bs),
+             fn_cfg(Bs, Cfg), dominators(Cfg, Idom), strict_ssa(F, Cfg, Idom) )),
+    mod("export function w $f(w %n) {\n@s\n\tjmp @loop\n@loop\n\t%p =p phi @s 0, @loop %p\n\tjnz %n, @loop, @done\n@done\n\tret 7\n}\n", Literal),
+    copy_module(Literal, LiteralKept), Literal == LiteralKept,
+    module_mode(LiteralKept, filc).
+
+phi_names(M, Name, Names) :-
+    func_named(M, Name, func(_, _, _, _, Bs)),
+    findall(T, ( member(blk(_, Ps, _, _), Bs), member(phi(t(T), _, _), Ps) ), Ts),
+    sort(Ts, Names).
+
 test(copy_keeps_unguarded_definitions) :-
     mod("export function l $f(l %x) {\n@s\n\t%a =l copy %b\n\t%b =l add %x, 1\n\tret %a\n}\n", NonSSA),
     copy_module(NonSSA, Unchanged), NonSSA == Unchanged,
@@ -281,7 +301,8 @@ test(copy_removes_gc_aliases) :-
     optimize(o1, M0, M), once(valid_module(M)),
     M = module(Items),
     \+ ( member(func(_, _, _, _, Bs), Items), member(blk(_, _, Is, _), Bs),
-         member(ins(_, p, copy, _), Is) ).
+         member(ins(_, p, copy, _), Is) ),
+    phi_names(M, sum, [j, left, p, right, s]).
 
 % Unlike promote, copy moves no allocations. Compare whole pointer values,
 % including object identity: equal offsets in different objects are not equal.
@@ -294,7 +315,12 @@ test(copy_preserves_pointer_identity) :-
              Before == After )),
     outcome(M0, f, [0], B), outcome(M0, f, [1], A), B \== A,
     outcome(M0, raw, [], Raw0), outcome(M, raw, [], Raw),
-    Raw0 == Raw, Raw = ret(ptr(_, none)).
+    Raw0 == Raw, Raw = ret(ptr(_, none)),
+    mod_file('../tests/filc/copy.ssa', P0), copy_module(P0, P), once(valid_module(P)),
+    phi_names(P, pointer_invariant, [i]),
+    forall(member(N, [0, 1, 5]),
+           ( outcome(P0, pointer_invariant, [N], Before),
+             outcome(P, pointer_invariant, [N], After), Before == After )).
 
 % Bounded symbolic queries share the same input variables across both runs.
 % The domains include branch choices, loop counts and the 32-bit sign edge;
@@ -306,6 +332,11 @@ test(symbolic_optimized_returns) :-
     mod_file('../tests/fixtures/copy.ssa', C0), optimize(o1, C0, C),
     \+ ( X in 0..15, return_difference(C0, C, chain, [X], 20) ),
     \+ ( N in 0..7, return_difference(C0, C, swap, [N], 20) ),
+    \+ ( X in 0..15, N in 0..5, return_difference(C0, C, invariant, [X, N], 20) ),
+    \+ ( X in 0..1, return_difference(C0, C, phi_constants, [X], 20) ),
+    \+ ( X in 4294967296..4294967311, W in 0..1,
+         return_difference(C0, C, phi_narrow, [X, W], 20) ),
+    \+ ( X in 0..15, return_difference(C0, C, phi_dead_edges, [X], 20) ),
     \+ ( X in 4294967296..4294967311 \/ 6442450936..6442450952,
          return_difference(C0, C, narrow, [X], 20) ),
     \+ ( X in 0..15, return_difference(C0, C, effects, [X], 20) ).

@@ -125,3 +125,32 @@ export function l $not_function() {
 	ret %r
 }
 # run: $not_function
+
+# A self-backedge phi aliases the entire pointer, not just its address.
+function p $pointer_invariant(w %n) {
+@start
+	%seed =p alloc8 16
+	storel 53, %seed
+	jmp @head
+@head
+	%p =p phi @start %seed, @body %p
+	%i =w phi @start 0, @body %i1
+	%c =w csltw %i, %n
+	jnz %c, @body, @done
+@body
+	%i1 =w add %i, 1
+	jmp @head
+@done
+	ret %p
+}
+export function l $invariant_load(w %n, l %off) {
+@start
+	%p =p call $pointer_invariant(w %n)
+	%at =p add %p, %off
+	%v =l loadl %at
+	ret %v
+}
+# run: $invariant_load 0 0
+# run: $invariant_load 5 0
+# run: $invariant_load 3 16
+# run: $invariant_load 2 18446744073709551615
