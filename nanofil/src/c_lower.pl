@@ -1701,32 +1701,25 @@ scalar_conversion(A, ptr(_)) :- int_type(A).
 %% Operators
 
 % unary(+Op, +Value0, +Ctx, -R)//: R is unary operator Op applied to
-% Value0.
-unary(neg, Value0, Ctx, v(V, Type)) -->
-    arith_operand(Value0, Ctx, Type, V1),
-    { type_class(Type, Class) },
-    ins(Class, neg, [V1], V).
-unary(plus, Value0, Ctx, v(V, Type)) -->
-    arith_operand(Value0, Ctx, Type, V).
-unary(bnot, Value0, Ctx, v(V, Type)) -->
+% Value0, converted as unary_operand/3 says.
+unary(Op, Value0, Ctx, R) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc),
-      ( int_type(From) -> true
-      ; sema_error(Loc, 'operand of ~~ is not an integer', []) ) },
-    arith_operand(Value0, Ctx, Type, V1),
-    { type_class(Type, Class) },
-    ins(Class, xor, [V1, c(-1)], V).
-unary(not, Value0, Ctx, v(V, int)) -->
+      (   unary_operand(Op, From, Type) -> true
+      ;   sema_error(Loc, 'invalid operand to ~w: ~w', [Op, From])
+      ) },
+    unary_value(Op, Value0, Type, Ctx, R).
+
+unary_value(not, Value0, _, Ctx, v(V, int)) --> !,
     truth(Value0, Ctx, W),
     ins(w, cmp(eq, w), [W, c(0)], V).
+unary_value(Op, Value0, Type, _, v(V, Type)) -->
+    convert(Value0, Type, v(V1, _)),
+    { type_class(Type, K) },
+    unary_ins(Op, K, V1, V).
 
-% arith_operand(+Value0, +Ctx, -Type, -V)//: V is arithmetic operand
-% Value0 promoted to Type.
-arith_operand(Value0, Ctx, Type, V) -->
-    { Value0 = v(_, From), ctx_loc(Ctx, Loc),
-      (   arithmetic_type(From) -> integer_promotion(From, Type)
-      ;   sema_error(Loc, 'operand of type ~w is not arithmetic', [From])
-      ) },
-    convert(Value0, Type, v(V, _)).
+unary_ins(plus, _, V, V) --> [].
+unary_ins(neg, K, V1, V) --> ins(K, neg, [V1], V).
+unary_ins(bnot, K, V1, V) --> ins(K, xor, [V1, c(-1)], V).
 
 % binary(+Op, +VA, +VB, +Ctx, -R)//: R is binary operator Op applied to
 % the values VA and VB, converted as binary_operands/6 says.

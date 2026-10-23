@@ -42,7 +42,8 @@
                     decl_types/5, expression_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
-                    overflow_builtin/3, binary_operands/6]).
+                    overflow_builtin/3, binary_operands/6,
+                    unary_operand/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -925,11 +926,12 @@ expression_type(complit(TN, _), Env, T) :-
 expression_type(un(addr, E), Env, ptr(T)) :- expression_type(E, Env, T).
 expression_type(un(deref, E), Env, T) :-
     expression_type(E, Env, P), value_type(P, ptr(T)).
-expression_type(un(not, _), _, int).
 expression_type(un(Op, E), Env, T) :-
-    memberchk(Op, [plus, neg, bnot, preinc, predec, postinc, postdec]),
-    expression_type(E, Env, T0), value_type(T0, T1),
-    ( memberchk(Op, [plus, neg, bnot]) -> integer_promotion(T1, T) ; T = T1 ).
+    memberchk(Op, [preinc, predec, postinc, postdec]),
+    expression_type(E, Env, T0), value_type(T0, T).
+expression_type(un(Op, E), Env, T) :-
+    memberchk(Op, [plus, neg, bnot, not]),
+    expression_type(E, Env, T0), value_type(T0, T1), unary_operand(Op, T1, T).
 expression_type(index(E, _), Env, T) :-
     expression_type(E, Env, T0), value_type(T0, ptr(T)).
 expression_type(member(E, F), Env, T) :-
@@ -1100,6 +1102,15 @@ value_type(qualified(_, T), R) :- !, value_type(T, R).
 value_type(array(T, _), ptr(T)) :- !.
 value_type(func(R, P, V), ptr(func(R, P, V))) :- !.
 value_type(T, T).
+
+/* unary_operand(+Op, +T0, -T): unary +, -, ~ or ! (C11 6.5.3.3) on an
+   operand of value type T0 has type T. + and - need an arithmetic
+   operand and ~ an integer, which they promote; ! needs a scalar and
+   gives an int. */
+unary_operand(Op, T0, T) :-
+    memberchk(Op, [plus, neg]), arithmetic_type(T0), integer_promotion(T0, T).
+unary_operand(bnot, T0, T) :- int_type(T0), integer_promotion(T0, T).
+unary_operand(not, T0, int) :- scalar_type(T0).
 
 expression_binary_type(Op, _, _, int) :- memberchk(Op, [land, lor]), !.
 expression_binary_type(Op, A, B, T) :- binary_operands(Op, A, B, _, _, T).
