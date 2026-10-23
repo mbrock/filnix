@@ -11,6 +11,7 @@ pkgs.trealla.overrideAttrs (old: {
   };
   patches = (old.patches or [ ]) ++ [
     ../../patches/trealla-filc-tabling-cursors.patch
+    ../../patches/trealla-goal-expansion-share-cells.patch
   ];
   postPatch = builtins.replaceStrings [ "Makefile" ] [ "GNUmakefile" ] (
     old.postPatch or ""

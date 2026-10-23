@@ -3199,6 +3199,7 @@ in
     }))
     (patch ./patches/trealla-filc-ffi-zptrtable.patch)
     (patch ./patches/trealla-filc-tabling-cursors.patch)
+    (patch ./patches/trealla-goal-expansion-share-cells.patch)
     (skipTests "runtime coverage lives in checks.x86_64-linux.trealla")
   ])
 

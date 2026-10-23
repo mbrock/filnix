@@ -1,0 +1,37 @@
+From: filnix <filnix@users.noreply.github.com>
+Subject: [PATCH] Share the cells goal_expansion pastes into the clause
+
+goal_expansion_() parses the expanded goal with a sub-parser, copies
+the sub-parser's cells into the clause with memcpy, then destroys the
+sub-parser. parser_destroy() unshares every cell of the sub-parser's
+clause, so a refcounted cell (a bigint, rational or strbuf) in the
+expansion drops its last reference and is freed while the clause still
+points at it. The clause later reads and writes freed memory.
+
+CLP(Z) goal expansion is enough to hit it: a clause body goal over a
+ground integer of at least 2^63, which is a bigint, such as
+
+    :- use_module(library(clpz)).
+    m :- Z #= 2^63, write(Z), nl.
+    :- initialization((m, halt)).
+
+segfaults, and AddressSanitizer reports a heap-use-after-free in
+share_cell_() from set_var(), on memory allocated by parse_number()
+under goal_expansion_() and freed by its parser_destroy(). 2^62 fits
+in an unmanaged small integer cell, so it does not fail.
+
+Take a reference on the pasted cells, the counterpart of the
+unshare_cells() that releases the snipped old goal just above.
+---
+diff --git a/src/parser.c b/src/parser.c
+index b10f0a56..7cef852a 100644
+--- a/src/parser.c
++++ b/src/parser.c
+@@ -3155,6 +3155,7 @@ static cell *goal_expansion_(parser *p, cell *goal)
+ 	// paste the new goal...
+ 
+ 	memcpy(goal, p2->cl->cells, sizeof(cell)*new_cells);
++	share_cells(goal, new_cells);
+ 	p->cl->cidx += new_cells;
+ 
+ 	//DUMP_TERM("new", p->cl->cells, 0, 0);

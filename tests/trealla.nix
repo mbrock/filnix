@@ -21,6 +21,16 @@ pkgs.runCommand "filc-trealla-runtime-check" { } ''
     > actual
   echo ok > expected
   diff -u expected actual
+  # goal_expansion pasting a bigint into a clause body (CLP(Z) here) used
+  # to leave the clause pointing at a freed bigint.
+  cat > bigint_expansion.pl <<'EOF'
+  :- use_module(library(clpz)).
+  m(Z, M) :- Z #= 2^63, M #= 18446744073709551621 mod 18446744073709551616.
+  :- initialization((m(Z, M), write(Z-M), nl, halt)).
+  EOF
+  timeout 30 ${trealla}/bin/tpl -q bigint_expansion.pl < /dev/null > actual
+  echo 9223372036854775808-5 > bigint_expected
+  diff -u bigint_expected actual
   echo 'int trealla_test_increment(int x) { return x + 1; }' > ffi.c
   ${filcc}/bin/clang -shared -fPIC ffi.c -o ffi.so
   cat > ffi.pl <<EOF
