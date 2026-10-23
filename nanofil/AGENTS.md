@@ -52,7 +52,12 @@ Several threads may work on nanofil at once, each owning one workstream.
   interpreter and backends. Changing it needs the orchestrating thread's
   agreement first.
 - Commit to main and push with `scripts/ship` when the Nix check passes
-  (root AGENTS.md). If the rebase conflicts in a shared file, resolve it
-  keeping both sides' intent and rerun the check.
+  (root AGENTS.md). From an orb it rebases and pushes without publishing;
+  nanofil changes leave every CI output cached, so CI stays green. If the
+  rebase conflicts in a shared file, resolve it keeping both sides'
+  intent and rerun the check.
+- Nothing under nanofil should change the toolchain. If the pre-push hook
+  says "CI will fail until these are published", stop, do not push with
+  --no-verify, and report what changed it.
 - Report back with what changed, the evidence (commands and decisive
   output), and anything you decided that others should know.
