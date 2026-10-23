@@ -10,8 +10,9 @@
 # commit, queues them with filnix-publish-cache for both caches, and waits
 # until scripts/ci-cache-check.py passes before pushing. On other hosts that
 # can ssh to the publisher host (FILNIX_PUBLISH_HOST, default swa.sh) and sudo
-# there, such as igloo, it builds locally, copies the outputs there and queues
-# them with that host's publisher. The pre-push hook
+# there, it queues them with that host's publisher: igloo builds them locally
+# and copies them there, and hosts that cannot build x86_64-linux, such as
+# Macs, evaluate them locally and build them there. The pre-push hook
 # then verifies the commits (see scripts/git-hooks/pre-push).
 #
 # Only commits are shipped: uncommitted changes to tracked files stop it.
@@ -59,26 +60,44 @@ fi
 if [ $publish = 1 ]; then
   gcroots=$(mktemp -d)
   trap 'rm -rf "$gcroots"' EXIT
+  build=(nix build --print-out-paths)
+  remote_build=0
+  if [ ${#on[@]} -gt 0 ]; then
+    # Outputs on the publisher host are rooted there until the caches have
+    # them, as the out-links do here.
+    remote_roots=$("${on[@]}" mktemp -d)
+    trap 'rm -rf "$gcroots"; "${on[@]}" rm -rf "$remote_roots"' EXIT
+    if [ "$(nix eval --impure --raw --expr builtins.currentSystem)" != x86_64-linux ]; then
+      remote_build=1
+      build+=(--no-link --eval-store auto --store "ssh-ng://$publish_host")
+    fi
+  fi
   roots=()
   i=0
-  while read -r attr; do
-    case "$attr" in "" | "#"*) continue ;; esac
-    echo "ship: building $attr"
+  # Not a while-read loop: ssh in its body would read the remaining lines.
+  mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ci-outputs.txt)
+  for attr in "${attrs[@]}"; do
     i=$((i + 1))
-    # Out-links keep the outputs alive until they are published.
-    while read -r path; do roots+=(--extra-root "$path"); done < <(
-      nix build --out-link "$gcroots/$i" --print-out-paths "git+file://$filnix_root?rev=$sha#$attr^*"
-    )
-  done < scripts/ci-outputs.txt
-  if [ ${#on[@]} -gt 0 ]; then
+    paths=()
+    if [ $remote_build = 1 ]; then
+      echo "ship: building $attr on $publish_host"
+      out=$("${build[@]}" "git+file://$filnix_root?rev=$sha#$attr^*")
+      mapfile -t paths <<<"$out"
+      "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/$i" "${paths[@]}" >/dev/null
+    else
+      echo "ship: building $attr"
+      # Out-links keep the outputs alive until they are published.
+      out=$("${build[@]}" --out-link "$gcroots/$i" "git+file://$filnix_root?rev=$sha#$attr^*")
+      mapfile -t paths <<<"$out"
+    fi
+    for path in "${paths[@]}"; do roots+=(--extra-root "$path"); done
+  done
+  if [ ${#on[@]} -gt 0 ] && [ $remote_build = 0 ]; then
     paths=()
     for ((j = 1; j < ${#roots[@]}; j += 2)); do paths+=("${roots[j]}"); done
     echo "ship: copying the outputs to $publish_host"
     # Built here, so unsigned; the publisher signs them for its caches.
     nix copy --no-check-sigs --to "ssh-ng://$publish_host" "${paths[@]}"
-    # Root them there until the caches have them, as the out-links do here.
-    remote_roots=$("${on[@]}" mktemp -d)
-    trap 'rm -rf "$gcroots"; "${on[@]}" rm -rf "$remote_roots"' EXIT
     "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/out" "${paths[@]}" >/dev/null
   fi
   for target in local cachix; do

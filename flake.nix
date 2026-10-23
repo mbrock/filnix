@@ -466,19 +466,7 @@
               text = builtins.readFile ./scripts/push-baseline.sh;
             };
 
-            # What scripts/git-hooks and scripts/ship run, so that they work
-            # without nix develop.
-            devtools = pkgs.buildEnv {
-              name = "filnix-devtools";
-              paths = with pkgs; [
-                treefmt
-                nixfmt
-                actionlint
-                shellcheck
-                python3
-                git
-              ];
-            };
+            devtools = devtoolsFor pkgs;
 
             push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
               ${pkgs.cachix}/bin/cachix push filc ${filcc}
@@ -535,28 +523,7 @@
           formatter.${system} = pkgs.nixfmt;
 
           devShells.${system} = {
-            default = pkgs.mkShell {
-              name = "filnix-dev";
-              packages = with pkgs; [
-                # Nix development tools
-                nixfmt
-                treefmt
-                nixd
-                nil
-
-                projeny
-                python3
-
-                # General development tools
-                git
-                direnv
-                nix-direnv
-              ];
-
-              shellHook = ''
-                git config core.hooksPath scripts/git-hooks
-              '';
-            };
+            default = devShellFor pkgs projeny;
 
             # Full Fil-C compilation environment (opt-in with 'nix develop .#world')
             world = filc-world-shell;
@@ -569,11 +536,75 @@
             };
           };
         };
+
+      # Fil-C is Linux-only, but Macs still run the git hooks and scripts/ship
+      # (which builds through a Linux builder or the publisher host), so they
+      # get the host tools those need and the default dev shell.
+      hostTools =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          projeny = pkgs.callPackage ./packages/projeny.nix { };
+        in
+        {
+          packages.${system} = {
+            inherit projeny;
+            devtools = devtoolsFor pkgs;
+          };
+          formatter.${system} = pkgs.nixfmt;
+          devShells.${system}.default = devShellFor pkgs projeny;
+        };
+
+      # What scripts/git-hooks and scripts/ship run, so that they work
+      # without nix develop.
+      devtoolsFor =
+        pkgs:
+        pkgs.buildEnv {
+          name = "filnix-devtools";
+          paths = with pkgs; [
+            treefmt
+            nixfmt
+            actionlint
+            shellcheck
+            python3
+            git
+          ];
+        };
+
+      devShellFor =
+        pkgs: projeny:
+        pkgs.mkShell {
+          name = "filnix-dev";
+          packages = with pkgs; [
+            # Nix development tools
+            nixfmt
+            treefmt
+            nixd
+            nil
+
+            projeny
+            python3
+
+            # General development tools
+            git
+            direnv
+            nix-direnv
+          ];
+
+          shellHook = ''
+            git config core.hooksPath scripts/git-hooks
+          '';
+        };
     in
-    nixlib.recursiveUpdate (builtins.removeAttrs (perSystem "aarch64-linux") [
-      "overlays"
-      "nixosModules"
-      "nixosConfigurations"
-      "finixModules"
-    ]) (perSystem "x86_64-linux");
+    nixlib.foldl' nixlib.recursiveUpdate { } [
+      (hostTools "aarch64-darwin")
+      (hostTools "x86_64-darwin")
+      (builtins.removeAttrs (perSystem "aarch64-linux") [
+        "overlays"
+        "nixosModules"
+        "nixosConfigurations"
+        "finixModules"
+      ])
+      (perSystem "x86_64-linux")
+    ];
 }
