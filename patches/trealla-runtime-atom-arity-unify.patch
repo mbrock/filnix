@@ -1,0 +1,126 @@
+From: Amp <amp@ampcode.com>
+Date: Fri, 23 Oct 2026 16:43:47 +0000
+Subject: [PATCH] Don't unify a run-time atom with a compound of the same name
+
+An atom made at run time is a TAG_CSTR cell rather than an interned
+one. When unify_cstrings() met an interned cell it compared the names
+and never looked at the arity, so the atom unified with any compound
+of that name:
+
+    ?- atom_chars(A, "foo"), A = foo(_).        % succeeded
+    ?- atom_concat(fo, o, C), C = foo(_,_,_).   % succeeded
+    ?- foo = foo(_).                            % failed, correctly
+
+Because clause selection goes through unify(), such an atom also
+matched clause heads like h(foo(_)). The bug showed up only with the
+run-time atom on the left. With the compound on the left the cell is
+dispatched to unify_interned(), which checks arity first, so
+foo(_) = A already failed.
+
+An interned cell is an atom only at arity 0, so that's now required
+before the names are compared. ==, compare/3 and first-argument
+indexing (index_cmpkey) already treat a TAG_CSTR atom as atomic and
+were not affected. The test covers =/2, \=/2, unify_with_occurs_check/2,
+subsumes_term/2, nested and list arguments, clause heads, and an
+indexed 600-clause predicate.
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a169a1-3ae8-741b-8cba-cf43816ed067
+Co-authored-by: Mikael Brockman <mikael@brockman.se>
+---
+ src/unify.c                            |  4 ++-
+ tests/sundry/atom_arity_unify.expected | 15 +++++++++
+ tests/sundry/atom_arity_unify.pl       | 45 ++++++++++++++++++++++++++
+ 3 files changed, 63 insertions(+), 1 deletion(-)
+ create mode 100644 tests/sundry/atom_arity_unify.expected
+ create mode 100644 tests/sundry/atom_arity_unify.pl
+
+diff --git a/src/unify.c b/src/unify.c
+index 3547f0a7..44def33e 100644
+--- a/src/unify.c
++++ b/src/unify.c
+@@ -394,7 +394,9 @@ static bool unify_cstrings(query *q, cell *p1, pl_ctx p1_ctx, cell *p2, pl_ctx p
+ 	if (is_cstring(p2) && (C_STRLEN(q, p1) == C_STRLEN(q, p2)))
+ 		return !memcmp(C_STR(q, p1), C_STR(q, p2), C_STRLEN(q, p1));
+ 
+-	if (is_interned(p2) && (C_STRLEN(q, p1) == C_STRLEN(q, p2)))
++	// An interned cell is an atom only at arity 0; foo(_) is not foo.
++
++	if (is_interned(p2) && !get_arity(p2) && (C_STRLEN(q, p1) == C_STRLEN(q, p2)))
+ 		return !memcmp(C_STR(q, p1), GET_POOL(q, p2->val_off), C_STRLEN(q, p1));
+ 
+ 	return false;
+diff --git a/tests/sundry/atom_arity_unify.expected b/tests/sundry/atom_arity_unify.expected
+new file mode 100644
+index 00000000..d57c8424
+--- /dev/null
++++ b/tests/sundry/atom_arity_unify.expected
+@@ -0,0 +1,15 @@
++literal ok
++atom_chars ok
++atom_codes ok
++atom_concat ok
++sub_atom ok
++long_name ok
++nested ok
++list ok
++not_unify ok
++occurs_check ok
++subsumes ok
++head ok
++head_atom ok
++indexed ok
++still_atom ok
+diff --git a/tests/sundry/atom_arity_unify.pl b/tests/sundry/atom_arity_unify.pl
+new file mode 100644
+index 00000000..3df1e4bc
+--- /dev/null
++++ b/tests/sundry/atom_arity_unify.pl
+@@ -0,0 +1,45 @@
++% An atom built at run time (atom_chars/2, atom_codes/2, atom_concat/3,
++% sub_atom/5) is a TAG_CSTR cell, not an interned one. Unifying it with a
++% compound compared only the names, so atom_chars(A, "foo"), A = foo(_)
++% succeeded, and such an atom matched clause heads of any arity.
++
++h(foo(_)).
++h(foo(_, _)).
++
++p(foo(_), compound).
++p(foo, atom).
++
++:- dynamic(big/2).
++
++:- initialization(main).
++
++main :-
++	forall(between(1, 600, N), assertz(big(foo(N), N))),
++	assertz(big(foo, atom)),
++	atom_chars(A, "foo"),
++	atom_codes(B, [0'f,0'o,0'o]),
++	atom_concat(fo, o, C),
++	sub_atom(xfoox, 1, 3, _, D),
++	atom_chars(L, "a_name_too_long_to_fit_inside_a_cell"),
++	LT =.. [L, x],
++	check(literal, \+ foo = foo(_)),
++	check(atom_chars, \+ A = foo(_)),
++	check(atom_codes, \+ B = foo(_)),
++	check(atom_concat, \+ C = foo(_, _, _)),
++	check(sub_atom, \+ D = foo(_)),
++	check(long_name, \+ L = LT),
++	check(nested, \+ f(A) = f(foo(_))),
++	check(list, \+ [A] = [foo(_)]),
++	check(not_unify, A \= foo(_)),
++	check(occurs_check, \+ unify_with_occurs_check(A, foo(_))),
++	check(subsumes, \+ subsumes_term(A, foo(_))),
++	check(head, \+ h(A)),
++	check(head_atom, findall(W, p(A, W), [atom])),
++	check(indexed, findall(W, big(A, W), [atom])),
++	check(still_atom, (A = foo, B = foo, C = foo, D = foo)).
++
++check(Name, Goal) :-
++	(   catch(Goal, E, (format("~w threw ~q~n", [Name,E]), fail))
++	->  format("~w ok~n", [Name])
++	;   format("~w FAILED~n", [Name])
++	).
+-- 
+2.55.0
+

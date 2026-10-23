@@ -961,6 +961,21 @@ test(setjmp_contract) :-
     rejected_with("function w $f() {\n@s\n%x =w _setjmp 0, 1\nret %x\n}\n", "zero SaveMask"),
     rejected_with("function p $f() {\n@s\n%x =p setjmp 0, 0\nret %x\n}\n", "class p").
 
+% A host atom built at run time is an atom of arity 0 only. Unpatched
+% Trealla unified it with any same-name compound, so a field named label
+% entered a label/2 clause (patches/trealla-runtime-atom-arity-unify.patch).
+test(runtime_atom_is_not_a_compound) :-
+    atom_chars(A, "foo"), \+ A = foo(_),
+    atom_concat(fo, o, C), \+ C = foo(_, _, _),
+    atom_codes(B, [0'f, 0'o, 0'o]), \+ B = foo(_),
+    \+ foo = foo(_),
+    atom_chars(L, "label"),
+    findall(K, label_shape(L, K), [atom]),
+    A == foo, B == foo, C == foo.
+
+label_shape(label(_, _), compound).
+label_shape(label, atom).
+
 % c_file_module(+File, -Module): Module is the valid module of the C
 % in File, lexed without preprocessing.
 c_file_module(F, M) :-
