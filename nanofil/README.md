@@ -95,15 +95,16 @@ stress, and a 416-file survey of the cproc and c-testsuite corpora.
 
 C17 integer code: structs, unions, enums, arrays, pointers, function
 pointers, globals with initializers, `switch` and `goto`, compound
-literals, and calls to anything, including variadic functions like
-`printf`. Of the corpus programs that have a `main`, 230 match clang's
-output; the rest are refused with a message, never miscompiled
-([docs/corpus.md](docs/corpus.md)). About two thirds of GNU hello's
-files go through it.
+literals, variadic functions, C99 `extern inline`, C23 `[[...]]`
+attributes, and the GNU extensions glibc and gnulib lean on: statement
+expressions and the `__builtin_*_overflow` family. Of the corpus
+programs that have a `main`, 231 match clang's output; the rest are
+refused with a message, never miscompiled
+([docs/corpus.md](docs/corpus.md)). Most of GNU hello's files go
+through it.
 
-It refuses floating point, bitfields, VLAs, `_Atomic`, inline `asm`, K&R
-definitions, and (for now) statement expressions and defining variadic
-functions. The code generator is deliberately naive: every temporary
+It refuses floating point, bitfields, VLAs, `_Atomic`, inline `asm` and
+K&R definitions. The code generator is deliberately naive: every temporary
 lives in a stack slot.
 
 ## Reading on
