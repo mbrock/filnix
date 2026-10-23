@@ -1,2 +1,2 @@
-// error: floating point is not supported
-double half(int x) { return x / 2.0; }
+// error: long double is not supported
+long double half(int x) { return x / 2.0L; }

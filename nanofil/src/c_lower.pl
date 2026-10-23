@@ -242,6 +242,8 @@ str_elems(wstr(WideType, Values), ElemType, Values) :-
     int_type(ElemType),
     int_info(ElemType, Size, _),
     int_info(WideType, Size, _).
+str_elems(list([entry([], Str)]), ElemType, Values) :-
+    Str \= list(_), str_elems(Str, ElemType, Values).
 
 % new_complit(+Type0, +Init, +Loc, -Sym, +Env0, -Env): Sym is a fresh
 % symbol that Env defines as a file-scope compound literal, an unnamed
@@ -358,9 +360,9 @@ ret_class(Loc, Type, Env, Class) :-
     ;   Class = void
     ).
 ret_class(Loc, Type, _, _) :-
-    float_type(Type),
+    Type == ldouble,
     !,
-    sema_error(Loc, 'floating point is not supported', []).
+    sema_error(Loc, 'long double is not supported', []).
 ret_class(Loc, Type, _, _) :-
     sema_error(Loc, 'returning ~w is not supported yet', [Type]).
 
@@ -376,8 +378,6 @@ sret_param(RetType, Params) -->
         { Params = [par(p, P)] }
     ;   { Params = [] }
     ).
-
-float_type(Type) :- memberchk(Type, [float, double, ldouble]).
 
 % param_names(+DclType, -Names): Names are the parameter names, each
 % some(Name) or none, from the function's own declarator: the outermost func, since declarator types
@@ -403,8 +403,6 @@ params([Name|Names], [Type|Types], Ctx, [par(Class, P)|Params]) -->
     { ctx_loc(Ctx, Loc),
       vm_check(Type, Loc),
       (   type_class(Type, Class) -> true
-      ;   float_type(Type)
-      ->  sema_error(Loc, 'floating point is not supported', [])
       ;   sema_error(Loc, 'parameter of type ~w is not supported yet', [Type])
       ) },
     fresh(P),
@@ -909,6 +907,8 @@ cond_jump(Expr, Ctx, LTrue, LFalse) -->
 truth(v(V, Type), Ctx, W) -->
     (   { type_class(Type, w) } -> { W = V }
     ;   { type_class(Type, l) } -> ins(w, cmp(ne, l), [V, c(0)], W)
+    ;   { float_type(Type), type_class(Type, K) }
+    ->  ins(w, cmp(ne, K), [V, c(0)], W)
     ;   { Type = ptr(_) }
     ->  ins(l, ptoi, [V], Int),
         ins(w, cmp(ne, l), [Int, c(0)], W)
@@ -940,6 +940,9 @@ init_leaves(Type, Init, C, Leaves) :-
 
 % object_init(+Type, +Off, +Init, +C)//: the leaves of Init for the
 % object of Type at Off. A scalar may be braced.
+object_init(array(T, N), Off, list([entry([], Str)]), C) -->
+    { str_elems(Str, T, _) }, !,
+    object_init(array(T, N), Off, Str, C).
 object_init(Type, Off, list(Entries), C) --> !,
     [zero(Off, Type)],
     (   { aggregate(Type) }
@@ -1294,6 +1297,8 @@ load_op(long, l, l).
 load_op(ulong, l, l).
 load_op(llong, l, l).
 load_op(ullong, l, l).
+load_op(float, s, s).
+load_op(double, d, d).
 load_op(ptr(_), p, p).
 
 % store_typed(+Type, +V, +Addr)//: store value V of Type at Addr; a
@@ -1305,6 +1310,8 @@ store_typed(Type, V, Addr) -->
 
 % store_width(+Type, -Width): Width is the store of a scalar of Type.
 store_width(ptr(_), p) :- !.
+store_width(float, s) :- !.
+store_width(double, d) :- !.
 store_width(Type, Width) :-
     int_info(Type, Size, _),
     memberchk(Size-Width, [1-b, 2-h, 4-w, 8-l]).
@@ -1319,9 +1326,8 @@ offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
 rvalue(num(V0, Suffix), _, v(c(V), Type)) --> !,
     { num_type(V0, Suffix, Type), convert_int(V0, Type, V) }.
 rvalue(chr(V), _, v(c(V), int)) --> !.
-rvalue(float(_), Ctx, _) --> !,
-    { ctx_loc(Ctx, Loc),
-      sema_error(Loc, 'floating point is not supported', []) }.
+rvalue(float(Cs), _, v(c(V), Type)) --> !,
+    { float_literal(Cs, V, Type) }.
 rvalue(sizeof_type(TypeName), Ctx, v(c(Size), ulong)) --> !,
     env(Env),
     { type_size(TypeName, Env, Ctx, Size) }.
@@ -1380,7 +1386,7 @@ rvalue(cond(Cond, A, B), Ctx, R) --> !, conditional(Cond, A, B, Ctx, R).
 rvalue(va_arg(A, TypeName), Ctx, v(V, Type)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TypeName, Type, Env, Loc),
-      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, ptr(_)])
+      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ptr(_)])
       -> true
       ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
     rval(A, Ctx, v(P, _)),
@@ -1397,10 +1403,14 @@ rvalue(call(id('__builtin_va_copy'), [A, B]), Ctx, v(c(0), void)) --> !,
     ins(p, load(p), [Q], V), emit(store(p, V, P)).
 rvalue(call(id('__builtin_va_end'), [A]), Ctx, v(c(0), void)) --> !,
     rval(A, Ctx, _).
+rvalue(call(id(Name), []), _, v(c(V), Type)) -->
+    { float_builtin(Name, Type, V) },
+    env(Env),
+    { \+ lookup_ordinary(Env, Name, _) }, !.
 rvalue(call(id('__builtin_constant_p'), [Expr]), _, v(c(V), int)) -->
     env(Env),
     { \+ lookup_ordinary(Env, '__builtin_constant_p', _) }, !,
-    { ( catch(const_value(Expr, Env, _, _), not_constant, fail)
+    { ( catch(constant_value(Expr, Env, _, _), not_constant, fail)
       -> V = 1
       ; V = 0
       ) }.
@@ -1543,8 +1553,14 @@ vm_check(Type, Loc) :-
     ->  sema_error(Loc,
                    'variably modified types (non-constant array size) are not supported',
                    [])
+    ;   unsupported_value_type(Type, Why)
+    ->  sema_error(Loc, '~w is not supported', [Why])
     ;   true
     ).
+
+unsupported_value_type(ldouble, 'long double').
+unsupported_value_type(bad(Why), Why).
+unsupported_value_type(array(T, _), Why) :- unsupported_value_type(T, Why).
 
 % vm_type(+Type): Type is variably modified. The cut ending the func
 % clause succeeds once however many parts are variably modified.
@@ -1574,6 +1590,26 @@ convert(v(V, From), bool, v(B, bool)) --> !,
     ;   { B = W }
     ).
 convert(v(c(N), From), To, v(c(W), To)) -->
+    { ( float_type(From) ; float_type(To) ),
+      arithmetic_type(From), arithmetic_type(To),
+      const_convert(N, From, To, W), integer(W) }, !.
+convert(v(V, float), double, v(R, double)) --> !,
+    ins(d, ext(s), [V], R).
+convert(v(V, double), float, v(R, float)) --> !,
+    ins(s, truncd, [V], R).
+convert(v(V, From), To, v(R, To)) -->
+    { int_type(From), float_type(To),
+      type_class(From, IK), int_info(From, _, Sign),
+      int_float_op(IK, Sign, Op), type_class(To, K) }, !,
+    ins(K, Op, [V], R).
+convert(v(V, From), To, v(R, To)) -->
+    { float_type(From), int_type(To),
+      type_class(From, K), int_info(To, _, Sign), type_class(To, IK),
+      float_int_op(K, Sign, Op),
+      conversion_int_type(IK, Sign, Base) }, !,
+    ins(IK, Op, [V], I),
+    int_convert(Base, To, I, R).
+convert(v(c(N), From), To, v(c(W), To)) -->
     { int_type(From), int_type(To) },
     !,
     { convert_int(N, To, W) }.
@@ -1596,6 +1632,22 @@ convert(v(V, ptr(_)), To, R) -->
     ins(l, ptoi, [V], Int),
     convert(v(Int, ulong), To, R).
 convert(v(V, ptr(_)), ptr(P), v(V, ptr(P))) --> [].
+
+int_float_op(w, signed, swtof).
+int_float_op(w, unsigned, uwtof).
+int_float_op(l, signed, sltof).
+int_float_op(l, unsigned, ultof).
+float_int_op(s, signed, stosi).
+float_int_op(s, unsigned, stoui).
+float_int_op(d, signed, dtosi).
+float_int_op(d, unsigned, dtoui).
+
+% Float-to-integer instructions produce a full w/l; normalize narrow C
+% destinations afterward, without ever routing an unsigned result via signed.
+conversion_int_type(w, signed, int).
+conversion_int_type(w, unsigned, uint).
+conversion_int_type(l, signed, long).
+conversion_int_type(l, unsigned, ulong).
 
 % int_convert(+From, +To, +V, -V1)//: V1 is integer V of type From
 % converted to type To, extended where the representation changes.
@@ -1629,7 +1681,7 @@ narrow_ext(2, unsigned, uh).
 % To as by a cast.
 convert_checked(Value0, To, Ctx, R) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc) },
-    (   { scalar_type(From), scalar_type(To) } -> convert(Value0, To, R)
+    (   { scalar_conversion(From, To) } -> convert(Value0, To, R)
     ;   { sema_error(Loc, 'cannot convert ~w to ~w', [From, To]) }
     ).
 
@@ -1641,9 +1693,15 @@ assign_convert(Value0, To, Loc, R) -->
     ->  (   { From == To } -> { R = v(Addr, To) }
         ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
         )
-    ;   { scalar_type(From), scalar_type(To) } -> convert(Value0, To, R)
+    ;   { scalar_conversion(From, To) } -> convert(Value0, To, R)
     ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
     ).
+
+% Floating values cannot be converted to/from pointers, even by a cast.
+scalar_conversion(A, B) :- arithmetic_type(A), arithmetic_type(B).
+scalar_conversion(ptr(_), ptr(_)).
+scalar_conversion(ptr(_), B) :- int_type(B).
+scalar_conversion(A, ptr(_)) :- int_type(A).
 
 %% Operators
 
@@ -1656,6 +1714,9 @@ unary(neg, Value0, Ctx, v(V, Type)) -->
 unary(plus, Value0, Ctx, v(V, Type)) -->
     arith_operand(Value0, Ctx, Type, V).
 unary(bnot, Value0, Ctx, v(V, Type)) -->
+    { Value0 = v(_, From), ctx_loc(Ctx, Loc),
+      ( int_type(From) -> true
+      ; sema_error(Loc, 'operand of ~~ is not an integer', []) ) },
     arith_operand(Value0, Ctx, Type, V1),
     { type_class(Type, Class) },
     ins(Class, xor, [V1, c(-1)], V).
@@ -1663,12 +1724,12 @@ unary(not, Value0, Ctx, v(V, int)) -->
     truth(Value0, Ctx, W),
     ins(w, cmp(eq, w), [W, c(0)], V).
 
-% arith_operand(+Value0, +Ctx, -Type, -V)//: V is integer operand
+% arith_operand(+Value0, +Ctx, -Type, -V)//: V is arithmetic operand
 % Value0 promoted to Type.
 arith_operand(Value0, Ctx, Type, V) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc),
-      (   int_type(From) -> integer_promotion(From, Type)
-      ;   sema_error(Loc, 'operand of type ~w is not an integer', [From])
+      (   arithmetic_type(From) -> integer_promotion(From, Type)
+      ;   sema_error(Loc, 'operand of type ~w is not arithmetic', [From])
       ) },
     convert(Value0, Type, v(V, _)).
 
@@ -1677,6 +1738,9 @@ arith_operand(Value0, Ctx, Type, V) -->
 binary(Op, VA, VB, Ctx, R) -->
     { VA = v(_, TA), VB = v(_, TB), ctx_loc(Ctx, Loc) },
     (   { int_type(TA), int_type(TB) } -> int_binary(Op, VA, VB, R)
+    ;   { arithmetic_type(TA), arithmetic_type(TB),
+          ( memberchk(Op, [add, sub, mul, div]) ; cmp_op(Op, _, _) ) }
+    ->  float_binary(Op, VA, VB, R)
     ;   { TA = ptr(PA), int_type(TB), memberchk(Op, [add, sub]) }
     ->  ptr_offset(Op, VA, PA, VB, Ctx, R)
     ;   { int_type(TA), TB = ptr(PB), Op == add }
@@ -1687,6 +1751,16 @@ binary(Op, VA, VB, Ctx, R) -->
     ->  ptr_compare(Op, VA, VB, R)
     ;   { sema_error(Loc, 'invalid operands to ~w: ~w and ~w', [Op, TA, TB]) }
     ).
+
+% Direct ordered comparisons are essential: !(a < b) is not a >= b
+% when either operand is NaN. Truth uses ne, which includes unordered.
+float_binary(Op, VA, VB, v(V, ResultType)) -->
+    { VA = v(_, TA), VB = v(_, TB), usual_arith_conversion(TA, TB, Type),
+      type_class(Type, K),
+      ( cmp_op(Op, _, _) -> IOp = cmp(Op, K), RK = w, ResultType = int
+      ; IOp = Op, RK = K, ResultType = Type ) },
+    convert(VA, Type, v(A, _)), convert(VB, Type, v(B, _)),
+    ins(RK, IOp, [A, B], V).
 
 % int_binary(+Op, +VA, +VB, -R)//: R is Op applied to integers VA and
 % VB. Shifts promote each operand on its own; comparisons and arithmetic
@@ -1864,7 +1938,7 @@ struct_expr(Expr, Ctx, Type) -->
 % c ? a : b, given the arms' types and value terms (a null pointer
 % constant matters). Not steadfast: call with Type unbound.
 cond_type(TA, _, TB, _, Type, _) :-
-    int_type(TA), int_type(TB),
+    arithmetic_type(TA), arithmetic_type(TB),
     !,
     usual_arith_conversion(TA, TB, Type).
 cond_type(void, _, void, _, void, _) :- !.
@@ -1991,8 +2065,8 @@ call_args([Arg|Args], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
     (   { ParamTypes0 = [ParamType|ParamTypes] }
     ->  assign_convert(Value0, ParamType, Loc, v(V, Type))
     ;   { ParamTypes = [], Value0 = v(_, Type0) },
-        (   { int_type(Type0) }
-        ->  { integer_promotion(Type0, Type) },
+        (   { arithmetic_type(Type0) }
+        ->  { default_promotion(Type0, Type) },
             convert(Value0, Type, v(V, _))
         ;   { Type0 = ptr(_) } -> { Value0 = v(V, Type) }
         ;   { sema_error(Loc,
@@ -2112,6 +2186,7 @@ member_ptrs(Env, Base, m(_, Type, Off), Offs0, Offs) :-
 % arg_words(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes in which a
 % struct or union argument of Type is passed.
 arg_words(Type, Env, Loc, Ebs) :-
+    by_value_check(Type, Env, Loc),
     type_size_align(Type, Env, Size, _),
     (   Size > 16
     ->  sema_error(Loc, 'passing a ~w of ~w bytes by value is not supported yet',
@@ -2122,11 +2197,26 @@ arg_words(Type, Env, Loc, Ebs) :-
 % ret_shape(+Type, +Env, +Loc, -Shape): Shape is how a struct or union
 % of Type is returned: sret, or words(Eightbytes).
 ret_shape(Type, Env, Loc, Shape) :-
+    by_value_check(Type, Env, Loc),
     type_size_align(Type, Env, Size, _),
     (   Size > 16 -> Shape = sret
     ;   eightbytes(Type, Env, Loc, Ebs),
         Shape = words(Ebs)
     ).
+
+by_value_check(Type, Env, Loc) :-
+    ( contains_float(Type, Env)
+    -> sema_error(Loc, 'float-containing struct or union by value is not supported', [])
+    ; true
+    ).
+
+contains_float(Type, _) :- float_type(Type), !.
+contains_float(ldouble, _).
+contains_float(array(T, _), Env) :- contains_float(T, Env).
+contains_float(Type, Env) :-
+    su(Type), Type =.. [_, Id], env_defs(Env, Defs),
+    get_assoc(Id, Defs, def(_, Members, _, _)),
+    member(m(_, T, _), Members), contains_float(T, Env).
 
 % copy_object(+Type, +Src, +Dst)//: copy the object of Type at Src to
 % Dst, an eightbyte at a time.
@@ -2292,12 +2382,18 @@ chunk_end(chunk(Off, N, _), End0, End) :- End is max(End0, Off + N).
 % expr_chunk(+Type, +Off, +Expr, +Loc, +Env0, -Env, -Chunk): Chunk holds
 % the constant value of Expr, of scalar Type, at Off.
 expr_chunk(Type, Off, Expr, Loc, Env, Env, Chunk) :-
-    int_type(Type),
+    arithmetic_type(Type),
     !,
-    (   catch(const_value(Expr, Env, V, _), not_constant, fail) -> true
+    (   catch(constant_value(Expr, Env, V0, From), not_constant, fail),
+        const_convert(V0, From, Type, V), integer(V)
+    ->  true
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ),
-    int_chunk(Off, Type, V, Chunk).
+    ( float_type(Type)
+    -> type_class(Type, K), type_size_align(Type, Env, N, _),
+       Chunk = chunk(Off, N, item(K, c(V)))
+    ; int_chunk(Off, Type, V, Chunk)
+    ).
 expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
     addr_const(Expr, Loc, Env0, Env, R),
     (   R = sym(Sym, SymOff, _)

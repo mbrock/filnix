@@ -571,6 +571,11 @@ type_name(Env, type(Specs, Type)) -->
     abstract_declarator(Env, Type, base).
 
 % starts_type(+Env)//: lookahead: the next token begins a type name.
+% __extension__ can prefix either a type or an expression. Look past it
+% without consuming it, rather than misreading glibc's ({...}) as a type.
+starts_type(Env), [tok(kw(extension), Loc)] -->
+    [tok(kw(extension), Loc)], !,
+    starts_type(Env).
 starts_type(Env), [tok(X, Loc)] -->
     [tok(X, Loc)],
     { type_start_token(X, Env) }.

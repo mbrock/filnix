@@ -56,7 +56,21 @@ fixtures, which are not executable programs. Reference compilation failures
 are distinct from nanofil rejections. A matching expected failure means
 the survey is stable, **not** that the compiler implements that feature.
 
-## Counts
+## Current counts (M9)
+
+The checked baseline now has **243 passes, 19 rejections, 7 reference
+errors and 147 without main**. Floating-point support adds eleven passes:
+cproc `conditional`, `convert-char-float`, `logical-and`, `logical-or`,
+`while-condition`; c-testsuite `00113`, `00119`, `00123`, `00174`, `00175`,
+`00195`. They cover conversions, truth and comparisons, gradual underflow,
+variadic float promotion, libm calls and float fields accessed by pointer.
+Every newly passing test matches clang through `progtest.sh`; the full
+survey still checks all other outcomes unchanged.
+
+## Historical M4 counts and triage
+
+The remaining sections retain the earlier survey and its diagnostics;
+the floating-point rejections below are resolved by M9.
 
 Baseline after M4d (struct values) and the array-length fix. The M4c
 baseline had pass 19 / 198 / 217, reject 22 / 21 / 43 and wrong result
@@ -144,7 +158,7 @@ stop earlier at `__builtin_va_start is not supported, at (`.
 ## Fixed since the M4f survey
 
 - **GNU statement expressions**: c-testsuite `00214` now passes;
-  `00213` still rejects its floating-point values. The current survey is
+  `00213` still rejects its floating-point values. The survey at that stage was
   231 passes, 31 rejections, 7 reference errors and 147 without main.
 - **Wide literals** (cproc `wchar-sign+*` ×3, c-testsuite `00098`,
   `00220`): `L`, `u`, `U` character and string literals, `u8` strings.

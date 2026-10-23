@@ -32,6 +32,9 @@
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
                     type_size_align/4, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
+                    float_type/1, arithmetic_type/1, default_promotion/2,
+                    constant_value/4, const_convert/4, float_literal/3,
+                    float_builtin/3,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -41,6 +44,7 @@
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(ieee).
 
 %% Environment
 
@@ -643,9 +647,18 @@ int_info(ullong, 8, unsigned).
 
 %! scalar_type(+Type) is semidet.
 %
-%  Type is a scalar type the frontend handles: an integer or a pointer.
+%  Type is an integer, floating-point or pointer type.
 
 scalar_type(T) :- type_class(T, _).
+
+float_type(float).
+float_type(double).
+
+arithmetic_type(T) :- int_type(T).
+arithmetic_type(T) :- float_type(T).
+
+default_promotion(float, double) :- !.
+default_promotion(T, P) :- integer_promotion(T, P).
 
 % rank(+Type, -Rank): the integer conversion rank of Type.
 rank(bool, 0).
@@ -674,8 +687,14 @@ unsigned_of(llong, ullong).
 %! usual_arith_conversion(+TypeA, +TypeB, -Type) is semidet.
 %
 %  Type is the common type of the usual arithmetic conversions on
-%  integer operands of TypeA and TypeB, after promotion. Fails when
-%  either is not an integer type.
+%  arithmetic operands of TypeA and TypeB, after promotion.
+usual_arith_conversion(TypeA0, TypeB0, Type) :-
+    arithmetic_type(TypeA0), arithmetic_type(TypeB0),
+    ( TypeA0 == double ; TypeB0 == double ), !,
+    Type = double.
+usual_arith_conversion(TypeA0, TypeB0, float) :-
+    arithmetic_type(TypeA0), arithmetic_type(TypeB0),
+    ( TypeA0 == float ; TypeB0 == float ), !.
 usual_arith_conversion(TypeA0, TypeB0, Type) :-
     integer_promotion(TypeA0, A),
     integer_promotion(TypeB0, B),
@@ -713,9 +732,9 @@ signed_word(unsigned, U, _, U).
 
 %! type_class(?Type, ?Class) is nondet.
 %
-%  Class is the IR class (w, l or p) of a value of the scalar type Type:
+%  Class is the IR class (w, l, p, s or d) of scalar Type:
 %  w for an integer type of at most 4 bytes, l for an 8-byte one, p for
-%  a pointer. Deterministic when Type is bound.
+%  a pointer, s/d for float/double. Deterministic when Type is bound.
 type_class(bool, w).
 type_class(char, w).
 type_class(schar, w).
@@ -728,13 +747,15 @@ type_class(long, l).
 type_class(ulong, l).
 type_class(llong, l).
 type_class(ullong, l).
+type_class(float, s).
+type_class(double, d).
 type_class(ptr(_), p).
 
-%% Integer constant expressions
+%% Arithmetic constant expressions
 
-/*  An integer constant expression has a type and a value. The value is
-    an integer, or ub where evaluating it is undefined (division by
-    zero). Operators propagate ub, except from the operands that && ||
+/*  A constant expression has a type and a value: an integer, IEEE bits
+    for float/double, or ub where evaluating it is undefined (integer
+    division by zero). Operators propagate ub, except from operands that && ||
     and ?: do not evaluate (C11 6.6p3): 1 || 1/0 is 1, and 1/0 alone is
     not constant. Every operand must still be a constant expression.
 
@@ -748,8 +769,58 @@ type_class(ptr(_), p).
 %  Expr is an integer constant expression with Value of Type in Env.
 %  Throws not_constant when Expr is not one.
 const_value(Expr, Env, V, T) :-
+    constant_value(Expr, Env, V, T),
+    ( int_type(T) -> true ; throw(not_constant) ).
+
+% Float constants use their unsigned IEEE bits, never a host float.
+constant_value(Expr, Env, V, T) :-
     (   const_eval(Expr, Env, V0, T0), integer(V0) -> V = V0, T = T0
     ;   throw(not_constant)
+    ).
+
+float_literal(Cs, Bits, Type) :-
+    append(Body, [Suffix], Cs),
+    ( memberchk(Suffix, [f, 'F']) -> Type = float, Digits = Body
+    ; memberchk(Suffix, [l, 'L'])
+    -> sema_error(constant, 'long double is not supported', [])
+    ; Type = double, Digits = Cs
+    ),
+    type_class(Type, K), ieee:ieee_parse(K, Digits, Bits).
+
+% glibc's HUGE_VAL and INFINITY are builtin constant expressions, not
+% libm calls. Keep the value bits exact, including in static storage.
+float_builtin('__builtin_huge_val', double, 0x7ff0000000000000).
+float_builtin('__builtin_inf', double, 0x7ff0000000000000).
+float_builtin('__builtin_huge_valf', float, 0x7f800000).
+float_builtin('__builtin_inff', float, 0x7f800000).
+
+% C arithmetic conversion of a constant. An undefined float-to-int
+% conversion propagates ub, just like integer division by zero.
+const_convert(ub, _, _, ub) :- !.
+const_convert(V, T, T, V) :- !.
+const_convert(V, From, bool, W) :- !, const_truth(V, From, W).
+const_convert(V, From, To, W) :-
+    ( int_type(From), int_type(To) -> convert_int(V, To, W)
+    ; int_type(From), float_type(To)
+    -> type_class(To, K), ieee:ieee_from_int(K, V, W)
+    ; float_type(From), float_type(To)
+    -> type_class(From, F), type_class(To, K), ieee:ieee_convert(F, K, V, W)
+    ; float_type(From), int_type(To)
+    -> type_class(From, F),
+       ( ieee:ieee_to_int(F, V, I), int_info(To, Size, Sign),
+         Bits is 8 * Size, integer_range(Sign, Bits, Lo, Hi), I >= Lo, I =< Hi
+       -> W = I
+       ; W = ub
+       )
+    ).
+
+integer_range(signed, Bits, Lo, Hi) :- Lo is -(1 << (Bits-1)), Hi is -Lo-1.
+integer_range(unsigned, Bits, 0, Hi) :- Hi is (1 << Bits)-1.
+
+const_truth(ub, _, ub) :- !.
+const_truth(V, T, W) :-
+    ( float_type(T) -> type_class(T, K), ieee:ieee_compare(K, ne, V, 0, W)
+    ; truth(V =\= 0, W)
     ).
 
 %! pp_value(+Expr, -Value) is semidet.
@@ -766,33 +837,39 @@ const_eval(num(V0, Suffix), Env, V, T) :-
     num_type(V0, Suffix, T0),
     env_int_type(Env, T0, T),
     convert_int(V0, T, V).
+const_eval(float(Cs), e(_, _, _, _), V, T) :- float_literal(Cs, V, T).
+const_eval(call(id(Name), []), Env, V, T) :-
+    float_builtin(Name, T, V), \+ lookup_ordinary(Env, Name, _).
 const_eval(chr(V), Env, V, T) :- env_int_type(Env, int, T).
 const_eval(id(Name), Env, V, T) :- lookup_ordinary(Env, Name, enumconst(V, T)).
 const_eval(un(not, X), Env, V, T) :-
-    const_eval(X, Env, V0, _),
+    const_eval(X, Env, V0, T0),
     env_int_type(Env, int, T),
-    defined([V0], V, truth(V0 =:= 0, V)).
+    const_truth(V0, T0, B),
+    defined([B], V, truth(B =:= 0, V)).
 const_eval(un(Op, X), Env, V, T) :-
-    unary_arith(Op, X0, R),
     const_eval(X, Env, V0, T0),
     integer_promotion(T0, T),
-    defined([V0], V, ( X0 = V0, convert_int(R, T, V) )).
+    defined([V0], V, constant_unary(T, Op, V0, V)).
 const_eval(bin(Op, A, B), Env, V, T) :-
     binary_kind(Op, Kind),
     const_eval(A, Env, VA, TA),
     const_eval(B, Env, VB, TB),
     kind_binary(Kind, Op, Env, VA, TA, VB, TB, V, T).
 const_eval(cond(C, A, B), Env, V, T) :-
-    const_eval(C, Env, VC, _),
+    const_eval(C, Env, VC, TC),
     const_eval(A, Env, VA, TA),
     const_eval(B, Env, VB, TB),
     usual_arith_conversion(TA, TB, T),
-    defined([VC], V, ( VC =\= 0 -> int_value(VA, T, V) ; int_value(VB, T, V) )).
+    const_truth(VC, TC, Test),
+    defined([Test], V,
+            ( Test =\= 0 -> const_convert(VA, TA, T, V)
+            ; const_convert(VB, TB, T, V) )).
 const_eval(cast(TypeName, X), Env, V, T) :-
     type_name_type(TypeName, T, Env, _),
-    int_type(T),
-    const_eval(X, Env, V0, _),
-    int_value(V0, T, V).
+    arithmetic_type(T),
+    const_eval(X, Env, V0, From),
+    const_convert(V0, From, T, V).
 const_eval(sizeof_type(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
@@ -811,6 +888,13 @@ const_eval(offsetof(TypeName, Path), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     offset_path(Path, T, Env, 0, V).
 const_eval(comma(_, B), Env, V, T) :- const_eval(B, Env, V, T).
+
+constant_unary(T, Op, A, V) :-
+    ( float_type(T)
+    -> type_class(T, K),
+       ( Op == plus -> V = A ; Op == neg -> ieee:ieee_neg(K, A, V) ; fail )
+    ; unary_arith(Op, A, R), convert_int(R, T, V)
+    ).
 
 % Unevaluated type queries for constant expressions. Unlike const_eval,
 % these may inspect objects and expressions with side effects. Arrays and
@@ -851,6 +935,8 @@ expression_type(member(E, F), Env, T) :-
 expression_type(arrow(E, F), Env, T) :-
     expression_type(E, Env, P), value_type(P, ptr(SU)),
     member_type_offset(SU, F, Env, T, _).
+expression_type(call(id(Name), []), Env, T) :-
+    float_builtin(Name, T, _), \+ lookup_ordinary(Env, Name, _).
 expression_type(call(E, _), Env, T) :-
     expression_type(E, Env, FT), value_type(FT, ptr(func(T, _, _))).
 expression_type(assign(_, E, _), Env, T) :- expression_type(E, Env, T).
@@ -1006,10 +1092,13 @@ binary_kind(lor, logical).
 kind_binary(arith, Op, _, VA, TA, VB, TB, V, T) :-
     usual_arith_conversion(TA, TB, T),
     defined([VA, VB], V,
-            (   convert_int(VA, T, A),
-                convert_int(VB, T, B),
-                const_arith(Op, A, B, R),
-                int_value(R, T, V)
+            (   const_convert(VA, TA, T, A),
+                const_convert(VB, TB, T, B),
+                ( float_type(T)
+                -> type_class(T, K), memberchk(Op, [add, sub, mul, div]),
+                   ieee:ieee_binary(K, Op, A, B, V)
+                ; const_arith(Op, A, B, R), int_value(R, T, V)
+                )
             )).
 kind_binary(shift, Op, _, VA, TA, VB, _, V, T) :-
     integer_promotion(TA, T),
@@ -1022,13 +1111,17 @@ kind_binary(compare, Op, Env, VA, TA, VB, TB, V, T) :-
     usual_arith_conversion(TA, TB, CT),
     env_int_type(Env, int, T),
     defined([VA, VB], V,
-            (   convert_int(VA, CT, A),
-                convert_int(VB, CT, B),
-                truth(const_compare(Op, A, B), V)
+            (   const_convert(VA, TA, CT, A),
+                const_convert(VB, TB, CT, B),
+                ( float_type(CT)
+                -> type_class(CT, K), ieee:ieee_compare(K, Op, A, B, V)
+                ; truth(const_compare(Op, A, B), V)
+                )
             )).
-kind_binary(logical, Op, Env, VA, _, VB, _, V, T) :-
+kind_binary(logical, Op, Env, VA, TA, VB, TB, V, T) :-
     env_int_type(Env, int, T),
-    defined([VA], V, const_logical(Op, VA, VB, V)).
+    const_truth(VA, TA, A), const_truth(VB, TB, B),
+    defined([A], V, const_logical(Op, A, B, V)).
 
 const_shift(shl, A, B, R) :- R is A << B.
 const_shift(shr, A, B, R) :- R is A >> B.
