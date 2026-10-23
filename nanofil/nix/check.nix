@@ -3,7 +3,9 @@
 # must also get the qbe-bugs repros right. Fil-C modules (tests/filc) are
 # linked with clang-built Fil-C code and run natively; the GC test also
 # runs with FUGC_SCRIBBLE and FUGC_VERIFY, which a missed root or store
-# barrier needs to show up.
+# barrier needs to show up. C files (tests/c) are compiled by nanofil and
+# by clang and both run against the interpreter; tests/c/reject must be
+# refused with the expected messages.
 { pkgs, filcc }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
@@ -30,6 +32,8 @@ pkgs.runCommandCC "nanofil-check"
     export FILCC=${filcc}/bin/clang
     tests/difftest.sh tests/filc/basic.ssa
     tests/filc/run-c.sh interop gc
+    tests/difftest.sh tests/c/*.c
+    tests/reject.sh
     RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     touch $out
   ''

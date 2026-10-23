@@ -3,6 +3,8 @@
       check FILE              parse and validate
       print FILE              parse, validate, print QBE text
       compile FILE            parse, validate, print x86-64 assembly
+      cc FILE                 compile preprocessed C to Fil-C assembly
+      cc-ir FILE              compile preprocessed C, print the IR as QBE text
       run FILE FN ARG...      interpret $FN on integer arguments
       difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,printed.ssa}
                               for the file's "# run: $fn arg..." lines
@@ -19,6 +21,9 @@
 :- use_module(amd64).
 :- use_module(filc_amd64).
 :- use_module(asm).
+:- use_module(c_lex).
+:- use_module(c_parse).
+:- use_module(c_lower).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -37,7 +42,16 @@ report(nanofil_error(M)) :- !, format(user_error, "nanofil: ~w~n", [M]).
 report(E) :- format(user_error, "nanofil: ~q~n", [E]).
 
 load(File, M) :-
-    parse_qbe_file(File, M),
+    (   atom_concat(_, '.c', File) ; atom_concat(_, '.i', File) )
+    ->  load_c(File, M)
+    ;   parse_qbe_file(File, M),
+        valid_module(M).
+
+load_c(File, M) :-
+    phrase_from_file(seq(Cs), File),
+    c_tokens(Cs, File, Ts),
+    (   c_parse(Ts, Items) -> true ; throw(nanofil_error('C parse failed')) ),
+    c_module(Items, M),
     valid_module(M).
 
 command([check, File]) :- load(File, _), format("ok~n", []).
@@ -47,6 +61,11 @@ command([compile, File]) :-
     module_mode(M, Mode),
     (   Mode == filc -> filc_module_asm(M, Asm) ; module_asm(M, Asm) ),
     print_asm(Asm).
+command([cc, File]) :-
+    load_c(File, M),
+    filc_module_asm(M, Asm),
+    print_asm(Asm).
+command(['cc-ir', File]) :- load_c(File, M), print_module(M).
 command([run, File, Fn|ArgAtoms]) :-
     load(File, M),
     maplist(atom_number, ArgAtoms, Args0),

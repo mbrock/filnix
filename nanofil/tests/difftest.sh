@@ -12,6 +12,11 @@
 # compiled by nanofil only, linked with a clang-built Fil-C harness
 # (FILCC, a filcc clang), and each run executes in its own process: a
 # Fil-C safety panic is the native form of the interpreter's trap.
+#
+# A C file is preprocessed by FILCC, lowered by nanofil (cc-ir), and its
+# "// run: $fn arg..." comments become run lines. Besides nanofil's own
+# code it is also compiled from source by FILCC (variant clang), so the
+# interpreter, nanofil and clang must all agree.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
@@ -25,30 +30,46 @@ trap 'rm -rf "$work"' EXIT
 status=0
 for f in "$@"; do
   f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
-  d="$work/$(basename "$f" .ssa)"
+  b=$(basename "$f"); d="$work/${b%.*}"
   mkdir -p "$d"
+  csrc=
+  if [[ $f == *.c ]]; then
+    if [ -z "$filcc" ]; then echo "$f: C file, set FILCC" >&2; exit 2; fi
+    csrc=$f
+    f="$d/c.ssa"
+    "$filcc" -E -o "$d/c.i" "$csrc"
+    (cd "$src" && "$tpl" -q main.pl -- cc-ir "$d/c.i" </dev/null) >"$f"
+    sed -n 's|^// run: |# run: |p' "$csrc" >>"$f"
+  fi
   (cd "$src" && "$tpl" -q main.pl -- difftest "$f" "$d" </dev/null)
   if [ "$(cat "$d/mode")" = filc ]; then
     if [ -z "$filcc" ]; then echo "$f: Fil-C module, set FILCC" >&2; exit 2; fi
     (cd "$src" && "$tpl" -q main.pl -- compile "$f" </dev/null) >"$d/filc.s"
     as -o "$d/filc.o" "$d/filc.s"
     "$filcc" -O1 -o "$d/filc" "$d/harness.c" "$d/filc.o"
+    variants=filc
+    if [ -n "$csrc" ]; then
+      "$filcc" -O1 -o "$d/clang" "$d/harness.c" "$csrc"
+      variants="filc clang"
+    fi
     n=$(wc -l <"$d/expected.txt")
-    : >"$d/filc.txt"
-    for ((i = 0; i < n; i++)); do
-      if bash -c '"$@" >"$0.out" 2>"$0.err"; exit $?' "$d/run" "$d/filc" "$i" 2>/dev/null; then
-        cat "$d/run.out" >>"$d/filc.txt"
-      elif grep -q 'filc safety error' "$d/run.err"; then
-        echo "$(cat "$d/run.out")trap" >>"$d/filc.txt"
-      else
-        echo "$(cat "$d/run.out")crash: $(head -c 200 "$d/run.err" | tr '\n' ' ')" >>"$d/filc.txt"
+    for v in $variants; do
+      : >"$d/$v.txt"
+      for ((i = 0; i < n; i++)); do
+        if bash -c '"$@" >"$0.out" 2>"$0.err"; exit $?' "$d/run" "$d/$v" "$i" 2>/dev/null; then
+          cat "$d/run.out" >>"$d/$v.txt"
+        elif grep -q 'filc safety error' "$d/run.err"; then
+          echo "$(cat "$d/run.out")trap" >>"$d/$v.txt"
+        else
+          echo "$(cat "$d/run.out")crash: $(head -c 200 "$d/run.err" | tr '\n' ' ')" >>"$d/$v.txt"
+        fi
+      done
+      if ! diff -u "$d/expected.txt" "$d/$v.txt" >"$d/$v.diff"; then
+        echo "MISMATCH ${csrc:-$f} ($v):"
+        cat "$d/$v.diff"
+        status=1
       fi
     done
-    if ! diff -u "$d/expected.txt" "$d/filc.txt" >"$d/filc.diff"; then
-      echo "MISMATCH $f (filc):"
-      cat "$d/filc.diff"
-      status=1
-    fi
     continue
   fi
   for variant in ${VARIANTS:-original printed nanofil}; do

@@ -173,7 +173,8 @@ catches planted rooting bugs.
 
 ### M4. C frontend subset
 
-**Status: in progress.** Broken into steps below. Probes at the pin
+**Status: in progress.** M4a and M4b are done, see [docs/m4.md](docs/m4.md).
+Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
 settled the ABI questions first:
 
@@ -224,12 +225,12 @@ settled the ABI questions first:
 
 **Steps:**
 
-- **M4a. Lexer, parser, types.** Tokens with source locations, a C11
+- **M4a. Lexer, parser, types.** *Done.* Tokens with source locations, a C11
   declaration and expression parser in DCGs producing AST terms, and type
   terms with sizes, alignments and layouts. Accept: the preprocessed
   stdio/stdlib/string/stdint/ctype headers parse, and unsupported
   constructs fail with a location.
-- **M4b. Lowering of functions.** Integer arithmetic with C's conversions,
+- **M4b. Lowering of functions.** *Done.* Integer arithmetic with C's conversions,
   pointers and arrays, locals, all statements (`switch`, `goto`,
   `break`/`continue`), calls between functions in the file. Emits a Fil-C
   module checked by `valid_module`. Accept: interpreter and native results
