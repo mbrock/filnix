@@ -60,21 +60,26 @@
 assert_version(V, Blocks) :-
     Blocks = [blk(Entry, _, _, _)|_],
     assertz(vf_entry(V, Entry)),
-    gen_kill(Blocks, GK),
-    phi_edge_uses(Blocks, EU),
-    forall(member(blk(B, _, _, J), Blocks),
+    gen_kill(Blocks, GenKill),
+    phi_edge_uses(Blocks, EdgeUses),
+    forall(member(blk(B, _, _, Jump), Blocks),
            ( assertz(vf_block(B, V)),
-             forall(( jump_succs(J, Ss), member(S, Ss) ),
-                    ( assertz(vf_edge(B, S, V)), assertz(vf_pred(S, B, V)) )),
-             get_assoc(B, GK, Gen-Kill),
+             forall(( jump_succs(Jump, Ss), member(S, Ss) ),
+                    ( assertz(vf_edge(B, S, V)),
+                      assertz(vf_pred(S, B, V)) )),
+             get_assoc(B, GenKill, Gen-Kill),
              forall(member(T, Gen), assertz(vf_gen(B, T, V))),
              forall(member(T, Kill), assertz(vf_kill(B, T, V))) )),
-    forall(( gen_assoc(B-S, EU, Ts), member(T, Ts) ), assertz(vf_euse(B, S, T, V))).
+    forall(( gen_assoc(B-S, EdgeUses, Ts), member(T, Ts) ),
+           assertz(vf_euse(B, S, T, V))).
 
 retract_version(V) :-
-    retractall(vf_entry(V, _)), retractall(vf_block(_, V)),
-    retractall(vf_edge(_, _, V)), retractall(vf_pred(_, _, V)),
-    retractall(vf_gen(_, _, V)), retractall(vf_kill(_, _, V)),
+    retractall(vf_entry(V, _)),
+    retractall(vf_block(_, V)),
+    retractall(vf_edge(_, _, V)),
+    retractall(vf_pred(_, _, V)),
+    retractall(vf_gen(_, _, V)),
+    retractall(vf_kill(_, _, V)),
     retractall(vf_euse(_, _, _, V)),
     abolish_all_tables.
 
@@ -111,13 +116,19 @@ v_dom(V, D, B) :-
 % The immediate dominator of B is the strict dominator with the most
 % dominators of its own.
 v_idoms(V, Pairs) :-
-    findall(B-Ds, ( avoid(V, none, B), findall(D, v_dom(V, D, B), Ds) ), BDs),
-    findall(B-N, ( member(B-Ds, BDs), length(Ds, N) ), Ns),
-    list_to_assoc(Ns, Count),
-    findall(B-I,
-            ( member(B-Ds, BDs), Ds = [_, _|_],
-              findall(C-D, ( member(D, Ds), D \== B, get_assoc(D, Count, C) ), CDs),
-              msort(CDs, Sorted), last(Sorted, _-I) ),
+    findall(B-Doms,
+            ( avoid(V, none, B), findall(D, v_dom(V, D, B), Doms) ),
+            BlockDoms),
+    findall(B-N, ( member(B-Doms, BlockDoms), length(Doms, N) ), Counts),
+    list_to_assoc(Counts, Count),
+    findall(B-Idom,
+            ( member(B-Doms, BlockDoms),
+              Doms = [_, _|_],
+              findall(C-D,
+                      ( member(D, Doms), D \== B, get_assoc(D, Count, C) ),
+                      Counted),
+              msort(Counted, Sorted),
+              last(Sorted, _-Idom) ),
             Pairs).
 
 v_frontier(V, X, Y) :-
@@ -151,34 +162,46 @@ i_live_out(B, T) :- i_live_in(S, T), if_pred(S, B).
 i_live_out(B, T) :- if_euse(B, T).
 
 inc_clear :-
-    retractall(if_pred(_, _)), retractall(if_gen(_, _)),
-    retractall(if_kill(_, _)), retractall(if_euse(_, _)).
+    retractall(if_pred(_, _)),
+    retractall(if_gen(_, _)),
+    retractall(if_kill(_, _)),
+    retractall(if_euse(_, _)).
 
 inc_load(Blocks) :-
-    forall(( member(blk(B, _, _, J), Blocks), jump_succs(J, Ss), member(S, Ss) ),
+    forall(( member(blk(B, _, _, Jump), Blocks),
+             jump_succs(Jump, Ss),
+             member(S, Ss) ),
            assertz(if_pred(S, B))),
-    block_facts(Blocks, Fs),
-    forall(member(F, Fs), assertz(F)).
+    block_facts(Blocks, Facts),
+    forall(member(F, Facts), assertz(F)).
 
 % Retract the facts no block has any more, assert the new ones.
 inc_update(Blocks) :-
     block_facts(Blocks, New),
-    findall(F, ( member(F, [if_gen(_, _), if_kill(_, _), if_euse(_, _)]), call(F) ), Old0),
+    findall(F,
+            ( member(F, [if_gen(_, _), if_kill(_, _), if_euse(_, _)]),
+              call(F) ),
+            Old0),
     sort(Old0, Old),
     ord_subtract(Old, New, Gone),
     ord_subtract(New, Old, Added),
     forall(member(F, Gone), retract(F)),
     forall(member(F, Added), assertz(F)).
 
-block_facts(Blocks, Fs) :-
-    gen_kill(Blocks, GK),
-    phi_edge_uses(Blocks, EU),
+% block_facts(+Blocks, -Facts): the sorted if_gen, if_kill and if_euse
+% facts of Blocks.
+block_facts(Blocks, Facts) :-
+    gen_kill(Blocks, GenKill),
+    phi_edge_uses(Blocks, EdgeUses),
     findall(F,
-            ( member(blk(B, _, _, _), Blocks), get_assoc(B, GK, Gen-Kill),
+            ( member(blk(B, _, _, _), Blocks),
+              get_assoc(B, GenKill, Gen-Kill),
               (   member(T, Gen), F = if_gen(B, T)
               ;   member(T, Kill), F = if_kill(B, T)
               ) ),
-            F1),
-    findall(if_euse(B, T), ( gen_assoc(B-_, EU, Ts), member(T, Ts) ), F2),
-    append(F1, F2, F0),
-    sort(F0, Fs).
+            GenKillFacts),
+    findall(if_euse(B, T),
+            ( gen_assoc(B-_, EdgeUses, Ts), member(T, Ts) ),
+            EdgeFacts),
+    append(GenKillFacts, EdgeFacts, Facts0),
+    sort(Facts0, Facts).

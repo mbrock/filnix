@@ -29,14 +29,18 @@ optimize(o1, M0, M) :-
     copy_module(Promoted, M).
 
 refines(ub(_), _) :- !.
-refines(B0, A0) :-
-    outcome_key(B0, B),
-    outcome_key(A0, A),
-    (   ground(B) -> B == A
-    ;   \+ \+ B = A
+refines(Before0, After0) :-
+    outcome_key(Before0, Before),
+    outcome_key(After0, After),
+    (   ground(Before)
+    ->  Before == After
+    ;   \+ \+ Before = After
     ).
 
+% A returned pointer into an alloc compares by its offset in the object.
 outcome_key(ret(P), ret(obj_ptr(Off))) :-
-    nonvar(P), P = ptr(A, obj(Base)), integer(A), !,
-    Off is A - Base.
-outcome_key(O, O).
+    nonvar(P),
+    P = ptr(Addr, obj(Base)),
+    integer(Addr), !,
+    Off is Addr - Base.
+outcome_key(Outcome, Outcome).

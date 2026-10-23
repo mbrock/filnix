@@ -7,71 +7,90 @@
 :- use_module(library(dcgs)).
 :- use_module(library(format)).
 
-print_module(M) :-
-    phrase(module_chars(M), Cs),
+print_module(Module) :-
+    phrase(module_chars(Module), Cs),
     format("~s", [Cs]).
 
 module_chars(module(Items)) --> items(Items).
 
 items([]) --> [].
-items([I|Is]) --> item(I), "\n", items(Is).
+items([Item|Items]) --> item(Item), "\n", items(Items).
 
-item(func(Name, Lk, Ret, Params, Blocks)) -->
-    linkage(Lk), "function ", ret(Ret), "$", atom(Name), "(", params(Params), ") {\n",
-    blocks(Blocks), "}\n".
-item(data(Name, Lk, Align, Items)) -->
-    linkage(Lk), "data $", atom(Name), " = align ", num(Align), " { ",
-    data_items(Items), " }\n".
+item(func(Name, Linkage, Ret, Params, Blocks)) -->
+    linkage(Linkage),
+    "function ", ret_class(Ret), "$", atom(Name),
+    "(", params(Params), ") {\n",
+    blocks(Blocks),
+    "}\n".
+item(data(Name, Linkage, Align, Items)) -->
+    linkage(Linkage),
+    "data $", atom(Name), " = align ", num(Align),
+    " { ", data_items(Items), " }\n".
 
 linkage(export) --> "export ".
 linkage(local) --> [].
-linkage(ro(Lk)) --> linkage(Lk), "section \".rodata\" ".
+linkage(ro(Linkage)) --> linkage(Linkage), "section \".rodata\" ".
 
-ret(void) --> [].
-ret(tuple(Ks)) --> !, "{", seq_sep(Ks, atom), "} ".
-ret(K) --> atom(K), " ".
+ret_class(void) --> [].
+ret_class(tuple(Ks)) --> !, "{", comma_separated(Ks, atom), "} ".
+ret_class(K) --> atom(K), " ".
 
 params([]) --> [].
 params([P]) --> !, param(P).
 params([P|Ps]) --> param(P), ", ", params(Ps).
+
 param(par(K, V)) --> atom(K), " ", val(V).
 
 blocks([]) --> [].
-blocks([blk(L, Phis, Insts, J)|Bs]) -->
-    "@", atom(L), "\n", phis(Phis), insts(Insts), "\t", jump(J), "\n", blocks(Bs).
+blocks([blk(Label, Phis, Insts, Jump)|Blocks]) -->
+    "@", atom(Label), "\n",
+    phis(Phis),
+    insts(Insts),
+    "\t", jump(Jump), "\n",
+    blocks(Blocks).
 
 phis([]) --> [].
-phis([phi(D, K, Args)|Ps]) -->
-    "\t", val(D), " =", atom(K), " phi ", phi_args(Args), "\n", phis(Ps).
-phi_args([L-V]) --> !, "@", atom(L), " ", val(V).
-phi_args([L-V|As]) --> "@", atom(L), " ", val(V), ", ", phi_args(As).
+phis([phi(D, K, Incoming)|Phis]) -->
+    "\t", val(D), " =", atom(K), " phi ", phi_args(Incoming), "\n",
+    phis(Phis).
+
+phi_args([Label-V]) --> !, "@", atom(Label), " ", val(V).
+phi_args([Label-V|Incoming]) -->
+    "@", atom(Label), " ", val(V), ", ",
+    phi_args(Incoming).
 
 insts([]) --> [].
-insts([I|Is]) --> "\t", inst(I), "\n", insts(Is).
+insts([Inst|Insts]) --> "\t", inst(Inst), "\n", insts(Insts).
 
-inst(ins(D, K, Op, Args)) --> val(D), " =", atom(K), " ", opname(Op), " ", vals(Args).
-inst(store(W, V, A)) --> "store", atom(W), " ", val(V), ", ", val(A).
+inst(ins(D, K, Op, Args)) -->
+    val(D), " =", atom(K), " ", opname(Op), " ", vals(Args).
+inst(store(W, V, Addr)) --> "store", atom(W), " ", val(V), ", ", val(Addr).
 inst(call(void, F, Args)) --> "call ", val(F), "(", call_args(Args), ")".
 inst(call(tuple(Tos), F, Args)) -->
-    { findall(D, member(to(D, _), Tos), Ds), findall(K, member(to(_, K), Tos), Ks) },
-    "{", seq_sep(Ds, val), "} ={", seq_sep(Ks, atom), "} call ", val(F), "(", call_args(Args), ")".
-inst(call(to(D, K), F, Args)) --> val(D), " =", atom(K), " call ", val(F), "(", call_args(Args), ")".
+    { findall(D, member(to(D, _), Tos), Ds),
+      findall(K, member(to(_, K), Tos), Ks) },
+    "{", comma_separated(Ds, val), "} ={", comma_separated(Ks, atom), "}",
+    " call ", val(F), "(", call_args(Args), ")".
+inst(call(to(D, K), F, Args)) -->
+    val(D), " =", atom(K), " call ", val(F), "(", call_args(Args), ")".
 
 call_args([]) --> [].
 call_args([A]) --> !, call_arg(A).
 call_args([A|As]) --> call_arg(A), ", ", call_args(As).
+
 call_arg(arg(K, V)) --> atom(K), " ", val(V).
 
-opname(cmp(C, K)) --> !, "c", atom(C), atom(K).
-opname(ext(T)) --> !, "ext", atom(T).
-opname(load(T)) --> !, "load", atom(T).
-opname(alloc(N)) --> !, "alloc", num(N).
+opname(cmp(Cond, K)) --> !, "c", atom(Cond), atom(K).
+opname(ext(Type)) --> !, "ext", atom(Type).
+opname(load(Type)) --> !, "load", atom(Type).
+opname(alloc(Align)) --> !, "alloc", num(Align).
 opname(Op) --> atom(Op).
 
-jump(jmp(L)) --> "jmp @", atom(L).
-jump(jnz(V, L1, L2)) --> "jnz ", val(V), ", @", atom(L1), ", @", atom(L2).
+jump(jmp(Label)) --> "jmp @", atom(Label).
+jump(jnz(V, IfTrue, IfFalse)) -->
+    "jnz ", val(V), ", @", atom(IfTrue), ", @", atom(IfFalse).
 jump(ret(V)) --> "ret ", val(V).
-jump(rets(Vs)) --> "ret {", seq_sep(Vs, val), "}".
+jump(rets(Vs)) --> "ret {", comma_separated(Vs, val), "}".
 jump(ret) --> "ret".
 jump(hlt) --> "hlt".
 
@@ -82,8 +101,8 @@ val(t(N)) --> "%", atom(N).
 val(c(N)) --> num(N).
 val(glo(N)) --> "$", atom(N).
 
-data_items([I]) --> !, data_item(I).
-data_items([I|Is]) --> data_item(I), ", ", data_items(Is).
+data_items([Item]) --> !, data_item(Item).
+data_items([Item|Items]) --> data_item(Item), ", ", data_items(Items).
 
 data_item(zero(N)) --> "z ", num(N).
 data_item(item(W, c(N))) --> atom(W), " ", num(N).
@@ -91,8 +110,12 @@ data_item(item(b, str(Cs))) --> "b \"", seq(Cs), "\"".
 data_item(item(W, sym(S, 0))) --> !, atom(W), " $", atom(S).
 data_item(item(W, sym(S, Off))) --> atom(W), " $", atom(S), " + ", num(Off).
 
-seq_sep([X], G) --> !, call(G, X).
-seq_sep([X|Xs], G) --> call(G, X), ", ", seq_sep(Xs, G).
+% comma_separated(+Xs, :Print): Print each of the nonempty Xs, separated
+% by ", ".
+comma_separated([X], Print) --> !, call(Print, X).
+comma_separated([X|Xs], Print) -->
+    call(Print, X), ", ",
+    comma_separated(Xs, Print).
 
 atom(A) --> { atom_chars(A, Cs) }, seq(Cs).
 num(N) --> { number_chars(N, Cs) }, seq(Cs).

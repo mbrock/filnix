@@ -41,62 +41,72 @@ print_asm(Lines) :-
     format("~s", [Cs]).
 
 lines([]) --> [].
-lines([L|Ls]) --> line(L), lines(Ls).
+lines([Line|Lines]) --> line(Line), lines(Lines).
 
-line(L) --> { line_chars(L, Cs) -> true ; throw(nanofil_error(bad_asm_line(L))) }, seq(Cs).
+line(Line) -->
+    {   line_chars(Line, Cs) -> true
+    ;   throw(nanofil_error(bad_asm_line(Line)))
+    },
+    seq(Cs).
 
-line_chars(L, Cs) :- phrase(line_(L), Cs).
+line_chars(Line, Cs) :- phrase(line_text(Line), Cs).
 
-line_(label(S)) --> !, w(S), ":\n".
-line_(ins(Op, S, Args)) --> !, "\t", w(Op), suffix(S), operands(Args), "\n".
-line_(D) --> "\t", directive(D), "\n".
+line_text(label(S)) --> !, literal(S), ":\n".
+line_text(ins(Op, Suffix, Operands)) --> !,
+    "\t", literal(Op), suffix(Suffix), operands(Operands), "\n".
+line_text(Directive) --> "\t", directive(Directive), "\n".
 
 suffix(none) --> !.
-suffix(S) --> w(S).
+suffix(S) --> literal(S).
 
 operands([]) --> [].
-operands([A|As]) --> " ", operand(A), more(As).
+operands([O|Os]) --> " ", operand(O), more_operands(Os).
 
-more([]) --> [].
-more([A|As]) --> ", ", operand(A), more(As).
+more_operands([]) --> [].
+more_operands([O|Os]) --> ", ", operand(O), more_operands(Os).
 
 operand(imm(E)) --> "$", expr(E).
-operand(reg(R)) --> "%", w(R).
-operand(mem(D, B)) --> disp(D), "(%", w(B), ")".
-operand(mem(D, B, I)) --> disp(D), "(%", w(B), ",%", w(I), ")".
+operand(reg(R)) --> "%", literal(R).
+operand(mem(D, B)) --> disp(D), "(%", literal(B), ")".
+operand(mem(D, B, I)) --> disp(D), "(%", literal(B), ",%", literal(I), ")".
 operand(rip(E)) --> expr(E), "(%rip)".
-operand(gotpcrel(S)) --> w(S), "@GOTPCREL(%rip)".
-operand(plt(S)) --> w(S), "@PLT".
+operand(gotpcrel(S)) --> literal(S), "@GOTPCREL(%rip)".
+operand(plt(S)) --> literal(S), "@PLT".
 operand(sym(E)) --> expr(E).
 operand(ind(O)) --> "*", operand(O).
 
 disp(0) --> !.
-disp(D) --> w(D).
+disp(D) --> literal(D).
 
-expr(A+B) --> !, ( { A = _+_ } -> "(", expr(A), ")" ; expr(A) ), "+", expr(B).
-expr(E) --> w(E).
+expr(A+B) --> !,
+    (   { A = _+_ } -> "(", expr(A), ")"
+    ;   expr(A)
+    ),
+    "+",
+    expr(B).
+expr(E) --> literal(E).
 
-directive(section(S)) --> { section_name(S, N) }, seq(N).
-directive(p2align(N)) --> ".p2align ", w(N).
-directive(balign(N)) --> ".balign ", w(N).
-directive(globl(S)) --> ".globl ", w(S).
-directive(weak(S)) --> ".weak ", w(S).
-directive(hidden(S)) --> ".hidden ", w(S).
-directive(type(S, T)) --> ".type ", w(S), ", @", w(T).
-directive(size(S)) --> ".size ", w(S), ", .-", w(S).
-directive(size(S, N)) --> ".size ", w(S), ", ", w(N).
-directive(set(S, E)) --> ".set ", w(S), ", ", expr(E).
+directive(section(S)) --> { section_name(S, Name) }, seq(Name).
+directive(p2align(N)) --> ".p2align ", literal(N).
+directive(balign(N)) --> ".balign ", literal(N).
+directive(globl(S)) --> ".globl ", literal(S).
+directive(weak(S)) --> ".weak ", literal(S).
+directive(hidden(S)) --> ".hidden ", literal(S).
+directive(type(S, T)) --> ".type ", literal(S), ", @", literal(T).
+directive(size(S)) --> ".size ", literal(S), ", .-", literal(S).
+directive(size(S, N)) --> ".size ", literal(S), ", ", literal(N).
+directive(set(S, E)) --> ".set ", literal(S), ", ", expr(E).
 directive(quad(E)) --> ".quad ", expr(E).
-directive(long(N)) --> ".long ", w(N).
-directive(int(N)) --> ".int ", w(N).
-directive(short(N)) --> ".short ", w(N).
-directive(byte([N|Ns])) --> ".byte ", w(N), commas(Ns).
-directive(zero(N)) --> ".zero ", w(N).
+directive(long(N)) --> ".long ", literal(N).
+directive(int(N)) --> ".int ", literal(N).
+directive(short(N)) --> ".short ", literal(N).
+directive(byte([N|Ns])) --> ".byte ", literal(N), more_bytes(Ns).
+directive(zero(N)) --> ".zero ", literal(N).
 directive(ascii(Cs)) --> ".ascii \"", seq(Cs), "\"".
-directive(asciz(A)) --> ".asciz \"", w(A), "\"".
+directive(asciz(A)) --> ".asciz \"", literal(A), "\"".
 
-commas([]) --> [].
-commas([N|Ns]) --> ", ", w(N), commas(Ns).
+more_bytes([]) --> [].
+more_bytes([N|Ns]) --> ", ", literal(N), more_bytes(Ns).
 
 section_name(text, ".text").
 section_name(data, ".data").
@@ -105,4 +115,7 @@ section_name(bss, ".bss").
 section_name(data_rel_ro, ".section .data.rel.ro,\"aw\",@progbits").
 section_name(note_gnu_stack, ".section .note.GNU-stack,\"\",@progbits").
 
-w(X) --> { atom(X) -> atom_chars(X, Cs) ; number_chars(X, Cs) }, seq(Cs).
+% The text of an atom or number.
+literal(X) -->
+    { atom(X) -> atom_chars(X, Cs) ; number_chars(X, Cs) },
+    seq(Cs).

@@ -50,145 +50,204 @@
 
 main :-
     % Trealla gives argv as character lists, SWI as atoms.
-    current_prolog_flag(argv, Argv1),
-    maplist(arg_atom, Argv1, Argv0),
+    current_prolog_flag(argv, RawArgv),
+    maplist(arg_atom, RawArgv, Argv0),
     (   Argv0 = ['-O'|Argv] -> Opt = o1 ; Argv = Argv0, Opt = o0 ),
     % halt/1 outside catch/3: SWI implements halt as an exception.
-    catch(( command(Opt, Argv) -> S = 0 ; format(user_error, "nanofil: failed~n", []), S = 1 ),
-          E,
-          ( report(E), S = 1 )),
-    halt(S).
+    catch(( command(Opt, Argv)
+          ->  Status = 0
+          ;   format(user_error, "nanofil: failed~n", []),
+              Status = 1
+          ),
+          Error,
+          ( report(Error), Status = 1 )),
+    halt(Status).
 
 arg_atom(A, A) :- atom(A), !.
 arg_atom(Cs, A) :- atom_chars(A, Cs).
 
-report(nanofil_error(M)) :- !, format(user_error, "nanofil: ~w~n", [M]).
-report(E) :- format(user_error, "nanofil: ~q~n", [E]).
+report(nanofil_error(Msg)) :- !, format(user_error, "nanofil: ~w~n", [Msg]).
+report(Error) :- format(user_error, "nanofil: ~q~n", [Error]).
 
-load(File, M) :-
+%% Loading
+
+% A .c or .i file goes through the C frontend, anything else is QBE text.
+load_module(File, Module) :-
     (   atom_concat(_, '.c', File) ; atom_concat(_, '.i', File) )
-    ->  load_c(File, M)
-    ;   parse_qbe_file(File, M),
-        valid_module(M).
+    ->  load_c(File, Module)
+    ;   parse_qbe_file(File, Module),
+        valid_module(Module).
 
-load_c(File, M) :-
-    load_c_tokens(File, Ts),
-    (   c_parse(Ts, Items) -> true ; throw(nanofil_error('C parse failed')) ),
-    c_module(Items, M),
-    valid_module(M).
+load_c(File, Module) :-
+    load_c_tokens(File, Tokens),
+    (   c_parse(Tokens, Items) -> true
+    ;   throw(nanofil_error('C parse failed'))
+    ),
+    c_module(Items, Module),
+    valid_module(Module).
 
-load_c_tokens(File, Ts) :-
-    ( atom_concat(_, '.i', File) ->
-        phrase_from_file(seq(Cs), File), c_tokens(Cs, File, Ts)
-    ; ( getenv('FILCC', Clang) -> true ; Clang=filcc ),
-      pp_profile(Clang, Profile), pp_file(File, Profile, Ts)
+% A .i file is already preprocessed; anything else goes through c_pp with
+% the predefined macros and include paths of $FILCC (default filcc).
+load_c_tokens(File, Tokens) :-
+    (   atom_concat(_, '.i', File)
+    ->  phrase_from_file(seq(Cs), File),
+        c_tokens(Cs, File, Tokens)
+    ;   ( getenv('FILCC', Clang) -> true ; Clang = filcc ),
+        pp_profile(Clang, Profile),
+        pp_file(File, Profile, Tokens)
     ).
+
+%% Commands
 
 command(_, [tokens, File]) :-
-    load_c_tokens(File, Ts),
-    forall(member(tok(T,_), Ts), (write_canonical(T),write('.'),nl)).
-command(_, [check, File]) :- load(File, _), format("ok~n", []).
-command(Opt, [print, File]) :- load(File, M0), optimize(Opt, M0, M), print_module(M).
+    load_c_tokens(File, Tokens),
+    forall(member(tok(Token, _), Tokens),
+           ( write_canonical(Token), write('.'), nl )).
+command(_, [check, File]) :-
+    load_module(File, _),
+    format("ok~n", []).
+command(Opt, [print, File]) :-
+    load_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    print_module(Module).
 command(Opt, [compile, File]) :-
-    load(File, M0),
+    load_module(File, Module0),
     % Promote can remove every p from a module; the ABI is the original's.
-    module_mode(M0, Mode),
-    optimize(Opt, M0, M),
-    (   Mode == filc -> filc_module_asm(M, Asm) ; module_asm(M, Asm) ),
+    module_mode(Module0, Mode),
+    optimize(Opt, Module0, Module),
+    (   Mode == filc -> filc_module_asm(Module, Asm)
+    ;   module_asm(Module, Asm)
+    ),
     print_asm(Asm).
 command(Opt, [cc, File]) :-
-    load_c(File, M0),
-    optimize(Opt, M0, M),
-    filc_module_asm(M, Asm),
+    load_c(File, Module0),
+    optimize(Opt, Module0, Module),
+    filc_module_asm(Module, Asm),
     print_asm(Asm).
-command(Opt, ['cc-ir', File]) :- load_c(File, M0), optimize(Opt, M0, M), print_module(M).
+command(Opt, ['cc-ir', File]) :-
+    load_c(File, Module0),
+    optimize(Opt, Module0, Module),
+    print_module(Module).
 command(Opt, [run, File, Fn|ArgAtoms]) :-
-    load(File, M0),
-    optimize(Opt, M0, M),
+    load_module(File, Module0),
+    optimize(Opt, Module0, Module),
     maplist(atom_number, ArgAtoms, Args0),
-    func_named(M, Fn, func(_, _, _, Params, _)),
-    maplist(canonical, Params, Args0, Args),
-    once(run(M, Fn, Args, 1000000, Out)),
-    outcome_text(Out, T),
-    format("~w~n", [T]).
+    func_named(Module, Fn, func(_, _, _, Params, _)),
+    maplist(canonical_arg, Params, Args0, Args),
+    max_fuel(Fuel),
+    once(run(Module, Fn, Args, Fuel, Outcome)),
+    outcome_text(Outcome, Text),
+    format("~w~n", [Text]).
 command(Opt, [difftest, File, Dir]) :-
-    load(File, M0),
-    module_mode(M0, Mode),
-    optimize(Opt, M0, M),
+    load_module(File, Module0),
+    module_mode(Module0, Mode),
+    optimize(Opt, Module0, Module),
     run_lines(File, Runs),
+    % valid_module's clauses leave choice points that throw on retry.
+    (   Opt == o1 -> once(valid_module(Module)) ; true ),
+    prepare(Module0, Prepared0),
+    prepare(Module, Prepared),
     % One findall over all runs, so each run's heap is reclaimed on
     % backtracking before the next starts.
-    % valid_module's clauses leave choice points that throw on retry.
-    (   Opt == o1 -> once(valid_module(M)) ; true ),
-    prepare(M0, P0), prepare(M, P),
-    findall(R-V, ( member(Run, Runs), validated(Opt, M0-P0, M-P, Run, R, V) ), RVs),
-    pairs_keys_values(RVs, Results, Vs),
+    findall(Result-Verdict,
+            ( member(Run, Runs),
+              validated_run(Opt, Module0-Prepared0, Module-Prepared, Run,
+                            Result, Verdict)
+            ),
+            ResultVerdicts),
+    pairs_keys_values(ResultVerdicts, Results, Verdicts),
     (   Opt == o0 -> true
-    ;   alloc_count(M0, N0), alloc_count(M, N1),
-        format("~w: promote: ~w allocs -> ~w~n", [File, N0, N1]),
-        forall(member(bad(CT, T0, T), Vs),
-               format("VALIDATION FAILED ~w ~w: ~w before the middle end, ~w after~n",
-                      [File, CT, T0, T])),
-        (   memberchk(bad(_, _, _), Vs)
-        ->  throw(nanofil_error('translation validation failed'))
-        ;   true
-        )
+    ;   report_validation(File, Module0, Module, Verdicts)
     ),
-    include(comparable(Mode), Results, Cmp),
+    include(comparable(Mode), Results, Compared),
     exclude(comparable(Mode), Results, Skipped),
-    atom_concat(Dir, '/expected.txt', ExpF),
-    atom_concat(Dir, '/harness.c', HarF),
-    atom_concat(Dir, '/printed.ssa', PrF),
-    atom_concat(Dir, '/mode', ModeF),
-    write_file(ExpF, expected_lines(Cmp)),
-    write_file(HarF, harness(Mode, M, Cmp)),
-    write_file(PrF, module_chars(M)),
-    write_file(ModeF, fmt("~w~n", [Mode])),
-    length(Cmp, NC), length(Skipped, NS),
-    format("~w: ~w runs compared, ~w not comparable~n", [File, NC, NS]),
-    forall(member(r(Fn, Args, Out), Skipped),
-           ( outcome_text(Out, T), call_text(Fn, Args, CT),
-             format("  ~w = ~w~n", [CT, T]) )).
+    atom_concat(Dir, '/expected.txt', ExpectedFile),
+    atom_concat(Dir, '/harness.c', HarnessFile),
+    atom_concat(Dir, '/printed.ssa', PrintedFile),
+    atom_concat(Dir, '/mode', ModeFile),
+    write_file(ExpectedFile, expected_lines(Compared)),
+    write_file(HarnessFile, harness(Mode, Module, Compared)),
+    write_file(PrintedFile, module_chars(Module)),
+    write_file(ModeFile, fmt("~w~n", [Mode])),
+    length(Compared, NCompared),
+    length(Skipped, NSkipped),
+    format("~w: ~w runs compared, ~w not comparable~n",
+           [File, NCompared, NSkipped]),
+    forall(member(r(Fn, Args, Outcome), Skipped),
+           ( outcome_text(Outcome, Text),
+             call_text(Fn, Args, CallText),
+             format("  ~w = ~w~n", [CallText, Text]) )).
 
-% Translation validation: the unoptimized module's outcome on the same
-% run must allow the optimized one's. Both runs happen in the same
-% findall step, so an unknown result keeps its constraints. Promote keeps
-% every block and branch, so a correct result needs exactly the blocks
-% the original needs: both run with the same fuel, starting small and
-% growing until the original finishes. A broken pass that loops then
-% ends as out_of_fuel, cheaply (the interpreter's memory grows quickly
-% with the number of blocks run, so a looping run at full fuel would
-% exhaust it).
-validated(o0, _, M, Run, R, ok) :- evaluate(M, Run, 1000000, R).
-validated(o1, M0, M, Run, R, V) :-
-    fuel_step(Fuel),
-    evaluate(M0, Run, Fuel, r(Fn, Args, Out0)),
-    ( Out0 \== out_of_fuel ; Fuel == 1000000 ), !,
-    evaluate(M, Run, Fuel, R),
-    R = r(_, _, Out),
-    (   refines(Out0, Out) -> V = ok
-    ;   call_text(Fn, Args, CT), outcome_text(Out0, T0), outcome_text(Out, T),
-        V = bad(CT, T0, T)
+% The -O difftest report: promote's effect, then every validation
+% failure, which together make the command fail.
+report_validation(File, Module0, Module, Verdicts) :-
+    alloc_count(Module0, Allocs0),
+    alloc_count(Module, Allocs),
+    format("~w: promote: ~w allocs -> ~w~n", [File, Allocs0, Allocs]),
+    forall(member(bad(CallText, Text0, Text), Verdicts),
+           format("VALIDATION FAILED ~w ~w: ~w before the middle end, ~w after~n",
+                  [File, CallText, Text0, Text])),
+    (   memberchk(bad(_, _, _), Verdicts)
+    ->  throw(nanofil_error('translation validation failed'))
+    ;   true
     ).
 
-fuel_step(F) :- member(F, [1000, 8000, 64000, 512000, 1000000]).
+%% Running and validating
 
-canonical(par(K, _), A0, A) :- modulus(K, M), A is A0 mod M.
+% Fuel (blocks run) for a command-line run and the last validation step.
+max_fuel(1000000).
 
-evaluate(MP, Run, R) :- evaluate(MP, Run, 1000000, R).
+/* validated_run(+Opt, +Original, +Optimized, +Run, -Result, -Verdict):
+   Result is Run's r/3 on the module that difftest compares, and Verdict
+   ok or bad(CallText, OriginalText, OptimizedText).
 
-% MP is a module and the interpreter's preparation of it.
-evaluate(M-P, run(Fn, Args0), Fuel, r(Fn, Args, Out)) :-
-    (   func_named(M, Fn, func(_, export, _, Params, _)) -> true
+   Translation validation: the unoptimized module's outcome on the same
+   run must allow the optimized one's. Both runs happen in the same
+   findall step, so an unknown result keeps its constraints. Promote keeps
+   every block and branch, so a correct result needs exactly the blocks
+   the original needs: both run with the same fuel, starting small and
+   growing until the original finishes. A broken pass that loops then
+   ends as out_of_fuel, cheaply (the interpreter's memory grows quickly
+   with the number of blocks run, so a looping run at full fuel would
+   exhaust it). */
+validated_run(o0, _, Optimized, Run, Result, ok) :-
+    max_fuel(Fuel),
+    evaluate_run(Optimized, Run, Fuel, Result).
+validated_run(o1, Original, Optimized, Run, Result, Verdict) :-
+    fuel_step(Fuel),
+    evaluate_run(Original, Run, Fuel, r(Fn, Args, Outcome0)),
+    max_fuel(MaxFuel),
+    ( Outcome0 \== out_of_fuel ; Fuel == MaxFuel ), !,
+    evaluate_run(Optimized, Run, Fuel, Result),
+    Result = r(_, _, Outcome),
+    (   refines(Outcome0, Outcome) -> Verdict = ok
+    ;   call_text(Fn, Args, CallText),
+        outcome_text(Outcome0, Text0),
+        outcome_text(Outcome, Text),
+        Verdict = bad(CallText, Text0, Text)
+    ).
+
+% Growing fuel limits, ending at max_fuel.
+fuel_step(Fuel) :- member(Fuel, [1000, 8000, 64000, 512000, 1000000]).
+
+% An argument reduced modulo its parameter's class.
+canonical_arg(par(Class, _), Arg0, Arg) :-
+    modulus(Class, Modulus),
+    Arg is Arg0 mod Modulus.
+
+% evaluate_run(+Module-Prepared, +Run, +Fuel, -Result): run a "# run:"
+% line on a module and the interpreter's preparation of it.
+evaluate_run(Module-Prepared, run(Fn, Args0), Fuel, r(Fn, Args, Outcome)) :-
+    (   func_named(Module, Fn, func(_, export, _, Params, _)) -> true
     ;   throw(nanofil_error(Fn-'run line names a function that is not exported'))
     ),
     (   length(Params, N), length(Args0, N) -> true
     ;   throw(nanofil_error(Fn-'run line has the wrong number of arguments'))
     ),
-    maplist(canonical, Params, Args0, Args),
-    (   once(run_prepared(P, Fn, Args, Fuel, Out)) -> true
-    ;   call_text(Fn, Args, CT),
-        throw(nanofil_error(CT-'interpreter found no outcome'))
+    maplist(canonical_arg, Params, Args0, Args),
+    (   once(run_prepared(Prepared, Fn, Args, Fuel, Outcome)) -> true
+    ;   call_text(Fn, Args, CallText),
+        throw(nanofil_error(CallText-'interpreter found no outcome'))
     ).
 
 % A trap is a Fil-C safety panic natively; nothing else has a native
@@ -197,97 +256,116 @@ comparable(_, r(_, _, ret(V))) :- integer(V).
 comparable(_, r(_, _, ret)).
 comparable(filc, r(_, _, trap(_))).
 
-call_text(Fn, Args, T) :-
-    atomic_list_concat(Args, ', ', A),
-    format(atom(T), '$~w(~w)', [Fn, A]).
+call_text(Fn, Args, Text) :-
+    atomic_list_concat(Args, ', ', ArgText),
+    format(atom(Text), '$~w(~w)', [Fn, ArgText]).
 
-write_file(F, G) :-
-    phrase(G, Cs),
-    open(F, write, S),
-    format(S, "~s", [Cs]),
-    close(S).
+%% difftest output files
+
+write_file(File, Body) :-
+    phrase(Body, Cs),
+    open(File, write, Stream),
+    format(Stream, "~s", [Cs]),
+    close(Stream).
 
 expected_lines([]) --> [].
-expected_lines([r(Fn, Args, Out)|Rs]) -->
-    { call_text(Fn, Args, CT),
-      ( Out = trap(_) -> T = trap ; outcome_text(Out, T) ) },
-    fmt("~w = ~w~n", [CT, T]),
-    expected_lines(Rs).
+expected_lines([r(Fn, Args, Outcome)|Results]) -->
+    { call_text(Fn, Args, CallText),
+      (   Outcome = trap(_) -> Text = trap
+      ;   outcome_text(Outcome, Text)
+      ) },
+    fmt("~w = ~w~n", [CallText, Text]),
+    expected_lines(Results).
 
-harness(plain, M, Rs) -->
+harness(plain, Module, Results) -->
     "#include <stdio.h>\n#include <stdint.h>\n\n",
-    { findall(Fn, member(r(Fn, _, _), Rs), Fns0), sort(Fns0, Fns) },
-    prototypes(Fns, M),
+    { harness_functions(Results, Fns) },
+    prototypes(Fns, Module),
     "\nint main(void) {\n",
-    harness_calls(Rs, M),
+    harness_calls(Results, Module, labelled),
     "    return 0;\n}\n".
 % Fil-C: one run per process, selected by argv[1], since a trap ends the
 % process. The call text is printed first, so a trap leaves it unfinished.
-harness(filc, M, Rs) -->
+harness(filc, Module, Results) -->
     "#include <stdio.h>\n#include <stdint.h>\n#include <stdlib.h>\n\n",
-    { findall(Fn, member(r(Fn, _, _), Rs), Fns0), sort(Fns0, Fns) },
-    prototypes(Fns, M),
+    { harness_functions(Results, Fns) },
+    prototypes(Fns, Module),
     "\nint main(int argc, char **argv) {\n    switch (atoi(argv[1])) {\n",
-    filc_cases(Rs, 0, M),
+    filc_cases(Results, 0, Module),
     "    }\n    return 0;\n}\n".
 
+% The functions the results call, each once.
+harness_functions(Results, Fns) :-
+    findall(Fn, member(r(Fn, _, _), Results), Fns0),
+    sort(Fns0, Fns).
+
 filc_cases([], _, _) --> [].
-filc_cases([R|Rs], I, M) -->
-    { R = r(Fn, Args, _), call_text(Fn, Args, CT) },
-    fmt("    case ~w: fputs(\"~w = \", stdout); fflush(stdout);~n", [I, CT]),
-    harness_calls([R], M, bare),
+filc_cases([Result|Results], I, Module) -->
+    { Result = r(Fn, Args, _),
+      call_text(Fn, Args, CallText) },
+    fmt("    case ~w: fputs(\"~w = \", stdout); fflush(stdout);~n",
+        [I, CallText]),
+    harness_calls([Result], Module, bare),
     "        break;\n",
     { I1 is I + 1 },
-    filc_cases(Rs, I1, M).
+    filc_cases(Results, I1, Module).
 
 prototypes([], _) --> [].
-prototypes([Fn|Fns], M) -->
-    { func_named(M, Fn, func(_, _, Ret, Params, _)),
-      c_type(Ret, RT),
-      findall(T, ( member(par(K, _), Params), c_type(K, T) ), Ts),
-      ( Ts == [] -> PA = void ; atomic_list_concat(Ts, ', ', PA) ) },
-    fmt("extern ~w ~w(~w);~n", [RT, Fn, PA]),
-    prototypes(Fns, M).
+prototypes([Fn|Fns], Module) -->
+    { func_named(Module, Fn, func(_, _, Ret, Params, _)),
+      c_type(Ret, RetType),
+      findall(Type, ( member(par(Class, _), Params), c_type(Class, Type) ),
+              ParamTypes),
+      (   ParamTypes == [] -> ParamText = void
+      ;   atomic_list_concat(ParamTypes, ', ', ParamText)
+      ) },
+    fmt("extern ~w ~w(~w);~n", [RetType, Fn, ParamText]),
+    prototypes(Fns, Module).
 
 c_type(w, uint32_t).
 c_type(l, uint64_t).
 c_type(void, void).
 
-harness_calls(Rs, M) --> harness_calls(Rs, M, labelled).
-
+% harness_calls(+Results, +Module, +Style): Style labelled prints
+% "CALL = ret N" lines from one main; bare prints "ret N" inside a case.
 harness_calls([], _, _) --> [].
-harness_calls([r(Fn, Args, _)|Rs], M, Style) -->
-    { func_named(M, Fn, func(_, _, Ret, _, _)),
-      call_text(Fn, Args, CT),
-      findall(A, ( member(X, Args), format(atom(A), '~wull', [X]) ), CAs),
-      atomic_list_concat(CAs, ', ', CA) },
+harness_calls([r(Fn, Args, _)|Results], Module, Style) -->
+    { func_named(Module, Fn, func(_, _, Ret, _, _)),
+      call_text(Fn, Args, CallText),
+      findall(CArg, ( member(X, Args), format(atom(CArg), '~wull', [X]) ),
+              CArgs),
+      atomic_list_concat(CArgs, ', ', CArgText) },
     (   { Style == bare, Ret == void }
-    ->  fmt("        ~w(~w); puts(\"ret\");~n", [Fn, CA])
+    ->  fmt("        ~w(~w); puts(\"ret\");~n", [Fn, CArgText])
     ;   { Style == bare }
-    ->  fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n", [Fn, CA])
+    ->  fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n",
+            [Fn, CArgText])
     ;   { Ret == void }
-    ->  fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n", [Fn, CA, CT])
+    ->  fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n",
+            [Fn, CArgText, CallText])
     ;   fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
-                [CT, Fn, CA])
+            [CallText, Fn, CArgText])
     ),
-    harness_calls(Rs, M, Style).
+    harness_calls(Results, Module, Style).
 
 %% "# run: $fn a b c" lines
 
 run_lines(File, Runs) :-
-    phrase_from_file(lines(Ls), File),
-    foldl(run_line, Ls, Runs, []).
+    phrase_from_file(lines(Lines), File),
+    foldl(run_line, Lines, Runs, []).
 
 lines([L|Ls]) --> line(L), !, lines(Ls).
 lines([]) --> [].
-line(L) --> [C], { C \== '\n' }, !, rest_line(Cs), { L = [C|Cs] }.
-line([]) --> "\n".
-rest_line([]) --> "\n", !.
-rest_line([C|Cs]) --> [C], !, rest_line(Cs).
-rest_line([]) --> [].
 
-run_line(L, Runs0, Runs) :-
-    (   append("# run: $", Rest, L)
+line(L) --> [C], { C \== '\n' }, !, rest_of_line(Cs), { L = [C|Cs] }.
+line([]) --> "\n".
+
+rest_of_line([]) --> "\n", !.
+rest_of_line([C|Cs]) --> [C], !, rest_of_line(Cs).
+rest_of_line([]) --> [].
+
+run_line(Line, Runs0, Runs) :-
+    (   append("# run: $", Rest, Line)
     ->  words(Rest, [FnCs|ArgCss]),
         atom_chars(Fn, FnCs),
         maplist(chars_number, ArgCss, Args),
@@ -297,13 +375,16 @@ run_line(L, Runs0, Runs) :-
 
 chars_number(Cs, N) :- number_chars(N, Cs).
 
-words(Cs, Ws) :- phrase(words_(Ws), Cs).
-words_(Ws) --> " ", !, words_(Ws).
-words_([[C|Cs]|Ws]) --> [C], word(Cs), !, words_(Ws).
-words_([]) --> [].
+% The space-separated words of Cs.
+words(Cs, Words) :- phrase(word_list(Words), Cs).
+
+word_list(Ws) --> " ", !, word_list(Ws).
+word_list([[C|Cs]|Ws]) --> [C], word(Cs), !, word_list(Ws).
+word_list([]) --> [].
+
 word([C|Cs]) --> [C], { C \== ' ' }, !, word(Cs).
 word([]) --> [].
 
 % library(format)'s format_//2 raises type_error(list, '') for an argument
 % of '' (Trealla 12f4cbd), which a call with no arguments produces.
-fmt(F, As) --> { format(chars(Cs), F, As) }, seq(Cs).
+fmt(Format, Args) --> { format(chars(Cs), Format, Args) }, seq(Cs).

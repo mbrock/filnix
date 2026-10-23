@@ -44,27 +44,40 @@ alloc_classes(F, Classes) :-
     F = func(_, _, _, _, Blocks),
     findall(I, ( member(blk(_, _, Is, _), Blocks), member(I, Is) ), Insts),
     address_temps(F, Addrs),
-    def_counts(F, Defs),
+    def_counts(F, DefCounts),
     findall(A-Size, member(ins(t(A), _, alloc(_), [Size]), Insts), Allocs),
-    findall(Root-E, ( member(I, Insts), inst_event(I, Addrs, Root-E) ), Es1),
-    findall(Root-esc(phi), ( member(blk(_, Phis, _, _), Blocks),
-                             member(phi(_, _, Args), Phis), member(_-t(X), Args),
-                             get_assoc(X, Addrs, Root-_) ), Es2),
-    findall(Root-esc(jump), ( member(blk(_, _, _, J), Blocks), jump_value(J, t(X)),
-                              get_assoc(X, Addrs, Root-_) ), Es3),
+    findall(Root-E,
+            ( member(I, Insts), inst_event(I, Addrs, Root-E) ),
+            InstEvents),
+    findall(Root-esc(phi),
+            ( member(blk(_, Phis, _, _), Blocks),
+              member(phi(_, _, Args), Phis),
+              member(_-t(X), Args),
+              get_assoc(X, Addrs, Root-_) ),
+            PhiEscapes),
+    findall(Root-esc(jump),
+            ( member(blk(_, _, _, Jump), Blocks),
+              jump_value(Jump, t(X)),
+              get_assoc(X, Addrs, Root-_) ),
+            JumpEscapes),
     % A temp derived from A that is also defined some other way.
-    findall(Root-esc(redefined), ( gen_assoc(X, Addrs, Root-_),
-                                   get_assoc(X, Defs, N), N > 1 ), Es4),
-    append([Es1, Es2, Es3, Es4], Es),
+    findall(Root-esc(redefined),
+            ( gen_assoc(X, Addrs, Root-_),
+              get_assoc(X, DefCounts, N),
+              N > 1 ),
+            Redefined),
+    append([InstEvents, PhiEscapes, JumpEscapes, Redefined], Events0),
     % Group once by allocation, preserving event order (and hence the
     % first escape reason), rather than scanning every event per alloc.
-    keysort(Es, Sorted), group_pairs_by_key(Sorted, Pairs),
+    keysort(Events0, Sorted),
+    group_pairs_by_key(Sorted, Pairs),
     list_to_assoc(Pairs, Events),
-    maplist(classify(Events), Allocs, Classes).
+    maplist(classify_alloc(Events), Allocs, Classes).
 
-classify(Events, A-Size, A-Class) :-
-    ( get_assoc(A, Events, Es) -> true ; Es = [] ),
-    (   memberchk(esc(Why), Es) -> Class = escapes(Why)
+classify_alloc(Events, A-Size, A-Class) :-
+    (   get_assoc(A, Events, Es) -> true ; Es = [] ),
+    (   memberchk(esc(Why), Es)
+    ->  Class = escapes(Why)
     ;   findall(Acc, member(acc(Acc), Es), Accs0),
         sort(Accs0, Accs),
         Class = local(Size, Accs)
@@ -76,9 +89,9 @@ classify(Events, A-Size, A-Class) :-
 inst_event(ins(_, _, load(T), [t(X)]), Addrs, Root-acc(acc(Off, W))) :-
     get_assoc(X, Addrs, Root-Off), !,
     load_width(T, W).
-inst_event(store(W, V, A), Addrs, E) :- !,
-    (   V = t(X), get_assoc(X, Addrs, Root-_), E = Root-esc(stored)
-    ;   A = t(X), get_assoc(X, Addrs, Root-Off), E = Root-acc(acc(Off, W))
+inst_event(store(W, V, A), Addrs, Event) :- !,
+    (   V = t(X), get_assoc(X, Addrs, Root-_), Event = Root-esc(stored)
+    ;   A = t(X), get_assoc(X, Addrs, Root-Off), Event = Root-acc(acc(Off, W))
     ).
 inst_event(I, Addrs, Root-esc(Why)) :-
     \+ ( offset_of(I, Y, _), get_assoc(Y, Addrs, _) ),  % derived address
@@ -86,8 +99,11 @@ inst_event(I, Addrs, Root-esc(Why)) :-
     member(t(X), Vs),
     get_assoc(X, Addrs, Root-_).
 
+% inst_values(+Ins, -Why, -Values): the values Ins reads, and the escape
+% reason if one of them is an address.
 inst_values(ins(_, _, Op, Args), Op, Args).
-inst_values(call(_, F, Args), call, [F|Vs]) :- findall(V, member(arg(_, V), Args), Vs).
+inst_values(call(_, F, Args), call, [F|Vs]) :-
+    findall(V, member(arg(_, V), Args), Vs).
 
 jump_value(jnz(V, _, _), V).
 jump_value(ret(V), V).
@@ -101,47 +117,68 @@ offset_of(ins(_, _, copy, [t(X)]), X, 0).
 
 address_temps(func(_, _, _, _, Blocks), Addrs) :-
     findall(I, ( member(blk(_, _, Is, _), Blocks), member(I, Is) ), Insts),
-    findall(A-(A-0), member(ins(t(A), _, alloc(_), _), Insts), Ps0),
-    list_to_assoc(Ps0, A0),
-    findall(X-edge(I, D, N),
-            ( nth0(I, Insts, Ins), Ins = ins(t(D), _, _, _), offset_of(Ins, X, N) ), Edges0),
-    keysort(Edges0, Edges1), group_pairs_by_key(Edges1, Edges),
+    findall(A-(A-0), member(ins(t(A), _, alloc(_), _), Insts), AllocPairs),
+    list_to_assoc(AllocPairs, Addrs0),
+    % edge(Pos, D, N): instruction Pos defines D as the source plus N.
+    findall(X-edge(Pos, D, N),
+            ( nth0(Pos, Insts, Ins),
+              Ins = ins(t(D), _, _, _),
+              offset_of(Ins, X, N) ),
+            Edges0),
+    keysort(Edges0, Edges1),
+    group_pairs_by_key(Edges1, Edges),
     list_to_assoc(Edges, BySource),
-    assoc_to_list(A0, Seeds),
-    derive(Seeds, BySource, A0, Addrs).
+    assoc_to_list(Addrs0, Seeds),
+    derive_addresses(Seeds, BySource, Addrs0, Addrs).
 
 % Follow each dependency only when its source is first resolved. Whole
 % layers are processed together: as in the old fixed point, a redefined
 % temp takes its earliest-resolved definition, then instruction order
 % breaks ties. Cycles without an allocation seed remain unresolved.
-derive([], _, A, A).
-derive([S|Ss], BySource, A0, A) :-
-    findall(I-(D-(Root-O)),
-            ( member(X-(Root-O0), [S|Ss]), get_assoc(X, BySource, Edges),
-              member(edge(I, D, N), Edges), \+ get_assoc(D, A0, _), O is O0 + N ), Found),
-    keysort(Found, Ordered), pairs_values(Ordered, Pairs),
-    sort(1, @<, Pairs, New),   % one entry per temp; redefinitions are caught later
-    foldl(put_pair, New, A0, A1),
-    derive(New, BySource, A1, A).
+derive_addresses([], _, Addrs, Addrs).
+derive_addresses([S|Ss], BySource, Addrs0, Addrs) :-
+    findall(Pos-(D-(Root-Off)),
+            ( member(X-(Root-Off0), [S|Ss]),
+              get_assoc(X, BySource, Edges),
+              member(edge(Pos, D, N), Edges),
+              \+ get_assoc(D, Addrs0, _),
+              Off is Off0 + N ),
+            Found),
+    keysort(Found, Ordered),
+    pairs_values(Ordered, Pairs),
+    % One entry per temp; redefinitions are caught later.
+    sort(1, @<, Pairs, New),
+    foldl(put_pair, New, Addrs0, Addrs1),
+    derive_addresses(New, BySource, Addrs1, Addrs).
 
-put_pair(K-V, A0, A) :- put_assoc(K, A0, V, A).
+put_pair(K-V, Assoc0, Assoc) :- put_assoc(K, Assoc0, V, Assoc).
 
 % def_counts(+Func, -Counts): assoc temp -> number of definitions
 % (parameters, phis, instructions and call results).
 def_counts(func(_, _, _, Params, Blocks), Counts) :-
-    findall(N, member(par(_, t(N)), Params), D0),
-    findall(N, ( member(blk(_, Phis, Is, _), Blocks),
-                 (   member(phi(t(N), _, _), Phis)
-                 ;   member(ins(t(N), _, _, _), Is)
-                 ;   member(call(to(t(N), _), _, _), Is)
-                 ;   member(call(tuple(Rs), _, _), Is), member(to(t(N), _), Rs)
-                 ) ), D1),
-    append(D0, D1, Ds),
-    msort(Ds, S),
-    clumped_pairs(S, Ps),
-    list_to_assoc(Ps, Counts).
+    findall(N, member(par(_, t(N)), Params), ParamDefs),
+    findall(N,
+            ( member(blk(_, Phis, Insts, _), Blocks),
+              (   member(phi(t(N), _, _), Phis)
+              ;   member(ins(t(N), _, _, _), Insts)
+              ;   member(call(to(t(N), _), _, _), Insts)
+              ;   member(call(tuple(Rs), _, _), Insts),
+                  member(to(t(N), _), Rs)
+              ) ),
+            BlockDefs),
+    append(ParamDefs, BlockDefs, Defs),
+    msort(Defs, Sorted),
+    clumped_pairs(Sorted, Pairs),
+    list_to_assoc(Pairs, Counts).
 
+% clumped_pairs(+Sorted, -Pairs): X-N for each run of N equal elements.
 clumped_pairs([], []).
-clumped_pairs([X|Xs], [X-N|Ps]) :- run_of(X, Xs, 1, N, Rest), clumped_pairs(Rest, Ps).
-run_of(X, [Y|Ys], N0, N, Rest) :- X == Y, !, N1 is N0 + 1, run_of(X, Ys, N1, N, Rest).
+clumped_pairs([X|Xs], [X-N|Ps]) :-
+    run_of(X, Xs, 1, N, Rest),
+    clumped_pairs(Rest, Ps).
+
+run_of(X, [Y|Ys], N0, N, Rest) :-
+    X == Y, !,
+    N1 is N0 + 1,
+    run_of(X, Ys, N1, N, Rest).
 run_of(_, Rest, N, N, Rest).

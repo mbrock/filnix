@@ -19,7 +19,6 @@
 :- module(amd64, [module_asm/2, op//4, load//4, load_slot//4,
                   store_reg//3, store_insn/3, reg/3, load_insn/3, sfx/2]).
 
-
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
 :- use_module(library(format)).
@@ -28,34 +27,41 @@
 
 % module_asm(+Module, -Lines): the module as asm.pl lines.
 module_asm(module(Items), Lines) :-
-    maplist(emit_item, Items, Ls),
-    append(Ls, Lines0),
+    maplist(item_lines, Items, Liness),
+    append(Liness, Lines0),
     append(Lines0, [section(note_gnu_stack)], Lines).
 
-emit_item(I, Ls) :-
-    (   phrase(item(I), Ls) -> true
-    ;   arg(1, I, Name),
-        format(atom(M), 'backend cannot emit $~w', [Name]),
-        throw(nanofil_error(M))
+item_lines(Item, Lines) :-
+    (   phrase(item(Item), Lines) -> true
+    ;   arg(1, Item, Name),
+        format(atom(Msg), 'backend cannot emit $~w', [Name]),
+        throw(nanofil_error(Msg))
     ).
 
 %% Functions
 
-item(func(Name, Lk, Ret, Params, Blocks)) -->
+/* The context of a function's code is f(Name, Ret, Slots, Blocks).
+   filc_amd64 builds the same term to call the exported nonterminals,
+   so its shape is shared. */
+item(func(Name, Linkage, Ret, Params, Blocks)) -->
     { frame(Params, Blocks, Slots, Size),
       Ctx = f(Name, Ret, Slots, Blocks) },
     [section(text), p2align(4)],
-    global(Lk, Name),
-    [type(Name, function), label(Name),
-     ins(push, q, [reg(rbp)]), ins(mov, q, [reg(rsp), reg(rbp)])],
+    global(Linkage, Name),
+    [type(Name, function),
+     label(Name),
+     ins(push, q, [reg(rbp)]),
+     ins(mov, q, [reg(rsp), reg(rbp)])],
     (   { Size > 0 } -> [ins(sub, q, [imm(Size), reg(rsp)])] ; [] ),
-    params(Params, 0, Ctx),
+    store_params(Params, 0, Ctx),
     blocks(Blocks, Ctx),
     [size(Name)].
-item(data(Name, Lk0, Align, Items)) -->
-    { Lk0 = ro(Lk) -> Sec = rodata ; Lk = Lk0, Sec = data },
-    [section(Sec), balign(Align)],
-    global(Lk, Name),
+item(data(Name, Linkage0, Align, Items)) -->
+    {   Linkage0 = ro(Linkage) -> Section = rodata
+    ;   Linkage = Linkage0, Section = data
+    },
+    [section(Section), balign(Align)],
+    global(Linkage, Name),
     [label(Name)],
     data_items(Items).
 
@@ -66,39 +72,49 @@ global(local, _) --> [].
    one shadow slot per phi destination. Slots maps a key, t(N) or
    shadow(N), to its offset below %rbp. */
 frame(Params, Blocks, Slots, Size) :-
-    findall(t(N), ( member(par(_, t(N)), Params)
-                  ; member(blk(_, Phis, Insts, _), Blocks),
-                    (   member(phi(t(N), _, _), Phis)
-                    ;   member(I, Insts), defines(I, N)
-                    ) ), Ts0),
-    findall(shadow(N), ( member(blk(_, Phis, _, _), Blocks),
-                         member(phi(t(N), _, _), Phis) ), Ss0),
-    sort(Ts0, Ts), sort(Ss0, Ss),
-    append(Ts, Ss, Keys),
-    empty_assoc(E),
-    foldl(slot, Keys, E-0, Slots-N),
-    Size is (N * 8 + 15) // 16 * 16.
+    findall(t(N),
+            (   member(par(_, t(N)), Params)
+            ;   member(blk(_, Phis, Insts, _), Blocks),
+                (   member(phi(t(N), _, _), Phis)
+                ;   member(Inst, Insts),
+                    defines(Inst, N)
+                )
+            ),
+            Temps0),
+    findall(shadow(N),
+            ( member(blk(_, Phis, _, _), Blocks),
+              member(phi(t(N), _, _), Phis) ),
+            Shadows0),
+    sort(Temps0, Temps),
+    sort(Shadows0, Shadows),
+    append(Temps, Shadows, Keys),
+    empty_assoc(Slots0),
+    foldl(assign_slot, Keys, Slots0-0, Slots-Count),
+    Size is (Count * 8 + 15) // 16 * 16.
 
 defines(ins(t(N), _, _, _), N).
 defines(call(to(t(N), _), _, _), N).
 
-slot(Key, A0-N0, A-N) :-
-    N is N0 + 1,
-    Off is N * 8,
-    put_assoc(Key, A0, Off, A).
+% The next 8-byte slot below %rbp, counting slots in Count.
+assign_slot(Key, Slots0-Count0, Slots-Count) :-
+    Count is Count0 + 1,
+    Offset is Count * 8,
+    put_assoc(Key, Slots0, Offset, Slots).
 
-params([], _, _) --> [].
-params([par(_, T)|Ps], I, Ctx) -->
-    (   { arg_reg(I, R) } -> []
+% Spill the incoming argument registers to the parameters' slots.
+store_params([], _, _) --> [].
+store_params([par(_, Temp)|Params], I, Ctx) -->
+    (   { arg_reg(I, Reg) } -> []
     ;   { Ctx = f(Fn, _, _, _),
-          format(atom(M), 'in $~w: more than six parameters', [Fn]),
-          throw(nanofil_error(M)) }
+          format(atom(Msg), 'in $~w: more than six parameters', [Fn]),
+          throw(nanofil_error(Msg)) }
     ),
-    { reg(R, l, RN) },
-    store_reg(RN, T, Ctx),
+    { reg(Reg, l, RegName) },
+    store_reg(RegName, Temp, Ctx),
     { I1 is I + 1 },
-    params(Ps, I1, Ctx).
+    store_params(Params, I1, Ctx).
 
+% The SysV integer argument registers, in order.
 arg_reg(0, di). arg_reg(1, si). arg_reg(2, d).
 arg_reg(3, c).  arg_reg(4, r8). arg_reg(5, r9).
 
@@ -117,26 +133,33 @@ sfx(b, b). sfx(h, w). sfx(w, l). sfx(l, q).
 %% Blocks and jumps
 
 blocks([], _) --> [].
-blocks([blk(L, _, Insts, J)|Bs], Ctx) -->
-    { label(Ctx, L, A) },
-    [label(A)],
+blocks([blk(Label, _, Insts, Jump)|Blocks], Ctx) -->
+    { block_label(Ctx, Label, AsmLabel) },
+    [label(AsmLabel)],
     insts(Insts, Ctx),
-    jump(J, L, Ctx),
-    blocks(Bs, Ctx).
+    jump(Jump, Label, Ctx),
+    blocks(Blocks, Ctx).
 
-label(f(Fn, _, _, _), L, A) :- format(atom(A), '.L~w.~w', [Fn, L]).
+block_label(f(Fn, _, _, _), Label, AsmLabel) :-
+    format(atom(AsmLabel), '.L~w.~w', [Fn, Label]).
 
-false_label(f(Fn, _, _, _), L, A) :- format(atom(A), '.L~w.~w.false', [Fn, L]).
+% The edge block for the false side of a jnz ending block Label.
+false_label(f(Fn, _, _, _), Label, AsmLabel) :-
+    format(atom(AsmLabel), '.L~w.~w.false', [Fn, Label]).
 
-jump(jmp(T), From, Ctx) --> edge(From, T, Ctx).
-jump(jnz(V, T, F), From, Ctx) -->
-    { false_label(Ctx, From, FL) },
+jump(jmp(To), From, Ctx) --> edge(From, To, Ctx).
+jump(jnz(V, IfTrue, IfFalse), From, Ctx) -->
+    { false_label(Ctx, From, FalseLabel) },
     load(V, w, a, Ctx),
-    [ins(test, l, [reg(eax), reg(eax)]), ins(jz, none, [sym(FL)])],
-    edge(From, T, Ctx),
-    [label(FL)],
-    edge(From, F, Ctx).
-jump(ret(V), _, Ctx) --> { Ctx = f(_, K, _, _) }, load(V, K, a, Ctx), epilogue.
+    [ins(test, l, [reg(eax), reg(eax)]),
+     ins(jz, none, [sym(FalseLabel)])],
+    edge(From, IfTrue, Ctx),
+    [label(FalseLabel)],
+    edge(From, IfFalse, Ctx).
+jump(ret(V), _, Ctx) -->
+    { Ctx = f(_, Class, _, _) },
+    load(V, Class, a, Ctx),
+    epilogue.
 jump(ret, _, _) --> epilogue.
 jump(hlt, _, _) --> [ins(ud2, none, [])].
 
@@ -147,100 +170,123 @@ epilogue --> [ins(leave, none, []), ins(ret, none, [])].
 edge(From, To, Ctx) -->
     { Ctx = f(_, _, _, Blocks),
       memberchk(blk(To, Phis, _, _), Blocks),
-      label(Ctx, To, TL) },
+      block_label(Ctx, To, ToLabel) },
     phi_reads(Phis, From, Ctx),
     phi_writes(Phis, Ctx),
-    [ins(jmp, none, [sym(TL)])].
+    [ins(jmp, none, [sym(ToLabel)])].
 
+% Each phi's incoming value from From into its shadow slot.
 phi_reads([], _, _) --> [].
-phi_reads([phi(t(D), K, Pairs)|Ps], From, Ctx) -->
-    { memberchk(From-V, Pairs) },
-    load(V, K, a, Ctx),
+phi_reads([phi(t(D), Class, Incoming)|Phis], From, Ctx) -->
+    { memberchk(From-V, Incoming) },
+    load(V, Class, a, Ctx),
     store_reg(rax, shadow(D), Ctx),
-    phi_reads(Ps, From, Ctx).
+    phi_reads(Phis, From, Ctx).
 
+% Each phi's shadow slot into its destination's slot.
 phi_writes([], _) --> [].
-phi_writes([phi(t(D), _, _)|Ps], Ctx) -->
+phi_writes([phi(t(D), _, _)|Phis], Ctx) -->
     load_slot(shadow(D), l, rax, Ctx),
     store_reg(rax, t(D), Ctx),
-    phi_writes(Ps, Ctx).
+    phi_writes(Phis, Ctx).
 
 %% Instructions
 
 insts([], _) --> [].
-insts([I|Is], Ctx) --> inst(I, Ctx), insts(Is, Ctx).
+insts([Inst|Insts], Ctx) --> inst(Inst, Ctx), insts(Insts, Ctx).
 
-inst(ins(D, K, Op, Args), Ctx) --> op(Op, K, Args, Ctx), store_reg(rax, D, Ctx).
-inst(store(W, V, A), Ctx) -->
-    { W == l -> VK = l ; VK = w },
-    load(V, VK, c, Ctx),
-    load(A, l, a, Ctx),
-    { store_insn(W, c, S) },
-    [S].
+inst(ins(D, Class, Op, Args), Ctx) -->
+    op(Op, Class, Args, Ctx),
+    store_reg(rax, D, Ctx).
+inst(store(Width, V, Addr), Ctx) -->
+    { Width == l -> Class = l ; Class = w },
+    load(V, Class, c, Ctx),
+    load(Addr, l, a, Ctx),
+    { store_insn(Width, c, Store) },
+    [Store].
 inst(call(Res, glo(F), Args), Ctx) -->
     { length(Args, N),
       (   N =< 6 -> true
       ;   Ctx = f(Fn, _, _, _),
-          format(atom(M), 'in $~w: call with more than six arguments', [Fn]),
-          throw(nanofil_error(M))
+          format(atom(Msg), 'in $~w: call with more than six arguments',
+                 [Fn]),
+          throw(nanofil_error(Msg))
       ) },
     call_args(Args, 0, Ctx),
     [ins(call, none, [sym(F)])],
     (   { Res = to(D, _) } -> store_reg(rax, D, Ctx) ; [] ).
 
 call_args([], _, _) --> [].
-call_args([arg(K, V)|As], I, Ctx) -->
-    { arg_reg(I, R), I1 is I + 1 },
-    load(V, K, R, Ctx),
-    call_args(As, I1, Ctx).
+call_args([arg(Class, V)|Args], I, Ctx) -->
+    { arg_reg(I, Reg),
+      I1 is I + 1 },
+    load(V, Class, Reg, Ctx),
+    call_args(Args, I1, Ctx).
 
 % store_insn(Width, Reg, Ins): store Width bytes of Reg to (%rax).
-store_insn(W, R, ins(mov, S, [reg(RN), mem(0, rax)])) :- sfx(W, S), reg(R, W, RN).
+store_insn(W, R, ins(mov, S, [reg(RN), mem(0, rax)])) :-
+    sfx(W, S),
+    reg(R, W, RN).
 
 % op(Op, Class, Args, Ctx): compute the result into %rax (zero-extended
 % for class w).
 op(copy, K, [X], Ctx) --> load(X, K, a, Ctx).
-op(neg, K, [X], Ctx) --> load(X, K, a, Ctx), { sfx(K, S), reg(a, K, A) }, [ins(neg, S, [reg(A)])].
-op(Op, K, [X, Y], Ctx) -->
-    { alu_insn(Op, I) }, !,
-    load(X, K, a, Ctx), load(Y, K, c, Ctx),
-    { sfx(K, S), reg(a, K, A), reg(c, K, C) },
-    [ins(I, S, [reg(C), reg(A)])].
-op(Op, K, [X, Y], Ctx) -->
-    { shift_insn(Op, I) }, !,
-    load(X, K, a, Ctx), load(Y, w, c, Ctx),
+op(neg, K, [X], Ctx) -->
+    load(X, K, a, Ctx),
     { sfx(K, S), reg(a, K, A) },
-    [ins(I, S, [reg(cl), reg(A)])].
+    [ins(neg, S, [reg(A)])].
 op(Op, K, [X, Y], Ctx) -->
-    { division(Op, Signed, Result) }, !,
-    load(X, K, a, Ctx), load(Y, K, c, Ctx),
+    { alu_insn(Op, Insn) }, !,
+    load(X, K, a, Ctx),
+    load(Y, K, c, Ctx),
+    { sfx(K, S), reg(a, K, A), reg(c, K, C) },
+    [ins(Insn, S, [reg(C), reg(A)])].
+op(Op, K, [X, Y], Ctx) -->
+    { shift_insn(Op, Insn) }, !,
+    load(X, K, a, Ctx),
+    load(Y, w, c, Ctx),
+    { sfx(K, S), reg(a, K, A) },
+    [ins(Insn, S, [reg(cl), reg(A)])].
+op(Op, K, [X, Y], Ctx) -->
+    { division(Op, Signedness, Result) }, !,
+    load(X, K, a, Ctx),
+    load(Y, K, c, Ctx),
     { sfx(K, S), reg(c, K, C) },
-    (   { Signed == signed }
-    ->  { K == w -> E = cltd ; E = cqto },
-        [ins(E, none, []), ins(idiv, S, [reg(C)])]
+    (   { Signedness == signed }
+    ->  { K == w -> SignExtend = cltd ; SignExtend = cqto },
+        [ins(SignExtend, none, []), ins(idiv, S, [reg(C)])]
     ;   [ins(xor, l, [reg(edx), reg(edx)]), ins(div, S, [reg(C)])]
     ),
-    (   { Result == rem } -> { reg(d, K, D), reg(a, K, A) }, [ins(mov, S, [reg(D), reg(A)])]
+    (   { Result == rem }
+    ->  { reg(d, K, D), reg(a, K, A) },
+        [ins(mov, S, [reg(D), reg(A)])]
     ;   []
     ).
-op(cmp(C, CK), _, [X, Y], Ctx) -->
-    load(X, CK, a, Ctx), load(Y, CK, c, Ctx),
-    { sfx(CK, S), reg(a, CK, A), reg(c, CK, R), cc(C, CC), atom_concat(set, CC, Set) },
-    [ins(cmp, S, [reg(R), reg(A)]),
+op(cmp(Cond, CmpClass), _, [X, Y], Ctx) -->
+    load(X, CmpClass, a, Ctx),
+    load(Y, CmpClass, c, Ctx),
+    { sfx(CmpClass, S),
+      reg(a, CmpClass, A),
+      reg(c, CmpClass, C),
+      cond_code(Cond, CC),
+      atom_concat(set, CC, Set) },
+    [ins(cmp, S, [reg(C), reg(A)]),
      ins(Set, none, [reg(al)]),
      ins(movzb, l, [reg(al), reg(eax)])].
-op(ext(T), K, [X], Ctx) -->
+op(ext(Type), K, [X], Ctx) -->
     load(X, w, a, Ctx),
-    { ext_insn(T, K, I) },
-    [I].
-op(load(T), K, [A], Ctx) -->
-    load(A, l, a, Ctx),
-    { load_insn(T, K, I) },
-    [I].
-op(alloc(_), _, [N], Ctx) -->
-    load(N, l, a, Ctx),
-    [ins(add, q, [imm(15), reg(rax)]), ins(and, q, [imm(-16), reg(rax)]),
-     ins(sub, q, [reg(rax), reg(rsp)]), ins(mov, q, [reg(rsp), reg(rax)])].
+    { ext_insn(Type, K, Insn) },
+    [Insn].
+op(load(Type), K, [Addr], Ctx) -->
+    load(Addr, l, a, Ctx),
+    { load_insn(Type, K, Insn) },
+    [Insn].
+op(alloc(_), _, [Size], Ctx) -->
+    load(Size, l, a, Ctx),
+    [ins(add, q, [imm(15), reg(rax)]),
+     ins(and, q, [imm(-16), reg(rax)]),
+     ins(sub, q, [reg(rax), reg(rsp)]),
+     ins(mov, q, [reg(rsp), reg(rax)])].
 
 alu_insn(add, add). alu_insn(sub, sub). alu_insn(mul, imul).
 alu_insn(and, and). alu_insn(or, or).   alu_insn(xor, xor).
@@ -248,17 +294,22 @@ alu_insn(and, and). alu_insn(or, or).   alu_insn(xor, xor).
 % x86 masks the count in %cl to the operand width, as the IR specifies.
 shift_insn(shl, shl). shift_insn(shr, shr). shift_insn(sar, sar).
 
+% division(Op, Signedness, Result): Result is the quotient or remainder.
 division(div, signed, quot).    division(rem, signed, rem).
 division(udiv, unsigned, quot). division(urem, unsigned, rem).
 
-cc(eq, e).  cc(ne, ne).
-cc(slt, l). cc(sle, le). cc(sgt, g).  cc(sge, ge).
-cc(ult, b). cc(ule, be). cc(ugt, a).  cc(uge, ae).
+% cond_code(Cond, CC): the x86 condition code suffix for a comparison.
+cond_code(eq, e).  cond_code(ne, ne).
+cond_code(slt, l). cond_code(sle, le). cond_code(sgt, g).  cond_code(sge, ge).
+cond_code(ult, b). cond_code(ule, be). cond_code(ugt, a).  cond_code(uge, ae).
 
 % ext_insn(Type, Class, Ins): extend the low part of %rax into %rax.
-ext_insn(T, K, ins(Op, S, [reg(From), reg(To)])) :-
-    ext_op(T, K, Op, S, To), ext_from(T, From).
+ext_insn(Type, K, ins(Op, S, [reg(From), reg(To)])) :-
+    ext_op(Type, K, Op, S, To),
+    ext_from(Type, From).
 
+% ext_op(Type, Class, Op, Suffix, To): the extending move and its
+% destination register.
 ext_op(sb, w, movsb, l, eax). ext_op(sb, l, movsb, q, rax).
 ext_op(ub, _, movzb, l, eax).
 ext_op(sh, w, movsw, l, eax). ext_op(sh, l, movsw, q, rax).
@@ -266,51 +317,69 @@ ext_op(uh, _, movzw, l, eax).
 ext_op(sw, l, movsl, q, rax).
 ext_op(uw, l, mov, l, eax).
 
+% ext_from(Type, From): the part of %rax that Type extends.
 ext_from(sb, al). ext_from(ub, al). ext_from(sh, ax). ext_from(uh, ax).
 ext_from(sw, eax). ext_from(uw, eax).
 
 % load_insn(Type, Class, Ins): load from (%rax) into %rax, extended.
-load_insn(T, K, ins(Op, S, [mem(0, rax), reg(To)])) :- load_op(T, K, Op, S, To).
+load_insn(Type, K, ins(Op, S, [mem(0, rax), reg(To)])) :-
+    load_op(Type, K, Op, S, To).
 
 load_op(l, l, mov, q, rax).
 load_op(sw, w, mov, l, eax).
 load_op(uw, _, mov, l, eax).
-load_op(T, K, Op, S, To) :- T \== uw, ext_op(T, K, Op, S, To).
+load_op(Type, K, Op, S, To) :- Type \== uw, ext_op(Type, K, Op, S, To).
 
 %% Operands
 
 % load(Value, Class, Reg, Ctx): put Value, read at Class, in register Reg.
-load(t(N), K, R, Ctx) --> { reg(R, K, RN) }, load_slot(t(N), K, RN, Ctx).
+load(t(N), K, R, Ctx) -->
+    { reg(R, K, RN) },
+    load_slot(t(N), K, RN, Ctx).
 load(c(N), w, R, _) -->
-    { reg(R, w, RN), V is N mod 4294967296 },
+    { reg(R, w, RN),
+      V is N mod 4294967296 },
     [ins(mov, l, [imm(V), reg(RN)])].
 load(c(N), l, R, _) -->
-    { reg(R, l, RN), U is N mod 18446744073709551616,
-      ( U >= 9223372036854775808 -> V is U - 18446744073709551616 ; V = U ) },
+    { reg(R, l, RN),
+      U is N mod 18446744073709551616,
+      (   U >= 9223372036854775808 -> V is U - 18446744073709551616
+      ;   V = U
+      ) },
     [ins(movabs, q, [imm(V), reg(RN)])].
-load(glo(G), _, R, _) --> { reg(R, l, RN) }, [ins(lea, q, [rip(G), reg(RN)])].
+load(glo(G), _, R, _) -->
+    { reg(R, l, RN) },
+    [ins(lea, q, [rip(G), reg(RN)])].
 
+% load_slot(Key, Class, RegName, Ctx): read Key's frame slot at Class.
 load_slot(Key, K, RN, f(_, _, Slots, _)) -->
-    { get_assoc(Key, Slots, Off), sfx(K, S), D is -Off },
-    [ins(mov, S, [mem(D, rbp), reg(RN)])].
+    { get_assoc(Key, Slots, Offset),
+      sfx(K, S),
+      Disp is -Offset },
+    [ins(mov, S, [mem(Disp, rbp), reg(RN)])].
 
+% store_reg(RegName, Key, Ctx): write all 8 bytes of a register to Key's
+% frame slot.
 store_reg(RN, Key, f(_, _, Slots, _)) -->
-    { get_assoc(Key, Slots, Off), D is -Off },
-    [ins(mov, q, [reg(RN), mem(D, rbp)])].
+    { get_assoc(Key, Slots, Offset),
+      Disp is -Offset },
+    [ins(mov, q, [reg(RN), mem(Disp, rbp)])].
 
 %% Data
 
 data_items([]) --> [].
-data_items([I|Is]) --> data_item(I), data_items(Is).
+data_items([Item|Items]) --> data_item(Item), data_items(Items).
 
 data_item(zero(N)) --> [zero(N)].
 data_item(item(b, str(Cs))) --> !, [ascii(Cs)].
 data_item(item(l, sym(S, Off))) --> !, [quad(S+Off)].
 data_item(item(W, c(N))) -->
-    { directive(W, U, D, Bits), U is N mod (1 << Bits) },
-    [D].
+    { data_directive(W, U, Directive, Bits),
+      U is N mod (1 << Bits) },
+    [Directive].
 
-directive(b, U, byte([U]), 8).
-directive(h, U, short(U), 16).
-directive(w, U, int(U), 32).
-directive(l, U, quad(U), 64).
+% data_directive(Width, Value, Directive, Bits)
+data_directive(b, U, byte([U]), 8).
+data_directive(h, U, short(U), 16).
+data_directive(w, U, int(U), 32).
+data_directive(l, U, quad(U), 64).
