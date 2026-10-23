@@ -14,6 +14,10 @@
       float(Chars)        floating constant, rejected by the lowering
       chr(Value)          character constant, as an int
       str(Bytes)          string literal, bytes without the terminator
+                          (u8"..." too: UTF-8 bytes)
+      wstr(T, Codes)      L"...", u"..." or U"...": T is the element type
+                          int (wchar_t), ushort (char16_t) or uint
+                          (char32_t), Codes the elements without the 0
       p(Atom)             punctuator, e.g. p('->'), p('<<=')
 */
 :- module(c_lex, [c_tokens/3, keyword/2]).
@@ -77,6 +81,9 @@ decimal(D) :- char_type(D, decimal_digit).
 
 %% Tokens
 
+token(str(Bs), L) --> ['u', '8', '"'], !, str_body(L, Bs).
+token(chr(V), L) --> [P, '\''], { wide_prefix(P, T) }, !, wlit_chars('\'', L, Vs), { wchar_value(Vs, T, V, L) }.
+token(wstr(T, Vs), L) --> [P, '"'], { wide_prefix(P, T) }, !, wlit_chars('"', L, Vs), { wide_fits(T, Vs, L) }.
 token(T, _) --> [C], { ident_start(C) }, !, ident_rest(Cs),
     { atom_chars(A, [C|Cs]), ( keyword(A, K) -> T = kw(K) ; T = id(A) ) }.
 token(T, L) --> [C], { decimal(C) }, !, number([C], T, L).
@@ -168,6 +175,42 @@ oct_upto(_, []) --> [].
 simple_escape(n, 10). simple_escape(t, 9). simple_escape(r, 13). simple_escape(a, 7).
 simple_escape(b, 8). simple_escape(f, 12). simple_escape(v, 11). simple_escape('\\', 92).
 simple_escape('\'', 39). simple_escape('"', 34). simple_escape('?', 63). simple_escape(e, 27).
+
+%% Wide literals: elements are code points, not UTF-8 bytes.
+
+wide_prefix('L', int).
+wide_prefix(u, ushort).
+wide_prefix('U', uint).
+
+wlit_chars(Q, _, []) --> [Q], !.
+wlit_chars(_, L, _) --> ['\n'], !, { loc_error(L, 'unterminated literal', []) }.
+wlit_chars(Q, L, [V|Vs]) --> ['\\'], !, wescape(L, V), wlit_chars(Q, L, Vs).
+wlit_chars(Q, L, [K|Vs]) --> [C], !, { char_code(C, K) }, wlit_chars(Q, L, Vs).
+wlit_chars(_, L, _) --> { loc_error(L, 'unterminated literal', []) }.
+
+wescape(_, B) --> [C], { simple_escape(C, B) }, !.
+wescape(_, V) --> ['x'], !, hex_digits(Ds), { Ds \== [], base_value(Ds, 16, V) }.
+wescape(_, V) --> ['u'], !, hex_n(4, Ds), { base_value(Ds, 16, V) }.
+wescape(_, V) --> ['U'], !, hex_n(8, Ds), { base_value(Ds, 16, V) }.
+wescape(_, V) --> [D], { char_type(D, decimal_digit), D @< '8' }, !, oct_upto(2, Ds), { base_value([D|Ds], 8, V) }.
+wescape(L, _) --> [C], { loc_error(L, 'unknown escape \\~w', [C]) }.
+
+hex_n(0, []) --> !.
+hex_n(N, [D|Ds]) --> [D], { weight(D, W), W < 16 }, !, { N1 is N - 1 }, hex_n(N1, Ds).
+
+% Each element must fit its type (no surrogate pairs for char16_t).
+wide_fits(T, Vs, L) :-
+    (   wide_max(T, M), member(V, Vs), V > M -> loc_error(L, 'wide literal element ~w does not fit ~w', [V, T])
+    ;   true
+    ).
+
+wide_max(int, 2147483647).
+wide_max(ushort, 65535).
+wide_max(uint, 4294967295).
+
+% A wide character constant's value, as an int; wchar_t is int here.
+wchar_value([V], T, V, L) :- !, ( T == uint -> T1 = int ; T1 = T ), wide_fits(T1, [V], L).
+wchar_value(_, _, _, L) :- loc_error(L, 'multi-character constant', []).
 
 % A multi-character constant is rejected; one byte is the value, as a
 % (signed) char promoted to int.

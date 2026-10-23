@@ -97,7 +97,7 @@ global_decl(L, d(N, T, St, Asm, I), E0, E) :-
     ->  ( St == static -> Lk = local ; Lk = export ),
         (   I \== none -> sema_error(L, 'function ~w has an initializer', [N]) ; true ),
         put_ord(N, fn(T, Sym, Lk), E0, E)
-    ;   complete_array(T, I, T1, L, E0, none),
+    ;   vm_check(T, L), complete_array(T, I, T1, L, E0, none),
         put_ord(N, gvar(T1, Sym, St, I), E0, E1),
         (   St == extern, I == none -> E = E1
         ;   ( St == static -> Lk = local ; Lk = export ),
@@ -115,24 +115,48 @@ define_global(Sym, T, Lk, I, L, e(O, Tg, D0, X), e(O, Tg, D, X)) :-
     ;   put_assoc(gdef(Sym), D0, g(T, Lk, I, L), D)
     ).
 
+% A literal is a list of bytes (a char array) or w(ElemType, Values).
 new_literal(Bs, Sym, e(O, Tg, D0, X), e(O, Tg, D, X1)) :-
     format(atom(Sym), 'str.~w', [X]),
     put_assoc(lit(Sym), D0, Bs, D),
     X1 is X + 1.
 
+% A string literal term's elements: str(Bytes) for a char array, or a
+% wide one for an integer array of its element's size.
+str_elems(str(Bs), ET, Bs) :- char_type_(ET).
+str_elems(wstr(WT, Vs), ET, Vs) :- int_type(ET), int_info(ET, S, _), int_info(WT, S, _).
+
+% A file-scope compound literal: an unnamed static object.
+new_complit(T, I, L, Sym, E0, E) :-
+    E0 = e(O, Tg, D, X), format(atom(Sym), 'complit.~w', [X]), X1 is X + 1,
+    complete_array(T, I, T1, L, E0, none),
+    define_global(Sym, T1, local, I, L, e(O, Tg, D, X1), E).
+
 % The data items for every global definition and string literal.
 global_data(E0, Ds) :-
-    E0 = e(_, _, D0, _),
-    assoc_to_list(D0, KVs),
-    findall(Sym-G, member(gdef(Sym)-G, KVs), Gs),
-    foldl(global_item, Gs, GDs, E0, E1),
+    global_items(E0, [], GDs, E1),
     E1 = e(_, _, D1, _),
     assoc_to_list(D1, KVs1),
-    findall(data(Sym, ro(local), 1, Items),
-            ( member(lit(Sym)-Bs, KVs1), append(Bs, [0], Bs1),
-              findall(item(b, c(B)), member(B, Bs1), Items) ),
+    findall(data(Sym, ro(local), A, Items),
+            ( member(lit(Sym)-Lit, KVs1),
+              (   Lit = w(WT, Vs) -> int_info(WT, A, _), memberchk(A-W, [2-h, 4-w])
+              ;   Vs = Lit, A = 1, W = b
+              ),
+              append(Vs, [0], Vs1),
+              findall(item(W, c(V)), member(V, Vs1), Items) ),
             LDs),
     append(GDs, LDs, Ds).
+
+% Initializers can define more globals (file-scope compound literals),
+% so this repeats until there are no new ones. Done lists their symbols.
+global_items(E0, Done, Ds, E) :-
+    E0 = e(_, _, D0, _), assoc_to_list(D0, KVs),
+    findall(Sym-G, ( member(gdef(Sym)-G, KVs), \+ memberchk(Sym, Done) ), Gs),
+    (   Gs == [] -> Ds = [], E = E0
+    ;   foldl(global_item, Gs, Ds0, E0, E1),
+        findall(S, member(S-_, Gs), New), append(Done, New, Done1),
+        global_items(E1, Done1, Ds1, E), append(Ds0, Ds1, Ds)
+    ).
 
 global_item(Sym-g(T, Lk, I, L), data(Sym, Lk, A, Items), E0, E) :-
     catch(size_align(T, E0, _, A0), bad(W), sema_error(L, '~w has an unsupported type (~w)', [Sym, W])),
@@ -198,7 +222,7 @@ params([N|Ns], [T|Ts], X, Ps) --> { su(T) }, !,
     params(Ns, Ts, X, Ps1),
     { append(Ps0, Ps1, Ps) }.
 params([N|Ns], [T|Ts], X, [par(K, P)|Ps]) -->
-    { arg(5, X, L),
+    { arg(5, X, L), vm_check(T, L),
       (   class_of(T, K) -> true
       ;   float_type(T) -> sema_error(L, 'floating point is not supported', [])
       ;   sema_error(L, 'parameter of type ~w is not supported yet', [T])
@@ -386,6 +410,7 @@ local_decls([d(N, T, St, Asm, I)|Ds], X) --> { arg(5, X, L) },
     local_decls(Ds, X).
 
 bad_check(T, E, L, N) :-
+    vm_check(T, L),
     catch(( size_align(T, E, _, _) -> true ; true ), bad(W),
           sema_error(L, '~w has a type nanofil does not support (~w)', [N, W])).
 
@@ -396,7 +421,7 @@ bad_check(T, E, L, N) :-
    none otherwise. */
 complete_array(array(ET, none), none, array(ET, none), _, _, _) :- !.
 complete_array(array(ET, none), I, array(ET, N), L, E, W) :- !,
-    (   I = str(Bs), length(Bs, N0) -> N is N0 + 1
+    (   str_elems(I, ET, Bs), length(Bs, N0) -> N is N0 + 1
     ;   I = list(Es) -> list_extent(Es, ET, E, W, 0, 0, N)
     ;   sema_error(L, 'array of unknown size', [])
     ).
@@ -425,7 +450,7 @@ consume_slots([slot(_, _, T)|Ss], E, W, Es0, Es) :-
 
 % An entry that initializes a slot of type T by itself.
 elided_one(T, V, E, W) :-
-    (   V = list(_) ; \+ aggregate(T) ; T = array(CT, _), V = str(_), char_type_(CT)
+    (   V = list(_) ; \+ aggregate(T) ; T = array(CT, _), str_elems(V, CT, _)
     ;   W = whole(X, S), su(T), struct_expr(V, X, T, S, _)
     ),
     _ = E, !.
@@ -464,20 +489,21 @@ truth(v(V, T), X, W) -->
 
 init(A, T, I, X) --> { arg(5, X, L) },
     (   { I = list(Es) } -> zero_object(A, T), init_list(A, T, Es, X)
-    ;   { T = array(ET, N), I = str(Bs), char_type_(ET) } -> zero_object(A, T), init_string(A, N, Bs, L)
+    ;   { T = array(ET, N), str_elems(I, ET, Bs) } -> zero_object(A, T), init_string(A, ET, N, Bs, L)
     ;   { T = array(_, _) } -> { sema_error(L, 'array initializer must be a list', []) }
     ;   rval(I, X, V0), assign_convert(V0, T, L, v(V, _)), store_typed(T, V, A)
     ).
 
 char_type_(T) :- memberchk(T, [char, schar, uchar]).
 
-init_string(A, N, Bs, L) -->
+init_string(A, ET, N, Bs, L) -->
     { length(Bs, NB), ( NB > N -> sema_error(L, 'string initializer is too long', []) ; true ),
-      findall(I-B, nth0(I, Bs, B), Pairs) },
-    store_bytes(Pairs, A).
+      store_width(ET, W), width_bytes(W, S),
+      findall(O-B, ( nth0(I, Bs, B), O is I * S ), Pairs) },
+    store_elems(Pairs, W, A).
 
-store_bytes([], _) --> [].
-store_bytes([I-B|Ps], A) --> offset(A, I, P), emit(store(b, c(B), P)), store_bytes(Ps, A).
+store_elems([], _, _) --> [].
+store_elems([O-B|Ps], W, A) --> offset(A, O, P), emit(store(W, c(B), P)), store_elems(Ps, W, A).
 
 % zero_object(A, T): clear the whole object, since allocs are hoisted
 % and a local inside a loop must be reinitialized on every pass.
@@ -536,7 +562,7 @@ init_slots(Slots, I, A, Es0, Es, X) -->
 % One slot: a braced or scalar value, or brace elision for an aggregate
 % slot given a scalar (the slot then takes as many entries as it needs).
 init_one(P, T, V, Es0, Es, X) -->
-    (   { V = list(_) ; \+ aggregate(T) ; T = array(ET, _), V = str(_), char_type_(ET) }
+    (   { V = list(_) ; \+ aggregate(T) ; T = array(ET, _), str_elems(V, ET, _) }
     ->  init(P, T, V, X), { Es = Es0 }
     ;   { su(T) }, struct_expr(V, X, T)
     ->  init(P, T, V, X), { Es = Es0 }
@@ -589,6 +615,14 @@ obj(arrow(S, F), X, lv(P, T)) --> !, rval(S, X, v(A, PT)),
 obj(str(Bs), _, lv(A, array(char, N))) --> !,
     env(E0), { new_literal(Bs, Sym, E0, E), length(Bs, N0), N is N0 + 1 }, set_env(E),
     ins(p, copy, [glo(Sym)], A).
+obj(wstr(WT, Vs), _, lv(A, array(WT, N))) --> !,
+    env(E0), { new_literal(w(WT, Vs), Sym, E0, E), length(Vs, N0), N is N0 + 1 }, set_env(E),
+    ins(p, copy, [glo(Sym)], A).
+% A compound literal is an unnamed local, initialized where it appears.
+obj(complit(TN, I), X, lv(A, T1)) --> !,
+    env(E), whole_test(X, W),
+    { arg(5, X, L), type_name(TN, T, E, L), complete_array(T, I, T1, L, E, W), bad_check(T1, E, L, 'compound literal') },
+    local_slot(T1, A), init(A, T1, I, X).
 
 % A callee must be a temporary.
 callee_temp(t(T), t(T)) --> !.
@@ -638,14 +672,14 @@ rvalue(chr(V), _, v(c(V), int)) --> !.
 rvalue(float(_), X, _) --> !, { arg(5, X, L), sema_error(L, 'floating point is not supported', []) }.
 rvalue(sizeof_type(TN), X, v(c(S), ulong)) --> !, env(E), { type_size(TN, E, X, S) }.
 rvalue(alignof(TN), X, v(c(A), ulong)) --> !, env(E),
-    { type_name_type(TN, T, E, _), arg(5, X, L),
+    { arg(5, X, L), type_name(TN, T, E, L),
       catch(size_align(T, E, _, A), bad(W), sema_error(L, 'alignof: ~w', [W])) }.
 rvalue(sizeof_expr(SE), X, v(c(S), ulong)) --> !, type_of(SE, X, T), env(E),
     { arg(5, X, L), catch(size_align(T, E, S, _), bad(W), sema_error(L, 'sizeof: ~w', [W])) }.
 rvalue(offsetof(TN, Path), X, v(c(V), ulong)) --> !, env(E),
     { arg(5, X, L), ( catch(const_value(offsetof(TN, Path), E, V, _), not_constant, fail) -> true
                      ; sema_error(L, 'bad offsetof', []) ) }.
-rvalue(cast(TN, CE), X, R) --> !, env(E), { type_name_type(TN, T, E, _) },
+rvalue(cast(TN, CE), X, R) --> !, env(E), { arg(5, X, L), type_name(TN, T, E, L) },
     rval(CE, X, V0),
     (   { T == void } -> { R = v(c(0), void) }
     ;   convert_checked(V0, T, X, R)
@@ -663,13 +697,31 @@ rvalue(bin(lor, A, B), X, R) --> !, logical(lor, A, B, X, R).
 rvalue(bin(Op, A, B), X, R) --> !, rval(A, X, VA), rval(B, X, VB), binary(Op, VA, VB, X, R).
 rvalue(assign(Op, A, B), X, R) --> !, assignment(Op, A, B, X, R).
 rvalue(cond(C, A, B), X, R) --> !, conditional(C, A, B, X, R).
+rvalue(call(id('__builtin_expect'), [A, B]), X, R) -->
+    env(E), { \+ ord(E, '__builtin_expect', _) }, !,
+    rval(A, X, VA), rval(B, X, _), { arg(5, X, L) }, assign_convert(VA, long, L, R).
 rvalue(call(F, As), X, R) --> !, fcall(F, As, X, R).
-rvalue(complit(_, _), X, _) --> !, { arg(5, X, L), sema_error(L, 'compound literals are not supported yet', []) }.
+rvalue(gcond(C, B), X, R) --> !, gnu_conditional(C, B, X, R).
 rvalue(E, X, _) --> { arg(5, X, L), sema_error(L, 'cannot lower ~w', [E]) }.
 
 type_size(TN, E, X, S) :-
-    type_name_type(TN, T, E, _), arg(5, X, L),
+    arg(5, X, L), type_name(TN, T, E, L),
     catch(size_align(T, E, S, _), bad(W), sema_error(L, 'sizeof: ~w', [W])).
+
+% A type name as lowering uses it: a variably modified one (an array of
+% non-constant size anywhere inside) is rejected, since its size
+% expressions would have to be evaluated, side effects and all.
+type_name(TN, T, E, L) :- type_name_type(TN, T, E, _), vm_check(T, L).
+
+vm_check(T, L) :-
+    (   vm_type(T) -> sema_error(L, 'variably modified types (non-constant array size) are not supported', [])
+    ;   true
+    ).
+
+vm_type(bad('non-constant array size')).
+vm_type(ptr(T)) :- vm_type(T).
+vm_type(array(T, _)) :- vm_type(T).
+vm_type(func(R, Ps, _)) :- ( vm_type(R) ; is_list(Ps), member(P, Ps), vm_type(P) ), !.
 
 %% Conversions
 
@@ -791,6 +843,21 @@ logical(Op, A, B, X, v(V, int)) -->
     here(LB), term(jmp(LJ)),
     fresh(V),
     start_phi(LJ, [phi(V, w, [LA-c(Short), LB-NB])]).
+
+% GNU c ?: b: c is evaluated once, and is the result if nonzero.
+gnu_conditional(C, B, X, R) -->
+    rval(C, X, VC), rtype(B, X, VB0),
+    { VC = v(_, TC), VB0 = v(_, TB), arg(5, X, L), cond_type(TC, VC, TB, VB0, T, L) },
+    truth(VC, X, W),
+    label(LA), label(LB), label(LJ),
+    term(jnz(W, LA, LB)),
+    start(LA), arm_convert(VC, T, X, VA1), here(LA1), term(jmp(LJ)),
+    start(LB), rval(B, X, VB), arm_convert(VB, T, X, VB1), here(LB1), term(jmp(LJ)),
+    (   { T == void } -> start(LJ), { R = v(c(0), void) }
+    ;   { su(T) -> K = p ; class_of(T, K) }, fresh(V),
+        start_phi(LJ, [phi(V, K, [LA1-VA1, LB1-VB1])]),
+        { R = v(V, T) }
+    ).
 
 conditional(C, A, B, X, R) -->
     rtype(A, X, VA0), rtype(B, X, VB0),
@@ -1061,10 +1128,11 @@ sinit(O, T, list(Es), L, S0, S) :- !,
     ;   Es = [entry([], V)|_] -> sinit(O, T, V, L, S0, S)
     ;   S = S0
     ).
-sinit(O, array(ET, N), str(Bs), L, E-A0, E-A) :- char_type_(ET), !,
+sinit(O, array(ET, N), S, L, E-A0, E-A) :- str_elems(S, ET, Bs), !,
     length(Bs, NB),
     (   NB > N -> sema_error(L, 'string initializer is too long', []) ; true ),
-    findall(En, ( nth0(K, Bs, B), OK is O + K, entry(OK, ET, B, En) ), Ens),
+    int_info(ET, Sz, _),
+    findall(En, ( nth0(K, Bs, B), OK is O + K * Sz, entry(OK, ET, B, En) ), Ens),
     reverse(Ens, R), append(R, A0, A).
 sinit(O, T, X, L, E-A0, E-[En|A0]) :- int_type(T), !,
     (   catch(const_value(X, E, V, _), not_constant, fail) -> true
@@ -1101,7 +1169,7 @@ sslots(Slots, I, O, Es0, Es, L, S0, S) :-
     ).
 
 sone(O, T, V, Es0, Es, L, S0, S) :-
-    (   ( V = list(_) ; \+ aggregate(T) ; T = array(ET, _), V = str(_), char_type_(ET) )
+    (   ( V = list(_) ; \+ aggregate(T) ; T = array(ET, _), str_elems(V, ET, _) )
     ->  sinit(O, T, V, L, S0, S), Es = Es0
     ;   undesignated(Es0, Pre, Post),
         sagg(O, T, [entry([], V)|Pre], Rest, L, S0, S), append(Rest, Post, Es)
@@ -1110,6 +1178,9 @@ sone(O, T, V, Es0, Es, L, S0, S) :-
 /* aconst(+X, +Loc, +E0, -E, -R): an address constant, sym(Symbol, Offset,
    PointerType), or null. */
 aconst(str(Bs), _, E0, E, sym(S, 0, ptr(char))) :- !, new_literal(Bs, S, E0, E).
+aconst(wstr(WT, Vs), _, E0, E, sym(S, 0, ptr(WT))) :- !, new_literal(w(WT, Vs), S, E0, E).
+aconst(complit(TN, I), L, E0, E, sym(S, 0, ptr(ET))) :- type_name(TN, T, E0, L), T = array(ET, _), !,
+    new_complit(T, I, L, S, E0, E).
 aconst(id(N), L, E, E, R) :- ord(E, N, gvar(array(ET, _), S, _, _)), !, R = sym(S, 0, ptr(ET)), _ = L.
 aconst(id(N), _, E, E, sym(S, 0, ptr(T))) :- ord(E, N, fn(T, S, _)), !.
 aconst(un(addr, X), L, E0, E, R) :- !,
@@ -1117,7 +1188,7 @@ aconst(un(addr, X), L, E0, E, R) :- !,
     ;   lconst(X, L, E0, E, sym(S, O, T)), R = sym(S, O, ptr(T))
     ).
 aconst(cast(TN, X), L, E0, E, R) :- !,
-    type_name_type(TN, T, E0, _),
+    type_name(TN, T, E0, L),
     (   T = ptr(_) -> aconst(X, L, E0, E, R0), ( R0 = sym(S, O, _) -> R = sym(S, O, T) ; R = R0 )
     ;   sema_error(L, 'initializer is not a constant', [])
     ).
@@ -1139,6 +1210,11 @@ offset_const(_, _, _, _, L, _) :- sema_error(L, 'initializer is not an address c
 
 lconst(id(N), L, E, E, sym(S, 0, T)) :- !,
     ( ord(E, N, gvar(T, S, _, _)) -> true ; sema_error(L, '~w is not a global', [N]) ).
+lconst(complit(TN, I), L, E0, E, sym(S, 0, T)) :- !,
+    type_name(TN, T0, E0, L), new_complit(T0, I, L, S, E0, E),
+    E = e(_, _, D, _), get_assoc(gdef(S), D, g(T, _, _, _)).
+lconst(wstr(WT, Vs), _, E0, E, sym(S, 0, array(WT, N))) :- !,
+    new_literal(w(WT, Vs), S, E0, E), length(Vs, N0), N is N0 + 1.
 lconst(str(Bs), _, E0, E, sym(S, 0, array(char, N))) :- !,
     new_literal(Bs, S, E0, E), length(Bs, N0), N is N0 + 1.
 lconst(index(A, I), L, E0, E, R) :- !, lconst(un(deref, bin(add, A, I)), L, E0, E, R).

@@ -27,9 +27,10 @@
       Block items are statements or decl/static_assert terms; Init is
       none, expr(E) or a decl term; C and Step may be none.
     Expressions: id(N) num(V, Suffix) chr(V) str(Bytes) float(Chars)
+      wstr(ElemType, Codes) (wide string)
       bin(Op, A, B) assign(Op, A, B) (Op = for plain assignment)
       un(Op, A) for neg plus bnot not deref addr preinc predec postinc
-      postdec; cond(C, A, B) comma(A, B) call(F, Args) index(A, I)
+      postdec; cond(C, A, B) gcond(C, B) (GNU C ?: B) comma(A, B) call(F, Args) index(A, I)
       member(A, F) arrow(A, F) cast(TypeName, E) sizeof_type(TypeName)
       sizeof_expr(E) alignof(TypeName) complit(TypeName, Init)
       offsetof(TypeName, Path)
@@ -355,7 +356,8 @@ assign_op('-='). assign_op('<<='). assign_op('>>='). assign_op('&='). assign_op(
 assign_op('|=').
 
 cond(Env, E) --> bin(Env, 1, C),
-    (   p('?') -> expr(Env, A), expect(':'), cond(Env, B), { E = cond(C, A, B) }
+    (   p('?') -> ( p(':') -> cond(Env, B), { E = gcond(C, B) }
+                   ; expr(Env, A), expect(':'), cond(Env, B), { E = cond(C, A, B) } )
     ;   { E = C }
     ).
 
@@ -417,7 +419,7 @@ primary(_, id(N)) --> t(id(N)), !.
 primary(_, num(V, S)) --> t(int(V, S)), !.
 primary(_, float(Cs)) --> t(float(Cs)), !.
 primary(_, chr(V)) --> t(chr(V)), !.
-primary(_, str(Bs)) --> peek(str(_)), !, strs(Bs).
+primary(_, S) --> ( peek(str(_)) ; peek(wstr(_, _)) ), !, lit_strs(Ps), { concat_strs(Ps, S) }.
 primary(_, _) --> p('('), peek(p('{')), !, err('statement expressions are not supported').
 primary(_, _) --> k(generic), !, err('_Generic is not supported').
 primary(Env, E) --> p('('), !, expr(Env, E), expect(')').
@@ -427,5 +429,17 @@ offsetof_path(Env, [field(F)|Ps]) --> p('.'), !, field_name(F), offsetof_path(En
 offsetof_path(Env, [index(E)|Ps]) --> p('['), !, expr(Env, E), expect(']'), offsetof_path(Env, Ps).
 offsetof_path(_, []) --> [].
 
-% Adjacent string literals concatenate.
+% Adjacent string literals concatenate; if one is wide, all are, and a
+% plain one's bytes become elements (exact for ASCII).
+lit_strs([S|Ss]) --> ( t(str(B)) -> { S = str(B) } ; t(wstr(T, Vs)) -> { S = wstr(T, Vs) } ; { fail } ), !,
+    ( lit_strs(Ss) -> [] ; { Ss = [] } ).
+
 strs(Bs) --> t(str(B0)), !, ( strs(B1) -> { append(B0, B1, Bs) } ; { Bs = B0 } ).
+
+concat_strs(Ps, S) :-
+    findall(T, member(wstr(T, _), Ps), Ts0), sort(Ts0, Ts),
+    findall(Vs, ( member(P, Ps), ( P = str(Vs) ; P = wstr(_, Vs) ) ), Vss), append(Vss, All),
+    (   Ts == [] -> S = str(All)
+    ;   Ts = [T] -> S = wstr(T, All)
+    ;   throw(nanofil_error('concatenating string literals of different wide types'))
+    ).

@@ -65,13 +65,13 @@ baseline had pass 19 / 198 / 217, reject 22 / 21 / 43 and wrong result
 
 | Source | `.c` files | No main | With main | Pass | Reject | Wrong result | Reference error |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| cproc | 196 | 147 | 49 | 21 | 20 | 1 | 7 |
-| c-testsuite | 220 | 0 | 220 | 199 | 21 | 0 | 0 |
-| **Total** | **416** | **147** | **269** | **220** | **41** | **1** | **7** |
+| cproc | 196 | 147 | 49 | 28 | 14 | 0 | 7 |
+| c-testsuite | 220 | 0 | 220 | 202 | 18 | 0 | 0 |
+| **Total** | **416** | **147** | **269** | **230** | **32** | **0** | **7** |
 
 There were no preprocessing, assembler, nanofil-link, reference-output or
-timeout failures. Of 49 non-passes, 27 are planned exclusions (including
-one VLA wrongly accepted), 15 are other gaps, and 7 cannot be compiled by the reference in its default mode.
+timeout failures. Of 39 non-passes, 27 are planned exclusions, 5 are
+other gaps, and 7 cannot be compiled by the reference in its default mode.
 Each program appears in exactly one primary-cause group below; secondary
 features may be hidden behind the first error. All IDs below are `.c`
 basenames, under the named source. Every C block is a standalone minimal
@@ -94,7 +94,7 @@ nanofil: `cannot assign int to double`. Other members report
 `loading a float/double value is not supported yet`, `cannot convert uchar
 to float`, or `floating point is not supported`.
 
-### VLAs / variably modified types — 7 (6 rejections, 1 wrong result)
+### VLAs / variably modified types — 7 rejections
 
 **Planned:** PLAN decision 6 rejects VLAs. cproc: `func-vla`, `sizeof-vla`,
 `vla-deref`, `vla-nested`, **`cast-vm`**. c-testsuite: `00162`, `00207`.
@@ -107,13 +107,11 @@ int main(void) {
 }
 ```
 
-**Unsafe acceptance of an unsupported construct (wrong semantics, not a
-demonstrated memory-safety escape):** nanofil exits 0, filcc exits 1.
-The full `cast-vm` exits 1 vs filcc's 0: neither cast's size side effect
-is evaluated. This should reject, not silently compile. Other members
-already reject with `sizeof: non-constant array size`, `variable length
-arrays are not supported`, or `... has a type nanofil does not support
-(non-constant array size)`.
+All reject. `cast-vm` was accepted with its size side effect silently
+dropped (nanofil exited 0, filcc 1); every variably modified type name, in
+casts, `sizeof`, declarations and parameters, now fails with `variably
+modified types (non-constant array size) are not supported`
+(`tests/c/reject/vm_cast.c`, `vm_pointer.c`).
 
 ### Bitfields — 4 rejections
 
@@ -156,6 +154,14 @@ nanofil: `statement expressions are not supported, at {`.
 
 ## Fixed since the M4f survey
 
+- **Wide literals** (cproc `wchar-sign+*` ×3, c-testsuite `00098`,
+  `00220`): `L`, `u`, `U` character and string literals, `u8` strings.
+- **Compound literals** (cproc `conditional-compound-literal`,
+  c-testsuite `00149`, `00150`): block scope as an unnamed local, file
+  scope as unnamed static data.
+- **GNU `c ?: b`** (cproc `conditional-omit`) and **`__builtin_expect`**
+  (cproc `builtin-expect`).
+
 - **Struct values (M4d):** cproc `conditional-struct`, `struct-copy` (were
   `loading a struct(0) value is not supported yet`). This cproc snapshot
   has no executable struct-argument/return tests; its `struct-passing*`
@@ -166,33 +172,7 @@ nanofil: `statement expressions are not supported, at {`.
   takes, as initialization does. Regression cases are in
   [tests/c/structs.c](../tests/c/structs.c).
 
-## Other gaps — 15
-
-### Wide literals — 5 rejections
-
-**Gap**, not a planned M4 exclusion. cproc: `wchar-sign+aarch64`,
-`wchar-sign+riscv64`, `wchar-sign+x86_64-sysv`; c-testsuite: `00098`, `00220`.
-
-```c
-int main(void) { return L'\0'; }
-```
-
-nanofil: `expected ;, at chr(0)`. The lexer treats `L` as an identifier
-separate from the literal. `00220` similarly stops before a wide string.
-Supporting wide strings needs their element type/encoding too, not just
-discarding the prefix in the lexer.
-
-### Compound literals — 3 rejections
-
-**Gap:** C99, not excluded by the plan. cproc:
-`conditional-compound-literal`; c-testsuite: `00149`, `00150`.
-
-```c
-int main(void) { return ((int[]){1})[0]; }
-```
-
-nanofil: `compound literals are not supported yet`. The two file-scope
-address initializers stop at `initializer is not an address constant`.
+## Other gaps — 5
 
 ### Abstract array parameter declarator — 1 rejection
 
@@ -233,16 +213,6 @@ int main(void) { return _Generic(1, int: 0, default: 1); }
 
 nanofil: `_Generic is not supported, at (`.
 
-### GNU omitted-middle conditional — 1 rejection
-
-**Extension gap:** cproc `conditional-omit`.
-
-```c
-int main(void) { return 1 ?: 2; }
-```
-
-nanofil: `expected an expression, at :`.
-
 ### GNU range designators — 1 rejection
 
 **Extension gap:** c-testsuite `00216`.
@@ -252,16 +222,6 @@ int main(void) { int a[2] = {[0 ... 1] = 3}; return a[1]; }
 ```
 
 nanofil: `GNU range designators are not supported, at int(1,none-dec)`.
-
-### `__builtin_expect` — 1 rejection
-
-**Extension gap:** cproc `builtin-expect`.
-
-```c
-int main(void) { return __builtin_expect(0, 0); }
-```
-
-nanofil: `undeclared identifier __builtin_expect`.
 
 ### C23 attribute spelling — 1 rejection
 
@@ -317,10 +277,8 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. Reject VM casts before lowering; planned unsupported syntax must not
-   silently lose side effects.
-2. Decide scope for wide literals, compound literals, `_Generic` and GNU
-   declarator/extension gaps. No parser/lexer changes were made in M4f.
+1. The remaining gaps are small parser items (`_Generic`, GNU range
+   designators, two declarator forms, C23 attribute spelling).
 
 ## Harness validation
 

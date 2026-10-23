@@ -30,7 +30,7 @@ cproc/bitint-constexpr.c	no-main
 cproc/bitint-promote.c	no-main
 cproc/builtin-alloca.c	no-main
 cproc/builtin-constant-p.c	no-main
-cproc/builtin-expect.c	reject
+cproc/builtin-expect.c	pass
 cproc/builtin-inff.c	no-main
 cproc/builtin-nanf.c	no-main
 cproc/builtin-offsetof.c	no-main
@@ -39,7 +39,7 @@ cproc/builtin-va-copy+aarch64.c	no-main
 cproc/builtin-va-copy+x86_64-sysv.c	no-main
 cproc/builtin-vaarg-vm.c	reject
 cproc/cast-bool-char.c	reference-error
-cproc/cast-vm.c	mismatch
+cproc/cast-vm.c	reject
 cproc/char-const-hex.c	pass
 cproc/char-const-u8.c	no-main
 cproc/char-sign+aarch64.c	pass
@@ -54,9 +54,9 @@ cproc/compatible-function-types.c	no-main
 cproc/compatible-vla-types.c	no-main
 cproc/compound-assignment.c	no-main
 cproc/compound-literal-static.c	no-main
-cproc/conditional-compound-literal.c	reject
+cproc/conditional-compound-literal.c	pass
 cproc/conditional-constant.c	pass
-cproc/conditional-omit.c	reject
+cproc/conditional-omit.c	pass
 cproc/conditional-struct.c	pass
 cproc/conditional.c	reject
 cproc/const-array.c	no-main
@@ -190,9 +190,9 @@ cproc/vla-deref.c	reject
 cproc/vla-nested.c	reject
 cproc/vla-pointer-incdec.c	no-main
 cproc/vla.c	no-main
-cproc/wchar-sign+aarch64.c	reject
-cproc/wchar-sign+riscv64.c	reject
-cproc/wchar-sign+x86_64-sysv.c	reject
+cproc/wchar-sign+aarch64.c	pass
+cproc/wchar-sign+riscv64.c	pass
+cproc/wchar-sign+x86_64-sysv.c	pass
 cproc/while-condition.c	reject
 c-testsuite/00001.c	pass
 c-testsuite/00002.c	pass
@@ -291,7 +291,7 @@ c-testsuite/00094.c	pass
 c-testsuite/00095.c	pass
 c-testsuite/00096.c	pass
 c-testsuite/00097.c	pass
-c-testsuite/00098.c	reject
+c-testsuite/00098.c	pass
 c-testsuite/00099.c	pass
 c-testsuite/00100.c	pass
 c-testsuite/00101.c	pass
@@ -342,8 +342,8 @@ c-testsuite/00145.c	pass
 c-testsuite/00146.c	pass
 c-testsuite/00147.c	pass
 c-testsuite/00148.c	pass
-c-testsuite/00149.c	reject
-c-testsuite/00150.c	reject
+c-testsuite/00149.c	pass
+c-testsuite/00150.c	pass
 c-testsuite/00151.c	pass
 c-testsuite/00152.c	pass
 c-testsuite/00153.c	pass
@@ -413,4 +413,4 @@ c-testsuite/00216.c	reject
 c-testsuite/00217.c	pass
 c-testsuite/00218.c	reject
 c-testsuite/00219.c	reject
-c-testsuite/00220.c	reject
+c-testsuite/00220.c	pass
