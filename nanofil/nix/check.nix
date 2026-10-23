@@ -45,6 +45,9 @@ pkgs.runCommandCC "nanofil-check"
     patchShebangs tests bin
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log'
     grep -q 'tests ok$' unit.log
+    # M9 IR/interpreter contract, independent of the backend workstream.
+    # Integer-bit wrappers preserve NaN payloads and negative zero.
+    step "difftest float SSE2" env CC=$CC VARIANTS="original printed" tests/difftest.sh tests/float/*.ssa
     python3 -I tests/gen.py 1 200 > gen1.ssa
     step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
     step "difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
@@ -66,6 +69,7 @@ pkgs.runCommandCC "nanofil-check"
     # identity and bounded symbolic before/after equivalence.
     python3 -I tests/bigfn.py 1 300 > big1.c
     export NANOFIL_OPT=-O
+    step "-O difftest float SSE2" env CC=$CC VARIANTS="original printed" tests/difftest.sh tests/float/*.ssa
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
     step "-O difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
     step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa tests/c/*.c big1.c
@@ -82,6 +86,8 @@ pkgs.runCommandCC "nanofil-check"
     step "trealla: unit, difftest c/*.c, progtest" bash -ec '
       (cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log
       grep -q "tests ok$" unit.log
+      VARIANTS="original printed" tests/difftest.sh tests/float/*.ssa
+      NANOFIL_OPT=-O VARIANTS="original printed" tests/difftest.sh tests/float/*.ssa
       tests/par.sh tests/difftest.sh tests/c/*.c
       tests/par.sh tests/progtest.sh tests/c/prog/*.c'
     unset NANOFIL_HOST

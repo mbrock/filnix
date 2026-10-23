@@ -19,13 +19,17 @@
       trap(Reason)    a Fil-C check failed (filc mode only)
       out_of_fuel     executed Fuel blocks without finishing
 
-    Arithmetic and branches are CLP(Z) constraints, so the relation runs
-    in every direction: Args and Outcome can both be partially unknown.
+    Integer arithmetic and branches are CLP(Z) constraints, so the relation
+    runs in every direction: Args and Outcome can both be partially unknown.
     Known values take a fast path (is/2 and if-then-else), which gives
     the same answers; only unknown values pay for constraints.
     Memory addresses, allocation sizes and capabilities must be known
     when an access, alloc or indirect call uses them; otherwise the run
     raises an instantiation error, which is incomplete but never wrong.
+    Float values are concrete unsigned IEEE bits. Float arithmetic uses
+    ieee.pl's integer-only SSE2 semantics, not CLP(Z) or host floats;
+    unknown float inputs also raise an instantiation error. Invalid
+    float-to-integer conversions give ub(float_conversion).
 
     Memory is mem(Bytes, Regions, Next, Aux): an assoc from address to
     byte, the list of live Base-End regions, the next free stack address,
@@ -54,6 +58,7 @@
 :- use_module(library(lists)).
 :- use_module(library(error)).
 :- use_module(ir).
+:- use_module(ieee).
 
 %! run(+M, +Fn, ?Args, +Fuel, ?Outcome) is nondet.
 %
@@ -119,6 +124,8 @@ arg_in_range(par(K, _), X) :- class_arg(K, X).
 % module, so the cut stays. An unknown p argument is ptr(_, _).
 class_arg(w, X) :- int_arg_in_range(w, X).
 class_arg(l, X) :- int_arg_in_range(l, X).
+class_arg(s, X) :- must_be(integer, X), int_arg_in_range(s, X).
+class_arg(d, X) :- must_be(integer, X), int_arg_in_range(d, X).
 class_arg(p, X) :-
     (   X = ptr(_, _) -> true
     ;   int_arg_in_range(p, X)
@@ -302,6 +309,8 @@ width_value_class(h, w).
 width_value_class(w, w).
 width_value_class(l, l).
 width_value_class(p, p).
+width_value_class(s, s).
+width_value_class(d, d).
 
 % cap_call_result(+Cap, +A, +Res, +Args, +Xs, +Ctx, +Env0, +S0, -Result):
 % a call through the pointer ptr(A, Cap) reaches a function only when it
@@ -385,22 +394,30 @@ return_words(tuple(Ks), Ks).
 return_words(w, [w]).
 return_words(l, [l]).
 return_words(p, [p]).
+return_words(s, [s]).
+return_words(d, [d]).
 
 % word_class(?K, ?Class): Class is p for p, and int for w and l, which
 % are the same word.
 word_class(w, int).
 word_class(l, int).
 word_class(p, p).
+word_class(s, s).
+word_class(d, d).
 
 % generic_word(+From, +To, +X, -Y): Y is the word X written at class From
 % and read at class To through the generic entry.
 generic_word(w, To, X, Y) :- int_word_as(To, X, Y).
 generic_word(l, To, X, Y) :- int_word_as(To, X, Y).
 generic_word(p, To, X, Y) :- pointer_word_as(To, X, Y).
+generic_word(s, To, X, Y) :- int_word_as(To, X, Y).
+generic_word(d, To, X, Y) :- int_word_as(To, X, Y).
 
 int_word_as(w, X, X).
 int_word_as(l, X, X).
 int_word_as(p, X, ptr(X, none)).
+int_word_as(s, X, Y) :- word_at_class(s, X, Y).
+int_word_as(d, X, Y) :- word_at_class(d, X, Y).
 
 % A p word read as an integer is its address. An integer held at p (see
 % class_arg/2) is its own address: the defaulty case keeps the
@@ -408,6 +425,8 @@ int_word_as(p, X, ptr(X, none)).
 pointer_word_as(w, X, A) :- pointer_address(X, A).
 pointer_word_as(l, X, A) :- pointer_address(X, A).
 pointer_word_as(p, X, X).
+pointer_word_as(s, X, Y) :- pointer_address(X, A), word_at_class(s, A, Y).
+pointer_word_as(d, X, Y) :- pointer_address(X, A), word_at_class(d, A, Y).
 
 pointer_address(X, A) :- ( X = ptr(A0, _) -> A = A0 ; A = X ).
 
@@ -471,6 +490,8 @@ to_word_env(to(t(D), K), X0, Env0, Env) :-
 word_at_class(w, X0, X) :- modulus(w, Mod), int_is(X, X0 mod Mod).
 word_at_class(l, X0, X) :- modulus(l, Mod), int_is(X, X0 mod Mod).
 word_at_class(p, X, X).
+word_at_class(s, X0, X) :- must_be(integer, X0), X is X0 mod 4294967296.
+word_at_class(d, X0, X) :- must_be(integer, X0), X is X0 mod 18446744073709551616.
 
 % value_x(+K, +V, +Ctx, +Env, -X): X is the IR value V read at class K,
 % which takes its low bits(K) bits. value_x_/5 indexes on the value. A
@@ -498,6 +519,8 @@ value_x_(glo(N), _, ctx(_, Globals, _, _, Mode), _, X) :-
 constant_at_class(w, A, A).
 constant_at_class(l, A, A).
 constant_at_class(p, A, ptr(A, none)).
+constant_at_class(s, A, A).
+constant_at_class(d, A, A).
 
 undefined_symbol(filc, N, ptr(0, ext(N))).
 
@@ -505,6 +528,13 @@ undefined_symbol(filc, N, ptr(0, ext(N))).
 
 % op_res(+Op, +K, +Mode, +Args, +S0, -Res, -S): Res is val(X), ub(Why)
 % or trap(Why). Op is an IR term (ir.pl).
+% Commit before integer dispatch: float bits must never get CLP(Z)
+% arithmetic, even if a caller asks for a different result on backtracking.
+op_res(cmp(C, CK), _, _, [A, B], S, val(R), S) :-
+    memberchk(CK, [s, d]), !, ieee_compare(CK, C, A, B, R).
+op_res(Op, K, _, Xs, S, val(R), S) :-
+    memberchk(K, [s, d]), memberchk(Op, [add, sub, mul, div, neg, copy]), !,
+    float_arithmetic(Op, K, Xs, R).
 op_res(Op, K, Mode, Xs, S0, Res, S) :-
     op_kind(Op, Kind),
     kind_res(Kind, Op, K, Mode, Xs, S0, Res, S).
@@ -529,6 +559,33 @@ kind_res(ptoi, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(itop, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(cmp, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(ext, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(float_convert, ext(s), d, _, [X], S, val(R), S) :-
+    ieee_convert(s, d, X, R).
+kind_res(float_convert, truncd, s, _, [X], S, val(R), S) :-
+    ieee_convert(d, s, X, R).
+kind_res(float_to_int, Op, K, _, [X], S, Res, S) :-
+    float_integer(Op, K, X, Res).
+kind_res(int_to_float, Op, K, _, [X], S, val(R), S) :-
+    must_be(integer, X), integer_source(Op, X, N), ieee_from_int(K, N, R).
+kind_res(cast, _, _, _, [X], S, val(X), S) :- must_be(integer, X).
+
+float_arithmetic(copy, _, [X], X) :- must_be(integer, X).
+float_arithmetic(neg, K, [X], R) :- ieee_neg(K, X, R).
+float_arithmetic(Op, K, [X, Y], R) :- ieee_binary(K, Op, X, Y, R).
+
+integer_source(swtof, X, N) :- signed(w, X, N).
+integer_source(uwtof, X, X).
+integer_source(sltof, X, N) :- signed(l, X, N).
+integer_source(ultof, X, X).
+
+float_integer(Op, K, X, Res) :-
+    ( memberchk(Op, [stosi, stoui]) -> From = s ; From = d ),
+    modulus(K, M),
+    ( memberchk(Op, [stosi, dtosi]) -> Min is -(M // 2), Max is M // 2 - 1
+    ; Min = 0, Max is M - 1 ),
+    ( ieee_to_int(From, X, N), N >= Min, N =< Max
+    -> R is N mod M, Res = val(R)
+    ; Res = ub(float_conversion) ).
 
 va_cursor_res(trap(Why), _, _, S, trap(Why), S).
 va_cursor_res(val(ptr(A, Cap)), K, P, s(Mem0, Fuel), Res, S) :-
@@ -553,6 +610,10 @@ alloc_pointer(filc, Base, ptr(Base, obj(Base))).
 load_op_res(p, _, Mode, Args, S0, Res, S) :-
     pointer_load_res(Mode, Args, S0, Res, S).
 load_op_res(l, _, Mode, Args, S0, Res, S) :-
+    int_load_res(Mode, 8, Args, S0, Res, S).
+load_op_res(s, _, Mode, Args, S0, Res, S) :-
+    int_load_res(Mode, 4, Args, S0, Res, S).
+load_op_res(d, _, Mode, Args, S0, Res, S) :-
     int_load_res(Mode, 8, Args, S0, Res, S).
 load_op_res(sw, K, Mode, Args, S0, Res, S) :-
     ext_load_res(sw, 4, K, Mode, Args, S0, Res, S).
@@ -809,6 +870,8 @@ width_word(b, V, V, 1, none).
 width_word(h, V, V, 1, none).
 width_word(w, V, V, 1, none).
 width_word(l, V, V, 1, none).
+width_word(s, V, V, 1, none).
+width_word(d, V, V, 1, none).
 width_word(p, ptr(V, C), V, 8, cap(C)).
 
 % access_store(+Res, +Mem0, +A, +Size, +V, +Stored, -Mem): Mem is Mem0

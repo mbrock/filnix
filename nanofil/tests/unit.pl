@@ -337,6 +337,45 @@ test(float_validator) :-
     rejected_with("function w $f(s %x) {\n@start\n%y =w csles %x, %x\nret %y\n}\n",
                   "unsupported instruction csles").
 
+% Native conversion instructions return an indefinite integer for invalid
+% input; the C-like IR must report UB instead, not silently accept it.
+test(float_conversion_ub) :-
+    file_module('../tests/float/edges.ssa', M),
+    forall(member(Fn-Bits, [si_w-2143289345, si_w-2139095040,
+                            si_w-1325400064, si_w-3472883713,
+                            ui_w-1333788672, ui_w-3212836864,
+                            si_l-1593835520, si_l-3741319169,
+                            ui_l-1602224128, ui_l-3212836864,
+                            di_w-9221120237041090561,
+                            di_w-4746794007248502784,
+                            di_w-13970166044107472896,
+                            du_w-4751297606875873280,
+                            du_w-13830554455654793216,
+                            di_l-4890909195324358656,
+                            di_l-14114281232179134465,
+                            du_l-4895412794951729152,
+                            du_l-13830554455654793216]),
+           module_fn_args_outcome(M, Fn, [Bits], ub(float_conversion))).
+
+test(float_unknown_is_incomplete) :-
+    text_module("function d $f(d %x) {\n@start\n%y =d add %x, d_1\nret %y\n}\n", M),
+    catch((run(M, f, [_], 10, _), fail), error(instantiation_error, _), true),
+    % A symbolic integer cannot be cast into a symbolic float either.
+    file_module('../tests/float/edges.ssa', Edges),
+    catch((run(Edges, adds, [_, 0], 10, _), fail),
+          error(instantiation_error, _), true).
+
+% The same concrete bits go through byte memory in Fil-C mode, without
+% acquiring a capability or invoking integer extension on loads.
+test(float_filc_memory) :-
+    text_module("function l $f() {\n@start\n%p =p alloc8 16\n\
+%q =p add %p, 8\nstores 2147483648, %p\n\
+stored 18444492273895866370, %q\n%s =s loads %p\n%d =d loadd %q\n\
+%w =w cast %s\n%l =l cast %d\n%v =l extuw %w\n\
+%r =l xor %l, %v\nret %r\n}\n", M),
+    Expected is xor(18444492273895866370, 2147483648),
+    module_fn_args_outcome(M, f, [], ret(Expected)).
+
 %% Class p
 
 % A p temporary cannot be read as l without ptoi.

@@ -69,7 +69,12 @@ signed_ratio(S, T, N, D) :-
 
 ieee_from_int(K, N, B) :-
     must_be(integer, N), ( N < 0 -> S = 1 ; S = 0 ),
-    A is abs(N), round_ratio(K, S, A, 1, B).
+    magnitude_integer(N, A), round_ratio(K, S, A, 1, B).
+
+% Trealla's abs/1 and unary minus wrap a computed native INT64_MIN;
+% binary subtraction promotes it to a bignum on both hosts.
+magnitude_integer(N, A) :- ( N < 0 -> A is 0 - N ; A = N ).
+
 ieee_to_int(K, B, N) :-
     decode(K, B, S, T), T = finite(_, _),
     finite_ratio(T, A, D), N is (1 - 2 * S) * (A // D).
@@ -94,7 +99,7 @@ binary(add, K, SA, TA, SB, TB, R) :-
       ( N < 0 -> S = 1
       ; N =:= 0, SA =:= 1, SB =:= 1 -> S = 1
       ; S = 0 ),
-      Abs is abs(N), round_ratio(K, S, Abs, Den, R) ).
+      magnitude_integer(N, Abs), round_ratio(K, S, Abs, Den, R) ).
 binary(mul, K, SA, TA, SB, TB, R) :-
     S is xor(SA, SB),
     ( (TA == inf, TB = finite(0, _) ; TB == inf, TA = finite(0, _))
