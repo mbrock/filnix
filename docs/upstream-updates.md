@@ -31,9 +31,35 @@ but each bootstrap consistently uses its selected compiler, runtime, libc,
 libc++, compiler-rt, yolounwind and SaRCAsm/minilute. Do not mix their libraries
 or silently fall back from release to staging.
 
-## Fil-C 0.686 and the remaining fork delta
+## Fil-C 0.687 release
 
-The release pin is [v0.686](https://github.com/pizlonator/fil-c/releases/tag/v0.686),
+The release pin is [v0.687](https://github.com/pizlonator/fil-c/releases/tag/v0.687),
+[2db72c646daa](https://github.com/pizlonator/fil-c/commit/2db72c646daa1acad2754bcb0e2f220f732e9789),
+published October 23, 2026. This is a complete toolchain/ABI migration: function
+origins grow from 40 to 48 bytes on 64-bit platforms, and each static setjmp
+site reuses a rooted jump buffer through `filc_jmp_buf_recreate`. Rebuild all
+Fil-C objects, DSOs and plugins together; never substitute a 0.687 development
+compiler into a 0.686 runtime closure (including through `FILC_DEV_LLVM`).
+
+The tag also includes the small-alloca non-exiting allocation path, safepoint
+analysis corrections, memmove root/barrier fixes, fiber stack ownership fixes,
+allocator sweep/decommit ordering, earlier UB containment, and our SaRCAsm
+`.rept` and call-argument carrier fixes (#336 and #337). The release uses
+upstream sources without adding local compiler/runtime semantic patches.
+The adoption review found no concrete new memory-safety defect, but package
+builds and focused regressions are not a proof of memory safety.
+
+Peregrine adds portable executables through an explicit Cosmo driver mode.
+Filnix retains its glibc toolchain: it neither enables `--filc-cosmo` nor
+packages the dual-architecture Cosmo/shadow compilation closure. Upstream's
+`package-build.sh` distribution assembly is not our Nix build pipeline.
+Staging and nanofil are independent and are not advanced by this release pin.
+
+### Historical 0.686/fork comparison
+
+The following comparison records the previous release and fork experiment;
+it is not a statement that the current staging pin is based on 0.687.
+The previous release was [v0.686](https://github.com/pizlonator/fil-c/releases/tag/v0.686),
 [163fae598eaf](https://github.com/pizlonator/fil-c/commit/163fae598eaf249b74065b0156f3a7e7ba8c0e5a),
 published October 4, 2026. It includes many of our contributions: coroutine and
 limited musttail support, setjmp with `-fno-builtin`, common linkage, union-record
@@ -558,9 +584,9 @@ Use the local clone to compute all source hashes before recording the new pin:
 
 ```sh
 # Ordinary updates follow official releases, not deluge HEAD or our fork.
-git -C "$HOME/fil-c" fetch origin tag v0.686
+git -C "$HOME/fil-c" fetch origin tag v0.687
 scripts/update-filc-source-hashes.py --repo "$HOME/fil-c" \
-  --rev v0.686 --release 0.686
+  --rev v0.687 --release 0.687
 
 # Experiment updates leave the official pin and its hashes untouched.
 scripts/update-filc-source-hashes.py --repo "$HOME/fil-c" \

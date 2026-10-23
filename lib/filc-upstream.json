@@ -1,7 +1,7 @@
 {
   "url": "https://github.com/pizlonator/fil-c",
-  "release": "0.686",
-  "coreRev": "163fae598eaf249b74065b0156f3a7e7ba8c0e5a",
+  "release": "0.687",
+  "coreRev": "2db72c646daa1acad2754bcb0e2f220f732e9789",
   "sourcePatterns": {
     "filc0-src": [
       "/LLVM-LICENSE.txt",

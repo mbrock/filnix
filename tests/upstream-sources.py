@@ -311,12 +311,9 @@ class UpstreamTests(unittest.TestCase):
             self.assertEqual(data["release"]["runtimePatches"], [])
             self.assertEqual(data["release"]["libcPatches"], ["nix-locale-archive.patch"])
             self.assertEqual(data["release"]["libcPostPatch"], "")
-            expected = ["libpizlo-cancellation.patch"]
-            if system == "aarch64-linux":
-                expected += ["libpizlo-cancellation-aarch64.patch"]
-            self.assertEqual(data["staging"]["runtimePatches"], expected)
+            self.assertEqual(data["staging"]["runtimePatches"], [])
             self.assertEqual(data["staging"]["libcPatches"],
-                             ["glibc-filc-cancellation.patch", "nix-locale-archive.patch"])
+                             ["nix-locale-archive.patch"])
 
     def test_component_hashes_and_store_identity(self):
         config = json.loads((self.filnix / "lib/filc-upstream.json").read_text())
@@ -331,7 +328,7 @@ class UpstreamTests(unittest.TestCase):
         paths = self.source_paths()
 
         # These must not enter any core fetch, including ancestor-directory files.
-        for relative in ("README.md", "build_projeny.sh", "projects/README.md",
+        for relative in ("build_projeny.sh", "projects/README.md",
                          "projects/projeny/main.cpp", "filc/README.md", "filc/tests/new/test.c"):
             write(self.repo / relative, "unrelated change\n")
         next_rev = self.commit()
@@ -340,15 +337,16 @@ class UpstreamTests(unittest.TestCase):
         self.assertEqual(next_rev, json.loads((self.filnix / "lib/filc-upstream.json").read_text())["coreRev"])
 
         # A real change must invalidate precisely its component's consumers.
-        for relative, component in (("libcxx/src/new.cpp", "libcxx-src"),
-                                    ("libc/shared/new.h", "libcxx-src"),
-                                    ("filc/src/new.c", "libpas-src"),
-                                    ("llvm/lib/new.cpp", "filc0-src")):
+        for relative, components in (("libcxx/src/new.cpp", ["libcxx-src"]),
+                                     ("libc/shared/new.h", ["libcxx-src"]),
+                                     ("README.md", ["filc-ref-src"]),
+                                     ("filc/src/new.c", ["filc-ref-src", "libpas-src"]),
+                                     ("llvm/lib/new.cpp", ["filc0-src"])):
             write(self.repo / relative, "core change\n")
             updated = self.update(self.commit())
             updated_paths = self.source_paths()
-            self.assertEqual([component], [k for k in hashes if hashes[k] != updated[k]])
-            self.assertEqual([component], [k for k in paths if paths[k] != updated_paths[k]])
+            self.assertEqual(components, [k for k in hashes if hashes[k] != updated[k]])
+            self.assertEqual(components, [k for k in paths if paths[k] != updated_paths[k]])
             hashes, paths = updated, updated_paths
         self.assertEqual(1, self.git("worktree", "list", "--porcelain").count("worktree "))
 

@@ -5,7 +5,7 @@ to it. The native C++/NXT runner owns its DuckDB recording and listens on
 loopback port 8778. `filnix-v2.service` runs the application selected by
 `/opt/filnix-v2`; state lives under `/var/lib/filnix-v2`.
 
-The smaller campaign uses the current verified Fil-C 0.686 toolchain and the
+The smaller campaign uses the release Fil-C 0.687 toolchain and the
 union of `shells/world-packages.nix` with the active `ports.nix` declarations.
 At the initial launch this selects 300 evaluable roots. Twelve declarations
 are excluded by their existing unsupported-platform metadata: `onetbb`,

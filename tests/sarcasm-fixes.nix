@@ -1,6 +1,6 @@
 # Regression tests for our SaRCAsm .rept and call-argument carrier fixes,
-# merged upstream after 0.686 (pizlonator/fil-c#336, #337), so staging has
-# them. They are the tests submitted with the fixes.
+# merged in release 0.687 (pizlonator/fil-c#336, #337). Both toolchain
+# variants run the tests submitted with the fixes.
 { pkgs, filcc }:
 pkgs.runCommand "filc-sarcasm-fixes-check" { } ''
   set -u

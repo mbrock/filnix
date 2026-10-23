@@ -236,6 +236,9 @@
               openssl = pkgsFilc.openssl-sarcasm;
             };
             sarcasm = import ./tests/sarcasm.nix { inherit pkgs filcc; };
+            sarcasm-fixes = import ./tests/sarcasm-fixes.nix {
+              inherit pkgs filcc;
+            };
             libtool-symbols = import ./tests/libtool-symbols.nix {
               inherit pkgs filcc;
             };

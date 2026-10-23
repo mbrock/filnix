@@ -1,12 +1,12 @@
 # A relocatable Fil-C root
 
-`nix build .#filroot` makes `filroot-0.686-filnix-x86_64-linux.tar.xz`, the
+`nix build .#filroot` makes `filroot-0.687-filnix-x86_64-linux.tar.xz`, the
 toolchain and programs of [optfil](optfil.md) in a directory that works
 wherever it is unpacked: at any path, including one with spaces, and
 read-only. It needs nothing from Nix or from the host's libraries:
 
-    tar -xJf filroot-0.686-filnix-x86_64-linux.tar.xz
-    export PATH=$PWD/filroot-0.686-filnix-x86_64-linux/bin:$PATH
+    tar -xJf filroot-0.687-filnix-x86_64-linux.tar.xz
+    export PATH=$PWD/filroot-0.687-filnix-x86_64-linux/bin:$PATH
     filcc -O2 -o hello hello.c && fil-run ./hello
 
 [packages/filroot/README.md](../packages/filroot/README.md) is the user

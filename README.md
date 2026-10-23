@@ -10,7 +10,7 @@ cross-compilation target. You get `pkgsFilc`: a package set in which
 everything, including libc, is compiled with Fil-C.
 
 The ordinary `filcc` compiler and `pkgsFilc` package set track official Fil-C
-releases, currently [0.686](https://github.com/pizlonator/fil-c/releases/tag/v0.686). Compiler/runtime experiments are opt-in through
+releases, currently [0.687](https://github.com/pizlonator/fil-c/releases/tag/v0.687). Compiler/runtime experiments are opt-in through
 `filcc-staging` and `pkgsFilcStaging`, on the same Filnix `main` branch.
 
 The flake exports `x86_64-linux` and `aarch64-linux` outputs. ARM64 remains
