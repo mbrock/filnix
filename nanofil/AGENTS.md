@@ -34,6 +34,7 @@ nanofil/tests/difftest.sh FILE.ssa|FILE.c...   # interpreter vs native (and clan
 nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
+nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 ```
 
 `bin/nanofil` runs on SWI-Prolog by default; `NANOFIL_HOST=trealla` (with
