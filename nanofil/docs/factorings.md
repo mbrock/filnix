@@ -200,12 +200,19 @@ that `c_types` repeated more loosely.
   `assignable/3` for assignment, arguments, returns and initializers,
   with null pointer constants decided from the source expression, and
   `castable/2` for casts.
+- **Value categories** ([`b9f6e30`](https://github.com/mbrock/filnix/commit/b9f6e30),
+  [`513a743`](https://github.com/mbrock/filnix/commit/513a743)).
+  Struct definitions keep their members' qualified types, and
+  `expression_category/3` and `modifiable_lvalue/2` state C11 6.3.2.1.
+  Assignment, `++`, `--` and `&` ask them, so lowering's `lv/2` only
+  means "lowered to an address".
 
 The IR stayed byte-identical on every snapshot input throughout. What
 changed is which programs are accepted: stating each rule once removed
 the gaps between the two copies. nanofil now rejects, as clang does,
 `int *p = 1`, a pointer passed for an integer, incompatible function
-pointers, `sizeof(1.0 % 2)`, `sizeof(!s)` and `sizeof((int)s)`. It now
+pointers, `sizeof(1.0 % 2)`, `sizeof(!s)`, `sizeof((int)s)`, writes to
+`const` objects and members, and `f().a = 1` or `&f().a`. It now
 accepts what clang accepts and it refused: a `void` arm of `?:`
 (c-testsuite 00213) and a struct cast to its own type. It also types
 `?:` pointer arms by composite type and qualifiers. Each of these has
