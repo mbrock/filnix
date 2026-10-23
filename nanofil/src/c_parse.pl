@@ -236,6 +236,7 @@ specifier(_, _, qual(Q)) -->
 specifier(_, _, fspec(F)) -->
     kw(F), { memberchk(F, [inline, noreturn]) }, !.
 specifier(_, _, attr(A)) --> gnu_attr(A), !.
+specifier(_, _, attr(c23)) --> c23_attr, !.
 specifier(_, _, attr(extension)) --> kw(extension), !.
 specifier(Env, _, alignas(A)) -->
     kw(alignas), !,
@@ -286,10 +287,61 @@ balanced([T|Ts]) -->
     balanced(Ts).
 balanced(_) --> parse_error('unbalanced parentheses').
 
-% attrs//: GNU attributes, ignored.
+% c23_attr//: a standard attribute specifier. Do not confuse its opening
+% '[[' with an array suffix. Arguments are balanced token sequences, not
+% C expressions (unknown vendors may use their own argument language).
+c23_attr -->
+    punct('['), punct('['), !,
+    c23_attr_entries,
+    expect(']'), expect(']').
+
+c23_attrs --> c23_attr, !, c23_attrs.
+c23_attrs --> [].
+
+c23_attr_entries -->
+    (   attribute_word(Prefix)
+    ->  (   punct(':')
+        ->  expect(':'),
+            attribute_word(Name),
+            c23_attribute_semantics(Prefix, Name)
+        ;   []
+        ),
+        ( punct('(') -> attribute_argument(')') ; [] )
+    ;   []
+    ),
+    ( punct(',') -> c23_attr_entries ; [] ).
+
+attribute_word(N) --> token(id(N)), !.
+attribute_word(N) --> token(kw(N)).
+
+% Like their GNU spellings, layout-changing attributes cannot be ignored.
+% Reject here also at positions (e.g. pointers) whose attributes we discard.
+c23_attribute_semantics(Prefix, Name) -->
+    { memberchk(Prefix, [gnu, '__gnu__']),
+      memberchk(Name, [packed, '__packed__', aligned, '__aligned__']) }, !,
+    parse_error('alignment attributes are not supported').
+c23_attribute_semantics(_, _) --> [].
+
+attribute_argument(Close) --> punct(Close), !.
+attribute_argument(Close) -->
+    punct(Open), { attribute_delimiter(Open, End) }, !,
+    attribute_argument(End),
+    attribute_argument(Close).
+attribute_argument(Close) -->
+    token(T),
+    { \+ memberchk(T, [p(')'), p(']'), p('}')]) }, !,
+    attribute_argument(Close).
+attribute_argument(_) --> parse_error('unbalanced attribute argument').
+
+attribute_delimiter('(', ')').
+attribute_delimiter('[', ']').
+attribute_delimiter('{', '}').
+
+% attrs//: GNU and C23 attributes, ignored.
 attrs -->
     gnu_attr(_), !,
     attrs.
+attrs --> c23_attr, !, attrs.
 attrs --> [].
 
 struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
@@ -305,6 +357,7 @@ struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
 attr_list([A|As]) -->
     gnu_attr(A), !,
     attr_list(As).
+attr_list(As) --> c23_attr, !, attr_list(As).
 attr_list([]) --> [].
 
 % members(+Env, -Members)//: the member declarations of a struct or
@@ -418,6 +471,7 @@ qualifiers(Quals) -->
 qualifiers(Quals) -->
     gnu_attr(_), !,
     qualifiers(Quals).
+qualifiers(Quals) --> c23_attr, !, qualifiers(Quals).
 qualifiers([]) --> [].
 
 % abstract_declarator(+Env, -Type, +Base)//: like declarator//4 without
@@ -437,6 +491,9 @@ abstract_declarator(Env, Type, Base) --> suffixes(Env, Base, Type).
 
 % suffixes(+Env, +Base, -Type)//: array and function suffixes, applied
 % inside out: Type is Base with them.
+suffixes(Env, Base, Type) -->
+    c23_attr, !,
+    suffixes(Env, Base, Type).
 suffixes(Env, Base, Type) -->
     punct('['), !,
     array_size(Env, Size),
@@ -580,10 +637,11 @@ block_item(Env, Env, Stmt) --> statement(Env, Stmt).
 % starts_decl(+Env)//: lookahead only: the next tokens begin a
 % declaration, not a label.
 starts_decl(Env, S, S) :-
-    \+ phrase(label_start, S, _),
-    (   phrase(starts_type(Env), S, _)
+    phrase(c23_attrs, S, Rest),
+    \+ phrase(label_start, Rest, _),
+    (   phrase(starts_type(Env), Rest, _)
     ->  true
-    ;   S = [tok(kw(K), _)|_],
+    ;   Rest = [tok(kw(K), _)|_],
         memberchk(K, [typedef, extern, static, auto, register, thread_local,
                       inline, noreturn])
     ).
@@ -611,6 +669,7 @@ local_decl(Env0, Env, decl(Loc, Specs1, Inits)) -->
 % the first parse; if there is none, it is a syntax error.
 statement(Env, at(Loc, S)) -->
     loc(Loc),
+    c23_attrs,
     statement_body(Env, S), !.
 statement(_, _) --> parse_error('expected a statement').
 
