@@ -333,6 +333,15 @@ Compile something recognizable, such as a small ported program, with
 nanofil running on Fil-C-built Trealla. Package it as
 `nix build .#nanofil` with `checks.x86_64-linux.nanofil`.
 
+### M9. Floating point
+
+`float` and `double` through the IR, interpreter, both backends and the
+C frontend, so Lua 5.4 builds with nanofil alone. The IR contract and
+work order are in [docs/float.md](docs/float.md).
+
+**Acceptance:** a `checks.x86_64-linux.nanofil-lua` check whose Lua
+matches a filcc-built Lua, like the hello and zlib checks.
+
 ## Still open
 
 - Symbolic addresses in the interpreter, for translation validation of
