@@ -42,7 +42,7 @@
                     decl_types/5, expression_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
-                    overflow_builtin/3]).
+                    overflow_builtin/3, binary_operands/6]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -1101,15 +1101,44 @@ value_type(array(T, _), ptr(T)) :- !.
 value_type(func(R, P, V), ptr(func(R, P, V))) :- !.
 value_type(T, T).
 
-expression_binary_type(Op, _, _, int) :-
-    memberchk(Op, [eq, ne, lt, le, gt, ge, land, lor]), !.
-expression_binary_type(Op, A, _, T) :- memberchk(Op, [shl, shr]), !,
-    integer_promotion(A, T).
-expression_binary_type(sub, ptr(_), ptr(_), long) :- !.
-expression_binary_type(Op, ptr(T), B, ptr(T)) :-
-    memberchk(Op, [add, sub]), int_type(B), !.
-expression_binary_type(add, A, ptr(T), ptr(T)) :- int_type(A), !.
-expression_binary_type(_, A, B, T) :- usual_arith_conversion(A, B, T).
+expression_binary_type(Op, _, _, int) :- memberchk(Op, [land, lor]), !.
+expression_binary_type(Op, A, B, T) :- binary_operands(Op, A, B, _, _, T).
+
+/* binary_operands(+Op, +TA, +TB, -CA, -CB, -T): binary operator Op
+   (C11 6.5.5-6.5.9, 6.5.10-6.5.12; not && or ||) applied to operands
+   of value types TA and TB converts them to CA and CB, and has type T.
+   Fails if Op does not apply to such operands.
+   - A shift promotes each operand on its own and has the left one's
+     type.
+   - Other arithmetic operands take their usual arithmetic type, the
+     result's type unless Op compares; %, &, ^ and | need integers.
+   - A pointer and an integer add (or the pointer subtracts the
+     integer) as the pointer and a long count of elements; two
+     pointers subtract to a long count.
+   - A comparison with a pointer compares both operands as addresses,
+     ulong. */
+binary_operands(Op, TA, TB, CA, CB, CA) :- memberchk(Op, [shl, shr]), !,
+    int_type(TA), int_type(TB),
+    integer_promotion(TA, CA), integer_promotion(TB, CB).
+binary_operands(Op, TA, TB, C, C, T) :-
+    arithmetic_operator(Op, Domain),
+    call(Domain, TA), call(Domain, TB), !,
+    usual_arith_conversion(TA, TB, C),
+    ( comparison(Op) -> T = int ; T = C ).
+binary_operands(Op, ptr(P), TB, ptr(P), long, ptr(P)) :-
+    memberchk(Op, [add, sub]), int_type(TB), !.
+binary_operands(add, TA, ptr(P), long, ptr(P), ptr(P)) :- int_type(TA), !.
+binary_operands(sub, ptr(P), ptr(_), ptr(P), ptr(P), long) :- !.
+binary_operands(Op, TA, TB, ulong, ulong, int) :-
+    comparison(Op), ( TA = ptr(_) ; TB = ptr(_) ), !.
+
+% arithmetic_operator(?Op, ?Domain): binary Op applies to two operands
+% of Domain types, arithmetic or integer.
+arithmetic_operator(Op, arithmetic_type) :- memberchk(Op, [add, sub, mul, div]).
+arithmetic_operator(Op, arithmetic_type) :- comparison(Op).
+arithmetic_operator(Op, int_type) :- memberchk(Op, [mod, and, or, xor]).
+
+comparison(Op) :- memberchk(Op, [eq, ne, lt, le, gt, ge]).
 
 % The controlling expression undergoes lvalue/array/function conversion,
 % not integer promotion. Only the selected expression is evaluated, and

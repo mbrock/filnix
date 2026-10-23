@@ -1729,68 +1729,38 @@ arith_operand(Value0, Ctx, Type, V) -->
     convert(Value0, Type, v(V, _)).
 
 % binary(+Op, +VA, +VB, +Ctx, -R)//: R is binary operator Op applied to
-% the values VA and VB, integers or pointers.
+% the values VA and VB, converted as binary_operands/6 says.
 binary(Op, VA, VB, Ctx, R) -->
-    { VA = v(_, TA), VB = v(_, TB), ctx_loc(Ctx, Loc) },
-    (   { int_type(TA), int_type(TB) } -> int_binary(Op, VA, VB, R)
-    ;   { arithmetic_type(TA), arithmetic_type(TB),
-          ( memberchk(Op, [add, sub, mul, div]) ; cmp_op(Op, _, _) ) }
-    ->  float_binary(Op, VA, VB, R)
-    ;   { TA = ptr(PA), int_type(TB), memberchk(Op, [add, sub]) }
-    ->  ptr_offset(Op, VA, PA, VB, Ctx, R)
-    ;   { int_type(TA), TB = ptr(PB), Op == add }
-    ->  ptr_offset(add, VB, PB, VA, Ctx, R)
-    ;   { TA = ptr(PA), TB = ptr(_), Op == sub }
-    ->  ptr_diff(VA, VB, PA, Ctx, R)
-    ;   { cmp_op(Op, _, _), ( TA = ptr(_) ; TB = ptr(_) ) }
-    ->  ptr_compare(Op, VA, VB, R)
-    ;   { sema_error(Loc, 'invalid operands to ~w: ~w and ~w', [Op, TA, TB]) }
-    ).
+    { VA = v(_, TA), VB = v(_, TB), ctx_loc(Ctx, Loc),
+      (   binary_operands(Op, TA, TB, CA, CB, T) -> true
+      ;   sema_error(Loc, 'invalid operands to ~w: ~w and ~w', [Op, TA, TB])
+      ) },
+    binary_value(Op, CA, CB, T, VA, VB, Ctx, R).
 
-% Direct ordered comparisons are essential: !(a < b) is not a >= b
-% when either operand is NaN. Truth uses ne, which includes unordered.
-float_binary(Op, VA, VB, v(V, ResultType)) -->
-    { VA = v(_, TA), VB = v(_, TB), usual_arith_conversion(TA, TB, Type),
-      type_class(Type, K),
-      ( cmp_op(Op, _, _) -> IOp = cmp(Op, K), RK = w, ResultType = int
-      ; IOp = Op, RK = K, ResultType = Type ) },
-    convert(VA, Type, v(A, _)), convert(VB, Type, v(B, _)),
-    ins(RK, IOp, [A, B], V).
-
-% int_binary(+Op, +VA, +VB, -R)//: R is Op applied to integers VA and
-% VB. Shifts promote each operand on its own; comparisons and arithmetic
-% convert both to their usual arithmetic type.
-int_binary(Op, VA, VB, v(V, Type)) -->
-    { memberchk(Op, [shl, shr]) },
-    !,
-    { VA = v(_, TA), integer_promotion(TA, Type), type_class(Type, Class),
-      int_info(Type, _, Sign) },
-    convert(VA, Type, v(A, _)),
-    { VB = v(_, TB0), integer_promotion(TB0, TB) },
-    convert(VB, TB, v(B, _)),
-    { Op == shl -> IOp = shl ; Sign == signed -> IOp = sar ; IOp = shr },
-    ins(Class, IOp, [A, B], V).
-int_binary(Op, VA, VB, v(V, int)) -->
-    { cmp_op(Op, SignedCmp, UnsignedCmp) },
-    !,
-    { VA = v(_, TA),
-      VB = v(_, TB),
-      usual_arith_conversion(TA, TB, Type),
-      type_class(Type, Class),
-      int_info(Type, _, Sign) },
-    convert(VA, Type, v(A, _)),
-    convert(VB, Type, v(B, _)),
-    { Sign == signed -> Cmp = SignedCmp ; Cmp = UnsignedCmp },
-    ins(w, cmp(Cmp, Class), [A, B], V).
-int_binary(Op, VA, VB, v(V, Type)) -->
-    { VA = v(_, TA),
-      VB = v(_, TB),
-      usual_arith_conversion(TA, TB, Type),
-      type_class(Type, Class),
-      int_info(Type, _, Sign),
-      arith_op(Op, Sign, IOp) },
-    convert(VA, Type, v(A, _)),
-    convert(VB, Type, v(B, _)),
+% binary_value(+Op, +CA, +CB, +T, +VA, +VB, +Ctx, -R)//: R, of type T,
+% is Op applied to VA converted to CA and VB converted to CB. Pointer
+% arithmetic scales by the element size. Direct ordered comparisons are
+% essential: !(a < b) is not a >= b when either operand is NaN.
+binary_value(Op, ptr(E), long, _, VA, VB, Ctx, R) --> !,
+    ptr_offset(Op, VA, E, VB, Ctx, R).
+binary_value(add, long, ptr(E), _, VA, VB, Ctx, R) --> !,
+    ptr_offset(add, VB, E, VA, Ctx, R).
+binary_value(sub, ptr(E), ptr(_), _, VA, VB, Ctx, R) --> !,
+    ptr_diff(VA, VB, E, Ctx, R).
+binary_value(Op, CA, CB, T, VA, VB, _, v(V, T)) -->
+    convert(VA, CA, v(A, _)),
+    convert(VB, CB, v(B, _)),
+    { type_class(CA, K),
+      ( float_type(CA) -> Sign = signed ; int_info(CA, _, Sign) ),
+      (   cmp_op(Op, SignedCmp, UnsignedCmp)
+      ->  Class = w,
+          (   float_type(CA) -> Cmp = Op
+          ;   Sign == signed -> Cmp = SignedCmp
+          ;   Cmp = UnsignedCmp
+          ),
+          IOp = cmp(Cmp, K)
+      ;   Class = K, arith_op(Op, Sign, IOp)
+      ) },
     ins(Class, IOp, [A, B], V).
 
 % cmp_op(+Op, -SignedCmp, -UnsignedCmp): C comparison Op is IR
@@ -1814,6 +1784,9 @@ arith_op(mod, unsigned, urem).
 arith_op(and, _, and).
 arith_op(or, _, or).
 arith_op(xor, _, xor).
+arith_op(shl, _, shl).
+arith_op(shr, signed, sar).
+arith_op(shr, unsigned, shr).
 
 % ptr_offset(+Op, +VP, +ElemType, +VI, +Ctx, -R)//: R is P + I or
 % P - I, I scaled by the element size.
@@ -1844,14 +1817,6 @@ ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     (   { Size =:= 1 } -> { V = Diff }
     ;   ins(l, div, [Diff, c(Size)], V)
     ).
-
-% ptr_compare(+Op, +VA, +VB, -R)//: R is comparison Op of VA and VB, at
-% least one a pointer, as unsigned addresses.
-ptr_compare(Op, VA, VB, v(V, int)) -->
-    convert(VA, ulong, v(A, _)),
-    convert(VB, ulong, v(B, _)),
-    { cmp_op(Op, _, Cmp) },
-    ins(w, cmp(Cmp, l), [A, B], V).
 
 % logical(+Op, +A, +B, +Ctx, -R)//: R is A && B (land) or A || B (lor),
 % a phi of 0/1 over the short-circuit edges.
