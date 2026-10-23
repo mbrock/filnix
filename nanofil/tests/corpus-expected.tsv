@@ -57,7 +57,7 @@ cproc/compound-literal-static.c	no-main
 cproc/conditional-compound-literal.c	reject
 cproc/conditional-constant.c	pass
 cproc/conditional-omit.c	reject
-cproc/conditional-struct.c	reject
+cproc/conditional-struct.c	pass
 cproc/conditional.c	reject
 cproc/const-array.c	no-main
 cproc/const-expr-cast.c	no-main
@@ -153,7 +153,7 @@ cproc/static-assert-struct.c	no-main
 cproc/string-concat.c	pass
 cproc/string-octal.c	no-main
 cproc/string-u8-type.c	no-main
-cproc/struct-copy.c	reject
+cproc/struct-copy.c	pass
 cproc/struct-flexible-array.c	no-main
 cproc/struct-packed.c	reject
 cproc/struct-passing-bitfield.c	no-main
@@ -398,7 +398,7 @@ c-testsuite/00201.c	pass
 c-testsuite/00202.c	pass
 c-testsuite/00203.c	pass
 c-testsuite/00204.c	reject
-c-testsuite/00205.c	mismatch
+c-testsuite/00205.c	pass
 c-testsuite/00206.c	pass
 c-testsuite/00207.c	reject
 c-testsuite/00208.c	pass

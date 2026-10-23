@@ -57,18 +57,20 @@ the survey is stable, **not** that the compiler implements that feature.
 
 ## Counts
 
-Baseline on the M4c compiler, before the concurrent struct-value work:
+Baseline after M4d (struct values) and the array-length fix. The M4c
+baseline had pass 19 / 198 / 217, reject 22 / 21 / 43 and wrong result
+1 / 1 / 2; `conditional-struct` and `struct-copy` (M4d) and `00205`
+(array length) now pass.
 
 | Source | `.c` files | No main | With main | Pass | Reject | Wrong result | Reference error |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| cproc | 196 | 147 | 49 | 19 | 22 | 1 | 7 |
-| c-testsuite | 220 | 0 | 220 | 198 | 21 | 1 | 0 |
-| **Total** | **416** | **147** | **269** | **217** | **43** | **2** | **7** |
+| cproc | 196 | 147 | 49 | 21 | 20 | 1 | 7 |
+| c-testsuite | 220 | 0 | 220 | 199 | 21 | 0 | 0 |
+| **Total** | **416** | **147** | **269** | **220** | **41** | **1** | **7** |
 
 There were no preprocessing, assembler, nanofil-link, reference-output or
-timeout failures. Of 52 non-passes, 27 are planned exclusions (including
-one VLA wrongly accepted), 2 are struct-value work in progress, 16 are
-other gaps, and 7 cannot be compiled by the reference in its default mode.
+timeout failures. Of 49 non-passes, 27 are planned exclusions (including
+one VLA wrongly accepted), 15 are other gaps, and 7 cannot be compiled by the reference in its default mode.
 Each program appears in exactly one primary-cause group below; secondary
 features may be hidden behind the first error. All IDs below are `.c`
 basenames, under the named source. Every C block is a standalone minimal
@@ -151,23 +153,19 @@ int main(void) { return ({ int x = 0; x; }); }
 
 nanofil: `statement expressions are not supported, at {`.
 
-## In progress elsewhere — 2
+## Fixed since the M4f survey
 
-### Struct values — 2 rejections
+- **Struct values (M4d):** cproc `conditional-struct`, `struct-copy` (were
+  `loading a struct(0) value is not supported yet`). This cproc snapshot
+  has no executable struct-argument/return tests; its `struct-passing*`
+  and `struct-return*` fixtures have no main.
+- **Unsized array length with brace-elided struct initializers:**
+  c-testsuite `00205`. `struct S { int a, b; } s[] = {1, 2, 3, 4};` had 4
+  elements instead of 2; the frontend now counts the entries each element
+  takes, as initialization does. Regression cases are in
+  [tests/c/structs.c](../tests/c/structs.c).
 
-**M4d, not chased here.** cproc: `conditional-struct`, `struct-copy`.
-No executable struct-argument/return tests occur in this cproc snapshot;
-its `struct-passing*`/`struct-return*` fixtures have no main and are
-inventoried as such, not counted as passing ABI tests.
-
-```c
-struct S { int x; };
-int main(void) { struct S a = {1}, b; b = a; return b.x; }
-```
-
-nanofil: `loading a struct(0) value is not supported yet`.
-
-## Other gaps — 16
+## Other gaps — 15
 
 ### Wide literals — 5 rejections
 
@@ -194,20 +192,6 @@ int main(void) { return ((int[]){1})[0]; }
 
 nanofil: `compound literals are not supported yet`. The two file-scope
 address initializers stop at `initializer is not an address constant`.
-
-### Unsized array length with brace-elided struct initializers — 1 wrong result
-
-**Gap:** c-testsuite `00205`, a real J interpreter snippet. Not a struct
-copy/argument/return; it is array-length inference.
-
-```c
-struct S { int a, b; } s[] = {1, 2, 3, 4};
-int main(void) { return sizeof(s) / sizeof(s[0]); }
-```
-
-nanofil exits **4**, filcc exits **2**. The full test infers 63 elements
-instead of 9, emitting 432 extra stdout lines for zero-filled elements;
-both exit 0. This is not a Fil-C panic or a padding/bounds difference.
 
 ### Abstract array parameter declarator — 1 rejection
 
@@ -334,12 +318,7 @@ belong in this milestone.
 
 1. Reject VM casts before lowering; planned unsupported syntax must not
    silently lose side effects.
-2. Fix unsized aggregate-array inference in the frontend's type/lowering
-   workstream. This is the only wrong-result case inside the intended
-   integer/aggregate subset observed here.
-3. Fold in M4d by rerunning the survey and intentionally updating its
-   expected list; do not delete those entries or weaken pass detection.
-4. Decide scope for wide literals, compound literals, `_Generic` and GNU
+2. Decide scope for wide literals, compound literals, `_Generic` and GNU
    declarator/extension gaps. No parser/lexer changes were made in M4f.
 
 ## Harness validation

@@ -52,3 +52,23 @@ long arr(long x) { struct two ts[3] = { { 1, 2 }, { 3, 4 }, { 5, 6 } }; ts[1] = 
 // run: $elems 7
 // run: $up 1
 // run: $up 16
+
+/* Array lengths from brace-elided initializers, and a designator after an
+   elided element (both wrong before: 4 structs instead of 2, and a
+   "bad array designator"). */
+struct S { int a, b; };
+struct S gs[] = { 1, 2, 3, 4 };
+struct N { struct S s; char c[3]; };
+struct N gn[] = { 1, 2, "ab", { { 3, 4 }, "cd" }, 5, [4] = 9 };
+struct N gd[] = { 1, [2] = 9 };
+int ga[][2] = { 1, 2, 3, 4, 5 };
+long lens(long x) {
+    struct S ls[] = { 1, 2, 3, 4, 5 };
+    struct S a = { 7, 8 };
+    struct S ws[] = { a, a, 1 };
+    return sizeof(gs) / sizeof(gs[0]) * 10000 + sizeof(gn) / sizeof(gn[0]) * 1000
+         + sizeof(ga) / sizeof(ga[0]) * 100 + sizeof(ls) / sizeof(ls[0]) * 10 + sizeof(ws) / sizeof(ws[0]) + gn[1].c[1] * 0 + x * 0;
+}
+long vals(long x) { return gs[1].a * 1000 + gn[1].s.b * 100 + gn[1].c[0] + ga[2][0] * 10000 + sizeof(gd) / sizeof(gd[0]) * 100000 + gd[2].s.a * 1000000 + x * 0; }
+// run: $lens 0
+// run: $vals 0

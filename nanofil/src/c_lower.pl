@@ -97,7 +97,7 @@ global_decl(L, d(N, T, St, Asm, I), E0, E) :-
     ->  ( St == static -> Lk = local ; Lk = export ),
         (   I \== none -> sema_error(L, 'function ~w has an initializer', [N]) ; true ),
         put_ord(N, fn(T, Sym, Lk), E0, E)
-    ;   complete_array(T, I, T1, L),
+    ;   complete_array(T, I, T1, L, E0, none),
         put_ord(N, gvar(T1, Sym, St, I), E0, E1),
         (   St == extern, I == none -> E = E1
         ;   ( St == static -> Lk = local ; Lk = export ),
@@ -374,12 +374,11 @@ local_decls([d(N, T, St, Asm, I)|Ds], X) --> { arg(5, X, L) },
     ;   { St == static }
     ->  env(E0),
         { arg(1, X, Fn), E0 = e(_, _, _, K), format(atom(Sym), '~w.~w.~w', [Fn, N, K]),
-          E0 = e(O, Tg, D, K), K1 is K + 1, complete_array(T, I, T1, L),
+          E0 = e(O, Tg, D, K), K1 is K + 1, complete_array(T, I, T1, L, E0, none),
           put_ord(N, gvar(T1, Sym, static, I), e(O, Tg, D, K1), E1),
           define_global(Sym, T1, local, I, L, E1, E) },
         set_env(E)
-    ;   { complete_array(T, I, T1, L) },
-        env(E), { bad_check(T1, E, L, N) },
+    ;   env(E), whole_test(X, W), { complete_array(T, I, T1, L, E, W), bad_check(T1, E, L, N) },
         local_slot(T1, A),
         bind(N, var(A, T1)),
         (   { I == none } -> [] ; init(A, T1, I, X) )
@@ -390,20 +389,48 @@ bad_check(T, E, L, N) :-
     catch(( size_align(T, E, _, _) -> true ; true ), bad(W),
           sema_error(L, '~w has a type nanofil does not support (~w)', [N, W])).
 
-% An array of unknown size takes its size from the initializer.
-complete_array(array(ET, none), none, array(ET, none), _) :- !.
-complete_array(array(ET, none), I, array(ET, N), L) :- !,
+/* An array of unknown size takes its size from the initializer, counting
+   the entries each element takes with brace elision: {1, 2, 3, 4} is two
+   elements of a struct {int a, b}. W is whole(X, S) when an entry may be
+   a struct expression that initializes a struct element whole (locals),
+   none otherwise. */
+complete_array(array(ET, none), none, array(ET, none), _, _, _) :- !.
+complete_array(array(ET, none), I, array(ET, N), L, E, W) :- !,
     (   I = str(Bs), length(Bs, N0) -> N is N0 + 1
-    ;   I = list(Es) -> list_extent(Es, 0, 0, N)
+    ;   I = list(Es) -> list_extent(Es, ET, E, W, 0, 0, N)
     ;   sema_error(L, 'array of unknown size', [])
     ).
-complete_array(T, _, T, _).
+complete_array(T, _, T, _, _, _).
 
-list_extent([], _, M, M).
-list_extent([entry(Ds, _)|Es], I0, M0, M) :-
-    ( Ds = [index(num(V, _))|_] -> I = V ; I = I0 ),
+list_extent([], _, _, _, _, M, M).
+list_extent([entry(Ds, V)|Es0], ET, E, W, I0, M0, M) :-
+    ( Ds = [index(num(I, _))|_] -> true ; I = I0 ),
+    (   Ds = [_, _|_] -> Es = Es0
+    ;   consume(ET, E, W, [entry([], V)|Es0], Es)
+    ),
     I1 is I + 1, M1 is max(M0, I1),
-    list_extent(Es, I1, M1, M).
+    list_extent(Es, ET, E, W, I1, M1, M).
+
+% consume(T, E, W, Es0, Es): the entries a slot of type T takes, as
+% init_one does: one if it initializes T by itself, else one per slot of
+% T recursively, stopping at a designator or the end.
+consume(T, E, W, [entry(_, V)|Es], Es) :- elided_one(T, V, E, W), !.
+consume(T, E, W, Es0, Es) :- aggregate_slots(T, E, Slots), consume_slots(Slots, E, W, Es0, Es).
+
+consume_slots([], _, _, Es, Es).
+consume_slots([slot(_, _, T)|Ss], E, W, Es0, Es) :-
+    (   Es0 = [entry([], _)|_] -> consume(T, E, W, Es0, Es1), consume_slots(Ss, E, W, Es1, Es)
+    ;   Es = Es0
+    ).
+
+% An entry that initializes a slot of type T by itself.
+elided_one(T, V, E, W) :-
+    (   V = list(_) ; \+ aggregate(T) ; T = array(CT, _), V = str(_), char_type_(CT)
+    ;   W = whole(X, S), su(T), struct_expr(V, X, T, S, _)
+    ),
+    _ = E, !.
+
+whole_test(X, whole(X, S), S, S).
 
 % The switch dispatch: one comparison per case, then the default.
 dispatch([], _, _, LE) --> term(jmp(LE)).
@@ -513,8 +540,14 @@ init_one(P, T, V, Es0, Es, X) -->
     ->  init(P, T, V, X), { Es = Es0 }
     ;   { su(T) }, struct_expr(V, X, T)
     ->  init(P, T, V, X), { Es = Es0 }
-    ;   init_agg(P, T, [entry([], V)|Es0], Es, X)
+    ;   { undesignated(Es0, Pre, Post) },
+        init_agg(P, T, [entry([], V)|Pre], Rest, X), { append(Rest, Post, Es) }
     ).
+
+% An elided aggregate takes entries only up to the next designator, which
+% belongs to the enclosing list.
+undesignated(Es, Pre, Post) :- append(Pre, Post, Es), \+ member(entry([_|_], _), Pre),
+    ( Post = [] ; Post = [entry([_|_], _)|_] ), !.
 
 designated(index(IE), Slots, I, E, X) :-
     arg(5, X, L),
@@ -1070,7 +1103,8 @@ sslots(Slots, I, O, Es0, Es, L, S0, S) :-
 sone(O, T, V, Es0, Es, L, S0, S) :-
     (   ( V = list(_) ; \+ aggregate(T) ; T = array(ET, _), V = str(_), char_type_(ET) )
     ->  sinit(O, T, V, L, S0, S), Es = Es0
-    ;   sagg(O, T, [entry([], V)|Es0], Es, L, S0, S)
+    ;   undesignated(Es0, Pre, Post),
+        sagg(O, T, [entry([], V)|Pre], Rest, L, S0, S), append(Rest, Post, Es)
     ).
 
 /* aconst(+X, +Loc, +E0, -E, -R): an address constant, sym(Symbol, Offset,
