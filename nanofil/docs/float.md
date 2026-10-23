@@ -21,6 +21,13 @@ still difftest against real qbe.
   qbe reads back as the same bits. Constants that QBE text cannot spell
   (NaNs, infinities, -0) are printed some other exact way; the IR
   workstream chooses and documents it.
+  **Chosen spelling:** unsigned decimal integer bit patterns for NaNs,
+  infinities and negative zero, e.g. `2147483648` at s and
+  `9223372036854775808` at d for -0. QBE accepts integer constants as
+  raw bits at float classes, including in `s`/`d` data items. This keeps
+  every NaN payload, sign and signaling bit. Finite values print as
+  `s_`/`d_` followed by an exact terminating decimal in exponent notation
+  (not necessarily shortest). The parser also accepts C hex-floats.
 - **Arithmetic:** `add sub mul div neg copy` at s and d. The integer-only
   ops (`rem urem udiv and or xor sar shr shl`) are invalid at s and d.
 - **Comparisons:** `cmp(Cond, K)` with K in s, d and Cond in
@@ -40,6 +47,31 @@ still difftest against real qbe.
   pointer and carries no capability.
 - `op_kind/2` gets kinds for the new ops. The IR workstream picks them
   so the validator and backends can dispatch with one clause per case.
+  **Chosen kinds:** `float_convert` for `ext(s)` and `truncd`,
+  `float_to_int` for `stosi stoui dtosi dtoui`, `int_to_float` for
+  `swtof uwtof sltof ultof`, and `cast` for `cast`. Existing arithmetic
+  kinds stay unchanged: `additive`, `alu` (mul/div), `neg`, `copy` and
+  `cmp`; dispatch on s/d before their integer implementations.
+
+### Integer-only IEEE helper API
+
+`src/ieee.pl` exports the following concrete relations. Bits are unsigned
+integers; K, From and To are s/d. No host float enters these relations.
+
+- `ieee_parse(K, Chars, Bits)`: signed decimal or C hex-float, correctly
+  rounded directly to K. Strip any C type suffix before calling.
+- `ieee_decimal(K, Bits, Chars)`: exact decimal for finite values
+  (including signed zero); fails for NaN/inf.
+- `ieee_binary(K, Op, A, B, Result)`: add/sub/mul/div, SSE2 NaN rules.
+- `ieee_neg(K, A, Result)`: flip the sign bit, including for NaNs.
+- `ieee_compare(K, Cond, A, B, Result)`: the float conditions above,
+  Result 0/1, unordered NaNs.
+- `ieee_convert(From, To, Bits, Result)`: s/d precision conversion.
+- `ieee_from_int(K, Integer, Bits)`: mathematically signed or unsigned
+  integer to float, RNE; interpret two's-complement before calling.
+- `ieee_to_int(K, Bits, Integer)`: truncate toward zero; fails for
+  NaN/inf. The caller must check the destination integer's range and
+  convert negative results to two's-complement bits as appropriate.
 
 ## Semantics
 

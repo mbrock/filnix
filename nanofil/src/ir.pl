@@ -6,16 +6,16 @@
     func(Name, Linkage, Ret, Params, Blocks)
       Name     atom, the symbol without '$'
       Linkage  export | local
-      Ret      w | l | p | void | tuple([K1, K2])
+      Ret      w | l | p | s | d | void | tuple([K1, K2])
                tuple: a two-word return (a struct of 9 to 16 bytes),
                each Ki in l, p; filc only
-      Params   [par(K, t(N))]            K in w, l, p
+      Params   [par(K, t(N))]            K in w, l, p, s, d
       Blocks   [blk(Label, Phis, Insts, Jump)], entry block first
 
     phi(t(D), K, [Pred-Value])
     Insts:
       ins(t(D), K, Op, Args)              value-producing instruction
-      store(Width, Value, Addr)           Width in b, h, w, l, p
+      store(Width, Value, Addr)           Width in b, h, w, l, p, s, d
       call(Res, Callee, [arg(K, Value)])  Res = to(t(D), K) | void
                                           | tuple([to(t(D1), K1), to(t(D2), K2)]);
                                           Callee glo(F), or (filc) a p temp
@@ -23,9 +23,14 @@
           rets returns a tuple
 
     Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
-        cmp(Cond, K)   Cond in eq ne sle slt sge sgt ule ult uge ugt, K w|l
-        ext(T)         T in sw uw sh uh sb ub
-        load(T)        T in l sw uw sh uh sb ub p
+        cmp(Cond, K)   K w|l: eq ne sle slt sge sgt ule ult uge ugt;
+                       K s|d: eq ne le lt ge gt o uo, result w
+        ext(T)         T in sw uw sh uh sb ub s (s -> d)
+        truncd         d -> s
+        stosi stoui dtosi dtoui     s/d -> w/l
+        swtof uwtof sltof ultof     w/l -> s/d
+        cast           w <-> s, l <-> d, bitwise
+        load(T)        T in l sw uw sh uh sb ub p s d
         alloc(Align)   Align in 4, 8, 16
         (op_kind/2 and op_text//1 state these sets once)
         ptoi itop
@@ -35,6 +40,7 @@
                       advancing its cursor (reads and writes memory)
 
     Values: t(Name) | c(Integer) | glo(Name)
+      At s/d, c(Integer) is an unsigned IEEE bit pattern (docs/float.md).
 
     data(Name, Linkage, Align, Items)
       Linkage  export | local | ro(export) | ro(local), ro for read-only
@@ -75,6 +81,8 @@
 
 class_bits(w, 32).
 class_bits(l, 64).
+class_bits(s, 32).
+class_bits(d, 64).
 
 %! modulus(+K, -Mod) is semidet.
 %
@@ -84,6 +92,8 @@ class_bits(l, 64).
 modulus(w, 4294967296).
 modulus(l, 18446744073709551616).
 modulus(p, 18446744073709551616).
+modulus(s, 4294967296).
+modulus(d, 18446744073709551616).
 
 %! half_modulus(+K, -Half) is semidet.
 %
@@ -102,6 +112,8 @@ width_bytes(h, 2).
 width_bytes(w, 4).
 width_bytes(l, 8).
 width_bytes(p, 8).
+width_bytes(s, 4).
+width_bytes(d, 8).
 
 %! addr_class(+Mode, ?K) is semidet.
 %
@@ -132,6 +144,10 @@ kind_arity(va_arg, 1).
 kind_arity(ext, 1).
 kind_arity(load, 1).
 kind_arity(alloc, 1).
+kind_arity(float_convert, 1).
+kind_arity(float_to_int, 1).
+kind_arity(int_to_float, 1).
+kind_arity(cast, 1).
 
 %! op_text(?Op)// is nondet.
 %
@@ -143,7 +159,7 @@ kind_arity(alloc, 1).
 op_text(Op) --> { op_kind(Op, _) }, spelling(Op).
 
 spelling(cmp(Cond, K)) -->
-    "c", set_name(cmp_cond, Cond), set_name(cmp_class, K).
+    "c", { comparison(Cond, K) }, chars_of(Cond), chars_of(K).
 spelling(ext(T)) --> "ext", set_name(ext_type, T).
 spelling(load(T)) --> "load", set_name(load_type, T).
 spelling(alloc(Align)) --> "alloc", set_name(alloc_align, Align).
@@ -160,13 +176,17 @@ cmp_cond(eq).  cmp_cond(ne).
 cmp_cond(sle). cmp_cond(slt). cmp_cond(sge). cmp_cond(sgt).
 cmp_cond(ule). cmp_cond(ult). cmp_cond(uge). cmp_cond(ugt).
 
-cmp_class(w).
-cmp_class(l).
+comparison(Cond, K) :- int_class(K), cmp_cond(Cond).
+comparison(Cond, K) :- float_class(K), float_cond(Cond).
+float_cond(eq). float_cond(ne). float_cond(le). float_cond(lt).
+float_cond(ge). float_cond(gt). float_cond(o). float_cond(uo).
 
 ext_type(sw). ext_type(uw). ext_type(sh). ext_type(uh).
 ext_type(sb). ext_type(ub).
+ext_type(s).
 
 load_type(l). load_type(p).
+load_type(d).
 load_type(T) :- ext_type(T).
 
 alloc_align(4).
@@ -204,8 +224,19 @@ op_kind(ptoi, ptoi).
 op_kind(itop, itop).
 op_kind(va_args, va_args).
 op_kind(va_arg, va_arg).
+op_kind(ext(s), float_convert).
+op_kind(truncd, float_convert).
+op_kind(stosi, float_to_int).
+op_kind(stoui, float_to_int).
+op_kind(dtosi, float_to_int).
+op_kind(dtoui, float_to_int).
+op_kind(swtof, int_to_float).
+op_kind(uwtof, int_to_float).
+op_kind(sltof, int_to_float).
+op_kind(ultof, int_to_float).
+op_kind(cast, cast).
 op_kind(cmp(_, _), cmp).
-op_kind(ext(_), ext).
+op_kind(ext(T), ext) :- member(T, [sw, uw, sh, uh, sb, ub]).
 op_kind(load(_), load).
 op_kind(alloc(_), alloc).
 
@@ -293,6 +324,8 @@ valid_module(M) :-
 % valid_item(+M, +Mode, +Item): Item, an item of M, is well formed.
 valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
+    ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
+    ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
     (   Ret = tuple(Ks),
         \+ ( Ks = [_, _], forall(member(K, Ks), memberchk(K, [l, p])) )
     ->  fn_error(Name,
@@ -324,6 +357,9 @@ valid_item(_, Mode, data(Name, _, Align, Items)) :-
     (   memberchk(Align, [1, 2, 4, 8, 16]) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
     ),
+    forall((member(item(K, V), Items), float_class(K)),
+           ( V = c(N), integer(N), modulus(K, Mod), N >= 0, N < Mod
+           -> true ; fn_error(Name, 'invalid float data ~w', [V]) )),
     (   Mode == plain, memberchk(item(p, _), Items)
     ->  fn_error(Name, 'pointer data items need a Fil-C module', [])
     ;   Mode == filc, memberchk(item(l, sym(Sym, _)), Items)
@@ -348,6 +384,8 @@ temp_defs(Params, Blocks, Defs) :-
 
 % Defs is sorted, so two classes for one temporary are adjacent.
 check_temp_classes(Fn, Defs) :-
+    forall(member(_-K, Defs),
+           ( any_class(K) -> true ; fn_error(Fn, 'invalid class ~w', [K]) )),
     (   append(_, [N-K1, N-K2|_], Defs), K1 \== K2
     ->  fn_error(Fn, 'temporary %~w has classes ~w and ~w', [N, K1, K2])
     ;   true
@@ -461,6 +499,8 @@ store_value_class(h, w).
 store_value_class(w, w).
 store_value_class(l, l).
 store_value_class(p, p).
+store_value_class(s, s).
+store_value_class(d, d).
 
 % call_result_ok(+Fn, +Callee, +Res, +CalleeRet): the call site reads the
 % result the way the callee returns it.
@@ -483,12 +523,16 @@ to_result_ok(tuple(_), K, Fn, Callee) :-
 to_result_ok(w, K, Fn, Callee) :- class_result_ok(w, K, Fn, Callee).
 to_result_ok(l, K, Fn, Callee) :- class_result_ok(l, K, Fn, Callee).
 to_result_ok(p, K, Fn, Callee) :- class_result_ok(p, K, Fn, Callee).
+to_result_ok(s, K, Fn, Callee) :- class_result_ok(s, K, Fn, Callee).
+to_result_ok(d, K, Fn, Callee) :- class_result_ok(d, K, Fn, Callee).
 
 % class_result_ok(+Ret, +K, +Fn, +Callee): as to_result_ok/4, for a
 % result of class Ret. A long may be read as a word, nothing else
 % changes class.
 class_result_ok(Ret, K, Fn, Callee) :-
-    (   K == l, Ret == w
+    (   (float_class(Ret) ; float_class(K)), Ret \== K
+    ->  fn_error(Fn, 'reads the ~w result of $~w as ~w', [Ret, Callee, K])
+    ;   K == l, Ret == w
     ->  fn_error(Fn, 'reads the w result of $~w as l', [Callee])
     ;   ( K == p, Ret \== p ; K \== p, Ret == p )
     ->  fn_error(Fn, 'reads the ~w result of $~w as ~w', [Ret, Callee, K])
@@ -525,6 +569,8 @@ ret_value_ok(tuple(_), ctx(_, Fn, _, _, _, _, _), _) :-
 ret_value_ok(w, Ctx, V) :- valid_use(Ctx, w, V).
 ret_value_ok(l, Ctx, V) :- valid_use(Ctx, l, V).
 ret_value_ok(p, Ctx, V) :- valid_use(Ctx, p, V).
+ret_value_ok(s, Ctx, V) :- valid_use(Ctx, s, V).
+ret_value_ok(d, Ctx, V) :- valid_use(Ctx, d, V).
 
 % ret_void_ok(+Ret, +Fn): a function that returns Ret may return
 % nothing.
@@ -533,6 +579,8 @@ ret_void_ok(tuple(_), Fn) :- fn_error(Fn, 'ret without a value', []).
 ret_void_ok(w, Fn) :- fn_error(Fn, 'ret without a value', []).
 ret_void_ok(l, Fn) :- fn_error(Fn, 'ret without a value', []).
 ret_void_ok(p, Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(s, Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(d, Fn) :- fn_error(Fn, 'ret without a value', []).
 
 label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
     (   get_assoc(L, LabelSet, _) -> true
@@ -541,13 +589,18 @@ label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
 
 % valid_use(+Ctx, +K, +V): V may be read at class K. Arguments are in the
 % order maplist needs; valid_use_/3 indexes on the value.
-valid_use(Ctx, K, V) :- valid_use_(V, Ctx, K).
+valid_use(Ctx, K, V) :-
+    Ctx = ctx(_, Fn, _, _, _, _, _),
+    ( any_class(K) -> true ; fn_error(Fn, 'invalid use class ~w', [K]) ),
+    valid_use_(V, Ctx, K).
 
 % A p temporary is used only at p and vice versa; ptoi and itop are the
 % conversions. An integer constant at p is a pointer with no capability.
 valid_use_(t(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
     (   get_assoc(N, TempClasses, K0)
-    ->  (   K == l, K0 == w
+    ->  (   (float_class(K) ; float_class(K0)), K \== K0
+        ->  fn_error(Fn, '%~w has class ~w but is used as ~w', [N, K0, K])
+        ;   K == l, K0 == w
         ->  fn_error(Fn, '%~w has class w but is used as l', [N])
         ;   K0 == p, K \== p
         ->  fn_error(Fn, '%~w has class p but is used as ~w (use ptoi)',
@@ -559,7 +612,11 @@ valid_use_(t(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
         )
     ;   fn_error(Fn, 'undefined temporary %~w', [N])
     ).
-valid_use_(c(N), _, _) :- integer(N).
+valid_use_(c(N), ctx(_, Fn, _, _, _, _, _), K) :-
+    integer(N),
+    ( float_class(K), modulus(K, M), (N < 0 ; N >= M)
+    -> fn_error(Fn, 'float bits out of range: ~w', [N])
+    ; true ).
 valid_use_(glo(G), Ctx, K) :-
     Ctx = ctx(_, _, _, _, _, _, Mode),
     symbol_use_ok(Mode, G, Ctx, K).
@@ -589,15 +646,22 @@ op_result_ok(Mode, Op, K) :-
 % kind_result_ok(+Kind, +Op, +Mode, +K): as op_result_ok/3, for Op of
 % Kind.
 kind_result_ok(additive, _, _, K) :- any_class(K).
-kind_result_ok(alu, _, _, K) :- int_class(K).
+kind_result_ok(alu, Op, _, K) :-
+    ( int_class(K) ; memberchk(Op, [mul, div]), float_class(K) ).
 kind_result_ok(shift, _, _, K) :- int_class(K).
-kind_result_ok(neg, _, _, K) :- int_class(K).
+kind_result_ok(neg, _, _, K) :- numeric_class(K).
 kind_result_ok(copy, _, _, K) :- any_class(K).
 kind_result_ok(ptoi, _, filc, l).
 kind_result_ok(itop, _, filc, p).
 kind_result_ok(va_args, _, filc, p).
 kind_result_ok(va_arg, _, filc, K) :- any_class(K).
-kind_result_ok(cmp, _, _, K) :- int_class(K).
+kind_result_ok(cmp, cmp(C, CK), _, K) :-
+    comparison(C, CK), (float_class(CK) -> K = w ; int_class(K)).
+kind_result_ok(float_convert, ext(s), _, d).
+kind_result_ok(float_convert, truncd, _, s).
+kind_result_ok(float_to_int, _, _, K) :- int_class(K).
+kind_result_ok(int_to_float, _, _, K) :- float_class(K).
+kind_result_ok(cast, _, _, K) :- numeric_class(K).
 kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
@@ -615,6 +679,8 @@ ext_result_ok(ub, K) :- int_class(K).
 % module of Mode.
 load_result_ok(l, _, l).
 load_result_ok(p, filc, p).
+load_result_ok(s, _, s).
+load_result_ok(d, _, d).
 load_result_ok(sw, _, K) :- int_class(K).
 load_result_ok(uw, _, K) :- int_class(K).
 load_result_ok(sh, _, K) :- int_class(K).
@@ -625,9 +691,16 @@ load_result_ok(ub, _, K) :- int_class(K).
 int_class(w).
 int_class(l).
 
+float_class(s).
+float_class(d).
+numeric_class(K) :- int_class(K).
+numeric_class(K) :- float_class(K).
+
 any_class(w).
 any_class(l).
 any_class(p).
+any_class(s).
+any_class(d).
 
 %! op_arg_classes(+Op, +K, +Mode, ?Classes) is semidet.
 %
@@ -652,6 +725,13 @@ kind_arg_classes(itop, _, _, _, [l]).
 kind_arg_classes(va_args, _, p, filc, [l]).
 kind_arg_classes(va_arg, _, _, filc, [p]).
 kind_arg_classes(cmp, cmp(_, CK), _, _, [CK, CK]).
+kind_arg_classes(float_convert, ext(s), _, _, [s]).
+kind_arg_classes(float_convert, truncd, _, _, [d]).
+kind_arg_classes(float_to_int, Op, _, _, [K]) :-
+    ( memberchk(Op, [stosi, stoui]) -> K = s ; K = d ).
+kind_arg_classes(int_to_float, Op, _, _, [K]) :-
+    ( memberchk(Op, [swtof, uwtof]) -> K = w ; K = l ).
+kind_arg_classes(cast, _, K, _, [From]) :- cast_classes(K, From).
 kind_arg_classes(ext, _, _, _, [w]).
 kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(alloc, _, _, _, [l]).
@@ -661,6 +741,13 @@ kind_arg_classes(alloc, _, _, _, [l]).
 additive_arg_classes(w, [w, w]).
 additive_arg_classes(l, [l, l]).
 additive_arg_classes(p, [p, l]).
+additive_arg_classes(s, [s, s]).
+additive_arg_classes(d, [d, d]).
+
+cast_classes(w, s).
+cast_classes(s, w).
+cast_classes(l, d).
+cast_classes(d, l).
 
 % fn_error(+Fn, +Fmt, +Args): throw nanofil_error with the message
 % Fmt/Args, attributed to the function Fn.

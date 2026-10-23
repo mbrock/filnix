@@ -19,6 +19,7 @@
 :- use_module(library(pio)).
 :- use_module(library(charsio)).
 :- use_module(ir, [op_text//1]).
+:- use_module(ieee, [ieee_parse/3]).
 
 %! parse_qbe_file(+File, -Module) is det.
 %
@@ -121,6 +122,10 @@ token(str(Cs)) -->
     !,
     str_chars(Cs).
 token(int(N)) -->
+    [K, '_'], { memberchk(K, [s, d]) }, !,
+    float_chars(Cs),
+    { ieee_parse(K, Cs, N) }.
+token(int(N)) -->
     ['-'],
     digit(D),
     !,
@@ -144,6 +149,13 @@ token(Punct) -->
                           '{'-lb, '}'-rb, ('+')-plus]) }.
 
 digit(D) --> [D], { decimal(D) }.
+
+% A float literal ends at punctuation/whitespace, not at its exponent
+% sign or decimal point. ieee_parse validates the complete spelling.
+float_chars([C|Cs]) -->
+    [C], { letter(C) ; decimal(C) ; memberchk(C, ['.', '+', '-']) }, !,
+    float_chars(Cs).
+float_chars([]) --> [].
 
 % digits(-Ds)//: the longest run Ds of decimal digits.
 digits([D|Ds]) -->
@@ -243,7 +255,7 @@ function(Linkage, func(Name, Linkage, Ret, Params, Blocks)) -->
 % No class before the function name means void; the name is pushed back.
 ret_class(K, _) -->
     [tok(id(K), _)],
-    { memberchk(K, [w, l, p]) },
+    { memberchk(K, [w, l, p, s, d]) },
     !.
 ret_class(tuple(Ks), _) -->
     [tok(lb, _)],
@@ -268,7 +280,7 @@ more_params([]) --> [].
 
 param(par(K, t(N))) -->
     [tok(id(K), _)],
-    { memberchk(K, [w, l, p]) },
+    { memberchk(K, [w, l, p, s, d]) },
     !,
     expect(tmp(N), 'parameter').
 param(_) -->
@@ -322,7 +334,7 @@ insts([]) --> [].
 inst(Inst) -->
     [tok(tmp(D), Line), tok(eq, _), tok(id(K), _)],
     !,
-    {   memberchk(K, [w, l, p]) -> true
+    {   memberchk(K, [w, l, p, s, d]) -> true
     ;   fail_at(Line, 'unsupported class ~w', [K])
     },
     def_rhs(t(D), K, Inst, Line),
@@ -381,6 +393,8 @@ store_op(storeh, h).
 store_op(storew, w).
 store_op(storel, l).
 store_op(storep, p).
+store_op(stores, s).
+store_op(stored, d).
 
 % def_rhs(+Dest, +Class, -Inst, +Line)//: what follows "%d =k".
 def_rhs(D, K, call(to(D, K), Callee, Args), _) -->
@@ -419,7 +433,7 @@ more_call_args([]) --> [].
 
 call_arg(arg(K, V)) -->
     [tok(id(K), _)],
-    { memberchk(K, [w, l, p]) },
+    { memberchk(K, [w, l, p, s, d]) },
     !,
     value(V).
 call_arg(_) -->
@@ -577,7 +591,7 @@ data_item([zero(N)]) -->
     expect(int(N), 'size').
 data_item(Items) -->
     [tok(id(W), Line)],
-    { memberchk(W, [b, h, w, l, p]) },
+    { memberchk(W, [b, h, w, l, p, s, d]) },
     !,
     data_values(W, Line, Items).
 

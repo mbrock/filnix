@@ -13,6 +13,7 @@
     the string is unchanged.
 */
 :- use_module('../src/ir').
+:- use_module('../src/ieee').
 :- use_module('../src/qbe_parse').
 :- use_module('../src/qbe_print').
 :- use_module('../src/interp').
@@ -281,21 +282,60 @@ test(rejects_missing_phi_argument) :-
 \tret %v\n\
 }\n",
                   "predecessors are").
-% Float classes are refused with the line they appear on.
-test(rejects_floats_with_line) :-
-    rejected_with("export function d $f() {\n\
-@s\n\
-\tret\n\
-}\n",
-                  "line 1: only w, l and p").
 % Unsupported instructions are refused with their line.
 test(rejects_unknown_instruction) :-
     rejected_with("export function w $f(w %a) {\n\
 @s\n\
-\t%b =w swtof %a\n\
+\t%b =w sqrt %a\n\
 \tret %b\n\
 }\n",
-                  "line 3: unsupported instruction swtof").
+                  "line 3: unsupported instruction sqrt").
+
+% Literals just above a halfway binary32 value must not be rounded
+% through binary64. Hex and decimal must reach the same rounding boundary.
+test(float_literal_rounding) :-
+    ieee_parse(s, "1.000000059604644775390625", 1065353216),
+    ieee_parse(s, "1.000000059604644775390626", 1065353217),
+    ieee_parse(s, "0x1.000001p0", 1065353216),
+    ieee_parse(s, "0x1.000003p0", 1065353218),
+    ieee_parse(d, "0x1p-1074", 1),
+    ieee_parse(d, "0x1p-1075", 0),
+    ieee_parse(d, "-0.0", 9223372036854775808).
+
+test(float_text_round_trip) :-
+    forall(member(K-Bits, [s-0, s-1, s-8388607, s-8388608,
+                           s-1065353217, s-2139095039, s-2147483648,
+                           s-2139095040, s-4290847557,
+                           d-1, d-4503599627370496,
+                           d-9218868437227405311, d-9223372036854775808,
+                           d-18444492273895866373]),
+           ( M = module([func(f, export, K, [],
+                              [blk(start, [], [], ret(c(Bits)))])]),
+             valid_module(M), phrase(module_chars(M), Cs),
+             parse_qbe_chars(Cs, M) )),
+    text_module("data $x = { s s_1.5, d d_0x1.8p0 }\n", _).
+
+test(float_arithmetic_ieee) :-
+    ieee_binary(s, add, 1065353216, 864026624, 1065353216),
+    ieee_binary(s, add, 1065353217, 864026624, 1065353218),
+    ieee_binary(s, div, 0, 0, 4290772992),
+    ieee_binary(d, sub, 9221120237041090561, 18444492273895866370,
+                9221120237041090561),
+    ieee_binary(s, mul, 1, 1056964608, 0),
+    ieee_binary(s, mul, 3, 1056964608, 2),
+    ieee_binary(s, add, 2147483648, 2147483648, 2147483648),
+    ieee_binary(s, add, 2147483648, 0, 0).
+
+test(float_validator) :-
+    forall(member(Op, [rem, urem, udiv, and, or, xor, sar, shr, shl]),
+           ( M = module([func(f, local, s, [],
+                              [blk(start, [], [ins(t(x), s, Op, [c(0), c(0)])],
+                                   ret(t(x)))])]),
+             catch((valid_module(M), fail), nanofil_error(_), true) )),
+    rejected_with("function w $f(s %x) {\n@start\n%y =w copy %x\nret %y\n}\n",
+                  "has class s but is used as w"),
+    rejected_with("function w $f(s %x) {\n@start\n%y =w csles %x, %x\nret %y\n}\n",
+                  "unsupported instruction csles").
 
 %% Class p
 
