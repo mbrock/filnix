@@ -41,9 +41,6 @@
 class_bits(w, 32).
 class_bits(l, 64).
 
-% Moduli are facts on purpose: Trealla (12f4cbd and ba473a6) corrupts a
-% clause whose body has a CLP(Z) goal over a ground integer >= 2^63, e.g.
-% `Z #= X mod 18446744073709551616`. Binding the constant at run time works.
 modulus(w, 4294967296).
 modulus(l, 18446744073709551616).
 half(w, 2147483648).
