@@ -35,6 +35,10 @@ individual ports needed, and how the port campaigns run. The repository's
   fails on Fil-C objects.
 - [zstd with SaRCAsm](zstd-sarcasm.md): zstd's BMI2 assembly decoder loops
   through the SaRCAsm assembler.
+- [Function-order shuffling (funkyenv) meets Fil-C](funkyenv.md): whether
+  seeded per-deployment section shuffling fits Fil-C, why the upstream
+  overlay silently breaks the Fil-C bintools, and a staged design for a
+  filnix-native version.
 
 ## Notes on ports
 
