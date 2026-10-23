@@ -1,25 +1,118 @@
 # nanofil
 
-A C compiler written in Prolog, with a QBE-style IR, that emits x86-64
-assembly in the Fil-C ABI. Its output links with clang-built Fil-C code
-and has the same memory-safety checks, frames and garbage-collector
-rooting. The goal is a small reference implementation of what Fil-C's
-LLVM pass does, written so the rules can be read, tested and run backwards.
+A C compiler written in Prolog that emits x86-64 assembly in the
+[Fil-C](https://github.com/pizlonator/fil-c) ABI. Its object files link
+with clang-built Fil-C code, and they keep Fil-C's guarantees: every
+access is bounds-checked against a capability, pointers are rooted for
+the garbage collector, and calls go through checked function objects.
 
-Status: milestone 3. There is a QBE-subset parser, printer and validator,
-a CLP(Z) interpreter ([docs/m1.md](docs/m1.md)), a naive x86-64 SysV
-backend ([docs/m2.md](docs/m2.md)), and a pointer class with a naive
-Fil-C lowering whose output links with clang-built Fil-C code
-([docs/m3.md](docs/m3.md)). No C frontend yet.
+It is meant as a small reference for what Fil-C's LLVM pass does, in a
+form you can read, test and run backwards. About 13,000 lines of Prolog
+run on SWI-Prolog or Trealla.
 
-- [PLAN.md](PLAN.md): decisions, milestones and acceptance criteria.
-- [docs/handoff.md](docs/handoff.md): the original research handoff,
-  kept verbatim.
-- [docs/abi-findings.md](docs/abi-findings.md): the ABI checked against
-  filnix's Fil-C 0.686, with answers to the handoff's open questions.
-- [docs/m1.md](docs/m1.md): the IR, its semantics, how it is tested, and
-  the qbe and Trealla bugs that testing found.
-- [docs/m2.md](docs/m2.md): the naive backend.
-- [docs/m3.md](docs/m3.md): class `p`, the Fil-C lowering, and its tests.
-- [probes/](probes/): C probes and a hand-written Fil-C ABI assembly link
-  test. Run `nanofil/probes/run.sh [outdir]`.
+## A look
+
+```c
+int sum(int *a, int n) {
+    int s = 0;
+    for (int i = 0; i < n; i++)
+        s += a[i];
+    return s;
+}
+```
+
+`nanofil -O cc-ir sum.c` prints the IR, which is QBE's plus a pointer
+class `p`:
+
+```
+export function w $sum(p %v0, w %v2) {
+@start
+	jmp @L6
+@L6
+	%pr.2 =w phi @L8 %v22, @start 0
+	%pr.1 =w phi @L8 %v20, @start 0
+	%v12 =w csltw %pr.2, %v2
+	jnz %v12, @L7, @L9
+@L7
+	%v16 =l extsw %pr.2
+	%v17 =l mul %v16, 4
+	%v18 =p add %v0, %v17
+	%v19 =w loadsw %v18
+	%v20 =w add %pr.1, %v19
+	jmp @L8
+@L8
+	%v22 =w add %pr.2, 1
+	jmp @L6
+@L9
+	ret %pr.1
+}
+```
+
+`nanofil -O cc sum.c` turns that into assembly that checks the load
+against `a`'s capability and polls for the collector on the back edge.
+
+## How it is built
+
+```diagram
+C source ──▶ preprocessor ──▶ parser ──▶ lowering ──▶ IR
+             (DCG)            (DCG)      (cproc style)  │
+                                                        ▼
+assembly ◀── Fil-C backend ◀── middle end (-O): SSA, promote,
+                               copies, alias, escape, loops
+```
+
+The IR has a reference semantics: an interpreter written with CLP(Z)
+constraints. That interpreter is the test oracle. Every test input runs
+in the interpreter and natively, and the results must agree. With `-O`,
+each run is repeated on the unoptimized IR and the optimized result must
+refine it. Because the interpreter is a relation, it can also run with
+unknown inputs, for example to search for arguments on which two
+functions differ.
+
+## Trying it
+
+From a filnix checkout:
+
+```sh
+nix build -o /tmp/filcc .#filcc
+export FILCC=/tmp/filcc/bin/clang          # used to preprocess and link
+cd nanofil/src
+../bin/nanofil -O cc ../tests/c/prog/hello.c </dev/null > hello.s
+as -o hello.o hello.s && $FILCC -o hello hello.o && ./hello
+```
+
+`bin/nanofil` uses `swipl` from `PATH` (or `SWIPL`); set
+`NANOFIL_HOST=trealla` to use Trealla. Other commands: `cc-ir`,
+`tokens`, `print` and `compile` (for QBE text), `run FILE FN ARGS...`
+(interpret), and `difftest`. See the top of
+[src/main.pl](src/main.pl).
+
+`nix build .#checks.x86_64-linux.nanofil` runs everything: unit tests,
+differential tests against real qbe and clang, whole programs under GC
+stress, and a 416-file survey of the cproc and c-testsuite corpora.
+
+## What it compiles
+
+C17 integer code: structs, unions, enums, arrays, pointers, function
+pointers, globals with initializers, `switch` and `goto`, compound
+literals, and calls to anything, including variadic functions like
+`printf`. Of the corpus programs that have a `main`, 230 match clang's
+output; the rest are refused with a message, never miscompiled
+([docs/corpus.md](docs/corpus.md)). About two thirds of GNU hello's
+files go through it.
+
+It refuses floating point, bitfields, VLAs, `_Atomic`, inline `asm`, K&R
+definitions, and (for now) statement expressions and defining variadic
+functions. The code generator is deliberately naive: every temporary
+lives in a stack slot.
+
+## Reading on
+
+- [PLAN.md](PLAN.md): milestones, decisions, what is next.
+- [docs/abi-findings.md](docs/abi-findings.md): the Fil-C ABI as checked
+  against filnix's pinned Fil-C.
+- [docs/m1.md](docs/m1.md) to [docs/m5.md](docs/m5.md): the IR and
+  interpreter, the plain backend, the Fil-C lowering, the C frontend,
+  and the middle end.
+- [docs/handoff.md](docs/handoff.md): the original design notes.
+- [AGENTS.md](AGENTS.md): tools, tests and conventions for working on it.
