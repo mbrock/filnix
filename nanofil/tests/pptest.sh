@@ -24,13 +24,17 @@ compare() {
 if (($#)); then
   for f in "$@"; do compare "$(realpath "$f")"; done
 else
+  # The headers and test files are independent, so they run in parallel.
+  files=()
   for h in stdio stdlib string stdint ctype limits errno unistd signal math pthread time \
            sys/stat dirent wchar inttypes fcntl sys/mman getopt setjmp; do
-    printf '#include <%s.h>\n' "$h" >"$work/header.c"
-    compare "$work/header.c"
-    echo "pptest: <$h.h> matches"
+    printf '#include <%s.h>\n' "$h" >"$work/h-${h//\//_}.c"
+    files+=("$work/h-${h//\//_}.c")
   done
-  while IFS= read -r -d '' f; do compare "$f"; done < <(find "$here/c" -name '*.c' -print0 | sort -z)
+  while IFS= read -r -d '' f; do files+=("$f"); done < <(find "$here/c" -name '*.c' -print0 | sort -z)
+  "$here/par.sh" "$0" "${files[@]}" >/dev/null
+  n=${#files[@]}
+  echo "pptest: ${#files[@]} headers and test files match"
   cat >"$work/once.h" <<'EOF'
 #pragma once
 int included_once;

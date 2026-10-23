@@ -58,6 +58,7 @@
 
 :- use_module(library(lists)).
 :- use_module(library(clpz)).
+:- use_module(library(assoc)).
 
 class_bits(w, 32).
 class_bits(l, 64).
@@ -143,7 +144,12 @@ valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
     defs(Params, Blocks, Defs0),
     sort(Defs0, Defs),
     temp_classes(Name, Defs),
-    Ctx = ctx(M, Name, Ret, Labels, Defs, Blocks, Mode),
+    % Labels, definitions and predecessors are indexed once, so checking
+    % a function stays near linear in its size.
+    findall(L-t, member(L, Labels), LTs), list_to_assoc(LTs, LA),
+    list_to_assoc(Defs, DA),
+    preds(Blocks, PA),
+    Ctx = ctx(M, Name, Ret, LA, DA, PA, Mode),
     maplist(valid_block(Ctx), Blocks),
     Blocks = [blk(Entry, _, _, _)|_],
     (   member(blk(_, _, _, J), Blocks), jump_target(J, Entry)
@@ -179,10 +185,20 @@ temp_classes(Fn, Defs) :-
     ;   true
     ).
 
+% preds(Blocks, A): each label's sorted predecessors.
+preds(Blocks, A) :-
+    findall(T-P, ( member(blk(P, _, _, J), Blocks), jump_target(J, T) ), TPs0),
+    sort(TPs0, TPs),
+    empty_assoc(A0),
+    foldl(add_pred, TPs, A0, A).
+
+add_pred(T-P, A0, A) :-
+    ( get_assoc(T, A0, Ps) -> true ; Ps = [] ),
+    append(Ps, [P], Ps1), put_assoc(T, A0, Ps1, A).
+
 valid_block(Ctx, blk(L, Phis, Insts, Jump)) :-
-    Ctx = ctx(_, Fn, _, _, _, Blocks, _),
-    findall(P, ( member(blk(P, _, _, J), Blocks), jump_target(J, L) ), Preds0),
-    sort(Preds0, Preds),
+    Ctx = ctx(_, Fn, _, _, _, PA, _),
+    ( get_assoc(L, PA, Preds) -> true ; Preds = [] ),
     maplist(valid_phi(Ctx, L, Preds), Phis),
     maplist(valid_inst(Ctx), Insts),
     valid_jump(Ctx, Jump),
@@ -282,15 +298,15 @@ valid_jump(Ctx, ret) :-
     (   Ret == void -> true ; err(Fn, 'ret without a value', []) ).
 valid_jump(_, hlt).
 
-label_exists(ctx(_, Fn, _, Labels, _, _, _), L) :-
-    (   memberchk(L, Labels) -> true ; err(Fn, 'undefined label @~w', [L]) ).
+label_exists(ctx(_, Fn, _, LA, _, _, _), L) :-
+    (   get_assoc(L, LA, _) -> true ; err(Fn, 'undefined label @~w', [L]) ).
 
 use(Ctx, K, V) :- use_(V, Ctx, K).
 
 % A p temporary is used only at p and vice versa; ptoi and itop are the
 % conversions. An integer constant at p is a pointer with no capability.
-use_(t(N), ctx(_, Fn, _, _, Defs, _, _), K) :-
-    (   memberchk(N-K0, Defs)
+use_(t(N), ctx(_, Fn, _, _, DA, _, _), K) :-
+    (   get_assoc(N, DA, K0)
     ->  (   K == l, K0 == w
         ->  err(Fn, '%~w has class w but is used as l', [N])
         ;   K0 == p, K \== p

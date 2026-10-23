@@ -24,43 +24,55 @@ pkgs.runCommandCC "nanofil-check"
     ];
   }
   ''
+    # step LABEL CMD...: run CMD, printing when it starts and how long it
+    # took as soon as it ends (watch with nix build -L); the table at the
+    # end sums it up.
+    check_t0=$SECONDS
+    step() {
+      local label=$1 t0=$SECONDS
+      shift
+      echo ">>> [$((SECONDS - check_t0))s] start: $label"
+      "$@"
+      echo "<<< [$((SECONDS - check_t0))s] done in $((SECONDS - t0))s: $label"
+      printf '%5ds  %s\n' $((SECONDS - t0)) "$label" >>"$TMPDIR/timings"
+    }
     cp -r ${../.} nanofil
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs tests
-    (cd src && tpl -q ../tests/unit.pl </dev/null) | tee unit.log
+    step unit bash -c '(cd src && tpl -q ../tests/unit.pl </dev/null) | tee unit.log'
     grep -q 'tests ok$' unit.log
     python3 -I tests/gen.py 1 200 > gen1.ssa
-    CC=$CC tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
-    CC=$CC VARIANTS=nanofil tests/difftest.sh tests/qbe-bugs/*.ssa
+    step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
+    step "difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
     export FILCC=${filcc}/bin/clang
-    tests/pptest.sh
-    tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa
-    tests/filc/run-c.sh interop gc
-    tests/difftest.sh tests/c/*.c
-    tests/reject.sh
-    tests/progtest.sh
-    # c-testsuite/00200 (1557 blocks) takes 21 s to compile here, most of
-    # it in valid_module, so the default 20 s timeout fails on this
-    # machine at origin/main too (docs/m5.md).
-    COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
-    RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/progtest.sh
-    RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
+    step pptest tests/pptest.sh
+    step "difftest filc/*.ssa" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa
+    step "run-c interop gc" tests/par.sh tests/filc/run-c.sh interop gc
+    step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
+    step reject tests/reject.sh
+    step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # c-testsuite/00200 (1557 blocks) is the slowest compile (docs/m5.md).
+    step corpus env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    step "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    step "run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     # M5: the same suites with the middle end on. difftest -O also runs
     # every run line on the unoptimized module and checks that each result
     # refines it; unit.pl checks which allocs promote must remove.
     python3 -I tests/bigfn.py 1 300 > big1.c
     export NANOFIL_OPT=-O
-    CC=$CC tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
-    CC=$CC VARIANTS=nanofil tests/difftest.sh tests/qbe-bugs/*.ssa
-    tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/c/*.c big1.c
-    tests/filc/run-c.sh interop gc
-    tests/progtest.sh
-    RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/progtest.sh
-    RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
+    step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
+    step "-O difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
+    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/c/*.c big1.c
+    step "-O run-c interop gc" tests/par.sh tests/filc/run-c.sh interop gc
+    step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     unset NANOFIL_OPT
     # The functional, versioned-fact and incremental analyses must agree.
     python3 -I tests/bigfn.py 2 100 > big2.c
-    (cd src && tpl -q ../tests/bench-cfg.pl -- ../big2.c </dev/null)
+    step bench-cfg bash -c '(cd src && tpl -q ../tests/bench-cfg.pl -- ../big2.c </dev/null)'
+    echo "== nanofil check timings"
+    cat "$TMPDIR/timings"
     touch $out
   ''
