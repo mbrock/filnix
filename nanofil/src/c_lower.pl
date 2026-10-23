@@ -6,8 +6,11 @@
 
     Values during lowering:
       v(Value, Type)   an rvalue: Value is an IR value, Type a C type
-      lv(Addr, Type)   an lvalue: Addr is a p value
+      lv(Addr, Type)   an object at Addr, a p value: an lvalue, or a
+                       member of a struct rvalue
       fd(Symbol, Type) a function designator
+    Whether an expression is an lvalue, and may be assigned, is
+    c_types' expression_category/3 and modifiable_lvalue/2.
     A narrow integer (char, short, bool) is always held sign- or
     zero-extended to 32 bits in a w, so conversions only extend when the
     source type has values the target cannot represent.
@@ -1373,7 +1376,9 @@ rvalue(comma(A, B), Ctx, R) --> !,
     rval(B, Ctx, R).
 rvalue(un(addr, Expr), Ctx, v(P, ptr(Type))) --> !,
     obj(Expr, Ctx, R0),
-    (   { R0 = lv(P, Type) } -> []
+    env(Env),
+    { expression_category(Expr, Env, Cat) },
+    (   { Cat \== value, R0 = lv(P, Type) } -> []
     ;   { R0 = fd(_, _) } -> decay(R0, Ctx, v(P, ptr(Type)))
     ;   { ctx_loc(Ctx, Loc),
           sema_error(Loc, '& of a non-lvalue', []) }
@@ -1883,9 +1888,8 @@ arm_value_type(Env, E, T) :-
 assignment(Op, A, B, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     obj(A, Ctx, LV),
-    {   LV = lv(P, Type) -> true
-    ;   sema_error(Loc, 'assignment to a non-lvalue', [])
-    },
+    modifiable(A, 'assignment to', Loc),
+    { LV = lv(P, Type) },
     (   { Op == '=' } -> rval(B, Ctx, Value0), { Source = B }
     ;   { compound_op(Op, BinOp), Source = none },
         load_typed(Type, P, Ctx, Cur),
@@ -1895,6 +1899,16 @@ assignment(Op, A, B, Ctx, R) -->
     assign_convert(Source, Value0, Type, Loc, R),
     { R = v(V, _) },
     store_typed(Type, V, P).
+
+% modifiable(+A, +What, +Loc)//: throw a semantic error unless A is a
+% modifiable lvalue, as What ('assignment to', 'preinc of', ...) needs.
+modifiable(A, What, Loc) -->
+    env(Env),
+    (   { modifiable_lvalue(A, Env) } -> []
+    ;   { expression_category(A, Env, Cat), Cat == lvalue }
+    ->  { sema_error(Loc, '~w a read-only lvalue', [What]) }
+    ;   { sema_error(Loc, '~w a non-lvalue', [What]) }
+    ).
 
 % compound_op(+Op, -BinOp): compound assignment Op applies BinOp.
 compound_op('*=', mul).
@@ -1913,6 +1927,8 @@ compound_op('|=', or).
 incdec(Op, A, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     obj(A, Ctx, LV),
+    { atom_concat(Op, ' of', What) },
+    modifiable(A, What, Loc),
     {   LV = lv(P, Type), scalar_type(Type) -> true
     ;   sema_error(Loc, '~w of a non-scalar lvalue', [Op])
     },

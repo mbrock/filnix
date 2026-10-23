@@ -44,7 +44,7 @@
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
                     unary_operand/3, assignable/3, null_pointer_constant/3,
-                    castable/2]).
+                    castable/2, expression_category/3, modifiable_lvalue/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -176,6 +176,8 @@ parameter_syntax(S, S).
 
 qualify(Qs0, qualified(Qs1, T), R) :- !,
     append(Qs0, Qs1, Qs), qualify(Qs, T, R).
+qualify(Qs, array(T0, N), array(T, N)) :- Qs \== [], !,   % C11 6.7.3p9
+    qualify(Qs, T0, T).
 qualify(Qs0, T, R) :-
     sort(Qs0, Qs), ( Qs == [] -> R = T ; R = qualified(Qs, T) ).
 
@@ -1129,6 +1131,59 @@ member_type(SU, F, Env, T) :-
         )
     ;   member_type_offset(SU, F, Env, T, _)   % built-in va_list
     ).
+
+/* expression_category(+E, +Env, -Cat): E is an lvalue, a function
+   designator (function) or neither (value) (C11 6.3.2.1p1, 6.5.1-3).
+   A member of a struct is an lvalue if the struct is; *, [] and -> give
+   lvalues, or a function designator from a function pointer. */
+expression_category(id(Name), Env, Cat) :- !,
+    (   lookup_ordinary(Env, Name, B) -> binding_category(B, Cat)
+    ;   Cat = lvalue                      % __func__
+    ).
+expression_category(un(deref, E), Env, Cat) :- !,
+    (   expression_type(E, Env, P), value_type(P, ptr(T)), T = func(_, _, _)
+    ->  Cat = function
+    ;   Cat = lvalue
+    ).
+expression_category(member(E, _), Env, Cat) :- !,
+    expression_category(E, Env, Cat0),
+    ( Cat0 == lvalue -> Cat = lvalue ; Cat = value ).
+expression_category(generic(C, As), Env, Cat) :- !,
+    expression_type(C, Env, CT0), value_type(CT0, CT),
+    generic_selection(CT, As, Env, constant, E),
+    expression_category(E, Env, Cat0), Cat = Cat0.
+expression_category(E, _, Cat) :-
+    functor(E, F, N), memberchk(F/N, [index/2, arrow/2, str/1, wstr/2, complit/2]), !,
+    Cat = lvalue.
+expression_category(_, _, value).
+
+binding_category(var(_, _), lvalue).
+binding_category(gvar(_, _, _, _), lvalue).
+binding_category(fn(_, _, _), function).
+binding_category(enumconst(_, _), value).
+
+/* modifiable_lvalue(+E, +Env): E is a modifiable lvalue (6.3.2.1p1):
+   an lvalue whose type is not const, an array or incomplete, nor a
+   struct or union with a const member, however deeply contained. */
+modifiable_lvalue(E, Env) :-
+    expression_category(E, Env, Cat), Cat == lvalue,
+    expression_type(E, Env, T),
+    modifiable_type(T, Env).
+
+modifiable_type(qualified(Qs, T), Env) :- !,
+    \+ memberchk(const, Qs), modifiable_type(T, Env).
+modifiable_type(array(_, _), _) :- !, fail.
+modifiable_type(void, _) :- !, fail.
+modifiable_type(T, Env) :- \+ const_within(T, Env).
+
+% const_within(+T, +Env): T is const, or an aggregate or union with a
+% const member or element, at any depth.
+const_within(qualified(Qs, T), Env) :- ( memberchk(const, Qs) -> true ; const_within(T, Env) ).
+const_within(array(T, _), Env) :- const_within(T, Env).
+const_within(SU, Env) :-
+    ( SU = struct(Id) ; SU = union(Id) ), Env = e(_, _, Defs, _),
+    get_assoc(qmembers(Id), Defs, Members),
+    member(q(_, T), Members), const_within(T, Env), !.
 
 binding_type(var(_, T), T).
 binding_type(gvar(T, _, _, _), T).
