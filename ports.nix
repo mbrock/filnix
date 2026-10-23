@@ -1485,6 +1485,14 @@ in
   ])
 
   (for pkgs.libpq [
+    # libpq refuses to link anything named like exit. Fil-C 0.687 lowers
+    # small allocas to filc_allocate_without_exiting, which never exits.
+    (use (old: {
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/interfaces/libpq/Makefile \
+          --replace-fail '-e __tsan_func_exit' '-e __tsan_func_exit -e _without_exiting'
+      '';
+    }))
     # Nixpkgs uses -flto with Clang to drop unused pg_config paths (and the
     # dev-output references they carry). Fil-C has no LTO linker plugin, so
     # garbage-collect sections at link time instead, as with GCC.
