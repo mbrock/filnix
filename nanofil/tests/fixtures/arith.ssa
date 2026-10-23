@@ -1,0 +1,133 @@
+# Integer arithmetic at both classes, including the edges where signed
+# and unsigned readings differ.
+
+# run: $addw 3 4
+# run: $addw 4294967295 1
+# run: $addw -1 -1
+export function w $addw(w %a, w %b) {
+@start
+	%r =w add %a, %b
+	ret %r
+}
+
+# run: $mixed 4294967296 5
+# run: $mixed 18446744073709551615 0
+export function w $mixed(l %a, w %b) {
+@start
+	%r =w add %a, %b
+	ret %r
+}
+
+# run: $divs -7 2
+# run: $divs 7 -2
+# run: $divs -2147483648 -1
+# run: $divs 5 0
+export function w $divs(w %a, w %b) {
+@start
+	%q =w div %a, %b
+	%r =w rem %a, %b
+	%s =w mul %q, 1000
+	%t =w add %s, %r
+	ret %t
+}
+
+# run: $divu -7 2
+# run: $divu 7 3
+export function l $divu(l %a, l %b) {
+@start
+	%q =l udiv %a, %b
+	%r =l urem %a, %b
+	%t =l xor %q, %r
+	ret %t
+}
+
+# run: $shifts -16 2
+# run: $shifts -16 33
+# run: $shifts 1 31
+export function w $shifts(w %a, w %n) {
+@start
+	%x =w sar %a, %n
+	%y =w shr %a, %n
+	%z =w shl %a, %n
+	%s =w xor %x, %y
+	%t =w add %s, %z
+	ret %t
+}
+
+# run: $shiftl -16 2
+# run: $shiftl -16 65
+# run: $shiftl 1 63
+export function l $shiftl(l %a, w %n) {
+@start
+	%x =l sar %a, %n
+	%y =l shr %a, %n
+	%z =l shl %a, %n
+	%s =l xor %x, %y
+	%t =l add %s, %z
+	ret %t
+}
+
+# run: $exts 255 0
+# run: $exts 128 1
+# run: $exts 32768 2
+# run: $exts 2147483648 3
+# run: $exts 2147483648 4
+export function l $exts(w %a, w %k) {
+@start
+	%sb =l extsb %a
+	%ub =l extub %a
+	%sh =l extsh %a
+	%sw =l extsw %a
+	%uw =l extuw %a
+	jnz %k, @n1, @r0
+@r0
+	ret %sb
+@n1
+	%k1 =w sub %k, 1
+	jnz %k1, @n2, @r1
+@r1
+	ret %ub
+@n2
+	%k2 =w sub %k1, 1
+	jnz %k2, @n3, @r2
+@r2
+	ret %sh
+@n3
+	%k3 =w sub %k2, 1
+	jnz %k3, @r4, @r3
+@r3
+	ret %sw
+@r4
+	ret %uw
+}
+
+# run: $cmps -1 1
+# run: $cmps 1 -1
+# run: $cmps 5 5
+export function w $cmps(w %a, w %b) {
+@start
+	%lt =w csltw %a, %b
+	%ult =w cultw %a, %b
+	%le =w cslew %a, %b
+	%eq =w ceqw %a, %b
+	%x =w shl %ult, 1
+	%y =w shl %le, 2
+	%z =w shl %eq, 3
+	%s =w or %lt, %x
+	%t =w or %s, %y
+	%u =w or %t, %z
+	ret %u
+}
+
+# jnz tests only the low 32 bits of an l value?
+# run: $jnzl 4294967296
+# run: $jnzl 1
+# run: $jnzl 0
+export function w $jnzl(l %a) {
+@start
+	jnz %a, @yes, @no
+@yes
+	ret 1
+@no
+	ret 0
+}

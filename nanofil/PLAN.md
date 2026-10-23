@@ -100,6 +100,10 @@ this.
 
 ### M1. IR terms, relational interpreter, QBE subset parser
 
+**Status: complete.** See [docs/m1.md](docs/m1.md). The differential
+tests found three qbe miscompiles and a Trealla use-after-free. Memory is
+an assoc of concrete byte addresses, and symbolic addresses are deferred.
+
 **Deliverable:** clean IR terms (handoff "Proposed design" item 1) and a
 CLP(Z) interpreter for `w`/`l` integer ops, `alloc`, loads and stores over
 a byte-addressed memory, `jmp`/`jnz`/`ret`, phis and calls between IR
@@ -216,7 +220,8 @@ nanofil running on Fil-C-built Trealla. Package it as
 
 ## Still open
 
-- How to model memory relationally without losing performance (M1).
+- Symbolic addresses in the interpreter, for translation validation of
+  memory passes (M5).
 - Versioned facts versus incremental tabling (M5), and the CLP(Z)
   allocation budget (M6). Both are measurement questions.
 - In-process execution (`tcc -run` style) needs a native host that boots

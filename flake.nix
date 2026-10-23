@@ -202,6 +202,7 @@
             unsafe-call-boundary = import ./tests/unsafe-call-boundary.nix {
               inherit pkgs filcc;
             };
+            nanofil = import ./nanofil/nix/check.nix { inherit pkgs; };
             sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
               inherit pkgs filcc sarcasm-prolog;
               trealla = pkgsFilc.trealla;
