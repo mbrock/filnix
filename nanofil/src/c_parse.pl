@@ -976,14 +976,28 @@ primary(Env, stmtexpr(Block)) -->
     peek(p('{')), !,
     block(Env, Block),
     expect(')').
-primary(_, _) -->
+primary(Env, generic(Control, Associations)) -->
     kw(generic), !,
-    parse_error('_Generic is not supported').
+    expect('('),
+    assignment(Env, Control),
+    expect(','),
+    generic_associations(Env, Associations),
+    expect(')').
 primary(Env, E) -->
     punct('('), !,
     expr(Env, E),
     expect(')').
 primary(_, _) --> parse_error('expected an expression').
+
+generic_associations(Env, [assoc(Type, Expr)|Rest]) -->
+    ( kw(default) -> { Type = default }
+    ; type_name(Env, Type)
+    ),
+    expect(':'),
+    assignment(Env, Expr),
+    ( punct(',') -> generic_associations(Env, Rest)
+    ; { Rest = [] }
+    ).
 
 offsetof_path(Env, [field(F)|Steps]) -->
     punct('.'), !,

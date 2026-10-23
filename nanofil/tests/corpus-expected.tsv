@@ -412,5 +412,5 @@ c-testsuite/00215.c	pass
 c-testsuite/00216.c	reject
 c-testsuite/00217.c	pass
 c-testsuite/00218.c	reject
-c-testsuite/00219.c	reject
+c-testsuite/00219.c	pass
 c-testsuite/00220.c	pass

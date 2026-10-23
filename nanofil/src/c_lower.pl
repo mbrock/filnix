@@ -298,7 +298,11 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
     catch(type_size_align(Type, Env0, _, Align0), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Sym, Why])),
     Align is min(Align0, 16),
-    static_items(Type, Init, Loc, Env0, Env, Items).
+    env_defs(Env0, Defs),
+    ( get_assoc(initialized(Sym), Defs, Items)
+    -> Env = Env0
+    ; static_items(Type, Init, Loc, Env0, Env, Items)
+    ).
 
 %% Functions
 
@@ -314,7 +318,8 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     ret_class(Loc, RetType, Env0, RetClass),
     param_names(DclType, Names),
     statement_expression_jumps(Body, Loc),
-    State0 = st(Env0, cur(start, []), [], [], 0, Labels, [], []),
+    reflect_params(DclType, ParamTypes, Env0, ParamEnv),
+    State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [], []),
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
@@ -809,7 +814,10 @@ local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
           format(atom(Sym), '~w.~w.~w', [Func, Name, K]),
           complete_array(Type0, Init, Type, Loc, Env0, none),
           bind_ordinary(Name, gvar(Type, Sym, static, Init), Env1, Env2),
-          define_global(Sym, Type, local, Init, Loc, Env2, Env) },
+          define_global(Sym, Type, local, Init, Loc, Env2, Env3),
+          % Resolve block-scope names before the scope is restored.
+          static_items(Type, Init, Loc, Env3, Env4, Items),
+          put_def(initialized(Sym), Items, Env4, Env) },
         set_env(Env)
     ;   env(Env),
         whole_probe(Ctx, Whole),
@@ -1141,6 +1149,14 @@ statement_expression_last(Item, Ctx, v(c(0), void)) --> item(Item, Ctx).
 
 % obj(+Expr, +Ctx, -R)//: R is Expr as an lvalue, function designator or
 % rvalue, without array decay or loading.
+obj(generic(Control, Associations), Ctx, R) --> !,
+    env(Env),
+    ( { expression_type(Control, Env, T0) } -> []
+    ; expr_type(Control, Ctx, T0)
+    ),
+    { value_type(T0, Type), ctx_loc(Ctx, Loc),
+      generic_selection(Type, Associations, Env, Loc, Selected) },
+    obj(Selected, Ctx, R).
 obj(id(Name), Ctx, R) --> !,
     env(Env),
     (   { lookup_ordinary(Env, Name, Binding),
@@ -1384,6 +1400,24 @@ rvalue(call(id('__builtin_va_copy'), [A, B]), Ctx, v(c(0), void)) --> !,
     ins(p, load(p), [Q], V), emit(store(p, V, P)).
 rvalue(call(id('__builtin_va_end'), [A]), Ctx, v(c(0), void)) --> !,
     rval(A, Ctx, _).
+rvalue(call(id('__builtin_constant_p'), [Expr]), _, v(c(V), int)) -->
+    env(Env),
+    { \+ lookup_ordinary(Env, '__builtin_constant_p', _) }, !,
+    { ( catch(const_value(Expr, Env, _, _), not_constant, fail)
+      -> V = 1
+      ; V = 0
+      ) }.
+rvalue(call(id('__builtin_unreachable'), []), _, v(c(0), void)) -->
+    env(Env),
+    { \+ lookup_ordinary(Env, '__builtin_unreachable', _) }, !,
+    term(hlt).
+rvalue(call(id('__builtin_alloca'), [Size]), Ctx, v(Addr, ptr(void))) -->
+    env(Env),
+    { \+ lookup_ordinary(Env, '__builtin_alloca', _) }, !,
+    rval(Size, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(V0, ulong, Loc, v(N, _)),
+    ins(p, alloc(16), [N], Addr).
 rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     env(Env),
     { \+ lookup_ordinary(Env, '__builtin_expect', _) },

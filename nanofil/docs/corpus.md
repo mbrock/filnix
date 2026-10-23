@@ -66,11 +66,11 @@ baseline had pass 19 / 198 / 217, reject 22 / 21 / 43 and wrong result
 | Source | `.c` files | No main | With main | Pass | Reject | Wrong result | Reference error |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | cproc | 196 | 147 | 49 | 28 | 14 | 0 | 7 |
-| c-testsuite | 220 | 0 | 220 | 202 | 18 | 0 | 0 |
-| **Total** | **416** | **147** | **269** | **230** | **32** | **0** | **7** |
+| c-testsuite | 220 | 0 | 220 | 203 | 17 | 0 | 0 |
+| **Total** | **416** | **147** | **269** | **231** | **31** | **0** | **7** |
 
 There were no preprocessing, assembler, nanofil-link, reference-output or
-timeout failures. Of 39 non-passes, 27 are planned exclusions, 5 are
+timeout failures. Of 38 non-passes, 27 are planned exclusions, 4 are
 other gaps, and 7 cannot be compiled by the reference in its default mode.
 Each program appears in exactly one primary-cause group below; secondary
 features may be hidden behind the first error. All IDs below are `.c`
@@ -164,7 +164,7 @@ stop earlier at `__builtin_va_start is not supported, at (`.
   takes, as initialization does. Regression cases are in
   [tests/c/structs.c](../tests/c/structs.c).
 
-## Other gaps — 5
+## Other gaps — 4
 
 ### Abstract array parameter declarator — 1 rejection
 
@@ -195,15 +195,12 @@ int main(void) {
 nanofil misbuilds the declarator and rejects a pointer conversion (the
 full test: `cannot convert ptr(void) to func(func(int,[],fixed),[ptr(int)],fixed)`).
 
-### `_Generic` — 1 rejection
+### `_Generic` — resolved
 
-**Gap:** C11, not a planned exclusion. c-testsuite: `00219`.
-
-```c
-int main(void) { return _Generic(1, int: 0, default: 1); }
-```
-
-nanofil: `_Generic is not supported, at (`.
+C11 selection now passes c-testsuite `00219`, including qualified pointer
+targets, lvalue conversion, compatible typedefs, function/array decay,
+struct identity and `default`. cproc `generic.c` also compiles, but stays
+`no-main` in the executable survey because it only defines a global.
 
 ### GNU range designators — 1 rejection
 
@@ -269,7 +266,7 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. The remaining gaps are small parser items (`_Generic`, GNU range
+1. The remaining gaps are small parser items (GNU range
    designators, two declarator forms, C23 attribute spelling).
 
 ## Harness validation

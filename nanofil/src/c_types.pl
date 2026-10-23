@@ -36,7 +36,8 @@
                     type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
-                    decl_types/5]).
+                    decl_types/5, expression_type/3, value_type/2,
+                    generic_selection/5, reflect_type/4, reflect_params/4]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -113,20 +114,72 @@ decl_types(Specs, Inits, Decls, Env0, Env) :-
     (   memberchk(storage(Storage0), Specs) -> Storage = Storage0
     ;   Storage = none
     ),
-    foldl(declarator_type(Base, Storage), Inits, Decls0, Env1, Env),
+    foldl(declarator_type(Specs, Base, Storage), Inits, Decls0, Env1, Env),
     exclude(==(none), Decls0, Decls).
 
-% declarator_type(+Base, +Storage, +Init, -Decl, +Env0, -Env): Decl is
+% declarator_type(+Specs, +Base, +Storage, +Init, -Decl, +Env0, -Env): Decl is
 % the d/5 term Init declares, or none for a typedef, which binds the name.
-declarator_type(Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
+declarator_type(Specs, Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
                 Decl, Env0, Env) :-
     apply_declarator(SyntaxType, Base, Type, Env0, Env1),
+    reflect_type(type(Specs, SyntaxType), Type, Env1, Reflected),
+    bind_ordinary(qtype(Name), Reflected, Env1, Env2),
     (   Storage == typedef
-    ->  bind_ordinary(Name, typedef(Type), Env1, Env),
+    ->  bind_ordinary(Name, typedef(Type), Env2, Env),
         Decl = none
-    ;   Env = Env1,
+    ;   Env = Env2,
         Decl = d(Name, Type, Storage, Asm, Init)
     ).
+
+% Keep qualification for type reflection without changing the unqualified
+% code-generation types. These entries share ordinary identifier scope,
+% including shadowing and typedefs. Lvalue conversion removes only the
+% outer qualification, never the qualification of a pointer's target.
+reflect_type(type(Specs, Syntax), Type, Env, Reflected) :-
+    reflect_declarator(Syntax, Specs, Type, Env, Reflected).
+
+reflect_declarator(base, Specs, Type, Env, Reflected) :-
+    ( memberchk(tname(Name), Specs), lookup_ordinary(Env, qtype(Name), T)
+    -> Base = T
+    ; Base = Type
+    ),
+    findall(Q, member(qual(Q), Specs), Qs), qualify(Qs, Base, Reflected).
+reflect_declarator(ptr(S, Qs), Specs, ptr(T), Env, R) :-
+    reflect_declarator(S, Specs, T, Env, RT), qualify(Qs, ptr(RT), R).
+reflect_declarator(array(S, _), Specs, array(T, N), Env, array(RT, N)) :-
+    reflect_declarator(S, Specs, T, Env, RT).
+reflect_declarator(func(S, Params), Specs, func(T, Ps, V), Env, func(RT, RPs, V)) :-
+    reflect_declarator(S, Specs, T, Env, RT),
+    reflect_param_types(Params, Ps, Env, RPs).
+reflect_declarator(_, _, bad(Why), _, bad(Why)).
+
+reflect_param_types(unspecified, unspecified, _, unspecified).
+reflect_param_types(params(Params, _), Ts, Env, RTs) :-
+    maplist(reflect_param_type(Env), Params, Ts, RTs).
+
+reflect_param_type(Env, param(Specs, dcl(_, Syntax, _)), T, RT) :-
+    parameter_syntax(Syntax, Adjusted),
+    reflect_type(type(Specs, Adjusted), T, Env, R0),
+    value_type(R0, RT).
+
+parameter_syntax(array(S, _), ptr(S, [])) :- !.
+parameter_syntax(func(S, P), ptr(func(S, P), [])) :- !.
+parameter_syntax(S, S).
+
+qualify(Qs0, qualified(Qs1, T), R) :- !,
+    append(Qs0, Qs1, Qs), qualify(Qs, T, R).
+qualify(Qs0, T, R) :-
+    sort(Qs0, Qs), ( Qs == [] -> R = T ; R = qualified(Qs, T) ).
+
+reflect_params(func(_, params(Params, _)), Types, Env0, Env) :- !,
+    foldl(reflect_param, Params, Types, Env0, Env).
+reflect_params(_, _, Env, Env).
+
+reflect_param(Param, T, Env0, Env) :-
+    Param = param(_, dcl(some(Name), _, _)), !,
+    reflect_param_type(Env0, Param, T, RT),
+    bind_ordinary(qtype(Name), RT, Env0, Env).
+reflect_param(_, _, Env, Env).
 
 %% Specifiers
 
@@ -498,6 +551,8 @@ type_size_align(Type, Env, Size, Align) :-
     ;   throw(bad(incomplete))
     ).
 
+size_align_(qualified(_, T), Env, Size, Align) :-
+    type_size_align(T, Env, Size, Align).
 size_align_(bool, _, 1, 1).
 size_align_(char, _, 1, 1).
 size_align_(schar, _, 1, 1).
@@ -725,6 +780,14 @@ const_eval(cast(TypeName, X), Env, V, T) :-
 const_eval(sizeof_type(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
+const_eval(sizeof_expr(Expr), Env, V, ulong) :-
+    expression_type(Expr, Env, T),
+    catch(type_size_align(T, Env, V, _), bad(_), fail).
+const_eval(generic(Control, Associations), Env, V, T) :-
+    expression_type(Control, Env, CT0),
+    value_type(CT0, CT),
+    generic_selection(CT, Associations, Env, constant, Selected),
+    const_eval(Selected, Env, V, T).
 const_eval(alignof(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     catch(type_size_align(T, Env, _, V), bad(_), fail).
@@ -732,6 +795,132 @@ const_eval(offsetof(TypeName, Path), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     offset_path(Path, T, Env, 0, V).
 const_eval(comma(_, B), Env, V, T) :- const_eval(B, Env, V, T).
+
+% Unevaluated type queries for constant expressions. Unlike const_eval,
+% these may inspect objects and expressions with side effects. Arrays and
+% functions retain their type until the caller requests value conversion.
+expression_type(id(Name), Env, T) :-
+    lookup_ordinary(Env, Name, Binding),
+    binding_type(Binding, T0),
+    ( Binding \= enumconst(_, _), lookup_ordinary(Env, qtype(Name), RT)
+    -> reflected_shape(RT, T0, T)
+    ; T = T0
+    ).
+expression_type(num(V, S), _, T) :- num_type(V, S, T).
+expression_type(chr(_), _, int).
+expression_type(float(Cs), _, T) :-
+    last(Cs, Suffix),
+    ( memberchk(Suffix, [f, 'F']) -> T = float
+    ; memberchk(Suffix, [l, 'L']) -> T = ldouble
+    ; T = double
+    ).
+expression_type(str(Bytes), _, array(char, N)) :- length(Bytes, M), N is M + 1.
+expression_type(wstr(T, Values), _, array(T, N)) :- length(Values, M), N is M + 1.
+expression_type(cast(TN, _), Env, T) :-
+    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+expression_type(complit(TN, _), Env, T) :-
+    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+expression_type(un(addr, E), Env, ptr(T)) :- expression_type(E, Env, T).
+expression_type(un(deref, E), Env, T) :-
+    expression_type(E, Env, P), value_type(P, ptr(T)).
+expression_type(un(not, _), _, int).
+expression_type(un(Op, E), Env, T) :-
+    memberchk(Op, [plus, neg, bnot, preinc, predec, postinc, postdec]),
+    expression_type(E, Env, T0), value_type(T0, T1),
+    ( memberchk(Op, [plus, neg, bnot]) -> integer_promotion(T1, T) ; T = T1 ).
+expression_type(index(E, _), Env, T) :-
+    expression_type(E, Env, T0), value_type(T0, ptr(T)).
+expression_type(member(E, F), Env, T) :-
+    expression_type(E, Env, SU), member_type_offset(SU, F, Env, T, _).
+expression_type(arrow(E, F), Env, T) :-
+    expression_type(E, Env, P), value_type(P, ptr(SU)),
+    member_type_offset(SU, F, Env, T, _).
+expression_type(call(E, _), Env, T) :-
+    expression_type(E, Env, FT), value_type(FT, ptr(func(T, _, _))).
+expression_type(assign(_, E, _), Env, T) :- expression_type(E, Env, T).
+expression_type(comma(_, E), Env, T) :-
+    expression_type(E, Env, T0), value_type(T0, T).
+expression_type(sizeof_expr(_), _, ulong).
+expression_type(sizeof_type(_), _, ulong).
+expression_type(alignof(_), _, ulong).
+expression_type(offsetof(_, _), _, ulong).
+expression_type(bin(Op, A, B), Env, T) :-
+    expression_type(A, Env, TA0), value_type(TA0, TA),
+    expression_type(B, Env, TB0), value_type(TB0, TB),
+    expression_binary_type(Op, TA, TB, T).
+expression_type(cond(_, A, B), Env, T) :-
+    expression_type(A, Env, TA0), value_type(TA0, TA),
+    expression_type(B, Env, TB0), value_type(TB0, TB),
+    ( TA == TB -> T = TA ; usual_arith_conversion(TA, TB, T) ).
+expression_type(generic(C, As), Env, T) :-
+    expression_type(C, Env, CT0), value_type(CT0, CT),
+    generic_selection(CT, As, Env, constant, E), expression_type(E, Env, T).
+
+binding_type(var(_, T), T).
+binding_type(gvar(T, _, _, _), T).
+binding_type(fn(T, _, _), T).
+binding_type(enumconst(_, T), T).
+
+% Initializers may have completed an array since its declaration's
+% reflected type was recorded. Keep the completed dimensions.
+reflected_shape(qualified(Qs, R), T, qualified(Qs, S)) :- !,
+    reflected_shape(R, T, S).
+reflected_shape(array(R, _), array(T, N), array(S, N)) :- !,
+    reflected_shape(R, T, S).
+reflected_shape(R, _, R).
+
+value_type(qualified(_, T), R) :- !, value_type(T, R).
+value_type(array(T, _), ptr(T)) :- !.
+value_type(func(R, P, V), ptr(func(R, P, V))) :- !.
+value_type(T, T).
+
+expression_binary_type(Op, _, _, int) :-
+    memberchk(Op, [eq, ne, lt, le, gt, ge, land, lor]), !.
+expression_binary_type(Op, A, _, T) :- memberchk(Op, [shl, shr]), !,
+    integer_promotion(A, T).
+expression_binary_type(sub, ptr(_), ptr(_), long) :- !.
+expression_binary_type(Op, ptr(T), B, ptr(T)) :-
+    memberchk(Op, [add, sub]), int_type(B), !.
+expression_binary_type(add, A, ptr(T), ptr(T)) :- int_type(A), !.
+expression_binary_type(_, A, B, T) :- usual_arith_conversion(A, B, T).
+
+% The controlling expression undergoes lvalue/array/function conversion,
+% not integer promotion. Only the selected expression is evaluated, and
+% its value category is retained. Association types must be unique even
+% when they do not match the controlling type.
+generic_selection(ControlType, Associations, Env, Loc, Selected) :-
+    maplist(generic_association(Env, Loc), Associations, Typed),
+    generic_unique(Typed, Loc),
+    ( member(assoc(T, E), Typed), T \== default, compatible_type(ControlType, T)
+    -> Selected = E
+    ; memberchk(assoc(default, E), Typed) -> Selected = E
+    ; sema_error(Loc, '_Generic has no matching association', [])
+    ).
+
+generic_association(_, _, assoc(default, E), assoc(default, E)) :- !.
+generic_association(Env, Loc, assoc(TN, E), assoc(T, E)) :-
+    type_name_type(TN, T0, Env, _),
+    ( complete_type(T0, Env), T0 \= func(_, _, _)
+    -> true
+    ; sema_error(Loc, '_Generic association requires a complete object type', [])
+    ),
+    reflect_type(TN, T0, Env, T).
+
+generic_unique([], _).
+generic_unique([assoc(T, _)|Rest], Loc) :-
+    ( member(assoc(U, _), Rest), compatible_type(T, U)
+    -> sema_error(Loc, '_Generic has duplicate compatible associations', [])
+    ; generic_unique(Rest, Loc)
+    ).
+
+compatible_type(T, U) :- T == U, !.
+compatible_type(qualified(Qs, T), qualified(Qs, U)) :- compatible_type(T, U).
+compatible_type(ptr(T), ptr(U)) :- compatible_type(T, U).
+compatible_type(array(T, N), array(U, M)) :-
+    ( N == none ; M == none ; N == M ), compatible_type(T, U).
+compatible_type(func(R, Ps, V), func(S, Qs, V)) :-
+    compatible_type(R, S),
+    ( Ps == unspecified ; Qs == unspecified ; maplist(compatible_type, Ps, Qs) ).
 
 % offset_path(+Path, +Type, +Env, +Off0, -Off): offsetof's member path.
 offset_path([], _, _, Off, Off).

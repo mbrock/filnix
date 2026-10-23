@@ -359,3 +359,25 @@ Verification:
   byte-for-byte against the unchanged compiler: 27 identical outputs.
   The full Nix check covers both Prolog hosts, the existing corpus and
   the new variadic tests.
+
+## Dynamic alloca and unreachable
+
+At the pinned reference source, `FilPizlonator.cpp:14155` lowers an LLVM
+`AllocaInst` to `allocate(Size, Alignment)`, including dynamic array
+sizes. `allocate` at line 2745 returns `flightPtrForObject` for the new
+runtime object. This is a GC allocation with its own capability, not a
+raw stack adjustment. nanofil's `__builtin_alloca(n)` uses the existing
+`alloc(16)` IR instruction at the call site (not hoisted), which calls
+`filc_allocate_with_alignment(thread, n, 16)` and roots the returned
+flight pointer just like every other `p` temporary. No new IR or check
+elimination is involved. `tests/c/prog/alloca-bounds.c` writes the last
+valid byte of a dynamic 32-byte allocation, then traps on byte 32 in both
+nanofil and clang builds, also under the GC verification environment.
+The runtime's `prepare_allocate_object` rounds sizes up to `FILC_MINALIGN`
+(16 bytes), so the capability for a 37-byte request covers 48 bytes in
+both compilers; byte 37 is not a valid bounds-trap probe at this pin.
+
+The pass's `UnreachableInst` case at line 14392 calls the runtime error
+helper with `llvm unreachable instruction`. nanofil instead uses its
+existing `hlt` terminator, emitted as `ud2`: executing it stops rather
+than falling through, but does not produce clang's diagnostic text.
