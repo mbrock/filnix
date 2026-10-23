@@ -60,12 +60,13 @@ line(Line) -->
 line_chars(Line, Cs) :-
     phrase(line_text(Line), Cs).
 
+% line_text(+Line)//: the text of Line. directive//1 has no clause for
+% label/1 or ins/3, so the cases are disjoint; line//1 commits to the
+% first parse.
 line_text(label(S)) -->
-    !,
     literal(S),
     ":\n".
 line_text(ins(Op, Suffix, Operands)) -->
-    !,
     "\t",
     literal(Op),
     suffix(Suffix),
@@ -76,6 +77,8 @@ line_text(Directive) -->
     directive(Directive),
     "\n".
 
+% The cut is for the default case: a suffix is none or any other atom
+% (a defaulty term shared with the backends).
 suffix(none) --> !.
 suffix(S) --> literal(S).
 
@@ -101,10 +104,13 @@ operand(plt(S)) --> literal(S), "@PLT".
 operand(sym(E)) --> expr(E).
 operand(ind(O)) --> "*", operand(O).
 
+% A displacement of 0 is omitted; the cut is for the default case.
 disp(0) --> !.
 disp(D) --> literal(D).
 
-% A sum whose left operand is itself a sum parenthesizes it.
+% A sum whose left operand is itself a sum parenthesizes it. The cut is
+% for the default case, an integer or symbol (a defaulty term shared
+% with the backends; literal//1 would throw on a sum).
 expr(A+B) -->
     !,
     (   { A = _+_ } -> "(", expr(A), ")"

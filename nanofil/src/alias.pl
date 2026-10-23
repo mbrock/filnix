@@ -32,7 +32,7 @@
 alias_facts(F, Facts) :-
     F = func(_, _, _, _, Blocks),
     func_cfg(Blocks, Cfg),
-    dominators(Cfg, Idom),
+    cfg_idoms(Cfg, Idom),
     (   strict_ssa(F, Cfg, Idom)
     ->  findall(D-def(K, Source), address_def(F, D, K, Source), Defs),
         list_to_assoc(Defs, ByTemp),
@@ -48,7 +48,7 @@ alias_facts(F, Facts) :-
         keysort(Edges0, Edges1),
         group_pairs_by_key(Edges1, Edges),
         list_to_assoc(Edges, Users),
-        propagate_offsets(Seeds, Users, Initial, Facts)
+        pending_facts(Seeds, Users, Initial, Facts)
     ;   empty_assoc(Facts)
     ).
 
@@ -73,11 +73,19 @@ address_class(p).
 
 % address_base(+Source, +D, +K, +Defs, -Base): D starts a base of its
 % own; it fails for a definition that offsets another address.
-address_base(param, D, _, _, param(D)) :- !.
-address_base(ins(alloc(_), _), D, _, _, alloc(D)) :- !.
-address_base(ins(copy, [glo(S)]), _, _, _, symbol(S)) :- !.
-address_base(Source, D, K, Defs, value(D)) :-
-    \+ address_offset(Source, K, Defs, _, _).
+address_base(param, D, _, _, param(D)).
+address_base(opaque, D, _, _, value(D)).
+address_base(ins(Op, Args), D, K, Defs, Base) :-
+    ins_base(Op, Args, D, K, Defs, Base).
+
+% ins_base(+Op, +Args, +D, +K, +Defs, -Base): as address_base/5, for an
+% instruction. The cuts commit to the alloc and symbol cases, which the
+% last clause would also match: it is the default among the IR ops,
+% which are not a clean term for this question.
+ins_base(alloc(_), _, D, _, _, alloc(D)) :- !.
+ins_base(copy, [glo(S)], _, _, _, symbol(S)) :- !.
+ins_base(Op, Args, D, K, Defs, value(D)) :-
+    \+ address_offset(ins(Op, Args), K, Defs, _, _).
 
 % address_offset(+Source, +K, +Defs, -S, -Delta): Source computes the
 % same-class temp S plus Delta.
@@ -91,20 +99,26 @@ address_offset(ins(sub, [t(S), c(N)]), K, Defs, S, Delta) :-
     get_assoc(S, Defs, def(K, _)),
     Delta is -N.
 
-% propagate_offsets(+Pending, +Users, +Facts0, -Facts): Pending is the
+% pending_facts(+Pending, +Users, +Facts0, -Facts): Facts is
+% Facts0 with the addresses derived, directly or not, from Pending, the
 % list of S-Addr whose users are still to be derived. Every derived
-% definition has one source. Root phis rather than chasing
-% their cycles: they select a value from an earlier dynamic execution.
-% Visit a definition only when its source is known, regardless of layout.
-propagate_offsets([], _, Facts, Facts).
-propagate_offsets([S-Addr|Pending0], Users, Facts0, Facts) :-
+% definition has one source, so a definition is reached only once its
+% source is known, regardless of layout. Phis are roots rather than
+% followed around their cycles: they select a value from an earlier
+% dynamic execution.
+pending_facts([], _, Facts, Facts).
+pending_facts([S-Addr|Pending0], Users, Facts0, Facts) :-
     (   get_assoc(S, Users, Edges) -> true ; Edges = [] ),
-    foldl(derive_address(Addr), Edges, Facts0-Pending0, Facts1-Pending),
-    propagate_offsets(Pending, Users, Facts1, Facts).
+    foldl(addr_edge_state(Addr), Edges, Facts0-Pending0,
+          Facts1-Pending),
+    pending_facts(Pending, Users, Facts1, Facts).
 
-% The offset wraps modulo 2^64 to its signed 64-bit representative.
-derive_address(addr(K, Base, Off), edge(D, Delta),
-               Facts0-Pending, Facts-[D-Addr|Pending]) :-
+% addr_edge_state(+Addr, +Edge, +Facts0-Pending0, -Facts-Pending):
+% the user D of Edge has the address Addr plus Delta, in Facts and in
+% front of Pending0. The offset wraps modulo 2^64 to its signed 64-bit
+% representative.
+addr_edge_state(addr(K, Base, Off), edge(D, Delta),
+                       Facts0-Pending, Facts-[D-Addr|Pending]) :-
     U is (Off + Delta) mod 18446744073709551616,
     (   U >= 9223372036854775808
     ->  O is U - 18446744073709551616

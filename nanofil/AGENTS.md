@@ -46,12 +46,29 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
 - Code must run on both hosts. Write Trealla's dialect (double_quotes
   chars, `library(dcgs)`, `format_//2`, character-list `phrase_from_file`);
   `src/swi/` maps it onto SWI. Avoid `char_type/2` (the hosts' classes
-  differ) and `phrase/2,3` over non-list state (SWI requires a list; call
-  the nonterminal with two extra arguments instead).
+  differ) and `phrase/2,3` over non-list state (SWI requires a list).
+  To thread a state through a DCG, wrap it in a one-element list and use
+  semicontext, `state(S), [S] --> [S].` and `state(S0, S), [S] --> [S0].`,
+  with `phrase(G, [S0], [S])` (c_lower.pl, promote.pl).
 - The Trealla DCG translator rejects an if-then chain without a final
   else inside `-->` bodies; end chains with `; []`.
 - On Trealla a 200-function `gen.py` corpus takes GBs of RAM; run one at
   a time there.
+
+## Purity where it pays
+
+The style follows Triska's [The Power of Prolog](https://www.metalevel.at/prolog)
+(PLAN.md's rules, docs/handoff.md): relation names, clean
+representations, case analysis in clause heads, DCG semicontext for
+state. Two of its tools do not pay in compiler code on ground data,
+measured in October 2026:
+
+- `#=` instead of `is/2` throughout: +10% on SWI, but 4-9x the time and
+  up to 14 GB instead of 3 GB on Trealla (c-testsuite 00200 and 00040,
+  `-O cc`). CLP(Z) stays in `interp.pl`, which must run backwards.
+- `if_/3`: 18x (SWI) and 7x (Trealla) the cost of `->` per dispatch,
+  and SWI has no `library(reif)`. Clause heads with first-argument
+  indexing cost the same as `->` on Trealla and are pure.
 
 ## Working alongside other threads
 

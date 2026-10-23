@@ -35,12 +35,13 @@
 copy_module(module(Items0), module(Items)) :-
     maplist(copy_item, Items0, Items).
 
+% copy_item(+Item0, -Item): Item is the module item Item0, with copies
+% propagated if it is a function.
 % Reps (here and below): assoc Temp -> the value that replaces it.
-copy_item(F0, F) :-
+copy_item(func(Name, Linkage, Ret, Params, Blocks0), F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
-    !,
     func_cfg(Blocks0, Cfg),
-    dominators(Cfg, Idom),
+    cfg_idoms(Cfg, Idom),
     (   strict_ssa(F0, Cfg, Idom)
     ->  temp_classes(Params, Blocks0, Classes),
         Cfg = cfg(_, Rpo, _, _),
@@ -54,13 +55,14 @@ copy_item(F0, F) :-
                 CopyPairs),
         list_to_assoc(CopyPairs, Copies),
         empty_assoc(Empty),
-        foldl(resolve_copy(Copies), CopyPairs, Empty, Reps),
-        maplist(subst_block(Reps), Blocks0, Copied),
+        foldl(copy_reps(Copies), CopyPairs, Empty, Reps),
+        maplist(reps_block(Reps), Blocks0, Copied),
         trivial_phis(Copied, Classes, Reach, Blocks),
         F = func(Name, Linkage, Ret, Params, Blocks)
     ;   F = F0
     ).
-copy_item(Item, Item).
+copy_item(data(Name, Linkage, Align, Items),
+          data(Name, Linkage, Align, Items)).
 
 % temp_classes(+Params, +Blocks, -Classes): assoc Temp -> class of its
 % definition.
@@ -86,27 +88,30 @@ copy_value(c(N), K, _, c(V)) :-
     modulus(K, M),
     V is N mod M.
 
-% resolve_copy(+Copies, +D-_, +Reps0, -Reps): Reps is Reps0 with the
+% copy_reps(+Copies, +D-_, +Reps0, -Reps): Reps is Reps0 with the
 % value that replaces D, and every link on the way to it, added.
 % Strict dominance rules out cycles among the live copy definitions.
-% walk_copy is tail recursive even when a chain has thousands of links.
-resolve_copy(Copies, D-_, Reps0, Reps) :-
-    walk_copy(t(D), Copies, Reps0, [], Path, V),
-    foldl(cache_copy(V), Path, Reps0, Reps).
+% copy_chain/6 is tail recursive even when a chain has thousands of
+% links.
+copy_reps(Copies, D-_, Reps0, Reps) :-
+    copy_chain(t(D), Copies, Reps0, [], Path, V),
+    foldl(value_temp_reps(V), Path, Reps0, Reps).
 
-% Follow copies from the first argument to a value that is not one,
-% collecting the temps on the way (Path) that are not yet in Reps.
-walk_copy(t(T), Copies, Reps, Path0, Path, V) :- !,
+% copy_chain(+V0, +Copies, +Reps, +Path0, -Path, -V): following copies
+% (and the values already in Reps) from V0 ends at V, a value that is
+% not one; Path is the temps on the way that are not in Reps, in front
+% of Path0. Copies and Reps hold temps and constants only.
+copy_chain(t(T), Copies, Reps, Path0, Path, V) :-
     (   get_assoc(T, Reps, V)
     ->  Path = Path0
     ;   get_assoc(T, Copies, Src)
-    ->  walk_copy(Src, Copies, Reps, [T|Path0], Path, V)
+    ->  copy_chain(Src, Copies, Reps, [T|Path0], Path, V)
     ;   V = t(T),
         Path = Path0
     ).
-walk_copy(V, _, _, Path, Path, V).
+copy_chain(c(N), _, _, Path, Path, c(N)).
 
-cache_copy(V, T, Reps0, Reps) :-
+value_temp_reps(V, T, Reps0, Reps) :-
     put_assoc(T, Reps0, V, Reps).
 
 % Copy propagation exposes invariant phis. Index their users so that a
@@ -127,20 +132,22 @@ trivial_phis(Blocks0, Classes, Reach, Blocks) :-
     list_to_assoc(UserPairs, Users),
     assoc_to_keys(Phis, Pending),
     empty_assoc(Empty),
-    simplify_phis(Pending, Phis, Users, Empty, Aliases),
+    phi_worklist_reps(Pending, Phis, Users, Empty, Aliases),
     assoc_to_list(Aliases, AliasPairs),
-    foldl(resolve_copy(Aliases), AliasPairs, Empty, Reps),
-    maplist(subst_block(Reps), Blocks0, Blocks).
+    foldl(copy_reps(Aliases), AliasPairs, Empty, Reps),
+    maplist(reps_block(Reps), Blocks0, Blocks).
 
 phi_value(K, Classes, _-Src, V) :-
     copy_value(Src, K, Classes, V).
 
-% Worklist over phi temps. Phis: assoc D -> operand values, for the phis
-% not yet simplified; Users: assoc S -> ordset of the phis that read t(S).
-% Invariant: no phi left in Phis0 reads the temp of a phi already
+% phi_worklist_reps(+Pending, +Phis0, +Users0, +Reps0, -Reps): Reps is
+% Reps0 with the value of each trivial phi, as found by a worklist over
+% the phi temps Pending. Phis0: assoc D -> operand values, for the phis
+% not yet simplified; Users0: assoc S -> ordset of the phis that read
+% t(S). Invariant: no phi left in Phis0 reads the temp of a phi already
 % simplified, and each one that may have become trivial is in Pending.
-simplify_phis([], _, _, Reps, Reps).
-simplify_phis([D|Pending0], Phis0, Users0, Reps0, Reps) :-
+phi_worklist_reps([], _, _, Reps, Reps).
+phi_worklist_reps([D|Pending0], Phis0, Users0, Reps0, Reps) :-
     (   get_assoc(D, Phis0, Vs),
         exclude(=(t(D)), Vs, Other),
         sort(Other, [V])
@@ -148,7 +155,7 @@ simplify_phis([D|Pending0], Phis0, Users0, Reps0, Reps) :-
         put_assoc(D, Reps0, V, Reps1),
         (   get_assoc(D, Users0, DUsers) -> true ; DUsers = [] ),
         include(is_phi(Phis1), DUsers, Live),
-        foldl(redirect_phi(D, V), Live, Phis1, Phis),
+        foldl(phi_redirected(D, V), Live, Phis1, Phis),
         (   V = t(S), get_assoc(S, Phis, _)
         ->  (   get_assoc(S, Users0, Old) -> true ; Old = [] ),
             ord_union(Old, Live, New),
@@ -156,20 +163,21 @@ simplify_phis([D|Pending0], Phis0, Users0, Reps0, Reps) :-
         ;   Users = Users0
         ),
         ord_union(Pending0, Live, Pending),
-        simplify_phis(Pending, Phis, Users, Reps1, Reps)
-    ;   simplify_phis(Pending0, Phis0, Users0, Reps0, Reps)
+        phi_worklist_reps(Pending, Phis, Users, Reps1, Reps)
+    ;   phi_worklist_reps(Pending0, Phis0, Users0, Reps0, Reps)
     ).
 
 is_phi(Phis, D) :-
     get_assoc(D, Phis, _).
 
-% In phi U, read V wherever it read t(D).
-redirect_phi(D, V, U, Phis0, Phis) :-
+% phi_redirected(+D, +V, +U, +Phis0, -Phis): in Phis, phi U reads V
+% wherever it reads t(D) in Phis0.
+phi_redirected(D, V, U, Phis0, Phis) :-
     get_assoc(U, Phis0, Vs0),
-    maplist(redirect_value(D, V), Vs0, Vs),
+    maplist(value_redirected(D, V), Vs0, Vs),
     put_assoc(U, Phis0, Vs, Phis).
 
-redirect_value(D, V, V0, R) :-
+value_redirected(D, V, V0, R) :-
     (   V0 == t(D)
     ->  R = V
     ;   R = V0
@@ -177,60 +185,70 @@ redirect_value(D, V, V0, R) :-
 
 %% Substitution
 
-% Drop the phis and copies whose temp is in Reps, and replace every use
-% of such a temp by its value.
-subst_block(Reps, blk(L, Phis0, Insts0, Jump0), blk(L, Phis, Insts, Jump)) :-
-    subst_phis(Phis0, Reps, Phis),
-    subst_insts(Insts0, Reps, Insts),
-    subst_jump(Jump0, Reps, Jump).
+% reps_block(+Reps, +Block0, -Block): Block is Block0 without
+% the phis and copies whose temp is in Reps, and with every use of such
+% a temp replaced by its value.
+reps_block(Reps, blk(L, Phis0, Insts0, Jump0),
+                  blk(L, Phis, Insts, Jump)) :-
+    phis_reps(Phis0, Reps, Phis),
+    insts_reps(Insts0, Reps, Insts),
+    jump_reps(Jump0, Reps, Jump).
 
-subst_phis([], _, []).
-subst_phis([P0|Ps0], Reps, Ps) :-
+phis_reps([], _, []).
+phis_reps([P0|Ps0], Reps, Ps) :-
     (   P0 = phi(t(D), _, _), get_assoc(D, Reps, _)
     ->  Ps = Rest
     ;   Ps = [P|Rest],
-        subst_phi(Reps, P0, P)
+        reps_phi(Reps, P0, P)
     ),
-    subst_phis(Ps0, Reps, Rest).
+    phis_reps(Ps0, Reps, Rest).
 
-subst_phi(Reps, phi(D, K, Args0), phi(D, K, Args)) :-
-    maplist(subst_edge(Reps), Args0, Args).
+reps_phi(Reps, phi(D, K, Args0), phi(D, K, Args)) :-
+    maplist(reps_edge(Reps), Args0, Args).
 
-subst_edge(Reps, L-V0, L-V) :-
-    subst_use(Reps, V0, V).
+reps_edge(Reps, L-V0, L-V) :-
+    value_reps(V0, Reps, V).
 
-subst_insts([], _, []).
-subst_insts([I0|Is0], Reps, Is) :-
+insts_reps([], _, []).
+insts_reps([I0|Is0], Reps, Is) :-
     (   I0 = ins(t(D), _, copy, _), get_assoc(D, Reps, _)
     ->  Is = Rest
     ;   Is = [I|Rest],
-        subst_inst(I0, Reps, I)
+        inst_reps(I0, Reps, I)
     ),
-    subst_insts(Is0, Reps, Rest).
+    insts_reps(Is0, Reps, Rest).
 
-subst_inst(ins(D, K, Op, Vs0), Reps, ins(D, K, Op, Vs)) :-
-    maplist(subst_use(Reps), Vs0, Vs).
-subst_inst(store(W, V0, A0), Reps, store(W, V, A)) :-
-    subst_use(Reps, V0, V),
-    subst_use(Reps, A0, A).
-subst_inst(call(R, F0, Args0), Reps, call(R, F, Args)) :-
-    subst_use(Reps, F0, F),
-    maplist(subst_arg(Reps), Args0, Args).
+inst_reps(ins(D, K, Op, Vs0), Reps, ins(D, K, Op, Vs)) :-
+    maplist(reps_value(Reps), Vs0, Vs).
+inst_reps(store(W, V0, A0), Reps, store(W, V, A)) :-
+    value_reps(V0, Reps, V),
+    value_reps(A0, Reps, A).
+inst_reps(call(R, F0, Args0), Reps, call(R, F, Args)) :-
+    value_reps(F0, Reps, F),
+    maplist(reps_arg(Reps), Args0, Args).
 
-subst_arg(Reps, arg(K, V0), arg(K, V)) :-
-    subst_use(Reps, V0, V).
+reps_arg(Reps, arg(K, V0), arg(K, V)) :-
+    value_reps(V0, Reps, V).
 
-subst_jump(jnz(V0, T, F), Reps, jnz(V, T, F)) :- !,
-    subst_use(Reps, V0, V).
-subst_jump(ret(V0), Reps, ret(V)) :- !,
-    subst_use(Reps, V0, V).
-subst_jump(rets(Vs0), Reps, rets(Vs)) :- !,
-    maplist(subst_use(Reps), Vs0, Vs).
-subst_jump(J, _, J).
+jump_reps(jmp(L), _, jmp(L)).
+jump_reps(jnz(V0, T, F), Reps, jnz(V, T, F)) :-
+    value_reps(V0, Reps, V).
+jump_reps(ret(V0), Reps, ret(V)) :-
+    value_reps(V0, Reps, V).
+jump_reps(ret, _, ret).
+jump_reps(rets(Vs0), Reps, rets(Vs)) :-
+    maplist(reps_value(Reps), Vs0, Vs).
+jump_reps(hlt, _, hlt).
 
-% subst_use(+Reps, +V0, -V): V is the replacement of V0 in Reps, or V0
-% itself. Not steadfast: call it with V unbound.
-subst_use(Reps, t(T), V) :-
-    get_assoc(T, Reps, V),
-    !.
-subst_use(_, V, V).
+reps_value(Reps, V0, V) :-
+    value_reps(V0, Reps, V).
+
+% value_reps(+V0, +Reps, -V): V is the replacement of V0 in Reps,
+% or V0 itself.
+value_reps(t(T), Reps, V) :-
+    (   get_assoc(T, Reps, V1)
+    ->  V = V1
+    ;   V = t(T)
+    ).
+value_reps(c(N), _, c(N)).
+value_reps(glo(G), _, glo(G)).

@@ -309,7 +309,8 @@ split_pairs([K-V|Ps], [K|Ks], [V|Vs]) :- split_pairs(Ps, Ks, Vs).
 
 % valid_inst(+Ctx, +Inst): Inst is well formed and reads each operand at
 % a class its definition allows. In filc mode a symbol is an operand only
-% of copy, which yields its pointer.
+% of copy, which yields its pointer; the cut commits to that case before
+% the general clause for ins/4.
 valid_inst(ctx(_, _, _, _, _, _, filc), ins(_, p, copy, [glo(_)])) :- !.
 valid_inst(Ctx, ins(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
@@ -352,15 +353,17 @@ valid_inst(Ctx, call(_, Callee, Args)) :-
     ),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
 
-% store_value_class(+Width, -K): a store of Width reads its value at K.
-store_value_class(l, l) :- !.
-store_value_class(p, p) :- !.
-store_value_class(_, w).
+% store_value_class(?Width, ?K): a store of Width reads its value at K.
+store_value_class(b, w).
+store_value_class(h, w).
+store_value_class(w, w).
+store_value_class(l, l).
+store_value_class(p, p).
 
 % call_result_ok(+Fn, +Callee, +Res, +CalleeRet): the call site reads the
 % result the way the callee returns it.
 call_result_ok(_, _, void, _).
-call_result_ok(Fn, Callee, tuple(Tos), Ret) :- !,
+call_result_ok(Fn, Callee, tuple(Tos), Ret) :-
     findall(K, member(to(_, K), Tos), Ks),
     (   Ret == tuple(Ks) -> true
     ;   fn_error(Fn, 'reads the ~w result of $~w as tuple(~w)',
@@ -431,10 +434,17 @@ valid_use_(t(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
     ;   fn_error(Fn, 'undefined temporary %~w', [N])
     ).
 valid_use_(c(N), _, _) :- integer(N).
-valid_use_(glo(G), ctx(_, Fn, _, _, _, _, filc), _) :- !,
+valid_use_(glo(G), Ctx, K) :-
+    Ctx = ctx(_, _, _, _, _, _, Mode),
+    symbol_use_ok(Mode, G, Ctx, K).
+
+% symbol_use_ok(+Mode, +G, +Ctx, +K): the symbol $G may be read at class
+% K in a module of Mode: in plain mode as an address of data, in filc
+% mode never (copy, which yields its pointer, is checked apart).
+symbol_use_ok(filc, G, ctx(_, Fn, _, _, _, _, _), _) :-
     fn_error(Fn, '$~w used as an operand; use %t =p copy $~w', [G, G]).
-valid_use_(glo(G), ctx(M, Fn, _, _, _, _, Mode), K) :-
-    addr_class(Mode, AddrClass),
+symbol_use_ok(plain, G, ctx(M, Fn, _, _, _, _, _), K) :-
+    addr_class(plain, AddrClass),
     (   K == AddrClass -> true
     ;   fn_error(Fn, '$~w used as ~w', [G, K])
     ),
@@ -445,7 +455,9 @@ valid_use_(glo(G), ctx(M, Fn, _, _, _, _, Mode), K) :-
 
 %% Operand and result classes
 
-% op_result_ok(+Mode, +Op, +K): Op may produce a result of class K.
+% op_result_ok(+Mode, +Op, +K): Op may produce a result of class K. The
+% last two clauses are default cases over the remaining ops, so the cuts
+% commit to each specific op first.
 op_result_ok(_, ext(T), K) :- !,
     (   memberchk(T, [sw, uw]) -> K == l ; int_class(K) ).
 op_result_ok(_, load(l), K) :- !, K == l.

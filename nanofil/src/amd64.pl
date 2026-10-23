@@ -68,15 +68,17 @@ item(func(Name, Linkage, Ret, Params, Blocks)) -->
     blocks(Blocks, Ctx),
     [size(Name)].
 item(data(Name, Linkage0, Align, Items)) -->
-    {   Linkage0 = ro(Linkage)
-    ->  Section = rodata
-    ;   Linkage = Linkage0,
-        Section = data
-    },
+    { linkage_section(Linkage0, Linkage, Section) },
     [section(Section), balign(Align)],
     global(Linkage, Name),
     [label(Name)],
     data_items(Items).
+
+% linkage_section(?Linkage0, ?Linkage, ?Section): data with linkage
+% Linkage0 goes in Section with symbol linkage Linkage.
+linkage_section(export, export, data).
+linkage_section(local, local, data).
+linkage_section(ro(Linkage), Linkage, rodata).
 
 % global(+Linkage, +Name)//: the .globl directive an export needs.
 global(export, Name) --> [globl(Name)].
@@ -235,7 +237,7 @@ inst(ins(D, Class, Op, Args), Ctx) -->
     compute_op(Op, Class, Args, Ctx),
     store_reg(rax, D, Ctx).
 inst(store(Width, V, Addr), Ctx) -->
-    { Width == l -> Class = l ; Class = w },
+    { width_class(Width, Class) },
     load(V, Class, c, Ctx),
     load(Addr, l, a, Ctx),
     { store_insn(Width, c, Store) },
@@ -250,7 +252,19 @@ inst(call(Res, glo(F), Args), Ctx) -->
       ) },
     call_args(Args, 0, Ctx),
     [ins(call, none, [sym(F)])],
-    (   { Res = to(D, _) } -> store_reg(rax, D, Ctx) ; [] ).
+    call_result(Res, Ctx).
+
+% width_class(?Width, ?Class): a store of Width reads its value at Class.
+width_class(b, w).
+width_class(h, w).
+width_class(w, w).
+width_class(l, l).
+
+% call_result(+Res, +Ctx)//: the store of a call's result Res from %rax;
+% nothing for void, and the plain backend has no tuple results.
+call_result(void, _) --> [].
+call_result(to(D, _), Ctx) --> store_reg(rax, D, Ctx).
+call_result(tuple(_), _) --> [].
 
 % call_args(+Args, +I, +Ctx)//: load each argument, from the I-th on,
 % into its argument register.
@@ -279,41 +293,20 @@ compute_op(neg, K, [X], Ctx) -->
     { att_suffix(K, S),
       reg_name(a, K, A) },
     [ins(neg, S, [reg(A)])].
-compute_op(Op, K, [X, Y], Ctx) -->
-    { alu_insn(Op, Insn) },
-    !,
-    load(X, K, a, Ctx),
-    load(Y, K, c, Ctx),
-    { att_suffix(K, S),
-      reg_name(a, K, A),
-      reg_name(c, K, C) },
-    [ins(Insn, S, [reg(C), reg(A)])].
-compute_op(Op, K, [X, Y], Ctx) -->
-    { shift_insn(Op, Insn) },
-    !,
-    load(X, K, a, Ctx),
-    load(Y, w, c, Ctx),
-    { att_suffix(K, S),
-      reg_name(a, K, A) },
-    [ins(Insn, S, [reg(cl), reg(A)])].
-compute_op(Op, K, [X, Y], Ctx) -->
-    { division(Op, Signedness, Result) },
-    !,
-    load(X, K, a, Ctx),
-    load(Y, K, c, Ctx),
-    { att_suffix(K, S),
-      reg_name(c, K, C) },
-    (   { Signedness == signed }
-    ->  { K == w -> SignExtend = cltd ; SignExtend = cqto },
-        [ins(SignExtend, none, []), ins(idiv, S, [reg(C)])]
-    ;   [ins(xor, l, [reg(edx), reg(edx)]), ins(div, S, [reg(C)])]
-    ),
-    (   { Result == rem }
-    ->  { reg_name(d, K, D),
-          reg_name(a, K, A) },
-        [ins(mov, S, [reg(D), reg(A)])]
-    ;   []
-    ).
+compute_op(add, K, Args, Ctx) --> alu(add, K, Args, Ctx).
+compute_op(sub, K, Args, Ctx) --> alu(sub, K, Args, Ctx).
+compute_op(mul, K, Args, Ctx) --> alu(imul, K, Args, Ctx).
+compute_op(and, K, Args, Ctx) --> alu(and, K, Args, Ctx).
+compute_op(or, K, Args, Ctx) --> alu(or, K, Args, Ctx).
+compute_op(xor, K, Args, Ctx) --> alu(xor, K, Args, Ctx).
+% x86 masks the count in %cl to the operand width, as the IR specifies.
+compute_op(shl, K, Args, Ctx) --> shift(shl, K, Args, Ctx).
+compute_op(shr, K, Args, Ctx) --> shift(shr, K, Args, Ctx).
+compute_op(sar, K, Args, Ctx) --> shift(sar, K, Args, Ctx).
+compute_op(div, K, Args, Ctx) --> division(signed, quot, K, Args, Ctx).
+compute_op(rem, K, Args, Ctx) --> division(signed, rem, K, Args, Ctx).
+compute_op(udiv, K, Args, Ctx) --> division(unsigned, quot, K, Args, Ctx).
+compute_op(urem, K, Args, Ctx) --> division(unsigned, rem, K, Args, Ctx).
 compute_op(cmp(Cond, CmpClass), _, [X, Y], Ctx) -->
     load(X, CmpClass, a, Ctx),
     load(Y, CmpClass, c, Ctx),
@@ -340,18 +333,56 @@ compute_op(alloc(_), _, [Size], Ctx) -->
      ins(sub, q, [reg(rax), reg(rsp)]),
      ins(mov, q, [reg(rsp), reg(rax)])].
 
-% alu_insn(?Op, ?Insn), shift_insn(?Op, ?Insn): Insn is the x86
-% two-operand instruction for the IR operation Op.
-alu_insn(add, add). alu_insn(sub, sub). alu_insn(mul, imul).
-alu_insn(and, and). alu_insn(or, or).   alu_insn(xor, xor).
+% alu(+Insn, +K, +Args, +Ctx)//: the x86 two-operand instruction Insn
+% on Args.
+alu(Insn, K, [X, Y], Ctx) -->
+    load(X, K, a, Ctx),
+    load(Y, K, c, Ctx),
+    { att_suffix(K, S),
+      reg_name(a, K, A),
+      reg_name(c, K, C) },
+    [ins(Insn, S, [reg(C), reg(A)])].
 
-% x86 masks the count in %cl to the operand width, as the IR specifies.
-shift_insn(shl, shl). shift_insn(shr, shr). shift_insn(sar, sar).
+% shift(+Insn, +K, +Args, +Ctx)//: the x86 shift Insn of the first of
+% Args by the second, a w count in %cl.
+shift(Insn, K, [X, Y], Ctx) -->
+    load(X, K, a, Ctx),
+    load(Y, w, c, Ctx),
+    { att_suffix(K, S),
+      reg_name(a, K, A) },
+    [ins(Insn, S, [reg(cl), reg(A)])].
 
-% division(?Op, ?Signedness, ?Result): Op is the division of that
-% Signedness whose Result is the quotient (quot) or remainder (rem).
-division(div, signed, quot).    division(rem, signed, rem).
-division(udiv, unsigned, quot). division(urem, unsigned, rem).
+% division(+Signedness, +Result, +K, +Args, +Ctx)//: the division of
+% that Signedness of the first of Args by the second, leaving in %rax
+% its Result, the quotient (quot) or remainder (rem).
+division(Signedness, Result, K, [X, Y], Ctx) -->
+    load(X, K, a, Ctx),
+    load(Y, K, c, Ctx),
+    { att_suffix(K, S),
+      reg_name(c, K, C) },
+    divide(Signedness, K, S, C),
+    division_result(Result, K, S).
+
+% divide(+Signedness, +K, +S, +C)//: %rdx:%rax (or %edx:%eax) divided
+% by register C, extended from %rax by Signedness.
+divide(signed, K, S, C) -->
+    { sign_extension(K, SignExtend) },
+    [ins(SignExtend, none, []), ins(idiv, S, [reg(C)])].
+divide(unsigned, _, S, C) -->
+    [ins(xor, l, [reg(edx), reg(edx)]), ins(div, S, [reg(C)])].
+
+% sign_extension(?K, ?Insn): Insn sign-extends %eax or %rax at K into
+% %edx or %rdx.
+sign_extension(w, cltd).
+sign_extension(l, cqto).
+
+% division_result(+Result, +K, +S)//: the move of the remainder from
+% %rdx to %rax; the quotient is already there.
+division_result(quot, _, _) --> [].
+division_result(rem, K, S) -->
+    { reg_name(d, K, D),
+      reg_name(a, K, A) },
+    [ins(mov, S, [reg(D), reg(A)])].
 
 % cond_code(?Cond, ?CC): CC is the x86 condition code suffix for the
 % comparison Cond.
@@ -387,13 +418,17 @@ load_insn(Type, K, ins(Op, S, [mem(0, rax), reg(To)])) :-
     load_op(Type, K, Op, S, To).
 
 % load_op(+Type, +Class, -Op, -Suffix, -To): as ext_op/5, for a load
-% from memory; a uw load needs only a 32-bit move.
+% from memory; a uw load, or an sw load at w, needs only a 32-bit move.
 load_op(l, l, mov, q, rax).
-load_op(sw, w, mov, l, eax).
+load_op(sw, K, Op, S, To) :- sw_load_op(K, Op, S, To).
 load_op(uw, _, mov, l, eax).
-load_op(Type, K, Op, S, To) :-
-    Type \== uw,
-    ext_op(Type, K, Op, S, To).
+load_op(sb, K, Op, S, To) :- ext_op(sb, K, Op, S, To).
+load_op(ub, K, Op, S, To) :- ext_op(ub, K, Op, S, To).
+load_op(sh, K, Op, S, To) :- ext_op(sh, K, Op, S, To).
+load_op(uh, K, Op, S, To) :- ext_op(uh, K, Op, S, To).
+
+sw_load_op(w, mov, l, eax).
+sw_load_op(l, Op, S, To) :- ext_op(sw, l, Op, S, To).
 
 %% Operands
 
@@ -403,20 +438,24 @@ load_op(Type, K, Op, S, To) :-
 load(t(N), K, R, Ctx) -->
     { reg_name(R, K, RN) },
     load_slot(t(N), K, RN, Ctx).
-load(c(N), w, R, _) -->
+load(c(N), K, R, _) --> load_constant(K, N, R).
+load(glo(G), _, R, _) -->
+    { reg_name(R, l, RN) },
+    [ins(lea, q, [rip(G), reg(RN)])].
+
+% load_constant(+Class, +N, +Reg)//: the move of the constant N, reduced
+% modulo Class, into Reg.
+load_constant(w, N, R) -->
     { reg_name(R, w, RN),
       V is N mod 4294967296 },
     [ins(mov, l, [imm(V), reg(RN)])].
-load(c(N), l, R, _) -->
+load_constant(l, N, R) -->
     { reg_name(R, l, RN),
       U is N mod 18446744073709551616,
       (   U >= 9223372036854775808 -> V is U - 18446744073709551616
       ;   V = U
       ) },
     [ins(movabs, q, [imm(V), reg(RN)])].
-load(glo(G), _, R, _) -->
-    { reg_name(R, l, RN) },
-    [ins(lea, q, [rip(G), reg(RN)])].
 
 %! load_slot(+Key, +Class, +RegName, +Ctx)// is semidet.
 %
@@ -446,9 +485,13 @@ data_items([Item|Items]) -->
     data_items(Items).
 
 data_item(zero(N)) --> [zero(N)].
-data_item(item(b, str(Cs))) --> !, [ascii(Cs)].
-data_item(item(l, sym(S, Off))) --> !, [quad(S+Off)].
-data_item(item(W, c(N))) -->
+data_item(item(W, Value)) --> item_value(Value, W).
+
+% item_value(+Value, +W)//: the directive for a data item of width W and
+% value Value.
+item_value(str(Cs), b) --> [ascii(Cs)].
+item_value(sym(S, Off), l) --> [quad(S+Off)].
+item_value(c(N), W) -->
     { data_directive(W, U, Directive, Bits),
       U is N mod (1 << Bits) },
     [Directive].

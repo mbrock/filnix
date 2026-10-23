@@ -72,9 +72,12 @@ alloc_classes(F, Classes) :-
     keysort(Events0, Sorted),
     group_pairs_by_key(Sorted, Pairs),
     list_to_assoc(Pairs, Events),
-    maplist(classify_alloc(Events), Allocs, Classes).
+    maplist(events_alloc_class(Events), Allocs, Classes).
 
-classify_alloc(Events, A-Size, A-Class) :-
+% events_alloc_class(+Events, +A-Size, -A-Class): Class is the class of
+% the alloc A, of operand Size, given the assoc Events of each alloc's
+% events in order: escapes for the first escape, or else local.
+events_alloc_class(Events, A-Size, A-Class) :-
     (   get_assoc(A, Events, Es) -> true ; Es = [] ),
     (   memberchk(esc(Why), Es)
     ->  Class = escapes(Why)
@@ -83,15 +86,24 @@ classify_alloc(Events, A-Size, A-Class) :-
         Class = local(Size, Accs)
     ).
 
-% inst_event(+Ins, +Addrs, -Root-Event) is nondet: what an instruction
-% does with addresses: an access at a known offset, a constant offset (a
-% derived address, seen by address_temps), or an escape of every alloc
-% whose address it reads.
+% inst_event(+Ins, +Addrs, -Root-Event) is nondet: Event is what Ins
+% does with the address of alloc Root: an access at a known offset, or
+% an escape of every alloc whose address it reads. A constant offset (a
+% derived address, seen by address_temps) is neither.
+%
+% The cut commits a load from an address to its access: the escape
+% clause after it would also match, as an ins/4 whose Op it does not
+% inspect (IR ops are not a clean term for this question).
 inst_event(ins(_, _, load(T), [t(X)]), Addrs, Root-acc(acc(Off, W))) :-
     get_assoc(X, Addrs, Root-Off),
     !,
     load_width(T, W).
-inst_event(store(W, V, A), Addrs, Event) :- !,
+inst_event(ins(D, K, Op, Args), Addrs, Root-esc(Op)) :-
+    \+ ( offset_of(ins(D, K, Op, Args), Y, _),         % derived address
+         get_assoc(Y, Addrs, _) ),
+    member(t(X), Args),
+    get_assoc(X, Addrs, Root-_).
+inst_event(store(W, V, A), Addrs, Event) :-
     (   V = t(X),
         get_assoc(X, Addrs, Root-_),
         Event = Root-esc(stored)
@@ -99,17 +111,10 @@ inst_event(store(W, V, A), Addrs, Event) :- !,
         get_assoc(X, Addrs, Root-Off),
         Event = Root-acc(acc(Off, W))
     ).
-inst_event(I, Addrs, Root-esc(Why)) :-
-    \+ ( offset_of(I, Y, _), get_assoc(Y, Addrs, _) ),  % derived address
-    inst_values(I, Why, Vs),
-    member(t(X), Vs),
+inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
+    findall(V, member(arg(_, V), Args), Vs),
+    member(t(X), [F|Vs]),
     get_assoc(X, Addrs, Root-_).
-
-% inst_values(+Ins, -Why, -Values): the values Ins reads, and the escape
-% reason if one of them is an address.
-inst_values(ins(_, _, Op, Args), Op, Args).
-inst_values(call(_, F, Args), call, [F|Vs]) :-
-    findall(V, member(arg(_, V), Args), Vs).
 
 jump_value(jnz(V, _, _), V).
 jump_value(ret(V), V).
@@ -140,14 +145,17 @@ address_temps(func(_, _, _, _, Blocks), Addrs) :-
     group_pairs_by_key(Edges1, Edges),
     list_to_assoc(Edges, BySource),
     assoc_to_list(Addrs0, Seeds),
-    derive_addresses(Seeds, BySource, Addrs0, Addrs).
+    layers_addrs(Seeds, BySource, Addrs0, Addrs).
 
-% Follow each dependency only when its source is first resolved. Whole
-% layers are processed together: as in the old fixed point, a redefined
-% temp takes its earliest-resolved definition, then instruction order
-% breaks ties. Cycles without an allocation seed remain unresolved.
-derive_addresses([], _, Addrs, Addrs).
-derive_addresses([S|Ss], BySource, Addrs0, Addrs) :-
+% layers_addrs(+Layer, +BySource, +Addrs0, -Addrs): Addrs is
+% Addrs0 with the temps derived, directly or not, from the X-(Root-Off)
+% pairs of Layer and not yet in Addrs0. A dependency is followed only
+% when its source is first resolved, a whole layer at a time: as in the
+% old fixed point, a redefined temp takes its earliest-resolved
+% definition, then instruction order breaks ties. Cycles without an
+% allocation seed remain unresolved.
+layers_addrs([], _, Addrs, Addrs).
+layers_addrs([S|Ss], BySource, Addrs0, Addrs) :-
     findall(Pos-(D-(Root-Off)),
             ( member(X-(Root-Off0), [S|Ss]),
               get_assoc(X, BySource, Edges),
@@ -159,10 +167,10 @@ derive_addresses([S|Ss], BySource, Addrs0, Addrs) :-
     pairs_values(Ordered, Pairs),
     % One entry per temp; redefinitions are caught later.
     sort(1, @<, Pairs, New),
-    foldl(put_pair, New, Addrs0, Addrs1),
-    derive_addresses(New, BySource, Addrs1, Addrs).
+    foldl(pair_assoc, New, Addrs0, Addrs1),
+    layers_addrs(New, BySource, Addrs1, Addrs).
 
-put_pair(K-V, Assoc0, Assoc) :-
+pair_assoc(K-V, Assoc0, Assoc) :-
     put_assoc(K, Assoc0, V, Assoc).
 
 %! def_counts(+Func, -Counts) is det.

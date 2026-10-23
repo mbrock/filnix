@@ -1,8 +1,5 @@
 /*  Printer from IR terms to QBE text. Every block ends in an explicit
     jump, so printing is independent of block order.
-
-    Only the first solution is meaningful: on backtracking, ret_class//1
-    also prints a void function's return class as "void".
 */
 :- module(qbe_print, [module_chars//1, print_module/1]).
 
@@ -43,14 +40,19 @@ linkage(local) --> [].
 linkage(ro(Linkage)) --> linkage(Linkage), "section \".rodata\" ".
 
 % ret_class(+Ret)//: a function's return class and a space, or nothing
-% for void.
+% for void. One clause per Ret of ir.pl, so a void function has one text.
 ret_class(void) --> [].
-ret_class(tuple(Ks)) --> !, "{", comma_separated(Ks, atom), "} ".
-ret_class(K) --> atom(K), " ".
+ret_class(tuple(Ks)) --> "{", comma_separated(Ks, atom), "} ".
+ret_class(w) --> "w ".
+ret_class(l) --> "l ".
+ret_class(p) --> "p ".
 
 params([]) --> [].
-params([Param]) --> !, param(Param).
-params([Param|Params]) --> param(Param), ", ", params(Params).
+params([Param|Params]) --> param(Param), more_params(Params).
+
+% more_params(+Params)//: each of Params after ", ".
+more_params([]) --> [].
+more_params([Param|Params]) --> ", ", param(Param), more_params(Params).
 
 param(par(K, V)) --> atom(K), " ", val(V).
 
@@ -68,10 +70,17 @@ phis([phi(D, K, Incoming)|Phis]) -->
     phis(Phis).
 
 % phi_args(+Incoming)//: the nonempty "@label value" list of a phi.
-phi_args([Label-V]) --> !, "@", atom(Label), " ", val(V).
 phi_args([Label-V|Incoming]) -->
-    "@", atom(Label), " ", val(V), ", ",
-    phi_args(Incoming).
+    phi_arg(Label-V),
+    more_phi_args(Incoming).
+
+% more_phi_args(+Incoming)//: each of Incoming after ", ".
+more_phi_args([]) --> [].
+more_phi_args([Label-V|Incoming]) -->
+    ", ", phi_arg(Label-V),
+    more_phi_args(Incoming).
+
+phi_arg(Label-V) --> "@", atom(Label), " ", val(V).
 
 insts([]) --> [].
 insts([Inst|Insts]) --> "\t", inst(Inst), "\n", insts(Insts).
@@ -80,22 +89,30 @@ insts([Inst|Insts]) --> "\t", inst(Inst), "\n", insts(Insts).
 inst(ins(D, K, Op, Args)) -->
     val(D), " =", atom(K), " ", opname(Op), " ", vals(Args).
 inst(store(W, V, Addr)) --> "store", atom(W), " ", val(V), ", ", val(Addr).
-inst(call(void, F, Args)) --> "call ", val(F), "(", call_args(Args), ")".
-inst(call(tuple(Tos), F, Args)) -->
+inst(call(Res, F, Args)) --> call_inst(Res, F, Args).
+
+% call_inst(+Res, +F, +Args)//: a call of F on Args with result Res.
+call_inst(void, F, Args) --> "call ", val(F), "(", call_args(Args), ")".
+call_inst(tuple(Tos), F, Args) -->
     { findall(D, member(to(D, _), Tos), Ds),
       findall(K, member(to(_, K), Tos), Ks) },
     "{", comma_separated(Ds, val), "} ={", comma_separated(Ks, atom), "}",
     " call ", val(F), "(", call_args(Args), ")".
-inst(call(to(D, K), F, Args)) -->
+call_inst(to(D, K), F, Args) -->
     val(D), " =", atom(K), " call ", val(F), "(", call_args(Args), ")".
 
 call_args([]) --> [].
-call_args([Arg]) --> !, call_arg(Arg).
-call_args([Arg|Args]) --> call_arg(Arg), ", ", call_args(Args).
+call_args([Arg|Args]) --> call_arg(Arg), more_call_args(Args).
+
+% more_call_args(+Args)//: each of Args after ", ".
+more_call_args([]) --> [].
+more_call_args([Arg|Args]) --> ", ", call_arg(Arg), more_call_args(Args).
 
 call_arg(arg(K, V)) --> atom(K), " ", val(V).
 
-% opname(+Op)//: the instruction name of an IR operation.
+% opname(+Op)//: the instruction name of an IR operation. Op is an
+% atom or one of four compounds (ir.pl); the last clause is the default
+% for the atoms, so the cuts stay.
 opname(cmp(Cond, K)) --> !, "c", atom(Cond), atom(K).
 opname(ext(Type)) --> !, "ext", atom(Type).
 opname(load(Type)) --> !, "load", atom(Type).
@@ -112,8 +129,11 @@ jump(ret) --> "ret".
 jump(hlt) --> "hlt".
 
 % vals(+Vs)//: the nonempty comma-separated operands Vs.
-vals([V]) --> !, val(V).
-vals([V|Vs]) --> val(V), ", ", vals(Vs).
+vals([V|Vs]) --> val(V), more_vals(Vs).
+
+% more_vals(+Vs)//: each of Vs after ", ".
+more_vals([]) --> [].
+more_vals([V|Vs]) --> ", ", val(V), more_vals(Vs).
 
 % val(+V)//: a temporary, constant or global operand.
 val(t(N)) --> "%", atom(N).
@@ -121,21 +141,35 @@ val(c(N)) --> num(N).
 val(glo(N)) --> "$", atom(N).
 
 % data_items(+Items)//: the nonempty comma-separated data items.
-data_items([Item]) --> !, data_item(Item).
-data_items([Item|Items]) --> data_item(Item), ", ", data_items(Items).
+data_items([Item|Items]) --> data_item(Item), more_data_items(Items).
+
+% more_data_items(+Items)//: each of Items after ", ".
+more_data_items([]) --> [].
+more_data_items([Item|Items]) -->
+    ", ", data_item(Item),
+    more_data_items(Items).
 
 data_item(zero(N)) --> "z ", num(N).
-data_item(item(W, c(N))) --> atom(W), " ", num(N).
-data_item(item(b, str(Cs))) --> "b \"", seq(Cs), "\"".
-data_item(item(W, sym(S, 0))) --> !, atom(W), " $", atom(S).
-data_item(item(W, sym(S, Off))) --> atom(W), " $", atom(S), " + ", num(Off).
+data_item(item(W, Value)) --> item_value(Value, W).
 
-% comma_separated(+Xs, :Print): Print each of the nonempty Xs, separated
-% by ", ".
-comma_separated([X], Print) --> !, call(Print, X).
-comma_separated([X|Xs], Print) -->
-    call(Print, X), ", ",
-    comma_separated(Xs, Print).
+% item_value(+Value, +W)//: a data item of width W and value Value.
+item_value(c(N), W) --> atom(W), " ", num(N).
+item_value(str(Cs), b) --> "b \"", seq(Cs), "\"".
+item_value(sym(S, Off), W) --> atom(W), " $", atom(S), sym_offset(Off).
+
+% sym_offset(+Off)//: " + Off", or nothing for offset 0.
+sym_offset(Off) --> ( { Off == 0 } -> [] ; " + ", num(Off) ).
+
+% comma_separated(+Xs, :Print_3)//: Print_3 of each of the nonempty Xs,
+% separated by ", ".
+comma_separated([X|Xs], Print_3) -->
+    call(Print_3, X),
+    more_comma_separated(Xs, Print_3).
+
+more_comma_separated([], _) --> [].
+more_comma_separated([X|Xs], Print_3) -->
+    ", ", call(Print_3, X),
+    more_comma_separated(Xs, Print_3).
 
 % atom(+A)//, num(+N)//: the characters of an atom or number.
 atom(A) --> { atom_chars(A, Cs) }, seq(Cs).

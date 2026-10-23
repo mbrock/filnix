@@ -58,7 +58,7 @@ tokens(Tokens, Line) -->
     [C],
     { C == '#' },
     !,
-    skip_line,
+    comment_rest,
     tokens(Tokens, Line).
 tokens(Tokens, Line) -->
     [C],
@@ -79,16 +79,17 @@ blank(' ').
 blank('\t').
 blank('\r').
 
-% Skip to the end of the line, leaving the newline.
-skip_line, [C] -->
+% comment_rest//: the rest of a comment line, up to its newline, which
+% is pushed back.
+comment_rest, [C] -->
     [C],
     { C == '\n' },
     !.
-skip_line -->
+comment_rest -->
     [_],
     !,
-    skip_line.
-skip_line --> [].
+    comment_rest.
+comment_rest --> [].
 
 % token(-Token)//: one token other than a newline.
 token(tmp(N)) -->
@@ -235,7 +236,7 @@ function(Linkage, func(Name, Linkage, Ret, Params, Blocks)) -->
     nls,
     raw_blocks(RawBlocks),
     expect(rb, '}'),
-    { add_fallthrough_jumps(RawBlocks, Name, Blocks) }.
+    { raw_blocks_blocks(RawBlocks, Name, Blocks) }.
 
 % ret_class(-Ret, +Line)//: the return class of the function on Line.
 % No class before the function name means void; the name is pushed back.
@@ -274,7 +275,7 @@ param(_) -->
     { fail_at(Line, 'unsupported parameter ~w', [T]) }.
 
 % Blocks as parsed: raw_blk(Label, Phis, Insts, MaybeJump), where
-% MaybeJump is none when the block falls through.
+% MaybeJump is some(Jump), or none when the block falls through.
 raw_blocks([RawBlock|RawBlocks]) -->
     raw_block(RawBlock),
     !,
@@ -351,12 +352,14 @@ inst(call(tuple(Tos), Callee, Args)) -->
     {   length(Ds, N), length(Ks, N) -> true
     ;   fail_at(Line, 'tuple arity mismatch', [])
     },
-    { maplist(tuple_to, Ds, Ks, Tos) },
+    { maplist(temp_class_to, Ds, Ks, Tos) },
     expect(id(call), 'call'),
     call_rest(Callee, Args),
     expect(nl, 'newline').
 
-tuple_to(D, K, to(t(D), K)).
+% temp_class_to(?D, ?K, ?To): To is the call result of temporary D at
+% class K.
+temp_class_to(D, K, to(t(D), K)).
 
 tuple_temps([D|Ds]) -->
     expect(tmp(D), 'temporary'),
@@ -446,15 +449,15 @@ value(t(N)) --> [tok(tmp(N), _)], !.
 value(c(N)) --> [tok(int(N), _)], !.
 value(glo(N)) --> [tok(glo(N), _)], !.
 
-% maybe_jump(-MaybeJump)//: the block's jump and the newlines after it,
-% or none.
-maybe_jump(jmp(Label)) -->
+% maybe_jump(-MaybeJump)//: some(Jump), the block's jump and the
+% newlines after it, or none.
+maybe_jump(some(jmp(Label))) -->
     [tok(id(jmp), _)],
     !,
     expect(lbl(Label), 'label'),
     expect(nl, 'newline'),
     nls.
-maybe_jump(jnz(V, IfTrue, IfFalse)) -->
+maybe_jump(some(jnz(V, IfTrue, IfFalse))) -->
     [tok(id(jnz), _)],
     !,
     value(V),
@@ -464,7 +467,7 @@ maybe_jump(jnz(V, IfTrue, IfFalse)) -->
     expect(lbl(IfFalse), 'label'),
     expect(nl, 'newline'),
     nls.
-maybe_jump(Ret) -->
+maybe_jump(some(Ret)) -->
     [tok(id(ret), _)],
     !,
     (   [tok(lb, _)]
@@ -477,32 +480,48 @@ maybe_jump(Ret) -->
     ),
     expect(nl, 'newline'),
     nls.
-maybe_jump(hlt) -->
+maybe_jump(some(hlt)) -->
     [tok(id(hlt), _)],
     !,
     expect(nl, 'newline'),
     nls.
 maybe_jump(none) --> [].
 
-% add_fallthrough_jumps(+RawBlocks, +Fn, -Blocks): Blocks are RawBlocks
-% with explicit jumps: a block without a jump falls through to the next
-% one. Throws if there are no blocks or the last block has no jump.
-add_fallthrough_jumps([], Fn, []) :-
+% raw_blocks_blocks(+RawBlocks, +Fn, -Blocks): Blocks are RawBlocks of
+% function Fn with explicit jumps: a block without a jump falls through
+% to the next one. Throws if there are no blocks or the last block has
+% no jump.
+raw_blocks_blocks([], Fn, []) :-
     format(atom(Msg), 'in $~w: no blocks', [Fn]),
     throw(nanofil_error(Msg)).
-add_fallthrough_jumps([raw_blk(Label, Phis, Insts, MaybeJump)|RawBlocks], Fn,
-                      [blk(Label, Phis, Insts, Jump)|Blocks]) :-
-    (   MaybeJump \== none
-    ->  Jump = MaybeJump
-    ;   RawBlocks = [raw_blk(Next, _, _, _)|_]
-    ->  Jump = jmp(Next)
-    ;   format(atom(Msg), 'in $~w: last block @~w has no jump', [Fn, Label]),
-        throw(nanofil_error(Msg))
-    ),
-    (   RawBlocks == []
-    ->  Blocks = []
-    ;   add_fallthrough_jumps(RawBlocks, Fn, Blocks)
-    ).
+raw_blocks_blocks([RawBlock|RawBlocks], Fn, Blocks) :-
+    raw_blocks_blocks_(RawBlocks, RawBlock, Fn, Blocks).
+
+% raw_blocks_blocks_(+RawBlocks, +RawBlock, +Fn, -Blocks): as
+% raw_blocks_blocks/3 for [RawBlock|RawBlocks], lagged so that the
+% rest of the list is the first argument.
+raw_blocks_blocks_(RawBlocks, raw_blk(Label, Phis, Insts, MaybeJump), Fn,
+                   [blk(Label, Phis, Insts, Jump)|Blocks]) :-
+    maybe_jump_jump(MaybeJump, RawBlocks, Fn, Label, Jump),
+    more_blocks(RawBlocks, Fn, Blocks).
+
+more_blocks([], _, []).
+more_blocks([RawBlock|RawBlocks], Fn, Blocks) :-
+    raw_blocks_blocks_(RawBlocks, RawBlock, Fn, Blocks).
+
+% maybe_jump_jump(+MaybeJump, +RawBlocks, +Fn, +Label, -Jump): Jump ends
+% block Label of Fn, whose parsed jump is MaybeJump and which RawBlocks
+% follow.
+maybe_jump_jump(some(Jump), _, _, _, Jump).
+maybe_jump_jump(none, RawBlocks, Fn, Label, Jump) :-
+    fallthrough_jump(RawBlocks, Fn, Label, Jump).
+
+% fallthrough_jump(+RawBlocks, +Fn, +Label, -Jump): Jump goes to the
+% first of RawBlocks, the blocks after block Label of Fn.
+fallthrough_jump([raw_blk(Next, _, _, _)|_], _, _, jmp(Next)).
+fallthrough_jump([], Fn, Label, _) :-
+    format(atom(Msg), 'in $~w: last block @~w has no jump', [Fn, Label]),
+    throw(nanofil_error(Msg)).
 
 % op_name(+Name, -Op) is semidet: Op is the IR operation the
 % instruction name Name denotes.

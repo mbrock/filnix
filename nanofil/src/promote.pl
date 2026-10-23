@@ -34,6 +34,7 @@
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
+:- use_module(library(dcgs)).
 :- use_module(ir).
 :- use_module(cfg).
 :- use_module(escape).
@@ -47,11 +48,15 @@ promote_module(module(Items0), module(Items)) :-
     module_mode(module(Items0), Mode),
     maplist(promote_item(Mode), Items0, Items).
 
+% promote_item(+Mode, +Item0, -Item): Item is the module item Item0,
+% promoted if it is a function.
 promote_item(Mode, Item0, Item) :-
-    Item0 = func(_, _, _, _, _),
-    !,
-    promote_func(Mode, Item0, Item).
-promote_item(_, Item, Item).
+    item_mode_promoted(Item0, Mode, Item).
+
+item_mode_promoted(func(Name, Linkage, Ret, Params, Blocks), Mode, F) :-
+    promote_func(Mode, func(Name, Linkage, Ret, Params, Blocks), F).
+item_mode_promoted(data(Name, Linkage, Align, Items), _,
+                   data(Name, Linkage, Align, Items)).
 
 %! alloc_count(+M, -N) is det.
 %
@@ -74,7 +79,7 @@ alloc_count(module(Items), N) :-
 promote_func(Mode, F0, F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     func_cfg(Blocks0, Cfg),
-    dominators(Cfg, Idom),
+    cfg_idoms(Cfg, Idom),
     (   promotable(Mode, F0, Roots),
         Roots \== [],
         strict_ssa(F0, Cfg, Idom)
@@ -105,20 +110,34 @@ slot_ok(Mode, Size, acc(Off, Width)) :-
     width_bytes(Width, Bytes),
     Off >= 0,
     Off + Bytes =< Size,
-    (   Width == p, Mode == filc
-    ->  Off mod 8 =:= 0
-    ;   true
-    ).
+    width_mode_aligned(Width, Mode, Off).
+
+% width_mode_aligned(+Width, +Mode, +Off): a slot of Width at Off is
+% aligned enough in Mode: only p slots in filc mode need 8.
+width_mode_aligned(b, _, _).
+width_mode_aligned(h, _, _).
+width_mode_aligned(w, _, _).
+width_mode_aligned(l, _, _).
+width_mode_aligned(p, Mode, Off) :-
+    mode_pointer_aligned(Mode, Off).
+
+mode_pointer_aligned(plain, _).
+mode_pointer_aligned(filc, Off) :-
+    Off mod 8 =:= 0.
 
 % slots_disjoint(+Accs): no two of Accs overlap.
 % Accs is sorted by offset, so it is enough to compare neighbours. Two
 % widths at one offset overlap too.
 slots_disjoint([]).
-slots_disjoint([_]).
-slots_disjoint([acc(Off1, Width1), acc(Off2, Width2)|Accs]) :-
+slots_disjoint([Acc|Accs]) :-
+    slots_disjoint_(Accs, Acc).
+
+% slots_disjoint_(+Accs, +Acc): Acc, then Accs, do not overlap.
+slots_disjoint_([], _).
+slots_disjoint_([acc(Off2, Width2)|Accs], acc(Off1, Width1)) :-
     width_bytes(Width1, Bytes1),
     Off1 + Bytes1 =< Off2,
-    slots_disjoint([acc(Off2, Width2)|Accs]).
+    slots_disjoint_(Accs, acc(Off2, Width2)).
 
 %! strict_ssa(+F, +Cfg, +Idom) is semidet.
 %
@@ -144,7 +163,7 @@ strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
     append(ParamDefs, BlockDefs, DefPairs),
     list_to_assoc(DefPairs, Defs),
     list_to_assoc([], Empty),
-    foldl(mark_reached, Rpo, Empty, Reach),
+    foldl(label_reach, Rpo, Empty, Reach),
     dom_intervals(cfg(Entry, Rpo, x, x), Idom, Intervals),
     % Collect the uses first: a goal that mentions the big assocs, run by
     % forall/2 once per block, copies them every time.
@@ -162,32 +181,39 @@ block_reached(Reach, L-_-_-_) :-
 use_reached(Reach, use(_, L, _)) :-
     get_assoc(L, Reach, _).
 
-mark_reached(L, Reach0, Reach) :-
+label_reach(L, Reach0, Reach) :-
     put_assoc(L, Reach0, t, Reach).
 
 % block_use(+Block, -Use): Block, given as L-Phis-Insts-Jump, reads a
-% temp as Use = use(T, L, At): T is read at position At of block L; a
-% phi argument is read at the end (inf) of its predecessor.
-block_use(_-Phis-_-_, use(T, P, inf)) :-
+% temp as Use = use(T, L, At): T is read in block L at At, which is
+% at(Pos) for position Pos, or end for the end of the block; a phi
+% argument is read at the end of its predecessor.
+block_use(_-Phis-_-_, use(T, P, end)) :-
     member(phi(_, _, Args), Phis),
     member(P-t(T), Args).
-block_use(L-_-Insts-_, use(T, L, Pos)) :-
+block_use(L-_-Insts-_, use(T, L, at(Pos))) :-
     nth1(Pos, Insts, Ins),
     inst_uses(Ins, Us),
     member(T, Us).
-block_use(L-_-Insts-Jump, use(T, L, JumpPos)) :-
+block_use(L-_-Insts-Jump, use(T, L, at(JumpPos))) :-
     jump_uses(Jump, Us),
     member(T, Us),
     length(Insts, N),
     JumpPos is N + 1.
 
-% T is defined before position At of block L (inf: the block's end).
+% defined_at(+Defs, +Intervals, +Use): the temp of Use = use(T, L, At)
+% is defined before At in block L, or in a block that dominates L.
 defined_at(Defs, Intervals, use(T, L, At)) :-
     get_assoc(T, Defs, def(DefL, DefPos)),
     (   DefL == L
-    ->  ( At == inf -> true ; DefPos < At )
+    ->  at_after(At, DefPos)
     ;   dominates_by_interval(Intervals, DefL, L)
     ).
+
+% at_after(+At, +Pos): At (at(N) or end) is after position Pos.
+at_after(end, _).
+at_after(at(N), Pos) :-
+    Pos < N.
 
 %% Rewriting
 
@@ -216,8 +242,8 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     list_to_assoc(GenKillPairs, GenKill),
     empty_assoc(NoEdges),
     liveness(Cfg, GenKill, NoEdges, LiveIn, _),
-    frontiers(Cfg, Idom, DF),
-    Cfg = cfg(Entry, _, _, _),
+    cfg_frontiers(Cfg, Idom, DF),
+    Cfg = cfg(Entry, _, Succs, _),
     def_counts(F0, Counts),
     assoc_to_keys(Counts, Used),
     % Index the reachable stores once, rather than scanning all blocks
@@ -231,30 +257,34 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     keysort(Stores0, Stores1),
     group_pairs_by_key(Stores1, StorePairs),
     list_to_assoc(StorePairs, Stores),
-    foldl(place_phis(Stores, DF, LiveIn, Entry), Vars,
-          []-(0-Used), Placed0-_),
-    keysort(Placed0, Placed1),
-    group_pairs_by_key(Placed1, Placed),      % Label -> [Var-Temp]
+    maplist(slot_phi_labels(Stores, DF, LiveIn, Entry), Vars, PhiLabels),
+    phrase(slots_phis(Vars, PhiLabels), Phis),
+    % The semicontext of phis_temps//3 is the last fresh temp number.
+    phrase(phis_temps(Phis, Used, Placed0), [0], [_]),
+    reverse(Placed0, Placed1),
+    keysort(Placed1, Placed2),
+    group_pairs_by_key(Placed2, Placed),      % Label -> [Var-Temp]
     list_to_assoc(Placed, PhiAt),
     findall(Var-c(0), member(Var, Vars), Zeros),
     list_to_assoc(Zeros, Zero),
-    Ctx = ctx(Addrs, PhiAt),
     blocks_by_label(Blocks0, ByLabel),
     dom_children(Cfg, Idom, Kids),
-    rename_tree(Entry, Zero, Ctx, ByLabel, Kids, Cfg, []-[], Renamed),
+    Env = env(Addrs, PhiAt, ByLabel, Kids, Succs),
     % Unreachable blocks never run; their slot reads see 0 so that they
     % stay valid, and they still give each successor's phis an argument.
     Cfg = cfg(_, Rpo, _, _),
     findall(L,
             ( member(blk(L, _, _, _), Blocks0), \+ memberchk(L, Rpo) ),
             Dead),
-    foldl(rename_unreachable(Zero, Ctx, ByLabel, Cfg), Dead,
-          Renamed, New-PhiArgs0),
+    phrase(subtree_renamed(Entry, Zero, Env), Renamed, Unreached),
+    phrase(blocks_renamed(Dead, Zero, Env), Unreached),
+    maplist(renamed_block_args, Renamed, New, PhiArgss),
+    append(PhiArgss, PhiArgs0),
     list_to_assoc(New, NewBlocks),
     keysort(PhiArgs0, PhiArgs1),
     group_pairs_by_key(PhiArgs1, PhiArgs),    % (Label-Var) -> [Pred-Value]
     list_to_assoc(PhiArgs, ArgsAt),
-    maplist(assemble_block(NewBlocks, PhiAt, ArgsAt, Widths), Blocks0, Blocks).
+    maplist(promoted_block(NewBlocks, PhiAt, ArgsAt, Widths), Blocks0, Blocks).
 
 slot_gen_kill(blk(_, _, Insts, _), Addrs, Gen-Kill) :-
     foldl(slot_inst_gen_kill(Addrs), Insts, []-[], Gen-Kill).
@@ -273,31 +303,33 @@ slot_inst_gen_kill(Addrs, I, Gen0-Kill0, Gen-Kill) :-
         Kill = Kill0
     ).
 
-% place_phis: the iterated dominance frontier of the blocks that store
-% to Var, keeping only blocks where Var is live on entry. Each placed phi
-% counts as a store for the iteration. Unreachable stores are ignored:
-% they never run. The accumulator is Placed-(N-Used): the
-% Label-(Var-Temp) phis so far, the last fresh temp number, and the
-% names already taken.
-place_phis(Stores, DF, LiveIn, Entry, Var,
-           Placed0-(N0-Used), Placed-(N-Used)) :-
+% slot_phi_labels(+Stores, +DF, +LiveIn, +Entry, +Var, -Labels): Labels
+% is the ordset of the labels where Var needs a phi: the iterated
+% dominance frontier of the entry and the blocks that store to Var,
+% keeping only blocks where Var is live on entry. Each placed phi counts
+% as a store for the iteration. Unreachable stores are not in Stores:
+% they never run.
+slot_phi_labels(Stores, DF, LiveIn, Entry, Var, PhiLabels) :-
     (   get_assoc(Var, Stores, Labels0) -> true ; Labels0 = [] ),
     sort([Entry|Labels0], Labels),
-    iterated_frontier(Labels, Var, DF, LiveIn, [], PhiLabels),
-    foldl(new_phi(Var, Used), PhiLabels, Placed0-N0, Placed-N).
+    iterated_frontier(Labels, Var, DF, LiveIn, [], PhiLabels).
 
-% Worklist over Labels, collecting the ordset of frontier labels where
-% Var is live; each new one is pushed back on the worklist. Invariant:
-% Placed0 is the ordset of those labels found so far, and each of them
-% has had its frontier scanned or is still on the worklist.
+% iterated_frontier(+Work, +Var, +DF, +LiveIn, +Placed0, -Placed):
+% Placed is Placed0 with the frontier labels where Var is live, of the
+% labels in Work and, in turn, of each new one. Invariant: Placed0 is
+% the ordset of those labels found so far, and each of them has had its
+% frontier scanned or is still in Work.
 iterated_frontier([], _, _, _, Placed, Placed).
 iterated_frontier([L|Ls], Var, DF, LiveIn, Placed0, Placed) :-
     get_assoc(L, DF, Frontier),
-    foldl(add_live_frontier(Var, LiveIn), Frontier,
+    foldl(label_placed(Var, LiveIn), Frontier,
           Placed0-Ls, Placed1-Ls1),
     iterated_frontier(Ls1, Var, DF, LiveIn, Placed1, Placed).
 
-add_live_frontier(Var, LiveIn, Y, Placed0-Work0, Placed-Work) :-
+% label_placed(+Var, +LiveIn, +Y, +Placed0-Work0, -Placed-Work):
+% if Var is live on entry to Y and Y is not in Placed0, Y is in Placed
+% and in front of Work0.
+label_placed(Var, LiveIn, Y, Placed0-Work0, Placed-Work) :-
     (   \+ ord_memberchk(Y, Placed0),
         get_assoc(Y, LiveIn, In),
         ord_memberchk(Var, In)
@@ -307,17 +339,37 @@ add_live_frontier(Var, LiveIn, Y, Placed0-Work0, Placed-Work) :-
         Work = Work0
     ).
 
-new_phi(Var, Used, L, Placed0-N0, [L-(Var-T)|Placed0]-N) :-
-    fresh_temp(Used, N0, T, N).
+% slots_phis(+Vars, +Labelss)//: the phis L-Var for each Var of Vars,
+% in order, and each L of its ordset of labels in Labelss.
+slots_phis([], []) --> [].
+slots_phis([Var|Vars], [Ls|Lss]) -->
+    slot_phis(Ls, Var),
+    slots_phis(Vars, Lss).
 
-% fresh_temp(+Used, +N0, -T, -N): T is pr.N, the first such name after
+slot_phis([], _) --> [].
+slot_phis([L|Ls], Var) -->
+    [L-Var],
+    slot_phis(Ls, Var).
+
+% phis_temps(+Phis, +Used, -Placed)//: Placed is Phis with each L-Var
+% as L-(Var-T), T a fresh temp. The semicontext is the number of the
+% last fresh temp.
+phis_temps([], _, []) --> [].
+phis_temps([L-Var|Phis], Used, [L-(Var-T)|Placed]) -->
+    state(N0, N),
+    { unused_temp(Used, N0, T, N) },
+    phis_temps(Phis, Used, Placed).
+
+state(S0, S), [S] --> [S0].
+
+% unused_temp(+Used, +N0, -T, -N): T is pr.N, the first such name after
 % N0 that is not in Used.
-fresh_temp(Used, N0, T, N) :-
+unused_temp(Used, N0, T, N) :-
     N1 is N0 + 1,
     number_codes(N1, Ds),
     atom_codes(T0, [0'p, 0'r, 0'.|Ds]),
     (   ord_memberchk(T0, Used)
-    ->  fresh_temp(Used, N1, T, N)
+    ->  unused_temp(Used, N1, T, N)
     ;   T = T0,
         N = N1
     ).
@@ -326,54 +378,76 @@ blocks_by_label(Blocks, ByLabel) :-
     findall(L-B, ( member(B, Blocks), B = blk(L, _, _, _) ), Pairs),
     list_to_assoc(Pairs, ByLabel).
 
-% Walk the dominator tree, carrying each slot's current value. Out is
-% NewBlocks-PhiArgs: Label-blk pairs, and (Succ-Var)-(Label-Value) phi
-% arguments.
-rename_tree(L, Cur0, Ctx, ByLabel, Kids, Cfg, Out0, Out) :-
-    rename_block(L, Cur0, Ctx, ByLabel, Cfg, Cur, Out0, Out1),
-    get_assoc(L, Kids, Ks),
-    foldl(rename_kid(Cur, Ctx, ByLabel, Kids, Cfg), Ks, Out1, Out).
+% subtree_renamed(+L, +Cur0, +Env)//: the renamed blocks of the
+% dominator subtree at L, Cur0 being the slots' values on entry to L.
+% Env is env(Addrs, PhiAt, ByLabel, Kids, Succs).
+subtree_renamed(L, Cur0, Env) -->
+    { block_renamed(L, Cur0, Env, Cur, Renamed),
+      Env = env(_, _, _, Kids, _),
+      get_assoc(L, Kids, Ks) },
+    [Renamed],
+    kids_renamed(Ks, Cur, Env).
 
-rename_kid(Cur, Ctx, ByLabel, Kids, Cfg, K, Out0, Out) :-
-    rename_tree(K, Cur, Ctx, ByLabel, Kids, Cfg, Out0, Out).
+kids_renamed([], _, _) --> [].
+kids_renamed([K|Ks], Cur, Env) -->
+    subtree_renamed(K, Cur, Env),
+    kids_renamed(Ks, Cur, Env).
 
-rename_unreachable(Zero, Ctx, ByLabel, Cfg, L, Out0, Out) :-
-    rename_block(L, Zero, Ctx, ByLabel, Cfg, _, Out0, Out).
+% blocks_renamed(+Ls, +Cur0, +Env)//: the renamed blocks Ls, each with
+% the slots' values Cur0 on entry.
+blocks_renamed([], _, _) --> [].
+blocks_renamed([L|Ls], Cur0, Env) -->
+    { block_renamed(L, Cur0, Env, _, Renamed) },
+    [Renamed],
+    blocks_renamed(Ls, Cur0, Env).
 
-rename_block(L, Cur0, ctx(Addrs, PhiAt), ByLabel, cfg(_, _, Succs, _), Cur,
-             New0-Args0, [L-blk(L, Phis, Insts, Jump)|New0]-Args) :-
+% block_renamed(+L, +Cur0, +Env, -Cur, -Renamed): Renamed is
+% renamed(L-Blk, Args): Blk is block L with its slot accesses rewritten,
+% given the slots' values Cur0 on entry (Cur on exit), and Args the
+% (Succ-Var)-(L-Value) arguments it gives its successors' slot phis.
+block_renamed(L, Cur0, env(Addrs, PhiAt, ByLabel, _, Succs), Cur,
+              renamed(L-blk(L, Phis, Insts, Jump), Args)) :-
     get_assoc(L, ByLabel, blk(L, Phis, Insts0, Jump)),
     (   get_assoc(L, PhiAt, VarTemps) -> true ; VarTemps = [] ),
-    foldl(phi_current, VarTemps, Cur0, Cur1),
-    foldl(rewrite_inst(Addrs), Insts0, Insts-Cur1, []-Cur),
+    foldl(phi_cur, VarTemps, Cur0, Cur1),
+    phrase(insts_renamed(Insts0, Addrs, Cur1, Cur), Insts),
     get_assoc(L, Succs, Ss),
     findall((S-Var)-(L-Val),
             ( member(S, Ss),
               get_assoc(S, PhiAt, SuccVarTemps),
               member(Var-_, SuccVarTemps),
               get_assoc(Var, Cur, Val) ),
-            Args1),
-    append(Args1, Args0, Args).
+            Args).
 
-phi_current(Var-T, Cur0, Cur) :-
+renamed_block_args(renamed(LBlk, Args), LBlk, Args).
+
+phi_cur(Var-T, Cur0, Cur) :-
     put_assoc(Var, Cur0, t(T), Cur).
 
-% rewrite_inst(+Addrs, +Ins, Insts0-Cur0, Insts-Cur): a difference list
-% of the rewritten instructions, threading the current values.
-rewrite_inst(Addrs, I, Insts0-Cur0, Insts-Cur) :-
-    (   I = ins(t(D), _, _, _), get_assoc(D, Addrs, _)
-    ->  Insts0 = Insts,                       % the alloc or a derived address
-        Cur = Cur0
-    ;   I = ins(D, K, load(T), [t(X)]), get_assoc(X, Addrs, Var)
-    ->  get_assoc(Var, Cur0, V),
-        load_op(T, K, Op),
-        Insts0 = [ins(D, K, Op, [V])|Insts],
-        Cur = Cur0
-    ;   I = store(_, V, t(X)), get_assoc(X, Addrs, Var)
-    ->  Insts0 = Insts,
-        put_assoc(Var, Cur0, V, Cur)
-    ;   Insts0 = [I|Insts],
-        Cur = Cur0
+% insts_renamed(+Insts0, +Addrs, +Cur0, -Cur)//: the instructions
+% Insts0 with their slot accesses rewritten, Cur0 and Cur being the
+% slots' values before and after them.
+insts_renamed([], _, Cur, Cur) --> [].
+insts_renamed([I|Is], Addrs, Cur0, Cur) -->
+    inst_renamed(I, Addrs, Cur0, Cur1),
+    insts_renamed(Is, Addrs, Cur1, Cur).
+
+% inst_renamed(+I, +Addrs, +Cur0, -Cur)//: the alloc and the derived
+% addresses are no instructions, a load of a slot is an operation on
+% its current value, a store to a slot is none and sets its value, and
+% any other instruction is itself.
+inst_renamed(I, Addrs, Cur0, Cur) -->
+    (   { I = ins(t(D), _, _, _), get_assoc(D, Addrs, _) }
+    ->  { Cur = Cur0 }
+    ;   { I = ins(D, K, load(T), [t(X)]), get_assoc(X, Addrs, Var) }
+    ->  { get_assoc(Var, Cur0, V),
+          load_op(T, K, Op),
+          Cur = Cur0 },
+        [ins(D, K, Op, [V])]
+    ;   { I = store(_, V, t(X)), get_assoc(X, Addrs, Var) }
+    ->  { put_assoc(Var, Cur0, V, Cur) }
+    ;   { Cur = Cur0 },
+        [I]
     ).
 
 % What a load at class K of type T computes from the value last stored
@@ -381,19 +455,18 @@ rewrite_inst(Addrs, I, Insts0-Cur0, Insts-Cur) :-
 load_op(l, _, copy).
 load_op(p, _, copy).
 load_op(sw, K, Op) :-
-    (   K == w
-    ->  Op = copy
-    ;   Op = ext(sw)
-    ).
+    class_word_load_op(K, sw, Op).
 load_op(uw, K, Op) :-
-    (   K == w
-    ->  Op = copy
-    ;   Op = ext(uw)
-    ).
+    class_word_load_op(K, uw, Op).
 load_op(sh, _, ext(sh)).
 load_op(uh, _, ext(uh)).
 load_op(sb, _, ext(sb)).
 load_op(ub, _, ext(ub)).
+
+% class_word_load_op(+K, +T, -Op): a load of the word type T at class K
+% (w or l, as ir.pl requires) is Op of the stored word.
+class_word_load_op(w, _, copy).
+class_word_load_op(l, T, ext(T)).
 
 % The class of a slot's phi, from the slot's width.
 slot_class(l, l).
@@ -402,8 +475,9 @@ slot_class(w, w).
 slot_class(h, w).
 slot_class(b, w).
 
-% The renamed block, with the slots' phis appended to its own.
-assemble_block(NewBlocks, PhiAt, ArgsAt, Widths, blk(L, _, _, _),
+% promoted_block(+NewBlocks, +PhiAt, +ArgsAt, +Widths, +Block0, -Block):
+% Block is the renamed Block0, with the slots' phis appended to its own.
+promoted_block(NewBlocks, PhiAt, ArgsAt, Widths, blk(L, _, _, _),
                blk(L, Phis, Insts, Jump)) :-
     get_assoc(L, NewBlocks, blk(L, Phis0, Insts, Jump)),
     (   get_assoc(L, PhiAt, VarTemps) -> true ; VarTemps = [] ),

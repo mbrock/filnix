@@ -71,9 +71,9 @@ file_module(F, M) :-
     parse_qbe_file(F, M),
     valid_module(M).
 
-% first_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
+% module_fn_args_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
 % outcome of $Fn(Args) on Module with fuel for 1000 blocks.
-first_outcome(M, Fn, Args, Out) :-
+module_fn_args_outcome(M, Fn, Args, Out) :-
     once(run(M, Fn, Args, 1000, Out)).
 
 % rejected_with(+Text, +Fragment): parsing or validating QBE Text throws
@@ -95,21 +95,22 @@ rejected_with(Text, Fragment) :-
 % memory 11 22 88 99 aa bb 77 88, loaduh at 5 = 0x77bb
 test(storew_of_l_stores_low_word) :-
     file_module('../tests/qbe-bugs/storew-l.ssa', M),
-    first_outcome(M, f, [9833440827789222417, 18441921395520346504],
-                  ret(30651)).
+    module_fn_args_outcome(M, f,
+                           [9833440827789222417, 18441921395520346504],
+                           ret(30651)).
 
 % jnz after a shift by zero tests the shifted value, not stale flags.
 % -128 >> 0 = -128, nonzero
 test(jnz_after_shift_by_zero) :-
     file_module('../tests/qbe-bugs/jnz-shift-flags.ssa', M),
-    first_outcome(M, f, [0], ret(1)),
-    first_outcome(M, f, [1], ret(1)).
+    module_fn_args_outcome(M, f, [0], ret(1)),
+    module_fn_args_outcome(M, f, [1], ret(1)).
 
 % jnz tests only the low 32 bits of its operand.
 % 2^32 has zero low 32 bits
 test(jnz_tests_low_32_bits) :-
     file_module('../tests/qbe-bugs/jnz-long-flags.ssa', M),
-    first_outcome(M, f, [4294967296, 0], ret(0)).
+    module_fn_args_outcome(M, f, [4294967296, 0], ret(0)).
 
 %% Outcomes with no native counterpart
 
@@ -121,10 +122,11 @@ test(division_by_zero_and_overflow) :-
 \t%q =w div %a, %b\n\
 \tret %q\n\
 }\n", M),
-    first_outcome(M, f, [5, 0], ub(division_by_zero)),
-    first_outcome(M, f, [2147483648, 4294967295], ub(division_overflow)),
+    module_fn_args_outcome(M, f, [5, 0], ub(division_by_zero)),
+    module_fn_args_outcome(M, f, [2147483648, 4294967295],
+                           ub(division_overflow)),
     % -7 / 2 truncates to -3
-    first_outcome(M, f, [4294967289, 2], ret(4294967293)).
+    module_fn_args_outcome(M, f, [4294967289, 2], ret(4294967293)).
 
 % A 4-byte store at offset 1 of a 4-byte allocation is out of bounds.
 test(store_past_allocation) :-
@@ -135,7 +137,7 @@ test(store_past_allocation) :-
 \tstorew 0, %q\n\
 \tret\n\
 }\n", M),
-    first_outcome(M, f, [], ub(out_of_bounds(_, 4))).
+    module_fn_args_outcome(M, f, [], ub(out_of_bounds(_, 4))).
 
 % An allocation dies with its function: loading through a returned
 % pointer to it is out of bounds.
@@ -152,7 +154,7 @@ export function l $f() {\n\
 \t%v =l loadl %p\n\
 \tret %v\n\
 }\n", M),
-    first_outcome(M, f, [], ub(out_of_bounds(_, 8))).
+    module_fn_args_outcome(M, f, [], ub(out_of_bounds(_, 8))).
 
 % A 4-byte load at offset 2 of a 4-byte data definition is out of
 % bounds.
@@ -164,7 +166,7 @@ export function w $f() {\n\
 \t%v =w loadw %p\n\
 \tret %v\n\
 }\n", M),
-    first_outcome(M, f, [], ub(out_of_bounds(_, 4))).
+    module_fn_args_outcome(M, f, [], ub(out_of_bounds(_, 4))).
 
 % Two of the four bytes are unwritten: the result is unknown, but the
 % written low half is still known.
@@ -176,7 +178,7 @@ test(uninitialized_bytes_are_unknown) :-
 \t%v =w loadw %p\n\
 \tret %v\n\
 }\n", M),
-    first_outcome(M, f, [], ret(V)),
+    module_fn_args_outcome(M, f, [], ret(V)),
     var(V),
     V mod 65536 #= 4660.
 
@@ -186,7 +188,7 @@ test(hlt) :-
 @s\n\
 \thlt\n\
 }\n", M),
-    first_outcome(M, f, [], hlt).
+    module_fn_args_outcome(M, f, [], hlt).
 
 % An infinite loop ends as out_of_fuel.
 test(out_of_fuel) :-
@@ -196,7 +198,7 @@ test(out_of_fuel) :-
 @l\n\
 \tjmp @l\n\
 }\n", M),
-    first_outcome(M, f, [], out_of_fuel).
+    module_fn_args_outcome(M, f, [], out_of_fuel).
 
 %% Running backwards
 
@@ -410,9 +412,9 @@ test(dominators_and_frontiers) :-
     func_cfg(Bs, Cfg),
     Cfg = cfg(s, Rpo, _, _),
     msort(Rpo, [a, b, c, d, e, s]),
-    dominators(Cfg, Idom),
+    cfg_idoms(Cfg, Idom),
     assoc_to_list(Idom, [a-s, b-a, c-a, d-a, e-d]),
-    frontiers(Cfg, Idom, DF),
+    cfg_frontiers(Cfg, Idom, DF),
     assoc_to_list(DF, [a-[a], b-[d], c-[d], d-[a], e-[], s-[]]).
 
 % The temporaries live into and out of each block of loop_cfg_text/1.
@@ -443,7 +445,7 @@ test(natural_loop_membership) :-
           blk(v, [], [], jnz(t(n), u, done)),
           blk(done, [], [], ret)],
     func_cfg(Bs, Cfg),
-    dominators(Cfg, Idom),
+    cfg_idoms(Cfg, Idom),
     natural_loops(Cfg, Idom, Loops),
     assoc_to_list(Loops,
                   [inner-loop([spin], [inner, spin]),
@@ -552,10 +554,10 @@ export function w $g() {\n\
     optimize(o1, M0, M),
     once(valid_module(M)),
     alloc_count(M, 0),
-    first_outcome(M0, f, [], ret(0)),
-    first_outcome(M, f, [], ret(0)),
-    first_outcome(M0, g, [], trap(null_capability)),
-    first_outcome(M, g, [], trap(null_capability)).
+    module_fn_args_outcome(M0, f, [], ret(0)),
+    module_fn_args_outcome(M, f, [], ret(0)),
+    module_fn_args_outcome(M0, g, [], trap(null_capability)),
+    module_fn_args_outcome(M, g, [], trap(null_capability)).
 
 % Which allocs promote must remove, and which it must keep, on the
 % fixture and on tests/c/basic.c (only arr's array and ptrs's array have
@@ -617,7 +619,7 @@ test(copy_eliminates_trivial_phis) :-
              func_named(M, Name, F),
              F = func(_, _, _, _, Bs),
              func_cfg(Bs, Cfg),
-             dominators(Cfg, Idom),
+             cfg_idoms(Cfg, Idom),
              strict_ssa(F, Cfg, Idom)
            )),
     text_module("export function w $f(w %n) {\n\
@@ -715,15 +717,15 @@ export function p $raw() {\n\
     module_mode(M0, Mode),
     module_mode(M, Mode),
     forall(member(Which, [0, 1]),
-           ( first_outcome(M0, f, [Which], Before),
-             first_outcome(M, f, [Which], After),
+           ( module_fn_args_outcome(M0, f, [Which], Before),
+             module_fn_args_outcome(M, f, [Which], After),
              Before == After
            )),
-    first_outcome(M0, f, [0], B),
-    first_outcome(M0, f, [1], A),
+    module_fn_args_outcome(M0, f, [0], B),
+    module_fn_args_outcome(M0, f, [1], A),
     B \== A,
-    first_outcome(M0, raw, [], Raw0),
-    first_outcome(M, raw, [], Raw),
+    module_fn_args_outcome(M0, raw, [], Raw0),
+    module_fn_args_outcome(M, raw, [], Raw),
     Raw0 == Raw,
     Raw = ret(ptr(_, none)),
     file_module('../tests/filc/copy.ssa', P0),
@@ -731,8 +733,8 @@ export function p $raw() {\n\
     once(valid_module(P)),
     func_phi_names(P, pointer_invariant, [i]),
     forall(member(N, [0, 1, 5]),
-           ( first_outcome(P0, pointer_invariant, [N], Before),
-             first_outcome(P, pointer_invariant, [N], After),
+           ( module_fn_args_outcome(P0, pointer_invariant, [N], Before),
+             module_fn_args_outcome(P, pointer_invariant, [N], After),
              Before == After
            )).
 
@@ -819,6 +821,26 @@ test(refines) :-
     \+ refines(ret(5), trap(out_of_bounds)),
     refines(ret(ptr(4112, obj(4096))), ret(ptr(8208, obj(8192)))),
     \+ refines(ret(ptr(4112, obj(4096))), ret(ptr(8200, obj(8192)))).
+
+% An indirect call whose site reads w from a callee returning p goes
+% through the generic entry and reads the pointer's address as an
+% integer. (word_class/2 once matched p with int here, called the
+% words the same, and the run died on a type error.)
+test(indirect_call_reads_pointer_result_as_int) :-
+    text_module("function p $k() {\n\
+@s\n\
+\t%p =p alloc8 16\n\
+\tret %p\n\
+}\n\
+export function w $m() {\n\
+@s\n\
+\t%f =p copy $k\n\
+\t%r =w call %f()\n\
+\tret %r\n\
+}\n", M),
+    module_fn_args_outcome(M, m, [], Out),
+    Out = ret(V),
+    integer(V).
 
 % c_file_module(+File, -Module): Module is the valid module of the C
 % in File, lexed without preprocessing.

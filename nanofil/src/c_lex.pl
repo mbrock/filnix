@@ -43,7 +43,7 @@ c_tokens(Cs, File, Tokens) :-
 % line, where `#` starts a directive, and mid elsewhere.
 tokens(Ts, Loc, _) -->
     ['\n'], !,
-    { next_line(Loc, Loc1) },
+    { loc_next_line(Loc, Loc1) },
     tokens(Ts, Loc1, bol).
 tokens(Ts, Loc, bol) -->
     ['#'], !,
@@ -58,7 +58,7 @@ tokens(Ts, Loc, Where) -->
     tokens(Ts, Loc1, Where).
 tokens(Ts, Loc, _) -->
     ['/', '/'], !,
-    skip_line,
+    line_rest,
     tokens(Ts, Loc, mid).
 tokens([tok(T, Loc)|Ts], Loc, _) -->
     token(T, Loc), !,
@@ -68,7 +68,7 @@ tokens(_, Loc, _) -->
     [C],
     { loc_error(Loc, 'unexpected character ~q', [C]) }.
 
-next_line(File:N, File:N1) :- N1 is N + 1.
+loc_next_line(File:N, File:N1) :- N1 is N + 1.
 
 blank(' ').
 blank('\t').
@@ -76,17 +76,17 @@ blank('\r').
 blank('\f').
 blank('\v').
 
-% skip_line//: the rest of the line, leaving its newline in the input.
-skip_line, ['\n'] --> ['\n'], !.
-skip_line --> [_], !, skip_line.
-skip_line --> [].
+% line_rest//: the rest of the line, leaving its newline in the input.
+line_rest, ['\n'] --> ['\n'], !.
+line_rest --> [_], !, line_rest.
+line_rest --> [].
 
 % block_comment(+Loc0, -Loc)//: the rest of a comment after its /*;
 % Loc is Loc0 advanced past the comment's newlines.
 block_comment(Loc, Loc) --> ['*', '/'], !.
 block_comment(Loc0, Loc) -->
     ['\n'], !,
-    { next_line(Loc0, Loc1) },
+    { loc_next_line(Loc0, Loc1) },
     block_comment(Loc1, Loc).
 block_comment(Loc0, Loc) -->
     [_], !,
@@ -109,7 +109,7 @@ directive(Loc0, Loc) -->
         { Loc = File:N0 }
     ;   { Loc = Loc0 }
     ),
-    skip_line.
+    line_rest.
 
 marker_file([]) --> ['"'], !.
 marker_file([C|Cs]) --> [C], marker_file(Cs).
@@ -188,7 +188,7 @@ ident_char('$').
 number(Cs0, T, Loc) -->
     pp_number_rest(Cs1),
     {   append(Cs0, Cs1, Cs),
-        classify_number(Cs, T, Loc)
+        number_token(Cs, T, Loc)
     }.
 
 pp_number_rest([E, S|Cs]) -->
@@ -200,9 +200,9 @@ pp_number_rest([C|Cs]) -->
     pp_number_rest(Cs).
 pp_number_rest([]) --> [].
 
-% classify_number(+Chars, -T, +Loc): T is int(Value, Suffix-Radix) or
+% number_token(+Chars, -T, +Loc): T is int(Value, Suffix-Radix) or
 % float(Chars) for the pp-number Chars; anything else is an error.
-classify_number(Cs, T, Loc) :-
+number_token(Cs, T, Loc) :-
     (   phrase(integer_literal(V, Suffix), Cs)
     ->  T = int(V, Suffix)
     ;   phrase(float_chars, Cs)
@@ -416,22 +416,38 @@ wide_max(uint, 4294967295).
 
 % wide_char_value(+Codes, +Type, -Value, +Loc): Value is the single
 % element of a wide character constant, as an int; wchar_t is int here.
-wide_char_value([V], Type, V, Loc) :- !,
-    ( Type == uint -> FitType = int ; FitType = Type ),
+wide_char_value([], _, _, Loc) :- multi_char_error(Loc).
+wide_char_value([V|Vs], Type, Value, Loc) :-
+    wide_char_value(Vs, V, Type, Value, Loc).
+
+% wide_char_value(+Codes, +V, +Type, -Value, +Loc): like
+% wide_char_value/4 for [V|Codes].
+wide_char_value([], V, Type, V, Loc) :-
+    char_fit_type(Type, FitType),
     wide_fits(FitType, [V], Loc).
-wide_char_value(_, _, _, Loc) :-
-    loc_error(Loc, 'multi-character constant', []).
+wide_char_value([_|_], _, _, _, Loc) :- multi_char_error(Loc).
+
+% char_fit_type(?Type, ?FitType): a wide character constant of element
+% type Type must fit FitType; U'x' has type char32_t but value as int.
+char_fit_type(int, int).
+char_fit_type(ushort, ushort).
+char_fit_type(uint, int).
 
 % char_value(+Bytes, -Value, +Loc): Value is the single byte of a
 % character constant, as a (signed) char promoted to int. A
 % multi-character constant is rejected.
-char_value([B], V, _) :-
-    !,
+char_value([], _, Loc) :- multi_char_error(Loc).
+char_value([B|Bs], V, Loc) :- char_value(Bs, B, V, Loc).
+
+% char_value(+Bytes, +B, -Value, +Loc): like char_value/3 for [B|Bytes].
+char_value([], B, V, _) :-
     (   B >= 128
     ->  V is B - 256
     ;   V = B
     ).
-char_value(_, _, Loc) :- loc_error(Loc, 'multi-character constant', []).
+char_value([_|_], _, _, Loc) :- multi_char_error(Loc).
+
+multi_char_error(Loc) :- loc_error(Loc, 'multi-character constant', []).
 
 % utf8_bytes(+Code, -Bytes): Bytes is the UTF-8 encoding of Code.
 utf8_bytes(K, [K]) :- K < 128, !.

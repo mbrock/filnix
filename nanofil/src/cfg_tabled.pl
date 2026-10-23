@@ -60,7 +60,7 @@
 assert_version(V, Blocks) :-
     Blocks = [blk(Entry, _, _, _)|_],
     assertz(vf_entry(V, Entry)),
-    gen_kill(Blocks, GenKill),
+    blocks_gen_kill(Blocks, GenKill),
     phi_edge_uses(Blocks, EdgeUses),
     forall(member(blk(B, _, _, Jump), Blocks),
            ( assertz(vf_block(B, V)),
@@ -120,16 +120,22 @@ version_live_out(V, B, T) :-
 version_live_out(V, B, T) :-
     vf_euse(B, _, T, V).
 
-% avoid(V, D, B): B is reachable from the entry on a path that does not
-% pass through D. One table per D; D = none gives plain reachability.
+% avoid(V, Avoid, B): B is reachable from the entry in version V on a
+% path that does not pass through the label of Avoid: some(D) avoids D,
+% and none gives plain reachability. One table per Avoid.
 :- table avoid/3.
 
-avoid(V, D, B) :-
+avoid(V, Avoid, B) :-
     vf_entry(V, B),
-    B \== D.
-avoid(V, D, B) :-
-    avoid(V, D, P),
+    not_avoided(Avoid, B).
+avoid(V, Avoid, B) :-
+    avoid(V, Avoid, P),
     vf_edge(P, B, V),
+    not_avoided(Avoid, B).
+
+% not_avoided(+Avoid, +B): B is not the label that Avoid avoids.
+not_avoided(none, _).
+not_avoided(some(D), B) :-
     B \== D.
 
 %! version_dominates(+V, ?D, ?B) is nondet.
@@ -139,9 +145,9 @@ avoid(V, D, B) :-
 version_dominates(V, D, B) :-
     avoid(V, none, D),
     avoid(V, none, B),
-    % Not \+ avoid(V, D, B): that call is a new variant, and so a new
-    % reachability table, for every B.
-    \+ ( avoid(V, D, X), X == B ).
+    % Not \+ avoid(V, some(D), B): that call is a new variant, and so a
+    % new reachability table, for every B.
+    \+ ( avoid(V, some(D), X), X == B ).
 
 %! version_idoms(+V, -Pairs) is det.
 %
@@ -271,7 +277,7 @@ incremental_update(Blocks) :-
 % block_facts(+Blocks, -Facts): the sorted if_gen, if_kill and if_euse
 % facts of Blocks.
 block_facts(Blocks, Facts) :-
-    gen_kill(Blocks, GenKill),
+    blocks_gen_kill(Blocks, GenKill),
     phi_edge_uses(Blocks, EdgeUses),
     findall(F,
             ( member(blk(B, _, _, _), Blocks),

@@ -27,10 +27,10 @@
     foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
-                    size_align/4, complete_type/2, int_type/1, int_info/3,
+                    type_size_align/4, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
                     convert_int/3, const_value/4, num_type/3, scalar_type/1,
-                    type_class/2, find_member/5, type_name_type/4,
+                    type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
                     decl_types/5]).
@@ -178,14 +178,14 @@ named_type(tname(Name), Type, Env, Env) :-
     ).
 named_type(typeof(_), bad('typeof'), Env, Env).
 named_type(su(Kind, Tag, Members, Attrs), Type, Env0, Env) :-
-    su_type(Kind, Tag, Members, Attrs, Type, Env0, Env).
+    su_type(Members, Kind, Tag, Attrs, Type, Env0, Env).
 named_type(enum(Tag, Enumerators), Type, Env0, Env) :-
-    enum_type(Tag, Enumerators, Type, Env0, Env).
+    enum_type(Enumerators, Tag, Type, Env0, Env).
 
 % keyword_type(+Keywords, -Type): the type a list of type keywords names.
-keyword_type([], int) :- !.   % implicit int, as in old headers' K&R style
-keyword_type(Keywords, Type) :-
-    msort(Keywords, Sorted),
+keyword_type([], int).   % implicit int, as in old headers' K&R style
+keyword_type([Keyword|Keywords], Type) :-
+    msort([Keyword|Keywords], Sorted),
     (   keyword_combo(Sorted, Type0) -> Type = Type0
     ;   Type = bad('invalid type specifiers')
     ).
@@ -221,10 +221,16 @@ keyword_combo(S, bad('__int128')) :- memberchk(int128, S).
 
 %% Structs and unions
 
-% su_type(+Kind, +Tag, +Members, +Attrs, -Type, +Env0, -Env): Members is
+% su_type(+Members, +Kind, +Tag, +Attrs, -Type, +Env0, -Env): Members is
 % none for a reference to the tag, which declares it if it is not yet
-% visible.
-su_type(Kind, Tag, none, _, Type, Env0, Env) :- !,
+% visible, and otherwise the list of member declarations that define it.
+% Tag is none for an anonymous struct or union (a defaulty term from the
+% parser, so it stays a test).
+su_type([], Kind, Tag, Attrs, Type, Env0, Env) :-
+    su_definition([], Kind, Tag, Attrs, Type, Env0, Env).
+su_type([Member|Members], Kind, Tag, Attrs, Type, Env0, Env) :-
+    su_definition([Member|Members], Kind, Tag, Attrs, Type, Env0, Env).
+su_type(none, Kind, Tag, _, Type, Env0, Env) :-
     (   Tag \== none,
         Env0 = e(_, Tags, _, _),
         get_assoc(Tag, Tags, tag(Kind, Id))
@@ -232,7 +238,10 @@ su_type(Kind, Tag, none, _, Type, Env0, Env) :- !,
     ;   new_tag(Kind, Tag, Id, Env0, Env)
     ),
     Type =.. [Kind, Id].
-su_type(Kind, Tag, Members, Attrs, Type, Env0, Env) :-
+
+% su_definition(+Members, +Kind, +Tag, +Attrs, -Type, +Env0, -Env): Type
+% is the struct or union Members define, laid out in Env.
+su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     (   Tag \== none,
         Env0 = e(_, Tags, Defs, _),
         get_assoc(Tag, Tags, tag(Kind, Id)),
@@ -262,7 +271,7 @@ new_tag(Kind, Tag, Id, e(Ords, Tags0, Defs0, Id), e(Ords, Tags, Defs, Next)) :-
 % member_decl(+Decl, -Fields, +Env0, -Env): Fields are the f(Name, Type)
 % the member declaration Decl declares ([] for a static assertion), or
 % [bad(Why)].
-member_decl(static_assert(_, _, _), [], Env, Env) :- !.
+member_decl(static_assert(_, _, _), [], Env, Env).
 member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
             Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
@@ -279,47 +288,72 @@ member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
 % at the next multiple of its alignment; size rounded up to the
 % alignment. A trailing flexible array member has size 0.
 su_layout(Kind, Fields, Env, Def) :-
-    (   catch(foldl(place_member(Kind, Env), Fields, Members, 0-1, End-Align),
-              bad(Why),
-              (Def = bad(Why), true))
-    ->  (   nonvar(Def) -> true
-        ;   Size is (End + Align - 1) // Align * Align,
-            Def = def(Kind, Members, Size, Align)
-        )
-    ;   Def = bad('incomplete member')
+    catch(fields_layout(Kind, Fields, Env, Layout), bad(Why),
+          Layout = bad(Why)),
+    layout_def(Layout, Kind, Def).
+
+% fields_layout(+Kind, +Fields, +Env, -Layout): Layout is
+% placed(Members, End, Align) for Fields laid out in Env, or incomplete
+% when a field has no size. Throws bad(Why) as type_size_align/4.
+fields_layout(Kind, Fields, Env, Layout) :-
+    (   foldl(field_member(Kind, Env), Fields, Members, 0-1, End-Align)
+    ->  Layout = placed(Members, End, Align)
+    ;   Layout = incomplete
     ).
 
-% place_member(+Kind, +Env, +Field, -Member, +End0-Align0, -End-Align):
+% layout_def(+Layout, +Kind, -Def): Def is the definition of a struct or
+% union of Kind with Layout, its size rounded up to its alignment.
+layout_def(placed(Members, End, Align), Kind, def(Kind, Members, Size, Align)) :-
+    Size is (End + Align - 1) // Align * Align.
+layout_def(incomplete, _, bad('incomplete member')).
+layout_def(bad(Why), _, bad(Why)).
+
+% field_member(+Kind, +Env, +Field, -Member, +End0-Align0, -End-Align):
 % Member is Field placed after members ending at End0 with alignment
-% Align0; End and Align include it. Throws bad(Why) as size_align/4.
-place_member(Kind, Env, f(Name, Type), m(Name, Type, Off), End0-Align0,
+% Align0; End and Align include it. Throws bad(Why) as type_size_align/4.
+% Any type but a flexible array (array(_, none)) has its own size, so the
+% if-then-else keeps that default case.
+field_member(Kind, Env, f(Name, Type), m(Name, Type, Off), End0-Align0,
              End-Align) :-
     (   Type = array(ElemType, none)
-    ->  size_align(ElemType, Env, _, FieldAlign),
+    ->  type_size_align(ElemType, Env, _, FieldAlign),
         FieldSize = 0
-    ;   size_align(Type, Env, FieldSize, FieldAlign)
+    ;   type_size_align(Type, Env, FieldSize, FieldAlign)
     ),
-    (   Kind == struct
-    ->  Off is (End0 + FieldAlign - 1) // FieldAlign * FieldAlign,
-        End is Off + FieldSize
-    ;   Off = 0,
-        End is max(End0, FieldSize)
-    ),
+    member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
     Align is max(Align0, FieldAlign).
+
+% member_offset_end(+Kind, +End0, +Size, +Align, -Off, -End): a member of
+% Size and Align after members ending at End0 is at Off and ends the
+% struct or union so far at End.
+member_offset_end(struct, End0, Size, Align, Off, End) :-
+    Off is (End0 + Align - 1) // Align * Align,
+    End is Off + Size.
+member_offset_end(union, End0, Size, _, 0, End) :-
+    End is max(End0, Size).
 
 %% Enums
 
-% enum_type(+Tag, +Enumerators, -Type, +Env0, -Env): Type is the enum's
-% underlying type. Enumerators is none for a reference to Tag; a
-% reference to an unknown enum tag has type uint.
-enum_type(Tag, none, Type, Env, Env) :- !,
+% enum_type(+Enumerators, +Tag, -Type, +Env0, -Env): Type is the enum's
+% underlying type. Enumerators is none for a reference to Tag, and
+% otherwise the list that defines it; a reference to an unknown enum tag
+% has type uint. Tag is none for an anonymous enum, as in su_type/7.
+enum_type([], Tag, Type, Env0, Env) :-
+    enum_definition([], Tag, Type, Env0, Env).
+enum_type([Enumerator|Enumerators], Tag, Type, Env0, Env) :-
+    enum_definition([Enumerator|Enumerators], Tag, Type, Env0, Env).
+enum_type(none, Tag, Type, Env, Env) :-
     (   Tag \== none,
         Env = e(_, Tags, _, _),
         get_assoc(Tag, Tags, enum(Type0))
     ->  Type = Type0
     ;   Type = uint
     ).
-enum_type(Tag, Enumerators, Type, Env0, Env) :-
+
+% enum_definition(+Enumerators, +Tag, -Type, +Env0, -Env): Type is the
+% underlying type of the enum Enumerators define; Env binds its
+% constants and its tag.
+enum_definition(Enumerators, Tag, Type, Env0, Env) :-
     foldl(enumerator, Enumerators, Values, Env0-0, Env1-_),
     enum_underlying(Values, Type),
     (   Tag == none -> Env = Env1
@@ -348,15 +382,14 @@ enumerator(enumerator(Name, Expr), V, Env0-Next, Env-Next1) :-
 %  first of uint, int, ulong and long that holds them all (uint when
 %  there are none).
 
-enum_underlying(Values, Type) :-
-    (   Values == [] -> Type = uint
-    ;   min_list(Values, Lo),
-        max_list(Values, Hi),
-        (   Lo >= 0, Hi =< 4294967295 -> Type = uint
-        ;   Lo >= -2147483648, Hi =< 2147483647 -> Type = int
-        ;   Lo >= 0 -> Type = ulong
-        ;   Type = long
-        )
+enum_underlying([], uint).
+enum_underlying([V|Vs], Type) :-
+    min_list([V|Vs], Lo),
+    max_list([V|Vs], Hi),
+    (   Lo >= 0, Hi =< 4294967295 -> Type = uint
+    ;   Lo >= -2147483648, Hi =< 2147483647 -> Type = int
+    ;   Lo >= 0 -> Type = ulong
+    ;   Type = long
     ).
 
 %% Declarators
@@ -397,12 +430,14 @@ param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
 param_type(param(Specs, dcl(_, SyntaxType, _)), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type0, Env1, Env),
-    adjust_param(Type0, Type).
+    type_adjusted(Type0, Type).
 
-% adjust_param(+Type0, -Type): a parameter of Type0 has Type.
-adjust_param(array(T, _), ptr(T)) :- !.
-adjust_param(func(R, P, V), ptr(func(R, P, V))) :- !.
-adjust_param(T, T).
+% type_adjusted(+Type0, -Type): a parameter declared with Type0 has
+% Type. Every other type is its own adjustment: a default case over the
+% exported type terms, so the cuts stay.
+type_adjusted(array(T, _), ptr(T)) :- !.
+type_adjusted(func(R, P, V), ptr(func(R, P, V))) :- !.
+type_adjusted(T, T).
 
 %! type_name_type(+TypeName, -Type, +Env0, -Env) is det.
 %
@@ -415,7 +450,7 @@ type_name_type(type(Specs, SyntaxType), Type, Env0, Env) :-
 
 % bad_type(+T, -Why): bad(Why) is the first bad type inside T, if any
 % (not through pointers, which may point at anything).
-bad_type(bad(Why), Why) :- !.
+bad_type(bad(Why), Why).
 bad_type(array(T, _), Why) :- bad_type(T, Why).
 bad_type(func(Ret, Params, _), Why) :-
     (   bad_type(Ret, Why) -> true
@@ -426,11 +461,11 @@ bad_type(func(Ret, Params, _), Why) :-
 
 %% Sizes
 
-%! size_align(+Type, +Env, -Size, -Align) is det.
+%! type_size_align(+Type, +Env, -Size, -Align) is det.
 %
 %  Size and Align are the size and alignment in bytes of Type in Env.
 %  Throws bad(Why) for a bad or incomplete type.
-size_align(Type, Env, Size, Align) :-
+type_size_align(Type, Env, Size, Align) :-
     (   size_align_(Type, Env, Size0, Align0) -> Size = Size0, Align = Align0
     ;   throw(bad(incomplete))
     ).
@@ -453,7 +488,7 @@ size_align_(ldouble, _, 16, 16).
 size_align_(ptr(_), _, 8, 8).
 size_align_(array(T, N), Env, Size, Align) :-
     integer(N),
-    size_align(T, Env, ElemSize, Align),
+    type_size_align(T, Env, ElemSize, Align),
     Size is ElemSize * N.
 size_align_(struct(Id), Env, Size, Align) :- su_size(Id, Env, Size, Align).
 size_align_(union(Id), Env, Size, Align) :- su_size(Id, Env, Size, Align).
@@ -473,20 +508,20 @@ def_size_align(bad(Why), _, _) :-
 %
 %  Type is complete in Env: it has a size.
 
-complete_type(Type, Env) :- catch(size_align(Type, Env, _, _), bad(_), fail).
+complete_type(Type, Env) :- catch(type_size_align(Type, Env, _, _), bad(_), fail).
 
-%! find_member(+SU, +Name, +Env, -Type, -Offset) is semidet.
+%! member_type_offset(+SU, +Name, +Env, -Type, -Offset) is semidet.
 %
 %  The struct or union type SU has a member Name of Type at Offset,
 %  looking into anonymous members. Fails if it has none, or SU is not
 %  defined.
-find_member(SU, Name, Env, Type, Off) :-
+member_type_offset(SU, Name, Env, Type, Off) :-
     SU =.. [_, Id],
     Env = e(_, _, Defs, _),
     get_assoc(Id, Defs, def(_, Members, _, _)),
     (   member(m(Name, Type, Off), Members) -> true
     ;   member(m(none, AnonType, AnonOff), Members),
-        find_member(AnonType, Name, Env, Type, InnerOff)
+        member_type_offset(AnonType, Name, Env, Type, InnerOff)
     ->  Off is AnonOff + InnerOff
     ).
 
@@ -521,8 +556,7 @@ int_info(ullong, 8, unsigned).
 %
 %  Type is a scalar type the frontend handles: an integer or a pointer.
 
-scalar_type(T) :- int_type(T), !.
-scalar_type(ptr(_)).
+scalar_type(T) :- type_class(T, _).
 
 % rank(+Type, -Rank): the integer conversion rank of Type.
 rank(bool, 0).
@@ -539,11 +573,9 @@ rank(llong, 5). rank(ullong, 5).
 %  is not an integer).
 
 integer_promotion(T, P) :-
-    rank(T, R),
-    R < 3,
-    !,
-    P = int.
-integer_promotion(T, T).
+    (   rank(T, R), R < 3 -> P = int
+    ;   P = T
+    ).
 
 % unsigned_of(+Signed, -Unsigned): the unsigned type of the same rank.
 unsigned_of(int, uint).
@@ -577,20 +609,36 @@ usual_arith_conversion(TypeA0, TypeB0, Type) :-
 %  W is the integer V converted to the integer type Type, by C's rules
 %  (wrapping modulo the width, 0 or 1 for bool). Fails when Type is not
 %  an integer type.
+%  The cut commits to bool, which int_info/3 also describes as a byte.
 convert_int(V, bool, W) :- !, ( V =:= 0 -> W = 0 ; W = 1 ).
 convert_int(V, Type, W) :-
     int_info(Type, Size, Sign),
     M is 1 << (8 * Size),
     U is V mod M,
-    (   Sign == signed, U >= M >> 1 -> W is U - M ; W = U ).
+    signed_word(Sign, U, M, W).
 
-%! type_class(+Type, -Class) is semidet.
+% signed_word(+Signedness, +U, +M, -W): W is the value of the word U of
+% modulus M read with Signedness.
+signed_word(signed, U, M, W) :- ( U >= M >> 1 -> W is U - M ; W = U ).
+signed_word(unsigned, U, _, U).
+
+%! type_class(?Type, ?Class) is nondet.
 %
-%  Class is the IR class (w, l or p) of a value of the scalar type Type.
-%  Not steadfast: type_class(T, l) also holds for an integer type of
-%  class w, so test w first or call it with Class unbound.
-type_class(T, w) :- int_info(T, Size, _), Size =< 4, !.
-type_class(T, l) :- int_type(T), !.
+%  Class is the IR class (w, l or p) of a value of the scalar type Type:
+%  w for an integer type of at most 4 bytes, l for an 8-byte one, p for
+%  a pointer. Deterministic when Type is bound.
+type_class(bool, w).
+type_class(char, w).
+type_class(schar, w).
+type_class(uchar, w).
+type_class(short, w).
+type_class(ushort, w).
+type_class(int, w).
+type_class(uint, w).
+type_class(long, l).
+type_class(ulong, l).
+type_class(llong, l).
+type_class(ullong, l).
 type_class(ptr(_), p).
 
 %% Integer constant expressions
@@ -642,10 +690,10 @@ const_eval(cast(TypeName, X), Env, V, T) :-
     convert_int(V0, T, V).
 const_eval(sizeof_type(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
-    catch(size_align(T, Env, V, _), bad(_), fail).
+    catch(type_size_align(T, Env, V, _), bad(_), fail).
 const_eval(alignof(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
-    catch(size_align(T, Env, _, V), bad(_), fail).
+    catch(type_size_align(T, Env, _, V), bad(_), fail).
 const_eval(offsetof(TypeName, Path), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     offset_path(Path, T, Env, 0, V).
@@ -654,43 +702,69 @@ const_eval(comma(_, B), Env, V, T) :- const_eval(B, Env, V, T).
 % offset_path(+Path, +Type, +Env, +Off0, -Off): offsetof's member path.
 offset_path([], _, _, Off, Off).
 offset_path([field(F)|Path], T, Env, Off0, Off) :-
-    find_member(T, F, Env, FieldType, FieldOff),
+    member_type_offset(T, F, Env, FieldType, FieldOff),
     Off1 is Off0 + FieldOff,
     offset_path(Path, FieldType, Env, Off1, Off).
 offset_path([index(X)|Path], array(ElemType, _), Env, Off0, Off) :-
     const_eval(X, Env, I, _),
-    size_align(ElemType, Env, ElemSize, _),
+    type_size_align(ElemType, Env, ElemSize, _),
     Off1 is Off0 + I * ElemSize,
     offset_path(Path, ElemType, Env, Off1, Off).
 
 % const_binary(+Op, +VA, +TA, +VB, +TB, -V, -T): V of type T is the value
 % of the binary operation Op on VA of type TA and VB of type TB.
 const_binary(Op, VA, TA, VB, TB, V, T) :-
-    memberchk(Op, [add, sub, mul, div, mod, and, or, xor]),
-    !,
+    binary_kind(Op, Kind),
+    kind_binary(Kind, Op, VA, TA, VB, TB, V, T).
+
+% binary_kind(?Op, ?Kind): the binary operator Op converts its operands
+% as Kind names.
+binary_kind(add, arith).
+binary_kind(sub, arith).
+binary_kind(mul, arith).
+binary_kind(div, arith).
+binary_kind(mod, arith).
+binary_kind(and, arith).
+binary_kind(or, arith).
+binary_kind(xor, arith).
+binary_kind(shl, shift).
+binary_kind(shr, shift).
+binary_kind(eq, compare).
+binary_kind(ne, compare).
+binary_kind(lt, compare).
+binary_kind(gt, compare).
+binary_kind(le, compare).
+binary_kind(ge, compare).
+binary_kind(land, logical).
+binary_kind(lor, logical).
+
+% kind_binary(+Kind, +Op, +VA, +TA, +VB, +TB, -V, -T): as const_binary/7
+% for an Op of Kind. Arithmetic and comparison use the usual arithmetic
+% conversions; a shift has its promoted left operand's type.
+kind_binary(arith, Op, VA, TA, VB, TB, V, T) :-
     usual_arith_conversion(TA, TB, T),
     convert_int(VA, T, A),
     convert_int(VB, T, B),
     const_arith(Op, A, B, R),
     convert_int(R, T, V).
-const_binary(Op, VA, TA, VB, _, V, T) :-
-    memberchk(Op, [shl, shr]),
-    !,
+kind_binary(shift, Op, VA, TA, VB, _, V, T) :-
     integer_promotion(TA, T),
     convert_int(VA, T, A),
-    (   Op == shl -> R is A << VB ; R is A >> VB ),
+    const_shift(Op, A, VB, R),
     convert_int(R, T, V).
-const_binary(Op, VA, TA, VB, TB, V, int) :-
-    memberchk(Op, [eq, ne, lt, gt, le, ge]),
-    !,
+kind_binary(compare, Op, VA, TA, VB, TB, V, int) :-
     usual_arith_conversion(TA, TB, T),
     convert_int(VA, T, A),
     convert_int(VB, T, B),
     (   const_compare(Op, A, B) -> V = 1 ; V = 0 ).
-const_binary(land, VA, _, VB, _, V, int) :-
-    (   VA =\= 0, VB =\= 0 -> V = 1 ; V = 0 ).
-const_binary(lor, VA, _, VB, _, V, int) :-
-    (   ( VA =\= 0 ; VB =\= 0 ) -> V = 1 ; V = 0 ).
+kind_binary(logical, Op, VA, _, VB, _, V, int) :-
+    (   const_logical(Op, VA, VB) -> V = 1 ; V = 0 ).
+
+const_shift(shl, A, B, R) :- R is A << B.
+const_shift(shr, A, B, R) :- R is A >> B.
+
+const_logical(land, A, B) :- A =\= 0, B =\= 0.
+const_logical(lor, A, B) :- ( A =\= 0 -> true ; B =\= 0 ).
 
 % Division by zero fails, so the expression is not constant.
 const_arith(add, A, B, R) :- R is A + B.
@@ -739,4 +813,9 @@ constant_types(other, ull, [ullong]).
 fits(V, Type) :-
     int_info(Type, Size, Sign),
     Bits is 8 * Size,
-    (   Sign == signed -> V < 1 << (Bits - 1) ; V < 1 << Bits ).
+    below_max(Sign, V, Bits).
+
+% below_max(+Signedness, +V, +Bits): V is below the maximum of a Bits-wide
+% integer with Signedness.
+below_max(signed, V, Bits) :- V < 1 << (Bits - 1).
+below_max(unsigned, V, Bits) :- V < 1 << Bits.

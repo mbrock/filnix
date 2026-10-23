@@ -12,7 +12,9 @@
     zero-extended to 32 bits in a w, so conversions only extend when the
     source type has values the target cannot represent.
 
-    The lowering threads a state through DCG notation (no terminals):
+    The lowering nonterminals describe a one-element list holding the
+    state, accessed through the semicontext nonterminals state//1 and
+    state//2 and called with phrase/3 at the entry points:
       st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)
       Env     the c_types environment e(Ords, Tags, Defs, Next)
       Cur     cur(Label, Phis), or none after a jump (dead code then
@@ -22,14 +24,15 @@
       Labels  assoc from C goto labels to IR labels
       Cases   the enclosing switch's case(Value, Label) and default(Label)
     The context argument Ctx = ctx(Function, ReturnType, Break, Continue,
-    Loc); Break and Continue are labels or none.
+    Loc); Break and Continue are some(Label), or none outside a loop or
+    switch.
 
     Besides what c_types keeps there, the environment's Defs hold
     gdef(Symbol) global definitions, lit(Symbol) string literals and
     deferred(Symbol) static inline functions, and its Next numbers
     literals and compound literals as well as struct ids.
 
-    Variable conventions: State0 ... State thread the st/8 term, Env0
+    Variable conventions: State0 and State are st/8 terms, Env0
     ... Env the environment; Ctx is the context and Loc a source
     location; R is a v/lv/fd value term, Value0 one before conversion,
     V an IR value; L-prefixed names are IR labels; Ebs are eightbytes
@@ -263,7 +266,7 @@ global_items(Env0, Done, Data, Env) :-
 % global definition G.
 global_item(Sym-g(Type, Linkage, Init, Loc),
             data(Sym, Linkage, Align, Items), Env0, Env) :-
-    catch(size_align(Type, Env0, _, Align0), bad(Why),
+    catch(type_size_align(Type, Env0, _, Align0), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Sym, Why])),
     Align is min(Align0, 16),
     static_items(Type, Init, Loc, Env0, Env, Items).
@@ -289,13 +292,13 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     State0 = st(Env0, cur(start, []), [], [], 0, Labels, [], []),
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
-    % The DCGs thread a state term, not a list, so they are called
-    % directly: SWI's phrase/3 insists on a list.
-    sret_param(RetType, SretParams, State0, State1),
-    params(Names, ParamTypes, Ctx, Params0, State1, State2),
+    phrase(( sret_param(RetType, SretParams),
+             params(Names, ParamTypes, Ctx, Params0),
+             stmt(Body, Ctx),
+             fall_off(RetType)
+           ),
+           [State0], [State]),
     append(SretParams, Params0, Params),
-    stmt(Body, Ctx, State2, State3),
-    fall_off(RetType, State3, State),
     State = st(EnvEnd, none, [], RevBlocks, _, _, _, RevAllocs),
     env_scope(Env0, Scope, _),
     env_restore(Scope, EnvEnd, Env),
@@ -390,9 +393,12 @@ fresh_params([eb(_, _, Class)|Ebs], [par(Class, P)|Params], [P|Values]) -->
 % bare return would.
 fall_off(RetType) -->
     cur(Cur),
-    (   { Cur == none } -> []
-    ;   zero_ret(RetType)
-    ).
+    cur_fall_off(Cur, RetType).
+
+% cur_fall_off(+Cur, +RetType)//: the end of the body when Cur is the
+% current block: nothing after a jump, else a bare return.
+cur_fall_off(none, _) --> [].
+cur_fall_off(cur(_, _), RetType) --> zero_ret(RetType).
 
 % zero_ret(+RetType)//: return without a value (zero, if the function
 % has a result).
@@ -409,67 +415,82 @@ zero_ret(RetType) -->
 
 %% State primitives
 
+% state(-S)//: S is the state. state(-S0, +S)//: the state is S0 and
+% becomes S. The semicontext of the one-element state list.
+state(S), [S] --> [S].
+
+state(S0, S), [S] --> [S0].
+
 % Readers (cur//1, env//1, cases//1) leave the state as it is; set_*//1
 % replace one field; fresh//1 and label//1 take the next number.
 
-cur(Cur, State, State) :-
-    State = st(_, Cur, _, _, _, _, _, _).
+cur(Cur) --> state(st(_, Cur, _, _, _, _, _, _)).
 
-env(Env, State, State) :-
-    State = st(Env, _, _, _, _, _, _, _).
+env(Env) --> state(st(Env, _, _, _, _, _, _, _)).
 
-set_env(Env, st(_, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
-             st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
+set_env(Env) -->
+    state(st(_, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
 
 bind(Name, Value) -->
     env(Env0),
     { bind_ordinary(Name, Value, Env0, Env) },
     set_env(Env).
 
-fresh(t(Temp), st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
-               st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)) :-
-    N is N0 + 1,
-    format(atom(Temp), 'v~w', [N0]).
+fresh(t(Temp)) -->
+    state(st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)),
+    { N is N0 + 1,
+      format(atom(Temp), 'v~w', [N0]) }.
 
-label(Label, st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
-             st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)) :-
-    N is N0 + 1,
-    format(atom(Label), 'L~w', [N0]).
+label(Label) -->
+    state(st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)),
+    { N is N0 + 1,
+      format(atom(Label), 'L~w', [N0]) }.
 
 % ensure_live//: make sure there is a current block, opening an
 % unreachable one after a jump.
 ensure_live -->
     cur(Cur),
-    (   { Cur == none } -> label(Label), set_cur(cur(Label, []))
-    ;   []
-    ).
+    cur_live(Cur).
 
-set_cur(Cur, st(Env, _, Insts, Blocks, N, Labels, Cases, Allocs),
-             st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
+% cur_live(+Cur)//: the current block is Cur, or a new one if Cur is
+% none.
+cur_live(none) --> label(Label), set_cur(cur(Label, [])).
+cur_live(cur(_, _)) --> [].
+
+set_cur(Cur) -->
+    state(st(Env, _, Insts, Blocks, N, Labels, Cases, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
 
 % emit(+Inst)//: append Inst to the current block.
 emit(Inst) --> ensure_live, push_inst(Inst).
 
-push_inst(Inst, st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
-                st(Env, Cur, [Inst|Insts], Blocks, N, Labels, Cases, Allocs)).
+push_inst(Inst) -->
+    state(st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
+          st(Env, Cur, [Inst|Insts], Blocks, N, Labels, Cases, Allocs)).
 
 % term(+Jump)//: end the current block with Jump.
 term(Jump) --> ensure_live, close_block(Jump).
 
-close_block(Jump,
-            st(Env, cur(Label, Phis), Insts, Blocks, N, Labels, Cases, Allocs),
-            st(Env, none, [], [blk(Label, Phis, BlockInsts, Jump)|Blocks],
-               N, Labels, Cases, Allocs)) :-
-    reverse(Insts, BlockInsts).
+close_block(Jump) -->
+    state(st(Env, cur(Label, Phis), Insts, Blocks, N, Labels, Cases, Allocs),
+          st(Env, none, [], [blk(Label, Phis, BlockInsts, Jump)|Blocks],
+             N, Labels, Cases, Allocs)),
+    { reverse(Insts, BlockInsts) }.
 
 % start(+Label)//: begin block Label, falling through from a live
 % current block.
 start(Label) -->
     cur(Cur),
-    (   { Cur == none } -> []
-    ;   term(jmp(Label))
-    ),
+    cur_fallthrough(Cur, Label),
     set_cur(cur(Label, [])).
+
+% cur_fallthrough(+Cur, +Label)//: a live current block Cur ends with a
+% jump to Label; after a jump (none) there is nothing to end.
+cur_fallthrough(none, _) --> [].
+cur_fallthrough(cur(_, _), Label) --> term(jmp(Label)).
 
 % start_phi(+Label, +Phis)//: begin block Label, reached only by jumps.
 start_phi(Label, Phis) --> set_cur(cur(Label, Phis)).
@@ -477,26 +498,27 @@ start_phi(Label, Phis) --> set_cur(cur(Label, Phis)).
 % here(-Label)//: Label is the current block's label.
 here(Label) --> ensure_live, cur(cur(Label, _)).
 
-add_alloc(Inst, st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
-                st(Env, Cur, Insts, Blocks, N, Labels, Cases, [Inst|Allocs])).
+add_alloc(Inst) -->
+    state(st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, [Inst|Allocs])).
 
-cases(Cases, State, State) :-
-    State = st(_, _, _, _, _, _, Cases, _).
+cases(Cases) --> state(st(_, _, _, _, _, _, Cases, _)).
 
-set_cases(Cases, st(Env, Cur, Insts, Blocks, N, Labels, _, Allocs),
-                 st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
+set_cases(Cases) -->
+    state(st(Env, Cur, Insts, Blocks, N, Labels, _, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
 
 % goto_label(+Name, -Label)//: Label is the IR label of C label Name,
 % made on first use.
-goto_label(Name, Label, State0, State) :-
-    State0 = st(Env, Cur, Insts, Blocks, N0, Labels0, Cases, Allocs),
-    (   get_assoc(Name, Labels0, Label)
-    ->  State = State0
+goto_label(Name, Label) -->
+    state(st(Env, Cur, Insts, Blocks, N0, Labels0, Cases, Allocs),
+          st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)),
+    {   get_assoc(Name, Labels0, Label)
+    ->  N = N0, Labels = Labels0
     ;   N is N0 + 1,
         format(atom(Label), 'L~w', [N0]),
-        put_assoc(Name, Labels0, Label, Labels),
-        State = st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)
-    ).
+        put_assoc(Name, Labels0, Label, Labels)
+    }.
 
 % ins(+Class, +Op, +Args, -Dest)//: emit an instruction into Dest, a
 % fresh temporary.
@@ -508,7 +530,7 @@ ins(Class, Op, Args, Dest) -->
 % Type, an alloc in the entry block.
 local_slot(Type, Addr) -->
     env(Env),
-    { catch(size_align(Type, Env, Size0, Align0), bad(Why),
+    { catch(type_size_align(Type, Env, Size0, Align0), bad(Why),
             throw(nanofil_error(Why))),
       ( Align0 =< 4 -> Align = 4 ; Align = Align0 ),
       Size is max(Size0, 1) },
@@ -521,11 +543,14 @@ ctx_loc(ctx(_, _, _, _, Loc), Loc).
 
 ctx_at(ctx(Func, Ret, Break, Cont, _), Loc, ctx(Func, Ret, Break, Cont, Loc)).
 
-loop_ctx(ctx(Func, Ret, _, _, Loc), Break, Cont,
-         ctx(Func, Ret, Break, Cont, Loc)).
+% loop_ctx(+Ctx0, +LBreak, +LCont, -Ctx), switch_ctx(+Ctx0, +LBreak,
+% -Ctx): Ctx is Ctx0 inside a loop or switch whose break jumps to
+% LBreak and continue to LCont.
+loop_ctx(ctx(Func, Ret, _, _, Loc), LBreak, LCont,
+         ctx(Func, Ret, some(LBreak), some(LCont), Loc)).
 
-switch_ctx(ctx(Func, Ret, _, Cont, Loc), Break,
-           ctx(Func, Ret, Break, Cont, Loc)).
+switch_ctx(ctx(Func, Ret, _, Cont, Loc), LBreak,
+           ctx(Func, Ret, some(LBreak), Cont, Loc)).
 
 %% Statements
 
@@ -611,20 +636,10 @@ stmt_(default(Body), Ctx) -->
     label(Label), start(Label),
     cases(Cases), set_cases([default(Label)|Cases]),
     stmt(Body, Ctx).
-stmt_(break, Ctx) -->
-    { Ctx = ctx(_, _, Break, _, Loc),
-      (   Break == none
-      ->  sema_error(Loc, 'break outside a loop or switch', [])
-      ;   true
-      ) },
-    term(jmp(Break)).
-stmt_(continue, Ctx) -->
-    { Ctx = ctx(_, _, _, Cont, Loc),
-      (   Cont == none
-      ->  sema_error(Loc, 'continue outside a loop', [])
-      ;   true
-      ) },
-    term(jmp(Cont)).
+stmt_(break, ctx(_, _, Break, _, Loc)) -->
+    target_jump(Break, Loc, 'break outside a loop or switch').
+stmt_(continue, ctx(_, _, _, Cont, Loc)) -->
+    target_jump(Cont, Loc, 'continue outside a loop').
 stmt_(return(none), Ctx) -->
     { Ctx = ctx(_, RetType, _, _, _) },
     zero_ret(RetType).
@@ -647,6 +662,11 @@ stmt_(label(Name, Body), Ctx) -->
     stmt(Body, Ctx).
 stmt_(decl(Loc, Specs, Inits), Ctx) -->
     item(decl(Loc, Specs, Inits), Ctx).
+
+% target_jump(+Target, +Loc, +Error)//: a jump to the break or
+% continue Target, some(Label); none is semantic error Error at Loc.
+target_jump(some(Label), _, _) --> term(jmp(Label)).
+target_jump(none, Loc, Error) --> { sema_error(Loc, Error, []) }.
 
 % A block scope: save_scope(Scope) on entry, restore_scope(Scope) on exit.
 save_scope(Scope) -->
@@ -714,7 +734,7 @@ local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
 % unless Type is a type a local object Name can have.
 check_local_type(Type, Env, Loc, Name) :-
     vm_check(Type, Loc),
-    catch(( size_align(Type, Env, _, _) -> true ; true ), bad(Why),
+    catch(( type_size_align(Type, Env, _, _) -> true ; true ), bad(Why),
           sema_error(Loc, '~w has a type nanofil does not support (~w)',
                      [Name, Why])).
 
@@ -781,13 +801,13 @@ elided_one(Type, V, Whole) :-
         str_elems(V, CharType, _)
     ;   Whole = whole(Ctx, State),
         su(Type),
-        struct_expr(V, Ctx, Type, State, _)
+        phrase(struct_expr(V, Ctx, Type), [State], _)
     ),
     !.
 
 % whole_probe(+Ctx, -Whole)//: Whole lets complete_array test, in the
 % current state, whether an entry is a struct expression.
-whole_probe(Ctx, whole(Ctx, State), State, State).
+whole_probe(Ctx, whole(Ctx, State)) --> state(State).
 
 % dispatch(+Cases, +Value, +Type, +LEnd)//: the switch dispatch, one
 % comparison per case, then a jump to the default or LEnd.
@@ -874,7 +894,7 @@ store_elems([Off-Value|Pairs], Width, Addr) -->
 % hoisted and a local inside a loop must be reinitialized on every pass.
 zero_object(Addr, Type) -->
     env(Env),
-    { size_align(Type, Env, Size, Align) },
+    { type_size_align(Type, Env, Size, Align) },
     zero_bytes(Addr, 0, Size, Align).
 
 % zero_bytes(+Addr, +Off, +Size, +Align)//: zero Off..Size with the
@@ -921,7 +941,7 @@ aggregate(union(_)).
 % field name. A union initializes its first member. Fails for a
 % non-aggregate.
 aggregate_slots(array(ElemType, N), Env, Slots) :- !,
-    size_align(ElemType, Env, Size, _),
+    type_size_align(ElemType, Env, Size, _),
     Last is N - 1,
     findall(slot(I, Off, ElemType),
             ( between(0, Last, I), Off is I * Size ),
@@ -1106,7 +1126,7 @@ member_lv(Addr, SUType, Field, Ctx, P, Type) -->
     env(Env),
     { ctx_loc(Ctx, Loc) },
     (   { ( SUType = struct(_) ; SUType = union(_) ),
-          find_member(SUType, Field, Env, Type, Off) }
+          member_type_offset(SUType, Field, Env, Type, Off) }
     ->  offset(Addr, Off, P)
     ;   { sema_error(Loc, 'no member named ~w', [Field]) }
     ).
@@ -1128,9 +1148,10 @@ decay(fd(Callee, Type), _, v(Callee, ptr(Type))) --> [].
 
 % expr_type(+Expr, +Ctx, -Type)//: Type is the type of Expr, for sizeof,
 % from a throwaway lowering; the state is left as it was.
-expr_type(Expr, Ctx, Type, State, State) :-
-    obj(Expr, Ctx, R, State, _),
-    arg(2, R, Type).
+expr_type(Expr, Ctx, Type) -->
+    state(State),
+    { phrase(obj(Expr, Ctx, R), [State], _),
+      arg(2, R, Type) }.
 
 % load_typed(+Type, +Addr, +Ctx, -V)//: V is the scalar of Type loaded
 % from Addr.
@@ -1188,13 +1209,13 @@ rvalue(alignof(TypeName), Ctx, v(c(Align), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       type_name(TypeName, Type, Env, Loc),
-      catch(size_align(Type, Env, _, Align), bad(Why),
+      catch(type_size_align(Type, Env, _, Align), bad(Why),
             sema_error(Loc, 'alignof: ~w', [Why])) }.
 rvalue(sizeof_expr(Expr), Ctx, v(c(Size), ulong)) --> !,
     expr_type(Expr, Ctx, Type),
     env(Env),
     { ctx_loc(Ctx, Loc),
-      catch(size_align(Type, Env, Size, _), bad(Why),
+      catch(type_size_align(Type, Env, Size, _), bad(Why),
             sema_error(Loc, 'sizeof: ~w', [Why])) }.
 rvalue(offsetof(TypeName, Path), Ctx, v(c(V), ulong)) --> !,
     env(Env),
@@ -1254,7 +1275,7 @@ rvalue(Expr, Ctx, _) -->
 type_size(TypeName, Env, Ctx, Size) :-
     ctx_loc(Ctx, Loc),
     type_name(TypeName, Type, Env, Loc),
-    catch(size_align(Type, Env, Size, _), bad(Why),
+    catch(type_size_align(Type, Env, Size, _), bad(Why),
           sema_error(Loc, 'sizeof: ~w', [Why])).
 
 % type_name(+TypeName, -Type, +Env, +Loc): Type is the type TypeName
@@ -1481,7 +1502,7 @@ ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
     { PtrType = ptr(ElemType) },
     env(Env),
     { ctx_loc(Ctx, Loc),
-      catch(size_align(ElemType, Env, Size, _), bad(Why),
+      catch(type_size_align(ElemType, Env, Size, _), bad(Why),
             sema_error(Loc, 'pointer arithmetic on ~w (~w)',
                        [ElemType, Why])) },
     convert(VI, long, v(I, _)),
@@ -1495,7 +1516,7 @@ ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
 ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     env(Env),
     { ctx_loc(Ctx, Loc),
-      catch(size_align(ElemType, Env, Size, _), bad(Why),
+      catch(type_size_align(ElemType, Env, Size, _), bad(Why),
             sema_error(Loc, 'pointer subtraction on ~w (~w)',
                        [ElemType, Why])) },
     ins(l, ptoi, [A], IA),
@@ -1576,15 +1597,18 @@ arm_convert(Value0, Type, Ctx, V) -->
 % probe_rval(+Expr, +Ctx, -R)//: R is Expr's decayed value term from a
 % throwaway lowering; the state is left as it was. Only R's type (and
 % whether it is a constant) may be used.
-probe_rval(Expr, Ctx, R, State, State) :-
-    rval(Expr, Ctx, R, State, _).
+probe_rval(Expr, Ctx, R) -->
+    state(State),
+    { phrase(rval(Expr, Ctx, R), [State], _) }.
 
 % struct_expr(+Expr, +Ctx, +Type)//: Expr is an expression of struct or
 % union type Type, as a throwaway lowering shows; a lowering error means
 % it is not. The state is left as it was.
-struct_expr(Expr, Ctx, Type, State, State) :-
-    catch(rval(Expr, Ctx, v(_, Type1), State, _), nanofil_error(_), fail),
-    Type1 == Type.
+struct_expr(Expr, Ctx, Type) -->
+    state(State),
+    { catch(phrase(rval(Expr, Ctx, v(_, Type1)), [State], _),
+            nanofil_error(_), fail),
+      Type1 == Type }.
 
 % cond_type(+TA, +VA, +TB, +VB, -Type, +Loc): Type is the type of
 % c ? a : b, given the arms' types and value terms (a null pointer
@@ -1792,7 +1816,7 @@ su(union(_)).
 
 % eightbytes(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes of Type.
 eightbytes(Type, Env, Loc, Ebs) :-
-    catch(size_align(Type, Env, Size, _), bad(Why),
+    catch(type_size_align(Type, Env, Size, _), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Type, Why])),
     ptr_offsets(Type, Env, 0, PtrOffs0, []),
     sort(PtrOffs0, PtrOffs),
@@ -1813,7 +1837,7 @@ ptr_offsets(array(ElemType, N), Env, Base, Offs0, Offs) :-
     !,
     ptr_offsets(ElemType, Env, 0, ElemOffs, []),
     (   ElemOffs == [] -> Offs0 = Offs
-    ;   size_align(ElemType, Env, Size, _),
+    ;   type_size_align(ElemType, Env, Size, _),
         Last is N - 1,
         findall(I, between(0, Last, I), Indices),
         foldl(elem_ptrs(ElemType, Env, Base, Size), Indices, Offs0, Offs)
@@ -1838,7 +1862,7 @@ member_ptrs(Env, Base, m(_, Type, Off), Offs0, Offs) :-
 % arg_words(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes in which a
 % struct or union argument of Type is passed.
 arg_words(Type, Env, Loc, Ebs) :-
-    size_align(Type, Env, Size, _),
+    type_size_align(Type, Env, Size, _),
     (   Size > 16
     ->  sema_error(Loc, 'passing a ~w of ~w bytes by value is not supported yet',
                    [Type, Size])
@@ -1848,7 +1872,7 @@ arg_words(Type, Env, Loc, Ebs) :-
 % ret_shape(+Type, +Env, +Loc, -Shape): Shape is how a struct or union
 % of Type is returned: sret, or words(Eightbytes).
 ret_shape(Type, Env, Loc, Shape) :-
-    size_align(Type, Env, Size, _),
+    type_size_align(Type, Env, Size, _),
     (   Size > 16 -> Shape = sret
     ;   eightbytes(Type, Env, Loc, Ebs),
         Shape = words(Ebs)
@@ -1951,7 +1975,7 @@ store_pieces([p(Off, _, _, Store)|Pieces], W, P) -->
    string literals in initializers become data of their own. The static_*
    predicates thread Env-Chunks, the chunks reversed. */
 static_items(Type, Init, Loc, Env0, Env, Items) :-
-    size_align(Type, Env0, Size, _),
+    type_size_align(Type, Env0, Size, _),
     (   Init == none -> Env = Env0, Chunks = []
     ;   static_init(0, Type, Init, Loc, Env0-[], Env-Chunks0),
         reverse(Chunks0, Chunks)
@@ -2132,7 +2156,7 @@ addr_const(Expr, Loc, Env, Env, null) :-
 % plus (add) or minus (sub) K elements.
 offset_const(Op, sym(Sym, Off0, ptr(ElemType)), K, Env, Loc,
              sym(Sym, Off, ptr(ElemType))) :- !,
-    catch(size_align(ElemType, Env, Size, _), bad(Why),
+    catch(type_size_align(ElemType, Env, Size, _), bad(Why),
           sema_error(Loc, 'pointer arithmetic on ~w (~w)', [ElemType, Why])),
     (   Op == add -> Off is Off0 + K * Size
     ;   Off is Off0 - K * Size
@@ -2186,7 +2210,7 @@ lvalue_const(_, Loc, _, _, _) :-
 % struct or union SUType has Type and offset Off.
 member_off(SUType, Field, Env, Loc, Type, Off) :-
     (   ( SUType = struct(_) ; SUType = union(_) ),
-        find_member(SUType, Field, Env, Type, Off)
+        member_type_offset(SUType, Field, Env, Type, Off)
     ->  true
     ;   sema_error(Loc, 'no member named ~w', [Field])
     ).

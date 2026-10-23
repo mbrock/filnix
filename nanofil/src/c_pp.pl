@@ -32,7 +32,7 @@
 %  profile(Macros, IncludeDirs, FeatureAnswers) from pp_profile/2.
 %  Throws nanofil_error/1 on a preprocessing or lexical error.
 pp_file(File, profile(Macros, Paths, Features), Tokens) :-
-    preprocess(File, env(Macros, Paths, Features, [], File), _, PpTokens),
+    file_tokens(File, env(Macros, Paths, Features, [], File), _, PpTokens),
     phrase(lex_tokens(PpTokens), Tokens).
 
 % lex_tokens(+PpTokens)//: the c_lex tokens of PpTokens. Each
@@ -41,16 +41,16 @@ lex_tokens([]) --> [].
 lex_tokens([t(A, Loc, _, _)|PpTokens]) -->
     {   atom_chars(A, Cs),
         c_tokens(Cs, '<preprocessing token>', Lexed),
-        maplist(relocate(Loc), Lexed, Tokens)
+        maplist(token_relocated(Loc), Lexed, Tokens)
     },
     seq(Tokens),
     lex_tokens(PpTokens).
 
-relocate(Loc, tok(T, _), tok(T, Loc)).
+token_relocated(Loc, tok(T, _), tok(T, Loc)).
 
-% preprocess(+File, +Env0, -Env, -Tokens): File's expanded tokens. Env
+% file_tokens(+File, +Env0, -Env, -Tokens): File's expanded tokens. Env
 % carries the macros and the #pragma once set back to the includer.
-preprocess(File, Env0, Env, Tokens) :-
+file_tokens(File, Env0, Env, Tokens) :-
     Env0 = env(Macros0, Paths, Features, Once0, Includer),
     absolute_file_name(File, Identity),
     (   memberchk(Identity, Once0)
@@ -58,7 +58,7 @@ preprocess(File, Env0, Env, Tokens) :-
         Tokens = []
     ;   read_source(File, PpTokens),
         token_lines(PpTokens, Lines),
-        process_lines(Lines, File, [], [],
+        lines_tokens(Lines, File, [], [],
                       env(Macros0, Paths, Features, Once0, File), End,
                       Tokens, []),
         End = env(Macros, Paths, Features, Once, _),
@@ -83,7 +83,7 @@ read_source(File, PpTokens) :-
 % source line, not the number of newlines in the spliced buffer.
 source_tokens(Cs, Loc, PpTokens) :-
     located_splice(Cs, Loc, Spliced, Locs),
-    phrase(scan(PpTokens, Locs, yes), Spliced).
+    phrase(pp_tokens(PpTokens, Locs, yes), Spliced).
 
 % located_splice(+Chars, +Loc, -Spliced, -Locs): remove backslash-newline
 % and give each remaining character its physical location.
@@ -104,31 +104,31 @@ located_splice([C|Cs], Loc, [C|Spliced], [Loc|Locs]) :- !,
     located_splice(Cs, Loc1, Spliced, Locs).
 located_splice([], _, [], []).
 
-% scan(PpTokens, Locs, Space): Locs runs in step with the input
+% pp_tokens(PpTokens, Locs, Space): Locs runs in step with the input
 % characters; Space says whether whitespace precedes the next token.
-scan([nl|Ts], [_|Locs], _) -->
+pp_tokens([nl|Ts], [_|Locs], _) -->
     ['\n'], !,
-    scan(Ts, Locs, yes).
-scan(Ts, [_|Locs], _) -->
+    pp_tokens(Ts, Locs, yes).
+pp_tokens(Ts, [_|Locs], _) -->
     [C], { space(C) }, !,
-    scan(Ts, Locs, yes).
-scan(Ts, [_, _|Locs], _) -->
+    pp_tokens(Ts, Locs, yes).
+pp_tokens(Ts, [_, _|Locs], _) -->
     ['/', '/'], !,
     line_comment(Locs, Rest),
-    scan(Ts, Rest, yes).
-scan(Ts, [_, _|Locs], _) -->
+    pp_tokens(Ts, Rest, yes).
+pp_tokens(Ts, [_, _|Locs], _) -->
     ['/', '*'], !,
     block_comment(Locs, Rest),
-    scan(Ts, Rest, yes).
-scan([t(A, Loc, Space, [])|Ts], [Loc|Locs], Space) -->
+    pp_tokens(Ts, Rest, yes).
+pp_tokens([t(A, Loc, Space, [])|Ts], [Loc|Locs], Space) -->
     spelling(Cs), !,
     {   atom_chars(A, Cs),
         length(Cs, N),
         N1 is N - 1,
         drop(N1, Locs, Rest)
     },
-    scan(Ts, Rest, no).
-scan([], [], _) --> [].
+    pp_tokens(Ts, Rest, no).
+pp_tokens([], [], _) --> [].
 
 % drop(+N, +Xs, -Rest): Rest is Xs without its first N elements.
 drop(0, Xs, Xs) :- !.
@@ -231,45 +231,50 @@ number_rest([]) --> [].
 % token_lines(+PpTokens, -Lines): Lines are PpTokens split at each nl,
 % the nl tokens dropped.
 token_lines([], []).
-token_lines(Ts, [Line|Lines]) :-
-    Ts \= [],
-    take_line(Ts, Line, Rest),
+token_lines([T|Ts], [Line|Lines]) :-
+    tokens_line_rest([T|Ts], Line, Rest),
     token_lines(Rest, Lines).
 
-% take_line(+PpTokens, -Line, -Rest): Line is PpTokens up to the first
-% nl, and Rest follows it.
-take_line([], [], []).
-take_line([nl|Ts], [], Ts) :- !.
-take_line([T|Ts], [T|Line], Rest) :- take_line(Ts, Line, Rest).
+% tokens_line_rest(+PpTokens, -Line, -Rest): Line is PpTokens up to the
+% first nl, and Rest follows it.
+tokens_line_rest([], [], []).
+tokens_line_rest([T|Ts], Line, Rest) :- token_line_rest(T, Ts, Line, Rest).
 
-% process_lines(+Lines, +File, +Stack, +Pending, +Env0, -Env, -Ts, ?End):
+% token_line_rest(+T, +Ts, -Line, -Rest): like tokens_line_rest/3 for
+% [T|Ts]; T is nl or a t/4 token.
+token_line_rest(nl, Ts, [], Ts).
+token_line_rest(t(A, Loc, Space, Hide), Ts, [t(A, Loc, Space, Hide)|Line],
+                Rest) :-
+    tokens_line_rest(Ts, Line, Rest).
+
+% lines_tokens(+Lines, +File, +Stack, +Pending, +Env0, -Env, -Ts, ?End):
 % Ordinary lines are collected in Pending (reversed) and expanded
 % together, so a function invocation can span newlines. Directives are
 % barriers; inactive groups never expand tokens.
-process_lines([], File, Stack, Pending, Env, Env, Ts, End) :-
+lines_tokens([], File, Stack, Pending, Env, Env, Ts, End) :-
     ( Stack = [] -> true ; pp_error(File:1, 'unterminated #if') ),
-    expand_pending(Pending, Env, Expanded),
+    pending_expansion(Pending, Env, Expanded),
     append(Expanded, End, Ts).
-process_lines([[t('#', HashLoc, _, _)|Directive]|Lines], File, Stack,
+lines_tokens([[t('#', HashLoc, _, _)|Directive]|Lines], File, Stack,
               Pending, Env0, Env, Ts, End) :-
     !,
-    expand_pending(Pending, Env0, Expanded),
+    pending_expansion(Pending, Env0, Expanded),
     append(Expanded, Rest, Ts),
     (   Directive = [t(line, _, _, _)|Args], active(Stack)
-    ->  expand(Args, Env0, Marker),
+    ->  tokens_expansion(Args, Env0, Marker),
         line_target(Marker, HashLoc, Target),
-        remap_lines(Lines, HashLoc, Target, More),
+        lines_remapped(Lines, HashLoc, Target, More),
         Stack1 = Stack,
         Env1 = Env0,
         Rest = Next
     ;   directive(Directive, File, Stack, Stack1, Env0, Env1, Rest, Next),
         More = Lines
     ),
-    process_lines(More, File, Stack1, [], Env1, Env, Next, End).
-process_lines([Line|Lines], File, Stack, Pending, Env0, Env, Ts, End) :-
+    lines_tokens(More, File, Stack1, [], Env1, Env, Next, End).
+lines_tokens([Line|Lines], File, Stack, Pending, Env0, Env, Ts, End) :-
     (   active(Stack)
-    ->  process_lines(Lines, File, Stack, [Line|Pending], Env0, Env, Ts, End)
-    ;   process_lines(Lines, File, Stack, Pending, Env0, Env, Ts, End)
+    ->  lines_tokens(Lines, File, Stack, [Line|Pending], Env0, Env, Ts, End)
+    ;   lines_tokens(Lines, File, Stack, Pending, Env0, Env, Ts, End)
     ).
 
 % line_target(+Marker, +HashLoc, -Target): for #line N ["file"] at
@@ -278,26 +283,31 @@ line_target([t(A, _, _, _)|Ts], File:_, NewFile:N) :-
     atom_number(A, N),
     integer(N),
     N > 0,
-    ( Ts = [] -> NewFile = File ; include_name(Ts, NewFile, quote) ).
+    marker_file(Ts, File, NewFile).
 
-% remap_lines(+Lines, +Old, +New, -Remapped): the tokens of Lines, which
+% marker_file(+Tokens, +File0, -File): File is named by the optional
+% "file" operand Tokens of #line, else File0.
+marker_file([], File, File).
+marker_file([T|Ts], _, File) :- include_name([T|Ts], File, quote).
+
+% lines_remapped(+Lines, +Old, +New, -Remapped): the tokens of Lines, which
 % follow the directive at Old, renumbered so that the first is at New.
-remap_lines([], _, _, []).
-remap_lines([Ts|Lines], Old, New, [Rs|Rest]) :-
-    maplist(remap_token(Old, New), Ts, Rs),
-    remap_lines(Lines, Old, New, Rest).
+lines_remapped([], _, _, []).
+lines_remapped([Ts|Lines], Old, New, [Rs|Rest]) :-
+    maplist(token_remapped(Old, New), Ts, Rs),
+    lines_remapped(Lines, Old, New, Rest).
 
-remap_token(Old, New, t(A, Loc, Space, Hide), t(A, Loc1, Space, Hide)) :-
-    remap_location(Old, New, Loc, Loc1).
+token_remapped(Old, New, t(A, Loc, Space, Hide), t(A, Loc1, Space, Hide)) :-
+    location_remapped(Old, New, Loc, Loc1).
 
-remap_location(_:Old, File:New, _:N, File:M) :- M is N-Old-1+New.
+location_remapped(_:Old, File:New, _:N, File:M) :- M is N-Old-1+New.
 
-% expand_pending(+Pending, +Env, -Ts): Ts are the expanded tokens of the
+% pending_expansion(+Pending, +Env, -Ts): Ts are the expanded tokens of the
 % reversed list of lines Pending.
-expand_pending(Pending, Env, Ts) :-
+pending_expansion(Pending, Env, Ts) :-
     reverse(Pending, Lines),
     append(Lines, Flat),
-    expand(Flat, Env, Ts).
+    tokens_expansion(Flat, Env, Ts).
 
 % The conditional stack has one cond(Taken, Seen, Parent) per open #if:
 % Taken says whether the current group is active, Seen whether an earlier
@@ -305,6 +315,11 @@ expand_pending(Pending, Env, Ts) :-
 % enclosing group is active.
 active([]).
 active([cond(yes, _, _)|_]).
+
+% seen_after(+Taken, +Seen0, -Seen): Seen says whether a group was taken
+% once the current one is decided.
+seen_after(yes, _, yes).
+seen_after(no, Seen, Seen).
 
 % condition_truth(+Value, -Taken): Taken is yes if Value is nonzero.
 condition_truth(V, yes) :- V =\= 0, !.
@@ -314,11 +329,11 @@ condition_truth(_, no).
 % directive line after its '#'. Conditionals are tracked even in inactive
 % groups; other directives only run in active ones. Ts is Rest with an
 % included file's tokens in front.
-directive([], _, Stack, Stack, Env, Env, Ts, Ts) :- !.
+directive([], _, Stack, Stack, Env, Env, Ts, Ts).
 directive([t(Name, Loc, _, _)|Args], File, Stack0, Stack, Env0, Env,
           Ts, Rest) :-
     (   conditional_directive(Name)
-    ->  conditional(Name, Loc, Args, Env0, Stack0, Stack),
+    ->  conditional_stack(Name, Loc, Args, Env0, Stack0, Stack),
         Env = Env0,
         Ts = Rest
     ;   active(Stack0)
@@ -336,34 +351,37 @@ conditional_directive(elif).
 conditional_directive(else).
 conditional_directive(endif).
 
-% conditional(+Name, +Loc, +Args, +Env, +Stack0, -Stack): Stack is the
-% conditional stack after the directive #Name Args.
-conditional(elif, Loc, Args, Env, Stack0, [cond(Taken, Seen1, Parent)|Tail]) :-
-    !,
+% conditional_stack(+Name, +Loc, +Args, +Env, +Stack0, -Stack): Stack is
+% the conditional stack after the directive #Name Args.
+conditional_stack(elif, Loc, Args, Env, Stack0,
+                  [cond(Taken, Seen1, Parent)|Tail]) :-
     (   Stack0 = [cond(_, Seen, Parent)|Tail], Seen \== else
     ->  true
     ;   pp_error(Loc, 'unexpected #elif')
     ),
-    (   Parent == yes, Seen == no
-    ->  condition(if, Args, Env, V),
-        condition_truth(V, Taken)
-    ;   Taken = no
-    ),
-    ( Taken == yes -> Seen1 = yes ; Seen1 = Seen ).
-conditional(else, Loc, _, _, Stack0, [cond(Taken, else, Parent)|Tail]) :-
-    !,
+    elif_taken(Parent, Seen, Args, Env, Taken),
+    seen_after(Taken, Seen, Seen1).
+conditional_stack(else, Loc, _, _, Stack0, [cond(Taken, else, Parent)|Tail]) :-
     (   Stack0 = [cond(_, Seen, Parent)|Tail], Seen \== else
     ->  true
     ;   pp_error(Loc, 'unexpected #else')
     ),
-    ( Seen == no -> Taken = Parent ; Taken = no ).
-conditional(endif, Loc, _, _, Stack0, Stack) :-
-    !,
+    else_taken(Seen, Parent, Taken).
+conditional_stack(endif, Loc, _, _, Stack0, Stack) :-
     (   Stack0 = [_|Stack]
     ->  true
     ;   pp_error(Loc, 'unexpected #endif')
     ).
-conditional(Kind, _, Args, Env, Stack0, [cond(Taken, Taken, Parent)|Stack0]) :-
+conditional_stack(if, _, Args, Env, Stack0, Stack) :-
+    opened_stack(if, Args, Env, Stack0, Stack).
+conditional_stack(ifdef, _, Args, Env, Stack0, Stack) :-
+    opened_stack(ifdef, Args, Env, Stack0, Stack).
+conditional_stack(ifndef, _, Args, Env, Stack0, Stack) :-
+    opened_stack(ifndef, Args, Env, Stack0, Stack).
+
+% opened_stack(+Kind, +Args, +Env, +Stack0, -Stack): Stack is Stack0 with
+% the group that #Kind Args opens.
+opened_stack(Kind, Args, Env, Stack0, [cond(Taken, Taken, Parent)|Stack0]) :-
     (   active(Stack0)
     ->  Parent = yes,
         condition(Kind, Args, Env, V),
@@ -372,17 +390,35 @@ conditional(Kind, _, Args, Env, Stack0, [cond(Taken, Taken, Parent)|Stack0]) :-
         Taken = no
     ).
 
+% elif_taken(+Parent, +Seen, +Args, +Env, -Taken): Taken says whether the
+% group of #elif Args is active.
+elif_taken(no, _, _, _, no).
+elif_taken(yes, Seen, Args, Env, Taken) :- elif_open(Seen, Args, Env, Taken).
+
+% elif_open(+Seen, +Args, +Env, -Taken): in an active parent, #elif Args
+% is taken if no earlier group was and its condition holds.
+elif_open(no, Args, Env, Taken) :-
+    condition(if, Args, Env, V),
+    condition_truth(V, Taken).
+elif_open(yes, _, _, no).
+
+% else_taken(+Seen, +Parent, -Taken): #else is taken if no earlier group
+% was and the parent is active.
+else_taken(no, Parent, Parent).
+else_taken(yes, _, no).
+
 % active_directive(+Name, +Loc, +Args, +File, +Env0, -Env, -Ts, ?Rest):
 % run #Name Args in an active group; Ts is Rest with an included file's
-% tokens in front.
+% tokens in front. Name is any identifier in the source, so the last
+% clause is a real default case: the cuts commit to a known directive.
 active_directive(define, _, Args, _, Env0, Env, Ts, Ts) :- !,
     Env0 = env(Macros0, Paths, Features, Once, File),
-    define(Args, Macros0, Macros),
+    definition_macros(Args, Macros0, Macros),
     Env = env(Macros, Paths, Features, Once, File).
 active_directive(undef, _, Args, _, Env0, Env, Ts, Ts) :- !,
     Args = [t(Name, _, _, _)],
     Env0 = env(Macros0, Paths, Features, Once, File),
-    remove_macro(Name, Macros0, Macros),
+    macro_removed(Name, Macros0, Macros),
     Env = env(Macros, Paths, Features, Once, File).
 active_directive(Kind, Loc, Args, File, Env0, Env, Ts, Rest) :-
     memberchk(Kind, [include, include_next]),
@@ -394,7 +430,7 @@ active_directive(Kind, Loc, Args, File, Env0, Env, Ts, Rest) :-
     ->  true
     ;   pp_error(Loc, include_not_found(Name))
     ),
-    preprocess(Path, Env0, Env, Included),
+    file_tokens(Path, Env0, Env, Included),
     append(Included, Rest, Ts).
 active_directive(pragma, _, Args, File, Env0, Env, Ts, Ts) :- !,
     pragma(Args, File, Env0, Env).
@@ -430,25 +466,29 @@ macro_stack_op(push_macro, Name, Macros0, Macros) :-
 macro_stack_op(pop_macro, Name, Macros0, Macros) :-
     (   get_assoc(saved(Name), Macros0, [Saved|Stack])
     ->  put_assoc(saved(Name), Macros0, Stack, Macros1),
-        (   Saved = some(Def)
-        ->  put_assoc(Name, Macros1, Def, Macros)
-        ;   remove_macro(Name, Macros1, Macros)
-        )
+        restored_macro(Saved, Name, Macros1, Macros)
     ;   Macros = Macros0
     ).
 
-% remove_macro(+Name, +Macros0, -Macros): Macros is Macros0 without
+% restored_macro(+Saved, +Name, +Macros0, -Macros): Macros is Macros0
+% with Name as #pragma push_macro saved it, some(Def) or none.
+restored_macro(some(Def), Name, Macros0, Macros) :-
+    put_assoc(Name, Macros0, Def, Macros).
+restored_macro(none, Name, Macros0, Macros) :-
+    macro_removed(Name, Macros0, Macros).
+
+% macro_removed(+Name, +Macros0, -Macros): Macros is Macros0 without
 % Name, which need not be defined.
-remove_macro(Name, Macros0, Macros) :-
+macro_removed(Name, Macros0, Macros) :-
     (   del_assoc(Name, Macros0, _, Macros1)
     ->  Macros = Macros1
     ;   Macros = Macros0
     ).
 
-% define(+Tokens, +Macros0, -Macros): Macros is Macros0 with the
+% definition_macros(+Tokens, +Macros0, -Macros): Macros is Macros0 with the
 % definition Tokens of #define. A macro is function-like if '(' follows
 % its name without a space.
-define([t(Name, _, _, _)|Ts], Macros0, Macros) :-
+definition_macros([t(Name, _, _, _)|Ts], Macros0, Macros) :-
     (   Ts = [t('(', _, no, _)|Rest]
     ->  macro_params(Rest, Params, Body),
         Def = fun(Params, Body)
@@ -456,17 +496,17 @@ define([t(Name, _, _, _)|Ts], Macros0, Macros) :-
     ),
     put_assoc(Name, Macros0, Def, Macros).
 
-% macro_params(+Ts, -Params, -Body): the names up to ')'; a final ...
-% (or P...) is variadic(Name).
+% macro_params(+Ts, -Params, -Body): named(Name) for each name up to
+% ')'; a final ... (or P...) is variadic(Name).
 macro_params([t(')', _, _, _)|Ts], [], Ts) :- !.
 macro_params([t('...', _, _, _), t(')', _, _, _)|Ts],
              [variadic('__VA_ARGS__')], Ts) :- !.
 macro_params([t(P, _, _, _), t('...', _, _, _), t(')', _, _, _)|Ts],
              [variadic(P)], Ts) :- !.
-macro_params([t(P, _, _, _), t(',', _, _, _)|Ts], [P|Ps], Body) :-
+macro_params([t(P, _, _, _), t(',', _, _, _)|Ts], [named(P)|Ps], Body) :-
     !,
     macro_params(Ts, Ps, Body).
-macro_params([t(P, _, _, _), t(')', _, _, _)|Ts], [P], Ts).
+macro_params([t(P, _, _, _), t(')', _, _, _)|Ts], [named(P)], Ts).
 
 %% Includes
 
@@ -489,7 +529,7 @@ token_spelling(t(A, _, _, _), A).
 header_operand(Ts, Env, Name, Form) :-
     (   include_name(Ts, Name, Form)
     ->  true
-    ;   expand(Ts, Env, Expanded),
+    ;   tokens_expansion(Ts, Env, Expanded),
         include_name(Expanded, Name, Form)
     ).
 
@@ -545,28 +585,32 @@ search_paths(_, File, Dirs, Rest) :-
 % and a replacement may consume a function-call '(' from the input tail.
 % A function-like replacement's hide set is the intersection of the hide
 % sets of the macro name and of the closing ')', plus the name.
-% expand(+Ts, +Env, -Out): Out is Ts fully macro-expanded.
-expand([], _, []).
-expand([T|Ts], Env, Out) :-
+% tokens_expansion(+Ts, +Env, -Out): Out is Ts fully macro-expanded.
+tokens_expansion([], _, []).
+tokens_expansion([T|Ts], Env, Out) :-
     T = t(A, Loc, Space, Hide),
     Env = env(Macros, _, _, _, _),
     (   \+ memberchk(A, Hide),
         get_assoc(A, Macros, Def),
         replacement(Def, Ts, Rest, Env, Loc, Repl, EndHide)
-    ->  (   EndHide = none
-        ->  BaseHide = Hide
-        ;   hide_intersection(Hide, EndHide, BaseHide)
-        ),
-        maplist(mark_replaced([A|BaseHide], Loc), Repl, Marked),
-        set_first_space(Marked, Space, Replaced),
+    ->  invocation_hide(EndHide, Hide, BaseHide),
+        maplist(replaced_token([A|BaseHide], Loc), Repl, Marked),
+        first_spaced(Marked, Space, Replaced),
         append(Replaced, Rest, Next),
-        expand(Next, Env, Out)
+        tokens_expansion(Next, Env, Out)
     ;   builtin(T, Ts, Rest, Env, Repl)
     ->  append(Repl, Rest, Next),
-        expand(Next, Env, Out)
+        tokens_expansion(Next, Env, Out)
     ;   Out = [T|Out1],
-        expand(Ts, Env, Out1)
+        tokens_expansion(Ts, Env, Out1)
     ).
+
+% invocation_hide(+EndHide, +Hide, -BaseHide): BaseHide is the hide set
+% Hide of a macro name, intersected with that of a function-like
+% invocation's ')' if EndHide is some(Set).
+invocation_hide(none, Hide, Hide).
+invocation_hide(some(EndHide), Hide, BaseHide) :-
+    hide_intersection(Hide, EndHide, BaseHide).
 
 % hide_intersection(+As, +Bs, -Cs): Cs are the elements of As in Bs.
 hide_intersection([], _, []).
@@ -575,23 +619,24 @@ hide_intersection([A|As], Bs, Cs) :-
     hide_intersection(As, Bs, Cs1).
 
 % A replacement token moves to the invocation and gains its hide set.
-mark_replaced(Hide, Loc, t(A, _, Space, Hide0), t(A, Loc, Space, Hide1)) :-
+replaced_token(Hide, Loc, t(A, _, Space, Hide0), t(A, Loc, Space, Hide1)) :-
     append(Hide, Hide0, Hides),
     sort(Hides, Hide1).
 
-set_first_space([], _, []).
-set_first_space([t(A, Loc, _, Hide)|Ts], Space, [t(A, Loc, Space, Hide)|Ts]).
+first_spaced([], _, []).
+first_spaced([t(A, Loc, _, Hide)|Ts], Space, [t(A, Loc, Space, Hide)|Ts]).
 
 % replacement(+Def, +Ts, -Rest, +Env, +Loc, -Repl, -EndHide): EndHide is
-% the hide set of a function-like invocation's ')', or none.
-replacement(obj(Body), Ts, Ts, _, Loc, Repl, none) :- paste(Body, Repl, Loc).
+% some(Set), Set the hide set of a function-like invocation's ')', or
+% none for an object-like macro.
+replacement(obj(Body), Ts, Ts, _, Loc, Repl, none) :- tokens_pasted(Body, Repl, Loc).
 replacement(fun(Params, Body), [t('(', _, _, _)|Ts], Rest, Env, Loc, Repl,
-            EndHide) :-
+            some(EndHide)) :-
     macro_arguments(Ts, 0, [], [], Args0, Rest, EndHide),
     ( Args0 = [[]], Params = [] -> Args = [] ; Args = Args0 ),
-    bind_params(Params, Args, Env, Bindings, Loc),
-    substitute(Body, Bindings, Repl0),
-    paste(Repl0, Repl, Loc).
+    params_bindings(Params, Args, Env, Bindings, Loc),
+    body_substitution(Body, Bindings, Repl0),
+    tokens_pasted(Repl0, Repl, Loc).
 
 % macro_arguments(+Ts, +Depth, +ArgRev, +ArgsRev, -Args, -Rest, -EndHide):
 % the tokens after '(' split at top-level commas, up to the matching ')'
@@ -610,74 +655,90 @@ macro_arguments([T|Ts], Depth, Rev, Acc, Args, Rest, Hide) :-
     ),
     macro_arguments(Ts, Depth1, [T|Rev], Acc, Args, Rest, Hide).
 
-% bind_params(+Params, +Args, +Env, -Bindings, +Loc): bind(P, Raw, Env)
-% for each parameter; a variadic one takes the remaining arguments.
-bind_params([], [], _, [], _).
-bind_params([variadic(P)], Args, Env, [bind(P, Raw, Env)], _) :- !,
-    comma_join(Args, Raw).
-bind_params([P|Ps], [A|As], Env, [bind(P, A, Env)|Bindings], Loc) :-
-    !,
-    bind_params(Ps, As, Env, Bindings, Loc).
-bind_params(_, _, _, _, Loc) :- pp_error(Loc, 'wrong macro argument count').
+% params_bindings(+Params, +Args, +Env, -Bindings, +Loc): bind(P, Raw,
+% Env) for each parameter; a variadic one takes the remaining arguments.
+params_bindings([], Args, _, [], Loc) :- no_arguments(Args, Loc).
+params_bindings([Param|Params], Args, Env, Bindings, Loc) :-
+    param_bindings(Param, Params, Args, Env, Bindings, Loc).
 
-% comma_join(+Args, -Ts): Ts are the token lists Args joined by commas.
-comma_join([], []).
-comma_join([A], A) :- !.
-comma_join([A|As], Ts) :-
-    comma_join(As, Rest),
-    append(A, [t(',', '<macro>':0, no, [])|Rest], Ts).
+% no_arguments(+Args, +Loc): Args is empty, as no parameters are left.
+no_arguments([], _).
+no_arguments([_|_], Loc) :- argument_count_error(Loc).
 
-substitute(Ts, Bindings, Rs) :- substitute_tokens(Ts, Bindings, no, Rs).
+% param_bindings(+Param, +Params, +Args, +Env, -Bindings, +Loc): like
+% params_bindings/5 for [Param|Params]. Only the last can be variadic.
+param_bindings(variadic(P), [], Args, Env, [bind(P, Raw, Env)], _) :-
+    args_joined(Args, Raw).
+param_bindings(named(P), Params, Args, Env, Bindings, Loc) :-
+    named_bindings(Args, P, Params, Env, Bindings, Loc).
 
-% substitute_tokens(+Body, +Bindings, +AfterPaste, -Rs): AfterPaste is yes
+named_bindings([], _, _, _, _, Loc) :- argument_count_error(Loc).
+named_bindings([A|As], P, Params, Env, [bind(P, A, Env)|Bindings], Loc) :-
+    params_bindings(Params, As, Env, Bindings, Loc).
+
+argument_count_error(Loc) :- pp_error(Loc, 'wrong macro argument count').
+
+% args_joined(+Args, -Ts): Ts are the token lists Args joined by commas.
+args_joined([], []).
+args_joined([A|As], Ts) :- args_joined(As, A, Ts).
+
+% args_joined(+Args, +A, -Ts): Ts is A, then each of Args after a comma.
+args_joined([], A, A).
+args_joined([A|As], A0, Ts) :-
+    args_joined(As, A, Rest),
+    append(A0, [t(',', '<macro>':0, no, [])|Rest], Ts).
+
+body_substitution(Ts, Bindings, Rs) :- body_substitution(Ts, Bindings, no, Rs).
+
+% body_substitution(+Body, +Bindings, +AfterPaste, -Rs): AfterPaste is yes
 % right after ##. # P stringifies the raw argument, an operand of ## is
 % the raw argument, and any other use is the fully expanded argument; an
 % empty argument becomes the placemarker ''.
-substitute_tokens([], _, _, []).
-substitute_tokens([t('#', Loc, Space, Hide), t(P, _, _, _)|Ts], Bindings, _,
+body_substitution([], _, _, []).
+body_substitution([t('#', Loc, Space, Hide), t(P, _, _, _)|Ts], Bindings, _,
                   [t(Str, Loc, Space, Hide)|Rs]) :-
     memberchk(bind(P, Raw, _), Bindings), !,
-    stringify(Raw, Str),
-    substitute_tokens(Ts, Bindings, no, Rs).
-substitute_tokens([t(P, Loc, Space, Hide)|Ts], Bindings, AfterPaste, Rs) :-
+    tokens_string(Raw, Str),
+    body_substitution(Ts, Bindings, no, Rs).
+body_substitution([t(P, Loc, Space, Hide)|Ts], Bindings, AfterPaste, Rs) :-
     (   memberchk(bind(P, Raw, Env), Bindings)
     ->  (   ( AfterPaste == yes ; Ts = [t('##', _, _, _)|_] )
         ->  Use = Raw
-        ;   expand(Raw, Env, Use)
+        ;   tokens_expansion(Raw, Env, Use)
         ),
         (   Use = []
         ->  R = [t('', Loc, Space, Hide)]
-        ;   set_first_space(Use, Space, R)
+        ;   first_spaced(Use, Space, R)
         )
     ;   R = [t(P, Loc, Space, Hide)]
     ),
     ( P == '##' -> Next = yes ; Next = no ),
     append(R, Tail, Rs),
-    substitute_tokens(Ts, Bindings, Next, Tail).
+    body_substitution(Ts, Bindings, Next, Tail).
 
-% stringify(+Ts, -A): A is the string literal spelling of Ts, as #
+% tokens_string(+Ts, -A): A is the string literal spelling of Ts, as #
 % makes it.
-stringify(Ts, A) :-
-    phrase(stringify_chars(Ts, first), Cs),
-    phrase(escape_string(Cs), Escaped),
+tokens_string(Ts, A) :-
+    phrase(tokens_text(Ts, first), Cs),
+    phrase(escaped_chars(Cs), Escaped),
     append(['"'|Escaped], ['"'], All),
     atom_chars(A, All).
 
-stringify_chars([], _) --> [].
-stringify_chars([t(A, _, Space, _)|Ts], Which) -->
+tokens_text([], _) --> [].
+tokens_text([t(A, _, Space, _)|Ts], Which) -->
     ( { Space == yes, Which \== first } -> [' '] ; [] ),
     { atom_chars(A, Cs) },
     seq(Cs),
-    stringify_chars(Ts, next).
+    tokens_text(Ts, next).
 
-escape_string([]) --> [].
-escape_string([C|Cs]) -->
+escaped_chars([]) --> [].
+escaped_chars([C|Cs]) -->
     ( { memberchk(C, ['"', '\\']) } -> ['\\', C] ; [C] ),
-    escape_string(Cs).
+    escaped_chars(Cs).
 
-% paste(+Ts, -Rs, +Loc): apply ## and drop placemarkers. A pasted
+% tokens_pasted(+Ts, -Rs, +Loc): apply ## and drop placemarkers. A pasted
 % spelling must be exactly one preprocessing token.
-paste([t(A, Loc, Space, Hide), t('##', _, _, _), t(B, _, _, Hide1)|Ts], Rs,
+tokens_pasted([t(A, Loc, Space, Hide), t('##', _, _, _), t(B, _, _, Hide1)|Ts], Rs,
       MacroLoc) :-
     !,
     atom_concat(A, B, C),
@@ -689,12 +750,12 @@ paste([t(A, Loc, Space, Hide), t('##', _, _, _), t(B, _, _, Hide1)|Ts], Rs,
     ;   pp_error(MacroLoc, invalid_token_paste(A, B))
     ),
     hide_intersection(Hide, Hide1, Hide2),
-    paste([t(C, Loc, Space, Hide2)|Ts], Rs, MacroLoc).
-paste([t('', _, _, _)|Ts], Rs, Loc) :-
+    tokens_pasted([t(C, Loc, Space, Hide2)|Ts], Rs, MacroLoc).
+tokens_pasted([t('', _, _, _)|Ts], Rs, Loc) :-
     !,
-    paste(Ts, Rs, Loc).
-paste([T|Ts], [T|Rs], Loc) :- paste(Ts, Rs, Loc).
-paste([], [], _).
+    tokens_pasted(Ts, Rs, Loc).
+tokens_pasted([T|Ts], [T|Rs], Loc) :- tokens_pasted(Ts, Rs, Loc).
+tokens_pasted([], [], _).
 
 % builtin(+T, +Ts, -Rest, +Env, -Repl): T, applied to a prefix of Ts
 % that leaves Rest, is a builtin operator replaced by Repl.
@@ -705,7 +766,7 @@ builtin(t('__LINE__', Loc, Space, Hide), Ts, Ts, _, [t(A, Loc, Space, Hide)]) :-
     atom_number(A, Line).
 builtin(t('__FILE__', Loc, Space, Hide), Ts, Ts, _, [t(A, Loc, Space, Hide)]) :-
     Loc = File:_,
-    stringify([t(File, Loc, no, [])], A).
+    tokens_string([t(File, Loc, no, [])], A).
 builtin(t(Op, Loc, Space, Hide), [t('(', _, _, _)|Ts], Rest, Env,
         [t(A, Loc, Space, Hide)]) :-
     memberchk(Op, ['__has_include', '__has_include_next']),
@@ -746,10 +807,10 @@ condition(ifndef, Args, Env, V) :-
     V is 1 - Defined.
 condition(if, Args, Env, V) :-
     defined_tokens(Args, Env, Replaced),
-    expand(Replaced, Env, Expanded),
+    tokens_expansion(Replaced, Env, Expanded),
     maplist(expr_token, Expanded, ExprTokens),
     (   phrase(expression(Tree), ExprTokens)
-    ->  eval(Tree, V)
+    ->  tree_value(Tree, V)
     ;   pp_error('<condition>':0, bad_if_expression(ExprTokens))
     ).
 
@@ -786,7 +847,10 @@ expr_token(t(A, _, _, _), T) :-
 
 % expression(-Tree)//: a #if expression over expr_token/2 tokens. This
 % Pratt-style precedence DCG builds an expression before evaluating it:
-% inactive &&/||/?: arms must not divide by zero.
+% inactive &&/||/?: arms must not divide by zero. Tree is one of
+%   num(N) num(N, Suffix) un(Op, A) not(A) tern(C, A, B) and(A, B)
+%   or(A, B) cmp(Op, A, B) shift(Op, A, B) arith(Op, A, B)
+% so that evaluation and typing tell operator kinds by principal functor.
 expression(T) -->
     binary(1, A),
     conditional_rest(A, T).
@@ -806,14 +870,14 @@ binary(Min, T) -->
     binary_rest(Min, A, T).
 
 binary_rest(Min, A, T) -->
-    [Op], { precedence(Op, P), P >= Min }, !,
+    [Op], { binary_operator(Op, P, A, B, AB), P >= Min }, !,
     { Next is P + 1 },
     binary(Next, B),
-    binary_rest(Min, bin(Op, A, B), T).
+    binary_rest(Min, AB, T).
 binary_rest(_, T, T) --> [].
 
-unary(un(Op, A)) -->
-    [Op], { memberchk(Op, ['+', '-', '!', '~']) }, !,
+unary(T) -->
+    [Op], { unary_operator(Op, A, T) }, !,
     unary(A).
 unary(A) -->
     ['('], !,
@@ -822,61 +886,82 @@ unary(A) -->
 unary(num(N)) --> [num(N)].
 unary(num(N, S)) --> [num(N, S)].
 
-precedence('||', 1).
-precedence('&&', 2).
-precedence('|', 3).
-precedence('^', 4).
-precedence('&', 5).
-precedence('==', 6).
-precedence('!=', 6).
-precedence('<', 7).
-precedence('>', 7).
-precedence('<=', 7).
-precedence('>=', 7).
-precedence('<<', 8).
-precedence('>>', 8).
-precedence('+', 9).
-precedence('-', 9).
-precedence('*', 10).
-precedence('/', 10).
-precedence('%', 10).
+% unary_operator(?Op, ?A, ?Tree): Tree is the prefix operator Op applied
+% to A.
+unary_operator('+', A, un('+', A)).
+unary_operator('-', A, un('-', A)).
+unary_operator('~', A, un('~', A)).
+unary_operator('!', A, not(A)).
 
-% eval(+Tree, -Value): Value is the value of the #if expression Tree.
-% Preprocessor arithmetic uses intmax_t/uintmax_t (64 bits at this pin),
-% not the host Prolog's unbounded integers or floating-point division.
-eval(num(N), N).
-eval(num(N, _), N).
-eval(un(Op, A), V) :-
-    eval(A, X),
+% binary_operator(?Op, ?Precedence, ?A, ?B, ?Tree): Tree is A Op B, and
+% Op binds with Precedence.
+binary_operator('||', 1, A, B, or(A, B)).
+binary_operator('&&', 2, A, B, and(A, B)).
+binary_operator('|', 3, A, B, arith('|', A, B)).
+binary_operator('^', 4, A, B, arith('^', A, B)).
+binary_operator('&', 5, A, B, arith('&', A, B)).
+binary_operator('==', 6, A, B, cmp('==', A, B)).
+binary_operator('!=', 6, A, B, cmp('!=', A, B)).
+binary_operator('<', 7, A, B, cmp('<', A, B)).
+binary_operator('>', 7, A, B, cmp('>', A, B)).
+binary_operator('<=', 7, A, B, cmp('<=', A, B)).
+binary_operator('>=', 7, A, B, cmp('>=', A, B)).
+binary_operator('<<', 8, A, B, shift('<<', A, B)).
+binary_operator('>>', 8, A, B, shift('>>', A, B)).
+binary_operator('+', 9, A, B, arith('+', A, B)).
+binary_operator('-', 9, A, B, arith('-', A, B)).
+binary_operator('*', 10, A, B, arith('*', A, B)).
+binary_operator('/', 10, A, B, arith('/', A, B)).
+binary_operator('%', 10, A, B, arith('%', A, B)).
+
+% tree_value(+Tree, -Value): Value is the value of the #if expression
+% Tree. Preprocessor arithmetic uses intmax_t/uintmax_t (64 bits at this
+% pin), not the host Prolog's unbounded integers or floating-point
+% division. Comparisons and ! give 0 or 1, the same signed or unsigned.
+tree_value(num(N), N).
+tree_value(num(N, _), N).
+tree_value(un(Op, A), V) :-
+    tree_value(A, X),
     unary_value(Op, X, R),
     expr_unsigned(un(Op, A), U),
-    wrap(R, U, V).
-eval(tern(C, A, B), V) :-
-    eval(C, X),
-    ( X =\= 0 -> eval(A, R) ; eval(B, R) ),
+    wrapped(R, U, V).
+tree_value(not(A), V) :-
+    tree_value(A, X),
+    ( X =:= 0 -> V = 1 ; V = 0 ).
+tree_value(tern(C, A, B), V) :-
+    tree_value(C, X),
+    ( X =\= 0 -> tree_value(A, R) ; tree_value(B, R) ),
     expr_unsigned(tern(C, A, B), U),
-    wrap(R, U, V).
-eval(bin('&&', A, B), V) :-
-    !,
-    eval(A, X),
-    ( X =:= 0 -> V = 0 ; eval(B, Y), boolean(Y, V) ).
-eval(bin('||', A, B), V) :-
-    !,
-    eval(A, X),
-    ( X =\= 0 -> V = 1 ; eval(B, Y), boolean(Y, V) ).
-eval(bin(Op, A, B), V) :-
-    eval(A, X0),
-    eval(B, Y0),
-    (   memberchk(Op, ['<<', '>>'])
-    ->  X = X0,
-        Y = Y0
-    ;   usual_unsigned(A, B, U),
-        wrap(X0, U, X),
-        wrap(Y0, U, Y)
-    ),
+    wrapped(R, U, V).
+tree_value(and(A, B), V) :-
+    tree_value(A, X),
+    ( X =:= 0 -> V = 0 ; tree_value(B, Y), boolean(Y, V) ).
+tree_value(or(A, B), V) :-
+    tree_value(A, X),
+    ( X =\= 0 -> V = 1 ; tree_value(B, Y), boolean(Y, V) ).
+tree_value(cmp(Op, A, B), V) :-
+    usual_operands(A, B, X, Y),
+    binary_value(Op, X, Y, V).
+tree_value(shift(Op, A, B), V) :-
+    tree_value(A, X),
+    tree_value(B, Y),
     binary_value(Op, X, Y, R),
-    expr_unsigned(bin(Op, A, B), ResultU),
-    wrap(R, ResultU, V).
+    expr_unsigned(A, U),
+    wrapped(R, U, V).
+tree_value(arith(Op, A, B), V) :-
+    usual_operands(A, B, X, Y),
+    binary_value(Op, X, Y, R),
+    usual_unsigned(A, B, U),
+    wrapped(R, U, V).
+
+% usual_operands(+A, +B, -X, -Y): X and Y are the values of A and B after
+% the usual arithmetic conversions.
+usual_operands(A, B, X, Y) :-
+    tree_value(A, X0),
+    tree_value(B, Y0),
+    usual_unsigned(A, B, U),
+    wrapped(X0, U, X),
+    wrapped(Y0, U, Y).
 
 % expr_unsigned(+Tree, -U): U is yes if Tree has type uintmax_t.
 expr_unsigned(num(_), no).
@@ -885,16 +970,14 @@ expr_unsigned(num(N, S), U) :-
     ->  U = yes
     ;   U = no
     ).
-expr_unsigned(un('!', _), no) :- !.
 expr_unsigned(un(_, A), U) :- expr_unsigned(A, U).
+expr_unsigned(not(_), no).
 expr_unsigned(tern(_, A, B), U) :- usual_unsigned(A, B, U).
-expr_unsigned(bin(Op, A, B), U) :-
-    (   memberchk(Op, ['<', '>', '<=', '>=', '==', '!=', '&&', '||'])
-    ->  U = no
-    ;   memberchk(Op, ['<<', '>>'])
-    ->  expr_unsigned(A, U)
-    ;   usual_unsigned(A, B, U)
-    ).
+expr_unsigned(and(_, _), no).
+expr_unsigned(or(_, _), no).
+expr_unsigned(cmp(_, _, _), no).
+expr_unsigned(shift(_, A, _), U) :- expr_unsigned(A, U).
+expr_unsigned(arith(_, A, B), U) :- usual_unsigned(A, B, U).
 
 % usual_unsigned(+A, +B, -U): U is yes if either operand is unsigned, as
 % the usual arithmetic conversions decide.
@@ -903,8 +986,9 @@ usual_unsigned(A, B, U) :-
     expr_unsigned(B, UB),
     ( ( UA == yes ; UB == yes ) -> U = yes ; U = no ).
 
-% wrap(+N, +Unsigned, -V): N reduced to 64 bits, signed unless Unsigned.
-wrap(N, U, V) :-
+% wrapped(+N, +Unsigned, -V): V is N reduced to 64 bits, signed unless
+% Unsigned.
+wrapped(N, U, V) :-
     Bits is N mod 18446744073709551616,
     (   U == no, Bits >= 9223372036854775808
     ->  V is Bits - 18446744073709551616
@@ -918,7 +1002,6 @@ boolean(_, 0).
 unary_value('+', X, X).
 unary_value('-', X, V) :- V is -X.
 unary_value('~', X, V) :- V is \X.
-unary_value('!', X, V) :- ( X =:= 0 -> V = 1 ; V = 0 ).
 
 binary_value('+', X, Y, V) :- V is X+Y.
 binary_value('-', X, Y, V) :- V is X-Y.
@@ -969,7 +1052,7 @@ pp_profile(Clang, profile(Macros, Paths, Features)) :-
 
 profile_define([t('#', _, _, _), t(define, _, _, _)|Ts], Macros0, Macros) :-
     !,
-    define(Ts, Macros0, Macros).
+    definition_macros(Ts, Macros0, Macros).
 profile_define(_, Macros, Macros).
 
 % clang_output(+Command, +Args, -Chars): run Command with Args; Chars is
@@ -1059,11 +1142,11 @@ query_features(Clang, Pairs, Answers) :-
     findall(Quoted,
             (   member(Op-Name, Pairs),
                 format(atom(Query), '~w(~w)', [Op, Name]),
-                shell_quote(Query, Quoted)
+                shell_quoted(Query, Quoted)
             ),
             Queries),
     atomic_list_concat(Queries, ' ', Args),
-    shell_quote(Clang, ClangQuoted),
+    shell_quoted(Clang, ClangQuoted),
     format(atom(Cmd), "printf '%s\\n' ~w | ~w -E -P -x c -",
            [Args, ClangQuoted]),
     clang_output('/bin/sh', ['-c', Cmd], Cs),
@@ -1073,8 +1156,8 @@ query_features(Clang, Pairs, Answers) :-
 
 feature_answer(Op-Name, t(A, _, _, _), answer(Op, Name, A)).
 
-% shell_quote(+A, -Quoted): Quoted is A in single quotes for /bin/sh.
-shell_quote(A, Quoted) :-
+% shell_quoted(+A, -Quoted): Quoted is A in single quotes for /bin/sh.
+shell_quoted(A, Quoted) :-
     atom_chars(A, Cs),
     phrase(shell_chars(Cs), Escaped),
     append(['\''|Escaped], ['\''], All),

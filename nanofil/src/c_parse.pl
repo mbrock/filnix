@@ -58,8 +58,7 @@ c_parse(Tokens, Items) :-
 % The cut commits to the first parse of each declaration.
 unit(_, []) --> eos, !.
 unit(Env0, Items) -->
-    external_decl(Env0, Env, Item), !,
-    { Item == none -> Items = Items1 ; Items = [Item|Items1] },
+    external_decl(Env0, Env, Items, Items1), !,
     unit(Env, Items1).
 unit(_, _) --> parse_error('expected a declaration').
 
@@ -94,34 +93,40 @@ parse_error(Msg) -->
         throw(nanofil_error(M))
     }.
 
-token_text(p(P), P) :- !.
-token_text(kw(K), K) :- !.
-token_text(id(N), N) :- !.
-token_text(T, T).
+% token_text(+T, -Text): Text shows the c_lex token T in a message.
+token_text(p(P), P).
+token_text(kw(K), K).
+token_text(id(N), N).
+token_text(int(V, S), int(V, S)).
+token_text(float(Cs), float(Cs)).
+token_text(chr(V), chr(V)).
+token_text(str(Bs), str(Bs)).
+token_text(wstr(T, Vs), wstr(T, Vs)).
 
 %% External declarations
 
-% external_decl(+Env0, -Env, -Item)//: one external declaration, Item, or
-% none for a stray ';'. Env is Env0 with its typedef names.
-external_decl(Env, Env, none) --> punct(';'), !.
-external_decl(Env0, Env, Item) -->
+% external_decl(+Env0, -Env, -Items, ?Items1)//: one external
+% declaration; Items is Items1 with its item in front, or Items1 itself
+% for a stray ';'. Env is Env0 with its typedef names.
+external_decl(Env, Env, Items, Items) --> punct(';'), !.
+external_decl(Env0, Env, Items, Items1) -->
     kw(extension), !,
-    external_decl(Env0, Env, Item).
-external_decl(Env, Env, Item) -->
+    external_decl(Env0, Env, Items, Items1).
+external_decl(Env, Env, [Item|Items], Items) -->
     loc(Loc),
     kw(static_assert), !,
     static_assert_rest(Env, Loc, Item).
-external_decl(_, _, _) -->
+external_decl(_, _, _, _) -->
     kw(asm), !,
     parse_error('top-level asm is not supported').
-external_decl(Env0, Env, Item) -->
+external_decl(Env0, Env, [Item|Items], Items) -->
     loc(Loc),
     decl_specs(Env0, Specs), !,
     (   punct(';')
     ->  { Item = decl(Loc, Specs, []), Env = Env0 }
     ;   full_declarator(Env0, Dcl, Attrs0),
         (   { Dcl = dcl(Name, func(_, Params), _) }, peek(p('{'))
-        ->  {   remove_typedefs([Name], Env0, Env),
+        ->  {   typedefs_hidden([Name], Env0, Env),
                 params_env(Params, Env, BodyEnv)
             },
             block(BodyEnv, Body),
@@ -151,26 +156,28 @@ static_assert_rest(Env, Loc, static_assert(Loc, Expr, Msg)) -->
 decl_env(Specs, Inits, Env0, Env) :-
     findall(N, ( member(init(dcl(N, _, _), _), Inits), N \== none ), Names),
     (   memberchk(storage(typedef), Specs)
-    ->  foldl(add_typedef, Names, Env0, Env)
-    ;   remove_typedefs(Names, Env0, Env)
+    ->  foldl(typedef_declared, Names, Env0, Env)
+    ;   typedefs_hidden(Names, Env0, Env)
     ).
 
-add_typedef(Name, Env0, Env) :- put_assoc(Name, Env0, t, Env).
+% typedef_declared(+Name, +Env0, -Env): Env is Env0 with typedef Name.
+typedef_declared(Name, Env0, Env) :- put_assoc(Name, Env0, t, Env).
 
-remove_typedefs(Names, Env0, Env) :- foldl(remove_typedef, Names, Env0, Env).
+% typedefs_hidden(+Names, +Env0, -Env): Env is Env0 where none of Names
+% is a typedef name; typedef_hidden/3 is the same for one Name.
+typedefs_hidden(Names, Env0, Env) :- foldl(typedef_hidden, Names, Env0, Env).
 
-remove_typedef(Name, Env0, Env) :-
+typedef_hidden(Name, Env0, Env) :-
     ( del_assoc(Name, Env0, _, Env1) -> Env = Env1 ; Env = Env0 ).
 
 % params_env(+Params, +Env0, -Env): Env is Env0 for a function body,
 % where parameter names hide typedefs.
 params_env(params(Params, _), Env0, Env) :-
-    !,
     findall(N,
             ( member(param(_, dcl(N, _, _)), Params), N \== none ),
             Names),
-    remove_typedefs(Names, Env0, Env).
-params_env(_, Env, Env).
+    typedefs_hidden(Names, Env0, Env).
+params_env(unspecified, Env, Env).
 
 % init_declarators(+Env, +Dcl, -Inits, +Attrs0, -Attrs)//: Inits are the
 % init(Dcl, Init) of the declarator list whose first declarator Dcl is
@@ -196,15 +203,22 @@ decl_specs(Env, Specs) -->
 % identifier is the declarator, not a typedef name.
 specifiers(Env, TypeSeen, [Spec|Specs]) -->
     specifier(Env, TypeSeen, Spec), !,
-    { type_spec(Spec) -> TypeSeen1 = yes ; TypeSeen1 = TypeSeen },
+    { spec_type_seen(Spec, TypeSeen, TypeSeen1) },
     specifiers(Env, TypeSeen1, Specs).
 specifiers(_, _, []) --> [].
 
-type_spec(tspec(_)).
-type_spec(tname(_)).
-type_spec(su(_, _, _, _)).
-type_spec(enum(_, _)).
-type_spec(typeof(_)).
+% spec_type_seen(+Spec, +TypeSeen0, -TypeSeen): TypeSeen is yes if Spec
+% is a type specifier, else TypeSeen0.
+spec_type_seen(storage(_), TypeSeen, TypeSeen).
+spec_type_seen(tspec(_), _, yes).
+spec_type_seen(qual(_), TypeSeen, TypeSeen).
+spec_type_seen(fspec(_), TypeSeen, TypeSeen).
+spec_type_seen(attr(_), TypeSeen, TypeSeen).
+spec_type_seen(alignas(_), TypeSeen, TypeSeen).
+spec_type_seen(su(_, _, _, _), _, yes).
+spec_type_seen(enum(_, _), _, yes).
+spec_type_seen(typeof(_), _, yes).
+spec_type_seen(tname(_), _, yes).
 
 specifier(_, _, storage(S)) -->
     kw(S),
@@ -897,7 +911,7 @@ primary(_, chr(V)) --> token(chr(V)), !.
 primary(_, S) -->
     ( peek(str(_)) ; peek(wstr(_, _)) ), !,
     string_literals(Parts),
-    { concat_strings(Parts, S) }.
+    { parts_string(Parts, S) }.
 primary(_, _) -->
     punct('('),
     peek(p('{')), !,
@@ -938,18 +952,22 @@ string_bytes(Bs) -->
     token(str(B0)), !,
     ( string_bytes(B1) -> { append(B0, B1, Bs) } ; { Bs = B0 } ).
 
-% concat_strings(+Parts, -S): S is the string literal Parts concatenate.
-concat_strings(Parts, S) :-
+% parts_string(+Parts, -S): S is the string literal Parts concatenate.
+parts_string(Parts, S) :-
     findall(T, member(wstr(T, _), Parts), Types0),
     sort(Types0, Types),
     findall(Vs,
             ( member(P, Parts), ( P = str(Vs) ; P = wstr(_, Vs) ) ),
             Vss),
     append(Vss, All),
-    (   Types == []
-    ->  S = str(All)
-    ;   Types = [T]
-    ->  S = wstr(T, All)
-    ;   throw(nanofil_error(
-            'concatenating string literals of different wide types'))
-    ).
+    types_string(Types, All, S).
+
+% types_string(+WideTypes, +Elements, -S): S is the literal of Elements:
+% plain if no part is wide, else of the one wide type.
+types_string([], All, str(All)).
+types_string([T|Ts], All, S) :- wide_string(Ts, T, All, S).
+
+wide_string([], T, All, wstr(T, All)).
+wide_string([_|_], _, _, _) :-
+    throw(nanofil_error(
+        'concatenating string literals of different wide types')).

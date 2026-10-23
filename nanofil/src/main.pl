@@ -27,7 +27,7 @@
 :- use_module(qbe_print).
 % Compile-only commands do not need the interpreter or its CLP(Z) solver.
 :- if(current_prolog_flag(dialect, swi)).
-:- autoload(interp, [run/5, prepare/2, run_prepared/5, outcome_text/2]).
+:- autoload(interp, [run/5, module_prepared/2, run_prepared/5, outcome_text/2]).
 :- else.
 :- use_module(interp).
 :- endif.
@@ -78,7 +78,8 @@ arg_atom(Cs, Atom) :-
     atom_chars(Atom, Cs).
 
 % report(+Error): print Error on stderr, a nanofil_error by its message
-% and anything else as a quoted term.
+% and anything else as a quoted term. Error is any ball, so the last
+% clause is a default and the cut stays.
 report(nanofil_error(Msg)) :-
     !,
     format(user_error, "nanofil: ~w~n", [Msg]).
@@ -87,29 +88,31 @@ report(Error) :-
 
 %% Loading
 
-% load_module(+File, -Module): Module is the valid IR module in File. A
+% file_module(+File, -Module): Module is the valid IR module in File. A
 % .c or .i file goes through the C frontend, anything else is QBE text.
-load_module(File, Module) :-
+file_module(File, Module) :-
     (   (   atom_concat(_, '.c', File)
         ;   atom_concat(_, '.i', File)
         )
-    ->  load_c(File, Module)
+    ->  c_file_module(File, Module)
     ;   parse_qbe_file(File, Module),
         valid_module(Module)
     ).
 
-% load_c(+File, -Module): Module is the valid IR module of the C file.
-load_c(File, Module) :-
-    load_c_tokens(File, Tokens),
+% c_file_module(+File, -Module): Module is the valid IR module of the C
+% file.
+c_file_module(File, Module) :-
+    c_file_tokens(File, Tokens),
     (   c_parse(Tokens, Items) -> true
     ;   throw(nanofil_error('C parse failed'))
     ),
     c_module(Items, Module),
     valid_module(Module).
 
-% A .i file is already preprocessed; anything else goes through c_pp with
-% the predefined macros and include paths of $FILCC (default filcc).
-load_c_tokens(File, Tokens) :-
+% c_file_tokens(+File, -Tokens): Tokens are the C tokens of File. A .i
+% file is already preprocessed; anything else goes through c_pp with the
+% predefined macros and include paths of $FILCC (default filcc).
+c_file_tokens(File, Tokens) :-
     (   atom_concat(_, '.i', File)
     ->  phrase_from_file(seq(Cs), File),
         c_tokens(Cs, File, Tokens)
@@ -124,36 +127,34 @@ load_c_tokens(File, Tokens) :-
 % running the middle end when Opt is o1 (-O given) and not when o0.
 % Fails or throws when the command does.
 command(_, [tokens, File]) :-
-    load_c_tokens(File, Tokens),
+    c_file_tokens(File, Tokens),
     forall(member(tok(Token, _), Tokens),
            ( write_canonical(Token), write('.'), nl )).
 command(_, [check, File]) :-
-    load_module(File, _),
+    file_module(File, _),
     format("ok~n", []).
 command(Opt, [print, File]) :-
-    load_module(File, Module0),
+    file_module(File, Module0),
     optimize(Opt, Module0, Module),
     print_module(Module).
 command(Opt, [compile, File]) :-
-    load_module(File, Module0),
+    file_module(File, Module0),
     % Promote can remove every p from a module; the ABI is the original's.
     module_mode(Module0, Mode),
     optimize(Opt, Module0, Module),
-    (   Mode == filc -> filc_module_asm(Module, Asm)
-    ;   module_asm(Module, Asm)
-    ),
+    mode_module_asm(Mode, Module, Asm),
     print_asm(Asm).
 command(Opt, [cc, File]) :-
-    load_c(File, Module0),
+    c_file_module(File, Module0),
     optimize(Opt, Module0, Module),
     filc_module_asm(Module, Asm),
     print_asm(Asm).
 command(Opt, ['cc-ir', File]) :-
-    load_c(File, Module0),
+    c_file_module(File, Module0),
     optimize(Opt, Module0, Module),
     print_module(Module).
 command(Opt, [run, File, Fn|ArgAtoms]) :-
-    load_module(File, Module0),
+    file_module(File, Module0),
     optimize(Opt, Module0, Module),
     maplist(atom_number, ArgAtoms, Args0),
     func_named(Module, Fn, func(_, _, _, Params, _)),
@@ -163,14 +164,13 @@ command(Opt, [run, File, Fn|ArgAtoms]) :-
     outcome_text(Outcome, Text),
     format("~w~n", [Text]).
 command(Opt, [difftest, File, Dir]) :-
-    load_module(File, Module0),
+    file_module(File, Module0),
     module_mode(Module0, Mode),
     optimize(Opt, Module0, Module),
-    run_lines(File, Runs),
-    % valid_module's clauses leave choice points that throw on retry.
-    (   Opt == o1 -> once(valid_module(Module)) ; true ),
-    prepare(Module0, Prepared0),
-    prepare(Module, Prepared),
+    file_runs(File, Runs),
+    opt_valid_module(Opt, Module),
+    module_prepared(Module0, Prepared0),
+    module_prepared(Module, Prepared),
     % One findall over all runs, so each run's heap is reclaimed on
     % backtracking before the next starts.
     findall(Result-Verdict,
@@ -180,9 +180,7 @@ command(Opt, [difftest, File, Dir]) :-
             ),
             ResultVerdicts),
     pairs_keys_values(ResultVerdicts, Results, Verdicts),
-    (   Opt == o0 -> true
-    ;   report_validation(File, Module0, Module, Verdicts)
-    ),
+    opt_report_validation(Opt, File, Module0, Module, Verdicts),
     include(comparable(Mode), Results, Compared),
     exclude(comparable(Mode), Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpectedFile),
@@ -202,6 +200,22 @@ command(Opt, [difftest, File, Dir]) :-
              call_text(Fn, Args, CallText),
              format("  ~w = ~w~n", [CallText, Text])
            )).
+
+% mode_module_asm(+Mode, +Module, -Asm): Asm is the asm.pl lines of
+% Module by the backend for Mode, filc or plain.
+mode_module_asm(plain, Module, Asm) :- module_asm(Module, Asm).
+mode_module_asm(filc, Module, Asm) :- filc_module_asm(Module, Asm).
+
+% opt_valid_module(+Opt, +Module): with -O (o1), the optimized Module is
+% valid. valid_module's clauses leave choice points that throw on retry.
+opt_valid_module(o0, _).
+opt_valid_module(o1, Module) :- once(valid_module(Module)).
+
+% opt_report_validation(+Opt, +File, +Module0, +Module, +Verdicts): with
+% -O (o1), report_validation/4.
+opt_report_validation(o0, _, _, _, _).
+opt_report_validation(o1, File, Module0, Module, Verdicts) :-
+    report_validation(File, Module0, Module, Verdicts).
 
 % report_validation(+File, +Module0, +Module, +Verdicts): print the -O
 % difftest report: promote's effect, then every validation failure,
@@ -238,10 +252,10 @@ max_fuel(1000000).
    exhaust it). */
 validated_run(o0, _, Optimized, Run, Result, ok) :-
     max_fuel(Fuel),
-    evaluate_run(Optimized, Run, Fuel, Result).
+    module_run_result(Optimized, Run, Fuel, Result).
 validated_run(o1, Original, Optimized, Run, Result, Verdict) :-
     fuel_step(Fuel),
-    evaluate_run(Original, Run, Fuel, r(Fn, Args, Outcome0)),
+    module_run_result(Original, Run, Fuel, r(Fn, Args, Outcome0)),
     max_fuel(MaxFuel),
     (   Outcome0 \== out_of_fuel
     ;   Fuel == MaxFuel
@@ -249,7 +263,7 @@ validated_run(o1, Original, Optimized, Run, Result, Verdict) :-
     % Commit to the first fuel step at which the original finishes, or
     % to the last one.
     !,
-    evaluate_run(Optimized, Run, Fuel, Result),
+    module_run_result(Optimized, Run, Fuel, Result),
     Result = r(_, _, Outcome),
     (   refines(Outcome0, Outcome) -> Verdict = ok
     ;   call_text(Fn, Args, CallText),
@@ -269,11 +283,12 @@ canonical_arg(par(Class, _), Arg0, Arg) :-
     modulus(Class, Modulus),
     Arg is Arg0 mod Modulus.
 
-% evaluate_run(+Module-Prepared, +Run, +Fuel, -Result): Result is the
-% r(Fn, Args, Outcome) of a "# run:" line on a module and the
-% interpreter's preparation of it. Throws if the line does not fit the
-% module or the interpreter finds no outcome.
-evaluate_run(Module-Prepared, run(Fn, Args0), Fuel, r(Fn, Args, Outcome)) :-
+% module_run_result(+Module-Prepared, +Run, +Fuel, -Result): Result is
+% the r(Fn, Args, Outcome) of the "# run:" line Run on a module and the
+% interpreter's preparation of it, with Fuel. Throws if the line does
+% not fit the module or the interpreter finds no outcome.
+module_run_result(Module-Prepared, run(Fn, Args0), Fuel,
+                  r(Fn, Args, Outcome)) :-
     (   func_named(Module, Fn, func(_, export, _, Params, _)) -> true
     ;   throw(nanofil_error(
                   Fn-'run line names a function that is not exported'))
@@ -304,10 +319,10 @@ call_text(Fn, Args, Text) :-
 
 %% difftest output files
 
-% write_file(+File, :Body): write the characters Body//0 describes to
-% File.
-write_file(File, Body) :-
-    phrase(Body, Cs),
+% write_file(+File, :Body_2): write the characters Body_2 (a DCG body)
+% describes to File.
+write_file(File, Body_2) :-
+    phrase(Body_2, Cs),
     open(File, write, Stream),
     format(Stream, "~s", [Cs]),
     close(Stream).
@@ -327,7 +342,7 @@ expected_lines([r(Fn, Args, Outcome)|Results]) -->
 % functions as Results do and prints what expected_lines//1 prints.
 harness(plain, Module, Results) -->
     "#include <stdio.h>\n#include <stdint.h>\n\n",
-    { harness_functions(Results, Fns) },
+    { results_fns(Results, Fns) },
     prototypes(Fns, Module),
     "\nint main(void) {\n",
     harness_calls(Results, Module, labelled),
@@ -336,15 +351,15 @@ harness(plain, Module, Results) -->
 % process. The call text is printed first, so a trap leaves it unfinished.
 harness(filc, Module, Results) -->
     "#include <stdio.h>\n#include <stdint.h>\n#include <stdlib.h>\n\n",
-    { harness_functions(Results, Fns) },
+    { results_fns(Results, Fns) },
     prototypes(Fns, Module),
     "\nint main(int argc, char **argv) {\n    switch (atoi(argv[1])) {\n",
     filc_cases(Results, 0, Module),
     "    }\n    return 0;\n}\n".
 
-% harness_functions(+Results, -Fns): Fns is the ordset of the functions
+% results_fns(+Results, -Fns): Fns is the ordset of the functions
 % Results call.
-harness_functions(Results, Fns) :-
+results_fns(Results, Fns) :-
     findall(Fn, member(r(Fn, _, _), Results), Fns0),
     sort(Fns0, Fns).
 
@@ -368,11 +383,14 @@ prototypes([Fn|Fns], Module) -->
       c_type(Ret, RetType),
       findall(Type, ( member(par(Class, _), Params), c_type(Class, Type) ),
               ParamTypes),
-      (   ParamTypes == [] -> ParamText = void
-      ;   atomic_list_concat(ParamTypes, ', ', ParamText)
-      ) },
+      types_text(ParamTypes, ParamText) },
     fmt("extern ~w ~w(~w);~n", [RetType, Fn, ParamText]),
     prototypes(Fns, Module).
+
+% types_text(+Types, -Text): Text is the C parameter list of Types.
+types_text([], void).
+types_text([Type|Types], Text) :-
+    atomic_list_concat([Type|Types], ', ', Text).
 
 % c_type(?Class, ?Type): Type is the C type of the IR class.
 c_type(w, uint32_t).
@@ -388,26 +406,33 @@ harness_calls([r(Fn, Args, _)|Results], Module, Style) -->
       findall(CArg, ( member(X, Args), format(atom(CArg), '~wull', [X]) ),
               CArgs),
       atomic_list_concat(CArgs, ', ', CArgText) },
-    (   { Style == bare, Ret == void }
+    harness_call(Style, Ret, Fn, CArgText, CallText),
+    harness_calls(Results, Module, Style).
+
+% harness_call(+Style, +Ret, +Fn, +CArgText, +CallText)//: the line of
+% harness_calls//3 for one call of Fn, which returns Ret. Ret is void or
+% a class (ir.pl's defaulty Ret), so it is told apart with ==.
+harness_call(bare, Ret, Fn, CArgText, _) -->
+    (   { Ret == void }
     ->  fmt("        ~w(~w); puts(\"ret\");~n", [Fn, CArgText])
-    ;   { Style == bare }
-    ->  fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n",
+    ;   fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n",
             [Fn, CArgText])
-    ;   { Ret == void }
+    ).
+harness_call(labelled, Ret, Fn, CArgText, CallText) -->
+    (   { Ret == void }
     ->  fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n",
             [Fn, CArgText, CallText])
     ;   fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
             [CallText, Fn, CArgText])
-    ),
-    harness_calls(Results, Module, Style).
+    ).
 
 %% "# run: $fn a b c" lines
 
-% run_lines(+File, -Runs): Runs is the run(Fn, Args) term of each "#
+% file_runs(+File, -Runs): Runs is the run(Fn, Args) term of each "#
 % run:" line of File, in order.
-run_lines(File, Runs) :-
+file_runs(File, Runs) :-
     phrase_from_file(lines(Lines), File),
-    foldl(run_line, Lines, Runs, []).
+    foldl(line_runs, Lines, Runs, []).
 
 % lines(-Lines)//: Lines are the character lists of the text's lines,
 % without their newlines.
@@ -439,11 +464,11 @@ rest_of_line([C|Cs]) -->
     rest_of_line(Cs).
 rest_of_line([]) --> [].
 
-% run_line(+Line, ?Runs0, ?Runs): Runs0-Runs is the difference list of
+% line_runs(+Line, ?Runs0, ?Runs): Runs0-Runs is the difference list of
 % the run(Fn, Args) term of Line if it is a run line, and empty if not.
-run_line(Line, Runs0, Runs) :-
+line_runs(Line, Runs0, Runs) :-
     (   append("# run: $", Rest, Line)
-    ->  words(Rest, [FnCs|ArgCss]),
+    ->  chars_words(Rest, [FnCs|ArgCss]),
         atom_chars(Fn, FnCs),
         maplist(chars_number, ArgCss, Args),
         Runs0 = [run(Fn, Args)|Runs]
@@ -454,20 +479,21 @@ run_line(Line, Runs0, Runs) :-
 chars_number(Cs, N) :-
     number_chars(N, Cs).
 
-% words(+Cs, -Words): Words are the space-separated words of Cs.
-words(Cs, Words) :-
-    phrase(word_list(Words), Cs).
+% chars_words(+Cs, -Words): Words are the space-separated words of Cs.
+chars_words(Cs, Words) :-
+    phrase(words(Words), Cs).
 
-word_list(Words) -->
+% words(-Words)//: the space-separated words Words.
+words(Words) -->
     " ",
     !,
-    word_list(Words).
-word_list([[C|Cs]|Words]) -->
+    words(Words).
+words([[C|Cs]|Words]) -->
     [C],
     word(Cs),
     !,
-    word_list(Words).
-word_list([]) --> [].
+    words(Words).
+words([]) --> [].
 
 % word(-Cs)//: the longest run Cs of characters other than space.
 word([C|Cs]) -->

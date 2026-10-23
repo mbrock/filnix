@@ -88,12 +88,12 @@ bench_file(File) :-
     Row = row(Base, NB, NT),
     % dominators and frontiers
     time(( func_cfg(Blocks, Cfg),
-           dominators(Cfg, Idom),
-           frontiers(Cfg, Idom, DF)
+           cfg_idoms(Cfg, Idom),
+           cfg_frontiers(Cfg, Idom, DF)
          ), TF1),
     time(assert_version(1, Blocks), TV0),
     time(incremental_load(Blocks), TI0),
-    report(Row, facts, '-', TV0, TI0),
+    report(Row, facts, none, TV0, TI0),
     % The tabled dominators take a reachability table per block, so they
     % grow with the cube of the size; past 400 blocks they take minutes.
     (   NB =< 400
@@ -103,11 +103,11 @@ bench_file(File) :-
         agree_dom(Idom, DF, IPs, DFPs)
     ;   TV1 = skipped
     ),
-    report(Row, dom, TF1, TV1, '-'),
+    report(Row, dom, TF1, TV1, none),
     time(natural_loops(Cfg, Idom, Loops), TLoops),
     time(alias_facts(F, Aliases), TAlias),
-    report(Row, loops, TLoops, '-', '-'),
-    report(Row, alias, TAlias, '-', '-'),
+    report(Row, loops, TLoops, none, none),
+    report(Row, alias, TAlias, none, none),
     % liveness
     time(temp_liveness(Blocks, In1, _), TF2),
     time(findall(B-T, version_live_in(1, B, T), VIn1), TV2),
@@ -153,15 +153,17 @@ bench_file(File) :-
     length(Temps, NA),
     format("  natural loops: ~w; address facts: ~w~n", [NL, NA]).
 
-% time(:Goal, -T): run Goal once; T is the CPU seconds it took.
-time(G, T) :-
+% time(:Goal_0, -T): run Goal_0 once; T is secs(S), S the CPU seconds
+% it took.
+time(Goal_0, secs(T)) :-
     statistics(cputime, T0),
-    call(G),
+    call(Goal_0),
     !,
     statistics(cputime, T1),
     T is T1 - T0.
 
-% Print one row of the table: scenario S and its three times.
+% Print one row of the table: scenario S and its three times, each
+% secs(Seconds), skipped (not run) or none (no such measurement).
 report(row(F, NB, NT), S, A, B, C) :-
     fmt_t(A, TA),
     fmt_t(B, TB),
@@ -169,13 +171,11 @@ report(row(F, NB, NT), S, A, B, C) :-
     format("~w~t~12|~w~t~20|~w~t~28|~w~t~42|~w~t~54|~w~t~66|~w~n",
            [F, NB, NT, S, TA, TB, TC]).
 
-% fmt_t(+T, -A): A is the time T in seconds, or T itself if it is not a
-% number.
-fmt_t(T, A) :-
-    number(T),
-    !,
+% fmt_t(+T, -A): A is the table cell of the time T.
+fmt_t(secs(T), A) :-
     format(atom(A), "~3f s", [T]).
-fmt_t(T, T).
+fmt_t(skipped, skipped).
+fmt_t(none, '-').
 
 % def_temps(+Blocks, -N): N is the number of distinct temps that phis
 % and instructions of Blocks define.
