@@ -75,45 +75,58 @@
 :- use_module(library(assoc)).
 :- use_module(library(dcgs)).
 
+%! class(?K, ?Kind, ?Bits) is nondet.
+%
+%  K is a value class of Kind (int, pointer or float), Bits wide. Every
+%  other fact about classes below follows from this table.
+
+class(w, int, 32).
+class(l, int, 64).
+class(p, pointer, 64).
+class(s, float, 32).
+class(d, float, 64).
+
+any_class(K) :- class(K, _, _).
+int_class(K) :- class(K, int, _).
+float_class(K) :- class(K, float, _).
+numeric_class(K) :- int_class(K).
+numeric_class(K) :- float_class(K).
+
 %! class_bits(+K, -Bits) is semidet.
 %
-%  Bits is the width in bits of the integer class K (w or l).
+%  Bits is the width in bits of the numeric class K (w, l, s or d).
 
-class_bits(w, 32).
-class_bits(l, 64).
-class_bits(s, 32).
-class_bits(d, 64).
+class_bits(K, Bits) :-
+    numeric_class(K),
+    class(K, _, Bits).
 
 %! modulus(+K, -Mod) is semidet.
 %
 %  Mod is 2^bits(K): values of class K are the integers 0..Mod-1. A p
 %  value's address has the modulus of l.
 
-modulus(w, 4294967296).
-modulus(l, 18446744073709551616).
-modulus(p, 18446744073709551616).
-modulus(s, 4294967296).
-modulus(d, 18446744073709551616).
+modulus(K, Mod) :-
+    class(K, _, Bits),
+    Mod is 1 << Bits.
 
 %! half_modulus(+K, -Half) is semidet.
 %
 %  Half is half the modulus of the integer class K: the values Half..Mod-1
 %  are negative when read as signed.
 
-half_modulus(w, 2147483648).
-half_modulus(l, 9223372036854775808).
+half_modulus(K, Half) :-
+    class(K, int, Bits),
+    Half is 1 << (Bits - 1).
 
 %! width_bytes(+Width, -Size) is semidet.
 %
-%  A store of Width (b, h, w, l or p) writes Size bytes.
+%  A store of Width (b, h, or a class) writes Size bytes.
 
 width_bytes(b, 1).
 width_bytes(h, 2).
-width_bytes(w, 4).
-width_bytes(l, 8).
-width_bytes(p, 8).
-width_bytes(s, 4).
-width_bytes(d, 8).
+width_bytes(K, Size) :-
+    class(K, _, Bits),
+    Size is Bits // 8.
 
 %! addr_class(+Mode, ?K) is semidet.
 %
@@ -496,11 +509,7 @@ valid_inst(Ctx, call(_, Callee, Args)) :-
 % store_value_class(?Width, ?K): a store of Width reads its value at K.
 store_value_class(b, w).
 store_value_class(h, w).
-store_value_class(w, w).
-store_value_class(l, l).
-store_value_class(p, p).
-store_value_class(s, s).
-store_value_class(d, d).
+store_value_class(K, K) :- any_class(K).
 
 % call_result_ok(+Fn, +Callee, +Res, +CalleeRet): the call site reads the
 % result the way the callee returns it.
@@ -520,11 +529,9 @@ to_result_ok(void, _, Fn, Callee) :-
     fn_error(Fn, 'uses the result of void $~w', [Callee]).
 to_result_ok(tuple(_), K, Fn, Callee) :-
     fn_error(Fn, 'reads the tuple result of $~w as ~w', [Callee, K]).
-to_result_ok(w, K, Fn, Callee) :- class_result_ok(w, K, Fn, Callee).
-to_result_ok(l, K, Fn, Callee) :- class_result_ok(l, K, Fn, Callee).
-to_result_ok(p, K, Fn, Callee) :- class_result_ok(p, K, Fn, Callee).
-to_result_ok(s, K, Fn, Callee) :- class_result_ok(s, K, Fn, Callee).
-to_result_ok(d, K, Fn, Callee) :- class_result_ok(d, K, Fn, Callee).
+to_result_ok(Ret, K, Fn, Callee) :-
+    any_class(Ret),
+    class_result_ok(Ret, K, Fn, Callee).
 
 % class_result_ok(+Ret, +K, +Fn, +Callee): as to_result_ok/4, for a
 % result of class Ret. A long may be read as a word, nothing else
@@ -566,21 +573,17 @@ ret_value_ok(void, ctx(_, Fn, _, _, _, _, _), _) :-
     fn_error(Fn, 'ret with a value in a void function', []).
 ret_value_ok(tuple(_), ctx(_, Fn, _, _, _, _, _), _) :-
     fn_error(Fn, 'ret of one value in a tuple function', []).
-ret_value_ok(w, Ctx, V) :- valid_use(Ctx, w, V).
-ret_value_ok(l, Ctx, V) :- valid_use(Ctx, l, V).
-ret_value_ok(p, Ctx, V) :- valid_use(Ctx, p, V).
-ret_value_ok(s, Ctx, V) :- valid_use(Ctx, s, V).
-ret_value_ok(d, Ctx, V) :- valid_use(Ctx, d, V).
+ret_value_ok(Ret, Ctx, V) :-
+    any_class(Ret),
+    valid_use(Ctx, Ret, V).
 
 % ret_void_ok(+Ret, +Fn): a function that returns Ret may return
 % nothing.
 ret_void_ok(void, _).
 ret_void_ok(tuple(_), Fn) :- fn_error(Fn, 'ret without a value', []).
-ret_void_ok(w, Fn) :- fn_error(Fn, 'ret without a value', []).
-ret_void_ok(l, Fn) :- fn_error(Fn, 'ret without a value', []).
-ret_void_ok(p, Fn) :- fn_error(Fn, 'ret without a value', []).
-ret_void_ok(s, Fn) :- fn_error(Fn, 'ret without a value', []).
-ret_void_ok(d, Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(Ret, Fn) :-
+    any_class(Ret),
+    fn_error(Fn, 'ret without a value', []).
 
 label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
     (   get_assoc(L, LabelSet, _) -> true
@@ -687,20 +690,6 @@ load_result_ok(sh, _, K) :- int_class(K).
 load_result_ok(uh, _, K) :- int_class(K).
 load_result_ok(sb, _, K) :- int_class(K).
 load_result_ok(ub, _, K) :- int_class(K).
-
-int_class(w).
-int_class(l).
-
-float_class(s).
-float_class(d).
-numeric_class(K) :- int_class(K).
-numeric_class(K) :- float_class(K).
-
-any_class(w).
-any_class(l).
-any_class(p).
-any_class(s).
-any_class(d).
 
 %! op_arg_classes(+Op, +K, +Mode, ?Classes) is semidet.
 %
