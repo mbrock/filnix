@@ -48,7 +48,7 @@
 :- use_module(library(assoc)).
 :- use_module(library(dcgs)).
 :- use_module(c_types).
-:- use_module(ir, [op_kind/2]).
+:- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2]).
 
 %! c_module(+Items, -Module)
 %
@@ -1292,22 +1292,13 @@ load_typed(Type, Addr, Ctx, V) -->
           sema_error(Loc, 'loading a ~w value is not supported yet', [Type]) }
     ).
 
-% load_op(+Type, -Class, -Op): Class and load Op hold a scalar of Type.
-load_op(bool, w, ub).
-load_op(char, w, sb).
-load_op(schar, w, sb).
-load_op(uchar, w, ub).
-load_op(short, w, sh).
-load_op(ushort, w, uh).
-load_op(int, w, sw).
-load_op(uint, w, uw).
-load_op(long, l, l).
-load_op(ulong, l, l).
-load_op(llong, l, l).
-load_op(ullong, l, l).
-load_op(float, s, s).
-load_op(double, d, d).
-load_op(ptr(_), p, p).
+% load_op(+Type, -Class, -Op): Class and load Op hold a scalar of Type:
+% an integer narrower than 8 bytes is loaded extended into a w.
+load_op(Type, Class, Op) :-
+    int_info(Type, Size, Sign), !,
+    type_class(Type, Class),
+    ( Size =:= 8 -> Op = l ; narrow_type(Op, Size, Sign) ).
+load_op(Type, Class, Class) :- type_class(Type, Class).
 
 % store_typed(+Type, +V, +Addr)//: store value V of Type at Addr; a
 % struct or union V is the address of the value, copied.
@@ -1322,7 +1313,7 @@ store_width(float, s) :- !.
 store_width(double, d) :- !.
 store_width(Type, Width) :-
     int_info(Type, Size, _),
-    memberchk(Size-Width, [1-b, 2-h, 4-w, 8-l]).
+    width_bytes(Width, Size), memberchk(Width, [b, h, w, l]), !.
 
 % offset(+Addr, +Off, -P)//: P is the pointer Addr + Off (Addr itself
 % for 0, with no instruction).
@@ -1649,20 +1640,18 @@ float_int_op(d, unsigned, dtoui).
 
 % Float-to-integer instructions produce a full w/l; normalize narrow C
 % destinations afterward, without ever routing an unsigned result via signed.
-conversion_int_type(w, signed, int).
-conversion_int_type(w, unsigned, uint).
-conversion_int_type(l, signed, long).
-conversion_int_type(l, unsigned, ulong).
+conversion_int_type(Class, Sign, Base) :-
+    integer_type(Base, _, Sign, Rank), Rank >= 3, type_class(Base, Class), !.
 
 % int_convert(+From, +To, +V, -V1)//: V1 is integer V of type From
 % converted to type To, extended where the representation changes.
 int_convert(From, To, V, V1) -->
     { int_info(From, SizeFrom, SignFrom), int_info(To, SizeTo, SignTo) },
     (   { SizeTo =:= 8, SizeFrom < 8 }
-    ->  { SignFrom == signed -> Op = sw ; Op = uw },
+    ->  { narrow_type(Op, 4, SignFrom) },
         ins(l, ext(Op), [V], V1)
     ;   { SizeTo < 4, \+ representable(SizeFrom, SignFrom, SizeTo, SignTo) }
-    ->  { narrow_ext(SizeTo, SignTo, Op) },
+    ->  { narrow_type(Op, SizeTo, SignTo) },
         ins(w, ext(Op), [V], V1)
     ;   { V1 = V }
     ).
@@ -1674,13 +1663,6 @@ representable(SizeFrom, SignFrom, SizeTo, SignTo) :-
     ( SignTo == signed ; SignFrom == unsigned ),
     !.
 representable(Size, Sign, Size, Sign).
-
-% narrow_ext(+Size, +Sign, -Op): Op is the extension that normalizes a
-% narrow int.
-narrow_ext(1, signed, sb).
-narrow_ext(1, unsigned, ub).
-narrow_ext(2, signed, sh).
-narrow_ext(2, unsigned, uh).
 
 % assign_convert(+Expr, +Value0, +To, +Loc, -R)//: R is Value0, the
 % value of Expr (or none, for a computed value), converted to To as by
@@ -2071,7 +2053,7 @@ return_struct(RetType, Addr, Loc) -->
 % re-extended: nothing guarantees the callee did.
 normalize(Type, V0, V) -->
     (   { int_info(Type, Size, Sign), Size < 4 }
-    ->  { narrow_ext(Size, Sign, Op) },
+    ->  { narrow_type(Op, Size, Sign) },
         ins(w, ext(Op), [V0], V)
     ;   { Type == bool } -> ins(w, ext(ub), [V0], V)
     ;   { V = V0 }

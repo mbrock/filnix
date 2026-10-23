@@ -73,7 +73,8 @@
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, op_text//1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4,
-               module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1]).
+               module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1,
+               narrow_type/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -200,8 +201,15 @@ comparison(Cond, K) :- float_class(K), float_cond(Cond).
 float_cond(eq). float_cond(ne). float_cond(le). float_cond(lt).
 float_cond(ge). float_cond(gt). float_cond(o). float_cond(uo).
 
-ext_type(sw). ext_type(uw). ext_type(sh). ext_type(uh).
-ext_type(sb). ext_type(ub).
+%! narrow_type(?T, ?Bytes, ?Signedness) is nondet.
+%
+%  The extension (and load) type T takes the low Bytes bytes of an
+%  integer and extends them as Signedness says.
+narrow_type(sw, 4, signed).   narrow_type(uw, 4, unsigned).
+narrow_type(sh, 2, signed).   narrow_type(uh, 2, unsigned).
+narrow_type(sb, 1, signed).   narrow_type(ub, 1, unsigned).
+
+ext_type(T) :- narrow_type(T, _, _).
 ext_type(s).
 
 load_type(l). load_type(p).
@@ -256,7 +264,7 @@ op_kind(sltof, int_to_float).
 op_kind(ultof, int_to_float).
 op_kind(cast, cast).
 op_kind(cmp(_, _), cmp).
-op_kind(ext(T), ext) :- member(T, [sw, uw, sh, uh, sb, ub]).
+op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
 op_kind(alloc(_), alloc).
 

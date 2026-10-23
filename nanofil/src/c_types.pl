@@ -44,7 +44,8 @@
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
                     unary_operand/3, assignable/3, null_pointer_constant/3,
-                    castable/2, expression_category/3, modifiable_lvalue/2]).
+                    castable/2, expression_category/3, modifiable_lvalue/2,
+                    integer_type/4]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -639,23 +640,29 @@ known_members(partial(_, Members), Members).
 
 int_type(T) :- int_info(T, _, _).
 
-%! int_info(+Type, -Size, -Signedness) is semidet.
-%! int_info(-Type, ?Size, ?Signedness) is nondet.
+%! integer_type(?Type, ?Size, ?Signedness, ?Rank) is nondet.
 %
-%  The integer type Type is Size bytes wide and Signedness is signed or
-%  unsigned.
-int_info(bool, 1, unsigned).
-int_info(char, 1, signed).
-int_info(schar, 1, signed).
-int_info(uchar, 1, unsigned).
-int_info(short, 2, signed).
-int_info(ushort, 2, unsigned).
-int_info(int, 4, signed).
-int_info(uint, 4, unsigned).
-int_info(long, 8, signed).
-int_info(ulong, 8, unsigned).
-int_info(llong, 8, signed).
-int_info(ullong, 8, unsigned).
+%  C's integer types on x86-64 Linux: Type is Size bytes wide, signed or
+%  unsigned, with integer conversion rank Rank (C11 6.3.1.1p1).
+integer_type(bool,   1, unsigned, 0).
+integer_type(char,   1, signed,   1).
+integer_type(schar,  1, signed,   1).
+integer_type(uchar,  1, unsigned, 1).
+integer_type(short,  2, signed,   2).
+integer_type(ushort, 2, unsigned, 2).
+integer_type(int,    4, signed,   3).
+integer_type(uint,   4, unsigned, 3).
+integer_type(long,   8, signed,   4).
+integer_type(ulong,  8, unsigned, 4).
+integer_type(llong,  8, signed,   5).
+integer_type(ullong, 8, unsigned, 5).
+
+int_info(Type, Size, Sign) :- integer_type(Type, Size, Sign, _).
+rank(Type, Rank) :- integer_type(Type, _, _, Rank).
+
+% unsigned_of(+Signed, -Unsigned): the unsigned type of the same rank.
+unsigned_of(S, U) :-
+    integer_type(S, Size, signed, R), integer_type(U, Size, unsigned, R).
 
 %! scalar_type(+Type) is semidet.
 %
@@ -672,14 +679,6 @@ arithmetic_type(T) :- float_type(T).
 default_promotion(float, double) :- !.
 default_promotion(T, P) :- integer_promotion(T, P).
 
-% rank(+Type, -Rank): the integer conversion rank of Type.
-rank(bool, 0).
-rank(char, 1).  rank(schar, 1).  rank(uchar, 1).
-rank(short, 2). rank(ushort, 2).
-rank(int, 3).   rank(uint, 3).
-rank(long, 4).  rank(ulong, 4).
-rank(llong, 5). rank(ullong, 5).
-
 %! integer_promotion(+Type, -Promoted) is det.
 %
 %  Promoted is Type after the integer promotions: int for an integer
@@ -690,11 +689,6 @@ integer_promotion(T, P) :-
     (   rank(T, R), R < 3 -> P = int
     ;   P = T
     ).
-
-% unsigned_of(+Signed, -Unsigned): the unsigned type of the same rank.
-unsigned_of(int, uint).
-unsigned_of(long, ulong).
-unsigned_of(llong, ullong).
 
 %! usual_arith_conversion(+TypeA, +TypeB, -Type) is semidet.
 %
@@ -747,18 +741,7 @@ signed_word(unsigned, U, _, U).
 %  Class is the IR class (w, l, p, s or d) of scalar Type:
 %  w for an integer type of at most 4 bytes, l for an 8-byte one, p for
 %  a pointer, s/d for float/double. Deterministic when Type is bound.
-type_class(bool, w).
-type_class(char, w).
-type_class(schar, w).
-type_class(uchar, w).
-type_class(short, w).
-type_class(ushort, w).
-type_class(int, w).
-type_class(uint, w).
-type_class(long, l).
-type_class(ulong, l).
-type_class(llong, l).
-type_class(ullong, l).
+type_class(T, K) :- integer_type(T, Size, _, _), ( Size =:= 8 -> K = l ; K = w ).
 type_class(float, s).
 type_class(double, d).
 type_class(ptr(_), p).
