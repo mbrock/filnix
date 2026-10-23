@@ -76,6 +76,7 @@ alloc_count(module(Items), N) :-
 %  it has none or is not in strict SSA form. Mode is module_mode/2 of
 %  the module being promoted.
 
+promote_func(_, F, F) :- setjmp_func(F), !.
 promote_func(Mode, F0, F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     func_cfg(Blocks0, Cfg),
@@ -93,6 +94,7 @@ promote_func(Mode, F0, F) :-
 %  Roots is [A-Slots] for the allocs A of F that can be promoted, in
 %  order, Slots an ordset of acc(Off, Width).
 
+promotable(_, F, []) :- setjmp_func(F), !.
 promotable(Mode, F, Roots) :-
     F = func(_, _, _, _, [blk(_, _, EntryInsts, _)|_]),
     alloc_classes(F, Classes),

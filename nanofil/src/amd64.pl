@@ -38,6 +38,9 @@
 %  Lines are the asm.pl lines of the plain (non-Fil-C) Module. Throws a
 %  nanofil_error naming the first item the backend cannot emit.
 module_asm(module(Items), Lines) :-
+    ( member(F, Items), setjmp_func(F)
+    -> throw(nanofil_error('plain backend does not support setjmp/nonlocal returns'))
+    ; true ),
     maplist(item_lines, Items, Liness),
     append(Liness, Lines0),
     append(Lines0, [section(note_gnu_stack)], Lines).

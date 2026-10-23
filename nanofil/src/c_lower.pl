@@ -45,6 +45,7 @@
 :- use_module(library(assoc)).
 :- use_module(library(dcgs)).
 :- use_module(c_types).
+:- use_module(ir, [op_kind/2]).
 
 %! c_module(+Items, -Module)
 %
@@ -1269,6 +1270,10 @@ decay(v(V, Type), _, v(V, Type)) --> [].
 decay(lv(Addr, array(Type, _)), _, v(Addr, ptr(Type))) --> !.
 decay(lv(Addr, Type), _, v(Addr, Type)) --> { su(Type) }, !.
 decay(lv(Addr, Type), Ctx, v(V, Type)) --> load_typed(Type, Addr, Ctx, V).
+decay(fd(glo(Sym), _), Ctx, _) -->
+    { op_kind(setjmp(Sym), setjmp) }, !,
+    { ctx_loc(Ctx, Loc),
+      sema_error(Loc, 'setjmp requires a direct call, not a function pointer', []) }.
 decay(fd(glo(Sym), Type), _, v(Addr, ptr(Type))) --> !,
     ins(p, copy, [glo(Sym)], Addr).
 decay(fd(Callee, Type), _, v(Callee, ptr(Type))) --> [].
@@ -2032,7 +2037,12 @@ lower_call(Func, Args, Ctx, R) -->
       ;   true
       ) },
     call_args(Args, ParamTypes, Ctx, IRArgs),
-    (   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
+    (   { Callee = glo(Kind), op_kind(setjmp(Kind), setjmp) }
+    ->  { ( RetType == int, setjmp_args(Kind, IRArgs, Operands) -> true
+          ; sema_error(Loc, 'invalid ~w signature', [Kind]) ) },
+        ins(w, setjmp(Kind), Operands, V),
+        { R = v(V, int) }
+    ;   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
     ;   { RetType == void }
     ->  emit(call(void, Callee, IRArgs)),
         { R = v(c(0), void) }
@@ -2044,6 +2054,10 @@ lower_call(Func, Args, Ctx, R) -->
     ;   { sema_error(Loc, 'calls returning ~w are not supported yet',
                      [RetType]) }
     ).
+
+setjmp_args(sigsetjmp, [arg(p, Buf), arg(w, Mask)], [Buf, Mask]).
+setjmp_args(setjmp, [arg(p, Buf)], [Buf, c(0)]).
+setjmp_args('_setjmp', [arg(p, Buf)], [Buf, c(0)]).
 
 % call_args(Args, ParamTypes, Ctx, IRArgs): a struct argument goes as one
 % word per eightbyte; arguments past the prototype get the default

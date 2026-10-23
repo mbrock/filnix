@@ -64,9 +64,11 @@ start. Reversing one is cheap until the milestone it names.
 5. **Assembler: GNU `as`, linking through filcc.** M0 showed this works,
    and it keeps clang out of nanofil's own pipeline.
 6. **Unsupported features are rejected, never passed through.** At first
-   these are `setjmp`/`longjmp`, inline asm,
+   these are inline asm,
    pointer atomics, bitfields, VLAs, `_Complex` and threads. Unknown input
    is a compile error with a source location.
+   Direct setjmp-family calls and ordinary longjmp calls are now supported
+   in Fil-C mode; see [docs/setjmp.md](docs/setjmp.md).
 7. **Relationship to [experiments/sarcasm-prolog](../experiments/sarcasm-prolog/README.md).**
    It is related but separate. That experiment translates assembly to C and
    lets clang apply Fil-C. nanofil emits the Fil-C ABI itself. nanofil
@@ -351,5 +353,5 @@ matches a filcc-built Lua, like the hello and zlib checks.
   docs/m5.md.)
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
-- Supporting `setjmp`, atomics and inline asm, all
+- Supporting atomics and inline asm, all
   rejected until a milestone claims them.

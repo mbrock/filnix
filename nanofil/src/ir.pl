@@ -38,6 +38,10 @@
                       operand c(N), non-negative fixed-prefix byte count
         va_arg        filc only: w/l/p load through a va_list address,
                       advancing its cursor (reads and writes memory)
+        setjmp(Kind)  filc only: w result, [p Buf, w SaveMask]; Kind is
+                      setjmp | '_setjmp' | sigsetjmp. SaveMask must be
+                      c(0) except for sigsetjmp. Native returns-twice;
+                      snapshot/restore contract in docs/setjmp.md.
 
     Values: t(Name) | c(Integer) | glo(Name)
       At s/d, c(Integer) is an unsigned IEEE bit pattern (docs/float.md).
@@ -69,7 +73,7 @@
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, op_text//1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4,
-               module_mode/2, addr_class/2, variadic_func/1]).
+               module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -154,6 +158,7 @@ kind_arity(ptoi, 1).
 kind_arity(itop, 1).
 kind_arity(va_args, 1).
 kind_arity(va_arg, 1).
+kind_arity(setjmp, 2).
 kind_arity(ext, 1).
 kind_arity(load, 1).
 kind_arity(alloc, 1).
@@ -176,6 +181,7 @@ spelling(cmp(Cond, K)) -->
 spelling(ext(T)) --> "ext", set_name(ext_type, T).
 spelling(load(T)) --> "load", set_name(load_type, T).
 spelling(alloc(Align)) --> "alloc", set_name(alloc_align, Align).
+spelling(setjmp(Kind)) --> chars_of(Kind).
 spelling(Op) --> { atom(Op) }, chars_of(Op).
 
 % set_name(:Set_1, ?X)//: the name of X, a member of Set_1.
@@ -237,6 +243,7 @@ op_kind(ptoi, ptoi).
 op_kind(itop, itop).
 op_kind(va_args, va_args).
 op_kind(va_arg, va_arg).
+op_kind(setjmp(Kind), setjmp) :- member(Kind, [setjmp, '_setjmp', sigsetjmp]).
 op_kind(ext(s), float_convert).
 op_kind(truncd, float_convert).
 op_kind(stosi, float_to_int).
@@ -265,6 +272,12 @@ func_named(module(Items), Name, Func) :-
 variadic_func(func(_, _, _, _, Blocks)) :-
     member(blk(_, _, Insts, _), Blocks),
     member(ins(_, p, va_args, _), Insts), !.
+
+% Nonlocal returns restore compiler slots, not mutable local memory.
+% Transformations must retain this boundary even in unreachable blocks.
+setjmp_func(func(_, _, _, _, Blocks)) :-
+    member(blk(_, _, Insts, _), Blocks),
+    member(ins(_, _, setjmp(_), _), Insts), !.
 
 %% Module mode
 
@@ -308,6 +321,7 @@ pointer_item(data(_, Linkage, _, Items)) :-
 % value, or converts one (ptoi). Several clauses may hold for one Inst.
 pointer_inst(ins(_, p, _, _)).
 pointer_inst(ins(_, _, ptoi, _)).
+pointer_inst(ins(_, _, setjmp(_), _)).
 pointer_inst(store(p, _, _)).
 pointer_inst(call(to(_, p), _, _)).
 pointer_inst(call(tuple(_), _, _)).
@@ -468,6 +482,10 @@ valid_inst(Ctx, ins(_, K, Op, Args)) :-
     (   Op == va_args,
         \+ (Args = [c(Off)], integer(Off), Off >= 0)
     ->  fn_error(Fn, 'va_args needs a non-negative constant', [])
+    ;   true
+    ),
+    (   Op = setjmp(Kind), Kind \== sigsetjmp, Args \= [_, c(0)]
+    ->  fn_error(Fn, 'setjmp and _setjmp need a zero SaveMask', [])
     ;   true
     ),
     op_arg_classes(Op, K, Mode, ArgClasses),
@@ -658,6 +676,7 @@ kind_result_ok(ptoi, _, filc, l).
 kind_result_ok(itop, _, filc, p).
 kind_result_ok(va_args, _, filc, p).
 kind_result_ok(va_arg, _, filc, K) :- any_class(K).
+kind_result_ok(setjmp, _, filc, w).
 kind_result_ok(cmp, cmp(C, CK), _, K) :-
     comparison(C, CK), (float_class(CK) -> K = w ; int_class(K)).
 kind_result_ok(float_convert, ext(s), _, d).
@@ -713,6 +732,7 @@ kind_arg_classes(ptoi, _, _, _, [p]).
 kind_arg_classes(itop, _, _, _, [l]).
 kind_arg_classes(va_args, _, p, filc, [l]).
 kind_arg_classes(va_arg, _, _, filc, [p]).
+kind_arg_classes(setjmp, _, w, filc, [p, w]).
 kind_arg_classes(cmp, cmp(_, CK), _, _, [CK, CK]).
 kind_arg_classes(float_convert, ext(s), _, _, [s]).
 kind_arg_classes(float_convert, truncd, _, _, [d]).

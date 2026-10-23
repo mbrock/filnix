@@ -456,3 +456,41 @@ Reproducible coverage:
   subnormals and signed zero), and 896 conversion cases agree with C and
   QBE, on both hosts. Existing accepted fixture and C input assembly
   remains byte-identical (35 inputs).
+
+## Setjmp and longjmp
+
+Verified in the pinned `filc-ref-src`, not inferred from libc conventions:
+
+- `FilPizlonator.cpp:isSetjmp` (14438) recognizes `setjmp`, `_setjmp`
+  and `sigsetjmp`. The pass marks direct calls returns-twice by name,
+  even with `-fno-builtin`. Frame setup (3236) reserves a final lower for
+  a weak map; function origins (1764) set `has_setjmps`. Entry setup
+  (17325) creates/roots the map eagerly.
+- Lowering (8113–8155) calls `filc_jmp_buf_create(thread, kind, mask)`,
+  stores its special-payload flight pointer into the user's buffer,
+  inserts it in that map with invalid pointer 1 as the value, then calls
+  **native `_setjmp` in the setjmp caller**, not an external Fil-C
+  function. Its declaration (16514) is returns-twice. Kind numbers are
+  setjmp=0, _setjmp=1, sigsetjmp=2 (`filc_runtime.h:1344`).
+- `filc_runtime.h:432–520` explains why setjmp functions cannot use
+  stack auxes and why the map must be the last lower. The jmpbuf layout
+  (1351) starts with native `jmp_buf` and includes saved frame/native
+  frame pointers, root-stack size, signal state, and all saved lowers.
+  Creation (`filc_runtime.c:7829–7885`) barriers captured lowers; mask
+  saving depends on kind and the sigsetjmp flag (ordinary setjmp also
+  consults runtime configuration).
+- `filc_native_zlongjmp` (7888–7963) checks the special jmpbuf, searches
+  the active frames' weak maps for that exact buffer, checks the saved
+  caller frame matches, and rejects an expired destination with
+  `cannot longjmp unless the setjmp destination is on the stack.` It
+  pops intermediate frames, restores lowers and runtime/signal state,
+  then calls native `_longjmp`. Native stack payload slots are **not**
+  restored by that operation.
+- A `filcc -O1 -S` probe confirms ordinary `longjmp` and `_longjmp`
+  call `pizlonatedFI2528_longjmp` / `pizlonatedFI2528__longjmp`, whose
+  thunks call the ordinary runtime getters. The same probe's `_setjmp`
+  caller instead calls `filc_weak_map_create`, `filc_jmp_buf_create`,
+  `filc_weak_map_set`, then native `_setjmp@PLT`.
+
+Nanofil's approved IR, conservative payload snapshot, optimizer barrier,
+Oracle review conditions and test coverage are in [setjmp.md](setjmp.md).

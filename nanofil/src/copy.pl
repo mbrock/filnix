@@ -38,6 +38,7 @@ copy_module(module(Items0), module(Items)) :-
 % copy_item(+Item0, -Item): Item is the module item Item0, with copies
 % propagated if it is a function.
 % Reps (here and below): assoc Temp -> the value that replaces it.
+copy_item(F, F) :- F = func(_, _, _, _, _), setjmp_func(F), !.
 copy_item(func(Name, Linkage, Ret, Params, Blocks0), F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     func_cfg(Blocks0, Cfg),

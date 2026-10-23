@@ -56,6 +56,7 @@ pkgs.runCommandCC "nanofil-check"
     step "difftest filc/*.ssa" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
+    step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
     step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
     step reject tests/reject.sh
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
@@ -75,6 +76,7 @@ pkgs.runCommandCC "nanofil-check"
     step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa tests/c/*.c big1.c
     step "-O run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "-O variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
+    step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
     step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
@@ -91,6 +93,8 @@ pkgs.runCommandCC "nanofil-check"
       tests/par.sh tests/difftest.sh tests/c/*.c
       tests/difftest.sh tests/fixtures/float.ssa
       tests/filc/run-c.sh float
+      RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
+      NANOFIL_OPT=-O RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
       tests/par.sh tests/progtest.sh tests/c/prog/*.c'
     unset NANOFIL_HOST
     echo "== nanofil check timings"

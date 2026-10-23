@@ -541,6 +541,8 @@ op_res(Op, K, Mode, Xs, S0, Res, S) :-
 
 % kind_res(+Kind, +Op, +K, +Mode, +Args, +S0, -Res, -S): as op_res/7, for
 % Op of Kind. Loads and allocs use the memory; the rest is arithmetic.
+kind_res(setjmp, _, _, _, _, _, _, _) :-
+    throw(nanofil_error('interpreter does not support setjmp/nonlocal returns')).
 kind_res(load, load(T), K, Mode, Args, S0, Res, S) :-
     load_op_res(T, K, Mode, Args, S0, Res, S).
 kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),

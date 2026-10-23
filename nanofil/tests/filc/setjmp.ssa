@@ -1,0 +1,45 @@
+# A loop reuses pointer, scalar and phi slots. Only the saved jmpbuf
+# retains iteration zero's lowers and payload snapshot during collection.
+export function w $nloop() {
+@start
+    jmp @loop
+@loop
+    %i =w phi @start 0, @next %inc
+    %p =p alloc8 16
+    storew %i, %p
+    %scalar =w add %i, 40
+    %buf =p call $pick(w %i)
+    %r =w _setjmp %buf, 0
+    jnz %r, @resumed, @next
+@next
+    %inc =w add %i, 1
+    %more =w csltw %inc, 2
+    jnz %more, @loop, @jump
+@jump
+    call $collect()
+    call $jump_a()
+    hlt
+@resumed
+    call $collect()
+    %v =w loadsw %p
+    %sum =w add %v, %scalar
+    %withphi =w add %sum, %i
+    %out =w add %withphi, %r
+    ret %out
+}
+
+export function w $nbad(p %buf) {
+@start
+    %r =w setjmp %buf, 0
+    ret %r
+}
+
+# Even if the first dynamic setjmp has not run, longjmp's stack walk
+# must see a valid map in this intermediate frame.
+export function $nforward() {
+@start
+    call $jump_a()
+    %buf =p call $pick(w 0)
+    %r =w sigsetjmp %buf, 0
+    ret
+}

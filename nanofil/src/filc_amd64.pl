@@ -179,10 +179,11 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
     findall(t(N), member(N-_, Temps), TempKeys),
     findall(shadow(N), member(N-_, Shadows), ShadowKeys),
     form_extra_slots(Form, Extra),
-    append([TempKeys, ShadowKeys, [thread, aux], Extra], Plain),
+    setjmp_slots(Blocks, JPlain, JLowers),
+    append([TempKeys, ShadowKeys, [thread, aux], Extra, JPlain], Plain),
     findall(lower(t(N)), member(N-p, Temps), TempLowers),
     findall(lower(shadow(N)), member(N-p, Shadows), ShadowLowers),
-    append(TempLowers, ShadowLowers, Lowers),
+    append([TempLowers, ShadowLowers, JLowers], Lowers),
     length(Plain, NPlain),
     length(Lowers, NLowers),
     FrameBase is 8 * NPlain + 16 + 8 * NLowers,
@@ -190,6 +191,13 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
     foldl(plain_slot, Plain, Slots0-0, Slots1-_),
     foldl(lower_slot(FrameBase), Lowers, Slots1-0, Slots-_),
     Size is (FrameBase + 15) // 16 * 16.
+
+% The runtime requires the weak map to be the very last lower.
+setjmp_slots(Blocks, Plain, Lowers) :-
+    ( setjmp_func(func(_, _, _, _, Blocks))
+    -> Plain = [t(hidden(setjmp_buf))],
+       Lowers = [lower(setjmp_snapshot), lower(t(hidden(setjmp_buf))), lower(setjmp_map)]
+    ; Plain = [], Lowers = [] ).
 
 % inst_dest_class(+Inst, -N, -K): t(N), of class K, is a destination of
 % instruction Inst.
@@ -307,6 +315,7 @@ function(Module, Func) -->
     [type(Impl, function), label(Impl)],
     prologue(Form, Size, NLowers, Ctx),
     body_param_stores(BodyParams, Form, Ctx),
+    setjmp_entry(Ctx),
     blocks(Blocks, Ctx),
     [label(Exc)],
     exception_exit(Form, Ctx),
@@ -314,7 +323,18 @@ function(Module, Func) -->
     not_function_block(Blocks, Ctx),
     [size(Impl)],
     body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl),
-    origins(Name, NLowers, CheckKinds).
+    { ( get_assoc(lower(setjmp_map), Slots, _) -> HasSetjmps = 1 ; HasSetjmps = 0 ) },
+    origins(Name, NLowers, CheckKinds, HasSetjmps).
+
+% Root parameters before the first allocating helper. Every active
+% setjmp-capable frame must already have its map, even before setjmp.
+setjmp_entry(Ctx) -->
+    ( { ctx_fn(Ctx, f(_, _, Slots, _)), get_assoc(lower(setjmp_map), Slots, _) }
+    -> origin_store(Ctx, c),
+       slot_reg_load(thread, rdi, Ctx),
+       [ins(call, none, [plt(filc_weak_map_create)])],
+       reg_slot_store(rax, lower(setjmp_map), Ctx)
+    ; [] ).
 
 % A private fast body keeps the existing return convention. Its final
 % parameter roots the eager snapshot before the first body safepoint.
@@ -812,6 +832,41 @@ kind_inst(va_arg, K, _, [P], D, Index, Block, Ctx) -->
      ins(mov, l, [imm(Size), reg(ecx)]),
      ins(call, none, [plt(filc_get_next_ptr_bytes_for_va_arg)])],
     va_arg_load(K, D, Index, Block, Ctx).
+kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
+    { ctx_fn(Ctx, Fn),
+      setjmp_payload_slots(Ctx, Keys), length(Keys, N), Bytes is 8 * N,
+      setjmp_kind(Kind, KindNo),
+      local_label(Ctx, Block, Index, setjmp_done, Done) },
+    origin_store(Ctx, c),
+    slot_reg_load(thread, rdi, Ctx),
+    [ins(mov, q, [imm(Bytes), reg(rsi)]),
+     ins(call, none, [plt(filc_allocate)]),
+     ins(lea, q, [mem(16, rax), reg(rdx)])],
+    reg_slot_store(rdx, lower(setjmp_snapshot), Ctx),
+    setjmp_payload_copy(save, Keys, 0, Ctx),
+    slot_reg_load(thread, rdi, Ctx),
+    [ins(mov, l, [imm(KindNo), reg(esi)])],
+    load(Mask, w, d, Fn),
+    [ins(call, none, [plt(filc_jmp_buf_create)]),
+     ins(mov, q, [reg(rax), reg(rcx)])],
+    flight_store(hidden(setjmp_buf), Ctx),
+    store(p, t(hidden(setjmp_buf)), Buf, Index, Block, Ctx),
+    slot_reg_load(thread, rdi, Ctx),
+    slot_reg_load(lower(setjmp_map), rsi, Ctx),
+    slot_reg_load(lower(t(hidden(setjmp_buf))), rdx, Ctx),
+    [ins(mov, q, [reg(rdx), reg(rcx)]),
+     ins(mov, l, [imm(1), reg(r8d)]),
+     ins(xor, l, [reg(r9d), reg(r9d)]),
+     ins(call, none, [plt(filc_weak_map_set)])],
+    slot_reg_load(lower(t(hidden(setjmp_buf))), rdi, Ctx),
+    [ins(call, none, [plt('_setjmp')]),
+     ins(test, l, [reg(eax), reg(eax)]),
+     ins(jz, none, [sym(Done)])],
+    slot_reg_load(lower(setjmp_snapshot), rdx, Ctx),
+    setjmp_payload_copy(restore, Keys, 0, Ctx),
+    [label(Done), ins(xor, l, [reg(ecx), reg(ecx)])],
+    reg_slot_store(rcx, lower(t(hidden(setjmp_buf))), Ctx),
+    reg_slot_store(rax, t(D), Ctx).
 kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
 kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
@@ -830,6 +885,32 @@ kind_inst(alloc, p, alloc(Align), [N], D, _, _, Ctx) -->
     [ins(lea, q, [mem(16, rax), reg(rax)]),
      ins(mov, q, [reg(rax), reg(rcx)])],
     flight_store(D, Ctx).
+
+setjmp_kind(setjmp, 0).
+setjmp_kind('_setjmp', 1).
+setjmp_kind(sigsetjmp, 2).
+
+% Never copy bookkeeping or the transient jmpbuf slot. The runtime saves
+% the corresponding lowers, including the immutable snapshot's root.
+setjmp_payload_slots(Ctx, Keys) :-
+    ctx_fn(Ctx, f(_, _, Slots, _)), assoc_to_keys(Slots, All),
+    findall(Key, (member(Key, All), payload_key(Key)), Keys).
+payload_key(t(N)) :- N \== hidden(setjmp_buf).
+payload_key(shadow(_)).
+
+% RDX is the snapshot payload; RCX is scratch. EAX's full native int
+% survives restoration, which contains no calls, polls or checked loads.
+setjmp_payload_copy(_, [], _, _) --> [].
+setjmp_payload_copy(Direction, [Key|Keys], Off, Ctx) -->
+    payload_word_copy(Direction, Key, Off, Ctx),
+    { Next is Off + 8 },
+    setjmp_payload_copy(Direction, Keys, Next, Ctx).
+payload_word_copy(save, Key, Off, Ctx) -->
+    slot_reg_load(Key, rcx, Ctx),
+    [ins(mov, q, [reg(rcx), mem(Off, rdx)])].
+payload_word_copy(restore, Key, Off, Ctx) -->
+    [ins(mov, q, [mem(Off, rdx), reg(rcx)])],
+    reg_slot_store(rcx, Key, Ctx).
 
 % integer_inst(+Op, +K, +Args, +D, +Ctx)//: the code of the integer
 % instruction t(D) =K Op Args.
@@ -1494,6 +1575,7 @@ access_check_kinds(Blocks, Kinds) :-
 % fails if Inst does not access memory.
 inst_check_kind(ins(_, _, load(T), _), k(Size, 0, Align)) :-
     load_type_size_align(T, Size, Align).
+inst_check_kind(ins(_, _, setjmp(_), _), k(8, 1, 8)).
 inst_check_kind(store(W, _, _), k(Size, 1, Align)) :-
     width_bytes(W, Size),
     width_align(W, Align).
@@ -2023,23 +2105,23 @@ generic_lower_zeroing(l, Off) -->
 
 % The name string, the c and n function origins with their origins, and
 % the check origins of function Name.
-origins(Name, NLowers, CheckKinds) -->
+origins(Name, NLowers, CheckKinds, HasSetjmps) -->
     { format(atom(NameLabel), '.L~w..name', [Name]) },
     [section(rodata), label(NameLabel), asciz(Name),
      section(data_rel_ro), p2align(4)],
-    function_origin(Name, NameLabel, NLowers, c, 1),
-    function_origin(Name, NameLabel, NLowers, n, 0),
+    function_origin(Name, NameLabel, NLowers, c, 1, HasSetjmps),
+    function_origin(Name, NameLabel, NLowers, n, 0, HasSetjmps),
     check_origins(CheckKinds, Name).
 
 % A function origin and the origin (origin_label/3) that points at it.
-function_origin(Name, NameLabel, NLowers, Which, CanCatch) -->
+function_origin(Name, NameLabel, NLowers, Which, CanCatch, HasSetjmps) -->
     { format(atom(FOrigin), '.L~w..forigin_~w', [Name, Which]),
       origin_label(Name, Which, Origin) },
     [label(FOrigin),
      quad(NameLabel), quad(0),
      long(NLowers), zero(4),
      quad(0),
-     byte([0, CanCatch, 0]), zero(1),
+     byte([0, CanCatch, HasSetjmps]), zero(1),
      long(0),
      label(Origin),
      quad(FOrigin), long(0), long(0)].

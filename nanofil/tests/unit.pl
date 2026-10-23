@@ -941,6 +941,26 @@ test(variadic_invalid_ir) :-
     rejected_with("function p $f() {\n@s\n%x =p va_args -1\nret %x\n}\n", "non-negative"),
     rejected_with("function p $f(l %n) {\n@s\n%x =p va_args %n\nret %x\n}\n", "constant").
 
+test(setjmp_contract) :-
+    file_module('../tests/filc/setjmp.ssa', M),
+    phrase(module_chars(M), Text), parse_qbe_chars(Text, M),
+    module_mode(M, filc),
+    promote_module(M, M), copy_module(M, M),
+    text_module("function w $f(p %buf) {\n@s\n\
+%slot =p alloc8 8\nstorew 3, %slot\n\
+%copy =w copy 9\n%x =w _setjmp %buf, 0\n\
+%v =w loadsw %slot\n%out =w add %v, %copy\nret %out\n}\n", Kept),
+    Kept = module([F]),
+    promote_func(filc, F, F), promotable(filc, F, []),
+    promote_module(Kept, Kept), copy_module(Kept, Kept),
+    text_module("function w $f() {\n@s\n%x =w sigsetjmp 0, 1\nret %x\n}\n", Null),
+    module_mode(Null, filc),
+    catch(run(Null, f, [], 100, _), nanofil_error(Msg), true),
+    Msg == 'interpreter does not support setjmp/nonlocal returns',
+    rejected_with("function w $f() {\n@s\n%x =w setjmp 0, 1\nret %x\n}\n", "zero SaveMask"),
+    rejected_with("function w $f() {\n@s\n%x =w _setjmp 0, 1\nret %x\n}\n", "zero SaveMask"),
+    rejected_with("function p $f() {\n@s\n%x =p setjmp 0, 0\nret %x\n}\n", "class p").
+
 % c_file_module(+File, -Module): Module is the valid module of the C
 % in File, lexed without preprocessing.
 c_file_module(F, M) :-
