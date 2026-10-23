@@ -54,9 +54,34 @@
 %  nanofil cannot lower.
 c_module(Items, module(Funcs)) :-
     empty_env(Env0),
-    foldl(top_item, Items, Funcss, Env0, Env),
+    findall(Name, external_inline_declaration(Items, Name), Names0),
+    sort(Names0, ExternalNames),
+    foldl(top_item(ExternalNames), Items, Funcss, Env0, Env),
     append(Funcss, Funcs0),
     with_used_inlines(Funcs0, Env, Funcs).
+
+% C99 6.7.4: an inline body is an external definition unless ALL
+% file-scope declarations are inline without extern. Inspect the whole
+% translation unit: even a declaration after the body changes emission.
+external_inline_declaration(Items, Name) :-
+    member(Item, Items),
+    (   Item = decl(_, Specs, Inits),
+        member(init(dcl(some(Name), _, _), _), Inits)
+    ;   Item = fundef(_, Specs, dcl(some(Name), _, _), _)
+    ),
+    \+ memberchk(storage(typedef), Specs),
+    ( memberchk(storage(extern), Specs) ; \+ memberchk(fspec(inline), Specs) ).
+
+% GNU inline reverses the C99 rule: an extern inline body is never the
+% external definition, while a plain inline body is. The parser retains
+% both spellings in the balanced tokens of specifier and suffix attrs.
+external_inline_body(Specs, Storage, Name, ExternalNames) :-
+    (   member(attr([group(Attrs)]), Specs),
+        member(id(Attr), Attrs),
+        memberchk(Attr, [gnu_inline, '__gnu_inline__'])
+    ->  Storage \== extern
+    ;   memberchk(Name, ExternalNames)
+    ).
 
 /* with_used_inlines(+Funcs0, +Env0, -Items): Items is Funcs0, then
    every deferred static inline function they refer to, directly or
@@ -122,27 +147,30 @@ next_id(Id, e(Ords, Tags, Defs, Id), e(Ords, Tags, Defs, Next)) :-
 
 %% Top level
 
-% top_item(+Item, -Funcs, +Env0, -Env): Funcs are the IR functions a
-% top-level item defines now (a static inline one is deferred).
-top_item(static_assert(Loc, Expr, _), [], Env, Env) :- !,
+% top_item(+ExternalNames, +Item, -Funcs, +Env0, -Env): Funcs are the IR
+% functions a top-level item defines now (a static inline is deferred).
+top_item(_, static_assert(Loc, Expr, _), [], Env, Env) :- !,
     static_assert(Loc, Expr, Env).
-top_item(decl(Loc, Specs, Inits), [], Env0, Env) :- !,
+top_item(_, decl(Loc, Specs, Inits), [], Env0, Env) :- !,
     catch(decl_types(Specs, Inits, Decls, Env0, Env1), not_constant,
           sema_error(Loc, 'array size is not a constant', [])),
     foldl(global_decl(Loc), Decls, Env1, Env).
-top_item(fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body), Funcs,
+top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body), Funcs,
          Env0, Env) :-
     decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
                [d(_, Type, Storage, _, _)], Env0, Env1),
     global_decl(Loc, d(Name, Type, Storage, Asm, none), Env1, Env2),
-    (   memberchk(fspec(inline), Specs)
+    (   memberchk(fspec(inline), Specs),
+        (   Storage == static
+        ;   \+ external_inline_body(Specs, Storage, Name, ExternalNames)
+        )
     ->  Funcs = [],
         (   Storage == static
         ->  lookup_ordinary(Env2, Name, fn(_, Sym, _)),
             env_scope(Env2, Scope, _),
             put_def(deferred(Sym), df(Loc, Name, Type, DclType, Body, Scope),
                     Env2, Env)
-        ;   Env = Env2      % extern or C99 inline: the definition is elsewhere
+        ;   Env = Env2      % GNU extern inline or a C99 inline-only definition
         )
     ;   Funcs = [Func],
         function(Loc, Name, Type, DclType, Body, Env2, Env, Func)
