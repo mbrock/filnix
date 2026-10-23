@@ -8,6 +8,18 @@ at `163fae5` by reading its source and compiling the probes in
 [probes/](../probes/) with `nix build .#filcc`. Rerun them with
 `nanofil/probes/run.sh`.
 
+The sources at the pin are the flake's sparse checkouts in
+[lib/sources.nix](../../lib/sources.nix). `libpas-src` has the runtime and
+`filc0-src` has the pass:
+
+```sh
+nix build --impure -o /tmp/filc-src/libpas-src --expr \
+  'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
+   in (import ./lib/sources.nix { inherit pkgs; }).libpas-src'
+# runtime: libpas/src/libpas/filc_runtime.{h,c}
+# pass:    llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp (filc0-src)
+```
+
 ## Pin differences that matter
 
 Between `163fae5` and `cec28ab`, the parts the handoff relies on are
@@ -129,6 +141,58 @@ args_size)`. Arguments arrive in `thread+128` (data) and `thread+384`
 (aux), and results go back the same way. An entry must check
 `args_size` and call `filc_cc_args_check_failure(actual, expected,
 origin)` when it is too small.
+
+## Globals, getters and indirect calls (for M4c)
+
+Read in `filc_runtime.{h,c}` and `FilPizlonator.cpp` at the pin, and
+checked against `filcc -S` output.
+
+**Aux flag bits** (`aux >> 48`): GLOBAL 0x1, READONLY 0x2, FREE 0x4,
+MMAP 0x8, GLOBAL\_AUX 0x10 (the aux array is static, so it is not
+marked), WEAK\_KEY 0x20; special type in bits 7–10 (function = 1), log2
+alignment in bits 11–15. Clang's globals use 0x0001 (no pointers), 0x0011
+(pointer-holding, aux = `DA_g`), 0x0003 (string literals), and 0x0013 for
+a readonly global that holds pointers.
+
+**A global `g`** is `DO_g: {upper = DO_g + 16 + size rounded up to 8,
+aux}` followed by the payload, plus a 16-byte cache `GP_g` holding a
+`filc_ptr {ptr, lower}` (zero until initialized). A pointer-holding global
+also has `DA_g`, a zeroed aux array as large as the payload.
+
+- The **getter** `pizlonated_g(thread, origin)` returns ptr in RAX and
+  lower in RDX. Its fast path loads both cache words and takes the slow
+  path if either is 0. The slow path calls
+  `filc_global_initialization_start(thread, origin, &GP_g, DO_g)`.
+- `start` writes `origin` into `thread->top_frame->origin` when it is
+  not NULL, so **the caller must have its frame pushed**. It checks the
+  stack limit, takes the initialization lock, and registers `DO_g` in
+  `filc_global_variable_roots`. It returns true only to the initializer.
+- The initializer runs
+  `filc_execute_constant_relocations(thread, DO_g, relocs, n)`. Each
+  24-byte relocation is `{u64 offset, u32 kind, pad, target}`: kind 0 is
+  a getter, kind 1 is a constexpr node `{u32 op = 0 (add immediate), u32
+  left_kind, left_target, u64 offset}`. Each one writes the address into
+  the payload and the lower into the aux array at the same offset. It
+  asserts both slots are still 0, so pointer slots in the static
+  initializer must be emitted as 0. Then the initializer calls
+  `filc_global_initialization_end(thread)`, which publishes the cache.
+- Nested getters run from relocations get `origin = NULL`. A getter can
+  run arbitrary initialization code, so a call to a getter is a safepoint
+  like any other call: everything live must be in the frame first.
+
+**Calling through a function pointer** (`checkFunctionAndGetLower`, and
+the thunk clang emits for each external callee): lower ≠ 0, ptr equal to
+the aux pointer of lower (a function object's aux points to its own
+payload), and special type function, i.e. `aux & 0x0780 << 48 == 0x0080 <<
+48`. Otherwise call `filc_check_function_call_fail(ptr, lower)`. Then, if
+the signature word at lower + 16 is the call site's, call `*(lower + 0)`
+(the fast entry), with RSI = lower. If not, marshal the arguments into
+`thread + 128` (data) and `thread + 384` (lowers), call `*(lower + 8)`
+(the generic entry) with RDX = argument bytes, and if no exception,
+require the returned size to be at least the return's size, calling
+`filc_cc_rets_check_failure(got, want, origin)` otherwise. The inline
+buffers hold 256 bytes each. Larger argument lists use outline buffers,
+which nanofil does not need while calls stay at 16 words or fewer.
 
 ## Verified end to end
 
