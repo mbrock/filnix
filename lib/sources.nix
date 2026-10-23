@@ -57,6 +57,12 @@ in
   # C++ runtimes and their CMake support, independent of compiler sources.
   libcxx-src = mkFilcSrc "libcxx-src";
 
+  # A small reference copy for reading, not building: the design docs,
+  # the FilPizlonator pass and its two helper passes, the clang pipeline
+  # and driver files that wire them in, and the runtime (libpas/filc).
+  # Use this instead of filc0-src (about 1.6 GB) to look up behaviour.
+  filc-ref-src = mkFilcSrc "filc-ref-src";
+
   # Just libpas + filc headers
   libpas-src = mkFilcSrc "libpas-src";
 

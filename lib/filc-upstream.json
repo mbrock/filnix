@@ -52,6 +52,27 @@
     ],
     "sarcasm-src": [
       "/projects/sarcasm/"
+    ],
+    "filc-ref-src": [
+      "/README.md",
+      "/Manifesto.md",
+      "/gimso_semantics.md",
+      "/invisicap.txt",
+      "/invisicaps_by_example.md",
+      "/CLAUDE.md",
+      "/LLVM-LICENSE.txt",
+      "/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp",
+      "/llvm/lib/Transforms/Instrumentation/DeleteRedundantPollchecks.cpp",
+      "/llvm/lib/Transforms/Instrumentation/KillUB.cpp",
+      "/llvm/include/llvm/Transforms/Instrumentation/FilPizlonator.h",
+      "/llvm/include/llvm/Transforms/Instrumentation/DeleteRedundantPollchecks.h",
+      "/llvm/include/llvm/Transforms/Instrumentation/KillUB.h",
+      "/clang/lib/CodeGen/BackendUtil.cpp",
+      "/clang/lib/Driver/ToolChains/Linux.cpp",
+      "/libpas/src/libpas/",
+      "/filc/include/",
+      "/filc/src/",
+      "/filc/main/"
     ]
   }
 }

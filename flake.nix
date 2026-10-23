@@ -155,6 +155,9 @@
           lib.${system} = {
             queryPackage = import ./scripts/query-package.nix pkgs;
             inherit mkPkgsFilc;
+            # Fil-C docs, pass and runtime at the pin, for reading
+            # (lib/sources.nix): nix build .#lib.x86_64-linux.filc-ref-src
+            filc-ref-src = (import ./lib/sources.nix { inherit pkgs; }).filc-ref-src;
           };
 
           checks.${system} = {

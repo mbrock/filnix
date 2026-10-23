@@ -8,17 +8,19 @@ at `163fae5` by reading its source and compiling the probes in
 [probes/](../probes/) with `nix build .#filcc`. Rerun them with
 `nanofil/probes/run.sh`.
 
-The sources at the pin are the flake's sparse checkouts in
-[lib/sources.nix](../../lib/sources.nix). `libpas-src` has the runtime and
-`filc0-src` has the pass:
+To read the sources at the pin, build the small reference checkout (about
+6.5 MB: the design docs, `FilPizlonator.cpp` and its helper passes, the
+clang pipeline and driver files, and the runtime):
 
 ```sh
-nix build --impure -o /tmp/filc-src/libpas-src --expr \
-  'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
-   in (import ./lib/sources.nix { inherit pkgs; }).libpas-src'
-# runtime: libpas/src/libpas/filc_runtime.{h,c}
-# pass:    llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp (filc0-src)
+nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-ref-src
+# /tmp/filc-ref/libpas/src/libpas/filc_runtime.{h,c}
+# /tmp/filc-ref/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+# /tmp/filc-ref/{Manifesto,gimso_semantics,invisicaps_by_example}.md
 ```
+
+The full checkouts in [lib/sources.nix](../../lib/sources.nix) are for
+building; `filc0-src` alone is about 1.6 GB.
 
 ## Pin differences that matter
 

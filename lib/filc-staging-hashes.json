@@ -2,6 +2,7 @@
   "coreRev": "0b4ff52d631522640a44fef8eaeafe69ba41f250",
   "hashes": {
     "compiler-rt-src": "sha256-VygV2Ch69c4yezba2KuNvOkTMtnhnpRTsYVgOOwJnrU=",
+    "filc-ref-src": "sha256-5IO7gQMYOLOVtk7gorHt0IOpfHgUsmFg8WbRYW6OiAk=",
     "filc0-src": "sha256-bQ42VIo+6Go1JvQQlw8jmLkMnhMqxxssq9iMlrHOc/U=",
     "libcxx-src": "sha256-KdY4IetwtWUgUs+KfL8N3RO5HKJTvf6lCHhdjOfAaU8=",
     "libpas-src": "sha256-sfzGDaslS1wYCWZiEDei2tfTwod7gvDvfEn0gG2ZSps=",
