@@ -17,10 +17,12 @@
     - Exported functions get an alias, a getter, a function object and a
       generic entry, so clang code can call them directly or indirectly.
 
-    Integer instructions are emitted by amd64:compute_op//4 unchanged.
+    Scalar integer and SSE2 instructions share amd64:compute_op//4.
+    Float bits have no lower; ABI boundaries carry them in XMM registers
+    or generic payload words with zero aux (docs/abi-findings.md).
 
     Variable conventions: Ctx is the function context (function_ctx/7)
-    and Fn the amd64 context inside it; K is a word class (w, l or p);
+    and Fn the amd64 context inside it; K is a word class (w, l, p, s, d);
     V is a value, t(N) or c(N); D is the number of a destination t(D);
     T is a load type and W a store width; S and F are symbols; Off is a
     byte offset; Form is a return form, reg or mem(Bytes) (ret_form/2).
@@ -62,13 +64,14 @@ item_lines(Module, Item, Lines) :-
     ).
 
 %% Signatures (docs/abi-findings.md): each word class is a bijective
-%% base-11 digit, i64 = 0 and ptr = 7, and sig = 1 + ret + 133 * args.
+%% base-11 digit, i64 = 0, float = 1, double = 2 and ptr = 7;
+%% sig = 1 + ret + 133 * args.
 
 %! signature(+Ret, +ParamKs, -Sig) is det.
 %
 %  Sig is the Fil-C signature number of a function returning Ret (void,
 %  a class or tuple(Ks)) and taking parameters of classes ParamKs. Fails
-%  on a class other than w, l or p; throws nanofil_error/1 for more than
+%  on a class other than w, l, p, s or d; throws nanofil_error/1 for more than
 %  16 parameters.
 signature(Ret, ParamKs, Sig) :-
     ret_kinds(Ret, RetKs),
@@ -86,6 +89,8 @@ signature(Ret, ParamKs, Sig) :-
 class_digit(w, 0).
 class_digit(l, 0).
 class_digit(p, 7).
+class_digit(s, 1).
+class_digit(d, 2).
 
 % bijective_value(+Digits, -Value): Value is the number whose bijective
 % base-11 digits, least significant first, are Digits.
@@ -301,9 +306,7 @@ function(Module, Func) -->
     linkage_globl(Linkage, Impl),
     [type(Impl, function), label(Impl)],
     prologue(Form, Size, NLowers, Ctx),
-    { param_words(BodyParams, Words),
-      form_regs(Form, Regs) },
-    incoming_word_stores(Words, Regs, 0, Ctx),
+    body_param_stores(BodyParams, Form, Ctx),
     blocks(Blocks, Ctx),
     [label(Exc)],
     exception_exit(Form, Ctx),
@@ -438,6 +441,16 @@ param_word(par(K, T), Ws0, Ws) :-
 class_key_slots(p, T, [T, lower(T)|Ss], Ss).
 class_key_slots(w, T, [T|Ss], Ss).
 class_key_slots(l, T, [T|Ss], Ss).
+class_key_slots(s, T, [T|Ss], Ss).
+class_key_slots(d, T, [T|Ss], Ss).
+
+body_param_stores(Ps, Form, Ctx) -->
+    ( { member(par(K,_),Ps), float_class(K) }
+    -> { typed_params(Ps, Ts), typed_locations(Ts,Form,Ls,_,_) },
+       typed_incoming(Ts,Ls,Ctx)
+    ;  { param_words(Ps,Ws), form_regs(Form,Rs) },
+       incoming_word_stores(Ws,Rs,0,Ctx)
+    ).
 
 % The stores of the incoming words into their slots. Invariant: Words are the
 % incoming words from word I on; word I is in register I of Regs, or on
@@ -467,6 +480,8 @@ ret_kinds(tuple(Ks), Ks).
 ret_kinds(w, [w]).
 ret_kinds(l, [l]).
 ret_kinds(p, [p]).
+ret_kinds(s, [s]).
+ret_kinds(d, [d]).
 
 % result_tos(+Res, -Tos): Tos are the to(T, K) destinations of call
 % result Res.
@@ -502,6 +517,8 @@ ret_form(Ks, Form) :-
 class_slot_count(p, 2).
 class_slot_count(w, 1).
 class_slot_count(l, 1).
+class_slot_count(s, 1).
+class_slot_count(d, 1).
 
 % The registers that carry argument words in each form.
 form_regs(reg, [rdx, rcx, r8, r9]).
@@ -550,6 +567,8 @@ class_generic_srcs(p, Off, [Off, LowerOff|Os], Os) :-
     LowerOff is Off + 256.
 class_generic_srcs(w, Off, [Off|Os], Os).
 class_generic_srcs(l, Off, [Off|Os], Os).
+class_generic_srcs(s, Off, [Off|Os], Os).
+class_generic_srcs(d, Off, [Off|Os], Os).
 
 % Stack space for a buffered return, around a call.
 ret_buffer_reservation(reg) --> [].
@@ -629,6 +648,9 @@ ret_value(w, V, Ctx) -->
 ret_value(l, V, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(V, l, d, Fn).
+ret_value(K, V, Ctx) -->
+    { float_class(K), ctx_fn(Ctx,Fn) },
+    load(V,K,a,Fn), to_xmm(K,a,xmm0).
 
 % The return of the tuple Vs of classes Ks in form Form: in %rdx:%rcx,
 % or in the buffer with has_exception = 0.
@@ -726,6 +748,9 @@ phi_read(l, V, D, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(V, l, a, Fn),
     reg_slot_store(rax, shadow(D), Ctx).
+phi_read(K,V,D,Ctx) -->
+    { float_class(K), ctx_fn(Ctx,Fn) },
+    load(V,K,a,Fn), reg_slot_store(rax,shadow(D),Ctx).
 
 % The second half of the parallel copy: each phi's shadow into the phi.
 phi_writes([], _) --> [].
@@ -741,6 +766,8 @@ phi_lower_write(p, D, Ctx) -->
     reg_slot_store(rax, lower(t(D)), Ctx).
 phi_lower_write(w, _, _) --> [].
 phi_lower_write(l, _, _) --> [].
+phi_lower_write(s, _, _) --> [].
+phi_lower_write(d, _, _) --> [].
 
 % The lower of a p value: its lowers[] entry, or 0 for a constant.
 lower_reg_load(t(N), Reg, Ctx) --> slot_reg_load(lower(t(N)), Reg, Ctx).
@@ -782,6 +809,10 @@ inst(call(Res, Callee, Args), Index, Block, Ctx) -->
 % inst//4, for t(D) =K Op Args with Op of Kind. Integer instructions go
 % to amd64:compute_op//4; the pointer ones are by K, or (copy at p) by
 % the operand.
+kind_inst(float_convert,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
+kind_inst(float_to_int,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
+kind_inst(int_to_float,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
+kind_inst(cast,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
 kind_inst(additive, K, Op, Args, D, _, _, Ctx) -->
     additive_inst(K, Op, Args, D, Ctx).
 kind_inst(alu, K, Op, Args, D, _, _, Ctx) -->
@@ -851,6 +882,8 @@ va_arg_load(w, D, _, _, Ctx) -->
 va_arg_load(l, D, _, _, Ctx) -->
     [ins(mov, q, [mem(0, rax), reg(rax)])],
     reg_slot_store(rax, t(D), Ctx).
+va_arg_load(s,D,I,B,Ctx) --> va_arg_load(w,D,I,B,Ctx).
+va_arg_load(d,D,I,B,Ctx) --> va_arg_load(l,D,I,B,Ctx).
 va_arg_load(p, D, Index, Block, Ctx) -->
     { local_label(Ctx, Block, Index, va_none, None),
       local_label(Ctx, Block, Index, va_have, Have) },
@@ -876,11 +909,15 @@ additive_inst(p, Op, [P, X], D, Ctx) -->
     flight_store(D, Ctx).
 additive_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
 additive_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
+additive_inst(K,Op,Args,D,Ctx) -->
+    { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
 
 % copy_inst(+K, +Op, +Args, +D, +Ctx)//: a copy at K.
 copy_inst(p, _, [V], D, Ctx) --> pointer_copy(V, D, Ctx).
 copy_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
 copy_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
+copy_inst(K,Op,Args,D,Ctx) -->
+    { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
 
 % pointer_copy(+V, +D, +Ctx)//: t(D) =p copy V. A symbol's pointer comes
 % from its getter; any other value is a flight pointer already.
@@ -928,6 +965,8 @@ load_inst(p, p, A, D, Index, Block, Ctx) -->
      ins(mov, q, [reg(rsi), reg(rcx)])],
     flight_store(D, Ctx).
 load_inst(l, K, A, D, _, _, Ctx) --> integer_load(l, K, A, D, Ctx).
+load_inst(s,K,A,D,_,_,Ctx) --> integer_load(s,K,A,D,Ctx).
+load_inst(d,K,A,D,_,_,Ctx) --> integer_load(d,K,A,D,Ctx).
 load_inst(sw, K, A, D, _, _, Ctx) --> integer_load(sw, K, A, D, Ctx).
 load_inst(uw, K, A, D, _, _, Ctx) --> integer_load(uw, K, A, D, Ctx).
 load_inst(sh, K, A, D, _, _, Ctx) --> integer_load(sh, K, A, D, Ctx).
@@ -980,6 +1019,8 @@ store(b, V, A, _, _, Ctx) --> integer_store(b, V, A, Ctx).
 store(h, V, A, _, _, Ctx) --> integer_store(h, V, A, Ctx).
 store(w, V, A, _, _, Ctx) --> integer_store(w, V, A, Ctx).
 store(l, V, A, _, _, Ctx) --> integer_store(l, V, A, Ctx).
+store(s,V,A,_,_,Ctx) --> integer_store(s,V,A,Ctx).
+store(d,V,A,_,_,Ctx) --> integer_store(d,V,A,Ctx).
 
 % The code of a store of the integer V at A of width W.
 integer_store(W, V, A, Ctx) -->
@@ -998,6 +1039,8 @@ width_value_class(b, w).
 width_value_class(h, w).
 width_value_class(w, w).
 width_value_class(l, l).
+width_value_class(s,s).
+width_value_class(d,d).
 
 % callee_call(+Callee, +Res, +Args, +Index, +Block, +Ctx)//: the code of
 % a call of Callee, the Indexth instruction of Block.
@@ -1066,6 +1109,13 @@ generic_results([To|Tos], RetKs, RetOk, Ctx) -->
 % convention in form Form; Callee is direct(Symbol) or indirect (through
 % the aux slot).
 fast_call(Form, Args, Callee, Ctx) -->
+    { member(arg(K,_),Args), float_class(K) }, !,
+    { ctx_fn(Ctx,Fn), typed_args(Args,Ts), typed_locations(Ts,Form,Ls,NS,_),
+      Pop is ((NS+1)//2)*16 },
+    reserve_stack(Pop), typed_stack_args(Ts,Ls,Fn,Ctx),
+    typed_register_args(Ts,Ls,Fn,Ctx),
+    entry_call(Form,Callee,Pop,Ctx), stack_release(Pop).
+fast_call(Form, Args, Callee, Ctx) -->
     { ctx_fn(Ctx, Fn),
       foldl(arg_words, Args, Words, []),
       form_short_regs(Form, Regs),
@@ -1105,6 +1155,10 @@ entry_call(mem(_), indirect, Pop, Ctx) -->
      ins(call, q, [ind(Fast)])].
 
 % has_exception, then the result slots from %rdx:%rcx or the buffer.
+fast_result(reg, Res, Ctx) -->
+    { Res=to(T,K), float_class(K), special_label(Ctx,exc,Exc) }, !,
+    [ins(test,b,[imm(1),reg(al)]),ins(jnz,none,[sym(Exc)])],
+    from_xmm(K,xmm0,a), reg_slot_store(rax,T,Ctx).
 fast_result(reg, Res, Ctx) -->
     { special_label(Ctx, exc, Exc),
       result_slots(Res, Slots) },
@@ -1147,6 +1201,8 @@ generic_lower_slot_copy(p, Off, T, Ctx) -->
     reg_slot_store(rax, lower(T), Ctx).
 generic_lower_slot_copy(w, _, _, _) --> [].
 generic_lower_slot_copy(l, _, _, _) --> [].
+generic_lower_slot_copy(s, _, _, _) --> [].
+generic_lower_slot_copy(d, _, _, _) --> [].
 
 % The check that the generic return size in %rdx is at least Need, with
 % a call of filc_cc_rets_check_failure if it is not.
@@ -1183,6 +1239,9 @@ flight_value(w, V, Fn, _) -->
 flight_value(l, V, Fn, _) -->
     load(V, l, a, Fn),
     [ins(xor, l, [reg(ecx), reg(ecx)])].
+flight_value(K,V,Fn,_) -->
+    { float_class(K) }, load(V,K,a,Fn),
+    [ins(xor,l,[reg(ecx),reg(ecx)])].
 
 % With a flight pointer in %rax:%rcx, jump to Fail unless it points at a
 % function object. Clobbers %rdx, %rsi and %rdi.
@@ -1227,6 +1286,8 @@ aux_of_lower -->
 % load, so its lower is in the aux array).
 load_type_size_align(p, 8, 8).
 load_type_size_align(l, 8, 1).
+load_type_size_align(s,4,1).
+load_type_size_align(d,8,1).
 load_type_size_align(sw, 4, 1).
 load_type_size_align(uw, 4, 1).
 load_type_size_align(sh, 2, 1).
@@ -1239,6 +1300,8 @@ load_type_size_align(ub, 1, 1).
 width_align(p, 8).
 width_align(l, 1).
 width_align(w, 1).
+width_align(s,1).
+width_align(d,1).
 width_align(h, 1).
 width_align(b, 1).
 
@@ -1293,6 +1356,139 @@ word_reg_loads([], _, _, _) --> [].
 word_reg_loads([Word|Words], [R|Rs], Fn, Ctx) -->
     word_reg_load(Word, R, Fn, Ctx),
     word_reg_loads(Words, Rs, Fn, Ctx).
+
+% Typed flight words use two independent register banks. The integer-only
+% path above is retained byte-for-byte; mixed lists share this allocation
+% between entries, callers, generic adapters and external thunks.
+typed_params(Ps,Ts) :- foldl(typed_param,Ps,Ts,[]).
+typed_param(par(p,T),[wf(l,T),wf(l,lower(T))|Ts],Ts).
+typed_param(par(K,T),[wf(K,T)|Ts],Ts) :- K \== p.
+typed_args(As,Ts) :- foldl(typed_arg,As,Ts,[]).
+typed_arg(arg(p,V),[wf(l,addr(V)),wf(l,lower(V))|Ts],Ts).
+typed_arg(arg(K,V),[wf(K,val(K,V))|Ts],Ts) :- K \== p.
+typed_locations(Ts,Form,Ls,NS,NX) :-
+    findall(K,member(wf(K,_),Ts),Ks), form_short_regs(Form,Rs),
+    bank_locations(Ks,Rs,Ls,NS,NX).
+reserve_stack(0) --> [].
+reserve_stack(N) --> { N>0 }, [ins(sub,q,[imm(N),reg(rsp)])].
+
+typed_incoming([],[],_) --> [].
+typed_incoming([wf(K,T)|Ts],[L|Ls],Ctx) -->
+    incoming_bits(L,K), reg_slot_store(rax,T,Ctx), typed_incoming(Ts,Ls,Ctx).
+incoming_bits(reg(R),_) -->
+    { reg_name(R,l,RN) }, [ins(mov,q,[reg(RN),reg(rax)])].
+incoming_bits(xreg(X),K) --> from_xmm(K,X,a).
+incoming_bits(stack(I),K) -->
+    { O is 16+8*I, att_suffix(K,S), reg_name(a,K,A) },
+    [ins(mov,S,[mem(O,rbp),reg(A)])].
+
+typed_stack_args([],[],_,_) --> [].
+typed_stack_args([wf(_,W)|Ts],[L|Ls],Fn,Ctx) -->
+    ( { L=stack(I), O is 8*I }
+    -> word_reg_load(W,a,Fn,Ctx), [ins(mov,q,[reg(rax),mem(O,rsp)])]
+    ; [] ), typed_stack_args(Ts,Ls,Fn,Ctx).
+typed_register_args([],[],_,_) --> [].
+typed_register_args([wf(K,W)|Ts],[L|Ls],Fn,Ctx) -->
+    typed_register_arg(L,K,W,Fn,Ctx), typed_register_args(Ts,Ls,Fn,Ctx).
+typed_register_arg(stack(_),_,_,_,_) --> [].
+typed_register_arg(reg(R),_,W,Fn,Ctx) --> word_reg_load(W,R,Fn,Ctx).
+typed_register_arg(xreg(X),K,W,Fn,Ctx) -->
+    word_reg_load(W,a,Fn,Ctx), to_xmm(K,a,X).
+
+% Adapter sources are operands (thread/snapshot/saved stack), not IR
+% values. Load all stack words first, then registers; only RAX is scratch.
+adapter_stack([],[],_) --> [].
+adapter_stack([wf(K,W)|Ts],[L|Ls],G) -->
+    ( { L=stack(I), O is 8*I }
+    -> adapter_load(K,W,G), [ins(mov,q,[reg(rax),mem(O,rsp)])]
+    ; [] ), adapter_stack(Ts,Ls,G).
+adapter_registers([],[],_) --> [].
+adapter_registers([wf(K,W)|Ts],[L|Ls],G) -->
+    adapter_register(L,K,W,G), adapter_registers(Ts,Ls,G).
+adapter_register(stack(_),_,_,_) --> [].
+adapter_register(reg(R),K,W,G) -->
+    adapter_load(K,W,G), { reg_name(R,l,RN) },
+    [ins(mov,q,[reg(rax),reg(RN)])].
+adapter_register(xreg(X),K,W,G) --> adapter_load(K,W,G), to_xmm(K,a,X).
+adapter_load(K,W,G) -->
+    snapshot_load(W,G),
+    ( { K == s } -> [ins(mov,l,[reg(eax),reg(eax)])] ; [] ).
+
+typed_generic(Ks,Ts) :- typed_generic(Ks,0,Ts).
+typed_generic([],_,[]).
+typed_generic([K|Ks],I,Ts) :-
+    generic_offsets(I,A,L),
+    ( K==p -> Ts=[wf(l,mem(A,rbx)),wf(l,mem(L,rbx))|Rest]
+    ; Ts=[wf(K,mem(A,rbx))|Rest] ),
+    I1 is I+1, typed_generic(Ks,I1,Rest).
+
+float_signature(Ret,Ks) :- (float_class(Ret);member(K,Ks),float_class(K)), !.
+
+% Mixed external thunk. All incoming words, including XMM values, are
+% saved before the getter can exit or clobber caller-saved registers.
+% Pointer authority remains rooted by the caller, as in integer thunks.
+float_thunk(F,Sig,Ret,Ks) -->
+    { abi_symbol(entry(Sig),F,FI), abi_symbol(getter,F,Getter),
+      atom_concat('.L',FI,G),atom_concat(G,'.generic',Generic),
+      atom_concat(G,'.out',Out),atom_concat(G,'.fail',Fail),
+      atom_concat(G,'.retok',RetOk),atom_concat(G,'.exc',Exc),
+      ret_kinds(Ret,RKs),ret_form(RKs,Form),
+      findall(par(K,t(I)),nth0(I,Ks,K),Ps),typed_params(Ps,Ts),
+      typed_locations(Ts,Form,Ls,NS,_), Pop is ((NS+1)//2)*16,
+      saved_words(Ts,0,Saved),length(Ts,NW),Alloc is ((8+8*NW+15)//16)*16,
+      length(Ks,NA),ArgsSize is 8*NA,
+      length(RKs,NR),Need is 8*NR,generic_words(RKs,GWs) },
+    [section(text),p2align(4),hidden(FI),weak(FI),type(FI,function),label(FI),
+     ins(push,q,[reg(rbp)]),ins(mov,q,[reg(rsp),reg(rbp)]),
+     ins(push,q,[reg(rbx)]),ins(push,q,[reg(r12)]),
+     ins(sub,q,[imm(Alloc),reg(rsp)])],
+    mixed_thunk_thread(Form), save_mixed_words(Ts,Ls,Saved),
+    [ins(xor,l,[reg(esi),reg(esi)]),ins(call,none,[plt(Getter)]),
+     ins(mov,q,[reg(rdx),reg(rcx)])],
+    function_check(Fail),
+    { field(function_object,signature,rcx,Signature) },
+    [ins(mov,q,[reg(rcx),mem(-24,rbp)]),
+     ins(movabs,q,[imm(Sig),reg(rsi)]),ins(cmp,q,[reg(rsi),Signature]),
+     ins(jne,none,[sym(Generic)])],
+    reserve_stack(Pop),adapter_stack(Saved,Ls,G),adapter_registers(Saved,Ls,G),
+    mixed_thunk_call(Form),
+    [ins(jmp,none,[sym(Out)]),label(Generic)],
+    saved_generic(Ks,Saved,0),
+    [ins(mov,q,[reg(rbx),reg(rdi)]),ins(mov,q,[mem(-24,rbp),reg(rsi)]),
+     ins(mov,l,[imm(ArgsSize),reg(edx)]),
+     ins(call,q,[ind(mem(8,rsi))]),ins(test,b,[imm(1),reg(al)])],
+    thunk_generic_return(Form,RKs,Need,GWs,Out,RetOk,Exc),
+    [label(Fail),ins(mov,q,[reg(rax),reg(rdi)]),ins(mov,q,[reg(rcx),reg(rsi)]),
+     ins(call,none,[plt(filc_check_function_call_fail)]),ins(ud2,none,[]),
+     label(Out),ins(lea,q,[mem(-16,rbp),reg(rsp)]),
+     ins(pop,q,[reg(r12)]),ins(pop,q,[reg(rbx)]),ins(pop,q,[reg(rbp)]),
+     ins(ret,none,[]),size(FI)].
+
+saved_words([],_,[]).
+saved_words([wf(K,_)|Ts],I,[wf(K,mem(O,rbp))|Ss]) :-
+    O is -32-8*I,I1 is I+1,saved_words(Ts,I1,Ss).
+mixed_thunk_thread(reg) --> [ins(mov,q,[reg(rdi),reg(rbx)])].
+mixed_thunk_thread(mem(_)) -->
+    [ins(mov,q,[reg(rdi),reg(r12)]),ins(mov,q,[reg(rsi),reg(rbx)]),
+     ins(mov,q,[reg(rsi),reg(rdi)])].
+save_mixed_words([],[],[]) --> [].
+save_mixed_words([wf(K,_)|Ts],[L|Ls],[wf(_,W)|Ss]) -->
+    incoming_bits(L,K),[ins(mov,q,[reg(rax),W])],save_mixed_words(Ts,Ls,Ss).
+mixed_thunk_call(reg) -->
+    [ins(mov,q,[reg(rbx),reg(rdi)]),ins(mov,q,[mem(-24,rbp),reg(rsi)]),
+     ins(call,q,[ind(mem(0,rsi))])].
+mixed_thunk_call(mem(_)) -->
+    [ins(mov,q,[reg(r12),reg(rdi)]),ins(mov,q,[reg(rbx),reg(rsi)]),
+     ins(mov,q,[mem(-24,rbp),reg(rdx)]),ins(call,q,[ind(mem(0,rdx))])].
+saved_generic([],[],_) --> [].
+saved_generic([p|Ks],[wf(_,A),wf(_,L)|Ts],I) -->
+    { generic_offsets(I,AO,LO),I1 is I+1 },
+    operand_thread_store(A,AO),operand_thread_store(L,LO),saved_generic(Ks,Ts,I1).
+saved_generic([K|Ks],[wf(_,W)|Ts],I) -->
+    { K\==p,generic_offsets(I,AO,LO),I1 is I+1 },
+    adapter_load(K,W,unused),
+    [ins(mov,q,[reg(rax),mem(AO,rbx)]),ins(mov,q,[imm(0),mem(LO,rbx)])],
+    saved_generic(Ks,Ts,I1).
 
 %% Access checks: k(Size, Write, Align), with the pointer in %rax and its
 %% lower in %rcx, which the failure block passes on.
@@ -1388,10 +1584,7 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
       findall(W, (nth0(I, Params, par(K, _)), snapshot_word(K, I, W)), Ws),
       append(Ws, [reg(r12), reg(r12)], Words),
       ret_kinds(Ret, RetKs), ret_form(RetKs, Form),
-      form_regs(Form, Regs), length(Regs, NR),
-      words_reg_stack(Words, NR, RegWords, StackWords),
-      length(StackWords, NS), Pad is NS mod 2, Pop is 8 * (NS + Pad),
-      reverse(StackWords, Pushes),
+      snapshot_plan(Params,Words,Form,Plan,Pop),
       length(RetKs, NRet), RetSize is 8 * max(1, NRet),
       generic_words(RetKs, GWs), foldl(generic_srcs, GWs, Dests, []),
       atom_concat(Generic, '.short', Short),
@@ -1413,9 +1606,8 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
      ins(mov, q, [mem(-8, rdx), reg(r13)]),
      ins(movabs, q, [imm(Mask), reg(rax)]),
      ins(and, q, [reg(rax), reg(r13)]), label(Aux)],
-    ret_buffer_reservation(Form), align_pad(Pad),
-    snapshot_pushes(Pushes, Generic),
-    snapshot_regs(RegWords, Regs, Generic),
+    ret_buffer_reservation(Form),
+    snapshot_arguments(Plan,Generic),
     [ins(mov, q, [reg(rbx), reg(rdi)]),
      ins(lea, q, [rip(BodyObject), reg(rsi)])],
     generic_entry_call(Form, RetKs, GWs, Dests, Pop, RetSize, Done),
@@ -1426,6 +1618,22 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
      ins(xor, l, [reg(edx), reg(edx)]),
      ins(call, none, [plt(filc_cc_args_check_failure)]),
      ins(ud2, none, [])].
+
+snapshot_plan(Ps,Ws,Form,Plan,Pop) :-
+    ( member(par(F,_),Ps), float_class(F)
+    -> findall(wf(B,W),(nth0(I,Ps,par(K,_)),snapshot_word(K,I,W),
+                       (K==p -> B=l ; B=K)),Ts0),
+       append(Ts0,[wf(l,reg(r12)),wf(l,reg(r12))],Ts),
+       typed_locations(Ts,Form,Ls,NS,_), Pop is ((NS+1)//2)*16,
+       Plan=mixed(Ts,Ls,Pop)
+    ;  form_regs(Form,Rs),length(Rs,NR),words_reg_stack(Ws,NR,RWs,SWs),
+       length(SWs,NS),Pad is NS mod 2,Pop is 8*(NS+Pad),
+       reverse(SWs,Pushes),Plan=integer(Pad,Pushes,RWs,Rs)
+    ).
+snapshot_arguments(mixed(Ts,Ls,Pop),G) -->
+    reserve_stack(Pop), adapter_stack(Ts,Ls,G), adapter_registers(Ts,Ls,G).
+snapshot_arguments(integer(Pad,Pushes,RWs,Rs),G) -->
+    align_pad(Pad),snapshot_pushes(Pushes,G),snapshot_regs(RWs,Rs,G).
 
 snapshot_word(_, I, mem(Off, r12)) :- Off is 8 * I.
 snapshot_word(p, I, snapshot_lower(Off)) :- Off is 8 * I.
@@ -1721,6 +1929,8 @@ same_symbol(F, Sig, t(F, Sig, _, _)).
    slot at -48(%rbp) for the callee's lower. Stack words are at
    16(%rbp) and up. With a buffered return r12 holds the buffer and
    r13..r15 the three register words. */
+thunk(t(F,Sig,Ret,Ks)) -->
+    { float_signature(Ret,Ks) }, !, float_thunk(F,Sig,Ret,Ks).
 thunk(t(F, Sig, RetKind, ArgKs)) -->
     { abi_symbol(entry(Sig), F, FI),
       abi_symbol(getter, F, Getter),
@@ -1811,6 +2021,10 @@ thunk_generic_return(mem(_), _, Need, GWs, Out, RetOk, GenericExc) -->
 
 % The result words, if RetKs has any, in %rdx:%rcx.
 thunk_generic_reg_words([], _, _, _) --> [].
+thunk_generic_reg_words([K],Need,[gw(K,Off)],RetOk) -->
+    { float_class(K),att_suffix(K,S),reg_name(d,K,R) }, !,
+    rets_check(Need,RetOk),
+    [ins(mov,S,[mem(Off,rbx),reg(R)])],to_xmm(K,d,xmm0).
 thunk_generic_reg_words([_|_], Need, GWs, RetOk) -->
     rets_check(Need, RetOk),
     { foldl(generic_srcs, GWs, Srcs, []) },
@@ -1958,6 +2172,25 @@ operand_thread_store(mem(D, B), Off) -->
    through callee_lower, with a buffer on the stack for a buffered
    return. */
 generic_entry(Generic, Ret, Params) -->
+    { findall(K,member(par(K,_),Params),Ks), float_signature(Ret,Ks) }, !,
+    { length(Params,N), Need is 8*N,
+      ret_kinds(Ret,RKs),ret_form(RKs,Form),
+      typed_generic(Ks,Ts),typed_locations(Ts,Form,Ls,NS,_),
+      Pop is ((NS+1)//2)*16,
+      length(RKs,NR), RetSize is 8*max(1,NR),
+      generic_words(RKs,GWs),foldl(generic_srcs,GWs,Dests,[]),
+      atom_concat(Generic,'.short',Short),atom_concat(Generic,'.done',Done) },
+    [section(text),label(Generic),ins(push,q,[reg(rbx)]),
+     ins(cmp,q,[imm(Need),reg(rdx)]),ins(jb,none,[sym(Short)]),
+     ins(mov,q,[reg(rdi),reg(rbx)])],
+    ret_buffer_reservation(Form), reserve_stack(Pop),
+    adapter_stack(Ts,Ls,Generic),adapter_registers(Ts,Ls,Generic),
+    generic_entry_call(Form,RKs,GWs,Dests,Pop,RetSize,Done),
+    [ins(pop,q,[reg(rbx)]),ins(ret,none,[]),label(Short),
+     ins(mov,q,[reg(rdx),reg(rdi)]),ins(mov,l,[imm(Need),reg(esi)]),
+     ins(xor,l,[reg(edx),reg(edx)]),
+     ins(call,none,[plt(filc_cc_args_check_failure)]),ins(ud2,none,[])].
+generic_entry(Generic, Ret, Params) -->
     { length(Params, NArgs),
       Need is 8 * NArgs,
       findall(Offs,
@@ -2042,6 +2275,11 @@ generic_reg_results([], _, _) -->
     { generic_offsets(0, Addr, Lower) },
     [ins(mov, q, [imm(0), mem(Addr, rbx)]),
      ins(mov, q, [imm(0), mem(Lower, rbx)])].
+generic_reg_results([K], [gw(K,Off)], _) -->
+    { float_class(K), Lower is Off+256 }, !,
+    from_xmm(K,xmm0,d),
+    [ins(mov,q,[reg(rdx),mem(Off,rbx)]),
+     ins(mov,q,[imm(0),mem(Lower,rbx)])].
 generic_reg_results([_|_], GWs, Dests) -->
     generic_reg_stores(Dests, [rdx, rcx]),
     generic_lower_zeroings(GWs).

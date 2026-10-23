@@ -381,3 +381,78 @@ The pass's `UnreachableInst` case at line 14392 calls the runtime error
 helper with `llvm unreachable instruction`. nanofil instead uses its
 existing `hlt` terminator, emitted as `ud2`: executing it stops rather
 than falling through, but does not produce clang's diagnostic text.
+
+## Scalar floating point (M9)
+
+Checked against `filc-ref-src` at the pin, not upstream head:
+
+- `FilPizlonator.cpp:1130–1143` assigns fast type digits **float = 1,
+  double = 2** (integer = 0, pointer = 7). The existing bijective base-11
+  signature formula applies: `float(float)` is FI269; `double(double)`
+  is FI403. `normalizeArgType` (6074) only widens small integers: floats
+  retain their type and are never normalized to integer words.
+- `fastFunctionTypeForSignature` (13503) prepends thread and callee
+  lower, and returns `{i1 has_exception, float|double}`. Scalar floats
+  use the independent SysV XMM0–7 argument bank and return in XMM0,
+  with the exception flag in AL. They consume no integer argument
+  register. Stack overflow from either bank follows source order;
+  pointer halves still split across R9 and stack. These transformed
+  fast functions are not variadic: SysV's vector-count AL applies only
+  to ordinary plain variadic calls, not Fil-C generic calls.
+- `iterateArgs` (6030) rounds each generic argument position to eight
+  bytes. `storeCC` (6516–6543) zeroes the entire payload and aux buffers
+  before typed stores. Thus an outgoing s slot is low four payload
+  bytes plus four zero bytes and eight zero aux bytes; d is eight
+  payload bytes and eight zero aux bytes. Generic fallback reinterprets
+  bits, without numeric conversion. Preserve argument/result size checks.
+- Ordinary scalar memory stores differ from generic marshalling:
+  `storeValueRecurseAfterCheck` (2551) stores only payload for types
+  without pointers. A float overwrite leaves any previous aux alone,
+  like an integer store. No pointer barrier or aux allocation is needed.
+  Loads/stores check four/eight bytes at alignment one, including the
+  existing write permission checks; s must not read eight bytes.
+- `va_arg` (14308–14340) uses type size/alignment, then immediately
+  loads the payload. `filc_runtime.c:2468–2530` rounds alignment up to
+  eight, checks the read and cursor write, and advances the cursor.
+  Passing 4/4 for s or 8/8 for d to the existing checked helper works;
+  ignore its aux result and consume payload before a safepoint. C
+  default argument promotion still passes float as double.
+
+Safety boundaries: float bits in private eight-byte slots carry no
+capability. Generic outgoing slots must clear aux even after an earlier
+pointer argument. Ordinary float stores must not create capabilities.
+Mixed-call adapters retain caller-rooted pointer arguments, and variadic
+adapters retain the promoted snapshot's root. Save incoming XMM arguments
+before calling getters, which may clobber them. Test returned AL before
+using RAX as a float-bit scratch register. An independent reviewing
+subagent (Oracle) checked the implemented sequences against the pinned
+pass/runtime: **no soundness blockers found**, scoped to scalar s/d and
+the existing integer/pointer tuple returns, including buffered tuple
+returns with float arguments. It verified zero generic aux/padding,
+payload-only ordinary stores, AL handling, independent banks, XMM saves
+before getters, caller roots and the promoted snapshot's lifetime. Its
+suggestion to retain an executable buffered-return regression is covered
+by the buffered-return interop cases below.
+
+Reproducible coverage:
+
+- `tests/fixtures/float.ssa`: arithmetic, NaN/unordered comparisons,
+  casts, signed and unsigned conversions (including above 2^63),
+  s/d memory and static data, phis and simultaneous GPR/XMM spills.
+- `tests/filc/run-c.sh float`: clang ↔ nanofil scalar parameters and
+  returns, mixed spills, direct and indirect calls, generic bitwise
+  mismatch in both directions, zero single-precision padding, attempted
+  float-to-pointer forgery (traps), double va_arg in both directions,
+  short varargs and invalid memory accesses (trap), and buffered tuple
+  returns with float arguments through fast and generic adapters.
+  The harness forces collections while pointer arguments/snapshots are
+  live; run with `RUN_ENV='FUGC_SCRIBBLE=1 FUGC_VERIFY=1'` on both hosts.
+- Both new modules fail on the pre-M9 backends after the IR grammar
+  lands: `backend cannot emit $floats` and `Fil-C backend cannot emit
+  $nfloat`. A plain SysV nine-double variadic probe gives 45 on both
+  hosts; planting AL=0 gives 9, catching a missing vector-register count.
+- Scratch native differential checks: 368 arithmetic/comparison/unsigned
+  conversion bit patterns agree with QBE (including NaNs, infinities,
+  subnormals and signed zero), and 896 conversion cases agree with C and
+  QBE, on both hosts. Existing accepted fixture and C input assembly
+  remains byte-identical (35 inputs).

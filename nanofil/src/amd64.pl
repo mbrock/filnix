@@ -2,7 +2,9 @@
 
     Every temporary lives in its own 8-byte frame slot below %rbp, and
     every instruction loads its operands into fixed scratch registers
-    (%rax, %rcx, %rdx), computes, and stores %rax back. A w result is
+    (%rax, %rcx, %rdx, %xmm0, %xmm1), computes, and stores %rax back.
+    Float computations transfer bits to/from SSE2 scratch registers.
+    A w result is
     always zero-extended into %rax, so slots are uniformly 8 bytes and a
     w read is simply the low 4 bytes of the slot.
 
@@ -16,13 +18,14 @@
     the reference the later isel and register allocation milestones are
     checked against, so it favours being obviously right over being fast.
 
-    Variables: K is a class (w or l) or, where stated, a store width (b,
-    h, w, l); S is an AT&T suffix; R is a register (a, c, d, si, di, r8,
+    Variables: K is a class (w, l, s or d) or, where stated, a store width
+    (b, h, w, l, s, d); S is an AT&T suffix; R is a register (a, c, d, si, di, r8,
     r9) and RN its name at a width; Ctx is the function context.
 */
 :- module(amd64, [module_asm/2, compute_op//4, load//4, load_slot//4,
                   store_reg//3, store_insn/3, reg_name/3, load_insn/3,
-                  att_suffix/2]).
+                  att_suffix/2, float_class/1,
+                  to_xmm//3, from_xmm//3, bank_locations/5]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -64,7 +67,7 @@ item(func(Name, Linkage, Ret, Params, Blocks)) -->
      ins(push, q, [reg(rbp)]),
      ins(mov, q, [reg(rsp), reg(rbp)])],
     (   { Size > 0 } -> [ins(sub, q, [imm(Size), reg(rsp)])] ; [] ),
-    store_params(Params, 0, Ctx),
+    plain_params(Params, Ctx),
     blocks(Blocks, Ctx),
     [size(Name)].
 item(data(Name, Linkage0, Align, Items)) -->
@@ -118,6 +121,26 @@ assign_slot(Key, Slots0-Count0, Slots-Count) :-
     Offset is Count * 8,
     put_assoc(Key, Slots0, Offset, Slots).
 
+% Float arguments use an independent bank, with source-ordered stack
+% overflow. Keep the integer-only emission unchanged.
+plain_params(Params, Ctx) -->
+    (   { member(par(F,_), Params), float_class(F) }
+    ->  { findall(K, member(par(K,_), Params), Ks),
+          bank_locations(Ks, [di,si,d,c,r8,r9], Locs, _, _) },
+        plain_incoming(Params, Locs, Ctx)
+    ;   store_params(Params, 0, Ctx)
+    ).
+
+plain_incoming([], [], _) --> [].
+plain_incoming([par(K, T)|Ps], [L|Ls], Ctx) -->
+    plain_incoming_value(L, K), store_reg(rax, T, Ctx),
+    plain_incoming(Ps, Ls, Ctx).
+plain_incoming_value(reg(R), _) -->
+    { reg_name(R, l, RN) }, [ins(mov, q, [reg(RN), reg(rax)])].
+plain_incoming_value(xreg(X), K) --> from_xmm(K, X, a).
+plain_incoming_value(stack(I), _) -->
+    { Off is 16 + 8 * I }, [ins(mov, q, [mem(Off, rbp), reg(rax)])].
+
 % store_params(+Params, +I, +Ctx)//: spill the incoming argument
 % registers, from the I-th on, to the slots of Params.
 store_params([], _, _) --> [].
@@ -151,11 +174,14 @@ reg_name(si, w, esi).  reg_name(si, l, rsi).
 reg_name(di, w, edi).  reg_name(di, l, rdi).
 reg_name(r8, w, r8d).  reg_name(r8, l, r8).
 reg_name(r9, w, r9d).  reg_name(r9, l, r9).
+reg_name(R, s, RN) :- reg_name(R, w, RN).
+reg_name(R, d, RN) :- reg_name(R, l, RN).
 
 %! att_suffix(+Width, -Suffix) is semidet.
 %
 %  Suffix is the AT&T suffix for a store width or class Width.
 att_suffix(b, b). att_suffix(h, w). att_suffix(w, l). att_suffix(l, q).
+att_suffix(s, l). att_suffix(d, q).
 
 %% Blocks and jumps
 
@@ -191,6 +217,7 @@ jump(jnz(V, IfTrue, IfFalse), From, Ctx) -->
 jump(ret(V), _, Ctx) -->
     { Ctx = f(_, Class, _, _) },
     load(V, Class, a, Ctx),
+    ( { float_class(Class) } -> to_xmm(Class,a,xmm0) ; [] ),
     epilogue.
 jump(ret, _, _) --> epilogue.
 jump(hlt, _, _) --> [ins(ud2, none, [])].
@@ -243,6 +270,16 @@ inst(store(Width, V, Addr), Ctx) -->
     { store_insn(Width, c, Store) },
     [Store].
 inst(call(Res, glo(F), Args), Ctx) -->
+    { member(arg(FK,_),Args), float_class(FK) }, !,
+    { findall(K,member(arg(K,_),Args),Ks),
+      bank_locations(Ks,[di,si,d,c,r8,r9],Ls,NS,NX),
+      Pop is ((NS+1)//2)*16 },
+    ( { Pop > 0 } -> [ins(sub,q,[imm(Pop),reg(rsp)])] ; [] ),
+    plain_stack_args(Args,Ls,Ctx), plain_register_args(Args,Ls,Ctx),
+    [ins(mov,b,[imm(NX),reg(al)]),ins(call,none,[sym(F)])],
+    ( { Pop > 0 } -> [ins(add,q,[imm(Pop),reg(rsp)])] ; [] ),
+    call_result(Res,Ctx).
+inst(call(Res, glo(F), Args), Ctx) -->
     { length(Args, N),
       (   N =< 6 -> true
       ;   Ctx = f(Fn, _, _, _),
@@ -259,10 +296,14 @@ width_class(b, w).
 width_class(h, w).
 width_class(w, w).
 width_class(l, l).
+width_class(s, s).
+width_class(d, d).
 
 % call_result(+Res, +Ctx)//: the store of a call's result Res from %rax;
 % nothing for void, and the plain backend has no tuple results.
 call_result(void, _) --> [].
+call_result(to(D, K), Ctx) -->
+    { float_class(K) }, !, from_xmm(K,xmm0,a), store_reg(rax,D,Ctx).
 call_result(to(D, _), Ctx) --> store_reg(rax, D, Ctx).
 call_result(tuple(_), _) --> [].
 
@@ -287,6 +328,9 @@ store_insn(W, R, ins(mov, S, [reg(RN), mem(0, rax)])) :-
 %  The code that computes Op at Class on Args into %rax, zero-extended
 %  for class w. Ctx is the f/4 context; filc_amd64 also calls this for
 %  its integer instructions.
+compute_op(Op, K, Args, Ctx) -->
+    { float_compute(Op, K) }, !,
+    float_op(Op, K, Args, Ctx).
 compute_op(copy, K, [X], Ctx) --> load(X, K, a, Ctx).
 compute_op(neg, K, [X], Ctx) -->
     load(X, K, a, Ctx),
@@ -420,6 +464,8 @@ load_insn(Type, K, ins(Op, S, [mem(0, rax), reg(To)])) :-
 % load_op(+Type, +Class, -Op, -Suffix, -To): as ext_op/5, for a load
 % from memory; a uw load, or an sw load at w, needs only a 32-bit move.
 load_op(l, l, mov, q, rax).
+load_op(s, s, mov, l, eax).
+load_op(d, d, mov, q, rax).
 load_op(sw, K, Op, S, To) :- sw_load_op(K, Op, S, To).
 load_op(uw, _, mov, l, eax).
 load_op(sb, K, Op, S, To) :- ext_op(sb, K, Op, S, To).
@@ -456,6 +502,8 @@ load_constant(l, N, R) -->
       ;   V = U
       ) },
     [ins(movabs, q, [imm(V), reg(RN)])].
+load_constant(s, N, R) --> load_constant(w, N, R).
+load_constant(d, N, R) --> load_constant(l, N, R).
 
 %! load_slot(+Key, +Class, +RegName, +Ctx)// is semidet.
 %
@@ -502,3 +550,138 @@ data_directive(b, U, byte([U]), 8).
 data_directive(h, U, short(U), 16).
 data_directive(w, U, int(U), 32).
 data_directive(l, U, quad(U), 64).
+data_directive(s, U, int(U), 32).
+data_directive(d, U, quad(U), 64).
+
+%% SSE2. Private slots and compute_op's result hold bits, not host floats.
+%% Only ABI boundaries use XMM registers as the persistent value carrier.
+float_class(s). float_class(d).
+float_bits(s, w). float_bits(d, l).
+float_suffix(s, ss). float_suffix(d, sd).
+xmm_reg(I, R) :- format(atom(R), 'xmm~d', [I]).
+
+% Shared SysV bank allocation for a flattened scalar/flight-word list.
+% Each exhausted bank spills independently; stack positions retain order.
+bank_locations(Ks, Regs, Ls, NS, NX) :-
+    bank_locations(Ks, Regs, 0, 0, Ls, NS, NX).
+bank_locations([], _, X, S, [], S, X).
+bank_locations([K|Ks], Rs, X0, S0, [L|Ls], S, X) :-
+    ( float_class(K)
+    -> ( X0 < 8 -> xmm_reg(X0,R), L=xreg(R), X1 is X0+1, S1=S0
+       ; L=stack(S0), S1 is S0+1, X1=X0 ), Rs1=Rs
+    ;  X1=X0,
+       ( Rs=[R|Rs1] -> L=reg(R), S1=S0
+       ; Rs1=[], L=stack(S0), S1 is S0+1 )
+    ),
+    bank_locations(Ks,Rs1,X1,S1,Ls,S,X).
+
+plain_stack_args([], [], _) --> [].
+plain_stack_args([arg(K,V)|As],[L|Ls],Ctx) -->
+    ( { L=stack(I), Off is 8*I }
+    -> load(V,K,a,Ctx), [ins(mov,q,[reg(rax),mem(Off,rsp)])]
+    ; [] ), plain_stack_args(As,Ls,Ctx).
+plain_register_args([], [], _) --> [].
+plain_register_args([arg(K,V)|As],[L|Ls],Ctx) -->
+    plain_register_arg(L,K,V,Ctx), plain_register_args(As,Ls,Ctx).
+plain_register_arg(stack(_),_,_,_) --> [].
+plain_register_arg(reg(R),K,V,Ctx) --> load(V,K,R,Ctx).
+plain_register_arg(xreg(X),K,V,Ctx) --> float_load(V,K,X,Ctx).
+
+to_xmm(K, R, X) -->
+    { float_bits(K, B), reg_name(R, B, RN), xmm_move(K, Op) },
+    [ins(Op, none, [reg(RN), reg(X)])].
+from_xmm(K, X, R) -->
+    { float_bits(K, B), reg_name(R, B, RN), xmm_move(K, Op) },
+    [ins(Op, none, [reg(X), reg(RN)])].
+xmm_move(s, movd). xmm_move(d, movq).
+
+float_compute(Op, K) :- float_class(K), memberchk(Op, [add,sub,mul,div,neg]).
+float_compute(cmp(_, K), _) :- float_class(K).
+float_compute(ext(s), d).
+float_compute(truncd, s).
+float_compute(cast, _).
+float_compute(Op, _) :- memberchk(Op, [stosi,stoui,dtosi,dtoui,swtof,uwtof,sltof,ultof]).
+
+float_load(V, K, X, Ctx) --> load(V, K, a, Ctx), to_xmm(K, a, X).
+
+float_op(Op, K, [X,Y], Ctx) -->
+    { memberchk(Op, [add,sub,mul,div]), float_suffix(K, S) },
+    float_load(X, K, xmm0, Ctx), float_load(Y, K, xmm1, Ctx),
+    [ins(Op, S, [reg(xmm1),reg(xmm0)])], from_xmm(K, xmm0, a).
+float_op(neg, K, [X], Ctx) -->
+    load(X, K, a, Ctx),
+    { float_bits(K, B), reg_name(a, B, A), att_suffix(B, S),
+      ( K == s -> Mask = 2147483648 ; Mask = 9223372036854775808 ) },
+    load(c(Mask), B, c, Ctx),
+    { reg_name(c, B, C) },
+    [ins(xor, S, [reg(C),reg(A)])].
+float_op(cmp(Cond,K), w, [X,Y], Ctx) -->
+    float_load(X, K, xmm0, Ctx), float_load(Y, K, xmm1, Ctx),
+    { float_compare(K, Op) },
+    [ins(Op, none, [reg(xmm1),reg(xmm0)])],
+    float_condition(Cond),
+    [ins(movzb, l, [reg(al),reg(eax)])].
+float_op(ext(s), d, [X], Ctx) -->
+    float_load(X, s, xmm0, Ctx),
+    [ins(cvtss2sd, none, [reg(xmm0),reg(xmm0)])], from_xmm(d, xmm0, a).
+float_op(truncd, s, [X], Ctx) -->
+    float_load(X, d, xmm0, Ctx),
+    [ins(cvtsd2ss, none, [reg(xmm0),reg(xmm0)])], from_xmm(s, xmm0, a).
+float_op(cast, K, [X], Ctx) --> load(X, K, a, Ctx).
+float_op(Op, K, [X], Ctx) -->
+    { float_to_int(Op, F, Sign) },
+    float_load(X, F, xmm0, Ctx), float_integer(Sign, F, K, Ctx).
+float_op(Op, F, [X], Ctx) -->
+    { int_to_float(Op, K, Sign) },
+    load(X, K, a, Ctx), integer_float(Sign, K, F), from_xmm(F, xmm0, a).
+
+float_compare(s, ucomiss). float_compare(d, ucomisd).
+float_condition(eq) --> [ins(sete, none, [reg(al)]),ins(setnp, none, [reg(cl)]),ins(and,b,[reg(cl),reg(al)])].
+float_condition(ne) --> [ins(setne, none, [reg(al)]),ins(setp, none, [reg(cl)]),ins(or,b,[reg(cl),reg(al)])].
+float_condition(lt) --> [ins(setb, none, [reg(al)]),ins(setnp, none, [reg(cl)]),ins(and,b,[reg(cl),reg(al)])].
+float_condition(le) --> [ins(setbe, none, [reg(al)]),ins(setnp, none, [reg(cl)]),ins(and,b,[reg(cl),reg(al)])].
+float_condition(gt) --> [ins(seta, none, [reg(al)])].
+float_condition(ge) --> [ins(setae, none, [reg(al)])].
+float_condition(o) --> [ins(setnp, none, [reg(al)])].
+float_condition(uo) --> [ins(setp, none, [reg(al)])].
+
+float_to_int(stosi,s,signed). float_to_int(stoui,s,unsigned).
+float_to_int(dtosi,d,signed). float_to_int(dtoui,d,unsigned).
+int_to_float(swtof,w,signed). int_to_float(uwtof,w,unsigned).
+int_to_float(sltof,l,signed). int_to_float(ultof,l,unsigned).
+
+truncate_float(F, K) -->
+    { float_suffix(F, S), atom_concat(cvtt, S, P), atom_concat(P, '2si', Op),
+      att_suffix(K, W), reg_name(a, K, R) },
+    [ins(Op,W,[reg(xmm0),reg(R)])].
+float_integer(signed, F, K, _) --> truncate_float(F, K).
+float_integer(unsigned, F, w, _) -->
+    truncate_float(F, l), [ins(mov,l,[reg(eax),reg(eax)])].
+% SSE2 has no unsigned qword conversion. Subtract 2^63 in the high
+% half, convert the now signed-representable value, then restore bit 63.
+% Numeric labels are local to each sequence, including repeated calls.
+float_integer(unsigned, F, l, Ctx) -->
+    { ( F == s -> Bits = 1593835520 ; Bits = 4890909195324358656 ),
+      float_compare(F, Cmp), float_suffix(F,S) },
+    float_load(c(Bits), F, xmm1, Ctx),
+    [ins(Cmp,none,[reg(xmm1),reg(xmm0)]),ins(jb,none,[sym('1f')]),
+     ins(sub,S,[reg(xmm1),reg(xmm0)])],
+    truncate_float(F,l),
+    [ins(btc,q,[imm(63),reg(rax)]),ins(jmp,none,[sym('2f')]),label('1')],
+    truncate_float(F,l), [label('2')].
+
+convert_integer(K, F) -->
+    { float_suffix(F,S), atom_concat(cvtsi2,S,Op), att_suffix(K,W), reg_name(a,K,R) },
+    [ins(Op,W,[reg(R),reg(xmm0)])].
+integer_float(signed, K, F) --> convert_integer(K,F).
+integer_float(unsigned, w, F) --> convert_integer(l,F).
+% Preserve a sticky low bit before halving; converting then doubling is
+% correctly rounded even above 2^63, unlike subtract/convert/add.
+integer_float(unsigned, l, F) -->
+    { float_suffix(F,S) },
+    [ins(test,q,[reg(rax),reg(rax)]),ins(jns,none,[sym('1f')]),
+     ins(mov,q,[reg(rax),reg(rcx)]),ins(and,l,[imm(1),reg(ecx)]),
+     ins(shr,q,[imm(1),reg(rax)]),ins(or,q,[reg(rcx),reg(rax)])],
+    convert_integer(l,F),
+    [ins(add,S,[reg(xmm0),reg(xmm0)]),ins(jmp,none,[sym('2f')]),label('1')],
+    convert_integer(l,F), [label('2')].
