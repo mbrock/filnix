@@ -29,7 +29,11 @@ pkgs.writeShellScript "nanofil-cc" ''
   fi
   : "''${out:=$(basename "''${src%.c}").o}"
   ${filcc}/bin/clang "''${args[@]}" -E -o "$out.i"
-  ${nanofil}/bin/nanofil ''${NANOFIL_OPT:-} cc "$out.i" </dev/null >"$out.s"
+  input=$(realpath "$out.i")
+  # Trealla resolves transitive module imports relative to the working
+  # directory. Keep package builds usable on either Prolog host.
+  (cd ${nanofil}/src && ../bin/nanofil ''${NANOFIL_OPT:-} cc "$input" \
+    </dev/null) >"$out.s"
   as -o "$out" "$out.s"
   rm "$out.i" "$out.s"
   echo "$out" >>"''${NANOFIL_LOG:-/dev/null}"

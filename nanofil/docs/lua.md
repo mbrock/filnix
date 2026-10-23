@@ -22,7 +22,7 @@ The output retains both binaries, object inventories and runtime logs.
 `checks.x86_64-linux.nanofil-lua.reference` exposes the reference build
 and its self-check independently.
 
-## Native stack gap: backend follow-up
+## Native stack gap and slot reuse
 
 Measured on x86_64 Linux at nanofil revision `c93fdda12696`, using the
 same binaries and unchanged `lua -e '_U=true' all.lua` suite, with only
@@ -57,23 +57,81 @@ arguments:
 For example, `luaV_execute` reserves `0x258` bytes and saves five GPRs
 in filcc, versus reservations `0x140f0` / `0xdaf0` in nanofil. That is
 about **128x / 88x** the reference frame, not evidence of a setjmp bug.
-Reducing nanofil's frame footprint is backend work, not fixed by this
-integration check.
+This was a backend allocation problem, not an integration-check fix.
 
-The harness therefore keeps the reference official suite explicitly at
-8 MiB and raises **only the distinct nanofil candidate's official-suite
-subprocess** to 32 MiB, leaving headroom above the measured boundary.
-The deterministic `-e` scripts do not get a larger stack. A reference
-self-check also stays at 8 MiB. Revisit this allowance when the backend
-frame problem is fixed; do not silently raise the reference limit.
+### Reduction from the staging baseline
 
-To reproduce after building, copy the official archive unpacked by
-`nix/lua.nix` into a writable directory, then run there:
+Re-measured before changing the allocator at staging revision `8dc4efe`:
+`luaV_execute` had 7,405 dedicated eight-byte temp payload slots, 142
+phi shadow payload slots and 2,719 scanned lower words. With `-O`, those
+counts were 5,501, 296 and 1,205. The sum, plus thread/aux and the 16-byte
+frame header and alignment, explains the entire 82,160 / 56,048 bytes.
+`alloc` is heap-backed; there are no native local-allocation payloads or
+stack-aux words multiplying this frame (`num_stack_auxes` remains zero).
+
+The backend now reuses slots with disjoint **closed live intervals**.
+Intervals include every definition (even dead writes), explicit use,
+CFG live-in/out boundary, and all incoming parameter stores. Fixed-point
+liveness includes phi edge uses, loops and unreachable blocks. Reuse
+requires old end < new start, so operands and all results of one lowered
+instruction remain distinct through its internal helper calls. Pointer
+payload/lower pairs share one allocation in a pool separate from scalars.
+Physical lowers are zeroed on entry and origins report their physical
+count; stale dead lowers are valid conservative roots. Phi shadows stay
+dedicated and disjoint from temps. The implicit variadic snapshot is
+reserved for the entire invocation.
+
+**Any function containing setjmp retains the complete original unique
+layout**, including unreachable sites, payload snapshots, eager roots
+and final jmpbuf lowers. See [setjmp.md](setjmp.md). Oracle reviewed this
+design before implementation: approved with no memory-safety blocker,
+conditional on these invariants. No ABI, runtime or toolchain change.
+
+Frames below RBP, measured with the same preprocessed Lua sources and
+confirmed against emitted fast-entry prologues:
+
+| Function | Before | After | Before `-O` | After `-O` |
+| --- | ---: | ---: | ---: | ---: |
+| `luaV_execute` | 82,160 | 8,224 | 56,048 | 4,304 |
+| `luaD_precall` | 1,648 | 288 | 1,024 | 256 |
+| `luaD_rawrunprotected` | 512 | 512 | 512 | 512 |
+| `luaG_errormsg` | 928 | 192 | 496 | 128 |
+| `luaY_parser` | 1,856 | 368 | 1,136 | 272 |
+| `lua_getinfo` | 1,264 | 304 | 768 | 272 |
+
+The staging setjmp layout makes `luaD_rawrunprotected` 512 bytes, rather
+than the historical 528 above; slot reuse leaves it unchanged.
+`luaV_execute`'s scanned lowers drop to 442 / 159. The remaining gap to
+filcc includes conservative convex intervals, unpromoted heap-local
+pointers and dedicated shadows; this is not register allocation.
+
+For a broader corpus, all **309 functions** in `lvm.c`, `ldo.c`,
+`ldebug.c`, `lparser.c` and `lapi.c` were measured before and after using
+identical IR. Sums below are storage totals across functions, not the
+stack consumption of one execution:
+
+| Metric | Before | After | Before `-O` | After `-O` |
+| --- | ---: | ---: | ---: | ---: |
+| Sum of frame bytes | 287,728 | 63,472 | 181,408 | 50,096 |
+| Largest frame | 82,160 | 8,224 | 56,048 | 4,304 |
+| Sum of scanned lower words | 11,968 | 2,694 | 5,754 | 1,658 |
+
+The official basic suite now passes **at 8 MiB** in both optimization
+modes, normally and with `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`. The harness
+enforces `ulimit -s 8192` for both reference and candidate: the former
+32 MiB candidate-only allowance is gone. This is also a frame-growth
+regression check, exercising `calls.lua`'s deep C recursion. Rebuilding
+the original allocator and running it through the new harness fails in
+`calls.lua` in both modes (exit 1, no final success marker); restoring
+slot reuse passes.
+
+To reproduce, copy the official archive unpacked by `nix/lua.nix` into a
+writable directory and run there:
 
 ```sh
 (ulimit -s 8192; /path/to/reference/bin/lua -e '_U=true' all.lua)
-(ulimit -s 19456; /path/to/check/plain/bin/lua -e '_U=true' all.lua)
-(ulimit -s 13312; /path/to/check/optimized/bin/lua -e '_U=true' all.lua)
+(ulimit -s 8192; /path/to/check/plain/bin/lua -e '_U=true' all.lua)
+(ulimit -s 8192; /path/to/check/optimized/bin/lua -e '_U=true' all.lua)
 # Repeat with FUGC_SCRIBBLE=1 FUGC_VERIFY=1 in the environment.
 ```
 

@@ -34,13 +34,10 @@ for mode in plain gc; do
     mkdir "$dir/official"
     cp -R "$official"/. "$dir/official/"
     chmod -R u+w "$dir/official"
-    # Reference passes at 8 MiB. At 1 MiB resolution nanofil needs 19 MiB
-    # (13 with -O); luaV_execute's frame is 82160/56048 vs 640 bytes.
-    # Give only nanofil headroom for calls.lua's C recursion stress, not
-    # the -e scripts or reference. See docs/lua.md for the measurements.
-    stack=8192
-    if [ "$side" = candidate ] && [ "$candidate" != "$ref" ]; then stack=32768; fi
-    if ! (ulimit -s "$stack" && cd "$dir/official" && env "${stress[@]}" \
+    # calls.lua's deep C recursion is also a frame-size regression test.
+    # Both compilers must pass at the default Linux 8 MiB stack limit,
+    # including GC stress and both nanofil optimization modes.
+    if ! (ulimit -s 8192 && cd "$dir/official" && env "${stress[@]}" \
         timeout "${LUA_TEST_TIMEOUT:-300}" "$lua" -e '_U=true' all.lua) \
         >"$dir/official.out" 2>"$dir/official.err"; then
       cat "$dir/official.out" "$dir/official.err"

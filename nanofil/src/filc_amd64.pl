@@ -4,7 +4,7 @@
     code with filnix staging (Fil-C 0.687). The rules are in docs/m3.md;
     in short:
 
-    - Every temporary has an 8-byte frame slot, as in amd64.pl. A p
+    - Temporaries with disjoint closed live intervals share slots. A p
       temporary's slot holds its address, and its lower lives in a
       lowers[] entry of a filc_frame pushed on thread->top_frame, for the
       whole function. Values are never kept in registers across a call or
@@ -35,6 +35,7 @@
 :- use_module(library(assoc)).
 :- use_module(ir).
 :- use_module(amd64).
+:- use_module(frame_slots).
 
 %! filc_module_asm(+Module, -Lines) is det.
 %
@@ -176,12 +177,11 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
             ),
             Shadows0),
     sort(Shadows0, Shadows),
-    findall(t(N), member(N-_, Temps), TempKeys),
     findall(shadow(N), member(N-_, Shadows), ShadowKeys),
     form_extra_slots(Form, Extra),
     setjmp_slots(Blocks, JPlain, JLowers),
+    temp_storage(JLowers, Params, Blocks, Temps, TempKeys, TempLowers, Aliases),
     append([TempKeys, ShadowKeys, [thread, aux], Extra, JPlain], Plain),
-    findall(lower(t(N)), member(N-p, Temps), TempLowers),
     findall(lower(shadow(N)), member(N-p, Shadows), ShadowLowers),
     append([TempLowers, ShadowLowers, JLowers], Lowers),
     length(Plain, NPlain),
@@ -189,8 +189,39 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
     FrameBase is 8 * NPlain + 16 + 8 * NLowers,
     empty_assoc(Slots0),
     foldl(plain_slot, Plain, Slots0-0, Slots1-_),
-    foldl(lower_slot(FrameBase), Lowers, Slots1-0, Slots-_),
+    foldl(lower_slot(FrameBase), Lowers, Slots1-0, Slots2-_),
+    foldl(temp_alias, Aliases, Slots2, Slots),
     Size is (FrameBase + 15) // 16 * 16.
+
+% Returns-twice snapshots cover every logical payload slot, not merely
+% live values. Keep their original unique layout, even for dead sites.
+temp_storage([], Params, Blocks, Temps, Keys, Lowers, Aliases) :-
+    temp_slots(Params, Blocks, Temps, Map, NS, NP),
+    storage_keys(scalar, 0, NS, Scalars),
+    storage_keys(pointer, 0, NP, Pointers),
+    append(Scalars, Pointers, Keys),
+    maplist(storage_lower, Pointers, Lowers),
+    assoc_to_list(Map, Pairs),
+    maplist(storage_alias, Pairs, Aliases).
+temp_storage([_|_], _, _, Temps, Keys, Lowers, []) :-
+    findall(t(N), member(N-_, Temps), Keys),
+    findall(lower(t(N)), member(N-p, Temps), Lowers).
+
+storage_keys(Pool, I, N, Keys) :-
+    ( I < N
+    -> Keys = [storage(Pool, I)|Rest], Next is I + 1,
+       storage_keys(Pool, Next, N, Rest)
+    ;  Keys = [] ).
+
+storage_lower(Key, lower(Key)).
+storage_alias(N-Key, t(N)-Key).
+
+temp_alias(T-Key, Slots0, Slots) :-
+    get_assoc(Key, Slots0, Off), put_assoc(T, Slots0, Off, Slots1),
+    ( Key = storage(pointer, _)
+    -> get_assoc(lower(Key), Slots1, Lower),
+       put_assoc(lower(T), Slots1, Lower, Slots)
+    ;  Slots = Slots1 ).
 
 % Persistent jmpbuf roots must be the highest-indexed lowers. Ordinary
 % snapshot roots are initialized eagerly and never change thereafter.
