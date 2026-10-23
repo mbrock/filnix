@@ -24,6 +24,8 @@
 :- use_module(library(process)).
 :- use_module(library(charsio)).
 :- use_module(c_lex).
+:- use_module(c_parse, [c_constant_expression/2]).
+:- use_module(c_types, [pp_value/2]).
 
 %! pp_file(+File, +Profile, -Tokens)
 %
@@ -808,10 +810,11 @@ condition(ifndef, Args, Env, V) :-
 condition(if, Args, Env, V) :-
     defined_tokens(Args, Env, Replaced),
     tokens_expansion(Replaced, Env, Expanded),
-    maplist(expr_token, Expanded, ExprTokens),
-    (   phrase(expression(Tree), ExprTokens)
-    ->  tree_value(Tree, V)
-    ;   pp_error('<condition>':0, bad_if_expression(ExprTokens))
+    maplist(expr_token, Expanded, Tokens),
+    c_constant_expression(Tokens, Expr),
+    (   pp_value(Expr, V) -> true
+    ;   ( Tokens = [tok(_, Loc)|_] -> true ; Loc = '<condition>':0 ),
+        pp_error(Loc, not_constant(Expr))
     ).
 
 % defined X and defined(X) become 1 or 0 before macro expansion.
@@ -828,197 +831,20 @@ defined_tokens([t(defined, Loc, Space, Hide), t(A, _, _, _)|Ts], Env,
     defined_tokens(Ts, Env, Rs).
 defined_tokens([T|Ts], Env, [T|Rs]) :- defined_tokens(Ts, Env, Rs).
 
-% expr_token(+PpToken, -T): num(N) for a character constant or an
-% identifier left after expansion (which is 0), num(N, Suffix) for an
-% integer, and the spelling for anything else.
-expr_token(t(A, _, _, _), T) :-
+% expr_token(+PpToken, -Token): the c_lex token of a #if operand or
+% operator. A name left after expansion, keyword or not, is 0.
+expr_token(t(A, Loc, _, _), tok(T, Loc)) :-
     atom_chars(A, Cs),
-    (   Cs = [P, '\''|Rest], memberchk(P, ['L', u, 'U'])
-    ->  c_tokens(['\''|Rest], '<condition>', [tok(chr(N), _)]),
-        T = num(N)
+    (   catch(c_tokens(Cs, '<condition>', [tok(T0, _)]), nanofil_error(_), fail)
+    ->  expr_operand(T0, T)
     ;   Cs = [C|_], ident_start(C)
-    ->  T = num(0)
-    ;   c_tokens(Cs, '<condition>', Lexed),
-        (   Lexed = [tok(int(N, Suffix-_), _)] -> T = num(N, Suffix)
-        ;   Lexed = [tok(chr(N), _)] -> T = num(N)
-        ;   T = A
-        )
+    ->  T = int(0, none-dec)
+    ;   pp_error(Loc, bad_if_token(A))
     ).
 
-% expression(-Tree)//: a #if expression over expr_token/2 tokens. This
-% Pratt-style precedence DCG builds an expression before evaluating it:
-% inactive &&/||/?: arms must not divide by zero. Tree is one of
-%   num(N) num(N, Suffix) un(Op, A) not(A) tern(C, A, B) and(A, B)
-%   or(A, B) cmp(Op, A, B) shift(Op, A, B) arith(Op, A, B)
-% so that evaluation and typing tell operator kinds by principal functor.
-expression(T) -->
-    binary(1, A),
-    conditional_rest(A, T).
-
-conditional_rest(C, T) -->
-    ['?'], !,
-    expression(A),
-    [':'],
-    expression(B),
-    { T = tern(C, A, B) }.
-conditional_rest(T, T) --> [].
-
-% binary(+Min, -Tree)//: an expression whose binary operators have
-% precedence Min or more.
-binary(Min, T) -->
-    unary(A),
-    binary_rest(Min, A, T).
-
-binary_rest(Min, A, T) -->
-    [Op], { binary_operator(Op, P, A, B, AB), P >= Min }, !,
-    { Next is P + 1 },
-    binary(Next, B),
-    binary_rest(Min, AB, T).
-binary_rest(_, T, T) --> [].
-
-unary(T) -->
-    [Op], { unary_operator(Op, A, T) }, !,
-    unary(A).
-unary(A) -->
-    ['('], !,
-    expression(A),
-    [')'].
-unary(num(N)) --> [num(N)].
-unary(num(N, S)) --> [num(N, S)].
-
-% unary_operator(?Op, ?A, ?Tree): Tree is the prefix operator Op applied
-% to A.
-unary_operator('+', A, un('+', A)).
-unary_operator('-', A, un('-', A)).
-unary_operator('~', A, un('~', A)).
-unary_operator('!', A, not(A)).
-
-% binary_operator(?Op, ?Precedence, ?A, ?B, ?Tree): Tree is A Op B, and
-% Op binds with Precedence.
-binary_operator('||', 1, A, B, or(A, B)).
-binary_operator('&&', 2, A, B, and(A, B)).
-binary_operator('|', 3, A, B, arith('|', A, B)).
-binary_operator('^', 4, A, B, arith('^', A, B)).
-binary_operator('&', 5, A, B, arith('&', A, B)).
-binary_operator('==', 6, A, B, cmp('==', A, B)).
-binary_operator('!=', 6, A, B, cmp('!=', A, B)).
-binary_operator('<', 7, A, B, cmp('<', A, B)).
-binary_operator('>', 7, A, B, cmp('>', A, B)).
-binary_operator('<=', 7, A, B, cmp('<=', A, B)).
-binary_operator('>=', 7, A, B, cmp('>=', A, B)).
-binary_operator('<<', 8, A, B, shift('<<', A, B)).
-binary_operator('>>', 8, A, B, shift('>>', A, B)).
-binary_operator('+', 9, A, B, arith('+', A, B)).
-binary_operator('-', 9, A, B, arith('-', A, B)).
-binary_operator('*', 10, A, B, arith('*', A, B)).
-binary_operator('/', 10, A, B, arith('/', A, B)).
-binary_operator('%', 10, A, B, arith('%', A, B)).
-
-% tree_value(+Tree, -Value): Value is the value of the #if expression
-% Tree. Preprocessor arithmetic uses intmax_t/uintmax_t (64 bits at this
-% pin), not the host Prolog's unbounded integers or floating-point
-% division. Comparisons and ! give 0 or 1, the same signed or unsigned.
-tree_value(num(N), N).
-tree_value(num(N, _), N).
-tree_value(un(Op, A), V) :-
-    tree_value(A, X),
-    unary_value(Op, X, R),
-    expr_unsigned(un(Op, A), U),
-    wrapped(R, U, V).
-tree_value(not(A), V) :-
-    tree_value(A, X),
-    ( X =:= 0 -> V = 1 ; V = 0 ).
-tree_value(tern(C, A, B), V) :-
-    tree_value(C, X),
-    ( X =\= 0 -> tree_value(A, R) ; tree_value(B, R) ),
-    expr_unsigned(tern(C, A, B), U),
-    wrapped(R, U, V).
-tree_value(and(A, B), V) :-
-    tree_value(A, X),
-    ( X =:= 0 -> V = 0 ; tree_value(B, Y), boolean(Y, V) ).
-tree_value(or(A, B), V) :-
-    tree_value(A, X),
-    ( X =\= 0 -> V = 1 ; tree_value(B, Y), boolean(Y, V) ).
-tree_value(cmp(Op, A, B), V) :-
-    usual_operands(A, B, X, Y),
-    binary_value(Op, X, Y, V).
-tree_value(shift(Op, A, B), V) :-
-    tree_value(A, X),
-    tree_value(B, Y),
-    binary_value(Op, X, Y, R),
-    expr_unsigned(A, U),
-    wrapped(R, U, V).
-tree_value(arith(Op, A, B), V) :-
-    usual_operands(A, B, X, Y),
-    binary_value(Op, X, Y, R),
-    usual_unsigned(A, B, U),
-    wrapped(R, U, V).
-
-% usual_operands(+A, +B, -X, -Y): X and Y are the values of A and B after
-% the usual arithmetic conversions.
-usual_operands(A, B, X, Y) :-
-    tree_value(A, X0),
-    tree_value(B, Y0),
-    usual_unsigned(A, B, U),
-    wrapped(X0, U, X),
-    wrapped(Y0, U, Y).
-
-% expr_unsigned(+Tree, -U): U is yes if Tree has type uintmax_t.
-expr_unsigned(num(_), no).
-expr_unsigned(num(N, S), U) :-
-    (   ( memberchk(S, [u, ul, ull]) ; N > 9223372036854775807 )
-    ->  U = yes
-    ;   U = no
-    ).
-expr_unsigned(un(_, A), U) :- expr_unsigned(A, U).
-expr_unsigned(not(_), no).
-expr_unsigned(tern(_, A, B), U) :- usual_unsigned(A, B, U).
-expr_unsigned(and(_, _), no).
-expr_unsigned(or(_, _), no).
-expr_unsigned(cmp(_, _, _), no).
-expr_unsigned(shift(_, A, _), U) :- expr_unsigned(A, U).
-expr_unsigned(arith(_, A, B), U) :- usual_unsigned(A, B, U).
-
-% usual_unsigned(+A, +B, -U): U is yes if either operand is unsigned, as
-% the usual arithmetic conversions decide.
-usual_unsigned(A, B, U) :-
-    expr_unsigned(A, UA),
-    expr_unsigned(B, UB),
-    ( ( UA == yes ; UB == yes ) -> U = yes ; U = no ).
-
-% wrapped(+N, +Unsigned, -V): V is N reduced to 64 bits, signed unless
-% Unsigned.
-wrapped(N, U, V) :-
-    Bits is N mod 18446744073709551616,
-    (   U == no, Bits >= 9223372036854775808
-    ->  V is Bits - 18446744073709551616
-    ;   V = Bits
-    ).
-
-% boolean(+X, -B): B is 1 if X is nonzero, else 0.
-boolean(X, 1) :- X =\= 0, !.
-boolean(_, 0).
-
-unary_value('+', X, X).
-unary_value('-', X, V) :- V is -X.
-unary_value('~', X, V) :- V is \X.
-
-binary_value('+', X, Y, V) :- V is X+Y.
-binary_value('-', X, Y, V) :- V is X-Y.
-binary_value('*', X, Y, V) :- V is X*Y.
-binary_value('/', X, Y, V) :- V is X//Y.
-binary_value('%', X, Y, V) :- V is X rem Y.
-binary_value('<<', X, Y, V) :- V is X<<Y.
-binary_value('>>', X, Y, V) :- V is X>>Y.
-binary_value('&', X, Y, V) :- V is X /\ Y.
-binary_value('|', X, Y, V) :- V is X \/ Y.
-binary_value('^', X, Y, V) :- V is xor(X, Y).
-binary_value('<', X, Y, V) :- ( X < Y -> V = 1 ; V = 0 ).
-binary_value('>', X, Y, V) :- ( X > Y -> V = 1 ; V = 0 ).
-binary_value('<=', X, Y, V) :- ( X =< Y -> V = 1 ; V = 0 ).
-binary_value('>=', X, Y, V) :- ( X >= Y -> V = 1 ; V = 0 ).
-binary_value('==', X, Y, V) :- ( X =:= Y -> V = 1 ; V = 0 ).
-binary_value('!=', X, Y, V) :- ( X =\= Y -> V = 1 ; V = 0 ).
+expr_operand(id(_), int(0, none-dec)) :- !.
+expr_operand(kw(_), int(0, none-dec)) :- !.
+expr_operand(T, T).
 
 pp_error(Loc, Why) :-
     format(atom(Msg), '~w: ~w', [Loc, Why]),

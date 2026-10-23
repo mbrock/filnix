@@ -40,7 +40,7 @@
       alignof(TypeName) complit(TypeName, Init) offsetof(TypeName, Path)
     TypeName = type(Specs, Type).
 */
-:- module(c_parse, [c_parse/2]).
+:- module(c_parse, [c_parse/2, c_constant_expression/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -53,6 +53,19 @@
 c_parse(Tokens, Items) :-
     list_to_assoc(['__builtin_va_list'-t], Env),
     phrase(unit(Env, Items), Tokens).
+
+%! c_constant_expression(+Tokens, -Expr) is det.
+%
+%  Expr is the constant expression, a conditional expression, that the
+%  c_lex Tokens are, as #if reads them. No name is a typedef. Throws
+%  nanofil_error/1 on a syntax error.
+c_constant_expression(Tokens, Expr) :-
+    empty_assoc(Env),
+    phrase(constant_expression(Env, Expr), Tokens).
+
+constant_expression(Env, Expr) -->
+    conditional(Env, Expr),
+    (   eos -> [] ; parse_error('expected the end of the expression') ).
 
 % unit(+Env, -Items)//: the external declarations up to the end of input.
 % The cut commits to the first parse of each declaration.

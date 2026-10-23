@@ -34,3 +34,7 @@ long gnup(long x) { char a[2] = { 3, 4 }; char *p = x ? a : 0; char *q = p ?: a 
 // run: $gnu 5
 // run: $gnup 0
 // run: $gnup 1
+/* An operand that && || or ?: does not evaluate may divide by zero
+   (C11 6.6p3); the array sizes are still constant. */
+long lazy(long x) { static char a[1 || 1/0], b[(0 && 1/0) + 2], c[1 ? 3 : 1/0]; return sizeof a + sizeof b * 10 + sizeof c * 100 + x * 0; }
+// run: $lazy 0

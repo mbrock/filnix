@@ -94,7 +94,8 @@ int has_include;
 #if (1 ? -1 : 0U) < 0
 #error conditional conversions failed
 #endif
-#if L'\0' - 1 < 0 && ('a' == 97) && (1 | 2 ^ 3 & 4) == 3
+#if L'\0' - 1 < 0 && ('a' == 97) && (1 | 2 ^ 3 & 4) == 3 && L'\xff' == 255 \
+    && ((1 == 1) << 40) == 1099511627776
 int character_condition;
 #endif
 #define MULTI(a) a + \

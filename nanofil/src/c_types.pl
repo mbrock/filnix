@@ -32,8 +32,8 @@
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
                     type_size_align/4, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
-                    convert_int/3, const_value/4, num_type/3, scalar_type/1,
-                    type_class/2, member_type_offset/5, type_name_type/4,
+                    convert_int/3, const_value/4, pp_value/2, num_type/3,
+                    scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
                     decl_types/5, expression_type/3, value_type/2,
@@ -732,51 +732,67 @@ type_class(ptr(_), p).
 
 %% Integer constant expressions
 
+/*  An integer constant expression has a type and a value. The value is
+    an integer, or ub where evaluating it is undefined (division by
+    zero). Operators propagate ub, except from the operands that && ||
+    and ?: do not evaluate (C11 6.6p3): 1 || 1/0 is 1, and 1/0 alone is
+    not constant. Every operand must still be a constant expression.
+
+    The environment is a c_types environment, or pp for a #if expression,
+    where every integer type acts as intmax_t or uintmax_t (6.10.1p4): a
+    constant is a long or ulong, and so is the result of ! == && and
+    the like. The preprocessor has replaced identifiers by 0. */
+
 %! const_value(+Expr, +Env, -Value, -Type) is det.
 %
 %  Expr is an integer constant expression with Value of Type in Env.
 %  Throws not_constant when Expr is not one.
 const_value(Expr, Env, V, T) :-
-    (   const_eval(Expr, Env, V0, T0) -> V = V0, T = T0
+    (   const_eval(Expr, Env, V0, T0), integer(V0) -> V = V0, T = T0
     ;   throw(not_constant)
     ).
 
-% const_eval(+Expr, +Env, -V, -T): as const_value/4, but fails when Expr
-% is not constant.
-const_eval(num(V0, Suffix), _, V, T) :-
-    num_type(V0, Suffix, T),
+%! pp_value(+Expr, -Value) is semidet.
+%
+%  Value is the value of the #if expression Expr; fails when Expr is not
+%  constant.
+pp_value(Expr, V) :-
+    const_eval(Expr, pp, V, _),
+    integer(V).
+
+% const_eval(+Expr, +Env, -V, -T): Expr has value V, an integer or ub,
+% of type T in Env. Fails when Expr is not a constant expression.
+const_eval(num(V0, Suffix), Env, V, T) :-
+    num_type(V0, Suffix, T0),
+    env_int_type(Env, T0, T),
     convert_int(V0, T, V).
-const_eval(chr(V), _, V, int).
+const_eval(chr(V), Env, V, T) :- env_int_type(Env, int, T).
 const_eval(id(Name), Env, V, T) :- lookup_ordinary(Env, Name, enumconst(V, T)).
-const_eval(un(neg, X), Env, V, T) :-
-    const_eval(X, Env, V0, T0),
-    integer_promotion(T0, T),
-    convert_int(-V0, T, V).
-const_eval(un(plus, X), Env, V, T) :-
-    const_eval(X, Env, V, T0),
-    integer_promotion(T0, T).
-const_eval(un(bnot, X), Env, V, T) :-
-    const_eval(X, Env, V0, T0),
-    integer_promotion(T0, T),
-    convert_int(\(V0), T, V).
-const_eval(un(not, X), Env, V, int) :-
+const_eval(un(not, X), Env, V, T) :-
     const_eval(X, Env, V0, _),
-    (   V0 =:= 0 -> V = 1 ; V = 0 ).
+    env_int_type(Env, int, T),
+    defined([V0], V, truth(V0 =:= 0, V)).
+const_eval(un(Op, X), Env, V, T) :-
+    unary_arith(Op, X0, R),
+    const_eval(X, Env, V0, T0),
+    integer_promotion(T0, T),
+    defined([V0], V, ( X0 = V0, convert_int(R, T, V) )).
 const_eval(bin(Op, A, B), Env, V, T) :-
+    binary_kind(Op, Kind),
     const_eval(A, Env, VA, TA),
     const_eval(B, Env, VB, TB),
-    const_binary(Op, VA, TA, VB, TB, V, T).
+    kind_binary(Kind, Op, Env, VA, TA, VB, TB, V, T).
 const_eval(cond(C, A, B), Env, V, T) :-
     const_eval(C, Env, VC, _),
     const_eval(A, Env, VA, TA),
     const_eval(B, Env, VB, TB),
     usual_arith_conversion(TA, TB, T),
-    (   VC =\= 0 -> convert_int(VA, T, V) ; convert_int(VB, T, V) ).
+    defined([VC], V, ( VC =\= 0 -> int_value(VA, T, V) ; int_value(VB, T, V) )).
 const_eval(cast(TypeName, X), Env, V, T) :-
     type_name_type(TypeName, T, Env, _),
     int_type(T),
     const_eval(X, Env, V0, _),
-    convert_int(V0, T, V).
+    int_value(V0, T, V).
 const_eval(sizeof_type(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
@@ -930,15 +946,37 @@ offset_path([field(F)|Path], T, Env, Off0, Off) :-
     offset_path(Path, FieldType, Env, Off1, Off).
 offset_path([index(X)|Path], array(ElemType, _), Env, Off0, Off) :-
     const_eval(X, Env, I, _),
+    integer(I),
     type_size_align(ElemType, Env, ElemSize, _),
     Off1 is Off0 + I * ElemSize,
     offset_path(Path, ElemType, Env, Off1, Off).
 
-% const_binary(+Op, +VA, +TA, +VB, +TB, -V, -T): V of type T is the value
-% of the binary operation Op on VA of type TA and VB of type TB.
-const_binary(Op, VA, TA, VB, TB, V, T) :-
-    binary_kind(Op, Kind),
-    kind_binary(Kind, Op, VA, TA, VB, TB, V, T).
+% env_int_type(+Env, +T0, -T): an integer of type T0 has type T in Env:
+% T0 itself, or in a #if expression intmax_t or uintmax_t.
+env_int_type(e(_, _, _, _), T, T).
+env_int_type(pp, T0, T) :-
+    int_info(T0, _, Sign),
+    intmax_type(Sign, T).
+
+intmax_type(signed, long).
+intmax_type(unsigned, ulong).
+
+% defined(+Values, -V, :Goal): V is ub if one of Values is, and
+% otherwise as Goal gives it.
+defined(Vs, V, Goal) :-
+    (   memberchk(ub, Vs) -> V = ub ; call(Goal) ).
+
+% int_value(+V0, +T, -V): V is the value V0 converted to T.
+int_value(V0, T, V) :- defined([V0], V, convert_int(V0, T, V)).
+
+% truth(:Goal, -B): B is 1 if Goal holds, else 0.
+truth(Goal, B) :- ( call(Goal) -> B = 1 ; B = 0 ).
+
+% unary_arith(?Op, ?X, ?R): the unary arithmetic operator Op makes the
+% arithmetic expression R of its operand X.
+unary_arith(neg, X, -X).
+unary_arith(plus, X, X).
+unary_arith(bnot, X, \X).
 
 % binary_kind(?Op, ?Kind): the binary operator Op converts its operands
 % as Kind names.
@@ -961,40 +999,53 @@ binary_kind(ge, compare).
 binary_kind(land, logical).
 binary_kind(lor, logical).
 
-% kind_binary(+Kind, +Op, +VA, +TA, +VB, +TB, -V, -T): as const_binary/7
-% for an Op of Kind. Arithmetic and comparison use the usual arithmetic
-% conversions; a shift has its promoted left operand's type.
-kind_binary(arith, Op, VA, TA, VB, TB, V, T) :-
+% kind_binary(+Kind, +Op, +Env, +VA, +TA, +VB, +TB, -V, -T): V of type T
+% is the value of Op, of Kind, on VA of type TA and VB of type TB.
+% Arithmetic and comparison use the usual arithmetic conversions; a
+% shift has its promoted left operand's type.
+kind_binary(arith, Op, _, VA, TA, VB, TB, V, T) :-
     usual_arith_conversion(TA, TB, T),
-    convert_int(VA, T, A),
-    convert_int(VB, T, B),
-    const_arith(Op, A, B, R),
-    convert_int(R, T, V).
-kind_binary(shift, Op, VA, TA, VB, _, V, T) :-
+    defined([VA, VB], V,
+            (   convert_int(VA, T, A),
+                convert_int(VB, T, B),
+                const_arith(Op, A, B, R),
+                int_value(R, T, V)
+            )).
+kind_binary(shift, Op, _, VA, TA, VB, _, V, T) :-
     integer_promotion(TA, T),
-    convert_int(VA, T, A),
-    const_shift(Op, A, VB, R),
-    convert_int(R, T, V).
-kind_binary(compare, Op, VA, TA, VB, TB, V, int) :-
-    usual_arith_conversion(TA, TB, T),
-    convert_int(VA, T, A),
-    convert_int(VB, T, B),
-    (   const_compare(Op, A, B) -> V = 1 ; V = 0 ).
-kind_binary(logical, Op, VA, _, VB, _, V, int) :-
-    (   const_logical(Op, VA, VB) -> V = 1 ; V = 0 ).
+    defined([VA, VB], V,
+            (   convert_int(VA, T, A),
+                const_shift(Op, A, VB, R),
+                convert_int(R, T, V)
+            )).
+kind_binary(compare, Op, Env, VA, TA, VB, TB, V, T) :-
+    usual_arith_conversion(TA, TB, CT),
+    env_int_type(Env, int, T),
+    defined([VA, VB], V,
+            (   convert_int(VA, CT, A),
+                convert_int(VB, CT, B),
+                truth(const_compare(Op, A, B), V)
+            )).
+kind_binary(logical, Op, Env, VA, _, VB, _, V, T) :-
+    env_int_type(Env, int, T),
+    defined([VA], V, const_logical(Op, VA, VB, V)).
 
 const_shift(shl, A, B, R) :- R is A << B.
 const_shift(shr, A, B, R) :- R is A >> B.
 
-const_logical(land, A, B) :- A =\= 0, B =\= 0.
-const_logical(lor, A, B) :- ( A =\= 0 -> true ; B =\= 0 ).
+% const_logical(+Op, +A, +VB, -V): the right operand VB counts only when
+% the left A does not decide.
+const_logical(land, A, VB, V) :-
+    (   A =:= 0 -> V = 0 ; defined([VB], V, truth(VB =\= 0, V)) ).
+const_logical(lor, A, VB, V) :-
+    (   A =\= 0 -> V = 1 ; defined([VB], V, truth(VB =\= 0, V)) ).
 
-% Division by zero fails, so the expression is not constant.
+% Division by zero is undefined: R is ub.
 const_arith(add, A, B, R) :- R is A + B.
 const_arith(sub, A, B, R) :- R is A - B.
 const_arith(mul, A, B, R) :- R is A * B.
-const_arith(div, A, B, R) :- B =\= 0, R is A // B.
-const_arith(mod, A, B, R) :- B =\= 0, R is A rem B.
+const_arith(div, A, B, R) :- ( B =:= 0 -> R = ub ; R is A // B ).
+const_arith(mod, A, B, R) :- ( B =:= 0 -> R = ub ; R is A rem B ).
 const_arith(and, A, B, R) :- R is A /\ B.
 const_arith(or, A, B, R) :- R is A \/ B.
 const_arith(xor, A, B, R) :- R is xor(A, B).
