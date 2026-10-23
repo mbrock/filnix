@@ -49,6 +49,7 @@
 :- use_module(library(dcgs)).
 :- use_module(c_types).
 :- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2]).
+:- use_module(c_parse, [compound_assignment/2]).
 
 %! c_module(+Items, -Module)
 %
@@ -1873,7 +1874,7 @@ assignment(Op, A, B, Ctx, R) -->
     modifiable(A, 'assignment to', Loc),
     { LV = lv(P, Type) },
     (   { Op == '=' } -> rval(B, Ctx, Value0), { Source = B }
-    ;   { compound_op(Op, BinOp), Source = none },
+    ;   { compound_assignment(Op, BinOp), Source = none },
         load_typed(Type, P, Ctx, Cur),
         rval(B, Ctx, VB),
         binary(BinOp, v(Cur, Type), VB, Ctx, Value0)
@@ -1891,18 +1892,6 @@ modifiable(A, What, Loc) -->
     ->  { sema_error(Loc, '~w a read-only lvalue', [What]) }
     ;   { sema_error(Loc, '~w a non-lvalue', [What]) }
     ).
-
-% compound_op(+Op, -BinOp): compound assignment Op applies BinOp.
-compound_op('*=', mul).
-compound_op('/=', div).
-compound_op('%=', mod).
-compound_op('+=', add).
-compound_op('-=', sub).
-compound_op('<<=', shl).
-compound_op('>>=', shr).
-compound_op('&=', and).
-compound_op('^=', xor).
-compound_op('|=', or).
 
 % incdec(+Op, +A, +Ctx, -R)//: increment or decrement scalar lvalue A;
 % R is the new value (pre) or the old one (post).

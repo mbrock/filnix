@@ -50,6 +50,7 @@
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(ieee).
+:- use_module(c_parse, [c_operator/4]).
 
 %% Environment
 
@@ -1228,11 +1229,13 @@ binary_operands(Op, TA, TB, ulong, ulong, int) :-
 
 % arithmetic_operator(?Op, ?Domain): binary Op applies to two operands
 % of Domain types, arithmetic or integer.
-arithmetic_operator(Op, arithmetic_type) :- memberchk(Op, [add, sub, mul, div]).
-arithmetic_operator(Op, arithmetic_type) :- comparison(Op).
-arithmetic_operator(Op, int_type) :- memberchk(Op, [mod, and, or, xor]).
+arithmetic_operator(Op, Domain) :-
+    c_operator(_, _, Op, Kind),
+    (   Kind = arith(integer) -> Domain = int_type
+    ;   ( Kind = arith(arithmetic) ; Kind == compare ) -> Domain = arithmetic_type
+    ).
 
-comparison(Op) :- memberchk(Op, [eq, ne, lt, le, gt, ge]).
+comparison(Op) :- c_operator(_, _, Op, compare).
 
 % The controlling expression undergoes lvalue/array/function conversion,
 % not integer promotion. Only the selected expression is evaluated, and
@@ -1307,25 +1310,10 @@ unary_arith(plus, X, X).
 unary_arith(bnot, X, \X).
 
 % binary_kind(?Op, ?Kind): the binary operator Op converts its operands
-% as Kind names.
-binary_kind(add, arith).
-binary_kind(sub, arith).
-binary_kind(mul, arith).
-binary_kind(div, arith).
-binary_kind(mod, arith).
-binary_kind(and, arith).
-binary_kind(or, arith).
-binary_kind(xor, arith).
-binary_kind(shl, shift).
-binary_kind(shr, shift).
-binary_kind(eq, compare).
-binary_kind(ne, compare).
-binary_kind(lt, compare).
-binary_kind(gt, compare).
-binary_kind(le, compare).
-binary_kind(ge, compare).
-binary_kind(land, logical).
-binary_kind(lor, logical).
+% as Kind (arith, shift, compare or logical) names.
+binary_kind(Op, Kind) :-
+    c_operator(_, _, Op, Kind0),
+    ( Kind0 = arith(_) -> Kind = arith ; Kind = Kind0 ).
 
 % kind_binary(+Kind, +Op, +Env, +VA, +TA, +VB, +TB, -V, -T): V of type T
 % is the value of Op, of Kind, on VA of type TA and VB of type TB.

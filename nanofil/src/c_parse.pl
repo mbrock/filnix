@@ -40,7 +40,8 @@
       alignof(TypeName) complit(TypeName, Init) offsetof(TypeName, Path)
     TypeName = type(Specs, Type).
 */
-:- module(c_parse, [c_parse/2, c_constant_expression/2]).
+:- module(c_parse, [c_parse/2, c_constant_expression/2, c_operator/4,
+                    compound_assignment/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -808,16 +809,16 @@ assignment(Env, E) -->
     ).
 
 assign_op('=').
-assign_op('*=').
-assign_op('/=').
-assign_op('%=').
-assign_op('+=').
-assign_op('-=').
-assign_op('<<=').
-assign_op('>>=').
-assign_op('&=').
-assign_op('^=').
-assign_op('|=').
+assign_op(Op) :- compound_assignment(Op, _).
+
+%! compound_assignment(+Spelling, -Op) is semidet.
+%
+%  Spelling is the compound assignment of the arithmetic or shift
+%  operator Op: its spelling followed by = (C11 6.5.16.2).
+compound_assignment(Spelling, Op) :-
+    atom_concat(P, '=', Spelling),
+    c_operator(P, _, Op, Kind),
+    ( Kind = arith(_) ; Kind == shift ), !.
 
 conditional(Env, E) -->
     binary(Env, 1, C),
@@ -842,30 +843,37 @@ binary(Env, Level, E) -->
     binary_rest(Env, Level, Lhs, E).
 
 binary_rest(Env, Level, Lhs, E) -->
-    punct(P), { binop(P, Level, Op) }, !,
+    punct(P), { c_operator(P, Level, Op, _) }, !,
     { Level1 is Level + 1 },
     binary(Env, Level1, Rhs),
     binary_rest(Env, Level, bin(Op, Lhs, Rhs), E).
 binary_rest(_, _, E, E) --> [].
 
-binop('||', 1, lor).
-binop('&&', 2, land).
-binop('|', 3, or).
-binop('^', 4, xor).
-binop('&', 5, and).
-binop('==', 6, eq).
-binop('!=', 6, ne).
-binop('<', 7, lt).
-binop('>', 7, gt).
-binop('<=', 7, le).
-binop('>=', 7, ge).
-binop('<<', 8, shl).
-binop('>>', 8, shr).
-binop('+', 9, add).
-binop('-', 9, sub).
-binop('*', 10, mul).
-binop('/', 10, div).
-binop('%', 10, mod).
+%! c_operator(?Spelling, ?Level, ?Op, ?Kind) is nondet.
+%
+%  C's binary operators (C11 6.5.5-6.5.14): Spelling is Op, of
+%  precedence Level (1 binds loosest). Kind says what it does to its
+%  operands: arith(Domain) converts integer or arithmetic operands to
+%  their common type, shift promotes each, compare converts and compares,
+%  and logical tests each for truth.
+c_operator('||', 1, lor, logical).
+c_operator('&&', 2, land, logical).
+c_operator('|', 3, or, arith(integer)).
+c_operator('^', 4, xor, arith(integer)).
+c_operator('&', 5, and, arith(integer)).
+c_operator('==', 6, eq, compare).
+c_operator('!=', 6, ne, compare).
+c_operator('<', 7, lt, compare).
+c_operator('>', 7, gt, compare).
+c_operator('<=', 7, le, compare).
+c_operator('>=', 7, ge, compare).
+c_operator('<<', 8, shl, shift).
+c_operator('>>', 8, shr, shift).
+c_operator('+', 9, add, arith(arithmetic)).
+c_operator('-', 9, sub, arith(arithmetic)).
+c_operator('*', 10, mul, arith(arithmetic)).
+c_operator('/', 10, div, arith(arithmetic)).
+c_operator('%', 10, mod, arith(integer)).
 
 % cast(+Env, -E)//: a cast expression or compound literal, else a unary
 % expression.
