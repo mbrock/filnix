@@ -33,6 +33,7 @@ pkgs.runCommandCC "nanofil-check"
     CC=$CC tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
     CC=$CC VARIANTS=nanofil tests/difftest.sh tests/qbe-bugs/*.ssa
     export FILCC=${filcc}/bin/clang
+    tests/pptest.sh
     tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa
     tests/filc/run-c.sh interop gc
     tests/difftest.sh tests/c/*.c

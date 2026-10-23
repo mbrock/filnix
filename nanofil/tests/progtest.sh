@@ -29,8 +29,6 @@ else
 fi
 status=0
 n=0
-# Keep preprocessing in one place for M4e's replacement.
-preprocess() { "$filcc" -E -o "$2" "$1"; }
 run() {
   local exe=$1 out=$2
   shift 2
@@ -52,6 +50,7 @@ run() {
 }
 if [[ $# == 0 ]]; then set -- "$here"/c/prog/*.c; fi
 for f in "$@"; do
+  f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
   name=$(basename "$f" .c)
   d="$work/$name"
   mkdir -p "$d"
@@ -67,10 +66,8 @@ for f in "$@"; do
   # Attempt nanofil too when the oracle fails; retain both diagnostics,
   # but never call that a measured rejection or a differential pass.
   if ! "$filcc" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
-  outcome=preprocess-error
-  preprocess "$f" "$d/p.i"
   outcome=reject
-  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$tpl" -q main.pl -- cc "$d/p.i" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$tpl" -q main.pl -- cc "$f" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?
@@ -79,7 +76,7 @@ for f in "$@"; do
   fi
   outcome=assemble-error
   as -o "$d/n.o" "$d/n.s"
-  outcome=link-error
+  outcome='link-error'
   "$filcc" -o "$d/nanofil" "$d/n.o" "${libs[@]}" -lm
   [[ $reference_failed == 0 ]] || exit 1
   outcome=pass

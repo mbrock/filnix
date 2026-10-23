@@ -13,7 +13,7 @@
 # (FILCC, a filcc clang), and each run executes in its own process: a
 # Fil-C safety panic is the native form of the interpreter's trap.
 #
-# A C file is preprocessed by FILCC, lowered by nanofil (cc-ir), and its
+# A C file is preprocessed and lowered by nanofil (cc-ir), and its
 # "// run: $fn arg..." comments become run lines. Besides nanofil's own
 # code it is also compiled from source by FILCC (variant clang), so the
 # interpreter, nanofil and clang must all agree.
@@ -37,8 +37,7 @@ for f in "$@"; do
     if [ -z "$filcc" ]; then echo "$f: C file, set FILCC" >&2; exit 2; fi
     csrc=$f
     f="$d/c.ssa"
-    "$filcc" -E -o "$d/c.i" "$csrc"
-    (cd "$src" && "$tpl" -q main.pl -- cc-ir "$d/c.i" </dev/null) >"$f"
+    (cd "$src" && "$tpl" -q main.pl -- cc-ir "$csrc" </dev/null) >"$f"
     sed -n 's|^// run: |# run: |p' "$csrc" >>"$f"
   fi
   (cd "$src" && "$tpl" -q main.pl -- difftest "$f" "$d" </dev/null)

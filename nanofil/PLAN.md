@@ -173,7 +173,7 @@ catches planted rooting bugs.
 
 ### M4. C frontend subset
 
-**Status: in progress.** M4a, M4b, M4c, M4d and M4f are done, see
+**Status: done.** M4a through M4f are done, see
 [docs/m4.md](docs/m4.md) and [docs/corpus.md](docs/corpus.md).
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
@@ -204,8 +204,9 @@ settled the ABI questions first:
 2. **Real glibc headers** from filcc's sysroot, not private headers. The
    parser accepts the GNU subset they use: `__attribute__` (ignored),
    `__extension__`, `__restrict`, `__inline`, `__builtin_va_list` (opaque)
-   and asm labels (symbol renames, which must be honoured). Until the
-   DCG preprocessor exists (M4e), input is preprocessed by `filcc -E`.
+   and asm labels (symbol renames, which must be honoured). The DCG
+   preprocessor (M4e) reads these headers directly; `filcc` supplies only
+   the target's predefined macros, feature answers and include paths.
 3. **Globals and string literals move into M4** from M7, in the same naive
    form clang emits: getter, cache, registration, relocations. M7 keeps
    the getter-skipping optimization that needs Oracle review.
@@ -244,9 +245,11 @@ settled the ABI questions first:
   classification for arguments and returns of 16 bytes or less (pointer
   fields as `p`), sret for larger returns. Accept: interop tests against
   clang in both directions.
-- **M4e. DCG preprocessor.** Macros, `#include` with the sysroot search
-  path, conditionals, `#`/`##`. Accept: its token stream matches `filcc -E`
-  on the headers and the corpus; then it replaces `filcc -E`.
+- **M4e. DCG preprocessor.** *Done.* Macros (including variadics), sysroot
+  includes, conditionals, `#`/`##` and hide-set rescanning. `tests/pptest.sh`
+  compares tokens with `filcc -E` on all 20 documented headers and every C
+  corpus file, plus macro and location probes. The driver and C test
+  scripts now preprocess `.c` themselves; `.i` input still works.
 - **M4f. Corpus.** *Done.* cproc's tests and the c-testsuite, fetched by
   Nix, run in `checks.x86_64-linux.nanofil`, with every expected result
   tracked (including newly passing tests). Counts and failure triage:

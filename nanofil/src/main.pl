@@ -3,8 +3,9 @@
       check FILE              parse and validate
       print FILE              parse, validate, print QBE text
       compile FILE            parse, validate, print x86-64 assembly
-      cc FILE                 compile preprocessed C to Fil-C assembly
-      cc-ir FILE              compile preprocessed C, print the IR as QBE text
+      cc FILE                 compile C (.c or preprocessed .i) to Fil-C assembly
+      cc-ir FILE              compile C, print the IR as QBE text
+      tokens FILE             print C token terms, without locations
       run FILE FN ARG...      interpret $FN on integer arguments
       difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,printed.ssa}
                               for the file's "# run: $fn arg..." lines
@@ -22,6 +23,7 @@
 :- use_module(filc_amd64).
 :- use_module(asm).
 :- use_module(c_lex).
+:- use_module(c_pp).
 :- use_module(c_parse).
 :- use_module(c_lower).
 :- use_module(library(lists)).
@@ -48,12 +50,21 @@ load(File, M) :-
         valid_module(M).
 
 load_c(File, M) :-
-    phrase_from_file(seq(Cs), File),
-    c_tokens(Cs, File, Ts),
+    load_c_tokens(File, Ts),
     (   c_parse(Ts, Items) -> true ; throw(nanofil_error('C parse failed')) ),
     c_module(Items, M),
     valid_module(M).
 
+load_c_tokens(File, Ts) :-
+    ( atom_concat(_, '.i', File) ->
+        phrase_from_file(seq(Cs), File), c_tokens(Cs, File, Ts)
+    ; ( getenv('FILCC', Clang) -> true ; Clang=filcc ),
+      pp_profile(Clang, Profile), pp_file(File, Profile, Ts)
+    ).
+
+command([tokens, File]) :-
+    load_c_tokens(File, Ts),
+    forall(member(tok(T,_), Ts), (write_canonical(T),write('.'),nl)).
 command([check, File]) :- load(File, _), format("ok~n", []).
 command([print, File]) :- load(File, M), print_module(M).
 command([compile, File]) :-
