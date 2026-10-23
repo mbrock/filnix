@@ -1015,7 +1015,19 @@ arms_type(void, _, void, _, void) :- !.
 arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
 arms_type(ptr(P), _, _, null, ptr(P)) :- !.
 arms_type(_, null, ptr(P), _, ptr(P)) :- !.
+arms_type(ptr(A), _, ptr(B), _, ptr(V)) :-
+    ( void_target(A) ; void_target(B) ), !,
+    target_quals(A, QA), target_quals(B, QB), append(QA, QB, Qs),
+    qualify(Qs, void, V).
 arms_type(ptr(P), _, ptr(_), _, ptr(P)).
+
+% void_target(+T): pointer target T is void, perhaps qualified.
+void_target(void).
+void_target(qualified(_, void)).
+
+% target_quals(+T, -Qs): Qs are the qualifiers of pointer target T.
+target_quals(qualified(Qs, _), Qs) :- !.
+target_quals(_, []).
 
 % block_value_type(+Items, +Env, -T): T is the value type of a GNU
 % statement expression with block Items: its last item's, once the

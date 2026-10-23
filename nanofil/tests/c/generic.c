@@ -32,3 +32,16 @@ long null_arm(long x) {
     return r + *(x ? p : (void *)0) * 100;
 }
 // run: $null_arm 1
+/* A void * arm that is not a null pointer constant makes ?: a pointer to
+   void, qualified with both arms' target qualifiers (C11 6.5.15p6). */
+long void_arm(long x) {
+    int i = 7, *p = &i;
+    void *q = p;
+    const void *cq = p;
+    long r = _Generic(x ? p : q, void *: 1, int *: 1000);
+    r += _Generic(x ? q : p, void *: 2, int *: 2000);
+    r += _Generic(x ? (const int *)p : q, const void *: 4, default: 4000);
+    r += _Generic(x ? p : cq, const void *: 8, default: 8000);
+    return r + *(int *)(x ? p : q) * 100;
+}
+// run: $void_arm 1
