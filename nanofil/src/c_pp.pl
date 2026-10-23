@@ -25,13 +25,18 @@
 :- use_module(library(charsio)).
 :- use_module(c_lex).
 
-% pp_file(+File, +Profile, -Tokens): File preprocessed into c_lex tokens.
-% Profile is profile(Macros, IncludeDirs, FeatureAnswers) from pp_profile/2.
+%! pp_file(+File, +Profile, -Tokens)
+%
+%  Tokens are the c_lex tokens of File after preprocessing, each at the
+%  location of the preprocessing token it came from. Profile is
+%  profile(Macros, IncludeDirs, FeatureAnswers) from pp_profile/2.
+%  Throws nanofil_error/1 on a preprocessing or lexical error.
 pp_file(File, profile(Macros, Paths, Features), Tokens) :-
     preprocess(File, env(Macros, Paths, Features, [], File), _, PpTokens),
     phrase(lex_tokens(PpTokens), Tokens).
 
-% Each preprocessing token is lexed on its own and keeps its location.
+% lex_tokens(+PpTokens)//: the c_lex tokens of PpTokens. Each
+% preprocessing token is lexed on its own and keeps its location.
 lex_tokens([]) --> [].
 lex_tokens([t(A, Loc, _, _)|PpTokens]) -->
     {   atom_chars(A, Cs),
@@ -60,14 +65,18 @@ preprocess(File, Env0, Env, Tokens) :-
         Env = env(Macros, Paths, Features, Once, Includer)
     ).
 
-% Impure file adapter. Keep the input buffer local so it can be reclaimed
-% before processing nested includes; the macro environment stays explicit.
+% read_source(+File, -PpTokens): PpTokens are File's preprocessing
+% tokens, before line splitting. Impure file adapter. Keep the input
+% buffer local so it can be reclaimed before processing nested includes;
+% the macro environment stays explicit.
 read_source(File, PpTokens) :-
     phrase_from_file(seq(Cs), File),
     once(source_tokens(Cs, File:1, PpTokens)).
 
 %% Translation phases 2 and 3
 
+% source_tokens(+Chars, +Loc, -PpTokens): PpTokens are the preprocessing
+% tokens of Chars, which start at Loc.
 % A comment is one whitespace character, even across physical newlines.
 % A parallel location vector survives splicing even inside identifiers and
 % literals. In particular __LINE__ after a continuation is the physical
@@ -97,8 +106,12 @@ located_splice([], _, [], []).
 
 % scan(PpTokens, Locs, Space): Locs runs in step with the input
 % characters; Space says whether whitespace precedes the next token.
-scan([nl|Ts], [_|Locs], _) --> ['\n'], !, scan(Ts, Locs, yes).
-scan(Ts, [_|Locs], _) --> [C], { space(C) }, !, scan(Ts, Locs, yes).
+scan([nl|Ts], [_|Locs], _) -->
+    ['\n'], !,
+    scan(Ts, Locs, yes).
+scan(Ts, [_|Locs], _) -->
+    [C], { space(C) }, !,
+    scan(Ts, Locs, yes).
 scan(Ts, [_, _|Locs], _) -->
     ['/', '/'], !,
     line_comment(Locs, Rest),
@@ -117,8 +130,11 @@ scan([t(A, Loc, Space, [])|Ts], [Loc|Locs], Space) -->
     scan(Ts, Rest, no).
 scan([], [], _) --> [].
 
+% drop(+N, +Xs, -Rest): Rest is Xs without its first N elements.
 drop(0, Xs, Xs) :- !.
-drop(N, [_|Xs], Rest) :- N1 is N - 1, drop(N1, Xs, Rest).
+drop(N, [_|Xs], Rest) :-
+    N1 is N - 1,
+    drop(N1, Xs, Rest).
 
 space(' ').
 space('\t').
@@ -126,24 +142,39 @@ space('\r').
 space('\f').
 space('\v').
 
-% The comment's characters and their locations, leaving the newline.
+% line_comment(+Locs, -Rest)//: the comment's characters, leaving the
+% newline; Rest is Locs without their locations.
 line_comment(Locs, Locs), ['\n'] --> ['\n'], !.
-line_comment([_|Locs], Rest) --> [_], !, line_comment(Locs, Rest).
+line_comment([_|Locs], Rest) -->
+    [_], !,
+    line_comment(Locs, Rest).
 line_comment([], []) --> [].
 
+% block_comment(+Locs, -Rest)//: like line_comment//2, through the */.
 block_comment([_, _|Locs], Locs) --> ['*', '/'], !.
-block_comment([_|Locs], Rest) --> [_], !, block_comment(Locs, Rest).
+block_comment([_|Locs], Rest) -->
+    [_], !,
+    block_comment(Locs, Rest).
 block_comment(_, _) -->
     { throw(nanofil_error('unterminated preprocessing comment')) }.
 
-% spelling(Chars): one preprocessing token.
+% spelling(-Chars)//: Chars is the spelling of one preprocessing token,
+% the longest that matches.
 spelling([P, Q|Cs]) -->
     [P, Q], { memberchk(P, ['L', u, 'U']), memberchk(Q, ['"', '\'']) }, !,
     quoted(Q, Cs).
-spelling([Q|Cs]) --> [Q], { memberchk(Q, ['"', '\'']) }, !, quoted(Q, Cs).
-spelling([C|Cs]) --> [C], { ident_start(C) }, !, ident_rest(Cs).
-spelling([C|Cs]) --> [C], { digit(C) }, !, number_rest(Cs).
-spelling(['.', C|Cs]) --> ['.', C], { digit(C) }, !, number_rest(Cs).
+spelling([Q|Cs]) -->
+    [Q], { memberchk(Q, ['"', '\'']) }, !,
+    quoted(Q, Cs).
+spelling([C|Cs]) -->
+    [C], { ident_start(C) }, !,
+    ident_rest(Cs).
+spelling([C|Cs]) -->
+    [C], { digit(C) }, !,
+    number_rest(Cs).
+spelling(['.', C|Cs]) -->
+    ['.', C], { digit(C) }, !,
+    number_rest(Cs).
 spelling(Cs) -->
     [A, B, C],
     {   Cs = [A, B, C],
@@ -160,9 +191,15 @@ spelling(Cs) -->
     }, !.
 spelling([C]) --> [C].
 
-quoted(Q, ['\\', C|Cs]) --> ['\\', C], !, quoted(Q, Cs).
+% quoted(+Quote, -Chars)//: Chars is the rest of a literal through its
+% closing Quote, escapes kept as written.
+quoted(Q, ['\\', C|Cs]) -->
+    ['\\', C], !,
+    quoted(Q, Cs).
 quoted(Q, [Q]) --> [Q], !.
-quoted(Q, [C|Cs]) --> [C], { C \== '\n' }, !, quoted(Q, Cs).
+quoted(Q, [C|Cs]) -->
+    [C], { C \== '\n' }, !,
+    quoted(Q, Cs).
 quoted(_, _) -->
     { throw(nanofil_error('unterminated preprocessing literal')) }.
 
@@ -175,24 +212,32 @@ digit(C) :- C @>= '0', C @=< '9'.
 ident_char(C) :- ident_start(C), !.
 ident_char(C) :- digit(C).
 
-ident_rest([C|Cs]) --> [C], { ident_char(C) }, !, ident_rest(Cs).
+ident_rest([C|Cs]) -->
+    [C], { ident_char(C) }, !,
+    ident_rest(Cs).
 ident_rest([]) --> [].
 
 number_rest([E, S|Cs]) -->
     [E, S],
     { memberchk(E, [e, 'E', p, 'P']), memberchk(S, ['+', '-']) }, !,
     number_rest(Cs).
-number_rest([C|Cs]) --> [C], { ident_char(C) ; C == '.' }, !, number_rest(Cs).
+number_rest([C|Cs]) -->
+    [C], { ident_char(C) ; C == '.' }, !,
+    number_rest(Cs).
 number_rest([]) --> [].
 
 %% Lines and directives
 
+% token_lines(+PpTokens, -Lines): Lines are PpTokens split at each nl,
+% the nl tokens dropped.
 token_lines([], []).
 token_lines(Ts, [Line|Lines]) :-
     Ts \= [],
     take_line(Ts, Line, Rest),
     token_lines(Rest, Lines).
 
+% take_line(+PpTokens, -Line, -Rest): Line is PpTokens up to the first
+% nl, and Rest follows it.
 take_line([], [], []).
 take_line([nl|Ts], [], Ts) :- !.
 take_line([T|Ts], [T|Line], Rest) :- take_line(Ts, Line, Rest).
@@ -205,33 +250,38 @@ process_lines([], File, Stack, Pending, Env, Env, Ts, End) :-
     ( Stack = [] -> true ; pp_error(File:1, 'unterminated #if') ),
     expand_pending(Pending, Env, Expanded),
     append(Expanded, End, Ts).
+process_lines([[t('#', HashLoc, _, _)|Directive]|Lines], File, Stack,
+              Pending, Env0, Env, Ts, End) :-
+    !,
+    expand_pending(Pending, Env0, Expanded),
+    append(Expanded, Rest, Ts),
+    (   Directive = [t(line, _, _, _)|Args], active(Stack)
+    ->  expand(Args, Env0, Marker),
+        line_target(Marker, HashLoc, Target),
+        remap_lines(Lines, HashLoc, Target, More),
+        Stack1 = Stack,
+        Env1 = Env0,
+        Rest = Next
+    ;   directive(Directive, File, Stack, Stack1, Env0, Env1, Rest, Next),
+        More = Lines
+    ),
+    process_lines(More, File, Stack1, [], Env1, Env, Next, End).
 process_lines([Line|Lines], File, Stack, Pending, Env0, Env, Ts, End) :-
-    (   Line = [t('#', HashLoc, _, _)|Directive]
-    ->  expand_pending(Pending, Env0, Expanded),
-        append(Expanded, Rest, Ts),
-        (   Directive = [t(line, _, _, _)|Args], active(Stack)
-        ->  expand(Args, Env0, Marker),
-            line_target(Marker, HashLoc, Target),
-            remap_lines(Lines, HashLoc, Target, More),
-            Stack1 = Stack,
-            Env1 = Env0,
-            Rest = Next
-        ;   directive(Directive, File, Stack, Stack1, Env0, Env1, Rest, Next),
-            More = Lines
-        ),
-        process_lines(More, File, Stack1, [], Env1, Env, Next, End)
-    ;   active(Stack)
+    (   active(Stack)
     ->  process_lines(Lines, File, Stack, [Line|Pending], Env0, Env, Ts, End)
     ;   process_lines(Lines, File, Stack, Pending, Env0, Env, Ts, End)
     ).
 
-% #line N ["file"]: the line after the directive is line N (of file).
+% line_target(+Marker, +HashLoc, -Target): for #line N ["file"] at
+% HashLoc, the line after the directive is line N (of file), Target.
 line_target([t(A, _, _, _)|Ts], File:_, NewFile:N) :-
     atom_number(A, N),
     integer(N),
     N > 0,
     ( Ts = [] -> NewFile = File ; include_name(Ts, NewFile, quote) ).
 
+% remap_lines(+Lines, +Old, +New, -Remapped): the tokens of Lines, which
+% follow the directive at Old, renumbered so that the first is at New.
 remap_lines([], _, _, []).
 remap_lines([Ts|Lines], Old, New, [Rs|Rest]) :-
     maplist(remap_token(Old, New), Ts, Rs),
@@ -242,6 +292,8 @@ remap_token(Old, New, t(A, Loc, Space, Hide), t(A, Loc1, Space, Hide)) :-
 
 remap_location(_:Old, File:New, _:N, File:M) :- M is N-Old-1+New.
 
+% expand_pending(+Pending, +Env, -Ts): Ts are the expanded tokens of the
+% reversed list of lines Pending.
 expand_pending(Pending, Env, Ts) :-
     reverse(Pending, Lines),
     append(Lines, Flat),
@@ -254,6 +306,7 @@ expand_pending(Pending, Env, Ts) :-
 active([]).
 active([cond(yes, _, _)|_]).
 
+% condition_truth(+Value, -Taken): Taken is yes if Value is nonzero.
 condition_truth(V, yes) :- V =\= 0, !.
 condition_truth(_, no).
 
@@ -283,6 +336,8 @@ conditional_directive(elif).
 conditional_directive(else).
 conditional_directive(endif).
 
+% conditional(+Name, +Loc, +Args, +Env, +Stack0, -Stack): Stack is the
+% conditional stack after the directive #Name Args.
 conditional(elif, Loc, Args, Env, Stack0, [cond(Taken, Seen1, Parent)|Tail]) :-
     !,
     (   Stack0 = [cond(_, Seen, Parent)|Tail], Seen \== else
@@ -295,14 +350,19 @@ conditional(elif, Loc, Args, Env, Stack0, [cond(Taken, Seen1, Parent)|Tail]) :-
     ;   Taken = no
     ),
     ( Taken == yes -> Seen1 = yes ; Seen1 = Seen ).
-conditional(else, Loc, _, _, Stack0, [cond(Taken, else, Parent)|Tail]) :- !,
+conditional(else, Loc, _, _, Stack0, [cond(Taken, else, Parent)|Tail]) :-
+    !,
     (   Stack0 = [cond(_, Seen, Parent)|Tail], Seen \== else
     ->  true
     ;   pp_error(Loc, 'unexpected #else')
     ),
     ( Seen == no -> Taken = Parent ; Taken = no ).
-conditional(endif, Loc, _, _, Stack0, Stack) :- !,
-    ( Stack0 = [_|Stack] -> true ; pp_error(Loc, 'unexpected #endif') ).
+conditional(endif, Loc, _, _, Stack0, Stack) :-
+    !,
+    (   Stack0 = [_|Stack]
+    ->  true
+    ;   pp_error(Loc, 'unexpected #endif')
+    ).
 conditional(Kind, _, Args, Env, Stack0, [cond(Taken, Taken, Parent)|Stack0]) :-
     (   active(Stack0)
     ->  Parent = yes,
@@ -312,6 +372,9 @@ conditional(Kind, _, Args, Env, Stack0, [cond(Taken, Taken, Parent)|Stack0]) :-
         Taken = no
     ).
 
+% active_directive(+Name, +Loc, +Args, +File, +Env0, -Env, -Ts, ?Rest):
+% run #Name Args in an active group; Ts is Rest with an included file's
+% tokens in front.
 active_directive(define, _, Args, _, Env0, Env, Ts, Ts) :- !,
     Env0 = env(Macros0, Paths, Features, Once, File),
     define(Args, Macros0, Macros),
@@ -322,7 +385,8 @@ active_directive(undef, _, Args, _, Env0, Env, Ts, Ts) :- !,
     remove_macro(Name, Macros0, Macros),
     Env = env(Macros, Paths, Features, Once, File).
 active_directive(Kind, Loc, Args, File, Env0, Env, Ts, Rest) :-
-    memberchk(Kind, [include, include_next]), !,
+    memberchk(Kind, [include, include_next]),
+    !,
     Env0 = env(_, Paths, _, _, _),
     header_operand(Args, Env0, Name, Form),
     search_paths(Kind, File, Paths, Search),
@@ -351,12 +415,20 @@ pragma([t(Op, _, _, _), t('(', _, _, _), Str, t(')', _, _, _)], _,
        env(Macros0, Paths, Features, Once, Current),
        env(Macros, Paths, Features, Once, Current)) :-
     memberchk(Op, [push_macro, pop_macro]),
-    include_name([Str], Name, quote), !,
-    (   Op == push_macro
-    ->  ( get_assoc(Name, Macros0, Def) -> Saved = some(Def) ; Saved = none ),
-        ( get_assoc(saved(Name), Macros0, Stack) -> true ; Stack = [] ),
-        put_assoc(saved(Name), Macros0, [Saved|Stack], Macros)
-    ;   get_assoc(saved(Name), Macros0, [Saved|Stack])
+    include_name([Str], Name, quote),
+    !,
+    macro_stack_op(Op, Name, Macros0, Macros).
+pragma(_, _, Env, Env).
+
+% macro_stack_op(+Op, +Name, +Macros0, -Macros): Macros is Macros0 after
+% #pragma Op("Name"). A saved entry is some(Def) or none (undefined); a
+% pop with nothing saved changes nothing.
+macro_stack_op(push_macro, Name, Macros0, Macros) :-
+    ( get_assoc(Name, Macros0, Def) -> Saved = some(Def) ; Saved = none ),
+    ( get_assoc(saved(Name), Macros0, Stack) -> true ; Stack = [] ),
+    put_assoc(saved(Name), Macros0, [Saved|Stack], Macros).
+macro_stack_op(pop_macro, Name, Macros0, Macros) :-
+    (   get_assoc(saved(Name), Macros0, [Saved|Stack])
     ->  put_assoc(saved(Name), Macros0, Stack, Macros1),
         (   Saved = some(Def)
         ->  put_assoc(Name, Macros1, Def, Macros)
@@ -364,15 +436,18 @@ pragma([t(Op, _, _, _), t('(', _, _, _), Str, t(')', _, _, _)], _,
         )
     ;   Macros = Macros0
     ).
-pragma(_, _, Env, Env).
 
+% remove_macro(+Name, +Macros0, -Macros): Macros is Macros0 without
+% Name, which need not be defined.
 remove_macro(Name, Macros0, Macros) :-
     (   del_assoc(Name, Macros0, _, Macros1)
     ->  Macros = Macros1
     ;   Macros = Macros0
     ).
 
-% A macro is function-like if '(' follows its name without a space.
+% define(+Tokens, +Macros0, -Macros): Macros is Macros0 with the
+% definition Tokens of #define. A macro is function-like if '(' follows
+% its name without a space.
 define([t(Name, _, _, _)|Ts], Macros0, Macros) :-
     (   Ts = [t('(', _, no, _)|Rest]
     ->  macro_params(Rest, Params, Body),
@@ -388,7 +463,8 @@ macro_params([t('...', _, _, _), t(')', _, _, _)|Ts],
              [variadic('__VA_ARGS__')], Ts) :- !.
 macro_params([t(P, _, _, _), t('...', _, _, _), t(')', _, _, _)|Ts],
              [variadic(P)], Ts) :- !.
-macro_params([t(P, _, _, _), t(',', _, _, _)|Ts], [P|Ps], Body) :- !,
+macro_params([t(P, _, _, _), t(',', _, _, _)|Ts], [P|Ps], Body) :-
+    !,
     macro_params(Ts, Ps, Body).
 macro_params([t(P, _, _, _), t(')', _, _, _)|Ts], [P], Ts).
 
@@ -398,7 +474,8 @@ macro_params([t(P, _, _, _), t(')', _, _, _)|Ts], [P], Ts).
 include_name([t(A, _, _, _)], Name, quote) :-
     atom_chars(A, ['"'|Cs]),
     append(Chars, ['"'], Cs),
-    atom_chars(Name, Chars), !.
+    atom_chars(Name, Chars),
+    !.
 include_name([t('<', _, _, _)|Ts], Name, angle) :-
     append(Mid, [t('>', _, _, _)], Ts),
     maplist(token_spelling, Mid, As),
@@ -406,7 +483,9 @@ include_name([t('<', _, _, _)|Ts], Name, angle) :-
 
 token_spelling(t(A, _, _, _), A).
 
-% The operand is expanded only if it is not already a header name.
+% header_operand(+Tokens, +Env, -Name, -Form): the header name of an
+% #include or __has_include operand. The operand is expanded only if it
+% is not already a header name.
 header_operand(Ts, Env, Name, Form) :-
     (   include_name(Ts, Name, Form)
     ->  true
@@ -414,22 +493,31 @@ header_operand(Ts, Env, Name, Form) :-
         include_name(Expanded, Name, Form)
     ).
 
+% include_path(+Name, +Form, +File, +Dirs, -Path): Path is the first
+% existing file for header Name included from File: an absolute Name,
+% then (for quote) File's directory, then Dirs in order. Each cut
+% commits to the first existing file, so at most one Path is found.
 include_path(Name, _, _, _, Name) :-
     sub_atom(Name, 0, 1, _, '/'),
-    exists_file(Name), !.
+    exists_file(Name),
+    !.
 include_path(Name, quote, File, _, Path) :-
     file_directory(File, Dir),
     path_join(Dir, Name, Path),
-    exists_file(Path), !.
+    exists_file(Path),
+    !.
 include_path(Name, _, _, Dirs, Path) :-
     member(Dir, Dirs),
     path_join(Dir, Name, Path),
-    exists_file(Path), !.
+    exists_file(Path),
+    !.
 
+% file_directory(+File, -Dir): Dir is File up to its last '/', or '.'.
 file_directory(File, Dir) :-
     atom_chars(File, Cs),
     reverse(Cs, Rev),
-    append(_, ['/'|Tail], Rev), !,
+    append(_, ['/'|Tail], Rev),
+    !,
     reverse(Tail, Ds),
     atom_chars(Dir, Ds).
 file_directory(_, '.').
@@ -438,6 +526,8 @@ path_join(Dir, Name, Path) :- atomic_list_concat([Dir, '/', Name], Path).
 
 % search_paths(+Kind, +File, +Dirs, -Search): #include_next and
 % __has_include_next search the directories after the one File is in.
+% Kinds include and __has_include also match the last clause, so a
+% retry yields a second Search (the directories after File's, if any).
 search_paths(include, _, Dirs, Dirs).
 search_paths('__has_include', _, Dirs, Dirs).
 search_paths(_, File, Dirs, Rest) :-
@@ -455,6 +545,7 @@ search_paths(_, File, Dirs, Rest) :-
 % and a replacement may consume a function-call '(' from the input tail.
 % A function-like replacement's hide set is the intersection of the hide
 % sets of the macro name and of the closing ')', plus the name.
+% expand(+Ts, +Env, -Out): Out is Ts fully macro-expanded.
 expand([], _, []).
 expand([T|Ts], Env, Out) :-
     T = t(A, Loc, Space, Hide),
@@ -477,6 +568,7 @@ expand([T|Ts], Env, Out) :-
         expand(Ts, Env, Out1)
     ).
 
+% hide_intersection(+As, +Bs, -Cs): Cs are the elements of As in Bs.
 hide_intersection([], _, []).
 hide_intersection([A|As], Bs, Cs) :-
     ( memberchk(A, Bs) -> Cs = [A|Cs1] ; Cs = Cs1 ),
@@ -523,10 +615,12 @@ macro_arguments([T|Ts], Depth, Rev, Acc, Args, Rest, Hide) :-
 bind_params([], [], _, [], _).
 bind_params([variadic(P)], Args, Env, [bind(P, Raw, Env)], _) :- !,
     comma_join(Args, Raw).
-bind_params([P|Ps], [A|As], Env, [bind(P, A, Env)|Bindings], Loc) :- !,
+bind_params([P|Ps], [A|As], Env, [bind(P, A, Env)|Bindings], Loc) :-
+    !,
     bind_params(Ps, As, Env, Bindings, Loc).
 bind_params(_, _, _, _, Loc) :- pp_error(Loc, 'wrong macro argument count').
 
+% comma_join(+Args, -Ts): Ts are the token lists Args joined by commas.
 comma_join([], []).
 comma_join([A], A) :- !.
 comma_join([A|As], Ts) :-
@@ -561,6 +655,8 @@ substitute_tokens([t(P, Loc, Space, Hide)|Ts], Bindings, AfterPaste, Rs) :-
     append(R, Tail, Rs),
     substitute_tokens(Ts, Bindings, Next, Tail).
 
+% stringify(+Ts, -A): A is the string literal spelling of Ts, as #
+% makes it.
 stringify(Ts, A) :-
     phrase(stringify_chars(Ts, first), Cs),
     phrase(escape_string(Cs), Escaped),
@@ -582,7 +678,8 @@ escape_string([C|Cs]) -->
 % paste(+Ts, -Rs, +Loc): apply ## and drop placemarkers. A pasted
 % spelling must be exactly one preprocessing token.
 paste([t(A, Loc, Space, Hide), t('##', _, _, _), t(B, _, _, Hide1)|Ts], Rs,
-      MacroLoc) :- !,
+      MacroLoc) :-
+    !,
     atom_concat(A, B, C),
     (   C == ''
     ->  true
@@ -593,10 +690,14 @@ paste([t(A, Loc, Space, Hide), t('##', _, _, _), t(B, _, _, Hide1)|Ts], Rs,
     ),
     hide_intersection(Hide, Hide1, Hide2),
     paste([t(C, Loc, Space, Hide2)|Ts], Rs, MacroLoc).
-paste([t('', _, _, _)|Ts], Rs, Loc) :- !, paste(Ts, Rs, Loc).
+paste([t('', _, _, _)|Ts], Rs, Loc) :-
+    !,
+    paste(Ts, Rs, Loc).
 paste([T|Ts], [T|Rs], Loc) :- paste(Ts, Rs, Loc).
 paste([], [], _).
 
+% builtin(+T, +Ts, -Rest, +Env, -Repl): T, applied to a prefix of Ts
+% that leaves Rest, is a builtin operator replaced by Repl.
 % Builtin operators are not macros in clang's -dM output. Feature answers
 % are discovered once with the target profile, not guessed from __GNUC__.
 builtin(t('__LINE__', Loc, Space, Hide), Ts, Ts, _, [t(A, Loc, Space, Hide)]) :-
@@ -626,6 +727,8 @@ feature_operator('__has_feature').
 feature_operator('__has_c_attribute').
 feature_operator('__building_module').
 
+% is_defined(+Name, +Env): Name is a macro or builtin operator, as
+% defined and #ifdef see it.
 is_defined(A, env(Macros, _, _, _, _)) :- get_assoc(A, Macros, _), !.
 is_defined('__has_include', _).
 is_defined('__has_include_next', _).
@@ -653,11 +756,13 @@ condition(if, Args, Env, V) :-
 % defined X and defined(X) become 1 or 0 before macro expansion.
 defined_tokens([], _, []).
 defined_tokens([t(defined, Loc, Space, Hide), t('(', _, _, _), t(A, _, _, _),
-                t(')', _, _, _)|Ts], Env, [t(V, Loc, Space, Hide)|Rs]) :- !,
+                t(')', _, _, _)|Ts], Env, [t(V, Loc, Space, Hide)|Rs]) :-
+    !,
     ( is_defined(A, Env) -> V = '1' ; V = '0' ),
     defined_tokens(Ts, Env, Rs).
 defined_tokens([t(defined, Loc, Space, Hide), t(A, _, _, _)|Ts], Env,
-               [t(V, Loc, Space, Hide)|Rs]) :- !,
+               [t(V, Loc, Space, Hide)|Rs]) :-
+    !,
     ( is_defined(A, Env) -> V = '1' ; V = '0' ),
     defined_tokens(Ts, Env, Rs).
 defined_tokens([T|Ts], Env, [T|Rs]) :- defined_tokens(Ts, Env, Rs).
@@ -679,9 +784,12 @@ expr_token(t(A, _, _, _), T) :-
         )
     ).
 
+% expression(-Tree)//: a #if expression over expr_token/2 tokens. This
 % Pratt-style precedence DCG builds an expression before evaluating it:
 % inactive &&/||/?: arms must not divide by zero.
-expression(T) --> binary(1, A), conditional_rest(A, T).
+expression(T) -->
+    binary(1, A),
+    conditional_rest(A, T).
 
 conditional_rest(C, T) -->
     ['?'], !,
@@ -691,7 +799,11 @@ conditional_rest(C, T) -->
     { T = tern(C, A, B) }.
 conditional_rest(T, T) --> [].
 
-binary(Min, T) --> unary(A), binary_rest(Min, A, T).
+% binary(+Min, -Tree)//: an expression whose binary operators have
+% precedence Min or more.
+binary(Min, T) -->
+    unary(A),
+    binary_rest(Min, A, T).
 
 binary_rest(Min, A, T) -->
     [Op], { precedence(Op, P), P >= Min }, !,
@@ -700,8 +812,13 @@ binary_rest(Min, A, T) -->
     binary_rest(Min, bin(Op, A, B), T).
 binary_rest(_, T, T) --> [].
 
-unary(un(Op, A)) --> [Op], { memberchk(Op, ['+', '-', '!', '~']) }, !, unary(A).
-unary(A) --> ['('], !, expression(A), [')'].
+unary(un(Op, A)) -->
+    [Op], { memberchk(Op, ['+', '-', '!', '~']) }, !,
+    unary(A).
+unary(A) -->
+    ['('], !,
+    expression(A),
+    [')'].
 unary(num(N)) --> [num(N)].
 unary(num(N, S)) --> [num(N, S)].
 
@@ -724,6 +841,7 @@ precedence('*', 10).
 precedence('/', 10).
 precedence('%', 10).
 
+% eval(+Tree, -Value): Value is the value of the #if expression Tree.
 % Preprocessor arithmetic uses intmax_t/uintmax_t (64 bits at this pin),
 % not the host Prolog's unbounded integers or floating-point division.
 eval(num(N), N).
@@ -738,10 +856,12 @@ eval(tern(C, A, B), V) :-
     ( X =\= 0 -> eval(A, R) ; eval(B, R) ),
     expr_unsigned(tern(C, A, B), U),
     wrap(R, U, V).
-eval(bin('&&', A, B), V) :- !,
+eval(bin('&&', A, B), V) :-
+    !,
     eval(A, X),
     ( X =:= 0 -> V = 0 ; eval(B, Y), boolean(Y, V) ).
-eval(bin('||', A, B), V) :- !,
+eval(bin('||', A, B), V) :-
+    !,
     eval(A, X),
     ( X =\= 0 -> V = 1 ; eval(B, Y), boolean(Y, V) ).
 eval(bin(Op, A, B), V) :-
@@ -776,6 +896,8 @@ expr_unsigned(bin(Op, A, B), U) :-
     ;   usual_unsigned(A, B, U)
     ).
 
+% usual_unsigned(+A, +B, -U): U is yes if either operand is unsigned, as
+% the usual arithmetic conversions decide.
 usual_unsigned(A, B, U) :-
     expr_unsigned(A, UA),
     expr_unsigned(B, UB),
@@ -789,6 +911,7 @@ wrap(N, U, V) :-
     ;   V = Bits
     ).
 
+% boolean(+X, -B): B is 1 if X is nonzero, else 0.
 boolean(X, 1) :- X =\= 0, !.
 boolean(_, 0).
 
@@ -820,7 +943,13 @@ pp_error(Loc, Why) :-
 
 %% Target profile
 
-% Impure adapter: discover the selected target, never preprocess the input.
+%! pp_profile(+Clang, -Profile)
+%
+%  Profile is profile(Macros, IncludeDirs, FeatureAnswers) for the
+%  target of the clang executable Clang: its predefined macros, its
+%  #include <...> search path and its answers to feature operators.
+%
+%  Impure adapter: discover the selected target, never preprocess the input.
 % This avoids embedding Nix store paths or a second, stale copy of the pin's
 % 400+ predefined macros. Pipes are drained before waiting for the child.
 pp_profile(Clang, profile(Macros, Paths, Features)) :-
@@ -838,10 +967,13 @@ pp_profile(Clang, profile(Macros, Paths, Features)) :-
     include_directories(VerboseLines, Paths),
     feature_profile(Clang, Features).
 
-profile_define([t('#', _, _, _), t(define, _, _, _)|Ts], Macros0, Macros) :- !,
+profile_define([t('#', _, _, _), t(define, _, _, _)|Ts], Macros0, Macros) :-
+    !,
     define(Ts, Macros0, Macros).
 profile_define(_, Macros, Macros).
 
+% clang_output(+Command, +Args, -Chars): run Command with Args; Chars is
+% its standard output. Fails unless it exits with status 0.
 clang_output(Command, Args, Cs) :-
     process_create(Command, Args, [stdout(pipe(Out)), process(Pid)]),
     read_chars(Out, Cs),
@@ -856,24 +988,33 @@ read_chars(Stream, Cs) :-
         read_chars(Stream, Rest)
     ).
 
-text_lines([Line|Lines]) --> text_line(Line), !, text_lines(Lines).
+text_lines([Line|Lines]) -->
+    text_line(Line), !,
+    text_lines(Lines).
 text_lines([]) --> [].
 
 % A line needs at least a newline or one character.
 text_line([]) --> ['\n'], !.
-text_line([C|Cs]) --> [C], !, text_rest(Cs).
+text_line([C|Cs]) -->
+    [C], !,
+    text_rest(Cs).
 
 text_rest([]) --> ['\n'], !.
-text_rest([C|Cs]) --> [C], !, text_rest(Cs).
+text_rest([C|Cs]) -->
+    [C], !,
+    text_rest(Cs).
 text_rest([]) --> [].
 
+% include_directories(+Lines, -Paths): Paths are the directories listed
+% after clang -v's "#include <...>" line; fails if there is none.
 include_directories([Line|Lines], Paths) :-
     (   Line = "#include <...> search starts here:"
     ->  path_lines(Lines, Paths)
     ;   include_directories(Lines, Paths)
     ).
 
-path_lines([[' '|Cs]|Lines], [Path|Paths]) :- !,
+path_lines([[' '|Cs]|Lines], [Path|Paths]) :-
+    !,
     atom_chars(Path, Cs),
     path_lines(Lines, Paths).
 path_lines(_, []).
@@ -899,6 +1040,8 @@ feature_profile(Clang, features(Clang, Answers)) :-
     findall(Op-Name, ( feature_names(Op, Names), member(Name, Names) ), Pairs),
     query_features(Clang, Pairs, Answers).
 
+% feature_value(+Features, +Op, +Name, -A): A is the spelling of
+% Op(Name), asking clang if the profile has no answer for it.
 % This is target introspection only: pass an operator and a single name,
 % never a source expression, file, declaration or include to clang.
 feature_value(features(Clang, Answers), Op, Name, A) :-
@@ -910,6 +1053,8 @@ feature_value(features(Clang, Answers), Op, Name, A) :-
         query_features(Clang, [Op-Name], [answer(Op, Name, A)])
     ).
 
+% query_features(+Clang, +Pairs, -Answers): Answers are clang's
+% answer(Op, Name, A) for each Op-Name in Pairs.
 query_features(Clang, Pairs, Answers) :-
     findall(Quoted,
             (   member(Op-Name, Pairs),
@@ -928,6 +1073,7 @@ query_features(Clang, Pairs, Answers) :-
 
 feature_answer(Op-Name, t(A, _, _, _), answer(Op, Name, A)).
 
+% shell_quote(+A, -Quoted): Quoted is A in single quotes for /bin/sh.
 shell_quote(A, Quoted) :-
     atom_chars(A, Cs),
     phrase(shell_chars(Cs), Escaped),
@@ -935,5 +1081,7 @@ shell_quote(A, Quoted) :-
     atom_chars(Quoted, All).
 
 shell_chars([]) --> [].
-shell_chars(['\''|Cs]) --> "'\\''", !, shell_chars(Cs).
+shell_chars(['\''|Cs]) -->
+    "'\\''", !,
+    shell_chars(Cs).
 shell_chars([C|Cs]) --> [C], shell_chars(Cs).

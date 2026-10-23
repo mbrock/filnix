@@ -1,9 +1,5 @@
 /*  promote: memory slots to SSA temporaries (QBE's promote and ssa,
-    LLVM's mem2reg).
-
-    promote_module(+M0, -M)
-    promote_func(+Mode, +F0, -F)
-      Mode is module_mode/2 of the module being promoted.
+    LLVM's mem2reg), by promote_module/2 and promote_func/3.
 
     A slot is one fixed (offset, width) of an alloc that escape.pl calls
     local. An alloc is promoted, all its slots at once, when
@@ -42,14 +38,24 @@
 :- use_module(cfg).
 :- use_module(escape).
 
+%! promote_module(+M0, -M) is det.
+%
+%  M is the module M0 with the promotable allocs of each function
+%  promoted.
+
 promote_module(module(Items0), module(Items)) :-
     module_mode(module(Items0), Mode),
     maplist(promote_item(Mode), Items0, Items).
 
 promote_item(Mode, Item0, Item) :-
-    Item0 = func(_, _, _, _, _), !,
+    Item0 = func(_, _, _, _, _),
+    !,
     promote_func(Mode, Item0, Item).
 promote_item(_, Item, Item).
+
+%! alloc_count(+M, -N) is det.
+%
+%  N is the number of alloc instructions in the functions of module M.
 
 alloc_count(module(Items), N) :-
     findall(x,
@@ -58,6 +64,12 @@ alloc_count(module(Items), N) :-
               member(ins(_, _, alloc(_), _), Insts) ),
             Allocs),
     length(Allocs, N).
+
+%! promote_func(+Mode, +F0, -F) is det.
+%
+%  F is the function F0 with its promotable allocs promoted, or F0 if
+%  it has none or is not in strict SSA form. Mode is module_mode/2 of
+%  the module being promoted.
 
 promote_func(Mode, F0, F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
@@ -71,8 +83,11 @@ promote_func(Mode, F0, F) :-
     ;   F = F0
     ).
 
-/* promotable(+Mode, +F, -Roots): Roots is [A-Slots] for the allocs that
-   can be promoted, Slots an ordset of acc(Off, Width). */
+%! promotable(+Mode, +F, -Roots) is det.
+%
+%  Roots is [A-Slots] for the allocs A of F that can be promoted, in
+%  order, Slots an ordset of acc(Off, Width).
+
 promotable(Mode, F, Roots) :-
     F = func(_, _, _, _, [blk(_, _, EntryInsts, _)|_]),
     alloc_classes(F, Classes),
@@ -95,6 +110,7 @@ slot_ok(Mode, Size, acc(Off, Width)) :-
     ;   true
     ).
 
+% slots_disjoint(+Accs): no two of Accs overlap.
 % Accs is sorted by offset, so it is enough to compare neighbours. Two
 % widths at one offset overlap too.
 slots_disjoint([]).
@@ -104,9 +120,13 @@ slots_disjoint([acc(Off1, Width1), acc(Off2, Width2)|Accs]) :-
     Off1 + Bytes1 =< Off2,
     slots_disjoint([acc(Off2, Width2)|Accs]).
 
-/* strict_ssa(+F, +Cfg, +Idom): in the blocks reachable from the entry,
-   every temp has one definition, which dominates each use (a phi
-   argument is used at the end of its predecessor). */
+%! strict_ssa(+F, +Cfg, +Idom) is semidet.
+%
+%  F is in strict SSA form: every temp has one definition, and in the
+%  blocks reachable from the entry each definition dominates each use (a
+%  phi argument is used at the end of its predecessor). Cfg and Idom are
+%  those of F.
+
 strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
     def_counts(F, Counts),
     \+ ( gen_assoc(_, Counts, N), N > 1 ),
@@ -136,14 +156,18 @@ strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
     include(use_reached(Reach), Uses, Checked),
     maplist(defined_at(Defs, Intervals), Checked).
 
-block_reached(Reach, L-_-_-_) :- get_assoc(L, Reach, _).
+block_reached(Reach, L-_-_-_) :-
+    get_assoc(L, Reach, _).
 
-use_reached(Reach, use(_, L, _)) :- get_assoc(L, Reach, _).
+use_reached(Reach, use(_, L, _)) :-
+    get_assoc(L, Reach, _).
 
-mark_reached(L, Reach0, Reach) :- put_assoc(L, Reach0, t, Reach).
+mark_reached(L, Reach0, Reach) :-
+    put_assoc(L, Reach0, t, Reach).
 
-% use(T, L, At): T is read at position At of block L; a phi argument is
-% read at the end (inf) of its predecessor.
+% block_use(+Block, -Use): Block, given as L-Phis-Insts-Jump, reads a
+% temp as Use = use(T, L, At): T is read at position At of block L; a
+% phi argument is read at the end (inf) of its predecessor.
 block_use(_-Phis-_-_, use(T, P, inf)) :-
     member(phi(_, _, Args), Phis),
     member(P-t(T), Args).
@@ -167,6 +191,8 @@ defined_at(Defs, Intervals, use(T, L, At)) :-
 
 %% Rewriting
 
+% promote_roots(+Roots, +F0, +Cfg, +Idom, -Blocks): Blocks are the blocks
+% of F0 with every slot of Roots promoted.
 promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     F0 = func(_, _, _, _, Blocks0),
     address_temps(F0, AllAddrs),
@@ -247,11 +273,12 @@ slot_inst_gen_kill(Addrs, I, Gen0-Kill0, Gen-Kill) :-
         Kill = Kill0
     ).
 
-/* place_phis: the iterated dominance frontier of the blocks that store
-   to Var, keeping only blocks where Var is live on entry. Each placed phi
-   counts as a store for the iteration. Unreachable stores are ignored:
-   they never run. The accumulator is Placed-(N-Used): the Label-(Var-Temp)
-   phis so far, the last fresh temp number, and the names already taken. */
+% place_phis: the iterated dominance frontier of the blocks that store
+% to Var, keeping only blocks where Var is live on entry. Each placed phi
+% counts as a store for the iteration. Unreachable stores are ignored:
+% they never run. The accumulator is Placed-(N-Used): the
+% Label-(Var-Temp) phis so far, the last fresh temp number, and the
+% names already taken.
 place_phis(Stores, DF, LiveIn, Entry, Var,
            Placed0-(N0-Used), Placed-(N-Used)) :-
     (   get_assoc(Var, Stores, Labels0) -> true ; Labels0 = [] ),
@@ -260,7 +287,9 @@ place_phis(Stores, DF, LiveIn, Entry, Var,
     foldl(new_phi(Var, Used), PhiLabels, Placed0-N0, Placed-N).
 
 % Worklist over Labels, collecting the ordset of frontier labels where
-% Var is live; each new one is pushed back on the worklist.
+% Var is live; each new one is pushed back on the worklist. Invariant:
+% Placed0 is the ordset of those labels found so far, and each of them
+% has had its frontier scanned or is still on the worklist.
 iterated_frontier([], _, _, _, Placed, Placed).
 iterated_frontier([L|Ls], Var, DF, LiveIn, Placed0, Placed) :-
     get_assoc(L, DF, Frontier),
@@ -326,7 +355,8 @@ rename_block(L, Cur0, ctx(Addrs, PhiAt), ByLabel, cfg(_, _, Succs, _), Cur,
             Args1),
     append(Args1, Args0, Args).
 
-phi_current(Var-T, Cur0, Cur) :- put_assoc(Var, Cur0, t(T), Cur).
+phi_current(Var-T, Cur0, Cur) :-
+    put_assoc(Var, Cur0, t(T), Cur).
 
 % rewrite_inst(+Addrs, +Ins, Insts0-Cur0, Insts-Cur): a difference list
 % of the rewritten instructions, threading the current values.
@@ -350,8 +380,16 @@ rewrite_inst(Addrs, I, Insts0-Cur0, Insts-Cur) :-
 % at its width (see the header).
 load_op(l, _, copy).
 load_op(p, _, copy).
-load_op(sw, K, Op) :- ( K == w -> Op = copy ; Op = ext(sw) ).
-load_op(uw, K, Op) :- ( K == w -> Op = copy ; Op = ext(uw) ).
+load_op(sw, K, Op) :-
+    (   K == w
+    ->  Op = copy
+    ;   Op = ext(sw)
+    ).
+load_op(uw, K, Op) :-
+    (   K == w
+    ->  Op = copy
+    ;   Op = ext(uw)
+    ).
 load_op(sh, _, ext(sh)).
 load_op(uh, _, ext(uh)).
 load_op(sb, _, ext(sb)).

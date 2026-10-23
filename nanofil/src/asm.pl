@@ -36,34 +36,60 @@
 :- use_module(library(dcgs)).
 :- use_module(library(format)).
 
+%! print_asm(+Lines) is det.
+%
+%  Print Lines, a list of asm.pl lines, to the current output as GNU as
+%  text. Throws nanofil_error(bad_asm_line(Line)) for a line it cannot
+%  print.
 print_asm(Lines) :-
     phrase(lines(Lines), Cs),
     format("~s", [Cs]).
 
 lines([]) --> [].
-lines([Line|Lines]) --> line(Line), lines(Lines).
+lines([Line|Lines]) -->
+    line(Line),
+    lines(Lines).
 
+% The text of one line, committed to its first parse.
 line(Line) -->
     {   line_chars(Line, Cs) -> true
     ;   throw(nanofil_error(bad_asm_line(Line)))
     },
     seq(Cs).
 
-line_chars(Line, Cs) :- phrase(line_text(Line), Cs).
+line_chars(Line, Cs) :-
+    phrase(line_text(Line), Cs).
 
-line_text(label(S)) --> !, literal(S), ":\n".
-line_text(ins(Op, Suffix, Operands)) --> !,
-    "\t", literal(Op), suffix(Suffix), operands(Operands), "\n".
-line_text(Directive) --> "\t", directive(Directive), "\n".
+line_text(label(S)) -->
+    !,
+    literal(S),
+    ":\n".
+line_text(ins(Op, Suffix, Operands)) -->
+    !,
+    "\t",
+    literal(Op),
+    suffix(Suffix),
+    operands(Operands),
+    "\n".
+line_text(Directive) -->
+    "\t",
+    directive(Directive),
+    "\n".
 
 suffix(none) --> !.
 suffix(S) --> literal(S).
 
 operands([]) --> [].
-operands([O|Os]) --> " ", operand(O), more_operands(Os).
+operands([O|Os]) -->
+    " ",
+    operand(O),
+    more_operands(Os).
 
 more_operands([]) --> [].
-more_operands([O|Os]) --> ", ", operand(O), more_operands(Os).
+more_operands([O|Os]) -->
+    ", ",
+    operand(O),
+    more_operands(Os).
 
 operand(imm(E)) --> "$", expr(E).
 operand(reg(R)) --> "%", literal(R).
@@ -78,7 +104,9 @@ operand(ind(O)) --> "*", operand(O).
 disp(0) --> !.
 disp(D) --> literal(D).
 
-expr(A+B) --> !,
+% A sum whose left operand is itself a sum parenthesizes it.
+expr(A+B) -->
+    !,
     (   { A = _+_ } -> "(", expr(A), ")"
     ;   expr(A)
     ),
@@ -106,8 +134,12 @@ directive(ascii(Cs)) --> ".ascii \"", seq(Cs), "\"".
 directive(asciz(A)) --> ".asciz \"", literal(A), "\"".
 
 more_bytes([]) --> [].
-more_bytes([N|Ns]) --> ", ", literal(N), more_bytes(Ns).
+more_bytes([N|Ns]) -->
+    ", ",
+    literal(N),
+    more_bytes(Ns).
 
+% section_name(?Section, ?Name): Name is the directive text of Section.
 section_name(text, ".text").
 section_name(data, ".data").
 section_name(rodata, ".section .rodata").
@@ -117,5 +149,8 @@ section_name(note_gnu_stack, ".section .note.GNU-stack,\"\",@progbits").
 
 % The text of an atom or number.
 literal(X) -->
-    { atom(X) -> atom_chars(X, Cs) ; number_chars(X, Cs) },
+    {   atom(X)
+    ->  atom_chars(X, Cs)
+    ;   number_chars(X, Cs)
+    },
     seq(Cs).

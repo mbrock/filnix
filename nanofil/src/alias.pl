@@ -1,22 +1,16 @@
-/*  Address expressions for M5, not a no-alias or bounds proof.
+/*  Address expressions for M5 (alias_facts/2), not a no-alias or
+    bounds proof.
 
-    alias_facts(+Func, -Facts)
-      Assoc Temp -> addr(Class, Base, Offset), for l/p values in strict
-      SSA functions. Otherwise empty. Base is alloc(Temp), param(Temp),
-      symbol(Name), or value(Temp) for an opaque SSA value (including
-      loads, calls, casts and phis). A missing fact means unknown, e.g.
-      a cycle in unreachable code with no base to start from.
+    Address = Base + Offset modulo 2^64; Offset is the signed 64-bit
+    representative. In class p the capability is also the base's.
+    Follow only same-class copies and constant add/sub. A w copy is not
+    an address alias, even when its operand was an l.
 
-      Address = Base + Offset modulo 2^64; Offset is the signed 64-bit
-      representative. In class p the capability is also the base's.
-      Follow only same-class copies and constant add/sub. A w copy is
-      not an address alias, even when its operand was an l.
-
-      Different bases may alias! Parameters, symbols and opaque values
-      need not name different objects. An alloc base names the current
-      execution of that SSA definition, not all its loop iterations.
-      These facts alone justify neither removing a bounds check nor
-      moving an access or allocation across control flow.
+    Different bases may alias! Parameters, symbols and opaque values
+    need not name different objects. An alloc base names the current
+    execution of that SSA definition, not all its loop iterations. These
+    facts alone justify neither removing a bounds check nor moving an
+    access or allocation across control flow.
 */
 :- module(alias, [alias_facts/2]).
 
@@ -25,6 +19,15 @@
 :- use_module(library(pairs)).
 :- use_module(cfg).
 :- use_module(promote, [strict_ssa/3]).
+
+%! alias_facts(+Func, -Facts) is det.
+%
+%  Facts is the assoc Temp -> addr(Class, Base, Offset), for the l/p
+%  values of Func if it is in strict SSA form, and otherwise empty. Base
+%  is alloc(Temp), param(Temp), symbol(Name), or value(Temp) for an
+%  opaque SSA value (including loads, calls, casts and phis). A missing
+%  fact means unknown, e.g. a cycle in unreachable code with no base to
+%  start from.
 
 alias_facts(F, Facts) :-
     F = func(_, _, _, _, Blocks),
@@ -88,7 +91,9 @@ address_offset(ins(sub, [t(S), c(N)]), K, Defs, S, Delta) :-
     get_assoc(S, Defs, def(K, _)),
     Delta is -N.
 
-% Every derived definition has one source. Root phis rather than chasing
+% propagate_offsets(+Pending, +Users, +Facts0, -Facts): Pending is the
+% list of S-Addr whose users are still to be derived. Every derived
+% definition has one source. Root phis rather than chasing
 % their cycles: they select a value from an earlier dynamic execution.
 % Visit a definition only when its source is known, regardless of layout.
 propagate_offsets([], _, Facts, Facts).

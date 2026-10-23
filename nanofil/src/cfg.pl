@@ -1,53 +1,23 @@
 /*  Control-flow analyses over one function's blocks, as pure functions
     from IR terms to assocs keyed by block label.
 
-    func_cfg(+Blocks, -Cfg)
-      Cfg = cfg(Entry, Rpo, Succs, Preds)
-      Rpo    reachable labels in reverse postorder, Entry first
-      Succs  assoc Label -> ordset of successor labels (every block)
-      Preds  assoc Label -> ordset of predecessor labels (every block,
-             including unreachable predecessors, as phis must list them)
-
-    dominators(+Cfg, -Idom)
-      assoc Label -> immediate dominator, for reachable labels other than
-      Entry (Cooper, Harvey and Kennedy, "A Simple, Fast Dominance
-      Algorithm").
-
-    dom_children(+Cfg, +Idom, -Kids)   assoc Label -> children, Rpo order
-    frontiers(+Cfg, +Idom, -DF)        assoc Label -> ordset, reachable labels
-    dominates(+Idom, +A, +B)           A dominates B (both reachable)
-    dom_intervals(+Cfg, +Idom, -Iv)    assoc Label -> Pre-Last, the preorder
-                                       number of Label in the dominator tree
-                                       and the last one in its subtree
-    dominates_by_interval(+Iv, +A, +B)          A dominates B, in constant time
-
-    natural_loops(+Cfg, +Idom, -Loops)
-      Assoc Header -> loop(Latches, Body), both ordsets of labels.
-      A latch has an edge to a header that dominates it. Body is the
-      union of their natural loops. Only reachable blocks participate.
-      Nested loops have separate entries; an irreducible cycle without
-      a dominating header is NOT a natural loop. Empty does not mean
-      acyclic, and this analysis alone cannot justify removing polls.
-
-    liveness(+Cfg, +GenKill, +EdgeUses, -LiveIn, -LiveOut)
-      Backward dataflow over every block. GenKill: assoc Label -> Gen-Kill
-      (ordsets: names read before any write in the block, and names
-      written). EdgeUses: assoc (Pred-Succ) -> ordset read on that edge
-      only (phi arguments). LiveOut(B) is the union over successors S of
-      LiveIn(S) and EdgeUses(B-S); LiveIn(B) = Gen ∪ (LiveOut \ Kill).
-      Names are anything ordsets can hold, so the same relation serves
-      temps (temp_liveness/3) and promote's memory slots.
-
-    temp_liveness(+Blocks, -LiveIn, -LiveOut)
-      liveness/5 over temp names. A phi defines its temp at block entry
-      (in Kill, never in LiveIn) and reads its argument on the edge.
+    func_cfg/2 builds cfg(Entry, Rpo, Succs, Preds), which the other
+    analyses take: dominators (dominators/2, dom_children/3,
+    frontiers/3, dominates/3, dom_intervals/3, dominates_by_interval/3),
+    natural loops (natural_loops/3), and backward liveness (liveness/5,
+    and temp_liveness/3 over temps). Each export documents its relation
+    below.
 
     The PLAN asks for these as tabled relations. cfg_tabled.pl has that
     version; docs/m5.md has the measurement that made this one the one
     passes use.
+
+    Variable conventions: L, B, S and P are labels (a block, a successor,
+    a predecessor), Ls, Ss and Ps lists of them; T and D are temp names.
 */
 :- module(cfg, [func_cfg/2, dominators/2, dom_children/3, frontiers/3,
-                dominates/3, dom_intervals/3, dominates_by_interval/3, natural_loops/3,
+                dominates/3, dom_intervals/3, dominates_by_interval/3,
+                natural_loops/3,
                 liveness/5, temp_liveness/3, gen_kill/2,
                 phi_edge_uses/2, inst_uses/2, inst_def/2, jump_uses/2,
                 jump_succs/2]).
@@ -59,17 +29,34 @@
 
 %% CFG
 
+%! jump_succs(+Jump, -Succs) is det.
+%
+%  Succs is the ordset of labels Jump can branch to.
+
 jump_succs(jmp(L), [L]).
-jump_succs(jnz(_, L1, L2), Ls) :- sort([L1, L2], Ls).
+jump_succs(jnz(_, L1, L2), Ls) :-
+    sort([L1, L2], Ls).
 jump_succs(ret(_), []).
 jump_succs(ret, []).
 jump_succs(rets(_), []).
 jump_succs(hlt, []).
 
+%! func_cfg(+Blocks, -Cfg) is det.
+%
+%  Cfg = cfg(Entry, Rpo, Succs, Preds) is the control-flow graph of
+%  Blocks, whose first block is the entry:
+%
+%    - Rpo: the reachable labels in reverse postorder, Entry first;
+%    - Succs: assoc Label -> ordset of successor labels (every block);
+%    - Preds: assoc Label -> ordset of predecessor labels (every block,
+%      including unreachable predecessors, as phis must list them).
+
 func_cfg(Blocks, cfg(Entry, Rpo, Succs, Preds)) :-
     Blocks = [blk(Entry, _, _, _)|_],
     findall(Label-Ss,
-            ( member(blk(Label, _, _, Jump), Blocks), jump_succs(Jump, Ss) ),
+            ( member(blk(Label, _, _, Jump), Blocks),
+              jump_succs(Jump, Ss)
+            ),
             SuccPairs),
     list_to_assoc(SuccPairs, Succs),
     findall(Label-[], member(Label-_, SuccPairs), NoPreds),
@@ -77,20 +64,27 @@ func_cfg(Blocks, cfg(Entry, Rpo, Succs, Preds)) :-
     foldl(add_preds, SuccPairs, Preds0, Preds1),
     assoc_to_list(Preds1, PredPairs0),
     findall(Label-Ps,
-            ( member(Label-Ps0, PredPairs0), sort(Ps0, Ps) ),
+            ( member(Label-Ps0, PredPairs0),
+              sort(Ps0, Ps)
+            ),
             PredPairs),
     list_to_assoc(PredPairs, Preds),
     empty_assoc(Seen0),
     reverse_postorder([Entry], Succs, Seen0, _, [], Rpo).
 
-add_preds(Pred-Ss, Preds0, Preds) :- foldl(add_pred(Pred), Ss, Preds0, Preds).
+% add_preds(+Pred-Ss, +Preds0, -Preds): Pred is added to the
+% (unsorted) predecessor list of each label in Ss.
+add_preds(Pred-Ss, Preds0, Preds) :-
+    foldl(add_pred(Pred), Ss, Preds0, Preds).
 
 add_pred(Pred, Succ, Preds0, Preds) :-
     get_assoc(Succ, Preds0, Ps),
     put_assoc(Succ, Preds0, [Pred|Ps], Preds).
 
-% Depth-first, pushing each label after its successors: the result is
-% reverse postorder.
+% reverse_postorder(+Ls, +Succs, +Seen0, -Seen, +Post0, -Post): a
+% depth-first search from each of Ls in turn, skipping the labels in
+% Seen0, pushes each label it reaches onto Post0 after its successors;
+% so Post is a reverse postorder of those labels in front of Post0.
 reverse_postorder([], _, Seen, Seen, Post, Post).
 reverse_postorder([L|Ls], Succs, Seen0, Seen, Post0, Post) :-
     (   get_assoc(L, Seen0, _)
@@ -103,6 +97,12 @@ reverse_postorder([L|Ls], Succs, Seen0, Seen, Post0, Post) :-
 
 %% Dominators
 
+%! dominators(+Cfg, -Idom) is det.
+%
+%  Idom is the assoc Label -> immediate dominator, for the reachable
+%  labels other than the entry (Cooper, Harvey and Kennedy, "A Simple,
+%  Fast Dominance Algorithm").
+
 dominators(cfg(Entry, Rpo, _, Preds), Idom) :-
     number_labels(Rpo, 0, Numbered),
     list_to_assoc(Numbered, Num),
@@ -112,9 +112,12 @@ dominators(cfg(Entry, Rpo, _, Preds), Idom) :-
     idom_fixpoint(Rest, Preds, Num, Idom1, Idom2),
     del_assoc(Entry, Idom2, _, Idom).
 
-% number_labels(+Labels, +N0, -Pairs): Label-N, counting from N0.
+% number_labels(+Labels, +N0, -Pairs): Pairs is Label-N for each of
+% Labels, counting from N0.
 number_labels([], _, []).
-number_labels([L|Ls], N, [L-N|Ps]) :- N1 is N + 1, number_labels(Ls, N1, Ps).
+number_labels([L|Ls], N, [L-N|Ps]) :-
+    N1 is N + 1,
+    number_labels(Ls, N1, Ps).
 
 % Sweep the labels in reverse postorder until no idom changes.
 idom_fixpoint(Labels, Preds, Num, Idom0, Idom) :-
@@ -130,15 +133,20 @@ update_idom(Preds, Num, B, Idom0-Changed0, Idom-Changed) :-
     include(has_idom(Idom0), Ps, Processed),
     Processed = [First|Others],
     foldl(intersect(Num, Idom0), Others, First, New),
-    (   get_assoc(B, Idom0, Old), Old == New
-    ->  Idom = Idom0, Changed = Changed0
-    ;   put_assoc(B, Idom0, New, Idom), Changed = true
+    (   get_assoc(B, Idom0, Old),
+        Old == New
+    ->  Idom = Idom0,
+        Changed = Changed0
+    ;   put_assoc(B, Idom0, New, Idom),
+        Changed = true
     ).
 
-has_idom(Idom, L) :- get_assoc(L, Idom, _).
+has_idom(Idom, L) :-
+    get_assoc(L, Idom, _).
 
-% intersect(+Num, +Idom, +A, +B, -Common): the nearest common dominator
-% of A and B, walking up whichever is later in reverse postorder.
+% intersect(+Num, +Idom, +A, +B, -Common): Common is the nearest common
+% dominator of A and B, found by walking up from whichever is later in
+% reverse postorder.
 intersect(Num, Idom, A, B, Common) :-
     (   A == B
     ->  Common = A
@@ -151,6 +159,11 @@ intersect(Num, Idom, A, B, Common) :-
             intersect(Num, Idom, A, B1, Common)
         )
     ).
+
+%! dom_children(+Cfg, +Idom, -Kids) is det.
+%
+%  Kids is the assoc Label -> the children of Label in the dominator
+%  tree, in reverse postorder, for every reachable label.
 
 dom_children(cfg(_, Rpo, _, _), Idom, Kids) :-
     findall(L-[], member(L, Rpo), NoKids),
@@ -165,8 +178,20 @@ add_child(Idom, L, Kids0, Kids) :-
     ;   Kids = Kids0
     ).
 
+%! dominates(+Idom, +A, +B) is semidet.
+%
+%  A dominates B (both reachable), by walking up the idoms from B.
+
 dominates(_, A, A) :- !.
-dominates(Idom, A, B) :- get_assoc(B, Idom, D), dominates(Idom, A, D).
+dominates(Idom, A, B) :-
+    get_assoc(B, Idom, D),
+    dominates(Idom, A, D).
+
+%! dom_intervals(+Cfg, +Idom, -Intervals) is det.
+%
+%  Intervals is the assoc Label -> Pre-Last for every reachable label:
+%  Pre is the preorder number of Label in the dominator tree, and Last
+%  the last one in its subtree.
 
 dom_intervals(Cfg, Idom, Intervals) :-
     Cfg = cfg(Entry, _, _, _),
@@ -186,19 +211,33 @@ number_tree(L, Kids, N0, N, Intervals0, Intervals) :-
 number_kid(Kids, K, N0-Intervals0, N-Intervals) :-
     number_tree(K, Kids, N0, N, Intervals0, Intervals).
 
+%! dominates_by_interval(+Intervals, +A, +B) is semidet.
+%
+%  A dominates B, in constant time, given Intervals from
+%  dom_intervals/3.
+
 dominates_by_interval(Intervals, A, B) :-
     get_assoc(A, Intervals, PreA-LastA),
     get_assoc(B, Intervals, PreB-_),
     PreA =< PreB,
     PreB =< LastA.
 
-% CHK: walk up from each predecessor of a join point to its idom.
+%! frontiers(+Cfg, +Idom, -DF) is det.
+%
+%  DF is the assoc Label -> ordset of the labels in its dominance
+%  frontier, for every reachable label. Computed as CHK do: walk up from
+%  each predecessor of a join point to its idom.
+
 frontiers(cfg(_, Rpo, _, Preds), Idom, DF) :-
     findall(L-[], member(L, Rpo), Empty),
     list_to_assoc(Empty, DF0),
     foldl(join_frontier(Preds, Idom), Rpo, DF0, DF1),
     assoc_to_list(DF1, Pairs0),
-    findall(L-S, ( member(L-Xs, Pairs0), sort(Xs, S) ), Pairs),
+    findall(L-S,
+            ( member(L-Xs, Pairs0),
+              sort(Xs, S)
+            ),
+            Pairs),
     list_to_assoc(Pairs, DF).
 
 % DF has a key for every reachable label, so it also tells which
@@ -206,12 +245,14 @@ frontiers(cfg(_, Rpo, _, Preds), Idom, DF) :-
 join_frontier(Preds, Idom, B, DF0, DF) :-
     get_assoc(B, Preds, Ps0),
     include(has_frontier(DF0), Ps0, Ps),
-    (   Ps = [_, _|_], get_assoc(B, Idom, IdomB)
+    (   Ps = [_, _|_],
+        get_assoc(B, Idom, IdomB)
     ->  foldl(add_to_frontiers(Idom, IdomB, B), Ps, DF0, DF)
     ;   DF = DF0
     ).
 
-has_frontier(DF, L) :- get_assoc(L, DF, _).
+has_frontier(DF, L) :-
+    get_assoc(L, DF, _).
 
 % B joins every frontier from Runner up to (not including) Stop.
 add_to_frontiers(Idom, Stop, B, Runner, DF0, DF) :-
@@ -225,6 +266,15 @@ add_to_frontiers(Idom, Stop, B, Runner, DF0, DF) :-
 
 %% Natural loops
 
+%! natural_loops(+Cfg, +Idom, -Loops) is det.
+%
+%  Loops is the assoc Header -> loop(Latches, Body), both ordsets of
+%  labels. A latch has an edge to a header that dominates it. Body is
+%  the union of their natural loops. Only reachable blocks participate.
+%  Nested loops have separate entries; an irreducible cycle without a
+%  dominating header is NOT a natural loop. Empty does not mean
+%  acyclic, and this analysis alone cannot justify removing polls.
+
 natural_loops(Cfg, Idom, Loops) :-
     Cfg = cfg(_, Rpo, Succs, Preds),
     dom_intervals(Cfg, Idom, Intervals),
@@ -232,7 +282,8 @@ natural_loops(Cfg, Idom, Loops) :-
             ( member(Latch, Rpo),
               get_assoc(Latch, Succs, Ss),
               member(Header, Ss),
-              dominates_by_interval(Intervals, Header, Latch) ),
+              dominates_by_interval(Intervals, Header, Latch)
+            ),
             Edges0),
     sort(Edges0, Edges),
     group_pairs_by_key(Edges, Headers),
@@ -248,7 +299,9 @@ natural_loop(Preds, Intervals, H-Latches, H-loop(Latches, Body)) :-
     assoc_to_keys(Seen, Body).
 
 % Walk predecessors back from the latches; a label without an interval
-% is unreachable.
+% is unreachable. Invariant: Seen0 holds the header and the body blocks
+% found so far, and every reachable predecessor of a body block in Seen0
+% is in Seen0 or Pending.
 loop_body([], _, _, Seen, Seen).
 loop_body([B|Pending], Preds, Intervals, Seen0, Seen) :-
     (   get_assoc(B, Seen0, _)
@@ -263,6 +316,21 @@ loop_body([B|Pending], Preds, Intervals, Seen0, Seen) :-
 
 %% Liveness
 
+%! liveness(+Cfg, +GenKill, +EdgeUses, -LiveIn, -LiveOut) is det.
+%
+%  LiveIn and LiveOut are the assocs Label -> ordset of the names live
+%  on entry to and exit from each block (every block, reachable or not),
+%  the least solution of the backward dataflow equations
+%
+%    LiveOut(B) = union over successors S of LiveIn(S) and EdgeUses(B-S)
+%    LiveIn(B)  = Gen(B) ∪ (LiveOut(B) \ Kill(B))
+%
+%  GenKill is the assoc Label -> Gen-Kill (ordsets: the names read
+%  before any write in the block, and the names written). EdgeUses is the
+%  assoc (Pred-Succ) -> ordset of the names read on that edge only (phi
+%  arguments). Names are anything ordsets can hold, so the same relation
+%  serves temps (temp_liveness/3) and promote's memory slots.
+
 liveness(cfg(_, Rpo, Succs, Preds), GenKill, EdgeUses, LiveIn, LiveOut) :-
     assoc_to_keys(Succs, All),
     subtract(All, Rpo, Unreached),
@@ -276,12 +344,15 @@ liveness(cfg(_, Rpo, Succs, Preds), GenKill, EdgeUses, LiveIn, LiveOut) :-
     liveness_worklist(Pending, Num, Succs, Preds, GenKill, EdgeUses,
                       LiveIn0, LiveIn),
     findall(L-Out,
-            ( member(L, All), live_out(L, Succs, EdgeUses, LiveIn, Out) ),
+            ( member(L, All),
+              live_out(L, Succs, EdgeUses, LiveIn, Out)
+            ),
             OutPairs),
     list_to_assoc(OutPairs, LiveOut).
 
 % Worklist in postorder: always take the pending block that comes first,
 % and requeue the predecessors of a block whose live-in set grew.
+% Pending is an ordset of N-L, N the position of L in that order.
 liveness_worklist([], _, _, _, _, _, LiveIn, LiveIn).
 liveness_worklist([_-L|Pending0], Num, Succs, Preds, GenKill, EdgeUses,
                   LiveIn0, LiveIn) :-
@@ -289,13 +360,16 @@ liveness_worklist([_-L|Pending0], Num, Succs, Preds, GenKill, EdgeUses,
     get_assoc(L, GenKill, Gen-Kill),
     ord_subtract(Out, Kill, Through),
     ord_union(Gen, Through, New),
-    (   get_assoc(L, LiveIn0, Old), Old == New
+    (   get_assoc(L, LiveIn0, Old),
+        Old == New
     ->  liveness_worklist(Pending0, Num, Succs, Preds, GenKill, EdgeUses,
                           LiveIn0, LiveIn)
     ;   put_assoc(L, LiveIn0, New, LiveIn1),
         get_assoc(L, Preds, PredLabels),
         findall(N-P,
-                ( member(P, PredLabels), get_assoc(P, Num, N) ),
+                ( member(P, PredLabels),
+                  get_assoc(P, Num, N)
+                ),
                 Requeued0),
         sort(Requeued0, Requeued),
         ord_union(Pending0, Requeued, Pending),
@@ -303,6 +377,8 @@ liveness_worklist([_-L|Pending0], Num, Succs, Preds, GenKill, EdgeUses,
                           LiveIn1, LiveIn)
     ).
 
+% live_out(+L, +Succs, +EdgeUses, +LiveIn, -Out): Out is the live-out
+% set of L, given the live-in sets LiveIn.
 live_out(L, Succs, EdgeUses, LiveIn, Out) :-
     get_assoc(L, Succs, Ss),
     foldl(succ_live(L, EdgeUses, LiveIn), Ss, [], Out).
@@ -317,19 +393,30 @@ succ_live(L, EdgeUses, LiveIn, S, Out0, Out) :-
 
 %% Temps
 
+%! temp_liveness(+Blocks, -LiveIn, -LiveOut) is det.
+%
+%  LiveIn and LiveOut are liveness/5 of Blocks over temp names. A phi
+%  defines its temp at block entry (in Kill, never in LiveIn) and reads
+%  its argument on the edge.
+
 temp_liveness(Blocks, LiveIn, LiveOut) :-
     func_cfg(Blocks, Cfg),
     gen_kill(Blocks, GenKill),
     phi_edge_uses(Blocks, EdgeUses),
     liveness(Cfg, GenKill, EdgeUses, LiveIn, LiveOut).
 
-% gen_kill(+Blocks, -GenKill): per block, temps read before written, and
-% temps written (phi destinations included).
+%! gen_kill(+Blocks, -GenKill) is det.
+%
+%  GenKill is the assoc Label -> Gen-Kill for each block: Gen is the
+%  ordset of temps read before they are written in it, and Kill the
+%  ordset of temps written (phi destinations included).
+
 gen_kill(Blocks, GenKill) :-
     findall(L-(Gen-Kill),
             ( member(B, Blocks),
               B = blk(L, _, _, _),
-              block_gen_kill(B, Gen, Kill) ),
+              block_gen_kill(B, Gen, Kill)
+            ),
             Pairs),
     list_to_assoc(Pairs, GenKill).
 
@@ -349,31 +436,62 @@ inst_gen_kill(I, Gen0-Kill0, Gen-Kill) :-
     sort(Ds0, Ds),
     ord_union(Kill0, Ds, Kill).
 
+%! phi_edge_uses(+Blocks, -EdgeUses) is det.
+%
+%  EdgeUses is the assoc (Pred-Succ) -> ordset of the temps that the
+%  phis of Succ read on the edge from Pred, for the edges that have any.
+
 phi_edge_uses(Blocks, EdgeUses) :-
     findall((P-S)-T,
             ( member(blk(S, Phis, _, _), Blocks),
               member(phi(_, _, Args), Phis),
-              member(P-t(T), Args) ),
+              member(P-t(T), Args)
+            ),
             Pairs0),
     keysort(Pairs0, Pairs1),
     group_pairs_by_key(Pairs1, Groups),
-    findall(Edge-S, ( member(Edge-Ts, Groups), sort(Ts, S) ), Pairs),
+    findall(Edge-S,
+            ( member(Edge-Ts, Groups),
+              sort(Ts, S)
+            ),
+            Pairs),
     list_to_assoc(Pairs, EdgeUses).
 
-inst_uses(ins(_, _, _, Args), Us) :- temps(Args, Us).
-inst_uses(store(_, V, A), Us) :- temps([V, A], Us).
+%! inst_uses(+Inst, -Uses) is det.
+%
+%  Uses is the ordset of temps that the instruction Inst reads.
+
+inst_uses(ins(_, _, _, Args), Us) :-
+    temps(Args, Us).
+inst_uses(store(_, V, A), Us) :-
+    temps([V, A], Us).
 inst_uses(call(_, F, Args), Us) :-
     findall(V, member(arg(_, V), Args), Vs),
     temps([F|Vs], Us).
 
+%! inst_def(+Inst, -Temp) is nondet.
+%
+%  The instruction Inst defines Temp (a call can define several).
+
 inst_def(ins(t(D), _, _, _), D).
 inst_def(call(to(t(D), _), _, _), D).
-inst_def(call(tuple(Rs), _, _), D) :- member(to(t(D), _), Rs).
+inst_def(call(tuple(Rs), _, _), D) :-
+    member(to(t(D), _), Rs).
 
-jump_uses(jnz(V, _, _), Us) :- !, temps([V], Us).
-jump_uses(ret(V), Us) :- !, temps([V], Us).
-jump_uses(rets(Vs), Us) :- !, temps(Vs, Us).
+%! jump_uses(+Jump, -Uses) is det.
+%
+%  Uses is the ordset of temps that Jump reads.
+
+jump_uses(jnz(V, _, _), Us) :- !,
+    temps([V], Us).
+jump_uses(ret(V), Us) :- !,
+    temps([V], Us).
+jump_uses(rets(Vs), Us) :- !,
+    temps(Vs, Us).
 jump_uses(_, []).
 
-% temps(+Values, -Names): the ordset of temp names among Values.
-temps(Vs, Ts) :- findall(T, member(t(T), Vs), Ts0), sort(Ts0, Ts).
+% temps(+Values, -Names): Names is the ordset of temp names among
+% Values.
+temps(Vs, Ts) :-
+    findall(T, member(t(T), Vs), Ts0),
+    sort(Ts0, Ts).

@@ -28,6 +28,13 @@
     gdef(Symbol) global definitions, lit(Symbol) string literals and
     deferred(Symbol) static inline functions, and its Next numbers
     literals and compound literals as well as struct ids.
+
+    Variable conventions: State0 ... State thread the st/8 term, Env0
+    ... Env the environment; Ctx is the context and Loc a source
+    location; R is a v/lv/fd value term, Value0 one before conversion,
+    V an IR value; L-prefixed names are IR labels; Ebs are eightbytes
+    eb(Offset, Bytes, Class); S0 ... S thread Env-Chunks pairs in the
+    static initializer predicates.
 */
 :- module(c_lower, [c_module/2]).
 
@@ -36,17 +43,24 @@
 :- use_module(library(dcgs)).
 :- use_module(c_types).
 
-% c_module(+Items, -Module): Items from c_parse.
+%! c_module(+Items, -Module)
+%
+%  Module is the IR module of the top-level Items from c_parse:
+%  module(Funcs) with the functions followed by the data of every
+%  global and string literal. Throws a semantic error for C that
+%  nanofil cannot lower.
 c_module(Items, module(Funcs)) :-
     empty_env(Env0),
     foldl(top_item, Items, Funcss, Env0, Env),
     append(Funcss, Funcs0),
     with_used_inlines(Funcs0, Env, Funcs).
 
-/* A static inline function is lowered only if something refers to it,
-   as clang emits it only then; headers are full of ones nanofil cannot
-   lower. Lowering one can refer to more, so this iterates. The result
-   is the functions followed by the global data. */
+/* with_used_inlines(+Funcs0, +Env0, -Items): Items is Funcs0, then
+   every deferred static inline function they refer to, directly or
+   through one another, then the global data. A static inline function
+   is lowered only if something refers to it, as clang emits it only
+   then; headers are full of ones nanofil cannot lower. Lowering one can
+   refer to more, so this iterates until no new symbol turns up. */
 with_used_inlines(Funcs0, Env0, Items) :-
     global_data(Env0, Data),
     append(Funcs0, Data, Items0),
@@ -65,7 +79,8 @@ with_used_inlines(Funcs0, Env0, Items) :-
         with_used_inlines(Funcs1, Env1, Items)
     ).
 
-% item_ref(+Items, -Sym): a symbol some function or data item refers to.
+% item_ref(+Items, -Sym): some function or data item of Items refers to
+% symbol Sym (nondet, with repeats).
 item_ref(Items, Sym) :-
     member(Item, Items),
     (   Item = func(_, _, _, _, Blocks),
@@ -78,7 +93,8 @@ item_ref(Items, Sym) :-
         member(item(p, sym(Sym, _)), DataItems)
     ).
 
-% Lower a deferred inline function in the scope it was defined in.
+% lower_inline(+Sym, -Func, +Env0, -Env): Func is the deferred inline
+% function Sym, lowered in the scope it was defined in.
 lower_inline(Sym, Func, Env0, Env) :-
     env_defs(Env0, Defs),
     get_assoc(deferred(Sym), Defs, df(Loc, Name, Type, DclType, Body, Scope)),
@@ -91,15 +107,20 @@ lower_inline(Sym, Func, Env0, Env) :-
 
 env_defs(e(_, _, Defs, _), Defs).
 
+% put_def(+Key, +Value, +Env0, -Env): Env is Env0 with Key defined as
+% Value.
 put_def(Key, Value, e(Ords, Tags, Defs0, Next), e(Ords, Tags, Defs, Next)) :-
     put_assoc(Key, Defs0, Value, Defs).
 
-% next_id(-Id, +Env0, -Env): take the environment's next number.
+% next_id(-Id, +Env0, -Env): Id is Env0's next number, which Env has
+% moved past.
 next_id(Id, e(Ords, Tags, Defs, Id), e(Ords, Tags, Defs, Next)) :-
     Next is Id + 1.
 
 %% Top level
 
+% top_item(+Item, -Funcs, +Env0, -Env): Funcs are the IR functions a
+% top-level item defines now (a static inline one is deferred).
 top_item(static_assert(Loc, Expr, _), [], Env, Env) :- !,
     static_assert(Loc, Expr, Env).
 top_item(decl(Loc, Specs, Inits), [], Env0, Env) :- !,
@@ -123,6 +144,8 @@ top_item(fundef(Loc, Specs, dcl(Name, DclType, Asm), Body), Funcs, Env0, Env) :-
         function(Loc, Name, Type, DclType, Body, Env2, Env, Func)
     ).
 
+% static_assert(+Loc, +Expr, +Env): throw a semantic error unless Expr
+% is a nonzero constant.
 static_assert(Loc, Expr, Env) :-
     (   catch(const_value(Expr, Env, Value, _), not_constant, fail)
     ->  true
@@ -133,6 +156,9 @@ static_assert(Loc, Expr, Env) :-
     ;   sema_error(Loc, 'static assertion failed', [])
     ).
 
+% global_decl(+Loc, +Decl, +Env0, -Env): Env binds the d/5 declaration
+% Decl of a function or of an object with static storage, and defines
+% the object unless it is an extern without an initializer.
 global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) :-
     ( Asm = asm(Sym) -> true ; Sym = Name ),
     (   Type0 = func(_, _, _)
@@ -166,14 +192,18 @@ define_global(Sym, Type, Linkage, Init, Loc, Env0, Env) :-
     ;   put_def(gdef(Sym), g(Type, Linkage, Init, Loc), Env0, Env)
     ).
 
-% A literal is a list of bytes (a char array) or w(ElemType, Values).
+% new_literal(+Lit, -Sym, +Env0, -Env): Sym is a fresh symbol that Env
+% defines as literal Lit, a list of bytes (a char array) or
+% w(ElemType, Values).
 new_literal(Lit, Sym, Env0, Env) :-
     next_id(N, Env0, Env1),
     format(atom(Sym), 'str.~w', [N]),
     put_def(lit(Sym), Lit, Env1, Env).
 
-% A string literal term's elements: str(Bytes) for a char array, or a
-% wide one for an integer array of its element's size.
+% str_elems(+Str, +ElemType, -Elems): string literal term Str can
+% initialize an array of ElemType, and Elems are its elements. Str is
+% str(Bytes) for a char array, or wstr(WideType, Values) for an
+% integer array of its element's size.
 str_elems(str(Bytes), ElemType, Bytes) :-
     is_char_type(ElemType).
 str_elems(wstr(WideType, Values), ElemType, Values) :-
@@ -181,14 +211,17 @@ str_elems(wstr(WideType, Values), ElemType, Values) :-
     int_info(ElemType, Size, _),
     int_info(WideType, Size, _).
 
-% A file-scope compound literal: an unnamed static object.
+% new_complit(+Type0, +Init, +Loc, -Sym, +Env0, -Env): Sym is a fresh
+% symbol that Env defines as a file-scope compound literal, an unnamed
+% static object.
 new_complit(Type0, Init, Loc, Sym, Env0, Env) :-
     next_id(N, Env0, Env1),
     format(atom(Sym), 'complit.~w', [N]),
     complete_array(Type0, Init, Type, Loc, Env0, none),
     define_global(Sym, Type, local, Init, Loc, Env1, Env).
 
-% The data items for every global definition and string literal.
+% global_data(+Env0, -Data): Data are the data items of every global
+% definition and string literal.
 global_data(Env0, Data) :-
     global_items(Env0, [], GlobalData, Env),
     env_defs(Env, Defs),
@@ -206,8 +239,11 @@ global_data(Env0, Data) :-
             LiteralData),
     append(GlobalData, LiteralData, Data).
 
-% Initializers can define more globals (file-scope compound literals),
-% so this repeats until there are no new ones. Done lists their symbols.
+% global_items(+Env0, +Done, -Data, -Env): Data are the data items of
+% the global definitions whose symbols are not in Done. Initializers
+% can define more globals (file-scope compound literals), so this
+% repeats until there are no new ones; Done lists the symbols already
+% emitted.
 global_items(Env0, Done, Data, Env) :-
     env_defs(Env0, Defs),
     assoc_to_list(Defs, Pairs),
@@ -223,8 +259,10 @@ global_items(Env0, Done, Data, Env) :-
         append(Data0, Data1, Data)
     ).
 
-global_item(Sym-g(Type, Linkage, Init, Loc), data(Sym, Linkage, Align, Items),
-            Env0, Env) :-
+% global_item(+Sym-G, -Data, +Env0, -Env): Data is the data item of
+% global definition G.
+global_item(Sym-g(Type, Linkage, Init, Loc),
+            data(Sym, Linkage, Align, Items), Env0, Env) :-
     catch(size_align(Type, Env0, _, Align0), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Sym, Why])),
     Align is min(Align0, 16),
@@ -232,6 +270,8 @@ global_item(Sym-g(Type, Linkage, Init, Loc), data(Sym, Linkage, Align, Items),
 
 %% Functions
 
+% function(+Loc, +Name, +Type, +DclType, +Body, +Env0, -Env, -Func): Func
+% is the IR function for the definition of Name with body Body.
 function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
          Env0, Env, func(Sym, Linkage, RetClass, Params, Blocks)) :-
     lookup_ordinary(Env0, Name, fn(_, Sym, Linkage)),
@@ -240,7 +280,10 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
                    [Name])
     ;   true
     ),
-    ( ParamTypes0 == unspecified -> ParamTypes = [] ; ParamTypes = ParamTypes0 ),
+    (   ParamTypes0 == unspecified
+    ->  ParamTypes = []
+    ;   ParamTypes = ParamTypes0
+    ),
     ret_class(Loc, RetType, Env0, RetClass),
     param_names(DclType, Names),
     State0 = st(Env0, cur(start, []), [], [], 0, Labels, [], []),
@@ -261,25 +304,30 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     append(Allocs, Insts0, Insts),
     Blocks = [blk(start, [], Insts, Jump)|Rest].
 
-% ret_class(+Loc, +RetType, +Env, -Class): the IR return class.
+% ret_class(+Loc, +RetType, +Env, -Class): Class is the IR return class
+% of a function returning RetType.
 ret_class(_, void, _, void) :- !.
 ret_class(_, Type, _, Class) :-
     type_class(Type, Class), !.
 ret_class(Loc, Type, Env, Class) :-
-    su(Type), !,
+    su(Type),
+    !,
     ret_shape(Type, Env, Loc, Shape),
     (   Shape = words([eb(_, _, K0)]) -> Class = K0
     ;   Shape = words([eb(_, _, K1), eb(_, _, K2)]) -> Class = tuple([K1, K2])
     ;   Class = void
     ).
 ret_class(Loc, Type, _, _) :-
-    float_type(Type), !,
+    float_type(Type),
+    !,
     sema_error(Loc, 'floating point is not supported', []).
 ret_class(Loc, Type, _, _) :-
     sema_error(Loc, 'returning ~w is not supported yet', [Type]).
 
-% A struct over 16 bytes is returned through a pointer the caller passes
-% first, as clang does; the function itself returns nothing.
+% sret_param(+RetType, -Params)//: Params are the hidden parameters of a
+% function returning RetType. A struct over 16 bytes is returned through
+% a pointer the caller passes first, as clang does; the function itself
+% returns nothing.
 sret_param(RetType, Params) -->
     env(Env),
     (   { su(RetType), ret_shape(RetType, Env, unknown, sret) }
@@ -291,18 +339,20 @@ sret_param(RetType, Params) -->
 
 float_type(Type) :- memberchk(Type, [float, double, ldouble]).
 
-% The parameter names, from the function's own declarator: the outermost
-% func, since declarator types are built outermost first.
+% param_names(+DclType, -Names): Names are the parameter names, from the
+% function's own declarator: the outermost func, since declarator types
+% are built outermost first.
 param_names(func(_, unspecified), []) :- !.
 param_names(func(_, params(Params, _)), Names) :-
     findall(Name, member(param(_, dcl(Name, _, _)), Params), Names).
 
-% params(+Names, +Types, +Ctx, -Params): the IR parameters, each named
-% one stored into a local. A struct or union comes in one word per
-% eightbyte.
+% params(+Names, +Types, +Ctx, -Params)//: Params are the IR parameters,
+% and each named one is stored into a local. A struct or union comes in
+% one word per eightbyte.
 params([], [], _, []) --> [].
 params([Name|Names], [Type|Types], Ctx, Params) -->
-    { su(Type) }, !,
+    { su(Type) },
+    !,
     env(Env),
     { ctx_loc(Ctx, Loc), arg_words(Type, Env, Loc, Ebs) },
     fresh_params(Ebs, Params0, Values),
@@ -329,19 +379,23 @@ params([Name|Names], [Type|Types], Ctx, [par(Class, P)|Params]) -->
     ),
     params(Names, Types, Ctx, Params).
 
+% fresh_params(+Ebs, -Params, -Values)//: one fresh parameter per
+% eightbyte; Values are their temporaries.
 fresh_params([], [], []) --> [].
 fresh_params([eb(_, _, Class)|Ebs], [par(Class, P)|Params], [P|Values]) -->
     fresh(P),
     fresh_params(Ebs, Params, Values).
 
-% Falling off the end of the body returns as a bare return would.
+% fall_off(+RetType)//: end the body; falling off the end returns as a
+% bare return would.
 fall_off(RetType) -->
     cur(Cur),
     (   { Cur == none } -> []
     ;   zero_ret(RetType)
     ).
 
-% Returning without a value from a function with a result.
+% zero_ret(+RetType)//: return without a value (zero, if the function
+% has a result).
 zero_ret(RetType) -->
     env(Env),
     (   { RetType == void } -> term(ret)
@@ -354,6 +408,9 @@ zero_ret(RetType) -->
     ).
 
 %% State primitives
+
+% Readers (cur//1, env//1, cases//1) leave the state as it is; set_*//1
+% replace one field; fresh//1 and label//1 take the next number.
 
 cur(Cur, State, State) :-
     State = st(_, Cur, _, _, _, _, _, _).
@@ -379,8 +436,8 @@ label(Label, st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
     N is N0 + 1,
     format(atom(Label), 'L~w', [N0]).
 
-% Make sure there is a current block, opening an unreachable one after a
-% jump.
+% ensure_live//: make sure there is a current block, opening an
+% unreachable one after a jump.
 ensure_live -->
     cur(Cur),
     (   { Cur == none } -> label(Label), set_cur(cur(Label, []))
@@ -390,12 +447,13 @@ ensure_live -->
 set_cur(Cur, st(Env, _, Insts, Blocks, N, Labels, Cases, Allocs),
              st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
 
+% emit(+Inst)//: append Inst to the current block.
 emit(Inst) --> ensure_live, push_inst(Inst).
 
 push_inst(Inst, st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
                 st(Env, Cur, [Inst|Insts], Blocks, N, Labels, Cases, Allocs)).
 
-% term(Jump): end the current block with Jump.
+% term(+Jump)//: end the current block with Jump.
 term(Jump) --> ensure_live, close_block(Jump).
 
 close_block(Jump,
@@ -404,8 +462,8 @@ close_block(Jump,
                N, Labels, Cases, Allocs)) :-
     reverse(Insts, BlockInsts).
 
-% start(Label): begin block Label, falling through from a live current
-% block.
+% start(+Label)//: begin block Label, falling through from a live
+% current block.
 start(Label) -->
     cur(Cur),
     (   { Cur == none } -> []
@@ -413,10 +471,10 @@ start(Label) -->
     ),
     set_cur(cur(Label, [])).
 
-% start_phi(Label, Phis): begin block Label, reached only by jumps.
+% start_phi(+Label, +Phis)//: begin block Label, reached only by jumps.
 start_phi(Label, Phis) --> set_cur(cur(Label, Phis)).
 
-% here(Label): the current block's label.
+% here(-Label)//: Label is the current block's label.
 here(Label) --> ensure_live, cur(cur(Label, _)).
 
 add_alloc(Inst, st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
@@ -428,7 +486,8 @@ cases(Cases, State, State) :-
 set_cases(Cases, st(Env, Cur, Insts, Blocks, N, Labels, _, Allocs),
                  st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
 
-% goto_label(Name, Label): the IR label of C label Name, made on first use.
+% goto_label(+Name, -Label)//: Label is the IR label of C label Name,
+% made on first use.
 goto_label(Name, Label, State0, State) :-
     State0 = st(Env, Cur, Insts, Blocks, N0, Labels0, Cases, Allocs),
     (   get_assoc(Name, Labels0, Label)
@@ -439,12 +498,14 @@ goto_label(Name, Label, State0, State) :-
         State = st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)
     ).
 
-% ins(Class, Op, Args, Dest): emit an instruction into a fresh temporary.
+% ins(+Class, +Op, +Args, -Dest)//: emit an instruction into Dest, a
+% fresh temporary.
 ins(Class, Op, Args, Dest) -->
     fresh(Dest),
     emit(ins(Dest, Class, Op, Args)).
 
-% A local object: an alloc in the entry block.
+% local_slot(+Type, -Addr)//: Addr points at a new local object of
+% Type, an alloc in the entry block.
 local_slot(Type, Addr) -->
     env(Env),
     { catch(size_align(Type, Env, Size0, Align0), bad(Why),
@@ -468,6 +529,8 @@ switch_ctx(ctx(Func, Ret, _, Cont, Loc), Break,
 
 %% Statements
 
+% stmt(+Stmt, +Ctx)//: lower statement Stmt, an at(Loc, S) term; stmt_//2
+% lowers S itself.
 stmt(at(Loc, Stmt), Ctx0) -->
     { ctx_at(Ctx0, Loc, Ctx) },
     stmt_(Stmt, Ctx).
@@ -595,6 +658,8 @@ restore_scope(Scope) -->
     { env_restore(Scope, Env0, Env) },
     set_env(Env).
 
+% items(+Items, +Ctx)//, item(+Item, +Ctx)//: lower the items of a block,
+% statements and declarations.
 items([], _) --> [].
 items([Item|Items], Ctx) --> item(Item, Ctx), items(Items, Ctx).
 
@@ -610,11 +675,16 @@ item(decl(Loc, Specs, Inits), Ctx0) -->
     { ctx_at(Ctx0, Loc, Ctx) },
     local_decls(Decls, Ctx).
 
-% Block-scope declarations: functions and extern objects are global,
-% a static object is a global with a function-qualified name, anything
+% local_decls(+Decls, +Ctx)//, local_decl(+Decl, +Ctx)//: lower
+% block-scope declarations. Functions and extern objects are global, a
+% static object is a global with a function-qualified name, anything
 % else is a local slot.
 local_decls([], _) --> [].
-local_decls([d(Name, Type0, Storage, Asm, Init)|Decls], Ctx) -->
+local_decls([Decl|Decls], Ctx) -->
+    local_decl(Decl, Ctx),
+    local_decls(Decls, Ctx).
+
+local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
     { ctx_loc(Ctx, Loc) },
     (   { Type0 = func(_, _, _) ; Storage == extern }
     ->  env(Env0),
@@ -638,24 +708,29 @@ local_decls([d(Name, Type0, Storage, Asm, Init)|Decls], Ctx) -->
         (   { Init == none } -> []
         ;   init(Addr, Type, Init, Ctx)
         )
-    ),
-    local_decls(Decls, Ctx).
+    ).
 
+% check_local_type(+Type, +Env, +Loc, +Name): throw a semantic error
+% unless Type is a type a local object Name can have.
 check_local_type(Type, Env, Loc, Name) :-
     vm_check(Type, Loc),
     catch(( size_align(Type, Env, _, _) -> true ; true ), bad(Why),
           sema_error(Loc, '~w has a type nanofil does not support (~w)',
                      [Name, Why])).
 
-/* An array of unknown size takes its size from the initializer, counting
-   the entries each element takes with brace elision: {1, 2, 3, 4} is two
-   elements of a struct {int a, b}. Whole is whole(Ctx, State) when an
-   entry may be a struct expression that initializes a struct element
-   whole (locals), none otherwise. */
-complete_array(array(ElemType, none), none, array(ElemType, none), _, _, _) :- !.
+/* complete_array(+Type0, +Init, -Type, +Loc, +Env, +Whole): Type is
+   Type0 with the size of an array of unknown size taken from its
+   initializer Init, counting the entries each element takes with brace
+   elision: {1, 2, 3, 4} is two elements of a struct {int a, b}. Whole
+   is whole(Ctx, State) when an entry may be a struct expression that
+   initializes a struct element whole (locals), none otherwise. */
+complete_array(array(ElemType, none), none, array(ElemType, none),
+               _, _, _) :- !.
 complete_array(array(ElemType, none), Init, array(ElemType, N), Loc, Env,
                Whole) :- !,
-    (   str_elems(Init, ElemType, Bytes), length(Bytes, N0) -> N is N0 + 1
+    (   str_elems(Init, ElemType, Bytes),
+        length(Bytes, N0)
+    ->  N is N0 + 1
     ;   Init = list(Entries)
     ->  list_extent(Entries, ElemType, Env, Whole, 0, 0, N)
     ;   sema_error(Loc, 'array of unknown size', [])
@@ -663,7 +738,8 @@ complete_array(array(ElemType, none), Init, array(ElemType, N), Loc, Env,
 complete_array(Type, _, Type, _, _, _).
 
 % list_extent(+Entries, +ElemType, +Env, +Whole, +Index, +Max0, -Max):
-% one more than the largest element index the entries reach.
+% Max is the larger of Max0 and one more than the largest element index
+% Entries reach, an undesignated first entry going at Index.
 list_extent([], _, _, _, _, Max, Max).
 list_extent([entry(Desigs, V)|Entries0], ElemType, Env, Whole, Index0, Max0,
             Max) :-
@@ -675,16 +751,18 @@ list_extent([entry(Desigs, V)|Entries0], ElemType, Env, Whole, Index0, Max0,
     Max1 is max(Max0, Index1),
     list_extent(Entries, ElemType, Env, Whole, Index1, Max1, Max).
 
-% consume(Type, Env, Whole, Entries0, Entries): the entries a slot of type
-% Type takes, as init_one does: one if it initializes Type by itself,
-% else one per slot of Type recursively, stopping at a designator or the
-% end.
+% consume(+Type, +Env, +Whole, +Entries0, -Entries): Entries is what is
+% left of Entries0 after a slot of type Type takes its entries, as
+% init_one does: one if it initializes Type by itself, else one per
+% slot of Type recursively, stopping at a designator or the end.
 consume(Type, _, Whole, [entry(_, V)|Entries], Entries) :-
     elided_one(Type, V, Whole), !.
 consume(Type, Env, Whole, Entries0, Entries) :-
     aggregate_slots(Type, Env, Slots),
     consume_slots(Slots, Env, Whole, Entries0, Entries).
 
+% consume_slots(+Slots, +Env, +Whole, +Entries0, -Entries): as consume
+% for each of Slots in turn, stopping at a designated entry or the end.
 consume_slots([], _, _, Entries, Entries).
 consume_slots([slot(_, _, Type)|Slots], Env, Whole, Entries0, Entries) :-
     (   Entries0 = [entry([], _)|_]
@@ -693,19 +771,26 @@ consume_slots([slot(_, _, Type)|Slots], Env, Whole, Entries0, Entries) :-
     ;   Entries = Entries0
     ).
 
-% An entry that initializes a slot of type Type by itself.
+% elided_one(+Type, +V, +Whole): entry value V initializes a slot of
+% type Type by itself. The final cut makes this semidet: the
+% alternatives can overlap.
 elided_one(Type, V, Whole) :-
     (   V = list(_)
     ;   \+ aggregate(Type)
-    ;   Type = array(CharType, _), str_elems(V, CharType, _)
-    ;   Whole = whole(Ctx, State), su(Type), struct_expr(V, Ctx, Type, State, _)
-    ), !.
+    ;   Type = array(CharType, _),
+        str_elems(V, CharType, _)
+    ;   Whole = whole(Ctx, State),
+        su(Type),
+        struct_expr(V, Ctx, Type, State, _)
+    ),
+    !.
 
-% whole_probe(Ctx, Whole): Whole lets complete_array test, in the current
-% state, whether an entry is a struct expression.
+% whole_probe(+Ctx, -Whole)//: Whole lets complete_array test, in the
+% current state, whether an entry is a struct expression.
 whole_probe(Ctx, whole(Ctx, State), State, State).
 
-% The switch dispatch: one comparison per case, then the default.
+% dispatch(+Cases, +Value, +Type, +LEnd)//: the switch dispatch, one
+% comparison per case, then a jump to the default or LEnd.
 dispatch([], _, _, LEnd) --> term(jmp(LEnd)).
 dispatch(Cases, Value, Type, LEnd) -->
     { findall(CaseValue-Label, member(case(CaseValue, Label), Cases), Pairs),
@@ -713,6 +798,8 @@ dispatch(Cases, Value, Type, LEnd) -->
       type_class(Type, Class) },
     dispatch_cases(Pairs, Value, Type, Class, LDefault).
 
+% dispatch_cases(+Pairs, +Value, +Type, +Class, +LDefault)//: compare
+% Value with each case value of Pairs in turn, then jump to LDefault.
 dispatch_cases([], _, _, _, LDefault) --> term(jmp(LDefault)).
 dispatch_cases([CaseValue-Label|Pairs], Value, Type, Class, LDefault) -->
     { convert_int(CaseValue, Type, Wrapped) },
@@ -722,13 +809,15 @@ dispatch_cases([CaseValue-Label|Pairs], Value, Type, Class, LDefault) -->
     start(Next),
     dispatch_cases(Pairs, Value, Type, Class, LDefault).
 
-% cond_jump(Expr, Ctx, LTrue, LFalse): branch on the truth of a scalar.
+% cond_jump(+Expr, +Ctx, +LTrue, +LFalse)//: branch on the truth of
+% scalar Expr.
 cond_jump(Expr, Ctx, LTrue, LFalse) -->
     rval(Expr, Ctx, Value),
     truth(Value, Ctx, Test),
     term(jnz(Test, LTrue, LFalse)).
 
-% truth(V, Ctx, W): a w value that is nonzero exactly when V is.
+% truth(+Value, +Ctx, -W)//: W is a w value that is nonzero exactly when
+% scalar Value is.
 truth(v(V, Type), Ctx, W) -->
     (   { type_class(Type, w) } -> { W = V }
     ;   { type_class(Type, l) } -> ins(w, cmp(ne, l), [V, c(0)], W)
@@ -741,7 +830,8 @@ truth(v(V, Type), Ctx, W) -->
 
 %% Initializers
 
-% init(Addr, Type, Init, Ctx): initialize the local object at Addr.
+% init(+Addr, +Type, +Init, +Ctx)//: initialize the local object of
+% Type at Addr from Init.
 init(Addr, Type, Init, Ctx) -->
     { ctx_loc(Ctx, Loc) },
     (   { Init = list(Entries) }
@@ -759,6 +849,8 @@ init(Addr, Type, Init, Ctx) -->
 
 is_char_type(Type) :- memberchk(Type, [char, schar, uchar]).
 
+% init_string(+Addr, +ElemType, +N, +Bytes, +Loc)//: store the string
+% literal elements Bytes into the array of N ElemType at Addr.
 init_string(Addr, ElemType, N, Bytes, Loc) -->
     { length(Bytes, NBytes),
       (   NBytes > N
@@ -770,33 +862,38 @@ init_string(Addr, ElemType, N, Bytes, Loc) -->
       findall(Off-Byte, ( nth0(I, Bytes, Byte), Off is I * Size ), Pairs) },
     store_elems(Pairs, Width, Addr).
 
+% store_elems(+Pairs, +Width, +Addr)//: store each Off-Value of Pairs at
+% Addr + Off.
 store_elems([], _, _) --> [].
 store_elems([Off-Value|Pairs], Width, Addr) -->
     offset(Addr, Off, P),
     emit(store(Width, c(Value), P)),
     store_elems(Pairs, Width, Addr).
 
-% zero_object(Addr, Type): clear the whole object, since allocs are
+% zero_object(+Addr, +Type)//: clear the whole object, since allocs are
 % hoisted and a local inside a loop must be reinitialized on every pass.
 zero_object(Addr, Type) -->
     env(Env),
     { size_align(Type, Env, Size, Align) },
     zero_bytes(Addr, 0, Size, Align).
 
-% zero_bytes(Addr, Off, Size, Align): zero Off..Size with the widest
-% stores the alignment allows.
+% zero_bytes(+Addr, +Off, +Size, +Align)//: zero Off..Size with the
+% widest stores the alignment allows; bytes below Off are done. The cut
+% in the second clause commits to the widest store that fits.
 zero_bytes(_, Off, Size, _) --> { Off >= Size }, !.
 zero_bytes(Addr, Off, Size, Align) -->
     { Left is Size - Off,
       member(Width-N, [l-8, w-4, h-2, b-1]),
-      N =< Left, N =< Align, Off mod N =:= 0 }, !,
+      N =< Left, N =< Align, Off mod N =:= 0 },
+    !,
     offset(Addr, Off, P),
     emit(store(Width, c(0), P)),
     { Off1 is Off + N },
     zero_bytes(Addr, Off1, Size, Align).
 
-% init_list(Addr, Type, Entries, Ctx): a braced list for an array or
-% struct, with designators and brace elision.
+% init_list(+Addr, +Type, +Entries, +Ctx)//: initialize the array or
+% struct at Addr from braced list Entries, with designators and brace
+% elision.
 init_list(Addr, Type, Entries, Ctx) -->
     init_agg(Addr, Type, Entries, Rest, Ctx),
     { ctx_loc(Ctx, Loc) },
@@ -804,8 +901,9 @@ init_list(Addr, Type, Entries, Ctx) -->
     ;   { sema_error(Loc, 'excess initializers', []) }
     ).
 
-% init_agg(Addr, Type, Entries0, Entries, Ctx): initialize aggregate Type
-% at Addr from the front of Entries0; Entries is what is left.
+% init_agg(+Addr, +Type, +Entries0, -Entries, +Ctx)//: initialize the
+% object of Type at Addr from the front of Entries0; Entries is what is
+% left. A non-aggregate takes one entry.
 init_agg(Addr, Type, Entries0, Entries, Ctx) -->
     env(Env),
     { aggregate_slots(Type, Env, Slots) },
@@ -818,8 +916,10 @@ aggregate(array(_, _)).
 aggregate(struct(_)).
 aggregate(union(_)).
 
-% Slots: the element positions of an aggregate, slot(Key, Offset, Type),
-% with Key an index or a field name. A union initializes its first member.
+% aggregate_slots(+Type, +Env, -Slots): Slots are the element positions
+% of aggregate Type, slot(Key, Offset, SlotType), with Key an index or a
+% field name. A union initializes its first member. Fails for a
+% non-aggregate.
 aggregate_slots(array(ElemType, N), Env, Slots) :- !,
     size_align(ElemType, Env, Size, _),
     Last is N - 1,
@@ -827,7 +927,8 @@ aggregate_slots(array(ElemType, N), Env, Slots) :- !,
             ( between(0, Last, I), Off is I * Size ),
             Slots).
 aggregate_slots(SU, Env, Slots) :-
-    ( SU = struct(_) ; SU = union(_) ), !,
+    ( SU = struct(_) ; SU = union(_) ),
+    !,
     SU =.. [Kind, Id],
     env_defs(Env, Defs),
     get_assoc(Id, Defs, def(Kind, Members, _, _)),
@@ -836,13 +937,15 @@ aggregate_slots(SU, Env, Slots) :-
     ;   Slots = Slots0
     ).
 
-% init_slots(Slots, Index, Addr, Entries0, Entries, Ctx): initialize the
-% slots from Index on; a designated entry moves to its slot.
+% init_slots(+Slots, +Index, +Addr, +Entries0, -Entries, +Ctx)//:
+% initialize the slots from Index on from Entries0, leaving Entries; a
+% designated entry moves to its slot. Index is the slot the next
+% undesignated entry goes to.
 init_slots(_, _, _, [], [], _) --> !.
 init_slots(Slots, _, Addr, [entry([Desig|Desigs], V)|Entries0], Entries,
            Ctx) --> !,
     env(Env),
-    { designated(Desig, Slots, Index, Env, Ctx) },
+    { designator_index(Desig, Slots, Index, Env, Ctx) },
     { nth0(Index, Slots, slot(_, Off, Type)) },
     offset(Addr, Off, P),
     (   { Desigs == [] }
@@ -862,8 +965,10 @@ init_slots(Slots, Index, Addr, Entries0, Entries, Ctx) -->
     ;   { Entries = Entries0 }
     ).
 
-% One slot: a braced or scalar value, or brace elision for an aggregate
-% slot given a scalar (the slot then takes as many entries as it needs).
+% init_one(+P, +Type, +V, +Entries0, -Entries, +Ctx)//: initialize the
+% slot of Type at P from entry value V: a braced or scalar value, or
+% brace elision for an aggregate slot given a scalar (the slot then
+% takes as many of Entries0 as it needs, leaving Entries).
 init_one(P, Type, V, Entries0, Entries, Ctx) -->
     (   { V = list(_)
         ; \+ aggregate(Type)
@@ -879,22 +984,27 @@ init_one(P, Type, V, Entries0, Entries, Ctx) -->
         { append(Rest, Post, Entries) }
     ).
 
-% An elided aggregate takes entries only up to the next designator, which
-% belongs to the enclosing list.
+% undesignated(+Entries, -Pre, -Post): Pre is the longest prefix of
+% Entries without a designator, Post the rest. An elided aggregate takes
+% entries only up to the next designator, which belongs to the
+% enclosing list. The final cut commits to the first split found, which
+% ends Pre just before the first designator (or at the end).
 undesignated(Entries, Pre, Post) :-
     append(Pre, Post, Entries),
     \+ member(entry([_|_], _), Pre),
-    ( Post = [] ; Post = [entry([_|_], _)|_] ), !.
+    ( Post = [] ; Post = [entry([_|_], _)|_] ),
+    !.
 
-% designated(Desig, Slots, Index, Env, Ctx): the slot a designator names.
-designated(index(Expr), Slots, Index, Env, Ctx) :-
+% designator_index(+Desig, +Slots, -Index, +Env, +Ctx): Index is the
+% position in Slots of the slot designator Desig names.
+designator_index(index(Expr), Slots, Index, Env, Ctx) :-
     ctx_loc(Ctx, Loc),
     (   catch(const_value(Expr, Env, Index, _), not_constant, fail),
         nth0(Index, Slots, slot(Index, _, _))
     ->  true
     ;   sema_error(Loc, 'bad array designator', [])
     ).
-designated(field(Field), Slots, Index, _, Ctx) :-
+designator_index(field(Field), Slots, Index, _, Ctx) :-
     ctx_loc(Ctx, Loc),
     (   nth0(Index, Slots, slot(Field, _, _)) -> true
     ;   sema_error(Loc, 'no member ~w', [Field])
@@ -902,16 +1012,13 @@ designated(field(Field), Slots, Index, _, Ctx) :-
 
 %% Expressions
 
-% obj(Expr, Ctx, R): Expr as an lvalue, function designator or rvalue,
-% without array decay or loading.
+% obj(+Expr, +Ctx, -R)//: R is Expr as an lvalue, function designator or
+% rvalue, without array decay or loading.
 obj(id(Name), Ctx, R) --> !,
     env(Env),
-    (   { lookup_ordinary(Env, Name, var(Addr, Type)) } -> { R = lv(Addr, Type) }
-    ;   { lookup_ordinary(Env, Name, fn(Type, Sym, _)) } -> { R = fd(glo(Sym), Type) }
-    ;   { lookup_ordinary(Env, Name, enumconst(V, Type)) } -> { R = v(c(V), Type) }
-    ;   { lookup_ordinary(Env, Name, gvar(Type, Sym, _, _)) }
-    ->  ins(p, copy, [glo(Sym)], Addr),
-        { R = lv(Addr, Type) }
+    (   { lookup_ordinary(Env, Name, Binding),
+          object_binding(Binding) }
+    ->  binding_obj(Binding, R)
     ;   { memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']) }
     ->  { Ctx = ctx(Func, _, _, _, _), atom_codes(Func, Bytes) },
         obj(str(Bytes), Ctx, R)
@@ -931,9 +1038,10 @@ obj(index(Array, Index), Ctx, R) --> !,
     obj(un(deref, bin(add, Array, Index)), Ctx, R).
 obj(member(SU, Field), Ctx, lv(P, Type)) --> !,
     obj(SU, Ctx, R0),
-    (   { R0 = lv(Addr, SUType) }
-    ->  member_lv(Addr, SUType, Field, Ctx, P, Type)
-    ;   { R0 = v(Addr, SUType), su(SUType) }
+    (   {   R0 = lv(Addr, SUType)
+        ;   R0 = v(Addr, SUType),
+            su(SUType)
+        }
     ->  member_lv(Addr, SUType, Field, Ctx, P, Type)
     ;   { ctx_loc(Ctx, Loc),
           sema_error(Loc, 'member access on a non-lvalue', []) }
@@ -971,10 +1079,29 @@ obj(complit(TypeName, Init), Ctx, lv(Addr, Type)) --> !,
     init(Addr, Type, Init, Ctx).
 obj(Expr, Ctx, R) --> rvalue(Expr, Ctx, R).
 
-% A callee must be a temporary.
+% object_binding(+Binding): Binding, an identifier's c_types binding,
+% names an object, function or enumeration constant, not a typedef or
+% the sret pointer.
+object_binding(var(_, _)).
+object_binding(fn(_, _, _)).
+object_binding(enumconst(_, _)).
+object_binding(gvar(_, _, _, _)).
+
+% binding_obj(+Binding, -R)//: R is the identifier bound to Binding as
+% obj//3 gives it. A global's address is copied into a temporary.
+binding_obj(var(Addr, Type), lv(Addr, Type)) --> [].
+binding_obj(fn(Type, Sym, _), fd(glo(Sym), Type)) --> [].
+binding_obj(enumconst(V, Type), v(c(V), Type)) --> [].
+binding_obj(gvar(Type, Sym, _, _), lv(Addr, Type)) -->
+    ins(p, copy, [glo(Sym)], Addr).
+
+% callee_temp(+V, -Callee)//: Callee is V in a temporary, as a callee
+% must be.
 callee_temp(t(T), t(T)) --> !.
 callee_temp(V, Callee) --> ins(p, copy, [V], Callee).
 
+% member_lv(+Addr, +SUType, +Field, +Ctx, -P, -Type)//: P points at
+% member Field, of Type, of the struct or union at Addr.
 member_lv(Addr, SUType, Field, Ctx, P, Type) -->
     env(Env),
     { ctx_loc(Ctx, Loc) },
@@ -984,10 +1111,13 @@ member_lv(Addr, SUType, Field, Ctx, P, Type) -->
     ;   { sema_error(Loc, 'no member named ~w', [Field]) }
     ).
 
-% rval(Expr, Ctx, v(V, Type)): the value of Expr, arrays decayed, lvalues
-% loaded.
+% rval(+Expr, +Ctx, -R)//: R is v(V, Type), the value of Expr, arrays
+% decayed, lvalues loaded.
 rval(Expr, Ctx, R) --> obj(Expr, Ctx, R0), decay(R0, Ctx, R).
 
+% decay(+R0, +Ctx, -R)//: R is the rvalue of R0. An array or function
+% decays to a pointer, a scalar lvalue is loaded, and a struct or union
+% lvalue stands for its address.
 decay(v(V, Type), _, v(V, Type)) --> [].
 decay(lv(Addr, array(Type, _)), _, v(Addr, ptr(Type))) --> !.
 decay(lv(Addr, Type), _, v(Addr, Type)) --> { su(Type) }, !.
@@ -996,18 +1126,21 @@ decay(fd(glo(Sym), Type), _, v(Addr, ptr(Type))) --> !,
     ins(p, copy, [glo(Sym)], Addr).
 decay(fd(Callee, Type), _, v(Callee, ptr(Type))) --> [].
 
-% The type of an expression, for sizeof: lower it, keep only the type.
-type_of(Expr, Ctx, Type, State, State) :-
+% expr_type(+Expr, +Ctx, -Type)//: Type is the type of Expr, for sizeof,
+% from a throwaway lowering; the state is left as it was.
+expr_type(Expr, Ctx, Type, State, State) :-
     obj(Expr, Ctx, R, State, _),
     arg(2, R, Type).
 
+% load_typed(+Type, +Addr, +Ctx, -V)//: V is the scalar of Type loaded
+% from Addr.
 load_typed(Type, Addr, Ctx, V) -->
     (   { load_op(Type, Class, Op) } -> ins(Class, load(Op), [Addr], V)
     ;   { ctx_loc(Ctx, Loc),
           sema_error(Loc, 'loading a ~w value is not supported yet', [Type]) }
     ).
 
-% load_op(Type, Class, Op): the class and load of a scalar.
+% load_op(+Type, -Class, -Op): Class and load Op hold a scalar of Type.
 load_op(bool, w, ub).
 load_op(char, w, sb).
 load_op(schar, w, sb).
@@ -1022,21 +1155,26 @@ load_op(llong, l, l).
 load_op(ullong, l, l).
 load_op(ptr(_), p, p).
 
+% store_typed(+Type, +V, +Addr)//: store value V of Type at Addr; a
+% struct or union V is the address of the value, copied.
 store_typed(Type, V, Addr) --> { su(Type) }, !, copy_object(Type, V, Addr).
 store_typed(Type, V, Addr) -->
     { store_width(Type, Width) },
     emit(store(Width, V, Addr)).
 
+% store_width(+Type, -Width): Width is the store of a scalar of Type.
 store_width(ptr(_), p) :- !.
 store_width(Type, Width) :-
     int_info(Type, Size, _),
     memberchk(Size-Width, [1-b, 2-h, 4-w, 8-l]).
 
-% offset(Addr, Off, P): the pointer Addr + Off.
+% offset(+Addr, +Off, -P)//: P is the pointer Addr + Off (Addr itself
+% for 0, with no instruction).
 offset(Addr, 0, Addr) --> !.
 offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
 
-% rvalue(Expr, Ctx, R): the expressions that are only rvalues.
+% rvalue(+Expr, +Ctx, -R)//: R is the value of an expression that is
+% only an rvalue.
 rvalue(num(V0, Suffix), _, v(c(V), Type)) --> !,
     { num_type(V0, Suffix, Type), convert_int(V0, Type, V) }.
 rvalue(chr(V), _, v(c(V), int)) --> !.
@@ -1053,7 +1191,7 @@ rvalue(alignof(TypeName), Ctx, v(c(Align), ulong)) --> !,
       catch(size_align(Type, Env, _, Align), bad(Why),
             sema_error(Loc, 'alignof: ~w', [Why])) }.
 rvalue(sizeof_expr(Expr), Ctx, v(c(Size), ulong)) --> !,
-    type_of(Expr, Ctx, Type),
+    expr_type(Expr, Ctx, Type),
     env(Env),
     { ctx_loc(Ctx, Loc),
       catch(size_align(Type, Env, Size, _), bad(Why),
@@ -1084,7 +1222,8 @@ rvalue(un(addr, Expr), Ctx, v(P, ptr(Type))) --> !,
           sema_error(Loc, '& of a non-lvalue', []) }
     ).
 rvalue(un(Op, Expr), Ctx, R) -->
-    { memberchk(Op, [preinc, predec, postinc, postdec]) }, !,
+    { memberchk(Op, [preinc, predec, postinc, postdec]) },
+    !,
     incdec(Op, Expr, Ctx, R).
 rvalue(un(Op, Expr), Ctx, R) --> !,
     rval(Expr, Ctx, V),
@@ -1099,7 +1238,8 @@ rvalue(assign(Op, A, B), Ctx, R) --> !, assignment(Op, A, B, Ctx, R).
 rvalue(cond(Cond, A, B), Ctx, R) --> !, conditional(Cond, A, B, Ctx, R).
 rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     env(Env),
-    { \+ lookup_ordinary(Env, '__builtin_expect', _) }, !,
+    { \+ lookup_ordinary(Env, '__builtin_expect', _) },
+    !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
     { ctx_loc(Ctx, Loc) },
@@ -1110,19 +1250,23 @@ rvalue(Expr, Ctx, _) -->
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, 'cannot lower ~w', [Expr]) }.
 
+% type_size(+TypeName, +Env, +Ctx, -Size): Size is sizeof(TypeName).
 type_size(TypeName, Env, Ctx, Size) :-
     ctx_loc(Ctx, Loc),
     type_name(TypeName, Type, Env, Loc),
     catch(size_align(Type, Env, Size, _), bad(Why),
           sema_error(Loc, 'sizeof: ~w', [Why])).
 
-% A type name as lowering uses it: a variably modified one (an array of
+% type_name(+TypeName, -Type, +Env, +Loc): Type is the type TypeName
+% names, as lowering uses it: a variably modified one (an array of
 % non-constant size anywhere inside) is rejected, since its size
 % expressions would have to be evaluated, side effects and all.
 type_name(TypeName, Type, Env, Loc) :-
     type_name_type(TypeName, Type, Env, _),
     vm_check(Type, Loc).
 
+% vm_check(+Type, +Loc): throw a semantic error if Type is variably
+% modified.
 vm_check(Type, Loc) :-
     (   vm_type(Type)
     ->  sema_error(Loc,
@@ -1131,18 +1275,24 @@ vm_check(Type, Loc) :-
     ;   true
     ).
 
-% vm_type(Type): Type is variably modified.
+% vm_type(+Type): Type is variably modified. The cut ending the func
+% clause succeeds once however many parts are variably modified.
 vm_type(bad('non-constant array size')).
 vm_type(ptr(Type)) :- vm_type(Type).
 vm_type(array(Type, _)) :- vm_type(Type).
 vm_type(func(Ret, Params, _)) :-
     (   vm_type(Ret)
-    ;   is_list(Params), member(Param, Params), vm_type(Param)
-    ), !.
+    ;   is_list(Params),
+        member(Param, Params),
+        vm_type(Param)
+    ),
+    !.
 
 %% Conversions
 
-% convert(v(V, From), To, v(V1, To)), for scalar types.
+% convert(+Value0, +To, -R)//: R is v(V1, To), scalar Value0 =
+% v(V, From) converted to scalar type To (or void). Callers check that
+% the types are scalar first.
 convert(v(V, Type), Type, v(V, Type)) --> !.
 convert(v(V, _), void, v(V, void)) --> !.
 convert(v(V, From), bool, v(B, bool)) --> !,
@@ -1153,24 +1303,31 @@ convert(v(V, From), bool, v(B, bool)) --> !,
     ;   { B = W }
     ).
 convert(v(c(N), From), To, v(c(W), To)) -->
-    { int_type(From), int_type(To) }, !,
+    { int_type(From), int_type(To) },
+    !,
     { convert_int(N, To, W) }.
 convert(v(V, From), To, v(V1, To)) -->
-    { int_type(From), int_type(To) }, !,
+    { int_type(From), int_type(To) },
+    !,
     int_convert(From, To, V, V1).
 convert(v(c(N), From), ptr(P), v(c(W), ptr(P))) -->
-    { int_type(From) }, !,
+    { int_type(From) },
+    !,
     { convert_int(N, ulong, W) }.
 convert(v(V, From), ptr(P), v(V1, ptr(P))) -->
-    { int_type(From) }, !,
+    { int_type(From) },
+    !,
     int_convert(From, ulong, V, V2),
     ins(p, itop, [V2], V1).
 convert(v(V, ptr(_)), To, R) -->
-    { int_type(To) }, !,
+    { int_type(To) },
+    !,
     ins(l, ptoi, [V], Int),
     convert(v(Int, ulong), To, R).
-convert(v(V, ptr(_)), ptr(P), v(V, ptr(P))) --> !.
+convert(v(V, ptr(_)), ptr(P), v(V, ptr(P))) --> [].
 
+% int_convert(+From, +To, +V, -V1)//: V1 is integer V of type From
+% converted to type To, extended where the representation changes.
 int_convert(From, To, V, V1) -->
     { int_info(From, SizeFrom, SignFrom), int_info(To, SizeTo, SignTo) },
     (   { SizeTo =:= 8, SizeFrom < 8 }
@@ -1182,27 +1339,31 @@ int_convert(From, To, V, V1) -->
     ;   { V1 = V }
     ).
 
-% representable(SizeFrom, SignFrom, SizeTo, SignTo): every value of the
-% source type is a value of the target type.
+% representable(+SizeFrom, +SignFrom, +SizeTo, +SignTo): every value of
+% the source type is a value of the target type.
 representable(SizeFrom, SignFrom, SizeTo, SignTo) :-
     SizeTo > SizeFrom,
-    ( SignTo == signed ; SignFrom == unsigned ), !.
+    ( SignTo == signed ; SignFrom == unsigned ),
+    !.
 representable(Size, Sign, Size, Sign).
 
-% narrow_ext(Size, Sign, Op): the extension that normalizes a narrow int.
+% narrow_ext(+Size, +Sign, -Op): Op is the extension that normalizes a
+% narrow int.
 narrow_ext(1, signed, sb).
 narrow_ext(1, unsigned, ub).
 narrow_ext(2, signed, sh).
 narrow_ext(2, unsigned, uh).
 
-% Conversion as by a cast.
+% convert_checked(+Value0, +To, +Ctx, -R)//: R is Value0 converted to
+% To as by a cast.
 convert_checked(Value0, To, Ctx, R) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc) },
     (   { scalar_type(From), scalar_type(To) } -> convert(Value0, To, R)
     ;   { sema_error(Loc, 'cannot convert ~w to ~w', [From, To]) }
     ).
 
-% Conversion as by assignment (also arguments and returns).
+% assign_convert(+Value0, +To, +Loc, -R)//: R is Value0 converted to To
+% as by assignment (also arguments and returns).
 assign_convert(Value0, To, Loc, R) -->
     { Value0 = v(Addr, From) },
     (   { su(To) }
@@ -1215,6 +1376,8 @@ assign_convert(Value0, To, Loc, R) -->
 
 %% Operators
 
+% unary(+Op, +Value0, +Ctx, -R)//: R is unary operator Op applied to
+% Value0.
 unary(neg, Value0, Ctx, v(V, Type)) -->
     arith_operand(Value0, Ctx, Type, V1),
     { type_class(Type, Class) },
@@ -1229,8 +1392,8 @@ unary(not, Value0, Ctx, v(V, int)) -->
     truth(Value0, Ctx, W),
     ins(w, cmp(eq, w), [W, c(0)], V).
 
-% arith_operand(Value0, Ctx, Type, V): an integer operand, promoted to
-% Type.
+% arith_operand(+Value0, +Ctx, -Type, -V)//: V is integer operand
+% Value0 promoted to Type.
 arith_operand(Value0, Ctx, Type, V) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc),
       (   int_type(From) -> integer_promotion(From, Type)
@@ -1238,6 +1401,8 @@ arith_operand(Value0, Ctx, Type, V) -->
       ) },
     convert(Value0, Type, v(V, _)).
 
+% binary(+Op, +VA, +VB, +Ctx, -R)//: R is binary operator Op applied to
+% the values VA and VB, integers or pointers.
 binary(Op, VA, VB, Ctx, R) -->
     { VA = v(_, TA), VB = v(_, TB), ctx_loc(Ctx, Loc) },
     (   { int_type(TA), int_type(TB) } -> int_binary(Op, VA, VB, R)
@@ -1252,10 +1417,12 @@ binary(Op, VA, VB, Ctx, R) -->
     ;   { sema_error(Loc, 'invalid operands to ~w: ~w and ~w', [Op, TA, TB]) }
     ).
 
-% Shifts promote each operand on its own; comparisons and arithmetic
+% int_binary(+Op, +VA, +VB, -R)//: R is Op applied to integers VA and
+% VB. Shifts promote each operand on its own; comparisons and arithmetic
 % convert both to their usual arithmetic type.
 int_binary(Op, VA, VB, v(V, Type)) -->
-    { memberchk(Op, [shl, shr]) }, !,
+    { memberchk(Op, [shl, shr]) },
+    !,
     { VA = v(_, TA), integer_promotion(TA, Type), type_class(Type, Class),
       int_info(Type, _, Sign) },
     convert(VA, Type, v(A, _)),
@@ -1264,7 +1431,8 @@ int_binary(Op, VA, VB, v(V, Type)) -->
     { Op == shl -> IOp = shl ; Sign == signed -> IOp = sar ; IOp = shr },
     ins(Class, IOp, [A, B], V).
 int_binary(Op, VA, VB, v(V, int)) -->
-    { cmp_op(Op, SignedCmp, UnsignedCmp) }, !,
+    { cmp_op(Op, SignedCmp, UnsignedCmp) },
+    !,
     { VA = v(_, TA),
       VB = v(_, TB),
       usual_arith_conversion(TA, TB, Type),
@@ -1285,7 +1453,8 @@ int_binary(Op, VA, VB, v(V, Type)) -->
     convert(VB, Type, v(B, _)),
     ins(Class, IOp, [A, B], V).
 
-% cmp_op(Op, SignedCmp, UnsignedCmp)
+% cmp_op(+Op, -SignedCmp, -UnsignedCmp): C comparison Op is IR
+% comparison SignedCmp on signed and UnsignedCmp on unsigned operands.
 cmp_op(eq, eq, eq).
 cmp_op(ne, ne, ne).
 cmp_op(lt, slt, ult).
@@ -1293,7 +1462,8 @@ cmp_op(gt, sgt, ugt).
 cmp_op(le, sle, ule).
 cmp_op(ge, sge, uge).
 
-% arith_op(Op, Sign, IROp)
+% arith_op(+Op, +Sign, -IROp): C arithmetic Op on operands of Sign is
+% IR operation IROp.
 arith_op(add, _, add).
 arith_op(sub, _, sub).
 arith_op(mul, _, mul).
@@ -1305,13 +1475,15 @@ arith_op(and, _, and).
 arith_op(or, _, or).
 arith_op(xor, _, xor).
 
-% P + I or P - I: I scaled by the element size.
+% ptr_offset(+Op, +VP, +ElemType, +VI, +Ctx, -R)//: R is P + I or
+% P - I, I scaled by the element size.
 ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
     { PtrType = ptr(ElemType) },
     env(Env),
     { ctx_loc(Ctx, Loc),
       catch(size_align(ElemType, Env, Size, _), bad(Why),
-            sema_error(Loc, 'pointer arithmetic on ~w (~w)', [ElemType, Why])) },
+            sema_error(Loc, 'pointer arithmetic on ~w (~w)',
+                       [ElemType, Why])) },
     convert(VI, long, v(I, _)),
     (   { I = c(N) } -> { Off is N * Size, OffV = c(Off) }
     ;   { Size =:= 1 } -> { OffV = I }
@@ -1319,11 +1491,13 @@ ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
     ),
     ins(p, Op, [P, OffV], R).
 
+% ptr_diff(+VA, +VB, +ElemType, +Ctx, -R)//: R is A - B in elements.
 ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     env(Env),
     { ctx_loc(Ctx, Loc),
       catch(size_align(ElemType, Env, Size, _), bad(Why),
-            sema_error(Loc, 'pointer subtraction on ~w (~w)', [ElemType, Why])) },
+            sema_error(Loc, 'pointer subtraction on ~w (~w)',
+                       [ElemType, Why])) },
     ins(l, ptoi, [A], IA),
     ins(l, ptoi, [B], IB),
     ins(l, sub, [IA, IB], Diff),
@@ -1331,13 +1505,16 @@ ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     ;   ins(l, div, [Diff, c(Size)], V)
     ).
 
+% ptr_compare(+Op, +VA, +VB, -R)//: R is comparison Op of VA and VB, at
+% least one a pointer, as unsigned addresses.
 ptr_compare(Op, VA, VB, v(V, int)) -->
     convert(VA, ulong, v(A, _)),
     convert(VB, ulong, v(B, _)),
     { cmp_op(Op, _, Cmp) },
     ins(w, cmp(Cmp, l), [A, B], V).
 
-% && and ||: a phi of 0/1 over the short-circuit edges.
+% logical(+Op, +A, +B, +Ctx, -R)//: R is A && B (land) or A || B (lor),
+% a phi of 0/1 over the short-circuit edges.
 logical(Op, A, B, Ctx, v(V, int)) -->
     rval(A, Ctx, VA), truth(VA, Ctx, WA), here(LA),
     label(LRight), label(LJoin),
@@ -1351,7 +1528,8 @@ logical(Op, A, B, Ctx, v(V, int)) -->
     fresh(V),
     start_phi(LJoin, [phi(V, w, [LA-c(Short), LB-NB])]).
 
-% GNU c ?: b: c is evaluated once, and is the result if nonzero.
+% gnu_conditional(+Cond, +B, +Ctx, -R)//: R is GNU Cond ?: B. Cond is
+% evaluated once, and is the result if nonzero.
 gnu_conditional(Cond, B, Ctx, R) -->
     rval(Cond, Ctx, VC), probe_rval(B, Ctx, VB0),
     { VC = v(_, TC), VB0 = v(_, TB), ctx_loc(Ctx, Loc),
@@ -1364,6 +1542,8 @@ gnu_conditional(Cond, B, Ctx, R) -->
     term(jmp(LJoin)),
     join_arms(Type, LJoin, LA1-VA1, LB1-VB1, R).
 
+% conditional(+Cond, +A, +B, +Ctx, -R)//: R is Cond ? A : B. The arms are
+% probed first for their types, then lowered in their own blocks.
 conditional(Cond, A, B, Ctx, R) -->
     probe_rval(A, Ctx, VA0), probe_rval(B, Ctx, VB0),
     { VA0 = v(_, TA), VB0 = v(_, TB), ctx_loc(Ctx, Loc),
@@ -1376,7 +1556,8 @@ conditional(Cond, A, B, Ctx, R) -->
     term(jmp(LJoin)),
     join_arms(Type, LJoin, LA1-VA1, LB1-VB1, R).
 
-% join_arms(Type, LJoin, LA-VA, LB-VB, R): the ?: result, a phi at LJoin.
+% join_arms(+Type, +LJoin, +LA-VA, +LB-VB, -R)//: start block LJoin; R
+% is the ?: result there, a phi of VA from LA and VB from LB.
 join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
     (   { Type == void } -> start(LJoin), { R = v(c(0), void) }
     ;   { su(Type) -> Class = p ; type_class(Type, Class) },
@@ -1385,25 +1566,32 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
         { R = v(V, Type) }
     ).
 
+% arm_convert(+Value0, +Type, +Ctx, -V)//: V is the IR value of ?: arm
+% Value0 as the result Type: c(0) for void, the address for a struct.
 arm_convert(Value0, void, _, c(0)) --> !, { Value0 = v(_, _) }.
 arm_convert(v(Addr, Type), Type, _, Addr) --> { su(Type) }, !.
 arm_convert(Value0, Type, Ctx, V) -->
     convert_checked(Value0, Type, Ctx, v(V, _)).
 
-% probe_rval(Expr, Ctx, R): Expr's decayed value term from a throwaway
-% lowering; only its type (and whether it is a constant) is used.
+% probe_rval(+Expr, +Ctx, -R)//: R is Expr's decayed value term from a
+% throwaway lowering; the state is left as it was. Only R's type (and
+% whether it is a constant) may be used.
 probe_rval(Expr, Ctx, R, State, State) :-
     rval(Expr, Ctx, R, State, _).
 
-% struct_expr(Expr, Ctx, Type): Expr is an expression of struct or union
-% type Type.
+% struct_expr(+Expr, +Ctx, +Type)//: Expr is an expression of struct or
+% union type Type, as a throwaway lowering shows; a lowering error means
+% it is not. The state is left as it was.
 struct_expr(Expr, Ctx, Type, State, State) :-
     catch(rval(Expr, Ctx, v(_, Type1), State, _), nanofil_error(_), fail),
     Type1 == Type.
 
-% The type of c ? a : b.
+% cond_type(+TA, +VA, +TB, +VB, -Type, +Loc): Type is the type of
+% c ? a : b, given the arms' types and value terms (a null pointer
+% constant matters). Not steadfast: call with Type unbound.
 cond_type(TA, _, TB, _, Type, _) :-
-    int_type(TA), int_type(TB), !,
+    int_type(TA), int_type(TB),
+    !,
     usual_arith_conversion(TA, TB, Type).
 cond_type(void, _, void, _, void, _) :- !.
 cond_type(Type, _, Type, _, Type, _) :- su(Type), !.
@@ -1415,6 +1603,8 @@ cond_type(TA, _, TB, _, _, Loc) :-
 
 %% Assignment
 
+% assignment(+Op, +A, +B, +Ctx, -R)//: store B (or A Op B, for a compound
+% Op) into lvalue A; R is the value stored.
 assignment(Op, A, B, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     obj(A, Ctx, LV),
@@ -1431,6 +1621,7 @@ assignment(Op, A, B, Ctx, R) -->
     { R = v(V, _) },
     store_typed(Type, V, P).
 
+% compound_op(+Op, -BinOp): compound assignment Op applies BinOp.
 compound_op('*=', mul).
 compound_op('/=', div).
 compound_op('%=', mod).
@@ -1442,6 +1633,8 @@ compound_op('&=', and).
 compound_op('^=', xor).
 compound_op('|=', or).
 
+% incdec(+Op, +A, +Ctx, -R)//: increment or decrement scalar lvalue A;
+% R is the new value (pre) or the old one (post).
 incdec(Op, A, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     obj(A, Ctx, LV),
@@ -1457,6 +1650,8 @@ incdec(Op, A, Ctx, R) -->
 
 %% Calls
 
+% lower_call(+Func, +Args, +Ctx, -R)//: R is the result of calling Func
+% with Args.
 lower_call(Func, Args, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     obj(Func, Ctx, FD0),
@@ -1503,7 +1698,8 @@ lower_call(Func, Args, Ctx, R) -->
 % promotions.
 call_args([], _, _, []) --> [].
 call_args([Arg|Args], [ParamType|ParamTypes], Ctx, IRArgs) -->
-    { su(ParamType) }, !,
+    { su(ParamType) },
+    !,
     { ctx_loc(Ctx, Loc) },
     rval(Arg, Ctx, Value0),
     assign_convert(Value0, ParamType, Loc, v(Src, _)),
@@ -1533,7 +1729,8 @@ call_args([Arg|Args], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
     { type_class(Type, Class) },
     call_args(Args, ParamTypes, Ctx, IRArgs).
 
-% A call returning a struct: its words land in a fresh local, or the
+% struct_call(+RetType, +Callee, +Args, +Loc, -R)//: R is the result of a
+% call returning a struct: its words land in a fresh local, or the
 % callee writes the local through the sret pointer.
 struct_call(RetType, Callee, Args, Loc, v(Tmp, RetType)) -->
     env(Env),
@@ -1553,6 +1750,8 @@ struct_call(RetType, Callee, Args, Loc, v(Tmp, RetType)) -->
         store_words(Ebs, [D1, D2], Tmp)
     ).
 
+% return_struct(+RetType, +Addr, +Loc)//: return the struct at Addr, in
+% words or through the sret pointer.
 return_struct(RetType, Addr, Loc) -->
     env(Env),
     { ret_shape(RetType, Env, Loc, Shape) },
@@ -1568,7 +1767,8 @@ return_struct(RetType, Addr, Loc) -->
         )
     ).
 
-% A narrow result is re-extended: nothing guarantees the callee did.
+% normalize(+Type, +V0, -V)//: V is call result V0 of Type, a narrow one
+% re-extended: nothing guarantees the callee did.
 normalize(Type, V0, V) -->
     (   { int_info(Type, Size, Sign), Size < 4 }
     ->  { narrow_ext(Size, Sign, Op) },
@@ -1590,6 +1790,7 @@ normalize(Type, V0, V) -->
 su(struct(_)).
 su(union(_)).
 
+% eightbytes(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes of Type.
 eightbytes(Type, Env, Loc, Ebs) :-
     catch(size_align(Type, Env, Size, _), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Type, Why])),
@@ -1604,11 +1805,12 @@ eightbytes(Type, Env, Loc, Ebs) :-
             ),
             Ebs).
 
-% ptr_offsets(Type, Env, Base, Offs0, Offs): where Type holds pointers,
-% as a difference list.
+% ptr_offsets(+Type, +Env, +Base, -Offs0, ?Offs): Offs0-Offs is the
+% difference list of the offsets, from Base, where Type holds pointers.
 ptr_offsets(ptr(_), _, Base, [Base|Offs], Offs) :- !.
 ptr_offsets(array(ElemType, N), Env, Base, Offs0, Offs) :-
-    integer(N), !,
+    integer(N),
+    !,
     ptr_offsets(ElemType, Env, 0, ElemOffs, []),
     (   ElemOffs == [] -> Offs0 = Offs
     ;   size_align(ElemType, Env, Size, _),
@@ -1617,7 +1819,8 @@ ptr_offsets(array(ElemType, N), Env, Base, Offs0, Offs) :-
         foldl(elem_ptrs(ElemType, Env, Base, Size), Indices, Offs0, Offs)
     ).
 ptr_offsets(SU, Env, Base, Offs0, Offs) :-
-    su(SU), !,
+    su(SU),
+    !,
     SU =.. [_, Id],
     env_defs(Env, Defs),
     get_assoc(Id, Defs, def(_, Members, _, _)),
@@ -1632,6 +1835,8 @@ member_ptrs(Env, Base, m(_, Type, Off), Offs0, Offs) :-
     Base1 is Base + Off,
     ptr_offsets(Type, Env, Base1, Offs0, Offs).
 
+% arg_words(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes in which a
+% struct or union argument of Type is passed.
 arg_words(Type, Env, Loc, Ebs) :-
     size_align(Type, Env, Size, _),
     (   Size > 16
@@ -1640,7 +1845,8 @@ arg_words(Type, Env, Loc, Ebs) :-
     ;   eightbytes(Type, Env, Loc, Ebs)
     ).
 
-% ret_shape(Type, Env, Loc, Shape): sret, or words(Eightbytes).
+% ret_shape(+Type, +Env, +Loc, -Shape): Shape is how a struct or union
+% of Type is returned: sret, or words(Eightbytes).
 ret_shape(Type, Env, Loc, Shape) :-
     size_align(Type, Env, Size, _),
     (   Size > 16 -> Shape = sret
@@ -1648,6 +1854,8 @@ ret_shape(Type, Env, Loc, Shape) :-
         Shape = words(Ebs)
     ).
 
+% copy_object(+Type, +Src, +Dst)//: copy the object of Type at Src to
+% Dst, an eightbyte at a time.
 copy_object(Type, Src, Dst) -->
     env(Env),
     { eightbytes(Type, Env, unknown, Ebs) },
@@ -1665,12 +1873,14 @@ copy_ebs([eb(Off, N, Class)|Ebs], Src, Dst) -->
     ),
     copy_ebs(Ebs, Src, Dst).
 
-% pieces(N, Off, Pieces): N bytes from offset Off as
-% p(Offset, Bytes, Load, Store).
+% pieces(+N, +Off, -Pieces): Pieces are N bytes from offset Off as
+% p(Offset, Bytes, Load, Store), widest first. The cut after the member
+% commits to the widest piece that fits.
 pieces(0, _, []) :- !.
 pieces(N, Off, [p(Off, Bytes, Load, Store)|Pieces]) :-
     member(Bytes-Load-Store, [8-l-l, 4-uw-w, 2-uh-h, 1-ub-b]),
-    Bytes =< N, !,
+    Bytes =< N,
+    !,
     N1 is N - Bytes,
     Off1 is Off + Bytes,
     pieces(N1, Off1, Pieces).
@@ -1683,7 +1893,8 @@ copy_pieces([p(Off, _, Load, Store)|Pieces], Src, Dst) -->
     emit(store(Store, V, D)),
     copy_pieces(Pieces, Src, Dst).
 
-% The words of the value at Addr, one per eightbyte.
+% load_words(+Ebs, +Addr, -Words)//: Words are the words of the value at
+% Addr, one per eightbyte.
 load_words([], _, []) --> [].
 load_words([eb(Off, N, Class)|Ebs], Addr, [W|Words]) -->
     offset(Addr, Off, P),
@@ -1693,7 +1904,8 @@ load_words([eb(Off, N, Class)|Ebs], Addr, [W|Words]) -->
     ),
     load_words(Ebs, Addr, Words).
 
-% load_pieces(Pieces, P, Acc, W): or the shifted pieces together.
+% load_pieces(+Pieces, +P, +Acc0, -W)//: W is Acc0 (none at first) or'd
+% with each of Pieces loaded from P and shifted into place.
 load_pieces([], _, W, W) --> [].
 load_pieces([p(Off, _, Load, _)|Pieces], P, Acc0, W) -->
     offset(P, Off, P1),
@@ -1707,7 +1919,8 @@ load_pieces([p(Off, _, Load, _)|Pieces], P, Acc0, W) -->
     ),
     load_pieces(Pieces, P, Acc, W).
 
-% Store words, one per eightbyte, into the object at Addr.
+% store_words(+Ebs, +Words, +Addr)//: store Words, one per eightbyte,
+% into the object at Addr.
 store_words([], [], _) --> [].
 store_words([eb(Off, N, Class)|Ebs], [W|Words], Addr) -->
     offset(Addr, Off, P),
@@ -1717,6 +1930,8 @@ store_words([eb(Off, N, Class)|Ebs], [W|Words], Addr) -->
     ),
     store_words(Ebs, Words, Addr).
 
+% store_pieces(+Pieces, +W, +P)//: store each of Pieces of word W, shifted
+% down, at P.
 store_pieces([], _, _) --> [].
 store_pieces([p(Off, _, _, Store)|Pieces], W, P) -->
     offset(P, Off, P1),
@@ -1746,10 +1961,14 @@ static_items(Type, Init, Loc, Env0, Env, Items) :-
     assoc_to_values(ByOffset, Sorted),
     fill_items(Sorted, 0, Size, Loc, Items).
 
+% put_chunk(+Chunk, +ByOffset0, -ByOffset): ByOffset maps Chunk's offset
+% to Chunk, replacing any earlier one there.
 put_chunk(chunk(Off, N, Item), ByOffset0, ByOffset) :-
     put_assoc(Off, ByOffset0, chunk(Off, N, Item), ByOffset).
 
-% fill_items(Chunks, Pos, Size, Loc, Items): the chunks with zero(N) gaps.
+% fill_items(+Chunks, +Pos, +Size, +Loc, -Items): Items are the items of
+% Chunks, sorted by offset, with zero(N) filling the gaps from Pos to
+% Size.
 fill_items([], Pos, Size, _, Zeros) :-
     (   Pos < Size -> N is Size - Pos, Zeros = [zero(N)]
     ;   Zeros = []
@@ -1764,13 +1983,15 @@ fill_items([chunk(Off, N, Item)|Chunks], Pos, Size, Loc, Items) :-
     Pos1 is Off + N,
     fill_items(Chunks, Pos1, Size, Loc, Items1).
 
+% int_chunk(+Off, +Type, +V, -Chunk): Chunk holds integer V of Type at
+% Off.
 int_chunk(Off, Type, V, chunk(Off, N, item(Width, c(U)))) :-
     int_info(Type, N, _),
     memberchk(N-Width, [1-b, 2-h, 4-w, 8-l]),
     convert_int(V, Type, U).
 
-% static_init(Off, Type, Init, Loc, S0, S): the chunks of Init for an
-% object of type Type at offset Off.
+% static_init(+Off, +Type, +Init, +Loc, +S0, -S): S adds to S0 the chunks
+% of Init for an object of type Type at offset Off.
 static_init(Off, Type, list(Entries), Loc, S0, S) :- !,
     (   aggregate(Type)
     ->  static_agg(Off, Type, Entries, Rest, Loc, S0, S),
@@ -1781,7 +2002,8 @@ static_init(Off, Type, list(Entries), Loc, S0, S) :- !,
     ;   S = S0
     ).
 static_init(Off, array(ElemType, N), Str, Loc, Env-Chunks0, Env-Chunks) :-
-    str_elems(Str, ElemType, Bytes), !,
+    str_elems(Str, ElemType, Bytes),
+    !,
     length(Bytes, NBytes),
     (   NBytes > N -> sema_error(Loc, 'string initializer is too long', [])
     ;   true
@@ -1796,7 +2018,8 @@ static_init(Off, array(ElemType, N), Str, Loc, Env-Chunks0, Env-Chunks) :-
     reverse(New, RevNew),
     append(RevNew, Chunks0, Chunks).
 static_init(Off, Type, Expr, Loc, Env-Chunks, Env-[Chunk|Chunks]) :-
-    int_type(Type), !,
+    int_type(Type),
+    !,
     (   catch(const_value(Expr, Env, V, _), not_constant, fail) -> true
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ),
@@ -1810,8 +2033,10 @@ static_init(Off, ptr(_), Expr, Loc, Env0-Chunks, Env-[Chunk|Chunks]) :- !,
 static_init(_, Type, _, Loc, _, _) :-
     sema_error(Loc, 'cannot statically initialize a ~w', [Type]).
 
-% static_agg, static_slots and static_one follow init_agg, init_slots
-% and init_one.
+% static_agg(+Off, +Type, +Entries0, -Entries, +Loc, +S0, -S),
+% static_slots(+Slots, +Index, +Off, +Entries0, -Entries, +Loc, +S0, -S)
+% and static_one(+Off, +Type, +V, +Entries0, -Entries, +Loc, +S0, -S)
+% follow init_agg, init_slots and init_one, collecting chunks.
 static_agg(Off, Type, Entries0, Entries, Loc, Env0-Chunks0, S) :-
     aggregate_slots(Type, Env0, Slots),
     static_slots(Slots, 0, Off, Entries0, Entries, Loc, Env0-Chunks0, S).
@@ -1820,7 +2045,7 @@ static_slots(_, _, _, [], [], _, S, S) :- !.
 static_slots(Slots, _, Off, [entry([Desig|Desigs], V)|Entries0], Entries, Loc,
              S0, S) :- !,
     S0 = Env0-_,
-    designated(Desig, Slots, Index, Env0, ctx(_, _, _, _, Loc)),
+    designator_index(Desig, Slots, Index, Env0, ctx(_, _, _, _, Loc)),
     nth0(Index, Slots, slot(_, SlotOff, Type)),
     Off1 is Off + SlotOff,
     (   Desigs == []
@@ -1856,14 +2081,18 @@ static_one(Off, Type, V, Entries0, Entries, Loc, S0, S) :-
    sym(Symbol, Offset, PointerType), or null. */
 addr_const(str(Bytes), _, Env0, Env, sym(Sym, 0, ptr(char))) :- !,
     new_literal(Bytes, Sym, Env0, Env).
-addr_const(wstr(WideType, Values), _, Env0, Env, sym(Sym, 0, ptr(WideType))) :- !,
+addr_const(wstr(WideType, Values), _, Env0, Env,
+           sym(Sym, 0, ptr(WideType))) :- !,
     new_literal(w(WideType, Values), Sym, Env0, Env).
-addr_const(complit(TypeName, Init), Loc, Env0, Env, sym(Sym, 0, ptr(ElemType))) :-
+addr_const(complit(TypeName, Init), Loc, Env0, Env,
+           sym(Sym, 0, ptr(ElemType))) :-
     type_name(TypeName, Type, Env0, Loc),
-    Type = array(ElemType, _), !,
+    Type = array(ElemType, _),
+    !,
     new_complit(Type, Init, Loc, Sym, Env0, Env).
 addr_const(id(Name), _, Env, Env, R) :-
-    lookup_ordinary(Env, Name, gvar(array(ElemType, _), Sym, _, _)), !,
+    lookup_ordinary(Env, Name, gvar(array(ElemType, _), Sym, _, _)),
+    !,
     R = sym(Sym, 0, ptr(ElemType)).
 addr_const(id(Name), _, Env, Env, sym(Sym, 0, ptr(Type))) :-
     lookup_ordinary(Env, Name, fn(Type, Sym, _)), !.
@@ -1885,11 +2114,13 @@ addr_const(cast(TypeName, Expr), Loc, Env0, Env, R) :- !,
     ).
 addr_const(bin(Op, Ptr, Index), Loc, Env0, Env, R) :-
     memberchk(Op, [add, sub]),
-    catch(const_value(Index, Env0, K, _), not_constant, fail), !,
+    catch(const_value(Index, Env0, K, _), not_constant, fail),
+    !,
     addr_const(Ptr, Loc, Env0, Env, R0),
     offset_const(Op, R0, K, Env, Loc, R).
 addr_const(bin(add, Index, Ptr), Loc, Env0, Env, R) :-
-    catch(const_value(Index, Env0, K, _), not_constant, fail), !,
+    catch(const_value(Index, Env0, K, _), not_constant, fail),
+    !,
     addr_const(Ptr, Loc, Env0, Env, R0),
     offset_const(add, R0, K, Env, Loc, R).
 addr_const(Expr, Loc, Env, Env, null) :-
@@ -1897,7 +2128,8 @@ addr_const(Expr, Loc, Env, Env, null) :-
     ;   sema_error(Loc, 'initializer is not an address constant', [])
     ).
 
-% offset_const(Op, R0, K, Env, Loc, R): R0 plus or minus K elements.
+% offset_const(+Op, +R0, +K, +Env, +Loc, -R): R is address constant R0
+% plus (add) or minus (sub) K elements.
 offset_const(Op, sym(Sym, Off0, ptr(ElemType)), K, Env, Loc,
              sym(Sym, Off, ptr(ElemType))) :- !,
     catch(size_align(ElemType, Env, Size, _), bad(Why),
@@ -1914,7 +2146,8 @@ lvalue_const(id(Name), Loc, Env, Env, sym(Sym, 0, Type)) :- !,
     (   lookup_ordinary(Env, Name, gvar(Type, Sym, _, _)) -> true
     ;   sema_error(Loc, '~w is not a global', [Name])
     ).
-lvalue_const(complit(TypeName, Init), Loc, Env0, Env, sym(Sym, 0, Type)) :- !,
+lvalue_const(complit(TypeName, Init), Loc, Env0, Env,
+             sym(Sym, 0, Type)) :- !,
     type_name(TypeName, Type0, Env0, Loc),
     new_complit(Type0, Init, Loc, Sym, Env0, Env),
     env_defs(Env, Defs),
@@ -1949,6 +2182,8 @@ lvalue_const(arrow(Ptr, Field), Loc, Env0, Env, sym(Sym, Off, Type)) :- !,
 lvalue_const(_, Loc, _, _, _) :-
     sema_error(Loc, 'initializer is not an address constant', []).
 
+% member_off(+SUType, +Field, +Env, +Loc, -Type, -Off): member Field of
+% struct or union SUType has Type and offset Off.
 member_off(SUType, Field, Env, Loc, Type, Off) :-
     (   ( SUType = struct(_) ; SUType = union(_) ),
         find_member(SUType, Field, Env, Type, Off)

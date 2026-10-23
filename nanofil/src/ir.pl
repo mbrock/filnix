@@ -51,22 +51,44 @@
              through a p value. A symbol is used only as %t =p copy $s,
              which yields a pointer to the data or function object; $s
              may be defined outside the module. See docs/m3.md, m4.md.
+
+    Variable names below: M a module, Fn a function name, K a class
+    (w, l or p), V an IR value, L a label.
 */
-:- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2, valid_module/1,
-               func_named/3, width_bytes/2, op_arg_classes/4, module_mode/2,
-               addr_class/2]).
+:- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
+               valid_module/1, func_named/3, width_bytes/2, op_arg_classes/4,
+               module_mode/2, addr_class/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 
+%! class_bits(+K, -Bits) is semidet.
+%
+%  Bits is the width in bits of the integer class K (w or l).
+
 class_bits(w, 32).
 class_bits(l, 64).
+
+%! modulus(+K, -Mod) is semidet.
+%
+%  Mod is 2^bits(K): values of class K are the integers 0..Mod-1. A p
+%  value's address has the modulus of l.
 
 modulus(w, 4294967296).
 modulus(l, 18446744073709551616).
 modulus(p, 18446744073709551616).
+
+%! half_modulus(+K, -Half) is semidet.
+%
+%  Half is half the modulus of the integer class K: the values Half..Mod-1
+%  are negative when read as signed.
+
 half_modulus(w, 2147483648).
 half_modulus(l, 9223372036854775808).
+
+%! width_bytes(+Width, -Size) is semidet.
+%
+%  A store of Width (b, h, w, l or p) writes Size bytes.
 
 width_bytes(b, 1).
 width_bytes(h, 2).
@@ -74,8 +96,17 @@ width_bytes(w, 4).
 width_bytes(l, 8).
 width_bytes(p, 8).
 
+%! addr_class(+Mode, ?K) is semidet.
+%
+%  K is the class of an address in a module of Mode (plain or filc).
+
 addr_class(plain, l).
 addr_class(filc, p).
+
+%! op_arity(+Op, -N) is semidet.
+%
+%  Op takes N arguments; it fails for anything that is not an Op of the
+%  grammar.
 
 op_arity(add, 2).  op_arity(sub, 2).  op_arity(mul, 2).
 op_arity(div, 2).  op_arity(udiv, 2). op_arity(rem, 2).  op_arity(urem, 2).
@@ -89,15 +120,22 @@ op_arity(alloc(_), 1).
 op_arity(ptoi, 1).
 op_arity(itop, 1).
 
+%! func_named(+M, +Name, -Func) is semidet.
+%
+%  Func is the func/5 term that defines Name in the module M.
+
 func_named(module(Items), Name, Func) :-
     Func = func(Name, _, _, _, _),
     memberchk(Func, Items).
 
 %% Module mode
 
-/* module_mode(+M, -Mode): filc when anything in M has class p, uses a
-   pointer-only op, or calls a function M does not define (which only the
-   Fil-C ABI can reach); plain otherwise. */
+%! module_mode(+M, -Mode) is det.
+%
+%  Mode is filc when anything in M has class p, uses a pointer-only op,
+%  or calls a function M does not define (which only the Fil-C ABI can
+%  reach), and plain otherwise.
+
 module_mode(module(Items), Mode) :-
     (   member(Item, Items),
         pointer_item(Item)
@@ -110,6 +148,8 @@ module_mode(module(Items), Mode) :-
     ;   Mode = plain
     ).
 
+% pointer_item(+Item): Item has class p somewhere, or is read-only data,
+% which only filc mode models. The cuts commit to the first witness.
 pointer_item(func(_, _, Ret, Params, Blocks)) :-
     (   ( Ret == p ; Ret = tuple(_) )
     ;   member(par(p, _), Params)
@@ -118,12 +158,16 @@ pointer_item(func(_, _, Ret, Params, Blocks)) :-
         ;   member(Inst, Insts),
             pointer_inst(Inst)
         )
-    ), !.
+    ),
+    !.
 pointer_item(data(_, Linkage, _, Items)) :-
     (   Linkage = ro(_)
     ;   memberchk(item(p, _), Items)
-    ), !.
+    ),
+    !.
 
+% pointer_inst(+Inst): Inst produces, stores, passes or calls through a p
+% value, or converts one (ptoi). Several clauses may hold for one Inst.
 pointer_inst(ins(_, p, _, _)).
 pointer_inst(ins(_, _, ptoi, _)).
 pointer_inst(store(p, _, _)).
@@ -134,19 +178,25 @@ pointer_inst(call(_, t(_), _)).
 
 %% Validation
 
-/* valid_module(+M): M is a well-formed module. Throws
-   nanofil_error(Message) describing the first problem found, so callers
-   get a diagnostic rather than a silent failure.
+%! valid_module(+M) is semidet.
+%
+%  M is a well-formed module. When it is not, throws
+%  nanofil_error(Message) describing the first problem found, so callers
+%  get a diagnostic rather than a silent failure. A few terms outside
+%  the grammar (an item, instruction or jump of no known shape) make it
+%  fail instead.
+%
+%  Functions are checked against a context
+%    ctx(Module, Fn, Ret, LabelSet, TempClasses, PredMap, Mode)
+%  whose three assocs map each label to t, each temporary to its class,
+%  and each label to its sorted predecessors.
 
-   Functions are checked against a context
-     ctx(Module, Fn, Ret, LabelSet, TempClasses, PredMap, Mode)
-   whose three assocs map each label to t, each temporary to its class,
-   and each label to its sorted predecessors. */
 valid_module(M) :-
     M = module(Items),
     module_mode(M, Mode),
     maplist(valid_item(M, Mode), Items).
 
+% valid_item(+M, +Mode, +Item): Item, an item of M, is well formed.
 valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
     (   Ret = tuple(Ks),
@@ -225,6 +275,8 @@ add_predecessor(Target-Pred, PredMap0, PredMap) :-
     append(Preds0, [Pred], Preds),
     put_assoc(Target, PredMap0, Preds, PredMap).
 
+% valid_block(+Ctx, +Block): Block's phis cover exactly its predecessors,
+% and its instructions and jump are well formed.
 valid_block(Ctx, blk(Label, Phis, Insts, Jump)) :-
     Ctx = ctx(_, Fn, _, _, _, PredMap, _),
     (   get_assoc(Label, PredMap, Preds) -> true ; Preds = [] ),
@@ -236,6 +288,7 @@ valid_block(Ctx, blk(Label, Phis, Insts, Jump)) :-
     ;   true
     ).
 
+% jump_target(+Jump, -L) is nondet: Jump can branch to L.
 jump_target(jmp(L), L).
 jump_target(jnz(_, L, _), L).
 jump_target(jnz(_, _, L), L).
@@ -254,6 +307,9 @@ valid_phi(Ctx, Label, Preds, phi(_, K, Pairs)) :-
 split_pairs([], [], []).
 split_pairs([K-V|Ps], [K|Ks], [V|Vs]) :- split_pairs(Ps, Ks, Vs).
 
+% valid_inst(+Ctx, +Inst): Inst is well formed and reads each operand at
+% a class its definition allows. In filc mode a symbol is an operand only
+% of copy, which yields its pointer.
 valid_inst(ctx(_, _, _, _, _, _, filc), ins(_, p, copy, [glo(_)])) :- !.
 valid_inst(Ctx, ins(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
@@ -296,6 +352,7 @@ valid_inst(Ctx, call(_, Callee, Args)) :-
     ),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
 
+% store_value_class(+Width, -K): a store of Width reads its value at K.
 store_value_class(l, l) :- !.
 store_value_class(p, p) :- !.
 store_value_class(_, w).
@@ -321,6 +378,8 @@ call_result_ok(Fn, Callee, to(_, K), Ret) :-
     ;   true
     ).
 
+% valid_jump(+Ctx, +Jump): Jump names existing labels and returns what
+% the function's return class requires.
 valid_jump(Ctx, jmp(L)) :- label_exists(Ctx, L).
 valid_jump(Ctx, jnz(V, L1, L2)) :-
     valid_use(Ctx, w, V),
@@ -401,21 +460,33 @@ op_result_ok(_, _, K) :- int_class(K).
 int_class(w).
 int_class(l).
 
-% op_arg_classes(+Op, +K, +Mode, -Classes): the class at which each
-% argument of Op with result class K is read.
+%! op_arg_classes(+Op, +K, +Mode, -Classes) is semidet.
+%
+%  Classes is the list of classes at which the arguments of Op are read
+%  when its result has class K in a module of Mode. Fails for an Op
+%  outside the grammar. Not steadfast: a bound Classes that misses the
+%  head of the clause for Op falls through to the general last clause,
+%  so call it with Classes unbound.
+
 op_arg_classes(cmp(_, CK), _, _, [CK, CK]) :- !.
 op_arg_classes(ext(_), _, _, [w]) :- !.
 op_arg_classes(load(_), _, Mode, [A]) :- !, addr_class(Mode, A).
 op_arg_classes(alloc(_), _, _, [l]) :- !.
 op_arg_classes(ptoi, _, _, [p]) :- !.
 op_arg_classes(itop, _, _, [l]) :- !.
-op_arg_classes(Op, p, _, [p, l]) :- memberchk(Op, [add, sub]), !.
-op_arg_classes(Op, K, _, [K, w]) :- memberchk(Op, [sar, shr, shl]), !.
+op_arg_classes(Op, p, _, [p, l]) :-
+    memberchk(Op, [add, sub]),
+    !.
+op_arg_classes(Op, K, _, [K, w]) :-
+    memberchk(Op, [sar, shr, shl]),
+    !.
 op_arg_classes(Op, K, _, Ks) :-
     op_arity(Op, N),
     length(Ks, N),
     maplist(=(K), Ks).
 
+% fn_error(+Fn, +Fmt, +Args): throw nanofil_error with the message
+% Fmt/Args, attributed to the function Fn.
 fn_error(Fn, Fmt, Args) :-
     format(atom(Msg), Fmt, Args),
     format(atom(Full), 'in $~w: ~w', [Fn, Msg]),

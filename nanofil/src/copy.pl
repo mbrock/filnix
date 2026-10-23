@@ -1,6 +1,4 @@
-/*  Copy propagation after promote.
-
-    copy_module(+M0, -M)
+/*  Copy propagation after promote, by copy_module/2.
 
     Only strict SSA functions are changed. Same-class temporary copies
     and integer constant copies disappear, then trivial phis: ignoring
@@ -29,12 +27,18 @@
 :- use_module(cfg).
 :- use_module(promote, [strict_ssa/3]).
 
+%! copy_module(+M0, -M) is det.
+%
+%  M is the module M0 with copies and trivial phis propagated away in
+%  each strict SSA function.
+
 copy_module(module(Items0), module(Items)) :-
     maplist(copy_item, Items0, Items).
 
 % Reps (here and below): assoc Temp -> the value that replaces it.
 copy_item(F0, F) :-
-    F0 = func(Name, Linkage, Ret, Params, Blocks0), !,
+    F0 = func(Name, Linkage, Ret, Params, Blocks0),
+    !,
     func_cfg(Blocks0, Cfg),
     dominators(Cfg, Idom),
     (   strict_ssa(F0, Cfg, Idom)
@@ -82,6 +86,8 @@ copy_value(c(N), K, _, c(V)) :-
     modulus(K, M),
     V is N mod M.
 
+% resolve_copy(+Copies, +D-_, +Reps0, -Reps): Reps is Reps0 with the
+% value that replaces D, and every link on the way to it, added.
 % Strict dominance rules out cycles among the live copy definitions.
 % walk_copy is tail recursive even when a chain has thousands of links.
 resolve_copy(Copies, D-_, Reps0, Reps) :-
@@ -100,7 +106,8 @@ walk_copy(t(T), Copies, Reps, Path0, Path, V) :- !,
     ).
 walk_copy(V, _, _, Path, Path, V).
 
-cache_copy(V, T, Reps0, Reps) :- put_assoc(T, Reps0, V, Reps).
+cache_copy(V, T, Reps0, Reps) :-
+    put_assoc(T, Reps0, V, Reps).
 
 % Copy propagation exposes invariant phis. Index their users so that a
 % simplification revisits only dependent phis, not the whole function.
@@ -125,10 +132,13 @@ trivial_phis(Blocks0, Classes, Reach, Blocks) :-
     foldl(resolve_copy(Aliases), AliasPairs, Empty, Reps),
     maplist(subst_block(Reps), Blocks0, Blocks).
 
-phi_value(K, Classes, _-Src, V) :- copy_value(Src, K, Classes, V).
+phi_value(K, Classes, _-Src, V) :-
+    copy_value(Src, K, Classes, V).
 
 % Worklist over phi temps. Phis: assoc D -> operand values, for the phis
 % not yet simplified; Users: assoc S -> ordset of the phis that read t(S).
+% Invariant: no phi left in Phis0 reads the temp of a phi already
+% simplified, and each one that may have become trivial is in Pending.
 simplify_phis([], _, _, Reps, Reps).
 simplify_phis([D|Pending0], Phis0, Users0, Reps0, Reps) :-
     (   get_assoc(D, Phis0, Vs),
@@ -150,7 +160,8 @@ simplify_phis([D|Pending0], Phis0, Users0, Reps0, Reps) :-
     ;   simplify_phis(Pending0, Phis0, Users0, Reps0, Reps)
     ).
 
-is_phi(Phis, D) :- get_assoc(D, Phis, _).
+is_phi(Phis, D) :-
+    get_assoc(D, Phis, _).
 
 % In phi U, read V wherever it read t(D).
 redirect_phi(D, V, U, Phis0, Phis) :-
@@ -158,7 +169,11 @@ redirect_phi(D, V, U, Phis0, Phis) :-
     maplist(redirect_value(D, V), Vs0, Vs),
     put_assoc(U, Phis0, Vs, Phis).
 
-redirect_value(D, V, V0, R) :- ( V0 == t(D) -> R = V ; R = V0 ).
+redirect_value(D, V, V0, R) :-
+    (   V0 == t(D)
+    ->  R = V
+    ;   R = V0
+    ).
 
 %% Substitution
 
@@ -181,7 +196,8 @@ subst_phis([P0|Ps0], Reps, Ps) :-
 subst_phi(Reps, phi(D, K, Args0), phi(D, K, Args)) :-
     maplist(subst_edge(Reps), Args0, Args).
 
-subst_edge(Reps, L-V0, L-V) :- subst_use(Reps, V0, V).
+subst_edge(Reps, L-V0, L-V) :-
+    subst_use(Reps, V0, V).
 
 subst_insts([], _, []).
 subst_insts([I0|Is0], Reps, Is) :-
@@ -201,12 +217,20 @@ subst_inst(call(R, F0, Args0), Reps, call(R, F, Args)) :-
     subst_use(Reps, F0, F),
     maplist(subst_arg(Reps), Args0, Args).
 
-subst_arg(Reps, arg(K, V0), arg(K, V)) :- subst_use(Reps, V0, V).
+subst_arg(Reps, arg(K, V0), arg(K, V)) :-
+    subst_use(Reps, V0, V).
 
-subst_jump(jnz(V0, T, F), Reps, jnz(V, T, F)) :- !, subst_use(Reps, V0, V).
-subst_jump(ret(V0), Reps, ret(V)) :- !, subst_use(Reps, V0, V).
-subst_jump(rets(Vs0), Reps, rets(Vs)) :- !, maplist(subst_use(Reps), Vs0, Vs).
+subst_jump(jnz(V0, T, F), Reps, jnz(V, T, F)) :- !,
+    subst_use(Reps, V0, V).
+subst_jump(ret(V0), Reps, ret(V)) :- !,
+    subst_use(Reps, V0, V).
+subst_jump(rets(Vs0), Reps, rets(Vs)) :- !,
+    maplist(subst_use(Reps), Vs0, Vs).
 subst_jump(J, _, J).
 
-subst_use(Reps, t(T), V) :- get_assoc(T, Reps, V), !.
+% subst_use(+Reps, +V0, -V): V is the replacement of V0 in Reps, or V0
+% itself. Not steadfast: call it with V unbound.
+subst_use(Reps, t(T), V) :-
+    get_assoc(T, Reps, V),
+    !.
 subst_use(_, V, V).

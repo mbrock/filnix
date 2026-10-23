@@ -1,23 +1,5 @@
-/*  Escape classification of allocs (QBE's ALoc/AEsc).
-
-    alloc_classes(+Func, -Classes)
-      Classes: [A-Class] for every alloc temp A of Func, in order, with
-        local(Size, Accesses)  every use of A's address is the address of
-                               a load or store at a fixed offset, possibly
-                               through add/sub of constants or copy.
-                               Accesses: ordset of acc(Off, Width), Width
-                               in b h w l p. Size is the alloc's operand.
-        escapes(Why)           the address is used any other way (stored,
-                               passed, returned, compared, converted,
-                               merged in a phi, offset by a variable), or
-                               it or a temp derived from it is defined
-                               more than once, so offsets are unknown.
-
-    address_temps(+Func, -Addrs)
-      assoc Temp -> A-Off for each alloc temp (Off 0) and each temp
-      derived from one by constant offsets, whatever the class.
-
-    load_width(?LoadType, ?Width)
+/*  Escape classification of allocs (QBE's ALoc/AEsc): alloc_classes/2,
+    with address_temps/2, load_width/2 and def_counts/2.
 
     A local alloc can only be reached through its own address, so no
     other pointer or integer can name it. Offsets are exact integers (an
@@ -31,6 +13,10 @@
 :- use_module(library(assoc)).
 :- use_module(library(pairs)).
 
+%! load_width(?LoadType, ?Width) is nondet.
+%
+%  A load of type LoadType reads a slot of width Width (b h w l p).
+
 load_width(l, l).
 load_width(sw, w).
 load_width(uw, w).
@@ -39,6 +25,20 @@ load_width(uh, h).
 load_width(sb, b).
 load_width(ub, b).
 load_width(p, p).
+
+%! alloc_classes(+Func, -Classes) is det.
+%
+%  Classes is [A-Class] for every alloc temp A of Func, in order, with
+%  Class one of:
+%
+%    - local(Size, Accesses): every use of A's address is the address of
+%      a load or store at a fixed offset, possibly through add/sub of
+%      constants or copy. Accesses is an ordset of acc(Off, Width),
+%      Width in b h w l p. Size is the alloc's operand.
+%    - escapes(Why): the address is used any other way (stored, passed,
+%      returned, compared, converted, merged in a phi, offset by a
+%      variable), or it or a temp derived from it is defined more than
+%      once, so offsets are unknown.
 
 alloc_classes(F, Classes) :-
     F = func(_, _, _, _, Blocks),
@@ -83,15 +83,21 @@ classify_alloc(Events, A-Size, A-Class) :-
         Class = local(Size, Accs)
     ).
 
-% What an instruction does with addresses: an access at a known offset,
-% a constant offset (a derived address, seen by address_temps), or an
-% escape of every alloc whose address it reads.
+% inst_event(+Ins, +Addrs, -Root-Event) is nondet: what an instruction
+% does with addresses: an access at a known offset, a constant offset (a
+% derived address, seen by address_temps), or an escape of every alloc
+% whose address it reads.
 inst_event(ins(_, _, load(T), [t(X)]), Addrs, Root-acc(acc(Off, W))) :-
-    get_assoc(X, Addrs, Root-Off), !,
+    get_assoc(X, Addrs, Root-Off),
+    !,
     load_width(T, W).
 inst_event(store(W, V, A), Addrs, Event) :- !,
-    (   V = t(X), get_assoc(X, Addrs, Root-_), Event = Root-esc(stored)
-    ;   A = t(X), get_assoc(X, Addrs, Root-Off), Event = Root-acc(acc(Off, W))
+    (   V = t(X),
+        get_assoc(X, Addrs, Root-_),
+        Event = Root-esc(stored)
+    ;   A = t(X),
+        get_assoc(X, Addrs, Root-Off),
+        Event = Root-acc(acc(Off, W))
     ).
 inst_event(I, Addrs, Root-esc(Why)) :-
     \+ ( offset_of(I, Y, _), get_assoc(Y, Addrs, _) ),  % derived address
@@ -114,6 +120,11 @@ offset_of(ins(_, _, add, [t(X), c(N)]), X, N).
 offset_of(ins(_, _, add, [c(N), t(X)]), X, N).
 offset_of(ins(_, _, sub, [t(X), c(N)]), X, D) :- D is -N.
 offset_of(ins(_, _, copy, [t(X)]), X, 0).
+
+%! address_temps(+Func, -Addrs) is det.
+%
+%  Addrs is the assoc Temp -> A-Off for each alloc temp A (Off 0) and
+%  each temp derived from one by constant offsets, whatever the class.
 
 address_temps(func(_, _, _, _, Blocks), Addrs) :-
     findall(I, ( member(blk(_, _, Is, _), Blocks), member(I, Is) ), Insts),
@@ -151,10 +162,13 @@ derive_addresses([S|Ss], BySource, Addrs0, Addrs) :-
     foldl(put_pair, New, Addrs0, Addrs1),
     derive_addresses(New, BySource, Addrs1, Addrs).
 
-put_pair(K-V, Assoc0, Assoc) :- put_assoc(K, Assoc0, V, Assoc).
+put_pair(K-V, Assoc0, Assoc) :-
+    put_assoc(K, Assoc0, V, Assoc).
 
-% def_counts(+Func, -Counts): assoc temp -> number of definitions
-% (parameters, phis, instructions and call results).
+%! def_counts(+Func, -Counts) is det.
+%
+%  Counts is the assoc Temp -> number of definitions of Temp in Func
+%  (parameters, phis, instructions and call results).
 def_counts(func(_, _, _, Params, Blocks), Counts) :-
     findall(N, member(par(_, t(N)), Params), ParamDefs),
     findall(N,
@@ -171,14 +185,18 @@ def_counts(func(_, _, _, Params, Blocks), Counts) :-
     clumped_pairs(Sorted, Pairs),
     list_to_assoc(Pairs, Counts).
 
-% clumped_pairs(+Sorted, -Pairs): X-N for each run of N equal elements.
+% clumped_pairs(+Sorted, -Pairs): Pairs is X-N for each run of N equal
+% elements X of Sorted.
 clumped_pairs([], []).
 clumped_pairs([X|Xs], [X-N|Ps]) :-
     run_of(X, Xs, 1, N, Rest),
     clumped_pairs(Rest, Ps).
 
+% run_of(+X, +Xs, +N0, -N, -Rest): Xs is a run of N - N0 copies of X
+% followed by Rest, which does not start with X.
 run_of(X, [Y|Ys], N0, N, Rest) :-
-    X == Y, !,
+    X == Y,
+    !,
     N1 is N0 + 1,
     run_of(X, Ys, N1, N, Rest).
 run_of(_, Rest, N, N, Rest).

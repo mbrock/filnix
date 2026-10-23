@@ -3,25 +3,18 @@
     question by measurement (tests/bench-cfg.pl, docs/m5.md); passes use
     cfg.pl.
 
-    Versioned facts. assert_version(+V, +Blocks) asserts the function's
-    edges and per-block gen/kill as facts tagged V; the tables take V as
-    an argument, so every version has its own tables.
-    retract_version(+V) drops version V's facts and every table
-    (Trealla's abolish_table/1 drops all variants of a predicate, so old
-    tables cannot be dropped one version at a time).
+    Versioned facts. assert_version/2 asserts the function's edges and
+    per-block gen/kill as facts tagged with a version V; the relations
+    over them (version_live_in/3, version_live_out/3,
+    version_dominates/3, version_idoms/2, version_frontier/3) take V as
+    an argument, so every version has its own tables. retract_version/1
+    drops a version.
 
-      version_live_in(V, B, T)     temp T is live on entry to B
-      version_live_out(V, B, T)
-      version_dominates(V, D, B)   D dominates B (both reachable)
-      version_idoms(V, Pairs)      [B-IDom] from version_dominates
-      version_frontier(V, X, Y)    Y is in the dominance frontier of X
-
-    Incremental tabling. incremental_load(+Blocks) asserts unversioned
-    facts that are declared incremental, and incremental_update(+Blocks)
-    replaces the gen/kill/phi facts of the blocks whose facts differ;
-    Trealla then invalidates exactly the tables that consulted them.
-
-      incremental_live_in(B, T), incremental_live_out(B, T)
+    Incremental tabling. incremental_load/1 asserts unversioned facts
+    that are declared incremental, and incremental_update/1 replaces the
+    gen/kill/phi facts of the blocks whose facts differ; Trealla then
+    invalidates exactly the tables that consulted them
+    (incremental_live_in/2, incremental_live_out/2).
 
     Both styles take the gen/kill sets from cfg.pl, which is a local scan
     of each block: tabling it would only add table overhead.
@@ -59,6 +52,11 @@
 
 %% Versioned facts
 
+%! assert_version(+V, +Blocks) is det.
+%
+%  Assert the edges, entry, blocks, gen/kill sets and phi edge uses of
+%  the function Blocks as facts tagged V.
+
 assert_version(V, Blocks) :-
     Blocks = [blk(Entry, _, _, _)|_],
     assertz(vf_entry(V, Entry)),
@@ -75,6 +73,12 @@ assert_version(V, Blocks) :-
     forall(( gen_assoc(B-S, EdgeUses, Ts), member(T, Ts) ),
            assertz(vf_euse(B, S, T, V))).
 
+%! retract_version(+V) is det.
+%
+%  Retract version V's facts and abolish every table (Trealla's
+%  abolish_table/1 drops all variants of a predicate, so old tables
+%  cannot be dropped one version at a time).
+
 retract_version(V) :-
     retractall(vf_entry(V, _)),
     retractall(vf_block(_, V)),
@@ -89,24 +93,48 @@ retract_version(V) :-
 % version_live_out(V, _, _), so each version has two tables in all.
 :- table version_live_in/3, version_live_out/3.
 
-version_live_in(V, B, T) :- vf_gen(B, T, V).
-version_live_in(V, B, T) :- version_live_out(V, B, T), v_not_killed(B, T, V).
+%! version_live_in(+V, ?B, ?T) is nondet.
+%
+%  Temp T is live on entry to block B in version V.
+
+version_live_in(V, B, T) :-
+    vf_gen(B, T, V).
+version_live_in(V, B, T) :-
+    version_live_out(V, B, T),
+    v_not_killed(B, T, V).
 
 % Trealla 12f4cbd: a \+ or if-then-else written inline after a tabled
 % call in a tabled clause gives wrong answers (it lets version_live_in(start,
 % T) through for a T that start defines); the same negation in its own
 % predicate is right. docs/m5.md has the reproduction.
-v_not_killed(B, T, V) :- \+ vf_kill(B, T, V).
+v_not_killed(B, T, V) :-
+    \+ vf_kill(B, T, V).
 
-version_live_out(V, B, T) :- version_live_in(V, S, T), vf_pred(S, B, V).
-version_live_out(V, B, T) :- vf_euse(B, _, T, V).
+%! version_live_out(+V, ?B, ?T) is nondet.
+%
+%  Temp T is live on exit from block B in version V.
+
+version_live_out(V, B, T) :-
+    version_live_in(V, S, T),
+    vf_pred(S, B, V).
+version_live_out(V, B, T) :-
+    vf_euse(B, _, T, V).
 
 % avoid(V, D, B): B is reachable from the entry on a path that does not
 % pass through D. One table per D; D = none gives plain reachability.
 :- table avoid/3.
 
-avoid(V, D, B) :- vf_entry(V, B), B \== D.
-avoid(V, D, B) :- avoid(V, D, P), vf_edge(P, B, V), B \== D.
+avoid(V, D, B) :-
+    vf_entry(V, B),
+    B \== D.
+avoid(V, D, B) :-
+    avoid(V, D, P),
+    vf_edge(P, B, V),
+    B \== D.
+
+%! version_dominates(+V, ?D, ?B) is nondet.
+%
+%  D dominates B in version V (both reachable).
 
 version_dominates(V, D, B) :-
     avoid(V, none, D),
@@ -115,23 +143,43 @@ version_dominates(V, D, B) :-
     % reachability table, for every B.
     \+ ( avoid(V, D, X), X == B ).
 
-% The immediate dominator of B is the strict dominator with the most
-% dominators of its own.
+%! version_idoms(+V, -Pairs) is det.
+%
+%  Pairs is the list B-Idom of the reachable blocks B of version V other
+%  than the entry and their immediate dominators, from
+%  version_dominates/3: the immediate dominator of B is the strict
+%  dominator with the most dominators of its own.
+
 version_idoms(V, Pairs) :-
     findall(B-Doms,
-            ( avoid(V, none, B), findall(D, version_dominates(V, D, B), Doms) ),
+            ( avoid(V, none, B),
+              findall(D, version_dominates(V, D, B), Doms)
+            ),
             BlockDoms),
-    findall(B-N, ( member(B-Doms, BlockDoms), length(Doms, N) ), Counts),
+    findall(B-N,
+            ( member(B-Doms, BlockDoms),
+              length(Doms, N)
+            ),
+            Counts),
     list_to_assoc(Counts, Count),
     findall(B-Idom,
             ( member(B-Doms, BlockDoms),
               Doms = [_, _|_],
               findall(C-D,
-                      ( member(D, Doms), D \== B, get_assoc(D, Count, C) ),
+                      ( member(D, Doms),
+                        D \== B,
+                        get_assoc(D, Count, C)
+                      ),
                       Counted),
               msort(Counted, Sorted),
-              last(Sorted, _-Idom) ),
+              last(Sorted, _-Idom)
+            ),
             Pairs).
+
+%! version_frontier(+V, ?X, ?Y) is nondet.
+%
+%  Y is in the dominance frontier of X in version V. A Y can be found
+%  once per predecessor that X dominates.
 
 version_frontier(V, X, Y) :-
     vf_edge(P, Y, V),
@@ -155,19 +203,44 @@ version_frontier(V, X, Y) :-
 :- table incremental_live_in/2 as incremental.
 :- table incremental_live_out/2 as incremental.
 
-incremental_live_in(B, T) :- if_gen(B, T).
-incremental_live_in(B, T) :- incremental_live_out(B, T), i_not_killed(B, T).
+%! incremental_live_in(?B, ?T) is nondet.
+%
+%  Temp T is live on entry to block B of the loaded function.
 
-i_not_killed(B, T) :- \+ if_kill(B, T).    % see v_not_killed/3
+incremental_live_in(B, T) :-
+    if_gen(B, T).
+incremental_live_in(B, T) :-
+    incremental_live_out(B, T),
+    i_not_killed(B, T).
 
-incremental_live_out(B, T) :- incremental_live_in(S, T), if_pred(S, B).
-incremental_live_out(B, T) :- if_euse(B, T).
+% See v_not_killed/3.
+i_not_killed(B, T) :-
+    \+ if_kill(B, T).
+
+%! incremental_live_out(?B, ?T) is nondet.
+%
+%  Temp T is live on exit from block B of the loaded function.
+
+incremental_live_out(B, T) :-
+    incremental_live_in(S, T),
+    if_pred(S, B).
+incremental_live_out(B, T) :-
+    if_euse(B, T).
+
+%! incremental_clear is det.
+%
+%  Retract every incremental fact.
 
 incremental_clear :-
     retractall(if_pred(_, _)),
     retractall(if_gen(_, _)),
     retractall(if_kill(_, _)),
     retractall(if_euse(_, _)).
+
+%! incremental_load(+Blocks) is det.
+%
+%  Assert the incremental facts (edges, gen/kill sets, phi edge uses) of
+%  the function Blocks.
 
 incremental_load(Blocks) :-
     forall(( member(blk(B, _, _, Jump), Blocks),
@@ -177,7 +250,12 @@ incremental_load(Blocks) :-
     block_facts(Blocks, Facts),
     forall(member(F, Facts), assertz(F)).
 
-% Retract the facts no block has any more, assert the new ones.
+%! incremental_update(+Blocks) is det.
+%
+%  Make the gen, kill and phi edge-use facts those of Blocks: retract
+%  the facts no block has any more and assert the new ones. Edges
+%  (if_pred/2) are left as they are.
+
 incremental_update(Blocks) :-
     block_facts(Blocks, New),
     findall(F,

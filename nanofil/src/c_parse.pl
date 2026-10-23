@@ -46,10 +46,16 @@
 :- use_module(library(dcgs)).
 :- use_module(library(assoc)).
 
+%! c_parse(+Tokens, -Items) is det.
+%
+%  Items is the translation unit of the c_lex Tokens, as described above.
+%  Throws nanofil_error/1 on a syntax error or unsupported construct.
 c_parse(Tokens, Items) :-
     list_to_assoc(['__builtin_va_list'-t], Env),
     phrase(unit(Env, Items), Tokens).
 
+% unit(+Env, -Items)//: the external declarations up to the end of input.
+% The cut commits to the first parse of each declaration.
 unit(_, []) --> eos, !.
 unit(Env0, Items) -->
     external_decl(Env0, Env, Item), !,
@@ -72,9 +78,11 @@ peek(T), [tok(T, Loc)] --> [tok(T, Loc)].
 loc(Loc), [tok(T, Loc)] --> [tok(T, Loc)].
 loc(eof) --> eos.
 
+% expect(+P)//: the punctuator P, or a syntax error.
 expect(P) --> punct(P), !.
 expect(P) --> { format(atom(Msg), 'expected ~w', [P]) }, parse_error(Msg).
 
+% parse_error(+Msg)//: throw a syntax error at the next token.
 parse_error(Msg), [tok(T, Loc)] -->
     [tok(T, Loc)], !,
     {   token_text(T, Text),
@@ -93,18 +101,22 @@ token_text(T, T).
 
 %% External declarations
 
+% external_decl(+Env0, -Env, -Item)//: one external declaration, Item, or
+% none for a stray ';'. Env is Env0 with its typedef names.
 external_decl(Env, Env, none) --> punct(';'), !.
 external_decl(Env0, Env, Item) -->
     kw(extension), !,
     external_decl(Env0, Env, Item).
 external_decl(Env, Env, Item) -->
-    loc(Loc), kw(static_assert), !,
+    loc(Loc),
+    kw(static_assert), !,
     static_assert_rest(Env, Loc, Item).
 external_decl(_, _, _) -->
     kw(asm), !,
     parse_error('top-level asm is not supported').
 external_decl(Env0, Env, Item) -->
-    loc(Loc), decl_specs(Env0, Specs), !,
+    loc(Loc),
+    decl_specs(Env0, Specs), !,
     (   punct(';')
     ->  { Item = decl(Loc, Specs, []), Env = Env0 }
     ;   full_declarator(Env0, Dcl, Attrs0),
@@ -125,6 +137,8 @@ external_decl(Env0, Env, Item) -->
         )
     ).
 
+% static_assert_rest(+Env, +Loc, -Item)//: a _Static_assert after its
+% keyword.
 static_assert_rest(Env, Loc, static_assert(Loc, Expr, Msg)) -->
     expect('('),
     conditional(Env, Expr),
@@ -132,7 +146,8 @@ static_assert_rest(Env, Loc, static_assert(Loc, Expr, Msg)) -->
     expect(')'),
     expect(';').
 
-% The typedef names a declaration adds or (for ordinary names) hides.
+% decl_env(+Specs, +Inits, +Env0, -Env): Env is Env0 with the typedef
+% names the declaration adds or (for ordinary names) hides.
 decl_env(Specs, Inits, Env0, Env) :-
     findall(N, ( member(init(dcl(N, _, _), _), Inits), N \== none ), Names),
     (   memberchk(storage(typedef), Specs)
@@ -147,16 +162,20 @@ remove_typedefs(Names, Env0, Env) :- foldl(remove_typedef, Names, Env0, Env).
 remove_typedef(Name, Env0, Env) :-
     ( del_assoc(Name, Env0, _, Env1) -> Env = Env1 ; Env = Env0 ).
 
-% Parameter names hide typedefs in a function body.
-params_env(params(Params, _), Env0, Env) :- !,
+% params_env(+Params, +Env0, -Env): Env is Env0 for a function body,
+% where parameter names hide typedefs.
+params_env(params(Params, _), Env0, Env) :-
+    !,
     findall(N,
             ( member(param(_, dcl(N, _, _)), Params), N \== none ),
             Names),
     remove_typedefs(Names, Env0, Env).
 params_env(_, Env, Env).
 
-% init_declarators(Env, Dcl, Inits, Attrs0, Attrs): the declarators'
-% attributes are collected into Attrs and apply to the whole declaration.
+% init_declarators(+Env, +Dcl, -Inits, +Attrs0, -Attrs)//: Inits are the
+% init(Dcl, Init) of the declarator list whose first declarator Dcl is
+% already read. The declarators' attributes are collected into Attrs
+% and apply to the whole declaration.
 init_declarators(Env, Dcl, [init(Dcl, Init)|Inits], Attrs0, Attrs) -->
     ( punct('=') -> initializer(Env, Init) ; { Init = none } ),
     (   punct(',')
@@ -168,9 +187,12 @@ init_declarators(Env, Dcl, [init(Dcl, Init)|Inits], Attrs0, Attrs) -->
 
 %% Declaration specifiers
 
-decl_specs(Env, Specs) --> specifiers(Env, no, Specs), { Specs \== [] }.
+% decl_specs(+Env, -Specs)//: nonempty declaration specifiers.
+decl_specs(Env, Specs) -->
+    specifiers(Env, no, Specs),
+    { Specs \== [] }.
 
-% specifiers(Env, TypeSeen, Specs): once a type specifier is seen, an
+% specifiers(+Env, +TypeSeen, -Specs)//: once a type specifier is seen, an
 % identifier is the declarator, not a typedef name.
 specifiers(Env, TypeSeen, [Spec|Specs]) -->
     specifier(Env, TypeSeen, Spec), !,
@@ -194,11 +216,13 @@ specifier(_, _, tspec(K)) -->
                       unsigned, bool, complex, int128])
     }, !.
 specifier(_, _, _) -->
-    kw(atomic), punct('('), !,
+    kw(atomic),
+    punct('('), !,
     parse_error('_Atomic types are not supported').
 specifier(_, _, qual(Q)) -->
     kw(Q), { memberchk(Q, [const, volatile, restrict, atomic]) }, !.
-specifier(_, _, fspec(F)) --> kw(F), { memberchk(F, [inline, noreturn]) }, !.
+specifier(_, _, fspec(F)) -->
+    kw(F), { memberchk(F, [inline, noreturn]) }, !.
 specifier(_, _, attr(A)) --> gnu_attr(A), !.
 specifier(_, _, attr(extension)) --> kw(extension), !.
 specifier(Env, _, alignas(A)) -->
@@ -213,7 +237,9 @@ specifier(Env, _, alignas(A)) -->
 specifier(Env, _, Spec) -->
     kw(K), { memberchk(K, [struct, union]) }, !,
     struct_spec(Env, K, Spec).
-specifier(Env, _, Spec) --> kw(enum), !, enum_spec(Env, Spec).
+specifier(Env, _, Spec) -->
+    kw(enum), !,
+    enum_spec(Env, Spec).
 specifier(Env, _, typeof(A)) -->
     kw(typeof), !,
     expect('('),
@@ -223,11 +249,19 @@ specifier(Env, _, typeof(A)) -->
         { A = expr(E) }
     ),
     expect(')').
-specifier(Env, no, tname(N)) --> token(id(N)), { get_assoc(N, Env, t) }.
+specifier(Env, no, tname(N)) -->
+    token(id(N)),
+    { get_assoc(N, Env, t) }.
 
-gnu_attr(A) --> kw(attribute), expect('('), balanced(A0), { A = A0 }.
+% gnu_attr(-Tokens)//: __attribute__((...)), Tokens its balanced//1
+% contents.
+gnu_attr(A) -->
+    kw(attribute),
+    expect('('),
+    balanced(A0),
+    { A = A0 }.
 
-% balanced(Toks): tokens up to the ')' matching an already-consumed '(';
+% balanced(-Toks)//: tokens up to the ')' matching an already-consumed '(';
 % nested parentheses become group(Toks).
 balanced([]) --> punct(')'), !.
 balanced([T|Ts]) -->
@@ -235,10 +269,15 @@ balanced([T|Ts]) -->
     balanced(Inner),
     { T = group(Inner) },
     balanced(Ts).
-balanced([T|Ts]) --> [tok(T, _)], !, balanced(Ts).
+balanced([T|Ts]) -->
+    [tok(T, _)], !,
+    balanced(Ts).
 balanced(_) --> parse_error('unbalanced parentheses').
 
-attrs --> gnu_attr(_), !, attrs.
+% attrs//: GNU attributes, ignored.
+attrs -->
+    gnu_attr(_), !,
+    attrs.
 attrs --> [].
 
 struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
@@ -251,13 +290,20 @@ struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
     ),
     { append(Attrs0, Attrs1, Attrs) }.
 
-attr_list([A|As]) --> gnu_attr(A), !, attr_list(As).
+attr_list([A|As]) -->
+    gnu_attr(A), !,
+    attr_list(As).
 attr_list([]) --> [].
 
+% members(+Env, -Members)//: the member declarations of a struct or
+% union up to its '}'.
 members(_, []) --> punct('}'), !.
-members(Env, Members) --> punct(';'), !, members(Env, Members).
+members(Env, Members) -->
+    punct(';'), !,
+    members(Env, Members).
 members(Env, [static_assert(Loc, E, Msg)|Members]) -->
-    loc(Loc), kw(static_assert), !,
+    loc(Loc),
+    kw(static_assert), !,
     expect('('),
     conditional(Env, E),
     ( punct(',') -> string_bytes(Msg) ; { Msg = [] } ),
@@ -274,7 +320,8 @@ members(Env, Members) -->
     members(Env, Members1).
 members(_, _) --> parse_error('expected a member declaration').
 
-% field_decls(Env, Specs, Fields, Rest): a difference list of fields.
+% field_decls(+Env, +Specs, -Fields, ?Rest)//: Fields-Rest is the
+% difference list of fields one member declaration declares.
 field_decls(Env, Specs, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
     (   punct(':')
     ->  { Dcl = dcl(none, base, none), Attrs = [] },
@@ -300,6 +347,7 @@ enum_spec(Env, enum(Tag, Enumerators)) -->
     ),
     attrs.
 
+% enumerators(+Env, -Enumerators)//: the enumerators up to the '}'.
 enumerators(_, []) --> punct('}'), !.
 enumerators(Env, [enumerator(Name, Value)|Es]) -->
     token(id(Name)), !,
@@ -310,13 +358,14 @@ enumerators(_, _) --> parse_error('expected an enumerator').
 
 %% Declarators
 
-% declarator(Env, Name, Type, Base) builds Type around Base.
-
-% Attributes after a declarator come back as attr(Tokens) specifiers.
+% full_declarator(+Env, -Dcl, -Attrs)//: a declarator with its GNU
+% suffix. Attributes after a declarator come back as attr(Tokens)
+% specifiers in Attrs.
 full_declarator(Env, dcl(Name, Type, Asm), Attrs) -->
     declarator(Env, Name, Type, base),
     gnu_suffix(Asm, Attrs).
 
+% gnu_suffix(-Asm, -Attrs)//: attributes and an asm("symbol") label.
 gnu_suffix(Asm, Attrs) -->
     attr_list(Attrs0),
     (   kw(asm)
@@ -331,6 +380,8 @@ gnu_suffix(Asm, Attrs) -->
         findall(attr(X), member(X, Attrs2), Attrs)
     }.
 
+% declarator(+Env, -Name, -Type, +Base)//: a declarator of Name; Type is
+% built around Base.
 declarator(Env, Name, Type, Base) -->
     punct('*'), !,
     qualifiers(Quals),
@@ -352,21 +403,28 @@ qualifiers(Quals) -->
     kw(Q), { memberchk(Q, [const, volatile, restrict, atomic]) }, !,
     { Quals = [Q|Quals1] },
     qualifiers(Quals1).
-qualifiers(Quals) --> gnu_attr(_), !, qualifiers(Quals).
+qualifiers(Quals) -->
+    gnu_attr(_), !,
+    qualifiers(Quals).
 qualifiers([]) --> [].
 
+% abstract_declarator(+Env, -Type, +Base)//: like declarator//4 without
+% a name. A '(' starts a nested declarator only before a '*'; otherwise
+% it is a parameter list.
 abstract_declarator(Env, Type, Base) -->
     punct('*'), !,
     qualifiers(Quals),
     abstract_declarator(Env, Type, ptr(Base, Quals)).
 abstract_declarator(Env, Type, Base) -->
-    punct('('), peek(p('*')), !,
+    punct('('),
+    peek(p('*')), !,
     abstract_declarator(Env, Type, Mid),
     expect(')'),
     suffixes(Env, Base, Mid).
 abstract_declarator(Env, Type, Base) --> suffixes(Env, Base, Type).
 
-% Array and function suffixes, applied inside out.
+% suffixes(+Env, +Base, -Type)//: array and function suffixes, applied
+% inside out: Type is Base with them.
 suffixes(Env, Base, Type) -->
     punct('['), !,
     array_size(Env, Size),
@@ -380,18 +438,26 @@ suffixes(Env, Base, Type) -->
     { Type = func(Type1, Params) }.
 suffixes(_, Base, Base) --> [].
 
+% array_size(+Env, -Size)//: the size between '[' and ']', or none; the
+% ']' stays in the input.
 array_size(_, none), [tok(p(']'), Loc)] --> [tok(p(']'), Loc)], !.
 array_size(_, _) -->
-    punct('*'), peek(p(']')), !,
+    punct('*'),
+    peek(p(']')), !,
     parse_error('variable length arrays are not supported').
-array_size(Env, Size) --> kw(static), !, array_size(Env, Size).
+array_size(Env, Size) -->
+    kw(static), !,
+    array_size(Env, Size).
 array_size(Env, Size) -->
     kw(Q), { memberchk(Q, [const, volatile, restrict]) }, !,
     array_size(Env, Size).
 array_size(Env, Size) --> assignment(Env, Size).
 
+% params(+Env, -Params)//: a parameter list after its '(', through ')'.
 params(_, unspecified) --> punct(')'), !.
-params(_, params([], fixed)) --> kw(void), punct(')'), !.
+params(_, params([], fixed)) -->
+    kw(void),
+    punct(')'), !.
 params(Env, params(Params, Variadic)) -->
     param_list(Env, Params, Variadic),
     expect(')').
@@ -417,27 +483,34 @@ param(_, _) -->
     parse_error('K&R-style parameter lists are not supported').
 param(_, _) --> parse_error('expected a parameter declaration').
 
+% type_name(+Env, -TypeName)//: a type name, type(Specs, Type).
 type_name(Env, type(Specs, Type)) -->
     decl_specs(Env, Specs),
     abstract_declarator(Env, Type, base).
 
-% Lookahead: the next token begins a type name.
+% starts_type(+Env)//: lookahead: the next token begins a type name.
 starts_type(Env), [tok(X, Loc)] -->
     [tok(X, Loc)],
-    {   X = kw(K)
-    ->  memberchk(K, [void, char, short, int, long, float, double, signed,
-                      unsigned, bool, complex, int128, struct, union, enum,
-                      const, volatile, restrict, atomic, typeof, attribute,
-                      alignas, extension])
-    ;   X = id(N),
-        get_assoc(N, Env, t)
-    }.
+    { type_start_token(X, Env) }.
+
+type_start_token(kw(K), _) :-
+    memberchk(K, [void, char, short, int, long, float, double, signed,
+                  unsigned, bool, complex, int128, struct, union, enum,
+                  const, volatile, restrict, atomic, typeof, attribute,
+                  alignas, extension]).
+type_start_token(id(N), Env) :-
+    get_assoc(N, Env, t).
 
 %% Initializers
 
-initializer(Env, list(Entries)) --> punct('{'), !, init_entries(Env, Entries).
+% initializer(+Env, -Init)//: an expression or a braced list(Entries).
+initializer(Env, list(Entries)) -->
+    punct('{'), !,
+    init_entries(Env, Entries).
 initializer(Env, E) --> assignment(Env, E).
 
+% init_entries(+Env, -Entries)//: the entries of a braced initializer
+% after its '{', through '}'.
 init_entries(_, []) --> punct('}'), !.
 init_entries(Env, [entry(Designators, Init)|Entries]) -->
     (   designators(Env, Ds0), { Ds0 \== [] }
@@ -452,10 +525,14 @@ init_entries(Env, [entry(Designators, Init)|Entries]) -->
         { Entries = [] }
     ).
 
-designators(Env, [D|Ds]) --> designator(Env, D), !, designators(Env, Ds).
+designators(Env, [D|Ds]) -->
+    designator(Env, D), !,
+    designators(Env, Ds).
 designators(_, []) --> [].
 
-designator(_, field(Name)) --> punct('.'), token(id(Name)).
+designator(_, field(Name)) -->
+    punct('.'),
+    token(id(Name)).
 designator(Env, index(E)) -->
     punct('['),
     conditional(Env, E),
@@ -471,20 +548,25 @@ block(Env, at(Loc, block(Items))) -->
     punct('{'),
     block_items(Env, Items).
 
+% block_items(+Env, -Items)//: the items of a block through its '}'.
 block_items(_, []) --> punct('}'), !.
 block_items(Env0, [Item|Items]) -->
     block_item(Env0, Env, Item),
     block_items(Env, Items).
 
+% block_item(+Env0, -Env, -Item)//: a declaration or statement in a
+% block; Env is Env0 with the declaration's typedef names.
 block_item(Env, Env, Item) -->
-    loc(Loc), kw(static_assert), !,
+    loc(Loc),
+    kw(static_assert), !,
     static_assert_rest(Env, Loc, Item).
 block_item(Env0, Env, Item) -->
     starts_decl(Env0), !,
     local_decl(Env0, Env, Item).
 block_item(Env, Env, Stmt) --> statement(Env, Stmt).
 
-% Lookahead only: the next tokens begin a declaration, not a label.
+% starts_decl(+Env)//: lookahead only: the next tokens begin a
+% declaration, not a label.
 starts_decl(Env, S, S) :-
     \+ phrase(label_start, S, _),
     (   phrase(starts_type(Env), S, _)
@@ -494,10 +576,12 @@ starts_decl(Env, S, S) :-
                       inline, noreturn])
     ).
 
+% label_start//: lookahead: the next tokens are an identifier and ':'.
 label_start, [A, B] -->
     [A, B],
     { A = tok(id(_), _), B = tok(p(':'), _) }.
 
+% local_decl(+Env0, -Env, -Decl)//: a declaration in a block or for.
 local_decl(Env0, Env, decl(Loc, Specs1, Inits)) -->
     loc(Loc),
     decl_specs(Env0, Specs),
@@ -511,10 +595,16 @@ local_decl(Env0, Env, decl(Loc, Specs1, Inits)) -->
         decl_env(Specs, Inits, Env0, Env)
     }.
 
-statement(Env, at(Loc, S)) --> loc(Loc), statement_body(Env, S), !.
+% statement(+Env, -Stmt)//: a statement at(Loc, S). The cut commits to
+% the first parse; if there is none, it is a syntax error.
+statement(Env, at(Loc, S)) -->
+    loc(Loc),
+    statement_body(Env, S), !.
 statement(_, _) --> parse_error('expected a statement').
 
-statement_body(Env, S) --> peek(p('{')), !, block(Env, at(_, S)).
+statement_body(Env, S) -->
+    peek(p('{')), !,
+    block(Env, at(_, S)).
 statement_body(_, null) --> punct(';'), !.
 statement_body(Env, if(C, Then, Else)) -->
     kw(if), !,
@@ -522,7 +612,11 @@ statement_body(Env, if(C, Then, Else)) -->
     expr(Env, C),
     expect(')'),
     statement(Env, Then),
-    ( kw(else) -> statement(Env, Else0), { Else = Else0 } ; { Else = none } ).
+    (   kw(else)
+    ->  statement(Env, Else0),
+        { Else = Else0 }
+    ;   { Else = none }
+    ).
 statement_body(Env, while(C, S)) -->
     kw(while), !,
     expect('('),
@@ -571,9 +665,16 @@ statement_body(Env, default(S)) -->
     kw(default), !,
     expect(':'),
     statement(Env, S).
-statement_body(_, break) --> kw(break), !, expect(';').
-statement_body(_, continue) --> kw(continue), !, expect(';').
-statement_body(Env, return(E)) --> kw(return), !, opt_expr(Env, E), expect(';').
+statement_body(_, break) -->
+    kw(break), !,
+    expect(';').
+statement_body(_, continue) -->
+    kw(continue), !,
+    expect(';').
+statement_body(Env, return(E)) -->
+    kw(return), !,
+    opt_expr(Env, E),
+    expect(';').
 statement_body(_, goto(Label)) -->
     kw(goto), !,
     (   token(id(Label0))
@@ -581,20 +682,26 @@ statement_body(_, goto(Label)) -->
     ;   parse_error('computed goto is not supported')
     ),
     expect(';').
-statement_body(_, _) --> kw(asm), !, parse_error('inline asm is not supported').
+statement_body(_, _) -->
+    kw(asm), !,
+    parse_error('inline asm is not supported').
 statement_body(Env, label(Label, S)) -->
     label_start, !,
     [tok(id(Label), _), _],
     statement(Env, S).
-statement_body(Env, expr(E)) --> expr(Env, E), expect(';').
+statement_body(Env, expr(E)) -->
+    expr(Env, E),
+    expect(';').
 
-% An expression or none before ';' or ')', which stays in the input.
+% opt_expr(+Env, -E)//: an expression, or none before ';' or ')', which
+% stays in the input.
 opt_expr(_, none), [tok(p(P), Loc)] -->
     [tok(p(P), Loc)], { memberchk(P, [';', ')']) }, !.
 opt_expr(Env, E) --> expr(Env, E).
 
 %% Expressions
 
+% expr(+Env, -E)//: an expression, commas included.
 expr(Env, E) -->
     assignment(Env, E0),
     (   punct(',')
@@ -637,7 +744,7 @@ conditional(Env, E) -->
     ;   { E = C }
     ).
 
-% binary(Env, Level, E): binary operators of precedence Level and up;
+% binary(+Env, +Level, -E)//: binary operators of precedence Level and up;
 % level 11 is a cast expression.
 binary(Env, 11, E) --> !, cast(Env, E).
 binary(Env, Level, E) -->
@@ -671,8 +778,11 @@ binop('*', 10, mul).
 binop('/', 10, div).
 binop('%', 10, mod).
 
+% cast(+Env, -E)//: a cast expression or compound literal, else a unary
+% expression.
 cast(Env, E) -->
-    punct('('), starts_type(Env), !,
+    punct('('),
+    starts_type(Env), !,
     type_name(Env, Type),
     expect(')'),
     (   punct('{')
@@ -683,9 +793,15 @@ cast(Env, E) -->
     ).
 cast(Env, E) --> unary(Env, E).
 
-unary(Env, un(preinc, E)) --> punct('++'), !, unary(Env, E).
-unary(Env, un(predec, E)) --> punct('--'), !, unary(Env, E).
-unary(Env, un(Op, E)) --> punct(P), { unop(P, Op) }, !, cast(Env, E).
+unary(Env, un(preinc, E)) -->
+    punct('++'), !,
+    unary(Env, E).
+unary(Env, un(predec, E)) -->
+    punct('--'), !,
+    unary(Env, E).
+unary(Env, un(Op, E)) -->
+    punct(P), { unop(P, Op) }, !,
+    cast(Env, E).
 unary(Env, E) -->
     kw(sizeof), !,
     (   punct('('), starts_type(Env)
@@ -700,11 +816,15 @@ unary(Env, alignof(Type)) -->
     expect('('),
     type_name(Env, Type),
     expect(')').
-unary(Env, E) --> kw(extension), !, cast(Env, E).
+unary(Env, E) -->
+    kw(extension), !,
+    cast(Env, E).
 unary(_, _) -->
     punct('&&'), !,
     parse_error('label addresses are not supported').
-unary(Env, E) --> primary(Env, P), postfix(Env, P, E).
+unary(Env, E) -->
+    primary(Env, P),
+    postfix(Env, P, E).
 
 unop('&', addr).
 unop('*', deref).
@@ -713,6 +833,7 @@ unop('-', neg).
 unop('~', bnot).
 unop('!', not).
 
+% postfix(+Env, +A, -E)//: E is A with the postfix operators that follow.
 postfix(Env, A, E) -->
     punct('['), !,
     expr(Env, I),
@@ -730,18 +851,28 @@ postfix(Env, A, E) -->
     punct('->'), !,
     field_name(F),
     postfix(Env, arrow(A, F), E).
-postfix(Env, A, E) --> punct('++'), !, postfix(Env, un(postinc, A), E).
-postfix(Env, A, E) --> punct('--'), !, postfix(Env, un(postdec, A), E).
+postfix(Env, A, E) -->
+    punct('++'), !,
+    postfix(Env, un(postinc, A), E).
+postfix(Env, A, E) -->
+    punct('--'), !,
+    postfix(Env, un(postdec, A), E).
 postfix(_, E, E) --> [].
 
 field_name(F) --> token(id(F)), !.
 field_name(_) --> parse_error('expected a member name').
 
+% args(+Env, -Args)//: call arguments after '(', through ')'.
 args(_, []) --> punct(')'), !.
 args(Env, [A|As]) -->
     assignment(Env, A),
-    ( punct(',') -> args(Env, As) ; expect(')'), { As = [] } ).
+    (   punct(',')
+    ->  args(Env, As)
+    ;   expect(')'),
+        { As = [] }
+    ).
 
+% primary(+Env, -E)//: a primary expression.
 primary(Env, offsetof(Type, Path)) -->
     token(id('__builtin_offsetof')), !,
     expect('('),
@@ -768,10 +899,16 @@ primary(_, S) -->
     string_literals(Parts),
     { concat_strings(Parts, S) }.
 primary(_, _) -->
-    punct('('), peek(p('{')), !,
+    punct('('),
+    peek(p('{')), !,
     parse_error('statement expressions are not supported').
-primary(_, _) --> kw(generic), !, parse_error('_Generic is not supported').
-primary(Env, E) --> punct('('), !, expr(Env, E), expect(')').
+primary(_, _) -->
+    kw(generic), !,
+    parse_error('_Generic is not supported').
+primary(Env, E) -->
+    punct('('), !,
+    expr(Env, E),
+    expect(')').
 primary(_, _) --> parse_error('expected an expression').
 
 offsetof_path(Env, [field(F)|Steps]) -->
@@ -785,22 +922,23 @@ offsetof_path(Env, [index(E)|Steps]) -->
     offsetof_path(Env, Steps).
 offsetof_path(_, []) --> [].
 
-% Adjacent string literals concatenate; if one is wide, all are, and a
-% plain one's bytes become elements (exact for ASCII).
+% string_literals(-Parts)//: one or more adjacent string literals, each
+% str(Bytes) or wstr(Type, Codes). They concatenate; if one is wide, all
+% are, and a plain one's bytes become elements (exact for ASCII).
 string_literals([S|Ss]) -->
-    (   token(str(B))
-    ->  { S = str(B) }
-    ;   token(wstr(T, Vs))
-    ->  { S = wstr(T, Vs) }
-    ;   { fail }
-    ), !,
+    string_literal(S), !,
     ( string_literals(Ss) -> [] ; { Ss = [] } ).
 
-% Adjacent plain string literals as one list of bytes.
+string_literal(str(B)) --> token(str(B)).
+string_literal(wstr(T, Vs)) --> token(wstr(T, Vs)).
+
+% string_bytes(-Bytes)//: adjacent plain string literals as one list of
+% bytes.
 string_bytes(Bs) -->
     token(str(B0)), !,
     ( string_bytes(B1) -> { append(B0, B1, Bs) } ; { Bs = B0 } ).
 
+% concat_strings(+Parts, -S): S is the string literal Parts concatenate.
 concat_strings(Parts, S) :-
     findall(T, member(wstr(T, _), Parts), Types0),
     sort(Types0, Types),
@@ -812,5 +950,6 @@ concat_strings(Parts, S) :-
     ->  S = str(All)
     ;   Types = [T]
     ->  S = wstr(T, All)
-    ;   throw(nanofil_error('concatenating string literals of different wide types'))
+    ;   throw(nanofil_error(
+            'concatenating string literals of different wide types'))
     ).

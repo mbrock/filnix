@@ -1,13 +1,15 @@
 /*  Relational semantics of the phase-one IR.
 
     run(+Module, +Fn, ?Args, +Fuel, ?Outcome)
-    prepare(+Module, -Prepared), run_prepared(+Prepared, +Fn, ?Args, +Fuel, ?Outcome)
+    prepare(+Module, -Prepared)
+    run_prepared(+Prepared, +Fn, ?Args, +Fuel, ?Outcome)
 
     run/5 prepares the module first: its mode, initial memory, and
     indexes of its functions and blocks. Prepare once to run many times.
 
     Args are integers or CLP(Z) variables, one per parameter, in the range
-    of the parameter's class. Outcome is one of
+    of the parameter's class (ptr(Addr, Cap) for a p parameter). Outcome
+    is one of
       ret(V)          returned V (an integer or constrained variable)
       rets([X1, X2])  returned a tuple
       ret             returned from a void function
@@ -37,6 +39,12 @@
     carries ctx(Fns, Globals, Blocks, Ret, Mode): the prepared functions,
     the address of each global, the function's blocks by label, its
     return class and the module mode.
+
+    Variable names: K a class, V an IR value (t(N), c(N) or glo(N)), X a
+    run-time value (an integer, a constrained variable, or in filc mode
+    ptr(Addr, Cap)), Env the assoc from temporary to run-time value, S a
+    run state, Out an outcome, Res a partial result (val(X), ok, ub(Why)
+    or trap(Why)). Env0/Env and S0/S are the state before and after.
 */
 :- module(interp, [run/5, prepare/2, run_prepared/5, outcome_text/2]).
 
@@ -47,11 +55,23 @@
 :- use_module(library(dif)).
 :- use_module(ir).
 
+%! run(+M, +Fn, ?Args, +Fuel, ?Outcome) is nondet.
+%
+%  Outcome is the result of calling the function Fn of module M on Args
+%  and executing at most Fuel blocks. With unknown Args each solution
+%  constrains them to the inputs that take one path; see
+%  run_prepared/5.
+
 run(M, Fn, Args, Fuel, Outcome) :-
     prepare(M, Prepared),
     run_prepared(Prepared, Fn, Args, Fuel, Outcome).
 
-% The initial memory holds integers only, so runs can share it.
+%! prepare(+M, -Prepared) is det.
+%
+%  Prepared is M ready to run: its mode, the address of each global, its
+%  initial memory, and its functions and their blocks indexed by name and
+%  label. The initial memory holds integers only, so runs can share it.
+
 prepare(M, prep(Fns, Globals, Mode, Mem0)) :-
     module_mode(M, Mode),
     initial_memory(Mode, M, Globals, Mem0),
@@ -68,19 +88,36 @@ prepare(M, prep(Fns, Globals, Mode, Mem0)) :-
             NameFns),
     list_to_assoc(NameFns, Fns).
 
+%! run_prepared(+Prepared, +Fn, ?Args, +Fuel, ?Outcome) is nondet.
+%
+%  Outcome is the result of calling Fn of the prepared module on Args
+%  within Fuel blocks. Args is constrained to the ranges of Fn's
+%  parameter classes. Where a branch or a division depends on an unknown
+%  value (an argument, or a byte nobody wrote), there is one solution per
+%  case, each constraining that value; comparisons are reified instead.
+%  When every such value is known the outcome is unique, though the run
+%  may leave a choice point, so callers use once/1. Fails when the module
+%  defines no Fn. Throws nanofil_error when the run needs what the
+%  interpreter does not model (a symbol the module does not define, a
+%  temporary read before any assignment), and an instantiation error
+%  when an address or allocation size is unknown.
+
 run_prepared(prep(Fns, Globals, Mode, Mem0), Fn, Args, Fuel, Outcome) :-
     get_assoc(Fn, Fns, fn(_, Params, _, _)),
     maplist(arg_in_range, Params, Args),
     call_fn(Fns, Globals, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
 
+% arg_in_range(+Param, ?X): X is a value of Param's class.
 arg_in_range(par(p, _), ptr(_, _)) :- !.
 arg_in_range(par(K, _), A) :-
     modulus(K, Mod),
     Top #= Mod - 1,
     A in 0..Top.
 
-% In plain mode a callee's allocations die when it returns; in filc mode
-% every allocation is a heap object that lives on.
+% call_fn(+Fns, +Globals, +Mode, +Fn, +Xs, +S0, -Out, -S): calling Fn on
+% Xs in state S0 ends with Out in state S. In plain mode a callee's
+% allocations die when it returns; in filc mode every allocation is a
+% heap object that lives on.
 call_fn(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     (   get_assoc(Fn, Fns, fn(Ret, Params, Entry, Blocks)) -> true
     ;   format(atom(Msg), 'cannot interpret a call to external $~w', [Fn]),
@@ -98,6 +135,7 @@ call_fn(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
 
 bind_param(par(_, t(N)), X, Env0, Env) :- put_assoc(N, Env0, X, Env).
 
+% int_is(?R, +Expr): R is the value of the integer expression Expr.
 % Concrete fast path: when every operand is known, plain arithmetic and
 % if-then-else give the same answers as the constraints, without
 % propagators or choice points. Unknown operands still get constraints.
@@ -119,11 +157,13 @@ reify_constraint(X >= Y, B) :- B #<==> (X #>= Y).
 
 %% Blocks
 
-% exec_block(+Ctx, +Label, +Pred, +Env0, +S0, -Out, -S): run the block
-% Label, entered from Pred, and everything after it. Each block costs one
-% unit of fuel.
+% exec_block(+Ctx, +Label, +Pred, +Env0, +S0, -Out, -S): Out and S are
+% the outcome and final state of running the block Label, entered from
+% Pred, and everything after it. Each block costs one unit of fuel.
 exec_block(Ctx, Label, Pred, Env0, s(Mem, Fuel0), Out, S) :-
-    (   Fuel0 =:= 0 -> Out = out_of_fuel, S = s(Mem, Fuel0)
+    (   Fuel0 =:= 0
+    ->  Out = out_of_fuel,
+        S = s(Mem, Fuel0)
     ;   Fuel1 is Fuel0 - 1,
         Ctx = ctx(_, _, Blocks, _, _),
         get_assoc(Label, Blocks, blk(_, Phis, Insts, Jump)),
@@ -132,7 +172,10 @@ exec_block(Ctx, Label, Pred, Env0, s(Mem, Fuel0), Out, S) :-
         after_insts(Result, Jump, Ctx, Label, Out, S)
     ).
 
-% Phis read the environment as it was on entry, then all bind at once.
+% exec_phis(+Phis, +Ctx, +Pred, +EntryEnv, +Env0, -Env): Env is Env0 with
+% each phi of Phis bound to its value for the edge from Pred, read in
+% EntryEnv. Phis read the environment as it was on entry, so they all
+% bind at once.
 exec_phis([], _, _, _, Env, Env).
 exec_phis([phi(t(D), K, Pairs)|Phis], Ctx, Pred, EntryEnv, Env0, Env) :-
     memberchk(Pred-V, Pairs),
@@ -140,10 +183,15 @@ exec_phis([phi(t(D), K, Pairs)|Phis], Ctx, Pred, EntryEnv, Env0, Env) :-
     put_assoc(D, Env0, X, Env1),
     exec_phis(Phis, Ctx, Pred, EntryEnv, Env1, Env).
 
+% after_insts(+Result, +Jump, +Ctx, +Label, -Out, -S): continue with the
+% block's Jump unless an instruction ended the run.
 after_insts(cont(Env, S0), Jump, Ctx, Label, Out, S) :-
     exec_jump(Jump, Ctx, Label, Env, S0, Out, S).
 after_insts(stop(Out, S), _, _, _, Out, S).
 
+% exec_jump(+Jump, +Ctx, +From, +Env, +S0, -Out, -S): Out is the outcome
+% of Jump, ending block From, and everything after it. When the jnz
+% condition is unknown, both edges are solutions, each constraining it.
 exec_jump(jmp(L), Ctx, From, Env, S0, Out, S) :-
     exec_block(Ctx, L, From, Env, S0, Out, S).
 exec_jump(jnz(V, L1, L2), Ctx, From, Env, S0, Out, S) :-
@@ -175,6 +223,8 @@ exec_insts_after(cont(Env, S), Insts, Ctx, Result) :-
     exec_insts(Insts, Ctx, Env, S, Result).
 exec_insts_after(stop(Out, S), _, _, stop(Out, S)).
 
+% exec_inst(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
+% after Inst, or stop(Outcome, S) when it ends the run.
 exec_inst(ins(t(D), K, Op, Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(_, _, _, _, Mode),
     op_arg_classes(Op, K, Mode, ArgClasses),
@@ -194,6 +244,8 @@ exec_inst(call(Res, glo(F), Args), Ctx, Env0, S0, Result) :-
     maplist(read_arg(Ctx, Env0), Args, Xs),
     call_fn(Fns, Globals, Mode, F, Xs, S0, Out, S),
     call_result(Out, Res, Env0, S, Result).
+% A call through a p value reaches a function only when the pointer
+% carries the function's capability at the function's own address.
 exec_inst(call(Res, t(N), Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(Fns, Globals, _, _, Mode),
     read_value(p, t(N), Ctx, Env0, ptr(A, Cap)),
@@ -244,7 +296,8 @@ indirect_call(Ret, Params, Res, Args, Xs, Ys, Conv) :-
         )
     ).
 
-% The classes of the words a call site reads and a function returns.
+% result_words(+Res, -Ks) and return_words(+Ret, -Ks): the classes of
+% the words a call site reads and a function returns.
 result_words(void, []).
 result_words(to(_, K), [K]).
 result_words(tuple(Tos), Ks) :- findall(K, member(to(_, K), Tos), Ks).
@@ -253,6 +306,7 @@ return_words(void, []) :- !.
 return_words(tuple(Ks), Ks) :- !.
 return_words(K, [K]).
 
+% word_class(+K, -Class): p, or int for w and l, which are the same word.
 word_class(p, p) :- !.
 word_class(_, int).
 
@@ -263,6 +317,8 @@ generic_word(p, _, ptr(A, _), A) :- !.
 generic_word(_, p, X, ptr(X, none)) :- !.
 generic_word(_, _, X, X).
 
+% convert_return(+Conv, +Out0, -Out): Out is the callee's outcome Out0
+% as the call site reads it.
 convert_return(same, Out, Out).
 convert_return(conv(CallerWords, CalleeWords), Out0, Out) :-
     (   outcome_words(Out0, Xs0)
@@ -274,6 +330,8 @@ convert_return(conv(CallerWords, CalleeWords), Out0, Out) :-
     ;   Out = Out0
     ).
 
+% outcome_words(?Out, ?Xs): the returning outcome Out returns the words
+% Xs. Fails for an outcome that does not return.
 outcome_words(ret, []).
 outcome_words(ret(X), [X]).
 outcome_words(rets(Xs), Xs) :- Xs = [_, _|_].
@@ -281,6 +339,8 @@ outcome_words(rets(Xs), Xs) :- Xs = [_, _|_].
 read_at(Ctx, Env, K, V, X) :- read_value(K, V, Ctx, Env, X).
 read_arg(Ctx, Env, arg(K, V), X) :- read_value(K, V, Ctx, Env, X).
 
+% bind_result/5, store_result/4 and call_result/5 turn an operation's
+% Res, or a callee's outcome, into the instruction's Result.
 bind_result(val(X), D, Env0, S, cont(Env, S)) :- put_assoc(D, Env0, X, Env).
 bind_result(ub(Why), _, _, S, stop(ub(Why), S)).
 bind_result(trap(Why), _, _, S, stop(trap(Why), S)).
@@ -311,8 +371,10 @@ bind_word(to(t(D), K), X, Env0, Env) :-
     int_is(Y, X mod Mod),
     put_assoc(D, Env0, Y, Env).
 
-% Reading a value at class K takes its low bits(K) bits. read_value_/5
-% indexes on the value.
+% read_value(+K, +V, +Ctx, +Env, -X): X is the IR value V read at class
+% K, which takes its low bits(K) bits. read_value_/5 indexes on the value.
+% A symbol the module does not define is ptr(0, ext(Name)) in filc mode;
+% in plain mode (which the validator rejects) the read fails.
 read_value(K, V, Ctx, Env, X) :- read_value_(V, K, Ctx, Env, X).
 
 read_value_(t(N), K, _, Env, X) :-
@@ -337,14 +399,16 @@ read_value_(glo(N), _, ctx(_, Globals, _, _, Mode), _, X) :-
 
 % eval_op(+Op, +K, +Mode, +Args, +S0, -Res, -S): Res is val(X), ub(Why)
 % or trap(Why).
-eval_op(load(p), _, filc, [ptr(A, Cap)], s(Mem0, Fuel), Res, s(Mem, Fuel)) :- !,
+eval_op(load(p), _, filc, [ptr(A, Cap)], s(Mem0, Fuel), Res,
+        s(Mem, Fuel)) :- !,
     check_access(Mem0, A, Cap, 8, read, 8, Res0),
     (   Res0 == ok
     ->  load_bytes(filc, Mem0, A, 8, val(U), Mem),
         Mem = mem(_, _, _, Aux),
         (   get_assoc(A, Aux, C) -> true ; C = none ),
         Res = val(ptr(U, C))
-    ;   Mem = Mem0, Res = Res0
+    ;   Mem = Mem0,
+        Res = Res0
     ).
 eval_op(load(T), K, Mode, [A0], s(Mem0, Fuel), Res, s(Mem, Fuel)) :- !,
     load_type(T, Size, Ext),
@@ -356,7 +420,8 @@ eval_op(load(T), K, Mode, [A0], s(Mem0, Fuel), Res, s(Mem, Fuel)) :- !,
     (   Res0 == ok
     ->  load_bytes(Mode, Mem0, A, Size, Loaded, Mem),
         load_value(Loaded, Ext, K, Res)
-    ;   Mem = Mem0, Res = Res0
+    ;   Mem = Mem0,
+        Res = Res0
     ).
 eval_op(alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
         s(Mem, Fuel)) :- !,
@@ -365,11 +430,15 @@ eval_op(alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
 eval_op(Op, K, _, Xs, S, Res, S) :-
     alu(Op, K, Xs, Res).
 
-% Pointer arithmetic keeps the capability. ptoi drops it; itop has none.
+% alu(+Op, +K, +Xs, -Res): Res is the result of the arithmetic Op of
+% class K on Xs. Pointer arithmetic keeps the capability. ptoi drops it;
+% itop has none.
 alu(add, p, [ptr(A, C), X], val(ptr(R, C))) :- !,
-    modulus(l, M), int_is(R, (A + X) mod M).
+    modulus(l, M),
+    int_is(R, (A + X) mod M).
 alu(sub, p, [ptr(A, C), X], val(ptr(R, C))) :- !,
-    modulus(l, M), int_is(R, (A - X) mod M).
+    modulus(l, M),
+    int_is(R, (A - X) mod M).
 alu(ptoi, _, [ptr(A, _)], val(A)).
 alu(itop, _, [X], val(ptr(X, none))).
 
@@ -403,6 +472,8 @@ alu(ext(T), K, [X], val(R)) :-
     int_is(R, S mod M).
 alu(cmp(Cond, CK), _, [X, Y], val(B)) :- compare_cond(Cond, CK, X, Y, B).
 
+% unsigned_division(+X, +Y, +Expr, -Res): Res is val of Expr, or ub when
+% the divisor Y is zero. An unknown Y gives both cases as solutions.
 unsigned_division(_, Y, Expr, Res) :-
     (   integer(Y)
     ->  (   Y =:= 0 -> Res = ub(division_by_zero)
@@ -445,21 +516,32 @@ shift_factor(K, Y, P) :-
     int_is(C, Y mod Bits),
     int_is(P, 2 ^ C).
 
+% compare_cond(+Cond, +K, ?X, ?Y, ?B): B is 1 when X Cond Y holds at
+% class K, else 0.
 compare_cond(eq, _, X, Y, B) :- reify(X =:= Y, B).
 compare_cond(ne, _, X, Y, B) :- reify(X =\= Y, B).
 compare_cond(ult, _, X, Y, B) :- reify(X < Y, B).
 compare_cond(ule, _, X, Y, B) :- reify(X =< Y, B).
 compare_cond(ugt, _, X, Y, B) :- reify(X > Y, B).
 compare_cond(uge, _, X, Y, B) :- reify(X >= Y, B).
-compare_cond(slt, K, X, Y, B) :- signed_pair(K, X, Y, SX, SY), reify(SX < SY, B).
-compare_cond(sle, K, X, Y, B) :- signed_pair(K, X, Y, SX, SY), reify(SX =< SY, B).
-compare_cond(sgt, K, X, Y, B) :- signed_pair(K, X, Y, SX, SY), reify(SX > SY, B).
-compare_cond(sge, K, X, Y, B) :- signed_pair(K, X, Y, SX, SY), reify(SX >= SY, B).
+compare_cond(slt, K, X, Y, B) :-
+    signed_pair(K, X, Y, SX, SY),
+    reify(SX < SY, B).
+compare_cond(sle, K, X, Y, B) :-
+    signed_pair(K, X, Y, SX, SY),
+    reify(SX =< SY, B).
+compare_cond(sgt, K, X, Y, B) :-
+    signed_pair(K, X, Y, SX, SY),
+    reify(SX > SY, B).
+compare_cond(sge, K, X, Y, B) :-
+    signed_pair(K, X, Y, SX, SY),
+    reify(SX >= SY, B).
 
 signed_pair(K, X, Y, SX, SY) :-
     signed(K, X, SX),
     signed(K, Y, SY).
 
+% signed(+K, ?U, ?S): S is the two's-complement reading of U at class K.
 signed(K, U, S) :-
     modulus(K, M),
     half_modulus(K, H),
@@ -467,7 +549,9 @@ signed(K, U, S) :-
 
 % sign_extend(+M, +H, ?U, ?S): S is the two's-complement reading of the
 % low bits of U, for a field of modulus M with sign threshold H.
-sign_extend(M, H, U, S) :- integer(U), !,
+sign_extend(M, H, U, S) :-
+    integer(U),
+    !,
     L is U mod M,
     (   L >= H -> S is L - M ; S = L ).
 sign_extend(M, H, U, S) :-
@@ -476,6 +560,8 @@ sign_extend(M, H, U, S) :-
     Neg #<==> (L #>= H),
     S #= L - Neg * M.
 
+% extend(+T, ?X, ?S): S is the low bits of X that T names, sign- or
+% zero-extended.
 extend(sb, X, S) :- sign_extend(256, 128, X, S).
 extend(ub, X, S) :- int_is(S, X mod 256).
 extend(sh, X, S) :- sign_extend(65536, 32768, X, S).
@@ -493,6 +579,8 @@ load_type(uh, 2, uh).
 load_type(sb, 1, sb).
 load_type(ub, 1, ub).
 
+% load_value(+Loaded, +Ext, +K, -Res): Res is the loaded bytes' value,
+% extended with Ext and taken at class K.
 load_value(ub(Why), _, _, ub(Why)).
 load_value(val(U), none, _, val(U)).
 load_value(val(U), T, K, val(R)) :-
@@ -507,8 +595,11 @@ load_value(val(U), T, K, val(R)) :-
 % capability a storep left there. An integer store leaves it alone, as
 % Fil-C's aux array does.
 
-% In plain mode an access outside every live region is undefined. In filc
-% mode the access was checked against its capability already.
+% load_bytes(+Mode, +Mem0, +A, +Size, -Res, -Mem): Res is val(U), U the
+% little-endian value of the Size bytes at A, or ub(...). In plain mode
+% an access outside every live region is undefined. In filc mode the
+% access was checked against its capability already. Mem is Mem0 with
+% any unwritten byte read now made a fresh variable (plain mode).
 load_bytes(Mode, mem(Bytes0, Rs, Next, Aux), A, Size, Res,
            mem(Bytes, Rs, Next, Aux)) :-
     must_be(integer, A),
@@ -520,6 +611,8 @@ load_bytes(Mode, mem(Bytes0, Rs, Next, Aux), A, Size, Res,
         Res = ub(out_of_bounds(A, Size))
     ).
 
+% store_bytes(+Mode, +Width, +Mem0, +Addr, +X, -Res, -Mem): Mem is Mem0
+% with X written at Addr as Width, when Res is ok.
 store_bytes(plain, Width, mem(Bytes0, Rs, Next, Aux), A, X, Res,
             mem(Bytes, Rs, Next, Aux)) :-
     width_bytes(Width, Size),
@@ -533,7 +626,12 @@ store_bytes(plain, Width, mem(Bytes0, Rs, Next, Aux), A, X, Res,
     ).
 store_bytes(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem) :-
     width_bytes(Width, Size),
-    (   Width == p -> Align = 8, X = ptr(V, VCap) ; Align = 1, V = X ),
+    (   Width == p
+    ->  Align = 8,
+        X = ptr(V, VCap)
+    ;   Align = 1,
+        V = X
+    ),
     check_access(Mem0, A, Cap, Size, write, Align, Res),
     (   Res == ok
     ->  Mem0 = mem(Bytes0, Rs, Next, Aux0),
@@ -548,7 +646,11 @@ store_bytes(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem) :-
    access check. Cap is none, obj(Base) for a writable object, ro(Base)
    for read-only data, fn(F) for a function object (zero size, so every
    access fails the bounds check) or ext(Name) for a symbol defined
-   outside the module, which the interpreter cannot follow. */
+   outside the module, which the interpreter cannot follow.
+
+   This stays an if-then-else chain rather than clauses on Cap: a p
+   argument passed in by the caller may have an unbound Cap, which the
+   chain treats as a function capability. */
 check_access(mem(_, Rs, _, _), A, Cap, Size, Kind, Align, Res) :-
     must_be(integer, A),
     (   Cap == none -> Res = trap(null_capability)
@@ -567,12 +669,17 @@ check_access(mem(_, Rs, _, _), A, Cap, Size, Kind, Align, Res) :-
         )
     ).
 
-% The access [A, A+Size) lies inside one live region. A and the regions
-% are integers here, so the if-then-else above is sound.
+% in_live_region(+Rs, +A, +Size): the access [A, A+Size) lies inside one
+% live region. A and the regions are integers here, so the if-then-else
+% in the callers is sound. The cut commits to the first such region.
 in_live_region(Rs, A, Size) :-
     member(Base-End, Rs),
-    A >= Base, A + Size =< End, !.
+    A >= Base,
+    A + Size =< End,
+    !.
 
+% read_bytes(+N, +Mode, +A, +Bytes0, -Bytes, -Xs): Xs are the N bytes at
+% A in Bytes0; Bytes is Bytes0 with each unwritten byte among them bound.
 % An unwritten byte is unknown in plain mode and zero in filc mode, since
 % Fil-C allocations are zeroed.
 read_bytes(0, _, _, Bytes, Bytes, []) :- !.
@@ -585,13 +692,16 @@ read_bytes(N, Mode, A, Bytes0, Bytes, [X|Xs]) :-
     N1 is N - 1,
     read_bytes(N1, Mode, A1, Bytes1, Bytes, Xs).
 
+% write_bytes(+Xs, +A, +Bytes0, -Bytes): Bytes is Bytes0 with the bytes Xs
+% at A, A+1, ...
 write_bytes([], _, Bytes, Bytes).
 write_bytes([X|Xs], A, Bytes0, Bytes) :-
     put_assoc(A, Bytes0, X, Bytes1),
     A1 is A + 1,
     write_bytes(Xs, A1, Bytes1, Bytes).
 
-% Little-endian.
+% le_value(+Bytes, ?U) and le_bytes(+N, ?X, -Bytes): U is the
+% little-endian value of Bytes; Bytes are the N low bytes of X.
 le_value([], 0).
 le_value([X|Xs], U) :- le_value(Xs, U1), int_is(U, X + 256 * U1).
 
@@ -602,8 +712,9 @@ le_bytes(N, X, [B|Bs]) :-
     N1 is N - 1,
     le_bytes(N1, X1, Bs).
 
-% Allocations are aligned, and a 16-byte gap separates them so a small
-% overrun cannot land in a neighbour.
+% alloc(+Mode, +Mem0, +Align, +Size, -Base, -Mem): Base is a new region
+% of Size bytes in Mem. Allocations are aligned, and a 16-byte gap
+% separates them so a small overrun cannot land in a neighbour.
 alloc(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
       mem(Bytes, [Base-End|Rs], Next, Aux)) :-
     must_be(integer, Size),
@@ -637,19 +748,24 @@ initial_memory(filc, module(Items), Globals, mem(Bytes, Rs, Stack, Aux)) :-
     foldl(filc_fill(Globals), Items, Bytes0-Aux0, Bytes-Aux),
     stack_base(Stack).
 
+% plain_layout(+Items, +A0, +Globals0, -Globals, +Rs0, -Rs): Globals and
+% Rs add to Globals0 and Rs0 the address and region of each data item of
+% Items, laid out from A0 in order; other items take no space.
 plain_layout([], _, Globals, Globals, Rs, Rs).
-plain_layout([Item|Items], A0, Globals0, Globals, Rs0, Rs) :-
-    (   Item = data(Name, _, Align, DataItems)
-    ->  Base is (A0 + Align - 1) // Align * Align,
-        foldl(item_size, DataItems, 0, Size),
-        End is Base + Size,
-        put_assoc(Name, Globals0, Base, Globals1),
-        Rs1 = [Base-End|Rs0],
-        A1 is End + 16
-    ;   Globals1 = Globals0, Rs1 = Rs0, A1 = A0
-    ),
-    plain_layout(Items, A1, Globals1, Globals, Rs1, Rs).
+plain_layout([data(Name, _, Align, DataItems)|Items], A0, Globals0, Globals,
+             Rs0, Rs) :-
+    !,
+    Base is (A0 + Align - 1) // Align * Align,
+    foldl(item_size, DataItems, 0, Size),
+    End is Base + Size,
+    put_assoc(Name, Globals0, Base, Globals1),
+    A1 is End + 16,
+    plain_layout(Items, A1, Globals1, Globals, [Base-End|Rs0], Rs).
+plain_layout([_|Items], A0, Globals0, Globals, Rs0, Rs) :-
+    plain_layout(Items, A0, Globals0, Globals, Rs0, Rs).
 
+% plain_fill(+Globals, +Item, +Bytes0, -Bytes), filc_fill/4: write the
+% bytes (and in filc mode the capabilities) of a data item.
 plain_fill(Globals, data(Name, _, _, Items), Bytes0, Bytes) :- !,
     get_assoc(Name, Globals, A),
     maplist(item_bytes(Globals), Items, ItemBytes),
@@ -657,6 +773,8 @@ plain_fill(Globals, data(Name, _, _, Items), Bytes0, Bytes) :- !,
     write_bytes(DataBytes, A, Bytes0, Bytes).
 plain_fill(_, func(_, _, _, _, _), Bytes, Bytes).
 
+% filc_layout(+Item, +A0-Globals0-Rs0, -A-Globals-Rs): place Item at
+% the next 16-aligned address from A0.
 filc_layout(data(Name, Linkage, _, Items), A0-Globals0-Rs0,
             A-Globals-[Base-End|Rs0]) :-
     Base is (A0 + 15) // 16 * 16,
@@ -675,6 +793,8 @@ filc_fill(Globals, data(Name, _, _, Items), Bytes0-Aux0, Bytes-Aux) :- !,
     foldl(filc_fill_item(Globals), Items, Base-Bytes0-Aux0, _-Bytes-Aux).
 filc_fill(_, func(_, _, _, _, _), State, State).
 
+% filc_fill_item(+Globals, +Item, +At0-Bytes0-Aux0, -At-Bytes-Aux): write
+% Item at At0; At is the address after it.
 filc_fill_item(Globals, item(p, sym(S, Off)), At-Bytes0-Aux0,
                At1-Bytes-Aux) :- !,
     (   At mod 8 =:= 0 -> true
@@ -694,6 +814,7 @@ filc_fill_item(Globals, Item, At-Bytes0-Aux, At1-Bytes-Aux) :-
     length(Written, N),
     At1 is At + N.
 
+% item_size(+Item, +Size0, -Size): Size is Size0 plus Item's size.
 item_size(zero(N), Size0, Size) :- Size is Size0 + N.
 item_size(item(b, str(Cs)), Size0, Size) :- !,
     unescape(Cs, Bs),
@@ -703,6 +824,7 @@ item_size(item(W, _), Size0, Size) :-
     width_bytes(W, N),
     Size is Size0 + N.
 
+% item_bytes(+Globals, +Item, -Bs): Bs are the bytes of the data Item.
 item_bytes(_, zero(N), Bs) :- length(Bs, N), maplist(=(0), Bs).
 item_bytes(_, item(b, str(Cs)), Bs) :- !, unescape(Cs, Bs).
 item_bytes(_, item(W, c(N)), Bs) :-
@@ -733,7 +855,12 @@ escape_code(D, Cs, B, Rest) :-
     octal_digit(D, V0),
     octal_more(Cs, V0, 2, B, Rest).
 
-octal_more([D|Cs], V0, N, V, Rest) :- N > 0, octal_digit(D, X), !,
+% octal_more(+Cs, +V0, +N, -V, -Rest): V is V0 extended by up to N more
+% leading octal digits of Cs, the longest run there is.
+octal_more([D|Cs], V0, N, V, Rest) :-
+    N > 0,
+    octal_digit(D, X),
+    !,
     V1 is V0 * 8 + X,
     N1 is N - 1,
     octal_more(Cs, V1, N1, V, Rest).
@@ -743,7 +870,15 @@ octal_digit(D, V) :- char_code(D, C), C >= 0'0, C =< 0'7, V is C - 0'0.
 
 %% Printing
 
-outcome_text(ret(V), T) :- integer(V), !, format(atom(T), 'ret ~w', [V]).
+%! outcome_text(+Outcome, -Text) is det.
+%
+%  Text is the atom that prints Outcome: its integer return value, or
+%  just the kind of a pointer, unknown or tuple result.
+
+outcome_text(ret(V), T) :-
+    integer(V),
+    !,
+    format(atom(T), 'ret ~w', [V]).
 outcome_text(ret(ptr(_, _)), 'ret pointer') :- !.
 outcome_text(ret(_), 'ret unknown') :- !.
 outcome_text(rets(_), 'ret tuple') :- !.

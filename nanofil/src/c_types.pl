@@ -22,7 +22,9 @@
             anonymous struct or union member
       Next  the next struct id
     Block scopes save Ords and Tags and restore them on exit; Defs and
-    Next only grow.
+    Next only grow. Predicates that change the environment take Env0 and
+    give Env as their last two arguments, so they thread through
+    foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
                     size_align/4, complete_type/2, int_type/1, int_info/3,
@@ -38,21 +40,49 @@
 
 %% Environment
 
+%! empty_env(-Env) is det.
+%
+%  Env is the environment with no identifiers, tags or definitions.
+
 empty_env(e(Ords, Tags, Defs, 0)) :-
     empty_assoc(Ords),
     empty_assoc(Tags),
     empty_assoc(Defs).
 
-% lookup_ordinary(+Env, +Name, -Value): the ordinary identifier Name.
-lookup_ordinary(e(Ords, _, _, _), Name, Value) :- get_assoc(Name, Ords, Value).
+%! lookup_ordinary(+Env, +Name, ?Value) is semidet.
+%
+%  Value is what the ordinary identifier Name stands for in Env.
 
-bind_ordinary(Name, Value, e(Ords0, Tags, Defs, Next), e(Ords, Tags, Defs, Next)) :-
+lookup_ordinary(e(Ords, _, _, _), Name, Value) :-
+    get_assoc(Name, Ords, Value).
+
+%! bind_ordinary(+Name, +Value, +Env0, -Env) is det.
+%
+%  Env is Env0 with the ordinary identifier Name standing for Value,
+%  replacing any binding it had.
+
+bind_ordinary(Name, Value, e(Ords0, Tags, Defs, Next),
+              e(Ords, Tags, Defs, Next)) :-
     put_assoc(Name, Ords0, Value, Ords).
 
-% env_scope(+Env, -Scope, _) saves the scoped part of Env;
-% env_restore(+Scope, +Env0, -Env) puts it back.
+%! env_scope(+Env, -Scope, ?Unused) is det.
+%
+%  Scope is the scoped part of Env (its ordinary identifiers and tags),
+%  for env_restore/3. The third argument is unused.
+
 env_scope(e(Ords, Tags, _, _), s(Ords, Tags), _).
+
+%! env_restore(+Scope, +Env0, -Env) is det.
+%
+%  Env is Env0 with its scoped part replaced by Scope: the identifiers
+%  and tags of an inner scope are gone, its definitions stay.
+
 env_restore(s(Ords, Tags), e(_, _, Defs, Next), e(Ords, Tags, Defs, Next)).
+
+%! sema_error(+Loc, +Fmt, +Args)
+%
+%  Throw nanofil_error with the message Fmt/Args, prefixed with Loc.
+%  Never succeeds.
 
 sema_error(Loc, Fmt, Args) :-
     format(atom(Msg0), Fmt, Args),
@@ -61,10 +91,14 @@ sema_error(Loc, Fmt, Args) :-
 
 %% Declarations
 
-% decl_types(+Specs, +Inits, -Declared, +Env0, -Env): resolve a
-% declaration. Typedefs are entered into Env; every other declarator is
-% returned as d(Name, Type, Storage, Asm, Init), Storage one of none,
-% static, extern, typedef excluded.
+%! decl_types(+Specs, +Inits, -Decls, +Env0, -Env) is det.
+%
+%  Decls are d(Name, Type, Storage, Asm, Init) for the declarators Inits
+%  under the specifiers Specs, Storage one of none, static or extern. A
+%  typedef declares no Decls; Env is Env0 with its names bound instead.
+%  Env also has any struct, union or enum Specs defines. Throws
+%  not_constant when an enumerator's value is not constant.
+
 decl_types(Specs, Inits, Decls, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     (   memberchk(storage(Storage0), Specs) -> Storage = Storage0
@@ -73,6 +107,8 @@ decl_types(Specs, Inits, Decls, Env0, Env) :-
     foldl(declarator_type(Base, Storage), Inits, Decls0, Env1, Env),
     exclude(==(none), Decls0, Decls).
 
+% declarator_type(+Base, +Storage, +Init, -Decl, +Env0, -Env): Decl is
+% the d/5 term Init declares, or none for a typedef, which binds the name.
 declarator_type(Base, Storage, init(dcl(Name, SyntaxType, Asm), Init), Decl,
                 Env0, Env) :-
     apply_declarator(SyntaxType, Base, Type, Env0, Env1),
@@ -85,8 +121,12 @@ declarator_type(Base, Storage, init(dcl(Name, SyntaxType, Asm), Init), Decl,
 
 %% Specifiers
 
-% specs_type(+Specs, -Type, +Env0, -Env): the type the specifiers name.
-% Struct, union and enum definitions in Specs are entered into Env.
+%! specs_type(+Specs, -Type, +Env0, -Env) is det.
+%
+%  Type is the type the declaration specifiers Specs name, bad(Reason)
+%  if the frontend cannot handle it. Env is Env0 with the struct, union
+%  and enum definitions in Specs entered.
+
 specs_type(Specs, Type, Env0, Env) :-
     base_type(Specs, Type0, Env0, Env),
     (   member(Spec, Specs), layout_attr(Spec)
@@ -94,15 +134,17 @@ specs_type(Specs, Type, Env0, Env) :-
     ;   Type = Type0
     ).
 
-% An attribute that changes layout, which the frontend does not model.
+% layout_attr(+Spec): Spec is an attribute that changes layout, which
+% the frontend does not model. The cut commits to the first such word.
 layout_attr(alignas(_)).
 layout_attr(attr(Tokens)) :-
     is_list(Tokens),
     attr_word(Tokens, Word),
-    memberchk(Word, [aligned, '__aligned__', packed, '__packed__']), !.
+    memberchk(Word, [aligned, '__aligned__', packed, '__packed__']),
+    !.
 
-% attr_word(+Tokens, -Word): an identifier anywhere in an attribute's
-% tokens, looking into groups.
+% attr_word(+Tokens, -Word) is nondet: Word is an identifier anywhere in
+% an attribute's tokens, looking into groups.
 attr_word(Tokens, Word) :-
     member(Token, Tokens),
     (   Token = id(Word)
@@ -110,6 +152,8 @@ attr_word(Tokens, Word) :-
         attr_word(Group, Word)
     ).
 
+% base_type(+Specs, -Type, +Env0, -Env): Type from the type specifiers
+% alone: either keywords or one named type, never both.
 base_type(Specs, Type, Env0, Env) :-
     findall(K, member(tspec(K), Specs), Keywords),
     findall(S, ( member(S, Specs), other_type_spec(S) ), Others),
@@ -138,6 +182,7 @@ named_type(su(Kind, Tag, Members, Attrs), Type, Env0, Env) :-
 named_type(enum(Tag, Enumerators), Type, Env0, Env) :-
     enum_type(Tag, Enumerators, Type, Env0, Env).
 
+% keyword_type(+Keywords, -Type): the type a list of type keywords names.
 keyword_type([], int) :- !.   % implicit int, as in old headers' K&R style
 keyword_type(Keywords, Type) :-
     msort(Keywords, Sorted),
@@ -145,7 +190,7 @@ keyword_type(Keywords, Type) :-
     ;   Type = bad('invalid type specifiers')
     ).
 
-% keyword_combo(+SortedKeywords, -Type)
+% keyword_combo(+SortedKeywords, -Type): the msorted keywords name Type.
 keyword_combo([void], void).
 keyword_combo([bool], bool).
 keyword_combo([char], char).
@@ -214,7 +259,9 @@ new_tag(Kind, Tag, Id, e(Ords, Tags0, Defs0, Id), e(Ords, Tags, Defs, Next)) :-
     ),
     put_assoc(Id, Defs0, incomplete(Tag), Defs).
 
-% A member declaration gives fields f(Name, Type) or bad(Why).
+% member_decl(+Decl, -Fields, +Env0, -Env): Fields are the f(Name, Type)
+% the member declaration Decl declares ([] for a static assertion), or
+% [bad(Why)].
 member_decl(static_assert(_, _, _), [], Env, Env) :- !.
 member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
             Env0, Env) :-
@@ -242,7 +289,9 @@ su_layout(Kind, Fields, Env, Def) :-
     ;   Def = bad('incomplete member')
     ).
 
-% place_member(+Kind, +Env, +Field, -Member, +End0-Align0, -End-Align)
+% place_member(+Kind, +Env, +Field, -Member, +End0-Align0, -End-Align):
+% Member is Field placed after members ending at End0 with alignment
+% Align0; End and Align include it. Throws bad(Why) as size_align/4.
 place_member(Kind, Env, f(Name, Type), m(Name, Type, Off), End0-Align0,
              End-Align) :-
     (   Type = array(ElemType, none)
@@ -260,6 +309,9 @@ place_member(Kind, Env, f(Name, Type), m(Name, Type, Off), End0-Align0,
 
 %% Enums
 
+% enum_type(+Tag, +Enumerators, -Type, +Env0, -Env): Type is the enum's
+% underlying type. Enumerators is none for a reference to Tag; a
+% reference to an unknown enum tag has type uint.
 enum_type(Tag, none, Type, Env, Env) :- !,
     (   Tag \== none,
         Env = e(_, Tags, _, _),
@@ -276,6 +328,8 @@ enum_type(Tag, Enumerators, Type, Env0, Env) :-
         Env = e(Ords, Tags, Defs, Next)
     ).
 
+% enumerator(+Enumerator, -V, +Env0-Next0, -Env-Next): V is the
+% constant's value, Next0 when it has no expression, and Env binds it.
 % Each constant has type int when it fits, as C requires of constants
 % whose values fit; the enum's own type follows clang.
 enumerator(enumerator(Name, Expr), V, Env0-Next, Env-Next1) :-
@@ -287,6 +341,12 @@ enumerator(enumerator(Name, Expr), V, Env0-Next, Env-Next1) :-
     ;   ConstType = long
     ),
     bind_ordinary(Name, enumconst(V, ConstType), Env0, Env).
+
+%! enum_underlying(+Values, -Type) is det.
+%
+%  Type is the type clang gives an enum whose constants have Values: the
+%  first of uint, int, ulong and long that holds them all (uint when
+%  there are none).
 
 enum_underlying(Values, Type) :-
     (   Values == [] -> Type = uint
@@ -301,9 +361,14 @@ enum_underlying(Values, Type) :-
 
 %% Declarators
 
-% apply_declarator(+SyntaxType, +Base, -Type, +Env0, -Env): the parser builds
-% declarator types outermost first around the atom base, so this replaces
-% base with Base and resolves array sizes and parameter types.
+%! apply_declarator(+SyntaxType, +Base, -Type, +Env0, -Env) is det.
+%
+%  Type is the declarator type SyntaxType with the atom base replaced by
+%  Base, array sizes evaluated and parameter types resolved. The parser
+%  builds declarator types outermost first around base. An array size
+%  that is not a non-negative constant gives bad(Reason). Env is Env0
+%  with the definitions of any struct or union a parameter list
+%  declares; their names are scoped to the list.
 apply_declarator(base, Base, Base, Env, Env).
 apply_declarator(ptr(Syntax, _), Base, ptr(Type), Env0, Env) :-
     apply_declarator(Syntax, Base, Type, Env0, Env).
@@ -320,7 +385,9 @@ apply_declarator(func(Syntax, Params), Base, func(Ret, ParamTypes, Variadic),
     apply_declarator(Syntax, Base, Ret, Env0, Env1),
     param_types(Params, ParamTypes, Variadic, Env1, Env).
 
-% Parameter declarations are scoped to the parameter list.
+% param_types(+Params, -Types, -Variadic, +Env0, -Env): Types are the
+% adjusted parameter types. Parameter declarations are scoped to the
+% parameter list.
 param_types(unspecified, unspecified, fixed, Env, Env).
 param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
     env_scope(Env0, Scope, _),
@@ -332,16 +399,22 @@ param_type(param(Specs, dcl(_, SyntaxType, _)), Type, Env0, Env) :-
     apply_declarator(SyntaxType, Base, Type0, Env1, Env),
     adjust_param(Type0, Type).
 
+% adjust_param(+Type0, -Type): a parameter of Type0 has Type.
 adjust_param(array(T, _), ptr(T)) :- !.
 adjust_param(func(R, P, V), ptr(func(R, P, V))) :- !.
 adjust_param(T, T).
+
+%! type_name_type(+TypeName, -Type, +Env0, -Env) is det.
+%
+%  Type is the type the type name TypeName (as in a cast or sizeof)
+%  denotes; Env is Env0 with any tag it defines.
 
 type_name_type(type(Specs, SyntaxType), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env).
 
-% The first bad type inside T, if any (not through pointers, which may
-% point at anything).
+% bad_type(+T, -Why): bad(Why) is the first bad type inside T, if any
+% (not through pointers, which may point at anything).
 bad_type(bad(Why), Why) :- !.
 bad_type(array(T, _), Why) :- bad_type(T, Why).
 bad_type(func(Ret, Params, _), Why) :-
@@ -353,8 +426,10 @@ bad_type(func(Ret, Params, _), Why) :-
 
 %% Sizes
 
-% size_align(+Type, +Env, -Size, -Align). Throws bad(Why) for a bad or
-% incomplete type.
+%! size_align(+Type, +Env, -Size, -Align) is det.
+%
+%  Size and Align are the size and alignment in bytes of Type in Env.
+%  Throws bad(Why) for a bad or incomplete type.
 size_align(Type, Env, Size, Align) :-
     (   size_align_(Type, Env, Size0, Align0) -> Size = Size0, Align = Align0
     ;   throw(bad(incomplete))
@@ -384,17 +459,27 @@ size_align_(struct(Id), Env, Size, Align) :- su_size(Id, Env, Size, Align).
 size_align_(union(Id), Env, Size, Align) :- su_size(Id, Env, Size, Align).
 size_align_(bad(Why), _, _, _) :- throw(bad(Why)).
 
+% su_size(+Id, +Env, -Size, -Align): the struct or union Id has Size and
+% Align. Fails when it is incomplete; throws bad(Why) when it is bad.
 su_size(Id, e(_, _, Defs, _), Size, Align) :-
     get_assoc(Id, Defs, Def),
-    (   Def = def(_, _, Size, Align) -> true
-    ;   Def = bad(Why) -> throw(bad(Why))
-    ;   fail
-    ).
+    def_size_align(Def, Size, Align).
+
+def_size_align(def(_, _, Size, Align), Size, Align).
+def_size_align(bad(Why), _, _) :-
+    throw(bad(Why)).
+
+%! complete_type(+Type, +Env) is semidet.
+%
+%  Type is complete in Env: it has a size.
 
 complete_type(Type, Env) :- catch(size_align(Type, Env, _, _), bad(_), fail).
 
-% find_member(+SU, +Name, +Env, -Type, -Offset), looking into anonymous
-% members.
+%! find_member(+SU, +Name, +Env, -Type, -Offset) is semidet.
+%
+%  The struct or union type SU has a member Name of Type at Offset,
+%  looking into anonymous members. Fails if it has none, or SU is not
+%  defined.
 find_member(SU, Name, Env, Type, Off) :-
     SU =.. [_, Id],
     Env = e(_, _, Defs, _),
@@ -407,9 +492,18 @@ find_member(SU, Name, Env, Type, Off) :-
 
 %% Integers
 
+%! int_type(+Type) is semidet.
+%! int_type(-Type) is multi.
+%
+%  Type is an integer type (bool and the character types included).
+
 int_type(T) :- int_info(T, _, _).
 
-% int_info(?Type, ?Size, ?Signedness)
+%! int_info(+Type, -Size, -Signedness) is semidet.
+%! int_info(-Type, ?Size, ?Signedness) is nondet.
+%
+%  The integer type Type is Size bytes wide and Signedness is signed or
+%  unsigned.
 int_info(bool, 1, unsigned).
 int_info(char, 1, signed).
 int_info(schar, 1, signed).
@@ -423,10 +517,14 @@ int_info(ulong, 8, unsigned).
 int_info(llong, 8, signed).
 int_info(ullong, 8, unsigned).
 
+%! scalar_type(+Type) is semidet.
+%
+%  Type is a scalar type the frontend handles: an integer or a pointer.
+
 scalar_type(T) :- int_type(T), !.
 scalar_type(ptr(_)).
 
-% The integer conversion rank.
+% rank(+Type, -Rank): the integer conversion rank of Type.
 rank(bool, 0).
 rank(char, 1).  rank(schar, 1).  rank(uchar, 1).
 rank(short, 2). rank(ushort, 2).
@@ -434,14 +532,29 @@ rank(int, 3).   rank(uint, 3).
 rank(long, 4).  rank(ulong, 4).
 rank(llong, 5). rank(ullong, 5).
 
-integer_promotion(T, P) :- rank(T, R), R < 3, !, P = int.
+%! integer_promotion(+Type, -Promoted) is det.
+%
+%  Promoted is Type after the integer promotions: int for an integer
+%  type of rank below int, otherwise Type itself (also for a type that
+%  is not an integer).
+
+integer_promotion(T, P) :-
+    rank(T, R),
+    R < 3,
+    !,
+    P = int.
 integer_promotion(T, T).
 
+% unsigned_of(+Signed, -Unsigned): the unsigned type of the same rank.
 unsigned_of(int, uint).
 unsigned_of(long, ulong).
 unsigned_of(llong, ullong).
 
-% The usual arithmetic conversions, on promoted integer types.
+%! usual_arith_conversion(+TypeA, +TypeB, -Type) is semidet.
+%
+%  Type is the common type of the usual arithmetic conversions on
+%  integer operands of TypeA and TypeB, after promotion. Fails when
+%  either is not an integer type.
 usual_arith_conversion(TypeA0, TypeB0, Type) :-
     integer_promotion(TypeA0, A),
     integer_promotion(TypeB0, B),
@@ -459,7 +572,11 @@ usual_arith_conversion(TypeA0, TypeB0, Type) :-
     ;   unsigned_of(B, Type)
     ).
 
-% convert_int(+V, +T, -W): V converted to integer type T.
+%! convert_int(+V, +Type, -W) is semidet.
+%
+%  W is the integer V converted to the integer type Type, by C's rules
+%  (wrapping modulo the width, 0 or 1 for bool). Fails when Type is not
+%  an integer type.
 convert_int(V, bool, W) :- !, ( V =:= 0 -> W = 0 ; W = 1 ).
 convert_int(V, Type, W) :-
     int_info(Type, Size, Sign),
@@ -467,20 +584,28 @@ convert_int(V, Type, W) :-
     U is V mod M,
     (   Sign == signed, U >= M >> 1 -> W is U - M ; W = U ).
 
-% type_class(+Type, -Class): the IR class of a scalar value.
+%! type_class(+Type, -Class) is semidet.
+%
+%  Class is the IR class (w, l or p) of a value of the scalar type Type.
+%  Not steadfast: type_class(T, l) also holds for an integer type of
+%  class w, so test w first or call it with Class unbound.
 type_class(T, w) :- int_info(T, Size, _), Size =< 4, !.
 type_class(T, l) :- int_type(T), !.
 type_class(ptr(_), p).
 
 %% Integer constant expressions
 
-% const_value(+Expr, +Env, -Value, -Type). Throws not_constant when Expr
-% is not an integer constant expression.
+%! const_value(+Expr, +Env, -Value, -Type) is det.
+%
+%  Expr is an integer constant expression with Value of Type in Env.
+%  Throws not_constant when Expr is not one.
 const_value(Expr, Env, V, T) :-
     (   const_eval(Expr, Env, V0, T0) -> V = V0, T = T0
     ;   throw(not_constant)
     ).
 
+% const_eval(+Expr, +Env, -V, -T): as const_value/4, but fails when Expr
+% is not constant.
 const_eval(num(V0, Suffix), _, V, T) :-
     num_type(V0, Suffix, T),
     convert_int(V0, T, V).
@@ -538,21 +663,26 @@ offset_path([index(X)|Path], array(ElemType, _), Env, Off0, Off) :-
     Off1 is Off0 + I * ElemSize,
     offset_path(Path, ElemType, Env, Off1, Off).
 
+% const_binary(+Op, +VA, +TA, +VB, +TB, -V, -T): V of type T is the value
+% of the binary operation Op on VA of type TA and VB of type TB.
 const_binary(Op, VA, TA, VB, TB, V, T) :-
-    memberchk(Op, [add, sub, mul, div, mod, and, or, xor]), !,
+    memberchk(Op, [add, sub, mul, div, mod, and, or, xor]),
+    !,
     usual_arith_conversion(TA, TB, T),
     convert_int(VA, T, A),
     convert_int(VB, T, B),
     const_arith(Op, A, B, R),
     convert_int(R, T, V).
 const_binary(Op, VA, TA, VB, _, V, T) :-
-    memberchk(Op, [shl, shr]), !,
+    memberchk(Op, [shl, shr]),
+    !,
     integer_promotion(TA, T),
     convert_int(VA, T, A),
     (   Op == shl -> R is A << VB ; R is A >> VB ),
     convert_int(R, T, V).
 const_binary(Op, VA, TA, VB, TB, V, int) :-
-    memberchk(Op, [eq, ne, lt, gt, le, ge]), !,
+    memberchk(Op, [eq, ne, lt, gt, le, ge]),
+    !,
     usual_arith_conversion(TA, TB, T),
     convert_int(VA, T, A),
     convert_int(VB, T, B),
@@ -579,8 +709,11 @@ const_compare(gt, A, B) :- A > B.
 const_compare(le, A, B) :- A =< B.
 const_compare(ge, A, B) :- A >= B.
 
-% The type of an integer constant: the first type in the C11 list for
-% its suffix and radix that can represent it.
+%! num_type(+V, +Suffix-Radix, -Type) is det.
+%
+%  Type is the type of an integer constant of value V: the first type in
+%  the C11 list for its suffix and radix that can represent it, or
+%  ullong when none can.
 num_type(V, Suffix-Radix, Type) :-
     (   constant_types(Radix, Suffix, Types),
         member(Type, Types),
@@ -602,6 +735,7 @@ constant_types(other, ul, [ulong, ullong]).
 constant_types(other, ll, [llong, ullong]).
 constant_types(other, ull, [ullong]).
 
+% fits(+V, +Type): the non-negative constant V is below Type's maximum.
 fits(V, Type) :-
     int_info(Type, Size, Sign),
     Bits is 8 * Size,
