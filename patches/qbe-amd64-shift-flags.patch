@@ -1,0 +1,33 @@
+Subject: amd64: shifts do not reliably set the zero flag
+Origin: Filnix
+Upstream-Status: Not submitted
+Base: c0818978acec60ebb6167fade60fb7012cbf20ca
+
+An x86 shift by a count that masks to zero leaves the flags unchanged,
+so jnz (and sel) cannot reuse the flags of a shift that defines its
+argument: with %c = 0 the branch below tested the flags of the and.
+
+	%c =w and %n, 63
+	%x =l shr -128, %c
+	jnz %x, @yes, @no
+
+Do not mark sar, shr and shl as setting the zero flag. Regression:
+filnix nanofil/tests/qbe-bugs/jnz-shift-flags.ssa.
+
+diff --git a/ops.h b/ops.h
+index f59e757..d2851a7 100644
+--- a/ops.h
++++ b/ops.h
+@@ -41,9 +41,9 @@ O(mul,     T(w,l,s,d, w,l,s,d), F(1,1,1,1,0,0,0,0,0,0)) X(2,0,0) V(0)
+ O(and,     T(w,l,e,e, w,l,e,e), F(1,0,0,1,1,1,0,0,0,0)) X(2,1,0) V(1)
+ O(or,      T(w,l,e,e, w,l,e,e), F(1,1,0,1,1,1,0,0,0,0)) X(2,1,0) V(1)
+ O(xor,     T(w,l,e,e, w,l,e,e), F(1,1,0,1,1,0,0,0,0,0)) X(2,1,0) V(1)
+-O(sar,     T(w,l,e,e, w,w,e,e), F(1,1,0,0,0,0,0,0,0,0)) X(1,1,0) V(1)
+-O(shr,     T(w,l,e,e, w,w,e,e), F(1,1,0,0,0,0,0,0,0,0)) X(1,1,0) V(1)
+-O(shl,     T(w,l,e,e, w,w,e,e), F(1,1,0,0,0,0,0,0,0,0)) X(1,1,0) V(1)
++O(sar,     T(w,l,e,e, w,w,e,e), F(1,1,0,0,0,0,0,0,0,0)) X(1,0,0) V(1)
++O(shr,     T(w,l,e,e, w,w,e,e), F(1,1,0,0,0,0,0,0,0,0)) X(1,0,0) V(1)
++O(shl,     T(w,l,e,e, w,w,e,e), F(1,1,0,0,0,0,0,0,0,0)) X(1,0,0) V(1)
+ 
+ /* Comparisons */
+ O(ceqw,    T(w,w,e,e, w,w,e,e), F(1,1,1,1,0,0,1,0,1,0)) X(0,1,0) V(0)

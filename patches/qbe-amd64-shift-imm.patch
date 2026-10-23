@@ -1,0 +1,36 @@
+Subject: amd64/isel: mask constant shift counts
+Origin: Filnix
+Upstream-Status: Not submitted
+Base: c0818978acec60ebb6167fade60fb7012cbf20ca
+
+The IL takes shift counts modulo the width of the result, and the cpu
+masks the count to 5 or 6 bits, but a constant count was emitted as is.
+GNU as rejects an immediate count that does not fit in 8 bits:
+
+	%x =l shl %a, 300   # shlq $300, %rax
+
+Mask constant counts to 6 bits; the cpu still masks word shifts to 5.
+Regression: filnix nanofil/tests/gen.py shifts by unmasked constants.
+
+diff --git a/amd64/isel.c b/amd64/isel.c
+index 0f514de..0386f50 100644
+--- a/amd64/isel.c
++++ b/amd64/isel.c
+@@ -307,8 +307,16 @@ sel(Ins i, Num *tn, Fn *fn)
+ 	case Oshr:
+ 	case Oshl:
+ 		r0 = i.arg[1];
+-		if (rtype(r0) == RCon)
++		if (rtype(r0) == RCon) {
++			/* the assembler wants an 8-bit
++			 * count, the cpu masks it anyway
++			 */
++			if (fn->con[r0.val].type == CBits) {
++				sh = fn->con[r0.val].bits.i & 63;
++				i.arg[1] = getcon(sh, fn);
++			}
+ 			goto Emit;
++		}
+ 		if (fn->tmp[r0.val].slot != -1)
+ 			err("unlikely argument %%%s in %s",
+ 				fn->tmp[r0.val].name, optab[i.op].name);

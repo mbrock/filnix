@@ -1,0 +1,49 @@
+Subject: amd64/isel: jnz on a long only tests its low 32 bits
+Origin: Filnix
+Upstream-Status: Not submitted
+Base: c0818978acec60ebb6167fade60fb7012cbf20ca
+
+The IL document says that jnz compares only the 32 least significant
+bits of a long argument to zero, and selcmp() does that when there is
+no flag-setting instruction to reuse. But when the argument is defined
+by a 64-bit add, sub, and, etc., seljmp() and selsel() reused its
+flags, which reflect all 64 bits: with %x = 2^32, the code below took
+@yes.
+
+	%x =l add %a, %b
+	jnz %x, @yes, @no
+
+Compare the low word explicitly when the flags come from a long
+instruction other than a comparison. A long and is no longer turned
+into a test, since a word test would need its immediate truncated.
+Regression: filnix nanofil/tests/qbe-bugs/jnz-long-flags.ssa.
+
+diff --git a/amd64/isel.c b/amd64/isel.c
+index 379244a..0f514de 100644
+--- a/amd64/isel.c
++++ b/amd64/isel.c
+@@ -558,6 +558,12 @@ selsel(Fn *fn, Blk *b, Ins *i, Num *tn)
+ 			*fi = (Ins){.op = Onop};
+ 		}
+ 	}
++	else if (fi->cls == Kl) {
++		/* only the low 32 bits are tested */
++		gencmp = 1;
++		cr[0] = r;
++		cr[1] = CON_Z;
++	}
+ 	else if (fi->op == Oand && t->nuse == 1
+ 	     && (rtype(fi->arg[0]) == RTmp ||
+ 	         rtype(fi->arg[1]) == RTmp)) {
+@@ -632,6 +638,11 @@ seljmp(Blk *b, Fn *fn)
+ 		}
+ 		b->jmp.type = Jjf + c;
+ 	}
++	else if (fi->cls == Kl) {
++		/* only the low 32 bits are tested */
++		selcmp((Ref[2]){r, CON_Z}, Kw, 0, fn);
++		b->jmp.type = Jjf + Cine;
++	}
+ 	else if (fi->op == Oand && t->nuse == 1
+ 	     && (rtype(fi->arg[0]) == RTmp ||
+ 	         rtype(fi->arg[1]) == RTmp)) {

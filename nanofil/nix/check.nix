@@ -4,12 +4,13 @@
 { pkgs }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
+  qbe = import ./qbe.nix { inherit pkgs; };
 in
 pkgs.runCommandCC "nanofil-check"
   {
     nativeBuildInputs = [
       trealla
-      pkgs.qbe
+      qbe
       pkgs.python3
     ];
   }

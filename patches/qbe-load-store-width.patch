@@ -1,0 +1,34 @@
+Subject: load: mask forwarded store bits beyond the store width
+Origin: Filnix
+Upstream-Status: Not submitted
+Base: c0818978acec60ebb6167fade60fb7012cbf20ca
+
+When a load is partly forwarded from a narrower store that starts
+before it, def() shifts the stored value right and only masks it when
+the requested mask cuts the stored bits, or when the store ends before
+the slice. The second test is right for left shifts but not for right
+shifts, so bits of the stored value beyond the store width (an l temp
+stored with storew, or a constant like -661 stored with storeh) were
+kept and or'ed into the bytes defined by an older store:
+
+	storel %a, %p
+	storew %b, %p+2
+	%v =w loaduh %p+5   # high byte of %b's low word, then a byte of %a
+
+Mask whenever the shifted store bits do not reach the top of the
+slice. Regression: filnix nanofil/tests/qbe-bugs/storew-l.ssa.
+
+diff --git a/load.c b/load.c
+index d7eaccb..5c96e08 100644
+--- a/load.c
++++ b/load.c
+@@ -313,7 +313,8 @@ def(Slice sl, bits msk, Blk *b, Ins *i, Loc *il)
+ 				r1 = getcon(8*off, curf);
+ 				r = iins(cls1, op, r, r1, il);
+ 			}
+-			if ((msk1 & msk) != msk1 || off + sz < sl.sz)
++			if ((msk1 & msk) != msk1
++			|| (msk1 & BIT(8*sl.sz-1)) == 0)
+ 				mask(cls, &r, msk1 & msk, il);
+ 			if ((msk & ~msk1) != 0) {
+ 				r1 = def(sl, msk & ~msk1, b, i, il);

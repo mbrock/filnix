@@ -45,11 +45,9 @@ class Fn:
             return str(self.rng.choice(EDGES))
         return str(self.rng.randint(-1000, 1000))
 
-    def operand(self, k, exact=False):
-        """A value usable at class k: w temps cannot be read as l. With
-        exact, only temps of class k itself."""
-        pool = [t for t, tk in self.temps
-                if tk == k or (k == "w" and not exact)]
+    def operand(self, k):
+        """A value usable at class k: w temps cannot be read as l."""
+        pool = [t for t, tk in self.temps if tk == k or k == "w"]
         if pool and self.rng.random() < 0.8:
             return "%" + self.rng.choice(pool)
         return self.const()
@@ -63,18 +61,8 @@ class Fn:
         r = rng.random()
         if r < 0.6:
             o = rng.choice(BIN)
-            if o in ("shl", "shr", "sar"):
-                # qbe (1.2 and c081897) emits a constant or constant-folded
-                # count as an unmasked immediate, which GNU as rejects
-                # outside 8 bits. Mask counts to 0..63 first; the fixtures
-                # cover counts at and above the width.
-                a = self.operand(k)
-                n = self.operand("w")
-                b = self.fresh("w")
-                self.emit(f"%{b} =w and {n}, 63")
-                b = "%" + b
-            else:
-                a, b = self.operand(k), self.operand(k)
+            a = self.operand(k)
+            b = self.operand("w" if o in ("shl", "shr", "sar") else k)
             self.emit(f"%{self.fresh(k)} ={k} {o} {a}, {b}")
         elif r < 0.75:
             ck = rng.choice("wl")
@@ -110,13 +98,7 @@ class Fn:
                 off = rng.randint(0, 16 - STORES[w])
                 a = self.fresh("l", pointer=True)
                 self.emit(f"%{a} =l add %{p}, {off}")
-                # A sub-word store of a value with bits beyond its width (an
-                # l temp, or a constant such as -1) hits a qbe
-                # load-forwarding bug (tests/qbe-bugs/storew-l.ssa). Store w
-                # temps, and constants reduced to the store width.
-                v = self.operand('l' if w == 'l' else 'w', exact=True)
-                if w != "l" and not v.startswith("%"):
-                    v = str(int(v) % 2 ** (8 * STORES[w]))
+                v = self.operand('l' if w == 'l' else 'w')
                 self.emit(f"store{w} {v}, %{a}")
             for _ in range(rng.randint(1, 3)):
                 t = rng.choice(list(LOADS))
@@ -131,13 +113,7 @@ class Fn:
         self.lines = []
         label = "start"
         if rng.random() < 0.5:
-            # Branch on a comparison: qbe miscompiles jnz that reuses the
-            # flags of a shift or a 64-bit op (tests/qbe-bugs/jnz-*.ssa).
-            v = self.operand(rng.choice("wl"))
-            ck = "l" if v.startswith("%") and dict(self.temps)[v[1:]] == "l" else "w"
-            c = self.fresh("w")
-            out.append(f"\t%{c} =w cne{ck} {v}, 0")
-            out.append(f"\tjnz %{c}, @then, @else")
+            out.append(f"\tjnz {self.operand('w')}, @then, @else")
             arms = []
             for arm in ("then", "else"):
                 out.append(f"@{arm}")

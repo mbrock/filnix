@@ -1,0 +1,27 @@
+Subject: gvn: jnz on a long constant only tests its low 32 bits
+Origin: Filnix
+Upstream-Status: Not submitted
+Base: c0818978acec60ebb6167fade60fb7012cbf20ca
+
+The IL document says that jnz compares only the 32 least significant
+bits of a long argument to zero, but dedupjmp() folded a jnz on a
+constant by testing all 64 bits, so the code below took @yes:
+
+	%x =l add 1, 4294967295
+	jnz %x, @yes, @no
+
+Regression: filnix nanofil/tests/qbe-bugs/jnz-long-const.ssa.
+
+diff --git a/gvn.c b/gvn.c
+index 2417150..a785824 100644
+--- a/gvn.c
++++ b/gvn.c
+@@ -416,7 +416,7 @@ dedupjmp(Fn *fn, Blk *b)
+ 	if (b->s1 == b->s2
+ 	|| isconbits(fn, b->jmp.arg, &v)
+ 	|| zeroval(fn, b, b->jmp.arg, Kw, &z)) {
+-		if (v == 0 || z)
++		if ((int32_t)v == 0 || z)
+ 			b->s1 = b->s2;
+ 		/* we later move active ins out of dead blks */
+ 		b->s2 = 0;
