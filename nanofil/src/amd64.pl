@@ -16,8 +16,8 @@
     the reference the later isel and register allocation milestones are
     checked against, so it favours being obviously right over being fast.
 */
-:- module(amd64, [module_asm/2, op//4, load//4, load_slot//4,
-                  store_reg//3, store_insn/3, reg/3, load_insn/3, sfx/2]).
+:- module(amd64, [module_asm/2, compute_op//4, load//4, load_slot//4,
+                  store_reg//3, store_insn/3, reg_name/3, load_insn/3, att_suffix/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -109,7 +109,7 @@ store_params([par(_, Temp)|Params], I, Ctx) -->
           format(atom(Msg), 'in $~w: more than six parameters', [Fn]),
           throw(nanofil_error(Msg)) }
     ),
-    { reg(Reg, l, RegName) },
+    { reg_name(Reg, l, RegName) },
     store_reg(RegName, Temp, Ctx),
     { I1 is I + 1 },
     store_params(Params, I1, Ctx).
@@ -118,17 +118,17 @@ store_params([par(_, Temp)|Params], I, Ctx) -->
 arg_reg(0, di). arg_reg(1, si). arg_reg(2, d).
 arg_reg(3, c).  arg_reg(4, r8). arg_reg(5, r9).
 
-% reg(Reg, Width, Name): Width is a store width b, h or a class w, l.
-reg(a, b, al).    reg(a, h, ax).    reg(a, w, eax).   reg(a, l, rax).
-reg(c, b, cl).    reg(c, h, cx).    reg(c, w, ecx).   reg(c, l, rcx).
-reg(d, b, dl).    reg(d, h, dx).    reg(d, w, edx).   reg(d, l, rdx).
-reg(si, w, esi).  reg(si, l, rsi).
-reg(di, w, edi).  reg(di, l, rdi).
-reg(r8, w, r8d).  reg(r8, l, r8).
-reg(r9, w, r9d).  reg(r9, l, r9).
+% reg_name(Reg, Width, Name): Width is a store width b, h or a class w, l.
+reg_name(a, b, al).    reg_name(a, h, ax).    reg_name(a, w, eax).   reg_name(a, l, rax).
+reg_name(c, b, cl).    reg_name(c, h, cx).    reg_name(c, w, ecx).   reg_name(c, l, rcx).
+reg_name(d, b, dl).    reg_name(d, h, dx).    reg_name(d, w, edx).   reg_name(d, l, rdx).
+reg_name(si, w, esi).  reg_name(si, l, rsi).
+reg_name(di, w, edi).  reg_name(di, l, rdi).
+reg_name(r8, w, r8d).  reg_name(r8, l, r8).
+reg_name(r9, w, r9d).  reg_name(r9, l, r9).
 
-% sfx(Width, Suffix): the AT&T suffix for a store width or class.
-sfx(b, b). sfx(h, w). sfx(w, l). sfx(l, q).
+% att_suffix(Width, Suffix): the AT&T suffix for a store width or class.
+att_suffix(b, b). att_suffix(h, w). att_suffix(w, l). att_suffix(l, q).
 
 %% Blocks and jumps
 
@@ -196,7 +196,7 @@ insts([], _) --> [].
 insts([Inst|Insts], Ctx) --> inst(Inst, Ctx), insts(Insts, Ctx).
 
 inst(ins(D, Class, Op, Args), Ctx) -->
-    op(Op, Class, Args, Ctx),
+    compute_op(Op, Class, Args, Ctx),
     store_reg(rax, D, Ctx).
 inst(store(Width, V, Addr), Ctx) -->
     { Width == l -> Class = l ; Class = w },
@@ -225,63 +225,63 @@ call_args([arg(Class, V)|Args], I, Ctx) -->
 
 % store_insn(Width, Reg, Ins): store Width bytes of Reg to (%rax).
 store_insn(W, R, ins(mov, S, [reg(RN), mem(0, rax)])) :-
-    sfx(W, S),
-    reg(R, W, RN).
+    att_suffix(W, S),
+    reg_name(R, W, RN).
 
-% op(Op, Class, Args, Ctx): compute the result into %rax (zero-extended
+% compute_op(Op, Class, Args, Ctx): compute the result into %rax (zero-extended
 % for class w).
-op(copy, K, [X], Ctx) --> load(X, K, a, Ctx).
-op(neg, K, [X], Ctx) -->
+compute_op(copy, K, [X], Ctx) --> load(X, K, a, Ctx).
+compute_op(neg, K, [X], Ctx) -->
     load(X, K, a, Ctx),
-    { sfx(K, S), reg(a, K, A) },
+    { att_suffix(K, S), reg_name(a, K, A) },
     [ins(neg, S, [reg(A)])].
-op(Op, K, [X, Y], Ctx) -->
+compute_op(Op, K, [X, Y], Ctx) -->
     { alu_insn(Op, Insn) }, !,
     load(X, K, a, Ctx),
     load(Y, K, c, Ctx),
-    { sfx(K, S), reg(a, K, A), reg(c, K, C) },
+    { att_suffix(K, S), reg_name(a, K, A), reg_name(c, K, C) },
     [ins(Insn, S, [reg(C), reg(A)])].
-op(Op, K, [X, Y], Ctx) -->
+compute_op(Op, K, [X, Y], Ctx) -->
     { shift_insn(Op, Insn) }, !,
     load(X, K, a, Ctx),
     load(Y, w, c, Ctx),
-    { sfx(K, S), reg(a, K, A) },
+    { att_suffix(K, S), reg_name(a, K, A) },
     [ins(Insn, S, [reg(cl), reg(A)])].
-op(Op, K, [X, Y], Ctx) -->
+compute_op(Op, K, [X, Y], Ctx) -->
     { division(Op, Signedness, Result) }, !,
     load(X, K, a, Ctx),
     load(Y, K, c, Ctx),
-    { sfx(K, S), reg(c, K, C) },
+    { att_suffix(K, S), reg_name(c, K, C) },
     (   { Signedness == signed }
     ->  { K == w -> SignExtend = cltd ; SignExtend = cqto },
         [ins(SignExtend, none, []), ins(idiv, S, [reg(C)])]
     ;   [ins(xor, l, [reg(edx), reg(edx)]), ins(div, S, [reg(C)])]
     ),
     (   { Result == rem }
-    ->  { reg(d, K, D), reg(a, K, A) },
+    ->  { reg_name(d, K, D), reg_name(a, K, A) },
         [ins(mov, S, [reg(D), reg(A)])]
     ;   []
     ).
-op(cmp(Cond, CmpClass), _, [X, Y], Ctx) -->
+compute_op(cmp(Cond, CmpClass), _, [X, Y], Ctx) -->
     load(X, CmpClass, a, Ctx),
     load(Y, CmpClass, c, Ctx),
-    { sfx(CmpClass, S),
-      reg(a, CmpClass, A),
-      reg(c, CmpClass, C),
+    { att_suffix(CmpClass, S),
+      reg_name(a, CmpClass, A),
+      reg_name(c, CmpClass, C),
       cond_code(Cond, CC),
       atom_concat(set, CC, Set) },
     [ins(cmp, S, [reg(C), reg(A)]),
      ins(Set, none, [reg(al)]),
      ins(movzb, l, [reg(al), reg(eax)])].
-op(ext(Type), K, [X], Ctx) -->
+compute_op(ext(Type), K, [X], Ctx) -->
     load(X, w, a, Ctx),
     { ext_insn(Type, K, Insn) },
     [Insn].
-op(load(Type), K, [Addr], Ctx) -->
+compute_op(load(Type), K, [Addr], Ctx) -->
     load(Addr, l, a, Ctx),
     { load_insn(Type, K, Insn) },
     [Insn].
-op(alloc(_), _, [Size], Ctx) -->
+compute_op(alloc(_), _, [Size], Ctx) -->
     load(Size, l, a, Ctx),
     [ins(add, q, [imm(15), reg(rax)]),
      ins(and, q, [imm(-16), reg(rax)]),
@@ -334,27 +334,27 @@ load_op(Type, K, Op, S, To) :- Type \== uw, ext_op(Type, K, Op, S, To).
 
 % load(Value, Class, Reg, Ctx): put Value, read at Class, in register Reg.
 load(t(N), K, R, Ctx) -->
-    { reg(R, K, RN) },
+    { reg_name(R, K, RN) },
     load_slot(t(N), K, RN, Ctx).
 load(c(N), w, R, _) -->
-    { reg(R, w, RN),
+    { reg_name(R, w, RN),
       V is N mod 4294967296 },
     [ins(mov, l, [imm(V), reg(RN)])].
 load(c(N), l, R, _) -->
-    { reg(R, l, RN),
+    { reg_name(R, l, RN),
       U is N mod 18446744073709551616,
       (   U >= 9223372036854775808 -> V is U - 18446744073709551616
       ;   V = U
       ) },
     [ins(movabs, q, [imm(V), reg(RN)])].
 load(glo(G), _, R, _) -->
-    { reg(R, l, RN) },
+    { reg_name(R, l, RN) },
     [ins(lea, q, [rip(G), reg(RN)])].
 
 % load_slot(Key, Class, RegName, Ctx): read Key's frame slot at Class.
 load_slot(Key, K, RN, f(_, _, Slots, _)) -->
     { get_assoc(Key, Slots, Offset),
-      sfx(K, S),
+      att_suffix(K, S),
       Disp is -Offset },
     [ins(mov, S, [mem(Disp, rbp), reg(RN)])].
 

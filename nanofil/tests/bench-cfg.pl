@@ -70,14 +70,14 @@ bench_file(File) :-
     file_base_name(File, Base),
     Row = row(Base, NB, NT),
     % dominators and frontiers
-    time(( fn_cfg(Blocks, Cfg), dominators(Cfg, Idom), frontiers(Cfg, Idom, DF) ), TF1),
+    time(( func_cfg(Blocks, Cfg), dominators(Cfg, Idom), frontiers(Cfg, Idom, DF) ), TF1),
     time(assert_version(1, Blocks), TV0),
-    time(inc_load(Blocks), TI0),
+    time(incremental_load(Blocks), TI0),
     report(Row, facts, '-', TV0, TI0),
     % The tabled dominators take a reachability table per block, so they
     % grow with the cube of the size; past 400 blocks they take minutes.
     (   NB =< 400
-    ->  time(( v_idoms(1, IPs), findall(X-Y, v_frontier(1, X, Y), DFPs) ), TV1),
+    ->  time(( version_idoms(1, IPs), findall(X-Y, version_frontier(1, X, Y), DFPs) ), TV1),
         agree_dom(Idom, DF, IPs, DFPs)
     ;   TV1 = skipped
     ),
@@ -88,24 +88,24 @@ bench_file(File) :-
     report(Row, alias, TAlias, '-', '-'),
     % liveness
     time(temp_liveness(Blocks, In1, _), TF2),
-    time(findall(B-T, v_live_in(1, B, T), VIn1), TV2),
-    time(findall(B-T, i_live_in(B, T), IIn1), TI2),
+    time(findall(B-T, version_live_in(1, B, T), VIn1), TV2),
+    time(findall(B-T, incremental_live_in(B, T), IIn1), TI2),
     agree_live(In1, VIn1), agree_live(In1, IIn1),
     report(Row, live, TF2, TV2, TI2),
     % after promote
     time(temp_liveness(Blocks2, In2, _), TF3),
-    time(( assert_version(2, Blocks2), retract_version(1), findall(B-T, v_live_in(2, B, T), VIn2) ), TV3),
-    time(( inc_update(Blocks2), findall(B-T, i_live_in(B, T), IIn2) ), TI3),
+    time(( assert_version(2, Blocks2), retract_version(1), findall(B-T, version_live_in(2, B, T), VIn2) ), TV3),
+    time(( incremental_update(Blocks2), findall(B-T, incremental_live_in(B, T), IIn2) ), TI3),
     agree_live(In2, VIn2), agree_live(In2, IIn2),
     report(Row, promote, TF3, TV3, TI3),
     % one small edit, from the promoted version
     time(temp_liveness(Blocks3, In3, _), TF4),
-    time(( assert_version(3, Blocks3), retract_version(2), findall(B-T, v_live_in(3, B, T), VIn3) ), TV4),
-    inc_clear, inc_load(Blocks2), findall(x, i_live_in(_, _), _),
-    time(( inc_update(Blocks3), findall(B-T, i_live_in(B, T), IIn3) ), TI4),
+    time(( assert_version(3, Blocks3), retract_version(2), findall(B-T, version_live_in(3, B, T), VIn3) ), TV4),
+    incremental_clear, incremental_load(Blocks2), findall(x, incremental_live_in(_, _), _),
+    time(( incremental_update(Blocks3), findall(B-T, incremental_live_in(B, T), IIn3) ), TI4),
     agree_live(In3, VIn3), agree_live(In3, IIn3),
     report(Row, edit, TF4, TV4, TI4),
-    retract_version(3), inc_clear,
+    retract_version(3), incremental_clear,
     sum_live(In1, S1), sum_live(In2, S2),
     format("  live-in pairs: ~w before promote, ~w after~n", [S1, S2]),
     assoc_to_keys(Loops, Headers), length(Headers, NL),

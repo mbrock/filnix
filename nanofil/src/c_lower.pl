@@ -113,7 +113,7 @@ top_item(fundef(Loc, Specs, dcl(Name, DclType, Asm), Body), Funcs, Env0, Env) :-
     (   memberchk(fspec(inline), Specs)
     ->  Funcs = [],
         (   Storage == static
-        ->  ord(Env2, Name, fn(_, Sym, _)),
+        ->  lookup_ordinary(Env2, Name, fn(_, Sym, _)),
             env_scope(Env2, Scope, _),
             put_def(deferred(Sym), df(Loc, Name, Type, DclType, Body, Scope),
                     Env2, Env)
@@ -141,10 +141,10 @@ global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) :-
         ->  sema_error(Loc, 'function ~w has an initializer', [Name])
         ;   true
         ),
-        put_ord(Name, fn(Type0, Sym, Linkage), Env0, Env)
+        bind_ordinary(Name, fn(Type0, Sym, Linkage), Env0, Env)
     ;   vm_check(Type0, Loc),
         complete_array(Type0, Init, Type, Loc, Env0, none),
-        put_ord(Name, gvar(Type, Sym, Storage, Init), Env0, Env1),
+        bind_ordinary(Name, gvar(Type, Sym, Storage, Init), Env0, Env1),
         (   Storage == extern, Init == none
         ->  Env = Env1
         ;   ( Storage == static -> Linkage = local ; Linkage = export ),
@@ -234,7 +234,7 @@ global_item(Sym-g(Type, Linkage, Init, Loc), data(Sym, Linkage, Align, Items),
 
 function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
          Env0, Env, func(Sym, Linkage, RetClass, Params, Blocks)) :-
-    ord(Env0, Name, fn(_, Sym, Linkage)),
+    lookup_ordinary(Env0, Name, fn(_, Sym, Linkage)),
     (   Variadic == variadic
     ->  sema_error(Loc, 'defining variadic function ~w is not supported',
                    [Name])
@@ -264,7 +264,7 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
 % ret_class(+Loc, +RetType, +Env, -Class): the IR return class.
 ret_class(_, void, _, void) :- !.
 ret_class(_, Type, _, Class) :-
-    class_of(Type, Class), !.
+    type_class(Type, Class), !.
 ret_class(Loc, Type, Env, Class) :-
     su(Type), !,
     ret_shape(Type, Env, Loc, Shape),
@@ -316,7 +316,7 @@ params([Name|Names], [Type|Types], Ctx, Params) -->
 params([Name|Names], [Type|Types], Ctx, [par(Class, P)|Params]) -->
     { ctx_loc(Ctx, Loc),
       vm_check(Type, Loc),
-      (   class_of(Type, Class) -> true
+      (   type_class(Type, Class) -> true
       ;   float_type(Type)
       ->  sema_error(Loc, 'floating point is not supported', [])
       ;   sema_error(Loc, 'parameter of type ~w is not supported yet', [Type])
@@ -366,7 +366,7 @@ set_env(Env, st(_, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
 
 bind(Name, Value) -->
     env(Env0),
-    { put_ord(Name, Value, Env0, Env) },
+    { bind_ordinary(Name, Value, Env0, Env) },
     set_env(Env).
 
 fresh(t(Temp), st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
@@ -521,7 +521,7 @@ stmt_(for(Init, Cond, Step, Body), Ctx) -->
 stmt_(switch(Expr, Body), Ctx) -->
     rval(Expr, Ctx, Value0),
     { Value0 = v(_, Type0), ctx_loc(Ctx, Loc) },
-    {   int_type(Type0) -> promote(Type0, Type)
+    {   int_type(Type0) -> integer_promotion(Type0, Type)
     ;   sema_error(Loc, 'switch on a non-integer', [])
     },
     convert(Value0, Type, v(Value, _)),
@@ -626,7 +626,7 @@ local_decls([d(Name, Type0, Storage, Asm, Init)|Decls], Ctx) -->
           next_id(K, Env0, Env1),
           format(atom(Sym), '~w.~w.~w', [Func, Name, K]),
           complete_array(Type0, Init, Type, Loc, Env0, none),
-          put_ord(Name, gvar(Type, Sym, static, Init), Env1, Env2),
+          bind_ordinary(Name, gvar(Type, Sym, static, Init), Env1, Env2),
           define_global(Sym, Type, local, Init, Loc, Env2, Env) },
         set_env(Env)
     ;   env(Env),
@@ -710,12 +710,12 @@ dispatch([], _, _, LEnd) --> term(jmp(LEnd)).
 dispatch(Cases, Value, Type, LEnd) -->
     { findall(CaseValue-Label, member(case(CaseValue, Label), Cases), Pairs),
       ( memberchk(default(LDefault), Cases) -> true ; LDefault = LEnd ),
-      class_of(Type, Class) },
+      type_class(Type, Class) },
     dispatch_cases(Pairs, Value, Type, Class, LDefault).
 
 dispatch_cases([], _, _, _, LDefault) --> term(jmp(LDefault)).
 dispatch_cases([CaseValue-Label|Pairs], Value, Type, Class, LDefault) -->
-    { wrap(CaseValue, Type, Wrapped) },
+    { convert_int(CaseValue, Type, Wrapped) },
     ins(w, cmp(eq, Class), [Value, c(Wrapped)], Test),
     label(Next),
     term(jnz(Test, Label, Next)),
@@ -730,8 +730,8 @@ cond_jump(Expr, Ctx, LTrue, LFalse) -->
 
 % truth(V, Ctx, W): a w value that is nonzero exactly when V is.
 truth(v(V, Type), Ctx, W) -->
-    (   { class_of(Type, w) } -> { W = V }
-    ;   { class_of(Type, l) } -> ins(w, cmp(ne, l), [V, c(0)], W)
+    (   { type_class(Type, w) } -> { W = V }
+    ;   { type_class(Type, l) } -> ins(w, cmp(ne, l), [V, c(0)], W)
     ;   { Type = ptr(_) }
     ->  ins(l, ptoi, [V], Int),
         ins(w, cmp(ne, l), [Int, c(0)], W)
@@ -906,10 +906,10 @@ designated(field(Field), Slots, Index, _, Ctx) :-
 % without array decay or loading.
 obj(id(Name), Ctx, R) --> !,
     env(Env),
-    (   { ord(Env, Name, var(Addr, Type)) } -> { R = lv(Addr, Type) }
-    ;   { ord(Env, Name, fn(Type, Sym, _)) } -> { R = fd(glo(Sym), Type) }
-    ;   { ord(Env, Name, enumconst(V, Type)) } -> { R = v(c(V), Type) }
-    ;   { ord(Env, Name, gvar(Type, Sym, _, _)) }
+    (   { lookup_ordinary(Env, Name, var(Addr, Type)) } -> { R = lv(Addr, Type) }
+    ;   { lookup_ordinary(Env, Name, fn(Type, Sym, _)) } -> { R = fd(glo(Sym), Type) }
+    ;   { lookup_ordinary(Env, Name, enumconst(V, Type)) } -> { R = v(c(V), Type) }
+    ;   { lookup_ordinary(Env, Name, gvar(Type, Sym, _, _)) }
     ->  ins(p, copy, [glo(Sym)], Addr),
         { R = lv(Addr, Type) }
     ;   { memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']) }
@@ -1038,7 +1038,7 @@ offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
 
 % rvalue(Expr, Ctx, R): the expressions that are only rvalues.
 rvalue(num(V0, Suffix), _, v(c(V), Type)) --> !,
-    { num_type(V0, Suffix, Type), wrap(V0, Type, V) }.
+    { num_type(V0, Suffix, Type), convert_int(V0, Type, V) }.
 rvalue(chr(V), _, v(c(V), int)) --> !.
 rvalue(float(_), Ctx, _) --> !,
     { ctx_loc(Ctx, Loc),
@@ -1099,7 +1099,7 @@ rvalue(assign(Op, A, B), Ctx, R) --> !, assignment(Op, A, B, Ctx, R).
 rvalue(cond(Cond, A, B), Ctx, R) --> !, conditional(Cond, A, B, Ctx, R).
 rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     env(Env),
-    { \+ ord(Env, '__builtin_expect', _) }, !,
+    { \+ lookup_ordinary(Env, '__builtin_expect', _) }, !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
     { ctx_loc(Ctx, Loc) },
@@ -1148,19 +1148,19 @@ convert(v(V, _), void, v(V, void)) --> !.
 convert(v(V, From), bool, v(B, bool)) --> !,
     { From \== void },
     truth(v(V, From), ctx(_, _, _, _, unknown), W),
-    (   { class_of(From, w), \+ From == bool }
+    (   { type_class(From, w), \+ From == bool }
     ->  ins(w, cmp(ne, w), [W, c(0)], B)
     ;   { B = W }
     ).
 convert(v(c(N), From), To, v(c(W), To)) -->
     { int_type(From), int_type(To) }, !,
-    { wrap(N, To, W) }.
+    { convert_int(N, To, W) }.
 convert(v(V, From), To, v(V1, To)) -->
     { int_type(From), int_type(To) }, !,
     int_convert(From, To, V, V1).
 convert(v(c(N), From), ptr(P), v(c(W), ptr(P))) -->
     { int_type(From) }, !,
-    { wrap(N, ulong, W) }.
+    { convert_int(N, ulong, W) }.
 convert(v(V, From), ptr(P), v(V1, ptr(P))) -->
     { int_type(From) }, !,
     int_convert(From, ulong, V, V2),
@@ -1198,7 +1198,7 @@ narrow_ext(2, unsigned, uh).
 % Conversion as by a cast.
 convert_checked(Value0, To, Ctx, R) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc) },
-    (   { scalar(From), scalar(To) } -> convert(Value0, To, R)
+    (   { scalar_type(From), scalar_type(To) } -> convert(Value0, To, R)
     ;   { sema_error(Loc, 'cannot convert ~w to ~w', [From, To]) }
     ).
 
@@ -1209,7 +1209,7 @@ assign_convert(Value0, To, Loc, R) -->
     ->  (   { From == To } -> { R = v(Addr, To) }
         ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
         )
-    ;   { scalar(From), scalar(To) } -> convert(Value0, To, R)
+    ;   { scalar_type(From), scalar_type(To) } -> convert(Value0, To, R)
     ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
     ).
 
@@ -1217,13 +1217,13 @@ assign_convert(Value0, To, Loc, R) -->
 
 unary(neg, Value0, Ctx, v(V, Type)) -->
     arith_operand(Value0, Ctx, Type, V1),
-    { class_of(Type, Class) },
+    { type_class(Type, Class) },
     ins(Class, neg, [V1], V).
 unary(plus, Value0, Ctx, v(V, Type)) -->
     arith_operand(Value0, Ctx, Type, V).
 unary(bnot, Value0, Ctx, v(V, Type)) -->
     arith_operand(Value0, Ctx, Type, V1),
-    { class_of(Type, Class) },
+    { type_class(Type, Class) },
     ins(Class, xor, [V1, c(-1)], V).
 unary(not, Value0, Ctx, v(V, int)) -->
     truth(Value0, Ctx, W),
@@ -1233,7 +1233,7 @@ unary(not, Value0, Ctx, v(V, int)) -->
 % Type.
 arith_operand(Value0, Ctx, Type, V) -->
     { Value0 = v(_, From), ctx_loc(Ctx, Loc),
-      (   int_type(From) -> promote(From, Type)
+      (   int_type(From) -> integer_promotion(From, Type)
       ;   sema_error(Loc, 'operand of type ~w is not an integer', [From])
       ) },
     convert(Value0, Type, v(V, _)).
@@ -1256,23 +1256,29 @@ binary(Op, VA, VB, Ctx, R) -->
 % convert both to their usual arithmetic type.
 int_binary(Op, VA, VB, v(V, Type)) -->
     { memberchk(Op, [shl, shr]) }, !,
-    { VA = v(_, TA), promote(TA, Type), class_of(Type, Class),
+    { VA = v(_, TA), integer_promotion(TA, Type), type_class(Type, Class),
       int_info(Type, _, Sign) },
     convert(VA, Type, v(A, _)),
-    { VB = v(_, TB0), promote(TB0, TB) },
+    { VB = v(_, TB0), integer_promotion(TB0, TB) },
     convert(VB, TB, v(B, _)),
     { Op == shl -> IOp = shl ; Sign == signed -> IOp = sar ; IOp = shr },
     ins(Class, IOp, [A, B], V).
 int_binary(Op, VA, VB, v(V, int)) -->
     { cmp_op(Op, SignedCmp, UnsignedCmp) }, !,
-    { VA = v(_, TA), VB = v(_, TB), usual(TA, TB, Type), class_of(Type, Class),
+    { VA = v(_, TA),
+      VB = v(_, TB),
+      usual_arith_conversion(TA, TB, Type),
+      type_class(Type, Class),
       int_info(Type, _, Sign) },
     convert(VA, Type, v(A, _)),
     convert(VB, Type, v(B, _)),
     { Sign == signed -> Cmp = SignedCmp ; Cmp = UnsignedCmp },
     ins(w, cmp(Cmp, Class), [A, B], V).
 int_binary(Op, VA, VB, v(V, Type)) -->
-    { VA = v(_, TA), VB = v(_, TB), usual(TA, TB, Type), class_of(Type, Class),
+    { VA = v(_, TA),
+      VB = v(_, TB),
+      usual_arith_conversion(TA, TB, Type),
+      type_class(Type, Class),
       int_info(Type, _, Sign),
       arith_op(Op, Sign, IOp) },
     convert(VA, Type, v(A, _)),
@@ -1373,7 +1379,7 @@ conditional(Cond, A, B, Ctx, R) -->
 % join_arms(Type, LJoin, LA-VA, LB-VB, R): the ?: result, a phi at LJoin.
 join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
     (   { Type == void } -> start(LJoin), { R = v(c(0), void) }
-    ;   { su(Type) -> Class = p ; class_of(Type, Class) },
+    ;   { su(Type) -> Class = p ; type_class(Type, Class) },
         fresh(V),
         start_phi(LJoin, [phi(V, Class, [LA-VA, LB-VB])]),
         { R = v(V, Type) }
@@ -1398,7 +1404,7 @@ struct_expr(Expr, Ctx, Type, State, State) :-
 % The type of c ? a : b.
 cond_type(TA, _, TB, _, Type, _) :-
     int_type(TA), int_type(TB), !,
-    usual(TA, TB, Type).
+    usual_arith_conversion(TA, TB, Type).
 cond_type(void, _, void, _, void, _) :- !.
 cond_type(Type, _, Type, _, Type, _) :- su(Type), !.
 cond_type(ptr(P), _, ptr(_), _, ptr(P), _) :- !.
@@ -1439,7 +1445,7 @@ compound_op('|=', or).
 incdec(Op, A, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     obj(A, Ctx, LV),
-    {   LV = lv(P, Type), scalar(Type) -> true
+    {   LV = lv(P, Type), scalar_type(Type) -> true
     ;   sema_error(Loc, '~w of a non-scalar lvalue', [Op])
     },
     load_typed(Type, P, Ctx, Cur),
@@ -1483,7 +1489,7 @@ lower_call(Func, Args, Ctx, R) -->
     ;   { RetType == void }
     ->  emit(call(void, Callee, IRArgs)),
         { R = v(c(0), void) }
-    ;   { class_of(RetType, Class) }
+    ;   { type_class(RetType, Class) }
     ->  fresh(D),
         emit(call(to(D, Class), Callee, IRArgs)),
         normalize(RetType, D, V),
@@ -1516,7 +1522,7 @@ call_args([Arg|Args], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
     ->  assign_convert(Value0, ParamType, Loc, v(V, Type))
     ;   { ParamTypes = [], Value0 = v(_, Type0) },
         (   { int_type(Type0) }
-        ->  { promote(Type0, Type) },
+        ->  { integer_promotion(Type0, Type) },
             convert(Value0, Type, v(V, _))
         ;   { Type0 = ptr(_) } -> { Value0 = v(V, Type) }
         ;   { sema_error(Loc,
@@ -1524,7 +1530,7 @@ call_args([Arg|Args], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
                 [Type0]) }
         )
     ),
-    { class_of(Type, Class) },
+    { type_class(Type, Class) },
     call_args(Args, ParamTypes, Ctx, IRArgs).
 
 % A call returning a struct: its words land in a fresh local, or the
@@ -1552,7 +1558,7 @@ return_struct(RetType, Addr, Loc) -->
     { ret_shape(RetType, Env, Loc, Shape) },
     (   { Shape == sret }
     ->  env(Env1),
-        { ord(Env1, '%sret', sret(P)) },
+        { lookup_ordinary(Env1, '%sret', sret(P)) },
         copy_object(RetType, Addr, P),
         term(ret)
     ;   { Shape = words(Ebs) },
@@ -1761,7 +1767,7 @@ fill_items([chunk(Off, N, Item)|Chunks], Pos, Size, Loc, Items) :-
 int_chunk(Off, Type, V, chunk(Off, N, item(Width, c(U)))) :-
     int_info(Type, N, _),
     memberchk(N-Width, [1-b, 2-h, 4-w, 8-l]),
-    wrap(V, Type, U).
+    convert_int(V, Type, U).
 
 % static_init(Off, Type, Init, Loc, S0, S): the chunks of Init for an
 % object of type Type at offset Off.
@@ -1857,12 +1863,12 @@ addr_const(complit(TypeName, Init), Loc, Env0, Env, sym(Sym, 0, ptr(ElemType))) 
     Type = array(ElemType, _), !,
     new_complit(Type, Init, Loc, Sym, Env0, Env).
 addr_const(id(Name), _, Env, Env, R) :-
-    ord(Env, Name, gvar(array(ElemType, _), Sym, _, _)), !,
+    lookup_ordinary(Env, Name, gvar(array(ElemType, _), Sym, _, _)), !,
     R = sym(Sym, 0, ptr(ElemType)).
 addr_const(id(Name), _, Env, Env, sym(Sym, 0, ptr(Type))) :-
-    ord(Env, Name, fn(Type, Sym, _)), !.
+    lookup_ordinary(Env, Name, fn(Type, Sym, _)), !.
 addr_const(un(addr, Expr), Loc, Env0, Env, R) :- !,
-    (   Expr = id(Name), ord(Env0, Name, fn(Type, Sym, _))
+    (   Expr = id(Name), lookup_ordinary(Env0, Name, fn(Type, Sym, _))
     ->  Env = Env0,
         R = sym(Sym, 0, ptr(Type))
     ;   lvalue_const(Expr, Loc, Env0, Env, sym(Sym, Off, Type)),
@@ -1905,7 +1911,7 @@ offset_const(_, _, _, _, Loc, _) :-
 % lvalue_const(+Expr, +Loc, +Env0, -Env, -R): the address of a static
 % lvalue, sym(Symbol, Offset, ObjectType).
 lvalue_const(id(Name), Loc, Env, Env, sym(Sym, 0, Type)) :- !,
-    (   ord(Env, Name, gvar(Type, Sym, _, _)) -> true
+    (   lookup_ordinary(Env, Name, gvar(Type, Sym, _, _)) -> true
     ;   sema_error(Loc, '~w is not a global', [Name])
     ).
 lvalue_const(complit(TypeName, Init), Loc, Env0, Env, sym(Sym, 0, Type)) :- !,

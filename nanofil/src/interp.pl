@@ -417,7 +417,7 @@ unsigned_division(_, Y, Expr, Res) :-
 signed_division(K, X, Y, Fn, Res) :-
     signed(K, X, SX),
     signed(K, Y, SY),
-    half(K, H),
+    half_modulus(K, H),
     Min is -H,
     (   integer(SX), integer(SY)
     ->  (   SY =:= 0 -> Res = ub(division_by_zero)
@@ -462,7 +462,7 @@ signed_pair(K, X, Y, SX, SY) :-
 
 signed(K, U, S) :-
     modulus(K, M),
-    half(K, H),
+    half_modulus(K, H),
     sign_extend(M, H, U, S).
 
 % sign_extend(+M, +H, ?U, ?S): S is the two's-complement reading of the

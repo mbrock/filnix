@@ -61,7 +61,7 @@ alloc_count(module(Items), N) :-
 
 promote_func(Mode, F0, F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
-    fn_cfg(Blocks0, Cfg),
+    func_cfg(Blocks0, Cfg),
     dominators(Cfg, Idom),
     (   promotable(Mode, F0, Roots),
         Roots \== [],
@@ -162,7 +162,7 @@ defined_at(Defs, Intervals, use(T, L, At)) :-
     get_assoc(T, Defs, def(DefL, DefPos)),
     (   DefL == L
     ->  ( At == inf -> true ; DefPos < At )
-    ;   dominates_iv(Intervals, DefL, L)
+    ;   dominates_by_interval(Intervals, DefL, L)
     ).
 
 %% Rewriting

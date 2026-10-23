@@ -17,7 +17,7 @@
     - Exported functions get an alias, a getter, a function object and a
       generic entry, so clang code can call them directly or indirectly.
 
-    Integer instructions are emitted by amd64:op//4 unchanged.
+    Integer instructions are emitted by amd64:compute_op//4 unchanged.
 */
 :- module(filc_amd64, [filc_module_asm/2, signature/3]).
 
@@ -137,7 +137,7 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
 %% The function context
 
 /* Ctx = ctx(Fn, Module, FrameBase, Labels), where Fn = f(Name, Ret,
-   Slots, Blocks) is the context amd64's load//4 and op//4 take. Labels
+   Slots, Blocks) is the context amd64's load//4 and compute_op//4 take. Labels
    maps each block label to block(Index, Phis), so an edge finds its
    target's position and phis without searching Blocks. */
 function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx) :-
@@ -636,7 +636,7 @@ inst(ins(t(D), K, load(T), [A]), _, _, Ctx) --> !,
     to_slot(rax, t(D), Ctx).
 inst(ins(t(D), K, Op, Args), _, _, Ctx) -->
     { amd64_ctx(Ctx, Fn) },
-    op(Op, K, Args, Fn),
+    compute_op(Op, K, Args, Fn),
     to_slot(rax, t(D), Ctx).
 inst(store(p, V, A), Index, Block, Ctx) --> !,
     { amd64_ctx(Ctx, Fn),
@@ -901,7 +901,7 @@ arg_words(arg(K, V), [val(K, V)|Ws], Ws).
 % A word into register R, an amd64 register short name (a, d, c, r8...).
 word_into(addr(V), R, Fn, _) --> load(V, l, R, Fn).
 word_into(val(K, V), R, Fn, _) --> load(V, K, R, Fn).
-word_into(lower(V), R, _, Ctx) --> { reg(R, l, RN) }, lower_of(V, RN, Ctx).
+word_into(lower(V), R, _, Ctx) --> { reg_name(R, l, RN) }, lower_of(V, RN, Ctx).
 
 push_words([], _, _) --> [].
 push_words([Word|Words], Fn, Ctx) -->

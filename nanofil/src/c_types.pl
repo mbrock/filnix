@@ -24,12 +24,14 @@
     Block scopes save Ords and Tags and restore them on exit; Defs and
     Next only grow.
 */
-:- module(c_types, [empty_env/1, specs_type/4, apply_dcl/5, size_align/4,
-                    complete/2, int_type/1, int_info/3, promote/2, usual/3,
-                    wrap/3, const_value/4, num_type/3, scalar/1, class_of/2,
-                    find_member/5, type_name_type/4, ord/3, put_ord/4,
-                    env_scope/3, env_restore/3, sema_error/3,
-                    enum_underlying/2, decl_types/5]).
+:- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
+                    size_align/4, complete_type/2, int_type/1, int_info/3,
+                    integer_promotion/2, usual_arith_conversion/3,
+                    convert_int/3, const_value/4, num_type/3, scalar_type/1,
+                    type_class/2, find_member/5, type_name_type/4,
+                    lookup_ordinary/3, bind_ordinary/4, env_scope/3,
+                    env_restore/3, sema_error/3, enum_underlying/2,
+                    decl_types/5]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -41,10 +43,10 @@ empty_env(e(Ords, Tags, Defs, 0)) :-
     empty_assoc(Tags),
     empty_assoc(Defs).
 
-% ord(+Env, +Name, -Value): the ordinary identifier Name.
-ord(e(Ords, _, _, _), Name, Value) :- get_assoc(Name, Ords, Value).
+% lookup_ordinary(+Env, +Name, -Value): the ordinary identifier Name.
+lookup_ordinary(e(Ords, _, _, _), Name, Value) :- get_assoc(Name, Ords, Value).
 
-put_ord(Name, Value, e(Ords0, Tags, Defs, Next), e(Ords, Tags, Defs, Next)) :-
+bind_ordinary(Name, Value, e(Ords0, Tags, Defs, Next), e(Ords, Tags, Defs, Next)) :-
     put_assoc(Name, Ords0, Value, Ords).
 
 % env_scope(+Env, -Scope, _) saves the scoped part of Env;
@@ -73,9 +75,9 @@ decl_types(Specs, Inits, Decls, Env0, Env) :-
 
 declarator_type(Base, Storage, init(dcl(Name, SyntaxType, Asm), Init), Decl,
                 Env0, Env) :-
-    apply_dcl(SyntaxType, Base, Type, Env0, Env1),
+    apply_declarator(SyntaxType, Base, Type, Env0, Env1),
     (   Storage == typedef
-    ->  put_ord(Name, typedef(Type), Env1, Env),
+    ->  bind_ordinary(Name, typedef(Type), Env1, Env),
         Decl = none
     ;   Env = Env1,
         Decl = d(Name, Type, Storage, Asm, Init)
@@ -126,7 +128,7 @@ other_type_spec(enum(_, _)).
 other_type_spec(typeof(_)).
 
 named_type(tname(Name), Type, Env, Env) :-
-    (   ord(Env, Name, typedef(Type0)) -> Type = Type0
+    (   lookup_ordinary(Env, Name, typedef(Type0)) -> Type = Type0
     ;   Name == '__builtin_va_list' -> Type = bad('va_list')
     ;   Type = bad('unknown typedef')
     ).
@@ -220,7 +222,7 @@ member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
     (   Width \== none
     ->  Fields = [bad('bitfields')],
         Env = Env1
-    ;   apply_dcl(SyntaxType, Base, Type, Env1, Env),
+    ;   apply_declarator(SyntaxType, Base, Type, Env1, Env),
         (   bad_type(Type, Why) -> Fields = [bad(Why)]
         ;   Fields = [f(Name, Type)]
         )
@@ -284,7 +286,7 @@ enumerator(enumerator(Name, Expr), V, Env0-Next, Env-Next1) :-
     (   V >= -2147483648, V =< 2147483647 -> ConstType = int
     ;   ConstType = long
     ),
-    put_ord(Name, enumconst(V, ConstType), Env0, Env).
+    bind_ordinary(Name, enumconst(V, ConstType), Env0, Env).
 
 enum_underlying(Values, Type) :-
     (   Values == [] -> Type = uint
@@ -299,23 +301,23 @@ enum_underlying(Values, Type) :-
 
 %% Declarators
 
-% apply_dcl(+SyntaxType, +Base, -Type, +Env0, -Env): the parser builds
+% apply_declarator(+SyntaxType, +Base, -Type, +Env0, -Env): the parser builds
 % declarator types outermost first around the atom base, so this replaces
 % base with Base and resolves array sizes and parameter types.
-apply_dcl(base, Base, Base, Env, Env).
-apply_dcl(ptr(Syntax, _), Base, ptr(Type), Env0, Env) :-
-    apply_dcl(Syntax, Base, Type, Env0, Env).
-apply_dcl(array(Syntax, SizeExpr), Base, Type, Env0, Env) :-
-    apply_dcl(Syntax, Base, ElemType, Env0, Env),
+apply_declarator(base, Base, Base, Env, Env).
+apply_declarator(ptr(Syntax, _), Base, ptr(Type), Env0, Env) :-
+    apply_declarator(Syntax, Base, Type, Env0, Env).
+apply_declarator(array(Syntax, SizeExpr), Base, Type, Env0, Env) :-
+    apply_declarator(Syntax, Base, ElemType, Env0, Env),
     (   SizeExpr == none
     ->  Type = array(ElemType, none)
     ;   catch(const_value(SizeExpr, Env, N, _), not_constant, fail), N >= 0
     ->  Type = array(ElemType, N)
     ;   Type = bad('non-constant array size')
     ).
-apply_dcl(func(Syntax, Params), Base, func(Ret, ParamTypes, Variadic),
+apply_declarator(func(Syntax, Params), Base, func(Ret, ParamTypes, Variadic),
           Env0, Env) :-
-    apply_dcl(Syntax, Base, Ret, Env0, Env1),
+    apply_declarator(Syntax, Base, Ret, Env0, Env1),
     param_types(Params, ParamTypes, Variadic, Env1, Env).
 
 % Parameter declarations are scoped to the parameter list.
@@ -327,7 +329,7 @@ param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
 
 param_type(param(Specs, dcl(_, SyntaxType, _)), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
-    apply_dcl(SyntaxType, Base, Type0, Env1, Env),
+    apply_declarator(SyntaxType, Base, Type0, Env1, Env),
     adjust_param(Type0, Type).
 
 adjust_param(array(T, _), ptr(T)) :- !.
@@ -336,7 +338,7 @@ adjust_param(T, T).
 
 type_name_type(type(Specs, SyntaxType), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
-    apply_dcl(SyntaxType, Base, Type, Env1, Env).
+    apply_declarator(SyntaxType, Base, Type, Env1, Env).
 
 % The first bad type inside T, if any (not through pointers, which may
 % point at anything).
@@ -389,7 +391,7 @@ su_size(Id, e(_, _, Defs, _), Size, Align) :-
     ;   fail
     ).
 
-complete(Type, Env) :- catch(size_align(Type, Env, _, _), bad(_), fail).
+complete_type(Type, Env) :- catch(size_align(Type, Env, _, _), bad(_), fail).
 
 % find_member(+SU, +Name, +Env, -Type, -Offset), looking into anonymous
 % members.
@@ -421,8 +423,8 @@ int_info(ulong, 8, unsigned).
 int_info(llong, 8, signed).
 int_info(ullong, 8, unsigned).
 
-scalar(T) :- int_type(T), !.
-scalar(ptr(_)).
+scalar_type(T) :- int_type(T), !.
+scalar_type(ptr(_)).
 
 % The integer conversion rank.
 rank(bool, 0).
@@ -432,17 +434,17 @@ rank(int, 3).   rank(uint, 3).
 rank(long, 4).  rank(ulong, 4).
 rank(llong, 5). rank(ullong, 5).
 
-promote(T, P) :- rank(T, R), R < 3, !, P = int.
-promote(T, T).
+integer_promotion(T, P) :- rank(T, R), R < 3, !, P = int.
+integer_promotion(T, T).
 
 unsigned_of(int, uint).
 unsigned_of(long, ulong).
 unsigned_of(llong, ullong).
 
 % The usual arithmetic conversions, on promoted integer types.
-usual(TypeA0, TypeB0, Type) :-
-    promote(TypeA0, A),
-    promote(TypeB0, B),
+usual_arith_conversion(TypeA0, TypeB0, Type) :-
+    integer_promotion(TypeA0, A),
+    integer_promotion(TypeB0, B),
     int_info(A, SizeA, SignA),
     int_info(B, SizeB, SignB),
     rank(A, RankA),
@@ -457,18 +459,18 @@ usual(TypeA0, TypeB0, Type) :-
     ;   unsigned_of(B, Type)
     ).
 
-% wrap(+V, +T, -W): V converted to integer type T.
-wrap(V, bool, W) :- !, ( V =:= 0 -> W = 0 ; W = 1 ).
-wrap(V, Type, W) :-
+% convert_int(+V, +T, -W): V converted to integer type T.
+convert_int(V, bool, W) :- !, ( V =:= 0 -> W = 0 ; W = 1 ).
+convert_int(V, Type, W) :-
     int_info(Type, Size, Sign),
     M is 1 << (8 * Size),
     U is V mod M,
     (   Sign == signed, U >= M >> 1 -> W is U - M ; W = U ).
 
-% class_of(+Type, -Class): the IR class of a scalar value.
-class_of(T, w) :- int_info(T, Size, _), Size =< 4, !.
-class_of(T, l) :- int_type(T), !.
-class_of(ptr(_), p).
+% type_class(+Type, -Class): the IR class of a scalar value.
+type_class(T, w) :- int_info(T, Size, _), Size =< 4, !.
+type_class(T, l) :- int_type(T), !.
+type_class(ptr(_), p).
 
 %% Integer constant expressions
 
@@ -481,20 +483,20 @@ const_value(Expr, Env, V, T) :-
 
 const_eval(num(V0, Suffix), _, V, T) :-
     num_type(V0, Suffix, T),
-    wrap(V0, T, V).
+    convert_int(V0, T, V).
 const_eval(chr(V), _, V, int).
-const_eval(id(Name), Env, V, T) :- ord(Env, Name, enumconst(V, T)).
+const_eval(id(Name), Env, V, T) :- lookup_ordinary(Env, Name, enumconst(V, T)).
 const_eval(un(neg, X), Env, V, T) :-
     const_eval(X, Env, V0, T0),
-    promote(T0, T),
-    wrap(-V0, T, V).
+    integer_promotion(T0, T),
+    convert_int(-V0, T, V).
 const_eval(un(plus, X), Env, V, T) :-
     const_eval(X, Env, V, T0),
-    promote(T0, T).
+    integer_promotion(T0, T).
 const_eval(un(bnot, X), Env, V, T) :-
     const_eval(X, Env, V0, T0),
-    promote(T0, T),
-    wrap(\(V0), T, V).
+    integer_promotion(T0, T),
+    convert_int(\(V0), T, V).
 const_eval(un(not, X), Env, V, int) :-
     const_eval(X, Env, V0, _),
     (   V0 =:= 0 -> V = 1 ; V = 0 ).
@@ -506,13 +508,13 @@ const_eval(cond(C, A, B), Env, V, T) :-
     const_eval(C, Env, VC, _),
     const_eval(A, Env, VA, TA),
     const_eval(B, Env, VB, TB),
-    usual(TA, TB, T),
-    (   VC =\= 0 -> wrap(VA, T, V) ; wrap(VB, T, V) ).
+    usual_arith_conversion(TA, TB, T),
+    (   VC =\= 0 -> convert_int(VA, T, V) ; convert_int(VB, T, V) ).
 const_eval(cast(TypeName, X), Env, V, T) :-
     type_name_type(TypeName, T, Env, _),
     int_type(T),
     const_eval(X, Env, V0, _),
-    wrap(V0, T, V).
+    convert_int(V0, T, V).
 const_eval(sizeof_type(TypeName), Env, V, ulong) :-
     type_name_type(TypeName, T, Env, _),
     catch(size_align(T, Env, V, _), bad(_), fail).
@@ -538,22 +540,22 @@ offset_path([index(X)|Path], array(ElemType, _), Env, Off0, Off) :-
 
 const_binary(Op, VA, TA, VB, TB, V, T) :-
     memberchk(Op, [add, sub, mul, div, mod, and, or, xor]), !,
-    usual(TA, TB, T),
-    wrap(VA, T, A),
-    wrap(VB, T, B),
+    usual_arith_conversion(TA, TB, T),
+    convert_int(VA, T, A),
+    convert_int(VB, T, B),
     const_arith(Op, A, B, R),
-    wrap(R, T, V).
+    convert_int(R, T, V).
 const_binary(Op, VA, TA, VB, _, V, T) :-
     memberchk(Op, [shl, shr]), !,
-    promote(TA, T),
-    wrap(VA, T, A),
+    integer_promotion(TA, T),
+    convert_int(VA, T, A),
     (   Op == shl -> R is A << VB ; R is A >> VB ),
-    wrap(R, T, V).
+    convert_int(R, T, V).
 const_binary(Op, VA, TA, VB, TB, V, int) :-
     memberchk(Op, [eq, ne, lt, gt, le, ge]), !,
-    usual(TA, TB, T),
-    wrap(VA, T, A),
-    wrap(VB, T, B),
+    usual_arith_conversion(TA, TB, T),
+    convert_int(VA, T, A),
+    convert_int(VB, T, B),
     (   const_compare(Op, A, B) -> V = 1 ; V = 0 ).
 const_binary(land, VA, _, VB, _, V, int) :-
     (   VA =\= 0, VB =\= 0 -> V = 1 ; V = 0 ).

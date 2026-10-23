@@ -28,7 +28,7 @@
 
 alias_facts(F, Facts) :-
     F = func(_, _, _, _, Blocks),
-    fn_cfg(Blocks, Cfg),
+    func_cfg(Blocks, Cfg),
     dominators(Cfg, Idom),
     (   strict_ssa(F, Cfg, Idom)
     ->  findall(D-def(K, Source), address_def(F, D, K, Source), Defs),

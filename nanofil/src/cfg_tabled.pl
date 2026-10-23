@@ -10,18 +10,18 @@
     (Trealla's abolish_table/1 drops all variants of a predicate, so old
     tables cannot be dropped one version at a time).
 
-      v_live_in(V, B, T)     temp T is live on entry to B
-      v_live_out(V, B, T)
-      v_dom(V, D, B)         D dominates B (both reachable)
-      v_idoms(V, Pairs)      [B-IDom] from v_dom
-      v_frontier(V, X, Y)    Y is in the dominance frontier of X
+      version_live_in(V, B, T)     temp T is live on entry to B
+      version_live_out(V, B, T)
+      version_dominates(V, D, B)   D dominates B (both reachable)
+      version_idoms(V, Pairs)      [B-IDom] from version_dominates
+      version_frontier(V, X, Y)    Y is in the dominance frontier of X
 
-    Incremental tabling. inc_load(+Blocks) asserts unversioned facts that
-    are declared incremental, and inc_update(+Blocks) replaces the
-    gen/kill/phi facts of the blocks whose facts differ; Trealla then
-    invalidates exactly the tables that consulted them.
+    Incremental tabling. incremental_load(+Blocks) asserts unversioned
+    facts that are declared incremental, and incremental_update(+Blocks)
+    replaces the gen/kill/phi facts of the blocks whose facts differ;
+    Trealla then invalidates exactly the tables that consulted them.
 
-      i_live_in(B, T), i_live_out(B, T)
+      incremental_live_in(B, T), incremental_live_out(B, T)
 
     Both styles take the gen/kill sets from cfg.pl, which is a local scan
     of each block: tabling it would only add table overhead.
@@ -32,10 +32,12 @@
     so they are sound.
 */
 :- module(cfg_tabled, [assert_version/2, retract_version/1,
-                       v_live_in/3, v_live_out/3, v_dom/3, v_idoms/2,
-                       v_frontier/3,
-                       inc_load/1, inc_update/1, inc_clear/0,
-                       i_live_in/2, i_live_out/2]).
+                       version_live_in/3, version_live_out/3,
+                       version_dominates/3, version_idoms/2,
+                       version_frontier/3,
+                       incremental_load/1, incremental_update/1,
+                       incremental_clear/0,
+                       incremental_live_in/2, incremental_live_out/2]).
 
 % SWI-Prolog has tabling built in (its library(tabling) is deprecated) and
 % declares incremental dynamic predicates through dynamic/2.
@@ -83,21 +85,21 @@ retract_version(V) :-
     retractall(vf_euse(_, _, _, V)),
     abolish_all_tables.
 
-% Every call below is a variant of an open v_live_in(V, _, _) or
-% v_live_out(V, _, _), so each version has two tables in all.
-:- table v_live_in/3, v_live_out/3.
+% Every call below is a variant of an open version_live_in(V, _, _) or
+% version_live_out(V, _, _), so each version has two tables in all.
+:- table version_live_in/3, version_live_out/3.
 
-v_live_in(V, B, T) :- vf_gen(B, T, V).
-v_live_in(V, B, T) :- v_live_out(V, B, T), v_not_killed(B, T, V).
+version_live_in(V, B, T) :- vf_gen(B, T, V).
+version_live_in(V, B, T) :- version_live_out(V, B, T), v_not_killed(B, T, V).
 
 % Trealla 12f4cbd: a \+ or if-then-else written inline after a tabled
-% call in a tabled clause gives wrong answers (it lets v_live_in(start,
+% call in a tabled clause gives wrong answers (it lets version_live_in(start,
 % T) through for a T that start defines); the same negation in its own
 % predicate is right. docs/m5.md has the reproduction.
 v_not_killed(B, T, V) :- \+ vf_kill(B, T, V).
 
-v_live_out(V, B, T) :- v_live_in(V, S, T), vf_pred(S, B, V).
-v_live_out(V, B, T) :- vf_euse(B, _, T, V).
+version_live_out(V, B, T) :- version_live_in(V, S, T), vf_pred(S, B, V).
+version_live_out(V, B, T) :- vf_euse(B, _, T, V).
 
 % avoid(V, D, B): B is reachable from the entry on a path that does not
 % pass through D. One table per D; D = none gives plain reachability.
@@ -106,7 +108,7 @@ v_live_out(V, B, T) :- vf_euse(B, _, T, V).
 avoid(V, D, B) :- vf_entry(V, B), B \== D.
 avoid(V, D, B) :- avoid(V, D, P), vf_edge(P, B, V), B \== D.
 
-v_dom(V, D, B) :-
+version_dominates(V, D, B) :-
     avoid(V, none, D),
     avoid(V, none, B),
     % Not \+ avoid(V, D, B): that call is a new variant, and so a new
@@ -115,9 +117,9 @@ v_dom(V, D, B) :-
 
 % The immediate dominator of B is the strict dominator with the most
 % dominators of its own.
-v_idoms(V, Pairs) :-
+version_idoms(V, Pairs) :-
     findall(B-Doms,
-            ( avoid(V, none, B), findall(D, v_dom(V, D, B), Doms) ),
+            ( avoid(V, none, B), findall(D, version_dominates(V, D, B), Doms) ),
             BlockDoms),
     findall(B-N, ( member(B-Doms, BlockDoms), length(Doms, N) ), Counts),
     list_to_assoc(Counts, Count),
@@ -131,11 +133,11 @@ v_idoms(V, Pairs) :-
               last(Sorted, _-Idom) ),
             Pairs).
 
-v_frontier(V, X, Y) :-
+version_frontier(V, X, Y) :-
     vf_edge(P, Y, V),
     avoid(V, none, P),
-    v_dom(V, X, P),
-    \+ ( v_dom(V, X, Y), X \== Y ).
+    version_dominates(V, X, P),
+    \+ ( version_dominates(V, X, Y), X \== Y ).
 
 %% Incremental tabling
 
@@ -150,24 +152,24 @@ v_frontier(V, X, Y) :-
 :- incremental((if_pred/2, if_gen/2, if_kill/2, if_euse/2)).
 :- endif.
 
-:- table i_live_in/2 as incremental.
-:- table i_live_out/2 as incremental.
+:- table incremental_live_in/2 as incremental.
+:- table incremental_live_out/2 as incremental.
 
-i_live_in(B, T) :- if_gen(B, T).
-i_live_in(B, T) :- i_live_out(B, T), i_not_killed(B, T).
+incremental_live_in(B, T) :- if_gen(B, T).
+incremental_live_in(B, T) :- incremental_live_out(B, T), i_not_killed(B, T).
 
 i_not_killed(B, T) :- \+ if_kill(B, T).    % see v_not_killed/3
 
-i_live_out(B, T) :- i_live_in(S, T), if_pred(S, B).
-i_live_out(B, T) :- if_euse(B, T).
+incremental_live_out(B, T) :- incremental_live_in(S, T), if_pred(S, B).
+incremental_live_out(B, T) :- if_euse(B, T).
 
-inc_clear :-
+incremental_clear :-
     retractall(if_pred(_, _)),
     retractall(if_gen(_, _)),
     retractall(if_kill(_, _)),
     retractall(if_euse(_, _)).
 
-inc_load(Blocks) :-
+incremental_load(Blocks) :-
     forall(( member(blk(B, _, _, Jump), Blocks),
              jump_succs(Jump, Ss),
              member(S, Ss) ),
@@ -176,7 +178,7 @@ inc_load(Blocks) :-
     forall(member(F, Facts), assertz(F)).
 
 % Retract the facts no block has any more, assert the new ones.
-inc_update(Blocks) :-
+incremental_update(Blocks) :-
     block_facts(Blocks, New),
     findall(F,
             ( member(F, [if_gen(_, _), if_kill(_, _), if_euse(_, _)]),

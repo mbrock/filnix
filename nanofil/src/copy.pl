@@ -35,7 +35,7 @@ copy_module(module(Items0), module(Items)) :-
 % Reps (here and below): assoc Temp -> the value that replaces it.
 copy_item(F0, F) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0), !,
-    fn_cfg(Blocks0, Cfg),
+    func_cfg(Blocks0, Cfg),
     dominators(Cfg, Idom),
     (   strict_ssa(F0, Cfg, Idom)
     ->  temp_classes(Params, Blocks0, Classes),

@@ -52,7 +52,7 @@
              which yields a pointer to the data or function object; $s
              may be defined outside the module. See docs/m3.md, m4.md.
 */
-:- module(ir, [class_bits/2, modulus/2, half/2, op_arity/2, valid_module/1,
+:- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2, valid_module/1,
                func_named/3, width_bytes/2, op_arg_classes/4, module_mode/2,
                addr_class/2]).
 
@@ -65,8 +65,8 @@ class_bits(l, 64).
 modulus(w, 4294967296).
 modulus(l, 18446744073709551616).
 modulus(p, 18446744073709551616).
-half(w, 2147483648).
-half(l, 9223372036854775808).
+half_modulus(w, 2147483648).
+half_modulus(l, 9223372036854775808).
 
 width_bytes(b, 1).
 width_bytes(h, 2).

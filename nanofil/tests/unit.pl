@@ -199,7 +199,7 @@ cfg_text("export function w $f(w %p) {\n@s\n\t%x =w copy %p\n\t%y =w copy 1\n\tj
 
 test(dominators_and_frontiers) :-
     cfg_text(T), mod(T, module([func(_, _, _, _, Bs)])),
-    fn_cfg(Bs, Cfg),
+    func_cfg(Bs, Cfg),
     Cfg = cfg(s, Rpo, _, _), msort(Rpo, [a, b, c, d, e, s]),
     dominators(Cfg, Idom),
     assoc_to_list(Idom, [a-s, b-a, c-a, d-a, e-d]),
@@ -230,7 +230,7 @@ test(natural_loop_membership) :-
           blk(u, [], [], jnz(t(n), v, done)),
           blk(v, [], [], jnz(t(n), u, done)),
           blk(done, [], [], ret)],
-    fn_cfg(Bs, Cfg), dominators(Cfg, Idom), natural_loops(Cfg, Idom, Loops),
+    func_cfg(Bs, Cfg), dominators(Cfg, Idom), natural_loops(Cfg, Idom, Loops),
     assoc_to_list(Loops,
                   [inner-loop([spin], [inner, spin]),
                    outer-loop([latch_a, latch_b], [inner, latch_a, latch_b, outer, spin]),
@@ -339,7 +339,7 @@ test(copy_eliminates_trivial_phis) :-
                               phi_dead_edges-[different, self], swap-[a, b, i]]),
            ( phi_names(M, Name, Names),
              func_named(M, Name, F), F = func(_, _, _, _, Bs),
-             fn_cfg(Bs, Cfg), dominators(Cfg, Idom), strict_ssa(F, Cfg, Idom) )),
+             func_cfg(Bs, Cfg), dominators(Cfg, Idom), strict_ssa(F, Cfg, Idom) )),
     mod("export function w $f(w %n) {\n@s\n\tjmp @loop\n@loop\n\t%p =p phi @s 0, @loop %p\n\tjnz %n, @loop, @done\n@done\n\tret 7\n}\n", Literal),
     copy_module(Literal, LiteralKept), Literal == LiteralKept,
     module_mode(LiteralKept, filc).

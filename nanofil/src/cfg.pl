@@ -1,7 +1,7 @@
 /*  Control-flow analyses over one function's blocks, as pure functions
     from IR terms to assocs keyed by block label.
 
-    fn_cfg(+Blocks, -Cfg)
+    func_cfg(+Blocks, -Cfg)
       Cfg = cfg(Entry, Rpo, Succs, Preds)
       Rpo    reachable labels in reverse postorder, Entry first
       Succs  assoc Label -> ordset of successor labels (every block)
@@ -19,7 +19,7 @@
     dom_intervals(+Cfg, +Idom, -Iv)    assoc Label -> Pre-Last, the preorder
                                        number of Label in the dominator tree
                                        and the last one in its subtree
-    dominates_iv(+Iv, +A, +B)          A dominates B, in constant time
+    dominates_by_interval(+Iv, +A, +B)          A dominates B, in constant time
 
     natural_loops(+Cfg, +Idom, -Loops)
       Assoc Header -> loop(Latches, Body), both ordsets of labels.
@@ -46,8 +46,8 @@
     version; docs/m5.md has the measurement that made this one the one
     passes use.
 */
-:- module(cfg, [fn_cfg/2, dominators/2, dom_children/3, frontiers/3,
-                dominates/3, dom_intervals/3, dominates_iv/3, natural_loops/3,
+:- module(cfg, [func_cfg/2, dominators/2, dom_children/3, frontiers/3,
+                dominates/3, dom_intervals/3, dominates_by_interval/3, natural_loops/3,
                 liveness/5, temp_liveness/3, gen_kill/2,
                 phi_edge_uses/2, inst_uses/2, inst_def/2, jump_uses/2,
                 jump_succs/2]).
@@ -66,7 +66,7 @@ jump_succs(ret, []).
 jump_succs(rets(_), []).
 jump_succs(hlt, []).
 
-fn_cfg(Blocks, cfg(Entry, Rpo, Succs, Preds)) :-
+func_cfg(Blocks, cfg(Entry, Rpo, Succs, Preds)) :-
     Blocks = [blk(Entry, _, _, _)|_],
     findall(Label-Ss,
             ( member(blk(Label, _, _, Jump), Blocks), jump_succs(Jump, Ss) ),
@@ -186,7 +186,7 @@ number_tree(L, Kids, N0, N, Intervals0, Intervals) :-
 number_kid(Kids, K, N0-Intervals0, N-Intervals) :-
     number_tree(K, Kids, N0, N, Intervals0, Intervals).
 
-dominates_iv(Intervals, A, B) :-
+dominates_by_interval(Intervals, A, B) :-
     get_assoc(A, Intervals, PreA-LastA),
     get_assoc(B, Intervals, PreB-_),
     PreA =< PreB,
@@ -232,7 +232,7 @@ natural_loops(Cfg, Idom, Loops) :-
             ( member(Latch, Rpo),
               get_assoc(Latch, Succs, Ss),
               member(Header, Ss),
-              dominates_iv(Intervals, Header, Latch) ),
+              dominates_by_interval(Intervals, Header, Latch) ),
             Edges0),
     sort(Edges0, Edges),
     group_pairs_by_key(Edges, Headers),
@@ -318,7 +318,7 @@ succ_live(L, EdgeUses, LiveIn, S, Out0, Out) :-
 %% Temps
 
 temp_liveness(Blocks, LiveIn, LiveOut) :-
-    fn_cfg(Blocks, Cfg),
+    func_cfg(Blocks, Cfg),
     gen_kill(Blocks, GenKill),
     phi_edge_uses(Blocks, EdgeUses),
     liveness(Cfg, GenKill, EdgeUses, LiveIn, LiveOut).
