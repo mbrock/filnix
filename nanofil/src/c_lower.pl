@@ -1302,11 +1302,99 @@ rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     rval(B, Ctx, _),
     { ctx_loc(Ctx, Loc) },
     assign_convert(VA, long, Loc, R).
+rvalue(call(id(Name), Args), Ctx, R) -->
+    { overflow_builtin(Name, Op, Fixed) },
+    env(Env),
+    { \+ lookup_ordinary(Env, Name, _) },
+    !,
+    checked_arithmetic(Args, Op, Fixed, Ctx, R).
 rvalue(call(Func, Args), Ctx, R) --> !, lower_call(Func, Args, Ctx, R).
 rvalue(gcond(Cond, B), Ctx, R) --> !, gnu_conditional(Cond, B, Ctx, R).
 rvalue(Expr, Ctx, _) -->
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, 'cannot lower ~w', [Expr]) }.
+
+% The generic builtins do NOT use the usual arithmetic conversions.
+% Keep the exact result in two l limbs, then compare it with the stored
+% value extended back to two limbs. 128 bits suffice for all supported
+% integer operands (at most 64 bits), including unsigned 64-bit products.
+overflow_builtin(Name, Op, Fixed) :-
+    member(Op, [add, sub, mul]),
+    (   atomic_list_concat(['__builtin_', Op, '_overflow'], Name),
+        Fixed = generic
+    ;   member(Prefix-Suffix-Fixed,
+               [s-''-int, u-''-uint, s-l-long, u-l-ulong,
+                s-ll-llong, u-ll-ullong]),
+        atomic_list_concat(['__builtin_', Prefix, Op, Suffix, '_overflow'], Name)
+    ).
+
+checked_arithmetic(Args, Op, Fixed, Ctx, v(Flag, bool)) -->
+    { ctx_loc(Ctx, Loc),
+      ( Args = [A, B, P] -> true
+      ; sema_error(Loc, 'checked arithmetic requires three arguments', []) ) },
+    rval(A, Ctx, VA0), rval(B, Ctx, VB0), rval(P, Ctx, VP),
+    { VA0 = v(_, TA), VB0 = v(_, TB),
+      ( int_type(TA), int_type(TB), VP = v(Addr, ptr(Type)),
+        int_type(Type), Type \== bool,
+        ( Fixed == generic ; Fixed == Type )
+      -> true
+      ; sema_error(Loc, 'invalid checked arithmetic operand types', []) ) },
+    overflow_operand(Fixed, VA0, VA), overflow_operand(Fixed, VB0, VB),
+    overflow_widen(VA, X, XH), overflow_widen(VB, Y, YH),
+    overflow_exact(Op, X, XH, Y, YH, Low, High),
+    convert(v(Low, ulong), Type, v(Stored, Type)),
+    store_typed(Type, Stored, Addr),
+    overflow_widen(v(Stored, Type), Back, BackH),
+    ins(w, cmp(ne, l), [Low, Back], BadLow),
+    ins(w, cmp(ne, l), [High, BackH], BadHigh),
+    ins(w, or, [BadLow, BadHigh], Flag).
+
+overflow_operand(generic, V, V) --> !.
+overflow_operand(Type, V, R) --> convert(V, Type, R).
+
+% Extension to l must explicitly truncate a w value first: int_convert
+% can reuse an l temp after a cast to int, as w consumers ignore its top.
+overflow_widen(v(V, Type), Low, High) -->
+    { int_info(Type, Size, Sign) },
+    (   { Size < 8 }
+    ->  { Sign == signed -> Ext = sw ; Ext = uw },
+        ins(l, ext(Ext), [V], Low)
+    ;   { Low = V }
+    ),
+    (   { Sign == signed }
+    ->  ins(l, sar, [Low, c(63)], High)
+    ;   { High = c(0) }
+    ).
+
+overflow_exact(add, X, XH, Y, YH, Low, High) -->
+    ins(l, add, [X, Y], Low),
+    ins(w, cmp(ult, l), [Low, X], Carry),
+    ins(l, ext(uw), [Carry], C),
+    ins(l, add, [XH, YH], H), ins(l, add, [H, C], High).
+overflow_exact(sub, X, XH, Y, YH, Low, High) -->
+    ins(l, sub, [X, Y], Low),
+    ins(w, cmp(ult, l), [X, Y], Borrow),
+    ins(l, ext(uw), [Borrow], C),
+    ins(l, sub, [XH, YH], H), ins(l, sub, [H, C], High).
+overflow_exact(mul, X, XH, Y, YH, Low, High) -->
+    ins(l, mul, [X, Y], Low),
+    ins(l, and, [X, c(4294967295)], XL),
+    ins(l, shr, [X, c(32)], XU),
+    ins(l, and, [Y, c(4294967295)], YL),
+    ins(l, shr, [Y, c(32)], YU),
+    ins(l, mul, [XL, YL], LL), ins(l, mul, [XU, YL], UL),
+    ins(l, mul, [XL, YU], LU), ins(l, mul, [XU, YU], UU),
+    ins(l, shr, [LL, c(32)], LLH),
+    ins(l, and, [UL, c(4294967295)], ULL),
+    ins(l, and, [LU, c(4294967295)], LUL),
+    ins(l, add, [LLH, ULL], Mid0), ins(l, add, [Mid0, LUL], Mid),
+    ins(l, shr, [Mid, c(32)], Carry),
+    ins(l, shr, [UL, c(32)], ULH), ins(l, shr, [LU, c(32)], LUH),
+    ins(l, add, [UU, ULH], H0), ins(l, add, [H0, LUH], H1),
+    ins(l, add, [H1, Carry], H2),
+    % Signed inputs contribute -Y or -X to the unsigned product's high limb.
+    ins(l, and, [XH, Y], CX), ins(l, and, [YH, X], CY),
+    ins(l, sub, [H2, CX], H3), ins(l, sub, [H3, CY], High).
 
 % type_size(+TypeName, +Env, +Ctx, -Size): Size is sizeof(TypeName).
 type_size(TypeName, Env, Ctx, Size) :-
