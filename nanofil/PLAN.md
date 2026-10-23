@@ -173,7 +173,82 @@ catches planted rooting bugs.
 
 ### M4. C frontend subset
 
-**Deliverable:** a preprocessor and parser in DCGs, plus cproc-style
+**Status: in progress.** Broken into steps below. Probes at the pin
+(compile `printf`, `puts`, globals and string literals with `filcc -S`)
+settled the ABI questions first:
+
+- A variadic call is an ordinary call with the call-site signature, for
+  example `printf("%d %s\n", x, s)` calls `FI131273` = `(ptr, i64, ptr)
+  -> int`. Only *defining* variadic functions needs more.
+- Clang calls every external function through a hidden weak thunk named
+  `pizlonatedFI<sig>_f`. The thunk calls the getter `pizlonated_f`, checks
+  that the result is a function object (special type, `ptr` equal to its
+  aux pointer), then calls the fast entry if the signature matches and the
+  generic entry otherwise, checking the returned size. libc is a shared
+  library, so this is the only way to reach it.
+- A global `g` is `pizlonatedDO_g` (header `{DO+16+size, flags << 48}` and
+  payload), a 16-byte cache `GP_g`, a getter that returns the cached
+  pointer or calls a slow path, and the slow path
+  `filc_global_initialization_start` / `filc_execute_constant_relocations`
+  / `filc_global_initialization_end`. Pointer-holding globals also have an
+  aux array `DA_g` and a relocation table. A string literal is the same
+  with flags GLOBAL | READONLY and no aux array.
+
+**Decisions** (defaults, cheap to reverse during M4):
+
+1. **Integers only.** No floating point in M4, as the deliverable says.
+   Float types parse in declarations, because the headers use them, and
+   any use of a float value is rejected.
+2. **Real glibc headers** from filcc's sysroot, not private headers. The
+   parser accepts the GNU subset they use: `__attribute__` (ignored),
+   `__extension__`, `__restrict`, `__inline`, `__builtin_va_list` (opaque)
+   and asm labels (symbol renames, which must be honoured). Until the
+   DCG preprocessor exists (M4e), input is preprocessed by `filcc -E`.
+3. **Globals and string literals move into M4** from M7, in the same naive
+   form clang emits: getter, cache, registration, relocations. M7 keeps
+   the getter-skipping optimization that needs Oracle review.
+4. **External calls go through clang-style thunks**, replacing M3's
+   "signature mismatch is a link error".
+5. **Locals all live in `alloc`**, as cproc's output does before
+   `promote`; the Fil-C lowering heap-allocates them. M5 promotes them.
+6. **Struct copies** are word-wise `loadp`/`storep` over 8-aligned words
+   and narrower integer copies for the rest. That preserves every
+   capability bit-for-bit without calling libc.
+7. **Struct arguments larger than 16 bytes** are rejected at first: clang
+   passes them `byval`, which forces the generic convention. Returns
+   larger than 16 bytes use an sret pointer argument and are supported.
+8. **The oracle for whole programs is filcc.** A corpus program is built
+   twice, by nanofil (linked with filcc) and by `filcc -O0`, and must give
+   the same stdout, exit status, and trap or no trap. Functions that do
+   not call libc are also run through the interpreter.
+
+**Steps:**
+
+- **M4a. Lexer, parser, types.** Tokens with source locations, a C11
+  declaration and expression parser in DCGs producing AST terms, and type
+  terms with sizes, alignments and layouts. Accept: the preprocessed
+  stdio/stdlib/string/stdint/ctype headers parse, and unsupported
+  constructs fail with a location.
+- **M4b. Lowering of functions.** Integer arithmetic with C's conversions,
+  pointers and arrays, locals, all statements (`switch`, `goto`,
+  `break`/`continue`), calls between functions in the file. Emits a Fil-C
+  module checked by `valid_module`. Accept: interpreter and native results
+  agree on a set of C functions called from a clang harness.
+- **M4c. The rest of the ABI the C subset needs.** External-call thunks,
+  globals and string literals, function addresses and indirect calls,
+  `main`. Each gets interpreter semantics too. Accept: whole programs that
+  use `printf` give the same output as filcc.
+- **M4d. Structs and unions.** Layout, member access, copies, and SysV
+  classification for arguments and returns of 16 bytes or less (pointer
+  fields as `p`), sret for larger returns. Accept: interop tests against
+  clang in both directions.
+- **M4e. DCG preprocessor.** Macros, `#include` with the sysroot search
+  path, conditionals, `#`/`##`. Accept: its token stream matches `filcc -E`
+  on the headers and the corpus; then it replaces `filcc -E`.
+- **M4f. Corpus.** cproc's tests and the c-testsuite, fetched by Nix, run
+  in `checks.x86_64-linux.nanofil`, with a list of expected rejections.
+
+**Original deliverable:** a preprocessor and parser in DCGs, plus cproc-style
 lowering with C types known, emitting `p` for pointers. SysV struct
 classification as recorded in the findings. Covers integers, pointers,
 arrays, structs and unions without bitfields, all statements, string
@@ -214,7 +289,8 @@ answer the handoff's open question about predictability.
 - Inline pointer load and store fast paths.
 - Check merging per canonical pointer, using M5 alias base-plus-offset
   facts. Redundant-pollcheck removal.
-- Globals with getters, caches and relocation tables.
+- Caching global addresses across a function instead of calling the
+  getter at every use (globals themselves arrive in M4c).
 - Getter-free pointer-free readonly literals. This is the findings' claim,
   and it needs Oracle review and the M3 GC stress test before it ships.
 
