@@ -2,6 +2,7 @@
 
       check FILE              parse and validate
       print FILE              parse, validate, print QBE text
+      compile FILE            parse, validate, print x86-64 assembly
       run FILE FN ARG...      interpret $FN on integer arguments
       difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,printed.ssa}
                               for the file's "# run: $fn arg..." lines
@@ -15,6 +16,7 @@
 :- use_module(qbe_parse).
 :- use_module(qbe_print).
 :- use_module(interp).
+:- use_module(amd64).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -38,6 +40,7 @@ load(File, M) :-
 
 command([check, File]) :- load(File, _), format("ok~n", []).
 command([print, File]) :- load(File, M), print_module(M).
+command([compile, File]) :- load(File, M), print_asm(M).
 command([run, File, Fn|ArgAtoms]) :-
     load(File, M),
     maplist(atom_number, ArgAtoms, Args0),
@@ -49,7 +52,9 @@ command([run, File, Fn|ArgAtoms]) :-
 command([difftest, File, Dir]) :-
     load(File, M),
     run_lines(File, Runs),
-    maplist(evaluate(M), Runs, Results),
+    % One findall over all runs, so each run's heap is reclaimed on
+    % backtracking before the next starts.
+    findall(R, ( member(Run, Runs), evaluate(M, Run, R) ), Results),
     include(comparable, Results, Cmp),
     exclude(comparable, Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpF),

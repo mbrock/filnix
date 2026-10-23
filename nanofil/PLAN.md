@@ -124,6 +124,10 @@ term. This is the hardest part to keep relational.
 
 ### M2. Naive backend, plain SysV
 
+**Status: complete.** See [docs/m2.md](docs/m2.md). nanofil's own
+assembly matches the interpreter on the fixtures, the random corpus and
+the three qbe-bug repros that qbe gets wrong.
+
 **Deliverable:** IR to x86-64 assembly with every temp in a stack slot, a
 fixed scratch-register isel DCG and plain SysV calls. Backpatched labels
 are unbound variables, as in Thinking in States.

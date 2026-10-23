@@ -1,0 +1,61 @@
+# Calls using all six argument registers, mixed classes, and results
+# consumed at a narrower class.
+
+# Weights make every argument's position visible in the result.
+function l $six(w %a, l %b, w %c, l %d, w %e, l %f) {
+@start
+	%x =l extuw %a
+	%y =l mul %b, 10
+	%s1 =l add %x, %y
+	%c1 =l extuw %c
+	%c2 =l mul %c1, 100
+	%s2 =l add %s1, %c2
+	%d1 =l mul %d, 1000
+	%s3 =l add %s2, %d1
+	%e1 =l extuw %e
+	%e2 =l mul %e1, 10000
+	%s4 =l add %s3, %e2
+	%f1 =l mul %f, 100000
+	%s5 =l add %s4, %f1
+	ret %s5
+}
+
+# run: $calls6 1 2 3 4 5 6
+# run: $calls6 0 0 0 0 0 1
+# run: $calls6 4294967295 -1 4294967295 -1 4294967295 -1
+export function l $calls6(w %a, l %b, w %c, l %d, w %e, l %f) {
+@start
+	%r =l call $six(w %a, l %b, w %c, l %d, w %e, l %f)
+	ret %r
+}
+
+# The callee returns l; the caller reads its low word.
+# run: $narrow 1 2 3 4 5 6
+export function w $narrow(w %a, l %b, w %c, l %d, w %e, l %f) {
+@start
+	%r =w call $six(w %e, l %f, w %a, l %b, w %c, l %d)
+	ret %r
+}
+
+# Arguments that are constants, a global address, and values that must
+# survive a call in their slots.
+data $k = { l 7 }
+
+function l $deref(l %p, w %n) {
+@start
+	%v =l loadl %p
+	%m =l extuw %n
+	%r =l add %v, %m
+	ret %r
+}
+
+# run: $around 5
+export function l $around(l %x) {
+@start
+	%a =l add %x, 1
+	%r1 =l call $deref(l $k, w 4294967295)
+	%r2 =l call $six(w 1, l %a, w 0, l 0, w 0, l -1)
+	%s =l add %r1, %r2
+	%t =l add %s, %a
+	ret %t
+}
