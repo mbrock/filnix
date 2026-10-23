@@ -103,22 +103,26 @@ address_temps(func(_, _, _, _, Blocks), Addrs) :-
     findall(I, ( member(blk(_, _, Is, _), Blocks), member(I, Is) ), Insts),
     findall(A-(A-0), member(ins(t(A), _, alloc(_), _), Insts), Ps0),
     list_to_assoc(Ps0, A0),
-    findall(I, ( member(I, Insts), I = ins(_, _, _, _), offset_of(I, _, _) ), Offs),
-    derive(Offs, A0, Addrs).
+    findall(X-edge(I, D, N),
+            ( nth0(I, Insts, Ins), Ins = ins(t(D), _, _, _), offset_of(Ins, X, N) ), Edges0),
+    keysort(Edges0, Edges1), group_pairs_by_key(Edges1, Edges),
+    list_to_assoc(Edges, BySource),
+    assoc_to_list(A0, Seeds),
+    derive(Seeds, BySource, A0, Addrs).
 
-% Close the map under constant offsets. Each round adds at least one
-% temp, and there are finitely many, so this terminates.
-derive(Offs, A0, A) :-
-    findall(D-(Root-O),
-            ( member(I, Offs), I = ins(t(D), _, _, _), offset_of(I, X, N),
-              \+ get_assoc(D, A0, _),
-              get_assoc(X, A0, Root-O0), O is O0 + N ),
-            New0),
-    (   New0 == [] -> A = A0
-    ;   sort(1, @<, New0, New),   % one entry per temp; redefinitions are caught later
-        foldl(put_pair, New, A0, A1),
-        derive(Offs, A1, A)
-    ).
+% Follow each dependency only when its source is first resolved. Whole
+% layers are processed together: as in the old fixed point, a redefined
+% temp takes its earliest-resolved definition, then instruction order
+% breaks ties. Cycles without an allocation seed remain unresolved.
+derive([], _, A, A).
+derive([S|Ss], BySource, A0, A) :-
+    findall(I-(D-(Root-O)),
+            ( member(X-(Root-O0), [S|Ss]), get_assoc(X, BySource, Edges),
+              member(edge(I, D, N), Edges), \+ get_assoc(D, A0, _), O is O0 + N ), Found),
+    keysort(Found, Ordered), pairs_values(Ordered, Pairs),
+    sort(1, @<, Pairs, New),   % one entry per temp; redefinitions are caught later
+    foldl(put_pair, New, A0, A1),
+    derive(New, BySource, A1, A).
 
 put_pair(K-V, A0, A) :- put_assoc(K, A0, V, A).
 
