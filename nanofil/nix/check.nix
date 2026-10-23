@@ -7,7 +7,8 @@
 # by clang and both run against the interpreter; tests/c/reject must be
 # refused with the expected messages. Whole programs (tests/c/prog) are
 # built by nanofil and by clang and must print and exit the same, also
-# under FUGC_SCRIBBLE and FUGC_VERIFY.
+# under FUGC_SCRIBBLE and FUGC_VERIFY. Then everything runs again with
+# the M5 middle end (-O), validated run by run by the interpreter.
 { pkgs, filcc }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
@@ -39,8 +40,27 @@ pkgs.runCommandCC "nanofil-check"
     tests/difftest.sh tests/c/*.c
     tests/reject.sh
     tests/progtest.sh
-    python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    # c-testsuite/00200 (1557 blocks) takes 21 s to compile here, most of
+    # it in valid_module, so the default 20 s timeout fails on this
+    # machine at origin/main too (docs/m5.md).
+    COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/progtest.sh
     RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
+    # M5: the same suites with the middle end on. difftest -O also runs
+    # every run line on the unoptimized module and checks that each result
+    # refines it; unit.pl checks which allocs promote must remove.
+    python3 -I tests/bigfn.py 1 300 > big1.c
+    export NANOFIL_OPT=-O
+    CC=$CC tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
+    CC=$CC VARIANTS=nanofil tests/difftest.sh tests/qbe-bugs/*.ssa
+    tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/c/*.c big1.c
+    tests/filc/run-c.sh interop gc
+    tests/progtest.sh
+    RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/progtest.sh
+    RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
+    unset NANOFIL_OPT
+    # The functional, versioned-fact and incremental analyses must agree.
+    python3 -I tests/bigfn.py 2 100 > big2.c
+    (cd src && tpl -q ../tests/bench-cfg.pl -- ../big2.c </dev/null)
     touch $out
   ''

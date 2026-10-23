@@ -7,6 +7,8 @@
 #
 #   difftest.sh FILE...    (needs tpl, qbe and cc on PATH, or TPL/QBE/CC set)
 #   VARIANTS="nanofil" difftest.sh FILE...    to run a subset
+#   NANOFIL_OPT=-O difftest.sh FILE...        nanofil runs its middle end;
+#     the interpreter checks each run before and after it (main.pl)
 #
 # A Fil-C module (one that uses class p) has no qbe counterpart. It is
 # compiled by nanofil only, linked with a clang-built Fil-C harness
@@ -40,10 +42,10 @@ for f in "$@"; do
     (cd "$src" && "$tpl" -q main.pl -- cc-ir "$csrc" </dev/null) >"$f"
     sed -n 's|^// run: |# run: |p' "$csrc" >>"$f"
   fi
-  (cd "$src" && "$tpl" -q main.pl -- difftest "$f" "$d" </dev/null)
+  (cd "$src" && "$tpl" -q main.pl -- ${NANOFIL_OPT:-} difftest "$f" "$d" </dev/null)
   if [ "$(cat "$d/mode")" = filc ]; then
     if [ -z "$filcc" ]; then echo "$f: Fil-C module, set FILCC" >&2; exit 2; fi
-    (cd "$src" && "$tpl" -q main.pl -- compile "$f" </dev/null) >"$d/filc.s"
+    (cd "$src" && "$tpl" -q main.pl -- ${NANOFIL_OPT:-} compile "$f" </dev/null) >"$d/filc.s"
     as -o "$d/filc.o" "$d/filc.s"
     "$filcc" -O1 -o "$d/filc" "$d/harness.c" "$d/filc.o"
     variants=filc
@@ -75,7 +77,7 @@ for f in "$@"; do
     case $variant in
       original) "$qbe" -o "$d/$variant.s" "$f" ;;
       printed) "$qbe" -o "$d/$variant.s" "$d/printed.ssa" ;;
-      nanofil) (cd "$src" && "$tpl" -q main.pl -- compile "$f" </dev/null) >"$d/$variant.s" ;;
+      nanofil) (cd "$src" && "$tpl" -q main.pl -- ${NANOFIL_OPT:-} compile "$f" </dev/null) >"$d/$variant.s" ;;
     esac
     "$cc" -o "$d/$variant" "$d/harness.c" "$d/$variant.s"
     "$d/$variant" >"$d/$variant.txt"

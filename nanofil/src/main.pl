@@ -10,6 +10,13 @@
       difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,printed.ssa}
                               for the file's "# run: $fn arg..." lines
 
+    -O before the command runs the middle end (opt.pl) after loading.
+    Without it the IR goes to the backend as loaded, which is the
+    reference the optimized path is checked against. With -O, difftest
+    also runs every run line on the unoptimized module and fails unless
+    each optimized outcome refines the original one (translation
+    validation), and prints how many allocs promote removed.
+
     difftest's expected.txt holds the interpreter's result for every run
     line whose outcome a native run can reproduce (a known return value);
     harness.c prints the same lines from native code. Other outcomes are
@@ -26,17 +33,21 @@
 :- use_module(c_pp).
 :- use_module(c_parse).
 :- use_module(c_lower).
+:- use_module(opt).
+:- use_module(promote).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
 :- use_module(library(dcgs)).
+:- use_module(library(pairs)).
 
 :- initialization(main).
 
 main :-
     current_prolog_flag(argv, ArgvChars),
-    maplist(atom_chars, Argv, ArgvChars),
-    catch(( command(Argv) -> halt(0) ; format(user_error, "nanofil: failed~n", []), halt(1) ),
+    maplist(atom_chars, Argv0, ArgvChars),
+    (   Argv0 = ['-O'|Argv] -> Opt = o1 ; Argv = Argv0, Opt = o0 ),
+    catch(( command(Opt, Argv) -> halt(0) ; format(user_error, "nanofil: failed~n", []), halt(1) ),
           E,
           ( report(E), halt(1) )).
 
@@ -62,36 +73,55 @@ load_c_tokens(File, Ts) :-
       pp_profile(Clang, Profile), pp_file(File, Profile, Ts)
     ).
 
-command([tokens, File]) :-
+command(_, [tokens, File]) :-
     load_c_tokens(File, Ts),
     forall(member(tok(T,_), Ts), (write_canonical(T),write('.'),nl)).
-command([check, File]) :- load(File, _), format("ok~n", []).
-command([print, File]) :- load(File, M), print_module(M).
-command([compile, File]) :-
-    load(File, M),
-    module_mode(M, Mode),
+command(_, [check, File]) :- load(File, _), format("ok~n", []).
+command(Opt, [print, File]) :- load(File, M0), optimize(Opt, M0, M), print_module(M).
+command(Opt, [compile, File]) :-
+    load(File, M0),
+    % Promote can remove every p from a module; the ABI is the original's.
+    module_mode(M0, Mode),
+    optimize(Opt, M0, M),
     (   Mode == filc -> filc_module_asm(M, Asm) ; module_asm(M, Asm) ),
     print_asm(Asm).
-command([cc, File]) :-
-    load_c(File, M),
+command(Opt, [cc, File]) :-
+    load_c(File, M0),
+    optimize(Opt, M0, M),
     filc_module_asm(M, Asm),
     print_asm(Asm).
-command(['cc-ir', File]) :- load_c(File, M), print_module(M).
-command([run, File, Fn|ArgAtoms]) :-
-    load(File, M),
+command(Opt, ['cc-ir', File]) :- load_c(File, M0), optimize(Opt, M0, M), print_module(M).
+command(Opt, [run, File, Fn|ArgAtoms]) :-
+    load(File, M0),
+    optimize(Opt, M0, M),
     maplist(atom_number, ArgAtoms, Args0),
     func_named(M, Fn, func(_, _, _, Params, _)),
     maplist(canonical, Params, Args0, Args),
     once(run(M, Fn, Args, 1000000, Out)),
     outcome_text(Out, T),
     format("~w~n", [T]).
-command([difftest, File, Dir]) :-
-    load(File, M),
+command(Opt, [difftest, File, Dir]) :-
+    load(File, M0),
+    module_mode(M0, Mode),
+    optimize(Opt, M0, M),
     run_lines(File, Runs),
     % One findall over all runs, so each run's heap is reclaimed on
     % backtracking before the next starts.
-    findall(R, ( member(Run, Runs), evaluate(M, Run, R) ), Results),
-    module_mode(M, Mode),
+    % valid_module's clauses leave choice points that throw on retry.
+    (   Opt == o1 -> once(valid_module(M)) ; true ),
+    findall(R-V, ( member(Run, Runs), validated(Opt, M0, M, Run, R, V) ), RVs),
+    pairs_keys_values(RVs, Results, Vs),
+    (   Opt == o0 -> true
+    ;   alloc_count(M0, N0), alloc_count(M, N1),
+        format("~w: promote: ~w allocs -> ~w~n", [File, N0, N1]),
+        forall(member(bad(CT, T0, T), Vs),
+               format("VALIDATION FAILED ~w ~w: ~w before the middle end, ~w after~n",
+                      [File, CT, T0, T])),
+        (   memberchk(bad(_, _, _), Vs)
+        ->  throw(nanofil_error('translation validation failed'))
+        ;   true
+        )
+    ),
     include(comparable(Mode), Results, Cmp),
     exclude(comparable(Mode), Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpF),
@@ -108,9 +138,34 @@ command([difftest, File, Dir]) :-
            ( outcome_text(Out, T), call_text(Fn, Args, CT),
              format("  ~w = ~w~n", [CT, T]) )).
 
+% Translation validation: the unoptimized module's outcome on the same
+% run must allow the optimized one's. Both runs happen in the same
+% findall step, so an unknown result keeps its constraints. Promote keeps
+% every block and branch, so a correct result needs exactly the blocks
+% the original needs: both run with the same fuel, starting small and
+% growing until the original finishes. A broken pass that loops then
+% ends as out_of_fuel, cheaply (the interpreter's memory grows quickly
+% with the number of blocks run, so a looping run at full fuel would
+% exhaust it).
+validated(o0, _, M, Run, R, ok) :- evaluate(M, Run, 1000000, R).
+validated(o1, M0, M, Run, R, V) :-
+    fuel_step(Fuel),
+    evaluate(M0, Run, Fuel, r(Fn, Args, Out0)),
+    ( Out0 \== out_of_fuel ; Fuel == 1000000 ), !,
+    evaluate(M, Run, Fuel, R),
+    R = r(_, _, Out),
+    (   refines(Out0, Out) -> V = ok
+    ;   call_text(Fn, Args, CT), outcome_text(Out0, T0), outcome_text(Out, T),
+        V = bad(CT, T0, T)
+    ).
+
+fuel_step(F) :- member(F, [1000, 8000, 64000, 512000, 1000000]).
+
 canonical(par(K, _), A0, A) :- modulus(K, M), A is A0 mod M.
 
-evaluate(M, run(Fn, Args0), r(Fn, Args, Out)) :-
+evaluate(M, Run, R) :- evaluate(M, Run, 1000000, R).
+
+evaluate(M, run(Fn, Args0), Fuel, r(Fn, Args, Out)) :-
     (   func_named(M, Fn, func(_, export, _, Params, _)) -> true
     ;   throw(nanofil_error(Fn-'run line names a function that is not exported'))
     ),
@@ -118,7 +173,7 @@ evaluate(M, run(Fn, Args0), r(Fn, Args, Out)) :-
     ;   throw(nanofil_error(Fn-'run line has the wrong number of arguments'))
     ),
     maplist(canonical, Params, Args0, Args),
-    (   once(run(M, Fn, Args, 1000000, Out)) -> true
+    (   once(run(M, Fn, Args, Fuel, Out)) -> true
     ;   call_text(Fn, Args, CT),
         throw(nanofil_error(CT-'interpreter found no outcome'))
     ).

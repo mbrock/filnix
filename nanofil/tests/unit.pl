@@ -10,6 +10,15 @@
 :- use_module('../src/qbe_parse').
 :- use_module('../src/qbe_print').
 :- use_module('../src/interp').
+:- use_module('../src/cfg').
+:- use_module('../src/escape').
+:- use_module('../src/promote').
+:- use_module('../src/opt').
+:- use_module('../src/c_lex').
+:- use_module('../src/c_parse').
+:- use_module('../src/c_lower').
+:- use_module(library(assoc)).
+:- use_module(library(pio)).
 :- use_module(library(clpz)).
 :- use_module(library(lists)).
 :- use_module(library(format)).
@@ -176,3 +185,80 @@ test(print_round_trip) :-
              phrase(module_chars(M), Cs),
              mod(Cs, M2),
              M2 == M )).
+
+%% Middle end (M5)
+
+% s -> a; a -> b | c; b, c -> d; d -> a | e. The loop a..d makes a its
+% own frontier; b and c join at d. x lives from s to the exit, y around
+% the loop (read in b and as d's phi argument on the edge from c), z
+% only on the edge b -> d, and w is defined by d's phi.
+cfg_text("export function w $f(w %p) {\n@s\n\t%x =w copy %p\n\t%y =w copy 1\n\tjmp @a\n@a\n\tjnz %x, @b, @c\n@b\n\t%z =w add %y, 1\n\tjmp @d\n@c\n\tjmp @d\n@d\n\t%w =w phi @b %z, @c %y\n\tjnz %w, @a, @e\n@e\n\tret %x\n}\n").
+
+test(dominators_and_frontiers) :-
+    cfg_text(T), mod(T, module([func(_, _, _, _, Bs)])),
+    fn_cfg(Bs, Cfg),
+    Cfg = cfg(s, Rpo, _, _), msort(Rpo, [a, b, c, d, e, s]),
+    dominators(Cfg, Idom),
+    assoc_to_list(Idom, [a-s, b-a, c-a, d-a, e-d]),
+    frontiers(Cfg, Idom, DF),
+    assoc_to_list(DF, [a-[a], b-[d], c-[d], d-[a], e-[], s-[]]).
+
+test(temp_liveness) :-
+    cfg_text(T), mod(T, module([func(_, _, _, _, Bs)])),
+    temp_liveness(Bs, In, Out),
+    assoc_to_list(In, [a-[x, y], b-[x, y], c-[x, y], d-[x, y], e-[x], s-[p]]),
+    get_assoc(b, Out, [x, y, z]),
+    get_assoc(c, Out, [x, y]),
+    get_assoc(d, Out, [x, y]).
+
+% Each alloc used one way that makes it escape, and one that does not.
+test(escape_classes) :-
+    mod("export function w $f(l %n) {\n@s\n\t%a =p alloc4 8\n\t%b =p add %a, 4\n\tstorew 1, %a\n\tstorew 2, %b\n\t%v =w loadsw %b\n\t%e =p alloc8 8\n\tcall $g(p %e)\n\t%f =p alloc8 8\n\t%i =l ptoi %f\n\t%h =p alloc8 8\n\t%q =p add %h, %n\n\t%m =p alloc8 8\n\t%z =p alloc8 8\n\tstorep %m, %z\n\tret %v\n}\n", M),
+    M = module([F]),
+    alloc_classes(F, Cs),
+    Cs == [a-local(c(8), [acc(0, w), acc(4, w)]), e-escapes(call), f-escapes(ptoi),
+           h-escapes(add), m-escapes(stored), z-local(c(8), [acc(0, p)])].
+
+% Fil-C allocations are zero: a read before any write gives 0, and a
+% pointer read before any write has no capability, so using it traps.
+test(promote_reads_zero_in_filc) :-
+    mod("export function w $f() {\n@s\n\t%s =p alloc4 4\n\t%v =w loadsw %s\n\tret %v\n}\nexport function w $g() {\n@s\n\t%s =p alloc8 8\n\t%q =p loadp %s\n\t%v =w loadsw %q\n\tret %v\n}\n", M0),
+    optimize(o1, M0, M),
+    once(valid_module(M)),
+    alloc_count(M, 0),
+    outcome(M0, f, [], ret(0)), outcome(M, f, [], ret(0)),
+    outcome(M0, g, [], trap(null_capability)), outcome(M, g, [], trap(null_capability)).
+
+% Which allocs promote must remove, and which it must keep, on the
+% fixture and on tests/c/basic.c (only arr's array and ptrs's array have
+% their address passed or stored). A promote that did nothing would still
+% pass every differential test; this does not.
+test(promote_removes_allocs) :-
+    mod_file('../tests/fixtures/promote.ssa', M0),
+    alloc_count(M0, 12),
+    optimize(o1, M0, M),
+    once(valid_module(M)),
+    alloc_count(M, 4),
+    func_named(M, kept, K), alloc_count(module([K]), 4),
+    c_file('../tests/c/basic.c', C0),
+    alloc_count(C0, 23),
+    optimize(o1, C0, C),
+    once(valid_module(C)),
+    findall(Fn, ( C = module(Is), member(func(Fn, _, _, _, Bs), Is),
+                  member(blk(_, _, Ins, _), Bs), member(ins(_, _, alloc(_), _), Ins) ), Kept),
+    Kept == [arr, ptrs].
+
+% Translation validation's comparison: undefined behaviour and unknown
+% bytes allow any outcome they could produce, nothing else differs.
+test(refines) :-
+    refines(ub(division_by_zero), ret(7)),
+    V in 0..255, refines(ret(V), ret(0)),
+    \+ refines(ret(V), ret(256)),
+    \+ refines(ret(5), ret(6)),
+    \+ refines(ret(5), trap(out_of_bounds)),
+    refines(ret(ptr(4112, obj(4096))), ret(ptr(8208, obj(8192)))),
+    \+ refines(ret(ptr(4112, obj(4096))), ret(ptr(8200, obj(8192)))).
+
+c_file(F, M) :-
+    phrase_from_file(seq(Cs), F), c_tokens(Cs, F, Ts),
+    c_parse(Ts, Items), c_module(Items, M), valid_module(M).

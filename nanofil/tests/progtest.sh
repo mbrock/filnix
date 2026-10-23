@@ -5,6 +5,7 @@
 # "trap" (its message names different functions in the two builds). An
 # "// args: ..." line gives the arguments, and "// link: FILE.c" names a
 # companion, relative to the program, that clang builds into both.
+# NANOFIL_OPT=-O turns on nanofil's middle end.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
@@ -67,7 +68,7 @@ for f in "$@"; do
   # but never call that a measured rejection or a differential pass.
   if ! "$filcc" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
-  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$tpl" -q main.pl -- cc "$f" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$tpl" -q main.pl -- ${NANOFIL_OPT:-} cc "$f" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?

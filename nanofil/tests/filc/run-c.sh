@@ -3,7 +3,7 @@
 # run case i of NAME.expected in its own process for every line i, and
 # compare. A Fil-C safety panic prints as "trap".
 #
-#   run-c.sh NAME...    (needs TPL and FILCC)
+#   run-c.sh NAME...    (needs TPL and FILCC; NANOFIL_OPT=-O for the middle end)
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../../src"
@@ -15,7 +15,7 @@ status=0
 for name in "$@"; do
   d="$work/$name"
   mkdir -p "$d"
-  (cd "$src" && "$tpl" -q main.pl -- compile "$here/$name.ssa" </dev/null) >"$d/n.s"
+  (cd "$src" && "$tpl" -q main.pl -- ${NANOFIL_OPT:-} compile "$here/$name.ssa" </dev/null) >"$d/n.s"
   as -o "$d/n.o" "$d/n.s"
   "$filcc" -O1 -o "$d/t" "$here/$name.c" "$d/n.o"
   n=$(wc -l <"$here/$name.expected")

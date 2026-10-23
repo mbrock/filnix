@@ -18,7 +18,7 @@ disagree, the findings win.
  ┌──────────────────────────────┐   M1: relational interpreter (CLP(Z))
  │ IR terms: ins/4, jumps, phis │◀── checks every pass; differential
  └──────────────┬───────────────┘    tests against real qbe
-                │  M5: tabled analyses, SSA, promote, copy, alias
+                │  M5: analyses, SSA, promote, copy, alias
                 ▼
  ┌──────────────────────────────┐
  │ IR with pointer class p      │
@@ -269,6 +269,18 @@ gets a rejection test.
 
 ### M5. Middle end and translation validation
 
+**Status: in progress.** M5a is done, see [docs/m5.md](docs/m5.md):
+CFG, dominators, frontiers and liveness; `ALoc`/`AEsc` escape
+classification; `promote` (mem2reg with pruned SSA phis), behind `-O` in
+the driver. Every existing suite runs again with `-O` in the Nix check,
+and each difftest run is validated in the interpreter against the
+unoptimized module. The open question is answered: analyses are pure
+functions over assocs (cfg.pl). Tabled liveness is no faster than an
+assoc worklist once the cost of asserting facts is counted, tabled
+dominators are cubic, and incremental tabling invalidates whole tables on
+small edits. Next: copy elimination, alias and loops, keeping
+non-escaping arrays on the stack, and the symbolic equivalence query.
+
 **Deliverable:** tabled CFG, dominator, liveness, alias and loop
 relations, plus SSA construction, `promote`, copy elimination and
 `ALoc`/`AEsc` escape classification. Non-escaping locals stay on the
@@ -314,8 +326,9 @@ nanofil running on Fil-C-built Trealla. Package it as
 
 - Symbolic addresses in the interpreter, for translation validation of
   memory passes (M5).
-- Versioned facts versus incremental tabling (M5), and the CLP(Z)
-  allocation budget (M6). Both are measurement questions.
+- The CLP(Z) allocation budget (M6), a measurement question. (Versioned
+  facts versus incremental tabling was measured in M5: neither; see
+  docs/m5.md.)
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
 - Supporting `setjmp`, variadic definitions, atomics and inline asm, all
