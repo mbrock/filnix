@@ -79,3 +79,15 @@ struct two go[1] = { [0].a = 1, [0] = { .b = 2 } };
 union cu gu = { .i = 0x1234 };
 long override(long x) { struct two lo[1] = { [0].a = x, [0] = { .b = 3 } }; union cu lu = { .i = 0x5600 + x }; return go[0].a * 10000 + go[0].b * 1000 + lo[0].a * 100 + lo[0].b * 10 + (gu.i == 0x1234) + (lu.i - 0x5600 == x) * 2; }
 // run: $override 7
+/* Members of a const struct, in ?: arms and as a whole initializer
+   entry (deflate.c's configuration_table[...].func in a ?: chain). */
+typedef long (*cfn)(long);
+long twice(long x) { return 2 * x; }
+const struct cfg { long a; cfn f; } ctab[2] = { { 5, twice }, { 6, twice } };
+long cmember(long x) {
+    const struct cfg *p = &ctab[1];
+    struct cfg w[] = { ctab[0], 7, twice };
+    return x ? (*(ctab[x].f))(x) + p->a * 100 : ctab[0].a + sizeof(w) / sizeof(w[0]) * 10;
+}
+// run: $cmember 0
+// run: $cmember 1

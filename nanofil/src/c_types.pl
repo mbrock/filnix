@@ -40,7 +40,9 @@
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
                     decl_types/5, expression_type/3, value_type/2,
-                    generic_selection/5, reflect_type/4, reflect_params/4]).
+                    generic_selection/5, reflect_type/4, reflect_params/4,
+                    conditional_type/3, unqualified/2,
+                    overflow_builtin/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -931,12 +933,14 @@ expression_type(un(Op, E), Env, T) :-
 expression_type(index(E, _), Env, T) :-
     expression_type(E, Env, T0), value_type(T0, ptr(T)).
 expression_type(member(E, F), Env, T) :-
-    expression_type(E, Env, SU), member_type_offset(SU, F, Env, T, _).
+    expression_type(E, Env, SU), member_type(SU, F, Env, T).
 expression_type(arrow(E, F), Env, T) :-
     expression_type(E, Env, P), value_type(P, ptr(SU)),
-    member_type_offset(SU, F, Env, T, _).
+    member_type(SU, F, Env, T).
 expression_type(call(id(Name), []), Env, T) :-
     float_builtin(Name, T, _), \+ lookup_ordinary(Env, Name, _).
+expression_type(call(id(Name), _), Env, T) :-
+    builtin_type(Name, T), \+ lookup_ordinary(Env, Name, _), !.
 expression_type(call(E, _), Env, T) :-
     expression_type(E, Env, FT), value_type(FT, ptr(func(T, _, _))).
 expression_type(assign(_, E, _), Env, T) :- expression_type(E, Env, T).
@@ -950,13 +954,98 @@ expression_type(bin(Op, A, B), Env, T) :-
     expression_type(A, Env, TA0), value_type(TA0, TA),
     expression_type(B, Env, TB0), value_type(TB0, TB),
     expression_binary_type(Op, TA, TB, T).
-expression_type(cond(_, A, B), Env, T) :-
-    expression_type(A, Env, TA0), value_type(TA0, TA),
-    expression_type(B, Env, TB0), value_type(TB0, TB),
-    ( TA == TB -> T = TA ; usual_arith_conversion(TA, TB, T) ).
+expression_type(cond(_, A, B), Env, T) :- conditional_type(A-B, Env, T).
+expression_type(gcond(C, B), Env, T) :- conditional_type(C-B, Env, T).
+expression_type(va_arg(_, TN), Env, T) :-
+    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+expression_type(stmtexpr(at(_, block(Items))), Env, T) :-
+    block_value_type(Items, Env, T).
 expression_type(generic(C, As), Env, T) :-
     expression_type(C, Env, CT0), value_type(CT0, CT),
     generic_selection(CT, As, Env, constant, E), expression_type(E, Env, T).
+
+% builtin_type(?Name, ?Type): a call of builtin Name, when Name is not
+% declared, has Type.
+builtin_type('__builtin_va_start', void).
+builtin_type('__builtin_va_copy', void).
+builtin_type('__builtin_va_end', void).
+builtin_type('__builtin_unreachable', void).
+builtin_type('__builtin_alloca', ptr(void)).
+builtin_type('__builtin_expect', long).
+builtin_type('__builtin_constant_p', int).
+builtin_type(Name, bool) :- overflow_builtin(Name, _, _).
+
+% overflow_builtin(?Name, ?Op, ?Fixed): builtin Name checks arithmetic Op
+% on operands of type Fixed, or of any integer types (generic).
+overflow_builtin(Name, Op, Fixed) :-
+    member(Op, [add, sub, mul]),
+    (   atomic_list_concat(['__builtin_', Op, '_overflow'], Name),
+        Fixed = generic
+    ;   member(Prefix-Suffix-Fixed,
+               [s-''-int, u-''-uint, s-l-long, u-l-ulong,
+                s-ll-llong, u-ll-ullong]),
+        atomic_list_concat(['__builtin_', Prefix, Op, Suffix, '_overflow'], Name)
+    ).
+
+/* conditional_type(+A-B, +Env, -T): T is the type of c ? A : B (C11
+   6.5.15), from the arms' value types; a null pointer constant arm
+   takes the other arm's pointer type. Fails if the arms are
+   incompatible or cannot be typed. */
+conditional_type(A-B, Env, T) :-
+    arm(A, Env, TA, NA), arm(B, Env, TB, NB),
+    arms_type(TA, NA, TB, NB, T).
+
+arm(E, Env, T, N) :-
+    expression_type(E, Env, T0), value_type(T0, T),
+    (   int_type(T), catch(const_value(E, Env, 0, _), not_constant, fail)
+    ->  N = null
+    ;   N = value
+    ).
+
+arms_type(TA, _, TB, _, T) :-
+    arithmetic_type(TA), arithmetic_type(TB), !,
+    usual_arith_conversion(TA, TB, T).
+arms_type(void, _, void, _, void) :- !.
+arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
+arms_type(ptr(P), _, ptr(_), _, ptr(P)) :- !.
+arms_type(ptr(P), _, _, null, ptr(P)) :- !.
+arms_type(_, null, ptr(P), _, ptr(P)).
+
+% block_value_type(+Items, +Env, -T): T is the value type of a GNU
+% statement expression with block Items: its last item's, once the
+% items before it have declared their names.
+block_value_type([], _, void).
+block_value_type([Item], Env, T) :- !, last_item_type(Item, Env, T).
+block_value_type([decl(_, Specs, Inits)|Items], Env0, T) :- !,
+    decl_types(Specs, Inits, Decls, Env0, Env1),
+    foldl(bind_decl, Decls, Env1, Env),
+    block_value_type(Items, Env, T).
+block_value_type([_|Items], Env, T) :- block_value_type(Items, Env, T).
+
+bind_decl(d(Name, Type, _, _, _), Env0, Env) :-
+    bind_ordinary(Name, var(none, Type), Env0, Env).
+
+last_item_type(at(_, expr(E)), Env, T) :- !,
+    expression_type(E, Env, T0), value_type(T0, T).
+last_item_type(at(_, label(_, Body)), Env, T) :- !, last_item_type(Body, Env, T).
+last_item_type(_, _, void).
+
+% unqualified(+T0, -T): T is T0 without qualifiers, at any depth: the
+% type code generation uses for a reflected type T0.
+unqualified(T, T) :- var(T), !.
+unqualified(qualified(_, T0), T) :- !, unqualified(T0, T).
+unqualified(ptr(T0), ptr(T)) :- !, unqualified(T0, T).
+unqualified(array(T0, N), array(T, N)) :- !, unqualified(T0, T).
+unqualified(func(R0, Ps0, V), func(R, Ps, V)) :- !,
+    unqualified(R0, R),
+    ( Ps0 == unspecified -> Ps = Ps0 ; maplist(unqualified, Ps0, Ps) ).
+unqualified(T, T).
+
+% member_type(+SU, +F, +Env, -T): T is the type of member F of struct
+% or union type SU; a qualified SU qualifies the member too.
+member_type(qualified(Qs, SU), F, Env, T) :- !,
+    member_type(SU, F, Env, T0), qualify(Qs, T0, T).
+member_type(SU, F, Env, T) :- member_type_offset(SU, F, Env, T, _).
 
 binding_type(var(_, T), T).
 binding_type(gvar(T, _, _, _), T).

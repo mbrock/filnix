@@ -823,8 +823,7 @@ local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
           put_def(initialized(Sym), Items, Env4, Env) },
         set_env(Env)
     ;   env(Env),
-        whole_probe(Ctx, Whole),
-        { complete_array(Type0, Init, Type, Loc, Env, Whole),
+        { complete_array(Type0, Init, Type, Loc, Env, whole),
           check_local_type(Type, Env, Loc, Name) },
         local_slot(Type, Addr),
         bind(Name, var(Addr, Type)),
@@ -845,8 +844,8 @@ check_local_type(Type, Env, Loc, Name) :-
    Type0 with the size of an array of unknown size taken from its
    initializer Init, counting the entries each element takes with brace
    elision: {1, 2, 3, 4} is two elements of a struct {int a, b}. Whole
-   is whole(Ctx, State) when an entry may be a struct expression that
-   initializes a struct element whole (locals), none otherwise. */
+   is whole when an entry may be a struct expression that initializes a
+   struct element whole (locals), none otherwise. */
 complete_array(array(ElemType, none), none, array(ElemType, none),
                _, _, _) :- !.
 complete_array(array(ElemType, none), Init, array(ElemType, N), Loc, Env,
@@ -862,23 +861,21 @@ complete_array(array(ElemType, none), Init, array(ElemType, N), Loc, Env,
     ).
 complete_array(Type, _, Type, _, _, _).
 
-% single_value(+Type, +V, +Whole): entry value V initializes a slot of
-% type Type by itself, so no braces were elided. The final cut makes
-% this semidet: the alternatives can overlap.
-single_value(Type, V, Whole) :-
+% single_value(+Type, +V, +Env, +Whole): entry value V initializes a
+% slot of type Type by itself, so no braces were elided. The final cut
+% makes this semidet: the alternatives can overlap.
+single_value(Type, V, Env, Whole) :-
     (   V = list(_)
     ;   \+ aggregate(Type)
     ;   Type = array(CharType, _),
         str_elems(V, CharType, _)
-    ;   Whole = whole(Ctx, State),
+    ;   Whole == whole,
         su(Type),
-        phrase(struct_expr(V, Ctx, Type), [State], _)
+        catch(expression_type(V, Env, T0), nanofil_error(_), fail),
+        value_type(T0, T1), unqualified(T1, Type1),
+        Type1 == Type
     ),
     !.
-
-% whole_probe(+Ctx, -Whole)//: Whole lets complete_array test, in the
-% current state, whether an entry is a struct expression.
-whole_probe(Ctx, whole(Ctx, State)) --> state(State).
 
 % dispatch(+Cases, +Value, +Type, +LEnd)//: the switch dispatch, one
 % comparison per case, then a jump to the default or LEnd.
@@ -1015,8 +1012,8 @@ slots(Type, I, Off, Entries0, Entries, Max0, Max, C) -->
 % entries it needs from [V|Entries0], up to the next designator, which
 % belongs to the enclosing list.
 slot_init(Type, Off, V, Entries, Entries, C) -->
-    { C = c(_, Whole, _),
-      single_value(Type, V, Whole) },
+    { C = c(Env, Whole, _),
+      single_value(Type, V, Env, Whole) },
     !,
     object_init(Type, Off, V, C).
 slot_init(Type, Off, V, Entries0, Entries, C) -->
@@ -1090,9 +1087,8 @@ is_char_type(Type) :- memberchk(Type, [char, schar, uchar]).
 % Type at Addr from Init, storing its leaves.
 init(Addr, Type, Init, Ctx) -->
     env(Env),
-    whole_probe(Ctx, Whole),
     { ctx_loc(Ctx, Loc),
-      init_leaves(Type, Init, c(Env, Whole, Loc), Leaves) },
+      init_leaves(Type, Init, c(Env, whole, Loc), Leaves) },
     store_leaves(Leaves, Addr, Ctx).
 
 store_leaves([], _, _) --> [].
@@ -1155,10 +1151,8 @@ statement_expression_last(Item, Ctx, v(c(0), void)) --> item(Item, Ctx).
 % obj(+Expr, +Ctx, -R)//: R is Expr as an lvalue, function designator or
 % rvalue, without array decay or loading.
 obj(generic(Control, Associations), Ctx, R) --> !,
+    expr_type(Control, Ctx, T0),
     env(Env),
-    ( { expression_type(Control, Env, T0) } -> []
-    ; expr_type(Control, Ctx, T0)
-    ),
     { value_type(T0, Type), ctx_loc(Ctx, Loc),
       generic_selection(Type, Associations, Env, Loc, Selected) },
     obj(Selected, Ctx, R).
@@ -1218,10 +1212,9 @@ obj(wstr(WideType, Values), _, lv(Addr, array(WideType, N))) --> !,
 % A compound literal is an unnamed local, initialized where it appears.
 obj(complit(TypeName, Init), Ctx, lv(Addr, Type)) --> !,
     env(Env),
-    whole_probe(Ctx, Whole),
     { ctx_loc(Ctx, Loc),
       type_name(TypeName, Type0, Env, Loc),
-      complete_array(Type0, Init, Type, Loc, Env, Whole),
+      complete_array(Type0, Init, Type, Loc, Env, whole),
       check_local_type(Type, Env, Loc, 'compound literal') },
     local_slot(Type, Addr),
     init(Addr, Type, Init, Ctx).
@@ -1278,12 +1271,15 @@ decay(fd(glo(Sym), Type), _, v(Addr, ptr(Type))) --> !,
     ins(p, copy, [glo(Sym)], Addr).
 decay(fd(Callee, Type), _, v(Callee, ptr(Type))) --> [].
 
-% expr_type(+Expr, +Ctx, -Type)//: Type is the type of Expr, for sizeof,
-% from a throwaway lowering; the state is left as it was.
+% expr_type(+Expr, +Ctx, -Type)//: Type is the (reflected) type of
+% Expr, unevaluated, for sizeof and _Generic. If c_types cannot type
+% Expr, lowering it reports why.
 expr_type(Expr, Ctx, Type) -->
-    state(State),
-    { phrase(obj(Expr, Ctx, R), [State], _),
-      arg(2, R, Type) }.
+    env(Env),
+    (   { expression_type(Expr, Env, Type) } -> []
+    ;   obj(Expr, Ctx, _), { ctx_loc(Ctx, Loc),
+        sema_error(Loc, 'cannot type ~w', [Expr]) }
+    ).
 
 % load_typed(+Type, +Addr, +Ctx, -V)//: V is the scalar of Type loaded
 % from Addr.
@@ -1462,16 +1458,6 @@ rvalue(Expr, Ctx, _) -->
 % Keep the exact result in two l limbs, then compare it with the stored
 % value extended back to two limbs. 128 bits suffice for all supported
 % integer operands (at most 64 bits), including unsigned 64-bit products.
-overflow_builtin(Name, Op, Fixed) :-
-    member(Op, [add, sub, mul]),
-    (   atomic_list_concat(['__builtin_', Op, '_overflow'], Name),
-        Fixed = generic
-    ;   member(Prefix-Suffix-Fixed,
-               [s-''-int, u-''-uint, s-l-long, u-l-ulong,
-                s-ll-llong, u-ll-ullong]),
-        atomic_list_concat(['__builtin_', Prefix, Op, Suffix, '_overflow'], Name)
-    ).
-
 checked_arithmetic(Args, Op, Fixed, Ctx, v(Flag, bool)) -->
     { ctx_loc(Ctx, Loc),
       ( Args = [A, B, P] -> true
@@ -1885,9 +1871,8 @@ logical(Op, A, B, Ctx, v(V, int)) -->
 % gnu_conditional(+Cond, +B, +Ctx, -R)//: R is GNU Cond ?: B. Cond is
 % evaluated once, and is the result if nonzero.
 gnu_conditional(Cond, B, Ctx, R) -->
-    rval(Cond, Ctx, VC), probe_rval(B, Ctx, VB0),
-    { VC = v(_, TC), VB0 = v(_, TB), ctx_loc(Ctx, Loc),
-      cond_type(TC, VC, TB, VB0, Type, Loc) },
+    cond_type(Cond, B, Ctx, Type),
+    rval(Cond, Ctx, VC),
     truth(VC, Ctx, W),
     label(LA), label(LB), label(LJoin),
     term(jnz(W, LA, LB)),
@@ -1899,9 +1884,7 @@ gnu_conditional(Cond, B, Ctx, R) -->
 % conditional(+Cond, +A, +B, +Ctx, -R)//: R is Cond ? A : B. The arms are
 % probed first for their types, then lowered in their own blocks.
 conditional(Cond, A, B, Ctx, R) -->
-    probe_rval(A, Ctx, VA0), probe_rval(B, Ctx, VB0),
-    { VA0 = v(_, TA), VB0 = v(_, TB), ctx_loc(Ctx, Loc),
-      cond_type(TA, VA0, TB, VB0, Type, Loc) },
+    cond_type(A, B, Ctx, Type),
     label(LA), label(LB), label(LJoin),
     cond_jump(Cond, Ctx, LA, LB),
     start(LA), rval(A, Ctx, VA), arm_convert(VA, Type, Ctx, VA1), here(LA1),
@@ -1927,36 +1910,21 @@ arm_convert(v(Addr, Type), Type, _, Addr) --> { su(Type) }, !.
 arm_convert(Value0, Type, Ctx, V) -->
     convert_checked(Value0, Type, Ctx, v(V, _)).
 
-% probe_rval(+Expr, +Ctx, -R)//: R is Expr's decayed value term from a
-% throwaway lowering; the state is left as it was. Only R's type (and
-% whether it is a constant) may be used.
-probe_rval(Expr, Ctx, R) -->
-    state(State),
-    { phrase(rval(Expr, Ctx, R), [State], _) }.
+% cond_type(+A, +B, +Ctx, -Type)//: Type is the type of c ? A : B, as
+% c_types judges it, unqualified. If an arm cannot be typed, lowering
+% it reports why.
+cond_type(A, B, Ctx, Type) -->
+    env(Env),
+    { ctx_loc(Ctx, Loc) },
+    (   { conditional_type(A-B, Env, Type0) } -> { unqualified(Type0, Type) }
+    ;   { maplist(arm_value_type(Env), [A, B], [TA, TB]) }
+    ->  { sema_error(Loc, 'incompatible ?: operands ~w and ~w', [TA, TB]) }
+    ;   rval(A, Ctx, _), rval(B, Ctx, _),
+        { sema_error(Loc, 'cannot type ?: operands', []) }
+    ).
 
-% struct_expr(+Expr, +Ctx, +Type)//: Expr is an expression of struct or
-% union type Type, as a throwaway lowering shows; a lowering error means
-% it is not. The state is left as it was.
-struct_expr(Expr, Ctx, Type) -->
-    state(State),
-    { catch(phrase(rval(Expr, Ctx, v(_, Type1)), [State], _),
-            nanofil_error(_), fail),
-      Type1 == Type }.
-
-% cond_type(+TA, +VA, +TB, +VB, -Type, +Loc): Type is the type of
-% c ? a : b, given the arms' types and value terms (a null pointer
-% constant matters). Not steadfast: call with Type unbound.
-cond_type(TA, _, TB, _, Type, _) :-
-    arithmetic_type(TA), arithmetic_type(TB),
-    !,
-    usual_arith_conversion(TA, TB, Type).
-cond_type(void, _, void, _, void, _) :- !.
-cond_type(Type, _, Type, _, Type, _) :- su(Type), !.
-cond_type(ptr(P), _, ptr(_), _, ptr(P), _) :- !.
-cond_type(ptr(P), _, TB, v(c(0), _), ptr(P), _) :- int_type(TB), !.
-cond_type(TA, v(c(0), _), ptr(P), _, ptr(P), _) :- int_type(TA), !.
-cond_type(TA, _, TB, _, _, Loc) :-
-    sema_error(Loc, 'incompatible ?: operands ~w and ~w', [TA, TB]).
+arm_value_type(Env, E, T) :-
+    expression_type(E, Env, T0), value_type(T0, T1), unqualified(T1, T).
 
 %% Assignment
 
