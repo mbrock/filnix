@@ -1,6 +1,6 @@
 /*  Naive Fil-C lowering for x86-64 (milestone 3).
 
-    Emits GNU as text that links with clang-built Fil-C code at the filnix
+    Emits asm.pl lines whose GNU as text links with clang-built Fil-C code at the filnix
     pin (Fil-C 0.686). The rules are in docs/m3.md; in short:
 
     - Every temporary has an 8-byte frame slot, as in amd64.pl. A p
@@ -18,7 +18,7 @@
 
     Integer instructions are emitted by amd64:op//4 unchanged.
 */
-:- module(filc_amd64, [print_filc_asm/1, signature/3]).
+:- module(filc_amd64, [filc_module_asm/2, signature/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -27,14 +27,14 @@
 :- use_module(ir).
 :- use_module(amd64).
 
-print_filc_asm(module(Items)) :-
-    maplist(item_chars(module(Items)), Items, Css),
-    append(Css, Cs0),
-    append(Cs0, "\t.section .note.GNU-stack,\"\",@progbits\n", Cs),
-    format("~s", [Cs]).
+% filc_module_asm(+Module, -Lines): the module as asm.pl lines.
+filc_module_asm(module(Items), Lines) :-
+    maplist(item_lines(module(Items)), Items, Ls),
+    append(Ls, Lines0),
+    append(Lines0, [section(note_gnu_stack)], Lines).
 
-item_chars(M, I, Cs) :-
-    (   phrase(item(M, I), Cs) -> true
+item_lines(M, I, Ls) :-
+    (   phrase(item(M, I), Ls) -> true
     ;   arg(1, I, Name),
         format(atom(Msg), 'Fil-C backend cannot emit $~w', [Name]),
         throw(nanofil_error(Msg))
@@ -119,26 +119,28 @@ item(M, F) -->
       findall(L, member(blk(L, _, _, _), Blocks), Labels),
       Ctx = c(Name, Ret, Slots, Blocks, x(M, FB, Labels)),
       impl_symbol(Name, Sig, Impl),
-      check_kinds(Blocks, Kinds) },
-    "\t.text\n\t.p2align 4\n",
-    (   { Lk == export } -> fmt("\t.globl ~w~n", [Impl]) ; [] ),
-    fmt("\t.type ~w, @function~n~w:~n", [Impl, Impl]),
-    ins("pushq %rbp"), ins("movq %rsp, %rbp"),
-    ins("subq $~w, %rsp", [Size]),
-    ins("cmpq %rsp, (%rdi)"),
-    ins("jae filc_stack_overflow_failure@PLT"),
-    to_slot('%rdi', thread, Ctx),
+      check_kinds(Blocks, Kinds),
+      special(Ctx, exc, Exc), NFB is -FB },
+    [section(text), p2align(4)],
+    (   { Lk == export } -> [globl(Impl)] ; [] ),
+    [type(Impl, function), label(Impl),
+     ins(push, q, [reg(rbp)]), ins(mov, q, [reg(rsp), reg(rbp)]),
+     ins(sub, q, [imm(Size), reg(rsp)]),
+     ins(cmp, q, [reg(rsp), mem(0, rdi)]),
+     ins(jae, none, [plt(filc_stack_overflow_failure)])],
+    to_slot(rdi, thread, Ctx),
     zero_lowers(NL, FB),
-    ins("movq 16(%rdi), %rax"), ins("movq %rax, -~w(%rbp)", [FB]),
+    [ins(mov, q, [mem(16, rdi), reg(rax)]), ins(mov, q, [reg(rax), mem(NFB, rbp)])],
     set_origin(Ctx, c),
-    ins("leaq -~w(%rbp), %rax", [FB]), ins("movq %rax, 16(%rdi)"),
+    [ins(lea, q, [mem(NFB, rbp), reg(rax)]), ins(mov, q, [reg(rax), mem(16, rdi)])],
     { param_words(Params, Words) },
     receive_words(Words, 0, Ctx),
     blocks(Blocks, Ctx),
-    special(Ctx, exc), ":\n",
-    pop_frame(Ctx), ins("movb $1, %al"), ins("leave"), ins("ret"),
+    [label(Exc)],
+    pop_frame(Ctx),
+    [ins(mov, b, [imm(1), reg(al)]), ins(leave, none, []), ins(ret, none, [])],
     fail_blocks(Kinds, Ctx),
-    fmt("\t.size ~w, .-~w~n", [Impl, Impl]),
+    [size(Impl)],
     (   { Lk == export } -> exported(Name, Ret, Params, Sig, Impl) ; [] ),
     origins(Name, NL, Kinds).
 item(_, data(Name, _, _, _)) -->
@@ -149,36 +151,38 @@ impl_symbol(Name, Sig, Impl) :- format(atom(Impl), 'pizlonatedFIP~w_~w', [Sig, N
 
 zero_lowers(0, _) --> !.
 zero_lowers(N, FB) -->
-    ins("xorl %eax, %eax"),
+    [ins(xor, l, [reg(eax), reg(eax)])],
     { N1 is N - 1, numlist(0, N1, Is) },
     zero_each(Is, FB).
 
 zero_each([], _) --> [].
 zero_each([I|Is], FB) -->
-    { Off is FB - 16 - 8 * I },
-    ins("movq %rax, -~w(%rbp)", [Off]),
+    { Off is 16 + 8 * I - FB },
+    [ins(mov, q, [reg(rax), mem(Off, rbp)])],
     zero_each(Is, FB).
 
 % The frame's origin: c (calls, can_catch) or n (pollchecks and checks).
 set_origin(Ctx, Which) -->
-    { Ctx = c(Name, _, _, _, x(_, FB, _)), O is FB - 8 },
-    ins("leaq .L~w..origin_~w(%rip), %rax", [Name, Which]),
-    ins("movq %rax, -~w(%rbp)", [O]).
+    { Ctx = c(Name, _, _, _, x(_, FB, _)), O is 8 - FB, origin(Name, Which, Org) },
+    [ins(lea, q, [rip(Org), reg(rax)]), ins(mov, q, [reg(rax), mem(O, rbp)])].
+
+origin(Name, Which, A) :- format(atom(A), '.L~w..origin_~w', [Name, Which]).
 
 pop_frame(Ctx) -->
-    { Ctx = c(_, _, _, _, x(_, FB, _)) },
-    from_slot(thread, '%rsi', Ctx),
-    ins("movq -~w(%rbp), %rdi", [FB]),
-    ins("movq %rdi, 16(%rsi)").
+    { Ctx = c(_, _, _, _, x(_, FB, _)), NFB is -FB },
+    from_slot(thread, rsi, Ctx),
+    [ins(mov, q, [mem(NFB, rbp), reg(rdi)]), ins(mov, q, [reg(rdi), mem(16, rsi)])].
 
-special(c(Name, _, _, _, _), Tag) --> fmt(".L~w..~w", [Name, Tag]).
+special(c(Name, _, _, _, _), Tag, A) :- format(atom(A), '.L~w..~w', [Name, Tag]).
 
-label(c(Name, _, _, _, _), L) --> fmt(".L~w.~w", [Name, L]).
+label(c(Name, _, _, _, _), L, A) :- format(atom(A), '.L~w.~w', [Name, L]).
 
-local(c(Name, _, _, _, _), B, I, Tag) --> fmt(".L~w.~w..~w.~w", [Name, B, I, Tag]).
+local(c(Name, _, _, _, _), B, I, Tag, A) :- format(atom(A), '.L~w.~w..~w.~w', [Name, B, I, Tag]).
 
-to_slot(Reg, Key, Ctx) --> { slot(Ctx, Key, Off) }, ins("movq ~w, -~w(%rbp)", [Reg, Off]).
-from_slot(Key, Reg, Ctx) --> { slot(Ctx, Key, Off) }, ins("movq -~w(%rbp), ~w", [Off, Reg]).
+to_slot(Reg, Key, Ctx) -->
+    { slot(Ctx, Key, Off), D is -Off }, [ins(mov, q, [reg(Reg), mem(D, rbp)])].
+from_slot(Key, Reg, Ctx) -->
+    { slot(Ctx, Key, Off), D is -Off }, [ins(mov, q, [mem(D, rbp), reg(Reg)])].
 
 f4(c(N, R, S, B, _), f(N, R, S, B)).
 
@@ -189,14 +193,14 @@ param_words(Params, Words) :-
 param_words_(par(p, t(N)), [t(N), lower(t(N))|Ws], Ws) :- !.
 param_words_(par(_, t(N)), [t(N)|Ws], Ws).
 
-word_reg(0, '%rdx'). word_reg(1, '%rcx'). word_reg(2, '%r8'). word_reg(3, '%r9').
+word_reg(0, rdx). word_reg(1, rcx). word_reg(2, r8). word_reg(3, r9).
 
 receive_words([], _, _) --> [].
 receive_words([W|Ws], I, Ctx) -->
     (   { word_reg(I, R) } -> to_slot(R, W, Ctx)
     ;   { Off is 16 + 8 * (I - 4) },
-        ins("movq ~w(%rbp), %rax", [Off]),
-        to_slot('%rax', W, Ctx)
+        [ins(mov, q, [mem(Off, rbp), reg(rax)])],
+        to_slot(rax, W, Ctx)
     ),
     { I1 is I + 1 },
     receive_words(Ws, I1, Ctx).
@@ -205,77 +209,81 @@ receive_words([W|Ws], I, Ctx) -->
 
 blocks([], _) --> [].
 blocks([blk(L, _, Insts, J)|Bs], Ctx) -->
-    label(Ctx, L), ":\n",
+    { label(Ctx, L, A) },
+    [label(A)],
     insts(Insts, 0, L, Ctx),
     jump(J, L, Ctx),
     blocks(Bs, Ctx).
 
 jump(jmp(T), From, Ctx) --> edge(From, T, j, Ctx).
 jump(jnz(V, T, F), From, Ctx) -->
-    { f4(Ctx, F4) },
+    { f4(Ctx, F4), local(Ctx, From, jnz, false, FL) },
     load(V, w, a, F4),
-    ins("testl %eax, %eax"),
-    "\tjz ", local(Ctx, From, jnz, false), "\n",
+    [ins(test, l, [reg(eax), reg(eax)]), ins(jz, none, [sym(FL)])],
     edge(From, T, t, Ctx),
-    local(Ctx, From, jnz, false), ":\n",
+    [label(FL)],
     edge(From, F, f, Ctx).
 jump(ret(V), _, Ctx) -->
     { Ctx = c(_, K, _, _, _), f4(Ctx, F4) },
-    (   { K == p } -> load(V, l, d, F4), lower_of(V, '%rcx', Ctx)
+    (   { K == p } -> load(V, l, d, F4), lower_of(V, rcx, Ctx)
     ;   load(V, K, d, F4)
     ),
-    pop_frame(Ctx), ins("xorl %eax, %eax"), ins("leave"), ins("ret").
-jump(ret, _, Ctx) -->
-    pop_frame(Ctx), ins("xorl %eax, %eax"), ins("leave"), ins("ret").
-jump(hlt, _, _) --> ins("ud2").
+    return(Ctx).
+jump(ret, _, Ctx) --> return(Ctx).
+jump(hlt, _, _) --> [ins(ud2, none, [])].
+
+return(Ctx) -->
+    pop_frame(Ctx),
+    [ins(xor, l, [reg(eax), reg(eax)]), ins(leave, none, []), ins(ret, none, [])].
 
 % Phi copies for the edge, a pollcheck if it goes backwards in block
 % order, then the jump.
 edge(From, To, Tag, Ctx) -->
     { Ctx = c(_, _, _, Blocks, x(_, _, Labels)),
-      memberchk(blk(To, Phis, _, _), Blocks) },
+      memberchk(blk(To, Phis, _, _), Blocks),
+      label(Ctx, To, TL) },
     phi_reads(Phis, From, Ctx),
     phi_writes(Phis, Ctx),
     (   { nth0(IF, Labels, From), nth0(IT, Labels, To), IT =< IF }
     ->  pollcheck(Ctx, From, Tag)
     ;   []
     ),
-    "\tjmp ", label(Ctx, To), "\n".
+    [ins(jmp, none, [sym(TL)])].
 
 pollcheck(Ctx, B, Tag) -->
-    { Ctx = c(Name, _, _, _, _) },
-    from_slot(thread, '%rdi', Ctx),
-    ins("testb $14, 8(%rdi)"),
-    "\tjz ", local(Ctx, B, Tag, poll), "\n",
-    ins("leaq .L~w..origin_n(%rip), %rsi", [Name]),
-    ins("call filc_pollcheck_slow@PLT"),
-    local(Ctx, B, Tag, poll), ":\n".
+    { Ctx = c(Name, _, _, _, _), local(Ctx, B, Tag, poll, PL), origin(Name, n, Org) },
+    from_slot(thread, rdi, Ctx),
+    [ins(test, b, [imm(14), mem(8, rdi)]),
+     ins(jz, none, [sym(PL)]),
+     ins(lea, q, [rip(Org), reg(rsi)]),
+     ins(call, none, [plt(filc_pollcheck_slow)]),
+     label(PL)].
 
 phi_reads([], _, _) --> [].
 phi_reads([phi(t(D), K, Pairs)|Ps], From, Ctx) -->
     { memberchk(From-V, Pairs), f4(Ctx, F4) },
     (   { K == p }
-    ->  load(V, l, a, F4), to_slot('%rax', shadow(D), Ctx),
-        lower_of(V, '%rax', Ctx), to_slot('%rax', lower(shadow(D)), Ctx)
-    ;   load(V, K, a, F4), to_slot('%rax', shadow(D), Ctx)
+    ->  load(V, l, a, F4), to_slot(rax, shadow(D), Ctx),
+        lower_of(V, rax, Ctx), to_slot(rax, lower(shadow(D)), Ctx)
+    ;   load(V, K, a, F4), to_slot(rax, shadow(D), Ctx)
     ),
     phi_reads(Ps, From, Ctx).
 
 phi_writes([], _) --> [].
 phi_writes([phi(t(D), K, _)|Ps], Ctx) -->
-    from_slot(shadow(D), '%rax', Ctx), to_slot('%rax', t(D), Ctx),
+    from_slot(shadow(D), rax, Ctx), to_slot(rax, t(D), Ctx),
     (   { K == p }
-    ->  from_slot(lower(shadow(D)), '%rax', Ctx), to_slot('%rax', lower(t(D)), Ctx)
+    ->  from_slot(lower(shadow(D)), rax, Ctx), to_slot(rax, lower(t(D)), Ctx)
     ;   []
     ),
     phi_writes(Ps, Ctx).
 
 % The lower of a p value: its lowers[] entry, or 0 for a constant.
 lower_of(t(N), Reg, Ctx) --> from_slot(lower(t(N)), Reg, Ctx).
-lower_of(c(_), Reg, _) --> ins("movq $0, ~w", [Reg]).
+lower_of(c(_), Reg, _) --> [ins(mov, q, [imm(0), reg(Reg)])].
 
 % A p value's address into %rax and lower into %rcx.
-flight(V, Ctx) --> { f4(Ctx, F4) }, load(V, l, a, F4), lower_of(V, '%rcx', Ctx).
+flight(V, Ctx) --> { f4(Ctx, F4) }, load(V, l, a, F4), lower_of(V, rcx, Ctx).
 
 %% Instructions
 
@@ -287,86 +295,85 @@ inst(ins(t(D), p, copy, [V]), _, _, Ctx) --> !,
 inst(ins(t(D), p, Op, [P, X]), _, _, Ctx) --> { memberchk(Op, [add, sub]) }, !,
     { f4(Ctx, F4) },
     flight(P, Ctx), load(X, l, d, F4),
-    ins("~wq %rdx, %rax", [Op]),
+    [ins(Op, q, [reg(rdx), reg(rax)])],
     set_p(D, Ctx).
 inst(ins(t(D), l, ptoi, [P]), _, _, Ctx) --> !,
-    { f4(Ctx, F4) }, load(P, l, a, F4), to_slot('%rax', t(D), Ctx).
+    { f4(Ctx, F4) }, load(P, l, a, F4), to_slot(rax, t(D), Ctx).
 inst(ins(t(D), p, itop, [X]), _, _, Ctx) --> !,
-    { f4(Ctx, F4) }, load(X, l, a, F4), ins("xorl %ecx, %ecx"), set_p(D, Ctx).
+    { f4(Ctx, F4) }, load(X, l, a, F4),
+    [ins(xor, l, [reg(ecx), reg(ecx)])],
+    set_p(D, Ctx).
 inst(ins(t(D), p, alloc(Align), [N]), _, _, Ctx) --> !,
     { f4(Ctx, F4) },
     load(N, l, si, F4),
-    from_slot(thread, '%rdi', Ctx),
+    from_slot(thread, rdi, Ctx),
     (   { Align == 16 }
-    ->  ins("movl $16, %edx"), ins("call filc_allocate_with_alignment@PLT")
-    ;   ins("call filc_allocate@PLT")
+    ->  [ins(mov, l, [imm(16), reg(edx)]),
+         ins(call, none, [plt(filc_allocate_with_alignment)])]
+    ;   [ins(call, none, [plt(filc_allocate)])]
     ),
-    ins("leaq 16(%rax), %rax"), ins("movq %rax, %rcx"),
+    [ins(lea, q, [mem(16, rax), reg(rax)]), ins(mov, q, [reg(rax), reg(rcx)])],
     set_p(D, Ctx).
 inst(ins(t(D), p, load(p), [A]), N, B, Ctx) --> !,
+    { local(Ctx, B, N, nolower, NoLower), local(Ctx, B, N, have, Have) },
     flight(A, Ctx),
     check(k(8, 0, 8), Ctx),
-    ins("movq -8(%rcx), %rdx"),
-    ins("movabsq $281474976710655, %rsi"),
-    ins("andq %rsi, %rdx"),
-    "\tjz ", local(Ctx, B, N, nolower), "\n",
-    ins("movq %rax, %rsi"), ins("subq %rcx, %rsi"),
-    ins("movq (%rdx,%rsi), %rsi"),
-    ins("testb $1, %sil"),
-    "\tjz ", local(Ctx, B, N, have), "\n",
-    ins("andq $-2, %rsi"), ins("movq 8(%rsi), %rsi"),
-    "\tjmp ", local(Ctx, B, N, have), "\n",
-    local(Ctx, B, N, nolower), ":\n",
-    ins("xorl %esi, %esi"),
-    local(Ctx, B, N, have), ":\n",
-    ins("movq (%rax), %rax"), ins("movq %rsi, %rcx"),
+    aux_of_lower,
+    [ins(jz, none, [sym(NoLower)]),
+     ins(mov, q, [reg(rax), reg(rsi)]), ins(sub, q, [reg(rcx), reg(rsi)]),
+     ins(mov, q, [mem(0, rdx, rsi), reg(rsi)]),
+     ins(test, b, [imm(1), reg(sil)]),
+     ins(jz, none, [sym(Have)]),
+     ins(and, q, [imm(-2), reg(rsi)]), ins(mov, q, [mem(8, rsi), reg(rsi)]),
+     ins(jmp, none, [sym(Have)]),
+     label(NoLower),
+     ins(xor, l, [reg(esi), reg(esi)]),
+     label(Have),
+     ins(mov, q, [mem(0, rax), reg(rax)]), ins(mov, q, [reg(rsi), reg(rcx)])],
     set_p(D, Ctx).
 inst(ins(t(D), K, load(T), [A]), _, _, Ctx) --> !,
     { width_of_load(T, S), load_insn(T, K, I) },
     flight(A, Ctx),
     check(k(S, 0, 1), Ctx),
-    ins(I),
-    to_slot('%rax', t(D), Ctx).
+    [I],
+    to_slot(rax, t(D), Ctx).
 inst(ins(t(D), K, Op, Args), _, _, Ctx) -->
     { f4(Ctx, F4) },
     op(Op, K, Args, F4),
-    to_slot('%rax', t(D), Ctx).
+    to_slot(rax, t(D), Ctx).
 inst(store(p, V, A), N, B, Ctx) --> !,
-    { f4(Ctx, F4) },
+    { f4(Ctx, F4), local(Ctx, B, N, haveaux, HaveAux), local(Ctx, B, N, nobarrier, NoBarrier) },
     flight(A, Ctx),
     check(k(8, 1, 8), Ctx),
-    ins("movq -8(%rcx), %rdx"),
-    ins("movabsq $281474976710655, %rsi"),
-    ins("andq %rsi, %rdx"),
-    "\tjnz ", local(Ctx, B, N, haveaux), "\n",
-    from_slot(thread, '%rdi', Ctx),
-    ins("leaq -16(%rcx), %rsi"),
-    ins("call filc_object_ensure_aux_ptr_outline@PLT"),
-    ins("movq %rax, %rdx"),
-    local(Ctx, B, N, haveaux), ":\n",
-    to_slot('%rdx', aux, Ctx),
-    lower_of(V, '%rsi', Ctx),
-    ins("testq %rsi, %rsi"),
-    "\tjz ", local(Ctx, B, N, nobarrier), "\n",
-    ins("movq filc_current_marking_state@GOTPCREL(%rip), %rax"),
-    ins("cmpl $0, (%rax)"),
-    "\tje ", local(Ctx, B, N, nobarrier), "\n",
-    from_slot(thread, '%rdi', Ctx),
-    ins("call filc_store_barrier_for_lower_slow@PLT"),
-    local(Ctx, B, N, nobarrier), ":\n",
+    aux_of_lower,
+    [ins(jnz, none, [sym(HaveAux)])],
+    from_slot(thread, rdi, Ctx),
+    [ins(lea, q, [mem(-16, rcx), reg(rsi)]),
+     ins(call, none, [plt(filc_object_ensure_aux_ptr_outline)]),
+     ins(mov, q, [reg(rax), reg(rdx)]),
+     label(HaveAux)],
+    to_slot(rdx, aux, Ctx),
+    lower_of(V, rsi, Ctx),
+    [ins(test, q, [reg(rsi), reg(rsi)]),
+     ins(jz, none, [sym(NoBarrier)]),
+     ins(mov, q, [gotpcrel(filc_current_marking_state), reg(rax)]),
+     ins(cmp, l, [imm(0), mem(0, rax)]),
+     ins(je, none, [sym(NoBarrier)])],
+    from_slot(thread, rdi, Ctx),
+    [ins(call, none, [plt(filc_store_barrier_for_lower_slow)]),
+     label(NoBarrier)],
     flight(A, Ctx),
-    from_slot(aux, '%rdx', Ctx),
-    ins("movq %rax, %r8"), ins("subq %rcx, %r8"),
-    lower_of(V, '%rsi', Ctx),
+    from_slot(aux, rdx, Ctx),
+    [ins(mov, q, [reg(rax), reg(r8)]), ins(sub, q, [reg(rcx), reg(r8)])],
+    lower_of(V, rsi, Ctx),
     load(V, l, r9, F4),
-    ins("movq %rsi, (%rdx,%r8)"),
-    ins("movq %r9, (%rax)").
+    [ins(mov, q, [reg(rsi), mem(0, rdx, r8)]), ins(mov, q, [reg(r9), mem(0, rax)])].
 inst(store(W, V, A), _, _, Ctx) -->
-    { f4(Ctx, F4), width_bytes(W, S), ( W == l -> VK = l ; VK = w ), store_d(W, I) },
+    { f4(Ctx, F4), width_bytes(W, S), ( W == l -> VK = l ; VK = w ), store_insn(W, d, I) },
     flight(A, Ctx),
     check(k(S, 1, 1), Ctx),
     load(V, VK, d, F4),
-    ins(I).
+    [I].
 inst(call(Res, glo(F), Args), _, _, Ctx) -->
     { f4(Ctx, F4),
       call_target(Ctx, F, Res, Args, Target),
@@ -378,27 +385,28 @@ inst(call(Res, glo(F), Args), _, _, Ctx) -->
       length(StackWs, NS),
       Pad is NS mod 2,
       Pop is 8 * (NS + Pad),
-      reverse(StackWs, RevStack) },
+      reverse(StackWs, RevStack),
+      special(Ctx, exc, Exc) },
     set_origin(Ctx, c),
-    (   { Pad =:= 1 } -> ins("subq $8, %rsp") ; [] ),
+    (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
     push_words(RevStack, F4, Ctx),
     reg_words(RegWs, 0, F4, Ctx),
-    from_slot(thread, '%rdi', Ctx),
-    ins("xorl %esi, %esi"),
-    ins("call ~w", [Target]),
-    (   { Pop > 0 } -> ins("addq $~w, %rsp", [Pop]) ; [] ),
-    ins("testb $1, %al"),
-    "\tjnz ", special(Ctx, exc), "\n",
+    from_slot(thread, rdi, Ctx),
+    [ins(xor, l, [reg(esi), reg(esi)]), ins(call, none, [Target])],
+    (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
+    [ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Exc)])],
     call_result(Res, Ctx).
 
-set_p(D, Ctx) --> to_slot('%rax', t(D), Ctx), to_slot('%rcx', lower(t(D)), Ctx).
+% The aux pointer of the object at lower %rcx into %rdx, setting ZF if
+% it has none.
+aux_of_lower -->
+    [ins(mov, q, [mem(-8, rcx), reg(rdx)]),
+     ins(movabs, q, [imm(281474976710655), reg(rsi)]),
+     ins(and, q, [reg(rsi), reg(rdx)])].
+
+set_p(D, Ctx) --> to_slot(rax, t(D), Ctx), to_slot(rcx, lower(t(D)), Ctx).
 
 width_of_load(T, S) :- memberchk(T-S, [l-8, sw-4, uw-4, sh-2, uh-2, sb-1, ub-1]).
-
-store_d(b, "movb %dl, (%rax)").
-store_d(h, "movw %dx, (%rax)").
-store_d(w, "movl %edx, (%rax)").
-store_d(l, "movq %rdx, (%rax)").
 
 % Functions in the module are called at their implementation; others at
 % their pizlonatedFI symbol, which a clang definition with the same
@@ -406,11 +414,12 @@ store_d(l, "movq %rdx, (%rax)").
 call_target(Ctx, F, Res, Args, Target) :-
     Ctx = c(_, _, _, _, x(M, _, _)),
     (   func_named(M, F, Fn)
-    ->  fn_sig(Fn, Sig), impl_symbol(F, Sig, Target)
+    ->  fn_sig(Fn, Sig), impl_symbol(F, Sig, Impl), Target = sym(Impl)
     ;   ( Res = to(_, RK) -> true ; RK = void ),
         findall(K, member(arg(K, _), Args), Ks),
         signature(RK, Ks, Sig),
-        format(atom(Target), 'pizlonatedFI~w_~w@PLT', [Sig, F])
+        format(atom(FI), 'pizlonatedFI~w_~w', [Sig, F]),
+        Target = plt(FI)
     ).
 
 arg_words(arg(p, V), [addr(V), lower(V)|Ws], Ws) :- !.
@@ -421,7 +430,8 @@ word_into(val(K, V), R, F4, _) --> load(V, K, R, F4).
 word_into(lower(V), R, _, Ctx) --> { reg(R, l, RN) }, lower_of(V, RN, Ctx).
 
 push_words([], _, _) --> [].
-push_words([W|Ws], F4, Ctx) --> word_into(W, a, F4, Ctx), ins("pushq %rax"), push_words(Ws, F4, Ctx).
+push_words([W|Ws], F4, Ctx) -->
+    word_into(W, a, F4, Ctx), [ins(push, q, [reg(rax)])], push_words(Ws, F4, Ctx).
 
 reg_words([], _, _, _) --> [].
 reg_words([W|Ws], I, F4, Ctx) -->
@@ -430,23 +440,32 @@ reg_words([W|Ws], I, F4, Ctx) -->
     reg_words(Ws, I1, F4, Ctx).
 
 call_result(void, _) --> [].
-call_result(to(t(D), p), Ctx) --> !, ins("movq %rdx, %rax"), set_p(D, Ctx).
-call_result(to(t(D), _), Ctx) --> to_slot('%rdx', t(D), Ctx).
+call_result(to(t(D), p), Ctx) --> !, [ins(mov, q, [reg(rdx), reg(rax)])], set_p(D, Ctx).
+call_result(to(t(D), _), Ctx) --> to_slot(rdx, t(D), Ctx).
 
 %% Checks: k(Size, Write, Align), with the pointer in %rax and its lower
 %% in %rcx, which the failure block passes on.
 
 check(k(S, W, A), Ctx) -->
     { fail_label(Ctx, k(S, W, A), FL) },
-    ins("testq %rcx, %rcx"), ins("jz ~w", [FL]),
-    ins("cmpq %rcx, %rax"), ins("jb ~w", [FL]),
-    ins("movq -16(%rcx), %rdx"), ins("subq $~w, %rdx", [S]),
-    ins("cmpq %rdx, %rax"), ins("ja ~w", [FL]),
-    (   { W =:= 1 } -> ins("testb $6, -2(%rcx)"), ins("jnz ~w", [FL]) ; [] ),
-    (   { A =:= 8 } -> ins("testb $7, %al"), ins("jnz ~w", [FL]) ; [] ).
+    [ins(test, q, [reg(rcx), reg(rcx)]), ins(jz, none, [sym(FL)]),
+     ins(cmp, q, [reg(rcx), reg(rax)]), ins(jb, none, [sym(FL)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]), ins(sub, q, [imm(S), reg(rdx)]),
+     ins(cmp, q, [reg(rdx), reg(rax)]), ins(ja, none, [sym(FL)])],
+    (   { W =:= 1 }
+    ->  [ins(test, b, [imm(6), mem(-2, rcx)]), ins(jnz, none, [sym(FL)])]
+    ;   []
+    ),
+    (   { A =:= 8 }
+    ->  [ins(test, b, [imm(7), reg(al)]), ins(jnz, none, [sym(FL)])]
+    ;   []
+    ).
 
 fail_label(c(Name, _, _, _, _), k(S, W, A), L) :-
     format(atom(L), '.L~w..fail.~w.~w.~w', [Name, S, W, A]).
+
+check_origin(Name, k(S, W, A), L) :-
+    format(atom(L), '.L~w..chk.~w.~w.~w', [Name, S, W, A]).
 
 check_kinds(Blocks, Kinds) :-
     findall(K, ( member(blk(_, _, Is, _), Blocks), member(I, Is), inst_check(I, K) ), K0),
@@ -459,12 +478,12 @@ inst_check(store(W, _, _), k(S, 1, 1)) :- width_bytes(W, S).
 
 fail_blocks([], _) --> [].
 fail_blocks([K|Ks], Ctx) -->
-    { fail_label(Ctx, K, L), Ctx = c(Name, _, _, _, _), K = k(S, W, A) },
-    fmt("~w:~n", [L]),
-    ins("movq %rax, %rdi"), ins("movq %rcx, %rsi"),
-    ins("leaq .L~w..chk.~w.~w.~w(%rip), %rdx", [Name, S, W, A]),
-    ins("call filc_optimized_access_check_fail@PLT"),
-    ins("ud2"),
+    { fail_label(Ctx, K, L), Ctx = c(Name, _, _, _, _), check_origin(Name, K, O) },
+    [label(L),
+     ins(mov, q, [reg(rax), reg(rdi)]), ins(mov, q, [reg(rcx), reg(rsi)]),
+     ins(lea, q, [rip(O), reg(rdx)]),
+     ins(call, none, [plt(filc_optimized_access_check_fail)]),
+     ins(ud2, none, [])],
     fail_blocks(Ks, Ctx).
 
 %% Exported functions: alias, getter, generic entry, function object.
@@ -474,17 +493,18 @@ exported(Name, Ret, Params, Sig, Impl) -->
       format(atom(FO), 'pizlonatedFO_~w', [Name]),
       format(atom(G), 'pizlonated_~w', [Name]),
       format(atom(Gen), '.L~w..generic', [Name]) },
-    fmt("\t.globl ~w~n\t.type ~w, @function~n\t.set ~w, ~w~n", [FI, FI, FI, Impl]),
-    fmt("\t.globl ~w~n\t.type ~w, @function~n~w:~n", [G, G, G]),
-    ins("leaq ~w+16(%rip), %rax", [FO]), ins("movq %rax, %rdx"), ins("ret"),
+    [globl(FI), type(FI, function), set(FI, Impl),
+     globl(G), type(G, function), label(G),
+     ins(lea, q, [rip(FO+16), reg(rax)]), ins(mov, q, [reg(rax), reg(rdx)]),
+     ins(ret, none, [])],
     generic(Gen, Ret, Params),
-    fmt("\t.section .data.rel.ro,\"aw\",@progbits~n\t.p2align 4~n\t.type ~w, @object~n~w:~n", [FO, FO]),
-    ins(".quad ~w+16", [FO]),
-    ins(".quad (~w+16)+36873221949095936", [FO]),
-    ins(".quad ~w", [Impl]),
-    ins(".quad ~w", [Gen]),
-    ins(".quad ~w", [Sig]),
-    fmt("\t.size ~w, 40~n", [FO]).
+    [section(data_rel_ro), p2align(4), type(FO, object), label(FO),
+     quad(FO+16),
+     quad(FO+16+36873221949095936),
+     quad(Impl),
+     quad(Gen),
+     quad(Sig),
+     size(FO, 40)].
 
 /* The generic entry: {i1, i64 ret_size} (thread, callee_lower, args_size).
    Argument i is 8 bytes at thread+128+8i, with its lower (for p) at
@@ -498,34 +518,33 @@ generic(Gen, Ret, Params) -->
       ;   RegWs = Words, StackWs = []
       ),
       length(StackWs, NS), Pad is NS mod 2, Pop is 8 * (NS + Pad),
-      reverse(StackWs, Rev) },
-    "\t.text\n",
-    fmt("~w:~n", [Gen]),
-    ins("pushq %rbx"),
+      reverse(StackWs, Rev),
+      atom_concat(Gen, '.short', Short),
+      atom_concat(Gen, '.done', Done) },
+    [section(text), label(Gen), ins(push, q, [reg(rbx)])],
     (   { NA > 0 }
-    ->  ins("cmpq $~w, %rdx", [Need]),
-        fmt("\tjb ~w.short~n", [Gen])
+    ->  [ins(cmp, q, [imm(Need), reg(rdx)]), ins(jb, none, [sym(Short)])]
     ;   []
     ),
-    ins("movq %rdi, %rbx"),
-    (   { Pad =:= 1 } -> ins("subq $8, %rsp") ; [] ),
+    [ins(mov, q, [reg(rdi), reg(rbx)])],
+    (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
     gen_push(Rev),
-    gen_regs(RegWs, ['%rdx', '%rcx', '%r8', '%r9']),
-    ins("callq *(%rsi)"),
-    (   { Pop > 0 } -> ins("addq $~w, %rsp", [Pop]) ; [] ),
-    ins("testb $1, %al"),
-    fmt("\tjnz ~w.done~n", [Gen]),
-    (   { Ret == p } -> ins("movq %rdx, 128(%rbx)"), ins("movq %rcx, 384(%rbx)")
-    ;   { Ret == void } -> ins("movq $0, 128(%rbx)"), ins("movq $0, 384(%rbx)")
-    ;   ins("movq %rdx, 128(%rbx)"), ins("movq $0, 384(%rbx)")
+    gen_regs(RegWs, [rdx, rcx, r8, r9]),
+    [ins(call, q, [ind(mem(0, rsi))])],
+    (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
+    [ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Done)])],
+    (   { Ret == p } -> [ins(mov, q, [reg(rdx), mem(128, rbx)]), ins(mov, q, [reg(rcx), mem(384, rbx)])]
+    ;   { Ret == void } -> [ins(mov, q, [imm(0), mem(128, rbx)]), ins(mov, q, [imm(0), mem(384, rbx)])]
+    ;   [ins(mov, q, [reg(rdx), mem(128, rbx)]), ins(mov, q, [imm(0), mem(384, rbx)])]
     ),
-    ins("movl $8, %edx"),
-    fmt("~w.done:~n", [Gen]),
-    ins("popq %rbx"), ins("ret"),
+    [ins(mov, l, [imm(8), reg(edx)]),
+     label(Done),
+     ins(pop, q, [reg(rbx)]), ins(ret, none, [])],
     (   { NA > 0 }
-    ->  fmt("~w.short:~n", [Gen]),
-        ins("movq %rdx, %rdi"), ins("movl $~w, %esi", [Need]), ins("xorl %edx, %edx"),
-        ins("call filc_cc_args_check_failure@PLT"), ins("ud2")
+    ->  [label(Short),
+         ins(mov, q, [reg(rdx), reg(rdi)]), ins(mov, l, [imm(Need), reg(esi)]),
+         ins(xor, l, [reg(edx), reg(edx)]),
+         ins(call, none, [plt(filc_cc_args_check_failure)]), ins(ud2, none, [])]
     ;   []
     ).
 
@@ -533,43 +552,37 @@ generic_word(p, I, [D, A]) :- !, D is 128 + 8 * I, A is 384 + 8 * I.
 generic_word(_, I, [D]) :- D is 128 + 8 * I.
 
 gen_push([]) --> [].
-gen_push([Off|Os]) --> ins("pushq ~w(%rbx)", [Off]), gen_push(Os).
+gen_push([Off|Os]) --> [ins(push, q, [mem(Off, rbx)])], gen_push(Os).
 
 gen_regs([], _) --> [].
-gen_regs([Off|Os], [R|Rs]) --> ins("movq ~w(%rbx), ~w", [Off, R]), gen_regs(Os, Rs).
+gen_regs([Off|Os], [R|Rs]) --> [ins(mov, q, [mem(Off, rbx), reg(R)])], gen_regs(Os, Rs).
 
 %% Static data: function origins (the pin's 40-byte layout), origins,
 %% and one access-check origin per check kind.
 
 origins(Name, NL, Kinds) -->
-    fmt("\t.section .rodata~n.L~w..name:~n\t.asciz \"~w\"~n", [Name, Name]),
-    "\t.section .data.rel.ro,\"aw\",@progbits\n\t.p2align 4\n",
-    function_origin(Name, NL, c, 1),
-    function_origin(Name, NL, n, 0),
+    { format(atom(N), '.L~w..name', [Name]) },
+    [section(rodata), label(N), asciz(Name),
+     section(data_rel_ro), p2align(4)],
+    function_origin(Name, N, NL, c, 1),
+    function_origin(Name, N, NL, n, 0),
     check_origins(Kinds, Name).
 
-function_origin(Name, NL, Which, CanCatch) -->
-    fmt(".L~w..forigin_~w:~n", [Name, Which]),
-    ins(".quad .L~w..name", [Name]),
-    ins(".quad 0"),
-    ins(".long ~w", [NL]), ins(".zero 4"),
-    ins(".quad 0"),
-    ins(".byte 0, ~w, 0", [CanCatch]), ins(".zero 1"),
-    ins(".long 0"),
-    fmt(".L~w..origin_~w:~n", [Name, Which]),
-    ins(".quad .L~w..forigin_~w", [Name, Which]),
-    ins(".long 0"), ins(".long 0").
+function_origin(Name, N, NL, Which, CanCatch) -->
+    { format(atom(FO), '.L~w..forigin_~w', [Name, Which]), origin(Name, Which, O) },
+    [label(FO),
+     quad(N), quad(0),
+     long(NL), zero(4),
+     quad(0),
+     byte([0, CanCatch, 0]), zero(1),
+     long(0),
+     label(O),
+     quad(FO), long(0), long(0)].
 
 check_origins([], _) --> [].
-check_origins([k(S, W, A)|Ks], Name) -->
-    "\t.p2align 4\n",
-    fmt(".L~w..chk.~w.~w.~w:~n", [Name, S, W, A]),
-    ins(".long ~w", [S]),
-    ins(".byte ~w, 0, ~w", [A, W]), ins(".zero 1"),
-    ins(".quad .L~w..origin_n", [Name]),
-    ins(".quad .L~w..origin_n", [Name]),
-    ins(".quad 0"),
+check_origins([K|Ks], Name) -->
+    { K = k(S, W, A), check_origin(Name, K, L), origin(Name, n, O) },
+    [p2align(4), label(L),
+     long(S), byte([A, 0, W]), zero(1),
+     quad(O), quad(O), quad(0)],
     check_origins(Ks, Name).
-
-% library(format)'s format_//2 rejects an argument of ''.
-fmt(F, As) --> { format(chars(Cs), F, As) }, seq(Cs).

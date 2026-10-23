@@ -18,6 +18,7 @@
 :- use_module(interp).
 :- use_module(amd64).
 :- use_module(filc_amd64).
+:- use_module(asm).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -44,7 +45,8 @@ command([print, File]) :- load(File, M), print_module(M).
 command([compile, File]) :-
     load(File, M),
     module_mode(M, Mode),
-    (   Mode == filc -> print_filc_asm(M) ; print_asm(M) ).
+    (   Mode == filc -> filc_module_asm(M, Asm) ; module_asm(M, Asm) ),
+    print_asm(Asm).
 command([run, File, Fn|ArgAtoms]) :-
     load(File, M),
     maplist(atom_number, ArgAtoms, Args0),
