@@ -410,21 +410,41 @@ harness_calls([r(Fn, Args, _)|Results], Module, Style) -->
     harness_calls(Results, Module, Style).
 
 % harness_call(+Style, +Ret, +Fn, +CArgText, +CallText)//: the line of
-% harness_calls//3 for one call of Fn, which returns Ret. Ret is void or
-% a class (ir.pl's defaulty Ret), so it is told apart with ==.
-harness_call(bare, Ret, Fn, CArgText, _) -->
-    (   { Ret == void }
-    ->  fmt("        ~w(~w); puts(\"ret\");~n", [Fn, CArgText])
-    ;   fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n",
-            [Fn, CArgText])
-    ).
-harness_call(labelled, Ret, Fn, CArgText, CallText) -->
-    (   { Ret == void }
-    ->  fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n",
-            [Fn, CArgText, CallText])
-    ;   fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
-            [CallText, Fn, CArgText])
-    ).
+% harness_calls//3 for one call of Fn, which returns Ret.
+harness_call(Style, Ret, Fn, CArgText, CallText) -->
+    { ret_result(Ret, Result) },
+    style_call(Style, Result, Fn, CArgText, CallText).
+
+% ret_result(?Ret, ?Result): a function that returns Ret has a Result of
+% none or value.
+ret_result(void, none).
+ret_result(w, value).
+ret_result(l, value).
+ret_result(p, value).
+ret_result(tuple(_), value).
+
+% style_call(+Style, +Result, +Fn, +CArgText, +CallText)//: as
+% harness_call//5, for a call with Result.
+style_call(bare, Result, Fn, CArgText, _) -->
+    bare_call(Result, Fn, CArgText).
+style_call(labelled, Result, Fn, CArgText, CallText) -->
+    labelled_call(Result, Fn, CArgText, CallText).
+
+% bare_call(+Result, +Fn, +CArgText)//: a case's line for a call of Fn.
+bare_call(none, Fn, CArgText) -->
+    fmt("        ~w(~w); puts(\"ret\");~n", [Fn, CArgText]).
+bare_call(value, Fn, CArgText) -->
+    fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n",
+        [Fn, CArgText]).
+
+% labelled_call(+Result, +Fn, +CArgText, +CallText)//: main's line for
+% a call of Fn.
+labelled_call(none, Fn, CArgText, CallText) -->
+    fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n",
+        [Fn, CArgText, CallText]).
+labelled_call(value, Fn, CArgText, CallText) -->
+    fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
+        [CallText, Fn, CArgText]).
 
 %% "# run: $fn a b c" lines
 

@@ -130,8 +130,9 @@ top_item(decl(Loc, Specs, Inits), [], Env0, Env) :- !,
     catch(decl_types(Specs, Inits, Decls, Env0, Env1), not_constant,
           sema_error(Loc, 'array size is not a constant', [])),
     foldl(global_decl(Loc), Decls, Env1, Env).
-top_item(fundef(Loc, Specs, dcl(Name, DclType, Asm), Body), Funcs, Env0, Env) :-
-    decl_types(Specs, [init(dcl(Name, DclType, Asm), none)],
+top_item(fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body), Funcs,
+         Env0, Env) :-
+    decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
                [d(_, Type, Storage, _, _)], Env0, Env1),
     global_decl(Loc, d(Name, Type, Storage, Asm, none), Env1, Env2),
     (   memberchk(fspec(inline), Specs)
@@ -342,8 +343,8 @@ sret_param(RetType, Params) -->
 
 float_type(Type) :- memberchk(Type, [float, double, ldouble]).
 
-% param_names(+DclType, -Names): Names are the parameter names, from the
-% function's own declarator: the outermost func, since declarator types
+% param_names(+DclType, -Names): Names are the parameter names, each
+% some(Name) or none, from the function's own declarator: the outermost func, since declarator types
 % are built outermost first.
 param_names(func(_, unspecified), []) :- !.
 param_names(func(_, params(Params, _)), Names) :-
@@ -359,11 +360,7 @@ params([Name|Names], [Type|Types], Ctx, Params) -->
     env(Env),
     { ctx_loc(Ctx, Loc), arg_words(Type, Env, Loc, Ebs) },
     fresh_params(Ebs, Params0, Values),
-    (   { Name == none } -> []
-    ;   local_slot(Type, Addr),
-        store_words(Ebs, Values, Addr),
-        bind(Name, var(Addr, Type))
-    ),
+    su_param_local(Name, Type, Ebs, Values),
     params(Names, Types, Ctx, Params1),
     { append(Params0, Params1, Params) }.
 params([Name|Names], [Type|Types], Ctx, [par(Class, P)|Params]) -->
@@ -375,12 +372,24 @@ params([Name|Names], [Type|Types], Ctx, [par(Class, P)|Params]) -->
       ;   sema_error(Loc, 'parameter of type ~w is not supported yet', [Type])
       ) },
     fresh(P),
-    (   { Name == none } -> []
-    ;   local_slot(Type, Addr),
-        store_typed(Type, P, Addr),
-        bind(Name, var(Addr, Type))
-    ),
+    param_local(Name, Type, P),
     params(Names, Types, Ctx, Params).
+
+% su_param_local(+Name, +Type, +Ebs, +Values)// and
+% param_local(+Name, +Type, +P)//: a named parameter of Type, which came
+% in as the words Values (eightbytes Ebs) or the temporary P, is stored
+% into a local it is bound to; an unnamed one is dropped.
+su_param_local(none, _, _, _) --> [].
+su_param_local(some(Name), Type, Ebs, Values) -->
+    local_slot(Type, Addr),
+    store_words(Ebs, Values, Addr),
+    bind(Name, var(Addr, Type)).
+
+param_local(none, _, _) --> [].
+param_local(some(Name), Type, P) -->
+    local_slot(Type, Addr),
+    store_typed(Type, P, Addr),
+    bind(Name, var(Addr, Type)).
 
 % fresh_params(+Ebs, -Params, -Values)//: one fresh parameter per
 % eightbyte; Values are their temporaries.
@@ -938,8 +947,8 @@ aggregate(union(_)).
 
 % aggregate_slots(+Type, +Env, -Slots): Slots are the element positions
 % of aggregate Type, slot(Key, Offset, SlotType), with Key an index or a
-% field name. A union initializes its first member. Fails for a
-% non-aggregate.
+% member name (some(Field), or none for an anonymous member). A union
+% initializes its first member. Fails for a non-aggregate.
 aggregate_slots(array(ElemType, N), Env, Slots) :- !,
     type_size_align(ElemType, Env, Size, _),
     Last is N - 1,
@@ -1026,7 +1035,7 @@ designator_index(index(Expr), Slots, Index, Env, Ctx) :-
     ).
 designator_index(field(Field), Slots, Index, _, Ctx) :-
     ctx_loc(Ctx, Loc),
-    (   nth0(Index, Slots, slot(Field, _, _)) -> true
+    (   nth0(Index, Slots, slot(some(Field), _, _)) -> true
     ;   sema_error(Loc, 'no member ~w', [Field])
     ).
 

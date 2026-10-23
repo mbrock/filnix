@@ -12,15 +12,15 @@
       static_assert(Loc, Expr, Message)
     Entries: [entry(Designators, Init)], each designator field(Name) or
     index(Expr).
-    Dcl = dcl(Name, Type, Asm): Name is none in abstract declarators, Asm
-    is asm(Symbol) or none. Type is a declarator type built around the
+    Dcl = dcl(Name, Type, Asm): Name is some(Identifier), or none in
+    abstract declarators; Asm is asm(Symbol) or none. Type is a declarator type built around the
     atom base, which stands for the type the Specs give:
       base | ptr(T, Quals) | array(T, Size) | func(T, Params)
       Size: none or an expression. Params: unspecified, or
       params([param(Specs, Dcl)], fixed | variadic)
     Specs: storage(S), tspec(K), qual(Q), fspec(F), tname(Name),
       su(struct | union, Tag, Members, Attrs), enum(Tag, Enumerators),
-      attr(Tokens), alignas(type(TypeName) | expr(E)), typeof(...)
+      Tag some(Identifier) or none, attr(Tokens), alignas(type(TypeName) | expr(E)), typeof(...)
       Members: none or [field(Specs, Dcl, Width)] (and static_assert
       terms), Width none or an expression; Enumerators: none or
       [enumerator(Name, Expr | none)].
@@ -125,7 +125,7 @@ external_decl(Env0, Env, [Item|Items], Items) -->
     (   punct(';')
     ->  { Item = decl(Loc, Specs, []), Env = Env0 }
     ;   full_declarator(Env0, Dcl, Attrs0),
-        (   { Dcl = dcl(Name, func(_, Params), _) }, peek(p('{'))
+        (   { Dcl = dcl(some(Name), func(_, Params), _) }, peek(p('{'))
         ->  {   typedefs_hidden([Name], Env0, Env),
                 params_env(Params, Env, BodyEnv)
             },
@@ -154,7 +154,7 @@ static_assert_rest(Env, Loc, static_assert(Loc, Expr, Msg)) -->
 % decl_env(+Specs, +Inits, +Env0, -Env): Env is Env0 with the typedef
 % names the declaration adds or (for ordinary names) hides.
 decl_env(Specs, Inits, Env0, Env) :-
-    findall(N, ( member(init(dcl(N, _, _), _), Inits), N \== none ), Names),
+    findall(N, member(init(dcl(some(N), _, _), _), Inits), Names),
     (   memberchk(storage(typedef), Specs)
     ->  foldl(typedef_declared, Names, Env0, Env)
     ;   typedefs_hidden(Names, Env0, Env)
@@ -173,9 +173,7 @@ typedef_hidden(Name, Env0, Env) :-
 % params_env(+Params, +Env0, -Env): Env is Env0 for a function body,
 % where parameter names hide typedefs.
 params_env(params(Params, _), Env0, Env) :-
-    findall(N,
-            ( member(param(_, dcl(N, _, _)), Params), N \== none ),
-            Names),
+    findall(N, member(param(_, dcl(some(N), _, _)), Params), Names),
     typedefs_hidden(Names, Env0, Env).
 params_env(unspecified, Env, Env).
 
@@ -296,11 +294,11 @@ attrs --> [].
 
 struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
     attr_list(Attrs0),
-    ( token(id(Tag0)) -> { Tag = Tag0 } ; { Tag = none } ),
+    ( token(id(Tag0)) -> { Tag = some(Tag0) } ; { Tag = none } ),
     (   punct('{')
     ->  members(Env, Members),
         attr_list(Attrs1)
-    ;   { Tag \== none, Members = none, Attrs1 = [] }
+    ;   { Tag = some(_), Members = none, Attrs1 = [] }
     ),
     { append(Attrs0, Attrs1, Attrs) }.
 
@@ -354,10 +352,10 @@ field_decls(Env, Specs, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
 
 enum_spec(Env, enum(Tag, Enumerators)) -->
     attrs,
-    ( token(id(Tag0)) -> { Tag = Tag0 } ; { Tag = none } ),
+    ( token(id(Tag0)) -> { Tag = some(Tag0) } ; { Tag = none } ),
     (   punct('{')
     ->  enumerators(Env, Enumerators)
-    ;   { Tag \== none, Enumerators = none }
+    ;   { Tag = some(_), Enumerators = none }
     ),
     attrs.
 
@@ -375,7 +373,7 @@ enumerators(_, _) --> parse_error('expected an enumerator').
 % full_declarator(+Env, -Dcl, -Attrs)//: a declarator with its GNU
 % suffix. Attributes after a declarator come back as attr(Tokens)
 % specifiers in Attrs.
-full_declarator(Env, dcl(Name, Type, Asm), Attrs) -->
+full_declarator(Env, dcl(some(Name), Type, Asm), Attrs) -->
     declarator(Env, Name, Type, base),
     gnu_suffix(Asm, Attrs).
 
@@ -486,8 +484,8 @@ param_list(Env, [Param|Params], Variadic) -->
 
 param(Env, param(Specs, dcl(Name, Type, none))) -->
     decl_specs(Env, Specs), !,
-    (   declarator(Env, Name, Type, base)
-    ->  []
+    (   declarator(Env, Name0, Type, base)
+    ->  { Name = some(Name0) }
     ;   abstract_declarator(Env, Type, base),
         { Name = none }
     ),

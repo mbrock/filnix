@@ -16,10 +16,11 @@
       Ords  assoc, Name -> typedef(T) | enumconst(V, T) | anything the
             lowering stores (variables and functions)
       Tags  assoc, Name -> tag(struct | union, Id) | enum(T)
-      Defs  assoc, Id -> incomplete(Name) | def(Kind, Members, Size, Align)
+      Defs  assoc, Id -> incomplete(Tag) | def(Kind, Members, Size, Align)
             | bad(Reason); the lowering keeps entries of its own here too
-            Members: [m(Name, Type, Offset)], Name none for an
-            anonymous struct or union member
+            Tag: some(Name), or none for an anonymous struct or union
+            Members: [m(Name, Type, Offset)], Name some(Field), or none
+            for an anonymous struct or union member
       Next  the next struct id
     Block scopes save Ords and Tags and restore them on exit; Defs and
     Next only grow. Predicates that change the environment take Env0 and
@@ -109,8 +110,8 @@ decl_types(Specs, Inits, Decls, Env0, Env) :-
 
 % declarator_type(+Base, +Storage, +Init, -Decl, +Env0, -Env): Decl is
 % the d/5 term Init declares, or none for a typedef, which binds the name.
-declarator_type(Base, Storage, init(dcl(Name, SyntaxType, Asm), Init), Decl,
-                Env0, Env) :-
+declarator_type(Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
+                Decl, Env0, Env) :-
     apply_declarator(SyntaxType, Base, Type, Env0, Env1),
     (   Storage == typedef
     ->  bind_ordinary(Name, typedef(Type), Env1, Env),
@@ -224,28 +225,24 @@ keyword_combo(S, bad('__int128')) :- memberchk(int128, S).
 % su_type(+Members, +Kind, +Tag, +Attrs, -Type, +Env0, -Env): Members is
 % none for a reference to the tag, which declares it if it is not yet
 % visible, and otherwise the list of member declarations that define it.
-% Tag is none for an anonymous struct or union (a defaulty term from the
-% parser, so it stays a test).
+% Tag is some(Name), or none for an anonymous struct or union; a
+% reference always has a tag.
 su_type([], Kind, Tag, Attrs, Type, Env0, Env) :-
     su_definition([], Kind, Tag, Attrs, Type, Env0, Env).
 su_type([Member|Members], Kind, Tag, Attrs, Type, Env0, Env) :-
     su_definition([Member|Members], Kind, Tag, Attrs, Type, Env0, Env).
-su_type(none, Kind, Tag, _, Type, Env0, Env) :-
-    (   Tag \== none,
-        Env0 = e(_, Tags, _, _),
-        get_assoc(Tag, Tags, tag(Kind, Id))
+su_type(none, Kind, some(Name), _, Type, Env0, Env) :-
+    (   Env0 = e(_, Tags, _, _),
+        get_assoc(Name, Tags, tag(Kind, Id))
     ->  Env = Env0
-    ;   new_tag(Kind, Tag, Id, Env0, Env)
+    ;   new_tag(Kind, some(Name), Id, Env0, Env)
     ),
     Type =.. [Kind, Id].
 
 % su_definition(+Members, +Kind, +Tag, +Attrs, -Type, +Env0, -Env): Type
 % is the struct or union Members define, laid out in Env.
 su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
-    (   Tag \== none,
-        Env0 = e(_, Tags, Defs, _),
-        get_assoc(Tag, Tags, tag(Kind, Id)),
-        get_assoc(Id, Defs, incomplete(_))
+    (   forward_declared(Tag, Kind, Env0, Id)
     ->  Env1 = Env0       % completes a forward declaration in this scope
     ;   new_tag(Kind, Tag, Id, Env0, Env1)
     ),
@@ -261,16 +258,25 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     put_assoc(Id, Defs0, Def, Defs1),
     Env = e(Ords, Tags2, Defs1, Next).
 
+% forward_declared(+Tag, +Kind, +Env, -Id): Tag names the Kind with Id,
+% which is declared but not yet defined. An anonymous one never is.
+forward_declared(some(Name), Kind, e(_, Tags, Defs, _), Id) :-
+    get_assoc(Name, Tags, tag(Kind, Id)),
+    get_assoc(Id, Defs, incomplete(_)).
+
 new_tag(Kind, Tag, Id, e(Ords, Tags0, Defs0, Id), e(Ords, Tags, Defs, Next)) :-
     Next is Id + 1,
-    (   Tag == none -> Tags = Tags0
-    ;   put_assoc(Tag, Tags0, tag(Kind, Id), Tags)
-    ),
+    tag_bound(Tag, tag(Kind, Id), Tags0, Tags),
     put_assoc(Id, Defs0, incomplete(Tag), Defs).
+
+% tag_bound(+Tag, +Value, +Tags0, -Tags): Tags is Tags0 with the name of
+% Tag bound to Value; an anonymous Tag binds nothing.
+tag_bound(none, _, Tags, Tags).
+tag_bound(some(Name), Value, Tags0, Tags) :- put_assoc(Name, Tags0, Value, Tags).
 
 % member_decl(+Decl, -Fields, +Env0, -Env): Fields are the f(Name, Type)
 % the member declaration Decl declares ([] for a static assertion), or
-% [bad(Why)].
+% [bad(Why)]; Name is some(Field), or none for an anonymous member.
 member_decl(static_assert(_, _, _), [], Env, Env).
 member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
             Env0, Env) :-
@@ -337,15 +343,14 @@ member_offset_end(union, End0, Size, _, 0, End) :-
 % enum_type(+Enumerators, +Tag, -Type, +Env0, -Env): Type is the enum's
 % underlying type. Enumerators is none for a reference to Tag, and
 % otherwise the list that defines it; a reference to an unknown enum tag
-% has type uint. Tag is none for an anonymous enum, as in su_type/7.
+% has type uint. Tag is some(Name) or none, as in su_type/7.
 enum_type([], Tag, Type, Env0, Env) :-
     enum_definition([], Tag, Type, Env0, Env).
 enum_type([Enumerator|Enumerators], Tag, Type, Env0, Env) :-
     enum_definition([Enumerator|Enumerators], Tag, Type, Env0, Env).
-enum_type(none, Tag, Type, Env, Env) :-
-    (   Tag \== none,
-        Env = e(_, Tags, _, _),
-        get_assoc(Tag, Tags, enum(Type0))
+enum_type(none, some(Name), Type, Env, Env) :-
+    (   Env = e(_, Tags, _, _),
+        get_assoc(Name, Tags, enum(Type0))
     ->  Type = Type0
     ;   Type = uint
     ).
@@ -356,11 +361,9 @@ enum_type(none, Tag, Type, Env, Env) :-
 enum_definition(Enumerators, Tag, Type, Env0, Env) :-
     foldl(enumerator, Enumerators, Values, Env0-0, Env1-_),
     enum_underlying(Values, Type),
-    (   Tag == none -> Env = Env1
-    ;   Env1 = e(Ords, Tags0, Defs, Next),
-        put_assoc(Tag, Tags0, enum(Type), Tags),
-        Env = e(Ords, Tags, Defs, Next)
-    ).
+    Env1 = e(Ords, Tags0, Defs, Next),
+    tag_bound(Tag, enum(Type), Tags0, Tags),
+    Env = e(Ords, Tags, Defs, Next).
 
 % enumerator(+Enumerator, -V, +Env0-Next0, -Env-Next): V is the
 % constant's value, Next0 when it has no expression, and Env binds it.
@@ -519,7 +522,7 @@ member_type_offset(SU, Name, Env, Type, Off) :-
     SU =.. [_, Id],
     Env = e(_, _, Defs, _),
     get_assoc(Id, Defs, def(_, Members, _, _)),
-    (   member(m(Name, Type, Off), Members) -> true
+    (   member(m(some(Name), Type, Off), Members) -> true
     ;   member(m(none, AnonType, AnonOff), Members),
         member_type_offset(AnonType, Name, Env, Type, InnerOff)
     ->  Off is AnonOff + InnerOff

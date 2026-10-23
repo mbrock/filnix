@@ -56,7 +56,8 @@
     (w, l or p), V an IR value, L a label.
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
-               valid_module/1, func_named/3, width_bytes/2, op_arg_classes/4,
+               op_kind/2, valid_module/1, func_named/3, width_bytes/2,
+               op_arg_classes/4,
                module_mode/2, addr_class/2]).
 
 :- use_module(library(lists)).
@@ -119,6 +120,40 @@ op_arity(load(_), 1).
 op_arity(alloc(_), 1).
 op_arity(ptoi, 1).
 op_arity(itop, 1).
+
+%! op_kind(?Op, ?Kind) is nondet.
+%
+%  Kind is the category of Op that its consumers dispatch on, so that
+%  each can case-split on Kind in clause heads. Deterministic in mode
+%  (+, -): one fact per op, indexed on the first argument.
+%
+%    additive  add sub: integer, or (filc) a p plus or minus an l offset
+%    alu       mul div udiv rem urem and or xor: binary, integer only
+%    shift     sar shr shl: the count is read at w
+%    neg copy ptoi itop  each its own kind; copy may be of class p
+%    cmp ext load alloc  the four compounds
+
+op_kind(add, additive).
+op_kind(sub, additive).
+op_kind(mul, alu).
+op_kind(div, alu).
+op_kind(udiv, alu).
+op_kind(rem, alu).
+op_kind(urem, alu).
+op_kind(and, alu).
+op_kind(or, alu).
+op_kind(xor, alu).
+op_kind(sar, shift).
+op_kind(shr, shift).
+op_kind(shl, shift).
+op_kind(neg, neg).
+op_kind(copy, copy).
+op_kind(ptoi, ptoi).
+op_kind(itop, itop).
+op_kind(cmp(_, _), cmp).
+op_kind(ext(_), ext).
+op_kind(load(_), load).
+op_kind(alloc(_), alloc).
 
 %! func_named(+M, +Name, -Func) is semidet.
 %
@@ -370,11 +405,23 @@ call_result_ok(Fn, Callee, tuple(Tos), Ret) :-
                  [Ret, Callee, Ks])
     ).
 call_result_ok(Fn, Callee, to(_, K), Ret) :-
-    (   Ret == void
-    ->  fn_error(Fn, 'uses the result of void $~w', [Callee])
-    ;   Ret = tuple(_)
-    ->  fn_error(Fn, 'reads the tuple result of $~w as ~w', [Callee, K])
-    ;   K == l, Ret == w
+    to_result_ok(Ret, K, Fn, Callee).
+
+% to_result_ok(+Ret, +K, +Fn, +Callee): a call site may read at class K
+% the result of Callee, which returns Ret.
+to_result_ok(void, _, Fn, Callee) :-
+    fn_error(Fn, 'uses the result of void $~w', [Callee]).
+to_result_ok(tuple(_), K, Fn, Callee) :-
+    fn_error(Fn, 'reads the tuple result of $~w as ~w', [Callee, K]).
+to_result_ok(w, K, Fn, Callee) :- class_result_ok(w, K, Fn, Callee).
+to_result_ok(l, K, Fn, Callee) :- class_result_ok(l, K, Fn, Callee).
+to_result_ok(p, K, Fn, Callee) :- class_result_ok(p, K, Fn, Callee).
+
+% class_result_ok(+Ret, +K, +Fn, +Callee): as to_result_ok/4, for a
+% result of class Ret. A long may be read as a word, nothing else
+% changes class.
+class_result_ok(Ret, K, Fn, Callee) :-
+    (   K == l, Ret == w
     ->  fn_error(Fn, 'reads the w result of $~w as l', [Callee])
     ;   ( K == p, Ret \== p ; K \== p, Ret == p )
     ->  fn_error(Fn, 'reads the ~w result of $~w as ~w', [Ret, Callee, K])
@@ -389,14 +436,8 @@ valid_jump(Ctx, jnz(V, L1, L2)) :-
     label_exists(Ctx, L1),
     label_exists(Ctx, L2).
 valid_jump(Ctx, ret(V)) :-
-    Ctx = ctx(_, Fn, Ret, _, _, _, _),
-    (   Ret == void
-    ->  fn_error(Fn, 'ret with a value in a void function', [])
-    ;   Ret = tuple(_)
-    ->  fn_error(Fn, 'ret of one value in a tuple function', [])
-    ;   true
-    ),
-    valid_use(Ctx, Ret, V).
+    Ctx = ctx(_, _, Ret, _, _, _, _),
+    ret_value_ok(Ret, Ctx, V).
 valid_jump(Ctx, rets(Vs)) :-
     Ctx = ctx(_, Fn, Ret, _, _, _, _),
     (   Ret = tuple(Ks), length(Ks, N), length(Vs, N)
@@ -405,8 +446,26 @@ valid_jump(Ctx, rets(Vs)) :-
     ).
 valid_jump(Ctx, ret) :-
     Ctx = ctx(_, Fn, Ret, _, _, _, _),
-    (   Ret == void -> true ; fn_error(Fn, 'ret without a value', []) ).
+    ret_void_ok(Ret, Fn).
 valid_jump(_, hlt).
+
+% ret_value_ok(+Ret, +Ctx, +V): a function that returns Ret may return
+% the one value V.
+ret_value_ok(void, ctx(_, Fn, _, _, _, _, _), _) :-
+    fn_error(Fn, 'ret with a value in a void function', []).
+ret_value_ok(tuple(_), ctx(_, Fn, _, _, _, _, _), _) :-
+    fn_error(Fn, 'ret of one value in a tuple function', []).
+ret_value_ok(w, Ctx, V) :- valid_use(Ctx, w, V).
+ret_value_ok(l, Ctx, V) :- valid_use(Ctx, l, V).
+ret_value_ok(p, Ctx, V) :- valid_use(Ctx, p, V).
+
+% ret_void_ok(+Ret, +Fn): a function that returns Ret may return
+% nothing.
+ret_void_ok(void, _).
+ret_void_ok(tuple(_), Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(w, Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(l, Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(p, Fn) :- fn_error(Fn, 'ret without a value', []).
 
 label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
     (   get_assoc(L, LabelSet, _) -> true
@@ -455,47 +514,82 @@ symbol_use_ok(plain, G, ctx(M, Fn, _, _, _, _, _), K) :-
 
 %% Operand and result classes
 
-% op_result_ok(+Mode, +Op, +K): Op may produce a result of class K. The
-% last two clauses are default cases over the remaining ops, so the cuts
-% commit to each specific op first.
-op_result_ok(_, ext(T), K) :- !,
-    (   memberchk(T, [sw, uw]) -> K == l ; int_class(K) ).
-op_result_ok(_, load(l), K) :- !, K == l.
-op_result_ok(Mode, load(p), K) :- !, Mode == filc, K == p.
-op_result_ok(_, load(_), K) :- !, int_class(K).
-op_result_ok(Mode, alloc(_), K) :- !, addr_class(Mode, K).
-op_result_ok(Mode, ptoi, K) :- !, Mode == filc, K == l.
-op_result_ok(Mode, itop, K) :- !, Mode == filc, K == p.
-op_result_ok(_, Op, p) :- !, memberchk(Op, [add, sub, copy]).
-op_result_ok(_, _, K) :- int_class(K).
+% op_result_ok(+Mode, +Op, +K): Op may produce a result of class K.
+op_result_ok(Mode, Op, K) :-
+    op_kind(Op, Kind),
+    kind_result_ok(Kind, Op, Mode, K).
+
+% kind_result_ok(+Kind, +Op, +Mode, +K): as op_result_ok/3, for Op of
+% Kind.
+kind_result_ok(additive, _, _, K) :- any_class(K).
+kind_result_ok(alu, _, _, K) :- int_class(K).
+kind_result_ok(shift, _, _, K) :- int_class(K).
+kind_result_ok(neg, _, _, K) :- int_class(K).
+kind_result_ok(copy, _, _, K) :- any_class(K).
+kind_result_ok(ptoi, _, filc, l).
+kind_result_ok(itop, _, filc, p).
+kind_result_ok(cmp, _, _, K) :- int_class(K).
+kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
+kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
+kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
+
+% ext_result_ok(+T, +K): an extension of type T may have class K; one
+% from a word is a long.
+ext_result_ok(sw, l).
+ext_result_ok(uw, l).
+ext_result_ok(sh, K) :- int_class(K).
+ext_result_ok(uh, K) :- int_class(K).
+ext_result_ok(sb, K) :- int_class(K).
+ext_result_ok(ub, K) :- int_class(K).
+
+% load_result_ok(+T, +Mode, +K): a load of type T may have class K in a
+% module of Mode.
+load_result_ok(l, _, l).
+load_result_ok(p, filc, p).
+load_result_ok(sw, _, K) :- int_class(K).
+load_result_ok(uw, _, K) :- int_class(K).
+load_result_ok(sh, _, K) :- int_class(K).
+load_result_ok(uh, _, K) :- int_class(K).
+load_result_ok(sb, _, K) :- int_class(K).
+load_result_ok(ub, _, K) :- int_class(K).
 
 int_class(w).
 int_class(l).
 
-%! op_arg_classes(+Op, +K, +Mode, -Classes) is semidet.
+any_class(w).
+any_class(l).
+any_class(p).
+
+%! op_arg_classes(+Op, +K, +Mode, ?Classes) is semidet.
 %
 %  Classes is the list of classes at which the arguments of Op are read
 %  when its result has class K in a module of Mode. Fails for an Op
-%  outside the grammar. Not steadfast: a bound Classes that misses the
-%  head of the clause for Op falls through to the general last clause,
-%  so call it with Classes unbound.
+%  outside the grammar.
 
-op_arg_classes(cmp(_, CK), _, _, [CK, CK]) :- !.
-op_arg_classes(ext(_), _, _, [w]) :- !.
-op_arg_classes(load(_), _, Mode, [A]) :- !, addr_class(Mode, A).
-op_arg_classes(alloc(_), _, _, [l]) :- !.
-op_arg_classes(ptoi, _, _, [p]) :- !.
-op_arg_classes(itop, _, _, [l]) :- !.
-op_arg_classes(Op, p, _, [p, l]) :-
-    memberchk(Op, [add, sub]),
-    !.
-op_arg_classes(Op, K, _, [K, w]) :-
-    memberchk(Op, [sar, shr, shl]),
-    !.
-op_arg_classes(Op, K, _, Ks) :-
-    op_arity(Op, N),
-    length(Ks, N),
-    maplist(=(K), Ks).
+op_arg_classes(Op, K, Mode, Classes) :-
+    op_kind(Op, Kind),
+    kind_arg_classes(Kind, Op, K, Mode, Classes).
+
+% kind_arg_classes(+Kind, +Op, +K, +Mode, ?Classes): as op_arg_classes/4,
+% for Op of Kind.
+kind_arg_classes(additive, _, K, _, Classes) :-
+    additive_arg_classes(K, Classes).
+kind_arg_classes(alu, _, K, _, [K, K]).
+kind_arg_classes(shift, _, K, _, [K, w]).
+kind_arg_classes(neg, _, K, _, [K]).
+kind_arg_classes(copy, _, K, _, [K]).
+kind_arg_classes(ptoi, _, _, _, [p]).
+kind_arg_classes(itop, _, _, _, [l]).
+kind_arg_classes(cmp, cmp(_, CK), _, _, [CK, CK]).
+kind_arg_classes(ext, _, _, _, [w]).
+kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
+kind_arg_classes(alloc, _, _, _, [l]).
+
+% additive_arg_classes(+K, ?Classes): add and sub of class K read
+% Classes; at p they offset a pointer by an l.
+additive_arg_classes(w, [w, w]).
+additive_arg_classes(l, [l, l]).
+additive_arg_classes(p, [p, l]).
 
 % fn_error(+Fn, +Fmt, +Args): throw nanofil_error with the message
 % Fmt/Args, attributed to the function Fn.

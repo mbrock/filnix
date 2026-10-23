@@ -706,44 +706,46 @@ insts([Inst|Insts], Index, Block, Ctx) -->
     insts(Insts, Index1, Block, Ctx).
 
 % inst(+Inst, +Index, +Block, +Ctx)//: the code of instruction Inst,
-% the Indexth of block Block. Stores and calls go by their width and
-% callee. Among the ins/4 clauses the pointer operations come first and
-% commit, because the last clause is the default: every other ins/4 is
-% an integer instruction for amd64:compute_op//4. The IR's Op does not
-% say which operations are pointer ones (that also needs K and Args),
-% and ir.pl owns it.
-inst(ins(t(D), p, copy, [glo(S)]), _, _, Ctx) --> !,
-    { ctx_name(Ctx, Name),
-      ctx_module(Ctx, Module),
-      symbol_getter(Module, S, Getter),
-      origin_label(Name, c, Origin) },
-    origin_store(Ctx, c),
-    slot_reg_load(thread, rdi, Ctx),
-    [ins(lea, q, [rip(Origin), reg(rsi)]),
-     ins(call, none, [Getter]),
-     ins(mov, q, [reg(rdx), reg(rcx)])],
-    flight_store(D, Ctx).
-inst(ins(t(D), p, copy, [V]), _, _, Ctx) --> !,
-    flight_load(V, Ctx),
-    flight_store(D, Ctx).
-inst(ins(t(D), p, Op, [P, X]), _, _, Ctx) -->
-    { memberchk(Op, [add, sub]) },
-    !,
-    { ctx_fn(Ctx, Fn) },
-    flight_load(P, Ctx),
-    load(X, l, d, Fn),
-    [ins(Op, q, [reg(rdx), reg(rax)])],
-    flight_store(D, Ctx).
-inst(ins(t(D), l, ptoi, [P]), _, _, Ctx) --> !,
+% the Indexth of block Block. Instructions go by their op's kind (ir.pl),
+% stores and calls by their width and callee.
+inst(ins(t(D), K, Op, Args), Index, Block, Ctx) -->
+    { op_kind(Op, Kind) },
+    kind_inst(Kind, K, Op, Args, D, Index, Block, Ctx).
+inst(store(W, V, A), Index, Block, Ctx) -->
+    store(W, V, A, Index, Block, Ctx).
+inst(call(Res, Callee, Args), Index, Block, Ctx) -->
+    callee_call(Callee, Res, Args, Index, Block, Ctx).
+
+% kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as
+% inst//4, for t(D) =K Op Args with Op of Kind. Integer instructions go
+% to amd64:compute_op//4; the pointer ones are by K, or (copy at p) by
+% the operand.
+kind_inst(additive, K, Op, Args, D, _, _, Ctx) -->
+    additive_inst(K, Op, Args, D, Ctx).
+kind_inst(alu, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(shift, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(neg, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(copy, K, Op, Args, D, _, _, Ctx) -->
+    copy_inst(K, Op, Args, D, Ctx).
+kind_inst(ptoi, l, _, [P], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(P, l, a, Fn),
     reg_slot_store(rax, t(D), Ctx).
-inst(ins(t(D), p, itop, [X]), _, _, Ctx) --> !,
+kind_inst(itop, p, _, [X], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(X, l, a, Fn),
     [ins(xor, l, [reg(ecx), reg(ecx)])],
     flight_store(D, Ctx).
-inst(ins(t(D), p, alloc(Align), [N]), _, _, Ctx) --> !,
+kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(load, K, load(T), [A], D, Index, Block, Ctx) -->
+    load_inst(T, K, A, D, Index, Block, Ctx).
+kind_inst(alloc, p, alloc(Align), [N], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(N, l, si, Fn),
     slot_reg_load(thread, rdi, Ctx),
@@ -755,7 +757,55 @@ inst(ins(t(D), p, alloc(Align), [N]), _, _, Ctx) --> !,
     [ins(lea, q, [mem(16, rax), reg(rax)]),
      ins(mov, q, [reg(rax), reg(rcx)])],
     flight_store(D, Ctx).
-inst(ins(t(D), p, load(p), [A]), Index, Block, Ctx) --> !,
+
+% integer_inst(+Op, +K, +Args, +D, +Ctx)//: the code of the integer
+% instruction t(D) =K Op Args.
+integer_inst(Op, K, Args, D, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
+    compute_op(Op, K, Args, Fn),
+    reg_slot_store(rax, t(D), Ctx).
+
+% additive_inst(+K, +Op, +Args, +D, +Ctx)//: add or sub (Op) at K; at p
+% it offsets the flight pointer and keeps its lower.
+additive_inst(p, Op, [P, X], D, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
+    flight_load(P, Ctx),
+    load(X, l, d, Fn),
+    [ins(Op, q, [reg(rdx), reg(rax)])],
+    flight_store(D, Ctx).
+additive_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
+additive_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
+
+% copy_inst(+K, +Op, +Args, +D, +Ctx)//: a copy at K.
+copy_inst(p, _, [V], D, Ctx) --> pointer_copy(V, D, Ctx).
+copy_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
+copy_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
+
+% pointer_copy(+V, +D, +Ctx)//: t(D) =p copy V. A symbol's pointer comes
+% from its getter; any other value is a flight pointer already.
+pointer_copy(glo(S), D, Ctx) -->
+    { ctx_name(Ctx, Name),
+      ctx_module(Ctx, Module),
+      symbol_getter(Module, S, Getter),
+      origin_label(Name, c, Origin) },
+    origin_store(Ctx, c),
+    slot_reg_load(thread, rdi, Ctx),
+    [ins(lea, q, [rip(Origin), reg(rsi)]),
+     ins(call, none, [Getter]),
+     ins(mov, q, [reg(rdx), reg(rcx)])],
+    flight_store(D, Ctx).
+pointer_copy(t(N), D, Ctx) --> flight_copy(t(N), D, Ctx).
+pointer_copy(c(N), D, Ctx) --> flight_copy(c(N), D, Ctx).
+
+% flight_copy(+V, +D, +Ctx)//: t(D) =p copy V of a temp or constant.
+flight_copy(V, D, Ctx) -->
+    flight_load(V, Ctx),
+    flight_store(D, Ctx).
+
+% load_inst(+T, +K, +A, +D, +Index, +Block, +Ctx)//: a load of type T at
+% K from A, the Indexth instruction of Block. A loadp also reads the
+% capability; the others read an integer.
+load_inst(p, p, A, D, Index, Block, Ctx) -->
     { local_label(Ctx, Block, Index, nolower, NoLower),
       local_label(Ctx, Block, Index, have, Have) },
     flight_load(A, Ctx),
@@ -776,21 +826,21 @@ inst(ins(t(D), p, load(p), [A]), Index, Block, Ctx) --> !,
      ins(mov, q, [mem(0, rax), reg(rax)]),
      ins(mov, q, [reg(rsi), reg(rcx)])],
     flight_store(D, Ctx).
-inst(ins(t(D), K, load(T), [A]), _, _, Ctx) --> !,
+load_inst(l, K, A, D, _, _, Ctx) --> integer_load(l, K, A, D, Ctx).
+load_inst(sw, K, A, D, _, _, Ctx) --> integer_load(sw, K, A, D, Ctx).
+load_inst(uw, K, A, D, _, _, Ctx) --> integer_load(uw, K, A, D, Ctx).
+load_inst(sh, K, A, D, _, _, Ctx) --> integer_load(sh, K, A, D, Ctx).
+load_inst(uh, K, A, D, _, _, Ctx) --> integer_load(uh, K, A, D, Ctx).
+load_inst(sb, K, A, D, _, _, Ctx) --> integer_load(sb, K, A, D, Ctx).
+load_inst(ub, K, A, D, _, _, Ctx) --> integer_load(ub, K, A, D, Ctx).
+
+integer_load(T, K, A, D, Ctx) -->
     { load_type_size_align(T, Size, Align),
       load_insn(T, K, LoadInsn) },
     flight_load(A, Ctx),
     access_check(k(Size, 0, Align), Ctx),
     [LoadInsn],
     reg_slot_store(rax, t(D), Ctx).
-inst(ins(t(D), K, Op, Args), _, _, Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    compute_op(Op, K, Args, Fn),
-    reg_slot_store(rax, t(D), Ctx).
-inst(store(W, V, A), Index, Block, Ctx) -->
-    store(W, V, A, Index, Block, Ctx).
-inst(call(Res, Callee, Args), Index, Block, Ctx) -->
-    callee_call(Callee, Res, Args, Index, Block, Ctx).
 
 % store(+W, +V, +A, +Index, +Block, +Ctx)//: the code of a store of V
 % at A of width W, the Indexth instruction of Block.

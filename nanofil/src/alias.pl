@@ -19,6 +19,7 @@
 :- use_module(library(pairs)).
 :- use_module(cfg).
 :- use_module(promote, [strict_ssa/3]).
+:- use_module(ir, [op_kind/2]).
 
 %! alias_facts(+Func, -Facts) is det.
 %
@@ -79,13 +80,33 @@ address_base(ins(Op, Args), D, K, Defs, Base) :-
     ins_base(Op, Args, D, K, Defs, Base).
 
 % ins_base(+Op, +Args, +D, +K, +Defs, -Base): as address_base/5, for an
-% instruction. The cuts commit to the alloc and symbol cases, which the
-% last clause would also match: it is the default among the IR ops,
-% which are not a clean term for this question.
-ins_base(alloc(_), _, D, _, _, alloc(D)) :- !.
-ins_base(copy, [glo(S)], _, _, _, symbol(S)) :- !.
-ins_base(Op, Args, D, K, Defs, value(D)) :-
+% instruction.
+ins_base(Op, Args, D, K, Defs, Base) :-
+    op_kind(Op, Kind),
+    kind_base(Kind, Op, Args, D, K, Defs, Base).
+
+% kind_base(+Kind, +Op, +Args, +D, +K, +Defs, -Base): as ins_base/6, for
+% Op of Kind. An alloc and the copy of a symbol start their own bases,
+% an add, sub or copy that offsets an address (address_offset/5) starts
+% none, and every other instruction starts a value base.
+kind_base(additive, Op, Args, D, K, Defs, value(D)) :-
     \+ address_offset(ins(Op, Args), K, Defs, _, _).
+kind_base(alu, _, _, D, _, _, value(D)).
+kind_base(shift, _, _, D, _, _, value(D)).
+kind_base(neg, _, _, D, _, _, value(D)).
+kind_base(copy, _, [V], D, K, Defs, Base) :- copy_base(V, D, K, Defs, Base).
+kind_base(ptoi, _, _, D, _, _, value(D)).
+kind_base(itop, _, _, D, _, _, value(D)).
+kind_base(cmp, _, _, D, _, _, value(D)).
+kind_base(ext, _, _, D, _, _, value(D)).
+kind_base(load, _, _, D, _, _, value(D)).
+kind_base(alloc, _, _, D, _, _, alloc(D)).
+
+% copy_base(+V, +D, +K, +Defs, -Base): as kind_base/7, for D a copy of V.
+copy_base(glo(S), _, _, _, symbol(S)).
+copy_base(t(S), D, K, Defs, value(D)) :-
+    \+ address_offset(ins(copy, [t(S)]), K, Defs, _, _).
+copy_base(c(_), D, _, _, value(D)).
 
 % address_offset(+Source, +K, +Defs, -S, -Delta): Source computes the
 % same-class temp S plus Delta.

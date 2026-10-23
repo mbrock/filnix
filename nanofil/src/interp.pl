@@ -474,16 +474,28 @@ undefined_symbol(filc, N, ptr(0, ext(N))).
 %% Operations
 
 % op_res(+Op, +K, +Mode, +Args, +S0, -Res, -S): Res is val(X), ub(Why)
-% or trap(Why). Op is an IR term (ir.pl); the last clause covers its
-% arithmetic, the cuts commit to the memory ops before it.
-op_res(load(T), K, Mode, Args, S0, Res, S) :- !,
+% or trap(Why). Op is an IR term (ir.pl).
+op_res(Op, K, Mode, Xs, S0, Res, S) :-
+    op_kind(Op, Kind),
+    kind_res(Kind, Op, K, Mode, Xs, S0, Res, S).
+
+% kind_res(+Kind, +Op, +K, +Mode, +Args, +S0, -Res, -S): as op_res/7, for
+% Op of Kind. Loads and allocs use the memory; the rest is arithmetic.
+kind_res(load, load(T), K, Mode, Args, S0, Res, S) :-
     load_op_res(T, K, Mode, Args, S0, Res, S).
-op_res(alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
-       s(Mem, Fuel)) :- !,
+kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
+         s(Mem, Fuel)) :-
     alloc_base(Mode, Mem0, Align, Size, Base, Mem),
     alloc_pointer(Mode, Base, P).
-op_res(Op, K, _, Xs, S, Res, S) :-
-    alu(Op, K, Xs, Res).
+kind_res(additive, Op, K, _, Xs, S, Res, S) :- additive_res(K, Op, Xs, Res).
+kind_res(alu, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(shift, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(neg, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(copy, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(ptoi, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(itop, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(cmp, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(ext, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 
 alloc_pointer(plain, Base, Base).
 alloc_pointer(filc, Base, ptr(Base, obj(Base))).
@@ -551,16 +563,22 @@ int_access_load(ok, Mode, Mem0, A, Size, Res, Mem) :-
     load_res(Mode, Mem0, A, Size, Res, Mem).
 int_access_load(trap(Why), _, Mem, _, _, trap(Why), Mem).
 
+% additive_res(+K, +Op, +Xs, -Res): Res is the result of add or sub (Op)
+% of class K on Xs. Pointer arithmetic keeps the capability.
+additive_res(p, Op, [ptr(A, C), X], val(ptr(R, C))) :-
+    modulus(l, M),
+    pointer_offset(Op, A, X, M, R).
+additive_res(w, Op, Xs, Res) :- alu(Op, w, Xs, Res).
+additive_res(l, Op, Xs, Res) :- alu(Op, l, Xs, Res).
+
+% pointer_offset(+Op, +A, +X, +M, -R): R is the address A plus (add) or
+% minus (sub) X, modulo M.
+pointer_offset(add, A, X, M, R) :- int_is(R, (A + X) mod M).
+pointer_offset(sub, A, X, M, R) :- int_is(R, (A - X) mod M).
+
 % alu(+Op, +K, +Xs, -Res): Res is the result of the arithmetic Op of
-% class K on Xs. Pointer arithmetic keeps the capability. ptoi drops it;
-% itop has none. The cuts on add and sub at p commit before the integer
-% clauses for the same ops.
-alu(add, p, [ptr(A, C), X], val(ptr(R, C))) :- !,
-    modulus(l, M),
-    int_is(R, (A + X) mod M).
-alu(sub, p, [ptr(A, C), X], val(ptr(R, C))) :- !,
-    modulus(l, M),
-    int_is(R, (A - X) mod M).
+% class K on Xs; add and sub are integer here (additive_res/4). ptoi
+% drops the capability; itop has none.
 alu(ptoi, _, [ptr(A, _)], val(A)).
 alu(itop, _, [X], val(ptr(X, none))).
 

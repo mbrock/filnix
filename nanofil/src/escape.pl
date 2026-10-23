@@ -12,6 +12,7 @@
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(pairs)).
+:- use_module(ir, [op_kind/2]).
 
 %! load_width(?LoadType, ?Width) is nondet.
 %
@@ -90,19 +91,9 @@ events_alloc_class(Events, A-Size, A-Class) :-
 % does with the address of alloc Root: an access at a known offset, or
 % an escape of every alloc whose address it reads. A constant offset (a
 % derived address, seen by address_temps) is neither.
-%
-% The cut commits a load from an address to its access: the escape
-% clause after it would also match, as an ins/4 whose Op it does not
-% inspect (IR ops are not a clean term for this question).
-inst_event(ins(_, _, load(T), [t(X)]), Addrs, Root-acc(acc(Off, W))) :-
-    get_assoc(X, Addrs, Root-Off),
-    !,
-    load_width(T, W).
-inst_event(ins(D, K, Op, Args), Addrs, Root-esc(Op)) :-
-    \+ ( offset_of(ins(D, K, Op, Args), Y, _),         % derived address
-         get_assoc(Y, Addrs, _) ),
-    member(t(X), Args),
-    get_assoc(X, Addrs, Root-_).
+inst_event(ins(D, K, Op, Args), Addrs, Event) :-
+    op_kind(Op, Kind),
+    kind_event(Kind, ins(D, K, Op, Args), Addrs, Event).
 inst_event(store(W, V, A), Addrs, Event) :-
     (   V = t(X),
         get_assoc(X, Addrs, Root-_),
@@ -114,6 +105,33 @@ inst_event(store(W, V, A), Addrs, Event) :-
 inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
     findall(V, member(arg(_, V), Args), Vs),
     member(t(X), [F|Vs]),
+    get_assoc(X, Addrs, Root-_).
+
+% kind_event(+Kind, +Ins, +Addrs, -Root-Event) is nondet: as
+% inst_event/3, for the instruction Ins of an Op of Kind. A load
+% accesses its address; every other op lets the addresses it reads
+% escape.
+kind_event(load, ins(_, _, load(T), [t(X)]), Addrs,
+           Root-acc(acc(Off, W))) :-
+    get_assoc(X, Addrs, Root-Off),
+    load_width(T, W).
+kind_event(additive, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(alu, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(shift, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(neg, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(copy, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(ptoi, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(itop, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(cmp, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(ext, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(alloc, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+
+% ins_escape(+Ins, +Addrs, -Root-esc(Op)) is nondet: Ins, an instruction
+% of Op that is not a derived address, reads the address of alloc Root.
+ins_escape(ins(D, K, Op, Args), Addrs, Root-esc(Op)) :-
+    \+ ( offset_of(ins(D, K, Op, Args), Y, _),         % derived address
+         get_assoc(Y, Addrs, _) ),
+    member(t(X), Args),
     get_assoc(X, Addrs, Root-_).
 
 jump_value(jnz(V, _, _), V).
