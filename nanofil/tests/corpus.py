@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Survey pinned corpora through progtest.sh; compare every expected outcome.
 
-Usage: corpus.py CPROC C_TESTSUITE [--record] [--work DIR]
+Usage: corpus.py CPROC C_TESTSUITE [--record] [--work DIR] [--jobs N]
+--jobs runs N programs at once (default: the CPU count, or NANOFIL_JOBS).
 --record writes the baseline only after an intentional review of diagnostics.
 --work retains assembly, compiler diagnostics, output and diffs for triage.
 """
 import argparse
 import collections
+import concurrent.futures
+import os
 import pathlib
 import re
 import subprocess
@@ -15,8 +18,15 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 
 
+def run_one(dest, source):
+    subprocess.run(["bash", str(HERE / "progtest.sh"), "--result",
+                    str(dest), str(source)], check=False)
+    return (dest / "result").read_text().strip()
+
+
 def survey(args, work):
     results = []
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
     for suite, root in [("cproc", pathlib.Path(args.cproc) / "test"),
                         ("c-testsuite", pathlib.Path(args.c_testsuite) / "tests/single-exec")]:
         root = root.resolve()
@@ -32,12 +42,13 @@ def survey(args, work):
             if not re.search(r'\bmain\s*\(', code):
                 results.append((name, "no-main"))
                 continue
-            dest = work / name
-            subprocess.run(["bash", str(HERE / "progtest.sh"), "--result",
-                            str(dest), str(source)], check=False)
-            result = (dest / "result").read_text().strip()
-            results.append((name, result))
-            print(name, result, flush=True)
+            results.append((name, pool.submit(run_one, work / name, source)))
+    # Progress prints in completion order; results.tsv keeps source order.
+    pending = {r: name for name, r in results if not isinstance(r, str)}
+    for future in concurrent.futures.as_completed(pending):
+        print(pending[future], future.result(), flush=True)
+    pool.shutdown()
+    results = [(name, r if isinstance(r, str) else r.result()) for name, r in results]
     text = ''.join(f'{name}\t{result}\n' for name, result in results)
     if not results:
         raise SystemExit("No tests found; check source paths / --test")
@@ -66,6 +77,8 @@ if __name__ == "__main__":
     parser.add_argument("c_testsuite")
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--work", type=pathlib.Path)
+    parser.add_argument("--jobs", type=int,
+                        default=int(os.environ.get("NANOFIL_JOBS", os.cpu_count() or 1)))
     parser.add_argument("--test", action="append", help="run only this suite/path.c (repeatable)")
     args = parser.parse_args()
     if args.record and args.test:
