@@ -173,7 +173,8 @@ catches planted rooting bugs.
 
 ### M4. C frontend subset
 
-**Status: in progress.** M4a, M4b and M4c are done, see [docs/m4.md](docs/m4.md).
+**Status: in progress.** M4a, M4b, M4c and M4f are done, see
+[docs/m4.md](docs/m4.md) and [docs/corpus.md](docs/corpus.md).
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
 settled the ABI questions first:
@@ -246,8 +247,10 @@ settled the ABI questions first:
 - **M4e. DCG preprocessor.** Macros, `#include` with the sysroot search
   path, conditionals, `#`/`##`. Accept: its token stream matches `filcc -E`
   on the headers and the corpus; then it replaces `filcc -E`.
-- **M4f. Corpus.** cproc's tests and the c-testsuite, fetched by Nix, run
-  in `checks.x86_64-linux.nanofil`, with a list of expected rejections.
+- **M4f. Corpus.** *Done.* cproc's tests and the c-testsuite, fetched by
+  Nix, run in `checks.x86_64-linux.nanofil`, with every expected result
+  tracked (including newly passing tests). Counts and failure triage:
+  [docs/corpus.md](docs/corpus.md).
 
 **Original deliverable:** a preprocessor and parser in DCGs, plus cproc-style
 lowering with C types known, emitting `p` for pointers. SysV struct

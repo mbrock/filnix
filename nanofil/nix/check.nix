@@ -12,6 +12,7 @@
 let
   trealla = import ./trealla.nix { inherit pkgs; };
   qbe = import ./qbe.nix { inherit pkgs; };
+  corpus = import ./corpus.nix { inherit pkgs; };
 in
 pkgs.runCommandCC "nanofil-check"
   {
@@ -37,6 +38,7 @@ pkgs.runCommandCC "nanofil-check"
     tests/difftest.sh tests/c/*.c
     tests/reject.sh
     tests/progtest.sh
+    python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/progtest.sh
     RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     touch $out
