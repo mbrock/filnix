@@ -25,7 +25,12 @@
 :- use_module(ir).
 :- use_module(qbe_parse).
 :- use_module(qbe_print).
+% Compile-only commands do not need the interpreter or its CLP(Z) solver.
+:- if(current_prolog_flag(dialect, swi)).
+:- autoload(interp, [run/5, prepare/2, run_prepared/5, outcome_text/2]).
+:- else.
 :- use_module(interp).
+:- endif.
 :- use_module(amd64).
 :- use_module(filc_amd64).
 :- use_module(asm).

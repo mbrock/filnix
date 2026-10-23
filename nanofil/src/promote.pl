@@ -162,7 +162,13 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     Cfg = cfg(Entry, _, _, _),
     def_counts(F0, Counts),
     assoc_to_keys(Counts, Used),
-    foldl(place_phis(Blocks0, Addrs, DF, LiveIn, Entry), Vars, []-(0-Used), Placed0-_),
+    % Index the reachable stores once, rather than scanning all blocks
+    % and instructions again for every slot.
+    findall(Var-L, ( member(blk(L, _, Is, _), Blocks0), get_assoc(L, DF, _),
+                     member(store(_, _, t(X)), Is), get_assoc(X, Addrs, Var) ), Stores0),
+    keysort(Stores0, Stores1), group_pairs_by_key(Stores1, StorePairs),
+    list_to_assoc(StorePairs, Stores),
+    foldl(place_phis(Stores, DF, LiveIn, Entry), Vars, []-(0-Used), Placed0-_),
     keysort(Placed0, Placed1),
     group_pairs_by_key(Placed1, Placed),      % Label -> [Var-Temp]
     list_to_assoc(Placed, PhiAt),
@@ -181,7 +187,7 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     keysort(PhiArgs0, PhiArgs1),
     group_pairs_by_key(PhiArgs1, PhiArgs),    % (Label-Var) -> [Pred-Value]
     list_to_assoc(PhiArgs, ArgsAt),
-    maplist(assemble(NewBlocks, Placed, ArgsAt, Widths), Blocks0, Blocks).
+    maplist(assemble(NewBlocks, PhiAt, ArgsAt, Widths), Blocks0, Blocks).
 
 slot_gen_kill(blk(_, _, Is, _), Addrs, Gen-Kill) :-
     foldl(slot_gk(Addrs), Is, []-[], Gen-Kill).
@@ -198,9 +204,8 @@ slot_gk(Addrs, I, G0-K0, G-K) :-
    to Var, keeping only blocks where Var is live on entry. Each placed phi
    counts as a store for the iteration. Unreachable stores are ignored:
    they never run. */
-place_phis(Blocks, Addrs, DF, LiveIn, Entry, Var, P0-(N0-Used), P-(N-Used)) :-
-    findall(L, ( member(blk(L, _, Is, _), Blocks), get_assoc(L, DF, _),
-                 member(store(_, _, t(X)), Is), get_assoc(X, Addrs, V), V == Var ), Ls0),
+place_phis(Stores, DF, LiveIn, Entry, Var, P0-(N0-Used), P-(N-Used)) :-
+    ( get_assoc(Var, Stores, Ls0) -> true ; Ls0 = [] ),
     sort([Entry|Ls0], Ls),
     idf(Ls, Var, DF, LiveIn, [], Phis),
     foldl(new_phi(Var, Used), Phis, P0-N0, P-N).
@@ -287,9 +292,9 @@ slot_class(w, w).
 slot_class(h, w).
 slot_class(b, w).
 
-assemble(NewBlocks, Placed, ArgsAt, Widths, blk(L, _, _, _), blk(L, Phis, Is, J)) :-
+assemble(NewBlocks, PhiAt, ArgsAt, Widths, blk(L, _, _, _), blk(L, Phis, Is, J)) :-
     get_assoc(L, NewBlocks, blk(L, Phis0, Is, J)),
-    (   memberchk(L-VTs, Placed) -> true ; VTs = [] ),
+    (   get_assoc(L, PhiAt, VTs) -> true ; VTs = [] ),
     findall(phi(t(T), K, Args),
             ( member(Var-T, VTs), get_assoc(Var, Widths, W), slot_class(W, K),
               get_assoc(L-Var, ArgsAt, Args0), sort(Args0, Args) ),

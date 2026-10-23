@@ -43,8 +43,10 @@ located_splice(['\\','\r','\n'|Cs],F:N,Sp,Ls) :- !,
     N1 is N+1,located_splice(Cs,F:N1,Sp,Ls).
 located_splice(['\\','\n'|Cs],F:N,Sp,Ls) :- !,
     N1 is N+1,located_splice(Cs,F:N1,Sp,Ls).
-located_splice([C|Cs],F:N,[C|Sp],[F:N|Ls]) :- !,
-    ( C=='\n' -> N1 is N+1 ; N1=N ),located_splice(Cs,F:N1,Sp,Ls).
+% Share one location term per physical line, not one per character.
+located_splice([C|Cs],L,[C|Sp],[L|Ls]) :- !,
+    ( C=='\n' -> L=F:N,N1 is N+1,L1=F:N1 ; L1=L ),
+    located_splice(Cs,L1,Sp,Ls).
 located_splice([],_,[],[]).
 
 scan([nl|Ts], [_|Ls], _) --> ['\n'], !,scan(Ts,Ls,yes).

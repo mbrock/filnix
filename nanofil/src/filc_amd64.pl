@@ -120,13 +120,15 @@ slot(c(_, _, Slots, _, _), Key, Off) :- get_assoc(Key, Slots, Off).
 
 /* Ctx = c(Name, Ret, Slots, Blocks, x(Module, FB, Labels)), shaped so
    amd64's helpers, which read the first four arguments of f/4, work on
-   f(Name, Ret, Slots, Blocks). */
+   f(Name, Ret, Slots, Blocks). Labels indexes each block's position and
+   phis once, instead of searching Blocks on every edge. */
 item(M, F) -->
     { F = func(Name, Lk, Ret, Params, Blocks),
       fn_sig(F, Sig),
       ret_kinds(Ret, RKs), ret_form(RKs, Form),
       layout(Form, Params, Blocks, Slots, FB, NL, Size),
-      findall(L, member(blk(L, _, _, _), Blocks), Labels),
+      findall(L-block(I, Ps), nth0(I, Blocks, blk(L, Ps, _, _)), LPs),
+      list_to_assoc(LPs, Labels),
       Ctx = c(Name, Ret, Slots, Blocks, x(M, FB, Labels)),
       impl_symbol(Name, Sig, Impl),
       check_kinds(Blocks, Kinds),
@@ -325,12 +327,13 @@ return(Ctx) -->
 % Phi copies for the edge, a pollcheck if it goes backwards in block
 % order, then the jump.
 edge(From, To, Tag, Ctx) -->
-    { Ctx = c(_, _, _, Blocks, x(_, _, Labels)),
-      memberchk(blk(To, Phis, _, _), Blocks),
+    { Ctx = c(_, _, _, _, x(_, _, Labels)),
+      get_assoc(From, Labels, block(IF, _)),
+      get_assoc(To, Labels, block(IT, Phis)),
       label(Ctx, To, TL) },
     phi_reads(Phis, From, Ctx),
     phi_writes(Phis, Ctx),
-    (   { nth0(IF, Labels, From), nth0(IT, Labels, To), IT =< IF }
+    (   { IT =< IF }
     ->  pollcheck(Ctx, From, Tag)
     ;   []
     ),

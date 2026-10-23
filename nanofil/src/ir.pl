@@ -57,7 +57,6 @@
                addr_class/2]).
 
 :- use_module(library(lists)).
-:- use_module(library(clpz)).
 :- use_module(library(assoc)).
 
 class_bits(w, 32).

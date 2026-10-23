@@ -56,11 +56,16 @@ alloc_classes(F, Classes) :-
     findall(Root-esc(redefined), ( gen_assoc(X, Addrs, Root-_),
                                    get_assoc(X, Defs, N), N > 1 ), Es4),
     append([Es1, Es2, Es3, Es4], Es),
-    maplist(classify(Es), Allocs, Classes).
+    % Group once by allocation, preserving event order (and hence the
+    % first escape reason), rather than scanning every event per alloc.
+    keysort(Es, Sorted), group_pairs_by_key(Sorted, Pairs),
+    list_to_assoc(Pairs, Events),
+    maplist(classify(Events), Allocs, Classes).
 
-classify(Es, A-Size, A-Class) :-
-    (   memberchk(A-esc(Why), Es) -> Class = escapes(Why)
-    ;   findall(Acc, member(A-acc(Acc), Es), Accs0),
+classify(Events, A-Size, A-Class) :-
+    ( get_assoc(A, Events, Es) -> true ; Es = [] ),
+    (   memberchk(esc(Why), Es) -> Class = escapes(Why)
+    ;   findall(Acc, member(acc(Acc), Es), Accs0),
         sort(Accs0, Accs),
         Class = local(Size, Accs)
     ).
