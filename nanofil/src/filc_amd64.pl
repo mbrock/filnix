@@ -98,10 +98,52 @@ func_signature(func(_, _, Ret, Params, _), Sig) :-
     findall(K, member(par(K, _), Params), Ks),
     signature(Ret, Ks, Sig).
 
-% impl_symbol(+Name, +Sig, -Impl): Impl is the symbol of the fast entry
-% (the implementation) of function Name with signature Sig.
-impl_symbol(Name, Sig, Impl) :-
-    format(atom(Impl), 'pizlonatedFIP~w_~w', [Sig, Name]).
+%% ABI facts (docs/abi-findings.md), at the pin
+
+% abi_symbol(+Role, +F, -Symbol): Symbol is the name under which code
+% finds Role of the function or global F: its implementation (the fast
+% entry) and FI alias for signature Sig, its getter, its function object,
+% or its data object and aux array.
+abi_symbol(impl(Sig), F, S) :- format(atom(S), 'pizlonatedFIP~w_~w', [Sig, F]).
+abi_symbol(entry(Sig), F, S) :- format(atom(S), 'pizlonatedFI~w_~w', [Sig, F]).
+abi_symbol(getter, F, S) :- format(atom(S), 'pizlonated_~w', [F]).
+abi_symbol(function_object, F, S) :- format(atom(S), 'pizlonatedFO_~w', [F]).
+abi_symbol(data_object, F, S) :- format(atom(S), 'pizlonatedDO_~w', [F]).
+abi_symbol(data_aux, F, S) :- format(atom(S), 'pizlonatedDA_~w', [F]).
+
+% field(+Struct, +Field, +Base, -Mem): Mem is the operand of Field of the
+% Struct whose address is in register Base. A function object's fields
+% are at its lower.
+field(Struct, Field, Base, mem(Off, Base)) :-
+    struct_field(Struct, Field, Off).
+
+struct_field(thread, stack_limit, 0).
+struct_field(thread, state, 8).
+struct_field(thread, top_frame, 16).
+struct_field(thread, cc_inline_buffer, 128).
+struct_field(thread, cc_inline_aux_buffer, 384).
+struct_field(function_object, fast_entry, 0).
+struct_field(function_object, generic_entry, 8).
+struct_field(function_object, signature, 16).
+
+% aux_bits(+Flags, -Bits): Bits are the flags Flags in an aux word, whose
+% low 48 bits are the aux pointer (aux_pointer_mask/1) and whose high 16
+% the flags. The special type is a field of the flags.
+aux_bits(Flags, Bits) :-
+    foldl(flag_or, Flags, 0, Sum),
+    Bits is Sum << 48.
+
+flag_or(Flag, Sum0, Sum) :-
+    object_flag(Flag, Bit),
+    Sum is Sum0 \/ Bit.
+
+object_flag(global, 0x1).
+object_flag(readonly, 0x2).
+object_flag(global_aux, 0x10).       % the aux array is static data
+object_flag(function, 0x80).         % special type 1, function
+object_flag(special_type, 0x780).    % the special type field, bits 7-10
+
+aux_pointer_mask(0xffffffffffff).
 
 %% Frame layout
 
@@ -252,7 +294,7 @@ function(Module, Func) -->
       ret_form(RetKs, Form),
       layout(Form, BodyParams, Blocks, Slots, FrameBase, NLowers, Size),
       function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx),
-      impl_symbol(Name, Sig, Impl),
+      abi_symbol(impl(Sig), Name, Impl),
       access_check_kinds(Blocks, CheckKinds),
       special_label(Ctx, exc, Exc) },
     [section(text), p2align(4)],
@@ -288,21 +330,23 @@ body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl) -->
 % filc_frame pushed on thread->top_frame.
 prologue(Form, Size, NLowers, Ctx) -->
     { ctx_frame_base(Ctx, FrameBase),
-      NegFrameBase is -FrameBase },
+      NegFrameBase is -FrameBase,
+      field(thread, stack_limit, rdi, Limit),
+      field(thread, top_frame, rdi, Top) },
     [ins(push, q, [reg(rbp)]),
      ins(mov, q, [reg(rsp), reg(rbp)]),
      ins(sub, q, [imm(Size), reg(rsp)])],
     entry_regs_shift(Form),
-    [ins(cmp, q, [reg(rsp), mem(0, rdi)]),
+    [ins(cmp, q, [reg(rsp), Limit]),
      ins(jae, none, [plt(filc_stack_overflow_failure)])],
     reg_slot_store(rdi, thread, Ctx),
     retbuf_store(Form, Ctx),
     lowers_zeroing(NLowers, FrameBase),
-    [ins(mov, q, [mem(16, rdi), reg(rax)]),
+    [ins(mov, q, [Top, reg(rax)]),
      ins(mov, q, [reg(rax), mem(NegFrameBase, rbp)])],
     origin_store(Ctx, c),
     [ins(lea, q, [mem(NegFrameBase, rbp), reg(rax)]),
-     ins(mov, q, [reg(rax), mem(16, rdi)])].
+     ins(mov, q, [reg(rax), Top])].
 
 % A buffered return's entry has the buffer in %rdi and the thread in
 % %rsi: the buffer goes to %rax and the thread to %rdi.
@@ -345,10 +389,11 @@ origin_store(Ctx, Which) -->
 % The pop of the filc_frame: thread->top_frame back to its parent.
 frame_pop(Ctx) -->
     { ctx_frame_base(Ctx, FrameBase),
-      NegFrameBase is -FrameBase },
+      NegFrameBase is -FrameBase,
+      field(thread, top_frame, rsi, Top) },
     slot_reg_load(thread, rsi, Ctx),
     [ins(mov, q, [mem(NegFrameBase, rbp), reg(rdi)]),
-     ins(mov, q, [reg(rdi), mem(16, rsi)])].
+     ins(mov, q, [reg(rdi), Top])].
 
 % The exception exit: the frame popped and has_exception = 1 returned.
 exception_exit(Form, Ctx) -->
@@ -475,11 +520,14 @@ result_slots(Res, Slots) :-
 to_slots(to(T, K), Ss0, Ss) :-
     class_key_slots(K, T, Ss0, Ss).
 
-% Word I of a generic call's arguments or results is at thread+128+8I,
-% with its lower at thread+384+8I.
+% Word I of a generic call's arguments or results is at thread offset
+% Addr, word I of the inline buffer, with its lower at Lower, word I of
+% the inline aux buffer.
 generic_offsets(I, Addr, Lower) :-
-    Addr is 128 + 8 * I,
-    Lower is 384 + 8 * I.
+    struct_field(thread, cc_inline_buffer, Buffer),
+    struct_field(thread, cc_inline_aux_buffer, AuxBuffer),
+    Addr is Buffer + 8 * I,
+    Lower is AuxBuffer + 8 * I.
 
 % gw(Kind, Offset) for each result word: its thread offset in a generic
 % return (its lower, for p, is 256 further on).
@@ -645,9 +693,10 @@ edge(From, To, Tag, Ctx) -->
 pollcheck(Ctx, Block, Tag) -->
     { ctx_name(Ctx, Name),
       local_label(Ctx, Block, Tag, poll, NoPoll),
-      origin_label(Name, n, Origin) },
+      origin_label(Name, n, Origin),
+      field(thread, state, rdi, State) },
     slot_reg_load(thread, rdi, Ctx),
-    [ins(test, b, [imm(14), mem(8, rdi)]),
+    [ins(test, b, [imm(14), State]),
      ins(jz, none, [sym(NoPoll)]),
      ins(lea, q, [rip(Origin), reg(rsi)]),
      ins(call, none, [plt(filc_pollcheck_slow)]),
@@ -982,8 +1031,10 @@ callee_call(t(C), Res, Args, Index, Block, Ctx) -->
     flight_load(t(C), Ctx),
     function_check(NotFn),
     reg_slot_store(rcx, aux, Ctx),
+    { field(function_object, signature, rcx, FoSig),
+      field(function_object, generic_entry, rsi, FoGeneric) },
     [ins(movabs, q, [imm(Sig), reg(rsi)]),
-     ins(cmp, q, [reg(rsi), mem(16, rcx)]),
+     ins(cmp, q, [reg(rsi), FoSig]),
      ins(jne, none, [sym(Generic)])],
     fast_call(Form, Args, indirect, Ctx),
     fast_result(Form, Res, Ctx),
@@ -993,7 +1044,7 @@ callee_call(t(C), Res, Args, Index, Block, Ctx) -->
     slot_reg_load(thread, rdi, Ctx),
     slot_reg_load(aux, rsi, Ctx),
     [ins(mov, l, [imm(ArgsSize), reg(edx)]),
-     ins(call, q, [ind(mem(8, rsi))]),
+     ins(call, q, [ind(FoGeneric)]),
      ins(test, b, [imm(1), reg(al)]),
      ins(jnz, none, [sym(Exc)])],
     generic_results(Tos, RetKs, RetOk, Ctx),
@@ -1039,7 +1090,8 @@ entry_call(reg, direct(Target), _, Ctx) -->
 entry_call(reg, indirect, _, Ctx) -->
     slot_reg_load(thread, rdi, Ctx),
     slot_reg_load(aux, rsi, Ctx),
-    [ins(call, q, [ind(mem(0, rsi))])].
+    { field(function_object, fast_entry, rsi, Fast) },
+    [ins(call, q, [ind(Fast)])].
 entry_call(mem(_), direct(Target), Pop, Ctx) -->
     slot_reg_load(thread, rsi, Ctx),
     [ins(lea, q, [mem(Pop, rsp), reg(rdi)]),
@@ -1048,8 +1100,9 @@ entry_call(mem(_), direct(Target), Pop, Ctx) -->
 entry_call(mem(_), indirect, Pop, Ctx) -->
     slot_reg_load(thread, rsi, Ctx),
     slot_reg_load(aux, rdx, Ctx),
+    { field(function_object, fast_entry, rdx, Fast) },
     [ins(lea, q, [mem(Pop, rsp), reg(rdi)]),
-     ins(call, q, [ind(mem(0, rdx))])].
+     ins(call, q, [ind(Fast)])].
 
 % has_exception, then the result slots from %rdx:%rcx or the buffer.
 fast_result(reg, Res, Ctx) -->
@@ -1134,15 +1187,18 @@ flight_value(l, V, Fn, _) -->
 % With a flight pointer in %rax:%rcx, jump to Fail unless it points at a
 % function object. Clobbers %rdx, %rsi and %rdi.
 function_check(Fail) -->
+    { aux_bits([special_type], TypeMask),
+      aux_bits([function], Function),
+      aux_pointer_mask(Mask) },
     [ins(test, q, [reg(rcx), reg(rcx)]),
      ins(jz, none, [sym(Fail)]),
      ins(mov, q, [mem(-8, rcx), reg(rdx)]),
-     ins(movabs, q, [imm(540431955284459520), reg(rsi)]),
+     ins(movabs, q, [imm(TypeMask), reg(rsi)]),
      ins(and, q, [reg(rdx), reg(rsi)]),
-     ins(movabs, q, [imm(36028797018963968), reg(rdi)]),
+     ins(movabs, q, [imm(Function), reg(rdi)]),
      ins(cmp, q, [reg(rdi), reg(rsi)]),
      ins(jne, none, [sym(Fail)]),
-     ins(movabs, q, [imm(281474976710655), reg(rsi)]),
+     ins(movabs, q, [imm(Mask), reg(rsi)]),
      ins(and, q, [reg(rsi), reg(rdx)]),
      ins(cmp, q, [reg(rdx), reg(rax)]),
      ins(jne, none, [sym(Fail)])].
@@ -1150,7 +1206,7 @@ function_check(Fail) -->
 % symbol_getter(+Module, +S, -Getter): Getter is the call operand of
 % S's getter, a local sym if Module defines S and a plt one otherwise.
 symbol_getter(module(Items), S, Getter) :-
-    format(atom(Name), 'pizlonated_~w', [S]),
+    abi_symbol(getter, S, Name),
     (   (   memberchk(func(S, _, _, _, _), Items)
         ;   memberchk(data(S, _, _, _), Items)
         )
@@ -1161,8 +1217,9 @@ symbol_getter(module(Items), S, Getter) :-
 % The aux pointer of the object at lower %rcx into %rdx, setting ZF if
 % it has none.
 aux_of_lower -->
+    { aux_pointer_mask(Mask) },
     [ins(mov, q, [mem(-8, rcx), reg(rdx)]),
-     ins(movabs, q, [imm(281474976710655), reg(rsi)]),
+     ins(movabs, q, [imm(Mask), reg(rsi)]),
      ins(and, q, [reg(rsi), reg(rdx)])].
 
 % load_type_size_align(?T, ?Size, ?Align): a load of type T reads Size
@@ -1195,9 +1252,9 @@ call_target(Ctx, F, Res, Args, sym(Target)) :-
     ctx_module(Ctx, Module),
     (   func_named(Module, F, Func), \+ variadic_func(Func)
     ->  func_signature(Func, Sig),
-        impl_symbol(F, Sig, Target)
+        abi_symbol(impl(Sig), F, Target)
     ;   call_sig(Res, Args, _, _, Sig),
-        format(atom(Target), 'pizlonatedFI~w_~w', [Sig, F])
+        abi_symbol(entry(Sig), F, Target)
     ).
 
 % call_sig(+Res, +Args, -RetKind, -ArgKinds, -Sig): a call site with
@@ -1315,20 +1372,16 @@ check_fail_blocks([Kind|Kinds], Ctx) -->
 % Generic-only public entry, with a private fast body. Promotion is the
 % only exiting call before the body roots the hidden snapshot parameter.
 variadic_object(Name, Linkage, Ret, Params, Impl) -->
-    { format(atom(FO), 'pizlonatedFO_~w', [Name]),
-      format(atom(Getter), 'pizlonated_~w', [Name]),
-      format(atom(Generic), 'pizlonatedFIP0_~w', [Name]),
-      format(atom(FI), 'pizlonatedFI0_~w', [Name]),
+    { abi_symbol(function_object, Name, FO),
+      abi_symbol(getter, Name, Getter),
+      abi_symbol(impl(0), Name, Generic),
+      abi_symbol(entry(0), Name, FI),
       atom_concat(Generic, '.body', BodyObject) },
     linkage_alias(Linkage, FI, Generic, Getter),
-    [type(Getter, function), label(Getter),
-     ins(lea, q, [rip(FO+16), reg(rax)]),
-     ins(mov, q, [reg(rax), reg(rdx)]), ins(ret, none, [])],
+    object_getter(Getter, FO),
     variadic_adapter(Generic, BodyObject, Ret, Params),
-    [section(data_rel_ro), p2align(4), label(BodyObject), quad(Impl),
-     type(FO, object), label(FO), quad(FO+16),
-     quad(FO+16+36873221949095936), quad(0), quad(Generic),
-     quad(0), size(FO, 40)].
+    [section(data_rel_ro), p2align(4), label(BodyObject), quad(Impl)],
+    function_object_data(FO, 0, Generic, 0).
 
 variadic_adapter(Generic, BodyObject, Ret, Params) -->
     { length(Params, N), Need is N * 8,
@@ -1354,10 +1407,11 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
      ins(mov, q, [reg(rax), reg(r12)]),
      ins(xor, l, [reg(r13d), reg(r13d)]),
      ins(test, q, [reg(rdx), reg(rdx)])],
-    { atom_concat(Generic, '.aux', Aux) },
+    { atom_concat(Generic, '.aux', Aux),
+      aux_pointer_mask(Mask) },
     [ins(jz, none, [sym(Aux)]),
      ins(mov, q, [mem(-8, rdx), reg(r13)]),
-     ins(movabs, q, [imm(281474976710655), reg(rax)]),
+     ins(movabs, q, [imm(Mask), reg(rax)]),
      ins(and, q, [reg(rax), reg(r13)]), label(Aux)],
     ret_buffer_reservation(Form), align_pad(Pad),
     snapshot_pushes(Pushes, Generic),
@@ -1396,20 +1450,33 @@ snapshot_load(snapshot_lower(O), G) -->
      ins(mov, q, [mem(O, r13), reg(rax)]), label(NoAux)].
 
 function_object(Name, Linkage, Ret, Params, Sig, Impl) -->
-    { format(atom(FI), 'pizlonatedFI~w_~w', [Sig, Name]),
-      format(atom(FO), 'pizlonatedFO_~w', [Name]),
-      format(atom(Getter), 'pizlonated_~w', [Name]),
+    { abi_symbol(entry(Sig), Name, FI),
+      abi_symbol(function_object, Name, FO),
+      abi_symbol(getter, Name, Getter),
       format(atom(Generic), '.L~w..generic', [Name]) },
     linkage_alias(Linkage, FI, Impl, Getter),
+    object_getter(Getter, FO),
+    generic_entry(Generic, Ret, Params),
+    [section(data_rel_ro), p2align(4)],
+    function_object_data(FO, Impl, Generic, Sig).
+
+% The getter of a function object FO: its flight pointer, whose lower is
+% its address, in %rax:%rdx.
+object_getter(Getter, FO) -->
     [type(Getter, function), label(Getter),
      ins(lea, q, [rip(FO+16), reg(rax)]),
      ins(mov, q, [reg(rax), reg(rdx)]),
-     ins(ret, none, [])],
-    generic_entry(Generic, Ret, Params),
-    [section(data_rel_ro), p2align(4), type(FO, object), label(FO),
+     ins(ret, none, [])].
+
+% The function object FO with the entries Fast and Generic (symbols, or
+% 0 for none) and signature Sig. Its header has upper = lower, so it
+% cannot be read or written, and an aux word that points at itself.
+function_object_data(FO, Fast, Generic, Sig) -->
+    { aux_bits([global, readonly, function], Flags) },
+    [type(FO, object), label(FO),
      quad(FO+16),
-     quad(FO+16+36873221949095936),
-     quad(Impl),
+     quad(FO+16+Flags),
+     quad(Fast),
      quad(Generic),
      quad(Sig),
      size(FO, 40)].
@@ -1430,11 +1497,11 @@ linkage_globl(local, _) --> [].
 %% that fill in its pointers.
 
 data_object(Name, Linkage0, Items) -->
-    { linkage_read_only(Linkage0, Linkage, ReadOnly),
-      format(atom(DO), 'pizlonatedDO_~w', [Name]),
-      format(atom(DA), 'pizlonatedDA_~w', [Name]),
+    { linkage_flags(Linkage0, Linkage, Flags),
+      abi_symbol(data_object, Name, DO),
+      abi_symbol(data_aux, Name, DA),
       format(atom(GP), '.LpizlonatedGP_~w', [Name]),
-      format(atom(Getter), 'pizlonated_~w', [Name]),
+      abi_symbol(getter, Name, Getter),
       format(atom(Relocs), '.Lpizlonated_~w..relocs', [Name]),
       format(atom(Slow), '.Lpizlonated_~w..slow', [Name]),
       format(atom(Inited), '.Lpizlonated_~w..inited', [Name]),
@@ -1442,7 +1509,7 @@ data_object(Name, Linkage0, Items) -->
       reverse(Rs0, Rs),
       Size is (Size0 + 7) // 8 * 8,
       Pad is Size - Size0,
-      relocs_aux_word(Rs, ReadOnly, DA, AuxWord),
+      relocs_aux_word(Rs, Flags, DA, AuxWord),
       Total is 16 + Size },
     [section(data), p2align(4), type(DO, object), label(DO),
      quad(DO+16+Size), quad(AuxWord)],
@@ -1481,13 +1548,13 @@ data_object(Name, Linkage0, Items) -->
      ins(mov, q, [reg(rax), reg(rdx)]),
      ins(ret, none, [])].
 
-% relocs_aux_word(+Rs, +ReadOnly, +DA, -AuxWord): AuxWord is the aux
-% word of a data object with relocations Rs and read-only flag ReadOnly:
-% its flags, and the aux array DA if it holds pointers.
-relocs_aux_word([], ReadOnly, _, FlagBits) :-
-    FlagBits is (1 + ReadOnly) << 48.
-relocs_aux_word([_|_], ReadOnly, DA, DA+FlagBits) :-
-    FlagBits is (17 + ReadOnly) << 48.
+% relocs_aux_word(+Rs, +Flags, +DA, -AuxWord): AuxWord is the aux word
+% of a global data object with relocations Rs and other flags Flags: its
+% flags, and its static aux array DA if it holds pointers.
+relocs_aux_word([], Flags, _, Bits) :-
+    aux_bits([global|Flags], Bits).
+relocs_aux_word([_|_], Flags, DA, DA+Bits) :-
+    aux_bits([global, global_aux|Flags], Bits).
 
 % The aux array DA of Size bytes and the relocation table Relocs, if
 % there are relocations Rs.
@@ -1508,12 +1575,11 @@ relocations_call([R|Rs], DO, Relocs) -->
      ins(mov, l, [imm(NRelocs), reg(ecx)]),
      ins(call, none, [plt(filc_execute_constant_relocations)])].
 
-% linkage_read_only(+Linkage0, -Linkage, -ReadOnly): a data object of
-% linkage Linkage0 has linkage Linkage, and ReadOnly is its read-only
-% flag, 2 for ro(Linkage) and 0 otherwise.
-linkage_read_only(ro(Linkage), Linkage, 2).
-linkage_read_only(export, export, 0).
-linkage_read_only(local, local, 0).
+% linkage_flags(+Linkage0, -Linkage, -Flags): a data object of linkage
+% Linkage0 has linkage Linkage and, if read-only, the flag readonly.
+linkage_flags(ro(Linkage), Linkage, [readonly]).
+linkage_flags(export, export, []).
+linkage_flags(local, local, []).
 
 % payload_item(+Item, -Line, +Off0-Rs0, -Off-Rs): Line is the payload
 % directive of Item at offset Off0, and Rs adds to Rs0 a relocation
@@ -1590,7 +1656,7 @@ relocations(Rs, Name) -->
 % The relocation table. Invariant: Rs are the relocations from the Ith.
 reloc_entries([], _, _) --> [].
 reloc_entries([r(Off, S, Addend)|Rs], I, Name) -->
-    { reloc_getter(S, Getter) },
+    { abi_symbol(getter, S, Getter) },
     (   { Addend =:= 0 }
     ->  [quad(Off), long(0), zero(4), quad(Getter)]
     ;   { reloc_node(Name, I, Node) },
@@ -1605,17 +1671,13 @@ reloc_nodes([], _, _) --> [].
 reloc_nodes([r(_, S, Addend)|Rs], I, Name) -->
     (   { Addend =:= 0 }
     ->  []
-    ;   { reloc_getter(S, Getter),
+    ;   { abi_symbol(getter, S, Getter),
           reloc_node(Name, I, Node),
           U is Addend mod 18446744073709551616 },
         [label(Node), long(0), long(0), quad(Getter), quad(U)]
     ),
     { I1 is I + 1 },
     reloc_nodes(Rs, I1, Name).
-
-% reloc_getter(+S, -Getter): Getter is the getter symbol of S.
-reloc_getter(S, Getter) :-
-    format(atom(Getter), 'pizlonated_~w', [S]).
 
 % reloc_node(+Name, +I, -Node): Node labels the constexpr node of
 % relocation I of data object Name.
@@ -1660,8 +1722,8 @@ same_symbol(F, Sig, t(F, Sig, _, _)).
    16(%rbp) and up. With a buffered return r12 holds the buffer and
    r13..r15 the three register words. */
 thunk(t(F, Sig, RetKind, ArgKs)) -->
-    { format(atom(FI), 'pizlonatedFI~w_~w', [Sig, F]),
-      format(atom(Getter), 'pizlonated_~w', [F]),
+    { abi_symbol(entry(Sig), F, FI),
+      abi_symbol(getter, F, Getter),
       atom_concat('.L', FI, Local),
       atom_concat(Local, '..fail', Fail),
       atom_concat(Local, '..generic', Generic),
@@ -1693,9 +1755,11 @@ thunk(t(F, Sig, RetKind, ArgKs)) -->
      ins(call, none, [plt(Getter)]),
      ins(mov, q, [reg(rdx), reg(rcx)])],
     function_check(Fail),
+    { field(function_object, signature, rcx, FoSig),
+      field(function_object, generic_entry, rsi, FoGeneric) },
     [ins(mov, q, [reg(rcx), mem(-48, rbp)]),
      ins(movabs, q, [imm(Sig), reg(rsi)]),
-     ins(cmp, q, [reg(rsi), mem(16, rcx)]),
+     ins(cmp, q, [reg(rsi), FoSig]),
      ins(jne, none, [sym(Generic)])],
     align_pad(Pad),
     thunk_pushes(StackIs, Form),
@@ -1714,7 +1778,7 @@ thunk(t(F, Sig, RetKind, ArgKs)) -->
     [ins(mov, q, [reg(rbx), reg(rdi)]),
      ins(mov, q, [mem(-48, rbp), reg(rsi)]),
      ins(mov, l, [imm(ArgsSize), reg(edx)]),
-     ins(call, q, [ind(mem(8, rsi))]),
+     ins(call, q, [ind(FoGeneric)]),
      ins(test, b, [imm(1), reg(al)])],
     thunk_generic_return(Form, RetKs, Need, GWs, Out, RetOk, GenericExc),
     [label(Fail),
@@ -1783,21 +1847,23 @@ thunk_saves(mem(_)) -->
 
 % The fast entry, with the incoming words back in their registers.
 thunk_fast_call(reg) -->
+    { field(function_object, fast_entry, rsi, Fast) },
     [ins(mov, q, [reg(rbx), reg(rdi)]),
      ins(mov, q, [mem(-48, rbp), reg(rsi)]),
      ins(mov, q, [reg(r12), reg(rdx)]),
      ins(mov, q, [reg(r13), reg(rcx)]),
      ins(mov, q, [reg(r14), reg(r8)]),
      ins(mov, q, [reg(r15), reg(r9)]),
-     ins(call, q, [ind(mem(0, rsi))])].
+     ins(call, q, [ind(Fast)])].
 thunk_fast_call(mem(_)) -->
+    { field(function_object, fast_entry, rdx, Fast) },
     [ins(mov, q, [reg(r12), reg(rdi)]),
      ins(mov, q, [reg(rbx), reg(rsi)]),
      ins(mov, q, [mem(-48, rbp), reg(rdx)]),
      ins(mov, q, [reg(r13), reg(rcx)]),
      ins(mov, q, [reg(r14), reg(r8)]),
      ins(mov, q, [reg(r15), reg(r9)]),
-     ins(call, q, [ind(mem(0, rdx))])].
+     ins(call, q, [ind(Fast)])].
 
 % The load of each generic return word, at thread offset Off, into its
 % register.
@@ -1945,7 +2011,8 @@ generic_entry(Generic, Ret, Params) -->
    Dests, and the return size RetSize in %edx. Pop is the size of the
    pushed argument words. */
 generic_entry_call(reg, RetKs, GWs, Dests, Pop, RetSize, Done) -->
-    [ins(call, q, [ind(mem(0, rsi))])],
+    { field(function_object, fast_entry, rsi, Fast) },
+    [ins(call, q, [ind(Fast)])],
     stack_release(Pop),
     [ins(test, b, [imm(1), reg(al)]),
      ins(jnz, none, [sym(Done)])],
@@ -1953,10 +2020,11 @@ generic_entry_call(reg, RetKs, GWs, Dests, Pop, RetSize, Done) -->
     [ins(mov, l, [imm(RetSize), reg(edx)]),
      label(Done)].
 generic_entry_call(mem(Bytes), _, GWs, Dests, Pop, RetSize, Done) -->
+    { field(function_object, fast_entry, rdx, Fast) },
     [ins(mov, q, [reg(rsi), reg(rdx)]),
      ins(mov, q, [reg(rbx), reg(rsi)]),
      ins(lea, q, [mem(Pop, rsp), reg(rdi)]),
-     ins(call, q, [ind(mem(0, rdx))])],
+     ins(call, q, [ind(Fast)])],
     stack_release(Pop),
     [ins(mov, b, [mem(0, rsp), reg(al)]),
      ins(test, b, [reg(al), reg(al)]),
@@ -1971,8 +2039,9 @@ generic_entry_call(mem(Bytes), _, GWs, Dests, Pop, RetSize, Done) -->
 % The result words from %rdx:%rcx at their thread offsets; a void result
 % is one zero word.
 generic_reg_results([], _, _) -->
-    [ins(mov, q, [imm(0), mem(128, rbx)]),
-     ins(mov, q, [imm(0), mem(384, rbx)])].
+    { generic_offsets(0, Addr, Lower) },
+    [ins(mov, q, [imm(0), mem(Addr, rbx)]),
+     ins(mov, q, [imm(0), mem(Lower, rbx)])].
 generic_reg_results([_|_], GWs, Dests) -->
     generic_reg_stores(Dests, [rdx, rcx]),
     generic_lower_zeroings(GWs).
