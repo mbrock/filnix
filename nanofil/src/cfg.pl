@@ -21,6 +21,14 @@
                                        and the last one in its subtree
     dominates_iv(+Iv, +A, +B)          A dominates B, in constant time
 
+    natural_loops(+Cfg, +Idom, -Loops)
+      Assoc Header -> loop(Latches, Body), both ordsets of labels.
+      A latch has an edge to a header that dominates it. Body is the
+      union of their natural loops. Only reachable blocks participate.
+      Nested loops have separate entries; an irreducible cycle without
+      a dominating header is NOT a natural loop. Empty does not mean
+      acyclic, and this analysis alone cannot justify removing polls.
+
     liveness(+Cfg, +GenKill, +EdgeUses, -LiveIn, -LiveOut)
       Backward dataflow over every block. GenKill: assoc Label -> Gen-Kill
       (ordsets: names read before any write in the block, and names
@@ -39,7 +47,8 @@
     passes use.
 */
 :- module(cfg, [fn_cfg/2, dominators/2, dom_children/3, frontiers/3,
-                dominates/3, dom_intervals/3, dominates_iv/3, liveness/5, temp_liveness/3, gen_kill/2,
+                dominates/3, dom_intervals/3, dominates_iv/3, natural_loops/3,
+                liveness/5, temp_liveness/3, gen_kill/2,
                 phi_edge_uses/2, inst_uses/2, inst_def/2, jump_uses/2,
                 jump_succs/2]).
 
@@ -181,6 +190,34 @@ runner(Idom, Stop, B, R, D0, D) :-
     ;   get_assoc(R, D0, Xs), put_assoc(R, D0, [B|Xs], D1),
         get_assoc(R, Idom, R1),
         runner(Idom, Stop, B, R1, D1, D)
+    ).
+
+%% Natural loops
+
+natural_loops(Cfg, Idom, Loops) :-
+    Cfg = cfg(_, Rpo, Succs, Preds),
+    dom_intervals(Cfg, Idom, Iv),
+    findall(H-T,
+            ( member(T, Rpo), get_assoc(T, Succs, Ss), member(H, Ss),
+              dominates_iv(Iv, H, T) ), Edges0),
+    sort(Edges0, Edges), group_pairs_by_key(Edges, Headers),
+    maplist(natural_loop(Preds, Iv), Headers, Pairs),
+    list_to_assoc(Pairs, Loops).
+
+natural_loop(Preds, Iv, H-Tails, H-loop(Tails, Body)) :-
+    empty_assoc(Empty), put_assoc(H, Empty, true, Seen0),
+    % Mark the header before walking: its predecessors are outside the
+    % natural loop (also essential for a one-block self loop).
+    loop_body(Tails, Preds, Iv, Seen0, Seen),
+    assoc_to_keys(Seen, Body).
+
+loop_body([], _, _, Seen, Seen).
+loop_body([B|Pending], Preds, Iv, Seen0, Seen) :-
+    (   get_assoc(B, Seen0, _) -> loop_body(Pending, Preds, Iv, Seen0, Seen)
+    ;   \+ get_assoc(B, Iv, _) -> loop_body(Pending, Preds, Iv, Seen0, Seen)
+    ;   put_assoc(B, Seen0, true, Seen1),
+        get_assoc(B, Preds, Ps), append(Ps, Pending, More),
+        loop_body(More, Preds, Iv, Seen1, Seen)
     ).
 
 %% Liveness

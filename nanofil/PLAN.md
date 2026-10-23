@@ -272,9 +272,10 @@ gets a rejection test.
 
 ### M5. Middle end and translation validation
 
-**Status: in progress.** M5a, copy elimination and trivial-phi elimination
-are done, see [docs/m5.md](docs/m5.md):
-CFG, dominators, frontiers and liveness; `ALoc`/`AEsc` escape
+**Status: in progress.** Analyses and scalar simplification are implemented,
+see [docs/m5.md](docs/m5.md):
+CFG, dominators, frontiers, liveness, natural loops and base-plus-offset
+alias facts; `ALoc`/`AEsc` escape
 classification; `promote` (mem2reg with pruned SSA phis), then conservative
 SSA copy and trivial-phi elimination, behind `-O` in the driver. Bounded
 symbolic queries check before/after integer returns on small functions,
@@ -284,8 +285,10 @@ unoptimized module. The open question is answered: analyses are pure
 functions over assocs (cfg.pl). Tabled liveness is no faster than an
 assoc worklist once the cost of asserting facts is counted, tabled
 dominators are cubic, and incremental tabling invalidates whole tables on
-small edits. Next: alias and loop analysis and keeping non-escaping arrays
-on the stack. General symbolic memory validation remains open; the bounded
+small edits. Alias and loop facts are available for later passes but do
+not yet change code generation or remove checks. Next: keeping
+non-escaping arrays on the stack. General symbolic memory validation
+remains open; the bounded
 integer queries are not a universal equivalence prover.
 
 **Deliverable:** tabled CFG, dominator, liveness, alias and loop

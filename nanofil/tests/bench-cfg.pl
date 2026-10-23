@@ -9,6 +9,8 @@
     Scenarios, each timed in CPU seconds:
       facts    asserting the function as facts (tabled styles only)
       dom      dominators and dominance frontiers
+      loops    natural-loop membership (functional only)
+      alias    address base/offset facts (functional only, includes SSA check)
       live     temp liveness of the frontend's output
       promote  liveness again after promote rewrote most blocks: the
                functional version recomputes; versioned facts assert the
@@ -23,6 +25,7 @@
 :- use_module('../src/c_lower').
 :- use_module('../src/cfg').
 :- use_module('../src/cfg_tabled').
+:- use_module('../src/alias').
 :- use_module('../src/promote').
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -79,6 +82,10 @@ bench_file(File) :-
     ;   TV1 = skipped
     ),
     report(Row, dom, TF1, TV1, '-'),
+    time(natural_loops(Cfg, Idom, Loops), TLoops),
+    time(alias_facts(F, Aliases), TAlias),
+    report(Row, loops, TLoops, '-', '-'),
+    report(Row, alias, TAlias, '-', '-'),
     % liveness
     time(temp_liveness(Blocks, In1, _), TF2),
     time(findall(B-T, v_live_in(1, B, T), VIn1), TV2),
@@ -100,7 +107,10 @@ bench_file(File) :-
     report(Row, edit, TF4, TV4, TI4),
     retract_version(3), inc_clear,
     sum_live(In1, S1), sum_live(In2, S2),
-    format("  live-in pairs: ~w before promote, ~w after~n", [S1, S2]).
+    format("  live-in pairs: ~w before promote, ~w after~n", [S1, S2]),
+    assoc_to_keys(Loops, Headers), length(Headers, NL),
+    assoc_to_keys(Aliases, Temps), length(Temps, NA),
+    format("  natural loops: ~w; address facts: ~w~n", [NL, NA]).
 
 time(G, T) :-
     statistics(cputime, T0),

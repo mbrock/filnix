@@ -12,6 +12,7 @@
 :- use_module('../src/interp').
 :- use_module('../src/cfg').
 :- use_module('../src/escape').
+:- use_module('../src/alias').
 :- use_module('../src/promote').
 :- use_module('../src/copy').
 :- use_module('../src/opt').
@@ -212,6 +213,70 @@ test(temp_liveness) :-
     get_assoc(b, Out, [x, y, z]),
     get_assoc(c, Out, [x, y]),
     get_assoc(d, Out, [x, y]).
+
+% Nested loops, two latches sharing a header, and a self-loop. The dead
+% predecessor must not enter the body. u/v form an irreducible cycle with
+% separate entries, so neither is a natural-loop header. Layout is shuffled.
+test(natural_loop_membership) :-
+    Bs = [blk(s, [], [], jmp(outer)),
+          blk(latch_b, [], [], jmp(outer)),
+          blk(inner, [], [], jnz(t(n), spin, latch_a)),
+          blk(spin, [], [], jmp(inner)),
+          blk(outer, [], [], jnz(t(n), inner, self)),
+          blk(latch_a, [], [], jnz(t(n), outer, latch_b)),
+          blk(dead, [], [], jmp(inner)),
+          blk(self, [], [], jnz(t(n), self, choice)),
+          blk(choice, [], [], jnz(t(n), u, v)),
+          blk(u, [], [], jnz(t(n), v, done)),
+          blk(v, [], [], jnz(t(n), u, done)),
+          blk(done, [], [], ret)],
+    fn_cfg(Bs, Cfg), dominators(Cfg, Idom), natural_loops(Cfg, Idom, Loops),
+    assoc_to_list(Loops,
+                  [inner-loop([spin], [inner, spin]),
+                   outer-loop([latch_a, latch_b], [inner, latch_a, latch_b, outer, spin]),
+                   self-loop([self], [self])]).
+
+% These are address expressions, not disjointness claims. Wrapping and
+% signed subtraction must give the same modular offset. Loads, casts,
+% variable offsets and phis get their own opaque bases, not an alloc's.
+test(alias_base_offsets) :-
+    F = func(f, export, p, [par(p, t(p)), par(l, t(n)), par(w, t(c))],
+             [blk(s, [],
+                  [ins(t(a), p, alloc(8), [c(32)]),
+                   ins(t(a4), p, add, [t(a), c(4)]),
+                   ins(t(wrap), p, add, [t(a4), c(18446744073709551615)]),
+                   ins(t(back), p, sub, [t(wrap), c(-1)]),
+                   ins(t(q), p, copy, [t(p)]),
+                   ins(t(q9), p, add, [t(q), c(9)]),
+                   ins(t(g), p, copy, [glo(global)]),
+                   ins(t(raw), l, ptoi, [t(a)]),
+                   ins(t(cast), p, itop, [t(raw)]),
+                   ins(t(loaded), p, load(p), [t(a)]),
+                   ins(t(loaded3), p, add, [t(loaded), c(3)]),
+                   call(to(t(called), p), glo(external), []),
+                   ins(t(vary), p, add, [t(a), t(n)]),
+                   ins(t(narrow), w, copy, [t(n)]),
+                   ins(t(wide), l, ext(uw), [t(narrow)]),
+                   ins(t(nplus), l, sub, [t(n), c(18446744073709551615)]),
+                   ins(t(nwrap), l, add, [c(18446744073709551616), t(n)])],
+                  jnz(t(c), left, right)),
+              blk(left, [], [], jmp(join)), blk(right, [], [], jmp(join)),
+              blk(join, [phi(t(merged), p, [left-t(a), right-t(q)])],
+                  [ins(t(result), p, add, [t(merged), c(5)])], ret(t(result)))]),
+    once(valid_module(module([data(global, local, 8, [item(l, c(7))]), F]))),
+    alias_facts(F, Facts),
+    forall(member(T-A, [a-addr(p, alloc(a), 0), back-addr(p, alloc(a), 4),
+                       wrap-addr(p, alloc(a), 3), q9-addr(p, param(p), 9),
+                       g-addr(p, symbol(global), 0), raw-addr(l, value(raw), 0),
+                       cast-addr(p, value(cast), 0), loaded3-addr(p, value(loaded), 3),
+                       called-addr(p, value(called), 0), vary-addr(p, value(vary), 0),
+                       wide-addr(l, value(wide), 0), nplus-addr(l, param(n), 1),
+                       nwrap-addr(l, param(n), 0), result-addr(p, value(merged), 5)]),
+           get_assoc(T, Facts, A)),
+    \+ get_assoc(narrow, Facts, _),
+    mod_file('../tests/fixtures/copy.ssa', Copies),
+    func_named(Copies, redefined, Bad), alias_facts(Bad, Empty),
+    assoc_to_list(Empty, []).
 
 % Each alloc used one way that makes it escape, and one that does not.
 test(escape_classes) :-
