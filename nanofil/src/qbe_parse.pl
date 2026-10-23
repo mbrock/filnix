@@ -18,6 +18,7 @@
 :- use_module(library(dcgs)).
 :- use_module(library(pio)).
 :- use_module(library(charsio)).
+:- use_module(ir, [op_text//1]).
 
 %! parse_qbe_file(+File, -Module) is det.
 %
@@ -524,35 +525,15 @@ fallthrough_jump([], Fn, Label, _) :-
     throw(nanofil_error(Msg)).
 
 % op_name(+Name, -Op) is semidet: Op is the IR operation the
-% instruction name Name denotes.
-op_name(Name, Op) :-
-    memberchk(Name, [add, sub, mul, div, udiv, rem, urem, and, or,
-                     xor, sar, shr, shl, neg, copy, ptoi, itop,
-                     va_args, va_arg]),
-    !,
-    Op = Name.
-op_name(Name, cmp(Cond, K)) :-
-    atom_chars(Name, ['c'|Cs]),
-    append(CondCs, [KC], Cs),
-    atom_chars(Cond, CondCs),
-    atom_chars(K, [KC]),
-    memberchk(K, [w, l]),
-    memberchk(Cond, [eq, ne, sle, slt, sge, sgt, ule, ult, uge, ugt]),
-    !.
-op_name(Name, ext(Type)) :-
-    atom_concat(ext, Suffix, Name),
-    memberchk(Suffix, [sw, uw, sh, uh, sb, ub]),
-    !,
-    Type = Suffix.
+% instruction name Name denotes. QBE also spells loadsw as loadw.
+% This generates each op's name and compares whole names: on Trealla,
+% parsing the packed string atom_chars/2 gives with op_text//1 can match
+% the wrong op once the interpreter has run (tests/unit.pl).
 op_name(loadw, load(sw)) :- !.
-op_name(Name, load(Type)) :-
-    atom_concat(load, Suffix, Name),
-    memberchk(Suffix, [l, sw, uw, sh, uh, sb, ub, p]),
-    !,
-    Type = Suffix.
-op_name(Name, alloc(Align)) :-
-    atom_concat(alloc, Suffix, Name),
-    memberchk(Suffix-Align, ['4'-4, '8'-8, '16'-16]).
+op_name(Name, Op) :-
+    phrase(op_text(Op), Cs),
+    atom_chars(Name, Cs),
+    !.
 
 %% Grammar: data
 

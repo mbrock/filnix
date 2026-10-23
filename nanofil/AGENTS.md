@@ -56,6 +56,11 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   else inside `-->` bodies; end chains with `; []`.
 - On Trealla a 200-function `gen.py` corpus takes GBs of RAM; run one at
   a time there.
+- On Trealla, a DCG that tries alternatives which share a prefix over a
+  char list from `atom_chars/2` returned a wrong first solution after
+  the interpreter had run (October 2026; a literal list was fine). To
+  look a name up in a relation, generate the candidates' chars and
+  compare (`qbe_parse:op_name/2`).
 
 ## Purity where it pays
 

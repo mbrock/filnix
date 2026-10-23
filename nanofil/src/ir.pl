@@ -23,10 +23,11 @@
           rets returns a tuple
 
     Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
-        cmp(Cond, K)   Cond in eq ne sle slt sge sgt ule ult uge ugt
+        cmp(Cond, K)   Cond in eq ne sle slt sge sgt ule ult uge ugt, K w|l
         ext(T)         T in sw uw sh uh sb ub
         load(T)        T in l sw uw sh uh sb ub p
         alloc(Align)   Align in 4, 8, 16
+        (op_kind/2 and op_text//1 state these sets once)
         ptoi itop
         va_args       filc only: p cursor into the entry argument snapshot;
                       operand c(N), non-negative fixed-prefix byte count
@@ -60,12 +61,13 @@
     (w, l or p), V an IR value, L a label.
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
-               op_kind/2, valid_module/1, func_named/3, width_bytes/2,
+               op_kind/2, op_text//1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4,
                module_mode/2, addr_class/2, variadic_func/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(library(dcgs)).
 
 %! class_bits(+K, -Bits) is semidet.
 %
@@ -113,19 +115,63 @@ addr_class(filc, p).
 %  Op takes N arguments; it fails for anything that is not an Op of the
 %  grammar.
 
-op_arity(add, 2).  op_arity(sub, 2).  op_arity(mul, 2).
-op_arity(div, 2).  op_arity(udiv, 2). op_arity(rem, 2).  op_arity(urem, 2).
-op_arity(and, 2).  op_arity(or, 2).   op_arity(xor, 2).
-op_arity(sar, 2).  op_arity(shr, 2).  op_arity(shl, 2).
-op_arity(neg, 1).  op_arity(copy, 1).
-op_arity(cmp(_, _), 2).
-op_arity(ext(_), 1).
-op_arity(load(_), 1).
-op_arity(alloc(_), 1).
-op_arity(ptoi, 1).
-op_arity(itop, 1).
-op_arity(va_args, 1).
-op_arity(va_arg, 1).
+op_arity(Op, N) :-
+    op_kind(Op, Kind),
+    kind_arity(Kind, N).
+
+kind_arity(additive, 2).
+kind_arity(alu, 2).
+kind_arity(shift, 2).
+kind_arity(cmp, 2).
+kind_arity(neg, 1).
+kind_arity(copy, 1).
+kind_arity(ptoi, 1).
+kind_arity(itop, 1).
+kind_arity(va_args, 1).
+kind_arity(va_arg, 1).
+kind_arity(ext, 1).
+kind_arity(load, 1).
+kind_arity(alloc, 1).
+
+%! op_text(?Op)// is nondet.
+%
+%  The QBE instruction name of Op, such as "csltw" for cmp(slt, w): an
+%  atomic op is its own name, a compound one a prefix and its operands'
+%  names. This is the one description of the names, so it both prints
+%  (+Op) and parses (-Op, which enumerates the ops of the grammar).
+
+op_text(Op) --> { op_kind(Op, _) }, spelling(Op).
+
+spelling(cmp(Cond, K)) -->
+    "c", set_name(cmp_cond, Cond), set_name(cmp_class, K).
+spelling(ext(T)) --> "ext", set_name(ext_type, T).
+spelling(load(T)) --> "load", set_name(load_type, T).
+spelling(alloc(Align)) --> "alloc", set_name(alloc_align, Align).
+spelling(Op) --> { atom(Op) }, chars_of(Op).
+
+% set_name(:Set_1, ?X)//: the name of X, a member of Set_1.
+set_name(Set_1, X) --> { call(Set_1, X) }, chars_of(X).
+
+chars_of(X) -->
+    { number(X) -> number_chars(X, Cs) ; atom_chars(X, Cs) },
+    seq(Cs).
+
+cmp_cond(eq).  cmp_cond(ne).
+cmp_cond(sle). cmp_cond(slt). cmp_cond(sge). cmp_cond(sgt).
+cmp_cond(ule). cmp_cond(ult). cmp_cond(uge). cmp_cond(ugt).
+
+cmp_class(w).
+cmp_class(l).
+
+ext_type(sw). ext_type(uw). ext_type(sh). ext_type(uh).
+ext_type(sb). ext_type(ub).
+
+load_type(l). load_type(p).
+load_type(T) :- ext_type(T).
+
+alloc_align(4).
+alloc_align(8).
+alloc_align(16).
 
 %! op_kind(?Op, ?Kind) is nondet.
 %

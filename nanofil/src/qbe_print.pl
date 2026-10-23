@@ -6,7 +6,7 @@
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
 :- use_module(library(format)).
-:- use_module(ir, [op_kind/2]).
+:- use_module(ir, [op_text//1]).
 
 %! print_module(+Module)
 %
@@ -88,7 +88,7 @@ insts([Inst|Insts]) --> "\t", inst(Inst), "\n", insts(Insts).
 
 % inst(+Inst)//: an instruction, without its tab and newline.
 inst(ins(D, K, Op, Args)) -->
-    val(D), " =", atom(K), " ", opname(Op), " ", vals(Args).
+    val(D), " =", atom(K), " ", op_text(Op), " ", vals(Args).
 inst(store(W, V, Addr)) --> "store", atom(W), " ", val(V), ", ", val(Addr).
 inst(call(Res, F, Args)) --> call_inst(Res, F, Args).
 
@@ -110,25 +110,6 @@ more_call_args([]) --> [].
 more_call_args([Arg|Args]) --> ", ", call_arg(Arg), more_call_args(Args).
 
 call_arg(arg(K, V)) --> atom(K), " ", val(V).
-
-% opname(+Op)//: the instruction name of an IR operation.
-opname(Op) --> { op_kind(Op, Kind) }, kind_opname(Kind, Op).
-
-% kind_opname(+Kind, +Op)//: as opname//1, for Op of Kind. The atoms
-% are their own names.
-kind_opname(additive, Op) --> atom(Op).
-kind_opname(alu, Op) --> atom(Op).
-kind_opname(shift, Op) --> atom(Op).
-kind_opname(neg, Op) --> atom(Op).
-kind_opname(copy, Op) --> atom(Op).
-kind_opname(ptoi, Op) --> atom(Op).
-kind_opname(itop, Op) --> atom(Op).
-kind_opname(va_args, Op) --> atom(Op).
-kind_opname(va_arg, Op) --> atom(Op).
-kind_opname(cmp, cmp(Cond, K)) --> "c", atom(Cond), atom(K).
-kind_opname(ext, ext(Type)) --> "ext", atom(Type).
-kind_opname(load, load(Type)) --> "load", atom(Type).
-kind_opname(alloc, alloc(Align)) --> "alloc", num(Align).
 
 % jump(+Jump)//: a jump, without its tab and newline.
 jump(jmp(Label)) --> "jmp @", atom(Label).
