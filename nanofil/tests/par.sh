@@ -22,7 +22,9 @@ done | xargs -0 -n2 -P "${NANOFIL_JOBS:-$(nproc)}" bash -c '
   cat "$out"
   printf "  [%4d.%01ds] %s %s %s\n" $((ms / 1000)) $((ms % 1000 / 100)) "$(basename "$PAR_SCRIPT")" "$(basename "$1")" "$r"
 '
-if compgen -G "$work/*.failed" >/dev/null; then
-  echo "par: $(ls "$work"/*.failed | wc -l) of $# runs of $(basename "$script") failed" >&2
+# A plain glob, not compgen: Nix's non-interactive bash has no compgen.
+failed=("$work"/*.failed)
+if [ -e "${failed[0]}" ]; then
+  echo "par: ${#failed[@]} of $# runs of $(basename "$script") failed" >&2
   exit 1
 fi
