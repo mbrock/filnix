@@ -20,7 +20,8 @@
                           (char32_t), Codes the elements without the 0
       p(Atom)             punctuator, e.g. p('->'), p('<<=')
 */
-:- module(c_lex, [c_tokens/3, keyword/2]).
+:- module(c_lex, [c_tokens/3, keyword/2, decimal/1, ident_start/1,
+                  ident_char/1, ident_rest//1, punctuator/1, digraph/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -469,15 +470,9 @@ utf8_bytes(K, [B1, B2, B3, B4]) :-
 %% Punctuators, longest first.
 
 punct(P) -->
-    [A, B, C],
-    { atom_chars(P, [A, B, C]), memberchk(P, ['...', '<<=', '>>=']) }, !.
+    [A, B, C], { atom_chars(P, [A, B, C]), punctuator(P) }, !.
 punct(P) -->
-    [A, B],
-    {   atom_chars(P, [A, B]),
-        memberchk(P, ['->', '++', '--', '<<', '>>', '<=', '>=', '==', '!=',
-                      '&&', '||', '*=', '/=', '%=', '+=', '-=', '&=',
-                      '^=', '|=', '##'])
-    }, !.
+    [A, B], { atom_chars(P, [A, B]), punctuator(P) }, !.
 punct(P) -->
     [C],
     {   memberchk(C, ['[', ']', '(', ')', '{', '}', '.', '&', '*', '+', '-',
@@ -485,6 +480,22 @@ punct(P) -->
                       '=', ',', '#']),
         atom_chars(P, [C])
     }.
+
+%! punctuator(?Spelling) is nondet.
+%
+%  Spelling is one of C's punctuators of two or three characters
+%  (C11 6.4.6), digraphs aside; the one-character ones are punct//1's.
+punctuator(P) :-
+    member(P, ['...', '<<=', '>>=',
+               '->', '++', '--', '<<', '>>', '<=', '>=', '==', '!=',
+               '&&', '||', '*=', '/=', '%=', '+=', '-=', '&=', '^=', '|=',
+               '##']).
+
+%! digraph(?Spelling) is nondet.
+%
+%  Spelling is a digraph (C11 6.4.6p3), a preprocessing token that
+%  stands for [, ], {, } or #.
+digraph(P) :- member(P, ['<:', ':>', '<%', '%>', '%:']).
 
 %% Keywords, with GNU alternate spellings folded.
 

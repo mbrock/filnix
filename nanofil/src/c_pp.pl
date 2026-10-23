@@ -172,25 +172,17 @@ spelling([C|Cs]) -->
     [C], { ident_start(C) }, !,
     ident_rest(Cs).
 spelling([C|Cs]) -->
-    [C], { digit(C) }, !,
+    [C], { decimal(C) }, !,
     number_rest(Cs).
 spelling(['.', C|Cs]) -->
-    ['.', C], { digit(C) }, !,
+    ['.', C], { decimal(C) }, !,
     number_rest(Cs).
 spelling(Cs) -->
     [A, B, C],
-    {   Cs = [A, B, C],
-        atom_chars(P, Cs),
-        memberchk(P, ['...', '<<=', '>>='])
-    }, !.
+    { Cs = [A, B, C], atom_chars(P, Cs), punctuator(P) }, !.
 spelling(Cs) -->
     [A, B],
-    {   Cs = [A, B],
-        atom_chars(P, Cs),
-        memberchk(P, ['##', '->', '++', '--', '<<', '>>', '<=', '>=', '==',
-                      '!=', '&&', '||', '*=', '/=', '%=', '+=', '-=', '&=',
-                      '^=', '|=', '<:', ':>', '<%', '%>', '%:'])
-    }, !.
+    { Cs = [A, B], atom_chars(P, Cs), ( punctuator(P) ; digraph(P) ) }, !.
 spelling([C]) --> [C].
 
 % quoted(+Quote, -Chars)//: Chars is the rest of a literal through its
@@ -204,20 +196,6 @@ quoted(Q, [C|Cs]) -->
     quoted(Q, Cs).
 quoted(_, _) -->
     { throw(nanofil_error('unterminated preprocessing literal')) }.
-
-ident_start(C) :- ( C @>= a, C @=< z ; C @>= 'A', C @=< 'Z' ), !.
-ident_start('_').
-ident_start('$').
-
-digit(C) :- C @>= '0', C @=< '9'.
-
-ident_char(C) :- ident_start(C), !.
-ident_char(C) :- digit(C).
-
-ident_rest([C|Cs]) -->
-    [C], { ident_char(C) }, !,
-    ident_rest(Cs).
-ident_rest([]) --> [].
 
 number_rest([E, S|Cs]) -->
     [E, S],
