@@ -227,3 +227,6 @@ shorter, and also more of what it is meant to be: a specification that
 happens to compile programs, small enough to hold in your head, exact
 enough to trust, and pleasant enough that people read it to learn how
 memory-safe C works.
+
+The current assessment and the roadmap from here are in
+[campaign.md](campaign.md).

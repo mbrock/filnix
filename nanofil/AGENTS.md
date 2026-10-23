@@ -34,6 +34,7 @@ export SWIPL=/tmp/swipl/bin/swipl QBE=/tmp/qbe-p/bin/qbe FILCC=/tmp/filcc/bin/cl
 nanofil/tests/difftest.sh FILE.ssa|FILE.c...   # interpreter vs native (and clang for .c)
 nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
+nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
@@ -63,6 +64,16 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   the interpreter had run (October 2026; a literal list was fine). To
   look a name up in a relation, generate the candidates' chars and
   compare (`qbe_parse:op_name/2`).
+
+## The refactoring campaign
+
+nanofil is being refactored toward a specification that compiles
+programs: each fact about C, the IR or Fil-C stated once, as a relation
+everything else reads. [docs/campaign.md](docs/campaign.md) holds the
+ambition, the working rules (snapshot byte-identity, fail-first tests
+for behaviour changes) and the ordered roadmap; read it before
+refactoring, and mark roadmap steps done when they land.
+[docs/factorings.md](docs/factorings.md) logs what has been done.
 
 ## Purity where it pays
 
