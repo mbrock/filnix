@@ -988,8 +988,7 @@ overflow_builtin(Name, Op, Fixed) :-
     ).
 
 /* conditional_type(+A-B, +Env, -T): T is the type of c ? A : B (C11
-   6.5.15), from the arms' value types; a null pointer constant arm
-   takes the other arm's pointer type. Fails if the arms are
+   6.5.15), from the arms' value types. Fails if the arms are
    incompatible or cannot be typed. */
 conditional_type(A-B, Env, T) :-
     arm(A, Env, TA, NA), arm(B, Env, TB, NB),
@@ -1008,26 +1007,45 @@ null_pointer_constant(cast(_, X), Env, ptr(void)) :-
     expression_type(X, Env, TX0), value_type(TX0, TX),
     null_pointer_constant(X, Env, TX).
 
+/* arms_type(+TA, +NA, +TB, +NB, -T): arms of value types TA and TB,
+   null or value as each is a null pointer constant or not, give ?: the
+   type T (6.5.15p5-6). As in clang and GCC, a void arm makes the result
+   void whatever the other arm, and incompatible pointer arms give
+   void *; a pointer and a nonnull integer are rejected. */
 arms_type(TA, _, TB, _, T) :-
     arithmetic_type(TA), arithmetic_type(TB), !,
     usual_arith_conversion(TA, TB, T).
-arms_type(void, _, void, _, void) :- !.
+arms_type(void, _, _, _, void) :- !.
+arms_type(_, _, void, _, void) :- !.
 arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
 arms_type(ptr(P), _, _, null, ptr(P)) :- !.
 arms_type(_, null, ptr(P), _, ptr(P)) :- !.
-arms_type(ptr(A), _, ptr(B), _, ptr(V)) :-
-    ( void_target(A) ; void_target(B) ), !,
-    target_quals(A, QA), target_quals(B, QB), append(QA, QB, Qs),
-    qualify(Qs, void, V).
-arms_type(ptr(P), _, ptr(_), _, ptr(P)).
+arms_type(ptr(A), _, ptr(B), _, ptr(T)) :-
+    target(A, QA, A1), target(B, QB, B1), append(QA, QB, Qs),
+    (   ( A1 == void ; B1 == void ) -> qualify(Qs, void, T)
+    ;   composite_type(A1, B1, C) -> qualify(Qs, C, T)
+    ;   T = void
+    ).
 
-% void_target(+T): pointer target T is void, perhaps qualified.
-void_target(void).
-void_target(qualified(_, void)).
+% target(+T, -Qs, -U): pointer target T is U qualified with Qs.
+target(qualified(Qs, U), Qs, U) :- !.
+target(U, [], U).
 
-% target_quals(+T, -Qs): Qs are the qualifiers of pointer target T.
-target_quals(qualified(Qs, _), Qs) :- !.
-target_quals(_, []).
+/* composite_type(+T, +U, -C): T and U are compatible (6.2.7), and C is
+   their composite type: an array's known size, a function's prototype. */
+composite_type(T, U, T) :- T == U, !.
+composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C)) :-
+    composite_type(T, U, C).
+composite_type(ptr(T), ptr(U), ptr(C)) :- composite_type(T, U, C).
+composite_type(array(T, N), array(U, M), array(C, K)) :-
+    ( N == none -> K = M ; M == none -> K = N ; N == M, K = N ),
+    composite_type(T, U, C).
+composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V)) :-
+    composite_type(R, S, C),
+    (   Ps == unspecified -> Cs = Qs
+    ;   Qs == unspecified -> Cs = Ps
+    ;   maplist(composite_type, Ps, Qs, Cs)
+    ).
 
 % block_value_type(+Items, +Env, -T): T is the value type of a GNU
 % statement expression with block Items: its last item's, once the
@@ -1122,14 +1140,8 @@ generic_unique([assoc(T, _)|Rest], Loc) :-
     ; generic_unique(Rest, Loc)
     ).
 
-compatible_type(T, U) :- T == U, !.
-compatible_type(qualified(Qs, T), qualified(Qs, U)) :- compatible_type(T, U).
-compatible_type(ptr(T), ptr(U)) :- compatible_type(T, U).
-compatible_type(array(T, N), array(U, M)) :-
-    ( N == none ; M == none ; N == M ), compatible_type(T, U).
-compatible_type(func(R, Ps, V), func(S, Qs, V)) :-
-    compatible_type(R, S),
-    ( Ps == unspecified ; Qs == unspecified ; maplist(compatible_type, Ps, Qs) ).
+% compatible_type(+T, +U): T and U are compatible types (C11 6.2.7).
+compatible_type(T, U) :- composite_type(T, U, _).
 
 % offset_path(+Path, +Type, +Env, +Off0, -Off): offsetof's member path.
 offset_path([], _, _, Off, Off).

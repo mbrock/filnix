@@ -406,7 +406,7 @@ c-testsuite/00209.c	reject
 c-testsuite/00210.c	reject
 c-testsuite/00211.c	pass
 c-testsuite/00212.c	pass
-c-testsuite/00213.c	reject
+c-testsuite/00213.c	pass
 c-testsuite/00214.c	pass
 c-testsuite/00215.c	pass
 c-testsuite/00216.c	reject
