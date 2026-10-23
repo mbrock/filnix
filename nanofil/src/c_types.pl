@@ -319,8 +319,9 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     ;   new_tag(Kind, Tag, Id, Env0, Env1)
     ),
     Type =.. [Kind, Id],
-    foldl(member_decl, Members, Fieldss, Env1, Env2),
+    foldl(member_decl, Members, Fieldss, Reflectss, Env1, Env2),
     append(Fieldss, Fields),
+    append(Reflectss, Reflected),
     (   member(Attr, Attrs), layout_attr(attr(Attr))
     ->  Def = bad('alignment attributes')
     ;   memberchk(bad(Why), Fields)
@@ -334,7 +335,8 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     ),
     Env2 = e(Ords, Tags2, Defs0, Next),
     put_assoc(Id, Defs0, Def, Defs1),
-    Env = e(Ords, Tags2, Defs1, Next).
+    put_assoc(qmembers(Id), Defs1, Reflected, Defs2),
+    Env = e(Ords, Tags2, Defs2, Next).
 
 % A later unsupported member (notably glibc FILE's _flags2 bitfield)
 % does not change preceding offsets. Never infer offsets beyond it, or
@@ -360,19 +362,23 @@ new_tag(Kind, Tag, Id, e(Ords, Tags0, Defs0, Id), e(Ords, Tags, Defs, Next)) :-
 tag_bound(none, _, Tags, Tags).
 tag_bound(some(Name), Value, Tags0, Tags) :- put_assoc(Name, Tags0, Value, Tags).
 
-% member_decl(+Decl, -Fields, +Env0, -Env): Fields are the f(Name, Type)
-% the member declaration Decl declares ([] for a static assertion), or
-% [bad(Why)]; Name is some(Field), or none for an anonymous member.
-member_decl(static_assert(_, _, _), [], Env, Env).
+% member_decl(+Decl, -Fields, -Reflected, +Env0, -Env): Fields are the
+% f(Name, Type) the member declaration Decl declares ([] for a static
+% assertion), or [bad(Why)]; Name is some(Field), or none for an
+% anonymous member. Reflected are the q(Name, QType) of the same
+% members, QType keeping the qualifiers that Type drops.
+member_decl(static_assert(_, _, _), [], [], Env, Env).
 member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
-            Env0, Env) :-
+            Reflected, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     (   Width \== none
-    ->  Fields = [bad('bitfields')],
+    ->  Fields = [bad('bitfields')], Reflected = [],
         Env = Env1
     ;   apply_declarator(SyntaxType, Base, Type, Env1, Env),
-        (   bad_type(Type, Why) -> Fields = [bad(Why)]
-        ;   Fields = [f(Name, Type)]
+        (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
+        ;   Fields = [f(Name, Type)],
+            reflect_type(type(Specs, SyntaxType), Type, Env, QType),
+            Reflected = [q(Name, QType)]
         )
     ).
 
@@ -1109,11 +1115,20 @@ unqualified(func(R0, Ps0, V), func(R, Ps, V)) :- !,
     ( Ps0 == unspecified -> Ps = Ps0 ; maplist(unqualified, Ps0, Ps) ).
 unqualified(T, T).
 
-% member_type(+SU, +F, +Env, -T): T is the type of member F of struct
-% or union type SU; a qualified SU qualifies the member too.
+% member_type(+SU, +F, +Env, -T): T is the (reflected) type of member
+% F of struct or union type SU, looking into anonymous members; a
+% qualified SU qualifies the member too.
 member_type(qualified(Qs, SU), F, Env, T) :- !,
     member_type(SU, F, Env, T0), qualify(Qs, T0, T).
-member_type(SU, F, Env, T) :- member_type_offset(SU, F, Env, T, _).
+member_type(SU, F, Env, T) :-
+    SU =.. [_, Id], Env = e(_, _, Defs, _),
+    (   get_assoc(qmembers(Id), Defs, Members)
+    ->  (   memberchk(q(some(F), T), Members) -> true
+        ;   member(q(none, Anon), Members), member_type(Anon, F, Env, T)
+        ->  true
+        )
+    ;   member_type_offset(SU, F, Env, T, _)   % built-in va_list
+    ).
 
 binding_type(var(_, T), T).
 binding_type(gvar(T, _, _, _), T).

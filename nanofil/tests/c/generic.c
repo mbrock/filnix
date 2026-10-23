@@ -83,3 +83,17 @@ long cond_arms(long x) {
 }
 // run: $cond_arms 1
 // run: $cond_arms 0
+/* Members keep their qualifiers, also in an anonymous member, and a
+   qualified struct adds its own. */
+struct qm { const char *p; const int c; struct { volatile int v; }; int *const q; };
+long qualified_members(long x) {
+    struct qm m = { "a", 1, { 2 }, 0 };
+    const struct qm *pm = &m;
+    long r = _Generic(m.p, const char *: 1, char *: 1000);
+    r += _Generic(&m.c, const int *: 2, int *: 2000);
+    r += _Generic(&m.v, volatile int *: 4, int *: 4000);
+    r += _Generic(&pm->q, int *const *: 8, default: 8000);
+    r += _Generic(&pm->p, const char *const *: 16, default: 16000);
+    return r + x * 0;
+}
+// run: $qualified_members 0
