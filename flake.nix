@@ -208,6 +208,7 @@
             nanofil = import ./nanofil/nix/check.nix { inherit pkgs filcc; };
             nanofil-hello = import ./nanofil/nix/hello.nix { inherit pkgs filcc; };
             nanofil-zlib = import ./nanofil/nix/zlib.nix { inherit pkgs filcc; };
+            nanofil-lua = import ./nanofil/nix/lua.nix { inherit pkgs filcc; };
             sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
               inherit pkgs filcc sarcasm-prolog;
               trealla = pkgsFilc.trealla;
