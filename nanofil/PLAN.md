@@ -138,6 +138,11 @@ lowering bugs.
 
 ### M3. Pizlonation and Fil-C ABI emission
 
+**Status: complete.** See [docs/m3.md](docs/m3.md). nanofil's Fil-C
+output matches the interpreter's returns and traps, interoperates with
+clang-built code in both directions, and survives a GC stress test that
+catches planted rooting bugs.
+
 **Deliverable:**
 
 - The `p` class and explicit `ptrtoint`/`inttoptr`. `inttoptr` yields

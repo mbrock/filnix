@@ -17,6 +17,7 @@
 :- use_module(qbe_print).
 :- use_module(interp).
 :- use_module(amd64).
+:- use_module(filc_amd64).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -40,7 +41,10 @@ load(File, M) :-
 
 command([check, File]) :- load(File, _), format("ok~n", []).
 command([print, File]) :- load(File, M), print_module(M).
-command([compile, File]) :- load(File, M), print_asm(M).
+command([compile, File]) :-
+    load(File, M),
+    module_mode(M, Mode),
+    (   Mode == filc -> print_filc_asm(M) ; print_asm(M) ).
 command([run, File, Fn|ArgAtoms]) :-
     load(File, M),
     maplist(atom_number, ArgAtoms, Args0),
@@ -55,14 +59,17 @@ command([difftest, File, Dir]) :-
     % One findall over all runs, so each run's heap is reclaimed on
     % backtracking before the next starts.
     findall(R, ( member(Run, Runs), evaluate(M, Run, R) ), Results),
-    include(comparable, Results, Cmp),
-    exclude(comparable, Results, Skipped),
+    module_mode(M, Mode),
+    include(comparable(Mode), Results, Cmp),
+    exclude(comparable(Mode), Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpF),
     atom_concat(Dir, '/harness.c', HarF),
     atom_concat(Dir, '/printed.ssa', PrF),
+    atom_concat(Dir, '/mode', ModeF),
     write_file(ExpF, expected_lines(Cmp)),
-    write_file(HarF, harness(M, Cmp)),
+    write_file(HarF, harness(Mode, M, Cmp)),
     write_file(PrF, module_chars(M)),
+    write_file(ModeF, fmt("~w~n", [Mode])),
     length(Cmp, NC), length(Skipped, NS),
     format("~w: ~w runs compared, ~w not comparable~n", [File, NC, NS]),
     forall(member(r(Fn, Args, Out), Skipped),
@@ -84,8 +91,11 @@ evaluate(M, run(Fn, Args0), r(Fn, Args, Out)) :-
         throw(nanofil_error(CT-'interpreter found no outcome'))
     ).
 
-comparable(r(_, _, ret(V))) :- integer(V).
-comparable(r(_, _, ret)).
+% A trap is a Fil-C safety panic natively; nothing else has a native
+% counterpart.
+comparable(_, r(_, _, ret(V))) :- integer(V).
+comparable(_, r(_, _, ret)).
+comparable(filc, r(_, _, trap(_))).
 
 call_text(Fn, Args, T) :-
     atomic_list_concat(Args, ', ', A),
@@ -99,17 +109,36 @@ write_file(F, G) :-
 
 expected_lines([]) --> [].
 expected_lines([r(Fn, Args, Out)|Rs]) -->
-    { call_text(Fn, Args, CT), outcome_text(Out, T) },
+    { call_text(Fn, Args, CT),
+      ( Out = trap(_) -> T = trap ; outcome_text(Out, T) ) },
     fmt("~w = ~w~n", [CT, T]),
     expected_lines(Rs).
 
-harness(M, Rs) -->
+harness(plain, M, Rs) -->
     "#include <stdio.h>\n#include <stdint.h>\n\n",
     { findall(Fn, member(r(Fn, _, _), Rs), Fns0), sort(Fns0, Fns) },
     prototypes(Fns, M),
     "\nint main(void) {\n",
     harness_calls(Rs, M),
     "    return 0;\n}\n".
+% Fil-C: one run per process, selected by argv[1], since a trap ends the
+% process. The call text is printed first, so a trap leaves it unfinished.
+harness(filc, M, Rs) -->
+    "#include <stdio.h>\n#include <stdint.h>\n#include <stdlib.h>\n\n",
+    { findall(Fn, member(r(Fn, _, _), Rs), Fns0), sort(Fns0, Fns) },
+    prototypes(Fns, M),
+    "\nint main(int argc, char **argv) {\n    switch (atoi(argv[1])) {\n",
+    filc_cases(Rs, 0, M),
+    "    }\n    return 0;\n}\n".
+
+filc_cases([], _, _) --> [].
+filc_cases([R|Rs], I, M) -->
+    { R = r(Fn, Args, _), call_text(Fn, Args, CT) },
+    fmt("    case ~w: fputs(\"~w = \", stdout); fflush(stdout);~n", [I, CT]),
+    harness_calls([R], M, bare),
+    "        break;\n",
+    { I1 is I + 1 },
+    filc_cases(Rs, I1, M).
 
 prototypes([], _) --> [].
 prototypes([Fn|Fns], M) -->
@@ -124,18 +153,24 @@ c_type(w, uint32_t).
 c_type(l, uint64_t).
 c_type(void, void).
 
-harness_calls([], _) --> [].
-harness_calls([r(Fn, Args, _)|Rs], M) -->
+harness_calls(Rs, M) --> harness_calls(Rs, M, labelled).
+
+harness_calls([], _, _) --> [].
+harness_calls([r(Fn, Args, _)|Rs], M, Style) -->
     { func_named(M, Fn, func(_, _, Ret, _, _)),
       call_text(Fn, Args, CT),
       findall(A, ( member(X, Args), format(atom(A), '~wull', [X]) ), CAs),
       atomic_list_concat(CAs, ', ', CA) },
-    (   { Ret == void }
+    (   { Style == bare, Ret == void }
+    ->  fmt("        ~w(~w); puts(\"ret\");~n", [Fn, CA])
+    ;   { Style == bare }
+    ->  fmt("        printf(\"ret %llu\\n\", (unsigned long long)~w(~w));~n", [Fn, CA])
+    ;   { Ret == void }
     ->  fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n", [Fn, CA, CT])
     ;   fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
                 [CT, Fn, CA])
     ),
-    harness_calls(Rs, M).
+    harness_calls(Rs, M, Style).
 
 %% "# run: $fn a b c" lines
 

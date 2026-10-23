@@ -1,0 +1,45 @@
+# GC stress, driven by gc.c: while these functions run, c_gc forces and
+# requests collections and churns the heap. Every node is reachable only
+# through nanofil's frame and through pointers nanofil stored, so a missed
+# root or store barrier frees a live node.
+
+# A list of %n nodes {next p at 0, value l at 8}, newest first.
+export function p $build(l %n) {
+@start
+	jmp @loop
+@loop
+	%i =l phi @start 0, @body %i1
+	%head =p phi @start 0, @body %node
+	%c =w csltl %i, %n
+	jnz %c, @body, @done
+@body
+	%node =p alloc8 16
+	storep %head, %node
+	%v =p add %node, 8
+	storel %i, %v
+	call $c_gc(l %i)
+	%i1 =l add %i, 1
+	jmp @loop
+@done
+	ret %head
+}
+
+export function l $sum(p %list) {
+@start
+	jmp @loop
+@loop
+	%p =p phi @start %list, @body %next
+	%s =l phi @start 0, @body %s1
+	%a =l ptoi %p
+	%z =w ceql %a, 0
+	jnz %z, @done, @body
+@body
+	%vp =p add %p, 8
+	%v =l loadl %vp
+	%s1 =l add %s, %v
+	%next =p loadp %p
+	call $c_gc(l %v)
+	jmp @loop
+@done
+	ret %s
+}

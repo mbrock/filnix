@@ -137,10 +137,33 @@ test(rejects_missing_phi_argument) :-
     rejects("export function w $f(w %a) {\n@s\n\tjnz %a, @x, @y\n@x\n\tjmp @y\n@y\n\t%v =w phi @x 1\n\tret %v\n}\n",
             "predecessors are").
 test(rejects_floats_with_line) :-
-    rejects("export function d $f() {\n@s\n\tret\n}\n", "line 1: only w and l").
+    rejects("export function d $f() {\n@s\n\tret\n}\n", "line 1: only w, l and p").
 test(rejects_unknown_instruction) :-
     rejects("export function w $f(w %a) {\n@s\n\t%b =w swtof %a\n\tret %b\n}\n",
             "line 3: unsupported instruction swtof").
+
+%% Class p
+
+test(rejects_p_as_l) :-
+    rejects("export function l $f(p %a) {\n@s\n\t%b =l add %a, 1\n\tret %b\n}\n",
+            "%a has class p but is used as l (use ptoi)").
+test(rejects_l_as_p) :-
+    rejects("export function w $f(l %a) {\n@s\n\t%v =w loadw %a\n\tret %v\n}\nexport function p $g() {\n@s\n\t%q =p alloc8 8\n\tret %q\n}\n",
+            "%a has class l but is used as p (use itop)").
+test(rejects_pointer_multiply) :-
+    rejects("export function p $f(p %a) {\n@s\n\t%b =p mul %a, 2\n\tret %b\n}\n",
+            "instruction mul cannot have class p").
+test(rejects_data_with_p) :-
+    rejects("data $d = { l 1 }\nexport function p $f() {\n@s\n\t%q =p alloc8 8\n\tret %q\n}\n",
+            "data definitions are not supported with class p").
+
+% Which offsets can a 1-byte read of a 16-byte allocation take without
+% trapping? Exactly 0..15.
+test(in_bounds_offsets) :-
+    mod("export function w $f(l %i) {\n@s\n\t%p =p alloc8 16\n\t%q =p add %p, %i\n\t%v =w loadub %q\n\tret %v\n}\n", M),
+    findall(I, ( between(0, 40, I), once(run(M, f, [I], 10, ret(_))) ), Is),
+    numlist(0, 15, Expected),
+    Is == Expected.
 
 %% Printing
 

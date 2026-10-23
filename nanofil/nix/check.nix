@@ -1,7 +1,10 @@
 # nanofil: unit tests, then the fixtures and a seeded random corpus run
 # through the interpreter, qbe and nanofil's own backend. nanofil alone
-# must also get the qbe-bugs repros right.
-{ pkgs }:
+# must also get the qbe-bugs repros right. Fil-C modules (tests/filc) are
+# linked with clang-built Fil-C code and run natively; the GC test also
+# runs with FUGC_SCRIBBLE and FUGC_VERIFY, which a missed root or store
+# barrier needs to show up.
+{ pkgs, filcc }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
   qbe = import ./qbe.nix { inherit pkgs; };
@@ -24,5 +27,9 @@ pkgs.runCommandCC "nanofil-check"
     python3 -I tests/gen.py 1 200 > gen1.ssa
     CC=$CC tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
     CC=$CC VARIANTS=nanofil tests/difftest.sh tests/qbe-bugs/*.ssa
+    export FILCC=${filcc}/bin/clang
+    tests/difftest.sh tests/filc/basic.ssa
+    tests/filc/run-c.sh interop gc
+    RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     touch $out
   ''

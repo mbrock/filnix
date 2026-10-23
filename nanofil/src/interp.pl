@@ -34,23 +34,32 @@
 :- use_module(ir).
 
 run(M, Fn, Args, Fuel, Outcome) :-
+    module_mode(M, Mode),
     initial_memory(M, G, Mem0),
     func_named(M, Fn, func(_, _, _, Params, _)),
     maplist(arg_in_range, Params, Args),
-    call_fn(M, G, Fn, Args, s(Mem0, Fuel), Outcome, _).
+    call_fn(M, G, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
 
+arg_in_range(par(p, _), ptr(_, _)) :- !.
 arg_in_range(par(K, _), A) :-
     modulus(K, Mod),
     Top #= Mod - 1,
     A in 0..Top.
 
-call_fn(M, G, Fn, Args, s(mem(B0, Regions, N0), F0), Out, s(mem(B, Regions, N), F)) :-
-    func_named(M, Fn, func(_, _, Ret, Params, Blocks)),
+% In plain mode a callee's allocations die when it returns; in filc mode
+% every allocation is a heap object that lives on.
+call_fn(M, G, Mode, Fn, Args, S0, Out, S) :-
+    (   func_named(M, Fn, func(_, _, Ret, Params, Blocks)) -> true
+    ;   format(atom(Msg), 'cannot interpret a call to external $~w', [Fn]),
+        throw(nanofil_error(Msg))
+    ),
     empty_assoc(E0),
     foldl(bind_param, Params, Args, E0, Env),
     Blocks = [blk(Entry, _, _, _)|_],
-    exec(c(M, G, Blocks, Ret), Entry, none, Env, s(mem(B0, Regions, N0), F0), Out,
-         s(mem(B, _, N), F)).
+    exec(c(M, G, Blocks, Ret, Mode), Entry, none, Env, S0, Out, S1),
+    S0 = s(mem(_, Regions, _, _), _),
+    S1 = s(mem(B, _, N, Aux), F),
+    (   Mode == plain -> S = s(mem(B, Regions, N, Aux), F) ; S = S1 ).
 
 bind_param(par(_, t(N)), X, E0, E) :- put_assoc(N, E0, X, E).
 
@@ -59,7 +68,7 @@ bind_param(par(_, t(N)), X, E0, E) :- put_assoc(N, E0, X, E).
 exec(Ctx, L, Pred, Env0, s(Mem, F0), Out, S) :-
     (   F0 #= 0, Out = out_of_fuel, S = s(Mem, F0)
     ;   F0 #> 0, F1 #= F0 - 1,
-        Ctx = c(_, _, Blocks, _),
+        Ctx = c(_, _, Blocks, _, _),
         memberchk(blk(L, Phis, Insts, J), Blocks),
         phis(Phis, Ctx, Pred, Env0, Env0, Env1),
         insts(Insts, Ctx, Env1, s(Mem, F1), R),
@@ -84,7 +93,7 @@ jump(jnz(V, L1, L2), Ctx, From, Env, S0, Out, S) :-
     ;   X #= 0, exec(Ctx, L2, From, Env, S0, Out, S)
     ).
 jump(ret(V), Ctx, _, Env, S, ret(X), S) :-
-    Ctx = c(_, _, _, K),
+    Ctx = c(_, _, _, K, _),
     read(K, V, Ctx, Env, X).
 jump(ret, _, _, _, S, ret, S).
 jump(hlt, _, _, _, S, hlt, S).
@@ -100,21 +109,23 @@ insts_(cont(Env, S), Is, Ctx, R) :- insts(Is, Ctx, Env, S, R).
 insts_(stop(Out, S), _, _, stop(Out, S)).
 
 step(ins(t(D), K, Op, Args), Ctx, Env0, S0, R) :-
-    op_arg_classes(Op, K, AKs),
+    Ctx = c(_, _, _, _, Mode),
+    op_arg_classes(Op, K, Mode, AKs),
     maplist(read_in(Ctx, Env0), AKs, Args, Xs),
-    eval(Op, K, Xs, S0, Res, S),
+    eval(Op, K, Mode, Xs, S0, Res, S),
     bind_result(Res, D, Env0, S, R).
 step(store(W, V, A), Ctx, Env, s(Mem0, F), R) :-
-    (   W == l -> VK = l ; VK = w ),
+    Ctx = c(_, _, _, _, Mode),
+    (   memberchk(W, [l, p]) -> VK = W ; VK = w ),
     read(VK, V, Ctx, Env, X),
-    read(l, A, Ctx, Env, Addr),
-    width_bytes(W, N),
-    store_bytes(Mem0, Addr, N, X, Res, Mem),
+    addr_class(Mode, AK),
+    read(AK, A, Ctx, Env, Addr),
+    store(Mode, W, Mem0, Addr, X, Res, Mem),
     store_result(Res, Env, s(Mem, F), R).
 step(call(Res, glo(F), Args), Ctx, Env0, S0, R) :-
-    Ctx = c(M, G, _, _),
+    Ctx = c(M, G, _, _, Mode),
     maplist(read_arg(Ctx, Env0), Args, Xs),
-    call_fn(M, G, F, Xs, S0, Out, S),
+    call_fn(M, G, Mode, F, Xs, S0, Out, S),
     call_result(Out, Res, Env0, S, R).
 
 read_in(Ctx, Env, K, V, X) :- read(K, V, Ctx, Env, X).
@@ -122,10 +133,14 @@ read_arg(Ctx, Env, arg(K, V), X) :- read(K, V, Ctx, Env, X).
 
 bind_result(val(X), D, Env0, S, cont(Env, S)) :- put_assoc(D, Env0, X, Env).
 bind_result(ub(Why), _, _, S, stop(ub(Why), S)).
+bind_result(trap(Why), _, _, S, stop(trap(Why), S)).
 
 store_result(ok, Env, S, cont(Env, S)).
 store_result(ub(Why), _, S, stop(ub(Why), S)).
+store_result(trap(Why), _, S, stop(trap(Why), S)).
 
+call_result(ret(X), to(t(D), p), Env0, S, cont(Env, S)) :- !,
+    put_assoc(D, Env0, X, Env).
 call_result(ret(X), to(t(D), K), Env0, S, cont(Env, S)) :-
     modulus(K, Mod),
     Y #= X mod Mod,
@@ -134,6 +149,7 @@ call_result(ret(_), void, Env, S, cont(Env, S)).
 call_result(ret, void, Env, S, cont(Env, S)).
 call_result(hlt, _, _, S, stop(hlt, S)).
 call_result(ub(Why), _, _, S, stop(ub(Why), S)).
+call_result(trap(Why), _, _, S, stop(trap(Why), S)).
 call_result(out_of_fuel, _, _, S, stop(out_of_fuel, S)).
 
 % Reading a value at class K takes its low bits(K) bits.
@@ -144,24 +160,50 @@ read_(t(N), K, _, Env, X) :-
     ;   format(atom(M), 'read of %~w before any assignment', [N]),
         throw(nanofil_error(M))
     ),
-    modulus(K, Mod),
-    X #= X0 mod Mod.
+    (   K == p -> X = X0
+    ;   modulus(K, Mod),
+        X #= X0 mod Mod
+    ).
 read_(c(N), K, _, _, X) :-
     modulus(K, Mod),
-    X #= N mod Mod.
-read_(glo(N), _, c(_, G, _, _), _, X) :-
+    A is N mod Mod,
+    (   K == p -> X = ptr(A, none) ; X = A ).
+read_(glo(N), _, c(_, G, _, _, _), _, X) :-
     get_assoc(N, G, X).
 
-%% Operations. eval(Op, Class, Args, S0, val(X) | ub(Why), S)
+%% Operations. eval(Op, Class, Mode, Args, S0, val(X) | ub(Why) | trap(Why), S)
 
-eval(load(T), K, [A], s(Mem0, F), Res, s(Mem, F)) :- !,
+eval(load(p), _, filc, [ptr(A, Cap)], s(Mem0, F), Res, s(Mem, F)) :- !,
+    checked(Mem0, A, Cap, 8, read, 8, Res0),
+    (   Res0 == ok
+    ->  load_bytes(filc, Mem0, A, 8, val(U), Mem),
+        Mem = mem(_, _, _, Aux),
+        (   get_assoc(A, Aux, C) -> true ; C = none ),
+        Res = val(ptr(U, C))
+    ;   Mem = Mem0, Res = Res0
+    ).
+eval(load(T), K, Mode, [A0], s(Mem0, F), Res, s(Mem, F)) :- !,
     load_type(T, N, Ext),
-    load_bytes(Mem0, A, N, R0, Mem),
-    load_value(R0, Ext, K, Res).
-eval(alloc(Align), _, [Size], s(Mem0, F), val(Base), s(Mem, F)) :- !,
-    alloc(Mem0, Align, Size, Base, Mem).
-eval(Op, K, Xs, S, Res, S) :-
+    (   Mode == filc
+    ->  A0 = ptr(A, Cap), checked(Mem0, A, Cap, N, read, 1, Res0)
+    ;   A = A0, Res0 = ok
+    ),
+    (   Res0 == ok
+    ->  load_bytes(Mode, Mem0, A, N, R0, Mem),
+        load_value(R0, Ext, K, Res)
+    ;   Mem = Mem0, Res = Res0
+    ).
+eval(alloc(Align), _, Mode, [Size], s(Mem0, F), val(P), s(Mem, F)) :- !,
+    alloc(Mode, Mem0, Align, Size, Base, Mem),
+    (   Mode == filc -> P = ptr(Base, obj(Base)) ; P = Base ).
+eval(Op, K, _, Xs, S, Res, S) :-
     alu(Op, K, Xs, Res).
+
+% Pointer arithmetic keeps the capability. ptoi drops it; itop has none.
+alu(add, p, [ptr(A, C), X], val(ptr(R, C))) :- !, modulus(l, M), R #= (A + X) mod M.
+alu(sub, p, [ptr(A, C), X], val(ptr(R, C))) :- !, modulus(l, M), R #= (A - X) mod M.
+alu(ptoi, _, [ptr(A, _)], val(A)).
+alu(itop, _, [X], val(ptr(X, none))).
 
 alu(add, K, [X, Y], val(R)) :- modulus(K, M), R #= (X + Y) mod M.
 alu(sub, K, [X, Y], val(R)) :- modulus(K, M), R #= (X - Y) mod M.
@@ -259,24 +301,56 @@ load_value(val(U), T, K, val(R)) :-
     dif(T, none),
     extend(T, U, S), modulus(K, M), R #= S mod M.
 
-%% Memory
+%% Memory: mem(Bytes, Regions, Next, Aux)
+%
+% Aux is used in filc mode only: it maps an 8-aligned address to the
+% capability a storep left there. An integer store leaves it alone, as
+% Fil-C's aux array does.
 
-load_bytes(mem(B0, Rs, N), A, W, Res, mem(B, Rs, N)) :-
+% In plain mode an access outside every live region is undefined. In filc
+% mode the access was checked against its capability already.
+load_bytes(Mode, mem(B0, Rs, N, Aux), A, W, Res, mem(B, Rs, N, Aux)) :-
     must_be(integer, A),
-    (   live(Rs, A, W)
-    ->  bytes_in(W, A, B0, B, Bytes),
+    (   ( Mode == filc ; live(Rs, A, W) )
+    ->  bytes_in(W, Mode, A, B0, B, Bytes),
         le_value(Bytes, U),
         Res = val(U)
     ;   B = B0, Res = ub(out_of_bounds(A, W))
     ).
 
-store_bytes(mem(B0, Rs, N), A, W, X, Res, mem(B, Rs, N)) :-
+store(plain, W, mem(B0, Rs, N, Aux), A, X, Res, mem(B, Rs, N, Aux)) :-
+    width_bytes(W, Size),
     must_be(integer, A),
-    (   live(Rs, A, W)
-    ->  le_bytes(W, X, Bytes),
+    (   live(Rs, A, Size)
+    ->  le_bytes(Size, X, Bytes),
         bytes_out(Bytes, A, B0, B),
         Res = ok
-    ;   B = B0, Res = ub(out_of_bounds(A, W))
+    ;   B = B0, Res = ub(out_of_bounds(A, Size))
+    ).
+store(filc, W, Mem0, ptr(A, Cap), X, Res, Mem) :-
+    width_bytes(W, Size),
+    (   W == p -> Align = 8, X = ptr(V, VC) ; Align = 1, V = X ),
+    checked(Mem0, A, Cap, Size, write, Align, Res),
+    (   Res == ok
+    ->  Mem0 = mem(B0, Rs, N, Aux0),
+        le_bytes(Size, V, Bytes),
+        bytes_out(Bytes, A, B0, B),
+        (   W == p -> put_assoc(A, Aux0, VC, Aux) ; Aux = Aux0 ),
+        Mem = mem(B, Rs, N, Aux)
+    ;   Mem = Mem0
+    ).
+
+/* checked(+Mem, +A, +Cap, +Size, +Kind, +Align, -Res): Fil-C's access
+   check. Every allocation is writable in the interpreter; readonly
+   objects only come from clang-built code. */
+checked(mem(_, Rs, _, _), A, Cap, Size, _, Align, Res) :-
+    must_be(integer, A),
+    (   Cap == none -> Res = trap(null_capability)
+    ;   Cap = obj(Base), memberchk(Base-End, Rs),
+        (   A >= Base, A + Size =< End
+        ->  (   A mod Align =:= 0 -> Res = ok ; Res = trap(misaligned) )
+        ;   Res = trap(out_of_bounds)
+        )
     ).
 
 % The access [A, A+W) lies inside one live region. A and the regions are
@@ -285,13 +359,16 @@ live(Rs, A, W) :-
     member(Base-End, Rs),
     A >= Base, A + W =< End, !.
 
-bytes_in(0, _, B, B, []) :- !.
-bytes_in(W, A, B0, B, [X|Xs]) :-
+% An unwritten byte is unknown in plain mode and zero in filc mode, since
+% Fil-C allocations are zeroed.
+bytes_in(0, _, _, B, B, []) :- !.
+bytes_in(W, Mode, A, B0, B, [X|Xs]) :-
     (   get_assoc(A, B0, X) -> B1 = B0
+    ;   Mode == filc -> X = 0, B1 = B0
     ;   X in 0..255, put_assoc(A, B0, X, B1)
     ),
     A1 is A + 1, W1 is W - 1,
-    bytes_in(W1, A1, B1, B, Xs).
+    bytes_in(W1, Mode, A1, B1, B, Xs).
 
 bytes_out([], _, B, B).
 bytes_out([X|Xs], A, B0, B) :-
@@ -312,8 +389,9 @@ le_bytes(W, X, [B|Bs]) :-
 
 % Allocations are aligned, and a 16-byte gap separates them so a small
 % overrun cannot land in a neighbour.
-alloc(mem(B, Rs, Next), Align, Size, Base, mem(B, [Base-End|Rs], Next1)) :-
+alloc(Mode, mem(B, Rs, Next, Aux), Align0, Size, Base, mem(B, [Base-End|Rs], Next1, Aux)) :-
     must_be(integer, Size),
+    (   Mode == filc -> Align = 16 ; Align = Align0 ),
     Base is (Next + Align - 1) // Align * Align,
     End is Base + Size,
     Next1 is End + 16.
@@ -323,7 +401,8 @@ data_base(65536).
 
 /* initial_memory(+M, -Globals, -Mem): lay out every data definition, each
    in its own region, and fill in its bytes. */
-initial_memory(module(Items), G, mem(Bytes, Rs, Stack)) :-
+initial_memory(module(Items), G, mem(Bytes, Rs, Stack, Aux)) :-
+    empty_assoc(Aux),
     data_base(D0),
     empty_assoc(G0),
     layout(Items, D0, G0, G, [], Rs),
@@ -388,8 +467,10 @@ octal(D, V) :- char_code(D, C), C >= 0'0, C =< 0'7, V is C - 0'0.
 %% Printing
 
 outcome_text(ret(V), T) :- integer(V), !, format(atom(T), 'ret ~w', [V]).
+outcome_text(ret(ptr(_, _)), 'ret pointer') :- !.
 outcome_text(ret(_), 'ret unknown') :- !.
 outcome_text(ret, ret).
 outcome_text(hlt, hlt).
 outcome_text(ub(Why), T) :- format(atom(T), 'ub ~w', [Why]).
+outcome_text(trap(Why), T) :- format(atom(T), 'trap ~w', [Why]).
 outcome_text(out_of_fuel, out_of_fuel).

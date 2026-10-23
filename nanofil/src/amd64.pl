@@ -15,7 +15,9 @@
     isel and register allocation milestones are checked against, so it
     favours being obviously right over being fast.
 */
-:- module(amd64, [emit_module//1, print_asm/1]).
+:- module(amd64, [emit_module//1, print_asm/1, op//4, load//4, load_slot//4,
+                  store_reg//3, ins//1, ins//2, reg/3, load_insn/3]).
+
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).

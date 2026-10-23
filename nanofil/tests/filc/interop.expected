@@ -1,0 +1,16 @@
+sumbytes = 21
+sumbytes past end = trap
+setslot = 4
+setslot then overrun = trap
+offset = 6
+offset past end = trap
+poke heap = 9
+poke literal = trap
+use after free = trap
+null zero length = 0
+null = trap
+five = 54321
+five overrun = trap
+callc = 60324
+indirect = 6
+wrong signature = trap

@@ -97,16 +97,16 @@ function(Lk, func(Name, Lk, Ret, Params, Blocks)) -->
     expect(rb, '}'),
     { fallthrough(Bs0, Name, Blocks) }.
 
-ret_class(K, _) --> [tok(id(K), _)], { memberchk(K, [w, l]) }, !.
+ret_class(K, _) --> [tok(id(K), _)], { memberchk(K, [w, l, p]) }, !.
 ret_class(void, _), [tok(glo(N), L)] --> [tok(glo(N), L)], !.
-ret_class(_, L) --> { fail_at(L, 'only w and l return classes are supported', []) }.
+ret_class(_, L) --> { fail_at(L, 'only w, l and p return classes are supported', []) }.
 
 params([]), [tok(rp, L)] --> [tok(rp, L)], !.
 params([P|Ps]) --> param(P), params_(Ps).
 params_([P|Ps]) --> [tok(comma, _)], !, param(P), params_(Ps).
 params_([]) --> [].
 
-param(par(K, t(N))) --> [tok(id(K), _)], { memberchk(K, [w, l]) }, !, expect(tmp(N), 'parameter').
+param(par(K, t(N))) --> [tok(id(K), _)], { memberchk(K, [w, l, p]) }, !, expect(tmp(N), 'parameter').
 param(_) --> [tok(T, L)], { fail_at(L, 'unsupported parameter ~w', [T]) }.
 
 % Blocks as parsed: b(Label, Phis, Insts, MaybeJump), MaybeJump = none | J.
@@ -132,7 +132,7 @@ insts([I|Is]) --> inst(I), !, nls, insts(Is).
 insts([]) --> [].
 
 inst(I) --> [tok(tmp(D), L), tok(eq, _), tok(id(K), _)], !,
-    { memberchk(K, [w, l]) -> true ; fail_at(L, 'unsupported class ~w', [K]) },
+    { memberchk(K, [w, l, p]) -> true ; fail_at(L, 'unsupported class ~w', [K]) },
     def_rhs(t(D), K, I, L), expect(nl, 'newline').
 inst(store(W, V, A)) -->
     [tok(id(Op), _)], { store_op(Op, W) }, !,
@@ -144,6 +144,7 @@ store_op(storeb, b).
 store_op(storeh, h).
 store_op(storew, w).
 store_op(storel, l).
+store_op(storep, p).
 
 def_rhs(D, K, call(to(D, K), Callee, Args), _) -->
     [tok(id(call), _)], !, call_rest(Callee, Args).
@@ -162,7 +163,7 @@ call_args([A|As]) --> call_arg(A), call_args_(As).
 call_args_([A|As]) --> [tok(comma, _)], !, call_arg(A), call_args_(As).
 call_args_([]) --> [].
 
-call_arg(arg(K, V)) --> [tok(id(K), _)], { memberchk(K, [w, l]) }, !, value(V).
+call_arg(arg(K, V)) --> [tok(id(K), _)], { memberchk(K, [w, l, p]) }, !, value(V).
 call_arg(_) --> [tok(T, L)], { fail_at(L, 'unsupported call argument ~w', [T]) }.
 
 args([V|Vs]) --> value(V), !, args_(Vs).
@@ -194,7 +195,7 @@ fallthrough([b(L, P, I, J0)|Bs], Fn, [blk(L, P, I, J)|Rest]) :-
     (   Bs == [] -> Rest = [] ; fallthrough(Bs, Fn, Rest) ).
 
 op_name(Name, Op) :- memberchk(Name, [add, sub, mul, div, udiv, rem, urem, and, or,
-                                      xor, sar, shr, shl, neg, copy]), !, Op = Name.
+                                      xor, sar, shr, shl, neg, copy, ptoi, itop]), !, Op = Name.
 op_name(Name, cmp(Cond, K)) :-
     atom_chars(Name, ['c'|Cs]), append(CondCs, [KC], Cs),
     atom_chars(Cond, CondCs), atom_chars(K, [KC]),
@@ -204,7 +205,7 @@ op_name(Name, ext(T)) :-
     atom_concat(ext, TA, Name), memberchk(TA, [sw, uw, sh, uh, sb, ub]), !, T = TA.
 op_name(loadw, load(sw)) :- !.
 op_name(Name, load(T)) :-
-    atom_concat(load, TA, Name), memberchk(TA, [l, sw, uw, sh, uh, sb, ub]), !, T = TA.
+    atom_concat(load, TA, Name), memberchk(TA, [l, sw, uw, sh, uh, sb, ub, p]), !, T = TA.
 op_name(Name, alloc(N)) :-
     atom_concat(alloc, NA, Name), memberchk(NA-N, ['4'-4, '8'-8, '16'-16]).
 
