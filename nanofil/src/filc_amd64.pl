@@ -61,6 +61,7 @@ signature(Ret, ParamKs, Sig) :-
     Sig is 1 + R + 133 * A.
 
 ret_digits(void, []).
+ret_digits(tuple(Ks), Ds) :- !, maplist(class_digit, Ks, Ds).
 ret_digits(K, [D]) :- class_digit(K, D).
 
 class_digit(w, 0).
@@ -79,7 +80,7 @@ fn_sig(func(_, _, Ret, Params, _), Sig) :-
 /* Slots maps t(N), shadow(N) to address slots and lower(Key) to lowers[]
    entries, all as offsets below %rbp; thread and aux are scratch slots.
    The filc_frame {parent, origin, lowers[NL]} sits at -FB(%rbp). */
-layout(Params, Blocks, Slots, FB, NL, Size) :-
+layout(Form, Params, Blocks, Slots, FB, NL, Size) :-
     findall(N-K, ( member(par(K, t(N)), Params)
                  ; member(blk(_, Phis, Insts, _), Blocks),
                    (   member(phi(t(N), K, _), Phis)
@@ -91,7 +92,8 @@ layout(Params, Blocks, Slots, FB, NL, Size) :-
     sort(SKs0, SKs),
     findall(t(N), member(N-_, TKs), Ts),
     findall(shadow(N), member(N-_, SKs), Ss),
-    append([Ts, Ss, [thread, aux]], Plain),
+    ( Form = mem(_) -> Extra = [retbuf] ; Extra = [] ),
+    append([Ts, Ss, [thread, aux], Extra], Plain),
     findall(lower(t(N)), member(N-p, TKs), L1),
     findall(lower(shadow(N)), member(N-p, SKs), L2),
     append(L1, L2, Lowers),
@@ -104,6 +106,7 @@ layout(Params, Blocks, Slots, FB, NL, Size) :-
 
 defines(ins(t(N), K, _, _), N, K).
 defines(call(to(t(N), K), _, _), N, K).
+defines(call(tuple(Tos), _, _), N, K) :- member(to(t(N), K), Tos).
 
 plain_slot(Key, A0-I0, A-I) :-
     I is I0 + 1, Off is 8 * I, put_assoc(Key, A0, Off, A).
@@ -121,7 +124,8 @@ slot(c(_, _, Slots, _, _), Key, Off) :- get_assoc(Key, Slots, Off).
 item(M, F) -->
     { F = func(Name, Lk, Ret, Params, Blocks),
       fn_sig(F, Sig),
-      layout(Params, Blocks, Slots, FB, NL, Size),
+      ret_kinds(Ret, RKs), ret_form(RKs, Form),
+      layout(Form, Params, Blocks, Slots, FB, NL, Size),
       findall(L, member(blk(L, _, _, _), Blocks), Labels),
       Ctx = c(Name, Ret, Slots, Blocks, x(M, FB, Labels)),
       impl_symbol(Name, Sig, Impl),
@@ -131,20 +135,26 @@ item(M, F) -->
     (   { Lk == export } -> [globl(Impl)] ; [] ),
     [type(Impl, function), label(Impl),
      ins(push, q, [reg(rbp)]), ins(mov, q, [reg(rsp), reg(rbp)]),
-     ins(sub, q, [imm(Size), reg(rsp)]),
-     ins(cmp, q, [reg(rsp), mem(0, rdi)]),
+     ins(sub, q, [imm(Size), reg(rsp)])],
+    (   { Form = mem(_) } -> [ins(mov, q, [reg(rdi), reg(rax)]), ins(mov, q, [reg(rsi), reg(rdi)])] ; [] ),
+    [ins(cmp, q, [reg(rsp), mem(0, rdi)]),
      ins(jae, none, [plt(filc_stack_overflow_failure)])],
     to_slot(rdi, thread, Ctx),
+    (   { Form = mem(_) } -> to_slot(rax, retbuf, Ctx) ; [] ),
     zero_lowers(NL, FB),
     [ins(mov, q, [mem(16, rdi), reg(rax)]), ins(mov, q, [reg(rax), mem(NFB, rbp)])],
     set_origin(Ctx, c),
     [ins(lea, q, [mem(NFB, rbp), reg(rax)]), ins(mov, q, [reg(rax), mem(16, rdi)])],
-    { param_words(Params, Words) },
-    receive_words(Words, 0, Ctx),
+    { param_words(Params, Words), form_regs(Form, Regs) },
+    receive_words(Words, Regs, 0, Ctx),
     blocks(Blocks, Ctx),
     [label(Exc)],
     pop_frame(Ctx),
-    [ins(mov, b, [imm(1), reg(al)]), ins(leave, none, []), ins(ret, none, [])],
+    (   { Form = mem(_) }
+    ->  from_slot(retbuf, rax, Ctx), [ins(mov, b, [imm(1), mem(0, rax)])]
+    ;   [ins(mov, b, [imm(1), reg(al)])]
+    ),
+    [ins(leave, none, []), ins(ret, none, [])],
     fail_blocks(Kinds, Ctx),
     (   { member(blk(_, _, Is, _), Blocks), memberchk(call(_, t(_), _), Is) }
     ->  { special(Ctx, notfn, NotFn) },
@@ -203,17 +213,61 @@ param_words(Params, Words) :-
 param_words_(par(p, t(N)), [t(N), lower(t(N))|Ws], Ws) :- !.
 param_words_(par(_, t(N)), [t(N)|Ws], Ws).
 
-word_reg(0, rdx). word_reg(1, rcx). word_reg(2, r8). word_reg(3, r9).
-
-receive_words([], _, _) --> [].
-receive_words([W|Ws], I, Ctx) -->
-    (   { word_reg(I, R) } -> to_slot(R, W, Ctx)
-    ;   { Off is 16 + 8 * (I - 4) },
+receive_words([], _, _, _) --> [].
+receive_words([W|Ws], Regs, I, Ctx) -->
+    (   { nth0(I, Regs, R) } -> to_slot(R, W, Ctx)
+    ;   { length(Regs, NR), Off is 16 + 8 * (I - NR) },
         [ins(mov, q, [mem(Off, rbp), reg(rax)])],
         to_slot(rax, W, Ctx)
     ),
     { I1 is I + 1 },
-    receive_words(Ws, I1, Ctx).
+    receive_words(Ws, Regs, I1, Ctx).
+
+%% Results: none, one word or a tuple of two. A p word is two slots,
+%% address and lower. Up to two slots come back in %rdx:%rcx; more go in
+%% a buffer the caller passes in %rdi, {i8 has_exception, slots at 8..},
+%% with the thread in %rsi, the callee lower in %rdx and the argument
+%% words from %rcx (docs/abi-findings.md).
+
+ret_kinds(void, []) :- !.
+ret_kinds(tuple(Ks), Ks) :- !.
+ret_kinds(K, [K]).
+
+res_tos(void, []).
+res_tos(to(T, K), [to(T, K)]).
+res_tos(tuple(Tos), Tos).
+
+res_ret(void, void).
+res_ret(to(_, K), K).
+res_ret(tuple(Tos), tuple(Ks)) :- findall(K, member(to(_, K), Tos), Ks).
+
+% ret_form(Kinds, Form): reg, or mem(BufferBytes) rounded to 16.
+ret_form(Ks, mem(BS)) :- foldl(slot_n, Ks, 0, N), N > 2, !, BS is (8 + 8 * N + 15) // 16 * 16.
+ret_form(_, reg).
+
+slot_n(p, N0, N) :- !, N is N0 + 2.
+slot_n(_, N0, N) :- N is N0 + 1.
+
+form_regs(reg, [rdx, rcx, r8, r9]).
+form_regs(mem(_), [rcx, r8, r9]).
+
+% The slots of a result, in order, as the frame slots they fill.
+res_dests(Res, Ds) :- res_tos(Res, Tos), foldl(word_dests, Tos, Ds, []).
+word_dests(to(T, p), [T, lower(T)|Ds], Ds) :- !.
+word_dests(to(T, _), [T|Ds], Ds).
+
+% gw(Kind, GenericOffset, Slot) for each result word: word I of a
+% generic return is at thread+128+8I with its lower at thread+384+8I.
+generic_words(Ks, GWs) :- generic_words(Ks, 0, 0, GWs).
+generic_words([], _, _, []).
+generic_words([K|Ks], I, J, [gw(K, D, J)|GWs]) :-
+    D is 128 + 8 * I, I1 is I + 1, slot_n(K, J, J1),
+    generic_words(Ks, I1, J1, GWs).
+
+reserve(reg) --> [].
+reserve(mem(BS)) --> [ins(sub, q, [imm(BS), reg(rsp)])].
+release(reg) --> [].
+release(mem(BS)) --> [ins(add, q, [imm(BS), reg(rsp)])].
 
 %% Blocks and jumps
 
@@ -239,8 +293,30 @@ jump(ret(V), _, Ctx) -->
     ;   load(V, K, d, F4)
     ),
     return(Ctx).
+jump(rets(Vs), _, Ctx) -->
+    { Ctx = c(_, tuple(Ks), _, _, _), f4(Ctx, F4), ret_form(Ks, Form) },
+    (   { Form == reg }
+    ->  { Vs = [V1, V2] }, load(V1, l, d, F4), load(V2, l, c, F4), return(Ctx)
+    ;   from_slot(retbuf, rax, Ctx),
+        buffer_words(Ks, Vs, 8, Ctx),
+        [ins(mov, b, [imm(0), mem(0, rax)])],
+        pop_frame(Ctx),
+        [ins(leave, none, []), ins(ret, none, [])]
+    ).
 jump(ret, _, Ctx) --> return(Ctx).
 jump(hlt, _, _) --> [ins(ud2, none, [])].
+
+% The words of a buffered return, into the buffer at %rax.
+buffer_words([], [], _, _) --> [].
+buffer_words([K|Ks], [V|Vs], Off, Ctx) -->
+    { f4(Ctx, F4) },
+    load(V, l, d, F4), [ins(mov, q, [reg(rdx), mem(Off, rax)])],
+    (   { K == p }
+    ->  { O1 is Off + 8, Off1 is Off + 16 },
+        lower_of(V, rcx, Ctx), [ins(mov, q, [reg(rcx), mem(O1, rax)])]
+    ;   { Off1 is Off + 8 }
+    ),
+    buffer_words(Ks, Vs, Off1, Ctx).
 
 return(Ctx) -->
     pop_frame(Ctx),
@@ -392,27 +468,13 @@ inst(store(W, V, A), _, _, Ctx) -->
     load(V, VK, d, F4),
     [I].
 inst(call(Res, glo(F), Args), _, _, Ctx) -->
-    { f4(Ctx, F4),
-      call_target(Ctx, F, Res, Args, Target),
-      foldl(arg_words, Args, Words, []),
-      length(Words, NW),
-      (   NW > 4 -> length(RegWs, 4), append(RegWs, StackWs, Words)
-      ;   RegWs = Words, StackWs = []
-      ),
-      length(StackWs, NS),
-      Pad is NS mod 2,
-      Pop is 8 * (NS + Pad),
-      reverse(StackWs, RevStack),
-      special(Ctx, exc, Exc) },
+    { call_target(Ctx, F, Res, Args, Target),
+      res_tos(Res, Tos), findall(K, member(to(_, K), Tos), RKs), ret_form(RKs, Form) },
     set_origin(Ctx, c),
-    (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
-    push_words(RevStack, F4, Ctx),
-    reg_words(RegWs, 0, F4, Ctx),
-    from_slot(thread, rdi, Ctx),
-    [ins(xor, l, [reg(esi), reg(esi)]), ins(call, none, [Target])],
-    (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
-    [ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Exc)])],
-    call_result(Res, Ctx).
+    reserve(Form),
+    fast_call(Form, Args, direct(Target), Ctx),
+    fast_result(Form, Res, Ctx),
+    release(Form).
 
 /* A call through a p value. The callee must be a function object: lower
    not 0, ptr equal to the object's aux pointer, and special type
@@ -421,52 +483,101 @@ inst(call(Res, glo(F), Args), _, _, Ctx) -->
    thread+128+8i and its lower at thread+384+8i (docs/abi-findings.md). */
 inst(call(Res, t(C), Args), N, B, Ctx) -->
     { f4(Ctx, F4),
-      ( Res = to(_, RK) -> true ; RK = void ),
-      findall(K, member(arg(K, _), Args), Ks),
-      signature(RK, Ks, Sig),
-      foldl(arg_words, Args, Words, []),
-      length(Words, NW),
-      (   NW > 4 -> length(RegWs, 4), append(RegWs, StackWs, Words)
-      ;   RegWs = Words, StackWs = []
-      ),
-      length(StackWs, NS), Pad is NS mod 2, Pop is 8 * (NS + Pad),
-      reverse(StackWs, RevStack),
-      special(Ctx, exc, Exc), special(Ctx, notfn, NotFn),
+      call_sig(Res, Args, _, _, Sig),
+      res_tos(Res, Tos), findall(K, member(to(_, K), Tos), RKs), ret_form(RKs, Form),
+      special(Ctx, notfn, NotFn),
       length(Args, NA), Size is 8 * NA,
       local(Ctx, B, N, generic, Generic), local(Ctx, B, N, done, Done),
       local(Ctx, B, N, retok, RetOk) },
     set_origin(Ctx, c),
+    reserve(Form),
     flight(t(C), Ctx),
     function_check(NotFn),
     to_slot(rcx, aux, Ctx),
     [ins(movabs, q, [imm(Sig), reg(rsi)]), ins(cmp, q, [reg(rsi), mem(16, rcx)]),
      ins(jne, none, [sym(Generic)])],
-    (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
-    push_words(RevStack, F4, Ctx),
-    reg_words(RegWs, 0, F4, Ctx),
-    from_slot(thread, rdi, Ctx),
-    from_slot(aux, rsi, Ctx),
-    [ins(call, q, [ind(mem(0, rsi))])],
-    (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
+    fast_call(Form, Args, indirect, Ctx),
+    fast_result(Form, Res, Ctx),
     [ins(jmp, none, [sym(Done)]), label(Generic)],
     generic_args(Args, 0, F4, Ctx),
     from_slot(thread, rdi, Ctx),
     from_slot(aux, rsi, Ctx),
+    { special(Ctx, exc, Exc) },
     [ins(mov, l, [imm(Size), reg(edx)]), ins(call, q, [ind(mem(8, rsi))]),
      ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Exc)])],
-    (   { RK == void } -> []
-    ;   from_slot(thread, rsi, Ctx),
-        [ins(cmp, q, [imm(8), reg(rdx)]), ins(jae, none, [sym(RetOk)]),
-         ins(mov, q, [reg(rdx), reg(rdi)]), ins(mov, l, [imm(8), reg(esi)]),
-         ins(xor, l, [reg(edx), reg(edx)]),
-         ins(call, none, [plt(filc_cc_rets_check_failure)]), ins(ud2, none, []),
-         label(RetOk)],
-        [ins(mov, q, [mem(128, rsi), reg(rdx)])],
-        ( { RK == p } -> [ins(mov, q, [mem(384, rsi), reg(rcx)])] ; [] )
+    (   { Tos == [] } -> []
+    ;   { length(Tos, NW), Need is 8 * NW, generic_words(RKs, GWs) },
+        from_slot(thread, rsi, Ctx),
+        rets_check(Need, RetOk),
+        generic_into_slots(GWs, Tos, Ctx)
     ),
-    [ins(xor, l, [reg(eax), reg(eax)]), label(Done),
-     ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Exc)])],
-    call_result(Res, Ctx).
+    [label(Done)],
+    release(Form).
+
+% Arguments, the entry registers and the call itself, for the fast
+% convention in form Form; Callee is direct(Symbol) or indirect (through
+% the aux slot).
+fast_call(Form, Args, Callee, Ctx) -->
+    { f4(Ctx, F4),
+      foldl(arg_words, Args, Words, []),
+      ( Form == reg -> Ls = [d, c, r8, r9] ; Ls = [c, r8, r9] ),
+      length(Ls, NR), length(Words, NW),
+      (   NW > NR -> length(RegWs, NR), append(RegWs, StackWs, Words)
+      ;   RegWs = Words, StackWs = []
+      ),
+      length(StackWs, NS), Pad is NS mod 2, Pop is 8 * (NS + Pad),
+      reverse(StackWs, RevStack) },
+    (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
+    push_words(RevStack, F4, Ctx),
+    reg_words(RegWs, Ls, F4, Ctx),
+    entry_call(Form, Callee, Pop, Ctx),
+    (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ).
+
+entry_call(reg, direct(T), _, Ctx) -->
+    from_slot(thread, rdi, Ctx), [ins(xor, l, [reg(esi), reg(esi)]), ins(call, none, [T])].
+entry_call(reg, indirect, _, Ctx) -->
+    from_slot(thread, rdi, Ctx), from_slot(aux, rsi, Ctx), [ins(call, q, [ind(mem(0, rsi))])].
+entry_call(mem(_), direct(T), Pop, Ctx) -->
+    from_slot(thread, rsi, Ctx),
+    [ins(lea, q, [mem(Pop, rsp), reg(rdi)]), ins(xor, l, [reg(edx), reg(edx)]), ins(call, none, [T])].
+entry_call(mem(_), indirect, Pop, Ctx) -->
+    from_slot(thread, rsi, Ctx), from_slot(aux, rdx, Ctx),
+    [ins(lea, q, [mem(Pop, rsp), reg(rdi)]), ins(call, q, [ind(mem(0, rdx))])].
+
+% has_exception, then the result slots from %rdx:%rcx or the buffer.
+fast_result(reg, Res, Ctx) -->
+    { special(Ctx, exc, Exc), res_dests(Res, Ds) },
+    [ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Exc)])],
+    regs_into_slots(Ds, [rdx, rcx], Ctx).
+fast_result(mem(_), Res, Ctx) -->
+    { special(Ctx, exc, Exc), res_dests(Res, Ds) },
+    [ins(cmp, b, [imm(0), mem(0, rsp)]), ins(jne, none, [sym(Exc)])],
+    buffer_into_slots(Ds, 8, Ctx).
+
+regs_into_slots([], _, _) --> [].
+regs_into_slots([D|Ds], [R|Rs], Ctx) --> to_slot(R, D, Ctx), regs_into_slots(Ds, Rs, Ctx).
+
+buffer_into_slots([], _, _) --> [].
+buffer_into_slots([D|Ds], Off, Ctx) -->
+    [ins(mov, q, [mem(Off, rsp), reg(rax)])], to_slot(rax, D, Ctx),
+    { Off1 is Off + 8 }, buffer_into_slots(Ds, Off1, Ctx).
+
+% A generic return's words, from the thread at %rsi, into the slots.
+generic_into_slots([], [], _) --> [].
+generic_into_slots([gw(K, D, _)|GWs], [to(T, _)|Tos], Ctx) -->
+    [ins(mov, q, [mem(D, rsi), reg(rax)])], to_slot(rax, T, Ctx),
+    (   { K == p } -> { X is D + 256 }, [ins(mov, q, [mem(X, rsi), reg(rax)])], to_slot(rax, lower(T), Ctx)
+    ;   []
+    ),
+    generic_into_slots(GWs, Tos, Ctx).
+
+% Fail unless the generic return size in %rdx is at least Need.
+rets_check(Need, RetOk) -->
+    [ins(cmp, q, [imm(Need), reg(rdx)]), ins(jae, none, [sym(RetOk)]),
+     ins(mov, q, [reg(rdx), reg(rdi)]), ins(mov, l, [imm(Need), reg(esi)]),
+     ins(xor, l, [reg(edx), reg(edx)]),
+     ins(call, none, [plt(filc_cc_rets_check_failure)]), ins(ud2, none, []),
+     label(RetOk)].
 
 generic_args([], _, _, _) --> [].
 generic_args([arg(K, V)|As], I, F4, Ctx) -->
@@ -525,7 +636,7 @@ call_target(Ctx, F, Res, Args, sym(Target)) :-
     ).
 
 call_sig(Res, Args, RK, Ks, Sig) :-
-    ( Res = to(_, RK) -> true ; RK = void ),
+    res_ret(Res, RK),
     findall(K, member(arg(K, _), Args), Ks),
     signature(RK, Ks, Sig).
 
@@ -541,14 +652,9 @@ push_words([W|Ws], F4, Ctx) -->
     word_into(W, a, F4, Ctx), [ins(push, q, [reg(rax)])], push_words(Ws, F4, Ctx).
 
 reg_words([], _, _, _) --> [].
-reg_words([W|Ws], I, F4, Ctx) -->
-    { nth0(I, [d, c, r8, r9], R), I1 is I + 1 },
+reg_words([W|Ws], [R|Rs], F4, Ctx) -->
     word_into(W, R, F4, Ctx),
-    reg_words(Ws, I1, F4, Ctx).
-
-call_result(void, _) --> [].
-call_result(to(t(D), p), Ctx) --> !, [ins(mov, q, [reg(rdx), reg(rax)])], set_p(D, Ctx).
-call_result(to(t(D), _), Ctx) --> to_slot(rdx, t(D), Ctx).
+    reg_words(Ws, Rs, F4, Ctx).
 
 %% Checks: k(Size, Write, Align), with the pointer in %rax and its lower
 %% in %rcx, which the failure block passes on.
@@ -758,25 +864,33 @@ same_symbol(F, Sig, t(F, Sig, _, _)).
 
 /* Frame: rbp, then rbx = thread and r12..r15 = the register words, one
    slot at -48(%rbp) for the callee's lower. Stack words are at
-   16(%rbp) and up. */
+   16(%rbp) and up. With a buffered return r12 holds the buffer and
+   r13..r15 the three register words. */
 thunk(t(F, Sig, RK, Ks)) -->
     { format(atom(FI), 'pizlonatedFI~w_~w', [Sig, F]),
       format(atom(G), 'pizlonated_~w', [F]),
       atom_concat('.L', FI, L0),
       atom_concat(L0, '..fail', Fail), atom_concat(L0, '..generic', Gen),
       atom_concat(L0, '..out', Out), atom_concat(L0, '..retok', RetOk),
+      atom_concat(L0, '..exc', GenExc),
+      ret_kinds(RK, RKs), ret_form(RKs, Form), form_regs(Form, Regs), length(Regs, NR),
       foldl(class_words, Ks, Words, 0, NW),
-      NS is max(0, NW - 4), Pad is NS mod 2, Pop is 8 * (NS + Pad),
+      NS is max(0, NW - NR), Pad is NS mod 2,
       length(Ks, NA), Size is 8 * NA,
       ( NS > 0 -> NS1 is NS - 1, numlist(0, NS1, SIs0), reverse(SIs0, SIs) ; SIs = [] ) },
     [section(text), p2align(4), hidden(FI), weak(FI), type(FI, function), label(FI),
      ins(push, q, [reg(rbp)]), ins(mov, q, [reg(rsp), reg(rbp)]),
      ins(push, q, [reg(rbx)]), ins(push, q, [reg(r12)]), ins(push, q, [reg(r13)]),
-     ins(push, q, [reg(r14)]), ins(push, q, [reg(r15)]), ins(sub, q, [imm(8), reg(rsp)]),
-     ins(mov, q, [reg(rdi), reg(rbx)]),
-     ins(mov, q, [reg(rdx), reg(r12)]), ins(mov, q, [reg(rcx), reg(r13)]),
-     ins(mov, q, [reg(r8), reg(r14)]), ins(mov, q, [reg(r9), reg(r15)]),
-     ins(xor, l, [reg(esi), reg(esi)]),
+     ins(push, q, [reg(r14)]), ins(push, q, [reg(r15)]), ins(sub, q, [imm(8), reg(rsp)])],
+    (   { Form == reg }
+    ->  [ins(mov, q, [reg(rdi), reg(rbx)]),
+         ins(mov, q, [reg(rdx), reg(r12)]), ins(mov, q, [reg(rcx), reg(r13)]),
+         ins(mov, q, [reg(r8), reg(r14)]), ins(mov, q, [reg(r9), reg(r15)])]
+    ;   [ins(mov, q, [reg(rsi), reg(rbx)]), ins(mov, q, [reg(rdi), reg(r12)]),
+         ins(mov, q, [reg(rcx), reg(r13)]), ins(mov, q, [reg(r8), reg(r14)]),
+         ins(mov, q, [reg(r9), reg(r15)]), ins(mov, q, [reg(rsi), reg(rdi)])]
+    ),
+    [ins(xor, l, [reg(esi), reg(esi)]),
      ins(call, none, [plt(G)]),
      ins(mov, q, [reg(rdx), reg(rcx)])],
     function_check(Fail),
@@ -784,77 +898,111 @@ thunk(t(F, Sig, RK, Ks)) -->
      ins(movabs, q, [imm(Sig), reg(rsi)]), ins(cmp, q, [reg(rsi), mem(16, rcx)]),
      ins(jne, none, [sym(Gen)])],
     (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
-    thunk_push(SIs),
-    [ins(mov, q, [reg(rbx), reg(rdi)]), ins(mov, q, [mem(-48, rbp), reg(rsi)]),
-     ins(mov, q, [reg(r12), reg(rdx)]), ins(mov, q, [reg(r13), reg(rcx)]),
-     ins(mov, q, [reg(r14), reg(r8)]), ins(mov, q, [reg(r15), reg(r9)]),
-     ins(call, q, [ind(mem(0, rsi))])],
-    { _ = Pop },
+    thunk_push(SIs, Form),
+    (   { Form == reg }
+    ->  [ins(mov, q, [reg(rbx), reg(rdi)]), ins(mov, q, [mem(-48, rbp), reg(rsi)]),
+         ins(mov, q, [reg(r12), reg(rdx)]), ins(mov, q, [reg(r13), reg(rcx)]),
+         ins(mov, q, [reg(r14), reg(r8)]), ins(mov, q, [reg(r15), reg(r9)]),
+         ins(call, q, [ind(mem(0, rsi))])]
+    ;   [ins(mov, q, [reg(r12), reg(rdi)]), ins(mov, q, [reg(rbx), reg(rsi)]),
+         ins(mov, q, [mem(-48, rbp), reg(rdx)]), ins(mov, q, [reg(r13), reg(rcx)]),
+         ins(mov, q, [reg(r14), reg(r8)]), ins(mov, q, [reg(r15), reg(r9)]),
+         ins(call, q, [ind(mem(0, rdx))])]
+    ),
     [label(Out),
      ins(lea, q, [mem(-40, rbp), reg(rsp)]),
      ins(pop, q, [reg(r15)]), ins(pop, q, [reg(r14)]), ins(pop, q, [reg(r13)]),
      ins(pop, q, [reg(r12)]), ins(pop, q, [reg(rbx)]), ins(pop, q, [reg(rbp)]),
      ins(ret, none, []),
      label(Gen)],
-    thunk_generic(Ks, Words, 0),
+    thunk_generic(Ks, Words, 0, Form),
     [ins(mov, q, [reg(rbx), reg(rdi)]), ins(mov, q, [mem(-48, rbp), reg(rsi)]),
      ins(mov, l, [imm(Size), reg(edx)]), ins(call, q, [ind(mem(8, rsi))]),
-     ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Out)])],
-    (   { RK == void } -> []
-    ;   [ins(cmp, q, [imm(8), reg(rdx)]), ins(jae, none, [sym(RetOk)]),
-         ins(mov, q, [reg(rdx), reg(rdi)]), ins(mov, l, [imm(8), reg(esi)]),
-         ins(xor, l, [reg(edx), reg(edx)]),
-         ins(call, none, [plt(filc_cc_rets_check_failure)]), ins(ud2, none, []),
-         label(RetOk),
-         ins(mov, q, [mem(128, rbx), reg(rdx)])],
-        ( { RK == p } -> [ins(mov, q, [mem(384, rbx), reg(rcx)])] ; [] )
+     ins(test, b, [imm(1), reg(al)])],
+    { length(RKs, NRW), Need is 8 * NRW, generic_words(RKs, GWs) },
+    (   { Form == reg }
+    ->  [ins(jnz, none, [sym(Out)])],
+        (   { RKs == [] } -> []
+        ;   rets_check(Need, RetOk),
+            { foldl(generic_srcs, GWs, Srcs, []) },
+            thunk_regs(Srcs, [rdx, rcx])
+        ),
+        [ins(xor, l, [reg(eax), reg(eax)]), ins(jmp, none, [sym(Out)])]
+    ;   [ins(jnz, none, [sym(GenExc)])],
+        rets_check(Need, RetOk),
+        { foldl(generic_srcs, GWs, Srcs, []) },
+        thunk_buffer(Srcs, 8),
+        [ins(mov, b, [imm(0), mem(0, r12)]), ins(mov, q, [reg(r12), reg(rax)]),
+         ins(jmp, none, [sym(Out)]),
+         label(GenExc),
+         ins(mov, b, [imm(1), mem(0, r12)]), ins(mov, q, [reg(r12), reg(rax)]),
+         ins(jmp, none, [sym(Out)])]
     ),
-    [ins(xor, l, [reg(eax), reg(eax)]), ins(jmp, none, [sym(Out)]),
-     label(Fail),
+    [label(Fail),
      ins(mov, q, [reg(rax), reg(rdi)]), ins(mov, q, [reg(rcx), reg(rsi)]),
      ins(call, none, [plt(filc_check_function_call_fail)]), ins(ud2, none, []),
      size(FI)].
+
+% The thread offsets of a generic return's slots, in slot order.
+generic_srcs(gw(p, D, _), [D, X|Ss], Ss) :- !, X is D + 256.
+generic_srcs(gw(_, D, _), [D|Ss], Ss).
+
+thunk_regs([], _) --> [].
+thunk_regs([D|Ds], [R|Rs]) --> [ins(mov, q, [mem(D, rbx), reg(R)])], thunk_regs(Ds, Rs).
+
+thunk_buffer([], _) --> [].
+thunk_buffer([D|Ds], Off) -->
+    [ins(mov, q, [mem(D, rbx), reg(rax)]), ins(mov, q, [reg(rax), mem(Off, r12)])],
+    { Off1 is Off + 8 }, thunk_buffer(Ds, Off1).
 
 % class_words(K, Ws, I0, I): the word positions of an argument of class K.
 class_words(p, [I0, I1], I0, I) :- !, I1 is I0 + 1, I is I0 + 2.
 class_words(_, [I0], I0, I) :- I is I0 + 1.
 
 % Where incoming word J lives, as an operand.
-thunk_word(J, reg(R)) :- J < 4, !, nth0(J, [r12, r13, r14, r15], R).
-thunk_word(J, mem(D, rbp)) :- D is 16 + 8 * (J - 4).
+thunk_word(Form, J, reg(R)) :- form_regs(Form, Regs), length(Regs, NR), J < NR, !,
+    ( Form == reg -> nth0(J, [r12, r13, r14, r15], R) ; nth0(J, [r13, r14, r15], R) ).
+thunk_word(Form, J, mem(D, rbp)) :- form_regs(Form, Regs), length(Regs, NR), D is 16 + 8 * (J - NR).
 
-thunk_push([]) --> [].
-thunk_push([I|Is]) --> { J is I + 4, thunk_word(J, W) }, [ins(push, q, [W])], thunk_push(Is).
+thunk_push([], _) --> [].
+thunk_push([I|Is], Form) -->
+    { form_regs(Form, Regs), length(Regs, NR), J is I + NR, thunk_word(Form, J, W) },
+    [ins(push, q, [W])], thunk_push(Is, Form).
 
-thunk_generic([], [], _) --> [].
-thunk_generic([K|Ks], [Ws|Wss], I) -->
+thunk_generic([], [], _, _) --> [].
+thunk_generic([K|Ks], [Ws|Wss], I, Form) -->
     { D is 128 + 8 * I, X is 384 + 8 * I },
     (   { K == p, Ws = [A, L] }
-    ->  thunk_store(A, D), thunk_store(L, X)
-    ;   { Ws = [A] }, thunk_store(A, D), [ins(mov, q, [imm(0), mem(X, rbx)])]
+    ->  thunk_store(A, D, Form), thunk_store(L, X, Form)
+    ;   { Ws = [A] }, thunk_store(A, D, Form), [ins(mov, q, [imm(0), mem(X, rbx)])]
     ),
     { I1 is I + 1 },
-    thunk_generic(Ks, Wss, I1).
+    thunk_generic(Ks, Wss, I1, Form).
 
-thunk_store(J, D) -->
-    { thunk_word(J, W) },
+thunk_store(J, D, Form) -->
+    { thunk_word(Form, J, W) },
     (   { W = reg(_) } -> [ins(mov, q, [W, mem(D, rbx)])]
     ;   [ins(mov, q, [W, reg(rax)]), ins(mov, q, [reg(rax), mem(D, rbx)])]
     ).
 
 /* The generic entry: {i1, i64 ret_size} (thread, callee_lower, args_size).
    Argument i is 8 bytes at thread+128+8i, with its lower (for p) at
-   thread+384+8i. It calls the fast entry through callee_lower. */
+   thread+384+8i, and so is result word i. It calls the fast entry
+   through callee_lower, with a buffer on the stack for a buffered
+   return. */
 generic(Gen, Ret, Params) -->
     { length(Params, NA), Need is 8 * NA,
       findall(W, ( nth0(I, Params, par(K, _)), generic_word(K, I, W) ), Ws0),
       append(Ws0, Words),
+      ret_kinds(Ret, RKs), ret_form(RKs, Form), form_regs(Form, Regs), length(Regs, NR),
       length(Words, NW),
-      (   NW > 4 -> length(RegWs, 4), append(RegWs, StackWs, Words)
+      (   NW > NR -> length(RegWs, NR), append(RegWs, StackWs, Words)
       ;   RegWs = Words, StackWs = []
       ),
       length(StackWs, NS), Pad is NS mod 2, Pop is 8 * (NS + Pad),
       reverse(StackWs, Rev),
+      length(RKs, NRW), RetSize is 8 * max(1, NRW),
+      generic_words(RKs, GWs),
       atom_concat(Gen, '.short', Short),
       atom_concat(Gen, '.done', Done) },
     [section(text), label(Gen), ins(push, q, [reg(rbx)])],
@@ -863,19 +1011,33 @@ generic(Gen, Ret, Params) -->
     ;   []
     ),
     [ins(mov, q, [reg(rdi), reg(rbx)])],
+    reserve(Form),
     (   { Pad =:= 1 } -> [ins(sub, q, [imm(8), reg(rsp)])] ; [] ),
     gen_push(Rev),
-    gen_regs(RegWs, [rdx, rcx, r8, r9]),
-    [ins(call, q, [ind(mem(0, rsi))])],
-    (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
-    [ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Done)])],
-    (   { Ret == p } -> [ins(mov, q, [reg(rdx), mem(128, rbx)]), ins(mov, q, [reg(rcx), mem(384, rbx)])]
-    ;   { Ret == void } -> [ins(mov, q, [imm(0), mem(128, rbx)]), ins(mov, q, [imm(0), mem(384, rbx)])]
-    ;   [ins(mov, q, [reg(rdx), mem(128, rbx)]), ins(mov, q, [imm(0), mem(384, rbx)])]
+    gen_regs(RegWs, Regs),
+    (   { Form == reg }
+    ->  [ins(call, q, [ind(mem(0, rsi))])],
+        (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
+        [ins(test, b, [imm(1), reg(al)]), ins(jnz, none, [sym(Done)])],
+        (   { RKs == [] } -> [ins(mov, q, [imm(0), mem(128, rbx)]), ins(mov, q, [imm(0), mem(384, rbx)])]
+        ;   { foldl(generic_srcs, GWs, Ds, []) }, gen_from_regs(Ds, [rdx, rcx]), gen_zero_lowers(GWs)
+        ),
+        [ins(mov, l, [imm(RetSize), reg(edx)]),
+         label(Done)]
+    ;   [ins(mov, q, [reg(rsi), reg(rdx)]), ins(mov, q, [reg(rbx), reg(rsi)]),
+         ins(lea, q, [mem(Pop, rsp), reg(rdi)]),
+         ins(call, q, [ind(mem(0, rdx))])],
+        (   { Pop > 0 } -> [ins(add, q, [imm(Pop), reg(rsp)])] ; [] ),
+        [ins(mov, b, [mem(0, rsp), reg(al)]), ins(test, b, [reg(al), reg(al)]),
+         ins(jnz, none, [sym(Done)])],
+        { foldl(generic_srcs, GWs, Ds, []) },
+        gen_from_buffer(Ds, 8),
+        gen_zero_lowers(GWs),
+        [ins(mov, l, [imm(RetSize), reg(edx)]), ins(xor, l, [reg(eax), reg(eax)]),
+         label(Done)],
+        release(Form)
     ),
-    [ins(mov, l, [imm(8), reg(edx)]),
-     label(Done),
-     ins(pop, q, [reg(rbx)]), ins(ret, none, [])],
+    [ins(pop, q, [reg(rbx)]), ins(ret, none, [])],
     (   { NA > 0 }
     ->  [label(Short),
          ins(mov, q, [reg(rdx), reg(rdi)]), ins(mov, l, [imm(Need), reg(esi)]),
@@ -883,6 +1045,20 @@ generic(Gen, Ret, Params) -->
          ins(call, none, [plt(filc_cc_args_check_failure)]), ins(ud2, none, [])]
     ;   []
     ).
+
+gen_from_regs([], _) --> [].
+gen_from_regs([D|Ds], [R|Rs]) --> [ins(mov, q, [reg(R), mem(D, rbx)])], gen_from_regs(Ds, Rs).
+
+gen_from_buffer([], _) --> [].
+gen_from_buffer([D|Ds], Off) -->
+    [ins(mov, q, [mem(Off, rsp), reg(rax)]), ins(mov, q, [reg(rax), mem(D, rbx)])],
+    { Off1 is Off + 8 }, gen_from_buffer(Ds, Off1).
+
+% An integer result word has no lower.
+gen_zero_lowers([]) --> [].
+gen_zero_lowers([gw(K, D, _)|GWs]) -->
+    (   { K == p } -> [] ; { X is D + 256 }, [ins(mov, q, [imm(0), mem(X, rbx)])] ),
+    gen_zero_lowers(GWs).
 
 generic_word(p, I, [D, A]) :- !, D is 128 + 8 * I, A is 384 + 8 * I.
 generic_word(_, I, [D]) :- D is 128 + 8 * I.

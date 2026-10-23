@@ -145,12 +145,14 @@ function(L, Name, func(RT, PTs, Var), ST, Body, E0, E, func(Sym, Lk, RK, Params,
     ord(E0, Name, fn(_, Sym, Lk)),
     (   Var == variadic -> sema_error(L, 'defining variadic function ~w is not supported', [Name]) ; true ),
     (   PTs == unspecified -> PTs1 = [] ; PTs1 = PTs ),
-    ret_class(L, RT, RK),
+    ret_class(L, RT, E0, RK),
     param_names(ST, Names),
     S0 = st(E0, cur(start, []), [], [], 0, Lt, [], []),
     empty_assoc(Lt),
     X = x(Name, RT, none, none, L),
-    phrase(( params(Names, PTs1, X, Params),
+    phrase(( sret_param(RT, SPs),
+             params(Names, PTs1, X, Params0),
+             { append(SPs, Params0, Params) },
              stmt(Body, X),
              fall_off(RT) ), S0, S),
     S = st(Ef, none, [], Bs, _, _, _, As),
@@ -160,10 +162,23 @@ function(L, Name, func(RT, PTs, Var), ST, Body, E0, E, func(Sym, Lk, RK, Params,
     append(AIs, Is0, Is),
     Blocks = [blk(start, [], Is, J0)|Rest].
 
-ret_class(_, void, void) :- !.
-ret_class(_, T, K) :- class_of(T, K), !.
-ret_class(L, T, _) :- float_type(T), !, sema_error(L, 'floating point is not supported', []).
-ret_class(L, T, _) :- sema_error(L, 'returning ~w is not supported yet', [T]).
+ret_class(_, void, _, void) :- !.
+ret_class(_, T, _, K) :- class_of(T, K), !.
+ret_class(L, T, E, K) :- su(T), !, ret_shape(T, E, L, Sh),
+    (   Sh = words([eb(_, _, K0)]) -> K = K0
+    ;   Sh = words([eb(_, _, K1), eb(_, _, K2)]) -> K = tuple([K1, K2])
+    ;   K = void
+    ).
+ret_class(L, T, _, _) :- float_type(T), !, sema_error(L, 'floating point is not supported', []).
+ret_class(L, T, _, _) :- sema_error(L, 'returning ~w is not supported yet', [T]).
+
+% A struct over 16 bytes is returned through a pointer the caller passes
+% first, as clang does; the function itself returns nothing.
+sret_param(RT, Ps) --> env(E),
+    (   { su(RT), ret_shape(RT, E, unknown, sret) }
+    ->  fresh(P), bind('%sret', sret(P)), { Ps = [par(p, P)] }
+    ;   { Ps = [] }
+    ).
 
 float_type(T) :- memberchk(T, [float, double, ldouble]).
 
@@ -174,6 +189,14 @@ param_names(func(_, params(Ps, _)), Ns) :-
     findall(N, member(param(_, dcl(N, _, _)), Ps), Ns).
 
 params([], [], _, []) --> [].
+params([N|Ns], [T|Ts], X, Ps) --> { su(T) }, !,
+    env(E), { arg(5, X, L), arg_words(T, E, L, Ebs) },
+    fresh_pars(Ebs, Ps0, Vs),
+    (   { N == none } -> []
+    ;   local_slot(T, A), store_words(Ebs, Vs, A), bind(N, var(A, T))
+    ),
+    params(Ns, Ts, X, Ps1),
+    { append(Ps0, Ps1, Ps) }.
 params([N|Ns], [T|Ts], X, [par(K, P)|Ps]) -->
     { arg(5, X, L),
       (   class_of(T, K) -> true
@@ -188,9 +211,22 @@ params([N|Ns], [T|Ts], X, [par(K, P)|Ps]) -->
     ),
     params(Ns, Ts, X, Ps).
 
+fresh_pars([], [], []) --> [].
+fresh_pars([eb(_, _, K)|Es], [par(K, P)|Ps], [P|Vs]) --> fresh(P), fresh_pars(Es, Ps, Vs).
+
 fall_off(RT) --> cur(C),
     (   { C == none } -> []
-    ;   { RT == void } -> term(ret)
+    ;   zero_ret(RT)
+    ).
+
+% Returning without a value from a function with a result.
+zero_ret(RT) --> env(E),
+    (   { RT == void } -> term(ret)
+    ;   { su(RT), ret_shape(RT, E, unknown, Sh) }
+    ->  (   { Sh = words([_, _]) } -> term(rets([c(0), c(0)]))
+        ;   { Sh = words(_) } -> term(ret(c(0)))
+        ;   term(ret)
+        )
     ;   term(ret(c(0)))
     ).
 
@@ -305,11 +341,11 @@ stmt_(case(CE, S), X) -->
 stmt_(default(S), X) --> label(Lb), start(Lb), cases(Cs), set_cases([default(Lb)|Cs]), stmt(S, X).
 stmt_(break, X) --> { arg(3, X, B), arg(5, X, L), ( B == none -> sema_error(L, 'break outside a loop or switch', []) ; true ) }, term(jmp(B)).
 stmt_(continue, X) --> { arg(4, X, C), arg(5, X, L), ( C == none -> sema_error(L, 'continue outside a loop', []) ; true ) }, term(jmp(C)).
-stmt_(return(none), X) --> { arg(2, X, RT) },
-    ( { RT == void } -> term(ret) ; term(ret(c(0))) ).
+stmt_(return(none), X) --> { arg(2, X, RT) }, zero_ret(RT).
 stmt_(return(E), X) --> { E \== none, arg(2, X, RT), arg(5, X, L) },
     rval(E, X, V0),
     (   { RT == void } -> term(ret)
+    ;   { su(RT) } -> assign_convert(V0, RT, L, v(A, _)), return_struct(RT, A, L)
     ;   assign_convert(V0, RT, L, v(V, _)), term(ret(V))
     ).
 stmt_(goto(N), _) --> goto_label(N, Lb), term(jmp(Lb)).
@@ -475,6 +511,8 @@ init_slots(Slots, I, A, Es0, Es, X) -->
 init_one(P, T, V, Es0, Es, X) -->
     (   { V = list(_) ; \+ aggregate(T) ; T = array(ET, _), V = str(_), char_type_(ET) }
     ->  init(P, T, V, X), { Es = Es0 }
+    ;   { su(T) }, struct_expr(V, X, T)
+    ->  init(P, T, V, X), { Es = Es0 }
     ;   init_agg(P, T, [entry([], V)|Es0], Es, X)
     ).
 
@@ -508,6 +546,7 @@ obj(un(deref, P), X, R) --> !, rval(P, X, v(V, T)),
 obj(index(A, I), X, R) --> !, obj(un(deref, bin(add, A, I)), X, R).
 obj(member(S, F), X, lv(P, T)) --> !, obj(S, X, R0),
     (   { R0 = lv(A, ST) } -> member_lv(A, ST, F, X, P, T)
+    ;   { R0 = v(A, ST), su(ST) } -> member_lv(A, ST, F, X, P, T)
     ;   { arg(5, X, L), sema_error(L, 'member access on a non-lvalue', []) }
     ).
 obj(arrow(S, F), X, lv(P, T)) --> !, rval(S, X, v(A, PT)),
@@ -533,6 +572,7 @@ rval(E, X, R) --> obj(E, X, R0), decay(R0, X, R).
 
 decay(v(V, T), _, v(V, T)) --> [].
 decay(lv(A, array(T, _)), _, v(A, ptr(T))) --> !.
+decay(lv(A, T), _, v(A, T)) --> { su(T) }, !.
 decay(lv(A, T), X, v(V, T)) --> load_typed(T, A, X, V).
 decay(fd(glo(S), T), _, v(A, ptr(T))) --> !, ins(p, copy, [glo(S)], A).
 decay(fd(C, T), _, v(C, ptr(T))) --> [].
@@ -550,6 +590,7 @@ load_op(short, w, sh). load_op(ushort, w, uh). load_op(int, w, sw). load_op(uint
 load_op(long, l, l). load_op(ulong, l, l). load_op(llong, l, l). load_op(ullong, l, l).
 load_op(ptr(_), p, p).
 
+store_typed(T, V, A) --> { su(T) }, !, copy_object(T, V, A).
 store_typed(T, V, A) --> { store_width(T, W) }, emit(store(W, V, A)).
 
 store_width(ptr(_), p) :- !.
@@ -634,8 +675,9 @@ convert_checked(V0, T, X, R) -->
 
 % Conversion as by assignment (also arguments and returns).
 assign_convert(V0, T, L, R) -->
-    { V0 = v(_, F) },
-    (   { scalar(F), scalar(T) } -> convert(V0, T, R)
+    { V0 = v(A, F) },
+    (   { su(T) } -> ( { F == T } -> { R = v(A, T) } ; { sema_error(L, 'cannot assign ~w to ~w', [F, T]) } )
+    ;   { scalar(F), scalar(T) } -> convert(V0, T, R)
     ;   { sema_error(L, 'cannot assign ~w to ~w', [F, T]) }
     ).
 
@@ -725,21 +767,26 @@ conditional(C, A, B, X, R) -->
     start(LA), rval(A, X, VA), arm_convert(VA, T, X, VA1), here(LA1), term(jmp(LJ)),
     start(LB), rval(B, X, VB), arm_convert(VB, T, X, VB1), here(LB1), term(jmp(LJ)),
     (   { T == void } -> start(LJ), { R = v(c(0), void) }
-    ;   { class_of(T, K) }, fresh(V),
+    ;   { su(T) -> K = p ; class_of(T, K) }, fresh(V),
         start_phi(LJ, [phi(V, K, [LA1-VA1, LB1-VB1])]),
         { R = v(V, T) }
     ).
 
 arm_convert(V0, void, _, c(0)) --> !, { V0 = v(_, _) }.
+arm_convert(v(A, T), T, _, A) --> { su(T) }, !.
 arm_convert(V0, T, X, V) --> convert_checked(V0, T, X, v(V, _)).
 
 % rtype(E, X, R): E's decayed value term from a throwaway lowering; only
 % its type (and whether it is a constant) is used.
 rtype(E, X, R, S, S) :- phrase(rval(E, X, R), S, _).
 
+% struct_expr(E, X, T): E is an expression of struct or union type T.
+struct_expr(E, X, T, S, S) :- catch(phrase(rval(E, X, v(_, T1)), S, _), nanofil_error(_), fail), T1 == T.
+
 % The type of c ? a : b.
 cond_type(TA, _, TB, _, T, _) :- int_type(TA), int_type(TB), !, usual(TA, TB, T).
 cond_type(void, _, void, _, void, _) :- !.
+cond_type(T, _, T, _, T, _) :- su(T), !.
 cond_type(ptr(P), _, ptr(_), _, ptr(P), _) :- !.
 cond_type(ptr(P), _, TB, v(c(0), _), ptr(P), _) :- int_type(TB), !.
 cond_type(TA, v(c(0), _), ptr(P), _, ptr(P), _) :- int_type(TA), !.
@@ -788,13 +835,21 @@ fcall(F, As, X, R) --> { arg(5, X, L) },
       ( NA < NP -> sema_error(L, 'too few arguments to ~w', [Sym]) ; true ),
       ( NA > NP, PTs \== unspecified, FD = fd(_, func(_, _, fixed)) -> sema_error(L, 'too many arguments to ~w', [Sym]) ; true ) },
     call_args(As, Ps, X, Args),
-    (   { RT == void } -> emit(call(void, Callee, Args)), { R = v(c(0), void) }
+    (   { su(RT) } -> struct_call(RT, Callee, Args, L, R)
+    ;   { RT == void } -> emit(call(void, Callee, Args)), { R = v(c(0), void) }
     ;   { class_of(RT, K) } -> fresh(D), emit(call(to(D, K), Callee, Args)),
         normalize(RT, D, V), { R = v(V, RT) }
     ;   { sema_error(L, 'calls returning ~w are not supported yet', [RT]) }
     ).
 
 call_args([], _, _, []) --> [].
+call_args([A|As], [PT|Ps], X, Args) --> { su(PT) }, !, { arg(5, X, L) },
+    rval(A, X, V0), assign_convert(V0, PT, L, v(Src, _)),
+    env(E), { arg_words(PT, E, L, Ebs) },
+    load_words(Ebs, Src, Vs),
+    { findall(arg(K, V), ( nth0(I, Ebs, eb(_, _, K)), nth0(I, Vs, V) ), Args0) },
+    call_args(As, Ps, X, Args1),
+    { append(Args0, Args1, Args) }.
 call_args([A|As], Ps0, X, [arg(K, V)|Args]) --> { arg(5, X, L) },
     rval(A, X, V0),
     (   { Ps0 = [PT|Ps] } -> assign_convert(V0, PT, L, v(V, T))
@@ -807,12 +862,136 @@ call_args([A|As], Ps0, X, [arg(K, V)|Args]) --> { arg(5, X, L) },
     { class_of(T, K) },
     call_args(As, Ps, X, Args).
 
+% A call returning a struct: its words land in a fresh local, or the
+% callee writes the local through the sret pointer.
+struct_call(RT, Callee, Args, L, v(Tmp, RT)) -->
+    env(E), { ret_shape(RT, E, L, Sh) },
+    local_slot(RT, Tmp),
+    (   { Sh == sret } -> emit(call(void, Callee, [arg(p, Tmp)|Args]))
+    ;   { Sh = words([eb(_, _, K)]) } -> fresh(D), emit(call(to(D, K), Callee, Args)),
+        { Sh = words(Ebs) }, store_words(Ebs, [D], Tmp)
+    ;   { Sh = words(Ebs) }, fresh(D1), fresh(D2),
+        { Ebs = [eb(_, _, K1), eb(_, _, K2)] },
+        emit(call(tuple([to(D1, K1), to(D2, K2)]), Callee, Args)),
+        store_words(Ebs, [D1, D2], Tmp)
+    ).
+
+return_struct(RT, A, L) --> env(E), { ret_shape(RT, E, L, Sh) },
+    (   { Sh == sret } -> env(E1), { ord(E1, '%sret', sret(P)) }, copy_object(RT, A, P), term(ret)
+    ;   { Sh = words(Ebs) }, load_words(Ebs, A, Vs),
+        ( { Vs = [V] } -> term(ret(V)) ; term(rets(Vs)) )
+    ).
+
 % A narrow result is re-extended: nothing guarantees the callee did.
 normalize(T, V0, V) -->
     (   { int_info(T, S, G), S < 4 } -> { narrow_ext(S, G, Op) }, ins(w, ext(Op), [V0], V)
     ;   { T == bool } -> ins(w, ext(ub), [V0], V)
     ;   { V = V0 }
     ).
+
+%% Struct values
+
+/* A struct or union rvalue is v(Addr, T): Addr points at storage holding
+   the value, a variable's or a temporary's. Copies, arguments and
+   returns go an eightbyte at a time (eb(Offset, Bytes, Class)): class p
+   if a pointer starts there, so its capability is copied with loadp and
+   storep, else l, with a short last eightbyte moved in 4-, 2- and 1-byte
+   pieces. A value of at most 16 bytes is passed as one word per
+   eightbyte, as clang does; a larger return goes through an sret
+   pointer. */
+su(struct(_)).
+su(union(_)).
+
+eightbytes(T, E, L, Ebs) :-
+    catch(size_align(T, E, Size, _), bad(W), sema_error(L, '~w has an unsupported type (~w)', [T, W])),
+    ptr_offsets(T, E, 0, POs0, []), sort(POs0, POs),
+    Last is (Size + 7) // 8 - 1,
+    findall(eb(O, N, K),
+            ( between(0, Last, I), O is 8 * I, N is min(8, Size - O),
+              ( memberchk(O, POs) -> K = p ; K = l ) ),
+            Ebs).
+
+% ptr_offsets(T, E, Base, Os0, Os): where T holds pointers.
+ptr_offsets(ptr(_), _, B, [B|Os], Os) :- !.
+ptr_offsets(array(ET, N), E, B, Os0, Os) :- integer(N), !,
+    ptr_offsets(ET, E, 0, EOs, []),
+    (   EOs == [] -> Os0 = Os
+    ;   size_align(ET, E, S, _), N1 is N - 1,
+        findall(I, between(0, N1, I), Is),
+        foldl(elem_ptrs(ET, E, B, S), Is, Os0, Os)
+    ).
+ptr_offsets(SU, E, B, Os0, Os) :- su(SU), !,
+    SU =.. [_, Id], E = e(_, _, D, _), get_assoc(Id, D, def(_, Ms, _, _)),
+    foldl(member_ptrs(E, B), Ms, Os0, Os).
+ptr_offsets(_, _, _, Os, Os).
+
+elem_ptrs(ET, E, B, S, I, Os0, Os) :- B1 is B + I * S, ptr_offsets(ET, E, B1, Os0, Os).
+
+member_ptrs(E, B, m(_, T, O), Os0, Os) :- B1 is B + O, ptr_offsets(T, E, B1, Os0, Os).
+
+arg_words(T, E, L, Ebs) :-
+    size_align(T, E, Size, _),
+    (   Size > 16 -> sema_error(L, 'passing a ~w of ~w bytes by value is not supported yet', [T, Size])
+    ;   eightbytes(T, E, L, Ebs)
+    ).
+
+ret_shape(T, E, L, Sh) :-
+    size_align(T, E, Size, _),
+    (   Size > 16 -> Sh = sret ; eightbytes(T, E, L, Ebs), Sh = words(Ebs) ).
+
+copy_object(T, Src, Dst) --> env(E), { eightbytes(T, E, unknown, Ebs) }, copy_ebs(Ebs, Src, Dst).
+
+copy_ebs([], _, _) --> [].
+copy_ebs([eb(O, N, K)|Es], Src, Dst) -->
+    offset(Src, O, S), offset(Dst, O, D),
+    (   { K == p } -> ins(p, load(p), [S], V), emit(store(p, V, D))
+    ;   { pieces(N, 0, Ps) }, copy_pieces(Ps, S, D)
+    ),
+    copy_ebs(Es, Src, Dst).
+
+% pieces(N, O, Ps): N bytes from offset O as p(Offset, Bytes, Load, Store).
+pieces(0, _, []) :- !.
+pieces(N, O, [p(O, B, LT, W)|Ps]) :-
+    member(B-LT-W, [8-l-l, 4-uw-w, 2-uh-h, 1-ub-b]), B =< N, !,
+    N1 is N - B, O1 is O + B, pieces(N1, O1, Ps).
+
+copy_pieces([], _, _) --> [].
+copy_pieces([p(O, _, LT, W)|Ps], S, D) -->
+    offset(S, O, S1), offset(D, O, D1),
+    ins(l, load(LT), [S1], V), emit(store(W, V, D1)),
+    copy_pieces(Ps, S, D).
+
+% The words of the value at A, one per eightbyte.
+load_words([], _, []) --> [].
+load_words([eb(O, N, K)|Es], A, [V|Vs]) -->
+    offset(A, O, P),
+    (   { K == p } -> ins(p, load(p), [P], V)
+    ;   { pieces(N, 0, Ps) }, load_pieces(Ps, P, none, V)
+    ),
+    load_words(Es, A, Vs).
+
+load_pieces([], _, V, V) --> [].
+load_pieces([p(O, _, LT, _)|Ps], P, Acc, V) -->
+    offset(P, O, P1), ins(l, load(LT), [P1], X0),
+    (   { O =:= 0 } -> { X = X0 } ; { Sh is 8 * O }, ins(l, shl, [X0, c(Sh)], X) ),
+    (   { Acc == none } -> { Acc1 = X } ; ins(l, or, [Acc, X], Acc1) ),
+    load_pieces(Ps, P, Acc1, V).
+
+% Store words, one per eightbyte, into the object at A.
+store_words([], [], _) --> [].
+store_words([eb(O, N, K)|Es], [V|Vs], A) -->
+    offset(A, O, P),
+    (   { K == p } -> emit(store(p, V, P))
+    ;   { pieces(N, 0, Ps) }, store_pieces(Ps, V, P)
+    ),
+    store_words(Es, Vs, A).
+
+store_pieces([], _, _) --> [].
+store_pieces([p(O, _, _, W)|Ps], V, P) -->
+    offset(P, O, P1),
+    (   { O =:= 0 } -> { X = V } ; { Sh is 8 * O }, ins(l, shr, [V, c(Sh)], X) ),
+    emit(store(W, X, P1)),
+    store_pieces(Ps, V, P).
 
 %% Static initializers
 

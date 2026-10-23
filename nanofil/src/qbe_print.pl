@@ -28,6 +28,7 @@ linkage(local) --> [].
 linkage(ro(Lk)) --> linkage(Lk), "section \".rodata\" ".
 
 ret(void) --> [].
+ret(tuple(Ks)) --> !, "{", seq_sep(Ks, atom), "} ".
 ret(K) --> atom(K), " ".
 
 params([]) --> [].
@@ -51,6 +52,9 @@ insts([I|Is]) --> "\t", inst(I), "\n", insts(Is).
 inst(ins(D, K, Op, Args)) --> val(D), " =", atom(K), " ", opname(Op), " ", vals(Args).
 inst(store(W, V, A)) --> "store", atom(W), " ", val(V), ", ", val(A).
 inst(call(void, F, Args)) --> "call ", val(F), "(", call_args(Args), ")".
+inst(call(tuple(Tos), F, Args)) -->
+    { findall(D, member(to(D, _), Tos), Ds), findall(K, member(to(_, K), Tos), Ks) },
+    "{", seq_sep(Ds, val), "} ={", seq_sep(Ks, atom), "} call ", val(F), "(", call_args(Args), ")".
 inst(call(to(D, K), F, Args)) --> val(D), " =", atom(K), " call ", val(F), "(", call_args(Args), ")".
 
 call_args([]) --> [].
@@ -67,6 +71,7 @@ opname(Op) --> atom(Op).
 jump(jmp(L)) --> "jmp @", atom(L).
 jump(jnz(V, L1, L2)) --> "jnz ", val(V), ", @", atom(L1), ", @", atom(L2).
 jump(ret(V)) --> "ret ", val(V).
+jump(rets(Vs)) --> "ret {", seq_sep(Vs, val), "}".
 jump(ret) --> "ret".
 jump(hlt) --> "hlt".
 
@@ -85,6 +90,9 @@ data_item(item(W, c(N))) --> atom(W), " ", num(N).
 data_item(item(b, str(Cs))) --> "b \"", seq(Cs), "\"".
 data_item(item(W, sym(S, 0))) --> !, atom(W), " $", atom(S).
 data_item(item(W, sym(S, Off))) --> atom(W), " $", atom(S), " + ", num(Off).
+
+seq_sep([X], G) --> !, call(G, X).
+seq_sep([X|Xs], G) --> call(G, X), ", ", seq_sep(Xs, G).
 
 atom(A) --> { atom_chars(A, Cs) }, seq(Cs).
 num(N) --> { number_chars(N, Cs) }, seq(Cs).

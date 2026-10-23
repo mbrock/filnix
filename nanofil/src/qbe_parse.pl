@@ -102,6 +102,7 @@ function(Lk, func(Name, Lk, Ret, Params, Blocks)) -->
     { fallthrough(Bs0, Name, Blocks) }.
 
 ret_class(K, _) --> [tok(id(K), _)], { memberchk(K, [w, l, p]) }, !.
+ret_class(tuple(Ks), _) --> [tok(lb, _)], !, word_classes(Ks), expect(rb, '}').
 ret_class(void, _), [tok(glo(N), L)] --> [tok(glo(N), L)], !.
 ret_class(_, L) --> { fail_at(L, 'only w, l and p return classes are supported', []) }.
 
@@ -144,6 +145,22 @@ inst(store(W, V, A)) -->
 inst(call(void, Callee, Args)) -->
     [tok(id(call), _)], !, call_rest(Callee, Args), expect(nl, 'newline').
 
+% A tuple result: {%a, %b} ={l, p} call ...
+inst(call(tuple(Tos), Callee, Args)) -->
+    [tok(lb, L)], !, tuple_temps(Ds), expect(rb, '}'), expect(eq, '='),
+    expect(lb, '{'), word_classes(Ks), expect(rb, '}'),
+    { length(Ds, N), length(Ks, N) -> true ; fail_at(L, 'tuple arity mismatch', []) },
+    { maplist(tuple_to, Ds, Ks, Tos) },
+    expect(id(call), 'call'), call_rest(Callee, Args), expect(nl, 'newline').
+
+tuple_to(D, K, to(t(D), K)).
+
+tuple_temps([D|Ds]) --> expect(tmp(D), 'temporary'), ( [tok(comma, _)] -> tuple_temps(Ds) ; { Ds = [] } ).
+
+word_classes([K|Ks]) -->
+    [tok(id(K), L)], { memberchk(K, [l, p]) -> true ; fail_at(L, 'tuple words are l or p', []) },
+    ( [tok(comma, _)] -> word_classes(Ks) ; { Ks = [] } ).
+
 store_op(storeb, b).
 store_op(storeh, h).
 store_op(storew, w).
@@ -178,6 +195,8 @@ args([]) --> [].
 args_([V|Vs]) --> [tok(comma, _)], !, value(V), args_(Vs).
 args_([]) --> [].
 
+tuple_values([V|Vs]) --> value(V), ( [tok(comma, _)] -> tuple_values(Vs) ; { Vs = [] } ).
+
 value(t(N)) --> [tok(tmp(N), _)], !.
 value(c(N)) --> [tok(int(N), _)], !.
 value(glo(N)) --> [tok(glo(N), _)], !.
@@ -186,7 +205,11 @@ maybe_jump(jmp(L)) --> [tok(id(jmp), _)], !, expect(lbl(L), 'label'), expect(nl,
 maybe_jump(jnz(V, L1, L2)) -->
     [tok(id(jnz), _)], !, value(V), expect(comma, ','), expect(lbl(L1), 'label'),
     expect(comma, ','), expect(lbl(L2), 'label'), expect(nl, 'newline'), nls.
-maybe_jump(R) --> [tok(id(ret), _)], !, ( value(V) -> { R = ret(V) } ; { R = ret } ),
+maybe_jump(R) --> [tok(id(ret), _)], !,
+    (   [tok(lb, _)] -> tuple_values(Vs), expect(rb, '}'), { R = rets(Vs) }
+    ;   value(V) -> { R = ret(V) }
+    ;   { R = ret }
+    ),
     expect(nl, 'newline'), nls.
 maybe_jump(hlt) --> [tok(id(hlt), _)], !, expect(nl, 'newline'), nls.
 maybe_jump(none) --> [].

@@ -196,6 +196,43 @@ require the returned size to be at least the return's size, calling
 buffers hold 256 bytes each. Larger argument lists use outline buffers,
 which nanofil does not need while calls stay at 16 words or fewer.
 
+## Structs as values (for M4d)
+
+Probed with `filcc -O1 -S` at the pin; the generic-entry layout matches
+`pizlonated1ET<sig>`/`2ET<sig>`, clang's shared generic helpers.
+
+- **Each eightbyte of a struct or union of 16 bytes or less is one word**
+  of the signature: a ptr word (digit 7) if a pointer starts there, an
+  i64 word (digit 0) otherwise, even when the eightbyte is short. So
+  `struct {int; char}` is one i64, `struct {int; int; char *}` is (i64,
+  ptr), and `union {char *; long}` is ptr. Arguments are those words in
+  order: `take_mix(struct mix)` is `FIP11839` with the packed ints in RDX
+  and the pointer in RCX:R8. A one-word struct return is the same as a
+  scalar return: `struct {char *}` and `char *` are both `FI1073`.
+- **Returns of two words with no pointer** come back like a scalar pair:
+  `struct {long, long} f(long)` is `FIP146` (ret digits [0, 0]), with
+  AL = has_exception and the words in RDX:RCX.
+- **Returns with a pointer field** need more than two return registers,
+  so they come back **in memory**. The caller passes a buffer in RDI, so
+  the thread moves to RSI, the callee's lower to RDX and the argument
+  words start at RCX (then R8, R9, the stack). The callee writes
+  `has_exception` as a byte at buf+0 and the slots from buf+8, a pointer
+  being address then lower: `{char *p; long n}` is `{p@8, lower@16,
+  n@24}`, `{char *p, *q}` `{p@8, lo@16, q@24, lo@32}`. The caller tests
+  `cmpb $0, buf`. The signature still encodes just the result words:
+  `{ptr, i64}` = `FI1084`, `{i64, ptr}` = `FI1154`, `{ptr, ptr}` =
+  `FI1161`.
+- **Larger returns are an sret pointer argument**, exactly as if written
+  by hand: `struct {long a, b, c} f(long)` has the signature of `void
+  g(struct three *, long)`, `FI2528`. The caller allocates the object.
+- **Larger arguments are byval**: `take_three(struct three)` is `FIP0`
+  and reads its argument from the generic buffers. nanofil rejects them.
+- **Generic return of a struct**: word i (an eightbyte) at thread+128+8i
+  with its lower at thread+384+8i, and the returned size is 8 × the
+  number of words (16 for a two-word struct); callers check for at least
+  that much. A generic entry for a buffered return calls the fast entry
+  with a buffer on its own stack and copies the slots out.
+
 ## Verified end to end
 
 [probes/link/add2.s](../probes/link/add2.s) is hand-written GNU `as`

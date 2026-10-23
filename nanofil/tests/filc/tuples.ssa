@@ -1,0 +1,26 @@
+# Tuple returns (M4d): {l, p} comes back in a buffer, {l, l} in
+# rdx:rcx, directly and through a function pointer.
+function {l, p} $mk(p %s, l %n) {
+@start
+	ret {%n, %s}
+}
+function {l, l} $two(l %n) {
+@start
+	%m =l add %n, 100
+	ret {%n, %m}
+}
+export function l $use(l %n) {
+@start
+	%s =p alloc8 16
+	storel 7, %s
+	{%a, %b} ={l, p} call $mk(p %s, l %n)
+	%x =l loadl %b
+	{%c, %d} ={l, l} call $two(l %a)
+	%f =p copy $two
+	{%g, %h} ={l, l} call %f(l %x)
+	%r =l add %c, %d
+	%r2 =l add %r, %x
+	%r3 =l add %r2, %h
+	ret %r3
+}
+# run: $use 41

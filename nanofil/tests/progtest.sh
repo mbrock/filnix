@@ -3,7 +3,8 @@
 # included, linked by FILCC) and by FILCC -O1 alone, and both runs must
 # agree on stdout, stderr and exit status. A Fil-C safety panic counts as
 # "trap" (its message names different functions in the two builds). An
-# "// args: ..." line gives the arguments.
+# "// args: ..." line gives the arguments, and "// link: FILE.c" names a
+# companion, relative to the program, that clang builds into both.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
@@ -55,11 +56,17 @@ for f in "$@"; do
   d="$work/$name"
   mkdir -p "$d"
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
+  link=$(sed -n 's|^// link: ||p' "$f")
+  libs=()
   outcome=reference-error
   reference_failed=0
+  if [ -n "$link" ]; then
+    "$filcc" -O1 -c -o "$d/lib.o" "$(dirname "$f")/$link"
+    libs=("$d/lib.o")
+  fi
   # Attempt nanofil too when the oracle fails; retain both diagnostics,
   # but never call that a measured rejection or a differential pass.
-  if ! "$filcc" -O1 -w -o "$d/clang" "$f" -lm; then reference_failed=1; fi
+  if ! "$filcc" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
   outcome=preprocess-error
   preprocess "$f" "$d/p.i"
   outcome=reject
@@ -73,7 +80,7 @@ for f in "$@"; do
   outcome=assemble-error
   as -o "$d/n.o" "$d/n.s"
   outcome=link-error
-  "$filcc" -o "$d/nanofil" "$d/n.o" -lm
+  "$filcc" -o "$d/nanofil" "$d/n.o" "${libs[@]}" -lm
   [[ $reference_failed == 0 ]] || exit 1
   outcome=pass
   run "$d/nanofil" "$d/n" "${args[@]}"

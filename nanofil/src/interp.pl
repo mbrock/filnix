@@ -5,6 +5,7 @@
     Args are integers or CLP(Z) variables, one per parameter, in the range
     of the parameter's class. Outcome is one of
       ret(V)          returned V (an integer or constrained variable)
+      rets([X1, X2])  returned a tuple
       ret             returned from a void function
       hlt             executed hlt
       ub(Reason)      undefined behaviour: division by zero or overflow,
@@ -95,7 +96,12 @@ jump(jnz(V, L1, L2), Ctx, From, Env, S0, Out, S) :-
 jump(ret(V), Ctx, _, Env, S, ret(X), S) :-
     Ctx = c(_, _, _, K, _),
     read(K, V, Ctx, Env, X).
+jump(rets(Vs), Ctx, _, Env, S, rets(Xs), S) :-
+    Ctx = c(_, _, _, tuple(Ks), _),
+    maplist(read_tuple(Ctx, Env), Ks, Vs, Xs).
 jump(ret, _, _, _, S, ret, S).
+
+read_tuple(Ctx, Env, K, V, X) :- read(K, V, Ctx, Env, X).
 jump(hlt, _, _, _, S, hlt, S).
 
 %% Instructions
@@ -149,29 +155,36 @@ step(call(Res, t(N), Args), Ctx, Env0, S0, R) :-
    through a function pointer. When the classes the call site passes and
    expects give the callee's signature (w and l are the same word), it is
    a direct call. Otherwise it goes through the callee's generic entry:
-   each argument is one 8-byte word with its lower beside it, so a p
-   argument read as an integer is its address and an integer read as p
-   has no capability. Too few arguments, or a void callee whose result is
-   used, fail the generic entry's size checks. Conv says how to read the
-   result: same, int(K), ptr or trap(Why). */
+   each argument and result word is 8 bytes with its lower beside it, so
+   a p word read as an integer is its address and an integer read as p
+   has no capability. Too few arguments, or fewer result words than the
+   call site reads, fail the generic entry's size checks. Conv is same,
+   conv(CallerWords, CalleeWords) or trap(Why). */
 indirect(Ret, Params, Res, Args, Xs, Ys, Conv) :-
     length(Params, NP), length(Args, NA),
-    (   Res = to(_, RK) -> true ; RK = void ),
+    res_words(Res, RWs), ret_words(Ret, CWs),
+    length(RWs, NR), length(CWs, NC),
     findall(K, member(par(K, _), Params), PKs),
     findall(K, member(arg(K, _), Args), AKs),
     (   NA < NP -> Conv = trap(argument_size)
-    ;   RK \== void, Ret == void -> Conv = trap(return_size)
+    ;   NR > NC -> Conv = trap(return_size)
     ;   length(Xs1, NP), append(Xs1, _, Xs),
         length(AKs1, NP), append(AKs1, _, AKs),
         maplist(generic_word, AKs1, PKs, Xs1, Ys),
-        (   word_class(RK) == word_class(Ret) -> Conv = same
-        ;   RK == p -> Conv = ptr
-        ;   Conv = int(RK)
+        (   maplist(word_class, RWs, WCs), maplist(word_class, CWs, WCs) -> Conv = same
+        ;   Conv = conv(RWs, CWs)
         )
     ).
 
+res_words(void, []).
+res_words(to(_, K), [K]).
+res_words(tuple(Tos), Ks) :- findall(K, member(to(_, K), Tos), Ks).
+
+ret_words(void, []) :- !.
+ret_words(tuple(Ks), Ks) :- !.
+ret_words(K, [K]).
+
 word_class(p, p) :- !.
-word_class(void, void) :- !.
 word_class(_, int).
 
 generic_word(K, K, X, X) :- !.
@@ -180,11 +193,18 @@ generic_word(_, p, X, ptr(X, none)) :- !.
 generic_word(_, _, X, X).
 
 convert_return(same, Out, Out).
-convert_return(int(_), ret(ptr(A, _)), ret(A)) :- !.
-convert_return(int(_), Out, Out).
-convert_return(ptr, ret(X), ret(ptr(X, none))) :- integer(X), !.
-convert_return(ptr, ret(X), ret(ptr(X, none))) :- \+ X = ptr(_, _), !.
-convert_return(ptr, Out, Out).
+convert_return(conv(RWs, CWs), Out0, Out) :-
+    (   outcome_words(Out0, Xs0)
+    ->  length(RWs, N), length(Xs, N), append(Xs, _, Xs0),
+        length(CWs1, N), append(CWs1, _, CWs),
+        maplist(generic_word, CWs1, RWs, Xs, Ys),
+        outcome_words(Out, Ys)
+    ;   Out = Out0
+    ).
+
+outcome_words(ret, []).
+outcome_words(ret(X), [X]).
+outcome_words(rets(Xs), Xs) :- Xs = [_, _|_].
 
 read_in(Ctx, Env, K, V, X) :- read(K, V, Ctx, Env, X).
 read_arg(Ctx, Env, arg(K, V), X) :- read(K, V, Ctx, Env, X).
@@ -203,12 +223,19 @@ call_result(ret(X), to(t(D), K), Env0, S, cont(Env, S)) :-
     modulus(K, Mod),
     Y #= X mod Mod,
     put_assoc(D, Env0, Y, Env).
+call_result(rets(Xs), tuple(Tos), Env0, S, cont(Env, S)) :-
+    foldl(bind_word, Tos, Xs, Env0, Env).
 call_result(ret(_), void, Env, S, cont(Env, S)).
+call_result(rets(_), void, Env, S, cont(Env, S)).
 call_result(ret, void, Env, S, cont(Env, S)).
 call_result(hlt, _, _, S, stop(hlt, S)).
 call_result(ub(Why), _, _, S, stop(ub(Why), S)).
 call_result(trap(Why), _, _, S, stop(trap(Why), S)).
 call_result(out_of_fuel, _, _, S, stop(out_of_fuel, S)).
+
+bind_word(to(t(D), p), X, Env0, Env) :- !, put_assoc(D, Env0, X, Env).
+bind_word(to(t(D), K), X, Env0, Env) :-
+    modulus(K, Mod), Y #= X mod Mod, put_assoc(D, Env0, Y, Env).
 
 % Reading a value at class K takes its low bits(K) bits.
 read(K, V, Ctx, Env, X) :- read_(V, K, Ctx, Env, X).
@@ -580,6 +607,7 @@ octal(D, V) :- char_code(D, C), C >= 0'0, C =< 0'7, V is C - 0'0.
 outcome_text(ret(V), T) :- integer(V), !, format(atom(T), 'ret ~w', [V]).
 outcome_text(ret(ptr(_, _)), 'ret pointer') :- !.
 outcome_text(ret(_), 'ret unknown') :- !.
+outcome_text(rets(_), 'ret tuple') :- !.
 outcome_text(ret, ret).
 outcome_text(hlt, hlt).
 outcome_text(ub(Why), T) :- format(atom(T), 'ub ~w', [Why]).

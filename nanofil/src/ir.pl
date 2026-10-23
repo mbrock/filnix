@@ -6,7 +6,9 @@
     func(Name, Linkage, Ret, Params, Blocks)
       Name     atom, the symbol without '$'
       Linkage  export | local
-      Ret      w | l | p | void
+      Ret      w | l | p | void | tuple([K1, K2])
+               tuple: a two-word return (a struct of 9 to 16 bytes),
+               each Ki in l, p; filc only
       Params   [par(K, t(N))]            K in w, l, p
       Blocks   [blk(Label, Phis, Insts, Jump)], entry block first
 
@@ -14,9 +16,11 @@
     Insts:
       ins(t(D), K, Op, Args)              value-producing instruction
       store(Width, Value, Addr)           Width in b, h, w, l, p
-      call(Res, Callee, [arg(K, Value)])  Res = to(t(D), K) | void;
+      call(Res, Callee, [arg(K, Value)])  Res = to(t(D), K) | void
+                                          | tuple([to(t(D1), K1), to(t(D2), K2)]);
                                           Callee glo(F), or (filc) a p temp
-    Jump: jmp(L) | jnz(V, L1, L2) | ret(V) | ret | hlt
+    Jump: jmp(L) | jnz(V, L1, L2) | ret(V) | rets([V1, V2]) | ret | hlt
+          rets returns a tuple
 
     Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
         cmp(Cond, K)   Cond in eq ne sle slt sge sgt ule ult uge ugt
@@ -101,7 +105,7 @@ module_mode(module(Items), Mode) :-
     ).
 
 pointer_item(func(_, _, Ret, Params, Blocks)) :-
-    (   Ret == p
+    (   ( Ret == p ; Ret = tuple(_) )
     ;   member(par(p, _), Params)
     ;   member(blk(_, Phis, Insts, _), Blocks),
         (   member(phi(_, p, _), Phis)
@@ -114,6 +118,7 @@ pointer_inst(ins(_, p, _, _)).
 pointer_inst(ins(_, _, ptoi, _)).
 pointer_inst(store(p, _, _)).
 pointer_inst(call(to(_, p), _, _)).
+pointer_inst(call(tuple(_), _, _)).
 pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
 pointer_inst(call(_, t(_), _)).
 
@@ -127,6 +132,10 @@ valid_module(M) :-
 
 valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
     (   Blocks == [] -> err(Name, 'function has no blocks', []) ; true ),
+    (   Ret = tuple(Ks), \+ ( Ks = [_, _], forall(member(K, Ks), memberchk(K, [l, p])) )
+    ->  err(Name, 'a tuple return is two words of class l or p, not ~w', [Ks])
+    ;   true
+    ),
     findall(L, member(blk(L, _, _, _), Blocks), Labels),
     (   msort(Labels, S), sort(Labels, S) -> true
     ;   err(Name, 'duplicate block label', [])
@@ -159,6 +168,7 @@ defs(Params, Blocks, Defs) :-
               (   member(phi(t(N), K, _), Phis)
               ;   member(ins(t(N), K, _, _), Insts)
               ;   member(call(to(t(N), K), _, _), Insts)
+              ;   member(call(tuple(Tos), _, _), Insts), member(to(t(N), K), Tos)
               ) ),
             D1),
     append(D0, D1, Defs).
@@ -239,8 +249,14 @@ store_value_class(p, p) :- !.
 store_value_class(_, w).
 
 call_result_ok(_, _, void, _).
+call_result_ok(Fn, F, tuple(Tos), Ret) :- !,
+    findall(K, member(to(_, K), Tos), Ks),
+    (   Ret == tuple(Ks) -> true
+    ;   err(Fn, 'reads the ~w result of $~w as tuple(~w)', [Ret, F, Ks])
+    ).
 call_result_ok(Fn, F, to(_, K), Ret) :-
     (   Ret == void -> err(Fn, 'uses the result of void $~w', [F])
+    ;   Ret = tuple(_) -> err(Fn, 'reads the tuple result of $~w as ~w', [F, K])
     ;   K == l, Ret == w -> err(Fn, 'reads the w result of $~w as l', [F])
     ;   ( K == p, Ret \== p ; K \== p, Ret == p ) -> err(Fn, 'reads the ~w result of $~w as ~w', [Ret, F, K])
     ;   true
@@ -251,8 +267,16 @@ valid_jump(Ctx, jnz(V, L1, L2)) :-
     use(Ctx, w, V), label_exists(Ctx, L1), label_exists(Ctx, L2).
 valid_jump(Ctx, ret(V)) :-
     Ctx = ctx(_, Fn, Ret, _, _, _, _),
-    (   Ret == void -> err(Fn, 'ret with a value in a void function', []) ; true ),
+    (   Ret == void -> err(Fn, 'ret with a value in a void function', [])
+    ;   Ret = tuple(_) -> err(Fn, 'ret of one value in a tuple function', [])
+    ;   true
+    ),
     use(Ctx, Ret, V).
+valid_jump(Ctx, rets(Vs)) :-
+    Ctx = ctx(_, Fn, Ret, _, _, _, _),
+    (   Ret = tuple(Ks), length(Ks, N), length(Vs, N) -> maplist(use(Ctx), Ks, Vs)
+    ;   err(Fn, 'ret of a tuple in a ~w function', [Ret])
+    ).
 valid_jump(Ctx, ret) :-
     Ctx = ctx(_, Fn, Ret, _, _, _, _),
     (   Ret == void -> true ; err(Fn, 'ret without a value', []) ).

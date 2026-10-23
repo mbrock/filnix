@@ -173,7 +173,7 @@ catches planted rooting bugs.
 
 ### M4. C frontend subset
 
-**Status: in progress.** M4a, M4b, M4c and M4f are done, see
+**Status: in progress.** M4a, M4b, M4c, M4d and M4f are done, see
 [docs/m4.md](docs/m4.md) and [docs/corpus.md](docs/corpus.md).
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
@@ -240,7 +240,7 @@ settled the ABI questions first:
   globals and string literals, function addresses and indirect calls,
   `main`. Each gets interpreter semantics too. Accept: whole programs that
   use `printf` give the same output as filcc.
-- **M4d. Structs and unions.** Layout, member access, copies, and SysV
+- **M4d. Structs and unions.** *Done.* Layout, member access, copies, and SysV
   classification for arguments and returns of 16 bytes or less (pointer
   fields as `p`), sret for larger returns. Accept: interop tests against
   clang in both directions.
