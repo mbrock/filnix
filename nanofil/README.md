@@ -100,8 +100,9 @@ attributes, and the GNU extensions glibc and gnulib lean on: statement
 expressions and the `__builtin_*_overflow` family. Of the corpus
 programs that have a `main`, 231 match clang's output; the rest are
 refused with a message, never miscompiled
-([docs/corpus.md](docs/corpus.md)). Most of GNU hello's files go
-through it.
+([docs/corpus.md](docs/corpus.md)). GNU hello and zlib build with
+nanofil alone and behave exactly like their clang builds; zlib's
+compressed output is byte-identical, at about five times clang's time.
 
 It refuses floating point, bitfields, VLAs, `_Atomic`, inline `asm` and
 K&R definitions. The code generator is deliberately naive: every temporary
