@@ -43,7 +43,8 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
-                    unary_operand/3, assignable/3, null_pointer_constant/3]).
+                    unary_operand/3, assignable/3, null_pointer_constant/3,
+                    castable/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -919,8 +920,11 @@ expression_type(float(Cs), _, T) :-
     ).
 expression_type(str(Bytes), _, array(char, N)) :- length(Bytes, M), N is M + 1.
 expression_type(wstr(T, Values), _, array(T, N)) :- length(Values, M), N is M + 1.
-expression_type(cast(TN, _), Env, T) :-
-    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+expression_type(cast(TN, E), Env, T) :-
+    type_name_type(TN, T0, Env, _),
+    expression_type(E, Env, F0), value_type(F0, F1), unqualified(F1, F),
+    castable(F, T0),
+    reflect_type(TN, T0, Env, T).
 expression_type(complit(TN, _), Env, T) :-
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
 expression_type(un(addr, E), Env, ptr(T)) :- expression_type(E, Env, T).
@@ -1008,6 +1012,16 @@ null_pointer_constant(E, Env, T) :-
 null_pointer_constant(cast(_, X), Env, ptr(void)) :-
     expression_type(X, Env, TX0), value_type(TX0, TX),
     null_pointer_constant(X, Env, TX).
+
+/* castable(+From, +To): a value of type From may be cast to type To
+   (C11 6.5.4p2-4): anything to void, and a scalar to a scalar, but a
+   floating value not to or from a pointer. As in clang and GCC, a
+   struct or union may also be cast to its own type. */
+castable(_, void) :- !.
+castable(A, B) :- arithmetic_type(A), arithmetic_type(B), !.
+castable(ptr(_), B) :- ( B = ptr(_) ; int_type(B) ), !.
+castable(A, ptr(_)) :- int_type(A), !.
+castable(T, U) :- T == U, ( T = struct(_) ; T = union(_) ).
 
 /* assignable(+From, +Null, +To): a value of type From may be assigned
    to an object of type To (C11 6.5.16.1p1), and so passed for a

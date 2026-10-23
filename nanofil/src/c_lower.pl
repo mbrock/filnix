@@ -1360,8 +1360,13 @@ rvalue(cast(TypeName, Expr), Ctx, R) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TypeName, Type, Env, Loc) },
     rval(Expr, Ctx, Value0),
+    { Value0 = v(V, From),
+      (   castable(From, Type) -> true
+      ;   sema_error(Loc, 'cannot convert ~w to ~w', [From, Type])
+      ) },
     (   { Type == void } -> { R = v(c(0), void) }
-    ;   convert_checked(Value0, Type, Ctx, R)
+    ;   { su(Type) } -> { R = v(V, Type) }
+    ;   convert(Value0, Type, R)
     ).
 rvalue(comma(A, B), Ctx, R) --> !,
     rval(A, Ctx, _),
@@ -1672,14 +1677,6 @@ narrow_ext(1, unsigned, ub).
 narrow_ext(2, signed, sh).
 narrow_ext(2, unsigned, uh).
 
-% convert_checked(+Value0, +To, +Ctx, -R)//: R is Value0 converted to
-% To as by a cast.
-convert_checked(Value0, To, Ctx, R) -->
-    { Value0 = v(_, From), ctx_loc(Ctx, Loc) },
-    (   { scalar_conversion(From, To) } -> convert(Value0, To, R)
-    ;   { sema_error(Loc, 'cannot convert ~w to ~w', [From, To]) }
-    ).
-
 % assign_convert(+Expr, +Value0, +To, +Loc, -R)//: R is Value0, the
 % value of Expr (or none, for a computed value), converted to To as by
 % assignment (also arguments, returns and initializers).
@@ -1693,12 +1690,6 @@ assign_convert(Expr, Value0, To, Loc, R) -->
     ->  (   { su(To) } -> { R = v(Addr, To) } ; convert(Value0, To, R) )
     ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
     ).
-
-% Floating values cannot be converted to/from pointers, even by a cast.
-scalar_conversion(A, B) :- arithmetic_type(A), arithmetic_type(B).
-scalar_conversion(ptr(_), ptr(_)).
-scalar_conversion(ptr(_), B) :- int_type(B).
-scalar_conversion(A, ptr(_)) :- int_type(A).
 
 %% Operators
 
@@ -1836,8 +1827,8 @@ gnu_conditional(Cond, B, Ctx, R) -->
     truth(VC, Ctx, W),
     label(LA), label(LB), label(LJoin),
     term(jnz(W, LA, LB)),
-    start(LA), arm_convert(VC, Type, Ctx, VA1), here(LA1), term(jmp(LJoin)),
-    start(LB), rval(B, Ctx, VB), arm_convert(VB, Type, Ctx, VB1), here(LB1),
+    start(LA), arm_convert(VC, Type, VA1), here(LA1), term(jmp(LJoin)),
+    start(LB), rval(B, Ctx, VB), arm_convert(VB, Type, VB1), here(LB1),
     term(jmp(LJoin)),
     join_arms(Type, LJoin, LA1-VA1, LB1-VB1, R).
 
@@ -1847,9 +1838,9 @@ conditional(Cond, A, B, Ctx, R) -->
     cond_type(A, B, Ctx, Type),
     label(LA), label(LB), label(LJoin),
     cond_jump(Cond, Ctx, LA, LB),
-    start(LA), rval(A, Ctx, VA), arm_convert(VA, Type, Ctx, VA1), here(LA1),
+    start(LA), rval(A, Ctx, VA), arm_convert(VA, Type, VA1), here(LA1),
     term(jmp(LJoin)),
-    start(LB), rval(B, Ctx, VB), arm_convert(VB, Type, Ctx, VB1), here(LB1),
+    start(LB), rval(B, Ctx, VB), arm_convert(VB, Type, VB1), here(LB1),
     term(jmp(LJoin)),
     join_arms(Type, LJoin, LA1-VA1, LB1-VB1, R).
 
@@ -1863,12 +1854,11 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
         { R = v(V, Type) }
     ).
 
-% arm_convert(+Value0, +Type, +Ctx, -V)//: V is the IR value of ?: arm
+% arm_convert(+Value0, +Type, -V)//: V is the IR value of ?: arm
 % Value0 as the result Type: c(0) for void, the address for a struct.
-arm_convert(Value0, void, _, c(0)) --> !, { Value0 = v(_, _) }.
-arm_convert(v(Addr, Type), Type, _, Addr) --> { su(Type) }, !.
-arm_convert(Value0, Type, Ctx, V) -->
-    convert_checked(Value0, Type, Ctx, v(V, _)).
+arm_convert(Value0, void, c(0)) --> !, { Value0 = v(_, _) }.
+arm_convert(v(Addr, Type), Type, Addr) --> { su(Type) }, !.
+arm_convert(Value0, Type, V) --> convert(Value0, Type, v(V, _)).
 
 % cond_type(+A, +B, +Ctx, -Type)//: Type is the type of c ? A : B, as
 % c_types judges it, unqualified. If an arm cannot be typed, lowering

@@ -91,3 +91,8 @@ long cmember(long x) {
 }
 // run: $cmember 0
 // run: $cmember 1
+/* A struct may be cast to its own type (a GNU extension clang and GCC
+   accept). */
+struct own { long a, b; };
+long own_cast(long x) { struct own o = { x, 2 }; return ((struct own)o).a * 10 + ((struct own)o).b; }
+// run: $own_cast 4
