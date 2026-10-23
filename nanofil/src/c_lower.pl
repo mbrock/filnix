@@ -613,6 +613,10 @@ check_jump_region(Events, jump(Name, From, Loc)) :- !,
     ).
 check_jump_region(_, _).
 
+% Visit leaves before matching compound shapes: on Trealla an atom built
+% by atom_chars/2 (e.g. the field name "label") can unify with label/2.
+% Recursing into its unbound "body" would then grow regions indefinitely.
+jump_regions(Term, _, _, _, _) --> { atomic(Term) }, !.
 jump_regions(at(Loc, Term), Path, Regions, Switch, _) --> !,
     jump_regions(Term, Path, Regions, Switch, Loc).
 jump_regions(stmtexpr(Block), Path, Regions, Switch, Loc) --> !,
