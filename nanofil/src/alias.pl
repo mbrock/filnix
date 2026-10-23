@@ -97,6 +97,8 @@ kind_base(neg, _, _, D, _, _, value(D)).
 kind_base(copy, _, [V], D, K, Defs, Base) :- copy_base(V, D, K, Defs, Base).
 kind_base(ptoi, _, _, D, _, _, value(D)).
 kind_base(itop, _, _, D, _, _, value(D)).
+kind_base(va_args, _, _, D, _, _, value(D)).
+kind_base(va_arg, _, _, D, _, _, value(D)).
 kind_base(cmp, _, _, D, _, _, value(D)).
 kind_base(ext, _, _, D, _, _, value(D)).
 kind_base(load, _, _, D, _, _, value(D)).

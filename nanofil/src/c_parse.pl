@@ -953,11 +953,13 @@ primary(Env, offsetof(Type, Path)) -->
     offsetof_path(Env, Steps),
     expect(')'),
     { Path = [field(F)|Steps] }.
+primary(Env, va_arg(A, Type)) -->
+    token(id('__builtin_va_arg')), !,
+    expect('('), assignment(Env, A), expect(','),
+    type_name(Env, Type), expect(')').
 primary(_, _) -->
     token(id(N)),
-    {   memberchk(N, ['__builtin_va_arg', '__builtin_va_start',
-                      '__builtin_va_end', '__builtin_va_copy',
-                      '__builtin_types_compatible_p'])
+    {   memberchk(N, ['__builtin_types_compatible_p'])
     }, !,
     { format(atom(Msg), '~w is not supported', [N]) },
     parse_error(Msg).

@@ -122,6 +122,10 @@ kind_event(neg, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(copy, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(ptoi, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(itop, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(va_args, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(va_arg, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(va_arg, ins(_, _, _, [t(X)]), Addrs,
+           Root-acc(acc(Off, p))) :- get_assoc(X, Addrs, Root-Off).
 kind_event(cmp, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(ext, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(alloc, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).

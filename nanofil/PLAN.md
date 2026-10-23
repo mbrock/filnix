@@ -64,7 +64,7 @@ start. Reversing one is cheap until the milestone it names.
 5. **Assembler: GNU `as`, linking through filcc.** M0 showed this works,
    and it keeps clang out of nanofil's own pipeline.
 6. **Unsupported features are rejected, never passed through.** At first
-   these are `setjmp`/`longjmp`, inline asm, defining variadic functions,
+   these are `setjmp`/`longjmp`, inline asm,
    pointer atomics, bitfields, VLAs, `_Complex` and threads. Unknown input
    is a compile error with a source location.
 7. **Relationship to [experiments/sarcasm-prolog](../experiments/sarcasm-prolog/README.md).**
@@ -184,7 +184,8 @@ settled the ABI questions first:
 
 - A variadic call is an ordinary call with the call-site signature, for
   example `printf("%d %s\n", x, s)` calls `FI131273` = `(ptr, i64, ptr)
-  -> int`. Only *defining* variadic functions needs more.
+  -> int`. Variadic definitions now use generic-only entries and rooted
+  argument snapshots; see the findings' variadic section.
 - Clang calls every external function through a hidden weak thunk named
   `pizlonatedFI<sig>_f`. The thunk calls the getter `pizlonated_f`, checks
   that the result is a function object (special type, `ptr` equal to its
@@ -206,7 +207,7 @@ settled the ABI questions first:
    any use of a float value is rejected.
 2. **Real glibc headers** from filcc's sysroot, not private headers. The
    parser accepts the GNU subset they use: `__attribute__` (ignored),
-   `__extension__`, `__restrict`, `__inline`, `__builtin_va_list` (opaque)
+   `__extension__`, `__restrict`, `__inline`, `__builtin_va_list`
    and asm labels (symbol renames, which must be honoured). The DCG
    preprocessor (M4e) reads these headers directly; `filcc` supplies only
    the target's predefined macros, feature answers and include paths.
@@ -341,5 +342,5 @@ nanofil running on Fil-C-built Trealla. Package it as
   docs/m5.md.)
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
-- Supporting `setjmp`, variadic definitions, atomics and inline asm, all
+- Supporting `setjmp`, atomics and inline asm, all
   rejected until a milestone claims them.

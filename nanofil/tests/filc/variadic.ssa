@@ -1,0 +1,57 @@
+export function l $nsum(w %n) {
+@start
+    call $churn()
+    %args =p va_args 8
+    %ap =p alloc8 24
+    storep %args, %ap
+    %i =w va_arg %ap
+    %l =l va_arg %ap
+    %p =p va_arg %ap
+    call $churn()
+    %v =w loadsw %p
+    %il =l extsw %i
+    %vl =l extsw %v
+    %a =l add %il, %l
+    %b =l add %a, %vl
+    ret %b
+}
+
+export function l $ncall(p %p) {
+@start
+    %a =l call $csum(w 3, w 11, l 10000000000, p %p)
+    ret %a
+}
+
+export function l $nconsume(p %ap) {
+@start
+    %a =l va_arg %ap
+    ret %a
+}
+
+export function l $nforward(w %n) {
+@start
+    %args =p va_args 8
+    %ap =p alloc8 24
+    storep %args, %ap
+    %v =l call $cconsume(p %ap)
+    ret %v
+}
+
+export function p $nptr(w %n) {
+@start
+    %args =p va_args 8
+    %ap =p alloc8 24
+    storep %args, %ap
+    %p =p va_arg %ap
+    ret %p
+}
+
+export function l $ntrap(w %n) {
+@start
+    %args =p va_args 8
+    %ap =p alloc8 24
+    storep %args, %ap
+    %a =l va_arg %ap
+    %b =l va_arg %ap
+    ret %b
+}

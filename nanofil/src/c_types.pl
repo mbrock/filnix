@@ -45,12 +45,18 @@
 
 %! empty_env(-Env) is det.
 %
-%  Env is the environment with no identifiers, tags or definitions.
+%  Env has no user identifiers or tags, and the builtin va_list record.
 
 empty_env(e(Ords, Tags, Defs, 0)) :-
     empty_assoc(Ords),
     empty_assoc(Tags),
-    empty_assoc(Defs).
+    va_list_def(Def),
+    list_to_assoc(['builtin.va_list'-Def], Defs).
+
+va_list_def(def(struct, [m(some(gp_offset), uint, 0),
+                        m(some(fp_offset), uint, 4),
+                        m(some(overflow_arg_area), ptr(void), 8),
+                        m(some(reg_save_area), ptr(void), 16)], 24, 8)).
 
 %! lookup_ordinary(+Env, +Name, ?Value) is semidet.
 %
@@ -174,9 +180,12 @@ other_type_spec(su(_, _, _, _)).
 other_type_spec(enum(_, _)).
 other_type_spec(typeof(_)).
 
+% Clang retains the SysV va_list array/record layout; Fil-C stores its
+% capability-bearing cursor in the first word and ignores the rest.
+named_type(tname('__builtin_va_list'), array(struct('builtin.va_list'), 1),
+           Env, Env) :- !.
 named_type(tname(Name), Type, Env, Env) :-
     (   lookup_ordinary(Env, Name, typedef(Type0)) -> Type = Type0
-    ;   Name == '__builtin_va_list' -> Type = bad('va_list')
     ;   Type = bad('unknown typedef')
     ).
 named_type(typeof(_), bad('typeof'), Env, Env).

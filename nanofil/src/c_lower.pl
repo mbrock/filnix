@@ -307,11 +307,6 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
 function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
          Env0, Env, func(Sym, Linkage, RetClass, Params, Blocks)) :-
     lookup_ordinary(Env0, Name, fn(_, Sym, Linkage)),
-    (   Variadic == variadic
-    ->  sema_error(Loc, 'defining variadic function ~w is not supported',
-                   [Name])
-    ;   true
-    ),
     (   ParamTypes0 == unspecified
     ->  ParamTypes = []
     ;   ParamTypes = ParamTypes0
@@ -324,6 +319,7 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
              params(Names, ParamTypes, Ctx, Params0),
+             variadic_entry(Variadic, SretParams, Params0),
              stmt(Body, Ctx),
              fall_off(RetType)
            ),
@@ -336,6 +332,12 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     reverse(RevAllocs, Allocs),
     append(Allocs, Insts0, Insts),
     Blocks = [blk(start, [], Insts, Jump)|Rest].
+
+variadic_entry(fixed, _, _) --> [].
+variadic_entry(variadic, Sret, Params) -->
+    { append(Sret, Params, All), length(All, N), Off is 8 * N },
+    bind(builtin(va_args), t(va_args)),
+    emit(ins(t(va_args), p, va_args, [c(Off)])).
 
 % ret_class(+Loc, +RetType, +Env, -Class): Class is the IR return class
 % of a function returning RetType.
@@ -1362,6 +1364,26 @@ rvalue(bin(Op, A, B), Ctx, R) --> !,
     binary(Op, VA, VB, Ctx, R).
 rvalue(assign(Op, A, B), Ctx, R) --> !, assignment(Op, A, B, Ctx, R).
 rvalue(cond(Cond, A, B), Ctx, R) --> !, conditional(Cond, A, B, Ctx, R).
+rvalue(va_arg(A, TypeName), Ctx, v(V, Type)) --> !,
+    env(Env),
+    { ctx_loc(Ctx, Loc), type_name(TypeName, Type, Env, Loc),
+      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, ptr(_)])
+      -> true
+      ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
+    rval(A, Ctx, v(P, _)),
+    ins(K, va_arg, [P], V).
+rvalue(call(id('__builtin_va_start'), [A, _]), Ctx, v(c(0), void)) --> !,
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      ( lookup_ordinary(Env, builtin(va_args), Cursor) -> true
+      ; sema_error(Loc, 'va_start outside a variadic function', []) ) },
+    rval(A, Ctx, v(P, _)),
+    emit(store(p, Cursor, P)).
+rvalue(call(id('__builtin_va_copy'), [A, B]), Ctx, v(c(0), void)) --> !,
+    rval(A, Ctx, v(P, _)), rval(B, Ctx, v(Q, _)),
+    ins(p, load(p), [Q], V), emit(store(p, V, P)).
+rvalue(call(id('__builtin_va_end'), [A]), Ctx, v(c(0), void)) --> !,
+    rval(A, Ctx, _).
 rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
     env(Env),
     { \+ lookup_ordinary(Env, '__builtin_expect', _) },

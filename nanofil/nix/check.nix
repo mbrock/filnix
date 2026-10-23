@@ -52,6 +52,7 @@ pkgs.runCommandCC "nanofil-check"
     step pptest tests/pptest.sh
     step "difftest filc/*.ssa" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa
     step "run-c interop gc" tests/par.sh tests/filc/run-c.sh interop gc
+    step "variadic gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic
     step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
     step reject tests/reject.sh
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
@@ -69,6 +70,7 @@ pkgs.runCommandCC "nanofil-check"
     step "-O difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
     step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa tests/c/*.c big1.c
     step "-O run-c interop gc" tests/par.sh tests/filc/run-c.sh interop gc
+    step "-O variadic gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic
     step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc

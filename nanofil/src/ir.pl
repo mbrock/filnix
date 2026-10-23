@@ -28,6 +28,10 @@
         load(T)        T in l sw uw sh uh sb ub p
         alloc(Align)   Align in 4, 8, 16
         ptoi itop
+        va_args       filc only: p cursor into the entry argument snapshot;
+                      operand c(N), non-negative fixed-prefix byte count
+        va_arg        filc only: w/l/p load through a va_list address,
+                      advancing its cursor (reads and writes memory)
 
     Values: t(Name) | c(Integer) | glo(Name)
 
@@ -58,7 +62,7 @@
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4,
-               module_mode/2, addr_class/2]).
+               module_mode/2, addr_class/2, variadic_func/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -120,6 +124,8 @@ op_arity(load(_), 1).
 op_arity(alloc(_), 1).
 op_arity(ptoi, 1).
 op_arity(itop, 1).
+op_arity(va_args, 1).
+op_arity(va_arg, 1).
 
 %! op_kind(?Op, ?Kind) is nondet.
 %
@@ -150,6 +156,8 @@ op_kind(neg, neg).
 op_kind(copy, copy).
 op_kind(ptoi, ptoi).
 op_kind(itop, itop).
+op_kind(va_args, va_args).
+op_kind(va_arg, va_arg).
 op_kind(cmp(_, _), cmp).
 op_kind(ext(_), ext).
 op_kind(load(_), load).
@@ -162,6 +170,11 @@ op_kind(alloc(_), alloc).
 func_named(module(Items), Name, Func) :-
     Func = func(Name, _, _, _, _),
     memberchk(Func, Items).
+
+% Entry snapshot metadata is retained even if its cursor is unused.
+variadic_func(func(_, _, _, _, Blocks)) :-
+    member(blk(_, _, Insts, _), Blocks),
+    member(ins(_, p, va_args, _), Insts), !.
 
 %% Module mode
 
@@ -355,6 +368,11 @@ valid_inst(Ctx, ins(_, K, Op, Args)) :-
     (   op_result_ok(Mode, Op, K) -> true
     ;   fn_error(Fn, 'instruction ~w cannot have class ~w', [Op, K])
     ),
+    (   Op == va_args,
+        \+ (Args = [c(Off)], integer(Off), Off >= 0)
+    ->  fn_error(Fn, 'va_args needs a non-negative constant', [])
+    ;   true
+    ),
     op_arg_classes(Op, K, Mode, ArgClasses),
     maplist(valid_use(Ctx), ArgClasses, Args).
 valid_inst(Ctx, store(Width, Value, Addr)) :-
@@ -370,9 +388,12 @@ valid_inst(Ctx, store(Width, Value, Addr)) :-
 valid_inst(Ctx, call(Res, glo(Callee), Args)) :-
     Ctx = ctx(M, Fn, _, _, _, _, Mode),
     findall(K, member(arg(K, _), Args), ArgClasses),
-    (   func_named(M, Callee, func(_, _, CalleeRet, Params, _))
+    (   func_named(M, Callee, CalleeFunc),
+        CalleeFunc = func(_, _, CalleeRet, Params, _)
     ->  findall(K, member(par(K, _), Params), ParamClasses),
-        (   ParamClasses == ArgClasses -> true
+        (   ( ParamClasses == ArgClasses
+            ; variadic_func(CalleeFunc), append(ParamClasses, _, ArgClasses)
+            ) -> true
         ;   fn_error(Fn, 'call to $~w passes ~w, expects ~w',
                      [Callee, ArgClasses, ParamClasses])
         ),
@@ -528,6 +549,8 @@ kind_result_ok(neg, _, _, K) :- int_class(K).
 kind_result_ok(copy, _, _, K) :- any_class(K).
 kind_result_ok(ptoi, _, filc, l).
 kind_result_ok(itop, _, filc, p).
+kind_result_ok(va_args, _, filc, p).
+kind_result_ok(va_arg, _, filc, K) :- any_class(K).
 kind_result_ok(cmp, _, _, K) :- int_class(K).
 kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
@@ -580,6 +603,8 @@ kind_arg_classes(neg, _, K, _, [K]).
 kind_arg_classes(copy, _, K, _, [K]).
 kind_arg_classes(ptoi, _, _, _, [p]).
 kind_arg_classes(itop, _, _, _, [l]).
+kind_arg_classes(va_args, _, p, filc, [l]).
+kind_arg_classes(va_arg, _, _, filc, [p]).
 kind_arg_classes(cmp, cmp(_, CK), _, _, [CK, CK]).
 kind_arg_classes(ext, _, _, _, [w]).
 kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).

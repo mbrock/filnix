@@ -250,3 +250,112 @@ clang's weak thunk. The indirect call goes through our getter and function
 object checks. A call through a wrong prototype (`FI135`) takes the
 generic path into our entry, which rejects it. Code emitted outside clang
 can participate fully in the Fil-C ABI, using GNU `as` and nothing else.
+
+## Variadic definitions and va_list
+
+Verified against the same `163fae5` reference checkout, and clang's
+`-S -emit-llvm` output for `tests/c/variadic.c`:
+
+- Clang retains x86-64's `__builtin_va_list`: an array of one 24-byte,
+  8-aligned record `{unsigned gp_offset, fp_offset; void
+  *overflow_arg_area, *reg_save_area;}`. Fil-C uses only the first word
+  as a capability-bearing cursor, **not** the native SysV register-save
+  protocol. The other words remain unused. Array decay, array stride,
+  sizeof and alignment must still be those of clang's record.
+- `FilPizlonator.cpp:usesVariadicCC` selects signature zero for a function
+  using `va_start` (not for a fixed-signature helper merely using
+  `va_arg`). Its function object has fast entry NULL, generic entry
+  `pizlonatedFIP0_name`, signature 0. Calls still use call-site-signature
+  thunks; the mismatch sends them through the generic entry. All scalar
+  arguments occupy eight payload bytes each, including int; a pointer's
+  lower occupies the corresponding auxiliary slot, not another payload
+  slot.
+- Entry lowering around lines 17283–17323 computes the fixed-prefix
+  size, calls `filc_promote_args_to_heap(thread, incoming_size)`, roots
+  its lower in a dedicated frame slot, and retains snapshot + fixed size
+  for every `va_start`. Promotion must precede body calls, even calls
+  before the first start or on paths not executing start. The helper
+  copies inline or outline CC data/aux into a readonly heap object,
+  resolving boxed auxiliary entries. Its source is
+  `filc_runtime.c:promote_cc_to_heap` (around 6214–6260); incoming
+  pointees are rooted by the caller, and the helper tracks the new
+  snapshot during allocation/copying.
+- Intrinsic lowering around lines 7950–7969 makes start a checked
+  pointer store, copy a checked pointer load and store, and end a no-op.
+  Copying the cursor gives independently advancing lists.
+- `VAArgInst` lowering around lines 14308–14342 calls
+  `filc_get_next_ptr_bytes_for_va_arg(list_address, size, alignment)`.
+  For int these are 4/4; for long and pointer, 8/8. The runtime helper
+  (around 2468–2530) loads the list pointer with capability/alignment
+  checks, aligns its cursor up to max(alignment, 8), checks the requested
+  read against the cursor capability, checks write access to the list,
+  and updates only its address (the lower stays unchanged). It returns
+  **payload address and auxiliary-slot address**, not a flight pointer.
+  These must be consumed immediately without a safepoint. A pointer
+  load resolves a tagged atomic box if present and roots the loaded
+  lower; integers load just their requested bytes.
+
+**Checking means exactly what the pinned implementation checks.** There
+are no scalar type tags: the helper cannot distinguish int from pointer
+or signed from unsigned. An integer argument read as a pointer has no
+capability and traps on dereference; reading a pointer as an integer
+reads its address bits. It would be incorrect to promise a scalar
+type-mismatch trap that clang-built Fil-C does not implement.
+Also, promotion uses the allocator's 16-byte-rounded bounds, not a
+separate logical argument end. A single eight-byte fixed argument with
+no extras can leave eight readable padding bytes. Exhaustion tests use
+a 16-byte incoming argument area and read at offset 16, so their first
+missing argument is genuinely out of bounds in both compilers.
+
+Nanofil keeps `func/5` unchanged: `va_args c(N)` marks an eager snapshot,
+and `va_arg list_address` reads and updates its list in memory. The
+backend's generic adapter promotes once, then passes the snapshot as a
+hidden pointer argument to a private fast body. There is no safepoint
+between promotion's return and the body's prologue rooting that lower.
+The normal fast-body return code and existing generic result marshalling
+handle scalar, pointer and buffered struct returns. Nonvariadic assembly
+is unchanged. Escape analysis treats va_arg's list as accessed and
+escaping, so `-O` cannot promote its storage out of memory.
+
+Oracle reviewed snapshot lifetime, caller rooting, helper bounds and
+alignment, and the adapter design **before implementation**. Its required
+invariants were eager promotion using original incoming size, a dedicated
+snapshot root before the first body safepoint, no safepoint while
+unpacking helper results, and generic routing for recursive/same-module
+calls too. Its two caveats were the absent scalar type tags and rounded
+allocation bounds described above.
+
+Verification:
+
+- Before the change, `tests/c/variadic.c` failed at `__builtin_va_arg is
+  not supported`; the interop fixture failed at `unsupported instruction
+  va_args`. The old source tree was rerun from an archive, not inferred
+  from the patch.
+- The C difftest compares interpreter, nanofil and clang for int, long,
+  pointers, independent va_copy cursors, repeated start, calls before
+  start, a passed va_list, indirect calls, fixed pointers across the
+  register/stack split, pointer-bearing struct returns, exhaustion and
+  a forged pointer dereference. Runs pass normally and with `-O`, also
+  under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+- `tests/filc/run-c.sh variadic` links seven cross-compiler cases: both
+  call directions, passing lists both ways, pointer return, exhaustion,
+  and a function-pointer call. It forces collections before and after
+  extracting a pointer and passes with scribble/verify, at both levels.
+  The first collection precedes even the va_args instruction, exercising
+  the hidden entry root alone. Reducing nsum's emitted origin lower
+  count from four to three (excluding that hidden root without changing
+  the stored pointer) made case 0 fail with exit 133 and `filc safety
+  error` under scribble/verify. The unmodified assembly passes.
+- GNU hello 2.12.3 was configured using the pinned filcc with
+  `--disable-nls` and built with `make V=1`. Reusing make's flags with
+  `clang -E` reproduced the old errors at `lib/fcntl.c:209` (start) and
+  `lib/version-etc.c:208` (arg). Both preprocessed translation units now
+  compile with `nanofil cc` and assemble with GNU as. Replacing those
+  two objects in libhello.a and relinking produced working `hello` and
+  `hello --version`, including `--version` under scribble/verify. Make's
+  relink log confirmed it reused the nanofil objects, without compiling
+  them again with clang.
+- Existing accepted fixture/program assembly outputs were compared
+  byte-for-byte against the unchanged compiler: 27 identical outputs.
+  The full Nix check covers both Prolog hosts, the existing corpus and
+  the new variadic tests.

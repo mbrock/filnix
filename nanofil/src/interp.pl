@@ -103,8 +103,11 @@ module_prepared(M, prep(Fns, Globals, Mode, Mem0)) :-
 %  when an address, allocation size or capability is unknown.
 
 run_prepared(prep(Fns, Globals, Mode, Mem0), Fn, Args, Fuel, Outcome) :-
-    get_assoc(Fn, Fns, fn(_, Params, _, _)),
-    maplist(arg_in_range, Params, Args),
+    get_assoc(Fn, Fns, fn(_, Params, _, Blocks)),
+    ( assoc_to_values(Blocks, Bs), variadic_func(func(_, _, _, _, Bs))
+    -> length(Params, N), length(Fixed, N), append(Fixed, _, Args)
+    ; Fixed = Args ),
+    maplist(arg_in_range, Params, Fixed),
     call_outcome(Fns, Globals, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
 
 % arg_in_range(+Param, ?X): X is a value of Param's class.
@@ -136,9 +139,11 @@ call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
         throw(nanofil_error(Msg))
     ),
     empty_assoc(Env0),
-    foldl(param_arg_env, Params, Args, Env0, Env),
+    length(Params, NParams), length(Fixed, NParams), append(Fixed, _, Args),
+    foldl(param_arg_env, Params, Fixed, Env0, Env1),
+    entry_snapshot(Blocks, Args, Env1, Env, S0, SEntry),
     Ctx = ctx(Fns, Globals, Blocks, Ret, Mode),
-    block_outcome(Ctx, Entry, entry, Env, S0, Out, S1),
+    block_outcome(Ctx, Entry, entry, Env, SEntry, Out, S1),
     S0 = s(mem(_, Regions, _, _), _),
     returned_state(Mode, Regions, S1, S).
 
@@ -149,6 +154,22 @@ returned_state(plain, Regions, s(mem(Bytes, _, Next, Aux), Fuel),
 returned_state(filc, _, S, S).
 
 param_arg_env(par(_, t(N)), X, Env0, Env) :- put_assoc(N, Env0, X, Env).
+
+entry_snapshot(Blocks, Args, Env0, Env, s(Mem0, Fuel), s(Mem, Fuel)) :-
+    assoc_to_values(Blocks, Bs),
+    ( variadic_func(func(_, _, _, _, Bs))
+    -> length(Args, N), Size is (N * 8 + 15) // 16 * 16,
+       alloc_base(filc, Mem0, 16, Size, Base, Mem1),
+       snapshot_values(Args, Base, Base, Mem1, Mem),
+       put_assoc(hidden(va_snapshot), Env0, ptr(Base, ro(Base)), Env)
+    ; Env = Env0, Mem = Mem0 ).
+
+snapshot_values([], _, _, Mem, Mem).
+snapshot_values([X|Xs], A, Base, Mem0, Mem) :-
+    ( nonvar(X), X = ptr(_, _) -> W = p ; W = l ),
+    % Snapshot initialization precedes publishing its readonly capability.
+    store_res(filc, W, Mem0, ptr(A, obj(Base)), X, ok, Mem1),
+    A1 is A + 8, snapshot_values(Xs, A1, Base, Mem1, Mem).
 
 % int_is(?R, +Expr): R is the value of the integer expression Expr.
 % Concrete fast path: when every operand is known, plain arithmetic and
@@ -246,6 +267,10 @@ rest_result(stop(Out, S), _, _, stop(Out, S)).
 
 % inst_result(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
 % after Inst, or stop(Outcome, S) when it ends the run.
+inst_result(ins(t(D), p, va_args, [c(Off)]), _, Env0, S, Result) :- !,
+    get_assoc(hidden(va_snapshot), Env0, ptr(A, Cap)),
+    B is (A + Off) mod 18446744073709551616,
+    res_result(val(ptr(B, Cap)), D, Env0, S, Result).
 inst_result(ins(t(D), K, Op, Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(_, _, _, _, Mode),
     op_arg_classes(Op, K, Mode, ArgClasses),
@@ -287,8 +312,13 @@ cap_call_result(fn(F), A, Res, Args, Xs, Ctx, Env0, S0, Result) :-
     Ctx = ctx(Fns, Globals, _, _, Mode),
     (   get_assoc(F, Globals, ptr(FnAddr, _)),
         A == FnAddr
-    ->  get_assoc(F, Fns, fn(Ret, Params, _, _)),
-        indirect_call_conv(Ret, Params, Res, Args, Xs, Ys, Conv),
+    ->  get_assoc(F, Fns, fn(Ret, Params, _, Bs)),
+        indirect_call_conv(Ret, Params, Res, Args, Xs, Fixed, Conv),
+        assoc_to_values(Bs, Blocks),
+        ( variadic_func(func(_, _, _, _, Blocks)), Conv \= trap(_)
+        -> length(Params, NP), length(Prefix, NP), append(Prefix, Extra, Xs),
+           append(Fixed, Extra, Ys)
+        ; Ys = Fixed ),
         conv_call_result(Conv, Fns, Globals, Mode, F, Ys, Res, Env0, S0,
                          Result)
     ;   Result = stop(trap(not_a_function), S0)
@@ -487,6 +517,9 @@ kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
          s(Mem, Fuel)) :-
     alloc_base(Mode, Mem0, Align, Size, Base, Mem),
     alloc_pointer(Mode, Base, P).
+kind_res(va_arg, _, K, filc, [P], S0, Res, S) :-
+    pointer_load_res(filc, [P], S0, Cursor, S1),
+    va_cursor_res(Cursor, K, P, S1, Res, S).
 kind_res(additive, Op, K, _, Xs, S, Res, S) :- additive_res(K, Op, Xs, Res).
 kind_res(alu, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(shift, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
@@ -496,6 +529,20 @@ kind_res(ptoi, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(itop, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(cmp, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(ext, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+
+va_cursor_res(trap(Why), _, _, S, trap(Why), S).
+va_cursor_res(val(ptr(A, Cap)), K, P, s(Mem0, Fuel), Res, S) :-
+    width_bytes(K, Size), Aligned is (A + 7) // 8 * 8,
+    access_res(Mem0, Aligned, Cap, Size, read, 8, Check),
+    va_checked_res(Check, K, P, Aligned, Size, s(Mem0, Fuel), Res, S).
+
+va_checked_res(trap(Why), _, _, _, _, S, trap(Why), S).
+va_checked_res(ok, K, P, A, Size, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
+    Next is A + Size,
+    store_res(filc, l, Mem0, P, Next, Store, Mem1),
+    ( Store = trap(Why) -> Res = trap(Why), Mem = Mem1
+    ; K == p -> pointer_access_load(ok, Mem1, A, Res, Mem)
+    ; load_res(filc, Mem1, A, Size, Res, Mem) ).
 
 alloc_pointer(plain, Base, Base).
 alloc_pointer(filc, Base, ptr(Base, obj(Base))).

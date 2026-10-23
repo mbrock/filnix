@@ -123,6 +123,8 @@ kind_opname(neg, Op) --> atom(Op).
 kind_opname(copy, Op) --> atom(Op).
 kind_opname(ptoi, Op) --> atom(Op).
 kind_opname(itop, Op) --> atom(Op).
+kind_opname(va_args, Op) --> atom(Op).
+kind_opname(va_arg, Op) --> atom(Op).
 kind_opname(cmp, cmp(Cond, K)) --> "c", atom(Cond), atom(K).
 kind_opname(ext, ext(Type)) --> "ext", atom(Type).
 kind_opname(load, load(Type)) --> "load", atom(Type).

@@ -527,7 +527,8 @@ fallthrough_jump([], Fn, Label, _) :-
 % instruction name Name denotes.
 op_name(Name, Op) :-
     memberchk(Name, [add, sub, mul, div, udiv, rem, urem, and, or,
-                     xor, sar, shr, shl, neg, copy, ptoi, itop]),
+                     xor, sar, shr, shl, neg, copy, ptoi, itop,
+                     va_args, va_arg]),
     !,
     Op = Name.
 op_name(Name, cmp(Cond, K)) :-

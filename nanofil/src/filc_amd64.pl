@@ -246,10 +246,11 @@ item(_, data(Name, Linkage, _, Items)) -->
 % exit and failure blocks), then its function object and origins.
 function(Module, Func) -->
     { Func = func(Name, Linkage, Ret, Params, Blocks),
+      implementation_params(Func, Params, BodyParams),
       func_signature(Func, Sig),
       ret_kinds(Ret, RetKs),
       ret_form(RetKs, Form),
-      layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size),
+      layout(Form, BodyParams, Blocks, Slots, FrameBase, NLowers, Size),
       function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx),
       impl_symbol(Name, Sig, Impl),
       access_check_kinds(Blocks, CheckKinds),
@@ -258,7 +259,7 @@ function(Module, Func) -->
     linkage_globl(Linkage, Impl),
     [type(Impl, function), label(Impl)],
     prologue(Form, Size, NLowers, Ctx),
-    { param_words(Params, Words),
+    { param_words(BodyParams, Words),
       form_regs(Form, Regs) },
     incoming_word_stores(Words, Regs, 0, Ctx),
     blocks(Blocks, Ctx),
@@ -267,8 +268,20 @@ function(Module, Func) -->
     check_fail_blocks(CheckKinds, Ctx),
     not_function_block(Blocks, Ctx),
     [size(Impl)],
-    function_object(Name, Linkage, Ret, Params, Sig, Impl),
+    body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl),
     origins(Name, NLowers, CheckKinds).
+
+% A private fast body keeps the existing return convention. Its final
+% parameter roots the eager snapshot before the first body safepoint.
+implementation_params(Func, Params, BodyParams) :-
+    ( variadic_func(Func)
+    -> append(Params, [par(p, t(hidden(va_snapshot)))], BodyParams)
+    ; BodyParams = Params ).
+
+body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl) -->
+    ( { variadic_func(Func) }
+    -> variadic_object(Name, Linkage, Ret, Params, Impl)
+    ; function_object(Name, Linkage, Ret, Params, Sig, Impl) ).
 
 % The prologue: the frame's allocation, the stack overflow check, the
 % thread (and return buffer) in their slots, zeroed lowers[] and the
@@ -739,6 +752,22 @@ kind_inst(itop, p, _, [X], D, _, _, Ctx) -->
     load(X, l, a, Fn),
     [ins(xor, l, [reg(ecx), reg(ecx)])],
     flight_store(D, Ctx).
+kind_inst(va_args, p, _, [c(Off)], D, _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
+    flight_load(t(hidden(va_snapshot)), Ctx),
+    load(c(Off), l, d, Fn),
+    [ins(add, q, [reg(rdx), reg(rax)])],
+    flight_store(D, Ctx).
+kind_inst(va_arg, K, _, [P], D, Index, Block, Ctx) -->
+    { width_bytes(K, Size) },
+    origin_store(Ctx, c),
+    flight_load(P, Ctx),
+    [ins(mov, q, [reg(rax), reg(rdi)]),
+     ins(mov, q, [reg(rcx), reg(rsi)]),
+     ins(mov, l, [imm(Size), reg(edx)]),
+     ins(mov, l, [imm(Size), reg(ecx)]),
+     ins(call, none, [plt(filc_get_next_ptr_bytes_for_va_arg)])],
+    va_arg_load(K, D, Index, Block, Ctx).
 kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
 kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
@@ -764,6 +793,29 @@ integer_inst(Op, K, Args, D, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     compute_op(Op, K, Args, Fn),
     reg_slot_store(rax, t(D), Ctx).
+
+% The helper returns payload and auxiliary *addresses*, not a flight
+% pointer. Consume both without a safepoint, then root the loaded lower.
+va_arg_load(w, D, _, _, Ctx) -->
+    [ins(mov, l, [mem(0, rax), reg(eax)])],
+    reg_slot_store(rax, t(D), Ctx).
+va_arg_load(l, D, _, _, Ctx) -->
+    [ins(mov, q, [mem(0, rax), reg(rax)])],
+    reg_slot_store(rax, t(D), Ctx).
+va_arg_load(p, D, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, va_none, None),
+      local_label(Ctx, Block, Index, va_have, Have) },
+    [ins(xor, l, [reg(ecx), reg(ecx)]),
+     ins(test, q, [reg(rdx), reg(rdx)]),
+     ins(jz, none, [sym(None)]),
+     ins(mov, q, [mem(0, rdx), reg(rcx)]),
+     ins(test, b, [imm(1), reg(cl)]),
+     ins(jz, none, [sym(Have)]),
+     ins(and, q, [imm(-2), reg(rcx)]),
+     ins(mov, q, [mem(8, rcx), reg(rcx)]),
+     label(Have), label(None),
+     ins(mov, q, [mem(0, rax), reg(rax)])],
+    flight_store(D, Ctx).
 
 % additive_inst(+K, +Op, +Args, +D, +Ctx)//: add or sub (Op) at K; at p
 % it offsets the flight pointer and keeps its lower.
@@ -1141,7 +1193,7 @@ width_align(b, 1).
 % linked in.
 call_target(Ctx, F, Res, Args, sym(Target)) :-
     ctx_module(Ctx, Module),
-    (   func_named(Module, F, Func)
+    (   func_named(Module, F, Func), \+ variadic_func(Func)
     ->  func_signature(Func, Sig),
         impl_symbol(F, Sig, Target)
     ;   call_sig(Res, Args, _, _, Sig),
@@ -1259,6 +1311,89 @@ check_fail_blocks([Kind|Kinds], Ctx) -->
 %% Function objects: every function gets a getter, a generic entry and a
 %% function object, so its address can be taken; exported ones also get
 %% the FI alias and a global getter.
+
+% Generic-only public entry, with a private fast body. Promotion is the
+% only exiting call before the body roots the hidden snapshot parameter.
+variadic_object(Name, Linkage, Ret, Params, Impl) -->
+    { format(atom(FO), 'pizlonatedFO_~w', [Name]),
+      format(atom(Getter), 'pizlonated_~w', [Name]),
+      format(atom(Generic), 'pizlonatedFIP0_~w', [Name]),
+      format(atom(FI), 'pizlonatedFI0_~w', [Name]),
+      atom_concat(Generic, '.body', BodyObject) },
+    linkage_alias(Linkage, FI, Generic, Getter),
+    [type(Getter, function), label(Getter),
+     ins(lea, q, [rip(FO+16), reg(rax)]),
+     ins(mov, q, [reg(rax), reg(rdx)]), ins(ret, none, [])],
+    variadic_adapter(Generic, BodyObject, Ret, Params),
+    [section(data_rel_ro), p2align(4), label(BodyObject), quad(Impl),
+     type(FO, object), label(FO), quad(FO+16),
+     quad(FO+16+36873221949095936), quad(0), quad(Generic),
+     quad(0), size(FO, 40)].
+
+variadic_adapter(Generic, BodyObject, Ret, Params) -->
+    { length(Params, N), Need is N * 8,
+      findall(W, (nth0(I, Params, par(K, _)), snapshot_word(K, I, W)), Ws),
+      append(Ws, [reg(r12), reg(r12)], Words),
+      ret_kinds(Ret, RetKs), ret_form(RetKs, Form),
+      form_regs(Form, Regs), length(Regs, NR),
+      words_reg_stack(Words, NR, RegWords, StackWords),
+      length(StackWords, NS), Pad is NS mod 2, Pop is 8 * (NS + Pad),
+      reverse(StackWords, Pushes),
+      length(RetKs, NRet), RetSize is 8 * max(1, NRet),
+      generic_words(RetKs, GWs), foldl(generic_srcs, GWs, Dests, []),
+      atom_concat(Generic, '.short', Short),
+      atom_concat(Generic, '.done', Done) },
+    [section(text), type(Generic, function), label(Generic),
+     ins(push, q, [reg(rbx)]), ins(push, q, [reg(r12)]),
+     ins(push, q, [reg(r13)]),
+     ins(cmp, q, [imm(Need), reg(rdx)]),
+     ins(jb, none, [sym(Short)]),
+     ins(mov, q, [reg(rdi), reg(rbx)]),
+     ins(mov, q, [reg(rdx), reg(rsi)]),
+     ins(call, none, [plt(filc_promote_args_to_heap)]),
+     ins(mov, q, [reg(rax), reg(r12)]),
+     ins(xor, l, [reg(r13d), reg(r13d)]),
+     ins(test, q, [reg(rdx), reg(rdx)])],
+    { atom_concat(Generic, '.aux', Aux) },
+    [ins(jz, none, [sym(Aux)]),
+     ins(mov, q, [mem(-8, rdx), reg(r13)]),
+     ins(movabs, q, [imm(281474976710655), reg(rax)]),
+     ins(and, q, [reg(rax), reg(r13)]), label(Aux)],
+    ret_buffer_reservation(Form), align_pad(Pad),
+    snapshot_pushes(Pushes, Generic),
+    snapshot_regs(RegWords, Regs, Generic),
+    [ins(mov, q, [reg(rbx), reg(rdi)]),
+     ins(lea, q, [rip(BodyObject), reg(rsi)])],
+    generic_entry_call(Form, RetKs, GWs, Dests, Pop, RetSize, Done),
+    [ins(pop, q, [reg(r13)]), ins(pop, q, [reg(r12)]),
+     ins(pop, q, [reg(rbx)]), ins(ret, none, []),
+     label(Short), ins(mov, q, [reg(rdx), reg(rdi)]),
+     ins(mov, l, [imm(Need), reg(esi)]),
+     ins(xor, l, [reg(edx), reg(edx)]),
+     ins(call, none, [plt(filc_cc_args_check_failure)]),
+     ins(ud2, none, [])].
+
+snapshot_word(_, I, mem(Off, r12)) :- Off is 8 * I.
+snapshot_word(p, I, snapshot_lower(Off)) :- Off is 8 * I.
+
+snapshot_pushes([], _) --> [].
+snapshot_pushes([W|Ws], G) -->
+    snapshot_load(W, G), [ins(push, q, [reg(rax)])],
+    snapshot_pushes(Ws, G).
+
+snapshot_regs([], _, _) --> [].
+snapshot_regs([W|Ws], [R|Rs], G) -->
+    snapshot_load(W, G), [ins(mov, q, [reg(rax), reg(R)])],
+    snapshot_regs(Ws, Rs, G).
+
+snapshot_load(reg(R), _) --> [ins(mov, q, [reg(R), reg(rax)])].
+snapshot_load(mem(O, R), _) --> [ins(mov, q, [mem(O, R), reg(rax)])].
+snapshot_load(snapshot_lower(O), G) -->
+    { format(atom(NoAux), '~w.lower.~w', [G, O]) },
+    [ins(xor, l, [reg(eax), reg(eax)]),
+     ins(test, q, [reg(r13), reg(r13)]),
+     ins(jz, none, [sym(NoAux)]),
+     ins(mov, q, [mem(O, r13), reg(rax)]), label(NoAux)].
 
 function_object(Name, Linkage, Ret, Params, Sig, Impl) -->
     { format(atom(FI), 'pizlonatedFI~w_~w', [Sig, Name]),
@@ -1500,7 +1635,8 @@ external_callees(Module, Callees) :-
             (   member(func(_, _, _, _, Blocks), Items),
                 member(blk(_, _, Insts, _), Blocks),
                 member(call(Res, glo(F), Args), Insts),
-                \+ func_named(Module, F, _),
+                ( \+ func_named(Module, F, _)
+                ; func_named(Module, F, VF), variadic_func(VF) ),
                 call_sig(Res, Args, RetKind, ArgKinds, Sig)
             ),
             Callees0),

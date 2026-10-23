@@ -842,6 +842,26 @@ export function w $m() {\n\
     Out = ret(V),
     integer(V).
 
+test(variadic_slot_stays_in_memory) :-
+    text_module("export function l $f(p %args) {\n\
+@s\n\
+\t%slot =p alloc8 24\n\
+\tstorep %args, %slot\n\
+\t%x =l va_arg %slot\n\
+\tret %x\n\
+}\n", M0),
+    optimize(o1, M0, M), valid_module(M),
+    M = module([F]), F = func(_, _, _, _, [blk(_, _, Is, _)]),
+    member(ins(Slot, p, alloc(8), [c(24)]), Is),
+    member(ins(_, l, va_arg, [Slot]), Is),
+    alloc_classes(F, Classes), memberchk(slot-escapes(va_arg), Classes),
+    phrase(module_chars(M), Text), parse_qbe_chars(Text, M).
+
+test(variadic_invalid_ir) :-
+    rejected_with("function w $f() {\n@s\n%x =w va_arg 0\nret %x\n}\n", "va_arg"),
+    rejected_with("function p $f() {\n@s\n%x =p va_args -1\nret %x\n}\n", "non-negative"),
+    rejected_with("function p $f(l %n) {\n@s\n%x =p va_args %n\nret %x\n}\n", "constant").
+
 % c_file_module(+File, -Module): Module is the valid module of the C
 % in File, lexed without preprocessing.
 c_file_module(F, M) :-
