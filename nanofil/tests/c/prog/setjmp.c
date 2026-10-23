@@ -89,6 +89,30 @@ static void repeat(void)
     mask_set(0);
 }
 
+/* Reexecuting one static site must replace, not retain, its mask policy. */
+static void mask_recreate(int first)
+{
+    volatile int save = first;
+    volatile int iteration = 0;
+    mask_set(1);
+    for (;;) {
+        if (sigsetjmp(a, save))
+            break;
+        if (!iteration++) {
+            save = !first;
+            mask_set(!first);
+        } else {
+            mask_set(0);
+            zgc_request_and_wait();
+            siglongjmp(a, 1);
+        }
+    }
+    printf("mask recreate %d %d\n", first, mask_is_set());
+    if (mask_is_set() != !first)
+        abort();
+    mask_set(0);
+}
+
 /* Both user buffers alias the latest execution of one static site. The
    volatile index/pointee deliberately keep their intervening changes;
    the IR test separately asserts compiler temp/phi snapshot values. */
@@ -118,5 +142,7 @@ int main(void)
     buffers();
     repeat();
     loop();
+    mask_recreate(1);
+    mask_recreate(0);
     return 0;
 }

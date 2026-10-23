@@ -492,8 +492,9 @@ Verified in staging `35faf87`, not inferred from libc conventions:
   `cannot longjmp unless the setjmp destination is on the stack.`,
   unwinds intermediate frames and restores ordinary lowers, **skipping
   the site slots**. Native stack payload slots are not restored.
-- The staging runtime retains the fixed-policy signal-mask behavior;
-  same-site mask 1→0 reuse has a known defect documented in [setjmp.md](setjmp.md).
+- Staging `af813053ecb5` resets the signal-mask policy on every recreation,
+  fixing same-site mask 1→0 reuse without changing this ABI; see
+  [setjmp.md](setjmp.md). Both toggle directions are regression-tested.
 
 Nanofil's approved IR, conservative payload snapshot, optimizer barrier,
 Oracle review conditions and test coverage are in [setjmp.md](setjmp.md).

@@ -29,7 +29,7 @@ not prevent this tearing.
 
 ## Staging 0.687 design
 
-The target is staging `35faf87`, not Fil-C 0.686. Each static setjmp site
+The target is staging `af813053ecb5`, not Fil-C 0.686. Each static setjmp site
 has one ordinary scanned snapshot root and one jmpbuf root. All jmpbuf
 roots are **last**, at the highest lower indices. Both call and non-call
 origins use the 48-byte layout: two flag bytes at 32, two padding bytes,
@@ -125,15 +125,21 @@ not assumptions to relax after tests pass.
   with and without `-O`, including scribble/verify GC stress.
 
 Asynchronous signal-handler jumps are not a newly promised interface.
-No runtime, GC, compiler toolchain or pin is changed.
 
-## Staging signal-mask limitation
+## Staging signal-mask recreation fix
 
-In `35faf87`'s `filc_jmp_buf_recreate`, `did_save_sigmask` becomes true
-when a site saves a mask but is not reset when the same site later runs
-with `sigsetjmp(buf, 0)`. A subsequent jump can therefore restore the
-earlier mask incorrectly. The same code is present in upstream `deluge`
-HEAD `36f07a2f8f8141b3488d7ca20a680fd629886eeb` (checked 2026-10-23).
-This is a runtime defect, not something nanofil compensates for by
-changing persistent site identity. Fixed-mask sites are covered; the
-runtime fix is separate from this migration.
+Staging [af813053ecb5](https://github.com/mbrock/fil-c/commit/af813053ecb5a5ff27292bfede8d3a9e870d4c8e)
+fixes the runtime defect present in `35faf87`: `filc_jmp_buf_recreate`
+now assigns `did_save_sigmask` on every execution from the current kind
+and policy, just as a fresh buffer would. A same-site `sigsetjmp` 1→0
+transition no longer restores an earlier mask; 0→1 captures the current
+mask. Plain `setjmp` follows the current `zmake_setjmp_save_sigmask`
+policy in both directions; `_setjmp` never saves a mask. Oracle approved
+the runtime change with no memory-safety blockers. Buffer identity,
+rooting and lower restoration are unchanged.
+
+Fil-C's `setjmp_sigmask_recreate` regression covers both directions for
+`sigsetjmp` and plain `setjmp`, and fails against the old runtime.
+Nanofil's `tests/c/prog/setjmp.c` also exercises both `sigsetjmp`
+transitions at one static site, with collection before the jump, through
+both nanofil and filcc. Nanofil needs no workaround or site-identity change.
