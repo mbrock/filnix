@@ -115,7 +115,8 @@ command(Opt, [difftest, File, Dir]) :-
     % backtracking before the next starts.
     % valid_module's clauses leave choice points that throw on retry.
     (   Opt == o1 -> once(valid_module(M)) ; true ),
-    findall(R-V, ( member(Run, Runs), validated(Opt, M0, M, Run, R, V) ), RVs),
+    prepare(M0, P0), prepare(M, P),
+    findall(R-V, ( member(Run, Runs), validated(Opt, M0-P0, M-P, Run, R, V) ), RVs),
     pairs_keys_values(RVs, Results, Vs),
     (   Opt == o0 -> true
     ;   alloc_count(M0, N0), alloc_count(M, N1),
@@ -169,9 +170,10 @@ fuel_step(F) :- member(F, [1000, 8000, 64000, 512000, 1000000]).
 
 canonical(par(K, _), A0, A) :- modulus(K, M), A is A0 mod M.
 
-evaluate(M, Run, R) :- evaluate(M, Run, 1000000, R).
+evaluate(MP, Run, R) :- evaluate(MP, Run, 1000000, R).
 
-evaluate(M, run(Fn, Args0), Fuel, r(Fn, Args, Out)) :-
+% MP is a module and the interpreter's preparation of it.
+evaluate(M-P, run(Fn, Args0), Fuel, r(Fn, Args, Out)) :-
     (   func_named(M, Fn, func(_, export, _, Params, _)) -> true
     ;   throw(nanofil_error(Fn-'run line names a function that is not exported'))
     ),
@@ -179,7 +181,7 @@ evaluate(M, run(Fn, Args0), Fuel, r(Fn, Args, Out)) :-
     ;   throw(nanofil_error(Fn-'run line has the wrong number of arguments'))
     ),
     maplist(canonical, Params, Args0, Args),
-    (   once(run(M, Fn, Args, Fuel, Out)) -> true
+    (   once(run_prepared(P, Fn, Args, Fuel, Out)) -> true
     ;   call_text(Fn, Args, CT),
         throw(nanofil_error(CT-'interpreter found no outcome'))
     ).

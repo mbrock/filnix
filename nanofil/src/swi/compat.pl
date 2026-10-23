@@ -25,4 +25,17 @@
 
 user:term_expansion((:- module(M, Es)),
                     [(:- module(M, Es)), (:- set_prolog_flag(double_quotes, chars))]).
-user:term_expansion((:- initialization(G)), (:- initialization(G, main))).
+user:term_expansion((:- initialization(G)), (:- initialization(G, main))) :-
+    \+ getenv('NANOFIL_PROFILE', _).
+% NANOFIL_PROFILE=N: run the program under SWI's profiler and print the N
+% predicates with the most self time to stderr when it halts.
+user:term_expansion((:- initialization(G)),
+                    (:- initialization(user:nanofil_profile(M:G), main))) :-
+    getenv('NANOFIL_PROFILE', _),
+    prolog_load_context(module, M).
+
+user:nanofil_profile(G) :-
+    getenv('NANOFIL_PROFILE', N0), atom_number(N0, N),
+    at_halt(with_output_to(user_error,
+                           show_profile([top(N), cumulative(false)]))),
+    profile(G).

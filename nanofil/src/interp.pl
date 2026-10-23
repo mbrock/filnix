@@ -1,6 +1,10 @@
 /*  Relational semantics of the phase-one IR.
 
     run(+Module, +Fn, ?Args, +Fuel, ?Outcome)
+    prepare(+Module, -Prepared), run_prepared(+Prepared, +Fn, ?Args, +Fuel, ?Outcome)
+
+    run/5 prepares the module first: its mode, initial memory, and
+    indexes of its functions and blocks. Prepare once to run many times.
 
     Args are integers or CLP(Z) variables, one per parameter, in the range
     of the parameter's class. Outcome is one of
@@ -14,6 +18,8 @@
 
     Arithmetic and branches are CLP(Z) constraints, so the relation runs
     in every direction: Args and Outcome can both be partially unknown.
+    Known values take a fast path (is/2 and if-then-else), which gives
+    the same answers; only unknown values pay for constraints.
     Memory addresses and allocation sizes must be known when an access or
     alloc runs; otherwise the run raises an instantiation error, which is
     incomplete but never wrong.
@@ -25,7 +31,7 @@
     allocations die when it returns, and addresses are never reused, so
     use after return is an out-of-bounds access.
 */
-:- module(interp, [run/5, outcome_text/2]).
+:- module(interp, [run/5, prepare/2, run_prepared/5, outcome_text/2]).
 
 :- use_module(library(clpz)).
 :- use_module(library(assoc)).
@@ -35,11 +41,26 @@
 :- use_module(ir).
 
 run(M, Fn, Args, Fuel, Outcome) :-
+    prepare(M, P),
+    run_prepared(P, Fn, Args, Fuel, Outcome).
+
+% The initial memory holds integers only, so runs can share it.
+prepare(M, prep(Fns, G, Mode, Mem0)) :-
     module_mode(M, Mode),
     initial_memory(Mode, M, G, Mem0),
-    func_named(M, Fn, func(_, _, _, Params, _)),
+    M = module(Items),
+    findall(Name-fn(Ret, Params, Entry, BA),
+            ( member(func(Name, _, Ret, Params, Blocks), Items),
+              Blocks = [blk(Entry, _, _, _)|_],
+              findall(L-B, ( member(B, Blocks), B = blk(L, _, _, _) ), LBs),
+              list_to_assoc(LBs, BA) ),
+            NFs),
+    list_to_assoc(NFs, Fns).
+
+run_prepared(prep(Fns, G, Mode, Mem0), Fn, Args, Fuel, Outcome) :-
+    get_assoc(Fn, Fns, fn(_, Params, _, _)),
     maplist(arg_in_range, Params, Args),
-    call_fn(M, G, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
+    call_fn(Fns, G, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
 
 arg_in_range(par(p, _), ptr(_, _)) :- !.
 arg_in_range(par(K, _), A) :-
@@ -49,28 +70,44 @@ arg_in_range(par(K, _), A) :-
 
 % In plain mode a callee's allocations die when it returns; in filc mode
 % every allocation is a heap object that lives on.
-call_fn(M, G, Mode, Fn, Args, S0, Out, S) :-
-    (   func_named(M, Fn, func(_, _, Ret, Params, Blocks)) -> true
+call_fn(Fns, G, Mode, Fn, Args, S0, Out, S) :-
+    (   get_assoc(Fn, Fns, fn(Ret, Params, Entry, Blocks)) -> true
     ;   format(atom(Msg), 'cannot interpret a call to external $~w', [Fn]),
         throw(nanofil_error(Msg))
     ),
     empty_assoc(E0),
     foldl(bind_param, Params, Args, E0, Env),
-    Blocks = [blk(Entry, _, _, _)|_],
-    exec(c(M, G, Blocks, Ret, Mode), Entry, none, Env, S0, Out, S1),
+    exec(c(Fns, G, Blocks, Ret, Mode), Entry, none, Env, S0, Out, S1),
     S0 = s(mem(_, Regions, _, _), _),
     S1 = s(mem(B, _, N, Aux), F),
     (   Mode == plain -> S = s(mem(B, Regions, N, Aux), F) ; S = S1 ).
 
 bind_param(par(_, t(N)), X, E0, E) :- put_assoc(N, E0, X, E).
 
+% Concrete fast path: when every operand is known, plain arithmetic and
+% if-then-else give the same answers as the constraints, without
+% propagators or choice points. Unknown operands still get constraints.
+ev(R, E) :- ( ground(E) -> R is E ; R #= E ).
+
+% test(+Goal, ?B): B is 1 if Goal holds, else 0 (reified when unknown).
+reify(C, B) :-
+    (   ground(C) -> ( call(C) -> B = 1 ; B = 0 )
+    ;   B in 0..1, reify_(C, B)
+    ).
+reify_(X =:= Y, B) :- B #<==> (X #= Y).
+reify_(X =\= Y, B) :- B #<==> (X #\= Y).
+reify_(X < Y, B) :- B #<==> (X #< Y).
+reify_(X =< Y, B) :- B #<==> (X #=< Y).
+reify_(X > Y, B) :- B #<==> (X #> Y).
+reify_(X >= Y, B) :- B #<==> (X #>= Y).
+
 %% Blocks
 
 exec(Ctx, L, Pred, Env0, s(Mem, F0), Out, S) :-
-    (   F0 #= 0, Out = out_of_fuel, S = s(Mem, F0)
-    ;   F0 #> 0, F1 #= F0 - 1,
+    (   F0 =:= 0 -> Out = out_of_fuel, S = s(Mem, F0)
+    ;   F1 is F0 - 1,
         Ctx = c(_, _, Blocks, _, _),
-        memberchk(blk(L, Phis, Insts, J), Blocks),
+        get_assoc(L, Blocks, blk(_, Phis, Insts, J)),
         phis(Phis, Ctx, Pred, Env0, Env0, Env1),
         insts(Insts, Ctx, Env1, s(Mem, F1), R),
         after(R, J, Ctx, L, Out, S)
@@ -90,9 +127,11 @@ after(stop(Out, S), _, _, _, Out, S).
 jump(jmp(L), Ctx, From, Env, S0, Out, S) :- exec(Ctx, L, From, Env, S0, Out, S).
 jump(jnz(V, L1, L2), Ctx, From, Env, S0, Out, S) :-
     read(w, V, Ctx, Env, X),
-    (   X #\= 0, exec(Ctx, L1, From, Env, S0, Out, S)
-    ;   X #= 0, exec(Ctx, L2, From, Env, S0, Out, S)
-    ).
+    (   integer(X) -> ( X =\= 0 -> L = L1 ; L = L2 )
+    ;   X #\= 0, L = L1
+    ;   X #= 0, L = L2
+    ),
+    exec(Ctx, L, From, Env, S0, Out, S).
 jump(ret(V), Ctx, _, Env, S, ret(X), S) :-
     Ctx = c(_, _, _, K, _),
     read(K, V, Ctx, Env, X).
@@ -138,7 +177,7 @@ step(call(Res, t(N), Args), Ctx, Env0, S0, R) :-
     read(p, t(N), Ctx, Env0, ptr(A, Cap)),
     maplist(read_arg(Ctx, Env0), Args, Xs),
     (   Cap = fn(F), get_assoc(F, G, ptr(A0, _)), A == A0
-    ->  func_named(M, F, func(_, _, Ret, Params, _)),
+    ->  get_assoc(F, M, fn(Ret, Params, _, _)),
         indirect(Ret, Params, Res, Args, Xs, Ys, Conv),
         (   Conv = trap(Why) -> R = stop(trap(Why), S0)
         ;   call_fn(M, G, Mode, F, Ys, S0, Out0, S),
@@ -221,7 +260,7 @@ call_result(ret(X), to(t(D), p), Env0, S, cont(Env, S)) :- !,
     put_assoc(D, Env0, X, Env).
 call_result(ret(X), to(t(D), K), Env0, S, cont(Env, S)) :-
     modulus(K, Mod),
-    Y #= X mod Mod,
+    ev(Y, X mod Mod),
     put_assoc(D, Env0, Y, Env).
 call_result(rets(Xs), tuple(Tos), Env0, S, cont(Env, S)) :-
     foldl(bind_word, Tos, Xs, Env0, Env).
@@ -235,7 +274,7 @@ call_result(out_of_fuel, _, _, S, stop(out_of_fuel, S)).
 
 bind_word(to(t(D), p), X, Env0, Env) :- !, put_assoc(D, Env0, X, Env).
 bind_word(to(t(D), K), X, Env0, Env) :-
-    modulus(K, Mod), Y #= X mod Mod, put_assoc(D, Env0, Y, Env).
+    modulus(K, Mod), ev(Y, X mod Mod), put_assoc(D, Env0, Y, Env).
 
 % Reading a value at class K takes its low bits(K) bits.
 read(K, V, Ctx, Env, X) :- read_(V, K, Ctx, Env, X).
@@ -247,7 +286,7 @@ read_(t(N), K, _, Env, X) :-
     ),
     (   K == p -> X = X0
     ;   modulus(K, Mod),
-        X #= X0 mod Mod
+        ev(X, X0 mod Mod)
     ).
 read_(c(N), K, _, _, X) :-
     modulus(K, Mod),
@@ -287,46 +326,49 @@ eval(Op, K, _, Xs, S, Res, S) :-
     alu(Op, K, Xs, Res).
 
 % Pointer arithmetic keeps the capability. ptoi drops it; itop has none.
-alu(add, p, [ptr(A, C), X], val(ptr(R, C))) :- !, modulus(l, M), R #= (A + X) mod M.
-alu(sub, p, [ptr(A, C), X], val(ptr(R, C))) :- !, modulus(l, M), R #= (A - X) mod M.
+alu(add, p, [ptr(A, C), X], val(ptr(R, C))) :- !, modulus(l, M), ev(R, (A + X) mod M).
+alu(sub, p, [ptr(A, C), X], val(ptr(R, C))) :- !, modulus(l, M), ev(R, (A - X) mod M).
 alu(ptoi, _, [ptr(A, _)], val(A)).
 alu(itop, _, [X], val(ptr(X, none))).
 
-alu(add, K, [X, Y], val(R)) :- modulus(K, M), R #= (X + Y) mod M.
-alu(sub, K, [X, Y], val(R)) :- modulus(K, M), R #= (X - Y) mod M.
-alu(mul, K, [X, Y], val(R)) :- modulus(K, M), R #= (X * Y) mod M.
-alu(neg, K, [X], val(R)) :- modulus(K, M), R #= (-X) mod M.
+alu(add, K, [X, Y], val(R)) :- modulus(K, M), ev(R, (X + Y) mod M).
+alu(sub, K, [X, Y], val(R)) :- modulus(K, M), ev(R, (X - Y) mod M).
+alu(mul, K, [X, Y], val(R)) :- modulus(K, M), ev(R, (X * Y) mod M).
+alu(neg, K, [X], val(R)) :- modulus(K, M), ev(R, (-X) mod M).
 alu(copy, _, [X], val(X)).
-alu(and, _, [X, Y], val(R)) :- R #= X /\ Y.
-alu(or, _, [X, Y], val(R)) :- R #= X \/ Y.
-alu(xor, _, [X, Y], val(R)) :- R #= xor(X, Y).
-alu(udiv, _, [X, Y], Res) :-
-    (   Y #= 0, Res = ub(division_by_zero)
-    ;   Y #\= 0, R #= X // Y, Res = val(R)
-    ).
-alu(urem, _, [X, Y], Res) :-
-    (   Y #= 0, Res = ub(division_by_zero)
-    ;   Y #\= 0, R #= X mod Y, Res = val(R)
-    ).
+alu(and, _, [X, Y], val(R)) :- ev(R, X /\ Y).
+alu(or, _, [X, Y], val(R)) :- ev(R, X \/ Y).
+alu(xor, _, [X, Y], val(R)) :- ev(R, xor(X, Y)).
+alu(udiv, _, [X, Y], Res) :- unsigned_division(X, Y, X // Y, Res).
+alu(urem, _, [X, Y], Res) :- unsigned_division(X, Y, X mod Y, Res).
 alu(div, K, [X, Y], Res) :- signed_division(K, X, Y, //, Res).
 alu(rem, K, [X, Y], Res) :- signed_division(K, X, Y, rem, Res).
 alu(shl, K, [X, Y], val(R)) :-
-    shift_factor(K, Y, P), modulus(K, M), R #= (X * P) mod M.
+    shift_factor(K, Y, P), modulus(K, M), ev(R, (X * P) mod M).
 alu(shr, K, [X, Y], val(R)) :-
-    shift_factor(K, Y, P), R #= X // P.
+    shift_factor(K, Y, P), ev(R, X // P).
 alu(sar, K, [X, Y], val(R)) :-
-    shift_factor(K, Y, P), signed(K, X, SX), modulus(K, M), R #= (SX div P) mod M.
-alu(ext(T), K, [X], val(R)) :- extend(T, X, S), modulus(K, M), R #= S mod M.
-alu(cmp(C, CK), _, [X, Y], val(B)) :-
-    B in 0..1,
-    compare_(C, CK, X, Y, B).
+    shift_factor(K, Y, P), signed(K, X, SX), modulus(K, M), ev(R, (SX div P) mod M).
+alu(ext(T), K, [X], val(R)) :- extend(T, X, S), modulus(K, M), ev(R, S mod M).
+alu(cmp(C, CK), _, [X, Y], val(B)) :- compare_(C, CK, X, Y, B).
+
+unsigned_division(_, Y, E, Res) :-
+    (   integer(Y) -> ( Y =:= 0 -> Res = ub(division_by_zero) ; ev(R, E), Res = val(R) )
+    ;   Y #= 0, Res = ub(division_by_zero)
+    ;   Y #\= 0, ev(R, E), Res = val(R)
+    ).
 
 % x86 idiv traps on both a zero divisor and the one quotient that
 % overflows, so both are undefined here.
 signed_division(K, X, Y, Fn, Res) :-
     signed(K, X, SX), signed(K, Y, SY),
-    half(K, H), Min #= -H,
-    (   SY #= 0, Res = ub(division_by_zero)
+    half(K, H), Min is -H,
+    (   integer(SX), integer(SY)
+    ->  (   SY =:= 0 -> Res = ub(division_by_zero)
+        ;   SY =:= -1, SX =:= Min -> Res = ub(division_overflow)
+        ;   modulus(K, M), division(Fn, SX, SY, Q), R is Q mod M, Res = val(R)
+        )
+    ;   SY #= 0, Res = ub(division_by_zero)
     ;   SY #= -1, SX #= Min, Res = ub(division_overflow)
     ;   SY #\= 0, #\ (SY #= -1 #/\ SX #= Min),
         modulus(K, M),
@@ -335,25 +377,25 @@ signed_division(K, X, Y, Fn, Res) :-
         Res = val(R)
     ).
 
-division(//, X, Y, Q) :- Q #= X // Y.
-division(rem, X, Y, Q) :- Q #= X rem Y.
+division(//, X, Y, Q) :- ev(Q, X // Y).
+division(rem, X, Y, Q) :- ev(Q, X rem Y).
 
 % The shift count is taken modulo the class width.
 shift_factor(K, Y, P) :-
     class_bits(K, Bits),
-    C #= Y mod Bits,
-    P #= 2 ^ C.
+    ev(C, Y mod Bits),
+    ev(P, 2 ^ C).
 
-compare_(eq, _, X, Y, B) :- B #<==> (X #= Y).
-compare_(ne, _, X, Y, B) :- B #<==> (X #\= Y).
-compare_(ult, _, X, Y, B) :- B #<==> (X #< Y).
-compare_(ule, _, X, Y, B) :- B #<==> (X #=< Y).
-compare_(ugt, _, X, Y, B) :- B #<==> (X #> Y).
-compare_(uge, _, X, Y, B) :- B #<==> (X #>= Y).
-compare_(slt, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), B #<==> (SX #< SY).
-compare_(sle, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), B #<==> (SX #=< SY).
-compare_(sgt, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), B #<==> (SX #> SY).
-compare_(sge, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), B #<==> (SX #>= SY).
+compare_(eq, _, X, Y, B) :- reify(X =:= Y, B).
+compare_(ne, _, X, Y, B) :- reify(X =\= Y, B).
+compare_(ult, _, X, Y, B) :- reify(X < Y, B).
+compare_(ule, _, X, Y, B) :- reify(X =< Y, B).
+compare_(ugt, _, X, Y, B) :- reify(X > Y, B).
+compare_(uge, _, X, Y, B) :- reify(X >= Y, B).
+compare_(slt, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), reify(SX < SY, B).
+compare_(sle, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), reify(SX =< SY, B).
+compare_(sgt, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), reify(SX > SY, B).
+compare_(sge, K, X, Y, B) :- signed(K, X, SX), signed(K, Y, SY), reify(SX >= SY, B).
 
 signed(K, U, S) :-
     modulus(K, M), half(K, H),
@@ -361,6 +403,9 @@ signed(K, U, S) :-
 
 % S is the two's-complement reading of the low bits of U, for a field of
 % modulus M with sign threshold H.
+sext(M, H, U, S) :- integer(U), !,
+    L is U mod M,
+    ( L >= H -> S is L - M ; S = L ).
 sext(M, H, U, S) :-
     L #= U mod M,
     Neg in 0..1,
@@ -368,11 +413,11 @@ sext(M, H, U, S) :-
     S #= L - Neg * M.
 
 extend(sb, X, S) :- sext(256, 128, X, S).
-extend(ub, X, S) :- S #= X mod 256.
+extend(ub, X, S) :- ev(S, X mod 256).
 extend(sh, X, S) :- sext(65536, 32768, X, S).
-extend(uh, X, S) :- S #= X mod 65536.
+extend(uh, X, S) :- ev(S, X mod 65536).
 extend(sw, X, S) :- sext(4294967296, 2147483648, X, S).
-extend(uw, X, S) :- S #= X mod 4294967296.
+extend(uw, X, S) :- ev(S, X mod 4294967296).
 
 load_type(l, 8, none).
 load_type(sw, 4, sw).
@@ -386,7 +431,7 @@ load_value(ub(Why), _, _, ub(Why)).
 load_value(val(U), none, _, val(U)).
 load_value(val(U), T, K, val(R)) :-
     dif(T, none),
-    extend(T, U, S), modulus(K, M), R #= S mod M.
+    extend(T, U, S), modulus(K, M), ev(R, S mod M).
 
 %% Memory: mem(Bytes, Regions, Next, Aux)
 %
@@ -474,12 +519,12 @@ bytes_out([X|Xs], A, B0, B) :-
 
 % Little-endian.
 le_value([], 0).
-le_value([X|Xs], U) :- le_value(Xs, U1), U #= X + 256 * U1.
+le_value([X|Xs], U) :- le_value(Xs, U1), ev(U, X + 256 * U1).
 
 le_bytes(0, _, []) :- !.
 le_bytes(W, X, [B|Bs]) :-
-    B #= X mod 256,
-    X1 #= X // 256,
+    ev(B, X mod 256),
+    ev(X1, X // 256),
     W1 is W - 1,
     le_bytes(W1, X1, Bs).
 
