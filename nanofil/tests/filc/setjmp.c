@@ -6,11 +6,13 @@
 int nloop(void);
 int nbad(void *);
 void nforward(void);
-static jmp_buf a, b;
+static jmp_buf a, b, c;
 
-void *pick(int i) { return i ? b : a; }
+void *pick(int i) { return i == 2 ? c : i ? b : a; }
 void collect(void) { zgc_request_and_wait(); }
 void jump_a(void) { _longjmp(a, 257); }
+void jump_c(void) { _longjmp(c, 513); }
+int again(void) { static int n; return n++ == 0; }
 
 int main(int argc, char **argv)
 {

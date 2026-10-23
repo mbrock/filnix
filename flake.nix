@@ -158,6 +158,11 @@
             # Fil-C docs, pass and runtime at the pin, for reading
             # (lib/sources.nix): nix build .#lib.x86_64-linux.filc-ref-src
             filc-ref-src = (import ./lib/sources.nix { inherit pkgs; }).filc-ref-src;
+            filc-staging-ref-src =
+              (import ./lib/sources.nix {
+                inherit pkgs;
+                variant = "staging";
+              }).filc-ref-src;
           };
 
           checks.${system} = {
@@ -197,10 +202,22 @@
             unsafe-call-boundary = import ./tests/unsafe-call-boundary.nix {
               inherit pkgs filcc;
             };
-            nanofil = import ./nanofil/nix/check.nix { inherit pkgs filcc; };
-            nanofil-hello = import ./nanofil/nix/hello.nix { inherit pkgs filcc; };
-            nanofil-zlib = import ./nanofil/nix/zlib.nix { inherit pkgs filcc; };
-            nanofil-lua = import ./nanofil/nix/lua.nix { inherit pkgs filcc; };
+            nanofil = import ./nanofil/nix/check.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
+            nanofil-hello = import ./nanofil/nix/hello.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
+            nanofil-zlib = import ./nanofil/nix/zlib.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
+            nanofil-lua = import ./nanofil/nix/lua.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
               inherit pkgs filcc sarcasm-prolog;
               trealla = pkgsFilc.trealla;

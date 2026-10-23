@@ -11,17 +11,18 @@ something new against the pinned sources.
 Build these once per orb (all cached):
 
 ```sh
-nix build -o /tmp/filcc .#filcc                                  # /tmp/filcc/bin/clang
+nix build -o /tmp/filcc .#filcc-staging                          # /tmp/filcc/bin/clang
 nix build -o /tmp/swipl --impure --expr \
   '(import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }).swi-prolog'
 nix build -o /tmp/tpl-native --impure --expr \
   'import ./nanofil/nix/trealla.nix { pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }; }'
 nix build -o /tmp/qbe-p --impure --expr \
   'import ./nanofil/nix/qbe.nix { pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }; }'
-nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-ref-src       # Fil-C docs, pass, runtime (6.5 MB)
+nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-staging-ref-src # staging docs, pass, runtime
 ```
 
-Use `filc-ref-src` to look up how Fil-C behaves. Do not fetch `filc0-src`
+Nanofil requires staging Fil-C 0.687; there is no 0.686 ABI compatibility.
+Use `filc-staging-ref-src` to look up how Fil-C behaves. Do not fetch `filc0-src`
 (all of LLVM and clang) unless you are building the compiler.
 
 ## Tests
@@ -36,6 +37,7 @@ nanofil/tests/reject.sh                        # unsupported C is refused
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
+nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc
 ```
 
 `bin/nanofil` runs on SWI-Prolog by default; `NANOFIL_HOST=trealla` (with

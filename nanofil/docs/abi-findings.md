@@ -1,19 +1,20 @@
 # Fil-C ABI findings at the filnix pin
 
-The [handoff](handoff.md) was read at Fil-C `cec28ab` (2026-10-22). filnix
-builds Fil-C 0.686, core revision `163fae5`
-([lib/filc-upstream.json](../../lib/filc-upstream.json)). nanofil must link
-against the toolchain filnix actually ships, so everything below was checked
-at `163fae5` by reading its source and compiling the probes in
-[probes/](../probes/) with `nix build .#filcc`. Rerun them with
-`nanofil/probes/run.sh`.
+Nanofil requires **staging Fil-C 0.687**, core revision `35faf87` of
+`mbrock/fil-c` branch `staging-0.687`
+([lib/filc-staging.json](../../lib/filc-staging.json)). There is no 0.686
+compatibility path. The original probes below were established at
+`163fae5`; their emitted ABI contracts were rechecked against staging's
+pass and runtime. The [handoff](handoff.md) is historical, not the target.
+Rerun [probes/](../probes/) with `nanofil/probes/run.sh` and
+`FILCC=/tmp/filcc/bin/clang` after building `.#filcc-staging`.
 
 To read the sources at the pin, build the small reference checkout (about
 6.5 MB: the design docs, `FilPizlonator.cpp` and its helper passes, the
 clang pipeline and driver files, and the runtime):
 
 ```sh
-nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-ref-src
+nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-staging-ref-src
 # /tmp/filc-ref/libpas/src/libpas/filc_runtime.{h,c}
 # /tmp/filc-ref/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
 # /tmp/filc-ref/{Manifesto,gimso_semantics,invisicaps_by_example}.md
@@ -22,22 +23,35 @@ nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-ref-src
 The full checkouts in [lib/sources.nix](../../lib/sources.nix) are for
 building; `filc0-src` alone is about 1.6 GB.
 
-## Pin differences that matter
+## Staging differences that matter
 
-Between `163fae5` and `cec28ab`, the parts the handoff relies on are
-unchanged: thread layout, calling conventions, object header, and the
-check, load and store sequences. These differ:
+Read the complete pass/runtime changes from `163fae5` to `35faf87`.
+Upstream `43d345a81212` is the ABI break: 48-byte function origins and
+per-static-site setjmp lowers/recreation replace the weak map. See the
+setjmp section below. Thread fields nanofil uses, signatures, fast/generic
+calling conventions, object headers, getter interface, access checks,
+pointer aux loads/stores, allocation and scalar va_arg helpers retain
+their emitted contracts. Staging adds thread fields only after existing
+CC buffers; nanofil does not emit the changed unwind/fiber state.
 
-- **Function origin layout.** At the pin, `filc_function_origin` ends with
-  `bool can_throw, can_catch, has_setjmps; unsigned num_stack_auxes`. At
-  `cec28ab`, `has_setjmps` became `unsigned num_setjmps`, and setjmp lowers
-  became the highest frame slots instead of a weak-map lower. The origin is
-  data that nanofil emits, so its layout is pin-specific. Emit it from one
-  table keyed to the pin, and recheck it when the pin moves.
-- `cec28ab` also adds allocation that cannot exit for small allocas, a
-  different `setjmp` runtime entry (`filc_jmp_buf_recreate`), and
-  "may free" now defined as "may write memory". None of these matter while
-  nanofil rejects `setjmp` and allocates outline.
+The named staging changes were verified, not assumed harmless (their
+rebased commits at this pin differ from the earlier branch IDs):
+
+- **Descriptor local alias** (`d249619`, now `f708c342`): binds clang's
+  descriptor to its module's implementation; no descriptor layout or
+  entry signature change. Nanofil's existing function objects still work.
+- **Getter cache** (`51e7f8c`, now `671bf4da`): optional module-private
+  caller optimization. Getter arguments/results and initialization remain
+  compatible; nanofil continues calling getters, without this cache.
+- **Aggregate varargs** (`df06cdc`, now `0ded64b`): new aggregate packet
+  lowering/intrinsic, not a scalar packet ABI change. Nanofil rejects
+  aggregate va_arg and unnamed aggregate arguments; scalar varargs retain
+  the same helper/packet contract.
+- **Safepoints/may-free** (`e714461`): changes clang's analysis and adds
+  non-exiting allocation helpers. Nanofil retains conservative roots,
+  outline allocation and fresh access/aux checks, not cached not-free or
+  aux facts across helpers/polls. No changed runtime calling sequence is
+  required for what it emits.
 
 ## Open questions from the handoff, answered
 
@@ -130,7 +144,7 @@ should reproduce.
 
 | Struct | Size | Fields |
 | --- | --- | --- |
-| `filc_origin_node` + `filc_function_origin` | 40 | `function`, `filename`, `u32 num_lowers_ish`, pad, `personality_getter`, `u8 can_throw, can_catch, has_setjmps`, pad, `u32 num_stack_auxes` |
+| `filc_function_origin` (including base node) | 48 | `function`, `filename`, `u32 num_lowers_ish`, pad, `personality_getter`, `u8 can_throw, can_catch`, pad to 36, `u32 num_setjmps`, `u32 num_stack_auxes`, pad to 48 |
 | `filc_origin` | 16 | `origin_node`, `u32 line`, `u32 column` |
 | `filc_optimized_access_check_origin` | 24 + 8n | `u32 size`, `u8 alignment, alignment_offset, needs_write`, pad, `scheduled_origin`, `semantic_origins[]` (NULL-terminated) |
 | Function object | 40 | `{FO+16, (FO+16) + 0x0083 << 48}`, then `fast_entry`, `generic_entry`, `u64 signature` |
@@ -459,38 +473,27 @@ Reproducible coverage:
 
 ## Setjmp and longjmp
 
-Verified in the pinned `filc-ref-src`, not inferred from libc conventions:
+Verified in staging `35faf87`, not inferred from libc conventions:
 
-- `FilPizlonator.cpp:isSetjmp` (14438) recognizes `setjmp`, `_setjmp`
-  and `sigsetjmp`. The pass marks direct calls returns-twice by name,
-  even with `-fno-builtin`. Frame setup (3236) reserves a final lower for
-  a weak map; function origins (1764) set `has_setjmps`. Entry setup
-  (17325) creates/roots the map eagerly.
-- Lowering (8113–8155) calls `filc_jmp_buf_create(thread, kind, mask)`,
-  stores its special-payload flight pointer into the user's buffer,
-  inserts it in that map with invalid pointer 1 as the value, then calls
-  **native `_setjmp` in the setjmp caller**, not an external Fil-C
-  function. Its declaration (16514) is returns-twice. Kind numbers are
-  setjmp=0, _setjmp=1, sigsetjmp=2 (`filc_runtime.h:1344`).
-- `filc_runtime.h:432–520` explains why setjmp functions cannot use
-  stack auxes and why the map must be the last lower. The jmpbuf layout
-  (1351) starts with native `jmp_buf` and includes saved frame/native
-  frame pointers, root-stack size, signal state, and all saved lowers.
-  Creation (`filc_runtime.c:7829–7885`) barriers captured lowers; mask
-  saving depends on kind and the sigsetjmp flag (ordinary setjmp also
-  consults runtime configuration).
-- `filc_native_zlongjmp` (7888–7963) checks the special jmpbuf, searches
-  the active frames' weak maps for that exact buffer, checks the saved
-  caller frame matches, and rejects an expired destination with
-  `cannot longjmp unless the setjmp destination is on the stack.` It
-  pops intermediate frames, restores lowers and runtime/signal state,
-  then calls native `_longjmp`. Native stack payload slots are **not**
-  restored by that operation.
-- A `filcc -O1 -S` probe confirms ordinary `longjmp` and `_longjmp`
-  call `pizlonatedFI2528_longjmp` / `pizlonatedFI2528__longjmp`, whose
-  thunks call the ordinary runtime getters. The same probe's `_setjmp`
-  caller instead calls `filc_weak_map_create`, `filc_jmp_buf_create`,
-  `filc_weak_map_set`, then native `_setjmp@PLT`.
+- `FilPizlonator.cpp:3439` assigns `Setjmps[CI] = FrameSize++` after
+  all ordinary/stack-aux slots; origins at 1764–1782 encode the count.
+  The type at 16695 has `{node, ptr, i8, i8, i32, i32}`, agreeing with
+  `filc_runtime.h:465–521` and the 48-byte table above.
+- Lowering at 8583–8603 calls `filc_jmp_buf_recreate(thread, &slot,
+  kind, mask)`, stores its flight pointer into the user buffer and calls
+  **native `_setjmp` in the caller**. No weak-map helper remains in this
+  path. Kind numbers remain setjmp=0, _setjmp=1, sigsetjmp=2.
+- `filc_runtime.c:7981–8064` allocates/root-initializes a site's jmpbuf
+  once, reusing its identity thereafter. Every execution overwrites its
+  saved lowers with barriers and updates its native destination. All
+  user buffers from that site alias its latest execution (#335).
+- `filc_native_zlongjmp` (8066–8139) searches the highest `num_setjmps`
+  lowers for the exact jmpbuf, rejects expired destinations with
+  `cannot longjmp unless the setjmp destination is on the stack.`,
+  unwinds intermediate frames and restores ordinary lowers, **skipping
+  the site slots**. Native stack payload slots are not restored.
+- The staging runtime retains the fixed-policy signal-mask behavior;
+  same-site mask 1→0 reuse has a known defect documented in [setjmp.md](setjmp.md).
 
 Nanofil's approved IR, conservative payload snapshot, optimizer barrier,
 Oracle review conditions and test coverage are in [setjmp.md](setjmp.md).

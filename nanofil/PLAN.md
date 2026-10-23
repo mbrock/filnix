@@ -45,9 +45,9 @@ start. Reversing one is cheap until the milestone it names.
    mostly treat class as opaque, so the middle-end cost is in `ext`/`trunc`
    rules and the casts `ptrtoint`/`inttoptr`, which become explicit ops.
    Phase one (M1–M2) uses plain QBE classes only.
-2. **Target: the filnix pin, Fil-C 0.686 (`163fae5`), x86-64 only.**
-   Origin layouts differ from upstream head (see the findings), so the
-   static data layouts live in one table. `nanofil/probes/run.sh` must
+2. **Target: filnix staging, Fil-C 0.687 (`35faf87`), x86-64 only.**
+   No 0.686 compatibility. Static data uses staging's 48-byte origins and
+   per-site setjmp lowers (see the findings). `nanofil/probes/run.sh` must
    pass before and after any pin change.
 3. **Host: SWI-Prolog by default, Trealla also supported.** nanofil
    started on Trealla (a native build of the pinned revision, plus

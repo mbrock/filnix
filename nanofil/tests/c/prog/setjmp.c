@@ -89,10 +89,34 @@ static void repeat(void)
     mask_set(0);
 }
 
+/* Both user buffers alias the latest execution of one static site. The
+   volatile index/pointee deliberately keep their intervening changes;
+   the IR test separately asserts compiler temp/phi snapshot values. */
+static void loop(void)
+{
+    static jmp_buf saved[2];
+    volatile int i;
+    char *volatile p = malloc(16);
+    for (i = 0; i < 2; i++) {
+        p[0] = i + 30;
+        int result = _setjmp(saved[i]);
+        if (result) {
+            zgc_request_and_wait();
+            printf("loop %d %d %d\n", i, result, p[0]);
+            if (i != 2 || result != -257 || p[0] != 31)
+                abort();
+            return;
+        }
+        zgc_request_and_wait();
+    }
+    _longjmp(saved[0], -257);
+}
+
 int main(void)
 {
     locals();
     buffers();
     repeat();
+    loop();
     return 0;
 }

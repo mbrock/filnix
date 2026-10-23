@@ -74,7 +74,7 @@ functions differ.
 From a filnix checkout:
 
 ```sh
-nix build -o /tmp/filcc .#filcc
+nix build -o /tmp/filcc .#filcc-staging
 export FILCC=/tmp/filcc/bin/clang          # used to preprocess and link
 cd nanofil/src
 ../bin/nanofil -O cc ../tests/c/prog/hello.c </dev/null > hello.s

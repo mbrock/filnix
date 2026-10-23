@@ -1,10 +1,20 @@
-# A loop reuses pointer, scalar and phi slots. Only the saved jmpbuf
-# retains iteration zero's lowers and payload snapshot during collection.
+# Jump through a site captured before the loop site first executes, then
+# through iteration zero's user buffer. That buffer must target the latest
+# execution of its site. Repeat without reexecuting either site; collection
+# after the outer jump sees the loop pointer only in the saved jmpbuf.
 export function w $nloop() {
 @start
+    %outerbuf =p call $pick(w 2)
+    %outer =w _setjmp %outerbuf, 0
+    jnz %outer, @back, @begin
+@back
+    call $collect()
+    call $jump_a()
+    hlt
+@begin
     jmp @loop
 @loop
-    %i =w phi @start 0, @next %inc
+    %i =w phi @begin 0, @next %inc
     %p =p alloc8 16
     storew %i, %p
     %scalar =w add %i, 40
@@ -17,7 +27,7 @@ export function w $nloop() {
     jnz %more, @loop, @jump
 @jump
     call $collect()
-    call $jump_a()
+    call $jump_c()
     hlt
 @resumed
     call $collect()
@@ -25,6 +35,9 @@ export function w $nloop() {
     %sum =w add %v, %scalar
     %withphi =w add %sum, %i
     %out =w add %withphi, %r
+    %again =w call $again()
+    jnz %again, @jump, @done
+@done
     ret %out
 }
 
@@ -34,8 +47,8 @@ export function w $nbad(p %buf) {
     ret %r
 }
 
-# Even if the first dynamic setjmp has not run, longjmp's stack walk
-# must see a valid map in this intermediate frame.
+# Before the first dynamic setjmp, the stack walk must see zeroed site
+# lowers in this intermediate frame.
 export function $nforward() {
 @start
     call $jump_a()

@@ -1,7 +1,7 @@
 /*  Naive Fil-C lowering for x86-64 (milestone 3).
 
     Emits asm.pl lines whose GNU as text links with clang-built Fil-C
-    code at the filnix pin (Fil-C 0.686). The rules are in docs/m3.md;
+    code with filnix staging (Fil-C 0.687). The rules are in docs/m3.md;
     in short:
 
     - Every temporary has an 8-byte frame slot, as in amd64.pl. A p
@@ -192,12 +192,18 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
     foldl(lower_slot(FrameBase), Lowers, Slots1-0, Slots-_),
     Size is (FrameBase + 15) // 16 * 16.
 
-% The runtime requires the weak map to be the very last lower.
+% Persistent jmpbuf roots must be the highest-indexed lowers. Ordinary
+% snapshot roots are initialized eagerly and never change thereafter.
 setjmp_slots(Blocks, Plain, Lowers) :-
-    ( setjmp_func(func(_, _, _, _, Blocks))
-    -> Plain = [t(hidden(setjmp_buf))],
-       Lowers = [lower(setjmp_snapshot), lower(t(hidden(setjmp_buf))), lower(setjmp_map)]
-    ; Plain = [], Lowers = [] ).
+    setjmp_sites(Blocks, Sites),
+    findall(t(hidden(setjmp_buf(D))), member(D, Sites), Plain),
+    findall(lower(setjmp_snapshot(D)), member(D, Sites), Snapshots),
+    findall(lower(t(hidden(setjmp_buf(D)))), member(D, Sites), JmpBufs),
+    append(Snapshots, JmpBufs, Lowers).
+
+setjmp_sites(Blocks, Sites) :-
+    findall(D, (member(blk(_, _, Insts, _), Blocks),
+                member(ins(t(D), w, setjmp(_), _), Insts)), Sites).
 
 % inst_dest_class(+Inst, -N, -K): t(N), of class K, is a destination of
 % instruction Inst.
@@ -323,18 +329,26 @@ function(Module, Func) -->
     not_function_block(Blocks, Ctx),
     [size(Impl)],
     body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl),
-    { ( get_assoc(lower(setjmp_map), Slots, _) -> HasSetjmps = 1 ; HasSetjmps = 0 ) },
-    origins(Name, NLowers, CheckKinds, HasSetjmps).
+    { setjmp_sites(Blocks, Sites), length(Sites, NumSetjmps) },
+    origins(Name, NLowers, CheckKinds, NumSetjmps).
 
-% Root parameters before the first allocating helper. Every active
-% setjmp-capable frame must already have its map, even before setjmp.
+% Root parameters before allocating. All snapshot roots must be stable
+% before any site captures lowers, including sites not yet executed.
 setjmp_entry(Ctx) -->
-    ( { ctx_fn(Ctx, f(_, _, Slots, _)), get_assoc(lower(setjmp_map), Slots, _) }
-    -> origin_store(Ctx, c),
-       slot_reg_load(thread, rdi, Ctx),
-       [ins(call, none, [plt(filc_weak_map_create)])],
-       reg_slot_store(rax, lower(setjmp_map), Ctx)
-    ; [] ).
+    { ctx_fn(Ctx, f(_, _, Slots, _)), assoc_to_keys(Slots, All),
+      findall(D, member(lower(setjmp_snapshot(D)), All), Sites),
+      setjmp_payload_slots(Ctx, Keys), length(Keys, N), Bytes is 8 * N },
+    setjmp_snapshots(Sites, Bytes, Ctx).
+
+setjmp_snapshots([], _, _) --> [].
+setjmp_snapshots([D|Ds], Bytes, Ctx) -->
+    origin_store(Ctx, c),
+    slot_reg_load(thread, rdi, Ctx),
+    [ins(mov, q, [imm(Bytes), reg(rsi)]),
+     ins(call, none, [plt(filc_allocate)]),
+     ins(lea, q, [mem(16, rax), reg(rdx)])],
+    reg_slot_store(rdx, lower(setjmp_snapshot(D)), Ctx),
+    setjmp_snapshots(Ds, Bytes, Ctx).
 
 % A private fast body keeps the existing return convention. Its final
 % parameter roots the eager snapshot before the first body safepoint.
@@ -834,38 +848,28 @@ kind_inst(va_arg, K, _, [P], D, Index, Block, Ctx) -->
     va_arg_load(K, D, Index, Block, Ctx).
 kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
-      setjmp_payload_slots(Ctx, Keys), length(Keys, N), Bytes is 8 * N,
+      setjmp_payload_slots(Ctx, Keys),
+      ctx_slot(Ctx, lower(t(hidden(setjmp_buf(D)))), Off), NegOff is -Off,
       setjmp_kind(Kind, KindNo),
       local_label(Ctx, Block, Index, setjmp_done, Done) },
     origin_store(Ctx, c),
-    slot_reg_load(thread, rdi, Ctx),
-    [ins(mov, q, [imm(Bytes), reg(rsi)]),
-     ins(call, none, [plt(filc_allocate)]),
-     ins(lea, q, [mem(16, rax), reg(rdx)])],
-    reg_slot_store(rdx, lower(setjmp_snapshot), Ctx),
+    slot_reg_load(lower(setjmp_snapshot(D)), rdx, Ctx),
     setjmp_payload_copy(save, Keys, 0, Ctx),
     slot_reg_load(thread, rdi, Ctx),
-    [ins(mov, l, [imm(KindNo), reg(esi)])],
-    load(Mask, w, d, Fn),
-    [ins(call, none, [plt(filc_jmp_buf_create)]),
+    [ins(lea, q, [mem(NegOff, rbp), reg(rsi)]),
+     ins(mov, l, [imm(KindNo), reg(edx)])],
+    load(Mask, w, c, Fn),
+    [ins(call, none, [plt(filc_jmp_buf_recreate)]),
      ins(mov, q, [reg(rax), reg(rcx)])],
-    flight_store(hidden(setjmp_buf), Ctx),
-    store(p, t(hidden(setjmp_buf)), Buf, Index, Block, Ctx),
-    slot_reg_load(thread, rdi, Ctx),
-    slot_reg_load(lower(setjmp_map), rsi, Ctx),
-    slot_reg_load(lower(t(hidden(setjmp_buf))), rdx, Ctx),
-    [ins(mov, q, [reg(rdx), reg(rcx)]),
-     ins(mov, l, [imm(1), reg(r8d)]),
-     ins(xor, l, [reg(r9d), reg(r9d)]),
-     ins(call, none, [plt(filc_weak_map_set)])],
-    slot_reg_load(lower(t(hidden(setjmp_buf))), rdi, Ctx),
+    flight_store(hidden(setjmp_buf(D)), Ctx),
+    store(p, t(hidden(setjmp_buf(D))), Buf, Index, Block, Ctx),
+    slot_reg_load(lower(t(hidden(setjmp_buf(D)))), rdi, Ctx),
     [ins(call, none, [plt('_setjmp')]),
      ins(test, l, [reg(eax), reg(eax)]),
      ins(jz, none, [sym(Done)])],
-    slot_reg_load(lower(setjmp_snapshot), rdx, Ctx),
+    slot_reg_load(lower(setjmp_snapshot(D)), rdx, Ctx),
     setjmp_payload_copy(restore, Keys, 0, Ctx),
-    [label(Done), ins(xor, l, [reg(ecx), reg(ecx)])],
-    reg_slot_store(rcx, lower(t(hidden(setjmp_buf))), Ctx),
+    [label(Done)],
     reg_slot_store(rax, t(D), Ctx).
 kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
@@ -890,12 +894,12 @@ setjmp_kind(setjmp, 0).
 setjmp_kind('_setjmp', 1).
 setjmp_kind(sigsetjmp, 2).
 
-% Never copy bookkeeping or the transient jmpbuf slot. The runtime saves
-% the corresponding lowers, including the immutable snapshot's root.
+% Never copy bookkeeping or any jmpbuf payload slot: their special lowers
+% are deliberately not restored by the runtime. Snapshot roots are stable.
 setjmp_payload_slots(Ctx, Keys) :-
     ctx_fn(Ctx, f(_, _, Slots, _)), assoc_to_keys(Slots, All),
     findall(Key, (member(Key, All), payload_key(Key)), Keys).
-payload_key(t(N)) :- N \== hidden(setjmp_buf).
+payload_key(t(N)) :- N \= hidden(setjmp_buf(_)).
 payload_key(shadow(_)).
 
 % RDX is the snapshot payload; RCX is scratch. EAX's full native int
@@ -2100,29 +2104,29 @@ generic_lower_zeroing(l, Off) -->
     { LowerOff is Off + 256 },
     [ins(mov, q, [imm(0), mem(LowerOff, rbx)])].
 
-%% Static data: function origins (the pin's 40-byte layout), origins,
+%% Static data: function origins (staging's 48-byte layout), origins,
 %% and one access-check origin per check kind.
 
 % The name string, the c and n function origins with their origins, and
 % the check origins of function Name.
-origins(Name, NLowers, CheckKinds, HasSetjmps) -->
+origins(Name, NLowers, CheckKinds, NumSetjmps) -->
     { format(atom(NameLabel), '.L~w..name', [Name]) },
     [section(rodata), label(NameLabel), asciz(Name),
      section(data_rel_ro), p2align(4)],
-    function_origin(Name, NameLabel, NLowers, c, 1, HasSetjmps),
-    function_origin(Name, NameLabel, NLowers, n, 0, HasSetjmps),
+    function_origin(Name, NameLabel, NLowers, c, 1, NumSetjmps),
+    function_origin(Name, NameLabel, NLowers, n, 0, NumSetjmps),
     check_origins(CheckKinds, Name).
 
 % A function origin and the origin (origin_label/3) that points at it.
-function_origin(Name, NameLabel, NLowers, Which, CanCatch, HasSetjmps) -->
+function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps) -->
     { format(atom(FOrigin), '.L~w..forigin_~w', [Name, Which]),
       origin_label(Name, Which, Origin) },
     [label(FOrigin),
      quad(NameLabel), quad(0),
      long(NLowers), zero(4),
      quad(0),
-     byte([0, CanCatch, HasSetjmps]), zero(1),
-     long(0),
+     byte([0, CanCatch]), zero(2),
+     long(NumSetjmps), long(0), zero(4),
      label(Origin),
      quad(FOrigin), long(0), long(0)].
 

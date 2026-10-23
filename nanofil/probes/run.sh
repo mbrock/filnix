@@ -5,7 +5,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 out=${1:-$(mktemp -d)}
 mkdir -p "$out"
-filcc=$(nix build "$here/../..#filcc" --no-link --print-out-paths)
+filcc=$(nix build "$here/../..#filcc-staging" --no-link --print-out-paths)
 cc="$filcc/bin/clang"
 
 for p in abi abi2; do

@@ -27,31 +27,40 @@ the same temporary slot can therefore contain a later address when its
 lower is restored to an earlier capability. Merely disabling mem2reg does
 not prevent this tearing.
 
-Every setjmp-capable function reserves three additional scanned lowers:
-an immutable payload snapshot, a transient jmpbuf root, and a weak map
-**last**. Both call and non-call function origins set `has_setjmps=1`;
-their lower counts agree and `num_stack_auxes=0`. After pushing the frame
-and rooting incoming arguments, the prologue creates and roots the weak
-map, even if execution has not reached its first setjmp.
+## Staging 0.687 design
+
+The target is staging `35faf87`, not Fil-C 0.686. Each static setjmp site
+has one ordinary scanned snapshot root and one jmpbuf root. All jmpbuf
+roots are **last**, at the highest lower indices. Both call and non-call
+origins use the 48-byte layout: two flag bytes at 32, two padding bytes,
+`u32 num_setjmps` at 36, `u32 num_stack_auxes=0` at 40, four trailing
+padding bytes. Their lower and static-site counts agree.
+
+After pushing the frame and rooting incoming arguments, the prologue
+allocates every site's payload snapshot once and roots each before the
+next allocation. All snapshot roots are therefore initialized before any
+setjmp captures lowers. They remain constant throughout the invocation,
+including across jumps to other sites. Lazy allocation into ordinary
+lowers would be wrong: a jump to an earlier site could restore a null or
+obsolete snapshot root while retaining a later site's jmpbuf. Eager
+initialization avoids an additional non-restored root protocol.
 
 Each dynamic setjmp:
 
-1. Stores a call-capable origin, allocates a fresh snapshot, and roots
-   its payload lower immediately.
+1. Stores a call-capable origin and loads this site's existing snapshot.
 2. Copies the full eight-byte contents of every `t` and phi `shadow`
    payload slot into the snapshot. Thread, aux, return-buffer and frame
-   bookkeeping, all lowers and the transient jmpbuf slot are excluded.
+   bookkeeping, all lowers and every hidden jmpbuf slot are excluded.
    These are raw bytes, not stored flight pointers; they need no aux or
    pointer barrier.
-3. Calls `filc_jmp_buf_create(thread, kind, mask)`, which captures all
-   lowers, including the snapshot root. The runtime barriers the saved
-   lowers and keeps their objects marked while the jmpbuf is reachable.
-4. Roots the returned special payload before any helper, stores its
-   flight pointer into the user's buffer with ordinary checked pointer
-   storage, and registers it as a weak-map key with invalid pointer 1 as
-   the value. The transient root remains live through native `_setjmp`,
-   then is cleared on either return so later snapshots do not retain a
-   chain of otherwise dead jmpbufs through this scratch root.
+3. Calls `filc_jmp_buf_recreate(thread, &lowers[site], kind, mask)`.
+   The helper creates and roots the jmpbuf on first use, then overwrites
+   it on subsequent executions of that static site. It captures and
+   barriers the current lowers, keeping their objects marked.
+4. Stores the returned special payload's flight pointer into the user's
+   buffer with ordinary checked pointer storage. The persistent site
+   lower roots it through every helper and native `_setjmp`; it is never
+   cleared. There is no weak map or transient jmpbuf lower.
 5. Calls real native `_setjmp` **in the current body**, never in a wrapper
    or through a Fil-C thunk. EAX is a native int, not the Fil-C AL exception
    flag/RDX result convention.
@@ -60,10 +69,15 @@ Each dynamic setjmp:
    without calls, polls or checked user accesses, and only then writes
    the full EAX result. Restoration uses RDX/RCX and preserves EAX.
 
-Each buffer keeps its own snapshot alive through its saved lowers. Multiple
-setjmps in the same frame share the map, not a mutable snapshot. Repeated
-jumps, two active destinations and loop-reexecuted instructions therefore
-restore coherent addresses, lowers, scalars and phi slots.
+The runtime locates active destinations by scanning the final
+`num_setjmps` lowers and skips those slots when restoring. A buffer from
+an earlier iteration aliases the same site's jmpbuf and resumes the
+**latest** execution, as upstream #335 requires. Its snapshot is likewise
+overwritten on every execution of that site. Different sites have
+independent snapshots; jumping to one does not roll back another site's
+snapshot contents or jmpbuf. Restored payloads and ordinary lowers thus
+come from the same site execution, including repeated jumps after
+collections and jumps between independently active destinations.
 
 ## Optimizations and C locals
 
@@ -85,13 +99,14 @@ indeterminate values, asserts temp/phi rollback.
 
 ## Review and coverage
 
-Before implementation, Oracle reviewed the pinned pass/runtime and
-nanofil's backend/optimizers. Verdict: **sound in principle**, conditional
-on eager map initialization, final-lower placement, matching origin
-metadata, strong jmpbuf rooting through helpers, fresh immutable
-temp/shadow-only snapshots, safepoint-free restoration, full integer return
-preservation, and guards at the public optimizer entry points. These are
-implementation invariants, not assumptions to relax after tests pass.
+Before implementation, Oracle reviewed the staging pass/runtime and
+this design: **approved, no memory-safety blocker**. Required invariants:
+eager stable snapshot roots, final
+per-site jmpbuf lowers, matching origin metadata, persistent jmpbuf rooting
+through helpers, per-site reusable temp/shadow-only snapshots,
+safepoint-free restoration, full integer return preservation, and guards
+at the public optimizer entry points. These are implementation invariants,
+not assumptions to relax after tests pass.
 
 - `tests/c/prog/setjmp.c`: nested calls, zero-to-one conversion, two live
   destinations, repeated jumps, exact nonzero returns, unchanged
@@ -100,8 +115,8 @@ implementation invariants, not assumptions to relax after tests pass.
   Signal-set manipulation is a clang-built companion; the setjmp callers
   and nonlocal-control flow are compiled by nanofil and filcc separately.
 - `tests/c/prog/setjmp-expired.c`: jumping to a returned frame must trap.
-- `tests/filc/setjmp.ssa`: loop-overwritten pointer/scalar/phi rollback,
-  with collection while only saved lowers retain the earlier objects;
+- `tests/filc/setjmp.ssa`: latest-site pointer/scalar/phi restoration,
+  with collection while saved lowers retain the snapshot's objects;
   invalid, readonly and misaligned destination buffers; and a longjmp
   through a setjmp-capable frame before its first setjmp executes.
 - `tests/unit.pl`: exact parser/printer round-trip, kind/mask/class
@@ -111,3 +126,14 @@ implementation invariants, not assumptions to relax after tests pass.
 
 Asynchronous signal-handler jumps are not a newly promised interface.
 No runtime, GC, compiler toolchain or pin is changed.
+
+## Staging signal-mask limitation
+
+In `35faf87`'s `filc_jmp_buf_recreate`, `did_save_sigmask` becomes true
+when a site saves a mask but is not reset when the same site later runs
+with `sigsetjmp(buf, 0)`. A subsequent jump can therefore restore the
+earlier mask incorrectly. The same code is present in upstream `deluge`
+HEAD `36f07a2f8f8141b3488d7ca20a680fd629886eeb` (checked 2026-10-23).
+This is a runtime defect, not something nanofil compensates for by
+changing persistent site identity. Fixed-mask sites are covered; the
+runtime fix is separate from this migration.
