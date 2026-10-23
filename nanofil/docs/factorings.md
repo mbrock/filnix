@@ -172,6 +172,45 @@ initializer walks, and about 25 inline spellings of the ABI. Two
 findings are open: c_lex reads `0b101` as a float, and `#if` errors at
 the end of the line have no location.
 
+## C's typing rules, each stated once
+
+The next round moved the C frontend's typing into c_types, one relation
+per rule of the standard, which both the type judgment and the lowering
+read. Before, `c_lower` found types by lowering expressions into a
+discarded state, and checked and converted operands in rules of its own
+that `c_types` repeated more loosely.
+
+- **The judgment** ([`3d6bd18`](https://github.com/mbrock/filnix/commit/3d6bd18)).
+  `expression_type/3` types every expression form, so `sizeof`,
+  `_Generic`, `?:` arms and whole-struct initializer entries read it
+  instead of probing the lowering.
+- **`?:`** ([`dbc72a4`](https://github.com/mbrock/filnix/commit/dbc72a4),
+  [`82f9b8c`](https://github.com/mbrock/filnix/commit/82f9b8c),
+  [`f0a3f49`](https://github.com/mbrock/filnix/commit/f0a3f49)).
+  `conditional_type/3` with `composite_type/3`, audited against clang
+  for all of C11 6.5.15. `compatible_type/2` became "has a composite
+  type".
+- **Operators** ([`da4188e`](https://github.com/mbrock/filnix/commit/da4188e),
+  [`49ec532`](https://github.com/mbrock/filnix/commit/49ec532)).
+  `binary_operands/6` and `unary_operand/3` give each operand's
+  conversion and the result type; lowering picks the instruction from
+  them in one clause.
+- **Conversions** ([`674e033`](https://github.com/mbrock/filnix/commit/674e033),
+  [`2f3c5e5`](https://github.com/mbrock/filnix/commit/2f3c5e5)).
+  `assignable/3` for assignment, arguments, returns and initializers,
+  with null pointer constants decided from the source expression, and
+  `castable/2` for casts.
+
+The IR stayed byte-identical on every snapshot input throughout. What
+changed is which programs are accepted: stating each rule once removed
+the gaps between the two copies. nanofil now rejects, as clang does,
+`int *p = 1`, a pointer passed for an integer, incompatible function
+pointers, `sizeof(1.0 % 2)`, `sizeof(!s)` and `sizeof((int)s)`. It now
+accepts what clang accepts and it refused: a `void` arm of `?:`
+(c-testsuite 00213) and a struct cast to its own type. It also types
+`?:` pointer arms by composite type and qualifiers. Each of these has
+a test that failed before.
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is
