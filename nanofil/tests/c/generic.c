@@ -21,3 +21,14 @@ int selection(void) {
     return r + n + selected + qualified_param(p);
 }
 // run: $selection
+/* A null pointer constant arm of ?: takes the other arm's pointer type
+   (C11 6.5.15p6), also when it is (void *)0 rather than 0. */
+long null_arm(long x) {
+    int i = 7, *p = &i;
+    long r = _Generic(1 ? (void *)0 : p, int *: 1, void *: 1000);
+    r += _Generic(x ? p : (void *)(1 - 1), int *: 2, void *: 2000);
+    r += _Generic(x ? 0 : p, int *: 4, default: 4000);
+    r += _Generic(1 ? (const void *)0 : p, const void *: 8, default: 8000);
+    return r + *(x ? p : (void *)0) * 100;
+}
+// run: $null_arm 1

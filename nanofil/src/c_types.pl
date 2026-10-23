@@ -997,19 +997,25 @@ conditional_type(A-B, Env, T) :-
 
 arm(E, Env, T, N) :-
     expression_type(E, Env, T0), value_type(T0, T),
-    (   int_type(T), catch(const_value(E, Env, 0, _), not_constant, fail)
-    ->  N = null
-    ;   N = value
-    ).
+    ( null_pointer_constant(E, Env, T) -> N = null ; N = value ).
+
+% null_pointer_constant(+E, +Env, +T): E, of value type T, is a null
+% pointer constant (C11 6.3.2.3p3): an integer constant expression of
+% value 0, or one cast to void * (unqualified void).
+null_pointer_constant(E, Env, T) :-
+    int_type(T), catch(const_value(E, Env, 0, _), not_constant, fail).
+null_pointer_constant(cast(_, X), Env, ptr(void)) :-
+    expression_type(X, Env, TX0), value_type(TX0, TX),
+    null_pointer_constant(X, Env, TX).
 
 arms_type(TA, _, TB, _, T) :-
     arithmetic_type(TA), arithmetic_type(TB), !,
     usual_arith_conversion(TA, TB, T).
 arms_type(void, _, void, _, void) :- !.
 arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
-arms_type(ptr(P), _, ptr(_), _, ptr(P)) :- !.
 arms_type(ptr(P), _, _, null, ptr(P)) :- !.
-arms_type(_, null, ptr(P), _, ptr(P)).
+arms_type(_, null, ptr(P), _, ptr(P)) :- !.
+arms_type(ptr(P), _, ptr(_), _, ptr(P)).
 
 % block_value_type(+Items, +Env, -T): T is the value type of a GNU
 % statement expression with block Items: its last item's, once the
