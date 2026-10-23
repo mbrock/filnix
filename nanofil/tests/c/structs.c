@@ -72,3 +72,10 @@ long lens(long x) {
 long vals(long x) { return gs[1].a * 1000 + gn[1].s.b * 100 + gn[1].c[0] + ga[2][0] * 10000 + sizeof(gd) / sizeof(gd[0]) * 100000 + gd[2].s.a * 1000000 + x * 0; }
 // run: $lens 0
 // run: $vals 0
+/* A braced initializer for a slot replaces what earlier designators put
+   there, and a designator may name any member of a union. */
+union cu { char c; int i; };
+struct two go[1] = { [0].a = 1, [0] = { .b = 2 } };
+union cu gu = { .i = 0x1234 };
+long override(long x) { struct two lo[1] = { [0].a = x, [0] = { .b = 3 } }; union cu lu = { .i = 0x5600 + x }; return go[0].a * 10000 + go[0].b * 1000 + lo[0].a * 100 + lo[0].b * 10 + (gu.i == 0x1234) + (lu.i - 0x5600 == x) * 2; }
+// run: $override 7

@@ -848,53 +848,21 @@ complete_array(array(ElemType, none), none, array(ElemType, none),
                _, _, _) :- !.
 complete_array(array(ElemType, none), Init, array(ElemType, N), Loc, Env,
                Whole) :- !,
-    (   str_elems(Init, ElemType, Bytes),
-        length(Bytes, N0)
-    ->  N is N0 + 1
+    (   str_elems(Init, ElemType, Values)
+    ->  length(Values, N0),
+        N is N0 + 1
     ;   Init = list(Entries)
-    ->  list_extent(Entries, ElemType, Env, Whole, 0, 0, N)
+    ->  phrase(slots(array(ElemType, none), 0, 0, Entries, _, 0, N,
+                     c(Env, Whole, Loc)),
+               _)
     ;   sema_error(Loc, 'array of unknown size', [])
     ).
 complete_array(Type, _, Type, _, _, _).
 
-% list_extent(+Entries, +ElemType, +Env, +Whole, +Index, +Max0, -Max):
-% Max is the larger of Max0 and one more than the largest element index
-% Entries reach, an undesignated first entry going at Index.
-list_extent([], _, _, _, _, Max, Max).
-list_extent([entry(Desigs, V)|Entries0], ElemType, Env, Whole, Index0, Max0,
-            Max) :-
-    ( Desigs = [index(num(Index, _))|_] -> true ; Index = Index0 ),
-    (   Desigs = [_, _|_] -> Entries = Entries0
-    ;   consume(ElemType, Env, Whole, [entry([], V)|Entries0], Entries)
-    ),
-    Index1 is Index + 1,
-    Max1 is max(Max0, Index1),
-    list_extent(Entries, ElemType, Env, Whole, Index1, Max1, Max).
-
-% consume(+Type, +Env, +Whole, +Entries0, -Entries): Entries is what is
-% left of Entries0 after a slot of type Type takes its entries, as
-% init_one does: one if it initializes Type by itself, else one per
-% slot of Type recursively, stopping at a designator or the end.
-consume(Type, _, Whole, [entry(_, V)|Entries], Entries) :-
-    elided_one(Type, V, Whole), !.
-consume(Type, Env, Whole, Entries0, Entries) :-
-    aggregate_slots(Type, Env, Slots),
-    consume_slots(Slots, Env, Whole, Entries0, Entries).
-
-% consume_slots(+Slots, +Env, +Whole, +Entries0, -Entries): as consume
-% for each of Slots in turn, stopping at a designated entry or the end.
-consume_slots([], _, _, Entries, Entries).
-consume_slots([slot(_, _, Type)|Slots], Env, Whole, Entries0, Entries) :-
-    (   Entries0 = [entry([], _)|_]
-    ->  consume(Type, Env, Whole, Entries0, Entries1),
-        consume_slots(Slots, Env, Whole, Entries1, Entries)
-    ;   Entries = Entries0
-    ).
-
-% elided_one(+Type, +V, +Whole): entry value V initializes a slot of
-% type Type by itself. The final cut makes this semidet: the
-% alternatives can overlap.
-elided_one(Type, V, Whole) :-
+% single_value(+Type, +V, +Whole): entry value V initializes a slot of
+% type Type by itself, so no braces were elided. The final cut makes
+% this semidet: the alternatives can overlap.
+single_value(Type, V, Whole) :-
     (   V = list(_)
     ;   \+ aggregate(Type)
     ;   Type = array(CharType, _),
@@ -950,45 +918,193 @@ truth(v(V, Type), Ctx, W) -->
 
 %% Initializers
 
-% init(+Addr, +Type, +Init, +Ctx)//: initialize the local object of
-% Type at Addr from Init.
-init(Addr, Type, Init, Ctx) -->
-    { ctx_loc(Ctx, Loc) },
-    (   { Init = list(Entries) }
-    ->  zero_object(Addr, Type),
-        init_list(Addr, Type, Entries, Ctx)
-    ;   { Type = array(ElemType, N), str_elems(Init, ElemType, Bytes) }
-    ->  zero_object(Addr, Type),
-        init_string(Addr, ElemType, N, Bytes, Loc)
-    ;   { Type = array(_, _) }
-    ->  { sema_error(Loc, 'array initializer must be a list', []) }
-    ;   rval(Init, Ctx, Value0),
-        assign_convert(Value0, Type, Loc, v(Value, _)),
-        store_typed(Type, Value, Addr)
+/* An initializer means its leaves: the assignments it makes to parts of
+   an object, in the order C performs them, a later one overriding what
+   an earlier one wrote.
+     zero(Off, Type)        clear the object of Type at Off; a braced
+                            list or a string literal first clears what
+                            it initializes
+     val(Off, Type, N)      the integer N, an element of a string literal
+     expr(Off, Type, Expr)  the value of the expression Expr, converted
+                            to Type: a scalar, or (locals) a whole struct
+   Offsets are from the start of the object. A local object stores its
+   leaves; a static one turns them into data chunks. The walk over the
+   entries also gives an array of unknown size its length
+   (complete_array/6). */
+
+% init_leaves(+Type, +Init, +C, -Leaves): Leaves are what Init assigns
+% to an object of Type. C = c(Env, Whole, Loc), with Whole as for
+% complete_array/6.
+init_leaves(Type, Init, C, Leaves) :-
+    phrase(object_init(Type, 0, Init, C), Leaves).
+
+% object_init(+Type, +Off, +Init, +C)//: the leaves of Init for the
+% object of Type at Off. A scalar may be braced.
+object_init(Type, Off, list(Entries), C) --> !,
+    [zero(Off, Type)],
+    (   { aggregate(Type) }
+    ->  slots(Type, 0, Off, Entries, Rest, 0, _, C)
+    ;   { Entries = [entry(_, V)|Rest] }
+    ->  object_init(Type, Off, V, C)
+    ;   { Rest = [] }
+    ),
+    { Rest == [] -> true ; init_error(C, 'excess initializers', []) }.
+object_init(array(ElemType, N), Off, Init, C) -->
+    { str_elems(Init, ElemType, Values) }, !,
+    { length(Values, NValues),
+      (   integer(N), NValues > N
+      ->  init_error(C, 'string initializer is too long', [])
+      ;   true
+      ),
+      C = c(Env, _, _),
+      type_size_align(ElemType, Env, Size, _) },
+    [zero(Off, array(ElemType, N))],
+    elem_leaves(Values, ElemType, Off, Size).
+object_init(array(_, _), _, _, C) --> !,
+    { init_error(C, 'array initializer must be a list', []) }.
+object_init(Type, Off, Expr, _) --> [expr(Off, Type, Expr)].
+
+% elem_leaves(+Values, +Type, +Off, +Size)//: a val leaf for each of
+% Values, consecutive elements of Type and Size from Off.
+elem_leaves([], _, _, _) --> [].
+elem_leaves([V|Vs], Type, Off, Size) -->
+    [val(Off, Type, V)],
+    { Off1 is Off + Size },
+    elem_leaves(Vs, Type, Off1, Size).
+
+/* slots(+Type, +I, +Off, +Entries0, -Entries, +Max0, -Max, +C)//: the
+   leaves of aggregate Type at Off from Entries0, the next undesignated
+   entry going to slot I; a designator moves to its slot. Entries is
+   what is left when the slots run out. Max is the larger of Max0 and
+   one past the last slot initialized. */
+slots(_, _, _, [], [], Max, Max, _) --> !.
+slots(Type, _, Off, [entry([D|Ds], V)|Entries0], Entries, Max0, Max, C) --> !,
+    { designated_slot(D, Type, C, I, SlotOff, SlotType),
+      Off1 is Off + SlotOff },
+    (   { Ds == [] }
+    ->  slot_init(SlotType, Off1, V, Entries0, Entries1, C)
+    ;   slots(SlotType, 0, Off1, [entry(Ds, V)], _, 0, _, C),
+        { Entries1 = Entries0 }
+    ),
+    { I1 is I + 1,
+      Max1 is max(Max0, I1) },
+    slots(Type, I1, Off, Entries1, Entries, Max1, Max, C).
+slots(Type, I, Off, Entries0, Entries, Max0, Max, C) -->
+    (   { slot(Type, C, I, SlotOff, SlotType) }
+    ->  { Entries0 = [entry([], V)|Entries1],
+          Off1 is Off + SlotOff },
+        slot_init(SlotType, Off1, V, Entries1, Entries2, C),
+        { I1 is I + 1,
+          Max1 is max(Max0, I1) },
+        slots(Type, I1, Off, Entries2, Entries, Max1, Max, C)
+    ;   { Entries = Entries0,
+          Max = Max0 }
     ).
+
+% slot_init(+Type, +Off, +V, +Entries0, -Entries, +C)//: the leaves of
+% entry value V for the slot of Type at Off. Either V initializes the
+% slot by itself, or the slot's braces were elided and it takes the
+% entries it needs from [V|Entries0], up to the next designator, which
+% belongs to the enclosing list.
+slot_init(Type, Off, V, Entries, Entries, C) -->
+    { C = c(_, Whole, _),
+      single_value(Type, V, Whole) },
+    !,
+    object_init(Type, Off, V, C).
+slot_init(Type, Off, V, Entries0, Entries, C) -->
+    { undesignated(Entries0, Pre, Post) },
+    slots(Type, 0, Off, [entry([], V)|Pre], Rest, 0, _, C),
+    { append(Rest, Post, Entries) }.
+
+% slot(+Type, +C, +I, -Off, -SlotType): the undesignated entry for slot
+% I of aggregate Type initializes the SlotType at Off. An array of
+% unknown size has every slot; a union has only its first member.
+slot(array(ElemType, N), c(Env, _, _), I, Off, ElemType) :-
+    ( N == none -> true ; I < N ),
+    type_size_align(ElemType, Env, Size, _),
+    Off is I * Size.
+slot(struct(Id), c(Env, _, _), I, Off, Type) :-
+    su_members(struct(Id), Env, Members),
+    nth0(I, Members, m(_, Type, Off)).
+slot(union(Id), c(Env, _, _), 0, Off, Type) :-
+    su_members(union(Id), Env, [m(_, Type, Off)|_]).
+
+% designated_slot(+Desig, +Type, +C, -I, -Off, -SlotType): designator
+% Desig of aggregate Type names its slot I, the SlotType at Off; any
+% member of a union.
+designated_slot(index(Expr), array(ElemType, N), C, I, Off, ElemType) :- !,
+    C = c(Env, _, _),
+    (   catch(const_value(Expr, Env, I, _), not_constant, fail),
+        I >= 0,
+        slot(array(ElemType, N), C, I, Off, _)
+    ->  true
+    ;   init_error(C, 'bad array designator', [])
+    ).
+designated_slot(field(Field), SU, C, I, Off, Type) :-
+    su(SU),
+    !,
+    C = c(Env, _, _),
+    (   su_members(SU, Env, Members),
+        nth0(I, Members, m(some(Field), Type, Off))
+    ->  true
+    ;   init_error(C, 'no member ~w', [Field])
+    ).
+designated_slot(_, Type, C, _, _, _) :-
+    init_error(C, 'bad designator for a ~w', [Type]).
+
+% su_members(+SU, +Env, -Members): Members are the m(Name, Type, Offset)
+% of the complete struct or union SU.
+su_members(SU, Env, Members) :-
+    SU =.. [Kind, Id],
+    env_defs(Env, Defs),
+    get_assoc(Id, Defs, def(Kind, Members, _, _)).
+
+init_error(c(_, _, Loc), Format, Args) :-
+    sema_error(Loc, Format, Args).
+
+aggregate(array(_, _)).
+aggregate(struct(_)).
+aggregate(union(_)).
+
+% undesignated(+Entries, -Pre, -Post): Pre is the longest prefix of
+% Entries without a designator, Post the rest. The final cut commits to
+% the first split found, which ends Pre just before the first designator
+% (or at the end).
+undesignated(Entries, Pre, Post) :-
+    append(Pre, Post, Entries),
+    \+ member(entry([_|_], _), Pre),
+    ( Post = [] ; Post = [entry([_|_], _)|_] ),
+    !.
 
 is_char_type(Type) :- memberchk(Type, [char, schar, uchar]).
 
-% init_string(+Addr, +ElemType, +N, +Bytes, +Loc)//: store the string
-% literal elements Bytes into the array of N ElemType at Addr.
-init_string(Addr, ElemType, N, Bytes, Loc) -->
-    { length(Bytes, NBytes),
-      (   NBytes > N
-      ->  sema_error(Loc, 'string initializer is too long', [])
-      ;   true
-      ),
-      store_width(ElemType, Width),
-      width_bytes(Width, Size),
-      findall(Off-Byte, ( nth0(I, Bytes, Byte), Off is I * Size ), Pairs) },
-    store_elems(Pairs, Width, Addr).
+% init(+Addr, +Type, +Init, +Ctx)//: initialize the local object of
+% Type at Addr from Init, storing its leaves.
+init(Addr, Type, Init, Ctx) -->
+    env(Env),
+    whole_probe(Ctx, Whole),
+    { ctx_loc(Ctx, Loc),
+      init_leaves(Type, Init, c(Env, Whole, Loc), Leaves) },
+    store_leaves(Leaves, Addr, Ctx).
 
-% store_elems(+Pairs, +Width, +Addr)//: store each Off-Value of Pairs at
-% Addr + Off.
-store_elems([], _, _) --> [].
-store_elems([Off-Value|Pairs], Width, Addr) -->
+store_leaves([], _, _) --> [].
+store_leaves([Leaf|Leaves], Addr, Ctx) -->
+    store_leaf(Leaf, Addr, Ctx),
+    store_leaves(Leaves, Addr, Ctx).
+
+store_leaf(zero(Off, Type), Addr, _) -->
     offset(Addr, Off, P),
-    emit(store(Width, c(Value), P)),
-    store_elems(Pairs, Width, Addr).
+    zero_object(P, Type).
+store_leaf(val(Off, Type, N), Addr, _) -->
+    offset(Addr, Off, P),
+    { store_width(Type, Width) },
+    emit(store(Width, c(N), P)).
+store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
+    offset(Addr, Off, P),
+    rval(Expr, Ctx, Value0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(Value0, Type, Loc, v(Value, _)),
+    store_typed(Type, Value, P).
 
 % zero_object(+Addr, +Type)//: clear the whole object, since allocs are
 % hoisted and a local inside a loop must be reinitialized on every pass.
@@ -1010,125 +1126,6 @@ zero_bytes(Addr, Off, Size, Align) -->
     emit(store(Width, c(0), P)),
     { Off1 is Off + N },
     zero_bytes(Addr, Off1, Size, Align).
-
-% init_list(+Addr, +Type, +Entries, +Ctx)//: initialize the array or
-% struct at Addr from braced list Entries, with designators and brace
-% elision.
-init_list(Addr, Type, Entries, Ctx) -->
-    init_agg(Addr, Type, Entries, Rest, Ctx),
-    { ctx_loc(Ctx, Loc) },
-    (   { Rest == [] } -> []
-    ;   { sema_error(Loc, 'excess initializers', []) }
-    ).
-
-% init_agg(+Addr, +Type, +Entries0, -Entries, +Ctx)//: initialize the
-% object of Type at Addr from the front of Entries0; Entries is what is
-% left. A non-aggregate takes one entry.
-init_agg(Addr, Type, Entries0, Entries, Ctx) -->
-    env(Env),
-    { aggregate_slots(Type, Env, Slots) },
-    init_slots(Slots, 0, Addr, Entries0, Entries, Ctx).
-init_agg(Addr, Type, [entry(_, Init)|Entries], Entries, Ctx) -->
-    { \+ aggregate(Type) },
-    init(Addr, Type, Init, Ctx).
-
-aggregate(array(_, _)).
-aggregate(struct(_)).
-aggregate(union(_)).
-
-% aggregate_slots(+Type, +Env, -Slots): Slots are the element positions
-% of aggregate Type, slot(Key, Offset, SlotType), with Key an index or a
-% member name (some(Field), or none for an anonymous member). A union
-% initializes its first member. Fails for a non-aggregate.
-aggregate_slots(array(ElemType, N), Env, Slots) :- !,
-    type_size_align(ElemType, Env, Size, _),
-    Last is N - 1,
-    findall(slot(I, Off, ElemType),
-            ( between(0, Last, I), Off is I * Size ),
-            Slots).
-aggregate_slots(SU, Env, Slots) :-
-    ( SU = struct(_) ; SU = union(_) ),
-    !,
-    SU =.. [Kind, Id],
-    env_defs(Env, Defs),
-    get_assoc(Id, Defs, def(Kind, Members, _, _)),
-    findall(slot(Name, Off, Type), member(m(Name, Type, Off), Members), Slots0),
-    (   Kind == union, Slots0 = [First|_] -> Slots = [First]
-    ;   Slots = Slots0
-    ).
-
-% init_slots(+Slots, +Index, +Addr, +Entries0, -Entries, +Ctx)//:
-% initialize the slots from Index on from Entries0, leaving Entries; a
-% designated entry moves to its slot. Index is the slot the next
-% undesignated entry goes to.
-init_slots(_, _, _, [], [], _) --> !.
-init_slots(Slots, _, Addr, [entry([Desig|Desigs], V)|Entries0], Entries,
-           Ctx) --> !,
-    env(Env),
-    { designator_index(Desig, Slots, Index, Env, Ctx) },
-    { nth0(Index, Slots, slot(_, Off, Type)) },
-    offset(Addr, Off, P),
-    (   { Desigs == [] }
-    ->  init_one(P, Type, V, Entries0, Entries1, Ctx)
-    ;   init_agg(P, Type, [entry(Desigs, V)], [], Ctx),
-        { Entries1 = Entries0 }
-    ),
-    { Index1 is Index + 1 },
-    init_slots(Slots, Index1, Addr, Entries1, Entries, Ctx).
-init_slots(Slots, Index, Addr, Entries0, Entries, Ctx) -->
-    (   { nth0(Index, Slots, slot(_, Off, Type)) }
-    ->  { Entries0 = [entry([], V)|Entries1] },
-        offset(Addr, Off, P),
-        init_one(P, Type, V, Entries1, Entries2, Ctx),
-        { Index1 is Index + 1 },
-        init_slots(Slots, Index1, Addr, Entries2, Entries, Ctx)
-    ;   { Entries = Entries0 }
-    ).
-
-% init_one(+P, +Type, +V, +Entries0, -Entries, +Ctx)//: initialize the
-% slot of Type at P from entry value V: a braced or scalar value, or
-% brace elision for an aggregate slot given a scalar (the slot then
-% takes as many of Entries0 as it needs, leaving Entries).
-init_one(P, Type, V, Entries0, Entries, Ctx) -->
-    (   { V = list(_)
-        ; \+ aggregate(Type)
-        ; Type = array(ElemType, _), str_elems(V, ElemType, _)
-        }
-    ->  init(P, Type, V, Ctx),
-        { Entries = Entries0 }
-    ;   { su(Type) }, struct_expr(V, Ctx, Type)
-    ->  init(P, Type, V, Ctx),
-        { Entries = Entries0 }
-    ;   { undesignated(Entries0, Pre, Post) },
-        init_agg(P, Type, [entry([], V)|Pre], Rest, Ctx),
-        { append(Rest, Post, Entries) }
-    ).
-
-% undesignated(+Entries, -Pre, -Post): Pre is the longest prefix of
-% Entries without a designator, Post the rest. An elided aggregate takes
-% entries only up to the next designator, which belongs to the
-% enclosing list. The final cut commits to the first split found, which
-% ends Pre just before the first designator (or at the end).
-undesignated(Entries, Pre, Post) :-
-    append(Pre, Post, Entries),
-    \+ member(entry([_|_], _), Pre),
-    ( Post = [] ; Post = [entry([_|_], _)|_] ),
-    !.
-
-% designator_index(+Desig, +Slots, -Index, +Env, +Ctx): Index is the
-% position in Slots of the slot designator Desig names.
-designator_index(index(Expr), Slots, Index, Env, Ctx) :-
-    ctx_loc(Ctx, Loc),
-    (   catch(const_value(Expr, Env, Index, _), not_constant, fail),
-        nth0(Index, Slots, slot(Index, _, _))
-    ->  true
-    ;   sema_error(Loc, 'bad array designator', [])
-    ).
-designator_index(field(Field), Slots, Index, _, Ctx) :-
-    ctx_loc(Ctx, Loc),
-    (   nth0(Index, Slots, slot(some(Field), _, _)) -> true
-    ;   sema_error(Loc, 'no member ~w', [Field])
-    ).
 
 %% Expressions
 
@@ -2222,17 +2219,18 @@ store_pieces([p(Off, _, _, Store)|Pieces], W, P) -->
 %% Static initializers
 
 /* static_items(+Type, +Init, +Loc, +Env0, -Env, -Items): the data items
-   of a global of type Type. Chunks chunk(Offset, Bytes, Item) are
-   collected, a later one replacing an earlier one at the same offset,
-   then the gaps are zero-filled. A pointer is item(p, sym(S, Off));
-   string literals in initializers become data of their own. The static_*
-   predicates thread Env-Chunks, the chunks reversed. */
+   of a global of type Type. Each leaf of Init becomes a chunk
+   chunk(Offset, Bytes, Item), a later one replacing an earlier one at
+   the same offset, then the gaps are zero-filled. A pointer is
+   item(p, sym(S, Off)); string literals in initializers become data of
+   their own. */
 static_items(Type, Init, Loc, Env0, Env, Items) :-
     type_size_align(Type, Env0, Size, _),
-    (   Init == none -> Env = Env0, Chunks = []
-    ;   static_init(0, Type, Init, Loc, Env0-[], Env-Chunks0),
-        reverse(Chunks0, Chunks)
+    (   Init == none -> Leaves = []
+    ;   init_leaves(Type, Init, c(Env0, none, Loc), Leaves)
     ),
+    foldl(static_leaf(Loc), Leaves, s(Env0, [], 0), s(Env, Chunks0, _)),
+    reverse(Chunks0, Chunks),
     empty_assoc(ByOffset0),
     foldl(put_chunk, Chunks, ByOffset0, ByOffset),
     assoc_to_values(ByOffset, Sorted),
@@ -2267,92 +2265,47 @@ int_chunk(Off, Type, V, chunk(Off, N, item(Width, c(U)))) :-
     memberchk(N-Width, [1-b, 2-h, 4-w, 8-l]),
     convert_int(V, Type, U).
 
-% static_init(+Off, +Type, +Init, +Loc, +S0, -S): S adds to S0 the chunks
-% of Init for an object of type Type at offset Off.
-static_init(Off, Type, list(Entries), Loc, S0, S) :- !,
-    (   aggregate(Type)
-    ->  static_agg(Off, Type, Entries, Rest, Loc, S0, S),
-        (   Rest == [] -> true
-        ;   sema_error(Loc, 'excess initializers', [])
-        )
-    ;   Entries = [entry([], V)|_] -> static_init(Off, Type, V, Loc, S0, S)
-    ;   S = S0
+/* static_leaf(+Loc, +Leaf, +S0, -S): S = s(Env, Chunks, End) adds the
+   chunk of Leaf to the reversed Chunks of S0; End is where the chunks
+   end so far. A zero leaf drops the chunks it covers, which only a
+   designator that goes back can have made. */
+static_leaf(_, zero(Off, Type), s(Env, Chunks0, End), s(Env, Chunks, End)) :-
+    (   Off >= End
+    ->  Chunks = Chunks0
+    ;   type_size_align(Type, Env, Size, _),
+        Hi is Off + Size,
+        exclude(chunk_within(Off, Hi), Chunks0, Chunks)
     ).
-static_init(Off, array(ElemType, N), Str, Loc, Env-Chunks0, Env-Chunks) :-
-    str_elems(Str, ElemType, Bytes),
-    !,
-    length(Bytes, NBytes),
-    (   NBytes > N -> sema_error(Loc, 'string initializer is too long', [])
-    ;   true
-    ),
-    int_info(ElemType, Size, _),
-    findall(Chunk,
-            (   nth0(K, Bytes, Byte),
-                ByteOff is Off + K * Size,
-                int_chunk(ByteOff, ElemType, Byte, Chunk)
-            ),
-            New),
-    reverse(New, RevNew),
-    append(RevNew, Chunks0, Chunks).
-static_init(Off, Type, Expr, Loc, Env-Chunks, Env-[Chunk|Chunks]) :-
+static_leaf(_, val(Off, Type, V), s(Env, Chunks, End0),
+            s(Env, [Chunk|Chunks], End)) :-
+    int_chunk(Off, Type, V, Chunk),
+    chunk_end(Chunk, End0, End).
+static_leaf(Loc, expr(Off, Type, Expr), s(Env0, Chunks, End0),
+            s(Env, [Chunk|Chunks], End)) :-
+    expr_chunk(Type, Off, Expr, Loc, Env0, Env, Chunk),
+    chunk_end(Chunk, End0, End).
+
+chunk_within(Lo, Hi, chunk(Off, _, _)) :- Off >= Lo, Off < Hi.
+
+chunk_end(chunk(Off, N, _), End0, End) :- End is max(End0, Off + N).
+
+% expr_chunk(+Type, +Off, +Expr, +Loc, +Env0, -Env, -Chunk): Chunk holds
+% the constant value of Expr, of scalar Type, at Off.
+expr_chunk(Type, Off, Expr, Loc, Env, Env, Chunk) :-
     int_type(Type),
     !,
     (   catch(const_value(Expr, Env, V, _), not_constant, fail) -> true
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ),
     int_chunk(Off, Type, V, Chunk).
-static_init(Off, ptr(_), Expr, Loc, Env0-Chunks, Env-[Chunk|Chunks]) :- !,
+expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
     addr_const(Expr, Loc, Env0, Env, R),
     (   R = sym(Sym, SymOff, _)
     ->  Chunk = chunk(Off, 8, item(p, sym(Sym, SymOff)))
     ;   Chunk = chunk(Off, 8, item(l, c(0)))
     ).
-static_init(_, Type, _, Loc, _, _) :-
+expr_chunk(Type, _, _, Loc, _, _, _) :-
     sema_error(Loc, 'cannot statically initialize a ~w', [Type]).
-
-% static_agg(+Off, +Type, +Entries0, -Entries, +Loc, +S0, -S),
-% static_slots(+Slots, +Index, +Off, +Entries0, -Entries, +Loc, +S0, -S)
-% and static_one(+Off, +Type, +V, +Entries0, -Entries, +Loc, +S0, -S)
-% follow init_agg, init_slots and init_one, collecting chunks.
-static_agg(Off, Type, Entries0, Entries, Loc, Env0-Chunks0, S) :-
-    aggregate_slots(Type, Env0, Slots),
-    static_slots(Slots, 0, Off, Entries0, Entries, Loc, Env0-Chunks0, S).
-
-static_slots(_, _, _, [], [], _, S, S) :- !.
-static_slots(Slots, _, Off, [entry([Desig|Desigs], V)|Entries0], Entries, Loc,
-             S0, S) :- !,
-    S0 = Env0-_,
-    designator_index(Desig, Slots, Index, Env0, ctx(_, _, _, _, Loc)),
-    nth0(Index, Slots, slot(_, SlotOff, Type)),
-    Off1 is Off + SlotOff,
-    (   Desigs == []
-    ->  static_one(Off1, Type, V, Entries0, Entries1, Loc, S0, S1)
-    ;   static_agg(Off1, Type, [entry(Desigs, V)], [], Loc, S0, S1),
-        Entries1 = Entries0
-    ),
-    Index1 is Index + 1,
-    static_slots(Slots, Index1, Off, Entries1, Entries, Loc, S1, S).
-static_slots(Slots, Index, Off, Entries0, Entries, Loc, S0, S) :-
-    (   nth0(Index, Slots, slot(_, SlotOff, Type))
-    ->  Entries0 = [entry([], V)|Entries1],
-        Off1 is Off + SlotOff,
-        static_one(Off1, Type, V, Entries1, Entries2, Loc, S0, S1),
-        Index1 is Index + 1,
-        static_slots(Slots, Index1, Off, Entries2, Entries, Loc, S1, S)
-    ;   Entries = Entries0, S = S0
-    ).
-
-static_one(Off, Type, V, Entries0, Entries, Loc, S0, S) :-
-    (   (   V = list(_)
-        ;   \+ aggregate(Type)
-        ;   Type = array(ElemType, _), str_elems(V, ElemType, _)
-        )
-    ->  static_init(Off, Type, V, Loc, S0, S),
-        Entries = Entries0
-    ;   undesignated(Entries0, Pre, Post),
-        static_agg(Off, Type, [entry([], V)|Pre], Rest, Loc, S0, S),
-        append(Rest, Post, Entries)
-    ).
 
 /* addr_const(+Expr, +Loc, +Env0, -Env, -R): an address constant,
    sym(Symbol, Offset, PointerType), or null. */
