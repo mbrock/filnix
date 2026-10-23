@@ -37,8 +37,9 @@ private headers, synthesized main functions, or architecture-name skips.
 In particular, a test named `+aarch64` is compared against the x86-64 oracle,
 not checked against cproc's architecture-specific `.qbe` expectation.
 
-`preprocess()` in `progtest.sh` is the one corpus preprocessing hook for
-M4e. stdout, stderr and exit status are compared separately; stderr with a
+Since M4e, nanofil preprocesses `.c` files itself (`c_pp.pl`); filcc
+only builds the reference. `corpus.py` runs programs in parallel
+(`--jobs`, default the CPU count). stdout, stderr and exit status are compared separately; stderr with a
 Fil-C safety panic and its exit status normalize to `trap`. For single-exec
 tests the reference must additionally exit 0 and match `.c.expected`
 (stdout followed by stderr; these pinned tests do not interleave the two).
