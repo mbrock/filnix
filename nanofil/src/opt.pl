@@ -3,9 +3,9 @@
 
     optimize(+Level, +M0, -M)
       Level o0 returns M0 unchanged (the reference path); o1 runs
-      promote. The result is not re-validated here: valid_module/1 is
-      quadratic in the number of blocks (8 s on a 1557-block function),
-      so the driver's difftest and the unit tests do it instead.
+      promote followed by copy elimination. The driver's difftest and
+      unit tests validate the resulting IR, rather than repeating that
+      work on every compilation.
 
     refines(+Before, +After)
       After is an outcome the original program allows, given that the
@@ -21,10 +21,12 @@
 :- module(opt, [optimize/3, refines/2]).
 
 :- use_module(promote).
+:- use_module(copy).
 
 optimize(o0, M, M).
 optimize(o1, M0, M) :-
-    promote_module(M0, M).
+    promote_module(M0, Promoted),
+    copy_module(Promoted, M).
 
 refines(ub(_), _) :- !.
 refines(B0, A0) :-

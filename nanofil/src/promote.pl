@@ -32,7 +32,7 @@
     bytes would.
 */
 :- module(promote, [promote_module/2, promote_func/3, promotable/3,
-                    alloc_count/2]).
+                    alloc_count/2, strict_ssa/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).

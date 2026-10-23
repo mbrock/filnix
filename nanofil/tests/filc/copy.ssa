@@ -1,0 +1,127 @@
+# The getter copy must survive; only its temporary aliases disappear.
+data $cell = { l 41 }
+section ".rodata" data $readonly = { l 17 }
+function l $read(p %p) {
+@start
+	%q =p copy %p
+	%x =l loadl %q
+	ret %x
+}
+export function l $global_alias() {
+@start
+	%p =p copy $cell
+	%q =p copy %p
+	%r =p copy %q
+	%x =l call $read(p %r)
+	ret %x
+}
+# run: $global_alias
+
+# A pointer phi can select different capabilities. Store/load must retain
+# the selected one, not just its address. Both valid and trapping offsets.
+export function l $choose(w %which, l %off) {
+@start
+	%a =p copy $cell
+	%b =p copy $readonly
+	%cond =w copy %which
+	jnz %cond, @left, @right
+@left
+	%aa =p copy %a
+	jmp @join
+@right
+	%bb =p copy %b
+	jmp @join
+@join
+	%p =p phi @left %aa, @right %bb
+	%q =p copy %p
+	%slot =p alloc8 8
+	%slotcopy =p copy %slot
+	storep %q, %slotcopy
+	%loaded =p loadp %slotcopy
+	%alias =p copy %loaded
+	%o =l copy %off
+	%at =p add %alias, %o
+	%r =l loadl %at
+	ret %r
+}
+# run: $choose 1 0
+# run: $choose 0 0
+# run: $choose 1 8
+# run: $choose 0 18446744073709551615
+
+export function w $readonly_alias() {
+@start
+	%p =p copy $readonly
+	%q =p copy %p
+	storeb 3, %q
+	ret 0
+}
+# run: $readonly_alias
+
+# Integer casts must never acquire the original capability. These traps
+# distinguish address equality from equality of Fil-C pointer values.
+export function l $cast_alias() {
+@start
+	%p =p copy $cell
+	%q =p copy %p
+	%i =l ptoi %q
+	%j =l copy %i
+	%raw =p itop %j
+	%alias =p copy %raw
+	%r =l loadl %alias
+	ret %r
+}
+# run: $cast_alias
+
+# Even if the only pointer is a literal, keep its materialization and
+# therefore module mode. A literal pointer has no capability.
+export function l $literal_address() {
+@start
+	%p =p copy 123
+	%q =p copy %p
+	%i =l ptoi %q
+	ret %i
+}
+# run: $literal_address
+export function l $literal_load() {
+@start
+	%p =p copy 0
+	%q =p copy %p
+	%x =l loadl %q
+	ret %x
+}
+# run: $literal_load
+
+# Direct and indirect calls, tuple operands/results, and pointer returns.
+function {l, p} $pair(p %p, l %n) {
+@start
+	%q =p copy %p
+	%x =l copy %n
+	ret {%x, %q}
+}
+export function l $indirect(l %n) {
+@start
+	%p =p copy $cell
+	%f =p copy $pair
+	%g =p copy %f
+	%h =p copy %g
+	%x =l copy %n
+	{%number, %pointer} ={l, p} call %h(p %p, l %x)
+	%nc =l copy %number
+	%pc =p copy %pointer
+	%v =l call $read(p %pc)
+	%r =l sub %nc, %v
+	ret %r
+}
+# run: $indirect 5
+# run: $indirect 100
+
+# Calling a copied data pointer is still a non-function trap.
+export function l $not_function() {
+@start
+	%p =p copy $cell
+	%q =p copy %p
+	%r =l call %q()
+	ret %r
+}
+# run: $not_function

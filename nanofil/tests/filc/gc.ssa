@@ -9,37 +9,70 @@ export function p $build(l %n) {
 	jmp @loop
 @loop
 	%i =l phi @start 0, @body %i1
-	%head =p phi @start 0, @body %node
+	%head =p phi @start 0, @body %node_back
 	%c =w csltl %i, %n
 	jnz %c, @body, @done
 @body
+	%head_copy =p copy %head
+	%head_link =p copy %head_copy
 	%node =p alloc8 16
-	storep %head, %node
-	%v =p add %node, 8
+	%node_copy =p copy %node
+	%node_live =p copy %node_copy
+	storep %head_link, %node_live
+	%v =p add %node_live, 8
 	storel %i, %v
 	call $c_gc(l %i)
+	%node_back =p copy %node_live
 	%i1 =l add %i, 1
 	jmp @loop
 @done
-	ret %head
+	%result =p copy %head
+	ret %result
 }
 
+# Two distinct anchors swap on every backedge and live across collections.
+# Their values sum to 46: include that check in the result without changing
+# gc.c's list-sum contract. Losing one capability or sequentially updating
+# the swap phis must not silently leave the expected answer unchanged.
 export function l $sum(p %list) {
 @start
+	%list_copy =p copy %list
+	%list_start =p copy %list_copy
+	%left_seed =p alloc8 8
+	storel 17, %left_seed
+	%right_seed =p alloc8 8
+	storel 29, %right_seed
 	jmp @loop
 @loop
-	%p =p phi @start %list, @body %next
+	%p =p phi @start %list_start, @body %next_back
+	%left =p phi @start %left_seed, @body %left_back
+	%right =p phi @start %right_seed, @body %right_back
 	%s =l phi @start 0, @body %s1
 	%a =l ptoi %p
 	%z =w ceql %a, 0
 	jnz %z, @done, @body
 @body
-	%vp =p add %p, 8
+	%current_copy =p copy %p
+	%current =p copy %current_copy
+	%vp =p add %current, 8
 	%v =l loadl %vp
 	%s1 =l add %s, %v
-	%next =p loadp %p
+	%next =p loadp %current
+	%next_live =p copy %next
+	%left_copy =p copy %right
+	%right_copy =p copy %left
 	call $c_gc(l %v)
+	%next_back =p copy %next_live
+	%left_back =p copy %left_copy
+	%right_back =p copy %right_copy
 	jmp @loop
 @done
-	ret %s
+	%left_result =p copy %left
+	%right_result =p copy %right
+	%lv =l loadl %left_result
+	%rv =l loadl %right_result
+	%both =l add %lv, %rv
+	%delta =l sub %both, 46
+	%result =l add %s, %delta
+	ret %result
 }

@@ -13,6 +13,7 @@
 :- use_module('../src/cfg').
 :- use_module('../src/escape').
 :- use_module('../src/promote').
+:- use_module('../src/copy').
 :- use_module('../src/opt').
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
@@ -248,6 +249,82 @@ test(promote_removes_allocs) :-
     findall(Fn, ( C = module(Is), member(func(Fn, _, _, _, Bs), Is),
                   member(blk(_, _, Ins, _), Bs), member(ins(_, _, alloc(_), _), Ins) ), Kept),
     Kept == [arr, ptrs].
+
+% The optimizer must actually remove aliases, not just preserve results.
+% Keep the narrowing copy, global materialization and non-SSA function.
+test(copy_eliminates_aliases) :-
+    mod_file('../tests/fixtures/copy.ssa', M0),
+    optimize(o1, M0, M), once(valid_module(M)),
+    forall(member(Name, [chain, swap, constants]),
+           ( func_named(M, Name, func(_, _, _, _, Bs)),
+             \+ ( member(blk(_, _, Is, _), Bs), member(ins(_, _, copy, _), Is) ) )),
+    func_named(M, narrow, func(_, _, _, _, [blk(_, _, Narrow, _)])),
+    findall(K, member(ins(_, K, copy, _), Narrow), [w]),
+    func_named(M, global, func(_, _, _, _, [blk(_, _, Global, _)])),
+    memberchk(ins(_, l, copy, [glo(cell)]), Global),
+    func_named(M0, redefined, Redefined), func_named(M, redefined, Redefined).
+
+test(copy_keeps_unguarded_definitions) :-
+    mod("export function l $f(l %x) {\n@s\n\t%a =l copy %b\n\t%b =l add %x, 1\n\tret %a\n}\n", NonSSA),
+    copy_module(NonSSA, Unchanged), NonSSA == Unchanged,
+    mod("export function w $f() {\n@s\n\t%p =p copy 0\n\tret 7\n}\n", Literal),
+    copy_module(Literal, Kept), Literal == Kept,
+    module_mode(Kept, filc).
+
+% The native GC test must exercise eliminated aliases, not merely run
+% unchanged pointer code under an optimizer that does nothing.
+test(copy_removes_gc_aliases) :-
+    mod_file('../tests/filc/gc.ssa', M0),
+    M0 = module(Items0),
+    member(func(_, _, _, _, Bs0), Items0),
+    member(blk(_, _, Is0, _), Bs0), member(ins(_, p, copy, _), Is0), !,
+    optimize(o1, M0, M), once(valid_module(M)),
+    M = module(Items),
+    \+ ( member(func(_, _, _, _, Bs), Items), member(blk(_, _, Is, _), Bs),
+         member(ins(_, p, copy, _), Is) ).
+
+% Unlike promote, copy moves no allocations. Compare whole pointer values,
+% including object identity: equal offsets in different objects are not equal.
+test(copy_preserves_pointer_identity) :-
+    mod("export function p $f(w %which) {\n@s\n\t%a =p alloc8 8\n\t%b =p alloc8 8\n\t%x =p copy %a\n\t%y =p copy %b\n\tjnz %which, @left, @right\n@left\n\tjmp @join\n@right\n\tjmp @join\n@join\n\t%p =p phi @left %x, @right %y\n\t%q =p copy %p\n\tret %q\n}\nexport function p $raw() {\n@s\n\t%a =p alloc8 8\n\t%p =p copy %a\n\t%i =l ptoi %p\n\t%raw =p itop %i\n\t%q =p copy %raw\n\tret %q\n}\n", M0),
+    copy_module(M0, M), once(valid_module(M)),
+    module_mode(M0, Mode), module_mode(M, Mode),
+    forall(member(Which, [0, 1]),
+           ( outcome(M0, f, [Which], Before), outcome(M, f, [Which], After),
+             Before == After )),
+    outcome(M0, f, [0], B), outcome(M0, f, [1], A), B \== A,
+    outcome(M0, raw, [], Raw0), outcome(M, raw, [], Raw),
+    Raw0 == Raw, Raw = ret(ptr(_, none)).
+
+% Bounded symbolic queries share the same input variables across both runs.
+% The domains include branch choices, loop counts and the 32-bit sign edge;
+% labeling makes absence of a counterexample decisive within those domains.
+test(symbolic_optimized_returns) :-
+    mod_file('../tests/fixtures/promote.ssa', P0), optimize(o1, P0, P),
+    \+ ( X in 0..15, Y in 0..3, return_difference(P0, P, diamond, [X, Y], 20) ),
+    \+ ( N in 0..6, return_difference(P0, P, loop, [N], 20) ),
+    mod_file('../tests/fixtures/copy.ssa', C0), optimize(o1, C0, C),
+    \+ ( X in 0..15, return_difference(C0, C, chain, [X], 20) ),
+    \+ ( N in 0..7, return_difference(C0, C, swap, [N], 20) ),
+    \+ ( X in 4294967296..4294967311 \/ 6442450936..6442450952,
+         return_difference(C0, C, narrow, [X], 20) ),
+    \+ ( X in 0..15, return_difference(C0, C, effects, [X], 20) ).
+
+% A wrong l->w copy elimination followed by extuw loses truncation. The
+% symbolic query must find the first value above 2^32, not bless the pass.
+test(symbolic_finds_narrowing_error) :-
+    mod("export function l $f(l %x) {\n@s\n\t%w =w copy %x\n\t%r =l extuw %w\n\tret %r\n}\n", Before),
+    mod("export function l $f(l %x) {\n@s\n\tret %x\n}\n", Wrong),
+    X in 4294967296..4294967311,
+    once(return_difference(Before, Wrong, f, [X], 10)),
+    X =:= 4294967296.
+
+return_difference(M0, M, Fn, Args, Fuel) :-
+    run(M0, Fn, Args, Fuel, Out0), run(M, Fn, Args, Fuel, Out),
+    (   Out0 = ret(A), Out = ret(B)
+    ->  A #\= B, labeling([], Args)
+    ;   throw(expected_symbolic_returns(Fn, Out0, Out))
+    ).
 
 % Translation validation's comparison: undefined behaviour and unknown
 % bytes allow any outcome they could produce, nothing else differs.
