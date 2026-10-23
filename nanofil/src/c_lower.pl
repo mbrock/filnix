@@ -318,6 +318,7 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     ),
     ret_class(Loc, RetType, Env0, RetClass),
     param_names(DclType, Names),
+    statement_expression_jumps(Body, Loc),
     State0 = st(Env0, cur(start, []), [], [], 0, Labels, [], []),
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
@@ -590,6 +591,58 @@ switch_ctx(ctx(Func, Ret, _, Cont, Loc), LBreak,
            ctx(Func, Ret, some(LBreak), Cont, Loc)).
 
 %% Statements
+
+% A lexical prepass gives each statement-expression boundary its AST path.
+% Gotos may stay inside or leave boundaries, never enter one (including a
+% sibling). Case dispatch must originate inside the same boundary. Keeping
+% this separate from emission also checks forward gotos and unevaluated code.
+statement_expression_jumps(Body, Loc) :-
+    phrase(jump_regions(Body, [], [], [], Loc), Events),
+    maplist(check_jump_region(Events), Events).
+
+check_jump_region(Events, jump(Name, From, Loc)) :- !,
+    (   member(label_region(Name, To), Events),
+        \+ append(_, To, From)
+    ->  sema_error(Loc, 'goto into a statement expression is not allowed', [])
+    ;   true
+    ).
+check_jump_region(_, _).
+
+jump_regions(at(Loc, Term), Path, Regions, Switch, _) --> !,
+    jump_regions(Term, Path, Regions, Switch, Loc).
+jump_regions(stmtexpr(Block), Path, Regions, Switch, Loc) --> !,
+    jump_regions(Block, [0|Path], [Path|Regions], Switch, Loc).
+jump_regions(label(Name, Body), Path, Regions, Switch, Loc) --> !,
+    [label_region(Name, Regions)],
+    jump_regions(Body, [0|Path], Regions, Switch, Loc).
+jump_regions(goto(Name), _, Regions, _, Loc) --> !,
+    [jump(Name, Regions, Loc)].
+jump_regions(switch(Expr, Body), Path, Regions, Switch, Loc) --> !,
+    jump_regions(Expr, [0|Path], Regions, Switch, Loc),
+    jump_regions(Body, [1|Path], Regions, Regions, Loc).
+jump_regions(case(Expr, Body), Path, Regions, Switch, Loc) --> !,
+    { check_case_region(Regions, Switch, Loc) },
+    jump_regions(Expr, [0|Path], Regions, Switch, Loc),
+    jump_regions(Body, [1|Path], Regions, Switch, Loc).
+jump_regions(default(Body), Path, Regions, Switch, Loc) --> !,
+    { check_case_region(Regions, Switch, Loc) },
+    jump_regions(Body, [0|Path], Regions, Switch, Loc).
+jump_regions(Term, Path, Regions, Switch, Loc) -->
+    (   { compound(Term), Term =.. [_|Args] }
+    ->  jump_region_args(Args, 0, Path, Regions, Switch, Loc)
+    ;   []
+    ).
+
+jump_region_args([], _, _, _, _, _) --> [].
+jump_region_args([Arg|Args], I, Path, Regions, Switch, Loc) -->
+    jump_regions(Arg, [I|Path], Regions, Switch, Loc),
+    { J is I + 1 },
+    jump_region_args(Args, J, Path, Regions, Switch, Loc).
+
+check_case_region(Regions, Switch, Loc) :-
+    (   Regions == Switch -> true
+    ;   sema_error(Loc, 'switch dispatch into a statement expression is not allowed', [])
+    ).
 
 % stmt(+Stmt, +Ctx)//: lower statement Stmt, an at(Loc, S) term; stmt_//2
 % lowers S itself.
@@ -1069,6 +1122,21 @@ designator_index(field(Field), Slots, Index, _, Ctx) :-
 
 %% Expressions
 
+% GNU statement expressions load/decay their last expression before the
+% block scope closes. A label on that statement does not hide its value.
+statement_expression_items([], _, v(c(0), void)) --> [].
+statement_expression_items([Item], Ctx, R) --> !,
+    statement_expression_last(Item, Ctx, R).
+statement_expression_items([Item|Items], Ctx, R) -->
+    item(Item, Ctx), statement_expression_items(Items, Ctx, R).
+
+statement_expression_last(at(Loc, expr(Expr)), Ctx0, R) --> !,
+    { ctx_at(Ctx0, Loc, Ctx) }, rval(Expr, Ctx, R).
+statement_expression_last(at(_, label(Name, Body)), Ctx, R) --> !,
+    goto_label(Name, Label), start(Label),
+    statement_expression_last(Body, Ctx, R).
+statement_expression_last(Item, Ctx, v(c(0), void)) --> item(Item, Ctx).
+
 % obj(+Expr, +Ctx, -R)//: R is Expr as an lvalue, function designator or
 % rvalue, without array decay or loading.
 obj(id(Name), Ctx, R) --> !,
@@ -1310,6 +1378,10 @@ rvalue(call(id(Name), Args), Ctx, R) -->
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
 rvalue(call(Func, Args), Ctx, R) --> !, lower_call(Func, Args, Ctx, R).
 rvalue(gcond(Cond, B), Ctx, R) --> !, gnu_conditional(Cond, B, Ctx, R).
+rvalue(stmtexpr(at(_, block(Items))), Ctx, R) --> !,
+    save_scope(Scope),
+    statement_expression_items(Items, Ctx, R),
+    restore_scope(Scope).
 rvalue(Expr, Ctx, _) -->
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, 'cannot lower ~w', [Expr]) }.

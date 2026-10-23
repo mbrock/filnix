@@ -141,19 +141,11 @@ int main(void) { return f(0); }
 nanofil: `defining variadic function f is not supported`. The other two
 stop earlier at `__builtin_va_start is not supported, at (`.
 
-### GNU statement expressions — 2 rejections
-
-**Planned:** explicitly in M4's rejection suite/docs. c-testsuite: `00213`,
-`00214` (the latter also exercises floating point).
-
-```c
-int main(void) { return ({ int x = 0; x; }); }
-```
-
-nanofil: `statement expressions are not supported, at {`.
-
 ## Fixed since the M4f survey
 
+- **GNU statement expressions**: c-testsuite `00214` now passes;
+  `00213` still rejects its floating-point values. The current survey is
+  231 passes, 31 rejections, 7 reference errors and 147 without main.
 - **Wide literals** (cproc `wchar-sign+*` ×3, c-testsuite `00098`,
   `00220`): `L`, `u`, `U` character and string literals, `u8` strings.
 - **Compound literals** (cproc `conditional-compound-literal`,

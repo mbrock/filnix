@@ -969,10 +969,11 @@ primary(_, S) -->
     ( peek(str(_)) ; peek(wstr(_, _)) ), !,
     string_literals(Parts),
     { parts_string(Parts, S) }.
-primary(_, _) -->
+primary(Env, stmtexpr(Block)) -->
     punct('('),
     peek(p('{')), !,
-    parse_error('statement expressions are not supported').
+    block(Env, Block),
+    expect(')').
 primary(_, _) -->
     kw(generic), !,
     parse_error('_Generic is not supported').

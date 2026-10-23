@@ -1,2 +1,2 @@
-// error: statement expressions are not supported
-int f(void) { return ({ 1; }); }
+// error: goto into a statement expression is not allowed
+int f(void) { goto inner; return ({ inner: 1; }); }
