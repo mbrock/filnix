@@ -1367,12 +1367,15 @@ typed_generic([K|Ks],I,Ts) :-
     ; Ts=[wf(K,mem(A,rbx))|Rest] ),
     I1 is I+1, typed_generic(Ks,I1,Rest).
 
-float_signature(Ret,Ks) :- (float_class(Ret);member(K,Ks),float_class(K)), !.
 
-% Mixed external thunk. All incoming words, including XMM values, are
-% saved before the getter can exit or clobber caller-saved registers.
-% Pointer authority remains rooted by the caller, as in integer thunks.
-float_thunk(F,Sig,Ret,Ks) -->
+/* thunk(+Callee)//: the weak thunk of Callee = t(F, Sig, Ret, Ks),
+   which resolves F through its getter and calls the fast entry when
+   the signature matches, else the generic entry. Every incoming word,
+   integer or XMM, is saved below rbp before the getter can exit or
+   clobber caller-saved registers; rbx holds the thread (r12 the return
+   buffer) and -24(%rbp) the function object. Pointer authority stays
+   rooted by the caller. */
+thunk(t(F,Sig,Ret,Ks)) -->
     { abi_symbol(entry(Sig),F,FI), abi_symbol(getter,F,Getter),
       atom_concat('.L',FI,G),atom_concat(G,'.generic',Generic),
       atom_concat(G,'.out',Out),atom_concat(G,'.fail',Fail),
@@ -1382,7 +1385,8 @@ float_thunk(F,Sig,Ret,Ks) -->
       typed_locations(Ts,Form,Ls,NS,_), stack_bytes(NS, Pop),
       saved_words(Ts,0,Saved),length(Ts,NW),Alloc is ((8+8*NW+15)//16)*16,
       length(Ks,NA),ArgsSize is 8*NA,
-      length(RKs,NR),Need is 8*NR,generic_words(RKs,GWs) },
+      length(RKs,NR),Need is 8*NR,generic_words(RKs,GWs),
+      field(function_object,generic_entry,rsi,GenericEntry) },
     [section(text),p2align(4),hidden(FI),weak(FI),type(FI,function),label(FI),
      ins(push,q,[reg(rbp)]),ins(mov,q,[reg(rsp),reg(rbp)]),
      ins(push,q,[reg(rbx)]),ins(push,q,[reg(r12)]),
@@ -1401,7 +1405,7 @@ float_thunk(F,Sig,Ret,Ks) -->
     saved_generic(Ks,Saved,0),
     [ins(mov,q,[reg(rbx),reg(rdi)]),ins(mov,q,[mem(-24,rbp),reg(rsi)]),
      ins(mov,l,[imm(ArgsSize),reg(edx)]),
-     ins(call,q,[ind(mem(8,rsi))]),ins(test,b,[imm(1),reg(al)])],
+     ins(call,q,[ind(GenericEntry)]),ins(test,b,[imm(1),reg(al)])],
     thunk_generic_return(Form,RKs,Need,GWs,Out,RetOk,Exc),
     [label(Fail),ins(mov,q,[reg(rax),reg(rdi)]),ins(mov,q,[reg(rcx),reg(rsi)]),
      ins(call,none,[plt(filc_check_function_call_fail)]),ins(ud2,none,[]),
@@ -1420,11 +1424,13 @@ save_mixed_words([],[],[]) --> [].
 save_mixed_words([wf(K,_)|Ts],[L|Ls],[wf(_,W)|Ss]) -->
     incoming_bits(L,K),[ins(mov,q,[reg(rax),W])],save_mixed_words(Ts,Ls,Ss).
 mixed_thunk_call(reg) -->
+    { field(function_object,fast_entry,rsi,Fast) },
     [ins(mov,q,[reg(rbx),reg(rdi)]),ins(mov,q,[mem(-24,rbp),reg(rsi)]),
-     ins(call,q,[ind(mem(0,rsi))])].
+     ins(call,q,[ind(Fast)])].
 mixed_thunk_call(mem(_)) -->
+    { field(function_object,fast_entry,rdx,Fast) },
     [ins(mov,q,[reg(r12),reg(rdi)]),ins(mov,q,[reg(rbx),reg(rsi)]),
-     ins(mov,q,[mem(-24,rbp),reg(rdx)]),ins(call,q,[ind(mem(0,rdx))])].
+     ins(mov,q,[mem(-24,rbp),reg(rdx)]),ins(call,q,[ind(Fast)])].
 saved_generic([],[],_) --> [].
 saved_generic([p|Ks],[wf(_,A),wf(_,L)|Ts],I) -->
     { generic_offsets(I,AO,LO),I1 is I+1 },
@@ -1857,80 +1863,6 @@ one_per_symbol([T|Ts0], [T|Ts]) :-
 
 same_symbol(F, Sig, t(F, Sig, _, _)).
 
-/* thunk(+Callee)//: the weak thunk of Callee = t(F, Sig, RetKind,
-   ArgKs). Frame: rbp, then rbx = thread and r12..r15 = the register words, one
-   slot at -48(%rbp) for the callee's lower. Stack words are at
-   16(%rbp) and up. With a buffered return r12 holds the buffer and
-   r13..r15 the three register words. */
-thunk(t(F,Sig,Ret,Ks)) -->
-    { float_signature(Ret,Ks) }, !, float_thunk(F,Sig,Ret,Ks).
-thunk(t(F, Sig, RetKind, ArgKs)) -->
-    { abi_symbol(entry(Sig), F, FI),
-      abi_symbol(getter, F, Getter),
-      atom_concat('.L', FI, Local),
-      atom_concat(Local, '..fail', Fail),
-      atom_concat(Local, '..generic', Generic),
-      atom_concat(Local, '..out', Out),
-      atom_concat(Local, '..retok', RetOk),
-      atom_concat(Local, '..exc', GenericExc),
-      ret_kinds(RetKind, RetKs),
-      ret_form(RetKs, Form),
-      form_regs(Form, Regs),
-      length(Regs, NRegs),
-      foldl(class_words, ArgKs, Words, 0, NWords),
-      NStack is max(0, NWords - NRegs),
-      Pad is NStack mod 2,
-      length(ArgKs, NArgs),
-      ArgsSize is 8 * NArgs,
-      (   NStack > 0
-      ->  NStack1 is NStack - 1,
-          numlist(0, NStack1, StackIs0),
-          reverse(StackIs0, StackIs)
-      ;   StackIs = []
-      ),
-      length(RetKs, NRetWords),
-      Need is 8 * NRetWords,
-      generic_words(RetKs, GWs) },
-    [section(text), p2align(4),
-     hidden(FI), weak(FI), type(FI, function), label(FI)],
-    thunk_prologue(Form),
-    [ins(xor, l, [reg(esi), reg(esi)]),
-     ins(call, none, [plt(Getter)]),
-     ins(mov, q, [reg(rdx), reg(rcx)])],
-    function_check(Fail),
-    { field(function_object, signature, rcx, FoSig),
-      field(function_object, generic_entry, rsi, FoGeneric) },
-    [ins(mov, q, [reg(rcx), mem(-48, rbp)]),
-     ins(movabs, q, [imm(Sig), reg(rsi)]),
-     ins(cmp, q, [reg(rsi), FoSig]),
-     ins(jne, none, [sym(Generic)])],
-    align_pad(Pad),
-    thunk_pushes(StackIs, Form),
-    thunk_fast_call(Form),
-    [label(Out),
-     ins(lea, q, [mem(-40, rbp), reg(rsp)]),
-     ins(pop, q, [reg(r15)]),
-     ins(pop, q, [reg(r14)]),
-     ins(pop, q, [reg(r13)]),
-     ins(pop, q, [reg(r12)]),
-     ins(pop, q, [reg(rbx)]),
-     ins(pop, q, [reg(rbp)]),
-     ins(ret, none, []),
-     label(Generic)],
-    thunk_generic(ArgKs, Words, 0, Form),
-    [ins(mov, q, [reg(rbx), reg(rdi)]),
-     ins(mov, q, [mem(-48, rbp), reg(rsi)]),
-     ins(mov, l, [imm(ArgsSize), reg(edx)]),
-     ins(call, q, [ind(FoGeneric)]),
-     ins(test, b, [imm(1), reg(al)])],
-    thunk_generic_return(Form, RetKs, Need, GWs, Out, RetOk, GenericExc),
-    [label(Fail),
-     ins(mov, q, [reg(rax), reg(rdi)]),
-     ins(mov, q, [reg(rcx), reg(rsi)]),
-     ins(call, none, [plt(filc_check_function_call_fail)]),
-     ins(ud2, none, []),
-     size(FI)].
-
 % thunk_generic_return(+Form, +RetKs, +Need, +GWs, +Out, +RetOk,
 % +GenericExc)//: the return, in form Form, of the generic entry's
 % result words GWs, of classes RetKs and Need bytes, then a jump to Out.
@@ -1963,55 +1895,6 @@ thunk_generic_reg_words([_|_], Need, GWs, RetOk) -->
     { foldl(generic_srcs, GWs, Srcs, []) },
     thunk_reg_loads(Srcs, [rdx, rcx]).
 
-% The saves of the callee-saved registers, then the thread and register
-% words in them; the thread is also left in %rdi for the getter call.
-thunk_prologue(Form) -->
-    [ins(push, q, [reg(rbp)]),
-     ins(mov, q, [reg(rsp), reg(rbp)]),
-     ins(push, q, [reg(rbx)]),
-     ins(push, q, [reg(r12)]),
-     ins(push, q, [reg(r13)]),
-     ins(push, q, [reg(r14)]),
-     ins(push, q, [reg(r15)]),
-     ins(sub, q, [imm(8), reg(rsp)])],
-    thunk_saves(Form).
-
-% The thread and register words of form Form into the callee-saved
-% registers.
-thunk_saves(reg) -->
-    [ins(mov, q, [reg(rdi), reg(rbx)]),
-     ins(mov, q, [reg(rdx), reg(r12)]),
-     ins(mov, q, [reg(rcx), reg(r13)]),
-     ins(mov, q, [reg(r8), reg(r14)]),
-     ins(mov, q, [reg(r9), reg(r15)])].
-thunk_saves(mem(_)) -->
-    [ins(mov, q, [reg(rsi), reg(rbx)]),
-     ins(mov, q, [reg(rdi), reg(r12)]),
-     ins(mov, q, [reg(rcx), reg(r13)]),
-     ins(mov, q, [reg(r8), reg(r14)]),
-     ins(mov, q, [reg(r9), reg(r15)]),
-     ins(mov, q, [reg(rsi), reg(rdi)])].
-
-% The fast entry, with the incoming words back in their registers.
-thunk_fast_call(reg) -->
-    { field(function_object, fast_entry, rsi, Fast) },
-    [ins(mov, q, [reg(rbx), reg(rdi)]),
-     ins(mov, q, [mem(-48, rbp), reg(rsi)]),
-     ins(mov, q, [reg(r12), reg(rdx)]),
-     ins(mov, q, [reg(r13), reg(rcx)]),
-     ins(mov, q, [reg(r14), reg(r8)]),
-     ins(mov, q, [reg(r15), reg(r9)]),
-     ins(call, q, [ind(Fast)])].
-thunk_fast_call(mem(_)) -->
-    { field(function_object, fast_entry, rdx, Fast) },
-    [ins(mov, q, [reg(r12), reg(rdi)]),
-     ins(mov, q, [reg(rbx), reg(rsi)]),
-     ins(mov, q, [mem(-48, rbp), reg(rdx)]),
-     ins(mov, q, [reg(r13), reg(rcx)]),
-     ins(mov, q, [reg(r14), reg(r8)]),
-     ins(mov, q, [reg(r15), reg(r9)]),
-     ins(call, q, [ind(Fast)])].
-
 % The load of each generic return word, at thread offset Off, into its
 % register.
 thunk_reg_loads([], _) --> [].
@@ -2027,69 +1910,6 @@ thunk_buffer_copies([Src|Srcs], Off) -->
      ins(mov, q, [reg(rax), mem(Off, r12)])],
     { Off1 is Off + 8 },
     thunk_buffer_copies(Srcs, Off1).
-
-% class_words(+K, -Ws, +I0, -I): Ws are the incoming word positions of
-% an argument of class K whose first word is word I0; I is the next.
-class_words(p, [I0, I1], I0, I) :-
-    I1 is I0 + 1,
-    I is I0 + 2.
-class_words(w, [I0], I0, I) :-
-    I is I0 + 1.
-class_words(l, [I0], I0, I) :-
-    I is I0 + 1.
-
-% The callee-saved registers that hold the incoming register words.
-thunk_saved_regs(reg, [r12, r13, r14, r15]).
-thunk_saved_regs(mem(_), [r13, r14, r15]).
-
-% thunk_word(+Form, +J, -Word): Word is the operand where incoming word
-% J lives: a saved register, or a stack word above the return address.
-thunk_word(Form, J, Word) :-
-    form_regs(Form, Regs),
-    length(Regs, NRegs),
-    (   J < NRegs
-    ->  thunk_saved_regs(Form, Saved),
-        nth0(J, Saved, R),
-        Word = reg(R)
-    ;   Off is 16 + 8 * (J - NRegs),
-        Word = mem(Off, rbp)
-    ).
-
-% The push of stack word I (counting from the first stack word) for each
-% I.
-thunk_pushes([], _) --> [].
-thunk_pushes([I|Is], Form) -->
-    { form_regs(Form, Regs),
-      length(Regs, NRegs),
-      J is I + NRegs,
-      thunk_word(Form, J, Word) },
-    [ins(push, q, [Word])],
-    thunk_pushes(Is, Form).
-
-% Each argument's words into the thread's generic argument area.
-thunk_generic([], [], _, _) --> [].
-thunk_generic([K|Ks], [Ws|Wss], I, Form) -->
-    { generic_offsets(I, Addr, Lower) },
-    thunk_generic_arg(K, Ws, Addr, Lower, Form),
-    { I1 is I + 1 },
-    thunk_generic(Ks, Wss, I1, Form).
-
-% The incoming words Ws of an argument of class K into the thread at
-% Addr, and its lower (0 for an integer) at Lower.
-thunk_generic_arg(p, [A, L], Addr, Lower, Form) -->
-    thunk_word_store(A, Addr, Form),
-    thunk_word_store(L, Lower, Form).
-thunk_generic_arg(w, [A], Addr, Lower, Form) -->
-    thunk_word_store(A, Addr, Form),
-    [ins(mov, q, [imm(0), mem(Lower, rbx)])].
-thunk_generic_arg(l, [A], Addr, Lower, Form) -->
-    thunk_word_store(A, Addr, Form),
-    [ins(mov, q, [imm(0), mem(Lower, rbx)])].
-
-% Incoming word J into the thread at offset Off.
-thunk_word_store(J, Off, Form) -->
-    { thunk_word(Form, J, Word) },
-    operand_thread_store(Word, Off).
 
 % The operand Word into the thread at offset Off, through %rax if it is
 % in memory.
