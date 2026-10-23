@@ -17,7 +17,9 @@
             lowering stores (variables and functions)
       Tags  assoc, Name -> tag(struct | union, Id) | enum(T)
       Defs  assoc, Id -> incomplete(Tag) | def(Kind, Members, Size, Align)
-            | bad(Reason); the lowering keeps entries of its own here too
+            | partial(Reason, Members) | bad(Reason); partial keeps only
+            members with known offsets, not a usable object layout.
+            The lowering keeps entries of its own here too
             Tag: some(Name), or none for an anonymous struct or union
             Members: [m(Name, Type, Offset)], Name some(Field), or none
             for an anonymous struct or union member
@@ -249,14 +251,28 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     Type =.. [Kind, Id],
     foldl(member_decl, Members, Fieldss, Env1, Env2),
     append(Fieldss, Fields),
-    (   memberchk(bad(Why), Fields) -> Def = bad(Why)
-    ;   member(Attr, Attrs), layout_attr(attr(Attr))
+    (   member(Attr, Attrs), layout_attr(attr(Attr))
     ->  Def = bad('alignment attributes')
+    ;   memberchk(bad(Why), Fields)
+    ->  known_field_prefix(Fields, Prefix),
+        su_layout(Kind, Prefix, Env2, PrefixDef),
+        (   PrefixDef = def(_, Known, _, _)
+        ->  Def = partial(Why, Known)
+        ;   Def = bad(Why)
+        )
     ;   su_layout(Kind, Fields, Env2, Def)
     ),
     Env2 = e(Ords, Tags2, Defs0, Next),
     put_assoc(Id, Defs0, Def, Defs1),
     Env = e(Ords, Tags2, Defs1, Next).
+
+% A later unsupported member (notably glibc FILE's _flags2 bitfield)
+% does not change preceding offsets. Never infer offsets beyond it, or
+% a size/alignment for the whole object; those uses must still reject.
+known_field_prefix([], []).
+known_field_prefix([bad(_)|_], []) :- !.
+known_field_prefix([f(Name, Type)|Fields], [f(Name, Type)|Prefix]) :-
+    known_field_prefix(Fields, Prefix).
 
 % forward_declared(+Tag, +Kind, +Env, -Id): Tag names the Kind with Id,
 % which is declared but not yet defined. An anonymous one never is.
@@ -504,6 +520,8 @@ su_size(Id, e(_, _, Defs, _), Size, Align) :-
     def_size_align(Def, Size, Align).
 
 def_size_align(def(_, _, Size, Align), Size, Align).
+def_size_align(partial(Why, _), _, _) :-
+    throw(bad(Why)).
 def_size_align(bad(Why), _, _) :-
     throw(bad(Why)).
 
@@ -521,12 +539,16 @@ complete_type(Type, Env) :- catch(type_size_align(Type, Env, _, _), bad(_), fail
 member_type_offset(SU, Name, Env, Type, Off) :-
     SU =.. [_, Id],
     Env = e(_, _, Defs, _),
-    get_assoc(Id, Defs, def(_, Members, _, _)),
+    get_assoc(Id, Defs, Def),
+    known_members(Def, Members),
     (   member(m(some(Name), Type, Off), Members) -> true
     ;   member(m(none, AnonType, AnonOff), Members),
         member_type_offset(AnonType, Name, Env, Type, InnerOff)
     ->  Off is AnonOff + InnerOff
     ).
+
+known_members(def(_, Members, _, _), Members).
+known_members(partial(_, Members), Members).
 
 %% Integers
 
