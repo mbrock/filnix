@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# build.sh SRC OUT: render SRC/docs/*.md with pandoc into OUT/docs and copy
-# SRC/pages to OUT. Fails if a doc is missing from docs/README.md or a page
+# build.sh SRC OUT: render SRC/docs/*.md with pandoc into OUT/docs, copy
+# SRC/pages to OUT, and draw SRC/nanofil/src/*.pl into OUT/nanofil. Fails if a doc is missing from docs/README.md or a page
 # links to a docs file that does not exist.
 set -euo pipefail
 src=$1
@@ -34,6 +34,10 @@ for md in "$src"/docs/*.md; do
     --template "$here/template.html" --lua-filter "$here/links.lua" \
     -V source="$name.md" "${args[@]}" -o "$out/docs/$html.html" "$md"
 done
+
+mkdir -p "$out/nanofil"
+cp "$src"/nanofil/web/dterm.css "$src"/nanofil/web/dterm.js "$out/nanofil/"
+swipl "$src/nanofil/web/dterm.pl" "$out/nanofil" "$src/nanofil/src" </dev/null
 
 status=0
 for html in "$out"/docs/*.html; do

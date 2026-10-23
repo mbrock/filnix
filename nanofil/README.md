@@ -120,3 +120,6 @@ lives in a stack slot.
   and the middle end.
 - [docs/handoff.md](docs/handoff.md): the original design notes.
 - [AGENTS.md](AGENTS.md): tools, tests and conventions for working on it.
+- The wiki's [nanofil pages](https://mbrock.github.io/filnix/nanofil/):
+  the source drawn as terms by [web/dterm.pl](web/dterm.pl) (SWI-Prolog),
+  built with the site, `nix build .#site`.
