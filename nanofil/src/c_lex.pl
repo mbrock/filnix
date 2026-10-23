@@ -77,7 +77,10 @@ digits1([D|Ds]) --> [D], { decimal(D) }, digits0(Ds).
 digits0([D|Ds]) --> [D], { decimal(D) }, !, digits0(Ds).
 digits0([]) --> [].
 
-decimal(D) :- char_type(D, decimal_digit).
+% Character classes as ASCII ranges: char_type/2's classes differ
+% between Prolog hosts, and C and QBE source only need these.
+decimal(D) :- D @>= '0', D @=< '9'.
+letter(C) :- ( C @>= a, C @=< z -> true ; C @>= 'A', C @=< 'Z' ).
 
 %% Tokens
 
@@ -92,14 +95,14 @@ token(chr(V), L) --> ['\''], !, char_body(L, Bs), { char_value(Bs, V, L) }.
 token(str(Bs), L) --> ['"'], !, str_body(L, Bs).
 token(p(P), _) --> punct(P).
 
-ident_start(C) :- char_type(C, alpha), !.
+ident_start(C) :- letter(C), !.
 ident_start('_').
 ident_start('$').
 
 ident_rest([C|Cs]) --> [C], { ident_char(C) }, !, ident_rest(Cs).
 ident_rest([]) --> [].
 
-ident_char(C) :- char_type(C, alnum), !.
+ident_char(C) :- ( letter(C) ; decimal(C) ), !.
 ident_char('_').
 ident_char('$').
 
@@ -125,7 +128,7 @@ int_body(V, S-R) -->
 
 hex_digits([D|Ds]) --> [D], { weight(D, _) }, !, hex_digits(Ds).
 hex_digits([]) --> [].
-oct_digits([D|Ds]) --> [D], { char_type(D, decimal_digit), D @< '8' }, !, oct_digits(Ds).
+oct_digits([D|Ds]) --> [D], { decimal(D), D @< '8' }, !, oct_digits(Ds).
 oct_digits([]) --> [].
 dec_digits([D|Ds]) --> [D], { decimal(D) }, !, dec_digits(Ds).
 dec_digits([]) --> [].
@@ -165,11 +168,11 @@ lit_chars(_, L, _) --> { loc_error(L, 'unterminated literal', []) }.
 
 escape(_, B) --> [C], { simple_escape(C, B) }, !.
 escape(_, B) --> ['x'], !, hex_digits(Ds), { Ds \== [], base_value(Ds, 16, V), B is V /\ 255 }.
-escape(_, B) --> [D], { char_type(D, decimal_digit), D @< '8' }, !, oct_upto(2, Ds), { base_value([D|Ds], 8, V), B is V /\ 255 }.
+escape(_, B) --> [D], { decimal(D), D @< '8' }, !, oct_upto(2, Ds), { base_value([D|Ds], 8, V), B is V /\ 255 }.
 escape(L, _) --> [C], { loc_error(L, 'unknown escape \\~w', [C]) }.
 
 oct_upto(0, []) --> !.
-oct_upto(N, [D|Ds]) --> [D], { char_type(D, decimal_digit), D @< '8' }, !, { N1 is N - 1 }, oct_upto(N1, Ds).
+oct_upto(N, [D|Ds]) --> [D], { decimal(D), D @< '8' }, !, { N1 is N - 1 }, oct_upto(N1, Ds).
 oct_upto(_, []) --> [].
 
 simple_escape(n, 10). simple_escape(t, 9). simple_escape(r, 13). simple_escape(a, 7).
@@ -192,7 +195,7 @@ wescape(_, B) --> [C], { simple_escape(C, B) }, !.
 wescape(_, V) --> ['x'], !, hex_digits(Ds), { Ds \== [], base_value(Ds, 16, V) }.
 wescape(_, V) --> ['u'], !, hex_n(4, Ds), { base_value(Ds, 16, V) }.
 wescape(_, V) --> ['U'], !, hex_n(8, Ds), { base_value(Ds, 16, V) }.
-wescape(_, V) --> [D], { char_type(D, decimal_digit), D @< '8' }, !, oct_upto(2, Ds), { base_value([D|Ds], 8, V) }.
+wescape(_, V) --> [D], { decimal(D), D @< '8' }, !, oct_upto(2, Ds), { base_value([D|Ds], 8, V) }.
 wescape(L, _) --> [C], { loc_error(L, 'unknown escape \\~w', [C]) }.
 
 hex_n(0, []) --> !.

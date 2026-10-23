@@ -174,11 +174,13 @@ function(L, Name, func(RT, PTs, Var), ST, Body, E0, E, func(Sym, Lk, RK, Params,
     S0 = st(E0, cur(start, []), [], [], 0, Lt, [], []),
     empty_assoc(Lt),
     X = x(Name, RT, none, none, L),
-    phrase(( sret_param(RT, SPs),
-             params(Names, PTs1, X, Params0),
-             { append(SPs, Params0, Params) },
-             stmt(Body, X),
-             fall_off(RT) ), S0, S),
+    % The DCGs thread a state term, not a list, so they are called
+    % directly: SWI's phrase/3 insists on a list.
+    sret_param(RT, SPs, S0, S1),
+    params(Names, PTs1, X, Params0, S1, S2),
+    append(SPs, Params0, Params),
+    stmt(Body, X, S2, S3),
+    fall_off(RT, S3, S),
     S = st(Ef, none, [], Bs, _, _, _, As),
     env_scope(E0, Sc, _), env_restore(Sc, Ef, E),
     reverse(Bs, [blk(start, [], Is0, J0)|Rest]),
@@ -540,7 +542,7 @@ aggregate_slots(SU, E, Slots) :- ( SU = struct(_) ; SU = union(_) ), !,
     ( K == union, Slots0 = [S0|_] -> Slots = [S0] ; Slots = Slots0 ).
 
 init_slots(_, _, _, [], [], _) --> !.
-init_slots(Slots, I, A, [entry([D|Ds], V)|Es0], Es, X) --> !,
+init_slots(Slots, _, A, [entry([D|Ds], V)|Es0], Es, X) --> !,
     env(E), { designated(D, Slots, I1, E, X) },
     { nth0(I1, Slots, slot(_, O, T)) },
     offset(A, O, P),
@@ -624,10 +626,11 @@ obj(complit(TN, I), X, lv(A, T1)) --> !,
     { arg(5, X, L), type_name(TN, T, E, L), complete_array(T, I, T1, L, E, W), bad_check(T1, E, L, 'compound literal') },
     local_slot(T1, A), init(A, T1, I, X).
 
+obj(E, X, R) --> rvalue(E, X, R).
+
 % A callee must be a temporary.
 callee_temp(t(T), t(T)) --> !.
 callee_temp(V, C) --> ins(p, copy, [V], C).
-obj(E, X, R) --> rvalue(E, X, R).
 
 member_lv(A, ST, F, X, P, T) --> env(E), { arg(5, X, L) },
     (   { ( ST = struct(_) ; ST = union(_) ), find_member(ST, F, E, T, O) } -> offset(A, O, P)
@@ -645,7 +648,7 @@ decay(fd(glo(S), T), _, v(A, ptr(T))) --> !, ins(p, copy, [glo(S)], A).
 decay(fd(C, T), _, v(C, ptr(T))) --> [].
 
 % The type of an expression, for sizeof: lower it, keep only the type.
-type_of(E, X, T, S, S) :- phrase(obj(E, X, R), S, _), arg(2, R, T).
+type_of(E, X, T, S, S) :- obj(E, X, R, S, _), arg(2, R, T).
 
 load_typed(T, A, X, V) -->
     (   { load_op(T, K, Op) } -> ins(K, load(Op), [A], V)
@@ -878,10 +881,10 @@ arm_convert(V0, T, X, V) --> convert_checked(V0, T, X, v(V, _)).
 
 % rtype(E, X, R): E's decayed value term from a throwaway lowering; only
 % its type (and whether it is a constant) is used.
-rtype(E, X, R, S, S) :- phrase(rval(E, X, R), S, _).
+rtype(E, X, R, S, S) :- rval(E, X, R, S, _).
 
 % struct_expr(E, X, T): E is an expression of struct or union type T.
-struct_expr(E, X, T, S, S) :- catch(phrase(rval(E, X, v(_, T1)), S, _), nanofil_error(_), fail), T1 == T.
+struct_expr(E, X, T, S, S) :- catch(rval(E, X, v(_, T1), S, _), nanofil_error(_), fail), T1 == T.
 
 % The type of c ? a : b.
 cond_type(TA, _, TB, _, T, _) :- int_type(TA), int_type(TB), !, usual(TA, TB, T).

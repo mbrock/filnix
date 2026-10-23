@@ -9,7 +9,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
-tpl=${TPL:-tpl}
+nanofil="$here/../bin/nanofil"
 filcc=${FILCC:?set FILCC to a filcc clang}
 # Corpus mode retains diagnostics and records a single outcome, rather than
 # aborting the whole survey on the first unsupported program.
@@ -68,7 +68,7 @@ for f in "$@"; do
   # but never call that a measured rejection or a differential pass.
   if ! "$filcc" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
-  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$tpl" -q main.pl -- ${NANOFIL_OPT:-} cc "$f" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$f" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?

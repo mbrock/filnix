@@ -2,7 +2,7 @@
     testing cannot cover: outcomes qbe has no counterpart for, inputs qbe
     miscompiles, and queries that run the semantics backwards.
 
-    Run from nanofil/src:  tpl -q ../tests/unit.pl
+    Run from nanofil/src:  ../bin/nanofil --script ../tests/unit.pl
     Expected values are derived by hand in the comments, not from the
     interpreter.
 */
@@ -25,6 +25,7 @@
 :- use_module(library(dcgs)).
 
 :- dynamic(test/1).
+:- discontiguous(test/1).
 :- initialization(main).
 
 main :-

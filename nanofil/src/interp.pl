@@ -100,9 +100,9 @@ jump(rets(Vs), Ctx, _, Env, S, rets(Xs), S) :-
     Ctx = c(_, _, _, tuple(Ks), _),
     maplist(read_tuple(Ctx, Env), Ks, Vs, Xs).
 jump(ret, _, _, _, S, ret, S).
+jump(hlt, _, _, _, S, hlt, S).
 
 read_tuple(Ctx, Env, K, V, X) :- read(K, V, Ctx, Env, X).
-jump(hlt, _, _, _, S, hlt, S).
 
 %% Instructions
 

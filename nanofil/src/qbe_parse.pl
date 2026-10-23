@@ -55,18 +55,22 @@ token(id(A)) --> ident_start(C), !, name_chars(Cs), { atom_chars(A, [C|Cs]) }.
 token(P) --> [C], { memberchk(C-P, ['='-eq, ','-comma, '('-lp, ')'-rp,
                                      '{'-lb, '}'-rb, ('+')-plus]) }.
 
-digit(D) --> [D], { char_type(D, decimal_digit) }.
+digit(D) --> [D], { decimal(D) }.
 digits([D|Ds]) --> digit(D), !, digits(Ds).
 digits([]) --> [].
 
-ident_start(C) --> [C], { char_type(C, alpha) ; C == '_' }.
+ident_start(C) --> [C], { letter(C) ; C == '_' }.
 
 name_chars([C|Cs]) --> [C], { name_char(C) }, !, name_chars(Cs).
 name_chars([]) --> [].
 
-name_char(C) :- char_type(C, alnum).
+name_char(C) :- letter(C) ; decimal(C).
 name_char('_').
 name_char('.').
+
+% ASCII classes; char_type/2's differ between Prolog hosts.
+decimal(D) :- D @>= '0', D @=< '9'.
+letter(C) :- ( C @>= a, C @=< z -> true ; C @>= 'A', C @=< 'Z' ).
 
 % Strings keep their escapes as written; QBE hands them to the assembler.
 str_chars([]) --> ['"'], !.

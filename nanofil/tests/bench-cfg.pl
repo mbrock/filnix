@@ -4,7 +4,7 @@
 
     Run from nanofil/src:
       python3 -I ../tests/bigfn.py 1 300 > /tmp/big.c
-      tpl -q ../tests/bench-cfg.pl -- /tmp/big.c... </dev/null
+      ../bin/nanofil --script ../tests/bench-cfg.pl /tmp/big.c... </dev/null
 
     Scenarios, each timed in CPU seconds:
       facts    asserting the function as facts (tabled styles only)
@@ -36,12 +36,16 @@
 
 main :-
     current_prolog_flag(argv, Argv),
-    maplist(atom_chars, Files, Argv),
+    maplist(arg_atom, Argv, Files),
     format("~w~t~12|~w~t~20|~w~t~28|~w~t~42|~w~t~54|~w~t~66|~w~n",
            [file, blocks, temps, scenario, functional, versioned, incremental]),
     catch(maplist(bench_file, Files), E,
           ( format("bench-cfg: ~q~n", [E]), halt(1) )),
     halt.
+
+% Trealla gives argv as character lists, SWI as atoms.
+arg_atom(A, A) :- atom(A), !.
+arg_atom(Cs, A) :- atom_chars(A, Cs).
 
 load(File, M) :-
     (   atom_concat(_, '.c', File)

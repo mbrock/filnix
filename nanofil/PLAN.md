@@ -49,12 +49,15 @@ start. Reversing one is cheap until the milestone it names.
    Origin layouts differ from upstream head (see the findings), so the
    static data layouts live in one table. `nanofil/probes/run.sh` must
    pass before and after any pin change.
-3. **Host: Trealla at a recent pinned revision.** nixpkgs has Trealla
-   2.99.1, which predates native tabling. filnix already builds a recent
-   Trealla under Fil-C (`pkgsFilc.trealla`, September 2026, with tabling
-   fixes). Add a native build of the same revision for development speed,
-   and keep the Fil-C build as the "memory-safe compiler" demo host. Keep
-   code Scryer-compatible where it is free to do so.
+3. **Host: SWI-Prolog by default, Trealla also supported.** nanofil
+   started on Trealla (a native build of the pinned revision, plus
+   `pkgsFilc.trealla` as the "memory-safe compiler" demo host). From M5
+   on, SWI-Prolog (nixpkgs, 9.2.9) is the default: it ran the tests 5 to
+   25 times faster in a fraction of the memory, and it has a profiler.
+   The code stays in Trealla's dialect; `src/swi/` adapts SWI to it, and
+   `bin/nanofil` picks the host (`NANOFIL_HOST=swi|trealla`). The check
+   runs everything on SWI and a short part on Trealla. Keep code
+   Scryer-compatible where it is free to do so.
 4. **Reference QBE: nixpkgs `qbe` 1.2 to start.** The phase-one subset
    (integer ops, memory, branches, calls) is stable across versions. Pin a
    newer revision only if a test needs it.

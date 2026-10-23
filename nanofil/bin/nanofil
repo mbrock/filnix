@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# nanofil on the chosen Prolog host.
+#
+#   nanofil ARG...                  main.pl's commands (cc, compile, ...)
+#   nanofil --script FILE ARG...    load a Prolog file that runs itself
+#   nanofil --goal GOAL             run GOAL with nanofil's modules
+#
+# NANOFIL_HOST picks the host: swi (the default; SWIPL or swipl on PATH)
+# or trealla (TPL or tpl on PATH). Run from nanofil/src when a goal or
+# script loads modules by name.
+set -euo pipefail
+src=$(cd "$(dirname "${BASH_SOURCE[0]}")/../src" && pwd)
+mode=main
+case ${1:-} in
+  --script) mode=script; file=$2; shift 2 ;;
+  --goal) mode=goal; goal=$2; shift 2 ;;
+esac
+case ${NANOFIL_HOST:-swi} in
+  swi)
+    swipl=${SWIPL:-swipl}
+    case $mode in
+      main) exec "$swipl" -q "$src/swi/compat.pl" "$src/main.pl" -- "$@" ;;
+      script) exec "$swipl" -q "$src/swi/compat.pl" "$file" -- "$@" ;;
+      goal) exec "$swipl" -q "$src/swi/compat.pl" -g "$goal" -t halt ;;
+    esac ;;
+  trealla)
+    tpl=${TPL:-tpl}
+    case $mode in
+      main) exec "$tpl" -q "$src/main.pl" -- "$@" ;;
+      script) exec "$tpl" -q "$file" -- "$@" ;;
+      goal) exec "$tpl" -q -g "$goal" -g halt ;;
+    esac ;;
+  *) echo "nanofil: NANOFIL_HOST must be swi or trealla" >&2; exit 2 ;;
+esac

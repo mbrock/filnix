@@ -9,6 +9,8 @@
 # built by nanofil and by clang and must print and exit the same, also
 # under FUGC_SCRIBBLE and FUGC_VERIFY. Then everything runs again with
 # the M5 middle end (-O), validated run by run by the interpreter.
+# Everything runs on SWI-Prolog; a short last step repeats the unit tests,
+# the C difftests and the programs on Trealla, the other supported host.
 { pkgs, filcc }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
@@ -18,6 +20,7 @@ in
 pkgs.runCommandCC "nanofil-check"
   {
     nativeBuildInputs = [
+      pkgs.swi-prolog
       trealla
       qbe
       pkgs.python3
@@ -39,8 +42,8 @@ pkgs.runCommandCC "nanofil-check"
     cp -r ${../.} nanofil
     chmod -R u+w nanofil
     cd nanofil
-    patchShebangs tests
-    step unit bash -c '(cd src && tpl -q ../tests/unit.pl </dev/null) | tee unit.log'
+    patchShebangs tests bin
+    step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log'
     grep -q 'tests ok$' unit.log
     python3 -I tests/gen.py 1 200 > gen1.ssa
     step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
@@ -71,7 +74,14 @@ pkgs.runCommandCC "nanofil-check"
     unset NANOFIL_OPT
     # The functional, versioned-fact and incremental analyses must agree.
     python3 -I tests/bigfn.py 2 100 > big2.c
-    step bench-cfg bash -c '(cd src && tpl -q ../tests/bench-cfg.pl -- ../big2.c </dev/null)'
+    step bench-cfg bash -c '(cd src && ../bin/nanofil --script ../tests/bench-cfg.pl ../big2.c </dev/null)'
+    export NANOFIL_HOST=trealla
+    step "trealla: unit, difftest c/*.c, progtest" bash -ec '
+      (cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log
+      grep -q "tests ok$" unit.log
+      tests/par.sh tests/difftest.sh tests/c/*.c
+      tests/par.sh tests/progtest.sh tests/c/prog/*.c'
+    unset NANOFIL_HOST
     echo "== nanofil check timings"
     cat "$TMPDIR/timings"
     touch $out

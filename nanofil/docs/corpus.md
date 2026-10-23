@@ -10,7 +10,7 @@ nix build --impure --no-link --print-out-paths --expr '
     system = "x86_64-linux";
   }; corpus = import ./nanofil/nix/corpus.nix { inherit pkgs; };
   in [ corpus.cproc corpus.c-testsuite ]'
-export TPL=/tmp/tpl-native/bin/tpl FILCC=/tmp/filcc/bin/clang
+export SWIPL=/tmp/swipl/bin/swipl FILCC=/tmp/filcc/bin/clang
 python3 nanofil/tests/corpus.py CPROC_STORE_PATH C_TESTSUITE_STORE_PATH \
   --work /tmp/corpus
 # Narrow a rerun with --test c-testsuite/00205.c (repeatable).

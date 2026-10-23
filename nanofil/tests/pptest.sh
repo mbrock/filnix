@@ -4,7 +4,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
-tpl=${TPL:-tpl}
+nanofil="$here/../bin/nanofil"
 filcc=${FILCC:?set FILCC to a filcc clang}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -12,8 +12,8 @@ n=0
 compare() {
   local f=$1
   "$filcc" -E -o "$work/ref.i" "$f"
-  (cd "$src" && "$tpl" -q main.pl -- tokens "$work/ref.i" </dev/null) >"$work/ref.tokens"
-  (cd "$src" && "$tpl" -q main.pl -- tokens "$f" </dev/null) >"$work/our.tokens"
+  (cd "$src" && "$nanofil" tokens "$work/ref.i" </dev/null) >"$work/ref.tokens"
+  (cd "$src" && "$nanofil" tokens "$f" </dev/null) >"$work/our.tokens"
   if ! diff -u "$work/ref.tokens" "$work/our.tokens" >"$work/diff"; then
     echo "PREPROCESSOR MISMATCH $f" >&2
     head -100 "$work/diff" >&2
@@ -130,7 +130,7 @@ int continued_line;
 EOF
   compare "$work/locations.c"
   (cd "$src" && PP_LOCATION_FILE="$work/locations.c" PP_HEADER_FILE="$work/once.h" \
-    "$tpl" -q -g "use_module(c_pp),use_module(library(lists)),
+    "$nanofil" --goal "use_module(c_pp),use_module(library(lists)),
       getenv('FILCC',C),pp_profile(C,P),getenv('PP_LOCATION_FILE',F),getenv('PP_HEADER_FILE',H),
       (pp_file(F,P,Ts),memberchk(tok(kw(int),F:3),Ts),memberchk(tok(kw(int),F:4),Ts),
        memberchk(tok(kw(int),H:2),Ts) -> halt(0); halt(1))." </dev/null)
@@ -173,7 +173,7 @@ FN(4)
 EOF
   compare "$work/line-pragma.c"
   printf '#error intentional\n' >"$work/error.c"
-  if (cd "$src" && "$tpl" -q main.pl -- tokens "$work/error.c" </dev/null) >"$work/out" 2>"$work/err"; then
+  if (cd "$src" && "$nanofil" tokens "$work/error.c" </dev/null) >"$work/out" 2>"$work/err"; then
     echo 'pptest: #error was accepted' >&2; exit 1
   fi
   grep -q 'error_directive' "$work/err"

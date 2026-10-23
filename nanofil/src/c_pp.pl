@@ -80,9 +80,9 @@ quoted(Q,['\\',C|Cs]) --> ['\\',C], !, quoted(Q,Cs).
 quoted(Q,[Q]) --> [Q], !.
 quoted(Q,[C|Cs]) --> [C], { C \== '\n' }, !, quoted(Q,Cs).
 quoted(_,_) --> { throw(nanofil_error('unterminated preprocessing literal')) }.
-start(C) :- char_type(C,alpha), !.
+start(C) :- ( C @>= a, C @=< z ; C @>= 'A', C @=< 'Z' ), !.
 start('_'). start('$').
-digit(C) :- char_type(C,decimal_digit).
+digit(C) :- C @>= '0', C @=< '9'.
 part(C) :- start(C), !.
 part(C) :- digit(C).
 ident([C|Cs]) --> [C], { part(C) }, !, ident(Cs).
@@ -217,16 +217,16 @@ expand([T|Ts],E,Out) :-
     T=t(A,L,S,H), E=env(M,_,_,_,_),
     ( \+memberchk(A,H), get_assoc(A,M,Def),
       replacement(Def,Ts,Rest,E,L,Repl,EndH) ->
-        ( EndH=none -> BaseH=H ; intersection(H,EndH,BaseH) ),
+        ( EndH=none -> BaseH=H ; hide_meet(H,EndH,BaseH) ),
         maplist(hide_at([A|BaseH],L),Repl,R0),
         first_space(R0,S,R), append(R,Rest,Next), expand(Next,E,Out)
     ; builtin(T,Ts,Rest,E,R) -> append(R,Rest,Next),expand(Next,E,Out)
     ; Out=[T|Os],expand(Ts,E,Os)
     ).
 
-intersection([],_,[]).
-intersection([A|As],Bs,Cs) :-
-    ( memberchk(A,Bs) -> Cs=[A|Ds] ; Cs=Ds ),intersection(As,Bs,Ds).
+hide_meet([],_,[]).
+hide_meet([A|As],Bs,Cs) :-
+    ( memberchk(A,Bs) -> Cs=[A|Ds] ; Cs=Ds ),hide_meet(As,Bs,Ds).
 hide_at(H,L,t(A,_,S,H0),t(A,L,S,H1)) :- append(H,H0,Hs),sort(Hs,H1).
 first_space([],_,[]).
 first_space([t(A,L,_,H)|Ts],S,[t(A,L,S,H)|Ts]).
@@ -277,7 +277,7 @@ paste([t(A,L,S,H),t('##',_,_,_),t(B,_,_,H1)|Ts],Rs,Loc) :- !,
     atom_concat(A,B,C),
     ( C=='' -> true ; atom_chars(C,Cs),phrase(spelling(Cs),Cs) -> true
     ; pp_error(Loc,invalid_token_paste(A,B)) ),
-    intersection(H,H1,H2),paste([t(C,L,S,H2)|Ts],Rs,Loc).
+    hide_meet(H,H1,H2),paste([t(C,L,S,H2)|Ts],Rs,Loc).
 paste([t('',_,_,_)|Ts],Rs,L) :- !,paste(Ts,Rs,L).
 paste([T|Ts],[T|Rs],L) :- paste(Ts,Rs,L).
 paste([],[],_).

@@ -37,7 +37,11 @@
                        inc_load/1, inc_update/1, inc_clear/0,
                        i_live_in/2, i_live_out/2]).
 
+% SWI-Prolog has tabling built in (its library(tabling) is deprecated) and
+% declares incremental dynamic predicates through dynamic/2.
+:- if(\+ current_prolog_flag(dialect, swi)).
 :- use_module(library(tabling)).
+:- endif.
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
@@ -124,11 +128,16 @@ v_frontier(V, X, Y) :-
 
 %% Incremental tabling
 
-:- dynamic(if_pred/2).     % if_pred(To, From)
+% if_pred(To, From), if_gen(B, T), if_kill(B, T), if_euse(B, T)
+:- if(current_prolog_flag(dialect, swi)).
+:- dynamic([if_pred/2, if_gen/2, if_kill/2, if_euse/2], [incremental(true)]).
+:- else.
+:- dynamic(if_pred/2).
 :- dynamic(if_gen/2).
 :- dynamic(if_kill/2).
-:- dynamic(if_euse/2).     % if_euse(B, T)
+:- dynamic(if_euse/2).
 :- incremental((if_pred/2, if_gen/2, if_kill/2, if_euse/2)).
+:- endif.
 
 :- table i_live_in/2 as incremental.
 :- table i_live_out/2 as incremental.

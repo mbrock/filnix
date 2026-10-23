@@ -44,12 +44,18 @@
 :- initialization(main).
 
 main :-
-    current_prolog_flag(argv, ArgvChars),
-    maplist(atom_chars, Argv0, ArgvChars),
+    % Trealla gives argv as character lists, SWI as atoms.
+    current_prolog_flag(argv, Argv1),
+    maplist(arg_atom, Argv1, Argv0),
     (   Argv0 = ['-O'|Argv] -> Opt = o1 ; Argv = Argv0, Opt = o0 ),
-    catch(( command(Opt, Argv) -> halt(0) ; format(user_error, "nanofil: failed~n", []), halt(1) ),
+    % halt/1 outside catch/3: SWI implements halt as an exception.
+    catch(( command(Opt, Argv) -> S = 0 ; format(user_error, "nanofil: failed~n", []), S = 1 ),
           E,
-          ( report(E), halt(1) )).
+          ( report(E), S = 1 )),
+    halt(S).
+
+arg_atom(A, A) :- atom(A), !.
+arg_atom(Cs, A) :- atom_chars(A, Cs).
 
 report(nanofil_error(M)) :- !, format(user_error, "nanofil: ~w~n", [M]).
 report(E) :- format(user_error, "nanofil: ~q~n", [E]).

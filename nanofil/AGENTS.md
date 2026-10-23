@@ -12,6 +12,8 @@ Build these once per orb (all cached):
 
 ```sh
 nix build -o /tmp/filcc .#filcc                                  # /tmp/filcc/bin/clang
+nix build -o /tmp/swipl --impure --expr \
+  '(import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }).swi-prolog'
 nix build -o /tmp/tpl-native --impure --expr \
   'import ./nanofil/nix/trealla.nix { pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }; }'
 nix build -o /tmp/qbe-p --impure --expr \
@@ -25,20 +27,31 @@ Use `filc-ref-src` to look up how Fil-C behaves. Do not fetch `filc0-src`
 ## Tests
 
 ```sh
-export TPL=/tmp/tpl-native/bin/tpl QBE=/tmp/qbe-p/bin/qbe FILCC=/tmp/filcc/bin/clang
-(cd nanofil/src && $TPL -q ../tests/unit.pl </dev/null)
+export SWIPL=/tmp/swipl/bin/swipl QBE=/tmp/qbe-p/bin/qbe FILCC=/tmp/filcc/bin/clang
+(cd nanofil/src && ../bin/nanofil --script ../tests/unit.pl </dev/null)
+(cd nanofil/src && ../bin/nanofil cc-ir ../tests/c/basic.c </dev/null)
 nanofil/tests/difftest.sh FILE.ssa|FILE.c...   # interpreter vs native (and clang for .c)
 nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 ```
 
+`bin/nanofil` runs on SWI-Prolog by default; `NANOFIL_HOST=trealla` (with
+`TPL=/tmp/tpl-native/bin/tpl`) runs the same commands on Trealla. Under
+SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
+
 - Run Prolog with stdin closed (`</dev/null`).
-- A 200-function `gen.py` corpus takes GBs of RAM; run one at a time.
 - Show that a new test can fail: plant the bug it targets, watch it fail,
   restore. Say so in the commit or report.
+- Code must run on both hosts. Write Trealla's dialect (double_quotes
+  chars, `library(dcgs)`, `format_//2`, character-list `phrase_from_file`);
+  `src/swi/` maps it onto SWI. Avoid `char_type/2` (the hosts' classes
+  differ) and `phrase/2,3` over non-list state (SWI requires a list; call
+  the nonterminal with two extra arguments instead).
 - The Trealla DCG translator rejects an if-then chain without a final
   else inside `-->` bodies; end chains with `; []`.
+- On Trealla a 200-function `gen.py` corpus takes GBs of RAM; run one at
+  a time there.
 
 ## Working alongside other threads
 
