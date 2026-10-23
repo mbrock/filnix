@@ -100,7 +100,7 @@ write_file(F, G) :-
 expected_lines([]) --> [].
 expected_lines([r(Fn, Args, Out)|Rs]) -->
     { call_text(Fn, Args, CT), outcome_text(Out, T) },
-    format_("~w = ~w~n", [CT, T]),
+    fmt("~w = ~w~n", [CT, T]),
     expected_lines(Rs).
 
 harness(M, Rs) -->
@@ -117,7 +117,7 @@ prototypes([Fn|Fns], M) -->
       c_type(Ret, RT),
       findall(T, ( member(par(K, _), Params), c_type(K, T) ), Ts),
       ( Ts == [] -> PA = void ; atomic_list_concat(Ts, ', ', PA) ) },
-    format_("extern ~w ~w(~w);~n", [RT, Fn, PA]),
+    fmt("extern ~w ~w(~w);~n", [RT, Fn, PA]),
     prototypes(Fns, M).
 
 c_type(w, uint32_t).
@@ -131,8 +131,8 @@ harness_calls([r(Fn, Args, _)|Rs], M) -->
       findall(A, ( member(X, Args), format(atom(A), '~wull', [X]) ), CAs),
       atomic_list_concat(CAs, ', ', CA) },
     (   { Ret == void }
-    ->  format_("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n", [Fn, CA, CT])
-    ;   format_("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
+    ->  fmt("    ~w(~w); printf(\"%s = ret\\n\", \"~w\");~n", [Fn, CA, CT])
+    ;   fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
                 [CT, Fn, CA])
     ),
     harness_calls(Rs, M).
@@ -168,3 +168,7 @@ words_([[C|Cs]|Ws]) --> [C], word(Cs), !, words_(Ws).
 words_([]) --> [].
 word([C|Cs]) --> [C], { C \== ' ' }, !, word(Cs).
 word([]) --> [].
+
+% library(format)'s format_//2 raises type_error(list, '') for an argument
+% of '' (Trealla 12f4cbd), which a call with no arguments produces.
+fmt(F, As) --> { format(chars(Cs), F, As) }, seq(Cs).
