@@ -88,9 +88,8 @@ read-only same-file data would remove most of this overhead.
 
 ## SaRCAsm issues found
 
-The first two are fixed by `patches/sarcasm-rept.patch` and
-`patches/sarcasm-callarg-carrier.patch`, which the staging toolchain
-applies (check: `staging-sarcasm-fixes`). With the second fix the
+The first two are fixed upstream after 0.686 (pizlonator/fil-c#336 and
+#337), which the staging toolchain includes (check: `staging-sarcasm-fixes`). With the second fix the
 reproducer is rejected at compile time instead of miscompiled. The
 experiment still uses the release toolchain, where `.rept` is expanded by
 `nasm2gas.py` and the merged upsampler uses `.alloca`.

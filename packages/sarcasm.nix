@@ -10,11 +10,6 @@ pkgs.stdenvNoCC.mkDerivation {
   version = "0-unstable-${builtins.substring 0 12 sources.coreRev}";
   src = sources.sarcasm-src;
   sourceRoot = "sarcasm-src/projects/sarcasm";
-  # Submitted upstream; staging carries them until they are merged.
-  patches = pkgs.lib.optionals (sources.variant == "staging") [
-    ../patches/sarcasm-callarg-carrier.patch
-    ../patches/sarcasm-rept.patch
-  ];
   nativeBuildInputs = [ pkgs.makeWrapper ];
   dontBuild = true;
   installPhase = ''

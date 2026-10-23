@@ -1,5 +1,10 @@
 # Thread cancellation: what Fil-C needs to get right
 
+> **Status (2026-10-23):** the staging toolchain no longer carries the
+> cancellation patches (`libpizlo-cancellation`, `glibc-filc-cancellation`)
+> or their checks. We did not consider them sound or necessary. The
+> research below stands; the patches remain in git history.
+
 Suppose a worker thread is waiting for input that will never arrive. Another
 thread wants to shut it down. `pthread_cancel()` is meant to make that possible
 without making the worker abandon a lock or lose track of a resource halfway

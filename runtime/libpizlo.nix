@@ -18,12 +18,6 @@ in
     pname = "libpizlo";
     version = "git";
     src = sources.libpas-src;
-    patches = pkgs.lib.optionals (sources.variant == "staging") (
-      [ ../patches/libpizlo-cancellation.patch ]
-      ++ pkgs.lib.optional (
-        !pkgs.stdenv.hostPlatform.isx86_64
-      ) ../patches/libpizlo-cancellation-aarch64.patch
-    );
 
     nativeBuildInputs = [
       pkgs.gnumake

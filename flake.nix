@@ -168,14 +168,6 @@
               (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).pipewire;
             pipewire-runtime =
               (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).runtime;
-            staging-cancellation = import ./tests/cancellation.nix {
-              inherit pkgs;
-              filcc = filcc-staging;
-            };
-            staging-cancellation-native = import ./tests/cancellation-native.nix {
-              inherit pkgs;
-              sources = stagingSources;
-            };
             staging-fork-regressions = import ./tests/fork-regressions.nix {
               pkgsFilc = pkgsFilcStaging;
             };
