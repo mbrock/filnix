@@ -1,6 +1,6 @@
 // The playground page: send the source to the worker and put each
 // section of the article it returns into its place (data-slot).
-import { editor, mark, link } from "./editor.js";
+import { editor, mark, link, count } from "./editor.js";
 
 const $ = (id) => document.getElementById(id);
 const worker = new Worker("worker.js");
@@ -55,10 +55,22 @@ const ask = (goal, input) =>
 // The file's top-level items and their lines, from play_outline/1. The
 // item the cursor is in is "here" in the C and IR panes, and an item
 // under the pointer in either pane tints its lines in the editor.
+//
+// Without -O the IR's rows carry the line they come from (data-line),
+// so the cursor's line is "at" in the IR, a row under the pointer tints
+// just its line, and the editor counts each line's instructions.
 let outline = [];
 let here = null;
+let atLine = 0;
 const itemAt = (n) => outline.find((o) => o.from <= n && n <= o.to);
 function follow(n) {
+  if (n !== atLine) {
+    atLine = n;
+    for (const el of document.querySelectorAll(".goal.at")) el.classList.remove("at");
+    const rows = document.querySelectorAll(`[data-slot="ir"] .goal[data-line="${n}"]`);
+    for (const el of rows) el.classList.add("at");
+    if (tab === "ir") rows[0]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
   const item = itemAt(n) ?? null;
   if (item?.name === here?.name && item?.from === here?.from) return;
   here = item;
@@ -71,6 +83,8 @@ function follow(n) {
   pane?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 function lines(el) {
+  const row = el.closest(".goal[data-line]");
+  if (row) return outline.lines?.get(+row.dataset.line);
   const ir = el.closest('details.clause[id^="ir-"]');
   if (ir) return outline.find((o) => "ir-" + o.name === ir.id);
   const c = el.closest(".clause.item[data-line]");
@@ -180,9 +194,13 @@ worker.onmessage = ({ data }) => {
     for (const b of $("tabs").children)
       b.disabled = !document.querySelector(`[data-slot="${b.dataset.tab}"]`).hasChildNodes();
     state(failed ? "failed" : "ok");
-    ask("play_view:play_outline(O)").then((r) => {
+    Promise.all([ask("play_view:play_outline(O)"), ask("play_view:play_lines(C)")]).then(([r, c]) => {
       outline = r?.O ?? [];
+      // One item per line, so the same line is the same object to hover.
+      outline.lines = new Map((c?.C ?? []).map((l) => [l.line, { from: l.line, to: l.line }]));
+      count(source, c?.C ?? []);
       here = null;
+      atLine = 0;
       follow(source.state.doc.lineAt(source.state.selection.main.head).number);
     });
   } else {

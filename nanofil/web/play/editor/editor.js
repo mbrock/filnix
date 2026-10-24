@@ -2,7 +2,7 @@
 // the wiki's and dterm's colours. default.nix bundles this into the
 // page's editor.js.
 import { EditorState, StateEffect, StateField, RangeSet } from "@codemirror/state";
-import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, drawSelection, hoverTooltip } from "@codemirror/view";
+import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, gutter, drawSelection, hoverTooltip } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
 import { c } from "@codemirror/legacy-modes/mode/clike";
@@ -38,6 +38,22 @@ const linked = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// How many IR instructions each line made, in a gutter of its own.
+class Count extends GutterMarker {
+  constructor(n) { super(); this.n = n; }
+  eq(o) { return o.n === this.n; }
+  toDOM() { return document.createTextNode(String(this.n)); }
+}
+const setCounts = StateEffect.define();
+const counts = StateField.define({
+  create: () => RangeSet.empty,
+  update(set, tr) {
+    for (const e of tr.effects) if (e.is(setCounts)) return e.value;
+    return set.map(tr.changes);
+  },
+});
+const countGutter = gutter({ class: "cm-counts", markers: (v) => v.state.field(counts) });
+
 const colours = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.modifier], color: "var(--call)" },
   { tag: [t.typeName, t.standard(t.name)], color: "var(--atom)" },
@@ -62,6 +78,7 @@ const theme = EditorView.theme({
   ".cm-line.cm-bad": { background: "color-mix(in srgb, var(--accent) 9%, transparent)" },
   "&.cm-focused .cm-matchingBracket": { background: "color-mix(in srgb, var(--accent) 14%, transparent)" },
   ".cm-nonmatchingBracket": { color: "var(--accent)" },
+  ".cm-counts .cm-gutterElement": { padding: "0 0.3em 0 0.1em", minWidth: "1.4em", textAlign: "right", fontSize: "0.85em", color: "color-mix(in srgb, var(--atom) 55%, transparent)" },
   ".cm-line.cm-linked": { background: "color-mix(in srgb, var(--atom) 9%, transparent)" },
   ".cm-tooltip": {
     border: "1px solid var(--rule)",
@@ -80,6 +97,8 @@ const theme = EditorView.theme({
 export function editor(parent, { run, update, hover }) {
   const extensions = [
     lineNumbers(),
+    counts,
+    countGutter,
     history(),
     drawSelection(),
     indentOnInput(),
@@ -109,6 +128,14 @@ export function link(view, from, to) {
   const lines = [];
   for (let n = Math.max(from, 1); from && n <= Math.min(to, doc.lines); n++) lines.push(linkedLine.range(doc.line(n).from));
   view.dispatch({ effects: setLinked.of(Decoration.set(lines)) });
+}
+
+// count(view, lines): show lines' instruction counts, lines a list of
+// {line, n}; an empty list clears them.
+export function count(view, lines) {
+  const doc = view.state.doc;
+  const marks = lines.filter((c) => c.line >= 1 && c.line <= doc.lines).map((c) => new Count(c.n).range(doc.line(c.line).from));
+  view.dispatch({ effects: setCounts.of(RangeSet.of(marks, true)) });
 }
 
 // mark(view, n): mark line n (1-based), or none if n is 0 or past the end.

@@ -214,6 +214,16 @@ details.clause.here > summary, .clause.item.here {
   background: color-mix(in srgb, var(--atom) 9%, transparent);
 }
 .clause.item[data-line] { cursor: pointer; }
+/* IR rows from the cursor's line, and each run's line beside it. */
+.goal[data-line] { position: relative; }
+.goal.at { background: color-mix(in srgb, var(--atom) 10%, transparent); box-shadow: inset 2px 0 color-mix(in srgb, var(--atom) 45%, transparent); }
+.goal > .ln {
+  position: absolute;
+  right: calc(100% + 0.7em);
+  font: 0.68rem var(--mono-font);
+  color: color-mix(in srgb, var(--atom) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
 .symbol { max-width: min(34rem, 90vw); padding: 0.4rem 0.6rem; }
 .symbol .head { font: 0.85rem var(--display-font); margin-bottom: 0.2rem; }
 .symbol .facts { font: 0.72rem var(--mono-font); color: var(--muted); }

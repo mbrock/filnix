@@ -25,11 +25,15 @@
     and ir whether the IR has an item of that name (true or false, which
     reach JavaScript as strings).
 
+    play_lines(-Counts): one _{line, n} per line of the file that IR
+    instructions come from (by the IR's loc/2, so only without -O), n
+    the number of them, phis and jumps included.
+
     play_symbol(+Name, -Info): what the last compile knows of Name: its
     kind, signature, linkage and defining line, and its IR head drawn as
     HTML. Fails for a name it does not know.
 */
-:- module(play_view, [play_html/3, play_outline/1, play_symbol/2]).
+:- module(play_view, [play_html/3, play_outline/1, play_lines/1, play_symbol/2]).
 :- set_prolog_flag(double_quotes, codes).
 
 :- use_module(library(lists)).
@@ -46,10 +50,26 @@ play_html(File, Opt, Html) :-
 remember(File, Stages) :-
     (   memberchk(term(syntax, All), Stages) -> play_items(File, All, Items) ; Items = [] ),
     (   memberchk(term(ir, M), Stages) -> true ; M = module([]) ),
-    nb_setval(play_last, last(Items, M)).
+    nb_setval(play_last, last(File, Items, M)).
 
-last_compile(Items, M) :-
-    (   nb_current(play_last, last(Items, M)) -> true ; Items = [], M = module([]) ).
+last_compile(Items, M) :- last_compile(_, Items, M).
+last_compile(File, Items, M) :-
+    (   nb_current(play_last, last(File, Items, M)) -> true ; File = none, Items = [], M = module([]) ).
+
+play_lines(Counts) :-
+    last_compile(File, _, module(IR)),
+    findall(L, ( member(func(_, _, _, _, Bs), IR), member(B, Bs), block_rows(File, B, Rows),
+                 member(_-L, Rows), integer(L) ), Ls),
+    msort(Ls, Sorted),
+    clumped_pairs(Sorted, Counts).
+
+clumped_pairs([], []).
+clumped_pairs([L|Ls], [_{line:L, n:N}|Cs]) :-
+    take_same(L, Ls, 1, N, Rest),
+    clumped_pairs(Rest, Cs).
+
+take_same(L, [L|Ls], N0, N, Rest) :- !, N1 is N0 + 1, take_same(L, Ls, N1, N, Rest).
+take_same(_, Ls, N, N, Ls).
 
 play_outline(Outline) :-
     last_compile(Items, module(IR)),
@@ -144,7 +164,7 @@ article(File, Stages) -->
         ;   []
         ),
         (   { memberchk(term(ir, M), Stages) }
-        ->  ir_(M), data_(M), symbols_(M)
+        ->  ir_(File, M), data_(M), symbols_(M)
         ;   []
         ),
         (   { memberchk(text(ir, IR), Stages) }
@@ -224,14 +244,14 @@ strings(T, T).
 %% over one instruction per row; a data object its head over its items.
 %% Each folds away under its head.
 
-ir_(module(Items)) -->
-    section_(ir, seq(Items, ir_item)).
+ir_(File, module(Items)) -->
+    section_(ir, seq(Items, ir_item(File))).
 
-ir_item(func(Name, Linkage, Ret, Params, Blocks)) --> !,
+ir_item(File, func(Name, Linkage, Ret, Params, Blocks)) --> !,
     folding("clause func", Name,
         dterm:compound_(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), _, ctx(play, head)),
-        seq(Blocks, block_)).
-ir_item(data(Name, Linkage, Align, Items0)) -->
+        seq(Blocks, block_(File))).
+ir_item(_, data(Name, Linkage, Align, Items0)) -->
     { text_runs(Items0, Items), length(Items, N), shown(N, Max) },
     folding("clause data", Name,
         dterm:compound_(data(Name, Linkage, Align, '$VAR'('Items')), _, ctx(play, head)),
@@ -259,15 +279,43 @@ take_text(Is, [], Is).
 
 text_byte(C) :- integer(C), ( between(32, 126, C) ; memberchk(C, [0, 9, 10, 13]) ), !.
 
-block_(blk(Label, Phis, Insts, Jump)) -->
+% A block's rows, each with the line of File it comes from: the
+% instructions after loc(F, L) come from line L if F is File (and from
+% none in a header); the phis from the block's first loc, which opens
+% it, and the jump from the last. The locs themselves are not rows.
+block_rows(File, blk(_, Phis, Insts, Jump), Rows) :-
+    (   Insts = [loc(F, L)|_], F == File -> L0 = L ; L0 = none ),
+    findall(P-L0, member(P, Phis), PRows),
+    lined(Insts, File, L0, IRows, LJ),
+    append(PRows, IRows, Rows0),
+    append(Rows0, [Jump-LJ], Rows).
+
+lined([], _, L, [], L).
+lined([loc(F, L1)|Is], File, _, Rows, LJ) :- !,
+    ( F == File -> L = L1 ; L = none ),
+    lined(Is, File, L, Rows, LJ).
+lined([I|Is], File, L, [I-L|Rows], LJ) :- lined(Is, File, L, Rows, LJ).
+
+block_(File, B) -->
+    { B = blk(Label, _, _, _), block_rows(File, B, Rows) },
     el(div, "block-ir", (
         el(div, "label", ( el(span, "f pat", esc(Label)), el(span, "neck", ":") )),
-        el(div, "goals", (
-            seq(Phis, row),
-            seq(Insts, row),
-            row(Jump)
-        ))
+        el(div, "goals", lined_rows(Rows, none))
     )).
+
+% A row carries its line as data-line; the first of a run of rows from
+% one line shows it.
+lined_rows([], _) --> [].
+lined_rows([T-L|Rows], Prev) -->
+    (   { integer(L) }
+    ->  { format(codes(Ls), "~d", [L]) },
+        el(div, "goal", ['data-line'=Ls], (
+            ( { L == Prev } -> [] ; el(span, "ln", esc(Ls)) ),
+            term(T)
+        ))
+    ;   row(T)
+    ),
+    lined_rows(Rows, L).
 
 row(T) --> el(div, "goal", term(T)).
 
