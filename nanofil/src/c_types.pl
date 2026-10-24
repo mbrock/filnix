@@ -1234,8 +1234,9 @@ unqualified(T, T).
     The conversions C applies implicitly are nodes of their own: where an
     operand is used for its value, value/2 wraps it in load(X) or
     decay(X). _Generic is resolved here: its tree is the selected
-    association's. A child that is not elaborated yet is src(E), the
-    source expression itself. */
+    association's. Every operand is elaborated but the arguments of a
+    builtin, a statement expression's block and a compound literal's
+    initializer, which stay as the source has them. */
 
 doc(elaborate(+E, +Env, -X), semidet, [
     E: "a C expression, as c_parse reads it",
@@ -1256,6 +1257,11 @@ doc(elaborate(+E, +Env, -X), semidet, [
             X = obj(int, deref(val(ptr(int),
                     bin(add, val(ptr(int), decay(obj(array(int, 4), id(a)))),
                              val(int, int(1))))))),
+    example(( empty_env(E0), bind_ordinary(x, var(none, short), E0, E),
+              elaborate(comma(assign(=, id(x), chr(1)), id(x)), E, X) ),
+            X = val(short, comma(val(short, assign(=, obj(short, id(x)),
+                                                   val(int, int(1)))),
+                                 val(short, load(obj(short, id(x))))))),
     example(( empty_env(E), elaborate(str([104, 105]), E, X) ),
             X = obj(array(char, 3), str([104, 105]))),
     fails(( empty_env(E), elaborate(un(deref, chr(1)), E, _) ))
@@ -1311,24 +1317,30 @@ elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
     (   Args == [], float_builtin(Name, T, _) -> true
     ;   builtin_type(Name, T)
     ).
-elab(call(E, Args), Env, val(T, call(XV, src(Args)))) :-
-    operand(E, Env, XV, ptr(func(T, _, _))).
-elab(assign(Op, A, B), Env, val(T, assign(Op, X, src(B)))) :-
-    elaborate(A, Env, X), tree_type(X, T).
-elab(comma(A, B), Env, val(T, comma(src(A), XV))) :-
+elab(call(E, Args), Env, val(T, call(XV, XArgs))) :-
+    operand(E, Env, XV, ptr(func(T, _, _))),
+    maplist(argument(Env), Args, XArgs).
+elab(assign(Op, A, B), Env, val(T, assign(Op, X, XB))) :-
+    elaborate(A, Env, X), tree_type(X, T),
+    argument(Env, B, XB).
+elab(comma(A, B), Env, val(T, comma(XA, XV))) :-
+    argument(Env, A, XA),
     operand(B, Env, XV, T).
-elab(sizeof_expr(E), _, val(ulong, sizeof(src(E)))).
+elab(sizeof_expr(E), Env, val(ulong, sizeof(X))) :-
+    elaborate(E, Env, X).
 elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
 elab(alignof(TN), _, val(ulong, alignof(TN))).
 elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
 elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
     operand(A, Env, XA, TA), operand(B, Env, XB, TB),
     expression_binary_type(Op, TA, TB, T).
-elab(cond(C, A, B), Env, val(T, cond(src(C), XA, XB))) :-
+elab(cond(C, A, B), Env, val(T, cond(XC, XA, XB))) :-
+    argument(Env, C, XC),
     arms(A, B, Env, XA, XB, T).
 elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
     arms(C, B, Env, XC, XB, T).
-elab(va_arg(A, TN), Env, val(T, va_arg(src(A)))) :-
+elab(va_arg(A, TN), Env, val(T, va_arg(XA))) :-
+    argument(Env, A, XA),
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
 elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
     block_value_type(Items, Env, T).
@@ -1336,6 +1348,11 @@ elab(generic(C, As), Env, X) :-                             % 6.5.1.1
     operand(C, Env, _, CT),
     generic_selection(CT, As, Env, constant, E),
     elaborate(E, Env, X).
+
+% argument(+Env, +E, -XV): XV is E elaborated and used for its value: a
+% call argument, the source of an assignment, a ?: condition, or the left
+% operand of a comma, whose value is discarded after it is evaluated.
+argument(Env, E, XV) :- operand(E, Env, XV, _).
 
 doc(identifier_type(+Binding, +Name, +Env, -T), det, [
     Binding: "what the identifier Name stands for in Env",
