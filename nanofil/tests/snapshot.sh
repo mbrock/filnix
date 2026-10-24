@@ -17,6 +17,8 @@ root=$(cd "$here/../.." && pwd)
 rev=$(git -C "$root" rev-parse "${1:-HEAD}")
 cache=${SNAPSHOT_CACHE:-/tmp/nanofil-snapshot}
 export FILCC=${FILCC:?set FILCC to a filcc clang}
+# Both revisions run from their sources; a saved state is one revision.
+unset NANOFIL_STATE
 mkdir -p "$cache"
 
 # corpus NAME: the store path of the pinned corpus NAME.

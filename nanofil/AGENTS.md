@@ -40,6 +40,10 @@ nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs 
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc
 ```
 
+For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and
+`export NANOFIL_STATE=/tmp/nanofil.state` skip compiling `src/` each time
+(0.26 s to 0.05 s); rebuild the state after editing `src/`, or unset it.
+
 `bin/nanofil` runs on SWI-Prolog by default; `NANOFIL_HOST=trealla` (with
 `TPL=/tmp/tpl-native/bin/tpl`) runs the same commands on Trealla. Under
 SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.

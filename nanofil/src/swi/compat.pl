@@ -14,14 +14,20 @@
     - `:- initialization(G)` becomes SWI's `initialization(G, main)`, so a
       program that ends with halt/1 exits quietly with that status.
 
-    bin/nanofil loads it when NANOFIL_HOST=swi (the default).
+    bin/nanofil loads it when NANOFIL_HOST=swi (the default), or runs a
+    saved state of it and main.pl (NANOFIL_STATE, from --save-state).
 */
 :- prolog_load_context(directory, Dir),
    asserta(user:file_search_path(library, Dir)).
 :- set_prolog_flag(double_quotes, chars).
-:- set_prolog_flag(encoding, utf8).
-:- forall(member(S, [user_input, user_output, user_error]),
-          set_stream(S, encoding(utf8))).
+% A saved state (bin/nanofil's NANOFIL_STATE) does not rerun directives,
+% so the encodings are set again when it starts.
+user:utf8_streams :-
+    set_prolog_flag(encoding, utf8),
+    forall(member(S, [user_input, user_output, user_error]),
+           set_stream(S, encoding(utf8))).
+:- user:utf8_streams.
+:- initialization(user:utf8_streams, restore).
 
 user:term_expansion((:- module(M, Es)),
                     [(:- module(M, Es)), (:- set_prolog_flag(double_quotes, chars))]).

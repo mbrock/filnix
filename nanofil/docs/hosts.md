@@ -64,8 +64,12 @@ Preprocessing Lua 5.4.7's `lvm.c` (65,628 tokens) took 3.2 s, against
 - Startup is 0.26 s, SWI compiling `src/` on every run, about 9 s of
   Lua's 35. A saved state (`swipl -o nanofil.state -c swi/compat.pl
   main.pl`, run with `swipl -x nanofil.state -- ARGS`) starts in 0.05 s
-  with identical output, interpreter commands included. Not wired into
-  `bin/nanofil` or `nix/nanofil-cc.nix` yet.
+  with identical output, interpreter commands included. `bin/nanofil
+  --save-state FILE` builds one and `NANOFIL_STATE=FILE` uses it; the
+  Nix check and `nix/nanofil-cc.nix` (hello, zlib, Lua) do. A state does
+  not rerun directives, so `swi/compat.pl` sets the UTF-8 streams again
+  on restore (without that, stderr printed `\u00E9` for `é` under
+  `LANG=C`).
 - Not tried: skipping a re-included header whose guard macro is defined
   (clang's multiple-include optimization), and SWI strings instead of
   char lists, which would leave the shared dialect.

@@ -47,6 +47,10 @@ pkgs.runCommandCC "nanofil-check"
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs tests bin
+    # Commands run from a saved state (bin/nanofil); scripts still load
+    # src/, so both paths are tested.
+    bin/nanofil --save-state "$TMPDIR/nanofil.state"
+    export NANOFIL_STATE=$TMPDIR/nanofil.state
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log'
     grep -q 'tests ok$' unit.log
     # M9 interpreter against nanofil's SSE2 backend.
