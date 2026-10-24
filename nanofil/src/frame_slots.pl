@@ -1,8 +1,23 @@
-/* Conservative stack-slot allocation. Closed intervals include every write
-   (even dead results), instruction use and CFG live-in/out boundary. Thus
-   one lowered instruction, including all its helper calls, is indivisible.
-   Pointer payloads and lowers share one allocation; scalars never use it.
-   Setjmp functions must not call this allocator (docs/setjmp.md). */
+/*  Conservative stack-slot allocation for the Fil-C backend:
+    temp_slots/6 assigns each temporary a frame slot, and temporaries
+    whose live intervals are disjoint may share one.
+
+    A temporary's interval is closed and covers every write (even of a
+    dead result), every use by an instruction and every block boundary
+    where it is live in or out. One lowered instruction, including all
+    its helper calls, is thus indivisible. Two temporaries share a slot
+    only when their intervals are strictly disjoint, so a result never
+    overwrites its operands.
+
+    | Pool | Holds |
+    |---|---|
+    | `pointer` | `p` temporaries: each slot is a payload slot and its lower, allocated together |
+    | `scalar` | `w`, `l`, `s` and `d` temporaries; they never use the pointer pool |
+
+    A variadic function's hidden `va_snapshot` parameter is kept live for
+    the whole invocation. Functions that call setjmp must not use this
+    allocator (docs/setjmp.md).
+*/
 :- module(frame_slots, [temp_slots/6]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).

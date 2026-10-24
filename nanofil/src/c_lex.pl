@@ -1,24 +1,28 @@
-/*  C lexer (milestone 4a).
+/*  The C lexer (milestone 4a): it turns preprocessed C text into a list
+    of tokens, each with its file and line.
 
-    Input is preprocessed text: `# N "file"` line markers set the location,
-    other directive lines (#pragma, #ident) are skipped. Comments are also
-    skipped, so hand-written test input works without a preprocessor.
+    ## Input
 
-    Tokens are tok(T, File:Line), with T one of
+    The input is preprocessed text. A line marker `# N "file"` or
+    `#line N "file"` sets the location of the next line; any other
+    directive line, such as `#pragma` or `#ident`, is skipped. Comments
+    are skipped too, so hand-written test input works without a
+    preprocessor.
 
-      id(Atom)            identifier
-      kw(Atom)            keyword; GNU spellings are folded, so
-                          __restrict__ is kw(restrict), __asm__ is kw(asm)
-      int(Value, S-R)     suffix S in none, u, l, ul, ll, ull; radix R is
-                          dec or other (hex and octal type differently)
-      float(Chars)        floating constant, rejected by the lowering
-      chr(Value)          character constant, as an int
-      str(Bytes)          string literal, bytes without the terminator
-                          (u8"..." too: UTF-8 bytes)
-      wstr(T, Codes)      L"...", u"..." or U"...": T is the element type
-                          int (wchar_t), ushort (char16_t) or uint
-                          (char32_t), Codes the elements without the 0
-      p(Atom)             punctuator, e.g. p('->'), p('<<=')
+    ## Tokens
+
+    A token is `tok(T, File:Line)`, with T one of:
+
+    | T | Is |
+    |---|---|
+    | `id(Atom)` | an identifier |
+    | `kw(Atom)` | a keyword; GNU spellings are folded, so `__restrict__` is `kw(restrict)` and `__asm__` is `kw(asm)` |
+    | `int(Value, Suffix-Radix)` | an integer constant: Suffix is `none`, `u`, `l`, `ul`, `ll` or `ull`; Radix is `dec`, or `other` for hex and octal, which type differently |
+    | `float(Chars)` | a floating constant, its characters as written |
+    | `chr(Value)` | a character constant, as an int |
+    | `str(Bytes)` | a string literal, its bytes without the terminator (`u8"..."` too, as UTF-8 bytes) |
+    | `wstr(Type, Codes)` | `L"..."`, `u"..."` or `U"..."`: Type is the element type, `int` (wchar_t), `ushort` (char16_t) or `uint` (char32_t), and Codes the elements without the 0 |
+    | `p(Atom)` | a punctuator, such as `p('->')` or `p('<<=')` |
 */
 :- module(c_lex, [c_tokens/3, keyword/2, decimal/1, ident_start/1,
                   ident_char/1, ident_rest//1, punctuator/1, digraph/1]).

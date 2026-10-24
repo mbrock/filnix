@@ -1,44 +1,106 @@
-/*  C parser (milestone 4a): tokens from c_lex to a syntax tree.
+/*  The C parser (milestone 4a): it turns the tokens from c_lex into a
+    syntax tree.
 
     The only semantic state is the set of typedef names in scope, which
-    the grammar needs to tell declarations from expressions; it is the
-    assoc Env (name to t) threaded through the nonterminals. Types,
-    constants and tags are resolved later, in c_types and c_lower.
+    the grammar needs to tell declarations from expressions. It is the
+    assoc Env, from each name to `t`, threaded through the nonterminals.
+    Types, constants and tags are resolved later, in c_types and c_lower.
 
-    Translation unit: a list of
-      decl(Loc, Specs, [init(Dcl, Init)])       Init is none, an expression
-                                                or list(Entries)
-      fundef(Loc, Specs, Dcl, Body)
-      static_assert(Loc, Expr, Message)
-    Entries: [entry(Designators, Init)], each designator field(Name) or
-    index(Expr).
-    Dcl = dcl(Name, Type, Asm): Name is some(Identifier), or none in
-    abstract declarators; Asm is asm(Symbol) or none. Type is a declarator type built around the
-    atom base, which stands for the type the Specs give:
-      base | ptr(T, Quals) | array(T, Size) | func(T, Params)
-      Size: none or an expression. Params: unspecified, or
-      params([param(Specs, Dcl)], fixed | variadic)
-    Specs: storage(S), tspec(K), qual(Q), fspec(F), tname(Name),
-      su(struct | union, Tag, Members, Attrs), enum(Tag, Enumerators),
-      Tag some(Identifier) or none, attr(Tokens), alignas(type(TypeName) | expr(E)), typeof(...)
-      Members: none or [field(Specs, Dcl, Width)] (and static_assert
-      terms), Width none or an expression; Enumerators: none or
-      [enumerator(Name, Expr | none)].
-    Statements are at(Loc, S), S one of
-      block(Items) expr(E) null if(C, T, E) while(C, S) do(S, C)
-      for(Init, C, Step, S) switch(E, S) case(E, S) default(S)
-      break continue return(E | none) goto(L) label(L, S)
-      Block items are statements or decl/static_assert terms; Init is
-      none, expr(E) or a decl term; C and Step may be none.
-    Expressions: id(N) num(V, Suffix) chr(V) str(Bytes) float(Chars)
-      wstr(ElemType, Codes) (wide string)
-      bin(Op, A, B) assign(Op, A, B) (Op = for plain assignment)
-      un(Op, A) for neg plus bnot not deref addr preinc predec postinc
-      postdec; cond(C, A, B) gcond(C, B) (GNU C ?: B) comma(A, B)
-      call(F, Args) index(A, I) member(A, F) arrow(A, F)
-      cast(TypeName, E) sizeof_type(TypeName) sizeof_expr(E)
-      alignof(TypeName) complit(TypeName, Init) offsetof(TypeName, Path)
-    TypeName = type(Specs, Type).
+    ## Translation unit
+
+    A translation unit is a list of these items:
+
+    | Item | Is |
+    |---|---|
+    | `decl(Loc, Specs, Inits)` | a declaration; Inits is a list of `init(Dcl, Init)`, Init `none`, an expression or `list(Entries)` |
+    | `fundef(Loc, Specs, Dcl, Body)` | a function definition |
+    | `static_assert(Loc, Expr, Message)` | Message the string's bytes, or `[]` without one |
+
+    Entries are `entry(Designators, Init)` terms, each designator
+    `field(Name)` or `index(Expr)`.
+
+    ## Declarators
+
+    A declarator is `dcl(Name, Type, Asm)`. Name is `some(Identifier)`,
+    or `none` in abstract declarators; Asm is `asm(Symbol)` or `none`.
+    Type is built around the atom `base`, which stands for the type the
+    Specs give:
+
+    | Type | Means |
+    |---|---|
+    | `base` | the type of the specifiers |
+    | `ptr(T, Quals)` | a pointer to T, Quals a list of qualifiers |
+    | `array(T, Size)` | Size `none` or an expression |
+    | `func(T, Params)` | Params `unspecified`, or `params(Ps, Variadic)` |
+
+    In `params(Ps, Variadic)`, Ps is a list of `param(Specs, Dcl)` and
+    Variadic is `fixed` or `variadic`.
+
+    ## Specifiers
+
+    Specs is a list of:
+
+    | Specifier | Means |
+    |---|---|
+    | `storage(S)` | S is `typedef`, `extern`, `static`, `auto`, `register` or `thread_local` |
+    | `tspec(K)` | a type specifier keyword such as `int` or `unsigned` |
+    | `qual(Q)` | a qualifier: `const`, `volatile`, `restrict` or `atomic` |
+    | `fspec(F)` | `inline` or `noreturn` |
+    | `tname(Name)` | a typedef name |
+    | `su(Kind, Tag, Members, Attrs)` | Kind `struct` or `union` |
+    | `enum(Tag, Enumerators)` | an enum |
+    | `attr(Tokens)` | an attribute |
+    | `alignas(type(TypeName))` `alignas(expr(E))` | `_Alignas` |
+    | `typeof(type(TypeName))` `typeof(expr(E))` | `typeof` |
+
+    A Tag is `some(Identifier)` or `none`. Members is `none`, or a list
+    of `field(Specs, Dcl, Width)` and `static_assert` terms, Width `none`
+    or an expression. Enumerators is `none`, or a list of
+    `enumerator(Name, Value)`, Value an expression or `none`.
+
+    ## Statements
+
+    A statement is `at(Loc, S)`, with S one of:
+
+    | S | Notes |
+    |---|---|
+    | `block(Items)` | Items are statements, `decl` and `static_assert` terms |
+    | `expr(E)` | |
+    | `null` | the empty statement |
+    | `if(C, Then, Else)` | Else `none` without an else |
+    | `while(C, S)` `do(S, C)` | |
+    | `for(Init, C, Step, S)` | Init `none`, `expr(E)` or a `decl` term; C and Step may be `none` |
+    | `switch(E, S)` `case(E, S)` `default(S)` | |
+    | `break` `continue` | |
+    | `return(E)` | E may be `none` |
+    | `goto(L)` `label(L, S)` | |
+
+    ## Expressions
+
+    | Expression | Means |
+    |---|---|
+    | `id(N)` | an identifier |
+    | `num(V, Suffix-Radix)` | an integer constant, as c_lex gives it |
+    | `chr(V)` `float(Chars)` | character and floating constants |
+    | `str(Bytes)` | a string literal |
+    | `wstr(ElemType, Codes)` | a wide string literal |
+    | `bin(Op, A, B)` | a binary operator |
+    | `assign(Op, A, B)` | Op is `=` for plain assignment |
+    | `un(Op, A)` | Op `neg`, `plus`, `bnot`, `not`, `deref`, `addr`, `preinc`, `predec`, `postinc` or `postdec` |
+    | `cond(C, A, B)` | `C ? A : B` |
+    | `gcond(C, B)` | GNU C's `C ?: B` |
+    | `comma(A, B)` | |
+    | `call(F, Args)` `index(A, I)` | |
+    | `member(A, F)` `arrow(A, F)` | `A.F` and `A->F` |
+    | `cast(TypeName, E)` | |
+    | `sizeof_type(TypeName)` `sizeof_expr(E)` `alignof(TypeName)` | |
+    | `complit(TypeName, Init)` | a compound literal |
+    | `offsetof(TypeName, Path)` | Path a list of `field(F)` and `index(E)` |
+    | `va_arg(A, TypeName)` | `__builtin_va_arg` |
+    | `stmtexpr(Block)` | a GNU statement expression |
+    | `generic(Control, Associations)` | `_Generic`, Associations a list of `assoc(TypeName, E)` and `assoc(default, E)` |
+
+    A TypeName is `type(Specs, Type)`.
 */
 :- module(c_parse, [c_parse/2, c_constant_expression/2, c_operator/4,
                     compound_assignment/2]).

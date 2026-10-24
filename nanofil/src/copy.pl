@@ -1,21 +1,40 @@
-/*  Copy propagation after promote, by copy_module/2.
+/*  Copy propagation, run after promote: copy_module/2 removes copies
+    and trivial phis from each function in strict SSA form, replacing
+    every use by the value it copies.
 
-    Only strict SSA functions are changed. Same-class temporary copies
-    and integer constant copies disappear, then trivial phis: ignoring
-    self inputs, all operands must name one value. In particular, an
-    l -> w copy narrows, and a p symbol/literal must still materialize a
-    pointer (and keep the module's ABI/mode).
+    ## What disappears
 
-    Index the eligible copies, then resolve each chain once, memoizing
-    every link on the way back. Source order need not be dependency
-    order. The copy work is O((definitions + uses) log definitions), not
-    repeated whole-function scans or one chain walk per use.
+    - A copy of a temporary of the same class.
+    - A copy of an integer constant at class `w` or `l`, reduced modulo
+      2^32 or 2^64.
+    - Then each trivial phi: one whose operands, ignoring its own
+      temporary, all name one value.
 
-    strict_ssa checks dominance only in reachable blocks. Never remove
-    dead definitions: they may contain cycles or use-before-definition.
-    Do rewrite dead uses of removed live copies, including phi edges,
-    so all temporaries remain defined. Phi simplification considers even
-    dead incoming edges, and leaves all-self and nontrivial cycles alone.
+    Everything else stays. An `l` to `w` copy narrows, and a `p` copy of
+    a symbol or literal must still materialize a pointer, keeping the
+    module's ABI and mode. Functions that are not in strict SSA form,
+    and functions that call setjmp, are left alone.
+
+    ## How
+
+    The eligible copies are indexed, then each chain is resolved once,
+    memoizing every link on the way back, so source order need not be
+    dependency order. The copy work is O((definitions + uses) log
+    definitions), not repeated whole-function scans or one chain walk
+    per use. Trivial phis are found by a worklist that revisits only the
+    phis that read a simplified one.
+
+    ## Dead code
+
+    strict_ssa/3 checks dominance only in reachable blocks, so:
+
+    - Dead definitions are never removed: they may contain cycles or
+      uses before definitions. Only copies in reachable blocks are
+      eligible, and only phis in reachable blocks are simplified.
+    - Dead uses of removed live copies are rewritten, including phi
+      edges, so every temporary stays defined.
+    - Phi simplification counts dead incoming edges too, and leaves
+      all-self phis and nontrivial cycles alone.
 */
 :- module(copy, [copy_module/2]).
 

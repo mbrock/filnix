@@ -114,6 +114,11 @@ pages run them again and mark each ✓ or ✗.
   `doc/3` fact replaces the `%!` comment, it does not repeat it.
 - Snapshot byte-identity is unaffected: `doc/3` is never called by the
   compiler.
+- A file's header comment is its page's lede, written in the little
+  Markdown dterm reads ([docs/dterm.md](docs/dterm.md)): `##` headings,
+  pipe tables for term forms and their meanings, term forms in
+  backticks as valid Prolog so they draw as terms, and a ```` ```diagram ````
+  only where a picture helps. `c_types.pl`'s header is the model.
 
 ## Working alongside other threads
 

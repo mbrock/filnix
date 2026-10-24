@@ -1,16 +1,30 @@
-/*  Address expressions for M5 (alias_facts/2), not a no-alias or
-    bounds proof.
+/*  Address expressions for milestone 5: alias_facts/2 writes each
+    address of a strict SSA function as a base plus a constant offset.
+    The facts are not a no-alias or bounds proof.
 
-    Address = Base + Offset modulo 2^64; Offset is the signed 64-bit
-    representative. In class p the capability is also the base's.
-    Follow only same-class copies and constant add/sub. A w copy is not
-    an address alias, even when its operand was an l.
+    ## Address facts
 
-    Different bases may alias! Parameters, symbols and opaque values
-    need not name different objects. An alloc base names the current
-    execution of that SSA definition, not all its loop iterations. These
-    facts alone justify neither removing a bounds check nor moving an
-    access or allocation across control flow.
+    A fact `addr(Class, Base, Offset)` says the address is Base + Offset
+    modulo 2^64, with Offset the signed 64-bit representative. In class
+    `p` the capability is also the base's.
+
+    | Base | Names |
+    |---|---|
+    | `alloc(Temp)` | the current execution of that alloc's SSA definition, not all its loop iterations |
+    | `param(Temp)` | a parameter |
+    | `symbol(Name)` | a symbol |
+    | `value(Temp)` | an opaque SSA value: a load, call, cast, phi, or any other computed value |
+
+    Only same-class copies and additions and subtractions of a constant
+    are followed. A `w` copy is not an address alias, even when its
+    operand was an `l`.
+
+    ## What the facts do not say
+
+    Different bases may alias: parameters, symbols and opaque values
+    need not name different objects. These facts alone justify neither
+    removing a bounds check nor moving an access or allocation across
+    control flow.
 */
 :- module(alias, [alias_facts/2]).
 

@@ -1,8 +1,16 @@
-/*  The middle end's entry points, for the driver, and the comparison the
-    interpreter uses to validate it: optimize/3 runs the passes at a
-    level, and refines/2 relates the outcome of a program to the outcome
-    of its optimized version. The driver's difftest and unit tests
-    validate the optimized IR, rather than repeating that work on every
+/*  The middle end's entry points for the driver, and the comparison the
+    interpreter uses to validate it.
+
+    optimize/3 runs the passes at a level:
+
+    ```diagram
+    o0:  M0 ─────────────────────────────────────▶ M
+    o1:  M0 ─▶ without_locs ─▶ promote ─▶ copy ─▶ M
+    ```
+
+    refines/2 relates the outcome of a program to the outcome of its
+    optimized version. The driver's difftest and the unit tests validate
+    the optimized IR, rather than repeating that work on every
     compilation.
 */
 :- module(opt, [optimize/3, refines/2]).

@@ -1,49 +1,73 @@
-/*  C to IR lowering (milestone 4b), in the style of cproc.
+/*  Lowering from C to IR (milestone 4b), in the style of cproc: it turns
+    the parsed translation unit into an IR module for the Fil-C backend.
 
-    Every local variable and parameter lives in an alloc'd object, the
-    allocs hoisted into the entry block; M5's promote will turn them into
-    temporaries. Pointers are class p, so the output is a Fil-C module.
+    Every local variable and parameter lives in an alloc'd object, and
+    the allocs are hoisted into the entry block; with -O, promote turns
+    them into temporaries. Pointers are class `p`, so the output is a
+    Fil-C module.
 
-    Values during lowering:
-      v(Value, Type)   an rvalue: Value is an IR value, Type a C type
-      lv(Addr, Type)   an object at Addr, a p value: an lvalue, or a
-                       member of a struct rvalue
-      fd(Symbol, Type) a function designator
-    Expressions are lowered from c_types' typed trees (elaborate/3):
-    the tree says what each expression is and what its operands are
+    Expressions are lowered from c_types' typed trees (elaborate/3). The
+    tree says what each expression is and what its operands are
     converted to, and the elaborator has checked C's constraints, so
-    lowering only translates (lower//3 for values, place//3 for objects
-    and functions).
+    lowering only translates: lower//3 for values, place//3 for objects
+    and functions.
+
     A narrow integer (char, short, bool) is always held sign- or
-    zero-extended to 32 bits in a w, so conversions only extend when the
-    source type has values the target cannot represent.
+    zero-extended to 32 bits in a `w`, so conversions only extend when
+    the source type has values the target cannot represent.
+
+    ## Values
+
+    | Value | Is |
+    |---|---|
+    | `v(Value, Type)` | an rvalue: Value is an IR value, Type a C type |
+    | `lv(Addr, Type)` | an object at Addr, a `p` value: an lvalue, or a member of a struct rvalue |
+    | `fd(Callee, Type)` | a function designator; Callee is an IR value, `global(Symbol)` for a named function |
+
+    ## State
 
     The lowering nonterminals describe a one-element list holding the
     state, accessed through the semicontext nonterminals state//1 and
-    state//2 and called with phrase/3 at the entry points:
-      st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)
-      Env     the c_types environment e(Ords, Tags, Defs, Next)
-      Cur     cur(Label, Phis), or none after a jump (dead code then
-              opens an unreachable block)
-      Insts, Blocks, Allocs  reversed
-      N       the counter for fresh temporaries and labels
-      Labels  assoc from C goto labels to IR labels
-      Cases   the enclosing switch's case(Value, Label) and default(Label)
-    The context argument Ctx = ctx(Function, ReturnType, Break, Continue,
-    Loc); Break and Continue are some(Label), or none outside a loop or
-    switch.
+    state//2 and called with phrase/3 at the entry points. The state is
+    `st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)`:
 
-    Besides what c_types keeps there, the environment's Defs hold
-    gdef(Symbol) global definitions, lit(Symbol) string literals and
-    deferred(Symbol) static inline functions, and its Next numbers
-    literals and compound literals as well as struct ids.
+    | Field | Is |
+    |---|---|
+    | Env | the c_types environment `e(Ords, Tags, Defs, Next)` |
+    | Cur | `cur(Label, Phis)`, the open block, or `none` after a jump; dead code then opens an unreachable block |
+    | Insts, Blocks, Allocs | the instructions, blocks and allocs so far, reversed |
+    | N | the counter for fresh temporaries and labels |
+    | Labels | an assoc from C goto labels to IR labels |
+    | Cases | the enclosing switch's `case(Value, Label)` and `default(Label)` |
 
-    Variable conventions: State0 and State are st/8 terms, Env0
-    ... Env the environment; Ctx is the context and Loc a source
-    location; R is a v/lv/fd value term, Value0 one before conversion,
-    V an IR value; L-prefixed names are IR labels; Ebs are eightbytes
-    eb(Offset, Bytes, Class); S0 ... S thread Env-Chunks pairs in the
-    static initializer predicates.
+    The context argument Ctx is
+    `ctx(Function, ReturnType, Break, Continue, Loc)`, where Break and
+    Continue are `some(Label)`, or `none` outside a loop or switch.
+
+    ## The environment
+
+    Besides what c_types keeps there, the environment's Defs hold:
+
+    - `gdef(Symbol)`: a global definition;
+    - `lit(Symbol)`: a string literal;
+    - `deferred(Symbol)`: a static inline function, lowered only if
+      something refers to it.
+
+    Next numbers string and compound literals as well as struct ids.
+
+    ## Variable names
+
+    | Name | Is |
+    |---|---|
+    | State0, State | `st/8` terms |
+    | Env0 ... Env | the environment |
+    | Ctx | the context |
+    | Loc | a source location |
+    | R | a `v`, `lv` or `fd` value term; Value0 is one before conversion |
+    | V | an IR value |
+    | L-prefixed names | IR labels |
+    | Ebs | eightbytes, `eb(Offset, Bytes, Class)` |
+    | S0 ... S | `s(Env, Chunks, End)` in the static initializer predicates |
 */
 :- module(c_lower, [c_module/2]).
 

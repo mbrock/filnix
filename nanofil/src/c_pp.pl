@@ -1,16 +1,30 @@
-/*  C preprocessor (milestone 4e).
+/*  The C preprocessor (milestone 4e): it expands a C file's macros,
+    includes and conditionals and hands the result to c_lex as tokens.
 
-    Preprocessing tokens are t(Spelling, File:Line, Space, Hide): the
-    spelling as an atom, the location, whether whitespace precedes the
-    token (yes or no; # and #define need it) and the hide set, the sorted
-    macro names that must not expand this token again. A newline is the
-    token nl until the input is split into lines.
+    ## Preprocessing tokens
 
-    The environment is env(Macros, IncludeDirs, Features, Once, File):
-    an assoc from names to obj(Body) or fun(Params, Body) (and from
-    saved(Name) to #pragma push_macro stacks), the include search path,
-    the target's feature answers, the files seen by #pragma once, and the
-    file whose directives are being processed.
+    A preprocessing token is `t(Spelling, File:Line, Space, Hide)`:
+
+    | Part | Is |
+    |---|---|
+    | Spelling | the token's text, as an atom |
+    | `File:Line` | its location |
+    | Space | `yes` if whitespace precedes the token, else `no`; `#` and `#define` need it |
+    | Hide | the hide set: the sorted macro names that must not expand this token again |
+
+    A newline is the token `nl` until the input is split into lines.
+
+    ## The environment
+
+    The environment is `env(Macros, IncludeDirs, Features, Once, File)`:
+
+    | Part | Is |
+    |---|---|
+    | Macros | an assoc from macro names to `obj(Body)` or `fun(Params, Body)`, and from `saved(Name)` to the `#pragma push_macro` stack of Name |
+    | IncludeDirs | the include search path |
+    | Features | the target's answers to feature operators |
+    | Once | the files seen by `#pragma once` |
+    | File | the file whose directives are being processed |
 
     Only the file and target-profile adapters do I/O. No C source or
     header is sent to clang.

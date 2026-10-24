@@ -279,6 +279,29 @@ nested conditionals into named relations such as `composite_size/3`,
 `identifier_type/4`, `designator/3` and `pointed_type/4`, and wrote
 `->` as `elab(member(un(deref, E), F))`, as 6.5.2.3p4 defines it.
 
+## Module headers as prose (October 2026)
+
+A file's header comment is the lede of its page, and it had been
+written for an 80-column terminal: term grammars as aligned columns,
+fields as indented runs, all drawn as one grey preformatted block. The
+comment now takes a little Markdown, chosen so the plain text still
+reads well in an editor:
+
+- `## Heading` and `### Heading`, drawn as h3 and h4 (the page's own
+  sections are h2);
+- pipe tables, `| A | B |` over `|---|---|`, where a `|` inside
+  backticks stays in its cell;
+- ```` ```prolog ```` fences, whose terms (each ending in a full stop)
+  are drawn as terms, and ```` ```diagram ```` fences for a box drawing;
+- inline code that reads as a compound term, such as `ptr(T)` or
+  `e(Ords, Tags, Defs, Next)`, set as a term in the colours of the code;
+  `Name/Arity` and anything that does not read stays code.
+
+Indented lines are still a preformatted block, so an unconverted header
+draws as before. `c_types.pl` was converted first, its type terms, the
+environment and its definitions and members each a table; the other
+modules followed.
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

@@ -1,35 +1,59 @@
-/*  C types (milestone 4a): specifiers and declarators to type terms,
-    sizes and layouts, integer conversions and constant expressions.
+/*  C's types as terms: specifiers and declarators become type terms,
+    and from those come sizes and layouts, the integer conversions and
+    the values of constant expressions (milestone 4a).
 
-    Types:
-      void bool char schar uchar short ushort int uint long ulong llong
-      ullong float double ldouble
-      ptr(T)  array(T, N | none)  func(Ret, Params, fixed | variadic)
-      struct(Id)  union(Id)
-    Params is a list of types (already adjusted: arrays and functions
-    become pointers) or unspecified. Qualifiers are dropped. Enum types are
-    their underlying integer type. A type the frontend cannot handle yet
-    is bad(Reason); it is only an error when a declaration uses it, so
-    headers that mention such types still parse.
+    ## Types
 
-    The semantic environment is e(Ords, Tags, Defs, Next):
-      Ords  assoc, Name -> typedef(T) | enumconst(V, T) | anything the
-            lowering stores (variables and functions)
-      Tags  assoc, Name -> tag(struct | union, Id) | enum(T)
-      Defs  assoc, Id -> incomplete(Tag) | def(Kind, Members, Size, Align)
-            | partial(Reason, Members) | bad(Reason); partial keeps only
-            members with known offsets, not a usable object layout.
-            The lowering keeps entries of its own here too
-            Tag: some(Name), or none for an anonymous struct or union
-            Members: [m(Name, Type, Offset)], Name some(Field), or none
-            for an anonymous struct or union member; a bit-field is
-            m(some(Field), Type, Offset, bits(Pos, Width)), its Width
-            bits from bit Pos of the Type at Offset
-      Next  the next struct id
-    Block scopes save Ords and Tags and restore them on exit; Defs and
-    Next only grow. Predicates that change the environment take Env0 and
-    give Env as their last two arguments, so they thread through
-    foldl/4,6.
+    | Type | Means |
+    |---|---|
+    | `void` `bool` | as in C |
+    | `char` `schar` `uchar` | `char`, `signed char`, `unsigned char` |
+    | `short` `int` `long` `llong` | the signed integer types |
+    | `ushort` `uint` `ulong` `ullong` | their unsigned counterparts |
+    | `float` `double` `ldouble` | the floating types |
+    | `ptr(T)` | a pointer to T |
+    | `array(T, N)` | N elements of T, or `array(T, none)` of unknown length |
+    | `func(Ret, Params, Arity)` | Params a list of types, or `unspecified`; Arity `fixed` or `variadic` |
+    | `struct(Id)` `union(Id)` | the struct or union Id of the environment's Defs |
+    | `bad(Reason)` | a type the frontend cannot handle yet |
+
+    Parameter types are already adjusted: arrays and functions become
+    pointers. Qualifiers are dropped, and an enum type is its underlying
+    integer type. A `bad(Reason)` is an error only when a declaration
+    uses it, so headers that mention such types still parse.
+
+    ## The environment
+
+    The semantic environment `e(Ords, Tags, Defs, Next)` has four parts:
+
+    | Part | From | To |
+    |---|---|---|
+    | Ords | an ordinary identifier | `typedef(T)`, `enumconst(V, T)`, or what lowering stores for a variable or function |
+    | Tags | a tag | `tag(Kind, Id)`, Kind `struct` or `union`, or `enum(T)` |
+    | Defs | a struct or union Id | its definition, below |
+    | Next | | the next Id |
+
+    A definition is one of:
+
+    | Definition | Means |
+    |---|---|
+    | `incomplete(Tag)` | declared, not yet defined; Tag is `some(Name)`, or `none` when anonymous |
+    | `def(Kind, Members, Size, Align)` | complete: Members in order, and the layout |
+    | `partial(Reason, Members)` | only the members whose offsets are known: no usable layout |
+    | `bad(Reason)` | a definition the frontend cannot handle yet |
+
+    and a member one of:
+
+    | Member | Means |
+    |---|---|
+    | `m(some(Field), Type, Offset)` | Field, of Type, Offset bytes in |
+    | `m(none, Type, Offset)` | an anonymous struct or union member |
+    | `m(some(Field), Type, Offset, bits(Pos, Width))` | a bit-field: Width bits from bit Pos of the Type at Offset |
+
+    Lowering keeps entries of its own in Defs too. A block scope saves
+    Ords and Tags and restores them when it ends; Defs and Next only
+    grow. A predicate that changes the environment takes Env0 and gives
+    Env as its last two arguments, so it threads through foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
                     type_size_align/4, complete_type/2, int_type/1, int_info/3,

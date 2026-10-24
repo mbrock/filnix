@@ -3,26 +3,38 @@
     question by measurement (tests/bench-cfg.pl, docs/m5.md); passes use
     cfg.pl.
 
-    Versioned facts. assert_version/2 asserts the function's edges and
-    per-block gen/kill as facts tagged with a version V; the relations
-    over them (version_live_in/3, version_live_out/3,
-    version_dominates/3, version_idoms/2, version_frontier/3) take V as
-    an argument, so every version has its own tables. retract_version/1
-    drops a version.
+    | Style | Loads the facts | Relations |
+    |---|---|---|
+    | versioned facts | assert_version/2, retract_version/1 | version_live_in/3, version_live_out/3, version_dominates/3, version_idoms/2, version_frontier/3 |
+    | incremental tabling | incremental_load/1, incremental_update/1, incremental_clear/0 | incremental_live_in/2, incremental_live_out/2 |
 
-    Incremental tabling. incremental_load/1 asserts unversioned facts
-    that are declared incremental, and incremental_update/1 replaces the
-    gen/kill/phi facts of the blocks whose facts differ; Trealla then
-    invalidates exactly the tables that consulted them
-    (incremental_live_in/2, incremental_live_out/2).
+    ## Versioned facts
 
-    Both styles take the gen/kill sets from cfg.pl, which is a local scan
-    of each block: tabling it would only add table overhead.
+    assert_version/2 asserts the function's edges, entry, blocks,
+    per-block gen and kill sets and phi edge uses as facts tagged with a
+    version V. The relations over them take V as an argument, so every
+    version has its own tables. retract_version/1 drops a version's
+    facts and abolishes every table.
 
-    Impurity: facts are asserted and retracted here, which is the
-    "versioned facts at pass boundaries" exception in PLAN's rules. The
-    negations (\+ kill, \+ avoid) are called with ground arguments only,
-    so they are sound.
+    ## Incremental tabling
+
+    incremental_load/1 asserts unversioned facts that are declared
+    incremental. incremental_update/1 replaces the gen, kill and phi
+    edge-use facts that differ from those of the new blocks, and leaves
+    the edges as they are; the host then invalidates only the tables
+    that depend on the changed facts. incremental_clear/0 retracts every
+    incremental fact.
+
+    ## Common ground
+
+    Both styles take the gen and kill sets from cfg.pl, which computes
+    them by a local scan of each block: tabling that would only add
+    table overhead.
+
+    Facts are asserted and retracted here, which is the "versioned facts
+    at pass boundaries" exception in PLAN's rules. The negations
+    (`\+ kill`, `\+ avoid`) are called with ground arguments only, so
+    they are sound.
 */
 :- module(cfg_tabled, [assert_version/2, retract_version/1,
                        version_live_in/3, version_live_out/3,

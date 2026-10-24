@@ -69,6 +69,52 @@ article.dterm h2 {
   border-radius: 4px;
 }
 .dterm .prose code { font-size: 0.82em; }
+
+/* A module header's Markdown (dterm.pl's blocks/2): headings, tables,
+   terms drawn as in the code, and box diagrams. Inline code that reads
+   as a term is set as one, in the type of the code. */
+.dterm .prose .prose-h {
+  margin: 1.5rem 0 0.45rem;
+  font-size: 1.02rem;
+  letter-spacing: 0;
+}
+.dterm .prose h4.prose-h { margin-top: 1.1rem; font-size: 0.92rem; color: var(--muted); }
+.dterm .prose code.term { font: inherit; font-size: 0.96em; background: none; padding: 0; }
+.dterm .prose code.term .c, .dterm .prose code.term .args, .dterm .prose code.term .arg { white-space: nowrap; }
+table.prose-table {
+  display: table;
+  width: auto;
+  max-width: 100%;
+  margin: 0.4rem 0 0.9rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+table.prose-table th {
+  padding: 0 1.1rem 0.25rem 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+table.prose-table td {
+  padding: 0.28rem 1.1rem 0.28rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent);
+  vertical-align: baseline;
+}
+table.prose-table td:first-child { white-space: nowrap; }
+table.prose-table tr:last-child td { border-bottom: 0; }
+.dterm .prose .prose-terms { margin: 0.4rem 0 0.8rem 1rem; }
+.dterm .prose .prose-terms .clause { margin: 0.15rem 0; }
+.dterm .prose pre.fence.diagram {
+  background: none;
+  padding: 0.3rem 0;
+  line-height: 1.1;
+  font-size: 0.78rem;
+}
 .dterm a.ref code { color: var(--accent); }
 
 .dterm .lede { font-size: 1.02rem; margin-bottom: 2rem; }
@@ -542,4 +588,15 @@ section.pred.multi .prose.between {
   .examples tr { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.45em; padding: 0.15rem 0; }
   .examples td { padding: 0; }
   .examples td:empty { display: none; }
+}
+
+/* On a phone a header's table scrolls sideways rather than squeezing its
+   terms, and its type is a step smaller. */
+@media (max-width: 700px) {
+  table.prose-table { display: block; overflow-x: auto; font-size: 0.82rem; }
+  table.prose-table td { padding-right: 0.8rem; }
+}
+@media (max-width: 700px) {
+  table.prose-table td:first-child { white-space: normal; min-width: 8rem; }
+  .dterm .prose table.prose-table code.term .arg { white-space: normal; }
 }

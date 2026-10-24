@@ -1,26 +1,53 @@
-/*  Naive x86-64 SysV backend for the phase-one IR (milestone 2).
+/*  The naive x86-64 SysV backend for the phase-one IR in plain
+    (non-Fil-C) mode (milestone 2). It is the reference the later
+    instruction selection and register allocation milestones are
+    checked against, so it favours being obviously right over being
+    fast.
 
-    Every temporary lives in its own 8-byte frame slot below %rbp, and
-    every instruction loads its operands into fixed scratch registers
-    (%rax, %rcx, %rdx, %xmm0, %xmm1), computes, and stores %rax back.
-    Float computations transfer bits to/from SSE2 scratch registers.
-    A w result is
-    always zero-extended into %rax, so slots are uniformly 8 bytes and a
-    w read is simply the low 4 bytes of the slot.
+    The output is a list of asm.pl lines, instruction and directive
+    terms, which asm:print_asm/1 prints as GNU as text. Functions that
+    call setjmp are refused.
 
-    Phis are lowered on each incoming edge as a parallel copy through
-    per-phi shadow slots. jnz gets an edge block for its false side so
-    each edge carries its own copies. alloc moves %rsp down by the size
-    rounded up to 16, which keeps calls aligned.
+    ## The frame
 
-    The output is a list of asm.pl lines (instruction and directive
-    terms), which asm:print_asm/1 prints as GNU as text. This backend is
-    the reference the later isel and register allocation milestones are
-    checked against, so it favours being obviously right over being fast.
+    Every temporary lives in its own 8-byte slot below %rbp, and each
+    phi destination also has a shadow slot. `alloc` moves %rsp down by
+    its size rounded up to 16, which keeps calls aligned.
 
-    Variables: K is a class (w, l, s or d) or, where stated, a store width
-    (b, h, w, l, s, d); S is an AT&T suffix; R is a register (a, c, d, si, di, r8,
-    r9) and RN its name at a width; Ctx is the function context.
+    ```diagram
+    ┌──────────────────────────┐ ← %rbp
+    │ tmp(N) slots, 8 bytes    │   -8, -16, …
+    │ shadow(N) slots, 8 bytes │
+    │ padding to 16 bytes      │
+    ├──────────────────────────┤ ← %rsp after the prologue
+    │ alloc'd blocks, each a   │
+    │ multiple of 16 bytes     │
+    └──────────────────────────┘ ← %rsp
+    ```
+
+    ## Instructions
+
+    Every instruction loads its operands into fixed scratch registers
+    (%rax, %rcx, %rdx, %xmm0, %xmm1), computes, and stores %rax back to
+    its destination's slot. A float computation moves the bits into
+    the SSE2 scratch registers and its result back to %rax: slots hold
+    bits, not floats. A `w` result is always zero-extended into %rax, so
+    every slot is 8 bytes and a `w` read is the low 4 bytes of its slot.
+
+    Phis are lowered on each incoming edge as a parallel copy: every
+    incoming value goes into its phi's shadow slot, then every shadow
+    into its phi. A `branch(V, IfTrue, IfFalse)` gets a labelled edge
+    for its false side, so each edge carries its own copies.
+
+    ## Variable conventions
+
+    | Variable | Means |
+    |---|---|
+    | K | a class, `w`, `l`, `s` or `d`, or where stated a store width, `b`, `h`, `w`, `l`, `s` or `d` |
+    | S | an AT&T suffix |
+    | R | a register: `a`, `c`, `d`, `si`, `di`, `r8` or `r9` |
+    | RN | the name of R at a width |
+    | Ctx | the function context, `f(Name, Ret, Slots, Blocks)` |
 */
 :- module(amd64, [module_asm/2, compute_op//4, load//4, load_slot//4,
                   store_reg//3, store_insn/3, reg_name/3, load_insn/3,

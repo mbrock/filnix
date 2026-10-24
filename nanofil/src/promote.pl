@@ -1,32 +1,51 @@
-/*  promote: memory slots to SSA temporaries, by promote_module/2 and
-    promote_func/3. Prior art: QBE's promote and ssa passes, LLVM's
+/*  Promotion of memory slots to SSA temporaries, by promote_module/2
+    and promote_func/3. Prior art: QBE's promote and ssa passes, LLVM's
     mem2reg.
 
-    A slot is one fixed (offset, width) of an alloc that escape.pl calls
-    local. An alloc is promoted, all its slots at once, when
-      - it is in the entry block, so it runs exactly once per call (the
-        validator forbids jumps to the entry block) and its fresh contents
-        are the only initial state;
-      - its size is a constant and every slot lies inside it, so no access
-        could trap or be undefined;
-      - its slots do not overlap and each offset has one width, so every
-        load reads exactly the bytes one earlier store wrote;
-      - in filc mode, p slots are 8-aligned (allocs are 16-aligned), so no
-        load(p) or store(p, ...) could trap as misaligned.
-    The function must also be in strict SSA form (each temp defined once,
-    every definition dominating its uses); otherwise a stored temp could
-    be redefined before the load that promote would turn into its copy.
-    A function that is not is left alone.
+    ## Which allocs
 
-    Loads become copies or extensions of the slot's current value, stores
-    disappear, and phis are placed on the iterated dominance frontier of
-    the stores where the slot is live (pruned SSA, Cytron et al.). Before
-    any store a slot holds 0: Fil-C allocations are zeroed, and in plain
-    mode the bytes are unknown, so 0 is one of the values they could have.
+    A slot is one fixed offset and width, `acc(Off, Width)`, of an alloc
+    that escape.pl calls local. An alloc is promoted, all its slots at
+    once, when:
 
-    Values keep the class of the store: a store(b, ...) of a w value
-    keeps the whole value, and each load narrows or extends it again,
-    exactly as the bytes would.
+    - it is in the entry block, so it runs exactly once per call (the
+      validator forbids jumps to the entry block) and its fresh contents
+      are the only initial state;
+    - its size is a constant and every slot lies inside it, so no access
+      could trap or be undefined;
+    - its slots do not overlap and each offset has one width, so every
+      load reads exactly the bytes one earlier store wrote;
+    - in filc mode, its `p` slots are 8-aligned (allocs are 16-aligned),
+      so no `load(p)` or `store(p, V, A)` could trap as misaligned.
+
+    The function must also be in strict SSA form: each temp defined
+    once, every definition dominating its uses. Otherwise a stored temp
+    could be redefined before the load that promote would turn into its
+    copy. A function that is not, or that calls setjmp, is left alone.
+
+    ## The rewrite
+
+    Loads become copies or extensions of the slot's current value, and
+    stores disappear. Phis are placed on the iterated dominance frontier
+    of the entry and the reachable blocks that store to the slot, where
+    the slot is live (pruned SSA, Cytron et al.); their temps are named
+    `pr.N`. Before any store a slot holds 0: Fil-C allocations are
+    zeroed, and in plain mode the bytes are unknown, so 0 is one of the
+    values they could have. Unreachable blocks read 0 too.
+
+    Values keep the class of the store: a `store(b, V, A)` of a `w`
+    value keeps the whole value, and each load narrows or extends it
+    again, exactly as the bytes would.
+
+    | A load of | Becomes, on the slot's value |
+    |---|---|
+    | `l` or `p` | `copy` |
+    | `sw` or `uw`, at class `w` | `copy` |
+    | `sw` or `uw`, at class `l` | `ext(sw)` or `ext(uw)` |
+    | `sh`, `uh`, `sb` or `ub` | the extension of that type, such as `ext(sb)` |
+
+    A slot's phi has class `w` for widths `b`, `h` and `w`, and the
+    slot's width, `l` or `p`, otherwise.
 */
 :- module(promote, [promote_module/2, promote_func/3, promotable/3,
                     alloc_count/2, strict_ssa/3]).

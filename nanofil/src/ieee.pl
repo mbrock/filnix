@@ -1,12 +1,26 @@
-/* Integer-only IEEE 754 binary32/binary64, round to nearest, ties even.
-   Public operands/results are unsigned bit patterns, never host floats.
-   Finite intermediates are exact rationals; round_ratio is the single
-   rounding boundary (including gradual underflow and overflow).
-   All public inputs must be concrete. ieee_to_int fails for nonfinite
-   inputs; its caller checks the destination integer's range.
-   ieee_decimal emits an exact decimal, not necessarily the shortest.
-   ieee_parse accepts decimal and C hexadecimal significands, without a
-   C type suffix (the frontend selects K after removing that suffix). */
+/*  IEEE 754 binary32 and binary64 arithmetic with integers only, rounding
+    to nearest, ties to even.
+
+    Operands and results are unsigned bit patterns, never host floats.
+    Finite intermediates are exact rationals, and round_ratio is the
+    single rounding boundary, gradual underflow and overflow included.
+    All public inputs must be concrete.
+
+    ## Predicates
+
+    K is `s` (binary32) or `d` (binary64).
+
+    | Predicate | Notes |
+    |---|---|
+    | `ieee_binary(K, Op, A, B, R)` | Op is `add`, `sub`, `mul` or `div` |
+    | `ieee_neg(K, A, B)` | flips the sign bit |
+    | `ieee_convert(From, To, A, B)` | between the two formats |
+    | `ieee_from_int(K, N, B)` | N any integer |
+    | `ieee_to_int(K, B, N)` | truncates; fails for nonfinite inputs, and the caller checks the destination integer's range |
+    | `ieee_compare(K, Cond, A, B, R)` | R is 1 or 0; Cond is `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `o` (ordered) or `uo` (unordered) |
+    | `ieee_parse(K, Chars, B)` | a decimal or C hexadecimal significand, without a C type suffix: the frontend selects K after removing the suffix |
+    | `ieee_decimal(K, B, Chars)` | an exact decimal, not necessarily the shortest; fails for nonfinite inputs |
+*/
 :- module(ieee, [ieee_binary/5, ieee_neg/3, ieee_convert/4,
                  ieee_from_int/3, ieee_to_int/3, ieee_compare/5,
                  ieee_parse/3, ieee_decimal/3]).

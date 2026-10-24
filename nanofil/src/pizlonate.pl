@@ -2,28 +2,30 @@
     form the Fil-C backend compiles, named after Fil-C's LLVM pass.
 
     The checks Fil-C requires are implicit in the unchecked stage, where
-    a load or store at a p address means "check, then access". This pass
-    states them: each such access becomes a check, whose class a result
-    is the proven address, and the raw access that reads it.
+    a load or store at a `p` address means "check, then access". This
+    pass states them: each such access becomes a check, whose class `a`
+    result is the proven address, and the raw access that reads it.
 
-      let(tmp(D), K, load(T), [A])
-          ->  let(tmp(Q), a, check(0, S, read, Al), [A]),
-              let(tmp(D), K, raw_load(T, 0), [tmp(Q)])
-      store(W, V, A)
-          ->  let(tmp(Q), a, check(0, S, write, Al), [A]),
-              raw_store(W, 0, V, tmp(Q))
+    | Unchecked | Checked |
+    |---|---|
+    | `let(tmp(D), K, load(T), [A])` | `let(tmp(Q), a, check(0, S, read, Al), [A])`, then `let(tmp(D), K, raw_load(T, 0), [tmp(Q)])` |
+    | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
 
-    S and Al are the access's size and alignment (ir:access_size_align/3).
-    And every edge that does not go forward in block order gets a
-    pollcheck, poll(L), so every cycle polls.
+    S and Al are the access's size and alignment
+    (ir:access_size_align/3), and Q is a fresh name.
+
+    Every edge that does not go forward in block order, to a block at
+    or before its source, gets a pollcheck, `poll(L)`, so every cycle
+    polls. In a plain module, whose addresses are not Fil-C pointers,
+    only the polls are added.
 
     This is the naive pass: one check per access, right before it, and
     every backward edge polls. Merging checks needs a model of free in
     the interpreter first (docs/pizlonation.md).
 
-    setjmp's jmp_buf store and va_arg's cursor stay opaque: the backend
-    checks them inside the instruction, as the runtime helpers they call
-    do.
+    The jmp_buf store of `setjmp` and the cursor of `va_arg` stay
+    opaque: the backend checks them inside the instruction, as the
+    runtime helpers they call do.
 */
 :- module(pizlonate, [pizlonate_module/2]).
 

@@ -1,34 +1,50 @@
-/*  x86-64 assembly terms and their GNU as (AT&T) printer.
+/*  x86-64 assembly as terms, and their printer as GNU as (AT&T) text.
+    The backends build a list of lines; this module is the only place
+    that knows AT&T syntax.
 
-    The backends build a list of lines; this module is the only place that
-    knows AT&T syntax. A line is
+    ## Lines
 
-      label(S)                    S:
-      ins(Op, Suffix, Operands)   Op, then Suffix unless none, operands in
-                                  AT&T order (sources first)
-      a directive                 section(text | data | rodata |
-                                  bss | data_rel_ro | note_gnu_stack),
-                                  p2align(N), balign(N), globl(S), weak(S),
-                                  hidden(S),
-                                  type(S, function | object), size(S)
-                                  (.-S), size(S, N), set(S, E), quad(E),
-                                  long(N), int(N), short(N), byte(Ns),
-                                  zero(N), ascii(Chars), asciz(Atom)
+    | Line | Prints as |
+    |---|---|
+    | `label(S)` | `S:` |
+    | `ins(Op, Suffix, Operands)` | Op, then Suffix unless it is `none`, then the operands in AT&T order (sources first) |
+    | a directive | the directive, below |
+
+    | Directive | Prints as |
+    |---|---|
+    | `section(S)` | the section S: `text`, `data`, `rodata`, `bss`, `data_rel_ro` or `note_gnu_stack` |
+    | `p2align(N)` `balign(N)` | `.p2align N`, `.balign N` |
+    | `globl(S)` `weak(S)` `hidden(S)` | `.globl S`, `.weak S`, `.hidden S` |
+    | `type(S, T)` | `.type S, @T`, T `function` or `object` |
+    | `size(S)` | `.size S, .-S` |
+    | `size(S, N)` | `.size S, N` |
+    | `set(S, E)` | `.set S, E` |
+    | `quad(E)` | `.quad E` |
+    | `long(N)` `int(N)` `short(N)` | `.long N`, `.int N`, `.short N` |
+    | `byte(Ns)` | `.byte` and the non-empty list Ns |
+    | `zero(N)` | `.zero N` |
+    | `ascii(Chars)` | `.ascii` and the characters, escaped |
+    | `asciz(Atom)` | `.asciz` and the atom, as it is |
+
+    ## Operands
 
     Operands name concrete registers, so mixed widths such as
-    movzbl %al, %eax need no width bookkeeping:
+    `movzbl %al, %eax` need no width bookkeeping.
 
-      imm(E)                      $E
-      reg(R)                      %R, e.g. reg(eax), reg(cl), reg(r9d)
-      mem(D, B)  mem(D, B, I)     D(%B)  D(%B,%I), D omitted when 0
-      rip(E)                      E(%rip)
-      gotpcrel(S)                 S@GOTPCREL(%rip)
-      plt(S)                      S@PLT
-      sym(E)                      E, a jump or call target
-      ind(O)                      *O
+    | Operand | Prints as |
+    |---|---|
+    | `imm(E)` | `$E` |
+    | `reg(R)` | `%R`, for example `reg(eax)`, `reg(cl)`, `reg(r9d)` |
+    | `mem(D, B)` | `D(%B)`, D omitted when 0 |
+    | `mem(D, B, I)` | `D(%B,%I)`, D omitted when 0 |
+    | `rip(E)` | `E(%rip)` |
+    | `gotpcrel(S)` | `S@GOTPCREL(%rip)` |
+    | `plt(S)` | `S@PLT` |
+    | `sym(E)` | `E`, a jump or call target |
+    | `ind(O)` | `*O` |
 
-    An expression E is an integer, a symbol atom or E1+E2; a left operand
-    that is itself a sum is parenthesized.
+    An expression E is an integer, a symbol atom or `E1+E2`; a left
+    operand that is itself a sum is parenthesized.
 */
 :- module(asm, [print_asm/1]).
 

@@ -1,34 +1,85 @@
-/*  Naive Fil-C lowering for x86-64 (milestone 3).
+/*  The naive Fil-C backend for x86-64 (milestone 3): it lowers checked
+    IR to asm.pl lines whose GNU as text links with code clang builds
+    for filnix staging Fil-C 0.687.
 
-    Emits asm.pl lines whose GNU as text links with clang-built Fil-C
-    code with filnix staging (Fil-C 0.687). The rules are in docs/m3.md;
-    in short:
+    Every rule is chosen to be easy to check, not fast; docs/m3.md has
+    them in full.
 
-    - Temporaries with disjoint closed live intervals share slots. A p
-      temporary's slot holds its address, and its lower lives in a
-      lowers[] entry of a filc_frame pushed on thread->top_frame, for the
-      whole function. Values are never kept in registers across a call or
-      safepoint, so every live capability is always in a scanned slot.
-    - The IR is checked (ir.pl, pizlonate.pl): each check comes right
-      before the raw access it covers, and the two are emitted as one
-      instruction, fused/2, the check's sequence then the access. Pointer
-      loads and stores go through the aux array, with ensure-aux and the
-      store barrier.
-    - alloc is a heap allocation. Edges to poll(L) pollcheck.
-    - Calls use the fast convention (thread, callee lower, words...) and
-      propagate has_exception by popping the frame and returning AL = 1.
-    - Exported functions get an alias, a getter, a function object and a
-      generic entry, so clang code can call them directly or indirectly.
+    ## The frame
 
-    Scalar integer and SSE2 instructions share amd64:compute_op//4.
-    Float bits have no lower; ABI boundaries carry them in XMM registers
-    or generic payload words with zero aux (docs/abi-findings.md).
+    Each temporary has an 8-byte slot below %rbp, except a check's
+    proof, which stays in %rax:%rcx for the access fused with it. A `p`
+    temporary's slot holds its address; its lower lives in a `lowers[]`
+    entry of the function's filc_frame, which the prologue pushes on
+    `thread->top_frame` and every return and exception exit pops.
+    Values are never kept in registers across a call or safepoint, so
+    every live capability is always in a slot the GC scans. The prologue
+    zeroes `lowers[]`, so the GC sees no stale lowers.
 
-    Variable conventions: Ctx is the function context (function_ctx/7)
-    and Fn the amd64 context inside it; K is a word class (w, l, p, s, d);
-    V is a value, tmp(N) or const(N); D is the number of a destination tmp(D);
-    T is a load type and W a store width; S and F are symbols; Off is a
-    byte offset; Form is a return form, reg or mem(Bytes) (ret_form/2).
+    Temporaries whose closed live intervals are disjoint share a slot
+    (frame_slots.pl). A function that calls setjmp is the exception:
+    each of its temporaries gets a slot of its own.
+
+    ```diagram
+    ┌────────────────────────────┐ ← %rbp
+    │ 8-byte slots: temporaries, │   -8, -16, …
+    │ phi shadows, thread, aux,  │
+    │ retbuf, jmp_buf pointers   │
+    ├────────────────────────────┤
+    │ lowers[NLowers-1]          │
+    │ …                          │
+    │ lowers[0]                  │   -FrameBase+16
+    ├────────────────────────────┤
+    │ origin                     │   -FrameBase+8
+    │ parent                     │   -FrameBase
+    ├────────────────────────────┤
+    │ padding to 16 bytes        │
+    └────────────────────────────┘ ← %rsp = %rbp - Size
+    ```
+
+    ## Instructions
+
+    - The IR must be checked (ir.pl, pizlonate.pl): each check comes
+      right before the raw access it covers, and the two are emitted as
+      one instruction, `fused(Check, Access)`: the check's sequence,
+      then the access.
+    - Pointer loads and stores go through the object's aux array; a
+      pointer store ensures the aux array and runs the store barrier.
+    - `alloc` is a heap allocation.
+    - An edge to `poll(L)` runs a pollcheck: a call of
+      filc_pollcheck_slow when the thread's state asks for one.
+    - Scalar integer and SSE2 instructions share amd64:compute_op//4.
+    - Float bits have no lower. At ABI boundaries they travel in XMM
+      registers, or in generic payload words with zero aux
+      (docs/abi-findings.md).
+
+    ## Calls and entries
+
+    Calls use the fast convention: the thread, the callee's lower, then
+    the argument words (a buffered return passes its buffer first). A
+    function that throws pops its frame and returns has_exception = 1,
+    in %al or in the return buffer; a caller that sees it propagates it
+    the same way.
+
+    Every function gets a getter, a function object and a generic entry,
+    so its address can be taken; an exported one also gets the global
+    alias for its signature and a global getter, so clang code can call
+    it directly or indirectly.
+
+    ## Variable conventions
+
+    | Variable | Means |
+    |---|---|
+    | Ctx | the function context (function_ctx/7) |
+    | Fn | the amd64 context inside Ctx |
+    | K | a word class: `w`, `l`, `p`, `s` or `d` |
+    | V | a value, `tmp(N)` or `const(N)` |
+    | D | the number of a destination `tmp(D)` |
+    | T | a load type |
+    | W | a store width |
+    | S, F | symbols |
+    | Off | a byte offset |
+    | Form | a return form, `reg` or `mem(Bytes)` (ret_form/2) |
 */
 :- module(filc_amd64, [filc_module_asm/2, signature/3]).
 

@@ -1,130 +1,194 @@
-/*  nanofil IR terms.
+/*  The nanofil IR: modules of functions and data as ground Prolog
+    terms, the contract between the frontend, the middle end, the
+    interpreter and the backends. This module states its grammar and
+    checks that a module is well formed.
 
     A function is a list of blocks; a block is phis, then instructions,
-    then one jump. Every value has a class, one letter:
+    then one jump. Temps are ground names; logic variables never appear
+    in IR terms.
 
-      w  32-bit integer (a word)        s  32-bit float (single)
-      l  64-bit integer (a long)        d  64-bit float (double)
-      p  pointer: an address with its Fil-C capability (filc only)
-      a  proven address: a p that a check has cleared (checked stage)
-
-    A store's or load's width may also be b (8 bits) or h (16 bits);
-    load and ext name the narrow types sb ub sh uh sw uw (signed or
-    unsigned byte, halfword, word).
-
-    module(Items)
-      Items: func/5 and data/4 terms, in source order.
-
+    ```diagram
     func(Name, Linkage, Ret, Params, Blocks)
-      Name     atom, the symbol
-      Linkage  export | local
-      Ret      w | l | p | s | d | void | tuple([K1, K2])
-               tuple: a two-word return (a struct of 9 to 16 bytes),
-               each Ki in l, p; filc only
-      Params   [param(K, tmp(N))]         K in w, l, p, s, d
-      Blocks   [block(Label, Phis, Insts, Jump)], entry block first
+    ┌───────────────────────────────┐
+    │ entry block: first, no phis   │
+    └───────────────┬───────────────┘
+                    ▼
+    ┌───────────────────────────────┐
+    │ phis    phi(tmp(D), K, Pairs) │
+    │ insts   let, store, call, loc │
+    │ jump    goto, branch, ret ... │
+    └───────────────────────────────┘
+    ```
 
-    phi(tmp(D), K, [Pred-Value])          D is Value when control came
-                                          from block Pred
-    Insts:
-      let(tmp(D), K, Op, Args)            D, of class K, is Op of Args
-      store(Width, Value, Addr)           Width in b, h, w, l, p, s, d
-      call(Res, Callee, [arg(K, Value)])  Res = result(tmp(D), K) | void
-                                          | tuple([result(tmp(D1), K1),
-                                                   result(tmp(D2), K2)]);
-                                          Callee global(F), or (filc) a p temp
-      loc(File, Line)                     the instructions after it, up to
-                                          the next loc, come from line Line
-                                          of File; it does nothing
-      raw_store(Width, Off, Value, Addr)  checked stage: a store that does
-                                          not check (below)
-    Jump: goto(L) | branch(V, L1, L2) | ret(V) | rets([V1, V2]) | ret
-          | unreachable
-          branch goes to L1 if V is nonzero, else to L2. rets returns a
-          tuple. unreachable stops the program (a trap instruction). A
-          jump's target may be poll(L): a pollcheck on the edge, after
-          the phis' copies, then L. A pollcheck is a safepoint: the
-          thread may run signal handlers and answer the collector.
+    ## Classes
 
-    Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
-        cmp(Cond, K)   K w|l: eq ne sle slt sge sgt ule ult uge ugt;
-                       K s|d: eq ne le lt ge gt o uo, result w
-        ext(T)         T in sw uw sh uh sb ub s (s -> d)
-        truncd         d -> s
-        stosi stoui dtosi dtoui     s/d -> w/l
-        swtof uwtof sltof ultof     w/l -> s/d
-        cast           w <-> s, l <-> d, bitwise
-        load(T)        T in l sw uw sh uh sb ub p s d
-        alloc(Align)   Align in 4, 8, 16
-        (op_kind/2 and valid_op/1 state these sets once)
-        ptoi itop
-        va_args       filc only: p cursor into the entry argument snapshot;
-                      operand const(N), non-negative fixed-prefix byte count
-        va_arg        filc only: w/l/p load through a va_list address,
-                      advancing its cursor (reads and writes memory)
-        setjmp(Kind)  filc only: w result, [p Buf, w SaveMask]; Kind is
-                      setjmp | '_setjmp' | sigsetjmp. SaveMask must be
-                      const(0) except for sigsetjmp. Native returns-twice;
-                      snapshot/restore contract in docs/setjmp.md.
-        check(Lo, Hi, Rights, Align)
-                      checked stage: class a result, [p P]. Traps unless
-                      P's capability permits Rights (read | write) on
-                      [P+Lo, P+Hi) and P+Lo is Align-aligned; else the
-                      result is P, proven accessible.
-        raw_load(T, Off)
-                      checked stage: a load of type T (as load(T)) at
-                      A+Off that does not check, [a A]
+    Every value has a class, one letter:
 
-    Values: tmp(Name) | const(Integer) | global(Name)
-      tmp is a temporary, defined once (SSA); const a number; global the
-      address of a function or data object by its symbol. At s/d,
-      const(Integer) is an unsigned IEEE bit pattern (docs/float.md).
+    | Class | Value |
+    |---|---|
+    | `w` | 32-bit integer (a word) |
+    | `l` | 64-bit integer (a long) |
+    | `s` | 32-bit float (single) |
+    | `d` | 64-bit float (double) |
+    | `p` | pointer: an address with its Fil-C capability (filc mode only) |
+    | `a` | proven address: a `p` that a check has cleared (checked stage only) |
 
-    data(Name, Linkage, Align, Items)
-      Linkage  export | local | ro(export) | ro(local), ro for read-only
-               data (in .rodata)
-      Items: [item(W, const(N)) | item(b, str(Chars)) | item(l, sym(Name, Off))
-              | item(p, sym(Name, Off)) | zero(N)]
-      str(Chars) is the bytes themselves, one character per byte (codes
-      0..255); a backend escapes them when it prints assembly.
-      item(p, ...) is a pointer with the capability of Name (filc only).
+    A store's width may also be `b` (8 bits) or `h` (16 bits). A load
+    and `ext` name the narrow types `sb` `ub` `sh` `uh` `sw` `uw`:
+    signed or unsigned byte, halfword and word.
 
-    Temps are ground names; logic variables never appear in IR terms.
+    ## Items
 
-    A module is in one of two modes (module_mode/2):
+    | Term | Means |
+    |---|---|
+    | `module(Items)` | Items are `func/5` and `data/4` terms, in source order |
+    | `func(Name, Linkage, Ret, Params, Blocks)` | a function, fields below |
+    | `data(Name, Linkage, Align, Items)` | a data object, fields under Data |
 
-      plain  classes w, l, s and d only. Addresses are l values, and the
-             plain backend (amd64.pl) compiles it to ordinary x86-64.
-      filc   any use of class p. Addresses are p values (flight pointers
-             with a capability), alloc yields p, loads and stores take a p
-             address, p arithmetic is add/sub of an l offset, and ptoi/itop
-             convert. Calls may name functions outside the module, or go
-             through a p value. A symbol global(S) is read only by
-             let(tmp(D), p, copy, [global(S)]), which yields a pointer to
-             the data or function object; S may be defined outside the
-             module. See docs/m3.md, m4.md.
+    | Field of func | Is |
+    |---|---|
+    | Name | an atom, the symbol |
+    | Linkage | `export` or `local` |
+    | Ret | `w`, `l`, `p`, `s`, `d`, `void`, or `tuple([K1, K2])` |
+    | Params | a list of `param(K, tmp(N))`, K one of `w` `l` `p` `s` `d` |
+    | Blocks | a list of `block(Label, Phis, Insts, Jump)`, the entry block first |
+
+    A `tuple([K1, K2])` return is two words, each Ki `l` or `p`: a
+    struct of 9 to 16 bytes (filc mode only).
+
+    ## Phis and instructions
+
+    | Term | Means |
+    |---|---|
+    | `phi(tmp(D), K, [Pred-Value])` | D is Value when control came from block Pred |
+    | `let(tmp(D), K, Op, Args)` | D, of class K, is Op of Args (Ops below) |
+    | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
+    | `call(Res, Callee, [arg(K, Value)])` | call Callee: `global(F)`, or (filc mode) a `p` temp |
+    | `loc(File, Line)` | does nothing: the instructions after it, up to the next loc, come from line Line of File |
+    | `raw_store(Width, Off, Value, Addr)` | checked stage: a store at Addr+Off that does not check (Stages, below) |
+
+    A call's Res is one of `result(tmp(D), K)`, `void`, or
+    `tuple([result(tmp(D1), K1), result(tmp(D2), K2)])`.
+
+    ## Jumps
+
+    | Jump | Means |
+    |---|---|
+    | `goto(L)` | go to L |
+    | `branch(V, L1, L2)` | go to L1 if V is nonzero, else to L2 |
+    | `ret(V)` | return V |
+    | `rets([V1, V2])` | return a tuple |
+    | `ret` | return from a `void` function |
+    | `unreachable` | stop the program (a trap instruction) |
+
+    A jump's target may be `poll(L)`: a pollcheck on the edge, after the
+    phis' copies, then L. A pollcheck is a safepoint: the thread may run
+    signal handlers and answer the collector.
+
+    ## Ops
+
+    The Op of a `let(tmp(D), K, Op, Args)`; op_kind/2 and valid_op/1
+    state these sets once, op_result_ok/3 and op_arg_classes/4 the
+    classes.
+
+    | Op | Result K | Args | Means |
+    |---|---|---|---|
+    | `add` `sub` | any | `[K, K]`; at `p`, a `p` and an `l` offset | |
+    | `mul` `div` | `w` `l` `s` `d` | `[K, K]` | |
+    | `udiv` `rem` `urem` `and` `or` `xor` | `w` `l` | `[K, K]` | |
+    | `sar` `shr` `shl` | `w` `l` | `[K, w]` | the count is read at `w` |
+    | `neg` | `w` `l` `s` `d` | `[K]` | |
+    | `copy` | any | `[K]` | |
+    | `cmp(Cond, K1)` | `w` `l`; `w` when K1 is a float | `[K1, K1]` | Cond for K1 `w` or `l`: `eq` `ne` `sle` `slt` `sge` `sgt` `ule` `ult` `uge` `ugt`; for `s` or `d`: `eq` `ne` `le` `lt` `ge` `gt` `o` `uo` |
+    | `ext(T)` | `l` for `sw` `uw`; `w` or `l` for `sh` `uh` `sb` `ub` | `[w]` | extend the low bytes |
+    | `ext(s)` | `d` | `[s]` | single to double |
+    | `truncd` | `s` | `[d]` | double to single |
+    | `stosi` `stoui` / `dtosi` `dtoui` | `w` `l` | `[s]` / `[d]` | float to signed or unsigned integer |
+    | `swtof` `uwtof` / `sltof` `ultof` | `s` `d` | `[w]` / `[l]` | signed or unsigned integer to float |
+    | `cast` | `w` `s` `l` `d` | `[s]` `[w]` `[d]` `[l]` | bitwise: `w` and `s`, `l` and `d` |
+    | `load(T)` | as T: `l`, `p`, `s`, `d`; `w` or `l` for a narrow T | `[Addr]` | T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` `s` `d` |
+    | `alloc(Align)` | the address class | `[l]`, the size | Align one of 4, 8, 16 |
+    | `ptoi` | `l` | `[p]` | filc only |
+    | `itop` | `p` | `[l]` | filc only |
+    | `va_args` | `p` | `[const(N)]` | filc only: a cursor into the entry argument snapshot; N, non-negative, is the byte count of the fixed prefix |
+    | `va_arg` | any | `[p]` | filc only: a load through a va_list address, advancing its cursor (reads and writes memory) |
+    | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
+    | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
+    | `raw_load(T, Off)` | as `load(T)` | `[a]` | checked stage: a load of type T at A+Off that does not check |
+
+    `setjmp(Kind)`: Kind is `setjmp`, `'_setjmp'` or `sigsetjmp`, and
+    SaveMask must be `const(0)` except for `sigsetjmp`. It returns twice
+    natively; the snapshot and restore contract is in docs/setjmp.md.
+
+    `check(Lo, Hi, Rights, Align)` reads `[p P]`. It traps unless P's
+    capability permits Rights (`read` or `write`) on [P+Lo, P+Hi) and
+    P+Lo is Align-aligned (Align one of 1, 2, 4, 8, 16); otherwise its
+    result is P, proven accessible.
+
+    ## Values
+
+    | Value | Means |
+    |---|---|
+    | `tmp(Name)` | a temporary, defined once (SSA) |
+    | `const(Integer)` | a number; at `s` or `d` an unsigned IEEE bit pattern (docs/float.md) |
+    | `global(Name)` | the address of a function or data object, by its symbol |
+
+    ## Data
+
+    In `data(Name, Linkage, Align, Items)`, Linkage is `export`,
+    `local`, `ro(export)` or `ro(local)`, `ro` for read-only data (in
+    .rodata), and Align is 1, 2, 4, 8 or 16. Items is a list of:
+
+    | Item | Means |
+    |---|---|
+    | `item(W, const(N))` | N at width W |
+    | `item(b, str(Chars))` | the bytes themselves, one character per byte (codes 0..255); a backend escapes them when it prints assembly |
+    | `item(l, sym(Name, Off))` | the address of Name plus Off (plain mode) |
+    | `item(p, sym(Name, Off))` | a pointer with the capability of Name (filc mode only) |
+    | `zero(N)` | N zero bytes |
+
+    ## Modes
+
+    A module is in one of two modes, told apart by what it uses
+    (module_mode/2):
+
+    | Mode | Means |
+    |---|---|
+    | `plain` | classes `w`, `l`, `s` and `d` only. Addresses are `l` values, and the plain backend (amd64.pl) compiles it to ordinary x86-64. |
+    | `filc` | anything of class `p`, a tuple return, read-only data, a pointer-only op, or a call to a function the module does not define. Addresses are `p` values (flight pointers with a capability), `alloc` yields `p`, loads and stores take a `p` address, `p` arithmetic is `add` or `sub` of an `l` offset, and `ptoi` and `itop` convert. |
+
+    In filc mode calls may name functions outside the module, or go
+    through a `p` value. A symbol `global(S)` is read only by
+    `let(tmp(D), p, copy, [global(S)])`, which yields a pointer to the
+    data or function object; S may be defined outside the module. See
+    docs/m3.md and docs/m4.md.
+
+    ## Stages
 
     A module is in one of two stages, told apart by its vocabulary:
 
-      unchecked  as the frontend and the middle end write it. In filc
-                 mode, load(T) and store at a p address mean "Fil-C's
-                 access check, then the access".
-      checked    after pizlonate.pl, what the Fil-C backend compiles:
-                 every check is explicit. A check yields a temporary of
-                 class a, a proven address, which only raw accesses read:
-                 raw_load(T, Off) and raw_store(W, Off, V, A). The
-                 check that covers an access is its address operand's
-                 definition. A raw access its check does not cover is a
-                 bug of the pass, which the interpreter reports as the
-                 outcome unchecked(Why). Every cycle of the CFG has a poll edge.
+    | Stage | Means |
+    |---|---|
+    | `unchecked` | as the frontend and the middle end write it. In filc mode, `load(T)` and `store` at a `p` address mean "Fil-C's access check, then the access". |
+    | `checked` | after pizlonate.pl, what the Fil-C backend compiles: every check is explicit, and every cycle of the CFG has a poll edge. |
 
-    Class a never crosses a safepoint (a call, a pollcheck, alloc, setjmp,
-    va_arg, a symbol's getter, or raw_store(p, ...), whose ensure-aux may
-    exit), since a free may make the proof stale. For now each check is
-    followed immediately by its one use, so none can.
+    In the checked stage a check yields a temporary of class `a`, a
+    proven address, which only raw accesses read: `raw_load(T, Off)` and
+    `raw_store(W, Off, V, A)`. The check that covers an access is its
+    address operand's definition. A raw access its check does not cover
+    is a bug of the pass, which the interpreter reports as the outcome
+    `unchecked(Why)`.
 
-    Variable names below: M a module, Fn a function name, K a class
-    (w, l or p), V an IR value, L a label.
+    Class `a` never crosses a safepoint (a call, a pollcheck, `alloc`,
+    `setjmp`, `va_arg`, a symbol's getter, or `raw_store(p, Off, V, A)`,
+    whose ensure-aux may exit), since a free may make the proof stale.
+    For now each check is followed immediately by its one use, so none
+    can.
+
+    ## Variable names
+
+    In the predicates below: M a module, Fn a function name, K a class,
+    V an IR value, L a label.
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,

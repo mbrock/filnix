@@ -1177,9 +1177,24 @@ spaces(0) --> [].
 
 drop(N, S0, S) :- ( blank(S0) -> S = "" ; sub_string(S0, N, _, 0, S) ).
 
-%  blocks(Lines, Blocks): p(Text), ul(Items), pre(Lines).
+%  blocks(Lines, Blocks): p(Text), ul(Items), pre(Lines), and a little
+%  Markdown for module headers: h(Level, Text) from "## Text" (h3, as
+%  the page's own sections are h2),
+%  table(Head, Rows) from lines of | cells | (the second line |---|),
+%  and fence(Lang, Lines) from ``` blocks. A prolog fence is drawn as
+%  terms, a diagram fence as box drawing.
 blocks([], []).
 blocks([L|Ls], Bs) :- blank(L), !, blocks(Ls, Bs).
+blocks([L|Ls0], [fence(Lang, Body)|Bs]) :- string_concat("```", Lang0, L), !,
+    split_string(Lang0, "", " ", [Lang]),
+    (   append(Body, [End|Ls], Ls0), string_concat("```", _, End) -> true
+    ;   Body = Ls0, Ls = []
+    ),
+    blocks(Ls, Bs).
+blocks([L|Ls0], [h(N, Text)|Bs]) :- heading(L, N, Text), !, blocks(Ls0, Bs).
+blocks([L|Ls0], [table(Head, Rows)|Bs]) :-
+    table_line(L, Head), Ls0 = [Sep|Ls1], table_line(Sep, Cells), maplist(rule_cell, Cells), !,
+    take_table(Ls1, Rows, Ls), blocks(Ls, Bs).
 blocks([L|Ls0], [ul(Items)|Bs]) :- item_start(L, _), !,
     list_items([L|Ls0], Items, Ls), blocks(Ls, Bs).
 blocks([L|Ls0], [pre([L|Pre])|Bs]) :- indent(L, I), I > 0, !,
@@ -1210,14 +1225,70 @@ take_indented([L|Ls0], [L|Cs], Ls) :- ( blank(L) ; indent(L, I), I > 0 ), !, tak
 take_indented(Ls, [], Ls).
 
 take_para([L|Ls0], [L|Ps], Ls) :-
-    \+ blank(L), \+ item_start(L, _), indent(L, 0), !, take_para(Ls0, Ps, Ls).
+    \+ blank(L), \+ item_start(L, _), indent(L, 0),
+    \+ string_concat("```", _, L), \+ heading(L, _, _), \+ table_line(L, _), !,
+    take_para(Ls0, Ps, Ls).
 take_para(Ls, [], Ls).
+
+heading(L, N, Text) :-
+    member(Mark-N, ["### "-4, "## "-3]), string_concat(Mark, Text, L), !.
+
+% table_line(+L, -Cells): L is | A | B |, Cells its trimmed cells. A |
+% inside `code` belongs to the cell, so `N | none` stays whole.
+table_line(L, Cells) :-
+    string_codes(L, [0'||Cs]), append(Body, [0'|], Cs), !,
+    cells(Body, Cells0), maplist([C0, C]>>(string_codes(S, C0), split_string(S, "", " ", [C])), Cells0, Cells).
+
+cells(Cs, [Cell|Cells]) :- cell(Cs, Cell, Rest), ( Rest = [0'||More] -> cells(More, Cells) ; Cells = [] ).
+
+cell([], [], []).
+cell([0'||Cs], [], [0'||Cs]) :- !.
+cell([0'`|Cs0], [0'`|Cell], Rest) :- append(Code, [0'`|Cs1], Cs0), !,
+    cell(Cs1, Cell0, Rest), append(Code, [0'`|Cell0], Cell).
+cell([C|Cs0], [C|Cell], Rest) :- cell(Cs0, Cell, Rest).
+
+rule_cell(C) :- string_codes(C, Cs), Cs \== [], forall(member(X, Cs), memberchk(X, `-:`)).
+
+take_table([L|Ls0], [Cells|Rows], Ls) :- table_line(L, Cells), !, take_table(Ls0, Rows, Ls).
+take_table(Ls, [], Ls).
 
 block_(Vars, F, p(Text)) --> el(p, none, inline(Text, Vars, F)).
 block_(Vars, F, ul(Items)) --> el(ul, none, seq(Items, li_(Vars, F))).
 block_(_, _, pre(Lines)) -->
     { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T) },
     el(pre, none, esc(T)).
+
+block_(Vars, F, h(N, Text)) -->
+    { format(atom(H), "h~d", [N]) }, el(H, "prose-h", inline(Text, Vars, F)).
+block_(Vars, F, table(Head, Rows)) -->
+    el(table, "prose-table", (
+        el(thead, none, el(tr, none, seq(Head, cell_(th, Vars, F)))),
+        el(tbody, none, seq(Rows, row_(Vars, F)))
+    )).
+block_(_, F, fence("prolog", Lines)) -->
+    { atomic_list_concat(Lines, '\n', T0), atom_string(T0, T), fence_terms(T, Ts) }, !,
+    el(div, "prose-terms", seq(Ts, fence_term(F))).
+block_(_, _, fence(Lang, Lines)) -->
+    { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T),
+      ( Lang == "" -> C = "fence" ; atom_concat('fence ', Lang, C) ) },
+    el(pre, C, esc(T)).
+
+row_(Vars, F, Cells) --> el(tr, none, seq(Cells, cell_(td, Vars, F))).
+cell_(Tag, Vars, F, Text) --> el(Tag, none, inline(Text, Vars, F)).
+
+% fence_terms(+Text, -Terms): the terms of a prolog fence, each ending in
+% a full stop, with their variables as '$VAR'(Name); fails if one does
+% not read, so the fence is drawn as text.
+fence_terms(Text, Terms) :-
+    catch(setup_call_cleanup(open_string(Text, S), read_fence(S, Terms), close(S)), _, fail).
+
+read_fence(S, Terms) :-
+    read_term(S, T, [variable_names(Vs), module(dterm_syntax)]),
+    (   T == end_of_file -> Terms = []
+    ;   maplist([N=V]>>(V = '$VAR'(N)), Vs), Terms = [T|Ts], read_fence(S, Ts)
+    ).
+
+fence_term(F, T) --> el(div, "clause item", term(T, _, 999, ctx(F, data))).
 
 li_(Vars, F, Text) --> el(li, none, inline(Text, Vars, F)).
 
@@ -1228,9 +1299,22 @@ inline(Text, Vars, F) --> { string_codes(Text, Cs) }, inl(Cs, Vars, F).
 
 inl([], _, _) --> !, [].
 inl([0'`|Cs0], Vars, F) --> { append(Code, [0'`|Cs], Cs0) }, !,
-    el(code, none, esc(Code)), inl(Cs, Vars, F).
+    (   { code_term(Code, T) }
+    ->  el(code, "term", term(T, _, 999, ctx(F, data)))
+    ;   el(code, none, esc(Code))
+    ),
+    inl(Cs, Vars, F).
 inl(Cs0, Vars, F) --> { word(Cs0, W, Cs1), W \== [] }, !, word_(W, Cs1, Vars, F).
 inl([C|Cs], Vars, F) --> esc_code(C), inl(Cs, Vars, F).
+
+% code_term(+Codes, -T): `code` in prose that reads as a compound term,
+% such as `ptr(T)` or `e(Ords, Tags, Defs, Next)`, drawn as a term in the
+% colours of the code; Name/Arity and anything else stays text.
+code_term(Code, T) :-
+    memberchk(0'(, Code),
+    catch(term_string(T, Code, [variable_names(Vs), module(dterm_syntax)]), _, fail),
+    compound(T), \+ T = _/_, \+ T = _//_, \+ T = (_, _),
+    maplist([N=V]>>(V = '$VAR'(N)), Vs).
 
 word(Cs0, W, Cs) :- span(word_char, Cs0, W, Cs).
 

@@ -1,27 +1,61 @@
-/*  nanofil command line (the impure driver).
+/*  The nanofil command line: the impure driver that reads a C or IR
+    file, runs it through the compiler's stages and prints the result.
 
-      check FILE              read and validate
-      print FILE              read, validate, print the IR (ir_text.pl)
-      compile FILE            read, validate, print x86-64 assembly
-      cc FILE                 compile C (.c or preprocessed .i) to Fil-C assembly
-      cc-ir FILE              compile C, print the IR (unchecked; the
-                              Fil-C backend's input is pizlonated)
-      tokens FILE             print C token terms, without locations
-      run FILE FN ARG...      interpret $FN on integer arguments
-      difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,mode}
-                              for the file's run(Fn, Args) facts
+    ## Commands
 
-    -O before the command runs the middle end (opt.pl) after loading.
+    | Command | Does |
+    |---|---|
+    | `check FILE` | read and validate; prints `ok` |
+    | `print FILE` | read, validate, print the IR (ir_text.pl) |
+    | `compile FILE` | read, validate, print x86-64 assembly |
+    | `cc FILE` | compile C (`.c`, or preprocessed `.i`) to Fil-C assembly |
+    | `cc-ir FILE` | compile C, print the IR (unchecked; the Fil-C backend's input is pizlonated) |
+    | `tokens FILE` | print C token terms, without locations |
+    | `run FILE FN ARG...` | interpret FN on integer arguments |
+    | `difftest FILE OUTDIR` | write `OUTDIR/expected.txt`, `OUTDIR/harness.c` and `OUTDIR/mode` for the file's `run(Fn, Args)` facts |
+
+    A FILE ending in `.c` or `.i` goes through the C frontend; any other
+    FILE is IR text. A `.c` file is preprocessed with the predefined
+    macros and include paths of `$FILCC` (default `filcc`).
+
+    ```diagram
+    ┌──────┐  ┌─────────┐  ┌─────────┐
+    │ c_pp │─▶│ c_parse │─▶│ c_lower │──┐
+    └──────┘  └─────────┘  └─────────┘  │
+      ┌─────────────────────────────────┘
+      ▼
+    ┌──────────┐  ┌───────────┐  ┌────────────┐
+    │ opt (-O) │─▶│ pizlonate │─▶│ filc_amd64 │
+    └──────────┘  └───────────┘  └────────────┘
+    ```
+
+    `cc` runs the whole pipeline; c_pp lexes with c_lex. IR text enters
+    at the middle end, and a module in plain mode goes to amd64.pl
+    instead of pizlonate and filc_amd64.
+
+    ## -O
+
+    `-O` before the command runs the middle end (opt.pl) after loading.
     Without it the IR goes to the backend as loaded, which is the
-    reference the optimized path is checked against. With -O, difftest
-    also runs every run line on the unoptimized module and fails unless
-    each optimized outcome refines the original one (translation
-    validation), and prints how many allocs promote removed.
+    reference the optimized path is checked against. With `-O`,
+    difftest also runs every run line on the unoptimized module and
+    fails unless each optimized outcome refines the original one
+    (translation validation), and prints how many allocs promote
+    removed.
 
-    difftest's expected.txt holds the interpreter's result for every run
-    line whose outcome a native run can reproduce (a known return value);
-    harness.c prints the same lines from native code. Other outcomes are
-    reported on stdout and left out of the comparison.
+    ## difftest
+
+    expected.txt holds the interpreter's result for every run line whose
+    outcome a native run can reproduce: a known return value, or for a
+    Fil-C module a trap, written just `trap`. harness.c prints the same
+    lines from native code; for a Fil-C module it makes one call per
+    process, chosen by `argv[1]`, since a trap ends the process. mode
+    holds `plain` or `filc`. Other outcomes are reported on stdout and
+    left out of the comparison.
+
+    For a Fil-C module, difftest also runs every run line on the
+    pizlonated module and fails unless each outcome is the same, traps
+    and their reasons included.
 */
 :- use_module(ir).
 :- use_module(ir_text).

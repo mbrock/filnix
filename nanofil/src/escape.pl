@@ -1,11 +1,16 @@
-/*  Escape classification of allocs: alloc_classes/2, with
-    address_temps/2, load_width/2 and def_counts/2. Prior art: QBE's
-    ALoc/AEsc.
+/*  Escape classification of allocs: alloc_classes/2 tells, for each
+    alloc of a function, whether its address is only used for loads and
+    stores at known offsets. Prior art: QBE's ALoc/AEsc.
 
-    A local alloc can only be reached through its own address, so no
-    other pointer or integer can name it. Offsets are exact integers (an
-    add wraps modulo 2^64, so a huge constant gives a huge offset, which
-    promote's bounds check refuses).
+    The module also exports the relations alloc_classes/2 is built
+    from: address_temps/2, load_width/2 and def_counts/2.
+
+    The analysis rests on one fact: a local alloc can only be reached
+    through its own address, so no other pointer or integer can name it.
+
+    Offsets are exact integers. An IR add wraps modulo 2^64, but here a
+    huge constant gives a huge offset, which promote's bounds check
+    refuses.
 */
 :- module(escape, [alloc_classes/2, address_temps/2, load_width/2,
                    def_counts/2]).

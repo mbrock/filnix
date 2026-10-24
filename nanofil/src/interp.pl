@@ -1,60 +1,97 @@
-/*  Relational semantics of the phase-one IR.
+/*  Relational semantics of the IR (ir.pl): the outcome of running a
+    function of a module, as a relation that runs in every direction,
+    so that arguments and outcome can both be partially unknown.
 
-    run(+Module, +Fn, ?Args, +Fuel, ?Outcome)
-    module_prepared(+Module, -Prepared)
-    run_prepared(+Prepared, +Fn, ?Args, +Fuel, ?Outcome)
+    ## Entry points
 
-    run/5 prepares the module first: its mode, initial memory, and
-    indexes of its functions and blocks. Prepare once to run many times.
+    | Predicate | Does |
+    |---|---|
+    | `run(+Module, +Fn, ?(Args), +Fuel, ?(Outcome))` | prepares Module, then runs Fn |
+    | `module_prepared(+Module, -Prepared)` | the module's mode, initial memory, and indexes of its functions and blocks |
+    | `run_prepared(+Prepared, +Fn, ?(Args), +Fuel, ?(Outcome))` | runs Fn of a prepared module |
 
-    Args are integers or CLP(Z) variables, one per parameter, in the range
-    of the parameter's class (ptr(Addr, Cap) for a p parameter). Outcome
-    is one of
-      ret(V)          returned V (an integer or constrained variable)
-      rets([X1, X2])  returned a tuple
-      ret             returned from a void function
-      unreachable             executed unreachable
-      ub(Reason)      undefined behaviour: division by zero or overflow,
-                      a memory access outside every live allocation
-      trap(Reason)    a Fil-C check failed (filc mode only)
-      unchecked(Reason)
-                      a raw access (checked stage, ir.pl) that its
-                      capability does not allow: a check is missing or
-                      too weak, which only a broken pass produces. It is
-                      neither ub nor a trap, so it refines nothing.
-      out_of_fuel     executed Fuel blocks without finishing
+    Prepare once to run many times. Args are integers or CLP(Z)
+    variables, one per parameter, in the range of the parameter's class
+    (`ptr(Addr, Cap)` for a `p` parameter).
 
-    Integer arithmetic and branches are CLP(Z) constraints, so the relation
-    runs in every direction: Args and Outcome can both be partially unknown.
-    Known values take a fast path (is/2 and if-then-else), which gives
-    the same answers; only unknown values pay for constraints.
+    ## Outcomes
+
+    | Outcome | Means |
+    |---|---|
+    | `ret(V)` | returned V (an integer or constrained variable) |
+    | `rets([X1, X2])` | returned a tuple |
+    | `ret` | returned from a void function |
+    | `unreachable` | executed `unreachable` |
+    | `ub(Reason)` | undefined behaviour: `division_by_zero`, `division_overflow`, `float_conversion` (an invalid float-to-integer conversion), or in plain mode `out_of_bounds(A, Size)`, a memory access outside every live allocation |
+    | `trap(Reason)` | a Fil-C check failed (filc mode only): `null_capability`, `out_of_bounds`, `misaligned`, `readonly`, `not_a_function`, `argument_size`, `return_size` |
+    | `unchecked(Reason)` | a raw access (checked stage, ir.pl) that its capability does not allow: a check is missing or too weak, which only a broken pass produces. It is neither ub nor a trap, so it refines nothing. |
+    | `out_of_fuel` | executed Fuel blocks without finishing |
+
+    ## Unknown values
+
+    Integer arithmetic and branches are CLP(Z) constraints, so the
+    relation runs in every direction. Known values take a fast path
+    (is/2 and if-then-else), which gives the same answers; only unknown
+    values pay for constraints.
+
     Memory addresses, allocation sizes and capabilities must be known
-    when an access, alloc or indirect call uses them; otherwise the run
+    when an access, `alloc` or indirect call uses them; otherwise the run
     raises an instantiation error, which is incomplete but never wrong.
+
     Float values are concrete unsigned IEEE bits. Float arithmetic uses
     ieee.pl's integer-only SSE2 semantics, not CLP(Z) or host floats;
-    unknown float inputs also raise an instantiation error. Invalid
-    float-to-integer conversions give ub(float_conversion).
+    unknown float inputs also raise an instantiation error.
 
-    Memory is mem(Bytes, Regions, Next, Aux): an assoc from address to
-    byte, the list of live Base-End regions, the next free stack address,
-    and (filc mode) the capabilities stored in memory. A byte nobody wrote
-    is a fresh variable in 0..255, so reading uninitialized memory gives
-    an unknown value rather than a made-up one. In plain mode a
-    function's allocations die when it returns, and addresses are never
-    reused, so use after return is an out-of-bounds access.
+    ## Memory
 
-    The run state is s(Mem, Fuel). Inside a function the interpreter
-    carries ctx(Fns, Globals, Blocks, Ret, Mode): the prepared functions,
-    the address of each global, the function's blocks by label, its
-    return class and the module mode. A block is entered from(Pred), the
-    label of the block that jumped to it, or at entry.
+    Memory is `mem(Bytes, Regions, Next, Aux)`:
 
-    Variable names: K a class, V an IR value (tmp(N), const(N) or global(N)), X a
-    run-time value (an integer, a constrained variable, or in filc mode
-    ptr(Addr, Cap)), Env the assoc from temporary to run-time value, S a
-    run state, Out an outcome, Res a partial result (val(X), ok, ub(Why)
-    or trap(Why)). Env0/Env and S0/S are the state before and after.
+    | Part | Is |
+    |---|---|
+    | Bytes | an assoc from address to byte |
+    | Regions | the list of live Base-End regions |
+    | Next | the next free stack address, where the next allocation goes |
+    | Aux | in filc mode, the capabilities stored in memory |
+
+    A byte nobody wrote is, in plain mode, a fresh variable in 0..255,
+    so reading uninitialized memory gives an unknown value rather than a
+    made-up one; in filc mode it is 0, since Fil-C zeroes allocations.
+
+    In plain mode a function's allocations die when it returns, and
+    addresses are never reused, so use after return is an out-of-bounds
+    access. In filc mode every allocation is a heap object that lives
+    on.
+
+    ## Run state
+
+    The run state is `s(Mem, Fuel)`; each block costs one unit of Fuel.
+    Inside a function the interpreter carries
+    `ctx(Fns, Globals, Blocks, Ret, Mode)`:
+
+    | Part | Is |
+    |---|---|
+    | Fns | the prepared functions |
+    | Globals | the address of each global |
+    | Blocks | the function's blocks by label |
+    | Ret | its return class |
+    | Mode | the module mode |
+
+    A block is entered `from(Pred)`, Pred the label of the block that
+    jumped to it, or at `entry`.
+
+    ## Variable names
+
+    | Name | Is |
+    |---|---|
+    | K | a class |
+    | V | an IR value: `tmp(N)`, `const(N)` or `global(N)` |
+    | X | a run-time value: an integer, a constrained variable, or in filc mode `ptr(Addr, Cap)` |
+    | Env | the assoc from temporary to run-time value |
+    | S | a run state |
+    | Out | an outcome |
+    | Res | a partial result: `val(X)`, `ok`, `ub(Why)`, `trap(Why)` or `unchecked(Why)` |
+
+    Env0/Env and S0/S are the state before and after.
 */
 :- module(interp, [run/5, module_prepared/2, run_prepared/5, outcome_text/2]).
 

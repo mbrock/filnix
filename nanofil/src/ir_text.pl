@@ -1,20 +1,28 @@
-/*  IR text: a module is written as Prolog clauses, one func/5 or
-    data/4 term (ir.pl) per item in module order, and read back with
-    read_term/3. An IR file may also state run(Fn, Args): a call of Fn
-    on the integer Args that difftest and the tests run.
+/*  IR text: a module written as Prolog clauses, one func/5 or data/4
+    term (ir.pl) per item in module order, and read back with
+    read_term/3.
 
-      run(addw, [3, 4]).
-      func(addw, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
-                block(start, [], [
-              let(tmp(r), w, add, [tmp(a), tmp(b)])
-          ], ret(tmp(r)))
-      ]).
-      data(msg, local, 1, [item(b, str("hi\n")), item(b, const(0))]).
+    An IR file may also state `run(Fn, Args)`: a call of Fn on the
+    integer Args that difftest and the tests run. A small file:
+
+    ```prolog
+    run(addw, [3, 4]).
+    func(addw, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+        block(start, [], [
+            let(tmp(r), w, add, [tmp(a), tmp(b)])
+        ], ret(tmp(r)))
+    ]).
+    data(msg, local, 1, [item(b, str("hi\n")), item(b, const(0))]).
+    ```
 
     The printer is ours rather than writeq/1, so the text is the same on
-    both hosts and the layout stays stable: an atom is bare when it is a
-    lowercase identifier, else quoted; a list of characters in str/1 is
-    a string (double_quotes is chars on both hosts).
+    both hosts and the layout stays stable:
+
+    - a function's blocks, phis and instructions are one per line, and
+      any other item is one line;
+    - an atom is bare when it is a lowercase identifier, else quoted;
+    - a list of characters in `str/1` is a string (double_quotes is
+      chars on both hosts).
 */
 :- module(ir_text, [read_ir_file/3, print_module/1, module_text//1,
                     item_text//1]).

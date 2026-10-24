@@ -1,19 +1,28 @@
 /*  Control-flow analyses over one function's blocks, as pure functions
     from IR terms to assocs keyed by block label.
 
-    func_cfg/2 builds cfg(Entry, Rpo, Succs, Preds), which the other
-    analyses take: dominators (cfg_idoms/2, dom_children/3,
-    cfg_frontiers/3, dominates/3, dom_intervals/3, dominates_by_interval/3),
-    natural loops (natural_loops/3), and backward liveness (liveness/5,
-    and temp_liveness/3 over temps). Each export documents its relation
-    below.
+    func_cfg/2 builds `cfg(Entry, Rpo, Succs, Preds)`, which the other
+    analyses take. Each export documents its relation below.
 
-    The PLAN asks for these as tabled relations. cfg_tabled.pl has that
+    | Analysis | Predicates |
+    |---|---|
+    | dominators | cfg_idoms/2, dom_children/3, cfg_frontiers/3, dominates/3, dom_intervals/3, dominates_by_interval/3 |
+    | natural loops | natural_loops/3 |
+    | backward liveness | liveness/5, and temp_liveness/3 over temps |
+
+    PLAN asks for these as tabled relations. cfg_tabled.pl has that
     version; docs/m5.md has the measurement that made this one the one
     passes use.
 
-    Variable conventions: L, B, S and P are labels (a block, a successor,
-    a predecessor), Ls, Ss and Ps lists of them; T and D are temp names.
+    ## Variable conventions
+
+    | Variable | Means |
+    |---|---|
+    | L, B | a block's label |
+    | S | a successor's label |
+    | P | a predecessor's label |
+    | Ls, Ss, Ps | lists of labels |
+    | T, D | temp names |
 */
 :- module(cfg, [func_cfg/2, cfg_idoms/2, dom_children/3, cfg_frontiers/3,
                 dominates/3, dom_intervals/3, dominates_by_interval/3,
