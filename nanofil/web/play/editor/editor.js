@@ -31,7 +31,7 @@ const colours = HighlightStyle.define([
   { tag: [t.string, t.character], color: "var(--str)" },
   { tag: [t.number, t.atom, t.bool], color: "var(--num)" },
   { tag: t.meta, color: "var(--var)" },
-  { tag: t.comment, color: "var(--note)", fontStyle: "italic" },
+  { tag: t.comment, color: "var(--note)" },
 ]);
 
 const theme = EditorView.theme({

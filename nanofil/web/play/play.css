@@ -10,7 +10,6 @@
   font-family: "Monaspace Neon";
   src: url("neon.woff2") format("woff2");
   font-weight: 200 800;
-  font-style: oblique 0deg 11deg;
   font-display: swap;
 }
 :root { --mono-font: "Monaspace Neon", ui-monospace, "SF Mono", menlo, consolas, monospace; }
