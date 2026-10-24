@@ -1,0 +1,6 @@
+# Foundation cache gate for scripts/ship, pre-push and the core CI job.
+# baseline retains every output of the curated packages in shells/baseline.nix,
+# including Bash, Perl, Python, build tools and shared libraries.
+# Wider distributions and ports belong to the campaign, not this gate.
+packages.x86_64-linux.filcc
+packages.x86_64-linux.baseline

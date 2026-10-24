@@ -88,21 +88,33 @@ No change to the Nix daemon or shared compiler derivations is necessary.
 
 ## Continuous integration
 
-`scripts/ci-outputs.txt` lists the flake outputs CI requires: `filcc`, the
-baseline set, `pkgsFilc.php`, `php-dist`, `php-docker` and `optfil`. Two
-things publish them:
+There are two readiness levels:
+
+- **Foundation / push gate:** `scripts/ship-outputs.txt` lists `filcc` and
+  `baseline`. The baseline retains every output of the curated packages in
+  `shells/baseline.nix`, including Bash, Perl, Python, build tools, shared
+  libraries and development headers. Publishing the complete closures means
+  a toolchain update does not make ordinary consumers rebuild LLVM or these
+  foundational packages.
+- **Distribution / campaign:** `scripts/ci-outputs.txt` retains the wider
+  PHP, BIND, staging, tarball and image output list. This is not a push gate.
+  The campaign builds these first, followed by the broader port set.
+
+Two things publish them:
 
 - `scripts/ship`, which agents and people use to push to `main`. On swa it
-  builds them at the commit being pushed, queues them with
+  builds the foundation at the commit being pushed, queues it with
   `filnix-publish-cache TARGET --extra-root` for both caches, waits until
-  `scripts/ci-cache-check.py` passes, and then pushes.
+  `scripts/ci-cache-check.py` passes for that explicit list, and then pushes.
 - Campaign manifests (`experiments/campaign-next/world.nix`), which start with
-  these outputs ahead of the package roots.
+  the wider distribution list ahead of the package roots. See the
+  [operations workflow](port-campaign-operations.md).
 
 GitHub Actions never compiles Fil-C. `.github/workflows/cache.yml` runs on
 pushes, pull requests and daily:
 
-- `scripts/ci-cache-check.py` walks the closures of those outputs through
+- The core job checks `scripts/ship-outputs.txt`. `scripts/ci-cache-check.py`
+  walks the closures through
   narinfo lookups on Cachix and cache.nixos.org, and fails naming any path
   neither has. It downloads nothing and runs locally too.
 - It substitutes the cached `filcc` and checks that it stops an
@@ -111,6 +123,11 @@ pushes, pull requests and daily:
   tarballs in Debian and Alpine containers, and uploads the PHP tarball as
   a workflow artifact. On `main` it pushes the image to
   `ghcr.io/mbrock/filnix-php` with its version tag and `latest`.
+
+The separate distribution job can remain red until the campaign publishes
+its artifacts; rerun it afterward. That is distinct from an uncached
+foundation. Calling `scripts/ci-cache-check.py` without attributes still
+checks the full distribution list, as required by the release workflow.
 
 `scripts/release` tags `origin/main` as `vYYYY.MM.DD` once it is cached, and
 `.github/workflows/release.yml` publishes a GitHub release with the PHP

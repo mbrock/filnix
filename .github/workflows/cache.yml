@@ -1,8 +1,8 @@
 # CI never compiles Fil-C: LLVM and the package set are far too large for a
-# hosted runner. It requires the outputs in scripts/ci-outputs.txt (the
-# toolchain, the baseline set, PHP and the tarballs) to be in the public
-# caches with their whole closures, which scripts/ship or a campaign on
-# nix.swa.sh puts there. It then uses the cached compiler and substitutes
+# hosted runner. Its core job requires scripts/ship-outputs.txt (the compiler
+# and curated baseline) in public caches with their whole closures. The
+# campaign publishes the wider scripts/ci-outputs.txt distribution set.
+# The separate artifact job uses the cached compiler and substitutes
 # the PHP and /opt/fil tarballs and the image (max-jobs = 0 forbids local
 # builds). From main it publishes the image to ghcr.io and keeps the PHP
 # tarball as a workflow artifact; releases are release.yml.
@@ -41,7 +41,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - name: Closures are in the public caches
-        run: python3 scripts/ci-cache-check.py
+        run: |
+          mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ship-outputs.txt)
+          python3 scripts/ci-cache-check.py "${attrs[@]}"
       - name: The cached compiler stops an out-of-bounds write
         run: |
           cc=$(nix build --no-link --print-out-paths .#filcc)/bin/clang

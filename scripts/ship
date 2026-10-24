@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Push committed work to origin/main so that CI passes:
+# Push committed work after publishing its foundation cache closure:
 #
-#   scripts/ship               rebase, publish the CI outputs, push
+#   scripts/ship               rebase, publish the foundation outputs, push
 #   scripts/ship --no-publish  rebase and push; the campaign publishes later
 #
-# CI (.github/workflows/cache.yml) never builds Fil-C; it requires the
-# outputs in scripts/ci-outputs.txt to be in the public caches. On the host
+# The core CI job never builds Fil-C; it requires the foundation outputs in
+# scripts/ship-outputs.txt to be in the public caches. On the host
 # that runs the cache publisher (swa), this builds them at the rebased
 # commit, queues them with filnix-publish-cache for both caches, and waits
 # until scripts/ci-cache-check.py passes before pushing. On other hosts that
@@ -75,7 +75,7 @@ if [ $publish = 1 ]; then
   roots=()
   i=0
   # Not a while-read loop: ssh in its body would read the remaining lines.
-  mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ci-outputs.txt)
+  mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ship-outputs.txt)
   for attr in "${attrs[@]}"; do
     i=$((i + 1))
     paths=()
@@ -116,7 +116,7 @@ if [ $publish = 1 ]; then
   done
   echo "ship: waiting for the caches"
   deadline=$((SECONDS + 3 * 3600))
-  until python3 scripts/ci-cache-check.py >/dev/null; do
+  until python3 scripts/ci-cache-check.py "${attrs[@]}" >/dev/null; do
     [ $SECONDS -lt $deadline ] || { echo "ship: still not cached after 3 hours" >&2; exit 1; }
     sleep 30
   done

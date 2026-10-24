@@ -5,6 +5,33 @@ to it. The native C++/NXT runner owns its DuckDB recording and listens on
 loopback port 8778. `filnix-v2.service` runs the application selected by
 `/opt/filnix-v2`; state lives under `/var/lib/filnix-v2`.
 
+## Toolchain rollout workflow
+
+1. Build the matched compiler/runtime and run focused semantic regressions
+   for the upstream changes. Run the affected package smoke tests. Do not
+   mix compiler and runtime ABIs or waive a safety regression to ship faster.
+2. Run `scripts/ship`. Its cache gate is `scripts/ship-outputs.txt`: the
+   compiler and the curated `baseline`, with their complete closures and
+   baseline smoke tests. GTK, Emacs and distribution tarballs are not in
+   this gate. `--no-publish` explicitly bypasses the cache guarantee and is
+   not the normal toolchain rollout path.
+3. Freeze a `scope = "ports"` manifest at the pushed revision and roll the
+   recording as described below. The manifest starts with the wider
+   `scripts/ci-outputs.txt` list, including the foundation and distribution
+   artifacts, then the world and remaining declared ports. Keep the
+   previous recording and manifest together for comparison and rollback.
+4. Watch the public campaign and both publishers. Report failures and
+   unattempted roots separately from successful builds. A foundation-ready
+   push is not a claim that the broader campaign passed.
+5. Once the needed distribution artifacts are cached, rerun their CI job.
+   A tagged Filnix release is a separate, explicitly requested operation;
+   its full distribution cache gate is unchanged.
+
+The campaign executes package builds, including each package's enabled
+checks. It does not automatically execute every `flake.nix` check: those
+additional integration/regression checks remain available for targeted or
+broader validation, without delaying an urgent foundation-ready update.
+
 The smaller campaign uses the release Fil-C 0.687 toolchain and the
 union of `shells/world-packages.nix` with the active `ports.nix` declarations.
 At the initial launch this selects 300 evaluable roots. Twelve declarations
@@ -16,7 +43,8 @@ are excluded by their existing unsupported-platform metadata: `onetbb`,
 Each root asks Nix to realise its complete dependency graph, using existing
 valid outputs and substitutions where available. This is a build of the latest
 package definitions, not a forced rebuild of unchanged outputs. Roots run in
-world order followed by the remaining declarations. The service allows two
+distribution-priority order, then world order and the remaining declarations.
+The service allows two
 local jobs with four cores, respects configured remote builders, admits work
 for at most 24 hours, and allows two hours per root and 30 minutes of silence.
 A failed or timed-out root does not stop later roots. An exhausted overall
