@@ -1,7 +1,8 @@
 # nanofil plan
 
-nanofil is a C compiler written in Prolog. Its IR and backend follow QBE,
-and its output is x86-64 assembly in the Fil-C ABI. That assembly links
+nanofil is a C compiler written in Prolog. Its IR started as a QBE
+subset and is now its own (`src/ir.pl`, with `src/interp.pl` as its
+meaning and `src/ir_text.pl` as its text), and its output is x86-64 assembly in the Fil-C ABI. That assembly links
 with clang-built Fil-C code and keeps Fil-C's memory-safety guarantees.
 It is meant to be a small, readable reference implementation of what the
 Fil-C pass does, not a replacement for it.
@@ -17,7 +18,7 @@ disagree, the findings win.
     ▼      classification
  ┌──────────────────────────────┐   M1: relational interpreter (CLP(Z))
  │ IR terms: ins/4, jumps, phis │◀── checks every pass; differential
- └──────────────┬───────────────┘    tests against real qbe
+ └──────────────┬───────────────┘    tests against native runs
                 │  M5: analyses, SSA, promote, copy, alias
                 ▼
  ┌──────────────────────────────┐
@@ -44,7 +45,7 @@ start. Reversing one is cheap until the milestone it names.
    carried by construction and is visible to clause indexing. QBE's passes
    mostly treat class as opaque, so the middle-end cost is in `ext`/`trunc`
    rules and the casts `ptrtoint`/`inttoptr`, which become explicit ops.
-   Phase one (M1–M2) uses plain QBE classes only.
+   Phase one (M1–M2) used plain QBE classes only.
 2. **Target: filnix staging, Fil-C 0.687 (`35faf87`), x86-64 only.**
    No 0.686 compatibility. Static data uses staging's 48-byte origins and
    per-site setjmp lowers (see the findings). `nanofil/probes/run.sh` must
@@ -58,9 +59,10 @@ start. Reversing one is cheap until the milestone it names.
    `bin/nanofil` picks the host (`NANOFIL_HOST=swi|trealla`). The check
    runs everything on SWI and a short part on Trealla. Keep code
    Scryer-compatible where it is free to do so.
-4. **Reference QBE: nixpkgs `qbe` 1.2 to start.** The phase-one subset
-   (integer ops, memory, branches, calls) is stable across versions. Pin a
-   newer revision only if a test needs it.
+4. **Reference QBE: nixpkgs `qbe` 1.2 to start (retired).** The
+   phase-one subset was checked against real qbe until October 2026,
+   when the IR became nanofil's own and the qbe difftest was removed;
+   the interpreter and native runs are the references now.
 5. **Assembler: GNU `as`, linking through filcc.** M0 showed this works,
    and it keeps clang out of nanofil's own pipeline.
 6. **Unsupported features are rejected, never passed through.** At first
@@ -106,7 +108,9 @@ this.
 ### M1. IR terms, relational interpreter, QBE subset parser
 
 **Status: complete.** See [docs/m1.md](docs/m1.md). The differential
-tests found three qbe miscompiles and a Trealla use-after-free. Memory is
+tests found three qbe miscompiles and a Trealla use-after-free. The QBE
+text parser and printer were later replaced by nanofil's own IR text
+(`src/ir_text.pl`). Memory is
 an assoc of concrete byte addresses, and symbolic addresses are deferred.
 
 **Deliverable:** clean IR terms (handoff "Proposed design" item 1) and a
@@ -220,8 +224,8 @@ settled the ABI questions first:
    "signature mismatch is a link error".
 5. **Locals all live in `alloc`**, as cproc's output does before
    `promote`; the Fil-C lowering heap-allocates them. M5 promotes them.
-6. **Struct copies** are word-wise `loadp`/`storep` over 8-aligned words
-   and narrower integer copies for the rest. That preserves every
+6. **Struct copies** are word-wise `load(p)`/`store(p, ...)` over
+   8-aligned words and narrower integer copies for the rest. That preserves every
    capability bit-for-bit without calling libc.
 7. **Struct arguments larger than 16 bytes** are rejected at first: clang
    passes them `byval`, which forces the generic convention. Returns

@@ -1,5 +1,6 @@
-/*  promote: memory slots to SSA temporaries (QBE's promote and ssa,
-    LLVM's mem2reg), by promote_module/2 and promote_func/3.
+/*  promote: memory slots to SSA temporaries, by promote_module/2 and
+    promote_func/3. Prior art: QBE's promote and ssa passes, LLVM's
+    mem2reg.
 
     A slot is one fixed (offset, width) of an alloc that escape.pl calls
     local. An alloc is promoted, all its slots at once, when
@@ -11,7 +12,7 @@
       - its slots do not overlap and each offset has one width, so every
         load reads exactly the bytes one earlier store wrote;
       - in filc mode, p slots are 8-aligned (allocs are 16-aligned), so no
-        loadp or storep could trap as misaligned.
+        load(p) or store(p, ...) could trap as misaligned.
     The function must also be in strict SSA form (each temp defined once,
     every definition dominating its uses); otherwise a stored temp could
     be redefined before the load that promote would turn into its copy.
@@ -23,9 +24,9 @@
     any store a slot holds 0: Fil-C allocations are zeroed, and in plain
     mode the bytes are unknown, so 0 is one of the values they could have.
 
-    Values keep the class of the store: a storeb of a w value stores the
-    whole value, and each load narrows or extends it again, exactly as the
-    bytes would.
+    Values keep the class of the store: a store(b, ...) of a w value
+    keeps the whole value, and each load narrows or extends it again,
+    exactly as the bytes would.
 */
 :- module(promote, [promote_module/2, promote_func/3, promotable/3,
                     alloc_count/2, strict_ssa/3]).

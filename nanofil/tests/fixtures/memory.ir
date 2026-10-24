@@ -1,6 +1,6 @@
 % Memory, control flow, calls and data.
 
-data(msg, local, 1, [item(b, str("hi\\n\\001")), item(b, c(0))]).
+data(msg, local, 1, [item(b, str("hi\n\x1\")), item(b, c(0))]).
 data(tab, local, 8, [item(w, c(10)), item(w, c(20)), item(w, c(30)), item(w, c(-1)), item(l, sym(tab, 4)), zero(4)]).
 
 % Little-endian stores and sign/zero-extending loads.

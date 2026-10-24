@@ -136,8 +136,28 @@ directive(int(N)) --> ".int ", literal(N).
 directive(short(N)) --> ".short ", literal(N).
 directive(byte([N|Ns])) --> ".byte ", literal(N), more_bytes(Ns).
 directive(zero(N)) --> ".zero ", literal(N).
-directive(ascii(Cs)) --> ".ascii \"", seq(Cs), "\"".
+directive(ascii(Cs)) --> ".ascii \"", ascii_chars(Cs), "\"".
 directive(asciz(A)) --> ".asciz \"", literal(A), "\"".
+
+% ascii_chars(+Cs)//: the bytes Cs, one per character, inside an .ascii
+% string: printable ASCII as itself except quote and backslash, which
+% are escaped, newline and tab as \n and \t, any other byte as three
+% octal digits.
+ascii_chars([]) --> [].
+ascii_chars([C|Cs]) --> ascii_char(C), ascii_chars(Cs).
+
+ascii_char('"') --> !, "\\\"".
+ascii_char('\\') --> !, "\\\\".
+ascii_char('\n') --> !, "\\n".
+ascii_char('\t') --> !, "\\t".
+ascii_char(C) --> { char_code(C, N), N >= 32, N =< 126 }, !, [C].
+ascii_char(C) -->
+    { char_code(C, N),
+      maplist(octal_char(N), [6, 3, 0], Os) },
+    "\\", seq(Os).
+
+% octal_char(+N, +Shift, -O): O is the octal digit of N at bit Shift.
+octal_char(N, Shift, O) :- D is (N >> Shift) /\ 7 + 0'0, char_code(O, D).
 
 more_bytes([]) --> [].
 more_bytes([N|Ns]) -->

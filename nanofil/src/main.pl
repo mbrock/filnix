@@ -309,10 +309,10 @@ comparable(_, r(_, _, ret(V))) :-
 comparable(_, r(_, _, ret)).
 comparable(filc, r(_, _, trap(_))).
 
-% call_text(+Fn, +Args, -Text): Text is the atom '$Fn(A1, A2, ...)'.
+% call_text(+Fn, +Args, -Text): Text is the atom 'Fn(A1, A2, ...)'.
 call_text(Fn, Args, Text) :-
     atomic_list_concat(Args, ', ', ArgText),
-    format(atom(Text), '$~w(~w)', [Fn, ArgText]).
+    format(atom(Text), '~w(~w)', [Fn, ArgText]).
 
 %% difftest output files
 

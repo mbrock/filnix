@@ -9,7 +9,7 @@
               ins(t(r), w, add, [t(a), t(b)])
           ], ret(t(r)))
       ]).
-      data(msg, local, 1, [item(b, str("hi\\n")), item(b, c(0))]).
+      data(msg, local, 1, [item(b, str("hi\n")), item(b, c(0))]).
 
     The printer is ours rather than writeq/1, so the text is the same on
     both hosts and the layout stays stable: an atom is bare when it is a

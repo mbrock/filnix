@@ -49,7 +49,7 @@ module_asm(module(Items), Lines) :-
 item_lines(Item, Lines) :-
     (   phrase(item(Item), Lines) -> true
     ;   arg(1, Item, Name),
-        format(atom(Msg), 'backend cannot emit $~w', [Name]),
+        format(atom(Msg), 'backend cannot emit ~w', [Name]),
         throw(nanofil_error(Msg))
     ).
 
@@ -150,7 +150,7 @@ store_params([], _, _) --> [].
 store_params([par(_, Temp)|Params], I, Ctx) -->
     (   { arg_reg(I, Reg) } -> []
     ;   { Ctx = f(Fn, _, _, _),
-          format(atom(Msg), 'in $~w: more than six parameters', [Fn]),
+          format(atom(Msg), 'in ~w: more than six parameters', [Fn]),
           throw(nanofil_error(Msg)) }
     ),
     { reg_name(Reg, l, RegName) },
@@ -286,7 +286,7 @@ inst(call(Res, glo(F), Args), Ctx) -->
     { length(Args, N),
       (   N =< 6 -> true
       ;   Ctx = f(Fn, _, _, _),
-          format(atom(Msg), 'in $~w: call with more than six arguments',
+          format(atom(Msg), 'in ~w: call with more than six arguments',
                  [Fn]),
           throw(nanofil_error(Msg))
       ) },

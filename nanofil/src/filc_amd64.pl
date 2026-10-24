@@ -60,7 +60,7 @@ thunk_lines(Callee, Lines) :-
 item_lines(Module, Item, Lines) :-
     (   phrase(item(Module, Item), Lines) -> true
     ;   arg(1, Item, Name),
-        format(atom(Msg), 'Fil-C backend cannot emit $~w', [Name]),
+        format(atom(Msg), 'Fil-C backend cannot emit ~w', [Name]),
         throw(nanofil_error(Msg))
     ).
 
@@ -999,8 +999,9 @@ copy_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
 copy_inst(K,Op,Args,D,Ctx) -->
     { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
 
-% pointer_copy(+V, +D, +Ctx)//: t(D) =p copy V. A symbol's pointer comes
-% from its getter; any other value is a flight pointer already.
+% pointer_copy(+V, +D, +Ctx)//: ins(t(D), p, copy, [V]). A symbol's
+% pointer comes from its getter; any other value is a flight pointer
+% already.
 pointer_copy(glo(S), D, Ctx) -->
     { ctx_name(Ctx, Name),
       ctx_module(Ctx, Module),
@@ -1015,13 +1016,14 @@ pointer_copy(glo(S), D, Ctx) -->
 pointer_copy(t(N), D, Ctx) --> flight_copy(t(N), D, Ctx).
 pointer_copy(c(N), D, Ctx) --> flight_copy(c(N), D, Ctx).
 
-% flight_copy(+V, +D, +Ctx)//: t(D) =p copy V of a temp or constant.
+% flight_copy(+V, +D, +Ctx)//: ins(t(D), p, copy, [V]) of a temp or
+% constant.
 flight_copy(V, D, Ctx) -->
     flight_load(V, Ctx),
     flight_store(D, Ctx).
 
 % load_inst(+T, +K, +A, +D, +Index, +Block, +Ctx)//: a load of type T at
-% K from A, the Indexth instruction of Block. A loadp also reads the
+% K from A, the Indexth instruction of Block. A load(p) also reads the
 % capability; the others read an integer.
 load_inst(p, p, A, D, Index, Block, Ctx) -->
     { local_label(Ctx, Block, Index, nolower, NoLower),
@@ -1857,7 +1859,7 @@ payload_item(item(W, Value), Line, S0, S) :-
 % value_payload(+Value, +W, -Line, +Off0-Rs0, -Off-Rs): as payload_item/4
 % for item(W, Value).
 value_payload(str(Cs), b, ascii(Cs), Off0-Rs, Off-Rs) :-
-    phrase(asm_string_length(N), Cs),
+    length(Cs, N),
     Off is Off0 + N.
 value_payload(sym(S, Addend), p, quad(0), Off0-Rs,
               Off-[r(Off0, S, Addend)|Rs]) :-
@@ -1873,42 +1875,6 @@ value_payload(c(N), W, Directive, Off0-Rs, Off-Rs) :-
     memberchk(Bytes-Directive,
               [1-byte([U]), 2-short(U), 4-long(U), 8-quad(U)]),
     Off is Off0 + Bytes.
-
-% The byte length of an ascii string with GNU as escapes.
-asm_string_length(0) --> [].
-asm_string_length(N) -->
-    ['\\'],
-    !,
-    escape_tail,
-    asm_string_length(N0),
-    { N is N0 + 1 }.
-asm_string_length(N) -->
-    [_],
-    asm_string_length(N0),
-    { N is N0 + 1 }.
-
-% After a backslash: up to three octal digits, or one other character.
-escape_tail -->
-    octal_digit,
-    !,
-    octal_upto(2).
-escape_tail -->
-    [_].
-
-% As many octal digits as there are, up to K.
-octal_upto(0) --> !.
-octal_upto(K) -->
-    octal_digit,
-    !,
-    { K1 is K - 1 },
-    octal_upto(K1).
-octal_upto(_) --> [].
-
-octal_digit -->
-    [D],
-    { char_code(D, C),
-      C >= 0'0,
-      C =< 0'7 }.
 
 % Each relocation is {u64 offset, u32 kind, pad, target}: kind 0 calls a
 % getter, kind 1 a constexpr node {u32 add-immediate = 0, u32 0, getter,

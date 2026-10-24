@@ -142,7 +142,7 @@ int_arg_in_range(K, X) :-
 % allocation is a heap object that lives on.
 call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     (   get_assoc(Fn, Fns, fn(Ret, Params, Entry, Blocks)) -> true
-    ;   format(atom(Msg), 'cannot interpret a call to external $~w', [Fn]),
+    ;   format(atom(Msg), 'cannot interpret a call to external ~w', [Fn]),
         throw(nanofil_error(Msg))
     ),
     empty_assoc(Env0),
@@ -333,7 +333,7 @@ cap_call_result(fn(F), A, Res, Args, Xs, Ctx, Env0, S0, Result) :-
     ;   Result = stop(trap(not_a_function), S0)
     ).
 cap_call_result(ext(F), _, _, _, _, _, _, _, _) :-
-    format(atom(Msg), 'cannot interpret a call to external $~w', [F]),
+    format(atom(Msg), 'cannot interpret a call to external ~w', [F]),
     throw(nanofil_error(Msg)).
 cap_call_result(none, _, _, _, _, _, _, S0, stop(trap(not_a_function), S0)).
 cap_call_result(obj(_), _, _, _, _, _, _, S0,
@@ -501,7 +501,7 @@ value_x(K, V, Ctx, Env, X) :- value_x_(V, K, Ctx, Env, X).
 
 value_x_(t(N), K, _, Env, X) :-
     (   get_assoc(N, Env, X0) -> true
-    ;   format(atom(Msg), 'read of %~w before any assignment', [N]),
+    ;   format(atom(Msg), 'read of t(~w) before any assignment', [N]),
         throw(nanofil_error(Msg))
     ),
     word_at_class(K, X0, X).
@@ -608,7 +608,7 @@ alloc_pointer(filc, Base, ptr(Base, obj(Base))).
 
 % load_op_res(+T, +K, +Mode, +Args, +S0, -Res, -S): Res is the result of
 % a load of type T at class K. A load reads Size bytes and extends them
-% as T names; loadl takes them as they are.
+% as T names; load(l) takes them as they are.
 load_op_res(p, _, Mode, Args, S0, Res, S) :-
     pointer_load_res(Mode, Args, S0, Res, S).
 load_op_res(l, _, Mode, Args, S0, Res, S) :-
@@ -630,8 +630,8 @@ load_op_res(sb, K, Mode, Args, S0, Res, S) :-
 load_op_res(ub, K, Mode, Args, S0, Res, S) :-
     ext_load_res(ub, 1, K, Mode, Args, S0, Res, S).
 
-% loadp exists in filc mode only. It reads the word and the capability
-% the last storep left there, none if there was none.
+% load(p) exists in filc mode only. It reads the word and the capability
+% the last store(p, ...) left there, none if there was none.
 pointer_load_res(filc, [ptr(A, Cap)], s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
     access_res(Mem0, A, Cap, 8, read, 8, Res0),
     pointer_access_load(Res0, Mem0, A, Res, Mem).
@@ -826,7 +826,7 @@ extension(uw, X, S) :- int_is(S, X mod 4294967296).
 %% Memory: mem(Bytes, Regions, Next, Aux)
 %
 % Aux is used in filc mode only: it maps an 8-aligned address to the
-% capability a storep left there. An integer store leaves it alone, as
+% capability a store(p, ...) left there. An integer store leaves it alone, as
 % Fil-C's aux array does.
 
 % load_res(+Mode, +Mem0, +A, +Size, -Res, -Mem): Res is val(U), U the
@@ -867,7 +867,7 @@ store_res(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem) :-
 
 % width_word(+Width, ?X, ?V, -Align, -Stored): a Fil-C store of Width
 % writes the integer V of the value X, needs alignment Align, and Stored
-% is cap(C) for a storep's capability C, or none.
+% is cap(C) for the capability C of a store(p, ...), or none.
 width_word(b, V, V, 1, none).
 width_word(h, V, V, 1, none).
 width_word(w, V, V, 1, none).
@@ -904,7 +904,7 @@ access_res(mem(_, Rs, _, _), A, Cap, Size, Kind, Align, Res) :-
 cap_access_res(none, _, _, _, _, _, trap(null_capability)).
 cap_access_res(fn(_), _, _, _, _, _, trap(out_of_bounds)).
 cap_access_res(ext(N), _, _, _, _, _, _) :-
-    format(atom(Msg), 'cannot interpret an access to external $~w', [N]),
+    format(atom(Msg), 'cannot interpret an access to external ~w', [N]),
     throw(nanofil_error(Msg)).
 cap_access_res(obj(Base), Rs, A, Size, _, Align, Res) :-
     memberchk(Base-End, Rs),
@@ -1090,17 +1090,17 @@ filc_item_contents(Globals, Item, At-Bytes0-Aux, At1-Bytes-Aux) :-
 % b (a constant).
 item_size(zero(N), Size0, Size) :- Size is Size0 + N.
 item_size(item(b, str(Cs)), Size0, Size) :- !,
-    str_bytes(Cs, Bs),
-    length(Bs, N),
+    length(Cs, N),
     Size is Size0 + N.
 item_size(item(W, _), Size0, Size) :-
     width_bytes(W, N),
     Size is Size0 + N.
 
-% item_bytes(+Globals, +Item, -Bs): Bs are the bytes of the data Item.
-% The cut commits to a string, as in item_size/3.
+% item_bytes(+Globals, +Item, -Bs): Bs are the bytes of the data Item,
+% one per character of a string. The cut commits to a string, as in
+% item_size/3.
 item_bytes(_, zero(N), Bs) :- length(Bs, N), maplist(=(0), Bs).
-item_bytes(_, item(b, str(Cs)), Bs) :- !, str_bytes(Cs, Bs).
+item_bytes(_, item(b, str(Cs)), Bs) :- !, maplist(char_code, Cs, Bs).
 item_bytes(_, item(W, c(N)), Bs) :-
     width_bytes(W, Size),
     Bits is Size * 8,
@@ -1110,41 +1110,6 @@ item_bytes(Globals, item(l, sym(S, Off)), Bs) :-
     get_assoc(S, Globals, A),
     U is A + Off,
     le_bytes(8, U, Bs).
-
-% str_bytes(+Cs, -Bs): Bs are the bytes of the string Cs, with the GNU
-% as escapes that the backends pass through. The cut commits to an escape
-% before the clause for any other character.
-str_bytes([], []).
-str_bytes(['\\', C|Cs], [B|Bs]) :- !,
-    escape_byte(C, Cs, B, Rest),
-    str_bytes(Rest, Bs).
-str_bytes([C|Cs], [B|Bs]) :- char_code(C, B), str_bytes(Cs, Bs).
-
-% escape_byte(+C, +Cs, -Code, -Rest): Code is the byte the escape \C...
-% names, with Rest the characters after it (up to two more octal
-% digits). The letter cases are disjoint from the octal digits of the
-% last clause; the cuts only keep the letters deterministic.
-escape_byte(n, Cs, 10, Cs) :- !.
-escape_byte(t, Cs, 9, Cs) :- !.
-escape_byte(r, Cs, 13, Cs) :- !.
-escape_byte('\\', Cs, 92, Cs) :- !.
-escape_byte('"', Cs, 34, Cs) :- !.
-escape_byte(D, Cs, B, Rest) :-
-    octal_digit(D, V0),
-    octal_more(Cs, V0, 2, B, Rest).
-
-% octal_more(+Cs, +V0, +N, -V, -Rest): V is V0 extended by up to N more
-% leading octal digits of Cs, the longest run there is.
-octal_more([D|Cs], V0, N, V, Rest) :-
-    N > 0,
-    octal_digit(D, X),
-    !,
-    V1 is V0 * 8 + X,
-    N1 is N - 1,
-    octal_more(Cs, V1, N1, V, Rest).
-octal_more(Cs, V, _, V, Cs).
-
-octal_digit(D, V) :- char_code(D, C), C >= 0'0, C =< 0'7, V is C - 0'0.
 
 %% Printing
 

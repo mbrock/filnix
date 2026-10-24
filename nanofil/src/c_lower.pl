@@ -2130,8 +2130,8 @@ normalize(Type, V0, V) -->
 /* A struct or union rvalue is v(Addr, T): Addr points at storage holding
    the value, a variable's or a temporary's. Copies, arguments and
    returns go an eightbyte at a time (eb(Offset, Bytes, Class)): class p
-   if a pointer starts there, so its capability is copied with loadp and
-   storep, else l, with a short last eightbyte moved in 4-, 2- and 1-byte
+   if a pointer starts there, so its capability is copied with load(p) and
+   store(p, ...), else l, with a short last eightbyte moved in 4-, 2- and 1-byte
    pieces. A value of at most 16 bytes is passed as one word per
    eightbyte, as clang does; a larger return goes through an sret
    pointer. */

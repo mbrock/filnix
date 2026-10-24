@@ -24,6 +24,7 @@
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
 :- use_module('../src/c_types').
+:- use_module('../src/asm').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -91,7 +92,7 @@ clause_texts(Cs, [T|Ts]) :-
 clause_term(T, X) :- read_term_from_chars(T, X, []).
 
 % module_fn_args_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
-% outcome of $Fn(Args) on Module with fuel for 1000 blocks.
+% outcome of Fn(Args) on Module with fuel for 1000 blocks.
 module_fn_args_outcome(M, Fn, Args, Out) :-
     once(run(M, Fn, Args, 1000, Out)).
 
@@ -297,7 +298,7 @@ test(rejects_w_temp_as_l) :-
             ], ret(t(b)))
         ])
     ],
-                  "%a has class w but is used as l").
+                  "t(a) has class w but is used as l").
 % The entry block cannot be a jump target.
 test(rejects_jump_to_entry) :-
     rejected_with([
@@ -453,7 +454,7 @@ test(rejects_p_as_l) :-
             ], ret(t(b)))
         ])
     ],
-                  "%a has class p but is used as l (use ptoi)").
+                  "t(a) has class p but is used as l (use ptoi)").
 % In a Fil-C module (one using p), an l temporary cannot be used as an
 % address without itop.
 test(rejects_l_as_p) :-
@@ -469,7 +470,7 @@ test(rejects_l_as_p) :-
             ], ret(t(q)))
         ])
     ],
-                  "%a has class l but is used as p (use itop)").
+                  "t(a) has class l but is used as p (use itop)").
 % Pointers cannot be multiplied.
 test(rejects_pointer_multiply) :-
     rejected_with([
@@ -490,7 +491,7 @@ test(rejects_l_symbol_in_filc_data) :-
             ], ret(t(q)))
         ])
     ],
-                  "use p $d for a pointer").
+                  "is item(p, sym(d, _))").
 % Fil-C code materializes a symbol with copy before using it.
 test(rejects_symbol_operand_in_filc) :-
     rejected_with([
@@ -502,7 +503,7 @@ test(rejects_symbol_operand_in_filc) :-
             ], ret(t(v)))
         ])
     ],
-                  "use %t =p copy $d").
+                  "only copy at p reads glo(d)").
 
 % Which offsets can a 1-byte read of a 16-byte allocation take without
 % trapping? Exactly 0..15.
@@ -535,6 +536,27 @@ test(print_round_trip) :-
     % Lowered C has quoted labels ('L6'), temps ('pr.1') and symbols.
     c_file_module('../tests/c/basic.c', C),
     reads_back(C).
+
+% A str/1 data item holds its bytes, one per character: \001 is four
+% bytes, not one, and the backends escape quote, backslash and
+% unprintable bytes only when they print the .ascii directive.
+test(data_string_is_bytes) :-
+    ir_module([
+        data(d, local, 1, [item(b, str(['\\', '0', '0', '1'])),
+                           item(b, c(7))]),
+        func(f, export, w, [par(l, t(i))], [
+            blk(s, [], [
+                ins(t(p), l, add, [glo(d), t(i)]),
+                ins(t(v), w, load(ub), [t(p)])
+            ], ret(t(v)))
+        ])
+    ], M),
+    module_fn_args_outcome(M, f, [1], ret(48)),
+    module_fn_args_outcome(M, f, [4], ret(7)),
+    char_code(One, 1), char_code(High, 200),
+    asm:line_chars(ascii(['"', '\\', '\n', '\t', a, One, High]), Cs),
+    append(Text, ['\n'], Cs),
+    Text == "\t.ascii \"\\\"\\\\\\n\\ta\\001\\310\"".
 
 %% Middle end (M5)
 

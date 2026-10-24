@@ -7,19 +7,21 @@ orchestrating thread's agreement, as for the rest of ir.pl's grammar.
 
 ## IR additions
 
-The IR follows QBE's floating-point IL, so plain modules with floats
-still difftest against real qbe.
+The IR's floating point started from QBE's floating-point IL (QBE
+names are given below for reference); the qbe difftest has since been
+retired, and IR text now writes float constants as `c(Bits)` terms.
 
 - **Classes** `s` (IEEE 754 binary32) and `d` (binary64), alongside
   w, l and p. Temps, params, phis, call arguments, and `ret` values may
   have class s or d. `Ret` gains `s | d`. Tuple returns stay l/p.
 - **Values.** A float value is its bit pattern. `c(N)` at class s or d
   means the bits N (0 ≤ N < 2^32 or 2^64), so constants, loads and
-  stores never need a host float. QBE text writes float constants as
-  `s_1.5` / `d_1.5`: the parser converts the decimal with correct
-  rounding (round half to even), and the printer emits text that real
-  qbe reads back as the same bits. Constants that QBE text cannot spell
-  (NaNs, infinities, -0) are printed some other exact way; the IR
+  stores never need a host float, and IR text writes them as `c(N)`
+  too. The rest of this item is history: QBE text wrote float constants
+  as `s_1.5` / `d_1.5`, the old parser converted the decimal with correct
+  rounding (round half to even), and the old printer emitted text that real
+  qbe read back as the same bits. Constants that QBE text cannot spell
+  (NaNs, infinities, -0) were printed some other exact way; the IR
   workstream chooses and documents it.
   **Chosen spelling:** unsigned decimal integer bit patterns for NaNs,
   infinities and negative zero, e.g. `2147483648` at s and
@@ -116,7 +118,8 @@ compares exactly against native code:
 ## Order
 
 1. IR workstream, first push: the grammar in ir.pl, the validator,
-   qbe_parse/qbe_print, op_kind and ieee.pl. The other two build on it.
+   qbe_parse/qbe_print (since replaced by ir_text.pl), op_kind and
+   ieee.pl. The other two build on it.
 2. Then, in parallel: the interpreter's float semantics (IR
    workstream), the backends, and the C frontend.
 3. Then Lua: `lua -e`, its test suite, and a nix check like

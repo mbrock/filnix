@@ -1,5 +1,6 @@
-/*  Escape classification of allocs (QBE's ALoc/AEsc): alloc_classes/2,
-    with address_temps/2, load_width/2 and def_counts/2.
+/*  Escape classification of allocs: alloc_classes/2, with
+    address_temps/2, load_width/2 and def_counts/2. Prior art: QBE's
+    ALoc/AEsc.
 
     A local alloc can only be reached through its own address, so no
     other pointer or integer can name it. Offsets are exact integers (an

@@ -1,5 +1,5 @@
 data(tab, local, 8, [item(w, c(10)), item(w, c(20)), item(w, c(30))]).
-data(msg, ro(local), 8, [item(b, str("hi\\n")), item(b, c(0))]).
+data(msg, ro(local), 8, [item(b, str("hi\n")), item(b, c(0))]).
 data(pt, local, 8, [item(p, sym(tab, 4)), item(p, sym(msg, 0)), item(l, c(7))]).
 func(three, local, w, [par(w, t(x))], [
     blk(s, [], [

@@ -450,7 +450,7 @@ by the buffered-return interop cases below.
 
 Reproducible coverage:
 
-- `tests/fixtures/float.ssa`: arithmetic, NaN/unordered comparisons,
+- `tests/fixtures/float.ir`: arithmetic, NaN/unordered comparisons,
   casts, signed and unsigned conversions (including above 2^63),
   s/d memory and static data, phis and simultaneous GPR/XMM spills.
 - `tests/filc/run-c.sh float`: clang ↔ nanofil scalar parameters and

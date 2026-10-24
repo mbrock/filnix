@@ -8,9 +8,9 @@ ins(t(D), w, setjmp(Kind), [Buf, SaveMask])
 
 `Kind` is `setjmp`, `'_setjmp'`, or `sigsetjmp`. The operation has its
 own `op_kind`, `setjmp`, takes `[p,w]`, returns `w`, and is valid only in
-Fil-C mode. `SaveMask` must be `c(0)` for the first two kinds. QBE text
-spells these `%r =w setjmp %buf, 0`, `%r =w _setjmp %buf, 0`, and
-`%r =w sigsetjmp %buf, %mask`; parsing/printing preserves the term.
+Fil-C mode. `SaveMask` must be `c(0)` for the first two kinds. IR text
+writes the term as it is, for example
+`ins(t(r), w, setjmp(sigsetjmp), [t(buf), t(mask)])`.
 
 The C frontend recognizes resolved direct function symbols after ordinary
 argument checking/conversion, including symbol renames. Taking a setjmp
@@ -115,7 +115,7 @@ not assumptions to relax after tests pass.
   Signal-set manipulation is a clang-built companion; the setjmp callers
   and nonlocal-control flow are compiled by nanofil and filcc separately.
 - `tests/c/prog/setjmp-expired.c`: jumping to a returned frame must trap.
-- `tests/filc/setjmp.ssa`: latest-site pointer/scalar/phi restoration,
+- `tests/filc/setjmp.ir`: latest-site pointer/scalar/phi restoration,
   with collection while saved lowers retain the snapshot's objects;
   invalid, readonly and misaligned destination buffers; and a longjmp
   through a setjmp-capable frame before its first setjmp executes.

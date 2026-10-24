@@ -51,6 +51,8 @@
                data (in .rodata)
       Items: [item(W, c(N)) | item(b, str(Chars)) | item(l, sym(Name, Off))
               | item(p, sym(Name, Off)) | zero(N)]
+      str(Chars) is the bytes themselves, one character per byte (codes
+      0..255); a backend escapes them when it prints assembly.
       item(p, ...) is a pointer with the capability of Name (filc only).
 
     Temps are ground names; logic variables never appear in IR terms.
@@ -63,9 +65,10 @@
              with a capability), alloc yields p, loads and stores take a p
              address, p arithmetic is add/sub of an l offset, and ptoi/itop
              convert. Calls may name functions outside the module, or go
-             through a p value. A symbol is used only as %t =p copy $s,
-             which yields a pointer to the data or function object; $s
-             may be defined outside the module. See docs/m3.md, m4.md.
+             through a p value. A symbol glo(S) is read only by
+             ins(t(D), p, copy, [glo(S)]), which yields a pointer to the
+             data or function object; S may be defined outside the
+             module. See docs/m3.md, m4.md.
 
     Variable names below: M a module, Fn a function name, K a class
     (w, l or p), V an IR value, L a label.
@@ -279,6 +282,16 @@ setjmp_func(func(_, _, _, _, Blocks)) :-
 %  Mode is filc when anything in M has class p, uses a pointer-only op,
 %  or calls a function M does not define (which only the Fil-C ABI can
 %  reach), and plain otherwise.
+%
+%  The mode is inferred rather than stated: M uses a feature only filc
+%  mode has, or it does not. Every rule above is such a feature, the
+%  external call as much as class p. Stating the mode would mean a
+%  module(Mode, Items) term or a Mode argument for valid_module/1,
+%  run/5, promote and the backends, and a mode clause in each IR file,
+%  for no case the inference gets wrong: a C module is filc unless it
+%  uses none of these features (no memory, no pointers, no external
+%  calls), and then validation, promotion and the interpreter treat it
+%  alike in both modes; nanofil cc picks the Fil-C backend itself.
 
 module_mode(module(Items), Mode) :-
     (   member(Item, Items),
@@ -370,7 +383,7 @@ valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
     Blocks = [blk(Entry, _, _, _)|_],
     (   member(blk(_, _, _, Jump), Blocks),
         jump_target(Jump, Entry)
-    ->  fn_error(Name, 'jump to the entry block @~w', [Entry])
+    ->  fn_error(Name, 'jump to the entry block ~w', [Entry])
     ;   true
     ).
 valid_item(_, Mode, data(Name, _, Align, Items)) :-
@@ -383,9 +396,16 @@ valid_item(_, Mode, data(Name, _, Align, Items)) :-
     (   Mode == plain, memberchk(item(p, _), Items)
     ->  fn_error(Name, 'pointer data items need a Fil-C module', [])
     ;   Mode == filc, memberchk(item(l, sym(Sym, _)), Items)
-    ->  fn_error(Name, 'use p $~w for a pointer in a Fil-C module', [Sym])
+    ->  fn_error(Name, 'a pointer in a Fil-C module is item(p, sym(~w, _))',
+                 [Sym])
     ;   true
-    ).
+    ),
+    forall(member(item(_, str(Cs)), Items),
+           ( maplist(byte_char, Cs) -> true
+           ; fn_error(Name, 'str/1 holds characters of codes 0..255', []) )).
+
+% byte_char(+C): C is a character that stands for one byte.
+byte_char(C) :- atom(C), atom_length(C, 1), char_code(C, N), N =< 255.
 
 % temp_defs(+Params, +Blocks, -Defs): Name-Class for every definition of
 % a temporary, in parameter and then block order.
@@ -407,7 +427,7 @@ check_temp_classes(Fn, Defs) :-
     forall(member(_-K, Defs),
            ( any_class(K) -> true ; fn_error(Fn, 'invalid class ~w', [K]) )),
     (   append(_, [N-K1, N-K2|_], Defs), K1 \== K2
-    ->  fn_error(Fn, 'temporary %~w has classes ~w and ~w', [N, K1, K2])
+    ->  fn_error(Fn, 't(~w) has classes ~w and ~w', [N, K1, K2])
     ;   true
     ).
 
@@ -436,7 +456,7 @@ valid_block(Ctx, blk(Label, Phis, Insts, Jump)) :-
     maplist(valid_inst(Ctx), Insts),
     valid_jump(Ctx, Jump),
     (   Phis \== [], Preds == []
-    ->  fn_error(Fn, 'phi in @~w, which has no predecessors', [Label])
+    ->  fn_error(Fn, 'phi in block ~w, which has no predecessors', [Label])
     ;   true
     ).
 
@@ -450,7 +470,7 @@ valid_phi(Ctx, Label, Preds, phi(_, K, Pairs)) :-
     split_pairs(Pairs, PhiPreds0, Values),
     sort(PhiPreds0, PhiPreds),
     (   PhiPreds == Preds -> true
-    ;   fn_error(Fn, 'phi in @~w covers ~w but predecessors are ~w',
+    ;   fn_error(Fn, 'phi in block ~w covers ~w but predecessors are ~w',
                  [Label, PhiPreds, Preds])
     ),
     maplist(valid_use(Ctx, K), Values).
@@ -489,7 +509,7 @@ valid_inst(Ctx, ins(_, K, Op, Args)) :-
 valid_inst(Ctx, store(Width, Value, Addr)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
     (   Width == p, Mode == plain
-    ->  fn_error(Fn, 'storep needs class p', [])
+    ->  fn_error(Fn, 'store(p, ...) needs a Fil-C module', [])
     ;   true
     ),
     store_value_class(Width, ValueClass),
@@ -505,12 +525,12 @@ valid_inst(Ctx, call(Res, glo(Callee), Args)) :-
         (   ( ParamClasses == ArgClasses
             ; variadic_func(CalleeFunc), append(ParamClasses, _, ArgClasses)
             ) -> true
-        ;   fn_error(Fn, 'call to $~w passes ~w, expects ~w',
+        ;   fn_error(Fn, 'call to glo(~w) passes ~w, expects ~w',
                      [Callee, ArgClasses, ParamClasses])
         ),
         call_result_ok(Fn, Callee, Res, CalleeRet)
     ;   Mode == filc -> true
-    ;   fn_error(Fn, 'call to unknown function $~w', [Callee])
+    ;   fn_error(Fn, 'call to undefined function glo(~w)', [Callee])
     ),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
 valid_inst(Ctx, call(_, Callee, Args)) :-
@@ -531,7 +551,7 @@ call_result_ok(_, _, void, _).
 call_result_ok(Fn, Callee, tuple(Tos), Ret) :-
     findall(K, member(to(_, K), Tos), Ks),
     (   Ret == tuple(Ks) -> true
-    ;   fn_error(Fn, 'reads the ~w result of $~w as tuple(~w)',
+    ;   fn_error(Fn, 'reads the ~w result of glo(~w) as tuple(~w)',
                  [Ret, Callee, Ks])
     ).
 call_result_ok(Fn, Callee, to(_, K), Ret) :-
@@ -540,9 +560,9 @@ call_result_ok(Fn, Callee, to(_, K), Ret) :-
 % to_result_ok(+Ret, +K, +Fn, +Callee): a call site may read at class K
 % the result of Callee, which returns Ret.
 to_result_ok(void, _, Fn, Callee) :-
-    fn_error(Fn, 'uses the result of void $~w', [Callee]).
+    fn_error(Fn, 'uses the result of void glo(~w)', [Callee]).
 to_result_ok(tuple(_), K, Fn, Callee) :-
-    fn_error(Fn, 'reads the tuple result of $~w as ~w', [Callee, K]).
+    fn_error(Fn, 'reads the tuple result of glo(~w) as ~w', [Callee, K]).
 to_result_ok(Ret, K, Fn, Callee) :-
     any_class(Ret),
     class_result_ok(Ret, K, Fn, Callee).
@@ -552,11 +572,11 @@ to_result_ok(Ret, K, Fn, Callee) :-
 % changes class.
 class_result_ok(Ret, K, Fn, Callee) :-
     (   (float_class(Ret) ; float_class(K)), Ret \== K
-    ->  fn_error(Fn, 'reads the ~w result of $~w as ~w', [Ret, Callee, K])
+    ->  fn_error(Fn, 'reads the ~w result of glo(~w) as ~w', [Ret, Callee, K])
     ;   K == l, Ret == w
-    ->  fn_error(Fn, 'reads the w result of $~w as l', [Callee])
+    ->  fn_error(Fn, 'reads the w result of glo(~w) as l', [Callee])
     ;   ( K == p, Ret \== p ; K \== p, Ret == p )
-    ->  fn_error(Fn, 'reads the ~w result of $~w as ~w', [Ret, Callee, K])
+    ->  fn_error(Fn, 'reads the ~w result of glo(~w) as ~w', [Ret, Callee, K])
     ;   true
     ).
 
@@ -601,7 +621,7 @@ ret_void_ok(Ret, Fn) :-
 
 label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
     (   get_assoc(L, LabelSet, _) -> true
-    ;   fn_error(Fn, 'undefined label @~w', [L])
+    ;   fn_error(Fn, 'undefined block label ~w', [L])
     ).
 
 % valid_use(+Ctx, +K, +V): V may be read at class K. Arguments are in the
@@ -616,18 +636,18 @@ valid_use(Ctx, K, V) :-
 valid_use_(t(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
     (   get_assoc(N, TempClasses, K0)
     ->  (   (float_class(K) ; float_class(K0)), K \== K0
-        ->  fn_error(Fn, '%~w has class ~w but is used as ~w', [N, K0, K])
+        ->  fn_error(Fn, 't(~w) has class ~w but is used as ~w', [N, K0, K])
         ;   K == l, K0 == w
-        ->  fn_error(Fn, '%~w has class w but is used as l', [N])
+        ->  fn_error(Fn, 't(~w) has class w but is used as l', [N])
         ;   K0 == p, K \== p
-        ->  fn_error(Fn, '%~w has class p but is used as ~w (use ptoi)',
+        ->  fn_error(Fn, 't(~w) has class p but is used as ~w (use ptoi)',
                      [N, K])
         ;   K == p, K0 \== p
-        ->  fn_error(Fn, '%~w has class ~w but is used as p (use itop)',
+        ->  fn_error(Fn, 't(~w) has class ~w but is used as p (use itop)',
                      [N, K0])
         ;   true
         )
-    ;   fn_error(Fn, 'undefined temporary %~w', [N])
+    ;   fn_error(Fn, 'undefined temporary t(~w)', [N])
     ).
 valid_use_(c(N), ctx(_, Fn, _, _, _, _, _), K) :-
     integer(N),
@@ -638,19 +658,19 @@ valid_use_(glo(G), Ctx, K) :-
     Ctx = ctx(_, _, _, _, _, _, Mode),
     symbol_use_ok(Mode, G, Ctx, K).
 
-% symbol_use_ok(+Mode, +G, +Ctx, +K): the symbol $G may be read at class
-% K in a module of Mode: in plain mode as an address of data, in filc
-% mode never (copy, which yields its pointer, is checked apart).
+% symbol_use_ok(+Mode, +G, +Ctx, +K): the symbol glo(G) may be read at
+% class K in a module of Mode: in plain mode as an address of data, in
+% filc mode never (copy, which yields its pointer, is checked apart).
 symbol_use_ok(filc, G, ctx(_, Fn, _, _, _, _, _), _) :-
-    fn_error(Fn, '$~w used as an operand; use %t =p copy $~w', [G, G]).
+    fn_error(Fn, 'in a Fil-C module only copy at p reads glo(~w)', [G]).
 symbol_use_ok(plain, G, ctx(M, Fn, _, _, _, _, _), K) :-
     addr_class(plain, AddrClass),
     (   K == AddrClass -> true
-    ;   fn_error(Fn, '$~w used as ~w', [G, K])
+    ;   fn_error(Fn, 'glo(~w) used as ~w', [G, K])
     ),
     M = module(Items),
     (   memberchk(data(G, _, _, _), Items) -> true
-    ;   fn_error(Fn, '$~w is not a data definition', [G])
+    ;   fn_error(Fn, 'glo(~w) is not a data definition', [G])
     ).
 
 %% Operand and result classes
@@ -761,5 +781,5 @@ cast_classes(d, l).
 % Fmt/Args, attributed to the function Fn.
 fn_error(Fn, Fmt, Args) :-
     format(atom(Msg), Fmt, Args),
-    format(atom(Full), 'in $~w: ~w', [Fn, Msg]),
+    format(atom(Full), 'in ~w: ~w', [Fn, Msg]),
     throw(nanofil_error(Full)).
