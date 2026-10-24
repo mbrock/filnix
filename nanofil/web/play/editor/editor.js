@@ -2,7 +2,7 @@
 // the wiki's and dterm's colours. default.nix bundles this into the
 // page's editor.js.
 import { EditorState, StateEffect, StateField, RangeSet } from "@codemirror/state";
-import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, drawSelection } from "@codemirror/view";
+import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, drawSelection, hoverTooltip } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
 import { c } from "@codemirror/legacy-modes/mode/clike";
@@ -23,6 +23,19 @@ const bad = StateField.define({
     EditorView.decorations.from(f, (pos) => (pos === null ? Decoration.none : Decoration.set(badLine.range(pos)))),
     gutterLineClass.from(f, (pos) => (pos === null ? RangeSet.empty : RangeSet.of(badMarker.range(pos)))),
   ],
+});
+
+// The lines something outside the editor stands for (an IR function
+// under the pointer), tinted.
+const setLinked = StateEffect.define();
+const linkedLine = Decoration.line({ class: "cm-linked" });
+const linked = StateField.define({
+  create: () => Decoration.none,
+  update(d, tr) {
+    for (const e of tr.effects) if (e.is(setLinked)) return e.value;
+    return d.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
 });
 
 const colours = HighlightStyle.define([
@@ -49,13 +62,22 @@ const theme = EditorView.theme({
   ".cm-line.cm-bad": { background: "color-mix(in srgb, var(--accent) 9%, transparent)" },
   "&.cm-focused .cm-matchingBracket": { background: "color-mix(in srgb, var(--accent) 14%, transparent)" },
   ".cm-nonmatchingBracket": { color: "var(--accent)" },
+  ".cm-line.cm-linked": { background: "color-mix(in srgb, var(--atom) 9%, transparent)" },
+  ".cm-tooltip": {
+    border: "1px solid var(--rule)",
+    borderRadius: "4px",
+    background: "var(--paper)",
+    boxShadow: "0 6px 18px rgb(0 0 0 / 0.08)",
+  },
 });
 
-// editor(parent, run, update): an empty editor in parent; Ctrl or
-// Cmd+Enter calls run, and every update (an edit, a move of the cursor)
-// update. Returns {view, state}: state(doc) makes a fresh state holding
-// doc, for view.setState, so each example keeps its own text and history.
-export function editor(parent, run, update) {
+// editor(parent, {run, update, hover}): an empty editor in parent; Ctrl
+// or Cmd+Enter calls run, and every update (an edit, a move of the
+// cursor) update. hover(word) answers, with a promise of an element or
+// null, what to show over an identifier the pointer rests on. Returns
+// {view, state}: state(doc) makes a fresh state holding doc, for
+// view.setState, so each example keeps its own text and history.
+export function editor(parent, { run, update, hover }) {
   const extensions = [
     lineNumbers(),
     history(),
@@ -67,12 +89,26 @@ export function editor(parent, run, update) {
     syntaxHighlighting(colours),
     keymap.of([{ key: "Mod-Enter", run: () => (run(), true) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     bad,
+    linked,
     theme,
     EditorView.contentAttributes.of({ "aria-label": "C source" }),
     EditorView.updateListener.of(update),
+    hoverTooltip(async (view, pos) => {
+      const word = view.state.wordAt(pos);
+      const dom = word && (await hover(view.state.sliceDoc(word.from, word.to)));
+      return dom ? { pos: word.from, end: word.to, above: true, create: () => ({ dom }) } : null;
+    }, { hoverTime: 250 }),
   ];
   const state = (doc) => EditorState.create({ doc, extensions });
   return { view: new EditorView({ parent, state: state("") }), state };
+}
+
+// link(view, from, to): tint lines from..to (1-based), or none if from is 0.
+export function link(view, from, to) {
+  const doc = view.state.doc;
+  const lines = [];
+  for (let n = Math.max(from, 1); from && n <= Math.min(to, doc.lines); n++) lines.push(linkedLine.range(doc.line(n).from));
+  view.dispatch({ effects: setLinked.of(Decoration.set(lines)) });
 }
 
 // mark(view, n): mark line n (1-based), or none if n is 0 or past the end.

@@ -14,8 +14,22 @@
     so only dterm's term layer is used. SWI-Prolog only, like dterm; load
     dterm.pl and this file before src/swi/compat.pl, which would make
     their string literals character lists.
+
+    After a compile the page asks about it (worker.js's ask messages),
+    and the answers are dicts, which swipl-wasm hands to JavaScript as
+    objects:
+
+    play_outline(-Outline): one _{name, kind, from, to, ir} per name the
+    file defines at top level, in order, where kind is function, object
+    or type, from..to the lines it spans (to runs up to the next item)
+    and ir whether the IR has an item of that name (true or false, which
+    reach JavaScript as strings).
+
+    play_symbol(+Name, -Info): what the last compile knows of Name: its
+    kind, signature, linkage and defining line, and its IR head drawn as
+    HTML. Fails for a name it does not know.
 */
-:- module(play_view, [play_html/3]).
+:- module(play_view, [play_html/3, play_outline/1, play_symbol/2]).
 :- set_prolog_flag(double_quotes, codes).
 
 :- use_module(library(lists)).
@@ -23,8 +37,83 @@
 
 play_html(File, Opt, Html) :-
     play:play(File, Opt, Stages),
+    remember(File, Stages),
     phrase(article(File, Stages), Cs),
     string_codes(Html, Cs).
+
+%% The last compile, and questions about it.
+
+remember(File, Stages) :-
+    (   memberchk(term(syntax, All), Stages) -> play_items(File, All, Items) ; Items = [] ),
+    (   memberchk(term(ir, M), Stages) -> true ; M = module([]) ),
+    nb_setval(play_last, last(Items, M)).
+
+last_compile(Items, M) :-
+    (   nb_current(play_last, last(Items, M)) -> true ; Items = [], M = module([]) ).
+
+play_outline(Outline) :-
+    last_compile(Items, module(IR)),
+    findall(N-K-From, ( member(I, Items), item_line(I, From), item_name(I, N, K) ), Ns),
+    outline(Ns, IR, Outline).
+
+outline([], _, []).
+outline([N-K-From|Ns], IR, [_{name:N, kind:K, from:From, to:To, ir:InIR}|Os]) :-
+    (   Ns = [_-_-Next|_], Next > From -> To is Next - 1
+    ;   Ns = [_-_-From|_] -> To = From
+    ;   To = 1000000
+    ),
+    (   member(I, IR), arg(1, I, N) -> InIR = true ; InIR = false ),
+    outline(Ns, IR, Os).
+
+item_line(I, L) :- arg(1, I, _:L).
+
+% The names an item declares, by what they are.
+item_name(fundef(_, _, D, _), N, function) :- dcl_name(D, N).
+item_name(decl(_, Specs, Inits), N, K) :-
+    (   memberchk(storage(typedef), Specs) -> K = type
+    ;   K = object
+    ),
+    member(Init, Inits),
+    (   Init = init(D, _) -> true ; D = Init ),
+    dcl_name(D, N).
+item_name(decl(_, Specs, _), N, type) :-
+    member(su(_, some(N), _, _), Specs).
+item_name(decl(_, Specs, _), N, type) :-
+    member(enum(some(N), _), Specs).
+
+dcl_name(dcl(some(N), _, _), N).
+
+play_symbol(Name, Info) :-
+    last_compile(Items, module(IR)),
+    (   member(I, Items), item_name(I, Name, K), item_line(I, L) -> Def = _{kind:K, line:L}
+    ;   Def = _{}
+    ),
+    (   symbol(Name, IR, Info0) -> Info = Def.put(Info0)
+    ;   get_dict(kind, Def, _), Info = Def
+    ).
+
+symbol(Name, IR, _{kind:function, sig:Sig, linkage:Ls, blocks:NB, insts:NI, html:H}) :-
+    member(func(Name, Linkage, Ret, Params, Blocks), IR), !,
+    maplist([par(K, _), K]>>true, Params, Ks), sig(Ret, Ks, Sig0), string_codes(Sig, Sig0),
+    linkage(Linkage, Ls),
+    length(Blocks, NB),
+    foldl([blk(_, Ps, Is, _), A0, A]>>(length(Ps, P), length(Is, I), A is A0 + P + I + 1), Blocks, 0, NI),
+    html(dterm:compound_(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), _, ctx(play, head)), H).
+symbol(Name, IR, _{kind:object, size:Size, linkage:Ls, html:H}) :-
+    member(data(Name, Linkage, Align, Items), IR), !,
+    foldl(data_rows, Items, 0-[], Size-_),
+    linkage(Linkage, Ls),
+    html(dterm:compound_(data(Name, Linkage, Align, '$VAR'('Items')), _, ctx(play, head)), H).
+symbol(Name, IR, _{kind:import, sig:Sig, calls:N}) :-
+    sub_term(call(Res, glo(Name), Args), IR), !,
+    ( Res = to(_, R) -> true ; R = Res ),
+    maplist([arg(K, _), K]>>true, Args, Ks), sig(R, Ks, Sig0), string_codes(Sig, Sig0),
+    aggregate_all(count, sub_term(call(_, glo(Name), _), IR), N).
+
+linkage(ro(L), S) :- !, format(string(S), "~w, read-only", [L]).
+linkage(L, S) :- format(string(S), "~w", [L]).
+
+html(G, S) :- phrase(G, Cs), string_codes(S, Cs).
 
 % dterm's el//3 calls its body in module dterm, so the elements are
 % built here; only escaping and terms come from dterm.
@@ -121,7 +210,10 @@ item_in(File, Item) :-
     compound(Item), arg(1, Item, F:_), F == File.
 
 % String literals are code lists in the syntax tree; draw them as strings.
-item_(Item0) --> { strings(Item0, Item) }, el(div, "clause item", term(Item)).
+% Each carries its line (data-line), for the page to link it to the source.
+item_(Item0) -->
+    { strings(Item0, Item), item_line(Item0, L), format(codes(Ls), "~d", [L]) },
+    el(div, "clause item", ['data-line'=Ls], term(Item)).
 
 strings(T0, T) :- var(T0), !, T = T0.
 strings(str(Cs), str(S)) :- is_list(Cs), Cs \== [], maplist(integer, Cs), !, string_codes(S, Cs).

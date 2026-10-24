@@ -2,8 +2,11 @@
 // sources, the frozen preprocessor profile and the headers (fs.json, from
 // build.sh) in its file system. Messages:
 //   in:  {source, opt}            opt "o0" or "o1"
+//        {ask, goal, input}       a question about the last compile
+//                                 (play_view.pl), input its bindings
 //   out: {type: "ready", ms, mb}  once loaded
 //        {type: "result", html, ms, mb} | {type: "error", message}
+//        {type: "answer", ask, value}  the goal's bindings, or null
 importScripts("swipl/swipl-web.js");
 
 // Emscripten keeps its memory private; catch it as it is made.
@@ -44,7 +47,20 @@ const ready = (async () => {
 })();
 ready.catch((e) => postMessage({ type: "error", message: String(e.stack ?? e) }));
 
-onmessage = async ({ data: { source, opt } }) => {
+// swipl-wasm turns dicts into objects and strings into String objects;
+// JSON makes them plain for postMessage.
+const plain = (v) => JSON.parse(JSON.stringify(v, (k, x) => (typeof x === "bigint" ? Number(x) : x)));
+
+onmessage = async ({ data: { source, opt, ask, goal, input } }) => {
+  if (ask !== undefined) {
+    const swipl = await ready;
+    let value = null;
+    try {
+      const r = swipl.prolog.query(goal, input).once();
+      if (r?.$tag === "bindings") value = plain(r);
+    } catch {}
+    return postMessage({ type: "answer", ask, value });
+  }
   try {
     const swipl = await ready;
     swipl.FS.writeFile("/work/input.c", source);

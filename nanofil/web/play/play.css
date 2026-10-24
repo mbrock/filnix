@@ -206,6 +206,18 @@ details.clause.data > .goals { margin-left: 1.2em; }
 .more { color: var(--muted); font-size: 0.85em; }
 .clause.item { margin: 0.4rem 0 0.9rem; }
 
+/* The item the cursor is in, and what the editor shows over a name. */
+details.clause.here > summary, .clause.item.here {
+  margin-left: -0.3em;
+  padding-left: 0.3em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--atom) 9%, transparent);
+}
+.clause.item[data-line] { cursor: pointer; }
+.symbol { max-width: min(34rem, 90vw); padding: 0.4rem 0.6rem; }
+.symbol .head { font: 0.85rem var(--display-font); margin-bottom: 0.2rem; }
+.symbol .facts { font: 0.72rem var(--mono-font); color: var(--muted); }
+
 .pane pre.text { margin: 0; font-size: 0.78rem; background: none; padding: 0; }
 
 /* Assembly: the term and the line it prints as. */
