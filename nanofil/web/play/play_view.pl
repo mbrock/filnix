@@ -165,15 +165,15 @@ article(File, Stages) -->
         ;   []
         ),
         (   { memberchk(term(lowered, M0), Stages) }
-        ->  ir_(lowered, File, M0, lowered_note(M0))
+        ->  ir_(lowered, File, M0)
         ;   []
         ),
         (   { memberchk(term(optimized, M1), Stages), memberchk(term(lowered, M0), Stages) }
-        ->  ir_(optimized, File, M1, optimized_note(M0, M1))
+        ->  ir_(optimized, File, M1)
         ;   []
         ),
         (   { memberchk(term(ir, M), Stages) }
-        ->  ir_(ir, File, M, checked_note(M)), data_(M), symbols_(M)
+        ->  ir_(ir, File, M), data_(M), symbols_(M)
         ;   []
         ),
         (   { memberchk(text(ir, IR), Stages) }
@@ -254,9 +254,8 @@ strings(T, T).
 %% over one instruction per row; a data object its head over its items.
 %% Each folds away under its head.
 
-ir_(Slot, File, module(Items), Note) -->
+ir_(Slot, File, module(Items)) -->
     section_(Slot, (
-        el(p, "pass-note", Note),
         legend_,
         seq(Items, ir_item(Slot, File))
     )).
@@ -288,31 +287,6 @@ pass_name(optimize, "optimize", "the middle end: promote locals to temporaries, 
 pass_name(pizlonate, "pizlonate", "make Fil-C's checks explicit: a check before every load and store, a pollcheck on every loop").
 pass_name(backend, "amd64", "compile the checked IR to x86-64 in the Fil-C ABI").
 
-% What each pass made, in a line over its output.
-lowered_note(M) -->
-    { module_counts(M, F, N) },
-    "lower made ", count_(F, "function"), " of ", count_(N, "instruction"),
-    " from the typed C syntax; each load and store is still checked implicitly.".
-optimized_note(M0, M) -->
-    { module_counts(M0, _, N0), module_counts(M, _, N) },
-    "optimize left ", count_(N, "instruction"), " of the ", esc(N0), " lowering made.".
-checked_note(M) -->
-    { module_counts(M, _, N),
-      aggregate_all(count, sub_term(check(_, _, _, _), M), K),
-      aggregate_all(count, sub_term(poll(_), M), P) },
-    "pizlonate added ", count_(K, "check"), " (each proves one access's address) and ",
-    count_(P, "pollcheck"), " on loop edges, marked at the left; ",
-    count_(N, "instruction"), " in all, which the backend compiles.".
-
-count_(N, Word) --> esc(N), " ", esc(Word), ( { N =:= 1 } -> [] ; "s" ).
-
-% module_counts(+M, -Functions, -Insts): instructions are phis, insts
-% other than loc/2, and jumps.
-module_counts(module(Items), F, N) :-
-    aggregate_all(count, member(func(_, _, _, _, _), Items), F),
-    aggregate_all(sum(K), ( member(func(_, _, _, _, Bs), Items), member(block(_, Ps, Is, _), Bs),
-                            length(Ps, P), exclude([loc(_, _)]>>true, Is, Is1), length(Is1, I),
-                            K is P + I + 1 ), N).
 
 %% Reading the IR: what each word means, for someone who has not read
 %% ir.pl. The legend over the IR lists them, by role; play.js gives each
@@ -701,19 +675,14 @@ asm_term_lines(1500).
 asm_(Lines) -->
     { length(Lines, N), asm_term_lines(Max) },
     (   { N =< Max }
-    ->  section_(asm, ( asm_note(N), el(table, "asm", seq(Lines, asm_row)) ))
+    ->  section_(asm, el(table, "asm", seq(Lines, asm_row)))
     ;   { length(First, Max), append(First, _, Lines),
           with_output_to(codes(Text), asm:print_asm(Lines)) },
         section_(asm, (
-            asm_note(N),
             el(table, "asm", seq(First, asm_row)),
             el(pre, "text", esc(Text))
         ))
     ).
-
-asm_note(N) -->
-    el(p, "pass-note", ( "amd64 made ", count_(N, "line"),
-                         " of x86-64 in the Fil-C ABI: each term beside the AT&T text it prints as." )).
 
 asm_row(L) -->
     { with_output_to(codes(Cs0), asm:print_asm([L])),

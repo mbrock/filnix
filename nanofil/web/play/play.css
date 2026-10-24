@@ -206,7 +206,6 @@ table.stages tr.total td { border-top: 1px solid var(--rule); font-weight: 700; 
 .tabs .as-text { margin-left: auto; padding-left: 1rem; font-weight: 500; font-size: 0.8rem; }
 .panes { padding-top: 0.5rem; }
 .panes .clause { font-size: 0.9rem; line-height: 1.42; }
-.pass-note { margin: 0 0 0.5rem; max-width: 46rem; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
 
 .failure:empty { display: none; }
 .failure { margin: 0.9rem 0 0.4rem; }
@@ -329,8 +328,7 @@ table.symbols tr.import td.name { color: var(--muted); }
      a phone's line. */
   .panes { --indent: 1em; --hang: 1em; }
   .panes .clause { font-size: 0.8rem; }
-  .pass-note { font-size: 0.74rem; }
-  .pane { padding-left: 1.2em; }
+    .pane { padding-left: 1.2em; }
   details.legend { margin-left: -1.2em; }
   details.legend > summary .hint { display: none; }
   .tabs .pass { padding: 0 0.2rem 0.4rem; }

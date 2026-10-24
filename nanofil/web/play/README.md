@@ -22,9 +22,8 @@ and the page shows, from one `<article>` whose sections it puts in place:
   **assembly** (each `asm.pl` line term beside the AT&T line it prints
   as; the first 1500 lines, longer listings follow as text), and at
   the end **text**, the checked IR as the clauses `nanofil print` and
-  `compile` read (`src/ir_text.pl`). Each output opens with a line on
-  what its pass did (how many instructions, checks, pollchecks), and in
-  the checked IR the rows pizlonation wrote are marked at the left.
+  `compile` read (`src/ir_text.pl`). In the checked IR the rows
+  pizlonation wrote are marked at the left.
   An IR is a function as its head over its blocks, a block as its label
   over one row per phi, instruction and jump, each function and data
   object folding under its head, and a run of text bytes drawn as the
