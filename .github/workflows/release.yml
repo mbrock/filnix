@@ -120,9 +120,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          filc_release=$(python3 -c 'import json; print(json.load(open("lib/filc-upstream.json"))["release"])')
           cat > notes.md <<EOF
           Built by the Filnix campaign from $(git rev-parse --short=12 HEAD) and
           substituted from https://filc.cachix.org; nothing here was compiled on CI.
+
+          The default toolchain is tagged upstream Fil-C $filc_release.
 
           - \`php-$PHP_VERSION-filc-x86_64-linux.tar.xz\`: PHP $PHP_VERSION with php-fpm,
             php-cgi and phpdbg, relocatable, for any x86-64 Linux. See its README.

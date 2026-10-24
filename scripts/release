@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tag origin/main as vYYYY.MM.DD (or .N for later releases that day) and push
 # the tag; .github/workflows/release.yml then publishes the release. The
-# commit's CI outputs must be in the public caches (scripts/ship).
+# commit's full distribution outputs must be in the public caches, beyond
+# the foundation gate published by scripts/ship.
 #
 #   scripts/release [TAG]
 set -euo pipefail
@@ -26,7 +27,7 @@ work=$(mktemp -d)
 trap 'git worktree remove --force "$work/tree" 2>/dev/null; rm -rf "$work"' EXIT
 git worktree add -q --detach "$work/tree" "$sha"
 (cd "$work/tree" && python3 scripts/ci-cache-check.py) || {
-  echo "release: ${sha:0:12} is not fully cached; run scripts/ship first" >&2
+  echo "release: ${sha:0:12} is not fully cached; finish distribution publication through the campaign first" >&2
   exit 1
 }
 git tag -a "$tag" -m "Filnix $tag" "$sha"
