@@ -22,7 +22,9 @@
             The lowering keeps entries of its own here too
             Tag: some(Name), or none for an anonymous struct or union
             Members: [m(Name, Type, Offset)], Name some(Field), or none
-            for an anonymous struct or union member
+            for an anonymous struct or union member; a bit-field is
+            m(some(Field), Type, Offset, bits(Pos, Width)), its Width
+            bits from bit Pos of the Type at Offset
       Next  the next struct id
     Block scopes save Ords and Tags and restore them on exit; Defs and
     Next only grow. Predicates that change the environment take Env0 and
@@ -47,7 +49,8 @@
                     unary_operand/3, assigned/4,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
-                    lowered/2, folded/3]).
+                    lowered/2, folded/3, member_layout/6,
+                    bitfield_promotion/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -353,7 +356,7 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
 % a size/alignment for the whole object; those uses must still reject.
 known_field_prefix([], []).
 known_field_prefix([bad(_)|_], []) :- !.
-known_field_prefix([f(Name, Type)|Fields], [f(Name, Type)|Prefix]) :-
+known_field_prefix([Field|Fields], [Field|Prefix]) :-
     known_field_prefix(Fields, Prefix).
 
 % forward_declared(+Tag, +Kind, +Env, -Id): Tag names the Kind with Id,
@@ -373,28 +376,46 @@ tag_bound(none, _, Tags, Tags).
 tag_bound(some(Name), Value, Tags0, Tags) :- put_assoc(Name, Tags0, Value, Tags).
 
 % member_decl(+Decl, -Fields, -Reflected, +Env0, -Env): Fields are the
-% f(Name, Type) the member declaration Decl declares ([] for a static
-% assertion), or [bad(Why)]; Name is some(Field), or none for an
-% anonymous member. Reflected are the q(Name, QType) of the same
-% members, QType keeping the qualifiers that Type drops.
+% f(Name, Type) or bit-fields b(Name, Type, Width) the member
+% declaration Decl declares ([] for a static assertion), or [bad(Why)];
+% Name is some(Field), or none for an anonymous member or an unnamed
+% bit-field. Reflected are the q(Name, QType) of the named members,
+% QType keeping the qualifiers that Type drops.
 member_decl(static_assert(_, _, _), [], [], Env, Env).
 member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
             Reflected, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
-    (   Width \== none
-    ->  Fields = [bad('bitfields')], Reflected = [],
-        Env = Env1
-    ;   apply_declarator(SyntaxType, Base, Type, Env1, Env),
-        (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
-        ;   Fields = [f(Name, Type)],
-            reflect_type(type(Specs, SyntaxType), Type, Env, QType),
+    apply_declarator(SyntaxType, Base, Type, Env1, Env),
+    (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
+    ;   Width \== none, \+ bitfield_width(Width, Name, Type, Env, _)
+    ->  Fields = [bad('invalid bit-field')], Reflected = []
+    ;   (   Width == none -> Fields = [f(Name, Type)]
+        ;   bitfield_width(Width, Name, Type, Env, W),
+            Fields = [b(Name, Type, W)]
+        ),
+        (   Width \== none, Name == none -> Reflected = []
+        ;   reflect_type(type(Specs, SyntaxType), Type, Env, QType),
             Reflected = [q(Name, QType)]
         )
     ).
 
+% bitfield_width(+Expr, +Name, +Type, +Env, -W): a bit-field Name of
+% Type may have the width Expr, of value W: an integer constant no wider
+% than Type, and 0 only without a name (6.7.2.1p4).
+bitfield_width(Expr, Name, Type, Env, W) :-
+    int_type(Type),
+    catch(const_value(Expr, Env, W, _), not_constant, fail),
+    int_info(Type, Size, _),
+    ( Type == bool -> Max = 1 ; Max is 8 * Size ),
+    W >= 0, W =< Max,
+    ( W =:= 0 -> Name == none ; true ).
+
 % su_layout(+Kind, +Fields, +Env, -Def), with the SysV rules: each member
 % at the next multiple of its alignment; size rounded up to the
-% alignment. A trailing flexible array member has size 0.
+% alignment. A trailing flexible array member has size 0. A bit-field
+% follows the bits before it unless it would cross a boundary of its
+% type's size, where it starts instead; a zero-width one only moves to
+% that boundary. Unnamed bit-fields do not align the struct.
 su_layout(Kind, Fields, Env, Def) :-
     catch(fields_layout(Kind, Fields, Env, Layout), bad(Why),
           Layout = bad(Why)),
@@ -404,8 +425,10 @@ su_layout(Kind, Fields, Env, Def) :-
 % placed(Members, End, Align) for Fields laid out in Env, or incomplete
 % when a field has no size. Throws bad(Why) as type_size_align/4.
 fields_layout(Kind, Fields, Env, Layout) :-
-    (   foldl(field_member(Kind, Env), Fields, Members, 0-1, End-Align)
-    ->  Layout = placed(Members, End, Align)
+    (   foldl(field_member(Kind, Env), Fields, Memberss, 0-1, EndBits-Align)
+    ->  append(Memberss, Members),
+        End is (EndBits + 7) // 8,
+        Layout = placed(Members, End, Align)
     ;   Layout = incomplete
     ).
 
@@ -416,12 +439,13 @@ layout_def(placed(Members, End, Align), Kind, def(Kind, Members, Size, Align)) :
 layout_def(incomplete, _, bad('incomplete member')).
 layout_def(bad(Why), _, bad(Why)).
 
-% field_member(+Kind, +Env, +Field, -Member, +End0-Align0, -End-Align):
-% Member is Field placed after members ending at End0 with alignment
-% Align0; End and Align include it. Throws bad(Why) as type_size_align/4.
-% Any type but a flexible array (array(_, none)) has its own size, so the
+% field_member(+Kind, +Env, +Field, -Members, +End0-Align0, -End-Align):
+% Members, the member Field declares or none for an unnamed bit-field,
+% are placed after members ending at bit End0 with alignment Align0; End
+% and Align include them. Throws bad(Why) as type_size_align/4. Any type
+% but a flexible array (array(_, none)) has its own size, so the
 % if-then-else keeps that default case.
-field_member(Kind, Env, f(Name, Type), m(Name, Type, Off), End0-Align0,
+field_member(Kind, Env, f(Name, Type), [m(Name, Type, Off)], End0-Align0,
              End-Align) :-
     (   Type = array(ElemType, none)
     ->  type_size_align(ElemType, Env, _, FieldAlign),
@@ -430,15 +454,36 @@ field_member(Kind, Env, f(Name, Type), m(Name, Type, Off), End0-Align0,
     ),
     member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
     Align is max(Align0, FieldAlign).
+field_member(Kind, Env, b(Name, Type, W), Members, End0-Align0, End-Align) :-
+    type_size_align(Type, Env, Size, FieldAlign),
+    UnitBits is 8 * Size,
+    bitfield_start_end(Kind, End0, W, UnitBits, Start, End),
+    (   Name == none -> Members = [], Align = Align0
+    ;   Unit is Start // UnitBits * Size,
+        Pos is Start mod UnitBits,
+        Members = [m(Name, Type, Unit, bits(Pos, W))],
+        Align is max(Align0, FieldAlign)
+    ).
 
 % member_offset_end(+Kind, +End0, +Size, +Align, -Off, -End): a member of
-% Size and Align after members ending at End0 is at Off and ends the
-% struct or union so far at End.
+% Size and Align after members ending at bit End0 is at byte Off and
+% ends the struct or union so far at bit End.
 member_offset_end(struct, End0, Size, Align, Off, End) :-
-    Off is (End0 + Align - 1) // Align * Align,
-    End is Off + Size.
+    Off is ((End0 + 7) // 8 + Align - 1) // Align * Align,
+    End is 8 * (Off + Size).
 member_offset_end(union, End0, Size, _, 0, End) :-
-    End is max(End0, Size).
+    End is max(End0, 8 * Size).
+
+% bitfield_start_end(+Kind, +End0, +W, +UnitBits, -Start, -End): a
+% bit-field of W bits, in units of UnitBits, after bits ending at End0
+% occupies bits Start to End.
+bitfield_start_end(union, End0, W, _, 0, End) :- End is max(End0, W).
+bitfield_start_end(struct, End0, W, UnitBits, Start, End) :-
+    (   W > 0, End0 // UnitBits =:= (End0 + W - 1) // UnitBits
+    ->  Start = End0
+    ;   Start is (End0 + UnitBits - 1) // UnitBits * UnitBits
+    ),
+    End is Start + W.
 
 %% Enums
 
@@ -657,18 +702,65 @@ complete_type(Type, Env) :- catch(type_size_align(Type, Env, _, _), bad(_), fail
 %! member_type_offset(+SU, +Name, +Env, -Type, -Offset) is semidet.
 %
 %  The struct or union type SU has a member Name of Type at Offset,
-%  looking into anonymous members. Fails if it has none, or SU is not
-%  defined.
+%  looking into anonymous members. Fails if it has none, if Name is a
+%  bit-field, or if SU is not defined.
 member_type_offset(SU, Name, Env, Type, Off) :-
+    member_layout(SU, Name, Env, Type, Off, none).
+
+doc(member_layout(+SU, +Name, +Env, -Type, -Off, -Bits), semidet, [
+    SU: "an unqualified struct or union type",
+    Name: "a member name",
+    Env: "the scope that defines SU",
+    Type: "the member's type",
+    Off: "the byte offset of the member, or of the Type that holds a bit-field",
+    Bits: "none, or bits(Pos, Width) for a bit-field of Width bits from bit Pos",
+    "Looks into anonymous members. A bit-field follows the bits before it",
+    "unless it would cross a boundary of its type's size; a member that is",
+    "not a bit-field starts at the next byte its alignment allows.",
+    cites('C11 6.7.2.1p11'),
+    cites('SysV x86-64 psABI 3.1.2, Bit-Fields'),
+    example(( empty_env(E0),
+              specs_type([su(struct, none,
+                  [field([tspec(char)], dcl(some(c), base, none), none),
+                   field([tspec(int)], dcl(some(a), base, none), num(3, none-dec)),
+                   field([tspec(int)], dcl(some(b), base, none), num(30, none-dec))],
+                  [])], S, E0, E),
+              member_layout(S, a, E, T, Off, Bits) ),
+            (T = int, Off = 0, Bits = bits(8, 3))),
+    example(( empty_env(E0),
+              specs_type([su(struct, none,
+                  [field([tspec(char)], dcl(some(c), base, none), none),
+                   field([tspec(int)], dcl(some(a), base, none), num(3, none-dec)),
+                   field([tspec(int)], dcl(some(b), base, none), num(30, none-dec))],
+                  [])], S, E0, E),
+              member_layout(S, b, E, T, Off, Bits) ),
+            (T = int, Off = 4, Bits = bits(0, 30))),
+    example(( empty_env(E0),
+              specs_type([su(struct, none,
+                  [field([tspec(int)], dcl(none, base, none), num(8, none-dec)),
+                   field([tspec(char)], dcl(some(c), base, none), none)],
+                  [])], S, E0, E),
+              member_layout(S, c, E, T, Off, Bits), type_size_align(S, E, Size, Align) ),
+            (T = char, Off = 1, Bits = none, Size = 2, Align = 1)),
+    fails(( empty_env(E0),
+            specs_type([su(struct, none,
+                [field([tspec(int)], dcl(some(a), base, none), num(3, none-dec))],
+                [])], S, E0, E),
+            member_type_offset(S, a, E, _, _) ))
+]).
+member_layout(SU, Name, Env, Type, Off, Bits) :-
     SU =.. [_, Id],
     Env = e(_, _, Defs, _),
     get_assoc(Id, Defs, Def),
     known_members(Def, Members),
-    (   member(m(some(Name), Type, Off), Members) -> true
+    (   member(M, Members), named_member(M, Name, Type, Off, Bits) -> true
     ;   member(m(none, AnonType, AnonOff), Members),
-        member_type_offset(AnonType, Name, Env, Type, InnerOff)
+        member_layout(AnonType, Name, Env, Type, InnerOff, Bits)
     ->  Off is AnonOff + InnerOff
     ).
+
+named_member(m(some(Name), Type, Off), Name, Type, Off, none).
+named_member(m(some(Name), Type, Off, Bits), Name, Type, Off, Bits).
 
 known_members(def(_, Members, _, _), Members).
 known_members(partial(_, Members), Members).
@@ -1344,14 +1436,15 @@ elab(cast(TN, E), Env, val(T, cast(TN, XV))) :-
 elab(complit(TN, Init), Env, obj(T, complit(TN, Init))) :-
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
 elab(un(addr, E), Env, val(ptr(T), addr(X))) :-       % 6.5.3.2p1
-    elaborate(E, Env, X), X \= val(_, _), tree_type(X, T).
+    elaborate(E, Env, X), X \= val(_, _), X \= obj(_, bitfield(_, _)),
+    tree_type(X, T).
 elab(un(deref, E), Env, X) :-
     operand(E, Env, XV, ptr(T)),
     designator(T, deref(XV), X).
 elab(un(Op, E), Env, val(T, incdec(Op, X))) :-        % 6.5.3.1p1
     memberchk(Op, [preinc, predec, postinc, postdec]),
     elaborate(E, Env, X), modifiable(X, Env),
-    tree_type(X, T0), value_type(T0, T), scalar_type(T).
+    value(X, XV), tree_type(XV, T), scalar_type(T).
 elab(un(Op, E), Env, val(T, un(Op, XV))) :-
     memberchk(Op, [plus, neg, bnot, not]),
     operand(E, Env, XV, T1),
@@ -1360,7 +1453,11 @@ elab(index(A, I), Env, X) :-                                % 6.5.2.1p2
     elab(un(deref, bin(add, A, I)), Env, X).
 elab(member(E, F), Env, X) :-
     elaborate(E, Env, XS), tree_type(XS, SU), member_type(SU, F, Env, T),
-    member_node(XS, F, T, X).
+    unqualified(SU, U),
+    (   member_layout(U, F, Env, _, _, bits(_, W))          % 6.7.2.1p10
+    ->  XS = obj(_, _), X = obj(T, bitfield(member(XS, F), W))
+    ;   member_node(XS, F, T, X)
+    ).
 elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
     elab(member(un(deref, E), F), Env, X).
 elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
@@ -1374,15 +1471,15 @@ elab(call(E, Args), Env, val(T, call(XV, XArgs))) :-   % 6.5.2.2p2
     arity_fits(Ps, V, Args),
     passes(Ps, XArgs, Env).
 elab(assign(Op, A, B), Env, val(T, assign(Op, X, XB))) :-   % 6.5.16p2
-    elaborate(A, Env, X), tree_type(X, T), modifiable(X, Env),
+    elaborate(A, Env, X), assignment_type(X, T), modifiable(X, Env),
     argument(Env, B, XB),
     unqualified(T, TA), lowered(XB, TB),
     assigns(Op, TA, XB, TB, Env).
 elab(comma(A, B), Env, val(T, comma(XA, XV))) :-
     argument(Env, A, XA),
     operand(B, Env, XV, T).
-elab(sizeof_expr(E), Env, val(ulong, sizeof(X))) :-
-    elaborate(E, Env, X).
+elab(sizeof_expr(E), Env, val(ulong, sizeof(X))) :-     % 6.5.3.4p1
+    elaborate(E, Env, X), X \= obj(_, bitfield(_, _)).
 elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
 elab(alignof(TN), _, val(ulong, alignof(TN))).
 elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
@@ -1408,6 +1505,12 @@ elab(generic(C, As), Env, X) :-                             % 6.5.1.1
 % call argument, the source of an assignment, a ?: condition, or the left
 % operand of a comma, whose value is discarded after it is evaluated.
 argument(Env, E, XV) :- operand(E, Env, XV, _).
+
+% assignment_type(+X, -T): an assignment to X has type T, X's own but
+% for a bit-field, whose value has its promoted type (6.5.16p3).
+assignment_type(obj(T0, bitfield(_, W)), T) :- !,
+    value_type(T0, T1), bitfield_promotion(T1, W, T).
+assignment_type(X, T) :- tree_type(X, T).
 
 % lowered(+XV, -T): T is the type of value XV without qualifiers, the
 % type lowering gives it.
@@ -1600,10 +1703,36 @@ doc(value(+X, -V), det, [
             V = val(ptr(func(int, [], fixed)), decay(fun(func(int, [], fixed), id(f))))),
     example(value(val(int, int(7)), V), V = val(int, int(7)))
 ]).
+value(obj(T, bitfield(M, W)), val(V, load(obj(T, bitfield(M, W))))) :- !,
+    value_type(T, T1), bitfield_promotion(T1, W, V).
 value(obj(T, F), val(V, decay(obj(T, F)))) :- array_type(T), !, value_type(T, V).
 value(obj(T, F), val(V, load(obj(T, F)))) :- value_type(T, V).
 value(fun(T, F), val(ptr(T), decay(fun(T, F)))).
 value(val(T, F), val(V, F)) :- value_type(T, V).
+
+doc(bitfield_promotion(+T, +W, -P), det, [
+    T: "the unqualified integer type of a bit-field",
+    W: "its width in bits",
+    P: "the type of its value",
+    "A bit-field's value is an int if an int can represent all its",
+    "values, otherwise an unsigned int if that can, otherwise of its own",
+    "type. C11 says so for _Bool, int and unsigned int; clang and GCC",
+    "treat bit-fields of the other integer types alike.",
+    cites('C11 6.3.1.1p2'),
+    example(bitfield_promotion(uint, 31, P), P = int),
+    example(bitfield_promotion(uint, 32, P), P = uint),
+    example(bitfield_promotion(int, 32, P), P = int),
+    example(bitfield_promotion(ulong, 32, P), P = uint),
+    example(bitfield_promotion(ulong, 33, P), P = ulong),
+    example(bitfield_promotion(long, 33, P), P = long),
+    example(bitfield_promotion(bool, 1, P), P = int)
+]).
+bitfield_promotion(T, W, P) :-
+    int_info(T, _, Sign),
+    (   ( Sign == signed -> W =< 32 ; W < 32 ) -> P = int
+    ;   W =< 32 -> P = uint
+    ;   P = T
+    ).
 
 array_type(qualified(_, T)) :- array_type(T).
 array_type(array(_, _)).
@@ -2061,6 +2190,8 @@ fault_(index(A, I), Env, F, As) :- fault_(un(deref, bin(add, A, I)), Env, F, As)
 fault_(un(Op, E), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   Op == deref -> F = 'dereferencing a non-pointer', As = []
+    ;   Op == addr, elaborate(E, Env, obj(_, bitfield(_, _)))
+    ->  F = 'cannot take the address of a bit-field', As = []
     ;   Op == addr -> F = '& of a non-lvalue', As = []
     ;   memberchk(Op, [plus, neg, bnot, not])
     ->  lowered_type(E, Env, T), F = 'invalid operand to ~w: ~w', As = [Op, T]
@@ -2107,7 +2238,10 @@ fault_(assign(Op, A, B), Env, F, As) :-
         )
     ).
 fault_(comma(A, B), Env, F, As) :- operands_fault([A, B], Env, F, As).
-fault_(sizeof_expr(E), Env, F, As) :- fault_(E, Env, F, As).
+fault_(sizeof_expr(E), Env, F, As) :-
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   F = 'sizeof of a bit-field', As = []
+    ).
 fault_(bin(Op, A, B), Env, F, As) :-
     memberchk(Op, [land, lor]), !,
     (   scalar_fault(A, Env, F, As) -> true

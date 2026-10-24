@@ -14,15 +14,15 @@ cproc/asm-label.c	no-main
 cproc/attribute-syntax.c	no-main
 cproc/basic.c	pass
 cproc/binary-constant.c	no-main
-cproc/bitfield-assignment-sign-extend.c	reject
+cproc/bitfield-assignment-sign-extend.c	pass
 cproc/bitfield-compound-assign.c	no-main
 cproc/bitfield-initializer-overflow.c	no-main
 cproc/bitfield-integer-promotion-long.c	no-main
-cproc/bitfield-integer-promotion.c	reject
+cproc/bitfield-integer-promotion.c	pass
 cproc/bitfield-load-signed.c	no-main
 cproc/bitfield-load-unsigned.c	no-main
 cproc/bitfield-non-adjacent.c	no-main
-cproc/bitfield-short.c	reject
+cproc/bitfield-short.c	pass
 cproc/bitfield-union.c	no-main
 cproc/bitfield-unnamed-size-align.c	no-main
 cproc/bitint-constant.c	no-main
@@ -411,6 +411,6 @@ c-testsuite/00214.c	pass
 c-testsuite/00215.c	pass
 c-testsuite/00216.c	reject
 c-testsuite/00217.c	pass
-c-testsuite/00218.c	reject
+c-testsuite/00218.c	pass
 c-testsuite/00219.c	pass
 c-testsuite/00220.c	pass

@@ -127,10 +127,12 @@ casts, `sizeof`, declarations and parameters, now fails with `variably
 modified types (non-constant array size) are not supported`
 (`tests/c/reject/vm_cast.c`, `vm_pointer.c`).
 
-### Bitfields — 4 rejections
+### Bitfields — 4 rejections (resolved October 2026)
 
-**Planned:** PLAN decision 6. cproc: `bitfield-assignment-sign-extend`,
-`bitfield-integer-promotion`, `bitfield-short`; c-testsuite: `00218`.
+**Now passing:** cproc `bitfield-assignment-sign-extend`,
+`bitfield-integer-promotion`, `bitfield-short`; c-testsuite `00218`.
+The baseline has 248 passes and 14 rejections. The history below is
+how it stood before.
 
 ```c
 struct S { unsigned x : 1; };

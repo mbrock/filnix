@@ -999,6 +999,10 @@ init_leaves(Type, Init, C, Leaves) :-
 
 % object_init(+Type, +Off, +Init, +C)//: the leaves of Init for the
 % object of Type at Off. A scalar may be braced.
+object_init(bits(T, Pos, W), Off, list([entry(_, V)|Rest]), C) --> !,
+    { Rest == [] -> true ; init_error(C, 'excess initializers', []) },
+    object_init(bits(T, Pos, W), Off, V, C).
+object_init(bits(T, Pos, W), Off, Expr, _) --> !, [bits(Off, T, Pos, W, Expr)].
 object_init(array(T, N), Off, list([entry([], Str)]), C) -->
     { str_elems(Str, T, _) }, !,
     object_init(array(T, N), Off, Str, C).
@@ -1087,9 +1091,17 @@ slot(array(ElemType, N), c(Env, _, _), I, Off, ElemType) :-
     Off is I * Size.
 slot(struct(Id), c(Env, _, _), I, Off, Type) :-
     su_members(struct(Id), Env, Members),
-    nth0(I, Members, m(_, Type, Off)).
+    nth0(I, Members, M),
+    member_slot(M, _, Off, Type).
 slot(union(Id), c(Env, _, _), 0, Off, Type) :-
-    su_members(union(Id), Env, [m(_, Type, Off)|_]).
+    su_members(union(Id), Env, [M|_]),
+    member_slot(M, _, Off, Type).
+
+% member_slot(+M, -Name, -Off, -SlotType): member M, named Name, is the
+% slot of SlotType at Off; a bit-field's is bits(Type, Pos, Width), of
+% the Type at Off.
+member_slot(m(Name, Type, Off), Name, Off, Type).
+member_slot(m(Name, Type, Off, bits(Pos, W)), Name, Off, bits(Type, Pos, W)).
 
 % designated_slot(+Desig, +Type, +C, -I, -Off, -SlotType): designator
 % Desig of aggregate Type names its slot I, the SlotType at Off; any
@@ -1107,7 +1119,7 @@ designated_slot(field(Field), SU, C, I, Off, Type) :-
     !,
     C = c(Env, _, _),
     (   su_members(SU, Env, Members),
-        nth0(I, Members, m(some(Field), Type, Off))
+        nth0(I, Members, M), member_slot(M, some(Field), Off, Type)
     ->  true
     ;   init_error(C, 'no member ~w', [Field])
     ).
@@ -1167,6 +1179,13 @@ store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
     { ctx_loc(Ctx, Loc) },
     assign_convert(Expr, Value0, Type, Loc, v(Value, _)),
     store_typed(Type, Value, P).
+store_leaf(bits(Off, Type, Pos, W, Expr), Addr, Ctx) -->
+    offset(Addr, Off, P),
+    judged(Expr, Ctx),
+    rval(Expr, Ctx, Value0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(Expr, Value0, Type, Loc, Value),
+    place_write(bits(P, Type, Pos, W), Value, Ctx, _).
 
 % zero_object(+Addr, +Type)//: clear the whole object, since allocs are
 % hoisted and a local inside a loop must be reinitialized on every pass.
@@ -1248,9 +1267,9 @@ lower(val(T, int(V)), _, v(const(V), U)) --> !, { unqualified(T, U) }.
 lower(val(_, float(Cs)), _, v(const(V), Type)) --> !,
     { float_literal(Cs, V, Type) }.
 lower(val(T, load(X)), Ctx, R) --> !,                      % 6.3.2.1p2
-    place(X, Ctx, lv(Addr, _)),
+    place(X, Ctx, P),
     { unqualified(T, U) },
-    loaded(U, Addr, Ctx, R).
+    place_loaded(P, U, Ctx, R).
 lower(val(T, decay(X)), Ctx, R) --> !,                     % 6.3.2.1p3-4
     place(X, Ctx, P),
     decayed(P, T, Ctx, R).
@@ -1295,24 +1314,21 @@ lower(val(T, gcond(XC, XB)), Ctx, R) --> !,                % GNU c ?: b
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
 lower(val(_, assign(Op, X, XB)), Ctx, R) --> !,            % 6.5.16
-    place(X, Ctx, lv(P, U)),
+    place(X, Ctx, P),
     (   { Op == '=' } -> lower(XB, Ctx, Value0)
     ;   { compound_assignment(Op, BinOp) },
-        load_typed(U, P, Ctx, Cur),
+        place_read(P, Ctx, Cur),
         lower(XB, Ctx, VB),
-        binary(BinOp, v(Cur, U), VB, Ctx, Value0)
+        binary(BinOp, Cur, VB, Ctx, Value0)
     ),
-    converted(Value0, U, R),
-    { R = v(V, _) },
-    store_typed(U, V, P).
+    place_write(P, Value0, Ctx, R).
 lower(val(_, incdec(Op, X)), Ctx, R) --> !,                % 6.5.2.4, 6.5.3.1
-    place(X, Ctx, lv(P, U)),
-    load_typed(U, P, Ctx, Cur),
+    place(X, Ctx, P),
+    place_read(P, Ctx, Cur),
     { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
-    binary(BinOp, v(Cur, U), v(const(1), int), Ctx, Value0),
-    convert(Value0, U, v(New, _)),
-    store_typed(U, New, P),
-    { memberchk(Op, [preinc, predec]) -> R = v(New, U) ; R = v(Cur, U) }.
+    binary(BinOp, Cur, v(const(1), int), Ctx, Value0),
+    place_write(P, Value0, Ctx, New),
+    { memberchk(Op, [preinc, predec]) -> R = New ; R = Cur }.
 lower(val(_, call(XF, XArgs)), Ctx, R) --> !,              % 6.5.2.2
     callee(XF, Ctx, Callee, func(RetType, Ps, _)),
     { Ps == unspecified -> ParamTypes = [] ; ParamTypes = Ps },
@@ -1430,6 +1446,69 @@ place(obj(T, member(XS, F)), Ctx, lv(P, U)) -->            % 6.5.2.3p3
     place(XS, Ctx, lv(Addr, SU)),
     member_lv(Addr, SU, F, Ctx, P, _),
     { unqualified(T, U) }.
+place(obj(_, bitfield(member(XS, F), W)), Ctx, bits(P, T, Pos, W)) --> % 6.7.2.1p10
+    place(XS, Ctx, lv(Addr, SU)),
+    env(Env),
+    { member_layout(SU, F, Env, T, Off, bits(Pos, W)) },
+    offset(Addr, Off, P).
+
+/* An object is read and written through its place: lv(Addr, Type), or
+   bits(Addr, Type, Pos, W), a bit-field of W bits from bit Pos of the
+   Type at Addr. A bit-field is read by shifting it to the bottom of its
+   unit, extended by its type's sign, and written by merging it into the
+   unit; its value has its promoted type (bitfield_promotion/3). */
+
+% place_loaded(+P, +U, +Ctx, -R)//: R is the value, of type U, of the
+% object at place P.
+place_loaded(lv(Addr, _), U, Ctx, R) --> loaded(U, Addr, Ctx, R).
+place_loaded(bits(Addr, T, Pos, W), _, Ctx, R) -->
+    place_read(bits(Addr, T, Pos, W), Ctx, R).
+
+% place_read(+P, +Ctx, -R)//: R is the scalar value at place P.
+place_read(lv(P, U), Ctx, v(Cur, U)) --> load_typed(U, P, Ctx, Cur).
+place_read(bits(Addr, T, Pos, W), Ctx, R) -->
+    load_typed(T, Addr, Ctx, Unit),
+    { type_class(T, K), class_bits(K, KB), Up is KB - Pos - W },
+    shifted(K, shl, Unit, Up, V1),
+    bits_extended(T, W, V1, R).
+
+% place_write(+P, +Value0, +Ctx, -R)//: store Value0, converted, at place
+% P; R is the value stored.
+place_write(lv(P, U), Value0, _, R) -->
+    converted(Value0, U, R),
+    { R = v(V, _) },
+    store_typed(U, V, P).
+place_write(bits(Addr, T, Pos, W), Value0, Ctx, R) -->
+    convert(Value0, T, v(V, _)),
+    load_typed(T, Addr, Ctx, Unit),
+    { type_class(T, K), class_bits(K, KB),
+      Mask is ((1 << W) - 1) << Pos,
+      Keep is \Mask /\ ((1 << KB) - 1) },
+    let(K, and, [Unit, const(Keep)], Kept),
+    shifted(K, shl, V, Pos, V1),
+    let(K, and, [V1, const(Mask)], Field),
+    let(K, or, [Kept, Field], New),
+    store_typed(T, New, Addr),
+    { Up is KB - W },
+    shifted(K, shl, V, Up, V2),
+    bits_extended(T, W, V2, R).
+
+% bits_extended(+T, +W, +V, -R)//: R is the W-bit field at the top of V,
+% of T's class, moved down and extended as T's sign says, of the
+% bit-field's promoted type.
+bits_extended(T, W, V, R) -->
+    { type_class(T, K), class_bits(K, KB), Down is KB - W,
+      int_info(T, _, Sign), ( Sign == signed -> Op = sar ; Op = shr ),
+      bitfield_promotion(T, W, P) },
+    shifted(K, Op, V, Down, V1),
+    convert(v(V1, T), P, R).
+
+% shifted(+K, +Op, +V, +N, -R)//: R is V shifted by N bits.
+shifted(_, _, V, 0, V) --> !.
+shifted(K, Op, V, N, R) --> let(K, Op, [V, const(N)], R).
+
+class_bits(w, 32).
+class_bits(l, 64).
 
 % load_typed(+Type, +Addr, +Ctx, -V)//: V is the scalar of Type loaded
 % from Addr.
@@ -2022,6 +2101,7 @@ elem_ptrs(ElemType, Env, Base, Size, I, Offs0, Offs) :-
 member_ptrs(Env, Base, m(_, Type, Off), Offs0, Offs) :-
     Base1 is Base + Off,
     ptr_offsets(Type, Env, Base1, Offs0, Offs).
+member_ptrs(_, _, m(_, _, _, bits(_, _)), Offs, Offs).
 
 % arg_words(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes in which a
 % struct or union argument of Type is passed.
@@ -2214,6 +2294,33 @@ static_leaf(Loc, expr(Off, Type, Expr), s(Env0, Chunks, End0),
             s(Env, [Chunk|Chunks], End)) :-
     expr_chunk(Type, Off, Expr, Loc, Env0, Env, Chunk),
     chunk_end(Chunk, End0, End).
+
+static_leaf(Loc, bits(Off, Type, Pos, W, Expr), s(Env, Chunks0, End0),
+            s(Env, Chunks, End)) :-
+    (   catch(constant_value(Expr, Env, V0, From), not_constant, fail),
+        const_convert(V0, From, Type, V), integer(V)
+    ->  true
+    ;   sema_error(Loc, 'initializer is not a constant', [])
+    ),
+    Start is 8 * Off + Pos,
+    First is Start // 8, Last is (Start + W - 1) // 8,
+    numlist(First, Last, Bytes),
+    foldl(bitfield_byte(Start, W, V), Bytes, Chunks0, Chunks),
+    End is max(End0, Last + 1).
+
+% bitfield_byte(+Start, +W, +V, +Byte, +Chunks0, -Chunks): Chunks adds
+% to Chunks0 the byte at offset Byte with its bits of the W-bit field V,
+% starting at bit Start, merged into the bits an earlier bit-field put
+% there.
+bitfield_byte(Start, W, V, Byte, Chunks0, [chunk(Byte, 1, item(b, const(New)))|Chunks0]) :-
+    (   member(chunk(Byte, N, Item), Chunks0)
+    ->  ( N =:= 1, Item = item(b, const(Old)) -> true ; Old = 0 )
+    ;   Old = 0
+    ),
+    Shift is Start - 8 * Byte,
+    Mask is (((1 << W) - 1) << (Shift + 64)) >> 64 /\ 255,
+    Bits is ((V /\ ((1 << W) - 1)) << (Shift + 64)) >> 64 /\ 255,
+    New is (Old /\ \Mask /\ 255) \/ Bits.
 
 chunk_within(Lo, Hi, chunk(Off, _, _)) :- Off >= Lo, Off < Hi.
 
