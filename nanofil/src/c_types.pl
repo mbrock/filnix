@@ -50,6 +50,10 @@
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(ieee).
+
+% Documentation is a relation of the module, doc(Head, Det, Props)
+% (docs/dterm.md); tests/unit.pl runs every example.
+:- discontiguous(doc/3).
 :- use_module(c_parse, [c_operator/4]).
 
 %% Environment
@@ -634,17 +638,30 @@ known_members(partial(_, Members), Members).
 
 %% Integers
 
-%! int_type(+Type) is semidet.
-%! int_type(-Type) is multi.
-%
-%  Type is an integer type (bool and the character types included).
-
+doc(int_type(+Type), semidet, [
+    Type: "a type term",
+    also(int_type(-Type), multi),
+    "Type is an integer type: bool, the character types, and the standard",
+    "signed and unsigned integer types.",
+    cites('C11 6.2.5p17'),
+    example(int_type(bool)),
+    fails(int_type(double)),
+    fails(int_type(ptr(int))),
+    example(findall(T, int_type(T), Ts), length(Ts, 12))
+]).
 int_type(T) :- int_info(T, _, _).
 
-%! integer_type(?Type, ?Size, ?Signedness, ?Rank) is nondet.
-%
-%  C's integer types on x86-64 Linux: Type is Size bytes wide, signed or
-%  unsigned, with integer conversion rank Rank (C11 6.3.1.1p1).
+doc(integer_type(?(Type), ?(Size), ?(Signedness), ?(Rank)), nondet, [
+    Type: "an integer type",
+    Size: "its width in bytes",
+    Signedness: "signed or unsigned",
+    Rank: "its integer conversion rank, from 0 for bool to 5 for long long",
+    "C's integer types on x86-64 Linux. Plain char is signed, long is as",
+    "wide as long long, and the three character types share a rank.",
+    cites('C11 6.3.1.1p1'),
+    example(integer_type(long, S, G, R), (S = 8, G = signed, R = 4)),
+    example(findall(T, integer_type(T, 8, unsigned, _), Ts), Ts = [ulong, ullong])
+]).
 integer_type(bool,   1, unsigned, 0).
 integer_type(char,   1, signed,   1).
 integer_type(schar,  1, signed,   1).
@@ -658,43 +675,110 @@ integer_type(ulong,  8, unsigned, 4).
 integer_type(llong,  8, signed,   5).
 integer_type(ullong, 8, unsigned, 5).
 
+doc(int_info(?(Type), ?(Size), ?(Signedness)), nondet, [
+    Type: "an integer type",
+    Size: "its width in bytes",
+    Signedness: "signed or unsigned",
+    "integer_type/4 without the rank.",
+    example(int_info(uchar, S, G), (S = 1, G = unsigned))
+]).
 int_info(Type, Size, Sign) :- integer_type(Type, Size, Sign, _).
+
+doc(rank(?(Type), ?(Rank)), nondet, [
+    Type: "an integer type",
+    Rank: "its integer conversion rank",
+    example(rank(schar, R), R = 1)
+]).
 rank(Type, Rank) :- integer_type(Type, _, _, Rank).
 
-% unsigned_of(+Signed, -Unsigned): the unsigned type of the same rank.
+doc(unsigned_of(+Signed, -Unsigned), semidet, [
+    Signed: "a signed integer type",
+    Unsigned: "the unsigned type of the same rank",
+    cites('C11 6.2.5p6'),
+    example(unsigned_of(llong, U), U = ullong),
+    example(unsigned_of(char, U), U = uchar),
+    fails(unsigned_of(uint, _))
+]).
 unsigned_of(S, U) :-
     integer_type(S, Size, signed, R), integer_type(U, Size, unsigned, R).
 
-%! scalar_type(+Type) is semidet.
-%
-%  Type is an integer, floating-point or pointer type.
-
+doc(scalar_type(+Type), semidet, [
+    Type: "a type term",
+    "Type is an integer, floating-point or pointer type: one that has an",
+    "IR class.",
+    cites('C11 6.2.5p21'),
+    example(scalar_type(ptr(char))),
+    fails(scalar_type(struct(1)))
+]).
 scalar_type(T) :- type_class(T, _).
 
+doc(float_type(?(Type)), nondet, [
+    Type: "a real floating type",
+    "The floating types nanofil supports; long double is refused.",
+    cites('C11 6.2.5p10'),
+    fails(float_type(ldouble))
+]).
 float_type(float).
 float_type(double).
 
+doc(arithmetic_type(+Type), semidet, [
+    Type: "a type term",
+    "Type is an integer or floating type.",
+    cites('C11 6.2.5p18'),
+    example(arithmetic_type(bool)),
+    fails(arithmetic_type(ptr(int)))
+]).
 arithmetic_type(T) :- int_type(T).
 arithmetic_type(T) :- float_type(T).
 
+doc(default_promotion(+Type, -Promoted), det, [
+    Type: "the type of an argument with no parameter type",
+    Promoted: "the type it is passed as",
+    "The default argument promotions: float becomes double, and the",
+    "integer promotions apply to the rest.",
+    cites('C11 6.5.2.2p6'),
+    example(default_promotion(float, P), P = double),
+    example(default_promotion(char, P), P = int),
+    example(default_promotion(ptr(int), P), P = ptr(int))
+]).
 default_promotion(float, double) :- !.
 default_promotion(T, P) :- integer_promotion(T, P).
 
-%! integer_promotion(+Type, -Promoted) is det.
-%
-%  Promoted is Type after the integer promotions: int for an integer
-%  type of rank below int, otherwise Type itself (also for a type that
-%  is not an integer).
-
+doc(integer_promotion(+Type, -Promoted), det, [
+    Type: "the type of an operand",
+    Promoted: "its type after the integer promotions",
+    "int for an integer type of rank below int, which int can always",
+    "represent here, otherwise Type itself, also for a type that is not",
+    "an integer.",
+    cites('C11 6.3.1.1p2'),
+    example(integer_promotion(ushort, P), P = int),
+    example(integer_promotion(bool, P), P = int),
+    example(integer_promotion(uint, P), P = uint),
+    example(integer_promotion(double, P), P = double)
+]).
 integer_promotion(T, P) :-
     (   rank(T, R), R < 3 -> P = int
     ;   P = T
     ).
 
-%! usual_arith_conversion(+TypeA, +TypeB, -Type) is semidet.
-%
-%  Type is the common type of the usual arithmetic conversions on
-%  arithmetic operands of TypeA and TypeB, after promotion.
+doc(usual_arith_conversion(+TypeA, +TypeB, -Type), semidet, [
+    TypeA: "the type of one arithmetic operand",
+    TypeB: "the type of the other",
+    Type: "their common real type",
+    "The usual arithmetic conversions. A floating operand wins; otherwise",
+    "both are promoted, and when the signedness differs the unsigned type",
+    "wins unless the signed one is wider. A signed type exactly as wide",
+    "as a higher-ranked unsigned one gives way to its own unsigned type.",
+    cites('C11 6.3.1.8p1'),
+    example(usual_arith_conversion(int, double, T), T = double),
+    example(usual_arith_conversion(float, long, T), T = float),
+    example(usual_arith_conversion(char, short, T), T = int),
+    example(usual_arith_conversion(int, uint, T), T = uint),
+    example(usual_arith_conversion(uint, long, T), T = long),
+    example(usual_arith_conversion(long, ullong, T), T = ullong),
+    example(usual_arith_conversion(llong, ulong, T), T = ullong),
+    fails(usual_arith_conversion(ptr(int), int, _))
+]).
 usual_arith_conversion(TypeA0, TypeB0, Type) :-
     arithmetic_type(TypeA0), arithmetic_type(TypeB0),
     ( TypeA0 == double ; TypeB0 == double ), !,
@@ -719,12 +803,22 @@ usual_arith_conversion(TypeA0, TypeB0, Type) :-
     ;   unsigned_of(B, Type)
     ).
 
-%! convert_int(+V, +Type, -W) is semidet.
-%
-%  W is the integer V converted to the integer type Type, by C's rules
-%  (wrapping modulo the width, 0 or 1 for bool). Fails when Type is not
-%  an integer type.
-%  The cut commits to bool, which int_info/3 also describes as a byte.
+doc(convert_int(+V, +Type, -W), semidet, [
+    V: "an integer",
+    Type: "an integer type",
+    W: "V converted to Type",
+    "Conversion wraps modulo the width, as the standard requires for",
+    "unsigned types and GCC and clang define for signed ones; bool is",
+    "0 or 1. Fails when Type is not an integer type. The cut commits to",
+    "bool, which int_info/3 also describes as a byte.",
+    cites('C11 6.3.1.2p1'),
+    cites('C11 6.3.1.3p2'),
+    example(convert_int(300, uchar, W), W = 44),
+    example(convert_int(256, bool, W), W = 1),
+    example(convert_int(-1, uint, W), W = 4294967295),
+    example(convert_int(128, schar, W), W = -128),
+    fails(convert_int(1, double, _))
+]).
 convert_int(V, bool, W) :- !, ( V =:= 0 -> W = 0 ; W = 1 ).
 convert_int(V, Type, W) :-
     int_info(Type, Size, Sign),
@@ -732,16 +826,29 @@ convert_int(V, Type, W) :-
     U is V mod M,
     signed_word(Sign, U, M, W).
 
-% signed_word(+Signedness, +U, +M, -W): W is the value of the word U of
-% modulus M read with Signedness.
+doc(signed_word(+Signedness, +U, +M, -W), det, [
+    Signedness: "signed or unsigned",
+    U: "a word, 0 =< U < M",
+    M: "the modulus of the word",
+    W: "the value of U read with Signedness",
+    example(signed_word(signed, 255, 256, W), W = -1),
+    example(signed_word(unsigned, 255, 256, W), W = 255)
+]).
 signed_word(signed, U, M, W) :- ( U >= M >> 1 -> W is U - M ; W = U ).
 signed_word(unsigned, U, _, U).
 
-%! type_class(?Type, ?Class) is nondet.
-%
-%  Class is the IR class (w, l, p, s or d) of scalar Type:
-%  w for an integer type of at most 4 bytes, l for an 8-byte one, p for
-%  a pointer, s/d for float/double. Deterministic when Type is bound.
+doc(type_class(?(Type), ?(Class)), nondet, [
+    Type: "a scalar type",
+    Class: "its IR class",
+    "w for an integer type of at most 4 bytes, l for an 8-byte one, p for",
+    "a pointer, s and d for float and double. Deterministic when Type is",
+    "bound.",
+    example(type_class(ushort, K), K = w),
+    example(type_class(ullong, K), K = l),
+    example(type_class(ptr(void), K), K = p),
+    example(type_class(float, K), K = s),
+    fails(type_class(struct(0), _))
+]).
 type_class(T, K) :- integer_type(T, Size, _, _), ( Size =:= 8 -> K = l ; K = w ).
 type_class(float, s).
 type_class(double, d).

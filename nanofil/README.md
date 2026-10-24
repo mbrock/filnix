@@ -123,3 +123,5 @@ lives in a stack slot.
 - The wiki's [nanofil pages](https://mbrock.github.io/filnix/nanofil/):
   the source drawn as terms by [web/dterm.pl](web/dterm.pl) (SWI-Prolog),
   built with the site, `nix build .#site`.
+- [docs/dterm.md](docs/dterm.md): where dterm comes from, and `doc/3`,
+  documentation as a relation whose examples are tests.

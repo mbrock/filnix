@@ -14,6 +14,12 @@
     - comparison operators get their mathematical glyphs, and trailing
       digits of variables are subscripts, so S0 reads as a state.
 
+    - a doc/3 fact before a predicate (docs/dterm.md) is its signature,
+      argument table, prose, citations and examples; the examples are run
+      when the pages are built, loading the module as bin/nanofil does,
+      and each is marked with its result;
+    - each predicate lists what it calls and what calls it.
+
     Calls to predicates defined in the corpus link to their definitions.
 
     Usage: swipl dterm.pl -- OUT SRC-DIR... Writes OUT/index.html and one
@@ -63,6 +69,7 @@ main :-
     sort(Files0, Files),
     maplist(read_source, Files, Sources),
     maplist(index_source, Sources),
+    maplist(run_examples(Files), Sources),
     maplist(write_source_page(Out, Sources), Sources),
     directory_file_path(Out, 'index.html', Index),
     write_page(Index, index_page(Sources)).
@@ -217,7 +224,7 @@ blank(S) :- split_string(S, "", " \t", [""]).
 %  anchor Id. A DCG nonterminal name//N is stored with arity N + 2.
 index_source(src(Base, _, _, Events)) :-
     forall(member(clause(c(T, _, _, _)), Events),
-           ( clause_key(T, Key) -> define(Key, Base) ; true )),
+           ( clause_key(T, Key) -> define(Key, Base), index_calls(Base, Key, T) ; true )),
     forall(( member(clause(c((:- module(_, Exports)), _, _, _)), Events),
              member(E, Exports) ),
            ( export_key(E, K) -> assertz(exported(K, Base)) ; true )).
@@ -238,20 +245,98 @@ key_id(N/A, Id) :- format(atom(Id), "~w/~w", [N, A]).
 key_id(N//A, Id) :- format(atom(Id), "~w//~w", [N, A]).
 
 clause_key((:- _), _) :- !, fail.
+clause_key(doc(_, _, _), _) :- !, fail.
 clause_key((H --> _), N//A) :- !,
     (   H = (H1, _) -> true ; H1 = H ),
     callable(H1), functor(H1, N, A).
 clause_key((H :- _), N/A) :- !, callable(H), functor(H, N, A).
 clause_key(H, N/A) :- callable(H), functor(H, N, A).
 
+%  resolve(File, PI, Def, Id): a call to PI from File means the
+%  definition in Def.pl at anchor Id: the file's own, else an exported one.
+resolve(File, PI, File, Id) :- defined(PI, File, Id), !.
+resolve(_, PI, F, Id) :- exported(PI, F), defined(PI, F, Id), !.
+resolve(_, PI, F, Id) :- defined(PI, F, Id), !.
+
 %  The href for a call to Name/Arity from File, if the corpus defines it.
 pred_href(File, PI, Href) :-
-    (   defined(PI, File, Id) -> Prefix = ''
-    ;   exported(PI, F), defined(PI, F, Id) -> atom_concat(F, '.html', Prefix)
-    ;   defined(PI, F, Id), atom_concat(F, '.html', Prefix)
-    ),
+    resolve(File, PI, F, Id),
+    ( F == File -> Prefix = '' ; atom_concat(F, '.html', Prefix) ),
     uri_encoded(fragment, Id, Frag),
     format(atom(Href), "~w#~w", [Prefix, Frag]).
+
+%% The call graph
+
+:- dynamic calls/3.
+
+%  calls(File, FromPI, ToPI): a clause of FromPI in File.pl calls ToPI,
+%  which may or may not be defined in the corpus.
+index_calls(Base, Key, T) :-
+    key_pred(Key, From),
+    (   clause_body(T, B, Mode)
+    ->  forall(( body_call(B, Mode, To), To \== From, \+ calls(Base, From, To) ),
+               assertz(calls(Base, From, To)))
+    ;   true
+    ).
+
+clause_body((_ :- B), B, goal).
+clause_body((_ --> B), B, dcg).
+
+%  body_call(G, Mode, PI): goal G, in Mode goal or dcg, calls PI.
+body_call('$VAR'(_), _, _) :- !, fail.
+body_call(G, _, _) :- \+ callable(G), !, fail.
+body_call((A, B), M, PI) :- !, ( body_call(A, M, PI) ; body_call(B, M, PI) ).
+body_call((A ; B), M, PI) :- !, ( body_call(A, M, PI) ; body_call(B, M, PI) ).
+body_call((A -> B), M, PI) :- !, ( body_call(A, M, PI) ; body_call(B, M, PI) ).
+body_call((A *-> B), M, PI) :- !, ( body_call(A, M, PI) ; body_call(B, M, PI) ).
+body_call(\+ A, M, PI) :- !, body_call(A, M, PI).
+body_call(_:G, M, PI) :- !, body_call(G, M, PI).
+body_call({}(G), dcg, PI) :- !, body_call(G, goal, PI).
+body_call(G, dcg, _) :- ( G == [] ; G = [_|_] ; string(G) ), !, fail.
+body_call(G, M, PI) :-
+    G =.. [N|As], length(As, A0), extra_args(M, K), A is A0 + K,
+    (   PI = N/A
+    ;   meta_args(G, Metas), member(I-Spec, Metas), nth1(I, As, X),
+        meta_call(Spec, X, PI)
+    ).
+
+meta_call(goal, X, PI) :- body_call(X, goal, PI).
+meta_call(dcg, X, PI) :- body_call(X, dcg, PI).
+meta_call(closure(K), X, N/A) :-
+    callable(X), X \= '$VAR'(_), functor(X, N, A0), A is A0 + K.
+
+%% Running the examples
+
+:- dynamic ran/4.
+
+%  ran(File, Head, I, Result): the Ith example of the doc/3 fact for Head
+%  in File.pl gave Result, pass or fail. Modules that declare doc/3 are
+%  loaded on SWI with src/swi/compat.pl, as bin/nanofil runs them.
+run_examples(Files, src(Base, _, _, Events)) :-
+    (   memberchk(clause(c((:- module(M, _)), _, _, _)), Events),
+        memberchk(clause(c(doc(_, _, _), _, _, _)), Events)
+    ->  file_name_extension(Base, pl, Name),
+        member(File, Files), file_base_name(File, Name), !,
+        file_directory_name(File, Dir),
+        directory_file_path(Dir, 'swi/compat.pl', Compat),
+        load_files(user:Compat, [if(not_loaded), silent(true)]),
+        load_files(user:File, [if(not_loaded), silent(true)]),
+        forall(( M:doc(H, _, Ps), nth1(I, Ps, E), example_form(E) ),
+               ( functor(H, HN, HA), example_result(M, E, R),
+                 assertz(ran(Base, HN/HA, I, R)) ))
+    ;   true
+    ).
+
+example_form(example(_)).
+example_form(example(_, _)).
+example_form(fails(_)).
+
+example_result(M, E, R) :-
+    (   catch(example_holds(M, E), _, fail) -> R = pass ; R = fail ).
+
+example_holds(M, example(G)) :- once(M:G).
+example_holds(M, example(G, C)) :- once(( M:G, M:C )).
+example_holds(M, fails(G)) :- \+ M:G.
 
 %% Page structure
 
@@ -259,6 +344,13 @@ pred_href(File, PI, Href) :-
 %  A predicate collects its consecutive clauses and the notes between
 %  them; a PlDoc comment just before it is its documentation.
 entries([], []).
+entries([clause(c(doc(H, Det, Ps), P, L, _))|Es0], [pred(Key, dterm(H, Det, Ps, P, L), Items)|Es]) :- !,
+    functor(H, N, A),
+    (   Es0 = [clause(c(T, _, _, _))|_], clause_key(T, Key0), ( Key0 = N/A ; Key0 = N//A )
+    ->  Key = Key0, pred_items(Key, Es0, Items, Es1)
+    ;   Key = N/A, Items = [], Es1 = Es0
+    ),
+    entries(Es1, Es).
 entries([group(doc, L, Ts)|Es0], [pred(Key, Doc, Items)|Es]) :-
     Es0 = [clause(C)|_], C = c(T, _, _, _), clause_key(T, Key), !,
     Doc = doc(group(doc, L, Ts)),
@@ -753,13 +845,45 @@ use_(M, _) --> el(span, lib, esc_q(M)).
 %% Predicates
 
 pred_(Key, Doc, Items, F) -->
-    { key_id(Key, Id) },
-    el(section, pred, [id=Id],
-       ( doc_(Doc, Key, F),
-         (   { fact_table(Items, Key) }
-         ->  facts_table(Items, Key, F)
-         ;   seq(Items, item_(F))
-         ) )).
+    { key_id(Key, Id), key_pred(Key, PI),
+      include([clause(_)]>>true, Items, Cs), length(Cs, NC),
+      ( NC > 1 -> Class = "pred multi" ; Class = pred ),
+      xrefs(F, PI, Callees, Callers) },
+    el(section, Class, [id=Id],
+       ( el(div, "pred-main",
+            ( doc_(Doc, Key, F),
+              (   { fact_table(Items, Key) }
+              ->  facts_table(Items, Key, F)
+              ;   seq(Items, item_(F))
+              ) )),
+         xref_aside(Callees, Callers) )).
+
+%  The predicates in the corpus that PI in File calls, and those that call
+%  it, as Def-Id pairs.
+xrefs(F, PI, Callees, Callers) :-
+    findall(D-Id, ( calls(F, PI, To), resolve(F, To, D, Id) ), Callees0),
+    sort(Callees0, Callees),
+    findall(F2-Id, ( calls(F2, From, PI), resolve(F2, PI, F, _),
+                     defined(From, F2, Id) ), Callers0),
+    sort(Callers0, Callers).
+
+xref_aside([], []) --> !, [].
+xref_aside(Callees, Callers) -->
+    el(aside, xref,
+       ( xref_list("calls", Callees), xref_list("called by", Callers) )).
+
+xref_list(_, []) --> !, [].
+xref_list(Title, Refs) -->
+    { length(Refs, N), nb_getval(dterm_file, F) },
+    el(div, "xref-group",
+       ( el(div, "xref-title", ( esc(Title), " ", el(span, count, esc(N)) )),
+         el(ul, none, seq(Refs, xref_item(F))) )).
+
+xref_item(F, D-Id) -->
+    { uri_encoded(fragment, Id, Frag),
+      ( D == F -> format(atom(Href), "#~w", [Frag]) ; format(atom(Href), "~w.html#~w", [D, Frag]) ) },
+    el(li, none, el(a, none, [href=Href],
+                    ( esc(Id), ( { D == F } -> [] ; el(span, file, ( " ", esc(D) )) ) ))).
 
 item_(F, clause(C)) --> clause_(C, F).
 item_(F, G) --> { G = group(_, _, _) }, el(div, "prose between", prose_group(G, [], F)).
@@ -798,6 +922,21 @@ seq_pairs([A|As], [P|Ps], F) --> el(td, none, term(A, P, 999, ctx(F, data))), se
 
 %  PlDoc: the signatures, then the prose with the argument names marked.
 doc_(none, _, _) --> [].
+doc_(dterm(H, Det, Ps, _, L), Key, F) -->
+    { findall(N, sub_term('$VAR'(N), H), Vars0), sort(Vars0, Vars),
+      ( Key = _//_ -> Dcg = true ; Dcg = false ),
+      include([P]>>(P = also(_, _)), Ps, Alsos),
+      include([P]>>(P = ('$VAR'(_): _)), Ps, Args),
+      include([P]>>(P = cites(_)), Ps, Cites),
+      doc_paragraphs(Ps, Paras),
+      include(example_form, Ps, _) },
+    el(div, "doc dterm-doc",
+       ( signature_(F, sig(H is Det, Dcg)),
+         seq(Alsos, also_(F, Dcg)),
+         ( { Args == [] } -> [] ; el(table, modes, el(tbody, none, seq(Args, mode_row(H, Vars, F)))) ),
+         seq(Paras, para_(Vars, F)),
+         ( { Cites == [] } -> [] ; el(div, cites, seq(Cites, cite_)) ),
+         examples_(Ps, H, L, F) )).
 doc_(note(G), Key, F) -->
     { group_text(G, Lines0), dedent(Lines0, Lines),
       atomic_list_concat(Lines, '\n', Joined0), atom_string(Joined0, Joined),
@@ -902,6 +1041,74 @@ mode_title(?, "bound or unbound").
 mode_title(@, "not further instantiated").
 mode_title(:, "meta argument").
 mode_title(!, "mutable").
+
+also_(F, Dcg, also(H, Det)) --> signature_(F, sig(H is Det, Dcg)).
+
+%  Consecutive strings among the properties are one paragraph.
+doc_paragraphs([], []).
+doc_paragraphs([S|Ps0], [T|Ts]) :- string(S), !,
+    take_strings(Ps0, Ss, Ps),
+    atomic_list_concat([S|Ss], ' ', A), atom_string(A, T),
+    doc_paragraphs(Ps, Ts).
+doc_paragraphs([_|Ps], Ts) :- doc_paragraphs(Ps, Ts).
+
+take_strings([S|Ps0], [S|Ss], Ps) :- string(S), !, take_strings(Ps0, Ss, Ps).
+take_strings(Ps, [], Ps).
+
+para_(Vars, F, T) --> el(div, prose, el(p, none, inline(T, Vars, F))).
+
+%  An argument row: its name, which way it goes, what it is.
+mode_row(H, Vars, F, '$VAR'(N): Desc) -->
+    { ( sub_term(MA, H), compound(MA), MA =.. [M, V], V == '$VAR'(N),
+        mode_word(M, W) -> true ; W = "" ) },
+    el(tr, none, ( el(td, name, var_(N)), el(td, dir, esc(W)),
+                   el(td, desc, inline(Desc, Vars, F)) )).
+
+mode_word(+, "in").
+mode_word(-, "out").
+mode_word(?, "in/out").
+mode_word(@, "in").
+mode_word(:, "meta").
+
+%  A citation of the C standard links to its paragraph in N1570.
+cite_(cites(C)) -->
+    { atom_concat('C11 ', Par, C) }, !,
+    { format(atom(Href), "https://port70.net/~~nsz/c/c11/n1570.html#~w", [Par]) },
+    el(a, cite, [href=Href, title="C11 (N1570)"], ( el(span, std, "C11"), " ", esc(Par) )).
+cite_(cites(C)) --> el(span, cite, esc(C)).
+
+%  The examples, each with the result it gave when the page was built.
+examples_(Ps, H, _, F) -->
+    { findall(I-E, ( nth1(I, Ps, E), example_form(E) ), Es) },
+    (   { Es == [] } -> []
+    ;   { functor(H, HN, HA), length(Es, N),
+          aggregate_all(count, ( member(I-_, Es), ran(F, HN/HA, I, pass) ), NP) },
+        el(div, examples,
+           ( el(div, "examples-title", ( "examples ", el(span, count, ( esc(NP), "/", esc(N), " hold" )) )),
+             el(table, none, el(tbody, none, seq(Es, example_row(HN/HA, F)))) ))
+    ).
+
+example_row(PI, F, I-E) -->
+    { ( ran(F, PI, I, R) -> true ; R = unknown ),
+      result_mark(R, Mark, Title), atom_concat('ex ', R, Class) },
+    el(tr, Class,
+       ( el(td, mark, [title=Title], raw(Mark)),
+         example_cells(E, F) )).
+
+result_mark(pass, "✓", "held when this page was built").
+result_mark(fail, "✗", "did not hold when this page was built").
+result_mark(unknown, "·", "not run").
+
+example_cells(example(G), F) -->
+    el(td, goal, goal(G, _, ctx(F, goal))), el(td, none, []), el(td, none, []).
+example_cells(example(G, C), F) -->
+    el(td, goal, goal(G, _, ctx(F, goal))),
+    el(td, then, "⟹"),
+    el(td, check, term(C, _, 1200, ctx(F, data))).
+example_cells(fails(G), F) -->
+    el(td, goal, goal(G, _, ctx(F, goal))),
+    el(td, then, "⟹"),
+    el(td, check, el(span, "kw fails", "fails")).
 
 %% Prose
 

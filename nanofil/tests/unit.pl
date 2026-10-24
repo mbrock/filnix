@@ -26,6 +26,7 @@
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
+:- use_module('../src/c_types').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -984,3 +985,31 @@ c_file_module(F, M) :-
     c_parse(Ts, Items),
     c_module(Items, M),
     valid_module(M).
+
+%% Documentation examples (docs/dterm.md)
+
+% Every example in a module's doc/3 holds: example(Goal) succeeds,
+% example(Goal, Check) succeeds with Check true, fails(Goal) fails.
+% Goals run in the module that documents them.
+test(doc_examples) :-
+    findall(M-E, doc_example(M, E), Es),
+    Es = [_|_],
+    findall(M-E, ( member(M-E, Es), \+ doc_example_holds(M, E) ), Bad),
+    forall(member(M-E, Bad), format("  ~w: ~q does not hold~n", [M, E])),
+    Bad == [].
+
+doc_example(M, E) :-
+    documented_module(M),
+    M:doc(_, _, Props),
+    member(E, Props),
+    doc_example_form(E).
+
+documented_module(c_types).
+
+doc_example_form(example(_)).
+doc_example_form(example(_, _)).
+doc_example_form(fails(_)).
+
+doc_example_holds(M, example(G)) :- once(M:G).
+doc_example_holds(M, example(G, C)) :- once(( M:G, C )).
+doc_example_holds(M, fails(G)) :- \+ M:G.

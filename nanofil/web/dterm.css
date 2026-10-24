@@ -210,18 +210,18 @@ a.f.call:hover { text-decoration: underline; }
   display: inline-flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 0.4em;
-  padding: 0 0.35em;
+  column-gap: 0.34em;
+  padding: 0 0.28em;
   border: 0 solid var(--paren);
   border-width: 0 1.5px;
   border-radius: 0.55em;
 }
-.c > .args { margin-left: 0.06em; }
+.c > .args { margin-left: 0.04em; }
 .l { border-color: var(--bracket); border-radius: 0.15em; }
 .l.empty { padding: 0; border-width: 0; color: var(--bracket); }
 .braces { border-style: dotted; border-width: 0 2px; }
 .arg { display: inline-flex; align-items: baseline; }
-.sep { color: color-mix(in srgb, var(--ink) 30%, transparent); margin-left: 0.02em; }
+.sep { color: color-mix(in srgb, var(--ink) 30%, transparent); margin-left: -0.04em; }
 .bar { color: var(--bracket); font-weight: 700; }
 .pushback { display: inline-flex; gap: 0.3em; opacity: 0.8; }
 .terminals .l { background: color-mix(in srgb, var(--bracket) 8%, transparent); }
@@ -329,4 +329,121 @@ table.facts tr.note td { color: var(--note); font-style: italic; font-size: 0.88
   main.dterm-page { display: block; }
   .clause > .goals { margin-left: 0.9em; }
   a.ln { display: none; }
+}
+
+/* A predicate and its cross references: calls and callers beside it on
+   wide screens, under its documentation otherwise. */
+
+section.pred { display: grid; grid-template-columns: minmax(0, 1fr); }
+.pred-main { min-width: 0; }
+aside.xref {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1.4rem;
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.xref-group { min-width: 0; }
+.xref-title, .examples-title {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.xref-title .count, .examples-title .count { font-weight: 500; letter-spacing: 0; text-transform: none; }
+aside.xref ul { list-style: none; margin: 0.1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 0.7em; }
+aside.xref li { margin: 0; }
+aside.xref a { color: var(--ink); opacity: 0.8; }
+aside.xref a:hover { color: var(--accent); opacity: 1; text-decoration: none; }
+aside.xref .file { color: var(--muted); font-size: 0.9em; }
+
+@media (min-width: 1500px) {
+  section.pred:has(> aside.xref) { grid-template-columns: minmax(0, 1fr) 13rem; column-gap: 2rem; }
+  aside.xref {
+    display: block;
+    padding-left: 0.9rem;
+    border-left: 1px solid var(--rule);
+    margin: 0.3rem 0;
+    align-self: start;
+  }
+  aside.xref ul { display: block; }
+  aside.xref li { margin: 0.08rem 0; overflow-wrap: anywhere; }
+  .xref-group + .xref-group { margin-top: 0.7rem; }
+}
+
+/* doc/3: signature, the arguments as a table, prose, citations, and the
+   examples with what they gave when the page was built. */
+
+.dterm-doc { margin-bottom: 0.8rem; }
+.dterm-doc > .sig + .sig { margin-top: -0.1rem; opacity: 0.85; }
+table.modes {
+  display: table;
+  margin: 0.4rem 0 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+table.modes td { padding: 0.12rem 0.9rem 0.12rem 0; border-bottom: 0; vertical-align: baseline; }
+table.modes td.dir { color: var(--muted); font-size: 0.78em; font-weight: 600; white-space: nowrap; }
+table.modes td.desc { color: color-mix(in srgb, var(--ink) 85%, transparent); }
+.dterm-doc .prose { margin-top: 0.35rem; }
+
+.cites { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.45rem 0 0.2rem; }
+a.cite, span.cite {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--rule));
+  border-radius: 1rem;
+  color: var(--accent);
+}
+a.cite .std { color: var(--muted); font-weight: 700; letter-spacing: 0.04em; }
+a.cite:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); text-decoration: none; }
+
+.examples {
+  margin: 0.55rem 0 0.3rem;
+  padding: 0.4rem 0.7rem 0.45rem;
+  background: color-mix(in srgb, var(--paper) 96%, var(--str));
+  border-radius: 6px;
+}
+.examples table { display: table; margin: 0.15rem 0 0; font-size: 0.9rem; line-height: 1.45; }
+.examples td { padding: 0.08rem 0.6rem 0.08rem 0; border-bottom: 0; vertical-align: baseline; }
+.examples td.mark { font-weight: 800; padding-right: 0.5rem; }
+.ex.pass td.mark { color: var(--str); }
+.ex.fail td.mark { color: var(--accent); }
+.ex.fail td.goal { text-decoration: underline wavy var(--accent); }
+.examples td.then { color: var(--muted); }
+.kw.fails { color: var(--accent); }
+
+/* Several clauses: each numbered, as cases of one definition. */
+
+section.pred.multi .pred-main { counter-reset: clause; }
+section.pred.multi .clause { counter-increment: clause; }
+section.pred.multi .clause > .head::before {
+  content: counter(clause);
+  display: inline-block;
+  min-width: 1.25em;
+  margin-right: 0.15em;
+  padding: 0 0.2em;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  border: 1px solid var(--rule);
+  border-radius: 0.3rem;
+  align-self: center;
+}
+section.pred.multi .clause > .goals { margin-left: 2.6em; }
+section.pred.multi .prose.between {
+  font-style: normal;
+  color: var(--note);
+  margin: 0.9rem 0 0.1rem;
+}
+
+@media (max-width: 900px) {
+  .examples tr { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.45em; padding: 0.15rem 0; }
+  .examples td { padding: 0; }
+  .examples td:empty { display: none; }
 }

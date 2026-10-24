@@ -90,6 +90,28 @@ measured in October 2026:
   and SWI has no `library(reif)`. Clause heads with first-argument
   indexing cost the same as `->` on Trealla and are pure.
 
+## Documentation is a relation
+
+A module listed in `tests/unit.pl`'s `documented_module/1` (so far
+`c_types`) states its documentation as `doc/3` facts, one just before
+each predicate: head with modes, determinism, and a list of argument
+descriptions, prose strings, `cites/1` and examples
+([docs/dterm.md](docs/dterm.md)). The examples are tests:
+`doc_examples` in `tests/unit.pl` runs them on both hosts, and the wiki
+pages run them again and mark each ✓ or ✗.
+
+- A new or changed predicate in such a module gets a `doc/3` fact. Give
+  an example per case of its behaviour: both sides of a boundary, the
+  failing case (`fails/1`), and asymmetric inputs where arguments could
+  be confused.
+- Derive expected values from the standard or by hand, never by running
+  the code.
+- Cite the paragraph a rule implements (`cites('C11 6.3.1.8p1')`).
+- Write `?(X)`, not `?X`, and one string per line of prose; a
+  `doc/3` fact replaces the `%!` comment, it does not repeat it.
+- Snapshot byte-identity is unaffected: `doc/3` is never called by the
+  compiler.
+
 ## Working alongside other threads
 
 Several threads may work on nanofil at once, each owning one workstream.
