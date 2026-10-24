@@ -11,8 +11,17 @@ on:
       - "pages/**"
       - "docs/**"
       - "packages/site/**"
+      - "nanofil/src/**"
+      - "nanofil/web/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+
+# The playground's build needs filcc-staging, which campaigns publish to
+# filc.cachix.org.
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
 
 concurrency:
   group: pages

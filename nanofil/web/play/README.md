@@ -1,8 +1,10 @@
 # nanofil in the browser
 
-An experiment (October 2026): nanofil compiles C in a web page, on
-SWI-Prolog in WebAssembly, and the page draws what it made with dterm.
-Paste C, press Compile, and get an `<article>` with
+nanofil compiles C in a web page, on SWI-Prolog 10.1.19 in WebAssembly,
+and the page draws what it made with dterm. It is published with the wiki
+at [nanofil/play/](https://mbrock.github.io/filnix/nanofil/play/), in the
+wiki's frame and stylesheets. Paste C, press Compile, and get an
+`<article>` with
 
 - the stages (profile, preprocess, parse, lower, validate, optimize,
   print IR, backend, print assembly) with their times, and the first
@@ -17,9 +19,21 @@ Paste C, press Compile, and get an `<article>` with
   it prints as (the first 1500 lines; longer listings follow as text).
 
 ```sh
-nix build -f nanofil/web/play -o /tmp/play-site
-python3 -m http.server -d /tmp/play-site
+nix build .#site -o /tmp/site
+python3 -m http.server -d /tmp/site    # then open /nanofil/play/
 ```
+
+The page loads `../../style.css` and `../dterm.css` from the wiki, so it
+is served from the site build; `nix build -f nanofil/web/play` builds its
+own files alone.
+
+## One SWI-Prolog
+
+The npm package `swipl-wasm` 8.2.5 is SWI-Prolog 10.1.19 (its
+`build-config.json`; `current_prolog_flag(version, V)` gives 100119).
+`swipl.nix` builds the same release natively from swipl-devel, so the
+frozen profile, the bundle and the browser run one SWI, and
+`packages/site` draws the dterm pages with it too. Nixpkgs has 9.2.9.
 
 Nothing here changes nanofil: the bundle copies `src/` and adds the
 driver beside it.
@@ -56,7 +70,7 @@ to `bin/nanofil cc`, on every input where they finish. Hello world is
 (V8); swipl-wasm's are the steady state after loading, while
 `tpl.wasm` includes loading nanofil each run (about 0.5 s).
 
-| input | native SWI 9.2.9 | native Trealla | swipl-wasm 8.2.5 | Trealla `tpl.wasm` |
+| input | native SWI 9.2.9 | native Trealla | swipl-wasm (SWI 10.1.19) | Trealla `tpl.wasm` |
 |---|---|---|---|---|
 | hello world | 0.64 s, 55 MB | 1.76 s, 488 MB | 0.36 s, 106 MB | 2.7 s, 1066 MB |
 | more.c `-O0` | 0.41 s, 37 MB | 0.89 s, 274 MB | 0.15 s, 44 MB | 1.3 s, 298 MB |
@@ -113,4 +127,3 @@ Chromium (headless, this orb), served by the Nix build:
   of the cap.
 - Run the interpreter (`interp.pl`) on `main` and show the outcome; it
   needs CLP(Z), which swipl-wasm has.
-- Publish under the wiki (`packages/site`) next to the dterm pages.

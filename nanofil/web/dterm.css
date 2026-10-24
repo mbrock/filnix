@@ -282,6 +282,9 @@ a.f.call:hover { text-decoration: underline; }
   .terminals { display: inline-flex; }
   .a, .s { overflow-wrap: anywhere; }
   table.facts { display: block; max-width: 100%; overflow-x: auto; }
+  .dterm .prose pre { max-width: 100%; overflow-x: auto; }
+  /* An example whose goal is a block puts its answer on the next row. */
+  .examples td.goal:has(.block) { flex-basis: 100%; }
   .cases > .case > .then { margin-left: 0.2em; padding-left: 0.55em; }
   .args, .paren, .l, .braces { padding: 0 0.22em; }
 .cases { grid-template-columns: minmax(0, max-content); }

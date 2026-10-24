@@ -1,12 +1,12 @@
-# The nanofil playground as a static site: nanofil on swipl-wasm in the
-# browser, drawing what it makes of a C file with dterm (README.md).
-#
-#   nix build -f nanofil/web/play -o /tmp/play-site
-#   python3 -m http.server -d /tmp/play-site
+# The nanofil playground: nanofil on SWI-Prolog 10.1.19 in WebAssembly,
+# drawing what it makes of a C file with dterm (README.md). Its files go
+# in the wiki at nanofil/play/ (packages/site), beside the dterm pages
+# whose style.css and dterm.css it uses.
 {
   flake ? builtins.getFlake (toString ../../..),
   pkgs ? import flake.inputs.nixpkgs { system = "x86_64-linux"; },
   filcc ? flake.packages.x86_64-linux.filcc-staging,
+  swipl ? import ./swipl.nix { inherit pkgs; },
 }:
 let
   swiplWasm = pkgs.fetchzip {
@@ -17,7 +17,7 @@ in
 pkgs.runCommand "nanofil-play"
   {
     nativeBuildInputs = [
-      pkgs.swi-prolog
+      swipl
       pkgs.python3
     ];
     src = pkgs.lib.fileset.toSource {

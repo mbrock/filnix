@@ -53,7 +53,7 @@ article(File, Stages) -->
         ),
         (   { memberchk(term(ir, M), Stages) } -> ir_(M) ; [] ),
         (   { memberchk(text(ir, IR), Stages) }
-        ->  section_(qbe, "IR as QBE text", el(pre, "text", esc(IR)))
+        ->  section_(qbe, "QBE", el(pre, "text", esc(IR)))
         ;   []
         ),
         (   { memberchk(term(asm, Lines), Stages) } -> asm_(Lines) ; [] )
@@ -70,7 +70,7 @@ stages_(Stages) -->
     section_(stages, "Stages",
         el(table, "stages", (
             seq(Ss, stage_row),
-            el(tr, "total", ( el(td, none, "total"), el(td, "time", ms(Total)), el(td, none, []) ))
+            el(tr, "total", ( el(td, none, []), el(td, "time", ms(Total)), el(td, none, []) ))
         ))).
 
 stage_row(stage(Name, T, R)) -->
@@ -106,27 +106,21 @@ play_items(File, Items0, Items, N) :-
 item_in(File, Item) :-
     compound(Item), arg(1, Item, F:_), F == File.
 
-syntax_(Items, NAll) -->
-    { length(Items, N), NH is NAll - N,
-      plural(N, item, Its), plural(NH, item, HIts),
-      format(codes(Note), "~d ~w from this file; ~d more ~w from the headers it includes.", [N, Its, NH, HIts]) },
-    section_(syntax, "C syntax terms", (
-        el(p, "note", esc(Note)),
-        seq(Items, item_)
-    )).
+syntax_(Items, _) -->
+    section_(syntax, "C", seq(Items, item_)).
 
-plural(1, W, W) :- !.
-plural(_, W, Ws) :- atom_concat(W, s, Ws).
+% String literals are code lists in the syntax tree; draw them as strings.
+item_(Item0) --> { strings(Item0, Item) }, el(div, "clause item", term(Item)).
 
-item_(Item) --> el(div, "clause item", term(Item)).
+strings(T0, T) :- var(T0), !, T = T0.
+strings(str(Cs), str(S)) :- is_list(Cs), Cs \== [], maplist(integer, Cs), !, string_codes(S, Cs).
+strings(T0, T) :- compound(T0), !, T0 =.. [F|As0], maplist(strings, As0, As), T =.. [F|As].
+strings(T, T).
 
 %% IR terms
 
 ir_(module(Items)) -->
-    section_(ir, "IR terms", (
-        el(p, "note", "The module's terms (ir.pl's grammar). A function is its head over its Blocks, a block blk(Label, Phis, Insts, Jump) its label over a row for each phi, instruction and the jump."),
-        seq(Items, ir_item)
-    )).
+    section_(ir, "IR", seq(Items, ir_item)).
 
 ir_item(func(Name, Linkage, Ret, Params, Blocks)) --> !,
     el(div, "clause func", (
@@ -156,16 +150,10 @@ asm_term_lines(1500).
 asm_(Lines) -->
     { length(Lines, N), asm_term_lines(Max) },
     (   { N =< Max }
-    ->  { format(codes(Note), "~d lines.", [N]) },
-        section_(asm, "Fil-C amd64 assembly", (
-            el(p, "note", esc(Note)),
-            el(table, "asm", seq(Lines, asm_row))
-        ))
+    ->  section_(asm, "Assembly", el(table, "asm", seq(Lines, asm_row)))
     ;   { length(First, Max), append(First, _, Lines),
-          format(codes(Note), "~d lines; the first ~d drawn as terms, then the whole listing as text.", [N, Max]),
           with_output_to(codes(Text), asm:print_asm(Lines)) },
-        section_(asm, "Fil-C amd64 assembly", (
-            el(p, "note", esc(Note)),
+        section_(asm, "Assembly", (
             el(table, "asm", seq(First, asm_row)),
             el(pre, "text", esc(Text))
         ))

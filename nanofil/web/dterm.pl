@@ -1329,7 +1329,9 @@ index_page(Sources) -->
                                     "or Fil-C stated once, as a relation everything else reads (",
                                     el(a, none, [href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/campaign.md"], "the campaign"),
                                     "). These pages draw its source as terms: clause heads over their goals, ",
-                                    "conditionals as tables, fact tables as tables, PlDoc as signatures." )) )),
+                                    "conditionals as tables, fact tables as tables, PlDoc as signatures. ",
+                                    el(a, none, [href="play/"], "Compile C with it"),
+                                    " in the browser." )) )),
                  el(div, modules, seq(Sources, module_card)) )) )).
 
 module_card(src(Base, Text, _, Events)) -->

@@ -1,85 +1,55 @@
-/* The nanofil playground. dterm.css draws the terms; this file sets the
-   variables it expects (the wiki's style.css sets them there) and lays
-   out the editor and the article. */
-
-:root {
-  --ink: #1d2327;
-  --paper: #fbfaf7;
-  --muted: #6b7378;
-  --rule: #e2ded6;
-  --accent: #b4441c;
-  --mono-font: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-  --sans-font: "Public Sans", system-ui, sans-serif;
-}
-
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: 15px/1.5 var(--sans-font);
-}
-a { color: var(--accent); text-decoration: none; }
-
-header.bar { padding: 1rem 1.5rem 0.6rem; border-bottom: 1px solid var(--rule); }
-header.bar h1 { margin: 0; font-size: 1.3rem; color: var(--ink); }
-header.bar h1 span { color: var(--muted); font-weight: 500; }
-header.bar p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; }
+/* The nanofil playground, inside the wiki's frame: ../../style.css sets
+   the palette, type and header, ../dterm.css draws the terms. This file
+   lays out the editor beside the article. */
 
 main.play-page {
   display: grid;
-  grid-template-columns: minmax(18rem, 30rem) minmax(0, 1fr);
-  gap: 2rem;
-  padding: 1rem 1.5rem 4rem;
+  grid-template-columns: minmax(16rem, 26rem) minmax(0, 1fr);
+  gap: clamp(1.5rem, 3vw, 3rem);
 }
 
-.editor { position: sticky; top: 1rem; align-self: start; }
+.status-right.bad { color: color-mix(in srgb, var(--status-ink) 40%, var(--accent)); }
+
+.editor { position: sticky; top: 2.6rem; align-self: start; }
 .editor textarea {
+  display: block;
   width: 100%;
-  min-height: 16rem;
+  min-height: 15rem;
   resize: vertical;
   padding: 0.7rem 0.8rem;
   border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
+  border-radius: 4px;
+  background: var(--code-bg);
   color: var(--ink);
-  font: 13px/1.5 var(--mono-font);
+  font: 0.8rem/1.5 var(--mono-font);
   tab-size: 4;
 }
-.controls { display: flex; align-items: center; gap: 0.9rem; margin: 0.5rem 0; }
+.editor textarea:focus { outline: none; border-color: var(--accent); }
+.controls { display: flex; align-items: center; gap: 0.9rem; margin: 0.6rem 0 1rem; }
 .controls button {
-  padding: 0.35rem 1.1rem;
+  padding: 0.3rem 1rem;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: var(--accent);
   color: white;
-  font: 600 0.9rem var(--sans-font);
+  font: 700 0.9rem var(--display-font);
   cursor: pointer;
 }
 .controls button:disabled { opacity: 0.45; cursor: progress; }
-.controls label { font: 0.85rem var(--mono-font); }
-.controls .hint { color: var(--muted); font-size: 0.75rem; }
-.status { margin: 0.3rem 0 0.8rem; color: var(--muted); font-size: 0.82rem; }
-.status.bad { color: var(--accent); font-weight: 700; }
-nav.sections { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; }
+.controls label { font: 0.85rem var(--mono-font); color: var(--muted); }
+.editor .toc { position: static; max-height: none; padding-top: 0; }
 
 .out { min-width: 0; }
-.out pre.error { color: var(--accent); white-space: pre-wrap; font: 12px/1.5 var(--mono-font); }
+.out pre.error { color: var(--accent); white-space: pre-wrap; }
 
-article.play { max-width: none; }
-article.play section { margin-bottom: 2.4rem; scroll-margin-top: 1rem; }
-article.play h2 {
-  margin: 0 0 0.7rem;
-  padding-bottom: 0.2rem;
-  border-bottom: 1px solid var(--rule);
-  font-size: 1.05rem;
-}
-article.play p.note { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.6rem; }
+article.play section { margin-bottom: 2.2rem; scroll-margin-top: 2.6rem; }
+article.play h2 { margin: 0 0 0.7rem; }
 
-table.stages { border-collapse: collapse; font-size: 0.85rem; }
-table.stages td { padding: 0.1rem 1.2rem 0.1rem 0; }
-table.stages td.name { font-family: var(--mono-font); }
+table.stages { display: table; font-size: 0.85rem; margin: 0; }
+table.stages td { padding: 0.08rem 1.2rem 0.08rem 0; border-bottom: 0; }
+table.stages td.name { font-family: var(--mono-font); color: var(--muted); }
 table.stages td.time { text-align: right; font-variant-numeric: tabular-nums; }
+table.stages td.result { color: var(--str); }
 table.stages tr.bad td { color: var(--accent); font-weight: 600; }
 table.stages tr.total td { border-top: 1px solid var(--rule); font-weight: 700; }
 table.stages .error { white-space: pre-wrap; font-weight: 500; }
@@ -92,25 +62,19 @@ table.stages .error { white-space: pre-wrap; font-weight: 500; }
 .block-ir > .goals { margin-left: 1.2em; }
 .clause.item, .clause.data { margin: 0.4rem 0 0.9rem; }
 
-article.play pre.text {
-  margin: 0;
-  padding: 0.7rem 0.9rem;
-  overflow-x: auto;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
-  font: 12.5px/1.5 var(--mono-font);
-}
+article.play pre.text { margin: 0; font-size: 0.78rem; }
 
 /* Assembly: the term and the line it prints as. */
-table.asm { border-collapse: collapse; font-size: 0.88rem; }
-table.asm td { padding: 0.05rem 1.4rem 0.05rem 0; vertical-align: baseline; }
+table.asm { display: block; max-width: 100%; overflow-x: auto; font-size: 0.88rem; margin: 0; }
+table.asm td { padding: 0.04rem 1.4rem 0.04rem 0; border-bottom: 0; vertical-align: baseline; }
 table.asm td.term { padding-left: 1.2em; }
 table.asm tr.label td.term { padding-left: 0; padding-top: 0.4rem; }
-table.asm td.att code { font: 12px var(--mono-font); color: var(--muted); white-space: pre; }
+table.asm td.att code { font-size: 0.78rem; color: var(--muted); white-space: pre; }
 table.asm tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 
 @media (max-width: 900px) {
   main.play-page { display: block; }
   .editor { position: static; margin-bottom: 1.5rem; }
+  .editor .toc { display: block; }
+  .editor .toc ul { display: flex; flex-wrap: wrap; gap: 0 1rem; }
 }

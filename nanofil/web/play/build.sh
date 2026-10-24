@@ -2,8 +2,8 @@
 # Assemble the playground's files: nanofil's sources, the driver, the
 # frozen preprocessor profile and the headers it reaches.
 #
-#   build.sh OUT          the page in OUT: index.html and its scripts,
-#                         dterm's stylesheet and fs.json, which maps each
+#   build.sh OUT          the page in OUT: index.html, its scripts and
+#                         stylesheet, and fs.json, which maps each
 #                         virtual path to its text; with SWIPL_WASM (the
 #                         dist/swipl directory of the swipl-wasm npm
 #                         package) also OUT/swipl
@@ -60,7 +60,7 @@ with open(dest, "w") as h:
     json.dump(fs, h, separators=(",", ":"), sort_keys=True)
 EOF
 
-cp "$here"/{index.html,play.css,play.js,worker.js} "$nanofil"/web/{dterm.css,dterm.js} "$out/"
+cp "$here"/{index.html,play.css,play.js,worker.js} "$out/"
 if [ -n "${SWIPL_WASM:-}" ]; then
   mkdir -p "$out/swipl"
   cp "$SWIPL_WASM"/swipl-web.{js,wasm,data} "$out/swipl/"

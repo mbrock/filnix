@@ -9,25 +9,26 @@ const fmt = (ms) => (ms < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(
 
 function compile() {
   $("run").disabled = true;
-  status("Compiling…");
+  status("compiling");
   worker.postMessage({ source: $("source").value, opt: $("opt").checked ? "o1" : "o0" });
 }
 
 worker.onmessage = ({ data }) => {
   $("run").disabled = false;
   if (data.type === "ready") {
-    status(`Loaded in ${fmt(data.ms)}, ${data.mb.toFixed(0)} MB.`);
     compile();
   } else if (data.type === "result") {
     $("out").innerHTML = data.html;
-    const bad = $("out").querySelector("table.stages tr.bad td.name");
-    const what = bad ? `Stopped at ${bad.textContent} after` : "Compiled in";
-    status(`${what} ${fmt(data.ms)}; WebAssembly memory ${data.mb.toFixed(0)} MB.`, !!bad);
-    $("sections").innerHTML = [...$("out").querySelectorAll("section[id]")]
-      .map((s) => `<a href="#${s.id}">${s.querySelector("h2").textContent}</a>`)
-      .join("");
+    const bad = $("out").querySelector(".stages .bad .name");
+    status(`${bad ? bad.textContent + " failed · " : ""}${fmt(data.ms)} · ${data.mb.toFixed(0)} MB`, !!bad);
+    $("sections").innerHTML =
+      "<ul>" +
+      [...$("out").querySelectorAll("section[id]")]
+        .map((s) => `<li><a href="#${s.id}">${s.querySelector("h2").textContent}</a></li>`)
+        .join("") +
+      "</ul>";
   } else {
-    status("Error", true);
+    status("error", true);
     $("out").innerHTML = "";
     const pre = document.createElement("pre");
     pre.className = "error";

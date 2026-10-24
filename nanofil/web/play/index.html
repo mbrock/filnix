@@ -3,18 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nanofil playground</title>
-<link rel="stylesheet" href="dterm.css">
+<title>play · nanofil · Filnix wiki</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../../style.css">
+<link rel="stylesheet" href="../dterm.css">
 <link rel="stylesheet" href="play.css">
 </head>
 <body>
-<header class="bar">
-  <h1>nanofil <span>in the browser</span></h1>
-  <p>A C compiler in Prolog that emits Fil-C assembly, running on SWI-Prolog in WebAssembly. Nothing leaves this page.</p>
-</header>
-<main class="play-page">
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../../docs/">Docs</a>
+    <a class="door" href="../../index.html#explainers">Explainers</a>
+    <a class="door selected" href="../index.html">nanofil</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../../index.html">Wiki</a><span class="crumb-sep">›</span><a class="crumb" href="../index.html">nanofil</a><span class="crumb-sep">›</span><span class="crumb current">play</span></nav>
+  <span class="status-right" id="status">loading</span>
+</div></div>
+<main class="page-frame play-page">
   <form id="form" class="editor">
-    <textarea id="source" spellcheck="false" autocomplete="off">#include &lt;stdio.h&gt;
+    <textarea id="source" spellcheck="false" autocomplete="off" aria-label="C source">#include &lt;stdio.h&gt;
 
 int main(void) {
     printf("hello, world\n");
@@ -22,16 +36,14 @@ int main(void) {
 }
 </textarea>
     <div class="controls">
-      <button id="run" type="submit" disabled>Compile</button>
+      <button id="run" type="submit" disabled title="Ctrl+Enter">Compile</button>
       <label><input id="opt" type="checkbox"> -O</label>
-      <span class="hint">Ctrl+Enter</span>
     </div>
-    <p id="status" class="status">Loading SWI-Prolog and nanofil…</p>
-    <nav class="sections" id="sections"></nav>
+    <nav class="toc dterm-nav" id="sections"></nav>
   </form>
   <div id="out" class="out"></div>
 </main>
-<script src="dterm.js"></script>
+<script src="../dterm.js"></script>
 <script src="play.js"></script>
 </body>
 </html>
