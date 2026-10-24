@@ -67,7 +67,18 @@ capability handling, FP-state preservation/fenv, PI mutex and spinlock fixes,
 mount/prctl compatibility and SaRCAsm improvements. It also fixes ARM64 ordering,
 GC roots and fork-related deadlocks.
 
-Staging preserves the latest reviewed comparison experiment,
+**Current staging (2026-10-24):** branch
+[`filnix-staging`](https://github.com/mbrock/fil-c/tree/filnix-staging) of
+`mbrock/fil-c`, the fork's default branch, at
+[af813053ecb5](https://github.com/mbrock/fil-c/commit/af813053ecb5a5ff27292bfede8d3a9e870d4c8e).
+It is upstream's 0.687 versioning commit (a80e32804fd4) with our commits
+rebased on top: the follow-ups described below, the union series squashed into
+one commit, and a fix so `filc_jmp_buf_recreate` sets the saved-signal-mask
+state on every reuse. The pthread cancellation patches were dropped. The
+branch keeps its name across Fil-C releases; move it rather than starting a
+new versioned branch. The rest of this section is the history behind it.
+
+Staging preserved the reviewed comparison experiment,
 [`simplify-union-storage` at e4427dbc5b77](https://github.com/mbrock/fil-c/commit/e4427dbc5b7715b8fc079fc60c412a755f9680b9).
 It replaces the older Filnix `fix-quickjs-union-abi` pin, not the official release.
 Its merged upstream base is

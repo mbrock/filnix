@@ -1,7 +1,7 @@
 # Fil-C ABI findings at the filnix pin
 
-Nanofil requires **staging Fil-C 0.687**, core revision `35faf87` of
-`mbrock/fil-c` branch `staging-0.687`
+Nanofil requires **staging Fil-C 0.687**, core revision `af81305` of
+`mbrock/fil-c` branch `filnix-staging`
 ([lib/filc-staging.json](../../lib/filc-staging.json)). There is no 0.686
 compatibility path. The original probes below were established at
 `163fae5`; their emitted ABI contracts were rechecked against staging's
