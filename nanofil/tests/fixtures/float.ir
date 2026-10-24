@@ -15,122 +15,122 @@ run(static_data, []).
 run(negative_zero, []).
 run(nan_payload, []).
 
-data(floats, local, 8, [item(s, c(1069547520)), item(s, c(1075838976)), item(d, c(4614500768194494464))]).
+data(floats, local, 8, [item(s, const(1069547520)), item(s, const(1075838976)), item(d, const(4614500768194494464))]).
 
 func(arithmetic, export, w, [], [
-    blk(start, [], [
-        ins(t(a), s, add, [c(1069547520), c(1075838976)]),
-        ins(t(b), s, sub, [t(a), c(1067450368)]),
-        ins(t(c), s, mul, [t(b), c(1082130432)]),
-        ins(t(d), s, div, [t(c), c(1073741824)]),
-        ins(t(e), s, neg, [t(d)]),
-        ins(t(f), d, ext(s), [t(e)]),
-        ins(t(g), d, add, [t(f), c(4621819117588971520)]),
-        ins(t(h), s, truncd, [t(g)]),
-        ins(t(i), w, stosi, [t(h)])
-    ], ret(t(i)))
+    block(start, [], [
+        let(tmp(a), s, add, [const(1069547520), const(1075838976)]),
+        let(tmp(b), s, sub, [tmp(a), const(1067450368)]),
+        let(tmp(c), s, mul, [tmp(b), const(1082130432)]),
+        let(tmp(d), s, div, [tmp(c), const(1073741824)]),
+        let(tmp(e), s, neg, [tmp(d)]),
+        let(tmp(f), d, ext(s), [tmp(e)]),
+        let(tmp(g), d, add, [tmp(f), const(4621819117588971520)]),
+        let(tmp(h), s, truncd, [tmp(g)]),
+        let(tmp(i), w, stosi, [tmp(h)])
+    ], ret(tmp(i)))
 ]).
 
 func(unordered, export, w, [], [
-    blk(start, [], [
-        ins(t(nan), d, cast, [c(9221120237041090626)]),
-        ins(t(a), w, cmp(eq, d), [t(nan), c(0)]),
-        ins(t(b), w, cmp(ne, d), [t(nan), c(0)]),
-        ins(t(c), w, cmp(lt, d), [t(nan), c(0)]),
-        ins(t(d), w, cmp(le, d), [t(nan), c(0)]),
-        ins(t(e), w, cmp(gt, d), [t(nan), c(0)]),
-        ins(t(f), w, cmp(ge, d), [t(nan), c(0)]),
-        ins(t(g), w, cmp(o, d), [t(nan), c(0)]),
-        ins(t(h), w, cmp(uo, d), [t(nan), c(0)]),
-        ins(t(ab), w, add, [t(a), t(b)]),
-        ins(t(cd), w, add, [t(c), t(d)]),
-        ins(t(ef), w, add, [t(e), t(f)]),
-        ins(t(gh), w, add, [t(g), t(h)]),
-        ins(t(x), w, add, [t(ab), t(cd)]),
-        ins(t(y), w, add, [t(ef), t(gh)]),
-        ins(t(r), w, add, [t(x), t(y)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(nan), d, cast, [const(9221120237041090626)]),
+        let(tmp(a), w, cmp(eq, d), [tmp(nan), const(0)]),
+        let(tmp(b), w, cmp(ne, d), [tmp(nan), const(0)]),
+        let(tmp(c), w, cmp(lt, d), [tmp(nan), const(0)]),
+        let(tmp(d), w, cmp(le, d), [tmp(nan), const(0)]),
+        let(tmp(e), w, cmp(gt, d), [tmp(nan), const(0)]),
+        let(tmp(f), w, cmp(ge, d), [tmp(nan), const(0)]),
+        let(tmp(g), w, cmp(o, d), [tmp(nan), const(0)]),
+        let(tmp(h), w, cmp(uo, d), [tmp(nan), const(0)]),
+        let(tmp(ab), w, add, [tmp(a), tmp(b)]),
+        let(tmp(cd), w, add, [tmp(c), tmp(d)]),
+        let(tmp(ef), w, add, [tmp(e), tmp(f)]),
+        let(tmp(gh), w, add, [tmp(g), tmp(h)]),
+        let(tmp(x), w, add, [tmp(ab), tmp(cd)]),
+        let(tmp(y), w, add, [tmp(ef), tmp(gh)]),
+        let(tmp(r), w, add, [tmp(x), tmp(y)])
+    ], ret(tmp(r)))
 ]).
 
-func(from_unsigned, export, l, [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(f), d, ultof, [t(n)]),
-        ins(t(r), l, cast, [t(f)])
-    ], ret(t(r)))
+func(from_unsigned, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(f), d, ultof, [tmp(n)]),
+        let(tmp(r), l, cast, [tmp(f)])
+    ], ret(tmp(r)))
 ]).
-func(unsigned_single, export, w, [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(f), s, ultof, [t(n)]),
-        ins(t(r), w, cast, [t(f)])
-    ], ret(t(r)))
+func(unsigned_single, export, w, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(f), s, ultof, [tmp(n)]),
+        let(tmp(r), w, cast, [tmp(f)])
+    ], ret(tmp(r)))
 ]).
 func(back_unsigned, export, l, [], [
-    blk(start, [], [
-        ins(t(a), l, dtoui, [c(4893160995138043904)]),
-        ins(t(b), l, stoui, [c(1593835520)]),
-        ins(t(r), l, sub, [t(a), t(b)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(a), l, dtoui, [const(4893160995138043904)]),
+        let(tmp(b), l, stoui, [const(1593835520)]),
+        let(tmp(r), l, sub, [tmp(a), tmp(b)])
+    ], ret(tmp(r)))
 ]).
 func(memory, export, w, [], [
-    blk(start, [], [
-        ins(t(p), l, alloc(8), [c(16)]),
-        store(s, c(1069547520), t(p)),
-        ins(t(a), s, load(s), [t(p)]),
-        ins(t(q), l, add, [t(p), c(8)]),
-        store(d, c(4612811918334230528), t(q)),
-        ins(t(b), d, load(d), [t(q)]),
-        ins(t(c), d, ext(s), [t(a)]),
-        ins(t(d), d, add, [t(b), t(c)]),
-        ins(t(e), w, dtosi, [t(d)])
-    ], ret(t(e)))
+    block(start, [], [
+        let(tmp(p), l, alloc(8), [const(16)]),
+        store(s, const(1069547520), tmp(p)),
+        let(tmp(a), s, load(s), [tmp(p)]),
+        let(tmp(q), l, add, [tmp(p), const(8)]),
+        store(d, const(4612811918334230528), tmp(q)),
+        let(tmp(b), d, load(d), [tmp(q)]),
+        let(tmp(c), d, ext(s), [tmp(a)]),
+        let(tmp(d), d, add, [tmp(b), tmp(c)]),
+        let(tmp(e), w, dtosi, [tmp(d)])
+    ], ret(tmp(e)))
 ]).
-func(phi, export, l, [par(w, t(which))], [
-    blk(start, [], [], jnz(t(which), a, b)),
-    blk(a, [], [], jmp(end)),
-    blk(b, [], [], jmp(end)),
-    blk(end, [
-        phi(t(f), d, [a-c(4608308318706860032), b-c(4612811918334230528)])
+func(phi, export, l, [param(w, tmp(which))], [
+    block(start, [], [], branch(tmp(which), a, b)),
+    block(a, [], [], goto(end)),
+    block(b, [], [], goto(end)),
+    block(end, [
+        phi(tmp(f), d, [a-const(4608308318706860032), b-const(4612811918334230528)])
     ], [
-        ins(t(r), l, cast, [t(f)])
-    ], ret(t(r)))
+        let(tmp(r), l, cast, [tmp(f)])
+    ], ret(tmp(r)))
 ]).
-func(many, local, d, [par(l, t(i)), par(d, t(a)), par(d, t(b)), par(d, t(c)), par(d, t(d)), par(d, t(e)), par(d, t(f)), par(d, t(g)), par(d, t(h)), par(d, t(j)), par(l, t(k)), par(l, t(l)), par(l, t(m)), par(l, t(n)), par(l, t(o)), par(l, t(p))], [
-    blk(start, [], [
-        ins(t(x), d, add, [t(a), t(j)]),
-        ins(t(y), d, sltof, [t(p)]),
-        ins(t(r), d, add, [t(x), t(y)])
-    ], ret(t(r)))
+func(many, local, d, [param(l, tmp(i)), param(d, tmp(a)), param(d, tmp(b)), param(d, tmp(c)), param(d, tmp(d)), param(d, tmp(e)), param(d, tmp(f)), param(d, tmp(g)), param(d, tmp(h)), param(d, tmp(j)), param(l, tmp(k)), param(l, tmp(l)), param(l, tmp(m)), param(l, tmp(n)), param(l, tmp(o)), param(l, tmp(p))], [
+    block(start, [], [
+        let(tmp(x), d, add, [tmp(a), tmp(j)]),
+        let(tmp(y), d, sltof, [tmp(p)]),
+        let(tmp(r), d, add, [tmp(x), tmp(y)])
+    ], ret(tmp(r)))
 ]).
 func(spill, export, w, [], [
-    blk(start, [], [
-        call(to(t(r), d), glo(many), [arg(l, c(1)), arg(d, c(4611686018427387904)), arg(d, c(4613937818241073152)), arg(d, c(4616189618054758400)), arg(d, c(4617315517961601024)), arg(d, c(4618441417868443648)), arg(d, c(4619567317775286272)), arg(d, c(4620693217682128896)), arg(d, c(4621256167635550208)), arg(d, c(4621819117588971520)), arg(l, c(11)), arg(l, c(12)), arg(l, c(13)), arg(l, c(14)), arg(l, c(15)), arg(l, c(16))]),
-        ins(t(i), w, dtosi, [t(r)])
-    ], ret(t(i)))
+    block(start, [], [
+        call(result(tmp(r), d), global(many), [arg(l, const(1)), arg(d, const(4611686018427387904)), arg(d, const(4613937818241073152)), arg(d, const(4616189618054758400)), arg(d, const(4617315517961601024)), arg(d, const(4618441417868443648)), arg(d, const(4619567317775286272)), arg(d, const(4620693217682128896)), arg(d, const(4621256167635550208)), arg(d, const(4621819117588971520)), arg(l, const(11)), arg(l, const(12)), arg(l, const(13)), arg(l, const(14)), arg(l, const(15)), arg(l, const(16))]),
+        let(tmp(i), w, dtosi, [tmp(r)])
+    ], ret(tmp(i)))
 ]).
 func(static_data, export, l, [], [
-    blk(start, [], [
-        ins(t(a), s, load(s), [glo(floats)]),
-        ins(t(p), l, add, [glo(floats), c(4)]),
-        ins(t(b), s, load(s), [t(p)]),
-        ins(t(q), l, add, [glo(floats), c(8)]),
-        ins(t(c), d, load(d), [t(q)]),
-        ins(t(d), s, add, [t(a), t(b)]),
-        ins(t(e), d, ext(s), [t(d)]),
-        ins(t(f), d, add, [t(e), t(c)]),
-        ins(t(r), l, cast, [t(f)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(a), s, load(s), [global(floats)]),
+        let(tmp(p), l, add, [global(floats), const(4)]),
+        let(tmp(b), s, load(s), [tmp(p)]),
+        let(tmp(q), l, add, [global(floats), const(8)]),
+        let(tmp(c), d, load(d), [tmp(q)]),
+        let(tmp(d), s, add, [tmp(a), tmp(b)]),
+        let(tmp(e), d, ext(s), [tmp(d)]),
+        let(tmp(f), d, add, [tmp(e), tmp(c)]),
+        let(tmp(r), l, cast, [tmp(f)])
+    ], ret(tmp(r)))
 ]).
 func(negative_zero, export, w, [], [
-    blk(start, [], [
-        ins(t(z), s, neg, [c(0)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(z), s, neg, [const(0)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
 func(nan_payload, export, l, [], [
-    blk(start, [], [
-        ins(t(a), d, cast, [c(9221120237041090626)]),
-        ins(t(b), d, cast, [c(9221120237041090642)]),
-        ins(t(f), d, add, [t(a), t(b)]),
-        ins(t(r), l, cast, [t(f)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(a), d, cast, [const(9221120237041090626)]),
+        let(tmp(b), d, cast, [const(9221120237041090642)]),
+        let(tmp(f), d, add, [tmp(a), tmp(b)]),
+        let(tmp(r), l, cast, [tmp(f)])
+    ], ret(tmp(r)))
 ]).

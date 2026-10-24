@@ -2,49 +2,49 @@
 % must leave alone, in plain mode so the plain backend compiles both versions.
 
 % A counter and an accumulator in slots, across a loop.
-func(loop, export, l, [par(w, t(n))], [
-    blk(start, [], [
-        ins(t(i), l, alloc(4), [c(4)]),
-        ins(t(acc), l, alloc(8), [c(8)]),
-        store(w, c(0), t(i)),
-        store(l, c(1), t(acc))
-    ], jmp(head)),
-    blk(head, [], [
-        ins(t(iv), w, load(sw), [t(i)]),
-        ins(t(c), w, cmp(slt, w), [t(iv), t(n)])
-    ], jnz(t(c), body, done)),
-    blk(body, [], [
-        ins(t(a), l, load(l), [t(acc)]),
-        ins(t(iv2), w, load(sw), [t(i)]),
-        ins(t(x), l, ext(sw), [t(iv2)]),
-        ins(t(a2), l, add, [t(a), t(x)]),
-        ins(t(a3), l, mul, [t(a2), c(3)]),
-        store(l, t(a3), t(acc)),
-        ins(t(iv3), w, add, [t(iv2), c(1)]),
-        store(w, t(iv3), t(i))
-    ], jmp(head)),
-    blk(done, [], [
-        ins(t(r), l, load(l), [t(acc)])
-    ], ret(t(r)))
+func(loop, export, l, [param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(i), l, alloc(4), [const(4)]),
+        let(tmp(acc), l, alloc(8), [const(8)]),
+        store(w, const(0), tmp(i)),
+        store(l, const(1), tmp(acc))
+    ], goto(head)),
+    block(head, [], [
+        let(tmp(iv), w, load(sw), [tmp(i)]),
+        let(tmp(c), w, cmp(slt, w), [tmp(iv), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(a), l, load(l), [tmp(acc)]),
+        let(tmp(iv2), w, load(sw), [tmp(i)]),
+        let(tmp(x), l, ext(sw), [tmp(iv2)]),
+        let(tmp(a2), l, add, [tmp(a), tmp(x)]),
+        let(tmp(a3), l, mul, [tmp(a2), const(3)]),
+        store(l, tmp(a3), tmp(acc)),
+        let(tmp(iv3), w, add, [tmp(iv2), const(1)]),
+        store(w, tmp(iv3), tmp(i))
+    ], goto(head)),
+    block(done, [], [
+        let(tmp(r), l, load(l), [tmp(acc)])
+    ], ret(tmp(r)))
 ]).
 run(loop, [0]).
 run(loop, [5]).
 run(loop, [40]).
 
 % A diamond that stores on one side only, so the join needs a phi.
-func(diamond, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(s), l, alloc(4), [c(4)]),
-        store(w, t(a), t(s))
-    ], jnz(t(b), then, join)),
-    blk(then, [], [
-        ins(t(v), w, load(sw), [t(s)]),
-        ins(t(v2), w, mul, [t(v), t(b)]),
-        store(w, t(v2), t(s))
-    ], jmp(join)),
-    blk(join, [], [
-        ins(t(r), w, load(uw), [t(s)])
-    ], ret(t(r)))
+func(diamond, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(s), l, alloc(4), [const(4)]),
+        store(w, tmp(a), tmp(s))
+    ], branch(tmp(b), then, join)),
+    block(then, [], [
+        let(tmp(v), w, load(sw), [tmp(s)]),
+        let(tmp(v2), w, mul, [tmp(v), tmp(b)]),
+        store(w, tmp(v2), tmp(s))
+    ], goto(join)),
+    block(join, [], [
+        let(tmp(r), w, load(uw), [tmp(s)])
+    ], ret(tmp(r)))
 ]).
 run(diamond, [7, 0]).
 run(diamond, [7, 6]).
@@ -52,29 +52,29 @@ run(diamond, [4294967295, 2]).
 
 % Narrow slots: the load extends the stored value again. (Reading a w
 % slot at l both ways is tests/backend/load-ext-l.ir: qbe gets it wrong.)
-func(narrow, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(b), l, alloc(4), [c(1)]),
-        ins(t(h), l, alloc(4), [c(2)]),
-        ins(t(w), l, alloc(4), [c(4)]),
-        store(b, t(a), t(b)),
-        store(h, t(a), t(h)),
-        store(w, t(a), t(w)),
-        ins(t(x), w, load(sb), [t(b)]),
-        ins(t(y), w, load(ub), [t(b)]),
-        ins(t(z), l, load(sh), [t(h)]),
-        ins(t(u), l, load(uh), [t(h)]),
-        ins(t(s), w, load(sw), [t(w)]),
-        ins(t(t), w, load(uw), [t(w)]),
-        ins(t(x1), l, ext(sw), [t(x)]),
-        ins(t(y1), l, ext(sw), [t(y)]),
-        ins(t(p), l, add, [t(x1), t(y1)]),
-        ins(t(q), l, xor, [t(z), t(u)]),
-        ins(t(r0), l, add, [t(p), t(q)]),
-        ins(t(r1w), w, sub, [t(s), t(t)]),
-        ins(t(r1), l, ext(sw), [t(r1w)]),
-        ins(t(r), l, add, [t(r0), t(r1)])
-    ], ret(t(r)))
+func(narrow, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(b), l, alloc(4), [const(1)]),
+        let(tmp(h), l, alloc(4), [const(2)]),
+        let(tmp(w), l, alloc(4), [const(4)]),
+        store(b, tmp(a), tmp(b)),
+        store(h, tmp(a), tmp(h)),
+        store(w, tmp(a), tmp(w)),
+        let(tmp(x), w, load(sb), [tmp(b)]),
+        let(tmp(y), w, load(ub), [tmp(b)]),
+        let(tmp(z), l, load(sh), [tmp(h)]),
+        let(tmp(u), l, load(uh), [tmp(h)]),
+        let(tmp(s), w, load(sw), [tmp(w)]),
+        let(tmp(t), w, load(uw), [tmp(w)]),
+        let(tmp(x1), l, ext(sw), [tmp(x)]),
+        let(tmp(y1), l, ext(sw), [tmp(y)]),
+        let(tmp(p), l, add, [tmp(x1), tmp(y1)]),
+        let(tmp(q), l, xor, [tmp(z), tmp(u)]),
+        let(tmp(r0), l, add, [tmp(p), tmp(q)]),
+        let(tmp(r1w), w, sub, [tmp(s), tmp(t)]),
+        let(tmp(r1), l, ext(sw), [tmp(r1w)]),
+        let(tmp(r), l, add, [tmp(r0), tmp(r1)])
+    ], ret(tmp(r)))
 ]).
 run(narrow, [0]).
 run(narrow, [127]).
@@ -84,32 +84,32 @@ run(narrow, [4294967295]).
 run(narrow, [2147516544]).
 
 % A two-field struct at constant offsets: two slots of one alloc.
-func(fields, export, l, [par(l, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(s), l, alloc(8), [c(16)]),
-        ins(t(f), l, add, [t(s), c(8)]),
-        ins(t(g), l, add, [t(f), c(4)]),
-        store(l, t(a), t(s)),
-        store(w, t(b), t(f)),
-        store(w, c(5), t(g))
-    ], jnz(t(b), swap, out)),
-    blk(swap, [], [
-        ins(t(x), l, load(l), [t(s)]),
-        ins(t(y), w, load(sw), [t(f)]),
-        ins(t(y1), l, ext(sw), [t(y)]),
-        store(l, t(y1), t(s)),
-        store(w, t(x), t(f))
-    ], jmp(out)),
-    blk(out, [], [
-        ins(t(p), l, load(l), [t(s)]),
-        ins(t(q), w, load(uw), [t(f)]),
-        ins(t(q1), l, ext(uw), [t(q)]),
-        ins(t(k), w, load(uw), [t(g)]),
-        ins(t(k1), l, ext(uw), [t(k)]),
-        ins(t(r0), l, mul, [t(p), c(1000)]),
-        ins(t(r1), l, add, [t(r0), t(q1)]),
-        ins(t(r), l, add, [t(r1), t(k1)])
-    ], ret(t(r)))
+func(fields, export, l, [param(l, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(s), l, alloc(8), [const(16)]),
+        let(tmp(f), l, add, [tmp(s), const(8)]),
+        let(tmp(g), l, add, [tmp(f), const(4)]),
+        store(l, tmp(a), tmp(s)),
+        store(w, tmp(b), tmp(f)),
+        store(w, const(5), tmp(g))
+    ], branch(tmp(b), swap, out)),
+    block(swap, [], [
+        let(tmp(x), l, load(l), [tmp(s)]),
+        let(tmp(y), w, load(sw), [tmp(f)]),
+        let(tmp(y1), l, ext(sw), [tmp(y)]),
+        store(l, tmp(y1), tmp(s)),
+        store(w, tmp(x), tmp(f))
+    ], goto(out)),
+    block(out, [], [
+        let(tmp(p), l, load(l), [tmp(s)]),
+        let(tmp(q), w, load(uw), [tmp(f)]),
+        let(tmp(q1), l, ext(uw), [tmp(q)]),
+        let(tmp(k), w, load(uw), [tmp(g)]),
+        let(tmp(k1), l, ext(uw), [tmp(k)]),
+        let(tmp(r0), l, mul, [tmp(p), const(1000)]),
+        let(tmp(r1), l, add, [tmp(r0), tmp(q1)]),
+        let(tmp(r), l, add, [tmp(r1), tmp(k1)])
+    ], ret(tmp(r)))
 ]).
 run(fields, [3, 0]).
 run(fields, [3, 9]).
@@ -119,43 +119,43 @@ run(fields, [18446744073709551615, 4294967295]).
 % outside the entry block (fresh every time round the loop), two widths
 % at one offset, and a word stored into the high half of a long (both
 % overlaps). The results must not change either.
-func(peek, local, l, [par(l, t(p))], [
-    blk(start, [], [
-        ins(t(v), l, load(l), [t(p)])
-    ], ret(t(v)))
+func(peek, local, l, [param(l, tmp(p))], [
+    block(start, [], [
+        let(tmp(v), l, load(l), [tmp(p)])
+    ], ret(tmp(v)))
 ]).
-func(kept, export, l, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(e), l, alloc(8), [c(8)]),
-        ins(t(o), l, alloc(8), [c(8)]),
-        store(l, t(a), t(e)),
-        store(l, t(a), t(o)),
-        ins(t(lo), w, load(uw), [t(o)]),
-        ins(t(lo1), l, ext(uw), [t(lo)]),
-        ins(t(h), l, alloc(8), [c(8)]),
-        store(l, t(a), t(h)),
-        ins(t(h4), l, add, [t(h), c(4)]),
-        store(w, c(7), t(h4)),
-        ins(t(hv), l, load(l), [t(h)]),
-        call(to(t(v), l), glo(peek), [arg(l, t(e))])
-    ], jmp(loop)),
-    blk(loop, [
-        phi(t(i), w, [start-c(0), loop-t(i1)]),
-        phi(t(acc), l, [start-c(0), loop-t(acc1)])
+func(kept, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(e), l, alloc(8), [const(8)]),
+        let(tmp(o), l, alloc(8), [const(8)]),
+        store(l, tmp(a), tmp(e)),
+        store(l, tmp(a), tmp(o)),
+        let(tmp(lo), w, load(uw), [tmp(o)]),
+        let(tmp(lo1), l, ext(uw), [tmp(lo)]),
+        let(tmp(h), l, alloc(8), [const(8)]),
+        store(l, tmp(a), tmp(h)),
+        let(tmp(h4), l, add, [tmp(h), const(4)]),
+        store(w, const(7), tmp(h4)),
+        let(tmp(hv), l, load(l), [tmp(h)]),
+        call(result(tmp(v), l), global(peek), [arg(l, tmp(e))])
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(i), w, [start-const(0), loop-tmp(i1)]),
+        phi(tmp(acc), l, [start-const(0), loop-tmp(acc1)])
     ], [
-        ins(t(n), l, alloc(4), [c(4)]),
-        store(w, t(i), t(n)),
-        ins(t(nv), w, load(sw), [t(n)]),
-        ins(t(nv1), l, ext(sw), [t(nv)]),
-        ins(t(acc1), l, add, [t(acc), t(nv1)]),
-        ins(t(i1), w, add, [t(i), c(1)]),
-        ins(t(c), w, cmp(slt, w), [t(i1), c(3)])
-    ], jnz(t(c), loop, done)),
-    blk(done, [], [
-        ins(t(r0), l, add, [t(v), t(lo1)]),
-        ins(t(r1), l, add, [t(r0), t(acc1)]),
-        ins(t(r), l, add, [t(r1), t(hv)])
-    ], ret(t(r)))
+        let(tmp(n), l, alloc(4), [const(4)]),
+        store(w, tmp(i), tmp(n)),
+        let(tmp(nv), w, load(sw), [tmp(n)]),
+        let(tmp(nv1), l, ext(sw), [tmp(nv)]),
+        let(tmp(acc1), l, add, [tmp(acc), tmp(nv1)]),
+        let(tmp(i1), w, add, [tmp(i), const(1)]),
+        let(tmp(c), w, cmp(slt, w), [tmp(i1), const(3)])
+    ], branch(tmp(c), loop, done)),
+    block(done, [], [
+        let(tmp(r0), l, add, [tmp(v), tmp(lo1)]),
+        let(tmp(r1), l, add, [tmp(r0), tmp(acc1)]),
+        let(tmp(r), l, add, [tmp(r1), tmp(hv)])
+    ], ret(tmp(r)))
 ]).
 % a + (a mod 2^32) + (0 + 1 + 2) + (a mod 2^32 + 7 * 2^32):
 run(kept, [10]).
@@ -163,24 +163,24 @@ run(kept, [4294967297]).
 
 % Early return from a block the slot is stored in, and a store in a
 % block nothing reaches.
-func(early, export, w, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(s), l, alloc(4), [c(4)]),
-        store(w, c(1), t(s)),
-        ins(t(c), w, cmp(eq, w), [t(a), c(0)])
-    ], jnz(t(c), zero, more)),
-    blk(zero, [], [
-        ins(t(z), w, load(sw), [t(s)])
-    ], ret(t(z))),
-    blk(dead, [], [
-        store(w, c(99), t(s))
-    ], jmp(more)),
-    blk(more, [], [
-        ins(t(v), w, load(sw), [t(s)]),
-        ins(t(v2), w, add, [t(v), t(a)]),
-        store(w, t(v2), t(s)),
-        ins(t(r), w, load(sw), [t(s)])
-    ], ret(t(r)))
+func(early, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(s), l, alloc(4), [const(4)]),
+        store(w, const(1), tmp(s)),
+        let(tmp(c), w, cmp(eq, w), [tmp(a), const(0)])
+    ], branch(tmp(c), zero, more)),
+    block(zero, [], [
+        let(tmp(z), w, load(sw), [tmp(s)])
+    ], ret(tmp(z))),
+    block(dead, [], [
+        store(w, const(99), tmp(s))
+    ], goto(more)),
+    block(more, [], [
+        let(tmp(v), w, load(sw), [tmp(s)]),
+        let(tmp(v2), w, add, [tmp(v), tmp(a)]),
+        store(w, tmp(v2), tmp(s)),
+        let(tmp(r), w, load(sw), [tmp(s)])
+    ], ret(tmp(r)))
 ]).
 run(early, [0]).
 run(early, [41]).

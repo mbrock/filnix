@@ -165,7 +165,7 @@ v2 drew every compound as a flex box whose arguments were items. That
 gave the right nesting but the wrong typography: the gap after a comma
 was a flex gap, so a comma floated halfway between its arguments; a line
 could break anywhere between items, even between a functor's box and its
-neck; every paren box was as tall as its line, so `t(v0)` in a run of
+neck; every paren box was as tall as its line, so `tmp(v0)` in a run of
 IR had a frame round it heavier than the name it held; brackets looked
 like parentheses; and a long term wrapped wherever the width ran out, so
 C syntax became a staircase of nested frames.

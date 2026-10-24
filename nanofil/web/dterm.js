@@ -32,7 +32,7 @@ document.addEventListener("mouseover", (event) => {
 //   it) on the opening line and each of the rest on a line of its own,
 //   aligned under the first or hung --indent past the term's start; when
 //   or, as Lisp is set, all from the next line, a step past the functor;
-//   when all after the first are simple (atoms, numbers, variables, t(Q)) they
+//   when all after the first are simple (atoms, numbers, variables, tmp(Q)) they
 //   fill their lines instead, aligned or hung; a list of two or more
 //   compound terms is on one line only within half the ribbon;
 // - a chain of one operator: on one line, or a line per operand, aligned
@@ -142,8 +142,8 @@ document.addEventListener("mouseover", (event) => {
     return CAT([e.left && T(e.left), d, e.right && T(e.right)]);
   }
 
-  // A simple item: no group inside, or one as short as t(Q) or [A].
-  const simple = (el) => !el.querySelector("[data-d]") || el.textContent.length <= 6;
+  // A simple item: no group inside, or one as short as [tmp(Q)].
+  const simple = (el) => !el.querySelector("[data-d]") || el.textContent.length <= 10;
 
   // A compound or list: its opening (functor and parenthesis, or bracket),
   // its items, and the separators between them.

@@ -6,10 +6,12 @@
     states them: each such access becomes a check, whose class a result
     is the proven address, and the raw access that reads it.
 
-      ins(t(D), K, load(T), [A])  ->  ins(t(Q), a, check(0, S, read, Al), [A]),
-                                      ins(t(D), K, ld(T, 0), [t(Q)])
-      store(W, V, A)              ->  ins(t(Q), a, check(0, S, write, Al), [A]),
-                                      st(W, 0, V, t(Q))
+      let(tmp(D), K, load(T), [A])
+          ->  let(tmp(Q), a, check(0, S, read, Al), [A]),
+              let(tmp(D), K, raw_load(T, 0), [tmp(Q)])
+      store(W, V, A)
+          ->  let(tmp(Q), a, check(0, S, write, Al), [A]),
+              raw_store(W, 0, V, tmp(Q))
 
     S and Al are the access's size and alignment (ir:access_size_align/3).
     And every edge that does not go forward in block order gets a
@@ -46,7 +48,7 @@ pizlonate_module(M0, module(Items)) :-
 pizlonated_item(Mode, func(Name, Linkage, Ret, Params, Blocks0),
                 func(Name, Linkage, Ret, Params, Blocks)) :-
     func_temp_names(Params, Blocks0, Names),
-    findall(L-I, nth0(I, Blocks0, blk(L, _, _, _)), Pairs),
+    findall(L-I, nth0(I, Blocks0, block(L, _, _, _)), Pairs),
     list_to_assoc(Pairs, Index),
     pizlonated_blocks(Blocks0, p(Mode, Names, Index), 0, 0, Blocks).
 pizlonated_item(_, data(Name, Linkage, Align, Items),
@@ -57,9 +59,9 @@ pizlonated_item(_, data(Name, Linkage, Align, Items),
 % function reads only temps it defines.
 func_temp_names(Params, Blocks, Names) :-
     findall(N-t,
-            (   member(par(_, t(N)), Params)
-            ;   member(blk(_, Phis, Insts, _), Blocks),
-                (   member(phi(t(N), _, _), Phis)
+            (   member(param(_, tmp(N)), Params)
+            ;   member(block(_, Phis, Insts, _), Blocks),
+                (   member(phi(tmp(N), _, _), Phis)
                 ;   member(Inst, Insts), inst_def(Inst, N)
                 )
             ),
@@ -72,8 +74,8 @@ func_temp_names(Params, Blocks, Names) :-
 % counts fresh names. Plain recursion: Trealla copies a closure's
 % arguments at every call.
 pizlonated_blocks([], _, _, _, []).
-pizlonated_blocks([blk(L, Phis, Insts0, Jump0)|Bs0], P, I, N0,
-                  [blk(L, Phis, Insts, Jump)|Bs]) :-
+pizlonated_blocks([block(L, Phis, Insts0, Jump0)|Bs0], P, I, N0,
+                  [block(L, Phis, Insts, Jump)|Bs]) :-
     P = p(Mode, Names, Index),
     checked_insts(Insts0, Mode, Names, N0, N, Insts),
     polled_jump(Jump0, I, Index, Jump),
@@ -90,14 +92,14 @@ checked_insts([Inst0|Insts0], Mode, Names, N0, N, Insts) :-
     checked_insts(Insts0, Mode, Names, N1, N, Insts1).
 
 % checked_access(+Access, ?Q, -Insts, ?Insts1): Insts less Insts1 are
-% Access's check, defining t(Q), and its raw access.
-checked_access(ins(D, K, load(T), [A]), Q,
-               [ins(t(Q), a, check(0, Size, read, Align), [A]),
-                ins(D, K, ld(T, 0), [t(Q)])|Is], Is) :-
+% Access's check, defining tmp(Q), and its raw access.
+checked_access(let(D, K, load(T), [A]), Q,
+               [let(tmp(Q), a, check(0, Size, read, Align), [A]),
+                let(D, K, raw_load(T, 0), [tmp(Q)])|Is], Is) :-
     access_size_align(T, Size, Align), !.
 checked_access(store(W, V, A), Q,
-               [ins(t(Q), a, check(0, Size, write, Align), [A]),
-                st(W, 0, V, t(Q))|Is], Is) :-
+               [let(tmp(Q), a, check(0, Size, write, Align), [A]),
+                raw_store(W, 0, V, tmp(Q))|Is], Is) :-
     access_size_align(W, Size, Align), !.
 
 % fresh_name(+Names, +N0, -N, -Q): Q is chkI for the least I >= N0 not
@@ -112,15 +114,15 @@ fresh_name(Names, N0, N, Q) :-
 
 % polled_jump(+Jump0, +From, +Index, -Jump): Jump is Jump0, ending the
 % block at index From, with poll(L) for each target L at or before it.
-polled_jump(jmp(L), From, Index, jmp(T)) :-
+polled_jump(goto(L), From, Index, goto(T)) :-
     polled_target(L, From, Index, T).
-polled_jump(jnz(V, L1, L2), From, Index, jnz(V, T1, T2)) :-
+polled_jump(branch(V, L1, L2), From, Index, branch(V, T1, T2)) :-
     polled_target(L1, From, Index, T1),
     polled_target(L2, From, Index, T2).
 polled_jump(ret(V), _, _, ret(V)).
 polled_jump(rets(Vs), _, _, rets(Vs)).
 polled_jump(ret, _, _, ret).
-polled_jump(hlt, _, _, hlt).
+polled_jump(unreachable, _, _, unreachable).
 
 % Checked IR (a poll target, and no load or store) passes unchanged.
 polled_target(poll(L), _, _, poll(L)) :- !.

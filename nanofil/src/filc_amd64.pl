@@ -26,7 +26,7 @@
 
     Variable conventions: Ctx is the function context (function_ctx/7)
     and Fn the amd64 context inside it; K is a word class (w, l, p, s, d);
-    V is a value, t(N) or c(N); D is the number of a destination t(D);
+    V is a value, tmp(N) or const(N); D is the number of a destination tmp(D);
     T is a load type and W a store width; S and F are symbols; Off is a
     byte offset; Form is a return form, reg or mem(Bytes) (ret_form/2).
 */
@@ -106,7 +106,7 @@ bijective_value([D|Ds], V) :-
     V is D + 1 + 11 * V1.
 
 func_signature(func(_, _, Ret, Params, _), Sig) :-
-    findall(K, member(par(K, _), Params), Ks),
+    findall(K, member(param(K, _), Params), Ks),
     signature(Ret, Ks, Sig).
 
 %% ABI facts (docs/abi-findings.md), at the pin
@@ -159,7 +159,7 @@ aux_pointer_mask(0xffffffffffff).
 %% Frame layout
 
 /* layout(+Form, +Params, +Blocks, -Slots, -FrameBase, -NLowers, -Size):
-   the frame of a function with return form Form. Slots maps t(N) and
+   the frame of a function with return form Form. Slots maps tmp(N) and
    shadow(N) to address slots and lower(Key) to lowers[] entries, all as
    offsets below %rbp; thread and aux are scratch slots, and retbuf holds
    the return buffer of a buffered return. The filc_frame {parent,
@@ -167,9 +167,9 @@ aux_pointer_mask(0xffffffffffff).
    16-aligned frame size. */
 layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
     findall(N-K,
-            (   member(par(K, t(N)), Params)
-            ;   member(blk(_, Phis, Insts, _), Blocks),
-                (   member(phi(t(N), K, _), Phis)
+            (   member(param(K, tmp(N)), Params)
+            ;   member(block(_, Phis, Insts, _), Blocks),
+                (   member(phi(tmp(N), K, _), Phis)
                 ;   member(I, Insts),
                     inst_dest_class(I, N, K)
                 )
@@ -177,8 +177,8 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
             Temps0),
     sort(Temps0, Temps),
     findall(N-K,
-            (   member(blk(_, Phis, _, _), Blocks),
-                member(phi(t(N), K, _), Phis)
+            (   member(block(_, Phis, _, _), Blocks),
+                member(phi(tmp(N), K, _), Phis)
             ),
             Shadows0),
     sort(Shadows0, Shadows),
@@ -209,8 +209,8 @@ temp_storage([], Params, Blocks, Temps, Keys, Lowers, Aliases) :-
     assoc_to_list(Map, Pairs),
     maplist(storage_alias, Pairs, Aliases).
 temp_storage([_|_], _, _, Temps, Keys, Lowers, []) :-
-    findall(t(N), member(N-_, Temps), Keys),
-    findall(lower(t(N)), member(N-p, Temps), Lowers).
+    findall(tmp(N), member(N-_, Temps), Keys),
+    findall(lower(tmp(N)), member(N-p, Temps), Lowers).
 
 storage_keys(Pool, I, N, Keys) :-
     ( I < N
@@ -219,7 +219,7 @@ storage_keys(Pool, I, N, Keys) :-
     ;  Keys = [] ).
 
 storage_lower(Key, lower(Key)).
-storage_alias(N-Key, t(N)-Key).
+storage_alias(N-Key, tmp(N)-Key).
 
 temp_alias(T-Key, Slots0, Slots) :-
     get_assoc(Key, Slots0, Off), put_assoc(T, Slots0, Off, Slots1),
@@ -232,21 +232,21 @@ temp_alias(T-Key, Slots0, Slots) :-
 % snapshot roots are initialized eagerly and never change thereafter.
 setjmp_slots(Blocks, Plain, Lowers) :-
     setjmp_sites(Blocks, Sites),
-    findall(t(hidden(setjmp_buf(D))), member(D, Sites), Plain),
+    findall(tmp(hidden(setjmp_buf(D))), member(D, Sites), Plain),
     findall(lower(setjmp_snapshot(D)), member(D, Sites), Snapshots),
-    findall(lower(t(hidden(setjmp_buf(D)))), member(D, Sites), JmpBufs),
+    findall(lower(tmp(hidden(setjmp_buf(D)))), member(D, Sites), JmpBufs),
     append(Snapshots, JmpBufs, Lowers).
 
 setjmp_sites(Blocks, Sites) :-
-    findall(D, (member(blk(_, _, Insts, _), Blocks),
-                member(ins(t(D), w, setjmp(_), _), Insts)), Sites).
+    findall(D, (member(block(_, _, Insts, _), Blocks),
+                member(let(tmp(D), w, setjmp(_), _), Insts)), Sites).
 
-% inst_dest_class(+Inst, -N, -K): t(N), of class K, is a destination of
+% inst_dest_class(+Inst, -N, -K): tmp(N), of class K, is a destination of
 % instruction Inst.
-inst_dest_class(ins(t(N), K, _, _), N, K).
-inst_dest_class(call(to(t(N), K), _, _), N, K).
+inst_dest_class(let(tmp(N), K, _, _), N, K).
+inst_dest_class(call(result(tmp(N), K), _, _), N, K).
 inst_dest_class(call(tuple(Tos), _, _), N, K) :-
-    member(to(t(N), K), Tos).
+    member(result(tmp(N), K), Tos).
 
 % A buffered return keeps its buffer's address in a slot.
 form_extra_slots(reg, []).
@@ -274,7 +274,7 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
    load//4 and compute_op//4 take. Labels maps each block label to its
    phis, so an edge finds them without searching Blocks. */
 function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx) :-
-    findall(Label-Phis, member(blk(Label, Phis, _, _), Blocks), LabelBlocks),
+    findall(Label-Phis, member(block(Label, Phis, _, _), Blocks), LabelBlocks),
     list_to_assoc(LabelBlocks, Labels),
     Ctx = ctx(f(Name, Ret, Slots, Blocks), Module, FrameBase, Labels).
 
@@ -383,7 +383,7 @@ fused_blocks(Fn, Blocks0, Blocks, LiveBlocks) :-
     maplist(fused_block(Fn), Blocks0, Blocks),
     maplist(live_block, Blocks, LiveBlocks).
 
-fused_block(Fn, blk(L, Phis, Insts0, Jump), blk(L, Phis, Insts, Jump)) :-
+fused_block(Fn, block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     fused_insts(Insts0, Fn, Insts).
 
 fused_insts([], _, []).
@@ -391,7 +391,7 @@ fused_insts([Inst0|Insts0], Fn, [Inst|Insts]) :-
     fused_inst(Inst0, Insts0, Fn, Inst, Insts1),
     fused_insts(Insts1, Fn, Insts).
 
-fused_inst(ins(t(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
+fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     (   proven_access(Access0, Q, P, Access) -> Inst = fused(Check, Access)
     ;   throw_fn(Fn, 'a check not followed by the access it proves')
     ),
@@ -409,19 +409,19 @@ fused_inst(Inst, Insts, Fn, Inst, Insts) :-
     ).
 
 % proven_access(+Access0, +Q, +P, -Access): Access0 is a raw access at
-% t(Q) and Access is the same at P.
-proven_access(ins(D, K, ld(T, Off), [t(Q)]), Q, P, ins(D, K, ld(T, Off), [P])).
-proven_access(st(W, Off, V, t(Q)), Q, P, st(W, Off, V, P)).
+% tmp(Q) and Access is the same at P.
+proven_access(let(D, K, raw_load(T, Off), [tmp(Q)]), Q, P, let(D, K, raw_load(T, Off), [P])).
+proven_access(raw_store(W, Off, V, tmp(Q)), Q, P, raw_store(W, Off, V, P)).
 
 % access_pointer(+Access, -P, -Off): the fused Access is at P + Off.
-access_pointer(ins(_, _, ld(_, Off), [P]), P, Off).
-access_pointer(st(_, Off, _, P), P, Off).
+access_pointer(let(_, _, raw_load(_, Off), [P]), P, Off).
+access_pointer(raw_store(_, Off, _, P), P, Off).
 access_pointer(Access, P) :- access_pointer(Access, P, _).
 
-unchecked_access(ins(_, _, load(_), _)).
+unchecked_access(let(_, _, load(_), _)).
 unchecked_access(store(_, _, _)).
 
-live_block(blk(L, Phis, Insts0, Jump), blk(L, Phis, Insts, Jump)) :-
+live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     maplist(live_inst, Insts0, Insts).
 
 live_inst(Inst0, Inst) :-
@@ -453,7 +453,7 @@ setjmp_snapshots([D|Ds], Bytes, Ctx) -->
 % parameter roots the eager snapshot before the first body safepoint.
 implementation_params(Func, Params, BodyParams) :-
     ( variadic_func(Func)
-    -> append(Params, [par(p, t(hidden(va_snapshot)))], BodyParams)
+    -> append(Params, [param(p, tmp(hidden(va_snapshot)))], BodyParams)
     ; BodyParams = Params ).
 
 body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl) -->
@@ -547,8 +547,8 @@ exception_flag(mem(_), Ctx) -->
 % The failure block of function_check//1, if the function calls through
 % a pointer.
 not_function_block(Blocks, Ctx) -->
-    (   { member(blk(_, _, Insts, _), Blocks),
-          memberchk(call(_, t(_), _), Insts) }
+    (   { member(block(_, _, Insts, _), Blocks),
+          memberchk(call(_, tmp(_), _), Insts) }
     ->  { special_label(Ctx, notfn, NotFn) },
         [label(NotFn),
          ins(mov, q, [reg(rax), reg(rdi)]),
@@ -595,20 +595,20 @@ ret_kinds(d, [d]).
 % result_tos(+Res, -Tos): Tos are the to(T, K) destinations of call
 % result Res.
 result_tos(void, []).
-result_tos(to(T, K), [to(T, K)]).
+result_tos(result(T, K), [result(T, K)]).
 result_tos(tuple(Tos), Tos).
 
 % result_ret(+Res, -Ret): Ret is the return type of call result Res.
 result_ret(void, void).
-result_ret(to(_, K), K).
+result_ret(result(_, K), K).
 result_ret(tuple(Tos), tuple(Ks)) :-
-    findall(K, member(to(_, K), Tos), Ks).
+    findall(K, member(result(_, K), Tos), Ks).
 
 % result_form(Res, Tos, Kinds, Form): a call result's destinations,
 % their classes and its return form.
 result_form(Res, Tos, Kinds, Form) :-
     result_tos(Res, Tos),
-    findall(K, member(to(_, K), Tos), Kinds),
+    findall(K, member(result(_, K), Tos), Kinds),
     ret_form(Kinds, Form).
 
 % ret_form(+Kinds, -Form): Form is reg when words of classes Kinds fit
@@ -643,7 +643,7 @@ result_slots(Res, Slots) :-
     foldl(to_slots, Tos, Slots, []).
 
 % to_slots(+To, -Slots0, ?Slots): Slots0 less Slots are To's slots.
-to_slots(to(T, K), Ss0, Ss) :-
+to_slots(result(T, K), Ss0, Ss) :-
     class_key_slots(K, T, Ss0, Ss).
 
 % Word I of a generic call's arguments or results is at thread offset
@@ -702,7 +702,7 @@ stack_release(Bytes) -->
 
 % Each block: its label, instructions and jump.
 blocks([], _) --> [].
-blocks([blk(Label, _, Insts, Jump)|Blocks], Ctx) -->
+blocks([block(Label, _, Insts, Jump)|Blocks], Ctx) -->
     { block_label(Ctx, Label, A) },
     [label(A)],
     insts(Insts, 0, Label, Ctx),
@@ -710,9 +710,9 @@ blocks([blk(Label, _, Insts, Jump)|Blocks], Ctx) -->
     blocks(Blocks, Ctx).
 
 % The code of the jump that ends block From.
-jump(jmp(To), From, Ctx) -->
+jump(goto(To), From, Ctx) -->
     edge(From, To, j, Ctx).
-jump(jnz(V, True, False), From, Ctx) -->
+jump(branch(V, True, False), From, Ctx) -->
     { ctx_fn(Ctx, Fn),
       local_label(Ctx, From, jnz, false, FalseLabel) },
     load(V, w, a, Fn),
@@ -731,7 +731,7 @@ jump(rets(Vs), _, Ctx) -->
     tuple_return(Form, Ks, Vs, Ctx).
 jump(ret, _, Ctx) -->
     return(Ctx).
-jump(hlt, _, _) -->
+jump(unreachable, _, _) -->
     [ins(ud2, none, [])].
 
 % The returned value V of class K, in %rdx, and its lower in %rcx for p.
@@ -828,12 +828,12 @@ pollcheck(Ctx, Block, Tag) -->
 % its phi's shadow slots (phi_reads//3), then every shadow into the phi
 % (phi_writes//2).
 phi_reads([], _, _) --> [].
-phi_reads([phi(t(D), K, Pairs)|Phis], From, Ctx) -->
+phi_reads([phi(tmp(D), K, Pairs)|Phis], From, Ctx) -->
     { memberchk(From-V, Pairs) },
     phi_read(K, V, D, Ctx),
     phi_reads(Phis, From, Ctx).
 
-% The incoming value V, of class K, into the shadow slots of phi t(D).
+% The incoming value V, of class K, into the shadow slots of phi tmp(D).
 phi_read(p, V, D, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(V, l, a, Fn),
@@ -854,24 +854,24 @@ phi_read(K,V,D,Ctx) -->
 
 % The second half of the parallel copy: each phi's shadow into the phi.
 phi_writes([], _) --> [].
-phi_writes([phi(t(D), K, _)|Phis], Ctx) -->
+phi_writes([phi(tmp(D), K, _)|Phis], Ctx) -->
     slot_reg_load(shadow(D), rax, Ctx),
-    reg_slot_store(rax, t(D), Ctx),
+    reg_slot_store(rax, tmp(D), Ctx),
     phi_lower_write(K, D, Ctx),
     phi_writes(Phis, Ctx).
 
-% For a p phi t(D), its shadow lower into its lower.
+% For a p phi tmp(D), its shadow lower into its lower.
 phi_lower_write(p, D, Ctx) -->
     slot_reg_load(lower(shadow(D)), rax, Ctx),
-    reg_slot_store(rax, lower(t(D)), Ctx).
+    reg_slot_store(rax, lower(tmp(D)), Ctx).
 phi_lower_write(w, _, _) --> [].
 phi_lower_write(l, _, _) --> [].
 phi_lower_write(s, _, _) --> [].
 phi_lower_write(d, _, _) --> [].
 
 % The lower of a p value: its lowers[] entry, or 0 for a constant.
-lower_reg_load(t(N), Reg, Ctx) --> slot_reg_load(lower(t(N)), Reg, Ctx).
-lower_reg_load(c(_), Reg, _) --> [ins(mov, q, [imm(0), reg(Reg)])].
+lower_reg_load(tmp(N), Reg, Ctx) --> slot_reg_load(lower(tmp(N)), Reg, Ctx).
+lower_reg_load(const(_), Reg, _) --> [ins(mov, q, [imm(0), reg(Reg)])].
 
 % A p value's address into %rax and lower into %rcx.
 flight_load(V, Ctx) -->
@@ -879,10 +879,10 @@ flight_load(V, Ctx) -->
     load(V, l, a, Fn),
     lower_reg_load(V, rcx, Ctx).
 
-% The flight pointer in %rax:%rcx into t(D) and its lower.
+% The flight pointer in %rax:%rcx into tmp(D) and its lower.
 flight_store(D, Ctx) -->
-    reg_slot_store(rax, t(D), Ctx),
-    reg_slot_store(rcx, lower(t(D)), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx),
+    reg_slot_store(rcx, lower(tmp(D)), Ctx).
 
 %% Instructions
 
@@ -897,7 +897,7 @@ insts([Inst|Insts], Index, Block, Ctx) -->
 % inst(+Inst, +Index, +Block, +Ctx)//: the code of instruction Inst,
 % the Indexth of block Block. Instructions go by their op's kind (ir.pl),
 % stores and calls by their width and callee.
-inst(ins(t(D), K, Op, Args), Index, Block, Ctx) -->
+inst(let(tmp(D), K, Op, Args), Index, Block, Ctx) -->
     { op_kind(Op, Kind) },
     kind_inst(Kind, K, Op, Args, D, Index, Block, Ctx).
 inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
@@ -910,7 +910,7 @@ inst(call(Res, Callee, Args), Index, Block, Ctx) -->
     callee_call(Callee, Res, Args, Index, Block, Ctx).
 
 % kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as
-% inst//4, for t(D) =K Op Args with Op of Kind. Integer instructions go
+% inst//4, for tmp(D) =K Op Args with Op of Kind. Integer instructions go
 % to amd64:compute_op//4; the pointer ones are by K, or (copy at p) by
 % the operand.
 kind_inst(float_convert,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
@@ -930,16 +930,16 @@ kind_inst(copy, K, Op, Args, D, _, _, Ctx) -->
 kind_inst(ptoi, l, _, [P], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(P, l, a, Fn),
-    reg_slot_store(rax, t(D), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx).
 kind_inst(itop, p, _, [X], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(X, l, a, Fn),
     [ins(xor, l, [reg(ecx), reg(ecx)])],
     flight_store(D, Ctx).
-kind_inst(va_args, p, _, [c(Off)], D, _, _, Ctx) -->
+kind_inst(va_args, p, _, [const(Off)], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
-    flight_load(t(hidden(va_snapshot)), Ctx),
-    load(c(Off), l, d, Fn),
+    flight_load(tmp(hidden(va_snapshot)), Ctx),
+    load(const(Off), l, d, Fn),
     [ins(add, q, [reg(rdx), reg(rax)])],
     flight_store(D, Ctx).
 kind_inst(va_arg, K, _, [P], D, Index, Block, Ctx) -->
@@ -955,7 +955,7 @@ kind_inst(va_arg, K, _, [P], D, Index, Block, Ctx) -->
 kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
       setjmp_payload_slots(Ctx, Keys),
-      ctx_slot(Ctx, lower(t(hidden(setjmp_buf(D)))), Off), NegOff is -Off,
+      ctx_slot(Ctx, lower(tmp(hidden(setjmp_buf(D)))), Off), NegOff is -Off,
       setjmp_kind(Kind, KindNo),
       local_label(Ctx, Block, Index, setjmp_done, Done) },
     origin_store(Ctx, c),
@@ -968,15 +968,15 @@ kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
     [ins(call, none, [plt(filc_jmp_buf_recreate)]),
      ins(mov, q, [reg(rax), reg(rcx)])],
     flight_store(hidden(setjmp_buf(D)), Ctx),
-    checked_pointer_store(t(hidden(setjmp_buf(D))), Buf, Index, Block, Ctx),
-    slot_reg_load(lower(t(hidden(setjmp_buf(D)))), rdi, Ctx),
+    checked_pointer_store(tmp(hidden(setjmp_buf(D))), Buf, Index, Block, Ctx),
+    slot_reg_load(lower(tmp(hidden(setjmp_buf(D)))), rdi, Ctx),
     [ins(call, none, [plt('_setjmp')]),
      ins(test, l, [reg(eax), reg(eax)]),
      ins(jz, none, [sym(Done)])],
     slot_reg_load(lower(setjmp_snapshot(D)), rdx, Ctx),
     setjmp_payload_copy(restore, Keys, 0, Ctx),
     [label(Done)],
-    reg_slot_store(rax, t(D), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx).
 kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
 kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
@@ -1003,7 +1003,7 @@ setjmp_kind(sigsetjmp, 2).
 setjmp_payload_slots(Ctx, Keys) :-
     ctx_fn(Ctx, f(_, _, Slots, _)), assoc_to_keys(Slots, All),
     findall(Key, (member(Key, All), payload_key(Key)), Keys).
-payload_key(t(N)) :- N \= hidden(setjmp_buf(_)).
+payload_key(tmp(N)) :- N \= hidden(setjmp_buf(_)).
 payload_key(shadow(_)).
 
 % RDX is the snapshot payload; RCX is scratch. EAX's full native int
@@ -1021,20 +1021,20 @@ payload_word_copy(restore, Key, Off, Ctx) -->
     reg_slot_store(rcx, Key, Ctx).
 
 % integer_inst(+Op, +K, +Args, +D, +Ctx)//: the code of the integer
-% instruction t(D) =K Op Args.
+% instruction tmp(D) =K Op Args.
 integer_inst(Op, K, Args, D, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     compute_op(Op, K, Args, Fn),
-    reg_slot_store(rax, t(D), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx).
 
 % The helper returns payload and auxiliary *addresses*, not a flight
 % pointer. Consume both without a safepoint, then root the loaded lower.
 va_arg_load(w, D, _, _, Ctx) -->
     [ins(mov, l, [mem(0, rax), reg(eax)])],
-    reg_slot_store(rax, t(D), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx).
 va_arg_load(l, D, _, _, Ctx) -->
     [ins(mov, q, [mem(0, rax), reg(rax)])],
-    reg_slot_store(rax, t(D), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx).
 va_arg_load(s,D,I,B,Ctx) --> va_arg_load(w,D,I,B,Ctx).
 va_arg_load(d,D,I,B,Ctx) --> va_arg_load(l,D,I,B,Ctx).
 va_arg_load(p, D, Index, Block, Ctx) -->
@@ -1072,10 +1072,10 @@ copy_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
 copy_inst(K,Op,Args,D,Ctx) -->
     { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
 
-% pointer_copy(+V, +D, +Ctx)//: ins(t(D), p, copy, [V]). A symbol's
+% pointer_copy(+V, +D, +Ctx)//: let(tmp(D), p, copy, [V]). A symbol's
 % pointer comes from its getter; any other value is a flight pointer
 % already.
-pointer_copy(glo(S), D, Ctx) -->
+pointer_copy(global(S), D, Ctx) -->
     { ctx_name(Ctx, Name),
       ctx_module(Ctx, Module),
       symbol_getter(Module, S, Getter),
@@ -1086,10 +1086,10 @@ pointer_copy(glo(S), D, Ctx) -->
      ins(call, none, [Getter]),
      ins(mov, q, [reg(rdx), reg(rcx)])],
     flight_store(D, Ctx).
-pointer_copy(t(N), D, Ctx) --> flight_copy(t(N), D, Ctx).
-pointer_copy(c(N), D, Ctx) --> flight_copy(c(N), D, Ctx).
+pointer_copy(tmp(N), D, Ctx) --> flight_copy(tmp(N), D, Ctx).
+pointer_copy(const(N), D, Ctx) --> flight_copy(const(N), D, Ctx).
 
-% flight_copy(+V, +D, +Ctx)//: ins(t(D), p, copy, [V]) of a temp or
+% flight_copy(+V, +D, +Ctx)//: let(tmp(D), p, copy, [V]) of a temp or
 % constant.
 flight_copy(V, D, Ctx) -->
     flight_load(V, Ctx),
@@ -1098,16 +1098,16 @@ flight_copy(V, D, Ctx) -->
 % raw_access(+Access, +Index, +Block, +Ctx)//: the code of the raw
 % Access at P, the Indexth instruction of Block, after its check left P
 % in %rax and its lower in %rcx.
-raw_access(ins(t(D), K, ld(T, 0), [_]), Index, Block, Ctx) -->
+raw_access(let(tmp(D), K, raw_load(T, 0), [_]), Index, Block, Ctx) -->
     raw_load(T, K, D, Index, Block, Ctx).
-raw_access(st(W, 0, V, P), Index, Block, Ctx) -->
+raw_access(raw_store(W, 0, V, P), Index, Block, Ctx) -->
     raw_store(W, V, P, Index, Block, Ctx).
 
 rights_write(read, 0).
 rights_write(write, 1).
 
 % raw_load(+T, +K, +D, +Index, +Block, +Ctx)//: a load of type T at K
-% into t(D). A load of p also reads the capability from the aux array;
+% into tmp(D). A load of p also reads the capability from the aux array;
 % the others read an integer.
 raw_load(p, p, D, Index, Block, Ctx) -->
     { local_label(Ctx, Block, Index, nolower, NoLower),
@@ -1141,7 +1141,7 @@ raw_load(ub, K, D, _, _, Ctx) --> integer_load(ub, K, D, Ctx).
 integer_load(T, K, D, Ctx) -->
     { load_insn(T, K, LoadInsn) },
     [LoadInsn],
-    reg_slot_store(rax, t(D), Ctx).
+    reg_slot_store(rax, tmp(D), Ctx).
 
 % checked_pointer_store(+V, +A, +Index, +Block, +Ctx)//: a store of the
 % pointer V at A with its check, for an instruction whose store is
@@ -1210,7 +1210,7 @@ width_value_class(d,d).
 
 % callee_call(+Callee, +Res, +Args, +Index, +Block, +Ctx)//: the code of
 % a call of Callee, the Indexth instruction of Block.
-callee_call(glo(F), Res, Args, _, _, Ctx) -->
+callee_call(global(F), Res, Args, _, _, Ctx) -->
     { call_target(Ctx, F, Res, Args, Target),
       result_form(Res, _, _, Form) },
     origin_store(Ctx, c),
@@ -1224,7 +1224,7 @@ callee_call(glo(F), Res, Args, _, _, Ctx) -->
    function. Then the fast entry if the signature matches the call site's,
    else the generic entry with every argument as an 8-byte word at
    thread+128+8i and its lower at thread+384+8i (docs/abi-findings.md). */
-callee_call(t(C), Res, Args, Index, Block, Ctx) -->
+callee_call(tmp(C), Res, Args, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
       call_sig(Res, Args, _, _, Sig),
       result_form(Res, Tos, RetKs, Form),
@@ -1237,7 +1237,7 @@ callee_call(t(C), Res, Args, Index, Block, Ctx) -->
       local_label(Ctx, Block, Index, retok, RetOk) },
     origin_store(Ctx, c),
     ret_buffer_reservation(Form),
-    flight_load(t(C), Ctx),
+    flight_load(tmp(C), Ctx),
     function_check(NotFn),
     reg_slot_store(rcx, aux, Ctx),
     { field(function_object, signature, rcx, FoSig),
@@ -1309,7 +1309,7 @@ entry_call(mem(_), indirect, Pop, Ctx) -->
 
 % has_exception, then the result slots from %rdx:%rcx or the buffer.
 fast_result(reg, Res, Ctx) -->
-    { Res=to(T,K), float_class(K), special_label(Ctx,exc,Exc) }, !,
+    { Res=result(T,K), float_class(K), special_label(Ctx,exc,Exc) }, !,
     [ins(test,b,[imm(1),reg(al)]),ins(jnz,none,[sym(Exc)])],
     from_xmm(K,xmm0,a), reg_slot_store(rax,T,Ctx).
 fast_result(reg, Res, Ctx) -->
@@ -1341,7 +1341,7 @@ buffer_slot_copies([Slot|Slots], Off, Ctx) -->
 
 % A generic return's words, from the thread at %rsi, into the slots.
 generic_slot_copies([], [], _) --> [].
-generic_slot_copies([gw(K, Off)|GWs], [to(T, _)|Tos], Ctx) -->
+generic_slot_copies([gw(K, Off)|GWs], [result(T, _)|Tos], Ctx) -->
     [ins(mov, q, [mem(Off, rsi), reg(rax)])],
     reg_slot_store(rax, T, Ctx),
     generic_lower_slot_copy(K, Off, T, Ctx),
@@ -1473,8 +1473,8 @@ word_reg_load(lower(V), R, _, Ctx) -->
 %% generic entry, the variadic adapter and external thunks all read
 %% this one placement, so they agree by construction.
 typed_params(Ps,Ts) :- foldl(typed_param,Ps,Ts,[]).
-typed_param(par(p,T),[wf(l,T),wf(l,lower(T))|Ts],Ts).
-typed_param(par(K,T),[wf(K,T)|Ts],Ts) :- K \== p.
+typed_param(param(p,T),[wf(l,T),wf(l,lower(T))|Ts],Ts).
+typed_param(param(K,T),[wf(K,T)|Ts],Ts) :- K \== p.
 typed_args(As,Ts) :- foldl(typed_arg,As,Ts,[]).
 typed_arg(arg(p,V),[wf(l,addr(V)),wf(l,lower(V))|Ts],Ts).
 typed_arg(arg(K,V),[wf(K,val(K,V))|Ts],Ts) :- K \== p.
@@ -1560,7 +1560,7 @@ thunk(t(F,Sig,Ret,Ks)) -->
       atom_concat(G,'.out',Out),atom_concat(G,'.fail',Fail),
       atom_concat(G,'.retok',RetOk),atom_concat(G,'.exc',Exc),
       ret_kinds(Ret,RKs),ret_form(RKs,Form),
-      findall(par(K,t(I)),nth0(I,Ks,K),Ps),typed_params(Ps,Ts),
+      findall(param(K,tmp(I)),nth0(I,Ks,K),Ps),typed_params(Ps,Ts),
       typed_locations(Ts,Form,Ls,NS,_), stack_bytes(NS, Pop),
       saved_words(Ts,0,Saved),length(Ts,NW),Alloc is ((8+8*NW+15)//16)*16,
       length(Ks,NA),ArgsSize is 8*NA,
@@ -1662,7 +1662,7 @@ check_origin_label(Name, k(Size, Write, Align), Label) :-
 % The distinct check kinds the function's accesses need.
 access_check_kinds(Blocks, Kinds) :-
     findall(Kind,
-            (   member(blk(_, _, Insts, _), Blocks),
+            (   member(block(_, _, Insts, _), Blocks),
                 member(Inst, Insts),
                 inst_check_kind(Inst, Kind)
             ),
@@ -1673,7 +1673,7 @@ access_check_kinds(Blocks, Kinds) :-
 % fails if Inst does not access memory.
 inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
-inst_check_kind(ins(_, _, setjmp(_), _), k(8, 1, 8)).
+inst_check_kind(let(_, _, setjmp(_), _), k(8, 1, 8)).
 
 % A failure block for each check kind, calling the runtime's reporter.
 check_fail_blocks([], _) --> [].
@@ -1754,7 +1754,7 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
 % then the snapshot itself as the hidden p parameter.
 snapshot_words(Ps, Ts) :-
     findall(wf(B, W),
-            (   nth0(I, Ps, par(K, _)),
+            (   nth0(I, Ps, param(K, _)),
                 snapshot_word(K, I, W),
                 ( K == p -> B = l ; B = K )
             ),
@@ -1926,7 +1926,7 @@ value_payload(sym(S, Addend), p, quad(0), Off0-Rs,
     ;   throw(nanofil_error('pointer data item is not 8-aligned'))
     ),
     Off is Off0 + 8.
-value_payload(c(N), W, Directive, Off0-Rs, Off-Rs) :-
+value_payload(const(N), W, Directive, Off0-Rs, Off-Rs) :-
     width_bytes(W, Bytes),
     Bits is 8 * Bytes,
     U is N mod (1 << Bits),
@@ -1983,8 +1983,8 @@ external_callees(Module, Callees) :-
     Module = module(Items),
     findall(t(F, Sig, RetKind, ArgKinds),
             (   member(func(_, _, _, _, Blocks), Items),
-                member(blk(_, _, Insts, _), Blocks),
-                member(call(Res, glo(F), Args), Insts),
+                member(block(_, _, Insts, _), Blocks),
+                member(call(Res, global(F), Args), Insts),
                 ( \+ func_named(Module, F, _)
                 ; func_named(Module, F, VF), variadic_func(VF) ),
                 call_sig(Res, Args, RetKind, ArgKinds, Sig)
@@ -2066,7 +2066,7 @@ operand_thread_store(mem(D, B), Off) -->
    through callee_lower, with a buffer on the stack for a buffered
    return. */
 generic_entry(Generic, Ret, Params) -->
-    { findall(K,member(par(K,_),Params),Ks),
+    { findall(K,member(param(K,_),Params),Ks),
       length(Params,N), Need is 8*N,
       ret_kinds(Ret,RKs),ret_form(RKs,Form),
       typed_generic(Ks,Ts),typed_locations(Ts,Form,Ls,NS,_),

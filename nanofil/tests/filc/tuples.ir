@@ -1,25 +1,25 @@
 % Tuple returns (M4d): {l, p} comes back in a buffer, {l, l} in
 % rdx:rcx, directly and through a function pointer.
-func(mk, local, tuple([l, p]), [par(p, t(s)), par(l, t(n))], [
-    blk(start, [], [], rets([t(n), t(s)]))
+func(mk, local, tuple([l, p]), [param(p, tmp(s)), param(l, tmp(n))], [
+    block(start, [], [], rets([tmp(n), tmp(s)]))
 ]).
-func(two, local, tuple([l, l]), [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(m), l, add, [t(n), c(100)])
-    ], rets([t(n), t(m)]))
+func(two, local, tuple([l, l]), [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(m), l, add, [tmp(n), const(100)])
+    ], rets([tmp(n), tmp(m)]))
 ]).
-func(use, export, l, [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(s), p, alloc(8), [c(16)]),
-        store(l, c(7), t(s)),
-        call(tuple([to(t(a), l), to(t(b), p)]), glo(mk), [arg(p, t(s)), arg(l, t(n))]),
-        ins(t(x), l, load(l), [t(b)]),
-        call(tuple([to(t(c), l), to(t(d), l)]), glo(two), [arg(l, t(a))]),
-        ins(t(f), p, copy, [glo(two)]),
-        call(tuple([to(t(g), l), to(t(h), l)]), t(f), [arg(l, t(x))]),
-        ins(t(r), l, add, [t(c), t(d)]),
-        ins(t(r2), l, add, [t(r), t(x)]),
-        ins(t(r3), l, add, [t(r2), t(h)])
-    ], ret(t(r3)))
+func(use, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(s), p, alloc(8), [const(16)]),
+        store(l, const(7), tmp(s)),
+        call(tuple([result(tmp(a), l), result(tmp(b), p)]), global(mk), [arg(p, tmp(s)), arg(l, tmp(n))]),
+        let(tmp(x), l, load(l), [tmp(b)]),
+        call(tuple([result(tmp(c), l), result(tmp(d), l)]), global(two), [arg(l, tmp(a))]),
+        let(tmp(f), p, copy, [global(two)]),
+        call(tuple([result(tmp(g), l), result(tmp(h), l)]), tmp(f), [arg(l, tmp(x))]),
+        let(tmp(r), l, add, [tmp(c), tmp(d)]),
+        let(tmp(r2), l, add, [tmp(r), tmp(x)]),
+        let(tmp(r3), l, add, [tmp(r2), tmp(h)])
+    ], ret(tmp(r3)))
 ]).
 run(use, [41]).

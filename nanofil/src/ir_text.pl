@@ -4,12 +4,12 @@
     on the integer Args that difftest and the tests run.
 
       run(addw, [3, 4]).
-      func(addw, export, w, [par(w, t(a)), par(w, t(b))], [
-                blk(start, [], [
-              ins(t(r), w, add, [t(a), t(b)])
-          ], ret(t(r)))
+      func(addw, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+                block(start, [], [
+              let(tmp(r), w, add, [tmp(a), tmp(b)])
+          ], ret(tmp(r)))
       ]).
-      data(msg, local, 1, [item(b, str("hi\n")), item(b, c(0))]).
+      data(msg, local, 1, [item(b, str("hi\n")), item(b, const(0))]).
 
     The printer is ours rather than writeq/1, so the text is the same on
     both hosts and the layout stays stable: an atom is bare when it is a
@@ -83,8 +83,8 @@ item_text(Item) --> term(Item).
 blocks([B]) --> !, block(B), "\n".
 blocks([B|Bs]) --> block(B), ",\n", blocks(Bs).
 
-block(blk(Label, Phis, Insts, Jump)) -->
-    "    blk(", term(Label), ", ", lines(Phis), ", ", lines(Insts), ", ",
+block(block(Label, Phis, Insts, Jump)) -->
+    "    block(", term(Label), ", ", lines(Phis), ", ", lines(Insts), ", ",
     term(Jump), ")".
 
 % lines(+Xs)//: the list Xs, one element per line, or [] when empty.

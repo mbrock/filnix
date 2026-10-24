@@ -7,10 +7,10 @@
 %   2^32 + 0 has zero low bits, so $f(2^32, 0) is 0; qbe's code returns 1.
 %
 run(f, [4294967296, 0]).
-func(f, export, w, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), l, add, [t(a), t(b)])
-    ], jnz(t(x), yes, no)),
-    blk(yes, [], [], ret(c(1))),
-    blk(no, [], [], ret(c(0)))
+func(f, export, w, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), l, add, [tmp(a), tmp(b)])
+    ], branch(tmp(x), yes, no)),
+    block(yes, [], [], ret(const(1))),
+    block(no, [], [], ret(const(0)))
 ]).

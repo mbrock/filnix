@@ -114,305 +114,305 @@ run(literal, []).
 run(choose, [0]).
 run(choose, [1]).
 
-func(adds, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(y), s, cast, [t(b)]),
-        ins(t(z), s, add, [t(x), t(y)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(adds, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), s, cast, [tmp(b)]),
+        let(tmp(z), s, add, [tmp(x), tmp(y)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(subs, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(y), s, cast, [t(b)]),
-        ins(t(z), s, sub, [t(x), t(y)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(subs, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), s, cast, [tmp(b)]),
+        let(tmp(z), s, sub, [tmp(x), tmp(y)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(muls, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(y), s, cast, [t(b)]),
-        ins(t(z), s, mul, [t(x), t(y)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(muls, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), s, cast, [tmp(b)]),
+        let(tmp(z), s, mul, [tmp(x), tmp(y)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(divs, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(y), s, cast, [t(b)]),
-        ins(t(z), s, div, [t(x), t(y)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(divs, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), s, cast, [tmp(b)]),
+        let(tmp(z), s, div, [tmp(x), tmp(y)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(addd, export, l, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(y), d, cast, [t(b)]),
-        ins(t(z), d, add, [t(x), t(y)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(addd, export, l, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(y), d, cast, [tmp(b)]),
+        let(tmp(z), d, add, [tmp(x), tmp(y)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(subd, export, l, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(y), d, cast, [t(b)]),
-        ins(t(z), d, sub, [t(x), t(y)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(subd, export, l, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(y), d, cast, [tmp(b)]),
+        let(tmp(z), d, sub, [tmp(x), tmp(y)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(muld, export, l, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(y), d, cast, [t(b)]),
-        ins(t(z), d, mul, [t(x), t(y)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(muld, export, l, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(y), d, cast, [tmp(b)]),
+        let(tmp(z), d, mul, [tmp(x), tmp(y)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(divd, export, l, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(y), d, cast, [t(b)]),
-        ins(t(z), d, div, [t(x), t(y)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(divd, export, l, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(y), d, cast, [tmp(b)]),
+        let(tmp(z), d, div, [tmp(x), tmp(y)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(negs, export, w, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(z), s, neg, [t(x)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(negs, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(z), s, neg, [tmp(x)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(negd, export, l, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(z), d, neg, [t(x)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(negd, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(z), d, neg, [tmp(x)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(extend, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(z), d, ext(s), [t(x)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(extend, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(z), d, ext(s), [tmp(x)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(truncate, export, w, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(z), s, truncd, [t(x)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(truncate, export, w, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(z), s, truncd, [tmp(x)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(sw_s, export, w, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(z), s, swtof, [t(a)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(sw_s, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), s, swtof, [tmp(a)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(uw_s, export, w, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(z), s, uwtof, [t(a)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(uw_s, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), s, uwtof, [tmp(a)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(sw_d, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(z), d, swtof, [t(a)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(sw_d, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), d, swtof, [tmp(a)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(uw_d, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(z), d, uwtof, [t(a)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(uw_d, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), d, uwtof, [tmp(a)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(sl_s, export, w, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(z), s, sltof, [t(a)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(sl_s, export, w, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), s, sltof, [tmp(a)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(ul_s, export, w, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(z), s, ultof, [t(a)]),
-        ins(t(r), w, cast, [t(z)])
-    ], ret(t(r)))
+func(ul_s, export, w, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), s, ultof, [tmp(a)]),
+        let(tmp(r), w, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(sl_d, export, l, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(z), d, sltof, [t(a)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(sl_d, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), d, sltof, [tmp(a)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(ul_d, export, l, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(z), d, ultof, [t(a)]),
-        ins(t(r), l, cast, [t(z)])
-    ], ret(t(r)))
+func(ul_d, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(z), d, ultof, [tmp(a)]),
+        let(tmp(r), l, cast, [tmp(z)])
+    ], ret(tmp(r)))
 ]).
-func(si_w, export, w, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(r), w, stosi, [t(x)])
-    ], ret(t(r)))
+func(si_w, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(r), w, stosi, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(ui_w, export, w, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(r), w, stoui, [t(x)])
-    ], ret(t(r)))
+func(ui_w, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(r), w, stoui, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(si_l, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(r), l, stosi, [t(x)])
-    ], ret(t(r)))
+func(si_l, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(r), l, stosi, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(ui_l, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(r), l, stoui, [t(x)])
-    ], ret(t(r)))
+func(ui_l, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(r), l, stoui, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(di_w, export, w, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(r), w, dtosi, [t(x)])
-    ], ret(t(r)))
+func(di_w, export, w, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(r), w, dtosi, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(du_w, export, w, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(r), w, dtoui, [t(x)])
-    ], ret(t(r)))
+func(du_w, export, w, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(r), w, dtoui, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(di_l, export, l, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(r), l, dtosi, [t(x)])
-    ], ret(t(r)))
+func(di_l, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(r), l, dtosi, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
-func(du_l, export, l, [par(l, t(a))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(r), l, dtoui, [t(x)])
-    ], ret(t(r)))
+func(du_l, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(r), l, dtoui, [tmp(x)])
+    ], ret(tmp(r)))
 ]).
 % Pack all eight comparison results into a bitmask.
-func(cmps, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(y), s, cast, [t(b)]),
-        ins(t(a0), w, cmp(eq, s), [t(x), t(y)]),
-        ins(t(a1), w, cmp(ne, s), [t(x), t(y)]),
-        ins(t(a2), w, cmp(le, s), [t(x), t(y)]),
-        ins(t(a3), w, cmp(lt, s), [t(x), t(y)]),
-        ins(t(a4), w, cmp(ge, s), [t(x), t(y)]),
-        ins(t(a5), w, cmp(gt, s), [t(x), t(y)]),
-        ins(t(a6), w, cmp(o, s), [t(x), t(y)]),
-        ins(t(a7), w, cmp(uo, s), [t(x), t(y)]),
-        ins(t(b1), w, shl, [t(a1), c(1)]),
-        ins(t(b2), w, shl, [t(a2), c(2)]),
-        ins(t(b3), w, shl, [t(a3), c(3)]),
-        ins(t(b4), w, shl, [t(a4), c(4)]),
-        ins(t(b5), w, shl, [t(a5), c(5)]),
-        ins(t(b6), w, shl, [t(a6), c(6)]),
-        ins(t(b7), w, shl, [t(a7), c(7)]),
-        ins(t(c1), w, or, [t(a0), t(b1)]),
-        ins(t(c2), w, or, [t(c1), t(b2)]),
-        ins(t(c3), w, or, [t(c2), t(b3)]),
-        ins(t(c4), w, or, [t(c3), t(b4)]),
-        ins(t(c5), w, or, [t(c4), t(b5)]),
-        ins(t(c6), w, or, [t(c5), t(b6)]),
-        ins(t(r), w, or, [t(c6), t(b7)])
-    ], ret(t(r)))
+func(cmps, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), s, cast, [tmp(b)]),
+        let(tmp(a0), w, cmp(eq, s), [tmp(x), tmp(y)]),
+        let(tmp(a1), w, cmp(ne, s), [tmp(x), tmp(y)]),
+        let(tmp(a2), w, cmp(le, s), [tmp(x), tmp(y)]),
+        let(tmp(a3), w, cmp(lt, s), [tmp(x), tmp(y)]),
+        let(tmp(a4), w, cmp(ge, s), [tmp(x), tmp(y)]),
+        let(tmp(a5), w, cmp(gt, s), [tmp(x), tmp(y)]),
+        let(tmp(a6), w, cmp(o, s), [tmp(x), tmp(y)]),
+        let(tmp(a7), w, cmp(uo, s), [tmp(x), tmp(y)]),
+        let(tmp(b1), w, shl, [tmp(a1), const(1)]),
+        let(tmp(b2), w, shl, [tmp(a2), const(2)]),
+        let(tmp(b3), w, shl, [tmp(a3), const(3)]),
+        let(tmp(b4), w, shl, [tmp(a4), const(4)]),
+        let(tmp(b5), w, shl, [tmp(a5), const(5)]),
+        let(tmp(b6), w, shl, [tmp(a6), const(6)]),
+        let(tmp(b7), w, shl, [tmp(a7), const(7)]),
+        let(tmp(c1), w, or, [tmp(a0), tmp(b1)]),
+        let(tmp(c2), w, or, [tmp(c1), tmp(b2)]),
+        let(tmp(c3), w, or, [tmp(c2), tmp(b3)]),
+        let(tmp(c4), w, or, [tmp(c3), tmp(b4)]),
+        let(tmp(c5), w, or, [tmp(c4), tmp(b5)]),
+        let(tmp(c6), w, or, [tmp(c5), tmp(b6)]),
+        let(tmp(r), w, or, [tmp(c6), tmp(b7)])
+    ], ret(tmp(r)))
 ]).
-func(cmpd, export, w, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), d, cast, [t(a)]),
-        ins(t(y), d, cast, [t(b)]),
-        ins(t(a0), w, cmp(eq, d), [t(x), t(y)]),
-        ins(t(a1), w, cmp(ne, d), [t(x), t(y)]),
-        ins(t(a2), w, cmp(le, d), [t(x), t(y)]),
-        ins(t(a3), w, cmp(lt, d), [t(x), t(y)]),
-        ins(t(a4), w, cmp(ge, d), [t(x), t(y)]),
-        ins(t(a5), w, cmp(gt, d), [t(x), t(y)]),
-        ins(t(a6), w, cmp(o, d), [t(x), t(y)]),
-        ins(t(a7), w, cmp(uo, d), [t(x), t(y)]),
-        ins(t(b1), w, shl, [t(a1), c(1)]),
-        ins(t(b2), w, shl, [t(a2), c(2)]),
-        ins(t(b3), w, shl, [t(a3), c(3)]),
-        ins(t(b4), w, shl, [t(a4), c(4)]),
-        ins(t(b5), w, shl, [t(a5), c(5)]),
-        ins(t(b6), w, shl, [t(a6), c(6)]),
-        ins(t(b7), w, shl, [t(a7), c(7)]),
-        ins(t(c1), w, or, [t(a0), t(b1)]),
-        ins(t(c2), w, or, [t(c1), t(b2)]),
-        ins(t(c3), w, or, [t(c2), t(b3)]),
-        ins(t(c4), w, or, [t(c3), t(b4)]),
-        ins(t(c5), w, or, [t(c4), t(b5)]),
-        ins(t(c6), w, or, [t(c5), t(b6)]),
-        ins(t(r), w, or, [t(c6), t(b7)])
-    ], ret(t(r)))
+func(cmpd, export, w, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(y), d, cast, [tmp(b)]),
+        let(tmp(a0), w, cmp(eq, d), [tmp(x), tmp(y)]),
+        let(tmp(a1), w, cmp(ne, d), [tmp(x), tmp(y)]),
+        let(tmp(a2), w, cmp(le, d), [tmp(x), tmp(y)]),
+        let(tmp(a3), w, cmp(lt, d), [tmp(x), tmp(y)]),
+        let(tmp(a4), w, cmp(ge, d), [tmp(x), tmp(y)]),
+        let(tmp(a5), w, cmp(gt, d), [tmp(x), tmp(y)]),
+        let(tmp(a6), w, cmp(o, d), [tmp(x), tmp(y)]),
+        let(tmp(a7), w, cmp(uo, d), [tmp(x), tmp(y)]),
+        let(tmp(b1), w, shl, [tmp(a1), const(1)]),
+        let(tmp(b2), w, shl, [tmp(a2), const(2)]),
+        let(tmp(b3), w, shl, [tmp(a3), const(3)]),
+        let(tmp(b4), w, shl, [tmp(a4), const(4)]),
+        let(tmp(b5), w, shl, [tmp(a5), const(5)]),
+        let(tmp(b6), w, shl, [tmp(a6), const(6)]),
+        let(tmp(b7), w, shl, [tmp(a7), const(7)]),
+        let(tmp(c1), w, or, [tmp(a0), tmp(b1)]),
+        let(tmp(c2), w, or, [tmp(c1), tmp(b2)]),
+        let(tmp(c3), w, or, [tmp(c2), tmp(b3)]),
+        let(tmp(c4), w, or, [tmp(c3), tmp(b4)]),
+        let(tmp(c5), w, or, [tmp(c4), tmp(b5)]),
+        let(tmp(c6), w, or, [tmp(c5), tmp(b6)]),
+        let(tmp(r), w, or, [tmp(c6), tmp(b7)])
+    ], ret(tmp(r)))
 ]).
-func(identity, local, d, [par(d, t(a)), par(s, t(b))], [
-    blk(start, [], [
-        ins(t(x), s, copy, [t(b)]),
-        ins(t(y), d, copy, [t(a)])
-    ], ret(t(y)))
+func(identity, local, d, [param(d, tmp(a)), param(s, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), s, copy, [tmp(b)]),
+        let(tmp(y), d, copy, [tmp(a)])
+    ], ret(tmp(y)))
 ]).
-func(identity_s, local, s, [par(s, t(a))], [
-    blk(start, [], [
-        ins(t(x), s, copy, [t(a)])
-    ], ret(t(x)))
+func(identity_s, local, s, [param(s, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, copy, [tmp(a)])
+    ], ret(tmp(x)))
 ]).
-func(memory, export, l, [par(w, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(p), l, alloc(8), [c(16)]),
-        ins(t(q), l, add, [t(p), c(8)]),
-        ins(t(x), s, cast, [t(a)]),
-        ins(t(y), d, cast, [t(b)]),
-        store(s, t(x), t(p)),
-        store(d, t(y), t(q)),
-        ins(t(xx), s, load(s), [t(p)]),
-        ins(t(yy), d, load(d), [t(q)]),
-        call(to(t(z), d), glo(identity), [arg(d, t(yy)), arg(s, t(xx))]),
-        call(to(t(zs), s), glo(identity_s), [arg(s, t(xx))]),
-        ins(t(ws), w, cast, [t(zs)]),
-        ins(t(ls), l, ext(uw), [t(ws)]),
-        ins(t(ld), l, cast, [t(z)]),
-        ins(t(r), l, xor, [t(ld), t(ls)])
-    ], ret(t(r)))
+func(memory, export, l, [param(w, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(p), l, alloc(8), [const(16)]),
+        let(tmp(q), l, add, [tmp(p), const(8)]),
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), d, cast, [tmp(b)]),
+        store(s, tmp(x), tmp(p)),
+        store(d, tmp(y), tmp(q)),
+        let(tmp(xx), s, load(s), [tmp(p)]),
+        let(tmp(yy), d, load(d), [tmp(q)]),
+        call(result(tmp(z), d), global(identity), [arg(d, tmp(yy)), arg(s, tmp(xx))]),
+        call(result(tmp(zs), s), global(identity_s), [arg(s, tmp(xx))]),
+        let(tmp(ws), w, cast, [tmp(zs)]),
+        let(tmp(ls), l, ext(uw), [tmp(ws)]),
+        let(tmp(ld), l, cast, [tmp(z)]),
+        let(tmp(r), l, xor, [tmp(ld), tmp(ls)])
+    ], ret(tmp(r)))
 ]).
-data(values, local, 8, [item(s, c(2147483648)), item(d, c(18444492273895866370)), item(s, c(1))]).
+data(values, local, 8, [item(s, const(2147483648)), item(d, const(18444492273895866370)), item(s, const(1))]).
 func(literal, export, l, [], [
-    blk(start, [], [
-        ins(t(p), l, add, [glo(values), c(4)]),
-        ins(t(d), d, load(d), [t(p)]),
-        ins(t(v), s, add, [c(1065353217), c(0)]),
-        ins(t(w), w, cast, [t(v)]),
-        ins(t(n), l, ext(uw), [t(w)]),
-        ins(t(l), l, cast, [t(d)]),
-        ins(t(r), l, xor, [t(l), t(n)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(p), l, add, [global(values), const(4)]),
+        let(tmp(d), d, load(d), [tmp(p)]),
+        let(tmp(v), s, add, [const(1065353217), const(0)]),
+        let(tmp(w), w, cast, [tmp(v)]),
+        let(tmp(n), l, ext(uw), [tmp(w)]),
+        let(tmp(l), l, cast, [tmp(d)]),
+        let(tmp(r), l, xor, [tmp(l), tmp(n)])
+    ], ret(tmp(r)))
 ]).
-func(choose, export, l, [par(w, t(a))], [
-    blk(start, [], [], jnz(t(a), left, right)),
-    blk(left, [], [], jmp(join)),
-    blk(right, [], [], jmp(join)),
-    blk(join, [
-        phi(t(s), s, [left-c(2147483648), right-c(1)]),
-        phi(t(d), d, [left-c(18444492273895866370), right-c(1)])
+func(choose, export, l, [param(w, tmp(a))], [
+    block(start, [], [], branch(tmp(a), left, right)),
+    block(left, [], [], goto(join)),
+    block(right, [], [], goto(join)),
+    block(join, [
+        phi(tmp(s), s, [left-const(2147483648), right-const(1)]),
+        phi(tmp(d), d, [left-const(18444492273895866370), right-const(1)])
     ], [
-        call(to(t(v), d), glo(identity), [arg(d, t(d)), arg(s, t(s))]),
-        call(to(t(vs), s), glo(identity_s), [arg(s, t(s))]),
-        ins(t(w), w, cast, [t(vs)]),
-        ins(t(l), l, ext(uw), [t(w)]),
-        ins(t(bits), l, cast, [t(v)]),
-        ins(t(r), l, xor, [t(bits), t(l)])
-    ], ret(t(r)))
+        call(result(tmp(v), d), global(identity), [arg(d, tmp(d)), arg(s, tmp(s))]),
+        call(result(tmp(vs), s), global(identity_s), [arg(s, tmp(s))]),
+        let(tmp(w), w, cast, [tmp(vs)]),
+        let(tmp(l), l, ext(uw), [tmp(w)]),
+        let(tmp(bits), l, cast, [tmp(v)]),
+        let(tmp(r), l, xor, [tmp(bits), tmp(l)])
+    ], ret(tmp(r)))
 ]).

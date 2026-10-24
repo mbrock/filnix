@@ -4,67 +4,67 @@
 run(addw, [3, 4]).
 run(addw, [4294967295, 1]).
 run(addw, [-1, -1]).
-func(addw, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(r), w, add, [t(a), t(b)])
-    ], ret(t(r)))
+func(addw, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(r), w, add, [tmp(a), tmp(b)])
+    ], ret(tmp(r)))
 ]).
 
 run(mixed, [4294967296, 5]).
 run(mixed, [18446744073709551615, 0]).
-func(mixed, export, w, [par(l, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(r), w, add, [t(a), t(b)])
-    ], ret(t(r)))
+func(mixed, export, w, [param(l, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(r), w, add, [tmp(a), tmp(b)])
+    ], ret(tmp(r)))
 ]).
 
 run(divs, [-7, 2]).
 run(divs, [7, -2]).
 run(divs, [-2147483648, -1]).
 run(divs, [5, 0]).
-func(divs, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(q), w, div, [t(a), t(b)]),
-        ins(t(r), w, rem, [t(a), t(b)]),
-        ins(t(s), w, mul, [t(q), c(1000)]),
-        ins(t(t), w, add, [t(s), t(r)])
-    ], ret(t(t)))
+func(divs, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(q), w, div, [tmp(a), tmp(b)]),
+        let(tmp(r), w, rem, [tmp(a), tmp(b)]),
+        let(tmp(s), w, mul, [tmp(q), const(1000)]),
+        let(tmp(t), w, add, [tmp(s), tmp(r)])
+    ], ret(tmp(t)))
 ]).
 
 run(divu, [-7, 2]).
 run(divu, [7, 3]).
-func(divu, export, l, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(q), l, udiv, [t(a), t(b)]),
-        ins(t(r), l, urem, [t(a), t(b)]),
-        ins(t(t), l, xor, [t(q), t(r)])
-    ], ret(t(t)))
+func(divu, export, l, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(q), l, udiv, [tmp(a), tmp(b)]),
+        let(tmp(r), l, urem, [tmp(a), tmp(b)]),
+        let(tmp(t), l, xor, [tmp(q), tmp(r)])
+    ], ret(tmp(t)))
 ]).
 
 run(shifts, [-16, 2]).
 run(shifts, [-16, 33]).
 run(shifts, [1, 31]).
-func(shifts, export, w, [par(w, t(a)), par(w, t(n))], [
-    blk(start, [], [
-        ins(t(x), w, sar, [t(a), t(n)]),
-        ins(t(y), w, shr, [t(a), t(n)]),
-        ins(t(z), w, shl, [t(a), t(n)]),
-        ins(t(s), w, xor, [t(x), t(y)]),
-        ins(t(t), w, add, [t(s), t(z)])
-    ], ret(t(t)))
+func(shifts, export, w, [param(w, tmp(a)), param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(x), w, sar, [tmp(a), tmp(n)]),
+        let(tmp(y), w, shr, [tmp(a), tmp(n)]),
+        let(tmp(z), w, shl, [tmp(a), tmp(n)]),
+        let(tmp(s), w, xor, [tmp(x), tmp(y)]),
+        let(tmp(t), w, add, [tmp(s), tmp(z)])
+    ], ret(tmp(t)))
 ]).
 
 run(shiftl, [-16, 2]).
 run(shiftl, [-16, 65]).
 run(shiftl, [1, 63]).
-func(shiftl, export, l, [par(l, t(a)), par(w, t(n))], [
-    blk(start, [], [
-        ins(t(x), l, sar, [t(a), t(n)]),
-        ins(t(y), l, shr, [t(a), t(n)]),
-        ins(t(z), l, shl, [t(a), t(n)]),
-        ins(t(s), l, xor, [t(x), t(y)]),
-        ins(t(t), l, add, [t(s), t(z)])
-    ], ret(t(t)))
+func(shiftl, export, l, [param(l, tmp(a)), param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(x), l, sar, [tmp(a), tmp(n)]),
+        let(tmp(y), l, shr, [tmp(a), tmp(n)]),
+        let(tmp(z), l, shl, [tmp(a), tmp(n)]),
+        let(tmp(s), l, xor, [tmp(x), tmp(y)]),
+        let(tmp(t), l, add, [tmp(s), tmp(z)])
+    ], ret(tmp(t)))
 ]).
 
 run(exts, [255, 0]).
@@ -72,54 +72,54 @@ run(exts, [128, 1]).
 run(exts, [32768, 2]).
 run(exts, [2147483648, 3]).
 run(exts, [2147483648, 4]).
-func(exts, export, l, [par(w, t(a)), par(w, t(k))], [
-    blk(start, [], [
-        ins(t(sb), l, ext(sb), [t(a)]),
-        ins(t(ub), l, ext(ub), [t(a)]),
-        ins(t(sh), l, ext(sh), [t(a)]),
-        ins(t(sw), l, ext(sw), [t(a)]),
-        ins(t(uw), l, ext(uw), [t(a)])
-    ], jnz(t(k), n1, r0)),
-    blk(r0, [], [], ret(t(sb))),
-    blk(n1, [], [
-        ins(t(k1), w, sub, [t(k), c(1)])
-    ], jnz(t(k1), n2, r1)),
-    blk(r1, [], [], ret(t(ub))),
-    blk(n2, [], [
-        ins(t(k2), w, sub, [t(k1), c(1)])
-    ], jnz(t(k2), n3, r2)),
-    blk(r2, [], [], ret(t(sh))),
-    blk(n3, [], [
-        ins(t(k3), w, sub, [t(k2), c(1)])
-    ], jnz(t(k3), r4, r3)),
-    blk(r3, [], [], ret(t(sw))),
-    blk(r4, [], [], ret(t(uw)))
+func(exts, export, l, [param(w, tmp(a)), param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(sb), l, ext(sb), [tmp(a)]),
+        let(tmp(ub), l, ext(ub), [tmp(a)]),
+        let(tmp(sh), l, ext(sh), [tmp(a)]),
+        let(tmp(sw), l, ext(sw), [tmp(a)]),
+        let(tmp(uw), l, ext(uw), [tmp(a)])
+    ], branch(tmp(k), n1, r0)),
+    block(r0, [], [], ret(tmp(sb))),
+    block(n1, [], [
+        let(tmp(k1), w, sub, [tmp(k), const(1)])
+    ], branch(tmp(k1), n2, r1)),
+    block(r1, [], [], ret(tmp(ub))),
+    block(n2, [], [
+        let(tmp(k2), w, sub, [tmp(k1), const(1)])
+    ], branch(tmp(k2), n3, r2)),
+    block(r2, [], [], ret(tmp(sh))),
+    block(n3, [], [
+        let(tmp(k3), w, sub, [tmp(k2), const(1)])
+    ], branch(tmp(k3), r4, r3)),
+    block(r3, [], [], ret(tmp(sw))),
+    block(r4, [], [], ret(tmp(uw)))
 ]).
 
 run(cmps, [-1, 1]).
 run(cmps, [1, -1]).
 run(cmps, [5, 5]).
-func(cmps, export, w, [par(w, t(a)), par(w, t(b))], [
-    blk(start, [], [
-        ins(t(lt), w, cmp(slt, w), [t(a), t(b)]),
-        ins(t(ult), w, cmp(ult, w), [t(a), t(b)]),
-        ins(t(le), w, cmp(sle, w), [t(a), t(b)]),
-        ins(t(eq), w, cmp(eq, w), [t(a), t(b)]),
-        ins(t(x), w, shl, [t(ult), c(1)]),
-        ins(t(y), w, shl, [t(le), c(2)]),
-        ins(t(z), w, shl, [t(eq), c(3)]),
-        ins(t(s), w, or, [t(lt), t(x)]),
-        ins(t(t), w, or, [t(s), t(y)]),
-        ins(t(u), w, or, [t(t), t(z)])
-    ], ret(t(u)))
+func(cmps, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(lt), w, cmp(slt, w), [tmp(a), tmp(b)]),
+        let(tmp(ult), w, cmp(ult, w), [tmp(a), tmp(b)]),
+        let(tmp(le), w, cmp(sle, w), [tmp(a), tmp(b)]),
+        let(tmp(eq), w, cmp(eq, w), [tmp(a), tmp(b)]),
+        let(tmp(x), w, shl, [tmp(ult), const(1)]),
+        let(tmp(y), w, shl, [tmp(le), const(2)]),
+        let(tmp(z), w, shl, [tmp(eq), const(3)]),
+        let(tmp(s), w, or, [tmp(lt), tmp(x)]),
+        let(tmp(t), w, or, [tmp(s), tmp(y)]),
+        let(tmp(u), w, or, [tmp(t), tmp(z)])
+    ], ret(tmp(u)))
 ]).
 
 % jnz tests only the low 32 bits of an l value?
 run(jnzl, [4294967296]).
 run(jnzl, [1]).
 run(jnzl, [0]).
-func(jnzl, export, w, [par(l, t(a))], [
-    blk(start, [], [], jnz(t(a), yes, no)),
-    blk(yes, [], [], ret(c(1))),
-    blk(no, [], [], ret(c(0)))
+func(jnzl, export, w, [param(l, tmp(a))], [
+    block(start, [], [], branch(tmp(a), yes, no)),
+    block(yes, [], [], ret(const(1))),
+    block(no, [], [], ret(const(0)))
 ]).

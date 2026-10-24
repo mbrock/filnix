@@ -1,33 +1,50 @@
 /*  nanofil IR terms.
 
+    A function is a list of blocks; a block is phis, then instructions,
+    then one jump. Every value has a class, one letter:
+
+      w  32-bit integer (a word)        s  32-bit float (single)
+      l  64-bit integer (a long)        d  64-bit float (double)
+      p  pointer: an address with its Fil-C capability (filc only)
+      a  proven address: a p that a check has cleared (checked stage)
+
+    A store's or load's width may also be b (8 bits) or h (16 bits);
+    load and ext name the narrow types sb ub sh uh sw uw (signed or
+    unsigned byte, halfword, word).
+
     module(Items)
       Items: func/5 and data/4 terms, in source order.
 
     func(Name, Linkage, Ret, Params, Blocks)
-      Name     atom, the symbol without '$'
+      Name     atom, the symbol
       Linkage  export | local
       Ret      w | l | p | s | d | void | tuple([K1, K2])
                tuple: a two-word return (a struct of 9 to 16 bytes),
                each Ki in l, p; filc only
-      Params   [par(K, t(N))]            K in w, l, p, s, d
-      Blocks   [blk(Label, Phis, Insts, Jump)], entry block first
+      Params   [param(K, tmp(N))]         K in w, l, p, s, d
+      Blocks   [block(Label, Phis, Insts, Jump)], entry block first
 
-    phi(t(D), K, [Pred-Value])
+    phi(tmp(D), K, [Pred-Value])          D is Value when control came
+                                          from block Pred
     Insts:
-      ins(t(D), K, Op, Args)              value-producing instruction
+      let(tmp(D), K, Op, Args)            D, of class K, is Op of Args
       store(Width, Value, Addr)           Width in b, h, w, l, p, s, d
-      call(Res, Callee, [arg(K, Value)])  Res = to(t(D), K) | void
-                                          | tuple([to(t(D1), K1), to(t(D2), K2)]);
-                                          Callee glo(F), or (filc) a p temp
+      call(Res, Callee, [arg(K, Value)])  Res = result(tmp(D), K) | void
+                                          | tuple([result(tmp(D1), K1),
+                                                   result(tmp(D2), K2)]);
+                                          Callee global(F), or (filc) a p temp
       loc(File, Line)                     the instructions after it, up to
                                           the next loc, come from line Line
                                           of File; it does nothing
-      st(Width, Off, Value, Addr)         checked stage: a raw store (below)
-    Jump: jmp(L) | jnz(V, L1, L2) | ret(V) | rets([V1, V2]) | ret | hlt
-          rets returns a tuple. A jump's target may be poll(L): a
-          pollcheck on the edge, after the phis' copies, then L. A
-          pollcheck is a safepoint: the thread may run signal handlers
-          and answer the collector.
+      raw_store(Width, Off, Value, Addr)  checked stage: a store that does
+                                          not check (below)
+    Jump: goto(L) | branch(V, L1, L2) | ret(V) | rets([V1, V2]) | ret
+          | unreachable
+          branch goes to L1 if V is nonzero, else to L2. rets returns a
+          tuple. unreachable stops the program (a trap instruction). A
+          jump's target may be poll(L): a pollcheck on the edge, after
+          the phis' copies, then L. A pollcheck is a safepoint: the
+          thread may run signal handlers and answer the collector.
 
     Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
         cmp(Cond, K)   K w|l: eq ne sle slt sge sgt ule ult uge ugt;
@@ -42,28 +59,31 @@
         (op_kind/2 and valid_op/1 state these sets once)
         ptoi itop
         va_args       filc only: p cursor into the entry argument snapshot;
-                      operand c(N), non-negative fixed-prefix byte count
+                      operand const(N), non-negative fixed-prefix byte count
         va_arg        filc only: w/l/p load through a va_list address,
                       advancing its cursor (reads and writes memory)
         setjmp(Kind)  filc only: w result, [p Buf, w SaveMask]; Kind is
                       setjmp | '_setjmp' | sigsetjmp. SaveMask must be
-                      c(0) except for sigsetjmp. Native returns-twice;
+                      const(0) except for sigsetjmp. Native returns-twice;
                       snapshot/restore contract in docs/setjmp.md.
         check(Lo, Hi, Rights, Align)
                       checked stage: class a result, [p P]. Traps unless
                       P's capability permits Rights (read | write) on
                       [P+Lo, P+Hi) and P+Lo is Align-aligned; else the
                       result is P, proven accessible.
-        ld(T, Off)    checked stage: a raw load of type T (as load(T))
-                      at A+Off, [a A]
+        raw_load(T, Off)
+                      checked stage: a load of type T (as load(T)) at
+                      A+Off that does not check, [a A]
 
-    Values: t(Name) | c(Integer) | glo(Name)
-      At s/d, c(Integer) is an unsigned IEEE bit pattern (docs/float.md).
+    Values: tmp(Name) | const(Integer) | global(Name)
+      tmp is a temporary, defined once (SSA); const a number; global the
+      address of a function or data object by its symbol. At s/d,
+      const(Integer) is an unsigned IEEE bit pattern (docs/float.md).
 
     data(Name, Linkage, Align, Items)
       Linkage  export | local | ro(export) | ro(local), ro for read-only
                data (in .rodata)
-      Items: [item(W, c(N)) | item(b, str(Chars)) | item(l, sym(Name, Off))
+      Items: [item(W, const(N)) | item(b, str(Chars)) | item(l, sym(Name, Off))
               | item(p, sym(Name, Off)) | zero(N)]
       str(Chars) is the bytes themselves, one character per byte (codes
       0..255); a backend escapes them when it prints assembly.
@@ -79,9 +99,9 @@
              with a capability), alloc yields p, loads and stores take a p
              address, p arithmetic is add/sub of an l offset, and ptoi/itop
              convert. Calls may name functions outside the module, or go
-             through a p value. A symbol glo(S) is read only by
-             ins(t(D), p, copy, [glo(S)]), which yields a pointer to the
-             data or function object; S may be defined outside the
+             through a p value. A symbol global(S) is read only by
+             let(tmp(D), p, copy, [global(S)]), which yields a pointer to
+             the data or function object; S may be defined outside the
              module. See docs/m3.md, m4.md.
 
     A module is in one of two stages, told apart by its vocabulary:
@@ -92,16 +112,16 @@
       checked    after pizlonate.pl, what the Fil-C backend compiles:
                  every check is explicit. A check yields a temporary of
                  class a, a proven address, which only raw accesses read:
-                 ld(T, Off) and st(W, Off, V, A). The check that covers
-                 an access is its address operand's definition. A raw
-                 access its check does not cover is a bug of the pass,
-                 which the interpreter reports as the outcome
-                 unchecked(Why). Every cycle of the CFG has a poll edge.
+                 raw_load(T, Off) and raw_store(W, Off, V, A). The
+                 check that covers an access is its address operand's
+                 definition. A raw access its check does not cover is a
+                 bug of the pass, which the interpreter reports as the
+                 outcome unchecked(Why). Every cycle of the CFG has a poll edge.
 
     Class a never crosses a safepoint (a call, a pollcheck, alloc, setjmp,
-    va_arg, a symbol's getter, or st(p, ...), whose ensure-aux may exit),
-    since a free may make the proof stale. For now each check is followed
-    immediately by its one use, so none can.
+    va_arg, a symbol's getter, or raw_store(p, ...), whose ensure-aux may
+    exit), since a free may make the proof stale. For now each check is
+    followed immediately by its one use, so none can.
 
     Variable names below: M a module, Fn a function name, K a class
     (w, l or p), V an IR value, L a label.
@@ -220,7 +240,7 @@ valid_op(check(Lo, Hi, Rights, Align)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
     memberchk(Rights, [read, write]),
     memberchk(Align, [1, 2, 4, 8, 16]).
-valid_op(ld(T, Off)) :- !, load_type(T), integer(Off).
+valid_op(raw_load(T, Off)) :- !, load_type(T), integer(Off).
 valid_op(Op) :- op_kind(Op, _).
 
 %! access_size_align(?X, ?Size, ?Align) is nondet.
@@ -311,7 +331,7 @@ op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
-op_kind(ld(_, _), ld).
+op_kind(raw_load(_, _), ld).
 
 %! func_named(+M, +Name, -Func) is semidet.
 %
@@ -323,14 +343,14 @@ func_named(module(Items), Name, Func) :-
 
 % Entry snapshot metadata is retained even if its cursor is unused.
 variadic_func(func(_, _, _, _, Blocks)) :-
-    member(blk(_, _, Insts, _), Blocks),
-    member(ins(_, p, va_args, _), Insts), !.
+    member(block(_, _, Insts, _), Blocks),
+    member(let(_, p, va_args, _), Insts), !.
 
 % Nonlocal returns restore compiler slots, not mutable local memory.
 % Transformations must retain this boundary even in unreachable blocks.
 setjmp_func(func(_, _, _, _, Blocks)) :-
-    member(blk(_, _, Insts, _), Blocks),
-    member(ins(_, _, setjmp(_), _), Insts), !.
+    member(block(_, _, Insts, _), Blocks),
+    member(let(_, _, setjmp(_), _), Insts), !.
 
 %% Module mode
 
@@ -355,8 +375,8 @@ module_mode(module(Items), Mode) :-
         pointer_item(Item)
     ->  Mode = filc
     ;   member(func(_, _, _, _, Blocks), Items),
-        member(blk(_, _, Insts, _), Blocks),
-        member(call(_, glo(Callee), _), Insts),
+        member(block(_, _, Insts, _), Blocks),
+        member(call(_, global(Callee), _), Insts),
         \+ memberchk(func(Callee, _, _, _, _), Items)
     ->  Mode = filc
     ;   Mode = plain
@@ -366,8 +386,8 @@ module_mode(module(Items), Mode) :-
 % which only filc mode models. The cuts commit to the first witness.
 pointer_item(func(_, _, Ret, Params, Blocks)) :-
     (   ( Ret == p ; Ret = tuple(_) )
-    ;   member(par(p, _), Params)
-    ;   member(blk(_, Phis, Insts, _), Blocks),
+    ;   member(param(p, _), Params)
+    ;   member(block(_, Phis, Insts, _), Blocks),
         (   member(phi(_, p, _), Phis)
         ;   member(Inst, Insts),
             pointer_inst(Inst)
@@ -382,16 +402,16 @@ pointer_item(data(_, Linkage, _, Items)) :-
 
 % pointer_inst(+Inst): Inst produces, stores, passes or calls through a p
 % value, or converts one (ptoi). Several clauses may hold for one Inst.
-pointer_inst(ins(_, p, _, _)).
-pointer_inst(ins(_, _, ptoi, _)).
-pointer_inst(ins(_, _, setjmp(_), _)).
+pointer_inst(let(_, p, _, _)).
+pointer_inst(let(_, _, ptoi, _)).
+pointer_inst(let(_, _, setjmp(_), _)).
 pointer_inst(store(p, _, _)).
-pointer_inst(call(to(_, p), _, _)).
+pointer_inst(call(result(_, p), _, _)).
 pointer_inst(call(tuple(_), _, _)).
 pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
-pointer_inst(call(_, t(_), _)).
-pointer_inst(ins(_, a, _, _)).
-pointer_inst(st(_, _, _, _)).
+pointer_inst(call(_, tmp(_), _)).
+pointer_inst(let(_, a, _, _)).
+pointer_inst(raw_store(_, _, _, _)).
 
 %% Validation
 
@@ -418,7 +438,7 @@ valid_module(M) :-
 % checked stage (a check, a raw access or a poll edge), else unchecked.
 module_stage(module(Items), Stage) :-
     (   member(func(_, _, _, _, Blocks), Items),
-        member(blk(_, _, Insts, Jump), Blocks),
+        member(block(_, _, Insts, Jump), Blocks),
         (   member(Inst, Insts), checked_inst(Inst)
         ;   checked_jump(Jump)
         )
@@ -426,13 +446,13 @@ module_stage(module(Items), Stage) :-
     ;   Stage = unchecked
     ).
 
-checked_inst(ins(_, _, check(_, _, _, _), _)).
-checked_inst(ins(_, _, ld(_, _), _)).
-checked_inst(st(_, _, _, _)).
+checked_inst(let(_, _, check(_, _, _, _), _)).
+checked_inst(let(_, _, raw_load(_, _), _)).
+checked_inst(raw_store(_, _, _, _)).
 
-checked_jump(jmp(poll(_))).
-checked_jump(jnz(_, poll(_), _)).
-checked_jump(jnz(_, _, poll(_))).
+checked_jump(goto(poll(_))).
+checked_jump(branch(_, poll(_), _)).
+checked_jump(branch(_, _, poll(_))).
 
 % valid_item(+M, +Mode, +Stage, +Item): Item, an item of M, is well
 % formed.
@@ -446,7 +466,7 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
                  'a tuple return is two words of class l or p, not ~w', [Ks])
     ;   true
     ),
-    findall(Label, member(blk(Label, _, _, _), Blocks), Labels),
+    findall(Label, member(block(Label, _, _, _), Blocks), Labels),
     (   msort(Labels, Sorted), sort(Labels, Sorted) -> true
     ;   fn_error(Name, 'duplicate block label', [])
     ),
@@ -461,8 +481,8 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     predecessors(Blocks, PredMap),
     Ctx = ctx(M, Name, Ret, LabelSet, TempClasses, PredMap, Mode),
     maplist(valid_block(Ctx), Blocks),
-    Blocks = [blk(Entry, _, _, _)|_],
-    (   member(blk(_, _, _, Jump), Blocks),
+    Blocks = [block(Entry, _, _, _)|_],
+    (   member(block(_, _, _, Jump), Blocks),
         jump_target(Jump, Entry)
     ->  fn_error(Name, 'jump to the entry block ~w', [Entry])
     ;   true
@@ -475,7 +495,7 @@ valid_item(_, Mode, _, data(Name, _, Align, Items)) :-
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
     ),
     forall((member(item(K, V), Items), float_class(K)),
-           ( V = c(N), integer(N), modulus(K, Mod), N >= 0, N < Mod
+           ( V = const(N), integer(N), modulus(K, Mod), N >= 0, N < Mod
            -> true ; fn_error(Name, 'invalid float data ~w', [V]) )),
     (   Mode == plain, memberchk(item(p, _), Items)
     ->  fn_error(Name, 'pointer data items need a Fil-C module', [])
@@ -494,14 +514,14 @@ byte_char(C) :- atom(C), atom_length(C, 1), char_code(C, N), N =< 255.
 % temp_defs(+Params, +Blocks, -Defs): Name-Class for every definition of
 % a temporary, in parameter and then block order.
 temp_defs(Params, Blocks, Defs) :-
-    findall(N-K, member(par(K, t(N)), Params), ParamDefs),
+    findall(N-K, member(param(K, tmp(N)), Params), ParamDefs),
     findall(N-K,
-            ( member(blk(_, Phis, Insts, _), Blocks),
-              (   member(phi(t(N), K, _), Phis)
-              ;   member(ins(t(N), K, _, _), Insts)
-              ;   member(call(to(t(N), K), _, _), Insts)
+            ( member(block(_, Phis, Insts, _), Blocks),
+              (   member(phi(tmp(N), K, _), Phis)
+              ;   member(let(tmp(N), K, _, _), Insts)
+              ;   member(call(result(tmp(N), K), _, _), Insts)
               ;   member(call(tuple(Tos), _, _), Insts),
-                  member(to(t(N), K), Tos)
+                  member(result(tmp(N), K), Tos)
               ) ),
             BlockDefs),
     append(ParamDefs, BlockDefs, Defs).
@@ -511,14 +531,14 @@ check_temp_classes(Fn, Defs) :-
     forall(member(_-K, Defs),
            ( temp_class(K) -> true ; fn_error(Fn, 'invalid class ~w', [K]) )),
     (   append(_, [N-K1, N-K2|_], Defs), K1 \== K2
-    ->  fn_error(Fn, 't(~w) has classes ~w and ~w', [N, K1, K2])
+    ->  fn_error(Fn, 'tmp(~w) has classes ~w and ~w', [N, K1, K2])
     ;   true
     ).
 
 % predecessors(+Blocks, -PredMap): each label's sorted predecessors.
 predecessors(Blocks, PredMap) :-
     findall(Target-Pred,
-            ( member(blk(Pred, _, _, Jump), Blocks),
+            ( member(block(Pred, _, _, Jump), Blocks),
               jump_target(Jump, Target)
             ),
             Edges0),
@@ -533,7 +553,7 @@ add_predecessor(Target-Pred, PredMap0, PredMap) :-
 
 % valid_block(+Ctx, +Block): Block's phis cover exactly its predecessors,
 % and its instructions and jump are well formed.
-valid_block(Ctx, blk(Label, Phis, Insts, Jump)) :-
+valid_block(Ctx, block(Label, Phis, Insts, Jump)) :-
     Ctx = ctx(_, Fn, _, _, _, PredMap, _),
     (   get_assoc(Label, PredMap, Preds) -> true ; Preds = [] ),
     maplist(valid_phi(Ctx, Label, Preds), Phis),
@@ -547,9 +567,9 @@ valid_block(Ctx, blk(Label, Phis, Insts, Jump)) :-
 %! jump_target(+Jump, -L) is nondet.
 %
 %  Jump can branch to the label L, with or without a pollcheck.
-jump_target(jmp(T), L) :- edge_label(T, L).
-jump_target(jnz(_, T, _), L) :- edge_label(T, L).
-jump_target(jnz(_, _, T), L) :- edge_label(T, L).
+jump_target(goto(T), L) :- edge_label(T, L).
+jump_target(branch(_, T, _), L) :- edge_label(T, L).
+jump_target(branch(_, _, T), L) :- edge_label(T, L).
 
 % temp_class(?K): a temporary may have class K: a value class, or a, a
 % proven address (checked stage), which lives in no memory and is no
@@ -562,12 +582,12 @@ temp_class(a).
 % parameters and call results would carry a proof across an edge or a
 % safepoint. (A check's own class is op_result_ok/3's.)
 proof_class_defs(Fn, Params, Blocks) :-
-    (   (   member(par(a, _), Params)
-        ;   member(blk(_, Phis, Insts, _), Blocks),
+    (   (   member(param(a, _), Params)
+        ;   member(block(_, Phis, Insts, _), Blocks),
             (   member(phi(_, a, _), Phis)
             ;   member(call(Res, _, Args), Insts),
-                (   Res = to(_, a)
-                ;   Res = tuple(Tos), memberchk(to(_, a), Tos)
+                (   Res = result(_, a)
+                ;   Res = tuple(Tos), memberchk(result(_, a), Tos)
                 ;   memberchk(arg(a, _), Args)
                 )
             )
@@ -588,27 +608,27 @@ definitions_dominate(Fn, Params, Blocks) :-
     func_cfg(Blocks, Cfg),
     cfg_idoms(Cfg, Idom),
     dom_intervals(Cfg, Idom, Intervals),
-    findall(N-param, member(par(_, t(N)), Params), ParamSites),
+    findall(N-param, member(param(_, tmp(N)), Params), ParamSites),
     block_sites(Blocks, Pairs0, []),
     append(ParamSites, Pairs0, Pairs),
     keysort(Pairs, Sorted),
     group_sites(Sorted, Grouped),
     list_to_assoc(Grouped, Sites),
-    findall(L-End, ( member(blk(L, _, Insts, _), Blocks), length(Insts, End) ),
+    findall(L-End, ( member(block(L, _, Insts, _), Blocks), length(Insts, End) ),
             Ends0),
     list_to_assoc(Ends0, Ends),
     dominated_blocks(Blocks, dom(Fn, Sites, Intervals, Ends)).
 
-% block_sites(+Blocks)//: N-at(L, I) for each definition of t(N), at
+% block_sites(+Blocks)//: N-at(L, I) for each definition of tmp(N), at
 % index I of block L, a phi's at -1.
 block_sites([]) --> [].
-block_sites([blk(L, Phis, Insts, _)|Bs]) -->
+block_sites([block(L, Phis, Insts, _)|Bs]) -->
     phi_sites(Phis, L),
     inst_sites(Insts, L, 0),
     block_sites(Bs).
 
 phi_sites([], _) --> [].
-phi_sites([phi(t(N), _, _)|Phis], L) --> [N-at(L, -1)], phi_sites(Phis, L).
+phi_sites([phi(tmp(N), _, _)|Phis], L) --> [N-at(L, -1)], phi_sites(Phis, L).
 
 inst_sites([], _, _) --> [].
 inst_sites([Inst|Insts], L, I) -->
@@ -635,7 +655,7 @@ same_key(_, Ps, [], Ps).
 % each block. Plain recursion, not maplist/3 over closures, which
 % Trealla copies with D at every call.
 dominated_blocks([], _).
-dominated_blocks([blk(L, Phis, Insts, Jump)|Bs], D) :-
+dominated_blocks([block(L, Phis, Insts, Jump)|Bs], D) :-
     D = dom(_, _, Intervals, _),
     (   get_assoc(L, Intervals, _)
     ->  dominated_insts(Insts, 0, End, L, D),
@@ -666,21 +686,21 @@ dominated_phis([phi(_, _, PVs)|Phis], D) :-
 dominated_phi_operands([], _).
 dominated_phi_operands([P-V|PVs], D) :-
     D = dom(_, _, Intervals, Ends),
-    (   V = t(N), get_assoc(P, Intervals, _)
+    (   V = tmp(N), get_assoc(P, Intervals, _)
     ->  get_assoc(P, Ends, End),
         dominated_use(D, P, End, N)
     ;   true
     ),
     dominated_phi_operands(PVs, D).
 
-% dominated_use(+D, +L, +I, +N): some definition of t(N) dominates
+% dominated_use(+D, +L, +I, +N): some definition of tmp(N) dominates
 % position I of block L.
 dominated_use(dom(Fn, Sites, Intervals, _), L, I, N) :-
     (   get_assoc(N, Sites, Defs),
         member(Def, Defs),
         site_dominates(Def, L, I, Intervals)
     ->  true
-    ;   fn_error(Fn, 't(~w) is used in block ~w, which no definition dominates',
+    ;   fn_error(Fn, 'tmp(~w) is used in block ~w, which no definition dominates',
                  [N, L])
     ).
 
@@ -698,7 +718,7 @@ site_dominates(at(D, _), L, _, Intervals) :-
 % every cycle.
 stage_func(unchecked, _, _, _).
 stage_func(checked, Fn, Mode, Blocks) :-
-    forall(member(blk(_, _, Insts, _), Blocks), checked_insts(Insts, Fn, Mode)),
+    forall(member(block(_, _, Insts, _), Blocks), checked_insts(Insts, Fn, Mode)),
     (   polls_every_cycle(Blocks) -> true
     ;   fn_error(Fn, 'a cycle without a poll edge in checked IR', [])
     ).
@@ -711,12 +731,12 @@ checked_insts([Inst|Insts], Fn, Mode) :-
     checked_inst_rest(Inst, Insts, Fn, Mode, Rest),
     checked_insts(Rest, Fn, Mode).
 
-checked_inst_rest(ins(t(Q), a, check(Lo, Hi, Rights, Align), _), Insts, Fn, _,
+checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), _), Insts, Fn, _,
                   Rest) :- !,
     (   Insts = [Access|Rest],
         covered_access(Access, Q, Lo, Hi, Rights, Align)
     ->  true
-    ;   fn_error(Fn, 'check t(~w) is not followed by an access it covers', [Q])
+    ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
     (   raw_access(Inst, _, _, _, _)
@@ -727,15 +747,15 @@ checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
     ).
 
 % raw_access(?Inst, ?Q, ?X, ?Off, ?Rights): Inst is a raw load of type X
-% or store of width X at t(Q)+Off, needing Rights.
-raw_access(ins(_, _, ld(T, Off), [t(Q)]), Q, T, Off, read).
-raw_access(st(W, Off, _, t(Q)), Q, W, Off, write).
+% or store of width X at tmp(Q)+Off, needing Rights.
+raw_access(let(_, _, raw_load(T, Off), [tmp(Q)]), Q, T, Off, read).
+raw_access(raw_store(W, Off, _, tmp(Q)), Q, W, Off, write).
 
-unchecked_access(ins(_, _, load(T), _), load(T)).
+unchecked_access(let(_, _, load(T), _), load(T)).
 unchecked_access(store(W, _, _), store(W)).
 
 % covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access is a raw
-% access at t(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
+% access at tmp(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
 % Rights allow it (write allows reading too).
 covered_access(Access, Q, Lo, Hi, Rights, Align) :-
     raw_access(Access, Q, X, Off, Need),
@@ -756,7 +776,7 @@ rights_allow(read, read).
 %  with each label gray while on the path and done after.
 polls_every_cycle(Blocks) :-
     findall(L-Ss,
-            ( member(blk(L, _, _, Jump), Blocks),
+            ( member(block(L, _, _, Jump), Blocks),
               findall(S, unpolled_edge(Jump, S), Ss) ),
             Pairs),
     list_to_assoc(Pairs, Graph),
@@ -764,9 +784,9 @@ polls_every_cycle(Blocks) :-
     findall(L, member(L-_, Pairs), Labels),
     acyclic_from_all(Labels, Graph, Color0, _).
 
-unpolled_edge(jmp(T), T) :- T \= poll(_).
-unpolled_edge(jnz(_, T, _), T) :- T \= poll(_).
-unpolled_edge(jnz(_, _, T), T) :- T \= poll(_).
+unpolled_edge(goto(T), T) :- T \= poll(_).
+unpolled_edge(branch(_, T, _), T) :- T \= poll(_).
+unpolled_edge(branch(_, _, T), T) :- T \= poll(_).
 
 % acyclic_from_all(+Ls, +Graph, +Color0, -Color): no cycle of Graph is
 % reachable from Ls; a gray successor closes one. Plain recursion, since
@@ -804,8 +824,8 @@ valid_inst(ctx(_, Fn, _, _, _, _, _), loc(File, Line)) :- !,
     (   atom(File), integer(Line) -> true
     ;   fn_error(Fn, 'bad source location loc(~q, ~q)', [File, Line])
     ).
-valid_inst(ctx(_, _, _, _, _, _, filc), ins(_, p, copy, [glo(_)])) :- !.
-valid_inst(Ctx, ins(_, K, Op, Args)) :-
+valid_inst(ctx(_, _, _, _, _, _, filc), let(_, p, copy, [global(_)])) :- !.
+valid_inst(Ctx, let(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
     (   valid_op(Op) -> true
     ;   fn_error(Fn, 'unknown instruction ~w', [Op])
@@ -817,11 +837,11 @@ valid_inst(Ctx, ins(_, K, Op, Args)) :-
     ;   fn_error(Fn, 'instruction ~w cannot have class ~w', [Op, K])
     ),
     (   Op == va_args,
-        \+ (Args = [c(Off)], integer(Off), Off >= 0)
+        \+ (Args = [const(Off)], integer(Off), Off >= 0)
     ->  fn_error(Fn, 'va_args needs a non-negative constant', [])
     ;   true
     ),
-    (   Op = setjmp(Kind), Kind \== sigsetjmp, Args \= [_, c(0)]
+    (   Op = setjmp(Kind), Kind \== sigsetjmp, Args \= [_, const(0)]
     ->  fn_error(Fn, 'setjmp and _setjmp need a zero SaveMask', [])
     ;   true
     ),
@@ -837,33 +857,33 @@ valid_inst(Ctx, store(Width, Value, Addr)) :-
     valid_use(Ctx, ValueClass, Value),
     addr_class(Mode, AddrClass),
     valid_use(Ctx, AddrClass, Addr).
-valid_inst(Ctx, st(Width, Off, Value, Addr)) :-
+valid_inst(Ctx, raw_store(Width, Off, Value, Addr)) :-
     Ctx = ctx(_, Fn, _, _, _, _, _),
     (   store_value_class(Width, ValueClass), integer(Off) -> true
-    ;   fn_error(Fn, 'bad raw store st(~w, ~w, ...)', [Width, Off])
+    ;   fn_error(Fn, 'bad raw store raw_store(~w, ~w, ...)', [Width, Off])
     ),
     valid_use(Ctx, ValueClass, Value),
     valid_use(Ctx, a, Addr).
-valid_inst(Ctx, call(Res, glo(Callee), Args)) :-
+valid_inst(Ctx, call(Res, global(Callee), Args)) :-
     Ctx = ctx(M, Fn, _, _, _, _, Mode),
     findall(K, member(arg(K, _), Args), ArgClasses),
     (   func_named(M, Callee, CalleeFunc),
         CalleeFunc = func(_, _, CalleeRet, Params, _)
-    ->  findall(K, member(par(K, _), Params), ParamClasses),
+    ->  findall(K, member(param(K, _), Params), ParamClasses),
         (   ( ParamClasses == ArgClasses
             ; variadic_func(CalleeFunc), append(ParamClasses, _, ArgClasses)
             ) -> true
-        ;   fn_error(Fn, 'call to glo(~w) passes ~w, expects ~w',
+        ;   fn_error(Fn, 'call to global(~w) passes ~w, expects ~w',
                      [Callee, ArgClasses, ParamClasses])
         ),
         call_result_ok(Fn, Callee, Res, CalleeRet)
     ;   Mode == filc -> true
-    ;   fn_error(Fn, 'call to undefined function glo(~w)', [Callee])
+    ;   fn_error(Fn, 'call to undefined function global(~w)', [Callee])
     ),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
 valid_inst(Ctx, call(_, Callee, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
-    (   Mode == filc, Callee = t(_) -> valid_use(Ctx, p, Callee)
+    (   Mode == filc, Callee = tmp(_) -> valid_use(Ctx, p, Callee)
     ;   fn_error(Fn, 'bad callee ~w', [Callee])
     ),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
@@ -877,20 +897,20 @@ store_value_class(K, K) :- any_class(K).
 % result the way the callee returns it.
 call_result_ok(_, _, void, _).
 call_result_ok(Fn, Callee, tuple(Tos), Ret) :-
-    findall(K, member(to(_, K), Tos), Ks),
+    findall(K, member(result(_, K), Tos), Ks),
     (   Ret == tuple(Ks) -> true
-    ;   fn_error(Fn, 'reads the ~w result of glo(~w) as tuple(~w)',
+    ;   fn_error(Fn, 'reads the ~w result of global(~w) as tuple(~w)',
                  [Ret, Callee, Ks])
     ).
-call_result_ok(Fn, Callee, to(_, K), Ret) :-
+call_result_ok(Fn, Callee, result(_, K), Ret) :-
     to_result_ok(Ret, K, Fn, Callee).
 
 % to_result_ok(+Ret, +K, +Fn, +Callee): a call site may read at class K
 % the result of Callee, which returns Ret.
 to_result_ok(void, _, Fn, Callee) :-
-    fn_error(Fn, 'uses the result of void glo(~w)', [Callee]).
+    fn_error(Fn, 'uses the result of void global(~w)', [Callee]).
 to_result_ok(tuple(_), K, Fn, Callee) :-
-    fn_error(Fn, 'reads the tuple result of glo(~w) as ~w', [Callee, K]).
+    fn_error(Fn, 'reads the tuple result of global(~w) as ~w', [Callee, K]).
 to_result_ok(Ret, K, Fn, Callee) :-
     any_class(Ret),
     class_result_ok(Ret, K, Fn, Callee).
@@ -900,18 +920,18 @@ to_result_ok(Ret, K, Fn, Callee) :-
 % changes class.
 class_result_ok(Ret, K, Fn, Callee) :-
     (   (float_class(Ret) ; float_class(K)), Ret \== K
-    ->  fn_error(Fn, 'reads the ~w result of glo(~w) as ~w', [Ret, Callee, K])
+    ->  fn_error(Fn, 'reads the ~w result of global(~w) as ~w', [Ret, Callee, K])
     ;   K == l, Ret == w
-    ->  fn_error(Fn, 'reads the w result of glo(~w) as l', [Callee])
+    ->  fn_error(Fn, 'reads the w result of global(~w) as l', [Callee])
     ;   ( K == p, Ret \== p ; K \== p, Ret == p )
-    ->  fn_error(Fn, 'reads the ~w result of glo(~w) as ~w', [Ret, Callee, K])
+    ->  fn_error(Fn, 'reads the ~w result of global(~w) as ~w', [Ret, Callee, K])
     ;   true
     ).
 
 % valid_jump(+Ctx, +Jump): Jump names existing labels and returns what
 % the function's return class requires.
-valid_jump(Ctx, jmp(T)) :- target_exists(Ctx, T).
-valid_jump(Ctx, jnz(V, T1, T2)) :-
+valid_jump(Ctx, goto(T)) :- target_exists(Ctx, T).
+valid_jump(Ctx, branch(V, T1, T2)) :-
     valid_use(Ctx, w, V),
     target_exists(Ctx, T1),
     target_exists(Ctx, T2).
@@ -927,7 +947,7 @@ valid_jump(Ctx, rets(Vs)) :-
 valid_jump(Ctx, ret) :-
     Ctx = ctx(_, Fn, Ret, _, _, _, _),
     ret_void_ok(Ret, Fn).
-valid_jump(_, hlt).
+valid_jump(_, unreachable).
 
 % ret_value_ok(+Ret, +Ctx, +V): a function that returns Ret may return
 % the one value V.
@@ -968,48 +988,48 @@ valid_use(Ctx, K, V) :-
 % A p temporary is used only at p and vice versa; ptoi and itop are the
 % conversions. An integer constant at p is a pointer with no capability.
 % Only a check makes a proven address (class a): no constant is one.
-valid_use_(t(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
+valid_use_(tmp(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
     (   get_assoc(N, TempClasses, K0)
     ->  (   (K == a ; K0 == a), K \== K0
-        ->  fn_error(Fn, 't(~w) has class ~w but is used as ~w', [N, K0, K])
+        ->  fn_error(Fn, 'tmp(~w) has class ~w but is used as ~w', [N, K0, K])
         ;   (float_class(K) ; float_class(K0)), K \== K0
-        ->  fn_error(Fn, 't(~w) has class ~w but is used as ~w', [N, K0, K])
+        ->  fn_error(Fn, 'tmp(~w) has class ~w but is used as ~w', [N, K0, K])
         ;   K == l, K0 == w
-        ->  fn_error(Fn, 't(~w) has class w but is used as l', [N])
+        ->  fn_error(Fn, 'tmp(~w) has class w but is used as l', [N])
         ;   K0 == p, K \== p
-        ->  fn_error(Fn, 't(~w) has class p but is used as ~w (use ptoi)',
+        ->  fn_error(Fn, 'tmp(~w) has class p but is used as ~w (use ptoi)',
                      [N, K])
         ;   K == p, K0 \== p
-        ->  fn_error(Fn, 't(~w) has class ~w but is used as p (use itop)',
+        ->  fn_error(Fn, 'tmp(~w) has class ~w but is used as p (use itop)',
                      [N, K0])
         ;   true
         )
-    ;   fn_error(Fn, 'undefined temporary t(~w)', [N])
+    ;   fn_error(Fn, 'undefined temporary tmp(~w)', [N])
     ).
-valid_use_(c(N), ctx(_, Fn, _, _, _, _, _), K) :-
+valid_use_(const(N), ctx(_, Fn, _, _, _, _, _), K) :-
     integer(N),
     ( float_class(K), modulus(K, M), (N < 0 ; N >= M)
     -> fn_error(Fn, 'float bits out of range: ~w', [N])
     ; K == a
-    -> fn_error(Fn, 'c(~w) used as a proven address (class a)', [N])
+    -> fn_error(Fn, 'const(~w) used as a proven address (class a)', [N])
     ; true ).
-valid_use_(glo(G), Ctx, K) :-
+valid_use_(global(G), Ctx, K) :-
     Ctx = ctx(_, _, _, _, _, _, Mode),
     symbol_use_ok(Mode, G, Ctx, K).
 
-% symbol_use_ok(+Mode, +G, +Ctx, +K): the symbol glo(G) may be read at
+% symbol_use_ok(+Mode, +G, +Ctx, +K): the symbol global(G) may be read at
 % class K in a module of Mode: in plain mode as an address of data, in
 % filc mode never (copy, which yields its pointer, is checked apart).
 symbol_use_ok(filc, G, ctx(_, Fn, _, _, _, _, _), _) :-
-    fn_error(Fn, 'in a Fil-C module only copy at p reads glo(~w)', [G]).
+    fn_error(Fn, 'in a Fil-C module only copy at p reads global(~w)', [G]).
 symbol_use_ok(plain, G, ctx(M, Fn, _, _, _, _, _), K) :-
     addr_class(plain, AddrClass),
     (   K == AddrClass -> true
-    ;   fn_error(Fn, 'glo(~w) used as ~w', [G, K])
+    ;   fn_error(Fn, 'global(~w) used as ~w', [G, K])
     ),
     M = module(Items),
     (   memberchk(data(G, _, _, _), Items) -> true
-    ;   fn_error(Fn, 'glo(~w) is not a data definition', [G])
+    ;   fn_error(Fn, 'global(~w) is not a data definition', [G])
     ).
 
 %% Operand and result classes
@@ -1046,7 +1066,7 @@ kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
-kind_result_ok(ld, ld(T, _), filc, K) :- load_result_ok(T, filc, K).
+kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
 
 % ext_result_ok(+T, +K): an extension of type T may have class K; one
 % from a word is a long.
@@ -1138,7 +1158,7 @@ item_without_locs(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     maplist(block_without_locs, Bs0, Bs).
 item_without_locs(Item, Item).
 
-block_without_locs(blk(L, Phis, Insts0, J), blk(L, Phis, Insts, J)) :-
+block_without_locs(block(L, Phis, Insts0, J), block(L, Phis, Insts, J)) :-
     exclude(is_loc, Insts0, Insts).
 
 is_loc(loc(_, _)).

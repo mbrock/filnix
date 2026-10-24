@@ -19,7 +19,12 @@ and the page shows, from one `<article>` whose sections it puts in place:
   head over its blocks, a block as
   its label over one row per phi, instruction and jump, each function and
   data object folding under its head, and a run of text bytes drawn as
-  the one `item(b, str(S))` it means; **IR text**, the same module as
+  the one `item(b, str(S))` it means. Over the IR, "How to read the IR"
+  explains each word the module uses (`play_view.pl`'s `gloss/4`), and
+  every word in the IR is coloured by its role (instruction, memory,
+  Fil-C check, jump, value) and says what it means on hover, a class or
+  op atom by its place (`slot/2`); hovering a temporary lights up its
+  definition and uses. **IR text**, the same module as
   the clauses `nanofil print` and `compile` read (`src/ir_text.pl`);
   **Assembly**, each `asm.pl` line term beside the AT&T line it prints
   as (the first 1500 lines; longer listings follow as text);

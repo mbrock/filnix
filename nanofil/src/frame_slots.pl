@@ -17,7 +17,7 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP) :-
     block_ranges(Blocks, In, Out, 1, End, R1, R2),
     % va_args reads this backend-only parameter implicitly. Reserve both
     % its address and lower for the entire invocation.
-    (   memberchk(par(p, t(hidden(va_snapshot))), Params)
+    (   memberchk(param(p, tmp(hidden(va_snapshot))), Params)
     ->  touch(hidden(va_snapshot), End, R2, Points)
     ;   Points = R2
     ),
@@ -31,7 +31,7 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP) :-
     empty_assoc(A0),
     allocate(Intervals, [], [], 0, NS, 0, NP, A0, Aliases).
 
-param_point(par(_, t(N)), R0, R) :- touch(N, 0, R0, R).
+param_point(param(_, tmp(N)), R0, R) :- touch(N, 0, R0, R).
 
 touch(N, P, R, [N-P|R]).
 
@@ -42,7 +42,7 @@ points([N|Ns], P, R0, R) :-
     touch(N, P, R0, R1), points(Ns, P, R1, R).
 
 block_ranges([], _, _, P, P, R, R).
-block_ranges([blk(L, Phis, Insts, Jump)|Bs], In, Out, P, End, R0, R) :-
+block_ranges([block(L, Phis, Insts, Jump)|Bs], In, Out, P, End, R0, R) :-
     get_assoc(L, In, LiveIn), points(LiveIn, P, R0, R1),
     phi_points(Phis, P, R1, R2),
     P1 is P + 1,
@@ -53,7 +53,7 @@ block_ranges([blk(L, Phis, Insts, Jump)|Bs], In, Out, P, End, R0, R) :-
     block_ranges(Bs, In, Out, Next, End, R5, R).
 
 phi_points([], _, R, R).
-phi_points([phi(t(N), _, _)|Ps], P, R0, R) :-
+phi_points([phi(tmp(N), _, _)|Ps], P, R0, R) :-
     touch(N, P, R0, R1), phi_points(Ps, P, R1, R).
 
 inst_ranges([], P, P, R, R).

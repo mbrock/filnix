@@ -44,22 +44,22 @@ load_width(p, p).
 
 alloc_classes(F, Classes) :-
     F = func(_, _, _, _, Blocks),
-    findall(I, ( member(blk(_, _, Is, _), Blocks), member(I, Is) ), Insts),
+    findall(I, ( member(block(_, _, Is, _), Blocks), member(I, Is) ), Insts),
     address_temps(F, Addrs),
     def_counts(F, DefCounts),
-    findall(A-Size, member(ins(t(A), _, alloc(_), [Size]), Insts), Allocs),
+    findall(A-Size, member(let(tmp(A), _, alloc(_), [Size]), Insts), Allocs),
     findall(Root-E,
             ( member(I, Insts), inst_event(I, Addrs, Root-E) ),
             InstEvents),
     findall(Root-esc(phi),
-            ( member(blk(_, Phis, _, _), Blocks),
+            ( member(block(_, Phis, _, _), Blocks),
               member(phi(_, _, Args), Phis),
-              member(_-t(X), Args),
+              member(_-tmp(X), Args),
               get_assoc(X, Addrs, Root-_) ),
             PhiEscapes),
     findall(Root-esc(jump),
-            ( member(blk(_, _, _, Jump), Blocks),
-              jump_value(Jump, t(X)),
+            ( member(block(_, _, _, Jump), Blocks),
+              jump_value(Jump, tmp(X)),
               get_assoc(X, Addrs, Root-_) ),
             JumpEscapes),
     % A temp derived from A that is also defined some other way.
@@ -92,27 +92,27 @@ events_alloc_class(Events, A-Size, A-Class) :-
 % does with the address of alloc Root: an access at a known offset, or
 % an escape of every alloc whose address it reads. A constant offset (a
 % derived address, seen by address_temps) is neither.
-inst_event(ins(D, K, Op, Args), Addrs, Event) :-
+inst_event(let(D, K, Op, Args), Addrs, Event) :-
     op_kind(Op, Kind),
-    kind_event(Kind, ins(D, K, Op, Args), Addrs, Event).
+    kind_event(Kind, let(D, K, Op, Args), Addrs, Event).
 inst_event(store(W, V, A), Addrs, Event) :-
-    (   V = t(X),
+    (   V = tmp(X),
         get_assoc(X, Addrs, Root-_),
         Event = Root-esc(stored)
-    ;   A = t(X),
+    ;   A = tmp(X),
         get_assoc(X, Addrs, Root-Off),
         Event = Root-acc(acc(Off, W))
     ).
 inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
     findall(V, member(arg(_, V), Args), Vs),
-    member(t(X), [F|Vs]),
+    member(tmp(X), [F|Vs]),
     get_assoc(X, Addrs, Root-_).
 
 % kind_event(+Kind, +Ins, +Addrs, -Root-Event) is nondet: as
 % inst_event/3, for the instruction Ins of an Op of Kind. A load
 % accesses its address; every other op lets the addresses it reads
 % escape.
-kind_event(load, ins(_, _, load(T), [t(X)]), Addrs,
+kind_event(load, let(_, _, load(T), [tmp(X)]), Addrs,
            Root-acc(acc(Off, W))) :-
     get_assoc(X, Addrs, Root-Off),
     load_width(T, W).
@@ -126,7 +126,7 @@ kind_event(itop, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(va_args, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(va_arg, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(setjmp, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
-kind_event(va_arg, ins(_, _, _, [t(X)]), Addrs,
+kind_event(va_arg, let(_, _, _, [tmp(X)]), Addrs,
            Root-acc(acc(Off, p))) :- get_assoc(X, Addrs, Root-Off).
 kind_event(cmp, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(ext, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
@@ -134,21 +134,21 @@ kind_event(alloc, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 
 % ins_escape(+Ins, +Addrs, -Root-esc(Op)) is nondet: Ins, an instruction
 % of Op that is not a derived address, reads the address of alloc Root.
-ins_escape(ins(D, K, Op, Args), Addrs, Root-esc(Op)) :-
-    \+ ( offset_of(ins(D, K, Op, Args), Y, _),         % derived address
+ins_escape(let(D, K, Op, Args), Addrs, Root-esc(Op)) :-
+    \+ ( offset_of(let(D, K, Op, Args), Y, _),         % derived address
          get_assoc(Y, Addrs, _) ),
-    member(t(X), Args),
+    member(tmp(X), Args),
     get_assoc(X, Addrs, Root-_).
 
-jump_value(jnz(V, _, _), V).
+jump_value(branch(V, _, _), V).
 jump_value(ret(V), V).
 jump_value(rets(Vs), V) :- member(V, Vs).
 
 % offset_of(+Ins, -Src, -Delta): Ins computes Src + Delta.
-offset_of(ins(_, _, add, [t(X), c(N)]), X, N).
-offset_of(ins(_, _, add, [c(N), t(X)]), X, N).
-offset_of(ins(_, _, sub, [t(X), c(N)]), X, D) :- D is -N.
-offset_of(ins(_, _, copy, [t(X)]), X, 0).
+offset_of(let(_, _, add, [tmp(X), const(N)]), X, N).
+offset_of(let(_, _, add, [const(N), tmp(X)]), X, N).
+offset_of(let(_, _, sub, [tmp(X), const(N)]), X, D) :- D is -N.
+offset_of(let(_, _, copy, [tmp(X)]), X, 0).
 
 %! address_temps(+Func, -Addrs) is det.
 %
@@ -156,13 +156,13 @@ offset_of(ins(_, _, copy, [t(X)]), X, 0).
 %  each temp derived from one by constant offsets, whatever the class.
 
 address_temps(func(_, _, _, _, Blocks), Addrs) :-
-    findall(I, ( member(blk(_, _, Is, _), Blocks), member(I, Is) ), Insts),
-    findall(A-(A-0), member(ins(t(A), _, alloc(_), _), Insts), AllocPairs),
+    findall(I, ( member(block(_, _, Is, _), Blocks), member(I, Is) ), Insts),
+    findall(A-(A-0), member(let(tmp(A), _, alloc(_), _), Insts), AllocPairs),
     list_to_assoc(AllocPairs, Addrs0),
     % edge(Pos, D, N): instruction Pos defines D as the source plus N.
     findall(X-edge(Pos, D, N),
             ( nth0(Pos, Insts, Ins),
-              Ins = ins(t(D), _, _, _),
+              Ins = let(tmp(D), _, _, _),
               offset_of(Ins, X, N) ),
             Edges0),
     keysort(Edges0, Edges1),
@@ -202,14 +202,14 @@ pair_assoc(K-V, Assoc0, Assoc) :-
 %  Counts is the assoc Temp -> number of definitions of Temp in Func
 %  (parameters, phis, instructions and call results).
 def_counts(func(_, _, _, Params, Blocks), Counts) :-
-    findall(N, member(par(_, t(N)), Params), ParamDefs),
+    findall(N, member(param(_, tmp(N)), Params), ParamDefs),
     findall(N,
-            ( member(blk(_, Phis, Insts, _), Blocks),
-              (   member(phi(t(N), _, _), Phis)
-              ;   member(ins(t(N), _, _, _), Insts)
-              ;   member(call(to(t(N), _), _, _), Insts)
+            ( member(block(_, Phis, Insts, _), Blocks),
+              (   member(phi(tmp(N), _, _), Phis)
+              ;   member(let(tmp(N), _, _, _), Insts)
+              ;   member(call(result(tmp(N), _), _, _), Insts)
               ;   member(call(tuple(Rs), _, _), Insts),
-                  member(to(t(N), _), Rs)
+                  member(result(tmp(N), _), Rs)
               ) ),
             BlockDefs),
     append(ParamDefs, BlockDefs, Defs),

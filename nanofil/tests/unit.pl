@@ -139,10 +139,10 @@ test(jnz_tests_low_32_bits) :-
 % truncates toward zero.
 test(division_by_zero_and_overflow) :-
     ir_module([
-        func(f, export, w, [par(w, t(a)), par(w, t(b))], [
-            blk(s, [], [
-                ins(t(q), w, div, [t(a), t(b)])
-            ], ret(t(q)))
+        func(f, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+            block(s, [], [
+                let(tmp(q), w, div, [tmp(a), tmp(b)])
+            ], ret(tmp(q)))
         ])
     ], M),
     module_fn_args_outcome(M, f, [5, 0], ub(division_by_zero)),
@@ -155,10 +155,10 @@ test(division_by_zero_and_overflow) :-
 test(store_past_allocation) :-
     ir_module([
         func(f, export, void, [], [
-            blk(s, [], [
-                ins(t(p), l, alloc(4), [c(4)]),
-                ins(t(q), l, add, [t(p), c(1)]),
-                store(w, c(0), t(q))
+            block(s, [], [
+                let(tmp(p), l, alloc(4), [const(4)]),
+                let(tmp(q), l, add, [tmp(p), const(1)]),
+                store(w, const(0), tmp(q))
             ], ret)
         ])
     ], M),
@@ -169,16 +169,16 @@ test(store_past_allocation) :-
 test(use_after_return) :-
     ir_module([
         func(leak, local, l, [], [
-            blk(s, [], [
-                ins(t(p), l, alloc(8), [c(8)]),
-                store(l, c(1), t(p))
-            ], ret(t(p)))
+            block(s, [], [
+                let(tmp(p), l, alloc(8), [const(8)]),
+                store(l, const(1), tmp(p))
+            ], ret(tmp(p)))
         ]),
         func(f, export, l, [], [
-            blk(s, [], [
-                call(to(t(p), l), glo(leak), []),
-                ins(t(v), l, load(l), [t(p)])
-            ], ret(t(v)))
+            block(s, [], [
+                call(result(tmp(p), l), global(leak), []),
+                let(tmp(v), l, load(l), [tmp(p)])
+            ], ret(tmp(v)))
         ])
     ], M),
     module_fn_args_outcome(M, f, [], ub(out_of_bounds(_, 8))).
@@ -187,12 +187,12 @@ test(use_after_return) :-
 % bounds.
 test(data_overrun) :-
     ir_module([
-        data(d, local, 8, [item(w, c(1))]),
+        data(d, local, 8, [item(w, const(1))]),
         func(f, export, w, [], [
-            blk(s, [], [
-                ins(t(p), l, add, [glo(d), c(2)]),
-                ins(t(v), w, load(sw), [t(p)])
-            ], ret(t(v)))
+            block(s, [], [
+                let(tmp(p), l, add, [global(d), const(2)]),
+                let(tmp(v), w, load(sw), [tmp(p)])
+            ], ret(tmp(v)))
         ])
     ], M),
     module_fn_args_outcome(M, f, [], ub(out_of_bounds(_, 4))).
@@ -202,32 +202,32 @@ test(data_overrun) :-
 test(uninitialized_bytes_are_unknown) :-
     ir_module([
         func(f, export, w, [], [
-            blk(s, [], [
-                ins(t(p), l, alloc(4), [c(4)]),
-                store(h, c(4660), t(p)),
-                ins(t(v), w, load(sw), [t(p)])
-            ], ret(t(v)))
+            block(s, [], [
+                let(tmp(p), l, alloc(4), [const(4)]),
+                store(h, const(4660), tmp(p)),
+                let(tmp(v), w, load(sw), [tmp(p)])
+            ], ret(tmp(v)))
         ])
     ], M),
     module_fn_args_outcome(M, f, [], ret(V)),
     var(V),
     V mod 65536 #= 4660.
 
-% hlt is its own outcome.
-test(hlt) :-
+% unreachable is its own outcome.
+test(unreachable) :-
     ir_module([
         func(f, export, void, [], [
-            blk(s, [], [], hlt)
+            block(s, [], [], unreachable)
         ])
     ], M),
-    module_fn_args_outcome(M, f, [], hlt).
+    module_fn_args_outcome(M, f, [], unreachable).
 
 % An infinite loop ends as out_of_fuel.
 test(out_of_fuel) :-
     ir_module([
         func(f, export, void, [], [
-            blk(s, [], [], jmp(l)),
-            blk(l, [], [], jmp(l))
+            block(s, [], [], goto(l)),
+            block(l, [], [], goto(l))
         ])
     ], M),
     module_fn_args_outcome(M, f, [], out_of_fuel).
@@ -237,44 +237,44 @@ test(out_of_fuel) :-
 % 3x + 1 = 7 (mod 2^32) has the unique solution x = 2.
 test(backwards_find_input) :-
     ir_module([
-        func(f, export, w, [par(w, t(x))], [
-            blk(s, [], [
-                ins(t(y), w, mul, [t(x), c(3)]),
-                ins(t(z), w, add, [t(y), c(1)])
-            ], ret(t(z)))
+        func(f, export, w, [param(w, tmp(x))], [
+            block(s, [], [
+                let(tmp(y), w, mul, [tmp(x), const(3)]),
+                let(tmp(z), w, add, [tmp(y), const(1)])
+            ], ret(tmp(z)))
         ])
     ], M),
     run(M, f, [X], 10, ret(7)),
     once(labeling([], [X])),
     X =:= 2.
 
-% Which input reaches hlt? Only x = 12345, found by propagation alone.
+% Which input reaches unreachable? Only x = 12345, found by propagation alone.
 test(backwards_reach_hlt) :-
     ir_module([
-        func(f, export, w, [par(w, t(x))], [
-            blk(s, [], [
-                ins(t(c), w, cmp(eq, w), [t(x), c(12345)])
-            ], jnz(t(c), bad, ok)),
-            blk(bad, [], [], hlt),
-            blk(ok, [], [], ret(c(0)))
+        func(f, export, w, [param(w, tmp(x))], [
+            block(s, [], [
+                let(tmp(c), w, cmp(eq, w), [tmp(x), const(12345)])
+            ], branch(tmp(c), bad, ok)),
+            block(bad, [], [], unreachable),
+            block(ok, [], [], ret(const(0)))
         ])
     ], M),
-    run(M, f, [X], 10, hlt),
+    run(M, f, [X], 10, unreachable),
     X == 12345.
 
 % Signed division by 2 is not an arithmetic shift: they differ at -1
 % (-1 / 2 = 0, -1 >> 1 = -1).
 test(backwards_counterexample) :-
     ir_module([
-        func(d, export, w, [par(w, t(x))], [
-            blk(s, [], [
-                ins(t(y), w, div, [t(x), c(2)])
-            ], ret(t(y)))
+        func(d, export, w, [param(w, tmp(x))], [
+            block(s, [], [
+                let(tmp(y), w, div, [tmp(x), const(2)])
+            ], ret(tmp(y)))
         ]),
-        func(s, export, w, [par(w, t(x))], [
-            blk(s, [], [
-                ins(t(y), w, sar, [t(x), c(1)])
-            ], ret(t(y)))
+        func(s, export, w, [param(w, tmp(x))], [
+            block(s, [], [
+                let(tmp(y), w, sar, [tmp(x), const(1)])
+            ], ret(tmp(y)))
         ])
     ], M),
     run(M, d, [X], 10, ret(A)),
@@ -293,40 +293,40 @@ test(backwards_counterexample) :-
 % A w temporary cannot be read as l.
 test(rejects_w_temp_as_l) :-
     rejected_with([
-        func(f, export, l, [par(w, t(a))], [
-            blk(s, [], [
-                ins(t(b), l, add, [t(a), c(1)])
-            ], ret(t(b)))
+        func(f, export, l, [param(w, tmp(a))], [
+            block(s, [], [
+                let(tmp(b), l, add, [tmp(a), const(1)])
+            ], ret(tmp(b)))
         ])
     ],
-                  "t(a) has class w but is used as l").
+                  "tmp(a) has class w but is used as l").
 % The entry block cannot be a jump target.
 test(rejects_jump_to_entry) :-
     rejected_with([
         func(f, export, void, [], [
-            blk(s, [], [], jmp(s))
+            block(s, [], [], goto(s))
         ])
     ],
                   "jump to the entry block").
 % A phi needs an argument for every predecessor.
 test(rejects_missing_phi_argument) :-
     rejected_with([
-        func(f, export, w, [par(w, t(a))], [
-            blk(s, [], [], jnz(t(a), x, y)),
-            blk(x, [], [], jmp(y)),
-            blk(y, [
-                phi(t(v), w, [x-c(1)])
-            ], [], ret(t(v)))
+        func(f, export, w, [param(w, tmp(a))], [
+            block(s, [], [], branch(tmp(a), x, y)),
+            block(x, [], [], goto(y)),
+            block(y, [
+                phi(tmp(v), w, [x-const(1)])
+            ], [], ret(tmp(v)))
         ])
     ],
                   "predecessors are").
 % Unsupported instructions are refused with their line.
 test(rejects_unknown_instruction) :-
     rejected_with([
-        func(f, export, w, [par(w, t(a))], [
-            blk(s, [], [
-                ins(t(b), w, sqrt, [t(a)])
-            ], ret(t(b)))
+        func(f, export, w, [param(w, tmp(a))], [
+            block(s, [], [
+                let(tmp(b), w, sqrt, [tmp(a)])
+            ], ret(tmp(b)))
         ])
     ],
                   "unknown instruction sqrt").
@@ -351,7 +351,7 @@ test(float_bits_read_back) :-
                            d-9218868437227405311, d-9223372036854775808,
                            d-18444492273895866373]),
            ( M = module([func(f, export, K, [],
-                              [blk(start, [], [], ret(c(Bits)))])]),
+                              [block(start, [], [], ret(const(Bits)))])]),
              valid_module(M), reads_back(M) )).
 
 test(float_arithmetic_ieee) :-
@@ -368,22 +368,22 @@ test(float_arithmetic_ieee) :-
 test(float_validator) :-
     forall(member(Op, [rem, urem, udiv, and, or, xor, sar, shr, shl]),
            ( M = module([func(f, local, s, [],
-                              [blk(start, [], [ins(t(x), s, Op, [c(0), c(0)])],
-                                   ret(t(x)))])]),
+                              [block(start, [], [let(tmp(x), s, Op, [const(0), const(0)])],
+                                   ret(tmp(x)))])]),
              catch((valid_module(M), fail), nanofil_error(_), true) )),
     rejected_with([
-        func(f, local, w, [par(s, t(x))], [
-            blk(start, [], [
-                ins(t(y), w, copy, [t(x)])
-            ], ret(t(y)))
+        func(f, local, w, [param(s, tmp(x))], [
+            block(start, [], [
+                let(tmp(y), w, copy, [tmp(x)])
+            ], ret(tmp(y)))
         ])
     ],
                   "has class s but is used as w"),
     rejected_with([
-        func(f, local, w, [par(s, t(x))], [
-            blk(start, [], [
-                ins(t(y), w, cmp(sle, s), [t(x), t(x)])
-            ], ret(t(y)))
+        func(f, local, w, [param(s, tmp(x))], [
+            block(start, [], [
+                let(tmp(y), w, cmp(sle, s), [tmp(x), tmp(x)])
+            ], ret(tmp(y)))
         ])
     ],
                   "unknown instruction cmp(sle,s)").
@@ -410,10 +410,10 @@ test(float_conversion_ub) :-
 
 test(float_unknown_is_incomplete) :-
     ir_module([
-        func(f, local, d, [par(d, t(x))], [
-            blk(start, [], [
-                ins(t(y), d, add, [t(x), c(4607182418800017408)])
-            ], ret(t(y)))
+        func(f, local, d, [param(d, tmp(x))], [
+            block(start, [], [
+                let(tmp(y), d, add, [tmp(x), const(4607182418800017408)])
+            ], ret(tmp(y)))
         ])
     ], M),
     catch((run(M, f, [_], 10, _), fail), error(instantiation_error, _), true),
@@ -427,18 +427,18 @@ test(float_unknown_is_incomplete) :-
 test(float_filc_memory) :-
     ir_module([
         func(f, local, l, [], [
-            blk(start, [], [
-                ins(t(p), p, alloc(8), [c(16)]),
-                ins(t(q), p, add, [t(p), c(8)]),
-                store(s, c(2147483648), t(p)),
-                store(d, c(18444492273895866370), t(q)),
-                ins(t(s), s, load(s), [t(p)]),
-                ins(t(d), d, load(d), [t(q)]),
-                ins(t(w), w, cast, [t(s)]),
-                ins(t(l), l, cast, [t(d)]),
-                ins(t(v), l, ext(uw), [t(w)]),
-                ins(t(r), l, xor, [t(l), t(v)])
-            ], ret(t(r)))
+            block(start, [], [
+                let(tmp(p), p, alloc(8), [const(16)]),
+                let(tmp(q), p, add, [tmp(p), const(8)]),
+                store(s, const(2147483648), tmp(p)),
+                store(d, const(18444492273895866370), tmp(q)),
+                let(tmp(s), s, load(s), [tmp(p)]),
+                let(tmp(d), d, load(d), [tmp(q)]),
+                let(tmp(w), w, cast, [tmp(s)]),
+                let(tmp(l), l, cast, [tmp(d)]),
+                let(tmp(v), l, ext(uw), [tmp(w)]),
+                let(tmp(r), l, xor, [tmp(l), tmp(v)])
+            ], ret(tmp(r)))
         ])
     ], M),
     Expected is xor(18444492273895866370, 2147483648),
@@ -449,36 +449,36 @@ test(float_filc_memory) :-
 % A p temporary cannot be read as l without ptoi.
 test(rejects_p_as_l) :-
     rejected_with([
-        func(f, export, l, [par(p, t(a))], [
-            blk(s, [], [
-                ins(t(b), l, add, [t(a), c(1)])
-            ], ret(t(b)))
+        func(f, export, l, [param(p, tmp(a))], [
+            block(s, [], [
+                let(tmp(b), l, add, [tmp(a), const(1)])
+            ], ret(tmp(b)))
         ])
     ],
-                  "t(a) has class p but is used as l (use ptoi)").
+                  "tmp(a) has class p but is used as l (use ptoi)").
 % In a Fil-C module (one using p), an l temporary cannot be used as an
 % address without itop.
 test(rejects_l_as_p) :-
     rejected_with([
-        func(f, export, w, [par(l, t(a))], [
-            blk(s, [], [
-                ins(t(v), w, load(sw), [t(a)])
-            ], ret(t(v)))
+        func(f, export, w, [param(l, tmp(a))], [
+            block(s, [], [
+                let(tmp(v), w, load(sw), [tmp(a)])
+            ], ret(tmp(v)))
         ]),
         func(g, export, p, [], [
-            blk(s, [], [
-                ins(t(q), p, alloc(8), [c(8)])
-            ], ret(t(q)))
+            block(s, [], [
+                let(tmp(q), p, alloc(8), [const(8)])
+            ], ret(tmp(q)))
         ])
     ],
-                  "t(a) has class l but is used as p (use itop)").
+                  "tmp(a) has class l but is used as p (use itop)").
 % Pointers cannot be multiplied.
 test(rejects_pointer_multiply) :-
     rejected_with([
-        func(f, export, p, [par(p, t(a))], [
-            blk(s, [], [
-                ins(t(b), p, mul, [t(a), c(2)])
-            ], ret(t(b)))
+        func(f, export, p, [param(p, tmp(a))], [
+            block(s, [], [
+                let(tmp(b), p, mul, [tmp(a), const(2)])
+            ], ret(tmp(b)))
         ])
     ],
                   "instruction mul cannot have class p").
@@ -487,35 +487,35 @@ test(rejects_l_symbol_in_filc_data) :-
     rejected_with([
         data(d, local, 8, [item(l, sym(d, 0))]),
         func(f, export, p, [], [
-            blk(s, [], [
-                ins(t(q), p, alloc(8), [c(8)])
-            ], ret(t(q)))
+            block(s, [], [
+                let(tmp(q), p, alloc(8), [const(8)])
+            ], ret(tmp(q)))
         ])
     ],
                   "is item(p, sym(d, _))").
 % Fil-C code materializes a symbol with copy before using it.
 test(rejects_symbol_operand_in_filc) :-
     rejected_with([
-        data(d, local, 8, [item(w, c(1))]),
+        data(d, local, 8, [item(w, const(1))]),
         func(f, export, w, [], [
-            blk(s, [], [
-                ins(t(q), p, add, [glo(d), c(4)]),
-                ins(t(v), w, load(sw), [t(q)])
-            ], ret(t(v)))
+            block(s, [], [
+                let(tmp(q), p, add, [global(d), const(4)]),
+                let(tmp(v), w, load(sw), [tmp(q)])
+            ], ret(tmp(v)))
         ])
     ],
-                  "only copy at p reads glo(d)").
+                  "only copy at p reads global(d)").
 
 % Which offsets can a 1-byte read of a 16-byte allocation take without
 % trapping? Exactly 0..15.
 test(in_bounds_offsets) :-
     ir_module([
-        func(f, export, w, [par(l, t(i))], [
-            blk(s, [], [
-                ins(t(p), p, alloc(8), [c(16)]),
-                ins(t(q), p, add, [t(p), t(i)]),
-                ins(t(v), w, load(ub), [t(q)])
-            ], ret(t(v)))
+        func(f, export, w, [param(l, tmp(i))], [
+            block(s, [], [
+                let(tmp(p), p, alloc(8), [const(16)]),
+                let(tmp(q), p, add, [tmp(p), tmp(i)]),
+                let(tmp(v), w, load(ub), [tmp(q)])
+            ], ret(tmp(v)))
         ])
     ], M),
     findall(I,
@@ -544,12 +544,12 @@ test(print_round_trip) :-
 test(data_string_is_bytes) :-
     ir_module([
         data(d, local, 1, [item(b, str(['\\', '0', '0', '1'])),
-                           item(b, c(7))]),
-        func(f, export, w, [par(l, t(i))], [
-            blk(s, [], [
-                ins(t(p), l, add, [glo(d), t(i)]),
-                ins(t(v), w, load(ub), [t(p)])
-            ], ret(t(v)))
+                           item(b, const(7))]),
+        func(f, export, w, [param(l, tmp(i))], [
+            block(s, [], [
+                let(tmp(p), l, add, [global(d), tmp(i)]),
+                let(tmp(v), w, load(ub), [tmp(p)])
+            ], ret(tmp(v)))
         ])
     ], M),
     module_fn_args_outcome(M, f, [1], ret(48)),
@@ -566,20 +566,20 @@ test(data_string_is_bytes) :-
 % the loop (read in b and as d's phi argument on the edge from c), z
 % only on the edge b -> d, and w is defined by d's phi.
 loop_cfg_text([
-    func(f, export, w, [par(w, t(p))], [
-        blk(s, [], [
-            ins(t(x), w, copy, [t(p)]),
-            ins(t(y), w, copy, [c(1)])
-        ], jmp(a)),
-        blk(a, [], [], jnz(t(x), b, c)),
-        blk(b, [], [
-            ins(t(z), w, add, [t(y), c(1)])
-        ], jmp(d)),
-        blk(c, [], [], jmp(d)),
-        blk(d, [
-            phi(t(w), w, [b-t(z), c-t(y)])
-        ], [], jnz(t(w), a, e)),
-        blk(e, [], [], ret(t(x)))
+    func(f, export, w, [param(w, tmp(p))], [
+        block(s, [], [
+            let(tmp(x), w, copy, [tmp(p)]),
+            let(tmp(y), w, copy, [const(1)])
+        ], goto(a)),
+        block(a, [], [], branch(tmp(x), b, c)),
+        block(b, [], [
+            let(tmp(z), w, add, [tmp(y), const(1)])
+        ], goto(d)),
+        block(c, [], [], goto(d)),
+        block(d, [
+            phi(tmp(w), w, [b-tmp(z), c-tmp(y)])
+        ], [], branch(tmp(w), a, e)),
+        block(e, [], [], ret(tmp(x)))
     ])
 ]).
 
@@ -611,18 +611,18 @@ test(temp_liveness) :-
 % predecessor must not enter the body. u/v form an irreducible cycle with
 % separate entries, so neither is a natural-loop header. Layout is shuffled.
 test(natural_loop_membership) :-
-    Bs = [blk(s, [], [], jmp(outer)),
-          blk(latch_b, [], [], jmp(outer)),
-          blk(inner, [], [], jnz(t(n), spin, latch_a)),
-          blk(spin, [], [], jmp(inner)),
-          blk(outer, [], [], jnz(t(n), inner, self)),
-          blk(latch_a, [], [], jnz(t(n), outer, latch_b)),
-          blk(dead, [], [], jmp(inner)),
-          blk(self, [], [], jnz(t(n), self, choice)),
-          blk(choice, [], [], jnz(t(n), u, v)),
-          blk(u, [], [], jnz(t(n), v, done)),
-          blk(v, [], [], jnz(t(n), u, done)),
-          blk(done, [], [], ret)],
+    Bs = [block(s, [], [], goto(outer)),
+          block(latch_b, [], [], goto(outer)),
+          block(inner, [], [], branch(tmp(n), spin, latch_a)),
+          block(spin, [], [], goto(inner)),
+          block(outer, [], [], branch(tmp(n), inner, self)),
+          block(latch_a, [], [], branch(tmp(n), outer, latch_b)),
+          block(dead, [], [], goto(inner)),
+          block(self, [], [], branch(tmp(n), self, choice)),
+          block(choice, [], [], branch(tmp(n), u, v)),
+          block(u, [], [], branch(tmp(n), v, done)),
+          block(v, [], [], branch(tmp(n), u, done)),
+          block(done, [], [], ret)],
     func_cfg(Bs, Cfg),
     cfg_idoms(Cfg, Idom),
     natural_loops(Cfg, Idom, Loops),
@@ -636,32 +636,32 @@ test(natural_loop_membership) :-
 % signed subtraction must give the same modular offset. Loads, casts,
 % variable offsets and phis get their own opaque bases, not an alloc's.
 test(alias_base_offsets) :-
-    F = func(f, export, p, [par(p, t(p)), par(l, t(n)), par(w, t(c))],
-             [blk(s, [],
-                  [ins(t(a), p, alloc(8), [c(32)]),
-                   ins(t(a4), p, add, [t(a), c(4)]),
-                   ins(t(wrap), p, add, [t(a4), c(18446744073709551615)]),
-                   ins(t(back), p, sub, [t(wrap), c(-1)]),
-                   ins(t(q), p, copy, [t(p)]),
-                   ins(t(q9), p, add, [t(q), c(9)]),
-                   ins(t(g), p, copy, [glo(global)]),
-                   ins(t(raw), l, ptoi, [t(a)]),
-                   ins(t(cast), p, itop, [t(raw)]),
-                   ins(t(loaded), p, load(p), [t(a)]),
-                   ins(t(loaded3), p, add, [t(loaded), c(3)]),
-                   call(to(t(called), p), glo(external), []),
-                   ins(t(vary), p, add, [t(a), t(n)]),
-                   ins(t(narrow), w, copy, [t(n)]),
-                   ins(t(wide), l, ext(uw), [t(narrow)]),
-                   ins(t(nplus), l, sub, [t(n), c(18446744073709551615)]),
-                   ins(t(nwrap), l, add, [c(18446744073709551616), t(n)])],
-                  jnz(t(c), left, right)),
-              blk(left, [], [], jmp(join)),
-              blk(right, [], [], jmp(join)),
-              blk(join, [phi(t(merged), p, [left-t(a), right-t(q)])],
-                  [ins(t(result), p, add, [t(merged), c(5)])],
-                  ret(t(result)))]),
-    once(valid_module(module([data(global, local, 8, [item(l, c(7))]),
+    F = func(f, export, p, [param(p, tmp(p)), param(l, tmp(n)), param(w, tmp(c))],
+             [block(s, [],
+                  [let(tmp(a), p, alloc(8), [const(32)]),
+                   let(tmp(a4), p, add, [tmp(a), const(4)]),
+                   let(tmp(wrap), p, add, [tmp(a4), const(18446744073709551615)]),
+                   let(tmp(back), p, sub, [tmp(wrap), const(-1)]),
+                   let(tmp(q), p, copy, [tmp(p)]),
+                   let(tmp(q9), p, add, [tmp(q), const(9)]),
+                   let(tmp(g), p, copy, [global(global)]),
+                   let(tmp(raw), l, ptoi, [tmp(a)]),
+                   let(tmp(cast), p, itop, [tmp(raw)]),
+                   let(tmp(loaded), p, load(p), [tmp(a)]),
+                   let(tmp(loaded3), p, add, [tmp(loaded), const(3)]),
+                   call(result(tmp(called), p), global(external), []),
+                   let(tmp(vary), p, add, [tmp(a), tmp(n)]),
+                   let(tmp(narrow), w, copy, [tmp(n)]),
+                   let(tmp(wide), l, ext(uw), [tmp(narrow)]),
+                   let(tmp(nplus), l, sub, [tmp(n), const(18446744073709551615)]),
+                   let(tmp(nwrap), l, add, [const(18446744073709551616), tmp(n)])],
+                  branch(tmp(c), left, right)),
+              block(left, [], [], goto(join)),
+              block(right, [], [], goto(join)),
+              block(join, [phi(tmp(merged), p, [left-tmp(a), right-tmp(q)])],
+                  [let(tmp(result), p, add, [tmp(merged), const(5)])],
+                  ret(tmp(result)))]),
+    once(valid_module(module([data(global, local, 8, [item(l, const(7))]),
                               F]))),
     alias_facts(F, Facts),
     forall(member(T-A, [a-addr(p, alloc(a), 0),
@@ -688,50 +688,50 @@ test(alias_base_offsets) :-
 % Each alloc used one way that makes it escape, and one that does not.
 test(escape_classes) :-
     ir_module([
-        func(f, export, w, [par(l, t(n))], [
-            blk(s, [], [
-                ins(t(a), p, alloc(4), [c(8)]),
-                ins(t(b), p, add, [t(a), c(4)]),
-                store(w, c(1), t(a)),
-                store(w, c(2), t(b)),
-                ins(t(v), w, load(sw), [t(b)]),
-                ins(t(e), p, alloc(8), [c(8)]),
-                call(void, glo(g), [arg(p, t(e))]),
-                ins(t(f), p, alloc(8), [c(8)]),
-                ins(t(i), l, ptoi, [t(f)]),
-                ins(t(h), p, alloc(8), [c(8)]),
-                ins(t(q), p, add, [t(h), t(n)]),
-                ins(t(m), p, alloc(8), [c(8)]),
-                ins(t(z), p, alloc(8), [c(8)]),
-                store(p, t(m), t(z))
-            ], ret(t(v)))
+        func(f, export, w, [param(l, tmp(n))], [
+            block(s, [], [
+                let(tmp(a), p, alloc(4), [const(8)]),
+                let(tmp(b), p, add, [tmp(a), const(4)]),
+                store(w, const(1), tmp(a)),
+                store(w, const(2), tmp(b)),
+                let(tmp(v), w, load(sw), [tmp(b)]),
+                let(tmp(e), p, alloc(8), [const(8)]),
+                call(void, global(g), [arg(p, tmp(e))]),
+                let(tmp(f), p, alloc(8), [const(8)]),
+                let(tmp(i), l, ptoi, [tmp(f)]),
+                let(tmp(h), p, alloc(8), [const(8)]),
+                let(tmp(q), p, add, [tmp(h), tmp(n)]),
+                let(tmp(m), p, alloc(8), [const(8)]),
+                let(tmp(z), p, alloc(8), [const(8)]),
+                store(p, tmp(m), tmp(z))
+            ], ret(tmp(v)))
         ])
     ], M),
     M = module([F]),
     alloc_classes(F, Cs),
-    Cs == [a-local(c(8), [acc(0, w), acc(4, w)]),
+    Cs == [a-local(const(8), [acc(0, w), acc(4, w)]),
            e-escapes(call),
            f-escapes(ptoi),
            h-escapes(add),
            m-escapes(stored),
-           z-local(c(8), [acc(0, p)])].
+           z-local(const(8), [acc(0, p)])].
 
 % Fil-C allocations are zero: a read before any write gives 0, and a
 % pointer read before any write has no capability, so using it traps.
 test(promote_reads_zero_in_filc) :-
     ir_module([
         func(f, export, w, [], [
-            blk(s, [], [
-                ins(t(s), p, alloc(4), [c(4)]),
-                ins(t(v), w, load(sw), [t(s)])
-            ], ret(t(v)))
+            block(s, [], [
+                let(tmp(s), p, alloc(4), [const(4)]),
+                let(tmp(v), w, load(sw), [tmp(s)])
+            ], ret(tmp(v)))
         ]),
         func(g, export, w, [], [
-            blk(s, [], [
-                ins(t(s), p, alloc(8), [c(8)]),
-                ins(t(q), p, load(p), [t(s)]),
-                ins(t(v), w, load(sw), [t(q)])
-            ], ret(t(v)))
+            block(s, [], [
+                let(tmp(s), p, alloc(8), [const(8)]),
+                let(tmp(q), p, load(p), [tmp(s)]),
+                let(tmp(v), w, load(sw), [tmp(q)])
+            ], ret(tmp(v)))
         ])
     ], M0),
     optimize(o1, M0, M),
@@ -761,8 +761,8 @@ test(promote_removes_allocs) :-
     findall(Fn,
             ( C = module(Is),
               member(func(Fn, _, _, _, Bs), Is),
-              member(blk(_, _, Ins, _), Bs),
-              member(ins(_, _, alloc(_), _), Ins)
+              member(block(_, _, Ins, _), Bs),
+              member(let(_, _, alloc(_), _), Ins)
             ),
             Kept),
     Kept == [arr, ptrs].
@@ -775,14 +775,14 @@ test(copy_eliminates_aliases) :-
     once(valid_module(M)),
     forall(member(Name, [chain, swap, constants]),
            ( func_named(M, Name, func(_, _, _, _, Bs)),
-             \+ ( member(blk(_, _, Is, _), Bs),
-                  member(ins(_, _, copy, _), Is)
+             \+ ( member(block(_, _, Is, _), Bs),
+                  member(let(_, _, copy, _), Is)
                 )
            )),
-    func_named(M, narrow, func(_, _, _, _, [blk(_, _, Narrow, _)])),
-    findall(K, member(ins(_, K, copy, _), Narrow), [w]),
-    func_named(M, global, func(_, _, _, _, [blk(_, _, Global, _)])),
-    memberchk(ins(_, l, copy, [glo(cell)]), Global),
+    func_named(M, narrow, func(_, _, _, _, [block(_, _, Narrow, _)])),
+    findall(K, member(let(_, K, copy, _), Narrow), [w]),
+    func_named(M, global, func(_, _, _, _, [block(_, _, Global, _)])),
+    memberchk(let(_, l, copy, [global(cell)]), Global),
     func_named(M0, redefined, Redefined),
     func_named(M, redefined, Redefined).
 
@@ -806,12 +806,12 @@ test(copy_eliminates_trivial_phis) :-
              strict_ssa(F, Cfg, Idom)
            )),
     ir_module([
-        func(f, export, w, [par(w, t(n))], [
-            blk(s, [], [], jmp(loop)),
-            blk(loop, [
-                phi(t(p), p, [s-c(0), loop-t(p)])
-            ], [], jnz(t(n), loop, done)),
-            blk(done, [], [], ret(c(7)))
+        func(f, export, w, [param(w, tmp(n))], [
+            block(s, [], [], goto(loop)),
+            block(loop, [
+                phi(tmp(p), p, [s-const(0), loop-tmp(p)])
+            ], [], branch(tmp(n), loop, done)),
+            block(done, [], [], ret(const(7)))
         ])
     ], Literal),
     copy_module(Literal, LiteralKept),
@@ -823,8 +823,8 @@ test(copy_eliminates_trivial_phis) :-
 func_phi_names(M, Name, Names) :-
     func_named(M, Name, func(_, _, _, _, Bs)),
     findall(T,
-            ( member(blk(_, Ps, _, _), Bs),
-              member(phi(t(T), _, _), Ps)
+            ( member(block(_, Ps, _, _), Bs),
+              member(phi(tmp(T), _, _), Ps)
             ),
             Ts),
     sort(Ts, Names).
@@ -833,34 +833,34 @@ func_phi_names(M, Name, Names) :-
 % is not, and neither is one in only one arm of a diamond. A second
 % definition in a dominating block is enough (memory.ir's twice).
 test(definitions_dominate_uses) :-
-    Later = func(f, export, l, [par(l, t(x))], [
-        blk(s, [], [
-            ins(t(a), l, copy, [t(b)]),
-            ins(t(b), l, add, [t(x), c(1)])
-        ], ret(t(a)))
+    Later = func(f, export, l, [param(l, tmp(x))], [
+        block(s, [], [
+            let(tmp(a), l, copy, [tmp(b)]),
+            let(tmp(b), l, add, [tmp(x), const(1)])
+        ], ret(tmp(a)))
     ]),
     catch(( valid_module(module([Later])), fail ), nanofil_error(M1), true),
-    M1 == 'in f: t(b) is used in block s, which no definition dominates',
-    Arm = func(g, export, w, [par(w, t(x))], [
-        blk(s, [], [ins(t(y), w, copy, [c(0)])], jnz(t(x), l, r)),
-        blk(l, [], [ins(t(y), w, copy, [c(1)]), ins(t(z), w, copy, [c(2)])],
-            jmp(j)),
-        blk(r, [], [], jmp(j)),
-        blk(j, [], [], ret(t(z)))
+    M1 == 'in f: tmp(b) is used in block s, which no definition dominates',
+    Arm = func(g, export, w, [param(w, tmp(x))], [
+        block(s, [], [let(tmp(y), w, copy, [const(0)])], branch(tmp(x), l, r)),
+        block(l, [], [let(tmp(y), w, copy, [const(1)]), let(tmp(z), w, copy, [const(2)])],
+            goto(j)),
+        block(r, [], [], goto(j)),
+        block(j, [], [], ret(tmp(z)))
     ]),
     catch(( valid_module(module([Arm])), fail ), nanofil_error(M2), true),
-    M2 == 'in g: t(z) is used in block j, which no definition dominates',
-    Arm = func(G, E, R, Ps, [S, L, Rt, blk(j, [], [], ret(t(z)))]),
-    valid_module(module([func(G, E, R, Ps, [S, L, Rt, blk(j, [], [], ret(t(y)))])])).
+    M2 == 'in g: tmp(z) is used in block j, which no definition dominates',
+    Arm = func(G, E, R, Ps, [S, L, Rt, block(j, [], [], ret(tmp(z)))]),
+    valid_module(module([func(G, E, R, Ps, [S, L, Rt, block(j, [], [], ret(tmp(y)))])])).
 
 % copy leaves a literal pointer copy, which keeps the module Fil-C,
 % unchanged.
 test(copy_keeps_literal_pointer_copy) :-
     ir_module([
         func(f, export, w, [], [
-            blk(s, [], [
-                ins(t(p), p, copy, [c(0)])
-            ], ret(c(7)))
+            block(s, [], [
+                let(tmp(p), p, copy, [const(0)])
+            ], ret(const(7)))
         ])
     ], Literal),
     copy_module(Literal, Kept),
@@ -873,15 +873,15 @@ test(copy_removes_gc_aliases) :-
     file_module('../tests/filc/gc.ir', M0),
     M0 = module(Items0),
     member(func(_, _, _, _, Bs0), Items0),
-    member(blk(_, _, Is0, _), Bs0),
-    member(ins(_, p, copy, _), Is0),
+    member(block(_, _, Is0, _), Bs0),
+    member(let(_, p, copy, _), Is0),
     !,
     optimize(o1, M0, M),
     once(valid_module(M)),
     M = module(Items),
     \+ ( member(func(_, _, _, _, Bs), Items),
-         member(blk(_, _, Is, _), Bs),
-         member(ins(_, p, copy, _), Is)
+         member(block(_, _, Is, _), Bs),
+         member(let(_, p, copy, _), Is)
        ),
     func_phi_names(M, sum, [j, left, p, right, s]).
 
@@ -889,29 +889,29 @@ test(copy_removes_gc_aliases) :-
 % including object identity: equal offsets in different objects are not equal.
 test(copy_preserves_pointer_identity) :-
     ir_module([
-        func(f, export, p, [par(w, t(which))], [
-            blk(s, [], [
-                ins(t(a), p, alloc(8), [c(8)]),
-                ins(t(b), p, alloc(8), [c(8)]),
-                ins(t(x), p, copy, [t(a)]),
-                ins(t(y), p, copy, [t(b)])
-            ], jnz(t(which), left, right)),
-            blk(left, [], [], jmp(join)),
-            blk(right, [], [], jmp(join)),
-            blk(join, [
-                phi(t(p), p, [left-t(x), right-t(y)])
+        func(f, export, p, [param(w, tmp(which))], [
+            block(s, [], [
+                let(tmp(a), p, alloc(8), [const(8)]),
+                let(tmp(b), p, alloc(8), [const(8)]),
+                let(tmp(x), p, copy, [tmp(a)]),
+                let(tmp(y), p, copy, [tmp(b)])
+            ], branch(tmp(which), left, right)),
+            block(left, [], [], goto(join)),
+            block(right, [], [], goto(join)),
+            block(join, [
+                phi(tmp(p), p, [left-tmp(x), right-tmp(y)])
             ], [
-                ins(t(q), p, copy, [t(p)])
-            ], ret(t(q)))
+                let(tmp(q), p, copy, [tmp(p)])
+            ], ret(tmp(q)))
         ]),
         func(raw, export, p, [], [
-            blk(s, [], [
-                ins(t(a), p, alloc(8), [c(8)]),
-                ins(t(p), p, copy, [t(a)]),
-                ins(t(i), l, ptoi, [t(p)]),
-                ins(t(raw), p, itop, [t(i)]),
-                ins(t(q), p, copy, [t(raw)])
-            ], ret(t(q)))
+            block(s, [], [
+                let(tmp(a), p, alloc(8), [const(8)]),
+                let(tmp(p), p, copy, [tmp(a)]),
+                let(tmp(i), l, ptoi, [tmp(p)]),
+                let(tmp(raw), p, itop, [tmp(i)]),
+                let(tmp(q), p, copy, [tmp(raw)])
+            ], ret(tmp(q)))
         ])
     ], M0),
     copy_module(M0, M),
@@ -986,16 +986,16 @@ test(symbolic_optimized_returns) :-
 % symbolic query must find the first value above 2^32, not bless the pass.
 test(symbolic_finds_narrowing_error) :-
     ir_module([
-        func(f, export, l, [par(l, t(x))], [
-            blk(s, [], [
-                ins(t(w), w, copy, [t(x)]),
-                ins(t(r), l, ext(uw), [t(w)])
-            ], ret(t(r)))
+        func(f, export, l, [param(l, tmp(x))], [
+            block(s, [], [
+                let(tmp(w), w, copy, [tmp(x)]),
+                let(tmp(r), l, ext(uw), [tmp(w)])
+            ], ret(tmp(r)))
         ])
     ], Before),
     ir_module([
-        func(f, export, l, [par(l, t(x))], [
-            blk(s, [], [], ret(t(x)))
+        func(f, export, l, [param(l, tmp(x))], [
+            block(s, [], [], ret(tmp(x)))
         ])
     ], Wrong),
     X in 4294967296..4294967311,
@@ -1034,15 +1034,15 @@ test(refines) :-
 test(indirect_call_reads_pointer_result_as_int) :-
     ir_module([
         func(k, local, p, [], [
-            blk(s, [], [
-                ins(t(p), p, alloc(8), [c(16)])
-            ], ret(t(p)))
+            block(s, [], [
+                let(tmp(p), p, alloc(8), [const(16)])
+            ], ret(tmp(p)))
         ]),
         func(m, export, w, [], [
-            blk(s, [], [
-                ins(t(f), p, copy, [glo(k)]),
-                call(to(t(r), w), t(f), [])
-            ], ret(t(r)))
+            block(s, [], [
+                let(tmp(f), p, copy, [global(k)]),
+                call(result(tmp(r), w), tmp(f), [])
+            ], ret(tmp(r)))
         ])
     ], M),
     module_fn_args_outcome(M, m, [], Out),
@@ -1051,41 +1051,41 @@ test(indirect_call_reads_pointer_result_as_int) :-
 
 test(variadic_slot_stays_in_memory) :-
     ir_module([
-        func(f, export, l, [par(p, t(args))], [
-            blk(s, [], [
-                ins(t(slot), p, alloc(8), [c(24)]),
-                store(p, t(args), t(slot)),
-                ins(t(x), l, va_arg, [t(slot)])
-            ], ret(t(x)))
+        func(f, export, l, [param(p, tmp(args))], [
+            block(s, [], [
+                let(tmp(slot), p, alloc(8), [const(24)]),
+                store(p, tmp(args), tmp(slot)),
+                let(tmp(x), l, va_arg, [tmp(slot)])
+            ], ret(tmp(x)))
         ])
     ], M0),
     optimize(o1, M0, M), valid_module(M),
-    M = module([F]), F = func(_, _, _, _, [blk(_, _, Is, _)]),
-    member(ins(Slot, p, alloc(8), [c(24)]), Is),
-    member(ins(_, l, va_arg, [Slot]), Is),
+    M = module([F]), F = func(_, _, _, _, [block(_, _, Is, _)]),
+    member(let(Slot, p, alloc(8), [const(24)]), Is),
+    member(let(_, l, va_arg, [Slot]), Is),
     alloc_classes(F, Classes), memberchk(slot-escapes(va_arg), Classes),
     reads_back(M).
 
 test(variadic_invalid_ir) :-
     rejected_with([
         func(f, local, w, [], [
-            blk(s, [], [
-                ins(t(x), w, va_arg, [c(0)])
-            ], ret(t(x)))
+            block(s, [], [
+                let(tmp(x), w, va_arg, [const(0)])
+            ], ret(tmp(x)))
         ])
     ], "va_arg"),
     rejected_with([
         func(f, local, p, [], [
-            blk(s, [], [
-                ins(t(x), p, va_args, [c(-1)])
-            ], ret(t(x)))
+            block(s, [], [
+                let(tmp(x), p, va_args, [const(-1)])
+            ], ret(tmp(x)))
         ])
     ], "non-negative"),
     rejected_with([
-        func(f, local, p, [par(l, t(n))], [
-            blk(s, [], [
-                ins(t(x), p, va_args, [t(n)])
-            ], ret(t(x)))
+        func(f, local, p, [param(l, tmp(n))], [
+            block(s, [], [
+                let(tmp(x), p, va_args, [tmp(n)])
+            ], ret(tmp(x)))
         ])
     ], "constant").
 
@@ -1095,15 +1095,15 @@ test(setjmp_contract) :-
     module_mode(M, filc),
     promote_module(M, M), copy_module(M, M),
     ir_module([
-        func(f, local, w, [par(p, t(buf))], [
-            blk(s, [], [
-                ins(t(slot), p, alloc(8), [c(8)]),
-                store(w, c(3), t(slot)),
-                ins(t(copy), w, copy, [c(9)]),
-                ins(t(x), w, setjmp('_setjmp'), [t(buf), c(0)]),
-                ins(t(v), w, load(sw), [t(slot)]),
-                ins(t(out), w, add, [t(v), t(copy)])
-            ], ret(t(out)))
+        func(f, local, w, [param(p, tmp(buf))], [
+            block(s, [], [
+                let(tmp(slot), p, alloc(8), [const(8)]),
+                store(w, const(3), tmp(slot)),
+                let(tmp(copy), w, copy, [const(9)]),
+                let(tmp(x), w, setjmp('_setjmp'), [tmp(buf), const(0)]),
+                let(tmp(v), w, load(sw), [tmp(slot)]),
+                let(tmp(out), w, add, [tmp(v), tmp(copy)])
+            ], ret(tmp(out)))
         ])
     ], Kept),
     Kept = module([F]),
@@ -1111,9 +1111,9 @@ test(setjmp_contract) :-
     promote_module(Kept, Kept), copy_module(Kept, Kept),
     ir_module([
         func(f, local, w, [], [
-            blk(s, [], [
-                ins(t(x), w, setjmp(sigsetjmp), [c(0), c(1)])
-            ], ret(t(x)))
+            block(s, [], [
+                let(tmp(x), w, setjmp(sigsetjmp), [const(0), const(1)])
+            ], ret(tmp(x)))
         ])
     ], Null),
     module_mode(Null, filc),
@@ -1121,23 +1121,23 @@ test(setjmp_contract) :-
     Msg == 'interpreter does not support setjmp/nonlocal returns',
     rejected_with([
         func(f, local, w, [], [
-            blk(s, [], [
-                ins(t(x), w, setjmp(setjmp), [c(0), c(1)])
-            ], ret(t(x)))
+            block(s, [], [
+                let(tmp(x), w, setjmp(setjmp), [const(0), const(1)])
+            ], ret(tmp(x)))
         ])
     ], "zero SaveMask"),
     rejected_with([
         func(f, local, w, [], [
-            blk(s, [], [
-                ins(t(x), w, setjmp('_setjmp'), [c(0), c(1)])
-            ], ret(t(x)))
+            block(s, [], [
+                let(tmp(x), w, setjmp('_setjmp'), [const(0), const(1)])
+            ], ret(tmp(x)))
         ])
     ], "zero SaveMask"),
     rejected_with([
         func(f, local, p, [], [
-            blk(s, [], [
-                ins(t(x), p, setjmp(setjmp), [c(0), c(0)])
-            ], ret(t(x)))
+            block(s, [], [
+                let(tmp(x), p, setjmp(setjmp), [const(0), const(0)])
+            ], ret(tmp(x)))
         ])
     ], "class p").
 
@@ -1153,7 +1153,7 @@ test(source_locations) :-
     M = module(Items),
     findall(Fn-Lines,
             ( member(func(Fn, _, _, _, Bs), Items),
-              findall(Ls, ( member(blk(_, _, Is, _), Bs),
+              findall(Ls, ( member(block(_, _, Is, _), Bs),
                             findall(L, member(loc(_, L), Is), Ls) ),
                       Lines) ),
             FnLines),
@@ -1168,22 +1168,22 @@ test(source_locations) :-
 % w store and load fit and return 7; at offset 6 the store reaches b+10.
 test(pizlonate_states_every_check) :-
     ir_module([
-        func(f, export, w, [par(l, t(i))], [
-            blk(s, [], [
-                ins(t(b), p, alloc(8), [c(8)]),
-                ins(t(a), p, add, [t(b), t(i)]),
-                store(w, c(7), t(a)),
-                ins(t(x), w, load(sw), [t(a)])
-            ], ret(t(x)))
+        func(f, export, w, [param(l, tmp(i))], [
+            block(s, [], [
+                let(tmp(b), p, alloc(8), [const(8)]),
+                let(tmp(a), p, add, [tmp(b), tmp(i)]),
+                store(w, const(7), tmp(a)),
+                let(tmp(x), w, load(sw), [tmp(a)])
+            ], ret(tmp(x)))
         ])
     ], M),
     pizlonate_module(M, C),
     valid_module(C),
-    C = module([func(f, E, R, Ps, [blk(s, [], Is, J)])]),
-    Is = [Alloc, Add, ins(t(Q), a, check(0, 4, write, 1), [t(a)]),
-          st(w, 0, c(7), t(Q)),
-          ins(t(Q2), a, check(0, 4, read, 1), [t(a)]),
-          ins(t(x), w, ld(sw, 0), [t(Q2)])],
+    C = module([func(f, E, R, Ps, [block(s, [], Is, J)])]),
+    Is = [Alloc, Add, let(tmp(Q), a, check(0, 4, write, 1), [tmp(a)]),
+          raw_store(w, 0, const(7), tmp(Q)),
+          let(tmp(Q2), a, check(0, 4, read, 1), [tmp(a)]),
+          let(tmp(x), w, raw_load(sw, 0), [tmp(Q2)])],
     Q \== Q2,
     once(run(M, f, [4], 10, ret(7))),
     once(run(C, f, [4], 10, ret(7))),
@@ -1191,44 +1191,44 @@ test(pizlonate_states_every_check) :-
     once(run(C, f, [6], 10, trap(out_of_bounds))),
     [_, _, _, _|Rest] = Is,
     Mutant = module([func(f, E, R, Ps,
-                          [blk(s, [], [Alloc, Add, st(w, 0, c(7), t(a))|Rest],
+                          [block(s, [], [Alloc, Add, raw_store(w, 0, const(7), tmp(a))|Rest],
                                J)])]),
     once(run(Mutant, f, [4], 10, ret(7))),
     once(run(Mutant, f, [6], 10, unchecked(out_of_bounds))),
     catch(( valid_module(Mutant), fail ), nanofil_error(Msg), true),
-    Msg == 'in f: t(a) has class p but is used as a'.
+    Msg == 'in f: tmp(a) has class p but is used as a'.
 
 % Checked IR states which check covers an access, and nothing else may
 % come between them; every loop polls.
 test(checked_ir_rules) :-
-    Weak = func(f, export, l, [par(p, t(a))], [
-        blk(s, [], [
-            ins(t(q), a, check(0, 4, read, 1), [t(a)]),
-            ins(t(x), l, ld(l, 0), [t(q)])
-        ], ret(t(x)))
+    Weak = func(f, export, l, [param(p, tmp(a))], [
+        block(s, [], [
+            let(tmp(q), a, check(0, 4, read, 1), [tmp(a)]),
+            let(tmp(x), l, raw_load(l, 0), [tmp(q)])
+        ], ret(tmp(x)))
     ]),
     catch(( valid_module(module([Weak])), fail ), nanofil_error(M1), true),
-    M1 == 'in f: check t(q) is not followed by an access it covers',
-    Apart = func(f, export, l, [par(p, t(a))], [
-        blk(s, [], [
-            ins(t(q), a, check(0, 8, read, 1), [t(a)]),
-            call(void, glo(g), []),
-            ins(t(x), l, ld(l, 0), [t(q)])
-        ], ret(t(x)))
+    M1 == 'in f: check tmp(q) is not followed by an access it covers',
+    Apart = func(f, export, l, [param(p, tmp(a))], [
+        block(s, [], [
+            let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+            call(void, global(g), []),
+            let(tmp(x), l, raw_load(l, 0), [tmp(q)])
+        ], ret(tmp(x)))
     ]),
     catch(( valid_module(module([Apart])), fail ), nanofil_error(M2), true),
-    M2 == 'in f: check t(q) is not followed by an access it covers',
-    Loop = func(f, export, w, [par(p, t(a))], [
-        blk(s, [], [], jmp(h)),
-        blk(h, [], [
-            ins(t(q), a, check(0, 4, write, 1), [t(a)]),
-            st(w, 0, c(0), t(q))
-        ], jmp(h))
+    M2 == 'in f: check tmp(q) is not followed by an access it covers',
+    Loop = func(f, export, w, [param(p, tmp(a))], [
+        block(s, [], [], goto(h)),
+        block(h, [], [
+            let(tmp(q), a, check(0, 4, write, 1), [tmp(a)]),
+            raw_store(w, 0, const(0), tmp(q))
+        ], goto(h))
     ]),
     catch(( valid_module(module([Loop])), fail ), nanofil_error(M3), true),
     M3 == 'in f: a cycle without a poll edge in checked IR',
-    Loop = func(F, E, R, Ps, [S, blk(h, [], Is, jmp(h))]),
-    valid_module(module([func(F, E, R, Ps, [S, blk(h, [], Is, jmp(poll(h)))])])).
+    Loop = func(F, E, R, Ps, [S, block(h, [], Is, goto(h))]),
+    valid_module(module([func(F, E, R, Ps, [S, block(h, [], Is, goto(poll(h)))])])).
 
 % A host atom built at run time is an atom of arity 0 only. Unpatched
 % Trealla unified it with any same-name compound, so a field named label

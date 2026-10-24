@@ -1,74 +1,74 @@
-data(tab, local, 8, [item(w, c(10)), item(w, c(20)), item(w, c(30))]).
-data(msg, ro(local), 8, [item(b, str("hi\n")), item(b, c(0))]).
-data(pt, local, 8, [item(p, sym(tab, 4)), item(p, sym(msg, 0)), item(l, c(7))]).
-func(three, local, w, [par(w, t(x))], [
-    blk(s, [], [
-        ins(t(r), w, mul, [t(x), c(3)])
-    ], ret(t(r)))
+data(tab, local, 8, [item(w, const(10)), item(w, const(20)), item(w, const(30))]).
+data(msg, ro(local), 8, [item(b, str("hi\n")), item(b, const(0))]).
+data(pt, local, 8, [item(p, sym(tab, 4)), item(p, sym(msg, 0)), item(l, const(7))]).
+func(three, local, w, [param(w, tmp(x))], [
+    block(s, [], [
+        let(tmp(r), w, mul, [tmp(x), const(3)])
+    ], ret(tmp(r)))
 ]).
-func(get, export, w, [par(w, t(i))], [
-    blk(s, [], [
-        ins(t(t), p, copy, [glo(tab)]),
-        ins(t(o), l, ext(sw), [t(i)]),
-        ins(t(o4), l, mul, [t(o), c(4)]),
-        ins(t(q), p, add, [t(t), t(o4)]),
-        ins(t(v), w, load(sw), [t(q)])
-    ], ret(t(v)))
+func(get, export, w, [param(w, tmp(i))], [
+    block(s, [], [
+        let(tmp(t), p, copy, [global(tab)]),
+        let(tmp(o), l, ext(sw), [tmp(i)]),
+        let(tmp(o4), l, mul, [tmp(o), const(4)]),
+        let(tmp(q), p, add, [tmp(t), tmp(o4)]),
+        let(tmp(v), w, load(sw), [tmp(q)])
+    ], ret(tmp(v)))
 ]).
 func(viapt, export, w, [], [
-    blk(s, [], [
-        ins(t(t), p, copy, [glo(pt)]),
-        ins(t(a), p, load(p), [t(t)]),
-        ins(t(v), w, load(sw), [t(a)]),
-        ins(t(m), p, add, [t(t), c(8)]),
-        ins(t(s), p, load(p), [t(m)]),
-        ins(t(c), w, load(ub), [t(s)]),
-        ins(t(r), w, add, [t(v), t(c)])
-    ], ret(t(r)))
+    block(s, [], [
+        let(tmp(t), p, copy, [global(pt)]),
+        let(tmp(a), p, load(p), [tmp(t)]),
+        let(tmp(v), w, load(sw), [tmp(a)]),
+        let(tmp(m), p, add, [tmp(t), const(8)]),
+        let(tmp(s), p, load(p), [tmp(m)]),
+        let(tmp(c), w, load(ub), [tmp(s)]),
+        let(tmp(r), w, add, [tmp(v), tmp(c)])
+    ], ret(tmp(r)))
 ]).
 func(poke, export, w, [], [
-    blk(s, [], [
-        ins(t(t), p, copy, [glo(msg)]),
-        store(b, c(65), t(t))
-    ], ret(c(0)))
+    block(s, [], [
+        let(tmp(t), p, copy, [global(msg)]),
+        store(b, const(65), tmp(t))
+    ], ret(const(0)))
 ]).
-func(ind, export, w, [par(w, t(x))], [
-    blk(s, [], [
-        ins(t(f), p, copy, [glo(three)]),
-        call(to(t(r), w), t(f), [arg(w, t(x))])
-    ], ret(t(r)))
+func(ind, export, w, [param(w, tmp(x))], [
+    block(s, [], [
+        let(tmp(f), p, copy, [global(three)]),
+        call(result(tmp(r), w), tmp(f), [arg(w, tmp(x))])
+    ], ret(tmp(r)))
 ]).
-func(indl, export, l, [par(l, t(x))], [
-    blk(s, [], [
-        ins(t(f), p, copy, [glo(three)]),
-        call(to(t(r), l), t(f), [arg(l, t(x)), arg(w, c(5))])
-    ], ret(t(r)))
+func(indl, export, l, [param(l, tmp(x))], [
+    block(s, [], [
+        let(tmp(f), p, copy, [global(three)]),
+        call(result(tmp(r), l), tmp(f), [arg(l, tmp(x)), arg(w, const(5))])
+    ], ret(tmp(r)))
 ]).
 func(notfn, export, w, [], [
-    blk(s, [], [
-        ins(t(f), p, copy, [glo(tab)]),
-        call(to(t(r), w), t(f), [arg(w, c(1))])
-    ], ret(t(r)))
+    block(s, [], [
+        let(tmp(f), p, copy, [global(tab)]),
+        call(result(tmp(r), w), tmp(f), [arg(w, const(1))])
+    ], ret(tmp(r)))
 ]).
 func(offfn, export, w, [], [
-    blk(s, [], [
-        ins(t(f), p, copy, [glo(three)]),
-        ins(t(g), p, add, [t(f), c(0)]),
-        ins(t(h), p, add, [t(g), c(1)]),
-        call(to(t(r), w), t(h), [arg(w, c(1))])
-    ], ret(t(r)))
+    block(s, [], [
+        let(tmp(f), p, copy, [global(three)]),
+        let(tmp(g), p, add, [tmp(f), const(0)]),
+        let(tmp(h), p, add, [tmp(g), const(1)]),
+        call(result(tmp(r), w), tmp(h), [arg(w, const(1))])
+    ], ret(tmp(r)))
 ]).
 func(readfn, export, w, [], [
-    blk(s, [], [
-        ins(t(f), p, copy, [glo(three)]),
-        ins(t(v), w, load(ub), [t(f)])
-    ], ret(t(v)))
+    block(s, [], [
+        let(tmp(f), p, copy, [global(three)]),
+        let(tmp(v), w, load(ub), [tmp(f)])
+    ], ret(tmp(v)))
 ]).
 func(toofew, export, w, [], [
-    blk(s, [], [
-        ins(t(f), p, copy, [glo(three)]),
-        call(to(t(r), w), t(f), [])
-    ], ret(t(r)))
+    block(s, [], [
+        let(tmp(f), p, copy, [global(three)]),
+        call(result(tmp(r), w), tmp(f), [])
+    ], ret(tmp(r)))
 ]).
 run(get, [1]).
 run(get, [2]).

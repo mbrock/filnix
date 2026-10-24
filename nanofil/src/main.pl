@@ -330,7 +330,7 @@ fuel_step(Fuel) :-
 
 % canonical_arg(+Param, +Arg0, -Arg): Arg is Arg0 reduced modulo the
 % class of Param.
-canonical_arg(par(Class, _), Arg0, Arg) :-
+canonical_arg(param(Class, _), Arg0, Arg) :-
     modulus(Class, Modulus),
     Arg is Arg0 mod Modulus.
 
@@ -432,7 +432,7 @@ prototypes([], _) --> [].
 prototypes([Fn|Fns], Module) -->
     { func_named(Module, Fn, func(_, _, Ret, Params, _)),
       c_type(Ret, RetType),
-      findall(Type, ( member(par(Class, _), Params), c_type(Class, Type) ),
+      findall(Type, ( member(param(Class, _), Params), c_type(Class, Type) ),
               ParamTypes),
       types_text(ParamTypes, ParamText) },
     fmt("extern ~w ~w(~w);~n", [RetType, Fn, ParamText]),

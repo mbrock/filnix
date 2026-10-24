@@ -8,12 +8,12 @@
 %   qbe:             0
 %
 run(f, [4294967295]).
-func(f, export, l, [par(w, t(a))], [
-    blk(start, [], [
-        ins(t(w), l, alloc(4), [c(4)]),
-        store(w, t(a), t(w)),
-        ins(t(s), l, load(sw), [t(w)]),
-        ins(t(t), l, load(uw), [t(w)]),
-        ins(t(r), l, sub, [t(s), t(t)])
-    ], ret(t(r)))
+func(f, export, l, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(w), l, alloc(4), [const(4)]),
+        store(w, tmp(a), tmp(w)),
+        let(tmp(s), l, load(sw), [tmp(w)]),
+        let(tmp(t), l, load(uw), [tmp(w)]),
+        let(tmp(r), l, sub, [tmp(s), tmp(t)])
+    ], ret(tmp(r)))
 ]).

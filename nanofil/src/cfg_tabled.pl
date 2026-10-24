@@ -58,11 +58,11 @@
 %  the function Blocks as facts tagged V.
 
 assert_version(V, Blocks) :-
-    Blocks = [blk(Entry, _, _, _)|_],
+    Blocks = [block(Entry, _, _, _)|_],
     assertz(vf_entry(V, Entry)),
     blocks_gen_kill(Blocks, GenKill),
     phi_edge_uses(Blocks, EdgeUses),
-    forall(member(blk(B, _, _, Jump), Blocks),
+    forall(member(block(B, _, _, Jump), Blocks),
            ( assertz(vf_block(B, V)),
              forall(( jump_succs(Jump, Ss), member(S, Ss) ),
                     ( assertz(vf_edge(B, S, V)),
@@ -249,7 +249,7 @@ incremental_clear :-
 %  the function Blocks.
 
 incremental_load(Blocks) :-
-    forall(( member(blk(B, _, _, Jump), Blocks),
+    forall(( member(block(B, _, _, Jump), Blocks),
              jump_succs(Jump, Ss),
              member(S, Ss) ),
            assertz(if_pred(S, B))),
@@ -280,7 +280,7 @@ block_facts(Blocks, Facts) :-
     blocks_gen_kill(Blocks, GenKill),
     phi_edge_uses(Blocks, EdgeUses),
     findall(F,
-            ( member(blk(B, _, _, _), Blocks),
+            ( member(block(B, _, _, _), Blocks),
               get_assoc(B, GenKill, Gen-Kill),
               (   member(T, Gen), F = if_gen(B, T)
               ;   member(T, Kill), F = if_kill(B, T)

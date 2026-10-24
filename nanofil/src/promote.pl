@@ -66,8 +66,8 @@ item_mode_promoted(data(Name, Linkage, Align, Items), _,
 alloc_count(module(Items), N) :-
     findall(x,
             ( member(func(_, _, _, _, Blocks), Items),
-              member(blk(_, _, Insts, _), Blocks),
-              member(ins(_, _, alloc(_), _), Insts) ),
+              member(block(_, _, Insts, _), Blocks),
+              member(let(_, _, alloc(_), _), Insts) ),
             Allocs),
     length(Allocs, N).
 
@@ -97,11 +97,11 @@ promote_func(Mode, F0, F) :-
 
 promotable(_, F, []) :- setjmp_func(F), !.
 promotable(Mode, F, Roots) :-
-    F = func(_, _, _, _, [blk(_, _, EntryInsts, _)|_]),
+    F = func(_, _, _, _, [block(_, _, EntryInsts, _)|_]),
     alloc_classes(F, Classes),
     findall(A-Accs,
-            ( member(A-local(c(Size), Accs), Classes),
-              memberchk(ins(t(A), _, alloc(_), _), EntryInsts),
+            ( member(A-local(const(Size), Accs), Classes),
+              memberchk(let(tmp(A), _, alloc(_), _), EntryInsts),
               slots_ok(Mode, Size, Accs) ),
             Roots).
 
@@ -156,10 +156,10 @@ strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
     Rpo = [Entry|_],
     % def(Label, Pos): defined at position Pos of block Label (0 for
     % parameters and phis).
-    findall(T-def(Entry, 0), member(par(_, t(T)), Params), ParamDefs),
+    findall(T-def(Entry, 0), member(param(_, tmp(T)), Params), ParamDefs),
     findall(T-def(L, Pos),
-            ( member(blk(L, Phis, Insts, _), Blocks),
-              (   member(phi(t(T), _, _), Phis), Pos = 0
+            ( member(block(L, Phis, Insts, _), Blocks),
+              (   member(phi(tmp(T), _, _), Phis), Pos = 0
               ;   nth1(Pos, Insts, Ins), inst_def(Ins, T)
               ) ),
             BlockDefs),
@@ -171,7 +171,7 @@ strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
     % Collect the uses first: a goal that mentions the big assocs, run by
     % forall/2 once per block, copies them every time.
     findall(L-Phis-Insts-Jump,
-            member(blk(L, Phis, Insts, Jump), Blocks),
+            member(block(L, Phis, Insts, Jump), Blocks),
             Parts),
     include(block_reached(Reach), Parts, Reached),
     findall(U, ( member(B, Reached), block_use(B, U) ), Uses),
@@ -193,7 +193,7 @@ label_reach(L, Reach0, Reach) :-
 % argument is read at the end of its predecessor.
 block_use(_-Phis-_-_, use(T, P, end)) :-
     member(phi(_, _, Args), Phis),
-    member(P-t(T), Args).
+    member(P-tmp(T), Args).
 block_use(L-_-Insts-_, use(T, L, at(Pos))) :-
     nth1(Pos, Insts, Ins),
     inst_uses(Ins, Us),
@@ -239,7 +239,7 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     % Liveness of slots: a load reads one, a store writes it.
     findall(L-GenKill,
             ( member(B, Blocks0),
-              B = blk(L, _, _, _),
+              B = block(L, _, _, _),
               slot_gen_kill(B, Addrs, GenKill) ),
             GenKillPairs),
     list_to_assoc(GenKillPairs, GenKill),
@@ -252,9 +252,9 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     % Index the reachable stores once, rather than scanning all blocks
     % and instructions again for every slot.
     findall(Var-L,
-            ( member(blk(L, _, Insts, _), Blocks0),
+            ( member(block(L, _, Insts, _), Blocks0),
               get_assoc(L, DF, _),
-              member(store(_, _, t(X)), Insts),
+              member(store(_, _, tmp(X)), Insts),
               get_assoc(X, Addrs, Var) ),
             Stores0),
     keysort(Stores0, Stores1),
@@ -268,7 +268,7 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     keysort(Placed1, Placed2),
     group_pairs_by_key(Placed2, Placed),      % Label -> [Var-Temp]
     list_to_assoc(Placed, PhiAt),
-    findall(Var-c(0), member(Var, Vars), Zeros),
+    findall(Var-const(0), member(Var, Vars), Zeros),
     list_to_assoc(Zeros, Zero),
     blocks_by_label(Blocks0, ByLabel),
     dom_children(Cfg, Idom, Kids),
@@ -277,7 +277,7 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     % stay valid, and they still give each successor's phis an argument.
     Cfg = cfg(_, Rpo, _, _),
     findall(L,
-            ( member(blk(L, _, _, _), Blocks0), \+ memberchk(L, Rpo) ),
+            ( member(block(L, _, _, _), Blocks0), \+ memberchk(L, Rpo) ),
             Dead),
     phrase(subtree_renamed(Entry, Zero, Env), Renamed, Unreached),
     phrase(blocks_renamed(Dead, Zero, Env), Unreached),
@@ -289,17 +289,17 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
     list_to_assoc(PhiArgs, ArgsAt),
     maplist(promoted_block(NewBlocks, PhiAt, ArgsAt, Widths), Blocks0, Blocks).
 
-slot_gen_kill(blk(_, _, Insts, _), Addrs, Gen-Kill) :-
+slot_gen_kill(block(_, _, Insts, _), Addrs, Gen-Kill) :-
     foldl(slot_inst_gen_kill(Addrs), Insts, []-[], Gen-Kill).
 
 slot_inst_gen_kill(Addrs, I, Gen0-Kill0, Gen-Kill) :-
-    (   I = ins(_, _, load(_), [t(X)]), get_assoc(X, Addrs, Var)
+    (   I = let(_, _, load(_), [tmp(X)]), get_assoc(X, Addrs, Var)
     ->  (   ord_memberchk(Var, Kill0)
         ->  Gen = Gen0
         ;   ord_add_element(Gen0, Var, Gen)
         ),
         Kill = Kill0
-    ;   I = store(_, _, t(X)), get_assoc(X, Addrs, Var)
+    ;   I = store(_, _, tmp(X)), get_assoc(X, Addrs, Var)
     ->  Gen = Gen0,
         ord_add_element(Kill0, Var, Kill)
     ;   Gen = Gen0,
@@ -378,7 +378,7 @@ unused_temp(Used, N0, T, N) :-
     ).
 
 blocks_by_label(Blocks, ByLabel) :-
-    findall(L-B, ( member(B, Blocks), B = blk(L, _, _, _) ), Pairs),
+    findall(L-B, ( member(B, Blocks), B = block(L, _, _, _) ), Pairs),
     list_to_assoc(Pairs, ByLabel).
 
 % subtree_renamed(+L, +Cur0, +Env)//: the renamed blocks of the
@@ -409,8 +409,8 @@ blocks_renamed([L|Ls], Cur0, Env) -->
 % given the slots' values Cur0 on entry (Cur on exit), and Args the
 % (Succ-Var)-(L-Value) arguments it gives its successors' slot phis.
 block_renamed(L, Cur0, env(Addrs, PhiAt, ByLabel, _, Succs), Cur,
-              renamed(L-blk(L, Phis, Insts, Jump), Args)) :-
-    get_assoc(L, ByLabel, blk(L, Phis, Insts0, Jump)),
+              renamed(L-block(L, Phis, Insts, Jump), Args)) :-
+    get_assoc(L, ByLabel, block(L, Phis, Insts0, Jump)),
     (   get_assoc(L, PhiAt, VarTemps) -> true ; VarTemps = [] ),
     foldl(phi_cur, VarTemps, Cur0, Cur1),
     phrase(insts_renamed(Insts0, Addrs, Cur1, Cur), Insts),
@@ -425,7 +425,7 @@ block_renamed(L, Cur0, env(Addrs, PhiAt, ByLabel, _, Succs), Cur,
 renamed_block_args(renamed(LBlk, Args), LBlk, Args).
 
 phi_cur(Var-T, Cur0, Cur) :-
-    put_assoc(Var, Cur0, t(T), Cur).
+    put_assoc(Var, Cur0, tmp(T), Cur).
 
 % insts_renamed(+Insts0, +Addrs, +Cur0, -Cur)//: the instructions
 % Insts0 with their slot accesses rewritten, Cur0 and Cur being the
@@ -440,14 +440,14 @@ insts_renamed([I|Is], Addrs, Cur0, Cur) -->
 % its current value, a store to a slot is none and sets its value, and
 % any other instruction is itself.
 inst_renamed(I, Addrs, Cur0, Cur) -->
-    (   { I = ins(t(D), _, _, _), get_assoc(D, Addrs, _) }
+    (   { I = let(tmp(D), _, _, _), get_assoc(D, Addrs, _) }
     ->  { Cur = Cur0 }
-    ;   { I = ins(D, K, load(T), [t(X)]), get_assoc(X, Addrs, Var) }
+    ;   { I = let(D, K, load(T), [tmp(X)]), get_assoc(X, Addrs, Var) }
     ->  { get_assoc(Var, Cur0, V),
           load_op(T, K, Op),
           Cur = Cur0 },
-        [ins(D, K, Op, [V])]
-    ;   { I = store(_, V, t(X)), get_assoc(X, Addrs, Var) }
+        [let(D, K, Op, [V])]
+    ;   { I = store(_, V, tmp(X)), get_assoc(X, Addrs, Var) }
     ->  { put_assoc(Var, Cur0, V, Cur) }
     ;   { Cur = Cur0 },
         [I]
@@ -480,11 +480,11 @@ slot_class(b, w).
 
 % promoted_block(+NewBlocks, +PhiAt, +ArgsAt, +Widths, +Block0, -Block):
 % Block is the renamed Block0, with the slots' phis appended to its own.
-promoted_block(NewBlocks, PhiAt, ArgsAt, Widths, blk(L, _, _, _),
-               blk(L, Phis, Insts, Jump)) :-
-    get_assoc(L, NewBlocks, blk(L, Phis0, Insts, Jump)),
+promoted_block(NewBlocks, PhiAt, ArgsAt, Widths, block(L, _, _, _),
+               block(L, Phis, Insts, Jump)) :-
+    get_assoc(L, NewBlocks, block(L, Phis0, Insts, Jump)),
     (   get_assoc(L, PhiAt, VarTemps) -> true ; VarTemps = [] ),
-    findall(phi(t(T), K, Args),
+    findall(phi(tmp(T), K, Args),
             ( member(Var-T, VarTemps),
               get_assoc(Var, Widths, Width),
               slot_class(Width, K),

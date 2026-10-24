@@ -33,16 +33,16 @@
 %
 %  Succs is the ordset of labels Jump can branch to.
 
-jump_succs(jmp(T), [L]) :-
+jump_succs(goto(T), [L]) :-
     edge_label(T, L).
-jump_succs(jnz(_, T1, T2), Ls) :-
+jump_succs(branch(_, T1, T2), Ls) :-
     edge_label(T1, L1),
     edge_label(T2, L2),
     sort([L1, L2], Ls).
 jump_succs(ret(_), []).
 jump_succs(ret, []).
 jump_succs(rets(_), []).
-jump_succs(hlt, []).
+jump_succs(unreachable, []).
 
 %! edge_label(+Target, -L) is det.
 %
@@ -64,9 +64,9 @@ edge_label(L, L).
 %      including unreachable predecessors, as phis must list them).
 
 func_cfg(Blocks, cfg(Entry, Rpo, Succs, Preds)) :-
-    Blocks = [blk(Entry, _, _, _)|_],
+    Blocks = [block(Entry, _, _, _)|_],
     findall(Label-Ss,
-            ( member(blk(Label, _, _, Jump), Blocks),
+            ( member(block(Label, _, _, Jump), Blocks),
               jump_succs(Jump, Ss)
             ),
             SuccPairs),
@@ -451,14 +451,14 @@ temp_liveness(Blocks, LiveIn, LiveOut) :-
 blocks_gen_kill(Blocks, GenKill) :-
     findall(L-(Gen-Kill),
             ( member(B, Blocks),
-              B = blk(L, _, _, _),
+              B = block(L, _, _, _),
               block_gen_kill(B, Gen, Kill)
             ),
             Pairs),
     list_to_assoc(Pairs, GenKill).
 
-block_gen_kill(blk(_, Phis, Insts, Jump), Gen, Kill) :-
-    findall(D, member(phi(t(D), _, _), Phis), PhiDefs),
+block_gen_kill(block(_, Phis, Insts, Jump), Gen, Kill) :-
+    findall(D, member(phi(tmp(D), _, _), Phis), PhiDefs),
     sort(PhiDefs, Kill0),
     foldl(inst_gen_kill, Insts, []-Kill0, Gen1-Kill),
     jump_uses(Jump, JumpUses),
@@ -480,9 +480,9 @@ inst_gen_kill(I, Gen0-Kill0, Gen-Kill) :-
 
 phi_edge_uses(Blocks, EdgeUses) :-
     findall((P-S)-T,
-            ( member(blk(S, Phis, _, _), Blocks),
+            ( member(block(S, Phis, _, _), Blocks),
               member(phi(_, _, Args), Phis),
-              member(P-t(T), Args)
+              member(P-tmp(T), Args)
             ),
             Pairs0),
     keysort(Pairs0, Pairs1),
@@ -498,11 +498,11 @@ phi_edge_uses(Blocks, EdgeUses) :-
 %
 %  Uses is the ordset of temps that the instruction Inst reads.
 
-inst_uses(ins(_, _, _, Args), Us) :-
+inst_uses(let(_, _, _, Args), Us) :-
     temps(Args, Us).
 inst_uses(store(_, V, A), Us) :-
     temps([V, A], Us).
-inst_uses(st(_, _, V, A), Us) :-
+inst_uses(raw_store(_, _, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(call(_, F, Args), Us) :-
     findall(V, member(arg(_, V), Args), Vs),
@@ -513,27 +513,27 @@ inst_uses(loc(_, _), []).
 %
 %  The instruction Inst defines Temp (a call can define several).
 
-inst_def(ins(t(D), _, _, _), D).
-inst_def(call(to(t(D), _), _, _), D).
+inst_def(let(tmp(D), _, _, _), D).
+inst_def(call(result(tmp(D), _), _, _), D).
 inst_def(call(tuple(Rs), _, _), D) :-
-    member(to(t(D), _), Rs).
+    member(result(tmp(D), _), Rs).
 
 %! jump_uses(+Jump, -Uses) is det.
 %
 %  Uses is the ordset of temps that Jump reads.
 
-jump_uses(jmp(_), []).
-jump_uses(jnz(V, _, _), Us) :-
+jump_uses(goto(_), []).
+jump_uses(branch(V, _, _), Us) :-
     temps([V], Us).
 jump_uses(ret(V), Us) :-
     temps([V], Us).
 jump_uses(ret, []).
 jump_uses(rets(Vs), Us) :-
     temps(Vs, Us).
-jump_uses(hlt, []).
+jump_uses(unreachable, []).
 
 % temps(+Values, -Names): Names is the ordset of temp names among
 % Values.
 temps(Vs, Ts) :-
-    findall(T, member(t(T), Vs), Ts0),
+    findall(T, member(tmp(T), Vs), Ts0),
     sort(Ts0, Ts).

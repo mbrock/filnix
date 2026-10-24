@@ -5,19 +5,19 @@
 % In-bounds reads and writes at every width.
 run(widths, [0]).
 run(widths, [1]).
-func(widths, export, l, [par(w, t(k))], [
-    blk(start, [], [
-        ins(t(p), p, alloc(8), [c(16)]),
-        store(l, c(-2), t(p)),
-        ins(t(q), p, add, [t(p), c(8)]),
-        store(w, c(305419896), t(q)),
-        ins(t(r), p, add, [t(p), c(15)]),
-        store(b, c(255), t(r)),
-        ins(t(a), l, load(sb), [t(p)]),
-        ins(t(b), l, load(l), [t(q)])
-    ], jnz(t(k), one, zero)),
-    blk(zero, [], [], ret(t(a))),
-    blk(one, [], [], ret(t(b)))
+func(widths, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, const(-2), tmp(p)),
+        let(tmp(q), p, add, [tmp(p), const(8)]),
+        store(w, const(305419896), tmp(q)),
+        let(tmp(r), p, add, [tmp(p), const(15)]),
+        store(b, const(255), tmp(r)),
+        let(tmp(a), l, load(sb), [tmp(p)]),
+        let(tmp(b), l, load(l), [tmp(q)])
+    ], branch(tmp(k), one, zero)),
+    block(zero, [], [], ret(tmp(a))),
+    block(one, [], [], ret(tmp(b)))
 ]).
 
 % Reads one past the end, and just below the start.
@@ -25,60 +25,60 @@ run(oob, [16]).
 run(oob, [15]).
 run(oob, [-1]).
 run(oob, [0]).
-func(oob, export, w, [par(l, t(i))], [
-    blk(start, [], [
-        ins(t(p), p, alloc(8), [c(16)]),
-        ins(t(q), p, add, [t(p), t(i)]),
-        ins(t(v), w, load(ub), [t(q)])
-    ], ret(t(v)))
+func(oob, export, w, [param(l, tmp(i))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        let(tmp(q), p, add, [tmp(p), tmp(i)]),
+        let(tmp(v), w, load(ub), [tmp(q)])
+    ], ret(tmp(v)))
 ]).
 
 % An 8-byte read that starts inside but ends outside.
 run(straddle, [8]).
 run(straddle, [9]).
-func(straddle, export, l, [par(l, t(i))], [
-    blk(start, [], [
-        ins(t(p), p, alloc(8), [c(16)]),
-        ins(t(q), p, add, [t(p), t(i)]),
-        ins(t(v), l, load(l), [t(q)])
-    ], ret(t(v)))
+func(straddle, export, l, [param(l, tmp(i))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        let(tmp(q), p, add, [tmp(p), tmp(i)]),
+        let(tmp(v), l, load(l), [tmp(q)])
+    ], ret(tmp(v)))
 ]).
 
 % Allocations are zeroed.
 run(zeroed, [24]).
-func(zeroed, export, l, [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(p), p, alloc(16), [t(n)]),
-        ins(t(q), p, add, [t(p), c(16)]),
-        ins(t(v), l, load(l), [t(q)])
-    ], ret(t(v)))
+func(zeroed, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [tmp(n)]),
+        let(tmp(q), p, add, [tmp(p), const(16)]),
+        let(tmp(v), l, load(l), [tmp(q)])
+    ], ret(tmp(v)))
 ]).
 
 % An integer turned into a pointer has no capability, even when it is the
 % address of a live object.
 run(forged, [0]).
 run(forged, [1]).
-func(forged, export, w, [par(w, t(k))], [
-    blk(start, [], [
-        ins(t(p), p, alloc(8), [c(8)]),
-        store(w, c(7), t(p)),
-        ins(t(i), l, ptoi, [t(p)]),
-        ins(t(f), p, itop, [t(i)])
-    ], jnz(t(k), forge, real)),
-    blk(real, [], [
-        ins(t(v), w, load(sw), [t(p)])
-    ], ret(t(v))),
-    blk(forge, [], [
-        ins(t(u), w, load(sw), [t(f)])
-    ], ret(t(u)))
+func(forged, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        store(w, const(7), tmp(p)),
+        let(tmp(i), l, ptoi, [tmp(p)]),
+        let(tmp(f), p, itop, [tmp(i)])
+    ], branch(tmp(k), forge, real)),
+    block(real, [], [
+        let(tmp(v), w, load(sw), [tmp(p)])
+    ], ret(tmp(v))),
+    block(forge, [], [
+        let(tmp(u), w, load(sw), [tmp(f)])
+    ], ret(tmp(u)))
 ]).
 
 % A pointer constant has no capability.
 run(nullread, [0]).
-func(nullread, export, w, [par(w, t(k))], [
-    blk(start, [], [
-        ins(t(v), w, load(sw), [c(0)])
-    ], ret(t(v)))
+func(nullread, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(v), w, load(sw), [const(0)])
+    ], ret(tmp(v)))
 ]).
 
 % Pointers round-trip through memory with their capabilities; an integer
@@ -86,111 +86,111 @@ func(nullread, export, w, [par(w, t(k))], [
 run(roundtrip, [0]).
 run(roundtrip, [1]).
 run(roundtrip, [2]).
-func(roundtrip, export, l, [par(w, t(k))], [
-    blk(start, [], [
-        ins(t(obj), p, alloc(8), [c(32)]),
-        ins(t(f), p, add, [t(obj), c(24)]),
-        store(l, c(99), t(f)),
-        ins(t(box), p, alloc(8), [c(8)]),
-        store(p, t(obj), t(box)),
-        ins(t(back), p, load(p), [t(box)])
-    ], jnz(t(k), n1, plain)),
-    blk(plain, [], [
-        ins(t(b2), p, add, [t(back), c(24)]),
-        ins(t(v), l, load(l), [t(b2)])
-    ], ret(t(v))),
-    blk(n1, [], [
-        ins(t(k1), w, sub, [t(k), c(1)])
-    ], jnz(t(k1), smash, read)),
-    blk(read, [], [
-        ins(t(v1), l, load(l), [t(back)])
-    ], ret(t(v1))),
-    blk(smash, [], [
-        ins(t(a), l, ptoi, [t(obj)]),
-        ins(t(a8), l, add, [t(a), c(8)]),
-        store(l, t(a8), t(box)),
-        ins(t(moved), p, load(p), [t(box)]),
-        ins(t(m2), p, add, [t(moved), c(16)]),
-        ins(t(v2), l, load(l), [t(m2)])
-    ], ret(t(v2)))
+func(roundtrip, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(obj), p, alloc(8), [const(32)]),
+        let(tmp(f), p, add, [tmp(obj), const(24)]),
+        store(l, const(99), tmp(f)),
+        let(tmp(box), p, alloc(8), [const(8)]),
+        store(p, tmp(obj), tmp(box)),
+        let(tmp(back), p, load(p), [tmp(box)])
+    ], branch(tmp(k), n1, plain)),
+    block(plain, [], [
+        let(tmp(b2), p, add, [tmp(back), const(24)]),
+        let(tmp(v), l, load(l), [tmp(b2)])
+    ], ret(tmp(v))),
+    block(n1, [], [
+        let(tmp(k1), w, sub, [tmp(k), const(1)])
+    ], branch(tmp(k1), smash, read)),
+    block(read, [], [
+        let(tmp(v1), l, load(l), [tmp(back)])
+    ], ret(tmp(v1))),
+    block(smash, [], [
+        let(tmp(a), l, ptoi, [tmp(obj)]),
+        let(tmp(a8), l, add, [tmp(a), const(8)]),
+        store(l, tmp(a8), tmp(box)),
+        let(tmp(moved), p, load(p), [tmp(box)]),
+        let(tmp(m2), p, add, [tmp(moved), const(16)]),
+        let(tmp(v2), l, load(l), [tmp(m2)])
+    ], ret(tmp(v2)))
 ]).
 
 % A pointer read from memory that never held one has no capability.
 run(nocap, [0]).
-func(nocap, export, w, [par(w, t(k))], [
-    blk(start, [], [
-        ins(t(box), p, alloc(8), [c(8)]),
-        ins(t(p), p, load(p), [t(box)]),
-        ins(t(v), w, load(sw), [t(p)])
-    ], ret(t(v)))
+func(nocap, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(box), p, alloc(8), [const(8)]),
+        let(tmp(p), p, load(p), [tmp(box)]),
+        let(tmp(v), w, load(sw), [tmp(p)])
+    ], ret(tmp(v)))
 ]).
 
 % Pointer loads and stores must be 8-aligned.
 run(misaligned, [4]).
 run(misaligned, [8]).
-func(misaligned, export, w, [par(l, t(off))], [
-    blk(start, [], [
-        ins(t(box), p, alloc(8), [c(24)]),
-        ins(t(q), p, add, [t(box), t(off)]),
-        store(p, t(box), t(q))
-    ], ret(c(1)))
+func(misaligned, export, w, [param(l, tmp(off))], [
+    block(start, [], [
+        let(tmp(box), p, alloc(8), [const(24)]),
+        let(tmp(q), p, add, [tmp(box), tmp(off)]),
+        store(p, tmp(box), tmp(q))
+    ], ret(const(1)))
 ]).
 
 % Pointers through phis and calls, over a loop with back edges.
-func(next, local, p, [par(p, t(p))], [
-    blk(start, [], [
-        ins(t(q), p, add, [t(p), c(8)])
-    ], ret(t(q)))
+func(next, local, p, [param(p, tmp(p))], [
+    block(start, [], [
+        let(tmp(q), p, add, [tmp(p), const(8)])
+    ], ret(tmp(q)))
 ]).
 
 % Walk an array of 8 words, summing them; reading one more traps.
 run(walk, [8]).
 run(walk, [9]).
-func(walk, export, l, [par(w, t(n))], [
-    blk(start, [], [
-        ins(t(a), p, alloc(8), [c(64)])
-    ], jmp(fill)),
-    blk(fill, [
-        phi(t(i), w, [start-c(0), fill-t(i1)]),
-        phi(t(p), p, [start-t(a), fill-t(p1)])
+func(walk, export, l, [param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(64)])
+    ], goto(fill)),
+    block(fill, [
+        phi(tmp(i), w, [start-const(0), fill-tmp(i1)]),
+        phi(tmp(p), p, [start-tmp(a), fill-tmp(p1)])
     ], [
-        ins(t(iv), l, ext(uw), [t(i)]),
-        ins(t(sq), l, mul, [t(iv), t(iv)]),
-        store(l, t(sq), t(p)),
-        call(to(t(p1), p), glo(next), [arg(p, t(p))]),
-        ins(t(i1), w, add, [t(i), c(1)]),
-        ins(t(c), w, cmp(slt, w), [t(i1), c(8)])
-    ], jnz(t(c), fill, sum)),
-    blk(sum, [], [], jmp(loop)),
-    blk(loop, [
-        phi(t(j), w, [sum-c(0), body-t(j1)]),
-        phi(t(s), l, [sum-c(0), body-t(s1)]),
-        phi(t(q), p, [sum-t(a), body-t(q1)])
+        let(tmp(iv), l, ext(uw), [tmp(i)]),
+        let(tmp(sq), l, mul, [tmp(iv), tmp(iv)]),
+        store(l, tmp(sq), tmp(p)),
+        call(result(tmp(p1), p), global(next), [arg(p, tmp(p))]),
+        let(tmp(i1), w, add, [tmp(i), const(1)]),
+        let(tmp(c), w, cmp(slt, w), [tmp(i1), const(8)])
+    ], branch(tmp(c), fill, sum)),
+    block(sum, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(j), w, [sum-const(0), body-tmp(j1)]),
+        phi(tmp(s), l, [sum-const(0), body-tmp(s1)]),
+        phi(tmp(q), p, [sum-tmp(a), body-tmp(q1)])
     ], [
-        ins(t(c2), w, cmp(slt, w), [t(j), t(n)])
-    ], jnz(t(c2), body, done)),
-    blk(body, [], [
-        ins(t(v), l, load(l), [t(q)]),
-        ins(t(s1), l, add, [t(s), t(v)]),
-        ins(t(q1), p, add, [t(q), c(8)]),
-        ins(t(j1), w, add, [t(j), c(1)])
-    ], jmp(loop)),
-    blk(done, [], [], ret(t(s)))
+        let(tmp(c2), w, cmp(slt, w), [tmp(j), tmp(n)])
+    ], branch(tmp(c2), body, done)),
+    block(body, [], [
+        let(tmp(v), l, load(l), [tmp(q)]),
+        let(tmp(s1), l, add, [tmp(s), tmp(v)]),
+        let(tmp(q1), p, add, [tmp(q), const(8)]),
+        let(tmp(j1), w, add, [tmp(j), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret(tmp(s)))
 ]).
 
 % Allocations made by a callee outlive it.
-func(make, local, p, [par(l, t(v))], [
-    blk(start, [], [
-        ins(t(p), p, alloc(8), [c(8)]),
-        store(l, t(v), t(p))
-    ], ret(t(p)))
+func(make, local, p, [param(l, tmp(v))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        store(l, tmp(v), tmp(p))
+    ], ret(tmp(p)))
 ]).
 
 run(outlive, [41]).
-func(outlive, export, l, [par(l, t(v))], [
-    blk(start, [], [
-        call(to(t(p), p), glo(make), [arg(l, t(v))]),
-        ins(t(x), l, load(l), [t(p)]),
-        ins(t(y), l, add, [t(x), c(1)])
-    ], ret(t(y)))
+func(outlive, export, l, [param(l, tmp(v))], [
+    block(start, [], [
+        call(result(tmp(p), p), global(make), [arg(l, tmp(v))]),
+        let(tmp(x), l, load(l), [tmp(p)]),
+        let(tmp(y), l, add, [tmp(x), const(1)])
+    ], ret(tmp(y)))
 ]).

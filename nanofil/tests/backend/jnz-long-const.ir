@@ -5,10 +5,10 @@
 %   1 + 0xffffffff = 2^32 has zero low bits, so $f(0) is 0; qbe returns 1.
 %
 run(f, [0]).
-func(f, export, w, [par(w, t(u))], [
-    blk(start, [], [
-        ins(t(x), l, add, [c(1), c(4294967295)])
-    ], jnz(t(x), yes, no)),
-    blk(yes, [], [], ret(c(1))),
-    blk(no, [], [], ret(c(0)))
+func(f, export, w, [param(w, tmp(u))], [
+    block(start, [], [
+        let(tmp(x), l, add, [const(1), const(4294967295)])
+    ], branch(tmp(x), yes, no)),
+    block(yes, [], [], ret(const(1))),
+    block(no, [], [], ret(const(0)))
 ]).

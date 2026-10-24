@@ -14,9 +14,9 @@ retired, and IR text now writes float constants as `c(Bits)` terms.
 - **Classes** `s` (IEEE 754 binary32) and `d` (binary64), alongside
   w, l and p. Temps, params, phis, call arguments, and `ret` values may
   have class s or d. `Ret` gains `s | d`. Tuple returns stay l/p.
-- **Values.** A float value is its bit pattern. `c(N)` at class s or d
+- **Values.** A float value is its bit pattern. `const(N)` at class s or d
   means the bits N (0 ≤ N < 2^32 or 2^64), so constants, loads and
-  stores never need a host float, and IR text writes them as `c(N)`
+  stores never need a host float, and IR text writes them as `const(N)`
   too. The rest of this item is history: QBE text wrote float constants
   as `s_1.5` / `d_1.5`, the old parser converted the decimal with correct
   rounding (round half to even), and the old printer emitted text that real

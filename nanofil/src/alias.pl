@@ -54,17 +54,17 @@ alias_facts(F, Facts) :-
     ).
 
 % address_def(+F, -D, -K, -Source): temp D of address class K is a
-% parameter (param), an instruction (ins(Op, Args)) or opaque.
+% parameter (param), an instruction (let(Op, Args)) or opaque.
 address_def(func(_, _, _, Params, _), D, K, param) :-
-    member(par(K, t(D)), Params),
+    member(param(K, tmp(D)), Params),
     address_class(K).
 address_def(func(_, _, _, _, Blocks), D, K, Source) :-
-    member(blk(_, Phis, Insts, _), Blocks),
-    (   member(phi(t(D), K, _), Phis), Source = opaque
-    ;   member(ins(t(D), K, Op, Args), Insts), Source = ins(Op, Args)
-    ;   member(call(to(t(D), K), _, _), Insts), Source = opaque
+    member(block(_, Phis, Insts, _), Blocks),
+    (   member(phi(tmp(D), K, _), Phis), Source = opaque
+    ;   member(let(tmp(D), K, Op, Args), Insts), Source = let(Op, Args)
+    ;   member(call(result(tmp(D), K), _, _), Insts), Source = opaque
     ;   member(call(tuple(Tos), _, _), Insts),
-        member(to(t(D), K), Tos),
+        member(result(tmp(D), K), Tos),
         Source = opaque
     ),
     address_class(K).
@@ -76,7 +76,7 @@ address_class(p).
 % own; it fails for a definition that offsets another address.
 address_base(param, D, _, _, param(D)).
 address_base(opaque, D, _, _, value(D)).
-address_base(ins(Op, Args), D, K, Defs, Base) :-
+address_base(let(Op, Args), D, K, Defs, Base) :-
     ins_base(Op, Args, D, K, Defs, Base).
 
 % ins_base(+Op, +Args, +D, +K, +Defs, -Base): as address_base/5, for an
@@ -90,7 +90,7 @@ ins_base(Op, Args, D, K, Defs, Base) :-
 % an add, sub or copy that offsets an address (address_offset/5) starts
 % none, and every other instruction starts a value base.
 kind_base(additive, Op, Args, D, K, Defs, value(D)) :-
-    \+ address_offset(ins(Op, Args), K, Defs, _, _).
+    \+ address_offset(let(Op, Args), K, Defs, _, _).
 kind_base(alu, _, _, D, _, _, value(D)).
 kind_base(shift, _, _, D, _, _, value(D)).
 kind_base(neg, _, _, D, _, _, value(D)).
@@ -105,20 +105,20 @@ kind_base(load, _, _, D, _, _, value(D)).
 kind_base(alloc, _, _, D, _, _, alloc(D)).
 
 % copy_base(+V, +D, +K, +Defs, -Base): as kind_base/7, for D a copy of V.
-copy_base(glo(S), _, _, _, symbol(S)).
-copy_base(t(S), D, K, Defs, value(D)) :-
-    \+ address_offset(ins(copy, [t(S)]), K, Defs, _, _).
-copy_base(c(_), D, _, _, value(D)).
+copy_base(global(S), _, _, _, symbol(S)).
+copy_base(tmp(S), D, K, Defs, value(D)) :-
+    \+ address_offset(let(copy, [tmp(S)]), K, Defs, _, _).
+copy_base(const(_), D, _, _, value(D)).
 
 % address_offset(+Source, +K, +Defs, -S, -Delta): Source computes the
 % same-class temp S plus Delta.
-address_offset(ins(copy, [t(S)]), K, Defs, S, 0) :-
+address_offset(let(copy, [tmp(S)]), K, Defs, S, 0) :-
     get_assoc(S, Defs, def(K, _)).
-address_offset(ins(add, [t(S), c(N)]), K, Defs, S, N) :-
+address_offset(let(add, [tmp(S), const(N)]), K, Defs, S, N) :-
     get_assoc(S, Defs, def(K, _)).
-address_offset(ins(add, [c(N), t(S)]), l, Defs, S, N) :-
+address_offset(let(add, [const(N), tmp(S)]), l, Defs, S, N) :-
     get_assoc(S, Defs, def(l, _)).
-address_offset(ins(sub, [t(S), c(N)]), K, Defs, S, Delta) :-
+address_offset(let(sub, [tmp(S), const(N)]), K, Defs, S, Delta) :-
     get_assoc(S, Defs, def(K, _)),
     Delta is -N.
 

@@ -13,7 +13,7 @@
       ret(V)          returned V (an integer or constrained variable)
       rets([X1, X2])  returned a tuple
       ret             returned from a void function
-      hlt             executed hlt
+      unreachable             executed unreachable
       ub(Reason)      undefined behaviour: division by zero or overflow,
                       a memory access outside every live allocation
       trap(Reason)    a Fil-C check failed (filc mode only)
@@ -50,7 +50,7 @@
     return class and the module mode. A block is entered from(Pred), the
     label of the block that jumped to it, or at entry.
 
-    Variable names: K a class, V an IR value (t(N), c(N) or glo(N)), X a
+    Variable names: K a class, V an IR value (tmp(N), const(N) or global(N)), X a
     run-time value (an integer, a constrained variable, or in filc mode
     ptr(Addr, Cap)), Env the assoc from temporary to run-time value, S a
     run state, Out an outcome, Res a partial result (val(X), ok, ub(Why)
@@ -89,10 +89,10 @@ module_prepared(M, prep(Fns, Globals, Mode, Mem0)) :-
     M = module(Items),
     findall(Name-fn(Ret, Params, Entry, BlockMap),
             ( member(func(Name, _, Ret, Params, Blocks), Items),
-              Blocks = [blk(Entry, _, _, _)|_],
+              Blocks = [block(Entry, _, _, _)|_],
               findall(Label-Block,
                       ( member(Block, Blocks),
-                        Block = blk(Label, _, _, _)
+                        Block = block(Label, _, _, _)
                       ),
                       LabelBlocks),
               list_to_assoc(LabelBlocks, BlockMap) ),
@@ -122,7 +122,7 @@ run_prepared(prep(Fns, Globals, Mode, Mem0), Fn, Args, Fuel, Outcome) :-
     call_outcome(Fns, Globals, Mode, Fn, Args, s(Mem0, Fuel), Outcome, _).
 
 % arg_in_range(+Param, ?X): X is a value of Param's class.
-arg_in_range(par(K, _), X) :- class_arg(K, X).
+arg_in_range(param(K, _), X) :- class_arg(K, X).
 
 % class_arg(+K, ?X): X is an argument of class K. A p argument is
 % ptr(Addr, Cap), or an integer address with no pointer term (main.pl's
@@ -166,7 +166,7 @@ returned_state(plain, Regions, s(mem(Bytes, _, Next, Aux), Fuel),
                s(mem(Bytes, Regions, Next, Aux), Fuel)).
 returned_state(filc, _, S, S).
 
-param_arg_env(par(_, t(N)), X, Env0, Env) :- put_assoc(N, Env0, X, Env).
+param_arg_env(param(_, tmp(N)), X, Env0, Env) :- put_assoc(N, Env0, X, Env).
 
 entry_snapshot(Blocks, Args, Env0, Env, s(Mem0, Fuel), s(Mem, Fuel)) :-
     assoc_to_values(Blocks, Bs),
@@ -218,7 +218,7 @@ block_outcome(Ctx, Label, Pred, Env0, s(Mem, Fuel0), Out, S) :-
         S = s(Mem, Fuel0)
     ;   Fuel1 is Fuel0 - 1,
         Ctx = ctx(_, _, Blocks, _, _),
-        get_assoc(Label, Blocks, blk(_, Phis, Insts, Jump)),
+        get_assoc(Label, Blocks, block(_, Phis, Insts, Jump)),
         phis_env(Phis, Ctx, Pred, Env0, Env0, Env1),
         insts_result(Insts, Ctx, Env1, s(Mem, Fuel1), Result),
         result_outcome(Result, Jump, Ctx, Label, Out, S)
@@ -229,7 +229,7 @@ block_outcome(Ctx, Label, Pred, Env0, s(Mem, Fuel0), Out, S) :-
 % EntryEnv. Phis read the environment as it was on entry, so they all
 % bind at once. An entry block has no phis.
 phis_env([], _, _, _, Env, Env).
-phis_env([phi(t(D), K, Pairs)|Phis], Ctx, from(Pred), EntryEnv, Env0, Env) :-
+phis_env([phi(tmp(D), K, Pairs)|Phis], Ctx, from(Pred), EntryEnv, Env0, Env) :-
     memberchk(Pred-V, Pairs),
     value_x(K, V, Ctx, EntryEnv, X),
     put_assoc(D, Env0, X, Env1),
@@ -247,10 +247,10 @@ result_outcome(stop(Out, S), _, _, _, Out, S).
 % it; a known one takes the fast path.
 % A pollcheck on the edge (poll(L)) changes nothing the interpreter
 % models: it has no signals and no free.
-jump_outcome(jmp(T), Ctx, From, Env, S0, Out, S) :-
+jump_outcome(goto(T), Ctx, From, Env, S0, Out, S) :-
     edge_label(T, L),
     block_outcome(Ctx, L, from(From), Env, S0, Out, S).
-jump_outcome(jnz(V, T1, T2), Ctx, From, Env, S0, Out, S) :-
+jump_outcome(branch(V, T1, T2), Ctx, From, Env, S0, Out, S) :-
     value_x(w, V, Ctx, Env, X),
     (   integer(X) -> ( X =\= 0 -> T = T1 ; T = T2 )
     ;   X #\= 0, T = T1
@@ -265,7 +265,7 @@ jump_outcome(rets(Vs), Ctx, _, Env, S, rets(Xs), S) :-
     Ctx = ctx(_, _, _, tuple(Ks), _),
     maplist(class_value_x(Ctx, Env), Ks, Vs, Xs).
 jump_outcome(ret, _, _, _, S, ret, S).
-jump_outcome(hlt, _, _, _, S, hlt, S).
+jump_outcome(unreachable, _, _, _, S, unreachable, S).
 
 %% Instructions
 
@@ -285,11 +285,11 @@ rest_result(stop(Out, S), _, _, stop(Out, S)).
 % inst_result(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
 % after Inst, or stop(Outcome, S) when it ends the run.
 inst_result(loc(_, _), _, Env, S, cont(Env, S)) :- !.
-inst_result(ins(t(D), p, va_args, [c(Off)]), _, Env0, S, Result) :- !,
+inst_result(let(tmp(D), p, va_args, [const(Off)]), _, Env0, S, Result) :- !,
     get_assoc(hidden(va_snapshot), Env0, ptr(A, Cap)),
     B is (A + Off) mod 18446744073709551616,
     res_result(val(ptr(B, Cap)), D, Env0, S, Result).
-inst_result(ins(t(D), K, Op, Args), Ctx, Env0, S0, Result) :-
+inst_result(let(tmp(D), K, Op, Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(_, _, _, _, Mode),
     op_arg_classes(Op, K, Mode, ArgClasses),
     maplist(class_value_x(Ctx, Env0), ArgClasses, Args, Xs),
@@ -303,7 +303,7 @@ inst_result(store(Width, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     value_x(AddrClass, A, Ctx, Env, Addr),
     store_res(Mode, Width, Mem0, Addr, X, Res, Mem),
     store_res_result(Res, Env, s(Mem, Fuel), Result).
-inst_result(st(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
+inst_result(raw_store(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     width_value_class(Width, ValueClass),
     value_x(ValueClass, V, Ctx, Env, X),
     value_x(a, A, Ctx, Env, ptr(B, Cap)),
@@ -311,13 +311,13 @@ inst_result(st(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     store_res(filc, Width, Mem0, ptr(Addr, Cap), X, Res0, Mem),
     raw_res(Res0, Res),
     store_res_result(Res, Env, s(Mem, Fuel), Result).
-inst_result(call(Res, glo(F), Args), Ctx, Env0, S0, Result) :-
+inst_result(call(Res, global(F), Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(Fns, Globals, _, _, Mode),
     maplist(arg_x(Ctx, Env0), Args, Xs),
     call_outcome(Fns, Globals, Mode, F, Xs, S0, Out, S),
     call_outcome_result(Out, Res, Env0, S, Result).
-inst_result(call(Res, t(N), Args), Ctx, Env0, S0, Result) :-
-    value_x(p, t(N), Ctx, Env0, ptr(A, Cap)),
+inst_result(call(Res, tmp(N), Args), Ctx, Env0, S0, Result) :-
+    value_x(p, tmp(N), Ctx, Env0, ptr(A, Cap)),
     maplist(arg_x(Ctx, Env0), Args, Xs),
     must_be(callable, Cap),
     cap_call_result(Cap, A, Res, Args, Xs, Ctx, Env0, S0, Result).
@@ -388,7 +388,7 @@ indirect_call_conv(Ret, Params, Res, Args, Xs, Ys, Conv) :-
     return_words(Ret, CalleeWords),
     length(CallerWords, NCallerWords),
     length(CalleeWords, NCalleeWords),
-    findall(K, member(par(K, _), Params), ParamClasses),
+    findall(K, member(param(K, _), Params), ParamClasses),
     findall(K, member(arg(K, _), Args), ArgClasses),
     (   NArgs < NParams -> Conv = trap(argument_size)
     ;   NCallerWords > NCalleeWords -> Conv = trap(return_size)
@@ -405,8 +405,8 @@ indirect_call_conv(Ret, Params, Res, Args, Xs, Ys, Conv) :-
 % result_words(+Res, -Ks) and return_words(+Ret, -Ks): the classes of
 % the words a call site reads and a function returns.
 result_words(void, []).
-result_words(to(_, K), [K]).
-result_words(tuple(Tos), Ks) :- findall(K, member(to(_, K), Tos), Ks).
+result_words(result(_, K), [K]).
+result_words(tuple(Tos), Ks) :- findall(K, member(result(_, K), Tos), Ks).
 
 return_words(void, []).
 return_words(tuple(Ks), Ks).
@@ -488,7 +488,7 @@ call_outcome_result(ret(X), Res, Env0, S, cont(Env, S)) :-
 call_outcome_result(rets(Xs), Res, Env0, S, cont(Env, S)) :-
     rets_env(Res, Xs, Env0, Env).
 call_outcome_result(ret, void, Env, S, cont(Env, S)).
-call_outcome_result(hlt, _, _, S, stop(hlt, S)).
+call_outcome_result(unreachable, _, _, S, stop(unreachable, S)).
 call_outcome_result(ub(Why), _, _, S, stop(ub(Why), S)).
 call_outcome_result(trap(Why), _, _, S, stop(trap(Why), S)).
 call_outcome_result(unchecked(Why), _, _, S, stop(unchecked(Why), S)).
@@ -497,13 +497,13 @@ call_outcome_result(out_of_fuel, _, _, S, stop(out_of_fuel, S)).
 % ret_env(+Res, +X, +Env0, -Env) and rets_env(+Res, +Xs, +Env0, -Env):
 % Env is Env0 with the returned word X, or words Xs, bound as the call
 % site's Res reads them.
-ret_env(to(T, K), X, Env0, Env) :- to_word_env(to(T, K), X, Env0, Env).
+ret_env(result(T, K), X, Env0, Env) :- to_word_env(result(T, K), X, Env0, Env).
 ret_env(void, _, Env, Env).
 
 rets_env(tuple(Tos), Xs, Env0, Env) :- foldl(to_word_env, Tos, Xs, Env0, Env).
 rets_env(void, _, Env, Env).
 
-to_word_env(to(t(D), K), X0, Env0, Env) :-
+to_word_env(result(tmp(D), K), X0, Env0, Env) :-
     word_at_class(K, X0, X),
     put_assoc(D, Env0, X, Env).
 
@@ -522,17 +522,17 @@ word_at_class(d, X0, X) :- must_be(integer, X0), X is X0 mod 1844674407370955161
 % in plain mode (which the validator rejects) the read fails.
 value_x(K, V, Ctx, Env, X) :- value_x_(V, K, Ctx, Env, X).
 
-value_x_(t(N), K, _, Env, X) :-
+value_x_(tmp(N), K, _, Env, X) :-
     (   get_assoc(N, Env, X0) -> true
-    ;   format(atom(Msg), 'read of t(~w) before any assignment', [N]),
+    ;   format(atom(Msg), 'read of tmp(~w) before any assignment', [N]),
         throw(nanofil_error(Msg))
     ),
     word_at_class(K, X0, X).
-value_x_(c(N), K, _, _, X) :-
+value_x_(const(N), K, _, _, X) :-
     modulus(K, Mod),
     A is N mod Mod,
     constant_at_class(K, A, X).
-value_x_(glo(N), _, ctx(_, Globals, _, _, Mode), _, X) :-
+value_x_(global(N), _, ctx(_, Globals, _, _, Mode), _, X) :-
     (   get_assoc(N, Globals, X0) -> X = X0
     ;   undefined_symbol(Mode, N, X)
     ).
@@ -574,7 +574,7 @@ kind_res(check, check(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
     Size is Hi - Lo,
     access_res(Mem, B, Cap, Size, Rights, Align, Res0),
     checked_res(Res0, ptr(A, Cap), Res).
-kind_res(ld, ld(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
+kind_res(ld, raw_load(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
     raw_address(A, Off, B),
     load_op_res(T, K, filc, [ptr(B, Cap)], S0, Res0, S),
     raw_res(Res0, Res).
@@ -1149,7 +1149,7 @@ item_size(item(W, _), Size0, Size) :-
 % item_size/3.
 item_bytes(_, zero(N), Bs) :- length(Bs, N), maplist(=(0), Bs).
 item_bytes(_, item(b, str(Cs)), Bs) :- !, maplist(char_code, Cs, Bs).
-item_bytes(_, item(W, c(N)), Bs) :-
+item_bytes(_, item(W, const(N)), Bs) :-
     width_bytes(W, Size),
     Bits is Size * 8,
     U is N mod (1 << Bits),
@@ -1171,7 +1171,7 @@ item_bytes(Globals, item(l, sym(S, Off)), Bs) :-
 outcome_text(ret(V), T) :- ret_text(V, T).
 outcome_text(rets(_), 'ret tuple').
 outcome_text(ret, ret).
-outcome_text(hlt, hlt).
+outcome_text(unreachable, unreachable).
 outcome_text(ub(Why), T) :- format(atom(T), 'ub ~w', [Why]).
 outcome_text(trap(Why), T) :- format(atom(T), 'trap ~w', [Why]).
 outcome_text(unchecked(Why), T) :- format(atom(T), 'unchecked ~w', [Why]).

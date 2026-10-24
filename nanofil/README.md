@@ -28,25 +28,25 @@ and the pointer class `p`, and [src/interp.pl](src/interp.pl) defines
 what it means:
 
 ```prolog
-func(sum, export, w, [par(p, t(v0)), par(w, t(v2))], [
-    blk(start, [], [], jmp('L6')),
-    blk('L6', [
-        phi(t('pr.2'), w, ['L8'-t(v22), start-c(0)]),
-        phi(t('pr.1'), w, ['L8'-t(v20), start-c(0)])
+func(sum, export, w, [param(p, tmp(v0)), param(w, tmp(v2))], [
+    block(start, [], [], goto('L6')),
+    block('L6', [
+        phi(tmp('pr.2'), w, ['L8'-tmp(v22), start-const(0)]),
+        phi(tmp('pr.1'), w, ['L8'-tmp(v20), start-const(0)])
     ], [
-        ins(t(v12), w, cmp(slt, w), [t('pr.2'), t(v2)])
-    ], jnz(t(v12), 'L7', 'L9')),
-    blk('L7', [], [
-        ins(t(v16), l, ext(sw), [t('pr.2')]),
-        ins(t(v17), l, mul, [t(v16), c(4)]),
-        ins(t(v18), p, add, [t(v0), t(v17)]),
-        ins(t(v19), w, load(sw), [t(v18)]),
-        ins(t(v20), w, add, [t('pr.1'), t(v19)])
-    ], jmp('L8')),
-    blk('L8', [], [
-        ins(t(v22), w, add, [t('pr.2'), c(1)])
-    ], jmp('L6')),
-    blk('L9', [], [], ret(t('pr.1')))
+        let(tmp(v12), w, cmp(slt, w), [tmp('pr.2'), tmp(v2)])
+    ], branch(tmp(v12), 'L7', 'L9')),
+    block('L7', [], [
+        let(tmp(v16), l, ext(sw), [tmp('pr.2')]),
+        let(tmp(v17), l, mul, [tmp(v16), const(4)]),
+        let(tmp(v18), p, add, [tmp(v0), tmp(v17)]),
+        let(tmp(v19), w, load(sw), [tmp(v18)]),
+        let(tmp(v20), w, add, [tmp('pr.1'), tmp(v19)])
+    ], goto('L8')),
+    block('L8', [], [
+        let(tmp(v22), w, add, [tmp('pr.2'), const(1)])
+    ], goto('L6')),
+    block('L9', [], [], ret(tmp('pr.1')))
 ]).
 ```
 

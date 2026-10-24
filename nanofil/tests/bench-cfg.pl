@@ -181,8 +181,8 @@ fmt_t(none, '-').
 % and instructions of Blocks define.
 def_temps(Blocks, N) :-
     findall(T,
-            ( member(blk(_, Ps, Is, _), Blocks),
-              (   member(phi(t(T), _, _), Ps)
+            ( member(block(_, Ps, Is, _), Blocks),
+              (   member(phi(tmp(T), _, _), Ps)
               ;   member(I, Is),
                   inst_def(I, T)
               )
@@ -198,13 +198,13 @@ edit(Blocks0, Blocks) :-
     Mid is N // 2,
     findall(I,
             ( between(Mid, N, I),
-              nth1(I, Blocks0, blk(_, _, Is, _)),
+              nth1(I, Blocks0, block(_, _, Is, _)),
               Is = [_|_]
             ),
             [K|_]),
-    nth1(K, Blocks0, blk(L, Ps, [_|Is], J)),
+    nth1(K, Blocks0, block(L, Ps, [_|Is], J)),
     nth1(K, Blocks0, _, Rest),
-    nth1(K, Blocks, blk(L, Ps, Is, J), Rest).
+    nth1(K, Blocks, block(L, Ps, Is, J), Rest).
 
 % agree_dom(+Idom, +DF, +IPs, +DFPs): the functional and tabled
 % dominators and frontiers agree; throws disagree(What) if not.

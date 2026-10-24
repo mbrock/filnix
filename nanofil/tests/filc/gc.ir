@@ -4,96 +4,96 @@
 % root or store barrier frees a live node.
 
 % A list of %n nodes {next p at 0, value l at 8}, newest first.
-func(build, export, p, [par(l, t(n))], [
-    blk(start, [], [], jmp(loop)),
-    blk(loop, [
-        phi(t(i), l, [start-c(0), body-t(i1)]),
-        phi(t(head), p, [start-c(0), body-t(node_back)])
+func(build, export, p, [param(l, tmp(n))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), l, [start-const(0), body-tmp(i1)]),
+        phi(tmp(head), p, [start-const(0), body-tmp(node_back)])
     ], [
-        ins(t(c), w, cmp(slt, l), [t(i), t(n)])
-    ], jnz(t(c), body, done)),
-    blk(body, [], [
-        ins(t(head_copy), p, copy, [t(head)]),
-        ins(t(head_link), p, copy, [t(head_copy)]),
-        ins(t(node), p, alloc(8), [c(16)]),
-        ins(t(node_copy), p, copy, [t(node)]),
-        ins(t(node_live), p, copy, [t(node_copy)]),
-        store(p, t(head_link), t(node_live)),
-        ins(t(v), p, add, [t(node_live), c(8)]),
-        store(l, t(i), t(v)),
-        call(void, glo(c_gc), [arg(l, t(i))]),
-        ins(t(node_back), p, copy, [t(node_live)]),
-        ins(t(i1), l, add, [t(i), c(1)])
-    ], jmp(loop)),
-    blk(done, [], [
-        ins(t(result), p, copy, [t(head)])
-    ], ret(t(result)))
+        let(tmp(c), w, cmp(slt, l), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(head_copy), p, copy, [tmp(head)]),
+        let(tmp(head_link), p, copy, [tmp(head_copy)]),
+        let(tmp(node), p, alloc(8), [const(16)]),
+        let(tmp(node_copy), p, copy, [tmp(node)]),
+        let(tmp(node_live), p, copy, [tmp(node_copy)]),
+        store(p, tmp(head_link), tmp(node_live)),
+        let(tmp(v), p, add, [tmp(node_live), const(8)]),
+        store(l, tmp(i), tmp(v)),
+        call(void, global(c_gc), [arg(l, tmp(i))]),
+        let(tmp(node_back), p, copy, [tmp(node_live)]),
+        let(tmp(i1), l, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [
+        let(tmp(result), p, copy, [tmp(head)])
+    ], ret(tmp(result)))
 ]).
 
 % Two distinct anchors swap on every backedge and live across collections.
 % Their values sum to 46: include that check in the result without changing
 % gc.c's list-sum contract. Losing one capability or sequentially updating
 % the swap phis must not silently leave the expected answer unchanged.
-func(sum, export, l, [par(p, t(list))], [
-    blk(start, [], [
-        ins(t(list_copy), p, copy, [t(list)]),
-        ins(t(list_start), p, copy, [t(list_copy)]),
-        ins(t(left_seed), p, alloc(8), [c(8)]),
-        store(l, c(17), t(left_seed)),
-        ins(t(right_seed), p, alloc(8), [c(8)]),
-        store(l, c(29), t(right_seed))
-    ], jmp(loop)),
-    blk(loop, [
-        phi(t(p), p, [start-t(list_start), finish-t(next_back)]),
-        phi(t(left), p, [start-t(left_seed), finish-t(left_back)]),
-        phi(t(right), p, [start-t(right_seed), finish-t(right_back)]),
-        phi(t(s), l, [start-c(0), finish-t(s1)])
+func(sum, export, l, [param(p, tmp(list))], [
+    block(start, [], [
+        let(tmp(list_copy), p, copy, [tmp(list)]),
+        let(tmp(list_start), p, copy, [tmp(list_copy)]),
+        let(tmp(left_seed), p, alloc(8), [const(8)]),
+        store(l, const(17), tmp(left_seed)),
+        let(tmp(right_seed), p, alloc(8), [const(8)]),
+        store(l, const(29), tmp(right_seed))
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(p), p, [start-tmp(list_start), finish-tmp(next_back)]),
+        phi(tmp(left), p, [start-tmp(left_seed), finish-tmp(left_back)]),
+        phi(tmp(right), p, [start-tmp(right_seed), finish-tmp(right_back)]),
+        phi(tmp(s), l, [start-const(0), finish-tmp(s1)])
     ], [
-        ins(t(a), l, ptoi, [t(p)]),
-        ins(t(z), w, cmp(eq, l), [t(a), c(0)])
-    ], jnz(t(z), done, body)),
-    blk(body, [], [
-        ins(t(current_copy), p, copy, [t(p)]),
-        ins(t(current), p, copy, [t(current_copy)]),
-        ins(t(vp), p, add, [t(current), c(8)]),
-        ins(t(v), l, load(l), [t(vp)]),
-        ins(t(next), p, load(p), [t(current)]),
-        ins(t(next_live), p, copy, [t(next)]),
-        ins(t(anchor_seed), p, alloc(8), [c(8)]),
-        store(l, c(37), t(anchor_seed))
-    ], jmp(inner)),
-    blk(inner, [
+        let(tmp(a), l, ptoi, [tmp(p)]),
+        let(tmp(z), w, cmp(eq, l), [tmp(a), const(0)])
+    ], branch(tmp(z), done, body)),
+    block(body, [], [
+        let(tmp(current_copy), p, copy, [tmp(p)]),
+        let(tmp(current), p, copy, [tmp(current_copy)]),
+        let(tmp(vp), p, add, [tmp(current), const(8)]),
+        let(tmp(v), l, load(l), [tmp(vp)]),
+        let(tmp(next), p, load(p), [tmp(current)]),
+        let(tmp(next_live), p, copy, [tmp(next)]),
+        let(tmp(anchor_seed), p, alloc(8), [const(8)]),
+        store(l, const(37), tmp(anchor_seed))
+    ], goto(inner)),
+    block(inner, [
         % Invariants of this inner loop, including a fresh object rooted only
         % here and aliases of the outer swap phis. All three should disappear.
-        phi(t(anchor), p, [body-t(anchor_seed), spin-t(anchor)]),
-        phi(t(left_hold), p, [body-t(left), spin-t(left_hold)]),
-        phi(t(right_hold), p, [body-t(right), spin-t(right_hold)]),
-        phi(t(j), w, [body-c(0), spin-t(j1)])
+        phi(tmp(anchor), p, [body-tmp(anchor_seed), spin-tmp(anchor)]),
+        phi(tmp(left_hold), p, [body-tmp(left), spin-tmp(left_hold)]),
+        phi(tmp(right_hold), p, [body-tmp(right), spin-tmp(right_hold)]),
+        phi(tmp(j), w, [body-const(0), spin-tmp(j1)])
     ], [
-        ins(t(again), w, cmp(slt, w), [t(j), c(1)])
-    ], jnz(t(again), spin, finish)),
-    blk(spin, [], [
-        call(void, glo(c_gc), [arg(l, t(v))]),
-        ins(t(j1), w, add, [t(j), c(1)])
-    ], jmp(inner)),
-    blk(finish, [], [
-        ins(t(av), l, load(l), [t(anchor)]),
-        ins(t(ad), l, sub, [t(av), c(37)]),
-        ins(t(checked), l, add, [t(v), t(ad)]),
-        ins(t(s1), l, add, [t(s), t(checked)]),
-        ins(t(left_copy), p, copy, [t(right_hold)]),
-        ins(t(right_copy), p, copy, [t(left_hold)]),
-        ins(t(next_back), p, copy, [t(next_live)]),
-        ins(t(left_back), p, copy, [t(left_copy)]),
-        ins(t(right_back), p, copy, [t(right_copy)])
-    ], jmp(loop)),
-    blk(done, [], [
-        ins(t(left_result), p, copy, [t(left)]),
-        ins(t(right_result), p, copy, [t(right)]),
-        ins(t(lv), l, load(l), [t(left_result)]),
-        ins(t(rv), l, load(l), [t(right_result)]),
-        ins(t(both), l, add, [t(lv), t(rv)]),
-        ins(t(delta), l, sub, [t(both), c(46)]),
-        ins(t(result), l, add, [t(s), t(delta)])
-    ], ret(t(result)))
+        let(tmp(again), w, cmp(slt, w), [tmp(j), const(1)])
+    ], branch(tmp(again), spin, finish)),
+    block(spin, [], [
+        call(void, global(c_gc), [arg(l, tmp(v))]),
+        let(tmp(j1), w, add, [tmp(j), const(1)])
+    ], goto(inner)),
+    block(finish, [], [
+        let(tmp(av), l, load(l), [tmp(anchor)]),
+        let(tmp(ad), l, sub, [tmp(av), const(37)]),
+        let(tmp(checked), l, add, [tmp(v), tmp(ad)]),
+        let(tmp(s1), l, add, [tmp(s), tmp(checked)]),
+        let(tmp(left_copy), p, copy, [tmp(right_hold)]),
+        let(tmp(right_copy), p, copy, [tmp(left_hold)]),
+        let(tmp(next_back), p, copy, [tmp(next_live)]),
+        let(tmp(left_back), p, copy, [tmp(left_copy)]),
+        let(tmp(right_back), p, copy, [tmp(right_copy)])
+    ], goto(loop)),
+    block(done, [], [
+        let(tmp(left_result), p, copy, [tmp(left)]),
+        let(tmp(right_result), p, copy, [tmp(right)]),
+        let(tmp(lv), l, load(l), [tmp(left_result)]),
+        let(tmp(rv), l, load(l), [tmp(right_result)]),
+        let(tmp(both), l, add, [tmp(lv), tmp(rv)]),
+        let(tmp(delta), l, sub, [tmp(both), const(46)]),
+        let(tmp(result), l, add, [tmp(s), tmp(delta)])
+    ], ret(tmp(result)))
 ]).

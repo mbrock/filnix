@@ -1,49 +1,49 @@
 % The getter copy must survive; only its temporary aliases disappear.
-data(cell, local, 8, [item(l, c(41))]).
-data(readonly, ro(local), 8, [item(l, c(17))]).
-func(read, local, l, [par(p, t(p))], [
-    blk(start, [], [
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(x), l, load(l), [t(q)])
-    ], ret(t(x)))
+data(cell, local, 8, [item(l, const(41))]).
+data(readonly, ro(local), 8, [item(l, const(17))]).
+func(read, local, l, [param(p, tmp(p))], [
+    block(start, [], [
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(x), l, load(l), [tmp(q)])
+    ], ret(tmp(x)))
 ]).
 func(global_alias, export, l, [], [
-    blk(start, [], [
-        ins(t(p), p, copy, [glo(cell)]),
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(r), p, copy, [t(q)]),
-        call(to(t(x), l), glo(read), [arg(p, t(r))])
-    ], ret(t(x)))
+    block(start, [], [
+        let(tmp(p), p, copy, [global(cell)]),
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(r), p, copy, [tmp(q)]),
+        call(result(tmp(x), l), global(read), [arg(p, tmp(r))])
+    ], ret(tmp(x)))
 ]).
 run(global_alias, []).
 
 % A pointer phi can select different capabilities. Store/load must retain
 % the selected one, not just its address. Both valid and trapping offsets.
-func(choose, export, l, [par(w, t(which)), par(l, t(off))], [
-    blk(start, [], [
-        ins(t(a), p, copy, [glo(cell)]),
-        ins(t(b), p, copy, [glo(readonly)]),
-        ins(t(cond), w, copy, [t(which)])
-    ], jnz(t(cond), left, right)),
-    blk(left, [], [
-        ins(t(aa), p, copy, [t(a)])
-    ], jmp(join)),
-    blk(right, [], [
-        ins(t(bb), p, copy, [t(b)])
-    ], jmp(join)),
-    blk(join, [
-        phi(t(p), p, [left-t(aa), right-t(bb)])
+func(choose, export, l, [param(w, tmp(which)), param(l, tmp(off))], [
+    block(start, [], [
+        let(tmp(a), p, copy, [global(cell)]),
+        let(tmp(b), p, copy, [global(readonly)]),
+        let(tmp(cond), w, copy, [tmp(which)])
+    ], branch(tmp(cond), left, right)),
+    block(left, [], [
+        let(tmp(aa), p, copy, [tmp(a)])
+    ], goto(join)),
+    block(right, [], [
+        let(tmp(bb), p, copy, [tmp(b)])
+    ], goto(join)),
+    block(join, [
+        phi(tmp(p), p, [left-tmp(aa), right-tmp(bb)])
     ], [
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(slot), p, alloc(8), [c(8)]),
-        ins(t(slotcopy), p, copy, [t(slot)]),
-        store(p, t(q), t(slotcopy)),
-        ins(t(loaded), p, load(p), [t(slotcopy)]),
-        ins(t(alias), p, copy, [t(loaded)]),
-        ins(t(o), l, copy, [t(off)]),
-        ins(t(at), p, add, [t(alias), t(o)]),
-        ins(t(r), l, load(l), [t(at)])
-    ], ret(t(r)))
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(slot), p, alloc(8), [const(8)]),
+        let(tmp(slotcopy), p, copy, [tmp(slot)]),
+        store(p, tmp(q), tmp(slotcopy)),
+        let(tmp(loaded), p, load(p), [tmp(slotcopy)]),
+        let(tmp(alias), p, copy, [tmp(loaded)]),
+        let(tmp(o), l, copy, [tmp(off)]),
+        let(tmp(at), p, add, [tmp(alias), tmp(o)]),
+        let(tmp(r), l, load(l), [tmp(at)])
+    ], ret(tmp(r)))
 ]).
 run(choose, [1, 0]).
 run(choose, [0, 0]).
@@ -51,105 +51,105 @@ run(choose, [1, 8]).
 run(choose, [0, 18446744073709551615]).
 
 func(readonly_alias, export, w, [], [
-    blk(start, [], [
-        ins(t(p), p, copy, [glo(readonly)]),
-        ins(t(q), p, copy, [t(p)]),
-        store(b, c(3), t(q))
-    ], ret(c(0)))
+    block(start, [], [
+        let(tmp(p), p, copy, [global(readonly)]),
+        let(tmp(q), p, copy, [tmp(p)]),
+        store(b, const(3), tmp(q))
+    ], ret(const(0)))
 ]).
 run(readonly_alias, []).
 
 % Integer casts must never acquire the original capability. These traps
 % distinguish address equality from equality of Fil-C pointer values.
 func(cast_alias, export, l, [], [
-    blk(start, [], [
-        ins(t(p), p, copy, [glo(cell)]),
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(i), l, ptoi, [t(q)]),
-        ins(t(j), l, copy, [t(i)]),
-        ins(t(raw), p, itop, [t(j)]),
-        ins(t(alias), p, copy, [t(raw)]),
-        ins(t(r), l, load(l), [t(alias)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(p), p, copy, [global(cell)]),
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(i), l, ptoi, [tmp(q)]),
+        let(tmp(j), l, copy, [tmp(i)]),
+        let(tmp(raw), p, itop, [tmp(j)]),
+        let(tmp(alias), p, copy, [tmp(raw)]),
+        let(tmp(r), l, load(l), [tmp(alias)])
+    ], ret(tmp(r)))
 ]).
 run(cast_alias, []).
 
 % Even if the only pointer is a literal, keep its materialization and
 % therefore module mode. A literal pointer has no capability.
 func(literal_address, export, l, [], [
-    blk(start, [], [
-        ins(t(p), p, copy, [c(123)]),
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(i), l, ptoi, [t(q)])
-    ], ret(t(i)))
+    block(start, [], [
+        let(tmp(p), p, copy, [const(123)]),
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(i), l, ptoi, [tmp(q)])
+    ], ret(tmp(i)))
 ]).
 run(literal_address, []).
 func(literal_load, export, l, [], [
-    blk(start, [], [
-        ins(t(p), p, copy, [c(0)]),
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(x), l, load(l), [t(q)])
-    ], ret(t(x)))
+    block(start, [], [
+        let(tmp(p), p, copy, [const(0)]),
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(x), l, load(l), [tmp(q)])
+    ], ret(tmp(x)))
 ]).
 run(literal_load, []).
 
 % Direct and indirect calls, tuple operands/results, and pointer returns.
-func(pair, local, tuple([l, p]), [par(p, t(p)), par(l, t(n))], [
-    blk(start, [], [
-        ins(t(q), p, copy, [t(p)]),
-        ins(t(x), l, copy, [t(n)])
-    ], rets([t(x), t(q)]))
+func(pair, local, tuple([l, p]), [param(p, tmp(p)), param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(q), p, copy, [tmp(p)]),
+        let(tmp(x), l, copy, [tmp(n)])
+    ], rets([tmp(x), tmp(q)]))
 ]).
-func(indirect, export, l, [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(p), p, copy, [glo(cell)]),
-        ins(t(f), p, copy, [glo(pair)]),
-        ins(t(g), p, copy, [t(f)]),
-        ins(t(h), p, copy, [t(g)]),
-        ins(t(x), l, copy, [t(n)]),
-        call(tuple([to(t(number), l), to(t(pointer), p)]), t(h), [arg(p, t(p)), arg(l, t(x))]),
-        ins(t(nc), l, copy, [t(number)]),
-        ins(t(pc), p, copy, [t(pointer)]),
-        call(to(t(v), l), glo(read), [arg(p, t(pc))]),
-        ins(t(r), l, sub, [t(nc), t(v)])
-    ], ret(t(r)))
+func(indirect, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(p), p, copy, [global(cell)]),
+        let(tmp(f), p, copy, [global(pair)]),
+        let(tmp(g), p, copy, [tmp(f)]),
+        let(tmp(h), p, copy, [tmp(g)]),
+        let(tmp(x), l, copy, [tmp(n)]),
+        call(tuple([result(tmp(number), l), result(tmp(pointer), p)]), tmp(h), [arg(p, tmp(p)), arg(l, tmp(x))]),
+        let(tmp(nc), l, copy, [tmp(number)]),
+        let(tmp(pc), p, copy, [tmp(pointer)]),
+        call(result(tmp(v), l), global(read), [arg(p, tmp(pc))]),
+        let(tmp(r), l, sub, [tmp(nc), tmp(v)])
+    ], ret(tmp(r)))
 ]).
 run(indirect, [5]).
 run(indirect, [100]).
 
 % Calling a copied data pointer is still a non-function trap.
 func(not_function, export, l, [], [
-    blk(start, [], [
-        ins(t(p), p, copy, [glo(cell)]),
-        ins(t(q), p, copy, [t(p)]),
-        call(to(t(r), l), t(q), [])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(p), p, copy, [global(cell)]),
+        let(tmp(q), p, copy, [tmp(p)]),
+        call(result(tmp(r), l), tmp(q), [])
+    ], ret(tmp(r)))
 ]).
 run(not_function, []).
 
 % A self-backedge phi aliases the entire pointer, not just its address.
-func(pointer_invariant, local, p, [par(w, t(n))], [
-    blk(start, [], [
-        ins(t(seed), p, alloc(8), [c(16)]),
-        store(l, c(53), t(seed))
-    ], jmp(head)),
-    blk(head, [
-        phi(t(p), p, [start-t(seed), body-t(p)]),
-        phi(t(i), w, [start-c(0), body-t(i1)])
+func(pointer_invariant, local, p, [param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(seed), p, alloc(8), [const(16)]),
+        store(l, const(53), tmp(seed))
+    ], goto(head)),
+    block(head, [
+        phi(tmp(p), p, [start-tmp(seed), body-tmp(p)]),
+        phi(tmp(i), w, [start-const(0), body-tmp(i1)])
     ], [
-        ins(t(c), w, cmp(slt, w), [t(i), t(n)])
-    ], jnz(t(c), body, done)),
-    blk(body, [], [
-        ins(t(i1), w, add, [t(i), c(1)])
-    ], jmp(head)),
-    blk(done, [], [], ret(t(p)))
+        let(tmp(c), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(head)),
+    block(done, [], [], ret(tmp(p)))
 ]).
-func(invariant_load, export, l, [par(w, t(n)), par(l, t(off))], [
-    blk(start, [], [
-        call(to(t(p), p), glo(pointer_invariant), [arg(w, t(n))]),
-        ins(t(at), p, add, [t(p), t(off)]),
-        ins(t(v), l, load(l), [t(at)])
-    ], ret(t(v)))
+func(invariant_load, export, l, [param(w, tmp(n)), param(l, tmp(off))], [
+    block(start, [], [
+        call(result(tmp(p), p), global(pointer_invariant), [arg(w, tmp(n))]),
+        let(tmp(at), p, add, [tmp(p), tmp(off)]),
+        let(tmp(v), l, load(l), [tmp(at)])
+    ], ret(tmp(v)))
 ]).
 run(invariant_load, [0, 0]).
 run(invariant_load, [5, 0]).

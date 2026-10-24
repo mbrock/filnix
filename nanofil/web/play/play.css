@@ -290,3 +290,57 @@ table.symbols tr.import td.name { color: var(--muted); }
   #symbols-panel { grid-area: symbols; }
   .panel { overflow-x: auto; }
 }
+
+/* The IR's words by role (play.js's gloss): what computes, what touches
+   memory, Fil-C's checks and where control goes stand apart, and the
+   wrappers of values recede so their names and numbers read first. A
+   class is a small badge. The legend over the IR uses the same colours. */
+[data-slot="ir"] {
+  --w-inst: var(--ink);
+  --w-memory: #94570c;
+  --w-check: var(--accent);
+  --w-control: #2f6f8f;
+  --w-global: #3d7a3d;
+}
+.w-inst > .f, dt.w-inst { color: var(--w-inst); font-weight: 600; }
+.w-memory > .f, dt.w-memory, .a.w-memory { color: var(--w-memory); font-weight: 600; }
+.w-check > .f, dt.w-check, .a.w-check { color: var(--w-check); font-weight: 700; }
+.w-control > .f, dt.w-control, .a.w-control { color: var(--w-control); font-weight: 600; }
+.a.w-op, dt.w-op, .w-op > .f { color: var(--atom); font-weight: 600; }
+.c.w-value { --paren: color-mix(in srgb, var(--ink) 18%, transparent); }
+.w-value > .f { color: color-mix(in srgb, var(--ink) 38%, transparent); font-weight: 400; }
+dt.w-value { color: var(--var); }
+.c[data-tmp] > .args .a { color: var(--var); font-weight: 600; }
+.c.w-value:has(> .args .n) > .args .n { font-weight: 600; }
+.c.w-value:not([data-tmp]):not(:has(.n)) > .args .a { color: var(--w-global); font-weight: 600; }
+.c.lit { background: color-mix(in srgb, var(--var) 16%, transparent); border-radius: 3px; }
+.a.w-class, .a.w-type, .a.w-cond, dt.w-class, dt.w-type, dt.w-cond {
+  padding: 0 0.22em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--atom) 9%, transparent);
+  color: color-mix(in srgb, var(--atom) 80%, var(--ink));
+  font: 600 0.78em var(--mono-font);
+}
+.a.w-cond, dt.w-cond { background: color-mix(in srgb, var(--w-control) 10%, transparent); }
+.a.w-data, dt.w-data { color: var(--muted); }
+[data-slot="ir"] [title] { cursor: help; }
+
+details.legend {
+  margin: 0.2rem 0 1rem -1.2em;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--paper) 55%, var(--code-bg));
+  font-size: 0.82rem;
+}
+details.legend > summary { cursor: pointer; font-weight: 700; }
+details.legend > summary .hint { margin-left: 0.8em; font-weight: 400; color: var(--muted); }
+details.legend .roles { columns: 19rem auto; column-gap: 2rem; margin-top: 0.5rem; }
+details.legend .role { break-inside: avoid; margin-bottom: 0.7rem; }
+details.legend h3 { margin: 0 0 0.25rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+details.legend dl { margin: 0; }
+details.legend .word { margin: 0.12rem 0; padding-left: 1.2em; text-indent: -1.2em; }
+details.legend .word[hidden] { display: none; }
+details.legend dt, details.legend dd { display: inline; margin: 0; text-indent: 0; }
+details.legend dt { margin-right: 0.5em; font-family: var(--mono-font); font-size: 0.78rem; }
+details.legend dd { color: var(--ink); }

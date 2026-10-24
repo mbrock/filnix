@@ -7,13 +7,13 @@
 %   qbe:    0xffbb = 65467
 %
 run(f, [9833440827789222417, 18441921395520346504]).
-func(f, export, w, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(p), l, alloc(8), [c(16)]),
-        store(l, t(a), t(p)),
-        ins(t(q), l, add, [t(p), c(2)]),
-        store(w, t(b), t(q)),
-        ins(t(r), l, add, [t(p), c(5)]),
-        ins(t(v), w, load(uh), [t(r)])
-    ], ret(t(v)))
+func(f, export, w, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(p), l, alloc(8), [const(16)]),
+        store(l, tmp(a), tmp(p)),
+        let(tmp(q), l, add, [tmp(p), const(2)]),
+        store(w, tmp(b), tmp(q)),
+        let(tmp(r), l, add, [tmp(p), const(5)]),
+        let(tmp(v), w, load(uh), [tmp(r)])
+    ], ret(tmp(v)))
 ]).

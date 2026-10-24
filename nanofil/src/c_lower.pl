@@ -120,10 +120,10 @@ with_used_inlines(Funcs0, Env0, Items) :-
 item_ref(Items, Sym) :-
     member(Item, Items),
     (   Item = func(_, _, _, _, Blocks),
-        member(blk(_, _, Insts, _), Blocks),
+        member(block(_, _, Insts, _), Blocks),
         member(Inst, Insts),
-        (   Inst = ins(_, _, _, Args), member(glo(Sym), Args)
-        ;   Inst = call(_, glo(Sym), _)
+        (   Inst = let(_, _, _, Args), member(global(Sym), Args)
+        ;   Inst = call(_, global(Sym), _)
         )
     ;   Item = data(_, _, _, DataItems),
         member(item(p, sym(Sym, _)), DataItems)
@@ -276,7 +276,7 @@ global_data(Env0, Data) :-
                 ;   Values0 = Lit, Align = 1, Width = b
                 ),
                 append(Values0, [0], Values),
-                findall(item(Width, c(V)), member(V, Values), Items)
+                findall(item(Width, const(V)), member(V, Values), Items)
             ),
             LiteralData),
     append(GlobalData, LiteralData, Data).
@@ -343,10 +343,10 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     State = st(EnvEnd, none, [], RevBlocks, _, _, _, RevAllocs),
     env_scope(Env0, Scope, _),
     env_restore(Scope, EnvEnd, Env),
-    reverse(RevBlocks, [blk(start, [], Insts0, Jump)|Rest]),
+    reverse(RevBlocks, [block(start, [], Insts0, Jump)|Rest]),
     reverse(RevAllocs, Allocs),
     append(Allocs, Insts0, Insts),
-    foldl(block_located, [blk(start, [], Insts, Jump)|Rest], Blocks,
+    foldl(block_located, [block(start, [], Insts, Jump)|Rest], Blocks,
           Loc, _).
 
 % block_located(+Block0, -Block, +Loc0, -Loc): Block is Block0 starting
@@ -354,7 +354,7 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
 % began within the statement in effect, Loc0 (File:Line), when lowering
 % opened it, which is the last one the blocks before it record. Loc is
 % the location in effect after Block.
-block_located(blk(L, Phis, Insts0, J), blk(L, Phis, Insts, J), Loc0, Loc) :-
+block_located(block(L, Phis, Insts0, J), block(L, Phis, Insts, J), Loc0, Loc) :-
     (   Insts0 = [loc(_, _)|_] -> Insts = Insts0
     ;   Loc0 = File:Line -> Insts = [loc(File, Line)|Insts0]
     ;   Insts = Insts0
@@ -367,8 +367,8 @@ last_loc(_, Loc, Loc).
 variadic_entry(fixed, _, _) --> [].
 variadic_entry(variadic, Sret, Params) -->
     { append(Sret, Params, All), length(All, N), Off is 8 * N },
-    bind(builtin(va_args), t(va_args)),
-    emit(ins(t(va_args), p, va_args, [c(Off)])).
+    bind(builtin(va_args), tmp(va_args)),
+    emit(let(tmp(va_args), p, va_args, [const(Off)])).
 
 % ret_class(+Loc, +RetType, +Env, -Class): Class is the IR return class
 % of a function returning RetType.
@@ -399,7 +399,7 @@ sret_param(RetType, Params) -->
     (   { su(RetType), ret_shape(RetType, Env, unknown, sret) }
     ->  fresh(P),
         bind('%sret', sret(P)),
-        { Params = [par(p, P)] }
+        { Params = [param(p, P)] }
     ;   { Params = [] }
     ).
 
@@ -423,7 +423,7 @@ params([Name|Names], [Type|Types], Ctx, Params) -->
     su_param_local(Name, Type, Ebs, Values),
     params(Names, Types, Ctx, Params1),
     { append(Params0, Params1, Params) }.
-params([Name|Names], [Type|Types], Ctx, [par(Class, P)|Params]) -->
+params([Name|Names], [Type|Types], Ctx, [param(Class, P)|Params]) -->
     { ctx_loc(Ctx, Loc),
       vm_check(Type, Loc),
       (   type_class(Type, Class) -> true
@@ -452,7 +452,7 @@ param_local(some(Name), Type, P) -->
 % fresh_params(+Ebs, -Params, -Values)//: one fresh parameter per
 % eightbyte; Values are their temporaries.
 fresh_params([], [], []) --> [].
-fresh_params([eb(_, _, Class)|Ebs], [par(Class, P)|Params], [P|Values]) -->
+fresh_params([eb(_, _, Class)|Ebs], [param(Class, P)|Params], [P|Values]) -->
     fresh(P),
     fresh_params(Ebs, Params, Values).
 
@@ -473,11 +473,11 @@ zero_ret(RetType) -->
     env(Env),
     (   { RetType == void } -> term(ret)
     ;   { su(RetType), ret_shape(RetType, Env, unknown, Shape) }
-    ->  (   { Shape = words([_, _]) } -> term(rets([c(0), c(0)]))
-        ;   { Shape = words(_) } -> term(ret(c(0)))
+    ->  (   { Shape = words([_, _]) } -> term(rets([const(0), const(0)]))
+        ;   { Shape = words(_) } -> term(ret(const(0)))
         ;   term(ret)
         )
-    ;   term(ret(c(0)))
+    ;   term(ret(const(0)))
     ).
 
 %% State primitives
@@ -504,7 +504,7 @@ bind(Name, Value) -->
     { bind_ordinary(Name, Value, Env0, Env) },
     set_env(Env).
 
-fresh(t(Temp)) -->
+fresh(tmp(Temp)) -->
     state(st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
           st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)),
     { N is N0 + 1,
@@ -543,7 +543,7 @@ term(Jump) --> ensure_live, close_block(Jump).
 
 close_block(Jump) -->
     state(st(Env, cur(Label, Phis), Insts, Blocks, N, Labels, Cases, Allocs),
-          st(Env, none, [], [blk(Label, Phis, BlockInsts, Jump)|Blocks],
+          st(Env, none, [], [block(Label, Phis, BlockInsts, Jump)|Blocks],
              N, Labels, Cases, Allocs)),
     { reverse(Insts, BlockInsts) }.
 
@@ -557,7 +557,7 @@ start(Label) -->
 % cur_fallthrough(+Cur, +Label)//: a live current block Cur ends with a
 % jump to Label; after a jump (none) there is nothing to end.
 cur_fallthrough(none, _) --> [].
-cur_fallthrough(cur(_, _), Label) --> term(jmp(Label)).
+cur_fallthrough(cur(_, _), Label) --> term(goto(Label)).
 
 % start_phi(+Label, +Phis)//: begin block Label, reached only by jumps.
 start_phi(Label, Phis) --> set_cur(cur(Label, Phis)).
@@ -587,11 +587,11 @@ goto_label(Name, Label) -->
         put_assoc(Name, Labels0, Label, Labels)
     }.
 
-% ins(+Class, +Op, +Args, -Dest)//: emit an instruction into Dest, a
+% let(+Class, +Op, +Args, -Dest)//: emit an instruction into Dest, a
 % fresh temporary.
-ins(Class, Op, Args, Dest) -->
+let(Class, Op, Args, Dest) -->
     fresh(Dest),
-    emit(ins(Dest, Class, Op, Args)).
+    emit(let(Dest, Class, Op, Args)).
 
 % local_slot(+Type, -Addr)//: Addr points at a new local object of
 % Type, an alloc in the entry block.
@@ -602,7 +602,7 @@ local_slot(Type, Addr) -->
       ( Align0 =< 4 -> Align = 4 ; Align = Align0 ),
       Size is max(Size0, 1) },
     fresh(Addr),
-    add_alloc(ins(Addr, p, alloc(Align), [c(Size)])).
+    add_alloc(let(Addr, p, alloc(Align), [const(Size)])).
 
 %% Context
 
@@ -715,7 +715,7 @@ stmt_(if(Cond, Then, Else), Ctx) -->
     judged(Cond, Ctx),
     label(LThen), label(LElse), label(LJoin),
     cond_jump(Cond, Ctx, LThen, LElse),
-    start(LThen), stmt(Then, Ctx), term(jmp(LJoin)),
+    start(LThen), stmt(Then, Ctx), term(goto(LJoin)),
     start(LElse), ( { Else == none } -> [] ; stmt(Else, Ctx) ),
     start(LJoin).
 stmt_(while(Cond, Body), Ctx) -->
@@ -725,7 +725,7 @@ stmt_(while(Cond, Body), Ctx) -->
     start(LBody),
     { loop_ctx(Ctx, LEnd, LCond, BodyCtx) },
     stmt(Body, BodyCtx),
-    term(jmp(LCond)),
+    term(goto(LCond)),
     start(LEnd).
 stmt_(do(Body, Cond), Ctx) -->
     label(LBody), label(LCond), label(LEnd),
@@ -743,7 +743,7 @@ stmt_(for(Init, Cond, Step, Body), Ctx) -->
     ),
     label(LCond), label(LBody), label(LStep), label(LEnd),
     start(LCond), loop_located(Ctx),
-    (   { Cond == none } -> term(jmp(LBody))
+    (   { Cond == none } -> term(goto(LBody))
     ;   judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd)
     ),
     start(LBody),
@@ -751,7 +751,7 @@ stmt_(for(Init, Cond, Step, Body), Ctx) -->
     stmt(Body, BodyCtx),
     start(LStep), loop_located(Ctx),
     ( { Step == none } -> [] ; judged(Step, Ctx), rval(Step, Ctx, _) ),
-    term(jmp(LCond)),
+    term(goto(LCond)),
     start(LEnd),
     restore_scope(Scope).
 stmt_(switch(Expr, Body), Ctx) -->
@@ -763,11 +763,11 @@ stmt_(switch(Expr, Body), Ctx) -->
     },
     convert(Value0, Type, v(Value, _)),
     label(LDispatch), label(LEnd),
-    term(jmp(LDispatch)),
+    term(goto(LDispatch)),
     cases(Outer), set_cases([]),
     { switch_ctx(Ctx, LEnd, BodyCtx) },
     stmt(Body, BodyCtx),
-    term(jmp(LEnd)),
+    term(goto(LEnd)),
     cases(Cases0), set_cases(Outer),
     { reverse(Cases0, Cases) },
     start(LDispatch), dispatch(Cases, Value, Type, LEnd),
@@ -805,7 +805,7 @@ stmt_(return(Expr), Ctx) -->
     ).
 stmt_(goto(Name), _) -->
     goto_label(Name, Label),
-    term(jmp(Label)).
+    term(goto(Label)).
 stmt_(label(Name, Body), Ctx) -->
     goto_label(Name, Label),
     start(Label),
@@ -815,7 +815,7 @@ stmt_(decl(Loc, Specs, Inits), Ctx) -->
 
 % target_jump(+Target, +Loc, +Error)//: a jump to the break or
 % continue Target, some(Label); none is semantic error Error at Loc.
-target_jump(some(Label), _, _) --> term(jmp(Label)).
+target_jump(some(Label), _, _) --> term(goto(Label)).
 target_jump(none, Loc, Error) --> { sema_error(Loc, Error, []) }.
 
 % A block scope: save_scope(Scope) on entry, restore_scope(Scope) on exit.
@@ -930,7 +930,7 @@ single_value(Type, V, Env, Whole) :-
 
 % dispatch(+Cases, +Value, +Type, +LEnd)//: the switch dispatch, one
 % comparison per case, then a jump to the default or LEnd.
-dispatch([], _, _, LEnd) --> term(jmp(LEnd)).
+dispatch([], _, _, LEnd) --> term(goto(LEnd)).
 dispatch(Cases, Value, Type, LEnd) -->
     { findall(CaseValue-Label, member(case(CaseValue, Label), Cases), Pairs),
       ( memberchk(default(LDefault), Cases) -> true ; LDefault = LEnd ),
@@ -939,12 +939,12 @@ dispatch(Cases, Value, Type, LEnd) -->
 
 % dispatch_cases(+Pairs, +Value, +Type, +Class, +LDefault)//: compare
 % Value with each case value of Pairs in turn, then jump to LDefault.
-dispatch_cases([], _, _, _, LDefault) --> term(jmp(LDefault)).
+dispatch_cases([], _, _, _, LDefault) --> term(goto(LDefault)).
 dispatch_cases([CaseValue-Label|Pairs], Value, Type, Class, LDefault) -->
     { convert_int(CaseValue, Type, Wrapped) },
-    ins(w, cmp(eq, Class), [Value, c(Wrapped)], Test),
+    let(w, cmp(eq, Class), [Value, const(Wrapped)], Test),
     label(Next),
-    term(jnz(Test, Label, Next)),
+    term(branch(Test, Label, Next)),
     start(Next),
     dispatch_cases(Pairs, Value, Type, Class, LDefault).
 
@@ -959,18 +959,18 @@ judged(Expr, Ctx) -->
 cond_jump(Expr, Ctx, LTrue, LFalse) -->
     rval(Expr, Ctx, Value),
     truth(Value, Ctx, Test),
-    term(jnz(Test, LTrue, LFalse)).
+    term(branch(Test, LTrue, LFalse)).
 
 % truth(+Value, +Ctx, -W)//: W is a w value that is nonzero exactly when
 % scalar Value is.
 truth(v(V, Type), Ctx, W) -->
     (   { type_class(Type, w) } -> { W = V }
-    ;   { type_class(Type, l) } -> ins(w, cmp(ne, l), [V, c(0)], W)
+    ;   { type_class(Type, l) } -> let(w, cmp(ne, l), [V, const(0)], W)
     ;   { float_type(Type), type_class(Type, K) }
-    ->  ins(w, cmp(ne, K), [V, c(0)], W)
+    ->  let(w, cmp(ne, K), [V, const(0)], W)
     ;   { Type = ptr(_) }
-    ->  ins(l, ptoi, [V], Int),
-        ins(w, cmp(ne, l), [Int, c(0)], W)
+    ->  let(l, ptoi, [V], Int),
+        let(w, cmp(ne, l), [Int, const(0)], W)
     ;   { ctx_loc(Ctx, Loc),
           sema_error(Loc, 'a ~w value is not a scalar', [Type]) }
     ).
@@ -1159,7 +1159,7 @@ store_leaf(zero(Off, Type), Addr, _) -->
 store_leaf(val(Off, Type, N), Addr, _) -->
     offset(Addr, Off, P),
     { store_width(Type, Width) },
-    emit(store(Width, c(N), P)).
+    emit(store(Width, const(N), P)).
 store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
     offset(Addr, Off, P),
     judged(Expr, Ctx),
@@ -1185,7 +1185,7 @@ zero_bytes(Addr, Off, Size, Align) -->
       N =< Left, N =< Align, Off mod N =:= 0 },
     !,
     offset(Addr, Off, P),
-    emit(store(Width, c(0), P)),
+    emit(store(Width, const(0), P)),
     { Off1 is Off + N },
     zero_bytes(Addr, Off1, Size, Align).
 
@@ -1193,7 +1193,7 @@ zero_bytes(Addr, Off, Size, Align) -->
 
 % GNU statement expressions load/decay their last expression before the
 % block scope closes. A label on that statement does not hide its value.
-statement_expression_items([], _, v(c(0), void)) --> [].
+statement_expression_items([], _, v(const(0), void)) --> [].
 statement_expression_items([Item], Ctx, R) --> !,
     statement_expression_last(Item, Ctx, R).
 statement_expression_items([Item|Items], Ctx, R) -->
@@ -1204,20 +1204,20 @@ statement_expression_last(at(Loc, expr(Expr)), Ctx0, R) --> !,
 statement_expression_last(at(_, label(Name, Body)), Ctx, R) --> !,
     goto_label(Name, Label), start(Label),
     statement_expression_last(Body, Ctx, R).
-statement_expression_last(Item, Ctx, v(c(0), void)) --> item(Item, Ctx).
+statement_expression_last(Item, Ctx, v(const(0), void)) --> item(Item, Ctx).
 
 % binding_obj(+Binding, -R)//: R is the object or function an
 % identifier bound to Binding designates. A global's address is copied
 % into a temporary.
 binding_obj(var(Addr, Type), lv(Addr, Type)) --> [].
-binding_obj(fn(Type, Sym, _), fd(glo(Sym), Type)) --> [].
+binding_obj(fn(Type, Sym, _), fd(global(Sym), Type)) --> [].
 binding_obj(gvar(Type, Sym, _, _), lv(Addr, Type)) -->
-    ins(p, copy, [glo(Sym)], Addr).
+    let(p, copy, [global(Sym)], Addr).
 
 % callee_temp(+V, -Callee)//: Callee is V in a temporary, as a callee
 % must be.
-callee_temp(t(T), t(T)) --> !.
-callee_temp(V, Callee) --> ins(p, copy, [V], Callee).
+callee_temp(tmp(T), tmp(T)) --> !.
+callee_temp(V, Callee) --> let(p, copy, [V], Callee).
 
 % member_lv(+Addr, +SUType, +Field, +Ctx, -P, -Type)//: P points at
 % member Field, of Type, of the struct or union at Addr.
@@ -1244,8 +1244,8 @@ rval(Expr, Ctx, R) -->
    is XV. Types are unqualified, as code generation has them; a type
    name the source writes (a cast's, va_arg's, sizeof's) is read again
    by type_name/4, which refuses one nanofil does not support. */
-lower(val(T, int(V)), _, v(c(V), U)) --> !, { unqualified(T, U) }.
-lower(val(_, float(Cs)), _, v(c(V), Type)) --> !,
+lower(val(T, int(V)), _, v(const(V), U)) --> !, { unqualified(T, U) }.
+lower(val(_, float(Cs)), _, v(const(V), Type)) --> !,
     { float_literal(Cs, V, Type) }.
 lower(val(T, load(X)), Ctx, R) --> !,                      % 6.3.2.1p2
     place(X, Ctx, lv(Addr, _)),
@@ -1279,20 +1279,20 @@ lower(val(_, bin(Op, XA, XB)), Ctx, R) --> !,
 lower(val(T, cond(XC, XA, XB)), Ctx, R) --> !,             % 6.5.15
     { unqualified(T, U) },
     label(LA), label(LB), label(LJoin),
-    lower(XC, Ctx, VC), truth(VC, Ctx, W), term(jnz(W, LA, LB)),
+    lower(XC, Ctx, VC), truth(VC, Ctx, W), term(branch(W, LA, LB)),
     start(LA), lower(XA, Ctx, VA), converted(VA, U, v(VA1, _)), here(LA1),
-    term(jmp(LJoin)),
+    term(goto(LJoin)),
     start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
-    term(jmp(LJoin)),
+    term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
 lower(val(T, gcond(XC, XB)), Ctx, R) --> !,                % GNU c ?: b
     { unqualified(T, U) },
     lower(XC, Ctx, VC), truth(VC, Ctx, W),
     label(LA), label(LB), label(LJoin),
-    term(jnz(W, LA, LB)),
-    start(LA), converted(VC, U, v(VA1, _)), here(LA1), term(jmp(LJoin)),
+    term(branch(W, LA, LB)),
+    start(LA), converted(VC, U, v(VA1, _)), here(LA1), term(goto(LJoin)),
     start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
-    term(jmp(LJoin)),
+    term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
 lower(val(_, assign(Op, X, XB)), Ctx, R) --> !,            % 6.5.16
     place(X, Ctx, lv(P, U)),
@@ -1309,7 +1309,7 @@ lower(val(_, incdec(Op, X)), Ctx, R) --> !,                % 6.5.2.4, 6.5.3.1
     place(X, Ctx, lv(P, U)),
     load_typed(U, P, Ctx, Cur),
     { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
-    binary(BinOp, v(Cur, U), v(c(1), int), Ctx, Value0),
+    binary(BinOp, v(Cur, U), v(const(1), int), Ctx, Value0),
     convert(Value0, U, v(New, _)),
     store_typed(U, New, P),
     { memberchk(Op, [preinc, predec]) -> R = v(New, U) ; R = v(Cur, U) }.
@@ -1332,23 +1332,23 @@ lower(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !,      % 7.16.1.1
       -> true
       ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
     lower(XA, Ctx, v(P, _)),
-    ins(K, va_arg, [P], V).
-lower(val(_, sizeof(TN)), Ctx, v(c(Size), ulong)) -->      % 6.5.3.4
+    let(K, va_arg, [P], V).
+lower(val(_, sizeof(TN)), Ctx, v(const(Size), ulong)) -->      % 6.5.3.4
     { TN = type(_, _) }, !,
     env(Env),
     { type_size(TN, Env, Ctx, Size) }.
-lower(val(_, sizeof(X)), Ctx, v(c(Size), ulong)) --> !,
+lower(val(_, sizeof(X)), Ctx, v(const(Size), ulong)) --> !,
     env(Env),
     { tree_type(X, Type), ctx_loc(Ctx, Loc),
       catch(type_size_align(Type, Env, Size, _), bad(Why),
             sema_error(Loc, 'sizeof: ~w', [Why])) }.
-lower(val(_, alignof(TN)), Ctx, v(c(Align), ulong)) --> !,
+lower(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       type_name(TN, Type, Env, Loc),
       catch(type_size_align(Type, Env, _, Align), bad(Why),
             sema_error(Loc, 'alignof: ~w', [Why])) }.
-lower(val(_, offsetof(TN, Path)), Ctx, v(c(V), ulong)) --> !,
+lower(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       (   catch(const_value(offsetof(TN, Path), Env, V, _),
@@ -1364,7 +1364,7 @@ lower(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) -->   % GNU ({ ... })
 % converted(+Value0, +Type, -R)//: R is Value0 converted to Type, as
 % assignment and casts convert, the elaborator having judged that they
 % may: to void it is nothing, a struct or union stays its address.
-converted(_, void, v(c(0), void)) --> !.
+converted(_, void, v(const(0), void)) --> !.
 converted(v(Addr, _), Type, v(Addr, Type)) --> { su(Type) }, !.
 converted(Value0, Type, R) --> convert(Value0, Type, R).
 
@@ -1377,12 +1377,12 @@ loaded(U, Addr, Ctx, v(V, U)) --> load_typed(U, Addr, Ctx, V).
 % object or function P. A function's address is copied into a temp;
 % setjmp's has none, since it is an intrinsic.
 decayed(lv(Addr, _), T, _, v(Addr, U)) --> { unqualified(T, U) }.
-decayed(fd(glo(Sym), _), _, Ctx, _) -->
+decayed(fd(global(Sym), _), _, Ctx, _) -->
     { op_kind(setjmp(Sym), setjmp) }, !,
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, 'setjmp requires a direct call, not a function pointer', []) }.
-decayed(fd(glo(Sym), Type), _, _, v(Addr, ptr(Type))) --> !,
-    ins(p, copy, [glo(Sym)], Addr).
+decayed(fd(global(Sym), Type), _, _, v(Addr, ptr(Type))) --> !,
+    let(p, copy, [global(Sym)], Addr).
 decayed(fd(Callee, Type), _, _, v(Callee, ptr(Type))) --> [].
 
 /* place(+X, +Ctx, -P)//: P is lv(Addr, Type), the object that typed
@@ -1402,14 +1402,14 @@ place(obj(_, str(Bytes)), _, lv(Addr, array(char, N))) --> !,
       length(Bytes, N0),
       N is N0 + 1 },
     set_env(Env),
-    ins(p, copy, [glo(Sym)], Addr).
+    let(p, copy, [global(Sym)], Addr).
 place(obj(_, wstr(WideType, Values)), _, lv(Addr, array(WideType, N))) --> !,
     env(Env0),
     { new_literal(w(WideType, Values), Sym, Env0, Env),
       length(Values, N0),
       N is N0 + 1 },
     set_env(Env),
-    ins(p, copy, [glo(Sym)], Addr).
+    let(p, copy, [global(Sym)], Addr).
 % A compound literal is an unnamed local, initialized where it appears.
 place(obj(_, complit(TN, Init)), Ctx, lv(Addr, Type)) --> !,  % 6.5.2.5
     env(Env),
@@ -1434,7 +1434,7 @@ place(obj(T, member(XS, F)), Ctx, lv(P, U)) -->            % 6.5.2.3p3
 % load_typed(+Type, +Addr, +Ctx, -V)//: V is the scalar of Type loaded
 % from Addr.
 load_typed(Type, Addr, Ctx, V) -->
-    (   { load_op(Type, Class, Op) } -> ins(Class, load(Op), [Addr], V)
+    (   { load_op(Type, Class, Op) } -> let(Class, load(Op), [Addr], V)
     ;   { ctx_loc(Ctx, Loc),
           sema_error(Loc, 'loading a ~w value is not supported yet', [Type]) }
     ).
@@ -1465,37 +1465,37 @@ store_width(Type, Width) :-
 % offset(+Addr, +Off, -P)//: P is the pointer Addr + Off (Addr itself
 % for 0, with no instruction).
 offset(Addr, 0, Addr) --> !.
-offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
+offset(Addr, Off, P) --> let(p, add, [Addr, const(Off)], P).
 
 % builtin(+Name, +Args, +Ctx, -R)//: R is the value of a call of
 % builtin Name, which no declaration shadows, on source arguments Args.
-builtin('__builtin_va_start', [A, _], Ctx, v(c(0), void)) --> !,
+builtin('__builtin_va_start', [A, _], Ctx, v(const(0), void)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       ( lookup_ordinary(Env, builtin(va_args), Cursor) -> true
       ; sema_error(Loc, 'va_start outside a variadic function', []) ) },
     rval(A, Ctx, v(P, _)),
     emit(store(p, Cursor, P)).
-builtin('__builtin_va_copy', [A, B], Ctx, v(c(0), void)) --> !,
+builtin('__builtin_va_copy', [A, B], Ctx, v(const(0), void)) --> !,
     rval(A, Ctx, v(P, _)), rval(B, Ctx, v(Q, _)),
-    ins(p, load(p), [Q], V), emit(store(p, V, P)).
-builtin('__builtin_va_end', [A], Ctx, v(c(0), void)) --> !,
+    let(p, load(p), [Q], V), emit(store(p, V, P)).
+builtin('__builtin_va_end', [A], Ctx, v(const(0), void)) --> !,
     rval(A, Ctx, _).
-builtin(Name, [], _, v(c(V), Type)) -->
+builtin(Name, [], _, v(const(V), Type)) -->
     { float_builtin(Name, Type, V) }, !.
-builtin('__builtin_constant_p', [Expr], _, v(c(V), int)) --> !,
+builtin('__builtin_constant_p', [Expr], _, v(const(V), int)) --> !,
     env(Env),
     { ( catch(constant_value(Expr, Env, _, _), not_constant, fail)
       -> V = 1
       ; V = 0
       ) }.
-builtin('__builtin_unreachable', [], _, v(c(0), void)) --> !,
-    term(hlt).
+builtin('__builtin_unreachable', [], _, v(const(0), void)) --> !,
+    term(unreachable).
 builtin('__builtin_alloca', [Size], Ctx, v(Addr, ptr(void))) --> !,
     rval(Size, Ctx, V0),
     { ctx_loc(Ctx, Loc) },
     assign_convert(Size, V0, ulong, Loc, v(N, _)),
-    ins(p, alloc(16), [N], Addr).
+    let(p, alloc(16), [N], Addr).
 builtin('__builtin_expect', [A, B], Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
@@ -1528,9 +1528,9 @@ checked_arithmetic(Args, Op, Fixed, Ctx, v(Flag, bool)) -->
     convert(v(Low, ulong), Type, v(Stored, Type)),
     store_typed(Type, Stored, Addr),
     overflow_widen(v(Stored, Type), Back, BackH),
-    ins(w, cmp(ne, l), [Low, Back], BadLow),
-    ins(w, cmp(ne, l), [High, BackH], BadHigh),
-    ins(w, or, [BadLow, BadHigh], Flag).
+    let(w, cmp(ne, l), [Low, Back], BadLow),
+    let(w, cmp(ne, l), [High, BackH], BadHigh),
+    let(w, or, [BadLow, BadHigh], Flag).
 
 overflow_operand(generic, V, V) --> !.
 overflow_operand(Type, V, R) --> convert(V, Type, R).
@@ -1541,43 +1541,43 @@ overflow_widen(v(V, Type), Low, High) -->
     { int_info(Type, Size, Sign) },
     (   { Size < 8 }
     ->  { Sign == signed -> Ext = sw ; Ext = uw },
-        ins(l, ext(Ext), [V], Low)
+        let(l, ext(Ext), [V], Low)
     ;   { Low = V }
     ),
     (   { Sign == signed }
-    ->  ins(l, sar, [Low, c(63)], High)
-    ;   { High = c(0) }
+    ->  let(l, sar, [Low, const(63)], High)
+    ;   { High = const(0) }
     ).
 
 overflow_exact(add, X, XH, Y, YH, Low, High) -->
-    ins(l, add, [X, Y], Low),
-    ins(w, cmp(ult, l), [Low, X], Carry),
-    ins(l, ext(uw), [Carry], C),
-    ins(l, add, [XH, YH], H), ins(l, add, [H, C], High).
+    let(l, add, [X, Y], Low),
+    let(w, cmp(ult, l), [Low, X], Carry),
+    let(l, ext(uw), [Carry], C),
+    let(l, add, [XH, YH], H), let(l, add, [H, C], High).
 overflow_exact(sub, X, XH, Y, YH, Low, High) -->
-    ins(l, sub, [X, Y], Low),
-    ins(w, cmp(ult, l), [X, Y], Borrow),
-    ins(l, ext(uw), [Borrow], C),
-    ins(l, sub, [XH, YH], H), ins(l, sub, [H, C], High).
+    let(l, sub, [X, Y], Low),
+    let(w, cmp(ult, l), [X, Y], Borrow),
+    let(l, ext(uw), [Borrow], C),
+    let(l, sub, [XH, YH], H), let(l, sub, [H, C], High).
 overflow_exact(mul, X, XH, Y, YH, Low, High) -->
-    ins(l, mul, [X, Y], Low),
-    ins(l, and, [X, c(4294967295)], XL),
-    ins(l, shr, [X, c(32)], XU),
-    ins(l, and, [Y, c(4294967295)], YL),
-    ins(l, shr, [Y, c(32)], YU),
-    ins(l, mul, [XL, YL], LL), ins(l, mul, [XU, YL], UL),
-    ins(l, mul, [XL, YU], LU), ins(l, mul, [XU, YU], UU),
-    ins(l, shr, [LL, c(32)], LLH),
-    ins(l, and, [UL, c(4294967295)], ULL),
-    ins(l, and, [LU, c(4294967295)], LUL),
-    ins(l, add, [LLH, ULL], Mid0), ins(l, add, [Mid0, LUL], Mid),
-    ins(l, shr, [Mid, c(32)], Carry),
-    ins(l, shr, [UL, c(32)], ULH), ins(l, shr, [LU, c(32)], LUH),
-    ins(l, add, [UU, ULH], H0), ins(l, add, [H0, LUH], H1),
-    ins(l, add, [H1, Carry], H2),
+    let(l, mul, [X, Y], Low),
+    let(l, and, [X, const(4294967295)], XL),
+    let(l, shr, [X, const(32)], XU),
+    let(l, and, [Y, const(4294967295)], YL),
+    let(l, shr, [Y, const(32)], YU),
+    let(l, mul, [XL, YL], LL), let(l, mul, [XU, YL], UL),
+    let(l, mul, [XL, YU], LU), let(l, mul, [XU, YU], UU),
+    let(l, shr, [LL, const(32)], LLH),
+    let(l, and, [UL, const(4294967295)], ULL),
+    let(l, and, [LU, const(4294967295)], LUL),
+    let(l, add, [LLH, ULL], Mid0), let(l, add, [Mid0, LUL], Mid),
+    let(l, shr, [Mid, const(32)], Carry),
+    let(l, shr, [UL, const(32)], ULH), let(l, shr, [LU, const(32)], LUH),
+    let(l, add, [UU, ULH], H0), let(l, add, [H0, LUH], H1),
+    let(l, add, [H1, Carry], H2),
     % Signed inputs contribute -Y or -X to the unsigned product's high limb.
-    ins(l, and, [XH, Y], CX), ins(l, and, [YH, X], CY),
-    ins(l, sub, [H2, CX], H3), ins(l, sub, [H3, CY], High).
+    let(l, and, [XH, Y], CX), let(l, and, [YH, X], CY),
+    let(l, sub, [H2, CX], H3), let(l, sub, [H3, CY], High).
 
 % type_size(+TypeName, +Env, +Ctx, -Size): Size is sizeof(TypeName).
 type_size(TypeName, Env, Ctx, Size) :-
@@ -1610,30 +1610,30 @@ convert(v(V, From), bool, v(B, bool)) --> !,
     { From \== void },
     truth(v(V, From), ctx(_, _, _, _, unknown), W),
     (   { type_class(From, w), \+ From == bool }
-    ->  ins(w, cmp(ne, w), [W, c(0)], B)
+    ->  let(w, cmp(ne, w), [W, const(0)], B)
     ;   { B = W }
     ).
-convert(v(c(N), From), To, v(c(W), To)) -->
+convert(v(const(N), From), To, v(const(W), To)) -->
     { ( float_type(From) ; float_type(To) ),
       arithmetic_type(From), arithmetic_type(To),
       const_convert(N, From, To, W), integer(W) }, !.
 convert(v(V, float), double, v(R, double)) --> !,
-    ins(d, ext(s), [V], R).
+    let(d, ext(s), [V], R).
 convert(v(V, double), float, v(R, float)) --> !,
-    ins(s, truncd, [V], R).
+    let(s, truncd, [V], R).
 convert(v(V, From), To, v(R, To)) -->
     { int_type(From), float_type(To),
       type_class(From, IK), int_info(From, _, Sign),
       int_float_op(IK, Sign, Op), type_class(To, K) }, !,
-    ins(K, Op, [V], R).
+    let(K, Op, [V], R).
 convert(v(V, From), To, v(R, To)) -->
     { float_type(From), int_type(To),
       type_class(From, K), int_info(To, _, Sign), type_class(To, IK),
       float_int_op(K, Sign, Op),
       conversion_int_type(IK, Sign, Base) }, !,
-    ins(IK, Op, [V], I),
+    let(IK, Op, [V], I),
     int_convert(Base, To, I, R).
-convert(v(c(N), From), To, v(c(W), To)) -->
+convert(v(const(N), From), To, v(const(W), To)) -->
     { int_type(From), int_type(To) },
     !,
     { convert_int(N, To, W) }.
@@ -1641,7 +1641,7 @@ convert(v(V, From), To, v(V1, To)) -->
     { int_type(From), int_type(To) },
     !,
     int_convert(From, To, V, V1).
-convert(v(c(N), From), ptr(P), v(c(W), ptr(P))) -->
+convert(v(const(N), From), ptr(P), v(const(W), ptr(P))) -->
     { int_type(From) },
     !,
     { convert_int(N, ulong, W) }.
@@ -1649,11 +1649,11 @@ convert(v(V, From), ptr(P), v(V1, ptr(P))) -->
     { int_type(From) },
     !,
     int_convert(From, ulong, V, V2),
-    ins(p, itop, [V2], V1).
+    let(p, itop, [V2], V1).
 convert(v(V, ptr(_)), To, R) -->
     { int_type(To) },
     !,
-    ins(l, ptoi, [V], Int),
+    let(l, ptoi, [V], Int),
     convert(v(Int, ulong), To, R).
 convert(v(V, ptr(_)), ptr(P), v(V, ptr(P))) --> [].
 
@@ -1677,10 +1677,10 @@ int_convert(From, To, V, V1) -->
     { int_info(From, SizeFrom, SignFrom), int_info(To, SizeTo, SignTo) },
     (   { SizeTo =:= 8, SizeFrom < 8 }
     ->  { narrow_type(Op, 4, SignFrom) },
-        ins(l, ext(Op), [V], V1)
+        let(l, ext(Op), [V], V1)
     ;   { SizeTo < 4, \+ representable(SizeFrom, SignFrom, SizeTo, SignTo) }
     ->  { narrow_type(Op, SizeTo, SignTo) },
-        ins(w, ext(Op), [V], V1)
+        let(w, ext(Op), [V], V1)
     ;   { V1 = V }
     ).
 
@@ -1714,15 +1714,15 @@ unary(Op, Value0, Ctx, R) -->
 
 unary_value(not, Value0, _, Ctx, v(V, int)) --> !,
     truth(Value0, Ctx, W),
-    ins(w, cmp(eq, w), [W, c(0)], V).
+    let(w, cmp(eq, w), [W, const(0)], V).
 unary_value(Op, Value0, Type, _, v(V, Type)) -->
     convert(Value0, Type, v(V1, _)),
     { type_class(Type, K) },
     unary_ins(Op, K, V1, V).
 
 unary_ins(plus, _, V, V) --> [].
-unary_ins(neg, K, V1, V) --> ins(K, neg, [V1], V).
-unary_ins(bnot, K, V1, V) --> ins(K, xor, [V1, c(-1)], V).
+unary_ins(neg, K, V1, V) --> let(K, neg, [V1], V).
+unary_ins(bnot, K, V1, V) --> let(K, xor, [V1, const(-1)], V).
 
 % binary(+Op, +VA, +VB, +Ctx, -R)//: R is binary operator Op applied to
 % the values VA and VB, converted as binary_operands/6 says.
@@ -1757,7 +1757,7 @@ binary_value(Op, CA, CB, T, VA, VB, _, v(V, T)) -->
           IOp = cmp(Cmp, K)
       ;   Class = K, arith_op(Op, Sign, IOp)
       ) },
-    ins(Class, IOp, [A, B], V).
+    let(Class, IOp, [A, B], V).
 
 % cmp_op(+Op, -SignedCmp, -UnsignedCmp): C comparison Op is IR
 % comparison SignedCmp on signed and UnsignedCmp on unsigned operands.
@@ -1794,11 +1794,11 @@ ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
             sema_error(Loc, 'pointer arithmetic on ~w (~w)',
                        [ElemType, Why])) },
     convert(VI, long, v(I, _)),
-    (   { I = c(N) } -> { Off is N * Size, OffV = c(Off) }
+    (   { I = const(N) } -> { Off is N * Size, OffV = const(Off) }
     ;   { Size =:= 1 } -> { OffV = I }
-    ;   ins(l, mul, [I, c(Size)], OffV)
+    ;   let(l, mul, [I, const(Size)], OffV)
     ),
-    ins(p, Op, [P, OffV], R).
+    let(p, Op, [P, OffV], R).
 
 % ptr_diff(+VA, +VB, +ElemType, +Ctx, -R)//: R is A - B in elements.
 ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
@@ -1807,11 +1807,11 @@ ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
       catch(type_size_align(ElemType, Env, Size, _), bad(Why),
             sema_error(Loc, 'pointer subtraction on ~w (~w)',
                        [ElemType, Why])) },
-    ins(l, ptoi, [A], IA),
-    ins(l, ptoi, [B], IB),
-    ins(l, sub, [IA, IB], Diff),
+    let(l, ptoi, [A], IA),
+    let(l, ptoi, [B], IB),
+    let(l, sub, [IA, IB], Diff),
     (   { Size =:= 1 } -> { V = Diff }
-    ;   ins(l, div, [Diff, c(Size)], V)
+    ;   let(l, div, [Diff, const(Size)], V)
     ).
 
 % logical(+Op, +XA, +XB, +Ctx, -R)//: R is XA && XB (land) or XA || XB
@@ -1819,20 +1819,20 @@ ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
 logical(Op, XA, XB, Ctx, v(V, int)) -->
     lower(XA, Ctx, VA), truth(VA, Ctx, WA), here(LA),
     label(LRight), label(LJoin),
-    {   Op == land -> Jump = jnz(WA, LRight, LJoin), Short = 0
-    ;   Jump = jnz(WA, LJoin, LRight), Short = 1
+    {   Op == land -> Jump = branch(WA, LRight, LJoin), Short = 0
+    ;   Jump = branch(WA, LJoin, LRight), Short = 1
     },
     term(Jump),
     start(LRight), lower(XB, Ctx, VB), truth(VB, Ctx, WB),
-    ins(w, cmp(ne, w), [WB, c(0)], NB),
-    here(LB), term(jmp(LJoin)),
+    let(w, cmp(ne, w), [WB, const(0)], NB),
+    here(LB), term(goto(LJoin)),
     fresh(V),
-    start_phi(LJoin, [phi(V, w, [LA-c(Short), LB-NB])]).
+    start_phi(LJoin, [phi(V, w, [LA-const(Short), LB-NB])]).
 
 % join_arms(+Type, +LJoin, +LA-VA, +LB-VB, -R)//: start block LJoin; R
 % is the ?: result there, a phi of VA from LA and VB from LB.
 join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
-    (   { Type == void } -> start(LJoin), { R = v(c(0), void) }
+    (   { Type == void } -> start(LJoin), { R = v(const(0), void) }
     ;   { su(Type) -> Class = p ; type_class(Type, Class) },
         fresh(V),
         start_phi(LJoin, [phi(V, Class, [LA-VA, LB-VB])]),
@@ -1857,21 +1857,21 @@ callee(XF, Ctx, Callee, FuncType) -->
 
 % call_result(+Callee, +RetType, +IRArgs, +Ctx, -R)//: R is the result
 % of calling Callee with IRArgs; setjmp and its kin are intrinsics.
-call_result(glo(Kind), RetType, IRArgs, Ctx, R) -->
+call_result(global(Kind), RetType, IRArgs, Ctx, R) -->
     { op_kind(setjmp(Kind), setjmp) }, !,
     { ( RetType == int, setjmp_args(Kind, IRArgs, Operands) -> true
       ; ctx_loc(Ctx, Loc), sema_error(Loc, 'invalid ~w signature', [Kind]) ) },
-    ins(w, setjmp(Kind), Operands, V),
+    let(w, setjmp(Kind), Operands, V),
     { R = v(V, int) }.
 call_result(Callee, RetType, IRArgs, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     (   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
     ;   { RetType == void }
     ->  emit(call(void, Callee, IRArgs)),
-        { R = v(c(0), void) }
+        { R = v(const(0), void) }
     ;   { type_class(RetType, Class) }
     ->  fresh(D),
-        emit(call(to(D, Class), Callee, IRArgs)),
+        emit(call(result(D, Class), Callee, IRArgs)),
         normalize(RetType, D, V),
         { R = v(V, RetType) }
     ;   { sema_error(Loc, 'calls returning ~w are not supported yet',
@@ -1879,8 +1879,8 @@ call_result(Callee, RetType, IRArgs, Ctx, R) -->
     ).
 
 setjmp_args(sigsetjmp, [arg(p, Buf), arg(w, Mask)], [Buf, Mask]).
-setjmp_args(setjmp, [arg(p, Buf)], [Buf, c(0)]).
-setjmp_args('_setjmp', [arg(p, Buf)], [Buf, c(0)]).
+setjmp_args(setjmp, [arg(p, Buf)], [Buf, const(0)]).
+setjmp_args('_setjmp', [arg(p, Buf)], [Buf, const(0)]).
 
 % call_args(+XArgs, +ParamTypes, +Ctx, -IRArgs)//: IRArgs pass the
 % arguments whose trees are XArgs. A struct argument goes as
@@ -1928,13 +1928,13 @@ struct_call(RetType, Callee, Args, Loc, v(Tmp, RetType)) -->
     ->  emit(call(void, Callee, [arg(p, Tmp)|Args]))
     ;   { Shape = words([eb(_, _, Class)]) }
     ->  fresh(D),
-        emit(call(to(D, Class), Callee, Args)),
+        emit(call(result(D, Class), Callee, Args)),
         { Shape = words(Ebs) },
         store_words(Ebs, [D], Tmp)
     ;   { Shape = words(Ebs) },
         fresh(D1), fresh(D2),
         { Ebs = [eb(_, _, Class1), eb(_, _, Class2)] },
-        emit(call(tuple([to(D1, Class1), to(D2, Class2)]), Callee, Args)),
+        emit(call(tuple([result(D1, Class1), result(D2, Class2)]), Callee, Args)),
         store_words(Ebs, [D1, D2], Tmp)
     ).
 
@@ -1960,8 +1960,8 @@ return_struct(RetType, Addr, Loc) -->
 normalize(Type, V0, V) -->
     (   { int_info(Type, Size, Sign), Size < 4 }
     ->  { narrow_type(Op, Size, Sign) },
-        ins(w, ext(Op), [V0], V)
-    ;   { Type == bool } -> ins(w, ext(ub), [V0], V)
+        let(w, ext(Op), [V0], V)
+    ;   { Type == bool } -> let(w, ext(ub), [V0], V)
     ;   { V = V0 }
     ).
 
@@ -2070,7 +2070,7 @@ copy_ebs([eb(Off, N, Class)|Ebs], Src, Dst) -->
     offset(Src, Off, S),
     offset(Dst, Off, D),
     (   { Class == p }
-    ->  ins(p, load(p), [S], V),
+    ->  let(p, load(p), [S], V),
         emit(store(p, V, D))
     ;   { pieces(N, 0, Pieces) },
         copy_pieces(Pieces, S, D)
@@ -2093,7 +2093,7 @@ copy_pieces([], _, _) --> [].
 copy_pieces([p(Off, _, Load, Store)|Pieces], Src, Dst) -->
     offset(Src, Off, S),
     offset(Dst, Off, D),
-    ins(l, load(Load), [S], V),
+    let(l, load(Load), [S], V),
     emit(store(Store, V, D)),
     copy_pieces(Pieces, Src, Dst).
 
@@ -2102,7 +2102,7 @@ copy_pieces([p(Off, _, Load, Store)|Pieces], Src, Dst) -->
 load_words([], _, []) --> [].
 load_words([eb(Off, N, Class)|Ebs], Addr, [W|Words]) -->
     offset(Addr, Off, P),
-    (   { Class == p } -> ins(p, load(p), [P], W)
+    (   { Class == p } -> let(p, load(p), [P], W)
     ;   { pieces(N, 0, Pieces) },
         load_pieces(Pieces, P, none, W)
     ),
@@ -2113,13 +2113,13 @@ load_words([eb(Off, N, Class)|Ebs], Addr, [W|Words]) -->
 load_pieces([], _, W, W) --> [].
 load_pieces([p(Off, _, Load, _)|Pieces], P, Acc0, W) -->
     offset(P, Off, P1),
-    ins(l, load(Load), [P1], Piece0),
+    let(l, load(Load), [P1], Piece0),
     (   { Off =:= 0 } -> { Piece = Piece0 }
     ;   { Shift is 8 * Off },
-        ins(l, shl, [Piece0, c(Shift)], Piece)
+        let(l, shl, [Piece0, const(Shift)], Piece)
     ),
     (   { Acc0 == none } -> { Acc = Piece }
-    ;   ins(l, or, [Acc0, Piece], Acc)
+    ;   let(l, or, [Acc0, Piece], Acc)
     ),
     load_pieces(Pieces, P, Acc, W).
 
@@ -2141,7 +2141,7 @@ store_pieces([p(Off, _, _, Store)|Pieces], W, P) -->
     offset(P, Off, P1),
     (   { Off =:= 0 } -> { Piece = W }
     ;   { Shift is 8 * Off },
-        ins(l, shr, [W, c(Shift)], Piece)
+        let(l, shr, [W, const(Shift)], Piece)
     ),
     emit(store(Store, Piece, P1)),
     store_pieces(Pieces, W, P).
@@ -2190,7 +2190,7 @@ fill_items([chunk(Off, N, Item)|Chunks], Pos, Size, Loc, Items) :-
 
 % int_chunk(+Off, +Type, +V, -Chunk): Chunk holds integer V of Type at
 % Off.
-int_chunk(Off, Type, V, chunk(Off, N, item(Width, c(U)))) :-
+int_chunk(Off, Type, V, chunk(Off, N, item(Width, const(U)))) :-
     int_info(Type, N, _),
     memberchk(N-Width, [1-b, 2-h, 4-w, 8-l]),
     convert_int(V, Type, U).
@@ -2231,14 +2231,14 @@ expr_chunk(Type, Off, Expr, Loc, Env, Env, Chunk) :-
     ),
     ( float_type(Type)
     -> type_class(Type, K), type_size_align(Type, Env, N, _),
-       Chunk = chunk(Off, N, item(K, c(V)))
+       Chunk = chunk(Off, N, item(K, const(V)))
     ; int_chunk(Off, Type, V, Chunk)
     ).
 expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
     addr_const(Expr, Loc, Env0, Env, R),
     (   R = sym(Sym, SymOff, _)
     ->  Chunk = chunk(Off, 8, item(p, sym(Sym, SymOff)))
-    ;   Chunk = chunk(Off, 8, item(l, c(0)))
+    ;   Chunk = chunk(Off, 8, item(l, const(0)))
     ).
 expr_chunk(Type, _, _, Loc, _, _, _) :-
     sema_error(Loc, 'cannot statically initialize a ~w', [Type]).

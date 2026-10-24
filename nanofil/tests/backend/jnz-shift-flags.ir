@@ -6,11 +6,11 @@
 %
 run(f, [0]).
 run(f, [1]).
-func(f, export, w, [par(l, t(n))], [
-    blk(start, [], [
-        ins(t(c), w, and, [t(n), c(63)]),
-        ins(t(x), l, shr, [c(-128), t(c)])
-    ], jnz(t(x), yes, no)),
-    blk(yes, [], [], ret(c(1))),
-    blk(no, [], [], ret(c(0)))
+func(f, export, w, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(c), w, and, [tmp(n), const(63)]),
+        let(tmp(x), l, shr, [const(-128), tmp(c)])
+    ], branch(tmp(x), yes, no)),
+    block(yes, [], [], ret(const(1))),
+    block(no, [], [], ret(const(0)))
 ]).

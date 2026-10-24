@@ -74,7 +74,7 @@ function(Name, func(Name, export, Ret, Params, Blocks), Runs, S0, S) :-
 
 % param(+I, -Param, +S0, -S): the parameter pI, of a random class, joins
 % the pool.
-param(I, par(K, t(T)), S0, S) :-
+param(I, param(K, tmp(T)), S0, S) :-
     format(atom(T), "p~d", [I]),
     choose([w, l], K, S0, S1),
     S1 = g(R, N, Pool),
@@ -97,7 +97,7 @@ blocks(Ret, S0, S) -->
     ;   { L = L0, Phis = Phis0, Is = Is1, S5 = S4 }
     ),
     { operand(Ret, V, S5, S) },
-    [blk(L, Phis, Is, ret(V))].
+    [block(L, Phis, Is, ret(V))].
 
 % entry(+S0, -S)//: the entry block's instructions: maybe a round trip
 % through memory, then two to eight ops.
@@ -111,9 +111,9 @@ entry(S0, S) -->
 % (with Phis and Is) branches to two arms of one to three ops each,
 % which meet at Join, whose phi of class Ret picks a value from each.
 % Temporaries an arm defines leave the pool when it ends.
-diamond(Ret, L, Phis, Is, join, [phi(t(J), Ret, [then-VT, else-VE])], S0, S) -->
+diamond(Ret, L, Phis, Is, join, [phi(tmp(J), Ret, [then-VT, else-VE])], S0, S) -->
     { operand(w, C, S0, S1) },
-    [blk(L, Phis, Is, jnz(C, then, else))],
+    [block(L, Phis, Is, branch(C, then, else))],
     arm(then, Ret, VT, S1, S2),
     arm(else, Ret, VE, S2, S3),
     { fresh(Ret, J, S3, S) }.
@@ -124,7 +124,7 @@ arm(L, Ret, V, S0, S) -->
       phrase(ops(N, S1, S2), Is),
       operand(Ret, V, S2, g(R, M, _)),
       S = g(R, M, Pool) },
-    [blk(L, [], Is, jmp(join))].
+    [block(L, [], Is, goto(join))].
 
 % loop(+Ret, +L, +Phis, +Is, +S0, -S)//: block L ends by computing a trip
 % count of 0 to 7 and entering a loop that folds an accumulator of class
@@ -134,20 +134,20 @@ loop(Ret, L, Phis, Is0, S0, S) -->
     { operand(w, C0, S0, S1),
       fresh(w, N, S1, S2),
       operand(Ret, Init, S2, S3),
-      append(Is0, [ins(t(N), w, and, [C0, c(7)])], Is),
+      append(Is0, [let(tmp(N), w, and, [C0, const(7)])], Is),
       fresh_hidden(I, S3, S4), fresh_hidden(I1, S4, S5),
       fresh_hidden(A, S5, S6), fresh_hidden(C, S6, S7),
       fresh_hidden(A1, S7, S8),
       choose([add, mul, xor, sub], Op, S8, S9),
       operand(Ret, X, S9, g(R, M, Pool)),
       S = g(R, M, [A1-Ret|Pool]) },
-    [blk(L, Phis, Is, jmp(loop)),
-     blk(loop, [phi(t(I), w, [L-c(0), loop-t(I1)]),
-                phi(t(A), Ret, [L-Init, loop-t(A1)])],
-         [ins(t(A1), Ret, Op, [t(A), X]),
-          ins(t(I1), w, add, [t(I), c(1)]),
-          ins(t(C), w, cmp(slt, w), [t(I1), t(N)])],
-         jnz(t(C), loop, exit))].
+    [block(L, Phis, Is, goto(loop)),
+     block(loop, [phi(tmp(I), w, [L-const(0), loop-tmp(I1)]),
+                phi(tmp(A), Ret, [L-Init, loop-tmp(A1)])],
+         [let(tmp(A1), Ret, Op, [tmp(A), X]),
+          let(tmp(I1), w, add, [tmp(I), const(1)]),
+          let(tmp(C), w, cmp(slt, w), [tmp(I1), tmp(N)])],
+         branch(tmp(C), loop, exit))].
 
 %% Straight-line ops
 
@@ -164,7 +164,7 @@ op(S0, S) -->
       op_arg_classes(Op, K, plain, Cs),
       foldl(operand, Cs, Args, S2, S3),
       fresh(K, D, S3, S) },
-    [ins(t(D), K, Op, Args)].
+    [let(tmp(D), K, Op, Args)].
 
 % shape(?Group, ?Op, ?K): Op of Group may produce class K in a plain
 % module from integer operands.
@@ -195,10 +195,10 @@ int_class(l).
 memory(S0, S) -->
     { fresh_hidden(P, S0, S1), operand(l, V0, S1, S2),
       fresh_hidden(Q, S2, S3), operand(l, V8, S3, S4) },
-    [ins(t(P), l, alloc(8), [c(16)]),
-     store(l, V0, t(P)),
-     ins(t(Q), l, add, [t(P), c(8)]),
-     store(l, V8, t(Q))],
+    [let(tmp(P), l, alloc(8), [const(16)]),
+     store(l, V0, tmp(P)),
+     let(tmp(Q), l, add, [tmp(P), const(8)]),
+     store(l, V8, tmp(Q))],
     { between_(1, 3, NS, S4, S5) },
     stores(NS, P, S5, S6),
     { between_(1, 3, NL, S6, S7) },
@@ -213,7 +213,7 @@ stores(N, P, S0, S) -->
       fresh_hidden(A, S2, S3),
       operand(VK, V, S3, S4),
       N1 is N - 1 },
-    [ins(t(A), l, add, [t(P), c(Off)]), store(W, V, t(A))],
+    [let(tmp(A), l, add, [tmp(P), const(Off)]), store(W, V, tmp(A))],
     stores(N1, P, S4, S).
 
 % store_width(?W, ?K): an integer store of width W reads its value at K.
@@ -231,7 +231,7 @@ loads(N, P, S0, S) -->
       fresh_hidden(A, S2, S3),
       fresh(K, D, S3, S4),
       N1 is N - 1 },
-    [ins(t(A), l, add, [t(P), c(Off)]), ins(t(D), K, load(T), [t(A)])],
+    [let(tmp(A), l, add, [tmp(P), const(Off)]), let(tmp(D), K, load(T), [tmp(A)])],
     loads(N1, P, S4, S).
 
 load_bytes(T, Size) :- narrow_type(T, Size, _), !.
@@ -248,7 +248,7 @@ offset(Size, Off, S0, S) :-
 % temporary from the pool, else a constant.
 operand(K, V, S0, S) :-
     S0 = g(_, _, Pool),
-    findall(t(T), ( member(T-TK, Pool), reads_as(TK, K) ), Ts),
+    findall(tmp(T), ( member(T-TK, Pool), reads_as(TK, K) ), Ts),
     chance(80, Temp, S0, S1),
     (   Ts \== [], Temp == true
     ->  choose(Ts, V, S1, S)
@@ -260,7 +260,7 @@ reads_as(w, w).
 reads_as(l, w).
 reads_as(l, l).
 
-constant(c(N), S0, S) :-
+constant(const(N), S0, S) :-
     chance(50, Edge, S0, S1),
     (   Edge == true
     ->  edges(Es), choose(Es, N, S1, S)

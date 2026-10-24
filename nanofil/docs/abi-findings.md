@@ -321,7 +321,7 @@ no extras can leave eight readable padding bytes. Exhaustion tests use
 a 16-byte incoming argument area and read at offset 16, so their first
 missing argument is genuinely out of bounds in both compilers.
 
-Nanofil keeps `func/5` unchanged: `va_args c(N)` marks an eager snapshot,
+Nanofil keeps `func/5` unchanged: `va_args const(N)` marks an eager snapshot,
 and `va_arg list_address` reads and updates its list in memory. The
 backend's generic adapter promotes once, then passes the snapshot as a
 hidden pointer argument to a private fast body. There is no safepoint
@@ -393,7 +393,7 @@ both compilers; byte 37 is not a valid bounds-trap probe at this pin.
 
 The pass's `UnreachableInst` case at line 14392 calls the runtime error
 helper with `llvm unreachable instruction`. nanofil instead uses its
-existing `hlt` terminator, emitted as `ud2`: executing it stops rather
+existing `unreachable` terminator, emitted as `ud2`: executing it stops rather
 than falling through, but does not produce clang's diagnostic text.
 
 ## Scalar floating point (M9)

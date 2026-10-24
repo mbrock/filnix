@@ -92,21 +92,21 @@ global(export, Name) --> [globl(Name)].
 global(local, _) --> [].
 
 /* frame(+Params, +Blocks, -Slots, -Size): one slot per temporary name and
-   one shadow slot per phi destination. Slots maps a key, t(N) or
+   one shadow slot per phi destination. Slots maps a key, tmp(N) or
    shadow(N), to its offset below %rbp. */
 frame(Params, Blocks, Slots, Size) :-
-    findall(t(N),
-            (   member(par(_, t(N)), Params)
-            ;   member(blk(_, Phis, Insts, _), Blocks),
-                (   member(phi(t(N), _, _), Phis)
+    findall(tmp(N),
+            (   member(param(_, tmp(N)), Params)
+            ;   member(block(_, Phis, Insts, _), Blocks),
+                (   member(phi(tmp(N), _, _), Phis)
                 ;   member(Inst, Insts),
                     defines(Inst, N)
                 )
             ),
             Temps0),
     findall(shadow(N),
-            ( member(blk(_, Phis, _, _), Blocks),
-              member(phi(t(N), _, _), Phis) ),
+            ( member(block(_, Phis, _, _), Blocks),
+              member(phi(tmp(N), _, _), Phis) ),
             Shadows0),
     sort(Temps0, Temps),
     sort(Shadows0, Shadows),
@@ -115,9 +115,9 @@ frame(Params, Blocks, Slots, Size) :-
     foldl(assign_slot, Keys, Slots0-0, Slots-Count),
     Size is (Count * 8 + 15) // 16 * 16.
 
-% defines(+Inst, -N): Inst writes temporary t(N).
-defines(ins(t(N), _, _, _), N).
-defines(call(to(t(N), _), _, _), N).
+% defines(+Inst, -N): Inst writes temporary tmp(N).
+defines(let(tmp(N), _, _, _), N).
+defines(call(result(tmp(N), _), _, _), N).
 
 % The next 8-byte slot below %rbp, counting slots in Count.
 assign_slot(Key, Slots0-Count0, Slots-Count) :-
@@ -128,15 +128,15 @@ assign_slot(Key, Slots0-Count0, Slots-Count) :-
 % Float arguments use an independent bank, with source-ordered stack
 % overflow. Keep the integer-only emission unchanged.
 plain_params(Params, Ctx) -->
-    (   { member(par(F,_), Params), float_class(F) }
-    ->  { findall(K, member(par(K,_), Params), Ks),
+    (   { member(param(F,_), Params), float_class(F) }
+    ->  { findall(K, member(param(K,_), Params), Ks),
           bank_locations(Ks, [di,si,d,c,r8,r9], Locs, _, _) },
         plain_incoming(Params, Locs, Ctx)
     ;   store_params(Params, 0, Ctx)
     ).
 
 plain_incoming([], [], _) --> [].
-plain_incoming([par(K, T)|Ps], [L|Ls], Ctx) -->
+plain_incoming([param(K, T)|Ps], [L|Ls], Ctx) -->
     plain_incoming_value(L, K), store_reg(rax, T, Ctx),
     plain_incoming(Ps, Ls, Ctx).
 plain_incoming_value(reg(R), _) -->
@@ -148,7 +148,7 @@ plain_incoming_value(stack(I), _) -->
 % store_params(+Params, +I, +Ctx)//: spill the incoming argument
 % registers, from the I-th on, to the slots of Params.
 store_params([], _, _) --> [].
-store_params([par(_, Temp)|Params], I, Ctx) -->
+store_params([param(_, Temp)|Params], I, Ctx) -->
     (   { arg_reg(I, Reg) } -> []
     ;   { Ctx = f(Fn, _, _, _),
           format(atom(Msg), 'in ~w: more than six parameters', [Fn]),
@@ -191,7 +191,7 @@ att_suffix(s, l). att_suffix(d, q).
 
 % blocks(+Blocks, +Ctx)//: each block's label, instructions and jump.
 blocks([], _) --> [].
-blocks([blk(Label, _, Insts, Jump)|Blocks], Ctx) -->
+blocks([block(Label, _, Insts, Jump)|Blocks], Ctx) -->
     { block_label(Ctx, Label, AsmLabel) },
     [label(AsmLabel)],
     insts(Insts, Ctx),
@@ -209,8 +209,8 @@ false_label(f(Fn, _, _, _), Label, AsmLabel) :-
     format(atom(AsmLabel), '.L~w.~w.false', [Fn, Label]).
 
 % jump(+Jump, +From, +Ctx)//: the code for the jump ending block From.
-jump(jmp(To), From, Ctx) --> edge(From, To, Ctx).
-jump(jnz(V, IfTrue, IfFalse), From, Ctx) -->
+jump(goto(To), From, Ctx) --> edge(From, To, Ctx).
+jump(branch(V, IfTrue, IfFalse), From, Ctx) -->
     { false_label(Ctx, From, FalseLabel) },
     load(V, w, a, Ctx),
     [ins(test, l, [reg(eax), reg(eax)]),
@@ -224,7 +224,7 @@ jump(ret(V), _, Ctx) -->
     ( { float_class(Class) } -> to_xmm(Class,a,xmm0) ; [] ),
     epilogue.
 jump(ret, _, _) --> epilogue.
-jump(hlt, _, _) --> [ins(ud2, none, [])].
+jump(unreachable, _, _) --> [ins(ud2, none, [])].
 
 epilogue --> [ins(leave, none, []), ins(ret, none, [])].
 
@@ -233,7 +233,7 @@ epilogue --> [ins(leave, none, []), ins(ret, none, [])].
 % destination is written.
 edge(From, To, Ctx) -->
     { Ctx = f(_, _, _, Blocks),
-      memberchk(blk(To, Phis, _, _), Blocks),
+      memberchk(block(To, Phis, _, _), Blocks),
       block_label(Ctx, To, ToLabel) },
     phi_reads(Phis, From, Ctx),
     phi_writes(Phis, Ctx),
@@ -242,7 +242,7 @@ edge(From, To, Ctx) -->
 % phi_reads(+Phis, +From, +Ctx)//: copy each phi's incoming value from
 % From into its shadow slot.
 phi_reads([], _, _) --> [].
-phi_reads([phi(t(D), Class, Incoming)|Phis], From, Ctx) -->
+phi_reads([phi(tmp(D), Class, Incoming)|Phis], From, Ctx) -->
     { memberchk(From-V, Incoming) },
     load(V, Class, a, Ctx),
     store_reg(rax, shadow(D), Ctx),
@@ -251,9 +251,9 @@ phi_reads([phi(t(D), Class, Incoming)|Phis], From, Ctx) -->
 % phi_writes(+Phis, +Ctx)//: copy each phi's shadow slot into its
 % destination's slot.
 phi_writes([], _) --> [].
-phi_writes([phi(t(D), _, _)|Phis], Ctx) -->
+phi_writes([phi(tmp(D), _, _)|Phis], Ctx) -->
     load_slot(shadow(D), l, rax, Ctx),
-    store_reg(rax, t(D), Ctx),
+    store_reg(rax, tmp(D), Ctx),
     phi_writes(Phis, Ctx).
 
 %% Instructions
@@ -264,7 +264,7 @@ insts([Inst|Insts], Ctx) -->
     insts(Insts, Ctx).
 
 % inst(+Inst, +Ctx)//: the code for one instruction.
-inst(ins(D, Class, Op, Args), Ctx) -->
+inst(let(D, Class, Op, Args), Ctx) -->
     compute_op(Op, Class, Args, Ctx),
     store_reg(rax, D, Ctx).
 inst(store(Width, V, Addr), Ctx) -->
@@ -273,7 +273,7 @@ inst(store(Width, V, Addr), Ctx) -->
     load(Addr, l, a, Ctx),
     { store_insn(Width, c, Store) },
     [Store].
-inst(call(Res, glo(F), Args), Ctx) -->
+inst(call(Res, global(F), Args), Ctx) -->
     { member(arg(FK,_),Args), float_class(FK) }, !,
     { findall(K,member(arg(K,_),Args),Ks),
       bank_locations(Ks,[di,si,d,c,r8,r9],Ls,NS,NX),
@@ -283,7 +283,7 @@ inst(call(Res, glo(F), Args), Ctx) -->
     [ins(mov,b,[imm(NX),reg(al)]),ins(call,none,[sym(F)])],
     ( { Pop > 0 } -> [ins(add,q,[imm(Pop),reg(rsp)])] ; [] ),
     call_result(Res,Ctx).
-inst(call(Res, glo(F), Args), Ctx) -->
+inst(call(Res, global(F), Args), Ctx) -->
     { length(Args, N),
       (   N =< 6 -> true
       ;   Ctx = f(Fn, _, _, _),
@@ -306,9 +306,9 @@ width_class(d, d).
 % call_result(+Res, +Ctx)//: the store of a call's result Res from %rax;
 % nothing for void, and the plain backend has no tuple results.
 call_result(void, _) --> [].
-call_result(to(D, K), Ctx) -->
+call_result(result(D, K), Ctx) -->
     { float_class(K) }, !, from_xmm(K,xmm0,a), store_reg(rax,D,Ctx).
-call_result(to(D, _), Ctx) --> store_reg(rax, D, Ctx).
+call_result(result(D, _), Ctx) --> store_reg(rax, D, Ctx).
 call_result(tuple(_), _) --> [].
 
 % call_args(+Args, +I, +Ctx)//: load each argument, from the I-th on,
@@ -485,11 +485,11 @@ sw_load_op(l, Op, S, To) :- ext_op(sw, l, Op, S, To).
 %! load(+Value, +Class, +Reg, +Ctx)//
 %
 %  The code that puts Value, read at Class, in register Reg.
-load(t(N), K, R, Ctx) -->
+load(tmp(N), K, R, Ctx) -->
     { reg_name(R, K, RN) },
-    load_slot(t(N), K, RN, Ctx).
-load(c(N), K, R, _) --> load_constant(K, N, R).
-load(glo(G), _, R, _) -->
+    load_slot(tmp(N), K, RN, Ctx).
+load(const(N), K, R, _) --> load_constant(K, N, R).
+load(global(G), _, R, _) -->
     { reg_name(R, l, RN) },
     [ins(lea, q, [rip(G), reg(RN)])].
 
@@ -543,7 +543,7 @@ data_item(item(W, Value)) --> item_value(Value, W).
 % value Value.
 item_value(str(Cs), b) --> [ascii(Cs)].
 item_value(sym(S, Off), l) --> [quad(S+Off)].
-item_value(c(N), W) -->
+item_value(const(N), W) -->
     { data_directive(W, U, Directive, Bits),
       U is N mod (1 << Bits) },
     [Directive].
@@ -616,7 +616,7 @@ float_op(neg, K, [X], Ctx) -->
     load(X, K, a, Ctx),
     { float_bits(K, B), reg_name(a, B, A), att_suffix(B, S),
       ( K == s -> Mask = 2147483648 ; Mask = 9223372036854775808 ) },
-    load(c(Mask), B, c, Ctx),
+    load(const(Mask), B, c, Ctx),
     { reg_name(c, B, C) },
     [ins(xor, S, [reg(C),reg(A)])].
 float_op(cmp(Cond,K), w, [X,Y], Ctx) -->
@@ -667,7 +667,7 @@ float_integer(unsigned, F, w, _) -->
 float_integer(unsigned, F, l, Ctx) -->
     { ( F == s -> Bits = 1593835520 ; Bits = 4890909195324358656 ),
       float_compare(F, Cmp), float_suffix(F,S) },
-    float_load(c(Bits), F, xmm1, Ctx),
+    float_load(const(Bits), F, xmm1, Ctx),
     [ins(Cmp,none,[reg(xmm1),reg(xmm0)]),ins(jb,none,[sym('1f')]),
      ins(sub,S,[reg(xmm1),reg(xmm0)])],
     truncate_float(F,l),

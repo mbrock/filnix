@@ -1,23 +1,23 @@
 % Copy chains, including a block listed before its defining predecessor.
-func(weighted, local, l, [par(l, t(a)), par(l, t(b))], [
-    blk(start, [], [
-        ins(t(x), l, mul, [t(a), c(7)]),
-        ins(t(r), l, sub, [t(x), t(b)])
-    ], ret(t(r)))
+func(weighted, local, l, [param(l, tmp(a)), param(l, tmp(b))], [
+    block(start, [], [
+        let(tmp(x), l, mul, [tmp(a), const(7)]),
+        let(tmp(r), l, sub, [tmp(x), tmp(b)])
+    ], ret(tmp(r)))
 ]).
-func(chain, export, l, [par(l, t(x))], [
-    blk(start, [], [
-        ins(t(a), l, copy, [t(x)]),
-        ins(t(one), l, copy, [c(1)])
-    ], jmp(first)),
-    blk(last, [], [
-        ins(t(c), l, copy, [t(b)]),
-        call(to(t(r), l), glo(weighted), [arg(l, t(c)), arg(l, t(one))]),
-        ins(t(out), l, copy, [t(r)])
-    ], ret(t(out))),
-    blk(first, [], [
-        ins(t(b), l, copy, [t(a)])
-    ], jmp(last))
+func(chain, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), l, copy, [tmp(x)]),
+        let(tmp(one), l, copy, [const(1)])
+    ], goto(first)),
+    block(last, [], [
+        let(tmp(c), l, copy, [tmp(b)]),
+        call(result(tmp(r), l), global(weighted), [arg(l, tmp(c)), arg(l, tmp(one))]),
+        let(tmp(out), l, copy, [tmp(r)])
+    ], ret(tmp(out))),
+    block(first, [], [
+        let(tmp(b), l, copy, [tmp(a)])
+    ], goto(last))
 ]).
 run(chain, [0]).
 run(chain, [13]).
@@ -25,21 +25,21 @@ run(chain, [18446744073709551615]).
 
 % Copy constants are class-width bit patterns, not unbounded integers.
 % Keep the l -> w copy and both signed/unsigned extensions.
-func(narrow, export, l, [par(l, t(x))], [
-    blk(start, [], [
-        ins(t(a), l, copy, [t(x)]),
-        ins(t(b), w, copy, [t(a)]),
-        ins(t(c), w, copy, [t(b)]),
-        ins(t(s), l, ext(sw), [t(c)]),
-        ins(t(u), l, ext(uw), [t(c)]),
-        ins(t(neg), w, copy, [c(-1)]),
-        ins(t(n), l, ext(uw), [t(neg)]),
-        ins(t(big), w, copy, [c(4294967297)]),
-        ins(t(bigl), l, ext(uw), [t(big)]),
-        ins(t(d), l, sub, [t(s), t(u)]),
-        ins(t(e), l, add, [t(d), t(n)]),
-        ins(t(r), l, add, [t(e), t(bigl)])
-    ], ret(t(r)))
+func(narrow, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), l, copy, [tmp(x)]),
+        let(tmp(b), w, copy, [tmp(a)]),
+        let(tmp(c), w, copy, [tmp(b)]),
+        let(tmp(s), l, ext(sw), [tmp(c)]),
+        let(tmp(u), l, ext(uw), [tmp(c)]),
+        let(tmp(neg), w, copy, [const(-1)]),
+        let(tmp(n), l, ext(uw), [tmp(neg)]),
+        let(tmp(big), w, copy, [const(4294967297)]),
+        let(tmp(bigl), l, ext(uw), [tmp(big)]),
+        let(tmp(d), l, sub, [tmp(s), tmp(u)]),
+        let(tmp(e), l, add, [tmp(d), tmp(n)]),
+        let(tmp(r), l, add, [tmp(e), tmp(bigl)])
+    ], ret(tmp(r)))
 ]).
 run(narrow, [4294967296]).
 run(narrow, [6442450944]).
@@ -47,41 +47,41 @@ run(narrow, [18446744073709551615]).
 
 % Long constants must not be truncated as though the copy were a word.
 func(constants, export, l, [], [
-    blk(start, [], [
-        ins(t(a), l, copy, [c(4294967297)]),
-        ins(t(b), l, copy, [c(-2)]),
-        ins(t(c), l, copy, [t(a)]),
-        ins(t(r), l, sub, [t(c), t(b)])
-    ], ret(t(r)))
+    block(start, [], [
+        let(tmp(a), l, copy, [const(4294967297)]),
+        let(tmp(b), l, copy, [const(-2)]),
+        let(tmp(c), l, copy, [tmp(a)]),
+        let(tmp(r), l, sub, [tmp(c), tmp(b)])
+    ], ret(tmp(r)))
 ]).
 run(constants, []).
 
 % Back-edge copies feed simultaneous phis; a sequential phi update is wrong.
-func(swap, export, l, [par(w, t(n))], [
-    blk(start, [], [
-        ins(t(a0), l, copy, [c(3)]),
-        ins(t(b0), l, copy, [c(11)]),
-        ins(t(i0), w, copy, [c(0)])
-    ], jmp(head)),
-    blk(head, [
-        phi(t(a), l, [start-t(a0), body-t(nexta)]),
-        phi(t(b), l, [start-t(b0), body-t(nextb)]),
-        phi(t(i), w, [start-t(i0), body-t(nexti)])
+func(swap, export, l, [param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(a0), l, copy, [const(3)]),
+        let(tmp(b0), l, copy, [const(11)]),
+        let(tmp(i0), w, copy, [const(0)])
+    ], goto(head)),
+    block(head, [
+        phi(tmp(a), l, [start-tmp(a0), body-tmp(nexta)]),
+        phi(tmp(b), l, [start-tmp(b0), body-tmp(nextb)]),
+        phi(tmp(i), w, [start-tmp(i0), body-tmp(nexti)])
     ], [
-        ins(t(test), w, cmp(slt, w), [t(i), t(n)]),
-        ins(t(cond), w, copy, [t(test)])
-    ], jnz(t(cond), body, done)),
-    blk(body, [], [
-        ins(t(nexta), l, copy, [t(b)]),
-        ins(t(nextb), l, copy, [t(a)]),
-        ins(t(i1), w, add, [t(i), c(1)]),
-        ins(t(nexti), w, copy, [t(i1)])
-    ], jmp(head)),
-    blk(done, [], [
-        ins(t(aa), l, copy, [t(a)]),
-        ins(t(bb), l, copy, [t(b)]),
-        call(to(t(r), l), glo(weighted), [arg(l, t(aa)), arg(l, t(bb))])
-    ], ret(t(r)))
+        let(tmp(test), w, cmp(slt, w), [tmp(i), tmp(n)]),
+        let(tmp(cond), w, copy, [tmp(test)])
+    ], branch(tmp(cond), body, done)),
+    block(body, [], [
+        let(tmp(nexta), l, copy, [tmp(b)]),
+        let(tmp(nextb), l, copy, [tmp(a)]),
+        let(tmp(i1), w, add, [tmp(i), const(1)]),
+        let(tmp(nexti), w, copy, [tmp(i1)])
+    ], goto(head)),
+    block(done, [], [
+        let(tmp(aa), l, copy, [tmp(a)]),
+        let(tmp(bb), l, copy, [tmp(b)]),
+        call(result(tmp(r), l), global(weighted), [arg(l, tmp(aa)), arg(l, tmp(bb))])
+    ], ret(tmp(r)))
 ]).
 run(swap, [0]).
 run(swap, [1]).
@@ -89,145 +89,145 @@ run(swap, [2]).
 run(swap, [7]).
 
 % Loads, stores and calls remain in order, even when their results alias.
-func(bump, local, l, [par(l, t(p))], [
-    blk(start, [], [
-        ins(t(x), l, load(l), [t(p)]),
-        ins(t(y), l, add, [t(x), c(5)]),
-        store(l, t(y), t(p))
-    ], ret(t(y)))
+func(bump, local, l, [param(l, tmp(p))], [
+    block(start, [], [
+        let(tmp(x), l, load(l), [tmp(p)]),
+        let(tmp(y), l, add, [tmp(x), const(5)]),
+        store(l, tmp(y), tmp(p))
+    ], ret(tmp(y)))
 ]).
-func(effects, export, l, [par(l, t(x))], [
-    blk(start, [], [
-        ins(t(p), l, alloc(8), [c(8)]),
-        ins(t(q), l, copy, [t(p)]),
-        ins(t(v), l, copy, [t(x)]),
-        store(l, t(v), t(q)),
-        ins(t(before), l, load(l), [t(q)]),
-        ins(t(a), l, copy, [t(before)]),
-        call(to(t(b), l), glo(bump), [arg(l, t(q))]),
-        ins(t(c), l, copy, [t(b)]),
-        ins(t(after), l, load(l), [t(p)]),
-        ins(t(d), l, copy, [t(after)]),
-        call(to(t(r0), l), glo(weighted), [arg(l, t(a)), arg(l, t(c))]),
-        ins(t(r), l, sub, [t(r0), t(d)])
-    ], ret(t(r)))
+func(effects, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(p), l, alloc(8), [const(8)]),
+        let(tmp(q), l, copy, [tmp(p)]),
+        let(tmp(v), l, copy, [tmp(x)]),
+        store(l, tmp(v), tmp(q)),
+        let(tmp(before), l, load(l), [tmp(q)]),
+        let(tmp(a), l, copy, [tmp(before)]),
+        call(result(tmp(b), l), global(bump), [arg(l, tmp(q))]),
+        let(tmp(c), l, copy, [tmp(b)]),
+        let(tmp(after), l, load(l), [tmp(p)]),
+        let(tmp(d), l, copy, [tmp(after)]),
+        call(result(tmp(r0), l), global(weighted), [arg(l, tmp(a)), arg(l, tmp(c))]),
+        let(tmp(r), l, sub, [tmp(r0), tmp(d)])
+    ], ret(tmp(r)))
 ]).
 run(effects, [9]).
 run(effects, [18446744073709551615]).
 
 % Non-SSA: copying the old value is not an alias of the new definition.
-func(redefined, export, l, [par(l, t(x))], [
-    blk(start, [], [
-        ins(t(a), l, copy, [t(x)]),
-        ins(t(old), l, copy, [t(a)]),
-        ins(t(a), l, add, [t(a), c(17)]),
-        ins(t(r), l, sub, [t(old), t(a)])
-    ], ret(t(r)))
+func(redefined, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), l, copy, [tmp(x)]),
+        let(tmp(old), l, copy, [tmp(a)]),
+        let(tmp(a), l, add, [tmp(a), const(17)]),
+        let(tmp(r), l, sub, [tmp(old), tmp(a)])
+    ], ret(tmp(r)))
 ]).
 run(redefined, [4]).
 
 % Dead cycles must not be chased. Dead uses still need definitions after
 % live copies disappear; dead predecessors must stay on successor phis.
-func(unreachable, export, l, [par(l, t(x))], [
-    blk(start, [], [
-        ins(t(a), l, copy, [t(x)])
-    ], jmp(join)),
-    blk(dead, [], [
-        ins(t(cycle1), l, copy, [t(cycle2)]),
-        ins(t(cycle2), l, copy, [t(cycle1)]),
-        ins(t(deaduse), l, copy, [t(a)])
-    ], jmp(join)),
-    blk(join, [
-        phi(t(p), l, [start-t(a), dead-t(deaduse)])
+func(unreachable, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), l, copy, [tmp(x)])
+    ], goto(join)),
+    block(dead, [], [
+        let(tmp(cycle1), l, copy, [tmp(cycle2)]),
+        let(tmp(cycle2), l, copy, [tmp(cycle1)]),
+        let(tmp(deaduse), l, copy, [tmp(a)])
+    ], goto(join)),
+    block(join, [
+        phi(tmp(p), l, [start-tmp(a), dead-tmp(deaduse)])
     ], [
-        ins(t(r), l, copy, [t(p)])
-    ], ret(t(r)))
+        let(tmp(r), l, copy, [tmp(p)])
+    ], ret(tmp(r)))
 ]).
 run(unreachable, [29]).
 
 % Plain global addresses also remain materialized, not treated as integers.
-data(cell, local, 8, [item(l, c(37))]).
+data(cell, local, 8, [item(l, const(37))]).
 func(global, export, l, [], [
-    blk(start, [], [
-        ins(t(p), l, copy, [glo(cell)]),
-        ins(t(q), l, copy, [t(p)]),
-        ins(t(v), l, load(l), [t(q)])
-    ], ret(t(v)))
+    block(start, [], [
+        let(tmp(p), l, copy, [global(cell)]),
+        let(tmp(q), l, copy, [tmp(p)]),
+        let(tmp(v), l, load(l), [tmp(q)])
+    ], ret(tmp(v)))
 ]).
 run(global, []).
 
 % a first aliases z, then z becomes x; b must be revisited after both.
 % Block order is not dominance order, and the loop has self inputs.
-func(invariant, export, l, [par(l, t(x)), par(w, t(n))], [
-    blk(start, [], [
-        ins(t(seed), l, copy, [t(x)])
-    ], jmp(head)),
-    blk(body, [
-        phi(t(a), l, [head-t(z)])
+func(invariant, export, l, [param(l, tmp(x)), param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(seed), l, copy, [tmp(x)])
+    ], goto(head)),
+    block(body, [
+        phi(tmp(a), l, [head-tmp(z)])
     ], [
-        ins(t(back), l, copy, [t(a)]),
-        ins(t(i1), w, add, [t(i), c(1)])
-    ], jmp(head)),
-    blk(head, [
-        phi(t(b), l, [start-t(seed), body-t(back)]),
-        phi(t(z), l, [start-t(seed), body-t(z)]),
-        phi(t(i), w, [start-c(0), body-t(i1)])
+        let(tmp(back), l, copy, [tmp(a)]),
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(head)),
+    block(head, [
+        phi(tmp(b), l, [start-tmp(seed), body-tmp(back)]),
+        phi(tmp(z), l, [start-tmp(seed), body-tmp(z)]),
+        phi(tmp(i), w, [start-const(0), body-tmp(i1)])
     ], [
-        ins(t(c), w, cmp(slt, w), [t(i), t(n)])
-    ], jnz(t(c), body, done)),
-    blk(done, [], [
-        ins(t(r), l, sub, [t(b), t(z)]),
-        ins(t(out), l, add, [t(r), t(x)])
-    ], ret(t(out)))
+        let(tmp(c), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(done, [], [
+        let(tmp(r), l, sub, [tmp(b), tmp(z)]),
+        let(tmp(out), l, add, [tmp(r), tmp(x)])
+    ], ret(tmp(out)))
 ]).
 run(invariant, [23, 0]).
 run(invariant, [31, 5]).
 run(invariant, [18446744073709551615, 3]).
 
 % Equal bit patterns normalize at the phi's width before comparison.
-func(phi_constants, export, l, [par(w, t(which))], [
-    blk(start, [], [], jnz(t(which), left, right)),
-    blk(left, [], [], jmp(join)),
-    blk(right, [], [], jmp(join)),
-    blk(join, [
-        phi(t(w), w, [left-c(-1), right-c(4294967295)]),
-        phi(t(l), l, [left-c(4294967297), right-c(4294967297)])
+func(phi_constants, export, l, [param(w, tmp(which))], [
+    block(start, [], [], branch(tmp(which), left, right)),
+    block(left, [], [], goto(join)),
+    block(right, [], [], goto(join)),
+    block(join, [
+        phi(tmp(w), w, [left-const(-1), right-const(4294967295)]),
+        phi(tmp(l), l, [left-const(4294967297), right-const(4294967297)])
     ], [
-        ins(t(u), l, ext(uw), [t(w)]),
-        ins(t(r), l, sub, [t(l), t(u)])
-    ], ret(t(r)))
+        let(tmp(u), l, ext(uw), [tmp(w)]),
+        let(tmp(r), l, sub, [tmp(l), tmp(u)])
+    ], ret(tmp(r)))
 ]).
 run(phi_constants, [0]).
 run(phi_constants, [1]).
 
 % A w phi of l temps narrows: it cannot simply alias the input.
-func(phi_narrow, export, l, [par(l, t(x)), par(w, t(which))], [
-    blk(start, [], [], jnz(t(which), left, right)),
-    blk(left, [], [], jmp(join)),
-    blk(right, [], [], jmp(join)),
-    blk(join, [
-        phi(t(w), w, [left-t(x), right-t(x)])
+func(phi_narrow, export, l, [param(l, tmp(x)), param(w, tmp(which))], [
+    block(start, [], [], branch(tmp(which), left, right)),
+    block(left, [], [], goto(join)),
+    block(right, [], [], goto(join)),
+    block(join, [
+        phi(tmp(w), w, [left-tmp(x), right-tmp(x)])
     ], [
-        ins(t(u), l, ext(uw), [t(w)])
-    ], ret(t(u)))
+        let(tmp(u), l, ext(uw), [tmp(w)])
+    ], ret(tmp(u)))
 ]).
 run(phi_narrow, [4294967303, 0]).
 run(phi_narrow, [18446744073709551615, 1]).
 
 % All incoming edges count, even dead ones. Dead uses of a removed phi
 % still need rewriting; the all-self dead phi must not be eliminated.
-func(phi_dead_edges, export, l, [par(l, t(x))], [
-    blk(start, [], [], jmp(join)),
-    blk(dead, [
-        phi(t(self), l, [dead-t(self)])
+func(phi_dead_edges, export, l, [param(l, tmp(x))], [
+    block(start, [], [], goto(join)),
+    block(dead, [
+        phi(tmp(self), l, [dead-tmp(self)])
     ], [
-        ins(t(use), l, add, [t(same), c(1)])
-    ], jnz(c(0), dead, join)),
-    blk(join, [
-        phi(t(same), l, [start-t(x), dead-t(x)]),
-        phi(t(different), l, [start-t(x), dead-t(use)])
+        let(tmp(use), l, add, [tmp(same), const(1)])
+    ], branch(const(0), dead, join)),
+    block(join, [
+        phi(tmp(same), l, [start-tmp(x), dead-tmp(x)]),
+        phi(tmp(different), l, [start-tmp(x), dead-tmp(use)])
     ], [
-        ins(t(r), l, add, [t(same), t(different)])
-    ], ret(t(r)))
+        let(tmp(r), l, add, [tmp(same), tmp(different)])
+    ], ret(tmp(r)))
 ]).
 run(phi_dead_edges, [19]).

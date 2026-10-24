@@ -3,14 +3,14 @@
 ## IR contract
 
 ```prolog
-ins(t(D), w, setjmp(Kind), [Buf, SaveMask])
+let(tmp(D), w, setjmp(Kind), [Buf, SaveMask])
 ```
 
 `Kind` is `setjmp`, `'_setjmp'`, or `sigsetjmp`. The operation has its
 own `op_kind`, `setjmp`, takes `[p,w]`, returns `w`, and is valid only in
-Fil-C mode. `SaveMask` must be `c(0)` for the first two kinds. IR text
+Fil-C mode. `SaveMask` must be `const(0)` for the first two kinds. IR text
 writes the term as it is, for example
-`ins(t(r), w, setjmp(sigsetjmp), [t(buf), t(mask)])`.
+`let(tmp(r), w, setjmp(sigsetjmp), [tmp(buf), tmp(mask)])`.
 
 The C frontend recognizes resolved direct function symbols after ordinary
 argument checking/conversion, including symbol renames. Taking a setjmp

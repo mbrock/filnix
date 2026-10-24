@@ -3,55 +3,55 @@
 % execution of its site. Repeat without reexecuting either site; collection
 % after the outer jump sees the loop pointer only in the saved jmpbuf.
 func(nloop, export, w, [], [
-    blk(start, [], [
-        call(to(t(outerbuf), p), glo(pick), [arg(w, c(2))]),
-        ins(t(outer), w, setjmp('_setjmp'), [t(outerbuf), c(0)])
-    ], jnz(t(outer), back, begin)),
-    blk(back, [], [
-        call(void, glo(collect), []),
-        call(void, glo(jump_a), [])
-    ], hlt),
-    blk(begin, [], [], jmp(loop)),
-    blk(loop, [
-        phi(t(i), w, [begin-c(0), next-t(inc)])
+    block(start, [], [
+        call(result(tmp(outerbuf), p), global(pick), [arg(w, const(2))]),
+        let(tmp(outer), w, setjmp('_setjmp'), [tmp(outerbuf), const(0)])
+    ], branch(tmp(outer), back, begin)),
+    block(back, [], [
+        call(void, global(collect), []),
+        call(void, global(jump_a), [])
+    ], unreachable),
+    block(begin, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), w, [begin-const(0), next-tmp(inc)])
     ], [
-        ins(t(p), p, alloc(8), [c(16)]),
-        store(w, t(i), t(p)),
-        ins(t(scalar), w, add, [t(i), c(40)]),
-        call(to(t(buf), p), glo(pick), [arg(w, t(i))]),
-        ins(t(r), w, setjmp('_setjmp'), [t(buf), c(0)])
-    ], jnz(t(r), resumed, next)),
-    blk(next, [], [
-        ins(t(inc), w, add, [t(i), c(1)]),
-        ins(t(more), w, cmp(slt, w), [t(inc), c(2)])
-    ], jnz(t(more), loop, jump)),
-    blk(jump, [], [
-        call(void, glo(collect), []),
-        call(void, glo(jump_c), [])
-    ], hlt),
-    blk(resumed, [], [
-        call(void, glo(collect), []),
-        ins(t(v), w, load(sw), [t(p)]),
-        ins(t(sum), w, add, [t(v), t(scalar)]),
-        ins(t(withphi), w, add, [t(sum), t(i)]),
-        ins(t(out), w, add, [t(withphi), t(r)]),
-        call(to(t(again), w), glo(again), [])
-    ], jnz(t(again), jump, done)),
-    blk(done, [], [], ret(t(out)))
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(w, tmp(i), tmp(p)),
+        let(tmp(scalar), w, add, [tmp(i), const(40)]),
+        call(result(tmp(buf), p), global(pick), [arg(w, tmp(i))]),
+        let(tmp(r), w, setjmp('_setjmp'), [tmp(buf), const(0)])
+    ], branch(tmp(r), resumed, next)),
+    block(next, [], [
+        let(tmp(inc), w, add, [tmp(i), const(1)]),
+        let(tmp(more), w, cmp(slt, w), [tmp(inc), const(2)])
+    ], branch(tmp(more), loop, jump)),
+    block(jump, [], [
+        call(void, global(collect), []),
+        call(void, global(jump_c), [])
+    ], unreachable),
+    block(resumed, [], [
+        call(void, global(collect), []),
+        let(tmp(v), w, load(sw), [tmp(p)]),
+        let(tmp(sum), w, add, [tmp(v), tmp(scalar)]),
+        let(tmp(withphi), w, add, [tmp(sum), tmp(i)]),
+        let(tmp(out), w, add, [tmp(withphi), tmp(r)]),
+        call(result(tmp(again), w), global(again), [])
+    ], branch(tmp(again), jump, done)),
+    block(done, [], [], ret(tmp(out)))
 ]).
 
-func(nbad, export, w, [par(p, t(buf))], [
-    blk(start, [], [
-        ins(t(r), w, setjmp(setjmp), [t(buf), c(0)])
-    ], ret(t(r)))
+func(nbad, export, w, [param(p, tmp(buf))], [
+    block(start, [], [
+        let(tmp(r), w, setjmp(setjmp), [tmp(buf), const(0)])
+    ], ret(tmp(r)))
 ]).
 
 % Before the first dynamic setjmp, the stack walk must see zeroed site
 % lowers in this intermediate frame.
 func(nforward, export, void, [], [
-    blk(start, [], [
-        call(void, glo(jump_a), []),
-        call(to(t(buf), p), glo(pick), [arg(w, c(0))]),
-        ins(t(r), w, setjmp(sigsetjmp), [t(buf), c(0)])
+    block(start, [], [
+        call(void, global(jump_a), []),
+        call(result(tmp(buf), p), global(pick), [arg(w, const(0))]),
+        let(tmp(r), w, setjmp(sigsetjmp), [tmp(buf), const(0)])
     ], ret)
 ]).

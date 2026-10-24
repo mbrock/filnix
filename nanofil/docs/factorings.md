@@ -231,6 +231,19 @@ stayed byte-identical. Along the way `valid_module` learned that
 definitions dominate uses. Design, runtime evidence and review:
 [pizlonation.md](pizlonation.md).
 
+## The IR's words
+
+The term names were QBE's mnemonics, shortened further: `ins(t(D), K,
+Op, Args)`, `glo(S)`, `blk`, `jnz`, `hlt`. They are now words a reader
+of C can guess: `let(tmp(D), K, Op, Args)`, `tmp`, `const`, `global`,
+`param`, `block`, `result` (where a call puts its value), `goto`,
+`branch`, `unreachable`, and the checked stage's `raw_load` and
+`raw_store`. Only the names changed, by name and arity at the reader's
+term positions, so `ins/3` (assembly), `t/4` (preprocessing tokens) and
+`c/3` (initializers) kept theirs. The classes (`w l p s d a`) and the
+op names stay short, and the playground's IR tab explains them. Every
+output of the snapshot inputs is the old compiler's, renamed.
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is

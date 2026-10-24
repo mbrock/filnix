@@ -12,10 +12,10 @@ access.
 ## The checked stage
 
 ```prolog
-ins(t(Q), a, check(Lo, Hi, Rights, Align), [P])   % P any p value
-ins(t(D), K, ld(T, Off), [t(Q)])                  % raw load
-st(W, Off, V, t(Q))                               % raw store
-jmp(poll(L)), jnz(V, poll(L1), L2)                % pollcheck on the edge
+let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P])  % P any p value
+let(tmp(D), K, raw_load(T, Off), [tmp(Q)])         % raw load
+raw_store(W, Off, V, tmp(Q))                       % raw store
+goto(poll(L)), branch(V, poll(L1), L2)             % pollcheck on the edge
 ```
 
 - A check traps unless P's capability permits Rights (`read` or `write`)
@@ -37,8 +37,8 @@ jmp(poll(L)), jnz(V, poll(L1), L2)                % pollcheck on the edge
 - The stage is told by vocabulary (`ir:module_stage/2`): a module with
   any check, raw access or poll edge is checked, and then may contain no
   `load(T)` or `store` at a p address.
-- A ld(T, Off) reuses the load-type vocabulary of `load(T)` rather than
-  a separate width and extension; retiring `load(T)`'s mixed form would
+- `raw_load(T, Off)` reuses the load-type vocabulary of `load(T)` rather
+  than a separate width and extension; retiring `load(T)`'s mixed form would
   change both at once.
 
 Every module, in either stage, also obeys a new rule: each use of a
@@ -141,8 +141,9 @@ cc` 3.7 to 4.7 GB), nearly all in `cfg.pl`'s dominator computation.
 ## Deferred
 
 - Function-pointer checks (`cap_call_result` already traps).
-- Explicit aux and barrier operations; until then `ld(p, _)` and
-  `st(p, ...)` keep them inside, and `st(p, ...)` is itself a safepoint.
+- Explicit aux and barrier operations; until then `raw_load(p, _)` and
+  `raw_store(p, ...)` keep them inside, and `raw_store(p, ...)` is itself
+  a safepoint.
 - Merging and removing checks, and removing redundant pollchecks. This
   needs a model of `free` in the interpreter first (today regions never
   die in filc mode, so a check that spans a call cannot fail there) and

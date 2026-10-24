@@ -185,7 +185,7 @@ An instruction-selection pass as a DCG might look like this. Note the cut, which
 
 ```prolog
 sel([]) --> [].
-sel([ins(D,K,mul,[X,c(N)])|Is]) --> { pow2(N, S) }, !, [ins(D,K,shl,[X,c(S)])], sel(Is).
+sel([let(D,K,mul,[X,const(N)])|Is]) --> { pow2(N, S) }, !, [let(D,K,shl,[X,const(S)])], sel(Is).
 sel([I|Is]) --> [I], sel(Is).
 ```
 
@@ -194,9 +194,9 @@ sel([I|Is]) --> [I], sel(Is).
 - **Versioned IR facts.** Store `ins(V, Blk, Idx, …)`. Each pass reads version V, asserts V+1 and abolishes V's tables. This makes QBE's "rewrite, then refill" explicit.
 - **Incremental tabling.** Trealla supports `:- table p as incremental` plus `incremental(ins/N)`, so asserting or retracting IR facts invalidates dependent tables automatically. Its cost when many small changes trigger invalidations is unmeasured.
 
-**Logic variables as temps** are tempting, but they cannot be database keys, and tabling compares terms only up to variable renaming. Use ground names such as `t(42)` in the IR, and keep logic variables for local pattern matching such as isel templates.
+**Logic variables as temps** are tempting, but they cannot be database keys, and tabling compares terms only up to variable renaming. Use ground names such as `tmp(42)` in the IR, and keep logic variables for local pattern matching such as isel templates.
 
-**What does not carry over.** The 3+29-bit `Ref`, the 16-byte `Ins` and the global `insb` buffer are about cache footprint and zero allocation. Prolog terms like `ins(t(3), l, add, [t(1), c(4)])` are slower but far easier to read, and that speed cost does not matter for a compiler that handles one function at a time.
+**What does not carry over.** The 3+29-bit `Ref`, the 16-byte `Ins` and the global `insb` buffer are about cache footprint and zero allocation. Prolog terms like `let(tmp(3), l, add, [tmp(1), const(4)])` are slower but far easier to read, and that speed cost does not matter for a compiler that handles one function at a time.
 
 ## Lessons from The Power of Prolog
 
@@ -227,9 +227,9 @@ The design is a pure Prolog pipeline from C source to assembly, with one IR whos
 Every stage is a pure relation; the IR interpreter checks each pass, and real QBE is a reference only in phase one.
 
 1. **Clean IR terms.**
-   - Operands: `t(N)`, `c(N)`, `slot(N)`, `glo(Name)`.
-   - Jumps: `jmp(L)`, `jnz(V, L1, L2)`, `ret(V)`, `hlt`.
-   - Instructions: `ins(Dest, Class, Op, Args)`.
+   - Operands: `tmp(N)`, `const(N)`, `slot(N)`, `global(Name)`.
+   - Jumps: `goto(L)`, `branch(V, L1, L2)`, `ret(V)`, `unreachable`.
+   - Instructions: `let(Dest, Class, Op, Args)`.
    - The discriminating functor goes in the first argument so indexing dispatches.
    - Phase one keeps QBE's classes `w`, `l`, `s`, `d`. Phase two adds a pointer class (`p`) and, after pizlonation, flight pointers as explicit (ptr, lower) pairs.
 2. **A relational IR interpreter.** Instruction semantics are defined with CLP(Z), e.g. `Z #= (X + Y) mod 2^64` for `add` on `l`. This is the reference semantics and the test oracle. Because it is pure, it runs in every direction:
