@@ -75,6 +75,8 @@ individual ports needed, and how the port campaigns run. The repository's
 
 ## Port campaigns
 
+- [What campaigns mean](campaigns.md): a frozen, bounded observation of
+  named roots at one revision, with its expected compatibility baseline.
 - [Native Fil-C port campaigns](port-campaign-operations.md): the runner and
   the dashboard at <https://nix.swa.sh/>.
 - [Publishing campaign builds](binary-caches.md): the two public binary
