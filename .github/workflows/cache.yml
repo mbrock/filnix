@@ -7,8 +7,8 @@
 # builds). From main it publishes the image to ghcr.io and keeps the PHP
 # tarball as a workflow artifact; releases are release.yml.
 #
-# A red run after a push means that revision was not published; rerun after
-# scripts/ship or the campaign has published it.
+# Missing distribution artifacts are pending, not failed: their job skips
+# until the campaign publishes them. Cache/evaluation/test errors still fail.
 name: Binary cache
 
 on:
@@ -53,9 +53,40 @@ jobs:
           if ./oob 2> panic.txt; then echo "out-of-bounds write was not caught"; exit 1; fi
           grep 'filc panic' panic.txt
 
+  distribution:
+    name: Distribution readiness
+    needs: cache
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Check distribution availability
+        id: check
+        run: |
+          set +e
+          python3 scripts/ci-cache-check.py \
+            packages.x86_64-linux.php-dist \
+            packages.x86_64-linux.php-docker \
+            packages.x86_64-linux.optfil
+          status=$?
+          set -e
+          case "$status" in
+            0) echo "ready=true" >> "$GITHUB_OUTPUT" ;;
+            1)
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Distribution artifacts are not cached yet; waiting for the port campaign."
+              echo "### Distribution pending" >> "$GITHUB_STEP_SUMMARY"
+              echo "The foundation passed. Distribution tests and publishing are skipped until the campaign caches the artifacts; rerun this workflow afterward." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *) exit "$status" ;;
+          esac
+
   php:
     name: Tarballs and image
-    needs: cache
+    needs: distribution
+    if: needs.distribution.outputs.ready == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
