@@ -1315,8 +1315,15 @@ rval(Expr, Ctx, R) -->
     env(Env),
     (   { elaborate(Expr, Env, X) }
     ->  { value(X, XV) }, lower(XV, Expr, Ctx, R)
-    ;   obj(Expr, Ctx, R0), decay(R0, Ctx, R)
+    ;   untyped(Expr, Ctx, R)
     ).
+
+% untyped(+Expr, +Ctx, -R)//: Expr cannot be typed and the elaborator
+% declined to say why, so lowering it the old way reports the fault it
+% meets; if it meets none, Expr is still refused.
+untyped(Expr, Ctx, R) -->
+    obj(Expr, Ctx, R0), decay(R0, Ctx, R),
+    { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [Expr]) }.
 
 /* lower(+XV, +Expr, +Ctx, -R)//: R is v(V, Type), the value of Expr,
    whose typed tree used for its value is XV. The tree says what Expr is;
@@ -1347,9 +1354,72 @@ lower(val(_, bin(Op, XA, XB)), bin(Op, A, B), Ctx, R) -->
     lower(XA, A, Ctx, VA),
     lower(XB, B, Ctx, VB),
     binary(Op, VA, VB, Ctx, R).
+lower(val(T, cond(XC, XA, XB)), cond(C, A, B), Ctx, R) --> !,  % 6.5.15
+    { unqualified(T, U) },
+    label(LA), label(LB), label(LJoin),
+    lower(XC, C, Ctx, VC), truth(VC, Ctx, W), term(jnz(W, LA, LB)),
+    start(LA), lower(XA, A, Ctx, VA), converted(VA, U, v(VA1, _)), here(LA1),
+    term(jmp(LJoin)),
+    start(LB), lower(XB, B, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
+    term(jmp(LJoin)),
+    join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
+lower(val(T, gcond(XC, XB)), gcond(C, B), Ctx, R) --> !,  % GNU c ?: b
+    { unqualified(T, U) },
+    lower(XC, C, Ctx, VC), truth(VC, Ctx, W),
+    label(LA), label(LB), label(LJoin),
+    term(jnz(W, LA, LB)),
+    start(LA), converted(VC, U, v(VA1, _)), here(LA1), term(jmp(LJoin)),
+    start(LB), lower(XB, B, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
+    term(jmp(LJoin)),
+    join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
+lower(val(_, assign(Op, X, XB)), assign(Op, A, B), Ctx, R) --> !,  % 6.5.16
+    place(X, A, Ctx, lv(P, U)),
+    (   { Op == '=' } -> lower(XB, B, Ctx, Value0)
+    ;   { compound_assignment(Op, BinOp) },
+        load_typed(U, P, Ctx, Cur),
+        lower(XB, B, Ctx, VB),
+        binary(BinOp, v(Cur, U), VB, Ctx, Value0)
+    ),
+    converted(Value0, U, R),
+    { R = v(V, _) },
+    store_typed(U, V, P).
+lower(val(_, incdec(Op, X)), un(Op, E), Ctx, R) --> !,       % 6.5.2.4, 6.5.3.1
+    place(X, E, Ctx, lv(P, U)),
+    load_typed(U, P, Ctx, Cur),
+    { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
+    binary(BinOp, v(Cur, U), v(c(1), int), Ctx, Value0),
+    convert(Value0, U, v(New, _)),
+    store_typed(U, New, P),
+    { memberchk(Op, [preinc, predec]) -> R = v(New, U) ; R = v(Cur, U) }.
+lower(val(_, cast(XV)), cast(TN, E), Ctx, R) --> !,            % 6.5.4
+    env(Env),
+    { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc) },
+    lower(XV, E, Ctx, Value0),
+    converted(Value0, Type, R).
 lower(XV, generic(C, As), Ctx, R) --> !,
     selected(C, As, E), lower(XV, E, Ctx, R).
 lower(_, Expr, Ctx, R) --> obj(Expr, Ctx, R0), decay(R0, Ctx, R).
+
+% converted(+Value0, +Type, -R)//: R is Value0 converted to Type, as
+% assignment and casts convert, the elaborator having judged that they
+% may: to void it is nothing, a struct or union stays its address.
+converted(_, void, v(c(0), void)) --> !.
+converted(v(Addr, _), Type, v(Addr, Type)) --> { su(Type) }, !.
+converted(Value0, Type, R) --> convert(Value0, Type, R).
+
+% tree_form(+E, -Parts): E is lowered only from its typed tree, and
+% Parts are what lowering meets first when E cannot be typed: a value
+% v(E), an object o(E) or a type name t(TN), lowered for the fault they
+% report.
+tree_form(cond(C, A, B), [v(C), v(A), v(B)]).
+tree_form(gcond(C, B), [v(C), v(B)]).
+tree_form(assign(_, A, B), [o(A), v(B)]).
+tree_form(un(Op, E), [o(E)]) :- memberchk(Op, [preinc, predec, postinc, postdec]).
+tree_form(cast(TN, E), [t(TN), v(E)]).
+
+part_lowered(Ctx, v(E)) --> rval(E, Ctx, _).
+part_lowered(Ctx, o(E)) --> obj(E, Ctx, _).
+part_lowered(Ctx, t(TN)) --> env(Env), { ctx_loc(Ctx, Loc), type_name(TN, _, Env, Loc) }.
 
 % loaded(+U, +Addr, +Ctx, -R)//: R is the value of type U stored at
 % Addr: a struct or union stands for its address.
@@ -1458,6 +1528,12 @@ offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
 
 % rvalue(+Expr, +Ctx, -R)//: R is the value of an expression that is
 % only an rvalue.
+rvalue(E, Ctx, R) --> { tree_form(E, Parts) }, !,
+    env(Env),
+    (   { elaborate(E, Env, X) } -> { value(X, XV) }, lower(XV, E, Ctx, R)
+    ;   foldl(part_lowered(Ctx), Parts),
+        { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [E]) }
+    ).
 rvalue(num(V0, Suffix), _, v(c(V), Type)) --> !,
     { num_type(V0, Suffix, Type), convert_int(V0, Type, V) }.
 rvalue(chr(V), _, v(c(V), int)) --> !.
@@ -1486,18 +1562,6 @@ rvalue(offsetof(TypeName, Path), Ctx, v(c(V), ulong)) --> !,
       ->  true
       ;   sema_error(Loc, 'bad offsetof', [])
       ) }.
-rvalue(cast(TypeName, Expr), Ctx, R) --> !,
-    env(Env),
-    { ctx_loc(Ctx, Loc), type_name(TypeName, Type, Env, Loc) },
-    rval(Expr, Ctx, Value0),
-    { Value0 = v(V, From),
-      (   castable(From, Type) -> true
-      ;   sema_error(Loc, 'cannot convert ~w to ~w', [From, Type])
-      ) },
-    (   { Type == void } -> { R = v(c(0), void) }
-    ;   { su(Type) } -> { R = v(V, Type) }
-    ;   convert(Value0, Type, R)
-    ).
 rvalue(comma(A, B), Ctx, R) --> !,
     rval(A, Ctx, _),
     rval(B, Ctx, R).
@@ -1510,10 +1574,6 @@ rvalue(un(addr, Expr), Ctx, v(P, ptr(Type))) --> !,
     ;   { ctx_loc(Ctx, Loc),
           sema_error(Loc, '& of a non-lvalue', []) }
     ).
-rvalue(un(Op, Expr), Ctx, R) -->
-    { memberchk(Op, [preinc, predec, postinc, postdec]) },
-    !,
-    incdec(Op, Expr, Ctx, R).
 rvalue(un(Op, Expr), Ctx, R) --> !,
     rval(Expr, Ctx, V),
     unary(Op, V, Ctx, R).
@@ -1523,8 +1583,6 @@ rvalue(bin(Op, A, B), Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, VB),
     binary(Op, VA, VB, Ctx, R).
-rvalue(assign(Op, A, B), Ctx, R) --> !, assignment(Op, A, B, Ctx, R).
-rvalue(cond(Cond, A, B), Ctx, R) --> !, conditional(Cond, A, B, Ctx, R).
 rvalue(va_arg(A, TypeName), Ctx, v(V, Type)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TypeName, Type, Env, Loc),
@@ -1582,7 +1640,6 @@ rvalue(call(id(Name), Args), Ctx, R) -->
     !,
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
 rvalue(call(Func, Args), Ctx, R) --> !, lower_call(Func, Args, Ctx, R).
-rvalue(gcond(Cond, B), Ctx, R) --> !, gnu_conditional(Cond, B, Ctx, R).
 rvalue(stmtexpr(at(_, block(Items))), Ctx, R) --> !,
     save_scope(Scope),
     statement_expression_items(Items, Ctx, R),
@@ -1925,31 +1982,6 @@ logical(Op, A, B, Ctx, v(V, int)) -->
     fresh(V),
     start_phi(LJoin, [phi(V, w, [LA-c(Short), LB-NB])]).
 
-% gnu_conditional(+Cond, +B, +Ctx, -R)//: R is GNU Cond ?: B. Cond is
-% evaluated once, and is the result if nonzero.
-gnu_conditional(Cond, B, Ctx, R) -->
-    cond_type(Cond, B, Ctx, Type),
-    rval(Cond, Ctx, VC),
-    truth(VC, Ctx, W),
-    label(LA), label(LB), label(LJoin),
-    term(jnz(W, LA, LB)),
-    start(LA), arm_convert(VC, Type, VA1), here(LA1), term(jmp(LJoin)),
-    start(LB), rval(B, Ctx, VB), arm_convert(VB, Type, VB1), here(LB1),
-    term(jmp(LJoin)),
-    join_arms(Type, LJoin, LA1-VA1, LB1-VB1, R).
-
-% conditional(+Cond, +A, +B, +Ctx, -R)//: R is Cond ? A : B. The arms are
-% probed first for their types, then lowered in their own blocks.
-conditional(Cond, A, B, Ctx, R) -->
-    cond_type(A, B, Ctx, Type),
-    label(LA), label(LB), label(LJoin),
-    cond_jump(Cond, Ctx, LA, LB),
-    start(LA), rval(A, Ctx, VA), arm_convert(VA, Type, VA1), here(LA1),
-    term(jmp(LJoin)),
-    start(LB), rval(B, Ctx, VB), arm_convert(VB, Type, VB1), here(LB1),
-    term(jmp(LJoin)),
-    join_arms(Type, LJoin, LA1-VA1, LB1-VB1, R).
-
 % join_arms(+Type, +LJoin, +LA-VA, +LB-VB, -R)//: start block LJoin; R
 % is the ?: result there, a phi of VA from LA and VB from LB.
 join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
@@ -1959,74 +1991,6 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
         start_phi(LJoin, [phi(V, Class, [LA-VA, LB-VB])]),
         { R = v(V, Type) }
     ).
-
-% arm_convert(+Value0, +Type, -V)//: V is the IR value of ?: arm
-% Value0 as the result Type: c(0) for void, the address for a struct.
-arm_convert(Value0, void, c(0)) --> !, { Value0 = v(_, _) }.
-arm_convert(v(Addr, Type), Type, Addr) --> { su(Type) }, !.
-arm_convert(Value0, Type, V) --> convert(Value0, Type, v(V, _)).
-
-% cond_type(+A, +B, +Ctx, -Type)//: Type is the type of c ? A : B, as
-% c_types judges it, unqualified. If an arm cannot be typed, lowering
-% it reports why.
-cond_type(A, B, Ctx, Type) -->
-    env(Env),
-    { ctx_loc(Ctx, Loc) },
-    (   { conditional_type(A-B, Env, Type0) } -> { unqualified(Type0, Type) }
-    ;   { maplist(arm_value_type(Env), [A, B], [TA, TB]) }
-    ->  { sema_error(Loc, 'incompatible ?: operands ~w and ~w', [TA, TB]) }
-    ;   rval(A, Ctx, _), rval(B, Ctx, _),
-        { sema_error(Loc, 'cannot type ?: operands', []) }
-    ).
-
-arm_value_type(Env, E, T) :-
-    expression_type(E, Env, T0), value_type(T0, T1), unqualified(T1, T).
-
-%% Assignment
-
-% assignment(+Op, +A, +B, +Ctx, -R)//: store B (or A Op B, for a compound
-% Op) into lvalue A; R is the value stored.
-assignment(Op, A, B, Ctx, R) -->
-    { ctx_loc(Ctx, Loc) },
-    obj(A, Ctx, LV),
-    modifiable(A, 'assignment to', Loc),
-    { LV = lv(P, Type) },
-    (   { Op == '=' } -> rval(B, Ctx, Value0), { Source = B }
-    ;   { compound_assignment(Op, BinOp), Source = none },
-        load_typed(Type, P, Ctx, Cur),
-        rval(B, Ctx, VB),
-        binary(BinOp, v(Cur, Type), VB, Ctx, Value0)
-    ),
-    assign_convert(Source, Value0, Type, Loc, R),
-    { R = v(V, _) },
-    store_typed(Type, V, P).
-
-% modifiable(+A, +What, +Loc)//: throw a semantic error unless A is a
-% modifiable lvalue, as What ('assignment to', 'preinc of', ...) needs.
-modifiable(A, What, Loc) -->
-    env(Env),
-    (   { modifiable_lvalue(A, Env) } -> []
-    ;   { expression_category(A, Env, Cat), Cat == lvalue }
-    ->  { sema_error(Loc, '~w a read-only lvalue', [What]) }
-    ;   { sema_error(Loc, '~w a non-lvalue', [What]) }
-    ).
-
-% incdec(+Op, +A, +Ctx, -R)//: increment or decrement scalar lvalue A;
-% R is the new value (pre) or the old one (post).
-incdec(Op, A, Ctx, R) -->
-    { ctx_loc(Ctx, Loc) },
-    obj(A, Ctx, LV),
-    { atom_concat(Op, ' of', What) },
-    modifiable(A, What, Loc),
-    {   LV = lv(P, Type), scalar_type(Type) -> true
-    ;   sema_error(Loc, '~w of a non-scalar lvalue', [Op])
-    },
-    load_typed(Type, P, Ctx, Cur),
-    { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
-    binary(BinOp, v(Cur, Type), v(c(1), int), Ctx, Value0),
-    convert(Value0, Type, v(New, _)),
-    store_typed(Type, New, P),
-    { memberchk(Op, [preinc, predec]) -> R = v(New, Type) ; R = v(Cur, Type) }.
 
 %% Calls
 
