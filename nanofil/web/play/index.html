@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nanofil playground</title>
+<link rel="stylesheet" href="dterm.css">
+<link rel="stylesheet" href="play.css">
+</head>
+<body>
+<header class="bar">
+  <h1>nanofil <span>in the browser</span></h1>
+  <p>A C compiler in Prolog that emits Fil-C assembly, running on SWI-Prolog in WebAssembly. Nothing leaves this page.</p>
+</header>
+<main class="play-page">
+  <form id="form" class="editor">
+    <textarea id="source" spellcheck="false" autocomplete="off">#include &lt;stdio.h&gt;
+
+int main(void) {
+    printf("hello, world\n");
+    return 0;
+}
+</textarea>
+    <div class="controls">
+      <button id="run" type="submit" disabled>Compile</button>
+      <label><input id="opt" type="checkbox"> -O</label>
+      <span class="hint">Ctrl+Enter</span>
+    </div>
+    <p id="status" class="status">Loading SWI-Prolog and nanofil…</p>
+    <nav class="sections" id="sections"></nav>
+  </form>
+  <div id="out" class="out"></div>
+</main>
+<script src="dterm.js"></script>
+<script src="play.js"></script>
+</body>
+</html>
