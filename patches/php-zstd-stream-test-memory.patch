@@ -1,0 +1,11 @@
+diff --git a/tests/streams_3.phpt b/tests/streams_3.phpt
+--- a/tests/streams_3.phpt
++++ b/tests/streams_3.phpt
+@@ -1,5 +1,7 @@
+ --TEST--
+ compress.zstd streams and big file
++--INI--
++memory_limit=256M
+ --SKIPIF--
+ <?php if (!defined("PHP_BINARY")) die("skip old PHP version."); ?>
+ --FILE--

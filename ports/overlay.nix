@@ -463,13 +463,13 @@ let
                       grpc = withPkgConfig (withTests pprev.extensions.grpc);
                       zstd = withPkgConfig (
                         withTests (
-                          # Holds two copies of PHP_BINARY under a 128 MB limit;
-                          # Fil-C's PHP 8.5, with OPcache and Lexbor built in, is
-                          # 82 MB.
-                          if is85 then
-                            withoutTests [ "tests/streams_3.phpt" ] pprev.extensions.zstd
-                          else
-                            pprev.extensions.zstd
+                          pprev.extensions.zstd.overrideAttrs (old: {
+                            # The stream round-trip holds two copies of PHP_BINARY;
+                            # Fil-C executables exceed its default 128 MiB budget.
+                            patches = (old.patches or [ ]) ++ [
+                              ../patches/php-zstd-stream-test-memory.patch
+                            ];
+                          })
                         )
                       );
                       # The inotify probe runs a program; the header is enough.

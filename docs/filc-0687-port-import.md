@@ -82,3 +82,10 @@ the threaded tile test completes in 723 seconds on the successful run.
 
 Six staging-only `fork-regressions` fail on release, identically to 0.686;
 their assertions and experimental runtime semantics are left unchanged.
+
+The campaign found a PHP zstd test-budget failure: `streams_3.phpt` holds
+two copies of the PHP executable and exceeded PHP's default 128 MiB limit.
+Give that test a 256 MiB limit, without changing its round-trip assertions
+or production PHP configuration. This also replaces the existing PHP 8.5
+test exclusion. All 57 applicable zstd tests pass on PHP 8.4 and 8.5, with
+both Zend's allocator and the system allocator.
