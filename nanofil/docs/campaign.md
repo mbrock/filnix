@@ -155,7 +155,7 @@ Where the campaign leads if it succeeds, to keep the ambition honest:
   typing relations table-driven, the elaborator can generate
   well-typed constant expressions over a finite type universe; then
   `const_eval` must equal `interp(lower(E))` must equal clang. That is
-  the C-level counterpart of what `gen.py` does for the IR.
+  the C-level counterpart of what `gen.pl` does for the IR.
 - **Fil-C safety as an IR relation.** A pass from IR to IR makes every
   access check explicit, `interp` runs it, and "every access is
   checked" becomes testable; `filc_amd64.pl` shrinks to emission. This

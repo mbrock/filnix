@@ -72,7 +72,7 @@
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,
-               op_arg_classes/4,
+               op_arg_classes/4, op_result_ok/3,
                module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3]).
 
@@ -655,7 +655,10 @@ symbol_use_ok(plain, G, ctx(M, Fn, _, _, _, _, _), K) :-
 
 %% Operand and result classes
 
-% op_result_ok(+Mode, +Op, +K): Op may produce a result of class K.
+%! op_result_ok(+Mode, ?Op, ?K) is nondet.
+%
+%  Op may produce a result of class K in a module of Mode. With Op
+%  partial (cmp(_, _), ext(_), load(_)) it enumerates the operands.
 op_result_ok(Mode, Op, K) :-
     op_kind(Op, Kind),
     kind_result_ok(Kind, Op, Mode, K).

@@ -10,7 +10,8 @@
 # under FUGC_SCRIBBLE and FUGC_VERIFY. Then everything runs again with
 # the M5 middle end (-O), validated run by run by the interpreter.
 # Everything runs on SWI-Prolog; a short last step repeats the unit tests,
-# the C difftests and the programs on Trealla, the other supported host.
+# the C difftests and the programs on Trealla, the other supported host,
+# and checks that it generates the same random corpus.
 { pkgs, filcc }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
@@ -46,7 +47,7 @@ pkgs.runCommandCC "nanofil-check"
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
     step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
-    python3 -I tests/gen.py 1 200 > gen1.ir
+    (cd src && ../bin/nanofil --script ../tests/gen.pl 1 200 </dev/null) > gen1.ir
     step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
@@ -83,9 +84,10 @@ pkgs.runCommandCC "nanofil-check"
     python3 -I tests/bigfn.py 2 100 > big2.c
     step bench-cfg bash -c '(cd src && ../bin/nanofil --script ../tests/bench-cfg.pl ../big2.c </dev/null)'
     export NANOFIL_HOST=trealla
-    step "trealla: unit, difftest c/*.c, progtest" bash -ec '
+    step "trealla: unit, gen1, difftest c/*.c, progtest" bash -ec '
       (cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log
       grep -q "tests ok$" unit.log
+      (cd src && ../bin/nanofil --script ../tests/gen.pl 1 200 </dev/null) | cmp - gen1.ir
       tests/difftest.sh tests/float/*.ir
       NANOFIL_OPT=-O tests/difftest.sh tests/float/*.ir
       tests/par.sh tests/difftest.sh tests/c/*.c

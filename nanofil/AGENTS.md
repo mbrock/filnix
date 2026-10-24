@@ -33,6 +33,7 @@ nanofil/tests/difftest.sh FILE.ir|FILE.c...    # interpreter vs native (and clan
 nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
+(cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
@@ -55,8 +56,8 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   with `phrase(G, [S0], [S])` (c_lower.pl, promote.pl).
 - The Trealla DCG translator rejects an if-then chain without a final
   else inside `-->` bodies; end chains with `; []`.
-- On Trealla a 200-function `gen.py` corpus takes GBs of RAM; run one at
-  a time there.
+- On Trealla a difftest of a 200-function `gen.pl` corpus takes GBs of
+  RAM; run one at a time there.
 - On Trealla, a DCG that tries alternatives which share a prefix over a
   char list from `atom_chars/2` returned a wrong first solution after
   the interpreter had run (October 2026; a literal list was fine). To
