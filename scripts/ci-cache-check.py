@@ -5,8 +5,8 @@ CI cannot build the Fil-C toolchain, so it requires the campaign to have
 published it: for each attribute, evaluate its output paths and walk their
 references through narinfo lookups on filc.cachix.org, falling back to
 cache.nixos.org for ordinary dependencies. Nothing is downloaded or built.
-Exits 1 naming the roots whose closures are incomplete, 2 if one does
-not evaluate.
+Exits 1 naming the roots whose closures are incomplete, 2 if evaluation
+or the cache check itself fails. Only missing paths count as incomplete.
 
     scripts/ci-cache-check.py [--flake .] [ATTR...]
 """
@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import traceback
 import urllib.error
 import urllib.request
 
@@ -131,4 +132,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Reserve exit 1 for the explicit missing-path result above. Network,
+        # filesystem and unexpected errors must not look like pending caches.
+        traceback.print_exc()
+        sys.exit(2)
