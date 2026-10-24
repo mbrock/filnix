@@ -97,3 +97,9 @@ long qualified_members(long x) {
     return r + x * 0;
 }
 // run: $qualified_members 0
+/* a[i] is *(a + i) (C11 6.5.2.1p2), so i[a] has a type too. */
+long reversed_index(long x) {
+    int a[3] = { 1, 2, 3 };
+    return sizeof(1[a]) * 100 + _Generic(1[a], int: 10, default: 20) + 2[a] + x * 0;
+}
+// run: $reversed_index 0

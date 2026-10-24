@@ -45,7 +45,7 @@
                     overflow_builtin/3, binary_operands/6,
                     unary_operand/3, assignable/3, null_pointer_constant/3,
                     castable/2, expression_category/3, modifiable_lvalue/2,
-                    integer_type/4]).
+                    integer_type/4, elaborate/3, tree_type/2, value/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -892,75 +892,138 @@ constant_unary(T, Op, A, V) :-
     ; unary_arith(Op, A, R), convert_int(R, T, V)
     ).
 
-% Unevaluated type queries for constant expressions. Unlike const_eval,
-% these may inspect objects and expressions with side effects. Arrays and
-% functions retain their type until the caller requests value conversion.
-expression_type(id(Name), Env, T) :-
-    lookup_ordinary(Env, Name, Binding),
-    binding_type(Binding, T0),
-    ( Binding \= enumconst(_, _), lookup_ordinary(Env, qtype(Name), RT)
-    -> reflected_shape(RT, T0, T)
-    ; T = T0
+/* The typed tree. elaborate(+E, +Env, -X): X is the C expression E as
+   C11 6.5 reads it, every node carrying its (reflected, qualified) type,
+   its category the node's principal functor:
+
+     X ::= obj(T, F)    an lvalue designating an object of type T
+         | fun(T, F)    a function designator of function type T
+         | val(T, F)    a value of type T, not an lvalue
+
+   The conversions C applies implicitly are nodes of their own: where an
+   operand is used for its value (6.3.2.1p2-4), value/2 wraps it in
+   load(X) (lvalue conversion) or decay(X) (an array or function to a
+   pointer). _Generic is resolved here: its tree is the selected
+   association's. A child that is not elaborated yet is src(E), the
+   source expression itself. Fails when E cannot be typed. */
+elaborate(E, Env, X) :- elab(E, Env, X0), !, X = X0.
+
+elab(id(Name), Env, X) :-
+    (   lookup_ordinary(Env, Name, Binding)
+    ->  binding_type(Binding, T0),
+        (   Binding \= enumconst(_, _), lookup_ordinary(Env, qtype(Name), RT)
+        ->  reflected_shape(RT, T0, T)
+        ;   T = T0
+        ),
+        binding_node(Binding, T, Name, X)
+    ;   memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']),
+        X = obj(array(char, none), predefined(Name))      % 6.4.2.2
     ).
-expression_type(num(V, S), _, T) :- num_type(V, S, T).
-expression_type(chr(_), _, int).
-expression_type(float(Cs), _, T) :-
+elab(num(V0, S), _, val(T, int(V))) :- num_type(V0, S, T), convert_int(V0, T, V).
+elab(chr(V), _, val(int, int(V))).
+elab(float(Cs), _, val(T, float(Cs))) :-
     last(Cs, Suffix),
     ( memberchk(Suffix, [f, 'F']) -> T = float
     ; memberchk(Suffix, [l, 'L']) -> T = ldouble
     ; T = double
     ).
-expression_type(str(Bytes), _, array(char, N)) :- length(Bytes, M), N is M + 1.
-expression_type(wstr(T, Values), _, array(T, N)) :- length(Values, M), N is M + 1.
-expression_type(cast(TN, E), Env, T) :-
+elab(str(Bytes), _, obj(array(char, N), str(Bytes))) :-
+    length(Bytes, M), N is M + 1.
+elab(wstr(T, Values), _, obj(array(T, N), wstr(T, Values))) :-
+    length(Values, M), N is M + 1.
+elab(cast(TN, E), Env, val(T, cast(XV))) :-
     type_name_type(TN, T0, Env, _),
-    expression_type(E, Env, F0), value_type(F0, F1), unqualified(F1, F),
+    operand(E, Env, XV, F0), unqualified(F0, F),
     castable(F, T0),
     reflect_type(TN, T0, Env, T).
-expression_type(complit(TN, _), Env, T) :-
+elab(complit(TN, Init), Env, obj(T, complit(Init))) :-
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
-expression_type(un(addr, E), Env, ptr(T)) :- expression_type(E, Env, T).
-expression_type(un(deref, E), Env, T) :-
-    expression_type(E, Env, P), value_type(P, ptr(T)).
-expression_type(un(Op, E), Env, T) :-
+elab(un(addr, E), Env, val(ptr(T), addr(X))) :-
+    elaborate(E, Env, X), tree_type(X, T).
+elab(un(deref, E), Env, X) :-
+    elaborate(E, Env, XP), value(XP, XV), tree_type(XV, ptr(T)),
+    ( T = func(_, _, _) -> X = fun(T, deref(XV)) ; X = obj(T, deref(XV)) ).
+elab(un(Op, E), Env, val(T, incdec(Op, X))) :-
     memberchk(Op, [preinc, predec, postinc, postdec]),
-    expression_type(E, Env, T0), value_type(T0, T).
-expression_type(un(Op, E), Env, T) :-
+    elaborate(E, Env, X), tree_type(X, T0), value_type(T0, T).
+elab(un(Op, E), Env, val(T, un(Op, XV))) :-
     memberchk(Op, [plus, neg, bnot, not]),
-    expression_type(E, Env, T0), value_type(T0, T1), unary_operand(Op, T1, T).
-expression_type(index(E, _), Env, T) :-
-    expression_type(E, Env, T0), value_type(T0, ptr(T)).
-expression_type(member(E, F), Env, T) :-
-    expression_type(E, Env, SU), member_type(SU, F, Env, T).
-expression_type(arrow(E, F), Env, T) :-
-    expression_type(E, Env, P), value_type(P, ptr(SU)),
+    elaborate(E, Env, X), value(X, XV), tree_type(XV, T1),
+    unary_operand(Op, T1, T).
+elab(index(A, I), Env, X) :-                                % 6.5.2.1p2
+    elab(un(deref, bin(add, A, I)), Env, X).
+elab(member(E, F), Env, X) :-
+    elaborate(E, Env, XS), tree_type(XS, SU), member_type(SU, F, Env, T),
+    ( XS = obj(_, _) -> X = obj(T, member(XS, F)) ; X = val(T, member(XS, F)) ).
+elab(arrow(E, F), Env, obj(T, member(obj(SU, deref(XV)), F))) :-
+    elaborate(E, Env, XP), value(XP, XV), tree_type(XV, ptr(SU)),
     member_type(SU, F, Env, T).
-expression_type(call(id(Name), []), Env, T) :-
-    float_builtin(Name, T, _), \+ lookup_ordinary(Env, Name, _).
-expression_type(call(id(Name), _), Env, T) :-
-    builtin_type(Name, T), \+ lookup_ordinary(Env, Name, _), !.
-expression_type(call(E, _), Env, T) :-
-    expression_type(E, Env, FT), value_type(FT, ptr(func(T, _, _))).
-expression_type(assign(_, E, _), Env, T) :- expression_type(E, Env, T).
-expression_type(comma(_, E), Env, T) :-
-    expression_type(E, Env, T0), value_type(T0, T).
-expression_type(sizeof_expr(_), _, ulong).
-expression_type(sizeof_type(_), _, ulong).
-expression_type(alignof(_), _, ulong).
-expression_type(offsetof(_, _), _, ulong).
-expression_type(bin(Op, A, B), Env, T) :-
-    expression_type(A, Env, TA0), value_type(TA0, TA),
-    expression_type(B, Env, TB0), value_type(TB0, TB),
+elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
+    \+ lookup_ordinary(Env, Name, _),
+    (   Args == [], float_builtin(Name, T, _) -> true
+    ;   builtin_type(Name, T)
+    ).
+elab(call(E, Args), Env, val(T, call(XV, src(Args)))) :-
+    elaborate(E, Env, XF), value(XF, XV), tree_type(XV, ptr(func(T, _, _))).
+elab(assign(Op, A, B), Env, val(T, assign(Op, X, src(B)))) :-
+    elaborate(A, Env, X), tree_type(X, T).
+elab(comma(A, B), Env, val(T, comma(src(A), XV))) :-
+    elaborate(B, Env, X), value(X, XV), tree_type(XV, T).
+elab(sizeof_expr(E), _, val(ulong, sizeof(src(E)))).
+elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
+elab(alignof(TN), _, val(ulong, alignof(TN))).
+elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
+elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
+    operand(A, Env, XA, TA), operand(B, Env, XB, TB),
     expression_binary_type(Op, TA, TB, T).
-expression_type(cond(_, A, B), Env, T) :- conditional_type(A-B, Env, T).
-expression_type(gcond(C, B), Env, T) :- conditional_type(C-B, Env, T).
-expression_type(va_arg(_, TN), Env, T) :-
+elab(cond(C, A, B), Env, val(T, cond(src(C), XA, XB))) :-
+    arms(A, B, Env, XA, XB, T).
+elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
+    arms(C, B, Env, XC, XB, T).
+elab(va_arg(A, TN), Env, val(T, va_arg(src(A)))) :-
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
-expression_type(stmtexpr(at(_, block(Items))), Env, T) :-
+elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
     block_value_type(Items, Env, T).
-expression_type(generic(C, As), Env, T) :-
-    expression_type(C, Env, CT0), value_type(CT0, CT),
-    generic_selection(CT, As, Env, constant, E), expression_type(E, Env, T).
+elab(generic(C, As), Env, X) :-                             % 6.5.1.1
+    elaborate(C, Env, XC), value(XC, XV), tree_type(XV, CT),
+    generic_selection(CT, As, Env, constant, E),
+    elaborate(E, Env, X).
+
+% binding_node(+Binding, +T, +Name, -X): X is the identifier Name, bound
+% to Binding, of type T.
+binding_node(var(_, _), T, Name, obj(T, id(Name))).
+binding_node(gvar(_, _, _, _), T, Name, obj(T, id(Name))).
+binding_node(fn(_, _, _), T, Name, fun(T, id(Name))).
+binding_node(enumconst(V, _), T, _, val(T, int(V))).
+
+% tree_type(+X, -T), tree_category(+X, -Cat): the type and category of
+% typed tree X.
+tree_type(X, T) :- arg(1, X, T).
+tree_category(obj(_, _), lvalue).
+tree_category(fun(_, _), function).
+tree_category(val(_, _), value).
+
+% value(+X, -V): V is typed tree X used for its value (6.3.2.1p2-4): an
+% array or function decays to a pointer, another lvalue is loaded, and
+% qualifiers of the result are dropped.
+value(obj(T, F), val(V, C)) :-
+    value_type(T, V),
+    ( array_type(T) -> C = decay(obj(T, F)) ; C = load(obj(T, F)) ).
+value(fun(T, F), val(ptr(T), decay(fun(T, F)))).
+value(val(T, F), val(V, F)) :- value_type(T, V).
+
+array_type(qualified(_, T)) :- array_type(T).
+array_type(array(_, _)).
+
+% operand(+E, +Env, -XV, -T): XV is E elaborated and used for its value,
+% of type T.
+operand(E, Env, XV, T) :- elaborate(E, Env, X), value(X, XV), tree_type(XV, T).
+
+%! expression_type(+E, +Env, -T) is semidet.
+%
+%  T is the (reflected) type of expression E, unevaluated: arrays and
+%  functions keep their types until a caller asks for value conversion.
+expression_type(E, Env, T) :- elaborate(E, Env, X), tree_type(X, T).
 
 % builtin_type(?Name, ?Type): a call of builtin Name, when Name is not
 % declared, has Type.
@@ -988,12 +1051,16 @@ overflow_builtin(Name, Op, Fixed) :-
 /* conditional_type(+A-B, +Env, -T): T is the type of c ? A : B (C11
    6.5.15), from the arms' value types. Fails if the arms are
    incompatible or cannot be typed. */
-conditional_type(A-B, Env, T) :-
-    arm(A, Env, TA, NA), arm(B, Env, TB, NB),
+conditional_type(A-B, Env, T) :- arms(A, B, Env, _, _, T).
+
+% arms(+A, +B, +Env, -XA, -XB, -T): A and B, elaborated as XA and XB,
+% used for their values, are ?: arms giving the result type T.
+arms(A, B, Env, XA, XB, T) :-
+    arm(A, Env, XA, TA, NA), arm(B, Env, XB, TB, NB),
     arms_type(TA, NA, TB, NB, T).
 
-arm(E, Env, T, N) :-
-    expression_type(E, Env, T0), value_type(T0, T),
+arm(E, Env, XV, T, N) :-
+    elaborate(E, Env, X), value(X, XV), tree_type(XV, T),
     ( null_pointer_constant(E, Env, T) -> N = null ; N = value ).
 
 % null_pointer_constant(+E, +Env, +T): E, of value type T, is a null
@@ -1116,35 +1183,11 @@ member_type(SU, F, Env, T) :-
     ;   member_type_offset(SU, F, Env, T, _)   % built-in va_list
     ).
 
-/* expression_category(+E, +Env, -Cat): E is an lvalue, a function
-   designator (function) or neither (value) (C11 6.3.2.1p1, 6.5.1-3).
-   A member of a struct is an lvalue if the struct is; *, [] and -> give
-   lvalues, or a function designator from a function pointer. */
-expression_category(id(Name), Env, Cat) :- !,
-    (   lookup_ordinary(Env, Name, B) -> binding_category(B, Cat)
-    ;   Cat = lvalue                      % __func__
-    ).
-expression_category(un(deref, E), Env, Cat) :- !,
-    (   expression_type(E, Env, P), value_type(P, ptr(T)), T = func(_, _, _)
-    ->  Cat = function
-    ;   Cat = lvalue
-    ).
-expression_category(member(E, _), Env, Cat) :- !,
-    expression_category(E, Env, Cat0),
-    ( Cat0 == lvalue -> Cat = lvalue ; Cat = value ).
-expression_category(generic(C, As), Env, Cat) :- !,
-    expression_type(C, Env, CT0), value_type(CT0, CT),
-    generic_selection(CT, As, Env, constant, E),
-    expression_category(E, Env, Cat0), Cat = Cat0.
-expression_category(E, _, Cat) :-
-    functor(E, F, N), memberchk(F/N, [index/2, arrow/2, str/1, wstr/2, complit/2]), !,
-    Cat = lvalue.
-expression_category(_, _, value).
-
-binding_category(var(_, _), lvalue).
-binding_category(gvar(_, _, _, _), lvalue).
-binding_category(fn(_, _, _), function).
-binding_category(enumconst(_, _), value).
+% expression_category(+E, +Env, -Cat): E is an lvalue, a function
+% designator (function) or neither (value) (C11 6.3.2.1p1, 6.5.1-3), as
+% the principal functor of its typed tree says.
+expression_category(E, Env, Cat) :-
+    elaborate(E, Env, X), tree_category(X, Cat0), Cat = Cat0.
 
 /* modifiable_lvalue(+E, +Env): E is a modifiable lvalue (6.3.2.1p1):
    an lvalue whose type is not const, an array or incomplete, nor a
