@@ -2235,117 +2235,83 @@ expr_chunk(Type, Off, Expr, Loc, Env, Env, Chunk) :-
     ; int_chunk(Off, Type, V, Chunk)
     ).
 expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
-    addr_const(Expr, Loc, Env0, Env, R),
-    (   R = sym(Sym, SymOff, _)
+    (   elaborate(Expr, Env0, Loc, X) -> value(X, XV)
+    ;   sema_error(Loc, 'initializer is not an address constant', [])
+    ),
+    address_constant(XV, Loc, Env0, Env, R),
+    (   R = sym(Sym, SymOff)
     ->  Chunk = chunk(Off, 8, item(p, sym(Sym, SymOff)))
     ;   Chunk = chunk(Off, 8, item(l, const(0)))
     ).
 expr_chunk(Type, _, _, Loc, _, _, _) :-
     sema_error(Loc, 'cannot statically initialize a ~w', [Type]).
 
-/* addr_const(+Expr, +Loc, +Env0, -Env, -R): an address constant,
-   sym(Symbol, Offset, PointerType), or null. */
-addr_const(str(Bytes), _, Env0, Env, sym(Sym, 0, ptr(char))) :- !,
-    new_literal(Bytes, Sym, Env0, Env).
-addr_const(wstr(WideType, Values), _, Env0, Env,
-           sym(Sym, 0, ptr(WideType))) :- !,
-    new_literal(w(WideType, Values), Sym, Env0, Env).
-addr_const(complit(TypeName, Init), Loc, Env0, Env,
-           sym(Sym, 0, ptr(ElemType))) :-
+/* address_constant(+XV, +Loc, +Env0, -Env, -R): the value tree XV is an
+   address constant (C11 6.6p9), R = sym(Symbol, Offset), or a null
+   pointer, R = null. It is the address of a static object or a
+   function, perhaps cast, plus or minus an integer constant; string
+   literals and compound literals become data of their own. */
+address_constant(val(_, decay(X)), Loc, Env0, Env, R) :- !,
+    place_constant(X, Loc, Env0, Env, R).
+address_constant(val(_, addr(X)), Loc, Env0, Env, R) :- !,
+    place_constant(X, Loc, Env0, Env, R).
+address_constant(val(_, cast(TypeName, XV)), Loc, Env0, Env, R) :- !,
     type_name(TypeName, Type, Env0, Loc),
-    Type = array(ElemType, _),
-    !,
-    new_complit(Type, Init, Loc, Sym, Env0, Env).
-addr_const(id(Name), _, Env, Env, R) :-
-    lookup_ordinary(Env, Name, gvar(array(ElemType, _), Sym, _, _)),
-    !,
-    R = sym(Sym, 0, ptr(ElemType)).
-addr_const(id(Name), _, Env, Env, sym(Sym, 0, ptr(Type))) :-
-    lookup_ordinary(Env, Name, fn(Type, Sym, _)), !.
-addr_const(un(addr, Expr), Loc, Env0, Env, R) :- !,
-    (   Expr = id(Name), lookup_ordinary(Env0, Name, fn(Type, Sym, _))
-    ->  Env = Env0,
-        R = sym(Sym, 0, ptr(Type))
-    ;   lvalue_const(Expr, Loc, Env0, Env, sym(Sym, Off, Type)),
-        R = sym(Sym, Off, ptr(Type))
-    ).
-addr_const(cast(TypeName, Expr), Loc, Env0, Env, R) :- !,
-    type_name(TypeName, Type, Env0, Loc),
-    (   Type = ptr(_)
-    ->  addr_const(Expr, Loc, Env0, Env, R0),
-        (   R0 = sym(Sym, Off, _) -> R = sym(Sym, Off, Type)
-        ;   R = R0
-        )
+    (   Type = ptr(_) -> address_constant(XV, Loc, Env0, Env, R)
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ).
-addr_const(bin(Op, Ptr, Index), Loc, Env0, Env, R) :-
+address_constant(val(ptr(_), bin(Op, XA, XB)), Loc, Env0, Env, R) :-
     memberchk(Op, [add, sub]),
-    catch(const_value(Index, Env0, K, _), not_constant, fail),
+    lowered(XA, TA), lowered(XB, TB),
+    (   TA = ptr(Elem) -> XP = XA, XK = XB
+    ;   TB = ptr(Elem), XP = XB, XK = XA
+    ),
+    folded(XK, Env0, K), integer(K),
     !,
-    addr_const(Ptr, Loc, Env0, Env, R0),
-    offset_const(Op, R0, K, Env, Loc, R).
-addr_const(bin(add, Index, Ptr), Loc, Env0, Env, R) :-
-    catch(const_value(Index, Env0, K, _), not_constant, fail),
-    !,
-    addr_const(Ptr, Loc, Env0, Env, R0),
-    offset_const(add, R0, K, Env, Loc, R).
-addr_const(Expr, Loc, Env, Env, null) :-
-    (   catch(const_value(Expr, Env, 0, _), not_constant, fail) -> true
+    address_constant(XP, Loc, Env0, Env, R0),
+    offset_const(Op, R0, Elem, K, Env, Loc, R).
+address_constant(XV, Loc, Env, Env, null) :-
+    (   lowered(XV, T), int_type(T), folded(XV, Env, 0) -> true
     ;   sema_error(Loc, 'initializer is not an address constant', [])
     ).
 
-% offset_const(+Op, +R0, +K, +Env, +Loc, -R): R is address constant R0
-% plus (add) or minus (sub) K elements.
-offset_const(Op, sym(Sym, Off0, ptr(ElemType)), K, Env, Loc,
-             sym(Sym, Off, ptr(ElemType))) :- !,
-    catch(type_size_align(ElemType, Env, Size, _), bad(Why),
-          sema_error(Loc, 'pointer arithmetic on ~w (~w)', [ElemType, Why])),
+% offset_const(+Op, +R0, +Elem, +K, +Env, +Loc, -R): R is address
+% constant R0 plus (add) or minus (sub) K elements of type Elem.
+offset_const(Op, sym(Sym, Off0), Elem, K, Env, Loc, sym(Sym, Off)) :- !,
+    catch(type_size_align(Elem, Env, Size, _), bad(Why),
+          sema_error(Loc, 'pointer arithmetic on ~w (~w)', [Elem, Why])),
     (   Op == add -> Off is Off0 + K * Size
     ;   Off is Off0 - K * Size
     ).
-offset_const(_, _, _, _, Loc, _) :-
+offset_const(_, _, _, _, _, Loc, _) :-
     sema_error(Loc, 'initializer is not an address constant', []).
 
-% lvalue_const(+Expr, +Loc, +Env0, -Env, -R): the address of a static
-% lvalue, sym(Symbol, Offset, ObjectType).
-lvalue_const(id(Name), Loc, Env, Env, sym(Sym, 0, Type)) :- !,
-    (   lookup_ordinary(Env, Name, gvar(Type, Sym, _, _)) -> true
+% place_constant(+X, +Loc, +Env0, -Env, -R): typed tree X designates a
+% static object or a function at R = sym(Symbol, Offset).
+place_constant(obj(_, id(Name)), Loc, Env, Env, sym(Sym, 0)) :- !,
+    (   lookup_ordinary(Env, Name, gvar(_, Sym, _, _)) -> true
     ;   sema_error(Loc, '~w is not a global', [Name])
     ).
-lvalue_const(complit(TypeName, Init), Loc, Env0, Env,
-             sym(Sym, 0, Type)) :- !,
+place_constant(fun(_, id(Name)), _, Env, Env, sym(Sym, 0)) :-
+    lookup_ordinary(Env, Name, fn(_, Sym, _)), !.
+place_constant(obj(_, str(Bytes)), _, Env0, Env, sym(Sym, 0)) :- !,
+    new_literal(Bytes, Sym, Env0, Env).
+place_constant(obj(_, wstr(WideType, Values)), _, Env0, Env, sym(Sym, 0)) :- !,
+    new_literal(w(WideType, Values), Sym, Env0, Env).
+place_constant(obj(_, complit(TypeName, Init)), Loc, Env0, Env, sym(Sym, 0)) :- !,
     type_name(TypeName, Type0, Env0, Loc),
-    new_complit(Type0, Init, Loc, Sym, Env0, Env),
-    env_defs(Env, Defs),
-    get_assoc(gdef(Sym), Defs, g(Type, _, _, _)).
-lvalue_const(wstr(WideType, Values), _, Env0, Env,
-             sym(Sym, 0, array(WideType, N))) :- !,
-    new_literal(w(WideType, Values), Sym, Env0, Env),
-    length(Values, N0),
-    N is N0 + 1.
-lvalue_const(str(Bytes), _, Env0, Env, sym(Sym, 0, array(char, N))) :- !,
-    new_literal(Bytes, Sym, Env0, Env),
-    length(Bytes, N0),
-    N is N0 + 1.
-lvalue_const(index(Array, Index), Loc, Env0, Env, R) :- !,
-    lvalue_const(un(deref, bin(add, Array, Index)), Loc, Env0, Env, R).
-lvalue_const(un(deref, Ptr), Loc, Env0, Env, sym(Sym, Off, Type)) :- !,
-    addr_const(Ptr, Loc, Env0, Env, R0),
-    (   R0 = sym(Sym, Off, ptr(Type)) -> true
+    new_complit(Type0, Init, Loc, Sym, Env0, Env).
+place_constant(obj(_, deref(XV)), Loc, Env0, Env, R) :- !,
+    address_constant(XV, Loc, Env0, Env, R0),
+    (   R0 = sym(_, _) -> R = R0
     ;   sema_error(Loc, 'initializer is not an address constant', [])
     ).
-lvalue_const(member(Expr, Field), Loc, Env0, Env, sym(Sym, Off, Type)) :- !,
-    lvalue_const(Expr, Loc, Env0, Env, sym(Sym, Off0, SUType)),
-    member_off(SUType, Field, Env, Loc, Type, MemberOff),
+place_constant(obj(_, member(obj(T, F), Field)), Loc, Env0, Env, sym(Sym, Off)) :- !,
+    place_constant(obj(T, F), Loc, Env0, Env, sym(Sym, Off0)),
+    unqualified(T, SUType),
+    member_off(SUType, Field, Env, Loc, _, MemberOff),
     Off is Off0 + MemberOff.
-lvalue_const(arrow(Ptr, Field), Loc, Env0, Env, sym(Sym, Off, Type)) :- !,
-    addr_const(Ptr, Loc, Env0, Env, R0),
-    (   R0 = sym(Sym, Off0, ptr(SUType)) -> true
-    ;   sema_error(Loc, 'initializer is not an address constant', [])
-    ),
-    member_off(SUType, Field, Env, Loc, Type, MemberOff),
-    Off is Off0 + MemberOff.
-lvalue_const(_, Loc, _, _, _) :-
+place_constant(_, Loc, _, _, _) :-
     sema_error(Loc, 'initializer is not an address constant', []).
 
 % member_off(+SUType, +Field, +Env, +Loc, -Type, -Off): member Field of

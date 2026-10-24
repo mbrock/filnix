@@ -46,7 +46,8 @@
                     overflow_builtin/3, binary_operands/6,
                     unary_operand/3, assigned/4,
                     castable/2, expression_category/3, modifiable_lvalue/2,
-                    integer_type/4, elaborate/3, tree_type/2, value/2]).
+                    integer_type/4, elaborate/3, tree_type/2, value/2,
+                    lowered/2, folded/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -970,63 +971,65 @@ pp_value(Expr, V) :-
     const_eval(Expr, pp, V, _),
     integer(V).
 
-% const_eval(+Expr, +Env, -V, -T): Expr has value V, an integer or ub,
-% of type T in Env. Fails when Expr is not a constant expression.
-const_eval(num(V0, Suffix), Env, V, T) :-
-    num_type(V0, Suffix, T0),
-    env_int_type(Env, T0, T),
-    convert_int(V0, T, V).
-const_eval(float(Cs), e(_, _, _, _), V, T) :- float_literal(Cs, V, T).
-const_eval(call(id(Name), []), Env, V, T) :-
-    float_builtin(Name, T, V), \+ lookup_ordinary(Env, Name, _).
-const_eval(chr(V), Env, V, T) :- env_int_type(Env, int, T).
-const_eval(id(Name), Env, V, T) :- lookup_ordinary(Env, Name, enumconst(V, T)).
-const_eval(un(not, X), Env, V, T) :-
-    const_eval(X, Env, V0, T0),
-    env_int_type(Env, int, T),
+% const_eval(+Expr, +Env, -V, -T): Expr has value V, an integer, float
+% bits or ub, of unqualified type T in Env: its typed tree, used for its
+% value, folds to V. Fails when Expr is not a constant expression.
+const_eval(Expr, Env, V, T) :-
+    elaborate(Expr, Env, X), value(X, XV), lowered(XV, T),
+    folded(XV, Env, V).
+
+/*  folded(+XV, +Env, -V): the value tree XV is a constant expression of
+    value V. Its types are the tree's: the conversions are those the
+    elaborator chose, so this is arithmetic only. A node that is not a
+    constant (a load, a call, an assignment, an address) does not fold. */
+folded(val(_, int(V)), _, V).                               % 6.4.4.1, 6.4.4.4
+folded(val(T, float(Cs)), _, V) :- float_literal(Cs, V, T).  % 6.4.4.2
+folded(val(_, builtin(Name, [])), _, V) :- float_builtin(Name, _, V).
+folded(val(_, un(not, XV)), Env, V) :-                      % 6.5.3.3p5
+    operand_value(XV, Env, V0, T0),
     const_truth(V0, T0, B),
     defined([B], V, truth(B =:= 0, V)).
-const_eval(un(Op, X), Env, V, T) :-
-    const_eval(X, Env, V0, T0),
-    integer_promotion(T0, T),
+folded(val(T0, un(Op, XV)), Env, V) :-                      % 6.5.3.3p2-4
+    Op \== not,
+    operand_value(XV, Env, V0, _),
+    unqualified(T0, T),
     defined([V0], V, constant_unary(T, Op, V0, V)).
-const_eval(bin(Op, A, B), Env, V, T) :-
+folded(val(T0, bin(Op, XA, XB)), Env, V) :-
+    operand_value(XA, Env, VA, TA),
+    operand_value(XB, Env, VB, TB),
+    unqualified(T0, T),
     binary_kind(Op, Kind),
-    const_eval(A, Env, VA, TA),
-    const_eval(B, Env, VB, TB),
-    kind_binary(Kind, Op, Env, VA, TA, VB, TB, V, T).
-const_eval(cond(C, A, B), Env, V, T) :-
-    const_eval(C, Env, VC, TC),
-    const_eval(A, Env, VA, TA),
-    const_eval(B, Env, VB, TB),
-    usual_arith_conversion(TA, TB, T),
+    kind_binary(Kind, Op, VA-TA, VB-TB, T, V).
+folded(val(T0, cond(XC, XA, XB)), Env, V) :-                % 6.5.15p4
+    operand_value(XC, Env, VC, TC),
+    operand_value(XA, Env, VA, TA),
+    operand_value(XB, Env, VB, TB),
+    unqualified(T0, T),
     const_truth(VC, TC, Test),
     defined([Test], V,
             ( Test =\= 0 -> const_convert(VA, TA, T, V)
             ; const_convert(VB, TB, T, V) )).
-const_eval(cast(TypeName, X), Env, V, T) :-
-    type_name_type(TypeName, T, Env, _),
-    arithmetic_type(T),
-    const_eval(X, Env, V0, From),
+folded(val(T0, cast(_, XV)), Env, V) :-                     % 6.5.4p5
+    unqualified(T0, T), arithmetic_type(T),
+    operand_value(XV, Env, V0, From),
     const_convert(V0, From, T, V).
-const_eval(sizeof_type(TypeName), Env, V, ulong) :-
-    type_name_type(TypeName, T, Env, _),
+folded(val(_, sizeof(type(Specs, Decl))), Env, V) :- !,     % 6.5.3.4p2
+    type_name_type(type(Specs, Decl), T, Env, _),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
-const_eval(sizeof_expr(Expr), Env, V, ulong) :-
-    expression_type(Expr, Env, T),
+folded(val(_, sizeof(X)), Env, V) :-
+    tree_type(X, T),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
-const_eval(generic(Control, Associations), Env, V, T) :-
-    expression_type(Control, Env, CT0),
-    value_type(CT0, CT),
-    generic_selection(CT, Associations, Env, constant, Selected),
-    const_eval(Selected, Env, V, T).
-const_eval(alignof(TypeName), Env, V, ulong) :-
+folded(val(_, alignof(TypeName)), Env, V) :-                % 6.5.3.4p3
     type_name_type(TypeName, T, Env, _),
     catch(type_size_align(T, Env, _, V), bad(_), fail).
-const_eval(offsetof(TypeName, Path), Env, V, ulong) :-
+folded(val(_, offsetof(TypeName, Path)), Env, V) :-         % 7.19p3
     type_name_type(TypeName, T, Env, _),
     offset_path(Path, T, Env, 0, V).
-const_eval(comma(_, B), Env, V, T) :- const_eval(B, Env, V, T).
+folded(val(_, comma(_, XV)), Env, V) :- folded(XV, Env, V).
+
+% operand_value(+XV, +Env, -V, -T): value tree XV folds to V, of
+% unqualified type T.
+operand_value(XV, Env, V, T) :- folded(XV, Env, V), lowered(XV, T).
 
 constant_unary(T, Op, A, V) :-
     ( float_type(T)
@@ -1048,8 +1051,10 @@ offset_path([index(X)|Path], array(ElemType, _), Env, Off0, Off) :-
     Off1 is Off0 + I * ElemSize,
     offset_path(Path, ElemType, Env, Off1, Off).
 
-% env_int_type(+Env, +T0, -T): an integer of type T0 has type T in Env:
-% T0 itself, or in a #if expression intmax_t or uintmax_t.
+% env_int_type(+Env, +T0, -T): a constant or operator result of type T0
+% has type T in Env: T0 itself, or in a #if expression intmax_t or
+% uintmax_t (6.10.1p4). A #if expression has no floating constants
+% (6.10.1p1), so a float type has none there.
 env_int_type(e(_, _, _, _), T, T).
 env_int_type(pp, T0, T) :-
     int_info(T0, _, Sign),
@@ -1081,12 +1086,11 @@ binary_kind(Op, Kind) :-
     c_operator(_, _, Op, Kind0),
     ( Kind0 = arith(_) -> Kind = arith ; Kind = Kind0 ).
 
-% kind_binary(+Kind, +Op, +Env, +VA, +TA, +VB, +TB, -V, -T): V of type T
-% is the value of Op, of Kind, on VA of type TA and VB of type TB.
-% Arithmetic and comparison use the usual arithmetic conversions; a
-% shift has its promoted left operand's type.
-kind_binary(arith, Op, _, VA, TA, VB, TB, V, T) :-
-    usual_arith_conversion(TA, TB, T),
+% kind_binary(+Kind, +Op, +A, +B, +T, -V): V, of type T, is the value of
+% Op, of Kind, on operands A and B, each Value-Type. Arithmetic converts
+% both to T, a comparison both to their common type (binary_operands/6),
+% and a shift only the left one to T.
+kind_binary(arith, Op, VA-TA, VB-TB, T, V) :-
     defined([VA, VB], V,
             (   const_convert(VA, TA, T, A),
                 const_convert(VB, TB, T, B),
@@ -1096,16 +1100,14 @@ kind_binary(arith, Op, _, VA, TA, VB, TB, V, T) :-
                 ; const_arith(Op, A, B, R), int_value(R, T, V)
                 )
             )).
-kind_binary(shift, Op, _, VA, TA, VB, _, V, T) :-
-    integer_promotion(TA, T),
+kind_binary(shift, Op, VA-_, VB-_, T, V) :-
     defined([VA, VB], V,
             (   convert_int(VA, T, A),
                 const_shift(Op, A, VB, R),
                 convert_int(R, T, V)
             )).
-kind_binary(compare, Op, Env, VA, TA, VB, TB, V, T) :-
-    usual_arith_conversion(TA, TB, CT),
-    env_int_type(Env, int, T),
+kind_binary(compare, Op, VA-TA, VB-TB, _, V) :-
+    binary_operands(Op, TA, TB, CT, CT, _),
     defined([VA, VB], V,
             (   const_convert(VA, TA, CT, A),
                 const_convert(VB, TB, CT, B),
@@ -1114,8 +1116,7 @@ kind_binary(compare, Op, Env, VA, TA, VB, TB, V, T) :-
                 ; truth(const_compare(Op, A, B), V)
                 )
             )).
-kind_binary(logical, Op, Env, VA, TA, VB, TB, V, T) :-
-    env_int_type(Env, int, T),
+kind_binary(logical, Op, VA-TA, VB-TB, _, V) :-
     const_truth(VA, TA, A), const_truth(VB, TB, B),
     defined([A], V, const_logical(Op, A, B, V)).
 
@@ -1321,14 +1322,16 @@ elab(id(Name), Env, X) :-
     binding_node(Binding, T, Name, X).
 elab(id(Name), _, obj(array(char, none), predefined(Name))) :-   % 6.4.2.2
     memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']).
-elab(num(V0, S), _, val(T, int(V))) :- num_type(V0, S, T), convert_int(V0, T, V).
-elab(chr(V), _, val(int, int(V))).
-elab(float(Cs), _, val(T, float(Cs))) :-
+elab(num(V0, S), Env, val(T, int(V))) :-
+    num_type(V0, S, T0), env_int_type(Env, T0, T), convert_int(V0, T, V).
+elab(chr(V), Env, val(T, int(V))) :- env_int_type(Env, int, T).
+elab(float(Cs), Env, val(T, float(Cs))) :-
     last(Cs, Suffix),
-    ( memberchk(Suffix, [f, 'F']) -> T = float
-    ; memberchk(Suffix, [l, 'L']) -> T = ldouble
-    ; T = double
-    ).
+    ( memberchk(Suffix, [f, 'F']) -> T0 = float
+    ; memberchk(Suffix, [l, 'L']) -> T0 = ldouble
+    ; T0 = double
+    ),
+    env_int_type(Env, T0, T).
 elab(str(Bytes), _, obj(array(char, N), str(Bytes))) :-
     length(Bytes, M), N is M + 1.
 elab(wstr(T, Values), _, obj(array(T, N), wstr(T, Values))) :-
@@ -1352,7 +1355,7 @@ elab(un(Op, E), Env, val(T, incdec(Op, X))) :-        % 6.5.3.1p1
 elab(un(Op, E), Env, val(T, un(Op, XV))) :-
     memberchk(Op, [plus, neg, bnot, not]),
     operand(E, Env, XV, T1),
-    unary_operand(Op, T1, T).
+    unary_operand(Op, T1, T0), env_int_type(Env, T0, T).
 elab(index(A, I), Env, X) :-                                % 6.5.2.1p2
     elab(un(deref, bin(add, A, I)), Env, X).
 elab(member(E, F), Env, X) :-
@@ -1369,12 +1372,12 @@ elab(call(E, Args), Env, val(T, call(XV, XArgs))) :-   % 6.5.2.2p2
     operand(E, Env, XV, ptr(func(T, Ps, V))),
     maplist(argument(Env), Args, XArgs),
     arity_fits(Ps, V, Args),
-    passes(Ps, Args, XArgs, Env).
+    passes(Ps, XArgs, Env).
 elab(assign(Op, A, B), Env, val(T, assign(Op, X, XB))) :-   % 6.5.16p2
     elaborate(A, Env, X), tree_type(X, T), modifiable(X, Env),
     argument(Env, B, XB),
     unqualified(T, TA), lowered(XB, TB),
-    assigns(Op, TA, B, TB, Env).
+    assigns(Op, TA, XB, TB, Env).
 elab(comma(A, B), Env, val(T, comma(XA, XV))) :-
     argument(Env, A, XA),
     operand(B, Env, XV, T).
@@ -1385,7 +1388,7 @@ elab(alignof(TN), _, val(ulong, alignof(TN))).
 elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
 elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
     operand(A, Env, XA, TA), operand(B, Env, XB, TB),
-    expression_binary_type(Op, TA, TB, T).
+    expression_binary_type(Op, TA, TB, T0), env_int_type(Env, T0, T).
 elab(cond(C, A, B), Env, val(T, cond(XC, XA, XB))) :-   % 6.5.15p2
     argument(Env, C, XC), tree_type(XC, TC), scalar_type(TC),
     arms(A, B, Env, XA, XB, T).
@@ -1413,7 +1416,7 @@ lowered(XV, T) :- tree_type(XV, T0), unqualified(T0, T).
 % assigns(+Op, +TA, +B, +TB, +Env): assignment Op stores B, a value of
 % type TB, into an object of unqualified type TA: B as it is (6.5.16.1),
 % or the result of the operator applied to the two (6.5.16.2).
-assigns(=, TA, B, TB, Env) :- !, nullness(B, Env, TB, N), assignable(TB, N, TA).
+assigns(=, TA, XB, TB, Env) :- !, nullness(XB, Env, N), assignable(TB, N, TA).
 assigns(Op, TA, _, TB, _) :-
     compound_assignment(Op, BinOp), scalar_type(TA),
     binary_operands(BinOp, TA, TB, _, _, T), assignable(T, value, TA).
@@ -1425,14 +1428,14 @@ arity_fits(Ps, V, Args) :-
     length(Ps, NP), length(Args, NA),
     ( V == fixed -> NA =:= NP ; NA >= NP ).
 
-% passes(+Ps, +Args, +XArgs, +Env): each argument, elaborated in XArgs,
+% passes(+Ps, +XArgs, +Env): each argument, elaborated in XArgs,
 % may be assigned to the unqualified type of its parameter in Ps.
-passes(unspecified, _, _, _) :- !.
-passes([], _, _, _).
-passes([P|Ps], [A|As], [X|Xs], Env) :-
-    lowered(X, T), unqualified(P, TP), nullness(A, Env, T, N),
+passes(unspecified, _, _) :- !.
+passes([], _, _).
+passes([P|Ps], [X|Xs], Env) :-
+    lowered(X, T), unqualified(P, TP), nullness(X, Env, N),
     assignable(T, N, TP),
-    passes(Ps, As, Xs, Env).
+    passes(Ps, Xs, Env).
 
 doc(identifier_type(+Binding, +Name, +Env, -T), det, [
     Binding: "what the identifier Name stands for in Env",
@@ -1848,7 +1851,7 @@ arms(A, B, Env, XA, XB, T) :-
 
 arm(E, Env, XV, T, N) :-
     operand(E, Env, XV, T),
-    nullness(E, Env, T, N).
+    nullness(XV, Env, N).
 
 doc(assigned(+E, +Env, +To, +Loc), det, [
     E: "an expression that can be typed",
@@ -1865,33 +1868,39 @@ doc(assigned(+E, +Env, +To, +Loc), det, [
 ]).
 assigned(E, Env, To, Loc) :-
     elaborate(E, Env, X), value(X, XV), lowered(XV, T),
-    nullness(E, Env, T, N),
+    nullness(XV, Env, N),
     (   assignable(T, N, To) -> true
     ;   sema_error(Loc, 'cannot assign ~w to ~w', [T, To])
     ).
 
-% nullness(+E, +Env, +T, -N): E, of value type T, is a null pointer
-% constant (null) or not (value).
-nullness(E, Env, T, N) :- null_pointer_constant(E, Env, T), !, N = null.
-nullness(_, _, _, value).
+% nullness(+XV, +Env, -N): value tree XV is a null pointer constant
+% (null) or not (value).
+nullness(XV, Env, N) :- null_pointer_constant(XV, Env), !, N = null.
+nullness(_, _, value).
 
-doc(null_pointer_constant(+E, +Env, +T), semidet, [
-    E: "a C expression",
-    Env: "the scope it is read in",
-    T: "its value type",
-    "E is an integer constant expression of value 0, or one cast to",
+doc(null_pointer_constant(+XV, +Env), semidet, [
+    XV: "a typed tree, used for its value",
+    Env: "the scope it was elaborated in",
+    "XV is an integer constant expression of value 0, or one cast to",
     "void * (unqualified void).",
     cites('C11 6.3.2.3p3'),
-    example(( empty_env(E), null_pointer_constant(bin(sub, chr(7), chr(7)), E, int) )),
-    fails(( empty_env(E), null_pointer_constant(chr(1), E, int) )),
+    example(( empty_env(E), operand(bin(sub, chr(7), chr(7)), E, XV, _),
+              null_pointer_constant(XV, E) )),
+    example(( empty_env(E), operand(cast(type([tspec(void)], ptr(base, [])), chr(0)), E, XV, _),
+              null_pointer_constant(XV, E) )),
+    fails(( empty_env(E),
+            operand(cast(type([qual(const), tspec(void)], ptr(base, [])), chr(0)), E, XV, _),
+            null_pointer_constant(XV, E) )),
+    fails(( empty_env(E), operand(chr(1), E, XV, _),
+            null_pointer_constant(XV, E) )),
     fails(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
-            null_pointer_constant(bin(mul, id(x), chr(0)), E, int) ))
+            operand(bin(mul, id(x), chr(0)), E, XV, _),
+            null_pointer_constant(XV, E) ))
 ]).
-null_pointer_constant(E, Env, T) :-
-    int_type(T), catch(const_value(E, Env, 0, _), not_constant, fail).
-null_pointer_constant(cast(_, X), Env, ptr(void)) :-
-    operand(X, Env, _, TX),
-    null_pointer_constant(X, Env, TX).
+null_pointer_constant(XV, Env) :-
+    lowered(XV, T), int_type(T), folded(XV, Env, 0).
+null_pointer_constant(val(ptr(void), cast(_, XV)), Env) :-
+    null_pointer_constant(XV, Env).
 
 doc(arms_type(+TA, +NA, +TB, +NB, -T), semidet, [
     TA: "the value type of the second operand of ?:",
@@ -2184,11 +2193,11 @@ arity_fault(Ps, V, Args, Sym, F, [Sym]) :-
 arguments_fault(Ps, [A|Args], Env, F, As) :-
     param_split(Ps, P, Ps1),
     (   untyped(A, Env) -> fault_(A, Env, F, As)
-    ;   lowered_type(A, Env, T),
+    ;   operand(A, Env, XA, _), lowered(XA, T),
         (   P == none
         ->  ( arithmetic_type(T) -> true ; T = ptr(_) ),
             arguments_fault(Ps1, Args, Env, F, As)
-        ;   unqualified(P, TP), nullness(A, Env, T, N),
+        ;   unqualified(P, TP), nullness(XA, Env, N),
             (   \+ assignable(T, N, TP)
             ->  F = 'cannot assign ~w to ~w', As = [T, TP]
             ;   TP \= struct(_), TP \= union(_),

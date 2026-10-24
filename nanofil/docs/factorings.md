@@ -244,6 +244,23 @@ term positions, so `ins/3` (assembly), `t/4` (preprocessing tokens) and
 op names stay short, and the playground's IR tab explains them. Every
 output of the snapshot inputs is the old compiler's, renamed.
 
+## Constants are folds over the typed tree
+
+Integer constant expressions had their own walk over the source
+(`const_eval/4`, with `kind_binary` choosing conversions again), and
+static address constants another (`addr_const/5`, `lvalue_const/5`),
+each with its own idea of types. Now both read the elaborator's tree:
+`folded/3` in c_types does the arithmetic with the conversions the tree
+already names, and c_lower's `address_constant/5` and
+`place_constant/5` fold places to `sym(Symbol, Offset)`, a clause per
+node. A `#if` expression is elaborated too: the one fact that
+distinguishes it, that every integer type acts as intmax_t (C11
+6.10.1p4), is `env_int_type/3` at the elaborator's constants and its
+int-yielding operators. The old address walk had no case for an array
+lvalue used as a value, so `&x[1][2]` was refused, and it took `0 + 0`
+for pointer arithmetic on a null; both now agree with clang, with a
+test that failed before.
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is
