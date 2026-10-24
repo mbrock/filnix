@@ -1,0 +1,16 @@
+% qbe 1.2 and upstream c081897 miscompile this. jnz reuses the flags of
+% the shift that defines %x, but an x86 shift by zero leaves the flags
+% unchanged, so the branch sees the flags of the preceding `and` (zero).
+%
+%   -128 >> 0 is nonzero, so $f(0) is 1; qbe's code returns 0.
+%
+run(f, [0]).
+run(f, [1]).
+func(f, export, w, [par(l, t(n))], [
+    blk(start, [], [
+        ins(t(c), w, and, [t(n), c(63)]),
+        ins(t(x), l, shr, [c(-128), t(c)])
+    ], jnz(t(x), yes, no)),
+    blk(yes, [], [], ret(c(1))),
+    blk(no, [], [], ret(c(0)))
+]).

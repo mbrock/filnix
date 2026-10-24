@@ -1,0 +1,61 @@
+% Calls using all six argument registers, mixed classes, and results
+% consumed at a narrower class.
+
+% Weights make every argument's position visible in the result.
+func(six, local, l, [par(w, t(a)), par(l, t(b)), par(w, t(c)), par(l, t(d)), par(w, t(e)), par(l, t(f))], [
+    blk(start, [], [
+        ins(t(x), l, ext(uw), [t(a)]),
+        ins(t(y), l, mul, [t(b), c(10)]),
+        ins(t(s1), l, add, [t(x), t(y)]),
+        ins(t(c1), l, ext(uw), [t(c)]),
+        ins(t(c2), l, mul, [t(c1), c(100)]),
+        ins(t(s2), l, add, [t(s1), t(c2)]),
+        ins(t(d1), l, mul, [t(d), c(1000)]),
+        ins(t(s3), l, add, [t(s2), t(d1)]),
+        ins(t(e1), l, ext(uw), [t(e)]),
+        ins(t(e2), l, mul, [t(e1), c(10000)]),
+        ins(t(s4), l, add, [t(s3), t(e2)]),
+        ins(t(f1), l, mul, [t(f), c(100000)]),
+        ins(t(s5), l, add, [t(s4), t(f1)])
+    ], ret(t(s5)))
+]).
+
+run(calls6, [1, 2, 3, 4, 5, 6]).
+run(calls6, [0, 0, 0, 0, 0, 1]).
+run(calls6, [4294967295, -1, 4294967295, -1, 4294967295, -1]).
+func(calls6, export, l, [par(w, t(a)), par(l, t(b)), par(w, t(c)), par(l, t(d)), par(w, t(e)), par(l, t(f))], [
+    blk(start, [], [
+        call(to(t(r), l), glo(six), [arg(w, t(a)), arg(l, t(b)), arg(w, t(c)), arg(l, t(d)), arg(w, t(e)), arg(l, t(f))])
+    ], ret(t(r)))
+]).
+
+% The callee returns l; the caller reads its low word.
+run(narrow, [1, 2, 3, 4, 5, 6]).
+func(narrow, export, w, [par(w, t(a)), par(l, t(b)), par(w, t(c)), par(l, t(d)), par(w, t(e)), par(l, t(f))], [
+    blk(start, [], [
+        call(to(t(r), w), glo(six), [arg(w, t(e)), arg(l, t(f)), arg(w, t(a)), arg(l, t(b)), arg(w, t(c)), arg(l, t(d))])
+    ], ret(t(r)))
+]).
+
+% Arguments that are constants, a global address, and values that must
+% survive a call in their slots.
+data(k, local, 8, [item(l, c(7))]).
+
+func(deref, local, l, [par(l, t(p)), par(w, t(n))], [
+    blk(start, [], [
+        ins(t(v), l, load(l), [t(p)]),
+        ins(t(m), l, ext(uw), [t(n)]),
+        ins(t(r), l, add, [t(v), t(m)])
+    ], ret(t(r)))
+]).
+
+run(around, [5]).
+func(around, export, l, [par(l, t(x))], [
+    blk(start, [], [
+        ins(t(a), l, add, [t(x), c(1)]),
+        call(to(t(r1), l), glo(deref), [arg(l, glo(k)), arg(w, c(4294967295))]),
+        call(to(t(r2), l), glo(six), [arg(w, c(1)), arg(l, t(a)), arg(w, c(0)), arg(l, c(0)), arg(w, c(0)), arg(l, c(-1))]),
+        ins(t(s), l, add, [t(r1), t(r2)]),
+        ins(t(t), l, add, [t(s), t(a)])
+    ], ret(t(t)))
+]).

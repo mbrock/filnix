@@ -1112,7 +1112,7 @@ item_bytes(Globals, item(l, sym(S, Off)), Bs) :-
     le_bytes(8, U, Bs).
 
 % str_bytes(+Cs, -Bs): Bs are the bytes of the string Cs, with the GNU
-% as escapes that QBE passes through. The cut commits to an escape
+% as escapes that the backends pass through. The cut commits to an escape
 % before the clause for any other character.
 str_bytes([], []).
 str_bytes(['\\', C|Cs], [B|Bs]) :- !,

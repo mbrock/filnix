@@ -1,0 +1,57 @@
+% Jump through a site captured before the loop site first executes, then
+% through iteration zero's user buffer. That buffer must target the latest
+% execution of its site. Repeat without reexecuting either site; collection
+% after the outer jump sees the loop pointer only in the saved jmpbuf.
+func(nloop, export, w, [], [
+    blk(start, [], [
+        call(to(t(outerbuf), p), glo(pick), [arg(w, c(2))]),
+        ins(t(outer), w, setjmp('_setjmp'), [t(outerbuf), c(0)])
+    ], jnz(t(outer), back, begin)),
+    blk(back, [], [
+        call(void, glo(collect), []),
+        call(void, glo(jump_a), [])
+    ], hlt),
+    blk(begin, [], [], jmp(loop)),
+    blk(loop, [
+        phi(t(i), w, [begin-c(0), next-t(inc)])
+    ], [
+        ins(t(p), p, alloc(8), [c(16)]),
+        store(w, t(i), t(p)),
+        ins(t(scalar), w, add, [t(i), c(40)]),
+        call(to(t(buf), p), glo(pick), [arg(w, t(i))]),
+        ins(t(r), w, setjmp('_setjmp'), [t(buf), c(0)])
+    ], jnz(t(r), resumed, next)),
+    blk(next, [], [
+        ins(t(inc), w, add, [t(i), c(1)]),
+        ins(t(more), w, cmp(slt, w), [t(inc), c(2)])
+    ], jnz(t(more), loop, jump)),
+    blk(jump, [], [
+        call(void, glo(collect), []),
+        call(void, glo(jump_c), [])
+    ], hlt),
+    blk(resumed, [], [
+        call(void, glo(collect), []),
+        ins(t(v), w, load(sw), [t(p)]),
+        ins(t(sum), w, add, [t(v), t(scalar)]),
+        ins(t(withphi), w, add, [t(sum), t(i)]),
+        ins(t(out), w, add, [t(withphi), t(r)]),
+        call(to(t(again), w), glo(again), [])
+    ], jnz(t(again), jump, done)),
+    blk(done, [], [], ret(t(out)))
+]).
+
+func(nbad, export, w, [par(p, t(buf))], [
+    blk(start, [], [
+        ins(t(r), w, setjmp(setjmp), [t(buf), c(0)])
+    ], ret(t(r)))
+]).
+
+% Before the first dynamic setjmp, the stack walk must see zeroed site
+% lowers in this intermediate frame.
+func(nforward, export, void, [], [
+    blk(start, [], [
+        call(void, glo(jump_a), []),
+        call(to(t(buf), p), glo(pick), [arg(w, c(0))]),
+        ins(t(r), w, setjmp(sigsetjmp), [t(buf), c(0)])
+    ], ret)
+]).

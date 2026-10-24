@@ -5,7 +5,7 @@
 #   snapshot.sh [REV]
 #
 # Inputs are the working tree's tests (cc-ir and cc of tests/c and
-# tests/filc C files, compile and print of every tests .ssa) and the
+# tests/filc C files, compile and print of every tests .ir) and the
 # pinned cproc and c-testsuite corpora (nix/corpus.nix; set CPROC and
 # CTS to their roots to skip the nix build). Needs FILCC and the
 # bin/nanofil host (SWIPL, or NANOFIL_HOST=trealla with TPL). Baselines
@@ -39,7 +39,7 @@ inputs() {
            "$CPROC"/test/*.c "$CTS"/tests/single-exec/*.c; do
     echo "cc-ir $f"; echo "cc $f"
   done
-  find "$t" -name '*.ssa' | sort | while read -r f; do
+  find "$t" -name '*.ir' | sort | while read -r f; do
     echo "compile $f"; echo "print $f"
   done
 }

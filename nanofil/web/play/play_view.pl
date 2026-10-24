@@ -5,8 +5,9 @@
     per view, by id: stages (their times), failure (the stage that
     failed and why), c (the C syntax terms of File's own items), ir (the
     IR terms), data (each data object's bytes), symbols (what the module
-    defines and imports), qbe (the IR as QBE text) and asm (the Fil-C
-    amd64 assembly as terms beside the AT&T line each prints as).
+    defines and imports), irtext (the IR as text, src/ir_text.pl) and
+    asm (the Fil-C amd64 assembly as terms beside the AT&T line each
+    prints as).
 
     Terms are drawn by dterm.pl's term//4 (web/dterm.pl), without source
     positions: IR and assembly terms have no source text and no comments,
@@ -58,14 +59,14 @@ article(File, Stages) -->
         ;   []
         ),
         (   { memberchk(text(ir, IR), Stages) }
-        ->  section_(qbe, el(pre, "text", esc(IR)))
+        ->  section_(irtext, el(pre, "text", esc(IR)))
         ;   []
         ),
         (   { memberchk(term(asm, Lines), Stages) } -> asm_(Lines) ; [] )
     )).
 
 % The page moves each section into its own place: stages under the
-% Compile button, c, ir, qbe and asm into tabs, data and symbols beside.
+% Compile button, c, ir, irtext and asm into tabs, data and symbols beside.
 section_(Id, Body) --> el(section, none, [id=Id], Body).
 
 %% Stages

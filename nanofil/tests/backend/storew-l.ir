@@ -1,0 +1,19 @@
+% qbe 1.2 and upstream c081897 miscompile this. storew of an l temp must
+% store only its low 32 bits (QBE IL, "Subtyping"), but load forwarding
+% builds the halfword at offset 5 from %b shifted right by 24 without
+% masking, so bits of %b beyond the stored word leak into the result.
+%
+%   memory: 11 22 88 99 aa bb 77 88    loaduh at 5 -> 0x77bb = 30651
+%   qbe:    0xffbb = 65467
+%
+run(f, [9833440827789222417, 18441921395520346504]).
+func(f, export, w, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(p), l, alloc(8), [c(16)]),
+        store(l, t(a), t(p)),
+        ins(t(q), l, add, [t(p), c(2)]),
+        store(w, t(b), t(q)),
+        ins(t(r), l, add, [t(p), c(5)]),
+        ins(t(v), w, load(uh), [t(r)])
+    ], ret(t(v)))
+]).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Link NAME.ssa (compiled by nanofil) with NAME.c (clang-built Fil-C),
+# Link NAME.ir (compiled by nanofil) with NAME.c (clang-built Fil-C),
 # run case i of NAME.expected in its own process for every line i, and
 # compare. A Fil-C safety panic prints as "trap".
 #
@@ -15,7 +15,7 @@ status=0
 for name in "$@"; do
   d="$work/$name"
   mkdir -p "$d"
-  (cd "$src" && "$nanofil" ${NANOFIL_OPT:-} compile "$here/$name.ssa" </dev/null) >"$d/n.s"
+  (cd "$src" && "$nanofil" ${NANOFIL_OPT:-} compile "$here/$name.ir" </dev/null) >"$d/n.s"
   as -o "$d/n.o" "$d/n.s"
   "$filcc" -O1 -o "$d/t" "$here/$name.c" "$d/n.o"
   n=$(wc -l <"$here/$name.expected")

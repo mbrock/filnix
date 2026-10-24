@@ -1,0 +1,99 @@
+% GC stress, driven by gc.c: while these functions run, c_gc forces and
+% requests collections and churns the heap. Every node is reachable only
+% through nanofil's frame and through pointers nanofil stored, so a missed
+% root or store barrier frees a live node.
+
+% A list of %n nodes {next p at 0, value l at 8}, newest first.
+func(build, export, p, [par(l, t(n))], [
+    blk(start, [], [], jmp(loop)),
+    blk(loop, [
+        phi(t(i), l, [start-c(0), body-t(i1)]),
+        phi(t(head), p, [start-c(0), body-t(node_back)])
+    ], [
+        ins(t(c), w, cmp(slt, l), [t(i), t(n)])
+    ], jnz(t(c), body, done)),
+    blk(body, [], [
+        ins(t(head_copy), p, copy, [t(head)]),
+        ins(t(head_link), p, copy, [t(head_copy)]),
+        ins(t(node), p, alloc(8), [c(16)]),
+        ins(t(node_copy), p, copy, [t(node)]),
+        ins(t(node_live), p, copy, [t(node_copy)]),
+        store(p, t(head_link), t(node_live)),
+        ins(t(v), p, add, [t(node_live), c(8)]),
+        store(l, t(i), t(v)),
+        call(void, glo(c_gc), [arg(l, t(i))]),
+        ins(t(node_back), p, copy, [t(node_live)]),
+        ins(t(i1), l, add, [t(i), c(1)])
+    ], jmp(loop)),
+    blk(done, [], [
+        ins(t(result), p, copy, [t(head)])
+    ], ret(t(result)))
+]).
+
+% Two distinct anchors swap on every backedge and live across collections.
+% Their values sum to 46: include that check in the result without changing
+% gc.c's list-sum contract. Losing one capability or sequentially updating
+% the swap phis must not silently leave the expected answer unchanged.
+func(sum, export, l, [par(p, t(list))], [
+    blk(start, [], [
+        ins(t(list_copy), p, copy, [t(list)]),
+        ins(t(list_start), p, copy, [t(list_copy)]),
+        ins(t(left_seed), p, alloc(8), [c(8)]),
+        store(l, c(17), t(left_seed)),
+        ins(t(right_seed), p, alloc(8), [c(8)]),
+        store(l, c(29), t(right_seed))
+    ], jmp(loop)),
+    blk(loop, [
+        phi(t(p), p, [start-t(list_start), finish-t(next_back)]),
+        phi(t(left), p, [start-t(left_seed), finish-t(left_back)]),
+        phi(t(right), p, [start-t(right_seed), finish-t(right_back)]),
+        phi(t(s), l, [start-c(0), finish-t(s1)])
+    ], [
+        ins(t(a), l, ptoi, [t(p)]),
+        ins(t(z), w, cmp(eq, l), [t(a), c(0)])
+    ], jnz(t(z), done, body)),
+    blk(body, [], [
+        ins(t(current_copy), p, copy, [t(p)]),
+        ins(t(current), p, copy, [t(current_copy)]),
+        ins(t(vp), p, add, [t(current), c(8)]),
+        ins(t(v), l, load(l), [t(vp)]),
+        ins(t(next), p, load(p), [t(current)]),
+        ins(t(next_live), p, copy, [t(next)]),
+        ins(t(anchor_seed), p, alloc(8), [c(8)]),
+        store(l, c(37), t(anchor_seed))
+    ], jmp(inner)),
+    blk(inner, [
+        % Invariants of this inner loop, including a fresh object rooted only
+        % here and aliases of the outer swap phis. All three should disappear.
+        phi(t(anchor), p, [body-t(anchor_seed), spin-t(anchor)]),
+        phi(t(left_hold), p, [body-t(left), spin-t(left_hold)]),
+        phi(t(right_hold), p, [body-t(right), spin-t(right_hold)]),
+        phi(t(j), w, [body-c(0), spin-t(j1)])
+    ], [
+        ins(t(again), w, cmp(slt, w), [t(j), c(1)])
+    ], jnz(t(again), spin, finish)),
+    blk(spin, [], [
+        call(void, glo(c_gc), [arg(l, t(v))]),
+        ins(t(j1), w, add, [t(j), c(1)])
+    ], jmp(inner)),
+    blk(finish, [], [
+        ins(t(av), l, load(l), [t(anchor)]),
+        ins(t(ad), l, sub, [t(av), c(37)]),
+        ins(t(checked), l, add, [t(v), t(ad)]),
+        ins(t(s1), l, add, [t(s), t(checked)]),
+        ins(t(left_copy), p, copy, [t(right_hold)]),
+        ins(t(right_copy), p, copy, [t(left_hold)]),
+        ins(t(next_back), p, copy, [t(next_live)]),
+        ins(t(left_back), p, copy, [t(left_copy)]),
+        ins(t(right_back), p, copy, [t(right_copy)])
+    ], jmp(loop)),
+    blk(done, [], [
+        ins(t(left_result), p, copy, [t(left)]),
+        ins(t(right_result), p, copy, [t(right)]),
+        ins(t(lv), l, load(l), [t(left_result)]),
+        ins(t(rv), l, load(l), [t(right_result)]),
+        ins(t(both), l, add, [t(lv), t(rv)]),
+        ins(t(delta), l, sub, [t(both), c(46)]),
+        ins(t(result), l, add, [t(s), t(delta)])
+    ], ret(t(result)))
+]).

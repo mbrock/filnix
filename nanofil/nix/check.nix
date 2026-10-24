@@ -1,6 +1,6 @@
-# nanofil: unit tests, then the fixtures and a seeded random corpus run
-# through the interpreter, qbe and nanofil's own backend. nanofil alone
-# must also get the qbe-bugs repros right. Fil-C modules (tests/filc) are
+# nanofil: unit tests, then the IR fixtures, the backend regressions and
+# a seeded random corpus run through the interpreter and nanofil's own
+# backend, which must agree. Fil-C modules (tests/filc) are
 # linked with clang-built Fil-C code and run natively; the GC test also
 # runs with FUGC_SCRIBBLE and FUGC_VERIFY, which a missed root or store
 # barrier needs to show up. C files (tests/c) are compiled by nanofil and
@@ -14,7 +14,6 @@
 { pkgs, filcc }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
-  qbe = import ./qbe.nix { inherit pkgs; };
   corpus = import ./corpus.nix { inherit pkgs; };
 in
 pkgs.runCommandCC "nanofil-check"
@@ -22,7 +21,6 @@ pkgs.runCommandCC "nanofil-check"
     nativeBuildInputs = [
       pkgs.swi-prolog
       trealla
-      qbe
       pkgs.python3
     ];
   }
@@ -45,15 +43,15 @@ pkgs.runCommandCC "nanofil-check"
     patchShebangs tests bin
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log'
     grep -q 'tests ok$' unit.log
-    # M9 interpreter against real QBE and nanofil's SSE2 backend.
+    # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
-    step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ssa
-    python3 -I tests/gen.py 1 200 > gen1.ssa
-    step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
-    step "difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
+    step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
+    python3 -I tests/gen.py 1 200 > gen1.ir
+    step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
+    step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
     step pptest tests/pptest.sh
-    step "difftest filc/*.ssa" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa
+    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -70,10 +68,10 @@ pkgs.runCommandCC "nanofil-check"
     # identity and bounded symbolic before/after equivalence.
     python3 -I tests/bigfn.py 1 300 > big1.c
     export NANOFIL_OPT=-O
-    step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ssa
-    step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ssa gen1.ssa
-    step "-O difftest qbe-bugs" env CC=$CC VARIANTS=nanofil tests/par.sh tests/difftest.sh tests/qbe-bugs/*.ssa
-    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ssa tests/filc/globals.ssa tests/filc/tuples.ssa tests/filc/copy.ssa tests/c/*.c big1.c
+    step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
+    step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
+    step "-O difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
+    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/c/*.c big1.c
     step "-O run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "-O variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -88,10 +86,10 @@ pkgs.runCommandCC "nanofil-check"
     step "trealla: unit, difftest c/*.c, progtest" bash -ec '
       (cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log
       grep -q "tests ok$" unit.log
-      tests/difftest.sh tests/float/*.ssa
-      NANOFIL_OPT=-O tests/difftest.sh tests/float/*.ssa
+      tests/difftest.sh tests/float/*.ir
+      NANOFIL_OPT=-O tests/difftest.sh tests/float/*.ir
       tests/par.sh tests/difftest.sh tests/c/*.c
-      tests/difftest.sh tests/fixtures/float.ssa
+      tests/difftest.sh tests/fixtures/float.ir
       tests/filc/run-c.sh float
       RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
       NANOFIL_OPT=-O RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp

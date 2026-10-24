@@ -1,0 +1,418 @@
+% Float operands/results cross the harness as integer bits, so tests check
+% payloads and -0 rather than C's numeric equality (or printf's formatting).
+% Arithmetic runs use parameters to prevent constant folding from
+% replacing the SSE2 operation whose NaN operand order is being tested.
+run(adds, [2143289345, 4290772994]).
+run(adds, [2139095041, 4290772994]).
+run(adds, [1065353216, 4286578689]).
+run(adds, [2147483648, 2147483648]).
+run(adds, [2147483648, 0]).
+run(adds, [1065353216, 864026624]).
+run(adds, [1065353217, 864026624]).
+run(adds, [1, 1]).
+run(adds, [8388607, 1]).
+run(adds, [2139095039, 2139095039]).
+run(adds, [2139095040, 4286578688]).
+run(subs, [1065353216, 1065353216]).
+run(subs, [2147483648, 0]).
+run(subs, [2143289345, 4290772994]).
+run(subs, [1065353216, 4286578689]).
+run(muls, [0, 4286578688]).
+run(muls, [2147483648, 1065353216]).
+run(muls, [1, 1056964608]).
+run(muls, [3, 1056964608]).
+run(muls, [8388608, 1056964608]).
+run(muls, [1065353217, 1065353217]).
+run(muls, [2143289345, 4290772994]).
+run(divs, [0, 0]).
+run(divs, [2139095040, 2139095040]).
+run(divs, [1065353216, 0]).
+run(divs, [1065353216, 2147483648]).
+run(divs, [3212836864, 2139095040]).
+run(divs, [1, 1073741824]).
+run(divs, [3, 1073741824]).
+run(divs, [1065353216, 1077936128]).
+run(divs, [2143289345, 4290772994]).
+run(addd, [9221120237041090561, 18444492273895866370]).
+run(addd, [9218868437227405313, 18444492273895866370]).
+run(addd, [4607182418800017408, 18442240474082181121]).
+run(addd, [9223372036854775808, 9223372036854775808]).
+run(addd, [9223372036854775808, 0]).
+run(addd, [4607182418800017408, 4368491638549381120]).
+run(addd, [4607182418800017409, 4368491638549381120]).
+run(addd, [4503599627370495, 1]).
+run(addd, [9218868437227405311, 9218868437227405311]).
+run(subd, [4607182418800017408, 4607182418800017408]).
+run(subd, [9221120237041090561, 18444492273895866370]).
+run(subd, [4607182418800017408, 18442240474082181121]).
+run(muld, [0, 18442240474082181120]).
+run(muld, [1, 4602678819172646912]).
+run(muld, [3, 4602678819172646912]).
+run(muld, [4503599627370496, 4602678819172646912]).
+run(muld, [9221120237041090561, 18444492273895866370]).
+run(divd, [0, 0]).
+run(divd, [9218868437227405312, 9218868437227405312]).
+run(divd, [4607182418800017408, 9223372036854775808]).
+run(divd, [13830554455654793216, 9218868437227405312]).
+run(divd, [3, 4611686018427387904]).
+run(divd, [4607182418800017408, 4613937818241073152]).
+run(divd, [9221120237041090561, 18444492273895866370]).
+run(negs, [0]).
+run(negs, [2147483648]).
+run(negs, [2139095041]).
+run(negd, [0]).
+run(negd, [18444492273895866370]).
+run(extend, [1]).
+run(extend, [8388607]).
+run(extend, [2147483648]).
+run(extend, [2139095041]).
+run(extend, [4290772994]).
+run(truncate, [1]).
+run(truncate, [4607182419068452864]).
+run(truncate, [4607182419605323776]).
+run(truncate, [9223372036854775808]).
+run(truncate, [9218868437227405313]).
+run(truncate, [18444492273895866370]).
+run(sw_s, [2147483647]).
+run(sw_s, [2147483648]).
+run(uw_s, [4294967295]).
+run(sw_d, [4294967295]).
+run(uw_d, [4294967295]).
+run(sl_s, [9223372036854775807]).
+run(sl_s, [9223372036854775808]).
+run(ul_s, [9223372036854775809]).
+run(ul_s, [18446744073709551615]).
+run(sl_d, [9223372036854775807]).
+run(sl_d, [9223372036854775808]).
+run(ul_d, [9223372036854776833]).
+run(ul_d, [18446744073709551615]).
+run(si_w, [1325400063]).
+run(si_w, [3472883712]).
+run(ui_w, [1333788671]).
+run(ui_w, [3204448256]).
+run(si_l, [1593835519]).
+run(si_l, [3741319168]).
+run(ui_l, [1593835520]).
+run(ui_l, [1602224127]).
+run(di_w, [4746794007244308480]).
+run(di_w, [13970166044103278592]).
+run(du_w, [4751297606873776128]).
+run(di_l, [4890909195324358655]).
+run(di_l, [14114281232179134464]).
+run(du_l, [4890909195324358656]).
+run(du_l, [4895412794951729151]).
+run(cmps, [0, 2147483648]).
+run(cmps, [2143289345, 1065353216]).
+run(cmps, [3212836864, 1065353216]).
+run(cmps, [2139095040, 4286578688]).
+run(cmpd, [0, 9223372036854775808]).
+run(cmpd, [9221120237041090561, 4607182418800017408]).
+run(cmpd, [13830554455654793216, 4607182418800017408]).
+run(memory, [2147483648, 18444492273895866370]).
+run(memory, [1, 1]).
+run(literal, []).
+run(choose, [0]).
+run(choose, [1]).
+
+func(adds, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(y), s, cast, [t(b)]),
+        ins(t(z), s, add, [t(x), t(y)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(subs, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(y), s, cast, [t(b)]),
+        ins(t(z), s, sub, [t(x), t(y)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(muls, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(y), s, cast, [t(b)]),
+        ins(t(z), s, mul, [t(x), t(y)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(divs, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(y), s, cast, [t(b)]),
+        ins(t(z), s, div, [t(x), t(y)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(addd, export, l, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(y), d, cast, [t(b)]),
+        ins(t(z), d, add, [t(x), t(y)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(subd, export, l, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(y), d, cast, [t(b)]),
+        ins(t(z), d, sub, [t(x), t(y)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(muld, export, l, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(y), d, cast, [t(b)]),
+        ins(t(z), d, mul, [t(x), t(y)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(divd, export, l, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(y), d, cast, [t(b)]),
+        ins(t(z), d, div, [t(x), t(y)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(negs, export, w, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(z), s, neg, [t(x)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(negd, export, l, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(z), d, neg, [t(x)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(extend, export, l, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(z), d, ext(s), [t(x)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(truncate, export, w, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(z), s, truncd, [t(x)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(sw_s, export, w, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(z), s, swtof, [t(a)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(uw_s, export, w, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(z), s, uwtof, [t(a)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(sw_d, export, l, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(z), d, swtof, [t(a)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(uw_d, export, l, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(z), d, uwtof, [t(a)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(sl_s, export, w, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(z), s, sltof, [t(a)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(ul_s, export, w, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(z), s, ultof, [t(a)]),
+        ins(t(r), w, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(sl_d, export, l, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(z), d, sltof, [t(a)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(ul_d, export, l, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(z), d, ultof, [t(a)]),
+        ins(t(r), l, cast, [t(z)])
+    ], ret(t(r)))
+]).
+func(si_w, export, w, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(r), w, stosi, [t(x)])
+    ], ret(t(r)))
+]).
+func(ui_w, export, w, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(r), w, stoui, [t(x)])
+    ], ret(t(r)))
+]).
+func(si_l, export, l, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(r), l, stosi, [t(x)])
+    ], ret(t(r)))
+]).
+func(ui_l, export, l, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(r), l, stoui, [t(x)])
+    ], ret(t(r)))
+]).
+func(di_w, export, w, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(r), w, dtosi, [t(x)])
+    ], ret(t(r)))
+]).
+func(du_w, export, w, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(r), w, dtoui, [t(x)])
+    ], ret(t(r)))
+]).
+func(di_l, export, l, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(r), l, dtosi, [t(x)])
+    ], ret(t(r)))
+]).
+func(du_l, export, l, [par(l, t(a))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(r), l, dtoui, [t(x)])
+    ], ret(t(r)))
+]).
+% Pack all eight comparison results into a bitmask.
+func(cmps, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(y), s, cast, [t(b)]),
+        ins(t(a0), w, cmp(eq, s), [t(x), t(y)]),
+        ins(t(a1), w, cmp(ne, s), [t(x), t(y)]),
+        ins(t(a2), w, cmp(le, s), [t(x), t(y)]),
+        ins(t(a3), w, cmp(lt, s), [t(x), t(y)]),
+        ins(t(a4), w, cmp(ge, s), [t(x), t(y)]),
+        ins(t(a5), w, cmp(gt, s), [t(x), t(y)]),
+        ins(t(a6), w, cmp(o, s), [t(x), t(y)]),
+        ins(t(a7), w, cmp(uo, s), [t(x), t(y)]),
+        ins(t(b1), w, shl, [t(a1), c(1)]),
+        ins(t(b2), w, shl, [t(a2), c(2)]),
+        ins(t(b3), w, shl, [t(a3), c(3)]),
+        ins(t(b4), w, shl, [t(a4), c(4)]),
+        ins(t(b5), w, shl, [t(a5), c(5)]),
+        ins(t(b6), w, shl, [t(a6), c(6)]),
+        ins(t(b7), w, shl, [t(a7), c(7)]),
+        ins(t(c1), w, or, [t(a0), t(b1)]),
+        ins(t(c2), w, or, [t(c1), t(b2)]),
+        ins(t(c3), w, or, [t(c2), t(b3)]),
+        ins(t(c4), w, or, [t(c3), t(b4)]),
+        ins(t(c5), w, or, [t(c4), t(b5)]),
+        ins(t(c6), w, or, [t(c5), t(b6)]),
+        ins(t(r), w, or, [t(c6), t(b7)])
+    ], ret(t(r)))
+]).
+func(cmpd, export, w, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(x), d, cast, [t(a)]),
+        ins(t(y), d, cast, [t(b)]),
+        ins(t(a0), w, cmp(eq, d), [t(x), t(y)]),
+        ins(t(a1), w, cmp(ne, d), [t(x), t(y)]),
+        ins(t(a2), w, cmp(le, d), [t(x), t(y)]),
+        ins(t(a3), w, cmp(lt, d), [t(x), t(y)]),
+        ins(t(a4), w, cmp(ge, d), [t(x), t(y)]),
+        ins(t(a5), w, cmp(gt, d), [t(x), t(y)]),
+        ins(t(a6), w, cmp(o, d), [t(x), t(y)]),
+        ins(t(a7), w, cmp(uo, d), [t(x), t(y)]),
+        ins(t(b1), w, shl, [t(a1), c(1)]),
+        ins(t(b2), w, shl, [t(a2), c(2)]),
+        ins(t(b3), w, shl, [t(a3), c(3)]),
+        ins(t(b4), w, shl, [t(a4), c(4)]),
+        ins(t(b5), w, shl, [t(a5), c(5)]),
+        ins(t(b6), w, shl, [t(a6), c(6)]),
+        ins(t(b7), w, shl, [t(a7), c(7)]),
+        ins(t(c1), w, or, [t(a0), t(b1)]),
+        ins(t(c2), w, or, [t(c1), t(b2)]),
+        ins(t(c3), w, or, [t(c2), t(b3)]),
+        ins(t(c4), w, or, [t(c3), t(b4)]),
+        ins(t(c5), w, or, [t(c4), t(b5)]),
+        ins(t(c6), w, or, [t(c5), t(b6)]),
+        ins(t(r), w, or, [t(c6), t(b7)])
+    ], ret(t(r)))
+]).
+func(identity, local, d, [par(d, t(a)), par(s, t(b))], [
+    blk(start, [], [
+        ins(t(x), s, copy, [t(b)]),
+        ins(t(y), d, copy, [t(a)])
+    ], ret(t(y)))
+]).
+func(identity_s, local, s, [par(s, t(a))], [
+    blk(start, [], [
+        ins(t(x), s, copy, [t(a)])
+    ], ret(t(x)))
+]).
+func(memory, export, l, [par(w, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(p), l, alloc(8), [c(16)]),
+        ins(t(q), l, add, [t(p), c(8)]),
+        ins(t(x), s, cast, [t(a)]),
+        ins(t(y), d, cast, [t(b)]),
+        store(s, t(x), t(p)),
+        store(d, t(y), t(q)),
+        ins(t(xx), s, load(s), [t(p)]),
+        ins(t(yy), d, load(d), [t(q)]),
+        call(to(t(z), d), glo(identity), [arg(d, t(yy)), arg(s, t(xx))]),
+        call(to(t(zs), s), glo(identity_s), [arg(s, t(xx))]),
+        ins(t(ws), w, cast, [t(zs)]),
+        ins(t(ls), l, ext(uw), [t(ws)]),
+        ins(t(ld), l, cast, [t(z)]),
+        ins(t(r), l, xor, [t(ld), t(ls)])
+    ], ret(t(r)))
+]).
+data(values, local, 8, [item(s, c(2147483648)), item(d, c(18444492273895866370)), item(s, c(1))]).
+func(literal, export, l, [], [
+    blk(start, [], [
+        ins(t(p), l, add, [glo(values), c(4)]),
+        ins(t(d), d, load(d), [t(p)]),
+        ins(t(v), s, add, [c(1065353217), c(0)]),
+        ins(t(w), w, cast, [t(v)]),
+        ins(t(n), l, ext(uw), [t(w)]),
+        ins(t(l), l, cast, [t(d)]),
+        ins(t(r), l, xor, [t(l), t(n)])
+    ], ret(t(r)))
+]).
+func(choose, export, l, [par(w, t(a))], [
+    blk(start, [], [], jnz(t(a), left, right)),
+    blk(left, [], [], jmp(join)),
+    blk(right, [], [], jmp(join)),
+    blk(join, [
+        phi(t(s), s, [left-c(2147483648), right-c(1)]),
+        phi(t(d), d, [left-c(18444492273895866370), right-c(1)])
+    ], [
+        call(to(t(v), d), glo(identity), [arg(d, t(d)), arg(s, t(s))]),
+        call(to(t(vs), s), glo(identity_s), [arg(s, t(s))]),
+        ins(t(w), w, cast, [t(vs)]),
+        ins(t(l), l, ext(uw), [t(w)]),
+        ins(t(bits), l, cast, [t(v)]),
+        ins(t(r), l, xor, [t(bits), t(l)])
+    ], ret(t(r)))
+]).

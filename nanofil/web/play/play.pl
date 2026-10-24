@@ -20,7 +20,7 @@
 :- use_module(c_parse).
 :- use_module(c_lower).
 :- use_module(opt).
-:- use_module(qbe_print).
+:- use_module(ir_text).
 :- use_module(filc_amd64).
 :- use_module(asm).
 :- use_module(library(lists)).
@@ -70,7 +70,7 @@ stages_lower(Opt, Items, [S, V|Ss]) :-
 stages_opt(Opt, M0, [S, term(ir, M), P|Ss]) :-
     timed(optimize, optimize(Opt, M0, M), S),
     (   ok(S)
-    ->  timed(print_ir, phrase(module_chars(M), IR), P),
+    ->  timed(print_ir, phrase(module_text(M), IR), P),
         Ss = [text(ir, IR)|Ss1],
         stages_asm(M, Ss1)
     ;   P = stage(print_ir, 0, skipped), Ss = []

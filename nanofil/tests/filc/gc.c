@@ -1,4 +1,4 @@
-/* GC stress for gc.ssa; run-c.sh runs it with and without
+/* GC stress for gc.ir; run-c.sh runs it with and without
    FUGC_SCRIBBLE=1 FUGC_VERIFY=1. */
 #include <stdio.h>
 #include <stdlib.h>

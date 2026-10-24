@@ -19,7 +19,7 @@
       edit     liveness after deleting one instruction in one block
 */
 :- use_module('../src/ir').
-:- use_module('../src/qbe_parse').
+:- use_module('../src/ir_text').
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
@@ -56,7 +56,7 @@ arg_atom(A, A) :-
 arg_atom(Cs, A) :-
     atom_chars(A, Cs).
 
-% load(+File, -M): M is the valid module in File, C or QBE IR by its
+% load(+File, -M): M is the valid module in File, C or IR text by its
 % extension.
 load(File, M) :-
     (   atom_concat(_, '.c', File)
@@ -64,7 +64,7 @@ load(File, M) :-
         c_tokens(Cs, File, Ts),
         c_parse(Ts, Items),
         c_module(Items, M)
-    ;   parse_qbe_file(File, M)
+    ;   read_ir_file(File, M, _)
     ),
     valid_module(M).
 

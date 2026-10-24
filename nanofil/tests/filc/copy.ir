@@ -1,0 +1,157 @@
+% The getter copy must survive; only its temporary aliases disappear.
+data(cell, local, 8, [item(l, c(41))]).
+data(readonly, ro(local), 8, [item(l, c(17))]).
+func(read, local, l, [par(p, t(p))], [
+    blk(start, [], [
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(x), l, load(l), [t(q)])
+    ], ret(t(x)))
+]).
+func(global_alias, export, l, [], [
+    blk(start, [], [
+        ins(t(p), p, copy, [glo(cell)]),
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(r), p, copy, [t(q)]),
+        call(to(t(x), l), glo(read), [arg(p, t(r))])
+    ], ret(t(x)))
+]).
+run(global_alias, []).
+
+% A pointer phi can select different capabilities. Store/load must retain
+% the selected one, not just its address. Both valid and trapping offsets.
+func(choose, export, l, [par(w, t(which)), par(l, t(off))], [
+    blk(start, [], [
+        ins(t(a), p, copy, [glo(cell)]),
+        ins(t(b), p, copy, [glo(readonly)]),
+        ins(t(cond), w, copy, [t(which)])
+    ], jnz(t(cond), left, right)),
+    blk(left, [], [
+        ins(t(aa), p, copy, [t(a)])
+    ], jmp(join)),
+    blk(right, [], [
+        ins(t(bb), p, copy, [t(b)])
+    ], jmp(join)),
+    blk(join, [
+        phi(t(p), p, [left-t(aa), right-t(bb)])
+    ], [
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(slot), p, alloc(8), [c(8)]),
+        ins(t(slotcopy), p, copy, [t(slot)]),
+        store(p, t(q), t(slotcopy)),
+        ins(t(loaded), p, load(p), [t(slotcopy)]),
+        ins(t(alias), p, copy, [t(loaded)]),
+        ins(t(o), l, copy, [t(off)]),
+        ins(t(at), p, add, [t(alias), t(o)]),
+        ins(t(r), l, load(l), [t(at)])
+    ], ret(t(r)))
+]).
+run(choose, [1, 0]).
+run(choose, [0, 0]).
+run(choose, [1, 8]).
+run(choose, [0, 18446744073709551615]).
+
+func(readonly_alias, export, w, [], [
+    blk(start, [], [
+        ins(t(p), p, copy, [glo(readonly)]),
+        ins(t(q), p, copy, [t(p)]),
+        store(b, c(3), t(q))
+    ], ret(c(0)))
+]).
+run(readonly_alias, []).
+
+% Integer casts must never acquire the original capability. These traps
+% distinguish address equality from equality of Fil-C pointer values.
+func(cast_alias, export, l, [], [
+    blk(start, [], [
+        ins(t(p), p, copy, [glo(cell)]),
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(i), l, ptoi, [t(q)]),
+        ins(t(j), l, copy, [t(i)]),
+        ins(t(raw), p, itop, [t(j)]),
+        ins(t(alias), p, copy, [t(raw)]),
+        ins(t(r), l, load(l), [t(alias)])
+    ], ret(t(r)))
+]).
+run(cast_alias, []).
+
+% Even if the only pointer is a literal, keep its materialization and
+% therefore module mode. A literal pointer has no capability.
+func(literal_address, export, l, [], [
+    blk(start, [], [
+        ins(t(p), p, copy, [c(123)]),
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(i), l, ptoi, [t(q)])
+    ], ret(t(i)))
+]).
+run(literal_address, []).
+func(literal_load, export, l, [], [
+    blk(start, [], [
+        ins(t(p), p, copy, [c(0)]),
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(x), l, load(l), [t(q)])
+    ], ret(t(x)))
+]).
+run(literal_load, []).
+
+% Direct and indirect calls, tuple operands/results, and pointer returns.
+func(pair, local, tuple([l, p]), [par(p, t(p)), par(l, t(n))], [
+    blk(start, [], [
+        ins(t(q), p, copy, [t(p)]),
+        ins(t(x), l, copy, [t(n)])
+    ], rets([t(x), t(q)]))
+]).
+func(indirect, export, l, [par(l, t(n))], [
+    blk(start, [], [
+        ins(t(p), p, copy, [glo(cell)]),
+        ins(t(f), p, copy, [glo(pair)]),
+        ins(t(g), p, copy, [t(f)]),
+        ins(t(h), p, copy, [t(g)]),
+        ins(t(x), l, copy, [t(n)]),
+        call(tuple([to(t(number), l), to(t(pointer), p)]), t(h), [arg(p, t(p)), arg(l, t(x))]),
+        ins(t(nc), l, copy, [t(number)]),
+        ins(t(pc), p, copy, [t(pointer)]),
+        call(to(t(v), l), glo(read), [arg(p, t(pc))]),
+        ins(t(r), l, sub, [t(nc), t(v)])
+    ], ret(t(r)))
+]).
+run(indirect, [5]).
+run(indirect, [100]).
+
+% Calling a copied data pointer is still a non-function trap.
+func(not_function, export, l, [], [
+    blk(start, [], [
+        ins(t(p), p, copy, [glo(cell)]),
+        ins(t(q), p, copy, [t(p)]),
+        call(to(t(r), l), t(q), [])
+    ], ret(t(r)))
+]).
+run(not_function, []).
+
+% A self-backedge phi aliases the entire pointer, not just its address.
+func(pointer_invariant, local, p, [par(w, t(n))], [
+    blk(start, [], [
+        ins(t(seed), p, alloc(8), [c(16)]),
+        store(l, c(53), t(seed))
+    ], jmp(head)),
+    blk(head, [
+        phi(t(p), p, [start-t(seed), body-t(p)]),
+        phi(t(i), w, [start-c(0), body-t(i1)])
+    ], [
+        ins(t(c), w, cmp(slt, w), [t(i), t(n)])
+    ], jnz(t(c), body, done)),
+    blk(body, [], [
+        ins(t(i1), w, add, [t(i), c(1)])
+    ], jmp(head)),
+    blk(done, [], [], ret(t(p)))
+]).
+func(invariant_load, export, l, [par(w, t(n)), par(l, t(off))], [
+    blk(start, [], [
+        call(to(t(p), p), glo(pointer_invariant), [arg(w, t(n))]),
+        ins(t(at), p, add, [t(p), t(off)]),
+        ins(t(v), l, load(l), [t(at)])
+    ], ret(t(v)))
+]).
+run(invariant_load, [0, 0]).
+run(invariant_load, [5, 0]).
+run(invariant_load, [3, 16]).
+run(invariant_load, [2, 18446744073709551615]).

@@ -128,7 +128,7 @@ digits0([D|Ds]) -->
 digits0([]) --> [].
 
 % Character classes as ASCII ranges: char_type/2's classes differ
-% between Prolog hosts, and C and QBE source only need these.
+% between Prolog hosts, and C and IR source only need these.
 decimal(D) :- D @>= '0', D @=< '9'.
 
 letter(C) :- ( C @>= a, C @=< z -> true ; C @>= 'A', C @=< 'Z' ).

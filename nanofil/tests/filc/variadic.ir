@@ -1,0 +1,57 @@
+func(nsum, export, l, [par(w, t(n))], [
+    blk(start, [], [
+        call(void, glo(churn), []),
+        ins(t(args), p, va_args, [c(8)]),
+        ins(t(ap), p, alloc(8), [c(24)]),
+        store(p, t(args), t(ap)),
+        ins(t(i), w, va_arg, [t(ap)]),
+        ins(t(l), l, va_arg, [t(ap)]),
+        ins(t(p), p, va_arg, [t(ap)]),
+        call(void, glo(churn), []),
+        ins(t(v), w, load(sw), [t(p)]),
+        ins(t(il), l, ext(sw), [t(i)]),
+        ins(t(vl), l, ext(sw), [t(v)]),
+        ins(t(a), l, add, [t(il), t(l)]),
+        ins(t(b), l, add, [t(a), t(vl)])
+    ], ret(t(b)))
+]).
+
+func(ncall, export, l, [par(p, t(p))], [
+    blk(start, [], [
+        call(to(t(a), l), glo(csum), [arg(w, c(3)), arg(w, c(11)), arg(l, c(10000000000)), arg(p, t(p))])
+    ], ret(t(a)))
+]).
+
+func(nconsume, export, l, [par(p, t(ap))], [
+    blk(start, [], [
+        ins(t(a), l, va_arg, [t(ap)])
+    ], ret(t(a)))
+]).
+
+func(nforward, export, l, [par(w, t(n))], [
+    blk(start, [], [
+        ins(t(args), p, va_args, [c(8)]),
+        ins(t(ap), p, alloc(8), [c(24)]),
+        store(p, t(args), t(ap)),
+        call(to(t(v), l), glo(cconsume), [arg(p, t(ap))])
+    ], ret(t(v)))
+]).
+
+func(nptr, export, p, [par(w, t(n))], [
+    blk(start, [], [
+        ins(t(args), p, va_args, [c(8)]),
+        ins(t(ap), p, alloc(8), [c(24)]),
+        store(p, t(args), t(ap)),
+        ins(t(p), p, va_arg, [t(ap)])
+    ], ret(t(p)))
+]).
+
+func(ntrap, export, l, [par(w, t(n))], [
+    blk(start, [], [
+        ins(t(args), p, va_args, [c(8)]),
+        ins(t(ap), p, alloc(8), [c(24)]),
+        store(p, t(args), t(ap)),
+        ins(t(a), l, va_arg, [t(ap)]),
+        ins(t(b), l, va_arg, [t(ap)])
+    ], ret(t(b)))
+]).

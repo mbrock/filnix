@@ -1,0 +1,25 @@
+% Tuple returns (M4d): {l, p} comes back in a buffer, {l, l} in
+% rdx:rcx, directly and through a function pointer.
+func(mk, local, tuple([l, p]), [par(p, t(s)), par(l, t(n))], [
+    blk(start, [], [], rets([t(n), t(s)]))
+]).
+func(two, local, tuple([l, l]), [par(l, t(n))], [
+    blk(start, [], [
+        ins(t(m), l, add, [t(n), c(100)])
+    ], rets([t(n), t(m)]))
+]).
+func(use, export, l, [par(l, t(n))], [
+    blk(start, [], [
+        ins(t(s), p, alloc(8), [c(16)]),
+        store(l, c(7), t(s)),
+        call(tuple([to(t(a), l), to(t(b), p)]), glo(mk), [arg(p, t(s)), arg(l, t(n))]),
+        ins(t(x), l, load(l), [t(b)]),
+        call(tuple([to(t(c), l), to(t(d), l)]), glo(two), [arg(l, t(a))]),
+        ins(t(f), p, copy, [glo(two)]),
+        call(tuple([to(t(g), l), to(t(h), l)]), t(f), [arg(l, t(x))]),
+        ins(t(r), l, add, [t(c), t(d)]),
+        ins(t(r2), l, add, [t(r), t(x)]),
+        ins(t(r3), l, add, [t(r2), t(h)])
+    ], ret(t(r3)))
+]).
+run(use, [41]).

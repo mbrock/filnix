@@ -1,0 +1,69 @@
+% Called from interop.c (clang-built Fil-C); see run-c.sh.
+
+func(sumbytes, export, l, [par(p, t(buf)), par(l, t(n))], [
+    blk(start, [], [], jmp(loop)),
+    blk(loop, [
+        phi(t(i), l, [start-c(0), body-t(i1)]),
+        phi(t(s), l, [start-c(0), body-t(s1)])
+    ], [
+        ins(t(c), w, cmp(slt, l), [t(i), t(n)])
+    ], jnz(t(c), body, done)),
+    blk(body, [], [
+        ins(t(q), p, add, [t(buf), t(i)]),
+        ins(t(b), l, load(ub), [t(q)]),
+        ins(t(s1), l, add, [t(s), t(b)]),
+        ins(t(i1), l, add, [t(i), c(1)])
+    ], jmp(loop)),
+    blk(done, [], [], ret(t(s)))
+]).
+
+func(setslot, export, void, [par(p, t(slot)), par(p, t(v))], [
+    blk(start, [], [
+        store(p, t(v), t(slot))
+    ], ret)
+]).
+
+func(offset, export, p, [par(p, t(p)), par(l, t(off))], [
+    blk(start, [], [
+        ins(t(q), p, add, [t(p), t(off)])
+    ], ret(t(q)))
+]).
+
+func(poke, export, void, [par(p, t(p)), par(w, t(v))], [
+    blk(start, [], [
+        store(b, t(v), t(p))
+    ], ret)
+]).
+
+% Ten words of arguments: the last pointers go on the stack, and the
+% fourth pointer is split between %r9 and the stack.
+func(five, export, l, [par(p, t(a)), par(p, t(b)), par(p, t(c)), par(p, t(d)), par(p, t(e))], [
+    blk(start, [], [
+        ins(t(va), l, load(ub), [t(a)]),
+        ins(t(vb), l, load(ub), [t(b)]),
+        ins(t(vc), l, load(ub), [t(c)]),
+        ins(t(vd), l, load(ub), [t(d)]),
+        ins(t(ve), l, load(ub), [t(e)]),
+        ins(t(x1), l, mul, [t(vb), c(10)]),
+        ins(t(x2), l, mul, [t(vc), c(100)]),
+        ins(t(x3), l, mul, [t(vd), c(1000)]),
+        ins(t(x4), l, mul, [t(ve), c(10000)]),
+        ins(t(s1), l, add, [t(va), t(x1)]),
+        ins(t(s2), l, add, [t(s1), t(x2)]),
+        ins(t(s3), l, add, [t(s2), t(x3)]),
+        ins(t(s4), l, add, [t(s3), t(x4)])
+    ], ret(t(s4)))
+]).
+
+% Calls into C, and back into nanofil through C.
+func(callc, export, l, [par(p, t(s))], [
+    blk(start, [], [
+        call(to(t(n), l), glo(c_len), [arg(p, t(s))]),
+        call(to(t(m), p), glo(c_mid), [arg(p, t(s))]),
+        ins(t(v), l, load(ub), [t(m)]),
+        call(to(t(k), l), glo(c_five), [arg(p, t(s))]),
+        ins(t(a), l, mul, [t(n), c(1000)]),
+        ins(t(b), l, add, [t(a), t(v)]),
+        ins(t(r), l, add, [t(b), t(k)])
+    ], ret(t(r)))
+]).

@@ -21,31 +21,33 @@ int sum(int *a, int n) {
 }
 ```
 
-`nanofil -O cc-ir sum.c` prints the IR, which is QBE's plus a pointer
-class `p`:
+`nanofil -O cc-ir sum.c` prints the IR, nanofil's own: Prolog terms
+([src/ir.pl](src/ir.pl)), one clause per function or data object, which
+`print`, `compile` and the tests read back. Its classes are `w l s d`
+and the pointer class `p`, and [src/interp.pl](src/interp.pl) defines
+what it means:
 
-```
-export function w $sum(p %v0, w %v2) {
-@start
-	jmp @L6
-@L6
-	%pr.2 =w phi @L8 %v22, @start 0
-	%pr.1 =w phi @L8 %v20, @start 0
-	%v12 =w csltw %pr.2, %v2
-	jnz %v12, @L7, @L9
-@L7
-	%v16 =l extsw %pr.2
-	%v17 =l mul %v16, 4
-	%v18 =p add %v0, %v17
-	%v19 =w loadsw %v18
-	%v20 =w add %pr.1, %v19
-	jmp @L8
-@L8
-	%v22 =w add %pr.2, 1
-	jmp @L6
-@L9
-	ret %pr.1
-}
+```prolog
+func(sum, export, w, [par(p, t(v0)), par(w, t(v2))], [
+    blk(start, [], [], jmp('L6')),
+    blk('L6', [
+        phi(t('pr.2'), w, ['L8'-t(v22), start-c(0)]),
+        phi(t('pr.1'), w, ['L8'-t(v20), start-c(0)])
+    ], [
+        ins(t(v12), w, cmp(slt, w), [t('pr.2'), t(v2)])
+    ], jnz(t(v12), 'L7', 'L9')),
+    blk('L7', [], [
+        ins(t(v16), l, ext(sw), [t('pr.2')]),
+        ins(t(v17), l, mul, [t(v16), c(4)]),
+        ins(t(v18), p, add, [t(v0), t(v17)]),
+        ins(t(v19), w, load(sw), [t(v18)]),
+        ins(t(v20), w, add, [t('pr.1'), t(v19)])
+    ], jmp('L8')),
+    blk('L8', [], [
+        ins(t(v22), w, add, [t('pr.2'), c(1)])
+    ], jmp('L6')),
+    blk('L9', [], [], ret(t('pr.1')))
+]).
 ```
 
 `nanofil -O cc sum.c` turns that into assembly that checks the load
@@ -83,12 +85,13 @@ as -o hello.o hello.s && $FILCC -o hello hello.o && ./hello
 
 `bin/nanofil` uses `swipl` from `PATH` (or `SWIPL`); set
 `NANOFIL_HOST=trealla` to use Trealla. Other commands: `cc-ir`,
-`tokens`, `print` and `compile` (for QBE text), `run FILE FN ARGS...`
+`tokens`, `print` and `compile` (for IR files), `run FILE FN ARGS...`
 (interpret), and `difftest`. See the top of
 [src/main.pl](src/main.pl).
 
 `nix build .#checks.x86_64-linux.nanofil` runs everything: unit tests,
-differential tests against real qbe and clang, whole programs under GC
+differential tests of the interpreter against native code and clang,
+whole programs under GC
 stress, and a 416-file survey of the cproc and c-testsuite corpora.
 
 ## What it compiles

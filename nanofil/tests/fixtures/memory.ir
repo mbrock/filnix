@@ -1,0 +1,172 @@
+% Memory, control flow, calls and data.
+
+data(msg, local, 1, [item(b, str("hi\\n\\001")), item(b, c(0))]).
+data(tab, local, 8, [item(w, c(10)), item(w, c(20)), item(w, c(30)), item(w, c(-1)), item(l, sym(tab, 4)), zero(4)]).
+
+% Little-endian stores and sign/zero-extending loads.
+run(bytes, [0]).
+run(bytes, [1]).
+run(bytes, [2]).
+run(bytes, [3]).
+run(bytes, [4]).
+func(bytes, export, l, [par(w, t(k))], [
+    blk(start, [], [
+        ins(t(p), l, alloc(8), [c(16)]),
+        store(l, c(-2), t(p)),
+        ins(t(q), l, add, [t(p), c(8)]),
+        store(w, c(305419896), t(q)),
+        ins(t(q1), l, add, [t(p), c(9)]),
+        store(b, c(255), t(q1)),
+        ins(t(a), l, load(sb), [t(p)]),
+        ins(t(b), l, load(ub), [t(q1)]),
+        ins(t(c), l, load(uh), [t(q)]),
+        ins(t(d), l, load(sw), [t(p)]),
+        ins(t(e), l, load(l), [t(q)])
+    ], jnz(t(k), n1, r0)),
+    blk(r0, [], [], ret(t(a))),
+    blk(n1, [], [
+        ins(t(k1), w, sub, [t(k), c(1)])
+    ], jnz(t(k1), n2, r1)),
+    blk(r1, [], [], ret(t(b))),
+    blk(n2, [], [
+        ins(t(k2), w, sub, [t(k1), c(1)])
+    ], jnz(t(k2), n3, r2)),
+    blk(r2, [], [], ret(t(c))),
+    blk(n3, [], [
+        ins(t(k3), w, sub, [t(k2), c(1)])
+    ], jnz(t(k3), r4, r3)),
+    blk(r3, [], [], ret(t(d))),
+    blk(r4, [], [
+        ins(t(w), l, load(uw), [t(q)])
+    ], ret(t(w)))
+]).
+
+% A counted loop with phis.
+run(sum, [0]).
+run(sum, [10]).
+run(sum, [1000]).
+func(sum, export, l, [par(l, t(n))], [
+    blk(start, [], [], jmp(loop)),
+    blk(loop, [
+        phi(t(i), l, [start-c(0), body-t(i1)]),
+        phi(t(s), l, [start-c(0), body-t(s1)])
+    ], [
+        ins(t(c), w, cmp(slt, l), [t(i), t(n)])
+    ], jnz(t(c), body, done)),
+    blk(body, [], [
+        ins(t(sq), l, mul, [t(i), t(i)]),
+        ins(t(s1), l, add, [t(s), t(sq)]),
+        ins(t(i1), l, add, [t(i), c(1)])
+    ], jmp(loop)),
+    blk(done, [], [], ret(t(s)))
+]).
+
+% Phis read their inputs simultaneously: a swap.
+run(swap, [5, 3]).
+run(swap, [1, 8]).
+func(swap, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [], jmp(loop)),
+    blk(loop, [
+        phi(t(x), w, [start-t(a), loop-t(y)]),
+        phi(t(y), w, [start-t(b), loop-t(x)]),
+        phi(t(i), w, [start-c(0), loop-t(i1)])
+    ], [
+        ins(t(i1), w, add, [t(i), c(1)]),
+        ins(t(c), w, cmp(slt, w), [t(i1), c(3)])
+    ], jnz(t(c), loop, out)),
+    blk(out, [], [
+        ins(t(r), w, mul, [t(x), c(100)]),
+        ins(t(t), w, add, [t(r), t(y)])
+    ], ret(t(t)))
+]).
+
+% Non-SSA input: a temp assigned twice.
+run(twice, [6]).
+func(twice, export, w, [par(w, t(a))], [
+    blk(start, [], [
+        ins(t(t), w, add, [t(a), c(1)]),
+        ins(t(t), w, mul, [t(t), c(2)])
+    ], ret(t(t)))
+]).
+
+func(fib, local, w, [par(w, t(n))], [
+    blk(start, [], [
+        ins(t(c), w, cmp(slt, w), [t(n), c(2)])
+    ], jnz(t(c), base, rec)),
+    blk(base, [], [], ret(t(n))),
+    blk(rec, [], [
+        ins(t(n1), w, sub, [t(n), c(1)]),
+        ins(t(n2), w, sub, [t(n), c(2)]),
+        call(to(t(a), w), glo(fib), [arg(w, t(n1))]),
+        call(to(t(b), w), glo(fib), [arg(w, t(n2))]),
+        ins(t(r), w, add, [t(a), t(b)])
+    ], ret(t(r)))
+]).
+
+run(fibs, [0]).
+run(fibs, [1]).
+run(fibs, [15]).
+func(fibs, export, w, [par(w, t(n))], [
+    blk(start, [], [
+        call(to(t(r), w), glo(fib), [arg(w, t(n))])
+    ], ret(t(r)))
+]).
+
+func(poke, local, void, [par(l, t(p)), par(w, t(v))], [
+    blk(start, [], [
+        store(w, t(v), t(p))
+    ], ret)
+]).
+
+% A callee stores through a pointer into the caller's frame.
+run(viacall, [41]).
+func(viacall, export, w, [par(w, t(v))], [
+    blk(start, [], [
+        ins(t(p), l, alloc(4), [c(4)]),
+        ins(t(v1), w, add, [t(v), c(1)]),
+        call(void, glo(poke), [arg(l, t(p)), arg(w, t(v1))]),
+        ins(t(r), w, load(sw), [t(p)])
+    ], ret(t(r)))
+]).
+
+% Reading data: string bytes, words, a symbol plus offset.
+run(data, [0]).
+run(data, [1]).
+run(data, [2]).
+run(data, [3]).
+func(data, export, l, [par(w, t(k))], [
+    blk(start, [], [
+        ins(t(m), l, copy, [glo(msg)]),
+        ins(t(m2), l, add, [t(m), c(2)]),
+        ins(t(c), l, load(ub), [t(m2)]),
+        ins(t(m3), l, add, [t(m), c(3)]),
+        ins(t(d), l, load(ub), [t(m3)]),
+        ins(t(t), l, add, [glo(tab), c(12)]),
+        ins(t(w), l, load(sw), [t(t)]),
+        ins(t(pp), l, add, [glo(tab), c(16)]),
+        ins(t(p), l, load(l), [t(pp)]),
+        ins(t(v), l, load(sw), [t(p)])
+    ], jnz(t(k), n1, r0)),
+    blk(r0, [], [
+        ins(t(cd), l, mul, [t(c), c(1000)]),
+        ins(t(r0), l, add, [t(cd), t(d)])
+    ], ret(t(r0))),
+    blk(n1, [], [
+        ins(t(k1), w, sub, [t(k), c(1)])
+    ], jnz(t(k1), n2, r1)),
+    blk(r1, [], [], ret(t(w))),
+    blk(n2, [], [
+        ins(t(k2), w, sub, [t(k1), c(1)])
+    ], jnz(t(k2), r3, r2)),
+    blk(r2, [], [], ret(t(v))),
+    blk(r3, [], [
+        ins(t(z), l, add, [glo(tab), c(24)]),
+        ins(t(zv), l, load(sw), [t(z)])
+    ], ret(t(zv)))
+]).
+
+% Void return through the harness.
+run(nothing, [3]).
+func(nothing, export, void, [par(w, t(a))], [
+    blk(start, [], [], ret)
+]).

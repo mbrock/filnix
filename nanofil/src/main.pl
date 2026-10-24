@@ -1,14 +1,14 @@
 /*  nanofil command line (the impure driver).
 
-      check FILE              parse and validate
-      print FILE              parse, validate, print QBE text
-      compile FILE            parse, validate, print x86-64 assembly
+      check FILE              read and validate
+      print FILE              read, validate, print the IR (ir_text.pl)
+      compile FILE            read, validate, print x86-64 assembly
       cc FILE                 compile C (.c or preprocessed .i) to Fil-C assembly
-      cc-ir FILE              compile C, print the IR as QBE text
+      cc-ir FILE              compile C, print the IR
       tokens FILE             print C token terms, without locations
       run FILE FN ARG...      interpret $FN on integer arguments
-      difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,printed.ssa}
-                              for the file's "# run: $fn arg..." lines
+      difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,mode}
+                              for the file's run(Fn, Args) facts
 
     -O before the command runs the middle end (opt.pl) after loading.
     Without it the IR goes to the backend as loaded, which is the
@@ -23,8 +23,7 @@
     reported on stdout and left out of the comparison.
 */
 :- use_module(ir).
-:- use_module(qbe_parse).
-:- use_module(qbe_print).
+:- use_module(ir_text).
 % Compile-only commands do not need the interpreter or its CLP(Z) solver.
 :- if(current_prolog_flag(dialect, swi)).
 :- autoload(interp, [run/5, module_prepared/2, run_prepared/5, outcome_text/2]).
@@ -89,13 +88,13 @@ report(Error) :-
 %% Loading
 
 % file_module(+File, -Module): Module is the valid IR module in File. A
-% .c or .i file goes through the C frontend, anything else is QBE text.
+% .c or .i file goes through the C frontend, anything else is IR text.
 file_module(File, Module) :-
     (   (   atom_concat(_, '.c', File)
         ;   atom_concat(_, '.i', File)
         )
     ->  c_file_module(File, Module)
-    ;   parse_qbe_file(File, Module),
+    ;   read_ir_file(File, Module, _),
         valid_module(Module)
     ).
 
@@ -185,11 +184,9 @@ command(Opt, [difftest, File, Dir]) :-
     exclude(comparable(Mode), Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpectedFile),
     atom_concat(Dir, '/harness.c', HarnessFile),
-    atom_concat(Dir, '/printed.ssa', PrintedFile),
     atom_concat(Dir, '/mode', ModeFile),
     write_file(ExpectedFile, expected_lines(Compared)),
     write_file(HarnessFile, harness(Mode, Module, Compared)),
-    write_file(PrintedFile, module_chars(Module)),
     write_file(ModeFile, fmt("~w~n", [Mode])),
     length(Compared, NCompared),
     length(Skipped, NSkipped),
@@ -446,82 +443,11 @@ labelled_call(value, Fn, CArgText, CallText) -->
     fmt("    printf(\"%s = ret %llu\\n\", \"~w\", (unsigned long long)~w(~w));~n",
         [CallText, Fn, CArgText]).
 
-%% "# run: $fn a b c" lines
+%% Runs
 
-% file_runs(+File, -Runs): Runs is the run(Fn, Args) term of each "#
-% run:" line of File, in order.
-file_runs(File, Runs) :-
-    phrase_from_file(lines(Lines), File),
-    foldl(line_runs, Lines, Runs, []).
-
-% lines(-Lines)//: Lines are the character lists of the text's lines,
-% without their newlines.
-lines([Line|Lines]) -->
-    line(Line),
-    !,
-    lines(Lines).
-lines([]) --> [].
-
-% line(-Line)//: one nonempty line up to and including its newline (or
-% the end of the text), or an empty line. Line is unified after the
-% cut, which keeps line//1 steadfast.
-line(Line) -->
-    [C],
-    { C \== '\n' },
-    !,
-    rest_of_line(Cs),
-    { Line = [C|Cs] }.
-line([]) --> "\n".
-
-% rest_of_line(-Cs)//: the characters Cs up to the next newline, which
-% is consumed, or to the end of the text.
-rest_of_line([]) -->
-    "\n",
-    !.
-rest_of_line([C|Cs]) -->
-    [C],
-    !,
-    rest_of_line(Cs).
-rest_of_line([]) --> [].
-
-% line_runs(+Line, ?Runs0, ?Runs): Runs0-Runs is the difference list of
-% the run(Fn, Args) term of Line if it is a run line, and empty if not.
-line_runs(Line, Runs0, Runs) :-
-    (   append("# run: $", Rest, Line)
-    ->  chars_words(Rest, [FnCs|ArgCss]),
-        atom_chars(Fn, FnCs),
-        maplist(chars_number, ArgCss, Args),
-        Runs0 = [run(Fn, Args)|Runs]
-    ;   Runs0 = Runs
-    ).
-
-% chars_number(+Cs, -N): N is the number the characters Cs spell.
-chars_number(Cs, N) :-
-    number_chars(N, Cs).
-
-% chars_words(+Cs, -Words): Words are the space-separated words of Cs.
-chars_words(Cs, Words) :-
-    phrase(words(Words), Cs).
-
-% words(-Words)//: the space-separated words Words.
-words(Words) -->
-    " ",
-    !,
-    words(Words).
-words([[C|Cs]|Words]) -->
-    [C],
-    word(Cs),
-    !,
-    words(Words).
-words([]) --> [].
-
-% word(-Cs)//: the longest run Cs of characters other than space.
-word([C|Cs]) -->
-    [C],
-    { C \== ' ' },
-    !,
-    word(Cs).
-word([]) --> [].
+% file_runs(+File, -Runs): Runs are the run(Fn, Args) facts of IR File,
+% in order.
+file_runs(File, Runs) :- read_ir_file(File, _, Runs).
 
 % library(format)'s format_//2 raises type_error(list, '') for an argument
 % of '' (Trealla 12f4cbd), which a call with no arguments produces.

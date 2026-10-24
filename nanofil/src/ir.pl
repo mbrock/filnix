@@ -32,7 +32,7 @@
         cast           w <-> s, l <-> d, bitwise
         load(T)        T in l sw uw sh uh sb ub p s d
         alloc(Align)   Align in 4, 8, 16
-        (op_kind/2 and op_text//1 state these sets once)
+        (op_kind/2 and valid_op/1 state these sets once)
         ptoi itop
         va_args       filc only: p cursor into the entry argument snapshot;
                       operand c(N), non-negative fixed-prefix byte count
@@ -48,7 +48,7 @@
 
     data(Name, Linkage, Align, Items)
       Linkage  export | local | ro(export) | ro(local), ro for read-only
-               data (QBE text: section ".rodata")
+               data (in .rodata)
       Items: [item(W, c(N)) | item(b, str(Chars)) | item(l, sym(Name, Off))
               | item(p, sym(Name, Off)) | zero(N)]
       item(p, ...) is a pointer with the capability of Name (filc only).
@@ -57,8 +57,8 @@
 
     A module is in one of two modes (module_mode/2):
 
-      plain  QBE's integer IL. Addresses are l values. This is the mode
-             compared against real qbe.
+      plain  classes w, l, s and d only. Addresses are l values, and the
+             plain backend (amd64.pl) compiles it to ordinary x86-64.
       filc   any use of class p. Addresses are p values (flight pointers
              with a capability), alloc yields p, loads and stores take a p
              address, p arithmetic is add/sub of an l offset, and ptoi/itop
@@ -71,7 +71,7 @@
     (w, l or p), V an IR value, L a label.
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
-               op_kind/2, op_text//1, valid_module/1, func_named/3, width_bytes/2,
+               op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4,
                module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3]).
@@ -168,29 +168,15 @@ kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 
-%! op_text(?Op)// is nondet.
+%! valid_op(+Op) is semidet.
 %
-%  The QBE instruction name of Op, such as "csltw" for cmp(slt, w): an
-%  atomic op is its own name, a compound one a prefix and its operands'
-%  names. This is the one description of the names, so it both prints
-%  (+Op) and parses (-Op, which enumerates the ops of the grammar).
+%  Op is an instruction of the IR: one of op_kind/2's, with operands
+%  from the sets below where it has them.
 
-op_text(Op) --> { op_kind(Op, _) }, spelling(Op).
-
-spelling(cmp(Cond, K)) -->
-    "c", { comparison(Cond, K) }, chars_of(Cond), chars_of(K).
-spelling(ext(T)) --> "ext", set_name(ext_type, T).
-spelling(load(T)) --> "load", set_name(load_type, T).
-spelling(alloc(Align)) --> "alloc", set_name(alloc_align, Align).
-spelling(setjmp(Kind)) --> chars_of(Kind).
-spelling(Op) --> { atom(Op) }, chars_of(Op).
-
-% set_name(:Set_1, ?X)//: the name of X, a member of Set_1.
-set_name(Set_1, X) --> { call(Set_1, X) }, chars_of(X).
-
-chars_of(X) -->
-    { number(X) -> number_chars(X, Cs) ; atom_chars(X, Cs) },
-    seq(Cs).
+valid_op(cmp(Cond, K)) :- !, comparison(Cond, K).
+valid_op(load(T)) :- !, load_type(T).
+valid_op(alloc(Align)) :- !, alloc_align(Align).
+valid_op(Op) :- op_kind(Op, _).
 
 cmp_cond(eq).  cmp_cond(ne).
 cmp_cond(sle). cmp_cond(slt). cmp_cond(sge). cmp_cond(sgt).
@@ -209,12 +195,11 @@ narrow_type(sw, 4, signed).   narrow_type(uw, 4, unsigned).
 narrow_type(sh, 2, signed).   narrow_type(uh, 2, unsigned).
 narrow_type(sb, 1, signed).   narrow_type(ub, 1, unsigned).
 
-ext_type(T) :- narrow_type(T, _, _).
-ext_type(s).
 
 load_type(l). load_type(p).
 load_type(d).
-load_type(T) :- ext_type(T).
+load_type(s).
+load_type(T) :- narrow_type(T, _, _).
 
 alloc_align(4).
 alloc_align(8).
@@ -481,6 +466,9 @@ split_pairs([K-V|Ps], [K|Ks], [V|Vs]) :- split_pairs(Ps, Ks, Vs).
 valid_inst(ctx(_, _, _, _, _, _, filc), ins(_, p, copy, [glo(_)])) :- !.
 valid_inst(Ctx, ins(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
+    (   valid_op(Op) -> true
+    ;   fn_error(Fn, 'unknown instruction ~w', [Op])
+    ),
     (   op_arity(Op, N), length(Args, N) -> true
     ;   fn_error(Fn, 'bad instruction ~w with ~w', [Op, Args])
     ),

@@ -1,0 +1,125 @@
+% Integer arithmetic at both classes, including the edges where signed
+% and unsigned readings differ.
+
+run(addw, [3, 4]).
+run(addw, [4294967295, 1]).
+run(addw, [-1, -1]).
+func(addw, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(r), w, add, [t(a), t(b)])
+    ], ret(t(r)))
+]).
+
+run(mixed, [4294967296, 5]).
+run(mixed, [18446744073709551615, 0]).
+func(mixed, export, w, [par(l, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(r), w, add, [t(a), t(b)])
+    ], ret(t(r)))
+]).
+
+run(divs, [-7, 2]).
+run(divs, [7, -2]).
+run(divs, [-2147483648, -1]).
+run(divs, [5, 0]).
+func(divs, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(q), w, div, [t(a), t(b)]),
+        ins(t(r), w, rem, [t(a), t(b)]),
+        ins(t(s), w, mul, [t(q), c(1000)]),
+        ins(t(t), w, add, [t(s), t(r)])
+    ], ret(t(t)))
+]).
+
+run(divu, [-7, 2]).
+run(divu, [7, 3]).
+func(divu, export, l, [par(l, t(a)), par(l, t(b))], [
+    blk(start, [], [
+        ins(t(q), l, udiv, [t(a), t(b)]),
+        ins(t(r), l, urem, [t(a), t(b)]),
+        ins(t(t), l, xor, [t(q), t(r)])
+    ], ret(t(t)))
+]).
+
+run(shifts, [-16, 2]).
+run(shifts, [-16, 33]).
+run(shifts, [1, 31]).
+func(shifts, export, w, [par(w, t(a)), par(w, t(n))], [
+    blk(start, [], [
+        ins(t(x), w, sar, [t(a), t(n)]),
+        ins(t(y), w, shr, [t(a), t(n)]),
+        ins(t(z), w, shl, [t(a), t(n)]),
+        ins(t(s), w, xor, [t(x), t(y)]),
+        ins(t(t), w, add, [t(s), t(z)])
+    ], ret(t(t)))
+]).
+
+run(shiftl, [-16, 2]).
+run(shiftl, [-16, 65]).
+run(shiftl, [1, 63]).
+func(shiftl, export, l, [par(l, t(a)), par(w, t(n))], [
+    blk(start, [], [
+        ins(t(x), l, sar, [t(a), t(n)]),
+        ins(t(y), l, shr, [t(a), t(n)]),
+        ins(t(z), l, shl, [t(a), t(n)]),
+        ins(t(s), l, xor, [t(x), t(y)]),
+        ins(t(t), l, add, [t(s), t(z)])
+    ], ret(t(t)))
+]).
+
+run(exts, [255, 0]).
+run(exts, [128, 1]).
+run(exts, [32768, 2]).
+run(exts, [2147483648, 3]).
+run(exts, [2147483648, 4]).
+func(exts, export, l, [par(w, t(a)), par(w, t(k))], [
+    blk(start, [], [
+        ins(t(sb), l, ext(sb), [t(a)]),
+        ins(t(ub), l, ext(ub), [t(a)]),
+        ins(t(sh), l, ext(sh), [t(a)]),
+        ins(t(sw), l, ext(sw), [t(a)]),
+        ins(t(uw), l, ext(uw), [t(a)])
+    ], jnz(t(k), n1, r0)),
+    blk(r0, [], [], ret(t(sb))),
+    blk(n1, [], [
+        ins(t(k1), w, sub, [t(k), c(1)])
+    ], jnz(t(k1), n2, r1)),
+    blk(r1, [], [], ret(t(ub))),
+    blk(n2, [], [
+        ins(t(k2), w, sub, [t(k1), c(1)])
+    ], jnz(t(k2), n3, r2)),
+    blk(r2, [], [], ret(t(sh))),
+    blk(n3, [], [
+        ins(t(k3), w, sub, [t(k2), c(1)])
+    ], jnz(t(k3), r4, r3)),
+    blk(r3, [], [], ret(t(sw))),
+    blk(r4, [], [], ret(t(uw)))
+]).
+
+run(cmps, [-1, 1]).
+run(cmps, [1, -1]).
+run(cmps, [5, 5]).
+func(cmps, export, w, [par(w, t(a)), par(w, t(b))], [
+    blk(start, [], [
+        ins(t(lt), w, cmp(slt, w), [t(a), t(b)]),
+        ins(t(ult), w, cmp(ult, w), [t(a), t(b)]),
+        ins(t(le), w, cmp(sle, w), [t(a), t(b)]),
+        ins(t(eq), w, cmp(eq, w), [t(a), t(b)]),
+        ins(t(x), w, shl, [t(ult), c(1)]),
+        ins(t(y), w, shl, [t(le), c(2)]),
+        ins(t(z), w, shl, [t(eq), c(3)]),
+        ins(t(s), w, or, [t(lt), t(x)]),
+        ins(t(t), w, or, [t(s), t(y)]),
+        ins(t(u), w, or, [t(t), t(z)])
+    ], ret(t(u)))
+]).
+
+% jnz tests only the low 32 bits of an l value?
+run(jnzl, [4294967296]).
+run(jnzl, [1]).
+run(jnzl, [0]).
+func(jnzl, export, w, [par(l, t(a))], [
+    blk(start, [], [], jnz(t(a), yes, no)),
+    blk(yes, [], [], ret(c(1))),
+    blk(no, [], [], ret(c(0)))
+]).

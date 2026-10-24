@@ -16,8 +16,6 @@ nix build -o /tmp/swipl --impure --expr \
   '(import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }).swi-prolog'
 nix build -o /tmp/tpl-native --impure --expr \
   'import ./nanofil/nix/trealla.nix { pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }; }'
-nix build -o /tmp/qbe-p --impure --expr \
-  'import ./nanofil/nix/qbe.nix { pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }; }'
 nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-staging-ref-src # staging docs, pass, runtime
 ```
 
@@ -28,10 +26,10 @@ Use `filc-staging-ref-src` to look up how Fil-C behaves. Do not fetch `filc0-src
 ## Tests
 
 ```sh
-export SWIPL=/tmp/swipl/bin/swipl QBE=/tmp/qbe-p/bin/qbe FILCC=/tmp/filcc/bin/clang
+export SWIPL=/tmp/swipl/bin/swipl FILCC=/tmp/filcc/bin/clang
 (cd nanofil/src && ../bin/nanofil --script ../tests/unit.pl </dev/null)
 (cd nanofil/src && ../bin/nanofil cc-ir ../tests/c/basic.c </dev/null)
-nanofil/tests/difftest.sh FILE.ssa|FILE.c...   # interpreter vs native (and clang for .c)
+nanofil/tests/difftest.sh FILE.ir|FILE.c...    # interpreter vs native (and clang for .c)
 nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
@@ -63,7 +61,7 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   char list from `atom_chars/2` returned a wrong first solution after
   the interpreter had run (October 2026; a literal list was fine). To
   look a name up in a relation, generate the candidates' chars and
-  compare (`qbe_parse:op_name/2`).
+  compare.
 
 ## The refactoring campaign
 

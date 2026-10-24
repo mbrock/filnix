@@ -1,4 +1,4 @@
-/* Calls between clang-built Fil-C code and nanofil's interop.ssa. Each
+/* Calls between clang-built Fil-C code and nanofil's interop.ir. Each
    case runs in its own process (run-c.sh), since a trap ends it, and must
    print the line in interop.expected. */
 #include <stdio.h>

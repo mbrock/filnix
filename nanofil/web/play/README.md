@@ -16,7 +16,8 @@ and the page shows, from one `<article>` whose sections it puts in place:
   (`ir.pl`'s grammar), a function as its head over its blocks, a block as
   its label over one row per phi, instruction and jump, each function and
   data object folding under its head, and a run of text bytes drawn as
-  the one `item(b, str(S))` it means; **QBE**, the IR as text;
+  the one `item(b, str(S))` it means; **IR text**, the same module as
+  the clauses `nanofil print` and `compile` read (`src/ir_text.pl`);
   **Assembly**, each `asm.pl` line term beside the AT&T line it prints
   as (the first 1500 lines; longer listings follow as text);
 - **Data**, each data object's bytes as hex and text, pointers as the

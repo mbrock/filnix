@@ -1,0 +1,83 @@
+data(tab, local, 8, [item(w, c(10)), item(w, c(20)), item(w, c(30))]).
+data(msg, ro(local), 8, [item(b, str("hi\\n")), item(b, c(0))]).
+data(pt, local, 8, [item(p, sym(tab, 4)), item(p, sym(msg, 0)), item(l, c(7))]).
+func(three, local, w, [par(w, t(x))], [
+    blk(s, [], [
+        ins(t(r), w, mul, [t(x), c(3)])
+    ], ret(t(r)))
+]).
+func(get, export, w, [par(w, t(i))], [
+    blk(s, [], [
+        ins(t(t), p, copy, [glo(tab)]),
+        ins(t(o), l, ext(sw), [t(i)]),
+        ins(t(o4), l, mul, [t(o), c(4)]),
+        ins(t(q), p, add, [t(t), t(o4)]),
+        ins(t(v), w, load(sw), [t(q)])
+    ], ret(t(v)))
+]).
+func(viapt, export, w, [], [
+    blk(s, [], [
+        ins(t(t), p, copy, [glo(pt)]),
+        ins(t(a), p, load(p), [t(t)]),
+        ins(t(v), w, load(sw), [t(a)]),
+        ins(t(m), p, add, [t(t), c(8)]),
+        ins(t(s), p, load(p), [t(m)]),
+        ins(t(c), w, load(ub), [t(s)]),
+        ins(t(r), w, add, [t(v), t(c)])
+    ], ret(t(r)))
+]).
+func(poke, export, w, [], [
+    blk(s, [], [
+        ins(t(t), p, copy, [glo(msg)]),
+        store(b, c(65), t(t))
+    ], ret(c(0)))
+]).
+func(ind, export, w, [par(w, t(x))], [
+    blk(s, [], [
+        ins(t(f), p, copy, [glo(three)]),
+        call(to(t(r), w), t(f), [arg(w, t(x))])
+    ], ret(t(r)))
+]).
+func(indl, export, l, [par(l, t(x))], [
+    blk(s, [], [
+        ins(t(f), p, copy, [glo(three)]),
+        call(to(t(r), l), t(f), [arg(l, t(x)), arg(w, c(5))])
+    ], ret(t(r)))
+]).
+func(notfn, export, w, [], [
+    blk(s, [], [
+        ins(t(f), p, copy, [glo(tab)]),
+        call(to(t(r), w), t(f), [arg(w, c(1))])
+    ], ret(t(r)))
+]).
+func(offfn, export, w, [], [
+    blk(s, [], [
+        ins(t(f), p, copy, [glo(three)]),
+        ins(t(g), p, add, [t(f), c(0)]),
+        ins(t(h), p, add, [t(g), c(1)]),
+        call(to(t(r), w), t(h), [arg(w, c(1))])
+    ], ret(t(r)))
+]).
+func(readfn, export, w, [], [
+    blk(s, [], [
+        ins(t(f), p, copy, [glo(three)]),
+        ins(t(v), w, load(ub), [t(f)])
+    ], ret(t(v)))
+]).
+func(toofew, export, w, [], [
+    blk(s, [], [
+        ins(t(f), p, copy, [glo(three)]),
+        call(to(t(r), w), t(f), [])
+    ], ret(t(r)))
+]).
+run(get, [1]).
+run(get, [2]).
+run(get, [3]).
+run(viapt, []).
+run(poke, []).
+run(ind, [7]).
+run(indl, [7]).
+run(notfn, []).
+run(offfn, []).
+run(readfn, []).
+run(toofew, []).
