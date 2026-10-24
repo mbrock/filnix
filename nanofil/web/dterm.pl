@@ -740,9 +740,23 @@ inline_comment(Text) -->
 alternatives(G, P, Ctx) -->
     { alt_list(G, P, Alts) },
     (   { memberchk(if(_, _, _, _, _), Alts) }
-    ->  el(div, cases, case_rows(Alts, none, Ctx))
+    ->  { ( member(A, Alts), alt_nests(A) -> Class = "cases stack" ; Class = cases ) },
+        el(div, Class, case_rows(Alts, none, Ctx))
     ;   el(div, alts, alt_rows(Alts, first, Ctx))
     ).
+
+%  A chain whose branches hold conditionals of their own is drawn as a
+%  flow, each consequence under its condition: side by side, the columns
+%  of the inner chain cannot both fit.
+alt_nests(if(_, C, _, T, _)) :- ( control(C) ; control(T) ), !.
+alt_nests(plain(G, _)) :- control(G).
+
+control(G) :- var(G), !, fail.
+control((_ ; _)).
+control((_ -> _)).
+control((_ *-> _)).
+control((A , B)) :- ( control(A) ; control(B) ), !.
+control(\+ A) :- control(A).
 
 alt_list(G, P0, Alts) :-
     unparen(P0, P),

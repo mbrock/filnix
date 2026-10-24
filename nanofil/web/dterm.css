@@ -254,6 +254,54 @@ a.f.call:hover { text-decoration: underline; }
 .case > .cond { min-width: 0; }
 .case.plain > .cond { text-align: right; }
 .alts { grid-template-columns: minmax(0, max-content); }
+
+/* A chain with conditionals inside its branches, and every chain on a
+   narrow screen, is a flow: each condition, then its consequence under it
+   (dterm.pl's alt_nests/1). */
+.cases.stack { grid-template-columns: minmax(0, max-content); }
+.cases.stack > .case { display: block; }
+.cases.stack > .case + .case { border-top: 1px solid var(--rule); }
+.cases.stack > .case > div { border-top: 0; padding: 0.1em 0; }
+.cases.stack > .case > .arrow { display: none; }
+.cases.stack > .case > .cond { display: flex; align-items: baseline; gap: 0.5em; text-align: left; }
+.cases.stack > .case:not(.plain) > .cond::before { content: "if"; }
+.cases.stack > .case + .case:not(.plain) > .cond::before { content: "else if"; }
+.cases.stack > .case:not(.plain) > .cond::before, .cases.stack > .case.plain > .cond .kw {
+  color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; white-space: nowrap;
+}
+.cases.stack > .case.plain > .cond:has(.kw:empty) { display: none; }
+.cases.stack > .case > .then {
+  margin-left: 0.35em; padding-left: 0.8em;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
+}
+@media (max-width: 700px) {
+  /* Long atoms break rather than push the page sideways; tables of facts
+     scroll inside themselves. */
+  .arg, .terminals { min-width: 0; max-width: 100%; }
+  .terminals { display: inline-flex; }
+  .a, .s { overflow-wrap: anywhere; }
+  table.facts { display: block; max-width: 100%; overflow-x: auto; }
+  .cases > .case > .then { margin-left: 0.2em; padding-left: 0.55em; }
+  .args, .paren, .l, .braces { padding: 0 0.22em; }
+.cases { grid-template-columns: minmax(0, max-content); }
+.cases > .case { display: block; }
+.cases > .case + .case { border-top: 1px solid var(--rule); }
+.cases > .case > div { border-top: 0; padding: 0.1em 0; }
+.cases > .case > .arrow { display: none; }
+.cases > .case > .cond { display: flex; align-items: baseline; gap: 0.5em; text-align: left; }
+.cases > .case:not(.plain) > .cond::before { content: "if"; }
+.cases > .case + .case:not(.plain) > .cond::before { content: "else if"; }
+.cases > .case:not(.plain) > .cond::before, .cases > .case.plain > .cond .kw {
+  color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; white-space: nowrap;
+}
+.cases > .case.plain > .cond:has(.kw:empty) { display: none; }
+.cases > .case > .then {
+  margin-left: 0.35em; padding-left: 0.8em;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
+}
+}
 .alts > .or {
   margin: 0.1em 0;
   border-top: 1px dashed var(--rule);
