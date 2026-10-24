@@ -67,7 +67,7 @@ html[data-layout="flex"] .braces { border-style: dotted; border-width: 0 2px; }
 html[data-layout="flex"] .arg { display: inline-flex; align-items: baseline; }
 html[data-layout="flex"] .arg::before, html[data-layout="flex"] .arg::after { content: none !important; }
 html[data-layout="flex"] .sep { color: color-mix(in srgb, var(--ink) 30%, transparent); margin-left: -0.04em; }
-html[data-layout="flex"] .bar { font-weight: 700; margin: 0; }
+html[data-layout="flex"] .tailbar { font-weight: 700; margin: 0; }
 html[data-layout="flex"] .arg.tail { column-gap: 0.34em; }
 html[data-layout="flex"] .pushback { display: inline-flex; gap: 0.3em; }
 html[data-layout="flex"] .clause > .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35em; padding-left: 0; text-indent: 0; }

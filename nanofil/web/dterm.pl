@@ -580,7 +580,7 @@ list_parts(L, Es, Tail) :-
 list_elems([E], [P], Tail, TP, Ctx) --> !,
     el(span, arg, term(E, P, 999, Ctx)),
     (   { Tail == [] } -> []
-    ;   el(span, "arg tail", ( el(span, bar, "|"), term(Tail, TP, 999, Ctx) ))
+    ;   el(span, "arg tail", ( el(span, tailbar, "|"), term(Tail, TP, 999, Ctx) ))
     ).
 list_elems([E|Es], [P|Ps], Tail, TP, Ctx) -->
     el(span, arg, ( term(E, P, 999, Ctx), el(span, sep, ",") )), " ",

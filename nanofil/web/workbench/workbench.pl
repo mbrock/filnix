@@ -101,7 +101,7 @@ draw(pred(Base, Key), Sources) -->
     dterm:pred_(Key, Doc, Items, Base).
 draw(ir, _) -->
     { sample_ir(F) },
-    el(div, "pane", ['data-slot'=ir], play_view:ir_item(F)).
+    el(div, "pane", ['data-slot'=ir], play_view:ir_item('sample.c', F)).
 draw(asm, _) -->
     { findall(T-S, sample_asm(T, S), Ls) },
     el(div, "pane", ['data-slot'=asm], el(table, asm, seq(Ls, asm_row))).

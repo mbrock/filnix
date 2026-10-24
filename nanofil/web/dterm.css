@@ -246,7 +246,7 @@ a.f.call:hover { text-decoration: underline; }
 .l.empty { padding: 0; border-width: 0; background: none; color: var(--bracket); }
 .braces { border-style: dotted; border-width: 0 2px; }
 .sep { color: var(--sep); }
-.bar { color: var(--bracket); margin: 0 var(--bar-space); }
+.tailbar { color: var(--bracket); margin: 0 var(--bar-space); }
 .pushback { opacity: 0.8; }
 .terminals .l { background-color: color-mix(in srgb, var(--bracket) 8%, transparent); }
 
@@ -286,6 +286,10 @@ a.f.call:hover { text-decoration: underline; }
     width: calc(var(--dn) * var(--indent));
   }
 }
+
+/* dterm.js's planner breaks a flowing line with <br class="zbr"> and
+   indents the next line past the hang by an empty .zin. */
+.zin { display: inline-block; }
 
 /* An assembly line's term stays on its line; the table scrolls instead. */
 table.asm td.term { white-space: nowrap; }
@@ -343,9 +347,8 @@ table.asm td.term .arg::before, table.asm td.term .arg::after { content: none !i
 @media (max-width: 700px) {
   /* A run of a term with nowhere to break (a functor, its parenthesis
      and a first argument, or a long atom) breaks where it must rather
-     than push the page sideways; tables of facts scroll inside themselves. */
+     than push the page sideways. */
   .clause > .head, .goal, .examples td, .sig, .a, .s { overflow-wrap: anywhere; }
-  table.facts { display: block; max-width: 100%; overflow-x: auto; }
   .dterm .prose pre { max-width: 100%; overflow-x: auto; }
   /* An example whose goal is a block puts its answer on the next row. */
   .examples td.goal:has(.block) { flex-basis: 100%; }
@@ -404,6 +407,10 @@ table.facts {
   margin: 0.4rem 0 0.8rem;
   font-size: 0.92rem;
   line-height: 1.45;
+}
+/* On a phone a table of facts scrolls inside itself. */
+@media (max-width: 700px) {
+  table.facts { display: block; max-width: 100%; overflow-x: auto; }
 }
 table.facts caption {
   caption-side: top;

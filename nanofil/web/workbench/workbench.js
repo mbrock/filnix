@@ -6,7 +6,8 @@
 const knobs = [
   { group: "Layout" },
   { id: "layout", label: "Terms", attr: "layout", options: [["text", "flow as text"], ["flex", "v2: boxes that wrap"]] },
-  { id: "long", label: "Break a term longer than", attr: "long", options: [["48", "48 characters"], ["60", "60 characters"], ["72", "72 characters"], ["80", "80 characters"], ["90", "90 characters"], ["0", "never"]], initial: "80" },
+  { id: "planner", label: "Line breaks", attr: "planner", options: [["on", "planned to fit (dterm.js)"], ["off", "dterm.pl's: by length"]] },
+  { id: "long", label: "By length: break a term longer than", attr: "long", options: [["48", "48 characters"], ["60", "60 characters"], ["72", "72 characters"], ["80", "80 characters"], ["90", "90 characters"], ["0", "never"]], initial: "80" },
   { id: "hang", label: "Hanging indent", prop: "--hang", min: 0, max: 3, step: 0.1, unit: "em" },
   { id: "size", label: "Size of clauses", prop: "--wb-size", min: 0.8, max: 1.15, step: 0.01, unit: "rem", initial: 0.95 },
   { group: "Parentheses" },
@@ -32,7 +33,7 @@ const knobs = [
 // Presets: what each changes from dterm.css.
 const presets = {
   dterm: { name: "dterm (as published)", values: {} },
-  v2: { name: "v2, before this", values: { layout: "flex", long: "0", brackets: "box" } },
+  v2: { name: "v2, before this", values: { layout: "flex", planner: "off", long: "0", brackets: "box" } },
   quiet: { name: "quieter", values: { "paren-ink": 22, "paren-stroke": 0.055, "sep-ink": 38, "bracket-ink": 45 } },
   firm: { name: "firmer", values: { "paren-ink": 52, "paren-stroke": 0.085, "sep-ink": 72, "sep-weight": 500 } },
   glyph: { name: "glyph parentheses", values: { parens: "glyph", "paren-ink": 48, "paren-inside": 0.02 } },

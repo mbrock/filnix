@@ -203,6 +203,39 @@ setting and of Lisp's pretty-printers:
   under 700px). A term of atoms and variables only is filled like words,
   never broken; assembly rows never break.
 
+### Line breaks planned to fit
+
+Those breaks by length are what a page shows without JavaScript. With
+it, `dterm.js` plans each head and goal at the width it actually has,
+after [Zoot](https://github.com/mbrock/zoot) and "A Pretty Expressive
+Printer" (Porncharoenwase, Pombrio and Torlak, OOPSLA 2023): it reads
+the term's HTML as a document of groups, measures every token with
+canvas in its own font, and keeps for each piece at each column the
+Pareto frontier of where its last line ends against its cost.
+
+A first version filled lines as prose and broke wherever the width ran
+out, usually deep inside a small term (`type_class(CT,` above `K)`),
+with an indent that belonged to nothing. The planner now follows the
+pretty-printing tradition instead:
+
+- A group breaks at all of its separators or at none: a compound's or
+  list's arguments, or a chain of one operator. A term that fits on its
+  line never breaks inside.
+- Broken arguments go one step deeper than the line the term opened on;
+  arguments that are only atoms, numbers and variables fill their lines.
+- A broken conjunction ends each line with its comma and aligns each
+  goal under the first. Any other operator starts its line, so a nested
+  if-then-else reads as Prolog is usually written, the arms under the
+  condition: `(Cond` / `→ Then` / `; Else)`.
+- Overflow (squared) comes first, then breaks at 8^depth each, so the
+  outer structure breaks before anything inside it.
+
+The plan is written back as kpre (`mbrock/kpre`) encodes a paragraph: a
+chosen break is a `<br class="zbr">` and an indent, every other
+separator a no-break space, so the browser's line breaker draws exactly
+the plan. `html[data-planner=off]` restores dterm.pl's breaks; the
+workbench's *Line breaks* knob compares the two.
+
 The [workbench](https://mbrock.github.io/filnix/nanofil/workbench/)
 (`web/workbench/`) sets representative terms twice, under presets or
 any knob (paren ink, stroke, bow and spacing, bracket style, comma ink
