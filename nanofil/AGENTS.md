@@ -51,6 +51,9 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   only, and don't spend time on Trealla failures or memory. The Nix
   check runs Trealla only with `withTrealla = true` (nix/check.nix). The
   dialect rules below still hold, so the way back stays cheap.
+- Scryer was tried in October 2026 and is not worth supporting yet
+  ([docs/hosts.md](docs/hosts.md)). Write strict ISO syntax anyway: bracket
+  an operator atom used as an operand, `Op == (=)`, not `Op == '='`.
 - Code is written to run on both hosts. Write Trealla's dialect (double_quotes
   chars, `library(dcgs)`, `format_//2`, character-list `phrase_from_file`);
   `src/swi/` maps it onto SWI. Avoid `char_type/2` (the hosts' classes

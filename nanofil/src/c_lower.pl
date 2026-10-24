@@ -1339,7 +1339,7 @@ lower(val(T, gcond(XC, XB)), Ctx, R) --> !,                % GNU c ?: b
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
 lower(val(_, assign(Op, X, XB)), Ctx, R) --> !,            % 6.5.16
     place(X, Ctx, P),
-    (   { Op == '=' } -> lower(XB, Ctx, Value0)
+    (   { Op == (=) } -> lower(XB, Ctx, Value0)
     ;   { compound_assignment(Op, BinOp) },
         place_read(P, Ctx, Cur),
         lower(XB, Ctx, VB),
