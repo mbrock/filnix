@@ -206,12 +206,15 @@ details.clause.data > .goals { margin-left: 1.2em; }
 .more { color: var(--muted); font-size: 0.85em; }
 .clause.item { margin: 0.4rem 0 0.9rem; }
 
-/* The item the cursor is in, and what the editor shows over a name. */
+/* The item the cursor is in, and what the editor shows over a name. The
+   tint reaches left by a shadow, not by margin and padding, since a head
+   is a hanging indent (dterm.css) and changing its padding moves its
+   first line. */
 details.clause.here > summary, .clause.item.here {
-  margin-left: -0.3em;
-  padding-left: 0.3em;
+  --here: color-mix(in srgb, var(--atom) 9%, transparent);
   border-radius: 3px;
-  background: color-mix(in srgb, var(--atom) 9%, transparent);
+  background: var(--here);
+  box-shadow: -0.3em 0 0 var(--here);
 }
 .clause.item[data-line] { cursor: pointer; }
 /* IR rows from the cursor's line, and each run's line beside it. */
