@@ -999,426 +999,6 @@ constant_unary(T, Op, A, V) :-
     ; unary_arith(Op, A, R), convert_int(R, T, V)
     ).
 
-/* The typed tree. elaborate(+E, +Env, -X): X is the C expression E as
-   C11 6.5 reads it, every node carrying its (reflected, qualified) type,
-   its category the node's principal functor:
-
-     X ::= obj(T, F)    an lvalue designating an object of type T
-         | fun(T, F)    a function designator of function type T
-         | val(T, F)    a value of type T, not an lvalue
-
-   The conversions C applies implicitly are nodes of their own: where an
-   operand is used for its value (6.3.2.1p2-4), value/2 wraps it in
-   load(X) (lvalue conversion) or decay(X) (an array or function to a
-   pointer). _Generic is resolved here: its tree is the selected
-   association's. A child that is not elaborated yet is src(E), the
-   source expression itself. Fails when E cannot be typed. */
-elaborate(E, Env, X) :- elab(E, Env, X0), !, X = X0.
-
-elab(id(Name), Env, X) :-
-    (   lookup_ordinary(Env, Name, Binding)
-    ->  binding_type(Binding, T0),
-        (   Binding \= enumconst(_, _), lookup_ordinary(Env, qtype(Name), RT)
-        ->  reflected_shape(RT, T0, T)
-        ;   T = T0
-        ),
-        binding_node(Binding, T, Name, X)
-    ;   memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']),
-        X = obj(array(char, none), predefined(Name))      % 6.4.2.2
-    ).
-elab(num(V0, S), _, val(T, int(V))) :- num_type(V0, S, T), convert_int(V0, T, V).
-elab(chr(V), _, val(int, int(V))).
-elab(float(Cs), _, val(T, float(Cs))) :-
-    last(Cs, Suffix),
-    ( memberchk(Suffix, [f, 'F']) -> T = float
-    ; memberchk(Suffix, [l, 'L']) -> T = ldouble
-    ; T = double
-    ).
-elab(str(Bytes), _, obj(array(char, N), str(Bytes))) :-
-    length(Bytes, M), N is M + 1.
-elab(wstr(T, Values), _, obj(array(T, N), wstr(T, Values))) :-
-    length(Values, M), N is M + 1.
-elab(cast(TN, E), Env, val(T, cast(XV))) :-
-    type_name_type(TN, T0, Env, _),
-    operand(E, Env, XV, F0), unqualified(F0, F),
-    castable(F, T0),
-    reflect_type(TN, T0, Env, T).
-elab(complit(TN, Init), Env, obj(T, complit(Init))) :-
-    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
-elab(un(addr, E), Env, val(ptr(T), addr(X))) :-
-    elaborate(E, Env, X), tree_type(X, T).
-elab(un(deref, E), Env, X) :-
-    elaborate(E, Env, XP), value(XP, XV), tree_type(XV, ptr(T)),
-    ( T = func(_, _, _) -> X = fun(T, deref(XV)) ; X = obj(T, deref(XV)) ).
-elab(un(Op, E), Env, val(T, incdec(Op, X))) :-
-    memberchk(Op, [preinc, predec, postinc, postdec]),
-    elaborate(E, Env, X), tree_type(X, T0), value_type(T0, T).
-elab(un(Op, E), Env, val(T, un(Op, XV))) :-
-    memberchk(Op, [plus, neg, bnot, not]),
-    elaborate(E, Env, X), value(X, XV), tree_type(XV, T1),
-    unary_operand(Op, T1, T).
-elab(index(A, I), Env, X) :-                                % 6.5.2.1p2
-    elab(un(deref, bin(add, A, I)), Env, X).
-elab(member(E, F), Env, X) :-
-    elaborate(E, Env, XS), tree_type(XS, SU), member_type(SU, F, Env, T),
-    ( XS = obj(_, _) -> X = obj(T, member(XS, F)) ; X = val(T, member(XS, F)) ).
-elab(arrow(E, F), Env, obj(T, member(obj(SU, deref(XV)), F))) :-
-    elaborate(E, Env, XP), value(XP, XV), tree_type(XV, ptr(SU)),
-    member_type(SU, F, Env, T).
-elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
-    \+ lookup_ordinary(Env, Name, _),
-    (   Args == [], float_builtin(Name, T, _) -> true
-    ;   builtin_type(Name, T)
-    ).
-elab(call(E, Args), Env, val(T, call(XV, src(Args)))) :-
-    elaborate(E, Env, XF), value(XF, XV), tree_type(XV, ptr(func(T, _, _))).
-elab(assign(Op, A, B), Env, val(T, assign(Op, X, src(B)))) :-
-    elaborate(A, Env, X), tree_type(X, T).
-elab(comma(A, B), Env, val(T, comma(src(A), XV))) :-
-    elaborate(B, Env, X), value(X, XV), tree_type(XV, T).
-elab(sizeof_expr(E), _, val(ulong, sizeof(src(E)))).
-elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
-elab(alignof(TN), _, val(ulong, alignof(TN))).
-elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
-elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
-    operand(A, Env, XA, TA), operand(B, Env, XB, TB),
-    expression_binary_type(Op, TA, TB, T).
-elab(cond(C, A, B), Env, val(T, cond(src(C), XA, XB))) :-
-    arms(A, B, Env, XA, XB, T).
-elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
-    arms(C, B, Env, XC, XB, T).
-elab(va_arg(A, TN), Env, val(T, va_arg(src(A)))) :-
-    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
-elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
-    block_value_type(Items, Env, T).
-elab(generic(C, As), Env, X) :-                             % 6.5.1.1
-    elaborate(C, Env, XC), value(XC, XV), tree_type(XV, CT),
-    generic_selection(CT, As, Env, constant, E),
-    elaborate(E, Env, X).
-
-% binding_node(+Binding, +T, +Name, -X): X is the identifier Name, bound
-% to Binding, of type T.
-binding_node(var(_, _), T, Name, obj(T, id(Name))).
-binding_node(gvar(_, _, _, _), T, Name, obj(T, id(Name))).
-binding_node(fn(_, _, _), T, Name, fun(T, id(Name))).
-binding_node(enumconst(V, _), T, _, val(T, int(V))).
-
-% tree_type(+X, -T), tree_category(+X, -Cat): the type and category of
-% typed tree X.
-tree_type(X, T) :- arg(1, X, T).
-tree_category(obj(_, _), lvalue).
-tree_category(fun(_, _), function).
-tree_category(val(_, _), value).
-
-% value(+X, -V): V is typed tree X used for its value (6.3.2.1p2-4): an
-% array or function decays to a pointer, another lvalue is loaded, and
-% qualifiers of the result are dropped.
-value(obj(T, F), val(V, C)) :-
-    value_type(T, V),
-    ( array_type(T) -> C = decay(obj(T, F)) ; C = load(obj(T, F)) ).
-value(fun(T, F), val(ptr(T), decay(fun(T, F)))).
-value(val(T, F), val(V, F)) :- value_type(T, V).
-
-array_type(qualified(_, T)) :- array_type(T).
-array_type(array(_, _)).
-
-% operand(+E, +Env, -XV, -T): XV is E elaborated and used for its value,
-% of type T.
-operand(E, Env, XV, T) :- elaborate(E, Env, X), value(X, XV), tree_type(XV, T).
-
-%! expression_type(+E, +Env, -T) is semidet.
-%
-%  T is the (reflected) type of expression E, unevaluated: arrays and
-%  functions keep their types until a caller asks for value conversion.
-expression_type(E, Env, T) :- elaborate(E, Env, X), tree_type(X, T).
-
-% builtin_type(?Name, ?Type): a call of builtin Name, when Name is not
-% declared, has Type.
-builtin_type('__builtin_va_start', void).
-builtin_type('__builtin_va_copy', void).
-builtin_type('__builtin_va_end', void).
-builtin_type('__builtin_unreachable', void).
-builtin_type('__builtin_alloca', ptr(void)).
-builtin_type('__builtin_expect', long).
-builtin_type('__builtin_constant_p', int).
-builtin_type(Name, bool) :- overflow_builtin(Name, _, _).
-
-% overflow_builtin(?Name, ?Op, ?Fixed): builtin Name checks arithmetic Op
-% on operands of type Fixed, or of any integer types (generic).
-overflow_builtin(Name, Op, Fixed) :-
-    member(Op, [add, sub, mul]),
-    (   atomic_list_concat(['__builtin_', Op, '_overflow'], Name),
-        Fixed = generic
-    ;   member(Prefix-Suffix-Fixed,
-               [s-''-int, u-''-uint, s-l-long, u-l-ulong,
-                s-ll-llong, u-ll-ullong]),
-        atomic_list_concat(['__builtin_', Prefix, Op, Suffix, '_overflow'], Name)
-    ).
-
-/* conditional_type(+A-B, +Env, -T): T is the type of c ? A : B (C11
-   6.5.15), from the arms' value types. Fails if the arms are
-   incompatible or cannot be typed. */
-conditional_type(A-B, Env, T) :- arms(A, B, Env, _, _, T).
-
-% arms(+A, +B, +Env, -XA, -XB, -T): A and B, elaborated as XA and XB,
-% used for their values, are ?: arms giving the result type T.
-arms(A, B, Env, XA, XB, T) :-
-    arm(A, Env, XA, TA, NA), arm(B, Env, XB, TB, NB),
-    arms_type(TA, NA, TB, NB, T).
-
-arm(E, Env, XV, T, N) :-
-    elaborate(E, Env, X), value(X, XV), tree_type(XV, T),
-    ( null_pointer_constant(E, Env, T) -> N = null ; N = value ).
-
-% null_pointer_constant(+E, +Env, +T): E, of value type T, is a null
-% pointer constant (C11 6.3.2.3p3): an integer constant expression of
-% value 0, or one cast to void * (unqualified void).
-null_pointer_constant(E, Env, T) :-
-    int_type(T), catch(const_value(E, Env, 0, _), not_constant, fail).
-null_pointer_constant(cast(_, X), Env, ptr(void)) :-
-    expression_type(X, Env, TX0), value_type(TX0, TX),
-    null_pointer_constant(X, Env, TX).
-
-/* castable(+From, +To): a value of type From may be cast to type To
-   (C11 6.5.4p2-4): anything to void, and a scalar to a scalar, but a
-   floating value not to or from a pointer. As in clang and GCC, a
-   struct or union may also be cast to its own type. */
-castable(_, void) :- !.
-castable(A, B) :- arithmetic_type(A), arithmetic_type(B), !.
-castable(ptr(_), B) :- ( B = ptr(_) ; int_type(B) ), !.
-castable(A, ptr(_)) :- int_type(A), !.
-castable(T, U) :- T == U, ( T = struct(_) ; T = union(_) ).
-
-/* assignable(+From, +Null, +To): a value of type From may be assigned
-   to an object of type To (C11 6.5.16.1p1), and so passed for a
-   parameter of type To, returned from a function returning To, or
-   initialize a To; Null is null if the value is a null pointer
-   constant, else value. Integers and pointers do not mix, but for a
-   null pointer constant or a pointer tested as a bool, and function
-   pointers must be compatible. Clang only warns about the other
-   pointer pairs (incompatible object types, lost qualifiers, object
-   and function pointers), and they are accepted. */
-assignable(From, _, To) :- arithmetic_type(From), arithmetic_type(To), !.
-assignable(T, _, U) :- T == U, !.
-assignable(ptr(_), _, bool) :- !.
-assignable(_, null, ptr(_)) :- !.
-assignable(ptr(A), _, ptr(B)) :-
-    ( A = func(_, _, _), B = func(_, _, _) -> compatible_type(A, B) ; true ).
-
-/* arms_type(+TA, +NA, +TB, +NB, -T): arms of value types TA and TB,
-   null or value as each is a null pointer constant or not, give ?: the
-   type T (6.5.15p5-6). As in clang and GCC, a void arm makes the result
-   void whatever the other arm, and incompatible pointer arms give
-   void *; a pointer and a nonnull integer are rejected. */
-arms_type(TA, _, TB, _, T) :-
-    arithmetic_type(TA), arithmetic_type(TB), !,
-    usual_arith_conversion(TA, TB, T).
-arms_type(void, _, _, _, void) :- !.
-arms_type(_, _, void, _, void) :- !.
-arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
-arms_type(ptr(P), _, _, null, ptr(P)) :- !.
-arms_type(_, null, ptr(P), _, ptr(P)) :- !.
-arms_type(ptr(A), _, ptr(B), _, ptr(T)) :-
-    target(A, QA, A1), target(B, QB, B1), append(QA, QB, Qs),
-    (   ( A1 == void ; B1 == void ) -> qualify(Qs, void, T)
-    ;   composite_type(A1, B1, C) -> qualify(Qs, C, T)
-    ;   T = void
-    ).
-
-% target(+T, -Qs, -U): pointer target T is U qualified with Qs.
-target(qualified(Qs, U), Qs, U) :- !.
-target(U, [], U).
-
-/* composite_type(+T, +U, -C): T and U are compatible (6.2.7), and C is
-   their composite type: an array's known size, a function's prototype. */
-composite_type(T, U, T) :- T == U, !.
-composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C)) :-
-    composite_type(T, U, C).
-composite_type(ptr(T), ptr(U), ptr(C)) :- composite_type(T, U, C).
-composite_type(array(T, N), array(U, M), array(C, K)) :-
-    ( N == none -> K = M ; M == none -> K = N ; N == M, K = N ),
-    composite_type(T, U, C).
-composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V)) :-
-    composite_type(R, S, C),
-    (   Ps == unspecified -> Cs = Qs
-    ;   Qs == unspecified -> Cs = Ps
-    ;   maplist(composite_type, Ps, Qs, Cs)
-    ).
-
-% block_value_type(+Items, +Env, -T): T is the value type of a GNU
-% statement expression with block Items: its last item's, once the
-% items before it have declared their names.
-block_value_type([], _, void).
-block_value_type([Item], Env, T) :- !, last_item_type(Item, Env, T).
-block_value_type([decl(_, Specs, Inits)|Items], Env0, T) :- !,
-    decl_types(Specs, Inits, Decls, Env0, Env1),
-    foldl(bind_decl, Decls, Env1, Env),
-    block_value_type(Items, Env, T).
-block_value_type([_|Items], Env, T) :- block_value_type(Items, Env, T).
-
-bind_decl(d(Name, Type, _, _, _), Env0, Env) :-
-    bind_ordinary(Name, var(none, Type), Env0, Env).
-
-last_item_type(at(_, expr(E)), Env, T) :- !,
-    expression_type(E, Env, T0), value_type(T0, T).
-last_item_type(at(_, label(_, Body)), Env, T) :- !, last_item_type(Body, Env, T).
-last_item_type(_, _, void).
-
-% unqualified(+T0, -T): T is T0 without qualifiers, at any depth: the
-% type code generation uses for a reflected type T0.
-unqualified(T, T) :- var(T), !.
-unqualified(qualified(_, T0), T) :- !, unqualified(T0, T).
-unqualified(ptr(T0), ptr(T)) :- !, unqualified(T0, T).
-unqualified(array(T0, N), array(T, N)) :- !, unqualified(T0, T).
-unqualified(func(R0, Ps0, V), func(R, Ps, V)) :- !,
-    unqualified(R0, R),
-    ( Ps0 == unspecified -> Ps = Ps0 ; maplist(unqualified, Ps0, Ps) ).
-unqualified(T, T).
-
-% member_type(+SU, +F, +Env, -T): T is the (reflected) type of member
-% F of struct or union type SU, looking into anonymous members; a
-% qualified SU qualifies the member too.
-member_type(qualified(Qs, SU), F, Env, T) :- !,
-    member_type(SU, F, Env, T0), qualify(Qs, T0, T).
-member_type(SU, F, Env, T) :-
-    SU =.. [_, Id], Env = e(_, _, Defs, _),
-    (   get_assoc(qmembers(Id), Defs, Members)
-    ->  (   memberchk(q(some(F), T), Members) -> true
-        ;   member(q(none, Anon), Members), member_type(Anon, F, Env, T)
-        ->  true
-        )
-    ;   member_type_offset(SU, F, Env, T, _)   % built-in va_list
-    ).
-
-% expression_category(+E, +Env, -Cat): E is an lvalue, a function
-% designator (function) or neither (value) (C11 6.3.2.1p1, 6.5.1-3), as
-% the principal functor of its typed tree says.
-expression_category(E, Env, Cat) :-
-    elaborate(E, Env, X), tree_category(X, Cat0), Cat = Cat0.
-
-/* modifiable_lvalue(+E, +Env): E is a modifiable lvalue (6.3.2.1p1):
-   an lvalue whose type is not const, an array or incomplete, nor a
-   struct or union with a const member, however deeply contained. */
-modifiable_lvalue(E, Env) :-
-    expression_category(E, Env, Cat), Cat == lvalue,
-    expression_type(E, Env, T),
-    modifiable_type(T, Env).
-
-modifiable_type(qualified(Qs, T), Env) :- !,
-    \+ memberchk(const, Qs), modifiable_type(T, Env).
-modifiable_type(array(_, _), _) :- !, fail.
-modifiable_type(void, _) :- !, fail.
-modifiable_type(T, Env) :- \+ const_within(T, Env).
-
-% const_within(+T, +Env): T is const, or an aggregate or union with a
-% const member or element, at any depth.
-const_within(qualified(Qs, T), Env) :- ( memberchk(const, Qs) -> true ; const_within(T, Env) ).
-const_within(array(T, _), Env) :- const_within(T, Env).
-const_within(SU, Env) :-
-    ( SU = struct(Id) ; SU = union(Id) ), Env = e(_, _, Defs, _),
-    get_assoc(qmembers(Id), Defs, Members),
-    member(q(_, T), Members), const_within(T, Env), !.
-
-binding_type(var(_, T), T).
-binding_type(gvar(T, _, _, _), T).
-binding_type(fn(T, _, _), T).
-binding_type(enumconst(_, T), T).
-
-% Initializers may have completed an array since its declaration's
-% reflected type was recorded. Keep the completed dimensions.
-reflected_shape(qualified(Qs, R), T, qualified(Qs, S)) :- !,
-    reflected_shape(R, T, S).
-reflected_shape(array(R, _), array(T, N), array(S, N)) :- !,
-    reflected_shape(R, T, S).
-reflected_shape(R, _, R).
-
-value_type(qualified(_, T), R) :- !, value_type(T, R).
-value_type(array(T, _), ptr(T)) :- !.
-value_type(func(R, P, V), ptr(func(R, P, V))) :- !.
-value_type(T, T).
-
-/* unary_operand(+Op, +T0, -T): unary +, -, ~ or ! (C11 6.5.3.3) on an
-   operand of value type T0 has type T. + and - need an arithmetic
-   operand and ~ an integer, which they promote; ! needs a scalar and
-   gives an int. */
-unary_operand(Op, T0, T) :-
-    memberchk(Op, [plus, neg]), arithmetic_type(T0), integer_promotion(T0, T).
-unary_operand(bnot, T0, T) :- int_type(T0), integer_promotion(T0, T).
-unary_operand(not, T0, int) :- scalar_type(T0).
-
-expression_binary_type(Op, _, _, int) :- memberchk(Op, [land, lor]), !.
-expression_binary_type(Op, A, B, T) :- binary_operands(Op, A, B, _, _, T).
-
-/* binary_operands(+Op, +TA, +TB, -CA, -CB, -T): binary operator Op
-   (C11 6.5.5-6.5.9, 6.5.10-6.5.12; not && or ||) applied to operands
-   of value types TA and TB converts them to CA and CB, and has type T.
-   Fails if Op does not apply to such operands.
-   - A shift promotes each operand on its own and has the left one's
-     type.
-   - Other arithmetic operands take their usual arithmetic type, the
-     result's type unless Op compares; %, &, ^ and | need integers.
-   - A pointer and an integer add (or the pointer subtracts the
-     integer) as the pointer and a long count of elements; two
-     pointers subtract to a long count.
-   - A comparison with a pointer compares both operands as addresses,
-     ulong. */
-binary_operands(Op, TA, TB, CA, CB, CA) :- memberchk(Op, [shl, shr]), !,
-    int_type(TA), int_type(TB),
-    integer_promotion(TA, CA), integer_promotion(TB, CB).
-binary_operands(Op, TA, TB, C, C, T) :-
-    arithmetic_operator(Op, Domain),
-    call(Domain, TA), call(Domain, TB), !,
-    usual_arith_conversion(TA, TB, C),
-    ( comparison(Op) -> T = int ; T = C ).
-binary_operands(Op, ptr(P), TB, ptr(P), long, ptr(P)) :-
-    memberchk(Op, [add, sub]), int_type(TB), !.
-binary_operands(add, TA, ptr(P), long, ptr(P), ptr(P)) :- int_type(TA), !.
-binary_operands(sub, ptr(P), ptr(_), ptr(P), ptr(P), long) :- !.
-binary_operands(Op, TA, TB, ulong, ulong, int) :-
-    comparison(Op), ( TA = ptr(_) ; TB = ptr(_) ), !.
-
-% arithmetic_operator(?Op, ?Domain): binary Op applies to two operands
-% of Domain types, arithmetic or integer.
-arithmetic_operator(Op, Domain) :-
-    c_operator(_, _, Op, Kind),
-    (   Kind = arith(integer) -> Domain = int_type
-    ;   ( Kind = arith(arithmetic) ; Kind == compare ) -> Domain = arithmetic_type
-    ).
-
-comparison(Op) :- c_operator(_, _, Op, compare).
-
-% The controlling expression undergoes lvalue/array/function conversion,
-% not integer promotion. Only the selected expression is evaluated, and
-% its value category is retained. Association types must be unique even
-% when they do not match the controlling type.
-generic_selection(ControlType, Associations, Env, Loc, Selected) :-
-    maplist(generic_association(Env, Loc), Associations, Typed),
-    generic_unique(Typed, Loc),
-    ( member(assoc(T, E), Typed), T \== default, compatible_type(ControlType, T)
-    -> Selected = E
-    ; memberchk(assoc(default, E), Typed) -> Selected = E
-    ; sema_error(Loc, '_Generic has no matching association', [])
-    ).
-
-generic_association(_, _, assoc(default, E), assoc(default, E)) :- !.
-generic_association(Env, Loc, assoc(TN, E), assoc(T, E)) :-
-    type_name_type(TN, T0, Env, _),
-    ( complete_type(T0, Env), T0 \= func(_, _, _)
-    -> true
-    ; sema_error(Loc, '_Generic association requires a complete object type', [])
-    ),
-    reflect_type(TN, T0, Env, T).
-
-generic_unique([], _).
-generic_unique([assoc(T, _)|Rest], Loc) :-
-    ( member(assoc(U, _), Rest), compatible_type(T, U)
-    -> sema_error(Loc, '_Generic has duplicate compatible associations', [])
-    ; generic_unique(Rest, Loc)
-    ).
-
-% compatible_type(+T, +U): T and U are compatible types (C11 6.2.7).
-compatible_type(T, U) :- composite_type(T, U, _).
-
 % offset_path(+Path, +Type, +Env, +Off0, -Off): offsetof's member path.
 offset_path([], _, _, Off, Off).
 offset_path([field(F)|Path], T, Env, Off0, Off) :-
@@ -1566,3 +1146,710 @@ fits(V, Type) :-
 % integer with Signedness.
 below_max(signed, V, Bits) :- V < 1 << (Bits - 1).
 below_max(unsigned, V, Bits) :- V < 1 << Bits.
+
+%% Compatible and composite types
+
+doc(compatible_type(+T, +U), semidet, [
+    T: "a type",
+    U: "another type",
+    "T and U are compatible: the same type, or alike in their parts where",
+    "one leaves a part open, an array's size or a function's parameters.",
+    "Integer types of the same width are still distinct, and a qualified",
+    "type is compatible only with the same qualified type.",
+    cites('C11 6.2.7p1'),
+    cites('C11 6.7.3p10'),
+    example(compatible_type(array(int, none), array(int, 3))),
+    fails(compatible_type(long, llong)),
+    fails(compatible_type(ptr(int), ptr(qualified([const], int))))
+]).
+compatible_type(T, U) :- composite_type(T, U, _).
+
+doc(composite_type(+T, +U, -C), semidet, [
+    T: "a type",
+    U: "a type compatible with T",
+    C: "their composite type",
+    "The type that says what both say: an array's size where either knows",
+    "it, a function's parameters where either has a prototype. Fails when",
+    "T and U are not compatible.",
+    cites('C11 6.2.7p3'),
+    example(composite_type(ptr(array(int, none)), ptr(array(int, 3)), C),
+            C = ptr(array(int, 3))),
+    example(composite_type(func(int, unspecified, fixed),
+                           func(int, [ptr(char)], fixed), C),
+            C = func(int, [ptr(char)], fixed)),
+    fails(composite_type(array(int, 2), array(int, 3), _)),
+    fails(composite_type(func(int, [], fixed), func(int, [], variadic), _))
+]).
+composite_type(T, U, T) :- T == U, !.
+composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C)) :-
+    composite_type(T, U, C).
+composite_type(ptr(T), ptr(U), ptr(C)) :- composite_type(T, U, C).
+composite_type(array(T, N), array(U, M), array(C, K)) :-
+    composite_size(N, M, K),
+    composite_type(T, U, C).
+composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V)) :-
+    composite_type(R, S, C),
+    composite_params(Ps, Qs, Cs).
+
+% composite_size(+N, +M, -K): array sizes N and M, each none if unknown,
+% agree on K.
+composite_size(none, M, M) :- !.
+composite_size(N, none, N) :- !.
+composite_size(N, N, N).
+
+% composite_params(+Ps, +Qs, -Cs): parameter lists Ps and Qs, each
+% unspecified without a prototype, agree on Cs.
+composite_params(unspecified, Qs, Qs) :- !.
+composite_params(Ps, unspecified, Ps) :- !.
+composite_params(Ps, Qs, Cs) :- maplist(composite_type, Ps, Qs, Cs).
+
+doc(unqualified(+T0, -T), det, [
+    T0: "a reflected type",
+    T: "T0 without qualifiers, at any depth",
+    "The type code generation uses: qualifiers say what a program may do",
+    "with an object, not how it is stored.",
+    example(unqualified(ptr(qualified([const], char)), T), T = ptr(char)),
+    example(unqualified(func(qualified([volatile], int), unspecified, fixed), T),
+            T = func(int, unspecified, fixed))
+]).
+unqualified(T, T) :- var(T), !.
+unqualified(qualified(_, T0), T) :- !, unqualified(T0, T).
+unqualified(ptr(T0), ptr(T)) :- !, unqualified(T0, T).
+unqualified(array(T0, N), array(T, N)) :- !, unqualified(T0, T).
+unqualified(func(R0, Ps0, V), func(R, Ps, V)) :- !,
+    unqualified(R0, R),
+    ( Ps0 == unspecified -> Ps = Ps0 ; maplist(unqualified, Ps0, Ps) ).
+unqualified(T, T).
+
+%% The typed tree
+
+/*  An expression elaborated is a tree whose every node carries its
+    (reflected, qualified) type, with its category the node's principal
+    functor:
+
+      X ::= obj(T, F)    an lvalue designating an object of type T
+          | fun(T, F)    a function designator of function type T
+          | val(T, F)    a value of type T, not an lvalue
+
+    The conversions C applies implicitly are nodes of their own: where an
+    operand is used for its value, value/2 wraps it in load(X) or
+    decay(X). _Generic is resolved here: its tree is the selected
+    association's. A child that is not elaborated yet is src(E), the
+    source expression itself. */
+
+doc(elaborate(+E, +Env, -X), semidet, [
+    E: "a C expression, as c_parse reads it",
+    Env: "the scope it is read in",
+    X: "its typed tree",
+    "X is E as C reads it: each node typed, and lvalues, function",
+    "designators and values told apart. Fails when E cannot be typed.",
+    cites('C11 6.5p1'),
+    example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
+              elaborate(un(addr, id(x)), E, X) ),
+            X = val(ptr(int), addr(obj(int, id(x))))),
+    example(( empty_env(E), elaborate(num(3000000000, none-dec), E, X) ),
+            X = val(long, int(3000000000))),
+    example(( empty_env(E), elaborate(num(3000000000, none-other), E, X) ),
+            X = val(uint, int(3000000000))),
+    example(( empty_env(E0), bind_ordinary(a, var(none, array(int, 4)), E0, E),
+              elaborate(index(id(a), chr(1)), E, X) ),
+            X = obj(int, deref(val(ptr(int),
+                    bin(add, val(ptr(int), decay(obj(array(int, 4), id(a)))),
+                             val(int, int(1))))))),
+    example(( empty_env(E), elaborate(str([104, 105]), E, X) ),
+            X = obj(array(char, 3), str([104, 105]))),
+    fails(( empty_env(E), elaborate(un(deref, chr(1)), E, _) ))
+]).
+elaborate(E, Env, X) :- elab(E, Env, X0), !, X = X0.
+
+elab(id(Name), Env, X) :-
+    lookup_ordinary(Env, Name, Binding), !,
+    identifier_type(Binding, Name, Env, T),
+    binding_node(Binding, T, Name, X).
+elab(id(Name), _, obj(array(char, none), predefined(Name))) :-   % 6.4.2.2
+    memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']).
+elab(num(V0, S), _, val(T, int(V))) :- num_type(V0, S, T), convert_int(V0, T, V).
+elab(chr(V), _, val(int, int(V))).
+elab(float(Cs), _, val(T, float(Cs))) :-
+    last(Cs, Suffix),
+    ( memberchk(Suffix, [f, 'F']) -> T = float
+    ; memberchk(Suffix, [l, 'L']) -> T = ldouble
+    ; T = double
+    ).
+elab(str(Bytes), _, obj(array(char, N), str(Bytes))) :-
+    length(Bytes, M), N is M + 1.
+elab(wstr(T, Values), _, obj(array(T, N), wstr(T, Values))) :-
+    length(Values, M), N is M + 1.
+elab(cast(TN, E), Env, val(T, cast(XV))) :-
+    type_name_type(TN, T0, Env, _),
+    operand(E, Env, XV, F0), unqualified(F0, F),
+    castable(F, T0),
+    reflect_type(TN, T0, Env, T).
+elab(complit(TN, Init), Env, obj(T, complit(Init))) :-
+    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+elab(un(addr, E), Env, val(ptr(T), addr(X))) :-
+    elaborate(E, Env, X), tree_type(X, T).
+elab(un(deref, E), Env, X) :-
+    operand(E, Env, XV, ptr(T)),
+    designator(T, deref(XV), X).
+elab(un(Op, E), Env, val(T, incdec(Op, X))) :-
+    memberchk(Op, [preinc, predec, postinc, postdec]),
+    elaborate(E, Env, X), tree_type(X, T0), value_type(T0, T).
+elab(un(Op, E), Env, val(T, un(Op, XV))) :-
+    memberchk(Op, [plus, neg, bnot, not]),
+    operand(E, Env, XV, T1),
+    unary_operand(Op, T1, T).
+elab(index(A, I), Env, X) :-                                % 6.5.2.1p2
+    elab(un(deref, bin(add, A, I)), Env, X).
+elab(member(E, F), Env, X) :-
+    elaborate(E, Env, XS), tree_type(XS, SU), member_type(SU, F, Env, T),
+    member_node(XS, F, T, X).
+elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
+    elab(member(un(deref, E), F), Env, X).
+elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
+    \+ lookup_ordinary(Env, Name, _),
+    (   Args == [], float_builtin(Name, T, _) -> true
+    ;   builtin_type(Name, T)
+    ).
+elab(call(E, Args), Env, val(T, call(XV, src(Args)))) :-
+    operand(E, Env, XV, ptr(func(T, _, _))).
+elab(assign(Op, A, B), Env, val(T, assign(Op, X, src(B)))) :-
+    elaborate(A, Env, X), tree_type(X, T).
+elab(comma(A, B), Env, val(T, comma(src(A), XV))) :-
+    operand(B, Env, XV, T).
+elab(sizeof_expr(E), _, val(ulong, sizeof(src(E)))).
+elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
+elab(alignof(TN), _, val(ulong, alignof(TN))).
+elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
+elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
+    operand(A, Env, XA, TA), operand(B, Env, XB, TB),
+    expression_binary_type(Op, TA, TB, T).
+elab(cond(C, A, B), Env, val(T, cond(src(C), XA, XB))) :-
+    arms(A, B, Env, XA, XB, T).
+elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
+    arms(C, B, Env, XC, XB, T).
+elab(va_arg(A, TN), Env, val(T, va_arg(src(A)))) :-
+    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
+    block_value_type(Items, Env, T).
+elab(generic(C, As), Env, X) :-                             % 6.5.1.1
+    operand(C, Env, _, CT),
+    generic_selection(CT, As, Env, constant, E),
+    elaborate(E, Env, X).
+
+doc(identifier_type(+Binding, +Name, +Env, -T), det, [
+    Binding: "what the identifier Name stands for in Env",
+    Name: "an ordinary identifier",
+    Env: "the scope, which records Name's reflected type",
+    T: "the type it has as an expression",
+    "An enumeration constant has its enumeration's type. An object or",
+    "function has the type its declaration reflects, qualifiers",
+    "included, with array sizes that initializers have since completed.",
+    cites('C11 6.5.1p2'),
+    example(( empty_env(E0), bind_ordinary(qtype(c), qualified([const], int), E0, E),
+              identifier_type(var(none, int), c, E, T) ),
+            T = qualified([const], int)),
+    example(( empty_env(E0), bind_ordinary(qtype(s), array(char, none), E0, E),
+              identifier_type(gvar(array(char, 6), s, static, none), s, E, T) ),
+            T = array(char, 6))
+]).
+identifier_type(enumconst(_, T0), _, _, T) :- !, T = T0.
+identifier_type(Binding, Name, Env, T) :-
+    binding_type(Binding, T0),
+    (   lookup_ordinary(Env, qtype(Name), RT) -> reflected_shape(RT, T0, T)
+    ;   T = T0
+    ).
+
+binding_type(var(_, T), T).
+binding_type(gvar(T, _, _, _), T).
+binding_type(fn(T, _, _), T).
+binding_type(enumconst(_, T), T).
+
+% reflected_shape(+RT, +T, -S): S is reflected type RT with the array
+% dimensions of declared type T, which an initializer may have completed
+% since RT was recorded.
+reflected_shape(qualified(Qs, R), T, qualified(Qs, S)) :- !,
+    reflected_shape(R, T, S).
+reflected_shape(array(R, _), array(T, N), array(S, N)) :- !,
+    reflected_shape(R, T, S).
+reflected_shape(R, _, R).
+
+% binding_node(+Binding, +T, +Name, -X): X is the identifier Name, bound
+% to Binding, of type T.
+binding_node(var(_, _), T, Name, obj(T, id(Name))).
+binding_node(gvar(_, _, _, _), T, Name, obj(T, id(Name))).
+binding_node(fn(_, _, _), T, Name, fun(T, id(Name))).
+binding_node(enumconst(V, _), T, _, val(T, int(V))).
+
+% designator(+T, +F, -X): F, designating something of type T, is a
+% function designator or an lvalue (6.5.3.2p4).
+designator(T, F, X) :- T = func(_, _, _), !, X = fun(T, F).
+designator(T, F, obj(T, F)).
+
+% member_node(+XS, +F, +T, -X): member F, of type T, of struct or union
+% XS is an lvalue if XS is (6.5.2.3p3).
+member_node(obj(TS, FS), F, T, obj(T, member(obj(TS, FS), F))).
+member_node(val(TS, FS), F, T, val(T, member(val(TS, FS), F))).
+
+doc(member_type(+SU, +F, +Env, -T), semidet, [
+    SU: "a struct or union type, perhaps qualified",
+    F: "a member name",
+    Env: "the scope that defines SU",
+    T: "the member's reflected type",
+    "Looks into anonymous members. A qualified SU qualifies the member.",
+    cites('C11 6.5.2.3p3'),
+    cites('C11 6.7.2.1p13'),
+    example(( empty_env(E), member_type(struct('builtin.va_list'), fp_offset, E, T) ),
+            T = uint),
+    example(( empty_env(E),
+              member_type(qualified([const], struct('builtin.va_list')),
+                          reg_save_area, E, T) ),
+            T = qualified([const], ptr(void))),
+    fails(( empty_env(E), member_type(struct('builtin.va_list'), gp, E, _) ))
+]).
+member_type(qualified(Qs, SU), F, Env, T) :- !,
+    member_type(SU, F, Env, T0), qualify(Qs, T0, T).
+member_type(SU, F, Env, T) :-
+    SU =.. [_, Id], Env = e(_, _, Defs, _),
+    get_assoc(qmembers(Id), Defs, Members), !,
+    members_type(Members, F, Env, T).
+member_type(SU, F, Env, T) :-                               % built-in va_list
+    member_type_offset(SU, F, Env, T, _).
+
+% members_type(+Members, +F, +Env, -T): one of Members, or a member of
+% an anonymous one, is F of type T.
+members_type(Members, F, _, T) :-
+    memberchk(q(some(F), T0), Members), !, T = T0.
+members_type(Members, F, Env, T) :-
+    member(q(none, Anon), Members), member_type(Anon, F, Env, T), !.
+
+% builtin_type(?Name, ?Type): a call of builtin Name, when Name is not
+% declared, has Type.
+builtin_type('__builtin_va_start', void).
+builtin_type('__builtin_va_copy', void).
+builtin_type('__builtin_va_end', void).
+builtin_type('__builtin_unreachable', void).
+builtin_type('__builtin_alloca', ptr(void)).
+builtin_type('__builtin_expect', long).
+builtin_type('__builtin_constant_p', int).
+builtin_type(Name, bool) :- overflow_builtin(Name, _, _).
+
+% overflow_builtin(?Name, ?Op, ?Fixed): builtin Name checks arithmetic Op
+% on operands of type Fixed, or of any integer types (generic).
+overflow_builtin(Name, Op, Fixed) :-
+    member(Op, [add, sub, mul]),
+    (   atomic_list_concat(['__builtin_', Op, '_overflow'], Name),
+        Fixed = generic
+    ;   member(Prefix-Suffix-Fixed,
+               [s-''-int, u-''-uint, s-l-long, u-l-ulong,
+                s-ll-llong, u-ll-ullong]),
+        atomic_list_concat(['__builtin_', Prefix, Op, Suffix, '_overflow'], Name)
+    ).
+
+% block_value_type(+Items, +Env, -T): T is the value type of a GNU
+% statement expression with block Items: its last item's, once the
+% items before it have declared their names.
+block_value_type([], _, void).
+block_value_type([Item], Env, T) :- !, last_item_type(Item, Env, T).
+block_value_type([decl(_, Specs, Inits)|Items], Env0, T) :- !,
+    decl_types(Specs, Inits, Decls, Env0, Env1),
+    foldl(bind_decl, Decls, Env1, Env),
+    block_value_type(Items, Env, T).
+block_value_type([_|Items], Env, T) :- block_value_type(Items, Env, T).
+
+bind_decl(d(Name, Type, _, _, _), Env0, Env) :-
+    bind_ordinary(Name, var(none, Type), Env0, Env).
+
+last_item_type(at(_, expr(E)), Env, T) :- !, operand(E, Env, _, T).
+last_item_type(at(_, label(_, Body)), Env, T) :- !, last_item_type(Body, Env, T).
+last_item_type(_, _, void).
+
+%% Lvalues, values and designators
+
+doc(tree_type(+X, -T), det, [
+    X: "a typed tree",
+    T: "its type",
+    example(tree_type(fun(func(int, [], fixed), id(f)), T), T = func(int, [], fixed))
+]).
+tree_type(X, T) :- arg(1, X, T).
+
+doc(tree_category(+X, -Cat), det, [
+    X: "a typed tree",
+    Cat: "lvalue, function or value, as its principal functor says",
+    cites('C11 6.3.2.1p1'),
+    example(tree_category(obj(int, id(x)), C), C = lvalue),
+    example(tree_category(val(int, int(1)), C), C = value)
+]).
+tree_category(obj(_, _), lvalue).
+tree_category(fun(_, _), function).
+tree_category(val(_, _), value).
+
+doc(value(+X, -V), det, [
+    X: "a typed tree",
+    V: "X used for its value",
+    "An array becomes a pointer to its first element, a function a",
+    "pointer to it, and another lvalue the value it holds, unqualified.",
+    cites('C11 6.3.2.1p2'),
+    cites('C11 6.3.2.1p3'),
+    cites('C11 6.3.2.1p4'),
+    example(value(obj(qualified([const], int), id(c)), V),
+            V = val(int, load(obj(qualified([const], int), id(c))))),
+    example(value(obj(array(int, 4), id(a)), V),
+            V = val(ptr(int), decay(obj(array(int, 4), id(a))))),
+    example(value(fun(func(int, [], fixed), id(f)), V),
+            V = val(ptr(func(int, [], fixed)), decay(fun(func(int, [], fixed), id(f))))),
+    example(value(val(int, int(7)), V), V = val(int, int(7)))
+]).
+value(obj(T, F), val(V, decay(obj(T, F)))) :- array_type(T), !, value_type(T, V).
+value(obj(T, F), val(V, load(obj(T, F)))) :- value_type(T, V).
+value(fun(T, F), val(ptr(T), decay(fun(T, F)))).
+value(val(T, F), val(V, F)) :- value_type(T, V).
+
+array_type(qualified(_, T)) :- array_type(T).
+array_type(array(_, _)).
+
+doc(value_type(+T, -V), det, [
+    T: "the type of an expression",
+    V: "the type of its value",
+    "value/2 on types alone.",
+    example(value_type(qualified([volatile], long), V), V = long),
+    example(value_type(array(char, 3), V), V = ptr(char)),
+    example(value_type(func(void, unspecified, fixed), V),
+            V = ptr(func(void, unspecified, fixed)))
+]).
+value_type(qualified(_, T), R) :- !, value_type(T, R).
+value_type(array(T, _), ptr(T)) :- !.
+value_type(func(R, P, V), ptr(func(R, P, V))) :- !.
+value_type(T, T).
+
+% operand(+E, +Env, -XV, -T): XV is E elaborated and used for its value,
+% of type T.
+operand(E, Env, XV, T) :- elaborate(E, Env, X), value(X, XV), tree_type(XV, T).
+
+doc(expression_type(+E, +Env, -T), semidet, [
+    E: "a C expression",
+    Env: "the scope it is read in",
+    T: "its reflected type, unevaluated",
+    "Arrays and functions keep their types until a caller asks for value",
+    "conversion.",
+    example(( empty_env(E0), bind_ordinary(a, var(none, array(int, 4)), E0, E),
+              expression_type(id(a), E, T) ),
+            T = array(int, 4))
+]).
+expression_type(E, Env, T) :- elaborate(E, Env, X), tree_type(X, T).
+
+doc(expression_category(+E, +Env, -Cat), semidet, [
+    E: "a C expression",
+    Env: "the scope it is read in",
+    Cat: "lvalue, function or value",
+    cites('C11 6.3.2.1p1'),
+    example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
+              expression_category(id(x), E, C) ),
+            C = lvalue),
+    example(( empty_env(E0), bind_ordinary(f, fn(func(int, [], fixed), f, extern), E0, E),
+              expression_category(id(f), E, C) ),
+            C = function),
+    example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
+              expression_category(bin(add, id(x), chr(0)), E, C) ),
+            C = value)
+]).
+expression_category(E, Env, Cat) :-
+    elaborate(E, Env, X), tree_category(X, Cat0), Cat = Cat0.
+
+doc(modifiable_lvalue(+E, +Env), semidet, [
+    E: "a C expression",
+    Env: "the scope it is read in",
+    "E is an lvalue whose type is not const, an array or incomplete, nor",
+    "a struct or union with a const member, however deeply contained.",
+    cites('C11 6.3.2.1p1'),
+    example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
+              modifiable_lvalue(id(x), E) )),
+    fails(( empty_env(E0), bind_ordinary(c, var(none, int), E0, E1),
+            bind_ordinary(qtype(c), qualified([const], int), E1, E),
+            modifiable_lvalue(id(c), E) )),
+    fails(( empty_env(E0), bind_ordinary(a, var(none, array(int, 4)), E0, E),
+            modifiable_lvalue(id(a), E) )),
+    fails(( empty_env(E), modifiable_lvalue(chr(0), E) ))
+]).
+modifiable_lvalue(E, Env) :-
+    elaborate(E, Env, obj(T, _)),
+    modifiable_type(T, Env).
+
+modifiable_type(qualified(Qs, T), Env) :- !,
+    \+ memberchk(const, Qs), modifiable_type(T, Env).
+modifiable_type(array(_, _), _) :- !, fail.
+modifiable_type(void, _) :- !, fail.
+modifiable_type(T, Env) :- \+ const_within(T, Env).
+
+% const_within(+T, +Env): T is const, or an aggregate or union with a
+% const member or element, at any depth.
+const_within(qualified(Qs, _), _) :- memberchk(const, Qs), !.
+const_within(qualified(_, T), Env) :- const_within(T, Env).
+const_within(array(T, _), Env) :- const_within(T, Env).
+const_within(SU, Env) :-
+    ( SU = struct(Id) ; SU = union(Id) ), Env = e(_, _, Defs, _),
+    get_assoc(qmembers(Id), Defs, Members),
+    member(q(_, T), Members), const_within(T, Env), !.
+
+%% Operators
+
+doc(unary_operand(+Op, +T0, -T), semidet, [
+    Op: "plus, neg, bnot or not",
+    T0: "the value type of the operand",
+    T: "the type of the result",
+    "+ and - need an arithmetic operand and ~ an integer, which they",
+    "promote; ! needs a scalar and gives an int.",
+    cites('C11 6.5.3.3p1'),
+    cites('C11 6.5.3.3p5'),
+    example(unary_operand(neg, char, T), T = int),
+    example(unary_operand(plus, ullong, T), T = ullong),
+    example(unary_operand(not, ptr(int), T), T = int),
+    fails(unary_operand(bnot, double, _)),
+    fails(unary_operand(neg, ptr(int), _))
+]).
+unary_operand(Op, T0, T) :-
+    memberchk(Op, [plus, neg]), arithmetic_type(T0), integer_promotion(T0, T).
+unary_operand(bnot, T0, T) :- int_type(T0), integer_promotion(T0, T).
+unary_operand(not, T0, int) :- scalar_type(T0).
+
+% expression_binary_type(+Op, +TA, +TB, -T): binary Op on operands of
+% value types TA and TB has type T; && and || give an int (6.5.13-14).
+expression_binary_type(Op, _, _, int) :- memberchk(Op, [land, lor]), !.
+expression_binary_type(Op, A, B, T) :- binary_operands(Op, A, B, _, _, T).
+
+doc(binary_operands(+Op, +TA, +TB, -CA, -CB, -T), semidet, [
+    Op: "a binary operator, not && or ||",
+    TA: "the value type of the left operand",
+    TB: "the value type of the right operand",
+    CA: "the type the left operand converts to",
+    CB: "the type the right operand converts to",
+    T: "the type of the result",
+    "A shift promotes each operand on its own and has the left one's",
+    "type. Other arithmetic operands take their usual arithmetic type,",
+    "the result's type unless Op compares; %, &, ^ and | need integers.",
+    "A pointer and an integer add, or the pointer subtracts the integer,",
+    "as the pointer and a long count of elements; two pointers subtract",
+    "to a long count. A comparison with a pointer compares both operands",
+    "as addresses, ulong. Fails if Op does not apply.",
+    cites('C11 6.5.5p2'),
+    cites('C11 6.5.6p2'),
+    cites('C11 6.5.6p9'),
+    cites('C11 6.5.7p3'),
+    cites('C11 6.5.8p6'),
+    example(binary_operands(shl, char, ullong, CA, CB, T),
+            (CA = int, CB = ullong, T = int)),
+    example(binary_operands(add, int, uint, CA, CB, T),
+            (CA = uint, CB = uint, T = uint)),
+    example(binary_operands(lt, int, double, CA, CB, T),
+            (CA = double, CB = double, T = int)),
+    example(binary_operands(add, char, ptr(int), CA, CB, T),
+            (CA = long, CB = ptr(int), T = ptr(int))),
+    example(binary_operands(sub, ptr(int), ptr(int), _, _, T), T = long),
+    example(binary_operands(eq, ptr(int), int, CA, CB, T),
+            (CA = ulong, CB = ulong, T = int)),
+    fails(binary_operands(mod, double, int, _, _, _)),
+    fails(binary_operands(sub, int, ptr(int), _, _, _))
+]).
+binary_operands(Op, TA, TB, CA, CB, CA) :- memberchk(Op, [shl, shr]), !,
+    int_type(TA), int_type(TB),
+    integer_promotion(TA, CA), integer_promotion(TB, CB).
+binary_operands(Op, TA, TB, C, C, T) :-
+    arithmetic_operator(Op, Domain),
+    call(Domain, TA), call(Domain, TB), !,
+    usual_arith_conversion(TA, TB, C),
+    ( comparison(Op) -> T = int ; T = C ).
+binary_operands(Op, ptr(P), TB, ptr(P), long, ptr(P)) :-
+    memberchk(Op, [add, sub]), int_type(TB), !.
+binary_operands(add, TA, ptr(P), long, ptr(P), ptr(P)) :- int_type(TA), !.
+binary_operands(sub, ptr(P), ptr(_), ptr(P), ptr(P), long) :- !.
+binary_operands(Op, TA, TB, ulong, ulong, int) :-
+    comparison(Op), ( TA = ptr(_) ; TB = ptr(_) ), !.
+
+% arithmetic_operator(?Op, ?Domain): binary Op applies to two operands
+% of Domain types, arithmetic or integer.
+arithmetic_operator(Op, Domain) :-
+    c_operator(_, _, Op, Kind),
+    operand_domain(Kind, Domain).
+
+operand_domain(arith(integer), int_type).
+operand_domain(arith(arithmetic), arithmetic_type).
+operand_domain(compare, arithmetic_type).
+
+comparison(Op) :- c_operator(_, _, Op, compare).
+
+doc(castable(+From, +To), semidet, [
+    From: "the unqualified value type of the operand",
+    To: "the type named in the cast",
+    "Anything casts to void, and a scalar to a scalar, but a floating",
+    "value not to or from a pointer. As in clang and GCC, a struct or",
+    "union may also be cast to its own type.",
+    cites('C11 6.5.4p2'),
+    cites('C11 6.5.4p4'),
+    example(castable(struct(1), void)),
+    example(castable(ptr(char), long)),
+    example(castable(struct(1), struct(1))),
+    fails(castable(double, ptr(int))),
+    fails(castable(ptr(int), float)),
+    fails(castable(int, struct(1)))
+]).
+castable(_, void) :- !.
+castable(A, B) :- arithmetic_type(A), arithmetic_type(B), !.
+castable(ptr(_), B) :- ( B = ptr(_) ; int_type(B) ), !.
+castable(A, ptr(_)) :- int_type(A), !.
+castable(T, U) :- T == U, ( T = struct(_) ; T = union(_) ).
+
+doc(assignable(+From, +Null, +To), semidet, [
+    From: "the value type of the right operand",
+    Null: "null if the right operand is a null pointer constant, else value",
+    To: "the unqualified type of the object assigned",
+    "A value of type From may be assigned to an object of type To, and so",
+    "passed for a parameter of type To, returned from a function",
+    "returning To, or initialize a To. Integers and pointers do not mix,",
+    "but for a null pointer constant or a pointer tested as a bool, and",
+    "function pointers must be compatible. Clang only warns about the",
+    "other pointer pairs (incompatible object types, lost qualifiers,",
+    "object and function pointers), and they are accepted.",
+    cites('C11 6.5.16.1p1'),
+    example(assignable(double, value, char)),
+    example(assignable(ptr(int), value, bool)),
+    example(assignable(int, null, ptr(int))),
+    example(assignable(ptr(int), value, ptr(char))),
+    fails(assignable(int, value, ptr(int))),
+    fails(assignable(ptr(func(int, [], fixed)), value, ptr(func(void, [], fixed)))),
+    fails(assignable(struct(1), value, struct(2)))
+]).
+assignable(From, _, To) :- arithmetic_type(From), arithmetic_type(To), !.
+assignable(T, _, U) :- T == U, !.
+assignable(ptr(_), _, bool) :- !.
+assignable(_, null, ptr(_)) :- !.
+assignable(ptr(A), _, ptr(B)) :-
+    ( A = func(_, _, _), B = func(_, _, _) -> compatible_type(A, B) ; true ).
+
+doc(conditional_type(+Arms, +Env, -T), semidet, [
+    Arms: "A-B, the second and third operands of ?:",
+    Env: "the scope they are read in",
+    T: "the type of the result",
+    "From the arms' value types; fails if the arms are incompatible or",
+    "cannot be typed.",
+    cites('C11 6.5.15p5'),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(char)), E0, E),
+              conditional_type(chr(0)-id(p), E, T) ),
+            T = ptr(char)),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(char)), E0, E),
+            conditional_type(chr(1)-id(p), E, _) ))
+]).
+conditional_type(A-B, Env, T) :- arms(A, B, Env, _, _, T).
+
+% arms(+A, +B, +Env, -XA, -XB, -T): A and B, elaborated as XA and XB,
+% used for their values, are ?: arms giving the result type T.
+arms(A, B, Env, XA, XB, T) :-
+    arm(A, Env, XA, TA, NA), arm(B, Env, XB, TB, NB),
+    arms_type(TA, NA, TB, NB, T).
+
+arm(E, Env, XV, T, N) :-
+    operand(E, Env, XV, T),
+    nullness(E, Env, T, N).
+
+% nullness(+E, +Env, +T, -N): E, of value type T, is a null pointer
+% constant (null) or not (value).
+nullness(E, Env, T, N) :- null_pointer_constant(E, Env, T), !, N = null.
+nullness(_, _, _, value).
+
+doc(null_pointer_constant(+E, +Env, +T), semidet, [
+    E: "a C expression",
+    Env: "the scope it is read in",
+    T: "its value type",
+    "E is an integer constant expression of value 0, or one cast to",
+    "void * (unqualified void).",
+    cites('C11 6.3.2.3p3'),
+    example(( empty_env(E), null_pointer_constant(bin(sub, chr(7), chr(7)), E, int) )),
+    fails(( empty_env(E), null_pointer_constant(chr(1), E, int) )),
+    fails(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
+            null_pointer_constant(bin(mul, id(x), chr(0)), E, int) ))
+]).
+null_pointer_constant(E, Env, T) :-
+    int_type(T), catch(const_value(E, Env, 0, _), not_constant, fail).
+null_pointer_constant(cast(_, X), Env, ptr(void)) :-
+    operand(X, Env, _, TX),
+    null_pointer_constant(X, Env, TX).
+
+doc(arms_type(+TA, +NA, +TB, +NB, -T), semidet, [
+    TA: "the value type of the second operand of ?:",
+    NA: "null if it is a null pointer constant, else value",
+    TB: "the value type of the third operand",
+    NB: "null if it is a null pointer constant, else value",
+    T: "the type of the result",
+    "Arithmetic arms take their usual arithmetic type, like structs or",
+    "unions their own. A null pointer constant takes the other arm's",
+    "pointer type. Pointer arms point to the composite of their targets,",
+    "qualified with both arms' qualifiers, or to void if either does. As",
+    "in clang and GCC, a void arm makes the result void whatever the",
+    "other arm, and incompatible pointer arms give void *; a pointer and",
+    "a nonnull integer are rejected.",
+    cites('C11 6.5.15p3'),
+    cites('C11 6.5.15p5'),
+    cites('C11 6.5.15p6'),
+    example(arms_type(char, value, short, value, T), T = int),
+    example(arms_type(void, value, int, value, T), T = void),
+    example(arms_type(ptr(int), value, int, null, T), T = ptr(int)),
+    example(arms_type(int, null, ptr(char), value, T), T = ptr(char)),
+    example(arms_type(ptr(qualified([const], int)), value, ptr(void), value, T),
+            T = ptr(qualified([const], void))),
+    example(arms_type(ptr(array(int, none)), value, ptr(array(int, 3)), value, T),
+            T = ptr(array(int, 3))),
+    example(arms_type(ptr(int), value, ptr(long), value, T), T = ptr(void)),
+    fails(arms_type(ptr(int), value, int, value, _)),
+    fails(arms_type(struct(1), value, struct(2), value, _))
+]).
+arms_type(TA, _, TB, _, T) :-
+    arithmetic_type(TA), arithmetic_type(TB), !,
+    usual_arith_conversion(TA, TB, T).
+arms_type(void, _, _, _, void) :- !.
+arms_type(_, _, void, _, void) :- !.
+arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
+arms_type(ptr(P), _, _, null, ptr(P)) :- !.
+arms_type(_, null, ptr(P), _, ptr(P)) :- !.
+arms_type(ptr(A), _, ptr(B), _, ptr(T)) :-
+    target(A, QA, A1), target(B, QB, B1), append(QA, QB, Qs),
+    pointed_type(A1, B1, Qs, T).
+
+% target(+T, -Qs, -U): pointer target T is U qualified with Qs.
+target(qualified(Qs, U), Qs, U) :- !.
+target(U, [], U).
+
+% pointed_type(+A, +B, +Qs, -T): pointer arms to unqualified A and B
+% point to T, qualified with Qs (6.5.15p6).
+pointed_type(A, B, Qs, T) :- ( A == void ; B == void ), !, qualify(Qs, void, T).
+pointed_type(A, B, Qs, T) :- composite_type(A, B, C), !, qualify(Qs, C, T).
+pointed_type(_, _, _, void).
+
+%% Generic selection
+
+% The controlling expression undergoes lvalue/array/function conversion,
+% not integer promotion. Only the selected expression is evaluated, and
+% its value category is retained. Association types must be unique even
+% when they do not match the controlling type.
+generic_selection(ControlType, Associations, Env, Loc, Selected) :-
+    maplist(generic_association(Env, Loc), Associations, Typed),
+    generic_unique(Typed, Loc),
+    ( member(assoc(T, E), Typed), T \== default, compatible_type(ControlType, T)
+    -> Selected = E
+    ; memberchk(assoc(default, E), Typed) -> Selected = E
+    ; sema_error(Loc, '_Generic has no matching association', [])
+    ).
+
+generic_association(_, _, assoc(default, E), assoc(default, E)) :- !.
+generic_association(Env, Loc, assoc(TN, E), assoc(T, E)) :-
+    type_name_type(TN, T0, Env, _),
+    ( complete_type(T0, Env), T0 \= func(_, _, _)
+    -> true
+    ; sema_error(Loc, '_Generic association requires a complete object type', [])
+    ),
+    reflect_type(TN, T0, Env, T).
+
+generic_unique([], _).
+generic_unique([assoc(T, _)|Rest], Loc) :-
+    ( member(assoc(U, _), Rest), compatible_type(T, U)
+    -> sema_error(Loc, '_Generic has duplicate compatible associations', [])
+    ; generic_unique(Rest, Loc)
+    ).

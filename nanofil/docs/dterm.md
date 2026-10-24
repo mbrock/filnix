@@ -175,10 +175,14 @@ nanofil's AGENTS.md now asks, for modules listed in
   is not said twice.
 - `cites/1` names the paragraph a rule implements, where there is one.
 
-`c_types.pl`'s Integers section is the first converted, 14 predicates
-with 43 examples (C11 6.2.5, 6.3.1.1 to 6.3.1.8, 6.5.2.2p6). Converting
-the rest of `c_types.pl` belongs with the campaign's `elaborate/4` step,
-whose relations are the ones most worth documenting and testing this way.
+`c_types.pl`'s Integers section was the first converted. Its typing
+rules followed: compatible and composite types (6.2.7), the typed tree
+(`elaborate/3`), lvalues and value conversion (6.3.2.1), and the
+operators, casts, assignment and `?:` (6.5). Together they are 34
+predicates with 121 examples. Writing them as documents also flattened
+nested conditionals into named relations such as `composite_size/3`,
+`identifier_type/4`, `designator/3` and `pointed_type/4`, and wrote
+`->` as `elab(member(un(deref, E), F))`, as 6.5.2.3p4 defines it.
 
 ## Not yet
 
