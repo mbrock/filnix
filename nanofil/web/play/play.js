@@ -18,7 +18,7 @@ let current = null;
 
 async function open(name) {
   if (!files.has(name)) {
-    const text = await (await fetch(`examples/${name}.c`)).text();
+    const text = await (await fetch(`examples/${name}.c`, { cache: "no-cache" })).text();
     files.set(name, text);
     states.set(name, ed.state(text));
   }

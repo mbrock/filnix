@@ -76,4 +76,9 @@ pkgs.runCommand "nanofil-play"
     LANG=C.UTF-8 FILCC=${filcc}/bin/clang SWIPL=swipl \
       SWIPL_WASM=${swiplWasm}/dist/swipl nanofil/web/play/build.sh $out
     cp ${editor}/editor.js ${neon}/neon.woff2 $out/
+    # GitHub Pages sends max-age=600 with every file and cannot be told
+    # otherwise. Each file the page loads is named with a hash of its
+    # content, so a reload (which revalidates the HTML) fetches exactly
+    # the new build, and an unchanged file stays cached.
+    python3 -I ${./stamp.py} $out nanofil/web
   ''
