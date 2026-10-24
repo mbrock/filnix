@@ -29,47 +29,19 @@ main.play {
   .panes { flex: 1; }
 }
 
-/* The source, with its line numbers. */
+/* The source: a CodeMirror editor (editor/editor.js draws its inside),
+   resizable by its corner like the textarea it replaces. */
 .editor {
-  display: flex;
+  height: 16rem;
+  min-height: 8rem;
+  overflow: hidden;
+  resize: vertical;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--code-bg);
 }
 .editor:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule)); }
-.gutter, .editor textarea {
-  margin: 0;
-  padding: 0.65rem 0;
-  font: 0.8rem/1.55 var(--mono-font);
-}
-/* The numbers follow the textarea's height and scroll, never set them. */
-.gutter {
-  flex: none;
-  width: 3.4em;
-  contain: size;
-  padding-right: 0.7em;
-  padding-left: 0.5em;
-  overflow: hidden;
-  background: none;
-  color: color-mix(in srgb, var(--muted) 70%, transparent);
-  text-align: right;
-  user-select: none;
-}
-.gutter b { color: var(--accent); }
-.editor textarea {
-  flex: 1;
-  min-width: 0;
-  height: 16rem;
-  min-height: 8rem;
-  padding-right: 0.8rem;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  resize: vertical;
-  tab-size: 4;
-  white-space: pre;
-}
-.editor textarea:focus { outline: none; }
+.editor textarea { display: none; }
 
 /* Compile, -O, and a dot for how it went; the dot opens the stages. */
 .run {
@@ -227,7 +199,7 @@ table.symbols tr.import td.name { color: var(--muted); }
   }
   .doors { justify-content: flex-end; flex-wrap: nowrap; gap: 0; }
   .door { padding: 0.35rem 0.4rem; font-size: 0.82rem; }
-  .editor textarea { height: 11rem; }
+  .editor { height: 11rem; }
   .side { display: contents; }
   .editor { grid-area: editor; }
   .run { grid-area: run; }

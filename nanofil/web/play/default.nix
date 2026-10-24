@@ -13,9 +13,22 @@ let
     url = "https://registry.npmjs.org/swipl-wasm/-/swipl-wasm-8.2.5.tgz";
     sha256 = "15vgsrg3dmzvbc9a720qdgy3wc3yss7g1dxylfcjwk9fy40iwl0q";
   };
+  # The source editor: editor/editor.js and the CodeMirror packages its
+  # package-lock.json pins, bundled and minified into one ES module.
+  editor = pkgs.buildNpmPackage {
+    name = "nanofil-play-editor";
+    src = ./editor;
+    npmDepsHash = "sha256-6BiFPSaA5NTanpFJbhQz4ovEjsl1NIukvzdID4kkDok=";
+    nativeBuildInputs = [ pkgs.esbuild ];
+    buildPhase = ''
+      esbuild editor.js --bundle --minify --format=esm --outfile=editor.min.js
+    '';
+    installPhase = "install -D editor.min.js $out/editor.js";
+  };
 in
 pkgs.runCommand "nanofil-play"
   {
+    passthru = { inherit editor; };
     nativeBuildInputs = [
       swipl
       pkgs.python3
@@ -37,4 +50,5 @@ pkgs.runCommand "nanofil-play"
     patchShebangs nanofil
     LANG=C.UTF-8 FILCC=${filcc}/bin/clang SWIPL=swipl \
       SWIPL_WASM=${swiplWasm}/dist/swipl nanofil/web/play/build.sh $out
+    cp ${editor}/editor.js $out/
   ''

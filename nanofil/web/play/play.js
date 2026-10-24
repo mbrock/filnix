@@ -1,21 +1,17 @@
 // The playground page: send the source to the worker and put each
 // section of the article it returns into its place (data-slot).
+import { editor, mark } from "./editor.js";
+
 const $ = (id) => document.getElementById(id);
 const worker = new Worker("worker.js");
 const fmt = (ms) => (ms < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(2)} s`);
 const state = (s) => (document.body.dataset.state = s);
 
-// Line numbers beside the source.
-const source = $("source");
-let bad = 0; // the line a failure names
-const gutter = () => {
-  const n = source.value.split("\n").length;
-  $("gutter").innerHTML = Array.from({ length: n }, (_, i) =>
-    i + 1 === bad ? `<b>${i + 1}</b>` : i + 1).join("\n");
-};
-source.addEventListener("input", gutter);
-source.addEventListener("scroll", () => ($("gutter").scrollTop = source.scrollTop));
-gutter();
+// The source, in a CodeMirror editor (editor/editor.js) that takes the
+// textarea's place and text; a failure's line is marked in it.
+const textarea = $("source");
+const source = editor(textarea.parentNode, textarea.value, () => $("run").disabled || compile());
+textarea.remove();
 
 // Tabs: the one chosen stays chosen across compiles.
 let tab = "ir";
@@ -43,7 +39,7 @@ document.addEventListener("click", (e) => {
 function compile() {
   $("run").disabled = true;
   state("busy");
-  worker.postMessage({ source: source.value, opt: $("opt").checked ? "o1" : "o0" });
+  worker.postMessage({ source: source.state.doc.toString(), opt: $("opt").checked ? "o1" : "o0" });
 }
 
 worker.onmessage = ({ data }) => {
@@ -55,7 +51,7 @@ worker.onmessage = ({ data }) => {
     const article = document.createElement("article");
     article.innerHTML = data.html.replaceAll("/work/input.c:", "line ");
     const failed = article.querySelector("#failure .name")?.textContent;
-    bad = +(article.querySelector("#failure .why")?.textContent.match(/^line (\d+)/)?.[1] ?? 0);
+    mark(source, +(article.querySelector("#failure .why")?.textContent.match(/^line (\d+)/)?.[1] ?? 0));
     for (const sec of article.querySelectorAll("section[id]")) {
       const slot = document.querySelector(`[data-slot="${sec.id}"]`);
       if (slot) slot.append(...sec.childNodes);
@@ -64,7 +60,6 @@ worker.onmessage = ({ data }) => {
     $("memory").textContent = `${fmt(data.ms)} · ${data.mb.toFixed(0)} MB`;
     for (const b of $("tabs").children)
       b.disabled = !document.querySelector(`[data-slot="${b.dataset.tab}"]`).hasChildNodes();
-    gutter();
     state(failed ? "failed" : "ok");
   } else {
     $("status").textContent = "error";
@@ -79,10 +74,4 @@ worker.onmessage = ({ data }) => {
 $("form").onsubmit = (e) => {
   e.preventDefault();
   compile();
-};
-source.onkeydown = (e) => {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    if (!$("run").disabled) compile();
-  }
 };
