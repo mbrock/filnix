@@ -274,6 +274,7 @@ rest_result(stop(Out, S), _, _, stop(Out, S)).
 
 % inst_result(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
 % after Inst, or stop(Outcome, S) when it ends the run.
+inst_result(loc(_, _), _, Env, S, cont(Env, S)) :- !.
 inst_result(ins(t(D), p, va_args, [c(Off)]), _, Env0, S, Result) :- !,
     get_assoc(hidden(va_snapshot), Env0, ptr(A, Cap)),
     B is (A + Off) mod 18446744073709551616,

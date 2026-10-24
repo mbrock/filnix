@@ -19,6 +19,9 @@
       call(Res, Callee, [arg(K, Value)])  Res = to(t(D), K) | void
                                           | tuple([to(t(D1), K1), to(t(D2), K2)]);
                                           Callee glo(F), or (filc) a p temp
+      loc(File, Line)                     the instructions after it, up to
+                                          the next loc, come from line Line
+                                          of File; it does nothing
     Jump: jmp(L) | jnz(V, L1, L2) | ret(V) | rets([V1, V2]) | ret | hlt
           rets returns a tuple
 
@@ -77,7 +80,7 @@
                op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1,
-               narrow_type/3]).
+               narrow_type/3, without_locs/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -483,6 +486,10 @@ split_pairs([K-V|Ps], [K|Ks], [V|Vs]) :- split_pairs(Ps, Ks, Vs).
 % a class its definition allows. In filc mode a symbol is an operand only
 % of copy, which yields its pointer; the cut commits to that case before
 % the general clause for ins/4.
+valid_inst(ctx(_, Fn, _, _, _, _, _), loc(File, Line)) :- !,
+    (   atom(File), integer(Line) -> true
+    ;   fn_error(Fn, 'bad source location loc(~q, ~q)', [File, Line])
+    ).
 valid_inst(ctx(_, _, _, _, _, _, filc), ins(_, p, copy, [glo(_)])) :- !.
 valid_inst(Ctx, ins(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
@@ -783,3 +790,19 @@ fn_error(Fn, Fmt, Args) :-
     format(atom(Msg), Fmt, Args),
     format(atom(Full), 'in ~w: ~w', [Fn, Msg]),
     throw(nanofil_error(Full)).
+
+%! without_locs(+Module0, -Module) is det.
+%
+%  Module is Module0 without its loc/2 source locations, which the
+%  middle end and the backends do not read yet.
+without_locs(module(Items0), module(Items)) :-
+    maplist(item_without_locs, Items0, Items).
+
+item_without_locs(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+    maplist(block_without_locs, Bs0, Bs).
+item_without_locs(Item, Item).
+
+block_without_locs(blk(L, Phis, Insts0, J), blk(L, Phis, Insts, J)) :-
+    exclude(is_loc, Insts0, Insts).
+
+is_loc(loc(_, _)).

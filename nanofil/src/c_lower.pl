@@ -343,7 +343,23 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     reverse(RevBlocks, [blk(start, [], Insts0, Jump)|Rest]),
     reverse(RevAllocs, Allocs),
     append(Allocs, Insts0, Insts),
-    Blocks = [blk(start, [], Insts, Jump)|Rest].
+    foldl(block_located, [blk(start, [], Insts, Jump)|Rest], Blocks,
+          Loc, _).
+
+% block_located(+Block0, -Block, +Loc0, -Loc): Block is Block0 starting
+% with its source location: a block that does not begin with a loc/2
+% began within the statement in effect, Loc0 (File:Line), when lowering
+% opened it, which is the last one the blocks before it record. Loc is
+% the location in effect after Block.
+block_located(blk(L, Phis, Insts0, J), blk(L, Phis, Insts, J), Loc0, Loc) :-
+    (   Insts0 = [loc(_, _)|_] -> Insts = Insts0
+    ;   Loc0 = File:Line -> Insts = [loc(File, Line)|Insts0]
+    ;   Insts = Insts0
+    ),
+    foldl(last_loc, Insts, Loc0, Loc).
+
+last_loc(loc(File, Line), _, File:Line) :- !.
+last_loc(_, Loc, Loc).
 
 variadic_entry(fixed, _, _) --> [].
 variadic_entry(variadic, Sret, Params) -->
@@ -662,7 +678,29 @@ check_case_region(Regions, Switch, Loc) :-
 % lowers S itself.
 stmt(at(Loc, Stmt), Ctx0) -->
     { ctx_at(Ctx0, Loc, Ctx) },
+    located(Stmt, Loc),
     stmt_(Stmt, Ctx).
+
+% located(+Stmt, +Loc)//: a statement that makes code of its own records
+% where it is, loc(File, Line). A loc with no code after it yet (the
+% statement before made none) gives way to the new one. A block, an
+% empty statement or code after a jump records nothing.
+located(block(_), _) --> !.
+located(null, _) --> !.
+located(_, File:Line) -->
+    cur(Cur),
+    (   { Cur = cur(_, _) }
+    ->  state(st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
+              st(Env, Cur, Insts1, Blocks, N, Labels, Cases, Allocs)),
+        { Insts = [loc(_, _)|Insts0] -> true ; Insts0 = Insts },
+        { Insts1 = [loc(File, Line)|Insts0] }
+    ;   []
+    ).
+located(_, _) --> [].
+
+% loop_located(+Ctx)//: a loop's condition or step, in a block of its
+% own after the body, is at the loop statement's location.
+loop_located(Ctx) --> { ctx_loc(Ctx, Loc) }, located(loop, Loc).
 
 stmt_(block(Items), Ctx) -->
     save_scope(Scope),
@@ -679,7 +717,8 @@ stmt_(if(Cond, Then, Else), Ctx) -->
     start(LJoin).
 stmt_(while(Cond, Body), Ctx) -->
     label(LCond), label(LBody), label(LEnd),
-    start(LCond), judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd),
+    start(LCond), loop_located(Ctx), judged(Cond, Ctx),
+    cond_jump(Cond, Ctx, LBody, LEnd),
     start(LBody),
     { loop_ctx(Ctx, LEnd, LCond, BodyCtx) },
     stmt(Body, BodyCtx),
@@ -690,7 +729,8 @@ stmt_(do(Body, Cond), Ctx) -->
     start(LBody),
     { loop_ctx(Ctx, LEnd, LCond, BodyCtx) },
     stmt(Body, BodyCtx),
-    start(LCond), judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd),
+    start(LCond), loop_located(Ctx), judged(Cond, Ctx),
+    cond_jump(Cond, Ctx, LBody, LEnd),
     start(LEnd).
 stmt_(for(Init, Cond, Step, Body), Ctx) -->
     save_scope(Scope),
@@ -699,14 +739,14 @@ stmt_(for(Init, Cond, Step, Body), Ctx) -->
     ;   item(Init, Ctx)
     ),
     label(LCond), label(LBody), label(LStep), label(LEnd),
-    start(LCond),
+    start(LCond), loop_located(Ctx),
     (   { Cond == none } -> term(jmp(LBody))
     ;   judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd)
     ),
     start(LBody),
     { loop_ctx(Ctx, LEnd, LStep, BodyCtx) },
     stmt(Body, BodyCtx),
-    start(LStep),
+    start(LStep), loop_located(Ctx),
     ( { Step == none } -> [] ; judged(Step, Ctx), rval(Step, Ctx, _) ),
     term(jmp(LCond)),
     start(LEnd),
@@ -800,6 +840,7 @@ item(decl(Loc, Specs, Inits), Ctx0) -->
             sema_error(Loc, 'array size is not a constant', [])) },
     set_env(Env),
     { ctx_at(Ctx0, Loc, Ctx) },
+    located(decl, Loc),
     local_decls(Decls, Ctx).
 
 % local_decls(+Decls, +Ctx)//, local_decl(+Decl, +Ctx)//: lower

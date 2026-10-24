@@ -493,6 +493,7 @@ inst_uses(store(_, V, A), Us) :-
 inst_uses(call(_, F, Args), Us) :-
     findall(V, member(arg(_, V), Args), Vs),
     temps([F|Vs], Us).
+inst_uses(loc(_, _), []).
 
 %! inst_def(+Inst, -Temp) is nondet.
 %

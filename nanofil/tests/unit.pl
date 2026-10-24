@@ -1126,6 +1126,26 @@ test(setjmp_contract) :-
         ])
     ], "class p").
 
+% Lowered C says where its code comes from: every block of tests/c/
+% locations.c begins with a loc/2, each statement's code follows its own
+% line, and a loop's condition and step are at the loop's line. By hand:
+% fib's entry is line 2 then the return, line 3, whose ?: arms and join
+% are line 3 too; sum's entry is line 6, its declaration 7 and the for
+% 8; the condition is 8, the body 9, the step 8 and the return 10. The
+% middle end and the backends do not see them.
+test(source_locations) :-
+    c_file_module('../tests/c/locations.c', M),
+    M = module(Items),
+    findall(Fn-Lines,
+            ( member(func(Fn, _, _, _, Bs), Items),
+              findall(Ls, ( member(blk(_, _, Is, _), Bs),
+                            findall(L, member(loc(_, L), Is), Ls) ),
+                      Lines) ),
+            FnLines),
+    FnLines == [fib-[[2, 3], [3], [3], [3]],
+                sum-[[6, 7, 8], [8], [9], [8], [10]]],
+    optimize(o1, M, O), without_locs(O, O1), O1 == O.
+
 % A host atom built at run time is an atom of arity 0 only. Unpatched
 % Trealla unified it with any same-name compound, so a field named label
 % entered a label/2 clause (patches/trealla-runtime-atom-arity-unify.patch).

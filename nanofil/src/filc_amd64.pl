@@ -43,7 +43,8 @@
 %  each item's code and data, a weak thunk for each function the module
 %  calls but does not define, and the GNU-stack note. Throws
 %  nanofil_error(Msg) if an item cannot be lowered.
-filc_module_asm(Module, Lines) :-
+filc_module_asm(Module0, Lines) :-
+    without_locs(Module0, Module),
     Module = module(Items),
     maplist(item_lines(Module), Items, LinesPerItem),
     append(LinesPerItem, ItemLines),

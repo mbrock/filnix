@@ -50,6 +50,10 @@ func(sum, export, w, [par(p, t(v0)), par(w, t(v2))], [
 ]).
 ```
 
+Without `-O` the IR also says where its code comes from: each block
+begins with `loc(File, Line)`, and each statement's code follows the
+`loc` of its line. The middle end and the backends drop them for now.
+
 `nanofil -O cc sum.c` turns that into assembly that checks the load
 against `a`'s capability and polls for the collector on the back edge.
 

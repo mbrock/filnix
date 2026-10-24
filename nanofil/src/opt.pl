@@ -9,6 +9,7 @@
 
 :- use_module(promote).
 :- use_module(copy).
+:- use_module(ir, [without_locs/2]).
 
 %! optimize(+Level, +M0, -M) is det.
 %
@@ -17,7 +18,8 @@
 
 optimize(o0, M, M).
 optimize(o1, M0, M) :-
-    promote_module(M0, Promoted),
+    without_locs(M0, M1),
+    promote_module(M1, Promoted),
     copy_module(Promoted, M).
 
 %! refines(+Before, +After) is semidet.

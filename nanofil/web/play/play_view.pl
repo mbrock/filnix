@@ -97,7 +97,7 @@ symbol(Name, IR, _{kind:function, sig:Sig, linkage:Ls, blocks:NB, insts:NI, html
     maplist([par(K, _), K]>>true, Params, Ks), sig(Ret, Ks, Sig0), string_codes(Sig, Sig0),
     linkage(Linkage, Ls),
     length(Blocks, NB),
-    foldl([blk(_, Ps, Is, _), A0, A]>>(length(Ps, P), length(Is, I), A is A0 + P + I + 1), Blocks, 0, NI),
+    foldl([blk(_, Ps, Is, _), A0, A]>>(length(Ps, P), exclude([loc(_, _)]>>true, Is, Is1), length(Is1, I), A is A0 + P + I + 1), Blocks, 0, NI),
     html(dterm:compound_(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), _, ctx(play, head)), H).
 symbol(Name, IR, _{kind:object, size:Size, linkage:Ls, html:H}) :-
     member(data(Name, Linkage, Align, Items), IR), !,
