@@ -47,7 +47,11 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
 - Run Prolog with stdin closed (`</dev/null`).
 - Show that a new test can fail: plant the bug it targets, watch it fail,
   restore. Say so in the commit or report.
-- Code must run on both hosts. Write Trealla's dialect (double_quotes
+- Trealla is paused (October 2026): develop, test and measure on SWI
+  only, and don't spend time on Trealla failures or memory. The Nix
+  check runs Trealla only with `withTrealla = true` (nix/check.nix). The
+  dialect rules below still hold, so the way back stays cheap.
+- Code is written to run on both hosts. Write Trealla's dialect (double_quotes
   chars, `library(dcgs)`, `format_//2`, character-list `phrase_from_file`);
   `src/swi/` maps it onto SWI. Avoid `char_type/2` (the hosts' classes
   differ) and `phrase/2,3` over non-list state (SWI requires a list).
