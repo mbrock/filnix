@@ -44,7 +44,7 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
-                    unary_operand/3, assignable/3, null_pointer_constant/3,
+                    unary_operand/3, assigned/4,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2]).
 
@@ -1834,6 +1834,26 @@ arms(A, B, Env, XA, XB, T) :-
 arm(E, Env, XV, T, N) :-
     operand(E, Env, XV, T),
     nullness(E, Env, T, N).
+
+doc(assigned(+E, +Env, +To, +Loc), det, [
+    E: "an expression that can be typed",
+    Env: "the scope it is read in",
+    To: "the type of the object its value initializes",
+    Loc: "where E is, for the diagnostic",
+    "E's value may be assigned to a To, as a return value or an",
+    "initializer is; else the error names the two types. Arguments and",
+    "assignment sources are checked where their calls and assignments",
+    "elaborate.",
+    cites('C11 6.5.16.1p1, 6.8.6.4p3, 6.7.9p11'),
+    example(( empty_env(E), assigned(chr(0), E, ptr(int), none) )),
+    example(( empty_env(E), assigned(chr(1), E, double, none) ))
+]).
+assigned(E, Env, To, Loc) :-
+    elaborate(E, Env, X), value(X, XV), lowered(XV, T),
+    nullness(E, Env, T, N),
+    (   assignable(T, N, To) -> true
+    ;   sema_error(Loc, 'cannot assign ~w to ~w', [T, To])
+    ).
 
 % nullness(+E, +Env, +T, -N): E, of value type T, is a null pointer
 % constant (null) or not (value).

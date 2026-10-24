@@ -1391,6 +1391,11 @@ lower(val(_, incdec(Op, X)), un(Op, E), Ctx, R) --> !,       % 6.5.2.4, 6.5.3.1
     convert(Value0, U, v(New, _)),
     store_typed(U, New, P),
     { memberchk(Op, [preinc, predec]) -> R = v(New, U) ; R = v(Cur, U) }.
+lower(val(_, call(XF, XArgs)), call(F, Args), Ctx, R) --> !,  % 6.5.2.2
+    callee(XF, F, Ctx, Callee, func(RetType, Ps, _)),
+    { Ps == unspecified -> ParamTypes = [] ; ParamTypes = Ps },
+    call_args(XArgs, Args, ParamTypes, Ctx, IRArgs),
+    call_result(Callee, RetType, IRArgs, Ctx, R).
 lower(val(_, cast(XV)), cast(TN, E), Ctx, R) --> !,            % 6.5.4
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc) },
@@ -1406,6 +1411,16 @@ lower(_, Expr, Ctx, R) --> obj(Expr, Ctx, R0), decay(R0, Ctx, R).
 converted(_, void, v(c(0), void)) --> !.
 converted(v(Addr, _), Type, v(Addr, Type)) --> { su(Type) }, !.
 converted(Value0, Type, R) --> convert(Value0, Type, R).
+
+% from_tree(+E, +Parts, +Ctx, -R)//: R is the value of E lowered from
+% its typed tree. When E cannot be typed, its Parts are lowered for the
+% fault lowering meets first, and E is refused.
+from_tree(E, Parts, Ctx, R) -->
+    env(Env),
+    (   { elaborate(E, Env, X) } -> { value(X, XV) }, lower(XV, E, Ctx, R)
+    ;   foldl(part_lowered(Ctx), Parts),
+        { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [E]) }
+    ).
 
 % tree_form(+E, -Parts): E is lowered only from its typed tree, and
 % Parts are what lowering meets first when E cannot be typed: a value
@@ -1528,12 +1543,7 @@ offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
 
 % rvalue(+Expr, +Ctx, -R)//: R is the value of an expression that is
 % only an rvalue.
-rvalue(E, Ctx, R) --> { tree_form(E, Parts) }, !,
-    env(Env),
-    (   { elaborate(E, Env, X) } -> { value(X, XV) }, lower(XV, E, Ctx, R)
-    ;   foldl(part_lowered(Ctx), Parts),
-        { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [E]) }
-    ).
+rvalue(E, Ctx, R) --> { tree_form(E, Parts) }, !, from_tree(E, Parts, Ctx, R).
 rvalue(num(V0, Suffix), _, v(c(V), Type)) --> !,
     { num_type(V0, Suffix, Type), convert_int(V0, Type, V) }.
 rvalue(chr(V), _, v(c(V), int)) --> !.
@@ -1639,7 +1649,9 @@ rvalue(call(id(Name), Args), Ctx, R) -->
     { \+ lookup_ordinary(Env, Name, _) },
     !,
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
-rvalue(call(Func, Args), Ctx, R) --> !, lower_call(Func, Args, Ctx, R).
+rvalue(call(F, Args), Ctx, R) --> !,  % after the builtins, which stay source
+    { findall(v(A), member(A, Args), Vs) },
+    from_tree(call(F, Args), [v(F)|Vs], Ctx, R).
 rvalue(stmtexpr(at(_, block(Items))), Ctx, R) --> !,
     save_scope(Scope),
     statement_expression_items(Items, Ctx, R),
@@ -1841,18 +1853,13 @@ representable(SizeFrom, SignFrom, SizeTo, SignTo) :-
 representable(Size, Sign, Size, Sign).
 
 % assign_convert(+Expr, +Value0, +To, +Loc, -R)//: R is Value0, the
-% value of Expr (or none, for a computed value), converted to To as by
-% assignment (also arguments, returns and initializers).
+% value of Expr, converted to To as by assignment: a return value, an
+% initializer or a builtin's argument. c_types' assigned/4 judges that
+% it may be.
 assign_convert(Expr, Value0, To, Loc, R) -->
     env(Env),
-    { Value0 = v(Addr, From),
-      (   Expr \== none, null_pointer_constant(Expr, Env, From) -> Null = null
-      ;   Null = value
-      ) },
-    (   { assignable(From, Null, To) }
-    ->  (   { su(To) } -> { R = v(Addr, To) } ; convert(Value0, To, R) )
-    ;   { sema_error(Loc, 'cannot assign ~w to ~w', [From, To]) }
-    ).
+    { assigned(Expr, Env, To, Loc) },
+    converted(Value0, To, R).
 
 %% Operators
 
@@ -1994,42 +2001,31 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
 
 %% Calls
 
-% lower_call(+Func, +Args, +Ctx, -R)//: R is the result of calling Func
-% with Args.
-lower_call(Func, Args, Ctx, R) -->
+% A call (6.5.2.2) lowers from its tree, whose callee and arguments the
+% elaborator has checked: the callee is a function, the arguments fit its
+% arity and each converts to its parameter as by assignment.
+
+% callee(+XF, +F, +Ctx, -Callee, -FuncType)//: Callee is the IR callee of
+% function pointer XF, whose source is F: the function itself when F
+% designates one, else a temp holding the pointer.
+callee(val(_, decay(X)), F, Ctx, Callee, FuncType) -->
+    { X = fun(_, _) }, !,
+    place(X, F, Ctx, fd(Callee, FuncType)).
+callee(XF, F, Ctx, Callee, FuncType) -->
+    lower(XF, F, Ctx, v(V, ptr(FuncType))),
+    callee_temp(V, Callee).
+
+% call_result(+Callee, +RetType, +IRArgs, +Ctx, -R)//: R is the result
+% of calling Callee with IRArgs; setjmp and its kin are intrinsics.
+call_result(glo(Kind), RetType, IRArgs, Ctx, R) -->
+    { op_kind(setjmp(Kind), setjmp) }, !,
+    { ( RetType == int, setjmp_args(Kind, IRArgs, Operands) -> true
+      ; ctx_loc(Ctx, Loc), sema_error(Loc, 'invalid ~w signature', [Kind]) ) },
+    ins(w, setjmp(Kind), Operands, V),
+    { R = v(V, int) }.
+call_result(Callee, RetType, IRArgs, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
-    obj(Func, Ctx, FD0),
-    (   { FD0 = fd(_, _) } -> { FD = FD0 }
-    ;   decay(FD0, Ctx, v(FV, Type)),
-        (   { Type = ptr(FuncType), FuncType = func(_, _, _) }
-        ->  callee_temp(FV, Callee0),
-            { FD = fd(Callee0, FuncType) }
-        ;   { sema_error(Loc, 'called object is not a function', []) }
-        )
-    ),
-    { FD = fd(Callee, func(RetType, ParamTypes0, _)),
-      ( Callee = glo(Sym) -> true ; Sym = 'function pointer' ) },
-    (   { ParamTypes0 == unspecified } -> { ParamTypes = [] }
-    ;   { ParamTypes = ParamTypes0 }
-    ),
-    { length(ParamTypes, NParams),
-      length(Args, NArgs),
-      (   NArgs < NParams
-      ->  sema_error(Loc, 'too few arguments to ~w', [Sym])
-      ;   true
-      ),
-      (   NArgs > NParams, ParamTypes0 \== unspecified,
-          FD = fd(_, func(_, _, fixed))
-      ->  sema_error(Loc, 'too many arguments to ~w', [Sym])
-      ;   true
-      ) },
-    call_args(Args, ParamTypes, Ctx, IRArgs),
-    (   { Callee = glo(Kind), op_kind(setjmp(Kind), setjmp) }
-    ->  { ( RetType == int, setjmp_args(Kind, IRArgs, Operands) -> true
-          ; sema_error(Loc, 'invalid ~w signature', [Kind]) ) },
-        ins(w, setjmp(Kind), Operands, V),
-        { R = v(V, int) }
-    ;   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
+    (   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
     ;   { RetType == void }
     ->  emit(call(void, Callee, IRArgs)),
         { R = v(c(0), void) }
@@ -2046,41 +2042,40 @@ setjmp_args(sigsetjmp, [arg(p, Buf), arg(w, Mask)], [Buf, Mask]).
 setjmp_args(setjmp, [arg(p, Buf)], [Buf, c(0)]).
 setjmp_args('_setjmp', [arg(p, Buf)], [Buf, c(0)]).
 
-% call_args(Args, ParamTypes, Ctx, IRArgs): a struct argument goes as one
-% word per eightbyte; arguments past the prototype get the default
+% call_args(+XArgs, +Args, +ParamTypes, +Ctx, -IRArgs)//: IRArgs pass
+% the arguments XArgs, whose sources are Args. A struct argument goes as
+% one word per eightbyte; arguments past the prototype get the default
 % promotions.
-call_args([], _, _, []) --> [].
-call_args([Arg|Args], [ParamType|ParamTypes], Ctx, IRArgs) -->
-    { su(ParamType) },
-    !,
-    { ctx_loc(Ctx, Loc) },
-    rval(Arg, Ctx, Value0),
-    assign_convert(Arg, Value0, ParamType, Loc, v(Src, _)),
+call_args([], [], _, _, []) --> [].
+call_args([XA|XAs], [A|As], [ParamType|ParamTypes], Ctx, IRArgs) -->
+    { su(ParamType) }, !,
+    lower(XA, A, Ctx, Value0),
+    converted(Value0, ParamType, v(Src, _)),
     env(Env),
-    { arg_words(ParamType, Env, Loc, Ebs) },
+    { ctx_loc(Ctx, Loc), arg_words(ParamType, Env, Loc, Ebs) },
     load_words(Ebs, Src, Words),
     { findall(arg(Class, W),
               ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
               IRArgs0) },
-    call_args(Args, ParamTypes, Ctx, IRArgs1),
+    call_args(XAs, As, ParamTypes, Ctx, IRArgs1),
     { append(IRArgs0, IRArgs1, IRArgs) }.
-call_args([Arg|Args], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
-    { ctx_loc(Ctx, Loc) },
-    rval(Arg, Ctx, Value0),
+call_args([XA|XAs], [A|As], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
+    lower(XA, A, Ctx, Value0),
     (   { ParamTypes0 = [ParamType|ParamTypes] }
-    ->  assign_convert(Arg, Value0, ParamType, Loc, v(V, Type))
+    ->  converted(Value0, ParamType, v(V, Type))
     ;   { ParamTypes = [], Value0 = v(_, Type0) },
         (   { arithmetic_type(Type0) }
         ->  { default_promotion(Type0, Type) },
             convert(Value0, Type, v(V, _))
         ;   { Type0 = ptr(_) } -> { Value0 = v(V, Type) }
-        ;   { sema_error(Loc,
+        ;   { ctx_loc(Ctx, Loc),
+              sema_error(Loc,
                 'passing ~w to a variadic or unprototyped function is not supported',
                 [Type0]) }
         )
     ),
     { type_class(Type, Class) },
-    call_args(Args, ParamTypes, Ctx, IRArgs).
+    call_args(XAs, As, ParamTypes, Ctx, IRArgs).
 
 % struct_call(+RetType, +Callee, +Args, +Loc, -R)//: R is the result of a
 % call returning a struct: its words land in a fresh local, or the
