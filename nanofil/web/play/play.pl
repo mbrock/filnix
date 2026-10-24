@@ -2,7 +2,8 @@
 
     play(+File, +Opt, -Stages): Stages lists stage(Name, Seconds, Result)
     for preprocessing, parsing, lowering, validation, the middle end (Opt
-    o0 or o1) and the Fil-C backend, and what they made: term(syntax,
+    o0 or o1), pizlonation (Fil-C's checks made explicit) and the Fil-C
+    backend, and what they made: term(syntax,
     Items), term(ir, Module), term(asm, Lines), text(ir, Chars) and
     text(asm, Chars). Stops at the first stage that fails or throws,
     whose Result is then failed or error(E).
@@ -68,17 +69,24 @@ stages_lower(Opt, Items, [S, V|Ss]) :-
     ;   V = stage(validate, 0, skipped), Ss = []
     ).
 
-stages_opt(Opt, M0, [S, term(ir, M), P|Ss]) :-
+stages_opt(Opt, M0, [S|Ss]) :-
     timed(optimize, optimize(Opt, M0, M), S),
+    (   ok(S) -> stages_pizlonate(M, Ss) ; Ss = [] ).
+
+% The IR shown is the checked module the backend compiles: Fil-C's
+% checks and pollchecks in the IR (docs/pizlonation.md), validated as
+% the cc command validates it.
+stages_pizlonate(M, [S, term(ir, C), P|Ss]) :-
+    timed(pizlonate, ( pizlonate_module(M, C), valid_module(C) ), S),
     (   ok(S)
-    ->  timed(print_ir, phrase(module_text(M), IR), P),
+    ->  timed(print_ir, phrase(module_text(C), IR), P),
         Ss = [text(ir, IR)|Ss1],
-        stages_asm(M, Ss1)
+        stages_asm(C, Ss1)
     ;   P = stage(print_ir, 0, skipped), Ss = []
     ).
 
-stages_asm(M, [S|Ss]) :-
-    timed(backend, ( pizlonate_module(M, C), filc_module_asm(C, Lines) ), S),
+stages_asm(C, [S|Ss]) :-
+    timed(backend, filc_module_asm(C, Lines), S),
     (   ok(S)
     ->  timed(print_asm, with_output_to(chars(Asm), print_asm(Lines)), P),
         Ss = [term(asm, Lines), P, text(asm, Asm)]

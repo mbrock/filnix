@@ -7,13 +7,16 @@ wiki's palette and stylesheets. Paste C, press Compile (or Ctrl+Enter),
 and the page shows, from one `<article>` whose sections it puts in place:
 
 - beside the source, a dot and the time; it opens on the stages
-  (profile, preprocess, parse, lower, validate, optimize, print IR,
+  (profile, preprocess, parse, lower, validate, optimize, pizlonate, print IR,
   backend, print assembly) with their times and the memory. A stage that
   fails names itself there, says why above the tabs, and marks the line
   in the gutter;
 - four tabs: **C**, the syntax terms of the input's own items
-  (`c_parse/2`), not the header declarations; **IR**, the IR terms
-  (`ir.pl`'s grammar), a function as its head over its blocks, a block as
+  (`c_parse/2`), not the header declarations; **IR**, the checked IR
+  terms the backend compiles (`ir.pl`'s grammar, after `pizlonate.pl`
+  has made Fil-C's checks and pollchecks explicit; see
+  [docs/pizlonation.md](../../docs/pizlonation.md)), a function as its
+  head over its blocks, a block as
   its label over one row per phi, instruction and jump, each function and
   data object folding under its head, and a run of text bytes drawn as
   the one `item(b, str(S))` it means; **IR text**, the same module as
