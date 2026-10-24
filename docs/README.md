@@ -29,6 +29,8 @@ individual ports needed, and how the port campaigns run. The repository's
   incremental `filc-llvm` dev shell.
 - [Updating Fil-C sources and ports](upstream-updates.md): the release and
   staging toolchain pins and how to move them.
+- [Fil-C 0.687 port import](filc-0687-port-import.md): upstream changes,
+  package-local integration fixes, and validation results.
 - [Fil-C behaviour found while porting](filc-findings.md): compiler and
   runtime findings to report upstream, each with its filnix workaround.
 - [Fil-C symbols and libtool](toolchain-symbols.md): why libtool's `nm` probe
