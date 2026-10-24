@@ -3,7 +3,7 @@
 # frozen preprocessor profile and the headers it reaches.
 #
 #   build.sh OUT          the page in OUT: index.html, its scripts and
-#                         stylesheet, and fs.json, which maps each
+#                         stylesheet, the examples, and fs.json, which maps each
 #                         virtual path to its text; with SWIPL_WASM (the
 #                         dist/swipl directory of the swipl-wasm npm
 #                         package) also OUT/swipl
@@ -61,6 +61,7 @@ with open(dest, "w") as h:
 EOF
 
 cp "$here"/{index.html,play.css,play.js,worker.js} "$out/"
+cp -r "$here/examples" "$out/"
 if [ -n "${SWIPL_WASM:-}" ]; then
   mkdir -p "$out/swipl"
   cp "$SWIPL_WASM"/swipl-web.{js,wasm,data} "$out/swipl/"

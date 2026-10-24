@@ -38,42 +38,41 @@ const theme = EditorView.theme({
   "&": { height: "100%", color: "var(--ink)", background: "none" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { font: "0.8rem/1.55 var(--mono-font)" },
-  ".cm-content": { padding: "0.65rem 0", caretColor: "var(--ink)" },
-  ".cm-line": { padding: "0 0.8rem 0 0.2rem" },
+  ".cm-content": { padding: "0.4rem 0", caretColor: "var(--ink)" },
+  ".cm-line": { padding: "0 0.6rem 0 0.1rem" },
   ".cm-cursor": { borderLeftColor: "var(--ink)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { background: "color-mix(in srgb, var(--accent) 16%, transparent)" },
-  ".cm-gutters": { background: "none", border: "0", color: "color-mix(in srgb, var(--muted) 70%, transparent)" },
-  ".cm-lineNumbers .cm-gutterElement": { padding: "0 0.7em 0 0.5em", minWidth: "2.2em" },
+  ".cm-gutters": { background: "var(--code-bg)", border: "0", color: "color-mix(in srgb, var(--muted) 70%, transparent)" },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 0.6em 0 0.5em", minWidth: "1.6em" },
   ".cm-gutterElement.cm-bad": { color: "var(--accent)", fontWeight: "700" },
   ".cm-line.cm-bad": { background: "color-mix(in srgb, var(--accent) 9%, transparent)" },
   "&.cm-focused .cm-matchingBracket": { background: "color-mix(in srgb, var(--accent) 14%, transparent)" },
   ".cm-nonmatchingBracket": { color: "var(--accent)" },
 });
 
-// editor(parent, doc, run): the editor in parent, holding doc; Ctrl or
-// Cmd+Enter calls run.
-export function editor(parent, doc, run) {
-  return new EditorView({
-    parent,
-    state: EditorState.create({
-      doc,
-      extensions: [
-        lineNumbers(),
-        history(),
-        drawSelection(),
-        indentOnInput(),
-        bracketMatching(),
-        indentUnit.of("    "),
-        StreamLanguage.define(c),
-        syntaxHighlighting(colours),
-        keymap.of([{ key: "Mod-Enter", run: () => (run(), true) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
-        bad,
-        theme,
-        EditorView.contentAttributes.of({ "aria-label": "C source" }),
-      ],
-    }),
-  });
+// editor(parent, run, update): an empty editor in parent; Ctrl or
+// Cmd+Enter calls run, and every update (an edit, a move of the cursor)
+// update. Returns {view, state}: state(doc) makes a fresh state holding
+// doc, for view.setState, so each example keeps its own text and history.
+export function editor(parent, run, update) {
+  const extensions = [
+    lineNumbers(),
+    history(),
+    drawSelection(),
+    indentOnInput(),
+    bracketMatching(),
+    indentUnit.of("    "),
+    StreamLanguage.define(c),
+    syntaxHighlighting(colours),
+    keymap.of([{ key: "Mod-Enter", run: () => (run(), true) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    bad,
+    theme,
+    EditorView.contentAttributes.of({ "aria-label": "C source" }),
+    EditorView.updateListener.of(update),
+  ];
+  const state = (doc) => EditorState.create({ doc, extensions });
+  return { view: new EditorView({ parent, state: state("") }), state };
 }
 
 // mark(view, n): mark line n (1-based), or none if n is 0 or past the end.

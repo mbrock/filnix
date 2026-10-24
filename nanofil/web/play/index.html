@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
 <link rel="stylesheet" href="../../style.css">
 <link rel="stylesheet" href="../dterm.css">
+<link rel="preload" href="neon.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="play.css">
 </head>
 <body>
@@ -24,22 +25,28 @@
 <main class="play dterm">
   <div class="side">
   <form id="form" class="editor">
-    <textarea id="source" spellcheck="false" autocomplete="off" wrap="off" aria-label="C source">#include &lt;stdio.h&gt;
-
-int main(void) {
-    printf("hello, world\n");
-    return 0;
-}
-</textarea>
+    <div class="bar">
+      <select id="example" aria-label="Example">
+        <option value="hello">hello.c</option>
+        <option value="fib">fib.c</option>
+        <option value="sum">sum.c</option>
+        <option value="list">list.c</option>
+        <option value="strings">strings.c</option>
+        <option value="shapes">shapes.c</option>
+      </select>
+      <button id="revert" class="quiet" type="button" hidden title="Back to the example as it was">Revert</button>
+      <label class="opt" title="Run the middle end's optimizations"><input id="opt" type="checkbox"> -O</label>
+      <button id="run" type="submit" disabled>Compile <kbd id="keys">Ctrl ↵</kbd></button>
+    </div>
+    <div class="code" id="code"></div>
+    <div class="foot">
+      <details id="stages" class="stages">
+        <summary><span class="dot"></span><span id="status">loading</span></summary>
+        <div class="drop"><div data-slot="stages"></div><div id="memory" class="memory"></div></div>
+      </details>
+      <span id="pos" class="pos"></span>
+    </div>
   </form>
-  <div class="run">
-    <button id="run" type="submit" form="form" disabled title="Ctrl+Enter">Compile</button>
-    <label><input id="opt" type="checkbox"> -O</label>
-    <details id="stages" class="stages">
-      <summary><span class="dot"></span><span id="status">loading</span></summary>
-      <div class="drop"><div data-slot="stages"></div><div id="memory" class="memory"></div></div>
-    </details>
-  </div>
   <section class="panel" id="data-panel"><h2>Data</h2><div data-slot="data"></div></section>
   <section class="panel" id="symbols-panel"><h2>Symbols</h2><div data-slot="symbols"></div></section>
   </div>

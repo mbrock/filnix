@@ -25,10 +25,35 @@ let
     '';
     installPhase = "install -D editor.min.js $out/editor.js";
   };
+  # Monaspace Neon for the page's monospace: the variable webfont at its
+  # normal width (weights and slant stay variable), subset to Latin and
+  # the arrows, boxes and punctuation the page draws; 102 KB of the 511.
+  neon =
+    pkgs.runCommand "nanofil-play-neon"
+      {
+        src = pkgs.fetchurl {
+          url = "https://github.com/githubnext/monaspace/releases/download/v1.400/monaspace-webfont-variable-v1.400.zip";
+          hash = "sha256-fmQ6TJ85lLiBkwhlbBwEmvjFcWZqdO0hZ2S5quSQi0A=";
+        };
+        nativeBuildInputs = [
+          pkgs.unzip
+          (pkgs.python3.withPackages (p: [
+            p.fonttools
+            p.brotli
+          ]))
+        ];
+      }
+      ''
+        unzip -q $src
+        fonttools varLib.instancer "Variable Web Fonts/Monaspace Neon/Monaspace Neon Var.woff2" wdth=100 -o neon-var.woff2
+        mkdir $out
+        pyftsubset neon-var.woff2 --layout-features='*' --flavor=woff2 --output-file=$out/neon.woff2 \
+          --unicodes='U+0000-00FF,U+0131,U+0152-0153,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2190-21FF,U+2200-22FF,U+2500-25FF'
+      '';
 in
 pkgs.runCommand "nanofil-play"
   {
-    passthru = { inherit editor; };
+    passthru = { inherit editor neon; };
     nativeBuildInputs = [
       swipl
       pkgs.python3
@@ -50,5 +75,5 @@ pkgs.runCommand "nanofil-play"
     patchShebangs nanofil
     LANG=C.UTF-8 FILCC=${filcc}/bin/clang SWIPL=swipl \
       SWIPL_WASM=${swiplWasm}/dist/swipl nanofil/web/play/build.sh $out
-    cp ${editor}/editor.js $out/
+    cp ${editor}/editor.js ${neon}/neon.woff2 $out/
   ''
