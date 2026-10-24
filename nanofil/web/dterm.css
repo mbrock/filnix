@@ -6,10 +6,10 @@
   /* The type of terms; nanofil/workbench/ compares the choices. */
   --paren-ink: 34%;
   --paren: color-mix(in srgb, var(--ink) var(--paren-ink), transparent);
-  --paren-stroke: 0.07em;    /* at the middle of the bow */
+  --paren-stroke: 0.1em;     /* at the middle of the bow */
   --paren-curve: 0.3em;      /* how far its ends bow in */
-  --paren-inside: 0.13em;    /* from a parenthesis to what it holds */
-  --paren-outside: 0.03em;   /* from a functor to its parenthesis */
+  --paren-inside: 0.19em;    /* from a parenthesis to what it holds */
+  --paren-outside: 0.07em;   /* from a functor to its parenthesis */
   --paren-grow: 0.06em;      /* above and below, per box nested inside */
   --bracket-ink: 60%;
   --bracket: color-mix(in srgb, #2f6f8f var(--bracket-ink), transparent);
@@ -17,8 +17,9 @@
   --bar-space: 0.1em;
   --sep-ink: 52%;            /* commas */
   --sep: color-mix(in srgb, var(--ink) var(--sep-ink), transparent);
-  --hang: 1.5em;             /* continuation lines of a wrapped term */
-  --indent: 1em;             /* each broken term inside a broken term */
+  --hang: 1.5em;             /* continuation lines, without dterm.js */
+  --indent: 1.5em;           /* dterm.js: a hung term's lines, past its start */
+  --ribbon: 34em;            /* dterm.js: the most a term sets on one line */
   --var: #5a3f9a;
   --atom: #24566e;
   --num: #8a6510;
@@ -261,39 +262,17 @@ a.f.call:hover { text-decoration: underline; }
 .args:has(> .arg > .block) { border-radius: 0.55em; }
 .arg:has(> .block) { display: inline-flex; align-items: baseline; }
 
-/* A term too long for a line (dterm.pl's box//4) is broken: each
-   argument after the first starts a line, indented by the broken terms
-   around it, and the closing parentheses follow the last argument, as
-   Lisp is set. */
-:is(.long > .args:not(:has(> .arg > .block)), .l.long) > .arg:not(:last-child)::after {
-  content: "\A";
-  white-space: pre;
-}
-:is(.long > .args:not(:has(> .arg > .block)), .l.long) > .arg + .arg::before {
-  content: "";
-  display: inline-block;
-  width: calc(var(--d) * var(--indent));
-}
-@media (max-width: 700px) {
-  :root { --indent: 0.75em; }
-  :is(.long-n > .args:not(:has(> .arg > .block)), .l.long-n) > .arg:not(:last-child)::after {
-    content: "\A";
-    white-space: pre;
-  }
-  :is(.long-n > .args:not(:has(> .arg > .block)), .l.long-n) > .arg + .arg::before {
-    content: "";
-    display: inline-block;
-    width: calc(var(--dn) * var(--indent));
-  }
-}
-
-/* dterm.js's planner breaks a flowing line with <br class="zbr"> and
-   indents the next line past the hang by an empty .zin. */
+/* dterm.js prints a head or goal (class zt) at the width it has: its
+   lines start flush, break at <br class="zbr">, and continue past an
+   empty .zin as wide as the line's indent. */
+:is(.clause > .head, div.goal, .clause.item, details.clause > summary).zt { padding-left: 0; text-indent: 0; }
 .zin { display: inline-block; }
+/* While dterm.js sees whether a conditional fits as a table. */
+.cases.ztry { width: max-content; }
+.cases.ztry .goal { white-space: nowrap; }
 
 /* An assembly line's term stays on its line; the table scrolls instead. */
 table.asm td.term { white-space: nowrap; }
-table.asm td.term .arg::before, table.asm td.term .arg::after { content: none !important; }
 
 /* Blocks inside bodies: conjunctions in parentheses, DCG {} goals,
    conditionals and disjunctions. */
@@ -324,24 +303,33 @@ table.asm td.term .arg::before, table.asm td.term .arg::after { content: none !i
 .case.plain > .cond { text-align: right; }
 .alts { grid-template-columns: minmax(0, max-content); }
 
-/* A chain with conditionals inside its branches, and every chain on a
-   narrow screen, is a flow: each condition, then its consequence under it
-   (dterm.pl's alt_nests/1). */
-.cases.stack { grid-template-columns: minmax(0, max-content); }
-.cases.stack > .case { display: block; }
+/* A chain with conditionals or conjunctions in its branches (dterm.pl's
+   alt_nests/1, alt_conj/1), and one too wide for its place (dterm.js, or
+   a narrow screen without it), is a flow: each condition, then its
+   consequence under it. */
+.cases.stack { grid-template-columns: max-content minmax(0, max-content); column-gap: 0.55em; }
+.cases.stack > .case {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+}
 .cases.stack > .case + .case { border-top: 1px solid var(--rule); }
-.cases.stack > .case > div { border-top: 0; padding: 0.1em 0; }
+.cases.stack > .case > :is(.cond, .then) { display: contents; }
 .cases.stack > .case > .arrow { display: none; }
-.cases.stack > .case > .cond { display: flex; align-items: baseline; gap: 0.5em; text-align: left; }
+.cases.stack > .case > * > .goals { grid-column: 2; padding: 0.1em 0; }
+/* The labels share a column, so every branch starts at the same place. */
 .cases.stack > .case:not(.plain) > .cond::before { content: "if"; }
 .cases.stack > .case + .case:not(.plain) > .cond::before { content: "else if"; }
-.cases.stack > .case:not(.plain) > .cond::before, .cases.stack > .case.plain > .cond .kw {
+.cases.stack > .case:not(.plain) > .then::before { content: "then"; }
+.cases.stack > .case > :is(.cond, .then)::before, .cases.stack > .case.plain > .cond .kw {
+  grid-column: 1;
   color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.06em; white-space: nowrap;
 }
 .cases.stack > .case.plain > .cond:has(.kw:empty) { display: none; }
-.cases.stack > .case > .then {
-  margin-left: 0.35em; padding-left: 0.8em;
+.cases.stack > .case > .then > .goals {
+  margin-left: calc(-0.45em - 2px); padding-left: 0.45em;
   border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
 }
 @media (max-width: 700px) {
@@ -352,24 +340,9 @@ table.asm td.term .arg::before, table.asm td.term .arg::after { content: none !i
   .dterm .prose pre { max-width: 100%; overflow-x: auto; }
   /* An example whose goal is a block puts its answer on the next row. */
   .examples td.goal:has(.block) { flex-basis: 100%; }
-  .cases > .case > .then { margin-left: 0.2em; padding-left: 0.55em; }
-.cases { grid-template-columns: minmax(0, max-content); }
-.cases > .case { display: block; }
-.cases > .case + .case { border-top: 1px solid var(--rule); }
-.cases > .case > div { border-top: 0; padding: 0.1em 0; }
-.cases > .case > .arrow { display: none; }
-.cases > .case > .cond { display: flex; align-items: baseline; gap: 0.5em; text-align: left; }
-.cases > .case:not(.plain) > .cond::before { content: "if"; }
-.cases > .case + .case:not(.plain) > .cond::before { content: "else if"; }
-.cases > .case:not(.plain) > .cond::before, .cases > .case.plain > .cond .kw {
-  color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; white-space: nowrap;
-}
-.cases > .case.plain > .cond:has(.kw:empty) { display: none; }
-.cases > .case > .then {
-  margin-left: 0.35em; padding-left: 0.8em;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
-}
+  /* Without dterm.js, a conditional is a column of its parts. */
+  html:not(.zp) .cases:not(.stack), html:not(.zp) .cases:not(.stack) > .case { display: block; }
+  html:not(.zp) .cases:not(.stack) > .case > .arrow { display: none; }
 }
 .alts > .or {
   margin: 0.1em 0;

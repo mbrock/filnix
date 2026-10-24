@@ -6,9 +6,7 @@
     SRC-DIR, predicates with nested conditionals, documentation and
     examples, and DCG clauses with lists and tails; from samples.pl, C
     syntax, IR and assembly drawn as the playground draws them
-    (../play/play_view.pl). Each is drawn once per line length at which a
-    term breaks (dterm.pl's long_term/1), so the page can switch between
-    them. SWI-Prolog only, like dterm.
+    (../play/play_view.pl). SWI-Prolog only, like dterm.
 */
 :- module(workbench, []).
 :- encoding(utf8).
@@ -44,16 +42,8 @@ sample("Assembly",
        "asm.pl line terms beside the AT&T lines they print as.",
        asm).
 sample("C syntax",
-       "c_parse/2's terms for a struct and a function: long terms, broken one argument per row.",
+       "c_parse/2's terms for a struct and a function: long terms of terms.",
        c).
-
-%  The lengths at which a term is drawn broken; 0 for never.
-long(48).
-long(60).
-long(72).
-long(80).
-long(90).
-long(0).
 
 main :-
     current_prolog_flag(argv, [Out, Dir]),
@@ -66,7 +56,7 @@ main :-
     dterm:write_page(Path, workbench:page(Sources)).
 
 page(Sources) -->
-    "<!doctype html>\n<html lang=\"en\" data-long=\"80\">\n<head>\n<meta charset=\"utf-8\">\n",
+    "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
     "<title>dterm samples</title>\n",
     "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap\">\n",
@@ -85,12 +75,7 @@ seq_samples(Sources) -->
 sample_(Sources, Title-Note-What) -->
     ( { Title == "" } -> [] ; el(h2, none, dterm:esc(Title)) ),
     ( { Note == "" } -> [] ; el(p, "wb-note", dterm:esc(Note)) ),
-    { findall(L, long(L), Ls) },
-    seq(Ls, variant(Sources, What)).
-
-variant(Sources, What, L) -->
-    { ( L =:= 0 -> nb_setval(dterm_long, none) ; nb_setval(dterm_long, L) ) },
-    el(div, "wb-v", ['data-long'=L], draw(What, Sources)).
+    el(div, "wb-v", draw(What, Sources)).
 
 draw(pred(Base, Key), Sources) -->
     { memberchk(src(Base, Text, Lines, Events), Sources),

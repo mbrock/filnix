@@ -11,13 +11,6 @@ article.wb h2 {
 }
 article.wb h2:first-child { margin-top: 0; border-top: 0; }
 .wb-note { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.8rem; }
-.wb-v { display: none; }
-html[data-long="48"] .wb-v[data-long="48"],
-html[data-long="60"] .wb-v[data-long="60"],
-html[data-long="72"] .wb-v[data-long="72"],
-html[data-long="80"] .wb-v[data-long="80"],
-html[data-long="90"] .wb-v[data-long="90"],
-html[data-long="0"] .wb-v[data-long="0"] { display: block; }
 @media (max-width: 700px) {
   article.wb { padding: 0.4rem 0.8rem 2rem 1.2rem; }
 }

@@ -491,62 +491,10 @@ compound_(T, P, Ctx) -->
     box(T, Arity, c, ( functor_(N, Arity, Ctx), args(As, Ps, ACtx) )).
 
 %  box(T, Parts, Class, Body): the span of a compound or list T of Parts
-%  arguments or elements. A term too long for a line is broken, each
-%  argument after the first on a line of its own, indented by the number
-%  of broken terms around it; a shorter one flows and wraps like text.
-%  Like a pretty-printer's group, a term fits or breaks. There are two
-%  measures, one for a page (class long, depth --d) and a shorter one for
-%  a phone (class long-n, depth --dn), which dterm.css applies by width.
-box(T, Parts, Class0, Body) -->
-    {   Parts > 1, long_term(T, wide) -> Ws = [' long'], W = 1 ; Ws = [], W = 0 },
-    {   Parts > 1, long_term(T, narrow) -> Ns = [' long-n'], N = 1 ; Ns = [], N = 0 },
-    (   { W + N > 0 }
-    ->  { depth(dterm_depth, D0), depth(dterm_depth_n, N0),
-          D is D0 + W, N1 is N0 + N,
-          append([[Class0], Ws, Ns], Cs), atomic_list_concat(Cs, Class),
-          format(atom(Style), "--d: ~w; --dn: ~w", [D0, N0]) },
-        { b_setval(dterm_depth, D), b_setval(dterm_depth_n, N1) },
-        el(span, Class, [style=Style], Body),
-        { b_setval(dterm_depth, D0), b_setval(dterm_depth_n, N0) }
-    ;   el(span, Class0, Body)
-    ).
-
-part([X|Xs], P) :- !, ( P = X ; nonvar(Xs), part(Xs, P) ).
-part(T, P) :- compound(T), T \= '$VAR'(_), arg(_, T, P).
-
-depth(K, D) :- ( nb_current(K, D0), integer(D0) -> D = D0 ; D = 0 ).
-
-%  A term of atoms and variables only is filled like words, never broken.
-long_term(T, Measure) :-
-    (   nb_current(dterm_long, Max0) -> true ; long_length(wide, Max0) ),
-    integer(Max0),
-    once(( part(T, X), compound(X), X \= '$VAR'(_) )),
-    ( Measure == wide -> Max = Max0 ; long_length(narrow, Max) ),
-    \+ fits(T, Max, _).
-
-%  In characters, as a pretty-printer counts columns: 80 for a page, and
-%  40 for a 390 px phone, about what its term column holds.
-long_length(wide, 80).
-long_length(narrow, 40).
-
-%  fits(T, B0, B): T written takes B0 - B of a budget of B0 characters,
-%  failing as soon as the budget is spent (write_length/3 ignores the
-%  write options).
-fits(T, B0, B) :- var(T), !, B is B0 - 1, B >= 0.
-fits('$VAR'(N), B0, B) :- !, atom_length(N, L), B is B0 - L, B >= 0.
-fits(T, B0, B) :- string(T), !, string_length(T, L), B is B0 - L - 2, B >= 0.
-fits(T, B0, B) :- atomic(T), !, atom_length(T, L), B is B0 - L, B >= 0.
-fits([X|Xs], B0, B) :- !, B1 is B0 - 2, fits(X, B1, B2), fits_elems(Xs, B2, B).
-fits(T, B0, B) :-
-    compound_name_arguments(T, N, As), atom_length(N, L),
-    B1 is B0 - L - 2, B1 >= 0,
-    foldl([A, Ba, Bb]>>( fits(A, Ba, Bc), Bb is Bc - 2 ), As, B1, B2),
-    B is B2 + 2, B >= 0.
-
-fits_elems(Xs, B0, B) :- var(Xs), !, B is B0 - 2, B >= 0.
-fits_elems([], B, B) :- !.
-fits_elems([X|Xs], B0, B) :- !, B1 is B0 - 2, fits(X, B1, B2), fits_elems(Xs, B2, B).
-fits_elems(T, B0, B) :- B1 is B0 - 1, fits(T, B1, B).
+%  arguments or elements. Where its lines break is not decided here but by
+%  dterm.js at the width the page has: data-d=args marks it as a group whose
+%  .arg children are set on one line, or broken, or filled (docs/dterm.md).
+box(_, _, Class, Body) --> el(span, Class, ['data-d'=args], Body).
 
 head_args_ctx(ctx(F, head), ctx(F, pattern)) :- !.
 head_args_ctx(Ctx, Ctx).
@@ -601,10 +549,12 @@ prefix_type(fy). prefix_type(fx).
 
 op_term(infix(Type, P), T, Pos, Prec, Ctx) -->
     { T =.. [N, L, R], args_pos(Pos, 2, [LP, RP]),
-      arg_prec(Type, P, LPrec, RPrec), op_class(N, Class) },
+      arg_prec(Type, P, LPrec, RPrec), op_class(N, Class),
+      % An operator a line may break at makes a chain dterm.js can break.
+      ( Class == tight -> Ds = [] ; Ds = ['data-d'=op] ) },
     paren_if(P, Prec,
-             el(span, o, ( term(L, LP, LPrec, Ctx), op_space(Class, before), op_(N, Class),
-                           op_space(Class, after), term(R, RP, RPrec, Ctx) ))).
+             el(span, o, Ds, ( term(L, LP, LPrec, Ctx), op_space(Class, before), op_(N, Class),
+                               op_space(Class, after), term(R, RP, RPrec, Ctx) ))).
 op_term(prefix(Type, P), T, Pos, Prec, Ctx) -->
     { T =.. [N, A], args_pos(Pos, 1, [AP]),
       ( Type == fy -> APrec = P ; APrec is P - 1 ) },
@@ -810,7 +760,7 @@ inline_comment(Text) -->
 alternatives(G, P, Ctx) -->
     { alt_list(G, P, Alts) },
     (   { memberchk(if(_, _, _, _, _), Alts) }
-    ->  { ( member(A, Alts), alt_nests(A) -> Class = "cases stack" ; Class = cases ) },
+    ->  { ( member(A, Alts), ( alt_nests(A) ; alt_conj(A) ) -> Class = "cases stack" ; Class = cases ) },
         el(div, Class, case_rows(Alts, none, Ctx))
     ;   el(div, alts, alt_rows(Alts, first, Ctx))
     ).
@@ -820,6 +770,13 @@ alternatives(G, P, Ctx) -->
 %  of the inner chain cannot both fit.
 alt_nests(if(_, C, _, T, _)) :- ( control(C) ; control(T) ), !.
 alt_nests(plain(G, _)) :- control(G).
+
+%  A table is for cases of one goal each: a branch of several goals is a
+%  column of rows, and beside the others its rows would not read as one.
+alt_conj(if(_, C, _, T, _)) :- ( conj(C) ; conj(T) ), !.
+alt_conj(plain(G, _)) :- conj(G).
+
+conj(G) :- nonvar(G), G = (_, _).
 
 control(G) :- var(G), !, fail.
 control((_ ; _)).

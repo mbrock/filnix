@@ -183,8 +183,8 @@ setting and of Lisp's pretty-printers:
   before and a space after: a line breaks after an operator, never before
   it. The neck `←` stays on the head's line.
 - Parentheses are hairlines that bow like the glyph (`--paren-stroke`
-  0.07em, `--paren-curve` 0.3em) at 34% ink, close to what they hold
-  (0.13em) and to their functor (0.03em). A box with boxes inside stands
+  0.1em, `--paren-curve` 0.3em) at 34% ink, a little off what they hold
+  (0.19em) and their functor (0.07em), so a name never touches its bow. A box with boxes inside stands
   0.06em taller per level, three levels deep, as outer delimiters are
   set larger in mathematics, so `f(g(x))` shows its nesting without
   heavier lines.
@@ -195,51 +195,59 @@ setting and of Lisp's pretty-printers:
   which disappeared against Public Sans's light punctuation.
 - A head or goal too long for its line hangs its continuation lines
   1.5em under the first.
-- A term too long for a line is broken, as a pretty-printer's group either
-  fits or breaks (`box//4`): each argument after the first on a line of
-  its own, indented one step per broken term around it, the closing
-  parentheses after the last argument. The measure is 80 characters on a
-  page and 40 on a phone (`long_length/2`, dterm.css applies the second
-  under 700px). A term of atoms and variables only is filled like words,
-  never broken; assembly rows never break.
+- Without JavaScript a term flows and wraps as text; on a narrow screen a
+  conditional is a column. Where its lines break is dterm.js's printer.
 
-### Line breaks planned to fit
+### The printer
 
-Those breaks by length are what a page shows without JavaScript. With
-it, `dterm.js` plans each head and goal at the width it actually has,
-after [Zoot](https://github.com/mbrock/zoot) and "A Pretty Expressive
-Printer" (Porncharoenwase, Pombrio and Torlak, OOPSLA 2023): it reads
-the term's HTML as a document of groups, measures every token with
-canvas in its own font, and keeps for each piece at each column the
-Pareto frontier of where its last line ends against its cost.
+dterm.pl decides what a term is; `dterm.js` decides where its lines
+break, at the width the page actually gives each head and goal. It is
+Bernardy's printer ("A Pretty But Not Greedy Printer", ICFP 2017), cut
+to dterm, after a first attempt in the style of
+[Zoot](https://github.com/mbrock/zoot) and the pretty expressive printer
+that filled lines as prose and broke deep inside small terms.
 
-A first version filled lines as prose and broke wherever the width ran
-out, usually deep inside a small term (`type_class(CT,` above `K)`),
-with an indent that belonged to nothing. The planner now follows the
-pretty-printing tradition instead:
+dterm.pl marks the groups: `data-d=args` on a compound or list, whose
+`.arg` children are its items, and `data-d=op` on an operator a line
+may break at. The printer reads each head and goal as a document in
+Bernardy's operators (text, `<>` with its later lines aligned where it
+began, `flush`, and choice), measured in pixels with canvas. The craft
+is in which layouts each group offers:
 
-- A group breaks at all of its separators or at none: a compound's or
-  list's arguments, or a chain of one operator. A term that fits on its
-  line never breaks inside.
-- Broken arguments go one step deeper than the line the term opened on;
-  arguments that are only atoms, numbers and variables fill their lines.
-- A broken conjunction ends each line with its comma and aligns each
-  goal under the first. Any other operator starts its line, so a nested
-  if-then-else reads as Prolog is usually written, the arms under the
-  condition: `(Cond` / `→ Then` / `; Else)`.
-- Overflow (squared) comes first, then breaks at 8^depth each, so the
-  outer structure breaks before anything inside it.
+- arguments: all on one line; the first, and simple ones after it, on
+  the opening line and each of the rest on its own line, aligned under
+  the first or hung `--indent` past the term; or, as Lisp is set, all
+  from the next line, a step past the functor, so a deep C syntax tree
+  comes back left. Simple arguments fill their lines instead; a list of
+  compound terms (instructions) is one line only within half the ribbon.
+- a chain of one operator: one line, or a line per operand. A comma ends
+  its line; `→` and `;` start theirs, under the condition, as Prolog is
+  written.
+- a group on one line has all of it on that line.
 
-The plan is written back as kpre (`mbrock/kpre`) encodes a paragraph: a
-chosen break is a `<br class="zbr">` and an indent, every other
-separator a no-break space, so the browser's line breaker draws exactly
-the plan. `html[data-planner=off]` restores dterm.pl's breaks; the
-workbench's *Line breaks* knob compares the two.
+Each document gets its Pareto frontier by height, width, last-line width
+and badness (a hung or Lisp layout is a little worse than an aligned
+one), computed once per piece since a layout's measures do not depend on
+where it starts. A layout wider than the width, or a single line longer
+than `--ribbon` (34em: how much one line may hold however wide the
+page), is dropped when it is made. The printer takes the fewest lines,
+then the least bad; if nothing fits it lets the ribbon go, then the
+width.
+
+A conditional is a table only while it fits and every branch is one
+goal; otherwise it is a stack whose IF, THEN and ELSE share one column,
+so every branch starts at the same place.
+
+The plan is written as kpre (`mbrock/kpre`) writes a paragraph: a break
+is a `<br class="zbr">` and an indent, every other separator a no-break
+space, so the browser draws exactly the plan. `html[data-planner=off]`
+shows the text unbroken; the workbench's *Line breaks* knob compares the
+two, and its *ribbon* and *hang* knobs tune the printer.
 
 The [workbench](https://mbrock.github.io/filnix/nanofil/workbench/)
 (`web/workbench/`) sets representative terms twice, under presets or
 any knob (paren ink, stroke, bow and spacing, bracket style, comma ink
-and weight, operator spacing, the break length, v2's layout), at phone,
+and weight, operator spacing, the ribbon and hang, v2's layout), at phone,
 tablet or half-window width. The values above were chosen there against
 v2, quieter and firmer ink, glyph parentheses, and the looser spacing of
 the second mockup: glyph parentheses in Public Sans are tall and light
