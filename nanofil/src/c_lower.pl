@@ -1267,8 +1267,92 @@ member_lv(Addr, SUType, Field, Ctx, P, Type) -->
     ).
 
 % rval(+Expr, +Ctx, -R)//: R is v(V, Type), the value of Expr, arrays
-% decayed, lvalues loaded.
-rval(Expr, Ctx, R) --> obj(Expr, Ctx, R0), decay(R0, Ctx, R).
+% decayed, lvalues loaded. Expr is lowered from its typed tree (c_types'
+% elaborate/3), used for its value; one that cannot be typed is lowered
+% the old way, which reports why.
+rval(Expr, Ctx, R) -->
+    env(Env),
+    (   { elaborate(Expr, Env, X) }
+    ->  { value(X, XV) }, lower(XV, Expr, Ctx, R)
+    ;   obj(Expr, Ctx, R0), decay(R0, Ctx, R)
+    ).
+
+/* lower(+XV, +Expr, +Ctx, -R)//: R is v(V, Type), the value of Expr,
+   whose typed tree used for its value is XV. The tree says what Expr is;
+   Expr is carried beside it while the forms not converted yet are
+   lowered from the source (the last clause), and their own operands
+   elaborated again. Types are unqualified, as code generation has them. */
+lower(val(T, int(V)), _, _, v(c(V), U)) --> !, { unqualified(T, U) }.
+lower(val(_, float(Cs)), _, _, v(c(V), Type)) --> !,
+    { float_literal(Cs, V, Type) }.
+lower(val(T, load(X)), Expr, Ctx, R) --> !,               % 6.3.2.1p2
+    place(X, Expr, Ctx, lv(Addr, _)),
+    { unqualified(T, U) },
+    loaded(U, Addr, Ctx, R).
+lower(val(T, decay(X)), Expr, Ctx, R) --> !,              % 6.3.2.1p3-4
+    place(X, Expr, Ctx, P),
+    decayed(P, T, Ctx, R).
+lower(val(T, addr(X)), un(addr, E), Ctx, R) --> !,         % 6.5.3.2p3
+    place(X, E, Ctx, P),
+    decayed(P, T, Ctx, R).
+lower(val(_, comma(XA, XB)), comma(A, B), Ctx, R) --> !,
+    lower(XA, A, Ctx, _),
+    lower(XB, B, Ctx, R).
+lower(val(_, un(Op, XV)), un(Op, E), Ctx, R) --> !,
+    lower(XV, E, Ctx, V),
+    unary(Op, V, Ctx, R).
+lower(val(_, bin(Op, XA, XB)), bin(Op, A, B), Ctx, R) -->
+    { \+ memberchk(Op, [land, lor]) }, !,
+    lower(XA, A, Ctx, VA),
+    lower(XB, B, Ctx, VB),
+    binary(Op, VA, VB, Ctx, R).
+lower(XV, generic(C, As), Ctx, R) --> !,
+    selected(C, As, E), lower(XV, E, Ctx, R).
+lower(_, Expr, Ctx, R) --> obj(Expr, Ctx, R0), decay(R0, Ctx, R).
+
+% loaded(+U, +Addr, +Ctx, -R)//: R is the value of type U stored at
+% Addr: a struct or union stands for its address.
+loaded(U, Addr, _, v(Addr, U)) --> { su(U) }, !.
+loaded(U, Addr, Ctx, v(V, U)) --> load_typed(U, Addr, Ctx, V).
+
+% decayed(+P, +T, +Ctx, -R)//: R, of pointer type T, points at the
+% object or function P.
+decayed(lv(Addr, _), T, _, v(Addr, U)) --> { unqualified(T, U) }.
+decayed(fd(Callee, Type), _, Ctx, R) --> decay(fd(Callee, Type), Ctx, R).
+
+/* place(+X, +Expr, +Ctx, -P)//: P is lv(Addr, Type), the object that
+   typed tree X designates, or fd(Callee, Type) for a function. Expr is
+   X's source, as for lower//4. */
+place(obj(_, id(Name)), _, _, P) --> !, env(Env),
+    { lookup_ordinary(Env, Name, Binding) },
+    binding_obj(Binding, P).
+place(fun(_, id(Name)), _, _, P) --> !, env(Env),
+    { lookup_ordinary(Env, Name, Binding) },
+    binding_obj(Binding, P).
+place(X, index(A, I), Ctx, P) --> !,                       % 6.5.2.1p2
+    place(X, un(deref, bin(add, A, I)), Ctx, P).
+place(obj(T, deref(XV)), un(deref, E), Ctx, lv(V, U)) --> !,  % 6.5.3.2p4
+    lower(XV, E, Ctx, v(V, _)),
+    { unqualified(T, U) }.
+place(fun(T, deref(XV)), un(deref, E), Ctx, fd(Callee, U)) --> !,
+    lower(XV, E, Ctx, v(V, _)),
+    callee_temp(V, Callee),
+    { unqualified(T, U) }.
+place(obj(T, member(XS, F)), member(S, F), Ctx, lv(P, U)) --> !,
+    place(XS, S, Ctx, lv(Addr, SU)),
+    member_lv(Addr, SU, F, Ctx, P, _),
+    { unqualified(T, U) }.
+place(X, arrow(E, F), Ctx, P) --> !,                       % 6.5.2.3p4
+    place(X, member(un(deref, E), F), Ctx, P).
+place(X, generic(C, As), Ctx, P) --> !,
+    selected(C, As, E), place(X, E, Ctx, P).
+place(_, Expr, Ctx, P) --> obj(Expr, Ctx, P).
+
+% selected(+C, +As, -E)//: E is the association _Generic(C, As) selects.
+% Its tree is E's, so lowering follows E.
+selected(C, As, E) --> env(Env),
+    { expression_type(C, Env, T0), value_type(T0, T),
+      generic_selection(T, As, Env, constant, E) }.
 
 % decay(+R0, +Ctx, -R)//: R is the rvalue of R0. An array or function
 % decays to a pointer, a scalar lvalue is loaded, and a struct or union
