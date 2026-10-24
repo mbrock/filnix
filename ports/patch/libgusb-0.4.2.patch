@@ -1,0 +1,28 @@
+diff --git a/gusb/libgusb.ver b/gusb/libgusb.ver
+index 4a4a731..8f5d8ce 100644
+--- a/gusb/libgusb.ver
++++ b/gusb/libgusb.ver
+@@ -1,7 +1,10 @@
+ # generated automatically, do not edit!
++# (Fil-C: pizlonated* added - the pizlonator renames symbols with a
++#  pizlonated_ prefix.)
+ 
+ LIBGUSB_0.1.0 {
+   global:
++    pizlonated*;
+     g_usb_context_error_quark;
+     g_usb_context_get_source;
+     g_usb_context_get_type;
+diff --git a/gusb/libgusb_meson.ver b/gusb/libgusb_meson.ver
+index 91f1fae..e73f245 100644
+--- a/gusb/libgusb_meson.ver
++++ b/gusb/libgusb_meson.ver
+@@ -1,6 +1,8 @@
+ LIBGUSB_0.1.0 {
+   global:
+     g_usb_*;
++    /* Fil-C: the pizlonator renames symbols with a pizlonated_ prefix. */
++    pizlonated*;
+     environ;
+     __progname;
+   local: *;

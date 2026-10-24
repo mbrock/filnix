@@ -1,0 +1,78 @@
+diff --git a/help/meson.build b/help/meson.build
+index 77303d3..bb85225 100644
+--- a/help/meson.build
++++ b/help/meson.build
+@@ -13,7 +13,12 @@ media = [
+   'media/org.gnome.TextEditor.svg',
+ ]
+ 
+-gnome.yelp(meson.project_name(),
+-  sources: pages,
+-  media: media,
+-)
++# Fil-C: the yelp help pages need itstool, which the pizlonated system does
++# not ship; skip building the help documentation when it is missing.
++itstool_prog = find_program('itstool', required: false)
++if itstool_prog.found()
++  gnome.yelp(meson.project_name(),
++    sources: pages,
++    media: media,
++  )
++endif
+diff --git a/meson.build b/meson.build
+index 0c11579..0605328 100644
+--- a/meson.build
++++ b/meson.build
+@@ -79,7 +79,9 @@ config_h.set10('DEVELOPMENT_BUILD', get_option('development'))
+ 
+ global_c_args = [
+   '-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_@0@_@1@'.format(glib_major, glib_minor),
+-  '-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_@0@_@1@'.format(glib_major, glib_minor),
++  # Fil-C: GType is a pointer in the pizlonated glib, so G_DEFINE_TYPE must
++  # use the 2.80 g_once_init_enter_pointer path.
++  '-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_80',
+   '-DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_@0@_@1@'.format(gtk_major, gtk_minor),
+   '-DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_@0@_@1@'.format(gtk_major, gtk_minor),
+   '-DGTK_SOURCE_VERSION_MIN_REQUIRED=GTK_SOURCE_VERSION_@0@_@1@'.format(gtksourceview_major, gtksourceview_minor),
+@@ -171,5 +173,7 @@ configure_file(
+ gnome.post_install(
+   gtk_update_icon_cache: true,
+   glib_compile_schemas: true,
+-  update_desktop_database: host_machine.system() not in ['darwin', 'windows'],
++  # Fil-C: update-desktop-database (desktop-file-utils) is not part of the
++  # pizlonated system yet; the MIME cache refresh is skipped.
++  update_desktop_database: false,
+ )
+diff --git a/src/editor-animation.c b/src/editor-animation.c
+index ddc4b7c..fb19261 100644
+--- a/src/editor-animation.c
++++ b/src/editor-animation.c
+@@ -368,14 +368,16 @@ editor_animation_get_value_at_offset (EditorAnimation *animation,
+   g_assert (value != NULL);
+   g_assert (value->g_type == tween->pspec->value_type);
+ 
+-  if (value->g_type < LAST_FUNDAMENTAL)
++  /* Fil-C: GType is a pointer in the pizlonated glib; the tween tables are
++   * indexed by the fundamental type number, so cast to uintptr_t. */
++  if ((uintptr_t) value->g_type < LAST_FUNDAMENTAL)
+     {
+       /*
+        * If you hit the following assertion, you need to add a function
+        * to create the new value at the given offset.
+        */
+-      g_assert (tween_funcs[value->g_type]);
+-      tween_funcs[value->g_type](&tween->begin, &tween->end, value, offset);
++      g_assert (tween_funcs[(uintptr_t) value->g_type]);
++      tween_funcs[(uintptr_t) value->g_type](&tween->begin, &tween->end, value, offset);
+     }
+   else
+     {
+@@ -910,7 +912,7 @@ editor_animation_class_init (EditorAnimationClass *klass)
+ 
+ #define SET_TWEEN(_T, _t) \
+   G_STMT_START { \
+-    guint idx = G_TYPE_ ## _T; \
++    guint idx = (guint) (uintptr_t) G_TYPE_ ## _T; /* Fil-C: GType is a pointer; index by its integer value. */ \
+     tween_funcs[idx] = tween_ ## _t; \
+   } G_STMT_END
+ 

@@ -1,0 +1,26 @@
+diff --git a/lib/colord/colord.map b/lib/colord/colord.map
+index 0bdb00a..28036b6 100644
+--- a/lib/colord/colord.map
++++ b/lib/colord/colord.map
+@@ -1,6 +1,8 @@
+ {
+ global:
+     cd_*;
++    /* Fil-C: the pizlonator renames symbols with a pizlonated_ prefix. */
++    pizlonated*;
+ local:
+     *;
+ };
+diff --git a/lib/colorhug/colorhug.map b/lib/colorhug/colorhug.map
+index d2df9dc..27f0ee5 100644
+--- a/lib/colorhug/colorhug.map
++++ b/lib/colorhug/colorhug.map
+@@ -1,6 +1,8 @@
+ {
+ global:
+     ch_*;
++    /* Fil-C: the pizlonator renames symbols with a pizlonated_ prefix. */
++    pizlonated*;
+ local:
+     *;
+ };

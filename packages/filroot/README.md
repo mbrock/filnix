@@ -10,7 +10,7 @@ It works wherever it is unpacked, also read-only or at a path with spaces.
 Use it through `bin/`:
 
     tar -xJf filroot-*.tar.xz
-    export PATH=$PWD/filroot-0.686-filnix-x86_64-linux/bin:$PATH
+    export PATH=$PWD/filroot-0.687-filnix-x86_64-linux/bin:$PATH
 
 Symlinks to programs in `bin/` work too. Copies and hard links do not.
 

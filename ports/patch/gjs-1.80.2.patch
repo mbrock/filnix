@@ -1,0 +1,461 @@
+diff --git a/gi/arg-inl.h b/gi/arg-inl.h
+index 491fcb5..0184e03 100644
+--- a/gi/arg-inl.h
++++ b/gi/arg-inl.h
+@@ -106,6 +106,13 @@ template <typename T, GITypeTag TAG = GI_TYPE_TAG_VOID>
+             return gjs_arg_member<&GIArgument::v_size>(arg);
+         else if constexpr (std::is_same_v<GType, gulong>)
+             return gjs_arg_member<&GIArgument::v_ulong>(arg);
++        else if constexpr (std::is_pointer_v<GType>)
++            // Fil-C: the Fil-C glib defines GType as an int-derived pointer
++            // type (the classic type-id bits, cast to a pointer that is never
++            // dereferenced). Store it in v_pointer, which shares the same
++            // word of the GIArgument union with v_size/v_ulong.
++            return reinterpret_cast<GType&>(
++                gjs_arg_member<&GIArgument::v_pointer>(arg));
+     }
+ 
+     if constexpr (TAG == GI_TYPE_TAG_INTERFACE && std::is_integral_v<T>) {
+diff --git a/gi/function.cpp b/gi/function.cpp
+index b89b18c..28268ce 100644
+--- a/gi/function.cpp
++++ b/gi/function.cpp
+@@ -185,8 +185,17 @@ static inline void set_ffi_arg(void* result, GIArgument* value) {
+     } else if constexpr (std::is_floating_point_v<T> || std::is_unsigned_v<T>) {
+         *static_cast<ffi_arg*>(result) = gjs_arg_get<T, TAG>(value);
+     } else if constexpr (std::is_pointer_v<T>) {
+-        *static_cast<ffi_arg*>(result) =
+-            gjs_pointer_to_int<ffi_arg>(gjs_arg_get<T, TAG>(value));
++        /* Fil-C port: store the pointer itself into the ffi return slot.
++         * Going through gjs_pointer_to_int() turns the pointer into a plain
++         * integer, which strips its Fil-C capability; the ffi closure return
++         * path (libffi's zreturn) reads the slot back as a pointer and needs
++         * the capability intact, or the first dereference in the C caller
++         * panics ("cannot read pointer with null object").  This affects
++         * every JS-implemented vfunc that returns a pointer: GObject-derived
++         * objects, GType-typed vfunc returns (e.g. ClutterLayoutManager's
++         * get_child_meta_type as implemented by gnome-shell's quick settings
++         * layout), strings, etc.  Same bits on non-Fil-C. */
++        *static_cast<T*>(result) = gjs_arg_get<T, TAG>(value);
+     }
+ }
+ 
+diff --git a/gi/gtype.cpp b/gi/gtype.cpp
+index 5431a57..ad51dea 100644
+--- a/gi/gtype.cpp
++++ b/gi/gtype.cpp
+@@ -110,12 +110,15 @@ class GTypeObj : public CWrapper<GTypeObj, void> {
+         void* data;
+         if (!for_js_typecheck(cx, obj, &data, args))
+             return G_TYPE_NONE;
+-        return GPOINTER_TO_SIZE(data);
++        // Fil-C: GType is a pointer type (the type id bits), so the pointer
++        // round-trip through GSIZE_TO_POINTER()/GPOINTER_TO_SIZE() needs an
++        // explicit cast back to GType.
++        return (GType)GPOINTER_TO_SIZE(data);
+     }
+ 
+     GJS_JSAPI_RETURN_CONVENTION
+     static GType value(JSContext* cx, JS::HandleObject obj) {
+-        return GPOINTER_TO_SIZE(for_js(cx, obj));
++        return (GType)GPOINTER_TO_SIZE(for_js(cx, obj));
+     }
+ 
+     GJS_JSAPI_RETURN_CONVENTION
+@@ -123,7 +126,10 @@ class GTypeObj : public CWrapper<GTypeObj, void> {
+                                      JS::HandleObject object, GType* gtype_out,
+                                      int recurse) {
+         GType gtype = value(cx, object);
+-        if (gtype > 0) {
++        // Fil-C: GType is a pointer type, so use an inequality comparison
++        // instead of an ordered comparison with 0 (same semantics: only
++        // G_TYPE_INVALID/0 is falsy).
++        if (gtype != 0) {
+             *gtype_out = gtype;
+             return true;
+         }
+diff --git a/gi/object.cpp b/gi/object.cpp
+index cffb7cf..5e14795 100644
+--- a/gi/object.cpp
++++ b/gi/object.cpp
+@@ -711,7 +711,10 @@ static bool resolve_on_interface_prototype(JSContext* cx,
+                                            JS::HandleId identifier,
+                                            JS::HandleObject class_prototype,
+                                            bool* found) {
+-    GType gtype = g_base_info_get_type(iface_info);
++    // Fil-C: upstream passes g_base_info_get_type() (a GIInfoType enum) where
++    // a GType is expected, which only compiled because GType used to be an
++    // integer typedef. Use the registered type's actual GType instead.
++    GType gtype = g_registered_type_info_get_g_type(iface_info);
+     JS::RootedObject interface_prototype(
+         cx, gjs_lookup_object_prototype_from_info(cx, iface_info, gtype));
+     if (!interface_prototype)
+@@ -2302,9 +2305,14 @@ ObjectInstance::emit_impl(JSContext          *context,
+     g_value_set_instance(&instance, m_ptr);
+ 
+     for (i = 0; i < signal_query.n_params; ++i) {
+-        GType gtype = signal_query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
++        // Fil-C: GType is a pointer type, so the signal's "static scope" flag
++        // bit has to be masked off with integer arithmetic.
++        GType gtype =
++            (GType)((uintptr_t)signal_query.param_types[i] &
++                    ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE);
+         Gjs::AutoGValue& value = instance_and_args.emplace_back(gtype);
+-        if ((signal_query.param_types[i] & G_SIGNAL_TYPE_STATIC_SCOPE) != 0) {
++        if (((uintptr_t)signal_query.param_types[i] &
++             (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE) != 0) {
+             if (!gjs_value_to_g_value_no_copy(context, argv[i + 1], &value))
+                 return false;
+         } else {
+@@ -2339,7 +2347,8 @@ ObjectInstance::emit_impl(JSContext          *context,
+         return true;
+     }
+ 
+-    GType gtype = signal_query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE;
++    GType gtype = (GType)((uintptr_t)signal_query.return_type &
++                          ~(uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE);
+     Gjs::AutoGValue rvalue(gtype);
+     g_signal_emitv(instance_and_args.data(), signal_id, signal_detail, &rvalue);
+ 
+diff --git a/gi/value.cpp b/gi/value.cpp
+index 05deed8..a30d6e8 100644
+--- a/gi/value.cpp
++++ b/gi/value.cpp
+@@ -61,80 +61,94 @@ static bool gjs_value_from_g_value_internal(JSContext*, JS::MutableHandleValue,
+ GJS_JSAPI_RETURN_CONVENTION
+ static bool gjs_arg_set_from_gvalue(JSContext* cx, GIArgument* arg,
+                                     const GValue* value) {
+-    switch (G_VALUE_TYPE(value)) {
+-        case G_TYPE_CHAR:
+-            gjs_arg_set(arg, g_value_get_schar(value));
+-            return true;
+-        case G_TYPE_UCHAR:
+-            gjs_arg_set(arg, g_value_get_uchar(value));
+-            return true;
+-        case G_TYPE_BOOLEAN:
+-            gjs_arg_set(arg, g_value_get_boolean(value));
+-            return true;
+-        case G_TYPE_INT:
+-            gjs_arg_set(arg, g_value_get_int(value));
+-            return true;
+-        case G_TYPE_UINT:
+-            gjs_arg_set(arg, g_value_get_uint(value));
+-            return true;
+-        case G_TYPE_LONG:
+-            gjs_arg_set<long, GJS_TYPE_TAG_LONG>(  // NOLINT(runtime/int)
+-                arg, g_value_get_long(value));
+-            return true;
+-        case G_TYPE_ULONG:
+-            gjs_arg_set<unsigned long,  // NOLINT(runtime/int)
+-                        GJS_TYPE_TAG_LONG>(arg, g_value_get_ulong(value));
+-            return true;
+-        case G_TYPE_INT64:
+-            gjs_arg_set(arg, int64_t{g_value_get_int64(value)});
+-            return true;
+-        case G_TYPE_UINT64:
+-            gjs_arg_set(arg, uint64_t{g_value_get_uint64(value)});
+-            return true;
+-        case G_TYPE_FLOAT:
+-            gjs_arg_set(arg, g_value_get_float(value));
+-            return true;
+-        case G_TYPE_DOUBLE:
+-            gjs_arg_set(arg, g_value_get_double(value));
+-            return true;
+-        case G_TYPE_STRING:
+-            gjs_arg_set(arg, g_value_get_string(value));
+-            return true;
+-        case G_TYPE_POINTER:
+-            gjs_arg_set(arg, g_value_get_pointer(value));
+-            return true;
+-        case G_TYPE_VARIANT:
+-            gjs_arg_set(arg, g_value_get_variant(value));
+-            return true;
+-        default: {
+-            if (g_value_fits_pointer(value)) {
+-                gjs_arg_set(arg, g_value_peek_pointer(value));
+-                return true;
+-            }
++    // Fil-C: the Fil-C glib represents GType as an int-derived pointer type,
++    // so a switch over G_VALUE_TYPE() does not compile; use an if/else chain
++    // over pointer equality instead (semantically the same as upstream).
++    GType value_type = G_VALUE_TYPE(value);
++    if (value_type == G_TYPE_CHAR) {
++        gjs_arg_set(arg, g_value_get_schar(value));
++        return true;
++    }
++    if (value_type == G_TYPE_UCHAR) {
++        gjs_arg_set(arg, g_value_get_uchar(value));
++        return true;
++    }
++    if (value_type == G_TYPE_BOOLEAN) {
++        gjs_arg_set(arg, g_value_get_boolean(value));
++        return true;
++    }
++    if (value_type == G_TYPE_INT) {
++        gjs_arg_set(arg, g_value_get_int(value));
++        return true;
++    }
++    if (value_type == G_TYPE_UINT) {
++        gjs_arg_set(arg, g_value_get_uint(value));
++        return true;
++    }
++    if (value_type == G_TYPE_LONG) {
++        gjs_arg_set<long, GJS_TYPE_TAG_LONG>(  // NOLINT(runtime/int)
++            arg, g_value_get_long(value));
++        return true;
++    }
++    if (value_type == G_TYPE_ULONG) {
++        gjs_arg_set<unsigned long,  // NOLINT(runtime/int)
++                    GJS_TYPE_TAG_LONG>(arg, g_value_get_ulong(value));
++        return true;
++    }
++    if (value_type == G_TYPE_INT64) {
++        gjs_arg_set(arg, int64_t{g_value_get_int64(value)});
++        return true;
++    }
++    if (value_type == G_TYPE_UINT64) {
++        gjs_arg_set(arg, uint64_t{g_value_get_uint64(value)});
++        return true;
++    }
++    if (value_type == G_TYPE_FLOAT) {
++        gjs_arg_set(arg, g_value_get_float(value));
++        return true;
++    }
++    if (value_type == G_TYPE_DOUBLE) {
++        gjs_arg_set(arg, g_value_get_double(value));
++        return true;
++    }
++    if (value_type == G_TYPE_STRING) {
++        gjs_arg_set(arg, g_value_get_string(value));
++        return true;
++    }
++    if (value_type == G_TYPE_POINTER) {
++        gjs_arg_set(arg, g_value_get_pointer(value));
++        return true;
++    }
++    if (value_type == G_TYPE_VARIANT) {
++        gjs_arg_set(arg, g_value_get_variant(value));
++        return true;
++    }
+ 
+-            GType gtype = G_VALUE_TYPE(value);
++    if (g_value_fits_pointer(value)) {
++        gjs_arg_set(arg, g_value_peek_pointer(value));
++        return true;
++    }
+ 
+-            if (g_type_is_a(gtype, G_TYPE_FLAGS)) {
+-                gjs_arg_set(arg, g_value_get_flags(value));
+-                return true;
+-            }
++    GType gtype = G_VALUE_TYPE(value);
+ 
+-            if (g_type_is_a(gtype, G_TYPE_ENUM)) {
+-                gjs_arg_set(arg, g_value_get_enum(value));
+-                return true;
+-            }
++    if (g_type_is_a(gtype, G_TYPE_FLAGS)) {
++        gjs_arg_set(arg, g_value_get_flags(value));
++        return true;
++    }
+ 
+-            if (g_type_is_a(gtype, G_TYPE_GTYPE)) {
+-                gjs_arg_set<GType, GI_TYPE_TAG_GTYPE>(arg,
+-                                                      g_value_get_gtype(value));
+-                return true;
+-            }
++    if (g_type_is_a(gtype, G_TYPE_ENUM)) {
++        gjs_arg_set(arg, g_value_get_enum(value));
++        return true;
++    }
+ 
+-            if (g_type_is_a(gtype, G_TYPE_PARAM)) {
+-                gjs_arg_set(arg, g_value_get_param(value));
+-                return true;
+-            }
+-        }
++    if (g_type_is_a(gtype, G_TYPE_GTYPE)) {
++        gjs_arg_set<GType, GI_TYPE_TAG_GTYPE>(arg, g_value_get_gtype(value));
++        return true;
++    }
++
++    if (g_type_is_a(gtype, G_TYPE_PARAM)) {
++        gjs_arg_set(arg, g_value_get_param(value));
++        return true;
+     }
+ 
+     gjs_throw(cx, "No know GArgument conversion for %s",
+@@ -338,7 +352,10 @@ void Gjs::Closure::marshal(GValue* return_value, unsigned n_param_values,
+         no_copy = false;
+ 
+         if (i >= 1 && signal_query.signal_id) {
+-            no_copy = (signal_query.param_types[i - 1] & G_SIGNAL_TYPE_STATIC_SCOPE) != 0;
++            // Fil-C: GType is a pointer type, so the signal's "static scope"
++            // flag bit has to be masked off with integer arithmetic.
++            no_copy = ((uintptr_t)signal_query.param_types[i - 1] &
++                       (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE) != 0;
+         }
+ 
+         if (arg_details.array_len_index_for != -1) {
+diff --git a/gi/value.h b/gi/value.h
+index 7d50e2d..af1ef44 100644
+--- a/gi/value.h
++++ b/gi/value.h
+@@ -33,27 +33,24 @@ struct AutoGValue : GValue {
+         return *this;
+     }
+     AutoGValue(AutoGValue&& src) {
+-        switch (G_VALUE_TYPE(&src)) {
+-            case G_TYPE_NONE:
+-            case G_TYPE_CHAR:
+-            case G_TYPE_UCHAR:
+-            case G_TYPE_BOOLEAN:
+-            case G_TYPE_INT:
+-            case G_TYPE_UINT:
+-            case G_TYPE_LONG:
+-            case G_TYPE_ULONG:
+-            case G_TYPE_INT64:
+-            case G_TYPE_UINT64:
+-            case G_TYPE_FLOAT:
+-            case G_TYPE_DOUBLE:
+-                *static_cast<GValue*>(this) =
+-                    std::move(static_cast<GValue const&&>(src));
+-                break;
+-            default:
+-                // We can't safely move in complex cases, so let's just copy
+-                this->steal();
+-                *this = src;
+-                g_value_unset(&src);
++        // Fil-C: the Fil-C glib represents GType as an int-derived pointer
++        // type, so a switch over G_VALUE_TYPE() does not compile. Use an
++        // if/else chain over pointer equality instead (semantically the same
++        // as upstream's switch).
++        GType moved_type = G_VALUE_TYPE(&src);
++        if (moved_type == G_TYPE_NONE || moved_type == G_TYPE_CHAR ||
++            moved_type == G_TYPE_UCHAR || moved_type == G_TYPE_BOOLEAN ||
++            moved_type == G_TYPE_INT || moved_type == G_TYPE_UINT ||
++            moved_type == G_TYPE_LONG || moved_type == G_TYPE_ULONG ||
++            moved_type == G_TYPE_INT64 || moved_type == G_TYPE_UINT64 ||
++            moved_type == G_TYPE_FLOAT || moved_type == G_TYPE_DOUBLE) {
++            *static_cast<GValue*>(this) =
++                std::move(static_cast<GValue const&&>(src));
++        } else {
++            // We can't safely move in complex cases, so let's just copy
++            this->steal();
++            *this = src;
++            g_value_unset(&src);
+         }
+     }
+     void steal() { *static_cast<GValue*>(this) = G_VALUE_INIT; }
+diff --git a/gjs/engine.cpp b/gjs/engine.cpp
+index cbaf320..7ef64c9 100644
+--- a/gjs/engine.cpp
++++ b/gjs/engine.cpp
+@@ -194,7 +194,11 @@ JSContext* gjs_create_js_context(GjsContextPrivate* uninitialized_gjs) {
+ 
+     // For additional context on these options, see
+     // https://searchfox.org/mozilla-esr91/rev/c49725508e97c1e2e2bb3bf9ed0ba14b2016abac/js/public/GCAPI.h#53
+-    JS_SetNativeStackQuota(cx, 1024 * 1024);
++    // Fil-C: Fil-C frames are much larger than native frames (the mozjs port
++    // had to raise the engine's default stack quota from 1MB to 6MB for the
++    // same reason), so keep the 1MB quota only on native builds.
++    JS_SetNativeStackQuota(cx,
++                           __FILC__ ? (6 * 1024 * 1024) : (1024 * 1024));
+     JS_SetGCParameter(cx, JSGC_MAX_BYTES, -1);
+     JS_SetGCParameter(cx, JSGC_INCREMENTAL_GC_ENABLED, 1);
+     JS_SetGCParameter(cx, JSGC_SLICE_TIME_BUDGET_MS, 10); /* ms */
+diff --git a/libgjs-private/gjs-util.c b/libgjs-private/gjs-util.c
+index b264aec..3d7a799 100644
+--- a/libgjs-private/gjs-util.c
++++ b/libgjs-private/gjs-util.c
+@@ -30,8 +30,12 @@ gjs_format_int_alternative_output(int n)
+ }
+ 
+ GType gjs_locale_category_get_type(void) {
+-    static size_t gjs_locale_category_get_type = 0;
+-    if (g_once_init_enter(&gjs_locale_category_get_type)) {
++    /* Fil-C: the location must have pointer type and the value must be
++     * stored with the _pointer variants of g_once_init_enter/leave, so that
++     * the GType keeps its pointer representation (the plain variants
++     * round-trip the value through gsize). */
++    static GType gjs_locale_category_get_type = 0;
++    if (g_once_init_enter_pointer(&gjs_locale_category_get_type)) {
+         static const GEnumValue v[] = {
+             {GJS_LOCALE_CATEGORY_ALL, "GJS_LOCALE_CATEGORY_ALL", "all"},
+             {GJS_LOCALE_CATEGORY_COLLATE, "GJS_LOCALE_CATEGORY_COLLATE",
+@@ -48,7 +52,8 @@ GType gjs_locale_category_get_type(void) {
+         GType g_define_type_id = g_enum_register_static(
+             g_intern_static_string("GjsLocaleCategory"), v);
+ 
+-        g_once_init_leave(&gjs_locale_category_get_type, g_define_type_id);
++        g_once_init_leave_pointer(&gjs_locale_category_get_type,
++                                  g_define_type_id);
+     }
+     return gjs_locale_category_get_type;
+ }
+diff --git a/libgjs.map b/libgjs.map
+index c9dfc8d..1f257b9 100644
+--- a/libgjs.map
++++ b/libgjs.map
+@@ -3,6 +3,11 @@
+ {
+ global:
+     gjs_*;
++    /* Fil-C pizlonation exports pizlonated_<name> aliases for every exported
++     * function, and out-of-library consumers (gjs-console, minijasmine, the
++     * tests, the g-ir-scanner dumper) reference those aliases directly; they
++     * must not be caught by "local: *". */
++    pizlonated*;
+ local:
+     *;
+ };
+diff --git a/test/gjs-test-jsapi-utils.cpp b/test/gjs-test-jsapi-utils.cpp
+index 2484884..1df48bd 100644
+--- a/test/gjs-test-jsapi-utils.cpp
++++ b/test/gjs-test-jsapi-utils.cpp
+@@ -559,8 +559,10 @@ static void test_gjs_autotypeclass_init() {
+     GjsAutoTypeClass<GObjectClass> autoclass(gjs_test_object_get_type());
+ 
+     g_assert_nonnull(autoclass);
+-    g_assert_cmpint(autoclass->g_type_class.g_type, ==,
+-        gjs_test_object_get_type());
++    // Fil-C: GType is a pointer type; g_assert_cmpint() would try to convert
++    // both sides to gint64.
++    g_assert_true(autoclass->g_type_class.g_type ==
++                  gjs_test_object_get_type());
+ }
+ 
+ static void test_gjs_error_init() {
+diff --git a/test/gjs-tests.cpp b/test/gjs-tests.cpp
+index 7cf7646..f7bced8 100644
+--- a/test/gjs-tests.cpp
++++ b/test/gjs-tests.cpp
+@@ -619,7 +619,9 @@ gjstest_test_func_gjs_gobject_js_defined_type(void)
+     g_assert_true(ok);
+ 
+     GType foo_type = g_type_from_name("Gjs_FooBar");
+-    g_assert_cmpuint(foo_type, !=, G_TYPE_INVALID);
++    // Fil-C: GType is a pointer type; g_assert_cmpuint() would try to convert
++    // both sides to guint64.
++    g_assert_true(foo_type != G_TYPE_INVALID);
+ 
+     gpointer foo = g_object_new(foo_type, NULL);
+     g_assert_true(G_IS_OBJECT(foo));
+@@ -1078,9 +1080,15 @@ static void gjstest_test_args_set_get_unset() {
+     GType random_gtype = get_random_number<GType>();
+     gjs_arg_set<GType, GI_TYPE_TAG_GTYPE>(&arg, random_gtype);
+     if constexpr (std::is_same_v<GType, gsize>)
+-        assert_equal(static_cast<GType>(arg.v_size), random_gtype);
++        assert_equal(reinterpret_cast<GType>(arg.v_size), random_gtype);
+     else if constexpr (std::is_same_v<GType, gulong>)
+-        assert_equal(static_cast<GType>(arg.v_ulong), random_gtype);
++        assert_equal(reinterpret_cast<GType>(arg.v_ulong), random_gtype);
++    else if constexpr (std::is_pointer_v<GType>)
++        // Fil-C: GType is an int-derived pointer type stored in v_pointer.
++        // (Note that both of the integral branches above are still
++        // type-checked under if constexpr outside a template, so they use
++        // reinterpret_cast, which is valid for both int and pointer targets.)
++        assert_equal(static_cast<GType>(arg.v_pointer), random_gtype);
+     assert_equal(gjs_arg_get<GType, GI_TYPE_TAG_GTYPE>(&arg), random_gtype);
+ 
+     int random_signed_iface = get_random_number<int>();

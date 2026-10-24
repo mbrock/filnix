@@ -55,6 +55,9 @@ packages the dual-architecture Cosmo/shadow compilation closure. Upstream's
 `package-build.sh` distribution assembly is not our Nix build pipeline.
 Staging and nanofil are independent and are not advanced by this release pin.
 
+See the [0.687 port import report](filc-0687-port-import.md) for the descriptor
+refresh, active package changes, missing upstream archives and validation.
+
 ### Historical 0.686/fork comparison
 
 The following comparison records the previous release and fork experiment;

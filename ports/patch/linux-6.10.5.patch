@@ -1288,7 +1288,7 @@ index a73af8a355fb..848dba09981b 100644
  
  	vmw_bo_prio_add(gbo, res->used_prio);
  }
-@@ -289,35 +287,28 @@ int vmw_user_resource_lookup_handle(struct vmw_private *dev_priv,
+@@ -289,35 +287,28 @@ out_bad_resource:
   *
   * The pointer this pointed at by out_surf and out_buf needs to be null.
   */
@@ -1820,7 +1820,7 @@ index 8ae6a761c900..e7a744dfcecf 100644
  	}
  
  	tmp = vmw_resource_reference(&srf->res);
-@@ -900,113 +892,6 @@ int vmw_surface_define_ioctl(struct drm_device *dev, void *data,
+@@ -900,113 +892,6 @@ out_unlock:
  	return ret;
  }
  

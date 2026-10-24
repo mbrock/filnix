@@ -1,10 +1,17 @@
 { pkgs, zstd }:
 let
-  # The pinned SaRCAsm splits semicolon-separated statements.
-  assembler = import ../packages/sarcasm.nix {
-    inherit pkgs;
-    sources = zstd.stdenv.cc.sources;
-  };
+  # The tagged parser lacks statement splitting needed by zstd's macros.
+  # Keep this backport local to the experimental port, not the toolchain.
+  assembler =
+    (import ../packages/sarcasm.nix {
+      inherit pkgs;
+      sources = zstd.stdenv.cc.sources;
+    }).overrideAttrs
+      (old: {
+        patches = (old.patches or [ ]) ++ [
+          ../patches/sarcasm-zstd-statements.patch
+        ];
+      });
 in
 zstd.overrideAttrs (old: {
   pname = "zstd-sarcasm";

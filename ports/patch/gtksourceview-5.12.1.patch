@@ -1,0 +1,173 @@
+diff --git a/gtksourceview/gtksourcebuffer.c b/gtksourceview/gtksourcebuffer.c
+index 04c5c2d..7974e0b 100644
+--- a/gtksourceview/gtksourcebuffer.c
++++ b/gtksourceview/gtksourcebuffer.c
+@@ -419,8 +419,8 @@ gtk_source_buffer_class_init (GtkSourceBufferClass *klass)
+ 					_gtk_source_marshal_VOID__BOXED_BOXED,
+ 	                                G_TYPE_NONE,
+ 	                                2,
+-	                                GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-	                                GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE);
++	                                (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++	                                (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 	g_signal_set_va_marshaller (buffer_signals[HIGHLIGHT_UPDATED],
+ 	                            G_TYPE_FROM_CLASS (klass),
+ 	                            _gtk_source_marshal_VOID__BOXED_BOXEDv);
+diff --git a/gtksourceview/gtksourcegutterrenderer.c b/gtksourceview/gtksourcegutterrenderer.c
+index 747aaff..7bb7718 100644
+--- a/gtksourceview/gtksourcegutterrenderer.c
++++ b/gtksourceview/gtksourcegutterrenderer.c
+@@ -502,8 +502,8 @@ gtk_source_gutter_renderer_class_init (GtkSourceGutterRendererClass *klass)
+ 		              _gtk_source_marshal_VOID__BOXED_BOXED_UINT_FLAGS_INT,
+ 		              G_TYPE_NONE,
+ 		              5,
+-		              GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-		              GDK_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE,
++		              (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++		              (GType) ((uintptr_t) GDK_TYPE_RECTANGLE | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
+ 		              G_TYPE_UINT,
+ 		              GDK_TYPE_MODIFIER_TYPE,
+ 		              G_TYPE_INT);
+@@ -530,8 +530,8 @@ gtk_source_gutter_renderer_class_init (GtkSourceGutterRendererClass *klass)
+ 		              _gtk_source_marshal_BOOLEAN__BOXED_BOXED,
+ 		              G_TYPE_BOOLEAN,
+ 		              2,
+-		              GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-		              GDK_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
++		              (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++		              (GType) ((uintptr_t) GDK_TYPE_RECTANGLE | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 	g_signal_set_va_marshaller (signals[QUERY_ACTIVATABLE],
+ 	                            G_TYPE_FROM_CLASS (klass),
+ 	                            _gtk_source_marshal_BOOLEAN__BOXED_BOXEDv);
+diff --git a/gtksourceview/gtksourceutils.c b/gtksourceview/gtksourceutils.c
+index 122b305..d000b66 100644
+--- a/gtksourceview/gtksourceutils.c
++++ b/gtksourceview/gtksourceutils.c
+@@ -971,7 +971,7 @@ _gtk_source_utils_aligned_free (gpointer data)
+ static PangoFontMap *
+ load_override_font_fc (void)
+ {
+-	static FcConfig *map_font_config;
++	static gpointer map_font_config; /* Fil-C: once-init statics for pointers use the _pointer variants. */
+ 	PangoFontMap *font_map = NULL;
+ 
+ 	font_map = pango_cairo_font_map_new_for_font_type (CAIRO_FONT_TYPE_FT);
+@@ -982,7 +982,7 @@ load_override_font_fc (void)
+ 		return NULL;
+ 	}
+ 
+-	if (g_once_init_enter (&map_font_config))
++	if (g_once_init_enter_pointer (&map_font_config)) /* Fil-C: pointer once-init statics. */
+ 	{
+ 		char **font_dirs = _gtk_source_utils_get_default_dirs ("fonts");
+ 		FcConfig *config = FcInitLoadConfigAndFonts ();
+@@ -1011,12 +1011,12 @@ load_override_font_fc (void)
+ 
+ 		g_strfreev (font_dirs);
+ 
+-		g_once_init_leave (&map_font_config, config);
++		g_once_init_leave_pointer (&map_font_config, config);
+ 	}
+ 
+ 	g_assert (map_font_config != NULL);
+ 
+-	pango_fc_font_map_set_config (PANGO_FC_FONT_MAP (font_map), map_font_config);
++	pango_fc_font_map_set_config (PANGO_FC_FONT_MAP (font_map), (FcConfig *) map_font_config);
+ 
+ 	return font_map;
+ }
+diff --git a/gtksourceview/gtksourceview.c b/gtksourceview/gtksourceview.c
+index 3da9c32..f103972 100644
+--- a/gtksourceview/gtksourceview.c
++++ b/gtksourceview/gtksourceview.c
+@@ -885,7 +885,7 @@ gtk_source_view_class_init (GtkSourceViewClass *klass)
+ 		              _gtk_source_marshal_VOID__BOXED_UINT_FLAGS_INT,
+ 		              G_TYPE_NONE,
+ 		              4,
+-		              GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
++		              (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
+ 		              G_TYPE_UINT,
+ 		              GDK_TYPE_MODIFIER_TYPE,
+ 		              G_TYPE_INT);
+diff --git a/gtksourceview/gtksourcevimimcontext.c b/gtksourceview/gtksourcevimimcontext.c
+index 087d503..450dd57 100644
+--- a/gtksourceview/gtksourcevimimcontext.c
++++ b/gtksourceview/gtksourcevimimcontext.c
+@@ -435,7 +435,7 @@ gtk_source_vim_im_context_class_init (GtkSourceVimIMContextClass *klass)
+ 		                            NULL,
+ 		                            G_TYPE_BOOLEAN,
+ 		                            1,
+-		                            G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++		                            (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * GtkSourceVimIMContext::format-text:
+@@ -483,7 +483,7 @@ gtk_source_vim_im_context_class_init (GtkSourceVimIMContextClass *klass)
+ 		              G_TYPE_NONE,
+ 		              2,
+ 		              GTK_SOURCE_TYPE_VIEW,
+-		              G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++		              (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * GtkSourceVimIMContext::edit:
+@@ -510,7 +510,7 @@ gtk_source_vim_im_context_class_init (GtkSourceVimIMContextClass *klass)
+ 		              G_TYPE_NONE,
+ 		              2,
+ 		              GTK_SOURCE_TYPE_VIEW,
+-		              G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++		              (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ static void
+diff --git a/gtksourceview/vim/gtksourcevim.c b/gtksourceview/vim/gtksourcevim.c
+index a8d5c23..097b308 100644
+--- a/gtksourceview/vim/gtksourcevim.c
++++ b/gtksourceview/vim/gtksourcevim.c
+@@ -519,7 +519,7 @@ gtk_source_vim_class_init (GtkSourceVimClass *klass)
+ 		                            NULL,
+ 		                            G_TYPE_BOOLEAN,
+ 		                            1,
+-		                            G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++		                            (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * GtkSourceVim::format:
+@@ -545,8 +545,8 @@ gtk_source_vim_class_init (GtkSourceVimClass *klass)
+ 		                            NULL,
+ 		                            G_TYPE_BOOLEAN,
+ 		                            2,
+-		                            GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-		                            GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE);
++		                            (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++		                            (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	/**
+ 	 * GtkSourceVim::filter:
+@@ -577,8 +577,8 @@ gtk_source_vim_class_init (GtkSourceVimClass *klass)
+ 		                            NULL,
+ 		                            G_TYPE_BOOLEAN,
+ 		                            2,
+-		                            GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE,
+-		                            GTK_TYPE_TEXT_ITER | G_SIGNAL_TYPE_STATIC_SCOPE);
++		                            (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++		                            (GType) ((uintptr_t) GTK_TYPE_TEXT_ITER | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+ 	signals[READY] =
+ 		g_signal_new ("ready",
+diff --git a/meson.build b/meson.build
+index cf52a2c..262b0e2 100644
+--- a/meson.build
++++ b/meson.build
+@@ -129,7 +129,10 @@ deprecated_c_args = [
+   '-DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_@0@_@1@'.format(gtk_major_version, gtk_minor_version),
+   '-DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_@0@_@1@'.format(gtk_major_version, gtk_minor_version),
+   '-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_@0@_@1@'.format(glib_major_version, glib_minor_version),
+-  '-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_@0@_@1@'.format(glib_major_version, glib_minor_version),
++  # Fil-C: GType is a pointer in the pizlonated glib, so G_DEFINE_TYPE must
++  # use the 2.80 g_once_init_enter_pointer path; MAX_ALLOWED stays pinned
++  # above that even though the minimum is 2.72.
++  '-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_80',
+ ]
+ 
+ config_h = configuration_data()

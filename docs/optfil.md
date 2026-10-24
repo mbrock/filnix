@@ -1,12 +1,12 @@
 # /opt/fil without Nix
 
-`nix build .#optfil` makes `optfil-0.686-filnix-x86_64-linux.tar.xz`, a
+`nix build .#optfil` makes `optfil-0.687-filnix-x86_64-linux.tar.xz`, a
 tarball of `/opt/fil` in the layout of upstream Fil-C's binary
 distribution. It holds the Fil-C compiler, its runtime, glibc, libc++ and
 headers, and memory-safe builds of common programs and libraries. It runs on
 x86-64 Linux whatever the host's C library, without Nix:
 
-    sudo tar -C /opt -xJf optfil-0.686-filnix-x86_64-linux.tar.xz
+    sudo tar -C /opt -xJf optfil-0.687-filnix-x86_64-linux.tar.xz
     export PATH=/opt/fil/bin:$PATH
     filcc -O2 -o hello hello.c && ./hello
 

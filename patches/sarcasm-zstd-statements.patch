@@ -1,0 +1,65 @@
+--- a/sarcasm/x86_64_parse.luau
++++ b/sarcasm/x86_64_parse.luau
+@@ -868,6 +868,50 @@
+ 	return { kind = "insn", mnemonic = "alloca", operands = ops, raw = t, syntax = syntax, dotAlloca = true }
+ end
+ 
++-- Split gas statements without splitting strings, comments, annotations, or
++-- the instruction prefixes understood by parseInsnText. Every statement still
++-- goes through the normal parser and validation with its physical source line.
++local function isInstructionPrefix(text)
++	text = trim(text)
++	while true do
++		local _, rest = string.match(text, "^([%w_.$][%w_.$@]*):%s*(.*)$")
++		if not rest then break end
++		text = trim(rest)
++	end
++	local low = string.lower(text)
++	return low == "lock" or low == "rep" or low == "repe"
++		or low == "repne" or low == "repz" or low == "repnz"
++end
++
++local function statementLines(text)
++	local result = {}
++	local lineNo = 0
++	for raw in (text .. "\n"):gmatch("(.-)\n") do
++		lineNo += 1
++		local start = 1
++		local inStr = false
++		local i = 1
++		while i <= #raw do
++			local c = string.sub(raw, i, i)
++			if c == '"' then
++				inStr = not inStr
++			elseif inStr and c == "\\" then
++				i += 1
++			elseif not inStr then
++				if c == "#" or (c == ";" and string.sub(raw, i + 1, i + 1) == "!") then
++					break
++				elseif c == ";" and not isInstructionPrefix(string.sub(raw, start, i - 1)) then
++					table.insert(result, { raw = string.sub(raw, start, i - 1), line = lineNo })
++					start = i + 1
++				end
++			end
++			i += 1
++		end
++		table.insert(result, { raw = string.sub(raw, start), line = lineNo })
++	end
++	return result
++end
++
+ function x86parse.parseString(text, syntax, fileName)
+ 	err.beginParse(fileName)
+ 	-- Per-file pseudo-registry reset. pseudoNums/numPseudos live at module scope
+@@ -880,9 +924,8 @@
+ 	numPseudos = 0
+ 	local out = {}
+ 	text = (string.gsub(text, "\r\n", "\n"))
+-	local lineNo = 0
+-	for raw in (text .. "\n"):gmatch("(.-)\n") do
+-		lineNo += 1
++	for _, statement in statementLines(text) do
++		local raw, lineNo = statement.raw, statement.line
+ 		err.atParseLine(lineNo)
+ 		-- Split the annotation marker (`;!` everywhere, or `#!` — on x86_64 `#` is
+ 		-- the comment introducer, so `#!` is "a comment that means more") off the

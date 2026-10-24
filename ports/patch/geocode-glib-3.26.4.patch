@@ -1,0 +1,15 @@
+diff --git a/geocode-glib/geocode-glib.map b/geocode-glib/geocode-glib.map
+index d5498ad..67bab52 100644
+--- a/geocode-glib/geocode-glib.map
++++ b/geocode-glib/geocode-glib.map
+@@ -2,6 +2,10 @@
+   global:
+     geocode_*;
+     _geocode_parse_search_json;
++    /* Fil-C pizlonation exports pizlonated_<name> aliases for every exported
++     * function; consumers (libgweather, the g-ir-scanner dumper) reference
++     * those aliases directly; they must not be caught by "local: *". */
++    pizlonated*;
+ 
+   local:
+     *;

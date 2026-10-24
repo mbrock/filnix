@@ -1,0 +1,4010 @@
+diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
+index 7a2fd1a..b8a49b6 100644
+--- a/build/moz.configure/rust.configure
++++ b/build/moz.configure/rust.configure
+@@ -167,6 +167,11 @@ def cargo_info(cargo):
+ @imports(_from="textwrap", _import="dedent")
+ def rust_compiler(rustc_info, cargo_info, target):
+     if not rustc_info:
++        # Fil-C port: SpiderMonkey's Fil-C build does not compile any Rust
++        # code (js/src/rust is excluded from the build; see js/src/moz.build).
++        # Upstream dies here, but we simply report that there is no Rust
++        # compiler so that everything gated on `rust_compiler` is skipped.
++        return None
+         die(
+             dedent(
+                 """\
+@@ -534,7 +539,10 @@ set_config("RUST_HOST_TARGET", rust_host_triple)
+ 
+ 
+ # This is used for putting source info into symbol files.
+-set_config("RUSTC_COMMIT", depends(rustc_info)(lambda i: i.commit))
++set_config(
++    "RUSTC_COMMIT",
++    depends(rustc_info)(lambda i: i.commit if i else None),
++)
+ 
+ # Rustdoc is required by Rust tests below.
+ option(env="RUSTDOC", nargs=1, help="Path to the rustdoc program")
+diff --git a/config/external/icu/moz.build b/config/external/icu/moz.build
+index 296d60d..b78fa46 100644
+--- a/config/external/icu/moz.build
++++ b/config/external/icu/moz.build
+@@ -8,6 +8,12 @@ Library("icu")
+ 
+ if CONFIG["MOZ_SYSTEM_ICU"]:
+     OS_LIBS += CONFIG["MOZ_ICU_LIBS"]
++    # Fil-C port: the system icu-i18n.pc only lists -licui18n in its Libs
++    # (icu-uc is a Requires.private), but dynamic linking of SpiderMonkey's
++    # ICU usage (ures_*, uloc_*, etc.) needs -licuuc explicitly.
++    OS_LIBS += [
++        "icuuc",
++    ]
+ else:
+     DIRS += [
+         "common",
+diff --git a/js/public/HeapAPI.h b/js/public/HeapAPI.h
+index 0c8d766..2cefa3e 100644
+--- a/js/public/HeapAPI.h
++++ b/js/public/HeapAPI.h
+@@ -360,6 +360,95 @@ const uint32_t DefaultHeapMaxBytes = 32 * 1024 * 1024;
+  * is for use when that is not possible because a single pointer must point
+  * to several kinds of GC thing.
+  */
++class JS_PUBLIC_API GCCellPtr {
++#if defined(__FILC__)
++  // Fil-C: the trace kind cannot be packed into the low bits of the cell
++  // pointer (the capability would be lost when reconstructing the pointer
++  // from the integer). Store the pointer and the kind separately; the kind
++  // is always stored directly, so the out-of-line mechanism upstream uses
++  // is not needed.
++  void* capability_ = nullptr;
++  uintptr_t kindBits_ = uintptr_t(JS::TraceKind::Null);
++
++ public:
++  GCCellPtr() = default;
++
++  // Construction from a void* and trace kind.
++  GCCellPtr(void* gcthing, JS::TraceKind traceKind)
++      : capability_(gcthing), kindBits_(uintptr_t(traceKind)) {
++    AssertGCThingHasType(static_cast<js::gc::Cell*>(gcthing), traceKind);
++  }
++
++  // Automatically construct a null GCCellPtr from nullptr.
++  MOZ_IMPLICIT GCCellPtr(decltype(nullptr))
++      : capability_(nullptr), kindBits_(uintptr_t(JS::TraceKind::Null)) {}
++
++  // Construction from an explicit type.
++  template <typename T>
++  explicit GCCellPtr(T* p)
++      : capability_(p), kindBits_(uintptr_t(JS::MapTypeToTraceKind<T>::kind)) {}
++  explicit GCCellPtr(JSFunction* p)
++      : capability_(p), kindBits_(uintptr_t(JS::TraceKind::Object)) {}
++  explicit GCCellPtr(JSScript* p)
++      : capability_(p), kindBits_(uintptr_t(JS::TraceKind::Script)) {}
++  explicit GCCellPtr(const Value& v);
++
++  JS::TraceKind kind() const { return JS::TraceKind(kindBits_); }
++
++  // Allow GCCellPtr to be used in a boolean context.
++  explicit operator bool() const {
++    MOZ_ASSERT(bool(asCell()) == (kind() != JS::TraceKind::Null));
++    return asCell();
++  }
++
++  // Simplify checks to the kind.
++  template <typename T, typename = std::enable_if_t<JS::IsBaseTraceType_v<T>>>
++  bool is() const {
++    return kind() == JS::MapTypeToTraceKind<T>::kind;
++  }
++
++  // Conversions to more specific types must match the kind. Access to
++  // further refined types is not allowed directly from a GCCellPtr.
++  template <typename T, typename = std::enable_if_t<JS::IsBaseTraceType_v<T>>>
++  T& as() const {
++    MOZ_ASSERT(kind() == JS::MapTypeToTraceKind<T>::kind);
++    // We can't use static_cast here, because the fact that JSObject
++    // inherits from js::gc::Cell is not part of the public API.
++    return *reinterpret_cast<T*>(asCell());
++  }
++
++  // Return a pointer to the cell this |GCCellPtr| refers to, or |nullptr|.
++  // (It would be more symmetrical with |to| for this to return a |Cell&|, but
++  // the result can be |nullptr|, and null references are undefined behavior.)
++  js::gc::Cell* asCell() const {
++    return static_cast<js::gc::Cell*>(capability_);
++  }
++
++  // The CC's trace logger needs an identity that is XPIDL serializable.
++  uint64_t unsafeAsInteger() const {
++    return static_cast<uint64_t>(unsafeAsUIntPtr());
++  }
++  // Inline mark bitmap access requires direct pointer arithmetic.
++  uintptr_t unsafeAsUIntPtr() const {
++    MOZ_ASSERT(asCell());
++    MOZ_ASSERT(!js::gc::IsInsideNursery(asCell()));
++    return reinterpret_cast<uintptr_t>(asCell());
++  }
++
++  MOZ_ALWAYS_INLINE bool mayBeOwnedByOtherRuntime() const {
++    if (!is<JSString>() && !is<JS::Symbol>()) {
++      return false;
++    }
++    if (is<JSString>()) {
++      return JS::shadow::String::isPermanentAtom(asCell());
++    }
++    MOZ_ASSERT(is<JS::Symbol>());
++    return JS::shadow::Symbol::isWellKnownSymbol(asCell());
++  }
++
++ private:
++} JS_HAZ_GC_POINTER;
++#else
+ class JS_PUBLIC_API GCCellPtr {
+  public:
+   GCCellPtr() : GCCellPtr(nullptr) {}
+@@ -458,6 +547,7 @@ class JS_PUBLIC_API GCCellPtr {
+ 
+   uintptr_t ptr;
+ } JS_HAZ_GC_POINTER;
++#endif
+ 
+ // Unwraps the given GCCellPtr, calls the functor |f| with a template argument
+ // of the actual type of the pointer, and returns the result.
+diff --git a/js/public/Id.h b/js/public/Id.h
+index e57c526..14bc560 100644
+--- a/js/public/Id.h
++++ b/js/public/Id.h
+@@ -30,6 +30,10 @@
+ 
+ #include "jstypes.h"
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
++
+ #include "js/GCAnnotations.h"
+ #include "js/HeapAPI.h"
+ #include "js/RootingAPI.h"
+@@ -41,6 +45,222 @@ namespace JS {
+ 
+ enum class SymbolCode : uint32_t;
+ 
++class PropertyKey {
++#if defined(__FILC__)
++  // Fil-C: string and symbol keys must carry the Fil-C capability of the
++  // cell they point at. We store a real pointer for every key:
++  //
++  // - String keys: the JSString* (tag bits are 0, matching upstream where
++  //   asBits_ == uintptr_t(atom)).
++  // - Symbol keys: zmkptr(sym, uintptr_t(sym) | SymbolTypeTag), i.e. the
++  //   symbol's capability with the low 3-bit tag visible in the address, so
++  //   asRawBits()/isSymbol() keep working exactly like upstream. toSymbol()
++  //   reconstitutes the untagged pointer with the same capability.
++  // - Integer keys: (i << 1) | IntTagBit as a pointer-shaped value. Fil-C
++  //   allows storing int-derived pointers; they are never dereferenced
++  //   because isInt() gates all uses.
++  // - Void keys: VoidTypeTag (2), same story as integer keys.
++  //
++  // asRawBits() reads the address half of capability_, which reproduces the
++  // upstream asBits_ value bit-for-bit. That keeps hashing (PropertyKey.h
++  // HashGeneric(key.asRawBits())) and all low-bit tag checks unchanged.
++  void* capability_;
++
++ public:
++  // All keys with the low bit set are integer keys. This means the other
++  // type tags must all be even. These constants are public only for the
++  // JITs (and are otherwise unused in the Fil-C branch; kept for API
++  // compatibility).
++  static constexpr uintptr_t IntTagBit = 0x1;
++  // Use 0 for StringTypeTag to avoid a bitwise op for atom <-> id
++  // conversions.
++  static constexpr uintptr_t StringTypeTag = 0x0;
++  static constexpr uintptr_t VoidTypeTag = 0x2;
++  static constexpr uintptr_t SymbolTypeTag = 0x4;
++  // (0x6 is unused)
++  static constexpr uintptr_t TypeMask = 0x7;
++
++  static constexpr uint32_t IntMin = 0;
++  static constexpr uint32_t IntMax = INT32_MAX;
++
++  static PropertyKey fromCapability(void* capability) {
++    PropertyKey id;
++    id.capability_ = capability;
++    return id;
++  }
++
++  // Fil-C note: the constructors below cannot be constexpr, because making a
++  // pointer out of an integer requires reinterpret_cast, which is not
++  // allowed in constant expressions. Nothing in SpiderMonkey (or its
++  // embedders, e.g. gjs) requires a constexpr PropertyKey; upstream only
++  // marked them constexpr as an optimization.
++  PropertyKey() : capability_(fromBits(VoidTypeTag)) {}
++
++  // Turn raw key bits (which never encode a live cell pointer for the cases
++  // this is used with: int keys and void) into a pointer-shaped value. This
++  // does not dereference anything, so the null capability is fine.
++  static void* fromBits(uintptr_t bits) {
++    return reinterpret_cast<void*>(bits);
++  }
++
++  static MOZ_ALWAYS_INLINE PropertyKey fromRawBits(uintptr_t bits) {
++    PropertyKey id;
++    id.capability_ = reinterpret_cast<void*>(bits);
++    return id;
++  }
++
++  uintptr_t asRawBits() const { return uintptr_t(capability_); }
++
++  bool operator==(const PropertyKey& rhs) const {
++    return asRawBits() == rhs.asRawBits();
++  }
++  bool operator!=(const PropertyKey& rhs) const {
++    return asRawBits() != rhs.asRawBits();
++  }
++
++  MOZ_ALWAYS_INLINE bool isVoid() const {
++    MOZ_ASSERT_IF((asRawBits() & TypeMask) == VoidTypeTag,
++                  asRawBits() == VoidTypeTag);
++    return asRawBits() == VoidTypeTag;
++  }
++
++  MOZ_ALWAYS_INLINE bool isInt() const { return !!(asRawBits() & IntTagBit); }
++
++  MOZ_ALWAYS_INLINE bool isString() const {
++    return (asRawBits() & TypeMask) == StringTypeTag;
++  }
++
++  MOZ_ALWAYS_INLINE bool isSymbol() const {
++    return (asRawBits() & TypeMask) == SymbolTypeTag;
++  }
++
++  MOZ_ALWAYS_INLINE bool isGCThing() const { return isString() || isSymbol(); }
++
++  MOZ_ALWAYS_INLINE int32_t toInt() const {
++    MOZ_ASSERT(isInt());
++    uint32_t bits = static_cast<uint32_t>(asRawBits()) >> 1;
++    return static_cast<int32_t>(bits);
++  }
++
++  MOZ_ALWAYS_INLINE JSString* toString() const {
++    MOZ_ASSERT(isString());
++    // The capability lives in capability_; the tag is 0 for strings.
++    return static_cast<JSString*>(capability_);
++  }
++
++  MOZ_ALWAYS_INLINE JS::Symbol* toSymbol() const {
++    MOZ_ASSERT(isSymbol());
++    // Recover the untagged pointer while keeping the capability.
++    return reinterpret_cast<JS::Symbol*>(
++        zmkptr(capability_, asRawBits() & ~TypeMask));
++  }
++
++  js::gc::Cell* toGCThing() const {
++    MOZ_ASSERT(isGCThing());
++    return reinterpret_cast<js::gc::Cell*>(
++        zmkptr(capability_, asRawBits() & ~TypeMask));
++  }
++
++  GCCellPtr toGCCellPtr() const {
++    js::gc::Cell* thing = toGCThing();
++    if (isString()) {
++      return JS::GCCellPtr(thing, JS::TraceKind::String);
++    }
++    MOZ_ASSERT(isSymbol());
++    return JS::GCCellPtr(thing, JS::TraceKind::Symbol);
++  }
++
++  bool isPrivateName() const;
++
++  bool isWellKnownSymbol(JS::SymbolCode code) const;
++
++  // A void PropertyKey. This is equivalent to a PropertyKey created by the
++  // default constructor.
++  static PropertyKey Void() { return PropertyKey(); }
++
++  static bool fitsInInt(int32_t i) { return i >= 0; }
++
++  static PropertyKey Int(int32_t i) {
++    MOZ_ASSERT(fitsInInt(i));
++    uint32_t bits = (static_cast<uint32_t>(i) << 1) | IntTagBit;
++    return PropertyKey::fromRawBits(bits);
++  }
++
++  static PropertyKey Symbol(JS::Symbol* sym) {
++    MOZ_ASSERT(sym != nullptr);
++    MOZ_ASSERT((uintptr_t(sym) & TypeMask) == 0);
++    MOZ_ASSERT(!js::gc::IsInsideNursery(reinterpret_cast<js::gc::Cell*>(sym)));
++    return fromCapability(
++        zmkptr(sym, uintptr_t(sym) | SymbolTypeTag));
++  }
++
++  // Must not be used on atoms that are representable as integer PropertyKey.
++  // Prefer NameToId or AtomToId over this function:
++  //
++  // A PropertyName is an atom that does not contain an integer in the range
++  // [0, UINT32_MAX]. However, PropertyKey can only hold an integer in the
++  // range
++  // [0, IntMax] (where IntMax == 2^31-1).  Thus, for the range of integers
++  // (IntMax, UINT32_MAX], to represent as a 'id', it must be
++  // the case id.isString() and id.toString()->isIndex(). In most
++  // cases when creating a PropertyKey, code does not have to care about
++  // this corner case because:
++  //
++  // - When given an arbitrary JSAtom*, AtomToId must be used, which checks
++  // for
++  //   integer atoms representable as integer PropertyKey, and does this
++  //   conversion.
++  //
++  // - When given a PropertyName*, NameToId can be used which does not need
++  //   to do any dynamic checks.
++  //
++  // Thus, it is only the rare third case which needs this function, which
++  // handles any JSAtom* that is known not to be representable with an int
++  // PropertyKey.
++  static PropertyKey NonIntAtom(JSAtom* atom) {
++    MOZ_ASSERT((uintptr_t(atom) & TypeMask) == 0);
++    MOZ_ASSERT(PropertyKey::isNonIntAtom(atom));
++    return fromCapability(atom);
++  }
++
++  // The JSAtom/JSString type exposed to embedders is opaque.
++  static PropertyKey NonIntAtom(JSString* str) {
++    MOZ_ASSERT((uintptr_t(str) & TypeMask) == 0);
++    MOZ_ASSERT(PropertyKey::isNonIntAtom(str));
++    return fromCapability(str);
++  }
++
++  // This API can be used by embedders to convert pinned (aka interned)
++  // strings, as created by JS_AtomizeAndPinString, into PropertyKeys. This
++  // means the string does not have to be explicitly rooted.
++  //
++  // Only use this API when absolutely necessary, otherwise use
++  // JS_StringToId.
++  static PropertyKey fromPinnedString(JSString* str);
++
++  // Internal API!
++  // All string PropertyKeys are actually atomized.
++  MOZ_ALWAYS_INLINE bool isAtom() const { return isString(); }
++
++  MOZ_ALWAYS_INLINE bool isAtom(JSAtom* atom) const {
++    MOZ_ASSERT(PropertyKey::isNonIntAtom(atom));
++    return isAtom() && toAtom() == atom;
++  }
++
++  MOZ_ALWAYS_INLINE JSAtom* toAtom() const {
++    return reinterpret_cast<JSAtom*>(toString());
++  }
++  MOZ_ALWAYS_INLINE JSLinearString* toLinearString() const {
++    return reinterpret_cast<JSLinearString*>(toString());
++  }
++
++ private:
++  static bool isNonIntAtom(JSAtom* atom);
++  static bool isNonIntAtom(JSString* atom);
++} JS_HAZ_GC_POINTER;
++
++#else  // !defined(__FILC__)
++
+ class PropertyKey {
+   uintptr_t asBits_;
+ 
+@@ -209,6 +429,8 @@ class PropertyKey {
+   static bool isNonIntAtom(JSString* atom);
+ } JS_HAZ_GC_POINTER;
+ 
++#endif  // !defined(__FILC__)
++
+ }  // namespace JS
+ 
+ using jsid = JS::PropertyKey;
+diff --git a/js/public/Value.h b/js/public/Value.h
+index de8db0f..99066ca 100644
+--- a/js/public/Value.h
++++ b/js/public/Value.h
+@@ -525,7 +525,35 @@ static MOZ_ALWAYS_INLINE double CanonicalizeNaN(double d) {
+  */
+ class alignas(8) Value {
+  private:
++#if defined(__FILC__)
++  // Fil-C: pointers carry invisible capabilities (stored out-of-band in
++  // "aux" memory; see invisicaps_by_example.md). The punbox64 asBits_
++  // encoding below is kept exactly as upstream, but it cannot carry a
++  // capability: it is a plain integer that mixes the tag bits with the
++  // low 47 bits of a GC thing's address. So we keep a second, real
++  // pointer member that holds the Fil-C capability whenever this Value
++  // holds a GC thing (object, string, symbol, bigint, private GC thing).
++  //
++  // LAYOUT NOTE: asBits_ MUST come first, so that code which overlays the
++  // first 8 bytes of a Value with a uint64 (e.g. ObjLiteralInsn's arg
++  // union, with arg_.raw) sees the punbox bits exactly as upstream did.
++  //
++  // - All cell setters below write both asBits_ (the punbox encoding) and
++  //   capability_ (the real pointer, so the capability lands in the aux
++  //   store for this slot).
++  // - All cell getters read capability_ (a typed pointer load, which
++  //   retrieves the capability) instead of reconstructing a pointer from
++  //   asBits_ (an integer, which would yield a null capability).
++  // - For non-GC-thing values, capability_ is stale or null; it is never
++  //   dereferenced because every read is gated on an asBits_ tag check.
++  // - Struct assignment, and memcpy/memmove of Value arrays, preserve the
++  //   capability (verified: Fil-C propagates aux data through those).
+   uint64_t asBits_;
++  void* capability_ = nullptr;
++#endif
++#if !defined(__FILC__)
++  uint64_t asBits_;
++#endif
+ 
+  public:
+   constexpr Value() : asBits_(bitsFromTagAndPayload(JSVAL_TAG_UNDEFINED, 0)) {}
+@@ -608,18 +636,27 @@ class alignas(8) Value {
+   void setString(JSString* str) {
+     MOZ_ASSERT(js::gc::IsCellPointerValid(str));
+     asBits_ = bitsFromTagAndPayload(JSVAL_TAG_STRING, PayloadType(str));
++#if defined(__FILC__)
++    capability_ = str;
++#endif
+     MOZ_ASSERT(toString() == str);
+   }
+ 
+   void setSymbol(JS::Symbol* sym) {
+     MOZ_ASSERT(js::gc::IsCellPointerValid(sym));
+     asBits_ = bitsFromTagAndPayload(JSVAL_TAG_SYMBOL, PayloadType(sym));
++#if defined(__FILC__)
++    capability_ = sym;
++#endif
+     MOZ_ASSERT(toSymbol() == sym);
+   }
+ 
+   void setBigInt(JS::BigInt* bi) {
+     MOZ_ASSERT(js::gc::IsCellPointerValid(bi));
+     asBits_ = bitsFromTagAndPayload(JSVAL_TAG_BIGINT, PayloadType(bi));
++#if defined(__FILC__)
++    capability_ = bi;
++#endif
+     MOZ_ASSERT(toBigInt() == bi);
+   }
+ 
+@@ -638,6 +675,9 @@ class alignas(8) Value {
+     MOZ_ASSERT(js::gc::MaybeForwardedIsExtendedPrimitive(obj));
+     asBits_ =
+         bitsFromTagAndPayload(JSVAL_TAG_EXTENDED_PRIMITIVE, PayloadType(&obj));
++#if defined(__FILC__)
++    capability_ = &obj;
++#endif
+     MOZ_ASSERT(&toExtendedPrimitive() == &obj);
+   }
+ #endif
+@@ -645,6 +685,9 @@ class alignas(8) Value {
+  private:
+   void setObjectNoCheck(JSObject* obj) {
+     asBits_ = bitsFromTagAndPayload(JSVAL_TAG_OBJECT, PayloadType(obj));
++#if defined(__FILC__)
++    capability_ = obj;
++#endif
+   }
+ 
+   friend inline Value js::PoisonedObjectValue(uintptr_t poison);
+@@ -727,6 +770,13 @@ class alignas(8) Value {
+     uint64_t tmp = rhs.asBits_;
+     rhs.asBits_ = asBits_;
+     asBits_ = tmp;
++#if defined(__FILC__)
++    // Fil-C: the capability must follow the payload bits (see the comment
++    // at capability_).
++    void* tmpCapability = rhs.capability_;
++    rhs.capability_ = capability_;
++    capability_ = tmpCapability;
++#endif
+   }
+ 
+  private:
+@@ -740,10 +790,17 @@ class alignas(8) Value {
+     uintptr_t payload = uint32_t(asBits_);
+     return reinterpret_cast<T*>(payload);
+ #elif defined(JS_PUNBOX64)
++#if defined(__FILC__)
++    // Fil-C: read the real pointer (and its capability) that the setter
++    // stashed in capability_. Reconstructing a pointer from asBits_ would
++    // produce a null-capability pointer that traps on any use.
++    return static_cast<T*>(capability_);
++#else
+     // Note: the 'Spectre mitigations' comment at the top of this class
+     // explains why we use XOR here.
+     constexpr uint64_t shiftedTag = uint64_t(Tag) << JSVAL_TAG_SHIFT;
+     return reinterpret_cast<T*>(uintptr_t(asBits_ ^ shiftedTag));
++#endif
+ #endif
+   }
+ 
+@@ -755,7 +812,14 @@ class alignas(8) Value {
+   JSValueTag toNunboxTag() const { return toTag(); }
+ #elif defined(JS_PUNBOX64)
+   const void* bitsAsPunboxPointer() const {
++#if defined(__FILC__)
++    // Fil-C: return the pointer view that keeps the capability (if the
++    // value holds a GC thing). Used for debug printing and wasm (which we
++    // do not exercise).
++    return capability_;
++#else
+     return reinterpret_cast<void*>(asBits_);
++#endif
+   }
+ #endif
+ 
+@@ -953,12 +1017,21 @@ class alignas(8) Value {
+ #if defined(JS_NUNBOX32)
+     return reinterpret_cast<JSObject*>(uintptr_t(asBits_));
+ #elif defined(JS_PUNBOX64)
++#if defined(__FILC__)
++    // Fil-C: see the comment in unboxGCPointer. Gate on the tag, since
++    // capability_ is only meaningful when the value holds a cell.
++    if (MOZ_UNLIKELY(isNull())) {
++      return nullptr;
++    }
++    return static_cast<JSObject*>(capability_);
++#else
+     // Note: the 'Spectre mitigations' comment at the top of this class
+     // explains why we use XOR here and in other to* methods.
+     uint64_t ptrBits =
+         (asBits_ ^ JSVAL_SHIFTED_TAG_OBJECT) & ~detail::ValueObjectOrNullBit;
+     MOZ_ASSERT((ptrBits & 0x7) == 0);
+     return reinterpret_cast<JSObject*>(ptrBits);
++#endif
+ #endif
+   }
+ 
+@@ -985,9 +1058,14 @@ class alignas(8) Value {
+ #if defined(JS_NUNBOX32)
+     return reinterpret_cast<js::gc::Cell*>(uintptr_t(asBits_));
+ #elif defined(JS_PUNBOX64)
++#if defined(__FILC__)
++    // Fil-C: read the real pointer set by the setter (see unboxGCPointer).
++    return static_cast<js::gc::Cell*>(capability_);
++#else
+     uint64_t ptrBits = asBits_ & detail::ValueGCThingPayloadMask;
+     MOZ_ASSERT((ptrBits & 0x7) == 0);
+     return reinterpret_cast<js::gc::Cell*>(ptrBits);
++#endif
+ #endif
+   }
+ 
+@@ -1035,6 +1113,11 @@ class alignas(8) Value {
+     MOZ_ASSERT(detail::IsValidUserModePointer(uintptr_t(ptr)));
+ #endif
+     asBits_ = uintptr_t(ptr);
++#if defined(__FILC__)
++    // Fil-C: toPrivate() hands the pointer back to code that dereferences
++    // it, so we must keep the capability (see the comment at capability_).
++    capability_ = ptr;
++#endif
+     MOZ_ASSERT(isDouble());
+   }
+ 
+@@ -1043,7 +1126,11 @@ class alignas(8) Value {
+ #if defined(JS_PUNBOX64)
+     MOZ_ASSERT(detail::IsValidUserModePointer(asBits_));
+ #endif
++#if defined(__FILC__)
++    return capability_;
++#else
+     return reinterpret_cast<void*>(uintptr_t(asBits_));
++#endif
+   }
+ 
+   void setPrivateUint32(uint32_t ui) {
+@@ -1086,14 +1173,23 @@ class alignas(8) Value {
+ #endif
+     asBits_ =
+         bitsFromTagAndPayload(JSVAL_TAG_PRIVATE_GCTHING, PayloadType(cell));
++#if defined(__FILC__)
++    capability_ = cell;
++#endif
+   }
+ 
+   bool isPrivateGCThing() const { return toTag() == JSVAL_TAG_PRIVATE_GCTHING; }
+ } JS_HAZ_GC_POINTER MOZ_NON_PARAM;
+ 
++#if defined(__FILC__)
++static_assert(sizeof(Value) == 16,
++              "Fil-C Value carries the punbox bits plus a capability "
++              "pointer; see the comment at capability_");
++#else
+ static_assert(sizeof(Value) == 8,
+               "Value size must leave three tag bits, be a binary power, and "
+               "is ubiquitously depended upon everywhere");
++#endif
+ 
+ static MOZ_ALWAYS_INLINE void ExposeValueToActiveJS(const Value& v) {
+ #ifdef DEBUG
+diff --git a/js/public/friend/StackLimits.h b/js/public/friend/StackLimits.h
+index 061c0ef..fe4c271 100644
+--- a/js/public/friend/StackLimits.h
++++ b/js/public/friend/StackLimits.h
+@@ -13,6 +13,10 @@
+ 
+ #include <stddef.h>  // size_t
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zstack_pointer
++#endif
++
+ #include "jstypes.h"  // JS_PUBLIC_API
+ 
+ #include "js/HeapAPI.h"  // JS::StackKind, JS::StackForTrustedScript, JS::StackForUntrustedScript
+@@ -32,6 +36,16 @@ struct JS_PUBLIC_API JSContext;
+ 
+ namespace js {
+ 
++#if defined(__FILC__)
++// Fil-C: taking the address of a local variable does not necessarily yield
++// the native stack pointer: the Pizlonator may move locals into GC memory,
++// in which case the address is a heap address and comparing it against the
++// native stack limit is meaningless (every check would report
++// over-recursion). The Fil-C runtime provides zstack_pointer() for exactly
++// this purpose, so use it for all stack-limit checks.
++MOZ_ALWAYS_INLINE void* filcStackPointer() { return zstack_pointer(); }
++#endif
++
+ class FrontendContext;
+ 
+ #ifdef __wasi__
+@@ -233,14 +247,22 @@ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::check(
+ 
+ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkDontReport(
+     JSContext* cx) const {
++#if defined(__FILC__)
++  return checkWithStackPointerDontReport(cx, filcStackPointer());
++#else
+   int stackDummy;
+   return checkWithStackPointerDontReport(cx, &stackDummy);
++#endif
+ }
+ 
+ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkDontReport(
+     FrontendContext* fc) const {
++#if defined(__FILC__)
++  return checkWithStackPointerDontReport(fc, filcStackPointer());
++#else
+   int stackDummy;
+   return checkWithStackPointerDontReport(fc, &stackDummy);
++#endif
+ }
+ 
+ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkWithStackPointerDontReport(
+@@ -264,8 +286,12 @@ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkWithStackPointerDontReport(
+ 
+ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkWithExtra(
+     JSContext* cx, size_t extra) const {
++#if defined(__FILC__)
++  char* sp = static_cast<char*>(filcStackPointer());
++#else
+   char stackDummy;
+   char* sp = &stackDummy;
++#endif
+ #if JS_STACK_GROWTH_DIRECTION > 0
+   sp += extra;
+ #else
+@@ -291,8 +317,12 @@ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkSystemDontReport(
+     JSContext* cx) const {
+   JS::NativeStackLimit limit =
+       getStackLimitHelper(cx, JS::StackForSystemCode, 0);
++#if defined(__FILC__)
++  return checkLimitImpl(limit, filcStackPointer());
++#else
+   int stackDummy;
+   return checkLimitImpl(limit, &stackDummy);
++#endif
+ }
+ 
+ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkConservative(
+@@ -308,14 +338,22 @@ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkConservativeDontReport(
+     JSContext* cx) const {
+   JS::NativeStackLimit limit = getStackLimitHelper(
+       cx, JS::StackForUntrustedScript, -4096 * int(sizeof(size_t)));
++#if defined(__FILC__)
++  return checkLimitImpl(limit, filcStackPointer());
++#else
+   int stackDummy;
+   return checkLimitImpl(limit, &stackDummy);
++#endif
+ }
+ 
+ MOZ_ALWAYS_INLINE bool AutoCheckRecursionLimit::checkConservativeDontReport(
+     JS::NativeStackLimit limit) const {
++#if defined(__FILC__)
++  return checkLimitImpl(limit, filcStackPointer());
++#else
+   int stackDummy;
+   return checkLimitImpl(limit, &stackDummy);
++#endif
+ }
+ 
+ }  // namespace js
+diff --git a/js/src/builtin/Array.cpp b/js/src/builtin/Array.cpp
+index 24d13c1..ebca562 100644
+--- a/js/src/builtin/Array.cpp
++++ b/js/src/builtin/Array.cpp
+@@ -4233,6 +4233,14 @@ bool js::array_indexOf(JSContext* cx, unsigned argc, Value* vp) {
+         std::min(nobj->getDenseInitializedLength(), uint32_t(len));
+     const Value* elements = nobj->getDenseElements();
+ 
++#ifndef __FILC__
++    // Fil-C: JS::Value is 16 bytes (capability pointer + raw bits), so the
++    // dense elements cannot be scanned as an array of 64-bit words: the
++    // memchr64 fast path below assumes sizeof(Value) == 8 both for the
++    // stride and for the result index math. Skip it and use the generic
++    // iterator, which compares whole Value objects (and under Fil-C compares
++    // the raw address half, which is still identity-correct for
++    // objects/symbols).
+     if (CanUseBitwiseCompareForStrictlyEqual(searchElement) && length > start) {
+       const uint64_t* elementsAsBits =
+           reinterpret_cast<const uint64_t*>(elements);
+@@ -4245,6 +4253,7 @@ bool js::array_indexOf(JSContext* cx, unsigned argc, Value* vp) {
+       }
+       return true;
+     }
++#endif
+ 
+     auto iterator = [elements, start, length](JSContext* cx, auto cmp,
+                                               MutableHandleValue rval) {
+@@ -4482,6 +4491,9 @@ bool js::array_includes(JSContext* cx, unsigned argc, Value* vp) {
+ 
+     // For |includes| we need to treat hole values as |undefined| so we use a
+     // different path if searching for |undefined|.
++#ifndef __FILC__
++    // Fil-C: see the comment at the corresponding fast path in
++    // js::array_indexOf — the memchr64 scan assumes 8-byte Values.
+     if (CanUseBitwiseCompareForStrictlyEqual(searchElement) &&
+         !searchElement.isUndefined() && length > start) {
+       if (SIMD::memchr64(reinterpret_cast<const uint64_t*>(elements) + start,
+@@ -4492,6 +4504,7 @@ bool js::array_includes(JSContext* cx, unsigned argc, Value* vp) {
+       }
+       return true;
+     }
++#endif
+ 
+     auto iterator = [elements, start, length](JSContext* cx, auto cmp,
+                                               MutableHandleValue rval) {
+diff --git a/js/src/builtin/intl/Locale.cpp b/js/src/builtin/intl/Locale.cpp
+index b30def7..c414533 100644
+--- a/js/src/builtin/intl/Locale.cpp
++++ b/js/src/builtin/intl/Locale.cpp
+@@ -26,6 +26,9 @@
+ #include "builtin/intl/LanguageTag.h"
+ #include "builtin/intl/StringAsciiChars.h"
+ #include "builtin/String.h"
++#if defined(__FILC__)
++#include "util/Text.h"  // std::char_traits<Latin1Char> specialization
++#endif
+ #include "js/Conversions.h"
+ #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
+ #include "js/Printer.h"
+diff --git a/js/src/ds/LifoAlloc.h b/js/src/ds/LifoAlloc.h
+index 872a10c..bf304ea 100644
+--- a/js/src/ds/LifoAlloc.h
++++ b/js/src/ds/LifoAlloc.h
+@@ -371,7 +371,14 @@ uint8_t* AlignPtr(uint8_t* orig) {
+   static_assert(mozilla::IsPowerOfTwo(LIFO_ALLOC_ALIGN),
+                 "LIFO_ALLOC_ALIGN must be a power of two");
+ 
++#if defined(__FILC__)
++  // Fil-C: casting the pointer to an integer and back would drop the
++  // capability. Do the alignment with pointer arithmetic instead.
++  uint8_t* result = orig + (LIFO_ALLOC_ALIGN - 1);
++  result -= reinterpret_cast<uintptr_t>(result) % LIFO_ALLOC_ALIGN;
++#else
+   uint8_t* result = (uint8_t*)AlignBytes(uintptr_t(orig), LIFO_ALLOC_ALIGN);
++#endif
+   MOZ_ASSERT(uintptr_t(result) % LIFO_ALLOC_ALIGN == 0);
+   return result;
+ }
+diff --git a/js/src/frontend/CompilationStencil.h b/js/src/frontend/CompilationStencil.h
+index 617a3dd..68a3265 100644
+--- a/js/src/frontend/CompilationStencil.h
++++ b/js/src/frontend/CompilationStencil.h
+@@ -909,7 +909,16 @@ struct SharedDataContainer {
+     TagMask = 3,
+   };
+ 
++#if defined(__FILC__)
++  // Fil-C: pointers cannot be packed into a uintptr_t with tag bits (the
++  // capability would be lost, and reconstructing the pointer from the
++  // integer would yield a null capability). Store the pointer and the tag
++  // separately.
++  void* ptr_ = nullptr;
++  uintptr_t tag_ = SingleTag;
++#else
+   uintptr_t data_ = 0;
++#endif
+ 
+  public:
+   // Defaults to SingleSharedData.
+@@ -917,13 +926,12 @@ struct SharedDataContainer {
+ 
+   SharedDataContainer(const SharedDataContainer&) = delete;
+   SharedDataContainer(SharedDataContainer&& other) noexcept {
+-    std::swap(data_, other.data_);
++    swapWith(other);
+     MOZ_ASSERT(other.isEmpty());
+   }
+ 
+-  SharedDataContainer& operator=(const SharedDataContainer&) = delete;
+   SharedDataContainer& operator=(SharedDataContainer&& other) noexcept {
+-    std::swap(data_, other.data_);
++    swapWith(other);
+     MOZ_ASSERT(other.isEmpty());
+     return *this;
+   }
+@@ -937,6 +945,51 @@ struct SharedDataContainer {
+   [[nodiscard]] bool convertFromSingleToMap(FrontendContext* fc);
+ 
+  public:
++#if defined(__FILC__)
++  void swapWith(SharedDataContainer& other) {
++    std::swap(ptr_, other.ptr_);
++    std::swap(tag_, other.tag_);
++  }
++  bool isEmpty() const { return tag_ == SingleTag && !ptr_; }
++  bool isSingle() const { return (tag_ & TagMask) == SingleTag; }
++  bool isVector() const { return (tag_ & TagMask) == VectorTag; }
++  bool isMap() const { return (tag_ & TagMask) == MapTag; }
++  bool isBorrow() const { return (tag_ & TagMask) == BorrowTag; }
++
++  void setSingle(already_AddRefed<SharedImmutableScriptData>&& data) {
++    MOZ_ASSERT(isEmpty());
++    ptr_ = data.take();
++    tag_ = SingleTag;
++    MOZ_ASSERT(isSingle());
++    MOZ_ASSERT(!isEmpty());
++  }
++
++  void setBorrow(SharedDataContainer* sharedData) {
++    MOZ_ASSERT(isEmpty());
++    ptr_ = sharedData;
++    tag_ = BorrowTag;
++    MOZ_ASSERT(isBorrow());
++  }
++
++  SingleSharedDataPtr asSingle() const {
++    MOZ_ASSERT(isSingle());
++    MOZ_ASSERT(!isEmpty());
++    return static_cast<SingleSharedDataPtr>(ptr_);
++  }
++  SharedDataVectorPtr asVector() const {
++    MOZ_ASSERT(isVector());
++    return static_cast<SharedDataVectorPtr>(ptr_);
++  }
++  SharedDataMapPtr asMap() const {
++    MOZ_ASSERT(isMap());
++    return static_cast<SharedDataMapPtr>(ptr_);
++  }
++  SharedDataContainer* asBorrow() const {
++    MOZ_ASSERT(isBorrow());
++    return static_cast<SharedDataContainer*>(ptr_);
++  }
++#else
++  void swapWith(SharedDataContainer& other) { std::swap(data_, other.data_); }
+   bool isEmpty() const { return (data_) == SingleTag; }
+   bool isSingle() const { return (data_ & TagMask) == SingleTag; }
+   bool isVector() const { return (data_ & TagMask) == VectorTag; }
+@@ -974,6 +1027,7 @@ struct SharedDataContainer {
+     MOZ_ASSERT(isBorrow());
+     return reinterpret_cast<SharedDataContainer*>(data_ & ~TagMask);
+   }
++#endif
+ 
+   [[nodiscard]] bool prepareStorageFor(FrontendContext* fc,
+                                        size_t nonLazyScriptCount,
+diff --git a/js/src/frontend/Stencil.cpp b/js/src/frontend/Stencil.cpp
+index a42ab23..c150768 100644
+--- a/js/src/frontend/Stencil.cpp
++++ b/js/src/frontend/Stencil.cpp
+@@ -2824,7 +2824,12 @@ bool SharedDataContainer::initVector(FrontendContext* fc) {
+     ReportOutOfMemory(fc);
+     return false;
+   }
++#if defined(__FILC__)
++  ptr_ = vec;
++  tag_ = VectorTag;
++#else
+   data_ = uintptr_t(vec) | VectorTag;
++#endif
+   return true;
+ }
+ 
+@@ -2836,7 +2841,12 @@ bool SharedDataContainer::initMap(FrontendContext* fc) {
+     ReportOutOfMemory(fc);
+     return false;
+   }
++#if defined(__FILC__)
++  ptr_ = map;
++  tag_ = MapTag;
++#else
+   data_ = uintptr_t(map) | MapTag;
++#endif
+   return true;
+ }
+ 
+@@ -2961,7 +2971,7 @@ bool SharedDataContainer::convertFromSingleToMap(FrontendContext* fc) {
+     return false;
+   }
+ 
+-  std::swap(data_, other.data_);
++  swapWith(other);
+   return true;
+ }
+ 
+diff --git a/js/src/gc/Cell.h b/js/src/gc/Cell.h
+index bc2da39..23a4c1e 100644
+--- a/js/src/gc/Cell.h
++++ b/js/src/gc/Cell.h
+@@ -12,6 +12,9 @@
+ 
+ #include <type_traits>
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
+ #include "gc/GCContext.h"
+ #include "gc/Heap.h"
+ #include "gc/TraceKind.h"
+@@ -119,7 +122,24 @@ class HeaderWord {
+   static constexpr uintptr_t FORWARD_BIT = Bit(0);
+   // Bits 1 and 2 are reserved for future use by the GC.
+ 
++#if defined(__FILC__)
++  // Fil-C: cells that store a pointer in the header word (see
++  // TenuredCellWithNonGCPointer, CellWithTenuredGCPointer,
++  // TenuredCellWithGCPointer) need the pointer's Fil-C capability to
++  // survive. Storing the pointer as a uintptr_t would drop the capability
++  // (integer stores do not update Fil-C's out-of-band capability store),
++  // and reconstructing the pointer from the integer on load would produce
++  // a null-capability pointer that traps on use. So, under Fil-C the
++  // header word is a union: pointer-bearing cells use ptr_ (typed pointer
++  // stores/loads, which move the capability), everything else uses value_
++  // exactly like upstream. A given cell class only ever uses one view.
++  union {
++    uintptr_t value_;
++    void* ptr_;
++  };
++#else
+   uintptr_t value_;
++#endif
+ 
+   void setAtomic(uintptr_t value) {
+     __atomic_store_n(&value_, value, __ATOMIC_RELAXED);
+@@ -135,6 +155,19 @@ class HeaderWord {
+     return __atomic_load_n(&value_, __ATOMIC_RELAXED);
+   }
+ 
++#if defined(__FILC__)
++  // Typed pointer accessors for derived class data that is a pointer. These
++  // keep the Fil-C capability alive (see the comment at the union above).
++  // Fil-C pointer slots do not track constness, so accept const-qualified
++  // referents here too.
++  void setPtr(const void* ptr) { ptr_ = const_cast<void*>(ptr); }
++  void* getPtr() const { return ptr_; }
++  void* getPtrAtomic() const {
++    return __atomic_load_n(&ptr_, __ATOMIC_RELAXED);
++  }
++  void** ptrAddress() { return &ptr_; }
++#endif
++
+   // Accessors for derived class data.
+   uintptr_t get() const {
+     // Note: non-atomic load. See class comment.
+@@ -393,7 +426,12 @@ ChunkBase* Cell::chunk() const {
+   uintptr_t addr = uintptr_t(this);
+   MOZ_ASSERT(addr % CellAlignBytes == 0);
+   addr &= ~ChunkMask;
++#if defined(__FILC__)
++  // Fil-C: keep the capability when computing the chunk base.
++  return reinterpret_cast<ChunkBase*>(zmkptr(const_cast<Cell*>(this), addr));
++#else
+   return reinterpret_cast<ChunkBase*>(addr);
++#endif
+ }
+ 
+ inline StoreBuffer* Cell::storeBuffer() const { return chunk()->storeBuffer; }
+@@ -503,7 +541,13 @@ inline Arena* TenuredCell::arena() const {
+   MOZ_ASSERT(isTenured());
+   uintptr_t addr = address();
+   addr &= ~ArenaMask;
++#if defined(__FILC__)
++  // Fil-C: keep the capability when computing the arena base.
++  return reinterpret_cast<Arena*>(
++      zmkptr(const_cast<TenuredCell*>(this), addr));
++#else
+   return reinterpret_cast<Arena*>(addr);
++#endif
+ }
+ 
+ AllocKind TenuredCell::getAllocKind() const { return arena()->getAllocKind(); }
+@@ -741,20 +785,35 @@ class alignas(gc::CellAlignBytes) TenuredCellWithNonGCPointer
+  protected:
+   TenuredCellWithNonGCPointer() = default;
+   explicit TenuredCellWithNonGCPointer(PtrT* initial) {
++#if defined(__FILC__)
++    // Fil-C: store through the pointer view so the capability lands in
++    // Fil-C's out-of-band capability store for this slot. See the comment
++    // at HeaderWord's union.
++    header_.setPtr(initial);
++#else
+     uintptr_t data = uintptr_t(initial);
+     header_.set(data);
++#endif
+   }
+ 
+   PtrT* headerPtr() const {
+     MOZ_ASSERT(flags() == 0);
++#if defined(__FILC__)
++    return static_cast<PtrT*>(header_.getPtr());
++#else
+     return reinterpret_cast<PtrT*>(uintptr_t(header_.get()));
++#endif
+   }
+ 
+   void setHeaderPtr(PtrT* newValue) {
+     // As above, no flags are expected to be set here.
++#if defined(__FILC__)
++    header_.setPtr(newValue);
++#else
+     uintptr_t data = uintptr_t(newValue);
+     MOZ_ASSERT(flags() == 0);
+     header_.set(data);
++#endif
+   }
+ 
+  public:
+@@ -815,8 +874,12 @@ class alignas(gc::CellAlignBytes) CellWithTenuredGCPointer : public BaseCell {
+ 
+   void initHeaderPtr(PtrT* initial) {
+     MOZ_ASSERT_IF(initial, !IsInsideNursery(initial));
++#if defined(__FILC__)
++    this->header_.setPtr(initial);
++#else
+     uintptr_t data = uintptr_t(initial);
+     this->header_.set(data);
++#endif
+   }
+ 
+   void setHeaderPtr(PtrT* newValue) {
+@@ -830,18 +893,30 @@ class alignas(gc::CellAlignBytes) CellWithTenuredGCPointer : public BaseCell {
+   PtrT* headerPtr() const {
+     staticAsserts();
+     MOZ_ASSERT(this->flags() == 0);
++#if defined(__FILC__)
++    return static_cast<PtrT*>(this->header_.getPtr());
++#else
+     return reinterpret_cast<PtrT*>(uintptr_t(this->header_.get()));
++#endif
+   }
+   PtrT* headerPtrAtomic() const {
+     staticAsserts();
+     MOZ_ASSERT(this->flags() == 0);
++#if defined(__FILC__)
++    return static_cast<PtrT*>(this->header_.getPtrAtomic());
++#else
+     return reinterpret_cast<PtrT*>(uintptr_t(this->header_.getAtomic()));
++#endif
+   }
+ 
+   void unbarrieredSetHeaderPtr(PtrT* newValue) {
++#if defined(__FILC__)
++    this->header_.setPtr(newValue);
++#else
+     uintptr_t data = uintptr_t(newValue);
+     MOZ_ASSERT(this->flags() == 0);
+     this->header_.set(data);
++#endif
+   }
+ 
+   static constexpr size_t offsetOfHeaderPtr() {
+@@ -881,8 +956,12 @@ class alignas(gc::CellAlignBytes) TenuredCellWithGCPointer
+   explicit TenuredCellWithGCPointer(PtrT* initial) { initHeaderPtr(initial); }
+ 
+   void initHeaderPtr(PtrT* initial) {
++#if defined(__FILC__)
++    header_.setPtr(initial);
++#else
+     uintptr_t data = uintptr_t(initial);
+     this->header_.set(data);
++#endif
+     if (initial && IsInsideNursery(initial)) {
+       CellHeaderPostWriteBarrier(headerPtrAddress(), nullptr, initial);
+     }
+@@ -890,19 +969,31 @@ class alignas(gc::CellAlignBytes) TenuredCellWithGCPointer
+ 
+   PtrT** headerPtrAddress() {
+     MOZ_ASSERT(this->flags() == 0);
++#if defined(__FILC__)
++    return reinterpret_cast<PtrT**>(header_.ptrAddress());
++#else
+     return reinterpret_cast<PtrT**>(&this->header_);
++#endif
+   }
+ 
+  public:
+   PtrT* headerPtr() const {
+     MOZ_ASSERT(this->flags() == 0);
++#if defined(__FILC__)
++    return static_cast<PtrT*>(header_.getPtr());
++#else
+     return reinterpret_cast<PtrT*>(uintptr_t(this->header_.get()));
++#endif
+   }
+ 
+   void unbarrieredSetHeaderPtr(PtrT* newValue) {
++#if defined(__FILC__)
++    header_.setPtr(newValue);
++#else
+     uintptr_t data = uintptr_t(newValue);
+     MOZ_ASSERT(this->flags() == 0);
+     this->header_.set(data);
++#endif
+   }
+ 
+   static constexpr size_t offsetOfHeaderPtr() {
+diff --git a/js/src/gc/GC-inl.h b/js/src/gc/GC-inl.h
+index 1c177f5..7bc44a6 100644
+--- a/js/src/gc/GC-inl.h
++++ b/js/src/gc/GC-inl.h
+@@ -7,6 +7,9 @@
+ #ifndef gc_GC_inl_h
+ #define gc_GC_inl_h
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
+ #include "gc/GC.h"
+ 
+ #include "mozilla/DebugOnly.h"
+@@ -94,7 +97,13 @@ class ArenaCellIter {
+ 
+   TenuredCell* get() const {
+     MOZ_ASSERT(!done());
++#if defined(__FILC__)
++    // Fil-C: keep the arena's capability when computing the cell address.
++    return reinterpret_cast<TenuredCell*>(
++        zmkptr(arenaAddr, uintptr_t(arenaAddr) + thing));
++#else
+     return reinterpret_cast<TenuredCell*>(uintptr_t(arenaAddr) + thing);
++#endif
+   }
+ 
+   template <typename T>
+diff --git a/js/src/gc/GC.cpp b/js/src/gc/GC.cpp
+index b8e1d21..6684a77 100644
+--- a/js/src/gc/GC.cpp
++++ b/js/src/gc/GC.cpp
+@@ -1581,8 +1581,16 @@ bool GCRuntime::shouldCompact() {
+ }
+ 
+ bool GCRuntime::isCompactingGCEnabled() const {
++#if defined(__FILC__)
++  // Fil-C: compacting GC moves cells, which would invalidate the Fil-C
++  // capabilities of every pointer to a moved cell. Keep it off. Mark-sweep
++  // still frees unreachable cells (unlike the WebKit JSC port, which leaks
++  // everything).
++  return false;
++#else
+   return compactingEnabled &&
+          rt->mainContextFromOwnThread()->compactingDisabledCount == 0;
++#endif
+ }
+ 
+ JS_PUBLIC_API void JS::SetCreateGCSliceBudgetCallback(
+diff --git a/js/src/gc/GCAPI.cpp b/js/src/gc/GCAPI.cpp
+index 7911baa..9b01b2a 100644
+--- a/js/src/gc/GCAPI.cpp
++++ b/js/src/gc/GCAPI.cpp
+@@ -216,11 +216,15 @@ JS_PUBLIC_API size_t JS::GCTraceKindSize(JS::TraceKind kind) {
+ JS::GCCellPtr::GCCellPtr(const Value& v)
+     : GCCellPtr(v.toGCThing(), v.traceKind()) {}
+ 
++#if !defined(__FILC__)
++// Fil-C: GCCellPtr stores the trace kind directly (see HeapAPI.h), so there
++// is no out-of-line kind to recover.
+ JS::TraceKind JS::GCCellPtr::outOfLineKind() const {
+   MOZ_ASSERT((ptr & OutOfLineTraceKindMask) == OutOfLineTraceKindMask);
+   MOZ_ASSERT(asCell()->isTenured());
+   return MapAllocToTraceKind(asCell()->asTenured().getAllocKind());
+ }
++#endif
+ 
+ JS_PUBLIC_API void JS::PrepareZoneForGC(JSContext* cx, Zone* zone) {
+   AssertHeapIsIdle();
+diff --git a/js/src/gc/GCMarker.h b/js/src/gc/GCMarker.h
+index 053ba90..b5e3f5a 100644
+--- a/js/src/gc/GCMarker.h
++++ b/js/src/gc/GCMarker.h
+@@ -7,6 +7,10 @@
+ #ifndef gc_GCMarker_h
+ #define gc_GCMarker_h
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
++
+ #include "mozilla/Maybe.h"
+ #include "mozilla/Variant.h"
+ 
+@@ -110,7 +114,21 @@ class MarkStack {
+                 "The tag mask must be embeddable in a Cell*.");
+ 
+   class TaggedPtr {
++#if defined(__FILC__)
++    // Fil-C: the tagged pointer must carry the Fil-C capability of the cell
++    // it points at. Storing tag|uintptr_t(ptr) as a plain integer and
++    // reconstructing the pointer on load would yield a null capability.
++    // Instead, keep a union so that the constructor can store the tagged
++    // pointer through a typed pointer store (which moves the capability
++    // into Fil-C's out-of-band capability store), and ptr() can read it
++    // back through a typed pointer load and re-mask the address.
++    union {
++      uintptr_t bits;
++      Cell* capabilityPtr_;
++    };
++#else
+     uintptr_t bits;
++#endif
+ 
+     Cell* ptr() const;
+ 
+@@ -374,8 +392,15 @@ class GCMarker {
+ 
+   static GCMarker* fromTracer(JSTracer* trc) {
+     MOZ_ASSERT(trc->isMarkingTracer());
++#if defined(__FILC__)
++    // Fil-C: keep the capability of the tracer pointer when doing the
++    // container_of-style downcast.
++    auto* marker = reinterpret_cast<GCMarker*>(
++        zmkptr(trc, uintptr_t(trc) - offsetof(GCMarker, tracer_)));
++#else
+     auto* marker = reinterpret_cast<GCMarker*>(uintptr_t(trc) -
+                                                offsetof(GCMarker, tracer_));
++#endif
+     MOZ_ASSERT(marker->tracer() == trc);
+     return marker;
+   }
+diff --git a/js/src/gc/Heap.cpp b/js/src/gc/Heap.cpp
+index fdf24fb..3f874d4 100644
+--- a/js/src/gc/Heap.cpp
++++ b/js/src/gc/Heap.cpp
+@@ -73,6 +73,29 @@ struct ArenaLayout {
+   }
+ };
+ 
++#if defined(__FILC__)
++// Fil-C: widened arrays; see the comment in Heap.h.
++const uint16_t Arena::ThingSizes[] = {
++#define EXPAND_THING_SIZE(_1, _2, _3, sizedType, _4, _5, _6) \
++  ArenaLayout<sizedType>::thingSize(),
++    FOR_EACH_ALLOCKIND(EXPAND_THING_SIZE)
++#undef EXPAND_THING_SIZE
++};
++
++const uint16_t Arena::FirstThingOffsets[] = {
++#define EXPAND_FIRST_THING_OFFSET(_1, _2, _3, sizedType, _4, _5, _6) \
++  ArenaLayout<sizedType>::firstThingOffset(),
++    FOR_EACH_ALLOCKIND(EXPAND_FIRST_THING_OFFSET)
++#undef EXPAND_FIRST_THING_OFFSET
++};
++
++const uint16_t Arena::ThingsPerArena[] = {
++#define EXPAND_THINGS_PER_ARENA(_1, _2, _3, sizedType, _4, _5, _6) \
++  ArenaLayout<sizedType>::thingsPerArena(),
++    FOR_EACH_ALLOCKIND(EXPAND_THINGS_PER_ARENA)
++#undef EXPAND_THINGS_PER_ARENA
++};
++#else
+ const uint8_t Arena::ThingSizes[] = {
+ #define EXPAND_THING_SIZE(_1, _2, _3, sizedType, _4, _5, _6) \
+   ArenaLayout<sizedType>::thingSize(),
+@@ -93,6 +116,7 @@ const uint8_t Arena::ThingsPerArena[] = {
+     FOR_EACH_ALLOCKIND(EXPAND_THINGS_PER_ARENA)
+ #undef EXPAND_THINGS_PER_ARENA
+ };
++#endif  // defined(__FILC__)
+ 
+ void Arena::unmarkAll() {
+   MarkBitmapWord* arenaBits = chunk()->markBits.arenaBits(this);
+diff --git a/js/src/gc/Heap.h b/js/src/gc/Heap.h
+index 9a1b25d..bcd57e2 100644
+--- a/js/src/gc/Heap.h
++++ b/js/src/gc/Heap.h
+@@ -9,6 +9,9 @@
+ 
+ #include "mozilla/DebugOnly.h"
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
+ #include "gc/AllocKind.h"
+ #include "gc/Pretenuring.h"
+ #include "js/HeapAPI.h"
+@@ -104,7 +107,14 @@ class FreeSpan {
+   // Like nextSpan(), but no checking of the following span is done.
+   FreeSpan* nextSpanUnchecked(const Arena* arena) const {
+     MOZ_ASSERT(arena && !isEmpty());
++#if defined(__FILC__)
++    // Fil-C: reconstructing a pointer from the arena's address would drop
++    // the capability. Use zmkptr to keep the arena's capability.
++    return reinterpret_cast<FreeSpan*>(
++        zmkptr(const_cast<Arena*>(arena), uintptr_t(arena) + last));
++#else
+     return reinterpret_cast<FreeSpan*>(uintptr_t(arena) + last);
++#endif
+   }
+ 
+   const FreeSpan* nextSpan(const Arena* arena) const {
+@@ -134,7 +144,13 @@ class FreeSpan {
+     DebugOnlyPoison(reinterpret_cast<void*>(thing),
+                     JS_ALLOCATED_TENURED_PATTERN, thingSize,
+                     MemCheckKind::MakeUndefined);
++#if defined(__FILC__)
++    // Fil-C: the returned cell pointer must carry the capability of the
++    // chunk (which the arena pointer has). See the comment at nextSpanUnchecked.
++    return reinterpret_cast<TenuredCell*>(zmkptr(arena, thing));
++#else
+     return reinterpret_cast<TenuredCell*>(thing);
++#endif
+   }
+ 
+   inline void checkSpan(const Arena* arena) const;
+@@ -156,9 +172,18 @@ class FreeSpan {
+  * <-------------------------> = first thing offset
+  */
+ class alignas(ArenaSize) Arena {
++#if defined(__FILC__)
++  // Fil-C: sizeof(Value) is 16, so object thing sizes (up to
++  // JSObject::MAX_BYTE_SIZE = 280), first-thing offsets, and things-per-arena
++  // (4096/16 = 256) can exceed what fits in a uint8_t. Use uint16_t.
++  static JS_PUBLIC_DATA const uint16_t ThingSizes[];
++  static JS_PUBLIC_DATA const uint16_t FirstThingOffsets[];
++  static JS_PUBLIC_DATA const uint16_t ThingsPerArena[];
++#else
+   static JS_PUBLIC_DATA const uint8_t ThingSizes[];
+   static JS_PUBLIC_DATA const uint8_t FirstThingOffsets[];
+   static JS_PUBLIC_DATA const uint8_t ThingsPerArena[];
++#endif
+   /*
+    * The first span of free things in the arena. Most of these spans are
+    * stored as offsets in free regions of the data array, and most operations
+@@ -657,6 +682,15 @@ class TenuredChunk : public TenuredChunkBase {
+     return reinterpret_cast<TenuredChunk*>(addr);
+   }
+ 
++#if defined(__FILC__)
++  // Fil-C: chunk pointers must carry the capability of the heap memory they
++  // point into. Use this overload when the caller has a real pointer into
++  // the chunk (a cell or an arena); zandptr preserves the capability.
++  static TenuredChunk* fromAddress(void* ptr) {
++    return reinterpret_cast<TenuredChunk*>(zandptr(ptr, ~uintptr_t(ChunkMask)));
++  }
++#endif
++
+   static bool withinValidRange(uintptr_t addr) {
+     uintptr_t offset = addr & ChunkMask;
+     if (TenuredChunk::fromAddress(addr)->isNurseryChunk()) {
+@@ -753,7 +787,13 @@ inline void Arena::checkAddress() const {
+ }
+ 
+ inline TenuredChunk* Arena::chunk() const {
++#if defined(__FILC__)
++  // Fil-C: keep the capability when computing the chunk base. See the
++  // comment at TenuredChunk::fromAddress.
++  return TenuredChunk::fromAddress(const_cast<Arena*>(this));
++#else
+   return TenuredChunk::fromAddress(address());
++#endif
+ }
+ 
+ // Cell header stored before all nursery cells.
+diff --git a/js/src/gc/Marking.cpp b/js/src/gc/Marking.cpp
+index b92cd5f..d7b73dc 100644
+--- a/js/src/gc/Marking.cpp
++++ b/js/src/gc/Marking.cpp
+@@ -6,6 +6,9 @@
+ 
+ #include "gc/Marking-inl.h"
+ 
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
+ #include "mozilla/DebugOnly.h"
+ #include "mozilla/IntegerRange.h"
+ #include "mozilla/MathAlgorithms.h"
+@@ -1596,8 +1599,14 @@ static inline bool TagIsRangeTag(MarkStack::Tag tag) {
+ }
+ #endif
+ 
+-inline MarkStack::TaggedPtr::TaggedPtr(Tag tag, Cell* ptr)
+-    : bits(tag | uintptr_t(ptr)) {
++inline MarkStack::TaggedPtr::TaggedPtr(Tag tag, Cell* ptr) {
++#if defined(__FILC__)
++  // Fil-C: store the tagged pointer through the union's pointer view so
++  // the capability is kept (see the comment in GCMarker.h).
++  capabilityPtr_ = reinterpret_cast<Cell*>(zmkptr(ptr, uintptr_t(ptr) | tag));
++#else
++  bits = tag | uintptr_t(ptr);
++#endif
+   assertValid();
+ }
+ 
+@@ -1612,7 +1621,14 @@ inline MarkStack::Tag MarkStack::TaggedPtr::tag() const {
+ }
+ 
+ inline Cell* MarkStack::TaggedPtr::ptr() const {
++#if defined(__FILC__)
++  // Fil-C: read the pointer through the union's pointer view (keeping the
++  // capability) and re-mask the address. See the comment in GCMarker.h.
++  return reinterpret_cast<Cell*>(
++      zmkptr(capabilityPtr_, bits & ~TagMask));
++#else
+   return reinterpret_cast<Cell*>(bits & ~TagMask);
++#endif
+ }
+ 
+ inline void MarkStack::TaggedPtr::assertValid() const {
+diff --git a/js/src/gc/Memory.cpp b/js/src/gc/Memory.cpp
+index c5bdaa1..f4d344f 100644
+--- a/js/src/gc/Memory.cpp
++++ b/js/src/gc/Memory.cpp
+@@ -5,6 +5,9 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "gc/Memory.h"
++#if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
+ 
+ #include "mozilla/Atomics.h"
+ #include "mozilla/MathAlgorithms.h"
+@@ -386,8 +389,16 @@ void InitMemorySubsystem() {
+     maxValidAddress = size_t(sysinfo.lpMaximumApplicationAddress);
+     numAddressBits = mozilla::FloorLog2(maxValidAddress) + 1;
+ #  else
++#if defined(__FILC__)
++    // Fil-C: FindAddressLimit() probes the address space by mmapping at
++    // int-derived addresses, which Fil-C rejects (null-capability pointer
++    // arguments to mmap). Fil-C user addresses are all below 47 bits (and
++    // the code clamps to 47 bits below anyway), so use that directly.
++    numAddressBits = 47;
++#else
+     // No standard way to determine these, so fall back to FindAddressLimit().
+     numAddressBits = FindAddressLimit();
++#endif
+     minValidAddress = allocGranularity;
+     maxValidAddress = (UINT64_C(1) << numAddressBits) - 1 - allocGranularity;
+ #  endif
+@@ -422,6 +433,49 @@ static inline bool IsInvalidRegion(void* region, size_t length) {
+ }
+ #endif
+ 
++#if defined(__FILC__)
++/*
++ * Fil-C chunk allocator.
++ *
++ * Fil-C rejects mmap() calls whose address hint is not covered by a valid
++ * capability, which rules out upstream's scattershot allocator (random
++ * int-derived addresses) and the align-by-trimming paths (mmap at addresses
++ * adjacent to an existing region). The Fil-C runtime's mmap wrapper also
++ * returns regions that are not aligned to SpiderMonkey's chunk size (they
++ * tend to be offset by a couple of pages).
++ *
++ * So: over-reserve with a single anonymous mapping at nullptr, align inside
++ * it, and munmap the head and tail. The returned pointer keeps the
++ * capability of the original mapping (via zmkptr); its bounds cover the
++ * whole original reservation, including the pages that were just unmapped.
++ * Accessing those pages would hit a kernel page fault rather than a Fil-C
++ * bounds check, which is an acceptable (and small) weakening here.
++ */
++static void* MapAlignedPagesFilC(size_t length, size_t alignment) {
++  MOZ_RELEASE_ASSERT(length > 0 && alignment > 0);
++  size_t total = length + alignment + 2 * allocGranularity;
++  void* region = MapMemory(total);
++  if (!region) {
++    return nullptr;
++  }
++  void* aligned =
++      zmkptr(region, AlignBytes(uintptr_t(region), alignment));
++  MOZ_RELEASE_ASSERT(uintptr_t(aligned) >= uintptr_t(region));
++  MOZ_RELEASE_ASSERT(uintptr_t(aligned) + length <=
++                     uintptr_t(region) + total);
++  size_t headSize = uintptr_t(aligned) - uintptr_t(region);
++  if (headSize) {
++    UnmapInternal(region, headSize);
++  }
++  size_t tailStart = uintptr_t(aligned) + length;
++  size_t tailSize = uintptr_t(region) + total - tailStart;
++  if (tailSize) {
++    UnmapInternal(reinterpret_cast<void*>(tailStart), tailSize);
++  }
++  return aligned;
++}
++#endif
++
+ void* MapAlignedPages(size_t length, size_t alignment) {
+   MOZ_RELEASE_ASSERT(length > 0 && alignment > 0);
+   MOZ_RELEASE_ASSERT(length % pageSize == 0);
+@@ -445,6 +499,13 @@ void* MapAlignedPages(size_t length, size_t alignment) {
+   return region;
+ #else
+ 
++#if defined(__FILC__)
++  // Fil-C: use the Fil-C-specific chunk allocator; see the comment above
++  // MapAlignedPagesFilC. (The upstream scattershot and align-by-trimming
++  // allocators pass addresses to mmap that Fil-C rejects.)
++  return MapAlignedPagesFilC(length, alignment);
++#endif
++
+ #  ifdef JS_64BIT
+   // Use the scattershot allocator if the address range is large enough.
+   if (UsingScattershotAllocator()) {
+@@ -599,8 +660,15 @@ static void* MapAlignedPagesSlow(size_t length, size_t alignment) {
+     if (!region) {
+       return nullptr;
+     }
++#if defined(__FILC__)
++    // Fil-C: the returned chunk pointer must carry the capability of the
++    // mapping (the region pointer does). Reconstructing it from the
++    // address alone would drop the capability.
++    alignedRegion = zmkptr(region, AlignBytes(uintptr_t(region), alignment));
++#else
+     alignedRegion =
+         reinterpret_cast<void*>(AlignBytes(uintptr_t(region), alignment));
++#endif
+ #  ifdef XP_WIN
+     // Windows requires that map and unmap calls be matched, so deallocate
+     // and immediately reallocate at the desired (aligned) address.
+@@ -721,10 +789,16 @@ static bool TryToAlignChunk(void** aRegion, void** aRetainedRegion,
+   size_t offsetUpper = alignment - offsetLower;
+   for (size_t i = 0; i < 2; ++i) {
+     if (addressesGrowUpward) {
++#if defined(__FILC__)
++      // Fil-C: keep the region's capability for the derived pointers.
++      void* upperStart = zmkptr(regionStart, uintptr_t(regionStart) + offsetUpper);
++      void* regionEnd = zmkptr(regionStart, uintptr_t(regionStart) + length);
++#else
+       void* upperStart =
+           reinterpret_cast<void*>(uintptr_t(regionStart) + offsetUpper);
+       void* regionEnd =
+           reinterpret_cast<void*>(uintptr_t(regionStart) + length);
++#endif
+       if (MapMemoryAt(regionEnd, offsetUpper)) {
+         UnmapInternal(regionStart, offsetUpper);
+         if (directionUncertain) {
+@@ -734,9 +808,16 @@ static bool TryToAlignChunk(void** aRegion, void** aRetainedRegion,
+         break;
+       }
+     } else {
++#if defined(__FILC__)
++      // Fil-C: keep the region's capability for the derived pointers.
++      auto* lowerStart =
++          zmkptr(regionStart, uintptr_t(regionStart) - offsetLower);
++      auto* lowerEnd = zmkptr(lowerStart, uintptr_t(lowerStart) + length);
++#else
+       auto* lowerStart =
+           reinterpret_cast<void*>(uintptr_t(regionStart) - offsetLower);
+       auto* lowerEnd = reinterpret_cast<void*>(uintptr_t(lowerStart) + length);
++#endif
+       if (MapMemoryAt(lowerStart, offsetLower)) {
+         UnmapInternal(lowerEnd, offsetLower);
+         if (directionUncertain) {
+diff --git a/js/src/gc/Nursery.cpp b/js/src/gc/Nursery.cpp
+index 17831b7..8034dc8 100644
+--- a/js/src/gc/Nursery.cpp
++++ b/js/src/gc/Nursery.cpp
+@@ -344,6 +344,17 @@ void js::Nursery::enable() {
+ bool js::Nursery::initFirstChunk(AutoLockGCBgAlloc& lock) {
+   MOZ_ASSERT(!isEnabled());
+ 
++#if defined(__FILC__)
++  // Fil-C: the nursery is permanently disabled. Cells must never move,
++  // because Fil-C pointers (capabilities) would be invalidated by a
++  // generational GC's tenuring copy. All allocation goes straight to the
++  // tenured heap; major GCs are mark-sweep (compaction is also disabled;
++  // see GCRuntime::isCompactingGCEnabled).
++  if (tunables().gcMinNurseryBytes() == 0) {
++    return true;
++  }
++#endif
++
+   capacity_ = tunables().gcMinNurseryBytes();
+ 
+   if (!decommitTask->reserveSpaceForBytes(capacity_) ||
+diff --git a/js/src/gc/PrivateIterators-inl.h b/js/src/gc/PrivateIterators-inl.h
+index 359e6b2..66321a4 100644
+--- a/js/src/gc/PrivateIterators-inl.h
++++ b/js/src/gc/PrivateIterators-inl.h
+@@ -5,7 +5,10 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ /*
+- * GC-internal iterators for various data structures.
++ #if defined(__FILC__)
++#include <stdfil.h>  // zmkptr
++#endif
++* GC-internal iterators for various data structures.
+  */
+ 
+ #ifndef gc_PrivateIterators_inl_h
+@@ -137,7 +140,13 @@ class ArenaFreeCellIter {
+ 
+   TenuredCell* get() const {
+     MOZ_ASSERT(!done());
++#if defined(__FILC__)
++    // Fil-C: keep the arena's capability when computing the cell address.
++    return reinterpret_cast<TenuredCell*>(
++        zmkptr(arena, uintptr_t(arena) + thing));
++#else
+     return reinterpret_cast<TenuredCell*>(uintptr_t(arena) + thing);
++#endif
+   }
+ 
+   void next() {
+diff --git a/js/src/gc/Scheduling.cpp b/js/src/gc/Scheduling.cpp
+index ec03c85..03fc123 100644
+--- a/js/src/gc/Scheduling.cpp
++++ b/js/src/gc/Scheduling.cpp
+@@ -185,6 +185,14 @@ uint32_t GCSchedulingTunables::getParameter(JSGCParamKey key) {
+ bool GCSchedulingTunables::setParameter(JSGCParamKey key, uint32_t value) {
+   auto guard = mozilla::MakeScopeExit([this] { checkInvariants(); });
+ 
++#if defined(__FILC__)
++  // Fil-C: never allow the nursery to be enabled; cells must not move
++  // (see Nursery::initFirstChunk).
++  if (key == JSGC_MIN_NURSERY_BYTES || key == JSGC_MAX_NURSERY_BYTES) {
++    value = 0;
++  }
++#endif
++
+   switch (key) {
+ #define SET_TUNABLE_FIELD(key, type, name, convert, check, default) \
+   case key: {                                                       \
+diff --git a/js/src/gc/Scheduling.h b/js/src/gc/Scheduling.h
+index 94b06bc..b9d57bc 100644
+--- a/js/src/gc/Scheduling.h
++++ b/js/src/gc/Scheduling.h
+@@ -323,6 +323,16 @@
+ #include "js/HeapAPI.h"
+ #include "threading/ProtectedData.h"
+ 
++#if defined(__FILC__)
++// Fil-C: the nursery must stay disabled (cells must never move; see
++// Nursery::initFirstChunk). Zero out the default nursery sizes.
++#define FILC_NURSERY_MIN_DEFAULT 0
++#define FILC_NURSERY_MAX_DEFAULT 0
++#else
++#define FILC_NURSERY_MIN_DEFAULT (256 * 1024)
++#define FILC_NURSERY_MAX_DEFAULT JS::DefaultNurseryMaxBytes
++#endif
++
+ // Macro to define scheduling tunables for GC parameters. Expands its argument
+ // repeatedly with the following arguments:
+ //   - key:     the JSGCParamKey value for this parameter
+@@ -348,9 +358,9 @@
+    * Minimum and maximum nursery size for each runtime.                        \
+    */                                                                          \
+   _(JSGC_MIN_NURSERY_BYTES, size_t, gcMinNurseryBytes, ConvertNurseryBytes,    \
+-    CheckNurserySize, 256 * 1024)                                              \
++    CheckNurserySize, FILC_NURSERY_MIN_DEFAULT)                                \
+   _(JSGC_MAX_NURSERY_BYTES, size_t, gcMaxNurseryBytes, ConvertNurseryBytes,    \
+-    CheckNurserySize, JS::DefaultNurseryMaxBytes)                              \
++    CheckNurserySize, FILC_NURSERY_MAX_DEFAULT)                                \
+                                                                                \
+   /*                                                                           \
+    * JSGC_ALLOCATION_THRESHOLD                                                 \
+diff --git a/js/src/gc/StoreBuffer.h b/js/src/gc/StoreBuffer.h
+index 4700392..03c0978 100644
+--- a/js/src/gc/StoreBuffer.h
++++ b/js/src/gc/StoreBuffer.h
+@@ -324,6 +324,32 @@ class StoreBuffer {
+     const static int SlotKind = 0;
+     const static int ElementKind = 1;
+ 
++#if defined(__FILC__)
++    // Fil-C: the object pointer must keep its capability, so it cannot be
++    // packed into a uintptr_t with the kind tag. Keep it in a real pointer
++    // member and store the kind separately.
++    NativeObject* object_;
++    uintptr_t kind_;
++    uint32_t start_;
++    uint32_t count_;
++
++    SlotsEdge() : object_(nullptr), kind_(0), start_(0), count_(0) {}
++    SlotsEdge(NativeObject* object, int kind, uint32_t start, uint32_t count)
++        : object_(object), kind_(uintptr_t(kind)), start_(start),
++          count_(count) {
++      MOZ_ASSERT(kind <= 1);
++      MOZ_ASSERT(count > 0);
++      MOZ_ASSERT(start + count > start);
++    }
++
++    NativeObject* object() const { return object_; }
++    int kind() const { return (int)kind_; }
++
++    bool operator==(const SlotsEdge& other) const {
++      return object_ == other.object_ && kind_ == other.kind_ &&
++             start_ == other.start_ && count_ == other.count_;
++    }
++#else
+     uintptr_t objectAndKind_;  // NativeObject* | Kind
+     uint32_t start_;
+     uint32_t count_;
+@@ -348,15 +374,22 @@ class StoreBuffer {
+       return objectAndKind_ == other.objectAndKind_ && start_ == other.start_ &&
+              count_ == other.count_;
+     }
++#endif
+ 
+     bool operator!=(const SlotsEdge& other) const { return !(*this == other); }
+ 
+     // True if this SlotsEdge range overlaps with the other SlotsEdge range,
+     // false if they do not overlap.
+     bool overlaps(const SlotsEdge& other) const {
++#if defined(__FILC__)
++      if (object_ != other.object_ || kind_ != other.kind_) {
++        return false;
++      }
++#else
+       if (objectAndKind_ != other.objectAndKind_) {
+         return false;
+       }
++#endif
+ 
+       // Widen our range by one on each side so that we consider
+       // adjacent-but-not-actually-overlapping ranges as overlapping. This
+@@ -389,6 +422,18 @@ class StoreBuffer {
+ 
+     void trace(TenuringTracer& mover) const;
+ 
++#if defined(__FILC__)
++    explicit operator bool() const { return object_ != nullptr; }
++
++    typedef struct Hasher {
++      using Lookup = SlotsEdge;
++      static HashNumber hash(const Lookup& l) {
++        return mozilla::HashGeneric(uintptr_t(l.object_), l.kind_, l.start_,
++                                    l.count_);
++      }
++      static bool match(const SlotsEdge& k, const Lookup& l) { return k == l; }
++    } Hasher;
++#else
+     explicit operator bool() const { return objectAndKind_ != 0; }
+ 
+     typedef struct Hasher {
+@@ -398,6 +443,7 @@ class StoreBuffer {
+       }
+       static bool match(const SlotsEdge& k, const Lookup& l) { return k == l; }
+     } Hasher;
++#endif
+   };
+ 
+ #ifdef DEBUG
+diff --git a/js/src/irregexp/RegExpShim.h b/js/src/irregexp/RegExpShim.h
+index e503ffb..6326842 100644
+--- a/js/src/irregexp/RegExpShim.h
++++ b/js/src/irregexp/RegExpShim.h
+@@ -579,13 +579,13 @@ class Object {
+  public:
+   // The default object constructor in V8 stores a nullptr,
+   // which has its low bit clear and is interpreted as Smi(0).
+-  constexpr Object() : asBits_(JS::Int32Value(0).asRawBits()) {}
++  constexpr Object() : value_(JS::Int32Value(0)) {}
+ 
+-  Object(const JS::Value& value) : asBits_(value.asRawBits()) {}
++  Object(const JS::Value& value) : value_(value) {}
+ 
+   // This constructor is only used in an unused implementation of
+   // IsCharacterInRangeArray in regexp-macro-assembler.cc.
+-  Object(uintptr_t raw) : asBits_(raw) { MOZ_CRASH("unused"); }
++  Object(uintptr_t raw) { MOZ_CRASH("unused"); }
+ 
+   // Used in regexp-interpreter.cc to check the return value of
+   // isolate->stack_guard()->HandleInterrupts(). We want to handle
+@@ -596,13 +596,16 @@ class Object {
+     return true;
+   }
+ 
+-  JS::Value value() const { return JS::Value::fromRawBits(asBits_); }
++  JS::Value value() const { return value_; }
+ 
+   inline static Object cast(Object object) { return object; }
+ 
+  protected:
+-  void setValue(const JS::Value& val) { asBits_ = val.asRawBits(); }
+-  uint64_t asBits_;
++  void setValue(const JS::Value& val) { value_ = val; }
++  // Fil-C: hold the JS::Value itself rather than its raw bits, so that the
++  // Fil-C capability of a cell payload travels with the object. (The raw
++  // bits cannot be used to reconstruct a usable pointer.)
++  JS::Value value_;
+ } JS_HAZ_GC_POINTER;
+ 
+ class Smi : public Object {
+diff --git a/js/src/jit/BaselineCodeGen.cpp b/js/src/jit/BaselineCodeGen.cpp
+index f88a026..e9f2247 100644
+--- a/js/src/jit/BaselineCodeGen.cpp
++++ b/js/src/jit/BaselineCodeGen.cpp
+@@ -894,8 +894,12 @@ void BaselineInterpreterCodeGen::subtractScriptSlotsSize(Register reg,
+   masm.loadPtr(Address(scratch, SharedImmutableScriptData::offsetOfISD()),
+                scratch);
+   masm.load32(Address(scratch, ImmutableScriptData::offsetOfNslots()), scratch);
++#if !defined(__FILC__)
++  // Fil-C: the JIT is disabled; sizeof(Value) is 16 and this generated-code
++  // path is never used.
+   static_assert(sizeof(Value) == 8,
+                 "shift by 3 below assumes Value is 8 bytes");
++#endif
+   masm.lshiftPtr(Imm32(3), scratch);
+   masm.subPtr(scratch, reg);
+ }
+@@ -5827,7 +5831,9 @@ bool BaselineCodeGen<Handler>::emit_Resume() {
+   Label loop, loopDone;
+   masm.loadFunctionArgCount(callee, scratch2);
+ 
++#if !defined(__FILC__)
+   static_assert(sizeof(Value) == 8);
++#endif
+   static_assert(JitStackAlignment == 16 || JitStackAlignment == 8);
+   // If JitStackValueAlignment == 1, then we were already correctly aligned on
+   // entry, as guaranteed by the assertStackAlignment at the entry to this
+diff --git a/js/src/jit/CodeGenerator.cpp b/js/src/jit/CodeGenerator.cpp
+index f4b7ea7..85de786 100644
+--- a/js/src/jit/CodeGenerator.cpp
++++ b/js/src/jit/CodeGenerator.cpp
+@@ -8200,7 +8200,11 @@ void RangeFront<ValueMap>(MacroAssembler& masm, Register range, Register i,
+ 
+   MOZ_ASSERT(ValueMap::offsetOfImplDataElement() == 0,
+              "offsetof(Data, element) is 0");
++#if !defined(__FILC__)
++  // Fil-C: sizeof(Value) is 16, so the ordered-map Data record is larger;
++  // these codegen-only size assumptions are unused (JIT disabled).
+   static_assert(ValueMap::sizeofImplData() == 24, "sizeof(Data) is 24");
++#endif
+   masm.mulBy3(i, i);
+   masm.lshiftPtr(Imm32(3), i);
+   masm.addPtr(i, front);
+@@ -8214,7 +8218,9 @@ void RangeFront<ValueSet>(MacroAssembler& masm, Register range, Register i,
+ 
+   MOZ_ASSERT(ValueSet::offsetOfImplDataElement() == 0,
+              "offsetof(Data, element) is 0");
++#if !defined(__FILC__)
+   static_assert(ValueSet::sizeofImplData() == 16, "sizeof(Data) is 16");
++#endif
+   masm.lshiftPtr(Imm32(4), i);
+   masm.addPtr(i, front);
+ }
+diff --git a/js/src/jit/GenerateAtomicOperations.py b/js/src/jit/GenerateAtomicOperations.py
+index 24b5a19..39a1b60 100644
+--- a/js/src/jit/GenerateAtomicOperations.py
++++ b/js/src/jit/GenerateAtomicOperations.py
+@@ -728,6 +728,70 @@ def generate_atomics_header(c_out):
+     ):
+         contents += "#define JS_HAVE_GENERATED_ATOMIC_OPS 1"
+ 
++        # See comment in jit/AtomicOperations-shared-jit.cpp for an
++        # explanation.
++        wordsize = 8 if is_64bit else 4
++        words_in_block = 8
++        blocksize = words_in_block * wordsize
++
++        contents += "\n"
++        contents += (
++            "constexpr size_t JS_GENERATED_ATOMICS_BLOCKSIZE = "
++            + str(blocksize)
++            + ";\n"
++        )
++        contents += (
++            "constexpr size_t JS_GENERATED_ATOMICS_WORDSIZE = " + str(wordsize) + ";\n"
++        )
++
++        if True:
++            # Fil-C: inline assembly is not allowed under Fil-C. Emit plain
++            # C++ implementations (using __atomic builtins for the seqcst
++            # operations, and plain accesses for the unsynchronized ones,
++            # matching the "safe when racy" semantics).
++            filc_lines = []
++            filc_lines.append("INLINE_ATTR void AtomicFenceSeqCst() {")
++            filc_lines.append("    __atomic_thread_fence(__ATOMIC_SEQ_CST);")
++            filc_lines.append("}")
++            for ty, sz in (("uint8_t", 8), ("uint16_t", 16), ("uint32_t", 32), ("uint64_t", 64)):
++                if sz == 64 and not is_64bit:
++                    continue
++                filc_lines.append(
++                    "INLINE_ATTR %s AtomicLoad%dSeqCst(%s* addr) { return __atomic_load_n(addr, __ATOMIC_SEQ_CST); }" % (ty, sz, ty))
++                filc_lines.append(
++                    "INLINE_ATTR %s AtomicLoad%dUnsynchronized(%s* addr) { return __atomic_load_n(addr, __ATOMIC_RELAXED); }" % (ty, sz, ty))
++                filc_lines.append(
++                    "INLINE_ATTR void AtomicStore%dSeqCst(%s* addr, %s val) { __atomic_store_n(addr, val, __ATOMIC_SEQ_CST); }" % (sz, ty, ty))
++                filc_lines.append(
++                    "INLINE_ATTR void AtomicStore%dUnsynchronized(%s* addr, %s val) { *addr = val; }" % (sz, ty, ty))
++                filc_lines.append(
++                    "INLINE_ATTR %s AtomicExchange%dSeqCst(%s* addr, %s val) { return __atomic_exchange_n(addr, val, __ATOMIC_SEQ_CST); }" % (ty, sz, ty, ty))
++                filc_lines.append(
++                    "INLINE_ATTR %s AtomicCmpXchg%dSeqCst(%s* addr, %s expected, %s replacement) { __atomic_compare_exchange_n(addr, &expected, replacement, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); return expected; }" % (ty, sz, ty, ty, ty))
++                for op, nm in (("add", "Add"), ("and", "And"), ("or", "Or"), ("xor", "Xor")):
++                    filc_lines.append(
++                        "INLINE_ATTR %s Atomic%s%dSeqCst(%s* addr, %s val) { return __atomic_fetch_%s(addr, val, __ATOMIC_SEQ_CST); }" % (ty, nm, sz, ty, ty, op))
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyUnalignedBlockDownUnsynchronized(uint8_t* dst, const uint8_t* src) { for (size_t i = 0; i < JS_GENERATED_ATOMICS_BLOCKSIZE; ++i) dst[i] = src[i]; }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyUnalignedBlockUpUnsynchronized(uint8_t* dst, const uint8_t* src) { for (size_t i = JS_GENERATED_ATOMICS_BLOCKSIZE; i--;) dst[i] = src[i]; }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyUnalignedWordDownUnsynchronized(uint8_t* dst, const uint8_t* src) { for (size_t i = 0; i < JS_GENERATED_ATOMICS_WORDSIZE; ++i) dst[i] = src[i]; }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyUnalignedWordUpUnsynchronized(uint8_t* dst, const uint8_t* src) { for (size_t i = JS_GENERATED_ATOMICS_WORDSIZE; i--;) dst[i] = src[i]; }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyBlockDownUnsynchronized(uint8_t* dst, const uint8_t* src) { for (size_t i = 0; i < JS_GENERATED_ATOMICS_BLOCKSIZE / sizeof(uintptr_t); ++i) reinterpret_cast<uintptr_t*>(dst)[i] = reinterpret_cast<const uintptr_t*>(src)[i]; }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyBlockUpUnsynchronized(uint8_t* dst, const uint8_t* src) { for (size_t i = JS_GENERATED_ATOMICS_BLOCKSIZE / sizeof(uintptr_t); i--;) reinterpret_cast<uintptr_t*>(dst)[i] = reinterpret_cast<const uintptr_t*>(src)[i]; }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyWordUnsynchronized(uint8_t* dst, const uint8_t* src) { *reinterpret_cast<uintptr_t*>(dst) = *reinterpret_cast<const uintptr_t*>(src); }")
++            filc_lines.append(
++                "INLINE_ATTR void AtomicCopyByteUnsynchronized(uint8_t* dst, const uint8_t* src) { *dst = *src; }")
++            contents += "#if defined(__FILC__)\n"
++            for line in filc_lines:
++                contents += line + "\n"
++            contents += "#else\n"
++
+         # `fence` performs a full memory barrier.
+         contents += gen_seqcst("AtomicFenceSeqCst")
+ 
+@@ -805,11 +869,6 @@ def generate_atomics_header(c_out):
+         if is_64bit:
+             contents += gen_fetchop("AtomicXor64SeqCst", "uint64_t", 64, "xor")
+ 
+-        # See comment in jit/AtomicOperations-shared-jit.cpp for an explanation.
+-        wordsize = 8 if is_64bit else 4
+-        words_in_block = 8
+-        blocksize = words_in_block * wordsize
+-
+         contents += gen_copy(
+             "AtomicCopyUnalignedBlockDownUnsynchronized",
+             "uint8_t",
+@@ -848,15 +907,8 @@ def generate_atomics_header(c_out):
+         )
+         contents += gen_copy("AtomicCopyByteUnsynchronized", "uint8_t", 1, 1, "down")
+ 
+-        contents += "\n"
+-        contents += (
+-            "constexpr size_t JS_GENERATED_ATOMICS_BLOCKSIZE = "
+-            + str(blocksize)
+-            + ";\n"
+-        )
+-        contents += (
+-            "constexpr size_t JS_GENERATED_ATOMICS_WORDSIZE = " + str(wordsize) + ";\n"
+-        )
++        contents += "\n#endif  // defined(__FILC__)\n"
++
+ 
+         # Work around a GCC issue on 32-bit x86 by adding MOZ_NEVER_INLINE.
+         # See bug 1756347.
+diff --git a/js/src/jit/InterpreterEntryTrampoline.cpp b/js/src/jit/InterpreterEntryTrampoline.cpp
+index a58713f..20d2620 100644
+--- a/js/src/jit/InterpreterEntryTrampoline.cpp
++++ b/js/src/jit/InterpreterEntryTrampoline.cpp
+@@ -111,8 +111,11 @@ void JitRuntime::generateBaselineInterpreterEntryTrampoline(
+   masm.alignJitStackBasedOnNArgs(nargs, /*countIncludesThis = */ false);
+ 
+   // Point argPtr to the topmost argument.
++#if !defined(__FILC__)
++  // Fil-C: the JIT is disabled; TimesEight scaling of Values is never used.
+   static_assert(sizeof(Value) == 8,
+                 "Using TimesEight for scale of sizeof(Value).");
++#endif
+   BaseIndex topPtrAddr(FramePointer, nargs, TimesEight,
+                        sizeof(BaselineInterpreterEntryFrameLayout));
+   Register argPtr = nargs;
+diff --git a/js/src/jit/MacroAssembler.cpp b/js/src/jit/MacroAssembler.cpp
+index 641c1cf..d72a916 100644
+--- a/js/src/jit/MacroAssembler.cpp
++++ b/js/src/jit/MacroAssembler.cpp
+@@ -827,7 +827,12 @@ void MacroAssembler::initTypedArraySlots(Register obj, Register temp,
+     // data is a count of 8-byte HeapSlots (i.e. <= pointer size),
+     // and we won't inline unless the desired memory fits in that
+     // space.)
++#if !defined(__FILC__)
++    // Fil-C: HeapSlot (== sizeof(Value)) is 16 bytes, but the zeroing loop
++    // below rounds up to pointer-size (8) chunks, which still covers the
++    // full fixed data region for 16-byte slots. The JIT is disabled.
+     static_assert(sizeof(HeapSlot) == 8, "Assumed 8 bytes alignment");
++#endif
+ 
+     size_t numZeroPointers = ((nbytes + 7) & ~0x7) / sizeof(char*);
+     for (size_t i = 0; i < numZeroPointers; i++) {
+diff --git a/js/src/jit/none/Architecture-none.h b/js/src/jit/none/Architecture-none.h
+index 2433234..77ed34b 100644
+--- a/js/src/jit/none/Architecture-none.h
++++ b/js/src/jit/none/Architecture-none.h
+@@ -18,7 +18,15 @@ namespace jit {
+ 
+ static const uint32_t SimdMemoryAlignment =
+     4;  // Make it 4 to avoid a bunch of div-by-zero warnings
++#if defined(__FILC__)
++// Fil-C: keep WasmStackAlignment >= JitStackAlignment (16), since the
++// JitStackAlignment was raised to 16 for the 16-byte Fil-C Value. The JIT
++// and wasm codegen are disabled in Fil-C builds; this just keeps the
++// static asserts consistent.
++static const uint32_t WasmStackAlignment = 16;
++#else
+ static const uint32_t WasmStackAlignment = 8;
++#endif
+ static const uint32_t WasmTrapInstructionLength = 0;
+ 
+ // See comments in wasm::GenerateFunctionPrologue.
+diff --git a/js/src/jit/none/Assembler-none.h b/js/src/jit/none/Assembler-none.h
+index b69fc46..f7f4bed 100644
+--- a/js/src/jit/none/Assembler-none.h
++++ b/js/src/jit/none/Assembler-none.h
+@@ -108,7 +108,14 @@ static constexpr Register WasmCallRefReg{Registers::invalid_reg};
+ 
+ static constexpr uint32_t ABIStackAlignment = 4;
+ static constexpr uint32_t CodeAlignment = 16;
++#if defined(__FILC__)
++// Fil-C: sizeof(Value) is 16; keep the stack alignment a non-zero multiple
++// of it so that JitStackValueAlignment stays >= 1 (the JIT is disabled in
++// Fil-C builds, but this code still compiles).
++static constexpr uint32_t JitStackAlignment = 16;
++#else
+ static constexpr uint32_t JitStackAlignment = 8;
++#endif
+ static constexpr uint32_t JitStackValueAlignment =
+     JitStackAlignment / sizeof(Value);
+ 
+diff --git a/js/src/jit/shared/Assembler-shared.h b/js/src/jit/shared/Assembler-shared.h
+index d3e66fe..220a1af 100644
+--- a/js/src/jit/shared/Assembler-shared.h
++++ b/js/src/jit/shared/Assembler-shared.h
+@@ -60,8 +60,14 @@ static_assert(Simd128DataSize == 2 * sizeof(double),
+ 
+ enum Scale { TimesOne = 0, TimesTwo = 1, TimesFour = 2, TimesEight = 3 };
+ 
++#if defined(__FILC__)
++// Fil-C: sizeof(JS::Value) is 16 (punbox bits + capability pointer), which
++// no x86 addressing scale can express. The JIT is disabled in Fil-C builds
++// (JS_CODEGEN_NONE), so these scale constants are never exercised.
++#else
+ static_assert(sizeof(JS::Value) == 8,
+               "required for TimesEight and 3 below to be correct");
++#endif
+ static const Scale ValueScale = TimesEight;
+ static const size_t ValueShift = 3;
+ 
+diff --git a/js/src/js-standalone.mozbuild b/js/src/js-standalone.mozbuild
+index 4fd6122..e0872cd 100644
+--- a/js/src/js-standalone.mozbuild
++++ b/js/src/js-standalone.mozbuild
+@@ -8,10 +8,12 @@
+ # Gecko build performs equivalents elsewhere in its configuration.
+ 
+ USE_LIBS += [
+-    'jsrust',
+     'zlib',
+ ]
+ 
++# Fil-C port: jsrust (the encoding_c/wast rust glue) is not built; see
++# js/src/moz.build.
++
+ if CONFIG["OS_ARCH"] == "WINNT":
+     # Don't build with CETCOMPAT, because JIT triggers a shadow stack violation
+     LINK_FLAGS["CETCOMPAT"] = []
+diff --git a/js/src/moz.build b/js/src/moz.build
+index e2e313d..bb772bf 100644
+--- a/js/src/moz.build
++++ b/js/src/moz.build
+@@ -48,8 +48,12 @@ with Files("builtin/intl/*"):
+     BUG_COMPONENT = component_intl
+ 
+ if not CONFIG["JS_DISABLE_SHELL"]:
++    # Fil-C port: the "rust" directory (jsrust: encoding_c glue + the wast
++    # crate for wasm text) is not built. Nothing in js/src C++ calls into
++    # encoding_c (verified by grep), and the only consumer of the rust code
++    # was the shell's wasm_text_to_binary, which is stubbed out in
++    # shell/WasmTesting.cpp for Fil-C.
+     DIRS += [
+-        "rust",
+         "shell",
+     ]
+ 
+@@ -89,6 +93,24 @@ if CONFIG["FUZZING_JS_FUZZILLI"]:
+     # trace-pc instrumentation.
+     include("/tools/fuzzing/libfuzzer-config.mozbuild")
+ 
++# Fil-C port: C++ implementations of the encoding_c/encoding_c_mem C API
++# (upstream provided by the Rust jsrust crate, which is not built here) and
++# install_rust_hooks(). See util/EncodingStubs.cpp.
++if not CONFIG["JS_DISABLE_SHELL"] or CONFIG["JS_SHARED_LIBRARY"]:
++    SOURCES += [
++        "util/EncodingStubs.cpp",
++    ]
++
++# Fil-C port: the Pizlonator rewrites `cpuid` inline assembly (used by
++# mozglue/misc/SSE.cpp) into calls to zcpuid/zcpuid_count, which live in
++# libpizlo.so. Executables link libpizlo implicitly, but the shared library
++# needs it explicitly (this matches how the pizlonated system libraries,
++# e.g. libicuuc, link).
++if CONFIG["JS_SHARED_LIBRARY"]:
++    OS_LIBS += [
++        "pizlo",
++    ]
++
+ CONFIGURE_DEFINE_FILES += [
+     "js-confdefs.h",
+ ]
+diff --git a/js/src/shell/WasmTesting.cpp b/js/src/shell/WasmTesting.cpp
+index 3d5aa3d..69852b2 100644
+--- a/js/src/shell/WasmTesting.cpp
++++ b/js/src/shell/WasmTesting.cpp
+@@ -23,16 +23,39 @@
+ #include <stddef.h>
+ 
+ #include "js/Printf.h"
++#include "js/Utility.h"
+ #include "wasm/WasmTypeDecls.h"
+ 
+ using namespace js;
+ using namespace js::wasm;
+ 
++#if defined(__FILC__)
++// Fil-C port: the rust crate (wast) that upstream uses for wasm text
++// parsing is not built (js/src/rust is excluded from the build under
++// Fil-C). Report a clean error instead.
++bool wasm_text_to_binary(const char16_t* text, size_t text_len,
++                         uint8_t** out_bytes, size_t* out_bytes_len,
++                         uint8_t** out_error, size_t* out_error_len) {
++  static const char msg[] = "wasm text parsing is not supported in Fil-C builds";
++  size_t msgLen = sizeof(msg) - 1;
++  char* copy = static_cast<char*>(js_malloc(msgLen + 1));
++  if (!copy) {
++    return false;
++  }
++  memcpy(copy, msg, msgLen + 1);
++  *out_bytes = nullptr;
++  *out_bytes_len = 0;
++  *out_error = reinterpret_cast<uint8_t*>(copy);
++  *out_error_len = msgLen;
++  return false;
++}
++#else
+ extern "C" {
+ bool wasm_text_to_binary(const char16_t* text, size_t text_len,
+                          uint8_t** out_bytes, size_t* out_bytes_len,
+                          uint8_t** out_error, size_t* out_error_len);
+ }  // extern "C"
++#endif
+ 
+ bool wasm::TextToBinary(const char16_t* text, size_t textLen, Bytes* bytes,
+                         UniqueChars* error) {
+diff --git a/js/src/shell/js.cpp b/js/src/shell/js.cpp
+index 6c64dde..22c1542 100644
+--- a/js/src/shell/js.cpp
++++ b/js/src/shell/js.cpp
+@@ -4098,7 +4098,14 @@ static void DestroyShellCompartmentPrivate(JS::GCContext* gcx,
+ static void SetWorkerContextOptions(JSContext* cx);
+ static bool ShellBuildId(JS::BuildIdCharVector* buildId);
+ 
++#if defined(__FILC__)
++// Fil-C: pizlonated frames are much larger; see the comment at
++// InitDefaultStackQuota in JSContext.cpp. Threads get a bigger stack to
++// match (8MB quota + 1MB slack).
++static constexpr size_t gWorkerStackSize = 8 * 1024 * 1024;
++#else
+ static constexpr size_t gWorkerStackSize = 2 * 128 * sizeof(size_t) * 1024;
++#endif
+ 
+ static void WorkerMain(UniquePtr<WorkerInput> input) {
+   MOZ_ASSERT(input->parentRuntime);
+diff --git a/js/src/threading/ExclusiveData.h b/js/src/threading/ExclusiveData.h
+index 38e89f1..21551ac 100644
+--- a/js/src/threading/ExclusiveData.h
++++ b/js/src/threading/ExclusiveData.h
+@@ -110,7 +110,14 @@ class ExclusiveData {
+       : lock_(id), value_(std::forward<Args>(args)...) {}
+ 
+   ExclusiveData(ExclusiveData&& rhs)
+-      : lock_(std::move(rhs.lock)), value_(std::move(rhs.value_)) {
++      // Fil-C port note: upstream says `std::move(rhs.lock)`, which names
++      // the `lock()` member function. That only compiles by accident
++      // (nothing instantiated this constructor upstream, and js::Mutex is
++      // not movable anyway). With Fil-C something does instantiate this
++      // constructor, so give it sane semantics: move the protected value
++      // and create a fresh, unlocked mutex for it.
++      : lock_(MutexId{"ExclusiveData<moved-from>", 0}),
++        value_(std::move(rhs.value_)) {
+     MOZ_ASSERT(&rhs != this, "self-move disallowed!");
+   }
+ 
+diff --git a/js/src/util/EncodingStubs.cpp b/js/src/util/EncodingStubs.cpp
+new file mode 100644
+index 0000000..d81a429
+--- /dev/null
++++ b/js/src/util/EncodingStubs.cpp
+@@ -0,0 +1,612 @@
++/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
++ * vim: set ts=8 sts=2 et sw=2 tw=80:
++ *
++ * Fil-C port: C++ implementations of the encoding_c / encoding_c_mem C API
++ * that SpiderMonkey's mfbt (Latin1.h, TextUtils.h, Utf8.h) uses. Upstream
++ * these are implemented in Rust (the jsrust crate), which is not built for
++ * Fil-C (no rustc in the toolchain). The semantics follow encoding_rs:
++ *
++ * - "valid up to" functions return the length of the longest prefix that
++ *   satisfies the predicate, ending on a code-unit boundary.
++ * - Conversions from UTF-8/UTF-16 replace malformed sequences with
++ *   U+FFFD (REPLACEMENT CHARACTER) using the "maximal subpart" rule.
++ * - Latin1 conversions treat each byte as a code point value U+0000..U+00FF.
++ * - The "_lossy" UTF-16/UTF-8 -> Latin1 conversions map code points above
++ *   U+00FF to 0x1A (SUB). encoding_rs documents "no promises" for those
++ *   inputs; callers normally ensure Latin1-ness first.
++ *
++ * Character-classification is kept byte/unit-wise and simple; performance
++ * is not a concern here (the Rust versions use SIMD; we do not).
++ */
++
++#include "mozilla/Assertions.h"
++
++#include <stddef.h>
++#include <stdint.h>
++#include <string.h>
++
++// 0x1A is ASCII SUB (substitute), a reasonable "no promises" mapping for
++// code points outside Latin-1 in the lossy conversions.
++static const char16_t kReplacementChar = 0xFFFD;
++static const unsigned char kLossyByte = 0x1A;
++
++extern "C" {
++
++bool encoding_mem_is_ascii(const char* buffer, size_t len) {
++  for (size_t i = 0; i < len; i++) {
++    if (static_cast<unsigned char>(buffer[i]) >= 0x80) {
++      return false;
++    }
++  }
++  return true;
++}
++
++size_t encoding_ascii_valid_up_to(const uint8_t* buffer, size_t buffer_len) {
++  for (size_t i = 0; i < buffer_len; i++) {
++    if (buffer[i] >= 0x80) {
++      return i;
++    }
++  }
++  return buffer_len;
++}
++
++bool encoding_mem_is_basic_latin(const char16_t* buffer, size_t len) {
++  for (size_t i = 0; i < len; i++) {
++    if (buffer[i] >= 0x80) {
++      return false;
++    }
++  }
++  return true;
++}
++
++bool encoding_mem_is_utf16_latin1(const char16_t* buffer, size_t len) {
++  for (size_t i = 0; i < len; i++) {
++    if (buffer[i] > 0xFF) {
++      return false;
++    }
++  }
++  return true;
++}
++
++bool encoding_mem_is_str_latin1(const char* buffer, size_t len) {
++  // A UTF-8 string is Latin1 iff every code point is <= U+00FF, i.e. every
++  // byte is ASCII or starts a valid two-byte sequence C2..DF.
++  for (size_t i = 0; i < len;) {
++    unsigned char b = static_cast<unsigned char>(buffer[i]);
++    if (b < 0x80) {
++      i++;
++      continue;
++    }
++    if (b >= 0xC2 && b <= 0xDF && i + 1 < len) {
++      unsigned char c = static_cast<unsigned char>(buffer[i + 1]);
++      if (c >= 0x80 && c <= 0xBF) {
++        i += 2;
++        continue;
++      }
++    }
++    return false;
++  }
++  return true;
++}
++
++bool encoding_mem_is_utf8_latin1(const char* buffer, size_t len) {
++  return encoding_mem_is_str_latin1(buffer, len);
++}
++
++size_t encoding_mem_str_latin1_up_to(const char* buffer, size_t len) {
++  size_t i = 0;
++  while (i < len) {
++    unsigned char b = static_cast<unsigned char>(buffer[i]);
++    if (b < 0x80) {
++      i++;
++      continue;
++    }
++    if (b >= 0xC2 && b <= 0xDF && i + 1 < len) {
++      unsigned char c = static_cast<unsigned char>(buffer[i + 1]);
++      if (c >= 0x80 && c <= 0xBF) {
++        i += 2;
++        continue;
++      }
++    }
++    break;
++  }
++  return i;
++}
++
++size_t encoding_mem_utf8_latin1_up_to(const char* buffer, size_t len) {
++  return encoding_mem_str_latin1_up_to(buffer, len);
++}
++
++size_t encoding_utf8_valid_up_to(const uint8_t* buffer, size_t buffer_len) {
++  // Longest valid UTF-8 prefix in bytes.
++  size_t i = 0;
++  while (i < buffer_len) {
++    uint8_t b = buffer[i];
++    if (b < 0x80) {
++      i++;
++      continue;
++    }
++    size_t need;
++    uint8_t lo;
++    uint8_t hi;
++    if (b >= 0xC2 && b <= 0xDF) {
++      need = 1;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xE0) {
++      need = 2;
++      lo = 0xA0;
++      hi = 0xBF;
++    } else if ((b >= 0xE1 && b <= 0xEC) || b == 0xEE || b == 0xEF) {
++      need = 2;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xED) {
++      need = 2;
++      lo = 0x80;
++      hi = 0x9F;
++    } else if (b == 0xF0) {
++      need = 3;
++      lo = 0x90;
++      hi = 0xBF;
++    } else if (b >= 0xF1 && b <= 0xF3) {
++      need = 3;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xF4) {
++      need = 3;
++      lo = 0x80;
++      hi = 0x8F;
++    } else {
++      return i;  // invalid lead byte
++    }
++    if (i + need >= buffer_len + 1 && i + need > buffer_len) {
++      // Not enough bytes left for the whole sequence: stop before it.
++      return i;
++    }
++    if (i + need > buffer_len) {
++      return i;
++    }
++    for (size_t j = 1; j <= need; j++) {
++      uint8_t c = buffer[i + j];
++      uint8_t clo = (j == 1) ? lo : 0x80;
++      uint8_t chi = (j == 1) ? hi : 0xBF;
++      if (c < clo || c > chi) {
++        return i;
++      }
++    }
++    i += need + 1;
++  }
++  return i;
++}
++
++size_t encoding_mem_utf16_valid_up_to(const char16_t* buffer, size_t len) {
++  for (size_t i = 0; i < len; i++) {
++    char16_t u = buffer[i];
++    if (u >= 0xD800 && u <= 0xDFFF) {
++      if (u <= 0xDBFF && i + 1 < len && buffer[i + 1] >= 0xDC00 &&
++          buffer[i + 1] <= 0xDFFF) {
++        i++;  // valid pair
++        continue;
++      }
++      return i;  // unpaired surrogate
++    }
++  }
++  return len;
++}
++
++void encoding_mem_ensure_utf16_validity(char16_t* buffer, size_t len) {
++  for (size_t i = 0; i < len; i++) {
++    char16_t u = buffer[i];
++    if (u >= 0xD800 && u <= 0xDFFF) {
++      if (u <= 0xDBFF && i + 1 < len && buffer[i + 1] >= 0xDC00 &&
++          buffer[i + 1] <= 0xDFFF) {
++        i++;  // valid pair
++        continue;
++      }
++      buffer[i] = kReplacementChar;
++    }
++  }
++}
++
++void encoding_mem_convert_latin1_to_utf16(const char* src, size_t src_len,
++                                          char16_t* dst, size_t dst_len) {
++  MOZ_ASSERT(dst_len >= src_len);
++  for (size_t i = 0; i < src_len; i++) {
++    dst[i] = static_cast<unsigned char>(src[i]);
++  }
++}
++
++size_t encoding_mem_convert_latin1_to_utf8(const char* src, size_t src_len,
++                                           char* dst, size_t dst_len) {
++  MOZ_ASSERT(dst_len >= 2 * src_len);
++  size_t written = 0;
++  for (size_t i = 0; i < src_len; i++) {
++    unsigned char b = static_cast<unsigned char>(src[i]);
++    if (b < 0x80) {
++      dst[written++] = static_cast<char>(b);
++    } else {
++      dst[written++] = static_cast<char>(0xC0 | (b >> 6));
++      dst[written++] = static_cast<char>(0x80 | (b & 0x3F));
++    }
++  }
++  return written;
++}
++
++void encoding_mem_convert_latin1_to_utf8_partial(const char* src,
++                                                 size_t* src_len, char* dst,
++                                                 size_t* dst_len) {
++  size_t read = 0;
++  size_t written = 0;
++  size_t dst_cap = *dst_len;
++  while (read < *src_len) {
++    unsigned char b = static_cast<unsigned char>(src[read]);
++    size_t need = (b < 0x80) ? 1 : 2;
++    if (written + need > dst_cap) {
++      break;
++    }
++    if (b < 0x80) {
++      dst[written++] = static_cast<char>(b);
++    } else {
++      dst[written++] = static_cast<char>(0xC0 | (b >> 6));
++      dst[written++] = static_cast<char>(0x80 | (b & 0x3F));
++    }
++    read++;
++  }
++  *src_len = read;
++  *dst_len = written;
++}
++
++size_t encoding_mem_convert_str_to_utf16(const char* src, size_t src_len,
++                                         char16_t* dst, size_t dst_len) {
++  // Input is valid UTF-8 (caller's responsibility). dst_len >= src_len.
++  MOZ_ASSERT(dst_len >= src_len);
++  size_t written = 0;
++  size_t i = 0;
++  while (i < src_len) {
++    unsigned char b = static_cast<unsigned char>(src[i]);
++    if (b < 0x80) {
++      dst[written++] = char16_t(b);
++      i++;
++    } else if (b < 0xE0) {
++      uint32_t cp = ((b & 0x1Fu) << 6) |
++                    (static_cast<unsigned char>(src[i + 1]) & 0x3Fu);
++      dst[written++] = char16_t(cp);
++      i += 2;
++    } else if (b < 0xF0) {
++      uint32_t cp = ((b & 0x0Fu) << 12) |
++                    ((static_cast<unsigned char>(src[i + 1]) & 0x3Fu) << 6) |
++                    (static_cast<unsigned char>(src[i + 2]) & 0x3Fu);
++      dst[written++] = char16_t(cp);
++      i += 3;
++    } else {
++      uint32_t cp = ((b & 0x07u) << 18) |
++                    ((static_cast<unsigned char>(src[i + 1]) & 0x3Fu) << 12) |
++                    ((static_cast<unsigned char>(src[i + 2]) & 0x3Fu) << 6) |
++                    (static_cast<unsigned char>(src[i + 3]) & 0x3Fu);
++      cp -= 0x10000;
++      dst[written++] = char16_t(0xD800 | (cp >> 10));
++      dst[written++] = char16_t(0xDC00 | (cp & 0x3FF));
++      i += 4;
++    }
++  }
++  return written;
++}
++
++void encoding_mem_convert_utf16_to_latin1_lossy(const char16_t* src,
++                                                size_t src_len, char* dst,
++                                                size_t dst_len) {
++  MOZ_ASSERT(dst_len >= src_len);
++  for (size_t i = 0; i < src_len; i++) {
++    char16_t u = src[i];
++    dst[i] = static_cast<char>(u <= 0xFF ? u : kLossyByte);
++  }
++}
++
++// Encode one code point as UTF-8 into dst (capacity dst_cap). Returns the
++// number of bytes written (1-4), or 0 if there is no room.
++static size_t encode_utf8_cp(uint32_t cp, char* dst, size_t dst_cap) {
++  size_t need = (cp <= 0x7F)     ? 1
++                : (cp <= 0x7FF)  ? 2
++                : (cp <= 0xFFFF) ? 3
++                                 : 4;
++  if (dst_cap < need) {
++    return 0;
++  }
++  switch (need) {
++    case 1:
++      dst[0] = static_cast<char>(cp);
++      break;
++    case 2:
++      dst[0] = static_cast<char>(0xC0 | (cp >> 6));
++      dst[1] = static_cast<char>(0x80 | (cp & 0x3F));
++      break;
++    case 3:
++      dst[0] = static_cast<char>(0xE0 | (cp >> 12));
++      dst[1] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
++      dst[2] = static_cast<char>(0x80 | (cp & 0x3F));
++      break;
++    default:
++      dst[0] = static_cast<char>(0xF0 | (cp >> 18));
++      dst[1] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
++      dst[2] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
++      dst[3] = static_cast<char>(0x80 | (cp & 0x3F));
++      break;
++  }
++  return need;
++}
++
++// Decode one code point from UTF-16 at src[i] (len units total). On unpaired
++// surrogates, emits U+FFFD and consumes one unit. Returns units consumed and
++// stores the code point in *cp.
++static size_t decode_utf16_cp(const char16_t* src, size_t i, size_t len,
++                              uint32_t* cp) {
++  char16_t u = src[i];
++  if (u < 0xD800 || u > 0xDFFF) {
++    *cp = u;
++    return 1;
++  }
++  if (u <= 0xDBFF && i + 1 < len && src[i + 1] >= 0xDC00 &&
++      src[i + 1] <= 0xDFFF) {
++    uint32_t hi = u - 0xD800;
++    uint32_t lo = src[i + 1] - 0xDC00;
++    *cp = 0x10000 + (hi << 10) + lo;
++    return 2;
++  }
++  *cp = kReplacementChar;
++  return 1;
++}
++
++size_t encoding_mem_convert_utf16_to_utf8(const char16_t* src, size_t src_len,
++                                          char* dst, size_t dst_len) {
++  MOZ_ASSERT(dst_len >= 3 * src_len);
++  size_t written = 0;
++  size_t i = 0;
++  while (i < src_len) {
++    uint32_t cp;
++    i += decode_utf16_cp(src, i, src_len, &cp);
++    written += encode_utf8_cp(cp, dst + written, dst_len - written);
++  }
++  return written;
++}
++
++void encoding_mem_convert_utf16_to_utf8_partial(const char16_t* src,
++                                                size_t* src_len, char* dst,
++                                                size_t* dst_len) {
++  size_t read = 0;
++  size_t written = 0;
++  size_t dst_cap = *dst_len;
++  while (read < *src_len) {
++    uint32_t cp;
++    size_t consumed = decode_utf16_cp(src, read, *src_len, &cp);
++    // Per encodeInto() semantics, an unpaired surrogate at the very end of
++    // the input is converted even if it is the last thing that fits.
++    size_t need = (cp <= 0x7F)     ? 1
++                  : (cp <= 0x7FF)  ? 2
++                  : (cp <= 0xFFFF) ? 3
++                                   : 4;
++    if (written + need > dst_cap) {
++      break;
++    }
++    written += encode_utf8_cp(cp, dst + written, dst_cap - written);
++    read += consumed;
++  }
++  *src_len = read;
++  *dst_len = written;
++}
++
++size_t encoding_mem_convert_utf8_to_latin1_lossy(const char* src,
++                                                 size_t src_len, char* dst,
++                                                 size_t dst_len) {
++  MOZ_ASSERT(dst_len >= src_len);
++  size_t written = 0;
++  size_t i = 0;
++  while (i < src_len) {
++    unsigned char b = static_cast<unsigned char>(src[i]);
++    if (b < 0x80) {
++      dst[written++] = static_cast<char>(b);
++      i++;
++      continue;
++    }
++    if (b >= 0xC2 && b <= 0xDF && i + 1 < src_len) {
++      unsigned char c = static_cast<unsigned char>(src[i + 1]);
++      if (c >= 0x80 && c <= 0xBF) {
++        dst[written++] = static_cast<char>(((b & 0x1F) << 6) | (c & 0x3F));
++        i += 2;
++        continue;
++      }
++    }
++    // Not Latin-1 (or malformed): encoding_rs promises nothing here; use
++    // the same substitute byte as the other lossy paths.
++    dst[written++] = static_cast<char>(kLossyByte);
++    i++;
++  }
++  return written;
++}
++
++size_t encoding_mem_convert_utf8_to_utf16(const char* src, size_t src_len,
++                                          char16_t* dst, size_t dst_len) {
++  // dst_len >= src_len + 1 per the encoding_c contract.
++  MOZ_ASSERT(dst_len >= src_len + 1);
++  size_t written = 0;
++  size_t i = 0;
++  while (i < src_len) {
++    unsigned char b = static_cast<unsigned char>(src[i]);
++    if (b < 0x80) {
++      dst[written++] = char16_t(b);
++      i++;
++      continue;
++    }
++    // Decode one sequence with maximal-subpart semantics.
++    size_t need;
++    uint32_t cp;
++    uint8_t lo;
++    uint8_t hi;
++    if (b >= 0xC2 && b <= 0xDF) {
++      need = 1;
++      cp = b & 0x1Fu;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xE0) {
++      need = 2;
++      cp = b & 0x0Fu;
++      lo = 0xA0;
++      hi = 0xBF;
++    } else if ((b >= 0xE1 && b <= 0xEC) || b == 0xEE || b == 0xEF) {
++      need = 2;
++      cp = b & 0x0Fu;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xED) {
++      need = 2;
++      cp = b & 0x0Fu;
++      lo = 0x80;
++      hi = 0x9F;
++    } else if (b == 0xF0) {
++      need = 3;
++      cp = b & 0x07u;
++      lo = 0x90;
++      hi = 0xBF;
++    } else if (b >= 0xF1 && b <= 0xF3) {
++      need = 3;
++      cp = b & 0x07u;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xF4) {
++      need = 3;
++      cp = b & 0x07u;
++      lo = 0x80;
++      hi = 0x8F;
++    } else {
++      dst[written++] = kReplacementChar;
++      i++;
++      continue;
++    }
++    bool ok = true;
++    size_t j;
++    for (j = 1; j <= need; j++) {
++      if (i + j >= src_len) {
++        ok = false;
++        break;
++      }
++      uint8_t c = static_cast<unsigned char>(src[i + j]);
++      uint8_t clo = (j == 1) ? lo : 0x80;
++      uint8_t chi = (j == 1) ? hi : 0xBF;
++      if (c < clo || c > chi) {
++        ok = false;
++        break;
++      }
++      cp = (cp << 6) | (c & 0x3Fu);
++    }
++    if (!ok) {
++      dst[written++] = kReplacementChar;
++      i += j;  // consume the maximal subpart
++      continue;
++    }
++    if (cp >= 0x10000) {
++      cp -= 0x10000;
++      dst[written++] = char16_t(0xD800 | (cp >> 10));
++      dst[written++] = char16_t(0xDC00 | (cp & 0x3FF));
++    } else {
++      dst[written++] = char16_t(cp);
++    }
++    i += need + 1;
++  }
++  return written;
++}
++
++size_t encoding_mem_convert_utf8_to_utf16_without_replacement(
++    const char* src, size_t src_len, char16_t* dst, size_t dst_len) {
++  MOZ_ASSERT(dst_len >= src_len);
++  size_t written = 0;
++  size_t i = 0;
++  while (i < src_len) {
++    unsigned char b = static_cast<unsigned char>(src[i]);
++    if (b < 0x80) {
++      dst[written++] = char16_t(b);
++      i++;
++      continue;
++    }
++    size_t need;
++    uint32_t cp;
++    uint8_t lo;
++    uint8_t hi;
++    if (b >= 0xC2 && b <= 0xDF) {
++      need = 1;
++      cp = b & 0x1Fu;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xE0) {
++      need = 2;
++      cp = b & 0x0Fu;
++      lo = 0xA0;
++      hi = 0xBF;
++    } else if ((b >= 0xE1 && b <= 0xEC) || b == 0xEE || b == 0xEF) {
++      need = 2;
++      cp = b & 0x0Fu;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xED) {
++      need = 2;
++      cp = b & 0x0Fu;
++      lo = 0x80;
++      hi = 0x9F;
++    } else if (b == 0xF0) {
++      need = 3;
++      cp = b & 0x07u;
++      lo = 0x90;
++      hi = 0xBF;
++    } else if (b >= 0xF1 && b <= 0xF3) {
++      need = 3;
++      cp = b & 0x07u;
++      lo = 0x80;
++      hi = 0xBF;
++    } else if (b == 0xF4) {
++      need = 3;
++      cp = b & 0x07u;
++      lo = 0x80;
++      hi = 0x8F;
++    } else {
++      return SIZE_MAX;
++    }
++    if (i + need >= src_len + 1 && i + need > src_len) {
++      return SIZE_MAX;
++    }
++    if (i + need > src_len) {
++      return SIZE_MAX;
++    }
++    for (size_t j = 1; j <= need; j++) {
++      uint8_t c = static_cast<unsigned char>(src[i + j]);
++      uint8_t clo = (j == 1) ? lo : 0x80;
++      uint8_t chi = (j == 1) ? hi : 0xBF;
++      if (c < clo || c > chi) {
++        return SIZE_MAX;
++      }
++      cp = (cp << 6) | (c & 0x3Fu);
++    }
++    if (cp >= 0x10000) {
++      cp -= 0x10000;
++      dst[written++] = char16_t(0xD800 | (cp >> 10));
++      dst[written++] = char16_t(0xDC00 | (cp & 0x3FF));
++    } else {
++      dst[written++] = char16_t(cp);
++    }
++    i += need + 1;
++  }
++  return written;
++}
++
++size_t encoding_mem_copy_ascii_to_ascii(const char* src, size_t src_len,
++                                        char* dst, size_t dst_len) {
++  MOZ_ASSERT(dst_len >= src_len);
++  memcpy(dst, src, src_len);
++  return src_len;
++}
++
++void install_rust_hooks() {
++  // Fil-C port: upstream this is provided by the jsrust crate (it installs
++  // encoding_rs-backed hooks used by the C++ glue). All the encoding hooks
++  // are implemented in EncodingStubs.cpp, so there is nothing to install.
++}
++
++}  // extern "C"
+diff --git a/js/src/util/NativeStack.cpp b/js/src/util/NativeStack.cpp
+index 4e4189d..4b8ce8a 100644
+--- a/js/src/util/NativeStack.cpp
++++ b/js/src/util/NativeStack.cpp
+@@ -68,12 +68,23 @@ void* js::GetNativeStackBaseImpl() {
+ void* js::GetNativeStackBaseImpl() {
+   // On the main thread, get stack base from glibc's __libc_stack_end rather
+   // than pthread APIs to avoid filesystem calls /proc/self/maps.  Non-main
+-  // threads spawned with pthreads can read this information directly from their
+-  // pthread struct, but the main thread must go parse /proc/self/maps to figure
+-  // the mapped stack address space ranges.  We want to avoid reading from
+-  // /proc/ so that firefox can run in sandboxed environments where /proc may
+-  // not be mounted.
+-  if (gettid() == getpid()) {
++  // threads spawned with pthreads can read this information directly from
++  // their pthread struct, but the main thread must go parse /proc/self/maps
++  // to figure the mapped stack address space ranges.  We want to avoid
++  // reading from /proc/ so that firefox can run in sandboxed environments
++  // where /proc may not be mounted.
++#if defined(__FILC__)
++  // Fil-C: dlsym(RTLD_DEFAULT, "__libc_stack_end") does not find the symbol
++  // in the Fil-C libc (the lookup fails and the assert below would fire).
++  // Use the pthread_getattr_np path below for all threads instead; it gives
++  // the exact stack bounds without touching /proc. (The Fil-C runtime also
++  // provides zstack_pointer()/zstack_limit() in <stdfil.h> if that ever
++  // becomes necessary.)
++  const bool isMainThread = false;
++#else
++  const bool isMainThread = gettid() == getpid();
++#endif
++  if (isMainThread) {
+     void** pLibcStackEnd = (void**)dlsym(RTLD_DEFAULT, "__libc_stack_end");
+ 
+     // If __libc_stack_end is not found, architecture specific frame pointer
+diff --git a/js/src/util/Text.h b/js/src/util/Text.h
+index 9851c9d..53c7537 100644
+--- a/js/src/util/Text.h
++++ b/js/src/util/Text.h
+@@ -23,6 +23,98 @@
+ #include <type_traits>
+ #include <utility>
+ 
++#if defined(__FILC__)
++// Fil-C uses libc++, which (unlike libstdc++) does not provide the
++// char_traits<unsigned char> extension that SpiderMonkey's Latin1Char
++// (== unsigned char) string helpers rely on. Provide it.
++#include <cstring>  // for memcpy etc.
++namespace std {
++
++template <>
++struct char_traits<unsigned char> {
++  using char_type = unsigned char;
++  using int_type = unsigned int;
++  using off_type = streamoff;
++  using pos_type = streampos;
++  using state_type = mbstate_t;
++
++  static constexpr void assign(char_type& c1, const char_type& c2) noexcept {
++    c1 = c2;
++  }
++  static constexpr bool eq(char_type c1, char_type c2) noexcept {
++    return c1 == c2;
++  }
++  static constexpr bool lt(char_type c1, char_type c2) noexcept {
++    return c1 < c2;
++  }
++
++  static constexpr int compare(const char_type* s1, const char_type* s2,
++                               size_t n) {
++    for (size_t i = 0; i < n; ++i) {
++      if (s1[i] < s2[i]) {
++        return -1;
++      }
++      if (s2[i] < s1[i]) {
++        return 1;
++      }
++    }
++    return 0;
++  }
++
++  static constexpr size_t length(const char_type* s) {
++    size_t n = 0;
++    while (s[n] != char_type(0)) {
++      ++n;
++    }
++    return n;
++  }
++
++  static constexpr const char_type* find(const char_type* s, size_t n,
++                                         const char_type& a) {
++    for (size_t i = 0; i < n; ++i) {
++      if (s[i] == a) {
++        return s + i;
++      }
++    }
++    return nullptr;
++  }
++
++  static constexpr char_type* move(char_type* s1, const char_type* s2,
++                                   size_t n) {
++    return n == 0 ? s1
++                  : reinterpret_cast<char_type*>(memmove(s1, s2, n));
++  }
++
++  static constexpr char_type* copy(char_type* s1, const char_type* s2,
++                                   size_t n) {
++    return n == 0 ? s1 : reinterpret_cast<char_type*>(memcpy(s1, s2, n));
++  }
++
++  static constexpr char_type* assign(char_type* s, size_t n, char_type a) {
++    for (size_t i = 0; i < n; ++i) {
++      s[i] = a;
++    }
++    return s;
++  }
++
++  static constexpr int_type not_eof(int_type c) noexcept {
++    return eq_int_type(c, eof()) ? ~eof() : c;
++  }
++  static constexpr char_type to_char_type(int_type c) noexcept {
++    return char_type(c);
++  }
++  static constexpr int_type to_int_type(char_type c) noexcept {
++    return int_type(c);
++  }
++  static constexpr bool eq_int_type(int_type c1, int_type c2) noexcept {
++    return c1 == c2;
++  }
++  static constexpr int_type eof() noexcept { return int_type(-1); }
++};
++
++}  // namespace std
++#endif
++
+ #include "NamespaceImports.h"
+ 
+ #include "js/Utility.h"
+diff --git a/js/src/util/TrailingArray.h b/js/src/util/TrailingArray.h
+index 574f9aa..838a0ed 100644
+--- a/js/src/util/TrailingArray.h
++++ b/js/src/util/TrailingArray.h
+@@ -35,13 +35,24 @@ class TrailingArray {
+   // Translate an offset into a concrete pointer.
+   template <typename T>
+   T* offsetToPointer(Offset offset) {
++#if defined(__FILC__)
++    // Fil-C: reconstructing the pointer from the integer address would drop
++    // the capability. Use plain pointer arithmetic instead.
++    return reinterpret_cast<T*>(reinterpret_cast<char*>(this) + offset);
++#else
+     uintptr_t base = reinterpret_cast<uintptr_t>(this);
+     return reinterpret_cast<T*>(base + offset);
++#endif
+   }
+   template <typename T>
+   const T* offsetToPointer(Offset offset) const {
++#if defined(__FILC__)
++    return reinterpret_cast<const T*>(reinterpret_cast<const char*>(this) +
++                                      offset);
++#else
+     uintptr_t base = reinterpret_cast<uintptr_t>(this);
+     return reinterpret_cast<const T*>(base + offset);
++#endif
+   }
+ 
+   // Placement-new the elements of an array. This optimizes away for types with
+diff --git a/js/src/vm/BigIntType.cpp b/js/src/vm/BigIntType.cpp
+index 0f9621d..3bf6beb 100644
+--- a/js/src/vm/BigIntType.cpp
++++ b/js/src/vm/BigIntType.cpp
+@@ -311,7 +311,15 @@ inline BigInt::Digit BigInt::digitMul(Digit a, Digit b, Digit* high) {
+ BigInt::Digit BigInt::digitDiv(Digit high, Digit low, Digit divisor,
+                                Digit* remainder) {
+   MOZ_ASSERT(high < divisor, "division must not overflow");
+-#if defined(__x86_64__)
++#if defined(__FILC__)
++  // Fil-C: the 128/64 -> 64 division inline asm below cannot be pizlonated
++  // (the "rm" constraint and the implicit rdx:rax register pair are not
++  // supported). Use a plain 64/64 division with a check: `high < divisor`
++  // (asserted above) guarantees the quotient fits in 64 bits.
++  Digit quotient = low / divisor;
++  *remainder = low % divisor;
++  return quotient;
++#elif defined(__x86_64__)
+   Digit quotient;
+   Digit rem;
+   __asm__("divq  %[divisor]"
+diff --git a/js/src/vm/JSContext.cpp b/js/src/vm/JSContext.cpp
+index fd24c4d..8e56a9f 100644
+--- a/js/src/vm/JSContext.cpp
++++ b/js/src/vm/JSContext.cpp
+@@ -139,13 +139,20 @@ bool JSContext::init(ContextKind kind) {
+ }
+ 
+ static void InitDefaultStackQuota(JSContext* cx) {
+-  // Initialize stack quota to a reasonable default. Embedders can override this
+-  // by calling JS_SetNativeStackQuota.
++  // Initialize stack quota to a reasonable default. Embedders can override
++  // this by calling JS_SetNativeStackQuota.
+   //
+-  // NOTE: Firefox overrides these values. For the main thread this happens in
+-  // XPCJSContext::Initialize.
+-
+-#if defined(MOZ_ASAN) || (defined(DEBUG) && !defined(XP_WIN))
++  // NOTE: Firefox overrides these values. For the main thread this happens
++  // in XPCJSContext::Initialize.
++
++#if defined(__FILC__)
++  // Fil-C: pizlonated C++ frames are much larger than native ones
++  // (capabilities are tracked out-of-band, and the lowered code carries
++  // extra bookkeeping). The 1MB default over-recurses while compiling the
++  // self-hosted scripts. The main thread's stack is 8MB by default
++  // (ulimit -s), so leave 2MB of slack.
++  static constexpr JS::NativeStackSize MaxStackSize = 6 * 1024 * 1024;
++#elif defined(MOZ_ASAN) || (defined(DEBUG) && !defined(XP_WIN))
+   static constexpr JS::NativeStackSize MaxStackSize =
+       2 * 128 * sizeof(size_t) * 1024;
+ #else
+diff --git a/js/src/vm/JSScript-inl.h b/js/src/vm/JSScript-inl.h
+index 2010f42..bc7c86c 100644
+--- a/js/src/vm/JSScript-inl.h
++++ b/js/src/vm/JSScript-inl.h
+@@ -61,7 +61,12 @@ inline void ScriptWarmUpData::initEnclosingScript(BaseScript* enclosingScript) {
+ }
+ inline void ScriptWarmUpData::clearEnclosingScript() {
+   gc::PreWriteBarrier(toEnclosingScript());
++#if defined(__FILC__)
++  tag_ = ResetState();
++  ptr_ = nullptr;
++#else
+   data_ = ResetState();
++#endif
+ }
+ 
+ inline void ScriptWarmUpData::initEnclosingScope(Scope* enclosingScope) {
+@@ -72,7 +77,12 @@ inline void ScriptWarmUpData::initEnclosingScope(Scope* enclosingScope) {
+ }
+ inline void ScriptWarmUpData::clearEnclosingScope() {
+   gc::PreWriteBarrier(toEnclosingScope());
++#if defined(__FILC__)
++  tag_ = ResetState();
++  ptr_ = nullptr;
++#else
+   data_ = ResetState();
++#endif
+ }
+ 
+ inline JSPrincipals* BaseScript::principals() const {
+diff --git a/js/src/vm/JSScript.cpp b/js/src/vm/JSScript.cpp
+index cac3c25..67be97c 100644
+--- a/js/src/vm/JSScript.cpp
++++ b/js/src/vm/JSScript.cpp
+@@ -2925,7 +2925,11 @@ js::UniquePtr<ImmutableScriptData> ImmutableScriptData::new_(
+ }
+ 
+ void ScriptWarmUpData::trace(JSTracer* trc) {
++#if defined(__FILC__)
++  uintptr_t tag = tag_ & TagMask;
++#else
+   uintptr_t tag = data_ & TagMask;
++#endif
+   switch (tag) {
+     case EnclosingScriptTag: {
+       BaseScript* enclosingScript = toEnclosingScript();
+diff --git a/js/src/vm/JSScript.h b/js/src/vm/JSScript.h
+index 8fadad9..d2439c3 100644
+--- a/js/src/vm/JSScript.h
++++ b/js/src/vm/JSScript.h
+@@ -1167,7 +1167,16 @@ class ScriptSourceObject : public NativeObject {
+ //   Interpreter.
+ //
+ class ScriptWarmUpData {
++#if defined(__FILC__)
++  // Fil-C: the tagged pointers cannot be packed into a single uintptr_t (the
++  // capability would be lost). Keep the pointer and the tag/count word
++  // separately. sizeof changes from 8 to 16; the "JIT code depends on this
++  // being pointer-sized" invariant only matters for the (disabled) JIT.
++  void* ptr_ = nullptr;
++  uintptr_t tag_ = ResetState();
++#else
+   uintptr_t data_ = ResetState();
++#endif
+ 
+  private:
+   static constexpr uintptr_t NumTagBits = 2;
+@@ -1185,6 +1194,29 @@ class ScriptWarmUpData {
+   // A gc-safe value to clear to.
+   constexpr uintptr_t ResetState() { return 0 | WarmUpCountTag; }
+ 
++#if defined(__FILC__)
++  template <uintptr_t Tag>
++  inline void setTaggedPtr(void* ptr) {
++    static_assert(Tag <= TagMask, "Tag must fit in TagMask");
++    ptr_ = ptr;
++    tag_ = Tag;
++  }
++
++  template <typename T, uintptr_t Tag>
++  inline T getTaggedPtr() const {
++    static_assert(Tag <= TagMask, "Tag must fit in TagMask");
++    MOZ_ASSERT((tag_ & TagMask) == Tag);
++    return static_cast<T>(ptr_);
++  }
++
++  void setWarmUpCount(uint32_t count) {
++    if (count > MaxWarmUpCount) {
++      count = MaxWarmUpCount;
++    }
++    ptr_ = nullptr;
++    tag_ = (uintptr_t(count) << NumTagBits) | WarmUpCountTag;
++  }
++#else
+   template <uintptr_t Tag>
+   inline void setTaggedPtr(void* ptr) {
+     static_assert(Tag <= TagMask, "Tag must fit in TagMask");
+@@ -1205,10 +1237,62 @@ class ScriptWarmUpData {
+     }
+     data_ = (uintptr_t(count) << NumTagBits) | WarmUpCountTag;
+   }
++#endif
+ 
+  public:
+   void trace(JSTracer* trc);
+ 
++#if defined(__FILC__)
++  bool isEnclosingScript() const {
++    return (tag_ & TagMask) == EnclosingScriptTag;
++  }
++  bool isEnclosingScope() const {
++    return (tag_ & TagMask) == EnclosingScopeTag;
++  }
++  bool isWarmUpCount() const { return (tag_ & TagMask) == WarmUpCountTag; }
++  bool isJitScript() const { return (tag_ & TagMask) == JitScriptTag; }
++
++  // NOTE: To change type safely, 'clear' the old tagged value and then 'init'
++  //       the new one. This will notify the GC appropriately.
++
++  BaseScript* toEnclosingScript() const {
++    return getTaggedPtr<BaseScript*, EnclosingScriptTag>();
++  }
++  inline void initEnclosingScript(BaseScript* enclosingScript);
++  inline void clearEnclosingScript();
++
++  Scope* toEnclosingScope() const {
++    return getTaggedPtr<Scope*, EnclosingScopeTag>();
++  }
++  inline void initEnclosingScope(Scope* enclosingScope);
++  inline void clearEnclosingScope();
++
++  uint32_t toWarmUpCount() const {
++    MOZ_ASSERT(isWarmUpCount());
++    return tag_ >> NumTagBits;
++  }
++  void resetWarmUpCount(uint32_t count) {
++    MOZ_ASSERT(isWarmUpCount());
++    setWarmUpCount(count);
++  }
++  void incWarmUpCount() {
++    MOZ_ASSERT(isWarmUpCount());
++    tag_ += uintptr_t(1) << NumTagBits;
++  }
++
++  jit::JitScript* toJitScript() const {
++    return getTaggedPtr<jit::JitScript*, JitScriptTag>();
++  }
++  void initJitScript(jit::JitScript* jitScript) {
++    MOZ_ASSERT(isWarmUpCount());
++    setTaggedPtr<JitScriptTag>(jitScript);
++  }
++  void clearJitScript() {
++    MOZ_ASSERT(isJitScript());
++    tag_ = ResetState();
++    ptr_ = nullptr;
++  }
++#else
+   bool isEnclosingScript() const {
+     return (data_ & TagMask) == EnclosingScriptTag;
+   }
+@@ -1257,10 +1341,13 @@ class ScriptWarmUpData {
+     MOZ_ASSERT(isJitScript());
+     data_ = ResetState();
+   }
++#endif
+ } JS_HAZ_GC_POINTER;
+ 
++#if !defined(__FILC__)
+ static_assert(sizeof(ScriptWarmUpData) == sizeof(uintptr_t),
+               "JIT code depends on ScriptWarmUpData being pointer-sized");
++#endif
+ 
+ // [SMDOC] - JSScript data layout (unshared)
+ //
+diff --git a/js/src/vm/NativeObject.cpp b/js/src/vm/NativeObject.cpp
+index a9fd891..29e6a76 100644
+--- a/js/src/vm/NativeObject.cpp
++++ b/js/src/vm/NativeObject.cpp
+@@ -788,6 +788,18 @@ bool NativeObject::goodElementsAllocationAmount(JSContext* cx,
+   //     print('0x' + (n * (1 << 20)).toString(16) + ', ');
+   //     n = Math.ceil(n * 1.125);
+   //   }
++#if defined(__FILC__)
++  // Fil-C: sizeof(Value) is 16, so element counts are halved to keep
++  // count * sizeof(Value) within int32_t (see
++  // MAX_DENSE_ELEMENTS_ALLOCATION). Scale the bucket table to match.
++  static constexpr uint32_t BigBuckets[] = {
++      0x80000,  0x100000,  0x180000,  0x200000,  0x280000,  0x300000,
++      0x380000, 0x400000,  0x480000,  0x580000,  0x680000,  0x780000,
++      0x880000, 0xa00000,  0xb80000,  0xd00000,  0xf00000,  0x1100000,
++      0x1380000, 0x1600000, 0x1900000, 0x1c80000, 0x2080000, 0x2500000,
++      0x2a00000, 0x2f80000, 0x3580000, 0x3c80000, 0x4480000, 0x4d80000,
++      0x5780000, 0x6280000, 0x6f00000, 0x7d00000};
++#else
+   static constexpr uint32_t BigBuckets[] = {
+       0x100000,  0x200000,  0x300000,  0x400000,  0x500000,  0x600000,
+       0x700000,  0x800000,  0x900000,  0xb00000,  0xd00000,  0xf00000,
+@@ -795,6 +807,7 @@ bool NativeObject::goodElementsAllocationAmount(JSContext* cx,
+       0x2700000, 0x2c00000, 0x3200000, 0x3900000, 0x4100000, 0x4a00000,
+       0x5400000, 0x5f00000, 0x6b00000, 0x7900000, 0x8900000, 0x9b00000,
+       0xaf00000, 0xc500000, 0xde00000, 0xfa00000};
++#endif
+   static_assert(BigBuckets[std::size(BigBuckets) - 1] <=
+                 MAX_DENSE_ELEMENTS_ALLOCATION);
+ 
+diff --git a/js/src/vm/NativeObject.h b/js/src/vm/NativeObject.h
+index b964c88..7eba755 100644
+--- a/js/src/vm/NativeObject.h
++++ b/js/src/vm/NativeObject.h
+@@ -286,6 +286,15 @@ class ObjectElements {
+   /* 'length' property of array objects, unused for other objects. */
+   uint32_t length;
+ 
++#if defined(__FILC__)
++  // Fil-C: sizeof(Value) is 16 (the punbox bits plus a capability pointer).
++  // The elements header must occupy exactly VALUES_PER_HEADER (2) Value
++  // slots, because the slot-indexed and byte-based views of the elements
++  // region must agree (see elements()/fromElements() below). Pad the
++  // header out to 2 * sizeof(HeapSlot).
++  [[maybe_unused]] uint32_t filcPadding_[4] = {};
++#endif
++
+   bool hasNonwritableArrayLength() const {
+     return flags & NONWRITABLE_ARRAY_LENGTH;
+   }
+@@ -369,12 +378,23 @@ class ObjectElements {
+         length(length) {}
+ 
+   HeapSlot* elements() {
++#if defined(__FILC__)
++    // Fil-C: keep the capability (plain pointer arithmetic).
++    return reinterpret_cast<HeapSlot*>(reinterpret_cast<char*>(this) +
++                                       sizeof(ObjectElements));
++#else
+     return reinterpret_cast<HeapSlot*>(uintptr_t(this) +
+                                        sizeof(ObjectElements));
++#endif
+   }
+   const HeapSlot* elements() const {
++#if defined(__FILC__)
++    return reinterpret_cast<const HeapSlot*>(
++        reinterpret_cast<const char*>(this) + sizeof(ObjectElements));
++#else
+     return reinterpret_cast<const HeapSlot*>(uintptr_t(this) +
+                                              sizeof(ObjectElements));
++#endif
+   }
+   static ObjectElements* fromElements(HeapSlot* elems) {
+     return reinterpret_cast<ObjectElements*>(uintptr_t(elems) -
+@@ -450,6 +470,12 @@ class alignas(HeapSlot) ObjectSlots {
+   uint32_t dictionarySlotSpan_;
+   uint64_t maybeUniqueId_;
+ 
++#if defined(__FILC__)
++  // Fil-C: pad to VALUES_PER_HEADER (2) HeapSlots for the same reason as
++  // ObjectElements above (fromSlots() uses byte-based math).
++  [[maybe_unused]] uint64_t filcPadding_[2] = {};
++#endif
++
+  public:
+   // Special values for maybeUniqueId_ to indicate no unique ID is present.
+   static constexpr uint64_t NoUniqueIdInDynamicSlots = 0;
+@@ -477,8 +503,14 @@ class alignas(HeapSlot) ObjectSlots {
+ 
+   static ObjectSlots* fromSlots(HeapSlot* slots) {
+     MOZ_ASSERT(slots);
++#if defined(__FILC__)
++    // Fil-C: keep the capability (plain pointer arithmetic).
++    return reinterpret_cast<ObjectSlots*>(reinterpret_cast<char*>(slots) -
++                                          sizeof(ObjectSlots));
++#else
+     return reinterpret_cast<ObjectSlots*>(uintptr_t(slots) -
+                                           sizeof(ObjectSlots));
++#endif
+   }
+ 
+   static constexpr size_t offsetOfCapacity() {
+@@ -626,8 +658,17 @@ class NativeObject : public JSObject {
+                   "native object size must match GC thing size");
+     static_assert(sizeof(NativeObject) == sizeof(JS::shadow::Object),
+                   "shadow interface must match actual implementation");
++#if defined(__FILC__)
++    // Fil-C: sizeof(Value) is 16, but NativeObject is still 3 words
++    // (header + slots_ + elements_). Fixed slots start at offset 24, which
++    // is 8-byte aligned; that's sufficient because Fil-C pointers are
++    // 8-aligned and every member of Value is 8-byte sized/aligned.
++    static_assert(sizeof(NativeObject) % sizeof(void*) == 0,
++                  "fixed slots after an object must be aligned");
++#else
+     static_assert(sizeof(NativeObject) % sizeof(Value) == 0,
+                   "fixed slots after an object must be aligned");
++#endif
+ 
+     static_assert(offsetOfShape() == offsetof(JS::shadow::Object, shape),
+                   "shadow type must match actual type");
+@@ -855,7 +896,13 @@ class NativeObject : public JSObject {
+       8 - ObjectElements::VALUES_PER_HEADER;
+ 
+   HeapSlot* fixedSlots() const {
++#if defined(__FILC__)
++    // Fil-C: keep the capability (plain pointer arithmetic).
++    return reinterpret_cast<HeapSlot*>(const_cast<char*>(
++        reinterpret_cast<const char*>(this) + sizeof(NativeObject)));
++#else
+     return reinterpret_cast<HeapSlot*>(uintptr_t(this) + sizeof(NativeObject));
++#endif
+   }
+ 
+  public:
+@@ -867,7 +914,13 @@ class NativeObject : public JSObject {
+   // The maximum number of slots in an object.
+   // |MAX_SLOTS_COUNT * sizeof(JS::Value)| shouldn't overflow
+   // int32_t (see slotsSizeMustNotOverflow).
++  // |MAX_SLOTS_COUNT * sizeof(JS::Value)| shouldn't overflow
++#if defined(__FILC__)
++  // Fil-C: sizeof(Value) is 16; halve the slot count limit.
++  static const uint32_t MAX_SLOTS_COUNT = (1 << 27) - 1;
++#else
+   static const uint32_t MAX_SLOTS_COUNT = (1 << 28) - 1;
++#endif
+ 
+   static void slotsSizeMustNotOverflow() {
+     static_assert(
+@@ -1369,7 +1422,13 @@ class NativeObject : public JSObject {
+   // ObjectElements instance.)
+   // |MAX_DENSE_ELEMENTS_ALLOCATION * sizeof(JS::Value)| shouldn't overflow
+   // int32_t (see elementsSizeMustNotOverflow).
++#if defined(__FILC__)
++  // Fil-C: sizeof(Value) is 16, so halve the element limits to keep
++  // count * sizeof(Value) within int32_t.
++  static const uint32_t MAX_DENSE_ELEMENTS_ALLOCATION = (1 << 27) - 1;
++#else
+   static const uint32_t MAX_DENSE_ELEMENTS_ALLOCATION = (1 << 28) - 1;
++#endif
+ 
+   // The maximum number of usable dense elements in an object.
+   static const uint32_t MAX_DENSE_ELEMENTS_COUNT =
+diff --git a/js/src/vm/PropMap.h b/js/src/vm/PropMap.h
+index b47b43e..242b252 100644
+--- a/js/src/vm/PropMap.h
++++ b/js/src/vm/PropMap.h
+@@ -211,6 +211,49 @@ class NormalPropMap;
+ // Template class for storing a PropMap* and a property index as tagged pointer.
+ template <typename T>
+ class MapAndIndex {
++#if defined(__FILC__)
++  // Fil-C: pointers cannot be packed into a uintptr_t with tag bits (the
++  // capability would be lost). Keep the map pointer and the index in
++  // separate fields.
++  T* map_ = nullptr;
++  uint32_t index_ = 0;
++
++ public:
++  MapAndIndex() = default;
++
++  MapAndIndex(const T* map, uint32_t index)
++      : map_(const_cast<T*>(map)), index_(index) {
++    MOZ_ASSERT(index <= 0b111);
++  }
++
++  void setNone() {
++    map_ = nullptr;
++    index_ = 0;
++  }
++
++  bool isNone() const { return !map_; }
++
++  T* maybeMap() const { return map_; }
++
++  uint32_t index() const {
++    MOZ_ASSERT(!isNone());
++    return index_;
++  }
++  T* map() const {
++    MOZ_ASSERT(!isNone());
++    return map_;
++  }
++
++  inline PropertyInfo propertyInfo() const;
++
++  bool operator==(const MapAndIndex<T>& other) const {
++    return map_ == other.map_ && index_ == other.index_;
++  }
++  bool operator!=(const MapAndIndex<T>& other) const {
++    return !operator==(other);
++  }
++} JS_HAZ_GC_POINTER;
++#else
+   uintptr_t data_ = 0;
+ 
+   static constexpr uintptr_t IndexMask = 0b111;
+@@ -249,6 +292,7 @@ class MapAndIndex {
+     return !operator==(other);
+   }
+ } JS_HAZ_GC_POINTER;
++#endif
+ using PropMapAndIndex = MapAndIndex<PropMap>;
+ using SharedPropMapAndIndex = MapAndIndex<SharedPropMap>;
+ 
+@@ -266,6 +310,39 @@ using SharedChildrenSet =
+ // Because SingleMapAndIndex use all bits, this relies on the HasChildrenSet
+ // flag in the map to distinguish the latter two cases.
+ class SharedChildrenPtr {
++#if defined(__FILC__)
++  // Fil-C: store the pointer separately from the child index (see
++  // MapAndIndex above for the rationale).
++  void* ptr_ = nullptr;
++  uint32_t index_ = 0;
++
++ public:
++  bool isNone() const { return !ptr_; }
++  void setNone() {
++    ptr_ = nullptr;
++    index_ = 0;
++  }
++
++  void setSingleChild(SharedPropMapAndIndex child) {
++    ptr_ = child.map();
++    index_ = child.index();
++  }
++  void setChildrenSet(SharedChildrenSet* set) {
++    ptr_ = set;
++    index_ = 0;
++  }
++
++  SharedPropMapAndIndex toSingleChild() const {
++    MOZ_ASSERT(!isNone());
++    MOZ_ASSERT(index_ <= 0b111);
++    return SharedPropMapAndIndex(static_cast<SharedPropMap*>(ptr_), index_);
++  }
++
++  SharedChildrenSet* toChildrenSet() const {
++    MOZ_ASSERT(!isNone());
++    return static_cast<SharedChildrenSet*>(ptr_);
++  }
++#else
+   uintptr_t data_ = 0;
+ 
+  public:
+@@ -284,6 +361,7 @@ class SharedChildrenPtr {
+     MOZ_ASSERT(!isNone());
+     return reinterpret_cast<SharedChildrenSet*>(data_);
+   }
++#endif
+ } JS_HAZ_GC_POINTER;
+ 
+ // Ensures no property map tables are purged in the current zone.
+diff --git a/js/src/vm/ProxyObject.h b/js/src/vm/ProxyObject.h
+index b583bdf..d8bf8a0 100644
+--- a/js/src/vm/ProxyObject.h
++++ b/js/src/vm/ProxyObject.h
+@@ -49,7 +49,13 @@ class ProxyObject : public JSObject {
+   // There's one unfortunate exception: when a proxy is swapped with another
+   // object, and the sizes don't match, we malloc the ProxyValueArray.
+   void* inlineDataStart() const {
++#if defined(__FILC__)
++    // Fil-C: keep the capability (plain pointer arithmetic).
++    return (void*)(const_cast<char*>(reinterpret_cast<const char*>(this) +
++                                    sizeof(ProxyObject)));
++#else
+     return (void*)(uintptr_t(this) + sizeof(ProxyObject));
++#endif
+   }
+   bool usingInlineValueArray() const {
+     return data.values() == inlineDataStart();
+diff --git a/js/src/vm/Scope.h b/js/src/vm/Scope.h
+index 1841891..f41c4d8 100644
+--- a/js/src/vm/Scope.h
++++ b/js/src/vm/Scope.h
+@@ -95,7 +95,12 @@ class AbstractBindingName<JSAtom> {
+   //  * whether it is closed over (i.e., exists in the environment shape)
+   //  * whether it is a top-level function binding in global or eval scope,
+   //    instead of var binding (both are in the same range in Scope data)
+-  uintptr_t bits_;
++#if defined(__FILC__)
++  // Fil-C: the name pointer cannot be packed into a uintptr_t with flag
++  // bits (the capability would be lost). Store them separately.
++  NameT* name_ = nullptr;
++  uintptr_t flags_ = 0;
++#endif
+ 
+   static constexpr uintptr_t ClosedOverFlag = 0x1;
+   // TODO: We should reuse this bit for let vs class distinction to
+@@ -104,6 +109,33 @@ class AbstractBindingName<JSAtom> {
+   static constexpr uintptr_t FlagMask = 0x3;
+ 
+  public:
++#if defined(__FILC__)
++  AbstractBindingName() = default;
++
++  AbstractBindingName(NameT* name, bool closedOver,
++                      bool isTopLevelFunction = false)
++      : name_(name),
++        flags_((closedOver ? ClosedOverFlag : 0x0) |
++               (isTopLevelFunction ? TopLevelFunctionFlag : 0x0)) {}
++
++  NameT* name() const { return name_; }
++
++  bool closedOver() const { return flags_ & ClosedOverFlag; }
++
++ private:
++  friend class BaseAbstractBindingIter<NameT>;
++
++  // This method should be called only for binding names in `vars` range in
++  // BindingIter.
++  bool isTopLevelFunction() const { return flags_ & TopLevelFunctionFlag; }
++
++ public:
++  void trace(JSTracer* trc) {
++    if (JSAtom* atom = name()) {
++      TraceManuallyBarrieredEdge(trc, &atom, "binding name");
++    }
++  }
++#else
+   AbstractBindingName() : bits_(0) {}
+ 
+   AbstractBindingName(NameT* name, bool closedOver,
+@@ -130,6 +162,7 @@ class AbstractBindingName<JSAtom> {
+       TraceManuallyBarrieredEdge(trc, &atom, "binding name");
+     }
+   }
++#endif
+ };
+ 
+ template <>
+diff --git a/js/src/vm/Shape.h b/js/src/vm/Shape.h
+index 003a6e3..4e65de3 100644
+--- a/js/src/vm/Shape.h
++++ b/js/src/vm/Shape.h
+@@ -174,6 +174,72 @@ class ShapeCachePtr {
+     MASK = 3
+   };
+ 
++#if defined(__FILC__)
++  // Fil-C: pointers cannot be packed into a uintptr_t with tag bits (the
++  // capability would be lost). Store the pointer and the tag separately.
++  void* ptr_ = nullptr;
++  uintptr_t tag_ = SINGLE_SHAPE_FOR_ADD;
++
++ public:
++  bool isNone() const { return !ptr_; }
++  void setNone() {
++    ptr_ = nullptr;
++    tag_ = SINGLE_SHAPE_FOR_ADD;
++  }
++
++  bool isSingleShapeForAdd() const {
++    return (tag_ & MASK) == SINGLE_SHAPE_FOR_ADD && !isNone();
++  }
++  SharedShape* toSingleShapeForAdd() const {
++    MOZ_ASSERT(isSingleShapeForAdd());
++    return static_cast<SharedShape*>(ptr_);
++  }
++  void setSingleShapeForAdd(SharedShape* shape) {
++    MOZ_ASSERT(shape);
++    MOZ_ASSERT(!isShapeSetForAdd());  // Don't leak the ShapeSet.
++    ptr_ = shape;
++    tag_ = SINGLE_SHAPE_FOR_ADD;
++  }
++
++  bool isShapeSetForAdd() const { return (tag_ & MASK) == SHAPE_SET_FOR_ADD; }
++  ShapeSetForAdd* toShapeSetForAdd() const {
++    MOZ_ASSERT(isShapeSetForAdd());
++    return static_cast<ShapeSetForAdd*>(ptr_);
++  }
++  void setShapeSetForAdd(ShapeSetForAdd* hash) {
++    MOZ_ASSERT(hash);
++    ptr_ = hash;
++    tag_ = SHAPE_SET_FOR_ADD;
++  }
++
++  bool isForAdd() const { return isSingleShapeForAdd() || isShapeSetForAdd(); }
++
++  bool isShapeWithProto() const { return (tag_ & MASK) == SHAPE_WITH_PROTO; }
++  SharedShape* toShapeWithProto() const {
++    MOZ_ASSERT(isShapeWithProto());
++    return static_cast<SharedShape*>(ptr_);
++  }
++  void setShapeWithProto(SharedShape* shape) {
++    MOZ_ASSERT(shape);
++    MOZ_ASSERT(!isShapeSetForAdd());  // Don't leak the ShapeSet.
++    ptr_ = shape;
++    tag_ = SHAPE_WITH_PROTO;
++  }
++
++  bool isIterator() const { return (tag_ & MASK) == ITERATOR; }
++  PropertyIteratorObject* toIterator() const {
++    MOZ_ASSERT(isIterator());
++    return static_cast<PropertyIteratorObject*>(ptr_);
++  }
++  void setIterator(PropertyIteratorObject* iter) {
++    MOZ_ASSERT(iter);
++    MOZ_ASSERT(!isShapeSetForAdd());  // Don't leak the ShapeSet.
++    ptr_ = iter;
++    tag_ = ITERATOR;
++  }
++  friend class js::jit::MacroAssembler;
++} JS_HAZ_GC_POINTER;
++#else
+   uintptr_t bits = 0;
+ 
+  public:
+@@ -232,6 +298,7 @@ class ShapeCachePtr {
+   }
+   friend class js::jit::MacroAssembler;
+ } JS_HAZ_GC_POINTER;
++#endif
+ 
+ // BaseShapes store the object's class, realm and prototype. BaseShapes are
+ // immutable tuples stored in a per-Zone hash table.
+@@ -732,7 +799,13 @@ class SizedShape : public Shape {
+ 
+     // Sanity check Shape size is what we expect.
+ #ifdef JS_64BIT
++#if defined(__FILC__)
++    // Fil-C: ShapeCachePtr stores the pointer and the tag in separate
++    // fields (see the comment there), so shapes are one word larger.
++    static_assert(sizeof(SizedShape) == 5 * sizeof(void*));
++#else
+     static_assert(sizeof(SizedShape) == 4 * sizeof(void*));
++#endif
+ #else
+     static_assert(sizeof(SizedShape) == 6 * sizeof(void*));
+ #endif
+diff --git a/js/src/vm/Stack.h b/js/src/vm/Stack.h
+index d537cb8..d6fa387 100644
+--- a/js/src/vm/Stack.h
++++ b/js/src/vm/Stack.h
+@@ -94,7 +94,14 @@ class RematerializedFrame;
+ class AbstractFramePtr {
+   friend class FrameIter;
+ 
++#if defined(__FILC__)
++  // Fil-C: pointers cannot be packed into a uintptr_t with tag bits (the
++  // capability would be lost). Store the pointer and the tag separately.
++  void* ptr_ = nullptr;
++  uintptr_t tag_ = 0;
++#else
+   uintptr_t ptr_;
++#endif
+ 
+   enum {
+     Tag_InterpreterFrame = 0x1,
+@@ -105,6 +112,75 @@ class AbstractFramePtr {
+   };
+ 
+  public:
++  AbstractFramePtr() = default;
++
++#if defined(__FILC__)
++  MOZ_IMPLICIT AbstractFramePtr(InterpreterFrame* fp)
++      : ptr_(fp), tag_(fp ? Tag_InterpreterFrame : 0) {
++    MOZ_ASSERT_IF(fp, asInterpreterFrame() == fp);
++  }
++
++  MOZ_IMPLICIT AbstractFramePtr(jit::BaselineFrame* fp)
++      : ptr_(fp), tag_(fp ? Tag_BaselineFrame : 0) {
++    MOZ_ASSERT_IF(fp, asBaselineFrame() == fp);
++  }
++
++  MOZ_IMPLICIT AbstractFramePtr(jit::RematerializedFrame* fp)
++      : ptr_(fp), tag_(fp ? Tag_RematerializedFrame : 0) {
++    MOZ_ASSERT_IF(fp, asRematerializedFrame() == fp);
++  }
++
++  MOZ_IMPLICIT AbstractFramePtr(wasm::DebugFrame* fp)
++      : ptr_(fp), tag_(fp ? Tag_WasmDebugFrame : 0) {
++    MOZ_ASSERT_IF(fp, asWasmDebugFrame() == fp);
++  }
++
++  bool isSet() const { return !!ptr_; }
++  bool isInterpreterFrame() const {
++    return (tag_ & TagMask) == Tag_InterpreterFrame;
++  }
++  InterpreterFrame* asInterpreterFrame() const {
++    MOZ_ASSERT(isInterpreterFrame());
++    InterpreterFrame* res = static_cast<InterpreterFrame*>(ptr_);
++    MOZ_ASSERT(res);
++    return res;
++  }
++  bool isBaselineFrame() const { return (tag_ & TagMask) == Tag_BaselineFrame; }
++  jit::BaselineFrame* asBaselineFrame() const {
++    MOZ_ASSERT(isBaselineFrame());
++    jit::BaselineFrame* res = static_cast<jit::BaselineFrame*>(ptr_);
++    MOZ_ASSERT(res);
++    return res;
++  }
++  bool isRematerializedFrame() const {
++    return (tag_ & TagMask) == Tag_RematerializedFrame;
++  }
++  jit::RematerializedFrame* asRematerializedFrame() const {
++    MOZ_ASSERT(isRematerializedFrame());
++    jit::RematerializedFrame* res =
++        static_cast<jit::RematerializedFrame*>(ptr_);
++    MOZ_ASSERT(res);
++    return res;
++  }
++  bool isWasmDebugFrame() const {
++    return (tag_ & TagMask) == Tag_WasmDebugFrame;
++  }
++  wasm::DebugFrame* asWasmDebugFrame() const {
++    MOZ_ASSERT(isWasmDebugFrame());
++    wasm::DebugFrame* res = static_cast<wasm::DebugFrame*>(ptr_);
++    MOZ_ASSERT(res);
++    return res;
++  }
++  void* raw() const { return ptr_; }
++
++  bool operator==(const AbstractFramePtr& other) const {
++    return ptr_ == other.ptr_ && tag_ == other.tag_;
++  }
++  bool operator!=(const AbstractFramePtr& other) const {
++    return !operator==(other);
++  }
++  explicit operator bool() const { return !!ptr_; }
++#else
+   AbstractFramePtr() : ptr_(0) {}
+ 
+   MOZ_IMPLICIT AbstractFramePtr(InterpreterFrame* fp)
+@@ -174,6 +250,7 @@ class AbstractFramePtr {
+   }
+ 
+   explicit operator bool() const { return !!ptr_; }
++#endif  // defined(__FILC__)
+ 
+   inline JSObject* environmentChain() const;
+   inline CallObject& callObj() const;
+@@ -326,8 +403,16 @@ class InterpreterFrame {
+   LifoAlloc::Mark mark_; /* Used to release memory for this frame. */
+ 
+   static void staticAsserts() {
++#if defined(__FILC__)
++    // Fil-C: sizeof(Value) is 16 (punbox bits + capability pointer), but
++    // every member of Value is 8-byte sized and aligned, so 8-byte
++    // alignment of rval_ and of the frame as a whole is sufficient.
++    static_assert(offsetof(InterpreterFrame, rval_) % sizeof(void*) == 0);
++    static_assert(sizeof(InterpreterFrame) % sizeof(void*) == 0);
++#else
+     static_assert(offsetof(InterpreterFrame, rval_) % sizeof(Value) == 0);
+     static_assert(sizeof(InterpreterFrame) % sizeof(Value) == 0);
++#endif
+   }
+ 
+   /*
+diff --git a/js/src/vm/Xdr.cpp b/js/src/vm/Xdr.cpp
+index 0bf2adc..e0190da 100644
+--- a/js/src/vm/Xdr.cpp
++++ b/js/src/vm/Xdr.cpp
+@@ -19,6 +19,9 @@
+ #include <utility>      // std::move
+ 
+ #include "frontend/FrontendContext.h"  // FrontendContext
++#if defined(__FILC__)
++#include "util/Text.h"  // std::char_traits<Latin1Char> specialization
++#endif
+ #include "js/Transcoding.h"  // JS::TranscodeResult, JS::TranscodeBuffer, JS::TranscodeRange
+ #include "js/UniquePtr.h"   // UniquePtr
+ #include "js/Utility.h"     // JS::FreePolicy, js_delete
+diff --git a/mfbt/Result.h b/mfbt/Result.h
+index cc4f878..c7c68b5 100644
+--- a/mfbt/Result.h
++++ b/mfbt/Result.h
+@@ -221,6 +221,22 @@ class ResultImplementation<V, E, PackingStrategy::LowBitTagIsError> {
+ 
+   using StorageType = UnsignedIntType<kRequiredSize>;
+ 
++#if defined(__FILC__)
++  // Fil-C port: upstream stores the success value by memcpy-ing its bits
++  // through the integer mBits member.  The compiler lowers those 8-byte
++  // memcpys to plain integer moves, which strips a pointer's Fil-C
++  // capability, so every `JS::Result<SomePointer*>` that crosses a function
++  // boundary hands back a null-capability pointer that traps on first use
++  // (observed with JS::Result<JSLinearString*> in the Intl available-locale
++  // code — `new Intl.DateTimeFormat(...)` panicked inside
++  // SameOrParentLocale).  Keep the value in a union with a typed view and
++  // store/load it as its real type, like the gc/Cell.h header-word fix; the
++  // integer view is still used for the error low-bit tag.
++  union {
++    StorageType mBits;
++    V mValue;
++  };
++#else
+ #if defined(__clang__)
+   alignas(std::max(alignof(V), alignof(E))) StorageType mBits;
+ #else
+@@ -230,12 +246,26 @@ class ResultImplementation<V, E, PackingStrategy::LowBitTagIsError> {
+   // code above since we would eventually drop this when we no longer support
+   // gcc versions with the bug.
+   alignas(alignof(V) > alignof(E) ? alignof(V) : alignof(E)) StorageType mBits;
++#endif
+ #endif
+ 
+  public:
+   static constexpr PackingStrategy Strategy = PackingStrategy::LowBitTagIsError;
+ 
+-  explicit constexpr ResultImplementation(V aValue) : mBits(0) {
++  explicit constexpr ResultImplementation(V aValue)
++#if defined(__FILC__)
++      // Initialize the integer view first (so the low bit is 0 for a fresh
++      // value), then store the success value through its typed view; this
++      // keeps the Fil-C capability of a pointer-typed V.
++      : mBits(0) {
++    if constexpr (!std::is_empty_v<V>) {
++      mValue = aValue;
++    } else {
++      (void)aValue;
++    }
++  }
++#else
++      : mBits(0) {
+     if constexpr (!std::is_empty_v<V>) {
+       std::memcpy(&mBits, &aValue, sizeof(V));
+       MOZ_ASSERT((mBits & 1) == 0);
+@@ -243,6 +273,7 @@ class ResultImplementation<V, E, PackingStrategy::LowBitTagIsError> {
+       (void)aValue;
+     }
+   }
++#endif
+   explicit constexpr ResultImplementation(E aErrorValue) : mBits(1) {
+     if constexpr (!std::is_empty_v<E>) {
+       std::memcpy(&mBits, &aErrorValue, sizeof(E));
+@@ -256,9 +287,17 @@ class ResultImplementation<V, E, PackingStrategy::LowBitTagIsError> {
+   constexpr bool isOk() const { return (mBits & 1) == 0; }
+ 
+   constexpr V inspect() const {
++#if defined(__FILC__)
++    if constexpr (!std::is_empty_v<V>) {
++      return mValue;
++    } else {
++      return V{};
++    }
++#else
+     V res;
+     std::memcpy(&res, &mBits, sizeof(V));
+     return res;
++#endif
+   }
+   constexpr V unwrap() { return inspect(); }
+ 
+diff --git a/mozglue/misc/SSE.cpp b/mozglue/misc/SSE.cpp
+index ca0b4c3..1005ab6 100644
+--- a/mozglue/misc/SSE.cpp
++++ b/mozglue/misc/SSE.cpp
+@@ -8,6 +8,22 @@
+ #include "SSE.h"
+ 
+ #ifdef HAVE_CPUID_H
++#if defined(__FILC__)
++// Fil-C: Fil-C's <cpuid.h> maps __cpuid/__cpuid_count to zcpuid /
++// zcpuid_count, which are provided by libpizlo.so. Declare them with
++// default visibility BEFORE including <cpuid.h>: this file is compiled with
++// -fvisibility=hidden, and a hidden-visibility undefined reference cannot
++// be resolved from another shared object at link time, which would break
++// the libmozjs-115.so link.
++extern "C" {
++__attribute__((visibility("default"))) void zcpuid(
++    unsigned int leaf, unsigned int* eax, unsigned int* ebx, unsigned int* ecx,
++    unsigned int* edx);
++__attribute__((visibility("default"))) void zcpuid_count(
++    unsigned int leaf, unsigned int count, unsigned int* eax,
++    unsigned int* ebx, unsigned int* ecx, unsigned int* edx);
++}
++#endif
+ // cpuid.h is available on gcc 4.3 and higher on i386 and x86_64
+ #  include <cpuid.h>
+ #elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_AMD64))
+@@ -62,7 +78,28 @@ static bool has_cpuid_bits(unsigned int level, CPUIDRegister reg,
+ 
+ enum CPUIDRegister { eax = 0, ebx = 1, ecx = 2, edx = 3 };
+ 
+-#  ifdef __i386
++#  if defined(__FILC__)
++// Fil-C port: inline asm is not allowed under Fil-C. Fil-C provides zcpuid /
++// zcpuid_count (backed by libpizlo; see Fil-C's cpuid.h) as a replacement.
++// Calling them by their plain names lets the Fil-C compiler driver apply its
++// symbol renaming at link time, so the shared library resolves them against
++// libpizlo.
++extern "C" {
++void zcpuid(unsigned int leaf, unsigned int* eax, unsigned int* ebx,
++            unsigned int* ecx, unsigned int* edx);
++void zcpuid_count(unsigned int leaf, unsigned int count, unsigned int* eax,
++                  unsigned int* ebx, unsigned int* ecx, unsigned int* edx);
++}
++
++static void moz_cpuid(int CPUInfo[4], int InfoType) {
++  unsigned int r[4];
++  zcpuid((unsigned int)InfoType, &r[0], &r[1], &r[2], &r[3]);
++  CPUInfo[0] = (int)r[0];
++  CPUInfo[1] = (int)r[1];
++  CPUInfo[2] = (int)r[2];
++  CPUInfo[3] = (int)r[3];
++}
++#  elif defined(__i386)
+ static void moz_cpuid(int CPUInfo[4], int InfoType) {
+   asm("xchg %esi, %ebx\n"
+       "xor %ecx, %ecx\n"  // ecx is the sub-leaf (we only ever need 0)
+@@ -191,10 +228,30 @@ bool has_constant_tsc = has_cpuid_bits(0x80000007u, edx, (1u << 8));
+ 
+ #ifdef HAVE_CPUID_H
+ 
++#if defined(__FILC__)
++// Fil-C: the runtime (libpizlo.so) provides zxgetbv(), which reads XCR0.
++// Declare it with default visibility (this file is compiled with
++// -fvisibility=hidden; see the comment above). The Fil-C compiler driver
++// renames the call to the runtime's pizlonated_zxgetbv.
++extern "C" {
++__attribute__((visibility("default"))) unsigned long zxgetbv();
++}
++#endif
++
+ uint64_t xgetbv(uint32_t xcr) {
++#if defined(__FILC__)
++  // Fil-C: inline asm (the raw XGETBV encoding below) is not allowed under
++  // Fil-C. The only xcr this code reads is 0 (XCR0), which is what the
++  // runtime's zxgetbv() returns.
++  if (xcr != 0) {
++    return 0;
++  }
++  return zxgetbv();
++#else
+   uint32_t eax, edx;
+   __asm__(".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(xcr));
+   return (uint64_t)(edx) << 32 | eax;
++#endif
+ }
+ 
+ #endif
+diff --git a/testing/mozbase/mozinfo/mozinfo/mozinfo.py b/testing/mozbase/mozinfo/mozinfo/mozinfo.py
+index e1fffbb..fa2ac06 100755
+--- a/testing/mozbase/mozinfo/mozinfo/mozinfo.py
++++ b/testing/mozbase/mozinfo/mozinfo/mozinfo.py
+@@ -204,15 +204,14 @@ info.update(
+ )
+ 
+ if info["os"] == "linux":
+-    import ctypes
+     import errno
+ 
+-    PR_SET_SECCOMP = 22
+-    SECCOMP_MODE_FILTER = 2
+-    ctypes.CDLL(find_library("c"), use_errno=True).prctl(
+-        PR_SET_SECCOMP, SECCOMP_MODE_FILTER, 0
+-    )
+-    info["has_sandbox"] = ctypes.get_errno() == errno.EFAULT
++    # Fil-C port: the seccomp probe below passes a NULL pointer to prctl,
++    # which Fil-C (correctly) refuses to do. The probe only detects whether
++    # seccomp filters can be installed for the Firefox sandbox; the
++    # standalone SpiderMonkey build never uses that. Report True like the
++    # non-Linux branch does.
++    info["has_sandbox"] = True
+ else:
+     info["has_sandbox"] = True
+ 

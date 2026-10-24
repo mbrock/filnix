@@ -23,8 +23,8 @@ case "$PROJECT" in
         echo "$PROJECT: Skipping (Fil-C tool, not a port of an upstream release)"
         exit 0
         ;;
-    yolo-glibc-*|user-glibc-*|yolomusl|usermusl)
-        echo "$PROJECT: Skipping (glibc project, built from fil-c source)"
+    yolo-glibc-*|user-glibc-*|yolomusl|usermusl|yolocosmo|usercosmo)
+        echo "$PROJECT: Skipping (libc project, built from fil-c source)"
         exit 0
         ;;
     tcl-*)

@@ -1,0 +1,166 @@
+diff --git a/meson.build b/meson.build
+index 379375d..bdec108 100644
+--- a/meson.build
++++ b/meson.build
+@@ -147,7 +147,9 @@ endif
+ # available in Debian Stable. Use of more modern API has to be optional and
+ # protected by GLIB_CHECK_VERSION.
+ add_project_arguments('-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_46', language: 'c')
+-add_project_arguments('-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_58', language: 'c')
++# Fil-C: GLIB_VERSION_MAX_ALLOWED must be >= 2.80 so that G_DEFINE_TYPE
++# uses g_once_init_enter_pointer (GType is a pointer under Fil-C).
++add_project_arguments('-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_80', language: 'c')
+ 
+ libxmlb_deps = [
+   gio,
+diff --git a/src/generate-version-script.py b/src/generate-version-script.py
+index a8a3825..225e9bf 100644
+--- a/src/generate-version-script.py
++++ b/src/generate-version-script.py
+@@ -113,6 +113,9 @@ class LdVersionScript:
+             symbols = sorted(self.releases[version])
+             verout += "\n%s_%s {\n" % (self.library_name, version)
+             verout += "  global:\n"
++            # Fil-C: the pizlonator renames symbols with a pizlonated_
++            # prefix, so the wildcard has to be exported as well.
++            verout += "    pizlonated*;\n"
+             for symbol in symbols:
+                 verout += "    %s;\n" % symbol
+             verout += "  local: *;\n"
+diff --git a/src/libxmlb.map b/src/libxmlb.map
+index d45aefd..9e3fc2e 100644
+--- a/src/libxmlb.map
++++ b/src/libxmlb.map
+@@ -2,6 +2,7 @@
+ 
+ LIBXMLB_0.1.0 {
+   global:
++    pizlonated*;
+     xb_builder_add_locale;
+     xb_builder_append_guid;
+     xb_builder_compile;
+@@ -71,6 +72,7 @@ LIBXMLB_0.1.0 {
+ 
+ LIBXMLB_0.1.1 {
+   global:
++    pizlonated*;
+     xb_builder_node_depth;
+     xb_builder_node_get_child;
+     xb_builder_node_get_parent;
+@@ -105,6 +107,7 @@ LIBXMLB_0.1.1 {
+ 
+ LIBXMLB_0.1.2 {
+   global:
++    pizlonated*;
+     xb_builder_source_load_bytes;
+     xb_silo_export_file;
+     xb_string_append_union;
+@@ -114,6 +117,7 @@ LIBXMLB_0.1.2 {
+ 
+ LIBXMLB_0.1.3 {
+   global:
++    pizlonated*;
+     xb_builder_add_fixup;
+     xb_builder_fixup_get_max_depth;
+     xb_builder_fixup_get_type;
+@@ -130,6 +134,7 @@ LIBXMLB_0.1.3 {
+ 
+ LIBXMLB_0.1.4 {
+   global:
++    pizlonated*;
+     xb_machine_parse_full;
+     xb_node_query_full;
+     xb_opcode_to_string;
+@@ -148,18 +153,21 @@ LIBXMLB_0.1.4 {
+ 
+ LIBXMLB_0.1.5 {
+   global:
++    pizlonated*;
+     xb_builder_node_export;
+   local: *;
+ } LIBXMLB_0.1.4;
+ 
+ LIBXMLB_0.1.6 {
+   global:
++    pizlonated*;
+     xb_query_new_full;
+   local: *;
+ } LIBXMLB_0.1.5;
+ 
+ LIBXMLB_0.1.7 {
+   global:
++    pizlonated*;
+     xb_builder_source_add_adapter;
+     xb_builder_source_ctx_get_bytes;
+     xb_builder_source_ctx_get_filename;
+@@ -170,12 +178,14 @@ LIBXMLB_0.1.7 {
+ 
+ LIBXMLB_0.1.11 {
+   global:
++    pizlonated*;
+     xb_node_query_first_full;
+   local: *;
+ } LIBXMLB_0.1.7;
+ 
+ LIBXMLB_0.1.12 {
+   global:
++    pizlonated*;
+     xb_builder_node_get_first_child;
+     xb_builder_node_get_last_child;
+     xb_builder_node_get_tail;
+@@ -187,6 +197,7 @@ LIBXMLB_0.1.12 {
+ 
+ LIBXMLB_0.1.13 {
+   global:
++    pizlonated*;
+     xb_silo_query_first_full;
+     xb_silo_query_full;
+   local: *;
+@@ -194,6 +205,7 @@ LIBXMLB_0.1.13 {
+ 
+ LIBXMLB_0.1.15 {
+   global:
++    pizlonated*;
+     xb_builder_source_add_simple_adapter;
+     xb_query_get_flags;
+     xb_query_set_flags;
+@@ -202,6 +214,7 @@ LIBXMLB_0.1.15 {
+ 
+ LIBXMLB_0.2.0 {
+   global:
++    pizlonated*;
+     xb_machine_opcode_func_init;
+     xb_machine_stack_pop;
+     xb_machine_stack_push;
+@@ -224,6 +237,7 @@ LIBXMLB_0.2.0 {
+ 
+ LIBXMLB_0.3.0 {
+   global:
++    pizlonated*;
+     xb_machine_run_with_bindings;
+     xb_node_query_first_with_context;
+     xb_node_query_with_context;
+@@ -255,6 +269,7 @@ LIBXMLB_0.3.0 {
+ 
+ LIBXMLB_0.3.1 {
+   global:
++    pizlonated*;
+     xb_builder_node_add_token;
+     xb_builder_node_get_tokens;
+     xb_builder_node_tokenize_text;
+@@ -263,6 +278,7 @@ LIBXMLB_0.3.1 {
+ 
+ LIBXMLB_0.3.4 {
+   global:
++    pizlonated*;
+     xb_node_attr_iter_init;
+     xb_node_attr_iter_next;
+     xb_node_child_iter_init;
+@@ -273,6 +289,7 @@ LIBXMLB_0.3.4 {
+ 
+ LIBXMLB_0.3.19 {
+   global:
++    pizlonated*;
+     xb_version_string;
+   local: *;
+ } LIBXMLB_0.3.4;

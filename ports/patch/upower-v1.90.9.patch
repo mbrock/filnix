@@ -1,0 +1,24 @@
+diff --git a/meson.build b/meson.build
+index f30b51c..7422e4c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -31,12 +31,18 @@ cdata.set_quoted('VERSION', meson.project_version())
+ cdata.set_quoted('PACKAGE_SYSCONF_DIR', get_option('sysconfdir'))
+ 
+ glib_min_version = '2.66'
++# pizlix/Fil-C: with GLIB_VERSION_MAX_ALLOWED < 2.80 the glib headers expand
++# G_DEFINE_TYPE with the gsize-based g_once_init_enter/leave pair, which does
++# not compile against the Fil-C glib (GType is a pointer type there).  Bump
++# the *allowed* ceiling to 2.80 so the macros use the _pointer variants
++# (GLIB_VERSION_MIN_REQUIRED stays at 2.66 for deprecation warnings).
++glib_max_version_def = 'GLIB_VERSION_2_80'
+ 
+ glib_version_def = 'GLIB_VERSION_@0@_@1@'.format(
+     glib_min_version.split('.')[0], glib_min_version.split('.')[1])
+ common_cflags = cc.get_supported_arguments([
+     '-DGLIB_VERSION_MIN_REQUIRED=' + glib_version_def,
+-    '-DGLIB_VERSION_MAX_ALLOWED=' + glib_version_def,
++    '-DGLIB_VERSION_MAX_ALLOWED=' + glib_max_version_def,
+ ])
+ add_project_arguments(common_cflags, language: 'c')
+ 

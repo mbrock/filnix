@@ -1,0 +1,717 @@
+diff --git a/Zend/zend_alloc.c b/Zend/zend_alloc.c
+index f057f4a..3698362 100644
+--- a/Zend/zend_alloc.c
++++ b/Zend/zend_alloc.c
+@@ -2965,6 +2965,17 @@ static zend_always_inline void tracked_check_limit(zend_mm_heap *heap, size_t ad
+ #endif
+ }
+ 
++#if defined(__FILC__) && ZEND_MM_STAT
++/* PHP's tracked allocator never recorded peaks, so memory_get_peak_usage()
++ * reported 0; it is the default here, and monitoring code reads it. */
++# define TRACKED_PEAK(heap) do { \
++		if ((heap)->size > (heap)->peak) (heap)->peak = (heap)->size; \
++		if ((heap)->real_size > (heap)->real_peak) (heap)->real_peak = (heap)->real_size; \
++	} while (0)
++#else
++# define TRACKED_PEAK(heap) do { } while (0)
++#endif
++
+ static void *tracked_malloc(size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
+ {
+ 	zend_mm_heap *heap = AG(mm_heap);
+@@ -2980,6 +2991,7 @@ static void *tracked_malloc(size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC
+ 	heap->size += size;
+ 	heap->real_size = heap->size;
+ #endif
++	TRACKED_PEAK(heap);
+ 	return ptr;
+ }
+ 
+@@ -3022,10 +3034,18 @@ static void *tracked_realloc(void *ptr, size_t new_size ZEND_FILE_LINE_DC ZEND_F
+ 	heap->size += new_size - old_size;
+ 	heap->real_size = heap->size;
+ #endif
++	TRACKED_PEAK(heap);
+ 	return ptr;
+ }
+ 
+ static void tracked_free_all(zend_mm_heap *heap) {
++#ifdef __FILC__
++	/* The keys are addresses, and an integer cast back to a pointer has no
++	 * capability, so free() would trap. Fil-C's collector reclaims the
++	 * request's leftover allocations once nothing refers to them. */
++	(void) heap;
++	return;
++#endif
+ 	HashTable *tracked_allocs = heap->tracked_allocs;
+ 	zend_ulong h;
+ 	ZEND_HASH_FOREACH_NUM_KEY(tracked_allocs, h) {
+@@ -3041,8 +3061,20 @@ static void alloc_globals_ctor(zend_alloc_globals *alloc_globals)
+ 
+ #if ZEND_MM_CUSTOM
+ 	tmp = getenv("USE_ZEND_ALLOC");
++#ifdef __FILC__
++	/* Zend's allocator carves request memory out of 2 MiB chunks, so Fil-C
++	 * bounds every PHP value only by its chunk and a freed value's memory is
++	 * reused inside it: use after free and overflows between values go
++	 * undetected. Default to the system allocator, which gives each value
++	 * its own capability, tracked so that memory_limit and
++	 * memory_get_usage() still work. USE_ZEND_ALLOC=1 selects Zend's
++	 * allocator and USE_TRACKED_ALLOC=0 untracked malloc. */
++	if (!tmp || !ZEND_ATOL(tmp)) {
++		bool tracked = !(tmp = getenv("USE_TRACKED_ALLOC")) || ZEND_ATOL(tmp);
++#else
+ 	if (tmp && !ZEND_ATOL(tmp)) {
+ 		bool tracked = (tmp = getenv("USE_TRACKED_ALLOC")) && ZEND_ATOL(tmp);
++#endif
+ 		zend_mm_heap *mm_heap = alloc_globals->mm_heap = malloc(sizeof(zend_mm_heap));
+ 		memset(mm_heap, 0, sizeof(zend_mm_heap));
+ 		mm_heap->use_custom_heap = ZEND_MM_CUSTOM_HEAP_STD;
+diff --git a/Zend/zend_cpuinfo.c b/Zend/zend_cpuinfo.c
+index 6264031..cf560db 100644
+--- a/Zend/zend_cpuinfo.c
++++ b/Zend/zend_cpuinfo.c
+@@ -81,7 +81,7 @@ static unsigned get_xcr0_eax(void) {
+ 	// directly because older assemblers do not include support for xgetbv and
+ 	// there is no easy way to conditionally compile based on the assembler used.
+ 	unsigned eax, edx;
+-	__asm__(".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
++	__asm__("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0));
+ 	return eax;
+ # elif defined(ZEND_WIN32) && defined(_XCR_XFEATURE_ENABLED_MASK)
+ 	return _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+diff --git a/Zend/zend_fibers.c b/Zend/zend_fibers.c
+index d571a62..f59ba5d 100644
+--- a/Zend/zend_fibers.c
++++ b/Zend/zend_fibers.c
+@@ -600,8 +600,15 @@ static ZEND_STACK_ALIGNED void zend_fiber_execute(zend_fiber_transfer *transfer)
+ 		EG(error_reporting) = error_reporting;
+ 
+ #ifdef ZEND_CHECK_STACK_LIMIT
++# ifdef __FILC__
++		/* Fil-C runs the fiber on a native stack of the requested size that
++		 * its runtime allocates, not on stack->pointer; measure from here. */
++		EG(stack_base) = __builtin_frame_address(0);
++		EG(stack_limit) = (int8_t*)EG(stack_base) - fiber->context.stack->size + EG(reserved_stack_size);
++# else
+ 		EG(stack_base) = zend_fiber_stack_base(fiber->context.stack);
+ 		EG(stack_limit) = zend_fiber_stack_limit(fiber->context.stack);
++# endif
+ #endif
+ 
+ 		fiber->fci.retval = &fiber->result;
+diff --git a/Zend/zend_float.h b/Zend/zend_float.h
+index 63e0f6f..9e5843a 100644
+--- a/Zend/zend_float.h
++++ b/Zend/zend_float.h
+@@ -314,7 +314,7 @@ END_EXTERN_C()
+                 return _xpfpa_result; \
+             } while (0)
+ 
+-#elif defined(HAVE_FPU_INLINE_ASM_X86) && !defined(__x86_64__)
++#elif defined(HAVE_FPU_INLINE_ASM_X86) && defined(__i386__)
+ 
+ /*
+   Custom x86 inline assembler implementation.
+diff --git a/Zend/zend_multiply.h b/Zend/zend_multiply.h
+index d536d32..3e88a90 100644
+--- a/Zend/zend_multiply.h
++++ b/Zend/zend_multiply.h
+@@ -195,7 +195,7 @@ static zend_always_inline size_t zend_safe_address(size_t nmemb, size_t size, si
+ 	return res;
+ }
+ 
+-#elif defined(__GNUC__) && defined(__x86_64__)
++#elif defined(__GNUC__) && defined(__x86_64__) && !defined(__FILC__)
+ 
+ static zend_always_inline size_t zend_safe_address(size_t nmemb, size_t size, size_t offset, bool *overflow)
+ {
+diff --git a/Zend/zend_operators.c b/Zend/zend_operators.c
+index 0a7c335..6297a76 100644
+--- a/Zend/zend_operators.c
++++ b/Zend/zend_operators.c
+@@ -3035,7 +3035,7 @@ ZEND_API char* ZEND_FASTCALL zend_str_tolower_dup_ex(const char *source, size_t
+ 			if (p != (const unsigned char*)source) {
+ 				memcpy(res, source, p - (const unsigned char*)source);
+ 			}
+-			r = (unsigned char*)p + (res - source);
++			r = (unsigned char*)res + (p - (const unsigned char*)source);
+ 			zend_str_tolower_impl((char *)r, (const char*)p, end - p);
+ 			res[length] = '\0';
+ 			return res;
+@@ -3059,7 +3059,7 @@ ZEND_API char* ZEND_FASTCALL zend_str_toupper_dup_ex(const char *source, size_t
+ 			if (p != (const unsigned char*)source) {
+ 				memcpy(res, source, p - (const unsigned char*)source);
+ 			}
+-			r = (unsigned char*)p + (res - source);
++			r = (unsigned char*)res + (p - (const unsigned char*)source);
+ 			zend_str_toupper_impl((char *)r, (const char*)p, end - p);
+ 			res[length] = '\0';
+ 			return res;
+diff --git a/Zend/zend_operators.h b/Zend/zend_operators.h
+index 6a3d54a..b2e68f1 100644
+--- a/Zend/zend_operators.h
++++ b/Zend/zend_operators.h
+@@ -520,7 +520,10 @@ ZEND_API void zend_reset_lc_ctype_locale(void);
+ #define ZVAL_OFFSETOF_TYPE	\
+ 	(offsetof(zval, u1.type_info) - offsetof(zval, value))
+ 
+-#if defined(HAVE_ASM_GOTO) && !__has_feature(memory_sanitizer)
++/* Fil-C: configure's asm goto probe passes, but these asm goto blocks write
++ * through a pointer operand, and FilPizlonatorPass crashes on that callbr.
++ * Use the overflow builtins instead. */
++#if defined(HAVE_ASM_GOTO) && !__has_feature(memory_sanitizer) && !defined(__FILC__)
+ # define ZEND_USE_ASM_ARITHMETIC 1
+ #else
+ # define ZEND_USE_ASM_ARITHMETIC 0
+diff --git a/Zend/zend_string.c b/Zend/zend_string.c
+index e9ebee0..7c6946b 100644
+--- a/Zend/zend_string.c
++++ b/Zend/zend_string.c
+@@ -378,7 +378,7 @@ ZEND_API void zend_interned_strings_switch_storage(bool request)
+ 	}
+ }
+ 
+-#if defined(__GNUC__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__ILP32__)))
++#if defined(__GNUC__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__ILP32__))) && !defined(__FILC__)
+ /* Even if we don't build with valgrind support, include the symbol so that valgrind available
+  * only at runtime will not result in false positives. */
+ #ifndef I_REPLACE_SONAME_FNNAME_ZU
+@@ -436,7 +436,7 @@ ZEND_API zend_never_inline NOIPA bool ZEND_FASTCALL zend_string_equal_val(const
+ 	return ret;
+ }
+ 
+-#elif defined(__GNUC__) && defined(__x86_64__) && !defined(__ILP32__)
++#elif defined(__GNUC__) && defined(__x86_64__) && !defined(__ILP32__) && !defined(__FILC__)
+ ZEND_API zend_never_inline NOIPA bool ZEND_FASTCALL zend_string_equal_val(const zend_string *s1, const zend_string *s2)
+ {
+ 	const char *ptr = ZSTR_VAL(s1);
+diff --git a/Zend/zend_string.h b/Zend/zend_string.h
+index 93b9207..8fed590 100644
+--- a/Zend/zend_string.h
++++ b/Zend/zend_string.h
+@@ -370,7 +370,7 @@ static zend_always_inline bool zend_string_equals_cstr(const zend_string *s1, co
+ 	return ZSTR_LEN(s1) == s2_length && !memcmp(ZSTR_VAL(s1), s2, s2_length);
+ }
+ 
+-#if defined(__GNUC__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__ILP32__)))
++#if defined(__GNUC__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__ILP32__))) && !defined(__FILC__)
+ BEGIN_EXTERN_C()
+ ZEND_API bool ZEND_FASTCALL zend_string_equal_val(const zend_string *s1, const zend_string *s2);
+ END_EXTERN_C()
+diff --git a/Zend/zend_types.h b/Zend/zend_types.h
+index 716d84e..8462d2d 100644
+--- a/Zend/zend_types.h
++++ b/Zend/zend_types.h
+@@ -576,6 +576,19 @@ typedef struct {
+ 	struct _zend_property_info *ptr[1];
+ } zend_property_info_list;
+ 
++#ifdef __FILC__
++/* Fil-C drops a pointer's capability when it becomes an integer, so tag the
++ * list pointer with pointer arithmetic instead. */
++typedef union {
++	struct _zend_property_info *ptr;
++	char *list;
++} zend_property_info_source_list;
++
++#define ZEND_PROPERTY_INFO_SOURCE_FROM_LIST(list) ((char *) (list) + 0x1)
++#define ZEND_PROPERTY_INFO_SOURCE_TO_LIST(list) \
++	((zend_property_info_list *) ((list) - ((uintptr_t) (list) & 0x1)))
++#define ZEND_PROPERTY_INFO_SOURCE_IS_LIST(list) ((uintptr_t) (list) & 0x1)
++#else
+ typedef union {
+ 	struct _zend_property_info *ptr;
+ 	uintptr_t list;
+@@ -584,6 +597,7 @@ typedef union {
+ #define ZEND_PROPERTY_INFO_SOURCE_FROM_LIST(list) (0x1 | (uintptr_t) (list))
+ #define ZEND_PROPERTY_INFO_SOURCE_TO_LIST(list) ((zend_property_info_list *) ((list) & ~0x1))
+ #define ZEND_PROPERTY_INFO_SOURCE_IS_LIST(list) ((list) & 0x1)
++#endif
+ 
+ struct _zend_reference {
+ 	zend_refcounted_h              gc;
+diff --git a/Zend/zend_weakrefs.c b/Zend/zend_weakrefs.c
+index 1178c16..9c84a20 100644
+--- a/Zend/zend_weakrefs.c
++++ b/Zend/zend_weakrefs.c
+@@ -52,8 +52,23 @@ typedef struct _zend_weakmap_iterator {
+ #define ZEND_WEAKREF_TAG_HT      2
+ #define ZEND_WEAKREF_TAG_BARE_HT 3
+ #define ZEND_WEAKREF_GET_TAG(p) (((uintptr_t) (p)) & 3)
++#ifdef __FILC__
++/* Tag with pointer arithmetic, which keeps the capability that an integer
++ * round trip would drop. Tagged pointers are aligned, so this matches | t. */
++#define ZEND_WEAKREF_GET_PTR(p) ((void *) ((char *) (p) - ZEND_WEAKREF_GET_TAG(p)))
++#define ZEND_WEAKREF_ENCODE(p, t) ((void *) ((char *) (p) + (t)))
++
++ZEND_API zexact_ptrtable *zend_weakref_objects;
++
++__attribute__((constructor)) static void zend_weakref_objects_init(void)
++{
++	/* Weak: weak references must not keep their objects alive. */
++	zend_weakref_objects = zexact_ptrtable_new_weak();
++}
++#else
+ #define ZEND_WEAKREF_GET_PTR(p) ((void *) (((uintptr_t) (p)) & ~3))
+ #define ZEND_WEAKREF_ENCODE(p, t) ((void *) (((uintptr_t) (p)) | (t)))
++#endif
+ 
+ zend_class_entry *zend_ce_weakref;
+ static zend_class_entry *zend_ce_weakmap;
+diff --git a/Zend/zend_weakrefs.h b/Zend/zend_weakrefs.h
+index 5b1c8ea..021e0d3 100644
+--- a/Zend/zend_weakrefs.h
++++ b/Zend/zend_weakrefs.h
+@@ -51,6 +51,24 @@ static zend_always_inline void *zend_weakrefs_hash_add_ptr(HashTable *ht, zend_o
+  * It is not used for the HashTable instances associated with ZEND_WEAKREF_TAG_HT tags (created in zend_weakref_register, which uses ZEND_WEAKREF_ENCODE instead).
+  * The ZEND_WEAKREF_TAG_HT instances are used to disambiguate between multiple weak references to the same zend_object.
+  */
++#ifdef __FILC__
++/* Fil-C drops a pointer's capability when it becomes an integer, so record
++ * each object whose address becomes a key and look it up again. */
++#include <stdfil.h>
++
++extern ZEND_API zexact_ptrtable *zend_weakref_objects;
++
++static zend_always_inline zend_ulong zend_object_to_weakref_key(const zend_object *object)
++{
++	ZEND_ASSERT(((uintptr_t)object) % ZEND_MM_ALIGNMENT == 0);
++	return zexact_ptrtable_encode(zend_weakref_objects, (void *) object) >> ZEND_MM_ALIGNMENT_LOG2;
++}
++
++static zend_always_inline zend_object *zend_weakref_key_to_object(zend_ulong key)
++{
++	return zexact_ptrtable_decode(zend_weakref_objects, ((uintptr_t) key) << ZEND_MM_ALIGNMENT_LOG2);
++}
++#else
+ static zend_always_inline zend_ulong zend_object_to_weakref_key(const zend_object *object)
+ {
+ 	ZEND_ASSERT(((uintptr_t)object) % ZEND_MM_ALIGNMENT == 0);
+@@ -61,6 +79,7 @@ static zend_always_inline zend_object *zend_weakref_key_to_object(zend_ulong key
+ {
+ 	return (zend_object *) (((uintptr_t) key) << ZEND_MM_ALIGNMENT_LOG2);
+ }
++#endif
+ 
+ HashTable *zend_weakmap_get_gc(zend_object *object, zval **table, int *n);
+ HashTable *zend_weakmap_get_key_entry_gc(zend_object *object, zval **table, int *n);
+diff --git a/ext/dom/lexbor/lexbor/core/hash.c b/ext/dom/lexbor/lexbor/core/hash.c
+index c16466e..6e863d9 100644
+--- a/ext/dom/lexbor/lexbor/core/hash.c
++++ b/ext/dom/lexbor/lexbor/core/hash.c
+@@ -10,6 +10,31 @@
+ 
+ #include "lexbor/core/str.h"
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++
++/* Weak: the hash tables and static data keep the entries alive. */
++static zexact_ptrtable *lexbor_hash_entry_ids;
++
++__attribute__((constructor)) static void
++lexbor_hash_entry_ids_init(void)
++{
++    lexbor_hash_entry_ids = zexact_ptrtable_new_weak();
++}
++
++uintptr_t
++lexbor_hash_entry_id(const void *entry)
++{
++    return zexact_ptrtable_encode(lexbor_hash_entry_ids, (void *) entry);
++}
++
++void *
++lexbor_hash_entry_by_id(uintptr_t id)
++{
++    return zexact_ptrtable_decode(lexbor_hash_entry_ids, id);
++}
++#endif
++
+ #ifndef LEXBOR_DISABLE_INTERNAL_EXTERN
+     LXB_EXTERN const lxb_char_t lexbor_str_res_map_lowercase[256];
+     LXB_EXTERN const lxb_char_t lexbor_str_res_map_uppercase[256];
+diff --git a/ext/dom/lexbor/lexbor/core/hash.h b/ext/dom/lexbor/lexbor/core/hash.h
+index 0647617..ba8dbb2 100644
+--- a/ext/dom/lexbor/lexbor/core/hash.h
++++ b/ext/dom/lexbor/lexbor/core/hash.h
+@@ -210,6 +210,31 @@ lexbor_hash_entries_count(lexbor_hash_t *hash)
+     return lexbor_dobject_allocated(hash->entries);
+ }
+ 
++/*
++ * Tag, attribute and namespace IDs above the static ranges are the address of
++ * their data, static or hashed. Fil-C drops a pointer's capability when it
++ * becomes an integer, so it records each such pointer and looks it up again.
++ */
++#ifdef __FILC__
++LXB_API uintptr_t
++lexbor_hash_entry_id(const void *entry);
++
++LXB_API void *
++lexbor_hash_entry_by_id(uintptr_t id);
++#else
++lxb_inline uintptr_t
++lexbor_hash_entry_id(const void *entry)
++{
++    return (uintptr_t) entry;
++}
++
++lxb_inline void *
++lexbor_hash_entry_by_id(uintptr_t id)
++{
++    return (void *) id;
++}
++#endif
++
+ 
+ #ifdef __cplusplus
+ } /* extern "C" */
+diff --git a/ext/dom/lexbor/lexbor/dom/interfaces/attr.c b/ext/dom/lexbor/lexbor/dom/interfaces/attr.c
+index 90624d7..36684e0 100644
+--- a/ext/dom/lexbor/lexbor/dom/interfaces/attr.c
++++ b/ext/dom/lexbor/lexbor/dom/interfaces/attr.c
+@@ -75,7 +75,7 @@ lxb_dom_attr_interface_clone(lxb_dom_document_t *document,
+                 goto failed;
+             }
+ 
+-            new->qualified_name = (lxb_dom_attr_id_t) data;
++            new->qualified_name = lexbor_hash_entry_id(data);
+         }
+     }
+ 
+@@ -146,7 +146,7 @@ lxb_dom_attr_set_name(lxb_dom_attr_t *attr, const lxb_char_t *name,
+             return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+         }
+ 
+-        attr->qualified_name = (lxb_dom_attr_id_t) data;
++        attr->qualified_name = lexbor_hash_entry_id(data);
+     }
+ 
+     return LXB_STATUS_OK;
+@@ -186,7 +186,7 @@ lxb_dom_attr_set_name_ns(lxb_dom_attr_t *attr, const lxb_char_t *link,
+         return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+     }
+ 
+-    attr->node.local_name = (lxb_dom_attr_id_t) data;
++    attr->node.local_name = lexbor_hash_entry_id(data);
+ 
+     /* qualified name */
+     data = lxb_dom_attr_qualified_name_append(doc->attrs, name, name_length);
+@@ -194,11 +194,10 @@ lxb_dom_attr_set_name_ns(lxb_dom_attr_t *attr, const lxb_char_t *link,
+         return LXB_STATUS_ERROR;
+     }
+ 
+-    attr->qualified_name = (lxb_dom_attr_id_t) data;
++    attr->qualified_name = lexbor_hash_entry_id(data);
+ 
+     /* prefix */
+-    attr->node.prefix = (lxb_ns_prefix_id_t) lxb_ns_prefix_append(doc->ns, name,
+-                                                                  length);
++    attr->node.prefix = lexbor_hash_entry_id(lxb_ns_prefix_append(doc->ns, name, length));
+     if (attr->node.prefix == 0) {
+         return LXB_STATUS_ERROR;
+     }
+@@ -384,7 +383,7 @@ lxb_dom_attr_local_name_append(lexbor_hash_t *hash,
+         return NULL;
+     }
+ 
+-    data->attr_id = (uintptr_t) data;
++    data->attr_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -404,7 +403,7 @@ lxb_dom_attr_qualified_name_append(lexbor_hash_t *hash, const lxb_char_t *name,
+         return NULL;
+     }
+ 
+-    data->attr_id = (uintptr_t) data;
++    data->attr_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -423,7 +422,7 @@ lxb_dom_attr_data_by_id(lexbor_hash_t *hash, lxb_dom_attr_id_t attr_id)
+             return NULL;
+         }
+ 
+-        return (const lxb_dom_attr_data_t *) attr_id;
++        return lexbor_hash_entry_by_id(attr_id);
+     }
+ 
+     return &lxb_dom_attr_res_data_default[attr_id];
+diff --git a/ext/dom/lexbor/lexbor/dom/interfaces/document_type.c b/ext/dom/lexbor/lexbor/dom/interfaces/document_type.c
+index 4688916..4d83818 100644
+--- a/ext/dom/lexbor/lexbor/dom/interfaces/document_type.c
++++ b/ext/dom/lexbor/lexbor/dom/interfaces/document_type.c
+@@ -73,7 +73,7 @@ lxb_dom_document_type_interface_clone(lxb_dom_document_t *document,
+             return lxb_dom_document_type_interface_destroy(new);
+         }
+ 
+-        new->name = (lxb_dom_attr_id_t) data;
++        new->name = lexbor_hash_entry_id(data);
+     }
+ 
+     if (lexbor_str_copy(&new->public_id,
+diff --git a/ext/dom/lexbor/lexbor/dom/interfaces/element.c b/ext/dom/lexbor/lexbor/dom/interfaces/element.c
+index 90d707d..2a2f18f 100644
+--- a/ext/dom/lexbor/lexbor/dom/interfaces/element.c
++++ b/ext/dom/lexbor/lexbor/dom/interfaces/element.c
+@@ -149,7 +149,7 @@ lxb_dom_element_qualified_name_set(lxb_dom_element_t *element,
+         return LXB_STATUS_ERROR;
+     }
+ 
+-    element->qualified_name = (lxb_tag_id_t) tag_data;
++    element->qualified_name = lexbor_hash_entry_id(tag_data);
+ 
+     return LXB_STATUS_OK;
+ }
+@@ -687,7 +687,7 @@ lxb_dom_element_qualified_name_upper(lxb_dom_element_t *element, size_t *len)
+         return lxb_dom_element_upper_update(element, len);
+     }
+ 
+-    data = (lxb_tag_data_t *) element->upper_name;
++    data = lexbor_hash_entry_by_id(element->upper_name);
+ 
+     if (len != NULL) {
+         *len = data->entry.length;
+@@ -725,7 +725,7 @@ lxb_dom_element_upper_update(lxb_dom_element_t *element, size_t *len)
+         *len = length;
+     }
+ 
+-    element->upper_name = (lxb_tag_id_t) data;
++    element->upper_name = lexbor_hash_entry_id(data);
+ 
+     return lexbor_hash_entry_str(&data->entry);
+ }
+diff --git a/ext/dom/lexbor/lexbor/dom/interfaces/node.c b/ext/dom/lexbor/lexbor/dom/interfaces/node.c
+index f2bbaa3..bf60599 100644
+--- a/ext/dom/lexbor/lexbor/dom/interfaces/node.c
++++ b/ext/dom/lexbor/lexbor/dom/interfaces/node.c
+@@ -187,7 +187,7 @@ lxb_dom_node_interface_copy(lxb_dom_node_t *dst,
+                 return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+             }
+ 
+-            dst->local_name = (lxb_dom_attr_id_t) data;
++            dst->local_name = lexbor_hash_entry_id(data);
+         }
+     }
+     else {
+@@ -208,7 +208,7 @@ lxb_dom_node_interface_copy(lxb_dom_node_t *dst,
+                 return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+             }
+ 
+-            dst->local_name = (lxb_dom_attr_id_t) tag;
++            dst->local_name = lexbor_hash_entry_id(tag);
+         }
+     }
+ 
+@@ -229,7 +229,7 @@ lxb_dom_node_interface_copy(lxb_dom_node_t *dst,
+             return LXB_STATUS_ERROR_MEMORY_ALLOCATION;
+         }
+ 
+-        dst->ns = (lxb_ns_id_t) ns;
++        dst->ns = lexbor_hash_entry_id(ns);
+     }
+ 
+     if (src->prefix < LXB_NS__LAST_ENTRY) {
+@@ -249,7 +249,7 @@ lxb_dom_node_interface_copy(lxb_dom_node_t *dst,
+             return LXB_STATUS_ERROR;
+         }
+ 
+-        dst->prefix = (lxb_ns_prefix_id_t) prefix;
++        dst->prefix = lexbor_hash_entry_id(prefix);
+     }
+ 
+     return LXB_STATUS_OK;
+diff --git a/ext/dom/lexbor/lexbor/ns/ns.c b/ext/dom/lexbor/lexbor/ns/ns.c
+index 4ffd025..7eff7c0 100644
+--- a/ext/dom/lexbor/lexbor/ns/ns.c
++++ b/ext/dom/lexbor/lexbor/ns/ns.c
+@@ -35,7 +35,7 @@ lxb_ns_append(lexbor_hash_t *hash, const lxb_char_t *link, size_t length)
+         return NULL;
+     }
+ 
+-    data->ns_id = (lxb_ns_id_t) data;
++    data->ns_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -69,7 +69,7 @@ lxb_ns_data_by_id(lexbor_hash_t *hash, lxb_ns_id_t ns_id)
+             return NULL;
+         }
+ 
+-        return (const lxb_ns_data_t *) ns_id;
++        return lexbor_hash_entry_by_id(ns_id);
+     }
+ 
+     return &lxb_ns_res_data[ns_id];
+@@ -116,7 +116,7 @@ lxb_ns_prefix_append(lexbor_hash_t *hash,
+         return NULL;
+     }
+ 
+-    data->prefix_id = (lxb_ns_prefix_id_t) data;
++    data->prefix_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -129,7 +129,7 @@ lxb_ns_prefix_data_by_id(lexbor_hash_t *hash, lxb_ns_prefix_id_t prefix_id)
+             return NULL;
+         }
+ 
+-        return (const lxb_ns_prefix_data_t *) prefix_id;
++        return lexbor_hash_entry_by_id(prefix_id);
+     }
+ 
+     return &lxb_ns_prefix_res_data[prefix_id];
+diff --git a/ext/dom/lexbor/lexbor/tag/tag.c b/ext/dom/lexbor/lexbor/tag/tag.c
+index be5bb30..24d6832 100644
+--- a/ext/dom/lexbor/lexbor/tag/tag.c
++++ b/ext/dom/lexbor/lexbor/tag/tag.c
+@@ -28,7 +28,7 @@ lxb_tag_append(lexbor_hash_t *hash, lxb_tag_id_t tag_id,
+     }
+ 
+     if (tag_id == LXB_TAG__UNDEF) {
+-        data->tag_id = (lxb_tag_id_t) data;
++        data->tag_id = lexbor_hash_entry_id(data);
+     }
+     else {
+         data->tag_id = tag_id;
+@@ -54,7 +54,7 @@ lxb_tag_append_lower(lexbor_hash_t *hash, const lxb_char_t *name, size_t length)
+         return NULL;
+     }
+ 
+-    data->tag_id = (lxb_tag_id_t) data;
++    data->tag_id = lexbor_hash_entry_id(data);
+ 
+     return data;
+ }
+@@ -67,7 +67,7 @@ lxb_tag_data_by_id(lxb_tag_id_t tag_id)
+             return NULL;
+         }
+ 
+-        return (const lxb_tag_data_t *) tag_id;
++        return lexbor_hash_entry_by_id(tag_id);
+     }
+ 
+     return &lxb_tag_res_data_default[tag_id];
+diff --git a/ext/dom/namespace_compat.c b/ext/dom/namespace_compat.c
+index d7fc862..f1785ea 100644
+--- a/ext/dom/namespace_compat.c
++++ b/ext/dom/namespace_compat.c
+@@ -25,6 +25,41 @@
+ #include "private_data.h"
+ #include "internal_helpers.h"
+ 
++/* The links table below is keyed by node address and turns its keys back into
++ * nodes. Fil-C drops a pointer's capability when it becomes an integer, so it
++ * records each node and looks it up again. */
++#ifdef __FILC__
++#include <stdfil.h>
++
++static zexact_ptrtable *dom_ns_decl_nodes;
++
++__attribute__((constructor)) static void dom_ns_decl_nodes_init(void)
++{
++	/* Weak: the document keeps its nodes alive. */
++	dom_ns_decl_nodes = zexact_ptrtable_new_weak();
++}
++
++static zend_ulong dom_ns_decl_node_key(xmlNodePtr node)
++{
++	return zexact_ptrtable_encode(dom_ns_decl_nodes, node);
++}
++
++static xmlNodePtr dom_ns_decl_node_from_key(zend_ulong key)
++{
++	return zexact_ptrtable_decode(dom_ns_decl_nodes, key);
++}
++#else
++static zend_ulong dom_ns_decl_node_key(xmlNodePtr node)
++{
++	return (zend_ulong) node;
++}
++
++static xmlNodePtr dom_ns_decl_node_from_key(zend_ulong key)
++{
++	return (xmlNodePtr) key;
++}
++#endif
++
+ /* The actual value of these doesn't matter as long as they serve as a unique ID.
+  * They need to be pointers because the `_private` field is a pointer, however we can choose the contents ourselves.
+  * We need keep these at least 4-byte aligned because the pointer may be tagged (although for now 2 byte alignment works too).
+@@ -508,7 +543,7 @@ static xmlNsPtr dom_alloc_ns_decl(HashTable *links, xmlNodePtr node)
+ 		return NULL;
+ 	}
+ 
+-	zval *zv = zend_hash_index_lookup(links, (zend_ulong) node);
++	zval *zv = zend_hash_index_lookup(links, dom_ns_decl_node_key(node));
+ 	if (Z_ISNULL_P(zv)) {
+ 		ZVAL_LONG(zv, 1);
+ 	} else {
+@@ -582,7 +617,7 @@ static void dom_relink_ns_decls_element(HashTable *links, xmlNodePtr node)
+ 		if (node->ns && !node->ns->prefix) {
+ 			/* Workaround for the behaviour where the xmlSearchNs() call inside c14n.c
+ 			 * can return the current namespace. */
+-			zend_hash_index_add_new_ptr(links, (zend_ulong) node | 1, node->ns);
++			zend_hash_index_add_new_ptr(links, dom_ns_decl_node_key(node) | 1, node->ns);
+ 			node->ns = xmlSearchNs(node->doc, node, NULL);
+ 		} else if (node->ns) {
+ 			dom_add_synthetic_ns_decl(links, node, node->ns);
+@@ -612,10 +647,10 @@ void dom_unlink_ns_decls(HashTable *links)
+ {
+ 	ZEND_HASH_MAP_FOREACH_NUM_KEY_VAL(links, zend_ulong h, zval *data) {
+ 		if (h & 1) {
+-			xmlNodePtr node = (xmlNodePtr) (h ^ 1);
++			xmlNodePtr node = dom_ns_decl_node_from_key(h ^ 1);
+ 			node->ns = Z_PTR_P(data);
+ 		} else {
+-			xmlNodePtr node = (xmlNodePtr) h;
++			xmlNodePtr node = dom_ns_decl_node_from_key(h);
+ 			while (Z_LVAL_P(data)-- > 0) {
+ 				xmlNsPtr ns = node->nsDef;
+ 				node->nsDef = ns->next;
+diff --git a/ext/opcache/shared_alloc_mmap.c b/ext/opcache/shared_alloc_mmap.c
+index 18c7532..14e8921 100644
+--- a/ext/opcache/shared_alloc_mmap.c
++++ b/ext/opcache/shared_alloc_mmap.c
+@@ -44,6 +44,14 @@
+ #if defined(MAP_ANON) && !defined(MAP_ANONYMOUS)
+ # define MAP_ANONYMOUS MAP_ANON
+ #endif
++#ifdef __FILC__
++/* Fil-C keeps pointer capabilities per process, so a pointer one process
++ * stores in a shared mapping has none in another: an FPM worker trapped
++ * reading the hash entry of a script another worker had cached. Map the
++ * cache privately; forked workers still start from what the parent cached. */
++# undef MAP_SHARED
++# define MAP_SHARED MAP_PRIVATE
++#endif
+ #if defined(MAP_ALIGNED_SUPER)
+ # include <sys/types.h>
+ # include <sys/sysctl.h>
+@@ -241,7 +249,7 @@ static int create_segments(size_t requested_size, zend_shared_segment ***shared_
+ 	 * (boot time config only, but enabled by default on most arches).
+ 	 */
+ 	if (requested_size >= huge_page_size && requested_size % huge_page_size == 0) {
+-# if defined(__x86_64__) && defined(MAP_32BIT)
++# if defined(__x86_64__) && defined(MAP_32BIT) && !defined(__FILC__)
+ 		/* to got HUGE PAGES in low 32-bit address we have to reserve address
+ 		   space and then remap it using MAP_HUGETLB */
+ 
+diff --git a/main/debug_gdb_scripts.c b/main/debug_gdb_scripts.c
+index 4328285..c346695 100644
+--- a/main/debug_gdb_scripts.c
++++ b/main/debug_gdb_scripts.c
+@@ -1,3 +1,4 @@
++#ifndef __FILC__
+ /*
+  * Generated by debug_gdb_scripts_gen.php.
+  *
+@@ -1017,3 +1018,4 @@ __asm__(
+     ".byte 0\n"
+     ".popsection\n"
+ );
++#endif

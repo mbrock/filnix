@@ -1,0 +1,104 @@
+diff --git a/client/dconf-client.c b/client/dconf-client.c
+index c315693..7fad256 100644
+--- a/client/dconf-client.c
++++ b/client/dconf-client.c
+@@ -133,9 +133,12 @@ dconf_client_class_init (DConfClientClass *class)
+    **/
+   dconf_client_signals[SIGNAL_CHANGED] = g_signal_new ("changed", DCONF_TYPE_CLIENT, G_SIGNAL_RUN_LAST,
+                                                        0, NULL, NULL, NULL, G_TYPE_NONE, 3,
+-                                                       G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                                                       G_TYPE_STRV | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                                                       G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++                                                       /* Fil-C: GType is a pointer, so the flag
++                                                          OR goes through uintptr_t, matching
++                                                          how the pizlonated glib does it. */
++                                                       (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++                                                       (GType) ((uintptr_t) G_TYPE_STRV | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++                                                       (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   /**
+    * DConfClient::writability-changed:
+@@ -149,7 +152,8 @@ dconf_client_class_init (DConfClientClass *class)
+   dconf_client_signals[SIGNAL_WRITABILITY_CHANGED] = g_signal_new ("writability-changed", DCONF_TYPE_CLIENT,
+                                                                    G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                                                    G_TYPE_NONE, 1,
+-                                                                   G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
++                                                                   /* Fil-C: see above. */
++                                                                   (GType) ((uintptr_t) G_TYPE_STRING | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ typedef struct
+diff --git a/client/symbol.map b/client/symbol.map
+index 2fc9983..2b0352b 100644
+--- a/client/symbol.map
++++ b/client/symbol.map
+@@ -9,6 +9,8 @@ global:
+   dconf_is_rel_path;
+   dconf_is_rel_key;
+   dconf_is_rel_dir;
++  /* Fil-C: the pizlonator renames symbols with a pizlonated_ prefix. */
++  pizlonated*;
+ local:
+   *;
+ };
+diff --git a/gdbus/dconf-gdbus-thread.c b/gdbus/dconf-gdbus-thread.c
+index f80bdb7..501ac30 100644
+--- a/gdbus/dconf-gdbus-thread.c
++++ b/gdbus/dconf-gdbus-thread.c
+@@ -90,7 +90,12 @@ dconf_gdbus_get_worker_context (void)
+ {
+   static GMainContext *worker_context;
+ 
+-  if (g_once_init_enter (&worker_context))
++  /* Fil-C: the plain g_once_init_enter/leave pair round-trips the value
++   * through gsize, so storing the worker GMainContext strips its pointer
++   * object metadata at the ABI boundary (loading it back yields a
++   * capability-less pointer and any GSettings consumer panics on use).
++   * The _pointer variants store a real pointer. */
++  if (g_once_init_enter_pointer (&worker_context))
+     {
+       GMainContext *context;
+ 
+@@ -119,7 +124,7 @@ dconf_gdbus_get_worker_context (void)
+ 
+       context = g_main_context_new ();
+       g_thread_new ("dconf worker", dconf_gdbus_worker_thread, context);
+-      g_once_init_leave (&worker_context, context);
++      g_once_init_leave_pointer (&worker_context, context); /* Fil-C: see above. */
+     }
+ 
+   return worker_context;
+diff --git a/gsettings/symbol.map b/gsettings/symbol.map
+index ad1719c..7703c4c 100644
+--- a/gsettings/symbol.map
++++ b/gsettings/symbol.map
+@@ -5,6 +5,11 @@ global:
+   g_io_module_query;
+   environ;
+   __progname;
++  /* Fil-C pizlonation exports pizlonated_<name> aliases and gmodule resolves
++   * the GIO module entry points with dlsym; they must not be caught by
++   * "local: *" (a demoted module exports nothing and GSettings then fails to
++   * load it). */
++  pizlonated*;
+ local:
+   *;
+ };
+diff --git a/shm/dconf-shm.c b/shm/dconf-shm.c
+index dbde759..14f63db 100644
+--- a/shm/dconf-shm.c
++++ b/shm/dconf-shm.c
+@@ -33,8 +33,11 @@ dconf_shm_get_shmdir (void)
+ {
+   static gchar *shmdir;
+ 
+-  if (g_once_init_enter (&shmdir))
+-    g_once_init_leave (&shmdir, g_build_filename (g_get_user_runtime_dir (), "dconf", NULL));
++  /* Fil-C: the plain g_once_init_enter/leave pair stores the shmdir through
++   * gsize, stripping the pointer's object metadata (dconf_shm_open then
++   * gets a capability-less pointer).  The _pointer variants keep it real. */
++  if (g_once_init_enter_pointer (&shmdir))
++    g_once_init_leave_pointer (&shmdir, g_build_filename (g_get_user_runtime_dir (), "dconf", NULL));
+ 
+   return shmdir;
+ }

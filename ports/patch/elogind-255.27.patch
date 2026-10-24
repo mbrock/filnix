@@ -1,0 +1,183 @@
+diff --git a/src/basic/sigbus.c b/src/basic/sigbus.c
+index a365801..c5e7729 100644
+--- a/src/basic/sigbus.c
++++ b/src/basic/sigbus.c
+@@ -12,6 +12,14 @@
+ #include "sigbus.h"
+ #include "signal-util.h"
+ 
++/* Fil-C: the pizlonator runtime owns SIGBUS handling (it relies on the signal
++ * internally, and a program re-registering a SIGBUS handler trips a runtime
++ * assertion - loginctl aborted exactly that way).  elogind's SIGBUS workaround
++ * (remap a faulting mmap page so execution can continue) must therefore not
++ * run under Fil-C, so the whole mechanism below is compiled out and
++ * sigbus_install()/sigbus_pop() are empty functions with unchanged
++ * signatures. */
++#if 0
+ #define SIGBUS_QUEUE_MAX 64
+ 
+ static struct sigaction old_sigaction;
+@@ -122,35 +130,15 @@ static void sigbus_handler(int sn, siginfo_t *si, void *data) {
+         assert_se(mmap(aligned, page_size(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0) == aligned);
+ }
+ 
+-void sigbus_install(void) {
+-        struct sigaction sa = {
+-                .sa_sigaction = sigbus_handler,
+-                .sa_flags = SA_SIGINFO,
+-        };
+-
+-        /* make sure that sysconf() is not called from a signal handler because
+-        * it is not guaranteed to be async-signal-safe since POSIX.1-2008 */
+-        (void) page_size();
+-
+-        n_installed++;
++#endif // Fil-C: the SIGBUS mechanism above is compiled out
+ 
+-        if (n_installed == 1)
+-                assert_se(sigaction(SIGBUS, &sa, &old_sigaction) == 0);
+-
+-        return;
++void sigbus_install(void) {
++        /* Fil-C owns SIGBUS handling; there is nothing to install. */
+ }
+ 
+ #if 0 /// UNNEEDED by elogind
+-void sigbus_reset(void) {
+-
+-        if (n_installed <= 0)
+-                return;
+-
+-        n_installed--;
+-
+-        if (n_installed == 0)
+-                assert_se(sigaction(SIGBUS, &old_sigaction, NULL) == 0);
+-
+-        return;
++int sigbus_pop(void **ret) {
++        (void) ret;
++        return 0;
+ }
+ #endif // 0
+diff --git a/src/libelogind/libelogind.sym b/src/libelogind/libelogind.sym
+index 36b4c2f..da7b846 100644
+--- a/src/libelogind/libelogind.sym
++++ b/src/libelogind/libelogind.sym
+@@ -9,6 +9,8 @@
+ 
+ LIBSYSTEMD_209 {
+ global:
++        /* Fil-C: the pizlonator renames symbols with a pizlonated_ prefix. */
++        pizlonated*;
+         /* sd-journal */
+         sd_journal_print;
+         sd_journal_printv;
+diff --git a/src/libelogind/sd-bus/bus-error.c b/src/libelogind/sd-bus/bus-error.c
+index f415797..8581272 100644
+--- a/src/libelogind/sd-bus/bus-error.c
++++ b/src/libelogind/sd-bus/bus-error.c
+@@ -53,9 +53,21 @@ BUS_ERROR_MAP_ELF_REGISTER const sd_bus_error_map bus_standard_errors[] = {
+         SD_BUS_ERROR_MAP_END
+ };
+ 
+-/* GCC maps this magically to the beginning and end of the BUS_ERROR_MAP section */
+-extern const sd_bus_error_map __start_SYSTEMD_BUS_ERROR_MAP[];
+-extern const sd_bus_error_map __stop_SYSTEMD_BUS_ERROR_MAP[];
++/// elogind-FilC-begin
++/* Fil-C: GCC maps these magically to the beginning and end of the
++   BUS_ERROR_MAP section, but the pizlonator rewrites symbol references, so
++   the linker-provided __start_/__stop_ boundary symbols never match.  Walk
++   the built-in maps through an ordinary pointer list instead.  Each map is
++   NULL-terminated (SD_BUS_ERROR_MAP_END), which the additional_error_maps
++   scanner below already understands. */
++extern const sd_bus_error_map bus_common_errors[];
++
++static const sd_bus_error_map *const builtin_error_maps[] = {
++        bus_standard_errors,
++        bus_common_errors,
++        NULL,
++};
++/// elogind-FilC-end
+ 
+ /* Additional maps registered with sd_bus_error_add_map() are in this
+  * NULL terminated array */
+@@ -91,26 +103,22 @@ static int bus_error_name_to_errno(const char *name) {
+                                 }
+                         }
+ 
+-        m = ALIGN_PTR(__start_SYSTEMD_BUS_ERROR_MAP);
+-        while (m < __stop_SYSTEMD_BUS_ERROR_MAP) {
+-                /* For magic ELF error maps, the end marker might
+-                 * appear in the middle of things, since multiple maps
+-                 * might appear in the same section. Hence, let's skip
+-                 * over it, but realign the pointer to the next 8 byte
+-                 * boundary, which is the selected alignment for the
+-                 * arrays. */
+-                if (m->code == BUS_ERROR_MAP_END_MARKER) {
+-                        m = ALIGN_PTR(m + 1);
+-                        continue;
+-                }
++/// elogind-FilC-begin
++        {
++                const sd_bus_error_map *const *bmap;
+ 
+-                if (streq(m->name, name)) {
+-                        assert(m->code > 0);
+-                        return m->code;
+-                }
++                for (bmap = builtin_error_maps; *bmap; bmap++)
++                        for (m = *bmap;; m++) {
++                                if (m->code == BUS_ERROR_MAP_END_MARKER)
++                                        break;
+ 
+-                m++;
++                                if (streq(m->name, name)) {
++                                        assert(m->code > 0);
++                                        return m->code;
++                                }
++                        }
+         }
++/// elogind-FilC-end
+ 
+         return EIO;
+ }
+diff --git a/src/libelogind/sd-bus/bus-error.h b/src/libelogind/sd-bus/bus-error.h
+index c8768c9..3fea626 100644
+--- a/src/libelogind/sd-bus/bus-error.h
++++ b/src/libelogind/sd-bus/bus-error.h
+@@ -37,13 +37,18 @@ const char* _bus_error_message(const sd_bus_error *e, int error, char buf[static
+  * warn for the unknown attribute, so just disable -Wattributes.
+  */
+ 
++/// elogind-FilC-begin
++/* Fil-C: do not place the maps in a magic ELF section.  The section
++   approach relies on the linker synthesizing __start_/__stop_ boundary
++   symbols for the section, but the pizlonator rewrites symbol references
++   to pizlonated-prefixed names, which never match those linker symbols.
++   Plain arrays are used instead and bus-error.c walks them through an
++   ordinary pointer list. */
+ #define BUS_ERROR_MAP_ELF_REGISTER                                      \
+         _Pragma("GCC diagnostic ignored \"-Wattributes\"")              \
+-        _section_("SYSTEMD_BUS_ERROR_MAP")                              \
+         _used_                                                          \
+-        _retain_                                                        \
+-        _alignptr_                                                      \
+         _variable_no_sanitize_address_
++/// elogind-FilC-end
+ 
+ #define BUS_ERROR_MAP_ELF_USE(errors)                                   \
+         extern const sd_bus_error_map errors[];                         \
+diff --git a/src/login/pam_elogind.sym b/src/login/pam_elogind.sym
+index 130cf6a..c8c28f2 100644
+--- a/src/login/pam_elogind.sym
++++ b/src/login/pam_elogind.sym
+@@ -4,5 +4,9 @@
+ global:
+         pam_sm_close_session;
+         pam_sm_open_session;
++        /* Fil-C pizlonation exports pizlonated_<name> aliases and libpam's
++         * dlsym looks those up; they must not be caught by "local: *". */
++        pizlonated_pam_sm_close_session;
++        pizlonated_pam_sm_open_session;
+ local: *;
+ };

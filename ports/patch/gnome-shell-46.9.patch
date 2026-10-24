@@ -1,0 +1,578 @@
+diff --git a/data/meson.build b/data/meson.build
+index 0307613..1ba4202 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -98,6 +98,27 @@ schema = configure_file(
+ )
+ install_data('00_org.gnome.shell.gschema.override', install_dir: schemadir)
+ 
++# Fil-C port: this schema normally ships with GDM, which we do not build.
++# gnome-shell reads it unconditionally (js/misc/systemActions.js and js/gdm)
++# — without it the shell fails to start with "GSettings schema
++# org.gnome.login-screen not found" — so we vendor it verbatim from the GDM
++# 46.0 release tarball.  With no GDM the keys stay at their defaults.
++install_data('org.gnome.login-screen.gschema.xml', install_dir: schemadir)
++
++# Fil-C port: likewise, these two schemas normally ship with
++# gnome-settings-daemon, which we do not build.  gnome-shell reads
++# org.gnome.settings-daemon.peripherals.touchscreen (js/misc/systemActions.js,
++# js/ui/status/autoRotate.js) and org.gnome.settings-daemon.plugins.color
++# (js/ui/status/nightLight.js) at startup, which aborts UI construction when
++# the schemas are missing.  They are vendored verbatim from
++# gnome-settings-daemon 46.0 (with @GETTEXT_PACKAGE@ substituted); the
++# corresponding D-Bus services simply never appear, so night light and
++# touchscreen orientation degrade to no-ops.
++install_data('org.gnome.settings-daemon.peripherals.gschema.xml',
++  install_dir: schemadir)
++install_data('org.gnome.settings-daemon.plugins.color.gschema.xml',
++  install_dir: schemadir)
++
+ if have_systemd
+   unitconf = configuration_data()
+   unitconf.set('bindir', bindir)
+diff --git a/data/org.gnome.login-screen.gschema.xml b/data/org.gnome.login-screen.gschema.xml
+new file mode 100644
+index 0000000..7b5c54d
+--- /dev/null
++++ b/data/org.gnome.login-screen.gschema.xml
+@@ -0,0 +1,102 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<schemalist gettext-domain="gdm">
++  <schema id="org.gnome.login-screen" path="/org/gnome/login-screen/">
++    <key name="enable-fingerprint-authentication" type="b">
++      <default>true</default>
++      <summary>
++        Whether or not to allow fingerprint readers for login
++      </summary>
++      <description>
++        The login screen can optionally allow users who have enrolled
++        their fingerprints to log in using those prints.
++      </description>
++    </key>
++    <key name="enable-smartcard-authentication" type="b">
++      <default>true</default>
++      <summary>
++        Whether or not to allow smartcard readers for login
++      </summary>
++      <description>
++        The login screen can optionally allow users who have smartcards
++        to log in using those smartcards.
++      </description>
++    </key>
++    <key name="enable-password-authentication" type="b">
++      <default>true</default>
++      <summary>
++        Whether or not to allow passwords for login
++      </summary>
++      <description>
++        The login screen can be configured to disallow password authentication,
++        forcing the user to use smartcard or fingerprint authentication.
++      </description>
++    </key>
++    <key name="logo" type="s">
++      <default>''</default>
++      <summary>
++        Path to small image at top of user list
++      </summary>
++      <description>
++        The login screen can optionally show a small image to provide site
++        administrators and distributions a way to display branding.
++      </description>
++    </key>
++    <key name="fallback-logo" type="s">
++      <default>''</default>
++      <summary>
++        Path to small image at top of user list
++      </summary>
++      <description>
++        The fallback login screen can optionally show a small image to provide
++        site administrators and distributions a way to display branding.
++      </description>
++    </key>
++    <key name="disable-user-list" type="b">
++      <default>false</default>
++      <summary>
++        Avoid showing user list
++      </summary>
++      <description>
++        The login screen normally shows a list of available users to log in
++        as. This setting can be toggled to disable showing the user list.
++      </description>
++    </key>
++    <key name="banner-message-enable" type="b">
++      <default>false</default>
++      <summary>
++        Enable showing the banner message
++      </summary>
++      <description>
++        Set to true to show the banner message text.
++      </description>
++    </key>
++    <key name="banner-message-text" type="s">
++      <default>''</default>
++      <summary>
++        Banner message text
++      </summary>
++      <description>
++        Text banner message to show in the login window.
++      </description>
++    </key>
++    <key name="disable-restart-buttons" type="b">
++      <default>false</default>
++      <summary>
++        Disable showing the restart buttons
++      </summary>
++      <description>
++        Set to true to disable showing the restart buttons in the login window.
++      </description>
++    </key>
++    <key name="allowed-failures" type="i">
++      <default>3</default>
++      <summary>
++        Number of allowed authentication failures
++      </summary>
++      <description>
++        The number of times a user is allowed to attempt authentication, before
++        giving up and going back to user selection.
++      </description>
++    </key>
++  </schema>
++</schemalist>
+diff --git a/data/org.gnome.settings-daemon.peripherals.gschema.xml b/data/org.gnome.settings-daemon.peripherals.gschema.xml
+new file mode 100644
+index 0000000..48ceb57
+--- /dev/null
++++ b/data/org.gnome.settings-daemon.peripherals.gschema.xml
+@@ -0,0 +1,17 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Fil-C port: vendored from gnome-settings-daemon 46.0.  This file is
++     trimmed to the single schema gnome-shell actually reads (the touchscreen
++     schema, used by js/misc/systemActions.js and js/ui/status/autoRotate.js):
++     the other schemas in gsd's peripherals file reference enums generated by
++     gsd's own build (GsdSmartcardRemovalAction etc.), which we cannot
++     reproduce, and glib-compile-schemas --strict rejects the file without
++     them.  The corresponding gnome-settings-daemon service never runs here,
++     so these keys stay at their defaults. -->
++<schemalist>
++  <schema gettext-domain="gnome-settings-daemon" id="org.gnome.settings-daemon.peripherals.touchscreen" path="/org/gnome/settings-daemon/peripherals/touchscreen/">
++    <key name="orientation-lock" type="b">
++      <default>false</default>
++      <summary>Whether the tablet's orientation is locked, or rotated automatically.</summary>
++    </key>
++  </schema>
++</schemalist>
+diff --git a/data/org.gnome.settings-daemon.plugins.color.gschema.xml b/data/org.gnome.settings-daemon.plugins.color.gschema.xml
+new file mode 100644
+index 0000000..df69f8f
+--- /dev/null
++++ b/data/org.gnome.settings-daemon.plugins.color.gschema.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<schemalist>
++  <schema gettext-domain="gnome-settings-daemon" id="org.gnome.settings-daemon.plugins.color" path="/org/gnome/settings-daemon/plugins/color/">
++    <key name="recalibrate-display-threshold" type="u">
++      <default>0</default>
++      <summary>The duration a display profile is valid</summary>
++      <description>This is the number of days after which the display color profile is considered invalid.</description>
++    </key>
++    <key name="recalibrate-printer-threshold" type="u">
++      <default>0</default>
++      <summary>The duration a printer profile is valid</summary>
++      <description>This is the number of days after which the printer color profile is considered invalid.</description>
++    </key>
++    <key name="night-light-enabled" type="b">
++      <default>false</default>
++      <summary>If the night light mode is enabled</summary>
++      <description>Night light mode changes the color temperature of your display when the sun has gone down or at preset times.</description>
++    </key>
++    <key name="night-light-temperature" type="u">
++      <default>2700</default>
++      <summary>Temperature of the display when enabled</summary>
++      <description>This temperature in Kelvin is used to modify the screen tones when night light mode is enabled. Higher values are bluer, lower redder.</description>
++    </key>
++    <key name="night-light-schedule-automatic" type="b">
++      <default>true</default>
++      <summary>Use the sunrise and sunset</summary>
++      <description>Calculate the sunrise and sunset times automatically, from the current location.</description>
++    </key>
++    <key name="night-light-schedule-from" type="d">
++      <default>20.00</default>
++      <summary>The start time</summary>
++      <description>When “night-light-schedule-automatic” is disabled, use this start time in hours from midnight.</description>
++    </key>
++    <key name="night-light-schedule-to" type="d">
++      <default>6.00</default>
++      <summary>The end time</summary>
++      <description>When “night-light-schedule-automatic” is disabled, use this end time in hours from midnight.</description>
++    </key>
++    <key name="night-light-last-coordinates" type="(dd)">
++      <default>(91,181)</default>
++      <summary>The last detected position</summary>
++      <description>When location services are available this represents the last detected location. The default value is an invalid value to ensure it is always updated at startup.</description>
++    </key>
++  </schema>
++</schemalist>
+diff --git a/js/gdm/loginDialog.js b/js/gdm/loginDialog.js
+index 1c0e716..5f68075 100644
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -19,7 +19,6 @@
+ import AccountsService from 'gi://AccountsService';
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+-import Gdm from 'gi://Gdm';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+@@ -28,6 +27,10 @@ import Pango from 'gi://Pango';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
++// Fil-C port: Gdm is optional (no GDM display manager in this system); the
++// optional Gdm namespace is exported from dependencies.js (null when absent).
++import {Gdm} from '../misc/dependencies.js';
++
+ import * as AuthPrompt from './authPrompt.js';
+ import * as Batch from './batch.js';
+ import * as BoxPointer from '../ui/boxpointer.js';
+diff --git a/js/gdm/util.js b/js/gdm/util.js
+index 7a52737..30d904c 100644
+--- a/js/gdm/util.js
++++ b/js/gdm/util.js
+@@ -1,11 +1,14 @@
+ // -*- mode: js; js-indent-level: 4; indent-tabs-mode: nil -*-
+ 
+ import Clutter from 'gi://Clutter';
+-import Gdm from 'gi://Gdm';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import * as Signals from '../misc/signals.js';
+ 
++// Fil-C port: Gdm is optional (no GDM display manager in this system); the
++// optional Gdm namespace is exported from dependencies.js (null when absent).
++import {Gdm} from '../misc/dependencies.js';
++
+ import * as Batch from './batch.js';
+ import * as OVirt from './oVirt.js';
+ import * as Vmware from './vmware.js';
+@@ -19,11 +22,15 @@ const FprintManagerInfo = Gio.DBusInterfaceInfo.new_for_xml(
+ const FprintDeviceInfo = Gio.DBusInterfaceInfo.new_for_xml(
+     loadInterfaceXML('net.reactivated.Fprint.Device'));
+ 
+-Gio._promisify(Gdm.Client.prototype, 'open_reauthentication_channel');
+-Gio._promisify(Gdm.Client.prototype, 'get_user_verifier');
+-Gio._promisify(Gdm.UserVerifierProxy.prototype,
+-    'call_begin_verification_for_user');
+-Gio._promisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification');
++if (Gdm) {
++    Gio._promisify(Gdm.Client.prototype, 'open_reauthentication_channel');
++    Gio._promisify(Gdm.Client.prototype, 'get_user_verifier');
++    Gio._promisify(Gdm.UserVerifierProxy.prototype,
++        'call_begin_verification_for_user');
++    Gio._promisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification');
++} else {
++    console.debug('Gdm is not available, GDM authentication is disabled');
++}
+ 
+ export const PASSWORD_SERVICE_NAME = 'gdm-password';
+ export const FINGERPRINT_SERVICE_NAME = 'gdm-fingerprint';
+diff --git a/js/misc/dependencies.js b/js/misc/dependencies.js
+index f8f98d4..88cc447 100644
+--- a/js/misc/dependencies.js
++++ b/js/misc/dependencies.js
+@@ -9,7 +9,6 @@ import 'gi://Atk?version=1.0';
+ import 'gi://Atspi?version=2.0';
+ import 'gi://Gcr?version=4';
+ import 'gi://Gdk?version=4.0';
+-import 'gi://Gdm?version=1.0';
+ import 'gi://Geoclue?version=2.0';
+ import 'gi://Gio?version=2.0';
+ import 'gi://GioUnix?version=2.0';
+@@ -23,7 +22,6 @@ import 'gi://IBus?version=1.0';
+ import 'gi://Pango?version=1.0';
+ import 'gi://Polkit?version=1.0';
+ import 'gi://PolkitAgent?version=1.0';
+-import 'gi://Rsvg?version=2.0';
+ import 'gi://Soup?version=3.0';
+ import 'gi://UPowerGlib?version=1.0';
+ 
+@@ -58,6 +56,34 @@ if (Config.HAVE_NETWORKMANAGER) {
+  * Runtime optional dependencies
+  */
+ 
++// Fil-C port: Gdm is only used by the GDM login screen and the session lock
++// screen.  We do not build GDM (sessions are started from a getty login), so
++// the typelib is optional.  The shell runs fine without it; screen locking is
++// disabled (js/ui/screenShield.js refuses to engage), and the gdm JS files
++// load with a null Gdm namespace.
++let _gdm = null;
++try {
++    // Malcontent-style optional import: catch any errors loading it
++    _gdm = gi.require('Gdm', '1.0');
++} catch {
++    console.debug('Gdm is not available, the login screen and screen locking are disabled.');
++}
++export const HAVE_GDM = _gdm !== null;
++export const Gdm = _gdm;
++
++// Fil-C port: Rsvg is used by the graphics-tablet pad OSD to render SVG
++// button diagrams.  We do not build librsvg (gdk-pixbuf has no SVG loader
++// either), so the typelib is optional; the shell runs fine without it and
++// only pad diagrams (Wacom tablets) degrade.
++let _rsvg = null;
++try {
++    _rsvg = gi.require('Rsvg', '2.0');
++} catch {
++    console.debug('Rsvg is not available, SVG image loading is disabled.');
++}
++export const HAVE_RSVG = _rsvg !== null;
++export const Rsvg = _rsvg;
++
+ try {
+     // Malcontent is optional, so catch any errors loading it
+     gi.require('Malcontent', '0');
+diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
+index db08b54..729818b 100644
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -1,10 +1,13 @@
+ import AccountsService from 'gi://AccountsService';
+ import Clutter from 'gi://Clutter';
+-import Gdm from 'gi://Gdm';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ 
++// Fil-C port: Gdm is optional (no GDM display manager in this system); the
++// optional Gdm namespace is exported from dependencies.js (null when absent).
++import {Gdm} from './dependencies.js';
++
+ import * as GnomeSession from './gnomeSession.js';
+ import * as LoginManager from './loginManager.js';
+ import * as Main from '../ui/main.js';
+@@ -398,7 +401,7 @@ const SystemActions = GObject.registerClass({
+         let systemAccount = user.system_account;
+         let localAccount = user.local_account;
+         let multiUser = this._userManager.has_multiple_users;
+-        let multiSession = Gdm.get_session_ids().length > 1;
++        let multiSession = Gdm ? Gdm.get_session_ids().length > 1 : false;
+         let shouldShowInMode = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+ 
+         let visible = allowLogout && (alwaysShow || multiUser || multiSession || systemAccount || !localAccount) && shouldShowInMode;
+@@ -431,7 +434,9 @@ const SystemActions = GObject.registerClass({
+             Main.screenShield.lock(false);
+ 
+         Clutter.threads_add_repaint_func_full(Clutter.RepaintFlags.POST_PAINT, () => {
+-            Gdm.goto_login_session_sync(null);
++            // Fil-C port: without Gdm there is no login session to switch to.
++            if (Gdm)
++                Gdm.goto_login_session_sync(null);
+             return false;
+         });
+     }
+diff --git a/js/ui/padOsd.js b/js/ui/padOsd.js
+index de219b0..381c0c7 100644
+--- a/js/ui/padOsd.js
++++ b/js/ui/padOsd.js
+@@ -8,9 +8,12 @@ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+-import Rsvg from 'gi://Rsvg';
+ import St from 'gi://St';
+ 
++// Fil-C port: Rsvg is optional (no librsvg in this system); the optional
++// Rsvg namespace is exported from dependencies.js (null when absent).
++import {Rsvg} from '../misc/dependencies.js';
++
+ import * as Signals from '../misc/signals.js';
+ 
+ import * as Main from './main.js';
+@@ -321,6 +324,13 @@ const PadDiagram = GObject.registerClass({
+     }
+ 
+     set image(imagePath) {
++        // Fil-C port: without Rsvg we cannot render the SVG pad diagram;
++        // the pad OSD degrades to buttons without a diagram.
++        if (!Rsvg) {
++            console.debug('Rsvg is not available, pad diagrams are disabled');
++            return;
++        }
++
+         let originalHandle = Rsvg.Handle.new_from_file(imagePath);
+         let dimensions = originalHandle.get_dimensions();
+         this._imageWidth = dimensions.width;
+diff --git a/js/ui/screenShield.js b/js/ui/screenShield.js
+index d2236fb..a073d34 100644
+--- a/js/ui/screenShield.js
++++ b/js/ui/screenShield.js
+@@ -14,6 +14,10 @@ import * as Signals from '../misc/signals.js';
+ import * as GnomeSession from '../misc/gnomeSession.js';
+ import * as OVirt from '../gdm/oVirt.js';
+ import * as LoginManager from '../misc/loginManager.js';
++// Fil-C port: HAVE_GDM tells us whether the Gdm typelib is available; screen
++// locking needs it (the unlock dialog authenticates through Gdm), so we
++// refuse to lock when it is missing rather than locking the user out.
++import {HAVE_GDM} from '../misc/dependencies.js';
+ import * as Lightbox from './lightbox.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
+@@ -658,6 +662,14 @@ export class ScreenShield extends Signals.EventEmitter {
+     }
+ 
+     lock(animate) {
++        // Fil-C port: without Gdm the unlock dialog cannot authenticate the
++        // user, so locking would lock the user out of the session.  Refuse
++        // instead (the session has no screen lock in this configuration).
++        if (!HAVE_GDM) {
++            log('Screen locking is disabled: Gdm is not available');
++            return;
++        }
++
+         if (this._lockSettings.get_boolean(DISABLE_LOCK_KEY)) {
+             log('Screen lock is locked down, not locking'); // lock, lock - who's there?
+             return;
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index f741b20..4c25be5 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -3,7 +3,6 @@
+ import AccountsService from 'gi://AccountsService';
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+-import Gdm from 'gi://Gdm';
+ import Gio from 'gi://Gio';
+ import GnomeDesktop from 'gi://GnomeDesktop';
+ import GLib from 'gi://GLib';
+@@ -11,6 +10,12 @@ import GObject from 'gi://GObject';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
++// Fil-C port: Gdm is optional (no GDM display manager in this system); the
++// optional Gdm namespace is exported from dependencies.js (null when absent).
++// Screen locking is refused by js/ui/screenShield.js when Gdm is absent, so
++// the unlock dialog can normally never be created.
++import {Gdm} from '../misc/dependencies.js';
++
+ import * as Background from './background.js';
+ import * as Layout from './layout.js';
+ import * as Main from './main.js';
+@@ -489,13 +494,17 @@ export const UnlockDialog = GObject.registerClass({
+ 
+         parentActor.add_child(this);
+ 
+-        this._gdmClient = new Gdm.Client();
++        // Fil-C port: without Gdm there is no verification client; the
++        // auth prompt is never created in that case (see _ensureAuthPrompt).
++        this._gdmClient = Gdm ? new Gdm.Client() : null;
+ 
+-        try {
+-            this._gdmClient.set_enabled_extensions([
+-                Gdm.UserVerifierChoiceList.interface_info().name,
+-            ]);
+-        } catch (e) {
++        if (this._gdmClient) {
++            try {
++                this._gdmClient.set_enabled_extensions([
++                    Gdm.UserVerifierChoiceList.interface_info().name,
++                ]);
++            } catch (e) {
++            }
+         }
+ 
+         this._adjustment = new St.Adjustment({
+@@ -700,6 +709,11 @@ export const UnlockDialog = GObject.registerClass({
+     }
+ 
+     _ensureAuthPrompt() {
++        // Fil-C port: without Gdm there is nothing to authenticate against;
++        // the unlock dialog degrades to a plain clock screen.
++        if (!this._gdmClient)
++            return;
++
+         if (!this._authPrompt) {
+             this._authPrompt = new AuthPrompt.AuthPrompt(this._gdmClient,
+                 AuthPrompt.AuthPromptMode.UNLOCK_ONLY);
+@@ -842,7 +856,9 @@ export const UnlockDialog = GObject.registerClass({
+     }
+ 
+     _otherUserClicked() {
+-        Gdm.goto_login_session_sync(null);
++        // Fil-C port: without Gdm there is no login session to switch to.
++        if (Gdm)
++            Gdm.goto_login_session_sync(null);
+ 
+         this._authPrompt.cancel();
+     }
+diff --git a/meson.build b/meson.build
+index 3d3232d..bb9455c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -69,8 +69,12 @@ else
+ endif
+ 
+ atk_bridge_dep = dependency('atk-bridge-2.0')
+-ecal_dep = dependency('libecal-2.0', version: ecal_req)
+-eds_dep = dependency('libedataserver-1.2', version: eds_req)
++# Fil-C port: we do not build evolution-data-server, so the calendar-server
++# side binary (the only user of libecal/libedataserver) is disabled.  The JS
++# calendar panel tolerates the absence of the org.gnome.Shell.CalendarServer
++# D-Bus name (it just shows no events).
++ecal_dep = dependency('libecal-2.0', version: ecal_req, required: false)
++eds_dep = dependency('libedataserver-1.2', version: eds_req, required: false)
+ gcr_dep = dependency('gcr-4', version: gcr_req)
+ gdk_pixbuf_dep = dependency('gdk-pixbuf-2.0')
+ gi_dep = dependency('gobject-introspection-1.0', version: gi_req)
+@@ -148,8 +152,13 @@ cdata.set('HAVE_FDWALK', cc.has_function('fdwalk'))
+ cdata.set('HAVE_MALLINFO', cc.has_function('mallinfo'))
+ cdata.set('HAVE_MALLINFO2', cc.has_function('mallinfo2'))
+ cdata.set('HAVE_SYS_RESOURCE_H', cc.has_header('sys/resource.h'))
+-cdata.set('HAVE_EXE_INTROSPECTION',
+-  cc.has_header('elf.h') and cc.has_header('link.h'))
++# Fil-C port: HAVE_EXE_INTROSPECTION walks the executable's own ELF _DYNAMIC
++# section to pick up $ORIGIN rpath dirs.  Under Fil-C _DYNAMIC cannot be
++# linked against (the pizlonator renames the symbol and nothing defines the
++# renamed form), so this is disabled; the installed shell locates its
++# typelibs through MUTTER_TYPELIB_DIR and GNOME_SHELL_PKGLIBDIR in
++# shell_introspection_init() instead.
++cdata.set('HAVE_EXE_INTROSPECTION', false)
+ cdata.set('HAVE__NL_TIME_FIRST_WEEKDAY',
+   cc.has_header_symbol('langinfo.h', '_NL_TIME_FIRST_WEEKDAY')
+ )
+diff --git a/src/meson.build b/src/meson.build
+index 18ba524..417b2fb 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -10,7 +10,15 @@ introspection_common = {
+   'fatal_warnings': get_option('werror'),
+ }
+ 
+-subdir('calendar-server')
++# Fil-C port: calendar-server needs libecal/libedataserver (evolution-data-
++# server), which we do not build.  Drop the binary and its D-Bus service file
++# when the deps are unavailable; the shell JS degrades gracefully (the
++# org.gnome.Shell.CalendarServer name simply never appears).
++if ecal_dep.found() and eds_dep.found()
++  subdir('calendar-server')
++else
++  message('libecal/libedataserver not found, calendar-server is disabled')
++endif
+ subdir('hotplug-sniffer')
+ subdir('st')
+ subdir('tray')
+diff --git a/src/st/st-theme-node.c b/src/st/st-theme-node.c
+index 51e6d21..d26774c 100644
+--- a/src/st/st-theme-node.c
++++ b/src/st/st-theme-node.c
+@@ -416,7 +416,10 @@ st_theme_node_hash (StThemeNode *node)
+ 
+   hash = hash * 33 + GPOINTER_TO_UINT (node->context);
+   hash = hash * 33 + GPOINTER_TO_UINT (node->theme);
+-  hash = hash * 33 + ((guint) node->element_type);
++  /* Fil-C port: GType is a capability pointer here, so hash it the same way
++     as the other pointer fields (a direct cast to guint is a narrowing
++     pointer-to-int cast, which the compiler rejects out of hand). */
++  hash = hash * 33 + GPOINTER_TO_UINT (node->element_type);
+   hash = hash * 33 + ((guint) node->cached_scale_factor);
+ 
+   if (node->element_id != NULL)

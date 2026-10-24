@@ -1,0 +1,15 @@
+diff --git a/libadwaita.syms b/libadwaita.syms
+index e1af7d4..b4cafca 100644
+--- a/libadwaita.syms
++++ b/libadwaita.syms
+@@ -1,6 +1,10 @@
+ LIBADWAITA_1_0 {
+ 	global:
+ 		adw_*;
++		/* Fil-C: the pizlonator renames symbol definitions and references
++		   with a pizlonated_ prefix; the renamed functions must stay
++		   exported or consumers of this library cannot link. */
++		pizlonated*;
+ 	local:
+ 		*;
+ };

@@ -1,0 +1,18 @@
+diff --git a/gzip.c b/gzip.c
+index 220f6fc..fb7cb70 100644
+--- a/gzip.c
++++ b/gzip.c
+@@ -58,6 +58,13 @@ static char const license_msg[] =
+ 
+ #include "tailor.h"
+ 
++/* Include <signal.h> before gzip.h.  gzip.h defines a macro named `head',
++   which collides with the struct members named `head' in the Linux kernel's
++   <asm/sigcontext.h>, which <signal.h> includes on some architectures,
++   such as aarch64.  */
++
++#include <signal.h>
++
+ #include "gzip.h"
+ #include "lzw.h"
+ #include "revision.h"

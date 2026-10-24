@@ -1,0 +1,98 @@
+diff --git a/libgnome-desktop/base-symbol.map b/libgnome-desktop/base-symbol.map
+index 9a0a60d..532af8f 100644
+--- a/libgnome-desktop/base-symbol.map
++++ b/libgnome-desktop/base-symbol.map
+@@ -1,6 +1,10 @@
+ {
+ global:
+   gnome_*;
++  /* Fil-C: the pizlonator renames symbol references with a pizlonated_
++     prefix; the thunks must stay exported for the sibling libraries
++     (libgnome-bg-4, libgnome-rr-4) to link. */
++  pizlonated*;
+ local:
+   gnome_desktop_thumbnail_script_exec;
+   *;
+diff --git a/libgnome-desktop/gnome-bg/gnome-bg-symbols.map b/libgnome-desktop/gnome-bg/gnome-bg-symbols.map
+index c1f244c..06c13d3 100644
+--- a/libgnome-desktop/gnome-bg/gnome-bg-symbols.map
++++ b/libgnome-desktop/gnome-bg/gnome-bg-symbols.map
+@@ -1,6 +1,8 @@
+ {
+ global:
+   gnome_bg_*;
++  /* Fil-C: keep the pizlonated_ thunks exported (see ../base-symbol.map). */
++  pizlonated*;
+ local:
+   *;
+ };
+diff --git a/libgnome-desktop/gnome-rr/gnome-rr-screen.c b/libgnome-desktop/gnome-rr/gnome-rr-screen.c
+index 90914d1..9e8eb7b 100644
+--- a/libgnome-desktop/gnome-rr/gnome-rr-screen.c
++++ b/libgnome-desktop/gnome-rr/gnome-rr-screen.c
+@@ -2445,9 +2445,13 @@ gnome_rr_output_get_tile_info (const GnomeRROutput *output,
+ GType
+ gnome_rr_dpms_mode_get_type (void)
+ {
++  /* Fil-C port: etype is a GType (a capability pointer under Fil-C), so the
++     pointer variants of g_once_init_enter/leave must be used — the plain
++     variants pass the value through a gsize, which strips the capability and
++     makes every later use of GNOME_RR_TYPE_DPMS_MODE panic. */
+   static GType etype = 0;
+ 
+-  if (g_once_init_enter (&etype)) {
++  if (g_once_init_enter_pointer (&etype)) {
+     static const GEnumValue values[] = {
+       { GNOME_RR_DPMS_ON, "GNOME_RR_DPMS_ON", "on" },
+       { GNOME_RR_DPMS_STANDBY, "GNOME_RR_DPMS_STANDBY", "standby" },
+@@ -2458,7 +2462,7 @@ gnome_rr_dpms_mode_get_type (void)
+     };
+     GType g_define_type = g_enum_register_static ("GnomeRRDpmsModeType", values);
+ 
+-    g_once_init_leave (&etype, g_define_type);
++    g_once_init_leave_pointer (&etype, g_define_type);
+   }
+   return etype;
+ }
+diff --git a/libgnome-desktop/gnome-rr/gnome-rr-symbols.map b/libgnome-desktop/gnome-rr/gnome-rr-symbols.map
+index 8a6f2d6..51838a3 100644
+--- a/libgnome-desktop/gnome-rr/gnome-rr-symbols.map
++++ b/libgnome-desktop/gnome-rr/gnome-rr-symbols.map
+@@ -1,6 +1,8 @@
+ {
+ global:
+   gnome_rr_*;
++  /* Fil-C: keep the pizlonated_ thunks exported (see ../base-symbol.map). */
++  pizlonated*;
+ local:
+   *;
+ };
+diff --git a/libgnome-desktop/gnome-rr/meson.build b/libgnome-desktop/gnome-rr/meson.build
+index d247731..b29bb2f 100644
+--- a/libgnome-desktop/gnome-rr/meson.build
++++ b/libgnome-desktop/gnome-rr/meson.build
+@@ -57,7 +57,10 @@ if get_option('introspection')
+     install: true,
+   )
+ else
+-  libgnome_rr_gir = ''
++  # Fil-C: must be an empty list, not '' -- meson chokes on the empty
++  # string when it is spliced into declare_dependency(sources:) below
++  # ("File  does not exist").  gnome-bg/meson.build already uses [].
++  libgnome_rr_gir = []
+ endif
+ 
+ 
+diff --git a/libgnome-desktop/symbol.map b/libgnome-desktop/symbol.map
+index 671c156..121845c 100644
+--- a/libgnome-desktop/symbol.map
++++ b/libgnome-desktop/symbol.map
+@@ -1,6 +1,8 @@
+ {
+ global:
+   gnome_*;
++  /* Fil-C: keep the pizlonated_ thunks exported (see base-symbol.map). */
++  pizlonated*;
+ local:
+   *;
+ };

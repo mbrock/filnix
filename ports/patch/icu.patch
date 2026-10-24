@@ -1,5 +1,5 @@
 diff --git a/source/common/putil.cpp b/source/common/putil.cpp
-index ea15fdf..9cee6a6 100644
+index a1fb0c9..73818d2 100644
 --- a/source/common/putil.cpp
 +++ b/source/common/putil.cpp
 @@ -641,6 +641,24 @@ uprv_tzset()
@@ -36,7 +36,7 @@ index ea15fdf..9cee6a6 100644
  
  /* Note that U_TZNAME does *not* have to be tzname, but if it is,
 diff --git a/source/common/ucnv.cpp b/source/common/ucnv.cpp
-index c7926d2..c6b4ff0 100644
+index d9a1eda..be4fcd2 100644
 --- a/source/common/ucnv.cpp
 +++ b/source/common/ucnv.cpp
 @@ -43,6 +43,14 @@
@@ -54,7 +54,7 @@ index c7926d2..c6b4ff0 100644
  /* size of intermediate and preflighting buffers in ucnv_convert() */
  #define CHUNK_SIZE 1024
  
-@@ -233,7 +241,10 @@ ucnv_safeClone(const UConverter* cnv, void *stackBuffer, int32_t *pBufferSize, U
+@@ -236,7 +244,10 @@ ucnv_safeClone(const UConverter* cnv,
          uintptr_t aligned_p = (p + alignof(UConverter) - 1) & ~(alignof(UConverter) - 1);
          ptrdiff_t pointerAdjustment = aligned_p - p;
          if (bufferSizeNeeded + pointerAdjustment <= stackBufferSize) {
@@ -67,14 +67,14 @@ index c7926d2..c6b4ff0 100644
          } else {
              /* prevent using the stack buffer but keep the size > 0 so that we do not just preflight */
 diff --git a/source/common/ucnv_io.cpp b/source/common/ucnv_io.cpp
-index 46a26f8..986f95d 100644
+index 76046f0..37e9b8e 100644
 --- a/source/common/ucnv_io.cpp
 +++ b/source/common/ucnv_io.cpp
-@@ -249,14 +249,39 @@ static void U_CALLCONV initAliasData(UErrorCode &errCode) {
+@@ -249,15 +249,42 @@ static void U_CALLCONV initAliasData(UErrorCode &errCode) {
  
      sectionSizes = static_cast<const uint32_t*>(udata_getMemory(data));
      int32_t dataLength = udata_getLength(data); // This is the length minus the UDataInfo size
--    if (dataLength <= int32_t(sizeof(sectionSizes[0]))) {
+-    UBool isDataLengthKnown = dataLength >= 0; // Only false when using a pointer table of contents (not files nor a common data archive)
 +    /* Fil-C: udata_getLength() (see udatamem.cpp) returns -1 if and only if the
 +       length is unknown, which happens exactly when the data uses a pointer
 +       table of contents (compiled-in static data) rather than a memory-mapped
@@ -84,9 +84,12 @@ index 46a26f8..986f95d 100644
 +       [minTocLength, normalizedStringTableIndex] unconditionally (see below),
 +       and pointer-TOC data is built into the binary (not attacker-controlled
 +       input), while every file/archive path yields dataLength >= 0 and keeps
-+       the full truncation checks. */
++       the full truncation checks. (Upstream ICU 79 adopted the same
++       isDataLengthKnown gating independently; the Fil-C hardening below --
++       the unconditional tableStart bound and the accumulation overflow guard
++       -- remains Fil-C-only.) */
 +    UBool isDataLengthKnown = dataLength >= 0;
-+    if (isDataLengthKnown && dataLength <= int32_t(sizeof(sectionSizes[0]))) {
+     if (isDataLengthKnown && dataLength <= int32_t(sizeof(sectionSizes[0]))) {
          // We don't even have a TOC!
          goto invalidFormat;
      }
@@ -107,12 +110,12 @@ index 46a26f8..986f95d 100644
 +        goto invalidFormat;
 +    }
      sizeOfTOC = int32_t((tableStart + 1) * sizeof(sectionSizes[0]));
--    if (tableStart < minTocLength || dataLength <= sizeOfTOC) {
+-    if (tableStart < minTocLength || (isDataLengthKnown && dataLength <= sizeOfTOC)) {
 +    if (isDataLengthKnown && dataLength <= sizeOfTOC) {
          // We don't have a whole TOC!
          goto invalidFormat;
      }
-@@ -277,9 +302,15 @@ static void U_CALLCONV initAliasData(UErrorCode &errCode) {
+@@ -278,6 +305,12 @@ static void U_CALLCONV initAliasData(UErrorCode &errCode) {
  
      sizeOfData = sizeOfTOC;
      for (uint32_t section = 1; section <= tableStart; section++) {
@@ -124,13 +127,9 @@ index 46a26f8..986f95d 100644
 +        }
          sizeOfData += sectionSizes[section] * sizeof(table[0]);
      }
--    if (dataLength < sizeOfData) {
-+    if (isDataLengthKnown && dataLength < sizeOfData) {
-         // Truncated file!
-         goto invalidFormat;
-     }
+     if (isDataLengthKnown && dataLength < sizeOfData) {
 diff --git a/source/common/unicode/char16ptr.h b/source/common/unicode/char16ptr.h
-index 049de9e..5643281 100644
+index 5529c5c..6c1f2e7 100644
 --- a/source/common/unicode/char16ptr.h
 +++ b/source/common/unicode/char16ptr.h
 @@ -17,6 +17,10 @@
@@ -145,7 +144,7 @@ index 049de9e..5643281 100644
   * \file
   * \brief C++ API: char16_t pointer wrappers with
 diff --git a/source/configure.ac b/source/configure.ac
-index 8ffacf8..64dcd7f 100644
+index ec84aae..2bdded4 100644
 --- a/source/configure.ac
 +++ b/source/configure.ac
 @@ -642,6 +642,7 @@ ia64-*-hpux*)

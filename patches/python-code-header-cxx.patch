@@ -1,0 +1,14 @@
+Keep the local C++ header fix separate from the generated upstream import.
+zptrtable_decode returns void *, which C++ does not implicitly convert.
+
+--- a/Include/internal/pycore_code.h
++++ b/Include/internal/pycore_code.h
+@@ -338,7 +338,7 @@ read_obj(uint16_t *p)
+ {
+     uintptr_t val;
+     memcpy(&val, p, sizeof(val));
+-    return zptrtable_decode(_PyCode_PtrTable, val);
++    return (PyObject *) zptrtable_decode(_PyCode_PtrTable, val);
+ }
+ 
+ /* See Objects/exception_handling_notes.txt for details.

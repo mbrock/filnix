@@ -26,7 +26,6 @@ in
         v: "https://download.gnome.org/sources/pygobject/3.48/pygobject-${v}.tar.xz"
       ))
       (patch ./ports/patch/pygobject-3.48.2.patch)
-      (patch ./patches/pygobject-metaclass-init.patch)
     ])
     // {
       filcOnly = true;

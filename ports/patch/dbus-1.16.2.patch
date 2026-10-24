@@ -1,0 +1,12 @@
+diff --git a/dbus/Version.in b/dbus/Version.in
+index f6cc367..9a63353 100644
+--- a/dbus/Version.in
++++ b/dbus/Version.in
+@@ -1,6 +1,7 @@
+ LIBDBUS_1_@SOVERSION@ {
+   global:
+     dbus_*;
++    pizlonated*;
+   local:
+     *;
+ };

@@ -1,0 +1,176 @@
+diff --git a/portal/ibus-portal-dbus.c b/portal/ibus-portal-dbus.c
+index fe715d0..759e4ec 100644
+--- a/portal/ibus-portal-dbus.c
++++ b/portal/ibus-portal-dbus.c
+@@ -153,27 +153,27 @@ _g_value_equal (const GValue *a, const GValue *b)
+ {
+   gboolean ret = FALSE;
+   g_assert (G_VALUE_TYPE (a) == G_VALUE_TYPE (b));
+-  switch (G_VALUE_TYPE (a))
++  switch ((uintptr_t) G_VALUE_TYPE (a))
+     {
+-      case G_TYPE_BOOLEAN:
++      case (uintptr_t) G_TYPE_BOOLEAN:
+         ret = (g_value_get_boolean (a) == g_value_get_boolean (b));
+         break;
+-      case G_TYPE_UCHAR:
++      case (uintptr_t) G_TYPE_UCHAR:
+         ret = (g_value_get_uchar (a) == g_value_get_uchar (b));
+         break;
+-      case G_TYPE_INT:
++      case (uintptr_t) G_TYPE_INT:
+         ret = (g_value_get_int (a) == g_value_get_int (b));
+         break;
+-      case G_TYPE_UINT:
++      case (uintptr_t) G_TYPE_UINT:
+         ret = (g_value_get_uint (a) == g_value_get_uint (b));
+         break;
+-      case G_TYPE_INT64:
++      case (uintptr_t) G_TYPE_INT64:
+         ret = (g_value_get_int64 (a) == g_value_get_int64 (b));
+         break;
+-      case G_TYPE_UINT64:
++      case (uintptr_t) G_TYPE_UINT64:
+         ret = (g_value_get_uint64 (a) == g_value_get_uint64 (b));
+         break;
+-      case G_TYPE_DOUBLE:
++      case (uintptr_t) G_TYPE_DOUBLE:
+         {
+           /* Avoid -Wfloat-equal warnings by doing a direct bit compare */
+           gdouble da = g_value_get_double (a);
+@@ -181,10 +181,10 @@ _g_value_equal (const GValue *a, const GValue *b)
+           ret = memcmp (&da, &db, sizeof (gdouble)) == 0;
+         }
+         break;
+-      case G_TYPE_STRING:
++      case (uintptr_t) G_TYPE_STRING:
+         ret = (g_strcmp0 (g_value_get_string (a), g_value_get_string (b)) == 0);
+         break;
+-      case G_TYPE_VARIANT:
++      case (uintptr_t) G_TYPE_VARIANT:
+         ret = _g_variant_equal0 (g_value_get_variant (a), g_value_get_variant (b));
+         break;
+       default:
+diff --git a/src/ibusconfig.c b/src/ibusconfig.c
+index 713fe25..2dc9b70 100644
+--- a/src/ibusconfig.c
++++ b/src/ibusconfig.c
+@@ -102,7 +102,9 @@ ibus_config_class_init (IBusConfigClass *class)
+             3,
+             G_TYPE_STRING,
+             G_TYPE_STRING,
+-            G_TYPE_VARIANT | G_SIGNAL_TYPE_STATIC_SCOPE);
++            /* pizlix/Fil-C: GType is a pointer type, so the flag OR goes
++             * through uintptr_t, matching how the pizlonated glib does it. */
++            (GType) ((uintptr_t) G_TYPE_VARIANT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ }
+ 
+ static void
+diff --git a/tools/krcfile.c b/tools/krcfile.c
+index 1a00796..fc42edf 100644
+--- a/tools/krcfile.c
++++ b/tools/krcfile.c
+@@ -283,13 +283,15 @@ krc_file_key_value_pair_get_type_once (void)
+ GType
+ krc_file_key_value_pair_get_type (void)
+ {
+-	static volatile gsize krc_file_key_value_pair_type_id__once = 0;
+-	if (g_once_init_enter (&krc_file_key_value_pair_type_id__once)) {
++	/* pizlix/Fil-C: pointer-typed static + _pointer variants so the GType
++	 * keeps its pointer representation. */
++	static gpointer krc_file_key_value_pair_type_id__once = 0;
++	if (g_once_init_enter_pointer (&krc_file_key_value_pair_type_id__once)) {
+ 		GType krc_file_key_value_pair_type_id;
+ 		krc_file_key_value_pair_type_id = krc_file_key_value_pair_get_type_once ();
+-		g_once_init_leave (&krc_file_key_value_pair_type_id__once, krc_file_key_value_pair_type_id);
++		g_once_init_leave_pointer (&krc_file_key_value_pair_type_id__once, krc_file_key_value_pair_type_id);
+ 	}
+-	return krc_file_key_value_pair_type_id__once;
++	return (GType) (guintptr) krc_file_key_value_pair_type_id__once;
+ }
+ 
+ void
+@@ -340,13 +342,15 @@ krc_file_group_get_type_once (void)
+ GType
+ krc_file_group_get_type (void)
+ {
+-	static volatile gsize krc_file_group_type_id__once = 0;
+-	if (g_once_init_enter (&krc_file_group_type_id__once)) {
++	/* pizlix/Fil-C: pointer-typed static + _pointer variants so the GType
++	 * keeps its pointer representation. */
++	static gpointer krc_file_group_type_id__once = 0;
++	if (g_once_init_enter_pointer (&krc_file_group_type_id__once)) {
+ 		GType krc_file_group_type_id;
+ 		krc_file_group_type_id = krc_file_group_get_type_once ();
+-		g_once_init_leave (&krc_file_group_type_id__once, krc_file_group_type_id);
++		g_once_init_leave_pointer (&krc_file_group_type_id__once, krc_file_group_type_id);
+ 	}
+-	return krc_file_group_type_id__once;
++	return (GType) (guintptr) krc_file_group_type_id__once;
+ }
+ 
+ static inline gpointer
+@@ -2493,13 +2497,15 @@ krc_file_get_type_once (void)
+ GType
+ krc_file_get_type (void)
+ {
+-	static volatile gsize krc_file_type_id__once = 0;
+-	if (g_once_init_enter (&krc_file_type_id__once)) {
++	/* pizlix/Fil-C: pointer-typed static + _pointer variants so the GType
++	 * keeps its pointer representation. */
++	static gpointer krc_file_type_id__once = 0;
++	if (g_once_init_enter_pointer (&krc_file_type_id__once)) {
+ 		GType krc_file_type_id;
+ 		krc_file_type_id = krc_file_get_type_once ();
+-		g_once_init_leave (&krc_file_type_id__once, krc_file_type_id);
++		g_once_init_leave_pointer (&krc_file_type_id__once, krc_file_type_id);
+ 	}
+-	return krc_file_type_id__once;
++	return (GType) (guintptr) krc_file_type_id__once;
+ }
+ 
+ gpointer
+diff --git a/tools/main.c b/tools/main.c
+index 927abcb..227f8de 100644
+--- a/tools/main.c
++++ b/tools/main.c
+@@ -598,13 +598,15 @@ engine_list_get_type_once (void)
+ GType
+ engine_list_get_type (void)
+ {
+-	static volatile gsize engine_list_type_id__once = 0;
+-	if (g_once_init_enter (&engine_list_type_id__once)) {
++	/* pizlix/Fil-C: pointer-typed static + _pointer variants so the GType
++	 * keeps its pointer representation. */
++	static gpointer engine_list_type_id__once = 0;
++	if (g_once_init_enter_pointer (&engine_list_type_id__once)) {
+ 		GType engine_list_type_id;
+ 		engine_list_type_id = engine_list_get_type_once ();
+-		g_once_init_leave (&engine_list_type_id__once, engine_list_type_id);
++		g_once_init_leave_pointer (&engine_list_type_id__once, engine_list_type_id);
+ 	}
+-	return engine_list_type_id__once;
++	return (GType) (guintptr) engine_list_type_id__once;
+ }
+ 
+ gpointer
+@@ -3968,13 +3970,15 @@ command_entry_get_type_once (void)
+ GType
+ command_entry_get_type (void)
+ {
+-	static volatile gsize command_entry_type_id__once = 0;
+-	if (g_once_init_enter (&command_entry_type_id__once)) {
++	/* pizlix/Fil-C: pointer-typed static + _pointer variants so the GType
++	 * keeps its pointer representation. */
++	static gpointer command_entry_type_id__once = 0;
++	if (g_once_init_enter_pointer (&command_entry_type_id__once)) {
+ 		GType command_entry_type_id;
+ 		command_entry_type_id = command_entry_get_type_once ();
+-		g_once_init_leave (&command_entry_type_id__once, command_entry_type_id);
++		g_once_init_leave_pointer (&command_entry_type_id__once, command_entry_type_id);
+ 	}
+-	return command_entry_type_id__once;
++	return (GType) (guintptr) command_entry_type_id__once;
+ }
+ 
+ static gint

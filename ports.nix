@@ -42,6 +42,14 @@ let
     gnuTarGz
     ;
 
+  # Nixpkgs' Bash patches use -p0; the pinned importer emits -p1 paths.
+  # Apply our unwind buffer fix separately without changing their strip level.
+  bashUnwindPatch = use (old: {
+    postPatch = (old.postPatch or "") + ''
+      patch -p1 < ${./ports/patch/bash-5.3.patch}
+    '';
+  });
+
   # Mozilla's root store from NSS 3.131.1, which removes the emSign roots
   # behind the October 2026 eMudhra key compromise (emSign ECC Root CA - G3,
   # emSign Root CA - C1 and emSign ECC Root CA - C3). Used for cacert; the
@@ -660,7 +668,7 @@ in
       (arg { interactive = true; })
       # unwind_protect saves jmp_bufs in a misaligned buffer, losing their
       # capabilities: `bash -c 'set -e; false'` crashed.
-      (patch ./ports/patch/bash-5.3.patch)
+      bashUnwindPatch
       (skipCheck "interactive mode issues")
     ];
 
@@ -668,7 +676,7 @@ in
       (arg { interactive = false; })
       # unwind_protect saves jmp_bufs in a misaligned buffer, losing their
       # capabilities: `bash -c 'set -e; false'` crashed.
-      (patch ./ports/patch/bash-5.3.patch)
+      bashUnwindPatch
       (skipCheck "test issues")
     ];
   }
@@ -2306,7 +2314,9 @@ in
   {
     libxkbcommon = (
       for pkgs.libxkbcommon [
-        (patch ./ports/patch/libxkbcommon-xkbcommon-1.11.0.patch)
+        # The upstream 1.11 X11 test hunk does not apply to 1.13, and X11 is
+        # disabled here. Keep only the still-needed version-script adaptation.
+        (patch ./patches/libxkbcommon-version-scripts.patch)
         (skipTests "eh")
         (addMesonFlag "-Denable-x11=false")
       ]
@@ -2333,6 +2343,11 @@ in
     (addCMakeFlag "-DIEX_HAVE_SIGCONTEXT_CONTROL_REGISTER_SUPPORT=OFF")
     (addCMakeFlag "-DOJPH_DISABLE_SIMD=ON")
     (use (old: {
+      # The exhaustive threaded tile matrix exceeds CTest's 1500-second
+      # default with Fil-C under load. Keep the whole test, with a larger bound.
+      postPatch = (old.postPatch or "") + ''
+        echo 'set_tests_properties(OpenEXR.testMultiTiledPartThreading PROPERTIES TIMEOUT 7200)' >> src/test/OpenEXRTest/CMakeLists.txt
+      '';
       # Compares OpenEXRCore's CPU detection with the C++ library's, which
       # without the inline assembly no longer reports AVX.
       disabledTests = (old.disabledTests or [ ]) ++ [ "OpenEXRCore.testCPUIdent" ];
@@ -2763,6 +2778,7 @@ in
     python312 = for pkgs.python312 [
       (pin "3.12.5" "sha256-+oouEsXmILCfU+ZbzYdVDS5aHi4Ev4upkdzFUROHY5c=")
       (patch ./ports/patch/Python-3.12.5.patch)
+      (patch ./patches/python-code-header-cxx.patch)
       (patch ./patches/python-filc-triplet-detection.patch)
       (patch ./patches/python-faulthandler.patch)
       # nixpkgs' separate debug info adds -Wa,--compress-debug-sections, which

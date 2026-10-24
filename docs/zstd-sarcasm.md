@@ -11,12 +11,15 @@ nix build .#checks.x86_64-linux.zstd-sarcasm
 
 ## What was needed
 
-SaRCAsm at the pinned [mbrock/fil-c](https://github.com/mbrock/fil-c)
-revision parses semicolon-separated statements emitted by zstd's
-preprocessor macros. It preserves quoted strings, `#` comments, annotation
-bodies, `lock;` prefixes, and original line numbers. The pinned SaRCAsm
-already allows unaligned ordinary integer accesses while keeping pointer and
-atomic alignment checks.
+The tagged upstream SaRCAsm lacks semicolon-separated statements emitted by
+zstd's preprocessor macros. `patches/sarcasm-zstd-statements.patch` restores
+that parsing support only in this package's assembler. This was also absent
+from release 0.686; it is not a 0.687 regression. The Oracle-reviewed backport
+preserves quoted strings, `#` comments, annotation bodies, `lock;` and `rep;`
+prefixes, and original filenames and line numbers. Every statement still
+passes through ordinary validation and checked code generation. The pinned
+SaRCAsm already allows unaligned ordinary integer accesses while keeping
+pointer and atomic alignment checks; the backport does not change codegen.
 
 `patches/zstd-sarcasm.patch` ports the two loops:
 
@@ -45,8 +48,9 @@ This is independent of the Huffman assembly experiment.
 
 The Nix check covers:
 
-- Semicolon parsing, `#` comments, annotations, quoted text, lock prefixes, and
-  access width/alignment selection.
+- Semicolon parsing, `#` comments, annotations, quoted text, lock/rep prefixes,
+  rejected invalid prefixes, diagnostic locations, numeric labels, and access
+  width/alignment selection.
 - Unaligned integer accesses, preserved pointer loads, and traps for
   out-of-bounds loads/stores, read-only writes, and misaligned pointer loads.
 - 200 comparisons of the X1/X2 assembly loops with zstd's C loops, using

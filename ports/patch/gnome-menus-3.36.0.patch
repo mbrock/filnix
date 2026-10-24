@@ -1,0 +1,29 @@
+diff --git a/libmenu/desktop-entries.c b/libmenu/desktop-entries.c
+index 7ecaef8..fe8b4d6 100644
+--- a/libmenu/desktop-entries.c
++++ b/libmenu/desktop-entries.c
+@@ -88,9 +88,14 @@ unix_basename_from_path (const char *path)
+ static const gchar * const *
+ get_current_desktops (void)
+ {
++  /* pizlix/Fil-C: the location must have pointer type and the value must be
++   * stored with the _pointer variants of g_once_init_enter/leave, so the
++   * string array keeps its pointer object metadata (the plain variants
++   * round-trip it through gsize, and consumers would then crash dereferencing
++   * a capability-less pointer). */
+   static gchar **result;
+ 
+-  if (g_once_init_enter (&result))
++  if (g_once_init_enter_pointer (&result))
+     {
+       const gchar *desktops;
+       gchar **tmp;
+@@ -102,7 +107,7 @@ get_current_desktops (void)
+ 
+       tmp = g_strsplit (desktops, ":", 0);
+ 
+-      g_once_init_leave (&result, tmp);
++      g_once_init_leave_pointer (&result, tmp); /* pizlix/Fil-C: see above. */
+     }
+ 
+   return  (const gchar **) result;

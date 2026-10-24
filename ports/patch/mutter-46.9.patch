@@ -1,0 +1,557 @@
+diff --git a/clutter/clutter/clutter-actor.c b/clutter/clutter/clutter-actor.c
+index f9487b9..49b9841 100644
+--- a/clutter/clutter/clutter-actor.c
++++ b/clutter/clutter/clutter-actor.c
+@@ -6869,7 +6869,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -6892,7 +6892,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[BUTTON_PRESS_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -6915,7 +6915,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[BUTTON_RELEASE_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -6938,7 +6938,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[SCROLL_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -6961,7 +6961,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[KEY_PRESS_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -6985,7 +6985,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[KEY_RELEASE_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -7008,7 +7008,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[MOTION_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -7059,7 +7059,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[ENTER_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -7082,7 +7082,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[LEAVE_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -7112,7 +7112,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[CAPTURED_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+@@ -7239,7 +7239,7 @@ clutter_actor_class_init (ClutterActorClass *klass)
+ 		  _clutter_boolean_handled_accumulator, NULL,
+ 		  _clutter_marshal_BOOLEAN__BOXED,
+ 		  G_TYPE_BOOLEAN, 1,
+-		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++		  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (actor_signals[TOUCH_EVENT],
+                               G_TYPE_FROM_CLASS (object_class),
+                               _clutter_marshal_BOOLEAN__BOXEDv);
+diff --git a/clutter/clutter/clutter-enum-types.c.in b/clutter/clutter/clutter-enum-types.c.in
+index d940283..6893e9d 100644
+--- a/clutter/clutter/clutter-enum-types.c.in
++++ b/clutter/clutter/clutter-enum-types.c.in
+@@ -14,9 +14,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static size_t g_enum_type_id = 0;
++  static gpointer g_enum_type_id = 0; /* Fil-C: GType is pointer-sized; use the pointer variants. */
+ 
+-  if (g_once_init_enter (&g_enum_type_id))
++  if (g_once_init_enter_pointer (&g_enum_type_id))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -32,9 +32,9 @@ GType
+ 
+       id = g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+ 
+-      g_once_init_leave (&g_enum_type_id, id);
++      g_once_init_leave_pointer (&g_enum_type_id, id);
+     }
+ 
+-  return g_enum_type_id;
++  return (GType) g_enum_type_id;
+ }
+ /*** END value-tail ***/
+diff --git a/clutter/clutter/clutter-gesture.c b/clutter/clutter/clutter-gesture.c
+index ea095f8..dd374d9 100644
+--- a/clutter/clutter/clutter-gesture.c
++++ b/clutter/clutter/clutter-gesture.c
+@@ -1313,7 +1313,7 @@ clutter_gesture_class_init (ClutterGestureClass *klass)
+                   _clutter_boolean_continue_accumulator,
+                   NULL, _clutter_marshal_BOOLEAN__BOXED,
+                   G_TYPE_BOOLEAN, 1,
+-                  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) CLUTTER_TYPE_EVENT | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+ 
+   g_signal_set_va_marshaller (obj_signals[SHOULD_HANDLE_SEQUENCE],
+                               G_TYPE_FROM_CLASS (gobject_class),
+diff --git a/clutter/clutter/clutter-interval.c b/clutter/clutter/clutter-interval.c
+index fe62ae3..ac0f03e 100644
+--- a/clutter/clutter/clutter-interval.c
++++ b/clutter/clutter/clutter-interval.c
+@@ -97,9 +97,9 @@ clutter_interval_real_validate (ClutterInterval *interval,
+   GType pspec_gtype = G_PARAM_SPEC_VALUE_TYPE (pspec);
+ 
+   /* then check the fundamental types */
+-  switch (G_TYPE_FUNDAMENTAL (pspec_gtype))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (pspec_gtype)) /* Fil-C: GType is a pointer type. */
+     {
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       {
+         GParamSpecInt *pspec_int = G_PARAM_SPEC_INT (pspec);
+         gint a, b;
+@@ -114,7 +114,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_INT64:
++    case (uintptr_t) G_TYPE_INT64:
+       {
+         GParamSpecInt64 *pspec_int = G_PARAM_SPEC_INT64 (pspec);
+         gint64 a, b;
+@@ -129,7 +129,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       {
+         GParamSpecUInt *pspec_uint = G_PARAM_SPEC_UINT (pspec);
+         guint a, b;
+@@ -144,7 +144,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_UINT64:
++    case (uintptr_t) G_TYPE_UINT64:
+       {
+         GParamSpecUInt64 *pspec_int = G_PARAM_SPEC_UINT64 (pspec);
+         guint64 a, b;
+@@ -159,7 +159,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       {
+         GParamSpecChar *pspec_char = G_PARAM_SPEC_CHAR (pspec);
+         guchar a, b;
+@@ -174,7 +174,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       {
+         GParamSpecUChar *pspec_uchar = G_PARAM_SPEC_UCHAR (pspec);
+         guchar a, b;
+@@ -189,7 +189,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_FLOAT:
+       {
+         GParamSpecFloat *pspec_flt = G_PARAM_SPEC_FLOAT (pspec);
+         float a, b;
+@@ -204,7 +204,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         GParamSpecDouble *pspec_flt = G_PARAM_SPEC_DOUBLE (pspec);
+         double a, b;
+@@ -219,7 +219,7 @@ clutter_interval_real_validate (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       return TRUE;
+ 
+     default:
+@@ -254,9 +254,9 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+         return TRUE;
+     }
+ 
+-  switch (G_TYPE_FUNDAMENTAL (value_type))
++  switch ((uintptr_t) G_TYPE_FUNDAMENTAL (value_type)) /* Fil-C: GType is a pointer type. */
+     {
+-    case G_TYPE_INT:
++    case (uintptr_t) G_TYPE_INT:
+       {
+         gint ia, ib, res;
+ 
+@@ -271,7 +271,7 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_CHAR:
++    case (uintptr_t) G_TYPE_CHAR:
+       {
+         gchar ia, ib, res;
+ 
+@@ -286,7 +286,7 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_UINT:
++    case (uintptr_t) G_TYPE_UINT:
+       {
+         guint ia, ib, res;
+ 
+@@ -301,7 +301,7 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_UCHAR:
++    case (uintptr_t) G_TYPE_UCHAR:
+       {
+         guchar ia, ib, res;
+ 
+@@ -316,8 +316,8 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_FLOAT:
+-    case G_TYPE_DOUBLE:
++    case (uintptr_t) G_TYPE_FLOAT:
++    case (uintptr_t) G_TYPE_DOUBLE:
+       {
+         gdouble ia, ib, res;
+ 
+@@ -343,7 +343,7 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+       }
+       break;
+ 
+-    case G_TYPE_BOOLEAN:
++    case (uintptr_t) G_TYPE_BOOLEAN:
+       if (factor > 0.5)
+         g_value_set_boolean (value, TRUE);
+       else
+@@ -352,7 +352,7 @@ clutter_interval_real_compute_value (ClutterInterval *interval,
+       retval = TRUE;
+       break;
+ 
+-    case G_TYPE_BOXED:
++    case (uintptr_t) G_TYPE_BOXED:
+       break;
+ 
+     default:
+diff --git a/clutter/clutter/clutter-paint-node.c b/clutter/clutter/clutter-paint-node.c
+index 94b2075..a0b5ba5 100644
+--- a/clutter/clutter/clutter-paint-node.c
++++ b/clutter/clutter/clutter-paint-node.c
+@@ -223,9 +223,11 @@ clutter_paint_node_init (ClutterPaintNode *self)
+ GType
+ clutter_paint_node_get_type (void)
+ {
+-  static size_t paint_node_type_id = 0;
++  /* Fil-C: GType is a pointer type, so the id slot must be a gpointer and
++     the pointer variants of g_once_init_enter/leave must be used. */
++  static gpointer paint_node_type_id = 0;
+ 
+-  if (g_once_init_enter (&paint_node_type_id))
++  if (g_once_init_enter_pointer (&paint_node_type_id))
+     {
+       static const GTypeFundamentalInfo finfo = {
+         (G_TYPE_FLAG_CLASSED |
+@@ -267,10 +269,10 @@ clutter_paint_node_get_type (void)
+                                      &node_info, &finfo,
+                                      G_TYPE_FLAG_ABSTRACT);
+ 
+-      g_once_init_leave (&paint_node_type_id, id);
++      g_once_init_leave_pointer (&paint_node_type_id, id);
+     }
+ 
+-  return paint_node_type_id;
++  return (GType) paint_node_type_id;
+ }
+ 
+ /**
+diff --git a/clutter/clutter/clutter-stage.c b/clutter/clutter/clutter-stage.c
+index d5a5952..f8ed08b 100644
+--- a/clutter/clutter/clutter-stage.c
++++ b/clutter/clutter/clutter-stage.c
+@@ -1407,7 +1407,7 @@ clutter_stage_class_init (ClutterStageClass *klass)
+                   _clutter_marshal_VOID__OBJECT_BOXED,
+                   G_TYPE_NONE, 2,
+                   CLUTTER_TYPE_STAGE_VIEW,
+-                  CLUTTER_TYPE_FRAME | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) CLUTTER_TYPE_FRAME | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (stage_signals[BEFORE_UPDATE],
+                               G_TYPE_FROM_CLASS (gobject_class),
+                               _clutter_marshal_VOID__OBJECT_BOXEDv);
+@@ -1430,7 +1430,7 @@ clutter_stage_class_init (ClutterStageClass *klass)
+                   _clutter_marshal_VOID__OBJECT_BOXED,
+                   G_TYPE_NONE, 2,
+                   CLUTTER_TYPE_STAGE_VIEW,
+-                  CLUTTER_TYPE_FRAME | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) CLUTTER_TYPE_FRAME | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (stage_signals[PREPARE_FRAME],
+                               G_TYPE_FROM_CLASS (gobject_class),
+                               _clutter_marshal_VOID__OBJECT_BOXEDv);
+@@ -1452,7 +1452,7 @@ clutter_stage_class_init (ClutterStageClass *klass)
+                   _clutter_marshal_VOID__OBJECT_BOXED,
+                   G_TYPE_NONE, 2,
+                   CLUTTER_TYPE_STAGE_VIEW,
+-                  CLUTTER_TYPE_FRAME | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) CLUTTER_TYPE_FRAME | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (stage_signals[BEFORE_PAINT],
+                               G_TYPE_FROM_CLASS (gobject_class),
+                               _clutter_marshal_VOID__OBJECT_BOXEDv);
+@@ -1475,7 +1475,7 @@ clutter_stage_class_init (ClutterStageClass *klass)
+                   _clutter_marshal_VOID__OBJECT_BOXED,
+                   G_TYPE_NONE, 2,
+                   CLUTTER_TYPE_STAGE_VIEW,
+-                  CLUTTER_TYPE_FRAME | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) CLUTTER_TYPE_FRAME | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (stage_signals[AFTER_PAINT],
+                               G_TYPE_FROM_CLASS (gobject_class),
+                               _clutter_marshal_VOID__OBJECT_BOXEDv);
+@@ -1495,7 +1495,7 @@ clutter_stage_class_init (ClutterStageClass *klass)
+                   _clutter_marshal_VOID__OBJECT_BOXED,
+                   G_TYPE_NONE, 2,
+                   CLUTTER_TYPE_STAGE_VIEW,
+-                  CLUTTER_TYPE_FRAME | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) CLUTTER_TYPE_FRAME | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (stage_signals[AFTER_UPDATE],
+                               G_TYPE_FROM_CLASS (gobject_class),
+                               _clutter_marshal_VOID__OBJECT_BOXEDv);
+@@ -1523,8 +1523,8 @@ clutter_stage_class_init (ClutterStageClass *klass)
+                   _clutter_marshal_VOID__OBJECT_BOXED_BOXED,
+                   G_TYPE_NONE, 3,
+                   CLUTTER_TYPE_STAGE_VIEW,
+-                  MTK_TYPE_REGION | G_SIGNAL_TYPE_STATIC_SCOPE,
+-                  CLUTTER_TYPE_FRAME | G_SIGNAL_TYPE_STATIC_SCOPE);
++                  (GType) ((uintptr_t) MTK_TYPE_REGION | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE),
++                  (GType) ((uintptr_t) CLUTTER_TYPE_FRAME | (uintptr_t) G_SIGNAL_TYPE_STATIC_SCOPE));
+   g_signal_set_va_marshaller (stage_signals[PAINT_VIEW],
+                               G_TYPE_FROM_CLASS (gobject_class),
+                               _clutter_marshal_VOID__OBJECT_BOXED_BOXEDv);
+diff --git a/cogl/cogl/cogl-bitmap-conversion.c b/cogl/cogl/cogl-bitmap-conversion.c
+index 948e633..1b9d3dc 100644
+--- a/cogl/cogl/cogl-bitmap-conversion.c
++++ b/cogl/cogl/cogl-bitmap-conversion.c
+@@ -262,8 +262,12 @@ _cogl_premult_alpha_first (uint8_t *dst)
+ 
+ /* Use the SSE optimized version to premult four pixels at once when
+    it is available. The same assembler code works for x86 and x86-64
+-   because it doesn't refer to any non-SSE registers directly */
+-#if defined(__SSE2__) && defined(__GNUC__) \
++   because it doesn't refer to any non-SSE registers directly.
++
++   Fil-C: disabled.  The SSE2 block is inline assembly with pointer
++   arguments, which the Fil-C safety validator does not support; fall
++   back to the plain C path instead. */
++#if 0 && defined(__SSE2__) && defined(__GNUC__) \
+   && (defined(__x86_64) || defined(__i386))
+ #define COGL_USE_PREMULT_SSE2
+ #endif
+diff --git a/cogl/cogl/cogl-cpu-caps.c b/cogl/cogl/cogl-cpu-caps.c
+index 559caee..b69929e 100644
+--- a/cogl/cogl/cogl-cpu-caps.c
++++ b/cogl/cogl/cogl-cpu-caps.c
+@@ -43,6 +43,9 @@ CoglCpuCaps cogl_cpu_caps;
+ static inline uint64_t
+ xgetbv (void)
+ {
++#if 0 /* Fil-C: raw XGETBV inline asm is rejected by the Fil-C safety
++       * validator, so report that no extended CPU state is OS-enabled;
++       * cogl then avoids its AVX code paths. */
+ #ifdef __GCC_ASM_FLAG_OUTPUTS__
+   uint32_t eax, edx;
+ 
+@@ -57,6 +60,9 @@ xgetbv (void)
+ #else
+   return 0;
+ #endif
++#else
++  return 0;
++#endif
+ }
+ 
+ static inline void
+diff --git a/cogl/cogl/cogl-enum-types.c.in b/cogl/cogl/cogl-enum-types.c.in
+index 91a5833..0e29856 100644
+--- a/cogl/cogl/cogl-enum-types.c.in
++++ b/cogl/cogl/cogl-enum-types.c.in
+@@ -14,9 +14,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static size_t g_enum_type_id = 0;
++  static gpointer g_enum_type_id = 0; /* Fil-C: GType is pointer-sized; use the pointer variants. */
+ 
+-  if (g_once_init_enter (&g_enum_type_id))
++  if (g_once_init_enter_pointer (&g_enum_type_id))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -32,9 +32,9 @@ GType
+ 
+       id = g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+ 
+-      g_once_init_leave (&g_enum_type_id, id);
++      g_once_init_leave_pointer (&g_enum_type_id, id);
+     }
+ 
+-  return g_enum_type_id;
++  return (GType) g_enum_type_id;
+ }
+ /*** END value-tail ***/
+diff --git a/src/compositor/meta-sync-ring.c b/src/compositor/meta-sync-ring.c
+index 1267dd4..88572bc 100644
+--- a/src/compositor/meta-sync-ring.c
++++ b/src/compositor/meta-sync-ring.c
+@@ -34,7 +34,12 @@
+ 
+ #include <string.h>
+ #include <GL/gl.h>
++/* Fil-C: our mesa is Wayland-only and ships no GL/glx.h.  This file only
++   uses GL types from GL/gl.h plus Xlib/XSync, so the GLX header is only
++   pulled in when GLX support is actually built. */
++#ifdef HAVE_GLX
+ #include <GL/glx.h>
++#endif
+ #include <X11/extensions/sync.h>
+ 
+ #include "clutter/clutter.h"
+diff --git a/src/frames/meson.build b/src/frames/meson.build
+index 05c27d5..35759e6 100644
+--- a/src/frames/meson.build
++++ b/src/frames/meson.build
+@@ -6,6 +6,10 @@ x11_frames_sources = [
+   'meta-window-tracker.c',
+ ]
+ 
++# Fil-C: mutter-x11-frames needs GTK4 with the X11 backend (gdk/x11/gdkx.h)
++# and is only ever used together with Xwayland.  Skip it when Xwayland is
++# disabled (our gtk4 is built without the X11 backend).
++if have_xwayland
+ x11_frames = executable('mutter-x11-frames',
+   sources: x11_frames_sources,
+   dependencies: [
+@@ -23,3 +27,6 @@ x11_frames = executable('mutter-x11-frames',
+   install: true,
+   install_dir: get_option('libexecdir'),
+ )
++else
++  x11_frames = disabler()
++endif
+diff --git a/src/meta-private-enum-types.c.in b/src/meta-private-enum-types.c.in
+index 55cd855..d190ebb 100644
+--- a/src/meta-private-enum-types.c.in
++++ b/src/meta-private-enum-types.c.in
+@@ -14,9 +14,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static size_t g_enum_type_id = 0;
++  static gpointer g_enum_type_id = 0; /* Fil-C: GType is pointer-sized; use the pointer variants. */
+ 
+-  if (g_once_init_enter (&g_enum_type_id))
++  if (g_once_init_enter_pointer (&g_enum_type_id))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -32,9 +32,9 @@ GType
+ 
+       id = g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+ 
+-      g_once_init_leave (&g_enum_type_id, id);
++      g_once_init_leave_pointer (&g_enum_type_id, id);
+     }
+ 
+-  return g_enum_type_id;
++  return (GType) g_enum_type_id;
+ }
+ /*** END value-tail ***/
+diff --git a/src/meta/meta-enum-types.c.in b/src/meta/meta-enum-types.c.in
+index 0579f01..36bd2ae 100644
+--- a/src/meta/meta-enum-types.c.in
++++ b/src/meta/meta-enum-types.c.in
+@@ -14,9 +14,9 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-  static size_t g_enum_type_id = 0;
++  static gpointer g_enum_type_id = 0; /* Fil-C: GType is pointer-sized; use the pointer variants. */
+ 
+-  if (g_once_init_enter (&g_enum_type_id))
++  if (g_once_init_enter_pointer (&g_enum_type_id))
+     {
+       static const G@Type@Value values[] = {
+ /*** END value-header ***/
+@@ -32,9 +32,9 @@ GType
+ 
+       id = g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+ 
+-      g_once_init_leave (&g_enum_type_id, id);
++      g_once_init_leave_pointer (&g_enum_type_id, id);
+     }
+ 
+-  return g_enum_type_id;
++  return (GType) g_enum_type_id;
+ }
+ /*** END value-tail ***/

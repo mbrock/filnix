@@ -96,3 +96,39 @@ index e8846a5b0d0d..1a5583c40f08 100644
  	d->end_pos = (d->end_pos + 1) & d->cap_mask;
  	d->size++;
  
+diff --git a/libarchive/archive_write_disk_posix.c b/libarchive/archive_write_disk_posix.c
+index 92db4ff05b63..af578ada62a0 100644
+--- a/libarchive/archive_write_disk_posix.c
++++ b/libarchive/archive_write_disk_posix.c
+@@ -3795,10 +3795,15 @@ set_mode(struct archive_write_disk *a, int mode)
+ #if ENOTSUP != EOPNOTSUPP
+ 			case EOPNOTSUPP:
+ #endif
++			case EPERM:
+ 				/*
+ 				 * if lchmod is defined but the platform
+ 				 * doesn't support it, silently ignore
+-				 * error
++				 * error.  Some libcs (e.g. the pizlonated
++				 * glibc used by Fil-C) return EPERM rather
++				 * than ENOTSUP when asked to lchmod() a
++				 * symlink on Linux, since symlinks cannot
++				 * have permissions there.
+ 				 */
+ 				break;
+ 			default:
+diff --git a/libarchive/test/test_write_disk_secure.c b/libarchive/test/test_write_disk_secure.c
+index ddaf95d7497c..b8a3e036fe3a 100644
+--- a/libarchive/test/test_write_disk_secure.c
++++ b/libarchive/test/test_write_disk_secure.c
+@@ -266,6 +266,10 @@ DEFINE_TEST(test_write_disk_secure)
+ #if ENOTSUP != EOPNOTSUPP
+ 				case EOPNOTSUPP:
+ #endif
++				/* Some libcs (e.g. the pizlonated glibc
++				 * used by Fil-C) return EPERM when asked
++				 * to lchmod() a symlink on Linux. */
++				case EPERM:
+ 					working_lchmod = 0;
+ 					break;
+ 				default:

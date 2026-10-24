@@ -1,0 +1,68 @@
+diff --git a/src/comment.c b/src/comment.c
+index 4d720fc..6432b7d 100644
+--- a/src/comment.c
++++ b/src/comment.c
+@@ -62,13 +62,13 @@ csyntax(void)
+ static int
+ opencomment(void)
+ {
+-	return (insstr(cstart) && insstr(" "));
++	return (insstring(cstart) && insstring(" "));
+ }
+ 
+ static int
+ closecomment(void)
+ {
+-	return (*cend == '\0' || (insstr(" ") && insstr(cend)));
++	return (*cend == '\0' || (insstring(" ") && insstring(cend)));
+ }
+ 
+ /*
+diff --git a/src/def.h b/src/def.h
+index 4fb8e7e..9e91eaf 100644
+--- a/src/def.h
++++ b/src/def.h
+@@ -511,7 +511,7 @@ int		 lsettext(struct line *, const char *, int);
+ void		 lfree(struct line *);
+ void		 lchange(int);
+ int		 linsert(int, int);
+-int		 insstr(const char *);
++int		 insstring(const char *);
+ int		 insbytes(const char *, int);
+ int		 lnewline_at(struct line *, int);
+ int		 lnewline(void);
+diff --git a/src/line.c b/src/line.c
+index 3a615ec..9a78e51 100644
+--- a/src/line.c
++++ b/src/line.c
+@@ -206,7 +206,7 @@ insbytes(const char *s, int n)
+ }
+ 
+ int
+-insstr(const char *s)
++insstring(const char *s)
+ {
+ 	return (insbytes(s, strlen(s)));
+ }
+diff --git a/src/rect.c b/src/rect.c
+index 597ba4d..326a41e 100644
+--- a/src/rect.c
++++ b/src/rect.c
+@@ -236,7 +236,7 @@ yankrect(int f, int n)
+ 	for (i = 0; i < nrows; i++) {
+ 		setdot(lp, 0, lineno + i);
+ 		(void)tocol(col, 1);
+-		if (insstr(rows[i]) != TRUE)
++		if (insstring(rows[i]) != TRUE)
+ 			break;
+ 		if (i + 1 == nrows)
+ 			break;
+@@ -321,7 +321,7 @@ stringrect(int f, int n)
+ 	undo_boundary_enable(FFRAND, 0);
+ 	for (i = 0, lp = r.lp; i < r.nlines; i++, lp = lforw(lp)) {
+ 		w = span(lp, r.lineno + i, &r, 1);
+-		if (ldelete(w, KNONE) != TRUE || insstr(s) != TRUE)
++		if (ldelete(w, KNONE) != TRUE || insstring(s) != TRUE)
+ 			break;
+ 	}
+ 	return (rect_done(&r));

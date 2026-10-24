@@ -1,0 +1,29 @@
+diff --git a/libgweather/gweather-enum-types.c.tmpl b/libgweather/gweather-enum-types.c.tmpl
+index 36d34a7..1f4f698 100644
+--- a/libgweather/gweather-enum-types.c.tmpl
++++ b/libgweather/gweather-enum-types.c.tmpl
+@@ -16,9 +16,13 @@
+ GType
+ @enum_name@_get_type (void)
+ {
+-    static gsize g_define_enum_type;
++    /* pizlix/Fil-C: the location must have pointer type and the value must be
++     * stored with the _pointer variants of g_once_init_enter/leave, so the
++     * GType keeps its pointer representation (the plain variants round-trip
++     * the value through gsize). */
++    static gpointer g_define_enum_type;
+ 
+-    if (g_once_init_enter (&g_define_enum_type)) {
++    if (g_once_init_enter_pointer (&g_define_enum_type)) {
+         static const G@Type@Value values[] = {
+ /*** END value-header ***/
+ 
+@@ -32,7 +36,7 @@ GType
+ 
+         GType enum_type = g_@type@_register_static (g_intern_static_string ("@EnumName@"), values);
+ 
+-        g_once_init_leave (&g_define_enum_type, enum_type);
++        g_once_init_leave_pointer (&g_define_enum_type, enum_type);
+     }
+ 
+     return g_define_enum_type;
