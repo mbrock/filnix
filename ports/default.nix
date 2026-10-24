@@ -247,6 +247,7 @@ let
     use (old: {
       meta = (old.meta or { }) // {
         broken = true;
+        filcBrokenReason = reason;
         badPlatforms = [
           "x86_64-linux"
           "aarch64-linux"

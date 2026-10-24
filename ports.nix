@@ -2233,6 +2233,10 @@ in
   ])
 
   (for pkgs.pipewire [
+    # 1.6.6 test-loop/cancel_thread_while_dispatching aborts in pthread_cancel:
+    # "libgcc_s.so.6661 must be installed for pthread_cancel to work".
+    # The current Fil-C runtime does not support this cancellation path.
+    (broken "PipeWire test-loop cancellation requires unsupported Fil-C pthread_cancel (libgcc_s.so.6661)")
     # Linker-section registration, pointer capabilities and test runtime
     # fixes; see docs/shared-library-unblocks.md.
     (patch ./patches/pipewire-log-topics.patch)
