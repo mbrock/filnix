@@ -9,8 +9,11 @@
       lv(Addr, Type)   an object at Addr, a p value: an lvalue, or a
                        member of a struct rvalue
       fd(Symbol, Type) a function designator
-    Whether an expression is an lvalue, and may be assigned, is
-    c_types' expression_category/3 and modifiable_lvalue/2.
+    Expressions are lowered from c_types' typed trees (elaborate/3):
+    the tree says what each expression is and what its operands are
+    converted to, and the elaborator has checked C's constraints, so
+    lowering only translates (lower//3 for values, place//3 for objects
+    and functions).
     A narrow integer (char, short, bool) is always held sign- or
     zero-extended to 32 bits in a w, so conversions only extend when the
     source type has values the target cannot represent.
@@ -1203,91 +1206,11 @@ statement_expression_last(at(_, label(Name, Body)), Ctx, R) --> !,
     statement_expression_last(Body, Ctx, R).
 statement_expression_last(Item, Ctx, v(c(0), void)) --> item(Item, Ctx).
 
-% obj(+Expr, +Ctx, -R)//: R is Expr as an lvalue, function designator or
-% rvalue, without array decay or loading.
-obj(generic(Control, Associations), Ctx, R) --> !,
-    expr_type(Control, Ctx, T0),
-    env(Env),
-    { value_type(T0, Type), ctx_loc(Ctx, Loc),
-      generic_selection(Type, Associations, Env, Loc, Selected) },
-    obj(Selected, Ctx, R).
-obj(id(Name), Ctx, R) --> !,
-    env(Env),
-    (   { lookup_ordinary(Env, Name, Binding),
-          object_binding(Binding) }
-    ->  binding_obj(Binding, R)
-    ;   { memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']) }
-    ->  { Ctx = ctx(Func, _, _, _, _), atom_codes(Func, Bytes) },
-        obj(str(Bytes), Ctx, R)
-    ;   { ctx_loc(Ctx, Loc),
-          sema_error(Loc, 'undeclared identifier ~w', [Name]) }
-    ).
-obj(un(deref, Ptr), Ctx, R) --> !,
-    rval(Ptr, Ctx, v(V, Type)),
-    (   { Type = ptr(FuncType), FuncType = func(_, _, _) }
-    ->  callee_temp(V, Callee),
-        { R = fd(Callee, FuncType) }
-    ;   { Type = ptr(ObjType) } -> { R = lv(V, ObjType) }
-    ;   { ctx_loc(Ctx, Loc),
-          sema_error(Loc, 'dereferencing a non-pointer', []) }
-    ).
-obj(index(Array, Index), Ctx, R) --> !,
-    obj(un(deref, bin(add, Array, Index)), Ctx, R).
-obj(member(SU, Field), Ctx, lv(P, Type)) --> !,
-    obj(SU, Ctx, R0),
-    (   {   R0 = lv(Addr, SUType)
-        ;   R0 = v(Addr, SUType),
-            su(SUType)
-        }
-    ->  member_lv(Addr, SUType, Field, Ctx, P, Type)
-    ;   { ctx_loc(Ctx, Loc),
-          sema_error(Loc, 'member access on a non-lvalue', []) }
-    ).
-obj(arrow(Ptr, Field), Ctx, lv(P, Type)) --> !,
-    rval(Ptr, Ctx, v(Addr, PtrType)),
-    (   { PtrType = ptr(SUType) }
-    ->  member_lv(Addr, SUType, Field, Ctx, P, Type)
-    ;   { ctx_loc(Ctx, Loc),
-          sema_error(Loc, '-> on a non-pointer', []) }
-    ).
-obj(str(Bytes), _, lv(Addr, array(char, N))) --> !,
-    env(Env0),
-    { new_literal(Bytes, Sym, Env0, Env),
-      length(Bytes, N0),
-      N is N0 + 1 },
-    set_env(Env),
-    ins(p, copy, [glo(Sym)], Addr).
-obj(wstr(WideType, Values), _, lv(Addr, array(WideType, N))) --> !,
-    env(Env0),
-    { new_literal(w(WideType, Values), Sym, Env0, Env),
-      length(Values, N0),
-      N is N0 + 1 },
-    set_env(Env),
-    ins(p, copy, [glo(Sym)], Addr).
-% A compound literal is an unnamed local, initialized where it appears.
-obj(complit(TypeName, Init), Ctx, lv(Addr, Type)) --> !,
-    env(Env),
-    { ctx_loc(Ctx, Loc),
-      type_name(TypeName, Type0, Env, Loc),
-      complete_array(Type0, Init, Type, Loc, Env, whole),
-      check_local_type(Type, Env, Loc, 'compound literal') },
-    local_slot(Type, Addr),
-    init(Addr, Type, Init, Ctx).
-obj(Expr, Ctx, R) --> rvalue(Expr, Ctx, R).
-
-% object_binding(+Binding): Binding, an identifier's c_types binding,
-% names an object, function or enumeration constant, not a typedef or
-% the sret pointer.
-object_binding(var(_, _)).
-object_binding(fn(_, _, _)).
-object_binding(enumconst(_, _)).
-object_binding(gvar(_, _, _, _)).
-
-% binding_obj(+Binding, -R)//: R is the identifier bound to Binding as
-% obj//3 gives it. A global's address is copied into a temporary.
+% binding_obj(+Binding, -R)//: R is the object or function an
+% identifier bound to Binding designates. A global's address is copied
+% into a temporary.
 binding_obj(var(Addr, Type), lv(Addr, Type)) --> [].
 binding_obj(fn(Type, Sym, _), fd(glo(Sym), Type)) --> [].
-binding_obj(enumconst(V, Type), v(c(V), Type)) --> [].
 binding_obj(gvar(Type, Sym, _, _), lv(Addr, Type)) -->
     ins(p, copy, [glo(Sym)], Addr).
 
@@ -1308,102 +1231,135 @@ member_lv(Addr, SUType, Field, Ctx, P, Type) -->
     ).
 
 % rval(+Expr, +Ctx, -R)//: R is v(V, Type), the value of Expr, arrays
-% decayed, lvalues loaded. Expr is lowered from its typed tree (c_types'
-% elaborate/3), used for its value; one that cannot be typed is lowered
-% the old way, which reports why.
+% decayed, lvalues loaded, lowered from its typed tree (c_types'
+% elaborate/3). Full expressions are judged first (judged//2), which
+% diagnoses one that cannot be typed.
 rval(Expr, Ctx, R) -->
     env(Env),
-    (   { elaborate(Expr, Env, X) }
-    ->  { value(X, XV) }, lower(XV, Expr, Ctx, R)
-    ;   untyped(Expr, Ctx, R)
+    (   { elaborate(Expr, Env, X) } -> { value(X, XV) }, lower(XV, Ctx, R)
+    ;   { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [Expr]) }
     ).
 
-% untyped(+Expr, +Ctx, -R)//: Expr cannot be typed and the elaborator
-% declined to say why, so lowering it the old way reports the fault it
-% meets; if it meets none, Expr is still refused.
-untyped(Expr, Ctx, R) -->
-    obj(Expr, Ctx, R0), decay(R0, Ctx, R),
-    { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [Expr]) }.
-
-/* lower(+XV, +Expr, +Ctx, -R)//: R is v(V, Type), the value of Expr,
-   whose typed tree used for its value is XV. The tree says what Expr is;
-   Expr is carried beside it while the forms not converted yet are
-   lowered from the source (the last clause), and their own operands
-   elaborated again. Types are unqualified, as code generation has them. */
-lower(val(T, int(V)), _, _, v(c(V), U)) --> !, { unqualified(T, U) }.
-lower(val(_, float(Cs)), _, _, v(c(V), Type)) --> !,
+/* lower(+XV, +Ctx, -R)//: R is v(V, Type), the value whose typed tree
+   is XV. Types are unqualified, as code generation has them; a type
+   name the source writes (a cast's, va_arg's, sizeof's) is read again
+   by type_name/4, which refuses one nanofil does not support. */
+lower(val(T, int(V)), _, v(c(V), U)) --> !, { unqualified(T, U) }.
+lower(val(_, float(Cs)), _, v(c(V), Type)) --> !,
     { float_literal(Cs, V, Type) }.
-lower(val(T, load(X)), Expr, Ctx, R) --> !,               % 6.3.2.1p2
-    place(X, Expr, Ctx, lv(Addr, _)),
+lower(val(T, load(X)), Ctx, R) --> !,                      % 6.3.2.1p2
+    place(X, Ctx, lv(Addr, _)),
     { unqualified(T, U) },
     loaded(U, Addr, Ctx, R).
-lower(val(T, decay(X)), Expr, Ctx, R) --> !,              % 6.3.2.1p3-4
-    place(X, Expr, Ctx, P),
+lower(val(T, decay(X)), Ctx, R) --> !,                     % 6.3.2.1p3-4
+    place(X, Ctx, P),
     decayed(P, T, Ctx, R).
-lower(val(T, addr(X)), un(addr, E), Ctx, R) --> !,         % 6.5.3.2p3
-    place(X, E, Ctx, P),
+lower(val(T, addr(X)), Ctx, R) --> !,                      % 6.5.3.2p3
+    place(X, Ctx, P),
     decayed(P, T, Ctx, R).
-lower(val(_, comma(XA, XB)), comma(A, B), Ctx, R) --> !,
-    lower(XA, A, Ctx, _),
-    lower(XB, B, Ctx, R).
-lower(val(_, un(Op, XV)), un(Op, E), Ctx, R) --> !,
-    lower(XV, E, Ctx, V),
+lower(val(_, member(XS, F)), Ctx, R) --> !,                % 6.5.2.3p3
+    lower(XS, Ctx, v(Addr, SU)),
+    member_lv(Addr, SU, F, Ctx, P, Type),
+    (   { Type = array(E, _) } -> { R = v(P, ptr(E)) }
+    ;   loaded(Type, P, Ctx, R)
+    ).
+lower(val(_, comma(XA, XB)), Ctx, R) --> !,                % 6.5.17
+    lower(XA, Ctx, _),
+    lower(XB, Ctx, R).
+lower(val(_, un(Op, XV)), Ctx, R) --> !,
+    lower(XV, Ctx, V),
     unary(Op, V, Ctx, R).
-lower(val(_, bin(Op, XA, XB)), bin(Op, A, B), Ctx, R) -->
-    { \+ memberchk(Op, [land, lor]) }, !,
-    lower(XA, A, Ctx, VA),
-    lower(XB, B, Ctx, VB),
+lower(val(_, bin(Op, XA, XB)), Ctx, R) -->                 % 6.5.13-14
+    { memberchk(Op, [land, lor]) }, !,
+    logical(Op, XA, XB, Ctx, R).
+lower(val(_, bin(Op, XA, XB)), Ctx, R) --> !,
+    lower(XA, Ctx, VA),
+    lower(XB, Ctx, VB),
     binary(Op, VA, VB, Ctx, R).
-lower(val(T, cond(XC, XA, XB)), cond(C, A, B), Ctx, R) --> !,  % 6.5.15
+lower(val(T, cond(XC, XA, XB)), Ctx, R) --> !,             % 6.5.15
     { unqualified(T, U) },
     label(LA), label(LB), label(LJoin),
-    lower(XC, C, Ctx, VC), truth(VC, Ctx, W), term(jnz(W, LA, LB)),
-    start(LA), lower(XA, A, Ctx, VA), converted(VA, U, v(VA1, _)), here(LA1),
+    lower(XC, Ctx, VC), truth(VC, Ctx, W), term(jnz(W, LA, LB)),
+    start(LA), lower(XA, Ctx, VA), converted(VA, U, v(VA1, _)), here(LA1),
     term(jmp(LJoin)),
-    start(LB), lower(XB, B, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
+    start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
     term(jmp(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
-lower(val(T, gcond(XC, XB)), gcond(C, B), Ctx, R) --> !,  % GNU c ?: b
+lower(val(T, gcond(XC, XB)), Ctx, R) --> !,                % GNU c ?: b
     { unqualified(T, U) },
-    lower(XC, C, Ctx, VC), truth(VC, Ctx, W),
+    lower(XC, Ctx, VC), truth(VC, Ctx, W),
     label(LA), label(LB), label(LJoin),
     term(jnz(W, LA, LB)),
     start(LA), converted(VC, U, v(VA1, _)), here(LA1), term(jmp(LJoin)),
-    start(LB), lower(XB, B, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
+    start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
     term(jmp(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
-lower(val(_, assign(Op, X, XB)), assign(Op, A, B), Ctx, R) --> !,  % 6.5.16
-    place(X, A, Ctx, lv(P, U)),
-    (   { Op == '=' } -> lower(XB, B, Ctx, Value0)
+lower(val(_, assign(Op, X, XB)), Ctx, R) --> !,            % 6.5.16
+    place(X, Ctx, lv(P, U)),
+    (   { Op == '=' } -> lower(XB, Ctx, Value0)
     ;   { compound_assignment(Op, BinOp) },
         load_typed(U, P, Ctx, Cur),
-        lower(XB, B, Ctx, VB),
+        lower(XB, Ctx, VB),
         binary(BinOp, v(Cur, U), VB, Ctx, Value0)
     ),
     converted(Value0, U, R),
     { R = v(V, _) },
     store_typed(U, V, P).
-lower(val(_, incdec(Op, X)), un(Op, E), Ctx, R) --> !,       % 6.5.2.4, 6.5.3.1
-    place(X, E, Ctx, lv(P, U)),
+lower(val(_, incdec(Op, X)), Ctx, R) --> !,                % 6.5.2.4, 6.5.3.1
+    place(X, Ctx, lv(P, U)),
     load_typed(U, P, Ctx, Cur),
     { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
     binary(BinOp, v(Cur, U), v(c(1), int), Ctx, Value0),
     convert(Value0, U, v(New, _)),
     store_typed(U, New, P),
     { memberchk(Op, [preinc, predec]) -> R = v(New, U) ; R = v(Cur, U) }.
-lower(val(_, call(XF, XArgs)), call(F, Args), Ctx, R) --> !,  % 6.5.2.2
-    callee(XF, F, Ctx, Callee, func(RetType, Ps, _)),
+lower(val(_, call(XF, XArgs)), Ctx, R) --> !,              % 6.5.2.2
+    callee(XF, Ctx, Callee, func(RetType, Ps, _)),
     { Ps == unspecified -> ParamTypes = [] ; ParamTypes = Ps },
-    call_args(XArgs, Args, ParamTypes, Ctx, IRArgs),
+    call_args(XArgs, ParamTypes, Ctx, IRArgs),
     call_result(Callee, RetType, IRArgs, Ctx, R).
-lower(val(_, cast(XV)), cast(TN, E), Ctx, R) --> !,            % 6.5.4
+lower(val(_, builtin(Name, Args)), Ctx, R) --> !,
+    builtin(Name, Args, Ctx, R).
+lower(val(_, cast(TN, XV)), Ctx, R) --> !,                 % 6.5.4
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc) },
-    lower(XV, E, Ctx, Value0),
+    lower(XV, Ctx, Value0),
     converted(Value0, Type, R).
-lower(XV, generic(C, As), Ctx, R) --> !,
-    selected(C, As, E), lower(XV, E, Ctx, R).
-lower(_, Expr, Ctx, R) --> obj(Expr, Ctx, R0), decay(R0, Ctx, R).
+lower(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !,      % 7.16.1.1
+    env(Env),
+    { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc),
+      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ptr(_)])
+      -> true
+      ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
+    lower(XA, Ctx, v(P, _)),
+    ins(K, va_arg, [P], V).
+lower(val(_, sizeof(TN)), Ctx, v(c(Size), ulong)) -->      % 6.5.3.4
+    { TN = type(_, _) }, !,
+    env(Env),
+    { type_size(TN, Env, Ctx, Size) }.
+lower(val(_, sizeof(X)), Ctx, v(c(Size), ulong)) --> !,
+    env(Env),
+    { tree_type(X, Type), ctx_loc(Ctx, Loc),
+      catch(type_size_align(Type, Env, Size, _), bad(Why),
+            sema_error(Loc, 'sizeof: ~w', [Why])) }.
+lower(val(_, alignof(TN)), Ctx, v(c(Align), ulong)) --> !,
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      type_name(TN, Type, Env, Loc),
+      catch(type_size_align(Type, Env, _, Align), bad(Why),
+            sema_error(Loc, 'alignof: ~w', [Why])) }.
+lower(val(_, offsetof(TN, Path)), Ctx, v(c(V), ulong)) --> !,
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      (   catch(const_value(offsetof(TN, Path), Env, V, _),
+                not_constant, fail)
+      ->  true
+      ;   sema_error(Loc, 'bad offsetof', [])
+      ) }.
+lower(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) -->   % GNU ({ ... })
+    save_scope(Scope),
+    statement_expression_items(Items, Ctx, R),
+    restore_scope(Scope).
 
 % converted(+Value0, +Type, -R)//: R is Value0 converted to Type, as
 % assignment and casts convert, the elaborator having judged that they
@@ -1412,98 +1368,68 @@ converted(_, void, v(c(0), void)) --> !.
 converted(v(Addr, _), Type, v(Addr, Type)) --> { su(Type) }, !.
 converted(Value0, Type, R) --> convert(Value0, Type, R).
 
-% from_tree(+E, +Parts, +Ctx, -R)//: R is the value of E lowered from
-% its typed tree. When E cannot be typed, its Parts are lowered for the
-% fault lowering meets first, and E is refused.
-from_tree(E, Parts, Ctx, R) -->
-    env(Env),
-    (   { elaborate(E, Env, X) } -> { value(X, XV) }, lower(XV, E, Ctx, R)
-    ;   foldl(part_lowered(Ctx), Parts),
-        { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [E]) }
-    ).
-
-% tree_form(+E, -Parts): E is lowered only from its typed tree, and
-% Parts are what lowering meets first when E cannot be typed: a value
-% v(E), an object o(E) or a type name t(TN), lowered for the fault they
-% report.
-tree_form(cond(C, A, B), [v(C), v(A), v(B)]).
-tree_form(gcond(C, B), [v(C), v(B)]).
-tree_form(assign(_, A, B), [o(A), v(B)]).
-tree_form(un(Op, E), [o(E)]) :- memberchk(Op, [preinc, predec, postinc, postdec]).
-tree_form(cast(TN, E), [t(TN), v(E)]).
-
-part_lowered(Ctx, v(E)) --> rval(E, Ctx, _).
-part_lowered(Ctx, o(E)) --> obj(E, Ctx, _).
-part_lowered(Ctx, t(TN)) --> env(Env), { ctx_loc(Ctx, Loc), type_name(TN, _, Env, Loc) }.
-
 % loaded(+U, +Addr, +Ctx, -R)//: R is the value of type U stored at
 % Addr: a struct or union stands for its address.
 loaded(U, Addr, _, v(Addr, U)) --> { su(U) }, !.
 loaded(U, Addr, Ctx, v(V, U)) --> load_typed(U, Addr, Ctx, V).
 
 % decayed(+P, +T, +Ctx, -R)//: R, of pointer type T, points at the
-% object or function P.
+% object or function P. A function's address is copied into a temp;
+% setjmp's has none, since it is an intrinsic.
 decayed(lv(Addr, _), T, _, v(Addr, U)) --> { unqualified(T, U) }.
-decayed(fd(Callee, Type), _, Ctx, R) --> decay(fd(Callee, Type), Ctx, R).
-
-/* place(+X, +Expr, +Ctx, -P)//: P is lv(Addr, Type), the object that
-   typed tree X designates, or fd(Callee, Type) for a function. Expr is
-   X's source, as for lower//4. */
-place(obj(_, id(Name)), _, _, P) --> !, env(Env),
-    { lookup_ordinary(Env, Name, Binding) },
-    binding_obj(Binding, P).
-place(fun(_, id(Name)), _, _, P) --> !, env(Env),
-    { lookup_ordinary(Env, Name, Binding) },
-    binding_obj(Binding, P).
-place(X, index(A, I), Ctx, P) --> !,                       % 6.5.2.1p2
-    place(X, un(deref, bin(add, A, I)), Ctx, P).
-place(obj(T, deref(XV)), un(deref, E), Ctx, lv(V, U)) --> !,  % 6.5.3.2p4
-    lower(XV, E, Ctx, v(V, _)),
-    { unqualified(T, U) }.
-place(fun(T, deref(XV)), un(deref, E), Ctx, fd(Callee, U)) --> !,
-    lower(XV, E, Ctx, v(V, _)),
-    callee_temp(V, Callee),
-    { unqualified(T, U) }.
-place(obj(T, member(XS, F)), member(S, F), Ctx, lv(P, U)) --> !,
-    place(XS, S, Ctx, lv(Addr, SU)),
-    member_lv(Addr, SU, F, Ctx, P, _),
-    { unqualified(T, U) }.
-place(X, arrow(E, F), Ctx, P) --> !,                       % 6.5.2.3p4
-    place(X, member(un(deref, E), F), Ctx, P).
-place(X, generic(C, As), Ctx, P) --> !,
-    selected(C, As, E), place(X, E, Ctx, P).
-place(_, Expr, Ctx, P) --> obj(Expr, Ctx, P).
-
-% selected(+C, +As, -E)//: E is the association _Generic(C, As) selects.
-% Its tree is E's, so lowering follows E.
-selected(C, As, E) --> env(Env),
-    { expression_type(C, Env, T0), value_type(T0, T),
-      generic_selection(T, As, Env, constant, E) }.
-
-% decay(+R0, +Ctx, -R)//: R is the rvalue of R0. An array or function
-% decays to a pointer, a scalar lvalue is loaded, and a struct or union
-% lvalue stands for its address.
-decay(v(V, Type), _, v(V, Type)) --> [].
-decay(lv(Addr, array(Type, _)), _, v(Addr, ptr(Type))) --> !.
-decay(lv(Addr, Type), _, v(Addr, Type)) --> { su(Type) }, !.
-decay(lv(Addr, Type), Ctx, v(V, Type)) --> load_typed(Type, Addr, Ctx, V).
-decay(fd(glo(Sym), _), Ctx, _) -->
+decayed(fd(glo(Sym), _), _, Ctx, _) -->
     { op_kind(setjmp(Sym), setjmp) }, !,
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, 'setjmp requires a direct call, not a function pointer', []) }.
-decay(fd(glo(Sym), Type), _, v(Addr, ptr(Type))) --> !,
+decayed(fd(glo(Sym), Type), _, _, v(Addr, ptr(Type))) --> !,
     ins(p, copy, [glo(Sym)], Addr).
-decay(fd(Callee, Type), _, v(Callee, ptr(Type))) --> [].
+decayed(fd(Callee, Type), _, _, v(Callee, ptr(Type))) --> [].
 
-% expr_type(+Expr, +Ctx, -Type)//: Type is the (reflected) type of
-% Expr, unevaluated, for sizeof and _Generic. If c_types cannot type
-% Expr, lowering it reports why.
-expr_type(Expr, Ctx, Type) -->
+/* place(+X, +Ctx, -P)//: P is lv(Addr, Type), the object that typed
+   tree X designates, or fd(Callee, Type) for a function. */
+place(obj(_, id(Name)), _, P) --> !, env(Env),
+    { lookup_ordinary(Env, Name, Binding) },
+    binding_obj(Binding, P).
+place(fun(_, id(Name)), _, P) --> !, env(Env),
+    { lookup_ordinary(Env, Name, Binding) },
+    binding_obj(Binding, P).
+place(obj(_, predefined(_)), Ctx, P) --> !,                % 6.4.2.2
+    { Ctx = ctx(Func, _, _, _, _), atom_codes(Func, Bytes) },
+    place(obj(_, str(Bytes)), Ctx, P).
+place(obj(_, str(Bytes)), _, lv(Addr, array(char, N))) --> !,
+    env(Env0),
+    { new_literal(Bytes, Sym, Env0, Env),
+      length(Bytes, N0),
+      N is N0 + 1 },
+    set_env(Env),
+    ins(p, copy, [glo(Sym)], Addr).
+place(obj(_, wstr(WideType, Values)), _, lv(Addr, array(WideType, N))) --> !,
+    env(Env0),
+    { new_literal(w(WideType, Values), Sym, Env0, Env),
+      length(Values, N0),
+      N is N0 + 1 },
+    set_env(Env),
+    ins(p, copy, [glo(Sym)], Addr).
+% A compound literal is an unnamed local, initialized where it appears.
+place(obj(_, complit(TN, Init)), Ctx, lv(Addr, Type)) --> !,  % 6.5.2.5
     env(Env),
-    (   { expression_type(Expr, Env, Type) } -> []
-    ;   obj(Expr, Ctx, _), { ctx_loc(Ctx, Loc),
-        sema_error(Loc, 'cannot type ~w', [Expr]) }
-    ).
+    { ctx_loc(Ctx, Loc),
+      type_name(TN, Type0, Env, Loc),
+      complete_array(Type0, Init, Type, Loc, Env, whole),
+      check_local_type(Type, Env, Loc, 'compound literal') },
+    local_slot(Type, Addr),
+    init(Addr, Type, Init, Ctx).
+place(obj(T, deref(XV)), Ctx, lv(V, U)) --> !,             % 6.5.3.2p4
+    lower(XV, Ctx, v(V, _)),
+    { unqualified(T, U) }.
+place(fun(T, deref(XV)), Ctx, fd(Callee, U)) --> !,
+    lower(XV, Ctx, v(V, _)),
+    callee_temp(V, Callee),
+    { unqualified(T, U) }.
+place(obj(T, member(XS, F)), Ctx, lv(P, U)) -->            % 6.5.2.3p3
+    place(XS, Ctx, lv(Addr, SU)),
+    member_lv(Addr, SU, F, Ctx, P, _),
+    { unqualified(T, U) }.
 
 % load_typed(+Type, +Addr, +Ctx, -V)//: V is the scalar of Type loaded
 % from Addr.
@@ -1541,124 +1467,45 @@ store_width(Type, Width) :-
 offset(Addr, 0, Addr) --> !.
 offset(Addr, Off, P) --> ins(p, add, [Addr, c(Off)], P).
 
-% rvalue(+Expr, +Ctx, -R)//: R is the value of an expression that is
-% only an rvalue.
-rvalue(E, Ctx, R) --> { tree_form(E, Parts) }, !, from_tree(E, Parts, Ctx, R).
-rvalue(num(V0, Suffix), _, v(c(V), Type)) --> !,
-    { num_type(V0, Suffix, Type), convert_int(V0, Type, V) }.
-rvalue(chr(V), _, v(c(V), int)) --> !.
-rvalue(float(Cs), _, v(c(V), Type)) --> !,
-    { float_literal(Cs, V, Type) }.
-rvalue(sizeof_type(TypeName), Ctx, v(c(Size), ulong)) --> !,
-    env(Env),
-    { type_size(TypeName, Env, Ctx, Size) }.
-rvalue(alignof(TypeName), Ctx, v(c(Align), ulong)) --> !,
-    env(Env),
-    { ctx_loc(Ctx, Loc),
-      type_name(TypeName, Type, Env, Loc),
-      catch(type_size_align(Type, Env, _, Align), bad(Why),
-            sema_error(Loc, 'alignof: ~w', [Why])) }.
-rvalue(sizeof_expr(Expr), Ctx, v(c(Size), ulong)) --> !,
-    expr_type(Expr, Ctx, Type),
-    env(Env),
-    { ctx_loc(Ctx, Loc),
-      catch(type_size_align(Type, Env, Size, _), bad(Why),
-            sema_error(Loc, 'sizeof: ~w', [Why])) }.
-rvalue(offsetof(TypeName, Path), Ctx, v(c(V), ulong)) --> !,
-    env(Env),
-    { ctx_loc(Ctx, Loc),
-      (   catch(const_value(offsetof(TypeName, Path), Env, V, _),
-                not_constant, fail)
-      ->  true
-      ;   sema_error(Loc, 'bad offsetof', [])
-      ) }.
-rvalue(comma(A, B), Ctx, R) --> !,
-    rval(A, Ctx, _),
-    rval(B, Ctx, R).
-rvalue(un(addr, Expr), Ctx, v(P, ptr(Type))) --> !,
-    obj(Expr, Ctx, R0),
-    env(Env),
-    { expression_category(Expr, Env, Cat) },
-    (   { Cat \== value, R0 = lv(P, Type) } -> []
-    ;   { R0 = fd(_, _) } -> decay(R0, Ctx, v(P, ptr(Type)))
-    ;   { ctx_loc(Ctx, Loc),
-          sema_error(Loc, '& of a non-lvalue', []) }
-    ).
-rvalue(un(Op, Expr), Ctx, R) --> !,
-    rval(Expr, Ctx, V),
-    unary(Op, V, Ctx, R).
-rvalue(bin(land, A, B), Ctx, R) --> !, logical(land, A, B, Ctx, R).
-rvalue(bin(lor, A, B), Ctx, R) --> !, logical(lor, A, B, Ctx, R).
-rvalue(bin(Op, A, B), Ctx, R) --> !,
-    rval(A, Ctx, VA),
-    rval(B, Ctx, VB),
-    binary(Op, VA, VB, Ctx, R).
-rvalue(va_arg(A, TypeName), Ctx, v(V, Type)) --> !,
-    env(Env),
-    { ctx_loc(Ctx, Loc), type_name(TypeName, Type, Env, Loc),
-      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ptr(_)])
-      -> true
-      ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
-    rval(A, Ctx, v(P, _)),
-    ins(K, va_arg, [P], V).
-rvalue(call(id('__builtin_va_start'), [A, _]), Ctx, v(c(0), void)) --> !,
+% builtin(+Name, +Args, +Ctx, -R)//: R is the value of a call of
+% builtin Name, which no declaration shadows, on source arguments Args.
+builtin('__builtin_va_start', [A, _], Ctx, v(c(0), void)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       ( lookup_ordinary(Env, builtin(va_args), Cursor) -> true
       ; sema_error(Loc, 'va_start outside a variadic function', []) ) },
     rval(A, Ctx, v(P, _)),
     emit(store(p, Cursor, P)).
-rvalue(call(id('__builtin_va_copy'), [A, B]), Ctx, v(c(0), void)) --> !,
+builtin('__builtin_va_copy', [A, B], Ctx, v(c(0), void)) --> !,
     rval(A, Ctx, v(P, _)), rval(B, Ctx, v(Q, _)),
     ins(p, load(p), [Q], V), emit(store(p, V, P)).
-rvalue(call(id('__builtin_va_end'), [A]), Ctx, v(c(0), void)) --> !,
+builtin('__builtin_va_end', [A], Ctx, v(c(0), void)) --> !,
     rval(A, Ctx, _).
-rvalue(call(id(Name), []), _, v(c(V), Type)) -->
-    { float_builtin(Name, Type, V) },
+builtin(Name, [], _, v(c(V), Type)) -->
+    { float_builtin(Name, Type, V) }, !.
+builtin('__builtin_constant_p', [Expr], _, v(c(V), int)) --> !,
     env(Env),
-    { \+ lookup_ordinary(Env, Name, _) }, !.
-rvalue(call(id('__builtin_constant_p'), [Expr]), _, v(c(V), int)) -->
-    env(Env),
-    { \+ lookup_ordinary(Env, '__builtin_constant_p', _) }, !,
     { ( catch(constant_value(Expr, Env, _, _), not_constant, fail)
       -> V = 1
       ; V = 0
       ) }.
-rvalue(call(id('__builtin_unreachable'), []), _, v(c(0), void)) -->
-    env(Env),
-    { \+ lookup_ordinary(Env, '__builtin_unreachable', _) }, !,
+builtin('__builtin_unreachable', [], _, v(c(0), void)) --> !,
     term(hlt).
-rvalue(call(id('__builtin_alloca'), [Size]), Ctx, v(Addr, ptr(void))) -->
-    env(Env),
-    { \+ lookup_ordinary(Env, '__builtin_alloca', _) }, !,
+builtin('__builtin_alloca', [Size], Ctx, v(Addr, ptr(void))) --> !,
     rval(Size, Ctx, V0),
     { ctx_loc(Ctx, Loc) },
     assign_convert(Size, V0, ulong, Loc, v(N, _)),
     ins(p, alloc(16), [N], Addr).
-rvalue(call(id('__builtin_expect'), [A, B]), Ctx, R) -->
-    env(Env),
-    { \+ lookup_ordinary(Env, '__builtin_expect', _) },
-    !,
+builtin('__builtin_expect', [A, B], Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
     { ctx_loc(Ctx, Loc) },
     assign_convert(A, VA, long, Loc, R).
-rvalue(call(id(Name), Args), Ctx, R) -->
-    { overflow_builtin(Name, Op, Fixed) },
-    env(Env),
-    { \+ lookup_ordinary(Env, Name, _) },
-    !,
+builtin(Name, Args, Ctx, R) -->
+    { overflow_builtin(Name, Op, Fixed) }, !,
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
-rvalue(call(F, Args), Ctx, R) --> !,  % after the builtins, which stay source
-    { findall(v(A), member(A, Args), Vs) },
-    from_tree(call(F, Args), [v(F)|Vs], Ctx, R).
-rvalue(stmtexpr(at(_, block(Items))), Ctx, R) --> !,
-    save_scope(Scope),
-    statement_expression_items(Items, Ctx, R),
-    restore_scope(Scope).
-rvalue(Expr, Ctx, _) -->
-    { ctx_loc(Ctx, Loc),
-      sema_error(Loc, 'cannot lower ~w', [Expr]) }.
+builtin(Name, _, Ctx, _) -->
+    { ctx_loc(Ctx, Loc), sema_error(Loc, 'wrong arguments to ~w', [Name]) }.
 
 % The generic builtins do NOT use the usual arithmetic conversions.
 % Keep the exact result in two l limbs, then compare it with the stored
@@ -1747,17 +1594,10 @@ type_name(TypeName, Type, Env, Loc) :-
     type_name_type(TypeName, Type, Env, _),
     vm_check(Type, Loc).
 
-% vm_check(+Type, +Loc): throw a semantic error if Type is variably
-% modified.
+% vm_check(+Type, +Loc): throw a semantic error if nanofil does not
+% support Type (c_types' unsupported_type/3).
 vm_check(Type, Loc) :-
-    (   vm_type(Type)
-    ->  sema_error(Loc,
-                   'variably modified types (non-constant array size) are not supported',
-                   [])
-    ;   unsupported_value_type(Type, Why)
-    ->  sema_error(Loc, '~w is not supported', [Why])
-    ;   true
-    ).
+    (   unsupported_type(Type, F, As) -> sema_error(Loc, F, As) ; true ).
 
 %% Conversions
 
@@ -1974,16 +1814,16 @@ ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     ;   ins(l, div, [Diff, c(Size)], V)
     ).
 
-% logical(+Op, +A, +B, +Ctx, -R)//: R is A && B (land) or A || B (lor),
-% a phi of 0/1 over the short-circuit edges.
-logical(Op, A, B, Ctx, v(V, int)) -->
-    rval(A, Ctx, VA), truth(VA, Ctx, WA), here(LA),
+% logical(+Op, +XA, +XB, +Ctx, -R)//: R is XA && XB (land) or XA || XB
+% (lor), a phi of 0/1 over the short-circuit edges.
+logical(Op, XA, XB, Ctx, v(V, int)) -->
+    lower(XA, Ctx, VA), truth(VA, Ctx, WA), here(LA),
     label(LRight), label(LJoin),
     {   Op == land -> Jump = jnz(WA, LRight, LJoin), Short = 0
     ;   Jump = jnz(WA, LJoin, LRight), Short = 1
     },
     term(Jump),
-    start(LRight), rval(B, Ctx, VB), truth(VB, Ctx, WB),
+    start(LRight), lower(XB, Ctx, VB), truth(VB, Ctx, WB),
     ins(w, cmp(ne, w), [WB, c(0)], NB),
     here(LB), term(jmp(LJoin)),
     fresh(V),
@@ -2005,14 +1845,14 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
 % elaborator has checked: the callee is a function, the arguments fit its
 % arity and each converts to its parameter as by assignment.
 
-% callee(+XF, +F, +Ctx, -Callee, -FuncType)//: Callee is the IR callee of
-% function pointer XF, whose source is F: the function itself when F
-% designates one, else a temp holding the pointer.
-callee(val(_, decay(X)), F, Ctx, Callee, FuncType) -->
+% callee(+XF, +Ctx, -Callee, -FuncType)//: Callee is the IR callee of
+% function pointer XF: the function itself when XF is a function
+% designator decayed, else a temp holding the pointer.
+callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
     { X = fun(_, _) }, !,
-    place(X, F, Ctx, fd(Callee, FuncType)).
-callee(XF, F, Ctx, Callee, FuncType) -->
-    lower(XF, F, Ctx, v(V, ptr(FuncType))),
+    place(X, Ctx, fd(Callee, FuncType)).
+callee(XF, Ctx, Callee, FuncType) -->
+    lower(XF, Ctx, v(V, ptr(FuncType))),
     callee_temp(V, Callee).
 
 % call_result(+Callee, +RetType, +IRArgs, +Ctx, -R)//: R is the result
@@ -2042,14 +1882,14 @@ setjmp_args(sigsetjmp, [arg(p, Buf), arg(w, Mask)], [Buf, Mask]).
 setjmp_args(setjmp, [arg(p, Buf)], [Buf, c(0)]).
 setjmp_args('_setjmp', [arg(p, Buf)], [Buf, c(0)]).
 
-% call_args(+XArgs, +Args, +ParamTypes, +Ctx, -IRArgs)//: IRArgs pass
-% the arguments XArgs, whose sources are Args. A struct argument goes as
+% call_args(+XArgs, +ParamTypes, +Ctx, -IRArgs)//: IRArgs pass the
+% arguments whose trees are XArgs. A struct argument goes as
 % one word per eightbyte; arguments past the prototype get the default
 % promotions.
-call_args([], [], _, _, []) --> [].
-call_args([XA|XAs], [A|As], [ParamType|ParamTypes], Ctx, IRArgs) -->
+call_args([], _, _, []) --> [].
+call_args([XA|XAs], [ParamType|ParamTypes], Ctx, IRArgs) -->
     { su(ParamType) }, !,
-    lower(XA, A, Ctx, Value0),
+    lower(XA, Ctx, Value0),
     converted(Value0, ParamType, v(Src, _)),
     env(Env),
     { ctx_loc(Ctx, Loc), arg_words(ParamType, Env, Loc, Ebs) },
@@ -2057,10 +1897,10 @@ call_args([XA|XAs], [A|As], [ParamType|ParamTypes], Ctx, IRArgs) -->
     { findall(arg(Class, W),
               ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
               IRArgs0) },
-    call_args(XAs, As, ParamTypes, Ctx, IRArgs1),
+    call_args(XAs, ParamTypes, Ctx, IRArgs1),
     { append(IRArgs0, IRArgs1, IRArgs) }.
-call_args([XA|XAs], [A|As], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
-    lower(XA, A, Ctx, Value0),
+call_args([XA|XAs], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
+    lower(XA, Ctx, Value0),
     (   { ParamTypes0 = [ParamType|ParamTypes] }
     ->  converted(Value0, ParamType, v(V, Type))
     ;   { ParamTypes = [], Value0 = v(_, Type0) },
@@ -2075,7 +1915,7 @@ call_args([XA|XAs], [A|As], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
         )
     ),
     { type_class(Type, Class) },
-    call_args(XAs, As, ParamTypes, Ctx, IRArgs).
+    call_args(XAs, ParamTypes, Ctx, IRArgs).
 
 % struct_call(+RetType, +Callee, +Args, +Loc, -R)//: R is the result of a
 % call returning a struct: its words land in a fresh local, or the

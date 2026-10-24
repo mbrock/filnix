@@ -40,7 +40,7 @@
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
                     decl_types/5, elaborate/3, elaborate/4, expression_type/3,
-                    vm_type/1, unsupported_value_type/2, value_type/2,
+                    vm_type/1, unsupported_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
@@ -565,6 +565,21 @@ vm_type(func(Ret, Params, _)) :-
         vm_type(Param)
     ),
     !.
+
+doc(unsupported_type(+T, -Format, -Args), semidet, [
+    T: "a type an expression or declaration names",
+    Format: "the diagnostic's format",
+    Args: "its arguments",
+    "nanofil does not support T: it is variably modified, since its",
+    "size expressions would have to be evaluated, side effects and all,",
+    "or it has no values nanofil can hold.",
+    example(unsupported_type(ldouble, '~w is not supported', ['long double'])),
+    fails(unsupported_type(ptr(ldouble), _, _))
+]).
+unsupported_type(T, 'variably modified types (non-constant array size) are not supported', []) :-
+    vm_type(T), !.
+unsupported_type(T, '~w is not supported', [Why]) :-
+    unsupported_value_type(T, Why).
 
 % unsupported_value_type(+Type, -Why): nanofil has no values of Type,
 % for the reason Why.
@@ -1318,12 +1333,12 @@ elab(str(Bytes), _, obj(array(char, N), str(Bytes))) :-
     length(Bytes, M), N is M + 1.
 elab(wstr(T, Values), _, obj(array(T, N), wstr(T, Values))) :-
     length(Values, M), N is M + 1.
-elab(cast(TN, E), Env, val(T, cast(XV))) :-
+elab(cast(TN, E), Env, val(T, cast(TN, XV))) :-
     type_name_type(TN, T0, Env, _),
     operand(E, Env, XV, F0), unqualified(F0, F),
     castable(F, T0),
     reflect_type(TN, T0, Env, T).
-elab(complit(TN, Init), Env, obj(T, complit(Init))) :-
+elab(complit(TN, Init), Env, obj(T, complit(TN, Init))) :-
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
 elab(un(addr, E), Env, val(ptr(T), addr(X))) :-       % 6.5.3.2p1
     elaborate(E, Env, X), X \= val(_, _), tree_type(X, T).
@@ -1376,7 +1391,7 @@ elab(cond(C, A, B), Env, val(T, cond(XC, XA, XB))) :-   % 6.5.15p2
     arms(A, B, Env, XA, XB, T).
 elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
     arms(C, B, Env, XC, XB, T), tree_type(XC, TC), scalar_type(TC).
-elab(va_arg(A, TN), Env, val(T, va_arg(XA))) :-
+elab(va_arg(A, TN), Env, val(T, va_arg(TN, XA))) :-
     argument(Env, A, XA),
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
 elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
@@ -1992,8 +2007,9 @@ doc(fault(+E, +Env, -Format, -Args), semidet, [
     Env: "the scope it is read in",
     Format: "the diagnostic's format",
     Args: "its arguments, with types unqualified as lowering has them",
-    "The first fault in E, in evaluation order. Fails when it is not",
-    "one the elaborator diagnoses.",
+    "The first fault in E, in evaluation order, or first a type or a",
+    "long double constant in E that nanofil does not support. Fails",
+    "when it is not one the elaborator diagnoses.",
     example(( empty_env(E), fault(bin(add, chr(1), id(g)), E, F, A) ),
             (F = 'undeclared identifier ~w', A = [g])),
     example(( empty_env(E0), bind_ordinary(x, var(none, double), E0, E1),
@@ -2022,12 +2038,14 @@ doc(fault(+E, +Env, -Format, -Args), semidet, [
     example(( empty_env(E0), bind_ordinary(s, var(none, struct('builtin.va_list')), E0, E),
               fault(bin(lor, chr(0), id(s)), E, F, A) ),
             (F = 'a ~w value is not a scalar', A = [struct('builtin.va_list')])),
-    fails(( empty_env(E),
-            fault(cast(type([tspec(int)], base), float(['1', '.', '0', 'L'])), E, _, _) ))
+    example(( empty_env(E),
+              fault(cast(type([tspec(int)], base), float(['1', '.', '0', 'L'])), E, F, A) ),
+            (F = 'long double is not supported', A = []))
 ]).
 fault(E, Env, Format, Args) :-
-    \+ unsupported_within(E, Env),
-    fault_(E, Env, Format, Args).
+    (   unsupported(E, Env, F, As) -> Format = F, Args = As
+    ;   fault_(E, Env, Format, Args)
+    ).
 
 fault_(id(Name), _, 'undeclared identifier ~w', [Name]).
 fault_(index(A, I), Env, F, As) :- fault_(un(deref, bin(add, A, I)), Env, F, As).
@@ -2193,14 +2211,14 @@ member_subject(val(T, _)) :- unqualified(T, U), ( U = struct(_) ; U = union(_) )
 lowered_type(E, Env, T) :- operand(E, Env, _, T0), unqualified(T0, T).
 lowered_type_in(Env, E, T) :- lowered_type(E, Env, T).
 
-% unsupported_within(+E, +Env): E names a type nanofil does not support,
-% or a long double constant; lowering refuses them where it meets them.
-unsupported_within(E, Env) :-
-    compound(E),
-    (   E = type(_, _)
-    ->  \+ catch(( type_name_type(E, T, Env, _), \+ vm_type(T),
-                   \+ unsupported_value_type(T, _) ),
-                 _, fail)
-    ;   E = float(Cs) -> last(Cs, S), memberchk(S, [l, 'L'])
-    ;   E =.. [_|As], member(A, As), unsupported_within(A, Env)
-    ).
+% unsupported(+E, +Env, -F, -As): the first type name in E that names a
+% type nanofil does not support, or long double constant, and why.
+unsupported(E, Env, F, As) :-
+    E = type(_, _), !,
+    type_name_type(E, T, Env, _),
+    unsupported_type(T, F, As).
+unsupported(float(Cs), _, 'long double is not supported', []) :-
+    last(Cs, S), memberchk(S, [l, 'L']), !.
+unsupported(E, Env, F, As) :-
+    compound(E), E =.. [_|Xs],
+    member(X, Xs), unsupported(X, Env, F, As), !.
