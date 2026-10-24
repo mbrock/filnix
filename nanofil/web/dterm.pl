@@ -488,7 +488,65 @@ atom_text(T, Prec) -->
 compound_(T, P, Ctx) -->
     { compound_name_arguments(T, N, As), length(As, Arity), args_pos(P, Arity, Ps) },
     { head_args_ctx(Ctx, ACtx) },
-    el(span, c, ( functor_(N, Arity, Ctx), args(As, Ps, ACtx) )).
+    box(T, Arity, c, ( functor_(N, Arity, Ctx), args(As, Ps, ACtx) )).
+
+%  box(T, Parts, Class, Body): the span of a compound or list T of Parts
+%  arguments or elements. A term too long for a line is broken, each
+%  argument after the first on a line of its own, indented by the number
+%  of broken terms around it; a shorter one flows and wraps like text.
+%  Like a pretty-printer's group, a term fits or breaks. There are two
+%  measures, one for a page (class long, depth --d) and a shorter one for
+%  a phone (class long-n, depth --dn), which dterm.css applies by width.
+box(T, Parts, Class0, Body) -->
+    {   Parts > 1, long_term(T, wide) -> Ws = [' long'], W = 1 ; Ws = [], W = 0 },
+    {   Parts > 1, long_term(T, narrow) -> Ns = [' long-n'], N = 1 ; Ns = [], N = 0 },
+    (   { W + N > 0 }
+    ->  { depth(dterm_depth, D0), depth(dterm_depth_n, N0),
+          D is D0 + W, N1 is N0 + N,
+          append([[Class0], Ws, Ns], Cs), atomic_list_concat(Cs, Class),
+          format(atom(Style), "--d: ~w; --dn: ~w", [D0, N0]) },
+        { b_setval(dterm_depth, D), b_setval(dterm_depth_n, N1) },
+        el(span, Class, [style=Style], Body),
+        { b_setval(dterm_depth, D0), b_setval(dterm_depth_n, N0) }
+    ;   el(span, Class0, Body)
+    ).
+
+part([X|Xs], P) :- !, ( P = X ; nonvar(Xs), part(Xs, P) ).
+part(T, P) :- compound(T), T \= '$VAR'(_), arg(_, T, P).
+
+depth(K, D) :- ( nb_current(K, D0), integer(D0) -> D = D0 ; D = 0 ).
+
+%  A term of atoms and variables only is filled like words, never broken.
+long_term(T, Measure) :-
+    (   nb_current(dterm_long, Max0) -> true ; long_length(wide, Max0) ),
+    integer(Max0),
+    once(( part(T, X), compound(X), X \= '$VAR'(_) )),
+    ( Measure == wide -> Max = Max0 ; long_length(narrow, Max) ),
+    \+ fits(T, Max, _).
+
+%  In characters, as a pretty-printer counts columns: 80 for a page, and
+%  40 for a 390 px phone, about what its term column holds.
+long_length(wide, 80).
+long_length(narrow, 40).
+
+%  fits(T, B0, B): T written takes B0 - B of a budget of B0 characters,
+%  failing as soon as the budget is spent (write_length/3 ignores the
+%  write options).
+fits(T, B0, B) :- var(T), !, B is B0 - 1, B >= 0.
+fits('$VAR'(N), B0, B) :- !, atom_length(N, L), B is B0 - L, B >= 0.
+fits(T, B0, B) :- string(T), !, string_length(T, L), B is B0 - L - 2, B >= 0.
+fits(T, B0, B) :- atomic(T), !, atom_length(T, L), B is B0 - L, B >= 0.
+fits([X|Xs], B0, B) :- !, B1 is B0 - 2, fits(X, B1, B2), fits_elems(Xs, B2, B).
+fits(T, B0, B) :-
+    compound_name_arguments(T, N, As), atom_length(N, L),
+    B1 is B0 - L - 2, B1 >= 0,
+    foldl([A, Ba, Bb]>>( fits(A, Ba, Bc), Bb is Bc - 2 ), As, B1, B2),
+    B is B2 + 2, B >= 0.
+
+fits_elems(Xs, B0, B) :- var(Xs), !, B is B0 - 2, B >= 0.
+fits_elems([], B, B) :- !.
+fits_elems([X|Xs], B0, B) :- !, B1 is B0 - 2, fits(X, B1, B2), fits_elems(Xs, B2, B).
+fits_elems(T, B0, B) :- B1 is B0 - 1, fits(T, B1, B).
 
 head_args_ctx(ctx(F, head), ctx(F, pattern)) :- !.
 head_args_ctx(Ctx, Ctx).
@@ -503,14 +561,15 @@ args(As, Ps, Ctx) --> el(span, args, arg_list(As, Ps, Ctx)).
 
 arg_list([A], [P], Ctx) --> !, el(span, arg, term(A, P, 999, Ctx)).
 arg_list([A|As], [P|Ps], Ctx) -->
-    el(span, arg, ( term(A, P, 999, Ctx), el(span, sep, ",") )),
+    el(span, arg, ( term(A, P, 999, Ctx), el(span, sep, ",") )), " ",
     arg_list(As, Ps, Ctx).
 
 list_(T, P, Ctx) -->
     { list_parts(T, Es, Tail),
       (   nonvar(P), P = list_position(_, _, EPs, TP) -> true
-      ;   length(Es, N), length(EPs, N), TP = none ) },
-    el(span, l, ( list_elems(Es, EPs, Tail, TP, Ctx) )).
+      ;   length(Es, N), length(EPs, N), TP = none ),
+      length(Es, NE), ( Tail == [] -> Parts = NE ; Parts is NE + 1 ) },
+    box(T, Parts, l, list_elems(Es, EPs, Tail, TP, Ctx)).
 
 list_parts(L, Es, Tail) :-
     (   nonvar(L), L = [E|L1] -> Es = [E|Es1], list_parts(L1, Es1, Tail)
@@ -521,10 +580,10 @@ list_parts(L, Es, Tail) :-
 list_elems([E], [P], Tail, TP, Ctx) --> !,
     el(span, arg, term(E, P, 999, Ctx)),
     (   { Tail == [] } -> []
-    ;   el(span, bar, "|"), el(span, arg, term(Tail, TP, 999, Ctx))
+    ;   el(span, "arg tail", ( el(span, bar, "|"), term(Tail, TP, 999, Ctx) ))
     ).
 list_elems([E|Es], [P|Ps], Tail, TP, Ctx) -->
-    el(span, arg, ( term(E, P, 999, Ctx), el(span, sep, ",") )),
+    el(span, arg, ( term(E, P, 999, Ctx), el(span, sep, ",") )), " ",
     list_elems(Es, Ps, Tail, TP, Ctx).
 
 %  Operators. op_form(T, Form): T is written with an operator, Form one of
@@ -544,7 +603,8 @@ op_term(infix(Type, P), T, Pos, Prec, Ctx) -->
     { T =.. [N, L, R], args_pos(Pos, 2, [LP, RP]),
       arg_prec(Type, P, LPrec, RPrec), op_class(N, Class) },
     paren_if(P, Prec,
-             el(span, o, ( term(L, LP, LPrec, Ctx), op_(N, Class), term(R, RP, RPrec, Ctx) ))).
+             el(span, o, ( term(L, LP, LPrec, Ctx), op_space(Class, before), op_(N, Class),
+                           op_space(Class, after), term(R, RP, RPrec, Ctx) ))).
 op_term(prefix(Type, P), T, Pos, Prec, Ctx) -->
     { T =.. [N, A], args_pos(Pos, 1, [AP]),
       ( Type == fy -> APrec = P ; APrec is P - 1 ) },
@@ -555,6 +615,12 @@ arg_prec(xfy, P, L, P) :- L is P - 1.
 arg_prec(yfx, P, P, R) :- R is P - 1.
 
 paren_if(P, Prec, Body) --> ( { P > Prec } -> el(span, paren, Body) ; Body ).
+
+%  A line may break after a wide operator or a comma, never before one.
+op_space(wide, before) --> !, "\u00A0".
+op_space(wide, after) --> !, " ".
+op_space(comma, after) --> !, " ".
+op_space(_, _) --> [].
 
 op_class(N, tight) :- memberchk(N, [/, //, :, -, ^, '**']), !.
 op_class(N, comma) :- N == ',', !.
@@ -643,7 +709,7 @@ call_(G, P, ctx(F, Mode)) -->
       args_pos(P, A0, Ps) },
     (   { As == [] }
     ->  call_name(N, Href)
-    ;   el(span, "c call", ( call_name(N, Href), call_args(As, Ps, 1, Metas, F) ))
+    ;   box(G, A0, 'c call', ( call_name(N, Href), call_args(As, Ps, 1, Metas, F) ))
     ).
 
 call_name(N, none) --> !, el(span, "f call", esc_q(N)).
@@ -653,7 +719,7 @@ call_args(As, Ps, I, Metas, F) --> el(span, args, call_arg_list(As, Ps, I, Metas
 
 call_arg_list([A|As], [P|Ps], I, Metas, F) -->
     { ( As == [] -> Sep = [] ; Sep = el(span, sep, ",") ) },
-    el(span, arg, ( meta_arg(A, P, I, Metas, F), Sep )),
+    el(span, arg, ( meta_arg(A, P, I, Metas, F), Sep )), ( { As == [] } -> [] ; " " ),
     { I1 is I + 1 },
     ( { As == [] } -> [] ; call_arg_list(As, Ps, I1, Metas, F) ).
 
@@ -811,13 +877,13 @@ clause_(c(T, P, L, Inner), F) -->
 clause_body((H :- B), P, L, F) --> !,
     { args_pos(P, 2, [HP, BP]) },
     el(div, "clause rule", ['data-line'=L],
-       ( el(div, head, ( line_link(L, F), term(H, HP, 1199, ctx(F, head)),
+       ( el(div, head, ( line_link(L, F), term(H, HP, 1199, ctx(F, head)), "\u00A0",
                          el(span, neck, [title=":-"], "←") )),
          body(B, BP, ctx(F, goal)) )).
 clause_body((H --> B), P, L, F) --> !,
     { args_pos(P, 2, [HP0, BP]), unparen(HP0, HP) },
     el(div, "clause dcg", ['data-line'=L],
-       ( el(div, head, ( line_link(L, F), dcg_head(H, HP, F),
+       ( el(div, head, ( line_link(L, F), dcg_head(H, HP, F), "\u00A0",
                          el(span, neck, [title="-->"], "⟶") )),
          body(B, BP, ctx(F, dcg)) )).
 clause_body(H, P, L, F) -->
@@ -826,7 +892,7 @@ clause_body(H, P, L, F) -->
 
 dcg_head((H, PB), P, F) --> !,
     { args_pos(P, 2, [HP, PBP]) },
-    term(H, HP, 999, ctx(F, head)), el(span, pushback, ( el(span, sep, ","), term(PB, PBP, 999, ctx(F, data)) )).
+    term(H, HP, 999, ctx(F, head)), el(span, pushback, ( el(span, sep, ","), " ", term(PB, PBP, 999, ctx(F, data)) )).
 dcg_head(H, P, F) --> term(H, P, 999, ctx(F, head)).
 
 line_link(L, F) -->
@@ -846,7 +912,7 @@ directive_(c((:- use_module(Spec, Imports)), P, _, _), F) --> !,
 directive_(c((:- G), P, L, Inner), F) --> !,
     { nb_setval(dterm_notes, Inner), args_pos(P, 1, [GP]) },
     el(div, "clause directive", ['data-line'=L],
-       el(div, head, ( line_link(L, F), el(span, neck, [title=":-"], ":-"), goal(G, GP, ctx(F, goal)) ))).
+       el(div, head, ( line_link(L, F), el(span, neck, [title=":-"], ":-"), " ", goal(G, GP, ctx(F, goal)) ))).
 directive_(C, F) --> clause_(C, F).
 
 export_(F, E) -->
@@ -1045,7 +1111,7 @@ sig_head(H, F) -->
 sig_args([A|As], F) -->
     { ( As == [] -> Sep = [] ; Sep = el(span, sep, ",") ) },
     el(span, arg, ( sig_arg(A, F), Sep )),
-    ( { As == [] } -> [] ; sig_args(As, F) ).
+    ( { As == [] } -> [] ; " ", sig_args(As, F) ).
 
 sig_arg(A, F) -->
     { compound(A), A =.. [M, X], memberchk(M, [+, -, ?, @, :, !]) }, !,
@@ -1335,7 +1401,8 @@ index_page(Sources) -->
                                     "). These pages draw its source as terms: clause heads over their goals, ",
                                     "conditionals as tables, fact tables as tables, PlDoc as signatures. ",
                                     el(a, none, [href="play/"], "Compile C with it"),
-                                    " in the browser." )) )),
+                                    " in the browser, or compare how terms are set in the ",
+                                    el(a, none, [href="workbench/"], "workbench"), "." )) )),
                  el(div, modules, seq(Sources, module_card)) )) )).
 
 module_card(src(Base, Text, _, Events)) -->

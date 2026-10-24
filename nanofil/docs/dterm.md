@@ -159,6 +159,60 @@ and the page shows it:
   exactly as `bin/nanofil` does, to run the examples. Other modules are
   only read.
 
+## Terms as type (October 2026)
+
+v2 drew every compound as a flex box whose arguments were items. That
+gave the right nesting but the wrong typography: the gap after a comma
+was a flex gap, so a comma floated halfway between its arguments; a line
+could break anywhere between items, even between a functor's box and its
+neck; every paren box was as tall as its line, so `t(v0)` in a run of
+IR had a frame round it heavier than the name it held; brackets looked
+like parentheses; and a long term wrapped wherever the width ran out, so
+C syntax became a staircase of nested frames.
+
+dterm now sets terms as text, after the conventions of mathematical
+setting and of Lisp's pretty-printers:
+
+- A compound is its functor and an inline box whose side borders are its
+  parentheses. Inline, the line breaks it as it breaks a parenthesis in
+  prose: the opening one stays with the functor, the closing one with
+  the last argument.
+- A comma is text followed by a real space, so it hugs what it ends, the
+  line may break after it, and justification and word spacing treat it
+  as type. Wide operators (`=`, `≡`, `→`, `is`) have a no-break space
+  before and a space after: a line breaks after an operator, never before
+  it. The neck `←` stays on the head's line.
+- Parentheses are hairlines that bow like the glyph (`--paren-stroke`
+  0.07em, `--paren-curve` 0.3em) at 34% ink, close to what they hold
+  (0.13em) and to their functor (0.03em). A box with boxes inside stands
+  0.06em taller per level, three levels deep, as outer delimiters are
+  set larger in mathematics, so `f(g(x))` shows its nesting without
+  heavier lines.
+- Brackets are square, with short arms, at 60% of the atom blue; a list
+  never reads as a call. A tail bar `|` sits with its tail, 0.1em each
+  side.
+- Commas are at 52% ink: quieter than the names, firmer than v2's 30%,
+  which disappeared against Public Sans's light punctuation.
+- A head or goal too long for its line hangs its continuation lines
+  1.5em under the first.
+- A term too long for a line is broken, as a pretty-printer's group either
+  fits or breaks (`box//4`): each argument after the first on a line of
+  its own, indented one step per broken term around it, the closing
+  parentheses after the last argument. The measure is 80 characters on a
+  page and 40 on a phone (`long_length/2`, dterm.css applies the second
+  under 700px). A term of atoms and variables only is filled like words,
+  never broken; assembly rows never break.
+
+The [workbench](https://mbrock.github.io/filnix/nanofil/workbench/)
+(`web/workbench/`) sets representative terms twice, under presets or
+any knob (paren ink, stroke, bow and spacing, bracket style, comma ink
+and weight, operator spacing, the break length, v2's layout), at phone,
+tablet or half-window width. The values above were chosen there against
+v2, quieter and firmer ink, glyph parentheses, and the looser spacing of
+the second mockup: glyph parentheses in Public Sans are tall and light
+and do not nest visibly; looser spacing pulls commas away from what they
+end; quieter ink loses the nesting in IR.
+
 ## Praxis
 
 nanofil's AGENTS.md now asks, for modules listed in

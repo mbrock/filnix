@@ -3,8 +3,22 @@
    its parentheses, and boxes flow and wrap with the page. */
 
 :root {
-  --paren: color-mix(in srgb, var(--ink) 28%, transparent);
-  --bracket: color-mix(in srgb, #2f6f8f 55%, transparent);
+  /* The type of terms; nanofil/workbench/ compares the choices. */
+  --paren-ink: 34%;
+  --paren: color-mix(in srgb, var(--ink) var(--paren-ink), transparent);
+  --paren-stroke: 0.07em;    /* at the middle of the bow */
+  --paren-curve: 0.3em;      /* how far its ends bow in */
+  --paren-inside: 0.13em;    /* from a parenthesis to what it holds */
+  --paren-outside: 0.03em;   /* from a functor to its parenthesis */
+  --paren-grow: 0.06em;      /* above and below, per box nested inside */
+  --bracket-ink: 60%;
+  --bracket: color-mix(in srgb, #2f6f8f var(--bracket-ink), transparent);
+  --bracket-arm: 0.2em;
+  --bar-space: 0.1em;
+  --sep-ink: 52%;            /* commas */
+  --sep: color-mix(in srgb, var(--ink) var(--sep-ink), transparent);
+  --hang: 1.5em;             /* continuation lines of a wrapped term */
+  --indent: 1em;             /* each broken term inside a broken term */
   --var: #5a3f9a;
   --atom: #24566e;
   --num: #8a6510;
@@ -109,6 +123,7 @@ section.pred:target > .doc { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
 }
 .doc .sig .f.def { font-weight: 750; }
 .doc .prose { margin-top: 0.3rem; font-size: 0.95rem; }
+.arg:has(> .mode) { white-space: nowrap; }
 .mode {
   color: var(--muted);
   font-weight: 700;
@@ -126,7 +141,9 @@ section.pred:target > .doc { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
   border-radius: 1rem;
 }
 
-/* Clauses: head over goals. */
+/* Clauses: head over goals. A head or a goal is a line of text; when it
+   is too long for its line it breaks after a comma or a wide operator, and
+   its continuation lines hang under the first. */
 
 .clause {
   position: relative;
@@ -137,12 +154,12 @@ section.pred:target > .doc { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
 .clause > .head, .goal, .o, .c, .args, .l, .arg, .paren, .braces, .not, .qualified {
   min-width: 0;
 }
-.clause > .head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35em;
+.clause > .head, div.goal, .clause.item, details.clause > summary {
+  padding-left: var(--hang);
+  text-indent: calc(-1 * var(--hang));
 }
+:is(.clause > .head, .clause.item, details.clause > summary) *, div.goal :not(.goal) { text-indent: 0; }
+div.goal:has(> div) { padding-left: 0; text-indent: 0; }
 .neck { color: var(--muted); font-weight: 600; }
 .clause.dcg > .head .neck { color: var(--atom); }
 .clause > .goals {
@@ -152,12 +169,6 @@ section.pred:target > .doc { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
   display: grid;
   grid-template-columns: minmax(0, max-content);
   row-gap: 0.12em;
-}
-.goal {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 0.6em;
 }
 
 /* Line numbers in the margin, quiet until hovered. */
@@ -174,14 +185,14 @@ a.ln {
 .clause:hover > .head > a.ln, tr:hover a.ln { opacity: 0.8; }
 table.facts a.ln { position: static; margin: 0; }
 
-/* Terms. */
+/* Terms, set as text. A compound is its functor and an inline box whose
+   side borders are its parentheses: the line breaks it as it breaks a
+   parenthesis in prose, the opening one on the first line and the closing
+   one after the last argument, and each border is as tall as the type.
+   Commas are text, with a space after them; wide operators have a space
+   on each side, and a line breaks only after them. */
 
-.c, .o, .qualified, .not { display: inline-flex; flex-wrap: wrap; align-items: baseline; }
-/* The functor stays with its box; the box wraps inside instead. */
-.c { flex-wrap: nowrap; }
-.c > .args { flex: 0 1 auto; }
-.o { column-gap: 0.32em; }
-.o.pre, .not { column-gap: 0.1em; }
+.c, .o, .qualified, .not, .args, .arg, .l, .paren, .braces { display: inline; }
 .f { color: var(--atom); }
 .f.call { color: var(--call); }
 a.f.call:hover { text-decoration: underline; }
@@ -198,33 +209,87 @@ a.f.call:hover { text-decoration: underline; }
 .cut { color: var(--accent); font-weight: 800; }
 
 .op { color: color-mix(in srgb, var(--ink) 62%, transparent); }
-.op.tight { margin: 0 -0.22em; }
-.o.pre > .op.tight { margin: 0; }
-.op.neg { color: var(--accent); font-weight: 700; }
+.op.neg { color: var(--accent); font-weight: 700; margin-right: 0.1em; }
+.o.pre > .op { margin-right: 0.04em; }
 
-/* The boxes: parentheses, brackets, braces. Arguments flow and wrap; the
-   commas stay, quietly, so an argument written with an operator still
-   reads as one. */
+/* Parentheses: a hairline that bows like the glyph, thickest at its
+   middle. A box with boxes inside stands a little taller, as outer
+   delimiters are set bigger in mathematics. */
 
 .args, .paren, .l, .braces {
+  padding: 0 var(--paren-inside);
+  border: 0 solid var(--paren);
+  border-width: 0 var(--paren-stroke);
+  border-radius: var(--paren-curve) / 50%;
+}
+.c > .args { margin-left: var(--paren-outside); }
+:is(.args, .l, .paren):has(:is(.args, .l, .paren)) {
+  padding-block: var(--paren-grow);
+}
+:is(.args, .l, .paren):has(:is(.args, .l, .paren) :is(.args, .l, .paren)) {
+  padding-block: calc(2 * var(--paren-grow));
+}
+:is(.args, .l, .paren):has(:is(.args, .l, .paren) :is(.args, .l, .paren) :is(.args, .l, .paren)) {
+  padding-block: calc(3 * var(--paren-grow));
+}
+
+/* Brackets are square, with arms, so a list never reads as a call. */
+.l {
+  border-color: var(--bracket);
+  border-radius: 0;
+  background:
+    linear-gradient(var(--bracket) 0 0) left top / var(--bracket-arm) var(--paren-stroke) no-repeat border-box,
+    linear-gradient(var(--bracket) 0 0) left bottom / var(--bracket-arm) var(--paren-stroke) no-repeat border-box,
+    linear-gradient(var(--bracket) 0 0) right top / var(--bracket-arm) var(--paren-stroke) no-repeat border-box,
+    linear-gradient(var(--bracket) 0 0) right bottom / var(--bracket-arm) var(--paren-stroke) no-repeat border-box;
+}
+.l.empty { padding: 0; border-width: 0; background: none; color: var(--bracket); }
+.braces { border-style: dotted; border-width: 0 2px; }
+.sep { color: var(--sep); }
+.bar { color: var(--bracket); margin: 0 var(--bar-space); }
+.pushback { opacity: 0.8; }
+.terminals .l { background-color: color-mix(in srgb, var(--bracket) 8%, transparent); }
+
+/* A box with a block inside (a conjunction passed to findall/3, say)
+   lays out as boxes do, wrapping its arguments as items. */
+.args:has(> .arg > .block), .not:has(> .block) {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 0.34em;
-  padding: 0 0.28em;
-  border: 0 solid var(--paren);
-  border-width: 0 1.5px;
-  border-radius: 0.55em;
+  column-gap: 0.3em;
 }
-.c > .args { margin-left: 0.04em; }
-.l { border-color: var(--bracket); border-radius: 0.15em; }
-.l.empty { padding: 0; border-width: 0; color: var(--bracket); }
-.braces { border-style: dotted; border-width: 0 2px; }
-.arg { display: inline-flex; align-items: baseline; }
-.sep { color: color-mix(in srgb, var(--ink) 30%, transparent); margin-left: -0.04em; }
-.bar { color: var(--bracket); font-weight: 700; }
-.pushback { display: inline-flex; gap: 0.3em; opacity: 0.8; }
-.terminals .l { background: color-mix(in srgb, var(--bracket) 8%, transparent); }
+.args:has(> .arg > .block) { border-radius: 0.55em; }
+.arg:has(> .block) { display: inline-flex; align-items: baseline; }
+
+/* A term too long for a line (dterm.pl's box//4) is broken: each
+   argument after the first starts a line, indented by the broken terms
+   around it, and the closing parentheses follow the last argument, as
+   Lisp is set. */
+:is(.long > .args:not(:has(> .arg > .block)), .l.long) > .arg:not(:last-child)::after {
+  content: "\A";
+  white-space: pre;
+}
+:is(.long > .args:not(:has(> .arg > .block)), .l.long) > .arg + .arg::before {
+  content: "";
+  display: inline-block;
+  width: calc(var(--d) * var(--indent));
+}
+@media (max-width: 700px) {
+  :root { --indent: 0.75em; }
+  :is(.long-n > .args:not(:has(> .arg > .block)), .l.long-n) > .arg:not(:last-child)::after {
+    content: "\A";
+    white-space: pre;
+  }
+  :is(.long-n > .args:not(:has(> .arg > .block)), .l.long-n) > .arg + .arg::before {
+    content: "";
+    display: inline-block;
+    width: calc(var(--dn) * var(--indent));
+  }
+}
+
+/* An assembly line's term stays on its line; the table scrolls instead. */
+table.asm td.term { white-space: nowrap; }
+table.asm td.term .arg::before, table.asm td.term .arg::after { content: none !important; }
 
 /* Blocks inside bodies: conjunctions in parentheses, DCG {} goals,
    conditionals and disjunctions. */
@@ -276,17 +341,15 @@ a.f.call:hover { text-decoration: underline; }
   border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
 }
 @media (max-width: 700px) {
-  /* Long atoms break rather than push the page sideways; tables of facts
-     scroll inside themselves. */
-  .arg, .terminals { min-width: 0; max-width: 100%; }
-  .terminals { display: inline-flex; }
-  .a, .s { overflow-wrap: anywhere; }
+  /* A run of a term with nowhere to break (a functor, its parenthesis
+     and a first argument, or a long atom) breaks where it must rather
+     than push the page sideways; tables of facts scroll inside themselves. */
+  .clause > .head, .goal, .examples td, .sig, .a, .s { overflow-wrap: anywhere; }
   table.facts { display: block; max-width: 100%; overflow-x: auto; }
   .dterm .prose pre { max-width: 100%; overflow-x: auto; }
   /* An example whose goal is a block puts its answer on the next row. */
   .examples td.goal:has(.block) { flex-basis: 100%; }
   .cases > .case > .then { margin-left: 0.2em; padding-left: 0.55em; }
-  .args, .paren, .l, .braces { padding: 0 0.22em; }
 .cases { grid-template-columns: minmax(0, max-content); }
 .cases > .case { display: block; }
 .cases > .case + .case { border-top: 1px solid var(--rule); }
@@ -318,6 +381,7 @@ a.f.call:hover { text-decoration: underline; }
 
 /* Comments among the goals. */
 
+.aside { margin-left: 0.6em; }
 .note, .aside {
   color: var(--note);
   font-style: italic;
@@ -360,7 +424,7 @@ table.facts tr.note td { color: var(--note); font-style: italic; font-size: 0.88
   margin: 0.4rem 0 0.8rem;
   font-size: 0.95rem;
 }
-.facts.set > .args { column-gap: 0.9em; row-gap: 0.1em; }
+.facts.set > .args { display: inline-flex; flex-wrap: wrap; column-gap: 0.9em; row-gap: 0.1em; }
 
 /* The index. */
 
@@ -475,7 +539,7 @@ section.pred.multi .clause > .head::before {
   content: counter(clause);
   display: inline-block;
   min-width: 1.25em;
-  margin-right: 0.15em;
+  margin-right: 0.5em;
   padding: 0 0.2em;
   color: var(--muted);
   font-size: 0.68rem;
@@ -484,7 +548,8 @@ section.pred.multi .clause > .head::before {
   text-align: center;
   border: 1px solid var(--rule);
   border-radius: 0.3rem;
-  align-self: center;
+  vertical-align: 0.15em;
+  text-indent: 0;
 }
 section.pred.multi .clause > .goals { margin-left: 2.6em; }
 section.pred.multi .prose.between {

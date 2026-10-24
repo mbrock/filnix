@@ -38,6 +38,11 @@ done
 mkdir -p "$out/nanofil"
 cp "$src"/nanofil/web/dterm.css "$src"/nanofil/web/dterm.js "$out/nanofil/"
 swipl "$src/nanofil/web/dterm.pl" "$out/nanofil" "$src/nanofil/src" </dev/null
+# The dterm workbench: the samples drawn by dterm, set side by side.
+mkdir -p "$out/nanofil/workbench"
+wb=$src/nanofil/web/workbench
+cp "$wb"/index.html "$wb"/*.css "$wb"/*.js "$out/nanofil/workbench/"
+(cd "$wb" && swipl workbench.pl "$out/nanofil/workbench" "$src/nanofil/src" </dev/null)
 
 status=0
 for html in "$out"/docs/*.html; do

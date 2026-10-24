@@ -1,0 +1,81 @@
+/* The samples page, drawn in the workbench's frames. */
+
+body { display: block; height: auto; margin: 0; }
+article.wb { padding: 0.6rem 1.4rem 3rem 2.4rem; max-width: none; }
+article.wb h2 {
+  margin: 2rem 0 0.2rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+article.wb h2:first-child { margin-top: 0; border-top: 0; }
+.wb-note { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.8rem; }
+.wb-v { display: none; }
+html[data-long="48"] .wb-v[data-long="48"],
+html[data-long="60"] .wb-v[data-long="60"],
+html[data-long="72"] .wb-v[data-long="72"],
+html[data-long="80"] .wb-v[data-long="80"],
+html[data-long="90"] .wb-v[data-long="90"],
+html[data-long="0"] .wb-v[data-long="0"] { display: block; }
+@media (max-width: 700px) {
+  article.wb { padding: 0.4rem 0.8rem 2rem 1.2rem; }
+}
+
+/* Knobs dterm.css does not have, at values that change nothing. */
+.args, .l { word-spacing: var(--wb-arg-space, normal); }
+.o { word-spacing: var(--wb-op-space, normal); }
+.s, .a { word-spacing: normal; }
+.sep { font-weight: var(--wb-sep-weight, inherit); }
+.clause { font-size: var(--wb-size, 0.95rem); }
+
+/* Brackets drawn as v2 drew them, or as plain verticals. */
+html[data-brackets="box"] .l:not(.empty) { background: none; border-radius: 0.15em; }
+html[data-brackets="paren"] .l:not(.empty) { --bracket: var(--paren); background: none; border-radius: var(--paren-curve) / 50%; }
+
+/* Parentheses as glyphs: the borders hidden, the characters drawn. */
+html[data-parens="glyph"] :is(.args, .paren, .l:not(.empty)) { border-width: 0; background: none; padding: 0; }
+html[data-parens="glyph"] :is(.args, .paren)::before { content: "("; color: var(--paren); margin-right: var(--paren-inside); }
+html[data-parens="glyph"] :is(.args, .paren)::after { content: ")"; color: var(--paren); margin-left: var(--paren-inside); }
+html[data-parens="glyph"] .l:not(.empty)::before { content: "["; color: var(--bracket); margin-right: var(--paren-inside); }
+html[data-parens="glyph"] .l:not(.empty)::after { content: "]"; color: var(--bracket); margin-left: var(--paren-inside); }
+
+/* v2's layout, for comparison: every box a flex container that wraps
+   its arguments as items, terms that do not break, and the old values. */
+html[data-layout="flex"] .wb-nbsp { display: none; }
+html[data-layout="flex"] :is(.c, .o, .qualified, .not) { display: inline-flex; flex-wrap: wrap; align-items: baseline; }
+html[data-layout="flex"] .c { flex-wrap: nowrap; }
+html[data-layout="flex"] .c > .args { flex: 0 1 auto; margin-left: 0.04em; }
+html[data-layout="flex"] .o { column-gap: 0.32em; }
+html[data-layout="flex"] :is(.o.pre, .not) { column-gap: 0.1em; }
+html[data-layout="flex"] .op.tight { margin: 0 -0.22em; }
+html[data-layout="flex"] .o.pre > .op.tight { margin: 0; }
+html[data-layout="flex"] :is(.args, .paren, .l, .braces) {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.34em;
+  padding: 0 0.28em;
+  border: 0 solid color-mix(in srgb, var(--ink) 28%, transparent);
+  border-width: 0 1.5px;
+  border-radius: 0.55em;
+  background: none;
+}
+html[data-layout="flex"] .l { border-color: color-mix(in srgb, #2f6f8f 55%, transparent); border-radius: 0.15em; }
+html[data-layout="flex"] .l.empty { padding: 0; border-width: 0; }
+html[data-layout="flex"] .braces { border-style: dotted; border-width: 0 2px; }
+html[data-layout="flex"] .arg { display: inline-flex; align-items: baseline; }
+html[data-layout="flex"] .arg::before, html[data-layout="flex"] .arg::after { content: none !important; }
+html[data-layout="flex"] .sep { color: color-mix(in srgb, var(--ink) 30%, transparent); margin-left: -0.04em; }
+html[data-layout="flex"] .bar { font-weight: 700; margin: 0; }
+html[data-layout="flex"] .arg.tail { column-gap: 0.34em; }
+html[data-layout="flex"] .pushback { display: inline-flex; gap: 0.3em; }
+html[data-layout="flex"] .clause > .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35em; padding-left: 0; text-indent: 0; }
+html[data-layout="flex"] .goal { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6em; padding-left: 0; text-indent: 0; }
+html[data-layout="flex"] :is(.args, .paren, .l):has(:is(.args, .l, .paren)) { padding-block: 0; }
+@media (max-width: 700px) {
+  html[data-layout="flex"] :is(.arg, .terminals) { min-width: 0; max-width: 100%; }
+  html[data-layout="flex"] .terminals { display: inline-flex; }
+  html[data-layout="flex"] :is(.args, .paren, .l, .braces) { padding: 0 0.22em; }
+  html[data-layout="flex"] :is(.clause > .head, .goal, .examples td, .sig) { overflow-wrap: normal; }
+}

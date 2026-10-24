@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dterm workbench · nanofil · Filnix wiki</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../../style.css">
+<link rel="stylesheet" href="workbench.css">
+</head>
+<body>
+<header class="wb-top">
+  <p class="eyebrow"><a href="../../index.html">Filnix wiki</a> › <a href="../index.html">nanofil</a></p>
+  <h1>dterm workbench</h1>
+  <p class="wb-lede">The same terms, drawn by <a href="https://github.com/mbrock/filnix/blob/main/nanofil/web/dterm.pl">dterm.pl</a>
+  and set twice under <a href="../dterm.css">dterm.css</a>: change the type of one side and compare.
+  <b>dterm</b> is what the pages use; the controls override it in that frame only.</p>
+</header>
+<main class="wb-main">
+  <form class="wb-controls" id="controls" autocomplete="off">
+    <div class="wb-which" role="radiogroup" aria-label="Frame to tune">
+      <label><input type="radio" name="which" value="a"> Tune A</label>
+      <label><input type="radio" name="which" value="b" checked> Tune B</label>
+    </div>
+    <label class="wb-row">Preset <select id="preset"></select></label>
+    <div id="knobs"></div>
+    <div class="wb-out">
+      <div class="wb-out-head">As CSS <button type="button" id="copy">Copy</button></div>
+      <pre id="css"></pre>
+    </div>
+  </form>
+  <section class="wb-compare">
+    <div class="wb-bar">
+      <label>Width <select id="width">
+        <option value="390">phone, 390 px</option>
+        <option value="720">tablet, 720 px</option>
+        <option value="fill" selected>half the window</option>
+      </select></label>
+      <label>Sample <select id="jump"></select></label>
+      <label><input type="checkbox" id="sync" checked> scroll together</label>
+    </div>
+    <div class="wb-frames">
+      <figure class="wb-frame" data-frame="a"><figcaption><b>A</b> <span class="wb-name"></span></figcaption><iframe title="Frame A" src="samples.html"></iframe></figure>
+      <figure class="wb-frame" data-frame="b"><figcaption><b>B</b> <span class="wb-name"></span></figcaption><iframe title="Frame B" src="samples.html"></iframe></figure>
+    </div>
+  </section>
+</main>
+<script src="workbench.js"></script>
+</body>
+</html>
